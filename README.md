@@ -10,8 +10,9 @@ robustness and address today's distributed systems inefficiencies and
 unpredictable long tail latencies. This ranges from simple things like
 video conferencing without glitches to virtual reality sports
 competitions with precisely equivalent system response times for all
-competitors, an to the orchestration and composition of microservices
-into a system without queueing delays.
+competitors. The properties underlying bittide support the
+orchestration and composition of microservices into a system without
+queueing delays.
 
 ## Components
 
