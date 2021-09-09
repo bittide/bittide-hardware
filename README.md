@@ -40,3 +40,5 @@ our [code of conduct](docs/code-of-conduct.md) and
 
 This code is shared under by Google LLC under the Apache 2.0
 license. See the [LICENSE](LICENSE) file for terms.
+
+**Note**: bittide is not an official Google product.
