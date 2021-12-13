@@ -52,7 +52,7 @@ handleExceptions ::
   -- | Load/Store unit finished
   Bool ->
   -- | Next PC
-  (PC,BitVector 2) ->
+  (PC,BitVector 1) ->
   -- |
   -- 1. Indication whether a trap or interrupt was raised
   -- 2. The PC for the next instruction cycle

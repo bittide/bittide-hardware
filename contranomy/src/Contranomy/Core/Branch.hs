@@ -33,7 +33,7 @@ branchUnit ::
   --
   -- That's because our addresses must be 4-byte aligned. If the lower two
   -- bits are non-zero, the Exception unit will take ensure that we Trap
-  (PC, BitVector 2)
+  (PC, BitVector 1)
 branchUnit instruction rs1Val rs2Val pc = case opcode of
   BRANCH ->
     let taken = case unpack func3 of
@@ -49,7 +49,7 @@ branchUnit instruction rs1Val rs2Val pc = case opcode of
      in if taken then
           (pc + offset,align)
         else
-          (pc + 1, 0)
+          (pc + incrementer, 0)
 
   JAL ->
     let (offset,align) = split (signExtend imm20J `shiftL` 1 :: MachineWord)
@@ -57,10 +57,10 @@ branchUnit instruction rs1Val rs2Val pc = case opcode of
 
   JALR ->
     let (pcN, align) = split (rs1Val + signExtend imm12I)
-        alignLSBZero = align .&. 0b10
-     in (pcN, alignLSBZero)
+     in (pcN, align)
 
   _ ->
-    (pc + 1, 0)
+    (pc + incrementer, 0)
  where
-  DecodedInstruction {opcode,func3,imm12B,imm12I,imm20J} = decodeInstruction instruction
+  DecodedInstruction {opcode,func3,imm12B,imm12I,imm20J, compressed} = decodeInstruction instruction
+  incrementer = if compressed then 1 else 2

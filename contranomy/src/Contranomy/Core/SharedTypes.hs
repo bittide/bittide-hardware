@@ -10,4 +10,4 @@ module Contranomy.Core.SharedTypes where
 import Clash.Prelude
 
 type MachineWord = BitVector 32
-type PC = BitVector 30
+type PC = BitVector 31

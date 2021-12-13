@@ -8,4 +8,7 @@ package clash-prelude
   -- it by default. This will be the default for Clash >=1.4.
   flags: -large-tuples -multiple-hidden
 
+package *
+  profiling: False
+
 write-ghc-environment-files: always

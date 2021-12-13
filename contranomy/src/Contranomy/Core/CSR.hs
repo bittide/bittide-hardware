@@ -129,7 +129,7 @@ csrUnit trap instruction rs1Val softwareInterrupt timerInterrupt externalInterru
       MEPC -> do
         let oldValue = mepc ++# 0
             newValue = csrWrite csrType oldValue writeValue1
-        #mepc .= slice d31 d2 newValue
+        #mepc .= slice d31 d1 newValue
         return (Just oldValue, newValue)
       MCAUSE -> do
         let oldValue = pack interrupt ++# 0 ++# code

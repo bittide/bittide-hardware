@@ -157,7 +157,7 @@ data MCause
   { interrupt :: Bool
   , code :: BitVector 4
   }
-  deriving (Generic, NFDataX)
+  deriving (Generic, NFDataX, Show)
 deriveAutoReg ''MCause
 
 pattern INSTRUCTION_ADDRESS_MISALIGNED, INSTRUCTION_ACCESS_FAULT, ILLEGAL_INSTRUCTION,
@@ -178,24 +178,44 @@ pattern MACHINE_TIMER_INTERRUPT = MCause True 7
 pattern MACHINE_EXTERNAL_INTERRUPT = MCause True 11
 
 newtype Opcode = Opcode (BitVector 7)
+  deriving newtype BitPack 
+
+newtype Func7 = Func7 (BitVector 7)
   deriving newtype BitPack
 
+instance Show Opcode where
+  show op = case op of
+    LUI       -> "LUI"
+    AUIPC     -> "AUIPC"
+    JAL       -> "JAL"
+    JALR      -> "JALR"
+    BRANCH    -> "BRANCH"
+    LOAD      -> "LOAD"
+    STORE     -> "STORE"
+    OP_IMM    -> "OP_IMM"
+    OP        -> "OP"
+    MISC_MEM  -> "MISC_MEM"
+    SYSTEM    -> "SYSTEM"
+    _         -> "ILLEGAL"
+
 pattern LUI,AUIPC,JAL,JALR,BRANCH,LOAD,STORE,OP_IMM,OP,MISC_MEM,SYSTEM :: Opcode
-pattern LUI = Opcode 0b0110111
-pattern AUIPC = Opcode 0b0010111
-pattern JAL = Opcode 0b1101111
-pattern JALR = Opcode 0b1100111
-pattern BRANCH = Opcode 0b1100011
-pattern LOAD = Opcode 0b0000011
-pattern STORE = Opcode 0b0100011
-pattern OP_IMM = Opcode 0b0010011
-pattern OP = Opcode 0b0110011
-pattern MISC_MEM = Opcode 0b0001111
-pattern SYSTEM = Opcode 0b1110011
+pattern LUI       = Opcode 0b0110111
+pattern AUIPC     = Opcode 0b0010111
+pattern JAL       = Opcode 0b1101111
+pattern JALR      = Opcode 0b1100111
+pattern BRANCH    = Opcode 0b1100011
+pattern LOAD      = Opcode 0b0000011
+pattern STORE     = Opcode 0b0100011
+pattern OP_IMM    = Opcode 0b0010011
+pattern OP        = Opcode 0b0110011
+pattern MISC_MEM  = Opcode 0b0001111
+pattern SYSTEM    = Opcode 0b1110011
+
 
 data ShiftRight
   = Logical
   | Arithmetic
+  deriving Show
 deriveDefaultAnnotation [t|ShiftRight|]
 deriveBitPack  [t|ShiftRight|]
 
@@ -208,6 +228,7 @@ data IOp
   | SR   -- 5
   | OR   -- 6
   | AND  -- 7
+  deriving Show
 deriveDefaultAnnotation [t|IOp|]
 deriveBitPack  [t|IOp|]
 
@@ -220,12 +241,14 @@ data MOp
   | DIVU    -- 5
   | REM     -- 6
   | REMU    -- 7
+  deriving Show
 deriveDefaultAnnotation [t|MOp|]
 deriveBitPack  [t|MOp|]
 
 data Sign
   = Signed
   | Unsigned
+  deriving Show
 deriveDefaultAnnotation [t|Sign|]
 deriveBitPack [t|Sign|]
 
@@ -236,6 +259,7 @@ data LoadStoreWidth
   | LSWIllegal1
   | LSWIllegal2
   | LSWIllegal3
+  deriving Show
 {-# ANN module (DataReprAnn
                   $(liftQ [t|LoadStoreWidth|])
                   3
@@ -257,6 +281,7 @@ data BranchCondition
   | BGEU
   | BIllegal1
   | BIllegal2
+  deriving Show
 {-# ANN module (DataReprAnn
                   $(liftQ [t|BranchCondition|])
                   3
@@ -273,7 +298,7 @@ deriveBitPack [t| BranchCondition |]
 
 
 newtype CSRRegister = CSRRegister (BitVector 12)
-
+  deriving newtype Show
 -- Machine Trap Setup
 pattern MSTATUS, MISA, MEDELEG, MIDELEG, MIE, MTVEC, MCOUNTEREN, MSTATUSH :: CSRRegister
 
@@ -308,6 +333,7 @@ data CSRType
   | ReadSet
   | ReadClear
   | CSRIllegal
+  deriving Show
 {-# ANN module (DataReprAnn
                   $(liftQ [t|CSRType|])
                   2
@@ -321,6 +347,7 @@ deriveBitPack [t| CSRType |]
 data CSROp
   = CSRReg CSRType
   | CSRImm CSRType
+  deriving Show
 {-# ANN module (DataReprAnn
                   $(liftQ [t|CSROp|])
                   3
@@ -330,7 +357,7 @@ data CSROp
 deriveBitPack [t| CSROp |]
 
 newtype System12 = System12 (BitVector 12)
-  deriving newtype Eq
+  deriving newtype (Eq, Show)
 
 pattern ECALL, EBREAK, MRET :: System12
 pattern ECALL = System12 0

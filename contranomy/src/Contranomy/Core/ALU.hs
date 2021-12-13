@@ -51,10 +51,10 @@ alu ::
   MachineWord ->
   -- | Result
   MachineWord
-alu instruction pc rs1Value rs2Value = aluResult
+alu instruction pc rs1Value rs2Value = if multdiv then multdivResult else aluResult
  where
   DecodedInstruction
-    { opcode, iop, srla, isSub, imm12I, imm20U, imm12S }
+    { opcode, iop, srla, isSub, imm12I, imm20U, imm12S, multdiv, mop}
     = decodeInstruction instruction
 
   aluArg1 = case opcode of
@@ -92,3 +92,17 @@ alu instruction pc rs1Value rs2Value = aluResult
               Arithmetic -> pack ((unpack aluArg1 :: Signed 32) `shiftR` aluArg2Shamt)
     OR   -> aluArg1 .|. aluArg2
     AND  -> aluArg1 .&. aluArg2
+
+  multdivResult = case mop of
+    MUL -> slice d31 d0 $ pack @(Signed 64) $ (getSigned rs1Value * getSigned rs2Value)
+    MULH -> slice d63 d32 $ pack @(Signed 64) $ (getSigned rs1Value * getSigned rs2Value)
+    MULHSU -> slice d63 d32 $ pack @(Signed 64) $ (getSigned rs1Value * getUnsigned rs2Value)
+    MULHU -> slice d63 d32 $ pack @(Signed 64) $ (getUnsigned rs1Value * getUnsigned rs2Value)
+    DIV -> slice d31 d0 $ pack @(Signed 64) $ (getSigned rs1Value `quot` getSigned rs2Value)
+    DIVU -> slice d31 d0 $ pack @(Signed 64)$ (getUnsigned rs1Value `quot` getUnsigned rs2Value)
+    REM -> slice d31 d0 $ pack @(Signed 64) $ (getSigned rs1Value `rem` getSigned rs2Value)
+    REMU -> slice d31 d0 $ pack @(Signed 64) $ (getUnsigned rs1Value `rem` getUnsigned rs2Value)
+    where
+      getUnsigned = fromIntegral . unpack @(Unsigned 32)
+      getSigned = fromIntegral . unpack @(Signed 32)
+        
