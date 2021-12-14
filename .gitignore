@@ -1,3 +1,4 @@
 *~
 contranomy/dist-newstyle
 *.local
+.ghc.environment.x86_64-linux-8.10.7

@@ -92,7 +92,6 @@ library
     Contranomy.RegisterFile
     Contranomy.RVFI
     Contranomy.Assembly
-    Contranomy.GenericStorage
     Contranomy.Wishbone
   default-language: Haskell2010
   build-depends:
@@ -101,10 +100,12 @@ library
       generic-lens
 
 executable clash
+  import: common-options
   main-is: bin/Clash.hs
   Build-Depends: base, clash-ghc, contranomy
 
 executable clashi
+
   main-is: bin/Clashi.hs
   build-depends: base, clash-ghc, contranomy
 
@@ -112,7 +113,6 @@ executable simcontranomy
   import: common-options
   main-is: bin/SimContranomy.hs
   build-depends: base, bytestring, containers, clash-ghc, contranomy, clash-prelude, elf
-  --ghc-options: -rtsopts -with-rtsopts=-xc
 
 test-suite test-library
   import: common-options

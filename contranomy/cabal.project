@@ -10,3 +10,5 @@ package clash-prelude
 
 package *
   profiling: False
+
+write-ghc-environment-files: always
