@@ -1,11 +1,12 @@
 cabal-version:       2.4
 name:                contranomy
 version:             0.1
-License:             BSD-2-Clause
+License:             Apache-2.0
 license-file:        LICENSE
-author:              Christiaan Baaij
-maintainer:          christiaan.baaij@gmail.com
+author:              QBayLogic B.V.
+maintainer:          devops@qbaylogic.com
 Copyright:           Copyright © 2020, Christiaan Baaij
+                     Copyright © 2021, Google LLC
 
 common common-options
   default-extensions:
