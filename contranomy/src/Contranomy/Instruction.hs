@@ -178,7 +178,7 @@ pattern MACHINE_TIMER_INTERRUPT = MCause True 7
 pattern MACHINE_EXTERNAL_INTERRUPT = MCause True 11
 
 newtype Opcode = Opcode (BitVector 7)
-  deriving newtype BitPack 
+  deriving newtype BitPack
 
 newtype Func7 = Func7 (BitVector 7)
   deriving newtype BitPack

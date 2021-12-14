@@ -94,7 +94,7 @@ library
     Contranomy.RVFI
     Contranomy.Assembly
     Contranomy.Wishbone
-  default-language: Haskell2010
+
   build-depends:
       transformers,
       lens,
@@ -103,12 +103,12 @@ library
 executable clash
   import: common-options
   main-is: bin/Clash.hs
-  Build-Depends: base, clash-ghc, contranomy
+  Build-Depends: clash-ghc, contranomy
 
 executable clashi
-
+  import: common-options
   main-is: bin/Clashi.hs
-  build-depends: base, clash-ghc, contranomy
+  build-depends: clash-ghc, contranomy
 
 executable simcontranomy
   import: common-options
