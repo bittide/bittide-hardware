@@ -51,8 +51,8 @@ data CoreIn
 
 data CoreOut
   = CoreOut
-  { iBusM2S :: "iBusWishbone" ::: WishboneM2S 4 31
-  , dBusM2S :: "dBusWishbone" ::: WishboneM2S 4 31
+  { iBusM2S :: "iBusWishbone" ::: WishboneM2S 4 32
+  , dBusM2S :: "dBusWishbone" ::: WishboneM2S 4 32
   }
 
 coreOut :: CoreOut
@@ -73,7 +73,7 @@ core entry = mealyAutoB transition cpuStart
   cpuStart
     = CoreState
     { stage = InstructionFetch
-    , pc = slice d31 d2 entry
+    , pc = slice d31 d1 entry
     , instruction = 0
     , machineState = machineStart
     , rvfiOrder = 0
@@ -111,7 +111,7 @@ transition s@CoreState{stage=InstructionFetch, pc} (CoreIn{iBusS2M},_) = trace (
   --             InstructionFetch
 
   return ( coreOut { iBusM2S = (wishboneM2S (SNat @Bytes) (SNat @AddressWidth))
-                             { addr = pc
+                             { addr = pc ++# 0
                              , busSelect = 0b1111
                              , busCycle = True
                              , strobe = True } }
@@ -126,7 +126,7 @@ transition
     s@CoreState{stage=Execute accessFault,instruction,pc,rvfiOrder}
     ( CoreIn{dBusS2M,softwareInterrupt,timerInterrupt,externalInterrupt}
     , (rs1Val,rs2Val) )
-  = trace (" Execute" L.++ (show $ decodeInstruction instruction)) runState' s do
+  = trace (" Execute " L.++ (show $ compressed $ decodeInstruction instruction ) L.++ " " L.++ (show $ opcode $ decodeInstruction instruction)) runState' s do
 
   let DecodedInstruction { opcode, rd, legal }
         = decodeInstruction instruction

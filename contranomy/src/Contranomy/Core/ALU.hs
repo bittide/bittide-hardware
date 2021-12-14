@@ -50,10 +50,10 @@ alu ::
   MachineWord ->
   -- | Result
   MachineWord
-alu instruction pc rs1Value rs2Value = if multdiv then multdivResult else aluResult
+alu instruction pc rs1Value rs2Value = if isM then multdivResult else aluResult
  where
   DecodedInstruction
-    { opcode, iop, srla, isSub, imm12I, imm20U, imm12S, multdiv, mop}
+    { opcode, iop, srla, isSub, imm12I, imm20U, imm12S, mop, isM}
     = decodeInstruction instruction
 
   aluArg1 = case opcode of

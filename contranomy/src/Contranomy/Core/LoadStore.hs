@@ -16,7 +16,7 @@ import Contranomy.Instruction
 import Contranomy.Wishbone
 
 type Bytes = 4
-type AddressWidth = 30
+type AddressWidth = 32
 
 -- | This function performs data-bus transactions for loads and stores.
 --
@@ -53,7 +53,7 @@ loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
               (slice d15 d0 (readData dBusS2M `shiftR` shiftAmount))
           _ -> readData dBusS2M
      in ( (wishboneM2S (SNat @Bytes) (SNat @AddressWidth))
-            { addr      = slice d31 d2 addr
+            { addr      = addr
             , busSelect = mask
             , busCycle  = aligned
             , strobe    = aligned
@@ -73,7 +73,7 @@ loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
           Half _ -> toStore `shiftL` shiftAmount
           _ -> toStore
      in ( (wishboneM2S (SNat @Bytes) (SNat @AddressWidth))
-           { addr        = slice d31 d2 addr
+           { addr        = addr
            , writeData   = storeData
            , busSelect   = mask
            , busCycle    = aligned
