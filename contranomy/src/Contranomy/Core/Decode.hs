@@ -69,7 +69,7 @@ decode32 w = DecodedInstruction
   , srla   = unpack (slice d30 d30 w)
   , shamt  = unpack (slice d24 d20 w)
   , isSub  = unpack (slice d30 d30 w)
-  , isM    = unpack (slice d25 d25 w)
+  , isM    = pack opcode ++# slice d25 d25 w == 0b01100111
   , mop    = unpack (slice d14 d12 w)
   , imm20U = slice d31 d12 w
   , imm20J = slice d31 d31 w ++#
