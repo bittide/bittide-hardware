@@ -1,3 +1,9 @@
+{-|
+Copyright  :  (C) 2021, Google LLC
+License    :  Apache-2.0
+Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
+-}
+
 module Contranomy.Assembly where
 import Clash.Prelude
 
@@ -16,17 +22,17 @@ type Succ = BitVector 4
 type Shamt = BitVector 5
 type Fm = BitVector 5
 
-data Instruction = 
-    LUI     Rd Imm21U  
-  | AUIPC   Rd Imm21U  
+data Instruction =
+    LUI     Rd Imm21U
+  | AUIPC   Rd Imm21U
   | JAL     Rd Imm21L
   | JALR    Rd Rs1 Imm12
-  | BEQ     Rs1 Rs2 Imm13 
-  | BNE     Rs1 Rs2 Imm13 
-  | BLT     Rs1 Rs2 Imm13 
-  | BGE     Rs1 Rs2 Imm13 
-  | BLTU    Rs1 Rs2 Imm13 
-  | BGEU    Rs1 Rs2 Imm13 
+  | BEQ     Rs1 Rs2 Imm13
+  | BNE     Rs1 Rs2 Imm13
+  | BLT     Rs1 Rs2 Imm13
+  | BGE     Rs1 Rs2 Imm13
+  | BLTU    Rs1 Rs2 Imm13
+  | BGEU    Rs1 Rs2 Imm13
   | LB      Rd Rs1 Imm12
   | LH      Rd Rs1 Imm12
   | LW      Rd Rs1 Imm12
@@ -55,8 +61,8 @@ data Instruction =
   | OR      Rd Rs1 Rs2
   | AND     Rd Rs1 Rs2
   | FENCE   Rd Rs1 Pred Succ Fm
-  | ECALL   
-  | EBREAK   
+  | ECALL
+  | EBREAK
   | MUL     Rd Rs1 Rs2  -- M Extension
   | MULH    Rd Rs1 Rs2
   | MULHSU  Rd Rs1 Rs2
@@ -106,7 +112,7 @@ data CompressedInstruction =
   | CSDSP
   deriving Show
 
-data Encoding = 
+data Encoding =
    RType Opcode Rd Rs1 Rs2 Funct3 Funct7
  | IType Opcode Rd Rs1 Funct3 Imm12
  | SType Opcode Rs1 Rs2 Funct3 Imm12

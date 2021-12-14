@@ -1,12 +1,14 @@
 {-|
 Copyright  :  (C) 2020, Christiaan Baaij
-License    :  BSD2 (see the file LICENSE)
-Maintainer :  Christiaan Baaij <christiaan.baaij@gmail.com>
+              (C) 2021, Google LLC
+License    :  Apache-2.0
+Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
 
 RISC-V Formal Interface (RVFI)
 
 See https://github.com/SymbioticEDA/riscv-formal/blob/master/docs/rvfi.md
 -}
+
 module Contranomy.RVFI where
 
 import Clash.Prelude

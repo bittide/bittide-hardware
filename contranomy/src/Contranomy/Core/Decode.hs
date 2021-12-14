@@ -1,7 +1,8 @@
 {-|
 Copyright  :  (C) 2020, Christiaan Baaij
-License    :  BSD2 (see the file LICENSE)
-Maintainer :  Christiaan Baaij <christiaan.baaij@gmail.com>
+              (C) 2021, Google LLC
+License    :  Apache-2.0
+Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
 -}
 
 {-# LANGUAGE NamedFieldPuns #-}
@@ -43,10 +44,10 @@ data DecodedInstruction
 
 -- 000 nzuimm[5:4|9:6|2|3]                rd′  00          C.ADDI4SPN (RES, nzuimm=0)
 -- 001 uimm[5:3]           rs1 ′uimm[7:6] rd′  00 C.FLD    (RV32/64)
--- 010 uimm[5:3]           rs1 ′uimm[2|6] rd′  00 C.LW 
+-- 010 uimm[5:3]           rs1 ′uimm[2|6] rd′  00 C.LW
 -- 011 uimm[5:3]           rs1 ′uimm[2|6] rd′  00 C.FLW    (RV32)
 -- 101 uimm[5:3]           rs1 ′uimm[7:6] rs2′ 00 C.FSD    (RV32/64)
--- 110 uimm[5:3]           rs1 ′uimm[2|6] rs2′ 00 C.SW 
+-- 110 uimm[5:3]           rs1 ′uimm[2|6] rs2′ 00 C.SW
 -- 111 uimm[5:3]           rs1 ′uimm[2|6] rs2′ 00 C.FSW    (RV32)
 
 
@@ -56,7 +57,7 @@ data DecodedInstruction
 -- decodeInstruction ::
 --   MachineWord ->
 --   DecodedInstruction
-decodeInstruction w = if slice d1 d0 w == 3 then decode32 w else compressedToFull $ decode16 w 
+decodeInstruction w = if slice d1 d0 w == 3 then decode32 w else compressedToFull $ decode16 w
 
 --C.LWSP
 decode32 w = DecodedInstruction
@@ -143,7 +144,7 @@ decode32 w = DecodedInstruction
   func7  = slice d31 d25 w
   func12 = slice d31 d20 w
 
-data DecodedCompressedInstruction = DecodedCompressedInstruction { 
+data DecodedCompressedInstruction = DecodedCompressedInstruction {
     cOpcode      :: BitVector 2
   , cFunct2      :: BitVector 2
   , cFunct2'     :: BitVector 2
@@ -190,28 +191,28 @@ decode16 w = DecodedCompressedInstruction{
   , cJumpTarget  = slice d12 d12 w ++# slice d8 d8 w ++# slice d10 d9 w ++# slice d6 d6 w ++# slice d7 d7 w ++# slice d2 d2 w ++# slice d11 d11 w ++# slice d5 d3 w
   , cShamt       = slice d12 d12 w ++# slice d6 d2 w
   }
-compressedToFull DecodedCompressedInstruction { 
-    cOpcode    
-  , cFunct2 
-  , cFunct2'  
-  , cFunct3    
-  , cFunct4    
-  , cFunct6    
-  , cRd        
-  , cRs1       
-  , cRs2       
-  , cRd'       
-  , cRd''      
-  , cRs1'      
-  , cRs2'      
-  , cImm5LS    
-  , cImm6I     
-  , cImm6I'   
-  , cImm6SS    
-  , cImm8IW    
-  , cOffset    
+compressedToFull DecodedCompressedInstruction {
+    cOpcode
+  , cFunct2
+  , cFunct2'
+  , cFunct3
+  , cFunct4
+  , cFunct6
+  , cRd
+  , cRs1
+  , cRs2
+  , cRd'
+  , cRd''
+  , cRs1'
+  , cRs2'
+  , cImm5LS
+  , cImm6I
+  , cImm6I'
+  , cImm6SS
+  , cImm8IW
+  , cOffset
   , cJumpTarget
-  , cShamt     } = case (cFunct3, cFunct4, cFunct2', cRd, cFunct2, cRs2, cOpcode) of 
+  , cShamt     } = case (cFunct3, cFunct4, cFunct2', cRd, cFunct2, cRs2, cOpcode) of
   (0b000, _       , _, _, _, _, 0b00) -> DecodedInstruction{compressed = True, opcode = getOpcode "ADDI"   , imm12I = zeroExtend cImm8IW * 4, rs1 = X2, rd = decompressReg cRd' , func3 = getFunc3 "ADDI", legal = True}
   (0b010, _       , _, _, _, _, 0b00) -> DecodedInstruction{compressed = True, opcode = getOpcode "LW"     , imm12I = zeroExtend cImm8IW * 4, rs1 = decompressReg cRs1', rd = decompressReg cRd', func3 = getFunc3 "LW", legal = True}
   (0b110, _       , _, _, _, _, 0b00) -> DecodedInstruction{compressed = True, opcode = getOpcode "SW"     , imm12I = zeroExtend cImm8IW * 4 , rs1 = decompressReg cRs1', rd = decompressReg cRd', func3 = getFunc3 "SW", legal = True}
@@ -219,7 +220,7 @@ compressedToFull DecodedCompressedInstruction {
   (0b001, _       , _, _, _, _, 0b01) -> DecodedInstruction{compressed = True, opcode = getOpcode "JAL"    , rd = X1, imm20J = zeroExtend cJumpTarget, func3 = getFunc3 "JAL", legal = True}
   (0b010, _       , _, _, _, _, 0b01) -> DecodedInstruction{compressed = True, opcode = getOpcode "ADDI"   , imm12I = zeroExtend cImm6I, rs1 = X0, rd = unpack cRd, func3 = getFunc3 "ADDI", legal = not $ cRd == 0}
   (0b011, _       , _, 2, _, _, 0b01) -> DecodedInstruction{compressed = True, opcode = getOpcode "ADDI"   , imm12I = zeroExtend cImm6I' * 16, rs1 = X0, rd = X2, func3 = getFunc3 "ADDI", legal = True}
-  (0b011, _       , _, _, _, _, 0b01) -> DecodedInstruction{compressed = True, opcode = getOpcode "ADDI"   , imm12I = signExtend cImm6I * 4096, rs1 = X0, rd = unpack cRd, func3 = getFunc3 "ADDI", legal = not $ cRd == 2 && cRd == 0} 
+  (0b011, _       , _, _, _, _, 0b01) -> DecodedInstruction{compressed = True, opcode = getOpcode "ADDI"   , imm12I = signExtend cImm6I * 4096, rs1 = X0, rd = unpack cRd, func3 = getFunc3 "ADDI", legal = not $ cRd == 2 && cRd == 0}
   (0b100, _       , 0, _, _, _, 0b01) -> DecodedInstruction{compressed = True, opcode = getOpcode "SRLI"   , rd = decompressReg cRd', rs1 = decompressReg cRs1', shamt = slice d4 d0 cShamt, func3 = getFunc3 "SRLI", legal = not $ cShamt == 0 || slice d5 d5 cShamt == 1}
   (0b100, _       , 1, _, _, _, 0b01) -> DecodedInstruction{compressed = True, opcode = getOpcode "SRAI"   , rd = decompressReg cRd', rs1 = decompressReg cRs1', shamt = slice d4 d0 cShamt, func3 = getFunc3 "SRAI", legal = not $ cShamt == 0 || slice d5 d5 cShamt == 1}
   (0b100, _       , 2, _, _, _, 0b01) -> DecodedInstruction{compressed = True, opcode = getOpcode "ANDI"   , rd = decompressReg cRd', rs1 = decompressReg cRs1', imm12I = signExtend cImm6I, func3 = getFunc3 "ANDI", legal = True}
@@ -238,11 +239,11 @@ compressedToFull DecodedCompressedInstruction {
   (_    , 0b1001  , _, _, _, _, 0b10) -> DecodedInstruction{compressed = True, opcode = getOpcode "ADD"    , rd = unpack cRd, rs1 = unpack cRs1, rs2 = unpack cRs2, func3 = getFunc3 "ADD", legal = not $ cRs2 == 0 || cRd == 0}
   (0b110, _       , _, _, _, _, 0b10) -> DecodedInstruction{compressed = True, opcode = getOpcode "SW"     , rs1 = X2, rs2 = unpack cRs2, imm12S = zeroExtend cImm6SS * 4, func3 = getFunc3 "SW", legal = not $ cRs2 == 0 || cRd == 0}
   (_    , _       , _, _, _, _, _   ) -> DecodedInstruction{compressed = True, legal = False}
-  
+
 
 decompressReg :: BitVector 3 -> Register
 decompressReg n = unpack $ zeroExtend n + 8
-getOpcode ("LUI")     = OP_IMM 
+getOpcode ("LUI")     = OP_IMM
 getOpcode ("AUIPC")   = AUIPC
 getOpcode ("JAL")     = JAL
 getOpcode ("JALR")    = JALR

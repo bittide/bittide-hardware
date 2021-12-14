@@ -1,7 +1,8 @@
 {-|
 Copyright  :  (C) 2020, Christiaan Baaij
-License    :  BSD2 (see the file LICENSE)
-Maintainer :  Christiaan Baaij <christiaan.baaij@gmail.com>
+              (C) 2021, Google LLC
+License    :  Apache-2.0
+Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
 -}
 
 {-# LANGUAGE NamedFieldPuns #-}
@@ -104,4 +105,4 @@ alu instruction pc rs1Value rs2Value = if multdiv then multdivResult else aluRes
     where
       getUnsigned = fromIntegral . unpack @(Unsigned 32)
       getSigned = fromIntegral . unpack @(Signed 32)
-        
+
