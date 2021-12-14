@@ -1,7 +1,8 @@
 {-|
 Copyright  :  (C) 2020, Christiaan Baaij
-License    :  BSD2 (see the file LICENSE)
-Maintainer :  Christiaan Baaij <christiaan.baaij@gmail.com>
+              (C) 2021, Google LLC
+License    :  Apache-2.0
+Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
 -}
 
 {-# LANGUAGE NamedFieldPuns #-}
@@ -43,10 +44,10 @@ data DecodedInstruction
 
 -- 000 nzuimm[5:4|9:6|2|3]                rd′  00          C.ADDI4SPN (RES, nzuimm=0)
 -- 001 uimm[5:3]           rs1 ′uimm[7:6] rd′  00 C.FLD    (RV32/64)
--- 010 uimm[5:3]           rs1 ′uimm[2|6] rd′  00 C.LW 
+-- 010 uimm[5:3]           rs1 ′uimm[2|6] rd′  00 C.LW
 -- 011 uimm[5:3]           rs1 ′uimm[2|6] rd′  00 C.FLW    (RV32)
 -- 101 uimm[5:3]           rs1 ′uimm[7:6] rs2′ 00 C.FSD    (RV32/64)
--- 110 uimm[5:3]           rs1 ′uimm[2|6] rs2′ 00 C.SW 
+-- 110 uimm[5:3]           rs1 ′uimm[2|6] rs2′ 00 C.SW
 -- 111 uimm[5:3]           rs1 ′uimm[2|6] rs2′ 00 C.FSW    (RV32)
 
 
@@ -57,7 +58,6 @@ data DecodedInstruction
 --   MachineWord ->
 --   DecodedInstruction
 decodeInstruction w = if slice d1 d0 w == 3 then decode32 w else undefined --compressedToFull $ decode16 w 
-
 
 decode32 w = DecodedInstruction
   { opcode = opcode
@@ -209,26 +209,26 @@ decode16 w = DecodedCompressedInstruction{
   , cJumpTarget  = slice d12 d12 w ++# slice d8 d8 w ++# slice d10 d9 w ++# slice d6 d6 w ++# slice d7 d7 w ++# slice d2 d2 w ++# slice d11 d11 w ++# slice d5 d3 w
   , cShamt       = slice d12 d12 w ++# slice d6 d2 w
   }
-compressedToFull DecodedCompressedInstruction { 
-    cOpcode    
-  , cFunct2 
-  , cFunct2'  
-  , cFunct3    
-  , cFunct4    
-  , cFunct6    
-  , cRd        
-  , cRs1       
-  , cRs2       
-  , cRd'       
-  , cRd''      
-  , cRs1'      
-  , cRs2'      
-  , cImm5LS    
-  , cImm6I     
-  , cImm6I'   
-  , cImm6SS    
-  , cImm8IW    
-  , cOffset    
+compressedToFull DecodedCompressedInstruction {
+    cOpcode
+  , cFunct2
+  , cFunct2'
+  , cFunct3
+  , cFunct4
+  , cFunct6
+  , cRd
+  , cRs1
+  , cRs2
+  , cRd'
+  , cRd''
+  , cRs1'
+  , cRs2'
+  , cImm5LS
+  , cImm6I
+  , cImm6I'
+  , cImm6SS
+  , cImm8IW
+  , cOffset
   , cJumpTarget
   , cShamt     } = case (cFunct3, cFunct4, cFunct2', cRd, cFunct2, cRs2, cOpcode) of 
   (0b000, _       , _, _, _, _, 0b00) -> undefinedInstruction{compressed = True, iop = ADD,  opcode = getOpcode "ADDI"   , imm12I = zeroExtend cImm8IW * 4, rs1 = X2, rd = decompressReg cRd' , func3 = getFunc3 "ADDI", legal = True}
@@ -261,7 +261,7 @@ compressedToFull DecodedCompressedInstruction {
 
 decompressReg :: BitVector 3 -> Register
 decompressReg n = unpack $ zeroExtend n + 8
-getOpcode ("LUI")     = OP_IMM 
+getOpcode ("LUI")     = OP_IMM
 getOpcode ("AUIPC")   = AUIPC
 getOpcode ("JAL")     = JAL
 getOpcode ("JALR")    = JALR
