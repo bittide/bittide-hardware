@@ -64,18 +64,18 @@ contranomy'
   -> IntMap (BitVector 8)
   -> IntMap (BitVector 8)
   -> Signal Core (Bool, Bool, BitVector 32)
-  -> Signal Core (Maybe ("DAT_MOSI" ::: BitVector 32), Maybe (Signed 32))
-contranomy' clk rst entry iMem dMem (unbundle -> (tI, sI, eI)) = bundle (iWritten, dWritten) where --, dAddr, dWritten) where
+  -> Signal Core ((Maybe (Unsigned 32, Signed 32)),(Maybe (Unsigned 32, Signed 32)))
+contranomy' clk rst entry iMem dMem (unbundle -> (tI, sI, eI)) = bundle (iWritten, dWritten) where
   coreOut = contranomy entry clk rst $ (\ (tI, sI, eI, iS, dS) -> CoreIn{timerInterrupt=tI, softwareInterrupt = sI, externalInterrupt = eI, iBusS2M = iS, dBusS2M = dS}) <$> (bundle (tI, sI, eI, iStorage, dStorage))
   instructionM2S = iBusM2S <$> coreOut
   dataM2S = dBusM2S <$> coreOut
   iStorage = wishboneStorage iMem instructionM2S
-  dStorage = wishboneStorage dMem $ (\x -> trace (showX $ addr x) x) <$> dataM2S
+  dStorage = wishboneStorage dMem dataM2S
   iAddr = addr <$> instructionM2S
   dAddr = addr <$> dataM2S
-  checkWritten bus = if writeEnable bus then Just (unpack @(Unsigned 31) $ addr bus, unpack @(Signed 32) $ writeData bus) else Nothing
+  checkWritten bus = if writeEnable bus then Just (unpack @(Unsigned 32) $ addr bus, unpack @(Signed 32) $ writeData bus) else Nothing
   iWritten = checkWritten <$> instructionM2S
-  dWritten = fmap (unpack @(Signed 32) <$>) checkWritten <$> dataM2S
+  dWritten = checkWritten <$> dataM2S
   osc = withClockResetEnable clk rst enableGen (register True $ not <$> osc)
 
 bytesToWords :: [BitVector 8] -> [BitVector 32]

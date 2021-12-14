@@ -37,7 +37,7 @@ toRVFI ::
   -- | pcN
   PC ->
   -- | dbusM2S
-  WishboneM2S 4 31 ->
+  WishboneM2S 4 32 ->
   -- | dbusS2M
   WishboneS2M 4 ->
   -- | MISA CRS

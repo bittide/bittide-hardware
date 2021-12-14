@@ -84,68 +84,16 @@ wishboneS2M SNat
   , err = False
   }
 
--- wishboneStorage size WishboneM2S{ addr
---   , writeData
---   , busSelect
---   , busCycle
---   , strobe
---   , writeEnable
---   , cycleTypeIdentifier
---   , burstTypeExtension
---   } = WishboneS2M{readData, acknowledge, err}
---     where
---       acknowledge = register False $ busCycle && strobe
---       storageArray = listArray $ replicate size 0
-
---wishboneStorage highestIndex init input =  wishboneStorage' ((A.listArray (0, highestIndex) $ L.replicate (highestIndex+1) init), False)
--- wishboneStorage' (file, ack) WishboneM2S{ addr
---   , writeData
---   , busSelect
---   , busCycle
---   , strobe
---   , writeEnable
---   , cycleTypeIdentifier
---   , burstTypeExtension
---   } = ((file', ack'),dataOut) where
---   file' | writeEnable = file' A.// assocList
---         | otherwise   = file
---   ack' = busCycle && strobe
---   address = unpack addr
---   readData = file' A.! address
---   assocList = case busSelect of
---     $(bitPattern "0001")  -> [byte0]
---     $(bitPattern "0010")  -> [byte1]
---     $(bitPattern "0100")  -> [byte2]
---     $(bitPattern "1000")  -> [byte3]
---     $(bitPattern "0011")  -> half0
---     $(bitPattern "1100")  -> half1
---     _                     -> word0
---   byte0 = (address, slice d7 d0 writeData)
---   byte1 = (address+1, slice d15 d8 writeData)
---   byte2 = (address+2, slice d23 d16 writeData)
---   byte3 = (address+3, slice d31 d24 writeData)
---   half0 = [byte0, byte1]
---   half1 = [byte2, byte3]
---   word0  = [byte0, byte1, byte2, byte3]
---   dataOut = WishboneS2M{readData = readData, acknowledge = ack, err = False}
-
--- wishboneStorage
---   :: forall a dom . (A.Ix a, Num a, BitPack a, KnownDomain dom) =>
---      a
---      -> BitVector 8
---      -> Signal dom (WishboneM2S 4 (BitSize a))
---      -> Signal dom (WishboneS2M 4)
-
 wishboneStorage
   :: I.IntMap (BitVector 8)
-  -> Signal dom (WishboneM2S 4 30)
+  -> Signal dom (WishboneM2S 4 32)
   -> Signal dom (WishboneS2M 4)
 wishboneStorage init inputs = wishboneStorage' state inputs where
   state = (init, False)
 
 wishboneStorage'
   :: (I.IntMap (BitVector 8), Bool)
-  -> Signal dom (WishboneM2S 4 30)
+  -> Signal dom (WishboneM2S 4 32)
   -> Signal dom (WishboneS2M 4)
 wishboneStorage' state inputs = dataOut :- (wishboneStorage' state' inputs')
  where
@@ -164,7 +112,7 @@ wishboneStorage' state inputs = dataOut :- (wishboneStorage' state' inputs')
   file' | writeEnable = I.fromList assocList <> file
         | otherwise   = file
   ack' = busCycle && strobe
-  address = fromIntegral (unpack $ addr :: Unsigned 30 {- addressWidth -}) * 4
+  address = fromIntegral (unpack $ addr :: Unsigned 32)
   readData = (file `lookup'` (address+3)) ++# (file `lookup'` (address+2)) ++# (file `lookup'` (address+1)) ++# (file `lookup'` address)
   lookup' x addr = I.findWithDefault (error $ "Uninitialized Memory Address: " <> show addr) addr x
   assocList = case busSelect of
