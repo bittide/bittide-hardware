@@ -6,6 +6,7 @@ Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
 -}
 
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Contranomy.Core.ALU where
 
@@ -54,25 +55,26 @@ alu ::
 alu instruction pc rs1Value rs2Value = if isM then multdivResult else aluResult
  where
   DecodedInstruction
-    { opcode, iop, srla, isSub, imm12I, imm20U, imm12S, mop, isM}
+    { opcode, iop, srla, isSub, imm12I, imm20U, imm12S, mop, isM, compressed}
     = decodeInstruction instruction
 
   aluArg1 = case opcode of
               LUI   -> 0
-              AUIPC -> pc ++# 0
-              JAL   -> pc ++# 0
-              JALR  -> pc ++# 0
+              AUIPC -> pc
+              JAL   -> pc
+              JALR  -> pc
               _     -> rs1Value
   aluArg2 = case opcode of
               LUI    -> imm20U ++# 0
               AUIPC  -> imm20U ++# 0
-              JAL    -> 4
-              JALR   -> 4
+              JAL    -> iLEN
+              JALR   -> iLEN
               OP     -> case aluOp of
                           ADD | isSub -> negate rs2Value
                           _ -> rs2Value
               STORE  -> signExtend imm12S
               _      -> signExtend imm12I
+  iLEN = if compressed then 2 else 4
 
   aluArg2Shamt = unpack (zeroExtend (slice d4 d0 aluArg2))
 
@@ -96,13 +98,12 @@ alu instruction pc rs1Value rs2Value = if isM then multdivResult else aluResult
   multdivResult = case mop of
     MUL -> slice d31 d0 $ pack @(Signed 64) $ (getSigned rs1Value * getSigned rs2Value)
     MULH -> slice d63 d32 $ pack @(Signed 64) $ (getSigned rs1Value * getSigned rs2Value)
-    MULHSU -> slice d63 d32 $ pack @(Signed 64) $ (getSigned rs1Value * getUnsigned rs2Value)
-    MULHU -> slice d63 d32 $ pack @(Signed 64) $ (getUnsigned rs1Value * getUnsigned rs2Value)
+    MULHSU -> slice d63 d32 $ pack @(Signed 64) $ (getSigned rs1Value * (unpack @(Signed 64) $ zeroExtend rs2Value))
+    MULHU -> slice d63 d32 $ pack @(Unsigned 64) $ (getUnsigned rs1Value * getUnsigned rs2Value)
     DIV -> slice d31 d0 $ pack @(Signed 64) $ (getSigned rs1Value `quot` getSigned rs2Value)
-    DIVU -> slice d31 d0 $ pack @(Signed 64)$ (getUnsigned rs1Value `quot` getUnsigned rs2Value)
+    DIVU -> slice d31 d0 $ pack @(Unsigned 64)$ (getUnsigned rs1Value `quot` getUnsigned rs2Value)
     REM -> slice d31 d0 $ pack @(Signed 64) $ (getSigned rs1Value `rem` getSigned rs2Value)
-    REMU -> slice d31 d0 $ pack @(Signed 64) $ (getUnsigned rs1Value `rem` getUnsigned rs2Value)
+    REMU -> slice d31 d0 $ pack @(Unsigned 64) $ (getUnsigned rs1Value `rem` getUnsigned rs2Value)
     where
-      getUnsigned = fromIntegral . unpack @(Unsigned 32)
-      getSigned = fromIntegral . unpack @(Signed 32)
-        
+      getUnsigned = signExtend . unpack @(Unsigned 32)
+      getSigned = signExtend . unpack @(Signed 32)

@@ -37,8 +37,8 @@ data MStatus
 deriveAutoReg ''MStatus
 
 data InterruptMode
-  = Direct {trapBase :: (BitVector 31)}
-  | Vectored {trapBase :: (BitVector 31)}
+  = Direct {trapBase :: (BitVector 30)}
+  | Vectored {trapBase :: (BitVector 30)}
   | IllegalIM1
   | IllegalIM2
   deriving (Generic, NFDataX, AutoReg)
@@ -46,8 +46,8 @@ data InterruptMode
 {-# ANN module (DataReprAnn
                   $(liftQ [t|InterruptMode|])
                   32
-                  [ ConstrRepr 'Direct     (1 `downto` 0) 0 [31 `downto` 1]
-                  , ConstrRepr 'Vectored   (1 `downto` 0) 1 [31 `downto` 1]
+                  [ ConstrRepr 'Direct     (1 `downto` 0) 0 [31 `downto` 2]
+                  , ConstrRepr 'Vectored   (1 `downto` 0) 1 [31 `downto` 2]
                   , ConstrRepr 'IllegalIM1 (1 `downto` 0) 2 []
                   , ConstrRepr 'IllegalIM2 (1 `downto` 0) 3 []
                   ]) #-}

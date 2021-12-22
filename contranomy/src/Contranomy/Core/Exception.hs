@@ -52,12 +52,12 @@ handleExceptions ::
   -- | Load/Store unit finished
   Bool ->
   -- | Next PC
-  (PC,BitVector 1) ->
+  PC ->
   -- |
   -- 1. Indication whether a trap or interrupt was raised
   -- 2. The PC for the next instruction cycle
   State CoreState (Bool,PC)
-handleExceptions CoreState{pc,instruction,machineState} exceptionIn lsFinished (pcN,align) = do
+handleExceptions CoreState{pc,instruction,machineState} exceptionIn lsFinished pcN = do
   let ExceptionIn
         { instrAccessFault
         , instrAddrMisaligned
@@ -88,8 +88,7 @@ handleExceptions CoreState{pc,instruction,machineState} exceptionIn lsFinished (
           -> System12 imm12I == MRET
         _ -> False
 
-  let trap =
-        instrAccessFault || instrAddrMisaligned || instrIllegal ||
+  let trap = instrAccessFault || instrAddrMisaligned || instrIllegal ||
         isJust dataAccessFault || isJust dataAddrMisaligned || breakpoint || eCall
 
   let MachineState{mstatus,mie=Mie{mtie,msie,meie},mepc,mtvec,irqmask} = machineState
@@ -131,16 +130,16 @@ handleExceptions CoreState{pc,instruction,machineState} exceptionIn lsFinished (
                           _ -> case opcode of -- dataAccessFault
                             LOAD -> LOAD_ADDRESS_MISALIGNED
                             _ -> STORE_ADDRESS_MISALIGNED
-                    , mepc = pc ++# 0
+                    , mepc = slice d31 d2 pc ++# ( 0 :: BitVector 2)
                     , mtval =
                       if instrAddrMisaligned then
-                        pcN ++# align
+                        pcN
                       else if instrIllegal then
                         instruction
                       else if instrAccessFault then
-                        pc ++# 0
+                        slice d31 d2 pc ++# 0
                       else if breakpoint then
-                        pc ++# 0
+                        slice d31 d2 pc ++# 0
                       else case dataAddrMisaligned of
                         Just addr -> addr
                         _ -> case dataAccessFault of
@@ -148,9 +147,11 @@ handleExceptions CoreState{pc,instruction,machineState} exceptionIn lsFinished (
                           _ -> 0
                     }
     let pcN1 = trapBase mtvec
-    return (True,pcN1)
+        pcN2 = pcN1 ++# (0:: BitVector 2)
+        pcN3 = slice d31 d2 pcN2 ++# (0 ::BitVector 2)
+    return (True,pcN3)
   else if mret then do
     #machineState .= machineState { mstatus = mstatus {mie = mpie} }
-    return (False,mepc)
+    return (False,alignPC mepc)
   else do
-    return (False,pcN)
+    return (False, pcN)
