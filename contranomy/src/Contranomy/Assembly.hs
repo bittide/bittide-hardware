@@ -6,6 +6,7 @@ Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
 
 module Contranomy.Assembly where
 import Clash.Prelude
+import Contranomy.Core.SharedTypes
 
 type Rd = BitVector 5
 type Rs1 = BitVector 5
@@ -64,52 +65,13 @@ data Instruction =
   | ECALL
   | EBREAK
   | MUL     Rd Rs1 Rs2  -- M Extension
-  | MULH    Rd Rs1 Rs2
-  | MULHSU  Rd Rs1 Rs2
-  | MULHU   Rd Rs1 Rs2
-  | DIV     Rd Rs1 Rs2
-  | DIVU    Rd Rs1 Rs2
-  | REM     Rd Rs1 Rs2
-  | REMU    Rd Rs1 Rs2
-  deriving Show
-
-data CompressedInstruction =
-    CDDI4SPN
-  | CFLD
-  | CLW
-  | CFLW
-  | CFSD
-  | CSW
-  | CFSW
-  | CNOP
-  | CADDI
-  | CJAL
-  | CLI
-  | CADDI16SP
-  | CLUI
-  | CSRLI
-  | CSRAI
-  | CANDI
-  | CSUB
-  | CXOR
-  | COR
-  | CAND
-  | CJ
-  | CBEQZ
-  | CBNEZ
-  | CSLLI
-  | CFLDSP
-  | CLWSP
-  | CFLWSP
-  | CJR
-  | CMV
-  | CEBREAK
-  | CJALR
-  | CADD
-  | CFSDSP
-  | CSWSP
-  | CFSWSP
-  | CSDSP
+  | MULH    Rd Rs1 Rs2  -- M Extension
+  | MULHSU  Rd Rs1 Rs2  -- M Extension
+  | MULHU   Rd Rs1 Rs2  -- M Extension
+  | DIV     Rd Rs1 Rs2  -- M Extension
+  | DIVU    Rd Rs1 Rs2  -- M Extension
+  | REM     Rd Rs1 Rs2  -- M Extension
+  | REMU    Rd Rs1 Rs2  -- M Extension
   deriving Show
 
 data Encoding =
@@ -120,8 +82,10 @@ data Encoding =
  | UType Opcode Rd Imm21U
  | JType Opcode Rd Imm21L
 
+instructionToMachineword :: Instruction -> MachineWord
 instructionToMachineword = formatToMachineWord . instructionToFormat
 
+formatToMachineWord :: Encoding -> MachineWord
 formatToMachineWord (RType opcode rd rs1 rs2 funct3 funct7) = funct7 ++# rs2 ++# rs1 ++# funct3 ++# rd ++# opcode
 formatToMachineWord (IType opcode rd rs1 funct3 imm) = imm ++# rs1 ++# funct3 ++# rd ++# opcode
 formatToMachineWord (SType opcode rs1 rs2 funct3 imm) = (slice d11 d5 imm) ++# rs2 ++# rs1 ++# funct3 ++# (slice d4 d0 imm) ++# opcode
@@ -129,6 +93,7 @@ formatToMachineWord (BType opcode rs1 rs2 funct3 imm) = (slice d12 d12 imm) ++# 
 formatToMachineWord (UType opcode rd imm) = (slice d31 d12 imm) ++# rd ++# opcode
 formatToMachineWord (JType opcode rd imm) = (slice d20 d20 imm) ++# (slice d10 d1 imm) ++# (slice d11 d11 imm) ++# (slice d19 d12 imm) ++# rd ++# opcode
 
+instructionToFormat :: Instruction -> Encoding
 instructionToFormat (LUI     rd imm)              = UType 0b0110111 rd imm
 instructionToFormat (AUIPC   rd imm)              = UType 0b0010111 rd imm
 instructionToFormat (JAL     rd imm)              = JType 0b1100111 rd imm
@@ -166,7 +131,7 @@ instructionToFormat (SRL     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0
 instructionToFormat (SRA     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b101 0b0100000
 instructionToFormat (OR      rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b110 0b0000000
 instructionToFormat (AND     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b111 0b0000000
-instructionToFormat (FENCE   rd rs1 pred succ fm) = IType 0b0001111 rd rs1 0 (fm ++# pred ++# succ)
+instructionToFormat (FENCE   rd rs1 pred' succ' fm) = IType 0b0001111 rd rs1 0 (fm ++# pred' ++# succ')
 instructionToFormat (ECALL)                       = IType 0b1110011 0 0 0 0
 instructionToFormat (EBREAK)                      = IType 0b1110011 0 0 0 1
 instructionToFormat (MUL     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b000 0b0000001
@@ -178,6 +143,7 @@ instructionToFormat (DIVU    rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0
 instructionToFormat (REM     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b110 0b0000001
 instructionToFormat (REMU    rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b111 0b0000001
 
+fibonacci :: [Instruction]
 fibonacci =
   [ ADDI 0 0 0
   , ADDI 1 0 7

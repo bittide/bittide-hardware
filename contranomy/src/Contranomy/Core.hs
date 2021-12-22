@@ -16,7 +16,6 @@ import Control.Lens
 import Data.Generics.Labels ()
 import Data.Maybe
 import Control.Monad
-import Numeric
 import Clash.Prelude
 
 import Contranomy.Clash.Extra
@@ -35,8 +34,6 @@ import Contranomy.Core.SharedTypes
 import Contranomy.Instruction
 import Contranomy.RVFI
 import Contranomy.Wishbone
-import Debug.Trace
-import qualified Data.List as L
 type TimerInterrupt = Bool
 type SoftwareInterrupt = Bool
 type ExternalInterrupt = MachineWord
@@ -100,7 +97,7 @@ transition ::
 -- Fetch + Decode
 transition s@CoreState{stage=InstructionFetch, pc} (CoreIn{iBusS2M},_) = runState' s do
   #instruction .= readData iBusS2M
-  let DecodedInstruction {rs1,rs2, opcode, legal} = decodeInstruction (readData iBusS2M)
+  let DecodedInstruction {rs1,rs2} = decodeInstruction (readData iBusS2M)
   #stage .= if err iBusS2M then
               Execute {accessFault = True}
             else if acknowledge iBusS2M then
@@ -166,7 +163,6 @@ transition
         if trap || rd == X0 then
           Nothing
         else (rd,) <$> rdVal
-  let pcN2 = slice d31 d2 pcN1 ++# (0 :: BitVector 2)
   when loadStoreFinished do
     #pc .= pcN1
     #rvfiOrder += 1

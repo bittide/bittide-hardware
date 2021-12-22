@@ -28,7 +28,8 @@ readElf elf =
     -- Section contains instruction memory
     | SHF_EXECINSTR `elem` elfSectionFlags sec
     , SHF_WRITE `notElem` elfSectionFlags sec
-    = (addData (elfSectionAddr sec) (elfSectionData sec) is, ds)
+    = (addData (elfSectionAddr sec) (elfSectionData sec `BS.append` (BS.pack [0,0])) is, ds)
+    -- The line above pads the instruction memory with 2 bytes to enable ending on a compressed instruction.
 
     -- Section contains data memory
     | (SHF_WRITE `elem` elfSectionFlags sec
@@ -45,10 +46,10 @@ readElf elf =
 
 main :: IO ()
 main = do
-  elfBytes <- BS.readFile "a.out"
+  elfBytes <- BS.readFile "main.elf"
   let elf = parseElf elfBytes
   let (entry, iMem, dMem) = readElf elf
 
   -- TODO Use 'elfEntry' as an optional(?) argument to the core to start
   -- execution from a particular PC value.
-  print $ sampleN 10000 $ contranomy' hasClock hasReset entry iMem dMem $ pure (False, False, 0b0)
+  print $ sampleN (maxBound :: Int) $ contranomy' hasClock hasReset entry iMem dMem $ pure (False, False, 0b0)

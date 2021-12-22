@@ -12,7 +12,6 @@ module Contranomy.Core.Decode where
 import Clash.Prelude
 import Contranomy.Instruction
 import Contranomy.Core.SharedTypes
-import Debug.Trace
 import qualified Data.List as L
 data DecodedInstruction
   = DecodedInstruction
@@ -36,9 +35,10 @@ data DecodedInstruction
   , legal       :: Bool
   } deriving Show
 
-
+decodeInstruction :: MachineWord -> DecodedInstruction
 decodeInstruction w = if slice d1 d0 w == 3 then decode32 w else compressedToFull $ decode16 w
 
+decode32 :: MachineWord -> DecodedInstruction
 decode32 w = DecodedInstruction
   { opcode = opcode
   , rd     = unpack (slice d11 d7 w)
@@ -121,6 +121,8 @@ decode32 w = DecodedInstruction
   func3  = slice d14 d12 w
   func7  = slice d31 d25 w
   func12 = slice d31 d20 w
+
+undefinedInstruction :: DecodedInstruction
 undefinedInstruction = DecodedInstruction
   { opcode = undefined
   , rd     = X0
@@ -147,7 +149,6 @@ data DecodedCompressedInstruction = DecodedCompressedInstruction {
   , cFunct2'     :: BitVector 2
   , cFunct3      :: BitVector 3
   , cFunct4      :: BitVector 4
-  , cFunct6      :: BitVector 6
   , cRd          :: BitVector 5
   , cRs1         :: BitVector 5
   , cRs2         :: BitVector 5
@@ -173,7 +174,6 @@ decode16 w = DecodedCompressedInstruction{
   , cFunct2'     = slice d11 d10 w
   , cFunct3      = slice d15 d13 w
   , cFunct4      = slice d15 d12 w
-  , cFunct6      = slice d15 d10 w
   , cRd          = slice d11 d7 w
   , cRs1         = slice d11 d7 w
   , cRs2         = slice d6 d2 w
@@ -191,13 +191,14 @@ decode16 w = DecodedCompressedInstruction{
   , cJumpTarget  = slice d12 d12 w ++# slice d8 d8 w ++# slice d10 d9 w ++# slice d6 d6 w ++# slice d7 d7 w ++# slice d2 d2 w ++# slice d11 d11 w ++# slice d5 d3 w
   , cShamt       = slice d12 d12 w ++# slice d6 d2 w
   }
+
+compressedToFull :: DecodedCompressedInstruction -> DecodedInstruction
 compressedToFull DecodedCompressedInstruction {
     cOpcode
   , cFunct2
   , cFunct2'
   , cFunct3
   , cFunct4
-  , cFunct6
   , cRd
   , cRs1
   , cRs2
@@ -245,6 +246,7 @@ compressedToFull DecodedCompressedInstruction {
 
 decompressReg :: BitVector 3 -> Register
 decompressReg n = unpack $ zeroExtend n + 8
+getOpcode :: String -> Opcode
 getOpcode ("LUI")     = LUI
 getOpcode ("AUIPC")   = AUIPC
 getOpcode ("JAL")     = JAL
@@ -293,8 +295,9 @@ getOpcode ("DIV")     = OP
 getOpcode ("DIVU")    = OP
 getOpcode ("REM")     = OP
 getOpcode ("REMU")    = OP
-getOpcde  (_)         = undefined
+getOpcode txt         = error $ "Opcode is not known for " L.++ txt
 
+getFunc3 :: String -> BitVector 3
 getFunc3 ("AUIPC" ) = undefined
 getFunc3 ("JAL"   ) = undefined
 getFunc3 ("JALR"  ) = 0b000
@@ -342,3 +345,4 @@ getFunc3 ("DIV"   ) = 0b100
 getFunc3 ("DIVU"  ) = 0b101
 getFunc3 ("REM"   ) = 0b110
 getFunc3 ("REMU"  ) = 0b111
+getFunc3 txt       = error $ "Func3 could is not known for " L.++ txt

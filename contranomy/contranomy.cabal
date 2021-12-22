@@ -46,12 +46,13 @@ common common-options
     NoImplicitPrelude
   ghc-options:
     -Wall -Wcompat
-
     -- Plugins to support type-level constraint solving on naturals
     -fplugin GHC.TypeLits.Extra.Solver
     -fplugin GHC.TypeLits.Normalise
     -fplugin GHC.TypeLits.KnownNat.Solver
-
+    -- Setting DFORMAL_ALTOPS will change the M extension operations conform
+    -- https://github.com/SymbioticEDA/riscv-formal/blob/master/docs/rvfi.md#alternative-arithmetic-operations
+    --DFORMAL_ALTOPS
     -- Clash needs access to the source code in compiled modules
     -fexpose-all-unfoldings
 
