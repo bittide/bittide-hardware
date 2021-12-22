@@ -7,11 +7,9 @@ Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
 
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TypeApplications #-}
-
+{-# LANGUAGE CPP #-}
 module Contranomy.Core.ALU where
-
 import Clash.Prelude
-
 import Contranomy.Clash.Extra
 import Contranomy.Core.Decode
 import Contranomy.Core.SharedTypes
@@ -52,6 +50,7 @@ alu ::
   MachineWord ->
   -- | Result
   MachineWord
+
 alu instruction pc rs1Value rs2Value = if isM then multdivResult else aluResult
  where
   DecodedInstruction
@@ -95,15 +94,41 @@ alu instruction pc rs1Value rs2Value = if isM then multdivResult else aluResult
     OR   -> aluArg1 .|. aluArg2
     AND  -> aluArg1 .&. aluArg2
 
+  -- Alternative operations for the M Extension implemented according to
+  -- https://github.com/SymbioticEDA/riscv-formal/blob/master/docs/rvfi.md#alternative-arithmetic-operations
+#ifdef FORMAL_ALTOPS
   multdivResult = case mop of
-    MUL -> slice d31 d0 $ pack @(Signed 64) $ (getSigned rs1Value * getSigned rs2Value)
-    MULH -> slice d63 d32 $ pack @(Signed 64) $ (getSigned rs1Value * getSigned rs2Value)
-    MULHSU -> slice d63 d32 $ pack @(Signed 64) $ (getSigned rs1Value * (unpack @(Signed 64) $ zeroExtend rs2Value))
-    MULHU -> slice d63 d32 $ pack @(Unsigned 64) $ (getUnsigned rs1Value * getUnsigned rs2Value)
-    DIV -> slice d31 d0 $ pack @(Signed 64) $ (getSigned rs1Value `quot` getSigned rs2Value)
-    DIVU -> slice d31 d0 $ pack @(Unsigned 64)$ (getUnsigned rs1Value `quot` getUnsigned rs2Value)
-    REM -> slice d31 d0 $ pack @(Signed 64) $ (getSigned rs1Value `rem` getSigned rs2Value)
-    REMU -> slice d31 d0 $ pack @(Unsigned 64) $ (getUnsigned rs1Value `rem` getUnsigned rs2Value)
+    MUL     -> xor 0x5876063e $ lower $ pack @(Signed 64) $ (getSigned rs1Value + getSigned rs2Value)
+    MULH    -> xor 0xf6583fb7 $ lower $ pack @(Signed 64) $ (getSigned rs1Value + getSigned rs2Value)
+    MULHSU  -> xor 0xecfbe137 $ lower $ pack @(Signed 64) $ (getSigned rs1Value - (unpack @(Signed 64) $ zeroExtend rs2Value))
+    MULHU   -> xor 0x949ce5e8 $ lower $ pack @(Unsigned 64) $ (getUnsigned rs1Value + getUnsigned rs2Value)
+    DIV     -> xor 0x7f8529ec $ lower $ pack @(Signed 64) $ (getSigned rs1Value - getSigned rs2Value)
+    DIVU    -> xor 0x10e8fd70 $ lower $ pack @(Unsigned 64)$ (getUnsigned rs1Value - getUnsigned rs2Value)
+    REM     -> xor 0x8da68fa5 $ lower $ pack @(Signed 64) $ (getSigned rs1Value - getSigned rs2Value)
+    REMU    -> xor 0x3138d0e1 $ lower $ pack @(Unsigned 64) $ (getUnsigned rs1Value - getUnsigned rs2Value)
     where
-      getUnsigned = signExtend . unpack @(Unsigned 32)
+      getUnsigned = zeroExtend . unpack @(Unsigned 32)
       getSigned = signExtend . unpack @(Signed 32)
+      lower = slice d31 d0
+#else
+  multdivResult = case mop of
+    MUL     -> lower $ pack @(Signed 64)    $ (getSigned rs1Value * getSigned rs2Value)
+    MULH    -> upper $ pack @(Signed 64)    $ (getSigned rs1Value * getSigned rs2Value)
+    MULHSU  -> upper $ pack @(Signed 64)    $ (getSigned rs1Value * (unpack @(Signed 64) $ zeroExtend rs2Value))
+    MULHU   -> upper $ pack @(Unsigned 64)  $ (getUnsigned rs1Value * getUnsigned rs2Value)
+    DIV     -> lower $ pack @(Signed 64)    $ (getSigned rs1Value `quotRisc` getSigned rs2Value)
+    DIVU    -> lower $ pack @(Unsigned 64)  $ (getUnsigned rs1Value `quot` getUnsigned rs2Value)
+    REM     -> lower $ pack @(Signed 64)    $ (getSigned rs1Value `remRisc` getSigned rs2Value)
+    REMU    -> lower $ pack @(Unsigned 64)  $ (getUnsigned rs1Value `rem` getUnsigned rs2Value)
+    where
+      getUnsigned = zeroExtend . unpack @(Unsigned 32)
+      getSigned = signExtend . unpack @(Signed 32)
+      lower = slice d31 d0
+      upper = slice d63 d32
+      quotRisc x y  | y == 0                                = -1
+                    | x == minBound @(Signed 64) && y == -1 = y
+                    | otherwise                             = x `quot` y
+      remRisc x y   | y == 0                                = x
+                    | x == minBound @(Signed 64) && y == -1 = -1
+                    | otherwise                             = x `rem` y
+#endif

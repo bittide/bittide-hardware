@@ -82,8 +82,8 @@ toRVFI loadStoreFinished rvfiOrder instruction trap rs1Val rs2Val rdVal pc pcN d
                    , rdata = old
                    , wdata = newVal
                    }
-      _ -> rvfiCSR {  rmask = 4
-                    , rdata = 4}
+      _ -> rvfiCSR {  rmask = maxBound
+                    , rdata = bit 30 .|. bit 8 .|. bit 2 .|. bit 12}
   }
  where
   DecodedInstruction {rs1,rs2,imm12I=srcDest} = decodeInstruction instruction

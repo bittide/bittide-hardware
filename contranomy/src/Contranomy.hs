@@ -12,18 +12,11 @@ module Contranomy where
 
 import Clash.Prelude
 import Clash.Annotations.TH
-import Clash.XException
 import Contranomy.Core
 import Contranomy.RegisterFile
 import Contranomy.RVFI
-import Contranomy.Assembly
 import Contranomy.Wishbone
-import System.IO
-import Data.Char
-import Contranomy.Core.Decode
-import Debug.Trace
 import qualified Data.List as L
-import qualified Clash.Signal.Internal as SI
 import Data.IntMap (IntMap)
 
 createDomain vXilinxSystem{vName="Core", vPeriod=hzToPeriod 100e6}
@@ -40,6 +33,11 @@ contranomy entry clk rst coreIn = withClockResetEnable clk rst enableGen $
       regOut = registerFile regWrite
    in coreResult
 
+contranomyTE ::
+  "clk" ::: Clock Core ->
+  "reset" ::: Reset Core ->
+  ( "" ::: Signal Core CoreIn) ->
+  ( "" ::: Signal Core CoreOut)
 contranomyTE = contranomy 0
 makeTopEntity 'contranomyTE
 
@@ -57,6 +55,12 @@ contranomyRVFI entry clk rst coreIn = withClockResetEnable clk rst enableGen $
       regOut = registerFile regWrite
    in (coreResult,rvfiOut)
 
+contranomyRVFITE ::
+  "clk" ::: Clock Core ->
+  "reset" ::: Reset Core ->
+  ( "" ::: Signal Core CoreIn) ->
+  ( "" ::: Signal Core CoreOut
+  , "" ::: Signal Core RVFI)
 contranomyRVFITE = contranomyRVFI 0
 makeTopEntity 'contranomyRVFITE
 
@@ -69,13 +73,11 @@ contranomy'
   -> Signal Core (Bool, Bool, BitVector 32)
   -> Signal Core ((Maybe (Unsigned 32, Signed 32)),(Maybe (Unsigned 32, Signed 32)))
 contranomy' clk rst entry iMem dMem (unbundle -> (tI, sI, eI)) = bundle (iWritten, dWritten) where
-  coreOut = contranomy entry clk rst $ (\ (tI, sI, eI, iS, dS) -> CoreIn{timerInterrupt=tI, softwareInterrupt = sI, externalInterrupt = eI, iBusS2M = iS, dBusS2M = dS}) <$> (bundle (tI, sI, eI, iStorage, dStorage))
-  instructionM2S = iBusM2S <$> coreOut
-  dataM2S = dBusM2S <$> coreOut
+  coreOut' = contranomy entry clk rst $ (\ (tI', sI', eI', iS', dS') -> CoreIn{timerInterrupt=tI', softwareInterrupt = sI', externalInterrupt = eI', iBusS2M = iS', dBusS2M = dS'}) <$> (bundle (tI, sI, eI, iStorage, dStorage))
+  instructionM2S = iBusM2S <$> coreOut'
+  dataM2S = dBusM2S <$> coreOut'
   iStorage = wishboneStorage "Instruction storage" iMem instructionM2S
   dStorage = wishboneStorage "Data storage" dMem dataM2S
-  iAddr = addr <$> instructionM2S
-  dAddr = addr <$> dataM2S
   checkWritten bus = if writeEnable bus then Just (unpack @(Unsigned 32) $ addr bus, unpack @(Signed 32) $ writeData bus) else Nothing
   iWritten = checkWritten <$> instructionM2S
   dWritten = checkWritten <$> dataM2S
@@ -83,6 +85,7 @@ contranomy' clk rst entry iMem dMem (unbundle -> (tI, sI, eI)) = bundle (iWritte
 bytesToWords :: [BitVector 8] -> [BitVector 32]
 bytesToWords (a:b:c:d:es) = [a ++# b ++# c ++# d] L.++ bytesToWords es
 bytesToWords [] = []
+bytesToWords _  = error "Conversion from bytes to words failed."
 
 wordsToBytes :: [BitVector 32] -> [BitVector 8]
 wordsToBytes (a:bs) = [slice d7 d0 a, slice d15 d8 a, slice d23 d16 a, slice d31 d24 a] L.++ wordsToBytes bs

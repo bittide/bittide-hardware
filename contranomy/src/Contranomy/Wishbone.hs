@@ -15,10 +15,7 @@ module Contranomy.Wishbone where
 
 import Clash.Prelude
 import qualified Data.IntMap as I
-import qualified Data.List as L
 import           Clash.Signal.Internal
-import qualified Data.Sequence as Seq
-import Debug.Trace
 data WishboneM2S bytes addressWidth
   = WishboneM2S
   { -- | ADR
@@ -89,8 +86,8 @@ wishboneStorage
   -> I.IntMap (BitVector 8)
   -> Signal dom (WishboneM2S 4 32)
   -> Signal dom (WishboneS2M 4)
-wishboneStorage name init inputs = wishboneStorage' name state inputs where
-  state = (init, False)
+wishboneStorage name initial inputs = wishboneStorage' name state inputs where
+  state = (initial, False)
 
 wishboneStorage'
   :: String
@@ -108,15 +105,13 @@ wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' in
   , busCycle
   , strobe
   , writeEnable
-  , cycleTypeIdentifier
-  , burstTypeExtension
   } = input
   file' | writeEnable = I.fromList assocList <> file
         | otherwise   = file
   ack' = busCycle && strobe
   address = fromIntegral (unpack $ addr :: Unsigned 32)
   readData = (file `lookup'` (address+3)) ++# (file `lookup'` (address+2)) ++# (file `lookup'` (address+1)) ++# (file `lookup'` address)
-  lookup' x addr = I.findWithDefault (error $ name <> ": Uninitialized Memory Address = " <> show addr) addr x
+  lookup' x addr' = I.findWithDefault (error $ name <> ": Uninitialized Memory Address = " <> show addr') addr' x
   assocList = case busSelect of
     $(bitPattern "0001")  -> [byte0]
     $(bitPattern "0010")  -> [byte1]
