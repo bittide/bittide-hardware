@@ -40,7 +40,9 @@ contranomy entry clk rst coreIn = withClockResetEnable clk rst enableGen $
       regOut = registerFile regWrite
    in coreResult
 
-makeTopEntity 'contranomy
+contranomyTE = contranomy 0
+makeTopEntity 'contranomyTE
+
 
 -- | Contranomy RV32I core with RVFI interface
 contranomyRVFI ::
@@ -55,7 +57,8 @@ contranomyRVFI entry clk rst coreIn = withClockResetEnable clk rst enableGen $
       regOut = registerFile regWrite
    in (coreResult,rvfiOut)
 
-makeTopEntity 'contranomyRVFI
+contranomyRVFITE = contranomyRVFI 0
+makeTopEntity 'contranomyRVFITE
 
 contranomy'
   :: Clock Core
@@ -69,14 +72,13 @@ contranomy' clk rst entry iMem dMem (unbundle -> (tI, sI, eI)) = bundle (iWritte
   coreOut = contranomy entry clk rst $ (\ (tI, sI, eI, iS, dS) -> CoreIn{timerInterrupt=tI, softwareInterrupt = sI, externalInterrupt = eI, iBusS2M = iS, dBusS2M = dS}) <$> (bundle (tI, sI, eI, iStorage, dStorage))
   instructionM2S = iBusM2S <$> coreOut
   dataM2S = dBusM2S <$> coreOut
-  iStorage = wishboneStorage iMem instructionM2S
-  dStorage = wishboneStorage dMem dataM2S
+  iStorage = wishboneStorage "Instruction storage" iMem instructionM2S
+  dStorage = wishboneStorage "Data storage" dMem dataM2S
   iAddr = addr <$> instructionM2S
   dAddr = addr <$> dataM2S
   checkWritten bus = if writeEnable bus then Just (unpack @(Unsigned 32) $ addr bus, unpack @(Signed 32) $ writeData bus) else Nothing
   iWritten = checkWritten <$> instructionM2S
   dWritten = checkWritten <$> dataM2S
-  osc = withClockResetEnable clk rst enableGen (register True $ not <$> osc)
 
 bytesToWords :: [BitVector 8] -> [BitVector 32]
 bytesToWords (a:b:c:d:es) = [a ++# b ++# c ++# d] L.++ bytesToWords es

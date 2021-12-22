@@ -85,17 +85,19 @@ wishboneS2M SNat
   }
 
 wishboneStorage
-  :: I.IntMap (BitVector 8)
+  :: String
+  -> I.IntMap (BitVector 8)
   -> Signal dom (WishboneM2S 4 32)
   -> Signal dom (WishboneS2M 4)
-wishboneStorage init inputs = wishboneStorage' state inputs where
+wishboneStorage name init inputs = wishboneStorage' name state inputs where
   state = (init, False)
 
 wishboneStorage'
-  :: (I.IntMap (BitVector 8), Bool)
+  :: String
+  -> (I.IntMap (BitVector 8), Bool)
   -> Signal dom (WishboneM2S 4 32)
   -> Signal dom (WishboneS2M 4)
-wishboneStorage' state inputs = dataOut :- (wishboneStorage' state' inputs')
+wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' inputs')
  where
   input :- inputs' = inputs
   state' = (file', ack')
@@ -114,7 +116,7 @@ wishboneStorage' state inputs = dataOut :- (wishboneStorage' state' inputs')
   ack' = busCycle && strobe
   address = fromIntegral (unpack $ addr :: Unsigned 32)
   readData = (file `lookup'` (address+3)) ++# (file `lookup'` (address+2)) ++# (file `lookup'` (address+1)) ++# (file `lookup'` address)
-  lookup' x addr = I.findWithDefault (error $ "Uninitialized Memory Address: " <> show addr) addr x
+  lookup' x addr = I.findWithDefault (error $ name <> ": Uninitialized Memory Address = " <> show addr) addr x
   assocList = case busSelect of
     $(bitPattern "0001")  -> [byte0]
     $(bitPattern "0010")  -> [byte1]

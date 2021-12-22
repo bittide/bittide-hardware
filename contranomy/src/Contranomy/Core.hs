@@ -74,7 +74,7 @@ core entry = mealyAutoB transition cpuStart
   cpuStart
     = CoreState
     { stage = InstructionFetch
-    , pc = slice d31 d1 entry
+    , pc = entry
     , instruction = 0
     , machineState = machineStart
     , rvfiOrder = 0
@@ -98,21 +98,18 @@ transition ::
   ( (CoreOut, (Maybe Register,Maybe Register, Maybe (Register, MachineWord)), RVFI)
   , CoreState )
 -- Fetch + Decode
-transition s@CoreState{stage=InstructionFetch, pc} (CoreIn{iBusS2M},_) = trace (" Fetch " L.++ (showHex $ unpack @(Unsigned 32) (pc ++# 0b0)) "") runState' s do
-
+transition s@CoreState{stage=InstructionFetch, pc} (CoreIn{iBusS2M},_) = runState' s do
   #instruction .= readData iBusS2M
-  let DecodedInstruction {rs1,rs2} = decodeInstruction (readData iBusS2M)
-
-  #stage .= Execute {accessFault = False}
-  -- if err iBusS2M then
-  --             Execute {accessFault = True}
-  --           else if acknowledge iBusS2M then
-  --             Execute {accessFault = False}
-  --           else
-  --             InstructionFetch
+  let DecodedInstruction {rs1,rs2, opcode, legal} = decodeInstruction (readData iBusS2M)
+  #stage .= if err iBusS2M then
+              Execute {accessFault = True}
+            else if acknowledge iBusS2M then
+              Execute {accessFault = False}
+            else
+              InstructionFetch
 
   return ( coreOut { iBusM2S = (wishboneM2S (SNat @Bytes) (SNat @AddressWidth))
-                             { addr = pc ++# 0
+                             { addr = pc
                              , busSelect = 0b1111
                              , busCycle = True
                              , strobe = True } }
@@ -127,7 +124,7 @@ transition
     s@CoreState{stage=Execute accessFault,instruction,pc,rvfiOrder}
     ( CoreIn{dBusS2M,softwareInterrupt,timerInterrupt,externalInterrupt}
     , (rs1Val,rs2Val) )
-  = trace (" Execute " L.++ (show $ compressed $ decodeInstruction instruction ) L.++ " " L.++ (show $ opcode $ decodeInstruction instruction)) runState' s do
+  = runState' s do
 
   let DecodedInstruction { opcode, rd, legal }
         = decodeInstruction instruction
@@ -140,11 +137,11 @@ transition
         loadStoreUnit instruction instructionFault aluIResult rs2Val dBusS2M
 
   let pcN = branchUnit instruction rs1Val rs2Val pc
-
+  let (_,alignment :: Alignment) = split pcN
   let exceptionIn
         = ExceptionIn
         { instrAccessFault = accessFault
-        , instrAddrMisaligned = snd pcN /= 0
+        , instrAddrMisaligned = alignment /= 0
         , instrIllegal = not legal
         , dataAccessFault = dataAccessFault
         , dataAddrMisaligned = dataAddrMisaligned
@@ -169,7 +166,7 @@ transition
         if trap || rd == X0 then
           Nothing
         else (rd,) <$> rdVal
-
+  let pcN2 = slice d31 d2 pcN1 ++# (0 :: BitVector 2)
   when loadStoreFinished do
     #pc .= pcN1
     #rvfiOrder += 1

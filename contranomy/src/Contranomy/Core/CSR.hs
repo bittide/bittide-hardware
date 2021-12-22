@@ -99,7 +99,7 @@ csrUnit trap instruction rs1Val softwareInterrupt timerInterrupt externalInterru
                             , mie=testBit newValue 3 }
         return (Just oldValue, newValue)
       MISA -> do
-        let oldValue = bit 30 .|. bit 8
+        let oldValue = bit 30 .|. bit 8 .|. bit 2 .|. bit 12
             newValue = csrWrite csrType oldValue writeValue1
         return (Just oldValue, newValue)
       MIP -> do
@@ -129,7 +129,7 @@ csrUnit trap instruction rs1Val softwareInterrupt timerInterrupt externalInterru
       MEPC -> do
         let oldValue = mepc ++# 0
             newValue = csrWrite csrType oldValue writeValue1
-        #mepc .= slice d31 d1 newValue
+        #mepc .= newValue
         return (Just oldValue, newValue)
       MCAUSE -> do
         let oldValue = pack interrupt ++# 0 ++# code

@@ -37,27 +37,7 @@ data DecodedInstruction
   } deriving Show
 
 
--- 00 -> decodeC00
--- 01 -> decodeC01
--- 10 -> decodeC02
--- 11 -> decode32
-
--- 000 nzuimm[5:4|9:6|2|3]                rd′  00          C.ADDI4SPN (RES, nzuimm=0)
--- 001 uimm[5:3]           rs1 ′uimm[7:6] rd′  00 C.FLD    (RV32/64)
--- 010 uimm[5:3]           rs1 ′uimm[2|6] rd′  00 C.LW
--- 011 uimm[5:3]           rs1 ′uimm[2|6] rd′  00 C.FLW    (RV32)
--- 101 uimm[5:3]           rs1 ′uimm[7:6] rs2′ 00 C.FSD    (RV32/64)
--- 110 uimm[5:3]           rs1 ′uimm[2|6] rs2′ 00 C.SW
--- 111 uimm[5:3]           rs1 ′uimm[2|6] rs2′ 00 C.FSW    (RV32)
-
-
--- | This functions extracts the relavents bits out of an instruction for the
--- different functional units of the CPU. In addition it checks whether the
--- instruction is legal and can be executed by the CPU.
--- decodeInstruction ::
---   MachineWord ->
---   DecodedInstruction
-decodeInstruction w = if slice d1 d0 w == 3 then decode32 w else undefined --compressedToFull $ decode16 w 
+decodeInstruction w = if slice d1 d0 w == 3 then decode32 w else compressedToFull $ decode16 w
 
 decode32 w = DecodedInstruction
   { opcode = opcode
@@ -154,14 +134,14 @@ undefinedInstruction = DecodedInstruction
   , mop    = undefined
   , imm20U = undefined
   , imm20J = undefined
-  , imm12I = undefined 
+  , imm12I = undefined
   , imm12S = undefined
-  , imm12B = undefined              
+  , imm12B = undefined
   , func3  = undefined
   , compressed = undefined
   , legal  = False
   }
-data DecodedCompressedInstruction = DecodedCompressedInstruction { 
+data DecodedCompressedInstruction = DecodedCompressedInstruction {
     cOpcode      :: BitVector 2
   , cFunct2      :: BitVector 2
   , cFunct2'     :: BitVector 2
@@ -178,18 +158,19 @@ data DecodedCompressedInstruction = DecodedCompressedInstruction {
   , cImm5LS      :: BitVector 5
   , cImm6I       :: BitVector 6
   , cImm6I'      :: BitVector 6
+  , cImm6I''     :: BitVector 6
   , cImm6SS      :: BitVector 6
   , cImm8IW      :: BitVector 8
   , cOffset      :: BitVector 8
   , cJumpTarget  :: BitVector 11
-  , cShamt       :: BitVector 6}
+  , cShamt       :: BitVector 6} deriving Show
 
 
 decode16 :: MachineWord -> DecodedCompressedInstruction
 decode16 w = DecodedCompressedInstruction{
     cOpcode      = slice d1 d0 w
   , cFunct2      = slice d6 d5 w
-  , cFunct2'     = slice d12 d11 w
+  , cFunct2'     = slice d11 d10 w
   , cFunct3      = slice d15 d13 w
   , cFunct4      = slice d15 d12 w
   , cFunct6      = slice d15 d10 w
@@ -203,6 +184,7 @@ decode16 w = DecodedCompressedInstruction{
   , cImm5LS      = slice d5 d5 w ++# slice d12 d10 w ++# slice d6 d6 w
   , cImm6I       = slice d12 d12 w ++# slice d6 d2 w
   , cImm6I'      = slice d12 d12 w ++# slice d4 d3 w ++# slice d5 d5 w ++# slice d2 d2 w ++# slice d6 d6 w
+  , cImm6I''     = slice d3 d2 w ++# slice d12 d12 w ++# slice d6 d4 w
   , cImm6SS      = slice d8 d7 w ++# slice d12 d9 w
   , cImm8IW      = slice d10 d7 w ++# slice d12 d11 w ++# slice d5 d5 w ++# slice d6 d6 w
   , cOffset      = slice d12 d12 w ++# slice d6 d5 w ++# slice d2 d2 w ++# slice d11 d10 w ++# slice d4 d3 w
@@ -226,42 +208,44 @@ compressedToFull DecodedCompressedInstruction {
   , cImm5LS
   , cImm6I
   , cImm6I'
+  , cImm6I''
   , cImm6SS
   , cImm8IW
   , cOffset
   , cJumpTarget
-  , cShamt     } = case (cFunct3, cFunct4, cFunct2', cRd, cFunct2, cRs2, cOpcode) of 
+  , cShamt     } = case (cFunct3, cFunct4, cFunct2', cRd, cFunct2, cRs2, cOpcode) of
   (0b000, _       , _, _, _, _, 0b00) -> undefinedInstruction{compressed = True, iop = ADD,  opcode = getOpcode "ADDI"   , imm12I = zeroExtend cImm8IW * 4, rs1 = X2, rd = decompressReg cRd' , func3 = getFunc3 "ADDI", legal = True}
-  (0b010, _       , _, _, _, _, 0b00) -> undefinedInstruction{compressed = True, opcode = getOpcode "LW"     , imm12I = zeroExtend cImm8IW * 4, rs1 = decompressReg cRs1', rd = decompressReg cRd', func3 = getFunc3 "LW", legal = True}
-  (0b110, _       , _, _, _, _, 0b00) -> undefinedInstruction{compressed = True, opcode = getOpcode "SW"     , imm12S = zeroExtend cImm8IW * 4 , rs1 = decompressReg cRs1', rd = decompressReg cRd', func3 = getFunc3 "SW", legal = True}
-  (0b000, _       , _, _, _, _, 0b01) -> undefinedInstruction{compressed = True, iop = ADD, opcode = getOpcode "ADDI"   , imm12I = zeroExtend cImm6I, rs1 = unpack cRs1, rd = unpack cRd, func3 = getFunc3 "ADDI", legal = True}
+  (0b010, _       , _, _, _, _, 0b00) -> undefinedInstruction{compressed = True, opcode = getOpcode "LW"     , imm12I = shiftL (zeroExtend cImm5LS) 2, rs1 = decompressReg cRs1', rd = decompressReg cRd', func3 = getFunc3 "LW", legal = True}
+  (0b110, _       , _, _, _, _, 0b00) -> undefinedInstruction{compressed = True, opcode = getOpcode "SW"     , imm12S = shiftL (zeroExtend cImm5LS) 2 , rs1 = decompressReg cRs1', rs2 = decompressReg cRs2', rd = decompressReg cRd', func3 = getFunc3 "SW", legal = True}
+  (0b000, _       , _, _, _, _, 0b01) -> undefinedInstruction{compressed = True, iop = ADD, opcode = getOpcode "ADDI", isSub = False   , imm12I = signExtend cImm6I, rs1 = unpack cRs1, rd = unpack cRd, func3 = getFunc3 "ADDI", legal = True}
   (0b001, _       , _, _, _, _, 0b01) -> undefinedInstruction{compressed = True, opcode = getOpcode "JAL"    , rd = X1, imm20J = signExtend cJumpTarget, func3 = getFunc3 "JAL", legal = True}
-  (0b010, _       , _, _, _, _, 0b01) -> undefinedInstruction{compressed = True, iop = ADD, opcode = getOpcode "ADDI"   , imm12I = zeroExtend cImm6I, rs1 = X0, rd = unpack cRd, func3 = getFunc3 "ADDI", legal = not $ cRd == 0}
-  (0b011, _       , _, 2, _, _, 0b01) -> undefinedInstruction{compressed = True, iop = ADD, opcode = getOpcode "ADDI"   , imm12I = zeroExtend cImm6I' * 16, rs1 = X0, rd = X2, func3 = getFunc3 "ADDI", legal = True}
-  (0b011, _       , _, _, _, _, 0b01) -> undefinedInstruction{compressed = True, iop = ADD, opcode = getOpcode "ADDI"   , imm12I = signExtend cImm6I * 4096, rs1 = X0, rd = unpack cRd, func3 = getFunc3 "ADDI", legal = not $ cRd == 2 && cRd == 0} 
-  (0b100, _       , 0, _, _, _, 0b01) -> undefinedInstruction{compressed = True, iop = SR, opcode = getOpcode "SRLI"   , rd = decompressReg cRd', rs1 = decompressReg cRs1', shamt = slice d4 d0 cShamt, func3 = getFunc3 "SRLI", legal = not $ cShamt == 0 || slice d5 d5 cShamt == 1}
-  (0b100, _       , 1, _, _, _, 0b01) -> undefinedInstruction{compressed = True, iop = SR, opcode = getOpcode "SRAI"   , rd = decompressReg cRd', rs1 = decompressReg cRs1', shamt = slice d4 d0 cShamt, func3 = getFunc3 "SRAI", legal = not $ cShamt == 0 || slice d5 d5 cShamt == 1}
-  (0b100, _       , 2, _, _, _, 0b01) -> undefinedInstruction{compressed = True, opcode = getOpcode "ANDI"   , rd = decompressReg cRd', rs1 = decompressReg cRs1', imm12I = signExtend cImm6I, func3 = getFunc3 "ANDI", legal = True}
-  (_    , 0b1000  , 3, _, 0, _, 0b01) -> undefinedInstruction{compressed = True, opcode = getOpcode "SUB"    , rd = decompressReg cRd', rs1 = decompressReg cRs1', rs2 = decompressReg cRs2', imm12I = signExtend cImm6I, func3 = getFunc3 "SUB", legal = True}
-  (_    , 0b1000  , 3, _, 1, _, 0b01) -> undefinedInstruction{compressed = True, iop = XOR, opcode = getOpcode "XOR"    , rd = decompressReg cRd', rs1 = decompressReg cRs1', rs2 = decompressReg cRs2', imm12I = signExtend cImm6I, func3 = getFunc3 "XOR", legal = True}
-  (_    , 0b1000  , 3, _, 2, _, 0b01) -> undefinedInstruction{compressed = True, opcode = getOpcode "OR"     , rd = decompressReg cRd', rs1 = decompressReg cRs1', rs2 = decompressReg cRs2', imm12I = signExtend cImm6I, func3 = getFunc3 "OR", legal = True}
-  (_    , 0b1000  , 3, _, 1, _, 0b01) -> undefinedInstruction{compressed = True, opcode = getOpcode "AND"    , rd = decompressReg cRd', rs1 = decompressReg cRs1', rs2 = decompressReg cRs2', imm12I = signExtend cImm6I, func3 = getFunc3 "AND", legal = True}
+  (0b010, _       , _, _, _, _, 0b01) -> undefinedInstruction{compressed = True, iop = ADD, opcode = getOpcode "ADDI", isSub = False   , imm12I = signExtend cImm6I, rs1 = X0, rd = unpack cRd, func3 = getFunc3 "ADDI", legal = True}
+  (0b011, _       , _, 2, _, _, 0b01) -> undefinedInstruction{compressed = True, iop = ADD, opcode = getOpcode "ADDI", isSub = False   , imm12I = shiftL (signExtend cImm6I') 4, rs1 = X2, rd = X2, func3 = getFunc3 "ADDI", legal = True}
+  (0b011, _       , _, _, _, _, 0b01) -> undefinedInstruction{compressed = True, opcode = getOpcode "LUI", imm20U = signExtend cImm6I, rs1 = X0, rd = unpack cRd, func3 = getFunc3 "LUI", legal = not $ cRd == 2 && cRd == 0}
+  (0b100, _       , 0, _, _, _, 0b01) -> undefinedInstruction{compressed = True, iop = SR, srla = Logical, opcode = getOpcode "SRLI"   , rd = decompressReg cRd'', rs1 = decompressReg cRs1', imm12I = zeroExtend $ slice d4 d0 cShamt, func3 = getFunc3 "SRLI", legal = slice d5 d5 cShamt == 0}
+  (0b100, _       , 1, _, _, _, 0b01) -> undefinedInstruction{compressed = True, iop = SR, srla = Arithmetic, opcode = getOpcode "SRAI"   , rd = decompressReg cRd'', rs1 = decompressReg cRs1', imm12I = zeroExtend $ slice d4 d0 cShamt, func3 = getFunc3 "SRAI", legal = slice d5 d5 cShamt == 0}
+  (0b100, _       , 2, _, _, _, 0b01) -> undefinedInstruction{compressed = True, iop = AND, opcode = getOpcode "ANDI"   , rd = decompressReg cRd'', rs1 = decompressReg cRs1', imm12I = signExtend cImm6I, func3 = getFunc3 "ANDI", legal = True}
+  (_    , 0b1000  , 3, _, 0, _, 0b01) -> undefinedInstruction{compressed = True, opcode = getOpcode "SUB", isSub = True    , rd = decompressReg cRd'', rs1 = decompressReg cRs1', rs2 = decompressReg cRs2', imm12I = signExtend cImm6I, func3 = getFunc3 "SUB", legal = True}
+  (_    , 0b1000  , 3, _, 1, _, 0b01) -> undefinedInstruction{compressed = True, iop = XOR, opcode = getOpcode "XOR"    , rd = decompressReg cRd'', rs1 = decompressReg cRs1', rs2 = decompressReg cRs2', imm12I = signExtend cImm6I, func3 = getFunc3 "XOR", legal = True}
+  (_    , 0b1000  , 3, _, 2, _, 0b01) -> undefinedInstruction{compressed = True, iop = OR, opcode = getOpcode "OR"     , rd = decompressReg cRd'', rs1 = decompressReg cRs1', rs2 = decompressReg cRs2', imm12I = signExtend cImm6I, func3 = getFunc3 "OR", legal = True}
+  (_    , 0b1000  , 3, _, 3, _, 0b01) -> undefinedInstruction{compressed = True, iop = AND, opcode = getOpcode "AND"    , rd = decompressReg cRd'', rs1 = decompressReg cRs1', rs2 = decompressReg cRs2', imm12I = signExtend cImm6I, func3 = getFunc3 "AND", legal = True}
   (0b101, _       , _, _, _, _, 0b01) -> undefinedInstruction{compressed = True, opcode = getOpcode "JAL"    , imm20J = signExtend cJumpTarget, rd = X0 , legal = True}
   (0b110, _       , _, _, _, _, 0b01) -> undefinedInstruction{compressed = True, opcode = getOpcode "BEQ"    , imm12B = signExtend cOffset, rs1 = decompressReg cRs1', rs2 = X0 , func3 = getFunc3 "BEQ", legal = True}
   (0b111, _       , _, _, _, _, 0b01) -> undefinedInstruction{compressed = True, opcode = getOpcode "BNE"    , imm12B = signExtend cOffset, rs1 = decompressReg cRs1', rs2 = X0 , func3 = getFunc3 "BNE", legal = True}
-  (0b000, _       , _, _, _, _, 0b10) -> undefinedInstruction{compressed = True, iop = SLL, opcode = getOpcode "SLLI"   , shamt = slice d4 d0 cShamt, rd = unpack cRd, rs1 = unpack cRs1 , func3 = getFunc3 "SLLI", legal = not $ cRd == 0 || slice d5 d5 cShamt == 1}
-  (0b010, _       , _, _, _, _, 0b10) -> undefinedInstruction{compressed = True, opcode = getOpcode "LW"     , rd = unpack cRd, rs2 = X2, imm12I = zeroExtend cImm6I* 2, func3 = getFunc3 "LW", legal = True}
+  (0b000, _       , _, _, _, _, 0b10) -> undefinedInstruction{compressed = True, iop = SLL, srla = Logical, opcode = getOpcode "SLLI"   , imm12I = zeroExtend cShamt, rd = unpack cRd, rs1 = unpack cRs1 , func3 = getFunc3 "SLLI", legal = slice d5 d5 cShamt == 0}
+  (0b010, _       , _, _, _, _, 0b10) -> undefinedInstruction{compressed = True, opcode = getOpcode "LW"     , rd = unpack cRd, rs1 = X2, imm12I = shiftL (zeroExtend cImm6I'') 2, func3 = getFunc3 "LW", legal = True}
   (_    , 0b1000  , _, _, _, 0, 0b10) -> undefinedInstruction{compressed = True, opcode = getOpcode "JALR"   , rd = X0, rs1 = unpack cRs1, imm12I = 0, func3 = getFunc3 "JALR", legal = not $ cRs1 == 0}
-  (_    , 0b1000  , _, _, _, _, 0b10) -> undefinedInstruction{compressed = True, iop = ADD, opcode = getOpcode "ADD"    , rd = unpack cRd, rs1 = X0, rs2 = unpack cRs2, func3 = getFunc3 "ADD", legal = not $ cRs2 == 0 || cRd == 0}
+  (_    , 0b1000  , _, _, _, _, 0b10) -> undefinedInstruction{compressed = True, iop = ADD, opcode = getOpcode "ADD", isSub = False    , rd = unpack cRd, rs1 = X0, rs2 = unpack cRs2, func3 = getFunc3 "ADD", legal = True}
   (_    , 0b1001  , _, 0, _, 0, 0b10) -> (decode32 (1048691 :: MachineWord)){compressed = True} -- 00000000000100000000000001110011
-  (_    , 0b1001  , _, _, _, _, 0b10) -> undefinedInstruction{compressed = True, iop = ADD, opcode = getOpcode "ADD"    , rd = unpack cRd, rs1 = unpack cRs1, rs2 = unpack cRs2, func3 = getFunc3 "ADD", legal = not $ cRs2 == 0 || cRd == 0}
-  (0b110, _       , _, _, _, _, 0b10) -> undefinedInstruction{compressed = True, opcode = getOpcode "SW" , rs1 = X2, rs2 = unpack cRs2, imm12S = zeroExtend cImm6SS * 4, func3 = getFunc3 "SW", legal = not $ cRs2 == 0 || cRd == 0}
+  (_    , 0b1001  , _, _, _, 0, 0b10) -> undefinedInstruction{compressed = True, opcode = getOpcode "JALR"   , rd = X1, rs1 = unpack cRs1, imm12I = 0, func3 = getFunc3 "JALR", legal = not $ cRs1 == 0}
+  (_    , 0b1001  , _, _, _, _, 0b10) -> undefinedInstruction{compressed = True, iop = ADD, opcode = getOpcode "ADD", isSub = False    , rd = unpack cRd, rs1 = unpack cRs1, rs2 = unpack cRs2, func3 = getFunc3 "ADD", legal = not $ cRs2 == 0}
+  (0b110, _       , _, _, _, _, 0b10) -> undefinedInstruction{compressed = True, opcode = getOpcode "SW" , rs1 = X2, rs2 = unpack cRs2, imm12S = shiftL (zeroExtend cImm6SS) 2, func3 = getFunc3 "SW", legal = True}
   (_    , _       , _, _, _, _, _   ) -> undefinedInstruction{compressed = True, legal = False}
-  
+
 
 decompressReg :: BitVector 3 -> Register
 decompressReg n = unpack $ zeroExtend n + 8
-getOpcode ("LUI")     = OP_IMM
+getOpcode ("LUI")     = LUI
 getOpcode ("AUIPC")   = AUIPC
 getOpcode ("JAL")     = JAL
 getOpcode ("JALR")    = JALR
