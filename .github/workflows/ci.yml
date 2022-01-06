@@ -1,0 +1,64 @@
+name: CI
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+
+concurrency:
+  group: ${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  risc-v-formal:
+    name: RISC-V Formal
+    runs-on: ubuntu-latest
+
+    container:
+      image: docker.pkg.github.com/clash-lang/clash-compiler/clash-ci-8.10.2:2022-01-06
+
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - run: |
+          apt-get update
+          apt-get install -y nodejs
+
+      - run: |
+          cd contranomy
+          cabal update
+          cabal freeze
+          mv cabal.project.freeze frozen
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/packages
+            ~/.cabal/store
+            contraonmy/dist-newstyle
+
+          key: contanomy-${{ hashFiles('frozen') }}
+          restore-keys: contranomy-
+
+      - name: Generate HDL
+        run: |
+          cd contranomy
+          cabal run -- clash --verilog -main-is contranomyRVFITE Contranomy
+
+      - name: Run Checks
+        run: |
+          cp -r riscv-formal-config riscv-formal/cores/contranomy
+          sed -i 's/const rand/rand const/g' riscv-formal/checks/rvfi_macros.*
+          cd riscv-formal/cores/contranomy
+          cp ../../../contranomy/verilog/Contranomy.contranomyRVFITE/*.inc .
+          cp ../../../contranomy/verilog/Contranomy.contranomyRVFITE/*.v .
+          python3 ../../checks/genchecks.py
+          make -C checks -j "$(nproc)"
+          for dir in checks/*/; do [ -f "$dir/PASS" ] || echo "$dir: FAIL" && false; done
+
