@@ -35,7 +35,6 @@ common common-options
     TypeFamilies
     TypeOperators
     ViewPatterns
-
     -- TemplateHaskell is used to support convenience functions such as
     -- 'listToVecTH' and 'bLit'.
     TemplateHaskell
@@ -49,7 +48,6 @@ common common-options
     -fplugin GHC.TypeLits.Extra.Solver
     -fplugin GHC.TypeLits.Normalise
     -fplugin GHC.TypeLits.KnownNat.Solver
-
     -- Clash needs access to the source code in compiled modules
     -fexpose-all-unfoldings
 
