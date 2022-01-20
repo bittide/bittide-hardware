@@ -18,11 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: docker.pkg.github.com/clash-lang/clash-compiler/clash-ci-8.10.2:2022-01-06
-
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
 
     steps:
       - name: Checkout
@@ -89,11 +85,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: docker.pkg.github.com/clash-lang/clash-compiler/clash-ci-8.10.2:2022-01-06
-
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
 
     strategy:
       matrix:
