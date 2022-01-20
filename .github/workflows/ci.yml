@@ -1,17 +1,20 @@
 name: CI
 on:
+  push:
+    branches:
+      - main
   pull_request:
     types:
       - opened
       - synchronize
 
 concurrency:
-  group: ${{ github.head_ref }}
-  cancel-in-progress: true
+ group: ${{ github.head_ref || github.run_id }}
+ cancel-in-progress: true
 
 jobs:
-  risc-v-formal:
-    name: RISC-V Formal
+  build-contranomy:
+    name: Build Contranomy using Clash
     runs-on: ubuntu-latest
 
     container:
@@ -26,39 +29,92 @@ jobs:
         with:
           submodules: true
 
-      - run: |
+      - name: Install nodejs
+        run: |
           apt-get update
           apt-get install -y nodejs
 
-      - run: |
+      - name: Update Cabal index info
+        run: |
           cd contranomy
           cabal update
           cabal freeze
-          mv cabal.project.freeze frozen
 
-      - uses: actions/cache@v2
+      - name: Cache
+        uses: actions/cache@v2
         with:
           path: |
             ~/.cabal/packages
             ~/.cabal/store
-            contraonmy/dist-newstyle
+            contranomy/dist-newstyle
+            contranomy/verilog
 
-          key: contanomy-${{ hashFiles('frozen') }}
+          key: contranomy-${{ hashFiles('contranomy/cabal.project.freeze') }}
           restore-keys: contranomy-
+
+      - name: Build Contranomy
+        run: |
+          cd contranomy
+          cabal run clash -- --version
 
       - name: Generate HDL
         run: |
           cd contranomy
           cabal run -- clash --verilog -main-is contranomyRVFITE Contranomy
 
-      - name: Run Checks
+      - name: Archive HDL
         run: |
-          cp -r riscv-formal-config riscv-formal/cores/contranomy
-          sed -i 's/const rand/rand const/g' riscv-formal/checks/rvfi_macros.*
-          cd riscv-formal/cores/contranomy
-          cp ../../../contranomy/verilog/Contranomy.contranomyRVFITE/*.inc .
-          cp ../../../contranomy/verilog/Contranomy.contranomyRVFITE/*.v .
-          python3 ../../checks/genchecks.py
-          make -C checks -j "$(nproc)"
-          for dir in checks/*/; do [ -f "$dir/PASS" ] || echo "$dir: FAIL" && false; done
+          tar -c -f contranomy-hdl.tar contranomy/verilog
 
+      - name: Upload Contranomy HDL
+        uses: actions/upload-artifact@v2
+        with:
+          name: contranomy-hdl
+          path: contranomy-hdl.tar
+
+      - name: Get test matrix
+        run: |
+          scripts/get_formal_checks.sh
+
+      - name: Set test matrix
+        id: set-matrix
+        run: |
+          echo "::set-output name=check_matrix::$(cat checks.json)"
+
+    outputs:
+      check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
+
+  verify-contranomy:
+    name: RISC-V Formal checks
+    needs: build-contranomy
+    runs-on: ubuntu-latest
+
+    container:
+      image: docker.pkg.github.com/clash-lang/clash-compiler/clash-ci-8.10.2:2022-01-06
+
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    strategy:
+      matrix:
+        check: ${{ fromJson(needs.build-contranomy.outputs.check_matrix) }}
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - name: Download Contranomy HDL
+        uses: actions/download-artifact@v2
+        with:
+          name: contranomy-hdl
+
+      - name: Extract HDL
+        run: |
+          tar -x -f contranomy-hdl.tar
+
+      - name: Verify ${{ matrix.check }}
+        run: |
+          ./scripts/run_riscv_formal_check.sh ${{ matrix.check }}
