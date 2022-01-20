@@ -13,9 +13,22 @@ concurrency:
  cancel-in-progress: true
 
 jobs:
+  lint:
+    name: Basic linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: EOL whitespace
+        run: |
+          .github/scripts/check_eol_whitespace.sh
+
   build-contranomy:
     name: Build Contranomy using Clash
     runs-on: ubuntu-latest
+    needs: lint
 
     container:
       image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
