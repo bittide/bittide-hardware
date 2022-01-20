@@ -2,7 +2,7 @@
 set -exuo pipefail
 IFS=$'\n\t'
 HERE=$(dirname "$0")
-ROOT=$(realpath "$HERE"/..)
+ROOT=$(git rev-parse --show-toplevel)
 
 cd "${HERE}"
 ./generate_checks.sh

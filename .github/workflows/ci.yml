@@ -25,9 +25,8 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v2
-        with:
-          submodules: true
+      - name: Checkout
+        uses: actions/checkout@v1
 
       - name: Install nodejs
         run: |
@@ -74,7 +73,7 @@ jobs:
 
       - name: Get test matrix
         run: |
-          scripts/get_formal_checks.sh
+          .github/scripts/get_formal_checks.sh
 
       - name: Set test matrix
         id: set-matrix
@@ -102,9 +101,8 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v2
-        with:
-          submodules: true
+      - name: Checkout
+        uses: actions/checkout@v1
 
       - name: Download Contranomy HDL
         uses: actions/download-artifact@v2
@@ -117,4 +115,4 @@ jobs:
 
       - name: Verify ${{ matrix.check }}
         run: |
-          ./scripts/run_riscv_formal_check.sh ${{ matrix.check }}
+          .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
