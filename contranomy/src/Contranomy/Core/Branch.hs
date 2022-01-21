@@ -49,14 +49,14 @@ branchUnit instruction rs1Val rs2Val pc = case opcode of
      in if taken then
           pc + offset
         else
-          pc + incrementer
+          pc + iLEN
 
   JAL ->
     let offset = signExtend imm20J `shiftL` 1 :: MachineWord
      in pc + offset
 
   JALR  -> slice d31 d1 (rs1Val + signExtend imm12I) ++# 0
-  _     -> pc + incrementer
+  _     -> pc + iLEN
  where
   DecodedInstruction {opcode,func3,imm12B,imm12I,imm20J, compressed} = decodeInstruction instruction
-  incrementer = if compressed then 2 else 4
+  iLEN = if compressed then 2 else 4

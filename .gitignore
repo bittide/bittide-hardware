@@ -1,3 +1,4 @@
+ignore
 dist/
 build/
 dist-newstyle/
@@ -43,9 +44,9 @@ cabal.config
 *.iml
 
 # HDL directories often created during development cycle
-/vhdl
-/verilog
-/systemverilog
+/contranomy/vhdl
+/contranomy/verilog
+/contranomy/systemverilog
 
 # Nix output
 result*
