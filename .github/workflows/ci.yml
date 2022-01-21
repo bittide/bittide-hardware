@@ -13,16 +13,34 @@ concurrency:
  cancel-in-progress: true
 
 jobs:
+  lint:
+    name: Basic linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pcregrep
+
+      - name: EOL whitespace
+        run: |
+          .github/scripts/check_eol_whitespace.sh
+
+      - name: Enforce EOF newline
+        run: |
+          .github/scripts/check_missing_eof_newline.sh
+
   build-contranomy:
     name: Build Contranomy using Clash
     runs-on: ubuntu-latest
+    needs: lint
 
     container:
-      image: docker.pkg.github.com/clash-lang/clash-compiler/clash-ci-8.10.2:2022-01-06
-
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
 
     steps:
       - name: Checkout
@@ -89,11 +107,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: docker.pkg.github.com/clash-lang/clash-compiler/clash-ci-8.10.2:2022-01-06
-
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
 
     strategy:
       matrix:

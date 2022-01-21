@@ -1,4 +1,57 @@
-*~
-contranomy/dist-newstyle
+dist/
+build/
+dist-newstyle/
+.stack-work/
+stack.yaml.lock
+cabal-dev
+/cabal.project.local
+.ghc.environment.*
+a.out
+*.o
+*.o-boot
+*.hi
+*.hi-boot
+*.po
+*.po-boot
+*.p_o
+*.p_o-boot
+*.chi
+*.chs.h
+*.dyn_o
+*.dyn_o-boot
+*.dyn_hi
+*.dyn_hi-boot
 *.local
-.ghc.environment.x86_64-linux-8.10.7
+.virtualenv
+.hpc
+.hsenv
+.cabal-sandbox/
+cabal.sandbox.config
+cabal.config
+*.prof
+*.aux
+*.hp
+*.bin
+*.log
+*.tar.gz
+
+*~
+*.DS_Store
+
+# IntelliJ
+/.idea
+*.iml
+
+# HDL directories often created during development cycle
+/vhdl
+/verilog
+/systemverilog
+
+# Nix output
+result*
+
+# Sphinx output
+_build/
+
+# rewrite histories
+*.dat
