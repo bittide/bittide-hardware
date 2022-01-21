@@ -21,9 +21,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v1
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pcregrep
+
       - name: EOL whitespace
         run: |
           .github/scripts/check_eol_whitespace.sh
+
+      - name: Enforce EOF newline
+        run: |
+          .github/scripts/check_missing_eof_newline.sh
 
   build-contranomy:
     name: Build Contranomy using Clash
