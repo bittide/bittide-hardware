@@ -8,6 +8,14 @@ maintainer:          devops@qbaylogic.com
 Copyright:           Copyright © 2020, Christiaan Baaij
                      Copyright © 2021, Google LLC
 
+flag riscv-altopts
+  description:
+    Use alternative arithmetic operations for M instructions to enable formal
+    verification. See https://github.com/SymbioticEDA/riscv-formal/blob/master/docs/rvfi.md#alternative-arithmetic-operations
+    for more information.
+  default: False
+  manual: True
+
 common common-options
   default-extensions:
     BangPatterns
@@ -50,9 +58,6 @@ common common-options
     -fplugin GHC.TypeLits.Extra.Solver
     -fplugin GHC.TypeLits.Normalise
     -fplugin GHC.TypeLits.KnownNat.Solver
-    -- Setting DFORMAL_ALTOPS will change the M extension operations conform
-    -- https://github.com/SymbioticEDA/riscv-formal/blob/master/docs/rvfi.md#alternative-arithmetic-operations
-    --DFORMAL_ALTOPS
     -- Clash needs access to the source code in compiled modules
     -fexpose-all-unfoldings
 
@@ -60,6 +65,10 @@ common common-options
     -- blackboxes attached for them. You can disable this, but be sure to add
     -- a no-specialize pragma to every function with a blackbox.
     -fno-worker-wrapper
+
+  if flag(riscv-altopts)
+    CPP-Options: -DFORMAL_ALTOPS
+
   default-language: Haskell2010
   build-depends:
     base,
