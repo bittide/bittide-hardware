@@ -51,6 +51,10 @@ jobs:
           apt-get update
           apt-get install -y nodejs
 
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project contranomy/cabal.project.local
+
       - name: Update Cabal index info
         run: |
           cd contranomy
