@@ -2,7 +2,7 @@
 set -xou pipefail
 
 grep -E ' $' -n -r . \
-    --include=*.{hs,hs-boot,sh,cabal} \
+    --include=*.{hs,hs-boot,sh,cabal,.md} \
     --exclude-dir=contranomy/dist-newstyle \
     --exclude-dir=riscv-formal
 
