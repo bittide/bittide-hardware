@@ -18,4 +18,3 @@ import qualified Hedgehog.Range as Range
 import Bittide.ScatterGather
 
 genA = Gen.set (Range.linear 0 100)
-
