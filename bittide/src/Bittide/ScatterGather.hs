@@ -7,6 +7,7 @@ Maintainer:          devops@qbaylogic.com
 {-# LANGUAGE MagicHash #-}
 module Bittide.ScatterGather(gatherSequential, scatterSequential, scatterGatherEngine) where
 import Clash.Prelude
+import Data.Maybe
 
 -- | gatherSequential is a memory bank that allows for random writes and sequentially
 -- reads data based on an internal counter that runs up to the maximum index and wraps around.
@@ -20,11 +21,16 @@ gatherSequential :: forall memDepth a dom .
   Signal dom (Index memDepth) ->
   -- | Outgoing frame
   Signal dom (Maybe a)
-gatherSequential frameIn writeAddr
- = Just <$> blockRam (deepErrorX "gatherSequential initial." :: Vec memDepth a) readAddr newFrame
+gatherSequential frameIn writeAddr = mux outFrameValid (Just <$> ramOut) (pure Nothing)
   where
-    readAddr  = register 0 $ satSucc SatWrap <$> readAddr
-    newFrame  = (\a f -> fmap (a,) f) <$> writeAddr <*> frameIn
+    readAddr      = register 0 $ satSucc SatWrap <$> readAddr
+    newFrame      = (\a f -> fmap (a,) f) <$> writeAddr <*> frameIn
+    mem           = blockRam (deepErrorX "gatherSequential undefined" :: Vec memDepth a)
+    ramOut        = mem readAddr newFrame
+    outFrameValid = register False $ (!!) <$> frameFlags <*> readAddr
+    frameFlags    = register (repeat False) . writeFlag $ readFlag frameFlags
+    readFlag v    = (replace @memDepth) <$> readAddr <*> pure False <*> v
+    writeFlag v   = mux (isJust <$> frameIn) ((replace @memDepth) <$> writeAddr <*> pure True <*> v) v
 
 -- | scatterSequential is a memory bank that allows for random reads and sequentially
 -- writes data based on an internal counter that runs up to the maximum index and wraps around.
@@ -37,12 +43,17 @@ scatterSequential :: forall dom memDepth a .
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Outgoing frame
-  Signal dom a
-scatterSequential frameIn readAddr
- = blockRam (deepErrorX "scatterSequential initial." :: Vec memDepth a) readAddr newFrame
+  Signal dom (Maybe a)
+scatterSequential frameIn readAddr = mux outFrameValid (Just <$> ramOut) (pure Nothing)
   where
-    writeAddr  = register 0 $ satSucc SatWrap <$> writeAddr
-    newFrame  = (\a f -> fmap (a,) f) <$> writeAddr <*> frameIn
+    writeAddr     = register 0 $ satSucc SatWrap <$> readAddr
+    newFrame      = (\a f -> fmap (a,) f) <$> writeAddr <*> frameIn
+    mem           = blockRam (deepErrorX "scatterSequential undefined" :: Vec memDepth a)
+    ramOut        = mem readAddr newFrame
+    outFrameValid = register False $ (!!) <$> frameFlags <*> readAddr
+    frameFlags    = register (repeat False) . writeFlag $ readFlag frameFlags
+    readFlag v    = (replace @memDepth) <$> readAddr <*> pure False <*> v
+    writeFlag v   = mux (isJust <$> frameIn) ((replace @memDepth) <$> writeAddr <*> pure True <*> v) v
 
 type DataLink frameWidth = Maybe (BitVector frameWidth)
 type CalendarEntry memDepth = Index memDepth
