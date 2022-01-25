@@ -36,13 +36,13 @@ maybeIsUndefined :: (KnownNat n, 1 <= n) => BitVector n -> Maybe (BitVector n)
 maybeIsUndefined v  | isUndefined v = Nothing
                     | otherwise     = Just v
 
--- | The extra in SomeCalendar extra defines the minimum amount of elements in the vector
+-- | The atLeast in SomeCalendar atLeast defines the minimum amount of elements in the vector
 -- and the minimum addressable indexes in the vector elements. I.e, vectors of 0 elements
 -- and Index 0 as element are not allowed.
-data SomeCalendar extra where
-  SomeCalendar :: (1 <= (extra + n)) => SNat n -> Vec (n + extra) (Index (n + extra)) -> SomeCalendar extra
+data SomeCalendar atLeast where
+  SomeCalendar :: (1 <= (atLeast + n)) => SNat n -> Vec (n + atLeast) (Index (n + atLeast)) -> SomeCalendar atLeast
 
-instance Show (SomeCalendar extra) where
+instance Show (SomeCalendar atLeast) where
   show (SomeCalendar SNat list) = show list
 
 -- | Returns a calendar for a engine with a memory depth equal to the calendar depth,
