@@ -31,15 +31,15 @@ contranomy clk rst coreIn = withClockResetEnable clk rst enableGen $
 makeTopEntity 'contranomy
 
 -- | Contranomy RV32I core with RVFI interface
-contranomyRVFI ::
+contranomyRVFITE ::
   "clk" ::: Clock Core ->
   "reset" ::: Reset Core ->
   ( "" ::: Signal Core CoreIn) ->
   ( "" ::: Signal Core CoreOut
   , "" ::: Signal Core RVFI)
-contranomyRVFI clk rst coreIn = withClockResetEnable clk rst enableGen $
+contranomyRVFITE clk rst coreIn = withClockResetEnable clk rst enableGen $
   let (coreResult,regWrite,rvfiOut) = core (coreIn,regOut)
       regOut = registerFile regWrite
    in (coreResult,rvfiOut)
 
-makeTopEntity 'contranomyRVFI
+makeTopEntity 'contranomyRVFITE
