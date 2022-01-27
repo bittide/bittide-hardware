@@ -38,10 +38,10 @@ switch :: forall dom links calDepth memDepth frameWidth .
   Signal dom (Vec links (DataLink frameWidth))
 switch bootstrapCal writeCalendar streamsIn = crossBar <$> crossBarConfig <*> streams'
   where
-    buffers = gatherSequential @memDepth
+    buffers = gatherSequential newMetaCycle
     streams' = bundle (buffers <$> unbundle streamsIn <*> unbundle gatherConfig)
     counter = register (0 :: (Index calDepth)) $ satSucc SatWrap <$> counter
-    calendars = calendar bootstrapCal counter writeCalendar
+    (calendars, newMetaCycle) = unbundle $ calendar bootstrapCal counter writeCalendar
     (gatherConfig, crossBarConfig)  = unbundle $ unzip <$> calendars
 
 -- | The crossbar receives a vector of indices and a vector of incoming frames.
@@ -51,16 +51,17 @@ switch bootstrapCal writeCalendar streamsIn = crossBar <$> crossBarConfig <*> st
 crossBar :: (KnownNat links, 1 <= links) =>
   Vec links (CrossbarIndex links) ->
   -- | Source selection for each outgoing link, 0 is a null frame, links start at index 1.
-  Vec links (Maybe a) ->
+  Vec links a ->
   -- | Vector of incoming links.
   Vec links (Maybe a)
 crossBar calendarEntry inputStreams  = fmap selectChannel calendarEntry
   where
-    selectChannel i = (Nothing :> inputStreams) !! i
+    selectChannel i = (Nothing :> (Just <$> inputStreams)) !! i
 
-calendar :: (KnownNat calDepth, KnownNat links, KnownNat memDepth, HiddenClockResetEnable dom) =>
+calendar :: forall dom links calDepth memDepth .
+ (KnownNat calDepth, 1 <= calDepth, KnownNat links, KnownNat memDepth, HiddenClockResetEnable dom) =>
   Calendar calDepth links memDepth ->
   Signal dom (Index calDepth) ->
   Signal dom (Maybe (Index calDepth, CalendarEntry links memDepth)) ->
-  Signal dom (CalendarEntry links memDepth)
-calendar = blockRam
+  Signal dom (CalendarEntry links memDepth, Bool)
+calendar cal readAddr newEntry = bundle (blockRam cal readAddr newEntry, (==0) <$> readAddr)

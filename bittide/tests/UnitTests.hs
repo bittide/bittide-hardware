@@ -6,7 +6,6 @@ Maintainer:          devops@qbaylogic.com
 module Main where
 
 import Test.Tasty
-import Test.Tasty.Hedgehog
 import Tests.ScatterGather
 
 tests :: TestTree

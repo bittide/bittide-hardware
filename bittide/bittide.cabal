@@ -85,6 +85,8 @@ test-suite unittests
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: UnitTests.hs
+  other-modules:
+    Tests.ScatterGather
   default-extensions:
     ImplicitPrelude
   build-depends:
