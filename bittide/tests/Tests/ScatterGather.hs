@@ -28,14 +28,6 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import qualified Prelude as P
 
-isUndefined :: forall n . KnownNat n => BitVector n -> Bool
-isUndefined (BV mask _) = mask == full
- where full = 1 `shiftL` (natToNum @n @Int) - 1
-
-maybeIsUndefined :: (KnownNat n, 1 <= n) => BitVector n -> Maybe (BitVector n)
-maybeIsUndefined v  | isUndefined v = Nothing
-                    | otherwise     = Just v
-
 -- | The atLeast in SomeCalendar atLeast defines the minimum amount of elements in the vector
 -- and the minimum addressable indexes in the vector elements. I.e, vectors of 0 elements
 -- and Index 0 as element are not allowed.
@@ -44,6 +36,14 @@ data SomeCalendar atLeast where
 
 instance Show (SomeCalendar atLeast) where
   show (SomeCalendar SNat list) = show list
+
+isUndefined :: forall n . KnownNat n => BitVector n -> Bool
+isUndefined (BV mask _) = mask == full
+ where full = 1 `shiftL` (natToNum @n @Int) - 1
+
+maybeIsUndefined :: (KnownNat n, 1 <= n) => BitVector n -> Maybe (BitVector n)
+maybeIsUndefined v | isUndefined v = Nothing
+                  | otherwise     = Just v
 
 -- | Returns a calendar for a engine with a memory depth equal to the calendar depth,
 -- the addresses in the calendar are all unique.
