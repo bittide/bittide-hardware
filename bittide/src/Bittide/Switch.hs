@@ -5,7 +5,7 @@ Maintainer:          devops@qbaylogic.com
 |-}
 module Bittide.Switch (switch) where
 import Clash.Prelude
-import Bittide.ScatterGather (gatherSequential)
+import Bittide.ScatterGather (scatterEngine)
 
 type DataLink a = Maybe (BitVector a)
 type CrossbarIndex links = Index (links+1)
@@ -38,7 +38,7 @@ switch :: forall dom links calDepth memDepth frameWidth .
   Signal dom (Vec links (DataLink frameWidth))
 switch bootstrapCal writeCalendar streamsIn = crossBar <$> crossBarConfig <*> streams'
   where
-    buffers = gatherSequential newMetaCycle
+    buffers = scatterEngine newMetaCycle
     streams' = bundle (buffers <$> unbundle streamsIn <*> unbundle gatherConfig)
     counter = register (0 :: (Index calDepth)) $ satSucc SatWrap <$> counter
     (calendars, newMetaCycle) = unbundle $ calendar bootstrapCal counter writeCalendar

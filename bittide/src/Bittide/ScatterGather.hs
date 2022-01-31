@@ -4,7 +4,7 @@ License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
 {-# LANGUAGE PartialTypeSignatures #-}
-module Bittide.ScatterGather(gatherSequential, scatterSequential, scatterGatherEngine) where
+module Bittide.ScatterGather(scatterEngine, gatherEngine, scatterGatherEngine) where
 import Clash.Prelude
 
 type DataLink frameWidth = Maybe (BitVector frameWidth)
@@ -48,11 +48,11 @@ doubleBufferedRAM switchNow readAddr writeAddr frameIn = ramOut
     ram           = blockRam (ramInit :: Vec (2^(1+BitSize (Index maxIndex))) a)
     ramOut        = ram readAddr' newFrame
 
--- | gatherSequential is a memory bank that allows for random writes and sequentially
+-- | scatterEngine is a memory bank that allows for random writes and sequentially
 -- reads data based on an internal counter that runs up to the maximum index and wraps around.
 -- The initial contents are undefined and it returns the contents as valid frame using the
 -- Maybe functor.
-gatherSequential :: forall dom memDepth a .
+scatterEngine :: forall dom memDepth a .
   (NFDataX a, KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom) =>
   -- | Boolean signal indicating when a new metacycle has started.
   Signal dom Bool ->
@@ -62,16 +62,16 @@ gatherSequential :: forall dom memDepth a .
   Signal dom (Index memDepth) ->
   -- | Outgoing data
   Signal dom a
-gatherSequential newMetaCycle frameIn writeAddr =
+scatterEngine newMetaCycle frameIn writeAddr =
   doubleBufferedRAM newMetaCycle readAddr writeAddr frameIn
     where
-      readAddr          = register (0 :: Index memDepth) $ satSucc SatWrap <$> readAddr
+      readAddr = register (0 :: Index memDepth) $ satSucc SatWrap <$> readAddr
 
--- | scatterSequential is a memory bank that allows for random reads and sequentially
+-- | gatherEngine is a memory bank that allows for random reads and sequentially
 -- writes data based on an internal counter that runs up to the maximum index and wraps around.
 -- The initial contents are undefined and it returns the contents as valid frame using the
 -- Maybe functor.
-scatterSequential :: forall dom memDepth a .
+gatherEngine :: forall dom memDepth a .
   (NFDataX a, KnownNat memDepth, HiddenClockResetEnable dom, 1 <= memDepth) =>
   -- | Boolean signal indicating when a new metacycle has started.
   Signal dom Bool ->
@@ -81,10 +81,10 @@ scatterSequential :: forall dom memDepth a .
   Signal dom (Index memDepth) ->
   -- | Outgoing data
   Signal dom a
-scatterSequential newMetaCycle frameIn readAddr =
+gatherEngine newMetaCycle frameIn readAddr =
   doubleBufferedRAM newMetaCycle readAddr writeAddr frameIn
   where
-    writeAddr          = register 0 $ satSucc SatWrap <$> writeAddr
+    writeAddr = register 0 $ satSucc SatWrap <$> writeAddr
 
 -- | scatterGatherEngine is a 4 port memory component that enables gathering and scattering for the processing element.
 -- Scattering and gathering data is done using two seperate memory banks with each their own calendar,

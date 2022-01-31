@@ -71,28 +71,28 @@ sgGroup = testGroup "Scatter Gather group"
   , testProperty "ScatterGather - Switch to PE Communication" sgSwitchToPECommunication
   , testProperty "ScatterGather - PE to Switch Communication" sgPEToSwitchCommunication]
 
-gSeqNoFrameLoss :: Property
-gSeqNoFrameLoss = property $ do
-  someCalendar <- forAll genSomeCalendar
-  case someCalendar of
-    SomeCalendar size@SNat (toList -> calendar) -> do
-      inputFrames <- forAll genFrameList
-      let inputFrames' = Nothing : inputFrames P.++ P.replicate (2 * snatToNum size + 2) Nothing --Add extra cycles to collect results
-      let topEntity (unbundle -> (frameIn, calIn, newMeta)) = maybeIsUndefined <$> gatherSequential newMeta frameIn calIn
-      let topEntityInput = P.zip3 inputFrames' (cycle calendar) (cycle $ (==0) <$> [0..P.length calendar - 1])
-      let simOut = simulateN @System (P.length topEntityInput) topEntity topEntityInput
-      footnote . fromString $ showX simOut
-      footnote . fromString $ showX topEntityInput
-      Set.fromList inputFrames' === Set.fromList simOut
-
 sSeqNoFrameLoss :: Property
 sSeqNoFrameLoss = property $ do
   someCalendar <- forAll genSomeCalendar
   case someCalendar of
     SomeCalendar size@SNat (toList -> calendar) -> do
       inputFrames <- forAll genFrameList
+      let inputFrames' = Nothing : inputFrames P.++ P.replicate (2 * snatToNum size + 2) Nothing --Add extra cycles to collect results
+      let topEntity (unbundle -> (frameIn, calIn, newMeta)) = maybeIsUndefined <$> scatterEngine newMeta frameIn calIn
+      let topEntityInput = P.zip3 inputFrames' (cycle calendar) (cycle $ (==0) <$> [0..P.length calendar - 1])
+      let simOut = simulateN @System (P.length topEntityInput) topEntity topEntityInput
+      footnote . fromString $ showX simOut
+      footnote . fromString $ showX topEntityInput
+      Set.fromList inputFrames' === Set.fromList simOut
+
+gSeqNoFrameLoss :: Property
+gSeqNoFrameLoss = property $ do
+  someCalendar <- forAll genSomeCalendar
+  case someCalendar of
+    SomeCalendar size@SNat (toList -> calendar) -> do
+      inputFrames <- forAll genFrameList
       let inputFrames' = Nothing: inputFrames P.++ P.replicate (2 * snatToNum size + 2) Nothing --Add extra cycles to collect results
-      let topEntity (unbundle -> (frameIn, calIn, newMeta)) = maybeIsUndefined <$> scatterSequential newMeta frameIn calIn
+      let topEntity (unbundle -> (frameIn, calIn, newMeta)) = maybeIsUndefined <$> gatherEngine newMeta frameIn calIn
       let topEntityInput = P.zip3 inputFrames' (cycle calendar) (cycle $ (==0) <$> [0..P.length calendar - 1])
       let simOut = simulateN @System (P.length topEntityInput) topEntity topEntityInput
       footnote . fromString $ showX simOut
