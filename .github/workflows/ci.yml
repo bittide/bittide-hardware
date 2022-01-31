@@ -149,3 +149,47 @@ jobs:
       - name: Void
         run: |
           echo "All good"
+          .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
+
+  test-bittide-components:
+    name: Run Bittide component unit tests.
+    runs-on: ubuntu-latest
+    needs: lint
+
+    container:
+      image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install nodejs
+        run: |
+          apt-get update
+          apt-get install -y nodejs
+
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project bittide/cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/store
+
+          key: bittide-v1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: bittide-v1-
+
+      - name: Build bittide
+        run: |
+          cd bittide
+          cabal build
+      - name: Run Bittide unit tests.
+        run : |
+          cabal run -- unittests

@@ -1,3 +1,8 @@
 package contranomy
   flags: +riscv-altopts
+<<<<<<< HEAD
   ghc-options: -Werror
+||||||| constructed merge base
+=======
+package bittide
+>>>>>>> Adding bittide unit tests to CI
