@@ -7,10 +7,11 @@ module Main where
 
 import Test.Tasty
 import Tests.ScatterGather
+import Tests.Switch
 
 tests :: TestTree
 tests = testGroup "Unittests"
-  [sgGroup]
+  [sgGroup, switchGroup]
 
 main :: IO ()
 main = defaultMain tests

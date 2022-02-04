@@ -87,6 +87,7 @@ test-suite unittests
   main-is: UnitTests.hs
   other-modules:
     Tests.ScatterGather
+    Tests.Switch
   default-extensions:
     ImplicitPrelude
   build-depends:

@@ -6,7 +6,6 @@ Maintainer:          devops@qbaylogic.com
 {-# LANGUAGE PartialTypeSignatures #-}
 module Bittide.ScatterGather(scatterEngine, gatherEngine, scatterGatherEngine) where
 import Clash.Prelude
-
 type DataLink frameWidth = Maybe (BitVector frameWidth)
 type CalendarEntry memDepth = Index memDepth
 type Calendar calDepth memDepth = Vec calDepth (CalendarEntry memDepth)
@@ -30,12 +29,12 @@ doubleBufferedRAM :: forall dom maxIndex a .
   Signal dom (Maybe a) ->
   -- | Outgoing data
   Signal dom a
-doubleBufferedRAM switchNow readAddr writeAddr frameIn = ramOut
+doubleBufferedRAM switch readAddr writeAddr frameIn = ramOut
   where
     selectReg     = register @dom False writeSelect
-    writeSelect   = mux switchNow (not <$> selectReg) selectReg
+    writeSelect   = mux switch (not <$> selectReg) selectReg
     readSelect    = not <$> writeSelect
-    extUnsigned   = zeroExtend . bitCoerce :: Index maxIndex -> Unsigned (1 + BitSize (Index maxIndex))
+    extUnsigned   = zeroExtend . bitCoerce:: Index maxIndex -> Unsigned (1 + BitSize (Index maxIndex))
     bufToBit buf  = if buf then setBit else clearBit
     selBuf buf (extUnsigned -> addr') = bufToBit buf addr' (finiteBitSize addr' - 1)
 
@@ -112,18 +111,18 @@ scatterGatherEngine :: forall dom calDepthG calDepthS memDepthG memDepthS frameW
 scatterGatherEngine bootstrapCalG bootstrapCalS configPort
  frameInSwitch frameInPE readAddrPE writeAddrPE = bundle (toSwitch, toPE)
   where
-    newMetaCycleG = (==0) <$> calendarCounterG
-    newMetaCycleS = (==0) <$> calendarCounterS
+    newMetaCycleG = register False $ (==0) <$> calendarCounterG
+    newMetaCycleS = register False $ (==0) <$> calendarCounterS
 
     calendarG = calendar bootstrapCalG calendarCounterG gatherConfig
     calendarCounterG = register (0 :: (Index calDepthG)) $ satSucc SatWrap <$> calendarCounterG
-    gatherOut = doubleBufferedRAM newMetaCycleG readAddrPE calendarG frameInSwitch
-    toPE      = gatherOut
+    scatterOut = doubleBufferedRAM newMetaCycleG readAddrPE calendarG frameInSwitch
+    toPE      = scatterOut
 
     calendarS = calendar bootstrapCalS calendarCounterS scatterConfig
     calendarCounterS = register (0 :: (Index calDepthS)) $ satSucc SatWrap <$> calendarCounterS
-    scatterOut = doubleBufferedRAM newMetaCycleS calendarS writeAddrPE frameInPE
-    toSwitch  = mux (register True $ (==0) <$> calendarS) (pure Nothing) $ Just <$> scatterOut
+    gatherOut = doubleBufferedRAM newMetaCycleS calendarS writeAddrPE frameInPE
+    toSwitch  = mux (register True $ (==0) <$> calendarS) (pure Nothing) $ Just <$> gatherOut
 
     (gatherConfig, scatterConfig) = unbundle configPort
 

@@ -4,9 +4,8 @@ License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
 module Bittide.Switch (switch) where
-import Clash.Prelude
 import Bittide.ScatterGather (scatterEngine)
-
+import Clash.Prelude
 type DataLink a = Maybe (BitVector a)
 type CrossbarIndex links = Index (links+1)
 type CalendarEntry links memDepth = Vec links (Index memDepth, CrossbarIndex links)
@@ -64,4 +63,4 @@ calendar :: forall dom links calDepth memDepth .
   Signal dom (Index calDepth) ->
   Signal dom (Maybe (Index calDepth, CalendarEntry links memDepth)) ->
   Signal dom (CalendarEntry links memDepth, Bool)
-calendar cal readAddr newEntry = bundle (blockRam cal readAddr newEntry, (==0) <$> readAddr)
+calendar cal readAddr newEntry = bundle (blockRam cal readAddr newEntry, register False $ (==0) <$> readAddr)

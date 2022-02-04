@@ -8,24 +8,19 @@ Maintainer:          devops@qbaylogic.com
 {-# LANGUAGE ViewPatterns #-}
 
 module Tests.ScatterGather(sgGroup) where
+import Bittide.ScatterGather
 import Clash.Prelude
 import Clash.Sized.Internal.BitVector
+import Clash.Sized.Vector ( unsafeFromList )
 import Data.String
-import qualified GHC.TypeNats as TN
-import qualified Prelude as P
-import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Range as Range
-import qualified Data.Set as Set
 import Hedgehog
-import Bittide.ScatterGather
 import Test.Tasty
 import Test.Tasty.Hedgehog
-import Clash.Sized.Vector ( unsafeFromList )
-
--- Random write / sequential read.
--- For any schedule which length is the same as the memory´s depth, all incoming frames should always appear at the output
--- length schedule = depth memory
-
+import qualified Data.Set as Set
+import qualified GHC.TypeNats as TN
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
+import qualified Prelude as P
 
 isUndefined :: forall n . KnownNat n => BitVector n -> Bool
 isUndefined (BV mask _) = mask == full
@@ -70,6 +65,7 @@ sgGroup = testGroup "Scatter Gather group"
   , testProperty "ScatterSequential - No overwriting implies no lost frames" sSeqNoFrameLoss
   , testProperty "ScatterGather - Switch to PE Communication" sgSwitchToPECommunication
   , testProperty "ScatterGather - PE to Switch Communication" sgPEToSwitchCommunication]
+
 
 sSeqNoFrameLoss :: Property
 sSeqNoFrameLoss = property $ do
