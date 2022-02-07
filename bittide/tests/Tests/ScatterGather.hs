@@ -89,6 +89,8 @@ type MemoryEngine =
 engineNoFrameLoss :: MemoryEngine -> Property
 engineNoFrameLoss engine = property $ do
   someCalendar <- forAll genSomeCalendar
+  let topEntity (unbundle -> (frameIn, calIn, newMeta)) =
+        maybeIsUndefined <$> scatterEngine newMeta frameIn calIn
   case someCalendar of
     SomeCalendar size@SNat (toList -> calendar) -> do
       inputFrames <- forAll genFrameList
