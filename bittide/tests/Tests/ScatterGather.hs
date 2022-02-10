@@ -42,8 +42,8 @@ isUndefined (BV mask _) = mask == full
  where full = 1 `shiftL` (natToNum @n @Int) - 1
 
 maybeIsUndefined :: (KnownNat n, 1 <= n) => BitVector n -> Maybe (BitVector n)
-maybeIsUndefined v | isUndefined v = Nothing
-                  | otherwise     = Just v
+maybeIsUndefined v  | isUndefined v = Nothing
+                    | otherwise     = Just v
 
 -- | Returns a calendar for a engine with a memory depth equal to the calendar depth,
 -- the addresses in the calendar are all unique.
@@ -89,8 +89,6 @@ type MemoryEngine =
 engineNoFrameLoss :: MemoryEngine -> Property
 engineNoFrameLoss engine = property $ do
   someCalendar <- forAll genSomeCalendar
-  let topEntity (unbundle -> (frameIn, calIn, newMeta)) =
-        maybeIsUndefined <$> scatterEngine newMeta frameIn calIn
   case someCalendar of
     SomeCalendar size@SNat (toList -> calendar) -> do
       inputFrames <- forAll genFrameList
@@ -109,7 +107,6 @@ engineNoFrameLoss engine = property $ do
 
 tupMap :: (a -> b) -> (a,a) -> (b,b)
 tupMap f (a, b) = bimap f f (a,b)
-
 
 filterSGOut ::
   (KnownDomain dom, KnownNat n, 1 <= n) =>
