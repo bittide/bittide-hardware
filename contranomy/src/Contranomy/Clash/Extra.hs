@@ -1,3 +1,10 @@
+{-|
+Copyright  :  (C) 2020, Christiaan Baaij
+              (C) 2021, Google LLC
+License    :  Apache-2.0
+Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
+-}
+
 module Contranomy.Clash.Extra where
 
 import Clash.Class.AutoReg (AutoReg)
