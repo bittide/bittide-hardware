@@ -5,7 +5,7 @@ License:             Apache-2.0
 license-file:        LICENSE
 author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
-Copyright:           Copyright © 2021, Google LLC
+Copyright:           Copyright © 2022 Google LLC
 
 common common-options
   default-extensions:
@@ -72,6 +72,8 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
+    Bittide.Calendar
+    Bittide.DoubleBufferedRAM
     Bittide.Switch
     Bittide.ScatterGather
 
