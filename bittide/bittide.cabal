@@ -90,6 +90,8 @@ test-suite unittests
   other-modules:
     Tests.ScatterGather
     Tests.Switch
+    Tests.Calendar
+    Tests.DoubleBufferedRAM
   default-extensions:
     ImplicitPrelude
   build-depends:

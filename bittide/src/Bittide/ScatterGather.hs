@@ -7,8 +7,6 @@ Maintainer:          devops@qbaylogic.com
 module Bittide.ScatterGather(scatterEngine, gatherEngine, scatterGatherEngine) where
 import Clash.Prelude
 import Bittide.DoubleBufferedRAM
-import Debug.Trace
-import Data.Maybe
 import Bittide.Calendar
 type DataLink frameWidth = Maybe (BitVector frameWidth)
 type CalendarEntry memDepth = Index memDepth

@@ -20,7 +20,7 @@ import qualified Hedgehog.Range as Range
 import qualified Prelude as P
 switchGroup :: TestTree
 switchGroup = testGroup "Switch group"
-  [testProperty "Switch - Routing works" switchFrameRoutingWorks]
+  [testProperty "Routing works" switchFrameRoutingWorks]
 
 data SwitchCalendar extra where
   SwitchCalendar :: (1 <= (extra + links), 1 <= (extra + depth)) =>

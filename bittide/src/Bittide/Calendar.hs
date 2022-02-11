@@ -19,4 +19,4 @@ calendar bootStrapCal shadowSwitch writeEntry = bundle (entryOut, newMetaCycle)
     readEntry = doubleBufferedRAM bootStrapCal shadowSwitch counter' writeEntry
     counter = register (0 :: (Index calDepth)) counter'
     counter' = satSucc SatWrap <$> counter
-    newMetaCycle = register True $ (==0) <$> counter'
+    newMetaCycle = fmap not firstCycle .&&. (==0) <$> counter

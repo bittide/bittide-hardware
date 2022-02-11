@@ -9,7 +9,7 @@ Maintainer:          devops@qbaylogic.com
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Tests.ScatterGather(sgGroup) where
+module Tests.ScatterGather(sgGroup, filterSGOut, filterZeroes) where
 import Bittide.ScatterGather
 import Clash.Prelude
 import Clash.Sized.Internal.BitVector
@@ -113,11 +113,14 @@ engineNoFrameLoss engine = property $ do
 tupMap :: (a -> b) -> (a,a) -> (b,b)
 tupMap f (a, b) = bimap f f (a,b)
 
+
+filterSGOut :: (KnownNat n, 1 <= n) => (BitVector n, Maybe (BitVector n)) -> (Maybe (BitVector n), Maybe (BitVector n))
 filterSGOut (toP, toS) = (maybeIsUndefined toP, unNestMaybe $ fmap maybeIsUndefined toS)
+filterZeroes :: (Num a, Eq a) => [Maybe f] -> [a] -> [Maybe f]
 filterZeroes fs as = [ if a == 0 then Nothing else f | (f, a) <- P.zip fs as]
+
 -- | Tests that for a calendar that contains only unique entries,
 -- all frames send from the PE side to a non zero address, appear at the PE side output.
-
 scatterGatherNoFrameLoss :: Property
 scatterGatherNoFrameLoss = property $ do
   someCalendarS <- forAll genSomeCalendar

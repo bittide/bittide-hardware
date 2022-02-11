@@ -8,10 +8,12 @@ module Main where
 import Test.Tasty
 import Tests.ScatterGather
 import Tests.Switch
+import Tests.Calendar
+import Tests.DoubleBufferedRAM
 
 tests :: TestTree
 tests = testGroup "Unittests"
-  [sgGroup, switchGroup]
+  [sgGroup, switchGroup, calGroup, ramGroup]
 
 main :: IO ()
 main = defaultMain tests
