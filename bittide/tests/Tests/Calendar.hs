@@ -17,6 +17,9 @@ import qualified GHC.TypeNats as TN
 import qualified Prelude as P
 import qualified Data.Set as Set
 
+
+-- | The Intcalendar is a vector with a minimum size of 1 elements containing integers.
+-- This data type enables us to safisfy the 1 <= size constraints imposed by the topEntities.
 data IntCalendar extra where
   IntCalendar :: (1 <= (extra + n)) => SNat n -> Vec (n + extra) Int -> IntCalendar extra
 
@@ -36,6 +39,7 @@ genIntCalendar calendarSize = do
       cal <- Gen.list (Range.singleton $ fromIntegral calendarSize) $ Gen.int Range.constantBounded
       return (IntCalendar (snatProxy size) $ unsafeFromList cal)
 
+-- | This test checks if we can read the initialized calendars.
 readCalendar :: Property
 readCalendar = property $ do
   calSize <- forAll $ Gen.enum 1 32
@@ -49,6 +53,8 @@ readCalendar = property $ do
         simOut = simulateN @System (fromIntegral simLength) topEntity switchSignal
       Set.fromList simOut === Set.fromList (toList cal)
 
+-- | This test checks if we can write to the shadowbuffer and read back the written
+-- elements later.
 reconfigCalendar :: Property
 reconfigCalendar = property $ do
   calSize <- forAll $ Gen.enum 1 32
@@ -70,6 +76,8 @@ reconfigCalendar = property $ do
         simOut = simulateN @System simLength topEntity topEntityInput
       Set.fromList simOut === Set.fromList (P.take (fromIntegral simLength) (toList cal <> newEntries))
 
+-- | This test checks if the metacycle signal (which indicates that the first entry of a
+-- new calendar is present at the output), is correctly being generated.
 metaCycleIndication :: Property
 metaCycleIndication = property $ do
   calSize <- forAll $ Gen.enum 1 31

@@ -34,11 +34,6 @@ maybeIsUndefined :: (KnownNat n, 1 <= n) => BitVector n -> Maybe (BitVector n)
 maybeIsUndefined v  | isUndefined v = Nothing
                     | otherwise     = Just v
 
-unNestMaybe :: Maybe (Maybe a)  -> Maybe a
-unNestMaybe (Just (Just a)) = Just a
-unNestMaybe (Just Nothing)  = Nothing
-unNestMaybe Nothing         = Nothing
-
 -- | The extra in SomeCalendar extra defines the minimum amount of elements in the vector
 -- and the minimum addressable indexes in the vector elements. I.e, vectors of 0 elements
 -- and Index 0 as element are not allowed.
@@ -74,9 +69,7 @@ sgGroup = testGroup "Scatter Gather group"
   , testProperty "ScatterSequential - No overwriting implies no lost frames." (engineNoFrameLoss scatterEngine)
   , testProperty "ScatterGather - No overwriting implies no lost frames." scatterGatherNoFrameLoss]
 
--- | Tests that for a calendar that contains only unique entries,
--- all frames send to the scatter engine will appear at its output.
-
+-- |The type of a sequential engine that is tested by engineNoFrameLoss.
 type MemoryEngine =
   forall dom memDepth a .
   (NFDataX a, KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom) =>
@@ -115,7 +108,7 @@ tupMap f (a, b) = bimap f f (a,b)
 
 
 filterSGOut :: (KnownNat n, 1 <= n) => (BitVector n, Maybe (BitVector n)) -> (Maybe (BitVector n), Maybe (BitVector n))
-filterSGOut (toP, toS) = (maybeIsUndefined toP, unNestMaybe $ fmap maybeIsUndefined toS)
+filterSGOut (toP, toS) = (maybeIsUndefined toP, maybeIsUndefined =<< toS)
 filterZeroes :: (Num a, Eq a) => [Maybe f] -> [a] -> [Maybe f]
 filterZeroes fs as = [ if a == 0 then Nothing else f | (f, a) <- P.zip fs as]
 
@@ -138,7 +131,7 @@ scatterGatherNoFrameLoss = property $ do
 
         topEntity (unbundle -> (frameInS, frameInP, readAddrPE, writeAddrPE)) =
           filterSGOut <$> withClockResetEnable @System clockGen resetGen enableGen
-          scatterGatherEngine calScat calGath (pure (Nothing,Nothing)) frameInS frameInP
+          scatterGatherEngine calScat calGath (pure Nothing) (pure Nothing) frameInS frameInP
           readAddrPE writeAddrPE
 
         maxCalDepth = max (snatToNum depthScat) (snatToNum depthGath)

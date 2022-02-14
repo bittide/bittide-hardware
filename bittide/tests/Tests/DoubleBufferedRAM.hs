@@ -24,6 +24,8 @@ ramGroup = testGroup "DoubleBufferedRAM group"
   [ testProperty "Reading the buffer." readDoubleBufferedRAM
   , testProperty "Wriing and reading back buffers." readWriteDoubleBufferedRAM]
 
+-- | RamContents is a data type containing a Vec (extra + n) Int, this can be used to
+-- safisfy the 1 <= size constraints imposed by the topEntities.
 data RamContents extra where
   RamContents :: (1 <= (extra + n)) => SNat n -> Vec (n + extra) Int -> RamContents extra
 
@@ -37,6 +39,7 @@ genRamContents depth = do
       contents <- Gen.list (Range.singleton $ fromIntegral depth) $ Gen.int Range.constantBounded
       return $ RamContents (snatProxy extraDepth) $ unsafeFromList contents
 
+-- | This test checks if we can read the inital values of the double buffered RAM.
 readDoubleBufferedRAM :: Property
 readDoubleBufferedRAM = property $ do
   ramDepth <- forAll $ Gen.enum 1 31
@@ -55,6 +58,7 @@ readDoubleBufferedRAM = property $ do
         expectedOut = [contents !! i | i <- readAddresses]
       simOut === P.init expectedOut
 
+-- | This test checks if we can write new values to the double buffered RAM and read them.
 readWriteDoubleBufferedRAM :: Property
 readWriteDoubleBufferedRAM = property $ do
   ramDepth <- forAll $ Gen.enum 2 31

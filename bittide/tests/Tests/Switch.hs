@@ -29,7 +29,7 @@ data SwitchCalendar extra where
    SwitchCalendar extra
 
 instance Show (SwitchCalendar extra) where
-  show (SwitchCalendar l@SNat d@SNat list) = "links: " P.++ show l P.++ "\n\rdepth: " P.++ show d P.++ "\n\r" P.++ show list
+  show (SwitchCalendar SNat SNat list) = show list
 
 
 -- | This generator generates a calendar for the switch that has the following properties:

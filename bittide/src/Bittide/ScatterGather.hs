@@ -3,17 +3,14 @@ Copyright:           Copyright © 2022, Google LLC
 License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
-{-# LANGUAGE PartialTypeSignatures #-}
 module Bittide.ScatterGather(scatterEngine, gatherEngine, scatterGatherEngine) where
 import Clash.Prelude
-import Bittide.DoubleBufferedRAM
+import Bittide.DoubleBufferedRAM ( doubleBufferedRAM )
 import Bittide.Calendar
 type DataLink frameWidth = Maybe (BitVector frameWidth)
 type CalendarEntry memDepth = Index memDepth
 type Calendar calDepth memDepth = Vec calDepth (CalendarEntry memDepth)
-type ConfigurationPort calDepth0 memDepth0 calDepth1 memDepth1 =
-  (Maybe (Index calDepth0, CalendarEntry memDepth0)
-  ,Maybe (Index calDepth1, CalendarEntry memDepth1))
+type ConfigurationPort calDepth memDepth = Maybe (Index calDepth, CalendarEntry memDepth)
 
 
 -- | scatterEngine is a memory bank that allows for random writes and sequentially
@@ -51,7 +48,7 @@ gatherEngine :: forall dom memDepth a .
   -- | Outgoing data
   Signal dom a
 gatherEngine newMetaCycle frameIn readAddr =
-  doubleBufferedRAM (deepErrorX "gatherEngine undefined")newMetaCycle readAddr writeFrame
+  doubleBufferedRAM (deepErrorX "gatherEngine undefined") newMetaCycle readAddr writeFrame
   where
     writeAddr = register 0 $ satSucc SatWrap <$> writeAddr
     writeFrame = (\f a -> fmap (a,) f) <$> frameIn <*> writeAddr
@@ -67,8 +64,10 @@ scatterGatherEngine :: forall dom calDepthG calDepthS memDepthG memDepthS frameW
   Calendar calDepthS memDepthS ->
   -- | Bootstrap calendar scatter memory.
   Calendar calDepthG memDepthG ->
-  -- | Configuration port for the scatter and gather writeAddrSwitch.
-  Signal dom (ConfigurationPort calDepthS memDepthS calDepthG memDepthG) ->
+  -- | Configuration port for the scatter engine.
+  Signal dom (ConfigurationPort calDepthS memDepthS) ->
+  -- | Configuration port for the gather engine.
+  Signal dom (ConfigurationPort calDepthG memDepthG) ->
   -- | Incoming frame from the switch
   Signal dom (DataLink frameWidth) ->
   -- | Incoming data from the PE.
@@ -79,7 +78,7 @@ scatterGatherEngine :: forall dom calDepthG calDepthS memDepthG memDepthS frameW
   Signal dom (Index memDepthG) ->
   -- | Tuple containing the frame read by the switch and the data read by the PE.
   Signal dom (BitVector frameWidth, DataLink frameWidth)
-scatterGatherEngine bootCalS bootCalG (unbundle -> (scatterConfig, gatherConfig))
+scatterGatherEngine bootCalS bootCalG scatterConfig gatherConfig
  frameInSwitch frameInPE readAddrPE writeAddrPE = bundle (toPE, toSwitch)
   where
     -- Scatter engine
