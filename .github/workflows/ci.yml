@@ -65,12 +65,9 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-            ~/.cabal/packages
             ~/.cabal/store
-            contranomy/dist-newstyle
-            contranomy/verilog
 
-          key: contranomy-${{ hashFiles('contranomy/cabal.project.freeze') }}
+          key: contranomy-v2-${{ hashFiles('contranomy/cabal.project.freeze') }}
           restore-keys: contranomy-
 
       - name: Build Contranomy
