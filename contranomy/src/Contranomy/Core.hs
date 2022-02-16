@@ -16,7 +16,6 @@ import Control.Lens
 import Data.Generics.Labels ()
 import Data.Maybe
 import Control.Monad
-
 import Clash.Prelude
 
 import Contranomy.Clash.Extra

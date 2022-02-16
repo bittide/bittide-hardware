@@ -7,7 +7,6 @@ Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
 
 module Contranomy.Clash.Extra where
 
-import Clash.Class.AutoReg (AutoReg)
 import Clash.Prelude
 import Control.Monad.Trans.State
 
