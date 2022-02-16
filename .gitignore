@@ -56,3 +56,6 @@ _build/
 
 # rewrite histories
 *.dat
+
+# Formal checking temporary files
+riscv-formal/cores/contranomy/
