@@ -8,5 +8,6 @@ cd "${HERE}"
 ./generate_checks.sh
 
 cd "${ROOT}"/riscv-formal/cores/contranomy
+rm -rf checks/"$1"
 make -C checks "$1"
 [[ -f checks/"$1"/PASS ]]
