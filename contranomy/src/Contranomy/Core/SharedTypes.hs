@@ -10,4 +10,10 @@ module Contranomy.Core.SharedTypes where
 import Clash.Prelude
 
 type MachineWord = BitVector 32
-type PC = BitVector 30
+type PC = BitVector 32
+type Alignment = BitVector 1
+
+alignPC :: PC -> PC
+alignPC pc = pc' ++# (0 :: Alignment)
+  where
+    (pc', _) = split pc

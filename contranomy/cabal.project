@@ -7,3 +7,8 @@ package clash-prelude
   -- Clash, and triggers Template Haskell bugs on Windows. Hence, we disable
   -- it by default. This will be the default for Clash >=1.4.
   flags: -large-tuples -multiple-hidden
+
+package *
+  profiling: False
+
+write-ghc-environment-files: always
