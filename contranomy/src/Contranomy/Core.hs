@@ -34,15 +34,14 @@ import Contranomy.Core.SharedTypes
 import Contranomy.Instruction
 import Contranomy.RVFI
 import Contranomy.Wishbone
-
 type TimerInterrupt = Bool
 type SoftwareInterrupt = Bool
 type ExternalInterrupt = MachineWord
 
 data CoreIn
   = CoreIn
-  { iBusS2M :: "iBusWishbone" ::: WishboneS2M 4
-  , dBusS2M :: "dBusWishbone" :::  WishboneS2M 4
+  { iBusS2M :: "iBusWishbone" ::: WishboneS2M Bytes
+  , dBusS2M :: "dBusWishbone" :::  WishboneS2M Bytes
   , timerInterrupt :: "timerInterrupt" ::: TimerInterrupt
   , softwareInterrupt :: "softwareInterrupt" ::: SoftwareInterrupt
   , externalInterrupt :: "externalInterrupt" ::: ExternalInterrupt
@@ -50,25 +49,29 @@ data CoreIn
 
 data CoreOut
   = CoreOut
-  { iBusM2S :: "iBusWishbone" ::: WishboneM2S 4 30
-  , dBusM2S :: "dBusWishbone" ::: WishboneM2S 4 30
+  { iBusM2S :: "iBusWishbone" ::: WishboneM2S 4 32
+  , dBusM2S :: "dBusWishbone" ::: WishboneM2S 4 32
   }
 
 coreOut :: CoreOut
-coreOut = CoreOut { iBusM2S = wishboneM2S, dBusM2S = wishboneM2S }
+coreOut = CoreOut
+  { iBusM2S = wishboneM2S (SNat @Bytes) (SNat @AddressWidth)
+  , dBusM2S = wishboneM2S (SNat @Bytes) (SNat @AddressWidth)
+  }
 
 core ::
   HiddenClockResetEnable dom =>
+  BitVector 32 ->
   (Signal dom CoreIn, Signal dom (MachineWord, MachineWord)) ->
   ( Signal dom CoreOut
   , Signal dom (Maybe Register, Maybe Register, Maybe (Register, MachineWord))
   , Signal dom RVFI )
-core = mealyAutoB transition cpuStart
+core entry = mealyAutoB transition cpuStart
  where
   cpuStart
     = CoreState
     { stage = InstructionFetch
-    , pc = 0
+    , pc = entry
     , instruction = 0
     , machineState = machineStart
     , rvfiOrder = 0
@@ -104,7 +107,7 @@ transition s@CoreState{stage=InstructionFetch, pc} (CoreIn{iBusS2M},_) = runStat
             else
               InstructionFetch
 
-  return ( coreOut { iBusM2S = wishboneM2S
+  return ( coreOut { iBusM2S = (wishboneM2S (SNat @Bytes) (SNat @AddressWidth))
                              { addr = pc
                              , busSelect = 0b1111
                              , busCycle = True
@@ -133,11 +136,11 @@ transition
         loadStoreUnit instruction instructionFault aluIResult rs2Val dBusS2M
 
   let pcN = branchUnit instruction rs1Val rs2Val pc
-
+  let (_,alignment :: Alignment) = split pcN
   let exceptionIn
         = ExceptionIn
         { instrAccessFault = accessFault
-        , instrAddrMisaligned = snd pcN /= 0
+        , instrAddrMisaligned = alignment /= 0
         , instrIllegal = not legal
         , dataAccessFault = dataAccessFault
         , dataAddrMisaligned = dataAddrMisaligned

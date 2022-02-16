@@ -16,6 +16,9 @@ import Contranomy.Core.SharedTypes
 import Contranomy.Instruction
 import Contranomy.Wishbone
 
+type Bytes = 4
+type AddressWidth = 32
+
 -- | This function performs data-bus transactions for loads and stores.
 --
 -- It does not initiate the transaction if the address is misaligned for the
@@ -31,13 +34,13 @@ loadStoreUnit ::
   -- | The value to store
   MachineWord ->
   -- | Data bus response (slave-to-master)
-  WishboneS2M 4 ->
+  WishboneS2M Bytes ->
   -- |
   -- 1. Data bus initiation (master-to-slave)
   -- 2. The address causing a data-access fault on the data bus
   -- 3. The misaligned address
   -- 4. Data bus transaction completed
-  (WishboneM2S 4 30, Maybe MachineWord, Maybe MachineWord, Maybe MachineWord, Bool)
+  (WishboneM2S Bytes AddressWidth, Maybe MachineWord, Maybe MachineWord, Maybe MachineWord, Bool)
 loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
   LOAD | not instructionFault ->
     let loadData = case loadStoreWidth of
@@ -50,8 +53,8 @@ loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
               sign
               (slice d15 d0 (readData dBusS2M `shiftR` shiftAmount))
           _ -> readData dBusS2M
-     in ( wishboneM2S
-            { addr      = slice d31 d2 addr
+     in ( (wishboneM2S (SNat @Bytes) (SNat @AddressWidth))
+            { addr      = (slice d31 d2 addr) ++# (0 :: BitVector 2)
             , busSelect = mask
             , busCycle  = aligned
             , strobe    = aligned
@@ -70,8 +73,8 @@ loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
           Byte _ -> toStore `shiftL` shiftAmount
           Half _ -> toStore `shiftL` shiftAmount
           _ -> toStore
-     in ( wishboneM2S
-           { addr        = slice d31 d2 addr
+     in ( (wishboneM2S (SNat @Bytes) (SNat @AddressWidth))
+           { addr        = (slice d31 d2 addr) ++# (0 :: BitVector 2)
            , writeData   = storeData
            , busSelect   = mask
            , busCycle    = aligned
@@ -85,7 +88,7 @@ loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
         )
 
   _otherwise ->
-    ( wishboneM2S
+    ( wishboneM2S (SNat @Bytes) (SNat @AddressWidth)
     , Nothing
     , Nothing
     , Nothing

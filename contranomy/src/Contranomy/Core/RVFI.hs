@@ -37,7 +37,7 @@ toRVFI ::
   -- | pcN
   PC ->
   -- | dbusM2S
-  WishboneM2S 4 30 ->
+  WishboneM2S 4 32 ->
   -- | dbusS2M
   WishboneS2M 4 ->
   -- | MISA CRS
@@ -55,9 +55,9 @@ toRVFI loadStoreFinished rvfiOrder instruction trap rs1Val rs2Val rdVal pc pcN d
   , rs2RData = rs2Val
   , rdAddr   = maybe X0 fst rdVal
   , rdWData  = maybe 0 snd rdVal
-  , pcRData  = pc ++# 0
-  , pcWData  = pcN ++# 0
-  , memAddr  = if trap then 0 else addr dBusM2S ++# 0
+  , pcRData  = pc
+  , pcWData  = pcN
+  , memAddr  = if trap then 0 else addr dBusM2S
   , memRMask = if strobe dBusM2S && not (writeEnable dBusM2S) then
                   busSelect dBusM2S
                 else
@@ -82,7 +82,8 @@ toRVFI loadStoreFinished rvfiOrder instruction trap rs1Val rs2Val rdVal pc pcN d
                    , rdata = old
                    , wdata = newVal
                    }
-      _ -> rvfiCSR {rmask = 4}
+      _ -> rvfiCSR {  rmask = maxBound
+                    , rdata = bit 30 .|. bit 8 .|. bit 2 .|. bit 12}
   }
  where
   DecodedInstruction {rs1,rs2,imm12I=srcDest} = decodeInstruction instruction

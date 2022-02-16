@@ -6,6 +6,15 @@ license-file:        LICENSE
 author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
 Copyright:           Copyright © 2020, Christiaan Baaij
+                     Copyright © 2021, Google LLC
+
+flag riscv-altopts
+  description:
+    Use alternative arithmetic operations for M instructions to enable formal
+    verification. See https://github.com/SymbioticEDA/riscv-formal/blob/master/docs/rvfi.md#alternative-arithmetic-operations
+    for more information.
+  default: False
+  manual: True
 
 common common-options
   default-extensions:
@@ -58,17 +67,21 @@ common common-options
     -- blackboxes attached for them. You can disable this, but be sure to add
     -- a no-specialize pragma to every function with a blackbox.
     -fno-worker-wrapper
+
+  if flag(riscv-altopts)
+    CPP-Options: -DFORMAL_ALTOPS
+
   default-language: Haskell2010
   build-depends:
     base,
     Cabal,
-
+    array,
     -- clash-prelude will set suitable version bounds for the plugins
-    clash-prelude >= 1.2.3 && < 1.4,
+    clash-prelude,
     ghc-typelits-natnormalise,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
-
+    containers                >= 0.4.0   && < 0.7
 library
   import: common-options
   hs-source-dirs: src
@@ -91,24 +104,28 @@ library
     Contranomy.Instruction
     Contranomy.RegisterFile
     Contranomy.RVFI
+    Contranomy.Assembly
     Contranomy.Wishbone
-  default-language: Haskell2010
+
   build-depends:
       transformers,
       lens,
       generic-lens
 
 executable clash
+  import: common-options
   main-is: bin/Clash.hs
-  Build-Depends: base, clash-ghc, contranomy
-  if !os(Windows)
-    ghc-options: -dynamic
+  Build-Depends: clash-ghc, contranomy
 
 executable clashi
+  import: common-options
   main-is: bin/Clashi.hs
-  if !os(Windows)
-    ghc-options: -dynamic
-  build-depends: base, clash-ghc, contranomy
+  build-depends: clash-ghc, contranomy
+
+executable simcontranomy
+  import: common-options
+  main-is: bin/SimContranomy.hs
+  build-depends: base, bytestring, containers, clash-ghc, contranomy, clash-prelude, elf
 
 test-suite test-library
   import: common-options
