@@ -1,5 +1,5 @@
 import Prelude
-import qualified Tests.Contranomy.Core
+import qualified Tests.Contranomy.Core.ALU
 
 main :: IO ()
-main = Tests.Contranomy.Core.main
+main = Tests.Contranomy.Core.ALU.main
