@@ -46,11 +46,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v1
 
-      - name: Install nodejs
-        run: |
-          apt-get update
-          apt-get install -y nodejs
-
       - name: Set CI flags
         run: |
           cp .github/cabal.project contranomy/cabal.project.local
