@@ -8,7 +8,16 @@ Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE CPP #-}
-module Contranomy.Core.ALU where
+module Contranomy.Core.ALU
+  ( alu
+
+  -- * Internal
+  , multdiv
+  , multdivSim
+  , multdivFormal
+  , quotRisc
+  , remRisc
+  ) where
 
 import Clash.Prelude
 
@@ -53,10 +62,12 @@ alu ::
   -- | Result
   MachineWord
 
-alu instruction pc rs1Value rs2Value = if isM then multdivResult else aluResult
+alu instruction pc rs1Value rs2Value
+  | isM       = multdiv rs1Value rs2Value mop
+  | otherwise = aluResult
  where
   DecodedInstruction
-    { opcode, iop, srla, isSub, imm12I, imm20U, imm12S, mop, isM, compressed}
+    {opcode, iop, srla, isSub, imm12I, imm20U, imm12S, mop, isM, compressed}
     = decodeInstruction instruction
 
   aluArg1 = case opcode of
@@ -96,41 +107,57 @@ alu instruction pc rs1Value rs2Value = if isM then multdivResult else aluResult
     OR   -> aluArg1 .|. aluArg2
     AND  -> aluArg1 .&. aluArg2
 
-  -- Alternative operations for the M Extension implemented according to
-  -- https://github.com/SymbioticEDA/riscv-formal/blob/master/docs/rvfi.md#alternative-arithmetic-operations
+getUnsigned :: BitVector 32 -> Unsigned 64
+getUnsigned = zeroExtend . unpack @(Unsigned 32)
+
+getSigned :: BitVector 32 -> Signed 64
+getSigned = signExtend . unpack @(Signed 32)
+
+lower :: BitVector 64 -> BitVector 32
+lower = slice d31 d0
+
+upper :: BitVector 64 -> BitVector 32
+upper = slice d63 d32
+
+multdiv :: BitVector 32 -> BitVector 32 -> MOp -> BitVector 32
 #ifdef FORMAL_ALTOPS
-  multdivResult = case mop of
-    MUL     -> xor 0x5876063e $ lower $ pack @(Signed 64) $ (getSigned rs1Value + getSigned rs2Value)
-    MULH    -> xor 0xf6583fb7 $ lower $ pack @(Signed 64) $ (getSigned rs1Value + getSigned rs2Value)
-    MULHSU  -> xor 0xecfbe137 $ lower $ pack @(Signed 64) $ (getSigned rs1Value - (unpack @(Signed 64) $ zeroExtend rs2Value))
-    MULHU   -> xor 0x949ce5e8 $ lower $ pack @(Unsigned 64) $ (getUnsigned rs1Value + getUnsigned rs2Value)
-    DIV     -> xor 0x7f8529ec $ lower $ pack @(Signed 64) $ (getSigned rs1Value - getSigned rs2Value)
-    DIVU    -> xor 0x10e8fd70 $ lower $ pack @(Unsigned 64)$ (getUnsigned rs1Value - getUnsigned rs2Value)
-    REM     -> xor 0x8da68fa5 $ lower $ pack @(Signed 64) $ (getSigned rs1Value - getSigned rs2Value)
-    REMU    -> xor 0x3138d0e1 $ lower $ pack @(Unsigned 64) $ (getUnsigned rs1Value - getUnsigned rs2Value)
-    where
-      getUnsigned = zeroExtend . unpack @(Unsigned 32)
-      getSigned = signExtend . unpack @(Signed 32)
-      lower = slice d31 d0
+multdiv = multdivFormal
 #else
-  multdivResult = case mop of
-    MUL     -> lower $ pack @(Signed 64)    $ (getSigned rs1Value * getSigned rs2Value)
-    MULH    -> upper $ pack @(Signed 64)    $ (getSigned rs1Value * getSigned rs2Value)
-    MULHSU  -> upper $ pack @(Signed 64)    $ (getSigned rs1Value * (unpack @(Signed 64) $ zeroExtend rs2Value))
-    MULHU   -> upper $ pack @(Unsigned 64)  $ (getUnsigned rs1Value * getUnsigned rs2Value)
-    DIV     -> lower $ pack @(Signed 64)    $ (getSigned rs1Value `quotRisc` getSigned rs2Value)
-    DIVU    -> lower $ pack @(Unsigned 64)  $ (getUnsigned rs1Value `quot` getUnsigned rs2Value)
-    REM     -> lower $ pack @(Signed 64)    $ (getSigned rs1Value `remRisc` getSigned rs2Value)
-    REMU    -> lower $ pack @(Unsigned 64)  $ (getUnsigned rs1Value `rem` getUnsigned rs2Value)
-    where
-      getUnsigned = zeroExtend . unpack @(Unsigned 32)
-      getSigned = signExtend . unpack @(Signed 32)
-      lower = slice d31 d0
-      upper = slice d63 d32
-      quotRisc x y  | y == 0                                = -1
-                    | x == minBound @(Signed 64) && y == -1 = y
-                    | otherwise                             = x `quot` y
-      remRisc x y   | y == 0                                = x
-                    | x == minBound @(Signed 64) && y == -1 = -1
-                    | otherwise                             = x `rem` y
+multdiv = multdivSim
 #endif
+
+-- | Alternative operations for the M Extension implemented according to
+-- https://github.com/SymbioticEDA/riscv-formal/blob/master/docs/rvfi.md#alternative-arithmetic-operations
+multdivFormal :: BitVector 32 -> BitVector 32 -> MOp -> BitVector 32
+multdivFormal rs1 rs2 = \case
+  MUL    -> xor 0x5876063e $ lower $ pack $ getSigned rs1 + getSigned rs2
+  MULH   -> xor 0xf6583fb7 $ lower $ pack $ getSigned rs1 + getSigned rs2
+  MULHSU -> xor 0xecfbe137 $ lower $ pack $ getSigned rs1 - unpack (zeroExtend rs2)
+  MULHU  -> xor 0x949ce5e8 $ lower $ pack $ getUnsigned rs1 + getUnsigned rs2
+  DIV    -> xor 0x7f8529ec $ lower $ pack $ getSigned rs1 - getSigned rs2
+  DIVU   -> xor 0x10e8fd70 $ lower $ pack $ getUnsigned rs1 - getUnsigned rs2
+  REM    -> xor 0x8da68fa5 $ lower $ pack $ getSigned rs1 - getSigned rs2
+  REMU   -> xor 0x3138d0e1 $ lower $ pack $ getUnsigned rs1 - getUnsigned rs2
+
+multdivSim :: BitVector 32 -> BitVector 32 -> MOp -> BitVector 32
+multdivSim rs1 rs2 = \case
+  MUL    -> lower $ pack $ getSigned rs1 * getSigned rs2
+  MULH   -> upper $ pack $ getSigned rs1 * getSigned rs2
+  MULHSU -> upper $ pack $ getSigned rs1 * unpack (zeroExtend rs2)
+  MULHU  -> upper $ pack $ getUnsigned rs1 * getUnsigned rs2
+  DIV    -> lower $ pack $ getSigned rs1 `quotRisc` getSigned rs2
+  DIVU   -> lower $ pack $ getUnsigned rs1 `quot` getUnsigned rs2
+  REM    -> lower $ pack $ getSigned rs1 `remRisc` getSigned rs2
+  REMU   -> lower $ pack $ getUnsigned rs1 `rem` getUnsigned rs2
+
+quotRisc :: Signed 64 -> Signed 64 -> Signed 64
+quotRisc x y
+  | y == 0                                = -1
+  | x == minBound @(Signed 64) && y == -1 = x
+  | otherwise                             = x `quot` y
+
+remRisc :: Signed 64 -> Signed 64 -> Signed 64
+remRisc x y
+  | y == 0                                = x
+  | x == minBound @(Signed 64) && y == -1 = -1
+  | otherwise                             = x `rem` y

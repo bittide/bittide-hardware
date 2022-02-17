@@ -58,5 +58,6 @@ branchUnit instruction rs1Val rs2Val pc = case opcode of
   JALR  -> slice d31 d1 (rs1Val + signExtend imm12I) ++# 0
   _     -> pc + iLEN
  where
-  DecodedInstruction {opcode,func3,imm12B,imm12I,imm20J, compressed} = decodeInstruction instruction
+  DecodedInstruction{opcode, func3, imm12B, imm12I, imm20J, compressed} =
+    decodeInstruction instruction
   iLEN = if compressed then 2 else 4

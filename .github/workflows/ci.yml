@@ -48,7 +48,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project contranomy/cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -69,6 +69,7 @@ jobs:
         run: |
           cd contranomy
           cabal run clash -- --version
+          cat ../dist-newstyle/cache/plan.json | python3 -m json.tool | grep -C 1 riscv-altopts
 
       - name: Generate HDL
         run: |
