@@ -49,8 +49,8 @@ data CoreIn
 
 data CoreOut
   = CoreOut
-  { iBusM2S :: "iBusWishbone" ::: WishboneM2S 4 32
-  , dBusM2S :: "dBusWishbone" ::: WishboneM2S 4 32
+  { iBusM2S :: "iBusWishbone" ::: WishboneM2S Bytes AddressWidth
+  , dBusM2S :: "dBusWishbone" ::: WishboneM2S Bytes AddressWidth
   }
 
 coreOut :: CoreOut

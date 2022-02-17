@@ -178,10 +178,10 @@ pattern MACHINE_TIMER_INTERRUPT = MCause True 7
 pattern MACHINE_EXTERNAL_INTERRUPT = MCause True 11
 
 newtype Opcode = Opcode (BitVector 7)
-  deriving newtype BitPack
+  deriving newtype (BitPack, NFDataX)
 
 newtype Func7 = Func7 (BitVector 7)
-  deriving newtype BitPack
+  deriving newtype (BitPack, NFDataX)
 
 instance Show Opcode where
   show op = case op of
@@ -215,7 +215,7 @@ pattern SYSTEM    = Opcode 0b1110011
 data ShiftRight
   = Logical
   | Arithmetic
-  deriving Show
+  deriving (Show, Generic, NFDataX)
 deriveDefaultAnnotation [t|ShiftRight|]
 deriveBitPack  [t|ShiftRight|]
 
@@ -228,7 +228,7 @@ data IOp
   | SR   -- 5
   | OR   -- 6
   | AND  -- 7
-  deriving Show
+  deriving (Show, Generic, NFDataX)
 deriveDefaultAnnotation [t|IOp|]
 deriveBitPack  [t|IOp|]
 
@@ -241,14 +241,14 @@ data MOp
   | DIVU    -- 5
   | REM     -- 6
   | REMU    -- 7
-  deriving Show
+  deriving (Show, Generic, NFDataX)
 deriveDefaultAnnotation [t|MOp|]
 deriveBitPack  [t|MOp|]
 
 data Sign
   = Signed
   | Unsigned
-  deriving Show
+  deriving (Show, Generic, NFDataX)
 deriveDefaultAnnotation [t|Sign|]
 deriveBitPack [t|Sign|]
 
@@ -259,7 +259,7 @@ data LoadStoreWidth
   | LSWIllegal1
   | LSWIllegal2
   | LSWIllegal3
-  deriving Show
+  deriving (Show, Generic, NFDataX)
 {-# ANN module (DataReprAnn
                   $(liftQ [t|LoadStoreWidth|])
                   3
@@ -281,7 +281,7 @@ data BranchCondition
   | BGEU
   | BIllegal1
   | BIllegal2
-  deriving Show
+  deriving (Show, Generic, NFDataX)
 {-# ANN module (DataReprAnn
                   $(liftQ [t|BranchCondition|])
                   3

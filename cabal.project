@@ -1,0 +1,4 @@
+packages:
+  contranomy/contranomy.cabal
+
+write-ghc-environment-files: always
