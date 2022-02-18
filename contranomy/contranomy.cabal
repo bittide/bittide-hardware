@@ -54,10 +54,12 @@ common common-options
     NoImplicitPrelude
   ghc-options:
     -Wall -Wcompat
+
     -- Plugins to support type-level constraint solving on naturals
     -fplugin GHC.TypeLits.Extra.Solver
     -fplugin GHC.TypeLits.Normalise
     -fplugin GHC.TypeLits.KnownNat.Solver
+
     -- Clash needs access to the source code in compiled modules
     -fexpose-all-unfoldings
 
@@ -137,4 +139,4 @@ test-suite test-library
     contranomy,
     QuickCheck,
     tasty >= 1.2 && < 1.3,
-    tasty-quickcheck,
+    tasty-quickcheck

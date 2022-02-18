@@ -1,2 +1,3 @@
 package contranomy
   flags: +riscv-altopts
+  ghc-options: -Werror

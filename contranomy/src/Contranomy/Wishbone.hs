@@ -16,6 +16,9 @@ module Contranomy.Wishbone where
 import Clash.Prelude
 import qualified Data.IntMap as I
 import           Clash.Signal.Internal
+
+import Contranomy.Core.SharedTypes (Bytes, AddressWidth)
+
 data WishboneM2S bytes addressWidth
   = WishboneM2S
   { -- | ADR
@@ -81,18 +84,23 @@ wishboneS2M SNat
   , err = False
   }
 
+-- | The wishbone storage is a simulation only memory element that communicates via the
+-- Wishbone protocol : http://cdn.opencores.org/downloads/wbspec_b4.pdf .
+-- It receives a name for error identification, an Intmap of BitVector 8 as initial content.
+-- The storage is byte addressable.
 wishboneStorage
   :: String
   -> I.IntMap (BitVector 8)
-  -> Signal dom (WishboneM2S 4 32)
+  -> Signal dom (WishboneM2S Bytes AddressWidth)
   -> Signal dom (WishboneS2M 4)
-wishboneStorage name initial inputs = wishboneStorage' name state inputs where
+wishboneStorage name initial inputs = wishboneStorage' name state inputs
+ where
   state = (initial, False)
 
 wishboneStorage'
   :: String
   -> (I.IntMap (BitVector 8), Bool)
-  -> Signal dom (WishboneM2S 4 32)
+  -> Signal dom (WishboneM2S Bytes AddressWidth)
   -> Signal dom (WishboneS2M 4)
 wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' inputs')
  where

@@ -49,8 +49,8 @@ data CoreIn
 
 data CoreOut
   = CoreOut
-  { iBusM2S :: "iBusWishbone" ::: WishboneM2S 4 32
-  , dBusM2S :: "dBusWishbone" ::: WishboneM2S 4 32
+  { iBusM2S :: "iBusWishbone" ::: WishboneM2S Bytes AddressWidth
+  , dBusM2S :: "dBusWishbone" ::: WishboneM2S Bytes AddressWidth
   }
 
 coreOut :: CoreOut
@@ -96,8 +96,10 @@ transition ::
   , CoreState )
 -- Fetch + Decode
 transition s@CoreState{stage=InstructionFetch, pc} (CoreIn{iBusS2M},_) = runState' s do
+
   #instruction .= readData iBusS2M
   let DecodedInstruction {rs1,rs2} = decodeInstruction (readData iBusS2M)
+
   #stage .= if err iBusS2M then
               Execute {accessFault = True}
             else if acknowledge iBusS2M then
@@ -163,6 +165,7 @@ transition
         if trap || rd == X0 then
           Nothing
         else (rd,) <$> rdVal
+
   when loadStoreFinished do
     #pc .= pcN1
     #rvfiOrder += 1

@@ -37,9 +37,9 @@ toRVFI ::
   -- | pcN
   PC ->
   -- | dbusM2S
-  WishboneM2S 4 32 ->
+  WishboneM2S Bytes AddressWidth ->
   -- | dbusS2M
-  WishboneS2M 4 ->
+  WishboneS2M Bytes ->
   -- | MISA CRS
   (Maybe MachineWord, MachineWord) ->
   RVFI

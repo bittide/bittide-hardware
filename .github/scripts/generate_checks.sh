@@ -5,6 +5,7 @@ HERE=$(dirname "$0")
 ROOT=$(git rev-parse --show-toplevel)
 
 cd "${ROOT}"
+rm -rf riscv-formal/cores/contranomy
 cp -r riscv-formal-config riscv-formal/cores/contranomy
 sed -i 's/const rand/rand const/g' riscv-formal/checks/rvfi_macros.*
 cd riscv-formal/cores/contranomy

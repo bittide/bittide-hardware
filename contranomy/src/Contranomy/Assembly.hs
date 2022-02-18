@@ -8,6 +8,10 @@ module Contranomy.Assembly where
 import Clash.Prelude
 import Contranomy.Core.SharedTypes
 
+-- See Volume I: RISC-V User-Level ISA V2.2:
+--   2.2 Base Instruction Formats
+--   2.3 Immediate Encoding Variants
+--
 type Rd = BitVector 5
 type Rs1 = BitVector 5
 type Rs2 = BitVector 5
@@ -82,82 +86,85 @@ data Encoding =
  | UType Opcode Rd Imm21U
  | JType Opcode Rd Imm21L
 
+
 instructionToMachineword :: Instruction -> MachineWord
 instructionToMachineword = formatToMachineWord . instructionToFormat
 
 formatToMachineWord :: Encoding -> MachineWord
-formatToMachineWord (RType opcode rd rs1 rs2 funct3 funct7) = funct7 ++# rs2 ++# rs1 ++# funct3 ++# rd ++# opcode
-formatToMachineWord (IType opcode rd rs1 funct3 imm) = imm ++# rs1 ++# funct3 ++# rd ++# opcode
-formatToMachineWord (SType opcode rs1 rs2 funct3 imm) = (slice d11 d5 imm) ++# rs2 ++# rs1 ++# funct3 ++# (slice d4 d0 imm) ++# opcode
-formatToMachineWord (BType opcode rs1 rs2 funct3 imm) = (slice d12 d12 imm) ++# (slice d10 d5 imm) ++# rs2 ++# rs1 ++# funct3 ++# (slice d4 d1 imm) ++# (slice d11 d11 imm) ++# opcode
-formatToMachineWord (UType opcode rd imm) = (slice d31 d12 imm) ++# rd ++# opcode
-formatToMachineWord (JType opcode rd imm) = (slice d20 d20 imm) ++# (slice d10 d1 imm) ++# (slice d11 d11 imm) ++# (slice d19 d12 imm) ++# rd ++# opcode
+formatToMachineWord = \case
+  RType opcode rd rs1 rs2 funct3 funct7 ->
+    funct7 ++# rs2 ++# rs1 ++# funct3 ++# rd ++# opcode
+
+  IType opcode rd rs1 funct3 imm ->
+    imm ++# rs1 ++# funct3 ++# rd ++# opcode
+
+  SType opcode rs1 rs2 funct3 imm ->
+    slice d11 d5 imm ++# rs2 ++# rs1 ++# funct3 ++# slice d4 d0 imm ++# opcode
+
+  BType opcode rs1 rs2 funct3 imm ->
+    slice d12 d12 imm ++# slice d10 d5 imm ++# rs2 ++# rs1 ++# funct3 ++#
+    slice d4 d1 imm ++# slice d11 d11 imm ++# opcode
+
+  UType opcode rd imm ->
+    slice d31 d12 imm ++# rd ++# opcode
+
+  JType opcode rd imm ->
+    slice d20 d20 imm ++# slice d10 d1 imm ++# slice d11 d11 imm ++#
+    slice d19 d12 imm ++# rd ++# opcode
 
 instructionToFormat :: Instruction -> Encoding
-instructionToFormat (LUI     rd imm)              = UType 0b0110111 rd imm
-instructionToFormat (AUIPC   rd imm)              = UType 0b0010111 rd imm
-instructionToFormat (JAL     rd imm)              = JType 0b1100111 rd imm
-instructionToFormat (JALR    rd rs1 imm)          = IType 0b1101111 rd rs1 0b000 imm
-instructionToFormat (BEQ     rs1 rs2 imm)         = BType 0b1100011 rs1 rs2 0b000 imm
-instructionToFormat (BNE     rs1 rs2 imm)         = BType 0b1100011 rs1 rs2 0b001 imm
-instructionToFormat (BLT     rs1 rs2 imm)         = BType 0b1100011 rs1 rs2 0b100 imm
-instructionToFormat (BGE     rs1 rs2 imm)         = BType 0b1100011 rs1 rs2 0b101 imm
-instructionToFormat (BLTU    rs1 rs2 imm)         = BType 0b1100011 rs1 rs2 0b110 imm
-instructionToFormat (BGEU    rs1 rs2 imm)         = BType 0b1100011 rs1 rs2 0b111 imm
-instructionToFormat (LB      rd rs1 imm)          = IType 0b0000011 rd rs1 0b000 imm
-instructionToFormat (LH      rd rs1 imm)          = IType 0b0000011 rd rs1 0b001 imm
-instructionToFormat (LW      rd rs1 imm)          = IType 0b0000011 rd rs1 0b010 imm
-instructionToFormat (LBU     rd rs1 imm)          = IType 0b0000011 rd rs1 0b100 imm
-instructionToFormat (LHU     rd rs1 imm)          = IType 0b0000011 rd rs1 0b101 imm
-instructionToFormat (SB      rs1 rs2 imm)         = SType 0b0100011 rs1 rs2 0b000 imm
-instructionToFormat (SH      rs1 rs2 imm)         = SType 0b0100011 rs1 rs2 0b001 imm
-instructionToFormat (SW      rs1 rs2 imm)         = SType 0b0100011 rs1 rs2 0b010 imm
-instructionToFormat (ADDI    rd rs1 imm)          = IType 0b0010011 rd rs1 0b000 imm
-instructionToFormat (SLTI    rd rs1 imm)          = IType 0b0010011 rd rs1 0b010 imm
-instructionToFormat (SLTIU   rd rs1 imm)          = IType 0b0010011 rd rs1 0b011 imm
-instructionToFormat (XORI    rd rs1 imm)          = IType 0b0010011 rd rs1 0b100 imm
-instructionToFormat (ORI     rd rs1 imm)          = IType 0b0010011 rd rs1 0b110 imm
-instructionToFormat (ANDI    rd rs1 imm)          = IType 0b0010011 rd rs1 0b111 imm
-instructionToFormat (SLLI    rd rs1 shamt)        = RType 0b0010011 rd rs1 shamt 0b001 0b0000000
-instructionToFormat (SRLI    rd rs1 shamt)        = RType 0b0010011 rd rs1 shamt 0b101 0b0000000
-instructionToFormat (SRAI    rd rs1 shamt)        = RType 0b0010011 rd rs1 shamt 0b101 0b0100000
-instructionToFormat (ADD     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b000 0b0000000
-instructionToFormat (SUB     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b000 0b0100000
-instructionToFormat (SLL     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b001 0b0000000
-instructionToFormat (SLT     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b010 0b0000000
-instructionToFormat (SLTU    rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b011 0b0000000
-instructionToFormat (XOR     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b100 0b0000000
-instructionToFormat (SRL     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b101 0b0000000
-instructionToFormat (SRA     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b101 0b0100000
-instructionToFormat (OR      rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b110 0b0000000
-instructionToFormat (AND     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b111 0b0000000
-instructionToFormat (FENCE   rd rs1 pred' succ' fm) = IType 0b0001111 rd rs1 0 (fm ++# pred' ++# succ')
-instructionToFormat (ECALL)                       = IType 0b1110011 0 0 0 0
-instructionToFormat (EBREAK)                      = IType 0b1110011 0 0 0 1
-instructionToFormat (MUL     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b000 0b0000001
-instructionToFormat (MULH    rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b001 0b0000001
-instructionToFormat (MULHSU  rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b010 0b0000001
-instructionToFormat (MULHU   rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b011 0b0000001
-instructionToFormat (DIV     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b100 0b0000001
-instructionToFormat (DIVU    rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b101 0b0000001
-instructionToFormat (REM     rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b110 0b0000001
-instructionToFormat (REMU    rd rs1 rs2)          = RType 0b0110011 rd rs1 rs2 0b111 0b0000001
-
-fibonacci :: [Instruction]
-fibonacci =
-  [ ADDI 0 0 0
-  , ADDI 1 0 7
-  , ADDI 2 0 1
-  , ADD  4 2 3
-  , ADDI 2 3 0
-  , ADDI 3 4 0
-  , ADDI 1 1 (-1)
-  , BGE  1 0 (-16)
-  , SW 0 1 0
-  , SW 0 2 4
-  , SW 0 3 8
-  , SW 0 4 12
-  , DIV 4 4 2
-  , SW 0 4 16
-  , ADDI 0 0 0
-  ]
+instructionToFormat = \case
+  -- Constructors are in order of specification:
+  --   Volume I: RISC-V User-Level ISA V2.2
+  --   Chapter 19: RV32/64G Instruction Set Listings
+  --   Tables: RV32I Base Instruction Set
+  --           RV32M Standard Extension
+  LUI     rd imm       -> UType 0b0110111 rd imm
+  AUIPC   rd imm       -> UType 0b0010111 rd imm
+  JAL     rd imm       -> JType 0b1100111 rd imm
+  JALR    rd rs1 imm   -> IType 0b1101111 rd rs1 0b000 imm
+  BEQ     rs1 rs2 imm  -> BType 0b1100011 rs1 rs2 0b000 imm
+  BNE     rs1 rs2 imm  -> BType 0b1100011 rs1 rs2 0b001 imm
+  BLT     rs1 rs2 imm  -> BType 0b1100011 rs1 rs2 0b100 imm
+  BGE     rs1 rs2 imm  -> BType 0b1100011 rs1 rs2 0b101 imm
+  BLTU    rs1 rs2 imm  -> BType 0b1100011 rs1 rs2 0b110 imm
+  BGEU    rs1 rs2 imm  -> BType 0b1100011 rs1 rs2 0b111 imm
+  LB      rd rs1 imm   -> IType 0b0000011 rd rs1 0b000 imm
+  LH      rd rs1 imm   -> IType 0b0000011 rd rs1 0b001 imm
+  LW      rd rs1 imm   -> IType 0b0000011 rd rs1 0b010 imm
+  LBU     rd rs1 imm   -> IType 0b0000011 rd rs1 0b100 imm
+  LHU     rd rs1 imm   -> IType 0b0000011 rd rs1 0b101 imm
+  SB      rs1 rs2 imm  -> SType 0b0100011 rs1 rs2 0b000 imm
+  SH      rs1 rs2 imm  -> SType 0b0100011 rs1 rs2 0b001 imm
+  SW      rs1 rs2 imm  -> SType 0b0100011 rs1 rs2 0b010 imm
+  ADDI    rd rs1 imm   -> IType 0b0010011 rd rs1 0b000 imm
+  SLTI    rd rs1 imm   -> IType 0b0010011 rd rs1 0b010 imm
+  SLTIU   rd rs1 imm   -> IType 0b0010011 rd rs1 0b011 imm
+  XORI    rd rs1 imm   -> IType 0b0010011 rd rs1 0b100 imm
+  ORI     rd rs1 imm   -> IType 0b0010011 rd rs1 0b110 imm
+  ANDI    rd rs1 imm   -> IType 0b0010011 rd rs1 0b111 imm
+  SLLI    rd rs1 shamt -> RType 0b0010011 rd rs1 shamt 0b001 0b0000000
+  SRLI    rd rs1 shamt -> RType 0b0010011 rd rs1 shamt 0b101 0b0000000
+  SRAI    rd rs1 shamt -> RType 0b0010011 rd rs1 shamt 0b101 0b0100000
+  ADD     rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b000 0b0000000
+  SUB     rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b000 0b0100000
+  SLL     rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b001 0b0000000
+  SLT     rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b010 0b0000000
+  SLTU    rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b011 0b0000000
+  XOR     rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b100 0b0000000
+  SRL     rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b101 0b0000000
+  SRA     rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b101 0b0100000
+  OR      rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b110 0b0000000
+  AND     rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b111 0b0000000
+  FENCE   rd rs1 pred' succ' fm ->
+    IType 0b0001111 rd rs1 0 (fm ++# pred' ++# succ')
+  ECALL                -> IType 0b1110011 0 0 0 0
+  EBREAK               -> IType 0b1110011 0 0 0 1
+  MUL     rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b000 0b0000001
+  MULH    rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b001 0b0000001
+  MULHSU  rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b010 0b0000001
+  MULHU   rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b011 0b0000001
+  DIV     rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b100 0b0000001
+  DIVU    rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b101 0b0000001
+  REM     rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b110 0b0000001
+  REMU    rd rs1 rs2   -> RType 0b0110011 rd rs1 rs2 0b111 0b0000001

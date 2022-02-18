@@ -9,6 +9,7 @@ module Contranomy.Clash.Extra where
 
 import Clash.Prelude
 import Control.Monad.Trans.State
+
 mealyAuto ::
   (HiddenClockResetEnable dom, AutoReg s) =>
   (s -> i -> (o,s)) ->

@@ -46,14 +46,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v1
 
-      - name: Install nodejs
-        run: |
-          apt-get update
-          apt-get install -y nodejs
-
       - name: Set CI flags
         run: |
-          cp .github/cabal.project contranomy/cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -65,18 +60,16 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-            ~/.cabal/packages
             ~/.cabal/store
-            contranomy/dist-newstyle
-            contranomy/verilog
 
-          key: contranomy-${{ hashFiles('contranomy/cabal.project.freeze') }}
-          restore-keys: contranomy-
+          key: contranomy-v2-${{ hashFiles('contranomy/cabal.project.freeze') }}
+          restore-keys: contranomy-v2-
 
       - name: Build Contranomy
         run: |
           cd contranomy
           cabal run clash -- --version
+          cat ../dist-newstyle/cache/plan.json | python3 -m json.tool | grep -C 1 riscv-altopts
 
       - name: Generate HDL
         run: |
