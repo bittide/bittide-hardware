@@ -9,8 +9,8 @@ import Clash.Prelude
 
 import Bittide.Calendar
 import Bittide.DoubleBufferedRAM ( doubleBufferedRAM )
+import Bittide.SharedTypes
 
-type DataLink frameWidth = Maybe (BitVector frameWidth)
 type CalendarEntry memDepth = Index memDepth
 type Calendar calDepth memDepth = Vec calDepth (CalendarEntry memDepth)
 type ConfigurationPort calDepth memDepth = Maybe (Index calDepth, CalendarEntry memDepth)

@@ -74,6 +74,7 @@ library
     Bittide.Calendar
     Bittide.DoubleBufferedRAM
     Bittide.ScatterGather
+    Bittide.SharedTypes
     Bittide.Switch
     Bittide.SharedTypes
 

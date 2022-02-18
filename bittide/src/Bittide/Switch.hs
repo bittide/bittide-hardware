@@ -9,8 +9,8 @@ import Clash.Prelude
 
 import Bittide.Calendar
 import Bittide.ScatterGather (scatterEngine)
-import Clash.Prelude
-type DataLink a = Maybe (BitVector a)
+import Bittide.SharedTypes
+
 type CrossbarIndex links = Index (links+1)
 type CalendarEntry links memDepth = Vec links (Index memDepth, CrossbarIndex links)
 type Calendar calDepth links memDepth = Vec calDepth (CalendarEntry links memDepth)
