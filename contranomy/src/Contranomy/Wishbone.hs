@@ -84,12 +84,17 @@ wishboneS2M SNat
   , err = False
   }
 
+-- | The wishbone storage is a simulation only memory element that communicates via the
+-- Wishbone protocol : http://cdn.opencores.org/downloads/wbspec_b4.pdf .
+-- It receives a name for error identification, an Intmap of BitVector 8 as initial content.
+-- The storage is byte addressable.
 wishboneStorage
   :: String
   -> I.IntMap (BitVector 8)
   -> Signal dom (WishboneM2S Bytes AddressWidth)
   -> Signal dom (WishboneS2M 4)
-wishboneStorage name initial inputs = wishboneStorage' name state inputs where
+wishboneStorage name initial inputs = wishboneStorage' name state inputs
+ where
   state = (initial, False)
 
 wishboneStorage'
