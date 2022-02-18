@@ -131,3 +131,12 @@ jobs:
       - name: Verify ${{ matrix.check }}
         run: |
           .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
+
+  all:
+    name: All jobs finished
+    needs: verify-contranomy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Void
+        run: |
+          echo "All good"
