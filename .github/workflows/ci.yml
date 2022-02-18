@@ -52,7 +52,6 @@ jobs:
 
       - name: Update Cabal index info
         run: |
-          cd contranomy
           cabal update
           cabal freeze
 
@@ -62,7 +61,7 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: contranomy-v2-${{ hashFiles('contranomy/cabal.project.freeze') }}
+          key: contranomy-v2-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: contranomy-v2-
 
       - name: Build Contranomy
