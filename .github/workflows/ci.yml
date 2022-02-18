@@ -63,7 +63,7 @@ jobs:
             ~/.cabal/store
 
           key: contranomy-v2-${{ hashFiles('contranomy/cabal.project.freeze') }}
-          restore-keys: contranomy-
+          restore-keys: contranomy-v2-
 
       - name: Build Contranomy
         run: |
