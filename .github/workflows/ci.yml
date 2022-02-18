@@ -35,7 +35,7 @@ jobs:
           .github/scripts/check_missing_eof_newline.sh
 
   build-contranomy:
-    name: Build Contranomy using Clash
+    name: Build Contranomy using Clash and run unittests
     runs-on: ubuntu-latest
     needs: lint
 
@@ -52,7 +52,6 @@ jobs:
 
       - name: Update Cabal index info
         run: |
-          cd contranomy
           cabal update
           cabal freeze
 
@@ -62,7 +61,7 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: contranomy-v2-${{ hashFiles('contranomy/cabal.project.freeze') }}
+          key: contranomy-v2-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: contranomy-v2-
 
       - name: Build Contranomy
@@ -70,6 +69,11 @@ jobs:
           cd contranomy
           cabal run clash -- --version
           cat ../dist-newstyle/cache/plan.json | python3 -m json.tool | grep -C 1 riscv-altopts
+
+      - name: Run unittests
+        run: |
+          cd contranomy
+          cabal run unittests
 
       - name: Generate HDL
         run: |

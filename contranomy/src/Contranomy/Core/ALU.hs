@@ -15,8 +15,6 @@ module Contranomy.Core.ALU
   , multdiv
   , multdivSim
   , multdivFormal
-  , quotRisc
-  , remRisc
   ) where
 
 import Clash.Prelude
@@ -145,19 +143,28 @@ multdivSim rs1 rs2 = \case
   MULH   -> upper $ pack $ getSigned rs1 * getSigned rs2
   MULHSU -> upper $ pack $ getSigned rs1 * unpack (zeroExtend rs2)
   MULHU  -> upper $ pack $ getUnsigned rs1 * getUnsigned rs2
-  DIV    -> lower $ pack $ getSigned rs1 `quotRisc` getSigned rs2
-  DIVU   -> lower $ pack $ getUnsigned rs1 `quot` getUnsigned rs2
-  REM    -> lower $ pack $ getSigned rs1 `remRisc` getSigned rs2
-  REMU   -> lower $ pack $ getUnsigned rs1 `rem` getUnsigned rs2
 
-quotRisc :: Signed 64 -> Signed 64 -> Signed 64
-quotRisc x y
-  | y == 0                                = -1
-  | x == minBound @(Signed 64) && y == -1 = x
-  | otherwise                             = x `quot` y
+  DIV    -> lower $ pack $ getSigned rs1   `signedQuot`   getSigned rs2
+  DIVU   -> lower $ pack $ getUnsigned rs1 `unsignedQuot` getUnsigned rs2
+  REM    -> lower $ pack $ getSigned rs1   `signedRem`    getSigned rs2
+  REMU   -> lower $ pack $ getUnsigned rs1 `unsignedRem`  getUnsigned rs2
 
-remRisc :: Signed 64 -> Signed 64 -> Signed 64
-remRisc x y
-  | y == 0                                = x
-  | x == minBound @(Signed 64) && y == -1 = -1
-  | otherwise                             = x `rem` y
+unsignedQuot :: KnownNat n => Unsigned n -> Unsigned n -> Unsigned n
+unsignedQuot _ 0 = maxBound
+unsignedQuot x y = x `quot` y
+
+unsignedRem :: KnownNat n => Unsigned n -> Unsigned n -> Unsigned n
+unsignedRem x 0 = x
+unsignedRem x y = x `rem` y
+
+signedQuot :: KnownNat n => Signed n -> Signed n -> Signed n
+signedQuot x y
+  | y == 0                   = -1
+  | x == minBound && y == -1 = x
+  | otherwise                = x `quot` y
+
+signedRem :: KnownNat n => Signed n -> Signed n -> Signed n
+signedRem x y
+  | y == 0                   = x
+  | x == minBound && y == -1 = -1
+  | otherwise                = x `rem` y
