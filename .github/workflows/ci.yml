@@ -132,6 +132,13 @@ jobs:
         run: |
           .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
 
+      - name: Verification failed, uploading results
+        uses: actions/upload-artifact@v2
+        if: failure()
+        with:
+          name: verify-${{ matrix.check }}-failed
+          path: riscv-formal/cores/contranomy/checks/${{ matrix.check }}
+
   all:
     name: All jobs finished
     needs: verify-contranomy
