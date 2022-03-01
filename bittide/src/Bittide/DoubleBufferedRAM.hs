@@ -45,7 +45,7 @@ doubleBufferedRAM initialContent switch readAddr writeFrame = output
 -- This component is double buffered such that it returns the read data from both buffers in a tuple where the first element
 -- contains the read data from the "active" buffer, and the second element contains the read data from the "inactive" buffer.
 -- Writing to this component will always write to the inactive buffer.
-doubleBufferedRAMByteAddressabe :: forall dom memDepth bytes .
+doubleBufferedRAMByteAddressable :: forall dom memDepth bytes .
  (KnownNat bytes, KnownNat memDepth,  HiddenClockResetEnable dom) =>
   -- | The initial contents of the first buffer. The second buffer is undefined.
   Vec memDepth (BitVector (bytes*8)) ->
@@ -58,8 +58,8 @@ doubleBufferedRAMByteAddressabe :: forall dom memDepth bytes .
   -- | One hot byte select for writing only
   Signal dom (BitVector bytes) ->
   -- | Outgoing data
-  Signal dom (BitVector (bytes*8), BitVector (bytes*8))
-doubleBufferedRAMByteAddressabe initialContent switch readAddr writeFrame byteSelect = output
+  Signal dom (BitVector (bytes*8))
+doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteSelect = output
  where
     outputSelect  = register @dom False readSelect
     readSelect    = mux switch (not <$> outputSelect) outputSelect
@@ -70,7 +70,7 @@ doubleBufferedRAMByteAddressabe initialContent switch readAddr writeFrame byteSe
     buffer0       = blockRamByteAddressable initialContent readAddr newEntry0 byteSelect
     buffer1       = blockRamByteAddressable initialContent readAddr newEntry1 byteSelect
 
-    output = mux outputSelect (bundle (buffer1,buffer0)) (bundle (buffer0,buffer1))
+    output = mux outputSelect buffer1 buffer0
 
 blockRamByteAddressable :: forall dom depth bytes .
   (HiddenClockResetEnable dom, KnownNat depth, KnownNat bytes) =>

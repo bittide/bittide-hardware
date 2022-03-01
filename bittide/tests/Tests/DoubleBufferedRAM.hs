@@ -32,7 +32,8 @@ ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRAM group"
   [ testPropertyNamed "Reading the buffer." "readDoubleBufferedRAM" readDoubleBufferedRAM
   , testPropertyNamed "Wriing and reading back buffers." "readWriteDoubleBufferedRAM" readWriteDoubleBufferedRAM
-  , testProperty "Writing and reading back byte addressable blockram." readWriteByteAddressableBlockram]
+  , testProperty "Byte addressable blockram matches behavorial model." readWriteByteAddressableBlockram
+  , testProperty "Byte addressable double buffered RAM matches behavorial model." readWriteByteAddressableDoubleBufferedRAM]
 
 genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
 genRamContents depth = genSomeVec (Range.singleton $ fromIntegral (depth - 1))
@@ -98,7 +99,6 @@ genBlockRamContents depth0 nrOfBytes0 = do
        unsafeFromList <$> Gen.list bytesRange (Gen.integral Range.constantBounded)
       return $ BytesRAM (snatProxy depth) (snatProxy nrOfBytes) $ unsafeFromList contents
 
-
 readWriteByteAddressableBlockram :: Property
 readWriteByteAddressableBlockram = property $ do
   ramDepth <- forAll $ Gen.enum 1 31
@@ -123,6 +123,32 @@ readWriteByteAddressableBlockram = property $ do
         (_,expectedOut) = L.mapAccumL byteAddressableRAMBehaviour (L.head topEntityInput, contents) $ L.tail topEntityInput
       L.drop 2 simOut === L.tail expectedOut
 
+readWriteByteAddressableDoubleBufferedRAM :: Property
+readWriteByteAddressableDoubleBufferedRAM = property $ do
+  ramDepth <- forAll $ Gen.enum 1 31
+  nrOfBytes <- forAll $ Gen.enum 1 10
+  simLength <- forAll $ Gen.enum 2 100
+  ramContents <- forAll $ genBlockRamContents ramDepth nrOfBytes
+  case ramContents of
+    BytesRAM SNat SNat contents -> do
+
+      let
+        simRange = Range.singleton simLength
+        topEntity (unbundle -> (switch, readAddr, writePort, byteSelect)) = withClockResetEnable
+          @System clockGen resetGen enableGen doubleBufferedRAMByteAddressable (pack <$> contents)
+          switch readAddr writePort byteSelect
+      writeAddresses <- forAll $ Gen.list simRange $ Gen.integral Range.constantBounded
+      readAddresses <- forAll $ Gen.list simRange $ Gen.integral Range.constantBounded
+      writeEntries <- forAll (Gen.list simRange $ Gen.maybe $ Gen.integral Range.constantBounded)
+      byteSelectSignal <- forAll $ Gen.list simRange $ Gen.integral Range.constantBounded
+      switchSignal <- forAll $ Gen.list simRange Gen.bool
+      let
+        topEntityInput = L.zip4 switchSignal readAddresses (P.zipWith (\adr wr -> (adr,) <$> wr) writeAddresses writeEntries) byteSelectSignal
+        simOut = simulateN @System simLength topEntity topEntityInput
+        (_,expectedOut) = L.mapAccumL byteAddressableDoubleBufferedRAMBehaviour (L.head topEntityInput, contents, contents) $ L.tail topEntityInput
+      L.drop 2 simOut === L.tail expectedOut
+
+
 byteAddressableRAMBehaviour :: (Num addr, Enum addr, KnownNat depth, KnownNat bytes) =>
   ((addr, WriteOp addr bytes, BitVector bytes), VecVecBytes depth bytes)->
   (addr, WriteOp addr bytes, BitVector bytes) ->
@@ -139,3 +165,23 @@ byteAddressableRAMBehaviour state input = (state', pack $ ram !! readAddr)
 
   ram1 = if writeTrue then replace writeAddr newEntry ram else ram
   state' = (input, ram1)
+
+byteAddressableDoubleBufferedRAMBehaviour ::
+ (Num addr, Enum addr, KnownNat depth, KnownNat bytes) =>
+ ((Bool, addr, WriteOp addr bytes, BitVector bytes), VecVecBytes depth bytes, VecVecBytes depth bytes)->
+ (Bool, addr, WriteOp addr bytes, BitVector bytes) ->
+ (((Bool, addr, WriteOp addr bytes, BitVector bytes), VecVecBytes depth bytes, VecVecBytes depth bytes), BitVector (bytes*8))
+byteAddressableDoubleBufferedRAMBehaviour state input = (state', pack $ bufA0 !! readAddr)
+ where
+  ((switchBuffers, readAddr, writeOp, byteEnable), bufA, bufB) = state
+  (bufA0, bufB0) = if switchBuffers then (bufB, bufA) else (bufA, bufB)
+
+  (writeAddr, writeData) = fromMaybe (0, 0b0) writeOp
+  writeTrue = isJust writeOp
+  oldData = bufB0 !! writeAddr
+
+  newEntry = zipWith (\ sel (old,new) -> if sel then new else old) (unpack byteEnable) $
+   zip oldData (unpack writeData)
+
+  bufB1 = if writeTrue then replace writeAddr newEntry bufB0 else bufB0
+  state' = (input, bufA0, bufB1)
