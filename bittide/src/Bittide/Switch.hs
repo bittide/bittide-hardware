@@ -27,11 +27,10 @@ switch ::
   ( HiddenClockResetEnable dom
   , KnownNat links
   , KnownNat calDepth
-  , KnownNat memDepth
-  , KnownNat frameWidth
-  , 1 <= links
   , 1 <= calDepth
-  , 1 <= memDepth) =>
+  , KnownNat memDepth
+  , 1 <= memDepth
+  , KnownNat frameWidth) =>
   -- | The bootstrap calendar.
   Calendar calDepth links memDepth ->
   -- | Configuration port for the switch calendar (which also controls scatter engines).
@@ -52,7 +51,7 @@ switch bootstrapCal writeCalendar streamsIn = crossBar <$> crossBarConfig <*> st
 -- therefore indexing of incoming links starts at 1 (index 1 selects incoming frame 0).
 -- Source: bittide hardware, switch logic.
 crossBar ::
-  (KnownNat links, 1 <= links) =>
+  (KnownNat links) =>
   Vec links (CrossbarIndex links) ->
   -- | Source selection for each outgoing link, 0 is a null frame, links start at index 1.
   Vec links a ->

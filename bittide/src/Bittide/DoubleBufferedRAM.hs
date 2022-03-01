@@ -46,7 +46,7 @@ doubleBufferedRAM initialContent switch readAddr writeFrame = output
 -- contains the read data from the "active" buffer, and the second element contains the read data from the "inactive" buffer.
 -- Writing to this component will always write to the inactive buffer.
 doubleBufferedRAMByteAddressabe :: forall dom memDepth bytes .
- (KnownNat bytes, KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom) =>
+ (KnownNat bytes, KnownNat memDepth,  HiddenClockResetEnable dom) =>
   -- | The initial contents of the first buffer. The second buffer is undefined.
   Vec memDepth (BitVector (bytes*8)) ->
   -- | Indicates when a new metacycle has started.

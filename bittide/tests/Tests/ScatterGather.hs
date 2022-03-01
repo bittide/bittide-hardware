@@ -41,7 +41,7 @@ isUndefined :: forall n . KnownNat n => BitVector n -> Bool
 isUndefined (BV mask _) = mask == full
  where full = 1 `shiftL` (natToNum @n @Int) - 1
 
-maybeIsUndefined :: (KnownNat n, 1 <= n) => BitVector n -> Maybe (BitVector n)
+maybeIsUndefined :: KnownNat n => BitVector n -> Maybe (BitVector n)
 maybeIsUndefined v  | isUndefined v = Nothing
                     | otherwise     = Just v
 
