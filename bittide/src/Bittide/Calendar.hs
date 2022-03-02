@@ -13,7 +13,6 @@ Maintainer:          devops@qbaylogic.com
 module Bittide.Calendar(calendar, calendarWB) where
 
 import Clash.Prelude
-import Contranomy.Wishbone
 
 import Bittide.DoubleBufferedRAM
 import Bittide.SharedTypes
