@@ -109,7 +109,7 @@ tupMap :: (a -> b) -> (a,a) -> (b,b)
 tupMap f (a, b) = bimap f f (a,b)
 
 filterSGOut ::
-  (KnownDomain dom, KnownNat n, 1 <= n) =>
+  (KnownNat n) =>
   (Signal dom (BitVector n), Signal dom (Maybe (BitVector n))) ->
   (Signal dom (Maybe (BitVector n)), Signal dom (Maybe (BitVector n)))
 filterSGOut (toP, toS) = (maybeIsUndefined <$> toP, (\a -> maybeIsUndefined =<< a) <$> toS)
@@ -135,7 +135,7 @@ scatterGatherNoFrameLoss = property $ do
         inputFramesPE' = inputFramesPE P.++ postFrames depthGath
 
         topEntity (unbundle -> (frameInS, frameInP, readAddrPE, writeAddrPE)) = bundle $
-          filterSGOut @System (withClockResetEnable clockGen resetGen enableGen
+          filterSGOut (withClockResetEnable @System clockGen resetGen enableGen
           scatterGatherEngine calScat calGath (pure Nothing) (pure Nothing) frameInS frameInP
           readAddrPE writeAddrPE)
 

@@ -14,7 +14,7 @@ import Bittide.SharedTypes
 -- are swapped. This signal should be True for the first cycle of every metacycle.
 doubleBufferedRAM ::
   forall dom memDepth a .
-  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
+  (HiddenClockResetEnable dom, KnownNat memDepth, NFDataX a) =>
   -- | The initial contents of the first buffer. The second buffer is undefined.
   Vec memDepth a ->
   -- | Indicates when a new metacycle has started.
@@ -45,23 +45,24 @@ doubleBufferedRAM initialContent switch readAddr writeFrame = output
 -- This component is double buffered such that it returns the read data from both buffers in a tuple where the first element
 -- contains the read data from the "active" buffer, and the second element contains the read data from the "inactive" buffer.
 -- Writing to this component will always write to the inactive buffer.
-doubleBufferedRAMByteAddressable :: forall dom memDepth bytes .
- (KnownNat bytes, KnownNat memDepth,  HiddenClockResetEnable dom) =>
+doubleBufferedRAMByteAddressable ::
+ ( KnownNat depth,  HiddenClockResetEnable dom, KnownNat upperByteWidth, KnownNat extraBytes
+ , BitPack a, BitSize a ~ (upperByteWidth + (extraBytes * 8))) =>
   -- | The initial contents of the first buffer. The second buffer is undefined.
-  Vec memDepth (BitVector (bytes*8)) ->
+  Vec depth a ->
   -- | Indicates when a new metacycle has started.
   Signal dom Bool ->
   -- | Read address.
-  Signal dom (Index memDepth) ->
+  Signal dom (Index depth) ->
   -- | Incoming data frame.
-  Signal dom (Maybe (Index memDepth, BitVector (bytes*8))) ->
+  Signal dom (WriteAny depth a) ->
   -- | One hot byte select for writing only
-  Signal dom (BitVector bytes) ->
+  Signal dom (ByteEnable (extraBytes + 1)) ->
   -- | Outgoing data
-  Signal dom (BitVector (bytes*8))
+  Signal dom a
 doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteSelect = output
  where
-    outputSelect  = register @dom False readSelect
+    outputSelect  = register False readSelect
     readSelect    = mux switch (not <$> outputSelect) outputSelect
     writeSelect   = not <$> readSelect
 
@@ -72,28 +73,33 @@ doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteS
 
     output = mux outputSelect buffer1 buffer0
 
-blockRamByteAddressable :: forall dom depth bytes .
-  (HiddenClockResetEnable dom, KnownNat depth, KnownNat bytes) =>
-  Vec depth (BitVector (bytes*8)) ->
+blockRamByteAddressable ::
+  ( HiddenClockResetEnable dom, KnownNat depth, KnownNat extraBytes, KnownNat upperByteWidth
+  , BitPack a, BitSize a ~ (upperByteWidth + (extraBytes * 8))) =>
+  Vec depth a ->
   Signal dom (Index depth) ->
-  Signal dom (Maybe (Index depth, BitVector (bytes*8))) ->
-  Signal dom (BitVector bytes) ->
-  Signal dom (BitVector (bytes*8))
-blockRamByteAddressable initRAM readAddr newEntry byteSelect = pack <$> bundle outBytes
+  Signal dom (WriteAny depth a) ->
+  Signal dom (ByteEnable (extraBytes + 1)) ->
+  Signal dom a
+blockRamByteAddressable initRAM readAddr newEntry byteSelect = (\u l -> unpack $ u ++# pack l)  <$> upperByte <*> (bundle lowerBytes)
  where
-   initBytes = transpose $ unpack @(Vec bytes (BitVector 8)) . pack <$> initRAM
-   newEntries = unbundle $ splitWrites <$> newEntry <*> byteSelect
-   outBytes = (`blockRam` readAddr) <$> initBytes <*>  newEntries
+   (upperInitBytes, lowerInitBytes) = fmap transpose . unzip $ (fmap unpack . split . pack) <$> initRAM
 
-splitWrites :: forall bytes maxIndex .
-  (KnownNat bytes, KnownNat maxIndex) =>
-  WriteBytes maxIndex bytes ->
-  ByteEnable bytes ->
-  Vec bytes (WriteBytes maxIndex 1)
-splitWrites (Just (addr, bv)) byteSelect = writes
+   (upperEntry, lowerEntries) = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
+   upperByte  = blockRam upperInitBytes readAddr upperEntry
+   lowerBytes = (`blockRam` readAddr) <$> lowerInitBytes <*> (unbundle lowerEntries)
+
+
+splitWriteInBytes :: forall extraBytes upperByteWidth maxIndex writeData .
+  (BitSize writeData ~ (upperByteWidth + (extraBytes * 8)), KnownNat extraBytes, KnownNat upperByteWidth, BitPack writeData) =>
+  WriteAny maxIndex writeData ->
+  ByteEnable (1 + extraBytes) ->
+  (WriteBits maxIndex upperByteWidth, Vec extraBytes (WriteByte maxIndex))
+splitWriteInBytes (Just (addr, writeData)) byteSelect = (upperWrite, lowerWrites)
  where
-   bvs = unpack bv :: Vec bytes (BitVector 8)
-   bools = unpack byteSelect :: Vec bytes Bool
-   writes =   (\ (b,bv') -> if b then Just (addr, bv') else Nothing) <$> zip bools bvs
+   (upperByte, lowerBytes) = split $ pack writeData
+   (upperBool :> lowerBools) = unpack byteSelect :: Vec (extraBytes + 1) Bool
+   lowerWrites =   (\ (b,bv') -> if b then Just (addr, bv') else Nothing) <$> zip lowerBools (unpack lowerBytes)
+   upperWrite = if upperBool then Just (addr, upperByte) else Nothing
 
-splitWrites Nothing _ = repeat Nothing
+splitWriteInBytes Nothing _ = (Nothing, repeat Nothing)

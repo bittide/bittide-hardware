@@ -64,7 +64,7 @@ gatherEngine newMetaCycle frameIn readAddr =
 scatterGatherEngine ::
   forall dom calDepthG calDepthS memDepthG memDepthS frameWidth .
   (KnownNat calDepthS, KnownNat calDepthG, KnownNat memDepthS, KnownNat memDepthG, KnownNat frameWidth,
-  1 <= calDepthG , 1 <= calDepthS, 1 <= memDepthG, 1 <= memDepthS, HiddenClockResetEnable dom) =>
+  1 <= calDepthG , 1 <= calDepthS, HiddenClockResetEnable dom) =>
   -- | Bootstrap calendar gather memory.
   Calendar calDepthS memDepthS ->
   -- | Bootstrap calendar scatter memory.

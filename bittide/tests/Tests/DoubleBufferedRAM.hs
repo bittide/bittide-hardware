@@ -10,7 +10,6 @@ Maintainer:          devops@qbaylogic.com
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 module Tests.DoubleBufferedRAM(ramGroup) where
-
 import Clash.Prelude
 import Clash.Hedgehog.Sized.Vector
 
@@ -83,14 +82,14 @@ type WriteOp addr bytes = Maybe (addr, BitVector (bytes*8))
 type VecVecBytes depth bytes = Vec depth (Vec bytes (BitVector 8))
 
 data BytesRAM where
-  BytesRAM :: SNat depth -> SNat bytes -> VecVecBytes depth bytes -> BytesRAM
+  BytesRAM :: SNat depth -> SNat extraBytes -> VecVecBytes depth (extraBytes+1) -> BytesRAM
 
 instance Show BytesRAM where
   show (BytesRAM SNat SNat c) = show c
 
 genBlockRamContents :: Int -> Int -> Gen BytesRAM
 genBlockRamContents depth0 nrOfBytes0 = do
-  case (TN.someNatVal $ fromIntegral depth0, TN.someNatVal $ fromIntegral nrOfBytes0) of
+  case (TN.someNatVal $ fromIntegral depth0, TN.someNatVal $ fromIntegral nrOfBytes0 - 1) of
     (SomeNat depth, SomeNat nrOfBytes) -> do
       let
         depthRange = Range.singleton depth0
