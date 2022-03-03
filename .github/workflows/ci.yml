@@ -130,7 +130,9 @@ jobs:
 
       - name: Verify ${{ matrix.check }}
         run: |
-          .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
+          if .github/scripts/has_riscv_changes.sh; then
+            .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
+          fi
 
       - name: Verification failed, uploading results
         uses: actions/upload-artifact@v2
