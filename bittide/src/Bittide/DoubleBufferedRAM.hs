@@ -89,7 +89,6 @@ blockRamByteAddressable initRAM readAddr newEntry byteSelect = (\u l -> unpack $
    upperByte  = blockRam upperInitBytes readAddr upperEntry
    lowerBytes = (`blockRam` readAddr) <$> lowerInitBytes <*> (unbundle lowerEntries)
 
-
 splitWriteInBytes :: forall extraBytes upperByteWidth maxIndex writeData .
   (BitSize writeData ~ (upperByteWidth + (extraBytes * 8)), KnownNat extraBytes, KnownNat upperByteWidth, BitPack writeData) =>
   WriteAny maxIndex writeData ->
