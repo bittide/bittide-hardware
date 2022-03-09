@@ -17,7 +17,8 @@ type ConfigurationPort calDepth memDepth = Maybe (Index calDepth, CalendarEntry 
 -- reads data based on an internal counter that runs up to the maximum index and wraps around.
 -- The initial contents are undefined and it returns the contents as valid frame using the
 -- Maybe functor.
-scatterEngine :: forall dom memDepth a .
+scatterEngine ::
+  forall dom memDepth a .
   (NFDataX a, KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom) =>
   -- | Boolean signal indicating when a new metacycle has started.
   Signal dom Bool ->
@@ -37,7 +38,8 @@ scatterEngine newMetaCycle frameIn writeAddr =
 -- writes data based on an internal counter that runs up to the maximum index and wraps around.
 -- The initial contents are undefined and it returns the contents as valid frame using the
 -- Maybe functor.
-gatherEngine :: forall dom memDepth a .
+gatherEngine ::
+  forall dom memDepth a .
   (NFDataX a, KnownNat memDepth, HiddenClockResetEnable dom, 1 <= memDepth) =>
   -- | Boolean signal indicating when a new metacycle has started.
   Signal dom Bool ->
@@ -57,7 +59,8 @@ gatherEngine newMetaCycle frameIn readAddr =
 -- Scattering and gathering data is done using two seperate memory banks with each their own calendar,
 -- the writeAddrSwitch dictate the read and write address on the switch side for the gather and scatter memory respectively.
 -- If the read address for the scatter engine is 0, a null frame (Nothing) will be sent to the switch.
-scatterGatherEngine :: forall dom calDepthG calDepthS memDepthG memDepthS frameWidth .
+scatterGatherEngine ::
+  forall dom calDepthG calDepthS memDepthG memDepthS frameWidth .
   (KnownNat calDepthS, KnownNat calDepthG, KnownNat memDepthS, KnownNat memDepthG, KnownNat frameWidth,
   1 <= calDepthG , 1 <= calDepthS, 1 <= memDepthG, 1 <= memDepthS, HiddenClockResetEnable dom) =>
   -- | Bootstrap calendar gather memory.

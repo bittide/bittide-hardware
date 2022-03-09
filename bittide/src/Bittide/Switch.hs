@@ -18,7 +18,8 @@ type ConfigurationPort calDepth links memDepth =
 -- The crossbar selects one of te scatter engine outputs for every outgoing link, index 0
 -- selects a null frame (Nothing) and higher indexes select read data from the scatter engines.
 -- 1, selects engine 0, 2 select engine 1, etc.
-switch :: forall dom links calDepth memDepth frameWidth .
+switch ::
+  forall dom links calDepth memDepth frameWidth .
   ( HiddenClockResetEnable dom
   , KnownNat links
   , KnownNat calDepth
@@ -40,14 +41,15 @@ switch bootstrapCal writeCalendar streamsIn = crossBar <$> crossBarConfig <*> st
     buffers = scatterEngine newMetaCycle
     streams' = bundle (buffers <$> unbundle streamsIn <*> unbundle gatherConfig)
     counter = register (0 :: (Index calDepth)) $ satSucc SatWrap <$> counter
-    (calendars, newMetaCycle) = unbundle $ calendar bootstrapCal counter writeCalendar
+    (calendars, newMetaCycle) = calendar bootstrapCal counter writeCalendar
     (gatherConfig, crossBarConfig)  = unbundle $ unzip <$> calendars
 
 -- | The crossbar receives a vector of indices and a vector of incoming frames.
 -- For each outgoing link it will select a data source. 0 selects a null frame (Nothing),
 -- therefore indexing of incoming links starts at 1 (index 1 selects incoming frame 0).
 -- Source: bittide hardware, switch logic.
-crossBar :: (KnownNat links, 1 <= links) =>
+crossBar ::
+  (KnownNat links, 1 <= links) =>
   Vec links (CrossbarIndex links) ->
   -- | Source selection for each outgoing link, 0 is a null frame, links start at index 1.
   Vec links a ->
@@ -58,9 +60,9 @@ crossBar calendarEntry inputStreams  = fmap selectChannel calendarEntry
     selectChannel i = (Nothing :> (Just <$> inputStreams)) !! i
 
 calendar :: forall dom links calDepth memDepth .
- (KnownNat calDepth, 1 <= calDepth, KnownNat links, KnownNat memDepth, HiddenClockResetEnable dom) =>
+  (KnownNat calDepth, 1 <= calDepth, KnownNat links, KnownNat memDepth, HiddenClockResetEnable dom) =>
   Calendar calDepth links memDepth ->
   Signal dom (Index calDepth) ->
   Signal dom (Maybe (Index calDepth, CalendarEntry links memDepth)) ->
-  Signal dom (CalendarEntry links memDepth, Bool)
-calendar cal readAddr newEntry = bundle (blockRam cal readAddr newEntry, register False $ (==0) <$> readAddr)
+  (Signal dom (CalendarEntry links memDepth), Signal dom Bool)
+calendar cal readAddr newEntry = (blockRam cal readAddr newEntry, register False $ (==0) <$> readAddr)

@@ -11,7 +11,8 @@ import Clash.Prelude
 -- blockram, but enables the user to write to one part of the ram and read from another.
 -- When the metacycle indicate (the first argument) is True, the read buffer and write buffer
 -- are swapped. This signal should be True for the first cycle of every metacycle.
-doubleBufferedRAM :: forall dom memDepth a .
+doubleBufferedRAM ::
+  forall dom memDepth a .
  (NFDataX a, KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom) =>
   -- | The initial contents of the first buffer. The second buffer is undefined.
   Vec memDepth a ->
