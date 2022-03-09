@@ -74,14 +74,14 @@ doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteS
     output = mux outputSelect buffer1 buffer0
 
 blockRamByteAddressable ::
-  ( HiddenClockResetEnable dom, KnownNat depth, KnownNat extraBytes, KnownNat upperByteWidth
+  ( HiddenClockResetEnable dom, KnownNat depth, KnownNat bytes, bytes ~ (extraBytes + 1), KnownNat upperByteWidth
   , BitPack a, BitSize a ~ (upperByteWidth + (extraBytes * 8))) =>
   Vec depth a ->
   Signal dom (Index depth) ->
   Signal dom (WriteAny depth a) ->
-  Signal dom (ByteEnable (extraBytes + 1)) ->
+  Signal dom (ByteEnable bytes) ->
   Signal dom a
-blockRamByteAddressable initRAM readAddr newEntry byteSelect = (\u l -> unpack $ u ++# pack l)  <$> upperByte <*> (bundle lowerBytes)
+blockRamByteAddressable initRAM readAddr newEntry byteSelect = (\u l -> unpack $ u ++# pack l)  <$> upperByte <*> bundle lowerBytes
  where
    (upperInitBytes, lowerInitBytes) = fmap transpose . unzip $ (fmap unpack . split . pack) <$> initRAM
 
@@ -89,15 +89,15 @@ blockRamByteAddressable initRAM readAddr newEntry byteSelect = (\u l -> unpack $
    upperByte  = blockRam upperInitBytes readAddr upperEntry
    lowerBytes = (`blockRam` readAddr) <$> lowerInitBytes <*> (unbundle lowerEntries)
 
-splitWriteInBytes :: forall extraBytes upperByteWidth maxIndex writeData .
-  (BitSize writeData ~ (upperByteWidth + (extraBytes * 8)), KnownNat extraBytes, KnownNat upperByteWidth, BitPack writeData) =>
+splitWriteInBytes ::
+  (BitSize writeData ~ (upperByteWidth + (extraBytes * 8)), KnownNat bytes, bytes ~ (extraBytes + 1), KnownNat upperByteWidth, BitPack writeData) =>
   WriteAny maxIndex writeData ->
   ByteEnable (1 + extraBytes) ->
   (WriteBits maxIndex upperByteWidth, Vec extraBytes (WriteByte maxIndex))
 splitWriteInBytes (Just (addr, writeData)) byteSelect = (upperWrite, lowerWrites)
  where
    (upperByte, lowerBytes) = split $ pack writeData
-   (upperBool :> lowerBools) = unpack byteSelect :: Vec (extraBytes + 1) Bool
+   (upperBool :> lowerBools) = unpack byteSelect
    lowerWrites =   (\ (b,bv') -> if b then Just (addr, bv') else Nothing) <$> zip lowerBools (unpack lowerBytes)
    upperWrite = if upperBool then Just (addr, upperByte) else Nothing
 
