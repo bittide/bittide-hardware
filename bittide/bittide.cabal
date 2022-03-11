@@ -43,7 +43,7 @@ common common-options
     -- Prelude isn't imported by default as Clash offers Clash.Prelude
     NoImplicitPrelude
   ghc-options:
-    -Wall -Wcompat -Wredundant-constraints
+    -Wall -Wcompat
     -- Plugins to support type-level constraint solving on naturals
     -fplugin GHC.TypeLits.Extra.Solver
     -fplugin GHC.TypeLits.Normalise
