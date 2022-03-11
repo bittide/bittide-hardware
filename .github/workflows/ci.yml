@@ -34,10 +34,9 @@ jobs:
         run: |
           .github/scripts/check_missing_eof_newline.sh
 
-  build-contranomy:
-    name: Build Contranomy using Clash and run unittests
+  build:
+    name: Build dependencies
     runs-on: ubuntu-latest
-    needs: lint
 
     container:
       image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
@@ -61,19 +60,82 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: contranomy-v2-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: contranomy-v2-
+          key: packages-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-
+
+      - name: Build
+        run: |
+          cabal build all --only-dependencies
+
+  contranomy-tests:
+    name: Contranomy tests
+    runs-on: ubuntu-latest
+    needs: [build, lint]
+
+    container:
+      image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/store
+
+          key: packages-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-
+
+      - name: Run unittests
+        run: |
+          cabal run contranomy:unittests
+
+  contranomy-hdl:
+    name: Generate Contranomy HDL
+    runs-on: ubuntu-latest
+    needs: [build, lint]
+
+    container:
+      image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/store
+
+          key: packages-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-
 
       - name: Build Contranomy
         run: |
           cd contranomy
           cabal run clash -- --version
           cat ../dist-newstyle/cache/plan.json | python3 -m json.tool | grep -C 1 riscv-altopts
-
-      - name: Run unittests
-        run: |
-          cd contranomy
-          cabal run unittests
 
       - name: Generate HDL
         run: |
@@ -102,9 +164,9 @@ jobs:
     outputs:
       check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
 
-  verify-contranomy:
+  contranomy-formal-tests:
     name: RISC-V Formal checks
-    needs: build-contranomy
+    needs: contranomy-hdl
     runs-on: ubuntu-latest
 
     container:
@@ -112,7 +174,7 @@ jobs:
 
     strategy:
       matrix:
-        check: ${{ fromJson(needs.build-contranomy.outputs.check_matrix) }}
+        check: ${{ fromJson(needs.contranomy-hdl.outputs.check_matrix) }}
       fail-fast: false
 
     steps:
@@ -141,10 +203,10 @@ jobs:
           name: verify-${{ matrix.check }}-failed
           path: riscv-formal/cores/contranomy/checks/${{ matrix.check }}
 
-  build-and-verify-bittide:
-    name: Build and test Bittide
+  bittide-tests:
+    name: Bittide tests
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [build, lint]
 
     container:
       image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
@@ -155,7 +217,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project bittide/cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -168,12 +230,8 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: bittide-v1-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: bittide-v1-
-
-      - name: Build
-        run: |
-          cabal build bittide
+          key: packages-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-
 
       - name: Unittests
         run : |
@@ -182,10 +240,9 @@ jobs:
 
   all:
     name: All jobs finished
-    needs: verify-contranomy
+    needs: [contranomy-formal-tests, contranomy-tests, bittide-tests]
     runs-on: ubuntu-latest
     steps:
       - name: Void
         run: |
           echo "All good"
-          .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
