@@ -141,18 +141,8 @@ jobs:
           name: verify-${{ matrix.check }}-failed
           path: riscv-formal/cores/contranomy/checks/${{ matrix.check }}
 
-  all:
-    name: All jobs finished
-    needs: verify-contranomy
-    runs-on: ubuntu-latest
-    steps:
-      - name: Void
-        run: |
-          echo "All good"
-          .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
-
-  test-bittide-components:
-    name: Run Bittide component unit tests.
+  build-and-verify-bittide:
+    name: Build and test Bittide
     runs-on: ubuntu-latest
     needs: lint
 
@@ -162,11 +152,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v1
-
-      - name: Install nodejs
-        run: |
-          apt-get update
-          apt-get install -y nodejs
 
       - name: Set CI flags
         run: |
@@ -186,10 +171,21 @@ jobs:
           key: bittide-v1-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: bittide-v1-
 
-      - name: Build bittide
+      - name: Build
         run: |
-          cd bittide
-          cabal build
-      - name: Run Bittide unit tests.
+          cabal build bittide
+
+      - name: Unittests
         run : |
-          cabal run -- unittests
+          cabal run -- bittide:unittests
+
+
+  all:
+    name: All jobs finished
+    needs: verify-contranomy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Void
+        run: |
+          echo "All good"
+          .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}

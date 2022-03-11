@@ -17,7 +17,6 @@ import qualified GHC.TypeNats as TN
 import qualified Prelude as P
 import qualified Data.List as L
 import qualified Data.Set as Set
-import Clash.Explicit.Prelude (snatProxy)
 
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRAM group"
