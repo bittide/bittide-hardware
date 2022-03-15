@@ -2,6 +2,8 @@
 {-# LANGUAGE TypeApplications #-}
 module Bittide.SharedTypes where
 import Clash.Prelude
+import Data.Type.Equality ((:~:)(Refl))
+import Data.Proxy
 
 import Data.Proxy
 import Data.Type.Equality ((:~:)(Refl))

@@ -18,8 +18,6 @@ import Bittide.DoubleBufferedRAM
 import Bittide.SharedTypes
 import Contranomy.Wishbone
 import Data.Maybe
-import Data.Proxy
-import Data.Type.Equality ((:~:)(Refl))
 
 -- | The calendar component is a double buffered memory component that sequentially reads
 -- entries from one buffer and offers a write interface to the other buffer. The buffers can
