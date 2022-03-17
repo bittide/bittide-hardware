@@ -35,6 +35,15 @@ instance (AtLeastOne regSize, Paddable content) => NFDataX (RegisterBank regSize
   rnfX = rnfX
   ensureSpine = id
 
+instance (KnownNat regSize, 1 <= regSize ) => ShowX (RegisterBank regSize content) where
+  showX (RegisterBank _ _ v) = showX v
+  showsPrecX i (RegisterBank _ _ v) = showsPrecX i v
+
+instance (AtLeastOne regSize, Paddable content) => NFDataX (RegisterBank regSize content) where
+  deepErrorX str = paddedToRegisters @regSize @content $ padData (deepErrorX str)
+  hasUndefined (RegisterBank _ _ v) = hasUndefined v
+  rnfX = rnfX
+  ensureSpine = id
 -- | Data type that ensures a fits in a register bank of size (n * bw), by
 -- padding it with p bits.
 data Padded bw a where
