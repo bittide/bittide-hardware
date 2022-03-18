@@ -18,7 +18,8 @@ type NatRequiredBits n = CLog 2 (n + 1)
 type Paddable a = (BitPack a, NFDataX a, 1 <= BitSize a)
 type TypeRequiredRegisters t regSize = DivRU (BitSize t) regSize
 type WriteAny maxIndex writeData = Maybe (Index maxIndex, writeData)
-
+type WriteBits maxIndex bits = Maybe (Index maxIndex, BitVector bits)
+type WriteByte maxIndex = Maybe (Index maxIndex, BitVector 8)
 -- | Vector of registors that stores data coming from a communication bus. It can be used
 -- to store any arbitrary data type, the last register is padded with p bits. The number of
 -- registers and the amount of padding depends on the bit size of the stored data.
@@ -35,15 +36,6 @@ instance (AtLeastOne regSize, Paddable content) => NFDataX (RegisterBank regSize
   rnfX = rnfX
   ensureSpine = id
 
-instance (KnownNat regSize, 1 <= regSize ) => ShowX (RegisterBank regSize content) where
-  showX (RegisterBank _ _ v) = showX v
-  showsPrecX i (RegisterBank _ _ v) = showsPrecX i v
-
-instance (AtLeastOne regSize, Paddable content) => NFDataX (RegisterBank regSize content) where
-  deepErrorX str = paddedToRegisters @regSize @content $ padData (deepErrorX str)
-  hasUndefined (RegisterBank _ _ v) = hasUndefined v
-  rnfX = rnfX
-  ensureSpine = id
 -- | Data type that ensures a fits in a register bank of size (n * bw), by
 -- padding it with p bits.
 data Padded bw a where

@@ -76,7 +76,6 @@ library
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Switch
-    Bittide.SharedTypes
 
 executable clash
   import: common-options

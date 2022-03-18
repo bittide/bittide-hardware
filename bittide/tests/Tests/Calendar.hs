@@ -94,8 +94,6 @@ readCalendar = property $ do
 
       Set.fromList simOut === Set.fromList (toList cal)
 
-indexOf :: (KnownNat n) => SNat (n+1) -> Index (n+1)
-indexOf = fromSNat . predSNat
 -- | This test checks if we can write to the shadowbuffer and read back the written
 -- elements later.
 reconfigCalendar :: Property

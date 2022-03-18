@@ -23,6 +23,7 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 import qualified Data.List as L
 import qualified Data.Set as Set
+import qualified GHC.TypeNats as TN
 import qualified Prelude as P
 
 deriving instance (Show a) => Show (SomeVec 1 a)
