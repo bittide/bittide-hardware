@@ -74,22 +74,23 @@ switchFrameRoutingWorks = property $ do
       let
         depth = 1 + snatToNum d
         links = 1 + snatToNum l
-      simLength <- forAll $ (\l' -> l'*depth + 2) <$> Gen.enum 0 10
+      simLength <- forAll $ (\l' -> l'*depth + 1) <$> Gen.enum 0 10
 
       let
-        outputLength = simLength - depth - 2
+        outputLength = simLength - depth - 1
+
         genFrame = Just <$> Gen.integral Range.linearBounded
         allLinks = Gen.list (Range.singleton links) genFrame
       allInputCycles <- forAll $ Gen.list (Range.singleton outputLength) allLinks
 
       let
         inputNothings = P.replicate links Nothing
-        topEntityInput = inputNothings : allInputCycles P.++ P.repeat inputNothings
+        topEntityInput = allInputCycles P.++ P.repeat inputNothings
         topEntity = exposeClockResetEnable (switch @System @_ @_ @_ @64)
           clockGen resetGen enableGen
         testBench inp = topEntity cal (pure Nothing) inp
         simOut = simulateN @System simLength testBench $ fmap unsafeFromList topEntityInput
-        simOut' = P.drop (depth + 2) $ fmap toList simOut
+        simOut' = P.drop (simLength - outputLength) $ fmap toList simOut
 
       let expectedOutput = P.concat $ P.take outputLength allInputCycles
       footnote . fromString $ "expected:" <> showX expectedOutput

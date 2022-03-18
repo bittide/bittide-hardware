@@ -4,8 +4,12 @@ License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
 module Bittide.Switch (switch) where
-import Bittide.ScatterGather (scatterEngine)
+
 import Clash.Prelude
+
+import Bittide.Calendar
+import Bittide.ScatterGather (scatterEngine)
+
 type DataLink a = Maybe (BitVector a)
 type CrossbarIndex links = Index (links+1)
 type CalendarEntry links memDepth = Vec links (Index memDepth, CrossbarIndex links)
@@ -40,8 +44,7 @@ switch bootstrapCal writeCalendar streamsIn = crossBar <$> crossBarConfig <*> st
   where
     buffers = scatterEngine newMetaCycle
     streams' = bundle (buffers <$> unbundle streamsIn <*> unbundle gatherConfig)
-    counter = register (0 :: (Index calDepth)) $ satSucc SatWrap <$> counter
-    (calendars, newMetaCycle) = calendar bootstrapCal counter writeCalendar
+    (calendars, newMetaCycle) = unbundle $ calendar bootstrapCal (pure False) writeCalendar
     (gatherConfig, crossBarConfig)  = unbundle $ unzip <$> calendars
 
 -- | The crossbar receives a vector of indices and a vector of incoming frames.
@@ -58,11 +61,3 @@ crossBar ::
 crossBar calendarEntry inputStreams  = fmap selectChannel calendarEntry
   where
     selectChannel i = (Nothing :> (Just <$> inputStreams)) !! i
-
-calendar :: forall dom links calDepth memDepth .
-  (KnownNat calDepth, 1 <= calDepth, KnownNat links, KnownNat memDepth, HiddenClockResetEnable dom) =>
-  Calendar calDepth links memDepth ->
-  Signal dom (Index calDepth) ->
-  Signal dom (Maybe (Index calDepth, CalendarEntry links memDepth)) ->
-  (Signal dom (CalendarEntry links memDepth), Signal dom Bool)
-calendar cal readAddr newEntry = (blockRam cal readAddr newEntry, register False $ (==0) <$> readAddr)
