@@ -26,7 +26,7 @@ scatterEngine ::
   Signal dom (Maybe a) ->
   -- | Write address, when the incoming frame contains Just a, a will be written to this address.
   Signal dom (Index memDepth) ->
-  -- | Outgoing data
+  -- | Data at the read address, delayed by one clock cycle.
   Signal dom a
 scatterEngine newMetaCycle frameIn writeAddr =
   doubleBufferedRAM (deepErrorX "scatterEngine undefined") newMetaCycle readAddr writeFrame
@@ -47,7 +47,7 @@ gatherEngine ::
   Signal dom (Maybe a) ->
   -- | Read address.
   Signal dom (Index memDepth) ->
-  -- | Outgoing data
+  -- | Data at the read address, delayed by one clock cycle.
   Signal dom a
 gatherEngine newMetaCycle frameIn readAddr =
   doubleBufferedRAM (deepErrorX "gatherEngine undefined") newMetaCycle readAddr writeFrame
@@ -80,13 +80,13 @@ scatterGatherEngine ::
   -- | Write address for the PE link.
   Signal dom (Index memDepthG) ->
   -- | Tuple containing the frame read by the switch and the data read by the PE.
-  Signal dom (BitVector frameWidth, DataLink frameWidth)
+  (Signal dom (BitVector frameWidth),Signal dom (DataLink frameWidth))
 scatterGatherEngine bootCalS bootCalG scatterConfig gatherConfig
- frameInSwitch frameInPE readAddrPE writeAddrPE = bundle (toPE, toSwitch)
+ frameInSwitch frameInPE readAddrPE writeAddrPE = (toPE, toSwitch)
   where
     -- Scatter engine
     frameInSwitch' = mux ((==0) <$> writeAddrSwitch) (pure Nothing) frameInSwitch
-    (writeAddrSwitch, newMetaCycleS) = unbundle $ calendar bootCalS (pure False) scatterConfig
+    (writeAddrSwitch, newMetaCycleS) = calendar bootCalS (pure False) scatterConfig
     writeFrameSwitch = (\f a -> fmap (a,) f) <$> frameInSwitch' <*> writeAddrSwitch
     scatterOut = doubleBufferedRAM (deepErrorX "scatterOut undefined")
       newMetaCycleS readAddrPE writeFrameSwitch
@@ -94,7 +94,7 @@ scatterGatherEngine bootCalS bootCalG scatterConfig gatherConfig
 
     -- Gather engine
     frameInPE' = mux ((==0) <$> writeAddrPE) (pure Nothing) frameInPE
-    (readAddrSwitch, newMetaCycleG) = unbundle $ calendar bootCalG (pure False) gatherConfig
+    (readAddrSwitch, newMetaCycleG) = calendar bootCalG (pure False) gatherConfig
     writeFramePE = (\f a -> fmap (a,) f) <$> frameInPE' <*> writeAddrPE
     gatherOut = doubleBufferedRAM (deepErrorX "gatherOut undefined")
       newMetaCycleG readAddrSwitch writeFramePE

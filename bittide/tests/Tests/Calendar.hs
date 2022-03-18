@@ -49,7 +49,7 @@ readCalendar = property $ do
   case intCal of
     IntCalendar SNat cal -> do
       let
-        topEntity switch = withClockResetEnable clockGen resetGen enableGen $ fst <$> calendar cal switch (pure Nothing)
+        topEntity switch = withClockResetEnable clockGen resetGen enableGen $ fst (calendar cal switch (pure Nothing))
         simOut = simulateN @System (fromIntegral simLength) topEntity switchSignal
       Set.fromList simOut === Set.fromList (toList cal)
 
@@ -71,7 +71,7 @@ reconfigCalendar = property $ do
         switchList = P.drop 2 . cycle $ True : P.replicate (calSize-1) False
         configAddresses = fmap fromIntegral $ cycle [0..(calSize - 1)]
         topEntity (unbundle -> (switch, writePort)) = withClockResetEnable clockGen
-          resetGen enableGen $ fst <$> calendar cal switch writePort
+          resetGen enableGen $ fst (calendar cal switch writePort)
         topEntityInput = P.take simLength $ P.zip switchList (P.zipWith (curry Just) configAddresses newEntries <> P.repeat Nothing)
         simOut = simulateN @System simLength topEntity topEntityInput
       Set.fromList simOut === Set.fromList (P.take (fromIntegral simLength) (toList cal <> newEntries))
@@ -87,7 +87,7 @@ metaCycleIndication = property $ do
       simLength <- forAll $ Gen.enum 1 100
       let
         topEntity (unbundle -> (switch, writePort)) = withClockResetEnable clockGen
-          resetGen enableGen $ snd <$> calendar cal switch writePort
+          resetGen enableGen $ snd (calendar cal switch writePort)
         writeGen = Gen.maybe $ (,) <$> Gen.enum 0 (fromIntegral $ calSize - 1) <*> Gen.int Range.constantBounded
       topEntityInput <- forAll . Gen.list (Range.singleton simLength) $ (,) <$> Gen.bool <*> writeGen
       let

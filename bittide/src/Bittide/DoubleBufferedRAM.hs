@@ -3,8 +3,6 @@ Copyright:           Copyright © 2022, Google LLC
 License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=0 #-}
-{-# LANGUAGE PartialTypeSignatures #-}
 module Bittide.DoubleBufferedRAM where
 import Clash.Prelude
 -- | The double buffered RAM component is a memory component that internally uses a single
@@ -13,7 +11,7 @@ import Clash.Prelude
 -- are swapped. This signal should be True for the first cycle of every metacycle.
 doubleBufferedRAM ::
   forall dom memDepth a .
- (NFDataX a, KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom) =>
+  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
   -- | The initial contents of the first buffer. The second buffer is undefined.
   Vec memDepth a ->
   -- | Indicates when a new metacycle has started.
@@ -26,13 +24,15 @@ doubleBufferedRAM ::
   Signal dom a
 doubleBufferedRAM initialContent switch readAddr writeFrame = output
   where
-    outputSelect  = register @dom False readSelect
-    readSelect    = mux switch (not <$> outputSelect) outputSelect
-    writeSelect   = not <$> readSelect
+    outputSelect = register False readSelect
+    readSelect = mux switch (not <$> outputSelect) outputSelect
+    writeSelect = not <$> readSelect
 
-    writeEntries bufSelect frame = if bufSelect then (Nothing, frame) else (frame, Nothing)
+    writeEntries bufSelect frame
+      | bufSelect = (Nothing, frame)
+      | otherwise = (frame, Nothing)
     (newEntry0, newEntry1) = unbundle (writeEntries <$> writeSelect <*> writeFrame)
-    buffer0       = blockRam initialContent readAddr newEntry0
-    buffer1       = blockRam initialContent readAddr newEntry1
+    buffer0 = blockRam initialContent readAddr newEntry0
+    buffer1 = blockRam initialContent readAddr newEntry1
 
-    output  = mux outputSelect buffer1 buffer0
+    output = mux outputSelect buffer1 buffer0

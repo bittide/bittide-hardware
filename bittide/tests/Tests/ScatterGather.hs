@@ -107,8 +107,12 @@ tupMap :: (a -> b) -> (a,a) -> (b,b)
 tupMap f (a, b) = bimap f f (a,b)
 
 
-filterSGOut :: (KnownNat n, 1 <= n) => (BitVector n, Maybe (BitVector n)) -> (Maybe (BitVector n), Maybe (BitVector n))
-filterSGOut (toP, toS) = (maybeIsUndefined toP, maybeIsUndefined =<< toS)
+filterSGOut ::
+  (KnownDomain dom, KnownNat n, 1 <= n) =>
+  (Signal dom (BitVector n), Signal dom (Maybe (BitVector n))) ->
+  (Signal dom (Maybe (BitVector n)), Signal dom (Maybe (BitVector n)))
+filterSGOut (toP, toS) = (maybeIsUndefined <$> toP, (\a -> maybeIsUndefined =<< a) <$> toS)
+
 filterZeroes :: (Num a, Eq a) => [Maybe f] -> [a] -> [Maybe f]
 filterZeroes fs as = [ if a == 0 then Nothing else f | (f, a) <- P.zip fs as]
 
@@ -129,10 +133,10 @@ scatterGatherNoFrameLoss = property $ do
         inputFramesSwitch' = inputFramesSwitch <> postFrames depthScat
         inputFramesPE' = inputFramesPE P.++ postFrames depthGath
 
-        topEntity (unbundle -> (frameInS, frameInP, readAddrPE, writeAddrPE)) =
-          filterSGOut <$> withClockResetEnable @System clockGen resetGen enableGen
+        topEntity (unbundle -> (frameInS, frameInP, readAddrPE, writeAddrPE)) = bundle $
+          filterSGOut @System (withClockResetEnable clockGen resetGen enableGen
           scatterGatherEngine calScat calGath (pure Nothing) (pure Nothing) frameInS frameInP
-          readAddrPE writeAddrPE
+          readAddrPE writeAddrPE)
 
         maxCalDepth = max (snatToNum depthScat) (snatToNum depthGath)
         simLength = 2 + maxCalDepth + max (P.length inputFramesSwitch) (P.length inputFramesPE)

@@ -21,8 +21,8 @@ calendar ::
   -- | New entry for the calendar.
   Signal dom (Maybe (Index calDepth, a)) ->
   -- | Active calendar entry and signal that indicates the start of a new metacycle.
-  Signal dom (a, Bool)
-calendar bootStrapCal shadowSwitch writeEntry = bundle (entryOut, newMetaCycle)
+  (Signal dom a, Signal dom Bool)
+calendar bootStrapCal shadowSwitch writeEntry = (entryOut, newMetaCycle)
   where
     firstCycle = register True $ pure False
     entryOut = mux firstCycle (pure $ bootStrapCal !! (0 :: Integer)) readEntry

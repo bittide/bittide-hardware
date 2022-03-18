@@ -44,7 +44,7 @@ switch bootstrapCal writeCalendar streamsIn = crossBar <$> crossBarConfig <*> st
   where
     buffers = scatterEngine newMetaCycle
     streams' = bundle (buffers <$> unbundle streamsIn <*> unbundle gatherConfig)
-    (calendars, newMetaCycle) = unbundle $ calendar bootstrapCal (pure False) writeCalendar
+    (calendars, newMetaCycle) = calendar bootstrapCal (pure False) writeCalendar
     (gatherConfig, crossBarConfig)  = unbundle $ unzip <$> calendars
 
 -- | The crossbar receives a vector of indices and a vector of incoming frames.
