@@ -72,6 +72,8 @@ common common-options
 library
   import: common-options
   hs-source-dirs: src
+  exposed-modules:
+    Bittide.DoubleBufferedRAM
 
 executable clash
   import: common-options
@@ -83,6 +85,8 @@ test-suite unittests
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: UnitTests.hs
+  other-modules:
+    Tests.DoubleBufferedRAM
   default-extensions:
     ImplicitPrelude
   build-depends:
