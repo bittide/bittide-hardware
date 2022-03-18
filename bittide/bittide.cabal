@@ -74,6 +74,7 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
+    Bittide.Calendar
     Bittide.DoubleBufferedRAM
 
 executable clash
@@ -87,6 +88,7 @@ test-suite unittests
   type: exitcode-stdio-1.0
   main-is: UnitTests.hs
   other-modules:
+    Tests.Calendar
     Tests.DoubleBufferedRAM
   default-extensions:
     ImplicitPrelude
