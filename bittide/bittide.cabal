@@ -99,6 +99,6 @@ test-suite unittests
   build-depends:
     bittide,
     clash-prelude-hedgehog >= 1.6 && < 1.7,
-    hedgehog >= 1.0 && < 1.1,
+    hedgehog >= 1.0 && < 1.2,
     tasty >= 1.2 && <1.4,
     tasty-hedgehog >= 1.2 && < 1.3,
