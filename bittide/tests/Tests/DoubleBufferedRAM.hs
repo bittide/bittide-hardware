@@ -4,24 +4,27 @@ License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Tests.DoubleBufferedRAM(ramGroup) where
+
 import Clash.Prelude
+
 import Bittide.DoubleBufferedRAM
+import Clash.Sized.Vector ( unsafeFromList )
 import Hedgehog
+import Hedgehog.Gen as Gen
+import Hedgehog.Range as Range
 import Test.Tasty
 import Test.Tasty.Hedgehog
-import Hedgehog.Gen as Gen
-import Clash.Sized.Vector ( unsafeFromList )
-import Hedgehog.Range as Range
-import qualified GHC.TypeNats as TN
-import qualified Prelude as P
 import qualified Data.List as L
 import qualified Data.Set as Set
+import qualified GHC.TypeNats as TN
+import qualified Prelude as P
 
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRAM group"
-  [ testProperty "Reading the buffer." readDoubleBufferedRAM
-  , testProperty "Wriing and reading back buffers." readWriteDoubleBufferedRAM]
+  [ testPropertyNamed "Reading the buffer." "readDoubleBufferedRAM" readDoubleBufferedRAM
+  , testPropertyNamed "Wriing and reading back buffers." "readWriteDoubleBufferedRAM" readWriteDoubleBufferedRAM]
 
 -- | RamContents is a data type containing a Vec (extra + n) Int, this can be used to
 -- safisfy the 1 <= size constraints imposed by the topEntities.
