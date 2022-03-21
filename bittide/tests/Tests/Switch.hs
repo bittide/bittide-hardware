@@ -3,10 +3,15 @@ Copyright:           Copyright © 2022, Google LLC
 License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
+
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Tests.Switch(switchGroup) where
-import Bittide.Switch
+
 import Clash.Prelude
+
+import Bittide.Switch
 import Clash.Sized.Vector ( unsafeFromList)
 import Data.Maybe
 import Data.String
@@ -18,9 +23,10 @@ import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import qualified Prelude as P
+
 switchGroup :: TestTree
 switchGroup = testGroup "Switch group"
-  [testProperty "Routing works" switchFrameRoutingWorks]
+  [testPropertyNamed "Routing works" "switchFrameRoutingWorks" switchFrameRoutingWorks]
 
 data SwitchCalendar extra where
   SwitchCalendar :: (1 <= (extra + links), 1 <= (extra + depth)) =>
@@ -30,7 +36,6 @@ data SwitchCalendar extra where
 
 instance Show (SwitchCalendar extra) where
   show (SwitchCalendar SNat SNat list) = show list
-
 
 -- | This generator generates a calendar for the switch that has the following properties:
 -- - The depth of the scatter memories is equal to the depth of the calendar.
