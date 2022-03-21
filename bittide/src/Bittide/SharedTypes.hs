@@ -10,6 +10,7 @@ import Data.Type.Equality ((:~:)(Refl))
 type AtLeastOne n = (KnownNat n, 1 <= n)
 type ByteEnable bytes = BitVector bytes
 type DataLink frameWidth = Maybe (BitVector frameWidth)
+type LessThan a b = (KnownNat a, KnownNat b, a <= b)
 type NatFitsInBits n bits = NatRequiredBits n <= bits
 type NatRequiredBits n = CLog 2 (n + 1)
 type Paddable a = (BitPack a, NFDataX a, 1 <= BitSize a)

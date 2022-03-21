@@ -6,16 +6,18 @@ Maintainer:          devops@qbaylogic.com
 {-# OPTIONS_GHC -fconstraint-solver-iterations=8 #-}
 
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Bittide.Calendar(calendar, wbCalRX) where
+module Bittide.Calendar(calendar, calendarWB) where
 
 import Clash.Prelude
 
 import Bittide.DoubleBufferedRAM
 import Bittide.SharedTypes
 import Contranomy.Wishbone
+import Data.Maybe
 
 -- | The calendar component is a double buffered memory component that sequentially reads
 -- entries from one buffer and offers a write interface to the other buffer. The buffers can
@@ -40,6 +42,146 @@ calendar bootStrapCal shadowSwitch writeEntry = (entryOut, newMetaCycle)
     counter = register (0 :: (Index calDepth)) counter'
     counter' = satSucc SatWrap <$> counter
     newMetaCycle = fmap not firstCycle .&&. (==0) <$> counter
+
+-- | Datastructure that contains the state of the calendar excluding the buffers.
+-- It stores the depths of the active and shadow calendar, the read pointer, buffer selector
+-- and a register for first cycle behaviour.
+data CalendarState maxCalDepth = CalendarState
+  { firstCycle      :: Bool
+    -- ^ is True after reset, becomes false after first cycle.
+  , selectedBuffer  :: SelectedBuffer
+    -- ^ Indicates if buffer A or B is active.
+  , entryTracker    :: Index maxCalDepth
+    -- ^ Read point for the active calendar.
+  , calDepthA       :: Index maxCalDepth
+    -- ^ Depth of buffer A.
+  , calDepthB       :: Index maxCalDepth
+    -- ^ Depth of buffer B.
+  } deriving (Generic, NFDataX)
+
+-- | Datastructure contains the current active calendar entry along with the metacycle
+-- indicator that are provided at the output of the the calendar component. Furthermore
+-- it contains the shadow entry and depth of the shadow calendar which are provided
+-- to the wishbone output hardware (wbCalTX).
+data CalendarOutput calDepth calEntry = CalendarOutput
+  { activeEntry   :: calEntry
+    -- ^ Current active entry.
+  , newMetaCycle  :: Bool
+    -- ^ True when entry 0 of the active calendar is present at the output.
+  , shadowEntry   :: calEntry
+    -- ^ Current shadow entry
+  , shadowDepth   :: Index calDepth
+    -- ^ Depth of currenty shadow calendar.
+  }
+
+-- | Datastructure which contains the read and write operations for both buffers.
+data BufferControl calDepth calEntry = BufferControl
+  { readA   :: Index calDepth
+    -- ^ Read address for buffer A.
+  , writeA  :: WriteAny calDepth calEntry
+    -- ^ Write operation for buffer B.
+  , readB   :: Index calDepth
+    -- ^ Read address for buffer B
+  , writeB  :: WriteAny calDepth calEntry
+    -- ^ Write operation for buffer B.
+  }
+
+-- | Indicates which buffer is currently active.
+data SelectedBuffer = A | B deriving (Eq, Generic, NFDataX)
+bufToggle :: Bool -> SelectedBuffer -> SelectedBuffer
+bufToggle tog bufs = if tog then switchBufs bufs else bufs
+switchBufs :: SelectedBuffer -> SelectedBuffer
+switchBufs A = B
+switchBufs B = A
+
+-- | Hardware component that stores an active bittide calendar and a shadow bittide calendar.
+-- The entries of the active calendar will be sequantially provided at the output,
+-- the shadow calendar can be read from and written to through the wishbone interface.
+calendarWB ::
+  forall dom bytes aw maxCalDepth calEntry bootstrapSizeA bootstrapSizeB .
+  ( HiddenClockResetEnable dom
+  , KnownNat bytes
+  , KnownNat aw
+  , LessThan bootstrapSizeA maxCalDepth
+  , LessThan bootstrapSizeB maxCalDepth
+  , Paddable calEntry
+  , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) aw
+  , ShowX calEntry
+  , Show calEntry) =>
+  SNat maxCalDepth
+  -- ^ The maximum amount of entries that can be stored in the individual calendars.
+  -> Vec bootstrapSizeA calEntry
+  -- ^ Bootstrap calendar for the active buffer.
+  -> Vec bootstrapSizeB calEntry
+  -- ^ Bootstrap calendar for the shadow buffer.
+  -> Signal dom Bool
+  -- ^ Signal that swaps the active and shadow calendar. (1 cycle delay)
+  -> Signal dom (WishboneM2S bytes aw)
+  -- ^ Incoming wishbone interface
+  -> Signal dom (calEntry, Bool)
+  -- ^ Currently active entry, Metacycle indicator and outgoing wishbone interface.
+calendarWB SNat bootstrapActive bootstrapShadow shadowSwitch wbIn = bundle
+  (activeEntry <$> calOut, newMetaCycle <$> calOut)
+ where
+  ctrl :: Signal dom (CalendarControl maxCalDepth calEntry bytes)
+  ctrl = wbCalRX wbIn
+
+  bootstrapA = bootstrapActive ++ repeat @(maxCalDepth - bootstrapSizeA) (errorX "Uninitialised active entry")
+  bootstrapB = bootstrapShadow ++ repeat @(maxCalDepth - bootstrapSizeB) (errorX "Uninitialised shadow entry")
+
+  bufA = blockRam bootstrapA (readA <$> bufCtrl) (writeA <$> bufCtrl)
+  bufB = blockRam bootstrapB  (readB <$> bufCtrl) (writeB <$> bufCtrl)
+
+  (bufCtrl, calOut) = unbundle $
+   mealy go initState $ bundle (shadowSwitch, ctrl, bufA, bufB)
+
+  initState = CalendarState
+    { firstCycle     = True
+    , selectedBuffer = A
+    , entryTracker   = 0
+    , calDepthA      = fromSNat $ SNat @(bootstrapSizeA -1)
+    , calDepthB      = fromSNat $ SNat @(bootstrapSizeB -1)
+    }
+
+  go :: CalendarState maxCalDepth ->
+    (Bool, CalendarControl maxCalDepth calEntry bytes, calEntry, calEntry) ->
+    (CalendarState maxCalDepth, (BufferControl maxCalDepth calEntry, CalendarOutput maxCalDepth calEntry))
+  go CalendarState{ .. } (bufSwitch, CalendarControl{..}, bufAIn, bufBIn) = (wbState', (bufCtrl', calOut'))
+   where
+    selectedBuffer' = bufToggle bufSwitch selectedBuffer
+    (activeEntry', shadowEntry) =
+      if selectedBuffer == A then (bufAIn, bufBIn) else (bufBIn, bufAIn)
+    (activeDepth, shadowDepth) =
+      if selectedBuffer == A then (calDepthA, calDepthB) else (calDepthB, calDepthA)
+    (calDepthA', calDepthB') =
+      case (selectedBuffer, newShadowDepth) of
+        (A, Just newDepthB)   -> (calDepthA, newDepthB)
+        (B, Just newDepthA)   -> (newDepthA, calDepthB)
+        _                     -> (calDepthA, calDepthB)
+    (readA, writeA, readB, writeB) =
+      case (selectedBuffer', isJust newShadowEntry) of
+        (A, True) -> (entryTracker' , Nothing       , shadowReadAddr, newShadowEntry)
+        (A, _   ) -> (entryTracker' , Nothing       , shadowReadAddr, Nothing)
+        (B, True) -> (shadowReadAddr, newShadowEntry, entryTracker' , Nothing)
+        (B, _   ) -> (shadowReadAddr, Nothing       , entryTracker' , Nothing)
+
+    entryTracker' = if entryTracker < activeDepth then satSucc SatWrap entryTracker else 0
+    newMetaCycle = entryTracker == 0
+    activeEntry = if firstCycle then bootstrapA !! (0 :: Integer)  else activeEntry'
+
+    bufCtrl' = BufferControl
+      { readA
+      , writeA
+      , readB
+      , writeB}
+    calOut' = CalendarOutput{activeEntry, newMetaCycle, shadowEntry, shadowDepth}
+    wbState' = CalendarState
+      { firstCycle      = False
+      , selectedBuffer  = selectedBuffer'
+      , entryTracker    = entryTracker'
+      , calDepthA       = calDepthA'
+      , calDepthB       = calDepthB'
+      }
 
 -- | State of the calendar RX hardware, contains registers to store a new entry and
 -- the shadow read address.
