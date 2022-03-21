@@ -4,9 +4,12 @@ License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
 module Bittide.ScatterGather(scatterEngine, gatherEngine, scatterGatherEngine) where
+
 import Clash.Prelude
-import Bittide.DoubleBufferedRAM ( doubleBufferedRAM )
+
 import Bittide.Calendar
+import Bittide.DoubleBufferedRAM ( doubleBufferedRAM )
+
 type DataLink frameWidth = Maybe (BitVector frameWidth)
 type CalendarEntry memDepth = Index memDepth
 type Calendar calDepth memDepth = Vec calDepth (CalendarEntry memDepth)
