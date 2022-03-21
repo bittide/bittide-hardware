@@ -4,18 +4,22 @@ License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Tests.Calendar(calGroup) where
+
 import Clash.Prelude
+
 import Bittide.Calendar
+import Clash.Sized.Vector ( unsafeFromList )
 import Hedgehog
+import Hedgehog.Gen as Gen
+import Hedgehog.Range as Range
 import Test.Tasty
 import Test.Tasty.Hedgehog
-import Hedgehog.Gen as Gen
-import Clash.Sized.Vector ( unsafeFromList )
-import Hedgehog.Range as Range
+import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Prelude as P
-import qualified Data.Set as Set
 
 
 -- | The Intcalendar is a vector with a minimum size of 1 elements containing integers.
@@ -28,9 +32,9 @@ instance Show (IntCalendar extra) where
 
 calGroup :: TestTree
 calGroup = testGroup "Calendar group"
-  [ testProperty "Reading the calendar." readCalendar
-  , testProperty "Writing and reading new calendars" reconfigCalendar
-  , testProperty "Metacycle signal generation" metaCycleIndication]
+  [ testPropertyNamed "Reading the calendar." "readCalendar" readCalendar
+  , testPropertyNamed "Writing and reading new calendars" "reconfigCalendar" reconfigCalendar
+  , testPropertyNamed "Metacycle signal generation" "metaCycleIndication" metaCycleIndication]
 
 genIntCalendar :: Int -> Gen (IntCalendar 1)
 genIntCalendar calendarSize = do
