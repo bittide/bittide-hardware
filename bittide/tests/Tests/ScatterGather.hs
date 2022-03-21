@@ -3,15 +3,17 @@ Copyright:           Copyright © 2022, Google LLC
 License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
+
 module Tests.ScatterGather(sgGroup) where
-import Bittide.ScatterGather
+
 import Clash.Prelude
+
+import Bittide.ScatterGather
 import Clash.Sized.Internal.BitVector
 import Clash.Sized.Vector ( unsafeFromList )
 import Data.Bifunctor
@@ -19,12 +21,12 @@ import Data.String
 import Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
+import qualified Data.List as L
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import qualified Prelude as P
-import qualified Data.List as L
 
 isUndefined :: forall n . KnownNat n => BitVector n -> Bool
 isUndefined (BV mask _) = mask == full
@@ -65,9 +67,9 @@ genFrameList = Gen.list (Range.constant 1 100) genFrame
 
 sgGroup :: TestTree
 sgGroup = testGroup "Scatter Gather group"
-  [ testProperty "GatherSequential - No overwriting implies no lost frames." (engineNoFrameLoss gatherEngine)
-  , testProperty "ScatterSequential - No overwriting implies no lost frames." (engineNoFrameLoss scatterEngine)
-  , testProperty "ScatterGather - No overwriting implies no lost frames." scatterGatherNoFrameLoss]
+  [ testPropertyNamed "GatherSequential - No overwriting implies no lost frames." "engineNoFrameLoss gatherEngine" (engineNoFrameLoss gatherEngine)
+  , testPropertyNamed "ScatterSequential - No overwriting implies no lost frames." "engineNoFrameLoss scatterEngine" (engineNoFrameLoss scatterEngine)
+  , testPropertyNamed "ScatterGather - No overwriting implies no lost frames." "scatterGatherNoFrameLoss" scatterGatherNoFrameLoss]
 
 -- |The type of a sequential engine that is tested by engineNoFrameLoss.
 type MemoryEngine =
