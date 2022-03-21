@@ -118,13 +118,14 @@ calendarWB ::
   -- ^ Signal that swaps the active and shadow calendar. (1 cycle delay)
   -> Signal dom (WishboneM2S bytes aw)
   -- ^ Incoming wishbone interface
-  -> Signal dom (calEntry, Bool)
+  -> Signal dom (calEntry, Bool, WishboneS2M bytes)
   -- ^ Currently active entry, Metacycle indicator and outgoing wishbone interface.
 calendarWB SNat bootstrapActive bootstrapShadow shadowSwitch wbIn = bundle
-  (activeEntry <$> calOut, newMetaCycle <$> calOut)
+  (activeEntry <$> calOut, newMetaCycle <$> calOut, wbOut)
  where
   ctrl :: Signal dom (CalendarControl maxCalDepth calEntry bytes)
   ctrl = wbCalRX wbIn
+  wbOut = wbCalTX <$> ctrl <*> calOut
 
   bootstrapA = bootstrapActive ++ repeat @(maxCalDepth - bootstrapSizeA) (errorX "Uninitialised active entry")
   bootstrapB = bootstrapShadow ++ repeat @(maxCalDepth - bootstrapSizeB) (errorX "Uninitialised shadow entry")
@@ -288,6 +289,26 @@ wbCalRX = mealy go initState
       , wishboneError = wbError
       , wishboneAddress = wbAddr
       }
+
+-- | Wishbone interface that drives the outgoing wishbone data based on the received
+-- wishbone address. Can be used to read the shadow calendar, shadow read address and
+-- shadow depth.
+wbCalTX ::
+  forall calDepth calEntry bytes .
+  (AtLeastOne bytes, Paddable calEntry, Paddable (Index calDepth), Show calEntry) =>
+  CalendarControl calDepth calEntry bytes->
+  CalendarOutput calDepth calEntry ->
+  WishboneS2M bytes
+wbCalTX CalendarControl{shadowReadAddr, wishboneActive, wishboneError, wishboneAddress}
+ CalendarOutput{shadowEntry, shadowDepth}= wbOut
+ where
+   getRegs :: forall a . Paddable a => a  -> RegisterBank (bytes * 8) a
+   getRegs = paddedToRegisters . padData
+   readData =
+     case (getRegs shadowEntry, getRegs shadowReadAddr, getRegs shadowDepth) of
+       (RegisterBank _ _ entryVec, RegisterBank _ _ readAddrVec, RegisterBank _ _ depthVec)  ->
+         ((entryVec :< 0b0) ++ readAddrVec ++ depthVec) !! wishboneAddress
+   wbOut = WishboneS2M{acknowledge = wishboneActive, err = wishboneError, readData}
 
 updateRegBank :: (Enum i, KnownNat bytes) => i -> ByteEnable bytes -> BitVector (bytes * 8)  -> RegisterBank (bytes * 8) a-> RegisterBank (bytes * 8) a
 updateRegBank i byteSelect newBV (RegisterBank p@SNat r@SNat vec) = RegisterBank p r newVec
