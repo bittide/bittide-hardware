@@ -37,7 +37,7 @@ data WishboneM2S bytes addressWidth
   , cycleTypeIdentifier :: "CTI" ::: CycleTypeIdentifier
     -- | BTE
   , burstTypeExtension :: "BTE" ::: BurstTypeExtension
-  }
+  } deriving (Generic, NFDataX, Show, Eq)
 
 data WishboneS2M bytes
   = WishboneS2M
@@ -47,9 +47,9 @@ data WishboneS2M bytes
   , acknowledge :: "ACK" ::: Bool
     -- | ERR
   , err :: "ERR" ::: Bool
-  } deriving (Generic, NFDataX)
+  } deriving (Generic, NFDataX, Show, Eq)
 
-newtype CycleTypeIdentifier = CycleTypeIdentifier (BitVector 3)
+newtype CycleTypeIdentifier = CycleTypeIdentifier (BitVector 3) deriving (Generic, NFDataX, Show, Eq)
 
 pattern Classic, ConstantAddressBurst, IncrementingBurst, EndOfBurst :: CycleTypeIdentifier
 pattern Classic = CycleTypeIdentifier 0
@@ -62,7 +62,7 @@ data BurstTypeExtension
   | Beat4Burst
   | Beat8Burst
   | Beat16Burst
-
+  deriving (Generic, NFDataX, Show, Eq)
 wishboneM2S :: SNat bytes -> SNat addressWidth -> WishboneM2S bytes addressWidth
 wishboneM2S SNat SNat
   = WishboneM2S
