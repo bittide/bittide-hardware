@@ -1,5 +1,5 @@
 {-# LANGUAGE NegativeLiterals #-}
-
+{-# LANGUAGE OverloadedStrings #-}
 module Tests.Contranomy.Core.ALU where
 
 import Prelude
@@ -73,10 +73,10 @@ test_overflow_rem = multdiv @(Signed 32) minBound (-1) REM @?= 0
 tests :: TestTree
 tests = T.testGroup "ALU"
   [ T.testGroup "Division by zero"
-    [ T.testProperty "prop_div_zero_divu" prop_div_zero_divu
-    , T.testProperty "prop_div_zero_remu" prop_div_zero_remu
-    , T.testProperty "prop_div_zero_div" prop_div_zero_div
-    , T.testProperty "prop_div_zero_rem" prop_div_zero_rem
+    [ T.testPropertyNamed "prop_div_zero_divu" "prop_div_zero_divu" prop_div_zero_divu
+    , T.testPropertyNamed "prop_div_zero_remu" "prop_div_zero_remu" prop_div_zero_remu
+    , T.testPropertyNamed "prop_div_zero_div" "prop_div_zero_div" prop_div_zero_div
+    , T.testPropertyNamed "prop_div_zero_rem" "prop_div_zero_rem" prop_div_zero_rem
     ]
   , T.testGroup "Overflow (signed only)"
     [ T.testCase "test_overflow_div" test_overflow_div
