@@ -63,11 +63,12 @@ common common-options
     Cabal,
     array,
     -- clash-prelude will set suitable version bounds for the plugins
-    clash-prelude,
+    clash-prelude >= 1.6.2,
     ghc-typelits-natnormalise,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
-    containers >= 0.4.0 && < 0.7
+    containers >= 0.4.0 && < 0.7,
+
 
 library
   import: common-options
@@ -90,7 +91,8 @@ test-suite unittests
   default-extensions:
     ImplicitPrelude
   build-depends:
-    tasty >= 1.2 && < 1.3,
-    hedgehog >= 1.1 && <1.2,
-    tasty-hedgehog >= 1.2 && < 1.3,
-    bittide
+    bittide,
+    clash-prelude-hedgehog >= 1.6.2 && < 1.7,
+    hedgehog >= 1.0.5 && < 1.1,
+    tasty >= 1.4.2 && < 1.5,
+    tasty-hedgehog >= 1.2.0 && < 1.3,

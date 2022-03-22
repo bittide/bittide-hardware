@@ -3,14 +3,18 @@ Copyright:           Copyright © 2022, Google LLC
 License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 module Tests.DoubleBufferedRAM(ramGroup) where
 
 import Clash.Prelude
+import Clash.Hedgehog.Sized.Vector
 
 import Bittide.DoubleBufferedRAM
-import Clash.Sized.Vector ( unsafeFromList )
 import Hedgehog
 import Hedgehog.Gen as Gen
 import Hedgehog.Range as Range
@@ -18,38 +22,27 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 import qualified Data.List as L
 import qualified Data.Set as Set
-import qualified GHC.TypeNats as TN
 import qualified Prelude as P
+
+deriving instance (Show a) => Show (SomeVec 1 a)
 
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRAM group"
   [ testPropertyNamed "Reading the buffer." "readDoubleBufferedRAM" readDoubleBufferedRAM
   , testPropertyNamed "Wriing and reading back buffers." "readWriteDoubleBufferedRAM" readWriteDoubleBufferedRAM]
 
--- | RamContents is a data type containing a Vec (extra + n) Int, this can be used to
--- safisfy the 1 <= size constraints imposed by the topEntities.
-data RamContents extra where
-  RamContents :: (1 <= (extra + n)) => SNat n -> Vec (n + extra) Int -> RamContents extra
-
-instance Show (RamContents extra) where
-  show (RamContents SNat c) = show c
-
-genRamContents :: Int -> Gen (RamContents 1)
-genRamContents depth = do
-  case TN.someNatVal . fromIntegral $ depth - 1 of
-    (SomeNat extraDepth) -> do
-      contents <- Gen.list (Range.singleton $ fromIntegral depth) $ Gen.int Range.constantBounded
-      return $ RamContents (snatProxy extraDepth) $ unsafeFromList contents
+genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
+genRamContents depth = genSomeVec (Range.singleton $ fromIntegral (depth - 1))
 
 -- | This test checks if we can read the inital values of the double buffered RAM.
 readDoubleBufferedRAM :: Property
 readDoubleBufferedRAM = property $ do
-  ramDepth <- forAll $ Gen.enum 1 31
-  ramContents <- forAll $ genRamContents ramDepth
+  ramDepth <- forAll $ Gen.int (Range.constant 1 31)
+  ramContents <- forAll $ genRamContents ramDepth $ Gen.int Range.constantBounded
   case ramContents of
-    RamContents SNat contents -> do
-      simLength <- forAll $ Gen.enum 1 100
-      let simRange = Range.singleton $ fromIntegral simLength
+    SomeVec SNat contents -> do
+      simLength <- forAll $ Gen.int (Range.constant 1 100)
+      let simRange = Range.singleton simLength
       switchSignal <- forAll $ Gen.list simRange Gen.bool
       readAddresses <- forAll $ Gen.list simRange $ Gen.enum 0 (fromIntegral $ ramDepth - 1)
       let
@@ -57,18 +50,18 @@ readDoubleBufferedRAM = property $ do
           resetGen enableGen doubleBufferedRAM contents switch readAddr (pure Nothing)
         topEntityInput = P.zip switchSignal readAddresses
         simOut = P.tail $ simulateN simLength topEntity topEntityInput
-        expectedOut = [contents !! i | i <- readAddresses]
+        expectedOut = fmap (contents !!) readAddresses
       simOut === P.init expectedOut
 
 -- | This test checks if we can write new values to the double buffered RAM and read them.
 readWriteDoubleBufferedRAM :: Property
 readWriteDoubleBufferedRAM = property $ do
-  ramDepth <- forAll $ Gen.enum 2 31
-  ramContents <- forAll $ genRamContents ramDepth
+  ramDepth <- forAll $ Gen.int (Range.constant 2 31)
+  ramContents <- forAll $ genRamContents ramDepth $ Gen.int Range.constantBounded
   let minSimLength = 2 * ramDepth
-  simLength <- forAll $ Gen.enum minSimLength 100
+  simLength <- forAll $ Gen.int (Range.constant minSimLength 100)
   case ramContents of
-    RamContents SNat contents -> do
+    SomeVec SNat contents -> do
       let
         topEntity (unbundle -> (switch, readAddr, writePort)) = withClockResetEnable
           @System clockGen resetGen enableGen doubleBufferedRAM contents switch readAddr
