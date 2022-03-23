@@ -7,8 +7,11 @@ module Main where
 
 import Test.Tasty
 
+import Tests.DoubleBufferedRAM
+
 tests :: TestTree
-tests = testGroup "Unittests" []
+tests = testGroup "Unittests"
+  [ramGroup]
 
 main :: IO ()
 main = defaultMain tests
