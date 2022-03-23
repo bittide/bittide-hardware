@@ -87,8 +87,8 @@ readCalendar = property $ do
   case bvCal of
     BVCalendar (succSNat -> calSize') SNat cal -> do
       let
-        topEntity switch = withClockResetEnable clockGen resetGen enableGen $ (\(a,_,_) -> a)
-          <$> calendarWB calSize' cal cal switch (pure (wishboneM2S (SNat @4) (SNat @32)))
+        topEntity switch = (\(a,_,_) -> a) $ withClockResetEnable clockGen resetGen enableGen
+          calendarWB calSize' cal cal switch (pure (wishboneM2S (SNat @4) (SNat @32)))
         simOut = simulateN @System (fromIntegral simLength) topEntity switchSignal
       footnote . fromString $ "simOut: " <> show simOut
       footnote . fromString $ "expected: " <> show (toList cal)
@@ -111,9 +111,9 @@ reconfigCalendar = property $ do
         writeDuration = P.length wbWrites
         simLength = writeDuration + fromIntegral calSize + 10
         switchList = P.replicate (writeDuration + 1) False <> (True : P.repeat False)
-        wbWrites = wbNothingM2S : P.concatMap writeWithWishbone writeOps
-        topEntity (unbundle -> (switch, writePort)) = withClockResetEnable clockGen
-          resetGen enableGen $ (\(a,_,_) -> a) <$> calendarWB @_ @4 @32 (succSNat calSize') cal cal switch writePort
+        wbWrites = wbNothingM2S @4 @32 : P.concatMap writeWithWishbone writeOps
+        topEntity (unbundle -> (switch, writePort)) = (\(a,_,_) -> a) $ withClockResetEnable clockGen
+          resetGen enableGen calendarWB (succSNat calSize') cal cal switch writePort
         topEntityInput = P.take simLength $ P.zip switchList $ wbWrites <> P.repeat wbNothingM2S
         simOut = simulateN @System simLength topEntity topEntityInput
       footnote . fromString $ "simOut: " <> show simOut
@@ -139,9 +139,9 @@ readShadowCalendar = property $ do
             entryRegs = snatToInteger $ requiredRegs bwS d32
             readAddresses = [0..indexOf (succSNat snatS)]
             simLength = P.length wbReads + 1
-            wbReads = P.concatMap (\ i -> wbReadEntry (fromIntegral i) entryRegs) readAddresses
-            topEntity writePort = withClockResetEnable clockGen
-              resetGen enableGen $ (\(_,_,wb) -> wb) <$> calendarWB @_ @4 @32 (succSNat snatS) calA' calS' (pure False) writePort
+            wbReads = P.concatMap (\ i -> wbReadEntry @4 @32 (fromIntegral i) entryRegs) readAddresses
+            topEntity writePort = (\(_,_,wb) -> wb) $ withClockResetEnable clockGen resetGen enableGen
+              calendarWB (succSNat snatS) calA' calS' (pure False) writePort
             topEntityInput = P.take simLength $ wbReads <> P.repeat wbNothingM2S
             simOut = simulateN @System simLength topEntity topEntityInput
             wbOutEntries = directedWBDecoding topEntityInput simOut
@@ -163,11 +163,11 @@ metaCycleIndication = property $ do
       let
         newDepthAddr = 2 + snatToInteger (requiredRegs bitWidth' d32)
         allDepths = calSize : newDepths <> cycle (takeLast 2 newDepths)
-        wbWrites = wbWriteOp <$> P.zip (P.repeat newDepthAddr) (fromIntegral <$> newDepths)
+        wbWrites = wbWriteOp @4 @32 <$> P.zip (P.repeat newDepthAddr) (fromIntegral <$> newDepths)
         switchSignal = P.concatMap (\ (fromIntegral -> n) -> P.replicate n False <> [True]) allDepths
         wbIn = P.concatMap (\(fromIntegral -> i, wb) -> wb : P.replicate i wbNothingM2S) $ P.zip (1 + calSize : newDepths) wbWrites
-        topEntity (unbundle -> (switch, writePort)) = withClockResetEnable clockGen
-          resetGen enableGen $ (\(_,m,_) -> m) <$> calendarWB @_ @4 @32 calSize' cal cal switch writePort
+        topEntity (unbundle -> (switch, writePort)) = (\(_,m,_) -> m) $ withClockResetEnable
+          clockGen resetGen enableGen calendarWB calSize' cal cal switch writePort
         topEntityInput = P.zip switchSignal (wbIn <> P.repeat wbNothingM2S)
         simOut = simulateN @System simLength topEntity topEntityInput
         expectedOut = P.take simLength $ True : P.tail switchSignal
