@@ -7,11 +7,12 @@ module Main where
 
 import Test.Tasty
 
+import Tests.Calendar
 import Tests.DoubleBufferedRAM
 
 tests :: TestTree
 tests = testGroup "Unittests"
-  [ramGroup]
+  [calGroup, ramGroup]
 
 main :: IO ()
 main = defaultMain tests
