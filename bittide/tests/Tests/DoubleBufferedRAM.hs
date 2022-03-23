@@ -19,7 +19,6 @@ import Clash.Hedgehog.Sized.Vector
 import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Unsigned
 
-
 import Data.Maybe
 import qualified Clash.Sized.Vector as V
 import Hedgehog
