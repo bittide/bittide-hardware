@@ -11,6 +11,7 @@ For documentation see 'Bittide.Calendar.calendarWB'.
 |-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=8 #-}
 
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -62,7 +63,7 @@ calendar bootStrapCal shadowSwitch writeEntry = (entryOut, newMetaCycle)
     newMetaCycle = fmap not firstCycle .&&. (==0) <$> counter
 
 
--- | Datatype that stores a configuration for the calendar, This type satisfies all
+-- | Stores a configuration for the calendar, This type satisfies all
 -- relevant constraints imposed by calendarWB.
 data CalendarConfig bytes addressWidth calEntry where
   CalendarConfig ::
