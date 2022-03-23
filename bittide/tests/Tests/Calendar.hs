@@ -3,12 +3,16 @@ Copyright:           Copyright © 2022, Google LLC
 License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
+
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Tests.Calendar(calGroup) where
 
 import Clash.Prelude
+import Clash.Hedgehog.Sized.Vector
 
 import Bittide.Calendar
 import Clash.Sized.Vector ( unsafeFromList )
@@ -21,14 +25,7 @@ import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Prelude as P
 
-
--- | The Intcalendar is a vector with a minimum size of 1 elements containing integers.
--- This data type enables us to safisfy the 1 <= size constraints imposed by the topEntities.
-data IntCalendar extra where
-  IntCalendar :: (1 <= (extra + n)) => SNat n -> Vec (n + extra) Int -> IntCalendar extra
-
-instance Show (IntCalendar extra) where
-  show (IntCalendar SNat c) = show c
+deriving instance (Show a) => Show (SomeVec atLeast a)
 
 calGroup :: TestTree
 calGroup = testGroup "Calendar group"
@@ -36,12 +33,12 @@ calGroup = testGroup "Calendar group"
   , testPropertyNamed "Writing and reading new calendars" "reconfigCalendar" reconfigCalendar
   , testPropertyNamed "Metacycle signal generation" "metaCycleIndication" metaCycleIndication]
 
-genIntCalendar :: Int -> Gen (IntCalendar 1)
+genIntCalendar :: Int -> Gen (SomeVec 1 Int)
 genIntCalendar calendarSize = do
   case TN.someNatVal (fromIntegral $ calendarSize - 1) of
-    (SomeNat size) -> do
+    SomeNat size -> do
       cal <- Gen.list (Range.singleton $ fromIntegral calendarSize) $ Gen.int Range.constantBounded
-      return (IntCalendar (snatProxy size) $ unsafeFromList cal)
+      return (SomeVec (snatProxy size) $ unsafeFromList cal)
 
 -- | This test checks if we can read the initialized calendars.
 readCalendar :: Property
@@ -51,10 +48,10 @@ readCalendar = property $ do
   simLength <- forAll $ Gen.enum calSize 100
   switchSignal <- forAll $ Gen.list (Range.singleton simLength) Gen.bool
   case intCal of
-    IntCalendar SNat cal -> do
+    SomeVec SNat cal -> do
       let
         topEntity switch = withClockResetEnable clockGen resetGen enableGen $ fst (calendar cal switch (pure Nothing))
-        simOut = simulateN @System (fromIntegral simLength) topEntity switchSignal
+        simOut = simulateN @System simLength topEntity switchSignal
       Set.fromList simOut === Set.fromList (toList cal)
 
 -- | This test checks if we can write to the shadowbuffer and read back the written
@@ -70,15 +67,15 @@ reconfigCalendar = property $ do
     newEntriesRange = Range.singleton newEntriesRead
   newEntries <- forAll . Gen.list newEntriesRange $ Gen.int Range.constantBounded
   case intCal of
-    (IntCalendar SNat cal) -> do
+    SomeVec SNat cal -> do
       let
         switchList = P.drop 2 . cycle $ True : P.replicate (calSize-1) False
-        configAddresses = fmap fromIntegral $ cycle [0..(calSize - 1)]
+        configAddresses = cycle [0.. fromIntegral $ calSize - 1]
         topEntity (unbundle -> (switch, writePort)) = withClockResetEnable clockGen
           resetGen enableGen $ fst (calendar cal switch writePort)
         topEntityInput = P.take simLength $ P.zip switchList (P.zipWith (curry Just) configAddresses newEntries <> P.repeat Nothing)
         simOut = simulateN @System simLength topEntity topEntityInput
-      Set.fromList simOut === Set.fromList (P.take (fromIntegral simLength) (toList cal <> newEntries))
+      Set.fromList simOut === Set.fromList (P.take simLength (toList cal <> newEntries))
 
 -- | This test checks if the metacycle signal (which indicates that the first entry of a
 -- new calendar is present at the output), is correctly being generated.
@@ -87,7 +84,7 @@ metaCycleIndication = property $ do
   calSize <- forAll $ Gen.enum 1 31
   intCal <- forAll $ genIntCalendar calSize
   case intCal of
-    IntCalendar SNat cal -> do
+    SomeVec SNat cal -> do
       simLength <- forAll $ Gen.enum 1 100
       let
         topEntity (unbundle -> (switch, writePort)) = withClockResetEnable clockGen

@@ -9,7 +9,7 @@ import Bittide.DoubleBufferedRAM
 
 -- | The calendar component is a double buffered memory component that sequentially reads
 -- entries from one buffer and offers a write interface to the other buffer. The buffers can
--- be swapped by setting the shadow switch to high. Furthermore it returns a signal that
+-- be swapped by setting the shadow switch to True. Furthermore it returns a signal that
 -- indicates when the first entry of the active buffer is present at the output.
 calendar ::
   forall dom calDepth a .
@@ -25,8 +25,8 @@ calendar ::
 calendar bootStrapCal shadowSwitch writeEntry = (entryOut, newMetaCycle)
   where
     firstCycle = register True $ pure False
-    entryOut = mux firstCycle (pure $ bootStrapCal !! (0 :: Integer)) readEntry
-    readEntry = doubleBufferedRAM bootStrapCal shadowSwitch counter' writeEntry
-    counter = register (0 :: (Index calDepth)) counter'
-    counter' = satSucc SatWrap <$> counter
+    entryOut = mux firstCycle (pure $ bootStrapCal !! (0 :: Int)) readEntry
+    readEntry =
+      doubleBufferedRAM bootStrapCal shadowSwitch (satSucc SatWrap <$> counter) writeEntry
+    counter = register (0 :: (Index calDepth)) (satSucc SatWrap <$> counter)
     newMetaCycle = fmap not firstCycle .&&. (==0) <$> counter
