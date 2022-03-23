@@ -14,6 +14,7 @@ import Clash.Prelude
 import Clash.Hedgehog.Sized.Vector
 
 import Bittide.DoubleBufferedRAM
+import Bittide.SharedTypes
 import Clash.Sized.Vector ( unsafeFromList )
 import Data.Maybe
 import Hedgehog
@@ -30,8 +31,8 @@ ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRAM group"
   [ testPropertyNamed "Reading the buffer." "readDoubleBufferedRAM" readDoubleBufferedRAM
   , testPropertyNamed "Wriing and reading back buffers." "readWriteDoubleBufferedRAM" readWriteDoubleBufferedRAM
-  , testProperty "Byte addressable blockram matches behavorial model." readWriteByteAddressableBlockram
-  , testProperty "Byte addressable double buffered RAM matches behavorial model." readWriteByteAddressableDoubleBufferedRAM]
+  , testPropertyNamed "Byte addressable blockram matches behavorial model." "readWriteByteAddressableBlockram" readWriteByteAddressableBlockram
+  , testPropertyNamed "Byte addressable double buffered RAM matches behavorial model." "readWriteByteAddressableDoubleBufferedRAM" readWriteByteAddressableDoubleBufferedRAM]
 
 genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
 genRamContents depth = genSomeVec (Range.singleton $ fromIntegral (depth - 1))
@@ -77,7 +78,6 @@ readWriteDoubleBufferedRAM = property $ do
         simOut = simulateN @System simLength topEntity topEntityInput
       Set.fromList simOut === Set.fromList (toList contents <> L.take (simLength - ramDepth - 1) writeEntries)
 
-type WriteOp addr bytes = Maybe (addr, BitVector (bytes*8))
 type VecVecBytes depth bytes = Vec depth (Vec bytes (BitVector 8))
 
 data BytesRAM where
@@ -87,7 +87,7 @@ instance Show BytesRAM where
   show (BytesRAM SNat SNat c) = show c
 
 genBlockRamContents :: Int -> Int -> Gen BytesRAM
-genBlockRamContents depth0 nrOfBytes0 = do
+genBlockRamContents depth0 nrOfBytes0 =
   case (TN.someNatVal $ fromIntegral depth0, TN.someNatVal $ fromIntegral nrOfBytes0 - 1) of
     (SomeNat depth, SomeNat nrOfBytes) -> do
       let
@@ -147,10 +147,10 @@ readWriteByteAddressableDoubleBufferedRAM = property $ do
       L.drop 2 simOut === L.tail expectedOut
 
 
-byteAddressableRAMBehaviour :: (Num addr, Enum addr, KnownNat depth, KnownNat bytes) =>
-  ((addr, WriteOp addr bytes, BitVector bytes), VecVecBytes depth bytes)->
-  (addr, WriteOp addr bytes, BitVector bytes) ->
-  (((addr, WriteOp addr bytes, BitVector bytes), VecVecBytes depth bytes), BitVector (bytes*8))
+byteAddressableRAMBehaviour :: (KnownNat depth, KnownNat bytes) =>
+  ((Index depth, WriteBytes depth bytes, BitVector bytes), VecVecBytes depth bytes)->
+  (Index depth, WriteBytes depth bytes, BitVector bytes) ->
+  (((Index depth, WriteBytes depth bytes, BitVector bytes), VecVecBytes depth bytes), BitVector (bytes*8))
 byteAddressableRAMBehaviour state input = (state', pack $ ram !! readAddr)
  where
   ((readAddr, writeOp, byteEnable), ram) = state
@@ -165,10 +165,10 @@ byteAddressableRAMBehaviour state input = (state', pack $ ram !! readAddr)
   state' = (input, ram1)
 
 byteAddressableDoubleBufferedRAMBehaviour ::
- (Num addr, Enum addr, KnownNat depth, KnownNat bytes) =>
- ((Bool, addr, WriteOp addr bytes, BitVector bytes), VecVecBytes depth bytes, VecVecBytes depth bytes)->
- (Bool, addr, WriteOp addr bytes, BitVector bytes) ->
- (((Bool, addr, WriteOp addr bytes, BitVector bytes), VecVecBytes depth bytes, VecVecBytes depth bytes), BitVector (bytes*8))
+ (KnownNat depth, KnownNat bytes) =>
+ ((Bool, Index depth, WriteBytes depth bytes, BitVector bytes), VecVecBytes depth bytes, VecVecBytes depth bytes)->
+ (Bool, Index depth, WriteBytes depth bytes, BitVector bytes) ->
+ (((Bool, Index depth, WriteBytes depth bytes, BitVector bytes), VecVecBytes depth bytes, VecVecBytes depth bytes), BitVector (bytes*8))
 byteAddressableDoubleBufferedRAMBehaviour state input = (state', pack $ bufA0 !! readAddr)
  where
   ((switchBuffers, readAddr, writeOp, byteEnable), bufA, bufB) = state
