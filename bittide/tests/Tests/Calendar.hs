@@ -65,8 +65,8 @@ data BVCalendar addressWidth where
     Vec (n + 1) (BitVector bits) ->
     BVCalendar addressWidth
 
-data TestConfig bytes addressWidth where
-  TestConfig ::
+data CalendarTestConfig bytes addressWidth where
+  CalendarTestConfig ::
     ( KnownNat bytes
     , KnownNat addressWidth
     , Paddable calEntry
@@ -76,9 +76,9 @@ data TestConfig bytes addressWidth where
     ) =>
     SNat maxCalDepth ->
     CalendarConfig bytes addressWidth calEntry ->
-    TestConfig bytes addressWidth
+    CalendarTestConfig bytes addressWidth
 
-genTestConfig ::
+genCalendarTestConfig ::
   forall bytes addressWidth calEntry .
   ( KnownNat bytes
   , KnownNat addressWidth
@@ -88,8 +88,8 @@ genTestConfig ::
   , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth) =>
   Natural ->
   Gen calEntry ->
-  Gen (TestConfig bytes addressWidth)
-genTestConfig maxSize elemGen = do
+  Gen (CalendarTestConfig bytes addressWidth)
+genCalendarTestConfig maxSize elemGen = do
   depthA <- Gen.enum 0 maxSize
   depthB <- Gen.enum 0 maxSize
   case (TN.someNatVal maxSize, TN.someNatVal depthA, TN.someNatVal depthB) of
@@ -102,11 +102,11 @@ genTestConfig maxSize elemGen = do
           (SNatLE, SNatLE) -> go a' b' c'
           _ -> error " "
  where
-    go :: forall maxDepth depthA depthB . (LessThan depthA maxDepth, LessThan depthB maxDepth) => SNat maxDepth -> SNat depthA -> SNat depthB -> Gen (TestConfig bytes addressWidth)
+    go :: forall maxDepth depthA depthB . (LessThan depthA maxDepth, LessThan depthB maxDepth) => SNat maxDepth -> SNat depthA -> SNat depthB -> Gen (CalendarTestConfig bytes addressWidth)
     go dMax SNat SNat = do
       calActive <- genVec @_ @depthA elemGen
       calShadow <- genVec @_ @depthB elemGen
-      return $ TestConfig dMax (CalendarConfig dMax calActive calShadow)
+      return $ CalendarTestConfig dMax (CalendarConfig dMax calActive calShadow)
 
 
 instance Show (BVCalendar addressWidth) where
