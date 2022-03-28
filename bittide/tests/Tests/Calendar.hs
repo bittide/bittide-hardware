@@ -65,6 +65,50 @@ data BVCalendar addressWidth where
     Vec (n + 1) (BitVector bits) ->
     BVCalendar addressWidth
 
+data TestConfig bytes addressWidth where
+  TestConfig ::
+    ( KnownNat bytes
+    , KnownNat addressWidth
+    , Paddable calEntry
+    , Show calEntry
+    , ShowX calEntry
+    , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth
+    ) =>
+    SNat maxCalDepth ->
+    CalendarConfig bytes addressWidth calEntry ->
+    TestConfig bytes addressWidth
+
+genTestConfig ::
+  forall bytes addressWidth calEntry .
+  ( KnownNat bytes
+  , KnownNat addressWidth
+  , Paddable calEntry
+  , Show calEntry
+  , ShowX calEntry
+  , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth) =>
+  Natural ->
+  Gen calEntry ->
+  Gen (TestConfig bytes addressWidth)
+genTestConfig maxSize elemGen = do
+  depthA <- Gen.enum 0 maxSize
+  depthB <- Gen.enum 0 maxSize
+  case (TN.someNatVal maxSize, TN.someNatVal depthA, TN.someNatVal depthB) of
+    (SomeNat a, SomeNat b, SomeNat c) -> do
+        let
+          a' = snatProxy a
+          b' = snatProxy b
+          c' = snatProxy c
+        case (compareSNat b' a', compareSNat c' a') of
+          (SNatLE, SNatLE) -> go a' b' c'
+          _ -> error " "
+ where
+    go :: forall maxDepth depthA depthB . (LessThan depthA maxDepth, LessThan depthB maxDepth) => SNat maxDepth -> SNat depthA -> SNat depthB -> Gen (TestConfig bytes addressWidth)
+    go dMax SNat SNat = do
+      calActive <- genVec @_ @depthA elemGen
+      calShadow <- genVec @_ @depthB elemGen
+      return $ TestConfig dMax (CalendarConfig dMax calActive calShadow)
+
+
 instance Show (BVCalendar addressWidth) where
   show (BVCalendar _ _ bvvec) = show bvvec
 
