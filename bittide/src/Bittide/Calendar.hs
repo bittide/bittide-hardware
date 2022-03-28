@@ -61,6 +61,9 @@ calendar bootStrapCal shadowSwitch writeEntry = (entryOut, newMetaCycle)
     counterNext = satSucc SatWrap <$> counter
     newMetaCycle = fmap not firstCycle .&&. (==0) <$> counter
 
+
+-- | Datatype that stores a configuration for the calendar, This type satisfies all
+-- relevant constraints imposed by calendarWB.
 data CalendarConfig bytes addressWidth calEntry where
   CalendarConfig ::
     ( KnownNat bytes
