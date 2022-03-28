@@ -62,7 +62,7 @@ calendar bootStrapCal shadowSwitch writeEntry = (entryOut, newMetaCycle)
     newMetaCycle = fmap not firstCycle .&&. (==0) <$> counter
 
 
--- | Datatype that stores a configuration for the calendar, This type satisfies all
+-- | Configuration for the calendar, This type satisfies all
 -- relevant constraints imposed by calendarWB.
 data CalendarConfig bytes addressWidth calEntry where
   CalendarConfig ::
@@ -143,11 +143,11 @@ data CalendarOutput calDepth calEntry = CalendarOutput
 data BufferControl calDepth calEntry = BufferControl
   { readA   :: Index calDepth
     -- ^ Read address for buffer A.
-  , writeA  :: WriteAny calDepth calEntry
+  , writeA  :: Maybe (Located calDepth calEntry)
     -- ^ Write operation for buffer B.
   , readB   :: Index calDepth
     -- ^ Read address for buffer B
-  , writeB  :: WriteAny calDepth calEntry
+  , writeB  :: Maybe (Located calDepth calEntry)
     -- ^ Write operation for buffer B.
   }
 
@@ -292,7 +292,7 @@ instance ( KnownNat regSize
 data CalendarControl calDepth calEntry bytes = CalendarControl
   { newShadowDepth :: Maybe (Index calDepth)
     -- ^ The size of the next calendar
-  , newShadowEntry :: WriteAny calDepth calEntry
+  , newShadowEntry :: Maybe (Located calDepth calEntry)
     -- ^ The next entry and its write address
   , shadowReadAddr :: Index calDepth
     -- ^ The next address to read from in the shadow calendar
@@ -396,8 +396,6 @@ wbCalTX ::
 wbCalTX CalendarControl{shadowReadAddr, wishboneActive, wishboneError, wishboneAddress}
  CalendarOutput{shadowEntry, shadowDepth}= wbOut
  where
-   getRegs :: forall a . Paddable a => a  -> RegisterBank (bytes * 8) a
-   getRegs = paddedToRegisters . Padded
    readData =
      case (getRegs shadowEntry, getRegs shadowReadAddr, getRegs shadowDepth) of
        (RegisterBank entryVec, RegisterBank readAddrVec, RegisterBank depthVec)  ->

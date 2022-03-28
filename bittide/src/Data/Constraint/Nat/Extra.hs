@@ -20,5 +20,5 @@ import GHC.TypeNats
 import Unsafe.Coerce
 
 -- | b <= ceiling(b/a)*a
-timesDivRU :: forall a b . Dict (b <= ((Div (b + (a - 1)) a) * a))
+timesDivRU :: forall a b . Dict (b <= (Div (b + (a - 1)) a * a))
 timesDivRU = unsafeCoerce (Dict :: Dict ())
