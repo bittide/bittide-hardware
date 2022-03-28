@@ -11,7 +11,6 @@ For documentation see 'Bittide.Calendar.calendarWB'.
 |-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=8 #-}
 
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
