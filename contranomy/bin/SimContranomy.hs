@@ -3,6 +3,7 @@
 import Clash.Prelude
 
 import Contranomy
+import Contranomy.Println
 import qualified Data.ByteString as BS
 import Data.Elf
 import qualified Data.IntMap.Strict as I
@@ -52,4 +53,7 @@ main = do
 
   -- TODO Use 'elfEntry' as an optional(?) argument to the core to start
   -- execution from a particular PC value.
-  print $ sampleN (maxBound :: Int) $ contranomy' hasClock hasReset entry iMem dMem $ pure (False, False, 0b0)
+
+  -- Hook up to println-debugging at special address 0x90000000
+  hookPrint 0x90000000 $ sample $ fmap snd $
+    contranomy' hasClock hasReset entry iMem dMem $ pure (False, False, 0b0)
