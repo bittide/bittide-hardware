@@ -80,7 +80,8 @@ isInBounds a b c = case (compareSNat a b, compareSNat b c) of
 
 genCalendarConfig ::
   forall bytes addressWidth calEntry .
-  ( AtLeastOne bytes
+  ( KnownNat bytes
+  , 1 <= bytes
   , KnownNat (BitSize calEntry)
   , BitPack calEntry
   , NFDataX calEntry
