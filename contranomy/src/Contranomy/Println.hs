@@ -5,6 +5,7 @@ import Clash.Prelude
 import qualified Data.ByteString as BS
 import Data.Foldable (traverse_)
 import Data.Maybe (catMaybes)
+import Data.Word (Word8)
 
 hookPrint
   :: Unsigned 32 -- ^ Address
@@ -19,5 +20,5 @@ pChar :: Signed 32 -> IO ()
 pChar = BS.putStr . BS.singleton . addrByte
 
 -- take one byte
-addrByte :: (BitPack a, BitSize a ~ 8) => Signed 32 -> a
+addrByte :: Signed 32 -> Word8
 addrByte = bitCoerce . slice d7 d0

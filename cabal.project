@@ -4,6 +4,8 @@ packages:
 
 write-ghc-environment-files: always
 
+with-compiler: ghc-9.0.2
+
 tests: True
 
 -- index state, to go along with the cabal.project.freeze file. update the index
