@@ -21,6 +21,8 @@ import Bittide.Calendar
 import Bittide.SharedTypes
 import Clash.Sized.Vector (unsafeFromList)
 import Contranomy.Wishbone
+import Data.Constraint
+import Data.Constraint.Nat.Extra
 import Data.Proxy
 import Data.String
 import Data.Type.Equality ((:~:)(Refl))
@@ -49,7 +51,8 @@ data BVCalendar addressWidth where
   BVCalendar ::
     ( KnownNat n
     , KnownNat addressWidth
-    , AtLeastOne bits
+    , KnownNat bits
+    , 1 <= bits
     , NatFitsInBits n addressWidth
     , 1 <= NatRequiredBits n
     , NatFitsInBits (TypeRequiredRegisters (BitVector bits) addressWidth) addressWidth) =>
@@ -73,7 +76,8 @@ isInBounds a b c = case (compareSNat a b, compareSNat b c) of
 
 genCalendarConfig ::
   forall bytes addressWidth calEntry .
-  ( AtLeastOne bytes
+  ( KnownNat bytes
+  , 1 <= bytes
   , KnownNat (BitSize calEntry)
   , BitPack calEntry
   , NFDataX calEntry
@@ -253,17 +257,17 @@ wbNothingM2S = (wishboneM2S (SNat @bytes) (SNat @aw))
 
 writeWithWishbone ::
   forall bytes aw n entry .
-  (AtLeastOne bytes, KnownNat aw, KnownNat n, Paddable entry) =>
+  (KnownNat bytes, 1 <= bytes, KnownNat aw, KnownNat n, Paddable entry) =>
   (Index n, entry) ->
   [WishboneM2S bytes aw]
 writeWithWishbone (a, entry) =
   case getRegs entry of
-    RegisterBank SNat SNat vec -> toList $ fmap wbWriteOp $ zip indicesI (vec :< fromIntegral a)
+    RegisterBank vec -> toList $ fmap wbWriteOp $ zip indicesI (vec :< fromIntegral a)
  where
   getRegs :: entry  -> RegisterBank (bytes * 8) entry
-  getRegs = paddedToRegisters . padData
+  getRegs = paddedToRegisters . Padded
 
-directedWBDecoding :: forall bytes aw a . (AtLeastOne bytes, KnownNat aw, Paddable a) =>
+directedWBDecoding :: forall bytes aw a . (KnownNat bytes, 1 <= bytes, KnownNat aw, Paddable a) =>
   [WishboneM2S bytes aw] ->
   [WishboneS2M bytes] ->
   [a]
@@ -280,7 +284,10 @@ directedWBDecoding (wbM2S:m2sRest) (_:s2mRest) = out
 
   filterNoOps l = [(m2s,s2m)| (m2s,s2m) <- l, m2s /= wbNothingM2S]
   entry = case V.fromList $ P.reverse entryList of
-    Just vec -> paddedToData . bvAsPadded @(TypeRequiredRegisters a (bytes * 8) * bytes * 8) $ pack vec
+    Just (vec :: Vec (Regs a (bytes * 8)) (BitVector (bytes * 8))) ->
+        case timesDivRU @(bytes * 8) @(BitSize a) of
+          Dict ->
+            paddedToData . bvAsPadded @(TypeRequiredRegisters a (bytes * 8) * bytes * 8) $ pack vec
     Nothing  -> error $ "directedWBDecoding: list to vector conversion failed: " <> show entryList <> "from " <> show (wbM2S:m2sRest)
 
   consumedReads = P.length entryList

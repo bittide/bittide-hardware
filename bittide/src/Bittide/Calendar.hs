@@ -71,8 +71,10 @@ data CalendarConfig bytes addressWidth calEntry where
     , Paddable calEntry
     , Show calEntry
     , ShowX calEntry
-    , AtLeastOne bootstrapActive
-    , AtLeastOne bootstrapShadow
+    , KnownNat bootstrapActive
+    , 1 <= bootstrapActive
+    , KnownNat bootstrapShadow
+    , 1 <= bootstrapShadow
     , LessThan bootstrapActive maxCalDepth
     , LessThan bootstrapShadow maxCalDepth
     , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth
@@ -150,8 +152,10 @@ calendarWB ::
   ( HiddenClockResetEnable dom
   , KnownNat bytes
   , KnownNat aw
-  , AtLeastOne bootstrapSizeA
-  , AtLeastOne bootstrapSizeB
+  , KnownNat bootstrapSizeA
+  , 1 <= bootstrapSizeA
+  , KnownNat bootstrapSizeB
+  , 1 <= bootstrapSizeB
   , LessThan bootstrapSizeA maxCalDepth
   , LessThan bootstrapSizeB maxCalDepth
   , Paddable calEntry
@@ -194,6 +198,7 @@ calendarWB SNat bootstrapActive bootstrapShadow shadowSwitch wbIn =
     , calDepthA      = natToNum @(bootstrapSizeA - 1)
     , calDepthB      = natToNum @(bootstrapSizeB - 1)
     }
+
   go :: CalendarState maxCalDepth ->
     (Bool, CalendarControl maxCalDepth calEntry bytes, calEntry, calEntry) ->
     (CalendarState maxCalDepth, (BufferControl maxCalDepth calEntry, CalendarOutput maxCalDepth calEntry))
