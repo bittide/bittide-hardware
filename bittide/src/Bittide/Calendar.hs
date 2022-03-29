@@ -71,6 +71,8 @@ data CalendarConfig bytes addressWidth calEntry where
     , Paddable calEntry
     , Show calEntry
     , ShowX calEntry
+    , AtLeastOne bootstrapActive
+    , AtLeastOne bootstrapShadow
     , LessThan bootstrapActive maxCalDepth
     , LessThan bootstrapShadow maxCalDepth
     , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth
@@ -80,6 +82,7 @@ data CalendarConfig bytes addressWidth calEntry where
     Vec bootstrapShadow calEntry ->
     CalendarConfig bytes addressWidth calEntry
 
+deriving instance Show (CalendarConfig bytes addressWidth calEntry)
 mkCalendar :: (HiddenClockResetEnable dom) =>
   CalendarConfig bytes aw calEntry ->
   (  Signal dom Bool
@@ -147,6 +150,8 @@ calendarWB ::
   ( HiddenClockResetEnable dom
   , KnownNat bytes
   , KnownNat aw
+  , AtLeastOne bootstrapSizeA
+  , AtLeastOne bootstrapSizeB
   , LessThan bootstrapSizeA maxCalDepth
   , LessThan bootstrapSizeB maxCalDepth
   , Paddable calEntry
