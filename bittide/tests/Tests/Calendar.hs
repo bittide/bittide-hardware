@@ -65,48 +65,56 @@ data BVCalendar addressWidth where
     Vec (n + 1) (BitVector bits) ->
     BVCalendar addressWidth
 
-data CalendarTestConfig bytes addressWidth where
-  CalendarTestConfig ::
-    ( KnownNat bytes
-    , KnownNat addressWidth
-    , Paddable calEntry
-    , Show calEntry
-    , ShowX calEntry
-    , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth
-    ) =>
-    SNat maxCalDepth ->
-    CalendarConfig bytes addressWidth calEntry ->
-    CalendarTestConfig bytes addressWidth
+deriving instance Show (SNatLE a b)
 
-genCalendarTestConfig ::
+data IsInBounds a b c where
+  InBounds :: (a <= b, b <= c) => IsInBounds a b c
+  NotInBounds :: IsInBounds a b c
+
+deriving instance Show (IsInBounds a b c)
+
+isInBounds :: SNat a -> SNat b -> SNat c -> IsInBounds a b c
+isInBounds a b c = case (compareSNat a b, compareSNat b c) of
+  (SNatLE, SNatLE) -> InBounds
+  _ -> NotInBounds
+
+genCalendarConfig ::
   forall bytes addressWidth calEntry .
-  ( KnownNat bytes
-  , KnownNat addressWidth
-  , Paddable calEntry
+  ( AtLeastOne bytes
+  , KnownNat (BitSize calEntry)
+  , BitPack calEntry
+  , NFDataX calEntry
   , Show calEntry
   , ShowX calEntry
-  , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth) =>
+  , KnownNat addressWidth) =>
   Natural ->
   Gen calEntry ->
-  Gen (CalendarTestConfig bytes addressWidth)
-genCalendarTestConfig maxSize elemGen = do
-  depthA <- Gen.enum 0 maxSize
-  depthB <- Gen.enum 0 maxSize
-  case (TN.someNatVal maxSize, TN.someNatVal depthA, TN.someNatVal depthB) of
-    (SomeNat a, SomeNat b, SomeNat c) -> do
+  Gen (CalendarConfig bytes addressWidth calEntry)
+genCalendarConfig ms elemGen = do
+  dA <- Gen.enum 1 ms
+  dB <- Gen.enum 1 ms
+  case (TN.someNatVal ms, TN.someNatVal dA, TN.someNatVal dB) of
+    ( SomeNat (snatProxy -> maxSize)
+     ,SomeNat (snatProxy -> depthA)
+     ,SomeNat (snatProxy -> depthB)) -> do
         let
-          a' = snatProxy a
-          b' = snatProxy b
-          c' = snatProxy c
-        case (compareSNat b' a', compareSNat c' a') of
-          (SNatLE, SNatLE) -> go a' b' c'
-          _ -> error " "
+          regAddrBits = SNat @(NatRequiredBits (TypeRequiredRegisters calEntry (bytes * 8)))
+          bsCalEntry = SNat @(BitSize calEntry)
+        case
+         ( isInBounds d1 depthA maxSize
+         , isInBounds d1 depthB maxSize
+         , compareSNat regAddrBits (SNat @addressWidth)
+         , compareSNat d1 bsCalEntry) of
+          (InBounds, InBounds, SNatLE, SNatLE)-> go maxSize depthA depthB
+          (a,b,c,d) -> error $ "genCalendarConfig: calEntry constraints not satisfied: ("
+           <> show a <> ", " <> show b <> ", " <> show c <> ", "  <> show d <> "), \n(depthA, depthB, maxDepth, calEntry bitsize) = ("
+           <> show depthA <> ", " <> show depthB <> ", " <> show maxSize <> ", " <> show bsCalEntry <> ")"
  where
-    go :: forall maxDepth depthA depthB . (LessThan depthA maxDepth, LessThan depthB maxDepth) => SNat maxDepth -> SNat depthA -> SNat depthB -> Gen (CalendarTestConfig bytes addressWidth)
+    go :: forall maxDepth depthA depthB . (LessThan depthA maxDepth, LessThan depthB maxDepth, NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth) => SNat maxDepth -> SNat depthA -> SNat depthB -> Gen (CalendarConfig bytes addressWidth calEntry)
     go dMax SNat SNat = do
       calActive <- genVec @_ @depthA elemGen
       calShadow <- genVec @_ @depthB elemGen
-      return $ CalendarTestConfig dMax (CalendarConfig dMax calActive calShadow)
+      return $ CalendarConfig dMax calActive calShadow
 
 
 instance Show (BVCalendar addressWidth) where
