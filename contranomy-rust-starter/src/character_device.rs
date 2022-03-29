@@ -11,3 +11,14 @@ pub fn write_str(s: &str) {
         write_byte(b);
     }
 }
+
+pub struct DebugWriter;
+
+impl core::fmt::Write for DebugWriter {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        write_str(s);
+        Ok(())
+    }
+}
+
+pub const DEBUG_IO: DebugWriter = DebugWriter;
