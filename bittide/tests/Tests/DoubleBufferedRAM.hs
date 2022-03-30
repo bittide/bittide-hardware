@@ -13,10 +13,10 @@ module Tests.DoubleBufferedRAM(ramGroup) where
 
 import Clash.Prelude
 import Clash.Hedgehog.Sized.Vector
+import Clash.Hedgehog.Sized.BitVector
 
 import Bittide.DoubleBufferedRAM
 import Bittide.SharedTypes
-import Clash.Sized.Vector ( unsafeFromList )
 import Data.Maybe
 import Hedgehog
 import Hedgehog.Gen as Gen
@@ -79,38 +79,37 @@ readWriteDoubleBufferedRAM = property $ do
         simOut = simulateN @System simLength topEntity topEntityInput
       Set.fromList simOut === Set.fromList (toList contents <> L.take (simLength - ramDepth - 1) writeEntries)
 
-type VecVecBytes depth bytes = Vec depth (Vec bytes (BitVector 8))
+data BitvecVec where
+  BitvecVec :: (1 <= bits, 1 <= depth, 1 <= Regs (BitVector bits) 8) => SNat depth -> SNat bits -> Vec depth (BitVector bits) -> BitvecVec
 
-data BytesRAM where
-  BytesRAM :: SNat depth -> SNat extraBytes -> VecVecBytes depth (extraBytes+1) -> BytesRAM
+instance Show BitvecVec where
+  show (BitvecVec SNat SNat v) = show v
 
-instance Show BytesRAM where
-  show (BytesRAM SNat SNat c) = show c
+genBlockRamContents :: Int -> Int -> Gen BitvecVec
+genBlockRamContents depth bits = do
+  case (TN.someNatVal $ fromIntegral (depth - 1), TN.someNatVal $ fromIntegral $ bits - 1) of
+    (SomeNat depth0, SomeNat bits0) -> go (snatProxy depth0) (snatProxy bits0)
+ where
+  go :: forall depth bits . SNat depth -> SNat bits -> Gen BitvecVec
+  go depth0@SNat bits0@SNat =
+    case compareSNat d1 (SNat @(Regs (BitVector (bits + 1)) 8)) of
+      SNatLE -> BitvecVec (succSNat $ snatProxy depth0) (succSNat $ snatProxy bits0)
+       <$> genNonEmptyVec genDefinedBitVector
+      _ -> error "genBlockRamContents: Generated bitvector is of size 0."
 
-genBlockRamContents :: Int -> Int -> Gen BytesRAM
-genBlockRamContents depth0 nrOfBytes0 =
-  case (TN.someNatVal $ fromIntegral depth0, TN.someNatVal $ fromIntegral nrOfBytes0 - 1) of
-    (SomeNat depth, SomeNat nrOfBytes) -> do
-      let
-        depthRange = Range.singleton depth0
-        bytesRange = Range.singleton nrOfBytes0
-      contents <- Gen.list depthRange $
-       unsafeFromList <$> Gen.list bytesRange (Gen.integral Range.constantBounded)
-      return $ BytesRAM (snatProxy depth) (snatProxy nrOfBytes) $ unsafeFromList contents
 
 readWriteByteAddressableBlockram :: Property
 readWriteByteAddressableBlockram = property $ do
-  ramDepth <- forAll $ Gen.enum 1 31
-  nrOfBytes <- forAll $ Gen.enum 1 10
-  simLength <- forAll $ Gen.enum 2 100
-  ramContents <- forAll $ genBlockRamContents ramDepth nrOfBytes
+  ramDepth <- forAll $ Gen.enum 1 100
+  nrOfBits <- forAll $ Gen.enum 1 100
+  simLength <- forAll $ Gen.int $ Range.constant 2 100
+  ramContents <- forAll $ genBlockRamContents ramDepth nrOfBits
   case ramContents of
-    BytesRAM SNat SNat contents -> do
-
+    BitvecVec SNat SNat contents -> do
       let
         simRange = Range.singleton simLength
         topEntity (unbundle -> (readAddr, writePort, byteSelect)) = withClockResetEnable
-          @System clockGen resetGen enableGen blockRamByteAddressable (pack <$> contents)
+          @System clockGen resetGen enableGen blockRamByteAddressable contents
           readAddr writePort byteSelect
       writeAddresses <- forAll $ Gen.list simRange $ Gen.integral Range.constantBounded
       readAddresses <- forAll $ Gen.list simRange $ Gen.integral Range.constantBounded
@@ -124,17 +123,16 @@ readWriteByteAddressableBlockram = property $ do
 
 readWriteByteAddressableDoubleBufferedRAM :: Property
 readWriteByteAddressableDoubleBufferedRAM = property $ do
-  ramDepth <- forAll $ Gen.enum 1 31
-  nrOfBytes <- forAll $ Gen.enum 1 10
-  simLength <- forAll $ Gen.enum 2 100
-  ramContents <- forAll $ genBlockRamContents ramDepth nrOfBytes
+  ramDepth <- forAll $ Gen.enum 1 100
+  nrOfBits <- forAll $ Gen.enum 1 100
+  simLength <- forAll $ Gen.int $ Range.constant 2 100
+  ramContents <- forAll $ genBlockRamContents ramDepth nrOfBits
   case ramContents of
-    BytesRAM SNat SNat contents -> do
-
+    BitvecVec SNat SNat contents -> do
       let
         simRange = Range.singleton simLength
         topEntity (unbundle -> (switch, readAddr, writePort, byteSelect)) = withClockResetEnable
-          @System clockGen resetGen enableGen doubleBufferedRAMByteAddressable (pack <$> contents)
+          @System clockGen resetGen enableGen doubleBufferedRAMByteAddressable contents
           switch readAddr writePort byteSelect
       writeAddresses <- forAll $ Gen.list simRange $ Gen.integral Range.constantBounded
       readAddresses <- forAll $ Gen.list simRange $ Gen.integral Range.constantBounded
@@ -147,29 +145,35 @@ readWriteByteAddressableDoubleBufferedRAM = property $ do
         (_,expectedOut) = L.mapAccumL byteAddressableDoubleBufferedRAMBehaviour (L.head topEntityInput, contents, contents) $ L.tail topEntityInput
       L.drop 2 simOut === L.tail expectedOut
 
-
-byteAddressableRAMBehaviour :: (KnownNat depth, KnownNat bytes) =>
-  ((Index depth, WriteBytes depth bytes, BitVector bytes), VecVecBytes depth bytes)->
-  (Index depth, WriteBytes depth bytes, BitVector bytes) ->
-  (((Index depth, WriteBytes depth bytes, BitVector bytes), VecVecBytes depth bytes), BitVector (bytes*8))
-byteAddressableRAMBehaviour state input = (state', pack $ ram !! readAddr)
+byteAddressableRAMBehaviour :: forall bits depth bytes .
+  (AtLeastOne depth, AtLeastOne bytes, bytes ~ Regs (BitVector bits) 8, AtLeastOne bits) =>
+  ((Index depth, WriteBits depth bits, ByteEnable bytes), Vec depth (BitVector bits))->
+  (Index depth, WriteBits depth bits, ByteEnable bytes) ->
+  (((Index depth, WriteBits depth bits, ByteEnable bytes), Vec depth (BitVector bits)), BitVector bits)
+byteAddressableRAMBehaviour state input = (state', ram !! readAddr)
  where
   ((readAddr, writeOp, byteEnable), ram) = state
   (writeAddr, writeData) = fromMaybe (0, 0b0) writeOp
   writeTrue = isJust writeOp
-  oldData = ram !! writeAddr
+  oldData = getRegs $ ram !! writeAddr
 
-  newEntry = zipWith (\ sel (old,new) -> if sel then new else old) (unpack byteEnable) $
-   zip oldData (unpack writeData)
+  newEntry = getData $ zipWith (\ sel (old,new) -> if sel then new else old) (unpack byteEnable) $
+   zip oldData $ getRegs writeData
+
+  getRegs a = case paddedToRegisters @8 $ Padded a of
+    RegisterBank v -> v
+
+  getData :: Vec bytes Byte -> BitVector bits
+  getData vec = registersToData @_ @8 $ RegisterBank vec
 
   ram1 = if writeTrue then replace writeAddr newEntry ram else ram
   state' = (input, ram1)
 
-byteAddressableDoubleBufferedRAMBehaviour ::
- (KnownNat depth, KnownNat bytes) =>
- ((Bool, Index depth, WriteBytes depth bytes, BitVector bytes), VecVecBytes depth bytes, VecVecBytes depth bytes)->
- (Bool, Index depth, WriteBytes depth bytes, BitVector bytes) ->
- (((Bool, Index depth, WriteBytes depth bytes, BitVector bytes), VecVecBytes depth bytes, VecVecBytes depth bytes), BitVector (bytes*8))
+byteAddressableDoubleBufferedRAMBehaviour :: forall bits depth bytes .
+ (AtLeastOne depth, AtLeastOne bytes, bytes ~ Regs (BitVector bits) 8, AtLeastOne bits) =>
+ ((Bool, Index depth, WriteBits depth bits, BitVector bytes), Vec depth (BitVector bits), Vec depth (BitVector bits))->
+ (Bool, Index depth, WriteBits depth bits, BitVector bytes) ->
+ (((Bool, Index depth, WriteBits depth bits, BitVector bytes), Vec depth (BitVector bits), Vec depth (BitVector bits)), BitVector bits)
 byteAddressableDoubleBufferedRAMBehaviour state input = (state', pack $ bufA0 !! readAddr)
  where
   ((switchBuffers, readAddr, writeOp, byteEnable), bufA, bufB) = state
@@ -177,10 +181,15 @@ byteAddressableDoubleBufferedRAMBehaviour state input = (state', pack $ bufA0 !!
 
   (writeAddr, writeData) = fromMaybe (0, 0b0) writeOp
   writeTrue = isJust writeOp
-  oldData = bufB0 !! writeAddr
+  oldData = getRegs $ bufB0 !! writeAddr
 
-  newEntry = zipWith (\ sel (old,new) -> if sel then new else old) (unpack byteEnable) $
-   zip oldData (unpack writeData)
+  newEntry = getData $ zipWith (\ sel (old,new) -> if sel then new else old) (unpack byteEnable) $
+   zip oldData (getRegs writeData)
 
   bufB1 = if writeTrue then replace writeAddr newEntry bufB0 else bufB0
   state' = (input, bufA0, bufB1)
+  getRegs a = case paddedToRegisters @8 $ Padded a of
+    RegisterBank v -> v
+
+  getData :: Vec bytes Byte -> BitVector bits
+  getData vec = registersToData @_ @8 $ RegisterBank vec
