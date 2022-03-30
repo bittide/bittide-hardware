@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
 
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}

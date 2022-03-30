@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+
 module Bittide.DoubleBufferedRAM where
 
 import Clash.Prelude
@@ -45,8 +46,7 @@ doubleBufferedRAM initialContent switch readAddr writeFrame = output
 -- contains the read data from the "active" buffer, and the second element contains the read data from the "inactive" buffer.
 -- Writing to this component will always write to the inactive buffer.
 doubleBufferedRAMByteAddressable ::
- ( KnownNat depth,  HiddenClockResetEnable dom, KnownNat upperByteWidth, KnownNat extraBytes
- , BitPack a, BitSize a ~ (upperByteWidth + (extraBytes * 8))) =>
+ ( KnownNat depth, HiddenClockResetEnable dom, Paddable a, KnownNat bytes, 1 <= bytes, bytes ~ Regs a 8) =>
   -- | The initial contents of the first buffer. The second buffer is undefined.
   Vec depth a ->
   -- | Indicates when a new metacycle has started.
@@ -56,7 +56,7 @@ doubleBufferedRAMByteAddressable ::
   -- | Incoming data frame.
   Signal dom (WriteAny depth a) ->
   -- | One hot byte select for writing only
-  Signal dom (ByteEnable (extraBytes + 1)) ->
+  Signal dom (ByteEnable bytes) ->
   -- | Outgoing data
   Signal dom a
 doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteSelect = output
@@ -72,32 +72,33 @@ doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteS
 
     output = mux outputSelect buffer1 buffer0
 
-blockRamByteAddressable ::
-  ( HiddenClockResetEnable dom, KnownNat depth, KnownNat bytes, bytes ~ (extraBytes + 1), KnownNat upperByteWidth
-  , BitPack a, BitSize a ~ (upperByteWidth + (extraBytes * 8))) =>
+blockRamByteAddressable :: forall dom bytes depth a .
+  (HiddenClockResetEnable dom, KnownNat bytes, 1 <= bytes, bytes ~ Regs a 8, KnownNat depth, Paddable a) =>
   Vec depth a ->
   Signal dom (Index depth) ->
   Signal dom (WriteAny depth a) ->
   Signal dom (ByteEnable bytes) ->
   Signal dom a
-blockRamByteAddressable initRAM readAddr newEntry byteSelect = (\u l -> unpack $ u ++# pack l)  <$> upperByte <*> bundle lowerBytes
+blockRamByteAddressable initRAM readAddr newEntry byteSelect =
+  registersToData @_ @8 . RegisterBank <$> readBytes
  where
-   (upperInitBytes, lowerInitBytes) = fmap transpose . unzip $ (fmap unpack . split . pack) <$> initRAM
+   initBytes = transpose $ getRegs <$> initRAM
+   getRegs x =
+     case paddedToRegisters $ Padded x of
+      RegisterBank vec -> vec
+   writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
+   readBytes = bundle $ (`blockRam` readAddr) <$> initBytes <*> writeBytes
 
-   (upperEntry, lowerEntries) = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
-   upperByte  = blockRam upperInitBytes readAddr upperEntry
-   lowerBytes = (`blockRam` readAddr) <$> lowerInitBytes <*> (unbundle lowerEntries)
-
-splitWriteInBytes ::
-  (BitSize writeData ~ (upperByteWidth + (extraBytes * 8)), KnownNat bytes, bytes ~ (extraBytes + 1), KnownNat upperByteWidth, BitPack writeData) =>
+splitWriteInBytes :: forall maxIndex writeData .
+  (Paddable writeData) =>
   WriteAny maxIndex writeData ->
-  ByteEnable (1 + extraBytes) ->
-  (WriteBits maxIndex upperByteWidth, Vec extraBytes (WriteByte maxIndex))
-splitWriteInBytes (Just (addr, writeData)) byteSelect = (upperWrite, lowerWrites)
- where
-   (upperByte, lowerBytes) = split $ pack writeData
-   (upperBool :> lowerBools) = unpack byteSelect
-   lowerWrites =   (\ (b,bv') -> if b then Just (addr, bv') else Nothing) <$> zip lowerBools (unpack lowerBytes)
-   upperWrite = if upperBool then Just (addr, upperByte) else Nothing
+  ByteEnable (Regs writeData 8) ->
+  Vec (Regs writeData 8) (WriteByte maxIndex)
+splitWriteInBytes (Just (addr, writeData)) byteSelect =
+  case paddedToRegisters $ Padded writeData of
+    RegisterBank vec -> splitWrites <$> unpack byteSelect <*> vec
+     where
+      splitWrites :: Bool -> Byte -> WriteByte maxIndex
+      splitWrites b bv = if b then Just (addr, bv) else Nothing
 
-splitWriteInBytes Nothing _ = (Nothing, repeat Nothing)
+splitWriteInBytes Nothing _ = repeat Nothing
