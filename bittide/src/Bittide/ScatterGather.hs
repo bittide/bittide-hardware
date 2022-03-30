@@ -2,14 +2,20 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.ScatterGather(scatterEngine, gatherEngine, scatterGatherEngine) where
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
+module Bittide.ScatterGather(scatterEngine, gatherEngine, scatterGatherEngine, scatterUnitWB, gatherUnitWB) where
 
 import Clash.Prelude
 
-import Bittide.Calendar
-import Bittide.DoubleBufferedRAM ( doubleBufferedRAM )
-import Bittide.SharedTypes
+import Contranomy.Wishbone
+import Data.Type.Equality ((:~:)(Refl))
+import Data.Proxy
 
+import Bittide.Calendar
+import Bittide.DoubleBufferedRAM
+import Bittide.SharedTypes
 
 -- | Contains a calendar entry that can be used by a scatter or gather engine.
 type CalendarEntry memDepth = Index memDepth
@@ -110,3 +116,102 @@ scatterGatherEngine bootCalS bootCalG scatterConfig gatherConfig
     gatherOut = doubleBufferedRAM (deepErrorX "gatherOut undefined")
       newMetaCycleG readAddrSwitch writeFramePE
     toSwitch  = mux (register True $ (==0) <$> readAddrSwitch) (pure Nothing) $ Just <$> gatherOut
+
+scatterUnit ::
+  (HiddenClockResetEnable dom, KnownNat memDepth, KnownNat frameWidth) =>
+  Vec memDepth (BitVector frameWidth) ->
+  CalendarConfig bytes addressWidth (CalendarEntry memDepth) ->
+  Signal dom (WishboneM2S bytes addressWidth) ->
+  Signal dom Bool ->
+  Signal dom (DataLink frameWidth) ->
+  Signal dom (Index memDepth) ->
+  (Signal dom (BitVector frameWidth), Signal dom (WishboneS2M bytes))
+scatterUnit initMem calConfig wbIn calSwitch linkIn readAddr = (readOut, wbOut)
+ where
+  (writeAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
+  writeOp = (\a b -> (a,) <$> b) <$> writeAddr <*> linkIn
+  readOut = doubleBufferedRAM initMem metaCycle readAddr writeOp
+
+gatherUnit ::
+  ( HiddenClockResetEnable dom
+  , KnownNat memDepth
+  , KnownNat frameWidth
+  , 1 <= frameWidth
+  , KnownNat (DivRU frameWidth 8)
+  , 1 <= (DivRU frameWidth 8)) =>
+  Vec memDepth (BitVector frameWidth) ->
+  CalendarConfig bytes addressWidth (CalendarEntry memDepth) ->
+  Signal dom (WishboneM2S bytes addressWidth) ->
+  Signal dom Bool ->
+  Signal dom (WriteBits memDepth frameWidth) ->
+  Signal dom (ByteEnable (DivRU frameWidth 8)) ->
+  (Signal dom (DataLink frameWidth), Signal dom (WishboneS2M bytes))
+gatherUnit initMem calConfig wbIn calSwitch writeOp byteEnables= (linkOut, wbOut)
+ where
+  (readAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
+  linkOut = mux ((==0) <$> readAddr) (pure Nothing) $ Just <$> bramOut
+  bramOut = doubleBufferedRAMByteAddressable initMem metaCycle readAddr writeOp byteEnables
+
+wbInterface ::
+  forall bytes addressWidth addresses .
+  (KnownNat addresses, 1 <= addresses, KnownNat addressWidth, 2 <= addressWidth) =>
+  Index addresses ->
+  WishboneM2S bytes addressWidth ->
+  Bytes bytes ->
+  (WishboneS2M bytes, Index addresses, Maybe (Bytes bytes))
+wbInterface addressRange WishboneM2S{..} readData = (WishboneS2M{readData, acknowledge, err}, memAddr, writeOp)
+ where
+  (alignedAddress, alignment) = split @_ @(addressWidth - 2) @2 addr
+  wordAligned = alignment == (0 :: BitVector 2)
+  err = (alignedAddress > resize (pack addressRange)) || not wordAligned
+  acknowledge = not err && strobe
+  wbAddr = unpack . resize $ pack alignedAddress
+  memAddr = wbAddr
+  writeOp | strobe && writeEnable && not err = Just writeData
+          | otherwise  = Nothing
+
+scatterUnitWB ::
+  forall dom memDepth awSU bsCal awCal .
+  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, KnownNat awSU, 2 <= awSU) =>
+  Vec memDepth (BitVector 64) ->
+  CalendarConfig bsCal awCal (CalendarEntry memDepth) ->
+  Signal dom (WishboneM2S bsCal awCal) ->
+  Signal dom Bool ->
+  Signal dom (DataLink 64) ->
+  Signal dom (WishboneM2S 4 awSU) ->
+  (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
+scatterUnitWB initMem calConfig wbInCal calSwitch linkIn wbInSU = (wbOutSU, wbOutCal)
+ where
+  (wbOutSU, memAddr, _) = unbundle $ wbInterface (maxBound :: Index memDepth) <$> wbInSU <*> scatteredData
+  readAddr = (`shiftR` 1) <$> readAddr
+  (scatterUnitRead, wbOutCal) = scatterUnit initMem calConfig wbInCal calSwitch linkIn readAddr
+  (upper, lower) = unbundle $ split <$> scatterUnitRead
+  scatteredData = mux (bitToBool . lsb <$> memAddr) upper lower
+
+gatherUnitWB ::
+  forall dom memDepth awSU bsCal awCal .
+  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, KnownNat awSU, 2 <= awSU) =>
+  Vec memDepth (BitVector 64) ->
+  CalendarConfig bsCal awCal (CalendarEntry memDepth) ->
+  Signal dom (WishboneM2S bsCal awCal) ->
+  Signal dom Bool ->
+  Signal dom (WishboneM2S 4 awSU) ->
+  (Signal dom (DataLink 64), Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
+gatherUnitWB initMem calConfig wbInCal calSwitch wbInSU = (linkOut, wbOutSU, wbOutCal)
+ where
+  (wbOutSU, memAddr, writeOp) = unbundle $ wbInterface (maxBound :: Index (memDepth * 2)) <$> wbInSU <*> pure 0b0
+  (writeAddr, upperSelected) = unbundle $ coerceIndexes <$> memAddr
+  (linkOut, wbOutCal) = gatherUnit initMem calConfig wbInCal calSwitch gatherWrite gatherByteEnables
+  gatherWrite = mkWrite <$> writeAddr <*> writeOp
+  gatherByteEnables = mkEnables <$> upperSelected <*> (busSelect <$> wbInSU)
+  mkWrite address (Just write) = Just (address, write ++# write)
+  mkWrite _ _ = Nothing
+  mkEnables selected byteEnables = if selected then byteEnables ++# 0b0 else 0b0 ++# byteEnables
+
+  coerceIndexes :: forall n . (KnownNat n, 1 <= n) => (Index (n*2) -> (Index n, Bool))
+  coerceIndexes = case sameNat natA natB of
+    Just Refl -> bitCoerce
+    _ -> error "gatherUnitWB: Index coercion failed."
+   where
+    natA = Proxy @(CLog 2 (n*2))
+    natB = Proxy @(1 + CLog 2 n)
