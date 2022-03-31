@@ -76,6 +76,7 @@ library
   exposed-modules:
     Bittide.Calendar
     Bittide.DoubleBufferedRAM
+    Bittide.MemoryMap
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Switch
