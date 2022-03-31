@@ -136,3 +136,25 @@ wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' in
   half1 = [byte2, byte3]
   word0  = [byte0, byte1, byte2, byte3]
   dataOut = WishboneS2M{readData = readData, acknowledge = ack, err = False}
+
+-- | Wrapper for the wishboneStorage that allows two ports to be connected.
+-- Port A can only be used for reading, port B can read and write to the te storage.
+-- Writing from port A is illegal and write attempts will set the err signal.
+instructionStorage
+  :: String
+  -> I.IntMap (BitVector 8)
+  -> Signal dom (WishboneM2S Bytes AddressWidth)
+  -> Signal dom (WishboneM2S Bytes AddressWidth)
+  -> (Signal dom (WishboneS2M 4),Signal dom (WishboneS2M 4))
+instructionStorage name initial aM2S bM2S = (aS2M, bS2M)
+ where
+  storageOut = wishboneStorage name initial storageIn
+  aActive = strobe <$> aM2S .&&. busCycle <$> aM2S
+  bActive = strobe <$> bM2S .&&. busCycle <$> bM2S
+  aWriting = aActive .&&. writeEnable <$> aM2S
+  storageIn = mux bActive bM2S (noWrite <$> aM2S)
+  aS2M = mux bActive (noAck <$> storageOut) (writeIsErr <$> storageOut <*> aWriting)
+  bS2M = storageOut
+  noAck wb = wb{acknowledge = False, err = False}
+  noWrite wb = wb{writeEnable = False}
+  writeIsErr wb write = wb{err = err wb || write}
