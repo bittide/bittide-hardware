@@ -89,13 +89,16 @@ contranomy' clk rst entry iMem dMem (unbundle -> (tI, sI, eI)) =
   dataM2S = dBusM2S <$> coreOut1
   iStorage = wishboneStorage "Instruction storage" iMem instructionM2S
   dStorage = wishboneStorage "Data storage" dMem dataM2S
-  iWritten = checkWritten <$> instructionM2S
-  dWritten = checkWritten <$> dataM2S
+  iWritten = checkWritten <$> instructionM2S <*> iStorage
+  dWritten = checkWritten <$> dataM2S <*> dStorage
 
-  checkWritten :: WishboneM2S Bytes AddressWidth -> Maybe (Unsigned 32, Signed 32)
-  checkWritten bus =
-    if writeEnable bus
-    then Just (unpack (addr bus), unpack (writeData bus))
+  checkWritten
+    :: WishboneM2S Bytes AddressWidth
+    -> WishboneS2M bytes
+    -> Maybe (Unsigned 32, Signed 32)
+  checkWritten busM busS =
+    if writeEnable busM && strobe busM && acknowledge busS
+    then Just (unpack (addr busM), unpack (writeData busM))
     else Nothing
 
 bytesToWords :: [BitVector 8] -> [BitVector 32]

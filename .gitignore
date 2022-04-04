@@ -59,3 +59,9 @@ _build/
 
 # Formal checking temporary files
 riscv-formal/cores/contranomy/
+
+# Rust build files
+contranomy-rust-starter/target
+
+# Compiled Rust starter ELF file
+contranomy/main.elf

@@ -108,10 +108,13 @@ library
     Contranomy.Assembly
     Contranomy.Wishbone
 
+    Contranomy.Println
+
   build-depends:
       transformers >= 0.5 && < 0.6,
       lens >= 5.1 && < 5.2,
       generic-lens >= 2.2 && < 2.3,
+      bytestring >=0.10 && <0.11
 
 executable clash
   import: common-options
