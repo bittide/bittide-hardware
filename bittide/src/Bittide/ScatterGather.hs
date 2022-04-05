@@ -21,9 +21,8 @@ type ConfigurationPort calDepth memDepth = Maybe (Index calDepth, CalendarEntry 
 -- The initial contents are undefined and it returns the contents as valid frame using the
 -- Maybe functor.
 scatterEngine ::
-  forall dom memDepth a .
-  (NFDataX a, KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom) =>
-  -- | Boolean signal indicating when a new metacycle has started.
+  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
+  -- | Indicates when a new metacycle has started.
   Signal dom Bool ->
   -- | Incoming frame from link, if it contains Just a, a will be written to the memory.
   Signal dom (Maybe a) ->
@@ -35,16 +34,15 @@ scatterEngine newMetaCycle frameIn writeAddr =
   doubleBufferedRAM (deepErrorX "scatterEngine undefined") newMetaCycle readAddr writeFrame
     where
       readAddr = register (0 :: Index memDepth) $ satSucc SatWrap <$> readAddr
-      writeFrame = (\f a -> fmap (a,) f) <$> frameIn <*> writeAddr
+      writeFrame = combineFrameWithAddr frameIn writeAddr
 
 -- | gatherEngine is a memory bank that allows for random reads and sequentially
 -- writes data based on an internal counter that runs up to the maximum index and wraps around.
 -- The initial contents are undefined and it returns the contents as valid frame using the
 -- Maybe functor.
 gatherEngine ::
-  forall dom memDepth a .
-  (NFDataX a, KnownNat memDepth, HiddenClockResetEnable dom, 1 <= memDepth) =>
-  -- | Boolean signal indicating when a new metacycle has started.
+  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
+  -- | Indicates when a new metacycle has started.
   Signal dom Bool ->
   -- | Incoming frame from link, if it contains Just a, a will be written to the memory.
   Signal dom (Maybe a) ->
@@ -56,7 +54,13 @@ gatherEngine newMetaCycle frameIn readAddr =
   doubleBufferedRAM (deepErrorX "gatherEngine undefined") newMetaCycle readAddr writeFrame
   where
     writeAddr = register 0 $ satSucc SatWrap <$> writeAddr
-    writeFrame = (\f a -> fmap (a,) f) <$> frameIn <*> writeAddr
+    writeFrame = combineFrameWithAddr frameIn writeAddr
+
+combineFrameWithAddr :: Signal dom (Maybe dat) -> Signal dom addr -> Signal dom (Maybe (addr,dat))
+combineFrameWithAddr frameIn writeAddr = combine <$> frameIn <*> writeAddr
+  where
+    combine :: Maybe dat -> addr -> Maybe (addr,dat)
+    combine frame addr = fmap (addr,) frame
 
 -- | scatterGatherEngine is a 4 port memory component that enables gathering and scattering for the processing element.
 -- Scattering and gathering data is done using two seperate memory banks with each their own calendar,
@@ -64,8 +68,8 @@ gatherEngine newMetaCycle frameIn readAddr =
 -- If the read address for the scatter engine is 0, a null frame (Nothing) will be sent to the switch.
 scatterGatherEngine ::
   forall dom calDepthG calDepthS memDepthG memDepthS frameWidth .
-  (KnownNat calDepthS, KnownNat calDepthG, KnownNat memDepthS, KnownNat memDepthG, KnownNat frameWidth,
-  1 <= calDepthG , 1 <= calDepthS, 1 <= memDepthG, 1 <= memDepthS, HiddenClockResetEnable dom) =>
+  (HiddenClockResetEnable dom, KnownNat calDepthG, KnownNat calDepthS, KnownNat memDepthG, KnownNat memDepthS, KnownNat frameWidth,
+  1 <= calDepthG , 1 <= calDepthS, 1 <= memDepthG, 1 <= memDepthS) =>
   -- | Bootstrap calendar gather memory.
   Calendar calDepthS memDepthS ->
   -- | Bootstrap calendar scatter memory.

@@ -75,7 +75,7 @@ sgGroup = testGroup "Scatter Gather group"
 type MemoryEngine =
   forall dom memDepth a .
   (NFDataX a, KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom) =>
-  -- | Boolean signal indicating when a new metacycle has started.
+  -- | Indicates when a new metacycle has started.
   Signal dom Bool ->
   -- | Incoming frame from link, if it contains Just a, a will be written to the memory.
   Signal dom (Maybe a) ->
@@ -104,10 +104,6 @@ engineNoFrameLoss engine = property $ do
       footnote . fromString $ showX simOut
       footnote . fromString $ showX topEntityInput
       Set.fromList inputFrames' === Set.fromList simOut
-
-tupMap :: (a -> b) -> (a,a) -> (b,b)
-tupMap f (a, b) = bimap f f (a,b)
-
 
 filterSGOut ::
   (KnownDomain dom, KnownNat n, 1 <= n) =>
@@ -147,8 +143,8 @@ scatterGatherNoFrameLoss = property $ do
 
         expectedScat = filterZeroes (P.take simLength inputFramesSwitch') addressesScat
         expectedGath = filterZeroes (P.take simLength inputFramesPE') addressesGath
-        expected = tupMap Set.fromList (expectedScat, expectedGath)
-        result = tupMap Set.fromList $ P.unzip simOut
+        expected = bimap Set.fromList Set.fromList (expectedScat, expectedGath)
+        result = bimap Set.fromList Set.fromList $ P.unzip simOut
 
       footnote . fromString $ "Frames to PE: " <> showX (fmap fst simOut)
       footnote . fromString $ "Frames to Switch: " <> showX (fmap snd simOut)
