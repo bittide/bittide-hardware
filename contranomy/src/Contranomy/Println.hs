@@ -1,11 +1,24 @@
-module Contranomy.Println ( hookPrint ) where
+module Contranomy.Println ( hookPrint, getDataBytes ) where
 
 import Clash.Prelude
 
 import qualified Data.ByteString as BS
+import qualified Data.List as L
 import Data.Foldable (traverse_)
 import Data.Maybe (catMaybes)
 import Data.Word (Word8)
+
+getDataBytes
+  :: Int -- ^ How many bytes to sample
+  -> Unsigned 32 -- ^ Address
+  -> [Maybe (Unsigned 32, Signed 32)] -- ^ Data
+  -> BS.ByteString
+getDataBytes n addr =
+     BS.pack
+   . L.take n
+   . fmap (addrByte.snd)
+   . filter (\(addr', _) -> addr' == addr)
+   . catMaybes
 
 hookPrint
   :: Unsigned 32 -- ^ Address

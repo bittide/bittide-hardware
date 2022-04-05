@@ -78,6 +78,8 @@ common common-options
     array >= 0.5 && < 0.6,
     clash-prelude >= 1.6 && < 1.7,
     containers >= 0.6 && < 0.7,
+    HUnit,
+    temporary,
 
     -- clash-prelude will set suitable version bounds for the plugins
     ghc-typelits-natnormalise,
@@ -109,12 +111,15 @@ library
     Contranomy.Wishbone
 
     Contranomy.Println
+    Contranomy.HUnit
+    ReadElf
 
   build-depends:
       transformers >= 0.5 && < 0.6,
       lens >= 5.1 && < 5.2,
       generic-lens >= 2.2 && < 2.3,
-      bytestring >=0.10 && <0.11
+      bytestring >=0.10 && <0.11,
+      elf >= 0.31 && < 0.32
 
 executable clash
   import: common-options
@@ -132,8 +137,6 @@ executable simcontranomy
   build-depends:
     bytestring >= 0.10 && < 0.11,
     contranomy,
-    elf >= 0.31 && < 0.32,
-
     base,
     containers,
     clash-prelude,

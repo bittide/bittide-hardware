@@ -12,4 +12,4 @@ build-firmware-example-hello:
 .PHONY: sim-firmware-example-hello
 sim-firmware-example-hello: build-sim build-firmware-example-hello
 	cp target/riscv32imc-unknown-none-elf/release/hello contranomy/main.elf
-	cd contranomy; cabal run simcontranomy
+	cd contranomy; cabal run simcontranomy -- main.elf
