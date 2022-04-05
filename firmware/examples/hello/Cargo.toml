@@ -1,5 +1,5 @@
 [package]
-name = "contranomy-rust-starter"
+name = "hello"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 riscv-rt = "0.8.0"
-panic-halt = "0.2.0"
+bittide-sys = { path = "../../bittide-sys" }
+contranomy-sys = { path = "../../contranomy-sys" }

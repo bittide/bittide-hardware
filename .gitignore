@@ -61,7 +61,10 @@ _build/
 riscv-formal/cores/contranomy/
 
 # Rust build files
-contranomy-rust-starter/target
+target/
 
-# Compiled Rust starter ELF file
+# Rust workspace lock file (only used for rust-analyzer)
+/Cargo.lock
+
+# ELF file for testing
 contranomy/main.elf

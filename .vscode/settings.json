@@ -1,4 +1,3 @@
-
 {
   "files.exclude": {
     "**/*.dyn_hi": true,
@@ -18,5 +17,8 @@
     80,
     90
   ],
-  "editor.tabSize": 2
+  "editor.tabSize": 2,
+  "[rust]": {
+    "editor.tabSize": 4
+  }
 }

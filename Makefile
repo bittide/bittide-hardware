@@ -1,13 +1,15 @@
+CARGO_TARGET_DIR=target
+
 .PHONY: build-sim
 build-sim:
 	cd contranomy; cabal build simcontranomy
 
 
-.PHONY: build-rust-starter
-build-rust-starter:
-	cd contranomy-rust-starter; cargo build --release
+.PHONY: build-firmware-example-hello
+build-firmware-example-hello:
+	cd firmware/examples/hello; cargo build --release --target-dir ../../../$(CARGO_TARGET_DIR)
 
-.PHONY: sim-rust-starter
-sim-rust-starter: build-sim build-rust-starter
-	cp contranomy-rust-starter/target/riscv32imc-unknown-none-elf/release/contranomy-rust-starter contranomy/main.elf
+.PHONY: sim-firmware-example-hello
+sim-firmware-example-hello: build-sim build-firmware-example-hello
+	cp target/riscv32imc-unknown-none-elf/release/hello contranomy/main.elf
 	cd contranomy; cabal run simcontranomy

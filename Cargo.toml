@@ -1,0 +1,5 @@
+[workspace]
+exclude = ["firmware/examples"]
+members = [
+  "firmware/*"
+]
