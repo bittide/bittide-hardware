@@ -2,6 +2,8 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE ImplicitPrelude #-}
+
 module Main where
 
 import Test.Tasty
@@ -11,10 +13,11 @@ import Tests.Calendar
 import Tests.DoubleBufferedRam
 import Tests.ScatterGather
 import Tests.Switch
+import Tests.ElasticBuffer
 
 tests :: TestTree
 tests = testGroup "Unittests"
-  [calGroup, sgGroup, switchGroup, ramGroup]
+  [calGroup, sgGroup, ebGroup, switchGroup, ramGroup]
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
 setDefaultHedgehogTestLimit (HedgehogTestLimit Nothing) = HedgehogTestLimit (Just 10000)

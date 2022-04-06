@@ -2,8 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-
-{-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=7 #-}
 
 {-# LANGUAGE FlexibleContexts #-}
@@ -69,9 +67,6 @@ data BVCalendar addressWidth where
 
 instance Show (BVCalendar addressWidth) where
   show (BVCalendar _ _ bvvec) = show bvvec
-
--- TODO: Remove this show instance after issue (https://github.com/clash-lang/clash-compiler/issues/2190) has been fixed.
-deriving instance Show (SNatLE a b)
 
 -- | Generates a configuration for 'Bittide.Calendar.calendarWb', with as first argument
 -- the maximum depth of the stored calendar and as second argument a generator for the

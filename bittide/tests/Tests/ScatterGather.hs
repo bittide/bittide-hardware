@@ -60,9 +60,6 @@ sgGroup = testGroup "Scatter Gather group"
   , testPropertyNamed "gatherUnitWb - No overwriting implies no lost frames." "gatherUnitNoFrameLoss" gatherUnitNoFrameLoss
   ]
 
--- TODO: Remove instance once https://github.com/clash-lang/clash-compiler/pull/2197 is released
-deriving instance Show (SNatLE a b)
-
 -- | Generates a 'CalendarConfig' for the 'gatherUnitWb' or 'scatterUnitWb'
 genCalendarConfig ::
   forall bytes addressWidth calEntry maxDepth .
