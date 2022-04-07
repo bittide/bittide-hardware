@@ -33,7 +33,7 @@ scatterEngine ::
 scatterEngine newMetaCycle frameIn writeAddr =
   doubleBufferedRAM (deepErrorX "scatterEngine undefined") newMetaCycle readAddr writeFrame
     where
-      readAddr = register (0 :: Index memDepth) $ satSucc SatWrap <$> readAddr
+      readAddr = register 0 $ satSucc SatWrap <$> readAddr
       writeFrame = combineFrameWithAddr frameIn writeAddr
 
 -- | gatherEngine is a memory bank that allows for random reads and sequentially
@@ -86,7 +86,7 @@ scatterGatherEngine ::
   Signal dom (Index memDepthS) ->
   -- | Write address for the PE link.
   Signal dom (Index memDepthG) ->
-  -- | Tuple containing the frame read by the switch and the data read by the PE.
+  -- | Frame read by the switch and the data read by the PE.
   (Signal dom (BitVector frameWidth),Signal dom (DataLink frameWidth))
 scatterGatherEngine bootCalS bootCalG scatterConfig gatherConfig
  frameInSwitch frameInPE readAddrPE writeAddrPE = (toPE, toSwitch)
