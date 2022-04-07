@@ -7,32 +7,32 @@
 See: http://cdn.opencores.org/downloads/wbspec_b4.pdf
 -}
 
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns   #-}
+{-# LANGUAGE PatternSynonyms  #-}
 
 module Contranomy.Wishbone where
 
-import Clash.Prelude
-import qualified Data.IntMap as I
+import           Clash.Prelude
 import           Clash.Signal.Internal
+import qualified Data.IntMap                 as I
 
-import Contranomy.Core.SharedTypes (Bytes, AddressWidth)
+import           Contranomy.Core.SharedTypes (AddressWidth, Bytes)
 
 data WishboneM2S bytes addressWidth
   = WishboneM2S
   { -- | ADR
-    addr :: "ADR" ::: BitVector addressWidth
+    addr                :: "ADR" ::: BitVector addressWidth
     -- | DAT
-  , writeData :: "DAT_MOSI" ::: BitVector (8 * bytes)
+  , writeData           :: "DAT_MOSI" ::: BitVector (8 * bytes)
     -- | SEL
-  , busSelect :: "SEL" ::: BitVector bytes
+  , busSelect           :: "SEL" ::: BitVector bytes
     -- | CYC
-  , busCycle :: "CYC" ::: Bool
+  , busCycle            :: "CYC" ::: Bool
     -- | STB
-  , strobe :: "STB" ::: Bool
+  , strobe              :: "STB" ::: Bool
     -- | WE
-  , writeEnable :: "WE" ::: Bool
+  , writeEnable         :: "WE" ::: Bool
     -- | CTI
   , cycleTypeIdentifier :: "CTI" ::: CycleTypeIdentifier
     -- | BTE
@@ -42,7 +42,7 @@ data WishboneM2S bytes addressWidth
 data WishboneS2M bytes
   = WishboneS2M
   { -- | DAT
-    readData :: "DAT_MISO" ::: BitVector (8 * bytes)
+    readData    :: "DAT_MISO" ::: BitVector (8 * bytes)
     -- | ACK
   , acknowledge :: "ACK" ::: Bool
     -- | ERR
@@ -118,16 +118,18 @@ wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' in
         | otherwise   = file
   ack' = busCycle && strobe
   address = fromIntegral (unpack $ addr :: Unsigned 32)
-  readData = (file `lookup'` (address+3)) ++# (file `lookup'` (address+2)) ++# (file `lookup'` (address+1)) ++# (file `lookup'` address)
+  readData = if not writeEnable
+    then (file `lookup'` (address+3)) ++# (file `lookup'` (address+2)) ++# (file `lookup'` (address+1)) ++# (file `lookup'` address)
+    else 0
   lookup' x addr' = I.findWithDefault (error $ name <> ": Uninitialized Memory Address = " <> show addr') addr' x
   assocList = case busSelect of
-    $(bitPattern "0001")  -> [byte0]
-    $(bitPattern "0010")  -> [byte1]
-    $(bitPattern "0100")  -> [byte2]
-    $(bitPattern "1000")  -> [byte3]
-    $(bitPattern "0011")  -> half0
-    $(bitPattern "1100")  -> half1
-    _                     -> word0
+    $(bitPattern "0001") -> [byte0]
+    $(bitPattern "0010") -> [byte1]
+    $(bitPattern "0100") -> [byte2]
+    $(bitPattern "1000") -> [byte3]
+    $(bitPattern "0011") -> half0
+    $(bitPattern "1100") -> half1
+    _                    -> word0
   byte0 = (address, slice d7 d0 writeData)
   byte1 = (address+1, slice d15 d8 writeData)
   byte2 = (address+2, slice d23 d16 writeData)
@@ -152,9 +154,24 @@ instructionStorage name initial aM2S bM2S = (aS2M, bS2M)
   aActive = strobe <$> aM2S .&&. busCycle <$> aM2S
   bActive = strobe <$> bM2S .&&. busCycle <$> bM2S
   aWriting = aActive .&&. writeEnable <$> aM2S
-  storageIn = mux bActive bM2S (noWrite <$> aM2S)
-  aS2M = mux bActive (noAck <$> storageOut) (writeIsErr <$> storageOut <*> aWriting)
+
+  storageIn = mux (not <$> bActive) (noWrite <$> aM2S) bM2S
+
+  aS2M = mux (not <$> bActive) (writeIsErr <$> storageOut <*> aWriting) (noAck <$> storageOut)
   bS2M = storageOut
+
   noAck wb = wb{acknowledge = False, err = False}
   noWrite wb = wb{writeEnable = False}
   writeIsErr wb write = wb{err = err wb || write}
+
+idleM2S :: (KnownNat bytes, KnownNat addressWidth) => WishboneM2S bytes addressWidth
+idleM2S = WishboneM2S
+  { addr = 0
+  , writeData = 0
+  , busSelect = 0
+  , busCycle = False
+  , strobe = False
+  , writeEnable = False
+  , cycleTypeIdentifier = Classic
+  , burstTypeExtension = LinearBurst
+  }

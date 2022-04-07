@@ -4,22 +4,25 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE NamedFieldPuns     #-}
+{-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE RecordWildCards    #-}
 
 module Contranomy where
 
-import Clash.Prelude
-import Clash.Annotations.TH
+import           Clash.Annotations.TH
+import           Clash.Prelude
 
-import Data.IntMap (IntMap)
-import qualified Data.List as L
+import           Data.IntMap                 (IntMap)
+import qualified Data.List                   as L
 
-import Contranomy.Core
-import Contranomy.Core.SharedTypes
-import Contranomy.RegisterFile
-import Contranomy.RVFI
-import Contranomy.Wishbone
+import           Contranomy.Core
+import           Contranomy.Core.SharedTypes
+import           Contranomy.MemoryMap
+import           Contranomy.RVFI
+import           Contranomy.RegisterFile
+import           Contranomy.Wishbone
+import           Debug.Trace
 
 createDomain vXilinxSystem{vName="Core", vPeriod=hzToPeriod 100e6}
 
@@ -80,15 +83,20 @@ contranomy' clk rst entry iMem dMem (unbundle -> (tI, sI, eI)) =
   tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusS2M, dBusS2M) =
     CoreIn {..}
 
-  coreIn = tupToCoreIn <$> bundle (tI, sI, eI, iStorage, dStorage)
+  coreIn = tupToCoreIn <$> bundle (tI, sI, eI, iMemS2M, dMemS2M)
   coreOut1 = contranomy entry clk rst coreIn
 
   instructionM2S = iBusM2S <$> coreOut1
   dataM2S = dBusM2S <$> coreOut1
-  iStorage = wishboneStorage "Instruction storage" iMem instructionM2S
-  dStorage = wishboneStorage "Data storage" dMem dataM2S
-  iWritten = checkWritten <$> instructionM2S <*> iStorage
-  dWritten = checkWritten <$> dataM2S <*> dStorage
+  (dMemS2M, unbundle -> (dMappediMemM2S :> dMemM2S :> Nil)) =
+    withClockResetEnable clk rst enableGen $ memoryMap (0x0000_0000 :> 0x5000_0000 :> Nil) dataM2S $ bundle (iMemMapped :> dStorage :> Nil)
+
+  (iMemS2M, iMemMapped) = instructionStorage "Instruction storage" iMem instructionM2S dMappediMemM2S
+  dStorage = wishboneStorage "Data storage" dMem dMemM2S
+
+  iWritten = checkWritten <$> instructionM2S <*> iMemS2M
+  dWritten = checkWritten <$> dataM2S <*> dMemS2M
+
 
   checkWritten
     :: WishboneM2S Bytes AddressWidth
