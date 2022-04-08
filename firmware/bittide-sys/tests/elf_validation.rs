@@ -12,80 +12,16 @@ use crate::elf_common::{Segment, SegmentType};
 mod elf_common;
 
 #[test]
-fn example_elf_file_valid() {
-    let buf_addr = 6543; // chosen by keysmash
-    let buf_addr_u64 = buf_addr as u64;
-
+fn example_elf_file_no_segments() {
     let config = ElfConfig {
-        instruction_memory_address: buf_addr..(buf_addr + 100),
-        data_memory_address: (buf_addr + 100)..(buf_addr + 300),
-    };
-
-    let elf = create_elf_file(&ElfCreateInfo {
-        entry: buf_addr_u64,
-        segments: vec![
-            Segment {
-                addr: buf_addr_u64,
-                load: true,
-                data: vec![1, 2, 3, 4],
-                ty: SegmentType::Text,
-            },
-            Segment {
-                addr: buf_addr_u64 + 100,
-                load: true,
-                data: vec![1, 2, 3, 4],
-                ty: SegmentType::Data,
-            },
-            Segment {
-                addr: buf_addr_u64 + 150,
-                load: true,
-                data: vec![1, 2, 3, 4],
-                ty: SegmentType::RoData,
-            },
-        ],
-        is_64: false,
-        endian: object::Endianness::Little,
-        machine: object::elf::EM_RISCV,
-        elf_ty: object::elf::ET_EXEC,
-    });
-
-    let res = validation::validate_elf_file(&elf, &config);
-    assert!(res.is_ok());
-}
-
-#[test]
-fn example_elf_file_invalid_entry() {
-    let buf_addr = 6543; // chosen by keysmash
-    let buf_addr_u64 = buf_addr as u64;
-
-    let config = ElfConfig {
-        instruction_memory_address: buf_addr..(buf_addr + 100),
-        data_memory_address: (buf_addr + 100)..(buf_addr + 300),
+        instruction_memory_address: 0..1000,
+        data_memory_address: 1000..2000,
     };
 
     let elf = create_elf_file(&ElfCreateInfo {
         // entry points outside of text segments
-        entry: buf_addr_u64 + 200,
-        segments: vec![
-            Segment {
-                addr: buf_addr_u64,
-                load: true,
-                data: vec![1, 2, 3, 4],
-                ty: SegmentType::Text,
-            },
-            Segment {
-                addr: buf_addr_u64 + 100,
-                load: true,
-                data: vec![1, 2, 3, 4],
-                ty: SegmentType::Data,
-            },
-            Segment {
-                addr: buf_addr_u64 + 150,
-                load: true,
-                data: vec![1, 2, 3, 4],
-                ty: SegmentType::RoData,
-            },
-        ],
+        entry: 0,
+        segments: vec![],
         is_64: false,
         endian: object::Endianness::Little,
         machine: object::elf::EM_RISCV,
@@ -96,53 +32,8 @@ fn example_elf_file_invalid_entry() {
     assert!(res.is_err());
     assert_eq!(
         res.unwrap_err(),
-        ElfValidationError::EntryPointNotLoaded {
-            entry_point: buf_addr + 200
-        }
+        ElfValidationError::EntryPointNotLoaded { entry_point: 0 }
     );
-}
-
-#[test]
-fn example_elf64_file_invalid() {
-    let buf_addr = 6543; // chosen by keysmash
-    let buf_addr_u64 = buf_addr as u64;
-
-    let config = ElfConfig {
-        instruction_memory_address: buf_addr..(buf_addr + 100),
-        data_memory_address: (buf_addr + 100)..(buf_addr + 300),
-    };
-
-    let elf = create_elf_file(&ElfCreateInfo {
-        entry: buf_addr_u64 + 200,
-        segments: vec![
-            Segment {
-                addr: buf_addr_u64,
-                load: true,
-                data: vec![1, 2, 3, 4],
-                ty: SegmentType::Text,
-            },
-            Segment {
-                addr: buf_addr_u64 + 100,
-                load: true,
-                data: vec![1, 2, 3, 4],
-                ty: SegmentType::Data,
-            },
-            Segment {
-                addr: buf_addr_u64 + 150,
-                load: true,
-                data: vec![1, 2, 3, 4],
-                ty: SegmentType::RoData,
-            },
-        ],
-        is_64: true,
-        endian: object::Endianness::Little,
-        machine: object::elf::EM_RISCV,
-        elf_ty: object::elf::ET_EXEC,
-    });
-
-    let res = validation::validate_elf_file(&elf, &config);
-    assert!(res.is_err());
-    assert_eq!(res.unwrap_err(), ElfValidationError::Elf64Found);
 }
 
 proptest::proptest! {
