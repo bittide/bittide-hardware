@@ -147,7 +147,7 @@ test-suite unittests
   main-is: tests.hs
   other-modules:
     Tests.Contranomy.Core.ALU
-    Tests.Contranomy.HUnit
+    Tests.Contranomy.FirmwareIntegrationTests
   build-depends:
     contranomy,
     hedgehog >= 1.0 && < 1.2,
@@ -156,4 +156,6 @@ test-suite unittests
     tasty-hunit >= 0.10 && < 0.11,
     HUnit >=1.1 && <1.7,
     temporary >=1.1 && <1.4,
-    bytestring
+    bytestring,
+    directory,
+    filepath
