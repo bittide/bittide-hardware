@@ -117,57 +117,28 @@ pub fn create_elf_file(info: &ElfCreateInfo) -> Vec<u8> {
 ///
 /// This function uses `mmap`, which might not work as intended on Windows or non-POSIX
 /// platforms.
-///
-/// Since `mmap` is used with a randomly generated 32bit address, this function
-/// **must not** be called from within the callback as that could (with a low chance)
-/// lead to the same allocation being mapped again, hence overwriting the previous
-/// allocation.
 pub unsafe fn with_32bit_addr_buffer<R: 'static>(size: u32, f: impl FnOnce(&mut [u8]) -> R) -> R {
-    let mut mmap_tries = 0;
-
-    let mem;
-
     // allocate a buffer within the 32bit address space
-    loop {
-        if mmap_tries > 10 {
-            panic!("Unable to allocate buffer in 32bit-address space (after 10 tries)");
-        }
 
-        let addr_base = rand::thread_rng().gen_range(0x0001_0000..((u32::MAX - size) >> 12));
-        let addr = addr_base << 12;
+    let mem = {
+        // SAFETY: The protection flags are valid flags and allow memory
+        //         access (not PROT_NONE).
+        //         The flags are valid flags, the memory is not shared and
+        //         guaranteed to be at the specified address.
+        //         The file descriptor is -1, as suggested to be most portable by
+        //         https://linux.die.net/man/2/mmap.
+        //         The offset is 0, as it is ignored due to MAP_ANONYMOUS.
+        libc::mmap(
+            std::ptr::null_mut(),
+            size as usize,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | libc::MAP_32BIT,
+            -1,
+            0,
+        )
+    };
 
-        assert!(addr & 0x0FFF == 0);
-
-        let mmap_ret = {
-            // SAFETY: The address should not have been mapped before, as stated
-            //         by the safety invariants of this function.
-            //         The protection flags are valid flags and allow memory
-            //         access (not PROT_NONE).
-            //         The flags are valid flags, the memory is not shared and
-            //         guaranteed to be at the specified address.
-            //         The file descriptor and offset are 0, which are valid
-            //         argument values, even though they should be ignored due
-            //         to MAP_ANONYMOUS.
-            libc::mmap(
-                addr as usize as *mut libc::c_void,
-                size as usize,
-                libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | libc::MAP_FIXED,
-                0,
-                0,
-            )
-        };
-
-        if mmap_ret == libc::MAP_FAILED {
-            mmap_tries += 1;
-            continue;
-        }
-
-        assert!(mmap_ret as usize == addr as usize);
-
-        mem = mmap_ret;
-        break;
-    }
+    assert!(mem != libc::MAP_FAILED);
 
     assert!(!mem.is_null(), "mmap'ed pointer is not null");
     assert!(
@@ -253,7 +224,7 @@ pub fn elf_loaded_buffer_size(info: &ElfCreateInfo) -> usize {
         .end
         .max(config.data_memory_address.end);
 
-    (start..end).len()
+    end - start
 }
 
 //
