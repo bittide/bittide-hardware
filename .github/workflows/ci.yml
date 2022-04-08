@@ -237,10 +237,78 @@ jobs:
         run : |
           cabal run -- bittide:unittests
 
+  firmware-lints:
+    name: Firmware Lints
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          components: clippy, rustfmt
+
+      - name: Rust formatting
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
+
+  firmware-unit-tests:
+    name: Firmware Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - name: Running Tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all
+
+  firmware-build-examples:
+    name: Firmware Build Examples
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          profile: minimal
+          target: riscv32imc-unknown-none-elf
+
+      - name: Building "hello" Example
+        run: cargo build --release
+        working-directory: firmware/examples/hello
 
   all:
     name: All jobs finished
-    needs: [contranomy-formal-tests, contranomy-tests, bittide-tests]
+    needs: [
+        contranomy-formal-tests,
+        contranomy-tests,
+        bittide-tests,
+        firmware-lints,
+        firmware-unit-tests,
+        firmware-build-examples
+      ]
     runs-on: ubuntu-latest
     steps:
       - name: Void
