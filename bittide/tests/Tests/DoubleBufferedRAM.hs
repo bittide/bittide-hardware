@@ -432,9 +432,6 @@ bv2WbWrite i v = (wishboneM2S @4 @32 SNat SNat)
   , busSelect = maxBound
   }
 
-idleM2S :: (KnownNat aw, KnownNat bs) => WishboneM2S bs aw
-idleM2S = wishboneM2S SNat SNat
-
 -- | Model for 'byteAddressableRAM', it stores the inputs in its state for a one cycle delay
 -- and updates the RAM based on the the write operation and byte enables.
 -- Furthermore it contains read-before-write behavior based on the readAddr.
