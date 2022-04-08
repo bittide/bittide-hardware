@@ -1,4 +1,4 @@
-module Contranomy.HUnit ( elfExpect ) where
+module Tests.Contranomy.HUnit ( elfExpect ) where
 
 import Clash.Prelude
 

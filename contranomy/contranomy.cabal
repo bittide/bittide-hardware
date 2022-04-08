@@ -78,8 +78,6 @@ common common-options
     array >= 0.5 && < 0.6,
     clash-prelude >= 1.6 && < 1.7,
     containers >= 0.6 && < 0.7,
-    HUnit,
-    temporary,
 
     -- clash-prelude will set suitable version bounds for the plugins
     ghc-typelits-natnormalise,
@@ -111,7 +109,6 @@ library
     Contranomy.Wishbone
 
     Contranomy.Println
-    Contranomy.HUnit
     ReadElf
 
   build-depends:
@@ -150,9 +147,13 @@ test-suite unittests
   main-is: tests.hs
   other-modules:
     Tests.Contranomy.Core.ALU
+    Tests.Contranomy.HUnit
   build-depends:
     contranomy,
     hedgehog >= 1.0 && < 1.2,
     tasty >= 1.2 && < 1.5,
     tasty-hedgehog >= 1.2 && < 1.3,
     tasty-hunit >= 0.10 && < 0.11,
+    HUnit >=1.1 && <1.7,
+    temporary >=1.1 && <1.4,
+    bytestring
