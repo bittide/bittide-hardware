@@ -10,11 +10,11 @@ import Bittide.DoubleBufferedRAM
 {-
 NOTE [component calendar types]
 
-Each component that uses the Calendar will define its own type, because not every component
-will have the same type of Calendar.
-e.g, a scatter engine calendar entry will contain a single index, but a switch calendar entry
-will contain a vector of indexes.
-
+The calendar is a component that stores a vector of configurations called its entries.
+It can be used by any component that has a periodic configuration that can change every cycle.
+The calendar does not do any inspection whatsoever of the entries that it holds and thus
+it does not care about the type of its entries, this type depends on the component that
+instantiates the calendar.
 -}
 
 -- | The calendar component is a double buffered memory component that sequentially reads
