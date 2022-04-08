@@ -3,37 +3,39 @@ Copyright:           Copyright © 2022, Google LLC
 License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
 |-}
-{-# LANGUAGE NamedFieldPuns #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Functor law" #-}
 module Bittide.MemoryMap where
 
-import Clash.Prelude
-
-import Contranomy.Wishbone
-import Data.Maybe
+import           Clash.Prelude
+import           Contranomy.Wishbone
+import           Data.Maybe
 
 type MemoryMap slaveDevices addressWidth = Vec slaveDevices (BitVector addressWidth)
-memoryMap ::
-  (KnownNat slaveDevices, KnownNat bytes, KnownNat addressWidth) =>
-  MemoryMap slaveDevices addressWidth ->
-  WishboneM2S bytes addressWidth ->
-  Vec slaveDevices (WishboneS2M bytes) ->
-  (WishboneS2M bytes, Vec slaveDevices (WishboneM2S bytes addressWidth))
-memoryMap config master@WishboneM2S{addr} slaves = (toMaster, toSlaves)
- where
-  idleSlaves = repeat idleM2S
-  selectedSlave = fromMaybe maxBound $ elemIndex True $ fmap (>=addr) config
-  newAddr = addr - (config !! selectedSlave)
-  toSlaves = replace selectedSlave master{addr = newAddr} idleSlaves
-  toMaster = slaves !! selectedSlave
 
-idleM2S :: (KnownNat bytes, KnownNat addressWidth) => WishboneM2S bytes addressWidth
-idleM2S = WishboneM2S
-  { addr = 0
-  , writeData = 0
-  , busSelect = 0
-  , busCycle = False
-  , strobe = False
-  , writeEnable = False
-  , cycleTypeIdentifier = Classic
-  , burstTypeExtension = LinearBurst
-  }
+memoryMap :: forall dom slaveDevices bytes addressWidth .
+  HiddenClockResetEnable dom =>
+  (KnownNat slaveDevices, KnownNat bytes, KnownNat addressWidth) =>
+  MemoryMap slaveDevices addressWidth->
+  Signal dom (WishboneM2S bytes addressWidth) ->
+  Signal dom (Vec slaveDevices (WishboneS2M bytes)) ->
+  (Signal dom (WishboneS2M bytes), Signal dom (Vec slaveDevices (WishboneM2S bytes addressWidth)))
+memoryMap config (register idleM2S -> master) slaves = (toMaster, toSlaves)
+ where
+  masterActive = strobe <$> master .&&.  busCycle <$> master
+  selectedSlave = getSelected . addr <$> master
+
+  toSlaves = mux masterActive
+    (routeToSlaves <$> selectedSlave <*> master)
+    (pure $ repeat idleM2S)
+
+  toMaster = mux masterActive
+    ((!!) <$> slaves <*> selectedSlave)
+    (pure $ wishboneS2M SNat)
+
+  getSelected a = fromMaybe minBound $ elemIndex (True, False) $ zip (init compVec) (tail compVec)
+   where
+     compVec = fmap (<=a) config :< False
+  routeToSlaves sel m = replace sel m{addr=newAddr} (repeat idleM2S)
+   where
+     newAddr = addr m - (config !! sel)
