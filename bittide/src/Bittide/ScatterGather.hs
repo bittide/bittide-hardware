@@ -9,17 +9,23 @@ import Clash.Prelude
 
 import Bittide.Calendar
 import Bittide.DoubleBufferedRAM ( doubleBufferedRAM )
+import Bittide.SharedTypes
 
-type DataLink frameWidth = Maybe (BitVector frameWidth)
+
+-- | Contains a calendar entry that can be used by a scatter or gather engine.
 type CalendarEntry memDepth = Index memDepth
+
+-- | The Calendar for the scatter and gather engines contains entries of a single index
+-- to the engine. For more information regarding calendar datatypes see
+-- see NOTE [component calendar types]
 type Calendar calDepth memDepth = Vec calDepth (CalendarEntry memDepth)
+
+-- | Write operation for a scatter or gather calendar.
 type ConfigurationPort calDepth memDepth = Maybe (Index calDepth, CalendarEntry memDepth)
 
-
 -- | scatterEngine is a memory bank that allows for random writes and sequentially
--- reads data based on an internal counter that runs up to the maximum index and wraps around.
--- The initial contents are undefined and it returns the contents as valid frame using the
--- Maybe functor.
+-- reads data based on an internal counter that runs up to the maximum index, then wraps around.
+-- The initial contents are undefined.
 scatterEngine ::
   (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
   -- | Indicates when a new metacycle has started.
@@ -38,8 +44,7 @@ scatterEngine newMetaCycle frameIn writeAddr =
 
 -- | gatherEngine is a memory bank that allows for random reads and sequentially
 -- writes data based on an internal counter that runs up to the maximum index and wraps around.
--- The initial contents are undefined and it returns the contents as valid frame using the
--- Maybe functor.
+-- The initial contents are undefined.
 gatherEngine ::
   (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
   -- | Indicates when a new metacycle has started.

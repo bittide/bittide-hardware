@@ -12,10 +12,10 @@ Maintainer:          devops@qbaylogic.com
 module Tests.ScatterGather(sgGroup) where
 
 import Clash.Prelude
+import qualified Prelude as P
 
-import Bittide.ScatterGather
 import Clash.Sized.Internal.BitVector
-import Clash.Sized.Vector ( unsafeFromList )
+import Clash.Sized.Vector (unsafeFromList)
 import Data.Bifunctor
 import Data.String
 import Hedgehog
@@ -26,7 +26,8 @@ import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import qualified Prelude as P
+
+import Bittide.ScatterGather
 
 isUndefined :: forall n . KnownNat n => BitVector n -> Bool
 isUndefined (BV mask _) = mask == full
@@ -55,7 +56,6 @@ genSomeCalendar = do
       cal <- Gen.shuffle [0.. fromIntegral calendarSize]
       return (SomeCalendar (snatProxy size) $ unsafeFromList cal)
 
--- TODO: the frames we generater are currently integrals, we won't get any undefined bits
 genData :: Gen (BitVector 64)
 genData = Gen.integral Range.linearBounded
 
@@ -86,6 +86,8 @@ type MemoryEngine =
 
 -- | Tests that for a calendar that contains only unique entries,
 -- all frames send to the gather engine will appear at its output.
+-- The amount of frames we test for is equal to twice the size of the buffer, since
+-- it is double buffered and +2 to account for reset cycle and the one cycle delay.
 engineNoFrameLoss :: MemoryEngine -> Property
 engineNoFrameLoss engine = property $ do
   someCalendar <- forAll genSomeCalendar
@@ -96,11 +98,13 @@ engineNoFrameLoss engine = property $ do
         topEntity (unbundle -> (frameIn, calIn, newMeta)) =
           maybeIsUndefined <$> withClockResetEnable clockGen resetGen enableGen
           engine newMeta frameIn calIn
-        postFramesInput = P.replicate (2 * snatToNum size + 2) Nothing
-        inputFrames' = Nothing : inputFrames P.++ postFramesInput
+        -- Simulate for at least twice the size of the doublebuffered memory + the
+        -- length of the inputdata + 2 to compensate for the reset cycle and delay cycle.
+        simLength = 2 * snatToNum size + P.length inputFrames + 2
+        inputFrames' = P.take simLength $ inputFrames <> P.repeat Nothing
         newMetaSignal = cycle $ (==0) <$> [0..P.length calendar - 1]
         topEntityInput = P.zip3 inputFrames' (cycle calendar) newMetaSignal
-        simOut = simulateN @System (P.length topEntityInput) topEntity topEntityInput
+        simOut = simulateN @System simLength topEntity topEntityInput
       footnote . fromString $ showX simOut
       footnote . fromString $ showX topEntityInput
       Set.fromList inputFrames' === Set.fromList simOut
@@ -109,7 +113,7 @@ filterSGOut ::
   (KnownDomain dom, KnownNat n, 1 <= n) =>
   (Signal dom (BitVector n), Signal dom (Maybe (BitVector n))) ->
   (Signal dom (Maybe (BitVector n)), Signal dom (Maybe (BitVector n)))
-filterSGOut (toP, toS) = (maybeIsUndefined <$> toP, (\a -> maybeIsUndefined =<< a) <$> toS)
+filterSGOut (toP, toS) = (maybeIsUndefined <$> toP, (maybeIsUndefined =<<) <$> toS)
 
 filterZeroes :: (Num a, Eq a) => [Maybe f] -> [a] -> [Maybe f]
 filterZeroes fs as = [ if a == 0 then Nothing else f | (f, a) <- P.zip fs as]
@@ -127,9 +131,8 @@ scatterGatherNoFrameLoss = property $ do
       let
         addressesScat = cycle $ toList calScat
         addressesGath = cycle $ toList calGath
-        postFrames d = P.replicate (2 * snatToNum d + 2) Nothing <> P.repeat Nothing
-        inputFramesSwitch' = inputFramesSwitch <> postFrames depthScat
-        inputFramesPE' = inputFramesPE P.++ postFrames depthGath
+        inputFramesSwitch' = inputFramesSwitch <> P.repeat Nothing
+        inputFramesPE' = inputFramesPE <> P.repeat Nothing
 
         topEntity (unbundle -> (frameInS, frameInP, readAddrPE, writeAddrPE)) = bundle $
           filterSGOut @System (withClockResetEnable clockGen resetGen enableGen
@@ -137,7 +140,10 @@ scatterGatherNoFrameLoss = property $ do
           readAddrPE writeAddrPE)
 
         maxCalDepth = max (snatToNum depthScat) (snatToNum depthGath)
-        simLength = 2 + maxCalDepth + max (P.length inputFramesSwitch) (P.length inputFramesPE)
+        maxInputLength = max (P.length inputFramesSwitch) (P.length inputFramesPE)
+        -- Simulate for at least the largest calendar + twice the length of the longest input.
+        -- This ensures all frames will appear at the output.
+        simLength = maxCalDepth + 2 * maxInputLength
         topEntityInput = L.zip4 inputFramesSwitch' inputFramesPE' addressesScat addressesGath
         simOut = simulateN simLength topEntity topEntityInput
 
