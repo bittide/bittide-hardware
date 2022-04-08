@@ -39,7 +39,12 @@ pub fn validate_elf_file<'a>(
     config: &ElfConfig,
 ) -> Result<ValidatedElfFile<'a>, ElfValidationError> {
     // `elf_rs` reads numbers in native endian, so it reports the wrong
-    // size for the header and sees a wrong size for the buffer.
+    // size for the header in case the native endianess and the endianess of the
+    // ELF file are mismatched. This wrong size leads to an error in calculating
+    // the expected buffer size and can cause the loading of the ELF header to
+    // fail.
+    // With the ELF header not being loaded, the endianess needs to be read from
+    // the buffer before attempting to read the ELF header.
     // The endianess is written at offset 0x05 of the header, so
     // it gets read in manually here to make sure an endianess-mismatch
     // can be reported.
