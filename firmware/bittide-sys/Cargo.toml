@@ -7,3 +7,9 @@ edition = "2021"
 
 [dependencies]
 elf_rs = "0.2.0"
+
+[dev-dependencies]
+proptest = "1.0"
+object = { version = "0.28", features = ["write"] }
+libc = "0.2"
+test-strategy = "0.2.0"
