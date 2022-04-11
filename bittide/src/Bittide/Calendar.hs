@@ -7,6 +7,16 @@ module Bittide.Calendar where
 import Clash.Prelude
 import Bittide.DoubleBufferedRAM
 
+{-
+NOTE [component calendar types]
+
+The calendar is a component that stores a vector of configurations called its entries.
+It can be used by any component that has a periodic configuration that can change every cycle.
+The calendar does not do any inspection whatsoever of the entries that it holds and thus
+it does not care about the type of its entries, this type depends on the component that
+instantiates the calendar.
+-}
+
 -- | The calendar component is a double buffered memory component that sequentially reads
 -- entries from one buffer and offers a write interface to the other buffer. The buffers can
 -- be swapped by setting the shadow switch to True. Furthermore it returns a signal that
@@ -27,6 +37,7 @@ calendar bootStrapCal shadowSwitch writeEntry = (entryOut, newMetaCycle)
     firstCycle = register True $ pure False
     entryOut = mux firstCycle (pure $ bootStrapCal !! (0 :: Int)) readEntry
     readEntry =
-      doubleBufferedRAM bootStrapCal shadowSwitch (satSucc SatWrap <$> counter) writeEntry
-    counter = register (0 :: (Index calDepth)) (satSucc SatWrap <$> counter)
+      doubleBufferedRAM bootStrapCal shadowSwitch counterNext writeEntry
+    counter = register (0 :: (Index calDepth)) counterNext
+    counterNext = satSucc SatWrap <$> counter
     newMetaCycle = fmap not firstCycle .&&. (==0) <$> counter

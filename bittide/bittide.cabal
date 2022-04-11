@@ -76,6 +76,8 @@ library
   exposed-modules:
     Bittide.Calendar
     Bittide.DoubleBufferedRAM
+    Bittide.ScatterGather
+    Bittide.SharedTypes
 
 executable clash
   import: common-options
@@ -90,6 +92,7 @@ test-suite unittests
   other-modules:
     Tests.Calendar
     Tests.DoubleBufferedRAM
+    Tests.ScatterGather
   default-extensions:
     ImplicitPrelude
   build-depends:
