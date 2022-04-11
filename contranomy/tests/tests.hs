@@ -6,7 +6,7 @@ import           Tests.Contranomy.FirmwareIntegrationTests (generateTests)
 
 main :: IO ()
 main = do
-  integ <- generateTests "../firmware/tests/target/riscv32imc-unknown-none-elf/release"
+  integ <- generateTests "firmware-integration-tests/"
 
   let tests = testGroup "Contranomy Tests"
         [ Tests.Contranomy.Core.ALU.tests

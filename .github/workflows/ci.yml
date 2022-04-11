@@ -70,7 +70,7 @@ jobs:
   contranomy-tests:
     name: Contranomy tests
     runs-on: ubuntu-latest
-    needs: [build, lint]
+    needs: [build, lint, firmware-build-integration-tests]
 
     container:
       image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
@@ -96,6 +96,16 @@ jobs:
 
           key: packages-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: packages-
+
+
+      - name: Download Firmware Integration Tests
+        uses: actions/download-artifact@v2
+        with:
+          name: firmware-integration-tests
+
+      - name: Extract Firmware Integration Tests
+        run: |
+          tar -x -f firmware-integration-tests.tar
 
       - name: Run unittests
         run: |
@@ -298,6 +308,38 @@ jobs:
       - name: Building "hello" Example
         run: cargo build --release
         working-directory: firmware/examples/hello
+
+  firmware-build-integration-tests:
+    name: Firmware Build Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: riscv32imc-unknown-none-elf
+
+      - name: Building Firmware Integration Tests
+        run: cargo build --release
+        working-directory: firmware/tests
+
+      - name: Archive Firmware Integration Tests
+        run: |
+          mkdir -p target/firmware-integration-tests
+          # Copy artefacts into "clean" folder
+          cat target/artefacts | xargs -i cp ./{} target/firmware-integration-tests/
+          cd target/; tar -c -f ../firmware-integration-tests.tar firmware-integration-tests/
+        working-directory: firmware/tests/
+
+      - name: Upload Firmware Integration Tests
+        uses: actions/upload-artifact@v2
+        with:
+          name: firmware-integration-tests
+          path: firmware/tests/firmware-integration-tests.tar
 
   all:
     name: All jobs finished

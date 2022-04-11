@@ -44,9 +44,9 @@ findIntegrationTests =
   . filter (\p -> takeExtension p == ".expected")
 
 
-runTest :: String -- ^
-        -> FilePath
-        -> FilePath
+runTest :: String -- ^ Name of the test
+        -> FilePath -- ^ Path to the ELF file
+        -> FilePath -- ^ Path to the file containing the expected output
         -> TestTree
 runTest name elfPath expectedPath =
   testCase ("Integration test `" <> name <> "`") $ do

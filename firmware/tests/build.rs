@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 
 /// Put the linker script somewhere the linker can find it.
@@ -16,8 +17,10 @@ fn main() {
         panic!("The firmware integration tests need to be compiled in release mode!");
     }
 
+    let mut artefacts = vec![];
+
     // write `.expected` files to TARGET dir
-    for entry in std::fs::read_dir("src/bin").unwrap() {
+    for entry in fs::read_dir("src/bin").unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
 
@@ -42,11 +45,14 @@ fn main() {
         println!("cargo:rerun-if-changed=src/bin/{test_name}.expected");
         println!("cargo:rerun-if-changed=src/bin/{test_name}.rs");
 
-        std::fs::copy(&path, target_path.join(format!("{test_name}.expected"))).unwrap();
+        fs::copy(&path, target_path.join(format!("{test_name}.expected"))).unwrap();
+
+        artefacts.push(target_path.join(format!("{test_name}.expected")));
+        artefacts.push(target_path.join(test_name));
     }
 
     // check all binary programs have a `.expected` file
-    for entry in std::fs::read_dir("src/bin").unwrap() {
+    for entry in fs::read_dir("src/bin").unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
 
@@ -67,6 +73,11 @@ fn main() {
         if !test_source_path.exists() {
             panic!("Integration test {test_name} has an `.expected` file but no `.rs` file!");
         }
+    }
+
+    let mut artefact_file = fs::File::create("target/artefacts").unwrap();
+    for artefact in artefacts {
+        writeln!(artefact_file, "{}", artefact.display()).unwrap();
     }
 
     println!("cargo:rerun-if-changed=memory.x");

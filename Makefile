@@ -2,17 +2,27 @@ CARGO_TARGET_DIR=target
 
 .PHONY: build-sim
 build-sim:
-	cd contranomy; cabal build simcontranomy
+	cabal build simcontranomy
 
 
 .PHONY: contranomy-tests
-contranomy-tests: build-sim build-firmware-tests
-	cd contranomy; cabal run contranomy:unittests
+contranomy-tests: build-sim copy-firmware-tests
+	cabal run contranomy:unittests
 
 
 .PHONY: build-firmware-tests
 build-firmware-tests:
 	cd firmware/tests; cargo build --release
+
+.PHONY: copy-firmware-tests
+copy-firmware-tests: build-firmware-tests
+	rm -rf firmware-integration-tests
+	mkdir firmware-integration-tests
+
+	# Copy artefacts into "clean" folder
+	cd firmware/tests; cat target/artefacts | xargs -i cp ./{} ../../firmware-integration-tests/
+
+
 
 
 .PHONY: build-firmware-example-hello

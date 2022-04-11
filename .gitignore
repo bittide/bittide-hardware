@@ -66,5 +66,5 @@ target/
 # Rust workspace lock file (only used for rust-analyzer)
 /Cargo.lock
 
-# ELF file for testing
-contranomy/main.elf
+# ELF files for testing
+/firmware-integration-tests
