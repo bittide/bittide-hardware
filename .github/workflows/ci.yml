@@ -291,7 +291,7 @@ jobs:
 
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: stable
           profile: minimal
           target: riscv32imc-unknown-none-elf
 
