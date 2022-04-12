@@ -47,7 +47,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          cp .github/cabal.project.werrors cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -81,7 +81,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          cp .github/cabal.project.werrors cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -125,7 +125,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          cp .github/cabal.project.altops cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -227,7 +227,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          cp .github/cabal.project.werrors cabal.project.local
 
       - name: Update Cabal index info
         run: |
