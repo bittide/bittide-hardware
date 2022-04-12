@@ -1,14 +1,11 @@
-{-# LANGUAGE ViewPatterns #-}
+import           Clash.Prelude
 
-import Clash.Prelude
-
-import Contranomy
-import Contranomy.Println
-import qualified Data.ByteString as BS
-import ReadElf
-import qualified Data.IntMap.Strict as I
-import qualified Data.List as L
-import System.Environment (getArgs)
+import           Contranomy
+import           Contranomy.Println
+import qualified Data.ByteString    as BS
+import qualified Data.List          as L
+import           ReadElf
+import           System.Environment (getArgs)
 
 main :: IO ()
 main = do
