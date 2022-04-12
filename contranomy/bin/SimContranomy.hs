@@ -3,7 +3,7 @@
 import Clash.Prelude
 
 import Contranomy
-import Contranomy.Println
+import Println
 import qualified Data.ByteString as BS
 import Data.Elf
 import qualified Data.IntMap.Strict as I
