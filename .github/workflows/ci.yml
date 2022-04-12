@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
 
     steps:
       - name: Checkout
@@ -73,7 +73,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
 
     steps:
       - name: Checkout
@@ -107,7 +107,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
 
     steps:
       - name: Checkout
@@ -170,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
 
     strategy:
       matrix:
@@ -209,7 +209,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-8.10.2:2022-01-20
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
 
     steps:
       - name: Checkout
