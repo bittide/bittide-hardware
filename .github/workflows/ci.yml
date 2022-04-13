@@ -285,6 +285,16 @@ jobs:
           toolchain: stable
           profile: minimal
 
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: cargo-cache-${{ hashFiles('Cargo.lock') }}
+
       - name: Running Tests
         uses: actions-rs/cargo@v1
         with:
@@ -304,6 +314,16 @@ jobs:
           toolchain: stable
           profile: minimal
           target: riscv32imc-unknown-none-elf
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            firmware/examples/hello/target/
+          key: cargo-cache-${{ hashFiles('firmware/examples/hello/Cargo.lock') }}
 
       - name: Building "hello" Example
         run: cargo build --release
