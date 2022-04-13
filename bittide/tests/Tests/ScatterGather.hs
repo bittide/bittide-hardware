@@ -193,8 +193,8 @@ genCalendarConfig ::
   SNat maxDepth ->
   Gen (CalendarConfig bytes addressWidth calEntry)
 genCalendarConfig sizeNat@(snatToNum -> dMax) = do
-  dA <- Gen.enum 2 dMax
-  dB <- Gen.enum 2 dMax
+  dA <- Gen.enum 1 dMax
+  dB <- Gen.enum 1 dMax
   case (TN.someNatVal dA, TN.someNatVal dB) of
     ( SomeNat (snatProxy -> depthA)
      ,SomeNat (snatProxy -> depthB)) -> do
@@ -211,9 +211,16 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
            <> show a <> ", " <> show b <> ", " <> show c <> ", "  <> show d <> "), \n(depthA, depthB, maxDepth, calEntry bitsize) = ("
            <> show depthA <> ", " <> show depthB <> ", " <> show sizeNat <> ", " <> show bsCalEntry <> ")"
  where
-    go :: forall depthA depthB . (LessThan depthA maxDepth, LessThan depthB maxDepth, NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth) => SNat depthA -> SNat depthB -> Gen (CalendarConfig bytes addressWidth (Index maxDepth))
+    go :: forall depthA depthB .
+      ( LessThan depthA maxDepth
+      , LessThan depthB maxDepth
+      , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth) =>
+      SNat depthA ->
+      SNat depthB ->
+      Gen (CalendarConfig bytes addressWidth (Index maxDepth))
     go SNat SNat = do
-      calActive <- fromMaybe errmsg . fromList @depthA . P.take (natToNum @depthA) <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
+      calActive <- fromMaybe errmsg . fromList @depthA . P.take (natToNum @depthA)
+       <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
       calShadow <- fromMaybe errmsg . fromList @depthB . P.take (natToNum @depthB) <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
       return $ CalendarConfig sizeNat calActive calShadow
     errmsg = errorX "genCalendarConfig: list to vector conversion failed"
@@ -226,27 +233,38 @@ scatterUnitNoFrameLoss = property $ do
       calConfig <- forAll $ genCal p
       case calConfig of
         CalendarConfig _ calA@(length -> depth) _ -> do
+          -- Amount of metacycles of input to generate
           metaCycles <- forAll $ Gen.enum 1 10
-          let simLength = 2 + (1+metaCycles) * depth
-          inputFrames <- forAll $ (\g -> P.take (simLength `div` depth + 1) $ g P.++ P.repeat (P.replicate depth Nothing)) <$>
-           Gen.list (Range.singleton metaCycles) (
-           (\gen -> P.take depth (gen P.++ P.repeat Nothing)) <$>
-           genFrameList (Range.singleton $ depth `div` 2))
           let
-           topEntity (unbundle -> (wbIn, linkIn)) =
-            fst $ withClockResetEnable clockGen resetGen enableGen (scatterUnitWB @System @_ @32)
+            -- reset cycle + cycle delay, last metacycle's writes can be read in (metacycles + 1)
+            simLength = 2 + (1+metaCycles) * depth
+            inputGen = Gen.list (Range.singleton metaCycles)
+            metaCycleNothing = P.replicate depth Nothing
+            -- Generate at most depth `div` 2 elements to be written each metacycle since
+            -- we need two cycles to read a written element.
+            metaCycleGen = genFrameList (Range.singleton $ depth `div` 2)
+
+          inputFrames <- forAll $ padToLength (simLength `div` depth + 1) metaCycleNothing
+           <$> inputGen (padToLength depth Nothing <$> metaCycleGen)
+          let
+           topEntity (unbundle -> (wbIn, linkIn)) = fst $
+            withClockResetEnable clockGen resetGen enableGen (scatterUnitWB @System @_ @32)
             (deepErrorX "scatterUnit initial elements undefined") calConfig
             (pure $ wishboneM2S SNat SNat) (pure False) linkIn wbIn
-           wbReadOps = P.take simLength $ P.replicate depth idleM2S P.++ P.concat (P.take depth . (P.++ P.repeat idleM2S) . P.concat . P.zipWith wbRead (toList calA) <$> inputFrames)
+
+           wbReadOps = P.take simLength $ P.replicate depth idleM2S P.++  P.concat
+            (padToLength depth idleM2S . P.concat . P.zipWith wbRead (toList calA) <$> inputFrames)
+
            topEntityInput = P.zip wbReadOps (P.concat inputFrames)
            simOut = simulateN simLength topEntity topEntityInput
           footnote . fromString $ "simOut: " <> showX simOut
           footnote . fromString $ "simIn: " <> showX wbReadOps
           footnote . fromString $ "cal: " <> showX calA
-          wbDirectedDecoding simOut === P.take simLength (fromMaybe 1 <$> P.filter isJust (P.concat inputFrames))
+          wbDirectedDecoding simOut === P.take simLength (catMaybes (P.concat inputFrames))
  where
   genCal :: forall maxSize . 1 <= maxSize => SNat maxSize -> Gen (CalendarConfig 4 32 (Index maxSize))
   genCal SNat = genCalendarConfig @4 @32 (SNat @maxSize)
+  padToLength l padElement g = P.take l (g P.++ P.repeat padElement)
 
 gatherUnitNoFrameLoss :: Property
 gatherUnitNoFrameLoss = property $ do
@@ -257,27 +275,41 @@ gatherUnitNoFrameLoss = property $ do
       case calConfig of
         CalendarConfig _ calA@(length -> depth) _ -> do
           metaCycles <- forAll $ Gen.enum 1 10
-          let simLength = 2 + (1+metaCycles) * depth
-          inputFrames <- forAll $ (\g -> P.take (simLength `div` depth + 1) $ g P.++ P.repeat (P.replicate depth Nothing)) <$>
-           Gen.list (Range.singleton metaCycles) (
-           (\gen -> P.take depth (gen P.++ P.repeat Nothing)) <$>
-           genFrameList (Range.singleton $ depth `div` 2))
           let
-           topEntity wbIn =
-            (\ (a, _ ,_) -> a) $ withClockResetEnable clockGen resetGen enableGen (gatherUnitWB @System @_ @32)
+           simLength = 2 + (1+metaCycles) * depth
+           inputGen = Gen.list (Range.singleton metaCycles)
+           metaCycleNothing = P.replicate depth Nothing
+           metaCycleGen = genFrameList (Range.singleton $ depth `div` 2)
+          inputFrames <- forAll $ padToLength (simLength `div` depth + 1) metaCycleNothing
+           <$> inputGen (padToLength depth Nothing <$> metaCycleGen)
+          let
+           topEntity wbIn = (\ (a, _ ,_) -> a) $
+            withClockResetEnable clockGen resetGen enableGen (gatherUnitWB @System @_ @32)
             (deepErrorX "scatterUnit initial elements undefined") calConfig
             (pure $ wishboneM2S SNat SNat) (pure False) wbIn
-           wbWriteOps = P.take simLength $ P.concat (P.take depth . (P.++ P.repeat idleM2S) . P.concat . P.zipWith wbWrite (toList calA) <$> inputFrames)
+
+           wbWriteOps = P.take simLength . P.concat $
+            padToLength depth idleM2S . P.concat . P.zipWith wbWrite (toList calA) <$> inputFrames
+
            simOut = simulateN simLength topEntity wbWriteOps
-           writtenFrames = [if snd e /= 0 then fst e else Nothing | e <- P.zip (P.concat inputFrames) (cycle $ toList calA)]
+           addressedFrames = P.zip (P.concat inputFrames) (cycle $ toList calA)
+           writtenFrames = [if snd e /= 0 then fst e else Nothing | e <- addressedFrames]
+           prePad = (P.replicate (1+depth) Nothing P.++)
+           expectedOutput = P.take simLength (fromMaybe 1 <$> P.filter isJust writtenFrames)
+
           footnote . fromString $ "simOut: " <> showX simOut
           footnote . fromString $ "simIn: " <> showX wbWriteOps
           footnote . fromString $ "cal: " <> showX calA
           footnote . fromString $ "writtenFrames: " <> showX writtenFrames
-          directedDecode (P.replicate (1+depth) Nothing P.++ writtenFrames) simOut === P.take simLength (fromMaybe 1 <$> P.filter isJust writtenFrames)
+
+          directedDecode (prePad writtenFrames) simOut === expectedOutput
  where
-  genCal :: forall maxSize . 1 <= maxSize => SNat maxSize -> Gen (CalendarConfig 4 32 (Index maxSize))
+  genCal :: forall maxSize .
+   1 <= maxSize =>
+   SNat maxSize ->
+   Gen (CalendarConfig 4 32 (Index maxSize))
   genCal SNat = genCalendarConfig @4 @32 (SNat @maxSize)
+  padToLength l padElement g = P.take l (g P.++ P.repeat padElement)
 
 directedDecode :: [Maybe a] -> [Maybe b] -> [b]
 directedDecode ((Just _) : as) ((Just b) : bs) = b : directedDecode as bs
@@ -297,29 +329,55 @@ wbDirectedDecoding _ = []
 
 wbRead ::
   forall bytes addressWidth maxIndex a .
-  (KnownNat bytes, KnownNat addressWidth, KnownNat maxIndex, 1 <= maxIndex) =>
-  Index maxIndex -> Maybe a -> [WishboneM2S bytes addressWidth]
+  ( KnownNat bytes
+  , KnownNat addressWidth
+  , KnownNat maxIndex
+  , 1 <= maxIndex) =>
+  Index maxIndex ->
+  Maybe a ->
+  [WishboneM2S bytes addressWidth]
 wbRead readAddr (Just _) =
-  [(wishboneM2S SNat (SNat @addressWidth)){addr = (`shiftL` 3) . resize $ pack readAddr, busCycle = True, strobe = True}
+  [(wishboneM2S SNat (SNat @addressWidth))
+    { addr = (`shiftL` 3) . resize $ pack readAddr
+    , busCycle = True
+    , strobe = True}
   ,
-  (wishboneM2S SNat (SNat @addressWidth)){addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr), busCycle = True, strobe = True}
+  (wishboneM2S SNat (SNat @addressWidth))
+    { addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr)
+    , busCycle = True
+    , strobe = True}
   ]
 wbRead _ Nothing = []
 
 wbWrite ::
   forall bytes addressWidth maxIndex .
-  (KnownNat bytes, KnownNat addressWidth, KnownNat maxIndex, 1 <= maxIndex) =>
-  Index maxIndex -> Maybe (BitVector (bytes*2*8)) -> [WishboneM2S bytes addressWidth]
+  ( KnownNat bytes
+  , KnownNat addressWidth
+  , KnownNat maxIndex
+  , 1 <= maxIndex) =>
+  Index maxIndex ->
+  Maybe (BitVector (bytes*2*8)) ->
+  [WishboneM2S bytes addressWidth]
 wbWrite writeAddr (Just frame) =
-  [(wishboneM2S @bytes @addressWidth SNat SNat){addr = (`shiftL` 3) . resize $ pack writeAddr, busSelect = maxBound, busCycle = True, strobe = True, writeEnable = True, writeData = lower}
-  ,
-  (wishboneM2S @bytes @addressWidth SNat SNat){addr =  4 .|.  ((`shiftL` 3) . resize $ pack writeAddr), busSelect = maxBound, busCycle = True, strobe = True, writeEnable = True, writeData = upper}
+  [(wishboneM2S @bytes @addressWidth SNat SNat)
+    { addr = (`shiftL` 3) . resize $ pack writeAddr
+    , busSelect = maxBound
+    , busCycle = True
+    , strobe = True
+    , writeEnable = True
+    , writeData = lower}
+    ,
+  (wishboneM2S @bytes @addressWidth SNat SNat)
+    { addr =  4 .|.  ((`shiftL` 3) . resize $ pack writeAddr)
+    , busSelect = maxBound
+    , busCycle = True
+    , strobe = True
+    , writeEnable = True
+    , writeData = upper}
   ]
  where
   (upper, lower) = split frame
 wbWrite _ Nothing = []
 
 idleM2S :: forall bytes aw . (KnownNat bytes, KnownNat aw) => WishboneM2S bytes aw
-idleM2S = (wishboneM2S SNat (SNat @aw)){
-  addr = 0
-}
+idleM2S = (wishboneM2S SNat (SNat @aw)){addr = 0}
