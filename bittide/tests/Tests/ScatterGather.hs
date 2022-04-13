@@ -76,7 +76,9 @@ sgGroup = testGroup "Scatter Gather group"
   [ testPropertyNamed "GatherSequential - No overwriting implies no lost frames." "engineNoFrameLoss gatherEngine" (engineNoFrameLoss gatherEngine)
   , testPropertyNamed "ScatterSequential - No overwriting implies no lost frames." "engineNoFrameLoss scatterEngine" (engineNoFrameLoss scatterEngine)
   , testPropertyNamed "ScatterGather - No overwriting implies no lost frames." "scatterGatherNoFrameLoss" scatterGatherNoFrameLoss
-  , testPropertyNamed "scatterUnit - No overwriting implies no lost frames." "scatterUnitNoFrameLoss" scatterUnitNoFrameLoss]
+  , testPropertyNamed "scatterUnitWb - No overwriting implies no lost frames." "scatterUnitNoFrameLoss" scatterUnitNoFrameLoss
+  , testPropertyNamed "gatherUnitWb - No overwriting implies no lost frames." "gatherUnitNoFrameLoss" gatherUnitNoFrameLoss
+  ]
 
 -- |The type of a sequential engine that is tested by engineNoFrameLoss.
 type MemoryEngine =
@@ -246,6 +248,43 @@ scatterUnitNoFrameLoss = property $ do
   genCal :: forall maxSize . 1 <= maxSize => SNat maxSize -> Gen (CalendarConfig 4 32 (Index maxSize))
   genCal SNat = genCalendarConfig @4 @32 (SNat @maxSize)
 
+gatherUnitNoFrameLoss :: Property
+gatherUnitNoFrameLoss = property $ do
+  maxCalSize <- forAll $ Gen.enum 2 32
+  case TN.someNatVal (maxCalSize - 1) of
+    SomeNat (succSNat . snatProxy -> p) -> do
+      calConfig <- forAll $ genCal p
+      case calConfig of
+        CalendarConfig _ calA@(length -> depth) _ -> do
+          metaCycles <- forAll $ Gen.enum 1 10
+          let simLength = 2 + (1+metaCycles) * depth
+          inputFrames <- forAll $ (\g -> P.take (simLength `div` depth + 1) $ g P.++ P.repeat (P.replicate depth Nothing)) <$>
+           Gen.list (Range.singleton metaCycles) (
+           (\gen -> P.take depth (gen P.++ P.repeat Nothing)) <$>
+           genFrameList (Range.singleton $ depth `div` 2))
+          let
+           topEntity wbIn =
+            (\ (a, _ ,_) -> a) $ withClockResetEnable clockGen resetGen enableGen (gatherUnitWB @System @_ @32)
+            (deepErrorX "scatterUnit initial elements undefined") calConfig
+            (pure $ wishboneM2S SNat SNat) (pure False) wbIn
+           wbWriteOps = P.take simLength $ P.concat (P.take depth . (P.++ P.repeat idleM2S) . P.concat . P.zipWith wbWrite (toList calA) <$> inputFrames)
+           simOut = simulateN simLength topEntity wbWriteOps
+           writtenFrames = [if snd e /= 0 then fst e else Nothing | e <- P.zip (P.concat inputFrames) (cycle $ toList calA)]
+          footnote . fromString $ "simOut: " <> showX simOut
+          footnote . fromString $ "simIn: " <> showX wbWriteOps
+          footnote . fromString $ "cal: " <> showX calA
+          footnote . fromString $ "writtenFrames: " <> showX writtenFrames
+          directedDecode (P.replicate (1+depth) Nothing P.++ writtenFrames) simOut === P.take simLength (fromMaybe 1 <$> P.filter isJust writtenFrames)
+ where
+  genCal :: forall maxSize . 1 <= maxSize => SNat maxSize -> Gen (CalendarConfig 4 32 (Index maxSize))
+  genCal SNat = genCalendarConfig @4 @32 (SNat @maxSize)
+
+directedDecode :: [Maybe a] -> [Maybe b] -> [b]
+directedDecode ((Just _) : as) ((Just b) : bs) = b : directedDecode as bs
+directedDecode (Nothing : as) (_ : bs) = directedDecode as bs
+directedDecode _ _ = []
+
+
 wbDirectedDecoding :: KnownNat bytes =>
   [WishboneS2M bytes]
   -> [BitVector ((8 * bytes) + (8 * bytes))]
@@ -261,11 +300,24 @@ wbRead ::
   (KnownNat bytes, KnownNat addressWidth, KnownNat maxIndex, 1 <= maxIndex) =>
   Index maxIndex -> Maybe a -> [WishboneM2S bytes addressWidth]
 wbRead readAddr (Just _) =
-  [(wishboneM2S SNat (SNat @addressWidth)){addr = (`shiftL` 3) . resize $ pack readAddr, busCycle = maxBound, strobe = True}
+  [(wishboneM2S SNat (SNat @addressWidth)){addr = (`shiftL` 3) . resize $ pack readAddr, busCycle = True, strobe = True}
   ,
-  (wishboneM2S SNat (SNat @addressWidth)){addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr), busCycle = maxBound, strobe = True}
+  (wishboneM2S SNat (SNat @addressWidth)){addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr), busCycle = True, strobe = True}
   ]
 wbRead _ Nothing = []
+
+wbWrite ::
+  forall bytes addressWidth maxIndex .
+  (KnownNat bytes, KnownNat addressWidth, KnownNat maxIndex, 1 <= maxIndex) =>
+  Index maxIndex -> Maybe (BitVector (bytes*2*8)) -> [WishboneM2S bytes addressWidth]
+wbWrite writeAddr (Just frame) =
+  [(wishboneM2S @bytes @addressWidth SNat SNat){addr = (`shiftL` 3) . resize $ pack writeAddr, busSelect = maxBound, busCycle = True, strobe = True, writeEnable = True, writeData = lower}
+  ,
+  (wishboneM2S @bytes @addressWidth SNat SNat){addr =  4 .|.  ((`shiftL` 3) . resize $ pack writeAddr), busSelect = maxBound, busCycle = True, strobe = True, writeEnable = True, writeData = upper}
+  ]
+ where
+  (upper, lower) = split frame
+wbWrite _ Nothing = []
 
 idleM2S :: forall bytes aw . (KnownNat bytes, KnownNat aw) => WishboneM2S bytes aw
 idleM2S = (wishboneM2S SNat (SNat @aw)){
