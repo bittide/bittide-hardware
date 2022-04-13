@@ -173,7 +173,7 @@ gatherUnit ::
 gatherUnit initMem calConfig wbIn calSwitch writeOp byteEnables= (linkOut, wbOut)
  where
   (readAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
-  linkOut = mux ((==0) <$> readAddr) (pure Nothing) $ Just <$> bramOut
+  linkOut = mux (register True $ (==0) <$> readAddr) (pure Nothing) $ Just <$> bramOut
   bramOut = doubleBufferedRAMByteAddressable initMem metaCycle readAddr writeOp byteEnables
 
 -- | Wishbone interface for the scatterUnit and gatherUnit. It makes the scatter and gather
