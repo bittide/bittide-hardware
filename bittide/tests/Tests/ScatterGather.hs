@@ -2,19 +2,23 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
+
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Tests.ScatterGather(sgGroup) where
 
-import Clash.Prelude
+import Clash.Prelude hiding (fromList)
 import qualified Prelude as P
 
 import Clash.Sized.Internal.BitVector
-import Clash.Sized.Vector (unsafeFromList)
+import Clash.Sized.Vector ( unsafeFromList, fromList)
+import Contranomy.Wishbone
 import Data.Bifunctor
 import Data.String
 import Hedgehog
@@ -27,6 +31,9 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
 import Bittide.ScatterGather
+import Bittide.Calendar
+import Data.Maybe
+import Bittide.SharedTypes
 
 isUndefined :: forall n . KnownNat n => BitVector n -> Bool
 isUndefined (BV mask _) = mask == full
@@ -61,14 +68,15 @@ genData = Gen.integral Range.linearBounded
 genFrame :: Gen (Maybe (BitVector 64))
 genFrame = Gen.maybe genData
 
-genFrameList :: Gen [Maybe (BitVector 64)]
-genFrameList = Gen.list (Range.constant 1 100) genFrame
+genFrameList :: Range Int -> Gen [Maybe (BitVector 64)]
+genFrameList range = Gen.list range genFrame
 
 sgGroup :: TestTree
 sgGroup = testGroup "Scatter Gather group"
   [ testPropertyNamed "GatherSequential - No overwriting implies no lost frames." "engineNoFrameLoss gatherEngine" (engineNoFrameLoss gatherEngine)
   , testPropertyNamed "ScatterSequential - No overwriting implies no lost frames." "engineNoFrameLoss scatterEngine" (engineNoFrameLoss scatterEngine)
-  , testPropertyNamed "ScatterGather - No overwriting implies no lost frames." "scatterGatherNoFrameLoss" scatterGatherNoFrameLoss]
+  , testPropertyNamed "ScatterGather - No overwriting implies no lost frames." "scatterGatherNoFrameLoss" scatterGatherNoFrameLoss
+  , testPropertyNamed "scatterUnit - No overwriting implies no lost frames." "scatterUnitNoFrameLoss" scatterUnitNoFrameLoss]
 
 -- |The type of a sequential engine that is tested by engineNoFrameLoss.
 type MemoryEngine =
@@ -91,8 +99,8 @@ engineNoFrameLoss :: MemoryEngine -> Property
 engineNoFrameLoss engine = property $ do
   someCalendar <- forAll genSomeCalendar
   case someCalendar of
-    SomeCalendar size@SNat (toList -> calendar) -> do
-      inputFrames <- forAll genFrameList
+    SomeCalendar size@SNat (toList -> calendar0) -> do
+      inputFrames <- forAll $ genFrameList (Range.constant 1 100)
       let
         topEntity (unbundle -> (frameIn, calIn, newMeta)) =
           maybeIsUndefined <$> withClockResetEnable clockGen resetGen enableGen
@@ -101,8 +109,8 @@ engineNoFrameLoss engine = property $ do
         -- length of the inputdata + 2 to compensate for the reset cycle and delay cycle.
         simLength = 2 * snatToNum size + P.length inputFrames + 2
         inputFrames' = P.take simLength $ inputFrames <> P.repeat Nothing
-        newMetaSignal = cycle $ (==0) <$> [0..P.length calendar - 1]
-        topEntityInput = P.zip3 inputFrames' (cycle calendar) newMetaSignal
+        newMetaSignal = cycle $ (==0) <$> [0..P.length calendar0 - 1]
+        topEntityInput = P.zip3 inputFrames' (cycle calendar0) newMetaSignal
         simOut = simulateN @System simLength topEntity topEntityInput
       footnote . fromString $ showX simOut
       footnote . fromString $ showX topEntityInput
@@ -123,8 +131,8 @@ scatterGatherNoFrameLoss :: Property
 scatterGatherNoFrameLoss = property $ do
   someCalendarS <- forAll genSomeCalendar
   someCalendarG <- forAll genSomeCalendar
-  inputFramesSwitch <- forAll genFrameList
-  inputFramesPE <- forAll genFrameList
+  inputFramesSwitch <- forAll $ genFrameList (Range.constant 1 100)
+  inputFramesPE <- forAll $ genFrameList (Range.constant 1 100)
   case (someCalendarS, someCalendarG) of
     (SomeCalendar depthScat@SNat calScat, SomeCalendar depthGath@SNat calGath) -> do
       let
@@ -157,3 +165,109 @@ scatterGatherNoFrameLoss = property $ do
       footnote . fromString $ "Frames from Switch: " <> show (P.zip addressesScat $ P.take simLength inputFramesSwitch')
 
       expected === result
+
+
+deriving instance Show (SNatLE a b)
+
+data IsInBounds a b c where
+  InBounds :: (a <= b, b <= c) => IsInBounds a b c
+  NotInBounds :: IsInBounds a b c
+
+deriving instance Show (IsInBounds a b c)
+
+isInBounds :: SNat a -> SNat b -> SNat c -> IsInBounds a b c
+isInBounds a b c = case (compareSNat a b, compareSNat b c) of
+  (SNatLE, SNatLE) -> InBounds
+  _ -> NotInBounds
+
+genCalendarConfig ::
+  forall bytes addressWidth calEntry maxDepth .
+  ( KnownNat bytes
+  , 1 <= bytes
+  , KnownNat maxDepth
+  , 1 <= maxDepth
+  , calEntry ~ Index maxDepth
+  , KnownNat addressWidth) =>
+  SNat maxDepth ->
+  Gen (CalendarConfig bytes addressWidth calEntry)
+genCalendarConfig sizeNat@(snatToNum -> dMax) = do
+  dA <- Gen.enum 2 dMax
+  dB <- Gen.enum 2 dMax
+  case (TN.someNatVal dA, TN.someNatVal dB) of
+    ( SomeNat (snatProxy -> depthA)
+     ,SomeNat (snatProxy -> depthB)) -> do
+        let
+          regAddrBits = SNat @(NatRequiredBits (Regs calEntry (bytes * 8)))
+          bsCalEntry = SNat @(BitSize calEntry)
+        case
+         ( isInBounds d1 depthA sizeNat
+         , isInBounds d1 depthB sizeNat
+         , compareSNat regAddrBits (SNat @addressWidth)
+         , compareSNat d1 bsCalEntry) of
+          (InBounds, InBounds, SNatLE, SNatLE)-> go depthA depthB
+          (a,b,c,d) -> error $ "genCalendarConfig: calEntry constraints not satisfied: ("
+           <> show a <> ", " <> show b <> ", " <> show c <> ", "  <> show d <> "), \n(depthA, depthB, maxDepth, calEntry bitsize) = ("
+           <> show depthA <> ", " <> show depthB <> ", " <> show sizeNat <> ", " <> show bsCalEntry <> ")"
+ where
+    go :: forall depthA depthB . (LessThan depthA maxDepth, LessThan depthB maxDepth, NatFitsInBits (Regs calEntry (bytes * 8)) addressWidth) => SNat depthA -> SNat depthB -> Gen (CalendarConfig bytes addressWidth (Index maxDepth))
+    go SNat SNat = do
+      calActive <- fromMaybe errmsg . fromList @depthA . P.take (natToNum @depthA) <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
+      calShadow <- fromMaybe errmsg . fromList @depthB . P.take (natToNum @depthB) <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
+      return $ CalendarConfig sizeNat calActive calShadow
+    errmsg = errorX "genCalendarConfig: list to vector conversion failed"
+
+scatterUnitNoFrameLoss :: Property
+scatterUnitNoFrameLoss = property $ do
+  maxCalSize <- forAll $ Gen.enum 2 32
+  case TN.someNatVal (maxCalSize - 1) of
+    SomeNat (succSNat . snatProxy -> p) -> do
+      calConfig <- forAll $ genCal p
+      case calConfig of
+        CalendarConfig _ calA@(length -> depth) _ -> do
+          metaCycles <- forAll $ Gen.enum 1 10
+          let simLength = 2 + (1+metaCycles) * depth
+          inputFrames <- forAll $ (\g -> P.take (simLength `div` depth + 1) $ g P.++ P.repeat (P.replicate depth Nothing)) <$>
+           Gen.list (Range.singleton metaCycles) (
+           (\gen -> P.take depth (gen P.++ P.repeat Nothing)) <$>
+           genFrameList (Range.singleton $ depth `div` 2))
+          let
+           topEntity (unbundle -> (wbIn, linkIn)) =
+            fst $ withClockResetEnable clockGen resetGen enableGen (scatterUnitWB @System @_ @32)
+            (deepErrorX "scatterUnit initial elements undefined") calConfig
+            (pure $ wishboneM2S SNat SNat) (pure False) linkIn wbIn
+           wbReadOps = P.take simLength $ P.replicate depth idleM2S P.++ P.concat (P.take depth . (P.++ P.repeat idleM2S) . P.concat . P.zipWith wbRead (toList calA) <$> inputFrames)
+           topEntityInput = P.zip wbReadOps (P.concat inputFrames)
+           simOut = simulateN simLength topEntity topEntityInput
+          footnote . fromString $ "simOut: " <> showX simOut
+          footnote . fromString $ "simIn: " <> showX wbReadOps
+          footnote . fromString $ "cal: " <> showX calA
+          wbDirectedDecoding simOut === P.take simLength (fromMaybe 1 <$> P.filter isJust (P.concat inputFrames))
+ where
+  genCal :: forall maxSize . 1 <= maxSize => SNat maxSize -> Gen (CalendarConfig 4 32 (Index maxSize))
+  genCal SNat = genCalendarConfig @4 @32 (SNat @maxSize)
+
+wbDirectedDecoding :: KnownNat bytes =>
+  [WishboneS2M bytes]
+  -> [BitVector ((8 * bytes) + (8 * bytes))]
+wbDirectedDecoding (s2m0 : s2m1 : s2ms)
+  | acknowledge s2m0 && acknowledge s2m1 = out : wbDirectedDecoding s2ms
+  | otherwise = wbDirectedDecoding (s2m1 : s2ms)
+ where
+  out = readData s2m1 ++# readData s2m0
+wbDirectedDecoding _ = []
+
+wbRead ::
+  forall bytes addressWidth maxIndex a .
+  (KnownNat bytes, KnownNat addressWidth, KnownNat maxIndex, 1 <= maxIndex) =>
+  Index maxIndex -> Maybe a -> [WishboneM2S bytes addressWidth]
+wbRead readAddr (Just _) =
+  [(wishboneM2S SNat (SNat @addressWidth)){addr = (`shiftL` 3) . resize $ pack readAddr, busCycle = maxBound, strobe = True}
+  ,
+  (wishboneM2S SNat (SNat @addressWidth)){addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr), busCycle = maxBound, strobe = True}
+  ]
+wbRead _ Nothing = []
+
+idleM2S :: forall bytes aw . (KnownNat bytes, KnownNat aw) => WishboneM2S bytes aw
+idleM2S = (wishboneM2S SNat (SNat @aw)){
+  addr = 0
+}
