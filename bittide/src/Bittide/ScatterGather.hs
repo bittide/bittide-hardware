@@ -10,14 +10,13 @@ module Bittide.ScatterGather(scatterEngine, gatherEngine, scatterGatherEngine, s
 import Clash.Prelude
 
 import Contranomy.Wishbone
-import Data.Type.Equality ((:~:)(Refl))
 import Data.Proxy
+import Data.Type.Equality ((:~:)(Refl))
 
 import Bittide.Calendar
 import Bittide.DoubleBufferedRAM
 import Bittide.SharedTypes
 
--- | Contains a calendar entry that can be used by a scatter or gather engine.
 type CalendarEntry memDepth = Index memDepth
 
 -- | The Calendar for the scatter and gather engines contains entries of a single index
@@ -181,7 +180,11 @@ gatherUnit initMem calConfig wbIn calSwitch writeOp byteEnables= (linkOut, wbOut
 -- unit, which operate on 64 bit frames, addressable via a 32 bit wishbone bus.
 wbInterface ::
   forall bytes addressWidth addresses .
-  (KnownNat addresses, 1 <= addresses, KnownNat addressWidth, 2 <= addressWidth) =>
+  ( KnownNat bytes
+  , KnownNat addresses
+  , 1 <= addresses
+  , KnownNat addressWidth
+  , 2 <= addressWidth) =>
   -- | Maximum address of the respective memory element as seen from the wishbone side.
   Index addresses ->
   -- | Wishbone master - slave data.
@@ -190,7 +193,7 @@ wbInterface ::
   Bytes bytes ->
   -- | (slave - master data, read address memory element, write data memory element)
   (WishboneS2M bytes, Index addresses, Maybe (Bytes bytes))
-wbInterface addressRange WishboneM2S{..} readData = (WishboneS2M{readData, acknowledge, err}, memAddr, writeOp)
+wbInterface addressRange WishboneM2S{..} readData =  (WishboneS2M{readData, acknowledge, err}, memAddr, writeOp)
  where
   (alignedAddress, alignment) = split @_ @(addressWidth - 2) @2 addr
   wordAligned = alignment == (0 :: BitVector 2)
@@ -221,13 +224,13 @@ scatterUnitWB ::
   Signal dom (WishboneM2S 4 awSU) ->
   -- | (slave - master data scatterUnit , slave - master data calendar)
   (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
-scatterUnitWB initMem calConfig wbInCal calSwitch linkIn wbInSU = (wbOutSU, wbOutCal)
+scatterUnitWB initMem calConfig wbInCal calSwitch linkIn wbInSU = (delayControls wbOutSU, wbOutCal)
  where
   (wbOutSU, memAddr, _) = unbundle $ wbInterface maxBound <$> wbInSU <*> scatteredData
   (readAddr, upperSelected) = unbundle $ coerceIndexes <$> memAddr
   (scatterUnitRead, wbOutCal) = scatterUnit initMem calConfig wbInCal calSwitch linkIn readAddr
   (upper, lower) = unbundle $ split <$> scatterUnitRead
-  scatteredData = mux upperSelected upper lower
+  scatteredData = mux (register (errorX "scatterUnitWB: Initial selection undefined") upperSelected) upper lower
 
 -- | Wishbone addressable gatherUnit, the wishbone port can write data to this
 -- memory element as if it has a 32 bit port by controlling the byte enables of the
@@ -247,7 +250,7 @@ gatherUnitWB ::
   Signal dom (WishboneM2S 4 awSU) ->
   -- | (slave - master data gatherUnit , slave - master data calendar)
   (Signal dom (DataLink 64), Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
-gatherUnitWB initMem calConfig wbInCal calSwitch wbInSU = (linkOut, wbOutSU, wbOutCal)
+gatherUnitWB initMem calConfig wbInCal calSwitch wbInSU = (linkOut, delayControls wbOutSU, wbOutCal)
  where
   (wbOutSU, memAddr, writeOp) = unbundle $ wbInterface maxBound <$> wbInSU <*> pure 0b0
   (writeAddr, upperSelected) = unbundle $ coerceIndexes <$> memAddr
@@ -258,10 +261,19 @@ gatherUnitWB initMem calConfig wbInCal calSwitch wbInSU = (linkOut, wbOutSU, wbO
   mkWrite _ _ = Nothing
   mkEnables selected byteEnables = if selected then byteEnables ++# 0b0 else 0b0 ++# byteEnables
 
-  coerceIndexes :: forall n . (KnownNat n, 1 <= n) => (Index (n*2) -> (Index n, Bool))
-  coerceIndexes = case sameNat natA natB of
-    Just Refl -> bitCoerce
-    _ -> error "gatherUnitWB: Index coercion failed."
-   where
-    natA = Proxy @(CLog 2 (n*2))
-    natB = Proxy @(1 + CLog 2 n)
+-- | Coerces an index of size (n*2) to index n with the lower bit as seperate boolean.
+coerceIndexes :: forall n . (KnownNat n, 1 <= n) => (Index (n*2) -> (Index n, Bool))
+coerceIndexes = case sameNat natA natB of
+  Just Refl -> bitCoerce
+  _ -> error "gatherUnitWB: Index coercion failed."
+  where
+  natA = Proxy @(CLog 2 (n*2))
+  natB = Proxy @(CLog 2 n + 1)
+
+delayControls :: HiddenClockResetEnable dom =>
+  Signal dom (WishboneS2M bytes) -> Signal dom (WishboneS2M bytes)
+delayControls wbIn = wbOut
+ where
+   delayedAck = register False (acknowledge <$> wbIn)
+   delayedErr = register False (err <$> wbIn)
+   wbOut = (\wb newAck newErr-> wb{acknowledge = newAck, err = newErr}) <$> wbIn <*> delayedAck <*> delayedErr
