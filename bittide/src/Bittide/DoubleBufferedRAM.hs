@@ -89,6 +89,23 @@ blockRamByteAddressable initRAM readAddr newEntry byteSelect =
    writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
    readBytes = bundle $ (`blockRam` readAddr) <$> initBytes <*> writeBytes
 
+registerByteAddressable ::
+  forall dom a .
+  (HiddenClockResetEnable dom, Paddable a) =>
+  a ->
+  Signal dom a ->
+  Signal dom (ByteEnable (Regs a 8)) ->
+  Signal dom a
+registerByteAddressable initVal newVal byteEnables =
+  registersToData @_ @8 . RegisterBank <$> bundle regsOut
+ where
+  initBytes = getRegs initVal
+  newBytes = unbundle $ getRegs <$> newVal
+  regsOut = (`andEnable` register) <$> unbundle (unpack <$> byteEnables) <*> initBytes <*> newBytes
+  getRegs x =
+    case paddedToRegisters @8 $ Padded x of
+      RegisterBank vec -> vec
+
 splitWriteInBytes :: forall maxIndex writeData .
   (Paddable writeData) =>
   WriteAny maxIndex writeData ->

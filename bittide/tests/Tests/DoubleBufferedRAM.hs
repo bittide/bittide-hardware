@@ -9,14 +9,16 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Tests.DoubleBufferedRAM(ramGroup) where
 
 import Clash.Prelude
 import Clash.Hedgehog.Sized.Vector
 import Clash.Hedgehog.Sized.BitVector
 
-import Bittide.DoubleBufferedRAM
-import Bittide.SharedTypes
+
 import Data.Maybe
 import Hedgehog
 import Hedgehog.Gen as Gen
@@ -27,13 +29,19 @@ import qualified Data.List as L
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Prelude as P
+import Data.Proxy
+import Data.Type.Equality (type (:~:)(Refl))
+
+import Bittide.DoubleBufferedRAM
+import Bittide.SharedTypes
 
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRAM group"
   [ testPropertyNamed "Reading the buffer." "readDoubleBufferedRAM" readDoubleBufferedRAM
-  , testPropertyNamed "Wriing and reading back buffers." "readWriteDoubleBufferedRAM" readWriteDoubleBufferedRAM
+  , testPropertyNamed "Writing and reading back buffers." "readWriteDoubleBufferedRAM" readWriteDoubleBufferedRAM
   , testPropertyNamed "Byte addressable blockram matches behavorial model." "readWriteByteAddressableBlockram" readWriteByteAddressableBlockram
-  , testPropertyNamed "Byte addressable double buffered RAM matches behavorial model." "readWriteByteAddressableDoubleBufferedRAM" readWriteByteAddressableDoubleBufferedRAM]
+  , testPropertyNamed "Byte addressable double buffered RAM matches behavorial model." "readWriteByteAddressableDoubleBufferedRAM" readWriteByteAddressableDoubleBufferedRAM
+  , testPropertyNamed "Byte addressable register can be written to and read from with byte enables." "readWriteRegisterByteAddressable" readWriteRegisterByteAddressable]
 
 genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
 genRamContents depth = genSomeVec (Range.singleton $ fromIntegral (depth - 1))
@@ -145,8 +153,37 @@ readWriteByteAddressableDoubleBufferedRAM = property $ do
         (_,expectedOut) = L.mapAccumL byteAddressableDoubleBufferedRAMBehaviour (L.head topEntityInput, contents, contents) $ L.tail topEntityInput
       L.drop 2 simOut === L.tail expectedOut
 
+readWriteRegisterByteAddressable :: Property
+readWriteRegisterByteAddressable = property $ do
+  bytes <- forAll $ Gen.enum 1 10
+  case TN.someNatVal bytes of
+    SomeNat p -> case compareSNat d1 (snatProxy p) of
+      SNatLE -> go p
+      _ -> error "readWriteRegisterByteAddressable: Amount of bytes == 0."
+ where
+  go :: forall bytes m . (KnownNat bytes, 1 <= bytes, KnownNat (bytes*8), 1 <= (bytes * 8), Monad m) => Proxy bytes -> PropertyT m ()
+  go Proxy =
+    case sameNat (Proxy @bytes) (Proxy @(Regs (Vec bytes Byte) 8)) of
+      Just Refl -> do
+        simLength <- forAll $ Gen.enum 1 100
+        let
+          writeGen = genNonEmptyVec @_ @bytes $ genDefinedBitVector @_ @8
+        initVal <- forAll writeGen
+        writes <- forAll $ Gen.list (Range.singleton simLength) writeGen
+        byteEnables <- forAll $ Gen.list (Range.singleton simLength) $ genDefinedBitVector @_ @(Regs (Vec bytes Byte) 8)
+        let
+          topEntity (unbundle -> (newVal, byteEnable))=
+            withClockResetEnable @System clockGen resetGen enableGen $
+            registerByteAddressable initVal newVal byteEnable
+          expectedOut = P.scanl simFunc initVal $ P.zip writes byteEnables
+          simFunc olds (news,unpack -> bools) = (\(bool,old,new) -> if bool then new else old) <$> zip3 bools olds news
+          simOut = simulateN simLength topEntity $ P.zip writes byteEnables
+        simOut === P.take simLength expectedOut
+      _ -> error "readWriteRegisterByteAddressable: Amount of bytes not equal to registers required."
+
+
 byteAddressableRAMBehaviour :: forall bits depth bytes .
-  (AtLeastOne depth, AtLeastOne bytes, bytes ~ Regs (BitVector bits) 8, AtLeastOne bits) =>
+  (KnownNat depth, 1 <= depth, KnownNat bytes, 1 <= bytes, bytes ~ Regs (BitVector bits) 8, KnownNat bits, 1 <= bits) =>
   ((Index depth, WriteBits depth bits, ByteEnable bytes), Vec depth (BitVector bits))->
   (Index depth, WriteBits depth bits, ByteEnable bytes) ->
   (((Index depth, WriteBits depth bits, ByteEnable bytes), Vec depth (BitVector bits)), BitVector bits)
@@ -170,7 +207,7 @@ byteAddressableRAMBehaviour state input = (state', ram !! readAddr)
   state' = (input, ram1)
 
 byteAddressableDoubleBufferedRAMBehaviour :: forall bits depth bytes .
- (AtLeastOne depth, AtLeastOne bytes, bytes ~ Regs (BitVector bits) 8, AtLeastOne bits) =>
+ (KnownNat depth, 1 <= depth, KnownNat bytes, 1 <= bytes, bytes ~ Regs (BitVector bits) 8, KnownNat bits, 1 <= bits) =>
  ((Bool, Index depth, WriteBits depth bits, BitVector bytes), Vec depth (BitVector bits), Vec depth (BitVector bits))->
  (Bool, Index depth, WriteBits depth bits, BitVector bytes) ->
  (((Bool, Index depth, WriteBits depth bits, BitVector bytes), Vec depth (BitVector bits), Vec depth (BitVector bits)), BitVector bits)
