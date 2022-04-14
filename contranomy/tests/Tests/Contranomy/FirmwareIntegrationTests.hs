@@ -28,9 +28,6 @@ elfExpect act n expected = do
     let elf = parseElf elfBytes
     let (entry, iMem, dMem) = readElf elf
 
-    -- TODO Use 'elfEntry' as an optional(?) argument to the core to start
-    -- execution from a particular PC value.
-
     -- Hook up to println-debugging at special address 0x90000000
     let res = getDataBytes (BS.length expected) 0x90000000 $ sampleN n $ fmap snd $
               contranomy' hasClock hasReset entry iMem dMem $ pure (False, False, 0b0)

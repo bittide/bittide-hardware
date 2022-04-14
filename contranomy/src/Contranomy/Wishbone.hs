@@ -36,7 +36,7 @@ data WishboneM2S bytes addressWidth
     -- | CTI
   , cycleTypeIdentifier :: "CTI" ::: CycleTypeIdentifier
     -- | BTE
-  , burstTypeExtension :: "BTE" ::: BurstTypeExtension
+  , burstTypeExtension  :: "BTE" ::: BurstTypeExtension
   } deriving (Generic, NFDataX, Show, Eq)
 
 data WishboneS2M bytes
@@ -46,7 +46,7 @@ data WishboneS2M bytes
     -- | ACK
   , acknowledge :: "ACK" ::: Bool
     -- | ERR
-  , err :: "ERR" ::: Bool
+  , err         :: "ERR" ::: Bool
   } deriving (Generic, NFDataX, Show, Eq)
 
 newtype CycleTypeIdentifier = CycleTypeIdentifier (BitVector 3) deriving (Generic, NFDataX, Show, Eq)
