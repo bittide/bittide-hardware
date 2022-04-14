@@ -47,7 +47,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.werrors cabal.project.local
+          cp .github/cabal.project.simulation cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -81,7 +81,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.werrors cabal.project.local
+          cp .github/cabal.project.simulation cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -125,7 +125,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.altops cabal.project.local
+          cp .github/cabal.project.formal cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -227,7 +227,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.werrors cabal.project.local
+          cp .github/cabal.project.simulation cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -286,6 +286,7 @@ jobs:
           profile: minimal
 
       - uses: actions/cache@v3
+        name: Cache
         with:
           path: |
             ~/.cargo/bin/
@@ -316,6 +317,7 @@ jobs:
           target: riscv32imc-unknown-none-elf
 
       - uses: actions/cache@v3
+        name: Cache
         with:
           path: |
             ~/.cargo/bin/
@@ -343,6 +345,17 @@ jobs:
           profile: minimal
           target: riscv32imc-unknown-none-elf
 
+      - uses: actions/cache@v3
+        name: Cache
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            firmware/tests/target/
+          key: cargo-cache-${{ hashFiles('firmware/tests/Cargo.lock') }}
+
       - name: Building Firmware Integration Tests
         run: cargo build --release
         working-directory: firmware/tests
@@ -351,7 +364,7 @@ jobs:
         run: |
           mkdir -p target/firmware-integration-tests
           # Copy artefacts into "clean" folder
-          cat target/artefacts | xargs -i cp ./{} target/firmware-integration-tests/
+          cat target/artifacts | xargs -i cp ./{} target/firmware-integration-tests/
           cd target/; tar -c -f ../firmware-integration-tests.tar firmware-integration-tests/
         working-directory: firmware/tests/
 

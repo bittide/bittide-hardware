@@ -19,8 +19,8 @@ copy-firmware-tests: build-firmware-tests
 	rm -rf firmware-integration-tests
 	mkdir firmware-integration-tests
 
-	# Copy artefacts into "clean" folder
-	cd firmware/tests; cat target/artefacts | xargs -i cp ./{} ../../firmware-integration-tests/
+	# Copy artifacts into "clean" folder
+	cd firmware/tests; cat target/artifacts | xargs -i cp ./{} ../../firmware-integration-tests/
 
 
 

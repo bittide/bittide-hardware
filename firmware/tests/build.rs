@@ -17,7 +17,7 @@ fn main() {
         panic!("The firmware integration tests need to be compiled in release mode!");
     }
 
-    let mut artefacts = vec![];
+    let mut artifacts = vec![];
 
     // write `.expected` files to TARGET dir
     for entry in fs::read_dir("src/bin").unwrap() {
@@ -47,8 +47,8 @@ fn main() {
 
         fs::copy(&path, target_path.join(format!("{test_name}.expected"))).unwrap();
 
-        artefacts.push(target_path.join(format!("{test_name}.expected")));
-        artefacts.push(target_path.join(test_name));
+        artifacts.push(target_path.join(format!("{test_name}.expected")));
+        artifacts.push(target_path.join(test_name));
     }
 
     // check all binary programs have a `.expected` file
@@ -75,9 +75,9 @@ fn main() {
         }
     }
 
-    let mut artefact_file = fs::File::create("target/artefacts").unwrap();
-    for artefact in artefacts {
-        writeln!(artefact_file, "{}", artefact.display()).unwrap();
+    let mut artifact_file = fs::File::create("target/artifacts").unwrap();
+    for artifact in artifacts {
+        writeln!(artifact_file, "{}", artifact.display()).unwrap();
     }
 
     println!("cargo:rerun-if-changed=memory.x");

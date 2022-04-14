@@ -5,24 +5,26 @@ License    :  Apache-2.0
 Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
 -}
 
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE OverloadedLabels      #-}
 
 module Contranomy.Core.Exception where
 
-import Control.Lens
-import Control.Monad.Trans.State
-import Data.Maybe
-import Data.Generics.Labels ()
+import           Control.Lens
+import           Control.Monad.Trans.State
+import           Data.Generics.Labels         ()
+import           Data.Maybe
 
-import Clash.Prelude
+import           Clash.Prelude
 
-import Contranomy.Core.CoreState
-import Contranomy.Core.Decode
-import Contranomy.Core.MachineState
-import Contranomy.Core.SharedTypes
-import Contranomy.Instruction
+import           Contranomy.Core.CoreState
+import           Contranomy.Core.Decode
+import           Contranomy.Core.MachineState
+import           Contranomy.Core.SharedTypes
+import           Contranomy.Instruction
+
+import           Debug.Trace
 
 data ExceptionIn
   = ExceptionIn
@@ -35,6 +37,13 @@ data ExceptionIn
   , softwareInterrupt   :: Bool
   , externalInterrupt   :: MachineWord
   }
+  deriving (Show)
+
+traceExceptionIn :: ExceptionIn -> ExceptionIn
+traceExceptionIn exIn = if isJust (dataAccessFault exIn) || isJust (dataAddrMisaligned exIn) then
+    trace (show exIn) exIn
+  else
+    exIn
 
 -- | This function takes care of exception handling, both synchronous exceptions
 -- (traps) and asynchronous exceptions (interrupts). It takes in information
@@ -67,7 +76,7 @@ handleExceptions CoreState{pc,instruction,machineState} exceptionIn lsFinished p
         , timerInterrupt
         , softwareInterrupt
         , externalInterrupt
-        } = exceptionIn
+        } = traceExceptionIn exceptionIn
 
   let DecodedInstruction{opcode,func3,imm12I} = decodeInstruction instruction
   let breakpoint = case opcode of
@@ -126,10 +135,10 @@ handleExceptions CoreState{pc,instruction,machineState} exceptionIn lsFinished p
                         else case dataAddrMisaligned of
                           Just _ -> case opcode of
                             LOAD -> LOAD_ADDRESS_MISALIGNED
-                            _ -> STORE_ADDRESS_MISALIGNED
+                            _    -> STORE_ADDRESS_MISALIGNED
                           _ -> case opcode of -- dataAccessFault
                             LOAD -> LOAD_ADDRESS_MISALIGNED
-                            _ -> STORE_ADDRESS_MISALIGNED
+                            _    -> STORE_ADDRESS_MISALIGNED
                     , mepc = slice d31 d2 pc ++# ( 0 :: BitVector 2)
                     , mtval =
                       if instrAddrMisaligned then
@@ -144,7 +153,7 @@ handleExceptions CoreState{pc,instruction,machineState} exceptionIn lsFinished p
                         Just addr -> addr
                         _ -> case dataAccessFault of
                           Just addr -> addr
-                          _ -> 0
+                          _         -> 0
                     }
     let pcN1 = trapBase mtvec
         pcN2 = pcN1 ++# (0:: BitVector 2)

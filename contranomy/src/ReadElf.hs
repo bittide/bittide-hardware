@@ -28,8 +28,7 @@ readElf elf =
     = (addData (elfSegmentPhysAddr seg) (elfSegmentData seg `BS.append` BS.pack [0,0]) is, ds)
 
     | otherwise
-    =
-      (is, addData (elfSegmentPhysAddr seg) (elfSegmentData seg) ds)
+    = (is, addData (elfSegmentPhysAddr seg) (elfSegmentData seg) ds)
 
   addData (fromIntegral -> startAddr) str mem =
     let bytes = pack <$> BS.unpack str
