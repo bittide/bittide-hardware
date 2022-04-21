@@ -9,10 +9,12 @@ use contranomy_sys::{character_device, println};
 #[entry]
 fn main() -> ! {
     unsafe {
-        character_device::initialise(0x90000000);
+        character_device::initialise(0x90000000 as *mut u8);
     }
 
     println!("hello, world.");
 
-    loop {}
+    loop {
+        continue;
+    }
 }

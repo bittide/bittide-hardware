@@ -50,8 +50,8 @@ runTest name elfPath expectedPath =
     expected <- BS.readFile expectedPath
     let act path = copyFile elfPath path
 
-    -- randomly pick 100 thousand cycles as an upper bound for tests
-    elfExpect act 100000 expected
+    -- arbitrarily pick 500 thousand cycles as an upper bound for tests
+    elfExpect act 500000 expected
 
 
 

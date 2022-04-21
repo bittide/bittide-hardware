@@ -1,4 +1,4 @@
-static mut DEVICE_ADDR: usize = 0;
+static mut DEVICE_ADDR: *mut u8 = core::ptr::null_mut();
 
 pub struct CharacterDevice;
 
@@ -8,13 +8,13 @@ pub struct CharacterDevice;
 ///
 /// The `character_device_addr` argument must be the integer representation of
 /// the address which contains the character device interface.
-pub unsafe fn initialise(character_device_addr: usize) {
+pub unsafe fn initialise(character_device_addr: *mut u8) {
     DEVICE_ADDR = character_device_addr;
 }
 
 fn write_byte(b: u8) {
     unsafe {
-        core::ptr::write_volatile(DEVICE_ADDR as *mut u8, b);
+        core::ptr::write_volatile(DEVICE_ADDR, b);
     }
 }
 
