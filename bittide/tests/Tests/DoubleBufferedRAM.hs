@@ -24,8 +24,6 @@ import qualified Data.List as L
 import qualified Data.Set as Set
 import qualified Prelude as P
 
-deriving instance (Show a) => Show (SomeVec 1 a)
-
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRAM group"
   [ testPropertyNamed "Reading the buffer." "readDoubleBufferedRAM" readDoubleBufferedRAM

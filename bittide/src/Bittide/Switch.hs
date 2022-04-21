@@ -48,10 +48,10 @@ switch ::
   Signal dom (Vec links (DataLink frameWidth)) ->
   -- | All outgoing datalinks
   Signal dom (Vec links (DataLink frameWidth))
-switch bootstrapCal writeCalendar streamsIn = crossBar <$> crossBarConfig <*> streams'
+switch bootstrapCal writeCalendar streamsIn = crossBar <$> crossBarConfig <*> streams1
   where
     buffers = scatterEngine newMetaCycle
-    streams' = bundle (buffers <$> unbundle streamsIn <*> unbundle gatherConfig)
+    streams1 = bundle (buffers <$> unbundle streamsIn <*> unbundle gatherConfig)
     (calendars, newMetaCycle) = calendar bootstrapCal (pure False) writeCalendar
     (gatherConfig, crossBarConfig)  = unbundle $ unzip <$> calendars
 

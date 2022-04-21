@@ -23,8 +23,6 @@ import Test.Tasty.Hedgehog
 import qualified Data.Set as Set
 import qualified Prelude as P
 
-deriving instance (Show a) => Show (SomeVec atLeast a)
-
 calGroup :: TestTree
 calGroup = testGroup "Calendar group"
   [ testPropertyNamed "Reading the calendar." "readCalendar" readCalendar
