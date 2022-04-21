@@ -73,6 +73,8 @@ doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteS
 
     output = mux outputSelect buffer1 buffer0
 
+-- | Blockram similar to 'blockram' with the addition that it takes a byte select signal
+-- that controls which bytes at the write address are updated.
 blockRamByteAddressable ::
   forall dom bytes depth a .
   (HiddenClockResetEnable dom, KnownNat bytes, 1 <= bytes, bytes ~ Regs a 8, KnownNat depth, Paddable a) =>
@@ -91,6 +93,8 @@ blockRamByteAddressable initRAM readAddr newEntry byteSelect =
    writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
    readBytes = bundle $ (`blockRam` readAddr) <$> initBytes <*> writeBytes
 
+-- | Registor similar to 'register' with the addition that it takes a byte select signal
+-- that controls which bytes are updated.
 registerByteAddressable ::
   forall dom a .
   (HiddenClockResetEnable dom, Paddable a) =>
@@ -108,6 +112,10 @@ registerByteAddressable initVal newVal byteEnables =
     case paddedToRegisters @8 $ Padded x of
       RegisterBank vec -> vec
 
+
+-- | Takes singular write operation (Maybe (Index maxIndex, writeData)) and splits it up
+-- according to a supplied byteselect bitvector into a vector of byte sized write operations
+-- (Maybe (Index maxIndex, Byte)).
 splitWriteInBytes ::
   forall maxIndex writeData .
   (Paddable writeData) =>
