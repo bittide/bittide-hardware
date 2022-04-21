@@ -2,10 +2,17 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# OPTIONS_GHC -fconstraint-solver-iterations=5#-}
+
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Bittide.DoubleBufferedRAM where
 
 import Clash.Prelude
+
+import Contranomy.Wishbone
 
 import Bittide.SharedTypes
 -- | The double buffered RAM component is a memory component that internally uses a single
@@ -91,6 +98,64 @@ blockRamByteAddressable initRAM readAddr newEntry byteSelect =
    getBytes (getRegs -> RegisterBank vec) = vec
    writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
    readBytes = bundle $ (`blockRam` readAddr) <$> initBytes <*> writeBytes
+
+registerWB ::
+  forall dom a bs aw .
+  ( HiddenClockResetEnable dom
+  , Paddable a
+  , KnownNat (Regs a (bs * 8))
+  , 1 <= (Regs a (bs * 8))
+  , Regs a 8 ~ (bs * Regs a (bs*8))
+  , KnownNat bs
+  , 1 <= bs
+  , KnownNat aw
+  , 2 <= aw) =>
+  a ->
+  Signal dom (WishboneM2S bs aw) ->
+  Maybe (Signal dom a) ->
+  (Signal dom a, Signal dom (WishboneS2M bs))
+registerWB initVal wbIn (Just newVal) = unbundle . mealy go initVal $ bundle (newVal, wbIn)
+ where
+  go :: a -> (a, WishboneM2S bs aw) -> (a, (a, WishboneS2M bs))
+  go val1 (val0, WishboneM2S{..}) = (val0, (val1, WishboneS2M{acknowledge, err, readData}))
+   where
+    (alignedAddress, alignment) = split @_ @(aw - 2) @2 addr
+    wordAligned = alignment == 0
+    addressRange = maxBound :: Index (Regs a (bs * 8))
+
+    err = (alignedAddress > resize (pack addressRange)) ||
+          not wordAligned ||
+          writeEnable
+    acknowledge = not err && strobe && busCycle
+
+    wbAddr :: Index (Regs a (bs * 8))
+    wbAddr = unpack . resize $ pack alignedAddress
+
+    readData = case paddedToRegisters $ Padded val1 of
+      RegisterBank vec -> vec !! wbAddr
+
+registerWB initVal wbIn Nothing = (regOut, wbOut)
+ where
+  regOut = registerByteAddressable initVal (repeatedBVsAsData <$> wbIn) byteEnables
+  repeatedBVsAsData = registersToData . RegisterBank . repeat . writeData
+  (byteEnables, wbOut) = unbundle $ go <$> regOut <*> wbIn
+
+  go val WishboneM2S{..} = (pack byteEnables0, WishboneS2M{acknowledge, err, readData})
+   where
+    (alignedAddress, alignment) = split @_ @(aw - 2) @2 addr
+    wordAligned = alignment == 0
+    addressRange = maxBound :: Index (Regs a (bs * 8))
+
+    err = (alignedAddress > resize (pack addressRange)) ||
+          not wordAligned ||
+          writeEnable
+    acknowledge = not err && strobe && busCycle
+
+    wbAddr :: Index (Regs a (bs * 8))
+    wbAddr = unpack . resize $ pack alignedAddress
+    byteEnables0 = replace wbAddr busSelect (repeat 0)
+    readData = case paddedToRegisters $ Padded val of
+      RegisterBank vec -> vec !! wbAddr
 
 -- | Register similar to 'register' with the addition that it takes a byte select signal
 -- that controls which bytes are updated.
