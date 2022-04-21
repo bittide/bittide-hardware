@@ -8,6 +8,7 @@ module Bittide.DoubleBufferedRAM where
 import Clash.Prelude
 
 import Bittide.SharedTypes
+
 -- | The double buffered RAM component is a memory component that internally uses a single
 -- blockram, but enables the user to write to one part of the ram and read from another.
 -- When the metacycle indicate (the first argument) is True, the read buffer and write buffer
@@ -40,14 +41,14 @@ doubleBufferedRAM initialContent switch readAddr writeFrame = output
 
     output = mux outputSelect buffer1 buffer0
 
--- | The byte adressable doublebuffered RAM component is a memory component that has a memory width which is a multiple of 8 bits.
+-- | The byte addressable double buffered RAM component is a memory component that has a memory width which is a multiple of 8 bits.
 -- It contains a blockram per byte and uses the one hot byte select signal to determine which bytes will be written to the blockram.
 -- This component is double buffered such that it returns the read data from both buffers in a tuple where the first element
 -- contains the read data from the "active" buffer, and the second element contains the read data from the "inactive" buffer.
 -- Writing to this component will always write to the inactive buffer.
 doubleBufferedRAMByteAddressable ::
  ( KnownNat depth, HiddenClockResetEnable dom, Paddable a, KnownNat bytes, 1 <= bytes, bytes ~ Regs a 8) =>
-  -- | The initial contents of the first buffer. The second buffer is undefined.
+  -- | The initial contents of the first buffer.
   Vec depth a ->
   -- | Indicates when a new metacycle has started.
   Signal dom Bool ->
@@ -72,7 +73,8 @@ doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteS
 
     output = mux outputSelect buffer1 buffer0
 
-blockRamByteAddressable :: forall dom bytes depth a .
+blockRamByteAddressable ::
+  forall dom bytes depth a .
   (HiddenClockResetEnable dom, KnownNat bytes, 1 <= bytes, bytes ~ Regs a 8, KnownNat depth, Paddable a) =>
   Vec depth a ->
   Signal dom (Index depth) ->
@@ -106,7 +108,8 @@ registerByteAddressable initVal newVal byteEnables =
     case paddedToRegisters @8 $ Padded x of
       RegisterBank vec -> vec
 
-splitWriteInBytes :: forall maxIndex writeData .
+splitWriteInBytes ::
+  forall maxIndex writeData .
   (Paddable writeData) =>
   WriteAny maxIndex writeData ->
   ByteEnable (Regs writeData 8) ->
