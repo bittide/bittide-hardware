@@ -14,7 +14,6 @@ type Address = BitVector 32
 --
 -- TODO Check the ELF header is valid: is this RISCV? Is it RV32IMC?
 -- TODO Binaries output now are SYS V ABI, are others compatible?
-{-
 readElf :: Elf -> (Address, BinaryData, BinaryData)
 readElf elf =
   let (iMem, dMem) = L.foldr go (mempty, mempty) (elfSegments elf)
@@ -26,42 +25,17 @@ readElf elf =
     = acc
 
     | PF_X `elem` elfSegmentFlags seg
-    = (addData (elfSegmentPhysAddr seg) (elfSegmentData seg) is, ds)
+    = (addData (elfSegmentPhysAddr seg) (bytes $ elfSegmentData seg `BS.append` BS.pack [0,0]) is, ds)
 
     | otherwise
-    = (is, addData (elfSegmentPhysAddr seg) (elfSegmentData seg) ds)
+    = let segData = elfSegmentData seg
+          fileSz  = fromIntegral $ BS.length segData
+          memSz   = fromIntegral $ elfSegmentMemSize seg
+          data'   = bytes segData <> L.replicate (memSz - fileSz) 0
+      in
+      (is, addData (elfSegmentPhysAddr seg) data' ds)
 
-  addData (fromIntegral -> startAddr) str mem =
-    let bytes = pack <$> BS.unpack str
-     in I.fromList (L.zip [startAddr..] bytes) <> mem
+  bytes str = pack <$> BS.unpack str
 
--}
-
-readElf :: Elf -> (Address, BinaryData, BinaryData)
-readElf elf =
-  let (iMem, dMem) = L.foldr go (mempty, mempty) (elfSections elf)
-   in (fromIntegral (elfEntry elf), iMem, dMem)
- where
-  go sec acc@(is, ds)
-    -- Address is 0: Not mapped to virtual memory
-    | elfSectionAddr sec == 0
-    = acc
-
-    -- Section contains instruction memory
-    | SHF_EXECINSTR `elem` elfSectionFlags sec
-    , SHF_WRITE `notElem` elfSectionFlags sec
-    = (addData (elfSectionAddr sec) (elfSectionData sec `BS.append` (BS.pack [0,0])) is, ds)
-    -- The line above pads the instruction memory with 2 bytes to enable ending on a compressed instruction.
-
-    -- Section contains data memory
-    | (SHF_WRITE `elem` elfSectionFlags sec
-        || SHF_ALLOC `elem` elfSectionFlags sec)
-    , SHF_EXECINSTR `notElem` elfSectionFlags sec
-    = (is, addData (elfSectionAddr sec) (elfSectionData sec) ds)
-
-    | otherwise
-    = error ("Section is not executable XOR data:\n" <> show sec)
-
-  addData (fromIntegral -> startAddr) str mem =
-    let bytes = pack <$> BS.unpack str
-     in I.fromList (L.zip [startAddr..] bytes) <> mem
+  addData (fromIntegral -> startAddr) dat mem =
+     I.fromList (L.zip [startAddr..] dat) <> mem
