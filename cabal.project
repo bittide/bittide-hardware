@@ -1,6 +1,7 @@
 packages:
   bittide/bittide.cabal
   contranomy/contranomy.cabal
+  contranomy-sim/contranomy-sim.cabal
 
 write-ghc-environment-files: always
 

@@ -1,5 +1,5 @@
 -- | Println-debugging during simulation
-module Println ( hookPrint ) where
+module ContranomySim.Print ( hookPrint ) where
 
 import Clash.Prelude
 
