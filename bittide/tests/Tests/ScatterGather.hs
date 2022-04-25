@@ -177,11 +177,13 @@ data IsInBounds a b c where
 
 deriving instance Show (IsInBounds a b c)
 
+-- | Returns 'InBounds' when a <= b <= c, otherwise returns 'NotInBounds'.
 isInBounds :: SNat a -> SNat b -> SNat c -> IsInBounds a b c
 isInBounds a b c = case (compareSNat a b, compareSNat b c) of
   (SNatLE, SNatLE) -> InBounds
   _ -> NotInBounds
 
+-- | Generates a 'CalendarConfig' for the 'gatherUnitWB' or 'scatterUnitWB'
 genCalendarConfig ::
   forall bytes addressWidth calEntry maxDepth .
   ( KnownNat bytes
@@ -225,6 +227,7 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
       return $ CalendarConfig sizeNat calActive calShadow
     errmsg = errorX "genCalendarConfig: list to vector conversion failed"
 
+-- | Check if the scatter unit with wishbone interface loses no frames.
 scatterUnitNoFrameLoss :: Property
 scatterUnitNoFrameLoss = property $ do
   maxCalSize <- forAll $ Gen.enum 2 32
@@ -260,12 +263,13 @@ scatterUnitNoFrameLoss = property $ do
           footnote . fromString $ "simOut: " <> showX simOut
           footnote . fromString $ "simIn: " <> showX wbReadOps
           footnote . fromString $ "cal: " <> showX calA
-          wbDirectedDecoding simOut === P.take simLength (catMaybes (P.concat inputFrames))
+          wbDecoding simOut === P.take simLength (catMaybes (P.concat inputFrames))
  where
   genCal :: forall maxSize . 1 <= maxSize => SNat maxSize -> Gen (CalendarConfig 4 32 (Index maxSize))
   genCal SNat = genCalendarConfig @4 @32 (SNat @maxSize)
   padToLength l padElement g = P.take l (g P.++ P.repeat padElement)
 
+-- | Check if the gather unit with wishbone interface loses no frames.
 gatherUnitNoFrameLoss :: Property
 gatherUnitNoFrameLoss = property $ do
   maxCalSize <- forAll $ Gen.enum 2 32
@@ -316,17 +320,21 @@ directedDecode ((Just _) : as) ((Just b) : bs) = b : directedDecode as bs
 directedDecode (Nothing : as) (_ : bs) = directedDecode as bs
 directedDecode _ _ = []
 
-
-wbDirectedDecoding :: KnownNat bytes =>
+-- | Decode an incoming slave bus by consuming two acknowledged signals and concatenating
+-- their readData's.
+wbDecoding :: KnownNat bytes =>
   [WishboneS2M bytes]
   -> [BitVector ((8 * bytes) + (8 * bytes))]
-wbDirectedDecoding (s2m0 : s2m1 : s2ms)
-  | acknowledge s2m0 && acknowledge s2m1 = out : wbDirectedDecoding s2ms
-  | otherwise = wbDirectedDecoding (s2m1 : s2ms)
+wbDecoding (s2m0 : s2m1 : s2ms)
+  | acknowledge s2m0 && acknowledge s2m1 = out : wbDecoding s2ms
+  | otherwise = wbDecoding (s2m1 : s2ms)
  where
   out = readData s2m1 ++# readData s2m0
-wbDirectedDecoding _ = []
+wbDecoding _ = []
 
+-- | Tranform a read address with expected frame into a wishbone read operation for testing
+-- the 'scatterUnitWB'. The second argument indicate wether or not a frame can be read from
+-- that read address. The read operation reads data over 2 read cycles.
 wbRead ::
   forall bytes addressWidth maxIndex a .
   ( KnownNat bytes
@@ -349,6 +357,8 @@ wbRead readAddr (Just _) =
   ]
 wbRead _ Nothing = []
 
+-- | Transform a write address with frame to a wishbone write operation for testing the
+-- 'gatherUnitWB'. The write operation writes the incoming bitvector over 2 write cycles.
 wbWrite ::
   forall bytes addressWidth maxIndex .
   ( KnownNat bytes
@@ -379,5 +389,6 @@ wbWrite writeAddr (Just frame) =
   (upper, lower) = split frame
 wbWrite _ Nothing = []
 
+-- | Idle 'WishboneM2S' bus.
 idleM2S :: forall bytes aw . (KnownNat bytes, KnownNat aw) => WishboneM2S bytes aw
 idleM2S = (wishboneM2S SNat (SNat @aw)){addr = 0}

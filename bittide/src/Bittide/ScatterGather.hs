@@ -270,6 +270,7 @@ coerceIndexes = case sameNat natA natB of
   natA = Proxy @(CLog 2 (n*2))
   natB = Proxy @(CLog 2 n + 1)
 
+-- | Delays the output controls to align them with the actual read / write timing.
 delayControls :: HiddenClockResetEnable dom =>
   Signal dom (WishboneS2M bytes) -> Signal dom (WishboneS2M bytes)
 delayControls wbIn = wbOut
