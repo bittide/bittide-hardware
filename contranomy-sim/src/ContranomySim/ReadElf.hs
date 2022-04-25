@@ -1,3 +1,9 @@
+{-|
+Copyright  :  (C) 2022, Google LLC
+License    :  Apache-2.0
+Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
+-}
+
 module ContranomySim.ReadElf (readElf, readElfFromMemory, Address, BinaryData) where
 
 import Clash.Prelude
