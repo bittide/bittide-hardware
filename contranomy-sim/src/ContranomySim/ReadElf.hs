@@ -1,9 +1,13 @@
-{-# LANGUAGE ViewPatterns #-}
+{-|
+Copyright  :  (C) 2022, Google LLC
+License    :  Apache-2.0
+Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
+-}
+
+module ContranomySim.ReadElf (readElf, readElfFromMemory, Address, BinaryData) where
 
 import Clash.Prelude
 
-import Contranomy
-import Contranomy.Println
 import qualified Data.ByteString as BS
 import Data.Elf
 import qualified Data.IntMap.Strict as I
@@ -11,6 +15,11 @@ import qualified Data.List as L
 
 type BinaryData = I.IntMap (BitVector 8)
 type Address = BitVector 32
+
+readElfFromMemory :: BS.ByteString -> (Address, BinaryData, BinaryData)
+readElfFromMemory contents =
+  let elf = parseElf contents
+  in readElf elf
 
 -- | readElf :: elf file -> (initial PC, instructions, data)
 --
@@ -44,16 +53,3 @@ readElf elf =
   addData (fromIntegral -> startAddr) str mem =
     let bytes = pack <$> BS.unpack str
      in I.fromList (L.zip [startAddr..] bytes) <> mem
-
-main :: IO ()
-main = do
-  elfBytes <- BS.readFile "main.elf"
-  let elf = parseElf elfBytes
-  let (entry, iMem, dMem) = readElf elf
-
-  -- TODO Use 'elfEntry' as an optional(?) argument to the core to start
-  -- execution from a particular PC value.
-
-  -- Hook up to println-debugging at special address 0x90000000
-  hookPrint 0x90000000 $ sample $ fmap snd $
-    contranomy' hasClock hasReset entry iMem dMem $ pure (False, False, 0b0)

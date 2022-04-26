@@ -67,4 +67,4 @@ target/
 /Cargo.lock
 
 # ELF file for testing
-contranomy/main.elf
+contranomy-sim/main.elf
