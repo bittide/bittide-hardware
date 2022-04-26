@@ -68,3 +68,6 @@ target/
 
 # ELF file for testing
 contranomy-sim/main.elf
+
+# Firmware integration test binaries
+firmware-integration-tests/
