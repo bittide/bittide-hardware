@@ -1,3 +1,7 @@
+//  Copyright  :  (C) 2022, Google LLC
+//  License    :  Apache-2.0
+//  Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
+
 #![no_std]
 #![no_main]
 
