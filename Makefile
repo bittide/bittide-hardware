@@ -8,6 +8,7 @@ build-sim:
 .PHONY: contranomy-tests
 contranomy-tests: build-sim copy-firmware-tests
 	cabal run contranomy:unittests
+	cabal run contranomy-sim:unittests
 
 
 .PHONY: build-firmware-tests

@@ -1,20 +1,20 @@
-module Tests.Contranomy.FirmwareIntegrationTests ( generateTests ) where
+module Tests.ContranomySim.FirmwareIntegrationTests ( generateTests ) where
 
-import           Clash.Prelude      hiding (map)
+import           Clash.Prelude         hiding (map)
 import           Prelude
 
-import qualified Data.ByteString    as BS
-import           System.IO.Temp     (withSystemTempFile)
-import           Test.HUnit.Base    (Assertion, (@?=))
+import qualified Data.ByteString       as BS
+import           System.IO.Temp        (withSystemTempFile)
+import           Test.HUnit.Base       (Assertion, (@?=))
 
 import           Contranomy
-import           Contranomy.Println
-import           ReadElf
-import           System.Directory   (copyFile, listDirectory)
-import           System.FilePath    (dropExtension, takeBaseName, takeExtension,
-                                     (</>))
+import           ContranomySim.Print
+import           ContranomySim.ReadElf
+import           System.Directory      (copyFile, listDirectory)
+import           System.FilePath       (dropExtension, takeBaseName,
+                                        takeExtension, (</>))
 import           Test.Tasty
-import           Test.Tasty.HUnit   (testCase)
+import           Test.Tasty.HUnit      (testCase)
 
 -- | Load an elf binary, inspect the debug output
 elfExpect :: (FilePath -> IO ()) -- ^ Action to place the @.elf@ file in the given 'FilePath'
@@ -25,8 +25,7 @@ elfExpect act n expected = do
   withSystemTempFile "ELF" $ \fp _ -> do
     act fp
     elfBytes <- BS.readFile fp
-    let elf = parseElf elfBytes
-    let (entry, iMem, dMem) = readElf elf
+    let (entry, iMem, dMem) = readElfFromMemory elfBytes
 
     -- Hook up to println-debugging at special address 0x90000000
     let res = getDataBytes (BS.length expected) 0x90000000 $ sampleN n $ fmap snd $

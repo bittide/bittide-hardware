@@ -4,18 +4,21 @@ License    :  Apache-2.0
 Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
 -}
 
-import Clash.Prelude
+import           Clash.Prelude
 
-import Contranomy
-import ContranomySim.Print
-import ContranomySim.ReadElf
+import           Contranomy
+import           ContranomySim.Print
+import           ContranomySim.ReadElf
 
-import qualified Data.ByteString as BS
+import qualified Data.ByteString       as BS
+import qualified Data.List             as L
+import           System.Environment    (getArgs)
 
 
 main :: IO ()
 main = do
-  elfBytes <- BS.readFile "main.elf"
+  elfFile <- L.head <$> getArgs
+  elfBytes <- BS.readFile elfFile
   let (entry, iMem, dMem) = readElfFromMemory elfBytes
 
   -- Hook up to print-debugging at special address 0x90000000
