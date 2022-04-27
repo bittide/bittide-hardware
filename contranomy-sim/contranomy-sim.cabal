@@ -1,20 +1,12 @@
 cabal-version:       2.4
-name:                contranomy
+name:                contranomy-sim
 version:             0.1
 License:             Apache-2.0
 license-file:        LICENSE
 author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
-Copyright:           Copyright © 2020, Christiaan Baaij
-                     Copyright © 2021, Google LLC
+Copyright:           Copyright © 2022 Google LLC
 
-flag riscv-altopts
-  description:
-    Use alternative arithmetic operations for M instructions to enable formal
-    verification. See https://github.com/SymbioticEDA/riscv-formal/blob/master/docs/rvfi.md#alternative-arithmetic-operations
-    for more information.
-  default: False
-  manual: True
 
 common common-options
   default-extensions:
@@ -67,63 +59,40 @@ common common-options
     -- blackboxes attached for them. You can disable this, but be sure to add
     -- a no-specialize pragma to every function with a blackbox.
     -fno-worker-wrapper
-
-  if flag(riscv-altopts)
-    CPP-Options: -DFORMAL_ALTOPS
-
-  default-language: Haskell2010
+      -- clash-prelude will set suitable version bounds for the plugins
   build-depends:
     base >= 4.14 && < 4.16,
-    Cabal >= 3.2 && < 3.5,
-    array >= 0.5 && < 0.6,
     clash-prelude >= 1.6 && < 1.7,
     containers >= 0.6 && < 0.7,
-
-    -- clash-prelude will set suitable version bounds for the plugins
     ghc-typelits-natnormalise,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
+
+
 library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
-    Contranomy
-    Contranomy.Clash.Extra
-
-    Contranomy.Core
-    Contranomy.Core.ALU
-    Contranomy.Core.Branch
-    Contranomy.Core.CoreState
-    Contranomy.Core.CSR
-    Contranomy.Core.Decode
-    Contranomy.Core.Exception
-    Contranomy.Core.MachineState
-    Contranomy.Core.LoadStore
-    Contranomy.Core.RVFI
-    Contranomy.Core.SharedTypes
-
-    Contranomy.Instruction
-    Contranomy.RegisterFile
-    Contranomy.RVFI
-    Contranomy.Assembly
-    Contranomy.Wishbone
-
+    ContranomySim.Print
+    ContranomySim.ReadElf
   build-depends:
-      transformers >= 0.5 && < 0.6,
-      lens >= 5.1 && < 5.2,
-      generic-lens >= 2.2 && < 2.3,
-      bytestring >=0.10 && <0.11,
-      elf >= 0.31 && < 0.32
+    elf >= 0.31 && < 0.32,
+    bytestring >= 0.10 && < 0.11,
 
-executable clash
+executable simcontranomy
   import: common-options
-  main-is: bin/Clash.hs
-  Build-Depends: clash-ghc, contranomy
+  main-is: SimContranomy.hs
+  hs-source-dirs: bin
+  build-depends:
+    bytestring >= 0.10 && < 0.11,
+    contranomy,
+    contranomy-sim,
 
-executable clashi
-  import: common-options
-  main-is: bin/Clashi.hs
-  build-depends: clash-ghc, contranomy
+    base,
+    containers,
+    clash-prelude,
+    clash-ghc
+
 
 test-suite unittests
   import: common-options
@@ -132,16 +101,14 @@ test-suite unittests
   ghc-options: -threaded
   main-is: tests.hs
   other-modules:
-    Tests.Contranomy.Core.ALU
-    Tests.Contranomy.FirmwareIntegrationTests
+    Tests.ContranomySim.ReadElf
+    Tests.ContranomySim.Print
   build-depends:
     contranomy,
+    contranomy-sim,
     hedgehog >= 1.0 && < 1.2,
     tasty >= 1.2 && < 1.5,
     tasty-hedgehog >= 1.2 && < 1.3,
     tasty-hunit >= 0.10 && < 0.11,
-    HUnit >=1.1 && <1.7,
-    temporary >=1.1 && <1.4,
     bytestring,
-    directory,
-    filepath
+    elf,

@@ -1,12 +1,19 @@
-module Contranomy.Println ( hookPrint, getDataBytes ) where
+{-|
+Copyright  :  (C) 2022, Google LLC
+License    :  Apache-2.0
+Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
+-}
 
-import Clash.Prelude
+-- | Println-debugging during simulation
+module ContranomySim.Print ( hookPrint, getDataBytes ) where
+
+import           Clash.Prelude
 
 import qualified Data.ByteString as BS
-import qualified Data.List as L
-import Data.Foldable (traverse_)
-import Data.Maybe (catMaybes)
-import Data.Word (Word8)
+import           Data.Foldable   (traverse_)
+import qualified Data.List       as L
+import           Data.Maybe      (catMaybes)
+import           Data.Word       (Word8)
 
 getDataBytes
   :: Int -- ^ How many bytes to sample
