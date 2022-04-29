@@ -2,6 +2,12 @@
 Copyright:           Copyright © 2022, Google LLC
 License:             Apache-2.0
 Maintainer:          devops@qbaylogic.com
+
+Contains the Bittide Calendar, which is a double buffered memory element that stores
+instructions for the 'scatterUnitWB', 'gatherUnitWB' or 'switch'. Implementation is based
+on the "Bittide Hardware" document.
+
+For documentation see 'Bittide.Calendar.calendarWB'.
 |-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=8 #-}
 
@@ -70,7 +76,7 @@ data CalendarState maxCalDepth = CalendarState
   } deriving (Generic, NFDataX)
 
 -- | Contains the current active calendar entry along with the metacycle
--- indicator that are provided at the output of the the calendar component. Furthermore
+-- indicator that is provided at the output of the the calendar component. Furthermore
 -- it contains the shadow entry and depth of the shadow calendar which are provided
 -- to the wishbone output hardware ('wbCalTX').
 data CalendarOutput calDepth calEntry = CalendarOutput
@@ -98,18 +104,16 @@ data BufferControl calDepth calEntry = BufferControl
 
 -- | Indicates which buffer is currently active.
 data SelectedBuffer = A | B deriving (Eq, Generic, NFDataX)
-bufToggle :: Bool -> SelectedBuffer -> SelectedBuffer
-bufToggle tog bufs
-  | tog       = switchBufs bufs
-  | otherwise = bufs
 
-switchBufs :: SelectedBuffer -> SelectedBuffer
-switchBufs A = B
-switchBufs B = A
+bufToggle :: Bool -> SelectedBuffer -> SelectedBuffer
+bufToggle True A = B
+bufToggle True B = A
+bufToggle False x = x
 
 -- | Hardware component that stores an active bittide calendar and a shadow bittide calendar.
 -- The entries of the active calendar will be sequentially provided at the output,
 -- the shadow calendar can be read from and written to through the wishbone interface.
+-- The active and shadow calendar can be swapped by setting the shadowSwitch to True.
 calendarWB ::
   forall dom bytes aw maxCalDepth calEntry bootstrapSizeA bootstrapSizeB .
   ( HiddenClockResetEnable dom
@@ -153,24 +157,24 @@ calendarWB SNat bootstrapActive bootstrapShadow shadowSwitch wbIn = bundle
     { firstCycle     = True
     , selectedBuffer = A
     , entryTracker   = 0
-    , calDepthA      = fromSNat $ SNat @(bootstrapSizeA -1)
-    , calDepthB      = fromSNat $ SNat @(bootstrapSizeB -1)
+    , calDepthA      = natToNum @(bootstrapSizeA - 1)
+    , calDepthB      = natToNum @(bootstrapSizeB - 1)
     }
 
   go :: CalendarState maxCalDepth ->
     (Bool, CalendarControl maxCalDepth calEntry bytes, calEntry, calEntry) ->
     (CalendarState maxCalDepth, (BufferControl maxCalDepth calEntry, CalendarOutput maxCalDepth calEntry))
-  go CalendarState{ .. } (bufSwitch, CalendarControl{..}, bufAIn, bufBIn) =
+  go CalendarState{..} (bufSwitch, CalendarControl{..}, bufAIn, bufBIn) =
     (wbState, (bufCtrl1, calOut1))
    where
     selectedBuffer1 = bufToggle bufSwitch selectedBuffer
     (activeEntry1, shadowEntry)
-      | selectedBuffer == A = (bufAIn, bufBIn)
-      | otherwise           = (bufBIn, bufAIn)
+      | A <- selectedBuffer = (bufAIn, bufBIn)
+      | B <- selectedBuffer = (bufBIn, bufAIn)
 
     (activeDepth, shadowDepth)
-      | selectedBuffer == A = (calDepthA, calDepthB)
-      | otherwise           = (calDepthB, calDepthA)
+      | A <- selectedBuffer = (calDepthA, calDepthB)
+      | B <- selectedBuffer = (calDepthB, calDepthA)
 
     (calDepthA1, calDepthB1) =
       case (selectedBuffer, newShadowDepth) of
@@ -192,7 +196,7 @@ calendarWB SNat bootstrapActive bootstrapShadow shadowSwitch wbIn = bundle
     newMetaCycle = entryTracker == 0
 
     activeEntry
-      | firstCycle = bootstrapA !! (0 :: Integer)
+      | firstCycle = bootstrapA !! (0 :: Index 1)
       | otherwise  = activeEntry1
 
     bufCtrl1 = BufferControl{readA, writeA, readB, writeB}
