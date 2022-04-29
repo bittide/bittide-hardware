@@ -65,6 +65,9 @@ data BVCalendar addressWidth where
     Vec (n + 1) (BitVector bits) ->
     BVCalendar addressWidth
 
+instance Show (BVCalendar addressWidth) where
+  show (BVCalendar _ _ bvvec) = show bvvec
+
 deriving instance Show (SNatLE a b)
 
 data IsInBounds a b c where
@@ -73,11 +76,15 @@ data IsInBounds a b c where
 
 deriving instance Show (IsInBounds a b c)
 
+-- | Returns 'InBounds' if a <= b <= c, otherwise returns 'NotInBounds'.
 isInBounds :: SNat a -> SNat b -> SNat c -> IsInBounds a b c
 isInBounds a b c = case (compareSNat a b, compareSNat b c) of
   (SNatLE, SNatLE) -> InBounds
   _ -> NotInBounds
 
+-- | Generates a configuration for 'Bittide.Calendar.calendarWB', with as first argument
+-- the maximum depth of the stored calendar and as second argument a generator for the
+-- calendar entries.
 genCalendarConfig ::
   forall bytes addressWidth calEntry .
   ( KnownNat bytes
@@ -108,10 +115,19 @@ genCalendarConfig ms elemGen = do
          , compareSNat d1 bsCalEntry) of
           (InBounds, InBounds, SNatLE, SNatLE)-> go maxSize depthA depthB
           (a,b,c,d) -> error $ "genCalendarConfig: calEntry constraints not satisfied: ("
-           <> show a <> ", " <> show b <> ", " <> show c <> ", "  <> show d <> "), \n(depthA, depthB, maxDepth, calEntry bitsize) = ("
-           <> show depthA <> ", " <> show depthB <> ", " <> show maxSize <> ", " <> show bsCalEntry <> ")"
+           <> show a <> ", " <> show b <> ", " <> show c <> ", "  <> show d <>
+           "), \n(depthA, depthB, maxDepth, calEntry bitsize) = (" <> show depthA <> ", "
+           <> show depthB <> ", " <> show maxSize <> ", " <> show bsCalEntry <> ")"
  where
-    go :: forall maxDepth depthA depthB . (LessThan depthA maxDepth, LessThan depthB maxDepth, NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth) => SNat maxDepth -> SNat depthA -> SNat depthB -> Gen (CalendarConfig bytes addressWidth calEntry)
+    go ::
+      forall maxDepth depthA depthB .
+      ( LessThan depthA maxDepth
+      , LessThan depthB maxDepth
+      , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth) =>
+      SNat maxDepth ->
+      SNat depthA ->
+      SNat depthB ->
+      Gen (CalendarConfig bytes addressWidth calEntry)
     go dMax SNat SNat = do
       calActive <- genVec @_ @depthA elemGen
       calShadow <- genVec @_ @depthB elemGen
