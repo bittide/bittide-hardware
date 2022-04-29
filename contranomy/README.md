@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2022 Google LLC
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 ## Introduction
 This repository hosts a *non*-pipelined RV32I RISC-V core written in Clash.
 Some relevant details:

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2022, Google LLC
+
+SPDX-License-Identifier: CC0-1.0
+-->
+
 # How to Contribute
 
 We'd love to accept your patches and contributions to this

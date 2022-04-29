@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2022 Google LLC
+//
+// SPDX-License-Identifier: Apache-2.0
+
 use bittide_sys::elf_loading::validation::{self, ElfConfig, ElfValidationError};
 use elf_common::{
     create_elf_file, elf_config_from_segs, gen_entry_in_seg_ty, gen_segments, gen_valid_elf_file,

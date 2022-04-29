@@ -1,4 +1,9 @@
 #!/bin/bash
+
+# SPDX-FileCopyrightText: 2022 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+
 # Exits with 0 if changes were made to files relevant to the RISCV formal
 # checks. E.g., CI configuration, formal check configuration, RTL, ...
 #

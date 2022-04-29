@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2022 Google LLC
+//
+// SPDX-License-Identifier: Apache-2.0
+
 static mut DEVICE_ADDR: usize = 0;
 
 pub struct CharacterDevice;
