@@ -85,7 +85,9 @@ data CalendarConfig bytes addressWidth calEntry where
     CalendarConfig bytes addressWidth calEntry
 
 deriving instance Show (CalendarConfig bytes addressWidth calEntry)
-mkCalendar :: (HiddenClockResetEnable dom) =>
+
+mkCalendar ::
+  (HiddenClockResetEnable dom) =>
   CalendarConfig bytes aw calEntry ->
   (  Signal dom Bool
   -> Signal dom (WishboneM2S bytes aw)

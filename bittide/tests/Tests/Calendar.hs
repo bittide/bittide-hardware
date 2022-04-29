@@ -44,7 +44,7 @@ calGroup = testGroup "Calendar group"
   , testPropertyNamed "Metacycle signal generation" "metaCycleIndication" metaCycleIndication
   , testPropertyNamed "Reading shadow buffer with wishbone" "readShadowCalendar" readShadowCalendar]
 
--- | The BVcalendar is a vector with a minimum size of 1 elements containing Bitvectors of arbitrary size.
+-- | A vector with a minimum size of 1 elements containing Bitvectors of arbitrary size.
 -- This data type enables us to generate differently sized calendars that satisfy the constraints
 -- imposed by the calendar component.
 data BVCalendar addressWidth where
@@ -61,6 +61,9 @@ data BVCalendar addressWidth where
     Vec (n + 1) (BitVector bits) ->
     BVCalendar addressWidth
 
+instance Show (BVCalendar addressWidth) where
+  show (BVCalendar _ _ bvvec) = show bvvec
+
 deriving instance Show (SNatLE a b)
 
 data IsInBounds a b c where
@@ -69,11 +72,15 @@ data IsInBounds a b c where
 
 deriving instance Show (IsInBounds a b c)
 
+-- | Returns 'InBounds' if a <= b <= c, otherwise returns 'NotInBounds'.
 isInBounds :: SNat a -> SNat b -> SNat c -> IsInBounds a b c
 isInBounds a b c = case (compareSNat a b, compareSNat b c) of
   (SNatLE, SNatLE) -> InBounds
   _ -> NotInBounds
 
+-- | Generates a configuration for 'Bittide.Calendar.calendarWB', with as first argument
+-- the maximum depth of the stored calendar and as second argument a generator for the
+-- calendar entries.
 genCalendarConfig ::
   forall bytes addressWidth calEntry .
   ( KnownNat bytes
@@ -104,19 +111,25 @@ genCalendarConfig ms elemGen = do
          , compareSNat d1 bsCalEntry) of
           (InBounds, InBounds, SNatLE, SNatLE)-> go maxSize depthA depthB
           (a,b,c,d) -> error $ "genCalendarConfig: calEntry constraints not satisfied: ("
-           <> show a <> ", " <> show b <> ", " <> show c <> ", "  <> show d <> "), \n(depthA, depthB, maxDepth, calEntry bitsize) = ("
-           <> show depthA <> ", " <> show depthB <> ", " <> show maxSize <> ", " <> show bsCalEntry <> ")"
+           <> show a <> ", " <> show b <> ", " <> show c <> ", "  <> show d <>
+           "), \n(depthA, depthB, maxDepth, calEntry bitsize) = (" <> show depthA <> ", "
+           <> show depthB <> ", " <> show maxSize <> ", " <> show bsCalEntry <> ")"
  where
-    go :: forall maxDepth depthA depthB . (LessThan depthA maxDepth, LessThan depthB maxDepth, NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth) => SNat maxDepth -> SNat depthA -> SNat depthB -> Gen (CalendarConfig bytes addressWidth calEntry)
+    go ::
+      forall maxDepth depthA depthB .
+      ( LessThan depthA maxDepth
+      , LessThan depthB maxDepth
+      , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth) =>
+      SNat maxDepth ->
+      SNat depthA ->
+      SNat depthB ->
+      Gen (CalendarConfig bytes addressWidth calEntry)
     go dMax SNat SNat = do
       calActive <- genVec @_ @depthA elemGen
       calShadow <- genVec @_ @depthB elemGen
       return $ CalendarConfig dMax calActive calShadow
 
-
-instance Show (BVCalendar addressWidth) where
-  show (BVCalendar _ _ bvvec) = show bvvec
-
+-- | Generates a 'BVCalendar' of a certain size and width for the stored Bitvectors.
 genBVCalendar :: Integer -> Integer -> Gen (BVCalendar 32)
 genBVCalendar calSize bitWidth = do
   let
@@ -125,16 +138,27 @@ genBVCalendar calSize bitWidth = do
   case (calNat, bitNat) of
     (SomeNat size, SomeNat bits) -> go size bits
  where
-  go :: forall calSize bitWidth . (KnownNat calSize, KnownNat bitWidth) => Proxy calSize -> Proxy bitWidth-> Gen (BVCalendar 32)
+  go ::
+    forall calSize bitWidth .
+    (KnownNat calSize, KnownNat bitWidth) =>
+    Proxy calSize ->
+    Proxy bitWidth->
+    Gen (BVCalendar 32)
   go s b = do
     let
       calNatBits = clogBaseSNat d2 . succSNat $ snatProxy s
       requiredAddrWidth = SNat @(NatRequiredBits (TypeRequiredRegisters (BitVector bitWidth) 32))
-    case (compareSNat calNatBits d32, compareSNat d1 calNatBits, compareSNat requiredAddrWidth d32, compareSNat d1 (snatProxy b)) of
+    case
+      ( compareSNat calNatBits d32
+      , compareSNat d1 calNatBits
+      , compareSNat requiredAddrWidth d32
+      , compareSNat d1 (snatProxy b)) of
       (SNatLE, SNatLE, SNatLE, SNatLE) -> do
-        cal <- Gen.list (Range.singleton $ fromIntegral calSize) $ Gen.integral @_ @(BitVector bitWidth) Range.constantBounded
+        cal <- Gen.list (Range.singleton $ fromIntegral calSize)
+         $ Gen.integral @_ @(BitVector bitWidth) Range.constantBounded
         return (BVCalendar (snatProxy s) (snatProxy b) $ unsafeFromList cal)
-      _ -> error $ "genIntCalendar: Constraints not satisfied: 1 <= " <> show calNatBits <> " <= 32, " <> show requiredAddrWidth <> " <= 32."
+      _ -> error $ "genIntCalendar: Constraints not satisfied: 1 <= " <> show calNatBits
+       <> " <= 32, " <> show requiredAddrWidth <> " <= 32."
 
 -- | This test checks if we can read the initialized calendars.
 readCalendar :: Property
@@ -237,24 +261,31 @@ metaCycleIndication = property $ do
       footnote . fromString $ "wishbone in:   " <> show (P.take simLength wbIn)
       simOut === expectedOut
 
+-- | Gets the index of element (n+1)
 indexOf :: (KnownNat n) => SNat (n+1) -> Index (n+1)
 indexOf = fromSNat . predSNat
 
+-- | Interpret SNat as Proxy for use by 'sameNat'.
 asProxy :: SNat n -> Proxy n
 asProxy SNat = Proxy
 
+-- | Get the amount of required registers for storing a BitVector bits in registers of regSize.
 requiredRegs :: (1 <= regSize) => SNat bits -> SNat regSize-> SNat (TypeRequiredRegisters (BitVector bits) regSize)
 requiredRegs SNat SNat = SNat
 
+-- | Get the last n elements of a list.
 takeLast :: Int -> [a] -> [a]
 takeLast n l = P.drop (P.length l - n) l
 
+-- | idle 'Contranomy.Wishbone.WishboneM2S' bus.
 wbNothingM2S :: forall bytes aw . (KnownNat bytes, KnownNat aw) => WishboneM2S bytes aw
 wbNothingM2S = (wishboneM2S (SNat @bytes) (SNat @aw))
  { addr = 0
  , writeData = 0
  , busSelect = 0}
 
+-- | Write an entry to some address in 'Bittide.Calendar.calendarWB', this may require
+-- multiple write operations.
 writeWithWishbone ::
   forall bytes aw n entry .
   (KnownNat bytes, 1 <= bytes, KnownNat aw, KnownNat n, Paddable entry) =>
@@ -267,6 +298,8 @@ writeWithWishbone (a, entry) =
   getRegs :: entry  -> RegisterBank (bytes * 8) entry
   getRegs = paddedToRegisters . Padded
 
+-- | Use both the wishbone M2S bus and S2M bus to decode the S2M bus operations into the
+-- expected type a.
 directedWBDecoding :: forall bytes aw a . (KnownNat bytes, 1 <= bytes, KnownNat aw, Paddable a) =>
   [WishboneM2S bytes aw] ->
   [WishboneS2M bytes] ->
@@ -299,6 +332,9 @@ directedWBDecoding (wbM2S:m2sRest) (_:s2mRest) = out
 
 directedWBDecoding _ _ = []
 
+-- | Returns the wishbone M2S bus inputs required to read a calendar entry from
+-- 'Bittide.Calendar.calendarWB'. It first writes the entry's address to the read register,
+-- then adds the read operations.
 wbReadEntry ::
   forall bytes aw i .
   (KnownNat bytes, KnownNat aw, Integral i) =>
@@ -324,6 +360,8 @@ wbReadEntry i dataRegs = addrWrite : wbNothingM2S : dataReads
     , writeEnable = False
     }
 
+-- | Transform a target address i and a bitvector to a Wishbone write operation that writes
+-- the bitvector to address i.
 wbWriteOp ::
   forall bytes addressWidth i .
   (KnownNat bytes, KnownNat addressWidth, Integral i) =>
