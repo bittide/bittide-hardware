@@ -22,7 +22,6 @@ import           Contranomy.MemoryMap
 import           Contranomy.RVFI
 import           Contranomy.RegisterFile
 import           Contranomy.Wishbone
-import           Debug.Trace
 
 createDomain vXilinxSystem{vName="Core", vPeriod=hzToPeriod 100e6}
 
