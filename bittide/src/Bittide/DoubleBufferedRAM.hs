@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# OPTIONS_GHC -fconstraint-solver-iterations=5#-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=6#-}
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -101,13 +101,14 @@ blockRamByteAddressable initRAM readAddr newEntry byteSelect =
    writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
    readBytes = bundle $ (`blockRam` readAddr) <$> initBytes <*> writeBytes
 
+-- | register with wishbone interface, the third argument determines the source of the
+-- output signal. If the third argument is Just (Signal dom a), writing from the wishbone
+-- bus to the register is not possible.
 registerWB ::
   forall dom a bs aw .
   ( HiddenClockResetEnable dom
   , Paddable a
-  , KnownNat (Regs a (bs * 8))
   , 1 <= (Regs a (bs * 8))
-  , Regs a 8 ~ (bs * Regs a (bs*8))
   , KnownNat bs
   , 1 <= bs
   , KnownNat aw
@@ -138,11 +139,15 @@ registerWB initVal wbIn (Just newVal) = unbundle . mealy go initVal $ bundle (ne
 
 registerWB initVal wbIn Nothing = (regOut, wbOut)
  where
-  regOut = registerByteAddressable initVal (repeatedBVsAsData <$> wbIn) byteEnables
+  regOut = andEnable (writeEnable <$> wbIn) $ registerByteAddressable initVal (repeatedBVsAsData <$> wbIn) byteEnables
   repeatedBVsAsData = registersToData . RegisterBank . repeat . writeData
   (byteEnables, wbOut) = unbundle $ go <$> regOut <*> wbIn
 
-  go val WishboneM2S{..} = (pack byteEnables0, WishboneS2M{acknowledge, err, readData})
+  go ::
+    a  ->
+    WishboneM2S bs aw ->
+    (BitVector (Regs a 8), WishboneS2M bs)
+  go val WishboneM2S{..} = (resize $ pack byteEnables0, WishboneS2M{acknowledge, err, readData})
    where
     (alignedAddress, alignment) = split @_ @(aw - 2) @2 addr
     wordAligned = alignment == 0
@@ -155,7 +160,7 @@ registerWB initVal wbIn Nothing = (regOut, wbOut)
 
     wbAddr :: Index (Regs a (bs * 8))
     wbAddr = unpack . resize $ pack alignedAddress
-    byteEnables0 = replace wbAddr busSelect (repeat 0)
+    byteEnables0 = reverse $ replace wbAddr busSelect (repeat @(Regs a (bs*8)) 0)
     readData = case paddedToRegisters $ Padded val of
       RegisterBank vec -> vec !! wbAddr
 

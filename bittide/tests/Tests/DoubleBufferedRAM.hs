@@ -27,13 +27,16 @@ import Test.Tasty.Hedgehog
 import qualified Data.List as L
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
-import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Prelude as P
+import Data.Proxy
+import Data.Type.Equality (type (:~:)(Refl))
+import Contranomy.Wishbone
+import Data.String
 
 import Bittide.SharedTypes
 import Bittide.DoubleBufferedRAM
 import Clash.Hedgehog.Sized.Index
-import Data.String
 
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRAM group"
@@ -42,7 +45,9 @@ ramGroup = testGroup "DoubleBufferedRAM group"
   , testPropertyNamed "Byte addressable blockRam matches behavioral model." "readWriteByteAddressableBlockram" readWriteByteAddressableBlockram
   , testPropertyNamed "Byte addressable blockRam with always high byteEnables behaves like blockRam" "byteAddressableBlockRamAsBlockRam" byteAddressableBlockRamAsBlockRam
   , testPropertyNamed "Byte addressable double buffered blockRam matches behavioral model." "doubleBufferedRAMByteAddressable0" doubleBufferedRAMByteAddressable0
-  , testPropertyNamed "Byte addressable double buffered blockRam with always high byteEnables behaves like 'doubleBufferedRAM'" "doubleBufferedRAMByteAddressable1" doubleBufferedRAMByteAddressable1]
+  , testPropertyNamed "Byte addressable double buffered blockRam with always high byteEnables behaves like 'doubleBufferedRAM'" "doubleBufferedRAMByteAddressable1" doubleBufferedRAMByteAddressable1
+  , testPropertyNamed "Byte addressable register can be written to and read from with byte enables." "readWriteRegisterByteAddressable" readWriteRegisterByteAddressable
+  , testPropertyNamed "registerWB can be written to and read from with byte enables." "registerWBWriteWishbone" registerWBWriteWishbone]
 
 genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
 genRamContents depth = genSomeVec (Range.singleton $ fromIntegral (depth - 1))
@@ -225,6 +230,86 @@ doubleBufferedRAMByteAddressable1 = property $ do
         (duvOut, refOut) = L.unzip simOut
       duvOut === refOut
 
+readWriteRegisterByteAddressable :: Property
+readWriteRegisterByteAddressable = property $ do
+  bytes <- forAll $ Gen.enum 1 10
+  case TN.someNatVal bytes of
+    SomeNat p -> case compareSNat d1 (snatProxy p) of
+      SNatLE -> go p
+      _ -> error "readWriteRegisterByteAddressable: Amount of bytes == 0."
+ where
+  go :: forall bytes m . (KnownNat bytes, 1 <= bytes, KnownNat (bytes*8), 1 <= (bytes * 8), Monad m) => Proxy bytes -> PropertyT m ()
+  go Proxy =
+    case sameNat (Proxy @bytes) (Proxy @(Regs (Vec bytes Byte) 8)) of
+      Just Refl -> do
+        simLength <- forAll $ Gen.enum 1 100
+        let
+          writeGen = genNonEmptyVec @_ @bytes $ genDefinedBitVector @_ @8
+        initVal <- forAll writeGen
+        writes <- forAll $ Gen.list (Range.singleton simLength) writeGen
+        byteEnables <- forAll $ Gen.list (Range.singleton simLength) $ genDefinedBitVector @_ @(Regs (Vec bytes Byte) 8)
+        let
+          topEntity (unbundle -> (newVal, byteEnable))=
+            withClockResetEnable @System clockGen resetGen enableGen $
+            registerByteAddressable initVal newVal byteEnable
+          expectedOut = P.scanl simFunc initVal $ P.zip writes byteEnables
+          simFunc olds (news,unpack -> bools) = (\(bool,old,new) -> if bool then new else old) <$> zip3 bools olds news
+          simOut = simulateN simLength topEntity $ P.zip writes byteEnables
+        simOut === P.take simLength expectedOut
+      _ -> error "readWriteRegisterByteAddressable: Amount of bytes not equal to registers required."
+
+-- |
+registerWBWriteWishbone :: Property
+registerWBWriteWishbone = property $ do
+  bits <- forAll $ Gen.enum 1 100
+  case TN.someNatVal bits of
+    SomeNat p -> case compareSNat d1 (snatProxy p) of
+      SNatLE -> go p
+      _ -> error "registerWBWriteWishbone: Amount of bits == 0."
+ where
+  go :: forall bits m . (KnownNat bits, 1 <= bits, Monad m) => Proxy bits -> PropertyT m ()
+  go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
+    SNatLE -> do
+      let regs = (natToNum @(DivRU bits 32))
+      initVal <- forAll $ genDefinedBitVector @_ @bits
+      writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @_ @bits
+      let
+        simLength = L.length writes * regs + 1
+        topEntity wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
+         registerWB @System @_ @4 @32 initVal wbIn Nothing
+        topEntityInput = L.concatMap wbWrite writes <> L.repeat idleM2S
+        simOut = L.tail $ simulateN simLength topEntity topEntityInput
+        filteredOut = everyNth regs simOut
+      footnote . fromString $ "simOut: " <> showX simOut
+      footnote . fromString $ "filteredOut:" <> showX filteredOut
+      footnote . fromString $ "input:" <> showX (L.take simLength topEntityInput)
+      footnote . fromString $ "expected" <> showX writes
+      writes === filteredOut
+    _ -> error "registerWBWriteWishbone: Registers required to store bitvector == 0."
+   where
+    wbWrite v = L.zipWith bv2WbWrite (L.reverse [0.. L.length l - 1]) l
+     where
+      RegisterBank (toList -> l) = paddedToRegisters $ Padded v
+  everyNth n l  | L.length l >= n = x : everyNth n xs
+                | otherwise = []
+   where
+    (x:xs) = L.drop (n-1) l
+
+bv2WbWrite :: (BitPack a, Enum a) =>
+  a
+  -> ("DAT_MOSI" ::: BitVector 32)
+  -> WishboneM2S 4 32
+bv2WbWrite i v = (wishboneM2S @4 @32 SNat SNat)
+  { addr = resize (pack i) ++# (0b00 :: BitVector 2)
+  , writeData = v
+  , writeEnable = True
+  , busCycle = True
+  , busSelect = maxBound
+  }
+
+idleM2S :: (KnownNat aw, KnownNat bs) => WishboneM2S bs aw
+idleM2S = wishboneM2S SNat SNat
+
 -- | Model for 'byteAddressableRAM', it stores the inputs in its state for a one cycle delay
 -- and updates the RAM based on the the write operation and byte enables.
 -- Furthermore it contains read-before-write behavior based on the readAddr.
@@ -236,12 +321,12 @@ byteAddressableRAMBehavior :: forall bits depth bytes .
 byteAddressableRAMBehavior state input = (state', ram !! readAddr)
  where
   ((readAddr, writeOp, byteEnable), ram) = state
-  (writeAddr, writeData) = fromMaybe (0, 0b0) writeOp
+  (writeAddr, writeData0) = fromMaybe (0, 0b0) writeOp
   writeTrue = isJust writeOp
   oldData = getRegs $ ram !! writeAddr
 
   newEntry = getData $ zipWith (\ sel (old,new) -> if sel then new else old) (unpack byteEnable) $
-   zip oldData $ getRegs writeData
+   zip oldData $ getRegs writeData0
 
   getRegs a = case paddedToRegisters @8 $ Padded a of
     RegisterBank v -> v
@@ -267,12 +352,12 @@ byteAddressableDoubleBufferedRAMBehavior state input = (state', pack $ bufA0 !! 
   ((switchBuffers, readAddr, writeOp, byteEnable), bufA, bufB) = state
   (bufA0, bufB0) = if switchBuffers then (bufB, bufA) else (bufA, bufB)
 
-  (writeAddr, writeData) = fromMaybe (0, 0b0) writeOp
+  (writeAddr, writeData0) = fromMaybe (0, 0b0) writeOp
   writeTrue = isJust writeOp
   oldData = getRegs $ bufB0 !! writeAddr
 
   newEntry = getData $ zipWith (\ sel (old,new) -> if sel then new else old) (unpack byteEnable) $
-   zip oldData (getRegs writeData)
+   zip oldData (getRegs writeData0)
 
   bufB1 = if writeTrue then replace writeAddr newEntry bufB0 else bufB0
   state' = (input, bufA0, bufB1)
