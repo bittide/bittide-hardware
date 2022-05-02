@@ -1,0 +1,18 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: bittide
+Upstream-Contact: QBayLogic <devops@qbaylogic.com>
+Source: https://github.com/google-research/bittide/
+
+# Sample paragraph, commented out:
+#
+# Files: src/*
+# Copyright: $YEAR $NAME <$CONTACT>
+# License: ...
+
+Files: .vscode/*
+Copyright: 2022 Google LLC
+License: CC0-1.0
+
+Files: riscv-formal/*
+Copyright: 2017 Clifford Wolf <clifford@symbioticeda.com>
+License: ISC

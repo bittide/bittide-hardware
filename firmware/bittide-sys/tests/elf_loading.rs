@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2022 Google LLC
+//
+// SPDX-License-Identifier: Apache-2.0
+
 use bittide_sys::elf_loading::{load_elf_file, validation};
 use elf_common::{create_elf_file, ElfCreateInfo};
 

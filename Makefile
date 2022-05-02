@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2022 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
 CARGO_TARGET_DIR=target
 
 .PHONY: build-sim
