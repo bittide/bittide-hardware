@@ -142,7 +142,7 @@ scatterGatherNoFrameLoss = property $ do
         maxInputLength = max (P.length inputFramesSwitch) (P.length inputFramesPE)
         -- Simulate for at least the largest calendar + twice the length of the longest input.
         -- This ensures all frames will appear at the output.
-        simLength = maxCalDepth + 2 * maxInputLength
+        simLength = maxCalDepth + 2 * maxInputLength + 1
         topEntityInput = L.zip4 inputFramesSwitch' inputFramesPE' addressesScat addressesGath
         simOut = simulateN simLength topEntity topEntityInput
 
