@@ -18,6 +18,7 @@ import qualified Data.IntMap as I
 import           Clash.Signal.Internal
 
 import Contranomy.Core.SharedTypes (Bytes, AddressWidth)
+import Text.Printf (printf)
 
 data WishboneM2S bytes addressWidth
   = WishboneM2S
@@ -119,7 +120,7 @@ wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' in
   ack' = busCycle && strobe
   address = fromIntegral (unpack $ addr :: Unsigned 32)
   readData = (file `lookup'` (address+3)) ++# (file `lookup'` (address+2)) ++# (file `lookup'` (address+1)) ++# (file `lookup'` address)
-  lookup' x addr' = I.findWithDefault (error $ name <> ": Uninitialized Memory Address = " <> show addr') addr' x
+  lookup' x addr' = I.findWithDefault (error $ printf "%s : Uninitialized Memory Address = 0x%X" name addr') addr' x
   assocList = case busSelect of
     $(bitPattern "0001")  -> [byte0]
     $(bitPattern "0010")  -> [byte1]
