@@ -11,18 +11,22 @@ import           Clash.Prelude
 import           Contranomy.Wishbone
 import           Data.Maybe
 
-type MemoryMap slaveDevices addressWidth = Vec slaveDevices (BitVector addressWidth)
+type BaseAddress aw = BitVector aw
+type MemoryMap slaveDevices addressWidth = Vec slaveDevices (BaseAddress addressWidth)
 
-memoryMap :: forall dom slaveDevices bytes addressWidth .
-  HiddenClockResetEnable dom =>
-  (KnownNat slaveDevices, KnownNat bytes, KnownNat addressWidth) =>
-  MemoryMap slaveDevices addressWidth->
-  Signal dom (WishboneM2S bytes addressWidth) ->
-  Signal dom (Vec slaveDevices (WishboneS2M bytes)) ->
-  (Signal dom (WishboneS2M bytes), Signal dom (Vec slaveDevices (WishboneM2S bytes addressWidth)))
+-- | Component that maps multiple slave devices to a single master device over the wishbone
+-- bus.
+memoryMap ::
+ forall dom slaveDevices bytes addressWidth .
+ HiddenClockResetEnable dom =>
+ (KnownNat slaveDevices, KnownNat bytes, KnownNat addressWidth) =>
+ MemoryMap slaveDevices addressWidth->
+ Signal dom (WishboneM2S bytes addressWidth) ->
+ Signal dom (Vec slaveDevices (WishboneS2M bytes)) ->
+ (Signal dom (WishboneS2M bytes), Signal dom (Vec slaveDevices (WishboneM2S bytes addressWidth)))
 memoryMap config (register idleM2S -> master) slaves = (toMaster, toSlaves)
  where
-  masterActive = strobe <$> master .&&.  busCycle <$> master
+  masterActive = strobe <$> master .&&. busCycle <$> master
   selectedSlave = getSelected . addr <$> master
 
   toSlaves = mux masterActive
@@ -36,6 +40,7 @@ memoryMap config (register idleM2S -> master) slaves = (toMaster, toSlaves)
   getSelected a = fromMaybe minBound $ elemIndex (True, False) $ zip (init compVec) (tail compVec)
    where
      compVec = fmap (<=a) config :< False
+
   routeToSlaves sel m = replace sel m{addr=newAddr} (repeat idleM2S)
    where
      newAddr = addr m - (config !! sel)
