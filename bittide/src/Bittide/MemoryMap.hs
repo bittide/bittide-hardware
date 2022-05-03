@@ -19,7 +19,9 @@ type BaseAddress aw = BitVector aw
 type MemoryMap slaveDevices addressWidth = Vec slaveDevices (BaseAddress addressWidth)
 
 -- | Component that maps multiple slave devices to a single master device over the wishbone
--- bus.
+-- bus, it assumes that the config argument contains incrementing base addresses that correspond
+-- to the indexes of the slaves in the incoming slave-busses and outgoing master-busses result.
+-- It routes the incoming control signals to a slave device based on
 memoryMap ::
  forall dom slaveDevices bytes addressWidth .
  HiddenClockResetEnable dom =>
