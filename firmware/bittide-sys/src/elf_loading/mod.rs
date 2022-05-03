@@ -31,6 +31,18 @@ pub unsafe fn load_elf_file(valid_elf: &ValidatedElfFile<'_>) {
 
         // write the segment to its desired memory location
         core::ptr::copy_nonoverlapping(data.as_ptr(), addr_ptr, data.len());
+
+        // the size in memory can be bigger than the data provided in the ELF file,
+        // the remaining bytes should be filled with zeroes.
+        let zero_padding = (p.memsz() as usize).saturating_sub(data.len());
+        if zero_padding > 0 {
+            // SAFETY: - `addr_ptr.add(data.len())` is valid since it points at
+            //           most one byte after a valid allocation
+            //         - the call to `write_bytes` is valid as the memory/buffer
+            //           size was validated to be big enough to hold the full
+            //           data + padding.
+            core::ptr::write_bytes(addr_ptr.add(data.len()), 0, zero_padding);
+        }
     }
 }
 

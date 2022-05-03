@@ -10,6 +10,7 @@ use object::{
     write::elf::{FileHeader, ProgramHeader, Writer},
 };
 use proptest::{collection, prelude::*};
+use rand::Fill;
 use std::panic::AssertUnwindSafe;
 
 type Addr = u64;
@@ -26,6 +27,7 @@ pub struct Segment {
     pub addr: Addr,
     pub ty: SegmentType,
     pub data: Vec<u8>,
+    pub zero_padding: u64,
     pub load: bool,
 }
 
@@ -98,7 +100,7 @@ pub fn create_elf_file(info: &ElfCreateInfo) -> Vec<u8> {
             p_vaddr: seg.addr,
             p_paddr: seg.addr,
             p_filesz: if seg.load { seg.data.len() as u64 } else { 0 },
-            p_memsz: seg.data.len() as u64,
+            p_memsz: seg.data.len() as u64 + seg.zero_padding,
             p_align: 64,
         });
     }
@@ -116,6 +118,9 @@ pub fn create_elf_file(info: &ElfCreateInfo) -> Vec<u8> {
 }
 
 /// Run a function with an allocated buffer within the 32bit address space.
+///
+/// To aid with testing, instead of returning a zeroed out buffer, the buffer
+/// gets filled with random values.
 ///
 /// # Safety
 ///
@@ -167,6 +172,8 @@ pub unsafe fn with_32bit_addr_buffer<R: 'static>(size: u32, f: impl FnOnce(&mut 
         std::slice::from_raw_parts_mut(mem_bytes, size as usize)
     };
 
+    buf.try_fill(&mut rand::thread_rng()).unwrap();
+
     let res = std::panic::catch_unwind(AssertUnwindSafe(|| f(buf)));
 
     // SAFETY: the pointer `mem` was previously allocated by mmap, `size` is the size of
@@ -200,7 +207,7 @@ pub fn elf_config_from_segs(segs: &[Segment]) -> ElfConfig {
                 config.instruction_memory_address.end = config
                     .instruction_memory_address
                     .end
-                    .max(seg.addr as usize + seg.data.len());
+                    .max(seg.addr as usize + seg.data.len() + seg.zero_padding as usize);
             }
             SegmentType::Data | SegmentType::RoData => {
                 config.data_memory_address.start =
@@ -208,7 +215,7 @@ pub fn elf_config_from_segs(segs: &[Segment]) -> ElfConfig {
                 config.data_memory_address.end = config
                     .data_memory_address
                     .end
-                    .max(seg.addr as usize + seg.data.len());
+                    .max(seg.addr as usize + seg.data.len() + seg.zero_padding as usize);
             }
         }
     }
@@ -247,55 +254,63 @@ pub fn gen_segments(
 ) -> impl Strategy<Value = Vec<Segment>> {
     let text_lower_bound = if text_can_be_empty { 0 } else { 1 };
     let texts = (0..n_text)
-        .map(|_| collection::vec(any::<u8>(), text_lower_bound..1000))
+        .map(|_| {
+            (
+                collection::vec(any::<u8>(), text_lower_bound..1000),
+                (0..1000u64),
+            )
+        })
         .collect::<Vec<_>>();
 
     let data = (0..n_data)
-        .map(|_| collection::vec(any::<u8>(), 0..1000))
+        .map(|_| (collection::vec(any::<u8>(), 0..1000), (0..1000u64)))
         .collect::<Vec<_>>();
 
     let rodata = (0..n_rodata)
-        .map(|_| collection::vec(any::<u8>(), 0..1000))
+        .map(|_| (collection::vec(any::<u8>(), 0..1000), (0..1000u64)))
         .collect::<Vec<_>>();
 
     (texts, data, rodata).prop_map(|(texts, data, rodata)| {
         let mut offset = 0;
 
         let mut v = vec![];
-        for d in texts {
+        for (d, padding) in texts {
             let data_len = d.len() as u64;
             v.push(Segment {
                 addr: offset,
                 ty: SegmentType::Text,
+                zero_padding: padding,
                 data: d,
                 load: true,
             });
 
-            offset += data_len;
+            offset += data_len + padding;
         }
 
-        for d in data {
+        for (d, padding) in data {
             let data_len = d.len() as u64;
             v.push(Segment {
                 addr: offset,
                 ty: SegmentType::Data,
+                zero_padding: padding,
                 data: d,
                 load: true,
             });
 
-            offset += data_len;
+            offset += data_len + padding;
         }
 
-        for d in rodata {
+        for (d, padding) in rodata {
             let data_len = d.len() as u64;
             v.push(Segment {
                 addr: offset,
                 ty: SegmentType::RoData,
+                zero_padding: padding,
                 data: d,
                 load: true,
             });
 
-            offset += data_len;
+            offset += data_len + padding;
         }
 
         v
