@@ -46,6 +46,25 @@ jobs:
         run: |
           .github/scripts/check_missing_eof_newline.sh
 
+
+  device-tree-blobs:
+    name: Check if devicetree blobs are up-to-date
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y device-tree-compiler
+
+      - name: Check devicetree blobs
+        run: |
+          .github/scripts/check_devicetree_blobs.sh
+
+
   build:
     name: Build dependencies
     runs-on: ubuntu-latest

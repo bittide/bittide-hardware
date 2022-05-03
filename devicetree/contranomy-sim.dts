@@ -1,0 +1,45 @@
+/dts-v1/;
+
+/ {
+
+  #address-cells = <1>;
+  #size-cells = <1>;
+
+  model = "google,contranomy";
+
+  compatible;
+
+  chassis-type = "embedded";
+
+  cpus {
+    #address-cells = <1>;
+    #size-cells = <0>;
+
+    cpu@0 {
+      device_type = "cpu";
+      reg = <0>;
+
+      timebase-frequency = <82500000>; // 8.25 MHz
+      clock-frequency = <825000000>; // 825 MHz
+
+      status = "okay";
+    };
+  };
+
+  memory@80000000 {
+    device_type = "memory";
+    reg = <0x80000000 0x80000000>;
+  };
+
+  reserved-memory {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    ranges;
+
+    character-device@70000000 {
+      reg = <0x70000000 0x00000001>;
+    };
+  };
+
+
+};
