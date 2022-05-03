@@ -97,11 +97,10 @@ test-suite unittests
   other-modules:
     Tests.Calendar
     Tests.DoubleBufferedRam
+    Tests.MemoryMap
     Tests.ScatterGather
-    Tests.Switch
     Tests.Shared
-  default-extensions:
-    ImplicitPrelude
+    Tests.Switch
   build-depends:
     bittide,
     clash-prelude-hedgehog >= 1.6 && < 1.7,
