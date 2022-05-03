@@ -36,8 +36,8 @@ memMapGroup = testGroup "Memory Map group"
 
 genConfig :: forall slaves aw . (KnownNat slaves, KnownNat aw) => Proxy slaves -> Gen (MemoryMap slaves aw)
 genConfig = do
-  let set = Gen.set (Range.singleton $ natToNum @slaves) genDefinedBitVector
-  return $ unsafeFromList . Set.elems <$> set
+  let s = Gen.set (Range.singleton $ natToNum @slaves) genDefinedBitVector
+  return $ unsafeFromList . Set.elems <$> s
 
 readingSlaves :: Property
 readingSlaves = property $ do
@@ -46,45 +46,63 @@ readingSlaves = property $ do
    SomeNat devices0 -> do
     config <- forAll $ genConfig @_ @32 devices0
     nrOfReads <- forAll $ Gen.enum 1 100
+    let nrOfReadsRange = Range.singleton nrOfReads
+    readAddresses <- forAll . Gen.list nrOfReadsRange $ Gen.integral Range.constantBounded
+    ranges <- forAll $ genVec $ Gen.integral Range.constantBounded
     let
-     nrOfReadsRange = Range.singleton nrOfReads
-     topEntity masterIn = toMaster
-      where
-        slaves = withClockResetEnable @System clockGen resetGen enableGen simpleSlave maxBound
-          <$> config <*> unbundle toSlaves
-        (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen (memoryMap
-         @System @_ @4 @32) config masterIn $ bundle slaves
-    readAddresses <- forAll $ Gen.list nrOfReadsRange $ Gen.integral Range.constantBounded
-    let
-     topEntityInput = (wbRead <$> readAddresses) <> [idleM2S]
-     simLength = L.length topEntityInput
-     simOut = simulateN simLength topEntity topEntityInput
-     configL = toList config
-     findBaseAddress a = L.last $ (L.head configL : L.takeWhile (a>) configL)
-    footnote . fromString $ "simOut: " <> show simOut
+      topEntity masterIn = toMaster
+        where
+          slaves = withClockResetEnable @System clockGen resetGen enableGen simpleSlave <$>
+            ranges <*> config <*> unbundle toSlaves
+          (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen (memoryMap
+            @System @_ @4 @32) config masterIn $ bundle slaves
+      topEntityInput = (wbRead <$> readAddresses) <> [wishboneM2S]
+      simLength = L.length topEntityInput
+      simOut = simulateN simLength topEntity topEntityInput
+      configL = toList config
+      rangesL = toList ranges
+       -- findBaseAddress returns the base address that responds to a and its range
+      findBaseAddress a = (L.last $ (L.head configL, L.head rangesL) : lowerAddresses)
+        where
+          lowerAddresses = L.takeWhile ((<a) . fst) $ L.zip configL rangesL
+      getExpected a | a >= baseAddr && (a - baseAddr) <= range = Just $ bitCoerce baseAddr
+                    | otherwise             = Nothing
+       where
+        (baseAddr, range) = findBaseAddress a
+    footnote . fromString $ "simOut: " <> showX simOut
+    footnote . fromString $ "simIn: " <> showX topEntityInput
     footnote . fromString $ "reads: " <> show readAddresses
+    footnote . fromString $ "ranges: " <> show ranges
     footnote . fromString $ "config: " <> show config
-    L.tail (readData <$> simOut) === fmap findBaseAddress readAddresses
+    fmap filterSimOut (L.tail simOut) === fmap getExpected readAddresses
+ where
+  filterSimOut WishboneS2M{..} | acknowledge && not err = Just readData
+                               | otherwise              = Nothing
+
 
 wbRead :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S bs addressWidth
-wbRead address = (idleM2S @bs @addressWidth)
+wbRead address = (wishboneM2S @bs @addressWidth)
   { addr = address
   , strobe = True
   , busCycle = True
   }
 
-simpleSlave :: (HiddenClockResetEnable dom, KnownNat aw, KnownNat bs) =>
+simpleSlave :: (HiddenClockResetEnable dom, KnownNat aw, KnownNat bs, aw ~ bs * 8) =>
   BitVector aw ->
   BitVector (bs * 8) ->
   Signal dom (WishboneM2S bs aw) ->
   Signal dom (WishboneS2M bs)
 simpleSlave range readData0 wbIn = mealy go readData0 wbIn
  where
-  go readData1 WishboneM2S{..} = (readData, WishboneS2M{readData, acknowledge, err})
+  go readData1 WishboneM2S{..} = (readData2, WishboneS2M{readData, acknowledge, err})
    where
      masterActive = strobe && busCycle
      addrInRange = addr <= range
      acknowledge = masterActive && addrInRange
      err = masterActive && not addrInRange
-     readData | masterActive && addrInRange && writeEnable = writeData
-              | otherwise = readData1
+     writeOp = acknowledge && writeEnable
+     readData2 | writeOp    = writeData
+               | otherwise  = readData1
+     readData | writeOp     = writeData
+              | acknowledge = readData1
+              | otherwise   = errorX "simpleSlave: readData is undefined because err is True"
