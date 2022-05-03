@@ -4,12 +4,12 @@
 
 module ContranomySim.ReadElf (readElf, readElfFromMemory, Address, BinaryData) where
 
-import Clash.Prelude
+import           Clash.Prelude
 
-import qualified Data.ByteString as BS
-import Data.Elf
+import qualified Data.ByteString    as BS
+import           Data.Elf
 import qualified Data.IntMap.Strict as I
-import qualified Data.List as L
+import qualified Data.List          as L
 
 type BinaryData = I.IntMap (BitVector 8)
 type Address = BitVector 32
@@ -20,6 +20,8 @@ readElfFromMemory contents =
   in readElf elf
 
 -- | readElf :: elf file -> (initial PC, instructions, data)
+--
+-- Loads the ELF file into memory by extracting section data.
 --
 -- TODO Check the ELF header is valid: is this RISCV? Is it RV32IMC?
 -- TODO Binaries output now are SYS V ABI, are others compatible?

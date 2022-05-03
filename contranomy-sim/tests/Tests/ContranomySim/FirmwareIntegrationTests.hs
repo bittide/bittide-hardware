@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+
 module Tests.ContranomySim.FirmwareIntegrationTests ( generateTests ) where
 
 import           Clash.Prelude         hiding (map)
