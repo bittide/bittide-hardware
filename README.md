@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2022 Google LLC
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # bittide
 
 bittide is a novel distributed system architecture based on the idea
@@ -39,6 +45,9 @@ our [code of conduct](docs/code-of-conduct.md) and
 ## Licence
 
 This code is shared under by Google LLC under the Apache 2.0
-license. See the [LICENSE](LICENSE) file for terms.
+license. See the [LICENSE](LICENSES/Apache-2.0.txt) file for terms.
+
+This project uses the [REUSE](https://reuse.software/) tool to check for
+license compliance.
 
 **Note**: bittide is not an official Google product.

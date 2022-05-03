@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2022 Google LLC
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #![allow(dead_code)]
 
 use bittide_sys::elf_loading::validation::ElfConfig;

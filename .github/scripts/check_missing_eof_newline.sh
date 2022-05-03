@@ -1,4 +1,9 @@
 #!/bin/bash
+
+# SPDX-FileCopyrightText: 2022 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+
 set -xou pipefail
 
 pcregrep --exclude-dir=riscv-formal --exclude-dir=.git -LMr '\n\Z' .

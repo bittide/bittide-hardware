@@ -1,8 +1,6 @@
-{-|
-Copyright  :  (C) 2022, Google LLC
-License    :  Apache-2.0
-Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
--}
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
 
 module Tests.ContranomySim.ReadElf where
 

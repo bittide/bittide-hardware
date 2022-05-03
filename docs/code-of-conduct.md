@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2022 Google LLC
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Code of Conduct
 
 ## Our Pledge

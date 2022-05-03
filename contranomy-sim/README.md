@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2022 Google LLC
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Support code for `contranomy` simulation
 
 This package contains supporting code for writing and debugging `contranomy`

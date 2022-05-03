@@ -1,3 +1,9 @@
+/*
+SPDX-FileCopyrightText: 2022 Google LLC
+
+SPDX-License-Identifier: CC0-1.0
+*/
+
 MEMORY
 {
   INSTR : ORIGIN = 0x10000000, LENGTH = 128K

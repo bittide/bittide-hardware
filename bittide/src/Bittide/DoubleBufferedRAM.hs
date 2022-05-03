@@ -1,8 +1,7 @@
-{-|
-Copyright:           Copyright © 2022, Google LLC
-License:             Apache-2.0
-Maintainer:          devops@qbaylogic.com
-|-}
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+
 module Bittide.DoubleBufferedRAM where
 import Clash.Prelude
 -- | The double buffered RAM component is a memory component that internally uses a single

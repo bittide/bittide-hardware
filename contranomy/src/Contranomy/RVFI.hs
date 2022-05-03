@@ -1,9 +1,9 @@
-{-|
-Copyright  :  (C) 2020, Christiaan Baaij
-              (C) 2021, Google LLC
-License    :  Apache-2.0
-Maintainer :  QBayLogic B.V. <devops@qbaylogic.com>
+-- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2020 Christiaan Baaij
+--
+-- SPDX-License-Identifier: Apache-2.0
 
+{-|
 RISC-V Formal Interface (RVFI)
 
 See https://github.com/SymbioticEDA/riscv-formal/blob/master/docs/rvfi.md
