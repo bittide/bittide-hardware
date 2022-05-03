@@ -6,8 +6,8 @@ Maintainer:          devops@qbaylogic.com
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Functor law" #-}
 
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Bittide.MemoryMap where
 
@@ -44,11 +44,11 @@ memoryMap config (register idleM2S -> master) slaves = (toMaster, toSlaves)
     | active    = fromMaybe idleS2M $ (slaves0 !!) <$> sel
     | otherwise = idleS2M
 
-  routeToSlaves active sel WishboneM2S{..}
+  routeToSlaves active sel m@WishboneM2S{..}
     | active    = fromMaybe allSlaves out
     | otherwise = allSlaves
    where
      out = (\i -> replace i toAllSlaves{busCycle, strobe, writeEnable} allSlaves) <$> sel
      newAddr = addr - (config !! (fromMaybe 0 sel))
      allSlaves = repeat toAllSlaves
-     toAllSlaves = (idleM2S @bytes @addressWidth){addr=newAddr}
+     toAllSlaves = m{addr=newAddr, busCycle = False, strobe = False}
