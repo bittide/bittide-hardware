@@ -64,6 +64,20 @@ rodataSection = dataSection
                 , elfSectionFlags = [SHF_ALLOC]
                 }
 
+bssSection :: ElfSection
+bssSection = ElfSection
+                { elfSectionName = ".bss"
+                , elfSectionType = SHT_NOBITS
+                , elfSectionFlags = [SHF_ALLOC, SHF_WRITE]
+                , elfSectionAddr = 0x80000000
+                , elfSectionSize = 0
+                , elfSectionLink = 0
+                , elfSectionInfo = 0
+                , elfSectionAddrAlign = 0x00010000
+                , elfSectionEntSize = 0
+                , elfSectionData = BS.empty
+                }
+
 instrSegment :: ElfSegment
 instrSegment = ElfSegment
                 { elfSegmentType = PT_LOAD
@@ -97,6 +111,8 @@ tests = testGroup "Read ELF Tests"
       elfEntry elf @?= fromIntegral entry
       iMem @?= I.fromList []
       dMem @?= I.fromList []
+
+
   , testCase "ELF file, only .text" $ do
       let iData = L.replicate 100 0xAB
 
@@ -125,6 +141,7 @@ tests = testGroup "Read ELF Tests"
       elfEntry elf @?= fromIntegral entry
       assertEqual "instruction memory contains instruction data" iDataMap (I.intersection iMem iDataMap)
       dMem @?= I.fromList []
+
 
     , testCase "ELF file, .data and .rodata" $ do
       let data' = L.replicate 100 0xAB
@@ -160,6 +177,8 @@ tests = testGroup "Read ELF Tests"
       elfEntry elf @?= fromIntegral entry
       iMem @?= I.fromList []
       assertEqual "instruction memory contains instruction data" dataMap (I.intersection dMem dataMap)
+
+
   ,  testCase "ELF file, .text and .data" $ do
       let iData = L.replicate 100 0xAB
       let dData = L.replicate 1000 0xB3
@@ -197,6 +216,60 @@ tests = testGroup "Read ELF Tests"
 
       let iDataMap = I.fromList (L.zip [0x80000000..] (fromIntegral <$> iData))
       let dDataMap = I.fromList (L.zip [(0x80000000 + fromIntegral (L.length iData))..] (fromIntegral <$> dData))
+
+      elfEntry elf @?= fromIntegral entry
+      assertEqual "instruction memory contains instruction data" iDataMap (I.intersection iMem iDataMap)
+      assertEqual "data memory contains data contents" dDataMap (I.intersection dMem dDataMap)
+
+
+  , testCase "ELF file, .text, .data and .bss" $ do
+      let iData = L.replicate 100 0xAB
+      let dData = L.replicate 1000 0xB3
+      let bssLen = 500
+
+      let iStart = 0x80000000
+      let dStart = iStart + L.length iData
+      let bssStart = dStart + L.length dData
+
+      let elf = riscvElfEmpty
+            { elfSections = [
+                textSection
+                { elfSectionAddr = fromIntegral iStart
+                , elfSectionSize = fromIntegral $ L.length iData
+                , elfSectionData = BS.pack iData
+                }
+              , dataSection
+                { elfSectionAddr = fromIntegral dStart
+                , elfSectionSize = fromIntegral $ L.length dData
+                , elfSectionData = BS.pack dData
+                }
+              , bssSection
+                { elfSectionAddr = fromIntegral bssStart
+                , elfSectionSize = bssLen
+                , elfSectionData = BS.empty
+                }
+              ]
+            , elfSegments = [
+                instrSegment
+                  { elfSegmentVirtAddr = fromIntegral iStart
+                  , elfSegmentPhysAddr = fromIntegral iStart
+                  , elfSegmentData = BS.pack iData
+                  , elfSegmentMemSize = fromIntegral $ L.length iData
+                  }
+              , dataSegment
+                  { elfSegmentVirtAddr = fromIntegral dStart
+                  , elfSegmentPhysAddr = fromIntegral dStart
+                  , elfSegmentData = BS.pack dData
+                  , elfSegmentMemSize = fromIntegral (L.length dData) + fromIntegral bssLen
+                  }
+              ]
+            }
+
+      let (entry, iMem, dMem) = readElf elf
+
+      let iDataMap = I.fromList (L.zip [iStart..] (fromIntegral <$> iData))
+      let dDataMap = I.fromList (L.zip [dStart..] (fromIntegral <$> dData))
+                      `I.union` I.fromList (L.zip [bssStart..] (L.replicate (fromIntegral bssLen) 0))
 
       elfEntry elf @?= fromIntegral entry
       assertEqual "instruction memory contains instruction data" iDataMap (I.intersection iMem iDataMap)
