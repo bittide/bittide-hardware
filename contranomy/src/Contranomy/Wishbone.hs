@@ -175,3 +175,10 @@ idleM2S = WishboneM2S
   , cycleTypeIdentifier = Classic
   , burstTypeExtension = LinearBurst
   }
+
+idleS2M :: KnownNat bytes => WishboneS2M bytes
+idleS2M = WishboneS2M
+  { readData = deepErrorX "idleS2M: readData of idle bus is undefined."
+  , acknowledge = False
+  , err = False
+  }

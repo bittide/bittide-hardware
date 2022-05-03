@@ -5,6 +5,10 @@ Maintainer:          devops@qbaylogic.com
 |-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Functor law" #-}
+
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE NamedFieldPuns #-}
+
 module Bittide.MemoryMap where
 
 import           Clash.Prelude
@@ -29,18 +33,22 @@ memoryMap config (register idleM2S -> master) slaves = (toMaster, toSlaves)
   masterActive = strobe <$> master .&&. busCycle <$> master
   selectedSlave = getSelected . addr <$> master
 
-  toSlaves = mux masterActive
-    (routeToSlaves <$> selectedSlave <*> master)
-    (pure $ repeat idleM2S)
+  toSlaves = routeToSlaves <$> masterActive <*> selectedSlave <*> master
+  toMaster = routeToMaster <$> masterActive <*> selectedSlave <*> slaves
 
-  toMaster = mux masterActive
-    ((!!) <$> slaves <*> selectedSlave)
-    (pure $ wishboneS2M SNat)
-
-  getSelected a = fromMaybe minBound $ elemIndex (True, False) $ zip (init compVec) (tail compVec)
+  getSelected a = elemIndex (True, False) $ zip (init compVec) (tail compVec)
    where
      compVec = fmap (<=a) config :< False
 
-  routeToSlaves sel m = replace sel m{addr=newAddr} (repeat idleM2S)
+  routeToMaster active sel slaves0
+    | active    = fromMaybe idleS2M $ (slaves0 !!) <$> sel
+    | otherwise = idleS2M
+
+  routeToSlaves active sel WishboneM2S{..}
+    | active    = fromMaybe allSlaves out
+    | otherwise = allSlaves
    where
-     newAddr = addr m - (config !! sel)
+     out = (\i -> replace i toAllSlaves{busCycle, strobe, writeEnable} allSlaves) <$> sel
+     newAddr = addr - (config !! (fromMaybe 0 sel))
+     allSlaves = repeat toAllSlaves
+     toAllSlaves = (idleM2S @bytes @addressWidth){addr=newAddr}
