@@ -14,7 +14,7 @@ module Bittide.ScatterGather
 
 import Clash.Prelude
 
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 import Data.Proxy
 import Data.Type.Equality ((:~:)(Refl))
 

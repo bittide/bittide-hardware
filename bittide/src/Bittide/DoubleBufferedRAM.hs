@@ -12,8 +12,9 @@ module Bittide.DoubleBufferedRAM where
 
 import Clash.Prelude
 
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 import Data.Maybe
+
 import Bittide.SharedTypes
 
 -- | The double buffered RAM component is a memory component that internally uses a single

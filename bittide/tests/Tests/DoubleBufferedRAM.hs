@@ -32,7 +32,7 @@ import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Prelude as P
 import Data.Proxy
 import Data.Type.Equality (type (:~:)(Refl))
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 import Data.String
 
 import Bittide.SharedTypes
@@ -278,7 +278,7 @@ registerSigToSig = property $ do
       writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @_ @bits
       let
         simLength = L.length writes + 1
-        someReg prio sigIn = fst $ withClockResetEnable clockGen resetGen enableGen $ registerWB @_ @_ @4 @32 prio initVal (pure $ wishboneM2S SNat SNat) sigIn
+        someReg prio sigIn = fst $ withClockResetEnable clockGen resetGen enableGen $ registerWB @_ @_ @4 @32 prio initVal (pure wishboneM2S) sigIn
         topEntity sigIn = bundle (someReg CircuitPriority sigIn, someReg WishbonePriority sigIn)
         topEntityInput = (Just <$> writes) <> [Nothing]
         simOut = simulateN @System simLength topEntity topEntityInput
@@ -309,7 +309,7 @@ registerWBWBToSig = property $ do
         someReg prio wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
          registerWB @System @_ @4 @32 prio initVal wbIn (pure Nothing)
         topEntity wbIn = bundle (someReg CircuitPriority wbIn, someReg WishbonePriority wbIn)
-        topEntityInput = L.concatMap wbWrite writes <> L.repeat idleM2S
+        topEntityInput = L.concatMap wbWrite writes <> L.repeat wishboneM2S
         simOut = simulateN simLength topEntity topEntityInput
         (fstOut, sndOut) = L.unzip simOut
         filteredOut = everyNth regs $ L.tail fstOut
@@ -347,7 +347,7 @@ registerSigToWB = property $ do
         someReg prio sigIn wbIn = snd $ withClockResetEnable clockGen resetGen enableGen $ registerWB @_ @_ @4 @32 prio initVal wbIn sigIn
         topEntity (unbundle -> (sigIn, wbIn)) = bundle (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
         padWrites x = L.take (natToNum @(Regs (BitVector bits) 32)) $ Just x : L.repeat Nothing
-        readOps = idleM2S : cycle (fmap wbRead [(0 :: Int).. (natToNum @(Regs (BitVector bits) 32)-1)])
+        readOps = wishboneM2S : cycle (fmap wbRead [(0 :: Int).. (natToNum @(Regs (BitVector bits) 32)-1)])
         topEntityInput = L.zip (L.concatMap padWrites writes <> [Nothing]) readOps
         simLength = L.length topEntityInput
         simOut = simulateN @System simLength topEntity topEntityInput
@@ -370,7 +370,7 @@ registerSigToWB = property $ do
         Nothing  -> error $ "wbDecoding: list to vector conversion failed: " <> show entryList <> "from " <> show (wbNow:wbRest)
 
     wbDecoding [] = []
-    wbRead i = (wishboneM2S @4 @32 SNat SNat)
+    wbRead i = (wishboneM2S @4 @32)
       { addr = resize (pack i) ++# (0b00 :: BitVector 2)
       , busCycle = True
       , strobe = True
@@ -402,7 +402,7 @@ registerWBWriteCollisions = property $ do
         someReg prio sigIn wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
          registerWB @System @_ @4 @32 prio initVal wbIn sigIn
         topEntity (unbundle -> (sigIn, wbIn)) = bundle (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
-        topEntityInput = L.zip (Just <$> sigWrites) (L.concatMap wbWrite wbWrites <> L.repeat idleM2S)
+        topEntityInput = L.zip (Just <$> sigWrites) (L.concatMap wbWrite wbWrites <> L.repeat wishboneM2S)
         simOut = simulateN simLength topEntity topEntityInput
         (fstOut, sndOut) = L.unzip simOut
 
@@ -423,7 +423,7 @@ bv2WbWrite :: (BitPack a, Enum a) =>
   a
   -> ("DAT_MOSI" ::: BitVector 32)
   -> WishboneM2S 4 32
-bv2WbWrite i v = (wishboneM2S @4 @32 SNat SNat)
+bv2WbWrite i v = (wishboneM2S @4 @32 )
   { addr = resize (pack i) ++# (0b00 :: BitVector 2)
   , writeData = v
   , writeEnable = True

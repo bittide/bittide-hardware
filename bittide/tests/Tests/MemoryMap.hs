@@ -13,7 +13,7 @@ import Clash.Hedgehog.Sized.Vector
 import Clash.Prelude
 import Clash.Sized.Vector(unsafeFromList)
 
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 import Data.Proxy
 import Data.String
 import Hedgehog
@@ -59,7 +59,7 @@ readingSlaves = property $ do
             ranges <*> config <*> unbundle toSlaves
           (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen (memoryMap
             @System @_ @4 @32) config masterIn $ bundle slaves
-      topEntityInput = (wbRead <$> readAddresses) <> [idleM2S]
+      topEntityInput = (wbRead <$> readAddresses) <> [wishboneM2S]
       simLength = L.length topEntityInput
       simOut = simulateN simLength topEntity topEntityInput
       configL = toList config
@@ -102,7 +102,7 @@ writingSlaves = property $ do
             ranges <*> config <*> unbundle toSlaves
           (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen (memoryMap
             @System @_ @4 @32) config masterIn $ bundle slaves
-      topEntityInput = L.concatMap wbWriteThenRead writeAddresses <> [idleM2S]
+      topEntityInput = L.concatMap wbWriteThenRead writeAddresses <> [wishboneM2S]
       simLength = L.length topEntityInput
       simOut = simulateN simLength topEntity topEntityInput
       configL = toList config
@@ -130,7 +130,7 @@ writingSlaves = property $ do
 
 -- | transforms an address to a 'WishboneM2S' read operation.
 wbRead :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S bs addressWidth
-wbRead address = (idleM2S @bs @addressWidth)
+wbRead address = (wishboneM2S @bs @addressWidth)
   { addr = address
   , strobe = True
   , busCycle = True
@@ -139,7 +139,7 @@ wbRead address = (idleM2S @bs @addressWidth)
 -- | transforms an address to a 'WishboneM2S' write operation that writes the given address
 -- to the given address.
 wbWrite :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S bs addressWidth
-wbWrite address = (idleM2S @bs @addressWidth)
+wbWrite address = (wishboneM2S @bs @addressWidth)
   { addr = address
   , strobe = True
   , busCycle = True

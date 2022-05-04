@@ -10,13 +10,14 @@
 module Tests.Switch(switchGroup) where
 
 import Clash.Hedgehog.Sized.Index
+import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
 import Clash.Prelude
 import qualified Prelude as P
 
 
 import Clash.Sized.Vector ( unsafeFromList)
-import Contranomy.Wishbone
+
 import Data.String
 import GHC.Natural
 import Hedgehog
@@ -29,8 +30,8 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
 import Bittide.Calendar (CalendarConfig(..))
+import Bittide.Extra.Wishbone
 import Bittide.Switch
-import Clash.Hedgehog.Sized.Unsigned
 
 switchGroup :: TestTree
 switchGroup = testGroup "Switch group"
@@ -99,7 +100,7 @@ switchFrameRoutingWorks = property $ do
 
       let
         topEntity streamsIn = withClockResetEnable clockGen resetGen enableGen $
-         fst (switch calConfig (pure False) (pure $ wishboneM2S SNat SNat) streamsIn)
+         fst (switch calConfig (pure False) (pure wishboneM2S) streamsIn)
         simOut = simulateN @System simLength topEntity $ fmap unsafeFromList topEntityInput
         simOut1 = P.drop latency $ fmap toList simOut
 

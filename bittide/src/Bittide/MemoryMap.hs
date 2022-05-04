@@ -11,7 +11,7 @@
 module Bittide.MemoryMap where
 
 import           Clash.Prelude
-import           Contranomy.Wishbone
+import           Bittide.Extra.Wishbone
 import           Data.Maybe
 
 type BaseAddress aw = BitVector aw
@@ -29,7 +29,7 @@ memoryMap ::
  Signal dom (WishboneM2S bytes addressWidth) ->
  Signal dom (Vec slaveDevices (WishboneS2M bytes)) ->
  (Signal dom (WishboneS2M bytes), Signal dom (Vec slaveDevices (WishboneM2S bytes addressWidth)))
-memoryMap config (register idleM2S -> master) slaves = (toMaster, toSlaves)
+memoryMap config (register wishboneM2S -> master) slaves = (toMaster, toSlaves)
  where
   masterActive = strobe <$> master .&&. busCycle <$> master
   selectedSlave = getSelected . addr <$> master
@@ -42,8 +42,8 @@ memoryMap config (register idleM2S -> master) slaves = (toMaster, toSlaves)
      compVec = fmap (<=a) config :< False
 
   routeToMaster active sel slaves0
-    | active    = fromMaybe idleS2M $ (slaves0 !!) <$> sel
-    | otherwise = idleS2M
+    | active    = fromMaybe wishboneS2M $ (slaves0 !!) <$> sel
+    | otherwise = wishboneS2M
 
   routeToSlaves active sel m@WishboneM2S{..}
     | active    = fromMaybe allSlaves out

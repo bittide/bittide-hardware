@@ -23,7 +23,7 @@ import Clash.Prelude
 
 import Bittide.DoubleBufferedRAM
 import Bittide.SharedTypes
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 import Data.Maybe
 
 {-
