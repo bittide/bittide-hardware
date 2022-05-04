@@ -195,10 +195,11 @@ wbInterface ::
   (WishboneS2M bytes, Index addresses, Maybe (Bytes bytes))
 wbInterface addressRange WishboneM2S{..} readData =  (WishboneS2M{readData, acknowledge, err}, memAddr, writeOp)
  where
+  masterActive = strobe && busCycle
   (alignedAddress, alignment) = split @_ @(addressWidth - 2) @2 addr
   wordAligned = alignment == (0 :: BitVector 2)
-  err = (alignedAddress > resize (pack addressRange)) || not wordAligned
-  acknowledge = not err && strobe
+  err = masterActive && ((alignedAddress > resize (pack addressRange)) || not wordAligned)
+  acknowledge = masterActive && not err
   wbAddr = unpack . resize $ pack alignedAddress
   memAddr = wbAddr
   writeOp | strobe && writeEnable && not err = Just writeData

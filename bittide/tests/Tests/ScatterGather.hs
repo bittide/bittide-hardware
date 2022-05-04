@@ -391,4 +391,4 @@ wbWrite _ Nothing = []
 
 -- | Idle 'WishboneM2S' bus.
 idleM2S :: forall bytes aw . (KnownNat bytes, KnownNat aw) => WishboneM2S bytes aw
-idleM2S = (wishboneM2S SNat (SNat @aw)){addr = 0}
+idleM2S = (wishboneM2S SNat (SNat @aw))
