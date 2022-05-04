@@ -378,6 +378,7 @@ jobs:
     name: All jobs finished
     needs: [
         license-check,
+        device-tree-blobs,
         contranomy-formal-tests,
         contranomy-tests,
         contranomy-sim-tests,
