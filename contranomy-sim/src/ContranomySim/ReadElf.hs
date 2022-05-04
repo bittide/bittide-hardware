@@ -4,13 +4,12 @@
 
 module ContranomySim.ReadElf (readElf, readElfFromMemory, Address, BinaryData) where
 
-import           Clash.Prelude
+import Clash.Prelude
 
 import qualified Data.ByteString as BS
 import Data.Elf
 import qualified Data.IntMap.Strict as I
-import qualified Data.List          as L
-
+import qualified Data.List as L
 
 type BinaryData = I.IntMap (BitVector 8)
 type Address = BitVector 32
@@ -26,22 +25,28 @@ readElfFromMemory contents =
 -- TODO Binaries output now are SYS V ABI, are others compatible?
 readElf :: Elf -> (Address, BinaryData, BinaryData)
 readElf elf =
-  let (iMem, dMem) = L.foldr go (mempty, mempty) (elfSegments elf)
+  let (iMem, dMem) = L.foldr go (mempty, mempty) (elfSections elf)
    in (fromIntegral (elfEntry elf), iMem, dMem)
  where
-  go seg acc@(is, ds)
-    -- skip segments that don't need loading
-    | elfSegmentType seg /= PT_LOAD
+  go sec acc@(is, ds)
+    -- Address is 0: Not mapped to virtual memory
+    | elfSectionAddr sec == 0
     = acc
 
-    | PF_X `elem` elfSegmentFlags seg
-    = (addData (elfSegmentPhysAddr seg) (elfSegmentData seg `BS.append` BS.pack [0,0]) is, ds)
+    -- Section contains instruction memory
+    | SHF_EXECINSTR `elem` elfSectionFlags sec
+    , SHF_WRITE `notElem` elfSectionFlags sec
+    = (addData (elfSectionAddr sec) (elfSectionData sec `BS.append` (BS.pack [0,0])) is, ds)
+    -- The line above pads the instruction memory with 2 bytes to enable ending on a compressed instruction.
+
+    -- Section contains data memory
+    | (SHF_WRITE `elem` elfSectionFlags sec
+        || SHF_ALLOC `elem` elfSectionFlags sec)
+    , SHF_EXECINSTR `notElem` elfSectionFlags sec
+    = (is, addData (elfSectionAddr sec) (elfSectionData sec) ds)
 
     | otherwise
-    =
-      -- Data gets mapped at 0x5000_0000 and higher, but gets loaded into the data memory
-      -- from 0x0000_0000, so the base address needs to be subtracted.
-      (is, addData (elfSegmentPhysAddr seg - 0x5000_0000) (elfSegmentData seg) ds)
+    = error ("Section is not executable XOR data:\n" <> show sec)
 
   addData (fromIntegral -> startAddr) str mem =
     let bytes = pack <$> BS.unpack str
