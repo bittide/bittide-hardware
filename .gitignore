@@ -75,3 +75,6 @@ contranomy-sim/main.elf
 
 # Firmware integration test binaries
 firmware-integration-tests/
+
+devicetree/blobs/*.after
+devicetree/blobs/*.before

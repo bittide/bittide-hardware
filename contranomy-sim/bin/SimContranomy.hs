@@ -19,7 +19,9 @@ main = do
   let (entry, iMem, dMem) = readElfFromMemory elfBytes
 
   -- add device tree as a memory mapped component in 0x1000_0000
-  deviceTree <- BS.readFile "contranomy-sim.dtb"
+
+  -- TODO read the device tree file from command line args?
+  deviceTree <- BS.readFile "../devicetree/blobs/contranomy-sim.dtb"
   -- add padding to prevent uninitialised accesses
   let padding = L.replicate (4 - (BS.length deviceTree `mod` 4)) 0
   let dMem' = dMem
