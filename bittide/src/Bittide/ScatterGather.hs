@@ -14,10 +14,9 @@ module Bittide.ScatterGather
 
 import Clash.Prelude
 
-import Contranomy.Wishbone
-
 import Bittide.Calendar
 import Bittide.DoubleBufferedRam
+import Bittide.Extra.Wishbone
 import Bittide.SharedTypes
 
 -- | Calendar entry that can be used by a scatter or gather engine.

@@ -23,7 +23,7 @@ import Bittide.SharedTypes
 import Tests.Shared
 
 import Clash.Sized.Vector (unsafeFromList)
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 import Data.Constraint
 import Data.Constraint.Nat.Extra
 import Data.Proxy

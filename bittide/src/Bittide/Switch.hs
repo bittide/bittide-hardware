@@ -9,7 +9,7 @@ import Clash.Prelude
 import Bittide.Calendar
 import Bittide.ScatterGather (scatterEngine)
 import Bittide.SharedTypes
-import Contranomy.Wishbone (WishboneM2S, WishboneS2M)
+import Bittide.Extra.Wishbone (WishboneM2S, WishboneS2M)
 
 -- | An index which source is selected by the crossbar, 0 selects Nothing, k selects k - 1.
 type CrossbarIndex links = Index (links+1)

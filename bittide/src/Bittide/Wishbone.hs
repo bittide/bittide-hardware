@@ -9,7 +9,7 @@
 module Bittide.Wishbone where
 
 import           Clash.Prelude
-import           Contranomy.Wishbone
+import           Bittide.Extra.Wishbone
 import           Data.Maybe
 
 {-# ANN module "HLint: ignore Functor law" #-}

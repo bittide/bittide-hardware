@@ -20,7 +20,6 @@ import Clash.Prelude hiding (fromList)
 import qualified Prelude as P
 
 import Clash.Sized.Vector (fromList)
-import Contranomy.Wishbone
 import Data.String
 import Hedgehog
 import Test.Tasty
@@ -30,10 +29,11 @@ import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
-import Bittide.ScatterGather
 import Bittide.Calendar
-import Data.Maybe
+import Bittide.Extra.Wishbone
+import Bittide.ScatterGather
 import Bittide.SharedTypes
+import Data.Maybe
 import Tests.Shared
 
 -- | The extra in SomeCalendar extra defines the minimum amount of elements in the vector

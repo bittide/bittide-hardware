@@ -29,7 +29,7 @@ import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Prelude as P
 import Data.Proxy
 import Data.Type.Equality (type (:~:)(Refl))
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 import Data.String
 
 import Bittide.SharedTypes

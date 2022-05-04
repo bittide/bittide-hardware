@@ -13,7 +13,7 @@ import Clash.Hedgehog.Sized.Vector
 import Clash.Prelude
 import Clash.Sized.Vector(unsafeFromList)
 
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 import Data.Proxy
 import Data.String
 import Hedgehog
