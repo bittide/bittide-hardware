@@ -79,7 +79,7 @@ wishboneM2S SNat SNat
 wishboneS2M :: SNat bytes -> WishboneS2M bytes
 wishboneS2M SNat
   = WishboneS2M
-  { readData = 0
+  { readData = undefined
   , acknowledge = False
   , err = False
   }
