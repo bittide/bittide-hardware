@@ -31,7 +31,8 @@ import Contranomy.Core.SharedTypes
 
 import Contranomy.Instruction
 import Contranomy.RVFI
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
+
 type TimerInterrupt = Bool
 type SoftwareInterrupt = Bool
 type ExternalInterrupt = MachineWord
@@ -53,8 +54,8 @@ data CoreOut
 
 coreOut :: CoreOut
 coreOut = CoreOut
-  { iBusM2S = wishboneM2S (SNat @Bytes) (SNat @AddressWidth)
-  , dBusM2S = wishboneM2S (SNat @Bytes) (SNat @AddressWidth)
+  { iBusM2S = wishboneM2S @Bytes @AddressWidth
+  , dBusM2S = wishboneM2S @Bytes @AddressWidth
   }
 
 core ::
@@ -105,7 +106,7 @@ transition s@CoreState{stage=InstructionFetch, pc} (CoreIn{iBusS2M},_) = runStat
             else
               InstructionFetch
 
-  return ( coreOut { iBusM2S = (wishboneM2S (SNat @Bytes) (SNat @AddressWidth))
+  return ( coreOut { iBusM2S = (wishboneM2S @Bytes @AddressWidth)
                              { addr = pc
                              , busSelect = 0b1111
                              , busCycle = True

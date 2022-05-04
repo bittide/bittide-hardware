@@ -19,7 +19,7 @@ import Contranomy.Core
 import Contranomy.Core.SharedTypes
 import Contranomy.RegisterFile
 import Contranomy.RVFI
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 
 createDomain vXilinxSystem{vName="Core", vPeriod=hzToPeriod 100e6}
 

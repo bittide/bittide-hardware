@@ -13,7 +13,7 @@ import Contranomy.Core.Decode
 import Contranomy.Core.SharedTypes
 import Contranomy.Instruction
 import Contranomy.RVFI
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 
 toRVFI ::
   -- | Load/Store unit has finished
