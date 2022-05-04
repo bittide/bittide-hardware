@@ -13,7 +13,7 @@ use contranomy_sys::{character_device, println};
 #[entry]
 fn main() -> ! {
     unsafe {
-        character_device::initialise(0x90000000);
+        character_device::initialise(0x70000000);
     }
 
     let names = ["Rust", "RISC-V", "Haskell"];

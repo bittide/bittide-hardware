@@ -13,4 +13,4 @@ edition = "2021"
 riscv-rt = "0.8.0"
 bittide-sys = { path = "../../bittide-sys" }
 contranomy-sys = { path = "../../contranomy-sys" }
-fdt = "*"
+fdt = "0.1.3"
