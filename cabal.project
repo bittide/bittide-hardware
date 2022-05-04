@@ -3,9 +3,10 @@
 -- SPDX-License-Identifier: CC0-1.0
 
 packages:
+  bittide-extra/bittide-extra.cabal
   bittide/bittide.cabal
-  contranomy/contranomy.cabal
   contranomy-sim/contranomy-sim.cabal
+  contranomy/contranomy.cabal
 
 write-ghc-environment-files: always
 
