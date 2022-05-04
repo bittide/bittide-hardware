@@ -4,6 +4,7 @@
 
 
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=7 #-}
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
