@@ -201,7 +201,7 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
     ( SomeNat (snatProxy -> depthA)
      ,SomeNat (snatProxy -> depthB)) -> do
         let
-          regAddrBits = SNat @(NatRequiredBits (TypeRequiredRegisters calEntry (bytes * 8)))
+          regAddrBits = SNat @(NatRequiredBits (Regs calEntry (bytes * 8)))
           bsCalEntry = SNat @(BitSize calEntry)
         case
          ( isInBounds d1 depthA sizeNat
@@ -216,7 +216,7 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
     go :: forall depthA depthB .
       ( LessThan depthA maxDepth
       , LessThan depthB maxDepth
-      , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth) =>
+      , NatFitsInBits (Regs calEntry (bytes * 8)) addressWidth) =>
       SNat depthA ->
       SNat depthB ->
       Gen (CalendarConfig bytes addressWidth (Index maxDepth))
