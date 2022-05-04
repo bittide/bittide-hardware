@@ -16,11 +16,11 @@ import           Clash.Prelude
 import           Data.IntMap                 (IntMap)
 import qualified Data.List                   as L
 
+import           Bittide.Extra.Wishbone
 import           Contranomy.Core
 import           Contranomy.Core.SharedTypes
 import           Contranomy.RVFI
 import           Contranomy.RegisterFile
-import           Contranomy.Wishbone
 
 createDomain vXilinxSystem{vName="Core", vPeriod=hzToPeriod 100e6}
 

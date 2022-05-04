@@ -18,6 +18,7 @@ import Clash.Prelude
 
 import Contranomy.Clash.Extra
 
+import Bittide.Extra.Wishbone
 import Contranomy.Core.ALU
 import Contranomy.Core.CoreState
 import Contranomy.Core.CSR
@@ -31,7 +32,7 @@ import Contranomy.Core.SharedTypes
 
 import Contranomy.Instruction
 import Contranomy.RVFI
-import Contranomy.Wishbone
+
 type TimerInterrupt = Bool
 type SoftwareInterrupt = Bool
 type ExternalInterrupt = MachineWord

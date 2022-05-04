@@ -9,11 +9,11 @@ module Contranomy.Core.RVFI where
 
 import Clash.Prelude
 
+import Bittide.Extra.Wishbone
 import Contranomy.Core.Decode
 import Contranomy.Core.SharedTypes
 import Contranomy.Instruction
 import Contranomy.RVFI
-import Contranomy.Wishbone
 
 toRVFI ::
   -- | Load/Store unit has finished

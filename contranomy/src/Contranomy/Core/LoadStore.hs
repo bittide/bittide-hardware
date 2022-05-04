@@ -9,10 +9,10 @@ module Contranomy.Core.LoadStore where
 
 import Clash.Prelude
 
+import Bittide.Extra.Wishbone
 import Contranomy.Core.Decode
 import Contranomy.Core.SharedTypes
 import Contranomy.Instruction
-import Contranomy.Wishbone
 
 -- | This function performs data-bus transactions for loads and stores.
 --
