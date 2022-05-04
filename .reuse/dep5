@@ -16,3 +16,7 @@ License: CC0-1.0
 Files: riscv-formal/*
 Copyright: 2017 Clifford Wolf <clifford@symbioticeda.com>
 License: ISC
+
+Files: devicetree/blobs/*
+Copyright: 2022 Google LLC
+License: Apache-2.0

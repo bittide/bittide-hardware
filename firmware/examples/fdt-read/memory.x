@@ -1,3 +1,9 @@
+/*
+SPDX-FileCopyrightText: 2022 Google LLC
+
+SPDX-License-Identifier: CC0-1.0
+*/
+
 MEMORY
 {
   RAM : ORIGIN = 0x80000000, LENGTH = 256K
