@@ -8,21 +8,17 @@
 use core::fmt::Write;
 use riscv_rt::entry;
 
-use contranomy_sys::{character_device, println};
+use contranomy_sys::println;
 
 const FDT_ADDR: *const u8 = 0x1000_0000 as *const u8;
 
 #[entry]
 fn main() -> ! {
     unsafe {
-        character_device::initialise(0x70000000);
+        contranomy_sys::initialise().unwrap();
     }
 
-    println!("reading FDT");
-
     let device_tree = unsafe { fdt::Fdt::from_ptr(FDT_ADDR).unwrap() };
-
-    println!("read FDT!");
 
     println!("FDT size is {}", device_tree.total_size());
 

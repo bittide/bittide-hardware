@@ -8,12 +8,12 @@
 use core::fmt::Write;
 use riscv_rt::entry;
 
-use contranomy_sys::{character_device, println};
+use contranomy_sys::println;
 
 #[entry]
 fn main() -> ! {
     unsafe {
-        character_device::initialise(0x70000000);
+        contranomy_sys::initialise().unwrap();
     }
 
     let names = ["Rust", "RISC-V", "Haskell"];

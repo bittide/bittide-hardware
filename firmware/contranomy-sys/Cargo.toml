@@ -12,3 +12,4 @@ authors = ["Google LLC"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+fdt = "0.1.0"
