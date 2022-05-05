@@ -45,6 +45,9 @@ dependencies = [
 [[package]]
 name = "contranomy-sys"
 version = "0.1.0"
+dependencies = [
+ "fdt",
+]
 
 [[package]]
 name = "elf_rs"
