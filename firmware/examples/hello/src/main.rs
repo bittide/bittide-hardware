@@ -10,11 +10,14 @@ use riscv_rt::entry;
 
 use contranomy_sys::println;
 
+const FRAME_SIZE: usize = 4096;
+
 #[entry]
 fn main() -> ! {
     unsafe {
         contranomy_sys::initialise().unwrap();
     }
+    let _components = unsafe { bittide_sys::initialise::<FRAME_SIZE>().unwrap() };
 
     let names = ["Rust", "RISC-V", "Haskell"];
     loop {

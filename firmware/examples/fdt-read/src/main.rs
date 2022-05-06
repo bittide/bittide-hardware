@@ -8,35 +8,58 @@
 use core::fmt::Write;
 use riscv_rt::entry;
 
-use contranomy_sys::println;
+use contranomy_sys::{print, println};
 
 const FDT_ADDR: *const u8 = 0x1000_0000 as *const u8;
+
+const FRAME_SIZE: usize = 4096;
 
 #[entry]
 fn main() -> ! {
     unsafe {
         contranomy_sys::initialise().unwrap();
     }
+    let _components = unsafe { bittide_sys::initialise::<FRAME_SIZE>().unwrap() };
 
     let device_tree = unsafe { fdt::Fdt::from_ptr(FDT_ADDR).unwrap() };
 
     println!("FDT size is {}", device_tree.total_size());
 
-    for node in device_tree.all_nodes() {
-        println!("Node {}", node.name);
-
-        for prop in node.properties() {
-            match prop_value(prop.value) {
-                PropValue::String(s) => println!("  {} = {s:?}", prop.name),
-                PropValue::Integer(i) => println!("  {} = {i}", prop.name),
-                PropValue::TwoIntegers(a, b) => println!("  {} = ({a}, {b})", prop.name),
-                PropValue::Blob(b) => println!("  {} = {b:?}", prop.name),
-            }
-        }
-    }
+    print_fdt(0, &device_tree.find_node("/").unwrap());
 
     loop {
         continue;
+    }
+}
+
+fn print_fdt(depth: usize, node: &fdt::node::FdtNode) {
+    fn indent(n: usize) {
+        for _ in 0..n {
+            print!("  ");
+        }
+    }
+
+    indent(depth);
+    println!("Node {}", node.name);
+
+    for prop in node.properties() {
+        indent(depth + 1);
+        match prop_value(prop.value) {
+            PropValue::String(s) => println!("{} = {s:?}", prop.name),
+            PropValue::Integer(i) => println!("{} = {}", prop.name, best_fit_integer_repr(i)),
+            PropValue::TwoIntegers(a, b) => println!(
+                "{} = ({}, {})",
+                prop.name,
+                best_fit_integer_repr(a),
+                best_fit_integer_repr(b)
+            ),
+            PropValue::Blob(b) => println!("{} = {b:?}", prop.name),
+        }
+    }
+
+    for child in node.children() {
+        println!();
+        print_fdt(depth + 1, &child);
     }
 }
 
@@ -77,4 +100,23 @@ fn prop_value<'a>(prop: &'a [u8]) -> PropValue<'a> {
     }
 
     return PropValue::Blob(prop);
+}
+
+fn best_fit_integer_repr(num: u32) -> heapless::String<20> {
+    let mut dec = heapless::String::new();
+    let mut hex = heapless::String::new();
+
+    write!(dec, "{}", num).unwrap();
+    write!(hex, "{:X}", num).unwrap();
+
+    let dec_zeroes = dec.chars().filter(|c| *c == '0').count();
+    let hex_zeroes = hex.chars().filter(|c| *c == '0').count();
+
+    if hex_zeroes > dec_zeroes {
+        hex.clear();
+        write!(hex, "0x{:X}", num).unwrap();
+        hex
+    } else {
+        dec
+    }
 }

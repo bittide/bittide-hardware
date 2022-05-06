@@ -35,7 +35,7 @@ pub unsafe fn initialise() -> Result<(), InitialisationError> {
 /// code is being executed on.
 pub unsafe fn initialise_from_fdt(fdt: &fdt::Fdt) -> Result<(), InitialisationError> {
     // character device
-    if let Some(char_device) = fdt.find_node("/reserved-memory/character-device") {
+    if let Some(char_device) = fdt.find_node("/character-device") {
         let addr = char_device
             .reg()
             .ok_or(InitialisationError::CharacterDeviceDescIncomplete)?

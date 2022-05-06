@@ -13,6 +13,7 @@ authors = ["Google LLC"]
 
 [dependencies]
 elf_rs = "0.2.0"
+fdt = "0.1.0"
 
 [dev-dependencies]
 proptest = "1.0"
