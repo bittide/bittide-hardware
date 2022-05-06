@@ -79,6 +79,7 @@ library
   exposed-modules:
     Bittide.Calendar
     Bittide.DoubleBufferedRam
+    Bittide.ProcessingElement
     Bittide.Link
     Bittide.ScatterGather
     Bittide.SharedTypes
