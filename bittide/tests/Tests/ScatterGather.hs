@@ -34,6 +34,7 @@ import Bittide.ScatterGather
 import Bittide.Calendar
 import Data.Maybe
 import Bittide.SharedTypes
+import Tests.Shared
 
 isUndefined :: forall n . KnownNat n => BitVector n -> Bool
 isUndefined (BV mask _) = mask == full
@@ -168,20 +169,8 @@ scatterGatherNoFrameLoss = property $ do
 
       expected === result
 
-
+-- TODO: Remove instance once Clash.Prelude has it.
 deriving instance Show (SNatLE a b)
-
-data IsInBounds a b c where
-  InBounds :: (a <= b, b <= c) => IsInBounds a b c
-  NotInBounds :: IsInBounds a b c
-
-deriving instance Show (IsInBounds a b c)
-
--- | Returns 'InBounds' when a <= b <= c, otherwise returns 'NotInBounds'.
-isInBounds :: SNat a -> SNat b -> SNat c -> IsInBounds a b c
-isInBounds a b c = case (compareSNat a b, compareSNat b c) of
-  (SNatLE, SNatLE) -> InBounds
-  _ -> NotInBounds
 
 -- | Generates a 'CalendarConfig' for the 'gatherUnitWB' or 'scatterUnitWB'
 genCalendarConfig ::
@@ -210,8 +199,9 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
          , compareSNat d1 bsCalEntry) of
           (InBounds, InBounds, SNatLE, SNatLE)-> go depthA depthB
           (a,b,c,d) -> error $ "genCalendarConfig: calEntry constraints not satisfied: ("
-           <> show a <> ", " <> show b <> ", " <> show c <> ", "  <> show d <> "), \n(depthA, depthB, maxDepth, calEntry bitsize) = ("
-           <> show depthA <> ", " <> show depthB <> ", " <> show sizeNat <> ", " <> show bsCalEntry <> ")"
+           <> show a <> ", " <> show b <> ", " <> show c <> ", "  <> show d <>
+           "), \n(depthA, depthB, maxDepth, calEntry bitsize) = (" <> show depthA <> ", "
+           <> show depthB <> ", " <> show sizeNat <> ", " <> show bsCalEntry <> ")"
  where
     go :: forall depthA depthB .
       ( LessThan depthA maxDepth
@@ -222,8 +212,9 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
       Gen (CalendarConfig bytes addressWidth (Index maxDepth))
     go SNat SNat = do
       calActive <- fromMaybe errmsg . fromList @depthA . P.take (natToNum @depthA)
-       <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
-      calShadow <- fromMaybe errmsg . fromList @depthB . P.take (natToNum @depthB) <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
+        <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
+      calShadow <- fromMaybe errmsg . fromList @depthB . P.take (natToNum @depthB)
+        <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
       return $ CalendarConfig sizeNat calActive calShadow
     errmsg = errorX "genCalendarConfig: list to vector conversion failed"
 

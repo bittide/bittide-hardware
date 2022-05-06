@@ -20,6 +20,8 @@ import Clash.Hedgehog.Sized.Vector
 
 import Bittide.Calendar
 import Bittide.SharedTypes
+import Tests.Shared
+
 import Clash.Sized.Vector (unsafeFromList)
 import Contranomy.Wishbone
 import Data.Constraint
@@ -70,18 +72,6 @@ instance Show (BVCalendar addressWidth) where
 
 -- TODO: Remove this show instance after issue (https://github.com/clash-lang/clash-compiler/issues/2190) has been fixed.
 deriving instance Show (SNatLE a b)
-
-data IsInBounds a b c where
-  InBounds :: (a <= b, b <= c) => IsInBounds a b c
-  NotInBounds :: IsInBounds a b c
-
-deriving instance Show (IsInBounds a b c)
-
--- | Returns 'InBounds' if a <= b <= c, otherwise returns 'NotInBounds'.
-isInBounds :: SNat a -> SNat b -> SNat c -> IsInBounds a b c
-isInBounds a b c = case (compareSNat a b, compareSNat b c) of
-  (SNatLE, SNatLE) -> InBounds
-  _ -> NotInBounds
 
 -- | Generates a configuration for 'Bittide.Calendar.calendarWB', with as first argument
 -- the maximum depth of the stored calendar and as second argument a generator for the

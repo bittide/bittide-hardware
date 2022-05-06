@@ -5,7 +5,12 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
-module Bittide.ScatterGather(scatterEngine, gatherEngine, scatterGatherEngine, scatterUnitWB, gatherUnitWB) where
+module Bittide.ScatterGather
+  ( scatterEngine
+  , gatherEngine
+  , scatterGatherEngine
+  , scatterUnitWB
+  , gatherUnitWB) where
 
 import Clash.Prelude
 
@@ -65,7 +70,10 @@ gatherEngine newMetaCycle frameIn readAddr =
     writeAddr = register 0 $ satSucc SatWrap <$> writeAddr
     writeFrame = combineFrameWithAddr frameIn writeAddr
 
-combineFrameWithAddr :: Signal dom (Maybe dat) -> Signal dom addr -> Signal dom (Maybe (addr,dat))
+combineFrameWithAddr ::
+  Signal dom (Maybe dat) ->
+  Signal dom addr ->
+  Signal dom (Maybe (addr,dat))
 combineFrameWithAddr frameIn writeAddr = combine <$> frameIn <*> writeAddr
   where
     combine :: Maybe dat -> addr -> Maybe (addr,dat)
@@ -77,8 +85,16 @@ combineFrameWithAddr frameIn writeAddr = combine <$> frameIn <*> writeAddr
 -- If the read address for the scatter engine is 0, a null frame (Nothing) will be sent to the switch.
 scatterGatherEngine ::
   forall dom calDepthG calDepthS memDepthG memDepthS frameWidth .
-  (HiddenClockResetEnable dom, KnownNat calDepthG, KnownNat calDepthS, KnownNat memDepthG, KnownNat memDepthS, KnownNat frameWidth,
-  1 <= calDepthG , 1 <= calDepthS, 1 <= memDepthG, 1 <= memDepthS) =>
+  ( HiddenClockResetEnable dom
+  , KnownNat calDepthG
+  , KnownNat calDepthS
+  , KnownNat memDepthG
+  , KnownNat memDepthS
+  , KnownNat frameWidth
+  , 1 <= calDepthG
+  , 1 <= calDepthS
+  , 1 <= memDepthG
+  , 1 <= memDepthS) =>
   -- | Bootstrap calendar gather memory.
   Calendar calDepthS memDepthS ->
   -- | Bootstrap calendar scatter memory.
@@ -114,7 +130,9 @@ scatterGatherEngine bootCalS bootCalG scatterConfig gatherConfig
     writeFramePE = (\f a -> fmap (a,) f) <$> frameInPE' <*> writeAddrPE
     gatherOut = doubleBufferedRAM (deepErrorX "gatherOut undefined")
       newMetaCycleG readAddrSwitch writeFramePE
-    toSwitch  = mux (register True $ (==0) <$> readAddrSwitch) (pure Nothing) $ Just <$> gatherOut
+    toSwitch =
+      mux (register True $ (==0) <$> readAddrSwitch)
+      (pure Nothing) $ Just <$> gatherOut
 
 
 -- | Doublebuffered memory component that can be written to by a Bittide link, write address
@@ -193,7 +211,8 @@ wbInterface ::
   Bytes bytes ->
   -- | (slave - master data, read address memory element, write data memory element)
   (WishboneS2M bytes, Index addresses, Maybe (Bytes bytes))
-wbInterface addressRange WishboneM2S{..} readData =  (WishboneS2M{readData, acknowledge, err}, memAddr, writeOp)
+wbInterface addressRange WishboneM2S{..} readData =
+  (WishboneS2M{readData, acknowledge, err}, memAddr, writeOp)
  where
   masterActive = strobe && busCycle
   (alignedAddress, alignment) = split @_ @(addressWidth - 2) @2 addr
@@ -210,7 +229,11 @@ wbInterface addressRange WishboneM2S{..} readData =  (WishboneS2M{readData, ackn
 -- of the read data.
 scatterUnitWB ::
   forall dom memDepth awSU bsCal awCal .
-  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, KnownNat awSU, 2 <= awSU) =>
+  ( HiddenClockResetEnable dom
+  , KnownNat memDepth
+  , 1 <= memDepth
+  , KnownNat awSU
+  , 2 <= awSU) =>
   -- | Initial contents of both memory buffers.
   Vec memDepth (BitVector 64) ->
   -- | Configuration for the calendar.
@@ -225,20 +248,26 @@ scatterUnitWB ::
   Signal dom (WishboneM2S 4 awSU) ->
   -- | (slave - master data scatterUnit , slave - master data calendar)
   (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
-scatterUnitWB initMem calConfig wbInCal calSwitch linkIn wbInSU = (delayControls wbOutSU, wbOutCal)
+scatterUnitWB initMem calConfig wbInCal calSwitch linkIn wbInSU =
+  (delayControls wbOutSU, wbOutCal)
  where
   (wbOutSU, memAddr, _) = unbundle $ wbInterface maxBound <$> wbInSU <*> scatteredData
   (readAddr, upperSelected) = unbundle $ coerceIndexes <$> memAddr
-  (scatterUnitRead, wbOutCal) = scatterUnit initMem calConfig wbInCal calSwitch linkIn readAddr
-  (upper, lower) = unbundle $ split <$> scatterUnitRead
-  scatteredData = mux (register (errorX "scatterUnitWB: Initial selection undefined") upperSelected) upper lower
+  (scatterOut, wbOutCal) = scatterUnit initMem calConfig wbInCal calSwitch linkIn readAddr
+  (upper, lower) = unbundle $ split <$> scatterOut
+  selectedOnReset = errorX "scatterUnitWB: Initial selection undefined"
+  scatteredData = mux (register selectedOnReset upperSelected) upper lower
 
 -- | Wishbone addressable gatherUnit, the wishbone port can write data to this
 -- memory element as if it has a 32 bit port by controlling the byte enables of the
 -- gatherUnit based on the third bit.
 gatherUnitWB ::
   forall dom memDepth awSU bsCal awCal .
-  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, KnownNat awSU, 2 <= awSU) =>
+  ( HiddenClockResetEnable dom
+  , KnownNat memDepth
+  , 1 <= memDepth
+  , KnownNat awSU
+  , 2 <= awSU) =>
   -- | Initial contents of both memory buffers.
   Vec memDepth (BitVector 64) ->
   -- | Configuration for the calendar.
@@ -251,16 +280,21 @@ gatherUnitWB ::
   Signal dom (WishboneM2S 4 awSU) ->
   -- | (slave - master data gatherUnit , slave - master data calendar)
   (Signal dom (DataLink 64), Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
-gatherUnitWB initMem calConfig wbInCal calSwitch wbInSU = (linkOut, delayControls wbOutSU, wbOutCal)
+gatherUnitWB initMem calConfig wbInCal calSwitch wbInSU =
+  (linkOut, delayControls wbOutSU, wbOutCal)
  where
   (wbOutSU, memAddr, writeOp) = unbundle $ wbInterface maxBound <$> wbInSU <*> pure 0b0
   (writeAddr, upperSelected) = unbundle $ coerceIndexes <$> memAddr
-  (linkOut, wbOutCal) = gatherUnit initMem calConfig wbInCal calSwitch gatherWrite gatherByteEnables
+  (linkOut, wbOutCal) =
+    gatherUnit initMem calConfig wbInCal calSwitch gatherWrite gatherByteEnables
   gatherWrite = mkWrite <$> writeAddr <*> writeOp
   gatherByteEnables = mkEnables <$> upperSelected <*> (busSelect <$> wbInSU)
+
   mkWrite address (Just write) = Just (address, write ++# write)
   mkWrite _ _ = Nothing
-  mkEnables selected byteEnables = if selected then byteEnables ++# 0b0 else 0b0 ++# byteEnables
+  mkEnables selected byteEnables
+    | selected  = byteEnables ++# 0b0
+    | otherwise = 0b0 ++# byteEnables
 
 -- | Coerces an index of size (n*2) to index n with the lower bit as seperate boolean.
 coerceIndexes :: forall n . (KnownNat n, 1 <= n) => (Index (n*2) -> (Index n, Bool))
@@ -269,7 +303,7 @@ coerceIndexes = case sameNat natA natB of
   _ -> error "gatherUnitWB: Index coercion failed."
   where
   natA = Proxy @(CLog 2 (n*2))
-  natB = Proxy @(CLog 2 n + 1)
+  natB = Proxy @(1 + (CLog 2 n))
 
 -- | Delays the output controls to align them with the actual read / write timing.
 delayControls :: HiddenClockResetEnable dom =>
@@ -278,4 +312,5 @@ delayControls wbIn = wbOut
  where
    delayedAck = register False (acknowledge <$> wbIn)
    delayedErr = register False (err <$> wbIn)
-   wbOut = (\wb newAck newErr-> wb{acknowledge = newAck, err = newErr}) <$> wbIn <*> delayedAck <*> delayedErr
+   wbOut = (\wb newAck newErr-> wb{acknowledge = newAck, err = newErr})
+    <$> wbIn <*> delayedAck <*> delayedErr
