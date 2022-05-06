@@ -56,15 +56,19 @@ data BVCalendar addressWidth where
     , 1 <= bits
     , NatFitsInBits n addressWidth
     , 1 <= NatRequiredBits n
-    , NatFitsInBits (TypeRequiredRegisters (BitVector bits) addressWidth) addressWidth) =>
+    , NatFitsInBits (Regs (BitVector bits) addressWidth) addressWidth) =>
+    -- | Amount of entries in the BitVector calendar minus 1.
     SNat n ->
+    -- | Amount of bits per BitVector in the calendar.
     SNat bits ->
+    -- | Vector of (n+1) entries containing BitVectors of size bits.
     Vec (n + 1) (BitVector bits) ->
     BVCalendar addressWidth
 
 instance Show (BVCalendar addressWidth) where
   show (BVCalendar _ _ bvvec) = show bvvec
 
+-- TODO: Remove this show instance after issue (https://github.com/clash-lang/clash-compiler/issues/2190) has been fixed.
 deriving instance Show (SNatLE a b)
 
 data IsInBounds a b c where
@@ -92,7 +96,9 @@ genCalendarConfig ::
   , Show calEntry
   , ShowX calEntry
   , KnownNat addressWidth) =>
+  -- | Maximum amount of entries a calendar based on the returned configuration can hold per calendar.
   Natural ->
+  -- | Generator for the entries in the shadow calendar and active calendar.
   Gen calEntry ->
   Gen (CalendarConfig bytes addressWidth calEntry)
 genCalendarConfig ms elemGen = do
@@ -103,7 +109,7 @@ genCalendarConfig ms elemGen = do
      ,SomeNat (snatProxy -> depthA)
      ,SomeNat (snatProxy -> depthB)) -> do
         let
-          regAddrBits = SNat @(NatRequiredBits (TypeRequiredRegisters calEntry (bytes * 8)))
+          regAddrBits = SNat @(NatRequiredBits (Regs calEntry (bytes * 8)))
           bsCalEntry = SNat @(BitSize calEntry)
         case
          ( isInBounds d1 depthA maxSize
@@ -120,7 +126,7 @@ genCalendarConfig ms elemGen = do
       forall maxDepth depthA depthB .
       ( LessThan depthA maxDepth
       , LessThan depthB maxDepth
-      , NatFitsInBits (TypeRequiredRegisters calEntry (bytes * 8)) addressWidth) =>
+      , NatFitsInBits (Regs calEntry (bytes * 8)) addressWidth) =>
       SNat maxDepth ->
       SNat depthA ->
       SNat depthB ->
@@ -130,7 +136,7 @@ genCalendarConfig ms elemGen = do
       calShadow <- genVec @_ @depthB elemGen
       return $ CalendarConfig dMax calActive calShadow
 
--- | Generates a 'BVCalendar' of a certain size and width for the stored Bitvectors.
+-- | Generates a 'BVCalendar' of a certain size and width for the stored BitVectors.
 genBVCalendar :: Integer -> Integer -> Gen (BVCalendar 32)
 genBVCalendar calSize bitWidth = do
   let
@@ -148,7 +154,7 @@ genBVCalendar calSize bitWidth = do
   go s b = do
     let
       calNatBits = clogBaseSNat d2 . succSNat $ snatProxy s
-      requiredAddrWidth = SNat @(NatRequiredBits (TypeRequiredRegisters (BitVector bitWidth) 32))
+      requiredAddrWidth = SNat @(NatRequiredBits (Regs (BitVector bitWidth) 32))
     case
       ( compareSNat calNatBits d32
       , compareSNat d1 calNatBits
@@ -271,7 +277,7 @@ asProxy :: SNat n -> Proxy n
 asProxy SNat = Proxy
 
 -- | Get the amount of required registers for storing a BitVector bits in registers of regSize.
-requiredRegs :: (1 <= regSize) => SNat bits -> SNat regSize-> SNat (TypeRequiredRegisters (BitVector bits) regSize)
+requiredRegs :: (1 <= regSize) => SNat bits -> SNat regSize-> SNat (Regs (BitVector bits) regSize)
 requiredRegs SNat SNat = SNat
 
 -- | Get the last n elements of a list.
@@ -321,7 +327,7 @@ directedWBDecoding (wbM2S:m2sRest) (_:s2mRest) = out
     Just (vec :: Vec (Regs a (bytes * 8)) (BitVector (bytes * 8))) ->
         case timesDivRU @(bytes * 8) @(BitSize a) of
           Dict ->
-            paddedToData . bvAsPadded @(TypeRequiredRegisters a (bytes * 8) * bytes * 8) $ pack vec
+            paddedToData . bvAsPadded @(Regs a (bytes * 8) * bytes * 8) $ pack vec
     Nothing  -> error $ "directedWBDecoding: list to vector conversion failed: " <> show entryList <> "from " <> show (wbM2S:m2sRest)
 
   consumedReads = P.length entryList
