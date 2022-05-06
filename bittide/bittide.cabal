@@ -97,6 +97,7 @@ test-suite unittests
     Tests.DoubleBufferedRam
     Tests.ScatterGather
     Tests.Switch
+    Tests.Shared
   default-extensions:
     ImplicitPrelude
   build-depends:
