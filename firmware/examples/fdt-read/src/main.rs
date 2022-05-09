@@ -71,6 +71,14 @@ enum PropValue<'a> {
 }
 
 // "best effort" representation of property values
+//
+// Because FDT properties are byte sequences, they do not have an explicit
+// type associated with them which could guide the visual or internal
+// representation.
+//
+// This function attemptst to interpret the data in a number of different ways
+// and choses the one that makes the most sense (for example string vs number
+// pair vs binary blob).
 fn prop_value<'a>(prop: &'a [u8]) -> PropValue<'a> {
     if prop.len() == 0 {
         return PropValue::Blob(&[]);
@@ -102,6 +110,9 @@ fn prop_value<'a>(prop: &'a [u8]) -> PropValue<'a> {
     return PropValue::Blob(prop);
 }
 
+// Here "best fit" refers to the number system in which the number should be
+// displayed in. For some numbers, a base 10 representation is "nicer", while
+// for others a base 16 representation is more useful.
 fn best_fit_integer_repr(num: u32) -> heapless::String<20> {
     let mut dec = heapless::String::new();
     let mut hex = heapless::String::new();

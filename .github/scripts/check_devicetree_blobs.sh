@@ -11,27 +11,27 @@ ROOT=$(git rev-parse --show-toplevel)
 cd "${ROOT}"/devicetree
 
 # read textual representation of blobs
-for src in $(ls blobs/*.dtb); do
+for src in blobs/*.dtb; do
   filename=$(basename $src .dtb)
 
-  dtc -I dtb -O dts $src > blobs/$filename.dts.before
+  dtc -I dtb -O dts "$src" > "blobs/$filename.dts.before"
 done
 
 
 ./compile.sh
 
 # read textual representation of *new* blobs
-for src in $(ls blobs/*.dtb); do
+for src in blobs/*.dtb; do
   filename=$(basename $src .dtb)
 
-  dtc -I dtb -O dts $src > blobs/$filename.dts.after
+  dtc -I dtb -O dts "$src" > "blobs/$filename.dts.after"
 done
 
 # compare the textual representations
-for src in $(ls blobs/*.dtb); do
+for src in blobs/*.dtb; do
   filename=$(basename $src .dtb)
 
-  diff -u blobs/$filename.dts.before blobs/$filename.dts.after
+  diff -u "blobs/$filename.dts.before" "blobs/$filename.dts.after"
 done
 
 rm blobs/*.after blobs/*.before

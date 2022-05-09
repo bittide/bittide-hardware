@@ -18,8 +18,21 @@ pub const FDT_ADDR: *const u8 = 0x1000_0000 as *const u8;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InitialisationError {
     FdtError(fdt::FdtError),
-    ScatterUnitLoadError(scatter_unit::LoadError),
-    GatherUnitLoadError(gather_unit::LoadError),
+    ScatterUnitLoadError(FdtLoadError),
+    GatherUnitLoadError(FdtLoadError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FdtLoadError {
+    FdtNodeNotFound(&'static str),
+    RegNotFound {
+        component: &'static str,
+    },
+    SizeMismatch {
+        property: &'static str,
+        expected: usize,
+        found: usize,
+    },
 }
 
 /// Initialise bittide components based off an FDT loaded from a known
