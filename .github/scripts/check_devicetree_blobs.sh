@@ -12,7 +12,7 @@ cd "${ROOT}"/devicetree
 
 # read textual representation of blobs
 for src in blobs/*.dtb; do
-  filename=$(basename $src .dtb)
+  filename=$(basename "$src" .dtb)
 
   dtc -I dtb -O dts "$src" > "blobs/$filename.dts.before"
 done
@@ -22,14 +22,14 @@ done
 
 # read textual representation of *new* blobs
 for src in blobs/*.dtb; do
-  filename=$(basename $src .dtb)
+  filename=$(basename "$src" .dtb)
 
   dtc -I dtb -O dts "$src" > "blobs/$filename.dts.after"
 done
 
 # compare the textual representations
 for src in blobs/*.dtb; do
-  filename=$(basename $src .dtb)
+  filename=$(basename "$src" .dtb)
 
   diff -u "blobs/$filename.dts.before" "blobs/$filename.dts.after"
 done

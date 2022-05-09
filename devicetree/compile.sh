@@ -7,6 +7,6 @@
 set -euxo pipefail
 
 for src in ./*.dts; do
-  filename=$(basename $src .dts)
+  filename=$(basename "$src" .dts)
   dtc -O dtb -b 0 "$src" -o "blobs/$filename.dtb"
 done

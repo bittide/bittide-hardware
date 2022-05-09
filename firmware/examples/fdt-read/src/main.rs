@@ -76,7 +76,7 @@ enum PropValue<'a> {
 // type associated with them which could guide the visual or internal
 // representation.
 //
-// This function attemptst to interpret the data in a number of different ways
+// This function attempts to interpret the data in a number of different ways
 // and choses the one that makes the most sense (for example string vs number
 // pair vs binary blob).
 fn prop_value<'a>(prop: &'a [u8]) -> PropValue<'a> {
