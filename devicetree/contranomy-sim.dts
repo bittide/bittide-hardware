@@ -55,12 +55,16 @@
       reg = <0x20000000 0x00001000>;
     };
 
-    sequence-counter-reg@21000000 {
+    local-sequence-counter-reg@21000000 {
       reg = <0x21000000 0x00000008>;
     };
 
-    record-sequence-counter-reg@21000008 {
-      reg = <0x21000008 0x00000001>;
+    remote-sequence-counter-reg@21000008 {
+      reg = <0x21000008 0x00000008>;
+    };
+
+    record-remote-sequence-counter-reg@21000010 {
+      reg = <0x21000010 0x00000001>;
     };
   };
 

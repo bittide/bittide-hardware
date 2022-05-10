@@ -4,10 +4,26 @@
 
 use crate::FdtLoadError;
 
-pub struct GatherUnit<const FRAME_SIZE: usize> {
-    memory: *mut u8,
+pub struct GatherTimingOracle {
     sequence_counter: *const u64,
     send_sequence_counter: *mut u8,
+}
+
+impl GatherTimingOracle {
+    pub fn sequence_counter(&self) -> u64 {
+        unsafe { self.sequence_counter.read_volatile() }
+    }
+
+    pub fn send_sequence_counter(&mut self, enable: bool) {
+        unsafe {
+            self.send_sequence_counter.write_volatile(u8::from(enable));
+        }
+    }
+}
+
+pub struct GatherUnit<const FRAME_SIZE: usize> {
+    memory: *mut u8,
+    timing_oracle: GatherTimingOracle,
 }
 
 impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
@@ -76,8 +92,10 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
 
         Ok(GatherUnit {
             memory: memory.starting_address as *mut u8,
-            sequence_counter,
-            send_sequence_counter,
+            timing_oracle: GatherTimingOracle {
+                sequence_counter,
+                send_sequence_counter,
+            },
         })
     }
 
@@ -93,13 +111,7 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
         }
     }
 
-    pub fn sequence_counter(&self) -> u64 {
-        unsafe { self.sequence_counter.read_volatile() }
-    }
-
-    pub fn send_sequence_counter(&mut self, enable: bool) {
-        unsafe {
-            self.send_sequence_counter.write_volatile(u8::from(enable));
-        }
+    pub fn timing_oracle(&self) -> &GatherTimingOracle {
+        &self.timing_oracle
     }
 }

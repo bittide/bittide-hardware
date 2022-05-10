@@ -4,10 +4,32 @@
 
 use crate::FdtLoadError;
 
+pub struct ScatterTimingOracle {
+    local_sequence_counter: *const u64,
+    record_remote_sequence_counter: *mut u8,
+    remote_sequence_counter: *const u64,
+}
+
+impl ScatterTimingOracle {
+    pub fn local_sequence_counter(&self) -> u64 {
+        unsafe { self.local_sequence_counter.read_volatile() }
+    }
+
+    pub fn record_remote_sequence_counter(&mut self, enable: bool) {
+        unsafe {
+            self.record_remote_sequence_counter
+                .write_volatile(u8::from(enable));
+        }
+    }
+
+    pub fn remote_sequence_counter(&self) -> u64 {
+        unsafe { self.remote_sequence_counter.read_volatile() }
+    }
+}
+
 pub struct ScatterUnit<const FRAME_SIZE: usize> {
     memory: *const u8,
-    sequence_counter: *const u64,
-    record_sequence_counter: *mut u8,
+    timing_oracle: ScatterTimingOracle,
 }
 
 impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
@@ -31,8 +53,10 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
         };
 
         let memory_node = get_node("/scatter-unit/scatter-memory")?;
-        let sequence_counter_node = get_node("/scatter-unit/sequence-counter-reg")?;
-        let record_sequence_counter_node = get_node("/scatter-unit/record-sequence-counter-reg")?;
+        let local_sequence_counter_node = get_node("/scatter-unit/local-sequence-counter-reg")?;
+        let record_remote_sequence_counter_node =
+            get_node("/scatter-unit/record-remote-sequence-counter-reg")?;
+        let remote_sequence_counter_node = get_node("/scatter-unit/remote-sequence-counter-reg")?;
 
         let memory = get_reg(&memory_node, "memory")?;
 
@@ -46,12 +70,12 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
             }
         }
 
-        let sequence_counter = {
-            let reg = get_reg(&sequence_counter_node, "sequence_counter")?;
+        let local_sequence_counter = {
+            let reg = get_reg(&local_sequence_counter_node, "local_sequence_counter")?;
             if let Some(size) = reg.size {
                 if size != 8 {
                     return Err(FdtLoadError::SizeMismatch {
-                        property: "sequence counter register size",
+                        property: "local sequence counter register size",
                         expected: 8,
                         found: size,
                     });
@@ -60,12 +84,15 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
             reg.starting_address as *const u64
         };
 
-        let record_sequence_counter = {
-            let reg = get_reg(&record_sequence_counter_node, "record_sequence_counter")?;
+        let record_remote_sequence_counter = {
+            let reg = get_reg(
+                &record_remote_sequence_counter_node,
+                "record_remote_sequence_counter",
+            )?;
             if let Some(size) = reg.size {
                 if size != 1 {
                     return Err(FdtLoadError::SizeMismatch {
-                        property: "record sequence counter register size",
+                        property: "record remote sequence counter register size",
                         expected: 1,
                         found: size,
                     });
@@ -74,10 +101,27 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
             reg.starting_address as *mut u8
         };
 
+        let remote_sequence_counter = {
+            let reg = get_reg(&remote_sequence_counter_node, "remote_sequence_counter")?;
+            if let Some(size) = reg.size {
+                if size != 8 {
+                    return Err(FdtLoadError::SizeMismatch {
+                        property: "remote sequence counter register size",
+                        expected: 8,
+                        found: size,
+                    });
+                }
+            }
+            reg.starting_address as *const u64
+        };
+
         Ok(ScatterUnit {
             memory: memory.starting_address,
-            sequence_counter,
-            record_sequence_counter,
+            timing_oracle: ScatterTimingOracle {
+                local_sequence_counter,
+                record_remote_sequence_counter,
+                remote_sequence_counter,
+            },
         })
     }
 
@@ -93,14 +137,7 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
         }
     }
 
-    pub fn sequence_counter(&self) -> u64 {
-        unsafe { self.sequence_counter.read_volatile() }
-    }
-
-    pub fn record_sequence_counter(&mut self, enable: bool) {
-        unsafe {
-            self.record_sequence_counter
-                .write_volatile(u8::from(enable));
-        }
+    pub fn timing_oracle(&self) -> &ScatterTimingOracle {
+        &self.timing_oracle
     }
 }
