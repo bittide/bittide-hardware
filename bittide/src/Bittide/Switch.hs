@@ -2,56 +2,49 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Switch (switch) where
+module Bittide.Switch where
 
 import Clash.Prelude
 
 import Bittide.Calendar
 import Bittide.ScatterGather (scatterEngine)
 import Bittide.SharedTypes
+import Contranomy.Wishbone (WishboneM2S, WishboneS2M)
 
--- | An index which source is selected by the crossbar, 0 selects Nothing, k selects k - 1.
+ -- | An index which source is selected by the crossbar, 0 selects Nothing, k selects k - 1.
 type CrossbarIndex links = Index (links+1)
 
 -- | Stores for each link, an index where the incoming frame is written to in the scatter
 -- memory and a crossbar index to select the outgoing frame.
 type CalendarEntry links memDepth = Vec links (Index memDepth, CrossbarIndex links)
 
--- | The Calendar for the switch contains entries of CalendarEntry defined above.
--- For more information regarding calendar datatypes see NOTE [component calendar types]
-type Calendar calDepth links memDepth = Vec calDepth (CalendarEntry links memDepth)
-
--- | Write operation to a switch's calendar.
-type ConfigurationPort calDepth links memDepth =
-  Maybe (Index calDepth, CalendarEntry links memDepth)
-
 -- | The Bittide Switch routes data from incoming to outgoing links based on a calendar.
 -- The switch consists of a crossbar, a calendar and a scatter engine for all incoming links.
 -- The crossbar selects one of the scatter engine outputs for every outgoing link, index 0
 -- selects a null frame (Nothing) and k selects engine k - 1.
 switch ::
-  forall dom links calDepth memDepth frameWidth .
+  forall dom bytes aw links memDepth frameWidth .
   ( HiddenClockResetEnable dom
   , KnownNat links
-  , KnownNat calDepth
   , KnownNat memDepth
   , KnownNat frameWidth
-  , 1 <= links
-  , 1 <= calDepth
   , 1 <= memDepth) =>
-  -- | The bootstrap calendar.
-  Calendar calDepth links memDepth ->
-  -- | Configuration port for the switch calendar (which also controls scatter engines).
-  Signal dom (ConfigurationPort calDepth links memDepth) ->
+  -- | The calendar configuration
+  CalendarConfig bytes aw (CalendarEntry links memDepth) ->
+  -- | Signal that switches the calendar's active and shadow buffer.
+  Signal dom Bool ->
+  -- | Wishbone interface wired to the calendar.
+  Signal dom (WishboneM2S bytes aw) ->
   -- | All incoming datalinks
   Signal dom (Vec links (DataLink frameWidth)) ->
   -- | All outgoing datalinks
-  Signal dom (Vec links (DataLink frameWidth))
-switch bootstrapCal writeCalendar streamsIn = crossBar <$> crossBarConfig <*> streams1
+  (Signal dom (Vec links (DataLink frameWidth)), Signal dom (WishboneS2M bytes))
+switch calConfig calSwitch wbIn streamsIn =
+  (crossBar <$> crossBarConfig <*> availableFrames, wbOut)
   where
-    buffers = scatterEngine newMetaCycle
-    streams1 = bundle (buffers <$> unbundle streamsIn <*> unbundle gatherConfig)
-    (calendars, newMetaCycle) = calendar bootstrapCal (pure False) writeCalendar
+    inpBuffer = scatterEngine newMetaCycle
+    availableFrames = bundle (inpBuffer <$> unbundle streamsIn <*> unbundle gatherConfig)
+    (calendars, newMetaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
     (gatherConfig, crossBarConfig)  = unbundle $ unzip <$> calendars
 
 -- | The crossbar receives a vector of indices and a vector of incoming frames.
@@ -59,8 +52,7 @@ switch bootstrapCal writeCalendar streamsIn = crossBar <$> crossBarConfig <*> st
 -- therefore indexing of incoming links starts at 1 (index 1 selects incoming frame 0).
 -- Source: bittide hardware, switch logic.
 crossBar ::
-  ( KnownNat links
-  , 1 <= links) =>
+  (KnownNat links) =>
   Vec links (CrossbarIndex links) ->
   -- | Source selection for each outgoing link, 0 is a null frame, links start at index 1.
   Vec links a ->
