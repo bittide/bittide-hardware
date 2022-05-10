@@ -26,7 +26,6 @@ type LessThan a b = (KnownNat a, KnownNat b, a <= b)
 type NatFitsInBits n bits = NatRequiredBits n <= bits
 type NatRequiredBits n = CLog 2 (n + 1)
 type Paddable a = (BitPack a, NFDataX a, 1 <= BitSize a)
-type TypeRequiredRegisters t regSize = DivRU (BitSize t) regSize
 type WriteAny maxIndex writeData = Maybe (Index maxIndex, writeData)
 
 type Pad a bw  = (Regs a bw * bw) - BitSize a
