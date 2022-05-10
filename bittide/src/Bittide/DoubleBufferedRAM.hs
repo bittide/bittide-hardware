@@ -13,7 +13,7 @@ module Bittide.DoubleBufferedRAM where
 import Clash.Prelude
 
 import Contranomy.Wishbone
-
+import Data.Maybe
 import Bittide.SharedTypes
 -- | The double buffered RAM component is a memory component that internally uses a single
 -- blockRam, but enables the user to write to one part of the ram and read from another.
@@ -99,9 +99,14 @@ blockRamByteAddressable initRAM readAddr newEntry byteSelect =
    writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
    readBytes = bundle $ (`blockRam` readAddr) <$> initBytes <*> writeBytes
 
--- | register with wishbone interface, the third argument determines the source of the
--- output signal. If the third argument is Just (Signal dom a), writing from the wishbone
--- bus to the register is not possible.
+data RegisterWritePriority = CircuitPriority | WishbonePriority
+
+-- | register with additional wishbone interface, this component has a configurable
+-- priority that determines which value gets stored in the register during a write conflict.
+-- With 'CircuitPriority', the incoming value in the fourth argument gets stored on a
+-- collision and the wishbone bus gets acknowledged, but the value is silently ignored.
+-- With 'WishbonePriority', the incoming wishbone write gets accepted and the value in the
+-- fourth argument gets ignored.
 registerWB ::
   forall dom a bs aw .
   ( HiddenClockResetEnable dom
@@ -111,58 +116,52 @@ registerWB ::
   , 1 <= bs
   , KnownNat aw
   , 2 <= aw) =>
+  -- | Determines the write priority on write collisions
+  RegisterWritePriority ->
+  -- | Initial value.
   a ->
+  -- | Wishbone bus (master to slave)
   Signal dom (WishboneM2S bs aw) ->
-  Maybe (Signal dom a) ->
+  -- | New circuit value.
+  Signal dom (Maybe a) ->
+  -- |
+  -- 1. Outgoing stored value
+  -- 2. Outgoing wishbone bus (slave to master)
   (Signal dom a, Signal dom (WishboneS2M bs))
-registerWB initVal wbIn (Just newVal) = unbundle . mealy go initVal $ bundle (newVal, wbIn)
+registerWB writePriority initVal wbIn sigIn = (regOut, wbOut)
  where
-  go :: a -> (a, WishboneM2S bs aw) -> (a, (a, WishboneS2M bs))
-  go val1 (val0, WishboneM2S{..}) = (val0, (val1, WishboneS2M{acknowledge, err, readData}))
-   where
-    (alignedAddress, alignment) = split @_ @(aw - 2) @2 addr
-    wordAligned = alignment == 0
-    addressRange = maxBound :: Index (Regs a (bs * 8))
-
-    err = (alignedAddress > resize (pack addressRange)) ||
-          not wordAligned ||
-          writeEnable
-    acknowledge = not err && strobe && busCycle
-
-    wbAddr :: Index (Regs a (bs * 8))
-    wbAddr = unpack . resize $ pack alignedAddress
-
-    readData = case paddedToRegisters $ Padded val1 of
-      RegisterBank vec -> vec !! wbAddr
-
-registerWB initVal wbIn Nothing = (regOut, wbOut)
- where
-  regOut = andEnable (writeEnable <$> wbIn) $ registerByteAddressable initVal (repeatedBVsAsData <$> wbIn) byteEnables
-  repeatedBVsAsData = registersToData . RegisterBank . repeat . writeData
-  (byteEnables, wbOut) = unbundle $ go <$> regOut <*> wbIn
-
+  regOut = registerByteAddressable initVal regIn byteEnables
+  (byteEnables, wbOut, regIn) = unbundle (go <$> regOut <*> sigIn <*> wbIn)
   go ::
     a  ->
+    Maybe a ->
     WishboneM2S bs aw ->
-    (BitVector (Regs a 8), WishboneS2M bs)
-  go val WishboneM2S{..} = (resize $ pack byteEnables0, WishboneS2M{acknowledge, err, readData})
+    (BitVector (Regs a 8), WishboneS2M bs, a)
+  go regOut0 sigIn0 WishboneM2S{..} = (byteEnables0, WishboneS2M{acknowledge, err, readData}, regIn0)
    where
     (alignedAddress, alignment) = split @_ @(aw - 2) @2 addr
-    wordAligned = alignment == 0
     addressRange = maxBound :: Index (Regs a (bs * 8))
-
-    err = (alignedAddress > resize (pack addressRange)) ||
-          not wordAligned ||
-          writeEnable
-    acknowledge = not err && strobe && busCycle
-
-    wbAddr :: Index (Regs a (bs * 8))
-    wbAddr = unpack . resize $ pack alignedAddress
-    byteEnables0 = reverse $ replace wbAddr busSelect (repeat @(Regs a (bs*8)) 0)
-    readData = case paddedToRegisters $ Padded val of
+    invalidAddress = (alignedAddress > resize (pack addressRange)) || not (alignment == 0)
+    masterActive = strobe && busCycle
+    err = masterActive && invalidAddress
+    acknowledge = masterActive && not err
+    wbWriting = writeEnable && acknowledge
+    wbAddr = unpack . resize $ pack alignedAddress :: Index (Regs a (bs * 8))
+    readData = case paddedToRegisters $ Padded regOut0 of
       RegisterBank vec -> vec !! wbAddr
 
--- | Register similar to 'register' with the addition that it takes a byte select signal
+    wbByteEnables =
+      resize . pack . reverse $ replace wbAddr busSelect (repeat @(Regs a (bs*8)) 0)
+    sigRegIn = fromMaybe (errorX "registerWB: sigIn is Nothing when Just is expected.") sigIn0
+    wbRegIn = registersToData . RegisterBank $ repeat writeData
+    (byteEnables0, regIn0) = case (writePriority, isJust sigIn0, wbWriting) of
+      (CircuitPriority , True , _)     -> (maxBound, sigRegIn)
+      (CircuitPriority , False, True)  -> (wbByteEnables, wbRegIn)
+      (WishbonePriority, _    , True)  -> (wbByteEnables, wbRegIn)
+      (WishbonePriority, True , False) -> (maxBound, sigRegIn)
+      (_               , False, False) -> (0, errorX "registerWB: register input not defined.")
+
+-- | Registor similar to 'register' with the addition that it takes a byte select signal
 -- that controls which bytes are updated.
 registerByteAddressable ::
   forall dom a .
