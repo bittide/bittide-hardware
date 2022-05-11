@@ -238,13 +238,11 @@ byteAddressableRAMBehavior state input = (state', ram !! readAddr)
   ((readAddr, writeOp, byteEnable), ram) = state
   (writeAddr, writeData) = fromMaybe (0, 0b0) writeOp
   writeTrue = isJust writeOp
-  oldData = getRegs $ ram !! writeAddr
-
+  RegisterBank oldData = getRegs $ ram !! writeAddr
+  RegisterBank newData = getRegs writeData
   newEntry = getData $ zipWith (\ sel (old,new) -> if sel then new else old) (unpack byteEnable) $
-   zip oldData $ getRegs writeData
+   zip oldData newData
 
-  getRegs a = case paddedToRegisters @8 $ Padded a of
-    RegisterBank v -> v
 
   getData :: Vec bytes Byte -> BitVector bits
   getData vec = registersToData @_ @8 $ RegisterBank vec
@@ -269,15 +267,13 @@ byteAddressableDoubleBufferedRAMBehavior state input = (state', pack $ bufA0 !! 
 
   (writeAddr, writeData) = fromMaybe (0, 0b0) writeOp
   writeTrue = isJust writeOp
-  oldData = getRegs $ bufB0 !! writeAddr
-
+  RegisterBank oldData = getRegs $ bufB0 !! writeAddr
+  RegisterBank newData = getRegs writeData
   newEntry = getData $ zipWith (\ sel (old,new) -> if sel then new else old) (unpack byteEnable) $
-   zip oldData (getRegs writeData)
+   zip oldData newData
 
   bufB1 = if writeTrue then replace writeAddr newEntry bufB0 else bufB0
   state' = (input, bufA0, bufB1)
-  getRegs a = case paddedToRegisters @8 $ Padded a of
-    RegisterBank v -> v
 
   getData :: Vec bytes Byte -> BitVector bits
   getData vec = registersToData @_ @8 $ RegisterBank vec

@@ -82,3 +82,6 @@ registersToPadded :: forall bw a . (Paddable a, KnownNat bw, 1 <= bw) => Registe
 registersToPadded (RegisterBank vec) =
   case timesDivRU @bw @(BitSize a) of
     Dict -> Padded . unpack . snd $ split @_ @(Pad a bw) @(BitSize a) (pack vec)
+
+getRegs :: (BitPack a, KnownNat regSize, 1 <= regSize) => a -> RegisterBank regSize a
+getRegs = paddedToRegisters . Padded

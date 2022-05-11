@@ -396,8 +396,6 @@ wbCalTX ::
 wbCalTX CalendarControl{shadowReadAddr, wishboneActive, wishboneError, wishboneAddress}
  CalendarOutput{shadowEntry, shadowDepth}= wbOut
  where
-   getRegs :: forall a . Paddable a => a  -> RegisterBank (bytes * 8) a
-   getRegs = paddedToRegisters . Padded
    readData =
      case (getRegs shadowEntry, getRegs shadowReadAddr, getRegs shadowDepth) of
        (RegisterBank entryVec, RegisterBank readAddrVec, RegisterBank depthVec)  ->

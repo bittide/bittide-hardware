@@ -87,10 +87,8 @@ blockRamByteAddressable initRAM readAddr newEntry byteSelect =
    -- (\x y z-> trace (showX (x, y)) z) <$> readAddr <*> bundle writeBytes <*>
     registersToData @_ @8 . RegisterBank <$> readBytes
  where
-   initBytes = transpose $ getRegs <$> initRAM
-   getRegs x =
-     case paddedToRegisters $ Padded x of
-      RegisterBank vec -> vec
+   initBytes = transpose $ getBytes <$> initRAM
+   getBytes (getRegs -> RegisterBank vec) = vec
    writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
    readBytes = bundle $ (`blockRam` readAddr) <$> initBytes <*> writeBytes
 
@@ -106,12 +104,10 @@ registerByteAddressable ::
 registerByteAddressable initVal newVal byteEnables =
   registersToData @_ @8 . RegisterBank <$> bundle regsOut
  where
-  initBytes = getRegs initVal
-  newBytes = unbundle $ getRegs <$> newVal
+  initBytes = getBytes initVal
+  newBytes = unbundle $ getBytes <$> newVal
   regsOut = (`andEnable` register) <$> unbundle (unpack <$> byteEnables) <*> initBytes <*> newBytes
-  getRegs x =
-    case paddedToRegisters @8 $ Padded x of
-      RegisterBank vec -> vec
+  getBytes (getRegs -> RegisterBank vec) = vec
 
 -- | Takes singular write operation (Maybe (Index maxIndex, writeData)) and splits it up
 -- according to a supplied byteselect bitvector into a vector of byte sized write operations
