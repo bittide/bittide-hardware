@@ -19,6 +19,7 @@ import Data.Proxy
 import Data.Type.Equality ((:~:)(Refl))
 import Data.Constraint
 import Data.Constraint.Nat.Extra
+import Bittide.Extra.Wishbone
 
 -- | A single byte.
 type Byte = BitVector 8
@@ -123,3 +124,26 @@ div2Index ::
   Index (n*2) ->
   (Index n, b)
 div2Index = case clog2axiom @n of Refl -> bitCoerce
+
+-- | Delays the output controls to align them with the actual read / write timing.
+delayControls :: HiddenClockResetEnable dom =>
+  Signal dom (WishboneS2M bytes) -> Signal dom (WishboneS2M bytes)
+delayControls wbIn = wbOut
+ where
+   delayedAck = register False (acknowledge <$> wbIn)
+   delayedErr = register False (err <$> wbIn)
+   wbOut = (\wb newAck newErr-> wb{acknowledge = newAck, err = newErr})
+    <$> wbIn <*> delayedAck <*> delayedErr
+
+-- | Takes an implicit reset, an active low Signal dom Bool and produces a new reset that's
+-- active when either the implicit reset is active or the Signal dom Bool is False.
+orReset ::
+  HiddenReset dom =>
+  -- | New reset signal that is considered active when False.
+  Signal dom Bool ->
+  -- | Active when the implicit reset is active or the explicit reset is False.
+  Reset dom
+orReset bool = resetNew
+ where
+  resetExisting = unsafeToHighPolarity hasReset
+  resetNew = unsafeFromHighPolarity (not <$> bool .||. resetExisting)

@@ -82,6 +82,7 @@ library
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Switch
+    Bittide.Link
     Data.Constraint.Nat.Extra
 
 executable clash
