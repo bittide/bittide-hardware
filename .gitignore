@@ -52,6 +52,10 @@ cabal.config
 /contranomy/verilog
 /contranomy/systemverilog
 
+/bittide/vhdl
+/bittide/verilog
+/bittide/systemverilog
+
 # Nix output
 result*
 
