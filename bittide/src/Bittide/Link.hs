@@ -3,6 +3,9 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=6 #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Bittide.Link where
 
 import Clash.Prelude
@@ -12,6 +15,8 @@ import Bittide.SharedTypes
 import Bittide.DoubleBufferedRam
 import Data.Constraint
 import Data.Constraint.Nat.Extra
+import Data.Maybe
+import Data.Proxy
 
 data TransmissionState preambleWidth seqCountWidth frameWidth =
   LinkThrough |
@@ -19,37 +24,46 @@ data TransmissionState preambleWidth seqCountWidth frameWidth =
   TransmitSeqCounter (Index (Regs (BitVector seqCountWidth) frameWidth))
    deriving (Generic, NFDataX)
 
+
+topEntity ::
+  Clock System
+  -> Reset System
+  -> Enable System
+  -> Signal System (WishboneM2S 4 32)
+  -> Signal System (DataLink 16)
+  -> Signal System (WishboneS2M 4)
+topEntity clk rst en = withClockResetEnable clk rst en $ tyUnit (Proxy @64) (0x5555555555555555555555 :: BitVector (8*12))
 txUnit ::
-  forall core bytes addrWidth preambleWidth frameWidth seqCountWidth.
+  forall core bs aw preambleWidth frameWidth seqCountWidth .
   ( HiddenClockResetEnable core
   , KnownNat preambleWidth
   , 1 <= preambleWidth
   , KnownNat seqCountWidth
   , 1 <= seqCountWidth
   , KnownNat frameWidth
-  , KnownNat bytes
-  , 1 <= bytes
-  , KnownNat addrWidth
-  , 2 <= addrWidth
+  , KnownNat bs
+  , 1 <= bs
+  , KnownNat aw
+  , 2 <= aw
   , 1 <= frameWidth) =>
   -- |  Hardcoded preamble.
   BitVector preambleWidth ->
   -- | Local sequence counter.
   Signal core (BitVector seqCountWidth) ->
   -- | Control register wishbone bus (Master to slave).
-  Signal core (WishboneM2S bytes addrWidth) ->
+  Signal core (WishboneM2S bs aw) ->
   -- | Frame from 'gatherUnitWb'
   Signal core (DataLink frameWidth) ->
   -- |
   -- 1. Control register wishbone bus (Slave to master).
   -- 1. Outgoing frame
-  ( Signal core (WishboneS2M bytes)
+  ( Signal core (WishboneS2M bs)
   , Signal core (DataLink frameWidth))
 txUnit (getRegs -> RegisterBank preamble) sq wbIn frameIn = (wbOut, frameOut)
  where
   stateMachineOn :: Signal core Bool
   (stateMachineOn, wbOut) =
-   case timesDivRU @(bytes * 8) @1 of
+   case timesDivRU @(bs * 8) @1 of
      Dict -> registerWb WishbonePriority False wbIn (pure Nothing)
   frameOut = withReset regReset $ mealy stateMachine LinkThrough $ bundle (frameIn, sq)
   regReset = orReset stateMachineOn
@@ -67,11 +81,67 @@ txUnit (getRegs -> RegisterBank preamble) sq wbIn frameIn = (wbOut, frameOut)
     (TransmitSeqCounter n@((== maxBound) -> False)) -> (TransmitSeqCounter (n+1), Just $ sqIn !! n)
     (TransmitSeqCounter n@((== maxBound) -> True)) -> (TransmitPreamble 0, Just $ sqIn !! n)
 
-shiftRegister ::
-  forall dom bitsIn bitsOut .
-  (HiddenClockResetEnable dom, KnownNat bitsIn, KnownNat bitsOut) =>
-  Signal dom (BitVector bitsIn) ->
-  Signal dom (BitVector bitsOut)
-shiftRegister bvIn = bvOut
+tyUnit ::
+  forall core bs aw preambleWidth frameWidth seqCountWidth .
+  ( HiddenClockResetEnable core
+  , KnownNat bs, 1 <= bs
+  , KnownNat aw, 2 <= aw
+  , KnownNat preambleWidth
+  , KnownNat frameWidth, 1 <= frameWidth
+  , KnownNat seqCountWidth
+  , 1 <= DivRU (Max preambleWidth seqCountWidth + (bs * 8)) (bs * 8)
+  , (Div (Max preambleWidth seqCountWidth + 7) 8 + bs) ~ Div ((Max preambleWidth seqCountWidth + (bs * 8)) + 7) 8
+  , 1 <= (Max preambleWidth seqCountWidth + (bs * 8))) =>
+  Proxy seqCountWidth ->
+  BitVector preambleWidth ->
+  Signal core (WishboneM2S bs aw) ->
+  Signal core (DataLink frameWidth) ->
+  Signal core (WishboneS2M bs)
+tyUnit Proxy preamble wbIn linkIn = wbOut
  where
-   bvOut = register 0 $ (\ a b -> truncateB (a ++# b)) <$> bvOut <*> bvIn
+  shiftReg :: Signal core (BitVector (Max preambleWidth seqCountWidth))
+  (shiftReg, wbOut) = tyShiftRegister wbIn linkIn stopSignal
+  preambleFound = (==preamble) . (resize @_ @_ @preambleWidth) <$> shiftReg
+  stopSignal = captureCounter .==. pure (maxBound :: Index (DivRU seqCountWidth frameWidth))
+  captureCounter = andEnable (preambleFound .||. (/=0) <$> captureCounter) register 0 $ succ <$> captureCounter
+
+tyShiftRegister ::
+  forall dom bs aw shiftRegSize frameWidth .
+  ( HiddenClockResetEnable dom
+  , KnownNat bs, 1 <= bs
+  , KnownNat aw, 2 <= aw
+  , KnownNat shiftRegSize
+  , KnownNat frameWidth
+  , 1 <= DivRU (shiftRegSize + (bs *8)) (bs *8)
+  , 1 <= (shiftRegSize + bs * 8)
+  , (Div (shiftRegSize + 7) 8 + bs) ~ Div ((shiftRegSize + (bs * 8)) + 7) 8) =>
+  Signal dom (WishboneM2S bs aw) ->
+  Signal dom (DataLink frameWidth) ->
+  Signal dom Bool ->
+  (Signal dom (BitVector shiftRegSize), Signal dom  (WishboneS2M bs))
+tyShiftRegister wbIn shiftIn stopShifting = (shiftOut, wbOut)
+ where
+  (regOut, wbOut) = registerWbE WishbonePriority 0 wbIn regIn byteEnables
+  (regIn, byteEnables, shiftOut) = unbundle $ go <$> shiftIn <*> regOut <*> stopShifting
+
+  go :: forall regSize .
+    ( KnownNat regSize
+    , regSize ~ (shiftRegSize + (bs * 8))) =>
+    Maybe (BitVector frameWidth) ->
+    BitVector regSize ->
+    Bool ->
+    ( Maybe (BitVector regSize)
+    , BitVector (DivRU shiftRegSize 8 + bs)
+    , BitVector shiftRegSize)
+  go shiftIn0 regOut0 stopShifting0 = (regIn0, byteEnables0, oldShifted)
+   where
+    (oldShifted, reg0) = split regOut0
+    (_, unpack -> shiftEnable0) = split @_ @(bs * 8 - 1) reg0
+    newShifted = truncateB @_ @shiftRegSize (oldShifted ++# fromJust shiftIn0)
+    regIn0 = Just $ newShifted ++# (0 :: BitVector (bs * 8))
+    shiftEnables
+      | shiftEnable0 && isJust shiftIn0 = maxBound @(BitVector (DivRU shiftRegSize 8))
+      | otherwise = 0
+    byteEnables0 = shiftEnables ++# (0 :: BitVector (bs -1)) ++# pack stopShifting0
+
+{-# NOINLINE tyShiftRegister #-}
