@@ -24,15 +24,6 @@ data TransmissionState preambleWidth seqCountWidth frameWidth =
   TransmitSeqCounter (Index (Regs (BitVector seqCountWidth) frameWidth))
    deriving (Generic, NFDataX)
 
-
-topEntity ::
-  Clock System
-  -> Reset System
-  -> Enable System
-  -> Signal System (WishboneM2S 4 32)
-  -> Signal System (DataLink 16)
-  -> Signal System (WishboneS2M 4)
-topEntity clk rst en = withClockResetEnable clk rst en $ tyUnit (Proxy @64) (0x5555555555555555555555 :: BitVector (8*12))
 txUnit ::
   forall core bs aw preambleWidth frameWidth seqCountWidth .
   ( HiddenClockResetEnable core
