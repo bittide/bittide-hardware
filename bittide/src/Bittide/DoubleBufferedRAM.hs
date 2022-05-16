@@ -8,7 +8,6 @@ module Bittide.DoubleBufferedRAM where
 import Clash.Prelude
 
 import Bittide.SharedTypes
-
 -- | The double buffered RAM component is a memory component that internally uses a single
 -- blockRam, but enables the user to write to one part of the ram and read from another.
 -- When the metacycle indicate (the first argument) is True, the read buffer and write buffer
@@ -47,7 +46,8 @@ doubleBufferedRAM initialContent switch readAddr writeFrame = output
 -- contains the read data from the "active" buffer, and the second element contains the read data from the "inactive" buffer.
 -- Writing to this component will always write to the inactive buffer.
 doubleBufferedRAMByteAddressable ::
- ( KnownNat depth, HiddenClockResetEnable dom, Paddable a, KnownNat bytes, 1 <= bytes, bytes ~ Regs a 8, ShowX a) =>
+  forall dom depth a .
+  ( KnownNat depth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
   -- | The initial contents of the first buffer.
   Vec depth a ->
   -- | Indicates when a new metacycle has started.
@@ -57,7 +57,7 @@ doubleBufferedRAMByteAddressable ::
   -- | Incoming data frame.
   Signal dom (Maybe (Located  depth a)) ->
   -- | One hot byte select for writing only
-  Signal dom (ByteEnable bytes) ->
+  Signal dom (ByteEnable (Regs a 8)) ->
   -- | Outgoing data
   Signal dom a
 doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteSelect = output
@@ -76,16 +76,16 @@ doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteS
 -- | Blockram similar to 'blockRam' with the addition that it takes a byte select signal
 -- that controls which bytes at the write address are updated.
 blockRamByteAddressable ::
-  forall dom bytes depth a .
-  (HiddenClockResetEnable dom, KnownNat bytes, 1 <= bytes, bytes ~ Regs a 8, KnownNat depth, Paddable a, ShowX a) =>
+  forall dom depth a .
+  (HiddenClockResetEnable dom, KnownNat depth, Paddable a, ShowX a) =>
   Vec depth a ->
   Signal dom (Index depth) ->
   Signal dom (Maybe (Located depth a)) ->
-  Signal dom (ByteEnable bytes) ->
+  Signal dom (ByteEnable (Regs a 8)) ->
   Signal dom a
 blockRamByteAddressable initRAM readAddr newEntry byteSelect =
    -- (\x y z-> trace (showX (x, y)) z) <$> readAddr <*> bundle writeBytes <*>
-    ( registersToData @_ @8 . RegisterBank <$> readBytes)
+    registersToData @_ @8 . RegisterBank <$> readBytes
  where
    initBytes = transpose $ getRegs <$> initRAM
    getRegs x =
