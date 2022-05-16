@@ -9,6 +9,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Tests.Switch(switchGroup) where
 
+import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Vector
 import Clash.Prelude
 import qualified Prelude as P
@@ -22,20 +23,22 @@ import Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
 import Tests.Calendar
+import qualified Data.Sequence as Seq
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
 import Bittide.Calendar (CalendarConfig(..))
 import Bittide.Switch
+import Clash.Hedgehog.Sized.Unsigned
 
 switchGroup :: TestTree
 switchGroup = testGroup "Switch group"
   [testPropertyNamed "Routing works" "switchFrameRoutingWorks" switchFrameRoutingWorks]
 
 data SwitchConfig  bs aw where
-  SwitchConfig
-    :: (1 <= memDepth) =>
+  SwitchConfig ::
+    1 <= memDepth =>
     SNat links ->
     SNat memDepth ->
     CalendarConfig bs aw (CalendarEntry links memDepth) ->
@@ -46,19 +49,19 @@ deriving instance Show (SwitchConfig bs aw)
 -- This generator can generate a calendar entry for a switch given the amount of links and
 -- memory depth.
 genSwitchEntry ::
-  forall l d .
-  (KnownNat d, 1 <= d) =>
-  SNat l ->
-  SNat d ->
-  Gen (CalendarEntry l d)
+  forall links scatterDepth .
+  1 <= scatterDepth =>
+  SNat links ->
+  SNat scatterDepth ->
+  Gen (CalendarEntry links scatterDepth)
 genSwitchEntry SNat SNat = genVec elemGen
   where
-    genL = Gen.enum 0 (natToNum @(d-1))
-    genR = Gen.enum 0 $ natToNum @l
-    elemGen = (,) <$> genL <*> genR
+    genScatterEntry = genIndex Range.constantBounded
+    genLinkEntry = genIndex Range.constantBounded
+    elemGen = (,) <$> genScatterEntry <*> genLinkEntry
 
 -- | This generator can generate a any calendar for the bittide switch, knowing the
--- amount of bytes and addresswidth of the wishbone bus, and given the amount of links,
+-- amount of bytes and address width of the wishbone bus, and given the amount of links,
 -- memory depth of the scatter engine and calendar depth of the switch.
 genSwitchCalendar ::
   forall bs aw .
@@ -90,13 +93,13 @@ switchFrameRoutingWorks = property $ do
 
       simLength <- forAll $ Gen.enum latency 100
       let
-        genFrame = Just <$> Gen.integral Range.linearBounded
+        genFrame = Just . pack <$> genUnsigned @_ @64 Range.linearBounded
         allLinks = Gen.list (Range.singleton links0) genFrame
       topEntityInput <- forAll $ Gen.list (Range.singleton simLength) allLinks
 
       let
         topEntity streamsIn = withClockResetEnable clockGen resetGen enableGen $
-         fst (switch @_ @_ @_ @_ @_ @64 calConfig (pure False) (pure wbNothingM2S) streamsIn)
+         fst (switch calConfig (pure False) (pure $ wishboneM2S SNat SNat) streamsIn)
         simOut = simulateN @System simLength topEntity $ fmap unsafeFromList topEntityInput
         simOut1 = P.drop latency $ fmap toList simOut
 
@@ -112,11 +115,5 @@ switchFrameRoutingWorks = property $ do
 selectAllOutputs :: (KnownNat l, KnownNat d) => [Maybe a] -> [(Index d, Index (l+1))] -> [Maybe a]
 selectAllOutputs incomingFrames = fmap (selectionFunc . fromEnum . snd)
  where
-   allFrames = Nothing : incomingFrames
-   selectionFunc = (allFrames P.!!)
-
-wbNothingM2S :: forall bytes aw . (KnownNat bytes, KnownNat aw) => WishboneM2S bytes aw
-wbNothingM2S = (wishboneM2S (SNat @bytes) (SNat @aw))
- { addr = 0
- , writeData = 0
- , busSelect = 0}
+   allFrames = Nothing Seq.<| Seq.fromList incomingFrames
+   selectionFunc = (allFrames `Seq.index`)
