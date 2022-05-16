@@ -72,7 +72,7 @@ txUnit (getRegs -> RegisterBank preamble) sq wbIn frameIn = (wbOut, frameOut)
     (TransmitSeqCounter n@((== maxBound) -> False)) -> (TransmitSeqCounter (n+1), Just $ sqIn !! n)
     (TransmitSeqCounter n@((== maxBound) -> True)) -> (TransmitPreamble 0, Just $ sqIn !! n)
 
-tyUnit ::
+rxUnit ::
   forall core bs aw preambleWidth frameWidth seqCountWidth .
   ( HiddenClockResetEnable core
   , KnownNat bs, 1 <= bs
@@ -88,15 +88,15 @@ tyUnit ::
   Signal core (WishboneM2S bs aw) ->
   Signal core (DataLink frameWidth) ->
   Signal core (WishboneS2M bs)
-tyUnit Proxy preamble wbIn linkIn = wbOut
+rxUnit Proxy preamble wbIn linkIn = wbOut
  where
   shiftReg :: Signal core (BitVector (Max preambleWidth seqCountWidth))
-  (shiftReg, wbOut) = tyShiftRegister wbIn linkIn stopSignal
+  (shiftReg, wbOut) = rxShiftRegister wbIn linkIn stopSignal
   preambleFound = (==preamble) . (resize @_ @_ @preambleWidth) <$> shiftReg
   stopSignal = captureCounter .==. pure (maxBound :: Index (DivRU seqCountWidth frameWidth))
   captureCounter = andEnable (preambleFound .||. (/=0) <$> captureCounter) register 0 $ succ <$> captureCounter
 
-tyShiftRegister ::
+rxShiftRegister ::
   forall dom bs aw shiftRegSize frameWidth .
   ( HiddenClockResetEnable dom
   , KnownNat bs, 1 <= bs
@@ -110,7 +110,7 @@ tyShiftRegister ::
   Signal dom (DataLink frameWidth) ->
   Signal dom Bool ->
   (Signal dom (BitVector shiftRegSize), Signal dom  (WishboneS2M bs))
-tyShiftRegister wbIn shiftIn stopShifting = (shiftOut, wbOut)
+rxShiftRegister wbIn shiftIn stopShifting = (shiftOut, wbOut)
  where
   (regOut, wbOut) = registerWbE WishbonePriority 0 wbIn regIn byteEnables
   (regIn, byteEnables, shiftOut) = unbundle $ go <$> shiftIn <*> regOut <*> stopShifting
@@ -135,4 +135,4 @@ tyShiftRegister wbIn shiftIn stopShifting = (shiftOut, wbOut)
       | otherwise = 0
     byteEnables0 = shiftEnables ++# (0 :: BitVector (bs -1)) ++# pack stopShifting0
 
-{-# NOINLINE tyShiftRegister #-}
+{-# NOINLINE rxShiftRegister #-}
