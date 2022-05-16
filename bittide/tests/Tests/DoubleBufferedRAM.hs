@@ -203,8 +203,8 @@ doubleBufferedRAMByteAddressable0 = property $ do
 -- 'doubleBufferedRAM' when the byteEnables are always high.
 doubleBufferedRAMByteAddressable1 :: Property
 doubleBufferedRAMByteAddressable1 = property $ do
-  ramDepth <- forAll $ Gen.enum 1 100
-  nrOfBits <- forAll $ Gen.enum 1 100
+  ramDepth <- forAll $ Gen.enum 1 31
+  nrOfBits <- forAll $ Gen.enum 1 31
   simLength <- forAll $ Gen.int $ Range.constant 2 100
   ramContents <- forAll $ genBlockRamContents ramDepth nrOfBits
   case ramContents of
