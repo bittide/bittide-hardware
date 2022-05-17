@@ -183,7 +183,7 @@ gatherUnit ::
   -- | Swap active calendar and shadow calendar.
   Signal dom Bool ->
   -- | Generic write operation writing a frame.
-  Signal dom (WriteBits memDepth frameWidth) ->
+  Signal dom (Maybe (LocatedBits memDepth frameWidth)) ->
   -- | Byte enable for write operation.
   Signal dom (ByteEnable (DivRU frameWidth 8)) ->
   -- | (Transmitted  frame to Bittide Link, Wishbone slave-master from calendar)
