@@ -37,12 +37,18 @@ import Data.String
 
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRAM group"
-  [ testPropertyNamed "Reading the buffer." "readDoubleBufferedRAM" readDoubleBufferedRAM
-  , testPropertyNamed "Writing and reading back buffers." "readWriteDoubleBufferedRAM" readWriteDoubleBufferedRAM
-  , testPropertyNamed "Byte addressable blockRam matches behavioral model." "readWriteByteAddressableBlockram" readWriteByteAddressableBlockram
-  , testPropertyNamed "Byte addressable blockRam with always high byteEnables behaves like blockRam" "byteAddressableBlockRamAsBlockRam" byteAddressableBlockRamAsBlockRam
-  , testPropertyNamed "Byte addressable double buffered blockRam matches behavioral model." "doubleBufferedRAMByteAddressable0" doubleBufferedRAMByteAddressable0
-  , testPropertyNamed "Byte addressable double buffered blockRam with always high byteEnables behaves like 'doubleBufferedRAM'" "doubleBufferedRAMByteAddressable1" doubleBufferedRAMByteAddressable1]
+  [ testPropertyNamed "Reading the buffer."
+      "readDoubleBufferedRAM" readDoubleBufferedRAM
+  , testPropertyNamed "Writing and reading back buffers."
+      "readWriteDoubleBufferedRAM" readWriteDoubleBufferedRAM
+  , testPropertyNamed "Byte addressable blockRam matches behavioral model."
+      "readWriteByteAddressableBlockram" readWriteByteAddressableBlockram
+  , testPropertyNamed "Byte addressable blockRam with always high byteEnables behaves like blockRam"
+      "byteAddressableBlockRamAsBlockRam" byteAddressableBlockRamAsBlockRam
+  , testPropertyNamed "Byte addressable double buffered blockRam matches behavioral model."
+      "doubleBufferedRAMByteAddressable0" doubleBufferedRAMByteAddressable0
+  , testPropertyNamed "Byte addressable double buffered blockRam with always high byteEnables behaves like 'doubleBufferedRAM'"
+      "doubleBufferedRAMByteAddressable1" doubleBufferedRAMByteAddressable1]
 
 genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
 genRamContents depth = genSomeVec (Range.singleton $ fromIntegral (depth - 1))
@@ -220,7 +226,8 @@ doubleBufferedRAMByteAddressable1 = property $ do
       writeEntries <- forAll (Gen.list simRange $ Gen.maybe genDefinedBitVector)
       switchSignal <- forAll $ Gen.list simRange Gen.bool
       let
-        topEntityInput = L.zip3 switchSignal readAddresses (P.zipWith (\adr wr -> (adr,) <$> wr) writeAddresses writeEntries)
+        topEntityInput = L.zip3 switchSignal readAddresses
+          (P.zipWith (\adr wr -> (adr,) <$> wr) writeAddresses writeEntries)
         simOut = simulateN @System simLength topEntity topEntityInput
         (duvOut, refOut) = L.unzip simOut
       duvOut === refOut
@@ -229,10 +236,21 @@ doubleBufferedRAMByteAddressable1 = property $ do
 -- and updates the RAM based on the the write operation and byte enables.
 -- Furthermore it contains read-before-write behavior based on the readAddr.
 byteAddressableRAMBehavior :: forall bits depth bytes .
-  (KnownNat depth, 1 <= depth, KnownNat bytes, 1 <= bytes, bytes ~ Regs (BitVector bits) 8, KnownNat bits, 1 <= bits) =>
-  ((Index depth, Maybe (LocatedBits depth bits), ByteEnable bytes), Vec depth (BitVector bits))->
+  (KnownNat depth, 1 <= depth
+  , KnownNat bytes, 1 <= bytes
+  , bytes ~ Regs (BitVector bits) 8
+  , KnownNat bits, 1 <= bits) =>
+
+  ((Index depth, Maybe (LocatedBits depth bits), ByteEnable bytes)
+  , Vec depth (BitVector bits))->
+
   (Index depth, Maybe (LocatedBits depth bits), ByteEnable bytes) ->
-  (((Index depth, Maybe (LocatedBits depth bits), ByteEnable bytes), Vec depth (BitVector bits)), BitVector bits)
+
+  ((( Index depth
+    , Maybe (LocatedBits depth bits)
+    , ByteEnable bytes)
+   , Vec depth (BitVector bits))
+  , BitVector bits)
 byteAddressableRAMBehavior state input = (state', ram !! readAddr)
  where
   ((readAddr, writeOp, byteEnable), ram) = state
@@ -256,10 +274,22 @@ byteAddressableRAMBehavior state input = (state', ram !! readAddr)
 -- The only addition compared to byteAddressableRAM is the fact that there's two buffers
 -- (one read only, one write only), that can be swapped.
 byteAddressableDoubleBufferedRAMBehavior :: forall bits depth bytes .
- (KnownNat depth, 1 <= depth, KnownNat bytes, 1 <= bytes, bytes ~ Regs (BitVector bits) 8, KnownNat bits, 1 <= bits) =>
- ((Bool, Index depth, Maybe (LocatedBits depth bits), BitVector bytes), Vec depth (BitVector bits), Vec depth (BitVector bits))->
+ ( KnownNat depth
+ , 1 <= depth
+ , KnownNat bytes
+ , 1 <= bytes
+ , bytes ~ Regs (BitVector bits) 8
+ , KnownNat bits
+ , 1 <= bits) =>
+ ((Bool, Index depth, Maybe (LocatedBits depth bits), BitVector bytes)
+ , Vec depth (BitVector bits), Vec depth (BitVector bits))->
+
  (Bool, Index depth, Maybe (LocatedBits depth bits), BitVector bytes) ->
- (((Bool, Index depth, Maybe (LocatedBits depth bits), BitVector bytes), Vec depth (BitVector bits), Vec depth (BitVector bits)), BitVector bits)
+
+ (((Bool, Index depth, Maybe (LocatedBits depth bits), BitVector bytes)
+ , Vec depth (BitVector bits)
+ , Vec depth (BitVector bits))
+ , BitVector bits)
 byteAddressableDoubleBufferedRAMBehavior state input = (state', pack $ bufA0 !! readAddr)
  where
   ((switchBuffers, readAddr, writeOp, byteEnable), bufA, bufB) = state
@@ -269,8 +299,9 @@ byteAddressableDoubleBufferedRAMBehavior state input = (state', pack $ bufA0 !! 
   writeTrue = isJust writeOp
   RegisterBank oldData = getRegs $ bufB0 !! writeAddr
   RegisterBank newData = getRegs writeData
-  newEntry = getData $ zipWith (\ sel (old,new) -> if sel then new else old) (unpack byteEnable) $
-   zip oldData newData
+  newEntry = getData $ zipWith
+    (\ sel (old,new) -> if sel then new else old)
+    (unpack byteEnable) $ zip oldData newData
 
   bufB1 = if writeTrue then replace writeAddr newEntry bufB0 else bufB0
   state' = (input, bufA0, bufB1)

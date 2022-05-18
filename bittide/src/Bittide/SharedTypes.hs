@@ -54,7 +54,9 @@ type Regs a bw = DivRU (BitSize a) bw
 newtype RegisterBank regSize content =
   RegisterBank (Vec (Regs content regSize) (BitVector regSize))
 
-deriving newtype instance (KnownNat regSize, 1 <= regSize, Paddable content, NFDataX (RegisterBank regSize content)) => NFDataX (RegisterBank regSize content)
+deriving newtype instance
+  (KnownNat regSize, 1 <= regSize, Paddable content, NFDataX (RegisterBank regSize content))
+  => NFDataX (RegisterBank regSize content)
 
 deriving newtype instance (KnownNat regSize, 1 <= regSize, ShowX (RegisterBank regSize content)) =>
   ShowX (RegisterBank regSize content)
