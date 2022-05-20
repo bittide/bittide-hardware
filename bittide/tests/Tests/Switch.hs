@@ -104,15 +104,21 @@ switchFrameRoutingWorks = property $ do
         simOut1 = P.drop latency $ fmap toList simOut
 
       let
-        expectedFrames = P.take simLength (P.replicate links0 Nothing : P.replicate links0 Nothing : topEntityInput)
-        expectedOutput = P.drop latency . P.take simLength $ P.zipWith selectAllOutputs expectedFrames (cycle $ fmap toList cal)
+        expectedFrames = P.take simLength
+          (P.replicate links0 Nothing : P.replicate links0 Nothing : topEntityInput)
+        expectedOutput = P.drop latency . P.take simLength $
+          P.zipWith selectAllOutputs expectedFrames (cycle $ fmap toList cal)
       footnote . fromString $ "expected:" <> showX expectedOutput
       footnote . fromString $ "simOut1: " <> showX simOut1
       footnote . fromString $ "simOut: " <> showX simOut
       footnote . fromString $ "input: " <> showX topEntityInput
       simOut1 === expectedOutput
 
-selectAllOutputs :: (KnownNat l, KnownNat d) => [Maybe a] -> [(Index d, Index (l+1))] -> [Maybe a]
+selectAllOutputs ::
+  (KnownNat l, KnownNat d) =>
+  [Maybe a] ->
+  [(Index d, Index (l+1))] ->
+  [Maybe a]
 selectAllOutputs incomingFrames = fmap (selectionFunc . fromEnum . snd)
  where
    allFrames = Nothing Seq.<| Seq.fromList incomingFrames
