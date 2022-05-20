@@ -301,9 +301,6 @@ writeWithWishbone ::
 writeWithWishbone (a, entry) =
   case getRegs entry of
     RegisterBank vec -> toList $ fmap wbWriteOp $ zip indicesI (vec :< fromIntegral a)
- where
-  getRegs :: entry  -> RegisterBank (bytes * 8) entry
-  getRegs = paddedToRegisters . Padded
 
 -- | Use both the wishbone M2S bus and S2M bus to decode the S2M bus operations into the
 -- expected type a.
