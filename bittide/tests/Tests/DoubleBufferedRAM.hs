@@ -145,7 +145,10 @@ readWriteByteAddressableBlockram = property $ do
         simOut = simulateN @System simLength topEntity topEntityInput
         (_,expectedOut) = L.mapAccumL byteAddressableRAMBehavior
           (L.head topEntityInput, contents) $ L.tail topEntityInput
-      -- Drop boot behavior
+      -- TODO: Due to some unexpected mismatch between the expected behavior of either
+      -- blockRam or the behavioral model, the boot behavior is inconsistent. We drop the first
+      -- expectedOutput cycle too, we expect this is due to the resets supplied b simulateN.
+      -- An issue has been made regarding this.
       L.drop 2 simOut === L.tail expectedOut
 
 -- | This test checks if 'blockRamByteAddressable' behaves the same as 'blockRam' when the
@@ -202,7 +205,10 @@ doubleBufferedRAMByteAddressable0 = property $ do
         simOut = simulateN @System simLength topEntity topEntityInput
         (_,expectedOut) = L.mapAccumL byteAddressableDoubleBufferedRAMBehavior
           (L.head topEntityInput, contents, contents) $ L.tail topEntityInput
-      -- Drop boot behavior.
+      -- TODO: Due to some unexpected mismatch between the expected behavior of either
+      -- blockRam or the behavioral model, the boot behavior is inconsistent. We drop the first
+      -- expectedOutput cycle too, we expect this is due to the resets supplied b simulateN.
+      -- An issue has been made regarding this.
       L.drop 2 simOut === L.tail expectedOut
 
 -- | This test checks if 'doubleBufferedRAMByteAddressable' behaves the same as

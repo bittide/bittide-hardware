@@ -26,10 +26,10 @@ type ByteEnable bytes = BitVector bytes
 type DataLink frameWidth = Maybe (BitVector frameWidth)
 type LessThan a b = (KnownNat a, KnownNat b, a <= b)
 
--- Synonym that returns the amount of bits required to represent natural number n.
+-- Synonym that returns the number of bits required to represent natural number n.
 type NatRequiredBits n = CLog 2 (n + 1)
 
--- Constraint that requires the amount of bits required to represent natural number n
+-- Constraint that requires the number of bits required to represent natural number n
 -- to be lesser than or equal to bits.
 type NatFitsInBits n bits = NatRequiredBits n <= bits
 
