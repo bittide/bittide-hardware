@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# OPTIONS_GHC -fconstraint-solver-iterations=6#-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=7#-}
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -111,7 +111,29 @@ registerWB ::
   forall dom a bs aw .
   ( HiddenClockResetEnable dom
   , Paddable a
-  , 1 <= (Regs a (bs * 8))
+  , KnownNat bs
+  , 1 <= bs
+  , KnownNat aw
+  , 2 <= aw) =>
+  RegisterWritePriority ->
+  a ->
+  Signal dom (WishboneM2S bs aw) ->
+  Signal dom (Maybe a) ->
+  (Signal dom a, Signal dom (WishboneS2M bs))
+registerWB writePriority initVal wbIn sigIn =
+  registerWBE writePriority initVal wbIn sigIn (pure maxBound)
+
+-- | register with additional wishbone interface, this component has a configurable
+-- priority that determines which value gets stored in the register during a write conflict.
+-- With 'CircuitPriority', the incoming value in the fourth argument gets stored on a
+-- collision and the wishbone bus gets acknowledged, but the value is silently ignored.
+-- With 'WishbonePriority', the incoming wishbone write gets accepted and the value in the
+-- fourth argument gets ignored. This version has an additional argument for circuit write
+-- byte enables.
+registerWBE ::
+  forall dom a bs aw .
+  ( HiddenClockResetEnable dom
+  , Paddable a
   , KnownNat bs
   , 1 <= bs
   , KnownNat aw
@@ -124,29 +146,33 @@ registerWB ::
   Signal dom (WishboneM2S bs aw) ->
   -- | New circuit value.
   Signal dom (Maybe a) ->
+  -- | Explicit Byte enables for new circuit value
+  Signal dom (BitVector (Regs a 8)) ->
   -- |
   -- 1. Outgoing stored value
   -- 2. Outgoing wishbone bus (slave to master)
   (Signal dom a, Signal dom (WishboneS2M bs))
-registerWB writePriority initVal wbIn sigIn = (regOut, wbOut)
+registerWBE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
  where
   regOut = registerByteAddressable initVal regIn byteEnables
-  (byteEnables, wbOut, regIn) = unbundle (go <$> regOut <*> sigIn <*> wbIn)
+  (byteEnables, wbOut, regIn) = unbundle (go <$> regOut <*> sigIn <*> sigByteEnables <*> wbIn)
   go ::
     a  ->
     Maybe a ->
+    BitVector (Regs a 8) ->
     WishboneM2S bs aw ->
     (BitVector (Regs a 8), WishboneS2M bs, a)
-  go regOut0 sigIn0 WishboneM2S{..} = (byteEnables0, WishboneS2M{acknowledge, err, readData}, regIn0)
+  go regOut0 sigIn0 sigbyteEnables0 WishboneM2S{..} =
+    (byteEnables0, WishboneS2M{acknowledge, err, readData}, regIn0)
    where
     (alignedAddress, alignment) = split @_ @(aw - 2) @2 addr
-    addressRange = maxBound :: Index (Regs a (bs * 8))
+    addressRange = maxBound :: Index (Max 1 (Regs a (bs * 8)))
     invalidAddress = (alignedAddress > resize (pack addressRange)) || not (alignment == 0)
     masterActive = strobe && busCycle
     err = masterActive && invalidAddress
     acknowledge = masterActive && not err
     wbWriting = writeEnable && acknowledge
-    wbAddr = unpack . resize $ pack alignedAddress :: Index (Regs a (bs * 8))
+    wbAddr = unpack . resize $ pack alignedAddress :: Index (Max 1 (Regs a (bs * 8)))
     readData = case paddedToRegisters $ Padded regOut0 of
       RegisterBank vec -> vec !! wbAddr
 
@@ -155,10 +181,10 @@ registerWB writePriority initVal wbIn sigIn = (regOut, wbOut)
     sigRegIn = fromMaybe (errorX "registerWB: sigIn is Nothing when Just is expected.") sigIn0
     wbRegIn = registersToData . RegisterBank $ repeat writeData
     (byteEnables0, regIn0) = case (writePriority, isJust sigIn0, wbWriting) of
-      (CircuitPriority , True , _)     -> (maxBound, sigRegIn)
+      (CircuitPriority , True , _)     -> (sigbyteEnables0, sigRegIn)
       (CircuitPriority , False, True)  -> (wbByteEnables, wbRegIn)
       (WishbonePriority, _    , True)  -> (wbByteEnables, wbRegIn)
-      (WishbonePriority, True , False) -> (maxBound, sigRegIn)
+      (WishbonePriority, True , False) -> (sigbyteEnables0, sigRegIn)
       (_               , False, False) -> (0, errorX "registerWB: register input not defined.")
 
 -- | Registor similar to 'register' with the addition that it takes a byte select signal
