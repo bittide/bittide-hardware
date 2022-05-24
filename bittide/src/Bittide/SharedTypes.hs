@@ -58,32 +58,32 @@ deriving newtype instance
   (KnownNat regSize, 1 <= regSize, Paddable content, NFDataX (RegisterBank regSize content))
   => NFDataX (RegisterBank regSize content)
 
-deriving newtype instance (KnownNat regSize, 1 <= regSize, ShowX (RegisterBank regSize content)) =>
+deriving newtype instance (KnownNat regSize, ShowX (RegisterBank regSize content)) =>
   ShowX (RegisterBank regSize content)
 
 newtype Padded bw a = Padded {paddedToData :: a}
 
-deriving newtype instance (KnownNat bw, 1 <= bw, Paddable a, NFDataX a, NFDataX (Padded bw a)) =>
+deriving newtype instance (KnownNat bw, Paddable a, NFDataX a, NFDataX (Padded bw a)) =>
   NFDataX (Padded bw a)
 
-bvAsPadded :: forall bw a. (Paddable a, KnownNat bw, 1 <= bw) => BitVector bw -> Padded bw a
+bvAsPadded :: forall bw a. (Paddable a, KnownNat bw) => BitVector bw -> Padded bw a
 bvAsPadded bv =
   case timesDivRU @bw @(BitSize a) of
     Dict -> case sameNat (Proxy @(Pad a bw + BitSize a)) (Proxy @bw) of
       Just Refl -> Padded . unpack . snd $ split @_ @(Pad a bw) @(BitSize a) bv
       _ -> error "bvAsPadded: Negative padding"
 
-registersToData :: (Paddable a, KnownNat regSize, 1 <= regSize) => RegisterBank regSize a -> a
+registersToData :: (Paddable a, KnownNat regSize) => RegisterBank regSize a -> a
 registersToData = paddedToData . registersToPadded
 
-paddedToRegisters :: forall bw a . (BitPack a, KnownNat bw, 1 <= bw) => Padded bw a -> RegisterBank bw a
+paddedToRegisters :: forall bw a . (BitPack a, KnownNat bw) => Padded bw a -> RegisterBank bw a
 paddedToRegisters (Padded a) = case timesDivRU @bw @(BitSize a) of
   Dict -> RegisterBank (unpack ((0b0 :: BitVector (Pad a bw)) ++# pack a))
 
-registersToPadded :: forall bw a . (Paddable a, KnownNat bw, 1 <= bw) => RegisterBank bw a -> Padded bw a
+registersToPadded :: forall bw a . (Paddable a, KnownNat bw) => RegisterBank bw a -> Padded bw a
 registersToPadded (RegisterBank vec) =
   case timesDivRU @bw @(BitSize a) of
     Dict -> Padded . unpack . snd $ split @_ @(Pad a bw) @(BitSize a) (pack vec)
 
-getRegs :: (BitPack a, KnownNat regSize, 1 <= regSize) => a -> RegisterBank regSize a
+getRegs :: (BitPack a, KnownNat regSize) => a -> RegisterBank regSize a
 getRegs = paddedToRegisters . Padded
