@@ -99,10 +99,11 @@ test-suite unittests
   other-modules:
     Tests.Calendar
     Tests.DoubleBufferedRam
-    Tests.Wishbone
+    Tests.Link
     Tests.ScatterGather
     Tests.Shared
     Tests.Switch
+    Tests.Wishbone
   build-depends:
     bittide,
     clash-prelude-hedgehog >= 1.6 && < 1.7,
