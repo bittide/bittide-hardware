@@ -17,6 +17,7 @@ import Data.Constraint
 import Data.Constraint.Nat.Extra
 import Data.Maybe
 import Data.Proxy
+import Data.Type.Equality ((:~:)(Refl))
 
 data TransmissionState preambleWidth seqCountWidth frameWidth =
   LinkThrough |
@@ -28,9 +29,7 @@ txUnit ::
   forall core bs aw preambleWidth frameWidth seqCountWidth .
   ( HiddenClockResetEnable core
   , KnownNat preambleWidth
-  , 1 <= preambleWidth
   , KnownNat seqCountWidth
-  , 1 <= seqCountWidth
   , KnownNat frameWidth
   , KnownNat bs
   , 1 <= bs
@@ -40,7 +39,7 @@ txUnit ::
   -- |  Hardcoded preamble.
   BitVector preambleWidth ->
   -- | Local sequence counter.
-  Signal core (BitVector seqCountWidth) ->
+  Signal core (Unsigned seqCountWidth) ->
   -- | Control register wishbone bus (Master to slave).
   Signal core (WishboneM2S bs aw) ->
   -- | Frame from 'gatherUnitWb'
@@ -56,7 +55,7 @@ txUnit (getRegs -> RegisterBank preamble) sq wbIn frameIn = (wbOut, frameOut)
   (stateMachineOn, wbOut) =
    case timesDivRU @(bs * 8) @1 of
      Dict -> registerWb WishbonePriority False wbIn (pure Nothing)
-  frameOut = withReset regReset $ mealy stateMachine LinkThrough $ bundle (frameIn, sq)
+  frameOut = withReset regReset $ mealy stateMachine LinkThrough $ bundle (frameIn, pack <$> sq)
   regReset = orReset stateMachineOn
 
   stateMachine ::
@@ -77,12 +76,9 @@ rxUnit ::
   ( HiddenClockResetEnable core
   , KnownNat bs, 1 <= bs
   , KnownNat aw, 2 <= aw
-  , KnownNat preambleWidth
+  , KnownNat preambleWidth, 1 <= preambleWidth
   , KnownNat frameWidth, 1 <= frameWidth
-  , KnownNat seqCountWidth
-  , 1 <= DivRU (Max preambleWidth seqCountWidth + (bs * 8)) (bs * 8)
-  , (Div (Max preambleWidth seqCountWidth + 7) 8 + bs) ~ Div ((Max preambleWidth seqCountWidth + (bs * 8)) + 7) 8
-  , 1 <= (Max preambleWidth seqCountWidth + (bs * 8))) =>
+  , KnownNat seqCountWidth, 1 <= seqCountWidth) =>
   Proxy seqCountWidth ->
   BitVector preambleWidth ->
   Signal core (WishboneM2S bs aw) ->
@@ -91,7 +87,8 @@ rxUnit ::
 rxUnit Proxy preamble wbIn linkIn = wbOut
  where
   shiftReg :: Signal core (BitVector (Max preambleWidth seqCountWidth))
-  (shiftReg, wbOut) = rxShiftRegister wbIn linkIn stopSignal
+  (shiftReg, wbOut) = case lessThanMax @preambleWidth @seqCountWidth @1 of
+    Dict -> rxShiftRegister wbIn linkIn stopSignal
   preambleFound = (==preamble) . (resize @_ @_ @preambleWidth) <$> shiftReg
   stopSignal = captureCounter .==. pure (maxBound :: Index (DivRU seqCountWidth frameWidth))
   captureCounter = andEnable (preambleFound .||. (/=0) <$> captureCounter) register 0 $ succ <$> captureCounter
@@ -101,27 +98,27 @@ rxShiftRegister ::
   ( HiddenClockResetEnable dom
   , KnownNat bs, 1 <= bs
   , KnownNat aw, 2 <= aw
-  , KnownNat shiftRegSize
-  , KnownNat frameWidth
-  , 1 <= DivRU (shiftRegSize + (bs *8)) (bs *8)
-  , 1 <= (shiftRegSize + bs * 8)
-  , (Div (shiftRegSize + 7) 8 + bs) ~ Div ((shiftRegSize + (bs * 8)) + 7) 8) =>
+  , KnownNat shiftRegSize, 1 <= shiftRegSize
+  , KnownNat frameWidth) =>
   Signal dom (WishboneM2S bs aw) ->
   Signal dom (DataLink frameWidth) ->
   Signal dom Bool ->
-  (Signal dom (BitVector shiftRegSize), Signal dom  (WishboneS2M bs))
+  (Signal dom (BitVector shiftRegSize), Signal dom (WishboneS2M bs))
 rxShiftRegister wbIn shiftIn stopShifting = (shiftOut, wbOut)
  where
+  regOut :: Signal dom (BitVector (shiftRegSize + bs * 8))
   (regOut, wbOut) = registerWbE WishbonePriority 0 wbIn regIn byteEnables
-  (regIn, byteEnables, shiftOut) = unbundle $ go <$> shiftIn <*> regOut <*> stopShifting
+  (regIn, byteEnables, shiftOut) =
+    case sameNat
+      (Proxy @(DivRU shiftRegSize 8 + bs))
+      (Proxy @(DivRU (shiftRegSize + bs * 8) 8)) of
+    Just Refl -> unbundle $ go <$> shiftIn <*> regOut <*> stopShifting
 
-  go :: forall regSize .
-    ( KnownNat regSize
-    , regSize ~ (shiftRegSize + (bs * 8))) =>
+  go ::
     Maybe (BitVector frameWidth) ->
-    BitVector regSize ->
+    BitVector (shiftRegSize + bs * 8) ->
     Bool ->
-    ( Maybe (BitVector regSize)
+    ( Maybe (BitVector (shiftRegSize + bs * 8))
     , BitVector (DivRU shiftRegSize 8 + bs)
     , BitVector shiftRegSize)
   go shiftIn0 regOut0 stopShifting0 = (regIn0, byteEnables0, oldShifted)

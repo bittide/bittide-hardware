@@ -70,7 +70,7 @@ configTxUnit ::
   ( HiddenClockResetEnable System, 1 <= bs, 2 <= aw, 1 <= pw, 1 <= fw, 1 <= scw) =>
   SNat bs -> SNat aw -> SNat pw -> SNat fw -> SNat scw ->
     (BitVector pw
-    -> Signal System (BitVector scw)
+    -> Signal System (Unsigned scw)
     -> Signal System (WishboneM2S bs aw)
     -> Signal System (DataLink fw)
     -> (Signal System (WishboneS2M bs), Signal System (DataLink fw)))
