@@ -28,12 +28,12 @@ import Bittide.SharedTypes
 import Data.Proxy
 import Data.String
 
-
 linkGroup :: TestTree
 linkGroup = testGroup "Link group"
   [testPropertyNamed "txUnit can be set to continuously transmit the preamble and sequence counter."
     "txSendSC" txSendSC]
 
+-- | Configuration for either a txUnit or tyUnit.
 data TestConfig where
   TestConfig ::
     ( 1 <= bytes
@@ -49,6 +49,7 @@ data TestConfig where
     TestConfig
 deriving instance Show TestConfig
 
+-- | Generates a 'TestConfig' for a txUnit or tyUnit.
 genTestConfig :: Gen TestConfig
 genTestConfig = do
   (TN.someNatVal -> (SomeNat (snatProxy -> bs))) <- Gen.enum 1 8
@@ -65,6 +66,7 @@ genTestConfig = do
       (SNatLE, SNatLE, SNatLE, SNatLE, SNatLE) -> pure $ TestConfig bs aw pw fw scw
       _ -> error "genTestConfig: Generated configuration does not satisfy constraints."
 
+-- | Use SNat values obtained from a 'TestConfig' to configure a 'txUnit'.
 configTxUnit ::
   forall bs aw pw fw scw .
   ( HiddenClockResetEnable System, 1 <= bs, 2 <= aw, 1 <= pw, 1 <= fw, 1 <= scw) =>
@@ -76,6 +78,7 @@ configTxUnit ::
     -> (Signal System (WishboneS2M bs), Signal System (DataLink fw)))
 configTxUnit SNat SNat SNat SNat SNat = txUnit @System @bs @aw @pw @fw @scw
 
+-- | Use SNat values obtained from a 'TestConfig' to configure a 'rxUnit'.
 configRxUnit ::
   forall bs aw pw fw scw .
   ( HiddenClockResetEnable System, 1 <= bs, 2 <= aw, 1 <= pw, 1 <= fw, 1 <= scw) =>
@@ -87,6 +90,9 @@ configRxUnit ::
     -> Signal System (WishboneS2M bs))
 configRxUnit SNat SNat SNat SNat SNat = rxUnit @System @bs @aw @pw @fw @scw
 
+-- | Tests whether the transmission of a static preamble and static seqCounter works.
+-- It does so by simulating the 'txUnit' for a number of cycles in transparent mode,
+-- then simulating it in transmission mode, then again in transparent mode.
 txSendSC :: Property
 txSendSC = property $ do
   tc <- forAll genTestConfig
