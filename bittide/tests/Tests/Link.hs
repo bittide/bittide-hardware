@@ -92,32 +92,36 @@ configRxUnit SNat SNat SNat SNat SNat = rxUnit @System @bs @aw @pw @fw @scw
 
 -- | Tests whether the transmission of a static preamble and static seqCounter works.
 -- It does so by simulating the 'txUnit' for a number of cycles in transparent mode,
--- then simulating it in transmission mode, then again in transparent mode.
+-- then simulating it in transmission mode, then again in transparent mode. Transparent
+-- and transmission mode refer to passing through the incoming link and transmitting
+-- preamble + sequence counter respectively.
 txSendSC :: Property
 txSendSC = property $ do
   tc <- forAll genTestConfig
   case tc of
     (TestConfig bs@(SNat :: SNat bs) aw@(SNat :: SNat aw) pw@(SNat :: SNat pw) fw@(SNat :: SNat fw) scw@(SNat :: SNat scw)) -> do
       iterations <- forAll $ Gen.enum 1 10
+      preamble <- forAll $ pack <$> genUnsigned Range.constantBounded
       let
         pwNum = snatToNum pw
         fwNum = snatToNum fw
         scwNum = snatToNum scw
-        iterationDuration = (pwNum `divRU` fwNum) + (scwNum `divRU` fwNum)
+        pwFrames = pwNum `divRU` fwNum
+        scFrames = scwNum `divRU` fwNum
+        iterationDuration = pwFrames + scFrames
         iterationsTotal = iterations * iterationDuration
       -- First two cycles output depend on the initial state.
       -- The txUnit's state machine starts after the control register has been updated,
       -- causing an extra cycle of delay.
-      offTime0 <- forAll $ Gen.enum 2 $ max 3 iterationsTotal
+      offTime0 <- forAll $ Gen.enum 2 $ max 2 iterationsTotal
       onTime   <- forAll $ Gen.enum 1 iterationsTotal
-      offTime1 <- forAll $ Gen.enum 0 iterationsTotal
+      offTime1 <- forAll $ Gen.enum 1 iterationsTotal
       let
         simLength = offTime0 + onTime + offTime1
         simRange = Range.singleton simLength
         genFrame = Gen.maybe (pack <$> genUnsigned Range.constantBounded)
-      preamble <- forAll $ pack <$> genUnsigned Range.constantBounded
-      seqCount <- forAll $ genUnsigned Range.constantBounded
       framesIn <- forAll $ Gen.list simRange genFrame
+      seqCountIn <-forAll . Gen.list simRange $ genUnsigned Range.constantBounded
       let
         topEntity (unbundle -> (scIn, wbIn0, linkIn)) = bundle $ withClockResetEnable
           clockGen resetGen enableGen configTxUnit bs aw pw fw scw preamble scIn wbIn0 linkIn
@@ -126,7 +130,8 @@ txSendSC = property $ do
         wbOn = startSignal : L.replicate onTime emptyWishboneM2S
         wbOff1 = stopSignal : L.repeat emptyWishboneM2S
         wbIn = wbOff0 <> wbOn <> wbOff1
-        topEntityInput = L.zip3 (L.repeat seqCount) wbIn framesIn
+        RegisterBank (toList . fmap Just-> preambleFrames) = getRegs @_ @fw preamble
+        topEntityInput = L.zip3 seqCountIn wbIn framesIn
         startSignal = (emptyWishboneM2S @bs @aw)
           { addr = 0
           , writeEnable = True
@@ -144,18 +149,29 @@ txSendSC = property $ do
           , strobe = True
           }
         (wbOut, simOut) = L.unzip $ simulateN simLength topEntity topEntityInput
-        RegisterBank (toList . fmap Just -> preambleFrames) = getRegs @_ @fw preamble
-        RegisterBank (toList . fmap Just -> secCountFames) = getRegs @_ @fw seqCount
-
         -- It takes 1 cycle for the the control register to be updated by the wishbone bus.
         (offFrames0, L.drop onTime -> offFrames1) = L.splitAt offTime0 framesIn
-        onFrames = L.take onTime (cycle $ preambleFrames <> secCountFames)
-        expectedOutput = offFrames0 <> onFrames <> offFrames1
-
+        onFrames = L.take onTime $ preambleFrames L.++ L.concatMap ((L.++ preambleFrames) . fmap Just . secToFrames) (everyNth iterationDuration $ L.drop (min (simLength - 1) (offTime0 + pwFrames - 1)) seqCountIn)
+        expectedOutput = L.take simLength $ offFrames0 <> onFrames <> offFrames1
+      footnote . fromString $ "iterationsDuration: " <> showX iterationDuration
+      footnote . fromString $ "droppedSCs: " <> showX offTime0 <> " + " <> showX pwFrames <> " - 1 = " <> showX (offTime0 + pwFrames - 1)
       footnote . fromString $ "simOut: " <> showX simOut
+      footnote . fromString $ "expected: " <> showX expectedOutput
+      footnote . fromString $ "onFrames: " <> showX onFrames
       footnote . fromString $ "framesIn: " <> showX (L.take simLength framesIn)
       footnote . fromString $ "wbOut: " <> showX wbOut
       footnote . fromString $ "wbIn: " <> showX (L.take simLength wbIn)
       simOut === expectedOutput
- where
-  divRU a b = (b + a - 1) `div` a
+
+divRU :: Integral a => a -> a -> a
+divRU b a = (b + a - 1) `div` a
+
+secToFrames :: forall regSize a . (KnownNat regSize, Paddable a) => a -> [BitVector regSize]
+secToFrames sc = out
+  where
+  RegisterBank (toList -> out) = getRegs sc
+
+everyNth :: Int -> [a] -> [a]
+everyNth 0 _ = error "Can not take every 0th element."
+everyNth _ [] = []
+everyNth n (x:xs) = x : everyNth n (L.drop (n-1) xs)

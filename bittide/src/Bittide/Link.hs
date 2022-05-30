@@ -55,21 +55,23 @@ txUnit (getRegs -> RegisterBank preamble) sq wbIn frameIn = (wbOut, frameOut)
   (stateMachineOn, wbOut) =
    case timesDivRU @(bs * 8) @1 of
      Dict -> registerWb WishbonePriority False wbIn (pure Nothing)
-  frameOut = withReset regReset $ mealy stateMachine LinkThrough $ bundle (frameIn, pack <$> sq)
+  frameOut = withReset regReset $ mealy stateMachine (sqErr, LinkThrough) $ bundle (frameIn, sq)
   regReset = orReset stateMachineOn
 
   stateMachine ::
-    TransmissionState preambleWidth seqCountWidth frameWidth->
-    (DataLink frameWidth, BitVector seqCountWidth) ->
-    ( TransmissionState preambleWidth seqCountWidth frameWidth
+    (Unsigned seqCountWidth, TransmissionState preambleWidth seqCountWidth frameWidth) ->
+    (DataLink frameWidth, Unsigned seqCountWidth) ->
+    ( (Unsigned seqCountWidth
+    , TransmissionState preambleWidth seqCountWidth frameWidth)
     , DataLink frameWidth)
-  stateMachine state (fIn, getRegs -> RegisterBank sqIn) =
+  stateMachine (sq0@(getRegs -> RegisterBank sqVec),state) (fIn, sqIn) =
    case state of
-    LinkThrough -> (TransmitPreamble 0, fIn)
-    (TransmitPreamble n@((== maxBound) -> False)) -> (TransmitPreamble (n+1), Just $ preamble !! n)
-    (TransmitPreamble n@((== maxBound) -> True)) -> (TransmitSeqCounter 0, Just $ preamble !! n)
-    (TransmitSeqCounter n@((== maxBound) -> False)) -> (TransmitSeqCounter (n+1), Just $ sqIn !! n)
-    (TransmitSeqCounter n@((== maxBound) -> True)) -> (TransmitPreamble 0, Just $ sqIn !! n)
+    LinkThrough -> ((sqErr, TransmitPreamble 0), fIn)
+    TransmitPreamble n@((== maxBound) -> False) -> ((sqErr, TransmitPreamble (succ n)), Just $ preamble !! n)
+    TransmitPreamble n@((== maxBound) -> True) -> ((sqIn, TransmitSeqCounter 0), Just $ preamble !! n)
+    TransmitSeqCounter n@((== maxBound) -> False) -> ((sq0, TransmitSeqCounter (succ n)), Just $ sqVec !! n)
+    TransmitSeqCounter n@((== maxBound) -> True) -> ((sqErr, TransmitPreamble 0), Just $ sqVec !! n)
+  sqErr = deepErrorX "txUnit: Stored sequence counter invalid"
 
 rxUnit ::
   forall core bs aw preambleWidth frameWidth seqCountWidth .
