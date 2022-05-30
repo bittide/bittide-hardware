@@ -40,7 +40,7 @@ type NatRequiredBits n = CLog 2 (n + 1)
 type NatFitsInBits n bits = NatRequiredBits n <= bits
 
 -- | Constraints required to add padding to @a@.
-type Paddable a = (BitPack a, NFDataX a, 1 <= BitSize a)
+type Paddable a = (BitPack a, NFDataX a)
 
 -- Located i x is a datatype that indicates that data x has a relation with Index i,
 -- example usage: write operation of type D to a blockRam with 'i' addresses can
