@@ -25,7 +25,6 @@ import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
 
 import Bittide.SharedTypes
-import Data.Proxy
 import Data.String
 
 linkGroup :: TestTree
@@ -83,10 +82,10 @@ configRxUnit ::
   forall bs aw pw fw scw .
   ( HiddenClockResetEnable System, 1 <= bs, 2 <= aw, 1 <= pw, 1 <= fw, 1 <= scw) =>
   SNat bs -> SNat aw -> SNat pw -> SNat fw -> SNat scw ->
-    (Proxy scw
-    -> BitVector pw
+    (  BitVector pw
     -> Signal System (WishboneM2S bs aw)
     -> Signal System (DataLink fw)
+    -> Signal System (Unsigned scw)
     -> Signal System (WishboneS2M bs))
 configRxUnit SNat SNat SNat SNat SNat = rxUnit @System @bs @aw @pw @fw @scw
 

@@ -39,3 +39,8 @@ lessThanMax = case (compareSNat (SNat @c) (SNat @b), compareSNat (SNat @c) (SNat
   strA = show $ natToInteger @a
   strB = show $ natToInteger @b
   strC = show $ natToInteger @c
+
+lessThanDivMax :: forall a b c . Dict (Div a c <= Div (Max a b) c, Div b c <= Div (Max a b) c)
+lessThanDivMax = unsafeCoerce (Dict :: Dict ())
+lessThanDivRUMax :: forall a b c . Dict (DivRU a c <= DivRU (Max a b) c, DivRU b c <= DivRU (Max a b) c)
+lessThanDivRUMax = unsafeCoerce (Dict :: Dict ())
