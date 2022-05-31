@@ -337,7 +337,7 @@ registerWBWBToSig = property $ do
       writes === L.take (L.length writes) filteredOut
     _ -> error "registerWBWBToSig: Registers required to store bitvector == 0."
    where
-    wbWrite v = L.zipWith bv2WbWrite (L.reverse [0.. L.length l - 1]) l
+    wbWrite v = L.zipWith bv2WbWrite [0.. L.length l - 1] l
      where
       RegisterBank (toList -> l) = paddedToRegisters $ Padded v
   everyNth n l  | L.length l >= n = x : everyNth n xs
@@ -362,7 +362,7 @@ registerWBSigToWB = property $ do
         someReg prio sigIn wbIn = snd $ withClockResetEnable clockGen resetGen enableGen $ registerWB @_ @_ @4 @32 prio initVal wbIn sigIn
         topEntity (unbundle -> (sigIn, wbIn)) = bundle (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
         padWrites x = L.take (natToNum @(Regs (BitVector bits) 32)) $ Just x : L.repeat Nothing
-        readOps = idleM2S : cycle (fmap wbRead [(0 :: Int).. (natToNum @(Regs (BitVector bits) 32)-1)])
+        readOps = idleM2S : cycle (wbRead <$> L.reverse [(0 :: Int).. (natToNum @(Regs (BitVector bits) 32)-1)])
         topEntityInput = L.zip (L.concatMap padWrites writes <> [Nothing]) readOps
         simLength = L.length topEntityInput
         simOut = simulateN @System simLength topEntity topEntityInput

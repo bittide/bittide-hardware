@@ -172,7 +172,8 @@ registerWBE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
     err = masterActive && invalidAddress
     acknowledge = masterActive && not err
     wbWriting = writeEnable && acknowledge
-    wbAddr = unpack . resize $ pack alignedAddress :: Index (Max 1 (Regs a (bs * 8)))
+    wbAddr0 = unpack . resize $ pack alignedAddress :: Index (Max 1 (Regs a (bs * 8)))
+    wbAddr = maxBound - wbAddr0
     readData = case paddedToRegisters $ Padded regOut0 of
       RegisterBank vec -> vec !! wbAddr
 
