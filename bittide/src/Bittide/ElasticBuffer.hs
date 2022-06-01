@@ -2,6 +2,8 @@ module Bittide.ElasticBuffer ( elasticBuffer ) where
 
 import Clash.Explicit.Prelude
 
+import Clash.Cores.Xilinx.DcFifo.Explicit (XilinxFifo (..), dcFifo, defConfig)
+
 push :: a -> Vec (n+1) (Maybe a) -> Vec (n+1) (Maybe a)
 push x xs = Just x `Cons` init xs
 
@@ -10,6 +12,8 @@ type Underflow = Bool
 
 -- Xilinx FIFO IP core
 xFifo ::
+  forall depth write read n.
+  (KnownNat depth, KnownNat n, KnownDomain write, KnownDomain read, depth <= 17, 4 <= depth) =>
   -- | Buffer depth; i.e. number of elements in the FIFO.
   SNat depth ->
 
@@ -27,7 +31,11 @@ xFifo ::
 
   -- | Occupancy count, overflow, underflow, word read
   Signal read (Index depth, Overflow, Underflow, BitVector n)
-xFifo = undefined
+xFifo _ wClk _ rClk rRst dat wr =
+  bundle (ix, undefined, under, fifoDat)
+ where
+  (XilinxFifo _ _ _ _ _ _ under cnt fifoDat) = dcFifo (defConfig @depth) wClk rClk rRst dat wr
+  ix = fromIntegral <$> cnt
 
 data DFEBController depth = TrackWait -- wait til half full
                           | Measure (Vec 5 (Maybe (Signed (CLog 2 depth)))) -- allow both but wait to see if distance is a problem

@@ -7,6 +7,9 @@ packages:
   contranomy/contranomy.cabal
   contranomy-sim/contranomy-sim.cabal
 
+package clash-prelude
+  flags: -multiple-hidden
+
 write-ghc-environment-files: always
 
 with-compiler: ghc-9.0
@@ -16,4 +19,34 @@ tests: True
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
-index-state: 2022-04-20T00:32:49Z
+index-state: 2022-05-29T14:25:17Z
+
+source-repository-package
+  type: git
+  location: https://github.com/clash-lang/clash-compiler.git
+  tag: 2cac4413021b9519b0b3041f735617daca83d19c
+  subdir: clash-cores
+
+source-repository-package
+  type: git
+  location: https://github.com/clash-lang/clash-compiler.git
+  tag: 2cac4413021b9519b0b3041f735617daca83d19c
+  subdir: clash-lib
+
+source-repository-package
+  type: git
+  location: https://github.com/clash-lang/clash-compiler.git
+  tag: 2cac4413021b9519b0b3041f735617daca83d19c
+  subdir: clash-ghc
+
+source-repository-package
+  type: git
+  location: https://github.com/clash-lang/clash-compiler.git
+  tag: 2cac4413021b9519b0b3041f735617daca83d19c
+  subdir: clash-prelude
+
+source-repository-package
+  type: git
+  location: https://github.com/clash-lang/clash-compiler.git
+  tag: 2cac4413021b9519b0b3041f735617daca83d19c
+  subdir: clash-prelude-hedgehog
