@@ -13,7 +13,13 @@ type Underflow = Bool
 -- Xilinx FIFO IP core
 xFifo ::
   forall depth write read n.
-  (KnownNat depth, KnownNat n, KnownDomain write, KnownDomain read, depth <= 17, 4 <= depth) =>
+  ( KnownNat depth
+  , KnownNat n
+  , KnownDomain write
+  , KnownDomain read
+  , depth <= 17
+  , 4 <= depth
+  ) =>
   -- | Buffer depth; i.e. number of elements in the FIFO.
   SNat depth ->
 
@@ -21,7 +27,7 @@ xFifo ::
   Clock write -> Reset write ->
 
   -- | Read domain clock/reset
-  Clock read -> Reset read ->
+  Clock read -> Reset read -> Enable read ->
 
   -- | Maybe write frame
   Signal write (Maybe (BitVector n)) ->
@@ -31,11 +37,14 @@ xFifo ::
 
   -- | Occupancy count, overflow, underflow, word read
   Signal read (Index depth, Overflow, Underflow, BitVector n)
-xFifo _ wClk _ rClk rRst dat wr =
-  bundle (ix, undefined, under, fifoDat)
+xFifo d wClk wRst rClk rRst rEna dat wr =
+  bundle (ix, over', under, fifoDat)
  where
-  (XilinxFifo _ _ _ _ _ _ under cnt fifoDat) = dcFifo (defConfig @depth) wClk rClk rRst dat wr
-  ix = fromIntegral <$> cnt
+  -- use dualFlipFlopSynchronizer to get overflow in the read domain
+  (XilinxFifo _ _ over _ _ _ under cnt fifoDat) =
+    dcFifo (defConfig @depth) wClk rClk rRst dat wr
+  over' = dualFlipFlopSynchronizer wClk rClk rRst rEna False over
+  ix = subtract (snatToNum d `div` 2) . fromIntegral <$> cnt
 
 data DFEBController depth = TrackWait -- wait til half full
                           | Measure (Vec 5 (Maybe (Signed (CLog 2 depth)))) -- allow both but wait to see if distance is a problem
@@ -45,7 +54,13 @@ data DFEBController depth = TrackWait -- wait til half full
 instance NFDataX (DFEBController depth) where
 
 elasticBuffer ::
-  (KnownDomain core, KnownNat depth, 1 <= depth) =>
+  ( KnownDomain core
+  , KnownDomain recovered
+  , KnownNat depth
+  , KnownNat n
+  , 4 <= depth
+  , depth <= 17
+  ) =>
   SNat depth ->
   Clock recovered -> Reset recovered -> Enable recovered ->
   Clock core -> Reset core -> Enable core ->
@@ -59,7 +74,8 @@ elasticBuffer d rClk rRst rEna cClk cRst cEna fromSerdes =
   (mDatum, expectStable, isO .&&. isU, dist)
   where
 
-    (dist, isO, isU, mDatum) = unbundle $ fifo d rClk rRst cClk cRst fromSerdes rControlState
+    (dist, isO, isU, mDatum) = unbundle $
+      fifo d rClk rRst rEna cClk cRst cEna fromSerdes rControlState
 
     rDist = register cClk cRst cEna 0 dist
     rControlState = register cClk cRst cEna Don'tWait controlState
@@ -67,7 +83,10 @@ elasticBuffer d rClk rRst rEna cClk cRst cEna fromSerdes =
     (expectStable, controlState) = elasticBufferControl d cClk cRst cEna rDist
 
 elasticBufferControl ::
-  (KnownNat depth, 1 <= depth, KnownDomain core) =>
+  ( KnownNat depth
+  , 1 <= depth
+  , KnownDomain core
+  ) =>
   SNat depth ->
   Clock core -> Reset core -> Enable core ->
   -- | Distance from middle
@@ -102,14 +121,21 @@ instance NFDataX WaitReset where
 
 -- use dualFlipFlopSynchronizer to get overflow in the core domain
 fifo ::
+  ( KnownNat depth
+  , KnownNat n
+  , KnownDomain core
+  , KnownDomain recovered
+  , 4 <= depth
+  , depth <= 17
+  ) =>
   -- | Buffer depth; i.e. number of elements in the FIFO.
   SNat depth ->
 
   -- | Clock/Reset/Enable belonging to the recovered clock from the SERDES
-  Clock recovered -> Reset recovered ->
+  Clock recovered -> Reset recovered -> Enable recovered ->
 
   -- | Clock/Reset/Enable belonging to the core clock
-  Clock core -> Reset core ->
+  Clock core -> Reset core -> Enable core ->
 
   -- | Frame coming from the SERDES
   Signal recovered (BitVector n) ->
@@ -123,4 +149,16 @@ fifo ::
     , Underflow
     , Maybe (BitVector n) -- ^ 'Just' @word@ or 'Nothing' if overflow/underflow
     )
-fifo = undefined
+fifo sd rClk rRst rEna cClk cRst cEna dat rd =
+  tie <$> xFifo sd rClk rRst cClk cRst cEna dat' rd'
+ where
+  rd' = (\case { DisableReads -> False ; _ -> True }) <$> rd
+  rdRecovered = dualFlipFlopSynchronizer cClk rClk rRst rEna Don'tWait rd
+  dat' =
+    (\x st -> case st of { DisableWrites -> Nothing ; _ -> Just x })
+      <$> dat
+      <*> rdRecovered
+  tie (d, o, u, x) =
+    if o || u
+      then (fromIntegral d, o, u, Just x)
+      else (fromIntegral d, o, u, Nothing)
