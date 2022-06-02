@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# OPTIONS_GHC -fconstraint-solver-iterations=0 #-}
 
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PartialTypeSignatures #-}
@@ -10,7 +11,7 @@
 
 module Tests.Link where
 
-import Clash.Prelude
+import Clash.Prelude hiding (fromList)
 import Clash.Hedgehog.Sized.Unsigned
 
 import Bittide.Extra.Wishbone
@@ -26,11 +27,15 @@ import qualified Hedgehog.Gen as Gen hiding (resize)
 
 import Bittide.SharedTypes
 import Data.String
+import Clash.Sized.Vector
+import Data.Maybe
 
 linkGroup :: TestTree
 linkGroup = testGroup "Link group"
-  [testPropertyNamed "txUnit can be set to continuously transmit the preamble and sequence counter."
-    "txSendSC" txSendSC]
+  [ testPropertyNamed "txUnit can be set to continuously transmit the preamble and sequence counter."
+    "txSendSC" txSendSC
+  , testPropertyNamed "rxUnit can be set to continuously detect the preamble and store the sequence counter."
+    "rxSendSC" rxSendSC]
 
 -- | Configuration for either a txUnit or tyUnit.
 data TestConfig where
@@ -52,10 +57,10 @@ deriving instance Show TestConfig
 genTestConfig :: Gen TestConfig
 genTestConfig = do
   (TN.someNatVal -> (SomeNat (snatProxy -> bs))) <- Gen.enum 1 8
-  (TN.someNatVal -> (SomeNat (snatProxy -> aw))) <- Gen.enum 2 64
-  (TN.someNatVal -> (SomeNat (snatProxy -> pw))) <- Gen.enum 1 1024
-  (TN.someNatVal -> (SomeNat (snatProxy -> fw))) <- Gen.enum 1 128
-  (TN.someNatVal -> (SomeNat (snatProxy -> scw))) <- Gen.enum 1 128
+  (TN.someNatVal -> (SomeNat (snatProxy -> aw))) <- Gen.enum 8 64
+  (TN.someNatVal -> (SomeNat (snatProxy -> pw))) <- Gen.enum 8 1024
+  (TN.someNatVal -> (SomeNat (snatProxy -> fw))) <- Gen.enum 32 128
+  (TN.someNatVal -> (SomeNat (snatProxy -> scw))) <- Gen.enum 8 128
   case
     ( compareSNat d1 bs
     , compareSNat d2 aw
@@ -105,9 +110,9 @@ txSendSC = property $ do
         pwNum = snatToNum pw
         fwNum = snatToNum fw
         scwNum = snatToNum scw
-        pwFrames = pwNum `divRU` fwNum
-        scFrames = scwNum `divRU` fwNum
-        iterationDuration = pwFrames + scFrames
+        pwNrOfFrames = pwNum `divRU` fwNum
+        scNumOfFrames = scwNum `divRU` fwNum
+        iterationDuration = pwNrOfFrames + scNumOfFrames
         iterationsTotal = iterations * iterationDuration
       -- First two cycles output depend on the initial state.
       -- The txUnit's state machine starts after the control register has been updated,
@@ -150,10 +155,10 @@ txSendSC = property $ do
         (wbOut, simOut) = L.unzip $ simulateN simLength topEntity topEntityInput
         -- It takes 1 cycle for the the control register to be updated by the wishbone bus.
         (offFrames0, L.drop onTime -> offFrames1) = L.splitAt offTime0 framesIn
-        onFrames = L.take onTime $ preambleFrames L.++ L.concatMap ((L.++ preambleFrames) . fmap Just . secToFrames) (everyNth iterationDuration $ L.drop (min (simLength - 1) (offTime0 + pwFrames - 1)) seqCountIn)
+        onFrames = L.take onTime $ preambleFrames L.++ L.concatMap ((L.++ preambleFrames) . fmap Just . secToFrames) (everyNth iterationDuration $ L.drop (min (simLength - 1) (offTime0 + pwNrOfFrames - 1)) seqCountIn)
         expectedOutput = L.take simLength $ offFrames0 <> onFrames <> offFrames1
       footnote . fromString $ "iterationsDuration: " <> showX iterationDuration
-      footnote . fromString $ "droppedSCs: " <> showX offTime0 <> " + " <> showX pwFrames <> " - 1 = " <> showX (offTime0 + pwFrames - 1)
+      footnote . fromString $ "droppedSCs: " <> showX offTime0 <> " + " <> showX pwNrOfFrames <> " - 1 = " <> showX (offTime0 + pwNrOfFrames - 1)
       footnote . fromString $ "simOut: " <> showX simOut
       footnote . fromString $ "expected: " <> showX expectedOutput
       footnote . fromString $ "onFrames: " <> showX onFrames
@@ -174,3 +179,102 @@ everyNth :: Int -> [a] -> [a]
 everyNth 0 _ = error "Can not take every 0th element."
 everyNth _ [] = []
 everyNth n (x:xs) = x : everyNth n (L.drop (n-1) xs)
+
+-- | Tests whether the transmission of a static preamble and static seqCounter works.
+-- It does so by simulating the 'txUnit' for a number of cycles in transparent mode,
+-- then simulating it in transmission mode, then again in transparent mode.
+rxSendSC :: Property
+rxSendSC = property $ do
+  tc <- forAll genTestConfig
+  case tc of
+    (TestConfig _ aw@(SNat :: SNat aw) pw@(SNat :: SNat pw) fw@(SNat :: SNat fw) scw@(SNat :: SNat scw)) -> do
+      iterations <- forAll $ Gen.enum 1 3
+      preamble <- forAll $ replaceBit (natToNum @pw - 1:: Integer ) 1 . pack <$> genUnsigned Range.constantBounded
+      let
+        -- We hard code the number of bytes to 4 because 'registerWB' assumes a 4 byte aligned address.
+        bs = d4
+        bsNum = snatToNum bs
+        pwNum = snatToNum pw
+        fwNum = snatToNum fw
+        scwNum = snatToNum scw
+        pwNrOfFrames = pwNum `divRU` fwNum
+        scNumOfFrames = scwNum `divRU` fwNum
+        iterationDuration = pwNrOfFrames + scNumOfFrames
+        iterationsTotal = iterations * iterationDuration
+        readBackCycles = (2 * scwNum) `divRU` (bsNum * 8)
+      -- First two cycles output depend on the initial state.
+      -- The txUnit's state machine starts after the control register has been updated,
+      -- causing an extra cycle of delay.
+      offTime0 <- forAll $ Gen.enum 2 (2 + iterationsTotal)
+      onTime   <- forAll $ Gen.enum (2 + iterationDuration) iterationsTotal
+      offTime1 <- forAll $ Gen.enum (2 + readBackCycles) (readBackCycles + iterationDuration)
+      remoteSeqCounts <- forAll . Gen.list (Range.singleton (1 + iterations)) $ genUnsigned Range.constantBounded
+      let
+        simLength = offTime0 + onTime + offTime1
+        simRange = Range.singleton simLength
+        genFrame = Gen.maybe (pack <$> genUnsigned Range.constantBounded)
+        filterPreambles = Gen.filter (not . containsPreamble @pw @fw preamble . (L.replicate (pwNrOfFrames-1) 0 <>) . catMaybes . (<> L.take (pwNrOfFrames - 1) onFrames))
+        RegisterBank (toList . fmap Just -> preambleFrames) = getRegs @_ @fw preamble
+        onFrames = L.take onTime $ L.concatMap ((preambleFrames <>) . fmap Just . secToFrames) (remoteSeqCounts :: [Unsigned scw])
+      offFrames0 <- forAll $ filterPreambles (Gen.list (Range.singleton offTime0) genFrame)
+      offFrames1 <- forAll $ Gen.list (Range.singleton offTime1) genFrame
+      localSeqCounts <- forAll . Gen.list simRange $ genUnsigned Range.constantBounded
+      let
+        topEntity (unbundle -> (wbIn0, linkIn, localCounter)) = withClockResetEnable
+          clockGen resetGen enableGen configRxUnit bs aw pw fw scw preamble wbIn0 linkIn localCounter
+        -- Compensate for the register write + state machine start delays.
+        wbIn = wbWrite : L.replicate (offTime0 + onTime) (wbRead 0) <> cycle (fmap wbRead [0..fromIntegral readBackCycles])
+        framesIn = offFrames0 <> onFrames <> offFrames1
+        topEntityInput = L.zip3 wbIn framesIn localSeqCounts
+        wbWrite = (emptyWishboneM2S @4 @aw)
+          { addr = 0 :: BitVector aw
+          , writeEnable = True
+          , writeData = 1 :: BitVector 32
+          , busSelect = maxBound
+          , busCycle = True
+          , strobe = True
+          }
+        wbRead (a :: BitVector aw) = (emptyWishboneM2S @4 @aw)
+          { addr = shiftL a 2
+          , busCycle = True
+          , strobe = True
+          }
+        simOut = simulateN simLength topEntity topEntityInput
+        decodedOutput = directedDecoding wbIn simOut :: [(Unsigned scw, Unsigned scw)]
+        storedOutput = L.last decodedOutput
+        expected = (localSeqCounts L.!! (offTime0 + pwNrOfFrames), L.head remoteSeqCounts)
+      -- It takes 1 cycle for the the control register to be updated by the wishbone bus.
+      footnote . fromString $ "wishbone reads per result: " <> show (natToNum @(Regs (Unsigned scw, Unsigned scw) 32) :: Integer)
+      footnote . fromString $ "iterationsDuration: " <> showX iterationDuration
+      footnote . fromString $ "simOut: " <> showX simOut
+      footnote . fromString $ "decodedOut: " <> showX decodedOutput
+      footnote . fromString $ "expected: " <> showX expected
+      footnote . fromString $ "onFrames: " <> showX onFrames
+      footnote . fromString $ "framesIn: " <> showX (L.take simLength framesIn)
+      footnote . fromString $ "wbIn: " <> showX (L.take simLength wbIn)
+      storedOutput === expected
+ where
+  directedDecoding :: forall bs aw a . (KnownNat bs, 1 <= bs, KnownNat aw, Paddable a) => [WishboneM2S bs aw] -> [WishboneS2M bs] -> [a]
+  directedDecoding (m2s:m2ss) (s2m:s2ms)
+    | slvAck && firstFrame && storedSC && isJust decodingData = decoded : uncurry directedDecoding rest
+    | otherwise = directedDecoding m2ss s2ms
+   where
+    slvAck = acknowledge s2m
+    firstFrame = addr m2s == 0
+    storedSC = readData s2m == 0
+    bothLists = L.zip m2ss s2ms
+    (fmap snd -> decodingFrames, L.unzip -> rest) = span (\(m,s) -> acknowledge s && (/= 0) (addr m)) bothLists
+    decodingData = fromList . fmap readData $ L.reverse decodingFrames
+    decoded = registersToData . RegisterBank $ fromJust decodingData
+  directedDecoding _ _ = []
+
+containsPreamble :: forall preamble frameWidth . (KnownNat preamble, KnownNat frameWidth, 1 <= frameWidth) => BitVector preamble -> [BitVector frameWidth] -> Bool
+containsPreamble preamble = f
+ where
+  len = natToNum @(DivRU preamble frameWidth)
+  f [] = False
+  f (inp:utList)
+    | L.length frameslist == len && registersToData (RegisterBank (unsafeFromList frameslist)) == preamble = True
+    | otherwise = f utList
+   where
+     frameslist = L.take len (inp:utList)

@@ -30,6 +30,7 @@ timesDivRU = unsafeCoerce (Dict :: Dict ())
 clog2axiom :: CLog 2 (n * 2) :~: (CLog 2 n + 1)
 clog2axiom = unsafeCoerce Refl
 
+-- | if (c <= a) or (c <= b), then c <= Max a b
 lessThanMax :: forall a b c . (KnownNat a, KnownNat b, KnownNat c) => Dict (c <= Max a b)
 lessThanMax = case (compareSNat (SNat @c) (SNat @b), compareSNat (SNat @c) (SNat @b)) of
   (SNatLE, _) -> unsafeCoerce (Dict :: Dict ())
@@ -40,7 +41,6 @@ lessThanMax = case (compareSNat (SNat @c) (SNat @b), compareSNat (SNat @c) (SNat
   strB = show $ natToInteger @b
   strC = show $ natToInteger @c
 
-lessThanDivMax :: forall a b c . Dict (Div a c <= Div (Max a b) c, Div b c <= Div (Max a b) c)
-lessThanDivMax = unsafeCoerce (Dict :: Dict ())
-lessThanDivRUMax :: forall a b c . Dict (DivRU a c <= DivRU (Max a b) c, DivRU b c <= DivRU (Max a b) c)
-lessThanDivRUMax = unsafeCoerce (Dict :: Dict ())
+-- | if (1 <= a) and (1 <= b) then (1 <= DivRU a b)
+oneLTdivRU :: forall a b . (1 <= a, 1 <= b) => Dict (1 <= DivRU a b)
+oneLTdivRU = unsafeCoerce (Dict :: Dict ())
