@@ -337,7 +337,7 @@ registerWBWBToSig = property $ do
       writes === L.take (L.length writes) filteredOut
     _ -> error "registerWBWBToSig: Registers required to store bitvector == 0."
    where
-    wbWrite v = L.zipWith bv2WbWrite [0.. L.length l - 1] l
+    wbWrite v = L.zipWith bv2WbWrite [0.. L.length l - 1] $ L.reverse l
      where
       RegisterBank (toList -> l) = paddedToRegisters $ Padded v
   everyNth n l  | L.length l >= n = x : everyNth n xs
