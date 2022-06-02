@@ -77,12 +77,13 @@ library
   hs-source-dirs: src
   exposed-modules:
     Bittide.Calendar
+    Bittide.Clash.Extra
     Bittide.DoubleBufferedRam
-    Bittide.Wishbone
+    Bittide.Link
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Switch
-    Bittide.Link
+    Bittide.Wishbone
     Data.Constraint.Nat.Extra
 
 executable clash
