@@ -35,7 +35,9 @@ linkGroup = testGroup "Link group"
   [ testPropertyNamed "txUnit can be set to continuously transmit the preamble and sequence counter."
     "txSendSC" txSendSC
   , testPropertyNamed "rxUnit can be set to continuously detect the preamble and store the sequence counter."
-    "rxSendSC" rxSendSC]
+    "rxSendSC" rxSendSC
+  , testPropertyNamed "Integration test with txUnit sending a preamble and sequence counter to rxUnit."
+    "integration" integration]
 
 -- | Configuration for either a txUnit or tyUnit.
 data TestConfig where
@@ -278,3 +280,112 @@ containsPreamble preamble = f
     | otherwise = f utList
    where
      frameslist = L.take len (inp:utList)
+
+-- | Tests whether the transmission of a static preamble and static seqCounter works.
+-- It does so by simulating the 'txUnit' for a number of cycles in transparent mode,
+-- then simulating it in transmission mode, then again in transparent mode.
+integration :: Property
+integration = property $ do
+  tc <- forAll genTestConfig
+  linkLatency <- forAll $ Gen.int (Range.constant 0 64)
+  case (TN.someNatVal (fromIntegral linkLatency), tc) of
+    (SomeNat llProxy, TestConfig _ aw@(SNat :: SNat aw) pw@(SNat :: SNat pw) fw@(SNat :: SNat fw) scw@(SNat :: SNat scw)) -> do
+      iterations <- forAll $ Gen.enum 1 3
+      preamble <- forAll $ replaceBit (natToNum @pw - 1:: Integer ) 1 . pack <$> genUnsigned Range.constantBounded
+      let
+        -- We hard code the number of bytes to 4 because 'registerWB' assumes a 4 byte aligned address.
+        bs = d4
+        bsNum = snatToNum bs
+        pwNum = snatToNum pw
+        fwNum = snatToNum fw
+        scwNum = snatToNum scw
+        pwNrOfFrames = pwNum `divRU` fwNum
+        scNumOfFrames = scwNum `divRU` fwNum
+        iterationDuration = pwNrOfFrames + scNumOfFrames
+        iterationsTotal = iterations * iterationDuration
+        readBackCycles = (2 * scwNum) `divRU` (bsNum * 8)
+      -- First two cycles output depend on the initial state.
+      -- The txUnit's state machine starts after the control register has been updated,
+      -- causing an extra cycle of delay.
+      delayCycles <- forAll $ Gen.enum 2 (2 + iterationsTotal)
+      transmitCycles  <- forAll $ Gen.enum iterationDuration iterationsTotal
+      posTransmitCycles <- forAll $ Gen.enum (linkLatency + 2 * ( 1 + readBackCycles)) (linkLatency + 2 * ( 1 + readBackCycles) + iterationsTotal)
+      let
+        simLength = delayCycles + transmitCycles + posTransmitCycles
+        genFrame = Gen.maybe (pack <$> genUnsigned Range.constantBounded)
+        RegisterBank  (fmap Just . toList -> preambleFrames) = getRegs preamble
+        filterPreambles = Gen.filter (not . containsPreamble @pw @fw preamble . (L.replicate (pwNrOfFrames-1) 0 <>) . catMaybes . (<> L.take (pwNrOfFrames - 1) preambleFrames))
+
+      gatherFrames0 <- forAll $ filterPreambles (Gen.list (Range.singleton delayCycles) genFrame)
+      gatherFrames1 <- forAll $ Gen.list (Range.singleton (simLength - delayCycles)) genFrame
+      let
+        topEntity :: HiddenClockResetEnable System =>
+          ( Signal System (Maybe (BitVector fw)
+          , Unsigned scw
+          , WishboneM2S 4 aw
+          , WishboneM2S 4 aw)
+          -> Signal System (DataLink fw, WishboneS2M 4))
+        topEntity (unbundle -> (gatherOut, counter, wbTxM2S, wbRxM2S)) = bundle (linkIn, wbRxS2M)
+         where
+          (wbTxS2M, linkIn) = configTxUnit bs aw pw fw scw preamble counter wbTxM2S gatherOut
+          linkOut = registerN (snatProxy llProxy) Nothing linkIn
+          wbRxS2M = configRxUnit bs aw pw fw scw preamble wbRxM2S linkOut counter
+        -- Compensate for the register write + state machine start delays.
+        wbTxIn = L.replicate (delayCycles - 2) emptyWishboneM2S <> (wbWrite 0 1 : L.replicate transmitCycles emptyWishboneM2S) <> (wbWrite 0 0 : L.repeat emptyWishboneM2S)
+        wbRxIn = wbWrite 0 1 : L.replicate (delayCycles + transmitCycles - 1) (wbRead 0) <> cycle (fmap wbRead [0..fromIntegral readBackCycles])
+        counters = [0..]
+        framesIn = gatherFrames0 <> gatherFrames1
+        topEntityInput = L.zip4 framesIn counters wbTxIn wbRxIn
+        wbWrite a x = (emptyWishboneM2S @4 @aw)
+          { addr = shiftL a 2
+          , writeEnable = True
+          , writeData =x
+          , busSelect = maxBound
+          , busCycle = True
+          , strobe = True
+          }
+        wbRead (a :: BitVector aw) = (emptyWishboneM2S @4 @aw)
+          { addr = shiftL a 2
+          , busCycle = True
+          , strobe = True
+          }
+        (linkIn, wbRxOut) = L.unzip $ simulateN simLength topEntity topEntityInput
+        decodedOutput = directedDecoding wbRxIn wbRxOut :: [(Unsigned scw, Unsigned scw)]
+        storedOutput = L.last decodedOutput
+        expected = (fromIntegral (delayCycles + linkLatency + pwNrOfFrames), fromIntegral (delayCycles + pwNrOfFrames - 1))
+      -- It takes 1 cycle for the the control register to be updated by the wishbone bus.
+      footnote . fromString $ "wishbone reads per result: " <> show (natToNum @(Regs (Unsigned scw, Unsigned scw) 32))
+      footnote . fromString $ "iterationsDuration: " <> showX iterationDuration
+      footnote . fromString $ "linkIn: " <> showX linkIn
+      footnote . fromString $ "wbRxOut: " <> showX wbRxOut
+      footnote . fromString $ "wbRxIn: " <> showX (L.take simLength wbRxIn)
+      footnote . fromString $ "decodedOut: " <> showX decodedOutput
+      footnote . fromString $ "expected: " <> showX expected
+      footnote . fromString $ "framesIn: " <> showX (L.take simLength framesIn)
+      storedOutput === expected
+ where
+  directedDecoding :: forall bs aw a . (KnownNat bs, 1 <= bs, KnownNat aw, Paddable a) => [WishboneM2S bs aw] -> [WishboneS2M bs] -> [a]
+  directedDecoding (m2s:m2ss) (s2m:s2ms)
+    | slvAck && firstFrame && storedSC && isJust decodingData = decoded : uncurry directedDecoding rest
+    | otherwise = directedDecoding m2ss s2ms
+   where
+    slvAck = acknowledge s2m
+    firstFrame = addr m2s == 0
+    storedSC = readData s2m == 0
+    bothLists = L.zip m2ss s2ms
+    (fmap snd -> decodingFrames, L.unzip -> rest) = span (\(m,s) -> acknowledge s && (/= 0) (addr m)) bothLists
+    decodingData = fromList . fmap readData $ L.reverse decodingFrames
+    decoded = registersToData . RegisterBank $ fromJust decodingData
+  directedDecoding _ _ = []
+
+registerN ::
+  (HiddenClockResetEnable dom, NFDataX o, KnownNat n) =>
+  SNat n -> o -> Signal dom o -> Signal dom o
+registerN n a = mealy go (replicate n a)
+ where
+  go state0 inp = (state1, out)
+   where
+    (out :> state1) = state0 :< inp
+
+wcre :: KnownDomain dom => (HiddenClockResetEnable dom => r) -> r
+wcre = withClockResetEnable clockGen resetGen enableGen
