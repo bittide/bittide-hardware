@@ -127,11 +127,11 @@ rxUnit preamble linkIn localCounter wbIn = wbOut
   go ::
     Index (DivRU scw fw) ->
     (BitVector (ShiftRegWidth paw scw + bs * 8), DataLink fw, Unsigned scw) ->
-    ( Index (Div (scw + (fw - 1)) fw)
+    ( Index (DivRU scw fw)
     , (Maybe (BitVector (ShiftRegWidth paw scw + (bs * 8)))
     , ByteEnable (BitVector (ShiftRegWidth paw scw + bs * 8))))
-  go _ (split @_ @(ShiftRegWidth paw scw) -> (_, unpack . resize -> Idle), _, _) = (0, (Nothing,minBound)) --trace "Idle: "
-  go _ (split @_ @(ShiftRegWidth paw scw) -> (shiftOld, unpack . resize -> WaitingForPreamble), link, _) = (0, (regNew, maxBound)) --trace ("WaitingForPreamble: " <> showX (link, shiftOld, shiftNew))
+  go _ (split @_ @(ShiftRegWidth paw scw) -> (_, unpack . resize -> Idle), _, _) = (0, (Nothing,minBound))
+  go _ (split @_ @(ShiftRegWidth paw scw) -> (shiftOld, unpack . resize -> WaitingForPreamble), link, _) = (0, (regNew, maxBound))
    where
     validFrame = isJust link
 
@@ -147,7 +147,7 @@ rxUnit preamble linkIn localCounter wbIn = wbOut
       | validFrame = Just $ shiftNew ++# resize (pack nextState)
       | otherwise  = Nothing
 
-  go cnt (split @_ @(ShiftRegWidth paw scw) -> (shiftOld, unpack . resize -> CaptureSequenceCounter), link, lc) = (nextCnt, (regNew, maxBound)) --trace ("CaptureSequenceCounter: " <> showX (cnt, nextCnt, link, shiftOld, shiftNew))
+  go cnt (split @_ @(ShiftRegWidth paw scw) -> (shiftOld, unpack . resize -> CaptureSequenceCounter), link, lc) = (nextCnt, (regNew, maxBound))
    where
     validFrame = isJust link
     firstFrame = validFrame && cnt == minBound

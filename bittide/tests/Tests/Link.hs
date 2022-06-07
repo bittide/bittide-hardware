@@ -362,7 +362,8 @@ integration = property $ do
         filterCond = not . containsPreamble @pw @fw preamble
       gatherFrames1 <- forAll $ Gen.list (Range.singleton (simLength - delayCycles)) genFrame
       let
-        addFirstOnFrames = (<> L.take (pwNrOfFrames - 1) gatherFrames1)
+        RegisterBank (toList -> preambleFrames) = getRegs preamble
+        addFirstOnFrames = (<> L.take (pwNrOfFrames - 1) (fmap Just preambleFrames))
         filterPreambles =
           Gen.filter (filterCond . addLeadingZeroes . catMaybes . addFirstOnFrames)
       gatherFrames0 <- forAll $ filterPreambles (Gen.list (Range.singleton delayCycles) genFrame)
