@@ -10,7 +10,6 @@
 module Tests.Switch(switchGroup) where
 
 import Clash.Hedgehog.Sized.Index
-import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
 import Clash.Prelude
 import qualified Prelude as P
@@ -22,7 +21,7 @@ import GHC.Natural
 import Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
-import Tests.Calendar
+
 import qualified Data.Sequence as Seq
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
@@ -31,6 +30,8 @@ import qualified Hedgehog.Range as Range
 import Bittide.Calendar (CalendarConfig(..))
 import Bittide.Extra.Wishbone
 import Bittide.Switch
+import Tests.Calendar
+import Tests.Shared
 
 switchGroup :: TestTree
 switchGroup = testGroup "Switch group"
@@ -93,7 +94,7 @@ switchFrameRoutingWorks = property $ do
 
       simLength <- forAll $ Gen.enum latency 100
       let
-        genFrame = Just . pack <$> genUnsigned @_ @64 Range.linearBounded
+        genFrame = Just <$> genDefinedBitVector @64
         allLinks = Gen.list (Range.singleton links0) genFrame
       topEntityInput <- forAll $ Gen.list (Range.singleton simLength) allLinks
 

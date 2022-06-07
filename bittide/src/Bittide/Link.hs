@@ -21,12 +21,15 @@ import Data.Maybe
 import Clash.Annotations.BitRepresentation
 import Clash.Annotations.BitRepresentation.Deriving
 
+-- Internal states of the txUnit.
 data TransmissionState preambleWidth seqCountWidth frameWidth =
   LinkThrough |
   TransmitPreamble (Index (Regs (BitVector preambleWidth) frameWidth)) |
   TransmitSeqCounter (Index (Regs (BitVector seqCountWidth) frameWidth))
    deriving (Generic, NFDataX)
 
+-- | Transmitter for the Bittide Link, it either transmits the incoming gather frame or
+-- transmits the preamble followed by the sequence counter.
 txUnit ::
   forall core bs aw preambleWidth frameWidth seqCountWidth .
   ( HiddenClockResetEnable core
@@ -42,16 +45,16 @@ txUnit ::
   BitVector preambleWidth ->
   -- | Local sequence counter.
   Signal core (Unsigned seqCountWidth) ->
-  -- | Control register wishbone bus (Master to slave).
-  Signal core (WishboneM2S bs aw) ->
   -- | Frame from 'gatherUnitWb'
   Signal core (DataLink frameWidth) ->
+  -- | Control register Wishbone bus (Master -> slave).
+  Signal core (WishboneM2S bs aw) ->
   -- |
-  -- 1. Control register wishbone bus (Slave to master).
+  -- 1. Control register Wishbone bus (Slave -> master).
   -- 1. Outgoing frame
   ( Signal core (WishboneS2M bs)
   , Signal core (DataLink frameWidth))
-txUnit (getRegs -> RegisterBank preamble) sq wbIn frameIn = (wbOut, frameOut)
+txUnit (getRegs -> RegisterBank preamble) sq frameIn wbIn = (wbOut, frameOut)
  where
   stateMachineOn :: Signal core Bool
   (stateMachineOn, wbOut) =
@@ -75,7 +78,7 @@ txUnit (getRegs -> RegisterBank preamble) sq wbIn frameIn = (wbOut, frameOut)
     TransmitSeqCounter n@((== maxBound) -> True) -> ((sqErr, TransmitPreamble 0), Just $ sqVec !! n)
   sqErr = deepErrorX "txUnit: Stored sequence counter invalid"
 
-
+-- | States for the rxUnit.
 data ReceiverState =
   Idle |
   WaitingForPreamble |
@@ -92,7 +95,12 @@ data ReceiverState =
 
 deriveBitPack  [t|ReceiverState|]
 
+-- | The width of the internal shift register used for capturing the preamble and two
+-- sequence counters.
 type ShiftRegWidth paw scw = Max paw (scw + scw)
+
+-- | Receives a Bittide link and can be set to detect the given preamble and capture the
+-- following sequence counter.
 rxUnit ::
   forall core bs aw paw fw scw .
   ( HiddenClockResetEnable core
@@ -101,12 +109,17 @@ rxUnit ::
   , KnownNat paw, 1 <= paw
   , KnownNat fw, 1 <= fw
   , KnownNat scw, 1 <= scw) =>
+  -- | Preamble.
   BitVector paw ->
-  Signal core (WishboneM2S bs aw) ->
+  -- | Incoming bittide link.
   Signal core (DataLink fw) ->
+  -- | Local sequence counter.
   Signal core (Unsigned scw) ->
+  -- | Control register Wishbone bus (Master -> slave).
+  Signal core (WishboneM2S bs aw) ->
+  -- | Control register Wishbone bus (Slave -> master).
   Signal core (WishboneS2M bs)
-rxUnit preamble wbIn linkIn localCounter = wbOut
+rxUnit preamble linkIn localCounter wbIn = wbOut
  where
   (regOut, wbOut) = registerWbE WishbonePriority 0 wbIn regIn byteEnables
   (regIn, byteEnables) = unbundle . mealy go initState $ bundle (regOut, linkIn, localCounter)
