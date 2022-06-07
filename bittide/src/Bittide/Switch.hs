@@ -9,7 +9,6 @@ import Clash.Prelude
 import Protocols.Wishbone
 
 import Bittide.Calendar
-import Bittide.ScatterGather (scatterEngine)
 import Bittide.SharedTypes
 
 -- | An index which source is selected by the crossbar, 0 selects Nothing, k selects k - 1.
@@ -17,7 +16,7 @@ type CrossbarIndex links = Index (links+1)
 
 -- | Stores for each link, an index where the incoming frame is written to in the scatter
 -- memory and a crossbar index to select the outgoing frame.
-type CalendarEntry links memDepth = Vec links (Index memDepth, CrossbarIndex links)
+type CalendarEntry links = Vec links (CrossbarIndex links)
 
 -- TODO: Remove Bittide.ScatterEngine and its tests before merging #71
 
@@ -27,28 +26,24 @@ type CalendarEntry links memDepth = Vec links (Index memDepth, CrossbarIndex lin
 -- The crossbar selects one of the scatter engine outputs for every outgoing link, index 0
 -- selects a null frame (Nothing) and k selects engine k - 1.
 switch ::
-  forall dom nBytes addrW links memDepth frameWidth .
+  forall dom nBytes addrW links frameWidth .
   ( HiddenClockResetEnable dom
   , KnownNat links
-  , KnownNat memDepth
-  , KnownNat frameWidth
-  , 1 <= memDepth) =>
+  , KnownNat frameWidth) =>
   -- | The calendar configuration
-  CalendarConfig nBytes addrW (CalendarEntry links memDepth) ->
+  CalendarConfig nBytes addrW (CalendarEntry links) ->
   -- | Wishbone interface wired to the calendar.
   Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | All incoming datalinks
   Signal dom (Vec links (DataLink frameWidth)) ->
   -- | All outgoing datalinks
-  ( Signal dom (Vec links (DataLink frameWidth))
-  , Signal dom (WishboneS2M (Bytes nBytes)) )
-switch calConfig wbIn streamsIn =
-  (crossBar <$> crossBarConfig <*> availableFrames, wbOut)
+  (Signal dom (Vec links (DataLink frameWidth)), Signal dom (WishboneS2M (Bytes nBytes)))
+switch calConfig wbIn streamsIn = (gatherFrames,wbOut)
  where
-  inpBuffer = scatterEngine newMetaCycle
-  availableFrames = bundle (inpBuffer <$> unbundle streamsIn <*> unbundle gatherConfig)
-  (calendars, newMetaCycle, wbOut) = mkCalendar calConfig wbIn
-  (gatherConfig, crossBarConfig)  = unbundle $ unzip <$> calendars
+  (cal, _, wbOut) = mkCalendar calConfig wbIn
+  scatterFrames = register (repeat Nothing) streamsIn
+  crossBarOut =  crossBar <$> cal <*> scatterFrames
+  gatherFrames = register (repeat Nothing) crossBarOut
 
 {-# NOINLINE crossBar #-}
 -- | The crossbar receives a vector of indices and a vector of incoming frames.
@@ -59,9 +54,9 @@ crossBar ::
   (KnownNat links) =>
   Vec links (CrossbarIndex links) ->
   -- | Source selection for each outgoing link, 0 is a null frame, links start at index 1.
-  Vec links a ->
+  Vec links (Maybe a) ->
   -- | Vector of incoming links.
   Vec links (Maybe a)
-crossBar calendarEntry inputStreams  = fmap selectChannel calendarEntry
+crossBar calendarEntry inputStreams = fmap selectChannel calendarEntry
  where
-  selectChannel i = (Nothing :> (Just <$> inputStreams)) !! i
+  selectChannel i = (Nothing :> inputStreams) !! i
