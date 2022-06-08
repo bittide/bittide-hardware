@@ -34,20 +34,18 @@ switch ::
   , 1 <= memDepth) =>
   -- | The calendar configuration
   CalendarConfig nBytes addrW (CalendarEntry links memDepth) ->
-  -- | Signal that switches the calendar's active and shadow buffer.
-  Signal dom Bool ->
   -- | Wishbone interface wired to the calendar.
   Signal dom (WishboneM2S nBytes addrW) ->
   -- | All incoming datalinks
   Signal dom (Vec links (DataLink frameWidth)) ->
   -- | All outgoing datalinks
   (Signal dom (Vec links (DataLink frameWidth)), Signal dom (WishboneS2M nBytes))
-switch calConfig calSwitch wbIn streamsIn =
+switch calConfig wbIn streamsIn =
   (crossBar <$> crossBarConfig <*> availableFrames, wbOut)
  where
   inpBuffer = scatterEngine newMetaCycle
   availableFrames = bundle (inpBuffer <$> unbundle streamsIn <*> unbundle gatherConfig)
-  (calendars, newMetaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
+  (calendars, newMetaCycle, wbOut) = mkCalendar calConfig wbIn
   (gatherConfig, crossBarConfig)  = unbundle $ unzip <$> calendars
 
 {-# NOINLINE crossBar #-}

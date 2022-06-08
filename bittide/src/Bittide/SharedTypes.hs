@@ -145,3 +145,7 @@ forceReset ::
   -- | Active when the implicit reset is active or the first argument is True.
   Reset dom
 forceReset force = unsafeFromHighPolarity (unsafeToHighPolarity hasReset .||. force)
+
+-- | Divide and round up.
+divRU :: Integral a => a -> a -> a
+divRU b a = (b + a - 1) `div` a

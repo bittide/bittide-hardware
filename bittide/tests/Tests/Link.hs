@@ -180,10 +180,6 @@ txSendSC = property $ do
       footnote . fromString $ "wbIn: " <> showX (L.take simLength wbIn)
       simOut === expectedOutput
 
--- | Divide and round up.
-divRU :: Integral a => a -> a -> a
-divRU b a = (b + a - 1) `div` a
-
 -- | Convert any value a to a list of frames.
 valToFrames :: forall n a . (KnownNat n, Paddable a) => a -> [DataLink n]
 valToFrames sc = fmap Just out
