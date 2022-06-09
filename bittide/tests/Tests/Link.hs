@@ -234,16 +234,14 @@ rxSendSC = property $ do
       let
         simLength = offTime0 + onTime + offTime1
         simRange = Range.singleton simLength
+        RegisterBank (fmap Just . toList -> preambleFrames) = getRegs preamble
+        filterCond inp
+          | isJust inp = let (x,y) = (fromJust inp, fromJust $ L.head preambleFrames) in (x .&. y) /= y
+          | otherwise = True
         genFrame = Gen.maybe genDefinedBitVector
-        addLeadingZeroes = (L.replicate (pwNrOfFrames-1) 0 <>)
-        filterCond = not . containsPreamble @pw @fw preamble
-        addFirstOnFrames = (<> L.take (pwNrOfFrames - 1) onFrames)
-        filterPreambles =
-          Gen.filter (filterCond . addLeadingZeroes . catMaybes . addFirstOnFrames)
-        RegisterBank (toList . fmap Just -> preambleFrames) = getRegs @_ @fw preamble
         onFrames =
           L.take onTime $ L.concatMap ((preambleFrames <>) . valToFrames) remoteSeqCounts
-      offFrames0 <- forAll $ filterPreambles (Gen.list (Range.singleton offTime0) genFrame)
+      offFrames0 <- forAll $ Gen.list (Range.singleton offTime0) $ Gen.filter filterCond genFrame
       offFrames1 <- forAll $ Gen.list (Range.singleton offTime1) genFrame
       localSeqCounts <- forAll . Gen.list simRange $ genUnsigned Range.constantBounded
       let
@@ -302,23 +300,6 @@ rxSendSC = property $ do
     decoded = registersToData . RegisterBank $ fromJust decodingData
   directedDecoding _ _ = []
 
--- | Function that receives a list of variable width BitVectors and returns True if the
--- the list contains supplied the preamble.
-containsPreamble ::
-  forall preamble frameWidth .
-  (KnownNat preamble, KnownNat frameWidth, 1 <= frameWidth) =>
-  BitVector preamble -> [BitVector frameWidth] -> Bool
-containsPreamble preamble = f
- where
-  len = natToNum @(DivRU preamble frameWidth)
-  f [] = False
-  f (inp:utList)
-    | L.length frameslist == len &&
-      registersToData (RegisterBank (unsafeFromList frameslist)) == preamble = True
-    | otherwise = f utList
-   where
-     frameslist = L.take len (inp:utList)
-
 -- | Tests whether we can use 'txUnit' to transmit the local sequence counter over a link with
 -- variable latency and capture it with 'rxUnit'. The captured timing oracle will shows us
 -- the latency of the link.
@@ -353,20 +334,19 @@ integration = property $ do
       delayCycles <- forAll $ Gen.enum 2 (2 + iterationsTotal)
       transmitCycles  <- forAll $ Gen.enum iterationDuration iterationsTotal
       postTransmitCycles <- forAll $ Gen.enum
+        -- We need at most 2 read back cycles to reliably read the captured counters.
+        -- Each read attempt requires an extra cycle to read the control register.
         (linkLatency + 2 * ( 1 + readBackCycles))
         (linkLatency + 2 * ( 1 + readBackCycles) + iterationsTotal)
       let
+        RegisterBank (fmap Just . toList -> preambleFrames) = getRegs preamble
         simLength = delayCycles + transmitCycles + postTransmitCycles
+        filterCond inp
+          | isJust inp = let (x,y) = (fromJust inp, fromJust $ L.head preambleFrames) in (x .&. y) /= y
+          | otherwise = True
         genFrame = Gen.maybe genDefinedBitVector
-        addLeadingZeroes = (L.replicate (pwNrOfFrames-1) 0 <>)
-        filterCond = not . containsPreamble @pw @fw preamble
+      gatherFrames0 <- forAll . Gen.list (Range.singleton delayCycles) $ Gen.filter filterCond genFrame
       gatherFrames1 <- forAll $ Gen.list (Range.singleton (simLength - delayCycles)) genFrame
-      let
-        RegisterBank (toList -> preambleFrames) = getRegs preamble
-        addFirstOnFrames = (<> L.take (pwNrOfFrames - 1) (fmap Just preambleFrames))
-        filterPreambles =
-          Gen.filter (filterCond . addLeadingZeroes . catMaybes . addFirstOnFrames)
-      gatherFrames0 <- forAll $ filterPreambles (Gen.list (Range.singleton delayCycles) genFrame)
       let
         topEntity :: HiddenClockResetEnable System =>
           ( Signal System (Maybe (BitVector fw)
@@ -376,18 +356,18 @@ integration = property $ do
           -> Signal System (DataLink fw, WishboneS2M 4))
         topEntity (unbundle -> (gatherOut, counter, wbTxM2S, wbRxM2S)) = out
          where
-          (_, linkIn1) = configTxUnit bs aw pw fw scw preamble counter gatherOut wbTxM2S
-          linkOut = registerN (snatProxy llProxy) Nothing linkIn1
+          (_, linkIn) = configTxUnit bs aw pw fw scw preamble counter gatherOut wbTxM2S
+          linkOut = registerN (snatProxy llProxy) Nothing linkIn
           wbRxS2M = configRxUnit bs aw pw fw scw preamble linkOut counter wbRxM2S
-          out = bundle (linkIn1, wbRxS2M)
+          out = bundle (linkIn, wbRxS2M)
         -- Compensate for the register write + state machine start delays.
         wbTxOff = L.replicate (delayCycles - 2) emptyWishboneM2S
         wbTxOn = wbWrite 0 1 : L.replicate transmitCycles emptyWishboneM2S
         wbTxIn = wbTxOff <> wbTxOn <> (wbWrite 0 0 : L.repeat emptyWishboneM2S)
         wbRxRead0 = L.replicate (delayCycles + transmitCycles - 1) (wbRead 0)
         wbRxIn = wbWrite 0 1 : wbRxRead0 <> cycle (fmap wbRead [0..fromIntegral readBackCycles])
-        counters = [0..]
-        framesIn = gatherFrames0 <> gatherFrames1
+        counters = cycle [0..]
+        framesIn = gatherFrames0 <> gatherFrames1 <> L.repeat Nothing
         topEntityInput = L.zip4 framesIn counters wbTxIn wbRxIn
         wbWrite a x = (emptyWishboneM2S @4 @aw)
           { addr = shiftL a 2
@@ -402,7 +382,7 @@ integration = property $ do
           , busCycle = True
           , strobe = True
           }
-        (linkIn0, wbRxOut) = L.unzip $ simulateN simLength topEntity topEntityInput
+        (linkFrames, wbRxOut) = L.unzip $ simulateN simLength topEntity topEntityInput
         decodedOutput = directedDecoding wbRxIn wbRxOut :: [(Unsigned scw, Unsigned scw)]
         storedOutput = L.last decodedOutput
         expected =
@@ -412,7 +392,7 @@ integration = property $ do
       footnote . fromString $ "wishbone reads per result: " <>
         show (natToNum @(Regs (Unsigned scw, Unsigned scw) 32) :: Integer)
       footnote . fromString $ "iterationsDuration: " <> showX iterationDuration
-      footnote . fromString $ "linkIn: " <> showX linkIn0
+      footnote . fromString $ "linkFrames: " <> showX linkFrames
       footnote . fromString $ "wbRxOut: " <> showX wbRxOut
       footnote . fromString $ "wbRxIn: " <> showX (L.take simLength wbRxIn)
       footnote . fromString $ "decodedOut: " <> showX decodedOutput
