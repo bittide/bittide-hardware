@@ -16,6 +16,88 @@ import Data.Maybe
 import Protocols.Wishbone
 
 import Bittide.SharedTypes
+import Data.Bifunctor
+
+-- | Dual-ported Wishbone storage element, essentially a wrapper for the single-ported version
+-- which priorities port B over port A. While port B is making a transaction, port A will be ignored.
+wbStorageDP ::
+  forall dom depth aw .
+  ( HiddenClockResetEnable dom
+  , KnownNat aw, 2 <= aw
+  , KnownNat depth, 1 <= depth) =>
+  Vec depth (Bytes 4) ->
+  Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
+  Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
+  (Signal dom (WishboneS2M (Bytes 4)),Signal dom (WishboneS2M (Bytes 4)))
+wbStorageDP initial aM2S bM2S = (aS2M, bS2M)
+ where
+  storageOut = wbStorage initial storageIn
+  aActive = strobe <$> aM2S .&&. busCycle <$> aM2S
+  bActive = strobe <$> bM2S .&&. busCycle <$> bM2S
+  aWriting = aActive .&&. writeEnable <$> aM2S
+
+  storageIn = mux (not <$> bActive) (noWrite <$> aM2S) bM2S
+
+  aS2M = mux (not <$> bActive) (writeIsErr <$> storageOut <*> aWriting) (noAck <$> storageOut)
+  bS2M = storageOut
+
+  noAck wb = wb{acknowledge = False, err = False}
+  noWrite wb = wb{writeEnable = False}
+  writeIsErr wb write = wb{err = err wb || write}
+
+-- | Storage element with a single wishbone port, it is half word addressable to work with
+-- RISC-V's C extension.
+wbStorage ::
+  forall dom depth aw .
+  ( HiddenClockResetEnable dom
+  , KnownNat aw, 2 <= aw
+  , KnownNat depth, 1 <= depth) =>
+  Vec depth (Bytes 4) ->
+  Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
+  Signal dom (WishboneS2M (Bytes 4))
+wbStorage initContent wbIn = wbOut
+ where
+  depth = resize . bitCoerce $ length initContent
+  readDataA = blockRamByteAddressable initContentA readAddrA writeEntryA byteSelectA
+  readDataB = blockRamByteAddressable initContentB readAddrB writeEntryB byteSelectB
+  (readAddrA, readAddrB, writeEntryA, writeEntryB, byteSelectA, byteSelectB, wbOut) =
+    unbundle $ go <$> wbIn <*> readDataB <*> readDataA
+  (initContentA, initContentB) = unzip $ fmap unpack initContent
+
+  go WishboneM2S{..} rdB rdA =
+    (addrA, addrB, writeEntryA0, writeEntryB0, byteSelectA0, byteSelectB0, emptyWishboneS2M{acknowledge,readData,err})
+   where
+
+    (bitCoerce . resize -> wbAddr, alignment) =  split @_ @(aw - 2) addr
+
+    -- when the second lowest bit is not set, the address is considered word aligned.
+    -- We don't care about the first bit to determine the address alignment because
+    -- byte aligned addresses are considered illegal.
+    (not -> wordAligned, byteAligned) = bimap unpack unpack $ split alignment
+    addrLegal = addr <= depth && not byteAligned
+
+    masterActive = strobe && busCycle
+    err = masterActive && not addrLegal
+    acknowledge = masterActive && addrLegal
+    masterWriting = masterActive && writeEnable && not err
+
+    (bsHigh,bsLow) = split busSelect
+    (writeDataHigh, writeDataLow) = split writeData
+
+    ((addrB, byteSelectB0, writeDataB), (addrA, byteSelectA0, writeDataA))
+      | wordAligned =
+        ( (wbAddr, bsHigh, writeDataHigh)
+        , (wbAddr, bsLow, writeDataLow))
+      | otherwise =
+        ( (satSucc SatBound wbAddr, bsLow, writeDataLow)
+        , (wbAddr, bsHigh, writeDataHigh))
+
+    (writeEntryB0, writeEntryA0)
+      | masterWriting = (Just (addrB, writeDataB),Just (addrB, writeDataA))
+      | otherwise     = (Nothing,Nothing)
+    readData
+      | wordAligned = rdB ++# rdA
+      | otherwise   = rdA ++# rdB
 
 -- | Indicates which buffer is currently selected.
 data SelectedBuffer = A | B deriving (Eq, Generic, BitPack, Show, NFDataX)
