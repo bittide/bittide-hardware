@@ -14,8 +14,7 @@ import           Clash.Prelude
 import           Contranomy.Wishbone
 import           Data.Maybe
 
-type BaseAddress aw = BitVector aw
-type MemoryMap slaveDevices addressWidth = Vec slaveDevices (BaseAddress addressWidth)
+type MemoryMap slaveDevices addressWidth = Vec slaveDevices (BitVector addressWidth)
 
 -- | Component that maps multiple slave devices to a single master device over the wishbone
 -- bus, it assumes that the config argument contains incrementing base addresses that correspond
@@ -50,6 +49,6 @@ memoryMap config (register wishboneM2S -> master) slaves = (toMaster, toSlaves)
     | otherwise = allSlaves
    where
      out = (\i -> replace i toAllSlaves{busCycle, strobe, writeEnable} allSlaves) <$> sel
-     newAddr = addr - (config !! (fromMaybe 0 sel))
+     newAddr = addr - maybe 0 (config !!) sel
      allSlaves = repeat toAllSlaves
      toAllSlaves = m{addr=newAddr, busCycle = False, strobe = False}
