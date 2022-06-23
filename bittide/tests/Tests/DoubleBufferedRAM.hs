@@ -250,6 +250,8 @@ doubleBufferedRAMByteAddressable1 = property $ do
         (duvOut, refOut) = L.unzip simOut
       duvOut === refOut
 
+-- | This test checks that we can generate a 'registerByteAddressable' that stores a
+-- configurable amount of bytes and selectively update its contents on a per byte basis.
 readWriteRegisterByteAddressable :: Property
 readWriteRegisterByteAddressable = property $ do
   bytes <- forAll $ Gen.enum 1 10
@@ -278,6 +280,10 @@ readWriteRegisterByteAddressable = property $ do
         simOut === P.take simLength expectedOut
       _ -> error "readWriteRegisterByteAddressable: Amount of bytes not equal to registers required."
 
+-- | This test checks that 'registerWB' can be written to and read from via its wishbone bus.
+-- This test makes sure that writing and reading with the wishbone bus works both with
+-- 'CircuitPriority' and 'WishbonePriority' enabled. During this test the circuit input does
+-- not write to the register.
 registerWBSigToSig :: Property
 registerWBSigToSig = property $ do
   bits <- forAll $ Gen.enum 1 100
@@ -305,6 +311,10 @@ registerWBSigToSig = property $ do
       writes === L.tail fstOut
     _ -> error "registerWBSigToSig: Registers required to store bitvector == 0."
 
+-- | This test checks that 'registerWB' can be written to with the wishbone bus and read from
+-- with the circuit output. This test makes sure that the behavior with 'CircuitPriority'
+-- and 'WishbonePriority' is identical. During this test the circuit input does not write
+-- to the register.
 registerWBWBToSig :: Property
 registerWBWBToSig = property $ do
   bits <- forAll $ Gen.enum 1 100
@@ -345,6 +355,10 @@ registerWBWBToSig = property $ do
    where
     (x:xs) = L.drop (n-1) l
 
+-- | This test checks that 'registerWB' can be written to by the circuit and read from
+-- with the wishbone bus. This test makes sure that the behavior with 'CircuitPriority'
+-- and 'WishbonePriority' is identical. During this test the wishbone bus does not write
+-- to the register.
 registerWBSigToWB :: Property
 registerWBSigToWB = property $ do
   bits <- forAll $ Gen.enum 1 100
@@ -396,7 +410,11 @@ registerWBSigToWB = property $ do
       | otherwise   = postProcWB wbRest
     postProcWB _ = []
 
-
+-- | This test checks that the behavior of 'registerWB' matches the set priorities when
+-- a write conflict occurs. It is expected that with 'WishbonePriority', the circuit
+-- ignores write operations from the circuit during a wishbone write operation.
+-- With 'CircuitPriority', wishbone write operations are acknowledged, but silently
+-- ignored during a circuit write cycle.
 registerWBWriteCollisions :: Property
 registerWBWriteCollisions = property $ do
   bits <- forAll $ Gen.enum 1 32
