@@ -187,7 +187,7 @@ registerWBE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
       (WishbonePriority, True , False) -> (sigbyteEnables0, sigRegIn)
       (_               , False, False) -> (0, errorX "registerWB: register input not defined.")
 
--- | Registor similar to 'register' with the addition that it takes a byte select signal
+-- | Register similar to 'register' with the addition that it takes a byte select signal
 -- that controls which bytes are updated.
 registerByteAddressable ::
   forall dom a .
