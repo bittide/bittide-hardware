@@ -66,9 +66,9 @@ data BurstTypeExtension
 wishboneM2S :: SNat bytes -> SNat addressWidth -> WishboneM2S bytes addressWidth
 wishboneM2S SNat SNat
   = WishboneM2S
-  { addr = undefined
-  , writeData = undefined
-  , busSelect = undefined
+  { addr = deepErrorX "wishboneM2S: addr undefined."
+  , writeData = deepErrorX "wishboneM2S: writeData undefined."
+  , busSelect = deepErrorX "wishboneM2S: busSelect undefined."
   , busCycle = False
   , strobe = False
   , writeEnable = False
@@ -79,7 +79,7 @@ wishboneM2S SNat SNat
 wishboneS2M :: SNat bytes -> WishboneS2M bytes
 wishboneS2M SNat
   = WishboneS2M
-  { readData = undefined
+  { readData = deepErrorX "wishboneM2S: readData undefined."
   , acknowledge = False
   , err = False
   }

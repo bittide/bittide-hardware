@@ -133,10 +133,10 @@ scatterGatherEngine bootCalS bootCalG scatterConfig gatherConfig
       $ Just <$> gatherOut
 
 
--- | Doublebuffered memory component that can be written to by a Bittide link, write address
--- of the incoming frame is determined by the scatterUnit's calendar. The buffers are swapped
--- at the beginning of each metacycle. Reading the buffer is done by supplying a read address.
--- Furthermore this component offers ports to control the incorporated calendar.
+-- | Doublebuffered memory component that can be written to by a Bittide link. The write
+-- address of the incoming frame is determined by the scatterUnit's calendar. The buffers
+-- are swapped at the beginning of each metacycle. Reading the buffer is done by supplying
+-- a read address. Furthermore this component offers ports to control the incorporated calendar.
 scatterUnit ::
   ( HiddenClockResetEnable dom
   , KnownNat memDepth
@@ -161,10 +161,11 @@ scatterUnit initMem calConfig wbIn calSwitch linkIn readAddr = (readOut, wbOut)
   writeOp = (\a b -> (a,) <$> b) <$> writeAddr <*> linkIn
   readOut = doubleBufferedRam initMem metaCycle readAddr writeOp
 
--- | Doublebuffered memory component that can be written to by a generic write operation, write address
--- of the incoming frame is determined by the scatterUnit's calendar. The buffers are swapped
--- at the beginning of each metacycle. Reading the buffer is done by supplying a read address.
--- Furthermore this component offers ports to control the incorporated calendar.
+-- | Doublebuffered memory component that can be written to by a generic write operation. The
+-- write address of the incoming frame is determined by the scatterUnit's calendar. The
+-- buffers are swapped at the beginning of each metacycle. Reading the buffer is done by
+-- supplying a read address. Furthermore this component offers ports to control the
+-- incorporated calendar.
 gatherUnit ::
   ( HiddenClockResetEnable dom
   , KnownNat memDepth
