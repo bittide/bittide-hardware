@@ -81,7 +81,7 @@ combineFrameWithAddr frameIn writeAddr = combine <$> frameIn <*> writeAddr
     combine frame addr = fmap (addr,) frame
 
 -- | scatterGatherEngine is a 4 port memory component that enables gathering and scattering for the processing element.
--- Scattering and gathering data is done using two seperate memory banks with each their own calendar,
+-- Scattering and gathering data is done using two separate memory banks with each their own calendar,
 -- the writeAddrSwitch dictate the read and write address on the switch side for the gather and scatter memory respectively.
 -- If the read address for the scatter engine is 0, a null frame (Nothing) will be sent to the switch.
 scatterGatherEngine ::
@@ -133,7 +133,7 @@ scatterGatherEngine bootCalS bootCalG scatterConfig gatherConfig
       $ Just <$> gatherOut
 
 
--- | Doublebuffered memory component that can be written to by a Bittide link. The write
+-- | Double buffered memory component that can be written to by a Bittide link. The write
 -- address of the incoming frame is determined by the scatterUnit's calendar. The buffers
 -- are swapped at the beginning of each metacycle. Reading the buffer is done by supplying
 -- a read address. Furthermore this component offers ports to control the incorporated calendar.
@@ -159,7 +159,7 @@ scatterUnit calConfig wbIn calSwitch linkIn readAddr = (readOut, wbOut)
   writeOp = (\a b -> (a,) <$> b) <$> writeAddr <*> linkIn
   readOut = doubleBufferedRamU metaCycle readAddr writeOp
 
--- | Doublebuffered memory component that can be written to by a generic write operation. The
+-- | Double buffered memory component that can be written to by a generic write operation. The
 -- write address of the incoming frame is determined by the scatterUnit's calendar. The
 -- buffers are swapped at the beginning of each metacycle. Reading the buffer is done by
 -- supplying a read address. Furthermore this component offers ports to control the
@@ -279,7 +279,7 @@ gatherUnitWB calConfig wbInCal calSwitch wbInSU =
     | selected  = byteEnables ++# 0b0
     | otherwise = 0b0 ++# byteEnables
 
--- | Coerces an index of size (n*2) to index n with the lower bit as seperate boolean.
+-- | Coerces an index of size (n*2) to index n with the lower bit as separate boolean.
 coerceIndexes :: forall n . (KnownNat n, 1 <= n) => (Index (n*2) -> (Index n, Bool))
 coerceIndexes = case sameNat natA natB of
   Just Refl -> bitCoerce
