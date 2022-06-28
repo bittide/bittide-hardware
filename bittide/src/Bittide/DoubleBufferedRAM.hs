@@ -15,16 +15,16 @@ import Clash.Prelude
 import Contranomy.Wishbone
 import Data.Maybe
 import Bittide.SharedTypes
--- | The double buffered RAM component is a memory component that internally uses a single
--- blockRam, but enables the user to write to one part of the ram and read from another.
--- When the metacycle indicate (the first argument) is True, the read buffer and write buffer
--- are swapped. This signal should be True for the first cycle of every metacycle.
+
+-- | The double buffered RAM component is a memory component that contains two buffers
+-- and enables the user to write to one buffer and read from the other. When the
+-- first argument is True, the read buffer and write buffer are swapped.
 doubleBufferedRAM ::
   forall dom memDepth a .
   (HiddenClockResetEnable dom, KnownNat memDepth, NFDataX a) =>
-  -- | The initial contents of the first buffer. The second buffer is undefined.
+  -- | The initial contents of both buffers.
   Vec memDepth a ->
-  -- | Indicates when a new metacycle has started.
+  -- | Toggles the swapping of buffers.
   Signal dom Bool ->
   -- | Read address.
   Signal dom (Index memDepth) ->
@@ -47,11 +47,42 @@ doubleBufferedRAM initialContent switch readAddr writeFrame = output
 
     output = mux outputSelect buffer1 buffer0
 
--- | The byte addressable double buffered RAM component is a memory component that has a memory width which is a multiple of 8 bits.
--- It contains a blockRam per byte and uses the one hot byte select signal to determine which bytes will be written to the blockRam.
--- This component is double buffered such that it returns the read data from both buffers in a tuple where the first element
--- contains the read data from the "active" buffer, and the second element contains the read data from the "inactive" buffer.
--- Writing to this component will always write to the inactive buffer.
+-- | Version of 'doubleBufferedRAM' with undefined initial contents. This component
+-- contains two buffers and enables the user to write to one buffer and read from the
+-- other. When the first argument is True, the read buffer and write buffer are swapped.
+doubleBufferedRAMU ::
+  forall dom memDepth a .
+  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
+  -- | Toggles the swapping of buffers.
+  Signal dom Bool ->
+  -- | Read address.
+  Signal dom (Index memDepth) ->
+  -- | Incoming data frame.
+  Signal dom (Maybe (Index memDepth, a)) ->
+  -- | Outgoing data
+  Signal dom a
+doubleBufferedRAMU switch readAddr writeFrame = output
+  where
+    outputSelect = register False readSelect
+    readSelect = mux switch (not <$> outputSelect) outputSelect
+    writeSelect = not <$> readSelect
+
+    writeEntries bufSelect frame
+      | bufSelect = (Nothing, frame)
+      | otherwise = (frame, Nothing)
+    (newEntry0, newEntry1) = unbundle (writeEntries <$> writeSelect <*> writeFrame)
+    buffer0 = blockRamU NoClearOnReset (SNat @memDepth) rstFunc readAddr newEntry0
+    buffer1 = blockRamU NoClearOnReset (SNat @memDepth) rstFunc readAddr newEntry1
+    rstFunc = error "doubleBufferedRam: reset function undefined"
+
+    output = mux outputSelect buffer1 buffer0
+
+-- | The byte addressable double buffered RAM component is a memory component that
+-- consists of two buffers and internally stores its elements as a multiple of 8 bits.
+-- It contains a blockRam per byte and uses the one hot byte select signal to determine
+-- which bytes will be overwritten during a write operation. This components writes to
+-- one buffer and reads from the other. The buffers are swapped when the second argument
+-- is True.
 doubleBufferedRAMByteAddressable ::
   forall dom depth a .
   ( KnownNat depth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
@@ -80,6 +111,38 @@ doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteS
 
     output = mux outputSelect buffer1 buffer0
 
+-- | Version of 'doubleBufferedRAMByteAddressable' where the initial content is undefined.
+-- This memory element consists of two buffers and internally stores its elements as a
+-- multiple of 8 bits. It contains a blockRam per byte and uses the one hot byte select
+-- signal to determine which bytes will be overwritten during a write operation.
+-- This components writes to one buffer and reads from the other. The buffers are
+-- swapped when the second argument is True.
+doubleBufferedRAMByteAddressableU ::
+  forall dom depth a .
+  ( KnownNat depth, 1 <= depth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
+  -- | Indicates when a new metacycle has started.
+  Signal dom Bool ->
+  -- | Read address.
+  Signal dom (Index depth) ->
+  -- | Incoming data frame.
+  Signal dom (Maybe (Located  depth a)) ->
+  -- | One hot byte select for writing only
+  Signal dom (ByteEnable (Regs a 8)) ->
+  -- | Outgoing data
+  Signal dom a
+doubleBufferedRAMByteAddressableU switch readAddr writeFrame byteSelect = output
+ where
+    outputSelect  = register False readSelect
+    readSelect    = mux switch (not <$> outputSelect) outputSelect
+    writeSelect   = not <$> readSelect
+
+    writeEntries bufSelect frame = if bufSelect then (Nothing, frame) else (frame, Nothing)
+    (newEntry0, newEntry1) = unbundle (writeEntries <$> writeSelect <*> writeFrame)
+    buffer0 = blockRamByteAddressableU readAddr newEntry0 byteSelect
+    buffer1 = blockRamByteAddressableU readAddr newEntry1 byteSelect
+
+    output = mux outputSelect buffer1 buffer0
+
 -- | Blockram similar to 'blockRam' with the addition that it takes a byte select signal
 -- that controls which bytes at the write address are updated.
 blockRamByteAddressable ::
@@ -91,13 +154,30 @@ blockRamByteAddressable ::
   Signal dom (ByteEnable (Regs a 8)) ->
   Signal dom a
 blockRamByteAddressable initRAM readAddr newEntry byteSelect =
-   -- (\x y z-> trace (showX (x, y)) z) <$> readAddr <*> bundle writeBytes <*>
     registersToData @_ @8 . RegisterBank <$> readBytes
  where
    initBytes = transpose $ getBytes <$> initRAM
    getBytes (getRegs -> RegisterBank vec) = vec
    writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
    readBytes = bundle $ (`blockRam` readAddr) <$> initBytes <*> writeBytes
+
+-- | Version of 'blockRamByteAddressable' with undefined initial contents. It is similar
+-- to 'blockRam' with the addition that it takes a byte select signal that controls
+-- which bytes at the write address are updated.
+blockRamByteAddressableU ::
+  forall dom depth a .
+  (HiddenClockResetEnable dom, KnownNat depth, 1 <= depth, Paddable a, ShowX a) =>
+  Signal dom (Index depth) ->
+  Signal dom (Maybe (Located depth a)) ->
+  Signal dom (ByteEnable (Regs a 8)) ->
+  Signal dom a
+blockRamByteAddressableU readAddr newEntry byteSelect =
+    registersToData @_ @8 . RegisterBank <$> readBytes
+ where
+   writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
+   readBytes = bundle $ ram readAddr <$> writeBytes
+   ram = blockRamU NoClearOnReset (SNat @depth) rstFunc
+   rstFunc = error "doubleBufferedRam: reset function undefined"
 
 data RegisterWritePriority = CircuitPriority | WishbonePriority
 
