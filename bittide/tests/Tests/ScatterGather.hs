@@ -248,8 +248,7 @@ scatterUnitNoFrameLoss = property $ do
     let
       topEntity (unbundle -> (wbIn, linkIn)) = fst $
         withClockResetEnable clockGen resetGen enableGen (scatterUnitWB @System @_ @32)
-        (deepErrorX "scatterUnit initial elements undefined") calConfig
-        (pure $ wishboneM2S SNat SNat) (pure False) linkIn wbIn
+        calConfig (pure $ wishboneM2S SNat SNat) (pure False) linkIn wbIn
 
       wbReadOps = P.take simLength $ P.replicate depth idleM2S P.++  P.concat
         (padToLength depth idleM2S . P.concat . P.zipWith wbRead (toList calA) <$> inputFrames)
@@ -290,8 +289,7 @@ gatherUnitNoFrameLoss = property $ do
     let
       topEntity wbIn = (\ (a, _ ,_) -> a) $
         withClockResetEnable clockGen resetGen enableGen (gatherUnitWB @System @_ @32)
-        (deepErrorX "scatterUnit initial elements undefined") calConfig
-        (pure $ wishboneM2S SNat SNat) (pure False) wbIn
+        calConfig (pure $ wishboneM2S SNat SNat) (pure False) wbIn
 
       wbWriteOps = P.take simLength . P.concat $
         padToLength depth idleM2S . P.concat . P.zipWith wbWrite (toList calA) <$> inputFrames

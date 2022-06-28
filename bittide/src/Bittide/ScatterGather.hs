@@ -139,10 +139,8 @@ scatterGatherEngine bootCalS bootCalG scatterConfig gatherConfig
 -- a read address. Furthermore this component offers ports to control the incorporated calendar.
 scatterUnit ::
   ( HiddenClockResetEnable dom
-  , KnownNat memDepth
+  , KnownNat memDepth, 1 <= memDepth
   , KnownNat frameWidth) =>
-  -- | Initial contents of both memory buffers.
-  Vec memDepth (BitVector frameWidth) ->
   -- | Configuration for the calendar.
   CalendarConfig bytes addressWidth (CalendarEntry memDepth) ->
   -- | Wishbone master-slave port for the calendar.
@@ -155,11 +153,11 @@ scatterUnit ::
   Signal dom (Index memDepth) ->
   -- | (Data at read address delayed 1 cycle, Wishbone slave-master from calendar)
   (Signal dom (BitVector frameWidth), Signal dom (WishboneS2M bytes))
-scatterUnit initMem calConfig wbIn calSwitch linkIn readAddr = (readOut, wbOut)
+scatterUnit calConfig wbIn calSwitch linkIn readAddr = (readOut, wbOut)
  where
   (writeAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
   writeOp = (\a b -> (a,) <$> b) <$> writeAddr <*> linkIn
-  readOut = doubleBufferedRam initMem metaCycle readAddr writeOp
+  readOut = doubleBufferedRamU metaCycle readAddr writeOp
 
 -- | Doublebuffered memory component that can be written to by a generic write operation. The
 -- write address of the incoming frame is determined by the scatterUnit's calendar. The
@@ -168,13 +166,9 @@ scatterUnit initMem calConfig wbIn calSwitch linkIn readAddr = (readOut, wbOut)
 -- incorporated calendar.
 gatherUnit ::
   ( HiddenClockResetEnable dom
-  , KnownNat memDepth
-  , KnownNat frameWidth
-  , 1 <= frameWidth
-  , KnownNat (DivRU frameWidth 8)
-  , 1 <= (DivRU frameWidth 8)) =>
-  -- | Initial contents for both memory buffers
-  Vec memDepth (BitVector frameWidth) ->
+  , KnownNat memDepth, 1 <= memDepth
+  , KnownNat frameWidth, 1 <= frameWidth
+  , KnownNat (DivRU frameWidth 8), 1 <= (DivRU frameWidth 8)) =>
   -- | Configuration for the calendar.
   CalendarConfig bytes addressWidth (CalendarEntry memDepth) ->
   -- | Wishbone master-slave port for the calendar.
@@ -187,21 +181,19 @@ gatherUnit ::
   Signal dom (ByteEnable (DivRU frameWidth 8)) ->
   -- | (Transmitted  frame to Bittide Link, Wishbone slave-master from calendar)
   (Signal dom (DataLink frameWidth), Signal dom (WishboneS2M bytes))
-gatherUnit initMem calConfig wbIn calSwitch writeOp byteEnables= (linkOut, wbOut)
+gatherUnit calConfig wbIn calSwitch writeOp byteEnables= (linkOut, wbOut)
  where
   (readAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
   linkOut = mux (register True $ (==0) <$> readAddr) (pure Nothing) $ Just <$> bramOut
-  bramOut = doubleBufferedRamByteAddressable initMem metaCycle readAddr writeOp byteEnables
+  bramOut = doubleBufferedRamByteAddressableU metaCycle readAddr writeOp byteEnables
 
 -- | Wishbone interface for the scatterUnit and gatherUnit. It makes the scatter and gather
 -- unit, which operate on 64 bit frames, addressable via a 32 bit wishbone bus.
 wbInterface ::
   forall bytes addressWidth addresses .
   ( KnownNat bytes
-  , KnownNat addresses
-  , 1 <= addresses
-  , KnownNat addressWidth
-  , 2 <= addressWidth) =>
+  , KnownNat addresses, 1 <= addresses
+  , KnownNat addressWidth, 2 <= addressWidth) =>
   -- | Maximum address of the respective memory element as seen from the wishbone side.
   Index addresses ->
   -- | Wishbone master - slave data.
@@ -229,12 +221,8 @@ wbInterface addressRange WishboneM2S{..} readData =
 scatterUnitWB ::
   forall dom memDepth awSU bsCal awCal .
   ( HiddenClockResetEnable dom
-  , KnownNat memDepth
-  , 1 <= memDepth
-  , KnownNat awSU
-  , 2 <= awSU) =>
-  -- | Initial contents of both memory buffers.
-  Vec memDepth (BitVector 64) ->
+  , KnownNat memDepth, 1 <= memDepth
+  , KnownNat awSU, 2 <= awSU) =>
   -- | Configuration for the calendar.
   CalendarConfig bsCal awCal (CalendarEntry memDepth) ->
   -- | Wishbone master - slave data calendar.
@@ -247,12 +235,12 @@ scatterUnitWB ::
   Signal dom (WishboneM2S 4 awSU) ->
   -- | (slave - master data scatterUnit , slave - master data calendar)
   (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
-scatterUnitWB initMem calConfig wbInCal calSwitch linkIn wbInSU =
+scatterUnitWB calConfig wbInCal calSwitch linkIn wbInSU =
   (delayControls wbOutSU, wbOutCal)
  where
   (wbOutSU, memAddr, _) = unbundle $ wbInterface maxBound <$> wbInSU <*> scatteredData
   (readAddr, upperSelected) = unbundle $ coerceIndexes <$> memAddr
-  (scatterUnitRead, wbOutCal) = scatterUnit initMem calConfig wbInCal calSwitch linkIn readAddr
+  (scatterUnitRead, wbOutCal) = scatterUnit calConfig wbInCal calSwitch linkIn readAddr
   (upper, lower) = unbundle $ split <$> scatterUnitRead
   selected = register (errorX "scatterUnitWb: Initial selection undefined") upperSelected
   scatteredData = mux selected upper lower
@@ -263,12 +251,8 @@ scatterUnitWB initMem calConfig wbInCal calSwitch linkIn wbInSU =
 gatherUnitWB ::
   forall dom memDepth awSU bsCal awCal .
   ( HiddenClockResetEnable dom
-  , KnownNat memDepth
-  , 1 <= memDepth
-  , KnownNat awSU
-  , 2 <= awSU) =>
-  -- | Initial contents of both memory buffers.
-  Vec memDepth (BitVector 64) ->
+  , KnownNat memDepth, 1 <= memDepth
+  , KnownNat awSU, 2 <= awSU) =>
   -- | Configuration for the calendar.
   CalendarConfig bsCal awCal (CalendarEntry memDepth) ->
   -- | Wishbone master - slave data calendar.
@@ -279,13 +263,13 @@ gatherUnitWB ::
   Signal dom (WishboneM2S 4 awSU) ->
   -- | (slave - master data gatherUnit , slave - master data calendar)
   (Signal dom (DataLink 64), Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
-gatherUnitWB initMem calConfig wbInCal calSwitch wbInSU =
+gatherUnitWB calConfig wbInCal calSwitch wbInSU =
   (linkOut, delayControls wbOutSU, wbOutCal)
  where
   (wbOutSU, memAddr, writeOp) = unbundle $ wbInterface maxBound <$> wbInSU <*> pure 0b0
   (writeAddr, upperSelected) = unbundle $ coerceIndexes <$> memAddr
   (linkOut, wbOutCal) =
-    gatherUnit initMem calConfig wbInCal calSwitch gatherWrite gatherByteEnables
+    gatherUnit calConfig wbInCal calSwitch gatherWrite gatherByteEnables
   gatherWrite = mkWrite <$> writeAddr <*> writeOp
   gatherByteEnables = mkEnables <$> upperSelected <*> (busSelect <$> wbInSU)
 
