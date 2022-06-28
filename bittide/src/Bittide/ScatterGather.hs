@@ -7,7 +7,7 @@ module Bittide.ScatterGather(scatterEngine, gatherEngine, scatterGatherEngine) w
 import Clash.Prelude
 
 import Bittide.Calendar
-import Bittide.DoubleBufferedRAM ( doubleBufferedRAM )
+import Bittide.DoubleBufferedRAM
 import Bittide.SharedTypes
 
 
@@ -36,7 +36,7 @@ scatterEngine ::
   -- | Data at the read address, delayed by one clock cycle.
   Signal dom a
 scatterEngine newMetaCycle frameIn writeAddr =
-  doubleBufferedRAM (deepErrorX "scatterEngine undefined") newMetaCycle readAddr writeFrame
+  doubleBufferedRAMU newMetaCycle readAddr writeFrame
     where
       readAddr = register 0 $ satSucc SatWrap <$> readAddr
       writeFrame = combineFrameWithAddr frameIn writeAddr
@@ -55,7 +55,7 @@ gatherEngine ::
   -- | Data at the read address, delayed by one clock cycle.
   Signal dom a
 gatherEngine newMetaCycle frameIn readAddr =
-  doubleBufferedRAM (deepErrorX "gatherEngine undefined") newMetaCycle readAddr writeFrame
+  doubleBufferedRAMU newMetaCycle readAddr writeFrame
   where
     writeAddr = register 0 $ satSucc SatWrap <$> writeAddr
     writeFrame = combineFrameWithAddr frameIn writeAddr
@@ -99,14 +99,12 @@ scatterGatherEngine bootCalS bootCalG scatterConfig gatherConfig
     frameInSwitch' = mux ((==0) <$> writeAddrSwitch) (pure Nothing) frameInSwitch
     (writeAddrSwitch, newMetaCycleS) = calendar bootCalS (pure False) scatterConfig
     writeFrameSwitch = (\f a -> fmap (a,) f) <$> frameInSwitch' <*> writeAddrSwitch
-    scatterOut = doubleBufferedRAM (deepErrorX "scatterOut undefined")
-      newMetaCycleS readAddrPE writeFrameSwitch
+    scatterOut = doubleBufferedRAMU newMetaCycleS readAddrPE writeFrameSwitch
     toPE      = scatterOut
 
     -- Gather engine
     frameInPE' = mux ((==0) <$> writeAddrPE) (pure Nothing) frameInPE
     (readAddrSwitch, newMetaCycleG) = calendar bootCalG (pure False) gatherConfig
     writeFramePE = (\f a -> fmap (a,) f) <$> frameInPE' <*> writeAddrPE
-    gatherOut = doubleBufferedRAM (deepErrorX "gatherOut undefined")
-      newMetaCycleG readAddrSwitch writeFramePE
+    gatherOut = doubleBufferedRAMU newMetaCycleG readAddrSwitch writeFramePE
     toSwitch  = mux (register True $ (==0) <$> readAddrSwitch) (pure Nothing) $ Just <$> gatherOut

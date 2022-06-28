@@ -18,13 +18,13 @@ import Bittide.SharedTypes
 
 -- | The double buffered RAM component is a memory component that contains two buffers
 -- and enables the user to write to one buffer and read from the other. When the
--- first argument is True, the read buffer and write buffer are swapped.
+-- second argument is True, the read buffer and write buffer are swapped.
 doubleBufferedRAM ::
   forall dom memDepth a .
   (HiddenClockResetEnable dom, KnownNat memDepth, NFDataX a) =>
   -- | The initial contents of both buffers.
   Vec memDepth a ->
-  -- | Toggles the swapping of buffers.
+  -- | When this argument is True, the read buffer and write buffer are swapped at the rising edge.
   Signal dom Bool ->
   -- | Read address.
   Signal dom (Index memDepth) ->
@@ -53,7 +53,7 @@ doubleBufferedRAM initialContent switch readAddr writeFrame = output
 doubleBufferedRAMU ::
   forall dom memDepth a .
   (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
-  -- | Toggles the swapping of buffers.
+  -- | When this argument is True, the read buffer and write buffer are swapped at the rising edge.
   Signal dom Bool ->
   -- | Read address.
   Signal dom (Index memDepth) ->
@@ -73,7 +73,7 @@ doubleBufferedRAMU switch readAddr writeFrame = output
     (newEntry0, newEntry1) = unbundle (writeEntries <$> writeSelect <*> writeFrame)
     buffer0 = blockRamU NoClearOnReset (SNat @memDepth) rstFunc readAddr newEntry0
     buffer1 = blockRamU NoClearOnReset (SNat @memDepth) rstFunc readAddr newEntry1
-    rstFunc = error "doubleBufferedRam: reset function undefined"
+    rstFunc = const (errorX "doubleBufferedRamU: reset function undefined")
 
     output = mux outputSelect buffer1 buffer0
 
@@ -88,7 +88,7 @@ doubleBufferedRAMByteAddressable ::
   ( KnownNat depth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
   -- | The initial contents of the first buffer.
   Vec depth a ->
-  -- | Indicates when a new metacycle has started.
+  -- | When this argument is True, the read buffer and write buffer are swapped at the rising edge.
   Signal dom Bool ->
   -- | Read address.
   Signal dom (Index depth) ->
@@ -116,11 +116,11 @@ doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteS
 -- multiple of 8 bits. It contains a blockRam per byte and uses the one hot byte select
 -- signal to determine which bytes will be overwritten during a write operation.
 -- This components writes to one buffer and reads from the other. The buffers are
--- swapped when the second argument is True.
+-- swapped when the first argument is True.
 doubleBufferedRAMByteAddressableU ::
   forall dom depth a .
   ( KnownNat depth, 1 <= depth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
-  -- | Indicates when a new metacycle has started.
+  -- | When this argument is True, the read buffer and write buffer are swapped at the rising edge.
   Signal dom Bool ->
   -- | Read address.
   Signal dom (Index depth) ->
@@ -177,11 +177,11 @@ blockRamByteAddressableU readAddr newEntry byteSelect =
    writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
    readBytes = bundle $ ram readAddr <$> writeBytes
    ram = blockRamU NoClearOnReset (SNat @depth) rstFunc
-   rstFunc = error "doubleBufferedRam: reset function undefined"
+   rstFunc = const (errorX "blockRamByteAddressableU: reset function undefined")
 
 data RegisterWritePriority = CircuitPriority | WishbonePriority
 
--- | register with additional wishbone interface, this component has a configurable
+-- | Register with additional wishbone interface, this component has a configurable
 -- priority that determines which value gets stored in the register during a write conflict.
 -- With 'CircuitPriority', the incoming value in the fourth argument gets stored on a
 -- collision and the wishbone bus gets acknowledged, but the value is silently ignored.
@@ -203,7 +203,7 @@ registerWB ::
 registerWB writePriority initVal wbIn sigIn =
   registerWBE writePriority initVal wbIn sigIn (pure maxBound)
 
--- | register with additional wishbone interface, this component has a configurable
+-- | Register with additional wishbone interface, this component has a configurable
 -- priority that determines which value gets stored in the register during a write conflict.
 -- With 'CircuitPriority', the incoming value in the fourth argument gets stored on a
 -- collision and the wishbone bus gets acknowledged, but the value is silently ignored.
