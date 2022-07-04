@@ -52,14 +52,14 @@ ramGroup = testGroup "DoubleBufferedRam group"
       "doubleBufferedRamByteAddressable1" doubleBufferedRamByteAddressable1
   , testPropertyNamed "Byte addressable register can be written to and read from with byte enables."
       "readWriteRegisterByteAddressable" readWriteRegisterByteAddressable
-  , testPropertyNamed "registerWB function as a normal register."
-      "registerWBSigToSig" registerWBSigToSig
-  , testPropertyNamed "registerWB can be written to with wishbone."
-      "registerWBWBToSig" registerWBWBToSig
-  , testPropertyNamed "registerWB can be read from with wishbone."
-      "registerWBSigToWB" registerWBSigToWB
-  , testPropertyNamed "registerWB write conflict resolution matches set priorities"
-      "registerWBWriteCollisions" registerWBWriteCollisions
+  , testPropertyNamed "registerWb function as a normal register."
+      "registerWbSigToSig" registerWbSigToSig
+  , testPropertyNamed "registerWb can be written to with wishbone."
+      "registerWbWbToSig" registerWbWbToSig
+  , testPropertyNamed "registerWb can be read from with wishbone."
+      "registerWbSigToWb" registerWbSigToWb
+  , testPropertyNamed "registerWb write conflict resolution matches set priorities"
+      "registerWbWriteCollisions" registerWbWriteCollisions
   ]
 
 genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
@@ -280,17 +280,17 @@ readWriteRegisterByteAddressable = property $ do
         simOut === P.take simLength expectedOut
       _ -> error "readWriteRegisterByteAddressable: Amount of bytes not equal to registers required."
 
--- | This test checks that 'registerWB' can be written to and read from via its wishbone bus.
+-- | This test checks that 'registerWb' can be written to and read from via its wishbone bus.
 -- This test makes sure that writing and reading with the wishbone bus works both with
 -- 'CircuitPriority' and 'WishbonePriority' enabled. During this test the circuit input does
 -- not write to the register.
-registerWBSigToSig :: Property
-registerWBSigToSig = property $ do
+registerWbSigToSig :: Property
+registerWbSigToSig = property $ do
   bits <- forAll $ Gen.enum 1 100
   case TN.someNatVal bits of
     SomeNat p -> case compareSNat d1 (snatProxy p) of
       SNatLE -> go p
-      _ -> error "registerWBSigToSig: Amount of bits == 0."
+      _ -> error "registerWbSigToSig: Amount of bits == 0."
  where
   go :: forall bits m . (KnownNat bits, 1 <= bits, Monad m) => Proxy bits -> PropertyT m ()
   go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
@@ -299,7 +299,7 @@ registerWBSigToSig = property $ do
       writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @_ @bits
       let
         simLength = L.length writes + 1
-        someReg prio sigIn = fst $ withClockResetEnable clockGen resetGen enableGen $ registerWB @_ @_ @4 @32 prio initVal (pure $ wishboneM2S SNat SNat) sigIn
+        someReg prio sigIn = fst $ withClockResetEnable clockGen resetGen enableGen $ registerWb @_ @_ @4 @32 prio initVal (pure $ wishboneM2S SNat SNat) sigIn
         topEntity sigIn = bundle (someReg CircuitPriority sigIn, someReg WishbonePriority sigIn)
         topEntityInput = (Just <$> writes) <> [Nothing]
         simOut = simulateN @System simLength topEntity topEntityInput
@@ -309,19 +309,19 @@ registerWBSigToSig = property $ do
       footnote . fromString $ "expected" <> showX writes
       fstOut === sndOut
       writes === L.tail fstOut
-    _ -> error "registerWBSigToSig: Registers required to store bitvector == 0."
+    _ -> error "registerWbSigToSig: Registers required to store bitvector == 0."
 
--- | This test checks that 'registerWB' can be written to with the wishbone bus and read from
+-- | This test checks that 'registerWb' can be written to with the wishbone bus and read from
 -- with the circuit output. This test makes sure that the behavior with 'CircuitPriority'
 -- and 'WishbonePriority' is identical. During this test the circuit input does not write
 -- to the register.
-registerWBWBToSig :: Property
-registerWBWBToSig = property $ do
+registerWbWbToSig :: Property
+registerWbWbToSig = property $ do
   bits <- forAll $ Gen.enum 1 100
   case TN.someNatVal bits of
     SomeNat p -> case compareSNat d1 (snatProxy p) of
       SNatLE -> go p
-      _ -> error "registerWBWBToSig: Amount of bits == 0."
+      _ -> error "registerWbWbToSig: Amount of bits == 0."
  where
   go :: forall bits m . (KnownNat bits, 1 <= bits, Monad m) => Proxy bits -> PropertyT m ()
   go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
@@ -332,7 +332,7 @@ registerWBWBToSig = property $ do
       let
         simLength = L.length writes * regs + 2
         someReg prio wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
-         registerWB @System @_ @4 @32 prio initVal wbIn (pure Nothing)
+         registerWb @System @_ @4 @32 prio initVal wbIn (pure Nothing)
         topEntity wbIn = bundle (someReg CircuitPriority wbIn, someReg WishbonePriority wbIn)
         topEntityInput = L.concatMap wbWrite writes <> L.repeat idleM2S
         simOut = simulateN simLength topEntity topEntityInput
@@ -345,7 +345,7 @@ registerWBWBToSig = property $ do
       footnote . fromString $ "expected" <> showX writes
       fstOut === sndOut
       writes === L.take (L.length writes) filteredOut
-    _ -> error "registerWBWBToSig: Registers required to store bitvector == 0."
+    _ -> error "registerWbWbToSig: Registers required to store bitvector == 0."
    where
     wbWrite v = L.zipWith bv2WbWrite [0.. L.length l - 1] $ L.reverse l
      where
@@ -355,17 +355,17 @@ registerWBWBToSig = property $ do
    where
     (x:xs) = L.drop (n-1) l
 
--- | This test checks that 'registerWB' can be written to by the circuit and read from
+-- | This test checks that 'registerWb' can be written to by the circuit and read from
 -- with the wishbone bus. This test makes sure that the behavior with 'CircuitPriority'
 -- and 'WishbonePriority' is identical. During this test the wishbone bus does not write
 -- to the register.
-registerWBSigToWB :: Property
-registerWBSigToWB = property $ do
+registerWbSigToWb :: Property
+registerWbSigToWb = property $ do
   bits <- forAll $ Gen.enum 1 100
   case TN.someNatVal bits of
     SomeNat p -> case compareSNat d1 (snatProxy p) of
       SNatLE -> go p
-      _ -> error "registerWBSigToWB: Amount of bits == 0."
+      _ -> error "registerWbSigToWb: Amount of bits == 0."
  where
   go :: forall bits m . (KnownNat bits, 1 <= bits, Monad m) => Proxy bits -> PropertyT m ()
   go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
@@ -373,7 +373,7 @@ registerWBSigToWB = property $ do
       initVal <- forAll $ genDefinedBitVector @_ @bits
       writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @_ @bits
       let
-        someReg prio sigIn wbIn = snd $ withClockResetEnable clockGen resetGen enableGen $ registerWB @_ @_ @4 @32 prio initVal wbIn sigIn
+        someReg prio sigIn wbIn = snd $ withClockResetEnable clockGen resetGen enableGen $ registerWb @_ @_ @4 @32 prio initVal wbIn sigIn
         topEntity (unbundle -> (sigIn, wbIn)) = bundle (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
         padWrites x = L.take (natToNum @(Regs (BitVector bits) 32)) $ Just x : L.repeat Nothing
         readOps = idleM2S : cycle (wbRead <$> L.reverse [(0 :: Int).. (natToNum @(Regs (BitVector bits) 32)-1)])
@@ -384,9 +384,9 @@ registerWBSigToWB = property $ do
       footnote . fromString $ "simOut: " <> showX simOut
       footnote . fromString $ "input:" <> showX topEntityInput
       footnote . fromString $ "expected" <> showX writes
-      postProcWB fstOut === postProcWB sndOut
+      postProcWb fstOut === postProcWb sndOut
       writes === wbDecoding (L.tail fstOut)
-    _ -> error "registerWBSigToWB: Registers required to store bitvector == 0."
+    _ -> error "registerWbSigToWb: Registers required to store bitvector == 0."
    where
     wbDecoding :: ([WishboneS2M 4] -> [BitVector bits])
     wbDecoding (wbNow:wbRest)
@@ -404,24 +404,24 @@ registerWBSigToWB = property $ do
       , busCycle = True
       , strobe = True
       }
-    postProcWB (WishboneS2M{..} : wbRest)
-      | acknowledge = Just readData : postProcWB wbRest
-      | err         = Nothing : postProcWB wbRest
-      | otherwise   = postProcWB wbRest
-    postProcWB _ = []
+    postProcWb (WishboneS2M{..} : wbRest)
+      | acknowledge = Just readData : postProcWb wbRest
+      | err         = Nothing : postProcWb wbRest
+      | otherwise   = postProcWb wbRest
+    postProcWb _ = []
 
--- | This test checks that the behavior of 'registerWB' matches the set priorities when
+-- | This test checks that the behavior of 'registerWb' matches the set priorities when
 -- a write conflict occurs. It is expected that with 'WishbonePriority', the circuit
 -- ignores write operations from the circuit during a wishbone write operation.
 -- With 'CircuitPriority', wishbone write operations are acknowledged, but silently
 -- ignored during a circuit write cycle.
-registerWBWriteCollisions :: Property
-registerWBWriteCollisions = property $ do
+registerWbWriteCollisions :: Property
+registerWbWriteCollisions = property $ do
   bits <- forAll $ Gen.enum 1 32
   case TN.someNatVal bits of
     SomeNat p -> case compareSNat d1 (snatProxy p) of
       SNatLE -> go p
-      _ -> error "registerWBWriteCollisions: Amount of bits == 0."
+      _ -> error "registerWbWriteCollisions: Amount of bits == 0."
  where
   go :: forall bits m . (KnownNat bits, 1 <= bits, Monad m) => Proxy bits -> PropertyT m ()
   go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
@@ -433,7 +433,7 @@ registerWBWriteCollisions = property $ do
       let
         simLength = writeAmount + 1
         someReg prio sigIn wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
-         registerWB @System @_ @4 @32 prio initVal wbIn sigIn
+         registerWb @System @_ @4 @32 prio initVal wbIn sigIn
         topEntity (unbundle -> (sigIn, wbIn)) = bundle (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
         topEntityInput = L.zip (Just <$> sigWrites) (L.concatMap wbWrite wbWrites <> L.repeat idleM2S)
         simOut = simulateN simLength topEntity topEntityInput
@@ -446,7 +446,7 @@ registerWBWriteCollisions = property $ do
       footnote . fromString $ "sigIn" <> showX sigWrites
       sigWrites === L.tail fstOut
       wbWrites  === L.tail sndOut
-    _ -> error "registerWBWriteCollisions: Registers required to store bitvector == 0."
+    _ -> error "registerWbWriteCollisions: Registers required to store bitvector == 0."
    where
     wbWrite v = L.zipWith bv2WbWrite (L.reverse [0.. L.length l - 1]) l
      where

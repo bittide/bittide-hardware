@@ -108,11 +108,11 @@ engineNoFrameLoss engine = property $ do
       footnote . fromString $ showX topEntityInput
       Set.fromList inputFrames' === Set.fromList simOut
 
-filterSGOut ::
+filterSgOut ::
   (KnownDomain dom, KnownNat n, 1 <= n) =>
   (Signal dom (BitVector n), Signal dom (Maybe (BitVector n))) ->
   (Signal dom (Maybe (BitVector n)), Signal dom (Maybe (BitVector n)))
-filterSGOut (toP, toS) = (maybeIsUndefined <$> toP, (maybeIsUndefined =<<) <$> toS)
+filterSgOut (toP, toS) = (maybeIsUndefined <$> toP, (maybeIsUndefined =<<) <$> toS)
 
 filterZeroes :: (Num a, Eq a) => [Maybe f] -> [a] -> [Maybe f]
 filterZeroes fs as = [ if a == 0 then Nothing else f | (f, a) <- P.zip fs as]
@@ -134,7 +134,7 @@ scatterGatherNoFrameLoss = property $ do
         inputFramesPE' = inputFramesPE <> P.repeat Nothing
 
         topEntity (unbundle -> (frameInS, frameInP, readAddrPE, writeAddrPE)) = bundle $
-          filterSGOut @System (withClockResetEnable clockGen resetGen enableGen
+          filterSgOut @System (withClockResetEnable clockGen resetGen enableGen
           scatterGatherEngine calScat calGath (pure Nothing) (pure Nothing) frameInS frameInP
           readAddrPE writeAddrPE)
 
