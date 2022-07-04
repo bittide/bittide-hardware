@@ -75,7 +75,7 @@ library
   hs-source-dirs: src
   exposed-modules:
     Bittide.Calendar
-    Bittide.DoubleBufferedRAM
+    Bittide.DoubleBufferedRam
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Switch
@@ -93,7 +93,7 @@ test-suite unittests
   main-is: UnitTests.hs
   other-modules:
     Tests.Calendar
-    Tests.DoubleBufferedRAM
+    Tests.DoubleBufferedRam
     Tests.ScatterGather
     Tests.Switch
   default-extensions:

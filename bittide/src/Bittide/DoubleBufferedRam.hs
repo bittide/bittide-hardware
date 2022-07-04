@@ -8,7 +8,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Bittide.DoubleBufferedRAM where
+module Bittide.DoubleBufferedRam where
 
 import Clash.Prelude
 
@@ -16,10 +16,10 @@ import Contranomy.Wishbone
 import Data.Maybe
 import Bittide.SharedTypes
 
--- | The double buffered RAM component is a memory component that contains two buffers
+-- | The double buffered Ram component is a memory component that contains two buffers
 -- and enables the user to write to one buffer and read from the other. When the
 -- second argument is True, the read buffer and write buffer are swapped.
-doubleBufferedRAM ::
+doubleBufferedRam ::
   forall dom memDepth a .
   (HiddenClockResetEnable dom, KnownNat memDepth, NFDataX a) =>
   -- | The initial contents of both buffers.
@@ -32,7 +32,7 @@ doubleBufferedRAM ::
   Signal dom (Maybe (Index memDepth, a)) ->
   -- | Outgoing data
   Signal dom a
-doubleBufferedRAM initialContent switch readAddr writeFrame = output
+doubleBufferedRam initialContent switch readAddr writeFrame = output
   where
     outputSelect = register False readSelect
     readSelect = mux switch (not <$> outputSelect) outputSelect
@@ -47,10 +47,10 @@ doubleBufferedRAM initialContent switch readAddr writeFrame = output
 
     output = mux outputSelect buffer1 buffer0
 
--- | Version of 'doubleBufferedRAM' with undefined initial contents. This component
+-- | Version of 'doubleBufferedRam' with undefined initial contents. This component
 -- contains two buffers and enables the user to write to one buffer and read from the
 -- other. When the first argument is True, the read buffer and write buffer are swapped.
-doubleBufferedRAMU ::
+doubleBufferedRamU ::
   forall dom memDepth a .
   (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
   -- | When this argument is True, the read buffer and write buffer are swapped at the rising edge.
@@ -61,7 +61,7 @@ doubleBufferedRAMU ::
   Signal dom (Maybe (Index memDepth, a)) ->
   -- | Outgoing data
   Signal dom a
-doubleBufferedRAMU switch readAddr writeFrame = output
+doubleBufferedRamU switch readAddr writeFrame = output
   where
     outputSelect = register False readSelect
     readSelect = mux switch (not <$> outputSelect) outputSelect
@@ -77,13 +77,13 @@ doubleBufferedRAMU switch readAddr writeFrame = output
 
     output = mux outputSelect buffer1 buffer0
 
--- | The byte addressable double buffered RAM component is a memory component that
+-- | The byte addressable double buffered Ram component is a memory component that
 -- consists of two buffers and internally stores its elements as a multiple of 8 bits.
 -- It contains a blockRam per byte and uses the one hot byte select signal to determine
 -- which bytes will be overwritten during a write operation. This components writes to
 -- one buffer and reads from the other. The buffers are swapped when the second argument
 -- is True.
-doubleBufferedRAMByteAddressable ::
+doubleBufferedRamByteAddressable ::
   forall dom depth a .
   ( KnownNat depth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
   -- | The initial contents of the first buffer.
@@ -98,7 +98,7 @@ doubleBufferedRAMByteAddressable ::
   Signal dom (ByteEnable (Regs a 8)) ->
   -- | Outgoing data
   Signal dom a
-doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteSelect = output
+doubleBufferedRamByteAddressable initialContent switch readAddr writeFrame byteSelect = output
  where
     outputSelect  = register False readSelect
     readSelect    = mux switch (not <$> outputSelect) outputSelect
@@ -111,13 +111,13 @@ doubleBufferedRAMByteAddressable initialContent switch readAddr writeFrame byteS
 
     output = mux outputSelect buffer1 buffer0
 
--- | Version of 'doubleBufferedRAMByteAddressable' where the initial content is undefined.
+-- | Version of 'doubleBufferedRamByteAddressable' where the initial content is undefined.
 -- This memory element consists of two buffers and internally stores its elements as a
 -- multiple of 8 bits. It contains a blockRam per byte and uses the one hot byte select
 -- signal to determine which bytes will be overwritten during a write operation.
 -- This components writes to one buffer and reads from the other. The buffers are
 -- swapped when the first argument is True.
-doubleBufferedRAMByteAddressableU ::
+doubleBufferedRamByteAddressableU ::
   forall dom depth a .
   ( KnownNat depth, 1 <= depth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
   -- | When this argument is True, the read buffer and write buffer are swapped at the rising edge.
@@ -130,7 +130,7 @@ doubleBufferedRAMByteAddressableU ::
   Signal dom (ByteEnable (Regs a 8)) ->
   -- | Outgoing data
   Signal dom a
-doubleBufferedRAMByteAddressableU switch readAddr writeFrame byteSelect = output
+doubleBufferedRamByteAddressableU switch readAddr writeFrame byteSelect = output
  where
     outputSelect  = register False readSelect
     readSelect    = mux switch (not <$> outputSelect) outputSelect
@@ -153,10 +153,10 @@ blockRamByteAddressable ::
   Signal dom (Maybe (Located depth a)) ->
   Signal dom (ByteEnable (Regs a 8)) ->
   Signal dom a
-blockRamByteAddressable initRAM readAddr newEntry byteSelect =
+blockRamByteAddressable initRam readAddr newEntry byteSelect =
     registersToData @_ @8 . RegisterBank <$> readBytes
  where
-   initBytes = transpose $ getBytes <$> initRAM
+   initBytes = transpose $ getBytes <$> initRam
    getBytes (getRegs -> RegisterBank vec) = vec
    writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
    readBytes = bundle $ (`blockRam` readAddr) <$> initBytes <*> writeBytes
@@ -187,7 +187,7 @@ data RegisterWritePriority = CircuitPriority | WishbonePriority
 -- collision and the wishbone bus gets acknowledged, but the value is silently ignored.
 -- With 'WishbonePriority', the incoming wishbone write gets accepted and the value in the
 -- fourth argument gets ignored.
-registerWB ::
+registerWb ::
   forall dom a bs aw .
   ( HiddenClockResetEnable dom
   , Paddable a
@@ -200,8 +200,8 @@ registerWB ::
   Signal dom (WishboneM2S bs aw) ->
   Signal dom (Maybe a) ->
   (Signal dom a, Signal dom (WishboneS2M bs))
-registerWB writePriority initVal wbIn sigIn =
-  registerWBE writePriority initVal wbIn sigIn (pure maxBound)
+registerWb writePriority initVal wbIn sigIn =
+  registerWbE writePriority initVal wbIn sigIn (pure maxBound)
 
 -- | Register with additional wishbone interface, this component has a configurable
 -- priority that determines which value gets stored in the register during a write conflict.
@@ -210,7 +210,7 @@ registerWB writePriority initVal wbIn sigIn =
 -- With 'WishbonePriority', the incoming wishbone write gets accepted and the value in the
 -- fourth argument gets ignored. This version has an additional argument for circuit write
 -- byte enables.
-registerWBE ::
+registerWbE ::
   forall dom a bs aw .
   ( HiddenClockResetEnable dom
   , Paddable a
@@ -232,7 +232,7 @@ registerWBE ::
   -- 1. Outgoing stored value
   -- 2. Outgoing wishbone bus (slave to master)
   (Signal dom a, Signal dom (WishboneS2M bs))
-registerWBE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
+registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
  where
   regOut = registerByteAddressable initVal regIn byteEnables
   (byteEnables, wbOut, regIn) = unbundle (go <$> regOut <*> sigIn <*> sigByteEnables <*> wbIn)
@@ -258,14 +258,14 @@ registerWBE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
 
     wbByteEnables =
       resize . pack . reverse $ replace wbAddr busSelect (repeat @(Regs a (bs*8)) 0)
-    sigRegIn = fromMaybe (errorX "registerWB: sigIn is Nothing when Just is expected.") sigIn0
+    sigRegIn = fromMaybe (errorX "registerWb: sigIn is Nothing when Just is expected.") sigIn0
     wbRegIn = registersToData . RegisterBank $ repeat writeData
     (byteEnables0, regIn0) = case (writePriority, isJust sigIn0, wbWriting) of
       (CircuitPriority , True , _)     -> (sigbyteEnables0, sigRegIn)
       (CircuitPriority , False, True)  -> (wbByteEnables, wbRegIn)
       (WishbonePriority, _    , True)  -> (wbByteEnables, wbRegIn)
       (WishbonePriority, True , False) -> (sigbyteEnables0, sigRegIn)
-      (_               , False, False) -> (0, errorX "registerWB: register input not defined.")
+      (_               , False, False) -> (0, errorX "registerWb: register input not defined.")
 
 -- | Register similar to 'register' with the addition that it takes a byte select signal
 -- that controls which bytes are updated.

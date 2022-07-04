@@ -8,7 +8,7 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import Tests.Calendar
-import Tests.DoubleBufferedRAM
+import Tests.DoubleBufferedRam
 import Tests.ScatterGather
 import Tests.Switch
 

@@ -83,7 +83,7 @@ isInBounds a b c = case (compareSNat a b, compareSNat b c) of
   (SNatLE, SNatLE) -> InBounds
   _ -> NotInBounds
 
--- | Generates a configuration for 'Bittide.Calendar.calendarWB', with as first argument
+-- | Generates a configuration for 'Bittide.Calendar.calendarWb', with as first argument
 -- the maximum depth of the stored calendar and as second argument a generator for the
 -- calendar entries.
 genCalendarConfig ::
@@ -179,7 +179,7 @@ readCalendar = property $ do
     BVCalendar (succSNat -> calSize') SNat cal -> do
       let
         topEntity switch = (\(a,_,_) -> a) $ withClockResetEnable clockGen resetGen enableGen
-          calendarWB calSize' cal cal switch (pure (wishboneM2S (SNat @4) (SNat @32)))
+          calendarWb calSize' cal cal switch (pure (wishboneM2S (SNat @4) (SNat @32)))
         simOut = simulateN @System (fromIntegral simLength) topEntity switchSignal
       footnote . fromString $ "simOut: " <> show simOut
       footnote . fromString $ "expected: " <> show (toList cal)
@@ -204,7 +204,7 @@ reconfigCalendar = property $ do
         switchList = P.replicate (writeDuration + 1) False <> (True : P.repeat False)
         wbWrites = wbNothingM2S @4 @32 : P.concatMap writeWithWishbone writeOps
         topEntity (unbundle -> (switch, writePort)) = (\(a,_,_) -> a) $ withClockResetEnable clockGen
-          resetGen enableGen calendarWB (succSNat calSize') cal cal switch writePort
+          resetGen enableGen calendarWb (succSNat calSize') cal cal switch writePort
         topEntityInput = P.take simLength $ P.zip switchList $ wbWrites <> P.repeat wbNothingM2S
         simOut = simulateN @System simLength topEntity topEntityInput
       footnote . fromString $ "simOut: " <> show simOut
@@ -232,10 +232,10 @@ readShadowCalendar = property $ do
             simLength = P.length wbReads + 1
             wbReads = P.concatMap (\ i -> wbReadEntry @4 @32 (fromIntegral i) entryRegs) readAddresses
             topEntity writePort = (\(_,_,wb) -> wb) $ withClockResetEnable clockGen resetGen enableGen
-              calendarWB (succSNat snatS) calA' calS' (pure False) writePort
+              calendarWb (succSNat snatS) calA' calS' (pure False) writePort
             topEntityInput = P.take simLength $ wbReads <> P.repeat wbNothingM2S
             simOut = simulateN @System simLength topEntity topEntityInput
-            wbOutEntries = directedWBDecoding topEntityInput simOut
+            wbOutEntries = directedWbDecoding topEntityInput simOut
           wbOutEntries === toList calS'
         _ -> error "readShadowCalendar: Calendar sizes or bitwidths do not match."
 
@@ -258,7 +258,7 @@ metaCycleIndication = property $ do
         switchSignal = P.concatMap (\ (fromIntegral -> n) -> P.replicate n False <> [True]) allDepths
         wbIn = P.concatMap (\(fromIntegral -> i, wb) -> wb : P.replicate i wbNothingM2S) $ P.zip (1 + calSize : newDepths) wbWrites
         topEntity (unbundle -> (switch, writePort)) = (\(_,m,_) -> m) $ withClockResetEnable
-          clockGen resetGen enableGen calendarWB calSize' cal cal switch writePort
+          clockGen resetGen enableGen calendarWb calSize' cal cal switch writePort
         topEntityInput = P.zip switchSignal (wbIn <> P.repeat wbNothingM2S)
         simOut = simulateN @System simLength topEntity topEntityInput
         expectedOut = P.take simLength $ True : P.tail switchSignal
@@ -291,7 +291,7 @@ wbNothingM2S = (wishboneM2S (SNat @bytes) (SNat @aw))
  , writeData = 0
  , busSelect = 0}
 
--- | Write an entry to some address in 'Bittide.Calendar.calendarWB', this may require
+-- | Write an entry to some address in 'Bittide.Calendar.calendarWb', this may require
 -- multiple write operations.
 writeWithWishbone ::
   forall bytes aw n entry .
@@ -304,11 +304,11 @@ writeWithWishbone (a, entry) =
 
 -- | Use both the wishbone M2S bus and S2M bus to decode the S2M bus operations into the
 -- expected type a.
-directedWBDecoding :: forall bytes aw a . (KnownNat bytes, 1 <= bytes, KnownNat aw, Paddable a) =>
+directedWbDecoding :: forall bytes aw a . (KnownNat bytes, 1 <= bytes, KnownNat aw, Paddable a) =>
   [WishboneM2S bytes aw] ->
   [WishboneS2M bytes] ->
   [a]
-directedWBDecoding (wbM2S:m2sRest) (_:s2mRest) = out
+directedWbDecoding (wbM2S:m2sRest) (_:s2mRest) = out
  where
   active = strobe wbM2S && busCycle wbM2S
   foundBeginning = writeEnable wbM2S && active
@@ -325,19 +325,19 @@ directedWBDecoding (wbM2S:m2sRest) (_:s2mRest) = out
         case timesDivRU @(bytes * 8) @(BitSize a) of
           Dict ->
             paddedToData . bvAsPadded @(Regs a (bytes * 8) * bytes * 8) $ pack vec
-    Nothing  -> error $ "directedWBDecoding: list to vector conversion failed: " <> show entryList <> "from " <> show (wbM2S:m2sRest)
+    Nothing  -> error $ "directedWbDecoding: list to vector conversion failed: " <> show entryList <> "from " <> show (wbM2S:m2sRest)
 
   consumedReads = P.length entryList
   remainingM2S = P.drop consumedReads m2sRest
   remainingS2M = P.drop consumedReads s2mRest
 
-  out | foundBeginning = entry : directedWBDecoding remainingM2S remainingS2M
-      | otherwise = directedWBDecoding m2sRest s2mRest
+  out | foundBeginning = entry : directedWbDecoding remainingM2S remainingS2M
+      | otherwise = directedWbDecoding m2sRest s2mRest
 
-directedWBDecoding _ _ = []
+directedWbDecoding _ _ = []
 
 -- | Returns the wishbone M2S bus inputs required to read a calendar entry from
--- 'Bittide.Calendar.calendarWB'. It first writes the entry's address to the read register,
+-- 'Bittide.Calendar.calendarWb'. It first writes the entry's address to the read register,
 -- then adds the read operations.
 wbReadEntry ::
   forall bytes aw i .
