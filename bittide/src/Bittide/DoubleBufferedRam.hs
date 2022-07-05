@@ -46,17 +46,20 @@ contentGenerator content@(Cons _ _) = (mux (running .&&. not <$> done) writeOp (
 -- | Dual-ported Wishbone storage element, essentially a wrapper for the single-ported version
 -- which priorities port B over port A. While port B is making a transaction, port A will be ignored.
 wbStorageDP ::
-  forall dom depth aw .
+  forall dom depth initDepth aw .
   ( HiddenClockResetEnable dom
   , KnownNat aw, 2 <= aw
-  , KnownNat depth, 1 <= depth) =>
-  Vec depth (Bytes 4) ->
+  , KnownNat depth, 1 <= depth
+  , KnownNat initDepth, 1 <= initDepth
+  , initDepth <= depth) =>
+  SNat depth ->
+  InitialContent initDepth (Bytes 4) ->
   Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
   Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
   (Signal dom (WishboneS2M (Bytes 4)),Signal dom (WishboneS2M (Bytes 4)))
-wbStorageDP initial aM2S bM2S = (aS2M, bS2M)
+wbStorageDP d@SNat initial aM2S bM2S = (aS2M, bS2M)
  where
-  storageOut = wbStorage initial storageIn
+  storageOut = wbStorage d initial storageIn
   aActive = strobe <$> aM2S .&&. busCycle <$> aM2S
   bActive = strobe <$> bM2S .&&. busCycle <$> bM2S
   aWriting = aActive .&&. writeEnable <$> aM2S
@@ -73,27 +76,51 @@ wbStorageDP initial aM2S bM2S = (aS2M, bS2M)
 -- | Storage element with a single wishbone port, it is half word addressable to work with
 -- RISC-V's C extension.
 wbStorage ::
-  forall dom depth aw .
+  forall dom depth initDepth aw .
   ( HiddenClockResetEnable dom
   , KnownNat aw, 2 <= aw
-  , KnownNat depth, 1 <= depth) =>
-  Vec depth (Bytes 4) ->
+  , KnownNat depth, 1 <= depth
+  , KnownNat initDepth, 1 <= initDepth
+  , initDepth <= depth) =>
+  SNat depth ->
+  InitialContent initDepth (Bytes 4) ->
   Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
   Signal dom (WishboneS2M (Bytes 4))
-wbStorage initContent wbIn = wbOut
+wbStorage SNat initContent wbIn = delayControls wbOut
  where
-  depth = resize . bitCoerce $ length initContent
-  readDataA = blockRamByteAddressable initContentA readAddrA writeEntryA byteSelectA
-  readDataB = blockRamByteAddressable initContentB readAddrB writeEntryB byteSelectB
-  (readAddrA, readAddrB, writeEntryA, writeEntryB, byteSelectA, byteSelectB, wbOut) =
-    unbundle $ go <$> wbIn <*> readDataB <*> readDataA
-  (initContentA, initContentB) = unzip $ fmap unpack initContent
+  depth = resize $ bitCoerce (maxBound :: Index depth)
+  romOut = bundle $ contentGenerator (getContent initContent)
 
-  go WishboneM2S{..} rdB rdA =
-    (addrA, addrB, writeEntryA0, writeEntryB0, byteSelectA0, byteSelectB0, emptyWishboneS2M{acknowledge,readData,err})
+  readDataA = ramA readAddrA writeEntryA byteSelectA
+  readDataB = ramB readAddrB writeEntryB byteSelectB
+
+  addElems x = x ++ replicate (SNat @(depth - initDepth))
+    (errorX "wbStorage: Uninitialized element")
+
+  (ramA, ramB, isReloadable) = case initContent of
+    NonReloadable (unzip @initDepth . bitCoerce -> (b, a)) ->
+      ( blockRamByteAddressable @_ @depth $ addElems a
+      , blockRamByteAddressable @_ @depth $ addElems b
+      , False)
+    Reloadable _ ->
+      (blockRamByteAddressableU, blockRamByteAddressableU, True)
+    Undefined ->
+      (blockRamByteAddressableU, blockRamByteAddressableU, False)
+
+  (readAddrA, readAddrB, writeEntryA, writeEntryB, byteSelectA, byteSelectB, wbOut) =
+    unbundle $ go <$> wbIn <*> readDataB <*> readDataA <*> romOut
+
+  go WishboneM2S{..} rdB rdA romOut0 =
+    ( addrA
+    , addrB
+    , writeEntryA0
+    , writeEntryB0
+    , byteSelectA1
+    , byteSelectB1
+    , (emptyWishboneS2M @(Bytes 4)){acknowledge,readData,err})
    where
 
-    (bitCoerce . resize -> wbAddr, alignment) =  split @_ @(aw - 2) addr
+    (bitCoerce . resize -> wbAddr :: Index depth, alignment) =  split @_ @(aw - 2) addr
 
     -- when the second lowest bit is not set, the address is considered word aligned.
     -- We don't care about the first bit to determine the address alignment because
@@ -103,7 +130,7 @@ wbStorage initContent wbIn = wbOut
 
     masterActive = strobe && busCycle
     err = masterActive && not addrLegal
-    acknowledge = masterActive && addrLegal
+    acknowledge = masterActive && (not isReloadable || romDone) && addrLegal
     masterWriting = masterActive && writeEnable && not err
 
     (bsHigh,bsLow) = split busSelect
@@ -117,12 +144,28 @@ wbStorage initContent wbIn = wbOut
         ( (satSucc SatBound wbAddr, bsLow, writeDataLow)
         , (wbAddr, bsHigh, writeDataHigh))
 
+    (romWrite, romDone) = romOut0
+    (romWriteB, romWriteA) = splitWrite romWrite
     (writeEntryB0, writeEntryA0)
+      | isReloadable && not romDone = (romWriteB, romWriteA)
       | masterWriting = (Just (addrB, writeDataB),Just (addrB, writeDataA))
-      | otherwise     = (Nothing,Nothing)
+      | otherwise = (Nothing,Nothing)
     readData
       | wordAligned = rdB ++# rdA
       | otherwise   = rdA ++# rdB
+
+    (byteSelectB1, byteSelectA1)
+      | isReloadable && not romDone = (maxBound,maxBound)
+      | otherwise = (byteSelectB0, byteSelectA0)
+
+  splitWrite ::
+    KnownNat a =>
+    Maybe (Located n (BitVector (2*a))) ->
+    (Maybe (Located n (BitVector a)), Maybe (Located n (BitVector a)))
+  splitWrite (Just (i, a)) = (Just (i,upper), Just (i, lower))
+   where
+    (upper,lower) = split a
+  splitWrite Nothing = (Nothing, Nothing)
 
 -- | Indicates which buffer is currently selected.
 data SelectedBuffer = A | B deriving (Eq, Generic, BitPack, Show, NFDataX)
