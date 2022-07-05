@@ -91,6 +91,7 @@ test-suite unittests
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: UnitTests.hs
+  ghc-options: -threaded -with-rtsopts=-N
   other-modules:
     Tests.Calendar
     Tests.DoubleBufferedRam
