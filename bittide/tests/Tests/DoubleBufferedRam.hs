@@ -622,6 +622,30 @@ testContentGen = property $ do
         (bundle $ contentGenerator @_ @v @(v +1) content)
       expectedDones
         | l == 0 = L.repeat True
-        | otherwise = (L.replicate (l + 2) False) <> (L.repeat True)
-    dones === (L.take simLength expectedDones)
+        | otherwise = L.replicate (l + 2) False <> L.repeat True
+    dones === L.take simLength expectedDones
     catMaybes writes === toList (zip (iterateI succ 0) content)
+
+-- testWbStorage :: Property
+-- testWbStorage = property $ do
+--   nat <- forAll $ Gen.enum 1 100
+--   case TN.someNatVal (nat - 1) of
+--     SomeNat (succSNat . snatProxy -> n) -> go n
+--  where
+--   go :: forall v m . (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
+--   go SNat = do
+--     content <- forAll $ genNonEmptyVec @_ @v (pack <$> genUnsigned @_ @32 Range.constantBounded)
+--     let
+--       l = length content
+--       simLength = 2 + l * 2
+--       topEntity wbIn = bundle (undef, reload, nonReload)
+--        where
+--         undef = wcre $ wbStorage @System @v @v @32 SNat Undefined wbIn
+--         reload = wcre $ wbStorage @System @v @v @32 SNat (Reloadable content) wbIn
+--         nonReload = wcre $ wbStorage @System @v @v @32 SNat (NonReloadable content) wbIn
+--       (undefOut, reloadOut, nonReloadOut) = L.unzip3 $ simulateN
+
+--     True === True
+
+-- wcre :: KnownDomain dom => (HiddenClockResetEnable dom => r) -> r
+-- wcre = withClockResetEnable clockGen resetGen enableGen
