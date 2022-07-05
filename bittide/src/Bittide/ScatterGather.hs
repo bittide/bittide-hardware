@@ -9,8 +9,8 @@ module Bittide.ScatterGather
   ( scatterEngine
   , gatherEngine
   , scatterGatherEngine
-  , scatterUnitWB
-  , gatherUnitWB) where
+  , scatterUnitWb
+  , gatherUnitWb) where
 
 import Clash.Prelude
 
@@ -218,7 +218,7 @@ wbInterface addressRange WishboneM2S{..} readData =
 -- | Wishbone addressable scatterUnit, the wishbone port can read the data from this
 -- memory element as if it has a 32 bit port by selecting the upper 32 or lower 32 bits
 -- of the read data.
-scatterUnitWB ::
+scatterUnitWb ::
   forall dom memDepth awSU bsCal awCal .
   ( HiddenClockResetEnable dom
   , KnownNat memDepth, 1 <= memDepth
@@ -235,7 +235,7 @@ scatterUnitWB ::
   Signal dom (WishboneM2S 4 awSU) ->
   -- | (slave - master data scatterUnit , slave - master data calendar)
   (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
-scatterUnitWB calConfig wbInCal calSwitch linkIn wbInSU =
+scatterUnitWb calConfig wbInCal calSwitch linkIn wbInSU =
   (delayControls wbOutSU, wbOutCal)
  where
   (wbOutSU, memAddr, _) = unbundle $ wbInterface maxBound <$> wbInSU <*> scatteredData
@@ -248,7 +248,7 @@ scatterUnitWB calConfig wbInCal calSwitch linkIn wbInSU =
 -- | Wishbone addressable gatherUnit, the wishbone port can write data to this
 -- memory element as if it has a 32 bit port by controlling the byte enables of the
 -- gatherUnit based on the third bit.
-gatherUnitWB ::
+gatherUnitWb ::
   forall dom memDepth awSU bsCal awCal .
   ( HiddenClockResetEnable dom
   , KnownNat memDepth, 1 <= memDepth
@@ -263,7 +263,7 @@ gatherUnitWB ::
   Signal dom (WishboneM2S 4 awSU) ->
   -- | (slave - master data gatherUnit , slave - master data calendar)
   (Signal dom (DataLink 64), Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
-gatherUnitWB calConfig wbInCal calSwitch wbInSU =
+gatherUnitWb calConfig wbInCal calSwitch wbInSU =
   (linkOut, delayControls wbOutSU, wbOutCal)
  where
   (wbOutSU, memAddr, writeOp) = unbundle $ wbInterface maxBound <$> wbInSU <*> pure 0b0
@@ -283,7 +283,7 @@ gatherUnitWB calConfig wbInCal calSwitch wbInSU =
 coerceIndexes :: forall n . (KnownNat n, 1 <= n) => (Index (n*2) -> (Index n, Bool))
 coerceIndexes = case sameNat natA natB of
   Just Refl -> bitCoerce
-  _ -> error "gatherUnitWB: Index coercion failed."
+  _ -> error "gatherUnitWb: Index coercion failed."
   where
   natA = Proxy @(CLog 2 (n*2))
   natB = Proxy @(1 + (CLog 2 n))

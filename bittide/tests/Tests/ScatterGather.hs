@@ -172,7 +172,7 @@ scatterGatherNoFrameLoss = property $ do
 -- TODO: Remove instance once Clash.Prelude has it.
 deriving instance Show (SNatLE a b)
 
--- | Generates a 'CalendarConfig' for the 'gatherUnitWB' or 'scatterUnitWB'
+-- | Generates a 'CalendarConfig' for the 'gatherUnitWb' or 'scatterUnitWb'
 genCalendarConfig ::
   forall bytes addressWidth calEntry maxDepth .
   ( KnownNat bytes
@@ -247,7 +247,7 @@ scatterUnitNoFrameLoss = property $ do
       <$> inputGen (padToLength depth Nothing <$> metaCycleGen)
     let
       topEntity (unbundle -> (wbIn, linkIn)) = fst $
-        withClockResetEnable clockGen resetGen enableGen (scatterUnitWB @System @_ @32)
+        withClockResetEnable clockGen resetGen enableGen (scatterUnitWb @System @_ @32)
         calConfig (pure $ wishboneM2S SNat SNat) (pure False) linkIn wbIn
 
       wbReadOps = P.take simLength $ P.replicate depth idleM2S P.++  P.concat
@@ -288,7 +288,7 @@ gatherUnitNoFrameLoss = property $ do
       <$> inputGen (padToLength depth Nothing <$> metaCycleGen)
     let
       topEntity wbIn = (\ (a, _ ,_) -> a) $
-        withClockResetEnable clockGen resetGen enableGen (gatherUnitWB @System @_ @32)
+        withClockResetEnable clockGen resetGen enableGen (gatherUnitWb @System @_ @32)
         calConfig (pure $ wishboneM2S SNat SNat) (pure False) wbIn
 
       wbWriteOps = P.take simLength . P.concat $
@@ -332,7 +332,7 @@ wbDecoding (s2m0 : s2m1 : s2ms)
 wbDecoding _ = []
 
 -- | Tranform a read address with expected frame into a wishbone read operation for testing
--- the 'scatterUnitWB'. The second argument indicate wether or not a frame can be read from
+-- the 'scatterUnitWb'. The second argument indicate wether or not a frame can be read from
 -- that read address. The read operation reads data over 2 read cycles.
 wbRead ::
   forall bytes addressWidth maxIndex a .
@@ -357,7 +357,7 @@ wbRead readAddr (Just _) =
 wbRead _ Nothing = []
 
 -- | Transform a write address with frame to a wishbone write operation for testing the
--- 'gatherUnitWB'. The write operation writes the incoming bitvector over 2 write cycles.
+-- 'gatherUnitWb'. The write operation writes the incoming bitvector over 2 write cycles.
 wbWrite ::
   forall bytes addressWidth maxIndex .
   ( KnownNat bytes
