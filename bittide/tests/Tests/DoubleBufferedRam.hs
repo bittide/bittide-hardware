@@ -602,3 +602,24 @@ registerWbSpecVal writePriority initVal m2s0 sigIn = (storedVal, s2m1)
  where
   (storedVal, s2m0) = registerWb @dom @a @nBytes @addrW writePriority initVal m2s1 sigIn
   (m2s1, s2m1) = validateWb m2s0 s2m0
+
+-- | Generate an input vector for 'contentGenerator' and check if it generates write
+-- operations from this vector.
+testContentGen :: Property
+testContentGen = property $ do
+  nat <- forAll $ Gen.enum 0 100
+  case TN.someNatVal nat of
+    SomeNat n -> go n
+ where
+  go (Proxy :: Proxy v) = do
+    content <- forAll $ genVec @_ @v (genUnsigned @_ @32 Range.constantBounded)
+    let
+      l = length content
+      simLength = 2 + l * 2
+      !(writes, dones) = L.unzip $ sampleN @System simLength
+        (bundle $ contentGenerator @_ @v @(v +1) content)
+      expectedDones
+        | l == 0 = L.repeat True
+        | otherwise = (L.replicate (l + 2) False) <> (L.repeat True)
+    dones === (L.take simLength expectedDones)
+    catMaybes writes === toList (zip (iterateI succ 0) content)
