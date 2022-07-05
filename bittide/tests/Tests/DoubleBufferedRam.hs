@@ -60,6 +60,8 @@ ramGroup = testGroup "DoubleBufferedRam group"
       "registerWbSigToWb" registerWbSigToWb
   , testPropertyNamed "registerWb write conflict resolution matches set priorities"
       "registerWbWriteCollisions" registerWbWriteCollisions
+  , testPropertyNamed "Simulate the contentGenerator for an arbitrary vector."
+      "testContentGen" testContentGen
   ]
 
 genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
