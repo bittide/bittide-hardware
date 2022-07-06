@@ -166,7 +166,11 @@ jobs:
 
       - name: Get test matrix
         run: |
-          .github/scripts/get_formal_checks.sh
+          if .github/scripts/has_riscv_changes.sh; then
+            .github/scripts/get_formal_checks.sh
+          else
+            echo "[]" > checks.json
+          fi
 
       - name: Set test matrix
         id: set-matrix
@@ -204,9 +208,7 @@ jobs:
 
       - name: Verify ${{ matrix.check }}
         run: |
-          if .github/scripts/has_riscv_changes.sh; then
-            .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
-          fi
+          .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
 
       - name: Verification failed, uploading results
         uses: actions/upload-artifact@v2
