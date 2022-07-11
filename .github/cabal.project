@@ -5,3 +5,6 @@
 package contranomy
   flags: +riscv-altopts
   ghc-options: -Werror
+
+package bittide
+  ghc-options: -Werror
