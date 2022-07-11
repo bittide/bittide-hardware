@@ -63,8 +63,11 @@ data BurstTypeExtension
   | Beat8Burst
   | Beat16Burst
   deriving (Generic, NFDataX, Show, Eq, ShowX)
-wishboneM2S :: SNat bytes -> SNat addressWidth -> WishboneM2S bytes addressWidth
-wishboneM2S SNat SNat
+wishboneM2S ::
+  ( KnownNat bytes
+  , KnownNat addressWidth) =>
+  WishboneM2S bytes addressWidth
+wishboneM2S
   = WishboneM2S
   { addr = deepErrorX "wishboneM2S: addr undefined."
   , writeData = deepErrorX "wishboneM2S: writeData undefined."
@@ -76,8 +79,10 @@ wishboneM2S SNat SNat
   , burstTypeExtension = LinearBurst
   }
 
-wishboneS2M :: SNat bytes -> WishboneS2M bytes
-wishboneS2M SNat
+wishboneS2M ::
+  KnownNat bytes =>
+  WishboneS2M bytes
+wishboneS2M
   = WishboneS2M
   { readData = deepErrorX "wishboneM2S: readData undefined."
   , acknowledge = False

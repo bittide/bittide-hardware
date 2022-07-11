@@ -99,7 +99,7 @@ switchFrameRoutingWorks = property $ do
 
       let
         topEntity streamsIn = withClockResetEnable clockGen resetGen enableGen $
-         fst (switch calConfig (pure False) (pure $ wishboneM2S SNat SNat) streamsIn)
+         fst (switch calConfig (pure False) (pure wishboneM2S) streamsIn)
         simOut = simulateN @System simLength topEntity $ fmap unsafeFromList topEntityInput
         simOut1 = P.drop latency $ fmap toList simOut
 

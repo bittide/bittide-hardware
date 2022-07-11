@@ -169,7 +169,7 @@ readCalendar = property $ do
     BVCalendar (succSNat -> calSize') SNat cal -> do
       let
         topEntity switch = (\(a,_,_) -> a) $ withClockResetEnable clockGen resetGen enableGen
-          calendarWb calSize' cal cal switch (pure (wishboneM2S (SNat @4) (SNat @32)))
+          calendarWb calSize' cal cal switch $ pure (wishboneM2S @4 @32)
         simOut = simulateN @System (fromIntegral simLength) topEntity switchSignal
       footnote . fromString $ "simOut: " <> show simOut
       footnote . fromString $ "expected: " <> show (toList cal)
@@ -276,7 +276,7 @@ takeLast n l = P.drop (P.length l - n) l
 
 -- | idle 'Contranomy.Wishbone.WishboneM2S' bus.
 wbNothingM2S :: forall bytes aw . (KnownNat bytes, KnownNat aw) => WishboneM2S bytes aw
-wbNothingM2S = (wishboneM2S (SNat @bytes) (SNat @aw))
+wbNothingM2S = (wishboneM2S @bytes @aw)
  { addr = 0
  , writeData = 0
  , busSelect = 0}
@@ -337,7 +337,7 @@ wbReadEntry ::
   [WishboneM2S bytes aw]
 wbReadEntry i dataRegs = addrWrite : wbNothingM2S : dataReads
  where
-  addrWrite = (wishboneM2S (SNat @bytes) (SNat @aw))
+  addrWrite = (wishboneM2S @bytes @aw)
     { addr      = fromIntegral $ dataRegs + 1
     , writeData = fromIntegral i
     , busSelect = maxBound
@@ -345,7 +345,7 @@ wbReadEntry i dataRegs = addrWrite : wbNothingM2S : dataReads
     , strobe      = True
     , writeEnable = True}
   dataReads = readReg <$> P.reverse [0..(dataRegs-1)]
-  readReg n = (wishboneM2S (SNat @bytes) (SNat @aw))
+  readReg n = (wishboneM2S @bytes @aw)
     { addr = fromIntegral n
     , writeData = 0
     , busSelect = maxBound
@@ -361,7 +361,7 @@ wbWriteOp ::
   (KnownNat bytes, KnownNat addressWidth, Integral i) =>
   (i, BitVector (bytes * 8)) ->
   WishboneM2S bytes addressWidth
-wbWriteOp (i, bv) = (wishboneM2S (SNat @bytes) (SNat @addressWidth))
+wbWriteOp (i, bv) = (wishboneM2S @bytes @addressWidth)
   { addr        = fromIntegral i
   , writeData   = bv
   , busSelect   = maxBound

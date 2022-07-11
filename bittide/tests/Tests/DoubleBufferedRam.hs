@@ -260,7 +260,13 @@ readWriteRegisterByteAddressable = property $ do
       SNatLE -> go p
       _ -> error "readWriteRegisterByteAddressable: Amount of bytes == 0."
  where
-  go :: forall bytes m . (KnownNat bytes, 1 <= bytes, KnownNat (bytes*8), 1 <= (bytes * 8), Monad m) => Proxy bytes -> PropertyT m ()
+  go ::
+    forall bytes m .
+    ( KnownNat bytes
+    , 1 <= bytes, KnownNat (bytes*8)
+    , 1 <= (bytes * 8), Monad m) =>
+    Proxy bytes ->
+    PropertyT m ()
   go Proxy =
     case sameNat (Proxy @bytes) (Proxy @(Regs (Vec bytes Byte) 8)) of
       Just Refl -> do
@@ -269,13 +275,15 @@ readWriteRegisterByteAddressable = property $ do
           writeGen = genNonEmptyVec @_ @bytes $ genDefinedBitVector @_ @8
         initVal <- forAll writeGen
         writes <- forAll $ Gen.list (Range.singleton simLength) writeGen
-        byteEnables <- forAll $ Gen.list (Range.singleton simLength) $ genDefinedBitVector @_ @(Regs (Vec bytes Byte) 8)
+        byteEnables <- forAll $ Gen.list (Range.singleton simLength)
+          $ genDefinedBitVector @_ @(Regs (Vec bytes Byte) 8)
         let
           topEntity (unbundle -> (newVal, byteEnable))=
             withClockResetEnable @System clockGen resetGen enableGen $
             registerByteAddressable initVal newVal byteEnable
           expectedOut = P.scanl simFunc initVal $ P.zip writes byteEnables
-          simFunc olds (news,unpack -> bools) = (\(bool,old,new) -> if bool then new else old) <$> zip3 bools olds news
+          simFunc olds (news,unpack -> bools) =
+            (\(bool,old,new) -> if bool then new else old) <$> zip3 bools olds news
           simOut = simulateN simLength topEntity $ P.zip writes byteEnables
         simOut === P.take simLength expectedOut
       _ -> error "readWriteRegisterByteAddressable: Amount of bytes not equal to registers required."
@@ -299,7 +307,8 @@ registerWbSigToSig = property $ do
       writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @_ @bits
       let
         simLength = L.length writes + 1
-        someReg prio sigIn = fst $ withClockResetEnable clockGen resetGen enableGen $ registerWb @_ @_ @4 @32 prio initVal (pure $ wishboneM2S SNat SNat) sigIn
+        someReg prio sigIn = fst $ withClockResetEnable clockGen resetGen enableGen
+          $ registerWb @_ @_ @4 @32 prio initVal (pure wishboneM2S) sigIn
         topEntity sigIn = bundle (someReg CircuitPriority sigIn, someReg WishbonePriority sigIn)
         topEntityInput = (Just <$> writes) <> [Nothing]
         simOut = simulateN @System simLength topEntity topEntityInput
@@ -334,7 +343,7 @@ registerWbWbToSig = property $ do
         someReg prio wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
          registerWb @System @_ @4 @32 prio initVal wbIn (pure Nothing)
         topEntity wbIn = bundle (someReg CircuitPriority wbIn, someReg WishbonePriority wbIn)
-        topEntityInput = L.concatMap wbWrite writes <> L.repeat idleM2S
+        topEntityInput = L.concatMap wbWrite writes <> L.repeat wishboneM2S
         simOut = simulateN simLength topEntity topEntityInput
         (fstOut, sndOut) = L.unzip simOut
         filteredOut = everyNth regs $ L.tail fstOut
@@ -373,10 +382,13 @@ registerWbSigToWb = property $ do
       initVal <- forAll $ genDefinedBitVector @_ @bits
       writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @_ @bits
       let
-        someReg prio sigIn wbIn = snd $ withClockResetEnable clockGen resetGen enableGen $ registerWb @_ @_ @4 @32 prio initVal wbIn sigIn
-        topEntity (unbundle -> (sigIn, wbIn)) = bundle (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
+        someReg prio sigIn wbIn = snd $ withClockResetEnable clockGen resetGen enableGen
+          $ registerWb @_ @_ @4 @32 prio initVal wbIn sigIn
+        topEntity (unbundle -> (sigIn, wbIn)) = bundle
+          (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
         padWrites x = L.take (natToNum @(Regs (BitVector bits) 32)) $ Just x : L.repeat Nothing
-        readOps = idleM2S : cycle (wbRead <$> L.reverse [(0 :: Int).. (natToNum @(Regs (BitVector bits) 32)-1)])
+        readOps = wishboneM2S : cycle
+          (wbRead <$> L.reverse [(0 :: Int).. (natToNum @(Regs (BitVector bits) 32)-1)])
         topEntityInput = L.zip (L.concatMap padWrites writes <> [Nothing]) readOps
         simLength = L.length topEntityInput
         simOut = simulateN @System simLength topEntity topEntityInput
@@ -399,7 +411,7 @@ registerWbSigToWb = property $ do
         Nothing  -> error $ "wbDecoding: list to vector conversion failed: " <> show entryList <> "from " <> show (wbNow:wbRest)
 
     wbDecoding [] = []
-    wbRead i = (wishboneM2S @4 @32 SNat SNat)
+    wbRead i = (wishboneM2S @4 @32)
       { addr = resize (pack i) ++# (0b00 :: BitVector 2)
       , busCycle = True
       , strobe = True
@@ -434,8 +446,10 @@ registerWbWriteCollisions = property $ do
         simLength = writeAmount + 1
         someReg prio sigIn wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
          registerWb @System @_ @4 @32 prio initVal wbIn sigIn
-        topEntity (unbundle -> (sigIn, wbIn)) = bundle (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
-        topEntityInput = L.zip (Just <$> sigWrites) (L.concatMap wbWrite wbWrites <> L.repeat idleM2S)
+        topEntity (unbundle -> (sigIn, wbIn)) = bundle
+          (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
+        topEntityInput = L.zip (Just <$> sigWrites)
+          (L.concatMap wbWrite wbWrites <> L.repeat wishboneM2S)
         simOut = simulateN simLength topEntity topEntityInput
         (fstOut, sndOut) = L.unzip simOut
 
@@ -456,7 +470,7 @@ bv2WbWrite :: (BitPack a, Enum a) =>
   a
   -> ("DAT_MOSI" ::: BitVector 32)
   -> WishboneM2S 4 32
-bv2WbWrite i v = (wishboneM2S @4 @32 SNat SNat)
+bv2WbWrite i v = (wishboneM2S @4 @32)
   { addr = resize (pack i) ++# (0b00 :: BitVector 2)
   , writeData = v
   , writeEnable = True
@@ -464,9 +478,6 @@ bv2WbWrite i v = (wishboneM2S @4 @32 SNat SNat)
   , strobe = True
   , busSelect = maxBound
   }
-
-idleM2S :: (KnownNat aw, KnownNat bs) => WishboneM2S bs aw
-idleM2S = wishboneM2S SNat SNat
 
 -- | Model for 'byteAddressableRam', it stores the inputs in its state for a one cycle delay
 -- and updates the Ram based on the the write operation and byte enables.
