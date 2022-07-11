@@ -148,10 +148,15 @@ doubleBufferedRamByteAddressableU switch readAddr writeFrame byteSelect = output
 blockRamByteAddressable ::
   forall dom depth a .
   (HiddenClockResetEnable dom, KnownNat depth, Paddable a, ShowX a) =>
+  -- | Initial content.
   Vec depth a ->
+  -- | Read address.
   Signal dom (Index depth) ->
+  -- | Write operation.
   Signal dom (Maybe (Located depth a)) ->
+  -- | Byte enables that determine which bytes get replaced.
   Signal dom (ByteEnable (Regs a 8)) ->
+  -- | Data at read address (1 cycle delay).
   Signal dom a
 blockRamByteAddressable initRam readAddr newEntry byteSelect =
     registersToData @_ @8 . RegisterBank <$> readBytes
@@ -167,9 +172,13 @@ blockRamByteAddressable initRam readAddr newEntry byteSelect =
 blockRamByteAddressableU ::
   forall dom depth a .
   (HiddenClockResetEnable dom, KnownNat depth, 1 <= depth, Paddable a, ShowX a) =>
+  -- | Read address.
   Signal dom (Index depth) ->
+  -- | Write operation.
   Signal dom (Maybe (Located depth a)) ->
+  -- | Byte enables that determine which bytes get replaced.
   Signal dom (ByteEnable (Regs a 8)) ->
+  -- | Data at read address (1 cycle delay).
   Signal dom a
 blockRamByteAddressableU readAddr newEntry byteSelect =
     registersToData @_ @8 . RegisterBank <$> readBytes
@@ -195,10 +204,17 @@ registerWb ::
   , 1 <= bs
   , KnownNat aw
   , 2 <= aw) =>
+  -- | Determines the write priority on write collisions
   RegisterWritePriority ->
+  -- | Initial value.
   a ->
+  -- | Wishbone bus (master to slave)
   Signal dom (WishboneM2S bs aw) ->
+  -- | New circuit value.
   Signal dom (Maybe a) ->
+  -- |
+  -- 1. Outgoing stored value
+  -- 2. Outgoing wishbone bus (slave to master)
   (Signal dom a, Signal dom (WishboneS2M bs))
 registerWb writePriority initVal wbIn sigIn =
   registerWbE writePriority initVal wbIn sigIn (pure maxBound)
@@ -272,9 +288,13 @@ registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
 registerByteAddressable ::
   forall dom a .
   (HiddenClockResetEnable dom, Paddable a) =>
+  -- | Initial value.
   a ->
+  -- | New value.
   Signal dom a ->
+  -- | Byte enables that determine which bytes of the new value are stored.
   Signal dom (ByteEnable (Regs a 8)) ->
+  -- | Stored value.
   Signal dom a
 registerByteAddressable initVal newVal byteEnables =
   registersToData @_ @8 . RegisterBank <$> bundle regsOut
@@ -290,8 +310,11 @@ registerByteAddressable initVal newVal byteEnables =
 splitWriteInBytes ::
   forall maxIndex writeData .
   (Paddable writeData) =>
+  -- | Incoming write operation.
   Maybe (Located maxIndex writeData) ->
+  -- | Incoming byte enables.
   ByteEnable (Regs writeData 8) ->
+  -- | Per byte write operation.
   Vec (Regs writeData 8) (Maybe (LocatedByte maxIndex))
 splitWriteInBytes (Just (addr, writeData)) byteSelect =
   case paddedToRegisters $ Padded writeData of
