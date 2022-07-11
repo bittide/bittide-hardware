@@ -4,6 +4,9 @@
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
+-- For Show (SNatLE a b)
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
