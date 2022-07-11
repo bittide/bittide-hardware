@@ -16,9 +16,14 @@ solved by the constraint solver.
 module Data.Constraint.Nat.Extra where
 
 import Data.Constraint
+import Data.Type.Equality
+import GHC.TypeLits.Extra
 import GHC.TypeNats
 import Unsafe.Coerce
 
 -- | b <= ceiling(b/a)*a
 timesDivRU :: forall a b . Dict (b <= (Div (b + (a - 1)) a * a))
 timesDivRU = unsafeCoerce (Dict :: Dict ())
+
+clog2axiom :: CLog 2 (n * 2) :~: (CLog 2 n + 1)
+clog2axiom = unsafeCoerce Refl

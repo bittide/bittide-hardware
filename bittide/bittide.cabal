@@ -63,13 +63,14 @@ common common-options
     Cabal,
     array,
     -- clash-prelude will set suitable version bounds for the plugins
+    clash-lib >= 1.6.3 && < 1.7,
     clash-prelude >= 1.6.3 && < 1.7,
-    ghc-typelits-natnormalise,
-    ghc-typelits-extra,
-    ghc-typelits-knownnat,
+    constraints >= 0.13.3 && < 0.15,
     containers >= 0.4.0 && < 0.7,
     contranomy,
-    constraints >= 0.13.3 && < 0.15
+    ghc-typelits-extra,
+    ghc-typelits-knownnat,
+    ghc-typelits-natnormalise,
 library
   import: common-options
   hs-source-dirs: src
