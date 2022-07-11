@@ -141,22 +141,22 @@ wbInterface addressRange WishboneM2S{..} readData =
 -- memory element as if it has a 32 bit port by selecting the upper 32 or lower 32 bits
 -- of the read data.
 scatterUnitWb ::
-  forall dom memDepth awSU bsCal awCal .
+  forall dom memDepth addrWidthSu nBytesCal addrWidthCal .
   ( HiddenClockResetEnable dom
   , KnownNat memDepth, 1 <= memDepth
-  , KnownNat awSU, 2 <= awSU) =>
+  , KnownNat addrWidthSu, 2 <= addrWidthSu) =>
   -- | Configuration for the 'calendarWB'.
-  CalendarConfig bsCal awCal (CalendarEntry memDepth) ->
+  CalendarConfig nBytesCal addrWidthCal (CalendarEntry memDepth) ->
   -- | Wishbone (master -> slave) port 'calendarWB'.
-  Signal dom (WishboneM2S bsCal awCal) ->
+  Signal dom (WishboneM2S nBytesCal addrWidthCal) ->
   -- | Swap active calendar and shadow calendar.
   Signal dom Bool ->
   -- | Incoming frame from Bittide link.
   Signal dom (DataLink 64) ->
   -- | Wishbone (master -> slave) port scatter memory.
-  Signal dom (WishboneM2S 4 awSU) ->
+  Signal dom (WishboneM2S 4 addrWidthSu) ->
   -- | (Wishbone (slave -> master) port scatter memory, Wishbone (slave -> master) port 'calendarWB')
-  (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
+  (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M nBytesCal))
 scatterUnitWb calConfig wbInCal calSwitch linkIn wbInSU =
   (delayControls wbOutSU, wbOutCal)
  where
@@ -171,20 +171,20 @@ scatterUnitWb calConfig wbInCal calSwitch linkIn wbInSU =
 -- memory element as if it has a 32 bit port by controlling the byte enables of the
 -- 'gatherUnit' based on the third bit.
 gatherUnitWb ::
-  forall dom memDepth awSU bsCal awCal .
+  forall dom memDepth addrWidthGu nBytesCal addrWidthCal .
   ( HiddenClockResetEnable dom
   , KnownNat memDepth, 1 <= memDepth
-  , KnownNat awSU, 2 <= awSU) =>
+  , KnownNat addrWidthGu, 2 <= addrWidthGu) =>
   -- | Configuration for the 'calendarWB'.
-  CalendarConfig bsCal awCal (CalendarEntry memDepth) ->
+  CalendarConfig nBytesCal addrWidthCal (CalendarEntry memDepth) ->
   -- | Wishbone (master -> slave) data 'calendarWB'.
-  Signal dom (WishboneM2S bsCal awCal) ->
+  Signal dom (WishboneM2S nBytesCal addrWidthCal) ->
   -- | Swap active calendar and shadow calendar.
   Signal dom Bool ->
   -- | Wishbone (master -> slave) port gather memory.
-  Signal dom (WishboneM2S 4 awSU) ->
+  Signal dom (WishboneM2S 4 addrWidthGu) ->
   -- | (Wishbone (slave -> master) port gather memory, Wishbone (slave -> master) port 'calendarWB')
-  (Signal dom (DataLink 64), Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
+  (Signal dom (DataLink 64), Signal dom (WishboneS2M 4), Signal dom (WishboneS2M nBytesCal))
 gatherUnitWb calConfig wbInCal calSwitch wbInSU =
   (linkOut, delayControls wbOutSU, wbOutCal)
  where
