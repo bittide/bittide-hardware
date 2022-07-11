@@ -166,7 +166,11 @@ jobs:
 
       - name: Get test matrix
         run: |
-          .github/scripts/get_formal_checks.sh
+          if .github/scripts/has_riscv_changes.sh; then
+            .github/scripts/get_formal_checks.sh
+          else
+            echo '["formal-checks-disabled"]' > checks.json
+          fi
 
       - name: Set test matrix
         id: set-matrix
@@ -191,22 +195,24 @@ jobs:
 
     steps:
       - name: Checkout
+        if: matrix.check != 'formal-checks-disabled'
         uses: actions/checkout@v1
 
       - name: Download Contranomy HDL
+        if: matrix.check != 'formal-checks-disabled'
         uses: actions/download-artifact@v2
         with:
           name: contranomy-hdl
 
       - name: Extract HDL
+        if: matrix.check != 'formal-checks-disabled'
         run: |
           tar -x -f contranomy-hdl.tar
 
       - name: Verify ${{ matrix.check }}
+        if: matrix.check != 'formal-checks-disabled'
         run: |
-          if .github/scripts/has_riscv_changes.sh; then
-            .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
-          fi
+          .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
 
       - name: Verification failed, uploading results
         uses: actions/upload-artifact@v2
