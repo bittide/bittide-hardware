@@ -281,9 +281,9 @@ readWriteRegisterByteAddressable = property $ do
           topEntity (unbundle -> (newVal, byteEnable))=
             withClockResetEnable @System clockGen resetGen enableGen $
             registerByteAddressable initVal newVal byteEnable
-          expectedOut = P.scanl simFunc initVal $ P.zip writes byteEnables
-          simFunc olds (news,unpack -> bools) =
-            (\(bool,old,new) -> if bool then new else old) <$> zip3 bools olds news
+          expectedOut = P.scanl useByteEnable initVal $ P.zip writes byteEnables
+          useByteEnable olds (news,unpack -> enables) =
+            (\(enable,old,new) -> if enable then new else old) <$> zip3 enables olds news
           simOut = simulateN simLength topEntity $ P.zip writes byteEnables
         simOut === P.take simLength expectedOut
       _ -> error "readWriteRegisterByteAddressable: Amount of bytes not equal to registers required."
