@@ -19,8 +19,6 @@ import           ContranomySim.Print (getDataBytes)
 import           Test.Tasty.HUnit
 import           Test.Tasty.Hedgehog
 
-
-
 genWriteStream
   :: BS.ByteString
   -> Unsigned 32 -- ^ Character device address
@@ -28,20 +26,17 @@ genWriteStream
   -> Int -- ^ 0 .. <this> writes to interleave
   -> Gen [(Unsigned 32, Signed 32)]
 genWriteStream str addr addrRange interleave' = go (BS.unpack str)
-  where
-    go :: [Word8] -> Gen [(Unsigned 32, Signed 32)]
-    go [] = Gen.list genLength ((,) <$> genAddr <*> genS32)
-    go (x:xs) = do
-      prefix <- Gen.list genLength ((,) <$> genAddr <*> genS32)
-      rest <- go xs
-      pure $ prefix <> [(addr, extend $ bitCoerce x)] <> rest
+ where
+  go :: [Word8] -> Gen [(Unsigned 32, Signed 32)]
+  go [] = Gen.list genLength ((,) <$> genAddr <*> genS32)
+  go (x:xs) = do
+    prefix <- Gen.list genLength ((,) <$> genAddr <*> genS32)
+    rest <- go xs
+    pure $ prefix <> [(addr, extend $ bitCoerce x)] <> rest
 
-    genAddr = Gen.choice [Gen.integral_ $ Range.linear (addr + 1) (addr + addrRange), Gen.integral_ $ Range.linear (addr - addrRange) (addr - 1)]
-    genLength = Range.linear 0 interleave'
-    genS32 = Gen.integral_ @Gen $ Range.linear (minBound :: Signed 32) (maxBound :: Signed 32)
-
-
-
+  genAddr = Gen.choice [Gen.integral_ $ Range.linear (addr + 1) (addr + addrRange), Gen.integral_ $ Range.linear (addr - addrRange) (addr - 1)]
+  genLength = Range.linear 0 interleave'
+  genS32 = Gen.integral_ @Gen $ Range.linear (minBound :: Signed 32) (maxBound :: Signed 32)
 
 tests :: TestTree
 tests = testGroup "Print Tests"

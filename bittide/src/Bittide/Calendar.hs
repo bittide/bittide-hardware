@@ -52,15 +52,14 @@ calendar ::
   -- | Active calendar entry and signal that indicates the start of a new metacycle.
   (Signal dom a, Signal dom Bool)
 calendar bootStrapCal shadowSwitch writeEntry = (entryOut, newMetaCycle)
-  where
-    firstCycle = register True $ pure False
-    entryOut = mux firstCycle (pure $ bootStrapCal !! (0 :: Int)) readEntry
-    readEntry =
-      doubleBufferedRam bootStrapCal shadowSwitch counterNext writeEntry
-    counter = register (0 :: (Index calDepth)) counterNext
-    counterNext = satSucc SatWrap <$> counter
-    newMetaCycle = fmap not firstCycle .&&. (==0) <$> counter
-
+ where
+  firstCycle = register True $ pure False
+  entryOut = mux firstCycle (pure $ bootStrapCal !! (0 :: Int)) readEntry
+  readEntry =
+    doubleBufferedRam bootStrapCal shadowSwitch counterNext writeEntry
+  counter = register (0 :: (Index calDepth)) counterNext
+  counterNext = satSucc SatWrap <$> counter
+  newMetaCycle = fmap not firstCycle .&&. (==0) <$> counter
 
 -- | Configuration for the calendar, This type satisfies all
 -- relevant constraints imposed by calendarWb.
@@ -396,11 +395,11 @@ wbCalTX ::
 wbCalTX CalendarControl{shadowReadAddr, wishboneActive, wishboneError, wishboneAddress}
  CalendarOutput{shadowEntry, shadowDepth}= wbOut
  where
-   readData =
-     case (getRegs shadowEntry, getRegs shadowReadAddr, getRegs shadowDepth) of
-       (RegisterBank entryVec, RegisterBank readAddrVec, RegisterBank depthVec)  ->
-         ((entryVec :< 0b0) ++ readAddrVec ++ depthVec) !! wishboneAddress
-   wbOut = WishboneS2M{acknowledge = wishboneActive, err = wishboneError, readData}
+  readData =
+    case (getRegs shadowEntry, getRegs shadowReadAddr, getRegs shadowDepth) of
+      (RegisterBank entryVec, RegisterBank readAddrVec, RegisterBank depthVec) ->
+       ((entryVec :< 0b0) ++ readAddrVec ++ depthVec) !! wishboneAddress
+  wbOut = WishboneS2M{acknowledge = wishboneActive, err = wishboneError, readData}
 
 updateRegBank ::
   ( Enum i
@@ -414,7 +413,7 @@ updateRegBank ::
   RegisterBank (nBytes * 8) a
 updateRegBank i byteSelect newBV (RegisterBank vec) = RegisterBank newVec
  where
-   newVec = replace i (regUpdate byteSelect (vec !! i) newBV) vec
+  newVec = replace i (regUpdate byteSelect (vec !! i) newBV) vec
 
 regUpdate ::
   KnownNat nBytes =>
@@ -424,7 +423,7 @@ regUpdate ::
   BitVector (nBytes * 8)
 regUpdate byteEnable oldEntry newEntry =
   bitCoerce $ (\e (o, n :: BitVector 8) -> if e then n else o) <$>
-    bitCoerce byteEnable <*> zip (bitCoerce oldEntry) (bitCoerce newEntry)
+   bitCoerce byteEnable <*> zip (bitCoerce oldEntry) (bitCoerce newEntry)
 
 shadowWriteWbAddr :: forall n . (KnownNat n, 3 <=n) => Index n
 shadowWriteWbAddr = natToNum @(n - 3)

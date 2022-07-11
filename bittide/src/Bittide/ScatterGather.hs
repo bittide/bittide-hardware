@@ -42,18 +42,18 @@ scatterEngine ::
   Signal dom a
 scatterEngine newMetaCycle frameIn writeAddr =
   doubleBufferedRamU newMetaCycle readAddr writeFrame
-    where
-      readAddr = register 0 $ satSucc SatWrap <$> readAddr
-      writeFrame = combineFrameWithAddr frameIn writeAddr
+ where
+  readAddr = register 0 $ satSucc SatWrap <$> readAddr
+  writeFrame = combineFrameWithAddr frameIn writeAddr
 
 combineFrameWithAddr ::
   Signal dom (Maybe dat) ->
   Signal dom addr ->
   Signal dom (Maybe (addr,dat))
 combineFrameWithAddr frameIn writeAddr = combine <$> frameIn <*> writeAddr
-  where
-    combine :: Maybe dat -> addr -> Maybe (addr,dat)
-    combine frame addr = fmap (addr,) frame
+ where
+  combine :: Maybe dat -> addr -> Maybe (addr,dat)
+  combine frame addr = fmap (addr,) frame
 
 -- | Double buffered memory component that can be written to by a Bittide link. The write
 -- address of the incoming frame is determined by the incorporated 'calendarWB'. The buffers

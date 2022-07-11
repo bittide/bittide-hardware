@@ -43,11 +43,11 @@ switch ::
   (Signal dom (Vec links (DataLink frameWidth)), Signal dom (WishboneS2M nBytes))
 switch calConfig calSwitch wbIn streamsIn =
   (crossBar <$> crossBarConfig <*> availableFrames, wbOut)
-  where
-    inpBuffer = scatterEngine newMetaCycle
-    availableFrames = bundle (inpBuffer <$> unbundle streamsIn <*> unbundle gatherConfig)
-    (calendars, newMetaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
-    (gatherConfig, crossBarConfig)  = unbundle $ unzip <$> calendars
+ where
+  inpBuffer = scatterEngine newMetaCycle
+  availableFrames = bundle (inpBuffer <$> unbundle streamsIn <*> unbundle gatherConfig)
+  (calendars, newMetaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
+  (gatherConfig, crossBarConfig)  = unbundle $ unzip <$> calendars
 
 -- | The crossbar receives a vector of indices and a vector of incoming frames.
 -- For each outgoing link it will select a data source. 0 selects a null frame (Nothing),
@@ -61,5 +61,5 @@ crossBar ::
   -- | Vector of incoming links.
   Vec links (Maybe a)
 crossBar calendarEntry inputStreams  = fmap selectChannel calendarEntry
-  where
-    selectChannel i = (Nothing :> (Just <$> inputStreams)) !! i
+ where
+  selectChannel i = (Nothing :> (Just <$> inputStreams)) !! i

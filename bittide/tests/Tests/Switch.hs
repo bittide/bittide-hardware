@@ -14,7 +14,6 @@ import Clash.Hedgehog.Sized.Vector
 import Clash.Prelude
 import qualified Prelude as P
 
-
 import Clash.Sized.Vector ( unsafeFromList)
 import Contranomy.Wishbone
 import Data.String
@@ -55,10 +54,10 @@ genSwitchEntry ::
   SNat scatterDepth ->
   Gen (CalendarEntry links scatterDepth)
 genSwitchEntry SNat SNat = genVec elemGen
-  where
-    genScatterEntry = genIndex Range.constantBounded
-    genLinkEntry = genIndex Range.constantBounded
-    elemGen = (,) <$> genScatterEntry <*> genLinkEntry
+ where
+  genScatterEntry = genIndex Range.constantBounded
+  genLinkEntry = genIndex Range.constantBounded
+  elemGen = (,) <$> genScatterEntry <*> genLinkEntry
 
 -- | This generator can generate a any calendar for the bittide switch, knowing the
 -- amount of bytes and address width of the wishbone bus, and given the amount of links,
@@ -121,5 +120,5 @@ selectAllOutputs ::
   [Maybe a]
 selectAllOutputs incomingFrames = fmap (selectionFunc . fromEnum . snd)
  where
-   allFrames = Nothing Seq.<| Seq.fromList incomingFrames
-   selectionFunc = (allFrames `Seq.index`)
+  allFrames = Nothing Seq.<| Seq.fromList incomingFrames
+  selectionFunc = (allFrames `Seq.index`)
