@@ -36,15 +36,15 @@ switchGroup :: TestTree
 switchGroup = testGroup "Switch group"
   [testPropertyNamed "Routing works" "switchFrameRoutingWorks" switchFrameRoutingWorks]
 
-data SwitchConfig  bs aw where
+data SwitchConfig  nBytes addrW where
   SwitchConfig ::
     1 <= memDepth =>
     SNat links ->
     SNat memDepth ->
-    CalendarConfig bs aw (CalendarEntry links memDepth) ->
-    SwitchConfig bs aw
+    CalendarConfig nBytes addrW (CalendarEntry links memDepth) ->
+    SwitchConfig nBytes addrW
 
-deriving instance Show (SwitchConfig bs aw)
+deriving instance Show (SwitchConfig nBytes addrW)
 
 -- This generator can generate a calendar entry for a switch given the amount of links and
 -- memory depth.
@@ -64,12 +64,12 @@ genSwitchEntry SNat SNat = genVec elemGen
 -- amount of bytes and address width of the wishbone bus, and given the amount of links,
 -- memory depth of the scatter engine and calendar depth of the switch.
 genSwitchCalendar ::
-  forall bs aw .
-  (KnownNat bs, 1 <= bs, KnownNat aw) =>
+  forall nBytes addrW .
+  (KnownNat nBytes, 1 <= nBytes, KnownNat addrW) =>
   Natural ->
   Natural ->
   Natural ->
-  Gen (SwitchConfig bs aw)
+  Gen (SwitchConfig nBytes addrW)
 genSwitchCalendar links memDepth calDepth = do
   case (TN.someNatVal links, TN.someNatVal (memDepth - 1)) of
     (SomeNat (snatProxy -> l), SomeNat (succSNat . snatProxy -> d)) -> do

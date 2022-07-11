@@ -92,7 +92,7 @@ contranomy' clk rst entry iMem dMem (unbundle -> (tI, sI, eI)) =
 
   checkWritten
     :: WishboneM2S Bytes AddressWidth
-    -> WishboneS2M bytes
+    -> WishboneS2M nBytes
     -> Maybe (Unsigned 32, Signed 32)
   checkWritten busM busS =
     if writeEnable busM && strobe busM && acknowledge busS

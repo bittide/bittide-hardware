@@ -52,7 +52,7 @@ type LocatedBits maxIndex bits = Located maxIndex (BitVector bits)
 -- | 'Byte' has a relation with @Index maxIndex@.
 type LocatedByte maxIndex = Located maxIndex Byte
 -- | 'Bytes' has a relation with @Index maxIndex@.
-type LocatedBytes maxIndex bytes = Located maxIndex (Bytes bytes)
+type LocatedBytes maxIndex nBytes = Located maxIndex (Bytes nBytes)
 
 -- Padding bits added when a is stored in multiples of bw bits.
 type Pad a bw  = (Regs a bw * bw) - BitSize a

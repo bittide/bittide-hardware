@@ -80,22 +80,22 @@ doubleBufferedRamU switch readAddr writeFrame = output
 -- | The byte addressable double buffered Ram component is a memory component that
 -- consists of two buffers and internally stores its elements as a multiple of 8 bits.
 -- It contains a blockRam per byte and uses the one hot byte select signal to determine
--- which bytes will be overwritten during a write operation. This components writes to
+-- which nBytes will be overwritten during a write operation. This components writes to
 -- one buffer and reads from the other. The buffers are swapped when the second argument
 -- is True.
 doubleBufferedRamByteAddressable ::
-  forall dom depth a .
-  ( KnownNat depth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
+  forall dom memDepth a .
+  ( KnownNat memDepth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
   -- | The initial contents of the first buffer.
-  Vec depth a ->
+  Vec memDepth a ->
   -- | When this argument is True, the read buffer and write buffer are swapped at the rising edge.
   Signal dom Bool ->
   -- | Read address.
-  Signal dom (Index depth) ->
+  Signal dom (Index memDepth) ->
   -- | Incoming data frame.
-  Signal dom (Maybe (Located  depth a)) ->
+  Signal dom (Maybe (Located  memDepth a)) ->
   -- | One hot byte select for writing only
-  Signal dom (ByteEnable (Regs a 8)) ->
+  Signal dom (ByteEnable a) ->
   -- | Outgoing data
   Signal dom a
 doubleBufferedRamByteAddressable initialContent switch readAddr writeFrame byteSelect = output
@@ -114,20 +114,20 @@ doubleBufferedRamByteAddressable initialContent switch readAddr writeFrame byteS
 -- | Version of 'doubleBufferedRamByteAddressable' where the initial content is undefined.
 -- This memory element consists of two buffers and internally stores its elements as a
 -- multiple of 8 bits. It contains a blockRam per byte and uses the one hot byte select
--- signal to determine which bytes will be overwritten during a write operation.
+-- signal to determine which nBytes will be overwritten during a write operation.
 -- This components writes to one buffer and reads from the other. The buffers are
 -- swapped when the first argument is True.
 doubleBufferedRamByteAddressableU ::
-  forall dom depth a .
-  ( KnownNat depth, 1 <= depth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
+  forall dom memDepth a .
+  ( KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
   -- | When this argument is True, the read buffer and write buffer are swapped at the rising edge.
   Signal dom Bool ->
   -- | Read address.
-  Signal dom (Index depth) ->
+  Signal dom (Index memDepth) ->
   -- | Incoming data frame.
-  Signal dom (Maybe (Located  depth a)) ->
+  Signal dom (Maybe (Located  memDepth a)) ->
   -- | One hot byte select for writing only
-  Signal dom (ByteEnable (Regs a 8)) ->
+  Signal dom (ByteEnable a) ->
   -- | Outgoing data
   Signal dom a
 doubleBufferedRamByteAddressableU switch readAddr writeFrame byteSelect = output
@@ -144,18 +144,18 @@ doubleBufferedRamByteAddressableU switch readAddr writeFrame byteSelect = output
     output = mux outputSelect buffer1 buffer0
 
 -- | Blockram similar to 'blockRam' with the addition that it takes a byte select signal
--- that controls which bytes at the write address are updated.
+-- that controls which nBytes at the write address are updated.
 blockRamByteAddressable ::
-  forall dom depth a .
-  (HiddenClockResetEnable dom, KnownNat depth, Paddable a, ShowX a) =>
+  forall dom memDepth a .
+  (HiddenClockResetEnable dom, KnownNat memDepth, Paddable a, ShowX a) =>
   -- | Initial content.
-  Vec depth a ->
+  Vec memDepth a ->
   -- | Read address.
-  Signal dom (Index depth) ->
+  Signal dom (Index memDepth) ->
   -- | Write operation.
-  Signal dom (Maybe (Located depth a)) ->
-  -- | Byte enables that determine which bytes get replaced.
-  Signal dom (ByteEnable (Regs a 8)) ->
+  Signal dom (Maybe (Located memDepth a)) ->
+  -- | Byte enables that determine which nBytes get replaced.
+  Signal dom (ByteEnable a) ->
   -- | Data at read address (1 cycle delay).
   Signal dom a
 blockRamByteAddressable initRam readAddr newEntry byteSelect =
@@ -168,16 +168,16 @@ blockRamByteAddressable initRam readAddr newEntry byteSelect =
 
 -- | Version of 'blockRamByteAddressable' with undefined initial contents. It is similar
 -- to 'blockRam' with the addition that it takes a byte select signal that controls
--- which bytes at the write address are updated.
+-- which nBytes at the write address are updated.
 blockRamByteAddressableU ::
-  forall dom depth a .
-  (HiddenClockResetEnable dom, KnownNat depth, 1 <= depth, Paddable a, ShowX a) =>
+  forall dom memDepth a .
+  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, Paddable a, ShowX a) =>
   -- | Read address.
-  Signal dom (Index depth) ->
+  Signal dom (Index memDepth) ->
   -- | Write operation.
-  Signal dom (Maybe (Located depth a)) ->
-  -- | Byte enables that determine which bytes get replaced.
-  Signal dom (ByteEnable (Regs a 8)) ->
+  Signal dom (Maybe (Located memDepth a)) ->
+  -- | Byte enables that determine which nBytes get replaced.
+  Signal dom (ByteEnable a) ->
   -- | Data at read address (1 cycle delay).
   Signal dom a
 blockRamByteAddressableU readAddr newEntry byteSelect =
@@ -185,7 +185,7 @@ blockRamByteAddressableU readAddr newEntry byteSelect =
  where
    writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
    readBytes = bundle $ ram readAddr <$> writeBytes
-   ram = blockRamU NoClearOnReset (SNat @depth) rstFunc
+   ram = blockRamU NoClearOnReset (SNat @memDepth) rstFunc
    rstFunc = const (errorX "blockRamByteAddressableU: reset function undefined")
 
 data RegisterWritePriority = CircuitPriority | WishbonePriority
@@ -197,25 +197,25 @@ data RegisterWritePriority = CircuitPriority | WishbonePriority
 -- With 'WishbonePriority', the incoming wishbone write gets accepted and the value in the
 -- fourth argument gets ignored.
 registerWb ::
-  forall dom a bs aw .
+  forall dom a nBytes addrW .
   ( HiddenClockResetEnable dom
   , Paddable a
-  , KnownNat bs
-  , 1 <= bs
-  , KnownNat aw
-  , 2 <= aw) =>
+  , KnownNat nBytes
+  , 1 <= nBytes
+  , KnownNat addrW
+  , 2 <= addrW) =>
   -- | Determines the write priority on write collisions
   RegisterWritePriority ->
   -- | Initial value.
   a ->
   -- | Wishbone bus (master to slave)
-  Signal dom (WishboneM2S bs aw) ->
+  Signal dom (WishboneM2S nBytes addrW) ->
   -- | New circuit value.
   Signal dom (Maybe a) ->
   -- |
   -- 1. Outgoing stored value
   -- 2. Outgoing wishbone bus (slave to master)
-  (Signal dom a, Signal dom (WishboneS2M bs))
+  (Signal dom a, Signal dom (WishboneS2M nBytes))
 registerWb writePriority initVal wbIn sigIn =
   registerWbE writePriority initVal wbIn sigIn (pure maxBound)
 
@@ -227,19 +227,19 @@ registerWb writePriority initVal wbIn sigIn =
 -- fourth argument gets ignored. This version has an additional argument for circuit write
 -- byte enables.
 registerWbE ::
-  forall dom a bs aw .
+  forall dom a nBytes addrW .
   ( HiddenClockResetEnable dom
   , Paddable a
-  , KnownNat bs
-  , 1 <= bs
-  , KnownNat aw
-  , 2 <= aw) =>
+  , KnownNat nBytes
+  , 1 <= nBytes
+  , KnownNat addrW
+  , 2 <= addrW) =>
   -- | Determines the write priority on write collisions
   RegisterWritePriority ->
   -- | Initial value.
   a ->
   -- | Wishbone bus (master to slave)
-  Signal dom (WishboneM2S bs aw) ->
+  Signal dom (WishboneM2S nBytes addrW) ->
   -- | New circuit value.
   Signal dom (Maybe a) ->
   -- | Explicit Byte enables for new circuit value
@@ -247,7 +247,7 @@ registerWbE ::
   -- |
   -- 1. Outgoing stored value
   -- 2. Outgoing wishbone bus (slave to master)
-  (Signal dom a, Signal dom (WishboneS2M bs))
+  (Signal dom a, Signal dom (WishboneS2M nBytes))
 registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
  where
   regOut = registerByteAddressable initVal regIn byteEnables
@@ -256,24 +256,24 @@ registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
     a  ->
     Maybe a ->
     BitVector (Regs a 8) ->
-    WishboneM2S bs aw ->
-    (BitVector (Regs a 8), WishboneS2M bs, a)
+    WishboneM2S nBytes addrW ->
+    (BitVector (Regs a 8), WishboneS2M nBytes, a)
   go regOut0 sigIn0 sigbyteEnables0 WishboneM2S{..} =
     (byteEnables0, WishboneS2M{acknowledge, err, readData}, regIn0)
    where
-    (alignedAddress, alignment) = split @_ @(aw - 2) @2 addr
-    addressRange = maxBound :: Index (Max 1 (Regs a (bs * 8)))
+    (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
+    addressRange = maxBound :: Index (Max 1 (Regs a (nBytes * 8)))
     invalidAddress = (alignedAddress > resize (pack addressRange)) || not (alignment == 0)
     masterActive = strobe && busCycle
     err = masterActive && invalidAddress
     acknowledge = masterActive && not err
     wbWriting = writeEnable && acknowledge
-    wbAddr = unpack . resize $ pack alignedAddress :: Index (Max 1 (Regs a (bs * 8)))
+    wbAddr = unpack . resize $ pack alignedAddress :: Index (Max 1 (Regs a (nBytes * 8)))
     readData = case paddedToRegisters $ Padded regOut0 of
       RegisterBank vec -> reverse vec !! wbAddr
 
     wbByteEnables =
-      resize . pack . reverse $ replace wbAddr busSelect (repeat @(Regs a (bs*8)) 0)
+      resize . pack . reverse $ replace wbAddr busSelect (repeat @(Regs a (nBytes*8)) 0)
     sigRegIn = fromMaybe (errorX "registerWb: sigIn is Nothing when Just is expected.") sigIn0
     wbRegIn = registersToData . RegisterBank $ repeat writeData
     (byteEnables0, regIn0) = case (writePriority, isJust sigIn0, wbWriting) of
@@ -284,7 +284,7 @@ registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
       (_               , False, False) -> (0, errorX "registerWb: register input not defined.")
 
 -- | Register similar to 'register' with the addition that it takes a byte select signal
--- that controls which bytes are updated.
+-- that controls which nBytes are updated.
 registerByteAddressable ::
   forall dom a .
   (HiddenClockResetEnable dom, Paddable a) =>
@@ -292,8 +292,8 @@ registerByteAddressable ::
   a ->
   -- | New value.
   Signal dom a ->
-  -- | Byte enables that determine which bytes of the new value are stored.
-  Signal dom (ByteEnable (Regs a 8)) ->
+  -- | Byte enables that determine which nBytes of the new value are stored.
+  Signal dom (ByteEnable a) ->
   -- | Stored value.
   Signal dom a
 registerByteAddressable initVal newVal byteEnables =
@@ -313,7 +313,7 @@ splitWriteInBytes ::
   -- | Incoming write operation.
   Maybe (Located maxIndex writeData) ->
   -- | Incoming byte enables.
-  ByteEnable (Regs writeData 8) ->
+  ByteEnable writeData ->
   -- | Per byte write operation.
   Vec (Regs writeData 8) (Maybe (LocatedByte maxIndex))
 splitWriteInBytes (Just (addr, writeData)) byteSelect =

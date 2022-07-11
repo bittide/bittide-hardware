@@ -25,22 +25,22 @@ type CalendarEntry links memDepth = Vec links (Index memDepth, CrossbarIndex lin
 -- The crossbar selects one of the scatter engine outputs for every outgoing link, index 0
 -- selects a null frame (Nothing) and k selects engine k - 1.
 switch ::
-  forall dom bytes aw links memDepth frameWidth .
+  forall dom nBytes addrW links memDepth frameWidth .
   ( HiddenClockResetEnable dom
   , KnownNat links
   , KnownNat memDepth
   , KnownNat frameWidth
   , 1 <= memDepth) =>
   -- | The calendar configuration
-  CalendarConfig bytes aw (CalendarEntry links memDepth) ->
+  CalendarConfig nBytes addrW (CalendarEntry links memDepth) ->
   -- | Signal that switches the calendar's active and shadow buffer.
   Signal dom Bool ->
   -- | Wishbone interface wired to the calendar.
-  Signal dom (WishboneM2S bytes aw) ->
+  Signal dom (WishboneM2S nBytes addrW) ->
   -- | All incoming datalinks
   Signal dom (Vec links (DataLink frameWidth)) ->
   -- | All outgoing datalinks
-  (Signal dom (Vec links (DataLink frameWidth)), Signal dom (WishboneS2M bytes))
+  (Signal dom (Vec links (DataLink frameWidth)), Signal dom (WishboneS2M nBytes))
 switch calConfig calSwitch wbIn streamsIn =
   (crossBar <$> crossBarConfig <*> availableFrames, wbOut)
   where

@@ -65,15 +65,15 @@ deriving instance Show (SNatLE a b)
 
 -- | Generates a 'CalendarConfig' for the 'gatherUnitWb' or 'scatterUnitWb'
 genCalendarConfig ::
-  forall bytes addressWidth calEntry maxDepth .
-  ( KnownNat bytes
-  , 1 <= bytes
+  forall nBytes addrW calEntry maxDepth .
+  ( KnownNat nBytes
+  , 1 <= nBytes
   , KnownNat maxDepth
   , 1 <= maxDepth
   , calEntry ~ Index maxDepth
-  , KnownNat addressWidth) =>
+  , KnownNat addrW) =>
   SNat maxDepth ->
-  Gen (CalendarConfig bytes addressWidth calEntry)
+  Gen (CalendarConfig nBytes addrW calEntry)
 genCalendarConfig sizeNat@(snatToNum -> dMax) = do
   dA <- Gen.enum 1 dMax
   dB <- Gen.enum 1 dMax
@@ -81,12 +81,12 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
     ( SomeNat (snatProxy -> depthA)
      ,SomeNat (snatProxy -> depthB)) -> do
         let
-          regAddrBits = SNat @(NatRequiredBits (Regs calEntry (bytes * 8)))
+          regAddrBits = SNat @(NatRequiredBits (Regs calEntry (nBytes * 8)))
           bsCalEntry = SNat @(BitSize calEntry)
         case
          ( isInBounds d1 depthA sizeNat
          , isInBounds d1 depthB sizeNat
-         , compareSNat regAddrBits (SNat @addressWidth)
+         , compareSNat regAddrBits (SNat @addrW)
          , compareSNat d1 bsCalEntry) of
           (InBounds, InBounds, SNatLE, SNatLE) -> go depthA depthB
           (a, b, c, d) -> error [I.i|
@@ -103,10 +103,10 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
     go :: forall depthA depthB .
       ( LessThan depthA maxDepth
       , LessThan depthB maxDepth
-      , NatFitsInBits (Regs calEntry (bytes * 8)) addressWidth) =>
+      , NatFitsInBits (Regs calEntry (nBytes * 8)) addrW) =>
       SNat depthA ->
       SNat depthB ->
-      Gen (CalendarConfig bytes addressWidth (Index maxDepth))
+      Gen (CalendarConfig nBytes addrW (Index maxDepth))
     go SNat SNat = do
       calActive <- fromMaybe errmsg . fromList @depthA . P.take (natToNum @depthA)
         <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
@@ -127,27 +127,27 @@ scatterUnitNoFrameLoss = property $ do
     (KnownNat maxSize, 1 <= maxSize) =>
     CalendarConfig 4 32 (Index maxSize) ->
     PropertyT IO ()
-  runTest calConfig@(CalendarConfig _ calA@(length -> depth) _) = do
+  runTest calConfig@(CalendarConfig _ calA@(length -> memDepth) _) = do
     -- Number of metacycles of input to generate
     metaCycles <- forAll $ Gen.enum 1 10
     let
       -- reset cycle + cycle delay, last metacycle's writes can be read in (metacycles + 1)
-      simLength = 2 + (1+metaCycles) * depth
+      simLength = 2 + (1+metaCycles) * memDepth
       inputGen = Gen.list (Range.singleton metaCycles)
-      metaCycleNothing = P.replicate depth Nothing
-      -- Generate at most depth `div` 2 elements to be written each metacycle since
+      metaCycleNothing = P.replicate memDepth Nothing
+      -- Generate at most memDepth `div` 2 elements to be written each metacycle since
       -- we need two cycles to read a written element.
-      metaCycleGen = genFrameList (Range.singleton $ depth `div` 2)
+      metaCycleGen = genFrameList (Range.singleton $ memDepth `div` 2)
 
-    inputFrames <- forAll $ padToLength (simLength `div` depth + 1) metaCycleNothing
-      <$> inputGen (padToLength depth Nothing <$> metaCycleGen)
+    inputFrames <- forAll $ padToLength (simLength `div` memDepth + 1) metaCycleNothing
+      <$> inputGen (padToLength memDepth Nothing <$> metaCycleGen)
     let
       topEntity (unbundle -> (wbIn, linkIn)) = fst $
         withClockResetEnable clockGen resetGen enableGen (scatterUnitWb @System @_ @32)
         calConfig (pure wishboneM2S) (pure False) linkIn wbIn
 
-      wbReadOps = P.take simLength $ P.replicate depth wishboneM2S P.++  P.concat
-        (padToLength depth wishboneM2S . P.concat . P.zipWith wbRead (toList calA) <$> inputFrames)
+      wbReadOps = P.take simLength $ P.replicate memDepth wishboneM2S P.++  P.concat
+        (padToLength memDepth wishboneM2S . P.concat . P.zipWith wbRead (toList calA) <$> inputFrames)
 
       topEntityInput = P.zip wbReadOps (P.concat inputFrames)
       simOut = simulateN simLength topEntity topEntityInput
@@ -171,27 +171,27 @@ gatherUnitNoFrameLoss = property $ do
   runTest ::
     (KnownNat maxSize, 1 <= maxSize) =>
     CalendarConfig 4 32 (Index maxSize) -> PropertyT IO ()
-  runTest calConfig@(CalendarConfig _ calA@(length -> depth) _) = do
+  runTest calConfig@(CalendarConfig _ calA@(length -> memDepth) _) = do
     metaCycles <- forAll $ Gen.enum 1 10
     let
-      simLength = 2 + (1+metaCycles) * depth
+      simLength = 2 + (1+metaCycles) * memDepth
       inputGen = Gen.list (Range.singleton metaCycles)
-      metaCycleNothing = P.replicate depth Nothing
-      metaCycleGen = genFrameList (Range.singleton $ depth `div` 2)
-    inputFrames <- forAll $ padToLength (simLength `div` depth + 1) metaCycleNothing
-      <$> inputGen (padToLength depth Nothing <$> metaCycleGen)
+      metaCycleNothing = P.replicate memDepth Nothing
+      metaCycleGen = genFrameList (Range.singleton $ memDepth `div` 2)
+    inputFrames <- forAll $ padToLength (simLength `div` memDepth + 1) metaCycleNothing
+      <$> inputGen (padToLength memDepth Nothing <$> metaCycleGen)
     let
       topEntity wbIn = (\ (a, _ ,_) -> a) $
         withClockResetEnable clockGen resetGen enableGen (gatherUnitWb @System @_ @32)
         calConfig (pure wishboneM2S) (pure False) wbIn
 
       wbWriteOps = P.take simLength . P.concat $
-        padToLength depth wishboneM2S . P.concat . P.zipWith wbWrite (toList calA) <$> inputFrames
+        padToLength memDepth wishboneM2S . P.concat . P.zipWith wbWrite (toList calA) <$> inputFrames
 
       simOut = simulateN simLength topEntity wbWriteOps
       addressedFrames = P.zip (P.concat inputFrames) (cycle $ toList calA)
       writtenFrames = [if snd e /= 0 then fst e else Nothing | e <- addressedFrames]
-      prePad items = P.replicate (1+depth) Nothing P.++ items
+      prePad items = P.replicate (1+memDepth) Nothing P.++ items
       expectedOutput = P.take simLength (fromMaybe 1 <$> P.filter isJust writtenFrames)
 
     footnote . fromString $ "simOut: " <> showX simOut
@@ -216,9 +216,9 @@ directedDecode _ _ = []
 -- | Decode an incoming slave bus by consuming two acknowledged signals and concatenating
 -- their readData's.
 wbDecoding ::
-  KnownNat bytes =>
-  [WishboneS2M bytes] ->
-  [BitVector ((8 * bytes) + (8 * bytes))]
+  KnownNat nBytes =>
+  [WishboneS2M nBytes] ->
+  [BitVector ((8 * nBytes) + (8 * nBytes))]
 wbDecoding (s2m0 : s2m1 : s2ms)
   | acknowledge s2m0 && acknowledge s2m1 = out : wbDecoding s2ms
   | otherwise = wbDecoding (s2m1 : s2ms)
@@ -230,21 +230,21 @@ wbDecoding _ = []
 -- the 'scatterUnitWb'. The second argument indicate wether or not a frame can be read from
 -- that read address. The read operation reads data over 2 read cycles.
 wbRead ::
-  forall bytes addressWidth maxIndex a .
-  ( KnownNat bytes
-  , KnownNat addressWidth
+  forall nBytes addrW maxIndex a .
+  ( KnownNat nBytes
+  , KnownNat addrW
   , KnownNat maxIndex
   , 1 <= maxIndex) =>
   Index maxIndex ->
   Maybe a ->
-  [WishboneM2S bytes addressWidth]
+  [WishboneM2S nBytes addrW]
 wbRead readAddr (Just _) =
-  [ (wishboneM2S @bytes @addressWidth)
+  [ (wishboneM2S @nBytes @addrW)
     { addr = (`shiftL` 3) . resize $ pack readAddr
     , busCycle = True
     , strobe = True }
 
-  , (wishboneM2S @bytes @addressWidth)
+  , (wishboneM2S @nBytes @addrW)
     { addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr)
     , busCycle = True
     , strobe = True }
@@ -254,16 +254,16 @@ wbRead _ Nothing = []
 -- | Transform a write address with frame to a wishbone write operation for testing the
 -- 'gatherUnitWb'. The write operation writes the incoming bitvector over 2 write cycles.
 wbWrite ::
-  forall bytes addressWidth maxIndex .
-  ( KnownNat bytes
-  , KnownNat addressWidth
+  forall nBytes addrW maxIndex .
+  ( KnownNat nBytes
+  , KnownNat addrW
   , KnownNat maxIndex
   , 1 <= maxIndex) =>
   Index maxIndex ->
-  Maybe (BitVector (bytes*2*8)) ->
-  [WishboneM2S bytes addressWidth]
+  Maybe (BitVector (nBytes*2*8)) ->
+  [WishboneM2S nBytes addrW]
 wbWrite writeAddr (Just frame) =
-  [ (wishboneM2S @bytes @addressWidth)
+  [ (wishboneM2S @nBytes @addrW)
     { addr = (`shiftL` 3) . resize $ pack writeAddr
     , busSelect = maxBound
     , busCycle = True
@@ -271,7 +271,7 @@ wbWrite writeAddr (Just frame) =
     , writeEnable = True
     , writeData = lower }
 
-  , (wishboneM2S @bytes @addressWidth)
+  , (wishboneM2S @nBytes @addrW)
     { addr =  4 .|.  ((`shiftL` 3) . resize $ pack writeAddr)
     , busSelect = maxBound
     , busCycle = True

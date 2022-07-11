@@ -63,7 +63,7 @@ ramGroup = testGroup "DoubleBufferedRam group"
   ]
 
 genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
-genRamContents depth = genSomeVec (Range.singleton $ fromIntegral (depth - 1))
+genRamContents memDepth = genSomeVec (Range.singleton $ fromIntegral (memDepth - 1))
 
 -- | This test checks if we can read the initial values of the double buffered Ram.
 readDoubleBufferedRam :: Property
@@ -109,21 +109,21 @@ readWriteDoubleBufferedRam = property $ do
 
 data BitvecVec where
   BitvecVec ::
-    (1 <= bits, 1 <= depth, 1 <= Regs (BitVector bits) 8) =>
-    SNat depth ->
+    (1 <= bits, 1 <= memDepth, 1 <= Regs (BitVector bits) 8) =>
+    SNat memDepth ->
     SNat bits ->
-    Vec depth (BitVector bits) ->
+    Vec memDepth (BitVector bits) ->
     BitvecVec
 
 instance Show BitvecVec where
   show (BitvecVec SNat SNat v) = show v
 
 genBlockRamContents :: Int -> Int -> Gen BitvecVec
-genBlockRamContents depth bits = do
-  case (TN.someNatVal $ fromIntegral (depth - 1), TN.someNatVal $ fromIntegral $ bits - 1) of
+genBlockRamContents memDepth bits = do
+  case (TN.someNatVal $ fromIntegral (memDepth - 1), TN.someNatVal $ fromIntegral $ bits - 1) of
     (SomeNat depth0, SomeNat bits0) -> go (snatProxy depth0) (snatProxy bits0)
  where
-  go :: forall depth bits . SNat depth -> SNat bits -> Gen BitvecVec
+  go :: forall memDepth bits . SNat memDepth -> SNat bits -> Gen BitvecVec
   go depth0@SNat bits0@SNat =
     case compareSNat d1 (SNat @(Regs (BitVector (bits + 1)) 8)) of
       SNatLE -> BitvecVec (succSNat depth0) (succSNat bits0)
@@ -254,29 +254,29 @@ doubleBufferedRamByteAddressable1 = property $ do
 -- configurable amount of bytes and selectively update its contents on a per byte basis.
 readWriteRegisterByteAddressable :: Property
 readWriteRegisterByteAddressable = property $ do
-  bytes <- forAll $ Gen.enum 1 10
-  case TN.someNatVal bytes of
+  nBytes <- forAll $ Gen.enum 1 10
+  case TN.someNatVal nBytes of
     SomeNat p -> case compareSNat d1 (snatProxy p) of
       SNatLE -> go p
-      _ -> error "readWriteRegisterByteAddressable: Amount of bytes == 0."
+      _ -> error "readWriteRegisterByteAddressable: Amount of nBytes == 0."
  where
   go ::
-    forall bytes m .
-    ( KnownNat bytes
-    , 1 <= bytes, KnownNat (bytes*8)
-    , 1 <= (bytes * 8), Monad m) =>
-    Proxy bytes ->
+    forall nBytes m .
+    ( KnownNat nBytes
+    , 1 <= nBytes, KnownNat (nBytes*8)
+    , 1 <= (nBytes * 8), Monad m) =>
+    Proxy nBytes ->
     PropertyT m ()
   go Proxy =
-    case sameNat (Proxy @bytes) (Proxy @(Regs (Vec bytes Byte) 8)) of
+    case sameNat (Proxy @nBytes) (Proxy @(Regs (Vec nBytes Byte) 8)) of
       Just Refl -> do
         simLength <- forAll $ Gen.enum 1 100
         let
-          writeGen = genNonEmptyVec @_ @bytes $ genDefinedBitVector @_ @8
+          writeGen = genNonEmptyVec @_ @nBytes $ genDefinedBitVector @_ @8
         initVal <- forAll writeGen
         writes <- forAll $ Gen.list (Range.singleton simLength) writeGen
         byteEnables <- forAll $ Gen.list (Range.singleton simLength)
-          $ genDefinedBitVector @_ @(Regs (Vec bytes Byte) 8)
+          $ genDefinedBitVector @_ @(Regs (Vec nBytes Byte) 8)
         let
           topEntity (unbundle -> (newVal, byteEnable))=
             withClockResetEnable @System clockGen resetGen enableGen $
@@ -482,21 +482,21 @@ bv2WbWrite i v = (wishboneM2S @4 @32)
 -- | Model for 'byteAddressableRam', it stores the inputs in its state for a one cycle delay
 -- and updates the Ram based on the the write operation and byte enables.
 -- Furthermore it contains read-before-write behavior based on the readAddr.
-byteAddressableRamBehavior :: forall bits depth bytes .
-  (KnownNat depth, 1 <= depth
-  , KnownNat bytes, 1 <= bytes
-  , bytes ~ Regs (BitVector bits) 8
+byteAddressableRamBehavior :: forall bits memDepth nBytes .
+  (KnownNat memDepth, 1 <= memDepth
+  , KnownNat nBytes, 1 <= nBytes
+  , nBytes ~ Regs (BitVector bits) 8
   , KnownNat bits, 1 <= bits) =>
 
-  ((Index depth, Maybe (LocatedBits depth bits), ByteEnable bytes)
-  , Vec depth (BitVector bits))->
+  ((Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
+  , Vec memDepth (BitVector bits))->
 
-  (Index depth, Maybe (LocatedBits depth bits), ByteEnable bytes) ->
+  (Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes) ->
 
-  ((( Index depth
-    , Maybe (LocatedBits depth bits)
-    , ByteEnable bytes)
-   , Vec depth (BitVector bits))
+  ((( Index memDepth
+    , Maybe (LocatedBits memDepth bits)
+    , BitVector nBytes)
+   , Vec memDepth (BitVector bits))
   , BitVector bits)
 byteAddressableRamBehavior state input = (state', ram !! readAddr)
  where
@@ -509,7 +509,7 @@ byteAddressableRamBehavior state input = (state', ram !! readAddr)
    zip oldData newData
 
 
-  getData :: Vec bytes Byte -> BitVector bits
+  getData :: Vec nBytes Byte -> BitVector bits
   getData vec = registersToData @_ @8 $ RegisterBank vec
 
   ram1 = if writeTrue then replace writeAddr newEntry ram else ram
@@ -520,22 +520,22 @@ byteAddressableRamBehavior state input = (state', ram !! readAddr)
 -- byte enables. Furthermore it contains read-before-write behavior based on the readAddr.
 -- The only addition compared to byteAddressableRam is the fact that there's two buffers
 -- (one read only, one write only), that can be swapped.
-byteAddressableDoubleBufferedRamBehavior :: forall bits depth bytes .
- ( KnownNat depth
- , 1 <= depth
- , KnownNat bytes
- , 1 <= bytes
- , bytes ~ Regs (BitVector bits) 8
+byteAddressableDoubleBufferedRamBehavior :: forall bits memDepth nBytes .
+ ( KnownNat memDepth
+ , 1 <= memDepth
+ , KnownNat nBytes
+ , 1 <= nBytes
+ , nBytes ~ Regs (BitVector bits) 8
  , KnownNat bits
  , 1 <= bits) =>
- ((Bool, Index depth, Maybe (LocatedBits depth bits), BitVector bytes)
- , Vec depth (BitVector bits), Vec depth (BitVector bits))->
+ ((Bool, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
+ , Vec memDepth (BitVector bits), Vec memDepth (BitVector bits))->
 
- (Bool, Index depth, Maybe (LocatedBits depth bits), BitVector bytes) ->
+ (Bool, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes) ->
 
- (((Bool, Index depth, Maybe (LocatedBits depth bits), BitVector bytes)
- , Vec depth (BitVector bits)
- , Vec depth (BitVector bits))
+ (((Bool, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
+ , Vec memDepth (BitVector bits)
+ , Vec memDepth (BitVector bits))
  , BitVector bits)
 byteAddressableDoubleBufferedRamBehavior state input = (state', pack $ bufA0 !! readAddr)
  where
@@ -553,5 +553,5 @@ byteAddressableDoubleBufferedRamBehavior state input = (state', pack $ bufA0 !! 
   bufB1 = if writeTrue then replace writeAddr newEntry bufB0 else bufB0
   state' = (input, bufA0, bufB1)
 
-  getData :: Vec bytes Byte -> BitVector bits
+  getData :: Vec nBytes Byte -> BitVector bits
   getData vec = registersToData @_ @8 $ RegisterBank vec
