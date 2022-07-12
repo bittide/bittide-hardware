@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+
 module Tests.ElasticBuffer ( ebGroup, res ) where
 
 import Clash.Explicit.Prelude

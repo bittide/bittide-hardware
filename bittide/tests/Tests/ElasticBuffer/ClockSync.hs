@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+
 {-# LANGUAGE NoImplicitPrelude #-}
 
 module Tests.ElasticBuffer.ClockSync ( entangledEna ) where
