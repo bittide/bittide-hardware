@@ -73,7 +73,7 @@ instance Show (BVCalendar addrW) where
 -- TODO: Remove this show instance after issue (https://github.com/clash-lang/clash-compiler/issues/2190) has been fixed.
 deriving instance Show (SNatLE a b)
 
--- | Generates a configuration for 'Bittide.Calendar.calendarWb', with as first argument
+-- | Generates a configuration for 'Bittide.Calendar.calendar', with as first argument
 -- the maximum depth of the stored calendar and as second argument a generator for the
 -- calendar entries.
 genCalendarConfig ::
@@ -169,7 +169,7 @@ readCalendar = property $ do
     BVCalendar (succSNat -> calSize') SNat cal -> do
       let
         topEntity switch = (\(a,_,_) -> a) $ withClockResetEnable clockGen resetGen enableGen
-          calendarWb calSize' cal cal switch $ pure (wishboneM2S @4 @32)
+          calendar calSize' cal cal switch $ pure (wishboneM2S @4 @32)
         simOut = simulateN @System (fromIntegral simLength) topEntity switchSignal
       footnote . fromString $ "simOut: " <> show simOut
       footnote . fromString $ "expected: " <> show (toList cal)
@@ -194,7 +194,7 @@ reconfigCalendar = property $ do
         switchList = P.replicate (writeDuration + 1) False <> (True : P.repeat False)
         wbWrites = wbNothingM2S @4 @32 : P.concatMap writeWithWishbone writeOps
         topEntity (unbundle -> (switch, writePort)) = (\(a,_,_) -> a) $ withClockResetEnable clockGen
-          resetGen enableGen calendarWb (succSNat calSize') cal cal switch writePort
+          resetGen enableGen calendar (succSNat calSize') cal cal switch writePort
         topEntityInput = P.take simLength $ P.zip switchList $ wbWrites <> P.repeat wbNothingM2S
         simOut = simulateN @System simLength topEntity topEntityInput
       footnote . fromString $ "simOut: " <> show simOut
@@ -222,7 +222,7 @@ readShadowCalendar = property $ do
             simLength = P.length wbReads + 1
             wbReads = P.concatMap (\ i -> wbReadEntry @4 @32 (fromIntegral i) entryRegs) readAddresses
             topEntity writePort = (\(_,_,wb) -> wb) $ withClockResetEnable clockGen resetGen enableGen
-              calendarWb (succSNat snatS) calA' calS' (pure False) writePort
+              calendar (succSNat snatS) calA' calS' (pure False) writePort
             topEntityInput = P.take simLength $ wbReads <> P.repeat wbNothingM2S
             simOut = simulateN @System simLength topEntity topEntityInput
             wbOutEntries = directedWbDecoding topEntityInput simOut
@@ -248,7 +248,7 @@ metaCycleIndication = property $ do
         switchSignal = P.concatMap (\ (fromIntegral -> n) -> P.replicate n False <> [True]) allDepths
         wbIn = P.concatMap (\(fromIntegral -> i, wb) -> wb : P.replicate i wbNothingM2S) $ P.zip (1 + calSize : newDepths) wbWrites
         topEntity (unbundle -> (switch, writePort)) = (\(_,m,_) -> m) $ withClockResetEnable
-          clockGen resetGen enableGen calendarWb calSize' cal cal switch writePort
+          clockGen resetGen enableGen calendar calSize' cal cal switch writePort
         topEntityInput = P.zip switchSignal (wbIn <> P.repeat wbNothingM2S)
         simOut = simulateN @System simLength topEntity topEntityInput
         expectedOut = P.take simLength $ True : P.tail switchSignal
@@ -281,7 +281,7 @@ wbNothingM2S = (wishboneM2S @nBytes @addrW)
  , writeData = 0
  , busSelect = 0}
 
--- | Write an entry to some address in 'Bittide.Calendar.calendarWb', this may require
+-- | Write an entry to some address in 'Bittide.Calendar.calendar', this may require
 -- multiple write operations.
 writeWithWishbone ::
   forall nBytes addrW n entry .
@@ -327,7 +327,7 @@ directedWbDecoding (wbM2S:m2sRest) (_:s2mRest) = out
 directedWbDecoding _ _ = []
 
 -- | Returns the wishbone M2S bus inputs required to read a calendar entry from
--- 'Bittide.Calendar.calendarWb'. It first writes the entry's address to the read register,
+-- 'Bittide.Calendar.calendar'. It first writes the entry's address to the read register,
 -- then adds the read operations.
 wbReadEntry ::
   forall nBytes addrW i .
