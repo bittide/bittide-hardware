@@ -19,14 +19,14 @@ import           Clash.Signal.Internal
 
 import Contranomy.Core.SharedTypes (Bytes, AddressWidth)
 
-data WishboneM2S bytes addressWidth
+data WishboneM2S nBytes addrW
   = WishboneM2S
   { -- | ADR
-    addr :: "ADR" ::: BitVector addressWidth
+    addr :: "ADR" ::: BitVector addrW
     -- | DAT
-  , writeData :: "DAT_MOSI" ::: BitVector (8 * bytes)
+  , writeData :: "DAT_MOSI" ::: BitVector (8 * nBytes)
     -- | SEL
-  , busSelect :: "SEL" ::: BitVector bytes
+  , busSelect :: "SEL" ::: BitVector nBytes
     -- | CYC
   , busCycle :: "CYC" ::: Bool
     -- | STB
@@ -39,10 +39,10 @@ data WishboneM2S bytes addressWidth
   , burstTypeExtension :: "BTE" ::: BurstTypeExtension
   } deriving (Generic, NFDataX, Show, Eq, ShowX)
 
-data WishboneS2M bytes
+data WishboneS2M nBytes
   = WishboneS2M
   { -- | DAT
-    readData :: "DAT_MISO" ::: BitVector (8 * bytes)
+    readData :: "DAT_MISO" ::: BitVector (8 * nBytes)
     -- | ACK
   , acknowledge :: "ACK" ::: Bool
     -- | ERR
@@ -63,8 +63,11 @@ data BurstTypeExtension
   | Beat8Burst
   | Beat16Burst
   deriving (Generic, NFDataX, Show, Eq, ShowX)
-wishboneM2S :: SNat bytes -> SNat addressWidth -> WishboneM2S bytes addressWidth
-wishboneM2S SNat SNat
+wishboneM2S ::
+  ( KnownNat nBytes
+  , KnownNat addrW) =>
+  WishboneM2S nBytes addrW
+wishboneM2S
   = WishboneM2S
   { addr = deepErrorX "wishboneM2S: addr undefined."
   , writeData = deepErrorX "wishboneM2S: writeData undefined."
@@ -76,8 +79,10 @@ wishboneM2S SNat SNat
   , burstTypeExtension = LinearBurst
   }
 
-wishboneS2M :: SNat bytes -> WishboneS2M bytes
-wishboneS2M SNat
+wishboneS2M ::
+  KnownNat nBytes =>
+  WishboneS2M nBytes
+wishboneS2M
   = WishboneS2M
   { readData = deepErrorX "wishboneM2S: readData undefined."
   , acknowledge = False

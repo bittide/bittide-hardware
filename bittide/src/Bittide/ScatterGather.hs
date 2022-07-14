@@ -42,18 +42,18 @@ scatterEngine ::
   Signal dom a
 scatterEngine newMetaCycle frameIn writeAddr =
   doubleBufferedRamU newMetaCycle readAddr writeFrame
-    where
-      readAddr = register 0 $ satSucc SatWrap <$> readAddr
-      writeFrame = combineFrameWithAddr frameIn writeAddr
+ where
+  readAddr = register 0 $ satSucc SatWrap <$> readAddr
+  writeFrame = combineFrameWithAddr frameIn writeAddr
 
 combineFrameWithAddr ::
   Signal dom (Maybe dat) ->
   Signal dom addr ->
   Signal dom (Maybe (addr,dat))
 combineFrameWithAddr frameIn writeAddr = combine <$> frameIn <*> writeAddr
-  where
-    combine :: Maybe dat -> addr -> Maybe (addr,dat)
-    combine frame addr = fmap (addr,) frame
+ where
+  combine :: Maybe dat -> addr -> Maybe (addr,dat)
+  combine frame addr = fmap (addr,) frame
 
 -- | Double buffered memory component that can be written to by a Bittide link. The write
 -- address of the incoming frame is determined by the incorporated 'calendarWB'. The buffers
@@ -64,9 +64,9 @@ scatterUnit ::
   , KnownNat memDepth, 1 <= memDepth
   , KnownNat frameWidth) =>
   -- | Configuration for the 'calendarWB'.
-  CalendarConfig bytes addressWidth (CalendarEntry memDepth) ->
+  CalendarConfig nBytes addrW (CalendarEntry memDepth) ->
   -- | Wishbone (master -> slave) port for the 'calendarWB'.
-  Signal dom (WishboneM2S bytes addressWidth) ->
+  Signal dom (WishboneM2S nBytes addrW) ->
   -- | Swap active calendar and shadow calendar.
   Signal dom Bool ->
   -- | Incoming frame from Bittide link.
@@ -74,7 +74,7 @@ scatterUnit ::
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | (Data at read address delayed 1 cycle, Wishbone (slave -> master) from 'calendarWB')
-  (Signal dom (BitVector frameWidth), Signal dom (WishboneS2M bytes))
+  (Signal dom (BitVector frameWidth), Signal dom (WishboneS2M nBytes))
 scatterUnit calConfig wbIn calSwitch linkIn readAddr = (readOut, wbOut)
  where
   (writeAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
@@ -92,17 +92,17 @@ gatherUnit ::
   , KnownNat frameWidth, 1 <= frameWidth
   , KnownNat (DivRU frameWidth 8), 1 <= (DivRU frameWidth 8)) =>
   -- | Configuration for the 'calendarWB'.
-  CalendarConfig bytes addressWidth (CalendarEntry memDepth) ->
+  CalendarConfig nBytes addrW (CalendarEntry memDepth) ->
   -- | Wishbone (master -> slave) port for the 'calendarWB'.
-  Signal dom (WishboneM2S bytes addressWidth) ->
+  Signal dom (WishboneM2S nBytes addrW) ->
   -- | Swap active calendar and shadow calendar.
   Signal dom Bool ->
   -- | Write operation writing a frame.
   Signal dom (Maybe (LocatedBits memDepth frameWidth)) ->
   -- | Byte enable for write operation.
-  Signal dom (ByteEnable (DivRU frameWidth 8)) ->
+  Signal dom (ByteEnable (BitVector frameWidth)) ->
   -- | (Transmitted  frame to Bittide Link, Wishbone (slave -> master) from 'calendarWB')
-  (Signal dom (DataLink frameWidth), Signal dom (WishboneS2M bytes))
+  (Signal dom (DataLink frameWidth), Signal dom (WishboneS2M nBytes))
 gatherUnit calConfig wbIn calSwitch writeOp byteEnables= (linkOut, wbOut)
  where
   (readAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
@@ -112,23 +112,23 @@ gatherUnit calConfig wbIn calSwitch writeOp byteEnables= (linkOut, wbOut)
 -- | Wishbone interface for the 'scatterUnit' and 'gatherUnit'. It makes the scatter and gather
 -- unit, which operate on 64 bit frames, addressable via a 32 bit wishbone bus.
 wbInterface ::
-  forall bytes addressWidth addresses .
-  ( KnownNat bytes
+  forall nBytes addrW addresses .
+  ( KnownNat nBytes
   , KnownNat addresses, 1 <= addresses
-  , KnownNat addressWidth, 2 <= addressWidth) =>
+  , KnownNat addrW, 2 <= addrW) =>
   -- | Maximum address of the respective memory element as seen from the wishbone side.
   Index addresses ->
   -- | Wishbone (master -> slave) data.
-  WishboneM2S bytes addressWidth ->
+  WishboneM2S nBytes addrW ->
   -- | Read data to be send to over the (slave -> master) port.
-  Bytes bytes ->
+  Bytes nBytes ->
   -- | (slave - master data, read address memory element, write data memory element)
-  (WishboneS2M bytes, Index addresses, Maybe (Bytes bytes))
+  (WishboneS2M nBytes, Index addresses, Maybe (Bytes nBytes))
 wbInterface addressRange WishboneM2S{..} readData =
   (WishboneS2M{readData, acknowledge, err}, memAddr, writeOp)
  where
   masterActive = strobe && busCycle
-  (alignedAddress, alignment) = split @_ @(addressWidth - 2) @2 addr
+  (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
   wordAligned = alignment == 0
   err = masterActive && ((alignedAddress > resize (pack addressRange)) || not wordAligned)
   acknowledge = masterActive && not err
@@ -141,22 +141,22 @@ wbInterface addressRange WishboneM2S{..} readData =
 -- memory element as if it has a 32 bit port by selecting the upper 32 or lower 32 bits
 -- of the read data.
 scatterUnitWb ::
-  forall dom memDepth awSU bsCal awCal .
+  forall dom memDepth addrWidthSu nBytesCal addrWidthCal .
   ( HiddenClockResetEnable dom
   , KnownNat memDepth, 1 <= memDepth
-  , KnownNat awSU, 2 <= awSU) =>
+  , KnownNat addrWidthSu, 2 <= addrWidthSu) =>
   -- | Configuration for the 'calendarWB'.
-  CalendarConfig bsCal awCal (CalendarEntry memDepth) ->
+  CalendarConfig nBytesCal addrWidthCal (CalendarEntry memDepth) ->
   -- | Wishbone (master -> slave) port 'calendarWB'.
-  Signal dom (WishboneM2S bsCal awCal) ->
+  Signal dom (WishboneM2S nBytesCal addrWidthCal) ->
   -- | Swap active calendar and shadow calendar.
   Signal dom Bool ->
   -- | Incoming frame from Bittide link.
   Signal dom (DataLink 64) ->
   -- | Wishbone (master -> slave) port scatter memory.
-  Signal dom (WishboneM2S 4 awSU) ->
+  Signal dom (WishboneM2S 4 addrWidthSu) ->
   -- | (Wishbone (slave -> master) port scatter memory, Wishbone (slave -> master) port 'calendarWB')
-  (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
+  (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M nBytesCal))
 scatterUnitWb calConfig wbInCal calSwitch linkIn wbInSU =
   (delayControls wbOutSU, wbOutCal)
  where
@@ -171,20 +171,20 @@ scatterUnitWb calConfig wbInCal calSwitch linkIn wbInSU =
 -- memory element as if it has a 32 bit port by controlling the byte enables of the
 -- 'gatherUnit' based on the third bit.
 gatherUnitWb ::
-  forall dom memDepth awSU bsCal awCal .
+  forall dom memDepth addrWidthGu nBytesCal addrWidthCal .
   ( HiddenClockResetEnable dom
   , KnownNat memDepth, 1 <= memDepth
-  , KnownNat awSU, 2 <= awSU) =>
+  , KnownNat addrWidthGu, 2 <= addrWidthGu) =>
   -- | Configuration for the 'calendarWB'.
-  CalendarConfig bsCal awCal (CalendarEntry memDepth) ->
+  CalendarConfig nBytesCal addrWidthCal (CalendarEntry memDepth) ->
   -- | Wishbone (master -> slave) data 'calendarWB'.
-  Signal dom (WishboneM2S bsCal awCal) ->
+  Signal dom (WishboneM2S nBytesCal addrWidthCal) ->
   -- | Swap active calendar and shadow calendar.
   Signal dom Bool ->
   -- | Wishbone (master -> slave) port gather memory.
-  Signal dom (WishboneM2S 4 awSU) ->
+  Signal dom (WishboneM2S 4 addrWidthGu) ->
   -- | (Wishbone (slave -> master) port gather memory, Wishbone (slave -> master) port 'calendarWB')
-  (Signal dom (DataLink 64), Signal dom (WishboneS2M 4), Signal dom (WishboneS2M bsCal))
+  (Signal dom (DataLink 64), Signal dom (WishboneS2M 4), Signal dom (WishboneS2M nBytesCal))
 gatherUnitWb calConfig wbInCal calSwitch wbInSU =
   (linkOut, delayControls wbOutSU, wbOutCal)
  where
@@ -210,7 +210,7 @@ coerceIndices = case clog2axiom @n of Refl -> bitCoerce
 
 -- | Delays the output controls to align them with the actual read / write timing.
 delayControls :: HiddenClockResetEnable dom =>
-  Signal dom (WishboneS2M bytes) -> Signal dom (WishboneS2M bytes)
+  Signal dom (WishboneS2M nBytes) -> Signal dom (WishboneS2M nBytes)
 delayControls wbIn = wbOut
  where
    delayedAck = register False (acknowledge <$> wbIn)

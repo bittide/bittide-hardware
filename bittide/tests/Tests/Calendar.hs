@@ -50,24 +50,24 @@ calGroup = testGroup "Calendar group"
 -- | A vector with a minimum size of 1 elements containing Bitvectors of arbitrary size.
 -- This data type enables us to generate differently sized calendars that satisfy the constraints
 -- imposed by the calendar component.
-data BVCalendar addressWidth where
+data BVCalendar addrW where
   BVCalendar ::
     ( KnownNat n
-    , KnownNat addressWidth
+    , KnownNat addrW
     , KnownNat bits
     , 1 <= bits
-    , NatFitsInBits n addressWidth
+    , NatFitsInBits n addrW
     , 1 <= NatRequiredBits n
-    , NatFitsInBits (Regs (BitVector bits) addressWidth) addressWidth) =>
+    , NatFitsInBits (Regs (BitVector bits) addrW) addrW) =>
     -- | Amount of entries in the BitVector calendar minus 1.
     SNat n ->
     -- | Amount of bits per BitVector in the calendar.
     SNat bits ->
     -- | Vector of (n+1) entries containing BitVectors of size bits.
     Vec (n + 1) (BitVector bits) ->
-    BVCalendar addressWidth
+    BVCalendar addrW
 
-instance Show (BVCalendar addressWidth) where
+instance Show (BVCalendar addrW) where
   show (BVCalendar _ _ bvvec) = show bvvec
 
 -- TODO: Remove this show instance after issue (https://github.com/clash-lang/clash-compiler/issues/2190) has been fixed.
@@ -77,20 +77,20 @@ deriving instance Show (SNatLE a b)
 -- the maximum depth of the stored calendar and as second argument a generator for the
 -- calendar entries.
 genCalendarConfig ::
-  forall bytes addressWidth calEntry .
-  ( KnownNat bytes
-  , 1 <= bytes
+  forall nBytes addrW calEntry .
+  ( KnownNat nBytes
+  , 1 <= nBytes
   , KnownNat (BitSize calEntry)
   , BitPack calEntry
   , NFDataX calEntry
   , Show calEntry
   , ShowX calEntry
-  , KnownNat addressWidth) =>
+  , KnownNat addrW) =>
   -- | Maximum amount of entries a calendar based on the returned configuration can hold per calendar.
   Natural ->
   -- | Generator for the entries in the shadow calendar and active calendar.
   Gen calEntry ->
-  Gen (CalendarConfig bytes addressWidth calEntry)
+  Gen (CalendarConfig nBytes addrW calEntry)
 genCalendarConfig ms elemGen = do
   dA <- Gen.enum 1 ms
   dB <- Gen.enum 1 ms
@@ -99,12 +99,12 @@ genCalendarConfig ms elemGen = do
      ,SomeNat (snatProxy -> depthA)
      ,SomeNat (snatProxy -> depthB)) -> do
         let
-          regAddrBits = SNat @(NatRequiredBits (Regs calEntry (bytes * 8)))
+          regAddrBits = SNat @(NatRequiredBits (Regs calEntry (nBytes * 8)))
           bsCalEntry = SNat @(BitSize calEntry)
         case
          ( isInBounds d1 depthA maxSize
          , isInBounds d1 depthB maxSize
-         , compareSNat regAddrBits (SNat @addressWidth)
+         , compareSNat regAddrBits (SNat @addrW)
          , compareSNat d1 bsCalEntry) of
           (InBounds, InBounds, SNatLE, SNatLE)-> go maxSize depthA depthB
           (a,b,c,d) -> error $ "genCalendarConfig: calEntry constraints not satisfied: ("
@@ -116,11 +116,11 @@ genCalendarConfig ms elemGen = do
       forall maxDepth depthA depthB .
       ( LessThan depthA maxDepth
       , LessThan depthB maxDepth
-      , NatFitsInBits (Regs calEntry (bytes * 8)) addressWidth) =>
+      , NatFitsInBits (Regs calEntry (nBytes * 8)) addrW) =>
       SNat maxDepth ->
       SNat depthA ->
       SNat depthB ->
-      Gen (CalendarConfig bytes addressWidth calEntry)
+      Gen (CalendarConfig nBytes addrW calEntry)
     go dMax SNat SNat = do
       calActive <- genVec @_ @depthA elemGen
       calShadow <- genVec @_ @depthB elemGen
@@ -169,7 +169,7 @@ readCalendar = property $ do
     BVCalendar (succSNat -> calSize') SNat cal -> do
       let
         topEntity switch = (\(a,_,_) -> a) $ withClockResetEnable clockGen resetGen enableGen
-          calendarWb calSize' cal cal switch (pure (wishboneM2S (SNat @4) (SNat @32)))
+          calendarWb calSize' cal cal switch $ pure (wishboneM2S @4 @32)
         simOut = simulateN @System (fromIntegral simLength) topEntity switchSignal
       footnote . fromString $ "simOut: " <> show simOut
       footnote . fromString $ "expected: " <> show (toList cal)
@@ -275,8 +275,8 @@ takeLast :: Int -> [a] -> [a]
 takeLast n l = P.drop (P.length l - n) l
 
 -- | idle 'Contranomy.Wishbone.WishboneM2S' bus.
-wbNothingM2S :: forall bytes aw . (KnownNat bytes, KnownNat aw) => WishboneM2S bytes aw
-wbNothingM2S = (wishboneM2S (SNat @bytes) (SNat @aw))
+wbNothingM2S :: forall nBytes addrW . (KnownNat nBytes, KnownNat addrW) => WishboneM2S nBytes addrW
+wbNothingM2S = (wishboneM2S @nBytes @addrW)
  { addr = 0
  , writeData = 0
  , busSelect = 0}
@@ -284,26 +284,26 @@ wbNothingM2S = (wishboneM2S (SNat @bytes) (SNat @aw))
 -- | Write an entry to some address in 'Bittide.Calendar.calendarWb', this may require
 -- multiple write operations.
 writeWithWishbone ::
-  forall bytes aw n entry .
-  (KnownNat bytes, 1 <= bytes, KnownNat aw, KnownNat n, Paddable entry) =>
+  forall nBytes addrW n entry .
+  (KnownNat nBytes, 1 <= nBytes, KnownNat addrW, KnownNat n, Paddable entry) =>
   (Index n, entry) ->
-  [WishboneM2S bytes aw]
+  [WishboneM2S nBytes addrW]
 writeWithWishbone (a, entry) =
   case getRegs entry of
     RegisterBank vec -> toList $ fmap wbWriteOp $ zip indicesI (vec :< fromIntegral a)
 
 -- | Use both the wishbone M2S bus and S2M bus to decode the S2M bus operations into the
 -- expected type a.
-directedWbDecoding :: forall bytes aw a . (KnownNat bytes, 1 <= bytes, KnownNat aw, Paddable a) =>
-  [WishboneM2S bytes aw] ->
-  [WishboneS2M bytes] ->
+directedWbDecoding :: forall nBytes addrW a . (KnownNat nBytes, 1 <= nBytes, KnownNat addrW, Paddable a) =>
+  [WishboneM2S nBytes addrW] ->
+  [WishboneS2M nBytes] ->
   [a]
 directedWbDecoding (wbM2S:m2sRest) (_:s2mRest) = out
  where
   active = strobe wbM2S && busCycle wbM2S
   foundBeginning = writeEnable wbM2S && active
 
-  expectReadData :: (WishboneM2S bytes aw,WishboneS2M bytes) -> Bool
+  expectReadData :: (WishboneM2S nBytes addrW,WishboneS2M nBytes) -> Bool
   expectReadData (WishboneM2S{strobe, busCycle, writeEnable},_) =
     strobe && busCycle && not writeEnable
 
@@ -311,10 +311,10 @@ directedWbDecoding (wbM2S:m2sRest) (_:s2mRest) = out
 
   filterNoOps l = [(m2s,s2m)| (m2s,s2m) <- l, m2s /= wbNothingM2S]
   entry = case V.fromList $ P.reverse entryList of
-    Just (vec :: Vec (Regs a (bytes * 8)) (BitVector (bytes * 8))) ->
-        case timesDivRU @(bytes * 8) @(BitSize a) of
+    Just (vec :: Vec (Regs a (nBytes * 8)) (BitVector (nBytes * 8))) ->
+        case timesDivRU @(nBytes * 8) @(BitSize a) of
           Dict ->
-            paddedToData . bvAsPadded @(Regs a (bytes * 8) * bytes * 8) $ pack vec
+            paddedToData . bvAsPadded @(Regs a (nBytes * 8) * nBytes * 8) $ pack vec
     Nothing  -> error $ "directedWbDecoding: list to vector conversion failed: " <> show entryList <> "from " <> show (wbM2S:m2sRest)
 
   consumedReads = P.length entryList
@@ -330,14 +330,14 @@ directedWbDecoding _ _ = []
 -- 'Bittide.Calendar.calendarWb'. It first writes the entry's address to the read register,
 -- then adds the read operations.
 wbReadEntry ::
-  forall bytes aw i .
-  (KnownNat bytes, KnownNat aw, Integral i) =>
+  forall nBytes addrW i .
+  (KnownNat nBytes, KnownNat addrW, Integral i) =>
   i ->
   i ->
-  [WishboneM2S bytes aw]
+  [WishboneM2S nBytes addrW]
 wbReadEntry i dataRegs = addrWrite : wbNothingM2S : dataReads
  where
-  addrWrite = (wishboneM2S (SNat @bytes) (SNat @aw))
+  addrWrite = (wishboneM2S @nBytes @addrW)
     { addr      = fromIntegral $ dataRegs + 1
     , writeData = fromIntegral i
     , busSelect = maxBound
@@ -345,7 +345,7 @@ wbReadEntry i dataRegs = addrWrite : wbNothingM2S : dataReads
     , strobe      = True
     , writeEnable = True}
   dataReads = readReg <$> P.reverse [0..(dataRegs-1)]
-  readReg n = (wishboneM2S (SNat @bytes) (SNat @aw))
+  readReg n = (wishboneM2S @nBytes @addrW)
     { addr = fromIntegral n
     , writeData = 0
     , busSelect = maxBound
@@ -357,11 +357,11 @@ wbReadEntry i dataRegs = addrWrite : wbNothingM2S : dataReads
 -- | Transform a target address i and a bitvector to a Wishbone write operation that writes
 -- the bitvector to address i.
 wbWriteOp ::
-  forall bytes addressWidth i .
-  (KnownNat bytes, KnownNat addressWidth, Integral i) =>
-  (i, BitVector (bytes * 8)) ->
-  WishboneM2S bytes addressWidth
-wbWriteOp (i, bv) = (wishboneM2S (SNat @bytes) (SNat @addressWidth))
+  forall nBytes addrW i .
+  (KnownNat nBytes, KnownNat addrW, Integral i) =>
+  (i, BitVector (nBytes * 8)) ->
+  WishboneM2S nBytes addrW
+wbWriteOp (i, bv) = (wishboneM2S @nBytes @addrW)
   { addr        = fromIntegral i
   , writeData   = bv
   , busSelect   = maxBound
