@@ -161,7 +161,7 @@ scatterUnitWb calConfig wbInCal calSwitch linkIn wbInSU =
   (delayControls wbOutSU, wbOutCal)
  where
   (wbOutSU, memAddr, _) = unbundle $ wbInterface maxBound <$> wbInSU <*> scatteredData
-  (readAddr, upperSelected) = unbundle $ coerceIndices <$> memAddr
+  (readAddr, upperSelected) = unbundle $ div2Index <$> memAddr
   (scatterUnitRead, wbOutCal) = scatterUnit calConfig wbInCal calSwitch linkIn readAddr
   (upper, lower) = unbundle $ split <$> scatterUnitRead
   selected = register (errorX "scatterUnitWb: Initial selection undefined") upperSelected
@@ -189,7 +189,7 @@ gatherUnitWb calConfig wbInCal calSwitch wbInSU =
   (linkOut, delayControls wbOutSU, wbOutCal)
  where
   (wbOutSU, memAddr, writeOp) = unbundle $ wbInterface maxBound <$> wbInSU <*> pure 0b0
-  (writeAddr, upperSelected) = unbundle $ coerceIndices <$> memAddr
+  (writeAddr, upperSelected) = unbundle $ div2Index <$> memAddr
   (linkOut, wbOutCal) =
     gatherUnit calConfig wbInCal calSwitch gatherWrite gatherByteEnables
   gatherWrite = mkWrite <$> writeAddr <*> writeOp
@@ -203,10 +203,6 @@ gatherUnitWb calConfig wbInCal calSwitch wbInSU =
   mkEnables selected byteEnables
     | selected  = byteEnables ++# 0b0
     | otherwise = 0b0 ++# byteEnables
-
--- | Coerces an index of size (n*2) to index n with the LSB as separate boolean.
-coerceIndices :: forall n. (KnownNat n, 1 <= n) => Index (n*2) -> (Index n, Bool)
-coerceIndices = case clog2axiom @n of Refl -> bitCoerce
 
 -- | Delays the output controls to align them with the actual read / write timing.
 delayControls :: HiddenClockResetEnable dom =>

@@ -100,7 +100,7 @@ readWriteDoubleBufferedRam = property $ do
           writePort
       let
         addresses = cycle $ fmap fromIntegral [0..ramDepth-1]
-        switchSignal = (==0) <$> addresses
+        switchSignal = cycle $ L.replicate ramDepth False <> L.replicate ramDepth True
       writeEntries <- forAll (Gen.list (Range.singleton simLength) $ Gen.int Range.constantBounded)
       let
         topEntityInput = L.zip3 switchSignal addresses $ fmap Just (P.zip addresses writeEntries)
