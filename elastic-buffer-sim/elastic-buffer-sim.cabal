@@ -76,10 +76,22 @@ common common-options
 library
   import: common-options
   hs-source-dirs: src
+  build-depends:
+    cassava,
+    random,
+    bytestring
   exposed-modules:
+    Bittide.Layout
     Bittide.Simulate
     Bittide.Simulate.Ppm
   default-language: Haskell2010
+
+executable sim
+  import: common-options
+  main-is: exe/Main.hs
+  build-depends: elastic-buffer-sim
+  default-language: Haskell2010
+  default-extensions: ImplicitPrelude
 
 test-suite unittests
   import:           common-options

@@ -23,8 +23,15 @@ import Clash.Signal.Internal
 import Data.Bifunctor (second)
 import GHC.Stack
 import Numeric.Natural
+import Data.Bifunctor (second)
 
 import Bittide.Simulate.Ppm
+
+import Data.Csv
+
+-- 200kHz instead of 200MHz; otherwise the periods are so small that deviations
+-- can't be expressed as 'Natural's
+createDomain vSystem{vName="Bittide", vPeriod=hzToPeriod 200e3}
 
 -- Number of type aliases for documentation purposes in various functions defined
 -- down below.
@@ -42,13 +49,21 @@ targetDataCount :: ElasticBufferSize -> DataCount
 targetDataCount size = size `div` 2
 
 -- | Safer version of FINC/FDEC signals present on the Si5395/Si5391 clock multipliers.
--- Note that the actual clock mulipliers detect edges. If we ever want to reuse code
--- from this module, we should make sure to generate these edges.
 data SpeedChange
   = SpeedUp
   | SlowDown
   | NoChange
   deriving (Eq, Show, Generic, ShowX, NFDataX)
+
+instance ToField SpeedChange where
+  toField SpeedUp = "speedUp"
+  toField SlowDown = "slowDown"
+  toField NoChange = "noChange"
+
+-- | The clock tuner only updates at a frequency of 1MHz; our board operates at
+-- 200MHz, thus we only process one FINC/FDEC for every 200 clock cycles
+tunerRatio :: Natural
+tunerRatio = 200
 
 -- | Simple model of the Si5395/Si5391 clock multipliers. In real hardware, these
 -- are connected to some oscillator (i.e., incoming Clock) but for simulation
@@ -84,11 +99,21 @@ tunableClockGen ::
   -- | Clock with a dynamic frequency. At the time of writing, Clash primitives
   -- don't account for this yet, so be careful when using them. Note that dynamic
   -- frequencies are only relevant for components handling multiple domains.
-  Clock dom
-tunableClockGen settlePeriod periodOffset stepSize _reset =
+  (Signal dom Natural, Clock dom)
+tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
+  -- | Clock with a dynamic frequency. At the time of writing, Clash primitives don't
+  -- account for this yet, so be careful when using them. Note that dynamic frequencies
+  -- are only relevant for components handling multiple domains.
+  --
+  -- We also export the clock's period as a 'Signal' so that it can be easily
+  -- observed during simulation.
+  (Signal dom Natural, Clock dom)
+tunableClockGen periodOffset stepSize _reset sppedChange =
   case knownDomain @dom of
     SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
-      Clock SSymbol . Just . go settlePeriod (fromIntegral (period + periodOffset))
+      let initPeriod = fromIntegral (period + periodOffset)
+          clockSignal = initPeriod :- go 0 initPeriod speedChange in
+      (clockSignal, CClock SSymbol (Just clockSignal))
  where
   go :: SettlePeriod -> PeriodPs -> Signal dom SpeedChange -> Signal dom StepSize
   go !settleCounter !period (sc :- scs) =
@@ -187,6 +212,10 @@ data ClockControlConfig = ClockControlConfig
   -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
   , cccBufferSize :: ElasticBufferSize
   }
+
+-- we use 200kHz in simulation
+specPeriod :: PeriodPs
+specPeriod = hzToPeriod 200e3
 
 -- | Determines how to influence clock frequency given statistics provided by
 -- all elastic buffers.
