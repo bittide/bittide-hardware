@@ -75,6 +75,7 @@ library
   exposed-modules:
     ContranomySim.Print
     ContranomySim.ReadElf
+    ContranomySim.MemoryMapConsts
   build-depends:
     elf >= 0.31 && < 0.32,
     bytestring >= 0.10 && < 0.11,
