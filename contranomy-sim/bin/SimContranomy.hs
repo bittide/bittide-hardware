@@ -5,13 +5,17 @@
 import           Clash.Prelude
 
 import           Contranomy
+import           ContranomySim.DeviceTreeCompiler
+import           ContranomySim.MemoryMapConsts
 import           ContranomySim.Print
 import           ContranomySim.ReadElf
-import           ContranomySim.MemoryMapConsts
 
-import qualified Data.ByteString       as BS
-import qualified Data.IntMap           as I
-import qualified Data.List             as L
+import           Paths_contranomy_sim
+
+import qualified Data.ByteString                  as BS
+import qualified Data.IntMap                      as I
+import qualified Data.List                        as L
+import           System.Exit
 
 
 main :: IO ()
@@ -22,7 +26,12 @@ main = do
   -- add device tree as a memory mapped component
 
   -- TODO read the device tree file from command line args?
-  deviceTreeRaw <- BS.readFile "../devicetree/blobs/contranomy-sim.dtb"
+  deviceTreePath <- getDataFileName "devicetree/contranomy-sim.dts"
+
+  compileRes <- compileDeviceTreeSource deviceTreePath
+  deviceTreeRaw <- maybe exitFailure pure compileRes
+
+  -- deviceTreeRaw <- BS.readFile "../devicetree/blobs/contranomy-sim.dtb"
   -- add padding to prevent uninitialised accesses
   let padding = L.replicate (4 - (BS.length deviceTreeRaw `mod` 4)) 0
       deviceTree = fmap pack . BS.unpack $ deviceTreeRaw <> BS.pack padding
