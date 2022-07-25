@@ -10,7 +10,7 @@ import Test.Tasty.Hedgehog
 
 import Tests.Calendar
 import Tests.DoubleBufferedRam
-import Tests.MemoryMap
+import Tests.Wishbone
 import Tests.ScatterGather
 import Tests.Switch
 

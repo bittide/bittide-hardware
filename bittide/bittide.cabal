@@ -77,7 +77,7 @@ library
   exposed-modules:
     Bittide.Calendar
     Bittide.DoubleBufferedRam
-    Bittide.MemoryMap
+    Bittide.Wishbone
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Switch
@@ -97,7 +97,7 @@ test-suite unittests
   other-modules:
     Tests.Calendar
     Tests.DoubleBufferedRam
-    Tests.MemoryMap
+    Tests.Wishbone
     Tests.ScatterGather
     Tests.Shared
     Tests.Switch

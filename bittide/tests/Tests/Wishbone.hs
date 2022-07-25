@@ -6,7 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Tests.MemoryMap(memMapGroup) where
+module Tests.Wishbone(memMapGroup) where
 
 import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Vector
@@ -25,7 +25,7 @@ import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 
-import Bittide.MemoryMap
+import Bittide.Wishbone
 
 memMapGroup :: TestTree
 memMapGroup = testGroup "Memory Map group"
@@ -33,7 +33,7 @@ memMapGroup = testGroup "Memory Map group"
   , testPropertyNamed "Writing and reading from slaves." "writingSlaves" writingSlaves
   ]
 
--- | generates a 'MemoryMap' for 'memoryMap'.
+-- | generates a 'MemoryMap' for 'singleMasterInterconnect'.
 genConfig :: forall slaves aw . (KnownNat slaves, KnownNat aw) => Proxy slaves -> Gen (MemoryMap slaves aw)
 genConfig = do
   let s = Gen.set (Range.singleton $ natToNum @slaves) genDefinedBitVector
@@ -57,15 +57,15 @@ readingSlaves = property $ do
         where
           slaves = withClockResetEnable @System clockGen resetGen enableGen simpleSlave <$>
             ranges <*> config <*> unbundle toSlaves
-          (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen (memoryMap
-            @System @_ @4 @32) config masterIn $ bundle slaves
+          (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen
+            (singleMasterInterconnect @System @_ @4 @32) config masterIn $ bundle slaves
       topEntityInput = (wbRead <$> readAddresses) <> [wishboneM2S]
       simLength = L.length topEntityInput
       simOut = simulateN simLength topEntity topEntityInput
       configL = toList config
       rangesL = toList ranges
        -- findBaseAddress returns the base address that responds to a and its range
-      findBaseAddress a = (L.last $ (L.head configL, L.head rangesL) : lowerAddresses)
+      findBaseAddress a = L.last $ (L.head configL, L.head rangesL) : lowerAddresses
         where
           lowerAddresses = L.takeWhile ((<a) . fst) $ L.zip configL rangesL
       getExpected a | a >= baseAddr && (a - baseAddr) <= range = Just $ bitCoerce baseAddr
@@ -100,15 +100,15 @@ writingSlaves = property $ do
         where
           slaves = withClockResetEnable @System clockGen resetGen enableGen simpleSlave <$>
             ranges <*> config <*> unbundle toSlaves
-          (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen (memoryMap
-            @System @_ @4 @32) config masterIn $ bundle slaves
+          (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen
+            (singleMasterInterconnect @System @_ @4 @32) config masterIn $ bundle slaves
       topEntityInput = L.concatMap wbWriteThenRead writeAddresses <> [wishboneM2S]
       simLength = L.length topEntityInput
       simOut = simulateN simLength topEntity topEntityInput
       configL = toList config
       rangesL = toList ranges
        -- findBaseAddress returns the base address that responds to a and its range
-      findBaseAddress a = (L.last $ (L.head configL, L.head rangesL) : lowerAddresses)
+      findBaseAddress a = L.last $ (L.head configL, L.head rangesL) : lowerAddresses
         where
           lowerAddresses = L.takeWhile ((<a) . fst) $ L.zip configL rangesL
       getExpected a | a >= baseAddr && (a - baseAddr) <= range = Just $ bitCoerce a

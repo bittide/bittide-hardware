@@ -8,7 +8,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Bittide.MemoryMap where
+module Bittide.Wishbone where
 
 import           Clash.Prelude
 import           Contranomy.Wishbone
@@ -20,7 +20,7 @@ type MemoryMap slaveDevices addressWidth = Vec slaveDevices (BitVector addressWi
 -- bus, it assumes that the config argument contains incrementing base addresses that correspond
 -- to the indexes of the slaves in the incoming slave-busses and outgoing master-busses result.
 -- It routes the incoming control signals to a slave device based on
-memoryMap ::
+singleMasterInterconnect ::
  forall dom slaveDevices bytes addressWidth .
  HiddenClockResetEnable dom =>
  (KnownNat slaveDevices, KnownNat bytes, KnownNat addressWidth) =>
@@ -28,7 +28,7 @@ memoryMap ::
  Signal dom (WishboneM2S bytes addressWidth) ->
  Signal dom (Vec slaveDevices (WishboneS2M bytes)) ->
  (Signal dom (WishboneS2M bytes), Signal dom (Vec slaveDevices (WishboneM2S bytes addressWidth)))
-memoryMap config (register wishboneM2S -> master) slaves = (toMaster, toSlaves)
+singleMasterInterconnect config (register wishboneM2S -> master) slaves = (toMaster, toSlaves)
  where
   masterActive = strobe <$> master .&&. busCycle <$> master
   selectedSlave = getSelected . addr <$> master
