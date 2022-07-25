@@ -34,7 +34,11 @@ memMapGroup = testGroup "Memory Map group"
   ]
 
 -- | generates a 'MemoryMap' for 'singleMasterInterconnect'.
-genConfig :: forall slaves aw . (KnownNat slaves, KnownNat aw) => Proxy slaves -> Gen (MemoryMap slaves aw)
+genConfig ::
+  forall slaves aw .
+  (KnownNat slaves, KnownNat aw) =>
+  Proxy slaves ->
+  Gen (MemoryMap slaves aw)
 genConfig = do
   let s = Gen.set (Range.singleton $ natToNum @slaves) genDefinedBitVector
   return $ unsafeFromList . Set.elems <$> s
@@ -46,41 +50,40 @@ readingSlaves :: Property
 readingSlaves = property $ do
   devices <- forAll $ Gen.enum 1 32
   case TN.someNatVal devices of
-   SomeNat devices0 -> do
-    config <- forAll $ genConfig @_ @32 devices0
+   SomeNat devices0 -> runTest devices0
+ where
+  runTest devices = do
+    config <- forAll $ genConfig @_ @32 devices
     nrOfReads <- forAll $ Gen.enum 1 100
     let nrOfReadsRange = Range.singleton nrOfReads
     readAddresses <- forAll . Gen.list nrOfReadsRange $ Gen.integral Range.constantBounded
     ranges <- forAll $ genVec $ Gen.integral Range.constantBounded
     let
-      topEntity masterIn = toMaster
-        where
-          slaves = withClockResetEnable @System clockGen resetGen enableGen simpleSlave <$>
-            ranges <*> config <*> unbundle toSlaves
-          (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen
-            (singleMasterInterconnect @System @_ @4 @32) config masterIn $ bundle slaves
       topEntityInput = (wbRead <$> readAddresses) <> [wishboneM2S]
-      simLength = L.length topEntityInput
-      simOut = simulateN simLength topEntity topEntityInput
-      configL = toList config
-      rangesL = toList ranges
-       -- findBaseAddress returns the base address that responds to a and its range
-      findBaseAddress a = L.last $ (L.head configL, L.head rangesL) : lowerAddresses
-        where
-          lowerAddresses = L.takeWhile ((<a) . fst) $ L.zip configL rangesL
-      getExpected a | a >= baseAddr && (a - baseAddr) <= range = Just $ bitCoerce baseAddr
-                    | otherwise             = Nothing
-       where
-        (baseAddr, range) = findBaseAddress a
+      simOut = simulateN (L.length topEntityInput) (topEntity config ranges) topEntityInput
     footnote . fromString $ "simOut: " <> showX simOut
     footnote . fromString $ "simIn: " <> showX topEntityInput
     footnote . fromString $ "reads: " <> show readAddresses
     footnote . fromString $ "ranges: " <> show ranges
     footnote . fromString $ "config: " <> show config
-    fmap filterSimOut (L.tail simOut) === fmap getExpected readAddresses
- where
-  filterSimOut WishboneS2M{..} | acknowledge && not err = Just readData
-                               | otherwise              = Nothing
+    fmap filterSimOut (L.tail simOut) === fmap (getExpected config ranges) readAddresses
+
+  topEntity config ranges masterIn = toMaster
+   where
+    slaves = withClockResetEnable @System clockGen resetGen enableGen simpleSlave <$>
+      ranges <*> config <*> unbundle toSlaves
+    (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen
+      (singleMasterInterconnect @System @_ @4 @32) config masterIn $ bundle slaves
+
+  filterSimOut WishboneS2M{..}
+    | acknowledge && not err = Just readData
+    | otherwise              = Nothing
+
+  getExpected config ranges a
+    | a >= baseAddr && (a - baseAddr) <= range = Just $ bitCoerce baseAddr
+    | otherwise                                = Nothing
+   where
+    (baseAddr, range) = findBaseAddress a config ranges
 
 -- | Creates a memory map with 'simpleSlave' devices and a list of write addresses and checks
 -- that if we 'simpleSlave' responds to the read operation. Reading outside of a 'simpleSlave' its
@@ -89,44 +92,41 @@ writingSlaves :: Property
 writingSlaves = property $ do
   devices <- forAll $ Gen.enum 1 32
   case TN.someNatVal devices of
-   SomeNat devices0 -> do
-    config <- forAll $ genConfig @_ @32 devices0
+   SomeNat devices0 -> runTest devices0
+ where
+  runTest devices = do
+    config <- forAll $ genConfig @_ @32 devices
     nrOfWrites <- forAll $ Gen.enum 1 100
     let nrOfWritesRange = Range.singleton nrOfWrites
     writeAddresses <- forAll . Gen.list nrOfWritesRange $ Gen.integral Range.constantBounded
     ranges <- forAll $ genVec $ Gen.integral Range.constantBounded
     let
-      topEntity masterIn = toMaster
-        where
-          slaves = withClockResetEnable @System clockGen resetGen enableGen simpleSlave <$>
-            ranges <*> config <*> unbundle toSlaves
-          (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen
-            (singleMasterInterconnect @System @_ @4 @32) config masterIn $ bundle slaves
       topEntityInput = L.concatMap wbWriteThenRead writeAddresses <> [wishboneM2S]
       simLength = L.length topEntityInput
-      simOut = simulateN simLength topEntity topEntityInput
-      configL = toList config
-      rangesL = toList ranges
-       -- findBaseAddress returns the base address that responds to a and its range
-      findBaseAddress a = L.last $ (L.head configL, L.head rangesL) : lowerAddresses
-        where
-          lowerAddresses = L.takeWhile ((<a) . fst) $ L.zip configL rangesL
-      getExpected a | a >= baseAddr && (a - baseAddr) <= range = Just $ bitCoerce a
-                    | otherwise                                = Nothing
-       where
-        (baseAddr, range) = findBaseAddress a
+      simOut = simulateN simLength (topEntity ranges config) topEntityInput
     footnote . fromString $ "simOut: " <> showX simOut
     footnote . fromString $ "simIn: " <> showX topEntityInput
     footnote . fromString $ "writes: " <> show writeAddresses
     footnote . fromString $ "ranges: " <> show ranges
     footnote . fromString $ "config: " <> show config
-    fmap filterSimOut (every2nd $ L.tail simOut) === fmap getExpected writeAddresses
- where
+    fmap filterSimOut (every2nd $ L.tail simOut) === fmap (getExpected config ranges) writeAddresses
+
+  topEntity ranges config masterIn = toMaster
+   where
+    slaves = withClockResetEnable @System clockGen resetGen enableGen simpleSlave <$>
+      ranges <*> config <*> unbundle toSlaves
+    (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen
+      (singleMasterInterconnect @System @_ @4 @32) config masterIn $ bundle slaves
   filterSimOut WishboneS2M{..} | acknowledge && not err = Just readData
                                | otherwise              = Nothing
   wbWriteThenRead a = [wbWrite a, wbRead a]
   every2nd (_:b:cs) = b : every2nd cs
   every2nd _ = []
+  getExpected config ranges a
+    | a >= baseAddr && (a - baseAddr) <= range = Just $ bitCoerce a
+    | otherwise                                = Nothing
+   where
+    (baseAddr, range) = findBaseAddress a config ranges
 
 -- | transforms an address to a 'WishboneM2S' read operation.
 wbRead :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S bs addressWidth
@@ -151,7 +151,8 @@ wbWrite address = (wishboneM2S @bs @addressWidth)
 -- | Simple wishbone slave that responds to addresses [0..range], it responds by returning
 -- a stored value (initialized by readData0), which can be overwritten by the wishbone bus.
 -- any read/write attempt to an address outside of the supplied range sets the err signal.
-simpleSlave :: (HiddenClockResetEnable dom, KnownNat aw, KnownNat bs, aw ~ bs * 8) =>
+simpleSlave ::
+  (HiddenClockResetEnable dom, KnownNat aw, KnownNat bs, aw ~ bs * 8) =>
   BitVector aw ->
   BitVector (bs * 8) ->
   Signal dom (WishboneM2S bs aw) ->
@@ -170,3 +171,10 @@ simpleSlave range readData0 wbIn = mealy go readData0 wbIn
      readData | writeOp     = writeData
               | acknowledge = readData1
               | otherwise   = errorX "simpleSlave: readData is undefined because when ack is False"
+
+-- findBaseAddress returns the base address that responds to a and its range
+findBaseAddress :: Ord a => a -> Vec n a -> Vec m b -> (a, b)
+findBaseAddress a (toList -> config) (toList -> ranges) =
+  L.last $ (L.head config, L.head ranges) : lowerAddresses
+  where
+    lowerAddresses = L.takeWhile ((<a) . fst) $ L.zip config ranges

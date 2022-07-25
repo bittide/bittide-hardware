@@ -2,8 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Functor law" #-}
 
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -14,11 +12,13 @@ import           Clash.Prelude
 import           Contranomy.Wishbone
 import           Data.Maybe
 
+{-# ANN module "HLint: ignore Functor law" #-}
+
 type MemoryMap slaveDevices addressWidth = Vec slaveDevices (BitVector addressWidth)
 
 -- | Component that maps multiple slave devices to a single master device over the wishbone
--- bus, it assumes that the config argument contains incrementing base addresses that correspond
--- to the indexes of the slaves in the incoming slave-busses and outgoing master-busses result.
+-- bus, it assumes that the config argument contains increasing base addresses that correspond
+-- to the indexes of the slaves in the incoming slave-busses and outgoing master-busses.
 -- It routes the incoming control signals to a slave device based on
 singleMasterInterconnect ::
  forall dom slaveDevices bytes addressWidth .
@@ -36,6 +36,10 @@ singleMasterInterconnect config (register wishboneM2S -> master) slaves = (toMas
   toSlaves = routeToSlaves <$> masterActive <*> selectedSlave <*> master
   toMaster = routeToMaster <$> masterActive <*> selectedSlave <*> slaves
 
+  -- compVec is a vector of comparison(<=) results where the addresses in config are
+  -- compared to the wishbone address. getSelected returns the location of the last
+  -- comparison that returns True. It depends on the assumption that config is a list
+  -- of increasing addresses (config[i] < config[i+1] holds for all i).
   getSelected a = elemIndex (True, False) $ zip (init compVec) (tail compVec)
    where
      compVec = fmap (<=a) config :< False
