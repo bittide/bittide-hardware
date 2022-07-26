@@ -72,10 +72,10 @@ txUnit (getRegs -> RegisterBank preamble) sq frameIn wbIn = (wbOut, frameOut)
   stateMachine (sq0@(getRegs -> RegisterBank sqVec),state) (fIn, sqIn) =
    case state of
     LinkThrough -> ((sqErr, TransmitPreamble 0), fIn)
-    TransmitPreamble n@((== maxBound) -> False) -> ((sqErr, TransmitPreamble (succ n)), Just $ preamble !! n)
-    TransmitPreamble n@((== maxBound) -> True) -> ((sqIn, TransmitSeqCounter 0), Just $ preamble !! n)
-    TransmitSeqCounter n@((== maxBound) -> False) -> ((sq0, TransmitSeqCounter (succ n)), Just $ sqVec !! n)
-    TransmitSeqCounter n@((== maxBound) -> True) -> ((sqErr, TransmitPreamble 0), Just $ sqVec !! n)
+    TransmitPreamble n@((/= maxBound) -> True) -> ((sqErr, TransmitPreamble (succ n)), Just $ preamble !! n)
+    TransmitPreamble n -> ((sqIn, TransmitSeqCounter 0), Just $ preamble !! n)
+    TransmitSeqCounter n@((/= maxBound) -> True) -> ((sq0, TransmitSeqCounter (succ n)), Just $ sqVec !! n)
+    TransmitSeqCounter n -> ((sqErr, TransmitPreamble 0), Just $ sqVec !! n)
   sqErr = deepErrorX "txUnit: Stored sequence counter invalid"
 
 -- | States for the rxUnit.
@@ -85,6 +85,8 @@ data ReceiverState =
   CaptureSequenceCounter
   deriving (Generic, ShowX)
 
+-- This annotation makes sure that the state of the receiver can be read as a boolean
+-- to check if it is still capturing the sequence counter.
 {-# ANN module (DataReprAnn
                   $(liftQ [t|ReceiverState|])
                   2
