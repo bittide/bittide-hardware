@@ -21,6 +21,8 @@ import Tests.Wishbone
 -- test to fail. Since this test is completely replaced in #71  it should be enabled again
 -- in that PR.
 
+-- TODO: This should not be here, Before merging 71, make sure PR #86 is merged,
+-- #71 is rebased and the switchGropup is in the test tree.
 tests :: TestTree
 tests = testGroup "Unittests"
   [calGroup, sgGroup, ramGroup, memMapGroup, linkGroup] -- switchGroup
