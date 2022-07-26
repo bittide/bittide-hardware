@@ -2,8 +2,6 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-[workspace]
-exclude = ["firmware/examples"]
-members = [
-  "firmware/*",
-]
+[toolchain]
+channel = "stable"
+targets = [ "riscv32imc-unknown-none-elf" ]

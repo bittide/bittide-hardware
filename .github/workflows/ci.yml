@@ -355,6 +355,10 @@ jobs:
         run: cargo build --release
         working-directory: firmware/examples/hello
 
+      - name: Building "fdt-read" Example
+        run: cargo build --release
+        working-directory: firmware/examples/hello
+
   all:
     name: All jobs finished
     needs: [

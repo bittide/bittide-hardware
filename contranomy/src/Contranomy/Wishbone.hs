@@ -7,46 +7,47 @@
 See: http://cdn.opencores.org/downloads/wbspec_b4.pdf
 -}
 
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns   #-}
+{-# LANGUAGE PatternSynonyms  #-}
 
 module Contranomy.Wishbone where
 
-import Clash.Prelude
-import qualified Data.IntMap as I
+import           Clash.Prelude
 import           Clash.Signal.Internal
+import qualified Data.IntMap                 as I
 
-import Contranomy.Core.SharedTypes (Bytes, AddressWidth)
+import           Contranomy.Core.SharedTypes (AddressWidth, Bytes)
+import           Text.Printf                 (printf)
 
 data WishboneM2S nBytes addrW
   = WishboneM2S
   { -- | ADR
-    addr :: "ADR" ::: BitVector addrW
+    addr                :: "ADR" ::: BitVector addrW
     -- | DAT
-  , writeData :: "DAT_MOSI" ::: BitVector (8 * nBytes)
+  , writeData           :: "DAT_MOSI" ::: BitVector (8 * nBytes)
     -- | SEL
-  , busSelect :: "SEL" ::: BitVector nBytes
+  , busSelect           :: "SEL" ::: BitVector nBytes
     -- | CYC
-  , busCycle :: "CYC" ::: Bool
+  , busCycle            :: "CYC" ::: Bool
     -- | STB
-  , strobe :: "STB" ::: Bool
+  , strobe              :: "STB" ::: Bool
     -- | WE
-  , writeEnable :: "WE" ::: Bool
+  , writeEnable         :: "WE" ::: Bool
     -- | CTI
   , cycleTypeIdentifier :: "CTI" ::: CycleTypeIdentifier
     -- | BTE
-  , burstTypeExtension :: "BTE" ::: BurstTypeExtension
+  , burstTypeExtension  :: "BTE" ::: BurstTypeExtension
   } deriving (Generic, NFDataX, Show, Eq, ShowX)
 
 data WishboneS2M nBytes
   = WishboneS2M
   { -- | DAT
-    readData :: "DAT_MISO" ::: BitVector (8 * nBytes)
+    readData    :: "DAT_MISO" ::: BitVector (8 * nBytes)
     -- | ACK
   , acknowledge :: "ACK" ::: Bool
     -- | ERR
-  , err :: "ERR" ::: Bool
+  , err         :: "ERR" ::: Bool
   } deriving (Generic, NFDataX, Show, Eq, ShowX)
 
 newtype CycleTypeIdentifier = CycleTypeIdentifier (BitVector 3) deriving (Generic, NFDataX, Show, Eq, ShowX)
@@ -124,15 +125,19 @@ wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' in
   ack' = busCycle && strobe
   address = fromIntegral (unpack $ addr :: Unsigned 32)
   readData = (file `lookup'` (address+3)) ++# (file `lookup'` (address+2)) ++# (file `lookup'` (address+1)) ++# (file `lookup'` address)
-  lookup' x addr' = I.findWithDefault (error $ name <> ": Uninitialized Memory Address = " <> show addr') addr' x
+  lookup' x addr' =
+    I.findWithDefault
+      (error $ printf "%s : Uninitialized Memory Address = 0x%X" name addr')
+      addr'
+      x
   assocList = case busSelect of
-    $(bitPattern "0001")  -> [byte0]
-    $(bitPattern "0010")  -> [byte1]
-    $(bitPattern "0100")  -> [byte2]
-    $(bitPattern "1000")  -> [byte3]
-    $(bitPattern "0011")  -> half0
-    $(bitPattern "1100")  -> half1
-    _                     -> word0
+    $(bitPattern "0001") -> [byte0]
+    $(bitPattern "0010") -> [byte1]
+    $(bitPattern "0100") -> [byte2]
+    $(bitPattern "1000") -> [byte3]
+    $(bitPattern "0011") -> half0
+    $(bitPattern "1100") -> half1
+    _                    -> word0
   byte0 = (address, slice d7 d0 writeData)
   byte1 = (address+1, slice d15 d8 writeData)
   byte2 = (address+2, slice d23 d16 writeData)
