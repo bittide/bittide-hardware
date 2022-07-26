@@ -15,12 +15,10 @@ module Bittide.ScatterGather
 import Clash.Prelude
 
 import Contranomy.Wishbone
-import Data.Type.Equality ((:~:)(Refl))
 
 import Bittide.Calendar
 import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
-import Data.Constraint.Nat.Extra
 
 -- | Calendar entry that can be used by a scatter or gather engine.
 type CalendarEntry memDepth = Index memDepth
@@ -79,7 +77,9 @@ scatterUnit calConfig wbIn calSwitch linkIn readAddr = (readOut, wbOut)
  where
   (writeAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
   writeOp = (\a b -> (a,) <$> b) <$> writeAddr <*> linkIn
-  readOut = doubleBufferedRamU metaCycle readAddr writeOp
+  readOut = doubleBufferedRamU bufSelect1 readAddr writeOp
+  bufSelect0 = register False bufSelect1
+  bufSelect1 = mux metaCycle (not <$> bufSelect0) bufSelect0
 
 -- | Double buffered memory component that can be written to by a generic write operation. The
 -- write address of the incoming frame is determined by the incorporated 'calendar'. The
@@ -107,7 +107,9 @@ gatherUnit calConfig wbIn calSwitch writeOp byteEnables= (linkOut, wbOut)
  where
   (readAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
   linkOut = mux (register True ((==0) <$> readAddr)) (pure Nothing) (Just <$> bramOut)
-  bramOut = doubleBufferedRamByteAddressableU metaCycle readAddr writeOp byteEnables
+  bramOut = doubleBufferedRamByteAddressableU bufSelect1 readAddr writeOp byteEnables
+  bufSelect0 = register False bufSelect1
+  bufSelect1 = mux metaCycle (not <$> bufSelect0) bufSelect0
 
 -- | Wishbone interface for the 'scatterUnit' and 'gatherUnit'. It makes the scatter and gather
 -- unit, which operate on 64 bit frames, addressable via a 32 bit wishbone bus.

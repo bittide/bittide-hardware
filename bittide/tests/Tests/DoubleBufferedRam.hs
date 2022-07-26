@@ -537,21 +537,28 @@ byteAddressableDoubleBufferedRamBehavior :: forall bits memDepth nBytes .
  , Vec memDepth (BitVector bits)
  , Vec memDepth (BitVector bits))
  , BitVector bits)
-byteAddressableDoubleBufferedRamBehavior state input = (state', pack $ bufA0 !! readAddr)
+byteAddressableDoubleBufferedRamBehavior state input = (state', out)
  where
-  ((switchBuffers, readAddr, writeOp, byteEnable), bufA, bufB) = state
-  (bufA0, bufB0) = if switchBuffers then (bufB, bufA) else (bufA, bufB)
+  ((switchBuffers, readAddr, writeOp, byteEnable), bufA0, bufB0) = state
+  (out, bufA1, bufB1)
+    | switchBuffers = (bufA0 !! readAddr, bufA0, updateEntry bufB0 writeOp)
+    | otherwise  = (bufB0 !! readAddr, updateEntry bufA0 writeOp, bufB0)
 
-  (writeAddr, writeData0) = fromMaybe (0, 0b0) writeOp
-  writeTrue = isJust writeOp
-  RegisterBank oldData = getRegs $ bufB0 !! writeAddr
-  RegisterBank newData = getRegs writeData0
-  newEntry = getData $ zipWith
-    (\ sel (old,new) -> if sel then new else old)
+  updateEntry buf op
+    | isJust writeOp = replace writeAddr newEntry buf
+    | otherwise = buf
+   where
+    newEntry = getNewEntry (buf !! writeAddr) writeData0
+    (writeAddr, writeData0) = fromMaybe (0, 0b0) op
+
+  getNewEntry old new = getData $ zipWith
+    (\ sel (a,b) -> if sel then b else a)
     (unpack byteEnable) $ zip oldData newData
+   where
+    RegisterBank oldData = getRegs old
+    RegisterBank newData = getRegs new
 
-  bufB1 = if writeTrue then replace writeAddr newEntry bufB0 else bufB0
-  state' = (input, bufA0, bufB1)
+  state' = (input, bufA1, bufB1)
 
   getData :: Vec nBytes Byte -> BitVector bits
   getData vec = registersToData @_ @8 $ RegisterBank vec

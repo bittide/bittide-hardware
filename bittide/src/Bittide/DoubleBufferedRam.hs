@@ -56,7 +56,7 @@ doubleBufferedRamU ::
   -- | Outgoing data
   Signal dom a
 doubleBufferedRamU outputSelect readAddr0 writeFrame0 =
-  blockRamU NoClearOnReset (SNat @memDepth) rstFunc readAddr1 writeFrame1
+  blockRamU NoClearOnReset (SNat @(2 * memDepth)) rstFunc readAddr1 writeFrame1
  where
   (readAddr1, writeFrame1) =
     unbundle $ updateAddrs <$> readAddr0 <*> writeFrame0 <*> outputSelect
@@ -78,7 +78,7 @@ doubleBufferedRamByteAddressable ::
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
-  Signal dom (Maybe (Located  memDepth a)) ->
+  Signal dom (Maybe (Located memDepth a)) ->
   -- | One hot byte select for writing only
   Signal dom (ByteEnable a) ->
   -- | Outgoing data
@@ -235,7 +235,7 @@ registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
    where
     (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
     addressRange = maxBound :: Index (Max 1 (Regs a (nBytes * 8)))
-    invalidAddress = (alignedAddress > resize (pack addressRange)) || not (alignment == 0)
+    invalidAddress = (alignedAddress > resize (pack addressRange)) || alignment /= 0
     masterActive = strobe && busCycle
     err = masterActive && invalidAddress
     acknowledge = masterActive && not err
