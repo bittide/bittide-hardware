@@ -8,3 +8,6 @@ package contranomy
 
 package bittide
   ghc-options: -Werror
+
+package contranomy-sim
+  ghc-options: -Werror
