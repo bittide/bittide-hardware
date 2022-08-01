@@ -16,17 +16,23 @@ import Contranomy.Wishbone
 import Data.Maybe
 import Bittide.SharedTypes
 
-type BufferSelect = Bool
+-- | Indicates which buffer is currently selected.
+data SelectedBuffer = A | B deriving (Eq, Generic, BitPack, Show, NFDataX)
+
+flipBuffer :: SelectedBuffer -> SelectedBuffer
+flipBuffer A = B
+flipBuffer B = A
+
 -- | The double buffered Ram component is a memory component that contains two buffers
--- and enables the user to write to one buffer and read from the other. Which buffer
--- is used for reading while the other is used for writing is controlled by the 'BufferSelect'.
+-- and enables the user to write to one buffer and read from the other. 'SelectedBuffer'
+-- selects which buffer is written to, while read operations read from the other buffer.
 doubleBufferedRam ::
   forall dom memDepth a .
   (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
   -- | The initial contents of both buffers.
   Vec memDepth a ->
-  -- | Controls which buffers is written to and which buffer is read from.
-  Signal dom BufferSelect ->
+  -- | Controls which buffers is written to, while the other buffer is read from.
+  Signal dom SelectedBuffer ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
@@ -36,19 +42,19 @@ doubleBufferedRam ::
 doubleBufferedRam initialContent0 outputSelect readAddr0 writeFrame0 =
   blockRam initialContent1 readAddr1 writeFrame1
  where
-  initialContent1 = concatMap (\x -> x :> x :> Nil) initialContent0
+  initialContent1 = concatMap (repeat @2) initialContent0
   (readAddr1, writeFrame1) =
     unbundle $ updateAddrs <$> readAddr0 <*> writeFrame0 <*> outputSelect
 
 -- | Version of 'doubleBufferedRam' with undefined initial contents. This component
 -- contains two buffers and enables the user to write to one buffer and read from the
--- other. Which buffer is used for reading while the other is used for writing is
--- controlled by the 'BufferSelect'.
+-- other. 'SelectedBuffer' selects which buffer is written to, while read operations
+-- read from the other buffer.
 doubleBufferedRamU ::
   forall dom memDepth a .
   (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
-  -- | Controls which buffers is written to and which buffer is read from.
-  Signal dom BufferSelect ->
+  -- | Controls which buffers is written to, while the other buffer is read from.
+  Signal dom SelectedBuffer ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
@@ -66,15 +72,15 @@ doubleBufferedRamU outputSelect readAddr0 writeFrame0 =
 -- consists of two buffers and internally stores its elements as a multiple of 8 bits.
 -- It contains a blockRam per byte and uses the one hot byte select signal to determine
 -- which bytes will be overwritten during a write operation. This components writes to
--- one buffer and reads from the other. Which buffer is used for reading while the
--- other is used for writing is controlled by the 'BufferSelect'.
+-- one buffer and reads from the other. 'SelectedBuffer' selects which buffer is
+-- written to, while read operations read from the other buffer.
 doubleBufferedRamByteAddressable ::
   forall dom memDepth a .
   ( KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
   -- | The initial contents of the first buffer.
   Vec memDepth a ->
-  -- | Controls which buffers is written to and which buffer is read from.
-  Signal dom BufferSelect ->
+  -- | Controls which buffers is written to, while the other buffer is read from.
+  Signal dom SelectedBuffer ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
@@ -86,7 +92,7 @@ doubleBufferedRamByteAddressable ::
 doubleBufferedRamByteAddressable initialContent0 outputSelect readAddr0 writeFrame0 =
   blockRamByteAddressable initialContent1 readAddr1 writeFrame1
  where
-  initialContent1 = concatMap (\x -> x :> x :> Nil) initialContent0
+  initialContent1 = concatMap (repeat @2) initialContent0
   (readAddr1, writeFrame1) =
     unbundle $ updateAddrs <$> readAddr0 <*> writeFrame0 <*> outputSelect
 
@@ -95,12 +101,12 @@ doubleBufferedRamByteAddressable initialContent0 outputSelect readAddr0 writeFra
 -- multiple of 8 bits. It contains a blockRam per byte and uses the one hot byte select
 -- signal to determine which nBytes will be overwritten during a write operation.
 -- This components writes to one buffer and reads from the other. Which buffer is
--- used for reading while the other is used for writing is controlled by the 'BufferSelect'.
+-- used for reading while the other is used for writing is controlled by the 'SelectedBuffer'.
 doubleBufferedRamByteAddressableU ::
   forall dom memDepth a .
   ( KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
-  -- | Controls which buffers is written to and which buffer is read from.
-  Signal dom BufferSelect ->
+  -- | Controls which buffers is written to, while the other buffer is read from.
+  Signal dom SelectedBuffer ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
@@ -297,8 +303,8 @@ splitWriteInBytes (Just (addr, writeData)) byteSelect =
 
 splitWriteInBytes Nothing _ = repeat Nothing
 
--- | Takes an address and write operation and bitCoerces the addresses as follows:
--- bitCoerce (address, bool)
+-- | Takes an address and write operation and 'bitCoerce's the addresses as follows:
+-- 'bitCoerce' (address, bool)
 updateAddrs ::
   (KnownNat n, 1 <= n, KnownNat m, 1 <= m) =>
   -- | An address.
@@ -306,13 +312,13 @@ updateAddrs ::
   -- | A write operation.
   -> Maybe (Index m, b)
   -- | A boolean that will be used for the addresses LSBs.
-  -> Bool
+  -> SelectedBuffer
   -- |
   -- 1. Updated address
   -- 2. Write operation with updated address.
   -> (Index (n * 2), Maybe (Index (m * 2), b))
 updateAddrs rdAddr (Just (i, a)) bufSelect =
-  (mul2Index (rdAddr, bufSelect), Just (mul2Index (i, not bufSelect), a))
+  (mul2Index rdAddr bufSelect, Just (mul2Index i (flipBuffer bufSelect), a))
 
 updateAddrs rdAddr Nothing bufSelect =
-  (mul2Index (rdAddr, bufSelect), Nothing)
+  (mul2Index rdAddr bufSelect, Nothing)

@@ -74,7 +74,7 @@ readDoubleBufferedRam = property $ do
     SomeVec SNat contents -> do
       simLength <- forAll $ bitCoerce <$> genUnsigned @_ @64 (Range.constant 1 100)
       let simRange = Range.singleton simLength
-      switchSignal <- forAll $ Gen.list simRange Gen.bool
+      switchSignal <- forAll $ Gen.list simRange (Gen.element [A,B])
       readAddresses <- forAll . Gen.list simRange . genIndex $ Range.constantBounded
       let
         topEntity (unbundle -> (switch, readAddr)) = withClockResetEnable @System clockGen
@@ -100,7 +100,7 @@ readWriteDoubleBufferedRam = property $ do
           writePort
       let
         addresses = cycle $ fmap fromIntegral [0..ramDepth-1]
-        switchSignal = cycle $ L.replicate ramDepth False <> L.replicate ramDepth True
+        switchSignal = cycle $ L.replicate ramDepth A <> L.replicate ramDepth B
       writeEntries <- forAll (Gen.list (Range.singleton simLength) $ Gen.int Range.constantBounded)
       let
         topEntityInput = L.zip3 switchSignal addresses $ fmap Just (P.zip addresses writeEntries)
@@ -210,7 +210,7 @@ doubleBufferedRamByteAddressable0 = property $ do
       readAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       writeEntries <- forAll (Gen.list simRange $ Gen.maybe genDefinedBitVector)
       byteSelectSignal <- forAll $ Gen.list simRange genDefinedBitVector
-      switchSignal <- forAll $ Gen.list simRange Gen.bool
+      switchSignal <- forAll $ Gen.list simRange (Gen.element [A,B])
       let
         topEntityInput = L.zip4 switchSignal readAddresses
           (P.zipWith (\adr wr -> (adr,) <$> wr) writeAddresses writeEntries) byteSelectSignal
@@ -242,7 +242,7 @@ doubleBufferedRamByteAddressable1 = property $ do
       writeAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       readAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       writeEntries <- forAll (Gen.list simRange $ Gen.maybe genDefinedBitVector)
-      switchSignal <- forAll $ Gen.list simRange Gen.bool
+      switchSignal <- forAll $ Gen.list simRange (Gen.element [A,B])
       let
         topEntityInput = L.zip3 switchSignal readAddresses
           (P.zipWith (\adr wr -> (adr,) <$> wr) writeAddresses writeEntries)
@@ -528,12 +528,12 @@ byteAddressableDoubleBufferedRamBehavior :: forall bits memDepth nBytes .
  , nBytes ~ Regs (BitVector bits) 8
  , KnownNat bits
  , 1 <= bits) =>
- ((Bool, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
+ ((SelectedBuffer, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
  , Vec memDepth (BitVector bits), Vec memDepth (BitVector bits))->
 
- (Bool, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes) ->
+ (SelectedBuffer, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes) ->
 
- (((Bool, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
+ (((SelectedBuffer, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
  , Vec memDepth (BitVector bits)
  , Vec memDepth (BitVector bits))
  , BitVector bits)
@@ -541,7 +541,7 @@ byteAddressableDoubleBufferedRamBehavior state input = (state', out)
  where
   ((switchBuffers, readAddr, writeOp, byteEnable), bufA0, bufB0) = state
   (out, bufA1, bufB1)
-    | switchBuffers = (bufA0 !! readAddr, bufA0, updateEntry bufB0 writeOp)
+    | switchBuffers == B = (bufA0 !! readAddr, bufA0, updateEntry bufB0 writeOp)
     | otherwise  = (bufB0 !! readAddr, updateEntry bufA0 writeOp, bufB0)
 
   updateEntry buf op

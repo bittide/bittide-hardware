@@ -38,7 +38,7 @@ scatterEngine ::
   Signal dom (Index memDepth) ->
   -- | Data at the read address, delayed by one clock cycle.
   Signal dom a
-scatterEngine newMetaCycle frameIn writeAddr =
+scatterEngine (fmap bitCoerce -> newMetaCycle) frameIn writeAddr =
   doubleBufferedRamU newMetaCycle readAddr writeFrame
  where
   readAddr = register 0 $ satSucc SatWrap <$> readAddr
@@ -78,8 +78,8 @@ scatterUnit calConfig wbIn calSwitch linkIn readAddr = (readOut, wbOut)
   (writeAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
   writeOp = (\a b -> (a,) <$> b) <$> writeAddr <*> linkIn
   readOut = doubleBufferedRamU bufSelect1 readAddr writeOp
-  bufSelect0 = register False bufSelect1
-  bufSelect1 = mux metaCycle (not <$> bufSelect0) bufSelect0
+  bufSelect0  = register A bufSelect1
+  bufSelect1 = mux metaCycle (flipBuffer <$> bufSelect0) bufSelect0
 
 -- | Double buffered memory component that can be written to by a generic write operation. The
 -- write address of the incoming frame is determined by the incorporated 'calendar'. The
@@ -107,9 +107,10 @@ gatherUnit calConfig wbIn calSwitch writeOp byteEnables= (linkOut, wbOut)
  where
   (readAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
   linkOut = mux (register True ((==0) <$> readAddr)) (pure Nothing) (Just <$> bramOut)
-  bramOut = doubleBufferedRamByteAddressableU bufSelect1 readAddr writeOp byteEnables
-  bufSelect0 = register False bufSelect1
-  bufSelect1 = mux metaCycle (not <$> bufSelect0) bufSelect0
+  bramOut = doubleBufferedRamByteAddressableU
+    (bitCoerce <$> bufSelect1) readAddr writeOp byteEnables
+  bufSelect0 = register A bufSelect1
+  bufSelect1 = mux metaCycle (flipBuffer <$> bufSelect0) bufSelect0
 
 -- | Wishbone interface for the 'scatterUnit' and 'gatherUnit'. It makes the scatter and gather
 -- unit, which operate on 64 bit frames, addressable via a 32 bit wishbone bus.
