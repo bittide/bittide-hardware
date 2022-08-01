@@ -7,7 +7,7 @@ Contains the Bittide Calendar, which is a double buffered memory element that st
 instructions for the 'scatterUnitWb', 'gatherUnitWb' or 'switch'. Implementation is based
 on the "Bittide Hardware" document.
 
-For documentation see 'Bittide.Calendar.calendarWb'.
+For documentation see 'Bittide.Calendar.calendar'.
 |-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=8 #-}
 
@@ -17,11 +17,10 @@ For documentation see 'Bittide.Calendar.calendarWb'.
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Bittide.Calendar(calendar, calendarWb, mkCalendar, CalendarConfig(..)) where
+module Bittide.Calendar(calendar, mkCalendar, CalendarConfig(..)) where
 
 import Clash.Prelude
 
-import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
 import Contranomy.Wishbone
 import Data.Maybe
@@ -36,33 +35,8 @@ it does not care about the type of its entries, this type depends on the compone
 instantiates the calendar.
 -}
 
--- | The calendar component is a double buffered memory component that sequentially reads
--- entries from one buffer and offers a write interface to the other buffer. The buffers can
--- be swapped by setting the shadow switch to high. Furthermore it returns a signal that
--- indicates when the first entry of the active buffer is present at the output.
-calendar ::
-  forall dom calDepth a .
-  (KnownNat calDepth, 1 <= calDepth, HiddenClockResetEnable dom, NFDataX a) =>
-  -- | Bootstrap calendar
-  Vec calDepth a ->
-  -- | Switch that swaps the active and shadow calendar.
-  Signal dom Bool ->
-  -- | New entry for the calendar.
-  Signal dom (Maybe (Index calDepth, a)) ->
-  -- | Active calendar entry and signal that indicates the start of a new metacycle.
-  (Signal dom a, Signal dom Bool)
-calendar bootStrapCal shadowSwitch writeEntry = (entryOut, newMetaCycle)
- where
-  firstCycle = register True $ pure False
-  entryOut = mux firstCycle (pure $ bootStrapCal !! (0 :: Int)) readEntry
-  readEntry =
-    doubleBufferedRam bootStrapCal shadowSwitch counterNext writeEntry
-  counter = register (0 :: (Index calDepth)) counterNext
-  counterNext = satSucc SatWrap <$> counter
-  newMetaCycle = fmap not firstCycle .&&. (==0) <$> counter
-
 -- | Configuration for the calendar, This type satisfies all
--- relevant constraints imposed by calendarWb.
+-- relevant constraints imposed by calendar.
 data CalendarConfig nBytes addrW calEntry where
   CalendarConfig ::
     ( KnownNat nBytes
@@ -89,12 +63,12 @@ data CalendarConfig nBytes addrW calEntry where
 -- | Standalone deriving is required because 'CalendarConfig' contains existential type variables.
 deriving instance Show (CalendarConfig nBytes addrW calEntry)
 
--- | Wrapper function to create a 'calendarWb' from the given 'CalendarConfig', this way
--- we prevent the constraints of the type variables used in 'calendarWb' from leaking into
+-- | Wrapper function to create a 'calendar' from the given 'CalendarConfig', this way
+-- we prevent the constraints of the type variables used in 'calendar' from leaking into
 -- the rest of the system.
 mkCalendar ::
   (HiddenClockResetEnable dom) =>
-  -- | Calendar configuration for 'calendarWb'.
+  -- | Calendar configuration for 'calendar'.
   CalendarConfig nBytes addrW calEntry ->
   -- | Signal that swaps the active and shadow calendar. (1 cycle delay)
   Signal dom Bool ->
@@ -106,7 +80,7 @@ mkCalendar ::
   -- 3. Wishbone interface. (slave to master)
   (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M nBytes))
 mkCalendar (CalendarConfig maxCalDepth bsActive bsShadow) =
-  calendarWb maxCalDepth bsActive bsShadow
+  calendar maxCalDepth bsActive bsShadow
 
 -- | State of the calendar excluding the buffers. It stores the depths of the active and
 -- shadow calendar, the read pointer, buffer selector and a register for first cycle behavior.
@@ -162,7 +136,7 @@ bufToggle False x = x
 -- The entries of the active calendar will be sequentially provided at the output,
 -- the shadow calendar can be read from and written to through the wishbone interface.
 -- The active and shadow calendar can be swapped by setting the shadowSwitch to True.
-calendarWb ::
+calendar ::
   forall dom nBytes addrW maxCalDepth calEntry bootstrapSizeA bootstrapSizeB .
   ( HiddenClockResetEnable dom
   , KnownNat nBytes
@@ -189,7 +163,7 @@ calendarWb ::
   -- ^ Incoming wishbone interface
   -> (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M nBytes))
   -- ^ Currently active entry, Metacycle indicator and outgoing wishbone interface.
-calendarWb SNat bootstrapActive bootstrapShadow shadowSwitch wbIn =
+calendar SNat bootstrapActive bootstrapShadow shadowSwitch wbIn =
   (activeEntry <$> calOut, newMetaCycle <$> calOut, wbOut)
  where
   ctrl :: Signal dom (CalendarControl maxCalDepth calEntry nBytes)
