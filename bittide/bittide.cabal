@@ -77,6 +77,7 @@ library
   exposed-modules:
     Bittide.Calendar
     Bittide.DoubleBufferedRam
+    Bittide.Wishbone
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Switch
@@ -96,11 +97,10 @@ test-suite unittests
   other-modules:
     Tests.Calendar
     Tests.DoubleBufferedRam
+    Tests.Wishbone
     Tests.ScatterGather
-    Tests.Switch
     Tests.Shared
-  default-extensions:
-    ImplicitPrelude
+    Tests.Switch
   build-depends:
     bittide,
     clash-prelude-hedgehog >= 1.6 && < 1.7,
