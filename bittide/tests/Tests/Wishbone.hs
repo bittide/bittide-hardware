@@ -35,12 +35,12 @@ memMapGroup = testGroup "Memory Map group"
 
 -- | generates a 'MemoryMap' for 'singleMasterInterconnect'.
 genConfig ::
-  forall slaves aw .
-  (KnownNat slaves, KnownNat aw) =>
-  Proxy slaves ->
-  Gen (MemoryMap slaves aw)
+  forall nSlaves aw .
+  (KnownNat nSlaves, KnownNat aw) =>
+  Proxy nSlaves ->
+  Gen (MemoryMap nSlaves aw)
 genConfig = do
-  let s = Gen.set (Range.singleton $ natToNum @slaves) genDefinedBitVector
+  let s = Gen.set (Range.singleton $ natToNum @nSlaves) genDefinedBitVector
   return $ unsafeFromList . Set.elems <$> s
 
 -- | Creates a memory map with 'simpleSlave' devices and a list of read addresses and checks
@@ -117,8 +117,8 @@ writingSlaves = property $ do
       ranges <*> config <*> unbundle toSlaves
     (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen
       (singleMasterInterconnect @System @_ @4 @32) config masterIn $ bundle slaves
-  filterSimOut WishboneS2M{..} | acknowledge && not err = Just readData
-                               | otherwise              = Nothing
+  filterSimOut WishboneS2M{..} | acknowledge = Just readData
+                               | otherwise   = Nothing
   wbWriteThenRead a = [wbWrite a, wbRead a]
   every2nd (_:b:cs) = b : every2nd cs
   every2nd _ = []

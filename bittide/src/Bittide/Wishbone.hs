@@ -14,20 +14,20 @@ import           Data.Maybe
 
 {-# ANN module "HLint: ignore Functor law" #-}
 
-type MemoryMap slaveDevices addressWidth = Vec slaveDevices (BitVector addressWidth)
+type MemoryMap nSlaves addressWidth = Vec nSlaves (BitVector addressWidth)
 
 -- | Component that maps multiple slave devices to a single master device over the wishbone
 -- bus, it assumes that the config argument contains increasing base addresses that correspond
 -- to the indexes of the slaves in the incoming slave-busses and outgoing master-busses.
 -- It routes the incoming control signals to a slave device based on
 singleMasterInterconnect ::
- forall dom slaveDevices bytes addressWidth .
- HiddenClockResetEnable dom =>
- (KnownNat slaveDevices, KnownNat bytes, KnownNat addressWidth) =>
- MemoryMap slaveDevices addressWidth->
+ forall dom nSlaves bytes addressWidth .
+ ( HiddenClockResetEnable dom
+ , KnownNat nSlaves, KnownNat bytes, KnownNat addressWidth) =>
+ MemoryMap nSlaves addressWidth->
  Signal dom (WishboneM2S bytes addressWidth) ->
- Signal dom (Vec slaveDevices (WishboneS2M bytes)) ->
- (Signal dom (WishboneS2M bytes), Signal dom (Vec slaveDevices (WishboneM2S bytes addressWidth)))
+ Signal dom (Vec nSlaves (WishboneS2M bytes)) ->
+ (Signal dom (WishboneS2M bytes), Signal dom (Vec nSlaves (WishboneM2S bytes addressWidth)))
 singleMasterInterconnect config (register wishboneM2S -> master) slaves = (toMaster, toSlaves)
  where
   masterActive = strobe <$> master .&&. busCycle <$> master
@@ -45,7 +45,7 @@ singleMasterInterconnect config (register wishboneM2S -> master) slaves = (toMas
      compVec = fmap (<=a) config :< False
 
   routeToMaster active sel slaves0
-    | active    = fromMaybe wishboneS2M $ (slaves0 !!) <$> sel
+    | active    = maybe wishboneS2M (slaves0 !!) sel
     | otherwise = wishboneS2M
 
   routeToSlaves active sel m@WishboneM2S{..}
