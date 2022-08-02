@@ -12,8 +12,9 @@ module Bittide.DoubleBufferedRam where
 
 import Clash.Prelude
 
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 import Data.Maybe
+
 import Bittide.SharedTypes
 
 -- | Indicates which buffer is currently selected.

@@ -1,5 +1,5 @@
 cabal-version:       2.4
-name:                bittide
+name:                bittide-extra
 version:             0.1
 License:             Apache-2.0
 license-file:        LICENSE
@@ -63,12 +63,8 @@ common common-options
     Cabal,
     array,
     -- clash-prelude will set suitable version bounds for the plugins
-    bittide-extra,
-    clash-lib >= 1.6.3 && < 1.7,
     clash-prelude >= 1.6.3 && < 1.7,
-    constraints >= 0.13.3 && < 0.15,
     containers >= 0.4.0 && < 0.7,
-    contranomy,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
@@ -76,36 +72,4 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
-    Bittide.Calendar
-    Bittide.DoubleBufferedRam
-    Bittide.Wishbone
-    Bittide.ScatterGather
-    Bittide.SharedTypes
-    Bittide.Switch
-    Data.Constraint.Nat.Extra
-
-executable clash
-  import: common-options
-  main-is: bin/Clash.hs
-  Build-Depends: clash-ghc, bittide
-
-test-suite unittests
-  import: common-options
-  hs-source-dirs: tests
-  type: exitcode-stdio-1.0
-  main-is: UnitTests.hs
-  ghc-options: -threaded -with-rtsopts=-N
-  other-modules:
-    Tests.Calendar
-    Tests.DoubleBufferedRam
-    Tests.Wishbone
-    Tests.ScatterGather
-    Tests.Shared
-    Tests.Switch
-  build-depends:
-    bittide,
-    clash-prelude-hedgehog >= 1.6 && < 1.7,
-    hedgehog >= 1.0 && < 1.1,
-    tasty >= 1.4 && < 1.5,
-    tasty-hedgehog >= 1.2 && < 1.3,
-    constraints >= 0.13.3 && < 0.15
+    Bittide.Extra.Wishbone

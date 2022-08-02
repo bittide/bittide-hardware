@@ -1,5 +1,4 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
--- SPDX-FileCopyrightText: 2020 Christiaan Baaij
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -11,23 +10,20 @@ See: http://cdn.opencores.org/downloads/wbspec_b4.pdf
 {-# LANGUAGE NamedFieldPuns   #-}
 {-# LANGUAGE PatternSynonyms  #-}
 
-module Contranomy.Wishbone where
+module Bittide.Extra.Wishbone where
 
 import           Clash.Prelude
 import           Clash.Signal.Internal
 import qualified Data.IntMap                 as I
 
-import           Contranomy.Core.SharedTypes (AddressWidth, Bytes)
-import           Text.Printf                 (printf)
-
-data WishboneM2S nBytes addrW
+data WishboneM2S bytes addressWidth
   = WishboneM2S
   { -- | ADR
-    addr                :: "ADR" ::: BitVector addrW
+    addr                :: "ADR" ::: BitVector addressWidth
     -- | DAT
-  , writeData           :: "DAT_MOSI" ::: BitVector (8 * nBytes)
+  , writeData           :: "DAT_MOSI" ::: BitVector (8 * bytes)
     -- | SEL
-  , busSelect           :: "SEL" ::: BitVector nBytes
+  , busSelect           :: "SEL" ::: BitVector bytes
     -- | CYC
   , busCycle            :: "CYC" ::: Bool
     -- | STB
@@ -37,17 +33,17 @@ data WishboneM2S nBytes addrW
     -- | CTI
   , cycleTypeIdentifier :: "CTI" ::: CycleTypeIdentifier
     -- | BTE
-  , burstTypeExtension  :: "BTE" ::: BurstTypeExtension
+  , burstTypeExtension :: "BTE" ::: BurstTypeExtension
   } deriving (Generic, NFDataX, Show, Eq, ShowX)
 
-data WishboneS2M nBytes
+data WishboneS2M bytes
   = WishboneS2M
   { -- | DAT
-    readData    :: "DAT_MISO" ::: BitVector (8 * nBytes)
+    readData    :: "DAT_MISO" ::: BitVector (8 * bytes)
     -- | ACK
   , acknowledge :: "ACK" ::: Bool
     -- | ERR
-  , err         :: "ERR" ::: Bool
+  , err :: "ERR" ::: Bool
   } deriving (Generic, NFDataX, Show, Eq, ShowX)
 
 newtype CycleTypeIdentifier = CycleTypeIdentifier (BitVector 3) deriving (Generic, NFDataX, Show, Eq, ShowX)
@@ -64,15 +60,13 @@ data BurstTypeExtension
   | Beat8Burst
   | Beat16Burst
   deriving (Generic, NFDataX, Show, Eq, ShowX)
-wishboneM2S ::
-  ( KnownNat nBytes
-  , KnownNat addrW) =>
-  WishboneM2S nBytes addrW
-wishboneM2S
+
+emptyWishboneM2S :: (KnownNat bytes, KnownNat addressWidth) => WishboneM2S bytes addressWidth
+emptyWishboneM2S
   = WishboneM2S
-  { addr = deepErrorX "wishboneM2S: addr undefined."
-  , writeData = deepErrorX "wishboneM2S: writeData undefined."
-  , busSelect = deepErrorX "wishboneM2S: busSelect undefined."
+  { addr = deepErrorX "emptyWishboneM2S: address of idle bus is undefined."
+  , writeData = deepErrorX "emptyWishboneM2S: writeData of idle bus is undefined."
+  , busSelect = deepErrorX "emptyWishboneM2S: busSelect of idle bus is undefined."
   , busCycle = False
   , strobe = False
   , writeEnable = False
@@ -80,12 +74,10 @@ wishboneM2S
   , burstTypeExtension = LinearBurst
   }
 
-wishboneS2M ::
-  KnownNat nBytes =>
-  WishboneS2M nBytes
+wishboneS2M :: KnownNat bytes => WishboneS2M bytes
 wishboneS2M
   = WishboneS2M
-  { readData = deepErrorX "wishboneM2S: readData undefined."
+  { readData = deepErrorX "wishboneS2M: readData of idle bus is undefined."
   , acknowledge = False
   , err = False
   }
@@ -97,7 +89,7 @@ wishboneS2M
 wishboneStorage
   :: String
   -> I.IntMap (BitVector 8)
-  -> Signal dom (WishboneM2S Bytes AddressWidth)
+  -> Signal dom (WishboneM2S 4 32)
   -> Signal dom (WishboneS2M 4)
 wishboneStorage name initial inputs = wishboneStorage' name state inputs
  where
@@ -106,7 +98,7 @@ wishboneStorage name initial inputs = wishboneStorage' name state inputs
 wishboneStorage'
   :: String
   -> (I.IntMap (BitVector 8), Bool)
-  -> Signal dom (WishboneM2S Bytes AddressWidth)
+  -> Signal dom (WishboneM2S 4 32)
   -> Signal dom (WishboneS2M 4)
 wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' inputs')
  where
@@ -124,12 +116,14 @@ wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' in
         | otherwise   = file
   ack' = busCycle && strobe
   address = fromIntegral (unpack $ addr :: Unsigned 32)
-  readData = (file `lookup'` (address+3)) ++# (file `lookup'` (address+2)) ++# (file `lookup'` (address+1)) ++# (file `lookup'` address)
-  lookup' x addr' =
-    I.findWithDefault
-      (error $ printf "%s : Uninitialized Memory Address = 0x%X" name addr')
-      addr'
-      x
+  readData = if not writeEnable
+    then
+      (file `lookup'` (address+3)) ++#
+      (file `lookup'` (address+2)) ++#
+      (file `lookup'` (address+1)) ++#
+      (file `lookup'` address)
+    else 0
+  lookup' x addr' = I.findWithDefault (error $ name <> ": Uninitialized Memory Address = " <> show addr') addr' x
   assocList = case busSelect of
     $(bitPattern "0001") -> [byte0]
     $(bitPattern "0010") -> [byte1]
@@ -146,3 +140,28 @@ wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' in
   half1 = [byte2, byte3]
   word0  = [byte0, byte1, byte2, byte3]
   dataOut = WishboneS2M{readData = readData, acknowledge = ack, err = False}
+
+-- | Wrapper for the wishboneStorage that allows two ports to be connected.
+-- Port A can only be used for reading, port B can read and write to the te storage.
+-- Writing from port A is illegal and write attempts will set the err signal.
+instructionStorage
+  :: String
+  -> I.IntMap (BitVector 8)
+  -> Signal dom (WishboneM2S 4 32)
+  -> Signal dom (WishboneM2S 4 32)
+  -> (Signal dom (WishboneS2M 4),Signal dom (WishboneS2M 4))
+instructionStorage name initial aM2S bM2S = (aS2M, bS2M)
+ where
+  storageOut = wishboneStorage name initial storageIn
+  aActive = strobe <$> aM2S .&&. busCycle <$> aM2S
+  bActive = strobe <$> bM2S .&&. busCycle <$> bM2S
+  aWriting = aActive .&&. writeEnable <$> aM2S
+
+  storageIn = mux (not <$> bActive) (noWrite <$> aM2S) bM2S
+
+  aS2M = mux (not <$> bActive) (writeIsErr <$> storageOut <*> aWriting) (noAck <$> storageOut)
+  bS2M = storageOut
+
+  noAck wb = wb{acknowledge = False, err = False}
+  noWrite wb = wb{writeEnable = False}
+  writeIsErr wb write = wb{err = err wb || write}

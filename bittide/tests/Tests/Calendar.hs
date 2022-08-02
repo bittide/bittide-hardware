@@ -23,7 +23,7 @@ import Bittide.SharedTypes
 import Tests.Shared
 
 import Clash.Sized.Vector (unsafeFromList)
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 import Data.Constraint
 import Data.Constraint.Nat.Extra
 import Data.Proxy
@@ -169,7 +169,7 @@ readCalendar = property $ do
     BVCalendar (succSNat -> calSize') SNat cal -> do
       let
         topEntity switch = (\(a,_,_) -> a) $ withClockResetEnable clockGen resetGen enableGen
-          calendar calSize' cal cal switch $ pure (wishboneM2S @4 @32)
+          calendar calSize' cal cal switch $ pure (emptyWishboneM2S @4 @32)
         simOut = simulateN @System (fromIntegral simLength) topEntity switchSignal
       footnote . fromString $ "simOut: " <> show simOut
       footnote . fromString $ "expected: " <> show (toList cal)
@@ -276,7 +276,7 @@ takeLast n l = P.drop (P.length l - n) l
 
 -- | idle 'Contranomy.Wishbone.WishboneM2S' bus.
 wbNothingM2S :: forall nBytes addrW . (KnownNat nBytes, KnownNat addrW) => WishboneM2S nBytes addrW
-wbNothingM2S = (wishboneM2S @nBytes @addrW)
+wbNothingM2S = (emptyWishboneM2S @nBytes @addrW)
  { addr = 0
  , writeData = 0
  , busSelect = 0}
@@ -337,7 +337,7 @@ wbReadEntry ::
   [WishboneM2S nBytes addrW]
 wbReadEntry i dataRegs = addrWrite : wbNothingM2S : dataReads
  where
-  addrWrite = (wishboneM2S @nBytes @addrW)
+  addrWrite = (emptyWishboneM2S @nBytes @addrW)
     { addr      = fromIntegral $ dataRegs + 1
     , writeData = fromIntegral i
     , busSelect = maxBound
@@ -345,7 +345,7 @@ wbReadEntry i dataRegs = addrWrite : wbNothingM2S : dataReads
     , strobe      = True
     , writeEnable = True}
   dataReads = readReg <$> P.reverse [0..(dataRegs-1)]
-  readReg n = (wishboneM2S @nBytes @addrW)
+  readReg n = (emptyWishboneM2S @nBytes @addrW)
     { addr = fromIntegral n
     , writeData = 0
     , busSelect = maxBound
@@ -361,7 +361,7 @@ wbWriteOp ::
   (KnownNat nBytes, KnownNat addrW, Integral i) =>
   (i, BitVector (nBytes * 8)) ->
   WishboneM2S nBytes addrW
-wbWriteOp (i, bv) = (wishboneM2S @nBytes @addrW)
+wbWriteOp (i, bv) = (emptyWishboneM2S @nBytes @addrW)
   { addr        = fromIntegral i
   , writeData   = bv
   , busSelect   = maxBound

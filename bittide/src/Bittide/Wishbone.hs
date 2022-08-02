@@ -9,7 +9,7 @@
 module Bittide.Wishbone where
 
 import           Clash.Prelude
-import           Contranomy.Wishbone
+import           Bittide.Extra.Wishbone
 import           Data.Maybe
 
 {-# ANN module "HLint: ignore Functor law" #-}
@@ -28,7 +28,8 @@ singleMasterInterconnect ::
  Signal dom (WishboneM2S bytes addressWidth) ->
  Signal dom (Vec nSlaves (WishboneS2M bytes)) ->
  (Signal dom (WishboneS2M bytes), Signal dom (Vec nSlaves (WishboneM2S bytes addressWidth)))
-singleMasterInterconnect config (register wishboneM2S -> master) slaves = (toMaster, toSlaves)
+singleMasterInterconnect config (register emptyWishboneM2S -> master) slaves =
+  (toMaster, toSlaves)
  where
   masterActive = strobe <$> master .&&. busCycle <$> master
   selectedSlave = getSelected . addr <$> master

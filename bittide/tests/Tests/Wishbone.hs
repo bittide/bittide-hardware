@@ -13,7 +13,7 @@ import Clash.Hedgehog.Sized.Vector
 import Clash.Prelude
 import Clash.Sized.Vector(unsafeFromList)
 
-import Contranomy.Wishbone
+import Bittide.Extra.Wishbone
 import Data.Proxy
 import Data.String
 import Hedgehog
@@ -59,7 +59,7 @@ readingSlaves = property $ do
     readAddresses <- forAll . Gen.list nrOfReadsRange $ Gen.integral Range.constantBounded
     ranges <- forAll $ genVec $ Gen.integral Range.constantBounded
     let
-      topEntityInput = (wbRead <$> readAddresses) <> [wishboneM2S]
+      topEntityInput = (wbRead <$> readAddresses) <> [emptyWishboneM2S]
       simOut = simulateN (L.length topEntityInput) (topEntity config ranges) topEntityInput
     footnote . fromString $ "simOut: " <> showX simOut
     footnote . fromString $ "simIn: " <> showX topEntityInput
@@ -101,7 +101,7 @@ writingSlaves = property $ do
     writeAddresses <- forAll . Gen.list nrOfWritesRange $ Gen.integral Range.constantBounded
     ranges <- forAll $ genVec $ Gen.integral Range.constantBounded
     let
-      topEntityInput = L.concatMap wbWriteThenRead writeAddresses <> [wishboneM2S]
+      topEntityInput = L.concatMap wbWriteThenRead writeAddresses <> [emptyWishboneM2S]
       simLength = L.length topEntityInput
       simOut = simulateN simLength (topEntity ranges config) topEntityInput
     footnote . fromString $ "simOut: " <> showX simOut
@@ -130,7 +130,7 @@ writingSlaves = property $ do
 
 -- | transforms an address to a 'WishboneM2S' read operation.
 wbRead :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S bs addressWidth
-wbRead address = (wishboneM2S @bs @addressWidth)
+wbRead address = (emptyWishboneM2S @bs @addressWidth)
   { addr = address
   , strobe = True
   , busCycle = True
@@ -139,7 +139,7 @@ wbRead address = (wishboneM2S @bs @addressWidth)
 -- | transforms an address to a 'WishboneM2S' write operation that writes the given address
 -- to the given address.
 wbWrite :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S bs addressWidth
-wbWrite address = (wishboneM2S @bs @addressWidth)
+wbWrite address = (emptyWishboneM2S @bs @addressWidth)
   { addr = address
   , strobe = True
   , busCycle = True
