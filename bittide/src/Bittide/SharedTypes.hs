@@ -105,3 +105,21 @@ registersToPadded (RegisterBank vec) =
 -- Stores its argument in a _RegisterBank_ based on a context-supplied register size.
 getRegs :: (BitPack a, KnownNat regSize) => a -> RegisterBank regSize a
 getRegs = paddedToRegisters . Padded
+
+-- | Coerces a tuple of index n and a boolean to index (n*2) where the LSB of the result
+-- is determined by the boolean.
+mul2Index ::
+  forall n b .
+  (KnownNat n, 1 <= n, BitPack b, BitSize b ~ 1) =>
+  Index n ->
+  b ->
+  Index (n*2)
+mul2Index n b= case clog2axiom @n of Refl -> bitCoerce (n, b)
+
+-- | Coerces an index of size (n*2) to index n with the LSB as separate boolean.
+div2Index ::
+  forall n b .
+  (KnownNat n, 1 <= n, BitPack b, BitSize b ~ 1) =>
+  Index (n*2) ->
+  (Index n, b)
+div2Index = case clog2axiom @n of Refl -> bitCoerce

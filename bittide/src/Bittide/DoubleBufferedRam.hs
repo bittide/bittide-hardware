@@ -16,112 +16,97 @@ import Contranomy.Wishbone
 import Data.Maybe
 import Bittide.SharedTypes
 
+-- | Indicates which buffer is currently selected.
+data SelectedBuffer = A | B deriving (Eq, Generic, BitPack, Show, NFDataX)
+
+flipBuffer :: SelectedBuffer -> SelectedBuffer
+flipBuffer A = B
+flipBuffer B = A
+
 -- | The double buffered Ram component is a memory component that contains two buffers
--- and enables the user to write to one buffer and read from the other. When the
--- second argument is True, the read buffer and write buffer are swapped.
+-- and enables the user to write to one buffer and read from the other. 'SelectedBuffer'
+-- selects which buffer is written to, while read operations read from the other buffer.
 doubleBufferedRam ::
   forall dom memDepth a .
-  (HiddenClockResetEnable dom, KnownNat memDepth, NFDataX a) =>
+  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
   -- | The initial contents of both buffers.
   Vec memDepth a ->
-  -- | When this argument is True, the read buffer and write buffer are swapped at the rising edge.
-  Signal dom Bool ->
+  -- | Controls which buffers is written to, while the other buffer is read from.
+  Signal dom SelectedBuffer ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
   Signal dom (Maybe (Index memDepth, a)) ->
   -- | Outgoing data
   Signal dom a
-doubleBufferedRam initialContent switch readAddr writeFrame = output
+doubleBufferedRam initialContent0 outputSelect readAddr0 writeFrame0 =
+  blockRam initialContent1 readAddr1 writeFrame1
  where
-  outputSelect = register False readSelect
-  readSelect = mux switch (not <$> outputSelect) outputSelect
-  writeSelect = not <$> readSelect
-
-  writeEntries bufSelect frame
-    | bufSelect = (Nothing, frame)
-    | otherwise = (frame, Nothing)
-  (newEntry0, newEntry1) = unbundle (writeEntries <$> writeSelect <*> writeFrame)
-  buffer0 = blockRam initialContent readAddr newEntry0
-  buffer1 = blockRam initialContent readAddr newEntry1
-
-  output = mux outputSelect buffer1 buffer0
+  initialContent1 = concatMap (repeat @2) initialContent0
+  (readAddr1, writeFrame1) =
+    unbundle $ updateAddrs <$> readAddr0 <*> writeFrame0 <*> outputSelect
 
 -- | Version of 'doubleBufferedRam' with undefined initial contents. This component
 -- contains two buffers and enables the user to write to one buffer and read from the
--- other. When the first argument is True, the read buffer and write buffer are swapped.
+-- other. 'SelectedBuffer' selects which buffer is written to, while read operations
+-- read from the other buffer.
 doubleBufferedRamU ::
   forall dom memDepth a .
   (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
-  -- | When this argument is True, the read buffer and write buffer are swapped at the rising edge.
-  Signal dom Bool ->
+  -- | Controls which buffers is written to, while the other buffer is read from.
+  Signal dom SelectedBuffer ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
   Signal dom (Maybe (Index memDepth, a)) ->
   -- | Outgoing data
   Signal dom a
-doubleBufferedRamU switch readAddr writeFrame = output
+doubleBufferedRamU outputSelect readAddr0 writeFrame0 =
+  blockRamU NoClearOnReset (SNat @(2 * memDepth)) rstFunc readAddr1 writeFrame1
  where
-  outputSelect = register False readSelect
-  readSelect = mux switch (not <$> outputSelect) outputSelect
-  writeSelect = not <$> readSelect
-
-  writeEntries bufSelect frame
-    | bufSelect = (Nothing, frame)
-    | otherwise = (frame, Nothing)
-  (newEntry0, newEntry1) = unbundle (writeEntries <$> writeSelect <*> writeFrame)
-  buffer0 = blockRamU NoClearOnReset (SNat @memDepth) rstFunc readAddr newEntry0
-  buffer1 = blockRamU NoClearOnReset (SNat @memDepth) rstFunc readAddr newEntry1
+  (readAddr1, writeFrame1) =
+    unbundle $ updateAddrs <$> readAddr0 <*> writeFrame0 <*> outputSelect
   rstFunc = const (errorX "doubleBufferedRamU: reset function undefined")
-
-  output = mux outputSelect buffer1 buffer0
 
 -- | The byte addressable double buffered Ram component is a memory component that
 -- consists of two buffers and internally stores its elements as a multiple of 8 bits.
 -- It contains a blockRam per byte and uses the one hot byte select signal to determine
--- which nBytes will be overwritten during a write operation. This components writes to
--- one buffer and reads from the other. The buffers are swapped when the second argument
--- is True.
+-- which bytes will be overwritten during a write operation. This components writes to
+-- one buffer and reads from the other. 'SelectedBuffer' selects which buffer is
+-- written to, while read operations read from the other buffer.
 doubleBufferedRamByteAddressable ::
   forall dom memDepth a .
-  ( KnownNat memDepth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
+  ( KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
   -- | The initial contents of the first buffer.
   Vec memDepth a ->
-  -- | When this argument is True, the read buffer and write buffer are swapped at the rising edge.
-  Signal dom Bool ->
+  -- | Controls which buffers is written to, while the other buffer is read from.
+  Signal dom SelectedBuffer ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
-  Signal dom (Maybe (Located  memDepth a)) ->
+  Signal dom (Maybe (Located memDepth a)) ->
   -- | One hot byte select for writing only
   Signal dom (ByteEnable a) ->
   -- | Outgoing data
   Signal dom a
-doubleBufferedRamByteAddressable initialContent switch readAddr writeFrame byteSelect = output
+doubleBufferedRamByteAddressable initialContent0 outputSelect readAddr0 writeFrame0 =
+  blockRamByteAddressable initialContent1 readAddr1 writeFrame1
  where
-  outputSelect  = register False readSelect
-  readSelect    = mux switch (not <$> outputSelect) outputSelect
-  writeSelect   = not <$> readSelect
-
-  writeEntries bufSelect frame = if bufSelect then (Nothing, frame) else (frame, Nothing)
-  (newEntry0, newEntry1) = unbundle (writeEntries <$> writeSelect <*> writeFrame)
-  buffer0 = blockRamByteAddressable initialContent readAddr newEntry0 byteSelect
-  buffer1 = blockRamByteAddressable initialContent readAddr newEntry1 byteSelect
-
-  output = mux outputSelect buffer1 buffer0
+  initialContent1 = concatMap (repeat @2) initialContent0
+  (readAddr1, writeFrame1) =
+    unbundle $ updateAddrs <$> readAddr0 <*> writeFrame0 <*> outputSelect
 
 -- | Version of 'doubleBufferedRamByteAddressable' where the initial content is undefined.
 -- This memory element consists of two buffers and internally stores its elements as a
 -- multiple of 8 bits. It contains a blockRam per byte and uses the one hot byte select
 -- signal to determine which nBytes will be overwritten during a write operation.
--- This components writes to one buffer and reads from the other. The buffers are
--- swapped when the first argument is True.
+-- This components writes to one buffer and reads from the other. Which buffer is
+-- used for reading while the other is used for writing is controlled by the 'SelectedBuffer'.
 doubleBufferedRamByteAddressableU ::
   forall dom memDepth a .
   ( KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
-  -- | When this argument is True, the read buffer and write buffer are swapped at the rising edge.
-  Signal dom Bool ->
+  -- | Controls which buffers is written to, while the other buffer is read from.
+  Signal dom SelectedBuffer ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
@@ -130,18 +115,11 @@ doubleBufferedRamByteAddressableU ::
   Signal dom (ByteEnable a) ->
   -- | Outgoing data
   Signal dom a
-doubleBufferedRamByteAddressableU switch readAddr writeFrame byteSelect = output
+doubleBufferedRamByteAddressableU outputSelect readAddr0 writeFrame0 =
+  blockRamByteAddressableU readAddr1 writeFrame1
  where
-  outputSelect  = register False readSelect
-  readSelect    = mux switch (not <$> outputSelect) outputSelect
-  writeSelect   = not <$> readSelect
-
-  writeEntries bufSelect frame = if bufSelect then (Nothing, frame) else (frame, Nothing)
-  (newEntry0, newEntry1) = unbundle (writeEntries <$> writeSelect <*> writeFrame)
-  buffer0 = blockRamByteAddressableU readAddr newEntry0 byteSelect
-  buffer1 = blockRamByteAddressableU readAddr newEntry1 byteSelect
-
-  output = mux outputSelect buffer1 buffer0
+  (readAddr1, writeFrame1) =
+    unbundle $ updateAddrs <$> readAddr0 <*> writeFrame0 <*> outputSelect
 
 -- | Blockram similar to 'blockRam' with the addition that it takes a byte select signal
 -- that controls which nBytes at the write address are updated.
@@ -263,7 +241,7 @@ registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
    where
     (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
     addressRange = maxBound :: Index (Max 1 (Regs a (nBytes * 8)))
-    invalidAddress = (alignedAddress > resize (pack addressRange)) || not (alignment == 0)
+    invalidAddress = (alignedAddress > resize (pack addressRange)) || alignment /= 0
     masterActive = strobe && busCycle
     err = masterActive && invalidAddress
     acknowledge = masterActive && not err
@@ -324,3 +302,23 @@ splitWriteInBytes (Just (addr, writeData)) byteSelect =
       splitWrites b bv = if b then Just (addr, bv) else Nothing
 
 splitWriteInBytes Nothing _ = repeat Nothing
+
+-- | Takes an address and write operation and 'bitCoerce's the addresses as follows:
+-- 'bitCoerce' (address, bool)
+updateAddrs ::
+  (KnownNat n, 1 <= n, KnownNat m, 1 <= m) =>
+  -- | An address.
+  Index n
+  -- | A write operation.
+  -> Maybe (Index m, b)
+  -- | A boolean that will be used for the addresses LSBs.
+  -> SelectedBuffer
+  -- |
+  -- 1. Updated address
+  -- 2. Write operation with updated address.
+  -> (Index (n * 2), Maybe (Index (m * 2), b))
+updateAddrs rdAddr (Just (i, a)) bufSelect =
+  (mul2Index rdAddr bufSelect, Just (mul2Index i (flipBuffer bufSelect), a))
+
+updateAddrs rdAddr Nothing bufSelect =
+  (mul2Index rdAddr bufSelect, Nothing)

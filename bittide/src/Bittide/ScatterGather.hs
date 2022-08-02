@@ -15,12 +15,10 @@ module Bittide.ScatterGather
 import Clash.Prelude
 
 import Contranomy.Wishbone
-import Data.Type.Equality ((:~:)(Refl))
 
 import Bittide.Calendar
 import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
-import Data.Constraint.Nat.Extra
 
 -- | Calendar entry that can be used by a scatter or gather engine.
 type CalendarEntry memDepth = Index memDepth
@@ -40,7 +38,7 @@ scatterEngine ::
   Signal dom (Index memDepth) ->
   -- | Data at the read address, delayed by one clock cycle.
   Signal dom a
-scatterEngine newMetaCycle frameIn writeAddr =
+scatterEngine (fmap bitCoerce -> newMetaCycle) frameIn writeAddr =
   doubleBufferedRamU newMetaCycle readAddr writeFrame
  where
   readAddr = register 0 $ satSucc SatWrap <$> readAddr
@@ -79,7 +77,9 @@ scatterUnit calConfig wbIn calSwitch linkIn readAddr = (readOut, wbOut)
  where
   (writeAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
   writeOp = (\a b -> (a,) <$> b) <$> writeAddr <*> linkIn
-  readOut = doubleBufferedRamU metaCycle readAddr writeOp
+  readOut = doubleBufferedRamU bufSelect1 readAddr writeOp
+  bufSelect0  = register A bufSelect1
+  bufSelect1 = mux metaCycle (flipBuffer <$> bufSelect0) bufSelect0
 
 -- | Double buffered memory component that can be written to by a generic write operation. The
 -- write address of the incoming frame is determined by the incorporated 'calendar'. The
@@ -107,7 +107,10 @@ gatherUnit calConfig wbIn calSwitch writeOp byteEnables= (linkOut, wbOut)
  where
   (readAddr, metaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
   linkOut = mux (register True ((==0) <$> readAddr)) (pure Nothing) (Just <$> bramOut)
-  bramOut = doubleBufferedRamByteAddressableU metaCycle readAddr writeOp byteEnables
+  bramOut = doubleBufferedRamByteAddressableU
+    (bitCoerce <$> bufSelect1) readAddr writeOp byteEnables
+  bufSelect0 = register A bufSelect1
+  bufSelect1 = mux metaCycle (flipBuffer <$> bufSelect0) bufSelect0
 
 -- | Wishbone interface for the 'scatterUnit' and 'gatherUnit'. It makes the scatter and gather
 -- unit, which operate on 64 bit frames, addressable via a 32 bit wishbone bus.
@@ -161,7 +164,7 @@ scatterUnitWb calConfig wbInCal calSwitch linkIn wbInSU =
   (delayControls wbOutSU, wbOutCal)
  where
   (wbOutSU, memAddr, _) = unbundle $ wbInterface maxBound <$> wbInSU <*> scatteredData
-  (readAddr, upperSelected) = unbundle $ coerceIndices <$> memAddr
+  (readAddr, upperSelected) = unbundle $ div2Index <$> memAddr
   (scatterUnitRead, wbOutCal) = scatterUnit calConfig wbInCal calSwitch linkIn readAddr
   (upper, lower) = unbundle $ split <$> scatterUnitRead
   selected = register (errorX "scatterUnitWb: Initial selection undefined") upperSelected
@@ -189,7 +192,7 @@ gatherUnitWb calConfig wbInCal calSwitch wbInSU =
   (linkOut, delayControls wbOutSU, wbOutCal)
  where
   (wbOutSU, memAddr, writeOp) = unbundle $ wbInterface maxBound <$> wbInSU <*> pure 0b0
-  (writeAddr, upperSelected) = unbundle $ coerceIndices <$> memAddr
+  (writeAddr, upperSelected) = unbundle $ div2Index <$> memAddr
   (linkOut, wbOutCal) =
     gatherUnit calConfig wbInCal calSwitch gatherWrite gatherByteEnables
   gatherWrite = mkWrite <$> writeAddr <*> writeOp
@@ -203,10 +206,6 @@ gatherUnitWb calConfig wbInCal calSwitch wbInSU =
   mkEnables selected byteEnables
     | selected  = byteEnables ++# 0b0
     | otherwise = 0b0 ++# byteEnables
-
--- | Coerces an index of size (n*2) to index n with the LSB as separate boolean.
-coerceIndices :: forall n. (KnownNat n, 1 <= n) => Index (n*2) -> (Index n, Bool)
-coerceIndices = case clog2axiom @n of Refl -> bitCoerce
 
 -- | Delays the output controls to align them with the actual read / write timing.
 delayControls :: HiddenClockResetEnable dom =>

@@ -21,6 +21,7 @@ module Bittide.Calendar(calendar, mkCalendar, CalendarConfig(..)) where
 
 import Clash.Prelude
 
+import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
 import Contranomy.Wishbone
 import Data.Maybe
@@ -124,14 +125,6 @@ data BufferControl calDepth calEntry = BufferControl
     -- ^ Write operation for buffer B.
   }
 
--- | Indicates which buffer is currently active.
-data SelectedBuffer = A | B deriving (Eq, Generic, NFDataX)
-
-bufToggle :: Bool -> SelectedBuffer -> SelectedBuffer
-bufToggle True A = B
-bufToggle True B = A
-bufToggle False x = x
-
 -- | Hardware component that stores an active bittide calendar and a shadow bittide calendar.
 -- The entries of the active calendar will be sequentially provided at the output,
 -- the shadow calendar can be read from and written to through the wishbone interface.
@@ -194,7 +187,10 @@ calendar SNat bootstrapActive bootstrapShadow shadowSwitch wbIn =
   go CalendarState{..} (bufSwitch, CalendarControl{..}, bufAIn, bufBIn) =
     (wbState, (bufCtrl1, calOut1))
    where
-    selectedBuffer1 = bufToggle bufSwitch selectedBuffer
+    selectedBuffer1
+      | bufSwitch = flipBuffer selectedBuffer
+      | otherwise = selectedBuffer
+
     (activeEntry1, shadowEntry)
       | A <- selectedBuffer = (bufAIn, bufBIn)
       | B <- selectedBuffer = (bufBIn, bufAIn)
