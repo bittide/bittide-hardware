@@ -18,8 +18,6 @@ type CrossbarIndex links = Index (links+1)
 -- memory and a crossbar index to select the outgoing frame.
 type CalendarEntry links = Vec links (CrossbarIndex links)
 
--- TODO: Remove Bittide.ScatterEngine and its tests before merging #71
-
 {-# NOINLINE switch #-}
 -- | The Bittide Switch routes data from incoming to outgoing links based on a calendar.
 -- The switch consists of a crossbar, a calendar and a scatter engine for all incoming links.
