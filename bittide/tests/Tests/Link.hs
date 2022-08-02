@@ -1,18 +1,19 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# OPTIONS_GHC -fconstraint-solver-iterations=0 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
 
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 
 module Tests.Link where
 
-import Clash.Prelude hiding (fromList)
 import Clash.Hedgehog.Sized.Unsigned
+import Clash.Prelude hiding (fromList)
+import GHC.Stack
 
 import Bittide.Extra.Wishbone
 import Bittide.Link
@@ -190,7 +191,7 @@ valToFrames sc = fmap Just out
   RegisterBank (toList -> out) = getRegs sc
 
 -- | Take every Nth element from a list by recursively taking the first and dropping (n-1) elements.
-everyNth :: Int -> [a] -> [a]
+everyNth :: HasCallStack => Int -> [a] -> [a]
 everyNth 0 _ = error "Can not take every 0th element."
 everyNth _ [] = []
 everyNth n (x:xs) = x : everyNth n (L.drop (n-1) xs)

@@ -77,7 +77,6 @@ library
   hs-source-dirs: src
   exposed-modules:
     Bittide.Calendar
-    Bittide.Clash.Extra
     Bittide.DoubleBufferedRam
     Bittide.Link
     Bittide.ScatterGather
