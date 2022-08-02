@@ -10,4 +10,5 @@ package bittide
   ghc-options: -Werror
 
 package contranomy-sim
-  ghc-options: -Werror
+  -- See https://github.com/haskell/cabal/pull/8336
+  ghc-options: -Werror -fno-warn-prepositive-qualified-module

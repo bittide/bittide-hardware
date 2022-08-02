@@ -20,10 +20,11 @@ import Hedgehog
 import Hedgehog.Range as Range
 import Test.Tasty
 import Test.Tasty.Hedgehog
-import qualified Data.List as L
-import qualified Data.Set as Set
-import qualified GHC.TypeNats as TN
-import qualified Hedgehog.Gen as Gen
+
+import Data.List qualified as L
+import Data.Set qualified as Set
+import GHC.TypeNats qualified as TN
+import Hedgehog.Gen qualified as Gen
 
 import Bittide.Wishbone
 

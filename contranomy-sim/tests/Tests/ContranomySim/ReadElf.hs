@@ -4,16 +4,16 @@
 
 module Tests.ContranomySim.ReadElf where
 
-import qualified Data.ByteString       as BS
-import qualified Data.List             as L
-import           Prelude
+import Data.ByteString qualified as BS
+import Data.List       qualified as L
+import Prelude
 
-import           Test.Tasty            (TestTree, testGroup)
-import           Test.Tasty.HUnit      (assertEqual, testCase, (@?=))
+import Test.Tasty            (TestTree, testGroup)
+import Test.Tasty.HUnit      (assertEqual, testCase, (@?=))
 
-import           ContranomySim.ReadElf (readElf)
-import           Data.Elf
-import           Data.IntMap           as I
+import ContranomySim.ReadElf (readElf)
+import Data.Elf
+import Data.IntMap           as I
 
 
 riscvElfEmpty :: Elf

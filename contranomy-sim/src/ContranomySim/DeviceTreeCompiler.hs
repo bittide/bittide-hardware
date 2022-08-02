@@ -7,14 +7,14 @@ module ContranomySim.DeviceTreeCompiler
   ) where
 
 
-import qualified Data.ByteString  as BS
-import           Data.Char        (isSpace)
-import           Data.List        (dropWhileEnd)
-import           Prelude
-import           System.Directory
-import           System.Exit
-import           System.IO        (hClose, openBinaryTempFile)
-import           System.Process
+import Data.ByteString qualified as BS
+import Data.Char (isSpace)
+import Data.List (dropWhileEnd)
+import Prelude
+import System.Directory
+import System.Exit
+import System.IO (hClose, openBinaryTempFile)
+import System.Process
 
 
 findDtc :: IO (Maybe FilePath)

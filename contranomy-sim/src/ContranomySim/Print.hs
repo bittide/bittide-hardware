@@ -5,13 +5,14 @@
 -- | Println-debugging during simulation
 module ContranomySim.Print ( hookPrint, getDataBytes ) where
 
-import           Clash.Prelude
+import Clash.Prelude
 
-import qualified Data.ByteString as BS
-import           Data.Foldable   (traverse_)
-import qualified Data.List       as L
-import           Data.Maybe      (catMaybes)
-import           Data.Word       (Word8)
+import Data.ByteString qualified as BS
+import Data.List       qualified as L
+
+import Data.Foldable (traverse_)
+import Data.Maybe (catMaybes)
+import Data.Word (Word8)
 
 getDataBytes
   :: Int -- ^ How many bytes to sample

@@ -12,7 +12,7 @@ module Tests.Switch(switchGroup) where
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Vector
 import Clash.Prelude
-import qualified Prelude as P
+import Prelude qualified as P
 
 import Clash.Sized.Vector ( unsafeFromList)
 
@@ -22,14 +22,15 @@ import Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import qualified Data.Sequence as Seq
-import qualified GHC.TypeNats as TN
-import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Range as Range
+import Data.Sequence qualified as Seq
+import GHC.TypeNats qualified as TN
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
 
 import Bittide.Calendar (CalendarConfig(..))
 import Bittide.Extra.Wishbone
 import Bittide.Switch
+
 import Tests.Calendar
 import Tests.Shared
 

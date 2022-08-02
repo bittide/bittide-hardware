@@ -17,23 +17,23 @@
 module Tests.ScatterGather(sgGroup) where
 
 import Clash.Prelude hiding (fromList)
-import qualified Prelude as P
-
 import Clash.Sized.Vector (fromList)
+import Clash.Util.Interpolate qualified as I
 import Data.String
+import GHC.TypeNats qualified as TN
 import Hedgehog
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
+import Prelude qualified as P
 import Test.Tasty
 import Test.Tasty.Hedgehog
-import qualified Clash.Util.Interpolate as I
-import qualified GHC.TypeNats as TN
-import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Range as Range
 
 import Bittide.Calendar
 import Bittide.Extra.Wishbone
 import Bittide.ScatterGather
-import Bittide.SharedTypes
 import Data.Maybe
+import Bittide.SharedTypes
+
 import Tests.Shared
 
 -- | The extra in SomeCalendar extra defines the minimum amount of elements in the vector

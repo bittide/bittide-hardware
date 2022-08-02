@@ -20,7 +20,6 @@ package bittide
   -- so we're able to import its css file from the custom theme.
   haddock-options: --theme=linuwial-wrap-types.css --theme=Linuwial
 
-
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)

@@ -12,9 +12,9 @@ See: http://cdn.opencores.org/downloads/wbspec_b4.pdf
 
 module Bittide.Extra.Wishbone where
 
-import           Clash.Prelude
-import           Clash.Signal.Internal
-import qualified Data.IntMap                 as I
+import Clash.Prelude
+import Clash.Signal.Internal
+import Data.IntMap qualified as I
 
 data WishboneM2S bytes addressWidth
   = WishboneM2S

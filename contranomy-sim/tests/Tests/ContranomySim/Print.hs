@@ -7,17 +7,17 @@ module Tests.ContranomySim.Print (tests) where
 
 import           Clash.Prelude
 
-import qualified Data.ByteString     as BS
-import qualified Data.List           as L
-import           Data.Word           (Word8)
-import           Hedgehog
-import qualified Hedgehog.Gen        as Gen
-import qualified Hedgehog.Range      as Range
-import           Test.Tasty          (TestTree, testGroup)
+import Data.ByteString qualified as BS
+import Data.List       qualified as L
+import Data.Word       (Word8)
+import Hedgehog
+import Hedgehog.Gen    qualified     as Gen
+import Hedgehog.Range  qualified     as Range
+import Test.Tasty      (TestTree, testGroup)
 
-import           ContranomySim.Print (getDataBytes)
-import           Test.Tasty.HUnit
-import           Test.Tasty.Hedgehog
+import ContranomySim.Print (getDataBytes)
+import Test.Tasty.HUnit
+import Test.Tasty.Hedgehog
 
 genWriteStream
   :: BS.ByteString

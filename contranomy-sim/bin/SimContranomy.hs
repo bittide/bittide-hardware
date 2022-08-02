@@ -2,20 +2,20 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-import           Clash.Prelude
+import Clash.Prelude
 
-import           Contranomy
-import           ContranomySim.DeviceTreeCompiler
-import           ContranomySim.MemoryMapConsts
-import           ContranomySim.Print
-import           ContranomySim.ReadElf
+import Contranomy
+import ContranomySim.DeviceTreeCompiler
+import ContranomySim.MemoryMapConsts
+import ContranomySim.Print
+import ContranomySim.ReadElf
 
-import           Paths_contranomy_sim
+import Paths_contranomy_sim
 
-import qualified Data.ByteString                  as BS
-import qualified Data.IntMap                      as I
-import qualified Data.List                        as L
-import           System.Exit
+import Data.ByteString  qualified as BS
+import Data.IntMap      qualified as I
+import Data.List        qualified as L
+import System.Exit
 
 
 main :: IO ()

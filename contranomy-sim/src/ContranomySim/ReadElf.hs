@@ -6,11 +6,11 @@
 module ContranomySim.ReadElf (readElf, readElfFromMemory, Address, BinaryData) where
 
 import Clash.Prelude
-
-import qualified Data.ByteString as BS
 import Data.Elf
-import qualified Data.IntMap.Strict as I
-import qualified Data.List as L
+
+import Data.ByteString    qualified as BS
+import Data.IntMap.Strict qualified as I
+import Data.List          qualified as L
 
 type BinaryData = I.IntMap (BitVector 8)
 type Address = BitVector 32

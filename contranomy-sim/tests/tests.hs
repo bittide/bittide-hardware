@@ -2,10 +2,10 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-import           Prelude
-import           Test.Tasty                  (defaultMain, testGroup)
-import qualified Tests.ContranomySim.Print
-import qualified Tests.ContranomySim.ReadElf
+import Prelude
+import Test.Tasty (defaultMain, testGroup)
+import Tests.ContranomySim.Print qualified
+import Tests.ContranomySim.ReadElf qualified
 
 main :: IO ()
 main = do

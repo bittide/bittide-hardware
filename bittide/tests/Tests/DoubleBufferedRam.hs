@@ -10,31 +10,31 @@
 {-# LANGUAGE TypeApplications #-}
 module Tests.DoubleBufferedRam(ramGroup) where
 
-import Clash.Prelude
-import Clash.Hedgehog.Sized.Vector
 import Clash.Hedgehog.Sized.BitVector
+import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
+import Clash.Hedgehog.Sized.Vector
+import Clash.Prelude
+import Clash.Sized.Vector qualified as V
 
-
+import Data.List qualified as L
 import Data.Maybe
-import qualified Clash.Sized.Vector as V
+import Data.Proxy
+import Data.Set qualified as Set
+import Data.String
+import Data.Type.Equality (type (:~:)(Refl))
+import GHC.TypeNats qualified as TN
 import Hedgehog
+import Hedgehog.Gen qualified as Gen hiding (resize)
 import Hedgehog.Range as Range
+import Prelude qualified as P
 import Test.Tasty
 import Test.Tasty.Hedgehog
-import qualified Data.List as L
-import qualified Data.Set as Set
-import qualified GHC.TypeNats as TN
-import qualified Hedgehog.Gen as Gen hiding (resize)
-import qualified Prelude as P
-import Data.Proxy
-import Data.Type.Equality (type (:~:)(Refl))
-import Bittide.Extra.Wishbone
-import Data.String
 
+import Bittide.Extra.Wishbone
 import Bittide.SharedTypes
 import Bittide.DoubleBufferedRam
-import Clash.Hedgehog.Sized.Index
+
 
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRam group"

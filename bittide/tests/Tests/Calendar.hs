@@ -35,10 +35,11 @@ import Hedgehog.Gen as Gen
 import Hedgehog.Range as Range
 import Test.Tasty
 import Test.Tasty.Hedgehog
-import qualified Clash.Sized.Vector as V
-import qualified Data.Set as Set
-import qualified GHC.TypeNats as TN
-import qualified Prelude as P
+
+import Clash.Sized.Vector qualified as V
+import Data.Set qualified as Set
+import GHC.TypeNats qualified as TN
+import Prelude qualified as P
 
 calGroup :: TestTree
 calGroup = testGroup "Calendar group"
