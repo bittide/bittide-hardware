@@ -61,12 +61,12 @@ data BurstTypeExtension
   | Beat16Burst
   deriving (Generic, NFDataX, Show, Eq, ShowX)
 
-wishboneM2S :: (KnownNat bytes, KnownNat addressWidth) => WishboneM2S bytes addressWidth
-wishboneM2S
+emptyWishboneM2S :: (KnownNat bytes, KnownNat addressWidth) => WishboneM2S bytes addressWidth
+emptyWishboneM2S
   = WishboneM2S
-  { addr = deepErrorX "wishboneM2S: address of idle bus is undefined."
-  , writeData = deepErrorX "wishboneM2S: writeData of idle bus is undefined."
-  , busSelect = deepErrorX "wishboneM2S: busSelect of idle bus is undefined."
+  { addr = deepErrorX "emptyWishboneM2S: address of idle bus is undefined."
+  , writeData = deepErrorX "emptyWishboneM2S: writeData of idle bus is undefined."
+  , busSelect = deepErrorX "emptyWishboneM2S: busSelect of idle bus is undefined."
   , busCycle = False
   , strobe = False
   , writeEnable = False
@@ -117,7 +117,11 @@ wishboneStorage' name state inputs = dataOut :- (wishboneStorage' name state' in
   ack' = busCycle && strobe
   address = fromIntegral (unpack $ addr :: Unsigned 32)
   readData = if not writeEnable
-    then (file `lookup'` (address+3)) ++# (file `lookup'` (address+2)) ++# (file `lookup'` (address+1)) ++# (file `lookup'` address)
+    then
+      (file `lookup'` (address+3)) ++#
+      (file `lookup'` (address+2)) ++#
+      (file `lookup'` (address+1)) ++#
+      (file `lookup'` address)
     else 0
   lookup' x addr' = I.findWithDefault (error $ name <> ": Uninitialized Memory Address = " <> show addr') addr' x
   assocList = case busSelect of

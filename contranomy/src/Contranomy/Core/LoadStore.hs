@@ -48,7 +48,7 @@ loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
               sign
               (slice d15 d0 (readData dBusS2M `shiftR` shiftAmount))
           _ -> readData dBusS2M
-     in ( (wishboneM2S @Bytes @AddressWidth)
+     in ( (emptyWishboneM2S @Bytes @AddressWidth)
             { addr      = slice d31 d2 addr ++# (0 :: BitVector 2)
             , busSelect = mask
             , busCycle  = aligned
@@ -68,7 +68,7 @@ loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
           Byte _ -> toStore `shiftL` shiftAmount
           Half _ -> toStore `shiftL` shiftAmount
           _ -> toStore
-     in ( (wishboneM2S @Bytes @AddressWidth)
+     in ( (emptyWishboneM2S @Bytes @AddressWidth)
            { addr        = slice d31 d2 addr ++# (0 :: BitVector 2)
            , writeData   = storeData
            , busSelect   = mask
@@ -83,7 +83,7 @@ loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
         )
 
   _otherwise ->
-    ( wishboneM2S @Bytes @AddressWidth
+    ( emptyWishboneM2S @Bytes @AddressWidth
     , Nothing
     , Nothing
     , Nothing

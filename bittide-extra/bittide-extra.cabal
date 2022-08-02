@@ -73,13 +73,3 @@ library
   hs-source-dirs: src
   exposed-modules:
     Bittide.Extra.Wishbone
-
-executable clash
-  import: common-options
-  main-is: bin/Clash.hs
-  Build-Depends: clash-ghc, bittide-extra
-
-executable clashi
-  import: common-options
-  main-is: bin/Clashi.hs
-  build-depends: clash-ghc, bittide-extra

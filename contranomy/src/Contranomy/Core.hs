@@ -54,8 +54,8 @@ data CoreOut
 
 coreOut :: CoreOut
 coreOut = CoreOut
-  { iBusM2S = wishboneM2S @Bytes @AddressWidth
-  , dBusM2S = wishboneM2S @Bytes @AddressWidth
+  { iBusM2S = emptyWishboneM2S @Bytes @AddressWidth
+  , dBusM2S = emptyWishboneM2S @Bytes @AddressWidth
   }
 
 core ::
@@ -106,7 +106,7 @@ transition s@CoreState{stage=InstructionFetch, pc} (CoreIn{iBusS2M},_) = runStat
             else
               InstructionFetch
 
-  return ( coreOut { iBusM2S = (wishboneM2S @Bytes @AddressWidth)
+  return ( coreOut { iBusM2S = (emptyWishboneM2S @Bytes @AddressWidth)
                              { addr = pc
                              , busSelect = 0b1111
                              , busCycle = True

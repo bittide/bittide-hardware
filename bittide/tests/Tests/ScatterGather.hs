@@ -144,10 +144,10 @@ scatterUnitNoFrameLoss = property $ do
     let
       topEntity (unbundle -> (wbIn, linkIn)) = fst $
         withClockResetEnable clockGen resetGen enableGen (scatterUnitWb @System @_ @32)
-        calConfig (pure wishboneM2S) (pure False) linkIn wbIn
+        calConfig (pure emptyWishboneM2S) (pure False) linkIn wbIn
 
-      wbReadOps = P.take simLength $ P.replicate memDepth wishboneM2S P.++  P.concat
-        (padToLength memDepth wishboneM2S . P.concat . P.zipWith wbRead (toList calA) <$> inputFrames)
+      wbReadOps = P.take simLength $ P.replicate memDepth emptyWishboneM2S P.++  P.concat
+        (padToLength memDepth emptyWishboneM2S . P.concat . P.zipWith wbRead (toList calA) <$> inputFrames)
 
       topEntityInput = P.zip wbReadOps (P.concat inputFrames)
       simOut = simulateN simLength topEntity topEntityInput
@@ -183,10 +183,10 @@ gatherUnitNoFrameLoss = property $ do
     let
       topEntity wbIn = (\ (a, _ ,_) -> a) $
         withClockResetEnable clockGen resetGen enableGen (gatherUnitWb @System @_ @32)
-        calConfig (pure wishboneM2S) (pure False) wbIn
+        calConfig (pure emptyWishboneM2S) (pure False) wbIn
 
       wbWriteOps = P.take simLength . P.concat $
-        padToLength memDepth wishboneM2S . P.concat . P.zipWith wbWrite (toList calA) <$> inputFrames
+        padToLength memDepth emptyWishboneM2S . P.concat . P.zipWith wbWrite (toList calA) <$> inputFrames
 
       simOut = simulateN simLength topEntity wbWriteOps
       addressedFrames = P.zip (P.concat inputFrames) (cycle $ toList calA)
@@ -239,12 +239,12 @@ wbRead ::
   Maybe a ->
   [WishboneM2S nBytes addrW]
 wbRead readAddr (Just _) =
-  [ (wishboneM2S @nBytes @addrW)
+  [ (emptyWishboneM2S @nBytes @addrW)
     { addr = (`shiftL` 3) . resize $ pack readAddr
     , busCycle = True
     , strobe = True }
 
-  , (wishboneM2S @nBytes @addrW)
+  , (emptyWishboneM2S @nBytes @addrW)
     { addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr)
     , busCycle = True
     , strobe = True }
@@ -263,7 +263,7 @@ wbWrite ::
   Maybe (BitVector (nBytes*2*8)) ->
   [WishboneM2S nBytes addrW]
 wbWrite writeAddr (Just frame) =
-  [ (wishboneM2S @nBytes @addrW)
+  [ (emptyWishboneM2S @nBytes @addrW)
     { addr = (`shiftL` 3) . resize $ pack writeAddr
     , busSelect = maxBound
     , busCycle = True
@@ -271,7 +271,7 @@ wbWrite writeAddr (Just frame) =
     , writeEnable = True
     , writeData = lower }
 
-  , (wishboneM2S @nBytes @addrW)
+  , (emptyWishboneM2S @nBytes @addrW)
     { addr =  4 .|.  ((`shiftL` 3) . resize $ pack writeAddr)
     , busSelect = maxBound
     , busCycle = True

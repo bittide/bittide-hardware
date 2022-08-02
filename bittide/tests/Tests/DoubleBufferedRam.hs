@@ -308,7 +308,7 @@ registerWbSigToSig = property $ do
       let
         simLength = L.length writes + 1
         someReg prio sigIn = fst $ withClockResetEnable clockGen resetGen enableGen
-          $ registerWb @_ @_ @4 @32 prio initVal (pure wishboneM2S) sigIn
+          $ registerWb @_ @_ @4 @32 prio initVal (pure emptyWishboneM2S) sigIn
         topEntity sigIn = bundle (someReg CircuitPriority sigIn, someReg WishbonePriority sigIn)
         topEntityInput = (Just <$> writes) <> [Nothing]
         simOut = simulateN @System simLength topEntity topEntityInput
@@ -343,7 +343,7 @@ registerWbWbToSig = property $ do
         someReg prio wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
          registerWb @System @_ @4 @32 prio initVal wbIn (pure Nothing)
         topEntity wbIn = bundle (someReg CircuitPriority wbIn, someReg WishbonePriority wbIn)
-        topEntityInput = L.concatMap wbWrite writes <> L.repeat wishboneM2S
+        topEntityInput = L.concatMap wbWrite writes <> L.repeat emptyWishboneM2S
         simOut = simulateN simLength topEntity topEntityInput
         (fstOut, sndOut) = L.unzip simOut
         filteredOut = everyNth regs $ L.tail fstOut
@@ -387,7 +387,7 @@ registerWbSigToWb = property $ do
         topEntity (unbundle -> (sigIn, wbIn)) = bundle
           (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
         padWrites x = L.take (natToNum @(Regs (BitVector bits) 32)) $ Just x : L.repeat Nothing
-        readOps = wishboneM2S : cycle
+        readOps = emptyWishboneM2S : cycle
           (wbRead <$> L.reverse [(0 :: Int).. (natToNum @(Regs (BitVector bits) 32)-1)])
         topEntityInput = L.zip (L.concatMap padWrites writes <> [Nothing]) readOps
         simLength = L.length topEntityInput
@@ -411,7 +411,7 @@ registerWbSigToWb = property $ do
         Nothing  -> error $ "wbDecoding: list to vector conversion failed: " <> show entryList <> "from " <> show (wbNow:wbRest)
 
     wbDecoding [] = []
-    wbRead i = (wishboneM2S @4 @32)
+    wbRead i = (emptyWishboneM2S @4 @32)
       { addr = resize (pack i) ++# (0b00 :: BitVector 2)
       , busCycle = True
       , strobe = True
@@ -449,7 +449,7 @@ registerWbWriteCollisions = property $ do
         topEntity (unbundle -> (sigIn, wbIn)) = bundle
           (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
         topEntityInput = L.zip (Just <$> sigWrites)
-          (L.concatMap wbWrite wbWrites <> L.repeat wishboneM2S)
+          (L.concatMap wbWrite wbWrites <> L.repeat emptyWishboneM2S)
         simOut = simulateN simLength topEntity topEntityInput
         (fstOut, sndOut) = L.unzip simOut
 
@@ -470,7 +470,7 @@ bv2WbWrite :: (BitPack a, Enum a) =>
   a
   -> ("DAT_MOSI" ::: BitVector 32)
   -> WishboneM2S 4 32
-bv2WbWrite i v = (wishboneM2S @4 @32)
+bv2WbWrite i v = (emptyWishboneM2S @4 @32)
   { addr = resize (pack i) ++# (0b00 :: BitVector 2)
   , writeData = v
   , writeEnable = True
