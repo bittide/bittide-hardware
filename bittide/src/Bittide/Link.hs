@@ -73,15 +73,15 @@ txUnit (getRegs -> RegisterBank preamble) sq frameIn wbIn = (wbOut, frameOut)
     ( (Unsigned seqCountWidth
     , TransmissionState preambleWidth seqCountWidth frameWidth)
     , DataLink frameWidth)
-  stateMachine (scStored@(getRegs ->RegisterBank sqVec),state) (fIn, scIn) =
-    case state of
-      s@LinkThrough             -> ((scStored, nextState s), fIn)
-      s@(TransmitPreamble n)    -> ((sc, nextState s), Just $ preamble !! n)
-       where
-        sc
-         | n == maxBound = scIn
-         | otherwise = scStored
-      s@(TransmitSeqCounter n)  -> ((scStored, nextState s), Just $ sqVec !! n)
+  stateMachine (scStored@(getRegs -> RegisterBank sqVec), state) (fIn, scIn) =
+    ((nextSc, nextState state), out)
+   where
+    (nextSc, out) = case state of
+      LinkThrough          -> (scStored, fIn)
+      TransmitSeqCounter n -> (scStored, Just $ sqVec !! n)
+      TransmitPreamble n
+        | n == maxBound -> (scIn,     Just $ preamble !! n)
+        | otherwise     -> (scStored, Just $ preamble !! n)
   scErr = deepErrorX "txUnit: Stored sequence counter invalid"
 
   -- Once turned on, the txUnit continues to transmit the preamble followed by the sequence
@@ -91,11 +91,13 @@ txUnit (getRegs -> RegisterBank preamble) sq frameIn wbIn = (wbOut, frameOut)
     TransmissionState pw scw fw ->
     TransmissionState pw scw fw
   nextState = \case
-      LinkThrough                               -> TransmitPreamble 0
-      TransmitPreamble ((==maxBound) -> True)   -> TransmitSeqCounter 0
-      TransmitSeqCounter ((==maxBound) -> True) -> TransmitPreamble 0
-      TransmitPreamble n                        -> TransmitPreamble (succ n)
-      TransmitSeqCounter n                      -> TransmitSeqCounter (succ n)
+      LinkThrough       -> TransmitPreamble 0
+      TransmitPreamble n
+        | n == maxBound -> TransmitSeqCounter 0
+        | otherwise     -> TransmitPreamble (succ n)
+      TransmitSeqCounter n
+        | n == maxBound -> TransmitPreamble 0
+        | otherwise     -> TransmitSeqCounter (succ n)
 
 -- | States for the rxUnit.
 data ReceiverState
