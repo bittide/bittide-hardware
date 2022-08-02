@@ -13,19 +13,12 @@ import Tests.Calendar
 import Tests.DoubleBufferedRam
 import Tests.Link
 import Tests.ScatterGather
+import Tests.Switch
 import Tests.Wishbone
 
--- import Tests.Switch
-
--- TODO: #86 changes the double buffered memory implementations, which causes the switch
--- test to fail. Since this test is completely replaced in #71  it should be enabled again
--- in that PR.
-
--- TODO: This should not be here, Before merging 71, make sure PR #86 is merged,
--- #71 is rebased and the switchGropup is in the test tree.
 tests :: TestTree
 tests = testGroup "Unittests"
-  [calGroup, sgGroup, ramGroup, memMapGroup, linkGroup] -- switchGroup
+  [calGroup, sgGroup, ramGroup, memMapGroup, linkGroup, switchGroup]
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
 setDefaultHedgehogTestLimit (HedgehogTestLimit Nothing) = HedgehogTestLimit (Just 10000)
