@@ -14,6 +14,7 @@ TODO:
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Bittide.Simulate where
@@ -23,7 +24,6 @@ import Clash.Signal.Internal
 import Data.Bifunctor (second)
 import GHC.Stack
 import Numeric.Natural
-import Data.Bifunctor (second)
 
 import Bittide.Simulate.Ppm
 
@@ -99,16 +99,11 @@ tunableClockGen ::
   -- | Clock with a dynamic frequency. At the time of writing, Clash primitives
   -- don't account for this yet, so be careful when using them. Note that dynamic
   -- frequencies are only relevant for components handling multiple domains.
-  (Signal dom Natural, Clock dom)
-tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
-  -- | Clock with a dynamic frequency. At the time of writing, Clash primitives don't
-  -- account for this yet, so be careful when using them. Note that dynamic frequencies
-  -- are only relevant for components handling multiple domains.
   --
   -- We also export the clock's period as a 'Signal' so that it can be easily
   -- observed during simulation.
   (Signal dom Natural, Clock dom)
-tunableClockGen periodOffset stepSize _reset sppedChange =
+tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
   case knownDomain @dom of
     SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
       let initPeriod = fromIntegral (period + periodOffset)
@@ -212,10 +207,6 @@ data ClockControlConfig = ClockControlConfig
   -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
   , cccBufferSize :: ElasticBufferSize
   }
-
--- we use 200kHz in simulation
-specPeriod :: PeriodPs
-specPeriod = hzToPeriod 200e3
 
 -- | Determines how to influence clock frequency given statistics provided by
 -- all elastic buffers.

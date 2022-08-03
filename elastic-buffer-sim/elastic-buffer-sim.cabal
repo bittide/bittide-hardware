@@ -79,9 +79,12 @@ library
   build-depends:
     cassava,
     random,
-    bytestring
+    bytestring,
+    template-haskell,
+    array
   exposed-modules:
-    Bittide.Layout
+    Bittide.Topology
+    Bittide.Topology.TH
     Bittide.Simulate
     Bittide.Simulate.Ppm
   default-language: Haskell2010

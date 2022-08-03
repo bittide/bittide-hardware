@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Bittide.Layout
+import Bittide.Topology
 
 import System.Environment (getArgs)
 
