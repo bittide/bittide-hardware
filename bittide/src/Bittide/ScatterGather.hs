@@ -205,13 +205,3 @@ gatherUnitWb calConfig wbInCal calSwitch wbInSU =
   mkEnables selected byteEnables
     | selected  = byteEnables ++# 0b0
     | otherwise = 0b0 ++# byteEnables
-
--- | Delays the output controls to align them with the actual read / write timing.
-delayControls :: HiddenClockResetEnable dom =>
-  Signal dom (WishboneS2M nBytes) -> Signal dom (WishboneS2M nBytes)
-delayControls wbIn = wbOut
- where
-   delayedAck = register False (acknowledge <$> wbIn)
-   delayedErr = register False (err <$> wbIn)
-   wbOut = (\wb newAck newErr-> wb{acknowledge = newAck, err = newErr})
-    <$> wbIn <*> delayedAck <*> delayedErr

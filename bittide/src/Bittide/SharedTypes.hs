@@ -19,6 +19,7 @@ import Data.Proxy
 import Data.Type.Equality ((:~:)(Refl))
 import Data.Constraint
 import Data.Constraint.Nat.Extra
+import Bittide.Extra.Wishbone
 
 -- | A single byte.
 type Byte = BitVector 8
@@ -39,7 +40,7 @@ type NatRequiredBits n = CLog 2 (n + 1)
 type NatFitsInBits n bits = NatRequiredBits n <= bits
 
 -- | Constraints required to add padding to @a@.
-type Paddable a = (BitPack a, NFDataX a, 1 <= BitSize a)
+type Paddable a = (BitPack a, NFDataX a)
 
 -- Located i x is a datatype that indicates that data x has a relation with Index i,
 -- example usage: write operation of type D to a blockRam with 'i' addresses can
@@ -123,3 +124,24 @@ div2Index ::
   Index (n*2) ->
   (Index n, b)
 div2Index = case clog2axiom @n of Refl -> bitCoerce
+
+-- | Delays the output controls to align them with the actual read / write timing.
+delayControls ::
+  HiddenClockResetEnable dom =>
+  Signal dom (WishboneS2M bytes) ->
+  Signal dom (WishboneS2M bytes)
+delayControls wbIn = wbOut
+ where
+   delayedAck = register False (acknowledge <$> wbIn)
+   delayedErr = register False (err <$> wbIn)
+   wbOut = (\wb newAck newErr-> wb{acknowledge = newAck, err = newErr})
+    <$> wbIn <*> delayedAck <*> delayedErr
+
+-- | Takes an implicit reset and a Signal dom Bool that can force a reset when True.
+forceReset ::
+  HiddenReset dom =>
+  -- | Forces a reset when True.
+  Signal dom Bool ->
+  -- | Active when the implicit reset is active or the first argument is True.
+  Reset dom
+forceReset force = unsafeFromHighPolarity (unsafeToHighPolarity hasReset .||. force)
