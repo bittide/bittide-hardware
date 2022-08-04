@@ -17,18 +17,27 @@ import Bittide.Extra.Wishbone
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
+-- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where
   PeConfig ::
     ( KnownNat initDepthI, initDepthI <= depthI, 1 <= depthI, 1 <= initDepthI
     , KnownNat initDepthD, initDepthD <= depthD, 1 <= depthD, 1 <= initDepthD) =>
+    -- | The 'MemoryMap' for the contained 'singleMasterInterconnect'.
     MemoryMap nBusses 32 ->
+    -- | Total depth of the instruction memory.
     SNat depthI ->
+    -- | Total depth of the data memory.
     SNat depthD ->
+    -- | Inititial content of the instruction memory, can be smaller than its total depth.
     InitialContent initDepthI (Bytes 4) ->
+    -- | Inititial content of the data memory, can be smaller than its total depth.
     InitialContent initDepthD (Bytes 4) ->
+    -- | Initial program counter coming out of reset.
     BitVector 32 ->
     PeConfig nBusses
 
+-- | 'Contranomy' based RV32IMC core together with instruction memory, data memory and
+-- 'singleMasterInterconnect'.
 processingElement ::
   forall dom nBusses .
   ( HiddenClockResetEnable dom
