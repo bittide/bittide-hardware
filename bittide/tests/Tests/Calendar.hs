@@ -70,9 +70,6 @@ data BVCalendar addrW where
 instance Show (BVCalendar addrW) where
   show (BVCalendar _ _ bvvec) = show bvvec
 
--- TODO: Remove this show instance after issue (https://github.com/clash-lang/clash-compiler/issues/2190) has been fixed.
-deriving instance Show (SNatLE a b)
-
 -- | Generates a configuration for 'Bittide.Calendar.calendar', with as first argument
 -- the maximum depth of the stored calendar and as second argument a generator for the
 -- calendar entries.

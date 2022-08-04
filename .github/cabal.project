@@ -11,3 +11,6 @@ package bittide
 
 package contranomy-sim
   ghc-options: -Werror
+
+package elastic-buffer-sim
+  ghc-options: -Werror

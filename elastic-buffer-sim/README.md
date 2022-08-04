@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2022 Google LLC
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # elastic-buffer-sim
 Simplified / idealized simulation of the behavior of Bittide systems with regards to their elastic buffers and clock control algorithms.
 
