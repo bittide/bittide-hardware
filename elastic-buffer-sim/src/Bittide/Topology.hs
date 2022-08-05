@@ -69,4 +69,4 @@ threeNodes ::
   , Signal dom3 (PeriodPs, DataCount, DataCount)
   )
 threeNodes =
-  $(kn 3)
+  $(graph (kn 3))

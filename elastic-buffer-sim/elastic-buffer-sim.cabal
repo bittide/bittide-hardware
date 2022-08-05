@@ -81,7 +81,8 @@ library
     random,
     bytestring,
     template-haskell,
-    array
+    array,
+    containers
   exposed-modules:
     Bittide.Topology
     Bittide.Topology.TH
