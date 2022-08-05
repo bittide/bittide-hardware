@@ -46,7 +46,7 @@ genOffs =
     <$> randomRIO (toInteger minT, toInteger maxT)
  where
   minT = speedUpPeriod specPpm specPeriod
-  maxT = slownDownPeriod specPpm specPeriod
+  maxT = slowDownPeriod specPpm specPeriod
 
 -- we use 200kHz in simulation
 specPeriod :: PeriodPs

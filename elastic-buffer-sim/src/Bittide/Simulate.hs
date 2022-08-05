@@ -107,8 +107,8 @@ tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
   case knownDomain @dom of
     SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
       let initPeriod = fromIntegral (period + periodOffset)
-          clockSignal = initPeriod :- go 0 initPeriod speedChange in
-      (clockSignal, CClock SSymbol (Just clockSignal))
+          clockSignal = initPeriod :- go settlePeriod initPeriod speedChange in
+      (clockSignal, Clock SSymbol (Just clockSignal))
  where
   go :: SettlePeriod -> PeriodPs -> Signal dom SpeedChange -> Signal dom StepSize
   go !settleCounter !period (sc :- scs) =

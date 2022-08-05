@@ -36,7 +36,7 @@ clockConfig :: Ppm -> ClockControlConfig
 clockConfig clockUncertainty = ClockControlConfig
   { cccPessimisticPeriod = speedUpPeriod clockUncertainty fastPeriod
   , cccSettlePeriod      = fastPeriod * 200
-  , cccDynamicRange      = clockUncertainty * 2
+  , cccDynamicRange      = clockUncertainty
   , cccStepSize          = 10
   , cccBufferSize        = 128
   }
