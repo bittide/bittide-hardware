@@ -5,6 +5,7 @@
 {-# OPTIONS_GHC -fconstraint-solver-iterations=0 #-}
 
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -18,8 +19,8 @@ import Data.Maybe
 import Protocols.Wishbone
 
 import Bittide.DoubleBufferedRam
+import Bittide.ScatterGather
 import Bittide.SharedTypes
-
 
 -- Internal states of the txUnit.
 data TransmissionState preambleWidth seqCountWidth frameWidth
@@ -205,6 +206,67 @@ setLowerSlice ::
   BitVector bv ->
   BitVector bv
 setLowerSlice = setSlice @_ @_ @(bv - slice) (SNat @(slice -1)) d0
+
+data LinkConfig nBytes addrW where
+  LinkConfig ::
+    (KnownNat preambleWidth, 1 <= preambleWidth) =>
+    BitVector preambleWidth ->
+    ScatterConfig nBytes addrW ->
+    GatherConfig nBytes addrW ->
+    LinkConfig nBytes addrW
+
+linkToPe ::
+  forall dom scw nBytesMu addrWMu addrWPe .
+  ( HiddenClockResetEnable dom
+  , KnownNat nBytesMu, 1 <= nBytesMu
+  , KnownNat addrWMu, 2 <= addrWMu
+  , KnownNat addrWPe, 2 <= addrWPe
+  , KnownNat scw, 1 <= scw)=>
+  LinkConfig nBytesMu addrWMu ->
+  Signal dom (DataLink 64) ->
+  Signal dom (Unsigned scw) ->
+  Signal dom (WishboneM2S addrWPe 4 (Bytes 4)) ->
+  Vec 2 (Signal dom (WishboneM2S addrWMu nBytesMu (Bytes nBytesMu))) ->
+  (Signal dom (WishboneS2M (Bytes 4)), Vec 2 (Signal dom (WishboneS2M (Bytes nBytesMu))))
+linkToPe linkConfig linkIn localCounter peM2S linkM2S = case linkConfig of
+  LinkConfig preamble scatConfig _ -> (peS2M, linkS2M)
+   where
+    linkS2M =  rxS2M :> calS2M :> Nil
+    (rxM2S :> calM2S :> Nil) = linkM2S
+    rxS2M = rxUnit preamble localCounter linkIn rxM2S
+    (peS2M,calS2M) = scatterUnitWb scatConfig calM2S linkIn peM2S
+
+peToLink ::
+  forall dom scw nBytesMu addrWMu addrWPe .
+  ( HiddenClockResetEnable dom
+  , KnownNat nBytesMu, 1 <= nBytesMu
+  , KnownNat addrWMu, 2 <= addrWMu
+  , KnownNat addrWPe, 2 <= addrWPe
+  , KnownNat scw, 1 <= scw)=>
+  LinkConfig nBytesMu addrWMu ->
+  Signal dom (Unsigned scw) ->
+  Signal dom (WishboneM2S addrWPe 4 (Bytes 4)) ->
+  Vec 2 (Signal dom (WishboneM2S addrWMu nBytesMu (Bytes nBytesMu))) ->
+  ( Signal dom (DataLink 64)
+  , Signal dom (WishboneS2M (Bytes 4))
+  , Vec 2 (Signal dom (WishboneS2M (Bytes nBytesMu))))
+peToLink linkConfig localCounter peM2S linkM2S = case linkConfig of
+  LinkConfig preamble _ gathConfig -> go preamble gathConfig
+ where
+  go ::
+    forall preambleWidth .
+    ( KnownNat preambleWidth, 1 <= preambleWidth) =>
+    BitVector preambleWidth ->
+    GatherConfig nBytesMu addrWMu ->
+    ( Signal dom (DataLink 64)
+    , Signal dom (WishboneS2M (Bytes 4))
+    , Vec 2 (Signal dom (WishboneS2M (Bytes nBytesMu))))
+  go preamble calConfig = (linkOut, peS2M, linkS2M)
+   where
+    linkS2M =  txS2M :> calS2M :> Nil
+    (txM2S :> calM2S :> Nil) = linkM2S
+    (txS2M,linkOut) = txUnit preamble localCounter gatherOut txM2S
+    (gatherOut, peS2M,calS2M) = gatherUnitWb calConfig calM2S peM2S
 
 -- | Counts the number of cycles since the last reset. Initially Unsigned 64 has been
 --  picked because it's unlikely to overflow in the lifetime of a Bittide system.
