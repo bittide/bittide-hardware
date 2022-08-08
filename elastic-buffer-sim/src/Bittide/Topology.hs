@@ -1,5 +1,5 @@
 -- | This module contains static topologies.
-module Bittide.Topology ( dumpCsv, genOffs, threeNodes ) where
+module Bittide.Topology ( dumpCsv, genOffs, threeNodes, c4 ) where
 
 import Clash.Explicit.Prelude
 import Numeric.Natural
@@ -54,6 +54,25 @@ specPeriod = hzToPeriod 200e3
 
 specPpm :: Ppm
 specPpm = Ppm 150
+
+-- tree23 = $(graph (tree 2 3))
+
+c4 ::
+  ( KnownDomain dom0
+  , KnownDomain dom1
+  , KnownDomain dom2
+  , KnownDomain dom3
+  ) =>
+  Offset ->
+  Offset ->
+  Offset ->
+  Offset ->
+  ( Signal dom0 (PeriodPs, DataCount, DataCount)
+  , Signal dom1 (PeriodPs, DataCount, DataCount)
+  , Signal dom2 (PeriodPs, DataCount, DataCount)
+  , Signal dom3 (PeriodPs, DataCount, DataCount)
+  )
+c4 = $(graph (cn 4))
 
 -- | Three nodes, all connected to one another
 threeNodes ::
