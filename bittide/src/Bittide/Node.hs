@@ -15,33 +15,36 @@ import Bittide.ProcessingElement
 import Bittide.SharedTypes
 import Bittide.Switch
 
+data NodeConfig externalLinks gppes where
+  NodeConfig ::
+    ( KnownNat switchBusses
+    , switchBusses ~ (1 + 2 * (externalLinks + (gppes + 1))))=>
+    ManagementConfig ((4 * gppes) + switchBusses) ->
+    SwitchConfig (externalLinks + gppes + 1) 4 32 ->
+    Vec gppes GppeConfig ->
+    NodeConfig externalLinks gppes
+
 node ::
-  forall dom extLinks .
-  (HiddenClockResetEnable dom, KnownNat extLinks) =>
-  ( SwitchConfig (extLinks + 3) 4 32
-  , ManagementConfig ((extLinks + 3) * 2 + (2 * 4) + 1)
-  , GppeConfig
-  , GppeConfig)
-  -> Vec extLinks (Signal dom (DataLink 64))
-  -> Vec extLinks (Signal dom (DataLink 64))
-node nodeConfig linksIn = linksOut
+  forall dom extLinks gppes .
+  ( HiddenClockResetEnable dom, KnownNat extLinks, KnownNat gppes) =>
+  NodeConfig extLinks gppes ->
+  Vec extLinks (Signal dom (DataLink 64)) ->
+  Vec extLinks (Signal dom (DataLink 64))
+node (NodeConfig nmuConfig switchConfig gppeConfigs) linksIn = linksOut
  where
   (switchOut, swS2Ms) =
     mkSwitch switchConfig swCalM2S swRxM2Ss swTxM2Ss switchIn
-  switchIn = nmuToSwitch :> peAToSwitch :> peBToSwitch :> linksIn
-  (switchToNmu :> switchToPeA :> switchToPeB :> linksOut) = switchOut
+  switchIn = nmuToSwitch :> pesToSwitch ++ linksIn
+  (splitAtI -> (switchToNmu :> switchToPes, linksOut)) = switchOut
   (nmuToSwitch, nmuM2Ss) = managementUnit nmuConfig switchToNmu nmuS2Ms
-  (swM2Ss, splitAtI -> (peAM2Ss, peBM2Ss)) = splitAtI nmuM2Ss
+  (swM2Ss, peM2Ss) = splitAtI nmuM2Ss
 
   (swCalM2S :> swRxM2Ss, swTxM2Ss) = splitAtI swM2Ss
-  (swCalS2M :> swRxS2Ms, swTxS2Ms) = splitAtI @(1 + (extLinks * 2))swS2Ms
+  (swCalS2M :> swRxS2Ms, swTxS2Ms) = splitAtI @(1 + (extLinks + (gppes + 1))) @(extLinks + (gppes + 1)) swS2Ms
 
-  nmuS2Ms = swCalS2M :> (swRxS2Ms ++ swTxS2Ms ++ peAS2Ms ++ peBS2Ms)
+  nmuS2Ms = swCalS2M :> (swRxS2Ms ++ swTxS2Ms ++ peS2Ms)
 
-  (peAToSwitch, peAS2Ms) = gppe (peAConfig, switchToPeA, peAM2Ss)
-  (peBToSwitch, peBS2Ms) = gppe (peBConfig, switchToPeB, peBM2Ss)
-
-  (switchConfig, nmuConfig, peAConfig, peBConfig) = nodeConfig
+  (pesToSwitch, concat -> peS2Ms) = unzip $ gppe <$> zip3 gppeConfigs switchToPes (unconcatI peM2Ss)
 
 -- | Configuration for the 'managementUnit' and its 'Bittide.Link'.
 -- The management unit contains the 4 wishbone busses that each pe has
