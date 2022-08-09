@@ -17,6 +17,7 @@ import System.Random (randomRIO)
 import Bittide.Simulate.Ppm
 import Bittide.Simulate
 import Bittide.Topology.TH
+import Bittide.Topology.Graph
 
 type Ps = Natural
 
@@ -62,6 +63,10 @@ specPpm = Ppm 100
 
 -- tree23 = $(graph (tree 2 3))
 
+-- RETURN VALUE: maybe graph of signals??
+--
+-- ez: graph of signals of PeriodPs, maybe a list of DataCounts?
+
 c4 ::
   ( KnownDomain dom0
   , KnownDomain dom1
@@ -77,7 +82,8 @@ c4 ::
   , Signal dom2 (PeriodPs, DataCount, DataCount)
   , Signal dom3 (PeriodPs, DataCount, DataCount)
   )
-c4 = $(graph (cn 4))
+c4 =
+  $(graph (cn 4))
 
 -- | Three nodes, all connected to one another
 k3 ::
