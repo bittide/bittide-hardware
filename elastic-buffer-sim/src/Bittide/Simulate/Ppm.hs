@@ -2,13 +2,15 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Bittide.Simulate.Ppm where
 
 import Clash.Explicit.Prelude
 import Data.Ratio
 import Numeric.Natural
 
-newtype Ppm = Ppm Natural
+newtype Ppm = Ppm Natural deriving newtype (Num)
 type PeriodPs = Natural
 type Hz = Ratio Natural
 

@@ -33,8 +33,8 @@ fastPeriod :: PeriodPs
 fastPeriod = hzToPeriod 200e3
 
 clockConfig :: Ppm -> ClockControlConfig
-clockConfig (Ppm clockUncertainty) = ClockControlConfig
-  { cccPessimisticPeriod = speedUpPeriod (Ppm clockUncertainty) fastPeriod
+clockConfig clockUncertainty = ClockControlConfig
+  { cccPessimisticPeriod = speedUpPeriod clockUncertainty fastPeriod
   , cccSettlePeriod      = fastPeriod * 200
   , cccDynamicRange      = clockUncertainty * 2
   , cccStepSize          = 10

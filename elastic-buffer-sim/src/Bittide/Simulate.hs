@@ -20,6 +20,7 @@ module Bittide.Simulate where
 
 import Clash.Prelude
 import Clash.Signal.Internal
+import Data.Bifunctor (second)
 import GHC.Stack
 import Numeric.Natural
 
@@ -178,10 +179,10 @@ data ClockControlConfig = ClockControlConfig
 
   -- | Maximum divergence from initial clock frequency. Used to prevent frequency
   -- runoff.
-  , cccDynamicRange :: DynamicRange
+  , cccDynamicRange :: Ppm
 
   -- | The size of the clock frequency should "jump" on a speed change request.
-  , cccStepSize :: StepSize
+  , cccStepSize :: Integer
 
   -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
   , cccBufferSize :: ElasticBufferSize
@@ -204,24 +205,33 @@ clockControl ::
   -- | Whether to adjust node clock frequency
   Signal dom SpeedChange
 clockControl ClockControlConfig{..} =
-  go (cccSettlePeriod + 1) . bundle
+  snd . go (cccSettlePeriod + 1) 0 . bundle
  where
-  go :: SettlePeriod -> Signal dom (Vec n DataCount) -> Signal dom SpeedChange
-  go settleCounter (currentSizes :- dataCounts) = speedChange :- nextChanges
+  go :: SettlePeriod -> Offset -> Signal dom (Vec n DataCount) -> (Offset, Signal dom SpeedChange)
+  go settleCounter offs (dataCounts :- nextDataCounts) = second (speedChange :-) nextChanges
    where
-    nextChanges = go newSettleCounter dataCounts
-    average = sum currentSizes `div` fromIntegral (length currentSizes)
+    nextChanges = go newSettleCounter nextOffs nextDataCounts
+    average = sum dataCounts `div` fromIntegral (length dataCounts)
 
-    speedChange
+    (speedChange, nextOffs)
       | settleCounter > cccSettlePeriod =
           case compare average (targetDataCount cccBufferSize) of
-            LT -> SlowDown
-            EQ -> NoChange
-            GT -> SpeedUp
-      | otherwise = NoChange
+            LT | offs + cccStepSize <= ma -> (SlowDown, offs + cccStepSize)
+            GT | offs - cccStepSize >= mi -> (SpeedUp, offs - cccStepSize)
+            _ -> (NoChange, offs)
+      | otherwise = (NoChange, offs)
 
     newSettleCounter =
       case speedChange of
         NoChange -> settleCounter + cccPessimisticPeriod
         SpeedUp -> 0
         SlowDown -> 0
+
+    mi = minTOffset cccDynamicRange domT
+    ma = maxTOffset cccDynamicRange domT
+
+    domT = snatToNum @PeriodPs (clockPeriod @dom)
+
+minTOffset, maxTOffset :: Ppm -> PeriodPs -> Offset
+minTOffset ppm period = toInteger (speedUpPeriod ppm period) - toInteger period
+maxTOffset ppm period = toInteger (slowDownPeriod ppm period - period)
