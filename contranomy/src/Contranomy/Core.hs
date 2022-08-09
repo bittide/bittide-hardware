@@ -58,6 +58,7 @@ coreOut = CoreOut
   , dBusM2S = emptyWishboneM2S @Bytes @AddressWidth
   }
 
+{-# NOINLINE core #-}
 core ::
   HiddenClockResetEnable dom =>
   BitVector 32 ->

@@ -31,6 +31,7 @@ data TransmissionState preambleWidth seqCountWidth frameWidth
   -- of which frame of the sequence counter is being transmitted.
    deriving (Generic, NFDataX)
 
+{-# NOINLINE txUnit #-}
 -- | Transmitter for the Bittide Link, it either transmits the incoming gather frame or
 -- transmits the preamble followed by the sequence counter.
 txUnit ::
@@ -113,6 +114,7 @@ data ReceiverState
 -- sequence counters.
 type ShiftRegWidth paw scw = Max paw (scw + scw)
 
+{-# NOINLINE rxUnit #-}
 -- | Receives a Bittide link and can be set to detect the given preamble and capture the
 -- following sequence counter.
 rxUnit ::

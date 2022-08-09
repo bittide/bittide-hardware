@@ -139,6 +139,7 @@ wbInterface addressRange WishboneM2S{..} readData =
   writeOp | strobe && writeEnable && not err = Just writeData
           | otherwise  = Nothing
 
+{-# NOINLINE scatterUnitWb #-}
 -- | Wishbone addressable 'scatterUnit', the wishbone port can read the data from this
 -- memory element as if it has a 32 bit port by selecting the upper 32 or lower 32 bits
 -- of the read data.
@@ -169,6 +170,7 @@ scatterUnitWb calConfig wbInCal calSwitch linkIn wbInSU =
   selected = register (errorX "scatterUnitWb: Initial selection undefined") upperSelected
   scatteredData = mux selected upper lower
 
+{-# NOINLINE gatherUnitWb #-}
 -- | Wishbone addressable 'gatherUnit', the wishbone port can write data to this
 -- memory element as if it has a 32 bit port by controlling the byte enables of the
 -- 'gatherUnit' based on the third bit.

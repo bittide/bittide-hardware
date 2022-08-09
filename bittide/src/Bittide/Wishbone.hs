@@ -16,6 +16,7 @@ import           Data.Maybe
 
 type MemoryMap nSlaves addressWidth = Vec nSlaves (BitVector addressWidth)
 
+{-# NOINLINE singleMasterInterconnect #-}
 -- | Component that maps multiple slave devices to a single master device over the wishbone
 -- bus, it assumes that the config argument contains increasing base addresses that correspond
 -- to the indexes of the slaves in the incoming slave-busses and outgoing master-busses.
