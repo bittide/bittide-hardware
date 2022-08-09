@@ -29,5 +29,5 @@ diffPeriod ppm = hzToPeriod . diffHz ppm . periodToHz
 speedUpPeriod :: Ppm -> PeriodPs -> PeriodPs
 speedUpPeriod ppm = hzToPeriod . speedUpHz ppm . periodToHz
 
-slownDownPeriod :: Ppm -> PeriodPs -> PeriodPs
-slownDownPeriod ppm = hzToPeriod . slowDownHz ppm . periodToHz
+slowDownPeriod :: Ppm -> PeriodPs -> PeriodPs
+slowDownPeriod ppm = hzToPeriod . slowDownHz ppm . periodToHz
