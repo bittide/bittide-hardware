@@ -100,7 +100,7 @@ tunableClockGen settlePeriod periodOffset stepSize _reset =
           | settleCounter >= settlePeriod -> (0, period + stepSize)
           | otherwise -> error "tunableClockGen: frequency change requested too often"
         NoChange ->
-          (settleCounter + stepSize, period)
+          (settleCounter + period, period)
     in
       newPeriod :- go newSettleCounter newPeriod scs
 
