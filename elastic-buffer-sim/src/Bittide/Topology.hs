@@ -1,5 +1,7 @@
--- | This module contains static topologies.
-module Bittide.Topology ( dumpCsv, genOffs, k3, c4 ) where
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
+-- | This module contains static topologies and machinery to
+module Bittide.Topology ( dumpCsv, genOffs ) where
 
 import Clash.Explicit.Prelude
 import Control.Monad (replicateM, forM_)
@@ -11,13 +13,16 @@ import Clash.Signal.Internal (Signal (..))
 import Data.Array qualified as A
 import Data.ByteString.Lazy qualified as BSL
 import Data.Csv
-import Data.Graph (Graph)
 import System.Random (randomRIO)
 
 import Bittide.Simulate.Ppm
 import Bittide.Simulate
 import Bittide.Topology.TH
 import Bittide.Topology.Graph
+
+-- 200kHz instead of 200MHz; otherwise the periods are so small that deviations
+-- can't be expressed as 'Natural's
+createDomain vSystem{vName="Bittide", vPeriod=hzToPeriod 200e3}
 
 type Ps = Natural
 
@@ -83,7 +88,7 @@ c4 ::
   , Signal dom3 (PeriodPs, DataCount, DataCount)
   )
 c4 =
-  $(graph (cn 4))
+  $(simNodesFromGraph (cn 4))
 
 -- | Three nodes, all connected to one another
 k3 ::
@@ -99,4 +104,4 @@ k3 ::
   , Signal dom3 (PeriodPs, DataCount, DataCount)
   )
 k3 =
-  $(graph (kn 3))
+  $(simNodesFromGraph (kn 3))

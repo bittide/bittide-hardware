@@ -29,10 +29,6 @@ import Bittide.Simulate.Ppm
 
 import Data.Csv
 
--- 200kHz instead of 200MHz; otherwise the periods are so small that deviations
--- can't be expressed as 'Natural's
-createDomain vSystem{vName="Bittide", vPeriod=hzToPeriod 200e3}
-
 -- Number of type aliases for documentation purposes in various functions defined
 -- down below.
 type StepSize = Natural

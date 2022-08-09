@@ -1,13 +1,9 @@
-module Bittide.Topology.TH ( graph ) where
+module Bittide.Topology.TH ( simNodesFromGraph ) where
 
 import Prelude
 
 import Data.Array qualified as A
-import Data.Function (on)
-import Data.Graph (Graph, graphFromEdges)
-import Data.List (sort, groupBy)
-import Data.Maybe (mapMaybe)
-import Data.Tuple (swap)
+import Data.Graph (Graph)
 import Language.Haskell.TH (Q, Body (..), Exp (..), Pat (..), Dec (..), Lit (..), newName)
 
 import Clash.Explicit.Prelude qualified as Clash
@@ -18,8 +14,10 @@ import Bittide.Simulate.Ppm
 cross :: [a] -> [b] -> [(a, b)]
 cross xs ys = (,) <$> xs <*> ys
 
-graph :: Graph -> Q Exp
-graph g = do
+-- | Given a graph with \(n\) nodes, generate a function which takes \(n\)
+-- offsets and return a tuple of signals per clock-domain
+simNodesFromGraph :: Graph -> Q Exp
+simNodesFromGraph g = do
   offs <- traverse (\i -> newName ("offs" ++ show i)) is
   clockNames <- traverse (\i -> newName ("clock" ++ show i)) isA
   clockControlNames <- traverse (\i -> newName ("clockControl" ++ show i)) isA
