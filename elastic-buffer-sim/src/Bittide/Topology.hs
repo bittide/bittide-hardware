@@ -53,7 +53,7 @@ specPeriod :: PeriodPs
 specPeriod = hzToPeriod 200e3
 
 specPpm :: Ppm
-specPpm = Ppm 150
+specPpm = Ppm 100
 
 -- tree23 = $(graph (tree 2 3))
 
