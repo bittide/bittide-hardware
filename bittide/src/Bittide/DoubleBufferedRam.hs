@@ -7,6 +7,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE GADTs #-}
 
 module Bittide.DoubleBufferedRam where
 
@@ -18,7 +19,10 @@ import Protocols.Wishbone
 import Bittide.SharedTypes
 import Data.Bifunctor
 
-data InitialContent n a = Reloadable (Vec n a) | NonReloadable (Vec n a) | Undefined
+data InitialContent n a where
+  NonReloadable :: Vec n a -> InitialContent n a
+  Reloadable :: Vec n a -> InitialContent n a
+  Undefined :: (1 <= n, KnownNat n) => InitialContent n a
 
 getContent :: InitialContent n a -> Vec n a
 getContent (Reloadable v) = v
