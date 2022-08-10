@@ -20,6 +20,7 @@ type CalendarEntry links memDepth = Vec links (Index memDepth, CrossbarIndex lin
 
 -- TODO: Remove Bittide.ScatterEngine and its tests before merging #71
 
+{-# NOINLINE switch #-}
 -- | The Bittide Switch routes data from incoming to outgoing links based on a calendar.
 -- The switch consists of a crossbar, a calendar and a scatter engine for all incoming links.
 -- The crossbar selects one of the scatter engine outputs for every outgoing link, index 0
@@ -49,6 +50,7 @@ switch calConfig calSwitch wbIn streamsIn =
   (calendars, newMetaCycle, wbOut) = mkCalendar calConfig calSwitch wbIn
   (gatherConfig, crossBarConfig)  = unbundle $ unzip <$> calendars
 
+{-# NOINLINE crossBar #-}
 -- | The crossbar receives a vector of indices and a vector of incoming frames.
 -- For each outgoing link it will select a data source. 0 selects a null frame (Nothing),
 -- therefore indexing of incoming links starts at 1 (index 1 selects incoming frame 0).

@@ -198,6 +198,7 @@ registerWb ::
 registerWb writePriority initVal wbIn sigIn =
   registerWbE writePriority initVal wbIn sigIn (pure maxBound)
 
+{-# NOINLINE registerWbE #-}
 -- | Register with additional wishbone interface, this component has a configurable
 -- priority that determines which value gets stored in the register during a write conflict.
 -- With 'CircuitPriority', the incoming value in the fourth argument gets stored on a
