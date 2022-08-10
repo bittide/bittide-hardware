@@ -1,3 +1,4 @@
+{-# LANGUAGE PartialTypeSignatures #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 -- | This module contains static topologies and machinery to
@@ -38,8 +39,8 @@ dumpCsv m = do
   -- the below can be done without TH: output of TH expression should be a list
   -- of 'ByteString's
   let (dat0, dat1, dat2) =
-          on3 (encode . P.take m . timeClock)
-        $ k3 @Bittide @Bittide @Bittide offs
+          on3 (encode . P.take m)
+        $ k3 offs
   BSL.appendFile "clocks0.csv" dat0
   BSL.appendFile "clocks1.csv" dat1
   BSL.appendFile "clocks2.csv" dat2
@@ -70,30 +71,21 @@ specPpm = Ppm 100
 -- ez: graph of signals of PeriodPs, maybe a list of DataCounts?
 
 c4 ::
-  ( KnownDomain dom0
-  , KnownDomain dom1
-  , KnownDomain dom2
-  , KnownDomain dom3
-  ) =>
   [Offset] ->
-  ( Signal dom0 (PeriodPs, DataCount, DataCount)
-  , Signal dom1 (PeriodPs, DataCount, DataCount)
-  , Signal dom2 (PeriodPs, DataCount, DataCount)
-  , Signal dom3 (PeriodPs, DataCount, DataCount)
+  ( [(Ps, PeriodPs, DataCount, DataCount)]
+  , [(Ps, PeriodPs, DataCount, DataCount)]
+  , [(Ps, PeriodPs, DataCount, DataCount)]
+  , [(Ps, PeriodPs, DataCount, DataCount)]
   )
 c4 =
   $(simNodesFromGraph (cn 4))
 
 -- | Three nodes, all connected to one another
 k3 ::
-  ( KnownDomain dom1
-  , KnownDomain dom2
-  , KnownDomain dom3
-  ) =>
   [Offset] ->
-  ( Signal dom1 (PeriodPs, DataCount, DataCount)
-  , Signal dom2 (PeriodPs, DataCount, DataCount)
-  , Signal dom3 (PeriodPs, DataCount, DataCount)
+  ( [(Ps, PeriodPs, DataCount, DataCount)]
+  , [(Ps, PeriodPs, DataCount, DataCount)]
+  , [(Ps, PeriodPs, DataCount, DataCount)]
   )
 k3 =
   $(simNodesFromGraph (kn 3))

@@ -4,7 +4,7 @@ import Prelude
 
 import Data.Array qualified as A
 import Data.Graph (Graph)
-import Language.Haskell.TH (Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), newName)
+import Language.Haskell.TH (Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), Type (..), newName, mkName)
 
 import Clash.Explicit.Prelude qualified as Clash
 import Clash.Signal.Internal qualified as Clash
@@ -88,14 +88,23 @@ simNodesFromGraph g = do
       clockControls = clockControlD <$> is
       clkDs = clkD <$> is
 
-      res k = AppE bundleQ (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ]))
-  pure $ LamE [ListP (VarP <$> offs)] (LetE (ebs ++ clkDs ++ clockControls) (tup (fmap res is)))
+      -- TODO: tuple of [(PeriodPs, Ps, ...)]
+      res k = do
+        let ebN = length (g A.! k)
+        postprocess <- timeN ebN
+        pure $
+          AppE
+            postprocess
+            (SigE (AppE bundleQ (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ]))) signalType)
+  ress <- traverse res is
+  pure $ LamE [ListP (VarP <$> offs)] (LetE (ebs ++ clkDs ++ clockControls) (tup ress))
  where
   is = [0..n]
   bounds@(0, n) = A.bounds g
   isA = A.listArray bounds is
   ebIxes = cross .$ is
   ebA = A.array ((0, 0), (n, n)) (zip .$ ebIxes)
+  signalType = AppT (AppT (ConT ''Clash.Signal) (ConT $ mkName "Bittide")) WildCardT
 
   infixl 3 .$
   (.$) f x = f x x
