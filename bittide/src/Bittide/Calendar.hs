@@ -172,6 +172,9 @@ calendar SNat bootstrapActive bootstrapShadow wbIn =
 
   (bufCtrl, calOut) = mealyB go initState (ctrl, bufA, bufB)
 
+  -- We can safely derive the initial calDepths from the bootStrapsizes because
+  -- we have the calDepth <= bootstrapSize constraints. Furthermore using resize
+  -- does not require additional constraints.
   initState = CalendarState
     { firstCycle     = True
     , selectedBuffer = A
