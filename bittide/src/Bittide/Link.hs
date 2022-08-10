@@ -127,15 +127,15 @@ rxUnit ::
   , KnownNat scw, 1 <= scw) =>
   -- | Preamble.
   BitVector paw ->
-  -- | Incoming bittide link.
-  Signal core (DataLink fw) ->
   -- | Local sequence counter.
   Signal core (Unsigned scw) ->
+  -- | Incoming bittide link.
+  Signal core (DataLink fw) ->
   -- | Control register Wishbone bus (Master -> slave).
   Signal core (WishboneM2S nBytes aw) ->
   -- | Control register Wishbone bus (Slave -> master).
   Signal core (WishboneS2M nBytes)
-rxUnit preamble linkIn localCounter wbIn = wbOut
+rxUnit preamble localCounter linkIn wbIn = wbOut
  where
   (regOut, wbOut) = registerWbE WishbonePriority regInit wbIn regIn byteEnables
   regInit = (0,resize $ pack Idle)
