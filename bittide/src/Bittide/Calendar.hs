@@ -71,8 +71,6 @@ mkCalendar ::
   (HiddenClockResetEnable dom) =>
   -- | Calendar configuration for 'calendar'.
   CalendarConfig nBytes addrW calEntry ->
-  -- | Signal that swaps the active and shadow calendar. (1 cycle delay)
-  Signal dom Bool ->
   -- | Wishbone interface (master to slave)
   Signal dom (WishboneM2S nBytes addrW) ->
   -- |
@@ -96,6 +94,8 @@ data CalendarState maxCalDepth = CalendarState
     -- ^ Depth of buffer A.
   , calDepthB       :: Index maxCalDepth
     -- ^ Depth of buffer B.
+  , swapCalendars   :: Bool
+    -- ^ Swaps the active and shadow calendar at the end of the metacycle.
   } deriving (Generic, NFDataX)
 
 -- | Contains the current active calendar entry along with the metacycle
@@ -105,8 +105,8 @@ data CalendarState maxCalDepth = CalendarState
 data CalendarOutput calDepth calEntry = CalendarOutput
   { activeEntry   :: calEntry
     -- ^ Current active entry.
-  , newMetaCycle  :: Bool
-    -- ^ True when entry 0 of the active calendar is present at the output.
+  , lastCycle  :: Bool
+    -- ^ True when the last entry of the active calendar is present at the output.
   , shadowEntry   :: calEntry
     -- ^ Current shadow entry
   , shadowDepth   :: Index calDepth
@@ -151,14 +151,12 @@ calendar ::
   -- ^ Bootstrap calendar for the active buffer.
   -> Vec bootstrapSizeB calEntry
   -- ^ Bootstrap calendar for the shadow buffer.
-  -> Signal dom Bool
-  -- ^ Signal that swaps the active and shadow calendar. (1 cycle delay)
   -> Signal dom (WishboneM2S nBytes addrW)
   -- ^ Incoming wishbone interface
   -> (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M nBytes))
   -- ^ Currently active entry, Metacycle indicator and outgoing wishbone interface.
-calendar SNat bootstrapActive bootstrapShadow shadowSwitch wbIn =
-  (activeEntry <$> calOut, newMetaCycle <$> calOut, wbOut)
+calendar SNat bootstrapActive bootstrapShadow wbIn =
+  (activeEntry <$> calOut, lastCycle <$> calOut, wbOut)
  where
   ctrl :: Signal dom (CalendarControl maxCalDepth calEntry nBytes)
   ctrl = wbCalRX wbIn
@@ -172,25 +170,34 @@ calendar SNat bootstrapActive bootstrapShadow shadowSwitch wbIn =
   bufA = blockRam bootstrapA (readA <$> bufCtrl) (writeA <$> bufCtrl)
   bufB = blockRam bootstrapB (readB <$> bufCtrl) (writeB <$> bufCtrl)
 
-  (bufCtrl, calOut) = mealyB go initState (shadowSwitch, ctrl, bufA, bufB)
+  (bufCtrl, calOut) = mealyB go initState (ctrl, bufA, bufB)
 
+  -- We can safely derive the initial calDepths from the bootStrapsizes because
+  -- we have the calDepth <= bootstrapSize constraints. Furthermore using resize
+  -- does not require additional constraints.
   initState = CalendarState
     { firstCycle     = True
     , selectedBuffer = A
     , entryTracker   = 0
-    , calDepthA      = natToNum @(bootstrapSizeA - 1)
-    , calDepthB      = natToNum @(bootstrapSizeB - 1)
+    , calDepthA      = resize (maxBound :: Index bootstrapSizeA)
+    , calDepthB      = resize (maxBound :: Index bootstrapSizeB)
+    , swapCalendars  = False
     }
 
   go :: CalendarState maxCalDepth ->
-    (Bool, CalendarControl maxCalDepth calEntry nBytes, calEntry, calEntry) ->
+    (CalendarControl maxCalDepth calEntry nBytes, calEntry, calEntry) ->
     (CalendarState maxCalDepth, (BufferControl maxCalDepth calEntry, CalendarOutput maxCalDepth calEntry))
-  go CalendarState{..} (bufSwitch, CalendarControl{..}, bufAIn, bufBIn) =
-    (wbState, (bufCtrl1, calOut1))
+  go CalendarState{..} (CalendarControl{..}, bufAIn, bufBIn) =
+    (calState, (bufCtrl1, calOut1))
    where
     selectedBuffer1
-      | bufSwitch = flipBuffer selectedBuffer
+      | swapCalendars && lastCycle = flipBuffer selectedBuffer
       | otherwise = selectedBuffer
+    lastCycle = entryTracker == activeDepth
+
+    entryTracker1
+      | not lastCycle = satSucc SatWrap entryTracker
+      | otherwise     = 0
 
     (activeEntry1, shadowEntry)
       | A <- selectedBuffer = (bufAIn, bufBIn)
@@ -213,24 +220,19 @@ calendar SNat bootstrapActive bootstrapShadow shadowSwitch wbIn =
         (B, True) -> (shadowReadAddr, newShadowEntry, entryTracker1 , Nothing)
         (B, _   ) -> (shadowReadAddr, Nothing       , entryTracker1 , Nothing)
 
-    entryTracker1
-      | entryTracker < activeDepth = satSucc SatWrap entryTracker
-      | otherwise                  = 0
-
-    newMetaCycle = entryTracker == 0
-
     activeEntry
       | firstCycle = bootstrapA !! (0 :: Index 1)
       | otherwise  = activeEntry1
 
     bufCtrl1 = BufferControl{readA, writeA, readB, writeB}
-    calOut1 = CalendarOutput{activeEntry, newMetaCycle, shadowEntry, shadowDepth}
-    wbState = CalendarState
+    calOut1 = CalendarOutput{activeEntry, lastCycle, shadowEntry, shadowDepth}
+    calState = CalendarState
       { firstCycle      = False
       , selectedBuffer  = selectedBuffer1
       , entryTracker    = entryTracker1
       , calDepthA       = calDepthA1
       , calDepthB       = calDepthB1
+      , swapCalendars   = armCalendarSwap || (not lastCycle && swapCalendars)
       }
 
 -- | State of the calendar RX hardware, contains registers to store a new entry and
@@ -259,6 +261,8 @@ instance ( KnownNat regSize
 --  * address (n + 2) -> Register that stores the read address for the shadow calendar.
 --  * address (n + 3) -> Writing to this address updates the depth (counter wrap around point)
 --    for the shadow calendar.
+--  * address (n + 4) -> Arm the calendar to swap the active and shadow calendars at the
+--    end of the metacycle.
 data CalendarControl calDepth calEntry nBytes = CalendarControl
   { newShadowDepth :: Maybe (Index calDepth)
     -- ^ The size of the next calendar
@@ -270,8 +274,10 @@ data CalendarControl calDepth calEntry nBytes = CalendarControl
     -- ^ Is the wishbone interface currently performing an operation
   , wishboneError :: Bool
     -- ^ Is the wishbone interface in an illegal state
-  , wishboneAddress :: Index (3 + Regs calEntry (nBytes * 8))
+  , wishboneAddress :: WbAddress calEntry nBytes
     -- ^ Address for the wishbone interface.
+  , armCalendarSwap :: Bool
+    -- ^ Swap the active and shadow calendar at the end of the metacycle.
   }
 
 -- | Interface that decodes incoming wishbone operations into useful signals for the
@@ -304,23 +310,26 @@ wbCalRX = mealy go initState
    where
     calEntryRegs = natToNum @(Regs calEntry (nBytes * 8))
 
-    wbAddrValid = addr < (3 + resize (pack calEntryRegs))
-    wbAddr = (paddedToData . bvAsPadded) addr
-    wbActive = busCycle && strobe
-    wbError  = wbActive && not wbAddrValid
-    wbWriting = wbActive && writeEnable && not wbError
-    wbNewCalEntry = wbWriting && wbAddr < calEntryRegs
+    wbAddrValid = addr <= resize (pack (maxBound :: WbAddress calEntry nBytes))
+    wishboneAddress = (paddedToData . bvAsPadded) addr
+    wishboneActive = busCycle && strobe
+    wishboneError  = wishboneActive && not wbAddrValid
+    wbWriting = wishboneActive && writeEnable && not wishboneError
+    wbNewCalEntry = wbWriting && wishboneAddress < calEntryRegs
 
-    wbNewShadowWriteAddr = wbWriting && wbAddr == shadowWriteWbAddr
-    wbNewShadowReadAddr = wbWriting && wbAddr == shadowReadWbAddr
-    wbNewShadowDepth = wbWriting && wbAddr == shadowDepthWbAddr
+    wbNewShadowWriteAddr = wbWriting && wishboneAddress == shadowWriteWbAddr
+    wbNewShadowReadAddr = wbWriting && wishboneAddress == shadowReadWbAddr
+    wbNewShadowDepth = wbWriting && wishboneAddress == shadowDepthWbAddr
+    armCalendarSwap = wbWriting && wishboneAddress == calSwapWbAddr
+    shadowReadAddr = registersToData @_ @(nBytes * 8) calStReadAddr
+    shadowEntryData = registersToData @_ @(nBytes * 8) calStRegisters
 
     wbState1 = wbState
       { calStRegisters = newPartialCalEntry
       , calStReadAddr = newShadowReadAddr}
 
     newPartialCalEntry
-      | wbNewCalEntry = updateRegisters wbAddr calStRegisters
+      | wbNewCalEntry = updateRegisters wishboneAddress calStRegisters
       | otherwise     = calStRegisters
     newShadowReadAddr
       | wbNewShadowReadAddr = updateRegisters (0 :: Int) calStReadAddr
@@ -340,16 +349,17 @@ wbCalRX = mealy go initState
       | otherwise        = Nothing
 
     newShadowEntry
-      | wbNewShadowWriteAddr = Just (calAddr , registersToData @_ @(nBytes * 8) calStRegisters)
+      | wbNewShadowWriteAddr = Just (calAddr, shadowEntryData)
       | otherwise            = Nothing
 
     calControl = CalendarControl
-      { newShadowDepth = newShadowDepth
-      , newShadowEntry = newShadowEntry
-      , shadowReadAddr = registersToData @_ @(nBytes * 8) calStReadAddr
-      , wishboneActive = wbActive
-      , wishboneError = wbError
-      , wishboneAddress = wbAddr
+      { newShadowDepth
+      , newShadowEntry
+      , shadowReadAddr
+      , wishboneActive
+      , wishboneError
+      , wishboneAddress
+      , armCalendarSwap
       }
 
 -- | Wishbone interface that drives the outgoing wishbone data based on the received
@@ -364,7 +374,7 @@ wbCalTX ::
   CalendarOutput calDepth calEntry ->
   WishboneS2M nBytes
 wbCalTX CalendarControl{shadowReadAddr, wishboneActive, wishboneError, wishboneAddress}
- CalendarOutput{shadowEntry, shadowDepth}= wbOut
+ CalendarOutput{shadowEntry, shadowDepth} = wbOut
  where
   readData =
     case (getRegs shadowEntry, getRegs shadowReadAddr, getRegs shadowDepth) of
@@ -396,11 +406,16 @@ regUpdate byteEnable oldEntry newEntry =
   bitCoerce $ (\e (o, n :: BitVector 8) -> if e then n else o) <$>
    bitCoerce byteEnable <*> zip (bitCoerce oldEntry) (bitCoerce newEntry)
 
-shadowWriteWbAddr :: forall n . (KnownNat n, 3 <=n) => Index n
-shadowWriteWbAddr = natToNum @(n - 3)
+type WbAddress calEntry nBytes = Index (Regs calEntry (nBytes * 8) + 4)
 
-shadowReadWbAddr :: forall n . (KnownNat n,  2 <= n) => Index n
-shadowReadWbAddr = natToNum @(n - 2)
+shadowWriteWbAddr :: forall n . (KnownNat n, 4 <=n) => Index n
+shadowWriteWbAddr = natToNum @(n - 4)
 
-shadowDepthWbAddr :: forall n . (KnownNat n, 1 <= n) => Index n
-shadowDepthWbAddr = natToNum @(n - 1)
+shadowReadWbAddr :: forall n . (KnownNat n,  3 <= n) => Index n
+shadowReadWbAddr = natToNum @(n - 3)
+
+shadowDepthWbAddr :: forall n . (KnownNat n, 2 <= n) => Index n
+shadowDepthWbAddr = natToNum @(n - 2)
+
+calSwapWbAddr :: forall n . (KnownNat n, 1 <= n) => Index n
+calSwapWbAddr = natToNum @(n - 1)

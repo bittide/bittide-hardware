@@ -141,7 +141,7 @@ scatterUnitNoFrameLoss = property $ do
     let
       topEntity (unbundle -> (wbIn, linkIn)) = fst $
         withClockResetEnable clockGen resetGen enableGen (scatterUnitWb @System @_ @32)
-        calConfig (pure emptyWishboneM2S) (pure False) linkIn wbIn
+        calConfig (pure emptyWishboneM2S) linkIn wbIn
 
       wbReadOps = P.take simLength $ P.replicate memDepth emptyWishboneM2S P.++  P.concat
         (padToLength memDepth emptyWishboneM2S . P.concat . P.zipWith wbRead (toList calA) <$> inputFrames)
@@ -180,7 +180,7 @@ gatherUnitNoFrameLoss = property $ do
     let
       topEntity wbIn = (\ (a, _ ,_) -> a) $
         withClockResetEnable clockGen resetGen enableGen (gatherUnitWb @System @_ @32)
-        calConfig (pure emptyWishboneM2S) (pure False) wbIn
+        calConfig (pure emptyWishboneM2S) wbIn
 
       wbWriteOps = P.take simLength . P.concat $
         padToLength memDepth emptyWishboneM2S . P.concat . P.zipWith wbWrite (toList calA) <$> inputFrames

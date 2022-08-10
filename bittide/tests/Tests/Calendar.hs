@@ -39,6 +39,7 @@ import qualified Clash.Sized.Vector as V
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Prelude as P
+import Clash.Hedgehog.Sized.Index (genIndex)
 
 calGroup :: TestTree
 calGroup = testGroup "Calendar group"
@@ -157,17 +158,16 @@ genBVCalendar calSize bitWidth = do
 -- | This test checks if we can read the initialized calendars.
 readCalendar :: Property
 readCalendar = property $ do
-  calSize <- forAll $ Gen.enum 2 31
+  calSize <- forAll $ Gen.int $ Range.constant 2 31
   bitWidth <- forAll $ Gen.enum 1 1000
-  bvCal <- forAll $ genBVCalendar calSize bitWidth
-  simLength <- forAll $ Gen.enum (fromIntegral calSize) 100
-  switchSignal <- forAll $ Gen.list (Range.singleton simLength) Gen.bool
+  bvCal <- forAll $ genBVCalendar (fromIntegral calSize) bitWidth
+  simLength <- forAll $ Gen.enum (succ calSize) 100
   case bvCal of
     BVCalendar (succSNat -> calSize') SNat cal -> do
       let
-        topEntity switch = (\(a,_,_) -> a) $ withClockResetEnable clockGen resetGen enableGen
-          calendar calSize' cal cal switch $ pure (emptyWishboneM2S @4 @32)
-        simOut = simulateN @System (fromIntegral simLength) topEntity switchSignal
+        topEntity = (\(a,_,_) -> a) $ withClockResetEnable clockGen resetGen enableGen
+          calendar calSize' cal cal $ pure (emptyWishboneM2S @4 @32)
+        simOut = sampleN @System (fromIntegral simLength) topEntity
       footnote . fromString $ "simOut: " <> show simOut
       footnote . fromString $ "expected: " <> show (toList cal)
 
@@ -177,28 +177,28 @@ readCalendar = property $ do
 -- elements later.
 reconfigCalendar :: Property
 reconfigCalendar = property $ do
-  calSize <- forAll $ Gen.enum 2 32
+  calSize <- forAll $ Gen.int $ Range.constant 2 32
   bitWidth <- forAll $ Gen.enum 1 1000
-  bvCal <- forAll $ genBVCalendar calSize bitWidth
+  bvCal <- forAll $ genBVCalendar (fromIntegral calSize) bitWidth
   case bvCal of
     BVCalendar (succSNat -> calSize') _ cal -> do
-      newEntries <- forAll . Gen.list (Range.singleton $ fromIntegral calSize) $ Gen.integral Range.constantBounded
+      newEntries <- forAll . Gen.list (Range.singleton calSize) $ Gen.integral Range.constantBounded
       let
         configAddresses = cycle [0..indexOf calSize']
         writeOps = P.zip configAddresses newEntries
+        swapAddr = bitWidth `divRU` 32 + 3
+        swapCall = wbWriteOp (swapAddr, 0)
+        wbWrites = wbNothingM2S @4 @32 : P.concatMap writeWithWishbone writeOps <> [swapCall]
         writeDuration = P.length wbWrites
-        simLength = writeDuration + fromIntegral calSize + 10
-        switchList = P.replicate (writeDuration + 1) False <> (True : P.repeat False)
-        wbWrites = wbNothingM2S @4 @32 : P.concatMap writeWithWishbone writeOps
-        topEntity (unbundle -> (switch, writePort)) = (\(a,_,_) -> a) $ withClockResetEnable clockGen
-          resetGen enableGen calendar (succSNat calSize') cal cal switch writePort
-        topEntityInput = P.take simLength $ P.zip switchList $ wbWrites <> P.repeat wbNothingM2S
+        simLength = writeDuration + (2 * calSize)
+        topEntity writePort = (\(a,_,_) -> a) $ withClockResetEnable clockGen
+          resetGen enableGen calendar (succSNat calSize') cal cal writePort
+        topEntityInput = P.take simLength $ wbWrites <> P.repeat wbNothingM2S
         simOut = simulateN @System simLength topEntity topEntityInput
       footnote . fromString $ "simOut: " <> show simOut
       footnote . fromString $ "expected: " <> show (toList cal <> newEntries)
       footnote . fromString $ "Write operations: " <> show wbWrites
       footnote . fromString $ "Write operations: " <> show writeOps
-      footnote . fromString $ "switchList: " <> show (P.take simLength switchList)
       Set.fromList simOut === Set.fromList (P.take simLength (toList cal <> newEntries))
 
 -- | This test checks if we can write to the shadowbuffer and read back the written
@@ -219,40 +219,42 @@ readShadowCalendar = property $ do
             simLength = P.length wbReads + 1
             wbReads = P.concatMap (\ i -> wbReadEntry @4 @32 (fromIntegral i) entryRegs) readAddresses
             topEntity writePort = (\(_,_,wb) -> wb) $ withClockResetEnable clockGen resetGen enableGen
-              calendar (succSNat snatS) calA' calS' (pure False) writePort
+              calendar (succSNat snatS) calA' calS' writePort
             topEntityInput = P.take simLength $ wbReads <> P.repeat wbNothingM2S
             simOut = simulateN @System simLength topEntity topEntityInput
             wbOutEntries = directedWbDecoding topEntityInput simOut
           wbOutEntries === toList calS'
         _ -> error "readShadowCalendar: Calendar sizes or bitwidths do not match."
 
--- | This test checks if the metacycle signal (which indicates that the first entry of a
--- new calendar is present at the output), is correctly being generated.
+-- | This test checks if the metacycle signal (which indicates that the last entry of the
+-- active calendar is present at the output), is correctly being generated.
 metaCycleIndication :: Property
 metaCycleIndication = property $ do
-  calSize <- forAll $ Gen.enum 2 31
+  calSize <- forAll $ Gen.enum 3 31
   bitWidth <- forAll $ Gen.enum 1 1000
   bvCal <- forAll $ genBVCalendar calSize bitWidth
-  newDepthRange <- forAll $ Gen.integral $  Range.constant 2 calSize
+  metaCycles <- forAll $ Gen.int $ Range.constant 2 5
   case bvCal of
-    BVCalendar (succSNat -> calSize') bitWidth' cal -> do
-      simLength <- forAll $ Gen.enum 10 100
-      newDepths <- forAll $ Gen.list (Range.singleton $ fromIntegral newDepthRange) $ Gen.enum 1 (calSize - 1)
+    BVCalendar (succSNat -> (calSize' :: SNat calDepth)) bitWidth' cal -> do
+      let genDepth = fromIntegral <$> genIndex @_ @calDepth (Range.constant 2 (fromIntegral $ pred calSize))
+      newDepths <- forAll $ Gen.list (Range.singleton (metaCycles - 1)) genDepth
       let
         newDepthAddr = 2 + snatToInteger (requiredRegs bitWidth' d32)
-        allDepths = calSize : newDepths <> cycle (takeLast 2 newDepths)
-        wbWrites = wbWriteOp @4 @32 <$> P.zip (P.repeat newDepthAddr) (fromIntegral <$> newDepths)
-        switchSignal = P.concatMap (\ (fromIntegral -> n) -> P.replicate n False <> [True]) allDepths
-        wbIn = P.concatMap (\(fromIntegral -> i, wb) -> wb : P.replicate i wbNothingM2S) $ P.zip (1 + calSize : newDepths) wbWrites
-        topEntity (unbundle -> (switch, writePort)) = (\(_,m,_) -> m) $ withClockResetEnable
-          clockGen resetGen enableGen calendar calSize' cal cal switch writePort
-        topEntityInput = P.zip switchSignal (wbIn <> P.repeat wbNothingM2S)
+        allDepths = (calSize - 1) : (fromIntegral <$> newDepths)
+      simLength <- forAll $ fromIntegral <$> Gen.enum calSize (sum allDepths)
+      let
+        swapAddr = bitWidth `divRU` 32 + 3
+        swapCall = wbWriteOp @4 @32 (swapAddr, 0)
+        wbWrites = P.replicate (fromIntegral calSize - 3) wbNothingM2S <> P.concatMap writeAndSwitch newDepths
+        writeAndSwitch d = wbWriteOp (newDepthAddr, fromIntegral d) : swapCall : P.replicate (d-1) wbNothingM2S
+        topEntity writePort = (\(_,m,_) -> m) $ withClockResetEnable
+          clockGen resetGen enableGen calendar calSize' cal cal writePort
+        topEntityInput = wbWrites <> P.repeat wbNothingM2S
         simOut = simulateN @System simLength topEntity topEntityInput
-        expectedOut = P.take simLength $ True : P.tail switchSignal
+        expectedOut = P.take simLength $ P.concatMap (\ (fromIntegral -> n) -> P.replicate n False <> [True]) allDepths
       footnote . fromString $ "Simulation:   " <> show simOut
       footnote . fromString $ "Expected:     " <> show expectedOut
-      footnote . fromString $ "shadowSwitch: " <> show (P.take simLength switchSignal)
-      footnote . fromString $ "wishbone in:   " <> show (P.take simLength wbIn)
+      footnote . fromString $ "wishbone in:   " <> show (P.take simLength wbWrites)
       simOut === expectedOut
 
 -- | Gets the index of element (n+1)
@@ -267,11 +269,7 @@ asProxy SNat = Proxy
 requiredRegs :: (1 <= regSize) => SNat bits -> SNat regSize-> SNat (Regs (BitVector bits) regSize)
 requiredRegs SNat SNat = SNat
 
--- | Get the last n elements of a list.
-takeLast :: Int -> [a] -> [a]
-takeLast n l = P.drop (P.length l - n) l
-
--- | idle 'Contranomy.Wishbone.WishboneM2S' bus.
+-- | idle 'Bittide.Extra.Wishbone.WishboneM2S' bus.
 wbNothingM2S :: forall nBytes addrW . (KnownNat nBytes, KnownNat addrW) => WishboneM2S nBytes addrW
 wbNothingM2S = (emptyWishboneM2S @nBytes @addrW)
  { addr = 0
