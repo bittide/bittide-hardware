@@ -26,10 +26,9 @@ createDomain vSystem{vName="Bittide", vPeriod=hzToPeriod 200e3}
 
 type Ps = Natural
 
+-- | Create tuples which contain times alongside data.
 timeClock :: Signal dom (PeriodPs, a, b) -> [(Ps, PeriodPs, a, b)]
-timeClock = go 0
- where
-  go t ((period, x, y) :- xs) = (t, period, x, y) : go (t+period) xs
+timeClock = $(timeN 2)
 
 -- | This can be used inside a REPL and fed to @script.py@
 dumpCsv :: Int -> IO ()
@@ -38,6 +37,8 @@ dumpCsv m = do
   forM_ [0..n] $ \i ->
       let eb = g A.! i in
       writeFile ("clocks" <> show i <> ".csv") ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
+  -- the below can be done without TH: output of TH expression should be a list
+  -- of 'ByteString's
   let (dat0, dat1, dat2) =
           on3 (encode . P.take m . timeClock)
         $ k3 @Bittide @Bittide @Bittide o1 o2 o3
@@ -48,8 +49,6 @@ dumpCsv m = do
   on3 f (x, y, z) = (f x, f y, f z)
   (0, n) = A.bounds g
   g = kn 3
-
-  -- TODO: this would require more TH??
 
 genOffs :: IO Offset
 genOffs =

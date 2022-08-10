@@ -1,18 +1,57 @@
-module Bittide.Topology.TH ( simNodesFromGraph ) where
+module Bittide.Topology.TH ( timeN, simNodesFromGraph ) where
 
 import Prelude
 
 import Data.Array qualified as A
 import Data.Graph (Graph)
-import Language.Haskell.TH (Q, Body (..), Exp (..), Pat (..), Dec (..), Lit (..), newName)
+import Language.Haskell.TH (Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), newName)
 
 import Clash.Explicit.Prelude qualified as Clash
+import Clash.Signal.Internal qualified as Clash
 
 import Bittide.Simulate
 import Bittide.Simulate.Ppm
 
 cross :: [a] -> [b] -> [(a, b)]
 cross xs ys = (,) <$> xs <*> ys
+
+-- | Given a @Signal dom (PeriodPs, a_1, ...)@, make a @[(Ps, PeriodPs, a_1, ...)]@.
+--
+-- For @n=2@:
+--
+-- > timeClock :: Signal dom (PeriodPs, a, b) -> [(Ps, PeriodPs, a, b)]
+-- > timeClock = go 0
+-- >  where
+-- >   go t ((period, x, y) :- xs) = (t, period, x, y) : go (t+period) xs
+timeN :: Int -> Q Exp
+timeN n = do
+  nm <- newName "go"
+  tName <- newName "t"
+  xs <- newName "xs"
+  periodName <- newName "period"
+  x_is <- traverse (\i -> newName ("x" ++ show i)) [1..n]
+  let goE = VarE nm
+      t = VarE tName
+      period = VarE periodName
+      goD =
+        FunD nm
+          [ Clause
+              [VarP tName, InfixP (TupP (VarP <$> periodName : x_is)) consSignal (VarP xs)]
+              (NormalB (AppE (AppE consList (tup (t:period:fmap VarE x_is))) (AppE (AppE goE (AppE (AppE plusE t) period)) (VarE xs))))
+              []
+          ]
+  pure $ LetE [goD] (AppE goE (LitE (IntegerL 0)))
+ where
+  consSignal = '(Clash.:-)
+  consList = ConE '(:)
+  plusE = VarE '(+)
+
+tup :: [Exp] -> Exp
+tup es = TupE (Just <$> es)
+
+-- TODO: output after TH stage should be lists
+--
+-- [(Ps, PeriodPs, a, b)] or sthg
 
 -- | Given a graph with \(n\) nodes, generate a function which takes \(n\)
 -- offsets and return a tuple of signals per clock-domain
@@ -30,7 +69,7 @@ simNodesFromGraph g = do
       clkD i = valD (TupP [VarP (clockSignalNames A.! i), VarP (clockNames A.! i)]) (clkE i)
 
       cccE = AppE (AppE (AppE (AppE (AppE ccc pessimisticPeriodL) settlePeriod) dynamicRange) step) ebSz
-      clockControlE k = AppE (AppE clockControlQ cccE) (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ]) -- FIXME: take assoc list...
+      clockControlE k = AppE (AppE clockControlQ cccE) (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
       clockControlD k = valD (VarP (clockControlNames A.! k)) (clockControlE k)
 
       ebs = fmap (uncurry ebD) [ (i, j) | i <- is, j <- g A.! i ]
@@ -49,7 +88,6 @@ simNodesFromGraph g = do
   infixl 3 .$
   (.$) f x = f x x
 
-  tup es = TupE (Just <$> es)
   valD p e = ValD p (NormalB e) []
 
   bundleQ = VarE 'Clash.bundle
