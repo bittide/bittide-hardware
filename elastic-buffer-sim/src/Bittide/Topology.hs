@@ -38,16 +38,17 @@ dumpCsv m = do
       writeFile ("clocks" <> show i <> ".csv") ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
   -- the below can be done without TH: output of TH expression should be a list
   -- of 'ByteString's
-  let (dat0, dat1, dat2) =
+  let (dat0, dat1, dat2, dat3) =
           on3 (encode . P.take m)
-        $ k3 offs
+        $ c4 offs
   BSL.appendFile "clocks0.csv" dat0
   BSL.appendFile "clocks1.csv" dat1
   BSL.appendFile "clocks2.csv" dat2
+  BSL.appendFile "clocks3.csv" dat3
  where
-  on3 = $(onTup 3)
+  on3 = $(onTup 4)
   (0, n) = A.bounds g
-  g = kn 3
+  g = cn 4
 
 genOffs :: IO Offset
 genOffs =

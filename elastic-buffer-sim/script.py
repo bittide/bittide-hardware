@@ -5,21 +5,23 @@ import matplotlib.pyplot as plt
 df0=pd.read_csv('clocks0.csv')
 df1=pd.read_csv('clocks1.csv')
 df2=pd.read_csv('clocks2.csv')
+df3=pd.read_csv('clocks3.csv')
 
 df0.set_index('t', inplace=True)
 df1.set_index('t', inplace=True)
 df2.set_index('t', inplace=True)
+df3.set_index('t', inplace=True)
 
-df=pd.concat([df0,df1,df2],axis=0)
+df=pd.concat([df0,df1,df2,df3],axis=0)
 
-df[['eb01','eb02','eb10','eb12','eb20','eb21']].plot()
-plt.xlabel('Time (ps)')
-plt.ylabel('Elastic buffer occupancy')
-plt.title('Step size 1')
+#  df[['eb01','eb02','eb10','eb12','eb20','eb21']].plot()
+#  plt.xlabel('Time (ps)')
+#  plt.ylabel('Elastic buffer occupancy')
+#  plt.title('Step size 1')
 
-plt.show()
+#  plt.show()
 
-df[['clk0','clk1','clk2']].plot()
+df[['clk0','clk1','clk2','clk3']].plot()
 plt.xlabel('Time (ps)')
 plt.ylabel('Period')
 plt.title('Step size 1')

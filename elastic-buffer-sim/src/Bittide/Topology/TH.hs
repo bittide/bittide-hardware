@@ -88,7 +88,6 @@ simNodesFromGraph g = do
       clockControls = clockControlD <$> is
       clkDs = clkD <$> is
 
-      -- TODO: tuple of [(PeriodPs, Ps, ...)]
       res k = do
         let ebN = length (g A.! k)
         postprocess <- timeN ebN
