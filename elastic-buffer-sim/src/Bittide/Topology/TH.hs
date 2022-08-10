@@ -1,4 +1,4 @@
-module Bittide.Topology.TH ( timeN, simNodesFromGraph ) where
+module Bittide.Topology.TH ( onTup, timeN, simNodesFromGraph ) where
 
 import Prelude
 
@@ -14,6 +14,17 @@ import Bittide.Simulate.Ppm
 
 cross :: [a] -> [b] -> [(a, b)]
 cross xs ys = (,) <$> xs <*> ys
+
+-- AppTypeE -> type applications
+
+-- | For @n=3@:
+--
+-- > on3 f (x, y, z) = (f x, f y, f z)
+onTup :: Int -> Q Exp
+onTup n = do
+  f <- newName "f"
+  x_is <- traverse (\i -> newName ("x" ++ show i)) [1..n]
+  pure $ LamE [VarP f, TupP (VarP <$> x_is)] (tup [ AppE (VarE f) (VarE x) | x <- x_is ])
 
 -- | Given a @Signal dom (PeriodPs, a_1, ...)@, make a @[(Ps, PeriodPs, a_1, ...)]@.
 --
@@ -37,7 +48,10 @@ timeN n = do
         FunD nm
           [ Clause
               [VarP tName, InfixP (TupP (VarP <$> periodName : x_is)) consSignal (VarP xs)]
-              (NormalB (AppE (AppE consList (tup (t:period:fmap VarE x_is))) (AppE (AppE goE (AppE (AppE plusE t) period)) (VarE xs))))
+              (NormalB
+                (AppE
+                  (AppE consList (tup (t:period:fmap VarE x_is)))
+                  (AppE (AppE goE (AppE (AppE plusE t) period)) (VarE xs))))
               []
           ]
   pure $ LetE [goD] (AppE goE (LitE (IntegerL 0)))
@@ -50,8 +64,6 @@ tup :: [Exp] -> Exp
 tup es = TupE (Just <$> es)
 
 -- TODO: output after TH stage should be lists
---
--- [(Ps, PeriodPs, a, b)] or sthg
 
 -- | Given a graph with \(n\) nodes, generate a function which takes \(n\)
 -- offsets and return a tuple of signals per clock-domain

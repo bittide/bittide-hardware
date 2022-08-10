@@ -8,8 +8,6 @@ import Control.Monad (replicateM, forM_)
 import Numeric.Natural
 import Prelude qualified as P
 
-import Clash.Signal.Internal (Signal (..))
-
 import Data.Array qualified as A
 import Data.ByteString.Lazy qualified as BSL
 import Data.Csv
@@ -46,7 +44,7 @@ dumpCsv m = do
   BSL.appendFile "clocks1.csv" dat1
   BSL.appendFile "clocks2.csv" dat2
  where
-  on3 f (x, y, z) = (f x, f y, f z)
+  on3 = $(onTup 3)
   (0, n) = A.bounds g
   g = kn 3
 
