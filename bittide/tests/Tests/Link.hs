@@ -92,8 +92,8 @@ configRxUnit ::
   ( HiddenClockResetEnable System, 1 <= bs, 2 <= aw, 1 <= pw, 1 <= fw, 1 <= scw) =>
   SNat bs -> SNat aw -> SNat pw -> SNat fw -> SNat scw ->
     (  BitVector pw
-    -> Signal System (DataLink fw)
     -> Signal System (Unsigned scw)
+    -> Signal System (DataLink fw)
     -> Signal System (WishboneM2S bs aw)
     -> Signal System (WishboneS2M bs))
 configRxUnit SNat SNat SNat SNat SNat = rxUnit @System @bs @aw @pw @fw @scw
@@ -243,7 +243,7 @@ rxSendSC = property $ do
       localSeqCounts <- forAll . Gen.list simRange $ genUnsigned Range.constantBounded
       let
         topEntity (unbundle -> (wbIn0, linkIn, localCounter)) = wcre
-          configRxUnit bs aw pw fw scw preamble linkIn localCounter wbIn0
+          configRxUnit bs aw pw fw scw preamble localCounter linkIn wbIn0
         -- Compensate for the register write + state machine start delays.
         wbIn = wbWrite : L.replicate (offTime0 + onTime) (wbRead 0) <>
           cycle (fmap wbRead [0..fromIntegral readBackCycles])
@@ -355,7 +355,7 @@ integration = property $ do
          where
           (_, linkIn) = configTxUnit bs aw pw fw scw preamble counter gatherOut wbTxM2S
           linkOut = registerN (snatProxy llProxy) Nothing linkIn
-          wbRxS2M = configRxUnit bs aw pw fw scw preamble linkOut counter wbRxM2S
+          wbRxS2M = configRxUnit bs aw pw fw scw preamble counter linkOut wbRxM2S
           out = bundle (linkIn, wbRxS2M)
         -- Compensate for the register write + state machine start delays.
         wbTxOff = L.replicate (delayCycles - 2) emptyWishboneM2S
