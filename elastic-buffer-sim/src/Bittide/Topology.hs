@@ -31,7 +31,7 @@ timeClock = $(timeN 2)
 -- | This can be used inside a REPL and fed to @script.py@
 dumpCsv :: Int -> IO ()
 dumpCsv m = do
-  [o1, o2, o3] <- replicateM (n+1) genOffs
+  offs <- replicateM (n+1) genOffs
   forM_ [0..n] $ \i ->
       let eb = g A.! i in
       writeFile ("clocks" <> show i <> ".csv") ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
@@ -39,7 +39,7 @@ dumpCsv m = do
   -- of 'ByteString's
   let (dat0, dat1, dat2) =
           on3 (encode . P.take m . timeClock)
-        $ k3 @Bittide @Bittide @Bittide o1 o2 o3
+        $ k3 @Bittide @Bittide @Bittide offs
   BSL.appendFile "clocks0.csv" dat0
   BSL.appendFile "clocks1.csv" dat1
   BSL.appendFile "clocks2.csv" dat2
@@ -75,10 +75,7 @@ c4 ::
   , KnownDomain dom2
   , KnownDomain dom3
   ) =>
-  Offset ->
-  Offset ->
-  Offset ->
-  Offset ->
+  [Offset] ->
   ( Signal dom0 (PeriodPs, DataCount, DataCount)
   , Signal dom1 (PeriodPs, DataCount, DataCount)
   , Signal dom2 (PeriodPs, DataCount, DataCount)
@@ -93,9 +90,7 @@ k3 ::
   , KnownDomain dom2
   , KnownDomain dom3
   ) =>
-  Offset ->
-  Offset ->
-  Offset ->
+  [Offset] ->
   ( Signal dom1 (PeriodPs, DataCount, DataCount)
   , Signal dom2 (PeriodPs, DataCount, DataCount)
   , Signal dom3 (PeriodPs, DataCount, DataCount)

@@ -65,7 +65,7 @@ tup es = TupE (Just <$> es)
 
 -- TODO: output after TH stage should be lists
 
--- | Given a graph with \(n\) nodes, generate a function which takes \(n\)
+-- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
 -- offsets and return a tuple of signals per clock-domain
 simNodesFromGraph :: Graph -> Q Exp
 simNodesFromGraph g = do
@@ -89,7 +89,7 @@ simNodesFromGraph g = do
       clkDs = clkD <$> is
 
       res k = AppE bundleQ (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ]))
-  pure $ LamE (VarP <$> offs) (LetE (ebs ++ clkDs ++ clockControls) (tup (fmap res is)))
+  pure $ LamE [ListP (VarP <$> offs)] (LetE (ebs ++ clkDs ++ clockControls) (tup (fmap res is)))
  where
   is = [0..n]
   bounds@(0, n) = A.bounds g
