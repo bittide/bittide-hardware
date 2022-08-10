@@ -177,4 +177,4 @@ findBaseAddress :: Ord a => a -> Vec n a -> Vec m b -> (a, b)
 findBaseAddress a (toList -> config) (toList -> ranges) =
   L.last $ (L.head config, L.head ranges) : lowerAddresses
   where
-    lowerAddresses = L.takeWhile ((<a) . fst) $ L.zip config ranges
+    lowerAddresses = L.takeWhile ((<=a) . fst) $ L.zip config ranges
