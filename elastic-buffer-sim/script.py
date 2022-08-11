@@ -1,29 +1,29 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import itertools as i
+
+nodes=range(0,5)
 
 # generate data from dumpCsv
-df0=pd.read_csv('clocks0.csv')
-df1=pd.read_csv('clocks1.csv')
-df2=pd.read_csv('clocks2.csv')
-df3=pd.read_csv('clocks3.csv')
+dfs=[pd.read_csv('clocks' + str(i) + '.csv') for i in nodes]
 
-df0.set_index('t', inplace=True)
-df1.set_index('t', inplace=True)
-df2.set_index('t', inplace=True)
-df3.set_index('t', inplace=True)
+for df in dfs:
+    df.set_index('t', inplace=True)
 
-df=pd.concat([df0,df1,df2,df3],axis=0)
+df=pd.concat(dfs,axis=0)
 
-#  df[['eb01','eb02','eb10','eb12','eb20','eb21']].plot()
-#  plt.xlabel('Time (ps)')
-#  plt.ylabel('Elastic buffer occupancy')
-#  plt.title('Step size 1')
+eb_names=['eb'+str(i)+str(j) for i in nodes for j in nodes if j != i]
 
-#  plt.show()
+df[eb_names].plot()
+plt.xlabel('Time (ps)')
+plt.ylabel('Elastic buffer occupancy')
+plt.title('Step size 1')
 
-df[['clk0','clk1','clk2','clk3']].plot()
+plt.savefig('elasticbuffers.png')
+
+clk_names=['clk'+str(i) for i in nodes]
+df[clk_names].plot()
 plt.xlabel('Time (ps)')
 plt.ylabel('Period')
 plt.title('Step size 1')
-
-plt.show()
+plt.savefig('clocks.png')

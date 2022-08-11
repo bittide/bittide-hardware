@@ -1,5 +1,4 @@
 {-# LANGUAGE PartialTypeSignatures #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 -- | This module contains static topologies and machinery to
 module Bittide.Topology ( dumpCsv, genOffs ) where
@@ -19,15 +18,7 @@ import Bittide.Simulate
 import Bittide.Topology.TH
 import Bittide.Topology.Graph
 
--- 200kHz instead of 200MHz; otherwise the periods are so small that deviations
--- can't be expressed as 'Natural's
-createDomain vSystem{vName="Bittide", vPeriod=hzToPeriod 200e3}
-
 type Ps = Natural
-
--- | Create tuples which contain times alongside data.
-timeClock :: Signal dom (PeriodPs, a, b) -> [(Ps, PeriodPs, a, b)]
-timeClock = $(timeN 2)
 
 -- | This can be used inside a REPL and fed to @script.py@
 dumpCsv :: Int -> IO ()
@@ -35,14 +26,16 @@ dumpCsv m = do
   offs <- replicateM (n+1) genOffs
   forM_ [0..n] $ \i ->
     let eb = g A.! i in
-    writeFile ("clocks" <> show i <> ".csv") ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
+    writeFile
+      ("clocks" <> show i <> ".csv")
+      ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
   -- the below can be done without TH: output of TH expression should be a list
   -- of 'ByteString's
   let dats =
           onN (encode . P.take m)
         $ $(simNodesFromGraph (kn 6)) offs
   zipWithM_ (\dat i ->
-    BSL.appendFile ("clocks" <> show i <> ".csv") dat) dats [0..]
+    BSL.appendFile ("clocks" <> show i <> ".csv") dat) dats [(0::Int)..]
  where
   onN = $(onTup 6)
   (0, n) = A.bounds g
@@ -62,31 +55,3 @@ specPeriod = hzToPeriod 200e3
 
 specPpm :: Ppm
 specPpm = Ppm 100
-
--- tree23 = $(graph (tree 2 3))
-
--- RETURN VALUE: maybe graph of signals??
---
--- ez: graph of signals of PeriodPs, maybe a list of DataCounts?
-
-c4 ::
-  [Offset] ->
-  ( [(Ps, PeriodPs, DataCount, DataCount)]
-  , [(Ps, PeriodPs, DataCount, DataCount)]
-  , [(Ps, PeriodPs, DataCount, DataCount)]
-  , [(Ps, PeriodPs, DataCount, DataCount)]
-  )
-c4 =
-  $(simNodesFromGraph (cn 4))
-
-k4 = $(simNodesFromGraph (kn 5))
-
--- | Three nodes, all connected to one another
-k3 ::
-  [Offset] ->
-  ( [(Ps, PeriodPs, DataCount, DataCount)]
-  , [(Ps, PeriodPs, DataCount, DataCount)]
-  , [(Ps, PeriodPs, DataCount, DataCount)]
-  )
-k3 =
-  $(simNodesFromGraph (kn 3))

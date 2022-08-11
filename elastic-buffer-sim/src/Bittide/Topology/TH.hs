@@ -11,6 +11,7 @@ import Clash.Signal.Internal qualified as Clash
 
 import Bittide.Simulate
 import Bittide.Simulate.Ppm
+import Bittide.Topology.TH.Domain
 
 cross :: [a] -> [b] -> [(a, b)]
 cross xs ys = (,) <$> xs <*> ys
@@ -61,8 +62,6 @@ timeN n = do
 tup :: [Exp] -> Exp
 tup es = TupE (Just <$> es)
 
--- TODO: output after TH stage should be lists
-
 -- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
 -- offsets and return a tuple of signals per clock-domain
 simNodesFromGraph :: Graph -> Q Exp
@@ -72,7 +71,10 @@ simNodesFromGraph g = do
   clockControlNames <- traverse (\i -> newName ("clockControl" ++ show i)) isA
   clockSignalNames <- traverse (\i -> newName ("clk" ++ show i ++ "Signal")) isA
   ebNames <- traverse (\(i, j) -> newName ("eb" ++ show i ++ show j)) ebA
-  let ebE i j = AppE (AppE ebClkClk (VarE (clockNames A.! i))) (VarE (clockNames A.! j))
+  let ebE i j =
+        AppE
+          (AppE ebClkClk (VarE (clockNames A.! i)))
+          (VarE (clockNames A.! j))
       ebD i j = valD (VarP (ebNames A.! (i, j))) (ebE i j)
 
       clkE i =
@@ -81,8 +83,12 @@ simNodesFromGraph g = do
         (VarE (clockControlNames A.! i))
       clkD i = valD (TupP [VarP (clockSignalNames A.! i), VarP (clockNames A.! i)]) (clkE i)
 
-      cccE = AppE (AppE (AppE (AppE (AppE ccc pessimisticPeriodL) settlePeriod) dynamicRange) step) ebSz
-      clockControlE k = AppE (AppE clockControlQ cccE) (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
+      cccE =
+        AppE (AppE (AppE (AppE (AppE ccc pessimisticPeriodL) settlePeriod) dynamicRange) step) ebSz
+      clockControlE k =
+        AppE
+          (AppE clockControlQ cccE)
+          (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
       clockControlD k = valD (VarP (clockControlNames A.! k)) (clockControlE k)
 
       ebs = fmap (uncurry ebD) [ (i, j) | i <- is, j <- g A.! i ]
@@ -99,14 +105,20 @@ simNodesFromGraph g = do
               (AppE bundleQ (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ])))
               signalType)
   ress <- traverse res is
-  pure $ LamE [ListP (VarP <$> offs)] (LetE (ebs ++ clkDs ++ clockControls) (tup ress))
+  pure $
+    LamE
+      [ListP (VarP <$> offs)]
+      (LetE (ebs ++ clkDs ++ clockControls) (tup ress))
  where
   is = [0..n]
   bounds@(0, n) = A.bounds g
   isA = A.listArray bounds is
   ebIxes = cross .$ is
   ebA = A.array ((0, 0), (n, n)) (zip .$ ebIxes)
-  signalType = AppT (AppT (ConT ''Clash.Signal) (ConT $ mkName "Bittide")) WildCardT
+  signalType =
+    AppT
+      (AppT (ConT ''Clash.Signal) (ConT ''Bittide))
+      WildCardT
 
   infixl 3 .$
   (.$) f x = f x x

@@ -86,6 +86,7 @@ library
   exposed-modules:
     Bittide.Topology
     Bittide.Topology.TH
+    Bittide.Topology.TH.Domain
     Bittide.Topology.Graph
     Bittide.Simulate
     Bittide.Simulate.Ppm
