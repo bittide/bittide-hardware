@@ -10,7 +10,6 @@ import Clash.Prelude
 import Protocols.Wishbone
 
 import Bittide.Calendar
-import Bittide.Extra.Wishbone
 import Bittide.Link
 import Bittide.SharedTypes
 
@@ -28,6 +27,8 @@ data SwitchConfig links nBytes addrW where
     CalendarConfig nBytes addrW (CalendarEntry links) ->
     SwitchConfig links nBytes addrW
 
+deriving instance Show (SwitchConfig links nBytes addrW)
+
 -- | Creates a 'switch' from a 'SwitchConfig'.
 mkswitch ::
   ( HiddenClockResetEnable dom
@@ -36,10 +37,10 @@ mkswitch ::
   , KnownNat nBytes, 1 <= nBytes
   , KnownNat addrW, 2 <= addrW) =>
   SwitchConfig links nBytes addrW ->
-  Vec (1 + (2 * links)) (Signal dom (WishboneM2S nBytes addrW)) ->
+  Vec (1 + (2 * links)) (Signal dom (WishboneM2S addrW nBytes (Bytes nBytes))) ->
   Vec links (Signal dom (DataLink frameWidth)) ->
   ( Vec links (Signal dom (DataLink frameWidth))
-  , Vec (1 + (links * 2)) (Signal dom (WishboneS2M nBytes)))
+  , Vec (1 + (links * 2)) (Signal dom (WishboneS2M (Bytes nBytes))))
 
 mkswitch (SwitchConfig preamble calConfig) = switch preamble calConfig
 
