@@ -29,7 +29,8 @@ data SwitchConfig links nBytes addrW where
 
 deriving instance Show (SwitchConfig links nBytes addrW)
 
--- | Creates a 'switch' from a 'SwitchConfig'.
+-- | Creates a 'switch' from a 'SwitchConfig'. This wrapper functions hides the preambleWidth
+-- type variable from the rest of the implementation.
 mkswitch ::
   ( HiddenClockResetEnable dom
   , KnownNat links
