@@ -83,6 +83,7 @@ switchFrameRoutingWorks = property $ do
         }
       ) -> do
       simLength <- forAll $ Gen.enum 1 (3 * fromIntegral calDepth)
+      preamble <- forAll (genDefinedBitVector @1)
       let
         genFrame = Just <$> genDefinedBitVector @64
         allLinks = Gen.list (Range.singleton links) genFrame
