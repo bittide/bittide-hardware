@@ -9,6 +9,8 @@ import Clash.Prelude
 import Protocols.Wishbone
 
 import Bittide.Calendar
+import Bittide.Extra.Wishbone
+import Bittide.Link
 import Bittide.SharedTypes
 
 -- | An index which source is selected by the crossbar, 0 selects Nothing, k selects k - 1.
@@ -24,24 +26,35 @@ type CalendarEntry links = Vec links (CrossbarIndex links)
 -- The crossbar selects one of the scatter engine outputs for every outgoing link, index 0
 -- selects a null frame (Nothing) and k selects engine k - 1.
 switch ::
-  forall dom nBytes addrW links frameWidth .
+  forall dom nBytes addrW links frameWidth preambleWidth .
   ( HiddenClockResetEnable dom
+  , KnownNat addrW, 2 <= addrW
+  , KnownNat frameWidth, 1 <= frameWidth
   , KnownNat links
-  , KnownNat frameWidth) =>
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat preambleWidth, 1 <= preambleWidth) =>
+  -- | Preamble for Bittide links.
+  BitVector preambleWidth ->
   -- | The calendar configuration
   CalendarConfig nBytes addrW (CalendarEntry links) ->
   -- | Wishbone interface wired to the calendar.
-  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
+  Vec (1 + (2 * links)) (Signal dom (WishboneM2S addrW nBytes (Bytes nBytes))) ->
   -- | All incoming datalinks
-  Signal dom (Vec links (DataLink frameWidth)) ->
+  Vec links (Signal dom (DataLink frameWidth)) ->
   -- | All outgoing datalinks
-  (Signal dom (Vec links (DataLink frameWidth)), Signal dom (WishboneS2M (Bytes nBytes)))
-switch calConfig wbIn streamsIn = (gatherFrames,wbOut)
+  ( Vec links  (Signal dom (DataLink frameWidth))
+  , Vec (1 + (2 * links)) (Signal dom (WishboneS2M (Bytes nBytes))))
+switch preamble calConfig m2ss streamsIn = (streamsOut,calS2M :> (rxS2Ms ++ txS2Ms))
  where
-  (cal, _, wbOut) = mkCalendar calConfig wbIn
-  scatterFrames = register (repeat Nothing) streamsIn
-  crossBarOut =  crossBar <$> cal <*> scatterFrames
-  gatherFrames = register (repeat Nothing) crossBarOut
+  (cal, _, calS2M) = mkCalendar calConfig calM2S
+  (calM2S :> (splitAtI -> (rxM2Ss, txM2Ss))) = m2ss
+  sc = sequenceCounter
+
+  rxS2Ms = rxUnit preamble sc <$> streamsIn <*> rxM2Ss
+  scatterFrames = register Nothing <$> streamsIn
+  crossBarOut =  unbundle $ crossBar <$> cal <*> bundle scatterFrames
+  gatherFrames = register Nothing <$> crossBarOut
+  (txS2Ms, streamsOut) = unzip $ txUnit preamble sc <$> gatherFrames <*> txM2Ss
 
 {-# NOINLINE crossBar #-}
 -- | The crossbar receives a vector of indices and a vector of incoming frames.
