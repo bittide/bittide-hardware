@@ -15,16 +15,14 @@ import Bittide.Simulate.Ppm
 cross :: [a] -> [b] -> [(a, b)]
 cross xs ys = (,) <$> xs <*> ys
 
--- AppTypeE -> type applications
-
 -- | For @n=3@:
 --
--- > on3 f (x, y, z) = (f x, f y, f z)
+-- > on3 f (x, y, z) = [f x, f y, f z]
 onTup :: Int -> Q Exp
 onTup n = do
   f <- newName "f"
   x_is <- traverse (\i -> newName ("x" ++ show i)) [1..n]
-  pure $ LamE [VarP f, TupP (VarP <$> x_is)] (tup [ AppE (VarE f) (VarE x) | x <- x_is ])
+  pure $ LamE [VarP f, TupP (VarP <$> x_is)] (ListE [ AppE (VarE f) (VarE x) | x <- x_is ])
 
 -- | Given a @Signal dom (PeriodPs, a_1, ...)@, make a @[(Ps, PeriodPs, a_1, ...)]@.
 --
@@ -77,7 +75,10 @@ simNodesFromGraph g = do
   let ebE i j = AppE (AppE ebClkClk (VarE (clockNames A.! i))) (VarE (clockNames A.! j))
       ebD i j = valD (VarP (ebNames A.! (i, j))) (ebE i j)
 
-      clkE i = AppE (AppE (AppE (AppE (AppE tunableClockGenQ settlePeriod) (VarE (offs !! i))) step) resetGenQ) (VarE (clockControlNames A.! i))
+      clkE i =
+        AppE
+        (AppE (AppE (AppE (AppE tunableClockGenQ settlePeriod) (VarE (offs !! i))) step) resetGenQ)
+        (VarE (clockControlNames A.! i))
       clkD i = valD (TupP [VarP (clockSignalNames A.! i), VarP (clockNames A.! i)]) (clkE i)
 
       cccE = AppE (AppE (AppE (AppE (AppE ccc pessimisticPeriodL) settlePeriod) dynamicRange) step) ebSz
@@ -94,7 +95,9 @@ simNodesFromGraph g = do
         pure $
           AppE
             postprocess
-            (SigE (AppE bundleQ (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ]))) signalType)
+            (SigE
+              (AppE bundleQ (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ])))
+              signalType)
   ress <- traverse res is
   pure $ LamE [ListP (VarP <$> offs)] (LetE (ebs ++ clkDs ++ clockControls) (tup ress))
  where

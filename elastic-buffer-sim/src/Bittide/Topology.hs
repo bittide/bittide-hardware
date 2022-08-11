@@ -5,7 +5,7 @@
 module Bittide.Topology ( dumpCsv, genOffs ) where
 
 import Clash.Explicit.Prelude
-import Control.Monad (replicateM, forM_)
+import Control.Monad (replicateM, forM_, zipWithM_)
 import Numeric.Natural
 import Prelude qualified as P
 
@@ -34,21 +34,19 @@ dumpCsv :: Int -> IO ()
 dumpCsv m = do
   offs <- replicateM (n+1) genOffs
   forM_ [0..n] $ \i ->
-      let eb = g A.! i in
-      writeFile ("clocks" <> show i <> ".csv") ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
+    let eb = g A.! i in
+    writeFile ("clocks" <> show i <> ".csv") ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
   -- the below can be done without TH: output of TH expression should be a list
   -- of 'ByteString's
-  let (dat0, dat1, dat2, dat3) =
-          on3 (encode . P.take m)
-        $ c4 offs
-  BSL.appendFile "clocks0.csv" dat0
-  BSL.appendFile "clocks1.csv" dat1
-  BSL.appendFile "clocks2.csv" dat2
-  BSL.appendFile "clocks3.csv" dat3
+  let dats =
+          onN (encode . P.take m)
+        $ $(simNodesFromGraph (kn 6)) offs
+  zipWithM_ (\dat i ->
+    BSL.appendFile ("clocks" <> show i <> ".csv") dat) dats [0..]
  where
-  on3 = $(onTup 4)
+  onN = $(onTup 6)
   (0, n) = A.bounds g
-  g = cn 4
+  g = kn 6
 
 genOffs :: IO Offset
 genOffs =
@@ -80,6 +78,8 @@ c4 ::
   )
 c4 =
   $(simNodesFromGraph (cn 4))
+
+k4 = $(simNodesFromGraph (kn 5))
 
 -- | Three nodes, all connected to one another
 k3 ::
