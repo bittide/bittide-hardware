@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE GADTs #-}
 
 module Bittide.Switch where
 
@@ -20,11 +21,36 @@ type CrossbarIndex links = Index (links+1)
 -- memory and a crossbar index to select the outgoing frame.
 type CalendarEntry links = Vec links (CrossbarIndex links)
 
+data SwitchConfig links nBytes addrW where
+  SwitchConfig ::
+    (KnownNat preambleWidth, 1 <= preambleWidth) =>
+    BitVector preambleWidth ->
+    CalendarConfig nBytes addrW (CalendarEntry links) ->
+    SwitchConfig links nBytes addrW
+
+-- | Creates a 'switch' from a 'SwitchConfig'.
+mkswitch ::
+  ( HiddenClockResetEnable dom
+  , KnownNat links
+  , KnownNat frameWidth, 1 <= frameWidth
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat addrW, 2 <= addrW) =>
+  SwitchConfig links nBytes addrW ->
+  Vec (1 + (2 * links)) (Signal dom (WishboneM2S nBytes addrW)) ->
+  Vec links (Signal dom (DataLink frameWidth)) ->
+  ( Vec links (Signal dom (DataLink frameWidth))
+  , Vec (1 + (links * 2)) (Signal dom (WishboneS2M nBytes)))
+
+mkswitch (SwitchConfig preamble calConfig) = switch preamble calConfig
+
 {-# NOINLINE switch #-}
--- | The Bittide Switch routes data from incoming to outgoing links based on a calendar.
--- The switch consists of a crossbar, a calendar and a scatter engine for all incoming links.
--- The crossbar selects one of the scatter engine outputs for every outgoing link, index 0
--- selects a null frame (Nothing) and k selects engine k - 1.
+-- | The Bittide Switch routes data from incoming links to outgoing links based on a calendar.
+-- The switch consists of a crossbar, a calendar and the receiver and transmitter logic per link.
+-- For each incoming link, the switch has a 'rxUnit' and a receive register (single depth
+-- scatter unit). For each outgoing link the switch has a transmit register (single depth
+-- gather unit) and a 'txUnit'. The crossbar selects one of the receive register's output
+-- for each transmit register. Index 0 selects a null frame (Nothing) and k selects
+-- receive register (k - 1).
 switch ::
   forall dom nBytes addrW links frameWidth preambleWidth .
   ( HiddenClockResetEnable dom
