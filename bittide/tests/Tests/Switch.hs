@@ -74,13 +74,14 @@ switchFrameRoutingWorks = property $ do
   case switchCal of
     SwitchConfig (SNat :: SNat links) calConfig@(CalendarConfig _ (toList -> cal) _) -> do
       simLength <- forAll $ Gen.enum 1 (3 * fromIntegral calDepth)
+      preamble <- forAll (genDefinedBitVector @64)
       let
         genFrame = Just <$> genDefinedBitVector @64
         allLinks = Gen.list (Range.singleton links) genFrame
       topEntityInput <- forAll $ Gen.list (Range.singleton simLength) allLinks
       let
-        topEntity streamsIn = withClockResetEnable clockGen resetGen enableGen $
-         fst (switch calConfig (pure emptyWishboneM2S) streamsIn)
+        topEntity streamsIn = withClockResetEnable clockGen resetGen enableGen $ bundle $
+         fst $ switch preamble calConfig (repeat $ pure emptyWishboneM2S) $ unbundle streamsIn
         simOut = simulateN @System simLength topEntity $ fmap unsafeFromList topEntityInput
       let
         expectedFrames = P.replicate links Nothing : topEntityInput
