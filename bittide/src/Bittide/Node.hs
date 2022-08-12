@@ -17,6 +17,9 @@ import Bittide.ProcessingElement
 import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Bittide.Switch
+import Bittide.ScatterGather
+import Bittide.Calendar
+import Bittide.DoubleBufferedRam
 
 -- | A simple node consisting of one external bidirectional link and two 'gppe's.
 -- This node's 'switch' has a 'CalendarConfig' of for a 'calendar' with up to @1024@ entries,
