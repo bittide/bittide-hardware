@@ -12,4 +12,4 @@ Then:
 python3 script.py
 ```
 
-This will generate `clocks.png` and `elasticbuffers.png`.
+This will generate `clocks.pdf` and `elasticbuffers.pdf`.

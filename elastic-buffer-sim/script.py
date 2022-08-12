@@ -1,6 +1,5 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import itertools as i
 
 nodes=range(0,5)
 
@@ -19,11 +18,11 @@ plt.xlabel('Time (ps)')
 plt.ylabel('Elastic buffer occupancy')
 plt.title('Step size 1')
 
-plt.savefig('elasticbuffers.png')
+plt.savefig('elasticbuffers.pdf')
 
 clk_names=['clk'+str(i) for i in nodes]
 df[clk_names].plot()
 plt.xlabel('Time (ps)')
 plt.ylabel('Period')
 plt.title('Step size 1')
-plt.savefig('clocks.png')
+plt.savefig('clocks.pdf')
