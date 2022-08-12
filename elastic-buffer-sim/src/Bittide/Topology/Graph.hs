@@ -24,6 +24,7 @@ tree d c = treeGraph
   mkEdges (0, _, _)           = Nothing
   mkEdges (lvl, node, p_node) = Just ((lvl, node), (lvl-1, p_node))
   directedEdges = mapMaybe mkEdges pairs
+  -- "Data.Graph" takes a directed graphs
   edges = directedEdges ++ fmap swap directedEdges
   adjList = g <$> groupBy ((==) `on` fst) (sort edges)
   g ps@((x,_):_) = (x, snd <$> ps)

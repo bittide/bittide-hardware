@@ -20,7 +20,7 @@ import Bittide.Topology.Graph
 
 type Ps = Natural
 
--- | This can be used inside a REPL and fed to @script.py@
+-- | This samples @n@ steps; the result can be fed to @script.py@
 dumpCsv :: Int -> IO ()
 dumpCsv m = do
   offs <- replicateM (n+1) genOffs
@@ -29,8 +29,6 @@ dumpCsv m = do
     writeFile
       ("clocks" <> show i <> ".csv")
       ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
-  -- the below can be done without TH: output of TH expression should be a list
-  -- of 'ByteString's
   let dats =
           onN (encode . P.take m)
         $ $(simNodesFromGraph (kn 6)) offs
@@ -53,5 +51,6 @@ genOffs =
 specPeriod :: PeriodPs
 specPeriod = hzToPeriod 200e3
 
+-- | Clocks uncertainty is ±100 ppm
 specPpm :: Ppm
 specPpm = Ppm 100
