@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# OPTIONS_GHC -fconstraint-solver-iterations=0 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=6 #-}
 {-# LANGUAGE GADTs #-}
 
 module Bittide.Node where
@@ -10,16 +10,48 @@ import Clash.Prelude
 
 import Protocols.Wishbone
 
+import Bittide.Calendar
+import Bittide.DoubleBufferedRam
 import Bittide.Link
 import Bittide.ProcessingElement
+import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Bittide.Switch
+
+simpleNodeConfig :: NodeConfig 1 2
+simpleNodeConfig =
+  NodeConfig
+  (ManagementConfig linkConfig nmuConfig)
+  switchConfig
+  (repeat (GppeConfig linkConfig peConfig))
+ where
+  switchConfig = SwitchConfig{ preamble = preamble', calendarConfig = switchCal}
+  switchCal = CalendarConfig (SNat @1024) (repeat @1 $ repeat 0) (repeat @1 $ repeat 0)
+  linkConfig = LinkConfig preamble' (ScatterConfig sgConfig) (GatherConfig sgConfig)
+  sgConfig = CalendarConfig (SNat @1024) (repeat @1 (0 :: Index 1024)) (repeat @1 0)
+  peConfig = PeConfig memMapPe (SNat @8192) (SNat @8192) (Undefined @1) (Undefined @1) 0
+  nmuConfig = PeConfig memMapNmu (SNat @8192) (SNat @8192) (Undefined @1) (Undefined @1) 0
+  memMapPe = fmap (+32768) (iterateI succ 0)
+  memMapNmu = fmap (+32768) (iterateI succ 0)
+  preamble' =  0x1234567890 :: BitVector 80
+
+-- | Each 'gppe' results in 6 busses for the 'managementUnit', namely:
+-- * The 'calendar' for the 'scatterUnitWB'.
+-- * The 'calendar' for the 'gatherUnitWB'.
+-- * The interface of the 'rxUnit' on the 'gppe' side.
+-- * The interface of the 'txUnit' on the 'gppe' side.
+type BussesPerGppe = 4
+
+-- | Each 'switch' link results in 2 busses for the 'managementUnit', namely:
+-- * The interface of the 'rxUnit' on the 'switch' side.
+-- * The interface of the 'txUnit' on the 'switch' side.
+type BussesPerSwitchLink = 2
 
 data NodeConfig externalLinks gppes where
   NodeConfig ::
     ( KnownNat switchBusses
-    , switchBusses ~ (1 + 2 * (externalLinks + (gppes + 1))))=>
-    ManagementConfig ((4 * gppes) + switchBusses) ->
+    , switchBusses ~ (1 + BussesPerSwitchLink * (externalLinks + (gppes + 1))))=>
+    ManagementConfig ((BussesPerGppe * gppes) + switchBusses) ->
     SwitchConfig (externalLinks + gppes + 1) 4 32 ->
     Vec gppes GppeConfig ->
     NodeConfig externalLinks gppes
@@ -40,7 +72,8 @@ node (NodeConfig nmuConfig switchConfig gppeConfigs) linksIn = linksOut
   (swM2Ss, peM2Ss) = splitAtI nmuM2Ss
 
   (swCalM2S :> swRxM2Ss, swTxM2Ss) = splitAtI swM2Ss
-  (swCalS2M :> swRxS2Ms, swTxS2Ms) = splitAtI @(1 + (extLinks + (gppes + 1))) @(extLinks + (gppes + 1)) swS2Ms
+  (swCalS2M :> swRxS2Ms, swTxS2Ms) = splitAtI
+    @(1 + (extLinks + (gppes + 1))) @(extLinks + (gppes + 1)) swS2Ms
 
   nmuS2Ms = swCalS2M :> (swRxS2Ms ++ swTxS2Ms ++ peS2Ms)
 
