@@ -56,11 +56,6 @@ instance ToField SpeedChange where
   toField SlowDown = "slowDown"
   toField NoChange = "noChange"
 
--- | The clock tuner only updates at a frequency of 1MHz; our board operates at
--- 200MHz, thus we only process one FINC/FDEC for every 200 clock cycles
-tunerRatio :: Natural
-tunerRatio = 200
-
 -- | Simple model of the Si5395/Si5391 clock multipliers. In real hardware, these
 -- are connected to some oscillator (i.e., incoming Clock) but for simulation
 -- purposes we pretend it generates the clock too.

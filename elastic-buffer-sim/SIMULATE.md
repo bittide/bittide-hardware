@@ -1,15 +1,15 @@
 Simulation is intensive, so you likely want to run
 
 ```
-cabal run exe:sim -w ghc-9.0.2 -- 2000000
+cabal run sim -w ghc-9.0.2 -- csv 2000000
 ```
 
 rather than using the REPL.
 
-Then:
+Then, run
 
 ```
 python3 script.py
 ```
 
-This will generate `clocks.pdf` and `elasticbuffers.pdf`.
+to generate `clocks.pdf` and `elasticbuffers.pdf`.

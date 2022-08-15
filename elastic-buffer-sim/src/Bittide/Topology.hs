@@ -47,7 +47,8 @@ genOffs =
   minT = speedUpPeriod specPpm specPeriod
   maxT = slowDownPeriod specPpm specPeriod
 
--- we use 200kHz in simulation
+-- we use 200kHz in simulation because otherwise the periods are so small that
+-- deviations can't be expressed using 'Natural's
 specPeriod :: PeriodPs
 specPeriod = hzToPeriod 200e3
 

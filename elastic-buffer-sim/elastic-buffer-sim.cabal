@@ -95,7 +95,9 @@ library
 executable sim
   import: common-options
   main-is: exe/Main.hs
-  build-depends: elastic-buffer-sim
+  build-depends:
+    elastic-buffer-sim,
+    optparse-applicative >=0.14.1.0
   default-language: Haskell2010
   default-extensions: ImplicitPrelude
 
