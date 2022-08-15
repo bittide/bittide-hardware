@@ -31,7 +31,7 @@ deriving instance Show (SwitchConfig links nBytes addrW)
 
 -- | Creates a 'switch' from a 'SwitchConfig'. This wrapper functions hides the preambleWidth
 -- type variable from the rest of the implementation.
-mkswitch ::
+mkSwitch ::
   ( HiddenClockResetEnable dom
   , KnownNat links
   , KnownNat frameWidth, 1 <= frameWidth
@@ -43,7 +43,7 @@ mkswitch ::
   ( Vec links (Signal dom (DataLink frameWidth))
   , Vec (1 + (links * 2)) (Signal dom (WishboneS2M (Bytes nBytes))))
 
-mkswitch (SwitchConfig preamble calConfig) = switch preamble calConfig
+mkSwitch (SwitchConfig preamble calConfig) = switch preamble calConfig
 
 {-# NOINLINE switch #-}
 -- | The Bittide Switch routes data from incoming links to outgoing links based on a calendar.
