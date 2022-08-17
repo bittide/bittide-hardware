@@ -88,7 +88,7 @@ tunableClockGen ::
 tunableClockGen settlePeriod periodOffset stepSize _reset =
   case knownDomain @dom of
     SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
-      DClock SSymbol . Just . go settlePeriod (fromIntegral (period + periodOffset))
+      Clock SSymbol . Just . go settlePeriod (fromIntegral (period + periodOffset))
  where
   go :: SettlePeriod -> PeriodPs -> Signal dom SpeedChange -> Signal dom StepSize
   go !settleCounter !period (sc :- scs) =
@@ -127,8 +127,8 @@ elasticBuffer ::
   Clock writeDom ->
   Signal readDom DataCount
 elasticBuffer mode size clkRead clkWrite
-  | DClock _ (Just readPeriods) <- clkRead
-  , DClock _ (Just writePeriods) <- clkWrite
+  | Clock _ (Just readPeriods) <- clkRead
+  , Clock _ (Just writePeriods) <- clkWrite
   = go 0 (targetDataCount size) readPeriods writePeriods
  where
   go !relativeTime !fillLevel rps wps@(writePeriod :- _) =
@@ -154,17 +154,17 @@ elasticBuffer mode size clkRead clkWrite
           Error -> error "elasticBuffer: underflow"
       | otherwise = fillLevel - 1
 
-elasticBuffer mode size (DClock ss Nothing) clock1 =
+elasticBuffer mode size (Clock ss Nothing) clock1 =
   -- Convert read clock to a "dynamic" clock if it isn't one
   case knownDomain @readDom of
     SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
-      elasticBuffer mode size (DClock ss (Just (pure period))) clock1
+      elasticBuffer mode size (Clock ss (Just (pure period))) clock1
 
-elasticBuffer mode size clock0 (DClock ss Nothing) =
+elasticBuffer mode size clock0 (Clock ss Nothing) =
   -- Convert write clock to a "dynamic" clock if it isn't one
   case knownDomain @writeDom of
     SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
-      elasticBuffer mode size clock0 (DClock ss (Just (pure period)))
+      elasticBuffer mode size clock0 (Clock ss (Just (pure period)))
 
 -- | Configuration passed to 'clockControl'
 data ClockControlConfig = ClockControlConfig
