@@ -166,7 +166,11 @@ jobs:
 
       - name: Get test matrix
         run: |
-          .github/scripts/get_formal_checks.sh
+          if .github/scripts/has_riscv_changes.sh; then
+            .github/scripts/get_formal_checks.sh
+          else
+            echo '["formal-checks-disabled"]' > checks.json
+          fi
 
       - name: Set test matrix
         id: set-matrix
@@ -191,22 +195,24 @@ jobs:
 
     steps:
       - name: Checkout
+        if: matrix.check != 'formal-checks-disabled'
         uses: actions/checkout@v1
 
       - name: Download Contranomy HDL
+        if: matrix.check != 'formal-checks-disabled'
         uses: actions/download-artifact@v2
         with:
           name: contranomy-hdl
 
       - name: Extract HDL
+        if: matrix.check != 'formal-checks-disabled'
         run: |
           tar -x -f contranomy-hdl.tar
 
       - name: Verify ${{ matrix.check }}
+        if: matrix.check != 'formal-checks-disabled'
         run: |
-          if .github/scripts/has_riscv_changes.sh; then
-            .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
-          fi
+          .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
 
       - name: Verification failed, uploading results
         uses: actions/upload-artifact@v2
@@ -259,7 +265,42 @@ jobs:
 
       - name: Run unittests
         run: |
-          cabal run contranomy-sim:unittests
+          cabal run elastic-buffer-sim:unittests
+
+
+  elastic-buffer-sim-tests:
+    name: elastic-buffer-sim unittests
+    runs-on: ubuntu-latest
+    needs: [build, lint]
+
+    container:
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project.simulation cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/store
+
+          key: packages-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-
+
+      - name: Run unittests
+        run: |
+          cabal run elastic-buffer-sim:unittests
 
 
   bittide-tests:
@@ -377,6 +418,10 @@ jobs:
           key: cargo-cache-${{ hashFiles('firmware/examples/hello/Cargo.lock') }}
 
       - name: Building "hello" Example
+        run: cargo build --release
+        working-directory: firmware/examples/hello
+
+      - name: Building "fdt-read" Example
         run: cargo build --release
         working-directory: firmware/examples/hello
 

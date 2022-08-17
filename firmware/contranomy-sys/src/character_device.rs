@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-static mut DEVICE_ADDR: *mut u8 = core::ptr::null_mut();
+static mut DEVICE_ADDR: Option<*mut u8> = None;
 
 pub struct CharacterDevice;
 
@@ -10,22 +10,34 @@ pub struct CharacterDevice;
 ///
 /// # Safety
 ///
-/// The `character_device_addr` argument must be the integer representation of
-/// the address which contains the character device interface.
-pub unsafe fn initialise(character_device_addr: *mut u8) {
-    DEVICE_ADDR = character_device_addr;
-}
-
-fn write_byte(b: u8) {
-    unsafe {
-        core::ptr::write_volatile(DEVICE_ADDR, b);
+/// The `character_device_addr` argument must be the address of the character
+/// device interface.
+pub unsafe fn initialise(character_device_addr: *mut u8) -> bool {
+    if DEVICE_ADDR.is_some() {
+        return false;
     }
+
+    DEVICE_ADDR = Some(character_device_addr);
+
+    true
 }
 
 impl core::fmt::Write for CharacterDevice {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        // SAFETY: this RISC-V implementation does not support multiple threads
+        //         of execution, so the access is essentially thread-local.
+        let addr = if let Some(addr) = unsafe { DEVICE_ADDR } {
+            addr
+        } else {
+            return Err(core::fmt::Error);
+        };
+
         for b in s.bytes() {
-            write_byte(b);
+            // SAFETY: the address has been set by the `initialise` function, so
+            //         that the option is `Some` and contains a valid pointer.
+            unsafe {
+                core::ptr::write_volatile(addr, b);
+            }
         }
         Ok(())
     }

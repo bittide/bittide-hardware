@@ -8,13 +8,16 @@
 use core::fmt::Write;
 use riscv_rt::entry;
 
-use contranomy_sys::{character_device, println};
+use contranomy_sys::println;
+
+const FRAME_SIZE: usize = 4096;
 
 #[entry]
 fn main() -> ! {
     unsafe {
-        character_device::initialise(0x90000000 as *mut u8);
+        contranomy_sys::initialise().unwrap();
     }
+    let _components = unsafe { bittide_sys::initialise::<FRAME_SIZE>().unwrap() };
 
     let names = ["Rust", "RISC-V", "Haskell"];
     loop {

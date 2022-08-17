@@ -17,6 +17,14 @@ Files: riscv-formal/*
 Copyright: 2017 Clifford Wolf <clifford@symbioticeda.com>
 License: ISC
 
+Files: devicetree/blobs/*
+Copyright: 2022 Google LLC
+License: Apache-2.0
+
+Files: elastic-buffer-sim/imgs/*
+Copyright: 2022 Google LLC
+License: Apache-2.0
+
 Files: firmware/tests/src/bin/*.expected
 Copyright: 2022 Google LLC
 License: CC0-1.0

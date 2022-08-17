@@ -8,5 +8,5 @@ exclude = [
   "firmware/tests",
 ]
 members = [
-  "firmware/*"
+  "firmware/*",
 ]

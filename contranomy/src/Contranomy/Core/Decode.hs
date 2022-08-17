@@ -35,6 +35,7 @@ data DecodedInstruction
   , legal       :: Bool
   } deriving (Show, Generic, NFDataX)
 
+{-# NOINLINE decodeInstruction #-}
 decodeInstruction :: MachineWord -> DecodedInstruction
 decodeInstruction w = if slice d1 d0 w == 3 then decode32 w else compressedToFull $ decode16 w
 

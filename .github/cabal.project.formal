@@ -5,3 +5,12 @@
 package contranomy
   flags: +riscv-altopts
   ghc-options: -Werror
+
+package bittide
+  ghc-options: -Werror
+
+package contranomy-sim
+  ghc-options: -Werror
+
+package elastic-buffer-sim
+  ghc-options: -Werror

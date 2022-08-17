@@ -38,3 +38,13 @@ build-firmware-example-hello:
 .PHONY: sim-firmware-example-hello
 sim-firmware-example-hello: build-sim build-firmware-example-hello
 	cabal run simcontranomy -- target/riscv32imc-unknown-none-elf/release/hello
+
+
+
+.PHONY: build-firmware-example-fdt-read
+build-firmware-example-fdt-read:
+	cd firmware/examples/fdt-read; cargo build --release --target-dir ../../../$(CARGO_TARGET_DIR)
+
+.PHONY: sim-firmware-example-fdt-read
+sim-firmware-example-fdt-read: build-sim build-firmware-example-fdt-read
+	cabal run simcontranomy -- target/riscv32imc-unknown-none-elf/release/fdt-read

@@ -13,8 +13,7 @@ type Bytes = 4
 type MachineWord = BitVector 32
 type PC = BitVector 32
 
-
 alignPC :: PC -> PC
 alignPC pc = pc' ++# (0 :: Alignment)
-  where
-    (pc', _) = split pc
+ where
+  (pc', _) = split pc

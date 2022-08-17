@@ -52,6 +52,10 @@ cabal.config
 /contranomy/verilog
 /contranomy/systemverilog
 
+/bittide/vhdl
+/bittide/verilog
+/bittide/systemverilog
+
 # Nix output
 result*
 
@@ -75,3 +79,8 @@ contranomy-sim/main.elf
 
 # Firmware integration test binaries
 firmware-integration-tests/
+
+# Bittide HDL directories
+bittide/verilog
+bittide/vhdl
+bittide/systemverilog

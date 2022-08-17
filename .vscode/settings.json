@@ -20,5 +20,11 @@
   "editor.tabSize": 2,
   "[rust]": {
     "editor.tabSize": 4
+  },
+  "haskell.toolchain": {
+    "hls": "1.6.1.0",
+    "ghc": null,
+    "cabal": null,
+    "stack": null
   }
 }

@@ -16,3 +16,4 @@ default = ["debug-printing"]
 "debug-printing" = []
 
 [dependencies]
+fdt = "0.1.0"
