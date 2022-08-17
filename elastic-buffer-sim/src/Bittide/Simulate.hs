@@ -4,9 +4,7 @@ Provides a rudimentary simulation of elastic buffers.
 
 TODO:
 
-  * Define static topologies
   * Ability to extract statistics
-  * Ability to generate topologies
 
 -}
 
