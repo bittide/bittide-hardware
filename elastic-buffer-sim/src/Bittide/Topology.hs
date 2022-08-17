@@ -4,12 +4,13 @@
 
 {-# LANGUAGE PartialTypeSignatures #-}
 
+{-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
+
 -- | This module contains static topologies and machinery to
 module Bittide.Topology ( dumpCsv, genOffs ) where
 
 import Clash.Explicit.Prelude
 import Control.Monad (replicateM, forM_, zipWithM_)
-import Numeric.Natural
 import Prelude qualified as P
 
 import Data.Array qualified as A
@@ -21,8 +22,6 @@ import Bittide.Simulate.Ppm
 import Bittide.Simulate
 import Bittide.Topology.TH
 import Bittide.Topology.Graph
-
-type Ps = Natural
 
 -- | This samples @n@ steps; the result can be fed to @script.py@
 dumpCsv :: Int -> IO ()

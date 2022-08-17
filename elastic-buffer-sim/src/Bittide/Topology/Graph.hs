@@ -32,6 +32,7 @@ tree d c = treeGraph
   edges = directedEdges ++ fmap swap directedEdges
   adjList = g <$> groupBy ((==) `on` fst) (sort edges)
   g ps@((x,_):_) = (x, snd <$> ps)
+  g [] = (error "Internal error: no edges.", [])
   (treeGraph, _, _) =
     graphFromEdges ((\(key, keys) -> (undefined, key, keys)) <$> adjList)
 
