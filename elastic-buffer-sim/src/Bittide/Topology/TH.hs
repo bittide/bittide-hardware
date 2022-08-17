@@ -2,7 +2,9 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Topology.TH ( onTup, timeN, simNodesFromGraph ) where
+-- | This module contains template haskell functions which lay out circuits
+-- using parts from "Bittide.Simulate"
+module Bittide.Topology.TH ( simNodesFromGraph, onTup, timeN ) where
 
 import Prelude
 
@@ -67,7 +69,7 @@ tup :: [Exp] -> Exp
 tup es = TupE (Just <$> es)
 
 -- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
--- offsets and return a tuple of signals per clock-domain
+-- offsets (divergence from spec) and returns a tuple of signals for each clock domain
 simNodesFromGraph :: Graph -> Q Exp
 simNodesFromGraph g = do
   offs <- traverse (\i -> newName ("offs" ++ show i)) is
