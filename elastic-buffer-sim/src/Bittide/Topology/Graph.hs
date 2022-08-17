@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+
 -- | Some graphs from mathematics.
 module Bittide.Topology.Graph ( diamond, tree, star, kn, cn ) where
 

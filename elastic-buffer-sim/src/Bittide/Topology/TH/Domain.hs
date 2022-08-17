@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Bittide.Topology.TH.Domain where
