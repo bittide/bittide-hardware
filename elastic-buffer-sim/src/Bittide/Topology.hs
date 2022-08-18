@@ -10,19 +10,19 @@
 -- dumps clock periods and elastic buffer occupancy to csv.
 module Bittide.Topology ( dumpCsv, genOffs ) where
 
-import           Clash.Explicit.Prelude
-import           Control.Monad          (forM_, replicateM, zipWithM_)
-import qualified Prelude                as P
+import Clash.Explicit.Prelude
+import Control.Monad          (forM_, replicateM, zipWithM_)
+import Prelude qualified as P
 
-import qualified Data.Array             as A
-import qualified Data.ByteString.Lazy   as BSL
-import           Data.Csv
-import           System.Random          (randomRIO)
+import Data.Array qualified as A
+import Data.ByteString.Lazy qualified as BSL
+import Data.Csv
+import System.Random (randomRIO)
 
-import           Bittide.Simulate
-import           Bittide.Simulate.Ppm
-import           Bittide.Topology.Graph
-import           Bittide.Topology.TH
+import Bittide.Simulate
+import Bittide.Simulate.Ppm
+import Bittide.Topology.Graph
+import Bittide.Topology.TH
 
 -- | This samples @n@ steps; the result can be fed to @script.py@
 dumpCsv :: Int -> IO ()

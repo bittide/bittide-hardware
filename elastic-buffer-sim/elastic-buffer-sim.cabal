@@ -77,19 +77,19 @@ library
   import: common-options
   hs-source-dirs: src
   build-depends:
-    cassava,
-    random,
-    bytestring,
-    template-haskell,
     array,
-    containers
+    bytestring,
+    cassava,
+    containers,
+    random,
+    template-haskell
   exposed-modules:
-    Bittide.Topology
-    Bittide.Topology.TH
-    Bittide.Topology.TH.Domain
-    Bittide.Topology.Graph
     Bittide.Simulate
     Bittide.Simulate.Ppm
+    Bittide.Topology
+    Bittide.Topology.Graph
+    Bittide.Topology.TH
+    Bittide.Topology.TH.Domain
   default-language: Haskell2010
 
 executable sim
@@ -112,8 +112,8 @@ test-suite unittests
     Tests.Bittide.Simulate
   build-depends:
       base
-    , elastic-buffer-sim
     , clash-prelude
+    , elastic-buffer-sim
     , tasty
     , tasty-hedgehog
     , tasty-hunit
