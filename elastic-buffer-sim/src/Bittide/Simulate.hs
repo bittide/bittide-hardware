@@ -88,16 +88,13 @@ tunableClockGen ::
   -- | Clock with a dynamic frequency. At the time of writing, Clash primitives
   -- don't account for this yet, so be careful when using them. Note that dynamic
   -- frequencies are only relevant for components handling multiple domains.
-  --
-  -- We also export the clock's period as a 'Signal' so that it can be easily
-  -- observed during simulation.
-  (Signal dom Natural, Clock dom)
+  Clock dom
 tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
   case knownDomain @dom of
     SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
       let initPeriod = fromIntegral (period + periodOffset)
           clockSignal = initPeriod :- go settlePeriod initPeriod speedChange in
-      (clockSignal, Clock SSymbol (Just clockSignal))
+      Clock SSymbol (Just clockSignal)
  where
   go :: SettlePeriod -> PeriodPs -> Signal dom SpeedChange -> Signal dom StepSize
   go !settleCounter !period (sc :- scs) =
