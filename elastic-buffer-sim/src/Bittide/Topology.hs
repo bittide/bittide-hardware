@@ -8,7 +8,7 @@
 
 -- | This module generates a static topology using template haskell and then
 -- dumps clock periods and elastic buffer occupancy to csv.
-module Bittide.Topology ( dumpCsv, genOffs ) where
+module Bittide.Topology ( dumpCsv, genOffsets ) where
 
 import Clash.Explicit.Prelude
 import Control.Monad          (forM_, replicateM, zipWithM_)
@@ -27,7 +27,7 @@ import Bittide.Topology.TH
 -- | This samples @n@ steps; the result can be fed to @script.py@
 dumpCsv :: Int -> IO ()
 dumpCsv m = do
-  offs <- replicateM (n+1) genOffs
+  offs <- replicateM (n+1) genOffsets
   forM_ [0..n] $ \i ->
     let eb = g A.! i in
     writeFile
@@ -45,8 +45,8 @@ dumpCsv m = do
 
 -- | Randomly generate a 'Offset', how much a real clock's period may differ
 -- from its spec.
-genOffs :: IO Offset
-genOffs =
+genOffsets :: IO Offset
+genOffsets =
   (`subtract` toInteger specPeriod)
     <$> randomRIO (toInteger minT, toInteger maxT)
  where
