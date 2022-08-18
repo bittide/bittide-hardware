@@ -24,7 +24,7 @@ plt.title('Step size 1')
 
 plt.savefig('elasticbuffers.pdf')
 
-clk_names=['clk'+str(i) for i in nodes]
+clk_names=[f'clk{i}' for i in nodes]
 df[clk_names].plot()
 plt.xlabel('Time (ps)')
 plt.ylabel('Period')
