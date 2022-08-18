@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 Simulation is intensive, so you likely want to run
 
 ```
-cabal run sim -w ghc-9.0.2 -- csv 2000000
+cabal run sim -- csv 2000000
 ```
 
 rather than using the REPL.
