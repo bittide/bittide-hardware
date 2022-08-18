@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 -- | Some graphs from mathematics.
-module Bittide.Topology.Graph ( diamond, tree, star, kn, cn ) where
+module Bittide.Topology.Graph ( complete, cyclic, diamond, star, tree ) where
 
 import Prelude
 
@@ -42,16 +42,16 @@ star = tree 1
 
 -- | [Cyclic graph](https://mathworld.wolfram.com/CycleGraph.html) with @n@
 -- vertices.
-cn :: Int -> Graph
-cn n = A.array bounds (fmap (\i -> (i, neighbors i)) [0..(n-1)])
+cyclic :: Int -> Graph
+cyclic n = A.array bounds (fmap (\i -> (i, neighbors i)) [0..(n-1)])
  where
   bounds = (0, n-1)
   neighbors i = [(i-1) `mod` n, (i+1) `mod` n]
 
 -- | [Complete graph](https://mathworld.wolfram.com/CompleteGraph.html) with @n@
 -- vertices.
-kn :: Int -> Graph
-kn n = A.array bounds (fmap (\i -> (i, others i)) [0..(n-1)])
+complete :: Int -> Graph
+complete n = A.array bounds (fmap (\i -> (i, others i)) [0..(n-1)])
  where
   bounds = (0, n-1)
   others i = [ j | j <- [0..(n-1)], j /= i ]

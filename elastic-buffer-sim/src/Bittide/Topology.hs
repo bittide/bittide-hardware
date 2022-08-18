@@ -35,13 +35,13 @@ dumpCsv m = do
       ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
   let dats =
           onN (encode . P.take m)
-        $ $(simNodesFromGraph defClockConfig (kn 6)) offs
+        $ $(simNodesFromGraph defClockConfig (complete 6)) offs
   zipWithM_ (\dat i ->
     BSL.appendFile ("clocks" <> show i <> ".csv") dat) dats [(0::Int)..]
  where
   onN = $(onTup 6)
   (0, n) = A.bounds g
-  g = kn 6
+  g = complete 6
 
 -- | Randomly generate a 'Offset', how much a real clock's period may differ
 -- from its spec.
