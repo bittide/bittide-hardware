@@ -4,7 +4,7 @@
 
 -- | This module contains template haskell functions which lay out circuits
 -- using parts from "Bittide.Simulate"
-module Bittide.Topology.TH ( simNodesFromGraph, onTup, timeN ) where
+module Bittide.Topology.TH ( cross, onTup, simNodesFromGraph, timeN ) where
 
 import Prelude
 
@@ -19,6 +19,10 @@ import Bittide.Simulate
 import Bittide.Simulate.Ppm
 import Bittide.Topology.TH.Domain
 
+-- | Like the Cartesian product.
+--
+-- >>> cross [1..2] ['a'..'c']
+-- [(1,'a'),(1,'b'),(1,'c'),(2,'a'),(2,'b'),(2,'c')]
 cross :: [a] -> [b] -> [(a, b)]
 cross xs ys = (,) <$> xs <*> ys
 

@@ -117,3 +117,14 @@ test-suite unittests
     , tasty
     , tasty-hedgehog
     , tasty-hunit
+
+test-suite doctests
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   tests
+  main-is:          doctests.hs
+  ghc-options:      -threaded
+  build-depends:
+    base,
+    elastic-buffer-sim,
+    doctest-parallel >= 0.1
+  default-language: Haskell2010
