@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 nodes=range(0,5)
 
 # generate data from dumpCsv
-dfs=[pd.read_csv('clocks' + str(i) + '.csv') for i in nodes]
+dfs=[pd.read_csv(f'clocks{i}.csv') for i in nodes]
 
 for df in dfs:
     df.set_index('t', inplace=True)
