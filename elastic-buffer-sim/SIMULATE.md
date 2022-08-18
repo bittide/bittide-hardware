@@ -15,7 +15,7 @@ rather than using the REPL.
 Then, run
 
 ```
-python3 script.py
+poetry run python genplots.py
 ```
 
 to generate `clocks.pdf` and `elasticbuffers.pdf`.

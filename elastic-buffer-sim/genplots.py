@@ -15,12 +15,11 @@ for df in dfs:
 
 df=pd.concat(dfs,axis=0)
 
-eb_names=['eb'+str(i)+str(j) for i in nodes for j in nodes if j != i]
+eb_names=[f'eb{i}{j}' for i in nodes for j in nodes if j != i]
 
 df[eb_names].plot()
 plt.xlabel('Time (ps)')
 plt.ylabel('Elastic buffer occupancy')
-plt.title('Step size 1')
 
 plt.savefig('elasticbuffers.pdf')
 
