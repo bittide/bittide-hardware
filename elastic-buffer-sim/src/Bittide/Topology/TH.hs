@@ -33,7 +33,7 @@ onTup :: Int -> Q Exp
 onTup n = do
   f <- newName "f"
   x_is <- traverse (\i -> newName ("x" ++ show i)) [1..n]
-  pure $ LamE [VarP f, TupP (VarP <$> x_is)] (ListE [ AppE (VarE f) (VarE x) | x <- x_is ])
+  pure $ LamE [VarP f, TupP (VarP <$> x_is)] (ListE [VarE f `AppE` VarE x | x <- x_is ])
 
 -- | Given a @Signal dom (PeriodPs, a_1, ...)@, make a @[(Ps, PeriodPs, a_1, ...)]@.
 --
