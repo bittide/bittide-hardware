@@ -34,7 +34,7 @@ tree d c = treeGraph
   g ps@((x,_):_) = (x, snd <$> ps)
   g [] = (error "Internal error: no edges.", [])
   (treeGraph, _, _) =
-    graphFromEdges ((\(key, keys) -> (undefined, key, keys)) <$> adjList)
+    graphFromEdges ((\(key, keys) -> ((), key, keys)) <$> adjList)
 
 -- | [Star graph](https://mathworld.wolfram.com/StarGraph.html)
 star :: Int -> Graph
