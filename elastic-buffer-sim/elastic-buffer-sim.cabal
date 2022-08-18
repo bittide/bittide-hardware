@@ -97,7 +97,7 @@ executable sim
   main-is: exe/Main.hs
   build-depends:
     elastic-buffer-sim,
-    optparse-applicative >=0.14.1.0
+    docopt
   default-language: Haskell2010
   default-extensions: ImplicitPrelude
 

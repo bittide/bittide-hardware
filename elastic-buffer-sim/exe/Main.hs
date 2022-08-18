@@ -2,30 +2,29 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE NoTemplateHaskell #-}
-
 module Main (main) where
+
+import Control.Monad (when)
+import System.Environment (getArgs)
+import System.Console.Docopt
 
 import Bittide.Topology
 
-import Options.Applicative qualified as OA
+patterns :: Docopt
+patterns = [docopt|
+sim version 0.1.0
+
+Usage:
+  sim csv <steps>
+|]
+
+getArgOrExit :: Arguments -> Option -> IO String
+getArgOrExit = getArgOrExitWith patterns
 
 main :: IO ()
-main = run =<< OA.execParser full
- where
-  full :: OA.ParserInfo Cmd
-  full = OA.info (OA.helper <*> p) OA.fullDesc
-  p = OA.hsubparser
-    (OA.command "csv"
-      (OA.info (DumpCsv <$> steps)
-      (OA.progDesc "Dump to .csv")))
+main = do
+  args <- parseArgsOrExit patterns =<< getArgs
 
-steps :: OA.Parser Int
-steps = OA.argument OA.auto
-    (OA.metavar "STEPS"
-    <> OA.help "Number of iterations/steps to simulate")
-
-run :: Cmd -> IO ()
-run (DumpCsv n) = dumpCsv n
-
-data Cmd = DumpCsv !Int
+  when (args `isPresent` (command "csv")) $ do
+    n <- args `getArgOrExit` (argument "steps")
+    dumpCsv (read n)
