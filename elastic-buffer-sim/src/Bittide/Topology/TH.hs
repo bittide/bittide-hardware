@@ -11,13 +11,13 @@ import Prelude
 import Data.Array qualified as A
 import Data.Graph (Graph)
 import Language.Haskell.TH (Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), Type (..), newName)
+import Language.Haskell.TH.Syntax (lift)
 import Numeric.Natural (Natural)
 
 import Clash.Explicit.Prelude qualified as Clash
 import Clash.Signal.Internal qualified as Clash
 
 import Bittide.Simulate
-import Bittide.Simulate.Ppm
 import Bittide.Topology.TH.Domain
 
 -- | Like the Cartesian product.
@@ -85,13 +85,14 @@ extrPeriods _ =
 
 -- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
 -- offsets (divergence from spec) and returns a tuple of signals for each clock domain
-simNodesFromGraph :: Graph -> Q Exp
-simNodesFromGraph g = do
+simNodesFromGraph :: ClockControlConfig -> Graph -> Q Exp
+simNodesFromGraph ccc g = do
   offs <- traverse (\i -> newName ("offs" ++ show i)) is
   clockNames <- traverse (\i -> newName ("clock" ++ show i)) isA
   clockControlNames <- traverse (\i -> newName ("clockControl" ++ show i)) isA
   clockSignalNames <- traverse (\i -> newName ("clk" ++ show i ++ "Signal")) isA
   ebNames <- traverse (\(i, j) -> newName ("eb" ++ show i ++ show j)) ebA
+  cccE <- lift ccc
   let ebE i j =
         AppE
           (AppE ebClkClk (VarE (clockNames A.! i)))
@@ -105,8 +106,6 @@ simNodesFromGraph g = do
       clkD i = valD (VarP (clockNames A.! i)) (clkE i)
       clkSignalD i = valD (VarP (clockSignalNames A.! i)) (VarE 'extrPeriods `AppE` VarE (clockNames A.! i))
 
-      cccE =
-        AppE (AppE (AppE (AppE (AppE ccc pessimisticPeriodL) settlePeriod) dynamicRange) step) ebSz
       clockControlE k =
         AppE
           (AppE clockControlQ cccE)
@@ -150,8 +149,6 @@ simNodesFromGraph g = do
   cons = ConE 'Clash.Cons
   nil = ConE 'Clash.Nil
   err = ConE 'Error
-  ccc = ConE 'ClockControlConfig
-  ppm = ConE 'Ppm
   ebQ = VarE 'elasticBuffer
   tunableClockGenQ = VarE 'tunableClockGen
   resetGenQ = VarE 'Clash.resetGen
@@ -159,10 +156,6 @@ simNodesFromGraph g = do
   clockControlQ = VarE 'clockControl
   mkVecE = foldr (\x -> AppE (AppE cons x)) nil
 
-  ebSz = LitE (IntegerL 128)
-  step = LitE (IntegerL 1)
-  pessimisticPeriodL = LitE (IntegerL (toInteger pessimisticPeriod))
-  pessimisticPeriod = speedUpPeriod maxPpm (Clash.hzToPeriod 200e3)
-  settlePeriod = LitE (IntegerL (toInteger (pessimisticPeriod * 200)))
-  dynamicRange = ppm `AppE` LitE (IntegerL 150)
-  maxPpm = Ppm 150
+  ebSz = LitE (IntegerL (toInteger (cccBufferSize ccc)))
+  step = LitE (IntegerL (cccStepSize ccc))
+  settlePeriod = LitE (IntegerL (toInteger (cccSettlePeriod ccc)))

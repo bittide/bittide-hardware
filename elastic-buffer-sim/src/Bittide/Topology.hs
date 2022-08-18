@@ -35,7 +35,7 @@ dumpCsv m = do
       ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
   let dats =
           onN (encode . P.take m)
-        $ $(simNodesFromGraph (kn 6)) offs
+        $ $(simNodesFromGraph defClockConfig (kn 6)) offs
   zipWithM_ (\dat i ->
     BSL.appendFile ("clocks" <> show i <> ".csv") dat) dats [(0::Int)..]
  where
@@ -52,11 +52,6 @@ genOffsets =
  where
   minT = speedUpPeriod specPpm specPeriod
   maxT = slowDownPeriod specPpm specPeriod
-
--- we use 200kHz in simulation because otherwise the periods are so small that
--- deviations can't be expressed using 'Natural's
-specPeriod :: PeriodPs
-specPeriod = hzToPeriod 200e3
 
 -- | Clocks uncertainty is ±100 ppm
 specPpm :: Ppm

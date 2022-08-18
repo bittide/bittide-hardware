@@ -10,7 +10,9 @@ import Clash.Explicit.Prelude
 import Data.Ratio
 import Numeric.Natural
 
-newtype Ppm = Ppm Natural deriving newtype (Num)
+newtype Ppm = Ppm Natural
+  deriving newtype (Num)
+  deriving Lift
 type PeriodPs = Natural
 type Hz = Ratio Natural
 

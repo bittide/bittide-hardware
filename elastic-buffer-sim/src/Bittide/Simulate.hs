@@ -192,7 +192,25 @@ data ClockControlConfig = ClockControlConfig
 
   -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
   , cccBufferSize :: ElasticBufferSize
+  } deriving (Lift)
+
+-- we use 200kHz in simulation because otherwise the periods are so small that
+-- deviations can't be expressed using 'Natural's
+specPeriod :: PeriodPs
+specPeriod = hzToPeriod 200e3
+
+defClockConfig :: ClockControlConfig
+defClockConfig = ClockControlConfig
+  { cccPessimisticPeriod = pessimisticPeriod
+  , cccSettlePeriod      = pessimisticPeriod * 200
+  -- clock adjustment takes place at 1MHz, clock is 200MHz so we get one correction per 200 cycles
+  , cccDynamicRange      = 150
+  , cccStepSize          = 1
+  , cccBufferSize        = 128
   }
+ where
+  specPpm = 100
+  pessimisticPeriod = speedUpPeriod specPpm specPeriod
 
 -- | Determines how to influence clock frequency given statistics provided by
 -- all elastic buffers.
