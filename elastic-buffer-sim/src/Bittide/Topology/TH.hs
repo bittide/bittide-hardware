@@ -64,7 +64,7 @@ timeN n = do
                   (AppE (AppE goE (AppE (AppE plusE t) period)) (VarE xs))))
               []
           ]
-  pure $ LetE [goD] (AppE goE (LitE (IntegerL 0)))
+  pure $ LetE [goD] (goE `AppE` LitE (IntegerL 0))
  where
   consSignal = '(Clash.:-)
   consList = ConE '(:)
@@ -100,10 +100,10 @@ simNodesFromGraph g = do
 
       clkE i =
         AppE
-        (AppE (AppE (AppE (AppE tunableClockGenQ settlePeriod) (VarE (offs !! i))) step) resetGenQ)
-        (VarE (clockControlNames A.! i))
+          (AppE (AppE (AppE (AppE tunableClockGenQ settlePeriod) (VarE (offs !! i))) step) resetGenQ)
+          (VarE (clockControlNames A.! i))
       clkD i = valD (VarP (clockNames A.! i)) (clkE i)
-      clkSignalD i = valD (VarP (clockSignalNames A.! i)) (VarE 'extrPeriods `AppE` (VarE (clockNames A.! i)))
+      clkSignalD i = valD (VarP (clockSignalNames A.! i)) (VarE 'extrPeriods `AppE` VarE (clockNames A.! i))
 
       cccE =
         AppE (AppE (AppE (AppE (AppE ccc pessimisticPeriodL) settlePeriod) dynamicRange) step) ebSz
@@ -139,9 +139,7 @@ simNodesFromGraph g = do
   ebIxes = cross .$ is
   ebA = A.array ((0, 0), (n, n)) (zip .$ ebIxes)
   signalType =
-    AppT
-      (AppT (ConT ''Clash.Signal) (ConT ''Bittide))
-      WildCardT
+    ConT ''Clash.Signal `AppT` ConT ''Bittide `AppT` WildCardT
 
   infixl 3 .$
   (.$) f x = f x x
