@@ -135,16 +135,18 @@ data BufferControl calDepth calEntry = BufferControl
 calendar ::
   forall dom nBytes addrW maxCalDepth calEntry bootstrapSizeA bootstrapSizeB .
   ( HiddenClockResetEnable dom
-  , KnownNat nBytes
-  , KnownNat addrW
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat addrW, 2 <= addrW
   , KnownNat bootstrapSizeA
   , 1 <= bootstrapSizeA
   , KnownNat bootstrapSizeB
+  , 1 <= maxCalDepth, 1 <= CLog 2 maxCalDepth
+  , 1 <= bootstrapSizeA
   , 1 <= bootstrapSizeB
   , LessThan bootstrapSizeA maxCalDepth
   , LessThan bootstrapSizeB maxCalDepth
-  , Paddable calEntry
-  , NatFitsInBits (Regs calEntry (nBytes * 8)) addrW
+  , NatFitsInBits (Regs calEntry 8) addrW
+  , 1 <= Regs calEntry 8
   , ShowX calEntry
   , Show calEntry) =>
   SNat maxCalDepth
@@ -286,12 +288,12 @@ data CalendarControl calDepth calEntry nBytes = CalendarControl
 -- calendar.
 wbCalRX
   :: forall dom calEntry calDepth addrW nBytes
-   . ( KnownNat addrW
-     , KnownNat nBytes
-     , KnownNat calDepth
-     , Paddable calEntry
-     , HiddenClockResetEnable dom
-     , NatFitsInBits (Regs calEntry (nBytes * 8)) addrW, ShowX calEntry)
+   . ( HiddenClockResetEnable dom
+     , Paddable calEntry, 1 <= Regs calEntry 8
+     , NatFitsInBits (Regs calEntry 8) addrW, ShowX calEntry
+     , KnownNat calDepth, 1 <= calDepth, 1 <= CLog 2 calDepth
+     , KnownNat addrW, 2 <= addrW
+     , KnownNat nBytes, 1 <= nBytes)
   => Signal dom (WishboneM2S addrW nBytes (Bytes nBytes))
     -- ^ Incoming wishbone signals
   -> Signal dom (CalendarControl calDepth calEntry nBytes)
@@ -312,8 +314,10 @@ wbCalRX = mealy go initState
    where
     calEntryRegs = natToNum @(Regs calEntry (nBytes * 8))
 
-    wbAddrValid = addr <= resize (pack (maxBound :: WbAddress calEntry nBytes))
-    wishboneAddress = (paddedToData . bvAsPadded) addr
+    (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
+    wbAddrValid = addr <= resize (pack (maxBound :: Index (Regs calEntry 8)))
+     && alignment == 0
+    wishboneAddress = bitCoerce $ resize alignedAddress
     wishboneActive = busCycle && strobe
     wishboneError  = wishboneActive && not wbAddrValid
     wbWriting = wishboneActive && writeEnable && not wishboneError
@@ -371,7 +375,9 @@ wbCalRX = mealy go initState
 --   * The shadow calendar depth register
 wbCalTX ::
   forall calDepth calEntry nBytes .
-  (KnownNat nBytes, 1 <= nBytes, Paddable calEntry, Paddable (Index calDepth), Show calEntry) =>
+  ( Paddable (Index calDepth)
+  , Paddable calEntry, Show calEntry
+  , KnownNat nBytes, 1 <= nBytes) =>
   CalendarControl calDepth calEntry nBytes->
   CalendarOutput calDepth calEntry ->
   WishboneS2M (Bytes nBytes)
