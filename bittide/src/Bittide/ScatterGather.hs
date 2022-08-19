@@ -47,7 +47,9 @@ data GatherConfig nBytes addrW where
 scatterUnit ::
   ( HiddenClockResetEnable dom
   , KnownNat memDepth, 1 <= memDepth
-  , KnownNat frameWidth) =>
+  , KnownNat frameWidth
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat addrW, 2 <= addrW) =>
   -- | Configuration for the 'calendar'.
   CalendarConfig nBytes addrW (Index memDepth) ->
   -- | Wishbone (master -> slave) port for the 'calendar'.
@@ -75,7 +77,9 @@ gatherUnit ::
   ( HiddenClockResetEnable dom
   , KnownNat memDepth, 1 <= memDepth
   , KnownNat frameWidth, 1 <= frameWidth
-  , KnownNat (DivRU frameWidth 8), 1 <= (DivRU frameWidth 8)) =>
+  , KnownNat (DivRU frameWidth 8), 1 <= (DivRU frameWidth 8)
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat addrW, 2 <= addrW) =>
   -- | Configuration for the 'calendar'.
   CalendarConfig nBytes addrW (Index memDepth) ->
   -- | Wishbone (master -> slave) port for the 'calendar'.
@@ -86,7 +90,7 @@ gatherUnit ::
   Signal dom (ByteEnable (BitVector frameWidth)) ->
   -- | (Transmitted  frame to Bittide Link, Wishbone (slave -> master) from 'calendar')
   (Signal dom (DataLink frameWidth), Signal dom (WishboneS2M (Bytes nBytes)))
-gatherUnit calConfig wbIn writeOp byteEnables= (linkOut, wbOut)
+gatherUnit calConfig wbIn writeOp byteEnables = (linkOut, wbOut)
  where
   (readAddr, metaCycle, wbOut) = mkCalendar calConfig wbIn
   linkOut = mux (register True ((==0) <$> readAddr)) (pure Nothing) (Just <$> bramOut)
@@ -132,7 +136,9 @@ wbInterface addressRange WishboneM2S{..} readData =
 scatterUnitWb ::
   forall dom addrWidthSu nBytesCal addrWidthCal .
   ( HiddenClockResetEnable dom
-  , KnownNat addrWidthSu, 2 <= addrWidthSu) =>
+  , KnownNat addrWidthSu, 2 <= addrWidthSu
+  , KnownNat nBytesCal, 1 <= nBytesCal
+  , KnownNat addrWidthCal, 2 <= addrWidthCal) =>
   -- | Configuration for the 'calendar'.
   ScatterConfig nBytesCal addrWidthCal ->
   -- | Wishbone (master -> slave) port 'calendar'.
@@ -160,7 +166,9 @@ scatterUnitWb (ScatterConfig calConfig) wbInCal linkIn wbInSu =
 gatherUnitWb ::
   forall dom addrWidthGu nBytesCal addrWidthCal .
   ( HiddenClockResetEnable dom
-  , KnownNat addrWidthGu, 2 <= addrWidthGu) =>
+  , KnownNat addrWidthGu, 2 <= addrWidthGu
+  , KnownNat nBytesCal, 1 <= nBytesCal
+  , KnownNat addrWidthCal, 2 <= addrWidthCal) =>
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal addrWidthCal ->
   -- | Wishbone (master -> slave) data 'calendar'.

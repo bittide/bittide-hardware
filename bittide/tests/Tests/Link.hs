@@ -448,6 +448,3 @@ registerN n a = mealy go (replicate n a)
   go state0 inp = (state1, out)
    where
     (out :> state1) = state0 :< inp
-
-wcre :: KnownDomain dom => (HiddenClockResetEnable dom => r) -> r
-wcre = withClockResetEnable clockGen resetGen enableGen
