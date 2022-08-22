@@ -3,11 +3,12 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 -- | Some graphs from mathematics.
-module Bittide.Topology.Graph ( complete, cyclic, diamond, star, tree ) where
+module Bittide.Topology.Graph ( complete, cyclic, diamond, star, tree, mesh ) where
 
 import Prelude
 
 import Data.Array qualified as A
+import Data.Containers.ListUtils (nubOrd)
 import Data.Function (on)
 import Data.Graph (Graph, graphFromEdges)
 import Data.List (groupBy, sort)
@@ -17,6 +18,27 @@ import Data.Tuple (swap)
 -- | Diamond graph
 diamond :: Graph
 diamond = A.listArray (0, 3) [[1,3], [0,2,3], [2,3], [0,1,2]]
+
+-- | Given a list of edges, make a directed graph
+fromEdgeList :: (Ord a) => [(a, a)] -> Graph
+fromEdgeList es = dirGraph
+ where
+  -- "Data.Graph" deals with directed graphs
+  -- "Data.Graph" deals with directed graphs
+  allEdges = es ++ fmap swap es
+  adjList = g <$> groupBy ((==) `on` fst) (nubOrd $ sort allEdges)
+  g ps@((x,_):_) = (x, snd <$> ps)
+  g [] = error "No edges."
+  (dirGraph, _, _) =
+    graphFromEdges ((\(key, keys) -> ((), key, keys)) <$> adjList)
+
+mesh :: Int -> Int -> Graph
+mesh rows cols = fromEdgeList dirEdges
+ where
+  pairs = [ (m, n) | m <- [1..rows], n <- [1..cols] ]
+  mkEdges (m, n) =
+    [ (a, b) | a <- [(m-1)..(m+1)], b <- [(n-1)..(n+1)], a /= m || b /= n, a == m || b == n, a > 0, b > 0, a <= rows, b <= cols ]
+  dirEdges = concatMap (\p -> fmap (p,) (mkEdges p)) pairs
 
 -- | Tree of depth @depth@ with @c@ children
 tree :: Int -> Int -> Graph
@@ -28,13 +50,7 @@ tree depth c = treeGraph
   mkEdges (0, _, _)           = Nothing
   mkEdges (lvl, node, p_node) = Just ((lvl, node), (lvl-1, p_node))
   directedEdges = mapMaybe mkEdges pairs
-  -- "Data.Graph" takes a directed graphs
-  edges = directedEdges ++ fmap swap directedEdges
-  adjList = g <$> groupBy ((==) `on` fst) (sort edges)
-  g ps@((x,_):_) = (x, snd <$> ps)
-  g [] = (error "Internal error: no edges.", [])
-  (treeGraph, _, _) =
-    graphFromEdges ((\(key, keys) -> ((), key, keys)) <$> adjList)
+  treeGraph = fromEdgeList directedEdges
 
 -- | [Star graph](https://mathworld.wolfram.com/StarGraph.html)
 star :: Int -> Graph
