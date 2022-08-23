@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [tool.poetry]
-name = ""
+name = "elastic-buffer-sim"
 version = "0.1.0"
 description = ""
 authors = ["QBayLogic B.V. <devops@qbaylogic.com>"]
