@@ -102,14 +102,14 @@ simNodesFromGraph ccc g = do
 
     clkE i =
       AppE
-        (AppE (AppE (AppE (AppE tunableClockGenQ settlePeriod) (VarE (offs !! i))) step) resetGenQ)
+        (AppE (AppE (AppE (AppE tunableClockGenV settlePeriod) (VarE (offs !! i))) step) resetGenV)
         (VarE (clockControlNames A.! i))
     clkD i = valD (VarP (clockNames A.! i)) (clkE i)
     clkSignalD i = valD (VarP (clockSignalNames A.! i)) (VarE 'extrPeriods `AppE` VarE (clockNames A.! i))
 
     clockControlE k =
       AppE
-        (AppE clockControlQ cccE)
+        (AppE clockControlV cccE)
         (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
     clockControlD k = valD (VarP (clockControlNames A.! k)) (clockControlE k)
 
@@ -125,7 +125,7 @@ simNodesFromGraph ccc g = do
         AppE
           postprocess
           (SigE
-            (AppE bundleQ (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ])))
+            (AppE bundleV (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ])))
             signalType)
   ress <- traverse res is
   pure $
@@ -146,16 +146,16 @@ simNodesFromGraph ccc g = do
 
   valD p e = ValD p (NormalB e) []
 
-  bundleQ = VarE 'Clash.bundle
-  cons = ConE 'Clash.Cons
-  nil = ConE 'Clash.Nil
-  err = ConE 'Error
-  ebQ = VarE 'elasticBuffer
-  tunableClockGenQ = VarE 'tunableClockGen
-  resetGenQ = VarE 'Clash.resetGen
-  ebClkClk = ebQ `AppE` err `AppE` ebSz
-  clockControlQ = VarE 'clockControl
-  mkVecE = foldr (\x -> AppE (AppE cons x)) nil
+  bundleV = VarE 'Clash.bundle
+  consC = ConE 'Clash.Cons
+  nilC = ConE 'Clash.Nil
+  errC = ConE 'Error
+  ebV = VarE 'elasticBuffer
+  tunableClockGenV = VarE 'tunableClockGen
+  resetGenV = VarE 'Clash.resetGen
+  ebClkClk = ebV `AppE` errC `AppE` ebSz
+  clockControlV = VarE 'clockControl
+  mkVecE = foldr (\x -> AppE (AppE consC x)) nilC
 
   ebSz = LitE (IntegerL (toInteger (cccBufferSize ccc)))
   step = LitE (IntegerL (cccStepSize ccc))
