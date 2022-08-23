@@ -12,6 +12,15 @@ cabal run sim -- csv 2000000
 
 rather than using the REPL.
 
+The python script is managed with [Poetry](https://python-poetry.org/).
+First, [install Poetry](https://python-poetry.org/docs/#installation).
+
+Set up the project with:
+
+```
+poetry install
+```
+
 Then, run
 
 ```
