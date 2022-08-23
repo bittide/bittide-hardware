@@ -20,12 +20,17 @@ diamond :: Graph
 diamond = A.listArray (0, 3) [[1,3], [0,2,3], [2,3], [0,1,2]]
 
 -- | Given a list of edges, make a directed graph
-fromEdgeList :: (Ord a) => [(a, a)] -> Graph
+fromEdgeList :: forall a. (Ord a) => [(a, a)] -> Graph
 fromEdgeList es = dirGraph
  where
   -- "Data.Graph" deals with directed graphs
+  allEdges :: [(a, a)]
   allEdges = es ++ fmap swap es
+  adjList :: [(a, [a])]
   adjList = g <$> groupBy ((==) `on` fst) (nubOrd $ sort allEdges)
+  -- now that we have a sorted/grouped list of edges, reformat by attaching
+  -- a list of all connected nodes to each node.
+  g :: [(a, b)] -> (a, [b])
   g ps@((x,_):_) = (x, snd <$> ps)
   g [] = error "No edges."
   (dirGraph, _, _) =
