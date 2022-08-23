@@ -90,11 +90,10 @@ tunableClockGen ::
   -- frequencies are only relevant for components handling multiple domains.
   Clock dom
 tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
-  case knownDomain @dom of
-    SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
-      let initPeriod = fromIntegral (period + periodOffset)
-          clockSignal = initPeriod :- go settlePeriod initPeriod speedChange in
-      Clock SSymbol (Just clockSignal)
+  let period = snatToNum (clockPeriod @dom)
+      initPeriod = fromIntegral (period + periodOffset)
+      clockSignal = initPeriod :- go settlePeriod initPeriod speedChange in
+  Clock SSymbol (Just clockSignal)
  where
   go :: SettlePeriod -> PeriodPs -> Signal dom SpeedChange -> Signal dom StepSize
   go !settleCounter !period (sc :- scs) =
@@ -162,15 +161,17 @@ elasticBuffer mode size clkRead clkWrite
 
 elasticBuffer mode size (Clock ss Nothing) clock1 =
   -- Convert read clock to a "dynamic" clock if it isn't one
-  case knownDomain @readDom of
-    SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
-      elasticBuffer mode size (Clock ss (Just (pure period))) clock1
+  let
+    period = snatToNum (clockPeriod @readDom)
+  in
+    elasticBuffer mode size (Clock ss (Just (pure period))) clock1
 
 elasticBuffer mode size clock0 (Clock ss Nothing) =
   -- Convert write clock to a "dynamic" clock if it isn't one
-  case knownDomain @writeDom of
-    SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
-      elasticBuffer mode size clock0 (Clock ss (Just (pure period)))
+  let
+    period = snatToNum (clockPeriod @writeDom)
+  in
+    elasticBuffer mode size clock0 (Clock ss (Just (pure period)))
 
 -- | Configuration passed to 'clockControl'
 data ClockControlConfig = ClockControlConfig
