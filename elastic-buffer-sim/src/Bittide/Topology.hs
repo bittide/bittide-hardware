@@ -4,6 +4,9 @@
 
 {-# LANGUAGE PartialTypeSignatures #-}
 
+-- we need this for TH-generated code
+--
+-- TODO: don't rely on this
 {-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
 
 -- | This module generates a static topology using template haskell and then
