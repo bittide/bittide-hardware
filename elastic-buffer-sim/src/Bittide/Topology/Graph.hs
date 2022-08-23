@@ -24,7 +24,6 @@ fromEdgeList :: (Ord a) => [(a, a)] -> Graph
 fromEdgeList es = dirGraph
  where
   -- "Data.Graph" deals with directed graphs
-  -- "Data.Graph" deals with directed graphs
   allEdges = es ++ fmap swap es
   adjList = g <$> groupBy ((==) `on` fst) (nubOrd $ sort allEdges)
   g ps@((x,_):_) = (x, snd <$> ps)
