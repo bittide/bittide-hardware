@@ -78,10 +78,7 @@ extrPeriods ::
   Clash.Clock dom ->
   Clash.Signal dom Natural
 extrPeriods (Clash.Clock _ (Just s)) = s
-extrPeriods _ =
-  let
-    Clash.SDomainConfiguration _ (Clash.snatToNum -> period) _ _ _ _  = Clash.knownDomain @dom
-  in pure period
+extrPeriods _ = pure (Clash.snatToNum (Clash.clockPeriod @dom))
 
 -- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
 -- offsets (divergence from spec) and returns a tuple of signals for each clock domain
