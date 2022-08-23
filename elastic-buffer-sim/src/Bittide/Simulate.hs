@@ -202,8 +202,8 @@ specPeriod = hzToPeriod 200e3
 defClockConfig :: ClockControlConfig
 defClockConfig = ClockControlConfig
   { cccPessimisticPeriod = pessimisticPeriod
-  , cccSettlePeriod      = pessimisticPeriod * 200
   -- clock adjustment takes place at 1MHz, clock is 200MHz so we get one correction per 200 cycles
+  , cccSettlePeriod      = pessimisticPeriod * 200
   , cccDynamicRange      = 150
   , cccStepSize          = 1
   , cccBufferSize        = 128
