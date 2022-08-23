@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 -- | Some graphs from mathematics.
-module Bittide.Topology.Graph ( complete, cyclic, diamond, star, tree, mesh ) where
+module Bittide.Topology.Graph ( complete, cyclic, diamond, star, tree, grid ) where
 
 import Prelude
 
@@ -31,8 +31,9 @@ fromEdgeList es = dirGraph
   (dirGraph, _, _) =
     graphFromEdges ((\(key, keys) -> ((), key, keys)) <$> adjList)
 
-mesh :: Int -> Int -> Graph
-mesh rows cols = fromEdgeList dirEdges
+-- | [Grid graph](https://mathworld.wolfram.com/GridGraph.html)
+grid :: Int -> Int -> Graph
+grid rows cols = fromEdgeList dirEdges
  where
   pairs = [ (m, n) | m <- [1..rows], n <- [1..cols] ]
   mkEdges (m, n) =
