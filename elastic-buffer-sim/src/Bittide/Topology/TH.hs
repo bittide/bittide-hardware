@@ -93,39 +93,40 @@ simNodesFromGraph ccc g = do
   clockSignalNames <- traverse (\i -> newName ("clk" ++ show i ++ "Signal")) isA
   ebNames <- traverse (\(i, j) -> newName ("eb" ++ show i ++ show j)) ebA
   cccE <- lift ccc
-  let ebE i j =
+  let
+    ebE i j =
         AppE
           (AppE ebClkClk (VarE (clockNames A.! i)))
           (VarE (clockNames A.! j))
-      ebD i j = valD (VarP (ebNames A.! (i, j))) (ebE i j)
+    ebD i j = valD (VarP (ebNames A.! (i, j))) (ebE i j)
 
-      clkE i =
+    clkE i =
+      AppE
+        (AppE (AppE (AppE (AppE tunableClockGenQ settlePeriod) (VarE (offs !! i))) step) resetGenQ)
+        (VarE (clockControlNames A.! i))
+    clkD i = valD (VarP (clockNames A.! i)) (clkE i)
+    clkSignalD i = valD (VarP (clockSignalNames A.! i)) (VarE 'extrPeriods `AppE` VarE (clockNames A.! i))
+
+    clockControlE k =
+      AppE
+        (AppE clockControlQ cccE)
+        (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
+    clockControlD k = valD (VarP (clockControlNames A.! k)) (clockControlE k)
+
+    ebs = fmap (uncurry ebD) [ (i, j) | i <- is, j <- g A.! i ]
+    clockControls = clockControlD <$> is
+    clkDs = clkD <$> is
+    clkSignalDs = clkSignalD <$> is
+
+    res k = do
+      let ebN = length (g A.! k)
+      postprocess <- timeN ebN
+      pure $
         AppE
-          (AppE (AppE (AppE (AppE tunableClockGenQ settlePeriod) (VarE (offs !! i))) step) resetGenQ)
-          (VarE (clockControlNames A.! i))
-      clkD i = valD (VarP (clockNames A.! i)) (clkE i)
-      clkSignalD i = valD (VarP (clockSignalNames A.! i)) (VarE 'extrPeriods `AppE` VarE (clockNames A.! i))
-
-      clockControlE k =
-        AppE
-          (AppE clockControlQ cccE)
-          (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
-      clockControlD k = valD (VarP (clockControlNames A.! k)) (clockControlE k)
-
-      ebs = fmap (uncurry ebD) [ (i, j) | i <- is, j <- g A.! i ]
-      clockControls = clockControlD <$> is
-      clkDs = clkD <$> is
-      clkSignalDs = clkSignalD <$> is
-
-      res k = do
-        let ebN = length (g A.! k)
-        postprocess <- timeN ebN
-        pure $
-          AppE
-            postprocess
-            (SigE
-              (AppE bundleQ (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ])))
-              signalType)
+          postprocess
+          (SigE
+            (AppE bundleQ (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ])))
+            signalType)
   ress <- traverse res is
   pure $
     LamE
