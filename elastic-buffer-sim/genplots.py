@@ -5,7 +5,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-nodes=range(0,5)
+nodes=range(0, 5)
 
 # generate data from dumpCsv
 dfs=[pd.read_csv(f'clocks{i}.csv') for i in nodes]
