@@ -18,4 +18,4 @@ Then, run
 poetry run python genplots.py
 ```
 
-to generate `clocks.pdf` and `elasticbuffers.pdf`.
+to generate `_build/clocks.pdf` and `_build/elasticbuffers.pdf`.

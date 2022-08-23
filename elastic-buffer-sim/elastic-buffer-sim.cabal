@@ -81,6 +81,7 @@ library
     bytestring,
     cassava,
     containers,
+    directory,
     random,
     template-haskell
   exposed-modules:

@@ -17,6 +17,7 @@ import Prelude qualified as P
 import Data.Array qualified as A
 import Data.ByteString.Lazy qualified as BSL
 import Data.Csv
+import System.Directory (createDirectoryIfMissing)
 import System.Random (randomRIO)
 
 import Bittide.Simulate
@@ -28,16 +29,17 @@ import Bittide.Topology.TH
 dumpCsv :: Int -> IO ()
 dumpCsv m = do
   offs <- replicateM (n+1) genOffsets
+  createDirectoryIfMissing True "_build"
   forM_ [0..n] $ \i ->
     let eb = g A.! i in
     writeFile
-      ("clocks" <> show i <> ".csv")
+      ("_build/clocks" <> show i <> ".csv")
       ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
   let dats =
           onN (encode . P.take m)
         $ $(simNodesFromGraph defClockConfig (complete 6)) offs
   zipWithM_ (\dat i ->
-    BSL.appendFile ("clocks" <> show i <> ".csv") dat) dats [(0::Int)..]
+    BSL.appendFile ("_build/clocks" <> show i <> ".csv") dat) dats [(0::Int)..]
  where
   onN = $(onTup 6)
   (0, n) = A.bounds g
