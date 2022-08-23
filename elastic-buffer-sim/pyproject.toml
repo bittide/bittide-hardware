@@ -6,7 +6,8 @@
 name = ""
 version = "0.1.0"
 description = ""
-authors = []
+authors = ["QBayLogic B.V. <devops@qbaylogic.com>"]
+license = "Apache-2.0"
 
 [tool.poetry.dependencies]
 python = "^3.10"
