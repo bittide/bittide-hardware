@@ -133,6 +133,14 @@ jobs:
         run: |
           cd elastic-buffer-sim && poetry run python genplots.py
 
+      - name: Upload plots
+        uses: actions/upload-artifact@v2
+        with:
+          name: gen-plots-py
+          path: |
+            elastic-buffer-sim/_build/clocks.pdf
+            elastic-buffer-sim/_build/elasticbuffers.pdf
+
   elastic-buffer-sim-tests:
     name: elastic-buffer-sim unittests
     runs-on: ubuntu-latest
