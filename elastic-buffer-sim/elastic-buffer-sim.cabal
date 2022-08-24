@@ -76,10 +76,31 @@ common common-options
 library
   import: common-options
   hs-source-dirs: src
+  build-depends:
+    array,
+    bytestring,
+    cassava,
+    containers,
+    directory,
+    random,
+    template-haskell
   exposed-modules:
     Bittide.Simulate
     Bittide.Simulate.Ppm
+    Bittide.Topology
+    Bittide.Topology.Graph
+    Bittide.Topology.TH
+    Bittide.Topology.TH.Domain
   default-language: Haskell2010
+
+executable sim
+  import: common-options
+  main-is: exe/Main.hs
+  build-depends:
+    elastic-buffer-sim,
+    docopt
+  default-language: Haskell2010
+  default-extensions: ImplicitPrelude
 
 test-suite unittests
   import:           common-options
@@ -92,8 +113,19 @@ test-suite unittests
     Tests.Bittide.Simulate
   build-depends:
       base
-    , elastic-buffer-sim
     , clash-prelude
+    , elastic-buffer-sim
     , tasty
     , tasty-hedgehog
     , tasty-hunit
+
+test-suite doctests
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   tests
+  main-is:          doctests.hs
+  ghc-options:      -threaded
+  build-depends:
+    base,
+    elastic-buffer-sim,
+    doctest-parallel >= 0.1
+  default-language: Haskell2010
