@@ -74,21 +74,21 @@ timeN n = do
 tup :: [Exp] -> Exp
 tup es = TupE (Just <$> es)
 
-extrPeriods ::
+extractPeriods ::
   forall dom. Clash.KnownDomain dom =>
   Clash.Clock dom ->
   Clash.Signal dom Natural
-extrPeriods (Clash.Clock _ (Just s)) = s
-extrPeriods _ = pure (Clash.snatToNum (Clash.clockPeriod @dom))
+extractPeriods (Clash.Clock _ (Just s)) = s
+extractPeriods _ = pure (Clash.snatToNum (Clash.clockPeriod @dom))
 
 -- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
 -- offsets (divergence from spec) and returns a tuple of signals for each clock domain
 simNodesFromGraph :: ClockControlConfig -> Graph -> Q Exp
 simNodesFromGraph ccc g = do
-  offs <- traverse (\i -> newName ("offs" ++ show i)) is
-  clockNames <- traverse (\i -> newName ("clock" ++ show i)) isA
-  clockControlNames <- traverse (\i -> newName ("clockControl" ++ show i)) isA
-  clockSignalNames <- traverse (\i -> newName ("clk" ++ show i ++ "Signal")) isA
+  offsets <- traverse (\i -> newName ("offsets" ++ show i)) indices
+  clockNames <- traverse (\i -> newName ("clock" ++ show i)) indicesArr
+  clockControlNames <- traverse (\i -> newName ("clockControl" ++ show i)) indicesArr
+  clockSignalNames <- traverse (\i -> newName ("clk" ++ show i ++ "Signal")) indicesArr
   ebNames <- traverse (\(i, j) -> newName ("eb" ++ show i ++ show j)) ebA
   cccE <- lift ccc
   let
@@ -100,10 +100,10 @@ simNodesFromGraph ccc g = do
 
     clkE i =
       AppE
-        (AppE (AppE (AppE (AppE tunableClockGenV settlePeriod) (VarE (offs !! i))) step) resetGenV)
+        (AppE (AppE (AppE (AppE tunableClockGenV settlePeriod) (VarE (offsets !! i))) step) resetGenV)
         (VarE (clockControlNames A.! i))
     clkD i = valD (VarP (clockNames A.! i)) (clkE i)
-    clkSignalD i = valD (VarP (clockSignalNames A.! i)) (VarE 'extrPeriods `AppE` VarE (clockNames A.! i))
+    clkSignalD i = valD (VarP (clockSignalNames A.! i)) (VarE 'extractPeriods `AppE` VarE (clockNames A.! i))
 
     clockControlE k =
       AppE
@@ -111,10 +111,10 @@ simNodesFromGraph ccc g = do
         (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
     clockControlD k = valD (VarP (clockControlNames A.! k)) (clockControlE k)
 
-    ebs = fmap (uncurry ebD) [ (i, j) | i <- is, j <- g A.! i ]
-    clockControls = clockControlD <$> is
-    clkDs = clkD <$> is
-    clkSignalDs = clkSignalD <$> is
+    ebs = fmap (uncurry ebD) [ (i, j) | i <- indices, j <- g A.! i ]
+    clockControls = clockControlD <$> indices
+    clkDs = clkD <$> indices
+    clkSignalDs = clkSignalD <$> indices
 
     res k = do
       let ebN = length (g A.! k)
@@ -125,17 +125,17 @@ simNodesFromGraph ccc g = do
           (SigE
             (AppE bundleV (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ])))
             signalType)
-  ress <- traverse res is
+  ress <- traverse res indices
   pure $
     LamE
-      [ListP (VarP <$> offs)]
+      [ListP (VarP <$> offsets)]
       (LetE (ebs ++ clkDs ++ clkSignalDs ++ clockControls) (tup ress))
  where
-  is = [0..n]
+  indices = [0..n]
   bounds@(0, n) = A.bounds g
-  isA = A.listArray bounds is
-  ebIxes = cross .$ is
-  ebA = A.array ((0, 0), (n, n)) (zip .$ ebIxes)
+  indicesArr = A.listArray bounds indices
+  ebIndices = cross .$ indices
+  ebA = A.array ((0, 0), (n, n)) (zip .$ ebIndices)
   signalType =
     ConT ''Clash.Signal `AppT` ConT ''Bittide `AppT` WildCardT
 
@@ -151,10 +151,10 @@ simNodesFromGraph ccc g = do
   ebV = VarE 'elasticBuffer
   tunableClockGenV = VarE 'tunableClockGen
   resetGenV = VarE 'Clash.resetGen
-  ebClkClk = ebV `AppE` errC `AppE` ebSz
+  ebClkClk = ebV `AppE` errC `AppE` ebSize
   clockControlV = VarE 'clockControl
   mkVecE = foldr (\x -> AppE (AppE consC x)) nilC
 
-  ebSz = LitE (IntegerL (toInteger (cccBufferSize ccc)))
+  ebSize = LitE (IntegerL (toInteger (cccBufferSize ccc)))
   step = LitE (IntegerL (cccStepSize ccc))
   settlePeriod = LitE (IntegerL (toInteger (cccSettlePeriod ccc)))
