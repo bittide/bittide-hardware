@@ -7,13 +7,14 @@ module Bittide.Topology.Graph ( complete, cyclic, diamond, star, tree, grid ) wh
 
 import Prelude
 
-import Data.Array qualified as A
 import Data.Containers.ListUtils (nubOrd)
 import Data.Function (on)
 import Data.Graph (Graph, graphFromEdges)
 import Data.List (groupBy, sort)
 import Data.Maybe (mapMaybe)
 import Data.Tuple (swap)
+
+import Data.Array qualified as A
 
 -- | Diamond graph
 diamond :: Graph

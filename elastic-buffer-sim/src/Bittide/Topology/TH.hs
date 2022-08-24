@@ -8,11 +8,12 @@ module Bittide.Topology.TH ( cross, onTup, simNodesFromGraph, timeN ) where
 
 import Prelude
 
-import Data.Array qualified as A
 import Data.Graph (Graph)
 import Language.Haskell.TH (Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), Type (..), newName)
 import Language.Haskell.TH.Syntax (lift)
 import Numeric.Natural (Natural)
+
+import Data.Array qualified as A
 
 import Clash.Explicit.Prelude qualified as Clash
 import Clash.Signal.Internal qualified as Clash

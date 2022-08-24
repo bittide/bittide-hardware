@@ -15,13 +15,15 @@ module Bittide.Topology ( dumpCsv, genOffsets ) where
 
 import Clash.Explicit.Prelude
 import Control.Monad          (forM_, replicateM, zipWithM_)
+
 import Prelude qualified as P
 
-import Data.Array qualified as A
-import Data.ByteString.Lazy qualified as BSL
 import Data.Csv
 import System.Directory (createDirectoryIfMissing)
 import System.Random (randomRIO)
+
+import Data.Array qualified as A
+import Data.ByteString.Lazy qualified as BSL
 
 import Bittide.Simulate
 import Bittide.Simulate.Ppm
