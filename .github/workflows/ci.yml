@@ -112,8 +112,7 @@ jobs:
       - name: Install poetry
         run: |
           apt-get update
-          apt-get install python3-pip -y
-          python3 -m pip install poetry
+          apt-get install python3-distutils -y
           curl -sSL https://install.python-poetry.org | python3 -
           echo "${HOME}/.local/bin" >> $GITHUB_PATH
 
