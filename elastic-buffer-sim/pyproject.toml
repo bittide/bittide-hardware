@@ -10,9 +10,10 @@ authors = ["QBayLogic B.V. <devops@qbaylogic.com>"]
 license = "Apache-2.0"
 
 [tool.poetry.dependencies]
-python = "^3.8 || ^3.10"
+python = ">=3.8,<3.12"
 matplotlib = "^3.5"
 pandas = "^1.4"
+scipy = "^1.9"
 
 [tool.poetry.dev-dependencies]
 pycodestyle = "^2.9"

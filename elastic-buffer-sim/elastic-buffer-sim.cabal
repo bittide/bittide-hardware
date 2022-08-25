@@ -82,6 +82,7 @@ library
     cassava,
     containers,
     directory,
+    matplotlib,
     random,
     template-haskell
   exposed-modules:
