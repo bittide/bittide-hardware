@@ -48,6 +48,7 @@ plotEbs m = do
   g = grid 3 4
   plotEachNode = $(plotDats (grid 3 4))
 
+
 -- | This samples @n@ steps; the result can be fed to @script.py@
 dumpCsv :: Int -> IO ()
 dumpCsv m = do
