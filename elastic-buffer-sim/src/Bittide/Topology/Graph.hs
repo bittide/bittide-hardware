@@ -47,12 +47,21 @@ fromEdgeList es = dirGraph
     graphFromEdges ((\(key, keys) -> ((), key, keys)) <$> adjList)
 
 -- | See [this figure](https://www.researchgate.net/figure/The-two-dimensional-torus-4x4_fig1_221134153)
-torus2d :: Int -> Int -> Graph
+torus2d ::
+  -- | @rows@
+  Int ->
+  -- | @cols@
+  Int ->
+  Graph
 torus2d rows cols = fromEdgeList dirEdges
  where
   pairs = [ (m, n) | m <- [0..(rows-1)], n <- [0..(cols-1)] ]
   neighborsOf (m, n) =
-    [ (a `mod` rows, b `mod` cols) | a <- [(m-1)..(m+1)], b <- [(n-1)..(n+1)], a /= m || b /= n, a == m || b == n ]
+    [ ((m-1) `mod` rows, n)
+    , ((m+1) `mod` rows, n)
+    , (m, (n-1) `mod` cols)
+    , (m, (n+1) `mod` cols)
+    ]
   dirEdges = concatMap (\p -> fmap (p,) (neighborsOf p)) pairs
 
 -- | [Grid graph](https://mathworld.wolfram.com/GridGraph.html)
