@@ -1,0 +1,173 @@
+cabal-version:       2.4
+name:                bittide-instances
+version:             0.1
+License:             Apache-2.0
+license-file:        LICENSE
+author:              QBayLogic B.V.
+maintainer:          devops@qbaylogic.com
+Copyright:           Copyright © 2022 Google LLC
+
+data-files:
+  tests/reports/*.rpt
+  tests/reports/golden/*.rpt
+
+common common-options
+  default-extensions:
+    BangPatterns
+    BinaryLiterals
+    ConstraintKinds
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    NoStarIsType
+    PolyKinds
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    ViewPatterns
+
+    -- TemplateHaskell is used to support convenience functions such as
+    -- 'listToVecTH' and 'bLit'.
+    TemplateHaskell
+    QuasiQuotes
+
+    -- Prelude isn't imported by default as Clash offers Clash.Prelude
+    NoImplicitPrelude
+  ghc-options:
+    -Wall -Wcompat
+    -- Plugins to support type-level constraint solving on naturals
+    -fplugin GHC.TypeLits.Extra.Solver
+    -fplugin GHC.TypeLits.Normalise
+    -fplugin GHC.TypeLits.KnownNat.Solver
+
+    -- Clash needs access to the source code in compiled modules
+    -fexpose-all-unfoldings
+
+    -- Worker wrappers introduce unstable names for functions that might have
+    -- blackboxes attached for them. You can disable this, but be sure to add
+    -- a no-specialize pragma to every function with a blackbox.
+    -fno-worker-wrapper
+  default-language: Haskell2010
+  build-depends:
+    aeson,
+    base,
+    bittide-extra,
+    bittide,
+    clash-lib,
+    clash-prelude,
+    clash-protocols,
+    containers,
+    filepath,
+    ghc-typelits-extra,
+    ghc-typelits-knownnat,
+    ghc-typelits-natnormalise,
+    Glob,
+    MissingH,
+    pretty-simple,
+    shake,
+    split,
+    string-interpolate,
+    template-haskell,
+    text,
+    unix
+
+library
+  import: common-options
+  hs-source-dirs: src
+  exposed-modules:
+    Bittide.Instances.Calendar
+    Bittide.Instances.Domains
+    Bittide.Instances.Hacks
+
+    Clash.Shake.Extra
+    Clash.Shake.Vivado
+    Clash.Shake.Vivado.ParseTimingSummary
+    Clash.Shake.Vivado.Util
+    Development.Shake.Extra
+    Language.Haskell.TH.Extra
+  autogen-modules:
+    Paths_bittide_instances
+  other-modules:
+    Paths_bittide_instances
+
+executable shake
+  import: common-options
+  main-is: bin/Shake.hs
+  Build-Depends:
+      aeson
+    , ansi-terminal
+    , base16-bytestring
+    , binary
+    , bittide-instances
+    , bytestring
+    , clash-ghc
+    , clash-lib
+    , cryptohash-sha256
+    , extra
+    , Glob
+    , pretty-simple
+    , shake
+    , template-haskell
+    , text
+    , utf8-string
+
+executable clash
+  import: common-options
+  main-is: bin/Clash.hs
+  Build-Depends: clash-ghc, bittide-instances
+
+test-suite doctests
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   tests
+  main-is:          doctests.hs
+  ghc-options:      -threaded
+  build-depends:    base, bittide-instances, doctest-parallel >= 0.1
+  default-language: Haskell2010
+
+test-suite unittests
+  import: common-options
+  hs-source-dirs: tests
+  type: exitcode-stdio-1.0
+  main-is: unittests.hs
+  ghc-options: -threaded -with-rtsopts=-N
+  other-modules:
+    Tests.Clash.Shake.Vivado.ParseTimingSummary
+    Paths_bittide_instances
+  autogen-modules:
+    Paths_bittide_instances
+  build-depends:
+    , bittide-instances
+    , filepath
+    , pretty-simple
+    , tasty
+    , tasty-golden
+
+executable parse-timing-summary
+  Main-Is:            bin/ParseTimingSummary.hs
+  Build-Depends:
+    base,
+    aeson-pretty,
+    bittide-instances,
+    bytestring,
+    directory,
+    docopt                  ^>= 0.7,
+    extra,
+    filepath,
+    pretty-simple,
+    text,
+  GHC-Options:        -Wall -Wcompat
+  default-language:   Haskell2010

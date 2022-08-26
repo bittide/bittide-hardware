@@ -70,6 +70,7 @@ deriving instance Show (CalendarConfig nBytes addrW calEntry)
 -- we prevent the constraints of the type variables used in 'calendar' from leaking into
 -- the rest of the system.
 mkCalendar ::
+  forall dom nBytes addrW calEntry .
   (HiddenClockResetEnable dom) =>
   -- | Calendar configuration for 'calendar'.
   CalendarConfig nBytes addrW calEntry ->
