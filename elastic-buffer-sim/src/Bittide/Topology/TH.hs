@@ -16,6 +16,7 @@ where
 
 import Prelude
 
+import Data.Bifunctor (bimap)
 import Data.Csv (encode)
 import Data.Graph (Graph)
 import Graphics.Matplotlib (plot)
@@ -25,8 +26,10 @@ import Numeric.Natural (Natural)
 
 import Bittide.Simulate
 import Bittide.Topology.TH.Domain
+import Graphics.Matplotlib.Ext
 
 import Data.Array qualified as A
+import Data.List qualified as L
 
 import Clash.Explicit.Prelude qualified as Clash
 import Clash.Signal.Internal qualified as Clash
@@ -128,7 +131,7 @@ tup es = TupE (Just <$> es)
 
 -- | Example: @extrClocks 2@ will give a function of type
 --
--- @Int -> [(Ps, PeriodPs, DataCount, DataCount)] -> Matplotlib@
+-- @Int -> [(Ps, PeriodPs, DataCount, DataCount)] -> (Matplotlib, Matplotlib)@
 --
 -- The result (of type 'Matplotlib') will be period vs. time
 asPlotN :: Int -> Q Exp
@@ -137,12 +140,17 @@ asPlotN i = do
   m <- newName "m"
   pure $
     LamE [VarP m] $
-              AppE (VarE 'uncurry) (VarE 'plot)
+              bimapV
+                plotPairs
+                (VarE 'foldPlots `compose` mapV plotPairs `compose` VarE 'L.transpose)
     `compose` VarE 'unzip
-    `compose` mapQ (VarE 'fst `compose` g)
+    `compose` mapV g
     `compose` (VarE 'take `AppE` VarE m)
  where
-  mapQ = AppE (VarE 'fmap) -- TODO: mapV
+  mapV = AppE (VarE 'fmap)
+  unzipV = VarE 'unzip
+  bimapV f = AppE (AppE (VarE 'bimap) f)
+  plotPairs = AppE (VarE 'uncurry) (VarE 'plot) `compose` unzipV
 
 compose :: Exp -> Exp -> Exp
 compose e0 = AppE (AppE (VarE '(.)) e0)

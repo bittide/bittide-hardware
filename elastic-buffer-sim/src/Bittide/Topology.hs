@@ -17,11 +17,10 @@ import Clash.Explicit.Prelude
 import Control.Monad (void, forM_, replicateM, zipWithM_)
 
 import Prelude qualified as P
-import Data.List qualified as L
 
 import System.Directory (createDirectoryIfMissing)
 import System.Random (randomRIO)
-import Graphics.Matplotlib ((%), mp, file, xlabel, ylabel)
+import Graphics.Matplotlib ((%), file, xlabel, ylabel)
 
 import Data.Array qualified as A
 import Data.ByteString.Lazy qualified as BSL
@@ -30,23 +29,24 @@ import Bittide.Simulate
 import Bittide.Simulate.Ppm
 import Bittide.Topology.Graph
 import Bittide.Topology.TH
-
+import Graphics.Matplotlib.Ext
 
 -- | This samples @n@ steps and plots clock speeds
 plotEbs :: Int -> IO ()
 plotEbs m = do
   offs <- replicateM (n+1) genOffsets
   createDirectoryIfMissing True "_build"
-  let dats =
-          onN (plotEachNode m)
-        $ $(simNodesFromGraph defClockConfig (grid 3 4)) offs
-      -- TODO: auto-ebs
-  void $ file "_build/clocks.pdf" (xlabel "Time (ps)" % ylabel "Period (ps)" % L.foldl' (%) mp dats)
+  let (clockDats, ebDats) =
+          P.unzip
+        $ onN (plotEachNode m)
+        $ $(simNodesFromGraph defClockConfig (complete 11)) offs
+  void $ file "_build/clocks.pdf" (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
+  void $ file "_build/elasticbuffers.pdf" (xlabel "Time (ps)" % foldPlots ebDats)
  where
-  onN = $(onTup 12)
+  onN = $(onTup 11)
   (0, n) = A.bounds g
-  g = grid 3 4
-  plotEachNode = $(plotDats (grid 3 4))
+  g = complete 11
+  plotEachNode = $(plotDats (complete 11))
 
 -- | This samples @n@ steps; the result can be fed to @script.py@
 dumpCsv :: Int -> IO ()
