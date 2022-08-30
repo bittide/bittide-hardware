@@ -10,6 +10,7 @@ module Bittide.Topology.Graph
   , grid
   , star
   , torus2d
+  , torus3d
   , tree
   )
 where
@@ -45,6 +46,20 @@ fromEdgeList es = dirGraph
   g [] = error "No edges."
   (dirGraph, _, _) =
     graphFromEdges ((\(key, keys) -> ((), key, keys)) <$> adjList)
+
+torus3d :: Int -> Int -> Int -> Graph
+torus3d a b c = fromEdgeList dirEdges
+ where
+  pairs = [ (l, m, n) | l <- [0..(a-1)], m <- [0..(b-1)], n <- [0..(c-1)] ]
+  neighborsOf (l, m, n) =
+    [ ((l-1) `mod` a, m, n)
+    , ((l+1) `mod` a, m, n)
+    , (l, (m-1) `mod` b, n)
+    , (l, (m+1) `mod` b, n)
+    , (l, m, (n-1) `mod` c)
+    , (l, m, (n+1) `mod` c)
+    ]
+  dirEdges = concatMap (\p -> fmap (p,) (neighborsOf p)) pairs
 
 -- | See [this figure](https://www.researchgate.net/figure/The-two-dimensional-torus-4x4_fig1_221134153)
 torus2d ::
