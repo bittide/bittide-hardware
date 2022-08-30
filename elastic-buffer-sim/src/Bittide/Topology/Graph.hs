@@ -3,7 +3,16 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 -- | Some graphs from mathematics.
-module Bittide.Topology.Graph ( complete, cyclic, diamond, star, tree, grid ) where
+module Bittide.Topology.Graph
+  ( cyclic
+  , complete
+  , diamond
+  , grid
+  , star
+  , torus2d
+  , tree
+  )
+where
 
 import Prelude
 
@@ -36,6 +45,24 @@ fromEdgeList es = dirGraph
   g [] = error "No edges."
   (dirGraph, _, _) =
     graphFromEdges ((\(key, keys) -> ((), key, keys)) <$> adjList)
+
+-- | See [this figure](https://www.researchgate.net/figure/The-two-dimensional-torus-4x4_fig1_221134153)
+torus2d ::
+  -- | @rows@
+  Int ->
+  -- | @cols@
+  Int ->
+  Graph
+torus2d rows cols = fromEdgeList dirEdges
+ where
+  pairs = [ (m, n) | m <- [0..(rows-1)], n <- [0..(cols-1)] ]
+  neighborsOf (m, n) =
+    [ ((m-1) `mod` rows, n)
+    , ((m+1) `mod` rows, n)
+    , (m, (n-1) `mod` cols)
+    , (m, (n+1) `mod` cols)
+    ]
+  dirEdges = concatMap (\p -> fmap (p,) (neighborsOf p)) pairs
 
 -- | [Grid graph](https://mathworld.wolfram.com/GridGraph.html)
 grid :: Int -> Int -> Graph
