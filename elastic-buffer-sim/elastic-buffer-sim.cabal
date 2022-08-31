@@ -81,6 +81,7 @@ library
     bytestring,
     cassava,
     containers,
+    deepseq,
     directory,
     matplotlib,
     random,

@@ -15,9 +15,9 @@ module Bittide.Simulate where
 
 import Clash.Prelude
 import Clash.Signal.Internal
-import Data.Bifunctor (second)
 import GHC.Stack
 import Numeric.Natural
+import Control.DeepSeq (deepseq)
 
 import Bittide.Simulate.Ppm
 
@@ -203,7 +203,7 @@ defClockConfig = ClockControlConfig
   , cccSettlePeriod      = pessimisticPeriod * 200
   , cccDynamicRange      = 150
   , cccStepSize          = 1
-  , cccBufferSize        = 128
+  , cccBufferSize        = 65536 -- 128
   }
  where
   specPpm = 100
@@ -226,17 +226,39 @@ clockControl ::
   -- | Whether to adjust node clock frequency
   Signal dom SpeedChange
 clockControl ClockControlConfig{..} =
-  snd . go (cccSettlePeriod + 1) 0 . bundle
+  fth5 . go (cccSettlePeriod + 1) 0 0 0 NoChange . bundle
  where
-  go :: SettlePeriod -> Offset -> Signal dom (Vec n DataCount) -> (Offset, Signal dom SpeedChange)
-  go settleCounter offs (dataCounts :- nextDataCounts) = second (speedChange :-) nextChanges
+  fth5 (_, _, _, _, e) = e
+  -- x_k is the integral of the measurement
+  go :: SettlePeriod -> Offset -> Integer -> Integer -> SpeedChange -> Signal dom (Vec n DataCount) -> (Offset, Integer, Integer, SpeedChange, Signal dom SpeedChange)
+  go settleCounter offs x_k z_k b_k (dataCounts :- nextDataCounts) = fifth5 (speedChange :-) nextChanges
    where
-    nextChanges = go newSettleCounter nextOffs nextDataCounts
-    average = sum dataCounts `div` fromIntegral (length dataCounts)
+    -- k_p = 5e-7, k_i = 1 gives typical overzealous control
+    k_p = 1 :: Float
+    k_i = 5e-7 :: Float
+    r_k = sum dataCounts
+    x_k' =
+      let r_kI = toInteger r_k
+          diff = let dcl = fromIntegral (length dataCounts) in dcl `deepseq` toInteger (targetDataCount cccBufferSize * dcl)
+      in x_k `deepseq` r_kI `deepseq` diff `deepseq` x_k + r_kI - diff
+
+    c_des = k_p * realToFrac r_k + k_i * realToFrac x_k'
+    z_k' = z_k + b_kI
+    c_est = realToFrac (cccStepSize * z_k')
+
+    b_kI = case b_k of
+      NoChange -> 0
+      SpeedUp -> 1
+      SlowDown -> -1
+
+    nextChanges = go newSettleCounter nextOffs x_k' z_k' speedChange nextDataCounts
+    -- average = sum dataCounts `div` fromIntegral (length dataCounts)
+
+    fifth5 f ~(a, b, c, d, e) = (a, b, c, d, f e)
 
     (speedChange, nextOffs)
       | settleCounter > cccSettlePeriod =
-          case compare average (targetDataCount cccBufferSize) of
+          case compare c_des c_est of
             LT | offs + cccStepSize <= ma -> (SlowDown, offs + cccStepSize)
             GT | offs - cccStepSize >= mi -> (SpeedUp, offs - cccStepSize)
             _ -> (NoChange, offs)
