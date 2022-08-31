@@ -39,14 +39,14 @@ plotEbs m = do
   let (clockDats, ebDats) =
           P.unzip
         $ onN (plotEachNode m)
-        $ $(simNodesFromGraph defClockConfig (complete 11)) offs
+        $ $(simNodesFromGraph defClockConfig (grid 3 4)) offs
   void $ file "_build/clocks.pdf" (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
   void $ file "_build/elasticbuffers.pdf" (xlabel "Time (ps)" % foldPlots ebDats)
  where
-  onN = $(onTup 11)
+  onN = $(onTup 12)
   (0, n) = A.bounds g
-  g = complete 11
-  plotEachNode = $(plotDats (complete 11))
+  g = grid 3 4
+  plotEachNode = $(plotDats (grid 3 4))
 
 -- | This samples @n@ steps; the result can be fed to @script.py@
 dumpCsv :: Int -> IO ()
