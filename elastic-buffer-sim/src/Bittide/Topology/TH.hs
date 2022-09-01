@@ -7,7 +7,9 @@
 module Bittide.Topology.TH
   ( cross
   , encodeDats
+  , encodeQ
   , onTup
+  , asPlotN
   , plotDats
   , simNodesFromGraph
   , timeN
@@ -43,7 +45,7 @@ cross xs ys = (,) <$> xs <*> ys
 
 -- | For @n=3@:
 --
--- > on3 (f, g, h) (x, y, z) = [f x, f y, f z]
+-- > on3 (f, g, h) (x, y, z) = [f x, g y, h z]
 onTup :: Int -> Q Exp
 onTup n = do
   fs <- traverse (\i -> newName ("f" ++ show i)) [1..n]
@@ -66,13 +68,11 @@ extrClocks i = do
       [TupP (VarP <$> x:y:zs)]
       (tup [tup [VarE x, VarE y], ListE (fmap (\z -> tup [VarE x, VarE z]) zs)])
 
-encodeDats :: Int -> Q Exp
-encodeDats i = do
-  m <- newName "m"
-  LamE [VarP m]
-    . tup <$> traverse (\_ -> (`AppE` VarE m) <$> encodeQ) [1..i]
-
--- | Arrange 'asPlotDat'-generated 'Exp' for each node, in order.
+-- | Arrange 'asPlotDat'-generated 'Exp' for each node, in order. Concretely:
+--
+-- > \m -> ($(asPlotN d0) m, $(asPlotN d1) m, ...)
+--
+-- where @d0, d1, ...@ are the degrees of the vertices.
 plotDats :: Graph -> Q Exp
 plotDats g = do
   m <- newName "m"
@@ -81,7 +81,22 @@ plotDats g = do
  where
   degs = A.elems (fmap length g)
 
--- | Example: @encodeQ@ will return a function of type
+-- | Example: @encodeDats 4@ will generate:
+--
+-- > encodeAll = \m -> ($(encodeQ) m, $(encodeQ) m, $(encodeQ) m, $(encodeQ) m)
+--
+-- i.e. apply 'encodeQ' to all elements of a 4-tuple.
+encodeDats :: Int -> Q Exp
+encodeDats i = do
+  m <- newName "m"
+  LamE [VarP m]
+    . tup <$> traverse (\_ -> (`AppE` VarE m) <$> encodeQ) [1..i]
+
+-- | @encodeQ@ will generate:
+--
+-- @\m -> encode . take m@
+--
+-- of type
 --
 -- @Int -> [(Ps, PeriodPs, DataCount, DataCount, ...)] -> BS.ByteString@
 encodeQ :: Q Exp
@@ -133,7 +148,10 @@ tup es = TupE (Just <$> es)
 --
 -- @Int -> [(Ps, PeriodPs, DataCount, DataCount)] -> (Matplotlib, Matplotlib)@
 --
--- The result (of type 'Matplotlib') will be period vs. time
+-- which takes @m@ from an infinite stream of measurements (second argument).
+--
+-- The result will be elastic buffer occupancy vs. time and period vs. time
+-- (respectively)
 asPlotN :: Int -> Q Exp
 asPlotN i = do
   g <- extrClocks i
