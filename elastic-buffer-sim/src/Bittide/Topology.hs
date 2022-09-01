@@ -31,7 +31,7 @@ import Bittide.Topology.Graph
 import Bittide.Topology.TH
 import Graphics.Matplotlib.Ext
 
--- | This samples @n@ steps and plots clock speeds
+-- | This samples @n@ steps and plots clock speeds and elastic buffer occupancy
 plotEbs :: Int -> IO ()
 plotEbs m = do
   offs <- replicateM (n+1) genOffsets
