@@ -248,7 +248,7 @@ clockControl ClockControlConfig{..} =
     c_des = k_p * realToFrac r_k + k_i * realToFrac x_k'
     z_k' = z_k + b_kI
     c_est = realToFrac (cccStepSize * z_k')
-    p = realToFrac cccSettlePeriod / 1e-12
+    p = 1e5
 
     b_k' =
       case compare c_des c_est of
@@ -271,11 +271,11 @@ clockControl ClockControlConfig{..} =
           GT | offs - cccStepSize >= mi -> (SpeedUp, offs - cccStepSize)
           _ -> (NoChange, offs)
 
-    newSettleCounter =
-      case speedChange of
-        NoChange -> settleCounter + cccPessimisticPeriod
-        SpeedUp -> 0
-        SlowDown -> 0
+    newSettleCounter = 0
+      -- case b_k' of
+        -- NoChange -> settleCounter + cccPessimisticPeriod
+        -- SpeedUp -> 0
+        -- SlowDown -> 0
 
     mi = minTOffset cccDynamicRange domT
     ma = maxTOffset cccDynamicRange domT
