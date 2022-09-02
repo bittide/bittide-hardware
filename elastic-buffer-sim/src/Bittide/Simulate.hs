@@ -13,6 +13,8 @@ Provides a rudimentary simulation of elastic buffers.
 
 module Bittide.Simulate where
 
+import Debug.Trace
+
 import Clash.Prelude
 import Clash.Signal.Internal
 import GHC.Stack
@@ -233,18 +235,21 @@ clockControl ClockControlConfig{..} =
   go :: SettlePeriod -> Offset -> Integer -> Integer -> SpeedChange -> Signal dom (Vec n DataCount) -> (Offset, Integer, Integer, SpeedChange, Signal dom SpeedChange)
   go settleCounter offs x_k z_k b_k (dataCounts :- nextDataCounts) = fifth5 (speedChange :-) nextChanges
    where
+
+    -- FIXME: this is wrong
+
     -- k_p = 5e-7, k_i = 1 gives typical overzealous control
-    k_p = 1 :: Float
-    k_i = 5e-7 :: Float
+    k_p = 2e-8 :: Float
+    k_i = 1e-15 :: Float
     r_k = sum dataCounts
     x_k' =
       let r_kI = toInteger r_k
           diff = let dcl = fromIntegral (length dataCounts) in dcl `deepseq` toInteger (targetDataCount cccBufferSize * dcl)
-      in x_k `deepseq` r_kI `deepseq` diff `deepseq` x_k + r_kI - diff
+      in x_k `deepseq` r_kI `deepseq` diff `deepseq` x_k + (r_kI - diff)
 
-    c_des = k_p * realToFrac r_k + k_i * realToFrac x_k'
+    c_des = traceShowId $ k_p * realToFrac r_k + k_i * realToFrac x_k'
     z_k' = z_k + b_kI
-    c_est = realToFrac (cccStepSize * z_k')
+    c_est = p * realToFrac z_k'
 
     b_kI = case b_k of
       NoChange -> 0
@@ -252,7 +257,6 @@ clockControl ClockControlConfig{..} =
       SlowDown -> -1
 
     nextChanges = go newSettleCounter nextOffs x_k' z_k' speedChange nextDataCounts
-    -- average = sum dataCounts `div` fromIntegral (length dataCounts)
 
     fifth5 f ~(a, b, c, d, e) = (a, b, c, d, f e)
 
