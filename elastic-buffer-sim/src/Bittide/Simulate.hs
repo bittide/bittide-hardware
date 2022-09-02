@@ -202,7 +202,7 @@ defClockConfig :: ClockControlConfig
 defClockConfig = ClockControlConfig
   { cccPessimisticPeriod = pessimisticPeriod
   -- clock adjustment takes place at 1MHz, clock is 200MHz so we get one correction per 200 cycles
-  , cccSettlePeriod      = pessimisticPeriod * 200
+  , cccSettlePeriod      = pessimisticPeriod * 200 * 100
   , cccDynamicRange      = 150
   , cccStepSize          = 1
   , cccBufferSize        = 65536 -- 128
@@ -232,41 +232,44 @@ clockControl ClockControlConfig{..} =
  where
   fth5 (_, _, _, _, e) = e
   -- x_k is the integral of the measurement
-  go :: SettlePeriod -> Offset -> Integer -> Integer -> SpeedChange -> Signal dom (Vec n DataCount) -> (Offset, Integer, Integer, SpeedChange, Signal dom SpeedChange)
-  go settleCounter offs x_k z_k b_k (dataCounts :- nextDataCounts) = fifth5 (speedChange :-) nextChanges
+  go :: SettlePeriod -> Offset -> Double -> Integer -> SpeedChange -> Signal dom (Vec n DataCount) -> (Offset, Double, Integer, SpeedChange, Signal dom SpeedChange)
+  go settleCounter offs x_k z_k b_k (dataCounts :- nextDataCounts) | settleCounter > cccSettlePeriod
+    = fifth5 (speedChange :-) nextChanges
    where
 
-    -- FIXME: this is wrong
-
     -- k_p = 5e-7, k_i = 1 gives typical overzealous control
-    k_p = 2e-8 :: Float
-    k_i = 1e-15 :: Float
-    r_k = sum dataCounts
+    k_p = 2e-8 :: Double
+    k_i = 1e-15 :: Double
+    r_k =
+      toInteger (sum dataCounts) - (toInteger (targetDataCount cccBufferSize) * toInteger (length dataCounts))
     x_k' =
-      let r_kI = toInteger r_k
-          diff = let dcl = fromIntegral (length dataCounts) in dcl `deepseq` toInteger (targetDataCount cccBufferSize * dcl)
-      in x_k `deepseq` r_kI `deepseq` diff `deepseq` x_k + (r_kI - diff)
+      x_k + p * realToFrac r_k
 
-    c_des = traceShowId $ k_p * realToFrac r_k + k_i * realToFrac x_k'
+    c_des = k_p * realToFrac r_k + k_i * realToFrac x_k'
     z_k' = z_k + b_kI
-    c_est = p * realToFrac z_k'
+    c_est = realToFrac (cccStepSize * z_k')
+    p = realToFrac cccSettlePeriod / 1e-12
+
+    b_k' =
+      case compare c_des c_est of
+        LT -> SlowDown
+        GT -> SpeedUp
+        EQ -> NoChange
 
     b_kI = case b_k of
       NoChange -> 0
       SpeedUp -> 1
       SlowDown -> -1
 
-    nextChanges = go newSettleCounter nextOffs x_k' z_k' speedChange nextDataCounts
+    nextChanges = go newSettleCounter nextOffs x_k' z_k' b_k' nextDataCounts
 
     fifth5 f ~(a, b, c, d, e) = (a, b, c, d, f e)
 
-    (speedChange, nextOffs)
-      | settleCounter > cccSettlePeriod =
-          case compare c_des c_est of
-            LT | offs + cccStepSize <= ma -> (SlowDown, offs + cccStepSize)
-            GT | offs - cccStepSize >= mi -> (SpeedUp, offs - cccStepSize)
-            _ -> (NoChange, offs)
-      | otherwise = (NoChange, offs)
+    (speedChange, nextOffs) =
+        case compare c_des c_est of
+          LT | offs + cccStepSize <= ma -> (SlowDown, offs + cccStepSize)
+          GT | offs - cccStepSize >= mi -> (SpeedUp, offs - cccStepSize)
+          _ -> (NoChange, offs)
 
     newSettleCounter =
       case speedChange of
@@ -278,6 +281,14 @@ clockControl ClockControlConfig{..} =
     ma = maxTOffset cccDynamicRange domT
 
     domT = snatToNum @PeriodPs (clockPeriod @dom)
+
+  go settleCounter offs x_k z_k b_k (_ :- nextDataCounts) =
+    fifth5 (NoChange :-) nextChanges
+   where
+    nextChanges = go newSettleCounter offs x_k z_k b_k nextDataCounts
+    newSettleCounter = settleCounter + cccPessimisticPeriod
+    fifth5 f ~(a, b, c, d, e) = (a, b, c, d, f e)
+
 
 minTOffset, maxTOffset :: Ppm -> PeriodPs -> Offset
 minTOffset ppm period = toInteger (speedUpPeriod ppm period) - toInteger period
