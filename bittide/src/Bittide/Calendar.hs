@@ -17,16 +17,15 @@ For documentation see 'Bittide.Calendar.calendar'.
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Bittide.Calendar(calendar, mkCalendar, CalendarConfig(..)) where
+module Bittide.Calendar(calendar, mkCalendar, CalendarConfig(..), ExtraRegisters) where
 
 import Clash.Prelude
 
-
 import Data.Maybe
+import Data.Constraint.Nat.Extra
 import Protocols.Wishbone
 
 import Bittide.SharedTypes
-
 
 {-
 NOTE [component calendar types]
@@ -42,8 +41,8 @@ instantiates the calendar.
 -- relevant constraints imposed by calendar.
 data CalendarConfig nBytes addrW calEntry where
   CalendarConfig ::
-    ( KnownNat nBytes
-    , KnownNat addrW
+    ( KnownNat nBytes, 1 <= nBytes
+    , KnownNat addrW, 2 <= addrW
     , Paddable calEntry
     , Show calEntry
     , ShowX calEntry
@@ -51,9 +50,9 @@ data CalendarConfig nBytes addrW calEntry where
     , 1 <= bootstrapActive
     , KnownNat bootstrapShadow
     , 1 <= bootstrapShadow
+    , 2 <= maxCalDepth
     , LessThan bootstrapActive maxCalDepth
     , LessThan bootstrapShadow maxCalDepth
-    , NatFitsInBits (Regs calEntry (nBytes * 8)) addrW
     ) =>
     -- | Maximum amount of entries that can be held per calendar.
     SNat maxCalDepth ->
@@ -140,13 +139,12 @@ calendar ::
   , KnownNat bootstrapSizeA
   , 1 <= bootstrapSizeA
   , KnownNat bootstrapSizeB
-  , 1 <= maxCalDepth, 1 <= CLog 2 maxCalDepth
+  , 2 <= maxCalDepth
   , 1 <= bootstrapSizeA
   , 1 <= bootstrapSizeB
   , LessThan bootstrapSizeA maxCalDepth
   , LessThan bootstrapSizeB maxCalDepth
-  , NatFitsInBits (Regs calEntry 8) addrW
-  , 1 <= Regs calEntry 8
+  , Paddable calEntry
   , ShowX calEntry
   , Show calEntry) =>
   SNat maxCalDepth
@@ -289,84 +287,84 @@ data CalendarControl calDepth calEntry nBytes = CalendarControl
 wbCalRX
   :: forall dom calEntry calDepth addrW nBytes
    . ( HiddenClockResetEnable dom
-     , Paddable calEntry, 1 <= Regs calEntry 8
-     , NatFitsInBits (Regs calEntry 8) addrW, ShowX calEntry
-     , KnownNat calDepth, 1 <= calDepth, 1 <= CLog 2 calDepth
+     , Paddable calEntry, ShowX calEntry
+     , KnownNat calDepth, 2 <= calDepth
      , KnownNat addrW, 2 <= addrW
      , KnownNat nBytes, 1 <= nBytes)
   => Signal dom (WishboneM2S addrW nBytes (Bytes nBytes))
     -- ^ Incoming wishbone signals
   -> Signal dom (CalendarControl calDepth calEntry nBytes)
     -- ^ Calendar control signals.
-wbCalRX = mealy go initState
- where
-  initState = WishboneRXState
-    { calStRegisters = deepErrorX "wbCalRX: calStRegisters undefined."
-    , calStReadAddr  = deepErrorX "wbCalRX: calStReadAddr undefined."
-    }
-
-  go :: WishboneRXState (nBytes * 8) calEntry calDepth
-     -> WishboneM2S addrW nBytes (Bytes nBytes)
-     -> ( WishboneRXState (nBytes * 8) calEntry calDepth
-        , CalendarControl calDepth calEntry nBytes
-        )
-  go wbState@WishboneRXState{..} WishboneM2S{..} = (wbState1, calControl)
+wbCalRX = case clog2axiom' @calDepth of
+  Dict -> mealy go initState
    where
-    calEntryRegs = natToNum @(Regs calEntry (nBytes * 8))
-
-    (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
-    wbAddrValid = addr <= resize (pack (maxBound :: Index (Regs calEntry 8)))
-     && alignment == 0
-    wishboneAddress = bitCoerce $ resize alignedAddress
-    wishboneActive = busCycle && strobe
-    wishboneError  = wishboneActive && not wbAddrValid
-    wbWriting = wishboneActive && writeEnable && not wishboneError
-    wbNewCalEntry = wbWriting && wishboneAddress < calEntryRegs
-
-    wbNewShadowWriteAddr = wbWriting && wishboneAddress == shadowWriteWbAddr
-    wbNewShadowReadAddr = wbWriting && wishboneAddress == shadowReadWbAddr
-    wbNewShadowDepth = wbWriting && wishboneAddress == shadowDepthWbAddr
-    armCalendarSwap = wbWriting && wishboneAddress == calSwapWbAddr
-    shadowReadAddr = registersToData @_ @(nBytes * 8) calStReadAddr
-    shadowEntryData = registersToData @_ @(nBytes * 8) calStRegisters
-
-    wbState1 = wbState
-      { calStRegisters = newPartialCalEntry
-      , calStReadAddr = newShadowReadAddr}
-
-    newPartialCalEntry
-      | wbNewCalEntry = updateRegisters wishboneAddress calStRegisters
-      | otherwise     = calStRegisters
-    newShadowReadAddr
-      | wbNewShadowReadAddr = updateRegisters (0 :: Int) calStReadAddr
-      | otherwise           = calStReadAddr
-
-    updateRegisters :: forall i a.
-      (Enum i, KnownNat (BitSize a)) =>
-      i ->
-      RegisterBank (nBytes*8) a->
-      RegisterBank (nBytes*8) a
-    updateRegisters i = updateRegBank i busSelect writeData
-
-    calAddr = paddedToData $ bvAsPadded writeData
-
-    newShadowDepth
-      | wbNewShadowDepth = Just calAddr
-      | otherwise        = Nothing
-
-    newShadowEntry
-      | wbNewShadowWriteAddr = Just (calAddr, shadowEntryData)
-      | otherwise            = Nothing
-
-    calControl = CalendarControl
-      { newShadowDepth
-      , newShadowEntry
-      , shadowReadAddr
-      , wishboneActive
-      , wishboneError
-      , wishboneAddress
-      , armCalendarSwap
+    initState = WishboneRXState
+      { calStRegisters = deepErrorX "wbCalRX: calStRegisters undefined."
+      , calStReadAddr  = deepErrorX "wbCalRX: calStReadAddr undefined."
       }
+
+    go :: WishboneRXState (nBytes * 8) calEntry calDepth
+      -> WishboneM2S addrW nBytes (Bytes nBytes)
+      -> ( WishboneRXState (nBytes * 8) calEntry calDepth
+          , CalendarControl calDepth calEntry nBytes
+          )
+    go wbState@WishboneRXState{..} WishboneM2S{..} = (wbState1, calControl)
+     where
+      calEntryRegs = natToNum @(Regs calEntry (nBytes * 8))
+
+      (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
+      wbAddrValid = alignedAddress <= resize (pack (maxBound :: WbAddress calEntry nBytes))
+       && alignment == 0
+      wishboneAddress = bitCoerce $ resize alignedAddress
+      wishboneActive = busCycle && strobe
+      wishboneError  = wishboneActive && not wbAddrValid
+      wbWriting = wishboneActive && writeEnable && not wishboneError
+      wbNewCalEntry = wbWriting && wishboneAddress < calEntryRegs
+
+      wbNewShadowWriteAddr = wbWriting && wishboneAddress == shadowWriteWbAddr
+      wbNewShadowReadAddr = wbWriting && wishboneAddress == shadowReadWbAddr
+      wbNewShadowDepth = wbWriting && wishboneAddress == shadowDepthWbAddr
+      armCalendarSwap = wbWriting && wishboneAddress == calSwapWbAddr
+      shadowReadAddr = registersToData @_ @(nBytes * 8) calStReadAddr
+      shadowEntryData = registersToData @_ @(nBytes * 8) calStRegisters
+
+      wbState1 = wbState
+        { calStRegisters = newPartialCalEntry
+        , calStReadAddr = newShadowReadAddr}
+
+      newPartialCalEntry
+        | wbNewCalEntry = updateRegisters wishboneAddress calStRegisters
+        | otherwise     = calStRegisters
+      newShadowReadAddr
+        | wbNewShadowReadAddr = updateRegisters (0 :: Int) calStReadAddr
+        | otherwise           = calStReadAddr
+
+      updateRegisters :: forall i a.
+        (Enum i, KnownNat (BitSize a)) =>
+        i ->
+        RegisterBank (nBytes*8) a->
+        RegisterBank (nBytes*8) a
+      updateRegisters i = updateRegBank i busSelect writeData
+
+      calAddr = paddedToData $ bvAsPadded writeData
+
+      newShadowDepth
+        | wbNewShadowDepth = Just calAddr
+        | otherwise        = Nothing
+
+      newShadowEntry
+        | wbNewShadowWriteAddr = Just (calAddr, shadowEntryData)
+        | otherwise            = Nothing
+
+      calControl = CalendarControl
+        { newShadowDepth
+        , newShadowEntry
+        , shadowReadAddr
+        , wishboneActive
+        , wishboneError
+        , wishboneAddress
+        , armCalendarSwap
+        }
 
 -- | Wishbone interface that drives the outgoing wishbone data based on the received
 -- wishbone address. Can be used to read one of the following registers:
@@ -418,7 +416,8 @@ regUpdate byteEnable oldEntry newEntry =
   bitCoerce $ (\e (o, n :: BitVector 8) -> if e then n else o) <$>
    bitCoerce byteEnable <*> zip (bitCoerce oldEntry) (bitCoerce newEntry)
 
-type WbAddress calEntry nBytes = Index (Regs calEntry (nBytes * 8) + 4)
+type WbAddress calEntry nBytes = Index (Regs calEntry (nBytes * 8) + ExtraRegisters)
+type ExtraRegisters = 4
 
 shadowWriteWbAddr :: forall n . (KnownNat n, 4 <=n) => Index n
 shadowWriteWbAddr = natToNum @(n - 4)

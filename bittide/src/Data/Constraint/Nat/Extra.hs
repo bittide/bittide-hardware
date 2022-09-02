@@ -13,7 +13,10 @@ solved by the constraint solver.
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Data.Constraint.Nat.Extra where
+module Data.Constraint.Nat.Extra
+  ( module Data.Constraint.Nat.Extra
+  , Data.Constraint.Dict(..)
+  ) where
 
 import Prelude
 
@@ -30,9 +33,6 @@ import qualified Clash.Util.Interpolate as I
 timesDivRU :: forall a b . Dict (b <= (Div (b + (a - 1)) a * a))
 timesDivRU = unsafeCoerce (Dict :: Dict ())
 
-clog2axiom :: CLog 2 (n * 2) :~: (CLog 2 n + 1)
-clog2axiom = unsafeCoerce Refl
-
 timesNDivRU :: forall a b . Dict (DivRU (a * b) b ~ a)
 timesNDivRU = unsafeCoerce (Dict :: Dict ())
 
@@ -41,6 +41,13 @@ timesNDivRU' = unsafeCoerce (Dict :: Dict ())
 
 timesNDivRU'' :: forall a b . Dict (Div ((a * b) + (b - 1)) b ~ a)
 timesNDivRU'' = unsafeCoerce (Dict :: Dict ())
+
+clog2axiom :: CLog 2 (n * 2) :~: (CLog 2 n + 1)
+clog2axiom = unsafeCoerce Refl
+
+-- | if (2 <= n) holds, then (CLog 2 n) also holds.
+clog2axiom' :: forall n . (2 <= n) => Dict (1 <= CLog 2 n)
+clog2axiom' = unsafeCoerce unsafeCoerce (Dict :: Dict ())
 
 -- | if (c <= a) or (c <= b), then c <= Max a b
 lessThanMax

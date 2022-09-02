@@ -73,7 +73,7 @@ genSwitchCalendar links calDepth = do
 switchFrameRoutingWorks :: Property
 switchFrameRoutingWorks = property $ do
   links <- forAll $ Gen.int (Range.constant 1 15)
-  calDepth <- forAll $ Gen.enum 1 8
+  calDepth <- forAll $ Gen.enum 2 8
   switchCal <- forAll $ genSwitchCalendar @4 @32 (fromIntegral links) calDepth
   case switchCal of
     SwitchTestConfig
@@ -82,7 +82,7 @@ switchFrameRoutingWorks = property $ do
         , calendarConfig = calConfig@(CalendarConfig _ (toList . fmap toList -> cal) _)
         }
       ) -> do
-      simLength <- forAll $ Gen.enum 1 (3 * fromIntegral calDepth)
+      simLength <- forAll $ Gen.enum 1 (2 * fromIntegral calDepth)
       let
         genFrame = Just <$> genDefinedBitVector @64
         allLinks = Gen.list (Range.singleton links) genFrame

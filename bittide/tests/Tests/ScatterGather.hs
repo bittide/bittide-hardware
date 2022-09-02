@@ -29,7 +29,8 @@ import Protocols.Wishbone
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import Bittide.Calendar
+import Bittide.Calendar hiding (ExtraRegisters)
+import Bittide.Extra.Wishbone
 import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Tests.Shared
@@ -38,7 +39,7 @@ import qualified Clash.Util.Interpolate as I
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-
+import qualified Bittide.Calendar as Cal(ExtraRegisters)
 
 -- | The extra in SomeCalendar extra defines the minimum amount of elements in the vector
 -- and the minimum addressable indexes in the vector elements. I.e, vectors of 0 elements
@@ -69,12 +70,10 @@ sgGroup = testGroup "Scatter Gather group"
 -- | Generates a 'CalendarConfig' for the 'gatherUnitWb' or 'scatterUnitWb'
 genCalendarConfig ::
   forall nBytes addrW calEntry maxDepth .
-  ( KnownNat nBytes
-  , 1 <= nBytes
-  , KnownNat maxDepth
-  , 1 <= maxDepth
-  , calEntry ~ Index maxDepth
-  , KnownNat addrW) =>
+  ( KnownNat nBytes, 1 <= nBytes
+  , KnownNat maxDepth, 2 <= maxDepth
+  , KnownNat addrW, 2 <= addrW
+  , calEntry ~ Index maxDepth) =>
   SNat maxDepth ->
   Gen (CalendarConfig nBytes addrW calEntry)
 genCalendarConfig sizeNat@(snatToNum -> dMax) = do
@@ -84,7 +83,7 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
     ( SomeNat (snatProxy -> depthA)
      ,SomeNat (snatProxy -> depthB)) -> do
         let
-          regAddrBits = SNat @(NatRequiredBits (Regs calEntry (nBytes * 8)))
+          regAddrBits = SNat @(2 + NatRequiredBits (Regs calEntry (nBytes * 8) + Cal.ExtraRegisters))
           bsCalEntry = SNat @(BitSize calEntry)
         case
          ( isInBounds d1 depthA sizeNat
@@ -97,16 +96,17 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
 
                 a: #{a}
                 b: #{b}
-                b: #{c}
-                c: #{d}
+                c: #{c}
+                d: #{d}
 
               ...
           |]
  where
     go :: forall depthA depthB .
-      ( LessThan depthA maxDepth
-      , LessThan depthB maxDepth
-      , NatFitsInBits (Regs calEntry (nBytes * 8)) addrW) =>
+      ( 1 <= depthA
+      , 1 <= depthB
+      , LessThan depthA maxDepth
+      , LessThan depthB maxDepth) =>
       SNat depthA ->
       SNat depthB ->
       Gen (CalendarConfig nBytes addrW (Index maxDepth))
@@ -122,8 +122,8 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
 scatterUnitNoFrameLoss :: Property
 scatterUnitNoFrameLoss = property $ do
   maxCalSize <- forAll $ Gen.enum 2 32
-  case TN.someNatVal (maxCalSize - 1) of
-    SomeNat (succSNat . snatProxy -> p) -> do
+  case TN.someNatVal (maxCalSize - 2) of
+    SomeNat (addSNat d2 . snatProxy -> p) -> do
       runTest =<< forAll (genCalendarConfig @4 @32 p)
  where
   runTest ::
@@ -161,15 +161,14 @@ scatterUnitNoFrameLoss = property $ do
     footnote . fromString $ "simIn: " <> showX wbReadOps
     footnote . fromString $ "cal: " <> showX calA
     wbDecoding simOut === P.take simLength (catMaybes (P.concat inputFrames))
-
   padToLength l padElement g = P.take l (g P.++ P.repeat padElement)
 
 -- | Check if the gather unit with wishbone interface loses no frames.
 gatherUnitNoFrameLoss :: Property
 gatherUnitNoFrameLoss = property $ do
   maxCalSize <- forAll $ Gen.enum 2 32
-  case TN.someNatVal (maxCalSize - 1) of
-    SomeNat (succSNat . snatProxy -> p) -> do
+  case TN.someNatVal (maxCalSize - 2) of
+    SomeNat (addSNat d2 . snatProxy -> p) -> do
       runTest =<< forAll (genCal p)
  where
   runTest ::
@@ -209,7 +208,7 @@ gatherUnitNoFrameLoss = property $ do
     directedDecode (prePad writtenFrames) simOut === expectedOutput
 
   genCal :: forall maxSize .
-   1 <= maxSize =>
+   2 <= maxSize =>
    SNat maxSize ->
    Gen (CalendarConfig 4 32 (Index maxSize))
   genCal SNat = genCalendarConfig @4 @32 (SNat @maxSize)
