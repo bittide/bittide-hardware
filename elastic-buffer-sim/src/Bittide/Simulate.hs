@@ -237,9 +237,8 @@ clockControl ClockControlConfig{..} =
     = fifth5 (speedChange :-) nextChanges
    where
 
-    -- k_p = 5e-7, k_i = 1 gives typical overzealous control
-    k_p = 2e-8 :: Double
-    k_i = 1e-15 :: Double
+    k_p = 2e-5 :: Double
+    k_i = 1e-12 :: Double
     r_k =
       toInteger (sum dataCounts) - (toInteger (targetDataCount cccBufferSize) * toInteger (length dataCounts))
     x_k' =
@@ -247,8 +246,10 @@ clockControl ClockControlConfig{..} =
 
     c_des = k_p * realToFrac r_k + k_i * realToFrac x_k'
     z_k' = z_k + b_kI
-    c_est = realToFrac (cccStepSize * z_k')
-    p = 1e5
+    c_est = 5e-4 * realToFrac z_k'
+    -- FIXME we are using 200kHz instead of 200MHz... we need to scale all the
+    -- constants
+    p = 1e5 * typicalFreq where typicalFreq = 0.0002
 
     b_k' =
       case compare c_des c_est of
