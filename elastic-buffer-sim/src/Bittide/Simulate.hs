@@ -237,8 +237,8 @@ clockControl ClockControlConfig{..} =
     = fifth5 (speedChange :-) nextChanges
    where
 
-    k_p = 2e-5 :: Double
-    k_i = 1e-12 :: Double
+    k_p = 2e-4 :: Double
+    k_i = 1e-11 :: Double
     r_k =
       toInteger (sum dataCounts) - (toInteger (targetDataCount cccBufferSize) * toInteger (length dataCounts))
     x_k' =
