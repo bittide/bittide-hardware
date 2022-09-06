@@ -279,11 +279,10 @@ simNodesFromGraph ccc g = do
         signalType
 
   postprocess <- absTimes g
-  let ress = fmap res indices
   pure $
     LamE
       [ListP (VarP <$> offsets)]
-      (LetE (ebs ++ clkDs ++ clkSignalDs ++ clockControls) (postprocess `AppE` tup ress))
+      (LetE (ebs ++ clkDs ++ clkSignalDs ++ clockControls) (postprocess `AppE` tup (fmap res indices)))
  where
   indices = [0..n]
   bounds@(0, n) = A.bounds g
