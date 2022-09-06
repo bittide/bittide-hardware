@@ -39,6 +39,7 @@ plotEbs m = do
   let (clockDats, ebDats) =
           P.unzip
         $ onN (plotEachNode m)
+        $ $(unzipN 3)
         $ $(simNodesFromGraph defClockConfig (complete 3)) offs
   void $ file "_build/clocks.pdf" (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
   void $ file "_build/elasticbuffers.pdf" (xlabel "Time (ps)" % foldPlots ebDats)
@@ -61,6 +62,7 @@ dumpCsv m = do
       ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
   let dats =
           $(onTup 6) ($(encodeDats 6) m)
+        $ $(unzipN 6)
         $ $(simNodesFromGraph defClockConfig (complete 6)) offs
   zipWithM_ (\dat i ->
     BSL.appendFile ("_build/clocks" <> show i <> ".csv") dat) dats [(0::Int)..]
