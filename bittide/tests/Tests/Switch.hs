@@ -22,8 +22,8 @@ import Protocols.Wishbone
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import Bittide.Calendar (CalendarConfig(..))
 import Bittide.Switch
+import Bittide.Calendar
 import Tests.Calendar
 import Tests.Shared
 
@@ -49,8 +49,8 @@ deriving instance Show (SwitchTestConfig nBytes addrW)
 genSwitchEntry ::
   forall links .
   SNat links ->
-  Gen (CalendarEntry links)
-genSwitchEntry SNat = genVec (genIndex Range.constantBounded)
+  Gen (ValidEntry (CalendarEntry links) 0)
+genSwitchEntry SNat = (,0) <$> genVec (genIndex Range.constantBounded)
 
 -- | This generator can generate a calendar for the bittide switch, knowing the
 -- amount of bytes and address width of the wishbone bus, and given the amount of links and
@@ -79,7 +79,7 @@ switchFrameRoutingWorks = property $ do
     SwitchTestConfig
       ( SwitchConfig
         { preamble = preamble
-        , calendarConfig = calConfig@(CalendarConfig _ (toList . fmap toList -> cal) _)
+        , calendarConfig = calConfig@(CalendarConfig _ (toList . fmap (toList . fst) -> cal) _)
         }
       ) -> do
       simLength <- forAll $ Gen.enum 1 (2 * fromIntegral calDepth)

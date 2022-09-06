@@ -17,7 +17,7 @@ For documentation see 'Bittide.Calendar.calendar'.
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Bittide.Calendar(calendar, mkCalendar, CalendarConfig(..), ExtraRegisters) where
+module Bittide.Calendar(calendar, mkCalendar, CalendarConfig(..), ValidEntry, ExtraRegisters, Calendar) where
 
 import Clash.Prelude
 
@@ -37,39 +37,41 @@ it does not care about the type of its entries, this type depends on the compone
 instantiates the calendar.
 -}
 
+type ValidEntry a validityBits = (a, Index (2^validityBits))
+type Calendar size a validityBits  = Vec size (ValidEntry a validityBits)
+
 -- | Configuration for the calendar, This type satisfies all
 -- relevant constraints imposed by calendar.
-data CalendarConfig nBytes addrW calEntry where
+data CalendarConfig nBytes addrW a where
   CalendarConfig ::
-    ( KnownNat nBytes, 1 <= nBytes
-    , KnownNat addrW, 2 <= addrW
-    , Paddable calEntry
-    , Show calEntry
-    , ShowX calEntry
-    , KnownNat bootstrapActive
-    , 1 <= bootstrapActive
-    , KnownNat bootstrapShadow
-    , 1 <= bootstrapShadow
-    , 2 <= maxCalDepth
+    ( KnownNat validityBits, 1 <= 2^validityBits -- This can be removed after https://github.com/clash-lang/ghc-typelits-natnormalise/issues/65 has been fixed.
+    , KnownNat bootstrapActive, 1 <= bootstrapActive
+    , KnownNat bootstrapShadow, 1 <= bootstrapShadow
     , LessThan bootstrapActive maxCalDepth
     , LessThan bootstrapShadow maxCalDepth
+    , Paddable a
+    , Show a
+    , ShowX a
+    , 2 <= maxCalDepth
     ) =>
     -- | Maximum amount of entries that can be held per calendar.
     SNat maxCalDepth ->
     -- | Initial contents of the active calendar.
-    Vec bootstrapActive calEntry ->
+    Calendar bootstrapActive a validityBits ->
     -- | Initial contents of the inactive calendar.
-    Vec bootstrapShadow calEntry ->
-    CalendarConfig nBytes addrW calEntry
+    Calendar bootstrapShadow a validityBits ->
+    CalendarConfig nBytes addrW a
 
 -- | Standalone deriving is required because 'CalendarConfig' contains existential type variables.
-deriving instance Show (CalendarConfig nBytes addrW calEntry)
+deriving instance Show (CalendarConfig nBytes addrW a)
 
 -- | Wrapper function to create a 'calendar' from the given 'CalendarConfig', this way
 -- we prevent the constraints of the type variables used in 'calendar' from leaking into
 -- the rest of the system.
 mkCalendar ::
-  (HiddenClockResetEnable dom) =>
+  ( HiddenClockResetEnable dom
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat addrW, 2 <= addrW) =>
   -- | Calendar configuration for 'calendar'.
   CalendarConfig nBytes addrW calEntry ->
   -- | Wishbone interface (master to slave)
@@ -84,13 +86,15 @@ mkCalendar (CalendarConfig maxCalDepth bsActive bsShadow) =
 
 -- | State of the calendar excluding the buffers. It stores the depths of the active and
 -- shadow calendar, the read pointer, buffer selector and a register for first cycle behavior.
-data CalendarState maxCalDepth = CalendarState
+data CalendarState maxCalDepth validityBits = CalendarState
   { firstCycle      :: Bool
     -- ^ is True after reset, becomes false after first cycle.
   , selectedBuffer  :: AorB
     -- ^ Indicates if buffer A or B is active.
   , entryTracker    :: Index maxCalDepth
     -- ^ Read point for the active calendar.
+  , validityTracker :: Index (2^validityBits)
+    -- ^ Tracks the number of cycles that the current entry has been active.
   , calDepthA       :: Index maxCalDepth
     -- ^ Depth of buffer A.
   , calDepthB       :: Index maxCalDepth
@@ -132,42 +136,40 @@ data BufferControl calDepth calEntry = BufferControl
 -- the shadow calendar can be read from and written to through the wishbone interface.
 -- The active and shadow calendar can be swapped by setting the shadowSwitch to True.
 calendar ::
-  forall dom nBytes addrW maxCalDepth calEntry bootstrapSizeA bootstrapSizeB .
+  forall dom nBytes addrW maxCalDepth a validityBits bootstrapSizeA bootstrapSizeB .
   ( HiddenClockResetEnable dom
-  , KnownNat nBytes, 1 <= nBytes
   , KnownNat addrW, 2 <= addrW
-  , KnownNat bootstrapSizeA
-  , 1 <= bootstrapSizeA
-  , KnownNat bootstrapSizeB
+  , KnownNat bootstrapSizeA, 1 <= bootstrapSizeA
+  , KnownNat bootstrapSizeB, 1 <= bootstrapSizeB
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat validityBits
   , 2 <= maxCalDepth
-  , 1 <= bootstrapSizeA
-  , 1 <= bootstrapSizeB
   , LessThan bootstrapSizeA maxCalDepth
   , LessThan bootstrapSizeB maxCalDepth
-  , Paddable calEntry
-  , ShowX calEntry
-  , Show calEntry) =>
+  , Paddable a
+  , ShowX a
+  , Show a) =>
   SNat maxCalDepth
   -- ^ The maximum amount of entries that can be stored in the individual calendars.
-  -> Vec bootstrapSizeA calEntry
+  -> Calendar bootstrapSizeA a validityBits
   -- ^ Bootstrap calendar for the active buffer.
-  -> Vec bootstrapSizeB calEntry
+  -> Calendar bootstrapSizeB a validityBits
   -- ^ Bootstrap calendar for the shadow buffer.
   -> Signal dom (WishboneM2S addrW nBytes (Bytes nBytes))
   -- ^ Incoming wishbone interface
-  -> (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)))
+  -> (Signal dom a, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)))
   -- ^ Currently active entry, Metacycle indicator and outgoing wishbone interface.
 calendar SNat bootstrapActive bootstrapShadow wbIn =
-  (activeEntry <$> calOut, lastCycle <$> calOut, wbOut)
+  (fst . activeEntry <$> calOut, lastCycle <$> calOut, wbOut)
  where
-  ctrl :: Signal dom (CalendarControl maxCalDepth calEntry nBytes)
+  ctrl :: Signal dom (CalendarControl maxCalDepth (ValidEntry a validityBits) nBytes)
   ctrl = wbCalRX wbIn
   wbOut = wbCalTX <$> ctrl <*> calOut
 
   bootstrapA = bootstrapActive ++ deepErrorX
-   @(Vec (maxCalDepth - bootstrapSizeA) calEntry) "Uninitialized active entry"
+   @(Calendar (maxCalDepth - bootstrapSizeA) a validityBits) "Uninitialized active entry"
   bootstrapB = bootstrapShadow ++ deepErrorX
-   @(Vec (maxCalDepth - bootstrapSizeB) calEntry) "Uninitialized active entry"
+   @(Calendar (maxCalDepth - bootstrapSizeB) a validityBits) "Uninitialized active entry"
 
   bufA = blockRam bootstrapA (readA <$> bufCtrl) (writeA <$> bufCtrl)
   bufB = blockRam bootstrapB (readB <$> bufCtrl) (writeB <$> bufCtrl)
@@ -178,28 +180,40 @@ calendar SNat bootstrapActive bootstrapShadow wbIn =
   -- we have the calDepth <= bootstrapSize constraints. Furthermore using resize
   -- does not require additional constraints.
   initState = CalendarState
-    { firstCycle     = True
-    , selectedBuffer = A
-    , entryTracker   = 0
-    , calDepthA      = resize (maxBound :: Index bootstrapSizeA)
-    , calDepthB      = resize (maxBound :: Index bootstrapSizeB)
-    , swapCalendars  = False
+    { firstCycle      = True
+    , selectedBuffer  = A
+    , entryTracker    = 0
+    , validityTracker = 0
+    , calDepthA       = resize (maxBound :: Index bootstrapSizeA)
+    , calDepthB       = resize (maxBound :: Index bootstrapSizeB)
+    , swapCalendars   = False
     }
 
-  go :: CalendarState maxCalDepth ->
-    (CalendarControl maxCalDepth calEntry nBytes, calEntry, calEntry) ->
-    (CalendarState maxCalDepth, (BufferControl maxCalDepth calEntry, CalendarOutput maxCalDepth calEntry))
+  go :: CalendarState maxCalDepth validityBits ->
+    ( CalendarControl maxCalDepth (ValidEntry a validityBits) nBytes
+    , ValidEntry a validityBits, ValidEntry a validityBits) ->
+    ( CalendarState maxCalDepth validityBits
+    , (BufferControl maxCalDepth (ValidEntry a validityBits)
+    , CalendarOutput maxCalDepth (ValidEntry a validityBits)))
   go CalendarState{..} (CalendarControl{..}, bufAIn, bufBIn) =
     (calState, (bufCtrl1, calOut1))
    where
     selectedBuffer1
       | swapCalendars && lastCycle = swapAorB selectedBuffer
       | otherwise = selectedBuffer
-    lastCycle = entryTracker == activeDepth
+
+    lastCycle = not entryStillValid && entryTracker == activeDepth
+
+    entryStillValid = validityTracker < snd activeEntry
 
     entryTracker1
-      | not lastCycle = satSucc SatWrap entryTracker
-      | otherwise     = 0
+      | entryStillValid = entryTracker
+      | not lastCycle   = satSucc SatWrap entryTracker
+      | otherwise       = 0
+
+    validityTracker1
+      | entryStillValid = satSucc SatWrap validityTracker
+      | otherwise       = 0
 
     (activeEntry1, shadowEntry)
       | A <- selectedBuffer = (bufAIn, bufBIn)
@@ -232,6 +246,7 @@ calendar SNat bootstrapActive bootstrapShadow wbIn =
       { firstCycle      = False
       , selectedBuffer  = selectedBuffer1
       , entryTracker    = entryTracker1
+      , validityTracker = validityTracker1
       , calDepthA       = calDepthA1
       , calDepthB       = calDepthB1
       , swapCalendars   = armCalendarSwap || (not lastCycle && swapCalendars)

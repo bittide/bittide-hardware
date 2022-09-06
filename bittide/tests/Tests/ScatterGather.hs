@@ -111,10 +111,12 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
       SNat depthB ->
       Gen (CalendarConfig nBytes addrW (Index maxDepth))
     go SNat SNat = do
-      calActive <- fromMaybe errmsg . fromList @depthA . P.take (natToNum @depthA)
-        <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
-      calShadow <- fromMaybe errmsg . fromList @depthB . P.take (natToNum @depthB)
-        <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
+      calActive <- fmap (,0 :: Index (2^0)) . fromMaybe errmsg . fromList @depthA .
+        P.take (natToNum @depthA) <$> Gen.shuffle @_ @(Index maxDepth)
+        [0.. natToNum @(maxDepth-1)]
+      calShadow <- fmap (,0 :: Index (2^0)) . fromMaybe errmsg . fromList @depthB .
+        P.take (natToNum @depthB) <$> Gen.shuffle @_ @(Index maxDepth)
+        [0.. natToNum @(maxDepth-1)]
       return $ CalendarConfig sizeNat calActive calShadow
     errmsg = errorX "genCalendarConfig: list to vector conversion failed"
 
@@ -152,8 +154,7 @@ scatterUnitNoFrameLoss = property $ do
       wbReadOps = P.take simLength $ P.replicate memDepth emptyWishboneM2S P.++  P.concat
         ( padToLength memDepth emptyWishboneM2S
         . P.concat
-        . P.zipWith wbRead (toList calA)
-        <$> inputFrames)
+        . P.zipWith wbRead (toList $ fmap fst calA) <$> inputFrames)
 
       topEntityInput = P.zip wbReadOps (P.concat inputFrames)
       simOut = simulateN simLength topEntity topEntityInput
@@ -189,13 +190,12 @@ gatherUnitNoFrameLoss = property $ do
         (GatherConfig calConfig) (pure emptyWishboneM2S) wbIn
 
       wbWriteOps = P.take simLength . P.concat $
-        padToLength memDepth emptyWishboneM2S
-        . P.concat
-        . P.zipWith wbWrite (toList calA)
+        padToLength memDepth emptyWishboneM2S .
+        P.concat . P.zipWith wbWrite (toList $ fmap fst calA)
         <$> inputFrames
 
       simOut = simulateN simLength topEntity wbWriteOps
-      addressedFrames = P.zip (P.concat inputFrames) (cycle $ toList calA)
+      addressedFrames = P.zip (P.concat inputFrames) (cycle . toList $ fmap fst calA)
       writtenFrames = [if snd e /= 0 then fst e else Nothing | e <- addressedFrames]
       prePad items = P.replicate (1+memDepth) Nothing P.++ items
       expectedOutput = P.take simLength (fromMaybe 1 <$> P.filter isJust writtenFrames)
