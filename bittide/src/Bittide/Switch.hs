@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Bittide.Switch where
 
@@ -23,9 +24,10 @@ type CalendarEntry links = Vec links (CrossbarIndex links)
 data SwitchConfig links nBytes addrW where
   SwitchConfig ::
     (KnownNat preambleWidth, 1 <= preambleWidth) =>
-    BitVector preambleWidth ->
-    CalendarConfig nBytes addrW (CalendarEntry links) ->
-    SwitchConfig links nBytes addrW
+    { preamble :: BitVector preambleWidth
+    , calendarConfig :: CalendarConfig nBytes addrW (CalendarEntry links)
+    }
+    -> SwitchConfig links nBytes addrW
 
 deriving instance Show (SwitchConfig links nBytes addrW)
 
@@ -43,7 +45,7 @@ mkSwitch ::
   ( Vec links (Signal dom (DataLink frameWidth))
   , Vec (1 + (links * 2)) (Signal dom (WishboneS2M (Bytes nBytes))))
 
-mkSwitch (SwitchConfig preamble calConfig) = switch preamble calConfig
+mkSwitch SwitchConfig{..} = switch preamble calendarConfig
 
 {-# NOINLINE switch #-}
 -- | The Bittide Switch routes data from incoming links to outgoing links based on a calendar.
