@@ -23,7 +23,7 @@ type CalendarEntry links = Vec links (CrossbarIndex links)
 
 data SwitchConfig links nBytes addrW where
   SwitchConfig ::
-    (KnownNat preambleWidth, 1 <= preambleWidth) =>
+    (KnownNat preambleWidth, 1 <= preambleWidth, 1 <= nBytes, 2 <= addrW) =>
     { preamble :: BitVector preambleWidth
     , calendarConfig :: CalendarConfig nBytes addrW (CalendarEntry links)
     }
