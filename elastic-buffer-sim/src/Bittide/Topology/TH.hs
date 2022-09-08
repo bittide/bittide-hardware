@@ -6,6 +6,7 @@
 -- using parts from "Bittide.Simulate"
 module Bittide.Topology.TH
   ( cross
+  , absTimes
   , encodeDats
   , encodeQ
   , onTup
@@ -133,7 +134,13 @@ unzipN n = do
     pure (LamE [TupP (VarP <$> a_i), TildeP (TupP (VarP <$> as_i))] (tup (zipWith (\a as -> consList `AppE` a `AppE` as) (VarE <$> a_i) (VarE <$> as_i))))
   consList = ConE '(:)
 
--- absTimes :: (Signal dom0 (PeriodPs, a_1, ...), Signal dom1 (PeriodPs, b_1, ...), ...) -> [((Ps, PeriodPs, a_1, ...), (Ps, PeriodPs, b_1, ...), ...)]
+-- | This generates a function to process the output of 'simNodesFromGraph'; it
+-- takes a tuple of signals and returns a list of tuples of data associated with
+-- each node (including absolute time).
+--
+-- The generated function will have type:
+--
+-- > absTimes :: (Signal dom0 (PeriodPs, a_1, ...), Signal dom1 (PeriodPs, b_1, ...), ...) -> [((Ps, PeriodPs, a_1, ...), (Ps, PeriodPs, b_1, ...), ...)]
 absTimes :: Graph -> Q Exp
 absTimes g = do
   nm <- newName "go"
