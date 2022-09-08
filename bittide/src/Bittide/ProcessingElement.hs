@@ -28,11 +28,11 @@ data PeConfig nBusses where
     SNat depthI ->
     -- | Total depth of the data memory.
     SNat depthD ->
-    -- | Inititial content of the instruction memory, can be smaller than its total depth.
+    -- | Initial content of the instruction memory, can be smaller than its total depth.
     InitialContent initDepthI (Bytes 4) ->
-    -- | Inititial content of the data memory, can be smaller than its total depth.
+    -- | Initial content of the data memory, can be smaller than its total depth.
     InitialContent initDepthD (Bytes 4) ->
-    -- | Initial program counter coming out of reset.
+    -- | Program counter reset value.
     BitVector 32 ->
     PeConfig nBusses
 

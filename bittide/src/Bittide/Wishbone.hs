@@ -21,6 +21,8 @@ import Bittide.SharedTypes (Bytes)
 -- Applying this hint yields a compile error
 {-# ANN module "HLint: ignore Functor law" #-}
 
+-- | A vector of base addresses, one for each slave. It is vital that these base addresses
+-- are sorted in order.
 type MemoryMap nSlaves addressWidth = Vec nSlaves (BitVector addressWidth)
 
 {-# NOINLINE singleMasterInterconnect #-}
