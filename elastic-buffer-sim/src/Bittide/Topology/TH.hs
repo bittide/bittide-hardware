@@ -119,6 +119,7 @@ encodeQ = do
               VarE 'encode
     `compose` (VarE 'take `AppE` VarE m)
 
+-- | Based on 'unzip', 'unzip3' from the "Prelude".
 unzipN :: Int -> Q Exp
 unzipN n = do
   go <- op
@@ -128,11 +129,10 @@ unzipN n = do
   op = do
     a_i <- traverse (\i -> newName ("a" ++ show i)) [1..n]
     as_i <- traverse (\i -> newName ("as" ++ show i)) [1..n]
+    -- note the lazy pattern match
     pure (LamE [TupP (VarP <$> a_i), TildeP (TupP (VarP <$> as_i))] (tup (zipWith (\a as -> consList `AppE` a `AppE` as) (VarE <$> a_i) (VarE <$> as_i))))
   consList = ConE '(:)
 
--- what we want:
---
 -- absTimes :: (Signal dom0 (PeriodPs, a_1, ...), Signal dom1 (PeriodPs, b_1, ...), ...) -> [((Ps, PeriodPs, a_1, ...), (Ps, PeriodPs, b_1, ...), ...)]
 absTimes :: Graph -> Q Exp
 absTimes g = do

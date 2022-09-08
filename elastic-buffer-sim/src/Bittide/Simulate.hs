@@ -202,7 +202,7 @@ defClockConfig = ClockControlConfig
   , cccSettlePeriod      = pessimisticPeriod * 200 * 100
   , cccDynamicRange      = 150
   , cccStepSize          = 1
-  , cccBufferSize        = 65536 -- 128
+  , cccBufferSize        = 1024 -- 128
   }
  where
   specPpm = 100
@@ -259,11 +259,6 @@ clockControl ClockControlConfig{..} =
       SlowDown -> -1
 
     nextChanges = go 0 x_k' z_k' b_k' nextDataCounts
-
-    mi = minTOffset cccDynamicRange domT
-    ma = maxTOffset cccDynamicRange domT
-
-    domT = snatToNum @PeriodPs (clockPeriod @dom)
 
   go settleCounter x_k z_k b_k (_ :- nextDataCounts) =
     fourth4 (NoChange :-) nextChanges

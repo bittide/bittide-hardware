@@ -35,7 +35,8 @@ discardN :: Int -> [a] -> [a]
 discardN _ [] = []
 discardN n (x:xs) = x : discardN n (P.drop n xs)
 
--- | This samples @n@ steps and plots clock speeds and elastic buffer occupancy
+-- | This samples @n@ steps, taking every @k@th datum, and plots clock speeds
+-- and elastic buffer occupancy
 plotEbs :: Int -> Int -> IO ()
 plotEbs m k = do
   offs <- replicateM (n+1) genOffsets
@@ -52,7 +53,8 @@ plotEbs m k = do
   g = complete 3
   plotEachNode = $(plotDats (complete 3))
 
--- | This samples @n@ steps; the result can be fed to @script.py@
+-- | This samples @n@ steps, taking every @k@th datum; the result can be fed to
+-- @script.py@
 dumpCsv :: Int -> Int -> IO ()
 dumpCsv m k = do
   offs <- replicateM (n+1) genOffsets
