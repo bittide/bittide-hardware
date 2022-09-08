@@ -9,7 +9,7 @@ module Bittide.Topology.TH
   , encodeDats
   , encodeQ
   , onTup
-  , asPlotN
+  , onN
   , plotDats
   , simNodesFromGraph
   , timeN
@@ -44,6 +44,16 @@ import Clash.Signal.Internal qualified as Clash
 -- [(1,'a'),(1,'b'),(1,'c'),(2,'a'),(2,'b'),(2,'c')]
 cross :: [a] -> [b] -> [(a, b)]
 cross xs ys = (,) <$> xs <*> ys
+
+-- | For @n=2@ the type will be:
+--
+-- > ([a] -> b, [c] -> b) -> [(a, c)] -> [b]
+onN :: Int -> Q Exp
+onN n = do
+  onTupQ <- onTup n
+  unzipNQ <- unzipN n
+  f <- newName "f"
+  pure (LamE [VarP f] ((onTupQ `AppE` VarE f) `compose` unzipNQ))
 
 -- | For @n=3@:
 --
@@ -207,7 +217,7 @@ asPlotN i = do
     LamE [VarP m] $
               bimapV
                 plotPairs
-                (VarE 'foldPlots `compose` mapV plotPairs `compose` VarE 'L.transpose)
+                (VarE 'foldPlots `compose` mapV plotPairs `compose` VarE 'L.transpose) -- FIXME: transpose
     `compose` VarE 'unzip
     `compose` mapV g
     `compose` (VarE 'take `AppE` VarE m)

@@ -38,16 +38,17 @@ plotEbs m = do
   createDirectoryIfMissing True "_build"
   let (clockDats, ebDats) =
           P.unzip
-        $ onN (plotEachNode m)
-        $ $(unzipN 3)
-        $ $(simNodesFromGraph defClockConfig (complete 3)) offs
+        $ $(onN 9) (plotEachNode m)
+        $ $(simNodesFromGraph defClockConfig (grid 3 3)) offs
   void $ file "_build/clocks.pdf" (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
   void $ file "_build/elasticbuffers.pdf" (xlabel "Time (ps)" % foldPlots ebDats)
  where
-  onN = $(onTup 3)
   (0, n) = A.bounds g
-  g = complete 3
-  plotEachNode = $(plotDats (complete 3))
+  g = grid 3 3
+  plotEachNode = $(plotDats (grid 3 3))
+
+  -- TODO: re-do onN?
+  -- onN (f, g, h) ((x, y, z):_) =
 
 
 -- | This samples @n@ steps; the result can be fed to @script.py@
@@ -61,8 +62,7 @@ dumpCsv m = do
       ("_build/clocks" <> show i <> ".csv")
       ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
   let dats =
-          $(onTup 6) ($(encodeDats 6) m)
-        $ $(unzipN 6)
+          $(onN 6) ($(encodeDats 6) m)
         $ $(simNodesFromGraph defClockConfig (complete 6)) offs
   zipWithM_ (\dat i ->
     BSL.appendFile ("_build/clocks" <> show i <> ".csv") dat) dats [(0::Int)..]
