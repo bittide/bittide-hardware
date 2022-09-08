@@ -5,7 +5,9 @@
 {-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
 
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 module Tests.Switch(switchGroup) where
 
 import Clash.Prelude
@@ -37,7 +39,7 @@ switchGroup = testGroup "Switch group"
 
 data SwitchTestConfig  nBytes addrW where
   SwitchTestConfig ::
-    KnownNat links =>
+    ( KnownNat links, 1 <= nBytes, 2 <= addrW) =>
     SwitchConfig links nBytes addrW ->
     SwitchTestConfig nBytes addrW
 
@@ -55,7 +57,7 @@ genSwitchEntry SNat = genVec (genIndex Range.constantBounded)
 -- calendar depth of the switch.
 genSwitchCalendar ::
   forall nBytes addrW .
-  (KnownNat nBytes, 1 <= nBytes, KnownNat addrW) =>
+  (KnownNat nBytes, 1 <= nBytes, KnownNat addrW, 2 <= addrW) =>
   Natural ->
   Natural ->
   Gen (SwitchTestConfig nBytes addrW)
@@ -74,21 +76,26 @@ switchFrameRoutingWorks = property $ do
   calDepth <- forAll $ Gen.enum 1 8
   switchCal <- forAll $ genSwitchCalendar @4 @32 (fromIntegral links) calDepth
   case switchCal of
-    SwitchTestConfig (SwitchConfig{preamble, calendarConfig@(CalendarConfig _ (toList -> cal) _)}) -> do
+    SwitchTestConfig
+      ( SwitchConfig
+        { preamble = preamble
+        , calendarConfig = calConfig@(CalendarConfig _ (toList . fmap toList -> cal) _)
+        }
+      ) -> do
       simLength <- forAll $ Gen.enum 1 (3 * fromIntegral calDepth)
-      preamble <- forAll (genDefinedBitVector @64)
       let
         genFrame = Just <$> genDefinedBitVector @64
         allLinks = Gen.list (Range.singleton links) genFrame
       topEntityInput <- forAll $ Gen.list (Range.singleton simLength) allLinks
       let
         topEntity streamsIn = withClockResetEnable clockGen resetGen enableGen $ bundle $
-         fst $ switch preamble calConfig (repeat $ pure emptyWishboneM2S) $ unbundle streamsIn
+         fst $ switch preamble calConfig (pure emptyWishboneM2S)
+         (repeat $ pure emptyWishboneM2S) (repeat $ pure emptyWishboneM2S) $ unbundle streamsIn
         simOut = simulateN @System simLength topEntity $ fmap unsafeFromList topEntityInput
       let
         expectedFrames = P.replicate links Nothing : topEntityInput
         expectedOutput = P.take simLength $ P.replicate links Nothing :
-          P.zipWith selectAllOutputs expectedFrames (cycle $ fmap toList cal)
+          P.zipWith selectAllOutputs expectedFrames (cycle cal)
       footnote . fromString $ "expected:" <> showX expectedOutput
       footnote . fromString $ "simOut: " <> showX simOut
       footnote . fromString $ "input: " <> showX topEntityInput
