@@ -198,11 +198,12 @@ specPeriod = hzToPeriod 200e3
 defClockConfig :: ClockControlConfig
 defClockConfig = ClockControlConfig
   { cccPessimisticPeriod = pessimisticPeriod
-  -- clock adjustment takes place at 1MHz, clock is 200MHz so we get one correction per 200 cycles
-  , cccSettlePeriod      = pessimisticPeriod * 200 * 100
+  -- clock adjustment takes place at 1MHz, clock is 200MHz so we can have at most
+  -- one correction per 200 cycles
+  , cccSettlePeriod      = pessimisticPeriod * 200
   , cccDynamicRange      = 150
   , cccStepSize          = 1
-  , cccBufferSize        = 1024 -- 128
+  , cccBufferSize        = 2048 -- 128
   }
  where
   specPpm = 100
@@ -228,11 +229,17 @@ clockControl ClockControlConfig{..} =
   frth4 . go (cccSettlePeriod + 1) 0 0 NoChange . bundle
  where
   frth4 (_, _, _, e) = e
+
   -- x_k is the integral of the measurement
   go :: SettlePeriod -> Double -> Integer -> SpeedChange -> Signal dom (Vec n DataCount) -> (Double, Integer, SpeedChange, Signal dom SpeedChange)
   go settleCounter x_k z_k b_k (dataCounts :- nextDataCounts) | settleCounter > cccSettlePeriod
     = fourth4 (b_k' :-) nextChanges
    where
+
+    -- see clock control algorithm simulation here:
+    -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
+    --
+    -- the constants here are chosen to match the above code.
 
     k_p = 2e-4 :: Double
     k_i = 1e-11 :: Double
@@ -242,10 +249,15 @@ clockControl ClockControlConfig{..} =
       x_k + p * realToFrac r_k
 
     c_des = k_p * realToFrac r_k + k_i * realToFrac x_k'
-    z_k' = z_k + b_kI
-    c_est = 5e-4 * realToFrac z_k'
+    z_k' = z_k + sgn b_k
+    fStep = 5e-4
+    c_est = fStep * realToFrac z_k'
     -- we are using 200kHz instead of 200MHz
-    p = 1e5 * typicalFreq where typicalFreq = 0.0002
+    -- typical freq. is in GHz
+    --
+    -- (this is adjusted by a factor of 100 because our clock corrections are
+    -- faster than those simulated in Callisto)
+    p = 1e3 * typicalFreq where typicalFreq = 0.0002
 
     b_k' =
       case compare c_des c_est of
@@ -253,10 +265,9 @@ clockControl ClockControlConfig{..} =
         GT -> SpeedUp
         EQ -> NoChange
 
-    b_kI = case b_k of
-      NoChange -> 0
-      SpeedUp -> 1
-      SlowDown -> -1
+    sgn NoChange = 0
+    sgn SpeedUp = 1
+    sgn SlowDown = -1
 
     nextChanges = go 0 x_k' z_k' b_k' nextDataCounts
 
