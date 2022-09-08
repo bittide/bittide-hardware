@@ -13,13 +13,10 @@ Provides a rudimentary simulation of elastic buffers.
 
 module Bittide.Simulate where
 
-import Debug.Trace
-
 import Clash.Prelude
 import Clash.Signal.Internal
 import GHC.Stack
 import Numeric.Natural
-import Control.DeepSeq (deepseq)
 
 import Bittide.Simulate.Ppm
 
@@ -228,13 +225,13 @@ clockControl ::
   -- | Whether to adjust node clock frequency
   Signal dom SpeedChange
 clockControl ClockControlConfig{..} =
-  fth5 . go (cccSettlePeriod + 1) 0 0 0 NoChange . bundle
+  frth4 . go (cccSettlePeriod + 1) 0 0 NoChange . bundle
  where
-  fth5 (_, _, _, _, e) = e
+  frth4 (_, _, _, e) = e
   -- x_k is the integral of the measurement
-  go :: SettlePeriod -> Offset -> Double -> Integer -> SpeedChange -> Signal dom (Vec n DataCount) -> (Offset, Double, Integer, SpeedChange, Signal dom SpeedChange)
-  go settleCounter offs x_k z_k b_k (dataCounts :- nextDataCounts) | settleCounter > cccSettlePeriod
-    = fifth5 (speedChange :-) nextChanges
+  go :: SettlePeriod -> Double -> Integer -> SpeedChange -> Signal dom (Vec n DataCount) -> (Double, Integer, SpeedChange, Signal dom SpeedChange)
+  go settleCounter x_k z_k b_k (dataCounts :- nextDataCounts) | settleCounter > cccSettlePeriod
+    = fourth4 (b_k' :-) nextChanges
    where
 
     k_p = 2e-4 :: Double
@@ -247,8 +244,7 @@ clockControl ClockControlConfig{..} =
     c_des = k_p * realToFrac r_k + k_i * realToFrac x_k'
     z_k' = z_k + b_kI
     c_est = 5e-4 * realToFrac z_k'
-    -- FIXME we are using 200kHz instead of 200MHz... we need to scale all the
-    -- constants
+    -- we are using 200kHz instead of 200MHz
     p = 1e5 * typicalFreq where typicalFreq = 0.0002
 
     b_k' =
@@ -262,34 +258,27 @@ clockControl ClockControlConfig{..} =
       SpeedUp -> 1
       SlowDown -> -1
 
-    nextChanges = go newSettleCounter nextOffs x_k' z_k' b_k' nextDataCounts
+    nextChanges = go newSettleCounter x_k' z_k' b_k' nextDataCounts
 
-    fifth5 f ~(a, b, c, d, e) = (a, b, c, d, f e)
-
-    (speedChange, nextOffs) =
-        case compare c_des c_est of
-          LT | offs + cccStepSize <= ma -> (SlowDown, offs + cccStepSize)
-          GT | offs - cccStepSize >= mi -> (SpeedUp, offs - cccStepSize)
-          _ -> (NoChange, offs)
-
-    newSettleCounter = 0
-      -- case b_k' of
-        -- NoChange -> settleCounter + cccPessimisticPeriod
-        -- SpeedUp -> 0
-        -- SlowDown -> 0
+    newSettleCounter =
+      case b_k' of
+        NoChange -> settleCounter + cccPessimisticPeriod
+        SpeedUp -> 0
+        SlowDown -> 0
 
     mi = minTOffset cccDynamicRange domT
     ma = maxTOffset cccDynamicRange domT
 
     domT = snatToNum @PeriodPs (clockPeriod @dom)
 
-  go settleCounter offs x_k z_k b_k (_ :- nextDataCounts) =
-    fifth5 (NoChange :-) nextChanges
+  go settleCounter x_k z_k b_k (_ :- nextDataCounts) =
+    fourth4 (NoChange :-) nextChanges
    where
-    nextChanges = go newSettleCounter offs x_k z_k b_k nextDataCounts
+    nextChanges = go newSettleCounter x_k z_k b_k nextDataCounts
     newSettleCounter = settleCounter + cccPessimisticPeriod
-    fifth5 f ~(a, b, c, d, e) = (a, b, c, d, f e)
 
+fourth4 :: (d -> e) -> (a, b, c, d) -> (a, b, c, e)
+fourth4 f ~(a, b, c, d) = (a, b, c, f d)
 
 minTOffset, maxTOffset :: Ppm -> PeriodPs -> Offset
 minTOffset ppm period = toInteger (speedUpPeriod ppm period) - toInteger period
