@@ -63,9 +63,9 @@ genSwitchCalendar links calDepth = do
   case TN.someNatVal links of
     (SomeNat (snatProxy -> l)) -> do
       testCal <- genCalendarConfig calDepth $ genSwitchEntry l
-      preamble <- genDefinedBitVector @64
-      let
-      return $ SwitchTestConfig (SwitchConfig preamble testCal)
+      return $ SwitchTestConfig (SwitchConfig
+        { preamble = errorX "preamble Undefined" :: BitVector 64
+        , calendarConfig = testCal})
 
 -- | This test checks that for any switch calendar all outputs select the correct frame.
 switchFrameRoutingWorks :: Property
@@ -74,7 +74,7 @@ switchFrameRoutingWorks = property $ do
   calDepth <- forAll $ Gen.enum 1 8
   switchCal <- forAll $ genSwitchCalendar @4 @32 (fromIntegral links) calDepth
   case switchCal of
-    SwitchTestConfig (SwitchConfig preamble calConfig@(CalendarConfig _ (toList -> cal) _)) -> do
+    SwitchTestConfig (SwitchConfig{preamble, calendarConfig@(CalendarConfig _ (toList -> cal) _)}) -> do
       simLength <- forAll $ Gen.enum 1 (3 * fromIntegral calDepth)
       preamble <- forAll (genDefinedBitVector @64)
       let
