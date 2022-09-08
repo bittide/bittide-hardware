@@ -258,13 +258,7 @@ clockControl ClockControlConfig{..} =
       SpeedUp -> 1
       SlowDown -> -1
 
-    nextChanges = go newSettleCounter x_k' z_k' b_k' nextDataCounts
-
-    newSettleCounter =
-      case b_k' of
-        NoChange -> settleCounter + cccPessimisticPeriod
-        SpeedUp -> 0
-        SlowDown -> 0
+    nextChanges = go 0 x_k' z_k' b_k' nextDataCounts
 
     mi = minTOffset cccDynamicRange domT
     ma = maxTOffset cccDynamicRange domT

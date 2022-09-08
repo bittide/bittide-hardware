@@ -42,8 +42,8 @@ plotEbs m k = do
   createDirectoryIfMissing True "_build"
   let (clockDats, ebDats) =
           P.unzip
-        $ discardN k
         $ $(onN 9) (plotEachNode m)
+        $ discardN k
         $ $(simNodesFromGraph defClockConfig (grid 3 3)) offs
   void $ file "_build/clocks.pdf" (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
   void $ file "_build/elasticbuffers.pdf" (xlabel "Time (ps)" % foldPlots ebDats)
