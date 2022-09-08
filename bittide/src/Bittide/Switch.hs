@@ -31,7 +31,7 @@ data SwitchConfig links nBytes addrW where
 
 deriving instance Show (SwitchConfig links nBytes addrW)
 
--- | Creates a 'switch' from a 'SwitchConfig'. This wrapper functions hides the preambleWidth
+-- | Creates a 'switch' from a 'SwitchConfig'. This wrapper functions hides the @preambleWidth@
 -- type variable from the rest of the implementation.
 mkSwitch ::
   ( HiddenClockResetEnable dom
@@ -48,13 +48,13 @@ mkSwitch ::
 mkSwitch SwitchConfig{..} = switch preamble calendarConfig
 
 {-# NOINLINE switch #-}
--- | The Bittide Switch routes data from incoming links to outgoing links based on a calendar.
--- The switch consists of a crossbar, a calendar and the receiver and transmitter logic per link.
--- For each incoming link, the switch has a 'rxUnit' and a receive register (single depth
--- scatter unit). For each outgoing link the switch has a transmit register (single depth
--- gather unit) and a 'txUnit'. The crossbar selects one of the receive register's output
--- for each transmit register. Index 0 selects a null frame (Nothing) and k selects
--- receive register (k - 1).
+-- | The Bittide Switch routes data from incoming links to outgoing links based on a 'Calendar'.
+-- The switch consists of a 'crossbar', a 'calendar' and receiver and transmitter logic per link.
+-- The receive logic consists of a 'rxUnit' and a receive register (single depth
+-- 'Bittide.ScatterGather.scatterUnit'). The transmit logic consists of a transmit register
+-- (single depth 'Bittide.ScatterGather.gatherUnit') and a 'txUnit'. The 'crossbar' selects
+-- one of the receive register's output for each transmit register. Index @0@ selects a
+-- null frame @Nothing@ and @k@ selects receive register @(k - 1)@.
 switch ::
   forall dom nBytes addrW links frameWidth preambleWidth .
   ( HiddenClockResetEnable dom
@@ -87,8 +87,8 @@ switch preamble calConfig m2ss streamsIn = (streamsOut,calS2M :> (rxS2Ms ++ txS2
   (txS2Ms, streamsOut) = unzip $ txUnit preamble sc <$> gatherFrames <*> txM2Ss
 
 {-# NOINLINE crossBar #-}
--- | The crossbar receives a vector of indices and a vector of incoming frames.
--- For each outgoing link it will select a data source. 0 selects a null frame (Nothing),
+-- | The 'crossbar' receives a vector of indices and a vector of incoming frames.
+-- For each outgoing link it will select a data source. @0@ selects a null frame @Nothing@,
 -- therefore indexing of incoming links starts at 1 (index 1 selects incoming frame 0).
 -- Source: bittide hardware, switch logic.
 crossBar ::
