@@ -217,7 +217,7 @@ asPlotN i = do
     LamE [VarP m] $
               bimapV
                 plotPairs
-                (VarE 'foldPlots `compose` mapV plotPairs `compose` VarE 'L.transpose) -- FIXME: transpose
+                (VarE 'foldPlots `compose` mapV plotPairs `compose` VarE 'L.transpose)
     `compose` VarE 'unzip
     `compose` mapV g
     `compose` (VarE 'take `AppE` VarE m)
@@ -225,7 +225,7 @@ asPlotN i = do
   mapV = AppE (VarE 'fmap)
   unzipV = VarE 'unzip
   bimapV f = AppE (AppE (VarE 'bimap) f)
-  plotPairs = AppE (VarE 'uncurry) (VarE 'plot) `compose` unzipV
+  plotPairs = AppE (VarE 'uncurry) (VarE 'plot) `compose` unzipV -- VarE 'V.unzip `compose` AppE (VarE 'V.fromListN) (VarE m)
 
 compose :: Exp -> Exp -> Exp
 compose e0 = AppE (AppE (VarE '(.)) e0)

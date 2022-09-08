@@ -15,8 +15,8 @@ patterns = [docopt|
 sim version 0.1.0
 
 Usage:
-  sim csv <steps>
-  sim plot <steps>
+  sim csv <steps> <sample>
+  sim plot <steps> <sample>
 |]
 
 getArgOrExit :: Arguments -> Option -> IO String
@@ -28,8 +28,10 @@ main = do
 
   when (args `isPresent` (command "csv")) $ do
     n <- args `getArgOrExit` (argument "steps")
-    dumpCsv (read n)
+    k <- args `getArgOrExit` (argument "sample")
+    dumpCsv (read n) (read k)
 
   when (args `isPresent` (command "plot")) $ do
     n <- args `getArgOrExit` (argument "steps")
-    plotEbs (read n)
+    k <- args `getArgOrExit` (argument "sample")
+    plotEbs (read n) (read k)

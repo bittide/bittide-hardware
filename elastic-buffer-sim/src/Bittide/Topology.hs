@@ -18,9 +18,9 @@ import Control.Monad (void, forM_, replicateM, zipWithM_)
 
 import Prelude qualified as P
 
+import Graphics.Matplotlib ((%), file, xlabel, ylabel)
 import System.Directory (createDirectoryIfMissing)
 import System.Random (randomRIO)
-import Graphics.Matplotlib ((%), file, xlabel, ylabel)
 
 import Data.Array qualified as A
 import Data.ByteString.Lazy qualified as BSL
@@ -31,13 +31,18 @@ import Bittide.Topology.Graph
 import Bittide.Topology.TH
 import Graphics.Matplotlib.Ext
 
+discardN :: Int -> [a] -> [a]
+discardN _ [] = []
+discardN n (x:xs) = x : discardN n (P.drop n xs)
+
 -- | This samples @n@ steps and plots clock speeds and elastic buffer occupancy
-plotEbs :: Int -> IO ()
-plotEbs m = do
+plotEbs :: Int -> Int -> IO ()
+plotEbs m k = do
   offs <- replicateM (n+1) genOffsets
   createDirectoryIfMissing True "_build"
   let (clockDats, ebDats) =
           P.unzip
+        $ discardN k
         $ $(onN 9) (plotEachNode m)
         $ $(simNodesFromGraph defClockConfig (grid 3 3)) offs
   void $ file "_build/clocks.pdf" (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
@@ -47,13 +52,9 @@ plotEbs m = do
   g = grid 3 3
   plotEachNode = $(plotDats (grid 3 3))
 
-  -- TODO: re-do onN?
-  -- onN (f, g, h) ((x, y, z):_) =
-
-
 -- | This samples @n@ steps; the result can be fed to @script.py@
-dumpCsv :: Int -> IO ()
-dumpCsv m = do
+dumpCsv :: Int -> Int -> IO ()
+dumpCsv m k = do
   offs <- replicateM (n+1) genOffsets
   createDirectoryIfMissing True "_build"
   forM_ [0..n] $ \i ->
@@ -63,6 +64,7 @@ dumpCsv m = do
       ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
   let dats =
           $(onN 6) ($(encodeDats 6) m)
+        $ discardN k
         $ $(simNodesFromGraph defClockConfig (complete 6)) offs
   zipWithM_ (\dat i ->
     BSL.appendFile ("_build/clocks" <> show i <> ".csv") dat) dats [(0::Int)..]
