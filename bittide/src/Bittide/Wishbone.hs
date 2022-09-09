@@ -12,6 +12,7 @@ import           Clash.Prelude
 import           Bittide.Extra.Wishbone
 import           Data.Maybe
 
+-- Applying this hint yields a compile error
 {-# ANN module "HLint: ignore Functor law" #-}
 
 type MemoryMap nSlaves addressWidth = Vec nSlaves (BitVector addressWidth)

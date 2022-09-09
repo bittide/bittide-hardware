@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2022 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+
+[tool.poetry]
+name = "elastic-buffer-sim"
+version = "0.1.0"
+description = ""
+authors = ["QBayLogic B.V. <devops@qbaylogic.com>"]
+license = "Apache-2.0"
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.12"
+matplotlib = "^3.5"
+pandas = "^1.4"
+scipy = "^1.9"
+
+[tool.poetry.dev-dependencies]
+pycodestyle = "^2.9"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

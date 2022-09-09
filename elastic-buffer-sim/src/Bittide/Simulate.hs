@@ -2,18 +2,13 @@
 
 Provides a rudimentary simulation of elastic buffers.
 
-TODO:
-
-  * Define static topologies
-  * Ability to extract statistics
-  * Ability to generate topologies
-
 -}
 
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Bittide.Simulate where
@@ -25,6 +20,8 @@ import GHC.Stack
 import Numeric.Natural
 
 import Bittide.Simulate.Ppm
+
+import Data.Csv
 
 -- Number of type aliases for documentation purposes in various functions defined
 -- down below.
@@ -42,13 +39,16 @@ targetDataCount :: ElasticBufferSize -> DataCount
 targetDataCount size = size `div` 2
 
 -- | Safer version of FINC/FDEC signals present on the Si5395/Si5391 clock multipliers.
--- Note that the actual clock mulipliers detect edges. If we ever want to reuse code
--- from this module, we should make sure to generate these edges.
 data SpeedChange
   = SpeedUp
   | SlowDown
   | NoChange
   deriving (Eq, Show, Generic, ShowX, NFDataX)
+
+instance ToField SpeedChange where
+  toField SpeedUp = "speedUp"
+  toField SlowDown = "slowDown"
+  toField NoChange = "noChange"
 
 -- | Simple model of the Si5395/Si5391 clock multipliers. In real hardware, these
 -- are connected to some oscillator (i.e., incoming Clock) but for simulation
@@ -85,10 +85,11 @@ tunableClockGen ::
   -- don't account for this yet, so be careful when using them. Note that dynamic
   -- frequencies are only relevant for components handling multiple domains.
   Clock dom
-tunableClockGen settlePeriod periodOffset stepSize _reset =
-  case knownDomain @dom of
-    SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
-      DClock SSymbol . Just . go settlePeriod (fromIntegral (period + periodOffset))
+tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
+  let period = snatToNum (clockPeriod @dom)
+      initPeriod = fromIntegral (period + periodOffset)
+      clockSignal = initPeriod :- go settlePeriod initPeriod speedChange in
+  Clock SSymbol (Just clockSignal)
  where
   go :: SettlePeriod -> PeriodPs -> Signal dom SpeedChange -> Signal dom StepSize
   go !settleCounter !period (sc :- scs) =
@@ -127,8 +128,8 @@ elasticBuffer ::
   Clock writeDom ->
   Signal readDom DataCount
 elasticBuffer mode size clkRead clkWrite
-  | DClock _ (Just readPeriods) <- clkRead
-  , DClock _ (Just writePeriods) <- clkWrite
+  | Clock _ (Just readPeriods) <- clkRead
+  , Clock _ (Just writePeriods) <- clkWrite
   = go 0 (targetDataCount size) readPeriods writePeriods
  where
   go !relativeTime !fillLevel rps wps@(writePeriod :- _) =
@@ -154,17 +155,19 @@ elasticBuffer mode size clkRead clkWrite
           Error -> error "elasticBuffer: underflow"
       | otherwise = fillLevel - 1
 
-elasticBuffer mode size (DClock ss Nothing) clock1 =
+elasticBuffer mode size (Clock ss Nothing) clock1 =
   -- Convert read clock to a "dynamic" clock if it isn't one
-  case knownDomain @readDom of
-    SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
-      elasticBuffer mode size (DClock ss (Just (pure period))) clock1
+  let
+    period = snatToNum (clockPeriod @readDom)
+  in
+    elasticBuffer mode size (Clock ss (Just (pure period))) clock1
 
-elasticBuffer mode size clock0 (DClock ss Nothing) =
+elasticBuffer mode size clock0 (Clock ss Nothing) =
   -- Convert write clock to a "dynamic" clock if it isn't one
-  case knownDomain @writeDom of
-    SDomainConfiguration _ (snatToNum -> period) _ _ _ _ ->
-      elasticBuffer mode size clock0 (DClock ss (Just (pure period)))
+  let
+    period = snatToNum (clockPeriod @writeDom)
+  in
+    elasticBuffer mode size clock0 (Clock ss (Just (pure period)))
 
 -- | Configuration passed to 'clockControl'
 data ClockControlConfig = ClockControlConfig
@@ -186,7 +189,25 @@ data ClockControlConfig = ClockControlConfig
 
   -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
   , cccBufferSize :: ElasticBufferSize
+  } deriving (Lift)
+
+-- we use 200kHz in simulation because otherwise the periods are so small that
+-- deviations can't be expressed using 'Natural's
+specPeriod :: PeriodPs
+specPeriod = hzToPeriod 200e3
+
+defClockConfig :: ClockControlConfig
+defClockConfig = ClockControlConfig
+  { cccPessimisticPeriod = pessimisticPeriod
+  -- clock adjustment takes place at 1MHz, clock is 200MHz so we get one correction per 200 cycles
+  , cccSettlePeriod      = pessimisticPeriod * 200
+  , cccDynamicRange      = 150
+  , cccStepSize          = 1
+  , cccBufferSize        = 128
   }
+ where
+  specPpm = 100
+  pessimisticPeriod = speedUpPeriod specPpm specPeriod
 
 -- | Determines how to influence clock frequency given statistics provided by
 -- all elastic buffers.

@@ -79,6 +79,106 @@ jobs:
         run: |
           cabal build all --only-dependencies
 
+  elastic-buffer-sim-topologies:
+    name: Simulate network
+    runs-on: ubuntu-latest
+    needs: [build, lint]
+
+    container:
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project.simulation cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/store
+
+          key: packages-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-
+
+      - name: Install poetry
+        run: |
+          apt-get update
+          apt-get install python3-distutils -y
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "${HOME}/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: |
+          cd elastic-buffer-sim && poetry update
+
+      - name: Lint Python script
+        run: |
+          cd elastic-buffer-sim && poetry run pycodestyle genplots.py
+
+      # TODO: simulate + plot multiple topologies
+      - name: Simulate network and generate csvs
+        run: |
+          cd elastic-buffer-sim && cabal run sim -- csv 30000
+
+      - name: Generate plots
+        run: |
+          cd elastic-buffer-sim && poetry run python genplots.py
+
+      - name: Plot mesh grid
+        run: |
+          cd elastic-buffer-sim && poetry run cabal run sim -- plot 30000
+
+      - name: Upload plots
+        uses: actions/upload-artifact@v2
+        with:
+          name: gen-plots-py
+          path: |
+            elastic-buffer-sim/_build/clocks.pdf
+            elastic-buffer-sim/_build/elasticbuffers.pdf
+
+  elastic-buffer-sim-tests:
+    name: elastic-buffer-sim unittests
+    runs-on: ubuntu-latest
+    needs: [build, lint]
+
+    container:
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project.simulation cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/store
+
+          key: packages-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-
+
+      - name: Run unittests
+        run: |
+          cabal run elastic-buffer-sim:unittests
+
   contranomy-tests:
     name: Contranomy tests
     runs-on: ubuntu-latest
@@ -221,9 +321,6 @@ jobs:
           name: verify-${{ matrix.check }}-failed
           path: riscv-formal/cores/contranomy/checks/${{ matrix.check }}
 
-
-
-
   contranomy-sim-tests:
     name: ContranomySim tests and firmware integration tests
     runs-on: ubuntu-latest
@@ -268,41 +365,6 @@ jobs:
           cabal run elastic-buffer-sim:unittests
 
 
-  elastic-buffer-sim-tests:
-    name: elastic-buffer-sim unittests
-    runs-on: ubuntu-latest
-    needs: [build, lint]
-
-    container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v1
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project.simulation cabal.project.local
-
-      - name: Update Cabal index info
-        run: |
-          cabal update
-          cabal freeze
-
-      - name: Cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cabal/store
-
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
-
-      - name: Run unittests
-        run: |
-          cabal run elastic-buffer-sim:unittests
-
-
   bittide-tests:
     name: Bittide tests
     runs-on: ubuntu-latest
@@ -334,7 +396,7 @@ jobs:
           restore-keys: packages-
 
       - name: Unittests
-        run : |
+        run: |
           cabal run -- bittide:unittests
 
   firmware-lints:
