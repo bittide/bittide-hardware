@@ -146,8 +146,8 @@ scatterUnitNoFrameLoss = property $ do
       <$> inputGen (padToLength memDepth Nothing <$> metaCycleGen)
     let
       topEntity (unbundle -> (wbIn, linkIn)) = fst $
-        withClockResetEnable clockGen resetGen enableGen (scatterUnitWb @System @_ @32)
-        calConfig (pure emptyWishboneM2S) linkIn wbIn
+        withClockResetEnable clockGen resetGen enableGen (scatterUnitWb @System @32)
+        (ScatterConfig calConfig) (pure emptyWishboneM2S) linkIn wbIn
 
       wbReadOps = P.take simLength $ P.replicate memDepth emptyWishboneM2S P.++  P.concat
         ( padToLength memDepth emptyWishboneM2S
@@ -186,8 +186,8 @@ gatherUnitNoFrameLoss = property $ do
       <$> inputGen (padToLength memDepth Nothing <$> metaCycleGen)
     let
       topEntity wbIn = (\ (a, _ ,_) -> a) $
-        withClockResetEnable clockGen resetGen enableGen (gatherUnitWb @System @_ @32)
-        calConfig (pure emptyWishboneM2S) wbIn
+        withClockResetEnable clockGen resetGen enableGen (gatherUnitWb @System @32)
+        (GatherConfig calConfig) (pure emptyWishboneM2S) wbIn
 
       wbWriteOps = P.take simLength . P.concat $
         padToLength memDepth emptyWishboneM2S

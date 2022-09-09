@@ -22,12 +22,16 @@ import Bittide.Calendar
 import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
 
+-- | GADT to explicitly differentiate between a configuration for the 'scatterUnitWb' and
+-- 'gatherUnitWb' at type level.
 data ScatterConfig nBytes addrW where
   ScatterConfig ::
     (KnownNat memDepth, 1 <= memDepth) =>
     (CalendarConfig nBytes addrW (Index memDepth)) ->
     ScatterConfig nBytes addrW
 
+-- | GADT to explicitly differentiate between a configuration for the 'scatterUnitWb' and
+-- 'gatherUnitWb' at type level.
 data GatherConfig nBytes addrW where
   GatherConfig ::
     (KnownNat memDepth, 1 <= memDepth) =>
@@ -124,12 +128,11 @@ wbInterface addressRange WishboneM2S{..} readData =
 -- memory element as if it has a 32 bit port by selecting the upper 32 or lower 32 bits
 -- of the read data.
 scatterUnitWb ::
-  forall dom memDepth addrWidthSu nBytesCal addrWidthCal .
+  forall dom addrWidthSu nBytesCal addrWidthCal .
   ( HiddenClockResetEnable dom
-  , KnownNat memDepth, 1 <= memDepth
   , KnownNat addrWidthSu, 2 <= addrWidthSu) =>
   -- | Configuration for the 'calendar'.
-  CalendarConfig nBytesCal addrWidthCal (Index memDepth) ->
+  ScatterConfig nBytesCal addrWidthCal ->
   -- | Wishbone (master -> slave) port 'calendar'.
   Signal dom (WishboneM2S addrWidthCal nBytesCal (Bytes nBytesCal)) ->
   -- | Incoming frame from Bittide link.
@@ -138,7 +141,7 @@ scatterUnitWb ::
   Signal dom (WishboneM2S addrWidthSu 4 (Bytes 4)) ->
   -- | (Wishbone (slave -> master) port scatter memory, Wishbone (slave -> master) port 'calendar')
   (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes nBytesCal)))
-scatterUnitWb calConfig wbInCal linkIn wbInSu =
+scatterUnitWb (ScatterConfig calConfig) wbInCal linkIn wbInSu =
   (delayControls wbOutSu, wbOutCal)
  where
   (wbOutSu, memAddr, _) = unbundle $ wbInterface maxBound <$> wbInSu <*> scatteredData
@@ -153,12 +156,11 @@ scatterUnitWb calConfig wbInCal linkIn wbInSu =
 -- memory element as if it has a 32 bit port by controlling the byte enables of the
 -- 'gatherUnit' based on the third bit.
 gatherUnitWb ::
-  forall dom memDepth addrWidthGu nBytesCal addrWidthCal .
+  forall dom addrWidthGu nBytesCal addrWidthCal .
   ( HiddenClockResetEnable dom
-  , KnownNat memDepth, 1 <= memDepth
   , KnownNat addrWidthGu, 2 <= addrWidthGu) =>
   -- | Configuration for the 'calendar'.
-  CalendarConfig nBytesCal addrWidthCal (Index memDepth) ->
+  GatherConfig nBytesCal addrWidthCal ->
   -- | Wishbone (master -> slave) data 'calendar'.
   Signal dom (WishboneM2S addrWidthCal nBytesCal (Bytes nBytesCal)) ->
   -- | Wishbone (master -> slave) port gather memory.
@@ -167,7 +169,7 @@ gatherUnitWb ::
   ( Signal dom (DataLink 64)
   , Signal dom (WishboneS2M (Bytes 4))
   , Signal dom (WishboneS2M (Bytes nBytesCal)) )
-gatherUnitWb calConfig wbInCal wbInGu =
+gatherUnitWb (GatherConfig calConfig) wbInCal wbInGu =
   (linkOut, delayControls wbOutGu, wbOutCal)
  where
   (wbOutGu, memAddr, writeOp) = unbundle $ wbInterface maxBound <$> wbInGu <*> pure 0b0
