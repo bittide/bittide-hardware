@@ -15,6 +15,7 @@ module Bittide.Simulate where
 
 import Clash.Prelude
 import Clash.Signal.Internal
+import Data.Bifunctor (second)
 import GHC.Stack
 import Numeric.Natural
 
@@ -209,76 +210,90 @@ defClockConfig = ClockControlConfig
   specPpm = 100
   pessimisticPeriod = speedUpPeriod specPpm specPeriod
 
+data ControlSt = ControlSt
+  { x_k :: Double -- ^ 'x_k' is the integral of the measurement
+  , z_k :: Integer
+  , b_k :: SpeedChange
+  }
+
 -- | Determines how to influence clock frequency given statistics provided by
 -- all elastic buffers.
---
--- TODO:
---
---   * Generalize to make it easy to "swap" strategies?
---
 clockControl ::
   forall n dom.
-  (KnownNat n, KnownDomain dom, 1 <= n) =>
+  (KnownNat n, 1 <= n) =>
   -- | Configuration for this component, see individual fields for more info.
   ClockControlConfig ->
   -- | Statistics provided by elastic buffers.
   Vec n (Signal dom DataCount) ->
+  Signal dom SpeedChange
+clockControl cfg = runClockControl cfg callisto (ControlSt 0 0 NoChange)
+
+runClockControl ::
+  forall n dom a.
+  (KnownNat n, 1 <= n) =>
+  -- | Configuration for this component, see individual fields for more info.
+  ClockControlConfig ->
+  -- | Clock control strategy
+  (ClockControlConfig -> SettlePeriod -> a -> Signal dom (Vec n DataCount) -> (a, Signal dom SpeedChange)) ->
+  -- | Initial clock control state
+  a ->
+  -- | Statistics provided by elastic buffers.
+  Vec n (Signal dom DataCount) ->
   -- | Whether to adjust node clock frequency
   Signal dom SpeedChange
-clockControl ClockControlConfig{..} =
-  frth4 . go (cccSettlePeriod + 1) 0 0 NoChange . bundle
+runClockControl cfg@ClockControlConfig{..} f initSt =
+  snd . f cfg (cccSettlePeriod + 1) initSt . bundle
+
+callisto :: forall n dom.
+  (KnownNat n, 1 <= n) =>
+  ClockControlConfig ->
+  SettlePeriod ->
+  ControlSt ->
+  Signal dom (Vec n DataCount) ->
+  (ControlSt, Signal dom SpeedChange)
+callisto cfg@ClockControlConfig{..} settleCounter ControlSt{..} (dataCounts :- nextDataCounts) | settleCounter > cccSettlePeriod
+  = second (b_kNext :-) nextChanges
  where
-  frth4 (_, _, _, e) = e
 
-  -- x_k is the integral of the measurement
-  go :: SettlePeriod -> Double -> Integer -> SpeedChange -> Signal dom (Vec n DataCount) -> (Double, Integer, SpeedChange, Signal dom SpeedChange)
-  go settleCounter x_k z_k b_k (dataCounts :- nextDataCounts) | settleCounter > cccSettlePeriod
-    = fourth4 (b_kNext :-) nextChanges
-   where
+  -- see clock control algorithm simulation here:
+  -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
+  --
+  -- the constants here are chosen to match the above code.
+  k_p = 2e-4 :: Double
+  k_i = 1e-11 :: Double
+  r_k =
+    toInteger (sum dataCounts) - (toInteger (targetDataCount cccBufferSize) * toInteger (length dataCounts))
+  x_kNext =
+    x_k + p * realToFrac r_k
 
-    -- see clock control algorithm simulation here:
-    -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
-    --
-    -- the constants here are chosen to match the above code.
+  c_des = k_p * realToFrac r_k + k_i * realToFrac x_kNext
+  z_kNext = z_k + sgn b_k
+  fStep = 5e-4
+  c_est = fStep * realToFrac z_kNext
+  -- we are using 200kHz instead of 200MHz
+  -- typical freq. is in GHz
+  --
+  -- (this is adjusted by a factor of 100 because our clock corrections are
+  -- faster than those simulated in Callisto)
+  p = 1e3 * typicalFreq where typicalFreq = 0.0002
 
-    k_p = 2e-4 :: Double
-    k_i = 1e-11 :: Double
-    r_k =
-      toInteger (sum dataCounts) - (toInteger (targetDataCount cccBufferSize) * toInteger (length dataCounts))
-    x_kNext =
-      x_k + p * realToFrac r_k
+  b_kNext =
+    case compare c_des c_est of
+      LT -> SlowDown
+      GT -> SpeedUp
+      EQ -> NoChange
 
-    c_des = k_p * realToFrac r_k + k_i * realToFrac x_kNext
-    z_kNext = z_k + sgn b_k
-    fStep = 5e-4
-    c_est = fStep * realToFrac z_kNext
-    -- we are using 200kHz instead of 200MHz
-    -- typical freq. is in GHz
-    --
-    -- (this is adjusted by a factor of 100 because our clock corrections are
-    -- faster than those simulated in Callisto)
-    p = 1e3 * typicalFreq where typicalFreq = 0.0002
+  sgn NoChange = 0
+  sgn SpeedUp = 1
+  sgn SlowDown = -1
 
-    b_kNext =
-      case compare c_des c_est of
-        LT -> SlowDown
-        GT -> SpeedUp
-        EQ -> NoChange
+  nextChanges = callisto cfg 0 (ControlSt x_kNext z_kNext b_kNext) nextDataCounts
 
-    sgn NoChange = 0
-    sgn SpeedUp = 1
-    sgn SlowDown = -1
-
-    nextChanges = go 0 x_kNext z_kNext b_kNext nextDataCounts
-
-  go settleCounter x_k z_k b_k (_ :- nextDataCounts) =
-    fourth4 (NoChange :-) nextChanges
-   where
-    nextChanges = go newSettleCounter x_k z_k b_k nextDataCounts
-    newSettleCounter = settleCounter + cccPessimisticPeriod
-
-fourth4 :: (d -> e) -> (a, b, c, d) -> (a, b, c, e)
-fourth4 f ~(a, b, c, d) = (a, b, c, f d)
+callisto cfg@ClockControlConfig{..} settleCounter st (_ :- nextDataCounts) =
+  second (NoChange :-) nextChanges
+ where
+  nextChanges = callisto cfg newSettleCounter st nextDataCounts
+  newSettleCounter = settleCounter + cccPessimisticPeriod
 
 minTOffset, maxTOffset :: Ppm -> PeriodPs -> Offset
 minTOffset ppm period = toInteger (speedUpPeriod ppm period) - toInteger period
