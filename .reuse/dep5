@@ -29,6 +29,10 @@ Files: firmware/tests/src/bin/*.expected
 Copyright: 2022 Google LLC
 License: CC0-1.0
 
+Files: vex-riscv/vex-test-programs/src/bin/*.expected
+Copyright: 2022 Google LLC
+License: CC0-1.0
+
 Files: bittide-instances/imgs/*
 Copyright: 2022 Google LLC
 License: Apache-2.0

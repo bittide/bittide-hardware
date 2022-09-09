@@ -16,6 +16,8 @@ members = [
 
   "firmware/examples/fdt-read",
   "firmware/examples/hello",
-  "firmware/tests"
+  "firmware/tests",
+
+  "vex-riscv/vex-test-programs",
 ]
 resolver = "2"
