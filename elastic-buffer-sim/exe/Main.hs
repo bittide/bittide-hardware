@@ -17,6 +17,9 @@ sim version 0.1.0
 Usage:
   sim csv <steps> <sample>
   sim plot <steps> <sample>
+
+Options:
+  <sample> Plot/dump only every kth datum
 |]
 
 getArgOrExit :: Arguments -> Option -> IO String
