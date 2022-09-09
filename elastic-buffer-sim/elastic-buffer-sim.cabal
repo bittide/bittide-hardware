@@ -82,6 +82,7 @@ library
     cassava,
     containers,
     directory,
+    matplotlib,
     random,
     template-haskell
   exposed-modules:
@@ -91,6 +92,8 @@ library
     Bittide.Topology.Graph
     Bittide.Topology.TH
     Bittide.Topology.TH.Domain
+  other-modules:
+    Graphics.Matplotlib.Ext
   default-language: Haskell2010
 
 executable sim

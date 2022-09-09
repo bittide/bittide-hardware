@@ -16,6 +16,7 @@ sim version 0.1.0
 
 Usage:
   sim csv <steps>
+  sim plot <steps>
 |]
 
 getArgOrExit :: Arguments -> Option -> IO String
@@ -28,3 +29,7 @@ main = do
   when (args `isPresent` (command "csv")) $ do
     n <- args `getArgOrExit` (argument "steps")
     dumpCsv (read n)
+
+  when (args `isPresent` (command "plot")) $ do
+    n <- args `getArgOrExit` (argument "steps")
+    plotEbs (read n)

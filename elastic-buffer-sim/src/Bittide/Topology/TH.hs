@@ -4,22 +4,37 @@
 
 -- | This module contains template haskell functions which lay out circuits
 -- using parts from "Bittide.Simulate"
-module Bittide.Topology.TH ( cross, onTup, simNodesFromGraph, timeN ) where
+module Bittide.Topology.TH
+  ( cross
+  , encodeDats
+  , encodeQ
+  , onTup
+  , asPlotN
+  , plotDats
+  , simNodesFromGraph
+  , timeN
+  )
+where
 
 import Prelude
 
+import Data.Bifunctor (bimap)
+import Data.Csv (encode)
 import Data.Graph (Graph)
+import Graphics.Matplotlib (plot)
 import Language.Haskell.TH (Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), Type (..), newName)
 import Language.Haskell.TH.Syntax (lift)
 import Numeric.Natural (Natural)
 
+import Bittide.Simulate
+import Bittide.Topology.TH.Domain
+import Graphics.Matplotlib.Ext
+
 import Data.Array qualified as A
+import Data.List qualified as L
 
 import Clash.Explicit.Prelude qualified as Clash
 import Clash.Signal.Internal qualified as Clash
-
-import Bittide.Simulate
-import Bittide.Topology.TH.Domain
 
 -- | Like the Cartesian product.
 --
@@ -30,12 +45,67 @@ cross xs ys = (,) <$> xs <*> ys
 
 -- | For @n=3@:
 --
--- > on3 f (x, y, z) = [f x, f y, f z]
+-- > on3 (f, g, h) (x, y, z) = [f x, g y, h z]
 onTup :: Int -> Q Exp
 onTup n = do
-  f <- newName "f"
+  fs <- traverse (\i -> newName ("f" ++ show i)) [1..n]
   x_is <- traverse (\i -> newName ("x" ++ show i)) [1..n]
-  pure $ LamE [VarP f, TupP (VarP <$> x_is)] (ListE [VarE f `AppE` VarE x | x <- x_is ])
+  pure $
+    LamE
+      [TupP (VarP <$> fs), TupP (VarP <$> x_is)]
+      (ListE (zipWith AppE (VarE <$> fs) (VarE <$> x_is)))
+
+-- | Example: @extrClocks 2@ will give a function of type
+--
+-- @(Ps, PeriodPs, DataCount, DataCount) -> ((Ps, PeriodPs), [(Ps, DataCount)])@
+extrClocks :: Int -> Q Exp
+extrClocks i = do
+  x <- newName "x"
+  y <- newName "y"
+  zs <- traverse newName (replicate i "z")
+  pure $
+    LamE
+      [TupP (VarP <$> x:y:zs)]
+      (tup [tup [VarE x, VarE y], ListE (fmap (\z -> tup [VarE x, VarE z]) zs)])
+
+-- | Arrange 'asPlotDat'-generated 'Exp' for each node, in order. Concretely:
+--
+-- > \m -> ($(asPlotN d0) m, $(asPlotN d1) m, ...)
+--
+-- where @d0, d1, ...@ are the degrees of the vertices.
+plotDats :: Graph -> Q Exp
+plotDats g = do
+  m <- newName "m"
+  LamE [VarP m]
+    . tup <$> traverse (\i -> (`AppE` VarE m) <$> asPlotN i) degs
+ where
+  degs = A.elems (fmap length g)
+
+-- | Example: @encodeDats 4@ will generate:
+--
+-- > encodeAll = \m -> ($(encodeQ) m, $(encodeQ) m, $(encodeQ) m, $(encodeQ) m)
+--
+-- i.e. apply 'encodeQ' to all elements of a 4-tuple.
+encodeDats :: Int -> Q Exp
+encodeDats i = do
+  m <- newName "m"
+  LamE [VarP m]
+    . tup <$> traverse (\_ -> (`AppE` VarE m) <$> encodeQ) [1..i]
+
+-- | @encodeQ@ will generate:
+--
+-- @\m -> encode . take m@
+--
+-- of type
+--
+-- @Int -> [(Ps, PeriodPs, DataCount, DataCount, ...)] -> BS.ByteString@
+encodeQ :: Q Exp
+encodeQ = do
+  m <- newName "m"
+  pure $
+    LamE [VarP m] $
+              VarE 'encode
+    `compose` (VarE 'take `AppE` VarE m)
 
 -- | Given a @Signal dom (PeriodPs, a_1, ...)@, make a @[(Ps, PeriodPs, a_1, ...)]@.
 --
@@ -73,6 +143,35 @@ timeN n = do
 
 tup :: [Exp] -> Exp
 tup es = TupE (Just <$> es)
+
+-- | Example: @extrClocks 2@ will give a function of type
+--
+-- @Int -> [(Ps, PeriodPs, DataCount, DataCount)] -> (Matplotlib, Matplotlib)@
+--
+-- which takes @m@ from an infinite stream of measurements (second argument).
+--
+-- The result will be elastic buffer occupancy vs. time and period vs. time
+-- (respectively)
+asPlotN :: Int -> Q Exp
+asPlotN i = do
+  g <- extrClocks i
+  m <- newName "m"
+  pure $
+    LamE [VarP m] $
+              bimapV
+                plotPairs
+                (VarE 'foldPlots `compose` mapV plotPairs `compose` VarE 'L.transpose)
+    `compose` VarE 'unzip
+    `compose` mapV g
+    `compose` (VarE 'take `AppE` VarE m)
+ where
+  mapV = AppE (VarE 'fmap)
+  unzipV = VarE 'unzip
+  bimapV f = AppE (AppE (VarE 'bimap) f)
+  plotPairs = AppE (VarE 'uncurry) (VarE 'plot) `compose` unzipV
+
+compose :: Exp -> Exp -> Exp
+compose e0 = AppE (AppE (VarE '(.)) e0)
 
 extractPeriods ::
   forall dom. Clash.KnownDomain dom =>

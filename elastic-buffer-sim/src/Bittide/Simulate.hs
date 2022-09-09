@@ -2,10 +2,6 @@
 
 Provides a rudimentary simulation of elastic buffers.
 
-TODO:
-
-  * Ability to extract statistics
-
 -}
 
 -- SPDX-FileCopyrightText: 2022 Google LLC
