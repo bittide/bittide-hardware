@@ -232,7 +232,7 @@ asPlotN i = do
   mapV = AppE (VarE 'fmap)
   unzipV = VarE 'unzip
   bimapV f = AppE (AppE (VarE 'bimap) f)
-  plotPairs = AppE (VarE 'uncurry) (VarE 'plot) `compose` unzipV -- VarE 'V.unzip `compose` AppE (VarE 'V.fromListN) (VarE m)
+  plotPairs = AppE (VarE 'uncurry) (VarE 'plot) `compose` unzipV
 
 compose :: Exp -> Exp -> Exp
 compose e0 = AppE (AppE (VarE '(.)) e0)
