@@ -233,7 +233,7 @@ clockControl ClockControlConfig{..} =
   -- x_k is the integral of the measurement
   go :: SettlePeriod -> Double -> Integer -> SpeedChange -> Signal dom (Vec n DataCount) -> (Double, Integer, SpeedChange, Signal dom SpeedChange)
   go settleCounter x_k z_k b_k (dataCounts :- nextDataCounts) | settleCounter > cccSettlePeriod
-    = fourth4 (b_k' :-) nextChanges
+    = fourth4 (b_kNext :-) nextChanges
    where
 
     -- see clock control algorithm simulation here:
@@ -245,13 +245,13 @@ clockControl ClockControlConfig{..} =
     k_i = 1e-11 :: Double
     r_k =
       toInteger (sum dataCounts) - (toInteger (targetDataCount cccBufferSize) * toInteger (length dataCounts))
-    x_k' =
+    x_kNext =
       x_k + p * realToFrac r_k
 
-    c_des = k_p * realToFrac r_k + k_i * realToFrac x_k'
-    z_k' = z_k + sgn b_k
+    c_des = k_p * realToFrac r_k + k_i * realToFrac x_kNext
+    z_kNext = z_k + sgn b_k
     fStep = 5e-4
-    c_est = fStep * realToFrac z_k'
+    c_est = fStep * realToFrac z_kNext
     -- we are using 200kHz instead of 200MHz
     -- typical freq. is in GHz
     --
@@ -259,7 +259,7 @@ clockControl ClockControlConfig{..} =
     -- faster than those simulated in Callisto)
     p = 1e3 * typicalFreq where typicalFreq = 0.0002
 
-    b_k' =
+    b_kNext =
       case compare c_des c_est of
         LT -> SlowDown
         GT -> SpeedUp
@@ -269,7 +269,7 @@ clockControl ClockControlConfig{..} =
     sgn SpeedUp = 1
     sgn SlowDown = -1
 
-    nextChanges = go 0 x_k' z_k' b_k' nextDataCounts
+    nextChanges = go 0 x_kNext z_kNext b_kNext nextDataCounts
 
   go settleCounter x_k z_k b_k (_ :- nextDataCounts) =
     fourth4 (NoChange :-) nextChanges
