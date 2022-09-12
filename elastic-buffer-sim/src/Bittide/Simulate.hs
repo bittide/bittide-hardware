@@ -197,6 +197,8 @@ data ClockControlConfig = ClockControlConfig
 
 -- we use 200kHz in simulation because otherwise the periods are so small that
 -- deviations can't be expressed using 'Natural's
+--
+-- see: https://github.com/clash-lang/clash-compiler/issues/2328
 specPeriod :: PeriodPs
 specPeriod = hzToPeriod 200e3
 
@@ -287,10 +289,13 @@ callisto
   z_kNext = z_k + sgn b_k
   fStep = 5e-4
   c_est = fStep * realToFrac z_kNext
-  -- we are using 200kHz instead of 200MHz so typical freq. is 0.0002 GHz
+  -- we are using 200kHz instead of 200MHz
+  -- (see https://github.com/clash-lang/clash-compiler/issues/2328)
+  -- so typical freq. is 0.0002 GHz
   --
   -- (this is adjusted by a factor of 100 because our clock corrections are
-  -- faster than those simulated in Callisto)
+  -- faster than those simulated in Callisto; we correct as often as hardware
+  -- allows)
   p = 1e3 * typicalFreq where typicalFreq = 0.0002
 
   b_kNext =
