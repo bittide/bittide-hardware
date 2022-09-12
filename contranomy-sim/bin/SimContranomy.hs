@@ -2,25 +2,23 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-import           Clash.Prelude
-
-import           Contranomy
-import           ContranomySim.DeviceTreeCompiler
-import           ContranomySim.MemoryMapConsts
-import           ContranomySim.Print
-import           ContranomySim.ReadElf
-
-import           Paths_contranomy_sim
-
-import qualified Data.ByteString                  as BS
-import qualified Data.IntMap                      as I
-import qualified Data.List                        as L
-import           System.Exit
-
+import Clash.Prelude
+import Contranomy
+import ContranomySim.DeviceTreeCompiler
+import ContranomySim.MemoryMapConsts
+import ContranomySim.Print
+import ContranomySim.ReadElf
+import qualified Data.ByteString as BS
+import qualified Data.IntMap as I
+import qualified Data.List as L
+import Paths_contranomy_sim
+import System.Environment (getArgs)
+import System.Exit
 
 main :: IO ()
 main = do
-  elfBytes <- BS.readFile "main.elf"
+  elfFile <- L.head <$> getArgs
+  elfBytes <- BS.readFile elfFile
   let (entry, iMem, dMem) = readElfFromMemory elfBytes
 
   -- add device tree as a memory mapped component
@@ -36,8 +34,10 @@ main = do
   let padding = L.replicate (4 - (BS.length deviceTreeRaw `mod` 4)) 0
       deviceTree = fmap pack . BS.unpack $ deviceTreeRaw <> BS.pack padding
 
-  let dMem' = dMem `I.union` I.fromAscList (L.zip [fdtAddr..] deviceTree)
+  let dMem' = dMem `I.union` I.fromAscList (L.zip [fdtAddr ..] deviceTree)
 
   -- Hook up to print-debugging at uts designated address
-  hookPrint characterDeviceAddr $ sample $ fmap snd $
-    contranomy' hasClock hasReset entry iMem dMem' $ pure (False, False, 0b0)
+  hookPrint characterDeviceAddr $
+    sample $
+      fmap snd $
+        contranomy' hasClock hasReset entry iMem dMem' $ pure (False, False, 0b0)

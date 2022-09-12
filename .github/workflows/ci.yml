@@ -59,7 +59,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          cp .github/cabal.project.simulation cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -93,7 +93,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          cp .github/cabal.project.simulation cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -159,7 +159,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          cp .github/cabal.project.simulation cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -193,7 +193,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          cp .github/cabal.project.simulation cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -227,7 +227,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          cp .github/cabal.project.formal cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -322,9 +322,9 @@ jobs:
           path: riscv-formal/cores/contranomy/checks/${{ matrix.check }}
 
   contranomy-sim-tests:
-    name: Contranomy simulator components tests
+    name: ContranomySim tests and firmware integration tests
     runs-on: ubuntu-latest
-    needs: [build, lint]
+    needs: [build, lint, firmware-build-integration-tests]
 
     container:
       image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
@@ -335,7 +335,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          cp .github/cabal.project.simulation cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -351,9 +351,18 @@ jobs:
           key: packages-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: packages-
 
+      - name: Download Firmware Integration Tests
+        uses: actions/download-artifact@v2
+        with:
+          name: firmware-integration-tests
+
+      - name: Extract Firmware Integration Tests
+        run: |
+          tar -x -f firmware-integration-tests.tar
+
       - name: Run unittests
         run: |
-          cabal run contranomy-sim:unittests
+          cabal run elastic-buffer-sim:unittests
 
 
   bittide-tests:
@@ -370,7 +379,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          cp .github/cabal.project.simulation cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -428,6 +437,17 @@ jobs:
           toolchain: stable
           profile: minimal
 
+      - uses: actions/cache@v3
+        name: Cache
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: cargo-cache-${{ hashFiles('Cargo.lock') }}
+
       - name: Running Tests
         uses: actions-rs/cargo@v1
         with:
@@ -448,6 +468,17 @@ jobs:
           profile: minimal
           target: riscv32imc-unknown-none-elf
 
+      - uses: actions/cache@v3
+        name: Cache
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            firmware/examples/hello/target/
+          key: cargo-cache-${{ hashFiles('firmware/examples/hello/Cargo.lock') }}
+
       - name: Building "hello" Example
         run: cargo build --release
         working-directory: firmware/examples/hello
@@ -455,6 +486,49 @@ jobs:
       - name: Building "fdt-read" Example
         run: cargo build --release
         working-directory: firmware/examples/hello
+
+  firmware-build-integration-tests:
+    name: Firmware Build Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: riscv32imc-unknown-none-elf
+
+      - uses: actions/cache@v3
+        name: Cache
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            firmware/tests/target/
+          key: cargo-cache-${{ hashFiles('firmware/tests/Cargo.lock') }}
+
+      - name: Building Firmware Integration Tests
+        run: cargo build --release
+        working-directory: firmware/tests
+
+      - name: Archive Firmware Integration Tests
+        run: |
+          mkdir -p target/firmware-integration-tests
+          # Copy artefacts into "clean" folder
+          cat target/artifacts | xargs -i cp ./{} target/firmware-integration-tests/
+          cd target/; tar -c -f ../firmware-integration-tests.tar firmware-integration-tests/
+        working-directory: firmware/tests/
+
+      - name: Upload Firmware Integration Tests
+        uses: actions/upload-artifact@v2
+        with:
+          name: firmware-integration-tests
+          path: firmware/tests/firmware-integration-tests.tar
 
   all:
     name: All jobs finished

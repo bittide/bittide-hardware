@@ -6,17 +6,38 @@ CARGO_TARGET_DIR=target
 
 .PHONY: build-sim
 build-sim:
-	cd contranomy-sim; cabal build simcontranomy
+	cabal build simcontranomy
+
+
+.PHONY: contranomy-tests
+contranomy-tests: build-sim copy-firmware-tests
+	cabal run contranomy:unittests
+	cabal run contranomy-sim:unittests
+
+
+.PHONY: build-firmware-tests
+build-firmware-tests:
+	cd firmware/tests; cargo build --release
+
+.PHONY: copy-firmware-tests
+copy-firmware-tests: build-firmware-tests
+	rm -rf firmware-integration-tests
+	mkdir firmware-integration-tests
+
+	# Copy artifacts into "clean" folder
+	cd firmware/tests; cat target/artifacts | xargs -i cp ./{} ../../firmware-integration-tests/
+
+
 
 
 .PHONY: build-firmware-example-hello
 build-firmware-example-hello:
 	cd firmware/examples/hello; cargo build --release --target-dir ../../../$(CARGO_TARGET_DIR)
 
+
 .PHONY: sim-firmware-example-hello
 sim-firmware-example-hello: build-sim build-firmware-example-hello
-	cp target/riscv32imc-unknown-none-elf/release/hello contranomy-sim/main.elf
-	cd contranomy-sim; cabal run simcontranomy
+	cabal run simcontranomy -- target/riscv32imc-unknown-none-elf/release/hello
 
 
 
@@ -26,5 +47,4 @@ build-firmware-example-fdt-read:
 
 .PHONY: sim-firmware-example-fdt-read
 sim-firmware-example-fdt-read: build-sim build-firmware-example-fdt-read
-	cp target/riscv32imc-unknown-none-elf/release/fdt-read contranomy-sim/main.elf
-	cd contranomy-sim; cabal run simcontranomy
+	cabal run simcontranomy -- target/riscv32imc-unknown-none-elf/release/fdt-read

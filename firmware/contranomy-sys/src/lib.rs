@@ -4,7 +4,9 @@
 
 #![no_std]
 
+#[cfg(feature = "debug-printing")]
 pub mod character_device;
+#[cfg(feature = "debug-printing")]
 pub mod panic_handler;
 
 pub const FDT_ADDR: *const u8 = 0x1000_0000 as *const u8;
