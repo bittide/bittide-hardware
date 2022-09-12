@@ -29,14 +29,13 @@ clockControl ::
   -- | Statistics provided by elastic buffers.
   Vec n (Signal dom DataCount) ->
   Signal dom SpeedChange
-clockControl cfg = runClockControl cfg callisto initControlSt
+clockControl cfg = runClockControl cfg callisto
 
 type ClockControlAlgorithm dom n a =
   ClockControlConfig ->
   SettlePeriod ->
-  a ->
   Signal dom (Vec n DataCount) ->
-  (a, Signal dom SpeedChange)
+  Signal dom SpeedChange
 
 runClockControl ::
   forall n dom a.
@@ -45,11 +44,9 @@ runClockControl ::
   ClockControlConfig ->
   -- | Clock control strategy
   ClockControlAlgorithm dom n a ->
-  -- | Initial clock control state
-  a ->
   -- | Statistics provided by elastic buffers.
   Vec n (Signal dom DataCount) ->
   -- | Whether to adjust node clock frequency
   Signal dom SpeedChange
-runClockControl cfg@ClockControlConfig{..} f initSt =
-  snd . f cfg (cccSettlePeriod + 1) initSt . bundle
+runClockControl cfg@ClockControlConfig{..} f =
+  f cfg (cccSettlePeriod + 1) . bundle
