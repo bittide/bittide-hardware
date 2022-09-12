@@ -159,10 +159,10 @@ absTimes g = do
             (NormalB
               (AppE
                 (AppE consList (tup (zipWith3 (\t period xs -> tup (t:period:fmap VarE xs)) ts periods x_ns)))
-                (AppE (foldl AppE goE tNext) (tup (VarE <$> xss)))))
+                (AppE (apply goE tNext) (tup (VarE <$> xss)))))
             []
           ]
-  pure $ LetE [goD] (foldl AppE goE (replicate (i+1) zeroE))
+  pure $ LetE [goD] (apply goE (replicate (i+1) zeroE))
  where
   zeroE = LitE (IntegerL 0)
   consSignal = '(Clash.:-)
@@ -170,6 +170,9 @@ absTimes g = do
   plusE = VarE '(+)
   n_i = fmap length g
   (0, i) = A.bounds g
+
+apply :: Exp -> [Exp] -> Exp
+apply = foldl AppE
 
 -- | Given a @Signal dom (PeriodPs, a_1, ...)@, make a @[(Ps, PeriodPs, a_1, ...)]@.
 --
