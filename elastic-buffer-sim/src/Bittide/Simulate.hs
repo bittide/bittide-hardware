@@ -244,7 +244,8 @@ runClockControl ::
 runClockControl cfg@ClockControlConfig{..} f initSt =
   snd . f cfg (cccSettlePeriod + 1) initSt . bundle
 
-callisto :: forall n dom.
+callisto :: 
+  forall n dom.
   (KnownNat n, 1 <= n) =>
   ClockControlConfig ->
   SettlePeriod ->
