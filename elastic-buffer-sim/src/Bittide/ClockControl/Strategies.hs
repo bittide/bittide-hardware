@@ -8,7 +8,7 @@
 module Bittide.ClockControl.Strategies
   ( ClockControlAlgorithm
   , clockControl
-  , runClockControl
+  , callistoClockControl
   )
 where
 
@@ -21,7 +21,7 @@ import Bittide.ClockControl.Strategies.Callisto
 -- all elastic buffers.
 --
 -- This is the canonical controller, and uses 'callisto' under the hood.
-clockControl ::
+callistoClockControl ::
   forall n dom.
   (KnownNat n, 1 <= n) =>
   -- | Configuration for this component, see individual fields for more info.
@@ -29,7 +29,7 @@ clockControl ::
   -- | Statistics provided by elastic buffers.
   Vec n (Signal dom DataCount) ->
   Signal dom SpeedChange
-clockControl cfg = runClockControl cfg callisto
+callistoClockControl cfg = clockControl cfg callisto
 
 type ClockControlAlgorithm dom n a =
   ClockControlConfig ->
@@ -37,7 +37,7 @@ type ClockControlAlgorithm dom n a =
   Signal dom (Vec n DataCount) ->
   Signal dom SpeedChange
 
-runClockControl ::
+clockControl ::
   forall n dom a.
   (KnownNat n, 1 <= n) =>
   -- | Configuration for this component, see individual fields for more info.
@@ -48,5 +48,5 @@ runClockControl ::
   Vec n (Signal dom DataCount) ->
   -- | Whether to adjust node clock frequency
   Signal dom SpeedChange
-runClockControl cfg@ClockControlConfig{..} f =
+clockControl cfg@ClockControlConfig{..} f =
   f cfg (cccSettlePeriod + 1) . bundle

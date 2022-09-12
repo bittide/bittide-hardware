@@ -301,7 +301,7 @@ simNodesFromGraph ccc g = do
 
     clockControlE k =
       AppE
-        (AppE clockControlV cccE)
+        (AppE callistoClockControlV cccE)
         (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
     clockControlD k = valD (VarP (clockControlNames A.! k)) (clockControlE k)
 
@@ -346,7 +346,7 @@ simNodesFromGraph ccc g = do
   tunableClockGenV = VarE 'tunableClockGen
   resetGenV = VarE 'Clash.resetGen
   ebClkClk = ebV `AppE` errC `AppE` ebSize
-  clockControlV = VarE 'clockControl
+  callistoClockControlV = VarE 'callistoClockControl
   mkVecE = foldr (\x -> AppE (AppE consC x)) nilC
 
   ebSize = LitE (IntegerL (toInteger (cccBufferSize ccc)))

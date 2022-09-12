@@ -48,7 +48,7 @@ case_clockControlMaxBound = do
   let
     config = clockConfig (Ppm 100)
     dataCounts = pure (cccBufferSize config) :> Nil
-    (change:_) = sample (clockControl @_ @Fast config dataCounts)
+    (change:_) = sample (callistoClockControl @_ @Fast config dataCounts)
 
   change @?= SpeedUp
 
@@ -57,7 +57,7 @@ case_clockControlMinBound = do
   let
     config = clockConfig (Ppm 100)
     dataCounts = pure 0 :> Nil
-    (change:_) = sample (clockControl @_ @Fast config dataCounts)
+    (change:_) = sample (callistoClockControl @_ @Fast config dataCounts)
 
   change @?= SlowDown
 
