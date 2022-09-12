@@ -47,10 +47,12 @@ callisto
   k_p = 2e-4 :: Double
   k_i = 1e-11 :: Double
   r_k =
-    let tot = realToFrac (sum dataCounts)
-        expected = realToFrac (targetDataCount cccBufferSize)
-        len = realToFrac (length dataCounts)
-    in tot - expected * len
+    let
+      measuredSum = realToFrac (sum dataCounts)
+      targetCount = realToFrac (targetDataCount cccBufferSize)
+      nBuffers = realToFrac (length dataCounts)
+    in 
+      measuredSum - targetCount * nBuffers
   x_kNext =
     x_k + p * r_k
 
