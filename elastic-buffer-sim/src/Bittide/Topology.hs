@@ -11,7 +11,13 @@
 
 -- | This module generates a static topology using template haskell and then
 -- dumps clock periods and elastic buffer occupancy to csv.
-module Bittide.Topology ( dumpCsv, genOffsets, plotEbs ) where
+module Bittide.Topology
+  ( dumpCsv
+  , genOffsets
+  , plotEbs
+  , takeEveryN
+  )
+where
 
 import Clash.Explicit.Prelude
 import Control.Monad (void, forM_, replicateM, zipWithM_)
@@ -31,9 +37,13 @@ import Bittide.Topology.Graph
 import Bittide.Topology.TH
 import Graphics.Matplotlib.Ext
 
-discardN :: Int -> [a] -> [a]
-discardN _ [] = []
-discardN n (x:xs) = x : discardN n (P.drop n xs)
+-- | As an example:
+--
+-- >>> takeEveryN 3 [1..10]
+-- [1,4,7,10]
+takeEveryN :: Int -> [a] -> [a]
+takeEveryN _ [] = []
+takeEveryN n (x:xs) = x : takeEveryN n (P.drop (n-1) xs)
 
 -- | This samples @n@ steps, taking every @k@th datum, and plots clock speeds
 -- and elastic buffer occupancy
@@ -44,7 +54,7 @@ plotEbs m k = do
   let (clockDats, ebDats) =
           P.unzip
         $ $(onN 3) (plotEachNode m)
-        $ discardN k
+        $ takeEveryN k
         $ $(simNodesFromGraph defClockConfig (complete 3)) offs
   void $ file "_build/clocks.pdf" (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
   void $ file "_build/elasticbuffers.pdf" (xlabel "Time (ps)" % foldPlots ebDats)
@@ -66,7 +76,7 @@ dumpCsv m k = do
       ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
   let dats =
           $(onN 6) ($(encodeDats 6) m)
-        $ discardN k
+        $ takeEveryN k
         $ $(simNodesFromGraph defClockConfig (complete 6)) offs
   zipWithM_ (\dat i ->
     BSL.appendFile ("_build/clocks" <> show i <> ".csv") dat) dats [(0::Int)..]
