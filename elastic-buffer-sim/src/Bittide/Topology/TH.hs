@@ -162,32 +162,33 @@ absTimes g = do
         traverse (\j -> newName ("x_" ++ show j ++ "_" ++ show k)) [0..(n-1)])
       (A.indices n_i)
       (A.elems n_i)
-  let goE = VarE nm
-      ts = VarE <$> tNames
-      periods = VarE <$> periodNames
-      tNext = zipWith (\period t -> plusE `AppE` t `AppE` period) periods ts
-      goD =
-        FunD nm
-          [ Clause
-            (fmap VarP tNames
-              ++ [TupP (zipWith3
-                          (\periodName ns xs ->
-                            InfixP
-                              (TupP (VarP <$> periodName : ns))
-                              consSignal
-                              (VarP xs))
-                          periodNames x_ns xss)])
-            (NormalB
+  let
+    goE = VarE nm
+    ts = VarE <$> tNames
+    periods = VarE <$> periodNames
+    tNext = zipWith (\period t -> plusE `AppE` t `AppE` period) periods ts
+    goD =
+      FunD nm
+        [ Clause
+          (fmap VarP tNames
+            ++ [TupP (zipWith3
+                        (\periodName ns xs ->
+                          InfixP
+                            (TupP (VarP <$> periodName : ns))
+                            consSignal
+                            (VarP xs))
+                        periodNames x_ns xss)])
+          (NormalB
+            (AppE
               (AppE
-                (AppE
-                  consList
-                  (tup
-                    (zipWith3
-                      (\t period xs -> tup (t:period:fmap VarE xs))
-                      ts periods x_ns)))
-                (AppE (apply goE tNext) (tup (VarE <$> xss)))))
-            []
-          ]
+                consList
+                (tup
+                  (zipWith3
+                    (\t period xs -> tup (t:period:fmap VarE xs))
+                    ts periods x_ns)))
+              (AppE (apply goE tNext) (tup (VarE <$> xss)))))
+          []
+        ]
   pure $ LetE [goD] (apply goE (replicate (i+1) zeroE))
  where
   zeroE = LitE (IntegerL 0)
