@@ -736,6 +736,3 @@ wbStorageBehaviorModel storedList output (address :- addresses) (writeOp :- writ
     | otherwise = storedList
   nextOutput = pack (upper0, lower0)
   outputs = wbStorageBehaviorModel newList nextOutput addresses writeOps
-
-wcre :: KnownDomain dom => (HiddenClockResetEnable dom => r) -> r
-wcre = withClockResetEnable clockGen resetGen enableGen

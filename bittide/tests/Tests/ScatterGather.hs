@@ -64,6 +64,8 @@ sgGroup = testGroup "Scatter Gather group"
       "scatterUnitNoFrameLoss" scatterUnitNoFrameLoss
   , testPropertyNamed "gatherUnitWb - No overwriting implies no lost frames."
       "gatherUnitNoFrameLoss" gatherUnitNoFrameLoss
+  , testPropertyNamed "S/G units - Ack stalling address at metacycle end."
+      "metacycleStalling" metacycleStalling
   ]
 
 -- | Generates a 'CalendarConfig' for the 'gatherUnitWb' or 'scatterUnitWb'
@@ -169,7 +171,7 @@ gatherUnitNoFrameLoss = property $ do
   maxCalSize <- forAll $ Gen.enum 2 32
   case TN.someNatVal (maxCalSize - 2) of
     SomeNat (addSNat d2 . snatProxy -> p) -> do
-      runTest =<< forAll (genCal p)
+      runTest =<< forAll (genCalendarConfig @4 @32 p)
  where
   runTest ::
     (KnownNat maxSize, 1 <= maxSize) =>
@@ -206,17 +208,49 @@ gatherUnitNoFrameLoss = property $ do
 
     directedDecode (prePad writtenFrames) simOut === expectedOutput
 
-  genCal :: forall maxSize .
-   2 <= maxSize =>
-   SNat maxSize ->
-   Gen (CalendarConfig 4 32 (Index maxSize))
-  genCal SNat = genCalendarConfig @4 @32 (SNat @maxSize)
   padToLength l padElement g = P.take l (g P.++ P.repeat padElement)
 
 directedDecode :: [Maybe a] -> [Maybe b] -> [b]
 directedDecode ((Just _) : as) ((Just b) : bs) = b : directedDecode as bs
 directedDecode (Nothing : as) (_ : bs) = directedDecode as bs
 directedDecode _ _ = []
+
+-- | Simple  test which generates a 'scatterUnitWb' and 'gatherUnitWb' with a certain calendar
+-- Their wishbone busses are statically hooked up to a transaction that reads from the
+-- stalling address. This test checks that it generates an acknowledge on this address
+-- one cycle after the end of each metacycle (at the start of every _new_ metacycle).
+metacycleStalling :: Property
+metacycleStalling = property $ do
+  maxCalSize <- forAll $ Gen.enum 2 32
+  case TN.someNatVal (maxCalSize - 2) of
+    SomeNat (addSNat d2 . snatProxy -> p) -> do
+      runTest =<< forAll (genCalendarConfig @4 @32 p)
+ where
+  runTest ::
+    forall maxSize .
+    (KnownNat maxSize, 2 <= maxSize) =>
+    CalendarConfig 4 32 (Index maxSize) -> PropertyT IO ()
+  runTest calConfig@(CalendarConfig _ (length -> calSize) _) = do
+    metacycles <- forAll $ Gen.enum 1 5
+    let
+      simLength = 1 + metacycles * calSize
+      topEntity = bundle (acknowledge <$> suWB,acknowledge <$> guWB)
+       where
+        suWB = wcre $ fst $ scatterUnitWb @System (ScatterConfig calConfig)
+          (pure emptyWishboneM2S) linkIn wbStall
+        guWB = wcre $ (\(_,x,_) -> x) $ gatherUnitWb @System
+          (GatherConfig calConfig) (pure emptyWishboneM2S) wbStall
+        wbStall = pure $ (emptyWishboneM2S @32)
+          -- 4 for word alignment, 2 because addressing is 64 bit aligned.
+          { addr = 4 * (2 * (natToNum @maxSize @(BitVector 32)))
+          , busCycle = True
+          , strobe = True
+          }
+        linkIn = pure $ deepErrorX "linkIn undefined."
+      expectedAcks = P.take simLength $ P.replicate (1 +calSize) False <>
+        cycle (True : P.replicate (calSize -1) False)
+      simOut = sampleN simLength topEntity
+    simOut === fmap (\a -> (a,a)) expectedAcks
 
 -- | Decode an incoming slave bus by consuming two acknowledged signals and concatenating
 -- their readData's.

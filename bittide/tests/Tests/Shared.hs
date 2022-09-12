@@ -193,3 +193,7 @@ validateWb m2s0 s2m0 = (m2s1, s2m1)
     case timesNDivRU'' @bs @8 of
       Dict ->
         validate (m2s0, s2m0)
+
+-- | Satisfies implicit control signal constraints by using default values.
+wcre :: KnownDomain dom => (HiddenClockResetEnable dom => r) -> r
+wcre = withClockResetEnable clockGen resetGen enableGen
