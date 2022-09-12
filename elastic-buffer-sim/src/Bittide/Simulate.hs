@@ -252,7 +252,8 @@ callisto ::
   ControlSt ->
   Signal dom (Vec n DataCount) ->
   (ControlSt, Signal dom SpeedChange)
-callisto cfg@ClockControlConfig{..} settleCounter ControlSt{..} (dataCounts :- nextDataCounts) | settleCounter > cccSettlePeriod
+callisto cfg@ClockControlConfig{..} settleCounter ControlSt{..} (dataCounts :- nextDataCounts) 
+  | settleCounter > cccSettlePeriod
   = second (b_kNext :-) nextChanges
  where
 
