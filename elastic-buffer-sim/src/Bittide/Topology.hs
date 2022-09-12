@@ -32,6 +32,7 @@ import Data.Array qualified as A
 import Data.ByteString.Lazy qualified as BSL
 
 import Bittide.Simulate
+import Bittide.ClockControl
 import Bittide.Simulate.Ppm
 import Bittide.Topology.Graph
 import Bittide.Topology.TH

@@ -9,50 +9,24 @@ Provides a rudimentary simulation of elastic buffers.
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Bittide.Simulate where
 
 import Clash.Prelude
 import Clash.Signal.Internal
-import Data.Bifunctor (second)
 import GHC.Stack
 import Numeric.Natural
 
 import Bittide.Simulate.Ppm
-
-import Data.Csv
+import Bittide.ClockControl
 
 -- Number of type aliases for documentation purposes in various functions defined
 -- down below.
 type StepSize = Natural
 type InitialPeriod = Natural
-type DataCount = Natural
-type ElasticBufferSize = Natural
 type Offset = Integer
 type DynamicRange = Natural
-type SettlePeriod = Natural
 
--- | Calculate target data count given a FIFO size. Currently returns a target
--- data count of half the FIFO size.
-targetDataCount :: ElasticBufferSize -> DataCount
-targetDataCount size = size `div` 2
-
--- | Safer version of FINC/FDEC signals present on the Si5395/Si5391 clock multipliers.
-data SpeedChange
-  = SpeedUp
-  | SlowDown
-  | NoChange
-  deriving (Eq, Show, Generic, ShowX, NFDataX)
-
-instance ToField SpeedChange where
-  toField SpeedUp = "speedUp"
-  toField SlowDown = "slowDown"
-  toField NoChange = "noChange"
-
--- | Simple model of the Si5395/Si5391 clock multipliers. In real hardware, these
--- are connected to some oscillator (i.e., incoming Clock) but for simulation
--- purposes we pretend it generates the clock too.
 --
 -- TODO:
 --
@@ -172,151 +146,3 @@ elasticBuffer mode size clock0 (Clock ss Nothing) =
     period = snatToNum (clockPeriod @writeDom)
   in
     elasticBuffer mode size clock0 (Clock ss (Just (pure period)))
-
--- | Configuration passed to 'clockControl'
-data ClockControlConfig = ClockControlConfig
-  { -- | The quickest a clock could possibly run at. Used to (pessimistically)
-    -- estimate when a new command can be issued.
-    cccPessimisticPeriod :: PeriodPs
-
-  -- | Period it takes for a clock frequency request to settle. This is not
-  -- modelled, but an error is thrown if a request is submitted more often than
-  -- this. 'clockControl' should therefore not request changes more often.
-  , cccSettlePeriod :: PeriodPs
-
-  -- | Maximum divergence from initial clock frequency. Used to prevent frequency
-  -- runoff.
-  , cccDynamicRange :: Ppm
-
-  -- | The size of the clock frequency should "jump" on a speed change request.
-  , cccStepSize :: Integer
-
-  -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
-  , cccBufferSize :: ElasticBufferSize
-  } deriving (Lift)
-
--- we use 200kHz in simulation because otherwise the periods are so small that
--- deviations can't be expressed using 'Natural's
---
--- see: https://github.com/clash-lang/clash-compiler/issues/2328
-specPeriod :: PeriodPs
-specPeriod = hzToPeriod 200e3
-
-defClockConfig :: ClockControlConfig
-defClockConfig = ClockControlConfig
-  { cccPessimisticPeriod = pessimisticPeriod
-  -- clock adjustment takes place at 1MHz, clock is 200MHz so we
-  -- can have at most one correction per 200 cycles
-  , cccSettlePeriod      = pessimisticPeriod * 200
-  , cccDynamicRange      = 150
-  , cccStepSize          = 1
-  , cccBufferSize        = 2048 -- 128
-  }
- where
-  specPpm = 100
-  pessimisticPeriod = speedUpPeriod specPpm specPeriod
-
-data ControlSt = ControlSt
-  { x_k :: Double -- ^ 'x_k' is the integral of the measurement
-  , z_k :: Integer
-  , b_k :: SpeedChange
-  }
-
--- | Determines how to influence clock frequency given statistics provided by
--- all elastic buffers.
-clockControl ::
-  forall n dom.
-  (KnownNat n, 1 <= n) =>
-  -- | Configuration for this component, see individual fields for more info.
-  ClockControlConfig ->
-  -- | Statistics provided by elastic buffers.
-  Vec n (Signal dom DataCount) ->
-  Signal dom SpeedChange
-clockControl cfg = runClockControl cfg callisto (ControlSt 0 0 NoChange)
-
-type ClockControlAlgorithm dom n a =
-  ClockControlConfig ->
-  SettlePeriod ->
-  a ->
-  Signal dom (Vec n DataCount) ->
-  (a, Signal dom SpeedChange)
-
-runClockControl ::
-  forall n dom a.
-  (KnownNat n, 1 <= n) =>
-  -- | Configuration for this component, see individual fields for more info.
-  ClockControlConfig ->
-  -- | Clock control strategy
-  ClockControlAlgorithm dom n a ->
-  -- | Initial clock control state
-  a ->
-  -- | Statistics provided by elastic buffers.
-  Vec n (Signal dom DataCount) ->
-  -- | Whether to adjust node clock frequency
-  Signal dom SpeedChange
-runClockControl cfg@ClockControlConfig{..} f initSt =
-  snd . f cfg (cccSettlePeriod + 1) initSt . bundle
-
-callisto ::
-  forall n dom.
-  (KnownNat n, 1 <= n) =>
-  ClockControlConfig ->
-  SettlePeriod ->
-  ControlSt ->
-  Signal dom (Vec n DataCount) ->
-  (ControlSt, Signal dom SpeedChange)
-callisto
-  cfg@ClockControlConfig{..} settleCounter ControlSt{..} (dataCounts :- nextDataCounts)
-  | settleCounter > cccSettlePeriod
-  = second (b_kNext :-) nextChanges
- where
-
-  -- see clock control algorithm simulation here:
-  -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
-  --
-  -- the constants here are chosen to match the above code.
-  k_p = 2e-4 :: Double
-  k_i = 1e-11 :: Double
-  r_k =
-    let tot = realToFrac (sum dataCounts)
-        expected = realToFrac (targetDataCount cccBufferSize)
-        len = realToFrac (length dataCounts)
-    in tot - expected * len
-  x_kNext =
-    x_k + p * r_k
-
-  c_des = k_p * r_k + k_i * realToFrac x_kNext
-  z_kNext = z_k + sgn b_k
-  fStep = 5e-4
-  c_est = fStep * realToFrac z_kNext
-  -- we are using 200kHz instead of 200MHz
-  -- (see https://github.com/clash-lang/clash-compiler/issues/2328)
-  -- so typical freq. is 0.0002 GHz
-  --
-  -- (this is adjusted by a factor of 100 because our clock corrections are
-  -- faster than those simulated in Callisto; we correct as often as hardware
-  -- allows)
-  p = 1e3 * typicalFreq where typicalFreq = 0.0002
-
-  b_kNext =
-    case compare c_des c_est of
-      LT -> SlowDown
-      GT -> SpeedUp
-      EQ -> NoChange
-
-  sgn NoChange = 0
-  sgn SpeedUp = 1
-  sgn SlowDown = -1
-
-  nextChanges =
-    callisto cfg 0 (ControlSt x_kNext z_kNext b_kNext) nextDataCounts
-
-callisto cfg@ClockControlConfig{..} settleCounter st (_ :- nextDataCounts) =
-  second (NoChange :-) nextChanges
- where
-  nextChanges = callisto cfg newSettleCounter st nextDataCounts
-  newSettleCounter = settleCounter + cccPessimisticPeriod
-
-minTOffset, maxTOffset :: Ppm -> PeriodPs -> Offset
-minTOffset ppm period = toInteger (speedUpPeriod ppm period) - toInteger period
-maxTOffset ppm period = toInteger (slowDownPeriod ppm period - period)

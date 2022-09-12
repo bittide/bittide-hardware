@@ -12,6 +12,8 @@ import Clash.Explicit.Prelude
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import Bittide.ClockControl
+import Bittide.ClockControl.Strategies
 import Bittide.Simulate
 import Bittide.Simulate.Ppm
 

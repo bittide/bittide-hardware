@@ -30,6 +30,8 @@ import Language.Haskell.TH.Syntax (lift)
 import Numeric.Natural (Natural)
 
 import Bittide.Simulate
+import Bittide.ClockControl
+import Bittide.ClockControl.Strategies
 import Bittide.Topology.TH.Domain
 import Graphics.Matplotlib.Ext
 
