@@ -5,10 +5,17 @@
 module Main (main) where
 
 import Control.Monad (when)
-import System.Environment (getArgs)
 import System.Console.Docopt
+import System.Environment (getArgs)
+import Text.Read (readMaybe)
 
 import Bittide.Topology
+
+readOrError :: String -> Int
+readOrError s =
+  case readMaybe s of
+    Nothing -> error ("Could not parse '" <> s <> "' as 'Int'")
+    Just a  -> a
 
 patterns :: Docopt
 patterns = [docopt|
@@ -32,9 +39,9 @@ main = do
   when (args `isPresent` (command "csv")) $ do
     n <- args `getArgOrExit` (argument "steps")
     k <- args `getArgOrExit` (argument "sample")
-    dumpCsv (read n) (read k)
+    dumpCsv (readOrError n) (readOrError k)
 
   when (args `isPresent` (command "plot")) $ do
     n <- args `getArgOrExit` (argument "steps")
     k <- args `getArgOrExit` (argument "sample")
-    plotEbs (read n) (read k)
+    plotEbs (readOrError n) (readOrError k)
