@@ -30,7 +30,7 @@ callistoClockControl ::
   -- | Configuration for this component, see individual fields for more info.
   ClockControlConfig ->
   -- | Statistics provided by elastic buffers.
-  Vec n (Signal dom DataCount) ->
+  Vec n (Signal dom (Maybe DataCount)) ->
   Signal dom SpeedChange
 callistoClockControl clk rst ena cfg =
   clockControl clk rst ena cfg callisto
@@ -40,7 +40,7 @@ type ClockControlAlgorithm dom n a =
   Reset dom ->
   Enable dom ->
   ClockControlConfig ->
-  Signal dom (Vec n DataCount) ->
+  Signal dom (Vec n (Maybe DataCount)) ->
   Signal dom SpeedChange
 
 clockControl ::
@@ -54,7 +54,7 @@ clockControl ::
   -- | Clock control strategy
   ClockControlAlgorithm dom n a ->
   -- | Statistics provided by elastic buffers.
-  Vec n (Signal dom DataCount) ->
+  Vec n (Signal dom (Maybe DataCount)) ->
   -- | Whether to adjust node clock frequency
   Signal dom SpeedChange
 clockControl clk rst ena cfg f =

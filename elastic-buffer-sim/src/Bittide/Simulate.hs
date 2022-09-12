@@ -9,6 +9,7 @@ Provides a rudimentary simulation of elastic buffers.
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Bittide.Simulate where
 
@@ -172,9 +173,10 @@ elasticBuffer ::
   ElasticBufferSize ->
   Clock readDom ->
   Clock writeDom ->
-  Signal readDom DataCount
+  Signal readDom (Maybe DataCount)
 elasticBuffer _mode _size clkRead clkWrite =
-  fromIntegral <$> readCount
+  fmap fromIntegral
+    <$> (toggle <$> block <*> readCount)
  where
   waitMidway :: Signal readDom (Unsigned 12) -> Signal readDom Bool
   waitMidway = mealy clkRead resetGen enableGen go False
@@ -182,4 +184,6 @@ elasticBuffer _mode _size clkRead clkWrite =
     go True _ = (True, True)
     go False i | i >= (maxBound `div` 2) = (True, True)
                | otherwise = (False, False)
-  FifoOut{..} = dcFifo (defConfig @12) clkWrite resetGen clkRead resetGen (pure (Just ())) (waitMidway readCount)
+  block = waitMidway readCount
+  FifoOut{..} = dcFifo (defConfig @12) clkWrite resetGen clkRead resetGen (pure (Just ())) block
+  toggle b = if b then Just else const Nothing
