@@ -10,4 +10,4 @@ import Clash.Explicit.Prelude
 
 -- 200kHz instead of 200MHz; otherwise the periods are so small that deviations
 -- can't be expressed as 'Natural's
-createDomain vSystem{vName="Bittide", vPeriod=hzToPeriod 200e3}
+createDomain vSystem{vName="Bittide", vPeriod=hzToPeriod 200e3, vResetKind=Synchronous}

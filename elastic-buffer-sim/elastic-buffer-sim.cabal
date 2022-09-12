@@ -80,6 +80,7 @@ library
     array,
     bytestring,
     cassava,
+    clash-cores,
     containers,
     directory,
     matplotlib,

@@ -12,6 +12,7 @@ Provides a rudimentary simulation of elastic buffers.
 
 module Bittide.Simulate where
 
+import Clash.Cores.Xilinx.DcFifo hiding (DataCount)
 import Clash.Explicit.Prelude
 import Clash.Signal.Internal
 import Data.Bifunctor (first, second)
@@ -171,57 +172,14 @@ elasticBuffer ::
   ElasticBufferSize ->
   Clock readDom ->
   Clock writeDom ->
-  -- | Read enable
-  Signal readDom Bool ->
-  -- | Write enable
-  Signal writeDom Bool ->
-  (Signal readDom (DataCount, Underflow), Signal writeDom (DataCount, Overflow))
-elasticBuffer size clkRead clkWrite readEna writeEna
-  | Clock _ (Just readPeriods) <- clkRead
-  , Clock _ (Just writePeriods) <- clkWrite
-  = go 0 (targetDataCount size) readPeriods writePeriods readEna writeEna
+  Signal readDom DataCount
+elasticBuffer _mode _size clkRead clkWrite =
+  fromIntegral <$> readCount
  where
-  go !relativeTime !fillLevel rps wps@(writePeriod :- _) =
-    if relativeTime < toInteger writePeriod
-      then goRead relativeTime fillLevel rps wps
-      else goWrite relativeTime fillLevel rps wps
-
-  goWrite relativeTime fillLevel rps (writePeriod :- wps) rdEna (wrEna :- wrEnas)
-    | wrEna =
-    second (next :-) $
-      go (relativeTime - toInteger writePeriod) newFillLevel rps wps rdEna wrEnas
+  waitMidway :: Signal readDom (Unsigned 12) -> Signal readDom Bool
+  waitMidway = mealy clkRead resetGen enableGen go False
    where
-    next@(newFillLevel, _)
-      | fillLevel >= size = (targetDataCount size, True)
-      | otherwise = (fillLevel + 1, False)
-
-  goWrite relativeTime fillLevel rps (writePeriod :- wps) rdEna (_ :- wrEnas) =
-    second ((fillLevel, False) :-) $
-      go (relativeTime - toInteger writePeriod) fillLevel rps wps rdEna wrEnas
-
-  goRead relativeTime fillLevel (readPeriod :- rps) wps (rdEna :- rdEnas) wrEnas
-    | rdEna =
-    first (next :-) $
-      go (relativeTime + toInteger readPeriod) newFillLevel rps wps rdEnas wrEnas
-   where
-    next@(newFillLevel, _)
-      | fillLevel <= 0 = (targetDataCount size, True)
-      | otherwise = (fillLevel - 1, False)
-
-  goRead relativeTime fillLevel (readPeriod :- rps) wps (_ :- rdEnas) wrEnas =
-    first ((fillLevel, False) :-) $
-      go (relativeTime + toInteger readPeriod) fillLevel rps wps rdEnas wrEnas
-
-elasticBuffer size (Clock ss Nothing) clock1 readEna writeEna =
-  -- Convert read clock to a "dynamic" clock if it isn't one
-  let
-    period = snatToNum (clockPeriod @readDom)
-  in
-    elasticBuffer size (Clock ss (Just (pure period))) clock1 readEna writeEna
-
-elasticBuffer size clock0 (Clock ss Nothing) readEna writeEna =
-  -- Convert write clock to a "dynamic" clock if it isn't one
-  let
-    period = snatToNum (clockPeriod @writeDom)
-  in
-    elasticBuffer size clock0 (Clock ss (Just (pure period))) readEna writeEna
+    go True _ = (True, True)
+    go False i | i >= (maxBound `div` 2) = (True, True)
+               | otherwise = (False, False)
+  FifoOut{..} = dcFifo (defConfig @12) clkWrite resetGen clkRead resetGen (pure (Just ())) (waitMidway readCount)
