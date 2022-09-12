@@ -91,7 +91,11 @@ tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
       clockSignal = initPeriod :- go settlePeriod initPeriod speedChange in
   Clock SSymbol (Just clockSignal)
  where
-  go :: SettlePeriod -> PeriodPs -> Signal dom SpeedChange -> Signal dom StepSize
+  go ::
+    SettlePeriod ->
+    PeriodPs ->
+    Signal dom SpeedChange ->
+    Signal dom StepSize
   go !settleCounter !period (sc :- scs) =
     let
       (newSettleCounter, newPeriod) = case sc of
@@ -199,8 +203,8 @@ specPeriod = hzToPeriod 200e3
 defClockConfig :: ClockControlConfig
 defClockConfig = ClockControlConfig
   { cccPessimisticPeriod = pessimisticPeriod
-  -- clock adjustment takes place at 1MHz, clock is 200MHz so we can have at most
-  -- one correction per 200 cycles
+  -- clock adjustment takes place at 1MHz, clock is 200MHz so we
+  -- can have at most one correction per 200 cycles
   , cccSettlePeriod      = pessimisticPeriod * 200
   , cccDynamicRange      = 150
   , cccStepSize          = 1
@@ -228,13 +232,20 @@ clockControl ::
   Signal dom SpeedChange
 clockControl cfg = runClockControl cfg callisto (ControlSt 0 0 NoChange)
 
+type ClockControlAlgorithm dom n a =
+  ClockControlConfig ->
+  SettlePeriod ->
+  a ->
+  Signal dom (Vec n DataCount) ->
+  (a, Signal dom SpeedChange)
+
 runClockControl ::
   forall n dom a.
   (KnownNat n, 1 <= n) =>
   -- | Configuration for this component, see individual fields for more info.
   ClockControlConfig ->
   -- | Clock control strategy
-  (ClockControlConfig -> SettlePeriod -> a -> Signal dom (Vec n DataCount) -> (a, Signal dom SpeedChange)) ->
+  ClockControlAlgorithm dom n a ->
   -- | Initial clock control state
   a ->
   -- | Statistics provided by elastic buffers.
@@ -244,7 +255,7 @@ runClockControl ::
 runClockControl cfg@ClockControlConfig{..} f initSt =
   snd . f cfg (cccSettlePeriod + 1) initSt . bundle
 
-callisto :: 
+callisto ::
   forall n dom.
   (KnownNat n, 1 <= n) =>
   ClockControlConfig ->
@@ -252,7 +263,8 @@ callisto ::
   ControlSt ->
   Signal dom (Vec n DataCount) ->
   (ControlSt, Signal dom SpeedChange)
-callisto cfg@ClockControlConfig{..} settleCounter ControlSt{..} (dataCounts :- nextDataCounts) 
+callisto
+  cfg@ClockControlConfig{..} settleCounter ControlSt{..} (dataCounts :- nextDataCounts)
   | settleCounter > cccSettlePeriod
   = second (b_kNext :-) nextChanges
  where
@@ -264,16 +276,18 @@ callisto cfg@ClockControlConfig{..} settleCounter ControlSt{..} (dataCounts :- n
   k_p = 2e-4 :: Double
   k_i = 1e-11 :: Double
   r_k =
-    toInteger (sum dataCounts) - (toInteger (targetDataCount cccBufferSize) * toInteger (length dataCounts))
+    let tot = realToFrac (sum dataCounts)
+        expected = realToFrac (targetDataCount cccBufferSize)
+        len = realToFrac (length dataCounts)
+    in tot - expected * len
   x_kNext =
-    x_k + p * realToFrac r_k
+    x_k + p * r_k
 
-  c_des = k_p * realToFrac r_k + k_i * realToFrac x_kNext
+  c_des = k_p * r_k + k_i * realToFrac x_kNext
   z_kNext = z_k + sgn b_k
   fStep = 5e-4
   c_est = fStep * realToFrac z_kNext
-  -- we are using 200kHz instead of 200MHz
-  -- typical freq. is in GHz
+  -- we are using 200kHz instead of 200MHz so typical freq. is 0.0002 GHz
   --
   -- (this is adjusted by a factor of 100 because our clock corrections are
   -- faster than those simulated in Callisto)
@@ -289,7 +303,8 @@ callisto cfg@ClockControlConfig{..} settleCounter ControlSt{..} (dataCounts :- n
   sgn SpeedUp = 1
   sgn SlowDown = -1
 
-  nextChanges = callisto cfg 0 (ControlSt x_kNext z_kNext b_kNext) nextDataCounts
+  nextChanges =
+    callisto cfg 0 (ControlSt x_kNext z_kNext b_kNext) nextDataCounts
 
 callisto cfg@ClockControlConfig{..} settleCounter st (_ :- nextDataCounts) =
   second (NoChange :-) nextChanges

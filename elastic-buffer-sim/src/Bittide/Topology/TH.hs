@@ -130,8 +130,15 @@ unzipN n = do
   op = do
     a_i <- traverse (\i -> newName ("a" ++ show i)) [1..n]
     as_i <- traverse (\i -> newName ("as" ++ show i)) [1..n]
-    -- note the lazy pattern match
-    pure (LamE [TupP (VarP <$> a_i), TildeP (TupP (VarP <$> as_i))] (tup (zipWith (\a as -> consList `AppE` a `AppE` as) (VarE <$> a_i) (VarE <$> as_i))))
+    -- note the lazy pattern match, conforming to 'unzip' defined in base
+    pure $
+      LamE
+        [TupP (VarP <$> a_i), TildeP (TupP (VarP <$> as_i))]
+        (tup
+          (zipWith
+            (\a as -> consList `AppE` a `AppE` as)
+            (VarE <$> a_i)
+            (VarE <$> as_i)))
   consList = ConE '(:)
 
 -- | This generates a function to process the output of 'simNodesFromGraph'; it
@@ -147,7 +154,12 @@ absTimes g = do
   tNames <- traverse (\j -> newName ("t" ++ show j)) [0..i]
   xss <- traverse (\j -> newName ("xs" ++ show j)) [0..i]
   periodNames <- traverse (\j -> newName ("period" ++ show j)) [0..i]
-  x_ns <- zipWithM (\k n -> traverse (\j -> newName ("x_" ++ show j ++ "_" ++ show k)) [0..(n-1)]) (A.indices n_i) (A.elems n_i)
+  x_ns <-
+    zipWithM
+      (\k n ->
+        traverse (\j -> newName ("x_" ++ show j ++ "_" ++ show k)) [0..(n-1)])
+      (A.indices n_i)
+      (A.elems n_i)
   let goE = VarE nm
       ts = VarE <$> tNames
       periods = VarE <$> periodNames
@@ -155,10 +167,22 @@ absTimes g = do
       goD =
         FunD nm
           [ Clause
-            (fmap VarP tNames ++ [TupP (zipWith3 (\periodName ns xs -> InfixP (TupP (VarP <$> periodName : ns)) consSignal (VarP xs)) periodNames x_ns xss)])
+            (fmap VarP tNames
+              ++ [TupP (zipWith3
+                          (\periodName ns xs ->
+                            InfixP
+                              (TupP (VarP <$> periodName : ns))
+                              consSignal
+                              (VarP xs))
+                          periodNames x_ns xss)])
             (NormalB
               (AppE
-                (AppE consList (tup (zipWith3 (\t period xs -> tup (t:period:fmap VarE xs)) ts periods x_ns)))
+                (AppE
+                  consList
+                  (tup
+                    (zipWith3
+                      (\t period xs -> tup (t:period:fmap VarE xs))
+                      ts periods x_ns)))
                 (AppE (apply goE tNext) (tup (VarE <$> xss)))))
             []
           ]
@@ -285,14 +309,18 @@ simNodesFromGraph ccc g = do
 
     res k =
       SigE
-        (AppE bundleV (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ])))
+        (AppE
+          bundleV
+          (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ])))
         signalType
 
   postprocess <- absTimes g
   pure $
     LamE
       [ListP (VarP <$> offsets)]
-      (LetE (ebs ++ clkDs ++ clkSignalDs ++ clockControls) (postprocess `AppE` tup (fmap res indices)))
+      (LetE
+        (ebs ++ clkDs ++ clkSignalDs ++ clockControls)
+        (postprocess `AppE` tup (fmap res indices)))
  where
   indices = [0..n]
   bounds@(0, n) = A.bounds g
