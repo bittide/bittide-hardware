@@ -163,9 +163,9 @@ wbStorage SNat initContent wbIn = delayControls wbOut
       | otherwise = (byteSelectB0, byteSelectA0)
 
   splitWrite ::
-    KnownNat a =>
-    Maybe (Located n (BitVector (2*a))) ->
-    (Maybe (Located n (BitVector a)), Maybe (Located n (BitVector a)))
+    KnownNat bits =>
+    Maybe (LocatedBits n (2*bits)) ->
+    (Maybe (LocatedBits n bits), Maybe (LocatedBits n bits))
   splitWrite (Just (i, a)) = (Just (i,upper), Just (i, lower))
    where
     (upper,lower) = split a
