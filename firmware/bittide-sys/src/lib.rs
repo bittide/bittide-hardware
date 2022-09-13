@@ -22,7 +22,7 @@ pub enum InitialisationError {
     GatherUnitLoadError(FdtLoadError),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FdtLoadError {
     FdtNodeNotFound(&'static str),
     RegNotFound {

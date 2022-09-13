@@ -24,6 +24,7 @@ impl GatherTimingOracle {
 pub struct GatherUnit<const FRAME_SIZE: usize> {
     memory: *mut u8,
     timing_oracle: GatherTimingOracle,
+    metacycle_register: *const u8,
 }
 
 impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
@@ -49,6 +50,7 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
         let memory_node = get_node("/gather-unit/gather-memory")?;
         let sequence_counter_node = get_node("/gather-unit/sequence-counter-reg")?;
         let send_sequence_counter_node = get_node("/gather-unit/send-sequence-counter-reg")?;
+        let metacycle_register_node = get_node("/gather-unit/metacycle-reg")?;
 
         let memory = get_reg(&memory_node, "memory")?;
 
@@ -90,12 +92,27 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
             reg.starting_address as *mut u8
         };
 
+        let metacycle_register = {
+            let reg = get_reg(&metacycle_register_node, "metacycle_register")?;
+            if let Some(size) = reg.size {
+                if size != 1 {
+                    return Err(FdtLoadError::SizeMismatch {
+                        property: "metacycle register size",
+                        expected: 1,
+                        found: size,
+                    });
+                }
+            }
+            reg.starting_address as *const u8
+        };
+
         Ok(GatherUnit {
             memory: memory.starting_address as *mut u8,
             timing_oracle: GatherTimingOracle {
                 sequence_counter,
                 send_sequence_counter,
             },
+            metacycle_register,
         })
     }
 
@@ -113,5 +130,17 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
 
     pub fn timing_oracle(&self) -> &GatherTimingOracle {
         &self.timing_oracle
+    }
+
+    /// Wait for the start of a new metacycle.
+    ///
+    /// Execution will stall until the start of a new metacycle.
+    pub fn wait_for_new_metacycle(&self) {
+        unsafe {
+            // reading from the register will cause a stall until the end of the
+            // metacycle, the read value is not actually relevant, so it's safe
+            // to discard.
+            let _val = self.metacycle_register.read_volatile();
+        }
     }
 }
