@@ -45,6 +45,8 @@ hypercube n = fromEdgeList es
  where
   k = (2::Int)^n
   es =
+    -- see Callisto code (julia):
+    -- https://github.com/bittide/Callisto.jl/blob/73d908c6cb02b9b953cc104e5b42d432efc42598/src/topology.jl#L224
     [ let j = i .|. (1 `shiftL` b) in (i+1, j+1)
     | i <- [0..(k-1)], b <- [0..(n-1)], i .&. (1 `shiftL` b) == 0
     ]
