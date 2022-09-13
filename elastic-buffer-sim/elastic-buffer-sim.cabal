@@ -86,6 +86,9 @@ library
     random,
     template-haskell
   exposed-modules:
+    Bittide.ClockControl
+    Bittide.ClockControl.Strategies
+    Bittide.ClockControl.Strategies.Callisto
     Bittide.Simulate
     Bittide.Simulate.Ppm
     Bittide.Topology

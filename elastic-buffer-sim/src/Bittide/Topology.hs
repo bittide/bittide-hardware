@@ -11,46 +11,63 @@
 
 -- | This module generates a static topology using template haskell and then
 -- dumps clock periods and elastic buffer occupancy to csv.
-module Bittide.Topology ( dumpCsv, genOffsets, plotEbs ) where
+module Bittide.Topology
+  ( dumpCsv
+  , genOffsets
+  , plotEbs
+  , takeEveryN
+  )
+where
 
 import Clash.Explicit.Prelude
 import Control.Monad (void, forM_, replicateM, zipWithM_)
 
 import Prelude qualified as P
 
+import Graphics.Matplotlib ((%), file, xlabel, ylabel)
 import System.Directory (createDirectoryIfMissing)
 import System.Random (randomRIO)
-import Graphics.Matplotlib ((%), file, xlabel, ylabel)
 
 import Data.Array qualified as A
 import Data.ByteString.Lazy qualified as BSL
 
 import Bittide.Simulate
+import Bittide.ClockControl
 import Bittide.Simulate.Ppm
 import Bittide.Topology.Graph
 import Bittide.Topology.TH
 import Graphics.Matplotlib.Ext
 
--- | This samples @n@ steps and plots clock speeds and elastic buffer occupancy
-plotEbs :: Int -> IO ()
-plotEbs m = do
+-- | As an example:
+--
+-- >>> takeEveryN 3 [1..10]
+-- [1,4,7,10]
+takeEveryN :: Int -> [a] -> [a]
+takeEveryN _ [] = []
+takeEveryN n (x:xs) = x : takeEveryN n (P.drop (n-1) xs)
+
+-- | This samples @n@ steps, taking every @k@th datum, and plots clock speeds
+-- and elastic buffer occupancy
+plotEbs :: Int -> Int -> IO ()
+plotEbs m k = do
   offs <- replicateM (n+1) genOffsets
   createDirectoryIfMissing True "_build"
   let (clockDats, ebDats) =
           P.unzip
-        $ onN (plotEachNode m)
-        $ $(simNodesFromGraph defClockConfig (grid 3 4)) offs
+        $ $(onN 3) (plotEachNode m)
+        $ takeEveryN k
+        $ $(simNodesFromGraph defClockConfig (complete 3)) offs
   void $ file "_build/clocks.pdf" (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
   void $ file "_build/elasticbuffers.pdf" (xlabel "Time (ps)" % foldPlots ebDats)
  where
-  onN = $(onTup 12)
   (0, n) = A.bounds g
-  g = grid 3 4
-  plotEachNode = $(plotDats (grid 3 4))
+  g = complete 3
+  plotEachNode = $(plotDats (complete 3))
 
--- | This samples @n@ steps; the result can be fed to @script.py@
-dumpCsv :: Int -> IO ()
-dumpCsv m = do
+-- | This samples @n@ steps, taking every @k@th datum; the result can be fed to
+-- @script.py@
+dumpCsv :: Int -> Int -> IO ()
+dumpCsv m k = do
   offs <- replicateM (n+1) genOffsets
   createDirectoryIfMissing True "_build"
   forM_ [0..n] $ \i ->
@@ -59,7 +76,8 @@ dumpCsv m = do
       ("_build/clocks" <> show i <> ".csv")
       ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
   let dats =
-          $(onTup 6) ($(encodeDats 6) m)
+          $(onN 6) ($(encodeDats 6) m)
+        $ takeEveryN k
         $ $(simNodesFromGraph defClockConfig (complete 6)) offs
   zipWithM_ (\dat i ->
     BSL.appendFile ("_build/clocks" <> show i <> ".csv") dat) dats [(0::Int)..]

@@ -9,50 +9,24 @@ Provides a rudimentary simulation of elastic buffers.
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Bittide.Simulate where
 
 import Clash.Prelude
 import Clash.Signal.Internal
-import Data.Bifunctor (second)
 import GHC.Stack
 import Numeric.Natural
 
 import Bittide.Simulate.Ppm
-
-import Data.Csv
+import Bittide.ClockControl
 
 -- Number of type aliases for documentation purposes in various functions defined
 -- down below.
 type StepSize = Natural
 type InitialPeriod = Natural
-type DataCount = Natural
-type ElasticBufferSize = Natural
 type Offset = Integer
 type DynamicRange = Natural
-type SettlePeriod = Natural
 
--- | Calculate target data count given a FIFO size. Currently returns a target
--- data count of half the FIFO size.
-targetDataCount :: ElasticBufferSize -> DataCount
-targetDataCount size = size `div` 2
-
--- | Safer version of FINC/FDEC signals present on the Si5395/Si5391 clock multipliers.
-data SpeedChange
-  = SpeedUp
-  | SlowDown
-  | NoChange
-  deriving (Eq, Show, Generic, ShowX, NFDataX)
-
-instance ToField SpeedChange where
-  toField SpeedUp = "speedUp"
-  toField SlowDown = "slowDown"
-  toField NoChange = "noChange"
-
--- | Simple model of the Si5395/Si5391 clock multipliers. In real hardware, these
--- are connected to some oscillator (i.e., incoming Clock) but for simulation
--- purposes we pretend it generates the clock too.
 --
 -- TODO:
 --
@@ -91,7 +65,11 @@ tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
       clockSignal = initPeriod :- go settlePeriod initPeriod speedChange in
   Clock SSymbol (Just clockSignal)
  where
-  go :: SettlePeriod -> PeriodPs -> Signal dom SpeedChange -> Signal dom StepSize
+  go ::
+    SettlePeriod ->
+    PeriodPs ->
+    Signal dom SpeedChange ->
+    Signal dom StepSize
   go !settleCounter !period (sc :- scs) =
     let
       (newSettleCounter, newPeriod) = case sc of
@@ -168,91 +146,3 @@ elasticBuffer mode size clock0 (Clock ss Nothing) =
     period = snatToNum (clockPeriod @writeDom)
   in
     elasticBuffer mode size clock0 (Clock ss (Just (pure period)))
-
--- | Configuration passed to 'clockControl'
-data ClockControlConfig = ClockControlConfig
-  { -- | The quickest a clock could possibly run at. Used to (pessimistically)
-    -- estimate when a new command can be issued.
-    cccPessimisticPeriod :: PeriodPs
-
-  -- | Period it takes for a clock frequency request to settle. This is not
-  -- modelled, but an error is thrown if a request is submitted more often than
-  -- this. 'clockControl' should therefore not request changes more often.
-  , cccSettlePeriod :: PeriodPs
-
-  -- | Maximum divergence from initial clock frequency. Used to prevent frequency
-  -- runoff.
-  , cccDynamicRange :: Ppm
-
-  -- | The size of the clock frequency should "jump" on a speed change request.
-  , cccStepSize :: Integer
-
-  -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
-  , cccBufferSize :: ElasticBufferSize
-  } deriving (Lift)
-
--- we use 200kHz in simulation because otherwise the periods are so small that
--- deviations can't be expressed using 'Natural's
-specPeriod :: PeriodPs
-specPeriod = hzToPeriod 200e3
-
-defClockConfig :: ClockControlConfig
-defClockConfig = ClockControlConfig
-  { cccPessimisticPeriod = pessimisticPeriod
-  -- clock adjustment takes place at 1MHz, clock is 200MHz so we get one correction per 200 cycles
-  , cccSettlePeriod      = pessimisticPeriod * 200
-  , cccDynamicRange      = 150
-  , cccStepSize          = 1
-  , cccBufferSize        = 128
-  }
- where
-  specPpm = 100
-  pessimisticPeriod = speedUpPeriod specPpm specPeriod
-
--- | Determines how to influence clock frequency given statistics provided by
--- all elastic buffers.
---
--- TODO:
---
---   * Generalize to make it easy to "swap" strategies?
---
-clockControl ::
-  forall n dom.
-  (KnownNat n, KnownDomain dom, 1 <= n) =>
-  -- | Configuration for this component, see individual fields for more info.
-  ClockControlConfig ->
-  -- | Statistics provided by elastic buffers.
-  Vec n (Signal dom DataCount) ->
-  -- | Whether to adjust node clock frequency
-  Signal dom SpeedChange
-clockControl ClockControlConfig{..} =
-  snd . go (cccSettlePeriod + 1) 0 . bundle
- where
-  go :: SettlePeriod -> Offset -> Signal dom (Vec n DataCount) -> (Offset, Signal dom SpeedChange)
-  go settleCounter offs (dataCounts :- nextDataCounts) = second (speedChange :-) nextChanges
-   where
-    nextChanges = go newSettleCounter nextOffs nextDataCounts
-    average = sum dataCounts `div` fromIntegral (length dataCounts)
-
-    (speedChange, nextOffs)
-      | settleCounter > cccSettlePeriod =
-          case compare average (targetDataCount cccBufferSize) of
-            LT | offs + cccStepSize <= ma -> (SlowDown, offs + cccStepSize)
-            GT | offs - cccStepSize >= mi -> (SpeedUp, offs - cccStepSize)
-            _ -> (NoChange, offs)
-      | otherwise = (NoChange, offs)
-
-    newSettleCounter =
-      case speedChange of
-        NoChange -> settleCounter + cccPessimisticPeriod
-        SpeedUp -> 0
-        SlowDown -> 0
-
-    mi = minTOffset cccDynamicRange domT
-    ma = maxTOffset cccDynamicRange domT
-
-    domT = snatToNum @PeriodPs (clockPeriod @dom)
-
-minTOffset, maxTOffset :: Ppm -> PeriodPs -> Offset
-minTOffset ppm period = toInteger (speedUpPeriod ppm period) - toInteger period
-maxTOffset ppm period = toInteger (slowDownPeriod ppm period - period)

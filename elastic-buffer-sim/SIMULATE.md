@@ -7,10 +7,17 @@ SPDX-License-Identifier: Apache-2.0
 Simulation is computation intensive, so you likely want to run
 
 ```
-cabal run sim -- csv 2000000
+cabal run sim -- plot 2000 1000
 ```
 
-rather than using the REPL.
+rather than using the REPL. This will generate `_build/clocks.pdf` and
+`_build/elasticbuffers.pdf`
+
+One can also dump to csv, viz.
+
+```
+cabal run sim -- csv 2000 1000
+```
 
 The python script is managed with [Poetry](https://python-poetry.org/).
 First, [install Poetry](https://python-poetry.org/docs/#installation).

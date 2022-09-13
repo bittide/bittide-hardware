@@ -6,18 +6,21 @@
 -- using parts from "Bittide.Simulate"
 module Bittide.Topology.TH
   ( cross
+  , absTimes
   , encodeDats
   , encodeQ
   , onTup
-  , asPlotN
+  , onN
   , plotDats
   , simNodesFromGraph
   , timeN
+  , unzipN
   )
 where
 
 import Prelude
 
+import Control.Monad (zipWithM)
 import Data.Bifunctor (bimap)
 import Data.Csv (encode)
 import Data.Graph (Graph)
@@ -27,6 +30,8 @@ import Language.Haskell.TH.Syntax (lift)
 import Numeric.Natural (Natural)
 
 import Bittide.Simulate
+import Bittide.ClockControl
+import Bittide.ClockControl.Strategies
 import Bittide.Topology.TH.Domain
 import Graphics.Matplotlib.Ext
 
@@ -42,6 +47,16 @@ import Clash.Signal.Internal qualified as Clash
 -- [(1,'a'),(1,'b'),(1,'c'),(2,'a'),(2,'b'),(2,'c')]
 cross :: [a] -> [b] -> [(a, b)]
 cross xs ys = (,) <$> xs <*> ys
+
+-- | For @n=2@ the type will be:
+--
+-- > ([a] -> b, [c] -> b) -> [(a, c)] -> [b]
+onN :: Int -> Q Exp
+onN n = do
+  onTupQ <- onTup n
+  unzipNQ <- unzipN n
+  f <- newName "f"
+  pure (LamE [VarP f] ((onTupQ `AppE` VarE f) `compose` unzipNQ))
 
 -- | For @n=3@:
 --
@@ -107,6 +122,85 @@ encodeQ = do
               VarE 'encode
     `compose` (VarE 'take `AppE` VarE m)
 
+-- | Based on 'unzip', 'unzip3' from the "Prelude".
+unzipN :: Int -> Q Exp
+unzipN n = do
+  go <- op
+  pure (VarE 'foldr `AppE` go `AppE` seedN)
+ where
+  seedN = tup (replicate n (ConE '[]))
+  op = do
+    a_i <- traverse (\i -> newName ("a" ++ show i)) [1..n]
+    as_i <- traverse (\i -> newName ("as" ++ show i)) [1..n]
+    -- note the lazy pattern match, conforming to 'unzip' defined in base
+    pure $
+      LamE
+        [TupP (VarP <$> a_i), TildeP (TupP (VarP <$> as_i))]
+        (tup
+          (zipWith
+            (\a as -> consList `AppE` a `AppE` as)
+            (VarE <$> a_i)
+            (VarE <$> as_i)))
+  consList = ConE '(:)
+
+-- | This generates a function to process the output of 'simNodesFromGraph'; it
+-- takes a tuple of signals and returns a list of tuples of data associated with
+-- each node (including absolute time).
+--
+-- The generated function will have type:
+--
+-- > absTimes :: (Signal dom0 (PeriodPs, a_1, ...), Signal dom1 (PeriodPs, b_1, ...), ...) -> [((Ps, PeriodPs, a_1, ...), (Ps, PeriodPs, b_1, ...), ...)]
+absTimes :: Graph -> Q Exp
+absTimes g = do
+  nm <- newName "go"
+  tNames <- traverse (\j -> newName ("t" ++ show j)) [0..i]
+  xss <- traverse (\j -> newName ("xs" ++ show j)) [0..i]
+  periodNames <- traverse (\j -> newName ("period" ++ show j)) [0..i]
+  x_ns <-
+    zipWithM
+      (\k n ->
+        traverse (\j -> newName ("x_" ++ show j ++ "_" ++ show k)) [0..(n-1)])
+      (A.indices n_i)
+      (A.elems n_i)
+  let
+    goE = VarE nm
+    ts = VarE <$> tNames
+    periods = VarE <$> periodNames
+    tNext = zipWith (\period t -> plusE `AppE` t `AppE` period) periods ts
+    goD =
+      FunD nm
+        [ Clause
+          (fmap VarP tNames
+            ++ [TupP (zipWith3
+                        (\periodName ns xs ->
+                          InfixP
+                            (TupP (VarP <$> periodName : ns))
+                            consSignal
+                            (VarP xs))
+                        periodNames x_ns xss)])
+          (NormalB
+            (AppE
+              (AppE
+                consList
+                (tup
+                  (zipWith3
+                    (\t period xs -> tup (t:period:fmap VarE xs))
+                    ts periods x_ns)))
+              (AppE (apply goE tNext) (tup (VarE <$> xss)))))
+          []
+        ]
+  pure $ LetE [goD] (apply goE (replicate (i+1) zeroE))
+ where
+  zeroE = LitE (IntegerL 0)
+  consSignal = '(Clash.:-)
+  consList = ConE '(:)
+  plusE = VarE '(+)
+  n_i = fmap length g
+  (0, i) = A.bounds g
+
+apply :: Exp -> [Exp] -> Exp
+apply = foldl AppE
+
 -- | Given a @Signal dom (PeriodPs, a_1, ...)@, make a @[(Ps, PeriodPs, a_1, ...)]@.
 --
 -- For @n=2@:
@@ -132,7 +226,7 @@ timeN n = do
               (NormalB
                 (AppE
                   (AppE consList (tup (t:period:fmap VarE x_is)))
-                  (AppE (AppE goE (AppE (AppE plusE t) period)) (VarE xs))))
+                  (AppE (AppE goE (plusE `AppE` t `AppE` period)) (VarE xs))))
               []
           ]
   pure $ LetE [goD] (goE `AppE` LitE (IntegerL 0))
@@ -181,7 +275,8 @@ extractPeriods (Clash.Clock _ (Just s)) = s
 extractPeriods _ = pure (Clash.snatToNum (Clash.clockPeriod @dom))
 
 -- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
--- offsets (divergence from spec) and returns a tuple of signals for each clock domain
+-- offsets (divergence from spec) and returns a tuple of signals for each clock
+-- domain
 simNodesFromGraph :: ClockControlConfig -> Graph -> Q Exp
 simNodesFromGraph ccc g = do
   offsets <- traverse (\i -> newName ("offsets" ++ show i)) indices
@@ -206,7 +301,7 @@ simNodesFromGraph ccc g = do
 
     clockControlE k =
       AppE
-        (AppE clockControlV cccE)
+        (AppE callistoClockControlV cccE)
         (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
     clockControlD k = valD (VarP (clockControlNames A.! k)) (clockControlE k)
 
@@ -215,20 +310,20 @@ simNodesFromGraph ccc g = do
     clkDs = clkD <$> indices
     clkSignalDs = clkSignalD <$> indices
 
-    res k = do
-      let ebN = length (g A.! k)
-      postprocess <- timeN ebN
-      pure $
-        AppE
-          postprocess
-          (SigE
-            (AppE bundleV (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ])))
-            signalType)
-  ress <- traverse res indices
+    res k =
+      SigE
+        (AppE
+          bundleV
+          (tup (VarE (clockSignalNames A.! k):[ VarE (ebNames A.! (k, i)) | i <- g A.! k ])))
+        signalType
+
+  postprocess <- absTimes g
   pure $
     LamE
       [ListP (VarP <$> offsets)]
-      (LetE (ebs ++ clkDs ++ clkSignalDs ++ clockControls) (tup ress))
+      (LetE
+        (ebs ++ clkDs ++ clkSignalDs ++ clockControls)
+        (postprocess `AppE` tup (fmap res indices)))
  where
   indices = [0..n]
   bounds@(0, n) = A.bounds g
@@ -251,7 +346,7 @@ simNodesFromGraph ccc g = do
   tunableClockGenV = VarE 'tunableClockGen
   resetGenV = VarE 'Clash.resetGen
   ebClkClk = ebV `AppE` errC `AppE` ebSize
-  clockControlV = VarE 'clockControl
+  callistoClockControlV = VarE 'callistoClockControl
   mkVecE = foldr (\x -> AppE (AppE consC x)) nilC
 
   ebSize = LitE (IntegerL (toInteger (cccBufferSize ccc)))
