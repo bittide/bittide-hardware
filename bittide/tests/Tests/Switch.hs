@@ -28,10 +28,10 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
 import Bittide.Calendar (CalendarConfig(..))
-import Bittide.Extra.Wishbone
 import Bittide.Switch
 import Tests.Calendar
 import Tests.Shared
+import Protocols.Wishbone
 
 switchGroup :: TestTree
 switchGroup = testGroup "Switch group"

@@ -6,10 +6,11 @@ module Bittide.Switch where
 
 import Clash.Prelude
 
+import Protocols.Wishbone
+
 import Bittide.Calendar
 import Bittide.ScatterGather (scatterEngine)
 import Bittide.SharedTypes
-import Bittide.Extra.Wishbone (WishboneM2S, WishboneS2M)
 
 -- | An index which source is selected by the crossbar, 0 selects Nothing, k selects k - 1.
 type CrossbarIndex links = Index (links+1)
@@ -35,11 +36,12 @@ switch ::
   -- | The calendar configuration
   CalendarConfig nBytes addrW (CalendarEntry links memDepth) ->
   -- | Wishbone interface wired to the calendar.
-  Signal dom (WishboneM2S nBytes addrW) ->
+  Signal dom (WishboneM2S addrW nBytes (BitVector (8 * nBytes))) ->
   -- | All incoming datalinks
   Signal dom (Vec links (DataLink frameWidth)) ->
   -- | All outgoing datalinks
-  (Signal dom (Vec links (DataLink frameWidth)), Signal dom (WishboneS2M nBytes))
+  ( Signal dom (Vec links (DataLink frameWidth))
+  , Signal dom (WishboneS2M (BitVector (8 * nBytes))) )
 switch calConfig wbIn streamsIn =
   (crossBar <$> crossBarConfig <*> availableFrames, wbOut)
  where

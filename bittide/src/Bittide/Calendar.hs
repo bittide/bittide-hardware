@@ -23,8 +23,9 @@ import Clash.Prelude
 
 import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
-import Bittide.Extra.Wishbone
 import Data.Maybe
+import Protocols.Wishbone
+
 
 {-
 NOTE [component calendar types]
@@ -72,12 +73,12 @@ mkCalendar ::
   -- | Calendar configuration for 'calendar'.
   CalendarConfig nBytes addrW calEntry ->
   -- | Wishbone interface (master to slave)
-  Signal dom (WishboneM2S nBytes addrW) ->
+  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- |
   -- 1. Currently active entry
   -- 2. Metacycle indicator
   -- 3. Wishbone interface. (slave to master)
-  (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M nBytes))
+  (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)))
 mkCalendar (CalendarConfig maxCalDepth bsActive bsShadow) =
   calendar maxCalDepth bsActive bsShadow
 
@@ -151,9 +152,9 @@ calendar ::
   -- ^ Bootstrap calendar for the active buffer.
   -> Vec bootstrapSizeB calEntry
   -- ^ Bootstrap calendar for the shadow buffer.
-  -> Signal dom (WishboneM2S nBytes addrW)
+  -> Signal dom (WishboneM2S addrW nBytes (Bytes nBytes))
   -- ^ Incoming wishbone interface
-  -> (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M nBytes))
+  -> (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)))
   -- ^ Currently active entry, Metacycle indicator and outgoing wishbone interface.
 calendar SNat bootstrapActive bootstrapShadow wbIn =
   (activeEntry <$> calOut, lastCycle <$> calOut, wbOut)
@@ -290,7 +291,7 @@ wbCalRX
      , Paddable calEntry
      , HiddenClockResetEnable dom
      , NatFitsInBits (Regs calEntry (nBytes * 8)) addrW, ShowX calEntry)
-  => Signal dom (WishboneM2S nBytes addrW)
+  => Signal dom (WishboneM2S addrW nBytes (Bytes nBytes))
     -- ^ Incoming wishbone signals
   -> Signal dom (CalendarControl calDepth calEntry nBytes)
     -- ^ Calendar control signals.
@@ -302,7 +303,7 @@ wbCalRX = mealy go initState
     }
 
   go :: WishboneRXState (nBytes * 8) calEntry calDepth
-     -> WishboneM2S nBytes addrW
+     -> WishboneM2S addrW nBytes (Bytes nBytes)
      -> ( WishboneRXState (nBytes * 8) calEntry calDepth
         , CalendarControl calDepth calEntry nBytes
         )
@@ -372,7 +373,7 @@ wbCalTX ::
   (KnownNat nBytes, 1 <= nBytes, Paddable calEntry, Paddable (Index calDepth), Show calEntry) =>
   CalendarControl calDepth calEntry nBytes->
   CalendarOutput calDepth calEntry ->
-  WishboneS2M nBytes
+  WishboneS2M (Bytes nBytes)
 wbCalTX CalendarControl{shadowReadAddr, wishboneActive, wishboneError, wishboneAddress}
  CalendarOutput{shadowEntry, shadowDepth} = wbOut
  where
@@ -380,7 +381,11 @@ wbCalTX CalendarControl{shadowReadAddr, wishboneActive, wishboneError, wishboneA
     case (getRegs shadowEntry, getRegs shadowReadAddr, getRegs shadowDepth) of
       (RegisterBank entryVec, RegisterBank readAddrVec, RegisterBank depthVec) ->
        ((entryVec :< 0b0) ++ readAddrVec ++ depthVec) !! wishboneAddress
-  wbOut = WishboneS2M{acknowledge = wishboneActive, err = wishboneError, readData}
+  wbOut = (emptyWishboneS2M @(Bytes nBytes))
+    { acknowledge = wishboneActive
+    , err = wishboneError
+    , readData
+    }
 
 updateRegBank ::
   ( Enum i

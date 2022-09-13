@@ -9,7 +9,8 @@ module Contranomy.Core.RVFI where
 
 import Clash.Prelude
 
-import Bittide.Extra.Wishbone
+import Protocols.Wishbone
+
 import Contranomy.Core.Decode
 import Contranomy.Core.SharedTypes
 import Contranomy.Instruction
@@ -35,9 +36,9 @@ toRVFI ::
   -- | pcN
   PC ->
   -- | dbusM2S
-  WishboneM2S Bytes AddressWidth ->
+  WishboneM2S AddressWidth Bytes MachineWord ->
   -- | dbusS2M
-  WishboneS2M Bytes ->
+  WishboneS2M MachineWord ->
   -- | MISA CRS
   (Maybe MachineWord, MachineWord) ->
   RVFI

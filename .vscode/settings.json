@@ -26,5 +26,8 @@
     "ghc": null,
     "cabal": null,
     "stack": null
+  },
+  "[haskell]": {
+    "editor.formatOnSave": false
   }
 }

@@ -69,6 +69,7 @@ common common-options
     constraints >= 0.13.3 && < 0.15,
     containers >= 0.4.0 && < 0.7,
     contranomy,
+    clash-protocols,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,

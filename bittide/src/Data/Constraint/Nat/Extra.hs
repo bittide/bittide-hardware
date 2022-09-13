@@ -32,6 +32,15 @@ timesDivRU = unsafeCoerce (Dict :: Dict ())
 clog2axiom :: CLog 2 (n * 2) :~: (CLog 2 n + 1)
 clog2axiom = unsafeCoerce Refl
 
+timesNDivRU :: forall a b . Dict (DivRU (a * b) b ~ a)
+timesNDivRU = unsafeCoerce (Dict :: Dict ())
+
+timesNDivRU' :: forall a b . Dict (Div ((b * a) + (b - 1)) b ~ a)
+timesNDivRU' = unsafeCoerce (Dict :: Dict ())
+
+timesNDivRU'' :: forall a b . Dict (Div ((a * b) + (b - 1)) b ~ a)
+timesNDivRU'' = unsafeCoerce (Dict :: Dict ())
+
 -- | if (c <= a) or (c <= b), then c <= Max a b
 lessThanMax :: forall a b c . (KnownNat a, KnownNat b, KnownNat c) => Dict (c <= Max a b)
 lessThanMax = case (compareSNat (SNat @c) (SNat @b), compareSNat (SNat @c) (SNat @b)) of

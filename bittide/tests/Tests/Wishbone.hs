@@ -13,11 +13,11 @@ import Clash.Hedgehog.Sized.Vector
 import Clash.Prelude
 import Clash.Sized.Vector(unsafeFromList)
 
-import Bittide.Extra.Wishbone
 import Data.Proxy
 import Data.String
 import Hedgehog
 import Hedgehog.Range as Range
+import Protocols.Wishbone
 import Test.Tasty
 import Test.Tasty.Hedgehog
 import qualified Data.List as L
@@ -26,6 +26,10 @@ import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 
 import Bittide.Wishbone
+import Data.Constraint (Dict(Dict))
+import Data.Constraint.Nat.Extra (timesNDivRU, timesNDivRU'')
+import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
+import Protocols (toSignals, Circuit(..), (|>))
 
 memMapGroup :: TestTree
 memMapGroup = testGroup "Memory Map group"
@@ -73,7 +77,7 @@ readingSlaves = property $ do
     slaves = withClockResetEnable @System clockGen resetGen enableGen simpleSlave <$>
       ranges <*> config <*> unbundle toSlaves
     (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen
-      (singleMasterInterconnect @System @_ @4 @32) config masterIn $ bundle slaves
+      (singleMasterInterconnect' @System @_ @4 @32) config masterIn $ bundle slaves
 
   filterSimOut WishboneS2M{..}
     | acknowledge && not err = Just readData
@@ -101,7 +105,7 @@ writingSlaves = property $ do
     writeAddresses <- forAll . Gen.list nrOfWritesRange $ Gen.integral Range.constantBounded
     ranges <- forAll $ genVec $ Gen.integral Range.constantBounded
     let
-      topEntityInput = L.concatMap wbWriteThenRead writeAddresses <> [emptyWishboneM2S]
+      topEntityInput = L.concatMap wbWriteThenRead writeAddresses <> [emptyWishboneM2S @32 @(BitVector 32)]
       simLength = L.length topEntityInput
       simOut = simulateN simLength (topEntity ranges config) topEntityInput
     footnote . fromString $ "simOut: " <> showX simOut
@@ -116,7 +120,7 @@ writingSlaves = property $ do
     slaves = withClockResetEnable @System clockGen resetGen enableGen simpleSlave <$>
       ranges <*> config <*> unbundle toSlaves
     (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen
-      (singleMasterInterconnect @System @_ @4 @32) config masterIn $ bundle slaves
+      (singleMasterInterconnect' @System @_ @4 @32) config masterIn $ bundle slaves
   filterSimOut WishboneS2M{..} | acknowledge = Just readData
                                | otherwise   = Nothing
   wbWriteThenRead a = [wbWrite a, wbRead a]
@@ -129,17 +133,20 @@ writingSlaves = property $ do
     (baseAddr, range) = findBaseAddress a config ranges
 
 -- | transforms an address to a 'WishboneM2S' read operation.
-wbRead :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S bs addressWidth
-wbRead address = (emptyWishboneM2S @bs @addressWidth)
-  { addr = address
-  , strobe = True
-  , busCycle = True
-  }
+wbRead :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S addressWidth bs (BitVector (bs * 8))
+wbRead address = case timesNDivRU @bs @8 of
+  Dict ->
+    (emptyWishboneM2S @addressWidth)
+    { addr = address
+    , strobe = True
+    , busCycle = True
+    , busSelect = maxBound
+    }
 
 -- | transforms an address to a 'WishboneM2S' write operation that writes the given address
 -- to the given address.
-wbWrite :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S bs addressWidth
-wbWrite address = (emptyWishboneM2S @bs @addressWidth)
+wbWrite :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S addressWidth bs (BitVector (bs * 8))
+wbWrite address = (emptyWishboneM2S @addressWidth @(BitVector (bs * 8)))
   { addr = address
   , strobe = True
   , busCycle = True
@@ -148,18 +155,16 @@ wbWrite address = (emptyWishboneM2S @bs @addressWidth)
   , busSelect = maxBound
   }
 
--- | Simple wishbone slave that responds to addresses [0..range], it responds by returning
--- a stored value (initialized by readData0), which can be overwritten by the wishbone bus.
--- any read/write attempt to an address outside of the supplied range sets the err signal.
-simpleSlave ::
-  (HiddenClockResetEnable dom, KnownNat aw, KnownNat bs, aw ~ bs * 8) =>
+simpleSlave' ::
+  forall dom aw bs .
+  (HiddenClockResetEnable dom, KnownNat aw, KnownNat bs, aw ~ (bs * 8)) =>
   BitVector aw ->
   BitVector (bs * 8) ->
-  Signal dom (WishboneM2S bs aw) ->
-  Signal dom (WishboneS2M bs)
-simpleSlave range readData0 wbIn = mealy go readData0 wbIn
+  Circuit (Wishbone dom 'Standard aw (BitVector (bs * 8))) ()
+simpleSlave' range readData0 = Circuit $ \(wbIn, ()) -> (mealy go readData0 wbIn, ())
  where
-  go readData1 WishboneM2S{..} = (readData2, WishboneS2M{readData, acknowledge, err})
+  go readData1 WishboneM2S{..} =
+    (readData2, (emptyWishboneS2M @(BitVector (bs * 8))) {readData, acknowledge, err})
    where
      masterActive = strobe && busCycle
      addrInRange = addr <= range
@@ -171,6 +176,23 @@ simpleSlave range readData0 wbIn = mealy go readData0 wbIn
      readData | writeOp     = writeData
               | acknowledge = readData1
               | otherwise   = errorX "simpleSlave: readData is undefined because when ack is False"
+
+
+-- | Simple wishbone slave that responds to addresses [0..range], it responds by returning
+-- a stored value (initialized by readData0), which can be overwritten by the wishbone bus.
+-- any read/write attempt to an address outside of the supplied range sets the err signal.
+simpleSlave ::
+  forall dom bs .
+  (HiddenClockResetEnable dom, KnownNat bs) =>
+  BitVector (bs * 8) ->
+  BitVector (bs * 8) ->
+  Signal dom (WishboneM2S (bs * 8) bs (BitVector (bs * 8))) ->
+  Signal dom (WishboneS2M (BitVector (bs * 8)))
+simpleSlave range readData wbIn =
+  case timesNDivRU'' @bs @8 of
+    Dict -> fst $ toSignals circuit (wbIn, ())
+ where
+  circuit = validatorCircuit |> simpleSlave' @dom @(bs * 8) @bs range readData
 
 -- findBaseAddress returns the base address that responds to a and its range
 findBaseAddress :: Ord a => a -> Vec n a -> Vec m b -> (a, b)
