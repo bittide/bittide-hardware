@@ -24,11 +24,11 @@ patterns = [docopt|
 sim version 0.1.0
 
 Usage:
-  sim csv <steps> <sample>
-  sim plot <steps> <sample>
+  sim csv <steps> <points>
+  sim plot <steps> <points>
 
 Options:
-  <sample> Plot/dump only every kth datum
+  <points> Number of points to keep + pass to plotting library
 |]
 
 getArgOrExit :: Arguments -> Option -> IO String
@@ -39,11 +39,13 @@ main = do
   args <- parseArgsOrExit patterns =<< getArgs
 
   when (args `isPresent` (command "csv")) $ do
-    n <- args `getArgOrExit` (argument "steps")
-    k <- args `getArgOrExit` (argument "sample")
-    dumpCsv (readOrError n) (readOrError k)
+    n <- readOrError <$> args `getArgOrExit` (argument "steps")
+    p <- readOrError <$> args `getArgOrExit` (argument "points")
+    let k = n `quot` p
+    dumpCsv p k
 
   when (args `isPresent` (command "plot")) $ do
-    n <- args `getArgOrExit` (argument "steps")
-    k <- args `getArgOrExit` (argument "sample")
-    plotEbs (readOrError n) (readOrError k)
+    n <- readOrError <$> args `getArgOrExit` (argument "steps")
+    p <- readOrError <$> args `getArgOrExit` (argument "points")
+    let k = n `quot` p
+    plotEbs p k
