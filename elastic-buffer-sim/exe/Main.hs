@@ -5,16 +5,18 @@
 module Main (main) where
 
 import Control.Monad (when)
+import Data.Proxy (Proxy (..))
+import Data.Typeable (Typeable, typeRep)
 import System.Console.Docopt
 import System.Environment (getArgs)
 import Text.Read (readMaybe)
 
 import Bittide.Topology
 
-readOrError :: String -> Int
+readOrError :: forall a. (Typeable a, Read a) => String -> a
 readOrError s =
   case readMaybe s of
-    Nothing -> error ("Could not parse '" <> s <> "' as 'Int'")
+    Nothing -> error ("Could not parse '" <> s <> "' as '" ++ show (typeRep (Proxy @a)) ++ "'")
     Just a  -> a
 
 patterns :: Docopt
