@@ -434,12 +434,11 @@ simNodesFromGraph ccc g = do
   bundleV = VarE 'Clash.bundle
   consC = ConE 'Clash.Cons
   nilC = ConE 'Clash.Nil
-  errC = ConE 'Error
-  ebV = VarE 'elasticBuffer
+  ebV = VarE 'ebController
   tunableClockGenV = VarE 'tunableClockGen
   resetGenV = VarE 'Clash.resetGen
   enableGenV = VarE 'Clash.enableGen
-  ebClkClk = ebV `AppE` errC `AppE` ebSize
+  ebClkClk = ebV `AppE` ebSize
   callistoClockControlV = VarE 'callistoClockControl
   mkVecE = foldr (\x -> AppE (AppE consC x)) nilC
 
