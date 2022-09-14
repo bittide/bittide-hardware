@@ -13,18 +13,19 @@
 -- dumps clock periods and elastic buffer occupancy to csv.
 module Bittide.Topology
   ( dumpCsv
+  , plotC12
+  , plotDiamond
   , plotEbs
   , plotHypercube
   , plotHypercube4
-  , plotTorus34
   , plotK2
   , plotK3
+  , plotK5
   , plotK6
-  , plotC12
-  , plotDiamond
-  , plotTree32
-  , plotTree23
   , plotStar7
+  , plotTorus34
+  , plotTree23
+  , plotTree32
   )
 where
 
@@ -63,6 +64,9 @@ plotK2 = $(plotEbsAPI ("complete2", complete 2))
 
 plotK3 :: Int -> Int -> IO ()
 plotK3 = $(plotEbsAPI ("complete3", complete 3))
+
+plotK5 :: Int -> Int -> IO ()
+plotK5 = $(plotEbsAPI ("complete5", complete 5))
 
 plotK6 :: Int -> Int -> IO ()
 plotK6 = $(plotEbsAPI ("complete6", complete 6))

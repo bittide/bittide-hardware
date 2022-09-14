@@ -83,7 +83,7 @@ defClockConfig = ClockControlConfig
   , cccSettlePeriod      = pessimisticPeriod * 200
   , cccDynamicRange      = 150
   , cccStepSize          = 1
-  , cccBufferSize        = 65536 -- 128
+  , cccBufferSize        = 128
   }
  where
   specPpm = 100

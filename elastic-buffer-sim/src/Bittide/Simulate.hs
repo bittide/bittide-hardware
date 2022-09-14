@@ -12,8 +12,9 @@ Provides a rudimentary simulation of elastic buffers.
 
 module Bittide.Simulate where
 
-import Clash.Prelude
+import Clash.Explicit.Prelude
 import Clash.Signal.Internal
+import Data.Bifunctor (first, second)
 import GHC.Stack
 import Numeric.Natural
 
@@ -84,65 +85,127 @@ tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
     in
       newPeriod :- go newSettleCounter newPeriod scs
 
--- | Determines how 'elasticBuffer' should respond to underflow/overflow.
-data OverflowMode
-  -- | Saturate at empty/full boundaries. Useful for testing purposes.
-  = Saturate
-  -- | Error on write-when-full, or read-when-empty. This mode shuold be used in
-  -- practise. Overflowing elastic buffer cannot happen in a real Bittide system.
-  | Error
+type ResetClockControl = Bool
+type HasUnderflowed = Bool
+type HasOverflowed = Bool
+type DisableTilHalf = Bool
 
--- | Simple model of a FIFO that only models the interesting part for conversion:
--- data counts.
+-- | This wrapper disables reads or writes when the elastic buffer
+-- over-/underflows, as appropriate.
+--
+-- It also censors 'DataCount' after an over-/underflow, so that we do not take
+-- measurements from an elastic buffer until it has settled back to its
+-- midpoint.
+ebController ::
+  forall readDom writeDom.
+  (KnownDomain readDom, KnownDomain writeDom) =>
+  ElasticBufferSize ->
+  Clock readDom ->
+  Reset readDom ->
+  Enable readDom ->
+  Clock writeDom ->
+  Reset writeDom ->
+  Enable writeDom ->
+  (Signal readDom DataCount, Signal readDom ResetClockControl)
+ebController size clkRead rstRead enaRead clkWrite rstWrite enaWrite =
+  unbundle
+    (go <$> rdToggle <*> outRd <*> overflowRd)
+ where
+  (outRd, outWr) = elasticBuffer size clkRead clkWrite rdToggle wrToggle
+
+  go True (dc, False) False = (dc, False)
+  go _ (dc, _) _ = (dc, True)
+
+  overflowRd =
+    dualFlipFlopSynchronizer clkWrite clkRead rstRead enaRead False (snd <$> outWr)
+
+  -- if the elastic buffer underflows, stop reads until it is half full again.
+  rdToggle =
+    register clkRead rstRead enaRead True
+      $ mealy clkRead rstRead enaRead f False outRd
+   where
+    f :: HasUnderflowed -> (DataCount, Underflow) -> (HasUnderflowed, DisableTilHalf)
+    f False (_, False) = (False, True)
+    f _ (_, True) = (True, False)
+    f True (d, _) | d == targetDataCount size = (False, True)
+    f _ _ = (False, False)
+
+  -- if the elastic buffer overflows, stop writes until it is half full again.
+  wrToggle =
+    register clkWrite rstWrite enaWrite True
+      $ mealy clkWrite rstWrite enaWrite g False outWr
+   where
+    g :: HasOverflowed -> (DataCount, Overflow) -> (HasOverflowed, DisableTilHalf)
+    g False (_, False) = (False, True)
+    g _ (_, True) = (True, False)
+    g True (d, _) | d == targetDataCount size = (False, True)
+    g _ _ = (False, False)
+
+type Underflow = Bool
+type Overflow = Bool
+
+-- | Model FIFO. This is exposed as 'ebController'
+--
+-- Output signal exposes 'DataCount' and over-/underflow.
 elasticBuffer ::
   forall readDom writeDom.
-  (HasCallStack, KnownDomain readDom, KnownDomain writeDom) =>
-  -- | What behavior to pick on underflow/overflow
-  OverflowMode ->
+  (KnownDomain readDom, KnownDomain writeDom) =>
   -- | Size of FIFO. To reflect our target platforms, this should be a power of two
   -- where typical sizes would probably be: 16, 32, 64, 128.
   ElasticBufferSize ->
   Clock readDom ->
   Clock writeDom ->
-  Signal readDom DataCount
-elasticBuffer mode size clkRead clkWrite
+  -- | Read enable
+  Signal readDom Bool ->
+  -- | Write enable
+  Signal writeDom Bool ->
+  (Signal readDom (DataCount, Underflow), Signal writeDom (DataCount, Overflow))
+elasticBuffer size clkRead clkWrite readEna writeEna
   | Clock _ (Just readPeriods) <- clkRead
   , Clock _ (Just writePeriods) <- clkWrite
-  = go 0 (targetDataCount size) readPeriods writePeriods
+  = go 0 (targetDataCount size) readPeriods writePeriods readEna writeEna
  where
   go !relativeTime !fillLevel rps wps@(writePeriod :- _) =
     if relativeTime < toInteger writePeriod
-    then goRead relativeTime fillLevel rps wps
-    else goWrite relativeTime fillLevel rps wps
+      then goRead relativeTime fillLevel rps wps
+      else goWrite relativeTime fillLevel rps wps
 
-  goWrite relativeTime fillLevel rps (writePeriod :- wps) =
-    go (relativeTime - toInteger writePeriod) newFillLevel rps wps
+  goWrite relativeTime fillLevel rps (writePeriod :- wps) rdEna (wrEna :- wrEnas)
+    | wrEna =
+    second (next :-) $
+      go (relativeTime - toInteger writePeriod) newFillLevel rps wps rdEna wrEnas
    where
-    newFillLevel
-      | fillLevel >= size = case mode of
-          Saturate -> fillLevel
-          Error -> error "elasticBuffer: overflow"
-      | otherwise = fillLevel + 1
+    next@(newFillLevel, _)
+      | fillLevel >= size = (size, True)
+      | otherwise = (fillLevel + 1, False)
 
-  goRead relativeTime fillLevel (readPeriod :- rps) wps =
-    newFillLevel :- go (relativeTime + toInteger readPeriod) newFillLevel rps wps
+  goWrite relativeTime fillLevel rps (writePeriod :- wps) rdEna (_ :- wrEnas) =
+    second ((fillLevel, False) :-) $
+      go (relativeTime - toInteger writePeriod) fillLevel rps wps rdEna wrEnas
+
+  goRead relativeTime fillLevel (readPeriod :- rps) wps (rdEna :- rdEnas) wrEnas
+    | rdEna =
+    first (next :-) $
+      go (relativeTime + toInteger readPeriod) newFillLevel rps wps rdEnas wrEnas
    where
-    newFillLevel
-      | fillLevel <= 0 = case mode of
-          Saturate -> 0
-          Error -> error "elasticBuffer: underflow"
-      | otherwise = fillLevel - 1
+    next@(newFillLevel, _)
+      | fillLevel <= 0 = (0, True)
+      | otherwise = (fillLevel - 1, False)
 
-elasticBuffer mode size (Clock ss Nothing) clock1 =
+  goRead relativeTime fillLevel (readPeriod :- rps) wps (_ :- rdEnas) wrEnas =
+    first ((fillLevel, False) :-) $
+      go (relativeTime + toInteger readPeriod) fillLevel rps wps rdEnas wrEnas
+
+elasticBuffer size (Clock ss Nothing) clock1 readEna writeEna =
   -- Convert read clock to a "dynamic" clock if it isn't one
   let
     period = snatToNum (clockPeriod @readDom)
   in
-    elasticBuffer mode size (Clock ss (Just (pure period))) clock1
+    elasticBuffer size (Clock ss (Just (pure period))) clock1 readEna writeEna
 
-elasticBuffer mode size clock0 (Clock ss Nothing) =
+elasticBuffer size clock0 (Clock ss Nothing) readEna writeEna =
   -- Convert write clock to a "dynamic" clock if it isn't one
   let
     period = snatToNum (clockPeriod @writeDom)
   in
-    elasticBuffer mode size clock0 (Clock ss (Just (pure period)))
+    elasticBuffer size clock0 (Clock ss (Just (pure period))) readEna writeEna

@@ -26,7 +26,7 @@ import Control.Monad (replicateM, void, zipWithM)
 import Data.Bifunctor (bimap)
 import Data.Csv (encode)
 import Data.Graph (Graph)
-import Graphics.Matplotlib (Matplotlib, (%), file, plot, xlabel, ylabel)
+import Graphics.Matplotlib (Matplotlib, (%), (@@), file, o2, plot, xlabel, ylabel)
 import Language.Haskell.TH (Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), Stmt (..), Type (..), newName)
 import Language.Haskell.TH.Syntax (lift)
 import Numeric.Natural (Natural)
@@ -60,11 +60,16 @@ matplotWrite nm clockDats ebDats = do
   void $
     file
       ("_build/clocks" ++ nm ++ ".pdf")
-      (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
+      (xlabel "Time (ps)"
+        % ylabel "Period (ps)"
+        % foldPlots (setLineWidth <$> clockDats))
   void $
     file
       ("_build/elasticbuffers" ++ nm ++ ".pdf")
       (xlabel "Time (ps)" % foldPlots ebDats)
+
+setLineWidth :: Matplotlib -> Matplotlib
+setLineWidth = (@@ [o2 "linewidth" (0.1::Double)])
 
 genOffsN :: Int -> IO [Offset]
 genOffsN n = replicateM (n+1) genOffsets
@@ -343,7 +348,10 @@ asPlotN i = do
     LamE [VarP m] $
               bimapV
                 plotPairs
-                (VarE 'foldPlots `compose` mapV plotPairs `compose` VarE 'L.transpose)
+                (VarE 'foldPlots
+                  `compose` mapV (VarE 'setLineWidth)
+                  `compose` mapV plotPairs
+                  `compose` VarE 'L.transpose)
     `compose` VarE 'unzip
     `compose` mapV g
     `compose` (VarE 'take `AppE` VarE m)
@@ -363,6 +371,12 @@ extractPeriods ::
 extractPeriods (Clash.Clock _ (Just s)) = s
 extractPeriods _ = pure (Clash.snatToNum (Clash.clockPeriod @dom))
 
+mkReset ::
+  (Clash.KnownDomain dom, Clash.KnownNat n, 1 Clash.<= n) =>
+  Clash.Vec n (Clash.Signal dom Bool) ->
+  Clash.Reset dom
+mkReset = Clash.unsafeFromHighPolarity . fmap or . Clash.bundle
+
 -- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
 -- offsets (divergence from spec) and returns a tuple of signals for each clock
 -- domain
@@ -373,13 +387,18 @@ simNodesFromGraph ccc g = do
   clockControlNames <- traverse (\i -> newName ("clockControl" ++ show i)) indicesArr
   clockSignalNames <- traverse (\i -> newName ("clk" ++ show i ++ "Signal")) indicesArr
   ebNames <- traverse (\(i, j) -> newName ("eb" ++ show i ++ show j)) ebA
+  ebRstNames <- traverse (\(i, j) -> newName ("ebRst" ++ show i ++ show j)) ebA
   cccE <- lift ccc
   let
     ebE i j =
-        AppE
-          (AppE ebClkClk (VarE (clockNames A.! i)))
-          (VarE (clockNames A.! j))
-    ebD i j = valD (VarP (ebNames A.! (i, j))) (ebE i j)
+        ebClkClk
+          `AppE` VarE (clockNames A.! i)
+          `AppE` resetGenV
+          `AppE` enableGenV
+          `AppE` VarE (clockNames A.! j)
+          `AppE` resetGenV
+          `AppE` enableGenV
+    ebD i j = valD (TupP [VarP (ebNames A.! (i, j)), VarP (ebRstNames A.! (i, j))]) (ebE i j)
 
     clkE i =
       AppE
@@ -392,10 +411,12 @@ simNodesFromGraph ccc g = do
       AppE
         (callistoClockControlV
           `AppE` VarE (clockNames A.! k)
-          `AppE` resetGenV
+          `AppE` (VarE 'mkReset `AppE` resets) -- resetGenV
           `AppE` enableGenV
           `AppE` cccE)
         (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
+     where
+      resets = mkVecE [ VarE (ebRstNames A.! (k, i)) | i <- g A.! k ]
     clockControlD k = valD (VarP (clockControlNames A.! k)) (clockControlE k)
 
     ebs = fmap (uncurry ebD) [ (i, j) | i <- indices, j <- g A.! i ]
@@ -434,12 +455,11 @@ simNodesFromGraph ccc g = do
   bundleV = VarE 'Clash.bundle
   consC = ConE 'Clash.Cons
   nilC = ConE 'Clash.Nil
-  errC = ConE 'Error
-  ebV = VarE 'elasticBuffer
+  ebV = VarE 'ebController
   tunableClockGenV = VarE 'tunableClockGen
   resetGenV = VarE 'Clash.resetGen
   enableGenV = VarE 'Clash.enableGen
-  ebClkClk = ebV `AppE` errC `AppE` ebSize
+  ebClkClk = ebV `AppE` ebSize
   callistoClockControlV = VarE 'callistoClockControl
   mkVecE = foldr (\x -> AppE (AppE consC x)) nilC
 
