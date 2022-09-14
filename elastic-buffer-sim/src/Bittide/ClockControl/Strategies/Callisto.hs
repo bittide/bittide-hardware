@@ -15,7 +15,7 @@ import Clash.Signal.Internal
 import Bittide.ClockControl
 
 data ControlSt = ControlSt
-  { x_k :: Double -- ^ 'x_k' is the integral of the measurement
+  { x_k :: Float -- ^ 'x_k' is the integral of the measurement
   , z_k :: Integer
   , b_k :: SpeedChange
   }
@@ -43,8 +43,8 @@ callisto = go initControlSt
     -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
     --
     -- the constants here are chosen to match the above code.
-    k_p = 2e-4 :: Double
-    k_i = 1e-11 :: Double
+    k_p = 2e-4 :: Float
+    k_i = 1e-11 :: Float
     r_k =
       let
         measuredSum = realToFrac (sum dataCounts)
