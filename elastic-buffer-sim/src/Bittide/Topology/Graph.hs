@@ -12,11 +12,14 @@ module Bittide.Topology.Graph
   , torus2d
   , torus3d
   , tree
+  , line
+  , hypercube
   )
 where
 
 import Prelude
 
+import Data.Bits (Bits (..))
 import Data.Containers.ListUtils (nubOrd)
 import Data.Function (on)
 import Data.Graph (Graph, graphFromEdges)
@@ -25,6 +28,28 @@ import Data.Maybe (mapMaybe)
 import Data.Tuple (swap)
 
 import Data.Array qualified as A
+
+-- | @n@ nodes in a line, connected to their neighbors.
+--
+-- (differs from the
+-- [mathematical terminology](https://mathworld.wolfram.com/LineGraph.html) but
+-- conforms to callisto)
+line :: Int -> Graph
+line n = fromEdgeList es
+ where
+  es = [ (i, i-1) | i <- [2..n] ]
+
+-- | @n@-dimensional hypercube
+hypercube :: Int -> Graph
+hypercube n = fromEdgeList es
+ where
+  k = (2::Int)^n
+  es =
+    -- see Callisto code (julia):
+    -- https://github.com/bittide/Callisto.jl/blob/73d908c6cb02b9b953cc104e5b42d432efc42598/src/topology.jl#L224
+    [ let j = i .|. (1 `shiftL` b) in (i+1, j+1)
+    | i <- [0..(k-1)], b <- [0..(n-1)], i .&. (1 `shiftL` b) == 0
+    ]
 
 -- | Diamond graph
 diamond :: Graph
