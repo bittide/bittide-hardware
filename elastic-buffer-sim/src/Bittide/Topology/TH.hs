@@ -371,11 +371,11 @@ extractPeriods ::
 extractPeriods (Clash.Clock _ (Just s)) = s
 extractPeriods _ = pure (Clash.snatToNum (Clash.clockPeriod @dom))
 
-mkReset ::
+resetNode ::
   (Clash.KnownDomain dom, Clash.KnownNat n, 1 Clash.<= n) =>
   Clash.Vec n (Clash.Signal dom Bool) ->
-  Clash.Reset dom
-mkReset = Clash.unsafeFromHighPolarity . fmap or . Clash.bundle
+  Clash.Signal dom Bool
+resetNode = fmap or . Clash.bundle
 
 -- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
 -- offsets (divergence from spec) and returns a tuple of signals for each clock
@@ -385,6 +385,8 @@ simNodesFromGraph ccc g = do
   offsets <- traverse (\i -> newName ("offsets" ++ show i)) indices
   clockNames <- traverse (\i -> newName ("clock" ++ show i)) indicesArr
   clockControlNames <- traverse (\i -> newName ("clockControl" ++ show i)) indicesArr
+  stableNames <- traverse (\i -> newName ("stable" ++ show i)) indicesArr
+  statusNames <- traverse (\i -> newName ("status" ++ show i)) indicesArr
   clockSignalNames <- traverse (\i -> newName ("clk" ++ show i ++ "Signal")) indicesArr
   ebNames <- traverse (\(i, j) -> newName ("eb" ++ show i ++ show j)) ebA
   ebRstNames <- traverse (\(i, j) -> newName ("ebRst" ++ show i ++ show j)) ebA
@@ -407,22 +409,33 @@ simNodesFromGraph ccc g = do
     clkD i = valD (VarP (clockNames A.! i)) (clkE i)
     clkSignalD i = valD (VarP (clockSignalNames A.! i)) (VarE 'extractPeriods `AppE` VarE (clockNames A.! i))
 
+    resets k =
+      VarE 'resetNode
+        `AppE` mkVecE [ VarE (ebRstNames A.! (k, i)) | i <- g A.! k ]
     clockControlE k =
       AppE
+        (VarE 'Clash.unbundle)
         (callistoClockControlV
           `AppE` VarE (clockNames A.! k)
-          `AppE` (VarE 'mkReset `AppE` resets) -- resetGenV
+          `AppE` (VarE 'Clash.unsafeFromHighPolarity `AppE` resets k)
           `AppE` enableGenV
-          `AppE` cccE)
-        (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
-     where
-      resets = mkVecE [ VarE (ebRstNames A.! (k, i)) | i <- g A.! k ]
-    clockControlD k = valD (VarP (clockControlNames A.! k)) (clockControlE k)
+          `AppE` cccE
+          `AppE` mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
+    clockControlD k = valD (TupP [VarP (clockControlNames A.! k), VarP (stableNames A.! k)]) (clockControlE k)
+
+    statusE k =
+      VarE 'bootStatus
+        `AppE` VarE (clockNames A.! k)
+        `AppE` resetGenV
+        `AppE` enableGenV
+        `AppE` (bundleV `AppE` tup [VarE (stableNames A.! k), resets k])
+    statusD k = valD (VarP (statusNames A.! k)) (statusE k)
 
     ebs = fmap (uncurry ebD) [ (i, j) | i <- indices, j <- g A.! i ]
     clockControls = clockControlD <$> indices
     clkDs = clkD <$> indices
     clkSignalDs = clkSignalD <$> indices
+    statusDs = statusD <$> indices
 
     res k =
       SigE
@@ -436,7 +449,7 @@ simNodesFromGraph ccc g = do
     LamE
       [ListP (VarP <$> offsets)]
       (LetE
-        (ebs ++ clkDs ++ clkSignalDs ++ clockControls)
+        (ebs ++ clkDs ++ clkSignalDs ++ clockControls ++ statusDs)
         (postprocess `AppE` tup (fmap res indices)))
  where
   indices = [0..n]

@@ -10,11 +10,14 @@ module Bittide.ClockControl
   ( ClockControlConfig (..)
   , DataCount
   , ElasticBufferSize
+  , ExpectStable
   , SettlePeriod
   , SpeedChange (..)
   , defClockConfig
   , specPeriod
   , targetDataCount
+  , bootStatus
+  , sgn
   )
 where
 
@@ -29,6 +32,7 @@ import Data.Csv
 type ElasticBufferSize = Unsigned 32
 type DataCount = Unsigned 32
 type SettlePeriod = Natural
+type ExpectStable = Bool
 
 -- | Configuration passed to 'clockControl'
 data ClockControlConfig = ClockControlConfig
@@ -74,6 +78,34 @@ instance KnownNat n => ToField (Unsigned n) where
 
 instance KnownNat n => ToJSON (Unsigned n) where
   toJSON = toJSON . toInteger
+
+sgn :: Integral a => SpeedChange -> a
+sgn NoChange = 0
+sgn SpeedUp = 1
+sgn SlowDown = -1
+
+type CatastrophicFailure = Bool
+type HasOverUnderflowed = Bool
+
+data BootStatus = Track | Stable deriving (Generic, NFDataX)
+
+-- | If there is an over-/underflow after stability has been asserted, the node
+-- has failed.
+bootStatus ::
+  KnownDomain dom =>
+  Clock dom ->
+  Reset dom ->
+  Enable dom ->
+  Signal dom (ExpectStable, HasOverUnderflowed) ->
+  Signal dom CatastrophicFailure
+bootStatus clk rst ena =
+  mealy clk rst ena go Track
+ where
+  go Track (False, _) = (Track, False)
+  go Track (True, False) = (Stable, False)
+  go Track (True, True) = (Track, True)
+  go Stable (_, False) = (Stable, True)
+  go Stable (_, True) = (Stable, False)
 
 defClockConfig :: ClockControlConfig
 defClockConfig = ClockControlConfig
