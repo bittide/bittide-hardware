@@ -144,7 +144,7 @@ wbStorage' SNat initContent wbIn = delayControls wbIn wbOut
     -- We don't care about the first bit to determine the address alignment because
     -- byte aligned addresses are considered illegal.
     (not -> wordAligned, byteAligned) = bimap unpack unpack $ split alignment
-    addrLegal = addr <= depth && not byteAligned
+    addrLegal = addr <= (2 * depth) && not byteAligned
 
     masterActive = strobe && busCycle
     err = masterActive && not addrLegal
@@ -159,14 +159,14 @@ wbStorage' SNat initContent wbIn = delayControls wbIn wbOut
         ( (wbAddr, bsHigh, writeDataHigh)
         , (wbAddr, bsLow, writeDataLow))
       | otherwise =
-        ( (satSucc SatBound wbAddr, bsLow, writeDataLow)
-        , (wbAddr, bsHigh, writeDataHigh))
+        ( (wbAddr, bsLow, writeDataLow)
+        , (satSucc SatBound wbAddr, bsHigh, writeDataHigh))
 
     (romWrite, romDone) = romOut0
     (romWriteB, romWriteA) = splitWrite romWrite
     (writeEntryB0, writeEntryA0)
       | isReloadable && not romDone = (romWriteB, romWriteA)
-      | masterWriting = (Just (addrB, writeDataB),Just (addrB, writeDataA))
+      | masterWriting = (Just (addrB, writeDataB),Just (addrA, writeDataA))
       | otherwise = (Nothing,Nothing)
     readData
       | wordAligned = rdB ++# rdA
