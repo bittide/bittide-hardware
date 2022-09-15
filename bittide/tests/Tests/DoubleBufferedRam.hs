@@ -653,7 +653,8 @@ wbStorageSpecCompliance = property $ do
           genRequests
           ()
 
-    genRequests = Gen.list (Range.linear 0 100) (genWishboneTransfer @32 (genDefinedBitVector @32))
+    genRequests = Gen.list (Range.linear 0 100)
+      (genWishboneTransfer @32 (genDefinedBitVector @32))
 
     genWishboneTransfer ::
       (KnownNat addressWidth, KnownNat (BitSize a)) =>
@@ -714,6 +715,7 @@ wbStorageBehavior = property $ do
    where
     addrUndef = deepErrorX "wbStorageBehavior: readAddr undefined."
 
+-- | Behavioral model for 'wbStorage'. It stores its contents as half-words
 wbStorageBehaviorModel
   :: (KnownNat i, KnownNat m)
   => [BitVector m]
