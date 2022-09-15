@@ -7,6 +7,7 @@ packages:
   bittide/
   contranomy-sim/
   contranomy/
+  demo-1/demo1-sim/
   elastic-buffer-sim/
 
 write-ghc-environment-files: always

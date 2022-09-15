@@ -16,4 +16,5 @@ exclude = [
 ]
 members = [
   "firmware/*",
+  "demo-1/ping-pong-management",
 ]
