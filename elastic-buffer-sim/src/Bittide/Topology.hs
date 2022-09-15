@@ -14,6 +14,14 @@
 module Bittide.Topology
   ( dumpCsv
   , plotEbs
+  , plotHypercube
+  , plotTorus34
+  , plotK3
+  , plotK6
+  , plotC12
+  , plotDiamond
+  , plotTree23
+  , plotStar7
   )
 where
 
@@ -33,7 +41,31 @@ import Bittide.Topology.TH
 -- | This samples @n@ steps, taking every @k@th datum, and plots clock speeds
 -- and elastic buffer occupancy
 plotEbs :: Int -> Int -> IO ()
-plotEbs = $(plotEbsAPI (complete 6))
+plotEbs = plotC12
+
+plotDiamond :: Int -> Int -> IO ()
+plotDiamond = $(plotEbsAPI diamond)
+
+plotHypercube :: Int -> Int -> IO ()
+plotHypercube = $(plotEbsAPI (hypercube 3))
+
+plotTorus34 :: Int -> Int -> IO ()
+plotTorus34 = $(plotEbsAPI (torus2d 3 4))
+
+plotK3 :: Int -> Int -> IO ()
+plotK3 = $(plotEbsAPI (complete 3))
+
+plotK6 :: Int -> Int -> IO ()
+plotK6 = $(plotEbsAPI (complete 6))
+
+plotC12 :: Int -> Int -> IO ()
+plotC12 = $(plotEbsAPI (cyclic 12))
+
+plotStar7 :: Int -> Int -> IO ()
+plotStar7 = $(plotEbsAPI (star 7))
+
+plotTree23 :: Int -> Int -> IO ()
+plotTree23 = $(plotEbsAPI (tree 3 2))
 
 -- | This samples @n@ steps, taking every @k@th datum; the result can be fed to
 -- @script.py@

@@ -25,7 +25,12 @@ sim version 0.1.0
 
 Usage:
   sim csv <steps> <points>
-  sim plot <steps> <points>
+  sim plot complete3 <steps> <points>
+  sim plot complete6 <steps> <points>
+  sim plot diamond <steps> <points>
+  sim plot star7 <steps> <points>
+  sim plot tree23 <steps> <points>
+  sim plot hypercube3 <steps> <points>
 
 Options:
   <points> Number of points to keep + pass to plotting library
@@ -48,4 +53,12 @@ main = do
     n <- readOrError <$> args `getArgOrExit` (argument "steps")
     p <- readOrError <$> args `getArgOrExit` (argument "points")
     let k = n `quot` p
-    plotEbs p k
+    let plotFn =
+          case () of
+            _ | args `isPresent` (command "diamond") -> plotDiamond
+            _ | args `isPresent` (command "complete3") -> plotK3
+            _ | args `isPresent` (command "complete6") -> plotK6
+            _ | args `isPresent` (command "star7") -> plotStar7
+            _ | args `isPresent` (command "tree23") -> plotTree23
+            _ | args `isPresent` (command "hypercube3") -> plotHypercube
+    plotFn p k
