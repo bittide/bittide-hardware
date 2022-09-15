@@ -11,25 +11,30 @@ module Bittide.Topology.TH
   , encodeQ
   , onTup
   , onN
-  , plotDats
+  , plotEbsAPI
   , simNodesFromGraph
   , timeN
   , unzipN
+  , takeEveryN
+  , genOffsN
   )
 where
 
 import Prelude
 
-import Control.Monad (zipWithM)
+import Control.Monad (replicateM, void, zipWithM)
 import Data.Bifunctor (bimap)
 import Data.Csv (encode)
 import Data.Graph (Graph)
-import Graphics.Matplotlib (plot)
-import Language.Haskell.TH (Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), Type (..), newName)
+import Graphics.Matplotlib (Matplotlib, (%), file, plot, xlabel, ylabel)
+import Language.Haskell.TH (Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), Stmt (..), Type (..), newName)
 import Language.Haskell.TH.Syntax (lift)
 import Numeric.Natural (Natural)
+import System.Directory (createDirectoryIfMissing)
+import System.Random (randomRIO)
 
 import Bittide.Simulate
+import Bittide.Simulate.Ppm
 import Bittide.ClockControl
 import Bittide.ClockControl.Strategies
 import Bittide.Topology.TH.Domain
@@ -40,6 +45,78 @@ import Data.List qualified as L
 
 import Clash.Explicit.Prelude qualified as Clash
 import Clash.Signal.Internal qualified as Clash
+
+-- | As an example:
+--
+-- >>> takeEveryN 3 [1..10]
+-- [1,4,7,10]
+takeEveryN :: Int -> [a] -> [a]
+takeEveryN _ [] = []
+takeEveryN n (x:xs) = x : takeEveryN n (drop (n-1) xs)
+
+matplotWrite :: [Matplotlib] -> [Matplotlib] -> IO ()
+matplotWrite clockDats ebDats = do
+  createDirectoryIfMissing True "_build"
+  void $ file "_build/clocks.pdf" (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
+  void $ file "_build/elasticbuffers.pdf" (xlabel "Time (ps)" % foldPlots ebDats)
+
+genOffsN :: Int -> IO [Offset]
+genOffsN n = replicateM (n+1) genOffsets
+
+-- | Given a 'Graph', generate an expression of type
+--
+-- > Int -> Int -> IO ()
+--
+-- which writes/dumps simulation results for a particular graph.
+plotEbsAPI :: Graph -> Q Exp
+plotEbsAPI g = do
+  mplots <- plotEbsQ g
+  offs <- newName "offs"
+  m <- newName "m"
+  k <- newName "k"
+  res <- newName "res"
+  let mV = VarE m
+      kV = VarE k
+  pure $
+    LamE [VarP m, VarP k]
+      (DoE Nothing
+        [ BindS (VarP offs) (VarE 'genOffsN `AppE` nE)
+        , LetS
+            [ValD
+              (VarP res)
+              (NormalB (mplots `AppE` VarE offs `AppE` mV `AppE` kV))
+              []
+            ]
+        , NoBindS (VarE 'uncurry `AppE` VarE 'matplotWrite `AppE` VarE res)
+        ])
+ where
+  (0, n) = A.bounds g
+  nE = LitE (IntegerL (toInteger n))
+
+-- | Given a 'Graph', generate an expression of type
+--
+-- > [Offset] -> Int -> Int -> ([Matplotlib], [Matplotlib])
+plotEbsQ :: Graph -> Q Exp
+plotEbsQ g = do
+  m <- newName "m"
+  k <- newName "k"
+  offs <- newName "offs"
+  let mV = VarE m
+      kV = VarE k
+      offsV = VarE offs
+  sim <- simNodesFromGraph defClockConfig g
+  pd <- plotDats g
+  let discardIntermediate = VarE 'takeEveryN `AppE` kV
+  onNQ <- onN (n+1)
+  pure $
+    LamE
+      [VarP offs, VarP m, VarP k]
+      (unzipV
+        `AppE` ((onNQ `AppE` (pd `AppE` mV))
+        `AppE` (discardIntermediate `AppE` (sim `AppE` offsV))))
+ where
+  (0, n) = A.bounds g
+  unzipV = VarE 'unzip
 
 -- | Like the Cartesian product.
 --
@@ -352,3 +429,17 @@ simNodesFromGraph ccc g = do
   ebSize = LitE (IntegerL (toInteger (cccBufferSize ccc)))
   step = LitE (IntegerL (cccStepSize ccc))
   settlePeriod = LitE (IntegerL (toInteger (cccSettlePeriod ccc)))
+
+-- | Randomly generate a 'Offset', how much a real clock's period may differ
+-- from its spec.
+genOffsets :: IO Offset
+genOffsets =
+  (`subtract` toInteger specPeriod)
+    <$> randomRIO (toInteger minT, toInteger maxT)
+ where
+  minT = speedUpPeriod specPpm specPeriod
+  maxT = slowDownPeriod specPpm specPeriod
+
+-- | Clocks uncertainty is ±100 ppm
+specPpm :: Ppm
+specPpm = Ppm 100

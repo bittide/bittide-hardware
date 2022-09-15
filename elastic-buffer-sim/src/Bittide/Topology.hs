@@ -13,62 +13,33 @@
 -- dumps clock periods and elastic buffer occupancy to csv.
 module Bittide.Topology
   ( dumpCsv
-  , genOffsets
   , plotEbs
-  , takeEveryN
   )
 where
 
 import Clash.Explicit.Prelude
-import Control.Monad (void, forM_, replicateM, zipWithM_)
+import Control.Monad (forM_, zipWithM_)
+import System.Directory (createDirectoryIfMissing)
 
 import Prelude qualified as P
-
-import Graphics.Matplotlib ((%), file, xlabel, ylabel)
-import System.Directory (createDirectoryIfMissing)
-import System.Random (randomRIO)
 
 import Data.Array qualified as A
 import Data.ByteString.Lazy qualified as BSL
 
-import Bittide.Simulate
 import Bittide.ClockControl
-import Bittide.Simulate.Ppm
 import Bittide.Topology.Graph
 import Bittide.Topology.TH
-import Graphics.Matplotlib.Ext
-
--- | As an example:
---
--- >>> takeEveryN 3 [1..10]
--- [1,4,7,10]
-takeEveryN :: Int -> [a] -> [a]
-takeEveryN _ [] = []
-takeEveryN n (x:xs) = x : takeEveryN n (P.drop (n-1) xs)
 
 -- | This samples @n@ steps, taking every @k@th datum, and plots clock speeds
 -- and elastic buffer occupancy
 plotEbs :: Int -> Int -> IO ()
-plotEbs m k = do
-  offs <- replicateM (n+1) genOffsets
-  createDirectoryIfMissing True "_build"
-  let (clockDats, ebDats) =
-          P.unzip
-        $ $(onN 3) (plotEachNode m)
-        $ takeEveryN k
-        $ $(simNodesFromGraph defClockConfig (complete 3)) offs
-  void $ file "_build/clocks.pdf" (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
-  void $ file "_build/elasticbuffers.pdf" (xlabel "Time (ps)" % foldPlots ebDats)
- where
-  (0, n) = A.bounds g
-  g = complete 3
-  plotEachNode = $(plotDats (complete 3))
+plotEbs = $(plotEbsAPI (complete 6))
 
 -- | This samples @n@ steps, taking every @k@th datum; the result can be fed to
 -- @script.py@
 dumpCsv :: Int -> Int -> IO ()
 dumpCsv m k = do
-  offs <- replicateM (n+1) genOffsets
+  offs <- genOffsN n
   createDirectoryIfMissing True "_build"
   forM_ [0..n] $ \i ->
     let eb = g A.! i in
@@ -84,17 +55,3 @@ dumpCsv m k = do
  where
   (0, n) = A.bounds g
   g = complete 6
-
--- | Randomly generate a 'Offset', how much a real clock's period may differ
--- from its spec.
-genOffsets :: IO Offset
-genOffsets =
-  (`subtract` toInteger specPeriod)
-    <$> randomRIO (toInteger minT, toInteger maxT)
- where
-  minT = speedUpPeriod specPpm specPeriod
-  maxT = slowDownPeriod specPpm specPeriod
-
--- | Clocks uncertainty is ±100 ppm
-specPpm :: Ppm
-specPpm = Ppm 100
