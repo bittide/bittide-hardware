@@ -21,10 +21,12 @@ module Bittide.Calendar(calendar, mkCalendar, CalendarConfig(..)) where
 
 import Clash.Prelude
 
-import Bittide.DoubleBufferedRam
-import Bittide.SharedTypes
+
 import Data.Maybe
 import Protocols.Wishbone
+
+import Bittide.DoubleBufferedRam
+import Bittide.SharedTypes
 
 
 {-

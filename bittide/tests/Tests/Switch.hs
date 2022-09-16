@@ -9,29 +9,28 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Tests.Switch(switchGroup) where
 
+import Clash.Prelude
+
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Vector
-import Clash.Prelude
-import qualified Prelude as P
-
 import Clash.Sized.Vector ( unsafeFromList)
-
 import Data.String
 import GHC.Natural
 import Hedgehog
+import Protocols.Wishbone
 import Test.Tasty
 import Test.Tasty.Hedgehog
-
-import qualified Data.Sequence as Seq
-import qualified GHC.TypeNats as TN
-import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Range as Range
 
 import Bittide.Calendar (CalendarConfig(..))
 import Bittide.Switch
 import Tests.Calendar
 import Tests.Shared
-import Protocols.Wishbone
+
+import qualified Data.Sequence as Seq
+import qualified GHC.TypeNats as TN
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
+import qualified Prelude as P
 
 switchGroup :: TestTree
 switchGroup = testGroup "Switch group"

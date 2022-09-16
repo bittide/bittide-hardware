@@ -8,29 +8,30 @@
 
 module Tests.Wishbone(memMapGroup) where
 
+import Clash.Prelude
+
 import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Vector
-import Clash.Prelude
 import Clash.Sized.Vector(unsafeFromList)
-
+import Data.Constraint (Dict(Dict))
+import Data.Constraint.Nat.Extra (timesNDivRU, timesNDivRU'')
 import Data.Proxy
 import Data.String
 import Hedgehog
 import Hedgehog.Range as Range
+import Protocols (toSignals, Circuit(..), (|>))
 import Protocols.Wishbone
+import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
 import Test.Tasty
 import Test.Tasty.Hedgehog
+
+import Bittide.SharedTypes
+import Bittide.Wishbone ( MemoryMap, singleMasterInterconnect' )
+
 import qualified Data.List as L
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
-
-import Bittide.SharedTypes
-import Bittide.Wishbone
-import Data.Constraint (Dict(Dict))
-import Data.Constraint.Nat.Extra (timesNDivRU, timesNDivRU'')
-import Protocols (toSignals, Circuit(..), (|>))
-import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
 
 memMapGroup :: TestTree
 memMapGroup = testGroup "Memory Map group"

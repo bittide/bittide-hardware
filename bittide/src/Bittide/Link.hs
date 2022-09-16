@@ -17,8 +17,8 @@ import Data.Constraint.Nat.Extra
 import Data.Maybe
 import Protocols.Wishbone
 
-import Bittide.SharedTypes
 import Bittide.DoubleBufferedRam
+import Bittide.SharedTypes
 
 
 -- Internal states of the txUnit.

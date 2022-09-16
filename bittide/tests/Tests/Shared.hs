@@ -12,9 +12,9 @@ import Data.Constraint (Dict(Dict))
 import Data.Constraint.Nat.Extra (timesNDivRU'')
 import GHC.Stack (HasCallStack)
 import Hedgehog
+import Protocols (toSignals)
 import Protocols.Wishbone (WishboneM2S, WishboneS2M)
 import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
-import Protocols (toSignals)
 
 import Bittide.SharedTypes (Bytes)
 

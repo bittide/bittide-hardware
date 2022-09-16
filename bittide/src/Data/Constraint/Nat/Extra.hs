@@ -15,14 +15,15 @@ solved by the constraint solver.
 
 module Data.Constraint.Nat.Extra where
 
+import Prelude
 
 import Clash.Promoted.Nat
 import Data.Constraint
 import Data.Type.Equality
 import GHC.TypeLits.Extra
 import GHC.TypeNats
-import Prelude
 import Unsafe.Coerce
+
 import qualified Clash.Util.Interpolate as I
 
 -- | b <= ceiling(b/a)*a
