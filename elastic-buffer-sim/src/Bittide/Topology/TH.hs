@@ -54,22 +54,31 @@ takeEveryN :: Int -> [a] -> [a]
 takeEveryN _ [] = []
 takeEveryN n (x:xs) = x : takeEveryN n (drop (n-1) xs)
 
-matplotWrite :: [Matplotlib] -> [Matplotlib] -> IO ()
-matplotWrite clockDats ebDats = do
+matplotWrite :: String -> [Matplotlib] -> [Matplotlib] -> IO ()
+matplotWrite nm clockDats ebDats = do
   createDirectoryIfMissing True "_build"
-  void $ file "_build/clocks.pdf" (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
-  void $ file "_build/elasticbuffers.pdf" (xlabel "Time (ps)" % foldPlots ebDats)
+  void $
+    file
+      ("_build/clocks" ++ nm ++ ".pdf")
+      (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
+  void $
+    file
+      ("_build/elasticbuffers" ++ nm ++ ".pdf")
+      (xlabel "Time (ps)" % foldPlots ebDats)
 
 genOffsN :: Int -> IO [Offset]
 genOffsN n = replicateM (n+1) genOffsets
+
+-- | 'Graph' with a name for
+type GraphAPI = (String, Graph)
 
 -- | Given a 'Graph', generate an expression of type
 --
 -- > Int -> Int -> IO ()
 --
 -- which writes/dumps simulation results for a particular graph.
-plotEbsAPI :: Graph -> Q Exp
-plotEbsAPI g = do
+plotEbsAPI :: GraphAPI -> Q Exp
+plotEbsAPI (nm, g) = do
   mplots <- plotEbsQ g
   offs <- newName "offs"
   m <- newName "m"
@@ -77,6 +86,7 @@ plotEbsAPI g = do
   res <- newName "res"
   let mV = VarE m
       kV = VarE k
+  graphName <- lift nm
   pure $
     LamE [VarP m, VarP k]
       (DoE Nothing
@@ -87,7 +97,9 @@ plotEbsAPI g = do
               (NormalB (mplots `AppE` VarE offs `AppE` mV `AppE` kV))
               []
             ]
-        , NoBindS (VarE 'uncurry `AppE` VarE 'matplotWrite `AppE` VarE res)
+        , NoBindS (VarE 'uncurry
+                    `AppE` (VarE 'matplotWrite `AppE` graphName)
+                    `AppE` VarE res)
         ])
  where
   (0, n) = A.bounds g

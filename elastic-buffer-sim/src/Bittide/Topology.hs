@@ -44,28 +44,28 @@ plotEbs :: Int -> Int -> IO ()
 plotEbs = plotC12
 
 plotDiamond :: Int -> Int -> IO ()
-plotDiamond = $(plotEbsAPI diamond)
+plotDiamond = $(plotEbsAPI ("diamond", diamond))
 
 plotHypercube :: Int -> Int -> IO ()
-plotHypercube = $(plotEbsAPI (hypercube 3))
+plotHypercube = $(plotEbsAPI ("hypercube3", hypercube 3))
 
 plotTorus34 :: Int -> Int -> IO ()
-plotTorus34 = $(plotEbsAPI (torus2d 3 4))
+plotTorus34 = $(plotEbsAPI ("torus34", torus2d 3 4))
 
 plotK3 :: Int -> Int -> IO ()
-plotK3 = $(plotEbsAPI (complete 3))
+plotK3 = $(plotEbsAPI ("compelte3", complete 3))
 
 plotK6 :: Int -> Int -> IO ()
-plotK6 = $(plotEbsAPI (complete 6))
+plotK6 = $(plotEbsAPI ("complete6", complete 6))
 
 plotC12 :: Int -> Int -> IO ()
-plotC12 = $(plotEbsAPI (cyclic 12))
+plotC12 = $(plotEbsAPI ("cyclic12", cyclic 12))
 
 plotStar7 :: Int -> Int -> IO ()
-plotStar7 = $(plotEbsAPI (star 7))
+plotStar7 = $(plotEbsAPI ("star7", star 7))
 
 plotTree23 :: Int -> Int -> IO ()
-plotTree23 = $(plotEbsAPI (tree 3 2))
+plotTree23 = $(plotEbsAPI ("tree32", tree 3 2))
 
 -- | This samples @n@ steps, taking every @k@th datum; the result can be fed to
 -- @script.py@
