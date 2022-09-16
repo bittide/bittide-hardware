@@ -21,10 +21,12 @@ module Bittide.Calendar(calendar, mkCalendar, CalendarConfig(..)) where
 
 import Clash.Prelude
 
-import Bittide.DoubleBufferedRam
-import Bittide.SharedTypes
+
 import Data.Maybe
 import Protocols.Wishbone
+
+import Bittide.DoubleBufferedRam
+import Bittide.SharedTypes
 
 
 {-
@@ -394,7 +396,7 @@ updateRegBank ::
   , KnownNat (BitSize a)) =>
   i ->
   BitVector nBytes ->
-  BitVector (nBytes * 8) ->
+  Bytes nBytes ->
   RegisterBank (nBytes * 8) a ->
   RegisterBank (nBytes * 8) a
 updateRegBank i byteSelect newBV (RegisterBank vec) = RegisterBank newVec
@@ -404,9 +406,9 @@ updateRegBank i byteSelect newBV (RegisterBank vec) = RegisterBank newVec
 regUpdate ::
   KnownNat nBytes =>
   BitVector nBytes->
-  BitVector (nBytes * 8) ->
-  BitVector (nBytes * 8) ->
-  BitVector (nBytes * 8)
+  Bytes nBytes ->
+  Bytes nBytes ->
+  Bytes nBytes
 regUpdate byteEnable oldEntry newEntry =
   bitCoerce $ (\e (o, n :: BitVector 8) -> if e then n else o) <$>
    bitCoerce byteEnable <*> zip (bitCoerce oldEntry) (bitCoerce newEntry)

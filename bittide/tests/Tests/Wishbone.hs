@@ -8,28 +8,30 @@
 
 module Tests.Wishbone(memMapGroup) where
 
+import Clash.Prelude
+
 import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Vector
-import Clash.Prelude
 import Clash.Sized.Vector(unsafeFromList)
-
+import Data.Constraint (Dict(Dict))
+import Data.Constraint.Nat.Extra (timesNDivRU, timesNDivRU'')
 import Data.Proxy
 import Data.String
 import Hedgehog
 import Hedgehog.Range as Range
+import Protocols (toSignals, Circuit(..), (|>))
 import Protocols.Wishbone
+import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
 import Test.Tasty
 import Test.Tasty.Hedgehog
+
+import Bittide.SharedTypes
+import Bittide.Wishbone ( MemoryMap, singleMasterInterconnect' )
+
 import qualified Data.List as L
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
-
-import Bittide.Wishbone
-import Data.Constraint (Dict(Dict))
-import Data.Constraint.Nat.Extra (timesNDivRU, timesNDivRU'')
-import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
-import Protocols (toSignals, Circuit(..), (|>))
 
 memMapGroup :: TestTree
 memMapGroup = testGroup "Memory Map group"
@@ -133,7 +135,11 @@ writingSlaves = property $ do
     (baseAddr, range) = findBaseAddress a config ranges
 
 -- | transforms an address to a 'WishboneM2S' read operation.
-wbRead :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S addressWidth bs (BitVector (bs * 8))
+wbRead
+  :: forall bs addressWidth
+  . (KnownNat bs, KnownNat addressWidth)
+  => BitVector addressWidth
+  -> WishboneM2S addressWidth bs (Bytes bs)
 wbRead address = case timesNDivRU @bs @8 of
   Dict ->
     (emptyWishboneM2S @addressWidth)
@@ -145,8 +151,12 @@ wbRead address = case timesNDivRU @bs @8 of
 
 -- | transforms an address to a 'WishboneM2S' write operation that writes the given address
 -- to the given address.
-wbWrite :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S addressWidth bs (BitVector (bs * 8))
-wbWrite address = (emptyWishboneM2S @addressWidth @(BitVector (bs * 8)))
+wbWrite
+  :: forall bs addressWidth
+  . (KnownNat bs, KnownNat addressWidth)
+  => BitVector addressWidth
+  -> WishboneM2S addressWidth bs (Bytes bs)
+wbWrite address = (emptyWishboneM2S @addressWidth @(Bytes bs))
   { addr = address
   , strobe = True
   , busCycle = True
@@ -159,12 +169,12 @@ simpleSlave' ::
   forall dom aw bs .
   (HiddenClockResetEnable dom, KnownNat aw, KnownNat bs, aw ~ (bs * 8)) =>
   BitVector aw ->
-  BitVector (bs * 8) ->
-  Circuit (Wishbone dom 'Standard aw (BitVector (bs * 8))) ()
+  Bytes bs ->
+  Circuit (Wishbone dom 'Standard aw (Bytes bs)) ()
 simpleSlave' range readData0 = Circuit $ \(wbIn, ()) -> (mealy go readData0 wbIn, ())
  where
   go readData1 WishboneM2S{..} =
-    (readData2, (emptyWishboneS2M @(BitVector (bs * 8))) {readData, acknowledge, err})
+    (readData2, (emptyWishboneS2M @(Bytes bs)) {readData, acknowledge, err})
    where
      masterActive = strobe && busCycle
      addrInRange = addr <= range
@@ -184,10 +194,10 @@ simpleSlave' range readData0 = Circuit $ \(wbIn, ()) -> (mealy go readData0 wbIn
 simpleSlave ::
   forall dom bs .
   (HiddenClockResetEnable dom, KnownNat bs) =>
-  BitVector (bs * 8) ->
-  BitVector (bs * 8) ->
-  Signal dom (WishboneM2S (bs * 8) bs (BitVector (bs * 8))) ->
-  Signal dom (WishboneS2M (BitVector (bs * 8)))
+  Bytes bs ->
+  Bytes bs ->
+  Signal dom (WishboneM2S (bs * 8) bs (Bytes bs)) ->
+  Signal dom (WishboneS2M (Bytes bs))
 simpleSlave range readData wbIn =
   case timesNDivRU'' @bs @8 of
     Dict -> fst $ toSignals circuit (wbIn, ())

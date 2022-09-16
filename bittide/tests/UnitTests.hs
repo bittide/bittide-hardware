@@ -5,6 +5,7 @@
 module Main where
 
 import Prelude
+
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
@@ -13,6 +14,7 @@ import Tests.DoubleBufferedRam
 import Tests.Link
 import Tests.ScatterGather
 import Tests.Wishbone
+
 -- import Tests.Switch
 
 -- TODO: #86 changes the double buffered memory implementations, which causes the switch

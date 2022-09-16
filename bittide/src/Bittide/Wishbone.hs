@@ -10,9 +10,9 @@ module Bittide.Wishbone where
 
 import Clash.Prelude
 
-import Data.Maybe
-import Data.Constraint.Nat.Extra (timesNDivRU'')
 import Data.Constraint (Dict(Dict))
+import Data.Constraint.Nat.Extra (timesNDivRU'')
+import Data.Maybe
 import Protocols.Internal
 import Protocols.Wishbone
 

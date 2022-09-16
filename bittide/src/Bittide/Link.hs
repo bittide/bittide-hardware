@@ -17,8 +17,8 @@ import Data.Constraint.Nat.Extra
 import Data.Maybe
 import Protocols.Wishbone
 
-import Bittide.SharedTypes
 import Bittide.DoubleBufferedRam
+import Bittide.SharedTypes
 
 
 -- Internal states of the txUnit.
@@ -54,11 +54,11 @@ txUnit ::
   -- | Frame from 'gatherUnitWb'
   Signal core (DataLink frameWidth) ->
   -- | Control register Wishbone bus (Master -> slave).
-  Signal core (WishboneM2S aw nBytes (BitVector (8 * nBytes))) ->
+  Signal core (WishboneM2S aw nBytes (Bytes nBytes)) ->
   -- |
   -- 1. Control register Wishbone bus (Slave -> master).
   -- 2. Outgoing frame
-  ( Signal core (WishboneS2M (BitVector (8 * nBytes)))
+  ( Signal core (WishboneS2M (Bytes nBytes))
   , Signal core (DataLink frameWidth))
 txUnit (getRegs -> RegisterBank preamble) sq frameIn wbIn = (wbOut, frameOut)
  where
@@ -134,9 +134,9 @@ rxUnit ::
   -- | Incoming bittide link.
   Signal core (DataLink fw) ->
   -- | Control register Wishbone bus (Master -> slave).
-  Signal core (WishboneM2S aw nBytes (BitVector (8 * nBytes))) ->
+  Signal core (WishboneM2S aw nBytes (Bytes nBytes)) ->
   -- | Control register Wishbone bus (Slave -> master).
-  Signal core (WishboneS2M (BitVector (8 * nBytes)))
+  Signal core (WishboneS2M (Bytes nBytes))
 rxUnit preamble localCounter linkIn wbIn = wbOut
  where
   (regOut, wbOut) = registerWbE WishbonePriority regInit wbIn regIn byteEnables

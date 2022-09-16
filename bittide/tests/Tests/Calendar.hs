@@ -184,7 +184,7 @@ reconfigCalendar = property $ do
   bvCal <- forAll $ genBVCalendar (fromIntegral calSize) bitWidth
   case bvCal of
     BVCalendar (succSNat -> calSize') _ cal -> do
-      newEntries <- forAll . Gen.list (Range.singleton calSize) $ Gen.integral Range.constantBounded
+      newEntries <- forAll . Gen.list (Range.singleton calSize) $ genDefinedBitVector
       let
         configAddresses = cycle [0..indexOf calSize']
         writeOps = P.zip configAddresses newEntries
@@ -238,7 +238,8 @@ metaCycleIndication = property $ do
   metaCycles <- forAll $ Gen.int $ Range.constant 2 5
   case bvCal of
     BVCalendar (succSNat -> (calSize' :: SNat calDepth)) bitWidth' cal -> do
-      let genDepth = fromIntegral <$> genIndex @_ @calDepth (Range.constant 2 (fromIntegral $ pred calSize))
+      let genDepth = fromIntegral <$> genIndex @_ @calDepth
+            (Range.constant 2 (fromIntegral $ pred calSize))
       newDepths <- forAll $ Gen.list (Range.singleton (metaCycles - 1)) genDepth
       let
         newDepthAddr = 2 + snatToInteger (requiredRegs bitWidth' d32)
@@ -247,8 +248,12 @@ metaCycleIndication = property $ do
       let
         swapAddr = bitWidth `divRU` 32 + 3
         swapCall = wbWriteOp @4 @32 (swapAddr, 0)
-        wbWrites = P.replicate (fromIntegral calSize - 3) wbNothingM2S <> P.concatMap writeAndSwitch newDepths
-        writeAndSwitch d = wbWriteOp (newDepthAddr, fromIntegral d) : swapCall : P.replicate (d-1) wbNothingM2S
+        wbWrites = P.replicate (fromIntegral calSize - 3) wbNothingM2S <>
+          P.concatMap writeAndSwitch newDepths
+        writeAndSwitch d =
+          wbWriteOp (newDepthAddr, fromIntegral d) :
+          swapCall :
+          P.replicate (d-1) wbNothingM2S
         topEntity writePort = (\(_,m,_) -> m) $ withClockResetEnable
           clockGen resetGen enableGen calendarWbSpecVal calSize' cal cal writePort
         topEntityInput = wbWrites <> P.repeat wbNothingM2S
@@ -268,7 +273,11 @@ asProxy :: SNat n -> Proxy n
 asProxy SNat = Proxy
 
 -- | Get the amount of required registers for storing a BitVector bits in registers of regSize.
-requiredRegs :: (1 <= regSize) => SNat bits -> SNat regSize-> SNat (Regs (BitVector bits) regSize)
+requiredRegs
+  :: (1 <= regSize)
+  => SNat bits
+  -> SNat regSize
+  -> SNat (Regs (BitVector bits) regSize)
 requiredRegs SNat SNat = SNat
 
 -- | idle 'Protocols.Wishbone.WishboneM2S' bus.
@@ -296,10 +305,15 @@ writeWithWishbone (a, entry) =
 
 -- | Use both the wishbone M2S bus and S2M bus to decode the S2M bus operations into the
 -- expected type a.
-directedWbDecoding :: forall nBytes addrW a . (KnownNat nBytes, 1 <= nBytes, KnownNat addrW, Paddable a) =>
-  [WishboneM2S addrW nBytes (Bytes nBytes)] ->
-  [WishboneS2M (Bytes nBytes)] ->
-  [a]
+directedWbDecoding
+  :: forall nBytes addrW a
+  . (KnownNat nBytes
+   , 1 <= nBytes
+   , KnownNat addrW
+   , Paddable a)
+  => [WishboneM2S addrW nBytes (Bytes nBytes)]
+  -> [WishboneS2M (Bytes nBytes)]
+  -> [a]
 directedWbDecoding (wbM2S:m2sRest) (_:s2mRest) = out
  where
   active = strobe wbM2S && busCycle wbM2S
@@ -312,15 +326,21 @@ directedWbDecoding (wbM2S:m2sRest) (_:s2mRest) = out
   expectReadData (WishboneM2S{strobe, busCycle, writeEnable},_) =
     strobe && busCycle && not writeEnable
 
-  entryList = fmap (readData . snd) $ takeWhile expectReadData . filterNoOps $ P.zip m2sRest s2mRest
+  entryList =
+    fmap (readData . snd)
+    $ takeWhile expectReadData . filterNoOps
+    $ P.zip m2sRest s2mRest
 
   filterNoOps l = [(m2s,s2m)| (m2s,s2m) <- l, m2s /= wbNothingM2S]
   entry = case V.fromList $ P.reverse entryList of
-    Just (vec :: Vec (Regs a (nBytes * 8)) (BitVector (nBytes * 8))) ->
+    Just (vec :: Vec (Regs a (nBytes * 8)) (Bytes nBytes)) ->
         case timesDivRU @(nBytes * 8) @(BitSize a) of
           Dict ->
             paddedToData . bvAsPadded @(Regs a (nBytes * 8) * nBytes * 8) $ pack vec
-    Nothing  -> error $ "directedWbDecoding: list to vector conversion failed: " <> show entryList <> "from " <> show (wbM2S:m2sRest)
+    Nothing  ->
+      error $
+        "directedWbDecoding: list to vector conversion failed: "
+        <> show entryList <> "from " <> show (wbM2S:m2sRest)
 
   consumedReads = P.length entryList
   remainingM2S = P.drop consumedReads m2sRest
@@ -403,9 +423,9 @@ calendarWbSpecVal ::
   -- | Bootstrap calendar for the shadow buffer.
   Vec bootstrapSizeB calEntry ->
   -- | Incoming wishbone interface
-  Signal dom (WishboneM2S addrW nBytes (BitVector (8 * nBytes))) ->
+  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | Currently active entry, Metacycle indicator and outgoing wishbone interface.
-  (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (BitVector (8 * nBytes))))
+  (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)))
 calendarWbSpecVal mDepth bootstrapActive bootstrapShadow m2s0 =
   (active, metaIndicator, s2m1)
   where

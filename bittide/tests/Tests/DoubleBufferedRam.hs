@@ -13,7 +13,6 @@ module Tests.DoubleBufferedRam(ramGroup) where
 import Clash.Prelude
 
 import Clash.Hedgehog.Sized.Vector
-import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
 import Data.Maybe
@@ -28,7 +27,7 @@ import Protocols.Wishbone
 
 import Bittide.SharedTypes
 import Bittide.DoubleBufferedRam
-import Tests.Shared (validateWb)
+import Tests.Shared
 
 import qualified Clash.Sized.Vector as V
 import qualified Data.List as L
@@ -70,10 +69,11 @@ genRamContents memDepth = genSomeVec (Range.singleton $ fromIntegral (memDepth -
 readDoubleBufferedRam :: Property
 readDoubleBufferedRam = property $ do
   ramDepth <- forAll . Gen.int $ Range.constant 1 31
-  ramContents <- forAll $ genRamContents ramDepth $ genUnsigned @_ @64 Range.constantBounded
+  ramContents <- forAll $ genRamContents ramDepth
+    $ genUnsigned @_ @64 Range.constantBounded
   case ramContents of
     SomeVec SNat contents -> do
-      simLength <- forAll $ bitCoerce <$> genUnsigned @_ @64 (Range.constant 1 100)
+      simLength <- forAll $ Gen.int (Range.constant 1 100)
       let simRange = Range.singleton simLength
       switchSignal <- forAll $ Gen.list simRange (Gen.element [A,B])
       readAddresses <- forAll . Gen.list simRange . genIndex $ Range.constantBounded
@@ -102,11 +102,14 @@ readWriteDoubleBufferedRam = property $ do
       let
         addresses = cycle $ fmap fromIntegral [0..ramDepth-1]
         switchSignal = cycle $ L.replicate ramDepth A <> L.replicate ramDepth B
-      writeEntries <- forAll (Gen.list (Range.singleton simLength) $ Gen.int Range.constantBounded)
+      writeEntries <- forAll (Gen.list (Range.singleton simLength)
+        $ Gen.int Range.constantBounded)
       let
-        topEntityInput = L.zip3 switchSignal addresses $ fmap Just (P.zip addresses writeEntries)
+        topEntityInput = L.zip3 switchSignal addresses
+          $ fmap Just (P.zip addresses writeEntries)
         simOut = simulateN @System simLength topEntity topEntityInput
-      Set.fromList simOut === Set.fromList (toList contents <> L.take (simLength - ramDepth - 1) writeEntries)
+        expected = toList contents <> L.take (simLength - ramDepth - 1) writeEntries
+      Set.fromList simOut === Set.fromList expected
 
 data BitvecVec where
   BitvecVec ::
@@ -121,7 +124,8 @@ instance Show BitvecVec where
 
 genBlockRamContents :: Int -> Int -> Gen BitvecVec
 genBlockRamContents memDepth bits = do
-  case (TN.someNatVal $ fromIntegral (memDepth - 1), TN.someNatVal $ fromIntegral $ bits - 1) of
+  case ( TN.someNatVal $ fromIntegral (memDepth - 1)
+       , TN.someNatVal $ fromIntegral $ bits - 1) of
     (SomeNat depth0, SomeNat bits0) -> go (snatProxy depth0) (snatProxy bits0)
  where
   go :: forall memDepth bits . SNat memDepth -> SNat bits -> Gen BitvecVec
@@ -204,9 +208,9 @@ doubleBufferedRamByteAddressable0 = property $ do
     BitvecVec SNat SNat contents -> do
       let
         simRange = Range.singleton simLength
-        topEntity (unbundle -> (switch, readAddr, writePort, byteSelect)) = withClockResetEnable
-          @System clockGen resetGen enableGen doubleBufferedRamByteAddressable contents
-          switch readAddr writePort byteSelect
+        topEntity (unbundle -> (switch, readAddr, writePort, byteSelect)) =
+          withClockResetEnable @System clockGen resetGen enableGen
+          doubleBufferedRamByteAddressable contents switch readAddr writePort byteSelect
       writeAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       readAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       writeEntries <- forAll (Gen.list simRange $ Gen.maybe genDefinedBitVector)
@@ -273,11 +277,11 @@ readWriteRegisterByteAddressable = property $ do
       Just Refl -> do
         simLength <- forAll $ Gen.enum 1 100
         let
-          writeGen = genNonEmptyVec @_ @nBytes $ genDefinedBitVector @_ @8
+          writeGen = genNonEmptyVec @_ @nBytes $ genDefinedBitVector @8
         initVal <- forAll writeGen
         writes <- forAll $ Gen.list (Range.singleton simLength) writeGen
         byteEnables <- forAll $ Gen.list (Range.singleton simLength)
-          $ genDefinedBitVector @_ @(Regs (Vec nBytes Byte) 8)
+          $ genDefinedBitVector @(Regs (Vec nBytes Byte) 8)
         let
           topEntity (unbundle -> (newVal, byteEnable))=
             withClockResetEnable @System clockGen resetGen enableGen $
@@ -304,8 +308,8 @@ registerWbSigToSig = property $ do
   go :: forall bits m . (KnownNat bits, 1 <= bits, Monad m) => Proxy bits -> PropertyT m ()
   go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
     SNatLE -> do
-      initVal <- forAll $ genDefinedBitVector @_ @bits
-      writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @_ @bits
+      initVal <- forAll $ genDefinedBitVector @bits
+      writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @bits
       let
         simLength = L.length writes + 1
         someReg prio sigIn = fst $ withClockResetEnable clockGen resetGen enableGen
@@ -337,8 +341,8 @@ registerWbWbToSig = property $ do
   go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
     SNatLE -> do
       let regs = (natToNum @(DivRU bits 32))
-      initVal <- forAll $ genDefinedBitVector @_ @bits
-      writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @_ @bits
+      initVal <- forAll $ genDefinedBitVector @bits
+      writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @bits
       let
         simLength = L.length writes * regs + 2
         someReg prio wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
@@ -380,8 +384,8 @@ registerWbSigToWb = property $ do
   go :: forall bits m . (KnownNat bits, 1 <= bits, Monad m) => Proxy bits -> PropertyT m ()
   go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
     SNatLE -> do
-      initVal <- forAll $ genDefinedBitVector @_ @bits
-      writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @_ @bits
+      initVal <- forAll $ genDefinedBitVector @bits
+      writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @bits
       let
         someReg prio sigIn wbIn = snd $ withClockResetEnable clockGen resetGen enableGen
           $ registerWbSpecVal @_ @_ @4 @32 prio initVal wbIn sigIn
@@ -406,10 +410,14 @@ registerWbSigToWb = property $ do
       | acknowledge wbNow = entry : wbDecoding rest
       | otherwise         = wbDecoding wbRest
      where
-      (fmap readData -> entryList, rest) = L.splitAt (natToNum @(Regs (BitVector bits) 32)) (wbNow:wbRest)
+      (fmap readData -> entryList, rest) =
+        L.splitAt (natToNum @(Regs (BitVector bits) 32)) (wbNow:wbRest)
       entry = case V.fromList entryList of
-        Just (vec :: Vec (Regs (BitVector bits) 32) (BitVector 32)) -> registersToData @(BitVector bits) @32 (RegisterBank vec)
-        Nothing  -> error $ "wbDecoding: list to vector conversion failed: " <> show entryList <> "from " <> show (wbNow:wbRest)
+        Just (vec :: Vec (Regs (BitVector bits) 32) (BitVector 32))
+          -> registersToData @(BitVector bits) @32 (RegisterBank vec)
+        Nothing
+          -> error $ "wbDecoding: list to vector conversion failed: "
+          <> show entryList <> "from " <> show (wbNow:wbRest)
 
     wbDecoding [] = []
     wbRead i = (emptyWishboneM2S @32)
@@ -440,10 +448,10 @@ registerWbWriteCollisions = property $ do
   go :: forall bits m . (KnownNat bits, 1 <= bits, Monad m) => Proxy bits -> PropertyT m ()
   go Proxy = case compareSNat d1 $ SNat @(Regs (BitVector bits) 32) of
     SNatLE -> do
-      initVal <- forAll $ genDefinedBitVector @_ @bits
+      initVal <- forAll $ genDefinedBitVector @bits
       writeAmount <- forAll $ Gen.enum 1 25
-      sigWrites <- forAll $ Gen.list (Range.singleton writeAmount) $ genDefinedBitVector @_ @bits
-      wbWrites <- forAll $ Gen.list (Range.singleton writeAmount) $ genDefinedBitVector @_ @bits
+      sigWrites <- forAll $ Gen.list (Range.singleton writeAmount) $ genDefinedBitVector @bits
+      wbWrites <- forAll $ Gen.list (Range.singleton writeAmount) $ genDefinedBitVector @bits
       let
         simLength = writeAmount + 1
         someReg prio sigIn wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
@@ -583,13 +591,13 @@ registerWbSpecVal ::
   -- | Initial value.
   a ->
   -- | Wishbone bus (master to slave)
-  Signal dom (WishboneM2S addrW nBytes (BitVector (nBytes * 8))) ->
+  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | New circuit value.
   Signal dom (Maybe a) ->
   -- |
   -- 1. Outgoing stored value
   -- 2. Outgoing wishbone bus (slave to master)
-  (Signal dom a, Signal dom (WishboneS2M (BitVector (nBytes * 8))))
+  (Signal dom a, Signal dom (WishboneS2M (Bytes nBytes)))
 registerWbSpecVal writePriority initVal m2s0 sigIn = (storedVal, s2m1)
  where
   (storedVal, s2m0) = registerWb @dom @a @nBytes @addrW writePriority initVal m2s1 sigIn

@@ -188,13 +188,13 @@ registerWb ::
   -- | Initial value.
   a ->
   -- | Wishbone bus (master to slave)
-  Signal dom (WishboneM2S addrW nBytes (BitVector (nBytes * 8))) ->
+  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | New circuit value.
   Signal dom (Maybe a) ->
   -- |
   -- 1. Outgoing stored value
   -- 2. Outgoing wishbone bus (slave to master)
-  (Signal dom a, Signal dom (WishboneS2M (BitVector (nBytes * 8))))
+  (Signal dom a, Signal dom (WishboneS2M (Bytes nBytes)))
 registerWb writePriority initVal wbIn sigIn =
   registerWbE writePriority initVal wbIn sigIn (pure maxBound)
 
@@ -219,7 +219,7 @@ registerWbE ::
   -- | Initial value.
   a ->
   -- | Wishbone bus (master to slave)
-  Signal dom (WishboneM2S addrW nBytes (BitVector (nBytes * 8))) ->
+  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | New circuit value.
   Signal dom (Maybe a) ->
   -- | Explicit Byte enables for new circuit value
@@ -227,7 +227,7 @@ registerWbE ::
   -- |
   -- 1. Outgoing stored value
   -- 2. Outgoing wishbone bus (slave to master)
-  (Signal dom a, Signal dom (WishboneS2M (BitVector (nBytes * 8))))
+  (Signal dom a, Signal dom (WishboneS2M (Bytes nBytes)))
 registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
  where
   regOut = registerByteAddressable initVal regIn byteEnables
@@ -236,11 +236,11 @@ registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
     a  ->
     Maybe a ->
     BitVector (Regs a 8) ->
-    WishboneM2S addrW nBytes (BitVector (nBytes * 8)) ->
-    (BitVector (Regs a 8), WishboneS2M (BitVector (nBytes * 8)), a)
+    WishboneM2S addrW nBytes (Bytes nBytes) ->
+    (BitVector (Regs a 8), WishboneS2M (Bytes nBytes), a)
   go regOut0 sigIn0 sigbyteEnables0 WishboneM2S{..} =
     ( byteEnables0
-    , (emptyWishboneS2M @(BitVector (nBytes * 8))) {acknowledge, err, readData}
+    , (emptyWishboneS2M @(Bytes nBytes)) {acknowledge, err, readData}
     , regIn0 )
    where
     (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr

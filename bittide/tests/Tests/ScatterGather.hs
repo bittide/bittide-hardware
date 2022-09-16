@@ -60,8 +60,10 @@ genFrameList range = Gen.list range genFrame
 
 sgGroup :: TestTree
 sgGroup = testGroup "Scatter Gather group"
-  [ testPropertyNamed "scatterUnitWb - No overwriting implies no lost frames." "scatterUnitNoFrameLoss" scatterUnitNoFrameLoss
-  , testPropertyNamed "gatherUnitWb - No overwriting implies no lost frames." "gatherUnitNoFrameLoss" gatherUnitNoFrameLoss
+  [ testPropertyNamed "scatterUnitWb - No overwriting implies no lost frames."
+      "scatterUnitNoFrameLoss" scatterUnitNoFrameLoss
+  , testPropertyNamed "gatherUnitWb - No overwriting implies no lost frames."
+      "gatherUnitNoFrameLoss" gatherUnitNoFrameLoss
   ]
 
 -- | Generates a 'CalendarConfig' for the 'gatherUnitWb' or 'scatterUnitWb'
@@ -122,7 +124,7 @@ scatterUnitNoFrameLoss = property $ do
   maxCalSize <- forAll $ Gen.enum 2 32
   case TN.someNatVal (maxCalSize - 1) of
     SomeNat (succSNat . snatProxy -> p) -> do
-      runTest =<< forAll (genCal p)
+      runTest =<< forAll (genCalendarConfig @4 @32 p)
  where
   runTest ::
     (KnownNat maxSize, 1 <= maxSize) =>
@@ -148,7 +150,10 @@ scatterUnitNoFrameLoss = property $ do
         calConfig (pure emptyWishboneM2S) linkIn wbIn
 
       wbReadOps = P.take simLength $ P.replicate memDepth emptyWishboneM2S P.++  P.concat
-        (padToLength memDepth emptyWishboneM2S . P.concat . P.zipWith wbRead (toList calA) <$> inputFrames)
+        ( padToLength memDepth emptyWishboneM2S
+        . P.concat
+        . P.zipWith wbRead (toList calA)
+        <$> inputFrames)
 
       topEntityInput = P.zip wbReadOps (P.concat inputFrames)
       simOut = simulateN simLength topEntity topEntityInput
@@ -157,8 +162,6 @@ scatterUnitNoFrameLoss = property $ do
     footnote . fromString $ "cal: " <> showX calA
     wbDecoding simOut === P.take simLength (catMaybes (P.concat inputFrames))
 
-  genCal :: forall maxSize . 1 <= maxSize => SNat maxSize -> Gen (CalendarConfig 4 32 (Index maxSize))
-  genCal SNat = genCalendarConfig @4 @32 (SNat @maxSize)
   padToLength l padElement g = P.take l (g P.++ P.repeat padElement)
 
 -- | Check if the gather unit with wishbone interface loses no frames.
@@ -187,7 +190,10 @@ gatherUnitNoFrameLoss = property $ do
         calConfig (pure emptyWishboneM2S) wbIn
 
       wbWriteOps = P.take simLength . P.concat $
-        padToLength memDepth emptyWishboneM2S . P.concat . P.zipWith wbWrite (toList calA) <$> inputFrames
+        padToLength memDepth emptyWishboneM2S
+        . P.concat
+        . P.zipWith wbWrite (toList calA)
+        <$> inputFrames
 
       simOut = simulateN simLength topEntity wbWriteOps
       addressedFrames = P.zip (P.concat inputFrames) (cycle $ toList calA)
@@ -218,8 +224,8 @@ directedDecode _ _ = []
 -- their readData's.
 wbDecoding ::
   KnownNat nBytes =>
-  [WishboneS2M (BitVector (8 * nBytes))] ->
-  [BitVector ((8 * nBytes) + (8 * nBytes))]
+  [WishboneS2M (Bytes nBytes)] ->
+  [Bytes (nBytes + nBytes)]
 wbDecoding (s2m0 : s2m1 : s2ms)
   | acknowledge s2m0 && acknowledge s2m1 = out : wbDecoding s2ms
   | otherwise = wbDecoding (s2m1 : s2ms)
@@ -238,17 +244,17 @@ wbRead ::
   , 1 <= maxIndex) =>
   Index maxIndex ->
   Maybe a ->
-  [WishboneM2S addrW nBytes (BitVector (8 * nBytes))]
+  [WishboneM2S addrW nBytes (Bytes nBytes)]
 wbRead readAddr (Just _) =
   case timesNDivRU' @nBytes @8 of
     Dict ->
-      [ (emptyWishboneM2S @addrW @(BitVector (8 * nBytes)))
+      [ (emptyWishboneM2S @addrW @(Bytes nBytes))
         { addr = (`shiftL` 3) . resize $ pack readAddr
         , busCycle = True
         , strobe = True
         , busSelect = maxBound }
 
-      , (emptyWishboneM2S @addrW @(BitVector (8 * nBytes)))
+      , (emptyWishboneM2S @addrW @(Bytes nBytes))
         { addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr)
         , busCycle = True
         , strobe = True
@@ -265,10 +271,10 @@ wbWrite ::
   , KnownNat maxIndex
   , 1 <= maxIndex) =>
   Index maxIndex ->
-  Maybe (BitVector (nBytes*2*8)) ->
-  [WishboneM2S addrW nBytes (BitVector (8 * nBytes))]
+  Maybe (Bytes (nBytes*2)) ->
+  [WishboneM2S addrW nBytes (Bytes nBytes)]
 wbWrite writeAddr (Just frame) =
-  [ (emptyWishboneM2S @addrW @(BitVector (8 * nBytes)))
+  [ (emptyWishboneM2S @addrW @(Bytes nBytes))
     { addr = (`shiftL` 3) . resize $ pack writeAddr
     , busSelect = maxBound
     , busCycle = True
@@ -276,7 +282,7 @@ wbWrite writeAddr (Just frame) =
     , writeEnable = True
     , writeData = lower }
 
-  , (emptyWishboneM2S @addrW @(BitVector (8 * nBytes)))
+  , (emptyWishboneM2S @addrW @(Bytes nBytes))
     { addr =  4 .|.  ((`shiftL` 3) . resize $ pack writeAddr)
     , busSelect = maxBound
     , busCycle = True

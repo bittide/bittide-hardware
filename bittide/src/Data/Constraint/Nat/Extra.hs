@@ -15,14 +15,15 @@ solved by the constraint solver.
 
 module Data.Constraint.Nat.Extra where
 
+import Prelude
 
 import Clash.Promoted.Nat
 import Data.Constraint
 import Data.Type.Equality
 import GHC.TypeLits.Extra
 import GHC.TypeNats
-import Prelude
 import Unsafe.Coerce
+
 import qualified Clash.Util.Interpolate as I
 
 -- | b <= ceiling(b/a)*a
@@ -42,7 +43,10 @@ timesNDivRU'' :: forall a b . Dict (Div ((a * b) + (b - 1)) b ~ a)
 timesNDivRU'' = unsafeCoerce (Dict :: Dict ())
 
 -- | if (c <= a) or (c <= b), then c <= Max a b
-lessThanMax :: forall a b c . (KnownNat a, KnownNat b, KnownNat c) => Dict (c <= Max a b)
+lessThanMax
+  :: forall a b c
+  . (KnownNat a, KnownNat b, KnownNat c)
+  => Dict (c <= Max a b)
 lessThanMax = case (compareSNat (SNat @c) (SNat @b), compareSNat (SNat @c) (SNat @b)) of
   (SNatLE, _) -> unsafeCoerce (Dict :: Dict ())
   (_, SNatLE) -> unsafeCoerce (Dict :: Dict ())
