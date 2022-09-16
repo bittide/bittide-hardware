@@ -618,7 +618,7 @@ registerWbSpecVal writePriority initVal m2s0 sigIn = (storedVal, s2m1)
 -- operations from this vector.
 testContentGen :: Property
 testContentGen = property $ do
-  nat <- forAll $ Gen.enum 0 100
+  nat <- forAll $ Gen.enum 0 32
   case TN.someNatVal nat of
     SomeNat n -> go n
  where
@@ -637,7 +637,7 @@ testContentGen = property $ do
 
 wbStorageSpecCompliance :: Property
 wbStorageSpecCompliance = property $ do
-  nat <- forAll $ Gen.enum 1 100
+  nat <- forAll $ Gen.enum 1 32
   case TN.someNatVal (nat - 1) of
     SomeNat (succSNat . snatProxy -> n) -> go n
 
@@ -653,7 +653,7 @@ wbStorageSpecCompliance = property $ do
           genRequests
           ()
 
-    genRequests = Gen.list (Range.linear 0 100)
+    genRequests = Gen.list (Range.linear 0 32)
       (genWishboneTransfer @32 (genDefinedBitVector @32))
 
     genWishboneTransfer ::
@@ -668,9 +668,11 @@ wbStorageSpecCompliance = property $ do
 
 deriving instance ShowX a => ShowX (RamOp i a)
 
+-- | Behavioral test for 'wbStorage', it checks whether the behavior of 'wbStorage' matches
+-- the 'wbStorageBehaviorModel'.
 wbStorageBehavior :: Property
 wbStorageBehavior = property $ do
-  nat <- forAll $ Gen.enum 1 10
+  nat <- forAll $ Gen.enum 1 32
   case TN.someNatVal (nat - 1) of
     SomeNat (succSNat . snatProxy -> n) -> go n
  where
@@ -678,9 +680,10 @@ wbStorageBehavior = property $ do
   go SNat = do
     content <- forAll $ genNonEmptyVec @_ @v genDefinedBitVector
     goldenInput <- forAll $ (\l -> RamNoOp : l <> [RamNoOp]) <$>
-      Gen.list (Range.linear 1 10)
+      Gen.list (Range.linear 1 32)
         (Gen.choice
-          [ RamRead <$> genIndex @_ @v Range.constantBounded
+          [ pure RamNoOp
+          , RamRead <$> genIndex @_ @v Range.constantBounded
           , RamWrite <$> genIndex @_ @v Range.constantBounded <*> genDefinedBitVector
           ])
     let
@@ -715,7 +718,7 @@ wbStorageBehavior = property $ do
    where
     addrUndef = deepErrorX "wbStorageBehavior: readAddr undefined."
 
--- | Behavioral model for 'wbStorage'. It stores its contents as half-words
+-- | Behavioral model for 'wbStorage'. It stores is contents as half-words in Little Endian.
 wbStorageBehaviorModel
   :: (KnownNat i, KnownNat m)
   => [BitVector m]

@@ -13,12 +13,12 @@ module Bittide.DoubleBufferedRam where
 
 import Clash.Prelude
 
+import Data.Bifunctor
 import Data.Maybe
+import Protocols (Circuit (Circuit))
 import Protocols.Wishbone
 
 import Bittide.SharedTypes hiding (delayControls)
-import Data.Bifunctor
-import Protocols (Circuit (Circuit))
 
 data InitialContent n a where
   NonReloadable :: Vec n a -> InitialContent n a
@@ -78,6 +78,8 @@ wbStorageDP d@SNat initial aM2S bM2S = (aS2M, bS2M)
   noWrite wb = wb{writeEnable = False}
   writeIsErr wb write = wb{err = err wb || write}
 
+-- | Wishbone storage element with 'Circuit' interface from 'Protocols.Wishbone' that
+-- allows for half-word aligned reads and writes.
 wbStorage ::
   forall dom depth initDepth aw .
   ( HiddenClockResetEnable dom
@@ -92,7 +94,7 @@ wbStorage d initContent = Circuit $ \(m2s, ()) ->
   (wbStorage' d initContent m2s, ())
 
 -- | Storage element with a single wishbone port, it is half word addressable to work with
--- RISC-V's C extension.
+-- RISC-V's C extension. This storage element allows for half-word aligned accesses.
 wbStorage' ::
   forall dom depth initDepth aw .
   ( HiddenClockResetEnable dom
