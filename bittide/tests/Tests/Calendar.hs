@@ -307,7 +307,7 @@ writeWithWishbone (a, entry) =
 -- expected type a.
 directedWbDecoding
   :: forall nBytes addrW a
-  .( KnownNat nBytes
+  . (KnownNat nBytes
    , 1 <= nBytes
    , KnownNat addrW
    , Paddable a)
@@ -339,8 +339,8 @@ directedWbDecoding (wbM2S:m2sRest) (_:s2mRest) = out
             paddedToData . bvAsPadded @(Regs a (nBytes * 8) * nBytes * 8) $ pack vec
     Nothing  ->
       error $
-      "directedWbDecoding: list to vector conversion failed: "
-      <> show entryList <> "from " <> show (wbM2S:m2sRest)
+        "directedWbDecoding: list to vector conversion failed: "
+        <> show entryList <> "from " <> show (wbM2S:m2sRest)
 
   consumedReads = P.length entryList
   remainingM2S = P.drop consumedReads m2sRest

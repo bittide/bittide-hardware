@@ -45,7 +45,7 @@ timesNDivRU'' = unsafeCoerce (Dict :: Dict ())
 -- | if (c <= a) or (c <= b), then c <= Max a b
 lessThanMax
   :: forall a b c
-  .( KnownNat a, KnownNat b, KnownNat c)
+  . (KnownNat a, KnownNat b, KnownNat c)
   => Dict (c <= Max a b)
 lessThanMax = case (compareSNat (SNat @c) (SNat @b), compareSNat (SNat @c) (SNat @b)) of
   (SNatLE, _) -> unsafeCoerce (Dict :: Dict ())
