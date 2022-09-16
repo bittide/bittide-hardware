@@ -32,6 +32,7 @@ Usage:
   sim plot tree32 <steps> <points>
   sim plot tree23 <steps> <points>
   sim plot hypercube3 <steps> <points>
+  sim plot hypercube4 <steps> <points>
 
 Options:
   <points> Number of points to keep + pass to plotting library
@@ -63,5 +64,6 @@ main = do
         | args `isPresent` (command "tree32") = plotTree32
         | args `isPresent` (command "tree23") = plotTree23
         | args `isPresent` (command "hypercube3") = plotHypercube
+        | args `isPresent` (command "hypercube4") = plotHypercube4
         | otherwise = error "Internal error: Unknown command"
     plotFn p k

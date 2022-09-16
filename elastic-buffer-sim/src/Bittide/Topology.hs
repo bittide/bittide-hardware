@@ -15,6 +15,7 @@ module Bittide.Topology
   ( dumpCsv
   , plotEbs
   , plotHypercube
+  , plotHypercube4
   , plotTorus34
   , plotK3
   , plotK6
@@ -49,6 +50,9 @@ plotDiamond = $(plotEbsAPI ("diamond", diamond))
 
 plotHypercube :: Int -> Int -> IO ()
 plotHypercube = $(plotEbsAPI ("hypercube3", hypercube 3))
+
+plotHypercube4 :: Int -> Int -> IO ()
+plotHypercube4 = $(plotEbsAPI ("hypercube4", hypercube 4))
 
 plotTorus34 :: Int -> Int -> IO ()
 plotTorus34 = $(plotEbsAPI ("torus34", torus2d 3 4))
