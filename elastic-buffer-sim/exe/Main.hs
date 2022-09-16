@@ -30,6 +30,7 @@ Usage:
   sim plot diamond <steps> <points>
   sim plot star7 <steps> <points>
   sim plot tree32 <steps> <points>
+  sim plot tree23 <steps> <points>
   sim plot hypercube3 <steps> <points>
 
 Options:
@@ -60,6 +61,7 @@ main = do
         | args `isPresent` (command "complete6") = plotK6
         | args `isPresent` (command "star7") = plotStar7
         | args `isPresent` (command "tree32") = plotTree32
+        | args `isPresent` (command "tree23") = plotTree23
         | args `isPresent` (command "hypercube3") = plotHypercube
         | otherwise = error "Internal error: Unknown command"
     plotFn p k

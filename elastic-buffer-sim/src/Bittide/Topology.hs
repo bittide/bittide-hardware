@@ -21,6 +21,7 @@ module Bittide.Topology
   , plotC12
   , plotDiamond
   , plotTree32
+  , plotTree23
   , plotStar7
   )
 where
@@ -66,6 +67,9 @@ plotStar7 = $(plotEbsAPI ("star7", star 7))
 
 plotTree32 :: Int -> Int -> IO ()
 plotTree32 = $(plotEbsAPI ("tree32", tree 3 2))
+
+plotTree23 :: Int -> Int -> IO ()
+plotTree23 = $(plotEbsAPI ("tree23", tree 2 3))
 
 -- | This samples @n@ steps, taking every @k@th datum; the result can be fed to
 -- @script.py@
