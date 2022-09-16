@@ -135,7 +135,11 @@ writingSlaves = property $ do
     (baseAddr, range) = findBaseAddress a config ranges
 
 -- | transforms an address to a 'WishboneM2S' read operation.
-wbRead :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S addressWidth bs (Bytes bs)
+wbRead
+  :: forall bs addressWidth
+  . (KnownNat bs, KnownNat addressWidth)
+  => BitVector addressWidth
+  -> WishboneM2S addressWidth bs (Bytes bs)
 wbRead address = case timesNDivRU @bs @8 of
   Dict ->
     (emptyWishboneM2S @addressWidth)
@@ -147,7 +151,11 @@ wbRead address = case timesNDivRU @bs @8 of
 
 -- | transforms an address to a 'WishboneM2S' write operation that writes the given address
 -- to the given address.
-wbWrite :: forall bs addressWidth . (KnownNat bs, KnownNat addressWidth) => BitVector addressWidth -> WishboneM2S addressWidth bs (Bytes bs)
+wbWrite
+  :: forall bs addressWidth
+  . (KnownNat bs, KnownNat addressWidth)
+  => BitVector addressWidth
+  -> WishboneM2S addressWidth bs (Bytes bs)
 wbWrite address = (emptyWishboneM2S @addressWidth @(Bytes bs))
   { addr = address
   , strobe = True
