@@ -53,12 +53,13 @@ main = do
     n <- readOrError <$> args `getArgOrExit` (argument "steps")
     p <- readOrError <$> args `getArgOrExit` (argument "points")
     let k = n `quot` p
-    let plotFn =
-          case () of
-            _ | args `isPresent` (command "diamond") -> plotDiamond
-            _ | args `isPresent` (command "complete3") -> plotK3
-            _ | args `isPresent` (command "complete6") -> plotK6
-            _ | args `isPresent` (command "star7") -> plotStar7
-            _ | args `isPresent` (command "tree23") -> plotTree23
-            _ | args `isPresent` (command "hypercube3") -> plotHypercube
+    let
+      plotFn
+        | args `isPresent` (command "diamond") = plotDiamond
+        | args `isPresent` (command "complete3") = plotK3
+        | args `isPresent` (command "complete6") = plotK6
+        | args `isPresent` (command "star7") = plotStar7
+        | args `isPresent` (command "tree23") = plotTree23
+        | args `isPresent` (command "hypercube3") = plotHypercube
+        | otherwise = error "Internal error: Unknown command"
     plotFn p k
