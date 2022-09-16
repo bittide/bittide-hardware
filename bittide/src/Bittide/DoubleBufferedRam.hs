@@ -16,8 +16,9 @@ import Clash.Prelude
 import Data.Maybe
 import Protocols.Wishbone
 
-import Bittide.SharedTypes
+import Bittide.SharedTypes hiding (delayControls)
 import Data.Bifunctor
+import Protocols (Circuit (Circuit))
 
 data InitialContent n a where
   NonReloadable :: Vec n a -> InitialContent n a
@@ -27,7 +28,7 @@ data InitialContent n a where
 getContent :: InitialContent n a -> Vec n a
 getContent (Reloadable v) = v
 getContent (NonReloadable v) = v
-getContent (Undefined) = error "getContent: Content is Undefined."
+getContent Undefined = error "getContent: Content is Undefined."
 
 contentGenerator ::
   forall dom romSize targetSize a .
@@ -63,7 +64,7 @@ wbStorageDP ::
   (Signal dom (WishboneS2M (Bytes 4)),Signal dom (WishboneS2M (Bytes 4)))
 wbStorageDP d@SNat initial aM2S bM2S = (aS2M, bS2M)
  where
-  storageOut = wbStorage d initial storageIn
+  storageOut = wbStorage' d initial storageIn
   aActive = strobe <$> aM2S .&&. busCycle <$> aM2S
   bActive = strobe <$> bM2S .&&. busCycle <$> bM2S
   aWriting = aActive .&&. writeEnable <$> aM2S
@@ -77,9 +78,22 @@ wbStorageDP d@SNat initial aM2S bM2S = (aS2M, bS2M)
   noWrite wb = wb{writeEnable = False}
   writeIsErr wb write = wb{err = err wb || write}
 
+wbStorage ::
+  forall dom depth initDepth aw .
+  ( HiddenClockResetEnable dom
+  , KnownNat aw, 2 <= aw
+  , KnownNat depth, 1 <= depth
+  , KnownNat initDepth, 1 <= initDepth
+  , initDepth <= depth) =>
+  SNat depth ->
+  InitialContent initDepth (Bytes 4) ->
+  Circuit (Wishbone dom 'Standard aw (Bytes 4)) ()
+wbStorage d initContent = Circuit $ \(m2s, ()) ->
+  (wbStorage' d initContent m2s, ())
+
 -- | Storage element with a single wishbone port, it is half word addressable to work with
 -- RISC-V's C extension.
-wbStorage ::
+wbStorage' ::
   forall dom depth initDepth aw .
   ( HiddenClockResetEnable dom
   , KnownNat aw, 2 <= aw
@@ -90,7 +104,7 @@ wbStorage ::
   InitialContent initDepth (Bytes 4) ->
   Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
   Signal dom (WishboneS2M (Bytes 4))
-wbStorage SNat initContent wbIn = delayControls wbOut
+wbStorage' SNat initContent wbIn = delayControls wbIn wbOut
  where
   depth = resize $ bitCoerce (maxBound :: Index depth)
   romOut = bundle $ contentGenerator (getContent initContent)
@@ -130,7 +144,7 @@ wbStorage SNat initContent wbIn = delayControls wbOut
     -- We don't care about the first bit to determine the address alignment because
     -- byte aligned addresses are considered illegal.
     (not -> wordAligned, byteAligned) = bimap unpack unpack $ split alignment
-    addrLegal = addr <= depth && not byteAligned
+    addrLegal = addr <= (2 * depth) && not byteAligned
 
     masterActive = strobe && busCycle
     err = masterActive && not addrLegal
@@ -145,14 +159,14 @@ wbStorage SNat initContent wbIn = delayControls wbOut
         ( (wbAddr, bsHigh, writeDataHigh)
         , (wbAddr, bsLow, writeDataLow))
       | otherwise =
-        ( (satSucc SatBound wbAddr, bsLow, writeDataLow)
-        , (wbAddr, bsHigh, writeDataHigh))
+        ( (wbAddr, bsLow, writeDataLow)
+        , (satSucc SatBound wbAddr, bsHigh, writeDataHigh))
 
     (romWrite, romDone) = romOut0
     (romWriteB, romWriteA) = splitWrite romWrite
     (writeEntryB0, writeEntryA0)
       | isReloadable && not romDone = (romWriteB, romWriteA)
-      | masterWriting = (Just (addrB, writeDataB),Just (addrB, writeDataA))
+      | masterWriting = (Just (addrB, writeDataB),Just (addrA, writeDataA))
       | otherwise = (Nothing,Nothing)
     readData
       | wordAligned = rdB ++# rdA
@@ -170,6 +184,20 @@ wbStorage SNat initContent wbIn = delayControls wbOut
    where
     (upper,lower) = split a
   splitWrite Nothing = (Nothing, Nothing)
+
+  -- | Delays the output controls to align them with the actual read / write timing.
+  delayControls ::
+    (HiddenClockResetEnable dom, NFDataX a) =>
+    Signal dom (WishboneM2S addressWidth selWidth a) -> -- current M2S signal
+    Signal dom (WishboneS2M a) ->
+    Signal dom (WishboneS2M a)
+  delayControls m2s s2m0 = mux inCycle s2m1 (pure emptyWishboneS2M)
+   where
+    inCycle = (busCycle <$> m2s) .&&. (strobe <$> m2s)
+    delayedAck = register False (acknowledge <$> s2m0)
+    delayedErr = register False (err <$> s2m0)
+    s2m1 = (\wb newAck newErr-> wb{acknowledge = newAck, err = newErr})
+      <$> s2m0 <*> delayedAck <*> delayedErr
 
 -- | Indicates which buffer is currently selected.
 data SelectedBuffer = A | B deriving (Eq, Generic, BitPack, Show, NFDataX)

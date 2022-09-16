@@ -8,22 +8,27 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module Tests.DoubleBufferedRam(ramGroup) where
 
 import Clash.Prelude
 
-import Clash.Hedgehog.Sized.Vector
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
+import Clash.Hedgehog.Sized.Vector
+import Clash.Signal.Internal(Signal(..))
 import Data.Maybe
 import Data.Proxy
 import Data.String
 import Data.Type.Equality (type (:~:)(Refl))
 import Hedgehog
 import Hedgehog.Range as Range
+import Protocols.Hedgehog.Internal
+import Protocols.Wishbone
+import Protocols.Wishbone.Standard.Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
-import Protocols.Wishbone
 
 import Bittide.SharedTypes
 import Bittide.DoubleBufferedRam
@@ -62,6 +67,10 @@ ramGroup = testGroup "DoubleBufferedRam group"
       "registerWbWriteCollisions" registerWbWriteCollisions
   , testPropertyNamed "Simulate the contentGenerator for an arbitrary vector."
       "testContentGen" testContentGen
+  , testPropertyNamed "Test wishboneStorage spec compliance"
+      "wbStorageSpecCompliance" wbStorageSpecCompliance
+  , testPropertyNamed "Test whether wbStorage acts the same its Behavioral model"
+      "wbStorageBehavior" wbStorageBehavior
   ]
 
 genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
@@ -626,26 +635,104 @@ testContentGen = property $ do
     dones === L.take simLength expectedDones
     catMaybes writes === toList (zip (iterateI succ 0) content)
 
--- testWbStorage :: Property
--- testWbStorage = property $ do
---   nat <- forAll $ Gen.enum 1 100
---   case TN.someNatVal (nat - 1) of
---     SomeNat (succSNat . snatProxy -> n) -> go n
---  where
---   go :: forall v m . (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
---   go SNat = do
---     content <- forAll $ genNonEmptyVec @_ @v (pack <$> genUnsigned @_ @32 Range.constantBounded)
---     let
---       l = length content
---       simLength = 2 + l * 2
---       topEntity wbIn = bundle (undef, reload, nonReload)
---        where
---         undef = wcre $ wbStorage @System @v @v @32 SNat Undefined wbIn
---         reload = wcre $ wbStorage @System @v @v @32 SNat (Reloadable content) wbIn
---         nonReload = wcre $ wbStorage @System @v @v @32 SNat (NonReloadable content) wbIn
---       (undefOut, reloadOut, nonReloadOut) = L.unzip3 $ simulateN
+wbStorageSpecCompliance :: Property
+wbStorageSpecCompliance = property $ do
+  nat <- forAll $ Gen.enum 1 100
+  case TN.someNatVal (nat - 1) of
+    SomeNat (succSNat . snatProxy -> n) -> go n
 
---     True === True
+  where
+    go :: forall v m . (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
+    go SNat = do
+      content <- forAll $ genNonEmptyVec @_ @v (genDefinedBitVector @32)
+      withClockResetEnable clockGen resetGen enableGen $
+        wishbonePropWithModel @System
+          defExpectOptions
+          (\_ _ () -> Right ())
+          (wbStorage @_ @v @v @32 SNat (Reloadable content))
+          genRequests
+          ()
 
--- wcre :: KnownDomain dom => (HiddenClockResetEnable dom => r) -> r
--- wcre = withClockResetEnable clockGen resetGen enableGen
+    genRequests = Gen.list (Range.linear 0 100)
+      (genWishboneTransfer @32 (genDefinedBitVector @32))
+
+    genWishboneTransfer ::
+      (KnownNat addressWidth, KnownNat (BitSize a)) =>
+      Gen a ->
+      Gen (WishboneMasterRequest addressWidth a)
+    genWishboneTransfer genA =
+      Gen.choice
+        [ Read <$> genDefinedBitVector <*> genDefinedBitVector ,
+          Write <$> genDefinedBitVector <*> genDefinedBitVector <*> genA
+        ]
+
+deriving instance ShowX a => ShowX (RamOp i a)
+
+wbStorageBehavior :: Property
+wbStorageBehavior = property $ do
+  nat <- forAll $ Gen.enum 1 10
+  case TN.someNatVal (nat - 1) of
+    SomeNat (succSNat . snatProxy -> n) -> go n
+ where
+  go :: forall v m . (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
+  go SNat = do
+    content <- forAll $ genNonEmptyVec @_ @v genDefinedBitVector
+    goldenInput <- forAll $ (\l -> RamNoOp : l <> [RamNoOp]) <$>
+      Gen.list (Range.linear 1 10)
+        (Gen.choice
+          [ RamRead <$> genIndex @_ @v Range.constantBounded
+          , RamWrite <$> genIndex @_ @v Range.constantBounded <*> genDefinedBitVector
+          ])
+    let
+      goldenRef ramOps = wbStorageBehaviorModel contentList fstGolden (fromIntegral <$> readAddr) writeOp
+       where
+        (readAddr , writeOp) = unbundle $ decodeRamOp <$> ramOps
+        contentList = toList $ concatMap (\(split ->(a,b)) -> b :> a :> Nil) content
+        fstGolden = deepErrorX "First element undefined."
+
+      topEntity wbIn =
+        wcre $ wbStorage' @System @v @v @32 SNat (NonReloadable content) wbIn
+      topEntityInput = L.concatMap (\a ->[a, a, emptyWishboneM2S]) (ramOpToWb <$> goldenInput)
+      simGolden = simulateN @System (P.length goldenInput) goldenRef goldenInput
+      simOut = simulateN (P.length topEntityInput) topEntity topEntityInput
+      goldenTransactions = ramOpToTransaction goldenInput $ L.tail simGolden
+      simTransactions = wbToTransaction topEntityInput simOut
+
+    footnote . fromString $ "goldenTransactions" <> showX goldenTransactions
+    footnote . fromString $ "simTransactions" <> showX simTransactions
+    footnote . fromString $ "simGolden" <> showX simGolden
+    footnote . fromString $ "simOut" <> showX simOut
+    footnote . fromString $ "goldenInput" <> showX goldenInput
+    footnote . fromString $ "topEntityInput" <> showX topEntityInput
+
+    simTransactions === goldenTransactions
+
+  decodeRamOp :: RamOp i a -> (Index i, Maybe (Located i a))
+  decodeRamOp = \case
+    RamNoOp -> (addrUndef, Nothing)
+    RamRead i -> (i, Nothing)
+    RamWrite i a -> (i, Just (i, a))
+   where
+    addrUndef = deepErrorX "wbStorageBehavior: readAddr undefined."
+
+-- | Behavioral model for 'wbStorage'. It stores its contents as half-words
+wbStorageBehaviorModel
+  :: (KnownNat i, KnownNat m)
+  => [BitVector m]
+  -> BitVector (m+m)
+  -> Signal dom (Index i)
+  -> Signal dom (Maybe (LocatedBits i (m+m)))
+  -> Signal dom (BitVector (m + m))
+wbStorageBehaviorModel storedList output (address :- addresses) (writeOp :- writeOps)
+  = output :- outputs
+ where
+  (preEntry, lower0 : upper0 : postEntry) = L.splitAt (fromIntegral address) storedList
+  (_,split -> (upper, lower)) = fromJust writeOp
+  newList
+    | isJust writeOp = preEntry L.++ [lower, upper] L.++ postEntry
+    | otherwise = storedList
+  nextOutput = pack (upper0, lower0)
+  outputs = wbStorageBehaviorModel newList nextOutput addresses writeOps
+
+wcre :: KnownDomain dom => (HiddenClockResetEnable dom => r) -> r
+wcre = withClockResetEnable clockGen resetGen enableGen
