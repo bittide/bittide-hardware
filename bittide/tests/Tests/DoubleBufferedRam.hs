@@ -583,13 +583,13 @@ registerWbSpecVal ::
   -- | Initial value.
   a ->
   -- | Wishbone bus (master to slave)
-  Signal dom (WishboneM2S addrW nBytes (BitVector (nBytes * 8))) ->
+  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | New circuit value.
   Signal dom (Maybe a) ->
   -- |
   -- 1. Outgoing stored value
   -- 2. Outgoing wishbone bus (slave to master)
-  (Signal dom a, Signal dom (WishboneS2M (BitVector (nBytes * 8))))
+  (Signal dom a, Signal dom (WishboneS2M (Bytes nBytes)))
 registerWbSpecVal writePriority initVal m2s0 sigIn = (storedVal, s2m1)
  where
   (storedVal, s2m0) = registerWb @dom @a @nBytes @addrW writePriority initVal m2s1 sigIn

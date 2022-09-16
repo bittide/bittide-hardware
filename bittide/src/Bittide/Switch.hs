@@ -36,12 +36,12 @@ switch ::
   -- | The calendar configuration
   CalendarConfig nBytes addrW (CalendarEntry links memDepth) ->
   -- | Wishbone interface wired to the calendar.
-  Signal dom (WishboneM2S addrW nBytes (BitVector (8 * nBytes))) ->
+  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | All incoming datalinks
   Signal dom (Vec links (DataLink frameWidth)) ->
   -- | All outgoing datalinks
   ( Signal dom (Vec links (DataLink frameWidth))
-  , Signal dom (WishboneS2M (BitVector (8 * nBytes))) )
+  , Signal dom (WishboneS2M (Bytes nBytes)) )
 switch calConfig wbIn streamsIn =
   (crossBar <$> crossBarConfig <*> availableFrames, wbOut)
  where

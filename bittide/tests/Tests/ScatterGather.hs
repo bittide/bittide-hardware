@@ -218,8 +218,8 @@ directedDecode _ _ = []
 -- their readData's.
 wbDecoding ::
   KnownNat nBytes =>
-  [WishboneS2M (BitVector (8 * nBytes))] ->
-  [BitVector ((8 * nBytes) + (8 * nBytes))]
+  [WishboneS2M (Bytes nBytes)] ->
+  [Bytes (nBytes + nBytes)]
 wbDecoding (s2m0 : s2m1 : s2ms)
   | acknowledge s2m0 && acknowledge s2m1 = out : wbDecoding s2ms
   | otherwise = wbDecoding (s2m1 : s2ms)
@@ -238,17 +238,17 @@ wbRead ::
   , 1 <= maxIndex) =>
   Index maxIndex ->
   Maybe a ->
-  [WishboneM2S addrW nBytes (BitVector (8 * nBytes))]
+  [WishboneM2S addrW nBytes (Bytes nBytes)]
 wbRead readAddr (Just _) =
   case timesNDivRU' @nBytes @8 of
     Dict ->
-      [ (emptyWishboneM2S @addrW @(BitVector (8 * nBytes)))
+      [ (emptyWishboneM2S @addrW @(Bytes nBytes))
         { addr = (`shiftL` 3) . resize $ pack readAddr
         , busCycle = True
         , strobe = True
         , busSelect = maxBound }
 
-      , (emptyWishboneM2S @addrW @(BitVector (8 * nBytes)))
+      , (emptyWishboneM2S @addrW @(Bytes nBytes))
         { addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr)
         , busCycle = True
         , strobe = True
@@ -265,10 +265,10 @@ wbWrite ::
   , KnownNat maxIndex
   , 1 <= maxIndex) =>
   Index maxIndex ->
-  Maybe (BitVector (nBytes*2*8)) ->
-  [WishboneM2S addrW nBytes (BitVector (8 * nBytes))]
+  Maybe (Bytes (nBytes*2)) ->
+  [WishboneM2S addrW nBytes (Bytes nBytes)]
 wbWrite writeAddr (Just frame) =
-  [ (emptyWishboneM2S @addrW @(BitVector (8 * nBytes)))
+  [ (emptyWishboneM2S @addrW @(Bytes nBytes))
     { addr = (`shiftL` 3) . resize $ pack writeAddr
     , busSelect = maxBound
     , busCycle = True
@@ -276,7 +276,7 @@ wbWrite writeAddr (Just frame) =
     , writeEnable = True
     , writeData = lower }
 
-  , (emptyWishboneM2S @addrW @(BitVector (8 * nBytes)))
+  , (emptyWishboneM2S @addrW @(Bytes nBytes))
     { addr =  4 .|.  ((`shiftL` 3) . resize $ pack writeAddr)
     , busSelect = maxBound
     , busCycle = True

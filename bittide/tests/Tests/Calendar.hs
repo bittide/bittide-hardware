@@ -316,7 +316,7 @@ directedWbDecoding (wbM2S:m2sRest) (_:s2mRest) = out
 
   filterNoOps l = [(m2s,s2m)| (m2s,s2m) <- l, m2s /= wbNothingM2S]
   entry = case V.fromList $ P.reverse entryList of
-    Just (vec :: Vec (Regs a (nBytes * 8)) (BitVector (nBytes * 8))) ->
+    Just (vec :: Vec (Regs a (nBytes * 8)) (Bytes nBytes)) ->
         case timesDivRU @(nBytes * 8) @(BitSize a) of
           Dict ->
             paddedToData . bvAsPadded @(Regs a (nBytes * 8) * nBytes * 8) $ pack vec
@@ -403,9 +403,9 @@ calendarWbSpecVal ::
   -- | Bootstrap calendar for the shadow buffer.
   Vec bootstrapSizeB calEntry ->
   -- | Incoming wishbone interface
-  Signal dom (WishboneM2S addrW nBytes (BitVector (8 * nBytes))) ->
+  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | Currently active entry, Metacycle indicator and outgoing wishbone interface.
-  (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (BitVector (8 * nBytes))))
+  (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)))
 calendarWbSpecVal mDepth bootstrapActive bootstrapShadow m2s0 =
   (active, metaIndicator, s2m1)
   where
