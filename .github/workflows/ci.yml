@@ -135,7 +135,7 @@ jobs:
 
       - name: Plot mesh grid
         run: |
-          cd elastic-buffer-sim && poetry run cabal run sim -- plot 30000 1000
+          cd elastic-buffer-sim && poetry run cabal run sim -- plot complete3 30000 1000
 
       - name: Upload plots
         uses: actions/upload-artifact@v2
