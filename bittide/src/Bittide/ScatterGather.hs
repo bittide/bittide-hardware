@@ -14,9 +14,10 @@ module Bittide.ScatterGather
 
 import Clash.Prelude
 
+import Protocols.Wishbone
+
 import Bittide.Calendar
 import Bittide.DoubleBufferedRam
-import Bittide.Extra.Wishbone
 import Bittide.SharedTypes
 
 -- | Calendar entry that can be used by a scatter or gather engine.
@@ -63,13 +64,13 @@ scatterUnit ::
   -- | Configuration for the 'calendar'.
   CalendarConfig nBytes addrW (CalendarEntry memDepth) ->
   -- | Wishbone (master -> slave) port for the 'calendar'.
-  Signal dom (WishboneM2S nBytes addrW) ->
+  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | Incoming frame from Bittide link.
   Signal dom (DataLink frameWidth) ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | (Data at read address delayed 1 cycle, Wishbone (slave -> master) from 'calendar')
-  (Signal dom (BitVector frameWidth), Signal dom (WishboneS2M nBytes))
+  (Signal dom (BitVector frameWidth), Signal dom (WishboneS2M (Bytes nBytes)))
 scatterUnit calConfig wbIn linkIn readAddr = (readOut, wbOut)
  where
   (writeAddr, metaCycle, wbOut) = mkCalendar calConfig wbIn
@@ -91,13 +92,13 @@ gatherUnit ::
   -- | Configuration for the 'calendar'.
   CalendarConfig nBytes addrW (CalendarEntry memDepth) ->
   -- | Wishbone (master -> slave) port for the 'calendar'.
-  Signal dom (WishboneM2S nBytes addrW) ->
+  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | Write operation writing a frame.
   Signal dom (Maybe (LocatedBits memDepth frameWidth)) ->
   -- | Byte enable for write operation.
   Signal dom (ByteEnable (BitVector frameWidth)) ->
   -- | (Transmitted  frame to Bittide Link, Wishbone (slave -> master) from 'calendar')
-  (Signal dom (DataLink frameWidth), Signal dom (WishboneS2M nBytes))
+  (Signal dom (DataLink frameWidth), Signal dom (WishboneS2M (Bytes nBytes)))
 gatherUnit calConfig wbIn writeOp byteEnables= (linkOut, wbOut)
  where
   (readAddr, metaCycle, wbOut) = mkCalendar calConfig wbIn
@@ -117,13 +118,15 @@ wbInterface ::
   -- | Maximum address of the respective memory element as seen from the wishbone side.
   Index addresses ->
   -- | Wishbone (master -> slave) data.
-  WishboneM2S nBytes addrW ->
+  WishboneM2S addrW nBytes (Bytes nBytes) ->
   -- | Read data to be send to over the (slave -> master) port.
   Bytes nBytes ->
   -- | (slave - master data, read address memory element, write data memory element)
-  (WishboneS2M nBytes, Index addresses, Maybe (Bytes nBytes))
+  (WishboneS2M (Bytes nBytes), Index addresses, Maybe (Bytes nBytes))
 wbInterface addressRange WishboneM2S{..} readData =
-  (WishboneS2M{readData, acknowledge, err}, memAddr, writeOp)
+  ( (emptyWishboneS2M @(Bytes nBytes)) {readData, acknowledge, err}
+  , memAddr
+  , writeOp )
  where
   masterActive = strobe && busCycle
   (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
@@ -147,13 +150,13 @@ scatterUnitWb ::
   -- | Configuration for the 'calendar'.
   CalendarConfig nBytesCal addrWidthCal (CalendarEntry memDepth) ->
   -- | Wishbone (master -> slave) port 'calendar'.
-  Signal dom (WishboneM2S nBytesCal addrWidthCal) ->
+  Signal dom (WishboneM2S addrWidthCal nBytesCal (Bytes nBytesCal)) ->
   -- | Incoming frame from Bittide link.
   Signal dom (DataLink 64) ->
   -- | Wishbone (master -> slave) port scatter memory.
-  Signal dom (WishboneM2S 4 addrWidthSu) ->
+  Signal dom (WishboneM2S addrWidthSu 4 (Bytes 4)) ->
   -- | (Wishbone (slave -> master) port scatter memory, Wishbone (slave -> master) port 'calendar')
-  (Signal dom (WishboneS2M 4), Signal dom (WishboneS2M nBytesCal))
+  (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes nBytesCal)))
 scatterUnitWb calConfig wbInCal linkIn wbInSu =
   (delayControls wbOutSu, wbOutCal)
  where
@@ -176,11 +179,13 @@ gatherUnitWb ::
   -- | Configuration for the 'calendar'.
   CalendarConfig nBytesCal addrWidthCal (CalendarEntry memDepth) ->
   -- | Wishbone (master -> slave) data 'calendar'.
-  Signal dom (WishboneM2S nBytesCal addrWidthCal) ->
+  Signal dom (WishboneM2S addrWidthCal nBytesCal (Bytes nBytesCal)) ->
   -- | Wishbone (master -> slave) port gather memory.
-  Signal dom (WishboneM2S 4 addrWidthGu) ->
+  Signal dom (WishboneM2S addrWidthGu 4 (Bytes 4)) ->
   -- | (Wishbone (slave -> master) port gather memory, Wishbone (slave -> master) port 'calendar')
-  (Signal dom (DataLink 64), Signal dom (WishboneS2M 4), Signal dom (WishboneS2M nBytesCal))
+  ( Signal dom (DataLink 64)
+  , Signal dom (WishboneS2M (Bytes 4))
+  , Signal dom (WishboneS2M (Bytes nBytesCal)) )
 gatherUnitWb calConfig wbInCal wbInGu =
   (linkOut, delayControls wbOutGu, wbOutCal)
  where

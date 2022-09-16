@@ -13,6 +13,8 @@ module Contranomy where
 import           Clash.Annotations.TH
 import           Clash.Prelude
 
+import           Protocols.Wishbone
+
 import           Data.IntMap                 (IntMap)
 import qualified Data.List                   as L
 
@@ -21,6 +23,7 @@ import           Contranomy.Core
 import           Contranomy.Core.SharedTypes
 import           Contranomy.RVFI
 import           Contranomy.RegisterFile
+import Protocols (Circuit(Circuit))
 
 createDomain vXilinxSystem{vName="Core", vPeriod=hzToPeriod 100e6}
 
@@ -86,16 +89,18 @@ contranomy' clk rst entry iMem dMem (unbundle -> (tI, sI, eI)) =
 
   instructionM2S = iBusM2S <$> coreOut1
   dataM2S = dBusM2S <$> coreOut1
-  iMemS2M = wishboneStorage "Instruction storage" iMem instructionM2S
-  dMemS2M = wishboneStorage "Data storage" dMem dataM2S
+  Circuit iMemFn = wishboneStorage "Instruction storage" iMem
+  (iMemS2M, ()) = iMemFn (instructionM2S, ())
+  Circuit dMemFn = wishboneStorage "Data storage" dMem
+  (dMemS2M, ()) = dMemFn (dataM2S, ())
 
   iWritten = checkWritten <$> instructionM2S <*> iMemS2M
   dWritten = checkWritten <$> dataM2S <*> dMemS2M
 
 
   checkWritten
-    :: WishboneM2S Bytes AddressWidth
-    -> WishboneS2M nBytes
+    :: WishboneM2S AddressWidth Bytes MachineWord
+    -> WishboneS2M MachineWord
     -> Maybe (Unsigned 32, Signed 32)
   checkWritten busM busS =
     if writeEnable busM && strobe busM && acknowledge busS

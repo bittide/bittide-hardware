@@ -20,21 +20,25 @@ import Clash.Prelude hiding (fromList)
 import qualified Prelude as P
 
 import Clash.Sized.Vector (fromList)
+import Data.Constraint (Dict(Dict))
+import Data.Constraint.Nat.Extra (timesNDivRU')
+import Data.Maybe
 import Data.String
 import Hedgehog
+import Protocols.Wishbone
 import Test.Tasty
 import Test.Tasty.Hedgehog
+
+import Bittide.Calendar
+import Bittide.ScatterGather
+import Bittide.SharedTypes
+import Tests.Shared
+
 import qualified Clash.Util.Interpolate as I
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
-import Bittide.Calendar
-import Bittide.Extra.Wishbone
-import Bittide.ScatterGather
-import Bittide.SharedTypes
-import Data.Maybe
-import Tests.Shared
 
 -- | The extra in SomeCalendar extra defines the minimum amount of elements in the vector
 -- and the minimum addressable indexes in the vector elements. I.e, vectors of 0 elements
@@ -214,7 +218,7 @@ directedDecode _ _ = []
 -- their readData's.
 wbDecoding ::
   KnownNat nBytes =>
-  [WishboneS2M nBytes] ->
+  [WishboneS2M (BitVector (8 * nBytes))] ->
   [BitVector ((8 * nBytes) + (8 * nBytes))]
 wbDecoding (s2m0 : s2m1 : s2ms)
   | acknowledge s2m0 && acknowledge s2m1 = out : wbDecoding s2ms
@@ -234,18 +238,22 @@ wbRead ::
   , 1 <= maxIndex) =>
   Index maxIndex ->
   Maybe a ->
-  [WishboneM2S nBytes addrW]
+  [WishboneM2S addrW nBytes (BitVector (8 * nBytes))]
 wbRead readAddr (Just _) =
-  [ (emptyWishboneM2S @nBytes @addrW)
-    { addr = (`shiftL` 3) . resize $ pack readAddr
-    , busCycle = True
-    , strobe = True }
+  case timesNDivRU' @nBytes @8 of
+    Dict ->
+      [ (emptyWishboneM2S @addrW @(BitVector (8 * nBytes)))
+        { addr = (`shiftL` 3) . resize $ pack readAddr
+        , busCycle = True
+        , strobe = True
+        , busSelect = maxBound }
 
-  , (emptyWishboneM2S @nBytes @addrW)
-    { addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr)
-    , busCycle = True
-    , strobe = True }
-  ]
+      , (emptyWishboneM2S @addrW @(BitVector (8 * nBytes)))
+        { addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr)
+        , busCycle = True
+        , strobe = True
+        , busSelect = maxBound }
+      ]
 wbRead _ Nothing = []
 
 -- | Transform a write address with frame to a wishbone write operation for testing the
@@ -258,9 +266,9 @@ wbWrite ::
   , 1 <= maxIndex) =>
   Index maxIndex ->
   Maybe (BitVector (nBytes*2*8)) ->
-  [WishboneM2S nBytes addrW]
+  [WishboneM2S addrW nBytes (BitVector (8 * nBytes))]
 wbWrite writeAddr (Just frame) =
-  [ (emptyWishboneM2S @nBytes @addrW)
+  [ (emptyWishboneM2S @addrW @(BitVector (8 * nBytes)))
     { addr = (`shiftL` 3) . resize $ pack writeAddr
     , busSelect = maxBound
     , busCycle = True
@@ -268,7 +276,7 @@ wbWrite writeAddr (Just frame) =
     , writeEnable = True
     , writeData = lower }
 
-  , (emptyWishboneM2S @nBytes @addrW)
+  , (emptyWishboneM2S @addrW @(BitVector (8 * nBytes)))
     { addr =  4 .|.  ((`shiftL` 3) . resize $ pack writeAddr)
     , busSelect = maxBound
     , busCycle = True

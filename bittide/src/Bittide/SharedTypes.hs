@@ -13,13 +13,14 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Bittide.SharedTypes where
+
 import Clash.Prelude
 
-import Data.Proxy
-import Data.Type.Equality ((:~:)(Refl))
 import Data.Constraint
 import Data.Constraint.Nat.Extra
-import Bittide.Extra.Wishbone
+import Data.Proxy
+import Data.Type.Equality ((:~:)(Refl))
+import Protocols.Wishbone
 
 -- | A single byte.
 type Byte = BitVector 8

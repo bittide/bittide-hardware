@@ -8,9 +8,15 @@
 
 module Bittide.Wishbone where
 
-import           Clash.Prelude
-import           Bittide.Extra.Wishbone
-import           Data.Maybe
+import Clash.Prelude
+
+import Data.Maybe
+import Data.Constraint.Nat.Extra (timesNDivRU'')
+import Data.Constraint (Dict(Dict))
+import Protocols.Internal
+import Protocols.Wishbone
+
+import Bittide.SharedTypes (Bytes)
 
 -- Applying this hint yields a compile error
 {-# ANN module "HLint: ignore Functor law" #-}
@@ -26,36 +32,57 @@ singleMasterInterconnect ::
  forall dom nSlaves bytes addressWidth .
  ( HiddenClockResetEnable dom
  , KnownNat nSlaves, KnownNat bytes, KnownNat addressWidth) =>
- MemoryMap nSlaves addressWidth->
- Signal dom (WishboneM2S bytes addressWidth) ->
- Signal dom (Vec nSlaves (WishboneS2M bytes)) ->
- (Signal dom (WishboneS2M bytes), Signal dom (Vec nSlaves (WishboneM2S bytes addressWidth)))
-singleMasterInterconnect config (register emptyWishboneM2S -> master) slaves =
-  (toMaster, toSlaves)
+ MemoryMap nSlaves addressWidth ->
+ Circuit
+  (Wishbone dom 'Standard addressWidth (Bytes bytes))
+  (Vec nSlaves (Wishbone dom 'Standard addressWidth (Bytes bytes)))
+singleMasterInterconnect config =
+  Circuit go
  where
-  masterActive = strobe <$> master .&&. busCycle <$> master
-  selectedSlave = getSelected . addr <$> master
-
-  toSlaves = routeToSlaves <$> masterActive <*> selectedSlave <*> master
-  toMaster = routeToMaster <$> masterActive <*> selectedSlave <*> slaves
-
-  -- compVec is a vector of comparison(<=) results where the addresses in config are
-  -- compared to the wishbone address. getSelected returns the location of the last
-  -- comparison that returns True. It depends on the assumption that config is a list
-  -- of increasing addresses (config[i] < config[i+1] holds for all i).
-  getSelected a = elemIndex (True, False) $ zip (init compVec) (tail compVec)
+  go (register emptyWishboneM2S -> master, bundle -> slaves) = (toMaster, unbundle toSlaves)
    where
-     compVec = fmap (<=a) config :< False
+    masterActive = strobe <$> master .&&. busCycle <$> master
+    selectedSlave = getSelected . addr <$> master
 
-  routeToMaster active sel slaves0
-    | active    = maybe wishboneS2M (slaves0 !!) sel
-    | otherwise = wishboneS2M
+    toSlaves = routeToSlaves <$> masterActive <*> selectedSlave <*> master
+    toMaster = routeToMaster <$> masterActive <*> selectedSlave <*> slaves
 
-  routeToSlaves active sel m@WishboneM2S{..}
-    | active    = fromMaybe allSlaves out
-    | otherwise = allSlaves
-   where
-     out = (\i -> replace i toAllSlaves{busCycle, strobe, writeEnable} allSlaves) <$> sel
-     newAddr = addr - maybe 0 (config !!) sel
-     allSlaves = repeat toAllSlaves
-     toAllSlaves = m{addr=newAddr, busCycle = False, strobe = False}
+    -- compVec is a vector of comparison(<=) results where the addresses in config are
+    -- compared to the wishbone address. getSelected returns the location of the last
+    -- comparison that returns True. It depends on the assumption that config is a list
+    -- of increasing addresses (config[i] < config[i+1] holds for all i).
+    getSelected a = elemIndex (True, False) $ zip (init compVec) (tail compVec)
+     where
+      compVec = fmap (<=a) config :< False
+
+    routeToMaster active sel slaves0
+        | active    = maybe emptyWishboneS2M (slaves0 !!) sel
+        | otherwise = emptyWishboneS2M
+
+    routeToSlaves active sel m@WishboneM2S{..}
+      | active    = fromMaybe allSlaves out
+      | otherwise = allSlaves
+     where
+      out = (\i -> replace i toAllSlaves{busCycle, strobe, writeEnable} allSlaves) <$> sel
+      newAddr = addr - maybe 0 (config !!) sel
+      allSlaves = repeat toAllSlaves
+      toAllSlaves = m{addr=newAddr, busCycle = False, strobe = False}
+
+
+-- | Version of 'singleMasterInterconnect' that does not use the 'Circuit' abstraction
+-- from @clash-protocols@ but exposes 'Signal's directly.
+singleMasterInterconnect' ::
+ forall dom nSlaves bytes addressWidth .
+ ( HiddenClockResetEnable dom
+ , KnownNat nSlaves, KnownNat bytes, KnownNat addressWidth) =>
+ MemoryMap nSlaves addressWidth ->
+ Signal dom (WishboneM2S addressWidth bytes (Bytes bytes)) ->
+ Signal dom (Vec nSlaves (WishboneS2M (Bytes bytes))) ->
+ ( Signal dom (WishboneS2M (Bytes bytes))
+ , Signal dom (Vec nSlaves (WishboneM2S addressWidth bytes (Bytes bytes))) )
+singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
+ where
+  Circuit f = singleMasterInterconnect @dom @nSlaves @bytes @addressWidth config
+  (toMaster, toSlaves) =
+    case timesNDivRU'' @bytes @8 of
+      Dict -> f (master, unbundle slaves)

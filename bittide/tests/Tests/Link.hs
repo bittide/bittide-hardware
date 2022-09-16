@@ -11,26 +11,29 @@
 
 module Tests.Link where
 
-import Clash.Hedgehog.Sized.Unsigned
 import Clash.Prelude hiding (fromList)
+
+import Clash.Hedgehog.Sized.Unsigned
+import Clash.Sized.Vector
+import Data.Constraint (Dict(Dict))
+import Data.Constraint.Nat.Extra (timesNDivRU'')
+import Data.Maybe
+import Data.String
 import GHC.Stack
-
-import Bittide.Extra.Wishbone
-import Bittide.Link
-
 import Hedgehog
 import Hedgehog.Range as Range
 import Test.Tasty
 import Test.Tasty.Hedgehog
+import Tests.Shared
+import Protocols.Wishbone
+
+import Bittide.Link
+import Bittide.SharedTypes
+
 import qualified Data.List as L
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
 
-import Bittide.SharedTypes
-import Data.String
-import Clash.Sized.Vector
-import Data.Maybe
-import Tests.Shared
 
 linkGroup :: TestTree
 linkGroup = testGroup "Link group"
@@ -82,9 +85,14 @@ configTxUnit ::
     (BitVector pw
     -> Signal System (Unsigned scw)
     -> Signal System (DataLink fw)
-    -> Signal System (WishboneM2S bs aw)
-    -> (Signal System (WishboneS2M bs), Signal System (DataLink fw)))
-configTxUnit SNat SNat SNat SNat SNat = txUnit @System @bs @aw @pw @fw @scw
+    -> Signal System (WishboneM2S aw bs (Bytes bs))
+    -> (Signal System (WishboneS2M (Bytes bs)), Signal System (DataLink fw)))
+configTxUnit SNat SNat SNat SNat SNat preamble sq frameIn m2s0 =
+  (s2m1, dl)
+ where
+  (s2m0, dl) = txUnit @System @bs @aw @pw @fw @scw preamble sq frameIn m2s1
+  (m2s1, s2m1) = validateWb m2s0 s2m0
+
 
 -- | Use SNat values obtained from a 'TestConfig' to configure a 'rxUnit'.
 configRxUnit ::
@@ -94,9 +102,13 @@ configRxUnit ::
     (  BitVector pw
     -> Signal System (Unsigned scw)
     -> Signal System (DataLink fw)
-    -> Signal System (WishboneM2S bs aw)
-    -> Signal System (WishboneS2M bs))
-configRxUnit SNat SNat SNat SNat SNat = rxUnit @System @bs @aw @pw @fw @scw
+    -> Signal System (WishboneM2S aw bs (Bytes bs))
+    -> Signal System (WishboneS2M (Bytes bs)))
+configRxUnit SNat SNat SNat SNat SNat linkIn preamble localCounter m2s0 =
+  s2m1
+ where
+  s2m0 = rxUnit @System @bs @aw @pw @fw @scw linkIn preamble localCounter m2s1
+  (m2s1, s2m1) = validateWb m2s0 s2m0
 
 -- | Tests whether the transmission of a static preamble and static seqCounter works.
 -- It does so by simulating the 'txUnit' for a number of cycles in transparent mode,
@@ -114,7 +126,7 @@ txSendSC = property $ do
       fw@(SNat :: SNat fw)
       scw@(SNat :: SNat scw)) -> do
       iterations <- forAll $ Gen.enum 1 10
-      preamble <- forAll genDefinedBitVector
+      preamble <- forAll (genDefinedBitVector @pw)
       let
         pwNum = snatToNum pw
         fwNum = snatToNum fw
@@ -134,10 +146,19 @@ txSendSC = property $ do
         simRange = Range.singleton simLength
         genFrame = Gen.maybe genDefinedBitVector
       framesIn <- forAll $ Gen.list simRange genFrame
-      seqCountIn <-forAll . Gen.list simRange $ genUnsigned Range.constantBounded
+      seqCountIn <- forAll $ Gen.list simRange $ genUnsigned Range.constantBounded
       let
-        topEntity (unbundle -> (scIn, wbIn0, linkIn)) = bundle $ withClockResetEnable
-          clockGen resetGen enableGen configTxUnit bs aw pw fw scw preamble scIn linkIn wbIn0
+        topEntity ::
+          Signal System
+            ( Unsigned scw
+            , WishboneM2S aw ((bs * 8) `DivRU` 8) (Bytes bs)
+            , Maybe (BitVector fw)
+            ) ->
+          Signal System (WishboneS2M (Bytes bs), Maybe (BitVector fw))
+        topEntity (unbundle -> (scIn, wbIn0, linkIn)) =
+          case timesNDivRU'' @bs @8 of
+            Dict -> bundle $ withClockResetEnable
+              clockGen resetGen enableGen configTxUnit bs aw pw fw scw preamble scIn linkIn wbIn0
         -- Compensate for the register write + state machine start delays.
         wbOff0 = L.replicate (offTime0-2) emptyWishboneM2S
         wbOn = startSignal : L.replicate onTime emptyWishboneM2S
@@ -145,7 +166,7 @@ txSendSC = property $ do
         wbIn = wbOff0 <> wbOn <> wbOff1
         RegisterBank (toList . fmap Just-> preambleFrames) = getRegs @_ @fw preamble
         topEntityInput = L.zip3 seqCountIn wbIn framesIn
-        startSignal = (emptyWishboneM2S @bs @aw)
+        startSignal = (emptyWishboneM2S @aw @(Bytes bs))
           { addr = 0
           , writeEnable = True
           , writeData = 1
@@ -153,7 +174,7 @@ txSendSC = property $ do
           , busCycle = True
           , strobe = True
           }
-        stopSignal = (emptyWishboneM2S @bs @aw)
+        stopSignal = (emptyWishboneM2S @aw @(Bytes bs))
           { addr = 0
           , writeEnable = True
           , writeData = 0
@@ -249,7 +270,7 @@ rxSendSC = property $ do
           cycle (fmap wbRead [0..fromIntegral readBackCycles])
         framesIn = offFrames0 <> onFrames <> offFrames1
         topEntityInput = L.zip3 wbIn framesIn localSeqCounts
-        wbWrite = (emptyWishboneM2S @4 @aw)
+        wbWrite = (emptyWishboneM2S @aw @(Bytes 4))
           { addr = 0 :: BitVector aw
           , writeEnable = True
           , writeData = 1 :: BitVector 32
@@ -257,10 +278,11 @@ rxSendSC = property $ do
           , busCycle = True
           , strobe = True
           }
-        wbRead (a :: BitVector aw) = (emptyWishboneM2S @4 @aw)
+        wbRead (a :: BitVector aw) = (emptyWishboneM2S @aw)
           { addr = shiftL a 2
           , busCycle = True
           , strobe = True
+          , busSelect = maxBound
           }
         simOut = simulateN simLength topEntity topEntityInput
         decodedOutput = directedDecoding wbIn simOut :: [(Unsigned scw, Unsigned scw)]
@@ -281,7 +303,7 @@ rxSendSC = property $ do
   directedDecoding ::
     forall bs aw a .
     (KnownNat bs, 1 <= bs, KnownNat aw, Paddable a) =>
-    [WishboneM2S bs aw] -> [WishboneS2M bs] -> [a]
+    [WishboneM2S aw bs (Bytes bs)] -> [WishboneS2M (Bytes bs)] -> [a]
   directedDecoding (m2s:m2ss) (s2m:s2ms)
     | slvAck && firstFrame && storedSC && isJust decodingData =
       decoded : uncurry directedDecoding rest
@@ -348,9 +370,9 @@ integration = property $ do
         topEntity :: HiddenClockResetEnable System =>
           ( Signal System (Maybe (BitVector fw)
           , Unsigned scw
-          , WishboneM2S 4 aw
-          , WishboneM2S 4 aw)
-          -> Signal System (DataLink fw, WishboneS2M 4))
+          , WishboneM2S aw 4 (Bytes 4)
+          , WishboneM2S aw 4 (Bytes 4))
+          -> Signal System (DataLink fw, WishboneS2M (Bytes 4)))
         topEntity (unbundle -> (gatherOut, counter, wbTxM2S, wbRxM2S)) = out
          where
           (_, linkIn) = configTxUnit bs aw pw fw scw preamble counter gatherOut wbTxM2S
@@ -366,7 +388,7 @@ integration = property $ do
         counters = cycle [0..]
         framesIn = gatherFrames0 <> gatherFrames1 <> L.repeat Nothing
         topEntityInput = L.zip4 framesIn counters wbTxIn wbRxIn
-        wbWrite a x = (emptyWishboneM2S @4 @aw)
+        wbWrite a x = (emptyWishboneM2S @aw @(Bytes 4))
           { addr = shiftL a 2
           , writeEnable = True
           , writeData =x
@@ -374,10 +396,11 @@ integration = property $ do
           , busCycle = True
           , strobe = True
           }
-        wbRead (a :: BitVector aw) = (emptyWishboneM2S @4 @aw)
+        wbRead (a :: BitVector aw) = (emptyWishboneM2S @aw)
           { addr = shiftL a 2
           , busCycle = True
           , strobe = True
+          , busSelect = maxBound
           }
         (linkFrames, wbRxOut) = L.unzip $ simulateN simLength topEntity topEntityInput
         decodedOutput = directedDecoding wbRxIn wbRxOut :: [(Unsigned scw, Unsigned scw)]
@@ -400,7 +423,7 @@ integration = property $ do
   directedDecoding ::
     forall bs aw a .
     (KnownNat bs, 1 <= bs, KnownNat aw, Paddable a) =>
-    [WishboneM2S bs aw] -> [WishboneS2M bs] -> [a]
+    [WishboneM2S aw bs (Bytes bs)] -> [WishboneS2M (Bytes bs)] -> [a]
   directedDecoding (m2s:m2ss) (s2m:s2ms)
     | slvAck && firstFrame && storedSC && isJust decodingData =
       decoded : uncurry directedDecoding rest

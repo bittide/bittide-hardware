@@ -9,7 +9,8 @@ module Contranomy.Core.LoadStore where
 
 import Clash.Prelude
 
-import Bittide.Extra.Wishbone
+import Protocols.Wishbone
+
 import Contranomy.Core.Decode
 import Contranomy.Core.SharedTypes
 import Contranomy.Instruction
@@ -30,13 +31,13 @@ loadStoreUnit ::
   -- | The value to store
   MachineWord ->
   -- | Data bus response (slave-to-master)
-  WishboneS2M Bytes ->
+  WishboneS2M MachineWord ->
   -- |
   -- 1. Data bus initiation (master-to-slave)
   -- 2. The address causing a data-access fault on the data bus
   -- 3. The misaligned address
   -- 4. Data bus transaction completed
-  (WishboneM2S Bytes AddressWidth, Maybe MachineWord, Maybe MachineWord, Maybe MachineWord, Bool)
+  (WishboneM2S AddressWidth Bytes MachineWord, Maybe MachineWord, Maybe MachineWord, Maybe MachineWord, Bool)
 loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
   LOAD | not instructionFault ->
     let loadData = case loadStoreWidth of
@@ -49,7 +50,7 @@ loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
               sign
               (slice d15 d0 (readData dBusS2M `shiftR` shiftAmount))
           _ -> readData dBusS2M
-     in ( (emptyWishboneM2S @Bytes @AddressWidth)
+     in ( (emptyWishboneM2S @AddressWidth)
             { addr      = slice d31 d2 addr ++# (0 :: BitVector 2)
             , busSelect = mask
             , busCycle  = aligned
@@ -69,7 +70,7 @@ loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
           Byte _ -> toStore `shiftL` shiftAmount
           Half _ -> toStore `shiftL` shiftAmount
           _ -> toStore
-     in ( (emptyWishboneM2S @Bytes @AddressWidth)
+     in ( (emptyWishboneM2S @AddressWidth @MachineWord)
            { addr        = slice d31 d2 addr ++# (0 :: BitVector 2)
            , writeData   = storeData
            , busSelect   = mask
@@ -84,7 +85,7 @@ loadStoreUnit instruction instructionFault addr toStore dBusS2M = case opcode of
         )
 
   _otherwise ->
-    ( emptyWishboneM2S @Bytes @AddressWidth
+    ( emptyWishboneM2S @AddressWidth
     , Nothing
     , Nothing
     , Nothing

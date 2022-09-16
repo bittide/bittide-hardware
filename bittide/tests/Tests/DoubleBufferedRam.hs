@@ -11,30 +11,31 @@
 module Tests.DoubleBufferedRam(ramGroup) where
 
 import Clash.Prelude
+
 import Clash.Hedgehog.Sized.Vector
 import Clash.Hedgehog.Sized.BitVector
+import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
-
-
 import Data.Maybe
-import qualified Clash.Sized.Vector as V
+import Data.Proxy
+import Data.String
+import Data.Type.Equality (type (:~:)(Refl))
 import Hedgehog
 import Hedgehog.Range as Range
 import Test.Tasty
 import Test.Tasty.Hedgehog
+import Protocols.Wishbone
+
+import Bittide.SharedTypes
+import Bittide.DoubleBufferedRam
+import Tests.Shared (validateWb)
+
+import qualified Clash.Sized.Vector as V
 import qualified Data.List as L
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Prelude as P
-import Data.Proxy
-import Data.Type.Equality (type (:~:)(Refl))
-import Bittide.Extra.Wishbone
-import Data.String
-
-import Bittide.SharedTypes
-import Bittide.DoubleBufferedRam
-import Clash.Hedgehog.Sized.Index
 
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRam group"
@@ -308,7 +309,7 @@ registerWbSigToSig = property $ do
       let
         simLength = L.length writes + 1
         someReg prio sigIn = fst $ withClockResetEnable clockGen resetGen enableGen
-          $ registerWb @_ @_ @4 @32 prio initVal (pure emptyWishboneM2S) sigIn
+          $ registerWbSpecVal @_ @_ @4 @32 prio initVal (pure emptyWishboneM2S) sigIn
         topEntity sigIn = bundle (someReg CircuitPriority sigIn, someReg WishbonePriority sigIn)
         topEntityInput = (Just <$> writes) <> [Nothing]
         simOut = simulateN @System simLength topEntity topEntityInput
@@ -341,7 +342,7 @@ registerWbWbToSig = property $ do
       let
         simLength = L.length writes * regs + 2
         someReg prio wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
-         registerWb @System @_ @4 @32 prio initVal wbIn (pure Nothing)
+         registerWbSpecVal @System @_ @4 @32 prio initVal wbIn (pure Nothing)
         topEntity wbIn = bundle (someReg CircuitPriority wbIn, someReg WishbonePriority wbIn)
         topEntityInput = L.concatMap wbWrite writes <> L.repeat emptyWishboneM2S
         simOut = simulateN simLength topEntity topEntityInput
@@ -383,7 +384,7 @@ registerWbSigToWb = property $ do
       writes <- forAll $ Gen.list (Range.constant 1 25) $ genDefinedBitVector @_ @bits
       let
         someReg prio sigIn wbIn = snd $ withClockResetEnable clockGen resetGen enableGen
-          $ registerWb @_ @_ @4 @32 prio initVal wbIn sigIn
+          $ registerWbSpecVal @_ @_ @4 @32 prio initVal wbIn sigIn
         topEntity (unbundle -> (sigIn, wbIn)) = bundle
           (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
         padWrites x = L.take (natToNum @(Regs (BitVector bits) 32)) $ Just x : L.repeat Nothing
@@ -400,7 +401,7 @@ registerWbSigToWb = property $ do
       writes === wbDecoding (L.tail fstOut)
     _ -> error "registerWbSigToWb: Registers required to store bitvector == 0."
    where
-    wbDecoding :: ([WishboneS2M 4] -> [BitVector bits])
+    wbDecoding :: ([WishboneS2M (BitVector 32)] -> [BitVector bits])
     wbDecoding (wbNow:wbRest)
       | acknowledge wbNow = entry : wbDecoding rest
       | otherwise         = wbDecoding wbRest
@@ -411,9 +412,10 @@ registerWbSigToWb = property $ do
         Nothing  -> error $ "wbDecoding: list to vector conversion failed: " <> show entryList <> "from " <> show (wbNow:wbRest)
 
     wbDecoding [] = []
-    wbRead i = (emptyWishboneM2S @4 @32)
+    wbRead i = (emptyWishboneM2S @32)
       { addr = resize (pack i) ++# (0b00 :: BitVector 2)
       , busCycle = True
+      , busSelect = maxBound
       , strobe = True
       }
     postProcWb (WishboneS2M{..} : wbRest)
@@ -445,7 +447,7 @@ registerWbWriteCollisions = property $ do
       let
         simLength = writeAmount + 1
         someReg prio sigIn wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
-         registerWb @System @_ @4 @32 prio initVal wbIn sigIn
+         registerWbSpecVal @System @_ @4 @32 prio initVal wbIn sigIn
         topEntity (unbundle -> (sigIn, wbIn)) = bundle
           (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
         topEntityInput = L.zip (Just <$> sigWrites)
@@ -469,8 +471,8 @@ registerWbWriteCollisions = property $ do
 bv2WbWrite :: (BitPack a, Enum a) =>
   a
   -> ("DAT_MOSI" ::: BitVector 32)
-  -> WishboneM2S 4 32
-bv2WbWrite i v = (emptyWishboneM2S @4 @32)
+  -> WishboneM2S 32 4 (BitVector 32)
+bv2WbWrite i v = (emptyWishboneM2S @32 @(BitVector 32))
   { addr = resize (pack i) ++# (0b00 :: BitVector 2)
   , writeData = v
   , writeEnable = True
@@ -562,3 +564,33 @@ byteAddressableDoubleBufferedRamBehavior state input = (state', out)
 
   getData :: Vec nBytes Byte -> BitVector bits
   getData vec = registersToData @_ @8 $ RegisterBank vec
+
+
+-- | Version of 'Bittide.DoubleBufferedRam.registerWb' which performs wishbone
+--   spec validation.
+registerWbSpecVal ::
+  forall dom a nBytes addrW .
+  ( HiddenClockResetEnable dom
+  , Paddable a
+  , KnownNat nBytes
+  , 1 <= nBytes
+  , KnownNat addrW
+  , 2 <= addrW
+  , BitPack a
+  , ShowX a) =>
+  -- | Determines the write priority on write collisions
+  RegisterWritePriority ->
+  -- | Initial value.
+  a ->
+  -- | Wishbone bus (master to slave)
+  Signal dom (WishboneM2S addrW nBytes (BitVector (nBytes * 8))) ->
+  -- | New circuit value.
+  Signal dom (Maybe a) ->
+  -- |
+  -- 1. Outgoing stored value
+  -- 2. Outgoing wishbone bus (slave to master)
+  (Signal dom a, Signal dom (WishboneS2M (BitVector (nBytes * 8))))
+registerWbSpecVal writePriority initVal m2s0 sigIn = (storedVal, s2m1)
+ where
+  (storedVal, s2m0) = registerWb @dom @a @nBytes @addrW writePriority initVal m2s1 sigIn
+  (m2s1, s2m1) = validateWb m2s0 s2m0

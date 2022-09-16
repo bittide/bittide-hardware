@@ -78,6 +78,7 @@ common common-options
     base >= 4.14 && < 4.16,
     bittide-extra,
     clash-prelude >= 1.6 && < 1.8,
+    clash-protocols,
     containers >= 0.6 && < 0.7,
 
     -- clash-prelude will set suitable version bounds for the plugins

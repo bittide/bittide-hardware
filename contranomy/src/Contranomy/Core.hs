@@ -15,10 +15,10 @@ import Data.Generics.Labels ()
 import Data.Maybe
 import Control.Monad
 import Clash.Prelude
+import Protocols.Wishbone
 
 import Contranomy.Clash.Extra
 
-import Bittide.Extra.Wishbone
 import Contranomy.Core.ALU
 import Contranomy.Core.CoreState
 import Contranomy.Core.CSR
@@ -39,8 +39,8 @@ type ExternalInterrupt = MachineWord
 
 data CoreIn
   = CoreIn
-  { iBusS2M :: "iBusWishbone" ::: WishboneS2M Bytes
-  , dBusS2M :: "dBusWishbone" :::  WishboneS2M Bytes
+  { iBusS2M :: "iBusWishbone" ::: WishboneS2M MachineWord
+  , dBusS2M :: "dBusWishbone" :::  WishboneS2M MachineWord
   , timerInterrupt :: "timerInterrupt" ::: TimerInterrupt
   , softwareInterrupt :: "softwareInterrupt" ::: SoftwareInterrupt
   , externalInterrupt :: "externalInterrupt" ::: ExternalInterrupt
@@ -48,14 +48,14 @@ data CoreIn
 
 data CoreOut
   = CoreOut
-  { iBusM2S :: "iBusWishbone" ::: WishboneM2S Bytes AddressWidth
-  , dBusM2S :: "dBusWishbone" ::: WishboneM2S Bytes AddressWidth
+  { iBusM2S :: "iBusWishbone" ::: WishboneM2S AddressWidth Bytes MachineWord
+  , dBusM2S :: "dBusWishbone" ::: WishboneM2S AddressWidth Bytes MachineWord
   }
 
 coreOut :: CoreOut
 coreOut = CoreOut
-  { iBusM2S = emptyWishboneM2S @Bytes @AddressWidth
-  , dBusM2S = emptyWishboneM2S @Bytes @AddressWidth
+  { iBusM2S = emptyWishboneM2S
+  , dBusM2S = emptyWishboneM2S
   }
 
 {-# NOINLINE core #-}
@@ -107,7 +107,7 @@ transition s@CoreState{stage=InstructionFetch, pc} (CoreIn{iBusS2M},_) = runStat
             else
               InstructionFetch
 
-  return ( coreOut { iBusM2S = (emptyWishboneM2S @Bytes @AddressWidth)
+  return ( coreOut { iBusM2S = (emptyWishboneM2S @AddressWidth)
                              { addr = pc
                              , busSelect = 0b1111
                              , busCycle = True

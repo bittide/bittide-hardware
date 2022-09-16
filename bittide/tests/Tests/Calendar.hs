@@ -16,14 +16,10 @@
 module Tests.Calendar(calGroup, genCalendarConfig) where
 
 import Clash.Prelude
+
 import Clash.Hedgehog.Sized.Vector
-
-import Bittide.Calendar
-import Bittide.SharedTypes
-import Tests.Shared
-
+import Clash.Hedgehog.Sized.Index (genIndex)
 import Clash.Sized.Vector (unsafeFromList)
-import Bittide.Extra.Wishbone
 import Data.Constraint
 import Data.Constraint.Nat.Extra
 import Data.Proxy
@@ -33,13 +29,19 @@ import GHC.Natural
 import Hedgehog
 import Hedgehog.Gen as Gen
 import Hedgehog.Range as Range
+import Protocols.Wishbone
 import Test.Tasty
 import Test.Tasty.Hedgehog
+
+import Bittide.Calendar (CalendarConfig (..), calendar)
+import Bittide.SharedTypes
+import Tests.Shared
+
 import qualified Clash.Sized.Vector as V
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Prelude as P
-import Clash.Hedgehog.Sized.Index (genIndex)
+
 
 calGroup :: TestTree
 calGroup = testGroup "Calendar group"
@@ -166,7 +168,7 @@ readCalendar = property $ do
     BVCalendar (succSNat -> calSize') SNat cal -> do
       let
         topEntity = (\(a,_,_) -> a) $ withClockResetEnable clockGen resetGen enableGen
-          calendar calSize' cal cal $ pure (emptyWishboneM2S @4 @32)
+          calendarWbSpecVal calSize' cal cal $ pure (emptyWishboneM2S @32 @(BitVector 32))
         simOut = sampleN @System (fromIntegral simLength) topEntity
       footnote . fromString $ "simOut: " <> show simOut
       footnote . fromString $ "expected: " <> show (toList cal)
@@ -192,7 +194,7 @@ reconfigCalendar = property $ do
         writeDuration = P.length wbWrites
         simLength = writeDuration + (2 * calSize)
         topEntity writePort = (\(a,_,_) -> a) $ withClockResetEnable clockGen
-          resetGen enableGen calendar (succSNat calSize') cal cal writePort
+          resetGen enableGen calendarWbSpecVal (succSNat calSize') cal cal writePort
         topEntityInput = P.take simLength $ wbWrites <> P.repeat wbNothingM2S
         simOut = simulateN @System simLength topEntity topEntityInput
       footnote . fromString $ "simOut: " <> show simOut
@@ -219,7 +221,7 @@ readShadowCalendar = property $ do
             simLength = P.length wbReads + 1
             wbReads = P.concatMap (\ i -> wbReadEntry @4 @32 (fromIntegral i) entryRegs) readAddresses
             topEntity writePort = (\(_,_,wb) -> wb) $ withClockResetEnable clockGen resetGen enableGen
-              calendar (succSNat snatS) calA' calS' writePort
+              calendarWbSpecVal (succSNat snatS) calA' calS' writePort
             topEntityInput = P.take simLength $ wbReads <> P.repeat wbNothingM2S
             simOut = simulateN @System simLength topEntity topEntityInput
             wbOutEntries = directedWbDecoding topEntityInput simOut
@@ -248,7 +250,7 @@ metaCycleIndication = property $ do
         wbWrites = P.replicate (fromIntegral calSize - 3) wbNothingM2S <> P.concatMap writeAndSwitch newDepths
         writeAndSwitch d = wbWriteOp (newDepthAddr, fromIntegral d) : swapCall : P.replicate (d-1) wbNothingM2S
         topEntity writePort = (\(_,m,_) -> m) $ withClockResetEnable
-          clockGen resetGen enableGen calendar calSize' cal cal writePort
+          clockGen resetGen enableGen calendarWbSpecVal calSize' cal cal writePort
         topEntityInput = wbWrites <> P.repeat wbNothingM2S
         simOut = simulateN @System simLength topEntity topEntityInput
         expectedOut = P.take simLength $ P.concatMap (\ (fromIntegral -> n) -> P.replicate n False <> [True]) allDepths
@@ -269,12 +271,17 @@ asProxy SNat = Proxy
 requiredRegs :: (1 <= regSize) => SNat bits -> SNat regSize-> SNat (Regs (BitVector bits) regSize)
 requiredRegs SNat SNat = SNat
 
--- | idle 'Bittide.Extra.Wishbone.WishboneM2S' bus.
-wbNothingM2S :: forall nBytes addrW . (KnownNat nBytes, KnownNat addrW) => WishboneM2S nBytes addrW
-wbNothingM2S = (emptyWishboneM2S @nBytes @addrW)
- { addr = 0
- , writeData = 0
- , busSelect = 0}
+-- | idle 'Protocols.Wishbone.WishboneM2S' bus.
+wbNothingM2S ::
+  forall nBytes addrW.
+  (KnownNat nBytes, KnownNat addrW) =>
+  WishboneM2S addrW nBytes (Bytes nBytes)
+wbNothingM2S =
+  (emptyWishboneM2S @addrW @(Bytes nBytes))
+    { addr = 0,
+      writeData = 0,
+      busSelect = 0
+    }
 
 -- | Write an entry to some address in 'Bittide.Calendar.calendar', this may require
 -- multiple write operations.
@@ -282,7 +289,7 @@ writeWithWishbone ::
   forall nBytes addrW n entry .
   (KnownNat nBytes, 1 <= nBytes, KnownNat addrW, KnownNat n, Paddable entry) =>
   (Index n, entry) ->
-  [WishboneM2S nBytes addrW]
+  [WishboneM2S addrW nBytes (Bytes nBytes)]
 writeWithWishbone (a, entry) =
   case getRegs entry of
     RegisterBank vec -> toList $ fmap wbWriteOp $ zip indicesI (vec :< fromIntegral a)
@@ -290,15 +297,18 @@ writeWithWishbone (a, entry) =
 -- | Use both the wishbone M2S bus and S2M bus to decode the S2M bus operations into the
 -- expected type a.
 directedWbDecoding :: forall nBytes addrW a . (KnownNat nBytes, 1 <= nBytes, KnownNat addrW, Paddable a) =>
-  [WishboneM2S nBytes addrW] ->
-  [WishboneS2M nBytes] ->
+  [WishboneM2S addrW nBytes (Bytes nBytes)] ->
+  [WishboneS2M (Bytes nBytes)] ->
   [a]
 directedWbDecoding (wbM2S:m2sRest) (_:s2mRest) = out
  where
   active = strobe wbM2S && busCycle wbM2S
   foundBeginning = writeEnable wbM2S && active
 
-  expectReadData :: (WishboneM2S nBytes addrW,WishboneS2M nBytes) -> Bool
+  expectReadData ::
+    ( WishboneM2S addrW nBytes (Bytes nBytes)
+    , WishboneS2M (Bytes nBytes) ) ->
+    Bool
   expectReadData (WishboneM2S{strobe, busCycle, writeEnable},_) =
     strobe && busCycle && not writeEnable
 
@@ -329,37 +339,80 @@ wbReadEntry ::
   (KnownNat nBytes, KnownNat addrW, Integral i) =>
   i ->
   i ->
-  [WishboneM2S nBytes addrW]
+  [WishboneM2S addrW nBytes (Bytes nBytes)]
 wbReadEntry i dataRegs = addrWrite : wbNothingM2S : dataReads
  where
-  addrWrite = (emptyWishboneM2S @nBytes @addrW)
-    { addr      = fromIntegral $ dataRegs + 1
-    , writeData = fromIntegral i
-    , busSelect = maxBound
-    , busCycle    = True
-    , strobe      = True
-    , writeEnable = True}
+  addrWrite =
+    (emptyWishboneM2S @addrW @(Bytes nBytes))
+      { addr = fromIntegral $ dataRegs + 1
+      , writeData = fromIntegral i
+      , busSelect = maxBound
+      , busCycle = True
+      , strobe = True
+      , writeEnable = True
+      }
   dataReads = readReg <$> P.reverse [0..(dataRegs-1)]
-  readReg n = (emptyWishboneM2S @nBytes @addrW)
-    { addr = fromIntegral n
-    , writeData = 0
-    , busSelect = maxBound
-    , busCycle = True
-    , strobe = True
-    , writeEnable = False
-    }
+  readReg n =
+    (emptyWishboneM2S @addrW @(Bytes nBytes))
+      { addr = fromIntegral n
+      , writeData = 0
+      , busSelect = maxBound
+      , busCycle = True
+      , strobe = True
+      , writeEnable = False
+      }
 
 -- | Transform a target address i and a bitvector to a Wishbone write operation that writes
 -- the bitvector to address i.
 wbWriteOp ::
   forall nBytes addrW i .
   (KnownNat nBytes, KnownNat addrW, Integral i) =>
-  (i, BitVector (nBytes * 8)) ->
-  WishboneM2S nBytes addrW
-wbWriteOp (i, bv) = (emptyWishboneM2S @nBytes @addrW)
-  { addr        = fromIntegral i
-  , writeData   = bv
-  , busSelect   = maxBound
-  , busCycle    = True
-  , strobe      = True
-  , writeEnable = True}
+  (i, Bytes nBytes) ->
+  WishboneM2S addrW nBytes (Bytes nBytes)
+wbWriteOp (i, bv) =
+  (emptyWishboneM2S @addrW @(Bytes nBytes))
+    { addr = fromIntegral i
+    , writeData = bv
+    , busSelect = maxBound
+    , busCycle = True
+    , strobe = True
+    , writeEnable = True
+    }
+
+-- | Version of 'Bittide.Calendar.calendar' which performs Wishbone spec validation
+calendarWbSpecVal ::
+  forall dom nBytes addrW maxCalDepth calEntry bootstrapSizeA bootstrapSizeB.
+  ( HiddenClockResetEnable dom
+  , KnownNat nBytes
+  , KnownNat addrW
+  , KnownNat bootstrapSizeA
+  , 1 <= bootstrapSizeA
+  , KnownNat bootstrapSizeB
+  , 1 <= bootstrapSizeB
+  , LessThan bootstrapSizeA maxCalDepth
+  , LessThan bootstrapSizeB maxCalDepth
+  , Paddable calEntry
+  , NatFitsInBits (Regs calEntry (nBytes * 8)) addrW
+  , ShowX calEntry
+  , Show calEntry
+  ) =>
+  -- | The maximum amount of entries that can be stored in the individual calendars.
+  SNat maxCalDepth ->
+  -- | Bootstrap calendar for the active buffer.
+  Vec bootstrapSizeA calEntry ->
+  -- | Bootstrap calendar for the shadow buffer.
+  Vec bootstrapSizeB calEntry ->
+  -- | Incoming wishbone interface
+  Signal dom (WishboneM2S addrW nBytes (BitVector (8 * nBytes))) ->
+  -- | Currently active entry, Metacycle indicator and outgoing wishbone interface.
+  (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (BitVector (8 * nBytes))))
+calendarWbSpecVal mDepth bootstrapActive bootstrapShadow m2s0 =
+  (active, metaIndicator, s2m1)
+  where
+    (active, metaIndicator, s2m0) =
+      calendar @dom @nBytes @addrW
+        mDepth
+        bootstrapActive
+        bootstrapShadow
+        m2s1
+    (m2s1, s2m1) = validateWb m2s0 s2m0
