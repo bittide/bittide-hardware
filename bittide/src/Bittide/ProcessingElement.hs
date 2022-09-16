@@ -11,9 +11,9 @@ import Clash.Prelude
 
 import Contranomy.Core(CoreIn(..), CoreOut(..),core)
 import Contranomy.RegisterFile
+import Protocols.Wishbone
 
 import Bittide.DoubleBufferedRam
-import Bittide.Extra.Wishbone
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
@@ -43,8 +43,8 @@ processingElement ::
   ( HiddenClockResetEnable dom
   , KnownNat nBusses, 2 <= nBusses) =>
   PeConfig nBusses ->
-  Vec (nBusses-2) (Signal dom (WishboneS2M 4)) ->
-  Vec (nBusses-2) (Signal dom (WishboneM2S 4 32))
+  Vec (nBusses-2) (Signal dom (WishboneS2M (Bytes 4))) ->
+  Vec (nBusses-2) (Signal dom (WishboneM2S 32 4 (Bytes 4)))
 processingElement config bussesIn = case config of
   PeConfig memMapConfig depthI depthD initI initD pcEntry ->
     go memMapConfig depthI depthD initI initD pcEntry
@@ -58,7 +58,7 @@ processingElement config bussesIn = case config of
     InitialContent initDepthI (Bytes 4) ->
     InitialContent initDepthD (Bytes 4) ->
     BitVector 32 ->
-    Vec (nBusses-2) (Signal dom (WishboneM2S 4 32))
+    Vec (nBusses-2) (Signal dom (WishboneM2S 32 4 (Bytes 4)))
   go memMapConfig depthI@SNat depthD@SNat initI initD pcEntry = bussesOut
    where
     tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusS2M, dBusS2M) =
@@ -71,13 +71,13 @@ processingElement config bussesIn = case config of
     iFromCore = iBusM2S <$> rvOut
     dFromCore = dBusM2S <$> rvOut
 
-    (dToCore, unbundle -> toSlaves) = singleMasterInterconnect memMapConfig dFromCore fromSlaves
+    (dToCore, unbundle -> toSlaves) = singleMasterInterconnect' memMapConfig dFromCore fromSlaves
 
     fromSlaves = bundle (iToMap :> dToMap :> bussesIn)
     (iFromMap :> dFromMap :> bussesOut) = toSlaves
 
     (iToCore, iToMap) = wbStorageDP depthI initI iFromCore iFromMap
-    dToMap = wbStorage depthD initD dFromMap
+    dToMap = wbStorage' depthD initD dFromMap
 
 -- | Contranomy RV32IMC core
 rv32 ::
