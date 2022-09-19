@@ -58,7 +58,7 @@ plotTorus34 :: Int -> Int -> IO ()
 plotTorus34 = $(plotEbsAPI ("torus34", torus2d 3 4))
 
 plotK3 :: Int -> Int -> IO ()
-plotK3 = $(plotEbsAPI ("compelte3", complete 3))
+plotK3 = $(plotEbsAPI ("complete3", complete 3))
 
 plotK6 :: Int -> Int -> IO ()
 plotK6 = $(plotEbsAPI ("complete6", complete 6))

@@ -99,7 +99,9 @@ ebController size clkRead clkWrite = go <$> rdEna <*> outRd
   go True (dc, False) = Just dc
   go _ _ = Nothing
 
-  rdEna = register clkRead resetGen enableGen True $ mealy clkRead resetGen enableGen f False outRd
+  rdEna =
+    register clkRead resetGen enableGen True
+      $ mealy clkRead resetGen enableGen f False outRd
    where
     f :: Bool -> (DataCount, Underflow) -> (Bool, Bool)
     f False (_, False) = (False, True)
@@ -107,7 +109,9 @@ ebController size clkRead clkWrite = go <$> rdEna <*> outRd
     f True (d, _) | d == targetDataCount size = (False, True)
     f _ _ = (False, False)
 
-  wrEna = register clkWrite resetGen enableGen True $ mealy clkWrite resetGen enableGen g False outWr
+  wrEna =
+    register clkWrite resetGen enableGen True
+      $ mealy clkWrite resetGen enableGen g False outWr
    where
     g :: Bool -> (DataCount, Overflow) -> (Bool, Bool)
     g False (_, False) = (False, True)
@@ -144,24 +148,26 @@ elasticBuffer size clkRead clkWrite readEna writeEna
       then goRead relativeTime fillLevel rps wps
       else goWrite relativeTime fillLevel rps wps
 
-  goWrite relativeTime fillLevel rps (writePeriod :- wps) rdEna (wrEna :- wrEnas) | wrEna =
+  goWrite relativeTime fillLevel rps (writePeriod :- wps) rdEna (wrEna :- wrEnas)
+    | wrEna =
     second (next :-) $
       go (relativeTime - toInteger writePeriod) newFillLevel rps wps rdEna wrEnas
    where
     next@(newFillLevel, _)
-      | fillLevel >= size = (size, True)
+      | fillLevel >= size = (targetDataCount size, True)
       | otherwise = (fillLevel + 1, False)
 
   goWrite relativeTime fillLevel rps (writePeriod :- wps) rdEna (_ :- wrEnas) =
     second ((fillLevel, False) :-) $
       go (relativeTime - toInteger writePeriod) fillLevel rps wps rdEna wrEnas
 
-  goRead relativeTime fillLevel (readPeriod :- rps) wps (rdEna :- rdEnas) wrEnas | rdEna =
+  goRead relativeTime fillLevel (readPeriod :- rps) wps (rdEna :- rdEnas) wrEnas
+    | rdEna =
     first (next :-) $
       go (relativeTime + toInteger readPeriod) newFillLevel rps wps rdEnas wrEnas
    where
     next@(newFillLevel, _)
-      | fillLevel <= 0 = (0, True)
+      | fillLevel <= 0 = (targetDataCount size, True)
       | otherwise = (fillLevel - 1, False)
 
   goRead relativeTime fillLevel (readPeriod :- rps) wps (_ :- rdEnas) wrEnas =

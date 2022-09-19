@@ -11,7 +11,7 @@ where
 
 import Clash.Explicit.Prelude
 
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, isNothing)
 
 import Bittide.ClockControl
 
@@ -84,6 +84,10 @@ callisto clk rst ena ClockControlConfig{..} =
     sgn NoChange = 0
     sgn SpeedUp = 1
     sgn SlowDown = -1
+
+  go (_, settleCounter) dataCounts
+    | any isNothing dataCounts =
+    ((initControlSt, settleCounter + cccPessimisticPeriod), NoChange)
 
   go (st, settleCounter) _ =
     ((st, settleCounter + cccPessimisticPeriod), NoChange)
