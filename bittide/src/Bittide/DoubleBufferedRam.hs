@@ -19,16 +19,41 @@ import Protocols (Circuit (Circuit))
 import Protocols.Wishbone
 
 import Bittide.SharedTypes hiding (delayControls)
+import Data.Typeable
 
-data InitialContent n a where
-  NonReloadable :: Vec n a -> InitialContent n a
-  Reloadable :: Vec n a -> InitialContent n a
-  Undefined :: (1 <= n, KnownNat n) => InitialContent n a
+data InitialContent elements a where
+  NonReloadableV  :: Vec elements a -> InitialContent elements a
+  ReloadableV     :: Vec elements a -> InitialContent elements a
+  NonReloadableMb :: MemBlob elements (BitSize a) -> InitialContent elements a
+  ReloadableMb    :: MemBlob elements (BitSize a) -> InitialContent elements a
+  Undefined       :: (1 <= elements, KnownNat elements) => InitialContent elements a
 
-getContent :: InitialContent n a -> Vec n a
-getContent (Reloadable v) = v
-getContent (NonReloadable v) = v
-getContent Undefined = error "getContent: Content is Undefined."
+instance (Typeable a, KnownNat elements) => Show (InitialContent elements a) where
+  show = \case
+    NonReloadableMb _ -> "NonReloadableMb :: MemBlob " <> tyVars
+    ReloadableMb _    -> "ReloadableMb :: MemBlob " <> tyVars
+    NonReloadableV _  -> "NonReloadableMb :: Vec " <> tyVars
+    ReloadableV _     -> "NonReloadableMb :: Vec " <> tyVars
+    Undefined         -> "Undefined :: Undefined " <> tyVars
+   where
+    tyVars = show (natToNatural @elements) <> " " <> show (typeRep (Proxy @a))
+
+
+-- Momenteel zijn deze functies niet meer gebruikt in de implementatie
+-- , je kan ze negeren tot je ze nodig hebt :)
+getContentV :: InitialContent elements a -> Vec elements a
+getContentV (ReloadableV v)    = v
+getContentV (NonReloadableV v) = v
+getContentV Undefined          = error "getContentV: Content is Undefined."
+getContentV (NonReloadableMb _)  = error "getContentV: Can not get Vector from MemBlob, use getContentMb"
+getContentV (ReloadableMb _)     = error "getContentV: Can not get Vector from MemBlob, use getContentMb"
+
+getContentMb :: InitialContent elements a -> MemBlob elements (BitSize a)
+getContentMb (ReloadableV _)      = error "getContentMb: Can not get Vector from MemBlob"
+getContentMb (NonReloadableV _)   = error "getContentMb: Can not get Vector from MemBlob"
+getContentMb Undefined            = error "getContentMb: Content is Undefined."
+getContentMb (NonReloadableMb mb) = mb
+getContentMb (ReloadableMb mb)    = mb
 
 contentGenerator ::
   forall dom romSize targetSize a .
@@ -39,7 +64,8 @@ contentGenerator ::
   Vec romSize a ->
   (Signal dom (Maybe (Located targetSize a)), Signal dom Bool)
 contentGenerator Nil = (pure Nothing, pure True)
-contentGenerator content@(Cons _ _) = (mux (running .&&. not <$> done) writeOp (pure Nothing), done)
+contentGenerator content@(Cons _ _) =
+ (mux (running .&&. not <$> done) writeOp (pure Nothing), done)
  where
   running = register False $ pure True
   writeOp = curry Just . resize <$> romAddr0 <*> element
@@ -47,6 +73,23 @@ contentGenerator content@(Cons _ _) = (mux (running .&&. not <$> done) writeOp (
   romAddr0 = register (maxBound :: Index romSize) romAddr1
   romAddr1 = satSucc SatWrap <$> romAddr0
   element = rom content (bitCoerce <$> romAddr1)
+
+contentGeneratorMemBlob ::
+  forall dom romSize targetSize bits .
+  ( HiddenClockResetEnable dom
+  , KnownNat targetSize,  1 <= targetSize
+  , KnownNat romSize, 1 <= romSize, romSize <= targetSize) =>
+  MemBlob romSize bits ->
+  (Signal dom (Maybe (LocatedBits targetSize bits)), Signal dom Bool)
+contentGeneratorMemBlob memBlob =
+  (mux (running .&&. not <$> done) writeOp (pure Nothing), done)
+ where
+  running = register False $ pure True
+  writeOp = curry Just . resize <$> romAddr0 <*> element
+  done = register False (done .||. (running .&&. romAddr0 .==. pure maxBound))
+  romAddr0 = register (maxBound :: Index romSize) romAddr1
+  romAddr1 = satSucc SatWrap <$> romAddr0
+  element = romBlob memBlob romAddr1
 
 -- | Dual-ported Wishbone storage element, essentially a wrapper for the single-ported version
 -- which priorities port A over port B. Transactions are not aborted, but when two transactions
@@ -113,7 +156,10 @@ wbStorage' ::
 wbStorage' SNat initContent wbIn = delayControls wbIn wbOut
  where
   depth = resize $ bitCoerce (maxBound :: Index depth)
-  romOut = bundle $ contentGenerator (getContent initContent)
+  romOut = case initContent of
+    ReloadableV vec-> bundle $ contentGenerator vec
+    ReloadableMb memBlob-> bundle $ contentGeneratorMemBlob memBlob
+    other -> errorX ("wbStorage': No contentgenerator for " <> show other)
 
   readDataA = ramA readAddrA writeEntryA byteSelectA
   readDataB = ramB readAddrB writeEntryB byteSelectB
@@ -122,11 +168,14 @@ wbStorage' SNat initContent wbIn = delayControls wbIn wbOut
     (errorX "wbStorage: Uninitialized element")
 
   (ramA, ramB, isReloadable) = case initContent of
-    NonReloadable (unzip @initDepth . bitCoerce -> (b, a)) ->
+    NonReloadableV (unzip @initDepth . bitCoerce -> (b, a)) ->
       ( blockRamByteAddressable @_ @depth $ addElems a
       , blockRamByteAddressable @_ @depth $ addElems b
       , False)
-    Reloadable _ ->
+    ReloadableV _ ->
+      (blockRamByteAddressableU, blockRamByteAddressableU, True)
+    NonReloadableMb _ -> _
+    ReloadableMb _ ->
       (blockRamByteAddressableU, blockRamByteAddressableU, True)
     Undefined ->
       (blockRamByteAddressableU, blockRamByteAddressableU, False)
