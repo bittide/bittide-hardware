@@ -18,12 +18,18 @@ import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Bittide.Switch
 
+-- | A simple node consisting of one external bidirectional link and two 'gppe's.
+-- This node's 'switch' has a 'CalendarConfig' of for a 'calendar' with up to @1024@ entries,
+-- however, the 'calendar' is initialized with a single entry of repeated zeroes.
+-- The 'scatterUnitWb's and 'gatherUnitWb's are initialized with 'CalendarConfig's of all
+-- zeroes. The 'gppe's initial memories are both undefined and the 'MemoryMap' is a
+-- vector of ever increasing base addresses (increments of 0x1000).
 simpleNodeConfig :: NodeConfig 1 2
 simpleNodeConfig =
   NodeConfig
-  (ManagementConfig linkConfig nmuConfig)
-  switchConfig
-  (repeat (GppeConfig linkConfig peConfig))
+    (ManagementConfig linkConfig nmuConfig)
+    switchConfig
+    (repeat (GppeConfig linkConfig peConfig))
  where
   switchConfig = SwitchConfig{ preamble = preamble', calendarConfig = switchCal}
   switchCal = CalendarConfig (SNat @1024) (repeat @1 $ repeat 0) (repeat @1 $ repeat 0)
@@ -31,11 +37,11 @@ simpleNodeConfig =
   sgConfig = CalendarConfig (SNat @1024) (repeat @1 (0 :: Index 1024)) (repeat @1 0)
   peConfig = PeConfig memMapPe (SNat @8192) (SNat @8192) (Undefined @1) (Undefined @1) 0
   nmuConfig = PeConfig memMapNmu (SNat @8192) (SNat @8192) (Undefined @1) (Undefined @1) 0
-  memMapPe = fmap (+32768) (iterateI succ 0)
-  memMapNmu = fmap (+32768) (iterateI succ 0)
-  preamble' =  0x1234567890 :: BitVector 80
+  memMapPe = iterateI (+0x1000) 0
+  memMapNmu = iterateI (+0x1000) 0
+  preamble' = 0xDEADBEEFA5A5A5A5FACADE :: BitVector 96
 
--- | Each 'gppe' results in 6 busses for the 'managementUnit', namely:
+-- | Each 'gppe' results in 4 busses for the 'managementUnit', namely:
 -- * The 'calendar' for the 'scatterUnitWB'.
 -- * The 'calendar' for the 'gatherUnitWB'.
 -- * The interface of the 'rxUnit' on the 'gppe' side.
@@ -47,15 +53,20 @@ type BussesPerGppe = 4
 -- * The interface of the 'txUnit' on the 'switch' side.
 type BussesPerSwitchLink = 2
 
+-- | Configuration of a 'node'.
 data NodeConfig externalLinks gppes where
   NodeConfig ::
     ( KnownNat switchBusses
-    , switchBusses ~ (1 + BussesPerSwitchLink * (externalLinks + (gppes + 1))))=>
+    , switchBusses ~ (1 + BussesPerSwitchLink * (externalLinks + (gppes + 1)))) =>
+    -- | Configuration for the 'node's 'managementUnit'.
     ManagementConfig ((BussesPerGppe * gppes) + switchBusses) ->
+    -- | Configuratoin for the 'node's 'switch'.
     SwitchConfig (externalLinks + gppes + 1) 4 32 ->
+    -- | Configuration for all the node's 'gppe's.
     Vec gppes GppeConfig ->
     NodeConfig externalLinks gppes
 
+-- | A 'node' consists of a 'switch', 'managementUnit' and @0..n@ 'gppe's.
 node ::
   forall dom extLinks gppes .
   ( HiddenClockResetEnable dom, KnownNat extLinks, KnownNat gppes) =>
