@@ -17,7 +17,7 @@ import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
--- | Configuration for a Bittide Processing Element.
+-- | Configuration for a 'processingElement'.
 data PeConfig nBusses where
   PeConfig ::
     ( KnownNat initDepthI, initDepthI <= depthI, 1 <= depthI, 1 <= initDepthI
