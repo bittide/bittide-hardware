@@ -92,7 +92,6 @@ type HasUnderflowed = Bool
 type HasOverflowed = Bool
 type DisableTilHalf = Bool
 
-<<<<<<< HEAD
 type DisableWrites = Bool
 type DisableReads = Bool
 
@@ -180,7 +179,7 @@ elasticBufferXilinx _mode _size clkRead clkWrite =
   waitMidway = mealy clkRead resetGen enableGen go False
    where
     go True _ = (True, True)
-    go False i | i >= (maxBound `div` 2) = (True, True)
+    go False i | i >= maxBound `div` 2 = (True, True)
                | otherwise = (False, False)
   block = waitMidway readCount
   FifoOut{..} = dcFifo (defConfig @12) clkWrite resetGen clkRead resetGen (pure (Just ())) block
