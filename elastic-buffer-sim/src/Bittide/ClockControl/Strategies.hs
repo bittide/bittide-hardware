@@ -2,17 +2,20 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE RecordWildCards #-}
-
 -- | Mock clock controller
 module Bittide.ClockControl.Strategies
-  ( ClockControlAlgorithm
+  ( Active
+  , ClockControlAlgorithm
   , clockControl
   , callistoClockControl
+  , stabilityCheck
   )
 where
 
+import Debug.Trace
+
 import Clash.Explicit.Prelude
+import Data.Maybe (isJust, fromMaybe)
 
 import Bittide.ClockControl
 import Bittide.ClockControl.Strategies.Callisto
@@ -31,9 +34,11 @@ callistoClockControl ::
   ClockControlConfig ->
   -- | Statistics provided by elastic buffers.
   Vec n (Signal dom DataCount) ->
-  Signal dom SpeedChange
+  Signal dom (SpeedChange, ExpectStable)
 callistoClockControl clk rst ena cfg =
   clockControl clk rst ena cfg callisto
+
+type Active = Bool
 
 type ClockControlAlgorithm dom n a =
   Clock dom ->
@@ -41,7 +46,18 @@ type ClockControlAlgorithm dom n a =
   Enable dom ->
   ClockControlConfig ->
   Signal dom (Vec n DataCount) ->
-  Signal dom SpeedChange
+  Signal dom (Maybe SpeedChange)
+
+type ExpectStable = Bool
+
+stabilityCheck ::
+  KnownDomain dom =>
+  Clock dom ->
+  Reset dom ->
+  Enable dom ->
+  Signal dom (Maybe SpeedChange) ->
+  Signal dom ExpectStable
+stabilityCheck _clk _rst _ena _ = pure False
 
 clockControl ::
   forall n dom a.
@@ -56,6 +72,10 @@ clockControl ::
   -- | Statistics provided by elastic buffers.
   Vec n (Signal dom DataCount) ->
   -- | Whether to adjust node clock frequency
-  Signal dom SpeedChange
-clockControl clk rst ena cfg f =
-  f clk rst ena cfg . bundle
+  Signal dom (SpeedChange, ExpectStable)
+clockControl clk rst ena cfg f dats =
+  (,) <$> converted <*> isStable
+ where
+  mSpeedChanges = f clk rst ena cfg (bundle dats)
+  converted = fromMaybe NoChange <$> mSpeedChanges
+  isStable = stabilityCheck clk rst ena mSpeedChanges

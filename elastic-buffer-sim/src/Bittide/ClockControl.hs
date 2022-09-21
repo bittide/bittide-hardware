@@ -14,6 +14,7 @@ module Bittide.ClockControl
   , defClockConfig
   , specPeriod
   , targetDataCount
+  , sgn
   )
 where
 
@@ -66,6 +67,11 @@ instance ToField SpeedChange where
   toField SpeedUp = "speedUp"
   toField SlowDown = "slowDown"
   toField NoChange = "noChange"
+
+sgn :: Integral a => SpeedChange -> a
+sgn NoChange = 0
+sgn SpeedUp = 1
+sgn SlowDown = -1
 
 defClockConfig :: ClockControlConfig
 defClockConfig = ClockControlConfig

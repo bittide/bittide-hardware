@@ -388,7 +388,7 @@ simNodesFromGraph ccc g = do
     clkD i = valD (VarP (clockNames A.! i)) (clkE i)
     clkSignalD i = valD (VarP (clockSignalNames A.! i)) (VarE 'extractPeriods `AppE` VarE (clockNames A.! i))
 
-    clockControlE k =
+    clockControlE k = mapV `AppE` fstV `AppE`
       AppE
         (callistoClockControlV
           `AppE` VarE (clockNames A.! k)
@@ -442,6 +442,8 @@ simNodesFromGraph ccc g = do
   ebClkClk = ebV `AppE` errC `AppE` ebSize
   callistoClockControlV = VarE 'callistoClockControl
   mkVecE = foldr (\x -> AppE (AppE consC x)) nilC
+  mapV = VarE 'fmap
+  fstV = VarE 'fst
 
   ebSize = LitE (IntegerL (toInteger (cccBufferSize ccc)))
   step = LitE (IntegerL (cccStepSize ccc))

@@ -49,9 +49,10 @@ case_clockControlMaxBound = do
     config = clockConfig (Ppm 100)
     dataCounts = pure (cccBufferSize config) :> Nil
     changes =
-      sampleN
-        (fromIntegral (cccPessimisticPeriod config))
-        (callistoClockControl @_ @Fast clockGen resetGen enableGen config dataCounts)
+      fst <$>
+        sampleN
+          (fromIntegral (cccPessimisticPeriod config))
+          (callistoClockControl @_ @Fast clockGen resetGen enableGen config dataCounts)
 
   assertBool
     "only requests speed up"
@@ -63,9 +64,10 @@ case_clockControlMinBound = do
     config = clockConfig (Ppm 100)
     dataCounts = pure 0 :> Nil
     changes =
-      sampleN
-        (fromIntegral (cccPessimisticPeriod config))
-        (callistoClockControl @_ @Fast clockGen resetGen enableGen config dataCounts)
+      fst <$>
+        sampleN
+          (fromIntegral (cccPessimisticPeriod config))
+          (callistoClockControl @_ @Fast clockGen resetGen enableGen config dataCounts)
 
   assertBool
     "only requests slow down"
