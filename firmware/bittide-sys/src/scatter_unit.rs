@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::FdtLoadError;
+use fdt::node::FdtNode;
+
+use crate::{utils::matches_fdt_name, ComponentLoadError};
 
 pub struct ScatterTimingOracle {
     local_sequence_counter: *const u64,
@@ -40,31 +42,31 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
     ///
     /// The FDT must be a valid description of the hardware components that this
     /// code is running on.
-    pub unsafe fn from_fdt(fdt: &fdt::Fdt) -> Result<Self, FdtLoadError> {
+    pub unsafe fn from_fdt_node(node: &FdtNode) -> Result<Self, ComponentLoadError> {
         let get_node = |path| {
-            fdt.find_node(path)
-                .ok_or(FdtLoadError::FdtNodeNotFound(path))
+            node.children()
+                .find(|child| matches_fdt_name(child, path))
+                .ok_or(ComponentLoadError::FdtNodeNotFound(path))
         };
 
         let get_reg = |node: &fdt::node::FdtNode, component| {
             node.reg()
-                .ok_or(FdtLoadError::RegNotFound { component })?
+                .ok_or(ComponentLoadError::RegNotFound { component })?
                 .next()
-                .ok_or(FdtLoadError::RegNotFound { component })
+                .ok_or(ComponentLoadError::RegNotFound { component })
         };
 
-        let memory_node = get_node("/scatter-unit/scatter-memory")?;
-        let local_sequence_counter_node = get_node("/scatter-unit/local-sequence-counter-reg")?;
-        let record_remote_sequence_counter_node =
-            get_node("/scatter-unit/record-remote-sequence-counter-reg")?;
-        let remote_sequence_counter_node = get_node("/scatter-unit/remote-sequence-counter-reg")?;
-        let metacycle_register_node = get_node("/scatter-unit/metacycle-reg")?;
+        let memory_node = get_node("scatter-memory")?;
+        let local_sequence_counter_node = get_node("local-sequence-counter-reg")?;
+        let record_remote_sequence_counter_node = get_node("record-remote-sequence-counter-reg")?;
+        let remote_sequence_counter_node = get_node("remote-sequence-counter-reg")?;
+        let metacycle_register_node = get_node("metacycle-reg")?;
 
         let memory = get_reg(&memory_node, "memory")?;
 
         if let Some(size) = memory.size {
             if size != FRAME_SIZE {
-                return Err(FdtLoadError::SizeMismatch {
+                return Err(ComponentLoadError::SizeMismatch {
                     property: "memory frame size",
                     expected: FRAME_SIZE,
                     found: size,
@@ -76,7 +78,7 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
             let reg = get_reg(&local_sequence_counter_node, "local_sequence_counter")?;
             if let Some(size) = reg.size {
                 if size != 8 {
-                    return Err(FdtLoadError::SizeMismatch {
+                    return Err(ComponentLoadError::SizeMismatch {
                         property: "local sequence counter register size",
                         expected: 8,
                         found: size,
@@ -93,7 +95,7 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
             )?;
             if let Some(size) = reg.size {
                 if size != 1 {
-                    return Err(FdtLoadError::SizeMismatch {
+                    return Err(ComponentLoadError::SizeMismatch {
                         property: "record remote sequence counter register size",
                         expected: 1,
                         found: size,
@@ -107,7 +109,7 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
             let reg = get_reg(&remote_sequence_counter_node, "remote_sequence_counter")?;
             if let Some(size) = reg.size {
                 if size != 8 {
-                    return Err(FdtLoadError::SizeMismatch {
+                    return Err(ComponentLoadError::SizeMismatch {
                         property: "remote sequence counter register size",
                         expected: 8,
                         found: size,
@@ -121,7 +123,7 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
             let reg = get_reg(&metacycle_register_node, "metacycle_register")?;
             if let Some(size) = reg.size {
                 if size != 1 {
-                    return Err(FdtLoadError::SizeMismatch {
+                    return Err(ComponentLoadError::SizeMismatch {
                         property: "metacycle register size",
                         expected: 1,
                         found: size,

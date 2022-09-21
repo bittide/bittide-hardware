@@ -1,5 +1,5 @@
 #![no_std]
-#![no_main]
+#![cfg_attr(not(test), no_main)]
 
 // SPDX-FileCopyrightText: 2022 Google LLC
 //
@@ -8,16 +8,15 @@
 use core::fmt::Write;
 use riscv_rt::entry;
 
-use contranomy_sys::println;
+use bittide_sys::println;
 
-const FRAME_SIZE: usize = 4096;
-
-#[entry]
+#[cfg_attr(not(test), entry)]
 fn main() -> ! {
     unsafe {
-        contranomy_sys::initialise().unwrap();
-    }
-    let _components = unsafe { bittide_sys::initialise::<FRAME_SIZE>().unwrap() };
+        let init = bittide_sys::Initialiser::new().unwrap();
+        init.initialise_character_device("character-device")
+            .unwrap();
+    };
 
     let names = ["Rust", "RISC-V", "Haskell"];
     loop {

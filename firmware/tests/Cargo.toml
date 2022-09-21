@@ -9,12 +9,7 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[profile.release]
-debug = true
-opt-level = 0
-
 [dependencies]
 riscv-rt = "0.10.0"
 riscv = "0.7.0"
 bittide-sys = { path = "../bittide-sys" }
-contranomy-sys = { path = "../contranomy-sys" }

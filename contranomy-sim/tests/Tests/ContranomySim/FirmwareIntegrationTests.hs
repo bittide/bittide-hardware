@@ -8,6 +8,8 @@ import           Clash.Prelude         hiding (map)
 import           Prelude
 
 import qualified Data.ByteString       as BS
+import qualified Data.List             as L
+import qualified Data.IntMap.Strict    as I
 import           System.IO.Temp        (withSystemTempFile)
 import           Test.HUnit.Base       (Assertion, (@?=))
 
@@ -19,6 +21,10 @@ import           System.FilePath       (dropExtension, takeBaseName,
                                         takeExtension, (</>))
 import           Test.Tasty
 import           Test.Tasty.HUnit      (testCase)
+import           Paths_contranomy_sim
+import           ContranomySim.DeviceTreeCompiler
+import           ContranomySim.MemoryMapConsts
+import           System.Exit (exitFailure)
 
 -- | Load an elf binary, inspect the debug output
 elfExpect :: (FilePath -> IO ()) -- ^ Action to place the @.elf@ file in the given 'FilePath'
@@ -26,14 +32,27 @@ elfExpect :: (FilePath -> IO ()) -- ^ Action to place the @.elf@ file in the giv
           -> BS.ByteString -- ^ First bytes of expected output
           -> Assertion
 elfExpect act n expected = do
+  -- add device tree as a memory mapped component
+  deviceTreePath <- getDataFileName "devicetree/contranomy-sim.dts"
+
+  compileRes <- compileDeviceTreeSource deviceTreePath
+  deviceTreeRaw <- maybe exitFailure pure compileRes
+
+  -- add padding to prevent uninitialised accesses
+  let padding = L.replicate (4 - (BS.length deviceTreeRaw `mod` 4)) 0
+      deviceTree = fmap pack . BS.unpack $ deviceTreeRaw <> BS.pack padding
+      deviceTreeMap = I.fromAscList (L.zip [fdtAddr ..] deviceTree)
+
   withSystemTempFile "ELF" $ \fp _ -> do
     act fp
     elfBytes <- BS.readFile fp
     let (entry, iMem, dMem) = readElfFromMemory elfBytes
 
-    -- Hook up to println-debugging at special address 0x90000000
-    let res = getDataBytes (BS.length expected) 0x90000000 $ sampleN n $ fmap snd $
-              contranomy' hasClock hasReset entry iMem dMem $ pure (False, False, 0b0)
+    let dMem' = dMem `I.union` deviceTreeMap
+
+    -- Hook up to println-debugging
+    let res = getDataBytes (BS.length expected) characterDeviceAddr $ sampleN n $ fmap snd $
+              contranomy' hasClock hasReset entry iMem dMem' $ pure (False, False, 0b0)
 
     res @?= expected
 
@@ -53,8 +72,8 @@ runTest name elfPath expectedPath =
     expected <- BS.readFile expectedPath
     let act path = copyFile elfPath path
 
-    -- arbitrarily pick 500 thousand cycles as an upper bound for tests
-    elfExpect act 500000 expected
+    -- arbitrarily pick 1 million as an upper bound for tests
+    elfExpect act 1000000 expected
 
 
 
