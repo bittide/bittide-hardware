@@ -14,4 +14,3 @@ authors = ["Google LLC"]
 [dependencies]
 riscv-rt = "0.8.0"
 bittide-sys = { path = "../../bittide-sys" }
-contranomy-sys = { path = "../../contranomy-sys" }

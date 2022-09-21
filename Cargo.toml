@@ -15,6 +15,11 @@ exclude = [
   "firmware/tests",
 ]
 members = [
-  "firmware/*",
+  "firmware/bittide-sys",
+
+  "firmware/examples/fdt-read",
+  "firmware/examples/hello",
+
   "demo-1/ping-pong-management",
 ]
+resolver = "2"

@@ -12,6 +12,5 @@ edition = "2021"
 [dependencies]
 riscv-rt = "0.8.0"
 bittide-sys = { path = "../../bittide-sys" }
-contranomy-sys = { path = "../../contranomy-sys" }
 fdt = "0.1.0"
 heapless = "0.7.11"

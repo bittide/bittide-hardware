@@ -23,7 +23,6 @@ main = do
 
   -- add device tree as a memory mapped component
 
-  -- TODO read the device tree file from command line args?
   deviceTreePath <- getDataFileName "devicetree/contranomy-sim.dts"
 
   compileRes <- compileDeviceTreeSource deviceTreePath
@@ -33,6 +32,7 @@ main = do
   -- add padding to prevent uninitialised accesses
   let padding = L.replicate (4 - (BS.length deviceTreeRaw `mod` 4)) 0
       deviceTree = fmap pack . BS.unpack $ deviceTreeRaw <> BS.pack padding
+      deviceTreeMap = I.fromAscList (L.zip [fdtAddr ..] deviceTree)
 
   let dMem' = dMem `I.union` I.fromAscList (L.zip [fdtAddr ..] deviceTree)
 
