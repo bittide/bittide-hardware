@@ -47,7 +47,7 @@ case_clockControlMaxBound :: Assertion
 case_clockControlMaxBound = do
   let
     config = clockConfig (Ppm 100)
-    dataCounts = pure (cccBufferSize config) :> Nil
+    dataCounts = pure (Just (cccBufferSize config)) :> Nil
     changes =
       sampleN
         (fromIntegral (cccPessimisticPeriod config))
@@ -61,7 +61,7 @@ case_clockControlMinBound :: Assertion
 case_clockControlMinBound = do
   let
     config = clockConfig (Ppm 100)
-    dataCounts = pure 0 :> Nil
+    dataCounts = pure (Just 0) :> Nil
     changes =
       sampleN
         (fromIntegral (cccPessimisticPeriod config))
@@ -75,7 +75,9 @@ case_clockControlMinBound = do
 -- its data count should reach 'maxBound'.
 case_elasticBufferMaxBound :: Assertion
 case_elasticBufferMaxBound = do
-  let dataCounts = sampleN 1024 (elasticBuffer Saturate 32 (clockGen @Slow) (clockGen @Fast))
+  let dataCounts =
+        fst <$>
+          sampleN 1024 (fst (elasticBuffer 32 (clockGen @Slow) (clockGen @Fast) (pure True) (pure True)))
   -- it never hits exactly the maximum because the occupancy is in the read
   -- domain, i.e. we have to look for one less than the max
   assertBool "elastic buffer should reach its near maximum (read domain)" (31 `elem` dataCounts)
@@ -85,7 +87,9 @@ case_elasticBufferMaxBound = do
 -- its data count should reach 'maxBound'.
 case_elasticBufferMinBound :: Assertion
 case_elasticBufferMinBound = do
-  let dataCounts = sampleN 1024 (elasticBuffer Saturate 32 (clockGen @Fast) (clockGen @Slow))
+  let dataCounts =
+          fst <$>
+            sampleN 1024 (fst (elasticBuffer 32 (clockGen @Fast) (clockGen @Slow) (pure True) (pure True)))
   assertBool "elastic buffer should reach its minimum" (0 `elem` dataCounts)
   assertBool "elastic buffer should not reach its maximum" (32 `notElem` dataCounts)
 
@@ -93,6 +97,8 @@ case_elasticBufferMinBound = do
 -- reach neiher its maxBound nor minBound.
 case_elasticBufferEq :: Assertion
 case_elasticBufferEq = do
-  let dataCounts = sampleN 1024 (elasticBuffer Saturate 32 (clockGen @Slow) (clockGen @Slow))
+  let dataCounts =
+          fst <$>
+            sampleN 1024 (fst (elasticBuffer 32 (clockGen @Slow) (clockGen @Slow) (pure True) (pure True)))
   assertBool "elastic buffer should not reach its minimum" (0 `notElem` dataCounts)
   assertBool "elastic buffer should not reach its maximum" (32 `notElem` dataCounts)
