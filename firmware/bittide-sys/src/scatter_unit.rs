@@ -30,6 +30,7 @@ impl ScatterTimingOracle {
 pub struct ScatterUnit<const FRAME_SIZE: usize> {
     memory: *const u8,
     timing_oracle: ScatterTimingOracle,
+    metacycle_register: *const u8,
 }
 
 impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
@@ -57,6 +58,7 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
         let record_remote_sequence_counter_node =
             get_node("/scatter-unit/record-remote-sequence-counter-reg")?;
         let remote_sequence_counter_node = get_node("/scatter-unit/remote-sequence-counter-reg")?;
+        let metacycle_register_node = get_node("/scatter-unit/metacycle-reg")?;
 
         let memory = get_reg(&memory_node, "memory")?;
 
@@ -115,6 +117,20 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
             reg.starting_address as *const u64
         };
 
+        let metacycle_register = {
+            let reg = get_reg(&metacycle_register_node, "metacycle_register")?;
+            if let Some(size) = reg.size {
+                if size != 1 {
+                    return Err(FdtLoadError::SizeMismatch {
+                        property: "metacycle register size",
+                        expected: 1,
+                        found: size,
+                    });
+                }
+            }
+            reg.starting_address as *const u8
+        };
+
         Ok(ScatterUnit {
             memory: memory.starting_address,
             timing_oracle: ScatterTimingOracle {
@@ -122,6 +138,7 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
                 record_remote_sequence_counter,
                 remote_sequence_counter,
             },
+            metacycle_register,
         })
     }
 
@@ -139,5 +156,17 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
 
     pub fn timing_oracle(&self) -> &ScatterTimingOracle {
         &self.timing_oracle
+    }
+
+    /// Wait for the start of a new metacycle.
+    ///
+    /// Execution will stall until the start of a new metacycle.
+    pub fn wait_for_new_metacycle(&self) {
+        unsafe {
+            // reading from the register will cause a stall until the end of the
+            // metacycle, the read value is not actually relevant, so it's safe
+            // to discard.
+            let _val = self.metacycle_register.read_volatile();
+        }
     }
 }
