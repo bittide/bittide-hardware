@@ -42,7 +42,7 @@ callisto clk rst ena ClockControlConfig{..} =
   mealy clk rst ena go (initControlSt, 0)
  where
   go (ControlSt{..}, settleCounter) dataCounts
-    | settleCounter > cccSettlePeriod
+    | settleCounter > cccSettlePeriod && all isJust dataCounts
     = ((ControlSt x_kNext z_kNext b_kNext, 0), b_kNext)
    where
 
