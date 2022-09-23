@@ -50,14 +50,14 @@ impl core::fmt::Write for CharacterDevice {
 #[macro_export]
 macro_rules! print {
     ($($t:tt)*) => {
-        write!($crate::character_device::CharacterDevice, $($t)*).unwrap();
+        write!($crate::gppe::character_device::CharacterDevice, $($t)*).unwrap();
     };
 }
 
 #[macro_export]
 macro_rules! println {
     ($($t:tt)*) => {
-        writeln!($crate::character_device::CharacterDevice, $($t)*).unwrap();
+        writeln!($crate::gppe::character_device::CharacterDevice, $($t)*).unwrap();
     };
 }
 

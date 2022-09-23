@@ -55,18 +55,6 @@
       reg = <0x20000000 0x00001000>;
     };
 
-    local-sequence-counter-reg@21000000 {
-      reg = <0x21000000 0x00000008>;
-    };
-
-    remote-sequence-counter-reg@21000008 {
-      reg = <0x21000008 0x00000008>;
-    };
-
-    record-remote-sequence-counter-reg@21000010 {
-      reg = <0x21000010 0x00000001>;
-    };
-
     metacycle-reg@21000011 {
       reg = <0x21000011 0x00000001>;
     };
@@ -78,14 +66,6 @@
 
     gather-memory@30000000 {
       reg = <0x30000000 0x00001000>;
-    };
-
-    sequence-counter-reg@31000000 {
-      reg = <0x31000000 0x00000008>;
-    };
-
-    send-sequence-counter-reg@31000008 {
-      reg = <0x31000008 0x00000001>;
     };
 
     metacycle-reg@31000009 {

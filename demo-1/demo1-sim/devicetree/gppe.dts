@@ -41,12 +41,6 @@
     ranges;
   };
 
-  character-device@70000000 {
-    #address-cells = <1>;
-    #size-cells = <1>;
-    reg = <0x70000000 0x00000001>;
-  };
-
   scatter-unit {
     #address-cells = <1>;
     #size-cells = <1>;
@@ -55,16 +49,8 @@
       reg = <0x20000000 0x00000008>;
     };
 
-    local-sequence-counter-reg@21000000 {
-      reg = <0x21000000 0x00000008>;
-    };
-
-    remote-sequence-counter-reg@21000008 {
-      reg = <0x21000008 0x00000008>;
-    };
-
-    record-remote-sequence-counter-reg@21000010 {
-      reg = <0x21000010 0x00000001>;
+    metacycle-reg@20000008 {
+      reg = <0x20000008 0x00000001>;
     };
   };
 
@@ -76,12 +62,8 @@
       reg = <0x30000000 0x00000008>;
     };
 
-    sequence-counter-reg@31000000 {
-      reg = <0x31000000 0x00000008>;
-    };
-
-    send-sequence-counter-reg@31000008 {
-      reg = <0x31000008 0x00000001>;
+    metacycle-reg@31000008 {
+      reg = <0x30000008 0x00000001>;
     };
 
   };

@@ -16,6 +16,7 @@ import qualified Data.ByteString as BS
 import ContranomySim.MemoryMapConsts
 import ContranomySim.ReadElf
 import System.Directory
+import Bittide.DoubleBufferedRam (InitialContent (Reloadable, NonReloadable), ContentType (ByteVec))
 
 
 elfTargetDir :: IO FilePath
@@ -50,10 +51,10 @@ data ElfFileConfig where
     (KnownNat iSize, KnownNat dSize, 1 <= iSize, 1 <= dSize) =>
     BitVector 32 -> -- ^ iMem start addr
     SNat iSize ->
-    MemBlob iSize (4 * 8) ->
+    InitialContent iSize (BitVector 32) ->
     BitVector 32 -> -- ^ dMem start addr
     SNat dSize ->
-    MemBlob dSize (4 * 8) ->
+    InitialContent dSize (BitVector 32) ->
     BitVector 32 -> -- ^ entry point
     ElfFileConfig
 
@@ -69,10 +70,32 @@ processElfFile path fdtName = do
     (iStartAddr, iMem1) = memContentToFlatVec iMem0
     (dStartAddr, dMem2) = memContentToFlatVec dMem1
 
-  let iMemVec = memBlobTH Nothing iMem1
-      dMemVec = memBlobTH Nothing dMem2
+    (dMemS0, dMemS1, dMemS2, dMemS3) = splitMemBlob dMem2
 
-  [| ElfFileConfig iStartAddr SNat ($iMemVec) dStartAddr SNat ($dMemVec) entry |]
+  let iMemVec = memBlobTH Nothing iMem1
+
+      dMemVec0 = memBlobTH Nothing dMemS0
+      dMemVec1 = memBlobTH Nothing dMemS1
+      dMemVec2 = memBlobTH Nothing dMemS2
+      dMemVec3 = memBlobTH Nothing dMemS3
+
+  [| ElfFileConfig
+      iStartAddr
+      SNat
+      (Reloadable $ Blob ($iMemVec))
+      dStartAddr
+      SNat
+      (NonReloadable $
+        ByteVec ($dMemVec0 :> $dMemVec1 :> $dMemVec2 :> $dMemVec3 :> Nil) )
+      entry
+    |]
+
+splitMemBlob :: [Bytes 4] -> ([Bytes 1], [Bytes 1], [Bytes 1], [Bytes 1])
+splitMemBlob [] = ([], [], [], [])
+splitMemBlob ((bitCoerce -> (a, b, c, d)):rest) =
+  let (as, bs, cs, ds) = splitMemBlob rest
+  in (a:as, b:bs, c:cs, d:ds)
+
 
 memContentToFlatVec :: I.IntMap (BitVector 8) -> (BitVector 32, [Bytes 4])
 memContentToFlatVec dataMap = (resize . bitCoerce $ startAddr, toBytes4 content)

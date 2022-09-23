@@ -8,7 +8,7 @@ use core::panic::PanicInfo;
 #[inline(never)]
 #[panic_handler]
 pub fn panic(info: &PanicInfo) -> ! {
-    let _ = writeln!(crate::character_device::CharacterDevice, "{}", info);
+    let _ = writeln!(crate::gppe::character_device::CharacterDevice, "{}", info);
 
     loop {
         continue;

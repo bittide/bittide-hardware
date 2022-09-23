@@ -5,129 +5,144 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use core::fmt::Write;
+use bittide_sys::gppe::gather_unit;
 use riscv_rt::entry;
 
-use contranomy_sys::{print, println};
+const NUM_GPPES: usize = 2;
+const NUM_LINKS: usize = 1;
 
-const FDT_ADDR: *const u8 = 0x1000_0000 as *const u8;
+const NUM_RX_TX_UNITS: usize = NUM_GPPES + NUM_LINKS + 1;
 
-const FRAME_SIZE: usize = 8;
+const FRAME_SIZE: usize =
+    GPPE_FRAME_SIZE * 2 + core::mem::size_of::<(u64, u64)>() * NUM_RX_TX_UNITS;
+const GPPE_FRAME_SIZE: usize = 8;
 
-#[entry]
+/*
+Different APIs for Scatter/Gather unit for GPPEs and Management unit
+ => different modules, `gppe`/`management`
+
+GPPEs deal with scatter/gather units, management unit deals with calendars
+
+- GPPEs don't have access to timing oracles
+- mmu has access to all calendars
+    - all S/G units
+    - switch
+- MMU has access to timing oracles
+    - rx/tx units
+
+    - tx unit
+        - start state machine
+        - stop state machine
+            - GU::send_sequence_counter right now
+
+    - rx unit
+        - first address 32bit
+        - 0 is stopped
+        - non zero is doing-something :tm:
+        - start state machine
+        - stop state machine
+
+        - tuple of local and remote sequence counter
+
+        - special value of record_remote_sequence_counter register
+          to indicate whether sequence counters have been captured or not
+        - polling to wait for captured counters
+        - array, poll and wait for all to terminate
+            - if timeout then fatal error
+            - maybe "turn off" recording?
+
+        - optional?: show progress with printing
+            - send counters over a link?
+*/
+
+#[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    unsafe {
-        contranomy_sys::initialise().unwrap();
+    let init = unsafe { bittide_sys::Initialiser::new().unwrap() };
+    let _scatter_unit = unsafe {
+        init.initialise_scatter_unit::<FRAME_SIZE>("scatter-unit")
+            .unwrap()
+    };
+    let mut gather_unit = unsafe {
+        init.initialise_gather_unit::<FRAME_SIZE>("gather-unit")
+            .unwrap()
+    };
+
+    let rx_unit = unsafe { init.initialise_rx_unit("rx-unit").unwrap() };
+    let tx_unit = unsafe { init.initialise_tx_unit("tx-unit").unwrap() };
+
+    let switch_0_rx_unit = unsafe { init.initialise_rx_unit("switch-0-rx-unit").unwrap() };
+    let switch_0_tx_unit = unsafe { init.initialise_tx_unit("switch-0-tx-unit").unwrap() };
+
+    let gppe_0_rx_unit = unsafe { init.initialise_rx_unit("gppe-0-rx-unit").unwrap() };
+    let gppe_0_tx_unit = unsafe { init.initialise_tx_unit("gppe-0-tx-unit").unwrap() };
+
+    let gppe_1_rx_unit = unsafe { init.initialise_rx_unit("gppe-1-rx-unit").unwrap() };
+    let gppe_1_tx_unit = unsafe { init.initialise_tx_unit("gppe-1-tx-unit").unwrap() };
+
+    let mut rxs = [rx_unit, switch_0_rx_unit, gppe_0_rx_unit, gppe_1_rx_unit];
+    let mut txs = [tx_unit, switch_0_tx_unit, gppe_0_tx_unit, gppe_1_tx_unit];
+
+    for rx in &mut rxs {
+        rx.record_remote_sequence_counter(true);
     }
-    let _components = unsafe { bittide_sys::initialise::<FRAME_SIZE>().unwrap() };
 
-    let device_tree = unsafe { fdt::Fdt::from_ptr(FDT_ADDR).unwrap() };
+    for tx in &mut txs {
+        tx.send_sequence_counter(true);
+    }
 
-    println!("FDT size is {}", device_tree.total_size());
+    let mut counters = [None; 4];
 
-    print_fdt(0, &device_tree.find_node("/").unwrap());
+    const TIMEOUT: usize = 0x1000_0000;
+
+    let mut counter = 0;
+
+    loop {
+        for (i, rx) in rxs.iter_mut().enumerate() {
+            match rx.sequence_counters() {
+                None => {}
+                Some(counts) => {
+                    counters[i] = Some(counts);
+                    txs[i].send_sequence_counter(false);
+                }
+            }
+        }
+
+        if counters.iter().all(Option::is_some) {
+            break;
+        }
+
+        if counter == TIMEOUT {
+            panic!("Timeout when waiting for timing oracles");
+        }
+
+        counter += 1;
+    }
+
+    gather_unit.wait_for_new_metacycle();
+    notify_link(&mut gather_unit, &counters);
+
+    // write_calendars(); // TODO
+
+    start_pes(&mut gather_unit);
 
     loop {
         continue;
     }
 }
 
-fn print_fdt(depth: usize, node: &fdt::node::FdtNode) {
-    fn indent(n: usize) {
-        for _ in 0..n {
-            print!("  ");
-        }
-    }
+fn notify_link(
+    gu: &mut gather_unit::GatherUnit<FRAME_SIZE>,
+    counters: &[Option<(u64, u64)>; NUM_RX_TX_UNITS],
+) {
+    let data = counters.map(|x| {
+        let (a, b) = x.unwrap();
+        [a, b]
+    });
 
-    indent(depth);
-    println!("Node {}", node.name);
-
-    for prop in node.properties() {
-        indent(depth + 1);
-        match prop_value(prop.value) {
-            PropValue::String(s) => println!("{} = {s:?}", prop.name),
-            PropValue::Integer(i) => println!("{} = {}", prop.name, best_fit_integer_repr(i)),
-            PropValue::TwoIntegers(a, b) => println!(
-                "{} = ({}, {})",
-                prop.name,
-                best_fit_integer_repr(a),
-                best_fit_integer_repr(b)
-            ),
-            PropValue::Blob(b) => println!("{} = {b:?}", prop.name),
-        }
-    }
-
-    for child in node.children() {
-        println!();
-        print_fdt(depth + 1, &child);
-    }
+    gu.write_frame_memory(GPPE_FRAME_SIZE * 2, data);
 }
 
-enum PropValue<'a> {
-    String(&'a str),
-    Integer(u32),
-    TwoIntegers(u32, u32),
-    Blob(&'a [u8]),
-}
-
-// "best effort" representation of property values
-//
-// Because FDT properties are byte sequences, they do not have an explicit
-// type associated with them which could guide the visual or internal
-// representation.
-//
-// This function attempts to interpret the data in a number of different ways
-// and choses the one that makes the most sense (for example string vs number
-// pair vs binary blob).
-fn prop_value<'a>(prop: &'a [u8]) -> PropValue<'a> {
-    if prop.len() == 0 {
-        return PropValue::Blob(&[]);
-    }
-
-    if prop.len() == 1 {
-        return PropValue::Integer(prop[0] as u32);
-    }
-
-    if prop[0..prop.len() - 2]
-        .iter()
-        .all(|c| c.is_ascii() && *c != 0)
-        && prop.last().map(|c| *c == 0).unwrap_or(false)
-    {
-        return PropValue::String(core::str::from_utf8(&prop[0..prop.len() - 1]).unwrap());
-    }
-
-    if prop.len() == 4 {
-        return PropValue::Integer(u32::from_be_bytes(prop.try_into().unwrap()));
-    }
-
-    if prop.len() == 8 {
-        return PropValue::TwoIntegers(
-            u32::from_be_bytes(prop[0..4].try_into().unwrap()),
-            u32::from_be_bytes(prop[4..].try_into().unwrap()),
-        );
-    }
-
-    return PropValue::Blob(prop);
-}
-
-// Here "best fit" refers to the number system in which the number should be
-// displayed in. For some numbers, a base 10 representation is "nicer", while
-// for others a base 16 representation is more useful.
-fn best_fit_integer_repr(num: u32) -> heapless::String<20> {
-    let mut dec = heapless::String::new();
-    let mut hex = heapless::String::new();
-
-    write!(dec, "{}", num).unwrap();
-    write!(hex, "{:X}", num).unwrap();
-
-    let dec_zeroes = dec.chars().filter(|c| *c == '0').count();
-    let hex_zeroes = hex.chars().filter(|c| *c == '0').count();
-
-    if hex_zeroes > dec_zeroes {
-        hex.clear();
-        write!(hex, "0x{:X}", num).unwrap();
-        hex
-    } else {
-        dec
-    }
+fn start_pes(gu: &mut gather_unit::GatherUnit<FRAME_SIZE>) {
+    gu.write_frame_memory(0, 1u64);
+    gu.write_frame_memory(GPPE_FRAME_SIZE, 1u64);
 }

@@ -12,4 +12,4 @@ edition = "2021"
 [dependencies]
 riscv-rt = "0.8.0"
 riscv = "0.7.0"
-bittide-sys = { path = "../bittide-sys" }
+bittide-sys = { path = "../../firmware/bittide-sys" }

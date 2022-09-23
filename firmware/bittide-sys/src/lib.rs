@@ -5,17 +5,19 @@
 #![no_std]
 
 use fdt::Fdt;
-use utils::matches_fdt_name;
+use management::{rx_unit, tx_unit};
 
-pub mod character_device;
+pub mod gppe;
+pub mod management;
+
 pub mod elf_loading;
-pub mod gather_unit;
-pub mod scatter_unit;
 
 #[cfg(target_arch = "riscv32")]
 pub mod panic_handler;
 
 pub(crate) mod utils;
+
+use crate::utils::FdtNodeExt;
 
 pub struct Initialiser<'a> {
     fdt: Fdt<'a>,
@@ -65,16 +67,10 @@ impl<'a> Initialiser<'a> {
     pub unsafe fn initialise_scatter_unit<const FRAME_SIZE: usize>(
         &self,
         name: &'static str,
-    ) -> Result<scatter_unit::ScatterUnit<FRAME_SIZE>, ComponentLoadError> {
-        let node = self
-            .fdt
-            .find_node("/")
-            .unwrap()
-            .children()
-            .find(|child| matches_fdt_name(child, name))
-            .ok_or(ComponentLoadError::FdtNodeNotFound(name))?;
+    ) -> Result<gppe::scatter_unit::ScatterUnit<FRAME_SIZE>, ComponentLoadError> {
+        let node = self.fdt.find_node("/").unwrap().get_node(name)?;
 
-        scatter_unit::ScatterUnit::from_fdt_node(&node)
+        gppe::scatter_unit::ScatterUnit::from_fdt_node(&node)
     }
 
     /// Initialise a Gather-Unit component.
@@ -87,16 +83,42 @@ impl<'a> Initialiser<'a> {
     pub unsafe fn initialise_gather_unit<const FRAME_SIZE: usize>(
         &self,
         name: &'static str,
-    ) -> Result<gather_unit::GatherUnit<FRAME_SIZE>, ComponentLoadError> {
-        let node = self
-            .fdt
-            .find_node("/")
-            .unwrap()
-            .children()
-            .find(|child| matches_fdt_name(child, name))
-            .ok_or(ComponentLoadError::FdtNodeNotFound(name))?;
+    ) -> Result<gppe::gather_unit::GatherUnit<FRAME_SIZE>, ComponentLoadError> {
+        let node = self.fdt.find_node("/").unwrap().get_node(name)?;
 
-        gather_unit::GatherUnit::from_fdt_node(&node)
+        gppe::gather_unit::GatherUnit::from_fdt_node(&node)
+    }
+
+    /// Initialise an rx-Unit component.
+    ///
+    /// # Safety
+    ///
+    /// The `name` must correspond to a node in the device tree,
+    /// the contents of this node must all be valid for the configuration of the
+    /// hardware this function gets executed on.
+    pub unsafe fn initialise_rx_unit(
+        &self,
+        name: &'static str,
+    ) -> Result<rx_unit::TimingOracle, ComponentLoadError> {
+        let node = self.fdt.find_node("/").unwrap().get_node(name)?;
+
+        rx_unit::TimingOracle::from_fdt_node(&node)
+    }
+
+    /// Initialise a tx-Unit component.
+    ///
+    /// # Safety
+    ///
+    /// The `name` must correspond to a node in the device tree,
+    /// the contents of this node must all be valid for the configuration of the
+    /// hardware this function gets executed on.
+    pub unsafe fn initialise_tx_unit(
+        &self,
+        name: &'static str,
+    ) -> Result<tx_unit::TimingOracle, ComponentLoadError> {
+        let node = self.fdt.find_node("/").unwrap().get_node(name)?;
+
+        tx_unit::TimingOracle::from_fdt_node(&node)
     }
 
     /// Initialise a character-device (debug printing) component.
@@ -110,26 +132,11 @@ impl<'a> Initialiser<'a> {
         &self,
         name: &'static str,
     ) -> Result<(), ComponentLoadError> {
-        let node = self
-            .fdt
-            .find_node("/")
-            .unwrap()
-            .children()
-            .find(|child| matches_fdt_name(child, name))
-            .ok_or(ComponentLoadError::FdtNodeNotFound(name))?;
+        let node = self.fdt.find_node("/").unwrap().get_node(name)?;
 
-        let addr = node
-            .reg()
-            .ok_or(ComponentLoadError::RegNotFound {
-                component: "character device",
-            })?
-            .next()
-            .ok_or(ComponentLoadError::RegNotFound {
-                component: "character device",
-            })?
-            .starting_address;
+        let addr = node.get_reg("character device")?.starting_address;
 
-        character_device::initialise(addr as *mut _);
+        gppe::character_device::initialise(addr as *mut _);
 
         Ok(())
     }

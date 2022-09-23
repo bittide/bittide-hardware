@@ -12,6 +12,10 @@ fn main() {
     let dest_path = Path::new(&out_dir).join("memory.x");
     fs::write(&dest_path, include_bytes!("memory.x")).expect("Could not write file");
 
+    if env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "riscv32" {
+        println!("cargo:rustc-link-arg=-Tmemory.x");
+        println!("cargo:rustc-link-arg=-Tlink.x"); // linker script from riscv-rt
+    }
     println!("cargo:rustc-link-search={}", out_dir);
 
     println!("cargo:rerun-if-changed=memory.x");
