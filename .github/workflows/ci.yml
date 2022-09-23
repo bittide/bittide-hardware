@@ -401,7 +401,9 @@ jobs:
 
       - name: Unittests
         run: |
-          cabal run -- bittide:unittests
+          # While Hedgehog can fill many cores with "work", it doesn't actually
+          # speed up the tests.
+          cabal run -- bittide:unittests -j 1 +RTS -N2
 
   firmware-lints:
     name: Firmware Lints
