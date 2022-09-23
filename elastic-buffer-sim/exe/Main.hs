@@ -26,6 +26,7 @@ sim version 0.1.0
 Usage:
   sim csv <steps> <points>
   sim plot complete3 <steps> <points>
+  sim plot complete5 <steps> <points>
   sim plot complete6 <steps> <points>
   sim plot diamond <steps> <points>
   sim plot star7 <steps> <points>
@@ -59,6 +60,7 @@ main = do
       plotFn
         | args `isPresent` (command "diamond") = plotDiamond
         | args `isPresent` (command "complete3") = plotK3
+        | args `isPresent` (command "complete5") = plotK5
         | args `isPresent` (command "complete6") = plotK6
         | args `isPresent` (command "star7") = plotStar7
         | args `isPresent` (command "tree32") = plotTree32

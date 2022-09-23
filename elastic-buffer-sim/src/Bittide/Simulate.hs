@@ -85,6 +85,12 @@ tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
     in
       newPeriod :- go newSettleCounter newPeriod scs
 
+-- | This wrapper disables reads or writes when the elastic buffer
+-- over-/underflows, as appropriate.
+--
+-- It also censors 'DataCount' after an over-/underflow, so that we do not take
+-- measurements from an elastic buffer until it has settled back to its
+-- midpoint.
 ebController ::
   forall readDom writeDom.
   (KnownDomain readDom, KnownDomain writeDom) =>
@@ -92,14 +98,18 @@ ebController ::
   Clock readDom ->
   Clock writeDom ->
   Signal readDom (Maybe DataCount)
-ebController size clkRead clkWrite = go <$> rdEna <*> outRd
+ebController size clkRead clkWrite =
+  go <$> rdToggle <*> outRd <*> overflowRd
  where
-  (outRd, outWr) = elasticBuffer size clkRead clkWrite rdEna wrEna
+  (outRd, outWr) = elasticBuffer size clkRead clkWrite rdToggle wrToggle
 
-  go True (dc, False) = Just dc
-  go _ _ = Nothing
+  go True (dc, False) False = Just dc
+  go _ _ _ = Nothing
 
-  rdEna =
+  overflowRd =
+    dualFlipFlopSynchronizer clkWrite clkRead resetGen enableGen False (snd <$> outWr)
+
+  rdToggle =
     register clkRead resetGen enableGen True
       $ mealy clkRead resetGen enableGen f False outRd
    where
@@ -109,7 +119,7 @@ ebController size clkRead clkWrite = go <$> rdEna <*> outRd
     f True (d, _) | d == targetDataCount size = (False, True)
     f _ _ = (False, False)
 
-  wrEna =
+  wrToggle =
     register clkWrite resetGen enableGen True
       $ mealy clkWrite resetGen enableGen g False outWr
    where
