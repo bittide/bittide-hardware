@@ -287,7 +287,15 @@ jobs:
   contranomy-formal-tests:
     name: RISC-V Formal checks
     needs: contranomy-hdl
-    runs-on: self-hosted
+
+    # We outsource these jobs to public runners, because the formal checks
+    # trigger a massive number of jobs - many more than runners on our local
+    # systems.
+    #
+    # Note: most of the time this shouldn't be triggered - only if contranomy
+    #       or dependencies change.
+    #
+    runs-on: ubuntu-latest
 
     container:
       image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
