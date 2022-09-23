@@ -363,6 +363,12 @@ extractPeriods ::
 extractPeriods (Clash.Clock _ (Just s)) = s
 extractPeriods _ = pure (Clash.snatToNum (Clash.clockPeriod @dom))
 
+mkReset ::
+  (Clash.KnownDomain dom, Clash.KnownNat n, 1 Clash.<= n) =>
+  Clash.Vec n (Clash.Signal dom Bool) ->
+  Clash.Reset dom
+mkReset = Clash.unsafeFromHighPolarity . fmap or . Clash.bundle
+
 -- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
 -- offsets (divergence from spec) and returns a tuple of signals for each clock
 -- domain
@@ -373,13 +379,14 @@ simNodesFromGraph ccc g = do
   clockControlNames <- traverse (\i -> newName ("clockControl" ++ show i)) indicesArr
   clockSignalNames <- traverse (\i -> newName ("clk" ++ show i ++ "Signal")) indicesArr
   ebNames <- traverse (\(i, j) -> newName ("eb" ++ show i ++ show j)) ebA
+  ebRstNames <- traverse (\(i, j) -> newName ("ebRst" ++ show i ++ show j)) ebA
   cccE <- lift ccc
   let
     ebE i j =
         AppE
           (AppE ebClkClk (VarE (clockNames A.! i)))
           (VarE (clockNames A.! j))
-    ebD i j = valD (VarP (ebNames A.! (i, j))) (ebE i j)
+    ebD i j = valD (TupP [VarP (ebNames A.! (i, j)), VarP (ebRstNames A.! (i, j))]) (ebE i j)
 
     clkE i =
       AppE
@@ -392,10 +399,12 @@ simNodesFromGraph ccc g = do
       AppE
         (callistoClockControlV
           `AppE` VarE (clockNames A.! k)
-          `AppE` resetGenV
+          `AppE` (VarE 'mkReset `AppE` resets) -- resetGenV
           `AppE` enableGenV
           `AppE` cccE)
         (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
+     where
+      resets = mkVecE [ VarE (ebRstNames A.! (k, i)) | i <- g A.! k ]
     clockControlD k = valD (VarP (clockControlNames A.! k)) (clockControlE k)
 
     ebs = fmap (uncurry ebD) [ (i, j) | i <- indices, j <- g A.! i ]

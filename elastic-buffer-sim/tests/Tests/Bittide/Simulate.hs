@@ -47,7 +47,7 @@ case_clockControlMaxBound :: Assertion
 case_clockControlMaxBound = do
   let
     config = clockConfig (Ppm 100)
-    dataCounts = pure (Just (cccBufferSize config)) :> Nil
+    dataCounts = pure (cccBufferSize config) :> Nil
     changes =
       sampleN
         (fromIntegral (cccPessimisticPeriod config))
@@ -61,7 +61,7 @@ case_clockControlMinBound :: Assertion
 case_clockControlMinBound = do
   let
     config = clockConfig (Ppm 100)
-    dataCounts = pure (Just 0) :> Nil
+    dataCounts = pure 0 :> Nil
     changes =
       sampleN
         (fromIntegral (cccPessimisticPeriod config))

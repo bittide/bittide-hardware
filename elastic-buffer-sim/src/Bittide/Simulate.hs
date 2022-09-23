@@ -85,6 +85,8 @@ tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
     in
       newPeriod :- go newSettleCounter newPeriod scs
 
+type ResetClockControl = Bool
+
 -- | This wrapper disables reads or writes when the elastic buffer
 -- over-/underflows, as appropriate.
 --
@@ -97,14 +99,15 @@ ebController ::
   ElasticBufferSize ->
   Clock readDom ->
   Clock writeDom ->
-  Signal readDom (Maybe DataCount)
+  (Signal readDom DataCount, Signal readDom ResetClockControl)
 ebController size clkRead clkWrite =
-  go <$> rdToggle <*> outRd <*> overflowRd
+  unbundle
+    (go <$> rdToggle <*> outRd <*> overflowRd)
  where
   (outRd, outWr) = elasticBuffer size clkRead clkWrite rdToggle wrToggle
 
-  go True (dc, False) False = Just dc
-  go _ _ _ = Nothing
+  go True (dc, False) False = (dc, False)
+  go _ _ _ = (deepErrorX "Data count censored", True)
 
   overflowRd =
     dualFlipFlopSynchronizer clkWrite clkRead resetGen enableGen False (snd <$> outWr)
