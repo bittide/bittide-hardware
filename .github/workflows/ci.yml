@@ -18,7 +18,9 @@ concurrency:
 
 jobs:
   license-check:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    container:
+      image: ubuntu:22.04
     steps:
     - uses: actions/checkout@v1
     - name: REUSE Compliance Check
@@ -27,7 +29,9 @@ jobs:
 
   lint:
     name: Basic linting
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    container:
+      image: ubuntu:22.04
 
     steps:
       - name: Checkout
@@ -35,8 +39,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pcregrep
+          apt-get update
+          apt-get install -y pcregrep
 
       - name: EOL whitespace
         run: |
@@ -48,7 +52,7 @@ jobs:
 
   build:
     name: Build dependencies
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     container:
       image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
@@ -81,7 +85,7 @@ jobs:
 
   elastic-buffer-sim-topologies:
     name: Simulate network
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [build, lint]
 
     container:
@@ -147,7 +151,7 @@ jobs:
 
   elastic-buffer-sim-tests:
     name: elastic-buffer-sim unittests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [build, lint]
 
     container:
@@ -181,7 +185,7 @@ jobs:
 
   contranomy-tests:
     name: Contranomy tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [build, lint]
 
     container:
@@ -215,7 +219,7 @@ jobs:
 
   contranomy-hdl:
     name: Generate Contranomy HDL
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [build, lint]
 
     container:
@@ -283,6 +287,14 @@ jobs:
   contranomy-formal-tests:
     name: RISC-V Formal checks
     needs: contranomy-hdl
+
+    # We outsource these jobs to public runners, because the formal checks
+    # trigger a massive number of jobs - many more than runners on our local
+    # systems.
+    #
+    # Note: most of the time this shouldn't be triggered - only if contranomy
+    #       or dependencies change.
+    #
     runs-on: ubuntu-latest
 
     container:
@@ -323,7 +335,7 @@ jobs:
 
   contranomy-sim-tests:
     name: ContranomySim tests and firmware integration tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [build, lint, firmware-build-integration-tests]
 
     container:
@@ -367,7 +379,7 @@ jobs:
 
   bittide-tests:
     name: Bittide tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [build, lint]
 
     container:
@@ -397,15 +409,24 @@ jobs:
 
       - name: Unittests
         run: |
-          cabal run -- bittide:unittests
+          # While Hedgehog can fill many cores with "work", it doesn't actually
+          # speed up the tests.
+          cabal run -- bittide:unittests -j 1 +RTS -N2
 
   firmware-lints:
     name: Firmware Lints
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    container:
+      image: ubuntu:22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v1
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y curl build-essential
 
       - uses: actions-rs/toolchain@v1
         with:
@@ -426,11 +447,18 @@ jobs:
 
   firmware-unit-tests:
     name: Firmware Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    container:
+      image: ubuntu:22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v1
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y curl build-essential
 
       - uses: actions-rs/toolchain@v1
         with:
@@ -456,11 +484,18 @@ jobs:
 
   firmware-build-examples:
     name: Firmware Build Examples
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    container:
+      image: ubuntu:22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v1
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y curl build-essential
 
       - uses: actions-rs/toolchain@v1
         with:
@@ -489,11 +524,18 @@ jobs:
 
   firmware-build-integration-tests:
     name: Firmware Build Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    container:
+      image: ubuntu:22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v1
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y curl build-essential
 
       - uses: actions-rs/toolchain@v1
         with:
@@ -542,7 +584,9 @@ jobs:
         firmware-unit-tests,
         firmware-build-examples
       ]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    container:
+      image: ubuntu:22.04
     steps:
       - name: Void
         run: |
