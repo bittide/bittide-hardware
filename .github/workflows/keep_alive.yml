@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2022 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# GitHub automatically removes runners that have been idle for a number of days.
+# To prevent this from happening, we run a whole bunch of no-op jobs that makes
+# GitHub believe the runners are still active.
+#
+name: "Keep local runners registered"
+on:
+  schedule:
+    # Run every night
+    - cron: "0 0 * * *"
+
+jobs:
+  keep_alive:
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        # Run 10 * 10 ~ 100 jobs. This is an arbitrary number, but chosen such
+        # that it greatly outnumbers the local runners we have. This makes sure
+        # each runner we'll get at least one job.
+        d1: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        d2: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    steps:
+      - name: Void
+        run: |
+          sleep 5
+          echo "All good: ${{ matrix.d1 }}, ${{ matrix.d2 }}"
