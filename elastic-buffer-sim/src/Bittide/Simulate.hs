@@ -86,6 +86,9 @@ tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
       newPeriod :- go newSettleCounter newPeriod scs
 
 type ResetClockControl = Bool
+type HasUnderflowed = Bool
+type HasOverflowed = Bool
+type DisableTilHalf = Bool
 
 -- | This wrapper disables reads or writes when the elastic buffer
 -- over-/underflows, as appropriate.
@@ -116,21 +119,23 @@ ebController size clkRead rstRead enaRead clkWrite rstWrite enaWrite =
   overflowRd =
     dualFlipFlopSynchronizer clkWrite clkRead rstRead enaRead False (snd <$> outWr)
 
+  -- if the elastic buffer underflows, stop reads until it is half full again.
   rdToggle =
     register clkRead rstRead enaRead True
       $ mealy clkRead rstRead enaRead f False outRd
    where
-    f :: Bool -> (DataCount, Underflow) -> (Bool, Bool)
+    f :: HasUnderflowed -> (DataCount, Underflow) -> (HasUnderflowed, DisableTilHalf)
     f False (_, False) = (False, True)
     f _ (_, True) = (True, False)
     f True (d, _) | d == targetDataCount size = (False, True)
     f _ _ = (False, False)
 
+  -- if the elastic buffer overflows, stop writes until it is half full again.
   wrToggle =
     register clkWrite rstWrite enaWrite True
       $ mealy clkWrite rstWrite enaWrite g False outWr
    where
-    g :: Bool -> (DataCount, Overflow) -> (Bool, Bool)
+    g :: HasOverflowed -> (DataCount, Overflow) -> (HasOverflowed, DisableTilHalf)
     g False (_, False) = (False, True)
     g _ (_, True) = (True, False)
     g True (d, _) | d == targetDataCount size = (False, True)
