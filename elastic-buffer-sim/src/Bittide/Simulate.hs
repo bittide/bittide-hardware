@@ -98,9 +98,13 @@ ebController ::
   (KnownDomain readDom, KnownDomain writeDom) =>
   ElasticBufferSize ->
   Clock readDom ->
+  Reset readDom ->
+  Enable readDom ->
   Clock writeDom ->
+  Reset writeDom ->
+  Enable writeDom ->
   (Signal readDom DataCount, Signal readDom ResetClockControl)
-ebController size clkRead clkWrite =
+ebController size clkRead rstRead enaRead clkWrite rstWrite enaWrite =
   unbundle
     (go <$> rdToggle <*> outRd <*> overflowRd)
  where
@@ -110,11 +114,11 @@ ebController size clkRead clkWrite =
   go _ _ _ = (deepErrorX "Data count censored", True)
 
   overflowRd =
-    dualFlipFlopSynchronizer clkWrite clkRead resetGen enableGen False (snd <$> outWr)
+    dualFlipFlopSynchronizer clkWrite clkRead rstRead enaRead False (snd <$> outWr)
 
   rdToggle =
-    register clkRead resetGen enableGen True
-      $ mealy clkRead resetGen enableGen f False outRd
+    register clkRead rstRead enaRead True
+      $ mealy clkRead rstRead enaRead f False outRd
    where
     f :: Bool -> (DataCount, Underflow) -> (Bool, Bool)
     f False (_, False) = (False, True)
@@ -123,8 +127,8 @@ ebController size clkRead clkWrite =
     f _ _ = (False, False)
 
   wrToggle =
-    register clkWrite resetGen enableGen True
-      $ mealy clkWrite resetGen enableGen g False outWr
+    register clkWrite rstWrite enaWrite True
+      $ mealy clkWrite rstWrite enaWrite g False outWr
    where
     g :: Bool -> (DataCount, Overflow) -> (Bool, Bool)
     g False (_, False) = (False, True)

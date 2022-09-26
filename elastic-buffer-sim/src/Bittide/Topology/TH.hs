@@ -383,9 +383,13 @@ simNodesFromGraph ccc g = do
   cccE <- lift ccc
   let
     ebE i j =
-        AppE
-          (AppE ebClkClk (VarE (clockNames A.! i)))
-          (VarE (clockNames A.! j))
+        ebClkClk
+          `AppE` VarE (clockNames A.! i)
+          `AppE` resetGenV
+          `AppE` enableGenV
+          `AppE` VarE (clockNames A.! j)
+          `AppE` resetGenV
+          `AppE` enableGenV
     ebD i j = valD (TupP [VarP (ebNames A.! (i, j)), VarP (ebRstNames A.! (i, j))]) (ebE i j)
 
     clkE i =
