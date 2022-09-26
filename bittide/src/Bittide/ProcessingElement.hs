@@ -20,18 +20,14 @@ import Bittide.Wishbone
 -- | Configuration for a 'processingElement'.
 data PeConfig nBusses where
   PeConfig ::
-    ( KnownNat initDepthI, initDepthI <= depthI, 1 <= depthI, 1 <= initDepthI
-    , KnownNat initDepthD, initDepthD <= depthD, 1 <= depthD, 1 <= initDepthD) =>
+    ( KnownNat depthI, 1 <= depthI
+    , KnownNat depthD, 1 <= depthD) =>
     -- | The 'MemoryMap' for the contained 'singleMasterInterconnect'.
     MemoryMap nBusses 32 ->
-    -- | Total depth of the instruction memory.
-    SNat depthI ->
-    -- | Total depth of the data memory.
-    SNat depthD ->
     -- | Initial content of the instruction memory, can be smaller than its total depth.
-    InitialContent initDepthI (Bytes 4) ->
+    InitialContent depthI (Bytes 4) ->
     -- | Initial content of the data memory, can be smaller than its total depth.
-    InitialContent initDepthD (Bytes 4) ->
+    InitialContent depthD (Bytes 4) ->
     -- | Program counter reset value.
     BitVector 32 ->
     PeConfig nBusses
@@ -46,20 +42,18 @@ processingElement ::
   Vec (nBusses-2) (Signal dom (WishboneS2M (Bytes 4))) ->
   Vec (nBusses-2) (Signal dom (WishboneM2S 32 4 (Bytes 4)))
 processingElement config bussesIn = case config of
-  PeConfig memMapConfig depthI depthD initI initD pcEntry ->
-    go memMapConfig depthI depthD initI initD pcEntry
+  PeConfig memMapConfig initI initD pcEntry ->
+    go memMapConfig initI initD pcEntry
  where
   go ::
-    ( KnownNat initDepthI, initDepthI <= depthI, 1 <= depthI, 1 <= initDepthI
-    , KnownNat initDepthD, initDepthD <= depthD, 1 <= depthD, 1 <= initDepthD) =>
+    ( KnownNat depthI, 1 <= depthI
+    , KnownNat depthD, 1 <= depthD) =>
     MemoryMap nBusses 32 ->
-    SNat depthI ->
-    SNat depthD ->
-    InitialContent initDepthI (Bytes 4) ->
-    InitialContent initDepthD (Bytes 4) ->
+    InitialContent depthI (Bytes 4) ->
+    InitialContent depthD (Bytes 4) ->
     BitVector 32 ->
     Vec (nBusses-2) (Signal dom (WishboneM2S 32 4 (Bytes 4)))
-  go memMapConfig depthI@SNat depthD@SNat initI initD pcEntry = bussesOut
+  go memMapConfig initI initD pcEntry = bussesOut
    where
     tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusS2M, dBusS2M) =
       CoreIn {..}
@@ -76,8 +70,8 @@ processingElement config bussesIn = case config of
     fromSlaves = bundle (iToMap :> dToMap :> bussesIn)
     (iFromMap :> dFromMap :> bussesOut) = toSlaves
 
-    (iToCore, iToMap) = wbStorageDP depthI initI iFromCore iFromMap
-    dToMap = wbStorage' depthD initD dFromMap
+    (iToCore, iToMap) = wbStorageDP initI iFromCore iFromMap
+    dToMap = wbStorage' initD dFromMap
 
 -- | Contranomy RV32IMC core
 rv32 ::

@@ -8,6 +8,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- | A unidirectional communication primitive tht moves a fixed-rate stream of frames
 -- between a pair of nodes. The frame size can be unique for each link including the possibility
