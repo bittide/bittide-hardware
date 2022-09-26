@@ -5,9 +5,10 @@
 {-# OPTIONS_GHC -fconstraint-solver-iterations=7#-}
 
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Bittide.DoubleBufferedRam where
 
@@ -21,94 +22,86 @@ import Protocols.Wishbone
 import Bittide.SharedTypes hiding (delayControls)
 import Data.Typeable
 
-data InitialContent elements a where
-  NonReloadableV  :: Vec elements a -> InitialContent elements a
-  ReloadableV     :: Vec elements a -> InitialContent elements a
-  NonReloadableMb :: MemBlob elements (BitSize a) -> InitialContent elements a
-  ReloadableMb    :: MemBlob elements (BitSize a) -> InitialContent elements a
-  Undefined       :: (1 <= elements, KnownNat elements) => InitialContent elements a
+data ContentType n a
+  = Vec (Vec n a)
+  | Blob (MemBlob n (BitSize a))
+  | ByteVec (Vec (Regs a 8) (MemBlob n 8))
+  | File FilePath
+  | FileVec (Vec (Regs a 8) FilePath)
 
-instance (Typeable a, KnownNat elements) => Show (InitialContent elements a) where
+instance (Show a, KnownNat n, Typeable a) => Show (ContentType n a) where
   show = \case
-    NonReloadableMb _ -> "NonReloadableMb :: MemBlob " <> tyVars
-    ReloadableMb _    -> "ReloadableMb :: MemBlob " <> tyVars
-    NonReloadableV _  -> "NonReloadableMb :: Vec " <> tyVars
-    ReloadableV _     -> "NonReloadableMb :: Vec " <> tyVars
-    Undefined         -> "Undefined :: Undefined " <> tyVars
+    (Vec _) -> "Vec: " <> nAnda
+    (Blob _) -> "Blob: " <> nAnda
+    (ByteVec _) -> "ByteVec: " <> nAnda
+    (File fp) -> "File: " <> nAnda <> ", filepath = " <> fp
+    (FileVec fps) -> "File: " <> nAnda <> ", filepaths = " <> show fps
    where
-    tyVars = show (natToNatural @elements) <> " " <> show (typeRep (Proxy @a))
+    nAnda = "(" <> show (natToNatural @n) <> " of type (" <> show (typeRep $ Proxy @a) <> "))"
+data InitialContent elements a where
+  NonReloadable :: ContentType elements a -> InitialContent elements a
+  Reloadable    :: ContentType elements a -> InitialContent elements a
+  Undefined     :: (1 <= elements, KnownNat elements) => InitialContent elements a
 
+deriving instance (Show a, KnownNat elements, Typeable a) => Show (InitialContent elements a)
 
--- Momenteel zijn deze functies niet meer gebruikt in de implementatie
--- , je kan ze negeren tot je ze nodig hebt :)
-getContentV :: InitialContent elements a -> Vec elements a
-getContentV (ReloadableV v)    = v
-getContentV (NonReloadableV v) = v
-getContentV Undefined          = error "getContentV: Content is Undefined."
-getContentV (NonReloadableMb _)  = error "getContentV: Can not get Vector from MemBlob, use getContentMb"
-getContentV (ReloadableMb _)     = error "getContentV: Can not get Vector from MemBlob, use getContentMb"
-
-getContentMb :: InitialContent elements a -> MemBlob elements (BitSize a)
-getContentMb (ReloadableV _)      = error "getContentMb: Can not get Vector from MemBlob"
-getContentMb (NonReloadableV _)   = error "getContentMb: Can not get Vector from MemBlob"
-getContentMb Undefined            = error "getContentMb: Content is Undefined."
-getContentMb (NonReloadableMb mb) = mb
-getContentMb (ReloadableMb mb)    = mb
+-- | Accepts 'InitialContents' and returns a 'blockRam' implementations initialized with
+-- the corresponding content.
+initializedRam ::
+  forall dom n a .
+  ( HiddenClockResetEnable dom
+  , KnownNat n, 1 <= n
+  , Paddable a) =>
+  ContentType n a ->
+  ( Signal dom (Index n)->
+    Signal dom (Maybe (Located n a)) ->
+    Signal dom a)
+initializedRam content rd wr = case content of
+  Vec vec         -> blockRam vec rd wr
+  Blob blob       -> bitCoerce <$> blockRamBlob blob rd (bitCoerce <$> wr)
+  ByteVec byteVec -> registersToData @_ @8 . RegisterBank <$>
+    bundle ((`blockRamBlob` rd) <$> byteVec <*> unbundle ((`splitWriteInBytes` maxBound) <$> wr))
+  File fp -> bitCoerce <$> blockRamFile (SNat @n) fp rd (bitCoerce <$> wr)
+  FileVec fpVec -> registersToData @_ @8 . RegisterBank <$>
+    bundle ((\ fp -> blockRamFile (SNat @n) fp rd)
+    <$> fpVec
+    <*> unbundle ((`splitWriteInBytes` maxBound) <$> wr))
 
 contentGenerator ::
   forall dom romSize targetSize a .
   ( HiddenClockResetEnable dom
   , KnownNat targetSize,  1 <= targetSize
   , KnownNat romSize, romSize <= targetSize
-  , NFDataX a) =>
-  Vec romSize a ->
+  , Paddable a) =>
+  ContentType romSize a ->
   (Signal dom (Maybe (Located targetSize a)), Signal dom Bool)
-contentGenerator Nil = (pure Nothing, pure True)
-contentGenerator content@(Cons _ _) =
- (mux (running .&&. not <$> done) writeOp (pure Nothing), done)
- where
-  running = register False $ pure True
-  writeOp = curry Just . resize <$> romAddr0 <*> element
-  done = register False (done .||. (running .&&. romAddr0 .==. pure maxBound))
-  romAddr0 = register (maxBound :: Index romSize) romAddr1
-  romAddr1 = satSucc SatWrap <$> romAddr0
-  element = rom content (bitCoerce <$> romAddr1)
+contentGenerator content = case compareSNat d1 (SNat @romSize) of
+  SNatLE -> (mux (running .&&. not <$> done) writeOp (pure Nothing), done)
+   where
+    running = register False $ pure True
+    writeOp = curry Just . resize <$> romAddr0 <*> element
+    done = register False (done .||. (running .&&. romAddr0 .==. pure maxBound))
+    romAddr0 = register (maxBound :: Index romSize) romAddr1
+    romAddr1 = satSucc SatWrap <$> romAddr0
+    element = initializedRam content (bitCoerce <$> romAddr1) (pure Nothing)
+  _ -> (pure Nothing, pure True)
 
-contentGeneratorMemBlob ::
-  forall dom romSize targetSize bits .
-  ( HiddenClockResetEnable dom
-  , KnownNat targetSize,  1 <= targetSize
-  , KnownNat romSize, 1 <= romSize, romSize <= targetSize) =>
-  MemBlob romSize bits ->
-  (Signal dom (Maybe (LocatedBits targetSize bits)), Signal dom Bool)
-contentGeneratorMemBlob memBlob =
-  (mux (running .&&. not <$> done) writeOp (pure Nothing), done)
- where
-  running = register False $ pure True
-  writeOp = curry Just . resize <$> romAddr0 <*> element
-  done = register False (done .||. (running .&&. romAddr0 .==. pure maxBound))
-  romAddr0 = register (maxBound :: Index romSize) romAddr1
-  romAddr1 = satSucc SatWrap <$> romAddr0
-  element = romBlob memBlob romAddr1
 
 -- | Dual-ported Wishbone storage element, essentially a wrapper for the single-ported version
 -- which priorities port A over port B. Transactions are not aborted, but when two transactions
 -- are initiated at the same time, port A will have priority.
 wbStorageDP ::
-  forall dom depth initDepth aw .
+  forall dom depth aw .
   ( HiddenClockResetEnable dom
   , KnownNat aw, 2 <= aw
-  , 1 <= depth
-  , KnownNat initDepth, 1 <= initDepth
-  , initDepth <= depth) =>
-  SNat depth ->
-  InitialContent initDepth (Bytes 4) ->
+  , KnownNat depth, 1 <= depth) =>
+  InitialContent depth (Bytes 4) ->
   Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
   Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
   (Signal dom (WishboneS2M (Bytes 4)),Signal dom (WishboneS2M (Bytes 4)))
-wbStorageDP d@SNat initial aM2S bM2S = (aS2M, bS2M)
+wbStorageDP initial aM2S bM2S = (aS2M, bS2M)
  where
-  storageOut = wbStorage' d initial storageIn
+  storageOut = wbStorage' initial storageIn
   storageIn = mux (nowSelected .==. pure A) aM2S bM2S
 
   -- We keep track of ongoing transactions to respect Read-modify-write operations.
@@ -128,57 +121,49 @@ wbStorageDP d@SNat initial aM2S bM2S = (aS2M, bS2M)
 -- | Wishbone storage element with 'Circuit' interface from "Protocols.Wishbone" that
 -- allows for half-word aligned reads and writes.
 wbStorage ::
-  forall dom depth initDepth aw .
+  forall dom depth aw .
   ( HiddenClockResetEnable dom
   , KnownNat aw, 2 <= aw
-  , 1 <= depth
-  , KnownNat initDepth, 1 <= initDepth
-  , initDepth <= depth) =>
-  SNat depth ->
-  InitialContent initDepth (Bytes 4) ->
+  , KnownNat depth, 1 <= depth) =>
+  InitialContent depth (Bytes 4) ->
   Circuit (Wishbone dom 'Standard aw (Bytes 4)) ()
-wbStorage d initContent = Circuit $ \(m2s, ()) ->
-  (wbStorage' d initContent m2s, ())
+wbStorage initContent = Circuit $ \(m2s, ()) ->
+  (wbStorage' initContent m2s, ())
 
 -- | Storage element with a single wishbone port, it is half word addressable to work with
 -- RISC-V's C extension. This storage element allows for half-word aligned accesses.
 wbStorage' ::
-  forall dom depth initDepth aw .
+  forall dom depth aw .
   ( HiddenClockResetEnable dom
   , KnownNat aw, 2 <= aw
-  , 1 <= depth
-  , KnownNat initDepth, 1 <= initDepth
-  , initDepth <= depth) =>
-  SNat depth ->
-  InitialContent initDepth (Bytes 4) ->
+  , KnownNat depth, 1 <= depth) =>
+  InitialContent depth (Bytes 4) ->
   Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
   Signal dom (WishboneS2M (Bytes 4))
-wbStorage' SNat initContent wbIn = delayControls wbIn wbOut
+wbStorage' initContent wbIn = delayControls wbIn wbOut
  where
   depth = resize $ bitCoerce (maxBound :: Index depth)
   romOut = case initContent of
-    ReloadableV vec-> bundle $ contentGenerator vec
-    ReloadableMb memBlob-> bundle $ contentGeneratorMemBlob memBlob
-    other -> errorX ("wbStorage': No contentgenerator for " <> show other)
+    Reloadable content-> bundle $ contentGenerator content
+    other -> deepErrorX ("wbStorage': No contentgenerator for " <> show other)
 
   readDataA = ramA readAddrA writeEntryA byteSelectA
   readDataB = ramB readAddrB writeEntryB byteSelectB
 
-  addElems x = x ++ replicate (SNat @(depth - initDepth))
-    (errorX "wbStorage: Uninitialized element")
-
   (ramA, ramB, isReloadable) = case initContent of
-    NonReloadableV (unzip @initDepth . bitCoerce -> (b, a)) ->
-      ( blockRamByteAddressable @_ @depth $ addElems a
-      , blockRamByteAddressable @_ @depth $ addElems b
+    NonReloadable (ByteVec (splitAtI -> (b, a))) ->
+      ( blockRamByteAddressable @_ @depth $ ByteVec a
+      , blockRamByteAddressable @_ @depth $ ByteVec b
       , False)
-    ReloadableV _ ->
-      (blockRamByteAddressableU, blockRamByteAddressableU, True)
-    NonReloadableMb _ -> _
-    ReloadableMb _ ->
+    Reloadable _ ->
       (blockRamByteAddressableU, blockRamByteAddressableU, True)
     Undefined ->
       (blockRamByteAddressableU, blockRamByteAddressableU, False)
+    (NonReloadable (Vec (unzip @depth . bitCoerce -> (b, a)))) ->
+      ( blockRamByteAddressable @_ @depth $ Vec a
+      , blockRamByteAddressable @_ @depth $ Vec b
+      , False)
+    _ -> error $ "wbStorage': " <> show initContent <> " not supported."
 
   (readAddrA, readAddrB, writeEntryA, writeEntryB, byteSelectA, byteSelectB, wbOut) =
     unbundle $ go <$> wbIn <*> readDataB <*> readDataA <*> romOut
@@ -259,23 +244,21 @@ wbStorage' SNat initContent wbIn = delayControls wbIn wbOut
 -- selects which buffer is written to, while read operations read from the other buffer.
 doubleBufferedRam ::
   forall dom memDepth a .
-  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
-  -- | The initial contents of both buffers.
-  Vec memDepth a ->
+  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, Paddable a, ShowX a) =>
+  -- | Initial content.
+  ContentType (2 * memDepth) a ->
   -- | Controls which buffers is written to, while the other buffer is read from.
   Signal dom AorB ->
   -- | Read address.
   Signal dom (Index memDepth) ->
-  -- | Incoming data frame.
-  Signal dom (Maybe (Index memDepth, a)) ->
-  -- | Outgoing data
+  -- | Write operation.
+  Signal dom (Maybe (Located memDepth a)) ->
+  -- | Data at read address (1 cycle delay).
   Signal dom a
-doubleBufferedRam initialContent0 outputSelect readAddr0 writeFrame0 =
-  blockRam initialContent1 readAddr1 writeFrame1
+doubleBufferedRam initContent outputSelect rd0 wr0 =
+  initializedRam initContent rd1 wr1
  where
-  initialContent1 = concatMap (repeat @2) initialContent0
-  (readAddr1, writeFrame1) =
-    unbundle $ updateAddrs <$> readAddr0 <*> writeFrame0 <*> outputSelect
+  (rd1, wr1) = unbundle $ updateAddrs <$> rd0 <*> wr0 <*> outputSelect
 
 -- | Version of 'doubleBufferedRam' with undefined initial contents. This component
 -- contains two buffers and enables the user to write to one buffer and read from the
@@ -307,25 +290,24 @@ doubleBufferedRamU outputSelect readAddr0 writeFrame0 =
 -- written to, while read operations read from the other buffer.
 doubleBufferedRamByteAddressable ::
   forall dom memDepth a .
-  ( KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
-  -- | The initial contents of the first buffer.
-  Vec memDepth a ->
+  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, Paddable a, ShowX a) =>
+  -- | Initial content
+  ContentType (2 * memDepth) a ->
   -- | Controls which buffers is written to, while the other buffer is read from.
   Signal dom AorB ->
   -- | Read address.
   Signal dom (Index memDepth) ->
-  -- | Incoming data frame.
+  -- | Write operation.
   Signal dom (Maybe (Located memDepth a)) ->
-  -- | One hot byte select for writing only
+  -- | Byte enables that determine which nBytes get replaced.
   Signal dom (ByteEnable a) ->
-  -- | Outgoing data
+  -- | Data at read address (1 cycle delay).
   Signal dom a
-doubleBufferedRamByteAddressable initialContent0 outputSelect readAddr0 writeFrame0 =
-  blockRamByteAddressable initialContent1 readAddr1 writeFrame1
+doubleBufferedRamByteAddressable initContent outputSelect rd0 wr0 =
+  blockRamByteAddressable initContent rd1 wr1
  where
-  initialContent1 = concatMap (repeat @2) initialContent0
-  (readAddr1, writeFrame1) =
-    unbundle $ updateAddrs <$> readAddr0 <*> writeFrame0 <*> outputSelect
+  (rd1, wr1) = unbundle $ updateAddrs <$> rd0 <*> wr0 <*> outputSelect
+
 
 -- | Version of 'doubleBufferedRamByteAddressable' where the initial content is undefined.
 -- This memory element consists of two buffers and internally stores its elements as a
@@ -356,9 +338,9 @@ doubleBufferedRamByteAddressableU outputSelect readAddr0 writeFrame0 =
 -- that controls which nBytes at the write address are updated.
 blockRamByteAddressable ::
   forall dom memDepth a .
-  (HiddenClockResetEnable dom, KnownNat memDepth, Paddable a, ShowX a) =>
+  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, Paddable a, ShowX a) =>
   -- | Initial content.
-  Vec memDepth a ->
+  ContentType memDepth a ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Write operation.
@@ -367,13 +349,21 @@ blockRamByteAddressable ::
   Signal dom (ByteEnable a) ->
   -- | Data at read address (1 cycle delay).
   Signal dom a
-blockRamByteAddressable initRam readAddr newEntry byteSelect =
-  registersToData @_ @8 . RegisterBank <$> readBytes
+blockRamByteAddressable initContent readAddr newEntry byteSelect =
+  registersToData @_ @8 . RegisterBank <$> case initContent of
+    Blob _  -> deepErrorX "blockRamByteAddressable: Singular MemBlobs are not supported. "
+    Vec vecOfA -> go (byteRam . Vec <$> transpose (fmap getBytes vecOfA))
+    ByteVec blobs -> go (fmap (byteRam . Blob) blobs)
+    File _ -> deepErrorX "blockRamByteAddressable: Singular source files for initial content are not supported. "
+    FileVec blobs -> go (fmap (byteRam . File) blobs)
  where
-  initBytes = transpose $ getBytes <$> initRam
-  getBytes (getRegs -> RegisterBank vec) = vec
-  writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
-  readBytes = bundle $ (`blockRam` readAddr) <$> initBytes <*> writeBytes
+  go brams =  readBytes
+   where
+    writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
+    readBytes = bundle $ brams <*> writeBytes
+  getBytes (getRegs -> RegisterBank (vec :: Vec (Regs a 8) Byte)) = vec
+  byteRam = (`initializedRam` readAddr)
+
 
 -- | Version of 'blockRamByteAddressable' with undefined initial contents. It is similar
 -- to 'blockRam' with the addition that it takes a byte select signal that controls

@@ -83,17 +83,20 @@ readDoubleBufferedRam = property $ do
   ramContents <- forAll $ genRamContents ramDepth
     $ genUnsigned @_ @64 Range.constantBounded
   case ramContents of
-    SomeVec SNat contents -> do
+    SomeVec SNat (contentsSingle :: Vec (n+1) (Unsigned 64)) -> do
       simLength <- forAll $ Gen.int (Range.constant 1 100)
-      let simRange = Range.singleton simLength
+      let
+        contentsDouble = concatMap (replicate d2) contentsSingle
+        simRange = Range.singleton simLength
       switchSignal <- forAll $ Gen.list simRange (Gen.element [A,B])
       readAddresses <- forAll . Gen.list simRange . genIndex $ Range.constantBounded
       let
         topEntity (unbundle -> (switch, readAddr)) = withClockResetEnable @System clockGen
-          resetGen enableGen $ doubleBufferedRam contents switch readAddr (pure Nothing)
+          resetGen enableGen $ doubleBufferedRam @_ @(n+1) (Vec contentsDouble)
+          switch readAddr (pure Nothing)
         topEntityInput = P.zip switchSignal readAddresses
         simOut = P.tail $ simulateN simLength topEntity topEntityInput
-        expectedOut = fmap (contents !!) readAddresses
+        expectedOut = fmap (contentsSingle !!) readAddresses
       simOut === P.init expectedOut
 
 -- | This test checks if we can write new values to the double buffered 'blockRam' and read them.
@@ -101,25 +104,26 @@ readWriteDoubleBufferedRam :: Property
 readWriteDoubleBufferedRam = property $ do
   ramDepth <- forAll $ Gen.enum 1 31
   ramContents <- forAll $ genRamContents ramDepth $
-    bitCoerce <$> genUnsigned @_ @64 Range.constantBounded
+    genUnsigned @_ @64 Range.constantBounded
   let minSimLength = 2 * ramDepth
   simLength <- forAll $ Gen.int (Range.constant minSimLength 100)
   case ramContents of
-    SomeVec SNat contents -> do
+    SomeVec SNat (contentsSingle :: Vec (n+1) (Unsigned 64)) -> do
       let
+        contentsDouble = concatMap (replicate d2) contentsSingle
         topEntity (unbundle -> (switch, readAddr, writePort)) = withClockResetEnable
-          @System clockGen resetGen enableGen $ doubleBufferedRam contents switch readAddr
-          writePort
+          @System clockGen resetGen enableGen $ doubleBufferedRam @_ @(n+1)
+          (Vec contentsDouble) switch readAddr writePort
       let
         addresses = cycle $ fmap fromIntegral [0..ramDepth-1]
         switchSignal = cycle $ L.replicate ramDepth A <> L.replicate ramDepth B
       writeEntries <- forAll (Gen.list (Range.singleton simLength)
-        $ Gen.int Range.constantBounded)
+        $ genUnsigned Range.constantBounded)
       let
         topEntityInput = L.zip3 switchSignal addresses
           $ fmap Just (P.zip addresses writeEntries)
         simOut = simulateN @System simLength topEntity topEntityInput
-        expected = toList contents <> L.take (simLength - ramDepth - 1) writeEntries
+        expected = toList contentsSingle <> L.take (simLength - ramDepth - 1) writeEntries
       Set.fromList simOut === Set.fromList expected
 
 data BitvecVec where
@@ -161,7 +165,7 @@ readWriteByteAddressableBlockram = property $ do
         simRange = Range.singleton simLength
         topEntity (unbundle -> (readAddr, writePort, byteSelect)) =
           withClockResetEnable clockGen resetGen enableGen
-          blockRamByteAddressable contents readAddr writePort byteSelect
+          blockRamByteAddressable (Vec contents) readAddr writePort byteSelect
       writeAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       readAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       writeEntries <- forAll (Gen.list simRange $ Gen.maybe genDefinedBitVector)
@@ -194,7 +198,7 @@ byteAddressableBlockRamAsBlockRam = property $ do
         -- topEntity returns a tuple with the outputs of (byteAddressableRam,blockRam)
         topEntity (unbundle -> (readAddr, writePort)) =
           withClockResetEnable clockGen resetGen enableGen $ bundle
-          ( blockRamByteAddressable contents readAddr writePort (pure maxBound)
+          ( blockRamByteAddressable (Vec contents) readAddr writePort (pure maxBound)
           , blockRam contents readAddr writePort)
       writeAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       readAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
@@ -216,12 +220,14 @@ doubleBufferedRamByteAddressable0 = property $ do
   simLength <- forAll $ Gen.int $ Range.constant 2 100
   ramContents <- forAll $ genBlockRamContents ramDepth nrOfBits
   case ramContents of
-    BitvecVec SNat SNat contents -> do
+    BitvecVec SNat SNat (contentsSingle :: Vec memDepth (BitVector bits)) -> do
       let
+        contentsDouble = concatMap (replicate d2) contentsSingle
         simRange = Range.singleton simLength
         topEntity (unbundle -> (switch, readAddr, writePort, byteSelect)) =
           withClockResetEnable @System clockGen resetGen enableGen
-          doubleBufferedRamByteAddressable contents switch readAddr writePort byteSelect
+          $ doubleBufferedRamByteAddressable (Vec contentsDouble)
+          switch readAddr writePort byteSelect
       writeAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       readAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       writeEntries <- forAll (Gen.list simRange $ Gen.maybe genDefinedBitVector)
@@ -232,7 +238,7 @@ doubleBufferedRamByteAddressable0 = property $ do
           (P.zipWith (\adr wr -> (adr,) <$> wr) writeAddresses writeEntries) byteSelectSignal
         simOut = simulateN @System simLength topEntity topEntityInput
         (_,expectedOut) = L.mapAccumL byteAddressableDoubleBufferedRamBehavior
-          (L.head topEntityInput, contents, contents) $ L.tail topEntityInput
+          (L.head topEntityInput, contentsSingle, contentsSingle) $ L.tail topEntityInput
       -- TODO: Due to some unexpected mismatch between the expected behavior of either
       -- blockRam or the behavioral model, the boot behavior is inconsistent. We drop the first
       -- expectedOutput cycle too, we expect this is due to the resets supplied b simulateN.
@@ -248,13 +254,14 @@ doubleBufferedRamByteAddressable1 = property $ do
   simLength <- forAll $ Gen.int $ Range.constant 2 100
   ramContents <- forAll $ genBlockRamContents ramDepth nrOfBits
   case ramContents of
-    BitvecVec SNat SNat contents -> do
+    BitvecVec SNat SNat (contentsSingle :: Vec memDepth (BitVector bits)) -> do
       let
+        contentsDouble = concatMap (replicate d2) contentsSingle
         simRange = Range.singleton simLength
         topEntity (unbundle -> (switch, readAddr, writePort)) =
           withClockResetEnable @System clockGen resetGen enableGen $ bundle
-          ( doubleBufferedRamByteAddressable contents switch readAddr writePort (pure maxBound)
-          , doubleBufferedRam contents switch readAddr writePort)
+          ( doubleBufferedRamByteAddressable (Vec contentsDouble) switch readAddr writePort (pure maxBound)
+          , doubleBufferedRam (Vec contentsDouble) switch readAddr writePort)
       writeAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       readAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       writeEntries <- forAll (Gen.list simRange $ Gen.maybe genDefinedBitVector)
@@ -628,7 +635,7 @@ testContentGen = property $ do
       l = length content
       simLength = 2 + l * 2
       !(writes, dones) = L.unzip $ sampleN @System simLength
-        (bundle $ contentGenerator @_ @v @(v +1) content)
+        (bundle $ contentGenerator @_ @v @(v +1) (Vec content))
       expectedDones
         | l == 0 = L.repeat True
         | otherwise = L.replicate (l + 2) False <> L.repeat True
@@ -649,7 +656,7 @@ wbStorageSpecCompliance = property $ do
         wishbonePropWithModel @System
           defExpectOptions
           (\_ _ () -> Right ())
-          (wbStorage @_ @v @v @32 SNat (Reloadable content))
+          (wbStorage (Reloadable $ Vec content))
           genRequests
           ()
 
@@ -694,7 +701,7 @@ wbStorageBehavior = property $ do
         fstGolden = deepErrorX "First element undefined."
 
       topEntity wbIn =
-        wcre $ wbStorage' @System @v @v @32 SNat (NonReloadable content) wbIn
+        wcre @System $ wbStorage' @_ @_ @32 (NonReloadable $ Vec content) wbIn
       topEntityInput = L.concatMap (\a ->[a, a, emptyWishboneM2S]) (ramOpToWb <$> goldenInput)
       simGolden = simulateN @System (P.length goldenInput) goldenRef goldenInput
       simOut = simulateN (P.length topEntityInput) topEntity topEntityInput
