@@ -90,6 +90,14 @@ type HasUnderflowed = Bool
 type HasOverflowed = Bool
 type DisableTilHalf = Bool
 
+type DisableWrites = Bool
+type DisableReads = Bool
+
+data WrResetDomain = Wait -- ^ after reset/when nothing has overflowed
+                   | DisableWritesEnableReads
+                   | EnableWritesDisableReads
+                   deriving (Generic, NFDataX)
+
 -- | This wrapper disables reads or writes when the elastic buffer
 -- over-/underflows, as appropriate.
 --
@@ -114,32 +122,38 @@ ebController size clkRead rstRead enaRead clkWrite rstWrite enaWrite =
   (outRd, outWr) = elasticBuffer size clkRead clkWrite rdToggle wrToggle
 
   go True (dc, False) False = (dc, False)
-  go _ _ _ = (deepErrorX "Data count censored", True)
+  go _ (dc, _) _ = (dc, True)
 
   overflowRd =
     dualFlipFlopSynchronizer clkWrite clkRead rstRead enaRead False (snd <$> outWr)
 
-  -- if the elastic buffer underflows, stop reads until it is half full again.
-  rdToggle =
-    register clkRead rstRead enaRead True
-      $ mealy clkRead rstRead enaRead f False outRd
-   where
-    f :: HasUnderflowed -> (DataCount, Underflow) -> (HasUnderflowed, DisableTilHalf)
-    f False (_, False) = (False, True)
-    f _ (_, True) = (True, False)
-    f True (d, _) | d == targetDataCount size = (False, True)
-    f _ _ = (False, False)
+  wrToggle = not <$> wrDisable; rdToggle = not <$> rdDisable
 
-  -- if the elastic buffer overflows, stop writes until it is half full again.
-  wrToggle =
-    register clkWrite rstWrite enaWrite True
-      $ mealy clkWrite rstWrite enaWrite g False outWr
+  wrDisable =
+    dualFlipFlopSynchronizer clkRead clkWrite rstWrite enaWrite False wrDisableRd
+
+  (wrDisableRd, rdDisable) = unbundle direct
+
+  -- write reset process (so that is accurate in the read domain):
+  --
+  -- 1. disable writes (keep reads enabled), drain COMPLETELY (control from read
+  -- domain?)
+  -- 2. re-enable writes, disable reads until EXACTLY half (in the read domain)
+  -- 3. (reads can proceed)
+
+  direct :: Signal readDom (DisableWrites, DisableReads)
+  direct =
+    register clkRead rstRead enaRead (False, False)
+      $ mealy clkRead rstRead enaRead f Wait (bundle (outRd, overflowRd))
    where
-    g :: HasOverflowed -> (DataCount, Overflow) -> (HasOverflowed, DisableTilHalf)
-    g False (_, False) = (False, True)
-    g _ (_, True) = (True, False)
-    g True (d, _) | d == targetDataCount size = (False, True)
-    g _ _ = (False, False)
+    f :: WrResetDomain -> ((DataCount, Underflow), Overflow) -> (WrResetDomain, (DisableWrites, DisableReads))
+    f EnableWritesDisableReads ((d, _), _) | d == targetDataCount size = (Wait, (False, False))
+    f EnableWritesDisableReads _ = (EnableWritesDisableReads, (False, True))
+    f DisableWritesEnableReads ((0, _), _) = (EnableWritesDisableReads, (False, True))
+    f DisableWritesEnableReads _ = (DisableWritesEnableReads, (True, False))
+    f Wait ((_, True), _) = (EnableWritesDisableReads, (False, True))
+    f Wait (_, True) = (DisableWritesEnableReads, (True, False))
+    f Wait _ = (Wait, (False, False))
 
 type Underflow = Bool
 type Overflow = Bool
