@@ -22,6 +22,14 @@ import Data.Proxy
 import Data.Type.Equality ((:~:)(Refl))
 import Protocols.Wishbone
 
+-- | To be used when there are two options.
+data AorB = A | B deriving (Eq, Generic, BitPack, Show, NFDataX)
+
+-- | If we receive 'A', return 'B'. If we receive 'B', return 'A'
+swapAorB :: AorB -> AorB
+swapAorB A = B
+swapAorB B = A
+
 -- | A single byte.
 type Byte = BitVector 8
 -- | BitVector of _n_ bytes.

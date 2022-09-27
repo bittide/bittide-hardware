@@ -89,7 +89,7 @@ mkCalendar (CalendarConfig maxCalDepth bsActive bsShadow) =
 data CalendarState maxCalDepth = CalendarState
   { firstCycle      :: Bool
     -- ^ is True after reset, becomes false after first cycle.
-  , selectedBuffer  :: SelectedBuffer
+  , selectedBuffer  :: AorB
     -- ^ Indicates if buffer A or B is active.
   , entryTracker    :: Index maxCalDepth
     -- ^ Read point for the active calendar.
@@ -194,7 +194,7 @@ calendar SNat bootstrapActive bootstrapShadow wbIn =
     (calState, (bufCtrl1, calOut1))
    where
     selectedBuffer1
-      | swapCalendars && lastCycle = flipBuffer selectedBuffer
+      | swapCalendars && lastCycle = swapAorB selectedBuffer
       | otherwise = selectedBuffer
     lastCycle = entryTracker == activeDepth
 

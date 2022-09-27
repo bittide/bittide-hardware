@@ -7,25 +7,206 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE GADTs #-}
 
 module Bittide.DoubleBufferedRam where
 
 import Clash.Prelude
 
+import Data.Bifunctor
 import Data.Maybe
+import Protocols (Circuit (Circuit))
 import Protocols.Wishbone
 
-import Bittide.SharedTypes
+import Bittide.SharedTypes hiding (delayControls)
 
--- | Indicates which buffer is currently selected.
-data SelectedBuffer = A | B deriving (Eq, Generic, BitPack, Show, NFDataX)
+data InitialContent n a where
+  NonReloadable :: Vec n a -> InitialContent n a
+  Reloadable :: Vec n a -> InitialContent n a
+  Undefined :: (1 <= n, KnownNat n) => InitialContent n a
 
-flipBuffer :: SelectedBuffer -> SelectedBuffer
-flipBuffer A = B
-flipBuffer B = A
+getContent :: InitialContent n a -> Vec n a
+getContent (Reloadable v) = v
+getContent (NonReloadable v) = v
+getContent Undefined = error "getContent: Content is Undefined."
+
+contentGenerator ::
+  forall dom romSize targetSize a .
+  ( HiddenClockResetEnable dom
+  , KnownNat targetSize,  1 <= targetSize
+  , KnownNat romSize, romSize <= targetSize
+  , NFDataX a) =>
+  Vec romSize a ->
+  (Signal dom (Maybe (Located targetSize a)), Signal dom Bool)
+contentGenerator Nil = (pure Nothing, pure True)
+contentGenerator content@(Cons _ _) = (mux (running .&&. not <$> done) writeOp (pure Nothing), done)
+ where
+  running = register False $ pure True
+  writeOp = curry Just . resize <$> romAddr0 <*> element
+  done = register False (done .||. (running .&&. romAddr0 .==. pure maxBound))
+  romAddr0 = register (maxBound :: Index romSize) romAddr1
+  romAddr1 = satSucc SatWrap <$> romAddr0
+  element = rom content (bitCoerce <$> romAddr1)
+
+-- | Dual-ported Wishbone storage element, essentially a wrapper for the single-ported version
+-- which priorities port A over port B. Transactions are not aborted, but when two transactions
+-- are initiated at the same time, port A will have priority.
+wbStorageDP ::
+  forall dom depth initDepth aw .
+  ( HiddenClockResetEnable dom
+  , KnownNat aw, 2 <= aw
+  , 1 <= depth
+  , KnownNat initDepth, 1 <= initDepth
+  , initDepth <= depth) =>
+  SNat depth ->
+  InitialContent initDepth (Bytes 4) ->
+  Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
+  Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
+  (Signal dom (WishboneS2M (Bytes 4)),Signal dom (WishboneS2M (Bytes 4)))
+wbStorageDP d@SNat initial aM2S bM2S = (aS2M, bS2M)
+ where
+  storageOut = wbStorage' d initial storageIn
+  storageIn = mux (nowSelected .==. pure A) aM2S bM2S
+
+  -- We keep track of ongoing transactions to respect Read-modify-write operations.
+  lastSelected = register A nowSelected
+  nowSelected = selectNow <$> aM2S <*> bM2S <*> lastSelected
+  selectNow (busCycle -> cycA) (busCycle -> cycB) lastSel
+    | lastSel == B && cycB = B
+    | cycA && not cycB  = A
+    | otherwise         = A
+
+  (aS2M, bS2M) = unbundle $ mux (nowSelected .==. pure A)
+    (bundle (storageOut, noTerminate <$> storageOut))
+    (bundle (noTerminate <$> storageOut, storageOut))
+
+  noTerminate wb = wb{acknowledge = False, err = False, retry = False, stall = False}
+
+-- | Wishbone storage element with 'Circuit' interface from "Protocols.Wishbone" that
+-- allows for half-word aligned reads and writes.
+wbStorage ::
+  forall dom depth initDepth aw .
+  ( HiddenClockResetEnable dom
+  , KnownNat aw, 2 <= aw
+  , 1 <= depth
+  , KnownNat initDepth, 1 <= initDepth
+  , initDepth <= depth) =>
+  SNat depth ->
+  InitialContent initDepth (Bytes 4) ->
+  Circuit (Wishbone dom 'Standard aw (Bytes 4)) ()
+wbStorage d initContent = Circuit $ \(m2s, ()) ->
+  (wbStorage' d initContent m2s, ())
+
+-- | Storage element with a single wishbone port, it is half word addressable to work with
+-- RISC-V's C extension. This storage element allows for half-word aligned accesses.
+wbStorage' ::
+  forall dom depth initDepth aw .
+  ( HiddenClockResetEnable dom
+  , KnownNat aw, 2 <= aw
+  , 1 <= depth
+  , KnownNat initDepth, 1 <= initDepth
+  , initDepth <= depth) =>
+  SNat depth ->
+  InitialContent initDepth (Bytes 4) ->
+  Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
+  Signal dom (WishboneS2M (Bytes 4))
+wbStorage' SNat initContent wbIn = delayControls wbIn wbOut
+ where
+  depth = resize $ bitCoerce (maxBound :: Index depth)
+  romOut = bundle $ contentGenerator (getContent initContent)
+
+  readDataA = ramA readAddrA writeEntryA byteSelectA
+  readDataB = ramB readAddrB writeEntryB byteSelectB
+
+  addElems x = x ++ replicate (SNat @(depth - initDepth))
+    (errorX "wbStorage: Uninitialized element")
+
+  (ramA, ramB, isReloadable) = case initContent of
+    NonReloadable (unzip @initDepth . bitCoerce -> (b, a)) ->
+      ( blockRamByteAddressable @_ @depth $ addElems a
+      , blockRamByteAddressable @_ @depth $ addElems b
+      , False)
+    Reloadable _ ->
+      (blockRamByteAddressableU, blockRamByteAddressableU, True)
+    Undefined ->
+      (blockRamByteAddressableU, blockRamByteAddressableU, False)
+
+  (readAddrA, readAddrB, writeEntryA, writeEntryB, byteSelectA, byteSelectB, wbOut) =
+    unbundle $ go <$> wbIn <*> readDataB <*> readDataA <*> romOut
+
+  go WishboneM2S{..} rdB rdA romOut0 =
+    ( addrA
+    , addrB
+    , writeEntryA0
+    , writeEntryB0
+    , byteSelectA1
+    , byteSelectB1
+    , (emptyWishboneS2M @(Bytes 4)){acknowledge,readData,err})
+   where
+
+    (bitCoerce . resize -> wbAddr :: Index depth, alignment) =  split @_ @(aw - 2) addr
+
+    -- when the second lowest bit is not set, the address is considered word aligned.
+    -- We don't care about the first bit to determine the address alignment because
+    -- byte aligned addresses are considered illegal.
+    (not -> wordAligned, byteAligned) = bimap unpack unpack $ split alignment
+    addrLegal = addr <= (2 * depth) && not byteAligned
+
+    masterActive = strobe && busCycle
+    err = masterActive && not addrLegal
+    acknowledge = masterActive && (not isReloadable || romDone) && addrLegal
+    masterWriting = masterActive && writeEnable && not err
+
+    (bsHigh,bsLow) = split busSelect
+    (writeDataHigh, writeDataLow) = split writeData
+
+    ((addrB, byteSelectB0, writeDataB), (addrA, byteSelectA0, writeDataA))
+      | wordAligned =
+        ( (wbAddr, bsHigh, writeDataHigh)
+        , (wbAddr, bsLow, writeDataLow))
+      | otherwise =
+        ( (wbAddr, bsLow, writeDataLow)
+        , (satSucc SatBound wbAddr, bsHigh, writeDataHigh))
+
+    (romWrite, romDone) = romOut0
+    (romWriteB, romWriteA) = splitWrite romWrite
+    (writeEntryB0, writeEntryA0)
+      | isReloadable && not romDone = (romWriteB, romWriteA)
+      | masterWriting = (Just (addrB, writeDataB),Just (addrA, writeDataA))
+      | otherwise = (Nothing,Nothing)
+    readData
+      | wordAligned = rdB ++# rdA
+      | otherwise   = rdA ++# rdB
+
+    (byteSelectB1, byteSelectA1)
+      | isReloadable && not romDone = (maxBound,maxBound)
+      | otherwise = (byteSelectB0, byteSelectA0)
+
+  splitWrite ::
+    KnownNat bits =>
+    Maybe (LocatedBits n (2*bits)) ->
+    (Maybe (LocatedBits n bits), Maybe (LocatedBits n bits))
+  splitWrite (Just (i, a)) = (Just (i,upper), Just (i, lower))
+   where
+    (upper,lower) = split a
+  splitWrite Nothing = (Nothing, Nothing)
+
+  -- | Delays the output controls to align them with the actual read / write timing.
+  delayControls ::
+    (HiddenClockResetEnable dom, NFDataX a) =>
+    Signal dom (WishboneM2S addressWidth selWidth a) -> -- current M2S signal
+    Signal dom (WishboneS2M a) ->
+    Signal dom (WishboneS2M a)
+  delayControls m2s s2m0 = mux inCycle s2m1 (pure emptyWishboneS2M)
+   where
+    inCycle = (busCycle <$> m2s) .&&. (strobe <$> m2s)
+    delayedAck = register False (acknowledge <$> s2m0)
+    delayedErr = register False (err <$> s2m0)
+    s2m1 = (\wb newAck newErr-> wb{acknowledge = newAck, err = newErr})
+      <$> s2m0 <*> delayedAck <*> delayedErr
 
 -- | The double buffered Ram component is a memory component that contains two buffers
--- and enables the user to write to one buffer and read from the other. 'SelectedBuffer'
+-- and enables the user to write to one buffer and read from the other. 'AorB'
 -- selects which buffer is written to, while read operations read from the other buffer.
 doubleBufferedRam ::
   forall dom memDepth a .
@@ -33,7 +214,7 @@ doubleBufferedRam ::
   -- | The initial contents of both buffers.
   Vec memDepth a ->
   -- | Controls which buffers is written to, while the other buffer is read from.
-  Signal dom SelectedBuffer ->
+  Signal dom AorB ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
@@ -49,13 +230,13 @@ doubleBufferedRam initialContent0 outputSelect readAddr0 writeFrame0 =
 
 -- | Version of 'doubleBufferedRam' with undefined initial contents. This component
 -- contains two buffers and enables the user to write to one buffer and read from the
--- other. 'SelectedBuffer' selects which buffer is written to, while read operations
+-- other. 'AorB' selects which buffer is written to, while read operations
 -- read from the other buffer.
 doubleBufferedRamU ::
   forall dom memDepth a .
   (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
   -- | Controls which buffers is written to, while the other buffer is read from.
-  Signal dom SelectedBuffer ->
+  Signal dom AorB ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
@@ -73,7 +254,7 @@ doubleBufferedRamU outputSelect readAddr0 writeFrame0 =
 -- consists of two buffers and internally stores its elements as a multiple of 8 bits.
 -- It contains a blockRam per byte and uses the one hot byte select signal to determine
 -- which bytes will be overwritten during a write operation. This components writes to
--- one buffer and reads from the other. 'SelectedBuffer' selects which buffer is
+-- one buffer and reads from the other. 'AorB' selects which buffer is
 -- written to, while read operations read from the other buffer.
 doubleBufferedRamByteAddressable ::
   forall dom memDepth a .
@@ -81,7 +262,7 @@ doubleBufferedRamByteAddressable ::
   -- | The initial contents of the first buffer.
   Vec memDepth a ->
   -- | Controls which buffers is written to, while the other buffer is read from.
-  Signal dom SelectedBuffer ->
+  Signal dom AorB ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
@@ -102,12 +283,12 @@ doubleBufferedRamByteAddressable initialContent0 outputSelect readAddr0 writeFra
 -- multiple of 8 bits. It contains a blockRam per byte and uses the one hot byte select
 -- signal to determine which nBytes will be overwritten during a write operation.
 -- This components writes to one buffer and reads from the other. Which buffer is
--- used for reading while the other is used for writing is controlled by the 'SelectedBuffer'.
+-- used for reading while the other is used for writing is controlled by the 'AorB'.
 doubleBufferedRamByteAddressableU ::
   forall dom memDepth a .
   ( KnownNat memDepth, 1 <= memDepth, HiddenClockResetEnable dom, Paddable a, ShowX a) =>
   -- | Controls which buffers is written to, while the other buffer is read from.
-  Signal dom SelectedBuffer ->
+  Signal dom AorB ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | Incoming data frame.
@@ -316,13 +497,13 @@ updateAddrs ::
   -- | A write operation.
   -> Maybe (Index m, b)
   -- | A boolean that will be used for the addresses LSBs.
-  -> SelectedBuffer
+  -> AorB
   -- |
   -- 1. Updated address
   -- 2. Write operation with updated address.
   -> (Index (n * 2), Maybe (Index (m * 2), b))
 updateAddrs rdAddr (Just (i, a)) bufSelect =
-  (mul2Index rdAddr bufSelect, Just (mul2Index i (flipBuffer bufSelect), a))
+  (mul2Index rdAddr bufSelect, Just (mul2Index i (swapAorB bufSelect), a))
 
 updateAddrs rdAddr Nothing bufSelect =
   (mul2Index rdAddr bufSelect, Nothing)
