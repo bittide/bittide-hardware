@@ -23,23 +23,32 @@ import Bittide.ClockControl.Strategies.Callisto
 -- This is the canonical controller, and uses 'callisto' under the hood.
 callistoClockControl ::
   forall n dom.
-  (KnownNat n, 1 <= n) =>
+  (KnownDomain dom, KnownNat n, 1 <= n) =>
+  Clock dom ->
+  Reset dom ->
+  Enable dom ->
   -- | Configuration for this component, see individual fields for more info.
   ClockControlConfig ->
   -- | Statistics provided by elastic buffers.
   Vec n (Signal dom DataCount) ->
   Signal dom SpeedChange
-callistoClockControl cfg = clockControl cfg callisto
+callistoClockControl clk rst ena cfg =
+  clockControl clk rst ena cfg callisto
 
 type ClockControlAlgorithm dom n a =
+  Clock dom ->
+  Reset dom ->
+  Enable dom ->
   ClockControlConfig ->
-  SettlePeriod ->
   Signal dom (Vec n DataCount) ->
   Signal dom SpeedChange
 
 clockControl ::
   forall n dom a.
-  (KnownNat n, 1 <= n) =>
+  (KnownDomain dom, KnownNat n, 1 <= n) =>
+  Clock dom ->
+  Reset dom ->
+  Enable dom ->
   -- | Configuration for this component, see individual fields for more info.
   ClockControlConfig ->
   -- | Clock control strategy
@@ -48,5 +57,5 @@ clockControl ::
   Vec n (Signal dom DataCount) ->
   -- | Whether to adjust node clock frequency
   Signal dom SpeedChange
-clockControl cfg@ClockControlConfig{..} f =
-  f cfg (cccSettlePeriod + 1) . bundle
+clockControl clk rst ena cfg f =
+  f clk rst ena cfg . bundle

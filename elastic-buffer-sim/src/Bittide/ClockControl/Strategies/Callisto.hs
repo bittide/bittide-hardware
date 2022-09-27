@@ -10,7 +10,6 @@ module Bittide.ClockControl.Strategies.Callisto
 where
 
 import Clash.Explicit.Prelude
-import Clash.Signal.Internal
 
 import Bittide.ClockControl
 
@@ -18,25 +17,26 @@ data ControlSt = ControlSt
   { x_k :: Float -- ^ 'x_k' is the integral of the measurement
   , z_k :: Integer
   , b_k :: SpeedChange
-  }
+  } deriving (Generic, NFDataX)
 
 initControlSt :: ControlSt
 initControlSt = ControlSt 0 0 NoChange
 
-
 callisto ::
   forall n dom.
-  (KnownNat n, 1 <= n) =>
+  (KnownDomain dom, KnownNat n, 1 <= n) =>
+  Clock dom ->
+  Reset dom ->
+  Enable dom ->
   ClockControlConfig ->
-  SettlePeriod ->
   Signal dom (Vec n DataCount) ->
   Signal dom SpeedChange
-callisto = go initControlSt
+callisto clk rst ena ClockControlConfig{..} =
+  mealy clk rst ena go (initControlSt, 0)
  where
-  go
-    ControlSt{..} cfg@ClockControlConfig{..} settleCounter (dataCounts :- nextDataCounts)
+  go (ControlSt{..}, settleCounter) dataCounts
     | settleCounter > cccSettlePeriod
-    = b_kNext :- nextChanges
+    = ((ControlSt x_kNext z_kNext b_kNext, 0), b_kNext)
    where
 
     -- see clock control algorithm simulation here:
@@ -78,11 +78,5 @@ callisto = go initControlSt
     sgn SpeedUp = 1
     sgn SlowDown = -1
 
-    nextChanges =
-      go (ControlSt x_kNext z_kNext b_kNext) cfg 0 nextDataCounts
-
-  go st cfg@ClockControlConfig{..} settleCounter (_ :- nextDataCounts) =
-    NoChange :- nextChanges
-   where
-    nextChanges = go st cfg newSettleCounter nextDataCounts
-    newSettleCounter = settleCounter + cccPessimisticPeriod
+  go (st, settleCounter) _ =
+    ((st, settleCounter + cccPessimisticPeriod), NoChange)

@@ -17,8 +17,8 @@ import Bittide.ClockControl.Strategies
 import Bittide.Simulate
 import Bittide.Simulate.Ppm
 
-createDomain vXilinxSystem{vPeriod=hzToPeriod 200e3, vName="Fast"}
-createDomain vXilinxSystem{vPeriod=hzToPeriod 20e3, vName="Slow"}
+createDomain vXilinxSystem{vPeriod=hzToPeriod 200e6, vName="Fast"}
+createDomain vXilinxSystem{vPeriod=hzToPeriod 20e6, vName="Slow"}
 
 tests :: TestTree
 tests = testGroup "Simulate"
@@ -32,7 +32,7 @@ tests = testGroup "Simulate"
   ]
 
 fastPeriod :: PeriodPs
-fastPeriod = hzToPeriod 200e3
+fastPeriod = hzToPeriod 200e6
 
 clockConfig :: Ppm -> ClockControlConfig
 clockConfig clockUncertainty = ClockControlConfig
@@ -48,18 +48,28 @@ case_clockControlMaxBound = do
   let
     config = clockConfig (Ppm 100)
     dataCounts = pure (cccBufferSize config) :> Nil
-    (change:_) = sample (callistoClockControl @_ @Fast config dataCounts)
+    changes =
+      sampleN
+        (fromIntegral (cccPessimisticPeriod config))
+        (callistoClockControl @_ @Fast clockGen resetGen enableGen config dataCounts)
 
-  change @?= SpeedUp
+  assertBool
+    "only requests speed up"
+    (SpeedUp `elem` changes && SlowDown `notElem` changes)
 
 case_clockControlMinBound :: Assertion
 case_clockControlMinBound = do
   let
     config = clockConfig (Ppm 100)
     dataCounts = pure 0 :> Nil
-    (change:_) = sample (callistoClockControl @_ @Fast config dataCounts)
+    changes =
+      sampleN
+        (fromIntegral (cccPessimisticPeriod config))
+        (callistoClockControl @_ @Fast clockGen resetGen enableGen config dataCounts)
 
-  change @?= SlowDown
+  assertBool
+    "only requests slow down"
+    (SlowDown `elem` changes && SpeedUp `notElem` changes)
 
 -- | When the elasticBuffer is written to more quickly than it is being read from,
 -- its data count should reach 'maxBound'.
