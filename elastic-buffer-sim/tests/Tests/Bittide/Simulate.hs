@@ -87,7 +87,9 @@ case_elasticBufferMaxBound = do
 -- its data count should reach 'maxBound'.
 case_elasticBufferMinBound :: Assertion
 case_elasticBufferMinBound = do
-  let dataCounts = sampleN 1024 (elasticBuffer Saturate 32 (clockGen @Fast) (clockGen @Slow))
+  let dataCounts =
+          fst <$>
+            sampleN 1024 (fst (elasticBuffer 32 (clockGen @Fast) (clockGen @Slow) (pure True) (pure True)))
   assertBool "elastic buffer should reach its minimum" (0 `elem` dataCounts)
   assertBool "elastic buffer should not reach its maximum" (32 `notElem` dataCounts)
 
@@ -95,6 +97,8 @@ case_elasticBufferMinBound = do
 -- reach neiher its maxBound nor minBound.
 case_elasticBufferEq :: Assertion
 case_elasticBufferEq = do
-  let dataCounts = sampleN 1024 (elasticBuffer Saturate 32 (clockGen @Slow) (clockGen @Slow))
+  let dataCounts =
+          fst <$>
+            sampleN 1024 (fst (elasticBuffer 32 (clockGen @Slow) (clockGen @Slow) (pure True) (pure True)))
   assertBool "elastic buffer should not reach its minimum" (0 `notElem` dataCounts)
   assertBool "elastic buffer should not reach its maximum" (32 `notElem` dataCounts)
