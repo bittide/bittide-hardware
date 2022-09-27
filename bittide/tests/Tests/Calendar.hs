@@ -18,6 +18,7 @@ module Tests.Calendar(calGroup, genCalendarConfig) where
 import Clash.Prelude
 
 import Clash.Hedgehog.Sized.Index (genIndex)
+import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
 import Clash.Sized.Vector (unsafeFromList)
 import Data.Constraint
@@ -163,7 +164,7 @@ genBVCalendar calSize bitWidth validityBits = do
       (SNatLE, SNatLE, SNatLE, SNatLE) -> do
         cal <- Gen.list (Range.singleton $ fromIntegral calSize) $ (,) <$>
           genDefinedBitVector @bitWidth <*>
-          genIndex @_ @(2^validityBits) Range.constantBounded
+          genUnsigned @_ @validityBits Range.constantBounded
         return (BVCalendar s b v $ unsafeFromList cal)
       _ -> error $ "genIntCalendar: Constraints not satisfied: 1 <= " <> show calNatBits
        <> " <= 32, " <> show requiredAddrWidth <> " <= 32."

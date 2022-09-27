@@ -30,7 +30,6 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import Bittide.Calendar hiding (ExtraRegisters)
-import Bittide.Extra.Wishbone
 import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Tests.Shared
@@ -111,10 +110,10 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
       SNat depthB ->
       Gen (CalendarConfig nBytes addrW (Index maxDepth))
     go SNat SNat = do
-      calActive <- fmap (,0 :: Index (2^0)) . fromMaybe errmsg . fromList @depthA .
+      calActive <- fmap (,0 :: Unsigned 0) . fromMaybe errmsg . fromList @depthA .
         P.take (natToNum @depthA) <$> Gen.shuffle @_ @(Index maxDepth)
         [0.. natToNum @(maxDepth-1)]
-      calShadow <- fmap (,0 :: Index (2^0)) . fromMaybe errmsg . fromList @depthB .
+      calShadow <- fmap (,0 :: Unsigned 0) . fromMaybe errmsg . fromList @depthB .
         P.take (natToNum @depthB) <$> Gen.shuffle @_ @(Index maxDepth)
         [0.. natToNum @(maxDepth-1)]
       return $ CalendarConfig sizeNat calActive calShadow
