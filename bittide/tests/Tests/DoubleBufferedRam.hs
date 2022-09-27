@@ -549,12 +549,12 @@ byteAddressableDoubleBufferedRamBehavior :: forall bits memDepth nBytes .
  , nBytes ~ Regs (BitVector bits) 8
  , KnownNat bits
  , 1 <= bits) =>
- ((SelectedBuffer, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
+ ((AorB, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
  , Vec memDepth (BitVector bits), Vec memDepth (BitVector bits))->
 
- (SelectedBuffer, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes) ->
+ (AorB, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes) ->
 
- (((SelectedBuffer, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
+ (((AorB, Index memDepth, Maybe (LocatedBits memDepth bits), BitVector nBytes)
  , Vec memDepth (BitVector bits)
  , Vec memDepth (BitVector bits))
  , BitVector bits)
@@ -701,12 +701,12 @@ wbStorageBehavior = property $ do
       goldenTransactions = ramOpToTransaction goldenInput $ L.tail simGolden
       simTransactions = wbToTransaction topEntityInput simOut
 
-    footnote . fromString $ "goldenTransactions" <> showX goldenTransactions
-    footnote . fromString $ "simTransactions" <> showX simTransactions
-    footnote . fromString $ "simGolden" <> showX simGolden
-    footnote . fromString $ "simOut" <> showX simOut
-    footnote . fromString $ "goldenInput" <> showX goldenInput
-    footnote . fromString $ "topEntityInput" <> showX topEntityInput
+    footnote $ "goldenTransactions" <> showX goldenTransactions
+    footnote $ "simTransactions" <> showX simTransactions
+    footnote $ "simGolden" <> showX simGolden
+    footnote $ "simOut" <> showX simOut
+    footnote $ "goldenInput" <> showX goldenInput
+    footnote $ "topEntityInput" <> showX topEntityInput
 
     simTransactions === goldenTransactions
 
