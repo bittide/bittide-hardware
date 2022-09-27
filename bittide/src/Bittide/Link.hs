@@ -104,12 +104,14 @@ txUnit (getRegs -> RegisterBank preamble) sq frameIn wbIn = (wbOut, frameOut)
 
 -- | States for the rxUnit.
 data ReceiverState
-  = Idle
+  = Empty
   -- ^ Receiver is in idle state.
   | WaitingForPreamble
   -- ^ Receiver is waiting for the preamble to be detected.
   | CaptureSequenceCounter
   -- ^ Receiver is capturing the sequence counter.
+  | Done
+  -- ^ Receiver has captured a remote and corresponding local sequence counter.
   deriving (Generic, ShowX, BitPack)
 
 -- | The width of the internal shift register used for capturing the preamble and two
@@ -140,7 +142,7 @@ rxUnit ::
 rxUnit preamble localCounter linkIn wbIn = wbOut
  where
   (regOut, wbOut) = registerWbE WishbonePriority regInit wbIn regIn byteEnables
-  regInit = (0,resize $ pack Idle)
+  regInit = (0,resize $ pack Empty)
   (regIn, byteEnables) = unbundle . mealy go 0 $ bundle (regOut, linkIn, localCounter)
 
   go ::
@@ -184,7 +186,7 @@ rxUnit preamble localCounter linkIn wbIn = wbOut
       = setLowerSlice withShifted shiftOld
 
     nextState
-      | lastFrame = Idle
+      | lastFrame = Done
       | otherwise = CaptureSequenceCounter
 
     nextCnt = case oneLTdivRU @scw @fw of
