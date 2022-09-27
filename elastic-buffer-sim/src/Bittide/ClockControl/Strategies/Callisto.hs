@@ -11,8 +11,6 @@ where
 
 import Clash.Explicit.Prelude
 
-import Data.Maybe (isJust)
-
 import Bittide.ClockControl
 
 data ControlSt = ControlSt
@@ -24,11 +22,6 @@ data ControlSt = ControlSt
 initControlSt :: ControlSt
 initControlSt = ControlSt 0 0 NoChange
 
-sumMaybes :: Vec n (Maybe DataCount) -> DataCount
-sumMaybes Nil = 0
-sumMaybes (Just x `Cons` xs) = x + sumMaybes xs
-sumMaybes (Nothing `Cons` _) = errorX "internal error."
-
 callisto ::
   forall n dom.
   (KnownDomain dom, KnownNat n, 1 <= n) =>
@@ -36,13 +29,13 @@ callisto ::
   Reset dom ->
   Enable dom ->
   ClockControlConfig ->
-  Signal dom (Vec n (Maybe DataCount)) ->
+  Signal dom (Vec n DataCount) ->
   Signal dom SpeedChange
 callisto clk rst ena ClockControlConfig{..} =
   mealy clk rst ena go (initControlSt, 0)
  where
   go (ControlSt{..}, settleCounter) dataCounts
-    | settleCounter > cccSettlePeriod && all isJust dataCounts
+    | settleCounter > cccSettlePeriod
     = ((ControlSt x_kNext z_kNext b_kNext, 0), b_kNext)
    where
 
@@ -54,7 +47,7 @@ callisto clk rst ena ClockControlConfig{..} =
     k_i = 1e-11 :: Float
     r_k =
       let
-        measuredSum = realToFrac (sumMaybes dataCounts)
+        measuredSum = realToFrac (sum dataCounts)
         targetCount = realToFrac (targetDataCount cccBufferSize)
         nBuffers = realToFrac (length dataCounts)
       in

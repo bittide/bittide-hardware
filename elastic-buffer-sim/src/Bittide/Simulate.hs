@@ -170,10 +170,9 @@ elasticBufferXilinx ::
   ElasticBufferSize ->
   Clock readDom ->
   Clock writeDom ->
-  Signal readDom (Maybe DataCount)
+  Signal readDom (Bool, DataCount)
 elasticBufferXilinx _mode _size clkRead clkWrite =
-  fmap fromIntegral
-    <$> (toggle <$> block <*> readCount)
+  bundle (block, fmap fromIntegral readCount)
  where
   waitMidway :: Signal readDom (Unsigned 12) -> Signal readDom Bool
   waitMidway = mealy clkRead resetGen enableGen go False
@@ -183,7 +182,6 @@ elasticBufferXilinx _mode _size clkRead clkWrite =
                | otherwise = (False, False)
   block = waitMidway readCount
   FifoOut{..} = dcFifo (defConfig @12) clkWrite resetGen clkRead resetGen (pure (Just ())) block
-  toggle b = if b then Just else const Nothing
 
 -- | Model FIFO. This is exposed as 'ebController'
 --
@@ -199,11 +197,11 @@ elasticBuffer ::
   ElasticBufferSize ->
   Clock readDom ->
   Clock writeDom ->
-  Signal readDom (Maybe DataCount)
+  Signal readDom DataCount
 elasticBuffer mode size clkRead clkWrite
   | Clock _ (Just readPeriods) <- clkRead
   , Clock _ (Just writePeriods) <- clkWrite
-  = Just <$> go 0 (targetDataCount size) readPeriods writePeriods
+  = go 0 (targetDataCount size) readPeriods writePeriods
  where
   go !relativeTime !fillLevel rps wps@(writePeriod :- _) =
     if relativeTime < toInteger writePeriod
