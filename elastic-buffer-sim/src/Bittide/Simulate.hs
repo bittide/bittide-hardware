@@ -134,12 +134,14 @@ ebController size clkRead rstRead enaRead clkWrite rstWrite enaWrite =
 
   (wrDisableRd, rdDisable) = unbundle direct
 
-  -- write reset process (so that is accurate in the read domain):
+  -- Write reset process (that is accurate in the read domain):
   --
-  -- 1. disable writes (keep reads enabled), drain COMPLETELY (control from read
-  -- domain?)
-  -- 2. re-enable writes, disable reads until EXACTLY half (in the read domain)
-  -- 3. (reads can proceed)
+  -- 1. Disable writes (keep reads enabled), drain completely (control from the
+  -- read domain)
+  -- domain)
+  -- 2. Re-enable writes, disable reads until data count is exactly half (in the
+  -- read domain)
+  -- 3. Proceed reading
 
   direct :: Signal readDom (DisableWrites, DisableReads)
   direct =

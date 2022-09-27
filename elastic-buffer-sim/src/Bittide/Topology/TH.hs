@@ -26,7 +26,7 @@ import Control.Monad (replicateM, void, zipWithM)
 import Data.Bifunctor (bimap)
 import Data.Csv (encode)
 import Data.Graph (Graph)
-import Graphics.Matplotlib (Matplotlib, (%), file, plot, xlabel, ylabel)
+import Graphics.Matplotlib (Matplotlib, (%), (@@), file, o2, plot, xlabel, ylabel)
 import Language.Haskell.TH (Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), Stmt (..), Type (..), newName)
 import Language.Haskell.TH.Syntax (lift)
 import Numeric.Natural (Natural)
@@ -60,11 +60,14 @@ matplotWrite nm clockDats ebDats = do
   void $
     file
       ("_build/clocks" ++ nm ++ ".pdf")
-      (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
+      (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots (setLineWidth <$> clockDats))
   void $
     file
       ("_build/elasticbuffers" ++ nm ++ ".pdf")
       (xlabel "Time (ps)" % foldPlots ebDats)
+
+setLineWidth :: Matplotlib -> Matplotlib
+setLineWidth = (@@ [o2 "linewidth" (0.1::Double)])
 
 genOffsN :: Int -> IO [Offset]
 genOffsN n = replicateM (n+1) genOffsets
@@ -343,7 +346,7 @@ asPlotN i = do
     LamE [VarP m] $
               bimapV
                 plotPairs
-                (VarE 'foldPlots `compose` mapV plotPairs `compose` VarE 'L.transpose)
+                (VarE 'foldPlots `compose` mapV (VarE 'setLineWidth) `compose` mapV plotPairs `compose` VarE 'L.transpose)
     `compose` VarE 'unzip
     `compose` mapV g
     `compose` (VarE 'take `AppE` VarE m)
