@@ -25,7 +25,6 @@ import Clash.Prelude
 import Data.Maybe
 import Protocols.Wishbone
 
-import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
 
 

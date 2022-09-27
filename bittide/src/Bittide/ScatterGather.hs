@@ -7,8 +7,7 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Bittide.ScatterGather
-  ( scatterEngine
-  , scatterUnitWb
+  ( scatterUnitWb
   , gatherUnitWb
   ) where
 
@@ -22,36 +21,6 @@ import Bittide.SharedTypes
 
 -- | Calendar entry that can be used by a scatter or gather engine.
 type CalendarEntry memDepth = Index memDepth
-
--- TODO: scatterEngine should be removed after merging #71, which removes scatterEngine
-
--- | scatterEngine is a memory bank that allows for random writes and sequentially
--- reads data based on an internal counter that runs up to the maximum index, then wraps around.
--- The initial contents are undefined.
-scatterEngine ::
-  (HiddenClockResetEnable dom, KnownNat memDepth, 1 <= memDepth, NFDataX a) =>
-  -- | Indicates when a new metacycle has started.
-  Signal dom Bool ->
-  -- | Incoming frame from link, if it contains Just a, a will be written to the memory.
-  Signal dom (Maybe a) ->
-  -- | Write address, when the incoming frame contains Just a, a will be written to this address.
-  Signal dom (Index memDepth) ->
-  -- | Data at the read address, delayed by one clock cycle.
-  Signal dom a
-scatterEngine (fmap bitCoerce -> newMetaCycle) frameIn writeAddr =
-  doubleBufferedRamU newMetaCycle readAddr writeFrame
- where
-  readAddr = register 0 $ satSucc SatWrap <$> readAddr
-  writeFrame = combineFrameWithAddr frameIn writeAddr
-
-combineFrameWithAddr ::
-  Signal dom (Maybe dat) ->
-  Signal dom addr ->
-  Signal dom (Maybe (addr,dat))
-combineFrameWithAddr frameIn writeAddr = combine <$> frameIn <*> writeAddr
- where
-  combine :: Maybe dat -> addr -> Maybe (addr,dat)
-  combine frame addr = fmap (addr,) frame
 
 -- | Double buffered memory component that can be written to by a Bittide link. The write
 -- address of the incoming frame is determined by the incorporated 'calendar'. The buffers

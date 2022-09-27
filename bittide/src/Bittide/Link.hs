@@ -205,3 +205,8 @@ setLowerSlice ::
   BitVector bv ->
   BitVector bv
 setLowerSlice = setSlice @_ @_ @(bv - slice) (SNat @(slice -1)) d0
+
+-- | Counts the number of cycles since the last reset. Initially Unsigned 64 has been
+--  picked because it's unlikely to overflow in the lifetime of a Bittide system.
+sequenceCounter :: HiddenClockResetEnable dom => Signal dom (Unsigned 64)
+sequenceCounter = register 0 $ satSucc SatError <$> sequenceCounter

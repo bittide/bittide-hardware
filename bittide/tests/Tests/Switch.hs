@@ -5,8 +5,9 @@
 {-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
 
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RecordWildCards #-}
 module Tests.Switch(switchGroup) where
 
 import Clash.Prelude
@@ -36,90 +37,76 @@ switchGroup :: TestTree
 switchGroup = testGroup "Switch group"
   [testPropertyNamed "Routing works" "switchFrameRoutingWorks" switchFrameRoutingWorks]
 
-data SwitchConfig  nBytes addrW where
-  SwitchConfig ::
-    1 <= memDepth =>
-    SNat links ->
-    SNat memDepth ->
-    CalendarConfig nBytes addrW (CalendarEntry links memDepth) ->
-    SwitchConfig nBytes addrW
+data SwitchTestConfig  nBytes addrW where
+  SwitchTestConfig ::
+    ( KnownNat links, 1 <= nBytes, 2 <= addrW) =>
+    SwitchConfig links nBytes addrW ->
+    SwitchTestConfig nBytes addrW
 
-deriving instance Show (SwitchConfig nBytes addrW)
+deriving instance Show (SwitchTestConfig nBytes addrW)
 
--- This generator can generate a calendar entry for a switch given the amount of links and
--- memory depth.
+-- This generator can generate a calendar entry for a switch given the amount of links.
 genSwitchEntry ::
-  forall links scatterDepth .
-  1 <= scatterDepth =>
+  forall links .
   SNat links ->
-  SNat scatterDepth ->
-  Gen (CalendarEntry links scatterDepth)
-genSwitchEntry SNat SNat = genVec elemGen
- where
-  genScatterEntry = genIndex Range.constantBounded
-  genLinkEntry = genIndex Range.constantBounded
-  elemGen = (,) <$> genScatterEntry <*> genLinkEntry
+  Gen (CalendarEntry links)
+genSwitchEntry SNat = genVec (genIndex Range.constantBounded)
 
--- | This generator can generate a any calendar for the bittide switch, knowing the
--- amount of bytes and address width of the wishbone bus, and given the amount of links,
--- memory depth of the scatter engine and calendar depth of the switch.
+-- | This generator can generate a calendar for the bittide switch, knowing the
+-- amount of bytes and address width of the wishbone bus, and given the amount of links and
+-- calendar depth of the switch.
 genSwitchCalendar ::
   forall nBytes addrW .
-  (KnownNat nBytes, 1 <= nBytes, KnownNat addrW) =>
+  (KnownNat nBytes, 1 <= nBytes, KnownNat addrW, 2 <= addrW) =>
   Natural ->
   Natural ->
-  Natural ->
-  Gen (SwitchConfig nBytes addrW)
-genSwitchCalendar links memDepth calDepth = do
-  case (TN.someNatVal links, TN.someNatVal (memDepth - 1)) of
-    (SomeNat (snatProxy -> l), SomeNat (succSNat . snatProxy -> d)) -> do
-      testCal <- genCalendarConfig calDepth $ genSwitchEntry l d
-      return $ SwitchConfig l d testCal
+  Gen (SwitchTestConfig nBytes addrW)
+genSwitchCalendar links calDepth = do
+  case TN.someNatVal links of
+    (SomeNat (snatProxy -> l)) -> do
+      testCal <- genCalendarConfig calDepth $ genSwitchEntry l
+      return $ SwitchTestConfig (SwitchConfig
+        { preamble = errorX "preamble Undefined" :: BitVector 64
+        , calendarConfig = testCal})
 
--- | This test checks that for any switch calendar with memory depth 1 and calendar depth 1
---, all outputs select the correct frame.
+-- | This test checks that for any switch calendar all outputs select the correct frame.
 switchFrameRoutingWorks :: Property
 switchFrameRoutingWorks = property $ do
-  links <- forAll $ Gen.enum 1 15
-  let
-    calDepth = 1
-    memDepth = 1
-  switchCal <- forAll $ genSwitchCalendar @4 @32 links memDepth calDepth
+  links <- forAll $ Gen.int (Range.constant 1 15)
+  calDepth <- forAll $ Gen.enum 1 8
+  switchCal <- forAll $ genSwitchCalendar @4 @32 (fromIntegral links) calDepth
   case switchCal of
-    SwitchConfig SNat SNat calConfig@(CalendarConfig _ (toList -> cal) _) -> do
-      let
-        links0 = fromIntegral links
-        latency = fromIntegral memDepth + 1
-
-      simLength <- forAll $ Gen.enum latency 100
+    SwitchTestConfig
+      ( SwitchConfig
+        { preamble = preamble
+        , calendarConfig = calConfig@(CalendarConfig _ (toList . fmap toList -> cal) _)
+        }
+      ) -> do
+      simLength <- forAll $ Gen.enum 1 (3 * fromIntegral calDepth)
       let
         genFrame = Just <$> genDefinedBitVector @64
-        allLinks = Gen.list (Range.singleton links0) genFrame
+        allLinks = Gen.list (Range.singleton links) genFrame
       topEntityInput <- forAll $ Gen.list (Range.singleton simLength) allLinks
-
       let
-        topEntity streamsIn = withClockResetEnable clockGen resetGen enableGen $
-         fst (switch calConfig (pure emptyWishboneM2S) streamsIn)
+        topEntity streamsIn = withClockResetEnable clockGen resetGen enableGen $ bundle $
+         fst $ switch preamble calConfig (pure emptyWishboneM2S)
+         (repeat $ pure emptyWishboneM2S) (repeat $ pure emptyWishboneM2S) $ unbundle streamsIn
         simOut = simulateN @System simLength topEntity $ fmap unsafeFromList topEntityInput
-        simOut1 = P.drop latency $ fmap toList simOut
-
       let
-        expectedFrames = P.take simLength
-          (P.replicate links0 Nothing : P.replicate links0 Nothing : topEntityInput)
-        expectedOutput = P.drop latency . P.take simLength $
-          P.zipWith selectAllOutputs expectedFrames (cycle $ fmap toList cal)
+        expectedFrames = P.replicate links Nothing : topEntityInput
+        expectedOutput = P.take simLength $ P.replicate links Nothing :
+          P.zipWith selectAllOutputs expectedFrames (cycle cal)
       footnote . fromString $ "expected:" <> showX expectedOutput
-      footnote . fromString $ "simOut1: " <> showX simOut1
       footnote . fromString $ "simOut: " <> showX simOut
       footnote . fromString $ "input: " <> showX topEntityInput
-      simOut1 === expectedOutput
+      fmap toList simOut === expectedOutput
 
 selectAllOutputs ::
-  (KnownNat l, KnownNat d) =>
+  (KnownNat l) =>
   [Maybe a] ->
-  [(Index d, Index (l+1))] ->
+  [Index (l+1)] ->
   [Maybe a]
-selectAllOutputs incomingFrames = fmap (selectionFunc . fromEnum . snd)
+selectAllOutputs incomingFrames = fmap (selectionFunc . fromEnum)
  where
   allFrames = Nothing Seq.<| Seq.fromList incomingFrames
   selectionFunc = (allFrames `Seq.index`)
