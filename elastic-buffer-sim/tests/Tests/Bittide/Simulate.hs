@@ -28,6 +28,8 @@ tests = testGroup "Simulate"
     , testCase "case_elasticBufferEq" case_elasticBufferEq
     , testCase "case_caseClockControlMaxBound" case_clockControlMaxBound
     , testCase "case_caseClockControlMinBound" case_clockControlMinBound
+    , testCase "case_readDomTerminates" case_readDomTerminates
+    , testCase "case_directEbsTerminates" case_directEbsTerminates
     ]
   ]
 
@@ -42,6 +44,22 @@ clockConfig clockUncertainty = ClockControlConfig
   , cccStepSize          = 10
   , cccBufferSize        = 128
   }
+
+case_readDomTerminates :: Assertion
+case_readDomTerminates =
+  assertBool "doesn't <<loop>>" (ebRdOut `deepseqX` True)
+ where
+  ebRdOut = sampleN 1000 ebRd
+  ebRd =
+    ebReadDom @Fast @Slow clockGen clockGen resetGen resetGen enableGen enableGen (pure Wait)
+
+case_directEbsTerminates :: Assertion
+case_directEbsTerminates =
+  assertBool "doesn't <<loop>>" (outSample `deepseqX` True)
+ where
+  ebCtl = ebReadDom @Fast @Slow clockGen clockGen resetGen resetGen enableGen enableGen
+  (ebRst, ebDat :> Nil) = directEbs clockGen resetGen enableGen (ebCtl :> Nil)
+  outSample = sampleN 5 ebRst
 
 case_clockControlMaxBound :: Assertion
 case_clockControlMaxBound = do

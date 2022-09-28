@@ -60,7 +60,9 @@ matplotWrite nm clockDats ebDats = do
   void $
     file
       ("_build/clocks" ++ nm ++ ".pdf")
-      (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots (setLineWidth <$> clockDats))
+      (xlabel "Time (ps)"
+        % ylabel "Period (ps)"
+        % foldPlots (setLineWidth <$> clockDats))
   void $
     file
       ("_build/elasticbuffers" ++ nm ++ ".pdf")
@@ -346,7 +348,10 @@ asPlotN i = do
     LamE [VarP m] $
               bimapV
                 plotPairs
-                (VarE 'foldPlots `compose` mapV (VarE 'setLineWidth) `compose` mapV plotPairs `compose` VarE 'L.transpose)
+                (VarE 'foldPlots
+                  `compose` mapV (VarE 'setLineWidth)
+                  `compose` mapV plotPairs
+                  `compose` VarE 'L.transpose)
     `compose` VarE 'unzip
     `compose` mapV g
     `compose` (VarE 'take `AppE` VarE m)
@@ -366,12 +371,6 @@ extractPeriods ::
 extractPeriods (Clash.Clock _ (Just s)) = s
 extractPeriods _ = pure (Clash.snatToNum (Clash.clockPeriod @dom))
 
-mkReset ::
-  (Clash.KnownDomain dom, Clash.KnownNat n, 1 Clash.<= n) =>
-  Clash.Vec n (Clash.Signal dom Bool) ->
-  Clash.Reset dom
-mkReset = Clash.unsafeFromHighPolarity . fmap or . Clash.bundle
-
 -- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
 -- offsets (divergence from spec) and returns a tuple of signals for each clock
 -- domain
@@ -381,19 +380,32 @@ simNodesFromGraph ccc g = do
   clockNames <- traverse (\i -> newName ("clock" ++ show i)) indicesArr
   clockControlNames <- traverse (\i -> newName ("clockControl" ++ show i)) indicesArr
   clockSignalNames <- traverse (\i -> newName ("clk" ++ show i ++ "Signal")) indicesArr
+
   ebNames <- traverse (\(i, j) -> newName ("eb" ++ show i ++ show j)) ebA
-  ebRstNames <- traverse (\(i, j) -> newName ("ebRst" ++ show i ++ show j)) ebA
+  ebVecNames <- traverse (\i -> newName ("ebNode" ++ show i)) indicesArr
+
+  ccRstNames <- traverse (\i -> newName ("ccRst" ++ show i)) indicesArr
+
   cccE <- lift ccc
   let
     ebE i j =
-        ebClkClk
+        ebReadDomV
           `AppE` VarE (clockNames A.! i)
-          `AppE` resetGenV
-          `AppE` enableGenV
           `AppE` VarE (clockNames A.! j)
           `AppE` resetGenV
+          `AppE` resetGenV
           `AppE` enableGenV
-    ebD i j = valD (TupP [VarP (ebNames A.! (i, j)), VarP (ebRstNames A.! (i, j))]) (ebE i j)
+          `AppE` enableGenV
+    ebVec k =
+        directEbsV
+          `AppE` VarE (clockNames A.! k)
+          `AppE` resetGenV
+          `AppE` enableGenV
+          `AppE` mkVecE [ ebE k i | i <- g A.! k ]
+    ebD k =
+      valD
+        (TupP [VarP (ccRstNames A.! k), AsP (ebVecNames A.! k) (mkVecP [VarP (ebNames A.! (k, i)) | i <- g A.! k])])
+        (ebVec k)
 
     clkE i =
       AppE
@@ -403,18 +415,20 @@ simNodesFromGraph ccc g = do
     clkSignalD i = valD (VarP (clockSignalNames A.! i)) (VarE 'extractPeriods `AppE` VarE (clockNames A.! i))
 
     clockControlE k =
-      AppE
-        (callistoClockControlV
-          `AppE` VarE (clockNames A.! k)
-          `AppE` (VarE 'mkReset `AppE` resets) -- resetGenV
-          `AppE` enableGenV
-          `AppE` cccE)
-        (mkVecE [ VarE (ebNames A.! (k, i)) | i <- g A.! k ])
-     where
-      resets = mkVecE [ VarE (ebRstNames A.! (k, i)) | i <- g A.! k ]
+      callistoClockControlV
+        `AppE` VarE (clockNames A.! k)
+        `AppE` ccReset k
+        `AppE` enableGenV
+        `AppE` cccE
+        `AppE` VarE (ebVecNames A.! k)
+
+    ccReset k =
+        VarE 'Clash.unsafeFromHighPolarity
+          `AppE` VarE (ccRstNames A.! k)
+
     clockControlD k = valD (VarP (clockControlNames A.! k)) (clockControlE k)
 
-    ebs = fmap (uncurry ebD) [ (i, j) | i <- indices, j <- g A.! i ]
+    ebs = fmap ebD indices
     clockControls = clockControlD <$> indices
     clkDs = clkD <$> indices
     clkSignalDs = clkSignalD <$> indices
@@ -450,15 +464,15 @@ simNodesFromGraph ccc g = do
   bundleV = VarE 'Clash.bundle
   consC = ConE 'Clash.Cons
   nilC = ConE 'Clash.Nil
-  ebV = VarE 'ebController
+  ebReadDomV = VarE 'ebReadDom
+  directEbsV = VarE 'directEbs
   tunableClockGenV = VarE 'tunableClockGen
   resetGenV = VarE 'Clash.resetGen
   enableGenV = VarE 'Clash.enableGen
-  ebClkClk = ebV `AppE` ebSize
   callistoClockControlV = VarE 'callistoClockControl
   mkVecE = foldr (\x -> AppE (AppE consC x)) nilC
+  mkVecP = foldr (\x y -> InfixP x '(Clash.:>) y) (ConP 'Clash.Nil [])
 
-  ebSize = LitE (IntegerL (toInteger (cccBufferSize ccc)))
   step = LitE (IntegerL (cccStepSize ccc))
   settlePeriod = LitE (IntegerL (toInteger (cccSettlePeriod ccc)))
 

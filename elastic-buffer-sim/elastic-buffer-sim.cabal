@@ -84,7 +84,7 @@ library
     directory,
     matplotlib,
     random,
-    template-haskell
+    template-haskell ==2.17.*
   exposed-modules:
     Bittide.ClockControl
     Bittide.ClockControl.Strategies

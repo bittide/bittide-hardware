@@ -9,6 +9,7 @@ Provides a rudimentary simulation of elastic buffers.
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Bittide.Simulate where
 
@@ -85,77 +86,146 @@ tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
     in
       newPeriod :- go newSettleCounter newPeriod scs
 
-type ResetClockControl = Bool
+type ResetClockControl = Bool -- request a reset in other elastic buffers
 type HasUnderflowed = Bool
 type HasOverflowed = Bool
 type DisableTilHalf = Bool
+type ForceReset = Bool -- force a "reset" to EB midpoint
+type PropagateReset = Bool
+type ResetEbs = Bool
 
 type DisableWrites = Bool
 type DisableReads = Bool
 
-data WrResetDomain = Wait -- ^ after reset/when nothing has overflowed
-                   | DisableWritesEnableReads
-                   | EnableWritesDisableReads
-                   deriving (Generic, NFDataX)
+data EbControlSt = Wait | Drain | Fill deriving (Generic, NFDataX)
 
--- | This wrapper disables reads or writes when the elastic buffer
--- over-/underflows, as appropriate.
---
--- It also censors 'DataCount' after an over-/underflow, so that we do not take
--- measurements from an elastic buffer until it has settled back to its
--- midpoint.
-ebController ::
+data EbMarshalSt = ResetInProgress | Stable deriving (Generic, NFDataX)
+
+ebReadDom ::
   forall readDom writeDom.
   (KnownDomain readDom, KnownDomain writeDom) =>
-  ElasticBufferSize ->
+  Clock writeDom ->
+  Clock readDom ->
+  Reset readDom ->
+  Reset writeDom ->
+  Enable readDom ->
+  Enable writeDom ->
+  Signal readDom EbControlSt ->
+  Signal readDom EbRdDom
+ebReadDom wrClk rdClk rdRst wrRst rdEna wrEna rdCtrl =
+  bundle (readCount, isUnderflow, ebRdOver)
+ where
+  ebRdOver = dualFlipFlopSynchronizer wrClk rdClk rdRst rdEna False isOverflow
+  -- combinatorial loop here...
+  FifoOut{..} = ebWrap rdClk rdRst rdToggle wrClk wrRst wrToggle
+  wrToggle = dualFlipFlopSynchronizer rdClk wrClk wrRst wrEna True wrToggleRd
+
+  (rdToggle, wrToggleRd) = unbundle (controlStToBools <$> rdCtrl)
+
+  controlStToBools :: EbControlSt -> (Bool, Bool)
+  controlStToBools Wait = (True, True)
+  controlStToBools Drain = (True, False)
+  controlStToBools Fill = (False, True)
+
+data FifoOut readDom writeDom =
+  FifoOut
+    { isOverflow :: Signal writeDom Overflow
+    , writeCount :: Signal writeDom DataCount
+    , isUnderflow :: Signal readDom Underflow
+    , readCount :: Signal readDom DataCount
+    }
+
+type EbRdDom = (DataCount, Underflow, Overflow)
+
+data NodeInternalSt n = Continue | ResetState (Vec n EbControlSt) deriving (Generic, NFDataX)
+
+-- | Marshal all the elastic buffers of a node together.
+directEbs ::
+  forall readDom n.
+  (KnownDomain readDom, KnownNat n, 1 <= n) =>
   Clock readDom ->
   Reset readDom ->
   Enable readDom ->
+  Vec n (Signal readDom EbControlSt -> Signal readDom EbRdDom) ->
+  -- | Request a reset from clock control for the node
+  (Signal readDom ForceReset, Vec n (Signal readDom DataCount))
+directEbs clk rst ena ebs = (nodeRequestReset, dcs)
+ where
+  dcs = fmap (fmap fst3) ebsOut
+
+  fst3 (x,_,_) = x
+
+  -- ebsOut = imap (\i x -> x (dats !! i)) ebs where dats = unbundle marshalNodes
+  -- ebsOut = imap (\i x -> (ebs !! i) x) dats where dats = unbundle marshalNodes
+  ebsOut = zipWith ($) ebs (unbundle marshalNodes)
+
+  -- output 'EbControlSt' to each node (given its status etc.)
+  marshalNodes :: Signal readDom (Vec n EbControlSt)
+  marshalNodes =
+    delay clk ena (repeat Wait) $
+      mealy clk rst ena go Continue (bundle ebsOut)
+   where
+    go :: NodeInternalSt n -> Vec n (DataCount, Underflow, Overflow) -> (NodeInternalSt n, Vec n EbControlSt)
+    go Continue ebOuts
+      | not (any underflowOrOverflow ebOuts) = (Continue, repeat Wait)
+      | otherwise =
+        let
+          ctrls = fmap handleUO ebOuts
+        in (ResetState ctrls, ctrls)
+    go (ResetState ctrls) ebOuts
+      | all atMidpoint ebOuts = (Continue, repeat Wait)
+      | otherwise =
+        let
+          nextCtrls = zipWith stepNext ebOuts ctrls
+        in (ResetState nextCtrls, nextCtrls)
+
+  -- drain stops at 64 (read domain, fine)
+  -- fill stops at 128 and goes to drain (so that it will be accurate count in
+  -- the read domain)
+  stepNext :: (DataCount, Underflow, Overflow) -> EbControlSt -> EbControlSt
+  stepNext (64, _, _) Drain = Wait
+  stepNext _ Drain = Drain
+  stepNext (128, _, _) Fill = Drain
+  stepNext _ Fill = Fill
+  stepNext out _ = handleUO out
+
+  -- request reset to node's clock controller
+  nodeRequestReset :: Signal readDom ForceReset
+  nodeRequestReset = mealy clk rst ena go Stable (bundle ebsOut)
+   where
+    go :: EbMarshalSt -> Vec n (DataCount, Underflow, Overflow) -> (EbMarshalSt, ForceReset)
+    go Stable ebOuts | not (any underflowOrOverflow ebOuts) = (Stable, False)
+                     | otherwise = (ResetInProgress, True)
+    go ResetInProgress ebOuts | all atMidpoint ebOuts = (Stable, False)
+                              | otherwise = (ResetInProgress, True)
+
+  atMidpoint :: (DataCount, a, b) -> Bool
+  atMidpoint (dc, _, _) = dc == 64
+
+  underflowOrOverflow :: (a, Underflow, Overflow) -> Bool
+  underflowOrOverflow (_, u, o) = u || o
+
+  handleUO :: (a, Underflow, Overflow) -> EbControlSt
+  handleUO (_, False, False) = Wait
+  handleUO (_, True, _) = Fill
+  handleUO (_, _, True) = Drain
+
+ebWrap ::
+  (KnownDomain readDom, KnownDomain writeDom) =>
+  Clock readDom ->
+  Reset readDom ->
+  Signal readDom Bool ->
   Clock writeDom ->
   Reset writeDom ->
-  Enable writeDom ->
-  (Signal readDom DataCount, Signal readDom ResetClockControl)
-ebController size clkRead rstRead enaRead clkWrite rstWrite enaWrite =
-  unbundle
-    (go <$> rdToggle <*> outRd <*> overflowRd)
+  Signal writeDom Bool ->
+  FifoOut readDom writeDom
+ebWrap rdClk _rdRst rdEna wrClk _wrRst wrEna =
+  FifoOut{..}
  where
-  (outRd, outWr) = elasticBuffer size clkRead clkWrite rdToggle wrToggle
+  (readCount, isUnderflow) = unbundle rdOuts
+  (writeCount, isOverflow) = unbundle wrOuts
 
-  go True (dc, False) False = (dc, False)
-  go _ (dc, _) _ = (dc, True)
-
-  overflowRd =
-    dualFlipFlopSynchronizer clkWrite clkRead rstRead enaRead False (snd <$> outWr)
-
-  wrToggle = not <$> wrDisable; rdToggle = not <$> rdDisable
-
-  wrDisable =
-    dualFlipFlopSynchronizer clkRead clkWrite rstWrite enaWrite False wrDisableRd
-
-  (wrDisableRd, rdDisable) = unbundle direct
-
-  -- Write reset process (that is accurate in the read domain):
-  --
-  -- 1. Disable writes (keep reads enabled), drain completely (control from the
-  -- read domain)
-  -- domain)
-  -- 2. Re-enable writes, disable reads until data count is exactly half (in the
-  -- read domain)
-  -- 3. Proceed reading
-
-  direct :: Signal readDom (DisableWrites, DisableReads)
-  direct =
-    register clkRead rstRead enaRead (False, False)
-      $ mealy clkRead rstRead enaRead f Wait (bundle (outRd, overflowRd))
-   where
-    f :: WrResetDomain -> ((DataCount, Underflow), Overflow) -> (WrResetDomain, (DisableWrites, DisableReads))
-    f EnableWritesDisableReads ((d, _), _) | d == targetDataCount size = (Wait, (False, False))
-    f EnableWritesDisableReads _ = (EnableWritesDisableReads, (False, True))
-    f DisableWritesEnableReads ((0, _), _) = (EnableWritesDisableReads, (False, True))
-    f DisableWritesEnableReads _ = (DisableWritesEnableReads, (True, False))
-    f Wait ((_, True), _) = (EnableWritesDisableReads, (False, True))
-    f Wait (_, True) = (DisableWritesEnableReads, (True, False))
-    f Wait _ = (Wait, (False, False))
+  (rdOuts, wrOuts) = elasticBuffer 128 rdClk wrClk rdEna wrEna
 
 type Underflow = Bool
 type Overflow = Bool
@@ -186,26 +256,24 @@ elasticBuffer size clkRead clkWrite readEna writeEna
       then goRead relativeTime fillLevel rps wps
       else goWrite relativeTime fillLevel rps wps
 
-  goWrite relativeTime fillLevel rps (writePeriod :- wps) rdEna (wrEna :- wrEnas)
-    | wrEna =
+  goWrite relativeTime fillLevel rps (writePeriod :- wps) rdEna (True :- wrEnas) =
     second (next :-) $
       go (relativeTime - toInteger writePeriod) newFillLevel rps wps rdEna wrEnas
    where
     next@(newFillLevel, _)
-      | fillLevel >= size = (targetDataCount size, True)
+      | fillLevel >= size = (size, True)
       | otherwise = (fillLevel + 1, False)
 
   goWrite relativeTime fillLevel rps (writePeriod :- wps) rdEna (_ :- wrEnas) =
     second ((fillLevel, False) :-) $
       go (relativeTime - toInteger writePeriod) fillLevel rps wps rdEna wrEnas
 
-  goRead relativeTime fillLevel (readPeriod :- rps) wps (rdEna :- rdEnas) wrEnas
-    | rdEna =
+  goRead relativeTime fillLevel (readPeriod :- rps) wps (True :- rdEnas) wrEnas =
     first (next :-) $
       go (relativeTime + toInteger readPeriod) newFillLevel rps wps rdEnas wrEnas
    where
     next@(newFillLevel, _)
-      | fillLevel <= 0 = (targetDataCount size, True)
+      | fillLevel <= 0 = (0, True)
       | otherwise = (fillLevel - 1, False)
 
   goRead relativeTime fillLevel (readPeriod :- rps) wps (_ :- rdEnas) wrEnas =

@@ -2,8 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE RecordWildCards #-}
-
 -- | Mock clock controller
 module Bittide.ClockControl.Strategies
   ( ClockControlAlgorithm
