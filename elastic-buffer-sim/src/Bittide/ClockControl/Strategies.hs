@@ -12,10 +12,8 @@ module Bittide.ClockControl.Strategies
   )
 where
 
-import Debug.Trace
-
 import Clash.Explicit.Prelude
-import Data.Maybe (isJust, fromMaybe)
+import Data.Maybe (fromMaybe)
 
 import Bittide.ClockControl
 import Bittide.ClockControl.Strategies.Callisto
