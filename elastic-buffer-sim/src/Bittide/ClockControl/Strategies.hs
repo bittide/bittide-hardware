@@ -13,6 +13,7 @@ module Bittide.ClockControl.Strategies
 where
 
 import Clash.Explicit.Prelude
+import Data.Maybe (fromMaybe)
 
 import Bittide.ClockControl
 import Bittide.ClockControl.Strategies.Callisto
@@ -31,7 +32,7 @@ callistoClockControl ::
   ClockControlConfig ->
   -- | Statistics provided by elastic buffers.
   Vec n (Signal dom DataCount) ->
-  Signal dom SpeedChange
+  Signal dom (SpeedChange, ExpectStable)
 callistoClockControl clk rst ena cfg =
   clockControl clk rst ena cfg callisto
 
@@ -69,6 +70,10 @@ clockControl ::
   -- | Statistics provided by elastic buffers.
   Vec n (Signal dom DataCount) ->
   -- | Whether to adjust node clock frequency
-  Signal dom SpeedChange
-clockControl clk rst ena cfg f =
-  f clk rst ena cfg . bundle
+  Signal dom (SpeedChange, ExpectStable)
+clockControl clk rst ena cfg f dats =
+  (,) <$> converted <*> isStable
+ where
+  mSpeedChanges = f clk rst ena cfg (bundle dats)
+  converted = fromMaybe NoChange <$> mSpeedChanges
+  isStable = stabilityCheck clk rst ena mSpeedChanges

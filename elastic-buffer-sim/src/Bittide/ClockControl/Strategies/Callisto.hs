@@ -30,13 +30,13 @@ callisto ::
   Enable dom ->
   ClockControlConfig ->
   Signal dom (Vec n DataCount) ->
-  Signal dom SpeedChange
+  Signal dom (Maybe SpeedChange)
 callisto clk rst ena ClockControlConfig{..} =
   mealy clk rst ena go (initControlSt, 0)
  where
   go (ControlSt{..}, settleCounter) dataCounts
     | settleCounter > cccSettlePeriod
-    = ((ControlSt x_kNext z_kNext b_kNext, 0), b_kNext)
+    = ((ControlSt x_kNext z_kNext b_kNext, 0), Just b_kNext)
    where
 
     -- see clock control algorithm simulation here:
@@ -79,4 +79,4 @@ callisto clk rst ena ClockControlConfig{..} =
     sgn SlowDown = -1
 
   go (st, settleCounter) _ =
-    ((st, settleCounter + cccPessimisticPeriod), NoChange)
+    ((st, settleCounter + cccPessimisticPeriod), Nothing)
