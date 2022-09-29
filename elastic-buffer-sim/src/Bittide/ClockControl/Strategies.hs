@@ -44,6 +44,8 @@ type ClockControlAlgorithm dom n a =
   Enable dom ->
   ClockControlConfig ->
   Signal dom (Vec n DataCount) ->
+  -- | 'Nothing' if it is too early to request a clock change, so that
+  -- 'SpeedChange's can be analyzed to look for stability
   Signal dom (Maybe SpeedChange)
 
 type ExpectStable = Bool
