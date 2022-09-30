@@ -3,17 +3,13 @@
 # SPDX-License-Identifier: CC0-1.0
 
 [package]
-name = "contranomy-sys"
+name = "ping-pong-management"
 version = "0.1.0"
 edition = "2021"
-license = "Apache-2.0"
-authors = ["Google LLC"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-default = ["debug-printing"]
-"debug-printing" = []
-
 [dependencies]
-fdt = "0.1.0"
+riscv-rt = "0.8.0"
+riscv = "0.7.0"
+bittide-sys = { path = "../../firmware/bittide-sys" }

@@ -13,6 +13,7 @@ import qualified Data.List       as L
 import           Data.Maybe      (catMaybes)
 import           Data.Word       (Word8)
 
+
 getDataBytes
   :: Int -- ^ How many bytes to sample
   -> Unsigned 32 -- ^ Address

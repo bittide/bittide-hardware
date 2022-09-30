@@ -1,5 +1,5 @@
 #![no_std]
-#![no_main]
+#![cfg_attr(not(test), no_main)]
 
 // SPDX-FileCopyrightText: 2022 Google LLC
 //
@@ -8,18 +8,17 @@
 use core::fmt::Write;
 use riscv_rt::entry;
 
-use contranomy_sys::{print, println};
+use bittide_sys::{print, println};
 
 const FDT_ADDR: *const u8 = 0x1000_0000 as *const u8;
 
-const FRAME_SIZE: usize = 4096;
-
-#[entry]
+#[cfg_attr(not(test), entry)]
 fn main() -> ! {
     unsafe {
-        contranomy_sys::initialise().unwrap();
+        let init = bittide_sys::Initialiser::new().unwrap();
+        init.initialise_character_device("character-device")
+            .unwrap();
     }
-    let _components = unsafe { bittide_sys::initialise::<FRAME_SIZE>().unwrap() };
 
     let device_tree = unsafe { fdt::Fdt::from_ptr(FDT_ADDR).unwrap() };
 
@@ -79,8 +78,8 @@ enum PropValue<'a> {
 // This function attempts to interpret the data in a number of different ways
 // and choses the one that makes the most sense (for example string vs number
 // pair vs binary blob).
-fn prop_value<'a>(prop: &'a [u8]) -> PropValue<'a> {
-    if prop.len() == 0 {
+fn prop_value(prop: &'_ [u8]) -> PropValue<'_> {
+    if prop.is_empty() {
         return PropValue::Blob(&[]);
     }
 
@@ -107,7 +106,7 @@ fn prop_value<'a>(prop: &'a [u8]) -> PropValue<'a> {
         );
     }
 
-    return PropValue::Blob(prop);
+    PropValue::Blob(prop)
 }
 
 // Here "best fit" refers to the number system in which the number should be
