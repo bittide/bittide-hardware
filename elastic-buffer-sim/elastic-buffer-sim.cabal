@@ -78,6 +78,7 @@ library
     aeson,
     bytestring,
     cassava,
+    clash-cores,
     containers,
     clash-cores,
     directory,

@@ -9,9 +9,11 @@ Provides a rudimentary simulation of elastic buffers.
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Bittide.Simulate where
 
+import Clash.Cores.Xilinx.DcFifo hiding (DataCount)
 import Clash.Explicit.Prelude
 import Clash.Signal.Internal
 import Data.Bifunctor (first, second)
@@ -90,12 +92,38 @@ type HasUnderflowed = Bool
 type HasOverflowed = Bool
 type DisableTilHalf = Bool
 
+elasticBufferXilinx ::
+  forall readDom writeDom.
+  (KnownDomain readDom, KnownDomain writeDom) =>
+  -- | Size of FIFO. To reflect our target platforms, this should be a power of two
+  -- where typical sizes would probably be: 16, 32, 64, 128.
+  ElasticBufferSize ->
+  Clock readDom ->
+  Clock writeDom ->
+  Signal readDom Bool ->
+  Signal writeDom Bool ->
+  ( Signal readDom Bool
+  , Signal readDom (DataCount, Underflow)
+  , Signal writeDom (DataCount, Overflow)
+  )
+elasticBufferXilinx _size clkRead clkWrite rdToggle wrToggle =
+  (block, bundle (fromIntegral <$> readCount, isUnderflow), bundle (fromIntegral <$> writeCount, isOverflow))
+ where
+  waitMidway :: Signal readDom (Unsigned 7) -> Signal readDom Bool
+  waitMidway = mealy clkRead resetGen enableGen go False
+   where
+    go True _ = (True, True)
+    go False i | i >= maxBound `div` 2 + 1 = (True, True)
+               | otherwise = (False, False)
+  block = waitMidway readCount
+  FifoOut{..} =
+    dcFifo ((defConfig @7) { dcUnderflow = True, dcOverflow = True }) clkWrite resetGen clkRead resetGen (go <$> wrToggle) (block .&&. rdToggle)
+   where
+    go False = Nothing
+    go True = Just ()
+
 -- | This wrapper disables reads or writes when the elastic buffer
 -- over-/underflows, as appropriate.
---
--- It also censors 'DataCount' after an over-/underflow, so that we do not take
--- measurements from an elastic buffer until it has settled back to its
--- midpoint.
 ebController ::
   forall readDom writeDom.
   (KnownDomain readDom, KnownDomain writeDom) =>
@@ -109,12 +137,13 @@ ebController ::
   (Signal readDom DataCount, Signal readDom ResetClockControl)
 ebController size clkRead rstRead enaRead clkWrite rstWrite enaWrite =
   unbundle
-    (go <$> rdToggle <*> outRd <*> overflowRd)
+    (go <$> isWaiting <*> rdToggle <*> outRd <*> overflowRd)
  where
-  (outRd, outWr) = elasticBuffer size clkRead clkWrite rdToggle wrToggle
+  (isWaiting, outRd, outWr) = elasticBufferXilinx size clkRead clkWrite rdToggle wrToggle
 
-  go True (dc, False) False = (dc, False)
-  go _ (dc, _) _ = (dc, True)
+  go False _ _ _ = (targetDataCount size, False)
+  go _ True (dc, False) False = (dc, False)
+  go _ _ (dc, _) _ = (dc, True)
 
   overflowRd =
     dualFlipFlopSynchronizer clkWrite clkRead rstRead enaRead False (snd <$> outWr)
