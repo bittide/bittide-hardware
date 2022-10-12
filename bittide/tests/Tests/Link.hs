@@ -214,7 +214,7 @@ everyNth _ [] = []
 everyNth n (x:xs) = x : everyNth n (L.drop (n-1) xs)
 
 -- | Tests whether the detecting of a static preamble decoding a seqCounter works.
--- It does so by generating inputFrames following by a repeated preamble and sequence
+-- It does so by generating inputFrames followed by a repeated preamble and sequence
 -- counter and sending these to the 'rxUnit'. During transmission the 'rxUnit' is set to
 -- capture the sequence counter and at the end of the transmission should have the
 -- sequence counter available from the Wishbone bus.
@@ -311,7 +311,7 @@ rxSendSC = property $ do
    where
     slvAck = acknowledge s2m
     firstFrame = addr m2s == 0
-    storedSC = readData s2m == 0
+    storedSC = readData s2m == resize (pack Done)
     bothLists = L.zip m2ss s2ms
     (fmap snd -> decodingFrames, L.unzip -> rest) =
       span (\(m,s) -> acknowledge s && (/= 0) (addr m)) bothLists
@@ -431,7 +431,7 @@ integration = property $ do
    where
     slvAck = acknowledge s2m
     firstFrame = addr m2s == 0
-    storedSC = readData s2m == 0
+    storedSC = readData s2m == resize (pack Done)
     bothLists = L.zip m2ss s2ms
     (fmap snd -> decodingFrames, L.unzip -> rest) =
       span (\(m,s) -> acknowledge s && (/= 0) (addr m)) bothLists
