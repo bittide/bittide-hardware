@@ -22,16 +22,18 @@ import Bittide.Calendar
 import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
 
--- | GADT to explicitly differentiate between a configuration for the 'scatterUnitWb' and
--- 'gatherUnitWb' at type level.
+-- | Existential type to explicitly differentiate between a configuration for
+-- the 'scatterUnitWb' and 'gatherUnitWb' at type level and hide the memory depth from
+-- higher level APIs.
 data ScatterConfig nBytes addrW where
   ScatterConfig ::
     (KnownNat memDepth, 1 <= memDepth) =>
     (CalendarConfig nBytes addrW (Index memDepth)) ->
     ScatterConfig nBytes addrW
 
--- | GADT to explicitly differentiate between a configuration for the 'scatterUnitWb' and
--- 'gatherUnitWb' at type level.
+-- | Existential type to explicitly differentiate between a configuration for
+-- the 'scatterUnitWb' and 'gatherUnitWb' at type level and hide the memory depth from
+-- higher level APIs.
 data GatherConfig nBytes addrW where
   GatherConfig ::
     (KnownNat memDepth, 1 <= memDepth) =>
