@@ -65,29 +65,49 @@ data Transaction addrW selWidth a
   | Stall (WishboneM2S addrW selWidth a)
   | Ignored (WishboneM2S addrW selWidth a)
   | Illegal (WishboneM2S addrW selWidth a) (WishboneS2M a)
-   deriving (Generic, ShowX)
+   deriving (Generic)
 
 -- | Show Instance for 'Transaction' that hides fields irrelevant for the transaction.
 instance (KnownNat addrW, Show a) => Show (Transaction addrW selWidth a) where
-  show (WriteSuccess m s)
+  show (WriteSuccess WishboneM2S{..} WishboneS2M{..})
     = "WriteSuccess: (addr: "
-    <> show (addr m)
+    <> show addr
     <> ", writeData:"
-    <> show (writeData m)
+    <> show writeData
     <> ", readData:"
-    <> show (readData s)
+    <> show readData
     <> ")"
-  show (ReadSuccess m s)
+  show (ReadSuccess WishboneM2S{..} WishboneS2M{..})
     = "ReadSuccess: ("
-    <> show (addr m)
+    <> show addr
     <> ", "
-    <> show (readData s)
+    <> show readData
     <> ")"
   show (Error _) = "Error"
   show (Retry _) = "Retry"
   show (Stall _) = "Stall"
   show (Illegal _ _) = "Illegal"
   show (Ignored _) = "Ignored"
+
+-- | Show Instance for 'Transaction' that hides fields irrelevant for the transaction.
+instance (KnownNat addrW, KnownNat selWidth, ShowX a) => ShowX (Transaction addrW selWidth a) where
+  showX (WriteSuccess WishboneM2S{..} _)
+    = "WriteSuccess: (addr: "
+    <> showX addr
+    <> ", writeData:"
+    <> showX writeData
+    <> ")"
+  showX (ReadSuccess WishboneM2S{..} WishboneS2M{..})
+    = "ReadSuccess: ("
+    <> showX addr
+    <> ", "
+    <> showX readData
+    <> ")"
+  showX (Error _) = "Error"
+  showX (Retry _) = "Retry"
+  showX (Stall _) = "Stall"
+  showX (Illegal _ _) = "Illegal"
+  showX (Ignored _) = "Ignored"
 
 -- | Equality instance for 'Transaction' that only looks at the fields relevant for the
 -- transaction (e.g. 'writeData' is not relevant during a read transaction).
@@ -127,13 +147,13 @@ ramOpToWb
   -> WishboneM2S addrW (DivRU (BitSize a) 8) a
 
 ramOpToWb (RamRead i) = (emptyWishboneM2S @addrW @a)
-  { addr = 2 * resize (pack i)
+  { addr = resize (pack i)
   , busCycle = True
   , strobe = True
   , busSelect = maxBound}
 
 ramOpToWb (RamWrite i a) = (emptyWishboneM2S @addrW @a)
-  { addr = 2 * resize (pack i)
+  { addr = resize (pack i)
   , busCycle = True
   , strobe = True
   , busSelect = maxBound
@@ -182,17 +202,15 @@ ramOpToTransaction
   , KnownNat i
   , NFDataX a
   )
-  => [RamOp i a]
-  -> [a]
-  -> [Transaction addrW (DivRU (BitSize a) 8) a]
-ramOpToTransaction (ramOp:restOps) (response:restResponses) = case ramOp of
-  RamNoOp -> next
-  RamRead _ ->  ReadSuccess (ramOpToWb ramOp) slaveResponse : next
-  RamWrite _ _ -> WriteSuccess (ramOpToWb ramOp) slaveResponse : next
+  => RamOp i a
+  -> a
+  -> Maybe (Transaction addrW (DivRU (BitSize a) 8) a)
+ramOpToTransaction ramOp response = case ramOp of
+  RamNoOp       -> Nothing
+  RamRead _     -> Just (ReadSuccess (ramOpToWb ramOp) slaveResponse)
+  RamWrite _ _  -> Just (WriteSuccess (ramOpToWb ramOp) slaveResponse)
  where
-  next = ramOpToTransaction restOps restResponses
   slaveResponse = (emptyWishboneS2M @a) {acknowledge = True, readData = response}
-ramOpToTransaction _ _ = []
 
 validateWb ::
   forall dom aw bs.

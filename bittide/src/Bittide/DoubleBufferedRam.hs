@@ -188,7 +188,11 @@ wbStorage' initContent wbIn = delayControls wbIn wbOut
     -- We don't care about the first bit to determine the address alignment because
     -- byte aligned addresses are considered illegal.
     (not -> wordAligned, byteAligned) = bimap unpack unpack $ split alignment
-    addrLegal = addr <= (2 * depth) && not byteAligned
+
+    -- The depth of the memory is defined as the number of words in the memory
+    -- (words are 4 bytes wide). The wishbone interface addresses per byte, so we multiply
+    -- the depth by 4 to get the number of bytes in the memory.
+    addrLegal = addr < (natToNum @(4 * depth)) && not byteAligned
 
     masterActive = strobe && busCycle
     err = masterActive && not addrLegal

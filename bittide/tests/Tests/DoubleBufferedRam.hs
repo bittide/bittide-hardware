@@ -18,6 +18,7 @@ import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
 import Clash.Signal.Internal(Signal(..))
+import Data.Either
 import Data.Maybe
 import Data.Proxy
 import Data.String
@@ -679,67 +680,88 @@ deriving instance ShowX a => ShowX (RamOp i a)
 -- the 'wbStorageBehaviorModel'.
 wbStorageBehavior :: Property
 wbStorageBehavior = property $ do
-  nat <- forAll $ Gen.enum 1 32
-  case TN.someNatVal (nat - 1) of
-    SomeNat (succSNat . snatProxy -> n) -> go n
+  nWords <- forAll $ Gen.enum 2 32
+  case TN.someNatVal (nWords - 2) of
+    SomeNat (addSNat d2 . snatProxy -> nWords0) -> go nWords0
  where
-  go :: forall v m . (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
+  go :: forall words m . (KnownNat words, 2 <= words, Monad m) => SNat words -> PropertyT m ()
   go SNat = do
-    content <- forAll $ genNonEmptyVec @_ @v genDefinedBitVector
-    goldenInput <- forAll $ (\l -> RamNoOp : l <> [RamNoOp]) <$>
+    content <- forAll $ genVec @_ @words genDefinedBitVector
+    let
+      -- We need the input address to be larger than the memory space to also
+      -- test the behavior of out of range addresses.
+      validAddr = (2*) <$> genIndex @_ @(5 * words) (Range.constant 0 (natToNum @(2 * (words - 1))))
+      invalidAddr = Gen.choice @_ @(Index (5 * words))
+        [ replaceBit (0 :: Index 1) 1 <$>
+            genIndex (Range.constant minBound (pred maxBound))
+        , genIndex (Range.constant (natToNum @(4 * words)) maxBound)
+        ]
+
+    generatedInput <- forAll $ (\l -> Right RamNoOp : l <> [Right RamNoOp]) <$>
       Gen.list (Range.linear 1 32)
         (Gen.choice
-          [ pure RamNoOp
-          , RamRead <$> genIndex @_ @v Range.constantBounded
-          , RamWrite <$> genIndex @_ @v Range.constantBounded <*> genDefinedBitVector
+          [ pure (Right RamNoOp)
+          , Right . RamRead <$> validAddr
+          , Right <$> (RamWrite <$> validAddr <*> genDefinedBitVector)
+          , Left . RamRead <$> invalidAddr
+          , Left <$> (RamWrite <$> invalidAddr <*> genDefinedBitVector)
           ])
     let
-      goldenRef ramOps = wbStorageBehaviorModel contentList fstGolden (fromIntegral <$> readAddr) writeOp
+      goldenRef ramOps = wbStorageBehaviorModel contentList ramOps
        where
-        (readAddr , writeOp) = unbundle $ decodeRamOp <$> ramOps
-        contentList = toList $ concatMap (\(split ->(a,b)) -> b :> a :> Nil) content
-        fstGolden = deepErrorX "First element undefined."
-
+        contentList = toList $ concatMap (\(split ->(b,a)) -> a :> b :> Nil) content
       topEntity wbIn =
-        wcre @System $ wbStorage' @_ @_ @32 (NonReloadable $ Vec content) wbIn
-      topEntityInput = L.concatMap (\a ->[a, a, emptyWishboneM2S]) (ramOpToWb <$> goldenInput)
+        wcre $ wbStorage' @System @words @32 (NonReloadable $ Vec content) wbIn
+
+      goldenInput    = fromRight RamNoOp <$> generatedInput
+      flatInput      = either ramOpToWb ramOpToWb <$> generatedInput
+      topEntityInput = L.concatMap (\a ->[a, a, emptyWishboneM2S]) flatInput
+
       simGolden = simulateN @System (P.length goldenInput) goldenRef goldenInput
       simOut = simulateN (P.length topEntityInput) topEntity topEntityInput
-      goldenTransactions = ramOpToTransaction goldenInput $ L.tail simGolden
       simTransactions = wbToTransaction topEntityInput simOut
 
-    footnote $ "goldenTransactions" <> showX goldenTransactions
-    footnote $ "simTransactions" <> showX simTransactions
-    footnote $ "simGolden" <> showX simGolden
-    footnote $ "simOut" <> showX simOut
-    footnote $ "goldenInput" <> showX goldenInput
-    footnote $ "topEntityInput" <> showX topEntityInput
+      goldenTransactions = L.zipWith expectTransaction generatedInput simGolden
 
-    simTransactions === goldenTransactions
+    footnote $ "goldenTransactions" <> show goldenTransactions
+    footnote $ "simTransactions" <> show simTransactions
+    footnote $ "simOut" <> show simOut
+    footnote $ "topEntityInput" <> show topEntityInput
+    footnote $ "simGolden" <> show simGolden
+    footnote $ "goldenInput" <> show goldenInput
+    footnote $ "generatedInput" <> show generatedInput
 
-  decodeRamOp :: RamOp i a -> (Index i, Maybe (Located i a))
-  decodeRamOp = \case
-    RamNoOp -> (addrUndef, Nothing)
-    RamRead i -> (i, Nothing)
-    RamWrite i a -> (i, Just (i, a))
-   where
-    addrUndef = deepErrorX "wbStorageBehavior: readAddr undefined."
+    simTransactions === catMaybes goldenTransactions
+
+  expectTransaction ramOp response = case ramOp of
+    Right op -> ramOpToTransaction op response
+    Left  op -> Just (Error (ramOpToWb op))
 
 -- | Behavioral model for 'wbStorage'. It stores is contents as half-words in Little Endian.
-wbStorageBehaviorModel
-  :: (KnownNat i, KnownNat m)
-  => [BitVector m]
-  -> BitVector (m+m)
-  -> Signal dom (Index i)
-  -> Signal dom (Maybe (LocatedBits i (m+m)))
-  -> Signal dom (BitVector (m + m))
-wbStorageBehaviorModel storedList output (address :- addresses) (writeOp :- writeOps)
+wbStorageBehaviorModel ::
+  forall dom addresses halfWordSize .
+  (KnownNat addresses, KnownNat halfWordSize) =>
+  [BitVector halfWordSize] ->
+  Signal dom (RamOp addresses (BitVector (halfWordSize + halfWordSize))) ->
+  Signal dom (BitVector (halfWordSize + halfWordSize))
+wbStorageBehaviorModel storedList (ramOp :- ramOps)
   = output :- outputs
  where
+  (address, writeOp) = decodeRamOp ramOp
   (preEntry, lower0 : upper0 : postEntry) = L.splitAt (fromIntegral address) storedList
+
   (_,split -> (upper, lower)) = fromJust writeOp
+
   newList
     | isJust writeOp = preEntry L.++ [lower, upper] L.++ postEntry
     | otherwise = storedList
-  nextOutput = pack (upper0, lower0)
-  outputs = wbStorageBehaviorModel newList nextOutput addresses writeOps
+
+  output = pack (upper0, lower0)
+  outputs = wbStorageBehaviorModel newList ramOps
+
+  decodeRamOp = \case
+    RamNoOp -> (addrUndef, Nothing)
+    RamRead ((`div` 2) -> i) -> (i, Nothing)
+    RamWrite ((`div` 2) -> i) a -> (i, Just (i, a))
+   where
+    addrUndef = deepErrorX "wbStorageBehavior: readAddr undefined."
