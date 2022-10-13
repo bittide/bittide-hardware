@@ -3,89 +3,107 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 
 module Bittide.Wishbone where
 
 import Clash.Prelude
 
 import Data.Constraint (Dict(Dict))
-import Data.Maybe
 import Protocols.Internal
 import Protocols.Wishbone
 
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes
 import Data.Constraint.Nat.Extra (divWithRemainder)
+import Data.Maybe
+import Data.Bool(bool)
 
 -- Applying this hint yields a compile error
 {-# ANN module "HLint: ignore Functor law" #-}
 
--- | A vector of base addresses, one for each slave. It is vital that these base addresses
--- are sorted in order.
-type MemoryMap nSlaves addressWidth = Vec nSlaves (BitVector addressWidth)
+-- | A vector of base addresses, one for each slave.
+type MemoryMap nSlaves = Vec nSlaves (Index nSlaves)
 
 {-# NOINLINE singleMasterInterconnect #-}
 -- | Component that maps multiple slave devices to a single master device over the wishbone
--- bus, it assumes that the config argument contains increasing base addresses that correspond
--- to the indexes of the slaves in the incoming slave-busses and outgoing master-busses.
--- It routes the incoming control signals to a slave device based on
+-- bus. It routes the incoming control signals to a slave device based on the 'MemoryMap',
+-- a vector of base addresses.
 singleMasterInterconnect ::
- forall dom nSlaves bytes addressWidth .
+ forall dom nSlaves addrBitsPerBus a .
  ( HiddenClockResetEnable dom
- , KnownNat nSlaves, KnownNat bytes, KnownNat addressWidth) =>
- MemoryMap nSlaves addressWidth ->
+ , KnownNat nSlaves, 1 <= nSlaves
+ , KnownNat addrBitsPerBus
+ , BitPack a
+ , NFDataX a) =>
+ MemoryMap nSlaves ->
  Circuit
-  (Wishbone dom 'Standard addressWidth (Bytes bytes))
-  (Vec nSlaves (Wishbone dom 'Standard addressWidth (Bytes bytes)))
-singleMasterInterconnect config =
+  (Wishbone dom 'Standard (BitSize (Index nSlaves) + addrBitsPerBus) a)
+  (Vec nSlaves (Wishbone dom 'Standard addrBitsPerBus a))
+singleMasterInterconnect (fmap pack -> config) =
   Circuit go
  where
-  go (register emptyWishboneM2S -> master, bundle -> slaves) = (toMaster, unbundle toSlaves)
+  go (masterS, slavesS) =
+    fmap unbundle . unbundle $ route <$> masterS <*> bundle slavesS
+
+  route master@(WishboneM2S{..}) slaves = (toMaster, toSlaves)
    where
-    masterActive = strobe <$> master .&&. busCycle <$> master
-    selectedSlave = getSelected . addr <$> master
+    oneHotSelected = fmap (==addrIndex) config
+    (addrIndex, newAddr) =
+      split @_ @(BitSize (Index nSlaves)) @addrBitsPerBus addr
+    toSlaves =
+      (\newStrobe -> (updateM2SAddr newAddr master){strobe = strobe && newStrobe})
+      <$> oneHotSelected
+    toMaster
+      | busCycle && strobe = foldMaybes emptyWishboneS2M (maskToMaybes slaves oneHotSelected)
+      | otherwise = emptyWishboneS2M
 
-    toSlaves = routeToSlaves <$> masterActive <*> selectedSlave <*> master
-    toMaster = routeToMaster <$> masterActive <*> selectedSlave <*> slaves
+-- | Given a vector with elements and a mask, promote all values with a corresponding
+-- 'True' to 'Just', others to 'Nothing'.
+--
+-- Example:
+--
+-- >>> maskToMaybes ('a' :> 'b' :> Nil) (True :> False :> Nil)
+-- Just 'a' :> Nothing :> Nil
+--
+maskToMaybes :: Vec n a -> Vec n Bool -> Vec n (Maybe a)
+maskToMaybes = zipWith (bool Nothing . Just)
 
-    -- compVec is a vector of comparison(<=) results where the addresses in config are
-    -- compared to the wishbone address. getSelected returns the location of the last
-    -- comparison that returns True. It depends on the assumption that config is a list
-    -- of increasing addresses (config[i] < config[i+1] holds for all i).
-    getSelected a = elemIndex (True, False) $ zip (init compVec) (tail compVec)
-     where
-      compVec = fmap (<=a) config :< False
-
-    routeToMaster active sel slaves0
-        | active    = maybe emptyWishboneS2M (slaves0 !!) sel
-        | otherwise = emptyWishboneS2M
-
-    routeToSlaves active sel m@WishboneM2S{..}
-      | active    = fromMaybe allSlaves out
-      | otherwise = allSlaves
-     where
-      out = (\i -> replace i toAllSlaves{busCycle, strobe, writeEnable} allSlaves) <$> sel
-      newAddr = addr - maybe 0 (config !!) sel
-      allSlaves = repeat toAllSlaves
-      toAllSlaves = m{addr=newAddr, busCycle = False, strobe = False}
-
+-- | Fold 'Maybe's to a single value. If the given vector does not contain any 'Just',
+-- the default value is picked. Prefers the leftmost value when the vector contains
+-- multiple 'Just's.
+--
+-- Example:
+--
+-- >>> foldMaybes 'a' (Nothing :> Just 'c' :> Nil)
+-- 'c'
+-- >>> foldMaybes 'a' (Just 'b' :> Just 'c' :> Nil)
+-- 'b'
+-- >>> foldMaybes 'a' (Nothing :> Nothing :> Nil)
+-- 'a'
+--
+foldMaybes :: a -> Vec n (Maybe a) -> a
+foldMaybes a Nil = a
+foldMaybes dflt v@(Cons _ _) = fromMaybe dflt $ fold (<|>) v
 
 -- | Version of 'singleMasterInterconnect' that does not use the 'Circuit' abstraction
 -- from @clash-protocols@ but exposes 'Signal's directly.
 singleMasterInterconnect' ::
- forall dom nSlaves bytes addressWidth .
+ forall dom nSlaves addrBitsPerBus a .
  ( HiddenClockResetEnable dom
- , KnownNat nSlaves, KnownNat bytes, KnownNat addressWidth) =>
- MemoryMap nSlaves addressWidth ->
- Signal dom (WishboneM2S addressWidth bytes (Bytes bytes)) ->
- Signal dom (Vec nSlaves (WishboneS2M (Bytes bytes))) ->
- ( Signal dom (WishboneS2M (Bytes bytes))
- , Signal dom (Vec nSlaves (WishboneM2S addressWidth bytes (Bytes bytes))) )
+ , KnownNat nSlaves, 1 <= nSlaves
+ , KnownNat addrBitsPerBus
+ , BitPack a
+ , NFDataX a) =>
+ MemoryMap nSlaves ->
+ Signal dom (WishboneM2S (BitSize (Index nSlaves) + addrBitsPerBus) (Regs a 8) a) ->
+ Signal dom (Vec nSlaves (WishboneS2M a)) ->
+ ( Signal dom (WishboneS2M a)
+ , Signal dom (Vec nSlaves (WishboneM2S addrBitsPerBus (Regs a 8) a)))
 singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
  where
-  Circuit f = singleMasterInterconnect @dom @nSlaves @bytes @addressWidth config
+  Circuit f = singleMasterInterconnect @dom @nSlaves @addrBitsPerBus @a config
   (toMaster, toSlaves) =
-    case divWithRemainder @bytes @8 @7 of
+    case divWithRemainder @(Regs a 8) @8 @7 of
       Dict ->
         f (master, unbundle slaves)

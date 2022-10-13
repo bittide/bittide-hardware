@@ -8,6 +8,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -27,6 +28,20 @@ data AorB = A | B deriving (Eq, Generic, BitPack, Show, NFDataX)
 swapAorB :: AorB -> AorB
 swapAorB A = B
 swapAorB B = A
+
+-- | Polymorphic record update of 'addr'.
+updateM2SAddr ::
+  BitVector addressWidthNew ->
+  WishboneM2S addressWidthOld selWidth dat ->
+  WishboneM2S addressWidthNew selWidth dat
+updateM2SAddr newAddr WishboneM2S{..} = WishboneM2S{addr = newAddr, ..}
+
+-- | Resize 'WishboneM2S's 'addr' field.
+resizeM2SAddr ::
+  (KnownNat addressWidthOld, KnownNat addressWidthNew) =>
+  WishboneM2S addressWidthOld selWidth dat ->
+  WishboneM2S addressWidthNew selWidth dat
+resizeM2SAddr WishboneM2S{..} = WishboneM2S{addr = resize addr, ..}
 
 -- | A single byte.
 type Byte = BitVector 8

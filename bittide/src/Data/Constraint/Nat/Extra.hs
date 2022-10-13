@@ -56,6 +56,10 @@ leMaxLeft :: forall a b c. Dict (a <= Max (a + c) b)
 leMaxLeft = unsafeCoerce (Dict :: Dict ())
 {-# NOINLINE leMaxLeft #-} -- https://github.com/clash-lang/clash-compiler/issues/2376
 
+-- | If @c <= a@ and @c <= b@, then @c <= Max a b@
+lessThanMax :: forall a b c . (c <= a, c <= b) => Dict (c <= Max a b)
+lessThanMax = unsafeCoerce (Dict :: Dict ())
+
 -- | Postulates that a part is less than or equal to a sum parts, in context
 -- of 'Max's right argument.
 leMaxRight :: forall a b c. Dict (b <= Max a (b + c))

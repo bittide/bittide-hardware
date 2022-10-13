@@ -27,7 +27,7 @@ data PeConfig nBusses where
     ( KnownNat depthI, 1 <= depthI
     , KnownNat depthD, 1 <= depthD) =>
     -- | The 'MemoryMap' for the contained 'singleMasterInterconnect'.
-    MemoryMap nBusses 32 ->
+    MemoryMap nBusses ->
     -- | Initial content of the instruction memory, can be smaller than its total depth.
     InitialContent depthI (Bytes 4) ->
     -- | Initial content of the data memory, can be smaller than its total depth.
@@ -41,10 +41,10 @@ data PeConfig nBusses where
 processingElement ::
   forall dom nBusses .
   ( HiddenClockResetEnable dom
-  , KnownNat nBusses, 3 <= nBusses) =>
+  , KnownNat nBusses, 3 <= nBusses, CLog 2 nBusses <= 30) =>
   PeConfig nBusses ->
   Vec (nBusses-3) (Signal dom (WishboneS2M (Bytes 4))) ->
-  ( Vec (nBusses-3) (Signal dom (WishboneM2S 32 4 (Bytes 4)))
+  ( Vec (nBusses-3) (Signal dom (WishboneM2S (32 - CLog 2 nBusses) 4 (Bytes 4)))
   , Signal dom (Maybe (BitVector 4, BitVector 32)))
 processingElement config bussesIn = case config of
   PeConfig memMapConfig initI initD pcEntry ->
@@ -53,11 +53,11 @@ processingElement config bussesIn = case config of
   go ::
     ( KnownNat depthI, 1 <= depthI
     , KnownNat depthD, 1 <= depthD) =>
-    MemoryMap nBusses 32 ->
+    MemoryMap nBusses ->
     InitialContent depthI (Bytes 4) ->
     InitialContent depthD (Bytes 4) ->
     BitVector 32 ->
-    ( Vec (nBusses-3) (Signal dom (WishboneM2S 32 4 (Bytes 4)))
+    ( Vec (nBusses-3) (Signal dom (WishboneM2S (32 - CLog 2 nBusses) 4 (Bytes 4)))
     , Signal dom (Maybe (BitVector 4, BitVector 32))
     )
   go memMapConfig initI initD pcEntry = (bussesOut, sinkOut)
