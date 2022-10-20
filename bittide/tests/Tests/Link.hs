@@ -33,6 +33,7 @@ import Bittide.SharedTypes
 import qualified Data.List as L
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
+import Data.Bifunctor
 
 
 linkGroup :: TestTree
@@ -65,9 +66,9 @@ genTestConfig :: Gen TestConfig
 genTestConfig = do
   (TN.someNatVal -> (SomeNat (snatProxy -> bs))) <- Gen.enum 1 8
   (TN.someNatVal -> (SomeNat (snatProxy -> aw))) <- Gen.enum 8 64
-  (TN.someNatVal -> (SomeNat (snatProxy -> pw))) <- Gen.enum 8 1024
-  (TN.someNatVal -> (SomeNat (snatProxy -> fw))) <- Gen.enum 32 128
-  (TN.someNatVal -> (SomeNat (snatProxy -> scw))) <- Gen.enum 8 128
+  (TN.someNatVal -> (SomeNat (snatProxy -> pw))) <- Gen.enum 8 64
+  (TN.someNatVal -> (SomeNat (snatProxy -> fw))) <- Gen.enum 1 64
+  (TN.someNatVal -> (SomeNat (snatProxy -> scw))) <- Gen.enum 4 64
   case
     ( compareSNat d1 bs
     , compareSNat d2 aw
@@ -145,8 +146,9 @@ txSendSC = property $ do
         simLength = offTime0 + onTime + offTime1
         simRange = Range.singleton simLength
         genFrame = Gen.maybe genDefinedBitVector
+        droppedScs = offTime0 + pwNrOfFrames - 1
       framesIn <- forAll $ Gen.list simRange genFrame
-      seqCountIn <- forAll $ Gen.list simRange $ genUnsigned Range.constantBounded
+      seqCountIn <- forAll $ Gen.list (Range.singleton (simLength + iterationDuration)) $ genUnsigned Range.constantBounded
       let
         topEntity ::
           Signal System
@@ -164,7 +166,7 @@ txSendSC = property $ do
         wbOn = startSignal : L.replicate onTime emptyWishboneM2S
         wbOff1 = stopSignal : L.repeat emptyWishboneM2S
         wbIn = wbOff0 <> wbOn <> wbOff1
-        RegisterBank (toList . fmap Just-> preambleFrames) = getRegs @_ @fw preamble
+        RegisterBank (toList . fmap Just-> preambleFrames) = getRegsBe @fw preamble
         topEntityInput = L.zip3 seqCountIn wbIn framesIn
         startSignal = (emptyWishboneM2S @aw @(Bytes bs))
           { addr = 0
@@ -188,11 +190,10 @@ txSendSC = property $ do
         onFrames = L.take onTime $ preambleFrames L.++
           L.concatMap ((L.++ preambleFrames) . valToFrames)
           (everyNth iterationDuration $
-          L.drop (min (simLength - 1) (offTime0 + pwNrOfFrames - 1)) seqCountIn)
+          L.drop (min (simLength - 1) droppedScs) seqCountIn)
         expectedOutput = L.take simLength $ offFrames0 <> onFrames <> offFrames1
       footnote . fromString $ "iterationsDuration: " <> showX iterationDuration
-      footnote . fromString $ "droppedSCs: " <> showX offTime0 <> " + " <>
-        showX pwNrOfFrames <> " - 1 = " <> showX (offTime0 + pwNrOfFrames - 1)
+      footnote . fromString $ "droppedSCs: " <> showX droppedScs
       footnote . fromString $ "simOut: " <> showX simOut
       footnote . fromString $ "expected: " <> showX expectedOutput
       footnote . fromString $ "onFrames: " <> showX onFrames
@@ -205,7 +206,7 @@ txSendSC = property $ do
 valToFrames :: forall n a . (KnownNat n, 1 <= n, Paddable a) => a -> [DataLink n]
 valToFrames sc = fmap Just out
   where
-  RegisterBank (toList -> out) = getRegs sc
+  RegisterBank (toList -> out) = getRegsBe sc
 
 -- | Take every Nth element from a list by recursively taking the first and dropping (n-1) elements.
 everyNth :: HasCallStack => Int -> [a] -> [a]
@@ -232,27 +233,26 @@ rxSendSC = property $ do
       let
         -- We hard code the number of bytes to 4 because 'registerWB' assumes a 4 byte aligned address.
         bs = d4
-        bsNum = snatToNum bs
-        pwNum = snatToNum pw
-        fwNum = snatToNum fw
-        scwNum = snatToNum scw
+        (bsNum, pwNum, fwNum, scwNum) =
+          (snatToNum bs, snatToNum pw, snatToNum fw, snatToNum scw)
         pwNrOfFrames = pwNum `divRU` fwNum
+        scInWords = scwNum `divRU` (bsNum * 8)
         scNumOfFrames = scwNum `divRU` fwNum
         iterationDuration = pwNrOfFrames + scNumOfFrames
         iterationsTotal = iterations * iterationDuration
-        readBackCycles = (2 * scwNum) `divRU` (bsNum * 8)
+        readBackCycles = 2 * scInWords
       -- First two cycles output depend on the initial state.
       -- The txUnit's state machine starts after the control register has been updated,
       -- causing an extra cycle of delay.
-      offTime0 <- forAll $ Gen.enum 2 (2 + iterationsTotal)
-      onTime   <- forAll $ Gen.enum (2 + iterationDuration) iterationsTotal
-      offTime1 <- forAll $ Gen.enum (2 + readBackCycles) (readBackCycles + iterationDuration)
+      offTime0 <- forAll $ Gen.enum 2 iterationsTotal
+      offTime1 <- forAll $ Gen.enum 2 iterationsTotal
       remoteSeqCounts <- forAll . Gen.list (Range.singleton (1 + iterations)) $
         genUnsigned @_ @scw Range.constantBounded
       let
-        simLength = offTime0 + onTime + offTime1
+        onTime = iterationDuration * iterations
+        simLength = offTime0 + onTime + offTime1 + readBackCycles
         simRange = Range.singleton simLength
-        RegisterBank (fmap Just . toList -> preambleFrames) = getRegs preamble
+        RegisterBank (fmap Just . toList -> preambleFrames) = getRegsBe preamble
         filterCond inp
           | isJust inp = let (x,y) = (fromJust inp, fromJust $ L.head preambleFrames) in (x .&. y) /= y
           | otherwise = True
@@ -265,10 +265,10 @@ rxSendSC = property $ do
       let
         topEntity (unbundle -> (wbIn0, linkIn, localCounter)) = wcre
           configRxUnit bs aw pw fw scw preamble localCounter linkIn wbIn0
-        -- Compensate for the register write + state machine start delays.
-        wbIn = wbWrite : L.replicate (offTime0 + onTime) (wbRead 0) <>
-          cycle (fmap wbRead [0..fromIntegral readBackCycles])
-        framesIn = offFrames0 <> onFrames <> offFrames1
+        -- At the end of the simulation, read the sequence counters.
+        wbIn = L.take (simLength - readBackCycles) (wbWrite : L.repeat (wbRead 0)) <>
+          fmap wbRead [1..]
+        framesIn = offFrames0 <> onFrames <> offFrames1 <> L.repeat Nothing
         topEntityInput = L.zip3 wbIn framesIn localSeqCounts
         wbWrite = (emptyWishboneM2S @aw @(Bytes 4))
           { addr = 0 :: BitVector aw
@@ -285,12 +285,14 @@ rxSendSC = property $ do
           , busSelect = maxBound
           }
         simOut = simulateN simLength topEntity topEntityInput
-        decodedOutput = directedDecoding wbIn simOut :: [(Unsigned scw, Unsigned scw)]
+        decodedOutput = bimap
+          (getDataBe @32 @(Unsigned scw))
+          (getDataBe @32 @(Unsigned scw))
+          <$> directedDecoding wbIn simOut
         storedOutput = L.last decodedOutput
-        expected = (localSeqCounts L.!! (offTime0 + pwNrOfFrames), L.head remoteSeqCounts)
+        expected = (L.head remoteSeqCounts, localSeqCounts L.!! (offTime0 + pwNrOfFrames))
       -- It takes 1 cycle for the the control register to be updated by the wishbone bus.
-      footnote . fromString $ "wishbone reads per result: " <>
-        show (natToNum @(Regs (Unsigned scw, Unsigned scw) 32) :: Integer)
+      footnote . fromString $ "wishbone reads per result: " <> show readBackCycles
       footnote . fromString $ "iterationsDuration: " <> showX iterationDuration
       footnote . fromString $ "simOut: " <> showX simOut
       footnote . fromString $ "decodedOut: " <> showX decodedOutput
@@ -315,8 +317,8 @@ rxSendSC = property $ do
     bothLists = L.zip m2ss s2ms
     (fmap snd -> decodingFrames, L.unzip -> rest) =
       span (\(m,s) -> acknowledge s && (/= 0) (addr m)) bothLists
-    decodingData = fromList . fmap readData $ L.reverse decodingFrames
-    decoded = registersToData . RegisterBank $ fromJust decodingData
+    decodingData = fromList . fmap readData $ decodingFrames
+    decoded = getDataLe . RegisterBank $ fromJust decodingData
   directedDecoding _ _ = []
 
 -- | Tests whether we can use 'txUnit' to transmit the local sequence counter over a link with
@@ -346,7 +348,9 @@ integration = property $ do
         scNumOfFrames = scwNum `divRU` fwNum
         iterationDuration = pwNrOfFrames + scNumOfFrames
         iterationsTotal = iterations * iterationDuration
-        readBackCycles = (2 * scwNum) `divRU` (bsNum * 8)
+        scInWords = scwNum `divRU` (bsNum * 8)
+        readBackCycles = 2 * scInWords
+
       -- First two cycles output depend on the initial state.
       -- The txUnit's state machine starts after the control register has been updated,
       -- causing an extra cycle of delay.
@@ -358,7 +362,7 @@ integration = property $ do
         (linkLatency + 2 * ( 1 + readBackCycles))
         (linkLatency + 2 * ( 1 + readBackCycles) + iterationsTotal)
       let
-        RegisterBank (fmap Just . toList -> preambleFrames) = getRegs preamble
+        RegisterBank (fmap Just . toList -> preambleFrames) = getRegsBe preamble
         simLength = delayCycles + transmitCycles + postTransmitCycles
         filterCond inp
           | isJust inp = let (x,y) = (fromJust inp, fromJust $ L.head preambleFrames) in (x .&. y) /= y
@@ -403,14 +407,16 @@ integration = property $ do
           , busSelect = maxBound
           }
         (linkFrames, wbRxOut) = L.unzip $ simulateN simLength topEntity topEntityInput
-        decodedOutput = directedDecoding wbRxIn wbRxOut :: [(Unsigned scw, Unsigned scw)]
+        decodedOutput = bimap
+          (getDataBe @32 @(Unsigned scw))
+          (getDataBe @32 @(Unsigned scw))
+          <$> directedDecoding wbRxIn wbRxOut
         storedOutput = L.last decodedOutput
         expected =
-          ( fromIntegral (delayCycles + linkLatency + pwNrOfFrames)
-          , fromIntegral (delayCycles + pwNrOfFrames - 1))
+          ( fromIntegral (delayCycles + pwNrOfFrames - 1)
+          , fromIntegral (delayCycles + linkLatency + pwNrOfFrames))
       -- It takes 1 cycle for the the control register to be updated by the wishbone bus.
-      footnote . fromString $ "wishbone reads per result: " <>
-        show (natToNum @(Regs (Unsigned scw, Unsigned scw) 32) :: Integer)
+      footnote . fromString $ "readBackCycles: " <> show readBackCycles
       footnote . fromString $ "iterationsDuration: " <> showX iterationDuration
       footnote . fromString $ "linkFrames: " <> showX linkFrames
       footnote . fromString $ "wbRxOut: " <> showX wbRxOut
@@ -435,8 +441,8 @@ integration = property $ do
     bothLists = L.zip m2ss s2ms
     (fmap snd -> decodingFrames, L.unzip -> rest) =
       span (\(m,s) -> acknowledge s && (/= 0) (addr m)) bothLists
-    decodingData = fromList . fmap readData $ L.reverse decodingFrames
-    decoded = registersToData . RegisterBank $ fromJust decodingData
+    decodingData = fromList $ fmap readData decodingFrames
+    decoded = getDataLe . RegisterBank $ fromJust decodingData
   directedDecoding _ _ = []
 
 -- | Register with a configurable amount of stages n where (n ~ 0) results in a wire.

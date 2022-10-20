@@ -380,9 +380,9 @@ registerWbWbToSig = property $ do
       writes === L.take (L.length writes) filteredOut
     _ -> error "registerWbWbToSig: Registers required to store bitvector == 0."
    where
-    wbWrite v = L.zipWith bv2WbWrite [0.. L.length l - 1] $ L.reverse l
+    wbWrite v = L.zipWith bv2WbWrite [0.. L.length l - 1] l
      where
-      RegisterBank (toList -> l) = paddedToRegisters $ Padded v
+      RegisterBank (toList -> l) = getRegsLe v
   everyNth n l  | L.length l >= n = x : everyNth n xs
                 | otherwise = []
    where
@@ -412,7 +412,7 @@ registerWbSigToWb = property $ do
           (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
         padWrites x = L.take (natToNum @(Regs (BitVector bits) 32)) $ Just x : L.repeat Nothing
         readOps = emptyWishboneM2S : cycle
-          (wbRead <$> L.reverse [(0 :: Int).. (natToNum @(Regs (BitVector bits) 32)-1)])
+          (wbRead <$> [(0 :: Int).. (natToNum @(Regs (BitVector bits) 32)-1)])
         topEntityInput = L.zip (L.concatMap padWrites writes <> [Nothing]) readOps
         simLength = L.length topEntityInput
         simOut = simulateN @System simLength topEntity topEntityInput
@@ -433,7 +433,7 @@ registerWbSigToWb = property $ do
         L.splitAt (natToNum @(Regs (BitVector bits) 32)) (wbNow:wbRest)
       entry = case V.fromList entryList of
         Just (vec :: Vec (Regs (BitVector bits) 32) (BitVector 32))
-          -> registersToData @(BitVector bits) @32 (RegisterBank vec)
+          -> getDataLe @32 (RegisterBank vec)
         Nothing
           -> error $ "wbDecoding: list to vector conversion failed: "
           <> show entryList <> "from " <> show (wbNow:wbRest)
@@ -493,7 +493,7 @@ registerWbWriteCollisions = property $ do
    where
     wbWrite v = L.zipWith bv2WbWrite (L.reverse [0.. L.length l - 1]) l
      where
-      RegisterBank (toList -> l) = paddedToRegisters $ Padded v
+      RegisterBank (toList -> l) = getRegsLe v
 
 bv2WbWrite :: (BitPack a, Enum a) =>
   a
@@ -530,16 +530,13 @@ byteAddressableRamBehavior :: forall bits memDepth nBytes .
 byteAddressableRamBehavior state input = (state', ram !! readAddr)
  where
   ((readAddr, writeOp, byteEnable), ram) = state
-  (writeAddr, writeData0) = fromMaybe (0, 0b0) writeOp
+  (writeAddr, writeData0) = fromMaybe (0, 0) writeOp
   writeTrue = isJust writeOp
-  RegisterBank oldData = getRegs $ ram !! writeAddr
-  RegisterBank newData = getRegs writeData0
-  newEntry = getData $ zipWith (\ sel (old,new) -> if sel then new else old) (unpack byteEnable) $
-   zip oldData newData
-
-
-  getData :: Vec nBytes Byte -> BitVector bits
-  getData vec = registersToData @_ @8 $ RegisterBank vec
+  RegisterBank oldData = getRegsBe $ ram !! writeAddr
+  RegisterBank newData = getRegsBe writeData0
+  newEntry = getDataBe @8 . RegisterBank $ zipWith
+    (\ sel (old,new) -> if sel then new else old)
+    (unpack byteEnable) (zip oldData newData)
 
   ram1 = if writeTrue then replace writeAddr newEntry ram else ram
   state' = (input, ram1)
@@ -578,19 +575,16 @@ byteAddressableDoubleBufferedRamBehavior state input = (state', out)
     | otherwise = buf
    where
     newEntry = getNewEntry (buf !! writeAddr) writeData0
-    (writeAddr, writeData0) = fromMaybe (0, 0b0) op
+    (writeAddr, writeData0) = fromMaybe (0, 0) op
 
-  getNewEntry old new = getData $ zipWith
+  getNewEntry old new = getDataBe @8 . RegisterBank $ zipWith
     (\ sel (a,b) -> if sel then b else a)
     (unpack byteEnable) $ zip oldData newData
    where
-    RegisterBank oldData = getRegs old
-    RegisterBank newData = getRegs new
+    RegisterBank oldData = getRegsBe old
+    RegisterBank newData = getRegsBe new
 
   state' = (input, bufA1, bufB1)
-
-  getData :: Vec nBytes Byte -> BitVector bits
-  getData vec = registersToData @_ @8 $ RegisterBank vec
 
 
 -- | Version of 'Bittide.DoubleBufferedRam.registerWb' which performs wishbone

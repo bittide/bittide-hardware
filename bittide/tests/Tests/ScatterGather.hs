@@ -261,7 +261,7 @@ wbDecoding (s2m0 : s2m1 : s2ms)
   | acknowledge s2m0 && acknowledge s2m1 = out : wbDecoding s2ms
   | otherwise = wbDecoding (s2m1 : s2ms)
  where
-  out = readData s2m1 ++# readData s2m0
+  out = readData s2m0 ++# readData s2m1
 wbDecoding _ = []
 
 -- | Tranform a read address with expected frame into a wishbone read operation for testing
@@ -320,5 +320,5 @@ wbWrite writeAddr (Just frame) =
     , writeData = upper }
   ]
  where
-  (upper, lower) = split frame
+  (lower, upper) = split frame
 wbWrite _ Nothing = []
