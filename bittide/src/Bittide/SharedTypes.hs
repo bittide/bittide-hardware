@@ -17,8 +17,8 @@ import Clash.Prelude
 
 import Data.Constraint
 import Data.Constraint.Nat.Extra
+import Data.Type.Equality ((:~:)(Refl))
 import Protocols.Wishbone
-import Data.Typeable
 
 -- | To be used when there are two options.
 data AorB = A | B deriving (Eq, Generic, BitPack, Show, NFDataX)
