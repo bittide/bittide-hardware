@@ -25,7 +25,7 @@ import Data.Typeable
 data ContentType n a
   = Vec (Vec n a)
   | Blob (MemBlob n (BitSize a))
-  | ByteVec (Vec (Regs a 8) (MemBlob n 8))
+  | BlobVec (Vec (Regs a 8) (MemBlob n 8))
   | File FilePath
   | FileVec (Vec (Regs a 8) FilePath)
 
@@ -33,7 +33,7 @@ instance (Show a, KnownNat n, Typeable a) => Show (ContentType n a) where
   show = \case
     (Vec _) -> "Vec: " <> nAnda
     (Blob _) -> "Blob: " <> nAnda
-    (ByteVec _) -> "ByteVec: " <> nAnda
+    (BlobVec _) -> "BlobVec: " <> nAnda
     (File fp) -> "File: " <> nAnda <> ", filepath = " <> fp
     (FileVec fps) -> "File: " <> nAnda <> ", filepaths = " <> show fps
    where
@@ -59,8 +59,8 @@ initializedRam ::
 initializedRam content rd wr = case content of
   Vec vec         -> blockRam vec rd wr
   Blob blob       -> bitCoerce <$> blockRamBlob blob rd (bitCoerce <$> wr)
-  ByteVec byteVec -> registersToData @_ @8 . RegisterBank <$>
-    bundle ((`blockRamBlob` rd) <$> byteVec <*> unbundle ((`splitWriteInBytes` maxBound) <$> wr))
+  BlobVec blobVec -> registersToData @_ @8 . RegisterBank <$>
+    bundle ((`blockRamBlob` rd) <$> blobVec <*> unbundle ((`splitWriteInBytes` maxBound) <$> wr))
   File fp -> bitCoerce <$> blockRamFile (SNat @n) fp rd (bitCoerce <$> wr)
   FileVec fpVec -> registersToData @_ @8 . RegisterBank <$>
     bundle ((\ fp -> blockRamFile (SNat @n) fp rd)
@@ -151,9 +151,9 @@ wbStorage' initContent wbIn = delayControls wbIn wbOut
   readDataB = ramB readAddrB writeEntryB byteSelectB
 
   (ramA, ramB, isReloadable) = case initContent of
-    NonReloadable (ByteVec (splitAtI -> (b, a))) ->
-      ( blockRamByteAddressable @_ @depth $ ByteVec a
-      , blockRamByteAddressable @_ @depth $ ByteVec b
+    NonReloadable (BlobVec (splitAtI -> (b, a))) ->
+      ( blockRamByteAddressable @_ @depth $ BlobVec a
+      , blockRamByteAddressable @_ @depth $ BlobVec b
       , False)
     Reloadable _ ->
       (blockRamByteAddressableU, blockRamByteAddressableU, True)
@@ -353,7 +353,7 @@ blockRamByteAddressable initContent readAddr newEntry byteSelect =
   registersToData @_ @8 . RegisterBank <$> case initContent of
     Blob _  -> deepErrorX "blockRamByteAddressable: Singular MemBlobs are not supported. "
     Vec vecOfA -> go (byteRam . Vec <$> transpose (fmap getBytes vecOfA))
-    ByteVec blobs -> go (fmap (byteRam . Blob) blobs)
+    BlobVec blobs -> go (fmap (byteRam . Blob) blobs)
     File _ -> deepErrorX "blockRamByteAddressable: Singular source files for initial content are not supported. "
     FileVec blobs -> go (fmap (byteRam . File) blobs)
  where
