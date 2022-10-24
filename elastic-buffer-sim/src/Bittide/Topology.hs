@@ -17,6 +17,7 @@ module Bittide.Topology
   , plotHypercube
   , plotHypercube4
   , plotTorus34
+  , plotK2
   , plotK3
   , plotK6
   , plotC12
@@ -57,8 +58,11 @@ plotHypercube4 = $(plotEbsAPI ("hypercube4", hypercube 4))
 plotTorus34 :: Int -> Int -> IO ()
 plotTorus34 = $(plotEbsAPI ("torus34", torus2d 3 4))
 
+plotK2 :: Int -> Int -> IO ()
+plotK2 = $(plotEbsAPI ("complete2", complete 2))
+
 plotK3 :: Int -> Int -> IO ()
-plotK3 = $(plotEbsAPI ("compelte3", complete 3))
+plotK3 = $(plotEbsAPI ("complete3", complete 3))
 
 plotK6 :: Int -> Int -> IO ()
 plotK6 = $(plotEbsAPI ("complete6", complete 6))
