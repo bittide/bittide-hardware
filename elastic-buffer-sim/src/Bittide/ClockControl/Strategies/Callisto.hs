@@ -28,15 +28,19 @@ callisto ::
   Clock dom ->
   Reset dom ->
   Enable dom ->
-  ClockControlConfig ->
+  -- | Target data count. See 'targetDataCount'.
+  DataCount ->
+  -- | Provide an update every /n/ cycles
+  Unsigned 32 ->
+  -- | Data counts from elastic buffers
   Signal dom (Vec n DataCount) ->
+  -- | Speed change requested from clock multiplier
   Signal dom SpeedChange
-callisto clk rst ena ClockControlConfig{..} =
-  mealy clk rst ena go (initControlSt, 0)
+callisto clk rst ena targetCount updateEveryNCycles =
+  mealy clk rst ena go (initControlSt, updateEveryNCycles)
  where
-  go (ControlSt{..}, settleCounter) dataCounts
-    | settleCounter > cccSettlePeriod
-    = ((ControlSt x_kNext z_kNext b_kNext, 0), b_kNext)
+  go (ControlSt{..}, 0) dataCounts =
+    ((ControlSt x_kNext z_kNext b_kNext, updateEveryNCycles), b_kNext)
    where
 
     -- see clock control algorithm simulation here:
@@ -48,10 +52,10 @@ callisto clk rst ena ClockControlConfig{..} =
     r_k =
       let
         measuredSum = realToFrac (sum dataCounts)
-        targetCount = realToFrac (targetDataCount cccBufferSize)
+        targetCountF = realToFrac targetCount
         nBuffers = realToFrac (length dataCounts)
       in
-        measuredSum - targetCount * nBuffers
+        measuredSum - targetCountF * nBuffers
     x_kNext =
       x_k + p * r_k
 
@@ -78,5 +82,5 @@ callisto clk rst ena ClockControlConfig{..} =
     sign SpeedUp = 1
     sign SlowDown = -1
 
-  go (st, settleCounter) _ =
-    ((st, settleCounter + cccPessimisticPeriod), NoChange)
+  go (st, counter) _ =
+    ((st, pred counter), NoChange)
