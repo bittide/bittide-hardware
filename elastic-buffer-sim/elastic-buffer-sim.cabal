@@ -75,6 +75,7 @@ library
   hs-source-dirs: src
   build-depends:
     array,
+    aeson,
     bytestring,
     cassava,
     containers,
