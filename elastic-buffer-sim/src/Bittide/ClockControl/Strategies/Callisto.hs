@@ -56,7 +56,7 @@ callisto clk rst ena ClockControlConfig{..} =
       x_k + p * r_k
 
     c_des = k_p * r_k + k_i * realToFrac x_kNext
-    z_kNext = z_k + sgn b_k
+    z_kNext = z_k + sign b_k
     fStep = 5e-4
     c_est = fStep * realToFrac z_kNext
     -- we are using 200kHz instead of 200MHz
@@ -74,9 +74,9 @@ callisto clk rst ena ClockControlConfig{..} =
         GT -> SpeedUp
         EQ -> NoChange
 
-    sgn NoChange = 0
-    sgn SpeedUp = 1
-    sgn SlowDown = -1
+    sign NoChange = 0
+    sign SpeedUp = 1
+    sign SlowDown = -1
 
   go (st, settleCounter) _ =
     ((st, settleCounter + cccPessimisticPeriod), NoChange)
