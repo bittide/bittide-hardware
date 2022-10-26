@@ -9,13 +9,13 @@ module Bittide.ClockControl.Strategies.Callisto
   )
 where
 
-import Clash.Explicit.Prelude
+import Clash.Prelude
 
 import Bittide.ClockControl
 
 data ControlSt = ControlSt
   { x_k :: Float -- ^ 'x_k' is the integral of the measurement
-  , z_k :: Integer
+  , z_k :: Signed 32
   , b_k :: SpeedChange
   } deriving (Generic, NFDataX)
 
@@ -27,10 +27,7 @@ unsignedToSigned = bitCoerce . zeroExtend
 
 callisto ::
   forall n dom.
-  (KnownDomain dom, KnownNat n, 1 <= n) =>
-  Clock dom ->
-  Reset dom ->
-  Enable dom ->
+  (HiddenClockResetEnable dom, KnownNat n, 1 <= n) =>
   -- | Target data count. See 'targetDataCount'.
   DataCount ->
   -- | Provide an update every /n/ cycles
@@ -39,8 +36,8 @@ callisto ::
   Signal dom (Vec n DataCount) ->
   -- | Speed change requested from clock multiplier
   Signal dom SpeedChange
-callisto clk rst ena targetCount updateEveryNCycles =
-  mealy clk rst ena go (initControlSt, updateEveryNCycles)
+callisto targetCount updateEveryNCycles =
+  mealy go (initControlSt, updateEveryNCycles)
  where
   go (ControlSt{..}, 0) dataCounts =
     ((ControlSt x_kNext z_kNext b_kNext, updateEveryNCycles), b_kNext)

@@ -13,6 +13,7 @@ module Bittide.ClockControl.Strategies
 where
 
 import Clash.Explicit.Prelude
+import Clash.Prelude (exposeClockResetEnable)
 
 import Bittide.ClockControl
 import Bittide.ClockControl.Strategies.Callisto
@@ -33,7 +34,7 @@ callistoClockControl ::
   Vec n (Signal dom DataCount) ->
   Signal dom SpeedChange
 callistoClockControl clk rst ena cfg =
-  clockControl clk rst ena cfg callisto
+  clockControl clk rst ena cfg (exposeClockResetEnable callisto)
 
 type ClockControlAlgorithm dom n a =
   Clock dom ->
