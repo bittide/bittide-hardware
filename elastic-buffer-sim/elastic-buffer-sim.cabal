@@ -79,6 +79,7 @@ library
     bytestring,
     cassava,
     containers,
+    clash-cores,
     directory,
     matplotlib,
     random,
