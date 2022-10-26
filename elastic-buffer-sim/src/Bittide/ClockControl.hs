@@ -26,8 +26,8 @@ import Bittide.Simulate.Ppm
 
 import Data.Csv
 
-type ElasticBufferSize = Natural
-type DataCount = Natural
+type ElasticBufferSize = Unsigned 32
+type DataCount = Unsigned 32
 type SettlePeriod = Natural
 
 -- | Configuration passed to 'clockControl'

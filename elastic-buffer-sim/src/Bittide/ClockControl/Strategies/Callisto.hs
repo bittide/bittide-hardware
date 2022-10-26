@@ -22,6 +22,9 @@ data ControlSt = ControlSt
 initControlSt :: ControlSt
 initControlSt = ControlSt 0 0 NoChange
 
+unsignedToSigned :: KnownNat n => Unsigned n -> Signed (n + 1)
+unsignedToSigned = bitCoerce . zeroExtend
+
 callisto ::
   forall n dom.
   (KnownDomain dom, KnownNat n, 1 <= n) =>
@@ -49,11 +52,11 @@ callisto clk rst ena targetCount updateEveryNCycles =
     -- the constants here are chosen to match the above code.
     k_p = 2e-4 :: Float
     k_i = 1e-11 :: Float
-    r_k =
+    r_k = realToFrac $
       let
-        measuredSum = realToFrac (sum dataCounts)
-        targetCountF = realToFrac targetCount
-        nBuffers = realToFrac (length dataCounts)
+        measuredSum = unsignedToSigned (sum dataCounts)
+        targetCountF = unsignedToSigned targetCount
+        nBuffers = natToNum @n
       in
         measuredSum - targetCountF * nBuffers
     x_kNext =
