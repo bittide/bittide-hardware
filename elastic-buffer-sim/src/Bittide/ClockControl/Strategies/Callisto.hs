@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Bittide.ClockControl.Strategies.Callisto
   ( callisto
@@ -14,16 +14,27 @@ import Clash.Prelude
 import Bittide.ClockControl
 
 data ControlSt = ControlSt
-  { x_k :: Float -- ^ 'x_k' is the integral of the measurement
-  , z_k :: Signed 32
-  , b_k :: SpeedChange
+  { _x_k :: Float -- ^ 'x_k' is the integral of the measurement
+  , _z_k :: Signed 32
+  , _b_k :: SpeedChange
   } deriving (Generic, NFDataX)
 
-initControlSt :: ControlSt
-initControlSt = ControlSt 0 0 NoChange
+initState :: ControlSt
+initState = ControlSt 0 0 NoChange
 
 unsignedToSigned :: KnownNat n => Unsigned n -> Signed (n + 1)
 unsignedToSigned = bitCoerce . zeroExtend
+
+wrappingCounter ::
+  (HiddenClockResetEnable dom, KnownNat n) =>
+  Unsigned n ->
+  Signal dom (Unsigned n)
+wrappingCounter upper = counter
+ where
+  counter = register upper (go <$> counter)
+
+  go 0 = upper
+  go n = pred n
 
 callisto ::
   forall n dom.
@@ -36,51 +47,59 @@ callisto ::
   Signal dom (Vec n DataCount) ->
   -- | Speed change requested from clock multiplier
   Signal dom SpeedChange
-callisto targetCount updateEveryNCycles =
-  mealy go (initControlSt, updateEveryNCycles)
+callisto targetCount updateEveryNCycles dataCounts =
+  mux shouldUpdate b_kNext (pure NoChange)
  where
-  go (ControlSt{..}, 0) dataCounts =
-    ((ControlSt x_kNext z_kNext b_kNext, updateEveryNCycles), b_kNext)
-   where
+  updateCounter = wrappingCounter updateEveryNCycles -- TODO: use Index
+  shouldUpdate = updateCounter .==. 0
+  state = register initState (mux shouldUpdate updatedState state)
+  updatedState = ControlSt <$> x_kNext <*> z_kNext <*> b_kNext
 
-    -- see clock control algorithm simulation here:
-    -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
-    --
-    -- the constants here are chosen to match the above code.
-    k_p = 2e-4 :: Float
-    k_i = 1e-11 :: Float
-    r_k = realToFrac $
-      let
-        measuredSum = unsignedToSigned (sum dataCounts)
-        targetCountF = unsignedToSigned targetCount
-        nBuffers = natToNum @n
-      in
-        measuredSum - targetCountF * nBuffers
-    x_kNext =
-      x_k + p * r_k
+  x_k :: Signal dom Float
+  x_k = _x_k <$> state
 
-    c_des = k_p * r_k + k_i * realToFrac x_kNext
-    z_kNext = z_k + sign b_k
-    fStep = 5e-4
-    c_est = fStep * realToFrac z_kNext
-    -- we are using 200kHz instead of 200MHz
-    -- (see https://github.com/clash-lang/clash-compiler/issues/2328)
-    -- so typical freq. is 0.0002 GHz
-    --
-    -- (this is adjusted by a factor of 100 because our clock corrections are
-    -- faster than those simulated in Callisto; we correct as often as hardware
-    -- allows)
-    p = 1e3 * typicalFreq where typicalFreq = 0.0002
+  z_k :: Signal dom (Signed 32)
+  z_k = _z_k <$> state
 
-    b_kNext =
-      case compare c_des c_est of
-        LT -> SlowDown
-        GT -> SpeedUp
-        EQ -> NoChange
+  b_k :: Signal dom SpeedChange
+  b_k = _b_k <$> state
 
-    sign NoChange = 0
-    sign SpeedUp = 1
-    sign SlowDown = -1
+  -- see clock control algorithm simulation here:
+  -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
+  --
+  -- the constants here are chosen to match the above code.
+  k_p = pure 2e-4 :: Signal dom Float
+  k_i = pure 1e-11 :: Signal dom Float
+  fStep = pure 5e-4 :: Signal dom Float
 
-  go (st, counter) _ =
-    ((st, pred counter), NoChange)
+  r_k = realToFrac <$>
+    let
+      measuredSum = unsignedToSigned . sum <$> dataCounts
+      targetCountS = unsignedToSigned targetCount
+      nBuffers = natToNum @n
+    in
+      measuredSum - pure (targetCountS * nBuffers)
+  x_kNext =
+    x_k + p * r_k
+
+  c_des = k_p * r_k + k_i * x_kNext
+  z_kNext = z_k + fmap sign b_k
+  c_est = fStep * fmap realToFrac z_kNext
+  -- we are using 200kHz instead of 200MHz
+  -- (see https://github.com/clash-lang/clash-compiler/issues/2328)
+  -- so typical freq. is 0.0002 GHz
+  --
+  -- (this is adjusted by a factor of 100 because our clock corrections are
+  -- faster than those simulated in Callisto; we correct as often as hardware
+  -- allows)
+  p = 1e3 * typicalFreq where typicalFreq = 0.0002
+
+  b_kNext =
+    flip fmap (compare <$> c_des <*> c_est) $ \case
+      LT -> SlowDown
+      GT -> SpeedUp
+      EQ -> NoChange
+
+  sign NoChange = 0
+  sign SpeedUp = 1
+  sign SlowDown = -1
