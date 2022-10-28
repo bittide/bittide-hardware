@@ -19,7 +19,7 @@ base_ref="HEAD~1"
 fi
 
 git diff \
-  --exit-code --quiet "${base_ref}".."${head_ref}" \
-  -- .github/ contranomy/ riscv-formal-config/ riscv-formal/
+  --exit-code "${base_ref}".."${head_ref}" \
+  -- contranomy/ riscv-formal-config/ riscv-formal/
 
 [ $? -ne 0 ]
