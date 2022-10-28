@@ -3,10 +3,11 @@
 -- SPDX-License-Identifier: CC0-1.0
 
 packages:
-  bittide-extra/
   bittide/
-  contranomy-sim/
+  bittide-extra/
+  bittide-instances/
   contranomy/
+  contranomy-sim/
   elastic-buffer-sim/
 
 write-ghc-environment-files: always
@@ -27,7 +28,7 @@ package clash-prelude
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
-index-state: 2022-08-09T07:40:43Z
+index-state: 2022-10-28T06:44:56Z
 
 -- Needed to simulate dynamic clocks.
 source-repository-package

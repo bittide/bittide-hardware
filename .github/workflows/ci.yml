@@ -572,6 +572,110 @@ jobs:
           name: firmware-integration-tests
           path: firmware/tests/firmware-integration-tests.tar
 
+  bittide-instances-doctests:
+    name: bittide-instances doctests
+    runs-on: ubuntu-latest
+    needs: [build, lint]
+
+    container:
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project.formal cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/store
+
+          key: packages-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-
+
+      - name: Doctests
+        run : |
+          cabal run -- bittide-instances:doctests
+
+  bittide-instances-unittests:
+    name: bittide-instances unittests
+    runs-on: ubuntu-latest
+    needs: [build, lint]
+
+    container:
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project.formal cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/store
+
+          key: packages-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-
+
+      - name: Unit tests
+        run : |
+          cabal run -- bittide-instances:unittests
+
+  bittide-instances-hdl:
+    name: bittide-instances hdl generation
+    runs-on: ubuntu-latest
+    needs: [build, lint]
+
+    container:
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Set CI flags
+        run: |
+          # We're not interested in the M extension yet
+          cp .github/cabal.project.formal cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/store
+
+          key: packages-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-
+
+      - name: HDL generation
+        run : |
+          cabal run -- bittide-instances:shake switchCalendar1k:hdl
+          cabal run -- bittide-instances:shake switchCalendar1kReducedPins:hdl
+
   all:
     name: All jobs finished
     needs: [

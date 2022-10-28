@@ -28,3 +28,11 @@ License: Apache-2.0
 Files: firmware/tests/src/bin/*.expected
 Copyright: 2022 Google LLC
 License: CC0-1.0
+
+Files: bittide-instances/imgs/*
+Copyright: 2022 Google LLC
+License: Apache-2.0
+
+Files: bittide-instances/tests/reports/*
+Copyright: 2022 Google LLC
+License: Apache-2.0
