@@ -8,3 +8,4 @@ module Bittide.Instances.Domains where
 import Clash.Explicit.Prelude
 
 createDomain vXilinxSystem{vName="Basic200", vPeriod=hzToPeriod 200e6}
+createDomain vXilinxSystem{vName="Basic200KHz", vPeriod=hzToPeriod 200e3}

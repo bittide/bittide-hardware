@@ -76,6 +76,7 @@ library
   build-depends:
     array,
     aeson,
+    bittide,
     bytestring,
     cassava,
     containers,
@@ -89,7 +90,6 @@ library
     Bittide.ClockControl.Strategies
     Bittide.ClockControl.Strategies.Callisto
     Bittide.Simulate
-    Bittide.Simulate.Ppm
     Bittide.Topology
     Bittide.Topology.Graph
     Bittide.Topology.TH
@@ -118,6 +118,7 @@ test-suite unittests
     Tests.Bittide.Simulate
   build-depends:
       base
+    , bittide
     , clash-prelude
     , elastic-buffer-sim
     , tasty

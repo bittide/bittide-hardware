@@ -64,6 +64,7 @@ common common-options
     array,
     -- clash-prelude will set suitable version bounds for the plugins
     bittide-extra,
+    cassava,
     clash-lib >= 1.6.3 && < 1.8,
     clash-prelude >= 1.6.3 && < 1.8,
     constraints >= 0.13.3 && < 0.15,
@@ -78,6 +79,9 @@ library
   hs-source-dirs: src
   exposed-modules:
     Bittide.Calendar
+    Bittide.ClockControl.ClockGen
+    Bittide.ClockControl.Config
+    Bittide.ClockControl.Ppm
     Bittide.DoubleBufferedRam
     Bittide.ProcessingElement
     Bittide.Link

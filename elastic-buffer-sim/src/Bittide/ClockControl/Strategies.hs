@@ -16,6 +16,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (exposeClockResetEnable)
 
 import Bittide.ClockControl
+import Bittide.ClockControl.ClockGen (SpeedChange)
 import Bittide.ClockControl.Strategies.Callisto
 
 -- | Determines how to influence clock frequency given statistics provided by

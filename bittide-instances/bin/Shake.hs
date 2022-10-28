@@ -19,6 +19,7 @@ import System.Console.ANSI (setSGR)
 import Clash.Shake.Vivado
 
 import qualified Bittide.Instances.Calendar as Calendar
+import qualified Bittide.Instances.ClockControl.ClockGen as ClockGen
 import qualified Clash.Shake.Vivado.ParseTimingSummary as ParseTimingSummary
 import qualified Clash.Util.Interpolate as I
 import qualified Language.Haskell.TH as TH
@@ -37,6 +38,7 @@ targets :: [TH.Name]
 targets =
   [ 'Calendar.switchCalendar1k
   , 'Calendar.switchCalendar1kReducedPins
+  , 'ClockGen.tunableClockGen
   ]
 
 shakeOpts :: ShakeOptions

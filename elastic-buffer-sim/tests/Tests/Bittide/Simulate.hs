@@ -15,7 +15,8 @@ import Test.Tasty.HUnit
 import Bittide.ClockControl
 import Bittide.ClockControl.Strategies
 import Bittide.Simulate
-import Bittide.Simulate.Ppm
+import Bittide.ClockControl.Ppm
+import Bittide.ClockControl.ClockGen
 
 createDomain vXilinxSystem{vPeriod=hzToPeriod 200e6, vName="Fast"}
 createDomain vXilinxSystem{vPeriod=hzToPeriod 20e6, vName="Slow"}
@@ -32,7 +33,7 @@ tests = testGroup "Simulate"
   ]
 
 fastPeriod :: PeriodPs
-fastPeriod = hzToPeriod 200e6
+fastPeriod = fromIntegral (hzToPeriod 200e6)
 
 clockConfig :: Ppm -> ClockControlConfig
 clockConfig clockUncertainty = ClockControlConfig

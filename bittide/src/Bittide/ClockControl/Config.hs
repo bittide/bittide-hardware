@@ -3,10 +3,9 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE OverloadedStrings #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | Clock controller types and some constants/defaults.
-module Bittide.ClockControl
+module Bittide.ClockControl.Config
   ( ClockControlConfig (..)
   , DataCount
   , ElasticBufferSize
@@ -17,12 +16,12 @@ module Bittide.ClockControl
 where
 
 import Clash.Explicit.Prelude
-import Data.Aeson (ToJSON(toJSON))
-import Data.Csv (ToField(..))
+import Numeric.Natural (Natural)
+
 import Bittide.ClockControl.Ppm
 
-type ElasticBufferSize = Unsigned 32
-type DataCount = Unsigned 32
+type ElasticBufferSize = Natural
+type DataCount = Natural
 
 -- | Configuration passed to 'clockControl'
 data ClockControlConfig = ClockControlConfig
@@ -50,24 +49,6 @@ data ClockControlConfig = ClockControlConfig
 -- data count of half the FIFO size.
 targetDataCount :: ElasticBufferSize -> DataCount
 targetDataCount size = size `div` 2
-
--- | Safer version of FINC/FDEC signals present on the Si5395/Si5391 clock multipliers.
-data SpeedChange
-  = SpeedUp
-  | SlowDown
-  | NoChange
-  deriving (Eq, Show, Generic, ShowX, NFDataX)
-
-instance ToField SpeedChange where
-  toField SpeedUp = "speedUp"
-  toField SlowDown = "slowDown"
-  toField NoChange = "noChange"
-
-instance KnownNat n => ToField (Unsigned n) where
-  toField = toField . toInteger
-
-instance KnownNat n => ToJSON (Unsigned n) where
-  toJSON = toJSON . toInteger
 
 defClockConfig :: ClockControlConfig
 defClockConfig = ClockControlConfig

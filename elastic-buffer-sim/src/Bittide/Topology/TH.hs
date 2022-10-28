@@ -27,18 +27,20 @@ import Data.Bifunctor (bimap)
 import Data.Csv (encode)
 import Data.Graph (Graph)
 import Graphics.Matplotlib (Matplotlib, (%), file, plot, xlabel, ylabel)
+import Graphics.Matplotlib.Ext
 import Language.Haskell.TH (Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), Stmt (..), Type (..), newName)
 import Language.Haskell.TH.Syntax (lift)
 import Numeric.Natural (Natural)
 import System.Directory (createDirectoryIfMissing)
 import System.Random (randomRIO)
 
-import Bittide.Simulate
-import Bittide.Simulate.Ppm
 import Bittide.ClockControl
+import Bittide.ClockControl.ClockGen (tunableClockGen)
+import Bittide.ClockControl.Ppm
 import Bittide.ClockControl.Strategies
+import Bittide.Simulate
 import Bittide.Topology.TH.Domain
-import Graphics.Matplotlib.Ext
+
 
 import Data.Array qualified as A
 import Data.List qualified as L
@@ -383,7 +385,7 @@ simNodesFromGraph ccc g = do
 
     clkE i =
       AppE
-        (AppE (AppE (AppE (AppE tunableClockGenV settlePeriod) (VarE (offsets !! i))) step) resetGenV)
+        (AppE (AppE (AppE tunableClockGenV settlePeriod) (VarE (offsets !! i))) step)
         (VarE (clockControlNames A.! i))
     clkD i = valD (VarP (clockNames A.! i)) (clkE i)
     clkSignalD i = valD (VarP (clockSignalNames A.! i)) (VarE 'extractPeriods `AppE` VarE (clockNames A.! i))
@@ -451,7 +453,7 @@ simNodesFromGraph ccc g = do
 -- from its spec.
 genOffsets :: IO Offset
 genOffsets =
-  (`subtract` toInteger specPeriod)
+  (`subtract` specPeriod) . fromIntegral
     <$> randomRIO (toInteger minT, toInteger maxT)
  where
   minT = speedUpPeriod specPpm specPeriod

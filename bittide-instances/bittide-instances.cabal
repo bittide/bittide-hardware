@@ -89,6 +89,7 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
+    Bittide.Instances.ClockControl.ClockGen
     Bittide.Instances.Calendar
     Bittide.Instances.Domains
     Bittide.Instances.Hacks

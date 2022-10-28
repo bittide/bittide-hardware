@@ -12,6 +12,7 @@ where
 import Clash.Prelude
 
 import Bittide.ClockControl
+import Bittide.ClockControl.ClockGen (SpeedChange(..))
 
 import qualified Clash.Signal.Delayed as D
 import qualified Clash.Cores.Xilinx.Floating as F

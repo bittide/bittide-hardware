@@ -4,7 +4,8 @@
 
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Bittide.Simulate.Ppm where
+
+module Bittide.ClockControl.Ppm where
 
 import Clash.Explicit.Prelude
 import Data.Ratio
@@ -13,7 +14,7 @@ import Numeric.Natural
 newtype Ppm = Ppm Natural
   deriving newtype (Num)
   deriving Lift
-type PeriodPs = Natural
+type PeriodPs = Signed 64
 type Hz = Ratio Natural
 
 -- PPM arithmetic on Hz
@@ -28,10 +29,10 @@ slowDownHz ppm hz = hz - diffHz ppm hz
 
 -- PPM arithmetic on periods
 diffPeriod :: Ppm -> PeriodPs -> PeriodPs
-diffPeriod ppm = hzToPeriod . diffHz ppm . periodToHz
+diffPeriod ppm = fromIntegral . hzToPeriod . diffHz ppm . periodToHz . fromIntegral
 
 speedUpPeriod :: Ppm -> PeriodPs -> PeriodPs
-speedUpPeriod ppm = hzToPeriod . speedUpHz ppm . periodToHz
+speedUpPeriod ppm = fromIntegral . hzToPeriod . speedUpHz ppm . periodToHz . fromIntegral
 
 slowDownPeriod :: Ppm -> PeriodPs -> PeriodPs
-slowDownPeriod ppm = hzToPeriod . slowDownHz ppm . periodToHz
+slowDownPeriod ppm = fromIntegral . hzToPeriod . slowDownHz ppm . periodToHz . fromIntegral
