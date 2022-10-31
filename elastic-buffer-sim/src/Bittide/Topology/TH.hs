@@ -17,6 +17,8 @@ module Bittide.Topology.TH
   , unzipN
   , takeEveryN
   , genOffsN
+  , checkStability
+  , checkAllNodes
   )
 where
 
@@ -136,6 +138,48 @@ plotEbsQ g = do
 -- [(1,'a'),(1,'b'),(1,'c'),(2,'a'),(2,'b'),(2,'c')]
 cross :: [a] -> [b] -> [(a, b)]
 cross xs ys = (,) <$> xs <*> ys
+
+succApp :: (a -> a -> b) -> [a] -> [b]
+succApp op (x:xs@(y:_)) = x `op` y : succApp op xs
+succApp _ _ = error "This function is meant to be called on streams."
+
+streamSettle :: (Ord a, Integral a, Show a) => a -> a -> Bool
+streamSettle x y = asInteger x - asInteger y == 0
+ where
+  asInteger n = fromIntegral n :: Integer
+
+-- discard every N?
+checkStability :: Graph -> Q Exp
+checkStability g = do
+  sim <- simNodesFromGraph defClockConfig g
+  checkQ <- checkAllNodes g
+  n <- newName "n"
+  pure $
+    LamE
+      [VarP n]
+      (checkQ
+        `compose` (VarE 'takeEveryN `AppE` VarE n)
+        `compose` sim)
+
+-- | Generates a function of type
+--
+-- > [((a_0, a_1, ...), (b_0, b_1, ...), ...)] -> [Bool]
+--
+-- as appropriate, taking into account all nodes
+checkAllNodes :: Graph -> Q Exp
+checkAllNodes g = do
+  xs <- A.elems <$> traverse (traverse (\_ -> newName "x")) g
+  ys <- A.elems <$> traverse (traverse (\_ -> newName "y")) g
+  pure $ VarE 'succApp
+    `AppE`
+      LamE [TupP [TupP (WildP:WildP:[ VarP a | a <- node ]) | node <- xs ]]
+        (LamE [TupP [TupP (WildP:WildP:[ VarP b | b <- node ]) | node <- ys]]
+          (VarE 'and
+            `AppE` ListE (zipWith
+                          (\x y ->
+                            VarE 'streamSettle `AppE` VarE x `AppE` VarE y)
+                          (concat xs)
+                          (concat ys))))
 
 -- | For @n=2@ the type will be:
 --

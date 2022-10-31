@@ -25,6 +25,7 @@ module Bittide.Topology
   , plotTree32
   , plotTree23
   , plotStar7
+  , checkStabilityK3
   )
 where
 
@@ -40,6 +41,14 @@ import Data.ByteString.Lazy qualified as BSL
 import Bittide.ClockControl
 import Bittide.Topology.Graph
 import Bittide.Topology.TH
+
+checkStabilityK3 ::
+  -- | Sample interval
+  Int ->
+  IO [Bool]
+checkStabilityK3 n = do
+  offs <- genOffsN 2
+  pure ($(checkStability (complete 3)) n offs)
 
 -- | This samples @n@ steps, taking every @k@th datum, and plots clock speeds
 -- and elastic buffer occupancy

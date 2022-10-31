@@ -34,6 +34,7 @@ Usage:
   sim plot tree23 <steps> <points>
   sim plot hypercube3 <steps> <points>
   sim plot hypercube4 <steps> <points>
+  sim check complete3 <interval> <steps>
 
 Options:
   <points> Number of points to keep + pass to plotting library
@@ -45,6 +46,14 @@ getArgOrExit = getArgOrExitWith patterns
 main :: IO ()
 main = do
   args <- parseArgsOrExit patterns =<< getArgs
+
+  when (args `isPresent` (command "check")) $ do
+    n <- readOrError <$> args `getArgOrExit` (argument "interval")
+    s <- readOrError <$> args `getArgOrExit` (argument "steps")
+    isStable <- (!! s) <$> checkStabilityK3 n
+    if isStable
+      then putStrLn ("Stabilized after " ++ show s ++ " steps.")
+      else error ("Did not stabilize after " ++ show s ++ " steps")
 
   when (args `isPresent` (command "csv")) $ do
     n <- readOrError <$> args `getArgOrExit` (argument "steps")
