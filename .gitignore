@@ -84,3 +84,9 @@ firmware-integration-tests/
 bittide/verilog
 bittide/vhdl
 bittide/systemverilog
+vhdl/
+
+# Vivado
+vivado.jou
+log
+vivado_*

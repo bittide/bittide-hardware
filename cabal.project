@@ -28,37 +28,37 @@ package clash-prelude
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
-index-state: 2022-10-28T06:44:56Z
+index-state: 2022-10-31T09:07:19Z
 
 -- Needed to simulate dynamic clocks.
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 743c88e95671cb6eb214e0a363f707a466b9c972
+  tag: b4b326e4a1b1ba739bf430540fe2f8bc7238e144
   subdir: clash-prelude
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 743c88e95671cb6eb214e0a363f707a466b9c972
+  tag: b4b326e4a1b1ba739bf430540fe2f8bc7238e144
   subdir: clash-ghc
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 743c88e95671cb6eb214e0a363f707a466b9c972
+  tag: b4b326e4a1b1ba739bf430540fe2f8bc7238e144
   subdir: clash-lib
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 743c88e95671cb6eb214e0a363f707a466b9c972
+  tag: b4b326e4a1b1ba739bf430540fe2f8bc7238e144
   subdir: clash-prelude-hedgehog
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 743c88e95671cb6eb214e0a363f707a466b9c972
+  tag: b4b326e4a1b1ba739bf430540fe2f8bc7238e144
   subdir: clash-cores
 
 source-repository-package
