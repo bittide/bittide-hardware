@@ -641,12 +641,24 @@ jobs:
           cabal run -- bittide-instances:unittests
 
   bittide-instances-hdl:
-    name: bittide-instances hdl generation
-    runs-on: ubuntu-latest
+    name: bittide-instances synthesis
+    runs-on: self-hosted
+    env:
+      SYNTHESIS_PART: xcku040-ffva1156-2-e
+      # SYNTHESIS_PART: xcku035-ffva1156-2-e
     needs: [build, lint]
+
+    strategy:
+      matrix:
+        target:
+          - {top: switchCalendar1k,            stage: hdl}
+          - {top: switchCalendar1kReducedPins, stage: netlist}
 
     container:
       image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      volumes:
+        - /opt/tools:/opt/tools
+      options: --mac-address="6c:5a:b0:6c:13:0b"
 
     steps:
       - name: Checkout
@@ -654,8 +666,13 @@ jobs:
 
       - name: Set CI flags
         run: |
-          # We're not interested in the M extension yet
-          cp .github/cabal.project.formal cabal.project.local
+          # We use the same flags as the 'build' step to reuse caches. This
+          # "simulation" config only sets altopts on the Risc core, which we
+          # don't synthesize yet.
+          #
+          # TODO: Either switch to VexRisc or update cache strategy.
+          #
+          cp .github/cabal.project.simulation cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -671,10 +688,16 @@ jobs:
           key: packages-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: packages-
 
-      - name: HDL generation
+      - name: HDL generation and synthesis
         run : |
-          cabal run -- bittide-instances:shake switchCalendar1k:hdl
-          cabal run -- bittide-instances:shake switchCalendar1kReducedPins:hdl
+          .github/scripts/with_vivado.sh cabal run -- bittide-instances:shake ${{ matrix.target.top }}:${{ matrix.target.stage }}
+
+      - name: Archive synthesis artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: _build
+          path: _build
+          retention-days: 14
 
   all:
     name: All jobs finished

@@ -8,10 +8,8 @@ module Main where
 
 import Prelude
 
-import Clash.Driver.Manifest
 import Clash.Shake.Extra
 import Data.Foldable (for_)
-import Data.List.NonEmpty (NonEmpty((:|)))
 import Development.Shake
 import Development.Shake.Extra
 import Development.Shake.FilePath ((</>))
@@ -128,24 +126,20 @@ main = do
         -- Synthesis
         runSynthTclPath %> \path -> do
           need [falsePathXdc]
+          synthesisPart <- getEnvWithDefault "xcku035-ffva1156-2-e" "SYNTHESIS_PART"
           locatedManifest <- decodeLocatedManifest manifestPath
 
-          let
-            LocatedManifest{lmManifest=Manifest{topComponent=lib}} = locatedManifest
-            falsePathHdlSource = HdlSource XdcSource lib falsePathXdc
+          -- let
+          --   LocatedManifest{lmManifest=Manifest{topComponent=lib}} = locatedManifest
+          --   falsePathHdlSource = HdlSource XdcSource lib falsePathXdc
 
-            !() =
-              case transitiveDependencies (lmManifest locatedManifest) of
-                [] -> ()
-                _  -> error "Multiple libraries not yet implemented"
-
-            tcl =
-              mkSynthesisTcl
-                synthesisDir            -- Output directory for Vivado
-                False                   -- Out of context run
-                "xcku035-ffva1156-2-e"  -- Part we're synthesizing for
-                (locatedManifest :| []) -- We only support one library for now
-                [falsePathHdlSource]    -- Extra files
+          tcl <- liftIO $
+            mkSynthesisTcl
+              synthesisDir            -- Output directory for Vivado
+              False                   -- Out of context run
+              synthesisPart           -- Part we're synthesizing for
+              locatedManifest
+              -- [falsePathHdlSource]    -- Extra files
 
           writeFileChanged path tcl
 
