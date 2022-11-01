@@ -48,9 +48,6 @@ common common-options
     -Wall -Wcompat
     -haddock
 
-    -- We want to be able to sort imports easily
-    -Wprepositive-qualified-module
-
     -- Plugins to support type-level constraint solving on naturals
     -fplugin GHC.TypeLits.Extra.Solver
     -fplugin GHC.TypeLits.Normalise
@@ -78,9 +75,11 @@ library
   hs-source-dirs: src
   build-depends:
     array,
+    aeson,
     bytestring,
     cassava,
     containers,
+    clash-cores,
     directory,
     matplotlib,
     random,

@@ -13,6 +13,7 @@ module Bittide.ClockControl.Strategies
 where
 
 import Clash.Explicit.Prelude
+import Clash.Prelude (exposeClockResetEnable)
 
 import Bittide.ClockControl
 import Bittide.ClockControl.Strategies.Callisto
@@ -33,14 +34,19 @@ callistoClockControl ::
   Vec n (Signal dom DataCount) ->
   Signal dom SpeedChange
 callistoClockControl clk rst ena cfg =
-  clockControl clk rst ena cfg callisto
+  clockControl clk rst ena cfg (exposeClockResetEnable callisto)
 
 type ClockControlAlgorithm dom n a =
   Clock dom ->
   Reset dom ->
   Enable dom ->
-  ClockControlConfig ->
+  -- | Target data count. See 'targetDataCount'.
+  DataCount ->
+  -- | Provide an update every /n/ cycles
+  Unsigned 32 ->
+  -- | Data counts from elastic buffers
   Signal dom (Vec n DataCount) ->
+  -- | Speed change requested from clock multiplier
   Signal dom SpeedChange
 
 clockControl ::
@@ -57,5 +63,8 @@ clockControl ::
   Vec n (Signal dom DataCount) ->
   -- | Whether to adjust node clock frequency
   Signal dom SpeedChange
-clockControl clk rst ena cfg f =
-  f clk rst ena cfg . bundle
+clockControl clk rst ena ClockControlConfig{..} f =
+  f clk rst ena targetCount updateEveryNCycles . bundle
+ where
+  targetCount = targetDataCount cccBufferSize
+  updateEveryNCycles = fromIntegral (cccSettlePeriod `div` cccPessimisticPeriod) + 1

@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | Clock controller types and some constants/defaults.
 module Bittide.ClockControl
@@ -18,14 +19,15 @@ module Bittide.ClockControl
 where
 
 import Clash.Explicit.Prelude
+import Data.Aeson (ToJSON(toJSON))
 import Numeric.Natural (Natural)
 
 import Bittide.Simulate.Ppm
 
 import Data.Csv
 
-type ElasticBufferSize = Natural
-type DataCount = Natural
+type ElasticBufferSize = Unsigned 32
+type DataCount = Unsigned 32
 type SettlePeriod = Natural
 
 -- | Configuration passed to 'clockControl'
@@ -66,6 +68,12 @@ instance ToField SpeedChange where
   toField SpeedUp = "speedUp"
   toField SlowDown = "slowDown"
   toField NoChange = "noChange"
+
+instance KnownNat n => ToField (Unsigned n) where
+  toField = toField . toInteger
+
+instance KnownNat n => ToJSON (Unsigned n) where
+  toJSON = toJSON . toInteger
 
 defClockConfig :: ClockControlConfig
 defClockConfig = ClockControlConfig
