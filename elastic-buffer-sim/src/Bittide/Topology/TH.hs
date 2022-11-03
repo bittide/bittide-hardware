@@ -139,6 +139,7 @@ plotEbsQ g = do
 cross :: [a] -> [b] -> [(a, b)]
 cross xs ys = (,) <$> xs <*> ys
 
+-- | Successive application on a stream.
 succApp :: (a -> a -> b) -> [a] -> [b]
 succApp op (x:xs@(y:_)) = x `op` y : succApp op xs
 succApp _ _ = error "This function is meant to be called on streams."
@@ -148,7 +149,10 @@ streamSettle x y = asInteger x - asInteger y == 0
  where
   asInteger n = fromIntegral n :: Integer
 
--- discard every N?
+-- | Wires together 'simNodesFromGraph' and 'checkAllNodes', producing
+-- a function of type
+--
+-- > Int -> [Offset] -> [Bool]
 checkStability :: Graph -> Q Exp
 checkStability g = do
   sim <- simNodesFromGraph defClockConfig g

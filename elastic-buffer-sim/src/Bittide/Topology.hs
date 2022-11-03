@@ -26,6 +26,8 @@ module Bittide.Topology
   , plotTree23
   , plotStar7
   , checkStabilityK3
+  , checkStabilityK5
+  , checkStabilityC6
   )
 where
 
@@ -43,13 +45,34 @@ import Bittide.Topology.Graph
 import Bittide.Topology.TH
 
 checkStabilityK3 ::
-  -- | Sample interval
+  -- | Sample interval @n@. We sample elastic buffer occupancies only every @n@
+  -- steps to account for the time it takes for elastic buffer occupancy to
+  -- change based on divergent clock frequencies.
   Int ->
   IO [Bool]
 checkStabilityK3 n = do
   offs <- genOffsN 2
+  putStrLn ("Offsets: " <> show offs)
   pure ($(checkStability (complete 3)) n offs)
 
+checkStabilityK5 ::
+  Int ->
+  IO [Bool]
+checkStabilityK5 n = do
+  offs <- genOffsN 4
+  putStrLn ("Offsets: " <> show offs)
+  pure ($(checkStability (complete 5)) n offs)
+
+checkStabilityC6 ::
+  Int ->
+  IO [Bool]
+checkStabilityC6 n = do
+  offs <- genOffsN 5
+  putStrLn ("Offsets: " <> show offs)
+  pure ($(checkStability (cyclic 6)) n offs)
+
+-- | This samples @n@ steps, taking every @k@th datum, and plots clock speeds
+-- and elastic buffer occupancy
 -- | This samples @n@ steps, taking every @k@th datum, and plots clock speeds
 -- and elastic buffer occupancy
 plotEbs :: Int -> Int -> IO ()

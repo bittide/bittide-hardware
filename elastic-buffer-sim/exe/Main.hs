@@ -35,6 +35,8 @@ Usage:
   sim plot hypercube3 <steps> <points>
   sim plot hypercube4 <steps> <points>
   sim check complete3 <interval> <steps>
+  sim check complete5 <interval> <steps>
+  sim check cyclic6 <interval> <steps>
 
 Options:
   <points> Number of points to keep + pass to plotting library
@@ -50,7 +52,13 @@ main = do
   when (args `isPresent` (command "check")) $ do
     n <- readOrError <$> args `getArgOrExit` (argument "interval")
     s <- readOrError <$> args `getArgOrExit` (argument "steps")
-    isStable <- (!! s) <$> checkStabilityK3 n
+    let
+      checkFn
+        | args `isPresent` (command "complete3") = checkStabilityK3
+        | args `isPresent` (command "complete5") = checkStabilityK5
+        | args `isPresent` (command "cyclic6") = checkStabilityC6
+        | otherwise = error "Internal error: Unknown command"
+    isStable <- (!! s) <$> checkFn n
     if isStable
       then putStrLn ("Stabilized after " ++ show s ++ " steps.")
       else error ("Did not stabilize after " ++ show s ++ " steps")

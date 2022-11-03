@@ -141,6 +141,10 @@ jobs:
         run: |
           cd elastic-buffer-sim && poetry run cabal run sim -- plot complete3 30000 1000
 
+      - name: Check stability
+        run: |
+          cabal run sim -- check complete3 1000000 75
+
       - name: Upload plots
         uses: actions/upload-artifact@v2
         with:
