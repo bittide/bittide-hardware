@@ -62,14 +62,15 @@ common common-options
     base,
     Cabal,
     array,
-    -- clash-prelude will set suitable version bounds for the plugins
     bittide-extra,
+    bytestring,
+    -- clash-prelude will set suitable version bounds for the plugins
     clash-lib >= 1.6.3 && < 1.8,
     clash-prelude >= 1.6.3 && < 1.8,
+    clash-protocols,
     constraints >= 0.13.3 && < 0.15,
     containers >= 0.4.0 && < 0.7,
     contranomy,
-    clash-protocols,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
