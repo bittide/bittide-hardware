@@ -647,8 +647,21 @@ jobs:
     strategy:
       matrix:
         target:
-          - {top: switchCalendar1k,            stage: hdl}
-          - {top: switchCalendar1kReducedPins, stage: netlist}
+          - {top: gatherUnit1K,                              stage: synth}
+          - {top: rxUnit64_1K,                               stage: synth}
+          - {top: scatterUnit1K,                             stage: synth}
+          - {top: singleMasterInterconnect_32_32,            stage: synth}
+          - {top: switchCalendar1k,                          stage: synth}
+          - {top: switch_16_64,                              stage: synth}
+          - {top: txUnit64_1K,                               stage: synth}
+
+          - {top: gatherUnit1KReducedPins,                   stage: netlist}
+          - {top: rxUnit64_1KReducedPins,                    stage: netlist}
+          - {top: scatterUnit1KReducedPins,                  stage: netlist}
+          - {top: singleMasterInterconnect_32_32ReducedPins, stage: netlist}
+          - {top: switchCalendar1kReducedPins,               stage: netlist}
+          - {top: switch_16_64ReducedPins,                   stage: netlist}
+          - {top: txUnit64_1KReducedPins,                    stage: netlist}
 
     container:
       image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02

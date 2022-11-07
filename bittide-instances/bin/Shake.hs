@@ -22,6 +22,10 @@ import System.FilePath (isDrive, (</>), takeDirectory)
 import Clash.Shake.Vivado
 
 import qualified Bittide.Instances.Calendar as Calendar
+import qualified Bittide.Instances.Link as Link
+import qualified Bittide.Instances.ScatterGather as ScatterGather
+import qualified Bittide.Instances.Switch as Switch
+import qualified Bittide.Instances.Wishbone as Wishbone
 import qualified Clash.Util.Interpolate as I
 import qualified Language.Haskell.TH as TH
 import qualified System.Directory as Directory
@@ -64,6 +68,18 @@ targets :: [TH.Name]
 targets =
   [ 'Calendar.switchCalendar1k
   , 'Calendar.switchCalendar1kReducedPins
+  , 'Link.rxUnit64_1K
+  , 'Link.rxUnit64_1KReducedPins
+  , 'Link.txUnit64_1K
+  , 'Link.txUnit64_1KReducedPins
+  , 'ScatterGather.gatherUnit1K
+  , 'ScatterGather.gatherUnit1KReducedPins
+  , 'ScatterGather.scatterUnit1K
+  , 'ScatterGather.scatterUnit1KReducedPins
+  , 'Switch.switch_16_64
+  , 'Switch.switch_16_64ReducedPins
+  , 'Wishbone.singleMasterInterconnect_32_32
+  , 'Wishbone.singleMasterInterconnect_32_32ReducedPins
   ]
 
 shakeOpts :: FilePath -> ShakeOptions

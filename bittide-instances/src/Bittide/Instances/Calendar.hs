@@ -18,6 +18,21 @@ import Bittide.Instances.Hacks (reducePins)
 type WishboneWidth = 4
 type WishboneAddrWidth = 32
 
+{-# ANN switchCalendar1k
+  (Synthesize
+    { t_name = "switchCalendar1k"
+    , t_inputs =
+        [ PortName "clk"
+        , PortName "rst"
+        , PortName "wbM2S"
+        ]
+    , t_output = PortProduct ""
+        [ PortName "activeEntry"
+        , PortName "metaCycleIndicator"
+        , PortName "wbS2M"
+        ]
+    }
+  )#-}
 
 switchCalendar1k ::
   Clock Basic200 -> Reset Basic200 ->

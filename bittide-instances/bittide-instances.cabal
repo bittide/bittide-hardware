@@ -92,7 +92,10 @@ library
     Bittide.Instances.Calendar
     Bittide.Instances.Domains
     Bittide.Instances.Hacks
-
+    Bittide.Instances.Link
+    Bittide.Instances.ScatterGather
+    Bittide.Instances.Switch
+    Bittide.Instances.Wishbone
     Clash.Shake.Extra
     Clash.Shake.Vivado
     Development.Shake.Extra
