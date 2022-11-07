@@ -14,7 +14,7 @@ debug = true
 opt-level = 0
 
 [dependencies]
-riscv-rt = "0.8.0"
+riscv-rt = "0.10.0"
 riscv = "0.7.0"
 bittide-sys = { path = "../bittide-sys" }
 contranomy-sys = { path = "../contranomy-sys" }
