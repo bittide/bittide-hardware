@@ -101,6 +101,11 @@ main = do
   projectRoot <- findProjectRoot
 
   shakeArgs (shakeOpts projectRoot) $ do
+    -- 'all' builds all targets defined below
+    phony "all" $ do
+      for_ targets $ \target -> do
+        need [nameBase target <> ":synth"]
+
     -- For each target, generate a user callable command (PHONY). Run with
     -- '--help' to list them.
     for_ targets $ \target -> do
