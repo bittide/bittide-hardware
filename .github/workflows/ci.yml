@@ -271,7 +271,7 @@ jobs:
       - name: Set test matrix
         id: set-matrix
         run: |
-          echo "::set-output name=check_matrix::$(cat checks.json)"
+          echo "check_matrix=$(cat checks.json)" >> "$GITHUB_OUTPUT"
 
     outputs:
       check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
