@@ -20,6 +20,7 @@ haxiomsGroup = testGroup "Haxioms"
   [ testPropertyNamed "timesDivRU holds" "prop_timesDivRU"  prop_timesDivRU
   , testPropertyNamed "clog2axiom holds" "prop_clog2axiom"  prop_clog2axiom
   , testPropertyNamed "timesNDivRU holds" "prop_timesNDivRU" prop_timesNDivRU
+  , testPropertyNamed "oneLTdivRU holds" "prop_oneLTdivRU" prop_oneLTdivRU
   ]
 
 -- | Given that naturals in this module are used in proofs, we don't bother
@@ -110,3 +111,17 @@ prop_timesNDivRU = property $ do
 --   a <- forAll (genNatural 0)
 --   b <- forAll (genNatural 1)
 --   divRU ((a * b) + (b - 1)) b === a
+
+-- | Test whether the following equation holds:
+--
+--     1 <= DivRU a b
+--
+-- Given:
+--
+--     1 <= a, 1 <= b
+--
+prop_oneLTdivRU :: Property
+prop_oneLTdivRU = property $ do
+  a <- forAll (genNatural 1)
+  b <- forAll (genNatural 1)
+  assert (1 <= divRU a b)
