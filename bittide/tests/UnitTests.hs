@@ -11,6 +11,7 @@ import Test.Tasty.Hedgehog
 
 import Tests.Calendar
 import Tests.DoubleBufferedRam
+import Tests.Haxioms
 import Tests.Link
 import Tests.ScatterGather
 import Tests.Switch
@@ -18,7 +19,14 @@ import Tests.Wishbone
 
 tests :: TestTree
 tests = testGroup "Unittests"
-  [calGroup, sgGroup, ramGroup, memMapGroup, linkGroup, switchGroup]
+  [ calGroup
+  , haxiomsGroup
+  , linkGroup
+  , memMapGroup
+  , ramGroup
+  , sgGroup
+  , switchGroup
+  ]
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
 setDefaultHedgehogTestLimit (HedgehogTestLimit Nothing) = HedgehogTestLimit (Just 10000)

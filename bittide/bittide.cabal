@@ -102,6 +102,7 @@ test-suite unittests
   other-modules:
     Tests.Calendar
     Tests.DoubleBufferedRam
+    Tests.Haxioms
     Tests.Link
     Tests.ScatterGather
     Tests.Shared

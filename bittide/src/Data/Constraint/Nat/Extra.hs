@@ -27,7 +27,7 @@ import Unsafe.Coerce
 import qualified Clash.Util.Interpolate as I
 
 -- | b <= ceiling(b/a)*a
-timesDivRU :: forall a b . Dict (b <= (Div (b + (a - 1)) a * a))
+timesDivRU :: forall a b . (1 <= a) => Dict (b <= (Div (b + (a - 1)) a * a))
 timesDivRU = unsafeCoerce (Dict :: Dict ())
 
 clog2axiom :: CLog 2 (n * 2) :~: (CLog 2 n + 1)

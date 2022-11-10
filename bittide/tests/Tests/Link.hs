@@ -202,7 +202,7 @@ txSendSC = property $ do
       simOut === expectedOutput
 
 -- | Convert any value a to a list of frames.
-valToFrames :: forall n a . (KnownNat n, Paddable a) => a -> [DataLink n]
+valToFrames :: forall n a . (KnownNat n, 1 <= n, Paddable a) => a -> [DataLink n]
 valToFrames sc = fmap Just out
   where
   RegisterBank (toList -> out) = getRegs sc
