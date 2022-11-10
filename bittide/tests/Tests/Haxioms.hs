@@ -19,6 +19,7 @@ haxiomsGroup :: TestTree
 haxiomsGroup = testGroup "Haxioms"
   [ testPropertyNamed "timesDivRU holds" "prop_timesDivRU"  prop_timesDivRU
   , testPropertyNamed "clog2axiom holds" "prop_clog2axiom"  prop_clog2axiom
+  , testPropertyNamed "timesNDivRU holds" "prop_timesNDivRU" prop_timesNDivRU
   ]
 
 -- | Given that naturals in this module are used in proofs, we don't bother
@@ -30,6 +31,12 @@ genNatural min_ = Gen.integral (Range.linear min_ 1000)
 clog :: Natural -> Natural -> Natural
 clog (fromIntegral -> base) (fromIntegral -> value) =
   ceiling (logBase @Double base value)
+
+divRU :: Natural -> Natural -> Natural
+divRU dividend divider =
+  case dividend `divMod` divider of
+    (n, 0) -> n
+    (n, _) -> n + 1
 
 -- | Test whether the following equation holds:
 --
@@ -57,3 +64,17 @@ prop_clog2axiom :: Property
 prop_clog2axiom = property $ do
   n <- forAll (genNatural 1)
   clog 2 (n * 2) === clog 2 n + 1
+
+-- | Test whether the following equation holds:
+--
+--     DivRU (a * b) b ~ a
+--
+-- Given:
+--
+--     1 <= b
+--
+prop_timesNDivRU :: Property
+prop_timesNDivRU = property $ do
+  a <- forAll (genNatural 0)
+  b <- forAll (genNatural 1)
+  divRU (a * b) b === a

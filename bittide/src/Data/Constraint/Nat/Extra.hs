@@ -33,7 +33,7 @@ timesDivRU = unsafeCoerce (Dict :: Dict ())
 clog2axiom :: (1 <= n) => CLog 2 (n * 2) :~: (CLog 2 n + 1)
 clog2axiom = unsafeCoerce Refl
 
-timesNDivRU :: forall a b . Dict (DivRU (a * b) b ~ a)
+timesNDivRU :: forall a b . (1 <= b) => Dict (DivRU (a * b) b ~ a)
 timesNDivRU = unsafeCoerce (Dict :: Dict ())
 
 timesNDivRU' :: forall a b . Dict (Div ((b * a) + (b - 1)) b ~ a)
