@@ -30,7 +30,7 @@ import qualified Clash.Util.Interpolate as I
 timesDivRU :: forall a b . (1 <= a) => Dict (b <= (Div (b + (a - 1)) a * a))
 timesDivRU = unsafeCoerce (Dict :: Dict ())
 
-clog2axiom :: CLog 2 (n * 2) :~: (CLog 2 n + 1)
+clog2axiom :: (1 <= n) => CLog 2 (n * 2) :~: (CLog 2 n + 1)
 clog2axiom = unsafeCoerce Refl
 
 timesNDivRU :: forall a b . Dict (DivRU (a * b) b ~ a)
