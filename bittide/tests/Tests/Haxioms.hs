@@ -21,6 +21,8 @@ haxiomsGroup = testGroup "Haxioms"
   , testPropertyNamed "clog2axiom holds" "prop_clog2axiom"  prop_clog2axiom
   , testPropertyNamed "timesNDivRU holds" "prop_timesNDivRU" prop_timesNDivRU
   , testPropertyNamed "oneLTdivRU holds" "prop_oneLTdivRU" prop_oneLTdivRU
+  , testPropertyNamed "leMaxLeft holds" "prop_leMaxLeft" prop_leMaxLeft
+  , testPropertyNamed "leMaxRight holds" "prop_leMaxRight" prop_leMaxRight
   ]
 
 -- | Given that naturals in this module are used in proofs, we don't bother
@@ -125,3 +127,25 @@ prop_oneLTdivRU = property $ do
   a <- forAll (genNatural 1)
   b <- forAll (genNatural 1)
   assert (1 <= divRU a b)
+
+-- | Test whether the following equation holds:
+--
+--     a <= Max (a + c) b
+--
+prop_leMaxLeft :: Property
+prop_leMaxLeft = property $ do
+  a <- forAll (genNatural 0)
+  b <- forAll (genNatural 0)
+  c <- forAll (genNatural 0)
+  assert (a <= max (a + c) b)
+
+-- | Test whether the following equation holds:
+--
+--     b <= Max a (b + c)
+--
+prop_leMaxRight :: Property
+prop_leMaxRight = property $ do
+  a <- forAll (genNatural 0)
+  b <- forAll (genNatural 0)
+  c <- forAll (genNatural 0)
+  assert (b <= max a (b + c))

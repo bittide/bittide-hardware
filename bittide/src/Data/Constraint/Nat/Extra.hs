@@ -15,16 +15,12 @@ solved by the constraint solver.
 
 module Data.Constraint.Nat.Extra where
 
-import Prelude
 
-import Clash.Promoted.Nat
 import Data.Constraint
 import Data.Type.Equality
 import GHC.TypeLits.Extra
 import GHC.TypeNats
 import Unsafe.Coerce
-
-import qualified Clash.Util.Interpolate as I
 
 -- | b <= ceiling(b/a)*a
 timesDivRU :: forall a b . (1 <= a) => Dict (b <= (Div (b + (a - 1)) a * a))
@@ -44,26 +40,11 @@ timesNDivRU' = unsafeCoerce (Dict :: Dict ())
 timesNDivRU'' :: forall a b . Dict (Div ((a * b) + (b - 1)) b ~ a)
 timesNDivRU'' = unsafeCoerce (Dict :: Dict ())
 
--- | if (c <= a) or (c <= b), then c <= Max a b
-lessThanMax
-  :: forall a b c
-  . (KnownNat a, KnownNat b, KnownNat c)
-  => Dict (c <= Max a b)
-lessThanMax = case (compareSNat (SNat @c) (SNat @b), compareSNat (SNat @c) (SNat @b)) of
-  (SNatLE, _) -> unsafeCoerce (Dict :: Dict ())
-  (_, SNatLE) -> unsafeCoerce (Dict :: Dict ())
-  (_,_) -> error [I.i|
-              Data.Constraint.Nat.Extra.lessThanMax:
-                Could not deduce c <= Max a b from (c <= a) or (c <= b) from
-                a: #{a}
-                b: #{b}
-                c: #{c}
-          |]
+leMaxLeft :: forall a b c. Dict (a <= Max (a + c) b)
+leMaxLeft = unsafeCoerce (Dict :: Dict ())
 
- where
-  a = natToInteger @a
-  b = natToInteger @b
-  c = natToInteger @c
+leMaxRight :: forall a b c. Dict (b <= Max a (b + c))
+leMaxRight = unsafeCoerce (Dict :: Dict ())
 
 -- | if (1 <= a) and (1 <= b) then (1 <= DivRU a b)
 oneLTdivRU :: forall a b . (1 <= a, 1 <= b) => Dict (1 <= DivRU a b)
