@@ -188,7 +188,7 @@ rxUnit preamble localCounter linkIn wbIn = wbOut
       | lastFrame = Done
       | otherwise = CaptureSequenceCounter
 
-    nextCnt = case oneLTdivRU @scw @fw of
+    nextCnt = case strictlyPositiveDivRu @scw @fw of
       Dict -> satSucc SatWrap cnt
 
     regNew

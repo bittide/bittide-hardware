@@ -26,8 +26,8 @@ import Unsafe.Coerce
 timesDivRU :: forall a b . (1 <= a) => Dict (b <= (Div (b + (a - 1)) a * a))
 timesDivRU = unsafeCoerce (Dict :: Dict ())
 
-clog2axiom :: (1 <= n) => CLog 2 (n * 2) :~: (CLog 2 n + 1)
-clog2axiom = unsafeCoerce Refl
+clogProductRule :: (1 <= n) => CLog 2 (n * 2) :~: (CLog 2 n + 1)
+clogProductRule = unsafeCoerce Refl
 
 timesNDivRU :: forall a b . (1 <= b) => Dict (DivRU (a * b) b ~ a)
 timesNDivRU = unsafeCoerce (Dict :: Dict ())
@@ -45,5 +45,5 @@ leMaxRight :: forall a b c. Dict (b <= Max a (b + c))
 leMaxRight = unsafeCoerce (Dict :: Dict ())
 
 -- | if (1 <= a) and (1 <= b) then (1 <= DivRU a b)
-oneLTdivRU :: forall a b . (1 <= a, 1 <= b) => Dict (1 <= DivRU a b)
-oneLTdivRU = unsafeCoerce (Dict :: Dict ())
+strictlyPositiveDivRu :: forall a b . (1 <= a, 1 <= b) => Dict (1 <= DivRU a b)
+strictlyPositiveDivRu = unsafeCoerce (Dict :: Dict ())

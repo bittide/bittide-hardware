@@ -18,9 +18,9 @@ import Test.Tasty.Hedgehog
 haxiomsGroup :: TestTree
 haxiomsGroup = testGroup "Haxioms"
   [ testPropertyNamed "timesDivRU holds" "prop_timesDivRU"  prop_timesDivRU
-  , testPropertyNamed "clog2axiom holds" "prop_clog2axiom"  prop_clog2axiom
+  , testPropertyNamed "clogProductRule holds" "prop_clogProductRule"  prop_clogProductRule
   , testPropertyNamed "timesNDivRU holds" "prop_timesNDivRU" prop_timesNDivRU
-  , testPropertyNamed "oneLTdivRU holds" "prop_oneLTdivRU" prop_oneLTdivRU
+  , testPropertyNamed "strictlyPositiveDivRu holds" "prop_strictlyPositiveDivRu" prop_strictlyPositiveDivRu
   , testPropertyNamed "leMaxLeft holds" "prop_leMaxLeft" prop_leMaxLeft
   , testPropertyNamed "leMaxRight holds" "prop_leMaxRight" prop_leMaxRight
   , testPropertyNamed "divWithRemainder holds" "prop_divWithRemainder" prop_divWithRemainder
@@ -71,10 +71,10 @@ prop_timesDivRU = property $ do
 --
 --     1 <= n
 --
--- Tests: 'Data.Constraint.Nat.Extra.clog2axiom'.
+-- Tests: 'Data.Constraint.Nat.Extra.clogProductRule'.
 --
-prop_clog2axiom :: Property
-prop_clog2axiom = property $ do
+prop_clogProductRule :: Property
+prop_clogProductRule = property $ do
   n <- forAll (genNatural 1)
   clog 2 (n * 2) === clog 2 n + 1
 
@@ -102,10 +102,10 @@ prop_timesNDivRU = property $ do
 --
 --     1 <= a, 1 <= b
 --
--- Tests: 'Data.Constraint.Nat.Extra.oneLTdivRU'.
+-- Tests: 'Data.Constraint.Nat.Extra.strictlyPositiveDivRu'.
 --
-prop_oneLTdivRU :: Property
-prop_oneLTdivRU = property $ do
+prop_strictlyPositiveDivRu :: Property
+prop_strictlyPositiveDivRu = property $ do
   a <- forAll (genNatural 1)
   b <- forAll (genNatural 1)
   assert (1 <= divRU a b)
