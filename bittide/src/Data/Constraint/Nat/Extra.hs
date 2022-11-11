@@ -33,10 +33,6 @@ timesNDivRU :: forall a b . (1 <= b) => Dict (DivRU (a * b) b ~ a)
 timesNDivRU = unsafeCoerce (Dict :: Dict ())
 
 -- | XXX: This property isn't true
-timesNDivRU' :: forall a b . Dict (Div ((b * a) + (b - 1)) b ~ a)
-timesNDivRU' = unsafeCoerce (Dict :: Dict ())
-
--- | XXX: This property isn't true
 timesNDivRU'' :: forall a b . Dict (Div ((a * b) + (b - 1)) b ~ a)
 timesNDivRU'' = unsafeCoerce (Dict :: Dict ())
 

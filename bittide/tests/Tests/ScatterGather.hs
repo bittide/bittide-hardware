@@ -20,8 +20,6 @@ import Clash.Prelude hiding (fromList)
 import qualified Prelude as P
 
 import Clash.Sized.Vector (fromList)
-import Data.Constraint (Dict(Dict))
-import Data.Constraint.Nat.Extra (timesNDivRU')
 import Data.Maybe
 import Data.String
 import Hedgehog
@@ -246,20 +244,18 @@ wbRead ::
   Maybe a ->
   [WishboneM2S addrW nBytes (Bytes nBytes)]
 wbRead readAddr (Just _) =
-  case timesNDivRU' @nBytes @8 of
-    Dict ->
-      [ (emptyWishboneM2S @addrW @(Bytes nBytes))
-        { addr = (`shiftL` 3) . resize $ pack readAddr
-        , busCycle = True
-        , strobe = True
-        , busSelect = maxBound }
+  [ (emptyWishboneM2S @addrW @(Bytes nBytes))
+    { addr = (`shiftL` 3) . resize $ pack readAddr
+    , busCycle = True
+    , strobe = True
+    , busSelect = maxBound }
 
-      , (emptyWishboneM2S @addrW @(Bytes nBytes))
-        { addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr)
-        , busCycle = True
-        , strobe = True
-        , busSelect = maxBound }
-      ]
+  , (emptyWishboneM2S @addrW @(Bytes nBytes))
+    { addr =  4 .|.  ((`shiftL` 3) . resize $ pack readAddr)
+    , busCycle = True
+    , strobe = True
+    , busSelect = maxBound }
+  ]
 wbRead _ Nothing = []
 
 -- | Transform a write address with frame to a wishbone write operation for testing the
