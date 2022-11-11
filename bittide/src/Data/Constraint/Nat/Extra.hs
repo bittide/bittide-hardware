@@ -32,9 +32,11 @@ clog2axiom = unsafeCoerce Refl
 timesNDivRU :: forall a b . (1 <= b) => Dict (DivRU (a * b) b ~ a)
 timesNDivRU = unsafeCoerce (Dict :: Dict ())
 
--- | XXX: This property isn't true
-timesNDivRU'' :: forall a b . Dict (Div ((a * b) + (b - 1)) b ~ a)
-timesNDivRU'' = unsafeCoerce (Dict :: Dict ())
+divWithRemainder ::
+  forall a b c.
+  (1 <= b, c <= (b - 1)) =>
+  Dict (Div ((a * b) + c) b ~ a)
+divWithRemainder = unsafeCoerce (Dict :: Dict ())
 
 leMaxLeft :: forall a b c. Dict (a <= Max (a + c) b)
 leMaxLeft = unsafeCoerce (Dict :: Dict ())

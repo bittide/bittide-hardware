@@ -11,12 +11,12 @@ module Bittide.Wishbone where
 import Clash.Prelude
 
 import Data.Constraint (Dict(Dict))
-import Data.Constraint.Nat.Extra (timesNDivRU'')
 import Data.Maybe
 import Protocols.Internal
 import Protocols.Wishbone
 
 import Bittide.SharedTypes (Bytes)
+import Data.Constraint.Nat.Extra (divWithRemainder)
 
 -- Applying this hint yields a compile error
 {-# ANN module "HLint: ignore Functor law" #-}
@@ -86,5 +86,6 @@ singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
  where
   Circuit f = singleMasterInterconnect @dom @nSlaves @bytes @addressWidth config
   (toMaster, toSlaves) =
-    case timesNDivRU'' @bytes @8 of
-      Dict -> f (master, unbundle slaves)
+    case divWithRemainder @bytes @8 @7 of
+      Dict ->
+        f (master, unbundle slaves)

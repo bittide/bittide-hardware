@@ -23,6 +23,7 @@ haxiomsGroup = testGroup "Haxioms"
   , testPropertyNamed "oneLTdivRU holds" "prop_oneLTdivRU" prop_oneLTdivRU
   , testPropertyNamed "leMaxLeft holds" "prop_leMaxLeft" prop_leMaxLeft
   , testPropertyNamed "leMaxRight holds" "prop_leMaxRight" prop_leMaxRight
+  , testPropertyNamed "divWithRemainer holds" "prop_divWithRemainer" prop_divWithRemainer
   ]
 
 -- | Given that naturals in this module are used in proofs, we don't bother
@@ -84,22 +85,6 @@ prop_timesNDivRU = property $ do
 
 -- | Test whether the following equation holds:
 --
---     Div ((a * b) + (b - 1)) b ~ a
---
--- Given:
---
---     1 <= b
---
--- XXX: FAILS
---
--- prop_timesNDivRU'' :: Property
--- prop_timesNDivRU'' = property $ do
---   a <- forAll (genNatural 0)
---   b <- forAll (genNatural 1)
---   divRU ((a * b) + (b - 1)) b === a
-
--- | Test whether the following equation holds:
---
 --     1 <= DivRU a b
 --
 -- Given:
@@ -133,3 +118,18 @@ prop_leMaxRight = property $ do
   b <- forAll (genNatural 0)
   c <- forAll (genNatural 0)
   assert (b <= max a (b + c))
+
+-- | Test whether the following equation holds:
+--
+--     Div ((a * b) + c) b ~ a
+--
+-- Given:
+--
+--     1 <= b, c <= (b - 1)
+--
+prop_divWithRemainer :: Property
+prop_divWithRemainer = property $ do
+  a <- forAll (genNatural 0)
+  b <- forAll (genNatural 1)
+  c <- forAll (Gen.integral (Range.linear 0 (b - 1)))
+  ((a * b) + c) `div` b === a
