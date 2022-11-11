@@ -14,7 +14,7 @@ import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Vector
 import Clash.Sized.Vector(unsafeFromList)
 import Data.Constraint (Dict(Dict))
-import Data.Constraint.Nat.Extra (timesNDivRU, divWithRemainder)
+import Data.Constraint.Nat.Extra (cancelMulDiv, divWithRemainder)
 import Data.Proxy
 import Data.String
 import Hedgehog
@@ -140,7 +140,7 @@ wbRead
   . (KnownNat bs, KnownNat addressWidth)
   => BitVector addressWidth
   -> WishboneM2S addressWidth bs (Bytes bs)
-wbRead address = case timesNDivRU @bs @8 of
+wbRead address = case cancelMulDiv @bs @8 of
   Dict ->
     (emptyWishboneM2S @addressWidth)
     { addr = address

@@ -19,7 +19,7 @@ haxiomsGroup :: TestTree
 haxiomsGroup = testGroup "Haxioms"
   [ testPropertyNamed "timesDivRU holds" "prop_timesDivRU"  prop_timesDivRU
   , testPropertyNamed "clogProductRule holds" "prop_clogProductRule"  prop_clogProductRule
-  , testPropertyNamed "timesNDivRU holds" "prop_timesNDivRU" prop_timesNDivRU
+  , testPropertyNamed "cancelMulDiv holds" "prop_cancelMulDiv" prop_cancelMulDiv
   , testPropertyNamed "strictlyPositiveDivRu holds" "prop_strictlyPositiveDivRu" prop_strictlyPositiveDivRu
   , testPropertyNamed "leMaxLeft holds" "prop_leMaxLeft" prop_leMaxLeft
   , testPropertyNamed "leMaxRight holds" "prop_leMaxRight" prop_leMaxRight
@@ -86,10 +86,10 @@ prop_clogProductRule = property $ do
 --
 --     1 <= b
 --
--- Tests: 'Data.Constraint.Nat.Extra.timesNDivRU'.
+-- Tests: 'Data.Constraint.Nat.Extra.cancelMulDiv'.
 --
-prop_timesNDivRU :: Property
-prop_timesNDivRU = property $ do
+prop_cancelMulDiv :: Property
+prop_cancelMulDiv = property $ do
   a <- forAll (genNatural 0)
   b <- forAll (genNatural 1)
   divRU (a * b) b === a
