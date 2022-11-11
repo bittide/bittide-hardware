@@ -12,6 +12,8 @@ where
 import Clash.Prelude
 
 import Bittide.ClockControl
+import Data.Constraint
+import Data.Constraint.Nat.Extra (euclid3)
 
 import qualified Clash.Signal.Delayed as D
 import qualified Clash.Cores.Xilinx.Floating as F
@@ -43,6 +45,35 @@ wrappingCounter upper = counter
   go 0 = upper
   go n = pred n
 
+-- | A version of 'sum' that is guaranteed not to overflow.
+safeSum ::
+  ( KnownNat n
+  , KnownNat m
+  , 1 <= n
+  ) =>
+  Vec n (Unsigned m) ->
+  Unsigned (m + n - 1)
+safeSum = sum . map extend
+
+-- | Sum a bunch of 'Unsigned's to a @Signed 32@, without overflowing.
+sumTo32 ::
+  forall n m .
+  ( KnownNat m
+  , KnownNat n
+  , (m + n) <= 32
+  , 1 <= n
+  ) =>
+  Vec n (Unsigned m) ->
+  Signed 32
+sumTo32 =
+    extend @_ @_ @(32 - (m+n))
+  . unsignedToSigned
+  . safeSum
+
+-- | Safe 'Unsigned' to 'Signed' conversion
+unsignedToSigned :: forall n. KnownNat n => Unsigned n -> Signed (n + 1)
+unsignedToSigned n = bitCoerce (zeroExtend n)
+
 -- | Clock correction strategy based on:
 --
 --   https://github.com/bittide/Callisto.jl
@@ -57,14 +88,24 @@ wrappingCounter upper = counter
 --   * These algorithms will probably run on a Risc core in the future.
 --
 callisto ::
-  forall n dom.
-  (HiddenClockResetEnable dom, KnownNat n, 1 <= n) =>
+  forall m n dom.
+  ( HiddenClockResetEnable dom
+  , KnownNat n
+  , KnownNat m
+  , 1 <= n
+  , 1 <= m
+
+  -- 'callisto' sums incoming 'DataCount's and feeds them to a Xilinx signed to
+  -- float IP. We can currently only interpret 32 bit signeds to unsigned, so to
+  -- make sure we don't overflow any addition we force @n + m <= 32@.
+  , n + m <= 32
+  ) =>
   -- | Target data count. See 'targetDataCount'.
-  DataCount ->
+  DataCount m ->
   -- | Provide an update every /n/ cycles
   Unsigned 32 ->
   -- | Data counts from elastic buffers
-  Signal dom (Vec n DataCount) ->
+  Signal dom (Vec n (DataCount m)) ->
   -- | Speed change requested from clock multiplier
   Signal dom SpeedChange
 callisto targetCount updateEveryNCycles dataCounts =
@@ -93,7 +134,7 @@ callisto targetCount updateEveryNCycles dataCounts =
   -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
   --
   -- the constants here are chosen to match the above code.
-  k_p, k_i, fStep :: forall m. DSignal dom m Float
+  k_p, k_i, fStep :: forall d. DSignal dom d Float
   k_p = pure 2e-4
   k_i = pure 1e-11
   fStep = pure 5e-4
@@ -101,14 +142,14 @@ callisto targetCount updateEveryNCycles dataCounts =
   r_k :: DSignal dom F.FromS32DefDelay Float
   r_k = F.fromS32 $ D.fromSignal $
     let
-      -- These bit coerces are fairly dangerous / unchecked.
-      --
-      -- TODO: Defend datatypes (why they don't overflow), or propagate errors up.
-      measuredSum = bitCoerce . sum <$> dataCounts
-      targetCountS = bitCoerce targetCount
       nBuffers = natToNum @n
+      measuredSum = sumTo32 <$> dataCounts
+      targetCountSigned =
+        case euclid3 @n @m @32 of
+          Dict ->
+            extend @_ @_ @(32 - m - 1) (unsignedToSigned targetCount)
     in
-      measuredSum - pure (targetCountS * nBuffers)
+      measuredSum - pure (targetCountSigned * nBuffers)
 
   x_kNext :: DSignal dom (F.FromS32DefDelay + F.MulDefDelay + F.AddDefDelay) Float
   x_kNext = D.delayI (errorX "callisto: No start value [3]") x_k `F.add` (p `F.mul` r_k)

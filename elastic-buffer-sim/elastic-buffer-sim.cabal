@@ -76,10 +76,12 @@ library
   build-depends:
     array,
     aeson,
+    bittide,
     bytestring,
     cassava,
-    containers,
     clash-cores,
+    constraints,
+    containers,
     directory,
     matplotlib,
     random,

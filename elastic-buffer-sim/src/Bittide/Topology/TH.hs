@@ -27,7 +27,9 @@ import Data.Bifunctor (bimap)
 import Data.Csv (encode)
 import Data.Graph (Graph)
 import Graphics.Matplotlib (Matplotlib, (%), file, plot, xlabel, ylabel)
-import Language.Haskell.TH (Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), Stmt (..), Type (..), newName)
+import Language.Haskell.TH
+  ( Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), Stmt (..)
+  , Type (..), TyLit (..), newName )
 import Language.Haskell.TH.Syntax (lift)
 import Numeric.Natural (Natural)
 import System.Directory (createDirectoryIfMissing)
@@ -366,7 +368,7 @@ extractPeriods _ = pure (Clash.snatToNum (Clash.clockPeriod @dom))
 -- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
 -- offsets (divergence from spec) and returns a tuple of signals for each clock
 -- domain
-simNodesFromGraph :: ClockControlConfig -> Graph -> Q Exp
+simNodesFromGraph :: ClockControlConfig m -> Graph -> Q Exp
 simNodesFromGraph ccc g = do
   offsets <- traverse (\i -> newName ("offsets" ++ show i)) indices
   clockNames <- traverse (\i -> newName ("clock" ++ show i)) indicesArr
@@ -439,11 +441,11 @@ simNodesFromGraph ccc g = do
   tunableClockGenV = VarE 'tunableClockGen
   resetGenV = VarE 'Clash.resetGen
   enableGenV = VarE 'Clash.enableGen
-  ebClkClk = ebV `AppE` errC `AppE` ebSize
+  ebClkClk = ebV `AppTypeE` LitT (NumTyLit ebSize) `AppE` errC
   callistoClockControlV = VarE 'callistoClockControl
   mkVecE = foldr (\x -> AppE (AppE consC x)) nilC
 
-  ebSize = LitE (IntegerL (toInteger (cccBufferSize ccc)))
+  ebSize = Clash.snatToNum (cccBufferSize ccc)
   step = LitE (IntegerL (cccStepSize ccc))
   settlePeriod = LitE (IntegerL (toInteger (cccSettlePeriod ccc)))
 

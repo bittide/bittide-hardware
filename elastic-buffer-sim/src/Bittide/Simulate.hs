@@ -95,18 +95,15 @@ data OverflowMode
 -- | Simple model of a FIFO that only models the interesting part for conversion:
 -- data counts.
 elasticBuffer ::
-  forall readDom writeDom.
-  (HasCallStack, KnownDomain readDom, KnownDomain writeDom) =>
+  forall n readDom writeDom.
+  (HasCallStack, KnownDomain readDom, KnownDomain writeDom, KnownNat n) =>
   -- | What behavior to pick on underflow/overflow
   OverflowMode ->
-  -- | Size of FIFO. To reflect our target platforms, this should be a power of two
-  -- where typical sizes would probably be: 16, 32, 64, 128.
-  ElasticBufferSize ->
   Clock readDom ->
   Clock writeDom ->
-  Signal readDom DataCount
-elasticBuffer mode size clkRead clkWrite =
-  go (clockTicks clkWrite clkRead) (targetDataCount size)
+  Signal readDom (DataCount n)
+elasticBuffer mode clkRead clkWrite =
+  go (clockTicks clkWrite clkRead) targetDataCount
  where
   go (tick:ticks) !fillLevel =
     case tick of
@@ -119,7 +116,7 @@ elasticBuffer mode size clkRead clkWrite =
   goWrite ticks fillLevel = go ticks newFillLevel
    where
     newFillLevel
-      | fillLevel >= size = case mode of
+      | fillLevel == maxBound = case mode of
           Saturate -> fillLevel
           Error -> error "elasticBuffer: overflow"
       | otherwise = fillLevel + 1
