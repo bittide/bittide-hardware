@@ -14,7 +14,7 @@ import Clash.Hedgehog.Sized.BitVector
 import Clash.Hedgehog.Sized.Vector
 import Clash.Sized.Vector(unsafeFromList)
 import Data.Constraint (Dict(Dict))
-import Data.Constraint.Nat.Extra (timesNDivRU, timesNDivRU'')
+import Data.Constraint.Nat.Extra (cancelMulDiv, divWithRemainder)
 import Data.Proxy
 import Data.String
 import Hedgehog
@@ -140,7 +140,7 @@ wbRead
   . (KnownNat bs, KnownNat addressWidth)
   => BitVector addressWidth
   -> WishboneM2S addressWidth bs (Bytes bs)
-wbRead address = case timesNDivRU @bs @8 of
+wbRead address = case cancelMulDiv @bs @8 of
   Dict ->
     (emptyWishboneM2S @addressWidth)
     { addr = address
@@ -199,7 +199,7 @@ simpleSlave ::
   Signal dom (WishboneM2S (bs * 8) bs (Bytes bs)) ->
   Signal dom (WishboneS2M (Bytes bs))
 simpleSlave range readData wbIn =
-  case timesNDivRU'' @bs @8 of
+  case divWithRemainder @bs @8 @7 of
     Dict -> fst $ toSignals circuit (wbIn, ())
  where
   circuit = validatorCircuit |> simpleSlave' @dom @(bs * 8) @bs range readData

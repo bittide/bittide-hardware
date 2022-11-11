@@ -180,16 +180,15 @@ rxUnit preamble localCounter linkIn wbIn = wbOut
     shiftNew :: BitVector (ShiftRegWidth paw scw)
     shiftNew
       | firstFrame
-      , Dict <- lessThanMax @paw @(scw + scw) @scw
       = setLowerSlice (pack lc ++# withShifted) shiftOld
-      | Dict <- lessThanMax @paw @(scw + scw) @scw
+      | Dict <- leMaxRight @paw @scw @scw
       = setLowerSlice withShifted shiftOld
 
     nextState
       | lastFrame = Done
       | otherwise = CaptureSequenceCounter
 
-    nextCnt = case oneLTdivRU @scw @fw of
+    nextCnt = case strictlyPositiveDivRu @scw @fw of
       Dict -> satSucc SatWrap cnt
 
     regNew

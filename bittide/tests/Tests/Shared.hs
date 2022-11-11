@@ -12,7 +12,7 @@ import Clash.Prelude
 
 import Clash.Hedgehog.Sized.Unsigned
 import Data.Constraint (Dict(Dict))
-import Data.Constraint.Nat.Extra (timesNDivRU'')
+import Data.Constraint.Nat.Extra (divWithRemainder)
 import GHC.Stack (HasCallStack)
 import Hedgehog
 import Protocols (toSignals)
@@ -190,6 +190,6 @@ validateWb m2s0 s2m0 = (m2s1, s2m1)
  where
   validate = toSignals $ validatorCircuit @dom @aw @(Bytes bs)
   (s2m1, m2s1) =
-    case timesNDivRU'' @bs @8 of
+    case divWithRemainder @bs @8 @7 of
       Dict ->
         validate (m2s0, s2m0)

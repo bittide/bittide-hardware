@@ -90,7 +90,13 @@ deriving newtype instance (KnownNat bw, Paddable a, NFDataX a, NFDataX (Padded b
   NFDataX (Padded bw a)
 
 -- | Transforms a @BitVector bw@ containing a @Padded bw a@ to _Padded_.
-bvAsPadded :: forall bw a. (Paddable a, KnownNat bw) => BitVector bw -> Padded bw a
+bvAsPadded ::
+  forall bw a.
+  ( Paddable a
+  , KnownNat bw
+  , 1 <= bw ) =>
+  BitVector bw ->
+  Padded bw a
 bvAsPadded bv =
   case timesDivRU @bw @(BitSize a) of
     Dict -> case sameNat (Proxy @(Pad a bw + BitSize a)) (Proxy @bw) of
@@ -98,22 +104,39 @@ bvAsPadded bv =
       _ -> error "bvAsPadded: Negative padding"
 
 -- | Gets the stored data from a _RegisterBank_.
-registersToData :: (Paddable a, KnownNat regSize) => RegisterBank regSize a -> a
+registersToData ::
+  ( Paddable a
+  , KnownNat regSize
+  , 1 <= regSize ) =>
+  RegisterBank regSize a ->
+  a
 registersToData = paddedToData . registersToPadded
 
 -- | Transforms _Padded_ to _RegisterBank_.
-paddedToRegisters :: forall bw a . (BitPack a, KnownNat bw) => Padded bw a -> RegisterBank bw a
+paddedToRegisters ::
+  forall bw a.
+  ( BitPack a
+  , KnownNat bw
+  , 1 <= bw ) =>
+  Padded bw a ->
+  RegisterBank bw a
 paddedToRegisters (Padded a) = case timesDivRU @bw @(BitSize a) of
   Dict -> RegisterBank (unpack ((0b0 :: BitVector (Pad a bw)) ++# pack a))
 
 -- | Transforms _RegisterBank_ to _Padded_.
-registersToPadded :: forall bw a . (Paddable a, KnownNat bw) => RegisterBank bw a -> Padded bw a
+registersToPadded ::
+  forall bw a.
+  ( Paddable a
+  , KnownNat bw
+  , 1 <= bw ) =>
+  RegisterBank bw a ->
+  Padded bw a
 registersToPadded (RegisterBank vec) =
   case timesDivRU @bw @(BitSize a) of
     Dict -> Padded . unpack . snd $ split @_ @(Pad a bw) @(BitSize a) (pack vec)
 
 -- Stores its argument in a _RegisterBank_ based on a context-supplied register size.
-getRegs :: (BitPack a, KnownNat regSize) => a -> RegisterBank regSize a
+getRegs :: (BitPack a, KnownNat regSize, 1 <= regSize) => a -> RegisterBank regSize a
 getRegs = paddedToRegisters . Padded
 
 -- | Coerces a tuple of index n and a boolean to index (n*2) where the LSB of the result
@@ -124,7 +147,7 @@ mul2Index ::
   Index n ->
   b ->
   Index (n*2)
-mul2Index n b= case clog2axiom @n of Refl -> bitCoerce (n, b)
+mul2Index n b= case clogProductRule @n of Refl -> bitCoerce (n, b)
 
 -- | Coerces an index of size (n*2) to index n with the LSB as separate boolean.
 div2Index ::
@@ -132,7 +155,7 @@ div2Index ::
   (KnownNat n, 1 <= n, BitPack b, BitSize b ~ 1) =>
   Index (n*2) ->
   (Index n, b)
-div2Index = case clog2axiom @n of Refl -> bitCoerce
+div2Index = case clogProductRule @n of Refl -> bitCoerce
 
 -- | Delays the output controls to align them with the actual read / write timing.
 delayControls ::

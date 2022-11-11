@@ -16,7 +16,7 @@ import Clash.Prelude hiding (fromList)
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Sized.Vector
 import Data.Constraint (Dict(Dict))
-import Data.Constraint.Nat.Extra (timesNDivRU'')
+import Data.Constraint.Nat.Extra (divWithRemainder)
 import Data.Maybe
 import Data.String
 import GHC.Stack
@@ -156,7 +156,7 @@ txSendSC = property $ do
             ) ->
           Signal System (WishboneS2M (Bytes bs), Maybe (BitVector fw))
         topEntity (unbundle -> (scIn, wbIn0, linkIn)) =
-          case timesNDivRU'' @bs @8 of
+          case divWithRemainder @bs @8 @7 of
             Dict -> bundle $ withClockResetEnable
               clockGen resetGen enableGen configTxUnit bs aw pw fw scw preamble scIn linkIn wbIn0
         -- Compensate for the register write + state machine start delays.
@@ -202,7 +202,7 @@ txSendSC = property $ do
       simOut === expectedOutput
 
 -- | Convert any value a to a list of frames.
-valToFrames :: forall n a . (KnownNat n, Paddable a) => a -> [DataLink n]
+valToFrames :: forall n a . (KnownNat n, 1 <= n, Paddable a) => a -> [DataLink n]
 valToFrames sc = fmap Just out
   where
   RegisterBank (toList -> out) = getRegs sc
