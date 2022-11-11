@@ -23,7 +23,7 @@ haxiomsGroup = testGroup "Haxioms"
   , testPropertyNamed "oneLTdivRU holds" "prop_oneLTdivRU" prop_oneLTdivRU
   , testPropertyNamed "leMaxLeft holds" "prop_leMaxLeft" prop_leMaxLeft
   , testPropertyNamed "leMaxRight holds" "prop_leMaxRight" prop_leMaxRight
-  , testPropertyNamed "divWithRemainer holds" "prop_divWithRemainer" prop_divWithRemainer
+  , testPropertyNamed "divWithRemainder holds" "prop_divWithRemainder" prop_divWithRemainder
   ]
 
 -- | Given that naturals in this module are used in proofs, we don't bother
@@ -32,10 +32,15 @@ haxiomsGroup = testGroup "Haxioms"
 genNatural :: Natural -> Gen Natural
 genNatural min_ = Gen.integral (Range.linear min_ 1000)
 
+-- | Like 'CLog', but at term-level. Operates on 'Double's internally, so it will
+-- probably fail on very large naturals. This is irrelevant for this module though,
+-- see 'genNatural'.
+--
 clog :: Natural -> Natural -> Natural
 clog (fromIntegral -> base) (fromIntegral -> value) =
   ceiling (logBase @Double base value)
 
+-- | Like 'DivRU', but at term-level.
 divRU :: Natural -> Natural -> Natural
 divRU dividend divider =
   case dividend `divMod` divider of
@@ -49,6 +54,8 @@ divRU dividend divider =
 -- Given:
 --
 --      1 <= a
+--
+-- Tests: 'Data.Constraint.Nat.Extra.timesDivRU'.
 --
 prop_timesDivRU :: Property
 prop_timesDivRU = property $ do
@@ -64,6 +71,8 @@ prop_timesDivRU = property $ do
 --
 --     1 <= n
 --
+-- Tests: 'Data.Constraint.Nat.Extra.clog2axiom'.
+--
 prop_clog2axiom :: Property
 prop_clog2axiom = property $ do
   n <- forAll (genNatural 1)
@@ -76,6 +85,8 @@ prop_clog2axiom = property $ do
 -- Given:
 --
 --     1 <= b
+--
+-- Tests: 'Data.Constraint.Nat.Extra.timesNDivRU'.
 --
 prop_timesNDivRU :: Property
 prop_timesNDivRU = property $ do
@@ -91,6 +102,8 @@ prop_timesNDivRU = property $ do
 --
 --     1 <= a, 1 <= b
 --
+-- Tests: 'Data.Constraint.Nat.Extra.oneLTdivRU'.
+--
 prop_oneLTdivRU :: Property
 prop_oneLTdivRU = property $ do
   a <- forAll (genNatural 1)
@@ -100,6 +113,8 @@ prop_oneLTdivRU = property $ do
 -- | Test whether the following equation holds:
 --
 --     a <= Max (a + c) b
+--
+-- Tests: 'Data.Constraint.Nat.Extra.leMaxLeft'.
 --
 prop_leMaxLeft :: Property
 prop_leMaxLeft = property $ do
@@ -111,6 +126,8 @@ prop_leMaxLeft = property $ do
 -- | Test whether the following equation holds:
 --
 --     b <= Max a (b + c)
+--
+-- Tests: 'Data.Constraint.Nat.Extra.leMaxRight'.
 --
 prop_leMaxRight :: Property
 prop_leMaxRight = property $ do
@@ -127,8 +144,10 @@ prop_leMaxRight = property $ do
 --
 --     1 <= b, c <= (b - 1)
 --
-prop_divWithRemainer :: Property
-prop_divWithRemainer = property $ do
+-- Tests: 'Data.Constraint.Nat.Extra.divWithRemainder'.
+--
+prop_divWithRemainder :: Property
+prop_divWithRemainder = property $ do
   a <- forAll (genNatural 0)
   b <- forAll (genNatural 1)
   c <- forAll (Gen.integral (Range.linear 0 (b - 1)))
