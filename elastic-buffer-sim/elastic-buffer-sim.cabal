@@ -92,6 +92,7 @@ library
     Bittide.ClockControl.Strategies.Callisto
     Bittide.Simulate
     Bittide.Simulate.Ppm
+    Bittide.Simulate.Time
     Bittide.Topology
     Bittide.Topology.Graph
     Bittide.Topology.TH

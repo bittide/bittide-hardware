@@ -2,6 +2,9 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE NamedFieldPuns #-}
+
 -- | This module contains template haskell functions which lay out circuits
 -- using parts from "Bittide.Simulate"
 module Bittide.Topology.TH
@@ -26,12 +29,12 @@ import Control.Monad (replicateM, void, zipWithM)
 import Data.Bifunctor (bimap)
 import Data.Csv (encode)
 import Data.Graph (Graph)
+import Data.Proxy
 import Graphics.Matplotlib (Matplotlib, (%), file, plot, xlabel, ylabel)
 import Language.Haskell.TH
   ( Q, Body (..), Clause (..), Exp (..), Pat (..), Dec (..), Lit (..), Stmt (..)
   , Type (..), TyLit (..), newName )
 import Language.Haskell.TH.Syntax (lift)
-import Numeric.Natural (Natural)
 import System.Directory (createDirectoryIfMissing)
 import System.Random (randomRIO)
 
@@ -62,14 +65,14 @@ matplotWrite nm clockDats ebDats = do
   void $
     file
       ("_build/clocks" ++ nm ++ ".pdf")
-      (xlabel "Time (ps)" % ylabel "Period (ps)" % foldPlots clockDats)
+      (xlabel "Time (fs)" % ylabel "Relative period (fs) [0 = ideal frequency]" % foldPlots clockDats)
   void $
     file
       ("_build/elasticbuffers" ++ nm ++ ".pdf")
-      (xlabel "Time (ps)" % foldPlots ebDats)
+      (xlabel "Time (fs)" % foldPlots ebDats)
 
-genOffsN :: Int -> IO [Offset]
-genOffsN n = replicateM (n+1) genOffsets
+genOffsN :: Clash.KnownDomain dom => ClockControlConfig dom n -> Int -> IO [Offset]
+genOffsN ccc n = replicateM (n+1) (genOffsets ccc)
 
 -- | 'Graph' with a name for
 type GraphAPI = (String, Graph)
@@ -92,7 +95,7 @@ plotEbsAPI (nm, g) = do
   pure $
     LamE [VarP m, VarP k]
       (DoE Nothing
-        [ BindS (VarP offs) (VarE 'genOffsN `AppE` nE)
+        [ BindS (VarP offs) (VarE 'genOffsN `AppE` VarE 'defBittideClockConfig `AppE` nE)
         , LetS
             [ValD
               (VarP res)
@@ -118,7 +121,7 @@ plotEbsQ g = do
   let mV = VarE m
       kV = VarE k
       offsV = VarE offs
-  sim <- simNodesFromGraph defClockConfig g
+  sim <- simNodesFromGraph defBittideClockConfig g
   pd <- plotDats g
   let discardIntermediate = VarE 'takeEveryN `AppE` kV
   onNQ <- onN (n+1)
@@ -247,6 +250,7 @@ absTimes g = do
   tNames <- traverse (\j -> newName ("t" ++ show j)) [0..i]
   xss <- traverse (\j -> newName ("xs" ++ show j)) [0..i]
   periodNames <- traverse (\j -> newName ("period" ++ show j)) [0..i]
+  zeroE <- lift (Clash.Femtoseconds 0)
   x_ns <-
     zipWithM
       (\k n ->
@@ -282,10 +286,9 @@ absTimes g = do
         ]
   pure $ LetE [goD] (apply goE (replicate (i+1) zeroE))
  where
-  zeroE = LitE (IntegerL 0)
   consSignal = '(Clash.:-)
   consList = ConE '(:)
-  plusE = VarE '(+)
+  plusE = VarE 'addFs
   n_i = fmap length g
   (0, i) = A.bounds g
 
@@ -324,7 +327,7 @@ timeN n = do
  where
   consSignal = '(Clash.:-)
   consList = ConE '(:)
-  plusE = VarE '(+)
+  plusE = VarE 'addFs
 
 tup :: [Exp] -> Exp
 tup es = TupE (Just <$> es)
@@ -361,14 +364,14 @@ compose e0 = AppE (AppE (VarE '(.)) e0)
 extractPeriods ::
   forall dom. Clash.KnownDomain dom =>
   Clash.Clock dom ->
-  Clash.Signal dom Natural
+  Clash.Signal dom Clash.Femtoseconds
 extractPeriods (Clash.Clock _ (Just s)) = s
-extractPeriods _ = pure (Clash.snatToNum (Clash.clockPeriod @dom))
+extractPeriods _ = pure (clockPeriodFs @dom Proxy)
 
 -- | Given a graph with \(n\) nodes, generate a function which takes a list of \(n\)
 -- offsets (divergence from spec) and returns a tuple of signals for each clock
 -- domain
-simNodesFromGraph :: ClockControlConfig m -> Graph -> Q Exp
+simNodesFromGraph :: Clash.KnownDomain dom => ClockControlConfig dom m -> Graph -> Q Exp
 simNodesFromGraph ccc g = do
   offsets <- traverse (\i -> newName ("offsets" ++ show i)) indices
   clockNames <- traverse (\i -> newName ("clock" ++ show i)) indicesArr
@@ -376,6 +379,8 @@ simNodesFromGraph ccc g = do
   clockSignalNames <- traverse (\i -> newName ("clk" ++ show i ++ "Signal")) indicesArr
   ebNames <- traverse (\(i, j) -> newName ("eb" ++ show i ++ show j)) ebA
   cccE <- lift ccc
+  step <- lift (cccStepSize ccc)
+  settlePeriod <- lift (cccSettlePeriod ccc)
   let
     ebE i j =
         AppE
@@ -446,19 +451,14 @@ simNodesFromGraph ccc g = do
   mkVecE = foldr (\x -> AppE (AppE consC x)) nilC
 
   ebSize = Clash.snatToNum (cccBufferSize ccc)
-  step = LitE (IntegerL (cccStepSize ccc))
-  settlePeriod = LitE (IntegerL (toInteger (cccSettlePeriod ccc)))
 
 -- | Randomly generate a 'Offset', how much a real clock's period may differ
 -- from its spec.
-genOffsets :: IO Offset
-genOffsets =
-  (`subtract` toInteger specPeriod)
-    <$> randomRIO (toInteger minT, toInteger maxT)
- where
-  minT = speedUpPeriod specPpm specPeriod
-  maxT = slowDownPeriod specPpm specPeriod
-
--- | Clocks uncertainty is ±100 ppm
-specPpm :: Ppm
-specPpm = Ppm 100
+genOffsets ::
+  forall dom n.
+  Clash.KnownDomain dom =>
+  ClockControlConfig dom n ->
+  IO Offset
+genOffsets ClockControlConfig{cccDeviation} = do
+  offsetPpm <- randomRIO (-cccDeviation, cccDeviation)
+  pure (diffPeriod offsetPpm (clockPeriodFs @dom Proxy))

@@ -3,52 +3,79 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | Clock controller types and some constants/defaults.
 module Bittide.ClockControl
   ( ClockControlConfig (..)
   , DataCount
-  , ElasticBufferSize
   , SettlePeriod
   , SpeedChange (..)
   , defClockConfig
-  , specPeriod
+  , pessimisticSettleCycles
   , targetDataCount
+  , clockPeriodFs
   )
 where
 
 import Clash.Explicit.Prelude
+import Clash.Signal.Internal (Femtoseconds(..))
 import Data.Aeson (ToJSON(toJSON))
-import Numeric.Natural (Natural)
+import Data.Proxy (Proxy(..))
+import GHC.Stack (HasCallStack)
 
 import Bittide.Simulate.Ppm
+import Bittide.Simulate.Time (microseconds)
 
 import Data.Csv
 
-type ElasticBufferSize = Unsigned 32
 type DataCount n = Unsigned n
-type SettlePeriod = Natural
+type SettlePeriod = Femtoseconds
 
 -- | Configuration passed to 'clockControl'
-data ClockControlConfig n = ClockControlConfig
+data ClockControlConfig dom n = ClockControlConfig
   { -- | The quickest a clock could possibly run at. Used to (pessimistically)
     -- estimate when a new command can be issued.
-    cccPessimisticPeriod :: PeriodPs
+    --
+    -- TODO: Should be removed, it follows from other fields + domain.
+    --
+    cccPessimisticPeriod :: Femtoseconds
 
-  -- | Period it takes for a clock frequency request to settle. This is not
-  -- modelled, but an error is thrown if a request is submitted more often than
-  -- this. 'clockControl' should therefore not request changes more often.
-  , cccSettlePeriod :: PeriodPs
+    -- |  Like 'cccPessimisticPeriod', but expressed as number of cycles.
+    --
+    -- TODO: Should be removed, it follows from other fields + domain.
+    --
+  , cccPessimisticSettleCycles :: Unsigned 32
 
-  -- | Maximum divergence from initial clock frequency. Used to prevent frequency
-  -- runoff.
-  , cccDynamicRange :: Ppm
+    -- | Period it takes for a clock frequency request to settle. This is not
+    -- modelled, but an error is thrown if a request is submitted more often than
+    -- this. 'clockControl' should therefore not request changes more often.
+    --
+    -- This is a PLL property.
+    --
+  , cccSettlePeriod :: Femtoseconds
 
-  -- | The size of the clock frequency should "jump" on a speed change request.
-  , cccStepSize :: Integer
+    -- | Maximum deviation from "factory tuning". E.g., a clock tuned to 200 MHz
+    -- and a maximum deviation of +- 100 ppm can produce a signal anywhere
+    -- between 200 MHz +- 20 KHz.
+    --
+    -- This is an oscillator + PLL property.
+    --
+  , cccDeviation :: Ppm
 
-  -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
+    -- | Step size for frequency increments / decrements
+    --
+    -- This is a setting of the PLL. Note that though this is a setting, it is
+    -- programmed over I2C. For the time being, we expect it to be programmed
+    -- once after which only the FDEC/FINC pins will be used.
+    --
+    -- TODO: Should be expressed as PPM.
+    --
+  , cccStepSize :: Femtoseconds
+
+    -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
+    --
   , cccBufferSize :: SNat n
   } deriving (Lift)
 
@@ -75,23 +102,46 @@ instance KnownNat n => ToField (Unsigned n) where
 instance KnownNat n => ToJSON (Unsigned n) where
   toJSON = toJSON . toInteger
 
-defClockConfig :: ClockControlConfig 16
+instance ToField Femtoseconds where
+  toField (Femtoseconds fs) = toField fs
+
+instance ToJSON Femtoseconds where
+  toJSON (Femtoseconds fs) = toJSON fs
+
+clockPeriodFs :: forall dom. KnownDomain dom => Proxy dom -> Femtoseconds
+clockPeriodFs Proxy = Femtoseconds (1000 * snatToNum (clockPeriod @dom))
+
+defClockConfig :: forall dom. KnownDomain dom => ClockControlConfig dom 12
 defClockConfig = ClockControlConfig
-  { cccPessimisticPeriod = pessimisticPeriod
-  -- clock adjustment takes place at 1MHz, clock is 200MHz so we
-  -- can have at most one correction per 200 cycles
-  , cccSettlePeriod      = pessimisticPeriod * 200
-  , cccDynamicRange      = 150
-  , cccStepSize          = 1
-  , cccBufferSize        = d16 -- 2**16 ~ 65536
+  { cccPessimisticPeriod       = pessimisticPeriod
+  , cccPessimisticSettleCycles = pessimisticSettleCycles self
+  , cccSettlePeriod            = microseconds 1
+  , cccStepSize                = stepSize
+  , cccBufferSize              = d12 -- 2**12 ~ 4096
+  , cccDeviation               = Ppm 100
   }
  where
-  specPpm = 100
-  pessimisticPeriod = speedUpPeriod specPpm specPeriod
+  self = defClockConfig @dom
+  stepSize = diffPeriod (Ppm 1) (clockPeriodFs @dom Proxy)
+  pessimisticPeriod = adjustPeriod (cccDeviation self) (clockPeriodFs @dom Proxy)
 
--- we use 200kHz in simulation because otherwise the periods are so small that
--- deviations can't be expressed using 'Natural's
+-- | Number of cycles to wait on a given clock frequency and clock settings in
+-- order for the settle period to pass. /Pessimistic/ means that it calculates
+-- this for the fastest possible clock.
 --
--- see: https://github.com/clash-lang/clash-compiler/issues/2328
-specPeriod :: PeriodPs
-specPeriod = hzToPeriod 200e3
+pessimisticSettleCycles ::
+  forall dom n.
+  ( HasCallStack
+  , KnownDomain dom ) =>
+  ClockControlConfig dom n ->
+  -- | It would take a 10 GHz clock only a 10_000 cycles to wait 1 µs. This can be
+  -- met by an @Unsigned 14@: @2^14 ~ 16384@. To massively overkill it we bump it
+  -- up to 32 bits.
+  Unsigned 32
+pessimisticSettleCycles ClockControlConfig{cccSettlePeriod, cccDeviation} =
+  checkedFromIntegral nCycles
+ where
+  nCycles = (settlePeriod `div` pessimisticPeriod) + 1
+  Femtoseconds settlePeriod = cccSettlePeriod
+  period = clockPeriodFs @dom Proxy
+  Femtoseconds pessimisticPeriod = adjustPeriod cccDeviation period
