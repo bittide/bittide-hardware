@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# OPTIONS_GHC -fconstraint-solver-iterations=0 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -10,7 +10,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
--- | A unidirectional communication primitive tht moves a fixed-rate stream of frames
+-- | A unidirectional communication primitive that moves a fixed-rate stream of frames
 -- between a pair of nodes. The frame size can be unique for each link including the possibility
 -- of single bit frames. The links and infrastructure perform zero in-band signaling.
 -- A link starts with a 'gatherUnit' and 'txUnit' and is terminated by a 'rxUnit' and
