@@ -42,6 +42,7 @@ import Bittide.Simulate
 import Bittide.Simulate.Ppm
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
+import Bittide.ClockControl.ElasticBuffer
 import Bittide.Topology.TH.Domain
 import Graphics.Matplotlib.Ext
 
