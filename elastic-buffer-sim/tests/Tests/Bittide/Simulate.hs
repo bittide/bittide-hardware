@@ -14,7 +14,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import Bittide.ClockControl
-import Bittide.ClockControl.Strategies
+import Bittide.ClockControl.Callisto
 import Bittide.Simulate
 
 createDomain vXilinxSystem{vPeriod=hzToPeriod 200e6, vName="Fast"}

@@ -41,7 +41,7 @@ import System.Random (randomRIO)
 import Bittide.Simulate
 import Bittide.Simulate.Ppm
 import Bittide.ClockControl
-import Bittide.ClockControl.Strategies
+import Bittide.ClockControl.Callisto
 import Bittide.Topology.TH.Domain
 import Graphics.Matplotlib.Ext
 

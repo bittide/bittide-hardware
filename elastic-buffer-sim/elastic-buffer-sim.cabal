@@ -88,8 +88,8 @@ library
     template-haskell
   exposed-modules:
     Bittide.ClockControl
-    Bittide.ClockControl.Strategies
-    Bittide.ClockControl.Strategies.Callisto
+    Bittide.ClockControl.Callisto
+    Bittide.ClockControl.Callisto.Util
     Bittide.Simulate
     Bittide.Simulate.Ppm
     Bittide.Simulate.Time

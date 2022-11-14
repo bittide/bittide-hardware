@@ -2,22 +2,49 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards #-}
 
-module Bittide.ClockControl.Strategies.Callisto
-  ( callisto
-  )
-where
+-- | Mock clock controller
+module Bittide.ClockControl.Callisto
+  ( callistoClockControl
+  ) where
 
 import Clash.Prelude
 
-import Bittide.ClockControl
 import Data.Constraint
 import Data.Constraint.Nat.Extra (euclid3)
 
-import qualified Clash.Signal.Delayed as D
-import qualified Clash.Cores.Xilinx.Floating as F
+import Bittide.ClockControl
+import Bittide.ClockControl.Callisto.Util
 
+import qualified Clash.Cores.Xilinx.Floating as F
+import qualified Clash.Signal.Delayed as D
+
+-- | Determines how to influence clock frequency given statistics provided by
+-- all elastic buffers. See 'callisto' for more information.
+--
+callistoClockControl ::
+  forall n m dom.
+  ( KnownDomain dom
+  , KnownNat n
+  , KnownNat m
+  , 1 <= n
+  , 1 <= m
+  , n + m <= 32
+  ) =>
+  Clock dom ->
+  Reset dom ->
+  Enable dom ->
+  -- | Configuration for this component, see individual fields for more info.
+  ClockControlConfig dom m ->
+  -- | Statistics provided by elastic buffers.
+  Vec n (Signal dom (DataCount m)) ->
+  Signal dom SpeedChange
+callistoClockControl clk rst ena ClockControlConfig{..} =
+  withClockResetEnable clk rst ena $
+    callisto targetDataCount cccPessimisticSettleCycles . bundle
+
+-- | State used in 'callisto'
 data ControlSt = ControlSt
   { _x_k :: !Float
   -- ^ Integral of the measurement
@@ -31,48 +58,6 @@ data ControlSt = ControlSt
 -- | Initial state of control
 initState :: ControlSt
 initState = ControlSt 0 0 NoChange
-
--- | A counter that starts at a given value, counts down, and if it reaches
--- zero wraps around to the initial value.
-wrappingCounter ::
-  (HiddenClockResetEnable dom, KnownNat n) =>
-  Unsigned n ->
-  Signal dom (Unsigned n)
-wrappingCounter upper = counter
- where
-  counter = register upper (go <$> counter)
-
-  go 0 = upper
-  go n = pred n
-
--- | A version of 'sum' that is guaranteed not to overflow.
-safeSum ::
-  ( KnownNat n
-  , KnownNat m
-  , 1 <= n
-  ) =>
-  Vec n (Unsigned m) ->
-  Unsigned (m + n - 1)
-safeSum = sum . map extend
-
--- | Sum a bunch of 'Unsigned's to a @Signed 32@, without overflowing.
-sumTo32 ::
-  forall n m .
-  ( KnownNat m
-  , KnownNat n
-  , (m + n) <= 32
-  , 1 <= n
-  ) =>
-  Vec n (Unsigned m) ->
-  Signed 32
-sumTo32 =
-    extend @_ @_ @(32 - (m+n))
-  . unsignedToSigned
-  . safeSum
-
--- | Safe 'Unsigned' to 'Signed' conversion
-unsignedToSigned :: forall n. KnownNat n => Unsigned n -> Signed (n + 1)
-unsignedToSigned n = bitCoerce (zeroExtend n)
 
 -- | Clock correction strategy based on:
 --
