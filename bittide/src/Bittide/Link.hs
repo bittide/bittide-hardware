@@ -2,13 +2,20 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# OPTIONS_GHC -fconstraint-solver-iterations=0 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
 
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
+-- | A unidirectional communication primitive that moves a fixed-rate stream of frames
+-- between a pair of nodes. The frame size can be unique for each link including the possibility
+-- of single bit frames. The links and infrastructure perform zero in-band signaling.
+-- A link starts with a 'gatherUnit' and 'txUnit' and is terminated by a 'rxUnit' and
+-- 'scatterUnit'. A 'Bittide.Switch' contains single depth versions of the 'gatherUnit'
+-- and 'scatterUnit' that essentially reduce to a single 'register'.
 module Bittide.Link where
 
 import Clash.Prelude
@@ -19,8 +26,8 @@ import Data.Maybe
 import Protocols.Wishbone
 
 import Bittide.DoubleBufferedRam
+import Bittide.ScatterGather
 import Bittide.SharedTypes
-
 
 -- Internal states of the txUnit.
 data TransmissionState preambleWidth seqCountWidth frameWidth
@@ -207,6 +214,99 @@ setLowerSlice ::
   BitVector bv ->
   BitVector bv
 setLowerSlice = setSlice @_ @_ @(bv - slice) (SNat @(slice -1)) d0
+
+-- | Configuration for a 'Bittide.Link.
+data LinkConfig nBytes addrW where
+  LinkConfig ::
+    (KnownNat preambleWidth, 1 <= preambleWidth) =>
+    -- | Preamble for 'txUnit' and 'rxUnit'.
+    BitVector preambleWidth ->
+    -- | Configuration for the receiving 'scatterUnitWb'.
+    ScatterConfig nBytes addrW ->
+    -- | Configuration for the transmitting 'gatherUnitWb'
+    GatherConfig nBytes addrW ->
+    LinkConfig nBytes addrW
+
+-- | Offers interfaces to connect an incoming 'Bittide.Link' to a 'processingElement',
+--  consists of a 'rxUnit' and 'scatterUnitWb'. The busses for the
+-- 'scatterUnitWb's 'calendar' and 'rxUnit' are exposed for the 'managementUnit',
+-- the bus for the 'scatterUnitWb's memory interface is exposed for the 'processingElement'.
+linkToPe ::
+  forall dom scw nBytesMu addrWMu addrWPe .
+  ( HiddenClockResetEnable dom
+  , KnownNat nBytesMu, 1 <= nBytesMu
+  , KnownNat addrWMu, 2 <= addrWMu
+  , KnownNat addrWPe, 2 <= addrWPe
+  , KnownNat scw, 1 <= scw)=>
+  -- | Configuration for a 'Bittide.Link', the receiving end uses this for its @preamble@
+  -- and 'ScatterConfig'.
+  LinkConfig nBytesMu addrWMu ->
+  -- | Incoming 'Bittide.Link'.
+  Signal dom (DataLink 64) ->
+  -- | Input for local 'sequenceCounter'.
+  Signal dom (Unsigned scw) ->
+  -- | Master input for the 'scatterUnitWb's memory interface.
+  Signal dom (WishboneM2S addrWPe 4 (Bytes 4)) ->
+  -- | Master bus for the 'rxUnit' and the 'scatterUnitWb's 'calendar', respectively.
+  Vec 2 (Signal dom (WishboneM2S addrWMu nBytesMu (Bytes nBytesMu))) ->
+  -- |
+  --   ( Slave output for the 'scatterUnitWb's memory interface
+  --   , Slave outputs for the 'rxUnit' and 'scatterUnitWb's 'calendar', respectively)
+  ( Signal dom (WishboneS2M (Bytes 4))
+  , Vec 2 (Signal dom (WishboneS2M (Bytes nBytesMu))))
+linkToPe linkConfig linkIn localCounter peM2S linkM2S = case linkConfig of
+  LinkConfig preamble scatConfig _ -> (peS2M, linkS2M)
+   where
+    linkS2M =  rxS2M :> calS2M :> Nil
+    (rxM2S :> calM2S :> Nil) = linkM2S
+    rxS2M = rxUnit preamble localCounter linkIn rxM2S
+    (peS2M,calS2M) = scatterUnitWb scatConfig calM2S linkIn peM2S
+
+
+-- | Offers interfaces to connect an outgoing 'Bittide.Link' to a 'processingElement',
+--  consists of a 'txUnit' and 'gatherUnitWb'. The busses for the
+-- 'gatherUnitWb's 'calendar' and 'txUnit' are exposed for the 'managementUnit',
+-- the bus for the 'gatherUnitWb's memory interface is exposed for the 'processingElement'.
+peToLink ::
+  forall dom scw nBytesMu addrWMu addrWPe .
+  ( HiddenClockResetEnable dom
+  , KnownNat nBytesMu, 1 <= nBytesMu
+  , KnownNat addrWMu, 2 <= addrWMu
+  , KnownNat addrWPe, 2 <= addrWPe
+  , KnownNat scw, 1 <= scw) =>
+  -- | Configuration for a 'Bittide.Link', the transmitting end uses this for its @preamble@
+  -- and 'GatherConfig'.
+  LinkConfig nBytesMu addrWMu ->
+  -- | Input for local 'sequenceCounter'.
+  Signal dom (Unsigned scw) ->
+  -- | Master input for the 'gatherUnitWb's memory interface.
+  Signal dom (WishboneM2S addrWPe 4 (Bytes 4)) ->
+  -- | Master bus for the 'txUnit' and the 'gatherUnitWb's 'calendar', respectively.
+  Vec 2 (Signal dom (WishboneM2S addrWMu nBytesMu (Bytes nBytesMu))) ->
+  -- |
+  --   ( Outgoing 'Bittide.Link'
+  --   , Slave output for the 'gatherUnitWb's memory interface
+  --   , Slave outputs for the 'txUnit' and 'gatherUnitWb's 'calendar', respectively)
+  ( Signal dom (DataLink 64)
+  , Signal dom (WishboneS2M (Bytes 4))
+  , Vec 2 (Signal dom (WishboneS2M (Bytes nBytesMu))))
+peToLink linkConfig localCounter peM2S linkM2S = case linkConfig of
+  LinkConfig preamble _ gathConfig -> go preamble gathConfig
+ where
+  go ::
+    forall preambleWidth .
+    ( KnownNat preambleWidth, 1 <= preambleWidth) =>
+    BitVector preambleWidth ->
+    GatherConfig nBytesMu addrWMu ->
+    ( Signal dom (DataLink 64)
+    , Signal dom (WishboneS2M (Bytes 4))
+    , Vec 2 (Signal dom (WishboneS2M (Bytes nBytesMu))))
+  go preamble calConfig = (linkOut, peS2M, linkS2M)
+   where
+    linkS2M =  txS2M :> calS2M :> Nil
+    (txM2S :> calM2S :> Nil) = linkM2S
+    (txS2M,linkOut) = txUnit preamble localCounter gatherOut txM2S
+    (gatherOut, peS2M,calS2M) = gatherUnitWb calConfig calM2S peM2S
 
 -- | Counts the number of cycles since the last reset. Initially Unsigned 64 has been
 --  picked because it's unlikely to overflow in the lifetime of a Bittide system.
