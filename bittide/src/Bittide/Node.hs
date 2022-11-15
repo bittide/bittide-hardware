@@ -32,14 +32,16 @@ simpleNodeConfig =
     (repeat (GppeConfig linkConfig peConfig))
  where
   switchConfig = SwitchConfig{ preamble = preamble', calendarConfig = switchCal}
-  switchCal = CalendarConfig (SNat @1024) (repeat @1 $ repeat 0) (repeat @1 $ repeat 0)
+  switchCal = CalendarConfig (SNat @1024) (switchEntry :> Nil) (switchEntry :> Nil)
   linkConfig = LinkConfig preamble' (ScatterConfig sgConfig) (GatherConfig sgConfig)
-  sgConfig = CalendarConfig (SNat @1024) (repeat @1 (0 :: Index 1024)) (repeat @1 0)
+  sgConfig = CalendarConfig (SNat @1024) (sgEntry :> Nil) (sgEntry :> Nil)
   peConfig = PeConfig memMapPe (Undefined @8192) (Undefined @8192) 0
   nmuConfig = PeConfig memMapNmu (Undefined @8192) (Undefined @8192) 0
   memMapPe = iterateI (+0x1000) 0
   memMapNmu = iterateI (+0x1000) 0
   preamble' = 0xDEADBEEFA5A5A5A5FACADE :: BitVector 96
+  switchEntry = ValidEntry{veEntry = repeat 0, veRepeat = 0 :: Unsigned 0}
+  sgEntry = ValidEntry{veEntry = 0 :: Index 1024 , veRepeat = 0 :: Unsigned 0}
 
 -- | Each 'gppe' results in 4 busses for the 'managementUnit', namely:
 -- * The 'calendar' for the 'scatterUnitWB'.
