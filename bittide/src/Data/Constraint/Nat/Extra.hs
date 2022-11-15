@@ -13,7 +13,10 @@ solved by the constraint solver.
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Data.Constraint.Nat.Extra where
+module Data.Constraint.Nat.Extra
+  ( module Data.Constraint.Nat.Extra
+  , Data.Constraint.Dict(..)
+  ) where
 
 import Data.Constraint
 import Data.Type.Equality
@@ -61,3 +64,7 @@ strictlyPositiveDivRu = unsafeCoerce (Dict :: Dict ())
 -- are equal/.
 euclid3 :: forall a b c . (a + b <= c) => Dict (a <= c - b)
 euclid3 = unsafeCoerce (Dict :: Dict ())
+
+-- | if (2 <= n) holds, then (1 <= CLog 2 n) also holds.
+oneLeCLog2n :: forall n . (2 <= n) => Dict (1 <= CLog 2 n)
+oneLeCLog2n = unsafeCoerce unsafeCoerce (Dict :: Dict ())

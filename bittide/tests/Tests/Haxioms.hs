@@ -25,6 +25,7 @@ haxiomsGroup = testGroup "Haxioms"
   , testPropertyNamed "leMaxRight holds" "prop_leMaxRight" prop_leMaxRight
   , testPropertyNamed "divWithRemainder holds" "prop_divWithRemainder" prop_divWithRemainder
   , testPropertyNamed "euclid3 holds" "prop_euclid3" prop_euclid3
+  , testPropertyNamed "prop_oneLeCLog2n holds" "prop_oneLeCLog2n" prop_oneLeCLog2n
   ]
 
 -- | Generate a 'Natural' greater than or equal to /n/. Can generate 'Natural's
@@ -168,3 +169,16 @@ prop_euclid3 = property $ do
   b <- forAll (genNatural 0)
   c <- forAll (genNatural (a + b))
   (a + b <= c) === (a <= c - b)
+
+-- | Test whether the following equation (supplied by 'oneLeCLog2n') holds:
+--
+--     1 <= CLog 2 n
+--
+-- Given:
+--
+--     2 <= n
+--
+prop_oneLeCLog2n :: Property
+prop_oneLeCLog2n = property $ do
+  n <- forAll (genNatural 2)
+  assert (1 <= clog 2 n)

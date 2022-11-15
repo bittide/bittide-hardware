@@ -47,7 +47,9 @@ data GatherConfig nBytes addrW where
 scatterUnit ::
   ( HiddenClockResetEnable dom
   , KnownNat memDepth, 1 <= memDepth
-  , KnownNat frameWidth) =>
+  , KnownNat frameWidth
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat addrW, 2 <= addrW) =>
   -- | Configuration for the 'calendar'.
   CalendarConfig nBytes addrW (Index memDepth) ->
   -- | Wishbone (master -> slave) port for the 'calendar'.
@@ -56,15 +58,17 @@ scatterUnit ::
   Signal dom (DataLink frameWidth) ->
   -- | Read address.
   Signal dom (Index memDepth) ->
-  -- | (Data at read address delayed 1 cycle, Wishbone (slave -> master) from 'calendar')
-  (Signal dom (BitVector frameWidth), Signal dom (WishboneS2M (Bytes nBytes)))
-scatterUnit calConfig wbIn linkIn readAddr = (readOut, wbOut)
+  -- | 1. Data at read address delayed 1 cycle
+  --   2. Wishbone (slave -> master) from 'calendar')
+  --   3. End of metacycle.
+  (Signal dom (BitVector frameWidth), Signal dom (WishboneS2M (Bytes nBytes)), Signal dom Bool)
+scatterUnit calConfig wbIn linkIn readAddr = (readOut, wbOut, endOfMetacycle)
  where
-  (writeAddr, metaCycle, wbOut) = mkCalendar calConfig wbIn
+  (writeAddr, endOfMetacycle, wbOut) = mkCalendar calConfig wbIn
   writeOp = (\a b -> (a,) <$> b) <$> writeAddr <*> linkIn
   readOut = doubleBufferedRamU bufSelect0 readAddr writeOp
   bufSelect0 = register A bufSelect1
-  bufSelect1 = mux metaCycle (swapAorB <$> bufSelect0) bufSelect0
+  bufSelect1 = mux endOfMetacycle (swapAorB <$> bufSelect0) bufSelect0
 
 -- | Double buffered memory component that can be written to by a generic write operation. The
 -- write address of the incoming frame is determined by the incorporated 'calendar'. The
@@ -75,7 +79,9 @@ gatherUnit ::
   ( HiddenClockResetEnable dom
   , KnownNat memDepth, 1 <= memDepth
   , KnownNat frameWidth, 1 <= frameWidth
-  , KnownNat (DivRU frameWidth 8), 1 <= (DivRU frameWidth 8)) =>
+  , KnownNat (DivRU frameWidth 8), 1 <= (DivRU frameWidth 8)
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat addrW, 2 <= addrW) =>
   -- | Configuration for the 'calendar'.
   CalendarConfig nBytes addrW (Index memDepth) ->
   -- | Wishbone (master -> slave) port for the 'calendar'.
@@ -84,16 +90,18 @@ gatherUnit ::
   Signal dom (Maybe (LocatedBits memDepth frameWidth)) ->
   -- | Byte enable for write operation.
   Signal dom (ByteEnable (BitVector frameWidth)) ->
-  -- | (Transmitted  frame to Bittide Link, Wishbone (slave -> master) from 'calendar')
-  (Signal dom (DataLink frameWidth), Signal dom (WishboneS2M (Bytes nBytes)))
-gatherUnit calConfig wbIn writeOp byteEnables= (linkOut, wbOut)
+  -- | 1. Frame to Bittide Link.
+  --   2. Wishbone (slave -> master) from 'calendar')
+  --   3. End of metacycle.
+  (Signal dom (DataLink frameWidth), Signal dom (WishboneS2M (Bytes nBytes)), Signal dom Bool)
+gatherUnit calConfig wbIn writeOp byteEnables = (linkOut, wbOut, endOfMetacycle)
  where
-  (readAddr, metaCycle, wbOut) = mkCalendar calConfig wbIn
+  (readAddr, endOfMetacycle, wbOut) = mkCalendar calConfig wbIn
   linkOut = mux (register True ((==0) <$> readAddr)) (pure Nothing) (Just <$> bramOut)
   bramOut = doubleBufferedRamByteAddressableU
     (bitCoerce <$> bufSelect0) readAddr writeOp byteEnables
   bufSelect0 = register A bufSelect1
-  bufSelect1 = mux metaCycle (swapAorB <$> bufSelect0) bufSelect0
+  bufSelect1 = mux endOfMetacycle (swapAorB <$> bufSelect0) bufSelect0
 
 -- | Wishbone interface for the 'scatterUnit' and 'gatherUnit'. It makes the scatter and gather
 -- unit, which operate on 64 bit frames, addressable via a 32 bit wishbone bus.
@@ -102,28 +110,57 @@ wbInterface ::
   ( KnownNat nBytes
   , KnownNat addresses, 1 <= addresses
   , KnownNat addrW, 2 <= addrW) =>
-  -- | Maximum address of the respective memory element as seen from the wishbone side.
-  Index addresses ->
   -- | Wishbone (master -> slave) data.
   WishboneM2S addrW nBytes (Bytes nBytes) ->
   -- | Read data to be send to over the (slave -> master) port.
   Bytes nBytes ->
   -- | (slave - master data, read address memory element, write data memory element)
   (WishboneS2M (Bytes nBytes), Index addresses, Maybe (Bytes nBytes))
-wbInterface addressRange WishboneM2S{..} readData =
+wbInterface WishboneM2S{..} readData =
   ( (emptyWishboneS2M @(Bytes nBytes)) {readData, acknowledge, err}
-  , memAddr
+  , wbAddr
   , writeOp )
  where
   masterActive = strobe && busCycle
   (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
   wordAligned = alignment == 0
-  err = masterActive && ((alignedAddress > resize (pack addressRange)) || not wordAligned)
+  maxAddress = resize $ pack (maxBound :: Index addresses) :: BitVector (addrW - 2)
+  err = masterActive && ((alignedAddress > maxAddress) || not wordAligned)
   acknowledge = masterActive && not err
   wbAddr = unpack . resize $ pack alignedAddress
-  memAddr = wbAddr
   writeOp | strobe && writeEnable && not err = Just writeData
           | otherwise  = Nothing
+
+-- | Adds a stalling address to the 'wbInterface' by demanding an extra address on type level.
+-- When this address is accessed, the outgoing 'WishboneS2M' bus' acknowledge is replaced
+-- with the @endOfMetacycle@ signal to stall the wishbone master until the end of the metacycle.
+addStalling ::
+  ( KnownNat memAddresses, 1 <= memAddresses) =>
+  -- | Controls the 'acknowledge' of the returned 'WishboneS2M' when the incoming address
+  -- is 'maxBound'.
+  Bool ->
+  -- |
+  --  1. Incoming 'WishboneS2M' bus.
+  --  2. Incoming wishbone address (stalling address in range).
+  --  3. Incoming write operation.
+  ( WishboneS2M wbData
+  , Index (memAddresses + 1)
+  , Maybe a) ->
+  -- |
+  --  1. Outgoing 'WishboneS2M' bus (@acknowledge@ replaced with @endOfMetacycle@ when @wbAddr == maxBound@).
+  --  2. Outgoing wishbone address (stalling address not in range).
+  --  3. Outgoing write operation (set to @Nothing@ when @wbAddr == maxBound@).
+  ( WishboneS2M wbData
+  , Index memAddresses
+  , Maybe a)
+addStalling endOfMetacycle (incomingBus@WishboneS2M{..}, wbAddr, writeOp0) =
+  (slaveToMaster1, memAddr, writeOp1)
+ where
+  stalledBus = incomingBus{acknowledge = endOfMetacycle}
+  (slaveToMaster1, writeOp1)
+    | acknowledge && (wbAddr == maxBound) = (stalledBus, Nothing)
+    | otherwise                           = (incomingBus, writeOp0)
+  memAddr = bitCoerce $ resize wbAddr
 
 {-# NOINLINE scatterUnitWb #-}
 -- | Wishbone addressable 'scatterUnit', the wishbone port can read the data from this
@@ -132,7 +169,9 @@ wbInterface addressRange WishboneM2S{..} readData =
 scatterUnitWb ::
   forall dom addrWidthSu nBytesCal addrWidthCal .
   ( HiddenClockResetEnable dom
-  , KnownNat addrWidthSu, 2 <= addrWidthSu) =>
+  , KnownNat addrWidthSu, 2 <= addrWidthSu
+  , KnownNat nBytesCal, 1 <= nBytesCal
+  , KnownNat addrWidthCal, 2 <= addrWidthCal) =>
   -- | Configuration for the 'calendar'.
   ScatterConfig nBytesCal addrWidthCal ->
   -- | Wishbone (master -> slave) port 'calendar'.
@@ -141,14 +180,18 @@ scatterUnitWb ::
   Signal dom (DataLink 64) ->
   -- | Wishbone (master -> slave) port scatter memory.
   Signal dom (WishboneM2S addrWidthSu 4 (Bytes 4)) ->
-  -- | (Wishbone (slave -> master) port scatter memory, Wishbone (slave -> master) port 'calendar')
+  -- |
+  -- 1. Wishbone (slave -> master) port scatter memory
+  -- 2. Wishbone (slave -> master) port 'calendar'
   (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes nBytesCal)))
 scatterUnitWb (ScatterConfig calConfig) wbInCal linkIn wbInSu =
   (delayControls wbOutSu, wbOutCal)
  where
-  (wbOutSu, memAddr, _) = unbundle $ wbInterface maxBound <$> wbInSu <*> scatteredData
+  (wbOutSu, memAddr, _) = unbundle $ addStalling <$> endOfMetacycle <*>
+    (wbInterface <$> wbInSu <*> scatteredData)
   (readAddr, upperSelected) = unbundle $ div2Index <$> memAddr
-  (scatterUnitRead, wbOutCal) = scatterUnit calConfig wbInCal linkIn readAddr
+  (scatterUnitRead, wbOutCal, endOfMetacycle) =
+    scatterUnit calConfig wbInCal linkIn readAddr
   (upper, lower) = unbundle $ split <$> scatterUnitRead
   selected = register (errorX "scatterUnitWb: Initial selection undefined") upperSelected
   scatteredData = mux selected upper lower
@@ -160,23 +203,28 @@ scatterUnitWb (ScatterConfig calConfig) wbInCal linkIn wbInSu =
 gatherUnitWb ::
   forall dom addrWidthGu nBytesCal addrWidthCal .
   ( HiddenClockResetEnable dom
-  , KnownNat addrWidthGu, 2 <= addrWidthGu) =>
+  , KnownNat addrWidthGu, 2 <= addrWidthGu
+  , KnownNat nBytesCal, 1 <= nBytesCal
+  , KnownNat addrWidthCal, 2 <= addrWidthCal) =>
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal addrWidthCal ->
   -- | Wishbone (master -> slave) data 'calendar'.
   Signal dom (WishboneM2S addrWidthCal nBytesCal (Bytes nBytesCal)) ->
   -- | Wishbone (master -> slave) port gather memory.
   Signal dom (WishboneM2S addrWidthGu 4 (Bytes 4)) ->
-  -- | (Wishbone (slave -> master) port gather memory, Wishbone (slave -> master) port 'calendar')
+  -- |
+  -- 1. Wishbone (slave -> master) port gather memory
+  -- 2. Wishbone (slave -> master) port 'calendar'
   ( Signal dom (DataLink 64)
   , Signal dom (WishboneS2M (Bytes 4))
   , Signal dom (WishboneS2M (Bytes nBytesCal)) )
 gatherUnitWb (GatherConfig calConfig) wbInCal wbInGu =
   (linkOut, delayControls wbOutGu, wbOutCal)
  where
-  (wbOutGu, memAddr, writeOp) = unbundle $ wbInterface maxBound <$> wbInGu <*> pure 0b0
+  (wbOutGu, memAddr, writeOp) = unbundle $ addStalling <$> endOfMetacycle <*>
+    (wbInterface <$> wbInGu <*> pure 0b0)
   (writeAddr, upperSelected) = unbundle $ div2Index <$> memAddr
-  (linkOut, wbOutCal) =
+  (linkOut, wbOutCal, endOfMetacycle) =
     gatherUnit calConfig wbInCal gatherWrite gatherByteEnables
   gatherWrite = mkWrite <$> writeAddr <*> writeOp
   gatherByteEnables = mkEnables <$> upperSelected <*> (busSelect <$> wbInGu)

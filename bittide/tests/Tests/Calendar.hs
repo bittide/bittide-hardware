@@ -4,7 +4,7 @@
 
 
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=7 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -13,12 +13,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Tests.Calendar(calGroup, genCalendarConfig) where
+module Tests.Calendar(calGroup, genCalendarConfig, genValidEntry) where
 
 import Clash.Prelude
 
-import Clash.Hedgehog.Sized.Vector
 import Clash.Hedgehog.Sized.Index (genIndex)
+import Clash.Hedgehog.Sized.Unsigned
+import Clash.Hedgehog.Sized.Vector
 import Clash.Sized.Vector (unsafeFromList)
 import Data.Constraint
 import Data.Constraint.Nat.Extra
@@ -33,7 +34,7 @@ import Protocols.Wishbone
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import Bittide.Calendar (CalendarConfig (..), calendar)
+import Bittide.Calendar
 import Bittide.SharedTypes
 import Tests.Shared
 
@@ -41,232 +42,273 @@ import qualified Clash.Sized.Vector as V
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Prelude as P
-
+import qualified Clash.Util.Interpolate as I
 
 calGroup :: TestTree
 calGroup = testGroup "Calendar group"
   [ testPropertyNamed "Reading the calendar." "readCalendar" readCalendar
   , testPropertyNamed "Writing and reading new calendars" "reconfigCalendar" reconfigCalendar
-  , testPropertyNamed "Metacycle signal generation" "metaCycleIndication" metaCycleIndication
-  , testPropertyNamed "Reading shadow buffer with wishbone" "readShadowCalendar" readShadowCalendar]
+  , testPropertyNamed "Reading shadow buffer with wishbone" "readShadowCalendar" readShadowCalendar
+  , testPropertyNamed "Metacycle signal generation" "metaCycleIndication" metaCycleIndication]
 
 -- | A vector with a minimum size of 1 elements containing Bitvectors of arbitrary size.
 -- This data type enables us to generate differently sized calendars that satisfy the constraints
 -- imposed by the calendar component.
 data BVCalendar addrW where
   BVCalendar ::
-    ( KnownNat n
-    , KnownNat addrW
-    , KnownNat bits
-    , 1 <= bits
-    , NatFitsInBits n addrW
-    , 1 <= NatRequiredBits n
-    , NatFitsInBits (Regs (BitVector bits) addrW) addrW) =>
-    -- | Amount of entries in the BitVector calendar minus 1.
+    ( KnownNat addrW
+    , KnownNat n, 2 <= n
+    , KnownNat bits, 1 <= bits
+    , KnownNat validityBits) =>
+    -- | Amount of entries in the BitVector calendar
     SNat n ->
     -- | Amount of bits per BitVector in the calendar.
     SNat bits ->
+    -- | Number of bits for entry validity.
+    SNat validityBits ->
     -- | Vector of (n+1) entries containing BitVectors of size bits.
-    Vec (n + 1) (BitVector bits) ->
+    Vec n (ValidEntry (BitVector bits) validityBits) ->
     BVCalendar addrW
 
 instance Show (BVCalendar addrW) where
-  show (BVCalendar _ _ bvvec) = show bvvec
+  show (BVCalendar _ _ _ bvvec) = show bvvec
 
 -- | Generates a configuration for 'Bittide.Calendar.calendar', with as first argument
 -- the maximum depth of the stored calendar and as second argument a generator for the
 -- calendar entries.
 genCalendarConfig ::
-  forall nBytes addrW calEntry .
-  ( KnownNat nBytes
-  , 1 <= nBytes
-  , KnownNat (BitSize calEntry)
-  , BitPack calEntry
-  , NFDataX calEntry
-  , Show calEntry
-  , ShowX calEntry
-  , KnownNat addrW) =>
+  forall nBytes addrW a validityBits .
+  ( KnownNat nBytes , 1 <= nBytes
+  , KnownNat addrW, 2 <= addrW
+  , KnownNat (BitSize a)
+  , KnownNat validityBits
+  , BitPack a
+  , NFDataX a
+  , Show a
+  , ShowX a) =>
   -- | Maximum amount of entries a calendar based on the returned configuration can hold per calendar.
   Natural ->
   -- | Generator for the entries in the shadow calendar and active calendar.
-  Gen calEntry ->
-  Gen (CalendarConfig nBytes addrW calEntry)
+  Gen (ValidEntry a validityBits) ->
+  Gen (CalendarConfig nBytes addrW a)
 genCalendarConfig ms elemGen = do
   dA <- Gen.enum 1 ms
   dB <- Gen.enum 1 ms
-  case (TN.someNatVal ms, TN.someNatVal dA, TN.someNatVal dB) of
-    ( SomeNat (snatProxy -> maxSize)
+  case (TN.someNatVal (ms - 2), TN.someNatVal dA, TN.someNatVal dB) of
+    ( SomeNat (addSNat d2 . snatProxy -> maxSize)
      ,SomeNat (snatProxy -> depthA)
      ,SomeNat (snatProxy -> depthB)) -> do
         let
-          regAddrBits = SNat @(NatRequiredBits (Regs calEntry (nBytes * 8)))
-          bsCalEntry = SNat @(BitSize calEntry)
+          regAddrBits = SNat
+           @( NatRequiredBits (Regs (ValidEntry a validityBits) (nBytes * 8) + ExtraRegs))
+          bsCalEntry = SNat @(BitSize a)
         case
          ( isInBounds d1 depthA maxSize
          , isInBounds d1 depthB maxSize
          , compareSNat regAddrBits (SNat @addrW)
          , compareSNat d1 bsCalEntry) of
           (InBounds, InBounds, SNatLE, SNatLE)-> go maxSize depthA depthB
-          (a,b,c,d) -> error $ "genCalendarConfig: calEntry constraints not satisfied: ("
-           <> show a <> ", " <> show b <> ", " <> show c <> ", "  <> show d <>
-           "), \n(depthA, depthB, maxDepth, calEntry bitsize) = (" <> show depthA <> ", "
-           <> show depthB <> ", " <> show maxSize <> ", " <> show bsCalEntry <> ")"
+          (a, b, c, d) -> error [I.i|
+              genCalendarConfig: calEntry constraints not satisfied:
+
+                a: #{a}
+                b: #{b}
+                c: #{c}
+                d: #{d}
+
+              ...
+          |]
  where
     go ::
       forall maxDepth depthA depthB .
       ( LessThan depthA maxDepth
       , LessThan depthB maxDepth
-      , NatFitsInBits (Regs calEntry (nBytes * 8)) addrW) =>
+      , 2 <= maxDepth
+      , NatFitsInBits (Regs (ValidEntry a validityBits) (nBytes * 8) + ExtraRegs) addrW) =>
       SNat maxDepth ->
       SNat depthA ->
       SNat depthB ->
-      Gen (CalendarConfig nBytes addrW calEntry)
+      Gen (CalendarConfig nBytes addrW a)
     go dMax SNat SNat = do
       calActive <- genVec @_ @depthA elemGen
       calShadow <- genVec @_ @depthB elemGen
       return $ CalendarConfig dMax calActive calShadow
 
+genValidEntry :: SNat repetitionBits -> Gen a -> Gen (ValidEntry a repetitionBits)
+genValidEntry SNat genA = (\veEntry veRepeat -> ValidEntry{veEntry, veRepeat})
+  <$> genA
+  <*> genUnsigned Range.linearBounded
+
 -- | Generates a 'BVCalendar' of a certain size and width for the stored BitVectors.
-genBVCalendar :: Integer -> Integer -> Gen (BVCalendar 32)
-genBVCalendar calSize bitWidth = do
+genBVCalendar :: Integer -> Integer -> Integer -> Gen (BVCalendar 32)
+genBVCalendar calSize bitWidth validityBits = do
   let
-   calNat = TN.someNatVal (fromIntegral $ calSize - 1)
+   calNat = TN.someNatVal (fromIntegral $ calSize - 2)
    bitNat = TN.someNatVal (fromIntegral bitWidth)
-  case (calNat, bitNat) of
-    (SomeNat size, SomeNat bits) -> go size bits
+   valNat = TN.someNatVal (fromIntegral validityBits)
+  case (calNat, bitNat, valNat) of
+    (SomeNat size, SomeNat bits, SomeNat validity) ->
+      go (addSNat d2 $ snatProxy size) (snatProxy bits) (snatProxy validity)
  where
   go ::
-    forall calSize bitWidth .
-    (KnownNat calSize, KnownNat bitWidth) =>
-    Proxy calSize ->
-    Proxy bitWidth->
+    forall calSize bitWidth validityBits .
+    (KnownNat calSize, 2 <= calSize, KnownNat bitWidth) =>
+    SNat calSize ->
+    SNat bitWidth->
+    SNat validityBits ->
     Gen (BVCalendar 32)
-  go s b = do
+  go s b v@SNat = do
     let
-      calNatBits = clogBaseSNat d2 . succSNat $ snatProxy s
-      requiredAddrWidth = SNat @(NatRequiredBits (Regs (BitVector bitWidth) 32))
+      calNatBits = clogBaseSNat d2 s
     case
       ( compareSNat calNatBits d32
       , compareSNat d1 calNatBits
-      , compareSNat requiredAddrWidth d32
-      , compareSNat d1 (snatProxy b)) of
-      (SNatLE, SNatLE, SNatLE, SNatLE) -> do
-        cal <- Gen.list (Range.singleton $ fromIntegral calSize)
-         $ Gen.integral @_ @(BitVector bitWidth) Range.constantBounded
-        return (BVCalendar (snatProxy s) (snatProxy b) $ unsafeFromList cal)
-      _ -> error $ "genIntCalendar: Constraints not satisfied: 1 <= " <> show calNatBits
-       <> " <= 32, " <> show requiredAddrWidth <> " <= 32."
+      , compareSNat d1 b) of
+      (SNatLE, SNatLE, SNatLE) -> do
+        cal <- Gen.list (Range.singleton $ fromIntegral calSize) $
+          genValidEntry (SNat @validityBits)
+          (genDefinedBitVector @bitWidth)
+        return (BVCalendar s b v $ unsafeFromList cal)
+      _ -> error $
+        "genIntCalendar: Constraints not satisfied: 1 <= " <> show calNatBits <> " <= 32."
 
 -- | This test checks if we can read the initialized calendars.
 readCalendar :: Property
 readCalendar = property $ do
   calSize <- forAll $ Gen.int $ Range.constant 2 31
-  bitWidth <- forAll $ Gen.enum 1 1000
-  bvCal <- forAll $ genBVCalendar (fromIntegral calSize) bitWidth
-  simLength <- forAll $ Gen.enum (succ calSize) 100
+  bitWidth <- forAll $ Gen.enum 1 100
+  validityBits <- forAll $ Gen.enum 0 2
+  bvCal <- forAll $ genBVCalendar (fromIntegral calSize) bitWidth validityBits
   case bvCal of
-    BVCalendar (succSNat -> calSize') SNat cal -> do
+    BVCalendar calSize' SNat SNat cal -> do
       let
+        -- 1 to compensate for reset, length for 1 cycle per element, sum of snds for
+        -- additional validity delays.
+        simLength = 1 + length cal + sum (fmap (fromIntegral . veRepeat) cal)
         topEntity = (\(a,_,_) -> a) $ withClockResetEnable clockGen resetGen enableGen
           calendarWbSpecVal calSize' cal cal $ pure (emptyWishboneM2S @32 @(BitVector 32))
         simOut = sampleN @System (fromIntegral simLength) topEntity
+        expected = toList $ fmap veEntry cal
       footnote . fromString $ "simOut: " <> show simOut
-      footnote . fromString $ "expected: " <> show (toList cal)
+      footnote . fromString $ "expected: " <> show expected
 
-      Set.fromList simOut === Set.fromList (toList cal)
+      Set.fromList simOut === Set.fromList expected
 
 -- | This test checks if we can write to the shadowbuffer and read back the written
 -- elements later.
 reconfigCalendar :: Property
 reconfigCalendar = property $ do
   calSize <- forAll $ Gen.int $ Range.constant 2 32
-  bitWidth <- forAll $ Gen.enum 1 1000
-  bvCal <- forAll $ genBVCalendar (fromIntegral calSize) bitWidth
+  bitWidth <- forAll $ Gen.enum 1 100
+  validityBits <- forAll $ Gen.enum 0 2
+  bvCal <- forAll $ genBVCalendar (fromIntegral calSize) bitWidth validityBits
   case bvCal of
-    BVCalendar (succSNat -> calSize') _ cal -> do
-      newEntries <- forAll . Gen.list (Range.singleton calSize) $ genDefinedBitVector
+    BVCalendar calSize' _ (SNat :: SNat validityBits) cal -> do
+      newEntries <- forAll . Gen.list (Range.singleton calSize) $
+        genValidEntry (SNat @validityBits) genDefinedBitVector
       let
-        configAddresses = cycle [0..indexOf calSize']
-        writeOps = P.zip configAddresses newEntries
-        swapAddr = bitWidth `divRU` 32 + 3
-        swapCall = wbWriteOp (swapAddr, 0)
+        (entries0, delays0) = unzip $ fmap (\e -> (veEntry e, veRepeat e)) cal
+        (entries1, delays1) = P.unzip $ fmap (\e -> (veEntry e, veRepeat e)) newEntries
+        cal0Duration = calSize + sum (fmap fromIntegral delays0)
+        cal1Duration = calSize + sum (fmap fromIntegral delays1)
+        writeOps = P.zip (cycle [0.. indexOf calSize']) newEntries
+        swapCall = let a = (bitWidth + validityBits) `divRU` 32 + 3 in wbWriteOp (a, 0)
         wbWrites = wbNothingM2S @4 @32 : P.concatMap writeWithWishbone writeOps <> [swapCall]
-        writeDuration = P.length wbWrites
-        simLength = writeDuration + (2 * calSize)
+        -- Arming has one cycle delay,
+        writeDuration = 1 + P.length wbWrites
+        -- It may take multiple metacycles to write the new calendar.
+        simLength = cal0Duration * (writeDuration `divRU` cal0Duration) + cal1Duration
         topEntity writePort = (\(a,_,_) -> a) $ withClockResetEnable clockGen
-          resetGen enableGen calendarWbSpecVal (succSNat calSize') cal cal writePort
+          resetGen enableGen calendar calSize' cal cal writePort
         topEntityInput = P.take simLength $ wbWrites <> P.repeat wbNothingM2S
         simOut = simulateN @System simLength topEntity topEntityInput
+        expected = P.take simLength $ toList entries0 <> entries1
       footnote . fromString $ "simOut: " <> show simOut
-      footnote . fromString $ "expected: " <> show (toList cal <> newEntries)
+      footnote . fromString $ "expected: " <> show expected
       footnote . fromString $ "Write operations: " <> show wbWrites
       footnote . fromString $ "Write operations: " <> show writeOps
-      Set.fromList simOut === Set.fromList (P.take simLength (toList cal <> newEntries))
+      Set.fromList simOut === Set.fromList expected
 
 -- | This test checks if we can write to the shadowbuffer and read back the written
 -- elements later.
 readShadowCalendar :: Property
 readShadowCalendar = property $ do
-  calSize <- forAll $ Gen.enum 10 32
-  bitWidth <- forAll $ Gen.enum 1 1000
-  calA <- forAll $ genBVCalendar calSize bitWidth
-  calS <- forAll $ genBVCalendar calSize bitWidth
+  calSize <- forAll $ Gen.enum 2 32
+  bitWidth <- forAll $ Gen.enum 1 100
+  validityBits <- forAll $ Gen.enum 0 2
+  calA <- forAll $ genBVCalendar calSize bitWidth validityBits
+  calS <- forAll $ genBVCalendar calSize bitWidth validityBits
   case (calA, calS) of
-    (BVCalendar snatA bwA calA', BVCalendar snatS bwS calS') ->
-      case (sameNat (asProxy snatA) (asProxy snatS), sameNat (asProxy bwA) (asProxy bwS)) of
-        (Just Refl, Just Refl) -> do
-          let
-            entryRegs = snatToInteger $ requiredRegs bwS d32
-            readAddresses = [0..indexOf (succSNat snatS)]
-            simLength = P.length wbReads + 1
-            wbReads = P.concatMap (\ i -> wbReadEntry @4 @32 (fromIntegral i) entryRegs) readAddresses
-            topEntity writePort = (\(_,_,wb) -> wb) $ withClockResetEnable clockGen resetGen enableGen
-              calendarWbSpecVal (succSNat snatS) calA' calS' writePort
-            topEntityInput = P.take simLength $ wbReads <> P.repeat wbNothingM2S
-            simOut = simulateN @System simLength topEntity topEntityInput
-            wbOutEntries = directedWbDecoding topEntityInput simOut
-          wbOutEntries === toList calS'
-        _ -> error "readShadowCalendar: Calendar sizes or bitwidths do not match."
+    (BVCalendar snatA bwA valA calA', BVCalendar snatS bwS valS calS') ->
+      case
+        ( sameNat (asProxy snatA) (asProxy snatS)
+        , sameNat (asProxy bwA) (asProxy bwS)
+        , sameNat (asProxy valA) (asProxy valS)) of
+          (Just Refl, Just Refl, Just Refl) -> do
+            let
+              entryRegs = snatToInteger $ requiredRegs (bwS `addSNat` valS) d32
+              readAddresses = fmap fromIntegral [0.. indexOf snatS]
+              simLength = P.length wbReads + 1
+              wbReads = P.concatMap (\ i -> wbReadEntry @4 @32 i entryRegs) readAddresses
+              topEntity writePort = (\(_,_,wb) -> wb) $
+                withClockResetEnable clockGen resetGen enableGen
+                calendar (addSNat d2 snatS) calA' calS' writePort
+              topEntityInput = P.take simLength $ wbReads <> P.repeat wbNothingM2S
+              simOut = simulateN @System simLength topEntity topEntityInput
+              wbOutEntries = directedWbDecoding topEntityInput simOut
+            wbOutEntries === toList calS'
+          _ -> error "readShadowCalendar: Calendar sizes or bitwidths do not match."
 
 -- | This test checks if the metacycle signal (which indicates that the last entry of the
 -- active calendar is present at the output), is correctly being generated.
 metaCycleIndication :: Property
 metaCycleIndication = property $ do
-  calSize <- forAll $ Gen.enum 3 31
-  bitWidth <- forAll $ Gen.enum 1 1000
-  bvCal <- forAll $ genBVCalendar calSize bitWidth
+  calSize <- forAll $ Gen.enum 3 4
+  bitWidth <- forAll $ Gen.enum 1 100
+  validityBits <- forAll $ Gen.enum 0 1
+  bvCal <- forAll $ genBVCalendar calSize bitWidth validityBits
   metaCycles <- forAll $ Gen.int $ Range.constant 2 5
   case bvCal of
-    BVCalendar (succSNat -> (calSize' :: SNat calDepth)) bitWidth' cal -> do
-      let genDepth = fromIntegral <$> genIndex @_ @calDepth
-            (Range.constant 2 (fromIntegral $ pred calSize))
+    BVCalendar (calSize' :: SNat calDepth) _ _ cal -> do
+      let
+        genDepth = fromIntegral <$> genIndex @_ @calDepth
+          (Range.constant 2 (fromIntegral $ pred calSize))
       newDepths <- forAll $ Gen.list (Range.singleton (metaCycles - 1)) genDepth
       let
-        newDepthAddr = 2 + snatToInteger (requiredRegs bitWidth' d32)
-        allDepths = (calSize - 1) : (fromIntegral <$> newDepths)
-      simLength <- forAll $ fromIntegral <$> Gen.enum calSize (sum allDepths)
+        reqRegs = (bitWidth + validityBits) `divRU` 32
+        newDepthAddr = reqRegs + 2
+        swapAddr = reqRegs + 3
+        allDepths = (fromIntegral calSize - 1) : newDepths
+        delayPerDepth = tail $ scanl (\a b -> a + fromIntegral (veRepeat b)) 0 cal
+        allDurations = fmap (\d -> d + delayPerDepth !! d) allDepths
+      simLength <- forAll $ fromIntegral <$> Gen.enum 0 (sum allDurations + sum newDepths)
       let
-        swapAddr = bitWidth `divRU` 32 + 3
         swapCall = wbWriteOp @4 @32 (swapAddr, 0)
-        wbWrites = P.replicate (fromIntegral calSize - 3) wbNothingM2S <>
-          P.concatMap writeAndSwitch newDepths
-        writeAndSwitch d =
-          wbWriteOp (newDepthAddr, fromIntegral d) :
-          swapCall :
-          P.replicate (d-1) wbNothingM2S
+        wbWrites = P.drop 3 $ P.concatMap writeAndSwitch (P.zip allDepths allDurations)
+        writeAndSwitch (dep, dur) = P.take (succ dur) $
+          [wbWriteOp (newDepthAddr, fromIntegral dep),swapCall] <> P.repeat wbNothingM2S
         topEntity writePort = (\(_,m,_) -> m) $ withClockResetEnable
           clockGen resetGen enableGen calendarWbSpecVal calSize' cal cal writePort
         topEntityInput = wbWrites <> P.repeat wbNothingM2S
         simOut = simulateN @System simLength topEntity topEntityInput
-        expectedOut = P.take simLength $ P.concatMap (\ (fromIntegral -> n) -> P.replicate n False <> [True]) allDepths
+        expectedOut = P.take simLength $
+          P.concatMap (\ (fromIntegral -> n) -> P.replicate n False <> [True])
+          (repeatLast allDurations)
       footnote . fromString $ "Simulation:   " <> show simOut
       footnote . fromString $ "Expected:     " <> show expectedOut
+      footnote . fromString $ "All Depths:     " <> show allDurations
       footnote . fromString $ "wishbone in:   " <> show (P.take simLength wbWrites)
       simOut === expectedOut
 
+
+repeatLast :: [a] -> [a]
+repeatLast [] = []
+repeatLast [l] = P.repeat l
+repeatLast (l:ist) = l : repeatLast ist
+
 -- | Gets the index of element (n+1)
-indexOf :: (KnownNat n) => SNat (n+1) -> Index (n+1)
-indexOf = fromSNat . predSNat
+indexOf :: forall n . (KnownNat n, 1 <= n) => SNat n -> Index n
+indexOf = leToPlus @1 @n (fromSNat . predSNat)
 
 -- | Interpret SNat as Proxy for use by 'sameNat'.
 asProxy :: SNat n -> Proxy n
@@ -362,25 +404,22 @@ wbReadEntry ::
   [WishboneM2S addrW nBytes (Bytes nBytes)]
 wbReadEntry i dataRegs = addrWrite : wbNothingM2S : dataReads
  where
-  addrWrite =
-    (emptyWishboneM2S @addrW @(Bytes nBytes))
-      { addr = fromIntegral $ dataRegs + 1
-      , writeData = fromIntegral i
-      , busSelect = maxBound
-      , busCycle = True
-      , strobe = True
-      , writeEnable = True
-      }
+  addrWrite = (emptyWishboneM2S @addrW @(Bytes nBytes))
+    { addr      = 4 * fromIntegral (dataRegs + 1)
+    , writeData = fromIntegral i
+    , busSelect = maxBound
+    , busCycle    = True
+    , strobe      = True
+    , writeEnable = True}
   dataReads = readReg <$> P.reverse [0..(dataRegs-1)]
-  readReg n =
-    (emptyWishboneM2S @addrW @(Bytes nBytes))
-      { addr = fromIntegral n
-      , writeData = 0
-      , busSelect = maxBound
-      , busCycle = True
-      , strobe = True
-      , writeEnable = False
-      }
+  readReg n = (emptyWishboneM2S @addrW @(Bytes nBytes))
+    { addr = 4 * fromIntegral n
+    , writeData = 0
+    , busSelect = maxBound
+    , busCycle = True
+    , strobe = True
+    , writeEnable = False
+    }
 
 -- | Transform a target address i and a bitvector to a Wishbone write operation that writes
 -- the bitvector to address i.
@@ -391,41 +430,38 @@ wbWriteOp ::
   WishboneM2S addrW nBytes (Bytes nBytes)
 wbWriteOp (i, bv) =
   (emptyWishboneM2S @addrW @(Bytes nBytes))
-    { addr = fromIntegral i
-    , writeData = bv
-    , busSelect = maxBound
-    , busCycle = True
-    , strobe = True
-    , writeEnable = True
-    }
+    { addr        = 4 * fromIntegral i
+    , writeData   = bv
+    , busSelect   = maxBound
+    , busCycle    = True
+    , strobe      = True
+    , writeEnable = True}
 
 -- | Version of 'Bittide.Calendar.calendar' which performs Wishbone spec validation
 calendarWbSpecVal ::
-  forall dom nBytes addrW maxCalDepth calEntry bootstrapSizeA bootstrapSizeB.
+  forall dom nBytes addrW maxCalDepth a validityBits bootstrapSizeA bootstrapSizeB .
   ( HiddenClockResetEnable dom
-  , KnownNat nBytes
-  , KnownNat addrW
-  , KnownNat bootstrapSizeA
-  , 1 <= bootstrapSizeA
-  , KnownNat bootstrapSizeB
-  , 1 <= bootstrapSizeB
+  , KnownNat addrW, 2 <= addrW
+  , KnownNat bootstrapSizeA, 1 <= bootstrapSizeA
+  , KnownNat bootstrapSizeB, 1 <= bootstrapSizeB
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat validityBits
+  , 2 <= maxCalDepth
   , LessThan bootstrapSizeA maxCalDepth
   , LessThan bootstrapSizeB maxCalDepth
-  , Paddable calEntry
-  , NatFitsInBits (Regs calEntry (nBytes * 8)) addrW
-  , ShowX calEntry
-  , Show calEntry
-  ) =>
-  -- | The maximum amount of entries that can be stored in the individual calendars.
+  , Paddable a
+  , ShowX a
+  , Show a) =>
   SNat maxCalDepth ->
-  -- | Bootstrap calendar for the active buffer.
-  Vec bootstrapSizeA calEntry ->
-  -- | Bootstrap calendar for the shadow buffer.
-  Vec bootstrapSizeB calEntry ->
-  -- | Incoming wishbone interface
+  -- ^ The maximum amount of entries that can be stored in the individual calendars.
+  Calendar bootstrapSizeA a validityBits ->
+  -- ^ Bootstrap calendar for the active buffer.
+  Calendar bootstrapSizeB a validityBits ->
+  -- ^ Bootstrap calendar for the shadow buffer.
   Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
-  -- | Currently active entry, Metacycle indicator and outgoing wishbone interface.
-  (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)))
+  -- ^ Incoming wishbone interface
+  (Signal dom a, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)))
+  -- ^ Currently active entry, Metacycle indicator and outgoing wishbone interface.
 calendarWbSpecVal mDepth bootstrapActive bootstrapShadow m2s0 =
   (active, metaIndicator, s2m1)
   where

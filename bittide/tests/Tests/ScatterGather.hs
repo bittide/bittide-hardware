@@ -27,7 +27,7 @@ import Protocols.Wishbone
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import Bittide.Calendar
+import Bittide.Calendar hiding (ExtraRegs)
 import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Tests.Shared
@@ -36,7 +36,7 @@ import qualified Clash.Util.Interpolate as I
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-
+import qualified Bittide.Calendar as Cal(ExtraRegs)
 
 -- | The extra in SomeCalendar extra defines the minimum amount of elements in the vector
 -- and the minimum addressable indexes in the vector elements. I.e, vectors of 0 elements
@@ -62,17 +62,17 @@ sgGroup = testGroup "Scatter Gather group"
       "scatterUnitNoFrameLoss" scatterUnitNoFrameLoss
   , testPropertyNamed "gatherUnitWb - No overwriting implies no lost frames."
       "gatherUnitNoFrameLoss" gatherUnitNoFrameLoss
+  , testPropertyNamed "S/G units - Ack stalling address at metacycle end."
+      "metacycleStalling" metacycleStalling
   ]
 
 -- | Generates a 'CalendarConfig' for the 'gatherUnitWb' or 'scatterUnitWb'
 genCalendarConfig ::
   forall nBytes addrW calEntry maxDepth .
-  ( KnownNat nBytes
-  , 1 <= nBytes
-  , KnownNat maxDepth
-  , 1 <= maxDepth
-  , calEntry ~ Index maxDepth
-  , KnownNat addrW) =>
+  ( KnownNat nBytes, 1 <= nBytes
+  , KnownNat maxDepth, 2 <= maxDepth
+  , KnownNat addrW, 2 <= addrW
+  , calEntry ~ Index maxDepth) =>
   SNat maxDepth ->
   Gen (CalendarConfig nBytes addrW calEntry)
 genCalendarConfig sizeNat@(snatToNum -> dMax) = do
@@ -82,7 +82,7 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
     ( SomeNat (snatProxy -> depthA)
      ,SomeNat (snatProxy -> depthB)) -> do
         let
-          regAddrBits = SNat @(NatRequiredBits (Regs calEntry (nBytes * 8)))
+          regAddrBits = SNat @(2 + NatRequiredBits (Regs calEntry (nBytes * 8) + Cal.ExtraRegs))
           bsCalEntry = SNat @(BitSize calEntry)
         case
          ( isInBounds d1 depthA sizeNat
@@ -95,24 +95,27 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
 
                 a: #{a}
                 b: #{b}
-                b: #{c}
-                c: #{d}
+                c: #{c}
+                d: #{d}
 
               ...
           |]
  where
     go :: forall depthA depthB .
-      ( LessThan depthA maxDepth
-      , LessThan depthB maxDepth
-      , NatFitsInBits (Regs calEntry (nBytes * 8)) addrW) =>
+      ( 1 <= depthA
+      , 1 <= depthB
+      , LessThan depthA maxDepth
+      , LessThan depthB maxDepth) =>
       SNat depthA ->
       SNat depthB ->
       Gen (CalendarConfig nBytes addrW (Index maxDepth))
     go SNat SNat = do
-      calActive <- fromMaybe errmsg . fromList @depthA . P.take (natToNum @depthA)
-        <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
-      calShadow <- fromMaybe errmsg . fromList @depthB . P.take (natToNum @depthB)
-        <$> Gen.shuffle @_ @(Index maxDepth) [0.. natToNum @(maxDepth-1)]
+      calActive <- fmap nonRepeatingEntry . fromMaybe errmsg . fromList @depthA .
+        P.take (natToNum @depthA) <$> Gen.shuffle @_ @(Index maxDepth)
+        [0.. natToNum @(maxDepth-1)]
+      calShadow <- fmap nonRepeatingEntry . fromMaybe errmsg . fromList @depthB .
+        P.take (natToNum @depthB) <$> Gen.shuffle @_ @(Index maxDepth)
+        [0.. natToNum @(maxDepth-1)]
       return $ CalendarConfig sizeNat calActive calShadow
     errmsg = errorX "genCalendarConfig: list to vector conversion failed"
 
@@ -120,8 +123,8 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
 scatterUnitNoFrameLoss :: Property
 scatterUnitNoFrameLoss = property $ do
   maxCalSize <- forAll $ Gen.enum 2 32
-  case TN.someNatVal (maxCalSize - 1) of
-    SomeNat (succSNat . snatProxy -> p) -> do
+  case TN.someNatVal (maxCalSize - 2) of
+    SomeNat (addSNat d2 . snatProxy -> p) -> do
       runTest =<< forAll (genCalendarConfig @4 @32 p)
  where
   runTest ::
@@ -150,8 +153,7 @@ scatterUnitNoFrameLoss = property $ do
       wbReadOps = P.take simLength $ P.replicate memDepth emptyWishboneM2S P.++  P.concat
         ( padToLength memDepth emptyWishboneM2S
         . P.concat
-        . P.zipWith wbRead (toList calA)
-        <$> inputFrames)
+        . P.zipWith wbRead (toList $ fmap veEntry calA) <$> inputFrames)
 
       topEntityInput = P.zip wbReadOps (P.concat inputFrames)
       simOut = simulateN simLength topEntity topEntityInput
@@ -159,16 +161,15 @@ scatterUnitNoFrameLoss = property $ do
     footnote . fromString $ "simIn: " <> showX wbReadOps
     footnote . fromString $ "cal: " <> showX calA
     wbDecoding simOut === P.take simLength (catMaybes (P.concat inputFrames))
-
   padToLength l padElement g = P.take l (g P.++ P.repeat padElement)
 
 -- | Check if the gather unit with wishbone interface loses no frames.
 gatherUnitNoFrameLoss :: Property
 gatherUnitNoFrameLoss = property $ do
   maxCalSize <- forAll $ Gen.enum 2 32
-  case TN.someNatVal (maxCalSize - 1) of
-    SomeNat (succSNat . snatProxy -> p) -> do
-      runTest =<< forAll (genCal p)
+  case TN.someNatVal (maxCalSize - 2) of
+    SomeNat (addSNat d2 . snatProxy -> p) -> do
+      runTest =<< forAll (genCalendarConfig @4 @32 p)
  where
   runTest ::
     (KnownNat maxSize, 1 <= maxSize) =>
@@ -176,6 +177,7 @@ gatherUnitNoFrameLoss = property $ do
   runTest calConfig@(CalendarConfig _ calA@(length -> memDepth) _) = do
     metaCycles <- forAll $ Gen.enum 1 10
     let
+      activeEntryList = toList $ fmap veEntry calA
       simLength = 2 + (1+metaCycles) * memDepth
       inputGen = Gen.list (Range.singleton metaCycles)
       metaCycleNothing = P.replicate memDepth Nothing
@@ -188,13 +190,12 @@ gatherUnitNoFrameLoss = property $ do
         (GatherConfig calConfig) (pure emptyWishboneM2S) wbIn
 
       wbWriteOps = P.take simLength . P.concat $
-        padToLength memDepth emptyWishboneM2S
-        . P.concat
-        . P.zipWith wbWrite (toList calA)
+        padToLength memDepth emptyWishboneM2S .
+        P.concat . P.zipWith wbWrite activeEntryList
         <$> inputFrames
 
       simOut = simulateN simLength topEntity wbWriteOps
-      addressedFrames = P.zip (P.concat inputFrames) (cycle $ toList calA)
+      addressedFrames = P.zip (P.concat inputFrames) (cycle activeEntryList)
       writtenFrames = [if snd e /= 0 then fst e else Nothing | e <- addressedFrames]
       prePad items = P.replicate (1+memDepth) Nothing P.++ items
       expectedOutput = P.take simLength (fromMaybe 1 <$> P.filter isJust writtenFrames)
@@ -206,17 +207,49 @@ gatherUnitNoFrameLoss = property $ do
 
     directedDecode (prePad writtenFrames) simOut === expectedOutput
 
-  genCal :: forall maxSize .
-   1 <= maxSize =>
-   SNat maxSize ->
-   Gen (CalendarConfig 4 32 (Index maxSize))
-  genCal SNat = genCalendarConfig @4 @32 (SNat @maxSize)
   padToLength l padElement g = P.take l (g P.++ P.repeat padElement)
 
 directedDecode :: [Maybe a] -> [Maybe b] -> [b]
 directedDecode ((Just _) : as) ((Just b) : bs) = b : directedDecode as bs
 directedDecode (Nothing : as) (_ : bs) = directedDecode as bs
 directedDecode _ _ = []
+
+-- | Simple  test which generates a 'scatterUnitWb' and 'gatherUnitWb' with a certain calendar
+-- Their wishbone busses are statically hooked up to a transaction that reads from the
+-- stalling address. This test checks that it generates an acknowledge on this address
+-- one cycle after the end of each metacycle (at the start of every _new_ metacycle).
+metacycleStalling :: Property
+metacycleStalling = property $ do
+  maxCalSize <- forAll $ Gen.enum 2 32
+  case TN.someNatVal (maxCalSize - 2) of
+    SomeNat (addSNat d2 . snatProxy -> p) -> do
+      runTest =<< forAll (genCalendarConfig @4 @32 p)
+ where
+  runTest ::
+    forall maxSize .
+    (KnownNat maxSize, 2 <= maxSize) =>
+    CalendarConfig 4 32 (Index maxSize) -> PropertyT IO ()
+  runTest calConfig@(CalendarConfig _ (length -> calSize) _) = do
+    metacycles <- forAll $ Gen.enum 1 5
+    let
+      simLength = 1 + metacycles * calSize
+      topEntity = bundle (acknowledge <$> suWB,acknowledge <$> guWB)
+       where
+        suWB = wcre $ fst $ scatterUnitWb @System (ScatterConfig calConfig)
+          (pure emptyWishboneM2S) linkIn wbStall
+        guWB = wcre $ (\(_,x,_) -> x) $ gatherUnitWb @System
+          (GatherConfig calConfig) (pure emptyWishboneM2S) wbStall
+        wbStall = pure $ (emptyWishboneM2S @32)
+          -- 4 for word alignment, 2 because addressing is 64 bit aligned.
+          { addr = 4 * (2 * (natToNum @maxSize @(BitVector 32)))
+          , busCycle = True
+          , strobe = True
+          }
+        linkIn = pure $ deepErrorX "linkIn undefined."
+      expectedAcks = P.take simLength $ P.replicate (1 +calSize) False <>
+        cycle (True : P.replicate (calSize -1) False)
+      simOut = sampleN simLength topEntity
+    simOut === fmap (\a -> (a,a)) expectedAcks
 
 -- | Decode an incoming slave bus by consuming two acknowledged signals and concatenating
 -- their readData's.

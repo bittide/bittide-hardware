@@ -7,10 +7,10 @@ module Bittide.Instances.Calendar where
 
 import Clash.Prelude
 
-import Bittide.Calendar (mkCalendar, CalendarConfig (CalendarConfig))
+import Bittide.Calendar
 import Bittide.Instances.Domains (Basic200)
 import Bittide.SharedTypes
-import Bittide.Switch
+import Bittide.Switch as SW
 import Protocols.Wishbone
 
 import Bittide.Instances.Hacks (reducePins)
@@ -27,9 +27,11 @@ switchCalendar1k ::
   )
 switchCalendar1k clk rst =
   withClockResetEnable clk syncRst enableGen $
-    mkCalendar (CalendarConfig (SNat @1024) (repeat 0 :> Nil) (repeat 0 :> Nil))
+    mkCalendar (CalendarConfig (SNat @1024) cal cal)
  where
   syncRst = resetSynchronizer clk rst
+  cal = ValidEntry{veEntry =repeat 0, veRepeat = 0 :: Unsigned 8} :> Nil
+
 {-# NOINLINE switchCalendar1k #-}
 
 switchCalendar1kReducedPins ::
