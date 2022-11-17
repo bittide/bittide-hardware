@@ -57,21 +57,25 @@ mkFalsePathXdc manifest = unlines (concatMap goPort (ports manifest))
 -- or simulation.
 --
 mkBaseTcl ::
+  -- | Where to create ip directory.
+  FilePath ->
   -- | Top entity directory
   LocatedManifest ->
   -- | TCL script
   IO String
-mkBaseTcl LocatedManifest{lmPath} = do
+mkBaseTcl outputDir LocatedManifest{lmPath} = do
   connector <- tclConnector
   let topEntityDir = dropFileName lmPath
 
   pure [__i|
     set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
     source -notrace {#{connector}}
+    file delete -force {#{outputDir </> "ip"}}
+    file mkdir {#{outputDir </> "ip"}}
     clash::readMetadata {#{topEntityDir}}
-    clash::createAndReadIp -dir ip
+    clash::createAndReadIp -dir {#{outputDir </> "ip"}}
     clash::readHdl
-    clash::readXdc {normal}
+    clash::readXdc {early normal late}
     set_property TOP $clash::topEntity [current_fileset]
   |]
 
@@ -87,7 +91,7 @@ mkSynthesisTcl ::
   -- | Rendered TCL
   IO String
 mkSynthesisTcl outputDir outOfContext part manifest@LocatedManifest{lmManifest} = do
-  baseTcl <- mkBaseTcl manifest
+  baseTcl <- mkBaseTcl outputDir manifest
   pure $ baseTcl <> "\n" <> [__i|
     set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
 
@@ -97,6 +101,7 @@ mkSynthesisTcl outputDir outOfContext part manifest@LocatedManifest{lmManifest} 
     \# Synthesis
     synth_design -name #{name} -part #{part} -mode #{outOfContextStr}
     report_timing_summary -file {#{outputDir </> "reports" </> "post_synth_timing_summary.rpt"}}
+    report_utilization -file {#{outputDir </> "reports" </> "post_synth_util.rpt"}}
     write_checkpoint -force {#{outputDir </> "checkpoints" </> "post_synth.dcp"}}
 
     \# Netlist
