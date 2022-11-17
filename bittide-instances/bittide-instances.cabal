@@ -71,6 +71,7 @@ common common-options
     clash-prelude,
     clash-protocols,
     containers,
+    elastic-buffer-sim,
     filepath,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
@@ -96,6 +97,7 @@ library
     Bittide.Instances.ScatterGather
     Bittide.Instances.Switch
     Bittide.Instances.Wishbone
+    Bittide.Instances.ClockControl
     Clash.Shake.Extra
     Clash.Shake.Vivado
     Development.Shake.Extra

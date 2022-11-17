@@ -22,6 +22,7 @@ import System.FilePath (isDrive, (</>), takeDirectory)
 import Clash.Shake.Vivado
 
 import qualified Bittide.Instances.Calendar as Calendar
+import qualified Bittide.Instances.ClockControl as ClockControl
 import qualified Bittide.Instances.Link as Link
 import qualified Bittide.Instances.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Switch as Switch
@@ -80,6 +81,7 @@ targets =
   , 'Switch.switch_16_64ReducedPins
   , 'Wishbone.singleMasterInterconnect_32_32
   , 'Wishbone.singleMasterInterconnect_32_32ReducedPins
+  , 'ClockControl.callisto3
   ]
 
 shakeOpts :: FilePath -> ShakeOptions
