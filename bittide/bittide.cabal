@@ -68,8 +68,11 @@ common common-options
     -fno-unbox-strict-fields
   default-language: Haskell2010
   build-depends:
+    aeson,
     base,
     Cabal,
+    cassava,
+    clash-cores,
     array,
     bittide-extra,
     bytestring,
@@ -83,11 +86,17 @@ common common-options
     ghc-typelits-extra,
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
+    random,
 library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
+    Bittide.Arithmetic.Ppm
+    Bittide.Arithmetic.Time
     Bittide.Calendar
+    Bittide.ClockControl
+    Bittide.ClockControl.Callisto
+    Bittide.ClockControl.Callisto.Util
     Bittide.DoubleBufferedRam
     Bittide.Link
     Bittide.Node

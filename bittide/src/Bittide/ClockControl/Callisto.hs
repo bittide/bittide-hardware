@@ -4,7 +4,6 @@
 
 {-# LANGUAGE RecordWildCards #-}
 
--- | Mock clock controller
 module Bittide.ClockControl.Callisto
   ( callistoClockControl
   ) where

@@ -25,8 +25,8 @@ import Data.Aeson (ToJSON(toJSON))
 import Data.Proxy (Proxy(..))
 import GHC.Stack (HasCallStack)
 
-import Bittide.Simulate.Ppm
-import Bittide.Simulate.Time (microseconds)
+import Bittide.Arithmetic.Ppm
+import Bittide.Arithmetic.Time (microseconds)
 
 import Data.Csv
 

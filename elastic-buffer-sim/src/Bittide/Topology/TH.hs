@@ -39,7 +39,7 @@ import System.Directory (createDirectoryIfMissing)
 import System.Random (randomRIO)
 
 import Bittide.Simulate
-import Bittide.Simulate.Ppm
+import Bittide.Arithmetic.Ppm
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.ElasticBuffer

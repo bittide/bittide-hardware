@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Simulate.Time where
+module Bittide.Arithmetic.Time where
 
 import Prelude
 
