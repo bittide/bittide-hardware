@@ -47,6 +47,7 @@ clashCmd buildDir hdl topName extraArgs =
     , "-main-is", funcName
     , hdlToFlag hdl
     , "-fclash-clear"
+    , "-fclash-spec-limit=100"
     ] <> extraArgs
   )
  where
