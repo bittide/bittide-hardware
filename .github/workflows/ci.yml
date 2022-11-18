@@ -129,25 +129,17 @@ jobs:
           cd elastic-buffer-sim && poetry run pycodestyle genplots.py
 
       # TODO: simulate + plot multiple topologies
-      - name: Simulate network and generate csvs
-        run: |
-          cd elastic-buffer-sim && cabal run sim -- csv 30000 1000
-
-      - name: Generate plots
-        run: |
-          cd elastic-buffer-sim && poetry run python genplots.py
-
       - name: Plot mesh grid
         run: |
-          cd elastic-buffer-sim && poetry run cabal run sim -- plot complete3 30000 1000
+          cd elastic-buffer-sim && poetry run cabal run +RTS --RTS sim -- +RTS -M8M -RTS plot complete3 150000 1000
 
       - name: Upload plots
         uses: actions/upload-artifact@v2
         with:
-          name: gen-plots-py
+          name: gen-plots-hs
           path: |
-            elastic-buffer-sim/_build/clocks.pdf
-            elastic-buffer-sim/_build/elasticbuffers.pdf
+            elastic-buffer-sim/_build/clockscomplete3.pdf
+            elastic-buffer-sim/_build/elasticbufferscomplete3.pdf
 
   elastic-buffer-sim-tests:
     name: elastic-buffer-sim unittests
@@ -279,7 +271,7 @@ jobs:
       - name: Set test matrix
         id: set-matrix
         run: |
-          echo "::set-output name=check_matrix::$(cat checks.json)"
+          echo "check_matrix=$(cat checks.json)" >> "$GITHUB_OUTPUT"
 
     outputs:
       check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}

@@ -261,7 +261,7 @@ absTimes g = do
     goD =
       FunD nm
         [ Clause
-          (fmap VarP tNames
+          (fmap (BangP . VarP) tNames  -- the BangP is important, it prevents leaking lots of memory
             ++ [TupP (zipWith3
                         (\periodName ns xs ->
                           InfixP
