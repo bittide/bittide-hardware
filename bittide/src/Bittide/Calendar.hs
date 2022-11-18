@@ -188,10 +188,16 @@ calendar SNat bootstrapActive bootstrapShadow wbIn =
   ctrl = wbCalRX wbIn
   wbOut = wbCalTX <$> ctrl <*> calOut
 
-  bootstrapA = bootstrapActive ++ deepErrorX
-   @(Calendar (maxCalDepth - bootstrapSizeA) a repetitionBits) "Uninitialized active entry"
-  bootstrapB = bootstrapShadow ++ deepErrorX
-   @(Calendar (maxCalDepth - bootstrapSizeB) a repetitionBits) "Uninitialized active entry"
+  -- XXX: Ideally we'd pad with 'errorX', but Vivado generates a critical warning
+  --      on undefined initial contents. We tried using the Clash flag
+  --      `-fclash-force-undefined=0`, but this triggered a bug:
+  --
+  --        https://github.com/clash-lang/clash-compiler/issues/2360
+  --
+  bootstrapA = bootstrapActive ++ repeat @(maxCalDepth - bootstrapSizeA)
+    ValidEntry{veEntry = unpack 0, veRepeat = 0}
+  bootstrapB = bootstrapShadow ++ repeat @(maxCalDepth - bootstrapSizeA)
+    ValidEntry{veEntry = unpack 0, veRepeat = 0}
 
   bufA = blockRam bootstrapA (readA <$> bufCtrl) (writeA <$> bufCtrl)
   bufB = blockRam bootstrapB (readB <$> bufCtrl) (writeB <$> bufCtrl)
