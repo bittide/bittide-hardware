@@ -131,7 +131,8 @@ jobs:
       # TODO: simulate + plot multiple topologies
       - name: Plot mesh grid
         run: |
-          cd elastic-buffer-sim && poetry run cabal run +RTS --RTS sim -- +RTS -M8M -RTS plot complete3 150000 1000
+          cabal build elastic-buffer-sim:sim
+          cd elastic-buffer-sim && poetry run $(cabal list-bin elastic-buffer-sim:sim) +RTS -M8M -RTS plot complete3 150000 100
 
       - name: Upload plots
         uses: actions/upload-artifact@v2
