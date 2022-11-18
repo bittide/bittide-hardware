@@ -27,11 +27,11 @@ import Bittide.Simulate.Ppm
 import Data.Csv
 
 type ElasticBufferSize = Unsigned 32
-type DataCount = Unsigned 32
+type DataCount n = Unsigned n
 type SettlePeriod = Natural
 
 -- | Configuration passed to 'clockControl'
-data ClockControlConfig = ClockControlConfig
+data ClockControlConfig n = ClockControlConfig
   { -- | The quickest a clock could possibly run at. Used to (pessimistically)
     -- estimate when a new command can be issued.
     cccPessimisticPeriod :: PeriodPs
@@ -49,13 +49,13 @@ data ClockControlConfig = ClockControlConfig
   , cccStepSize :: Integer
 
   -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
-  , cccBufferSize :: ElasticBufferSize
+  , cccBufferSize :: SNat n
   } deriving (Lift)
 
 -- | Calculate target data count given a FIFO size. Currently returns a target
 -- data count of half the FIFO size.
-targetDataCount :: ElasticBufferSize -> DataCount
-targetDataCount size = size `div` 2
+targetDataCount :: KnownNat n => DataCount n
+targetDataCount = shiftR maxBound 1
 
 -- | Safer version of FINC/FDEC signals present on the Si5395/Si5391 clock multipliers.
 data SpeedChange
@@ -75,7 +75,7 @@ instance KnownNat n => ToField (Unsigned n) where
 instance KnownNat n => ToJSON (Unsigned n) where
   toJSON = toJSON . toInteger
 
-defClockConfig :: ClockControlConfig
+defClockConfig :: ClockControlConfig 16
 defClockConfig = ClockControlConfig
   { cccPessimisticPeriod = pessimisticPeriod
   -- clock adjustment takes place at 1MHz, clock is 200MHz so we
@@ -83,7 +83,7 @@ defClockConfig = ClockControlConfig
   , cccSettlePeriod      = pessimisticPeriod * 200
   , cccDynamicRange      = 150
   , cccStepSize          = 1
-  , cccBufferSize        = 65536 -- 128
+  , cccBufferSize        = d16 -- 2**16 ~ 65536
   }
  where
   specPpm = 100
