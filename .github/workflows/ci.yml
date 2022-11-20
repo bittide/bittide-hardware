@@ -131,7 +131,8 @@ jobs:
       # TODO: simulate + plot multiple topologies
       - name: Plot mesh grid
         run: |
-          cd elastic-buffer-sim && poetry run cabal run +RTS --RTS sim -- +RTS -M8M -RTS plot complete3 150000 1000
+          cabal build elastic-buffer-sim:sim
+          cd elastic-buffer-sim && poetry run $(cabal list-bin elastic-buffer-sim:sim) +RTS -M8M -RTS plot complete3 150000 100
 
       - name: Upload plots
         uses: actions/upload-artifact@v2
@@ -694,19 +695,32 @@ jobs:
   all:
     name: All jobs finished
     needs: [
-        license-check,
-        contranomy-formal-tests,
-        contranomy-tests,
-        contranomy-sim-tests,
+        bittide-instances-doctests,
+        bittide-instances-hdl,
+        bittide-instances-unittests,
         bittide-tests,
+        build,
+        contranomy-formal-tests,
+        contranomy-hdl,
+        contranomy-sim-tests,
+        contranomy-tests,
+        elastic-buffer-sim-tests,
+        elastic-buffer-sim-topologies,
+        firmware-build-examples,
+        firmware-build-integration-tests,
         firmware-lints,
         firmware-unit-tests,
-        firmware-build-examples
+        license-check,
+        lint,
       ]
-    runs-on: self-hosted
-    container:
-      image: ubuntu:22.04
+    runs-on: ubuntu-22.04
     steps:
-      - name: Void
+      - name: Checkout
+        uses: actions/checkout@v1
+      - name: Install dependencies
         run: |
-          echo "All good"
+          sudo apt-get update
+          sudo apt-get -y install python3-yaml
+      - name: Check that the 'all' job depends on all other jobs
+        run: |
+          .github/scripts/all_check.py
