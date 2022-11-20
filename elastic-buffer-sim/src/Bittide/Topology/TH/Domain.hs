@@ -8,6 +8,13 @@ module Bittide.Topology.TH.Domain where
 
 import Clash.Explicit.Prelude
 
--- 200kHz instead of 200MHz; otherwise the periods are so small that deviations
--- can't be expressed as 'Natural's
-createDomain vSystem{vName="Bittide", vPeriod=hzToPeriod 200e3}
+import Bittide.ClockControl (ClockControlConfig, defClockConfig)
+
+createDomain vSystem{
+    vName="Bittide"
+  , vPeriod=hzToPeriod 200e6
+  , vResetKind=Synchronous
+  }
+
+defBittideClockConfig :: ClockControlConfig Bittide 12
+defBittideClockConfig = defClockConfig

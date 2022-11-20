@@ -37,9 +37,9 @@ import Prelude qualified as P
 import Data.Array qualified as A
 import Data.ByteString.Lazy qualified as BSL
 
-import Bittide.ClockControl
 import Bittide.Topology.Graph
 import Bittide.Topology.TH
+import Bittide.Topology.TH.Domain (defBittideClockConfig)
 
 -- | This samples @n@ steps, taking every @k@th datum, and plots clock speeds
 -- and elastic buffer occupancy
@@ -83,7 +83,7 @@ plotTree23 = $(plotEbsAPI ("tree23", tree 2 3))
 -- @script.py@
 dumpCsv :: Int -> Int -> IO ()
 dumpCsv m k = do
-  offs <- genOffsN n
+  offs <- genOffsN defBittideClockConfig n
   createDirectoryIfMissing True "_build"
   forM_ [0..n] $ \i ->
     let eb = g A.! i in
@@ -93,7 +93,7 @@ dumpCsv m k = do
   let dats =
           $(onN 6) ($(encodeDats 6) m)
         $ takeEveryN k
-        $ $(simNodesFromGraph defClockConfig (complete 6)) offs
+        $ $(simNodesFromGraph defBittideClockConfig (complete 6)) offs
   zipWithM_ (\dat i ->
     BSL.appendFile ("_build/clocks" <> show i <> ".csv") dat) dats [(0::Int)..]
  where

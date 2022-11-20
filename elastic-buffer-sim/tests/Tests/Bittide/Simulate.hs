@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -15,7 +16,6 @@ import Test.Tasty.HUnit
 import Bittide.ClockControl
 import Bittide.ClockControl.Strategies
 import Bittide.Simulate
-import Bittide.Simulate.Ppm
 
 createDomain vXilinxSystem{vPeriod=hzToPeriod 200e6, vName="Fast"}
 createDomain vXilinxSystem{vPeriod=hzToPeriod 20e6, vName="Slow"}
@@ -31,26 +31,15 @@ tests = testGroup "Simulate"
     ]
   ]
 
-fastPeriod :: PeriodPs
-fastPeriod = hzToPeriod 200e6
-
-clockConfig :: Ppm -> ClockControlConfig 7
-clockConfig clockUncertainty = ClockControlConfig
-  { cccPessimisticPeriod = speedUpPeriod clockUncertainty fastPeriod
-  , cccSettlePeriod      = fastPeriod * 200
-  , cccDynamicRange      = clockUncertainty * 2
-  , cccStepSize          = 10
-  , cccBufferSize        = d7 -- 2**7 ~ 128
-  }
-
 case_clockControlMaxBound :: Assertion
 case_clockControlMaxBound = do
   let
-    config = clockConfig (Ppm 100)
+    config = defClockConfig
     dataCounts = pure maxBound :> Nil
     changes =
       sampleN
-        (fromIntegral (cccPessimisticPeriod config))
+        -- +10_000 assumes callisto's pipeline less than 10_000 deep
+        (fromIntegral (cccPessimisticSettleCycles config + 10_000))
         (callistoClockControl @_ @_ @Fast clockGen resetGen enableGen config dataCounts)
 
   assertBool
@@ -60,11 +49,12 @@ case_clockControlMaxBound = do
 case_clockControlMinBound :: Assertion
 case_clockControlMinBound = do
   let
-    config = clockConfig (Ppm 100)
+    config = defClockConfig
     dataCounts = pure 0 :> Nil
     changes =
       sampleN
-        (fromIntegral (cccPessimisticPeriod config))
+        -- +100 assumes callisto's pipeline less than 100 deep
+        (fromIntegral (cccPessimisticSettleCycles config + 100))
         (callistoClockControl @_ @_ @Fast clockGen resetGen enableGen config dataCounts)
 
   assertBool

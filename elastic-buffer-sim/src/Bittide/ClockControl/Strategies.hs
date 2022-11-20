@@ -35,7 +35,7 @@ callistoClockControl ::
   Reset dom ->
   Enable dom ->
   -- | Configuration for this component, see individual fields for more info.
-  ClockControlConfig m ->
+  ClockControlConfig dom m ->
   -- | Statistics provided by elastic buffers.
   Vec n (Signal dom (DataCount m)) ->
   Signal dom SpeedChange
@@ -66,7 +66,7 @@ clockControl ::
   Reset dom ->
   Enable dom ->
   -- | Configuration for this component, see individual fields for more info.
-  ClockControlConfig m ->
+  ClockControlConfig dom m ->
   -- | Clock control strategy
   ClockControlAlgorithm dom n m a ->
   -- | Statistics provided by elastic buffers.
@@ -74,6 +74,4 @@ clockControl ::
   -- | Whether to adjust node clock frequency
   Signal dom SpeedChange
 clockControl clk rst ena ClockControlConfig{..} f =
-  f clk rst ena targetDataCount updateEveryNCycles . bundle
- where
-  updateEveryNCycles = fromIntegral (cccSettlePeriod `div` cccPessimisticPeriod) + 1
+  f clk rst ena targetDataCount cccPessimisticSettleCycles . bundle
