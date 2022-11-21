@@ -649,6 +649,7 @@ jobs:
         target:
           - {top: switchCalendar1k,            stage: hdl}
           - {top: switchCalendar1kReducedPins, stage: netlist}
+          - {top: callisto3,                   stage: netlist}
 
     container:
       image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
