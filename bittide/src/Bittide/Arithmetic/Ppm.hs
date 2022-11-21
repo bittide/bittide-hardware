@@ -6,7 +6,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NumericUnderscores #-}
 
-module Bittide.Simulate.Ppm where
+module Bittide.Arithmetic.Ppm where
 
 import Clash.Explicit.Prelude
 import Clash.Signal.Internal (Femtoseconds (Femtoseconds), hzToFs, fsToHz)

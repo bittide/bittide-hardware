@@ -87,12 +87,8 @@ library
     random,
     template-haskell
   exposed-modules:
-    Bittide.ClockControl
-    Bittide.ClockControl.Strategies
-    Bittide.ClockControl.Strategies.Callisto
+    Bittide.ClockControl.ElasticBuffer
     Bittide.Simulate
-    Bittide.Simulate.Ppm
-    Bittide.Simulate.Time
     Bittide.Topology
     Bittide.Topology.Graph
     Bittide.Topology.TH
@@ -123,6 +119,7 @@ test-suite unittests
     Tests.Bittide.Simulate
   build-depends:
       base
+    , bittide
     , clash-prelude
     , elastic-buffer-sim
     , tasty
