@@ -57,6 +57,15 @@ common common-options
     -- blackboxes attached for them. You can disable this, but be sure to add
     -- a no-specialize pragma to every function with a blackbox.
     -fno-worker-wrapper
+
+    -- Strict annotations - while sometimes preventing space leaks - trigger
+    -- optimizations Clash can't deal with. See:
+    --
+    --    https://github.com/clash-lang/clash-compiler/issues/2361
+    --
+    -- These flags disables the optimization.
+    -fno-unbox-small-strict-fields
+    -fno-unbox-strict-fields
   default-language: Haskell2010
   build-depends:
     base,
