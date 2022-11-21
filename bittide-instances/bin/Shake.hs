@@ -9,7 +9,7 @@ module Main where
 import Prelude
 
 import Clash.Shake.Extra
-import Control.Monad.Extra (ifM)
+import Control.Monad.Extra (ifM, unlessM)
 import Data.Foldable (for_)
 import Development.Shake
 import Development.Shake.Extra
@@ -22,7 +22,6 @@ import System.FilePath (isDrive, (</>), takeDirectory)
 import Clash.Shake.Vivado
 
 import qualified Bittide.Instances.Calendar as Calendar
-import qualified Clash.Shake.Vivado.ParseTimingSummary as ParseTimingSummary
 import qualified Clash.Util.Interpolate as I
 import qualified Language.Haskell.TH as TH
 import qualified System.Directory as Directory
@@ -196,12 +195,10 @@ main = do
           -- Design should meet timing post routing. Note that this is not a
           -- requirement after synthesis as many of the optimizations only follow
           -- after.
-          report <- liftIO (ParseTimingSummary.parseFile postRouteTimingSummaryPath)
-          case ParseTimingSummary.meetsTiming report of
-            Nothing -> pure ()
-            Just wns -> error [I.i|
-              Design did not meet timing. Negative WNS detected: #{wns}. Check out
-              the timing summary at:
+          liftIO $ unlessM
+            (meetsTiming postRouteTimingSummaryPath)
+            (error [I.i|
+              Design did not meet timing. Check out the timing summary at:
 
                 #{postRouteTimingSummaryPath}
 
@@ -213,7 +210,7 @@ main = do
 
                 vivado #{postRouteCheckpointPath}
 
-            |]
+            |])
 
         -- Netlist generation
         runNetlistTclPath %> \path -> do

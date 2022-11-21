@@ -18,14 +18,22 @@ module Clash.Shake.Vivado
   , mkNetlistTcl
   , mkSynthesisTcl
   , mkRouteTcl
+  , meetsTiming
   ) where
 
 import Prelude
 
 import Clash.DataFiles (tclConnector)
 import Clash.Driver.Manifest
+import Data.List (isInfixOf)
 import Data.String.Interpolate (__i)
 import System.FilePath ((</>), dropFileName)
+
+-- | Read a timing summary and determine whether it met timing.
+meetsTiming :: FilePath -> IO Bool
+meetsTiming reportPath = do
+  reportContents <- readFile reportPath
+  pure $ not ("Timing constraints are not met." `isInfixOf` reportContents)
 
 -- TODO: Upstream
 data LocatedManifest = LocatedManifest

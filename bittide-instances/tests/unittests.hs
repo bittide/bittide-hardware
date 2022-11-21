@@ -7,11 +7,9 @@ module Main where
 import Prelude
 import Test.Tasty
 
-import qualified Tests.Clash.Shake.Vivado.ParseTimingSummary
-
 tests :: TestTree
 tests = testGroup "Unittests"
-  [ Tests.Clash.Shake.Vivado.ParseTimingSummary.tests
+  [
   ]
 
 main :: IO ()

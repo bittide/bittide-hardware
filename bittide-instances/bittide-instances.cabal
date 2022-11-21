@@ -95,8 +95,6 @@ library
 
     Clash.Shake.Extra
     Clash.Shake.Vivado
-    Clash.Shake.Vivado.ParseTimingSummary
-    Clash.Shake.Vivado.Util
     Development.Shake.Extra
     Language.Haskell.TH.Extra
   autogen-modules:
@@ -146,7 +144,6 @@ test-suite unittests
   main-is: unittests.hs
   ghc-options: -threaded -with-rtsopts=-N
   other-modules:
-    Tests.Clash.Shake.Vivado.ParseTimingSummary
     Paths_bittide_instances
   autogen-modules:
     Paths_bittide_instances
@@ -156,19 +153,3 @@ test-suite unittests
     , pretty-simple
     , tasty
     , tasty-golden
-
-executable parse-timing-summary
-  Main-Is:            bin/ParseTimingSummary.hs
-  Build-Depends:
-    base,
-    aeson-pretty,
-    bittide-instances,
-    bytestring,
-    directory,
-    docopt                  ^>= 0.7,
-    extra,
-    filepath,
-    pretty-simple,
-    text,
-  GHC-Options:        -Wall -Wcompat
-  default-language:   Haskell2010
