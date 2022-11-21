@@ -117,6 +117,7 @@ executable shake
     , clash-ghc
     , clash-lib
     , cryptohash-sha256
+    , directory
     , extra
     , Glob
     , pretty-simple

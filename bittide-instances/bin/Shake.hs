@@ -9,12 +9,15 @@ module Main where
 import Prelude
 
 import Clash.Shake.Extra
+import Control.Monad.Extra (ifM)
 import Data.Foldable (for_)
 import Development.Shake
 import Development.Shake.Extra
-import Development.Shake.FilePath ((</>))
+import GHC.Stack (HasCallStack)
 import Language.Haskell.TH (nameBase)
 import System.Console.ANSI (setSGR)
+import System.Directory (getCurrentDirectory)
+import System.FilePath (isDrive, (</>), takeDirectory)
 
 import Clash.Shake.Vivado
 
@@ -22,15 +25,40 @@ import qualified Bittide.Instances.Calendar as Calendar
 import qualified Clash.Shake.Vivado.ParseTimingSummary as ParseTimingSummary
 import qualified Clash.Util.Interpolate as I
 import qualified Language.Haskell.TH as TH
+import qualified System.Directory as Directory
 
-buildDir :: FilePath
-buildDir = "_build"
+-- | Given Cabal project root, determine build directory
+buildDir :: FilePath -> FilePath
+buildDir projectRoot = projectRoot </> "_build"
 
-clashBuildDir :: FilePath
-clashBuildDir = buildDir </> "clash"
+-- | Given Cabal project root, determine Clash HDL output directory
+clashBuildDir :: FilePath -> FilePath
+clashBuildDir projectRoot = buildDir projectRoot </> "clash"
 
-vivadoBuildDir :: FilePath
-vivadoBuildDir = buildDir </> "vivado"
+-- | Given Cabal project root, determine directory for Vivado input + output files
+vivadoBuildDir :: FilePath -> FilePath
+vivadoBuildDir projectRoot = buildDir projectRoot </> "vivado"
+
+-- | Searches for a file called @cabal.project@ It will look for it in the
+-- current working directory. If it can't find it there, it will traverse up
+-- until it finds the file.
+--
+-- The returned path points to the directory containing @cabal.project@. Errors
+-- if it could not find @cabal.project@ anywhere.
+--
+findProjectRoot :: HasCallStack => IO FilePath
+findProjectRoot = goUp =<< getCurrentDirectory
+ where
+  goUp :: FilePath -> IO FilePath
+  goUp path
+    | isDrive path = error "Could not find 'cabal.project'"
+    | otherwise =
+        ifM
+          (Directory.doesFileExist (path </> projectFilename))
+          (return path)
+          (goUp (takeDirectory path))
+
+  projectFilename = "cabal.project"
 
 -- | All synthesizable targets
 targets :: [TH.Name]
@@ -39,9 +67,9 @@ targets =
   , 'Calendar.switchCalendar1kReducedPins
   ]
 
-shakeOpts :: ShakeOptions
-shakeOpts = shakeOptions
-  { shakeFiles = buildDir
+shakeOpts :: FilePath -> ShakeOptions
+shakeOpts projectRoot = shakeOptions
+  { shakeFiles = buildDir projectRoot
   , shakeChange = ChangeDigest
   , shakeVersion = "5"
   }
@@ -71,15 +99,17 @@ vivadoFromTcl tclPath =
 --
 main :: IO ()
 main = do
-  shakeArgs shakeOpts $ do
+  projectRoot <- findProjectRoot
+
+  shakeArgs (shakeOpts projectRoot) $ do
     -- For each target, generate a user callable command (PHONY). Run with
     -- '--help' to list them.
     for_ targets $ \target -> do
       let
         -- TODO: Dehardcode these paths. They're currently hardcoded in both the
         --       TCL and here, which smells.
-        manifestPath = getManifestLocation clashBuildDir target
-        synthesisDir = vivadoBuildDir </> show target
+        manifestPath = getManifestLocation (clashBuildDir projectRoot) target
+        synthesisDir = vivadoBuildDir projectRoot </> show target
         falsePathXdc = synthesisDir </> "false_paths.xdc"
         checkpointsDir = synthesisDir </> "checkpoints"
         reportDir = synthesisDir </> "reports"
@@ -109,8 +139,8 @@ main = do
 
       withoutTargets $ do
         manifestPath %> \path -> do
-          needDirectory "dist-newstyle"
-          let (buildTool, buildToolArgs) = defaultClashCmd clashBuildDir target
+          needDirectory (projectRoot </> "dist-newstyle")
+          let (buildTool, buildToolArgs) = defaultClashCmd (clashBuildDir projectRoot) target
           command_ [] buildTool buildToolArgs
 
           -- Clash messes up ANSI escape codes, leaving the rest of the terminal
