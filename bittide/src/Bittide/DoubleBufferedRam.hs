@@ -151,14 +151,18 @@ wbStorage' initContent wbIn = delayControls wbIn wbOut
   readDataB = ramB readAddrB writeEntryB byteSelectB
 
   (ramA, ramB, isReloadable) = case initContent of
-    NonReloadable (BlobVec (splitAtI -> (b, a))) ->
-      ( blockRamByteAddressable @_ @depth $ BlobVec a
-      , blockRamByteAddressable @_ @depth $ BlobVec b
-      , False)
     Reloadable _ ->
       (blockRamByteAddressableU, blockRamByteAddressableU, True)
     Undefined ->
       (blockRamByteAddressableU, blockRamByteAddressableU, False)
+    NonReloadable (BlobVec (splitAtI -> (b, a))) ->
+      ( blockRamByteAddressable @_ @depth $ BlobVec a
+      , blockRamByteAddressable @_ @depth $ BlobVec b
+      , False)
+    NonReloadable (FileVec (splitAtI -> (b, a))) ->
+      ( blockRamByteAddressable @_ @depth $ FileVec a
+      , blockRamByteAddressable @_ @depth $ FileVec b
+      , False)
     (NonReloadable (Vec (unzip @depth . bitCoerce -> (b, a)))) ->
       ( blockRamByteAddressable @_ @depth $ Vec a
       , blockRamByteAddressable @_ @depth $ Vec b
