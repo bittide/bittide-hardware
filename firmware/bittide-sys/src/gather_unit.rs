@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::FdtLoadError;
+use fdt::node::FdtNode;
+
+use crate::{utils::matches_fdt_name, ComponentLoadError};
 
 pub struct GatherTimingOracle {
     sequence_counter: *const u64,
@@ -34,29 +36,30 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
     ///
     /// The FDT must be a valid description of the hardware components that this
     /// code is running on.
-    pub unsafe fn from_fdt(fdt: &fdt::Fdt) -> Result<Self, FdtLoadError> {
+    pub unsafe fn from_fdt_node(node: &FdtNode) -> Result<Self, ComponentLoadError> {
         let get_node = |path| {
-            fdt.find_node(path)
-                .ok_or(FdtLoadError::FdtNodeNotFound(path))
+            node.children()
+                .find(|child| matches_fdt_name(child, path))
+                .ok_or(ComponentLoadError::FdtNodeNotFound(path))
         };
 
         let get_reg = |node: &fdt::node::FdtNode, component| {
             node.reg()
-                .ok_or(FdtLoadError::RegNotFound { component })?
+                .ok_or(ComponentLoadError::RegNotFound { component })?
                 .next()
-                .ok_or(FdtLoadError::RegNotFound { component })
+                .ok_or(ComponentLoadError::RegNotFound { component })
         };
 
-        let memory_node = get_node("/gather-unit/gather-memory")?;
-        let sequence_counter_node = get_node("/gather-unit/sequence-counter-reg")?;
-        let send_sequence_counter_node = get_node("/gather-unit/send-sequence-counter-reg")?;
-        let metacycle_register_node = get_node("/gather-unit/metacycle-reg")?;
+        let memory_node = get_node("gather-memory")?;
+        let sequence_counter_node = get_node("sequence-counter-reg")?;
+        let send_sequence_counter_node = get_node("send-sequence-counter-reg")?;
+        let metacycle_register_node = get_node("metacycle-reg")?;
 
         let memory = get_reg(&memory_node, "memory")?;
 
         if let Some(size) = memory.size {
             if size != FRAME_SIZE {
-                return Err(FdtLoadError::SizeMismatch {
+                return Err(ComponentLoadError::SizeMismatch {
                     property: "memory frame size",
                     expected: FRAME_SIZE,
                     found: size,
@@ -68,7 +71,7 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
             let reg = get_reg(&sequence_counter_node, "sequence_counter")?;
             if let Some(size) = reg.size {
                 if size != 8 {
-                    return Err(FdtLoadError::SizeMismatch {
+                    return Err(ComponentLoadError::SizeMismatch {
                         property: "sequence counter register size",
                         expected: 8,
                         found: size,
@@ -82,7 +85,7 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
             let reg = get_reg(&send_sequence_counter_node, "send_sequence_counter")?;
             if let Some(size) = reg.size {
                 if size != 1 {
-                    return Err(FdtLoadError::SizeMismatch {
+                    return Err(ComponentLoadError::SizeMismatch {
                         property: "send sequence counter register size",
                         expected: 1,
                         found: size,
@@ -96,7 +99,7 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
             let reg = get_reg(&metacycle_register_node, "metacycle_register")?;
             if let Some(size) = reg.size {
                 if size != 1 {
-                    return Err(FdtLoadError::SizeMismatch {
+                    return Err(ComponentLoadError::SizeMismatch {
                         property: "metacycle register size",
                         expected: 1,
                         found: size,

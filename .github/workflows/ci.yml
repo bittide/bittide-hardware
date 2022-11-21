@@ -342,6 +342,11 @@ jobs:
         run: |
           cp .github/cabal.project.simulation cabal.project.local
 
+      - name: Install Device Tree Compiler
+        run: |
+          apt-get update
+          apt-get install -y device-tree-compiler
+
       - name: Update Cabal index info
         run: |
           cabal update
@@ -367,7 +372,7 @@ jobs:
 
       - name: Run unittests
         run: |
-          cabal run elastic-buffer-sim:unittests
+          cabal run contranomy-sim:unittests
 
 
   bittide-tests:
@@ -425,6 +430,7 @@ jobs:
         with:
           toolchain: stable
           profile: minimal
+          target: riscv32imc-unknown-none-elf
           components: clippy, rustfmt
 
       - name: Rust formatting
@@ -436,7 +442,7 @@ jobs:
       - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
+          args: --target riscv32imc-unknown-none-elf --all-features
 
   firmware-unit-tests:
     name: Firmware Unit Tests
@@ -473,7 +479,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --all
+          args: --target x86_64-unknown-linux-gnu --all
 
   firmware-build-examples:
     name: Firmware Build Examples
@@ -504,7 +510,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            firmware/examples/hello/target/
+            ./target/
           key: cargo-cache-${{ hashFiles('firmware/examples/hello/Cargo.lock') }}
 
       - name: Building "hello" Example
@@ -544,7 +550,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            firmware/tests/target/
+            ./target/
           key: cargo-cache-${{ hashFiles('firmware/tests/Cargo.lock') }}
 
       - name: Building Firmware Integration Tests
@@ -553,17 +559,14 @@ jobs:
 
       - name: Archive Firmware Integration Tests
         run: |
-          mkdir -p target/firmware-integration-tests
-          # Copy artefacts into "clean" folder
-          cat target/artifacts | xargs -i cp ./{} target/firmware-integration-tests/
-          cd target/; tar -c -f ../firmware-integration-tests.tar firmware-integration-tests/
-        working-directory: firmware/tests/
+          cd firmware/tests; sh copy_test_binaries.sh
+          cd ../../; tar -c -f firmware-integration-tests.tar firmware-integration-tests/
 
       - name: Upload Firmware Integration Tests
         uses: actions/upload-artifact@v2
         with:
           name: firmware-integration-tests
-          path: firmware/tests/firmware-integration-tests.tar
+          path: firmware-integration-tests.tar
 
   bittide-instances-doctests:
     name: bittide-instances doctests

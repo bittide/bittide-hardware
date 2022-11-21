@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
+
 [profile.release]
 # Automatically strip symbols from the binary.
 strip = true
@@ -10,10 +11,11 @@ strip = true
 opt-level = "z"
 
 [workspace]
-exclude = [
-  "firmware/examples",
-  "firmware/tests",
-]
 members = [
-  "firmware/*",
+  "firmware/bittide-sys",
+
+  "firmware/examples/fdt-read",
+  "firmware/examples/hello",
+  "firmware/tests"
 ]
+resolver = "2"
