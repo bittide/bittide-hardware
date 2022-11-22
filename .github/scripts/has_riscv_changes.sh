@@ -20,6 +20,6 @@ fi
 
 git diff \
   --exit-code --quiet "${base_ref}".."${head_ref}" \
-  -- .github/ contranomy/ riscv-formal-config/ riscv-formal/
+  -- .github/ contranomy/ riscv-formal-config/ riscv-formal/ cabal.project
 
 [ $? -ne 0 ]
