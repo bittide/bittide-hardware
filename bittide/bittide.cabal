@@ -87,6 +87,7 @@ common common-options
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
     random,
+    string-interpolate ^>= 0.3,
 library
   import: common-options
   hs-source-dirs: src
@@ -105,6 +106,7 @@ library
     Bittide.SharedTypes
     Bittide.Switch
     Bittide.Wishbone
+    Clash.Cores.Extra
     Data.Constraint.Nat.Extra
 
 executable clash

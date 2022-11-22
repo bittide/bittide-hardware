@@ -23,6 +23,7 @@ import Clash.Shake.Vivado
 
 import qualified Bittide.Instances.Calendar as Calendar
 import qualified Bittide.Instances.ClockControl as ClockControl
+import qualified Bittide.Instances.Synchronizer as Synchronizer
 import qualified Clash.Util.Interpolate as I
 import qualified Language.Haskell.TH as TH
 import qualified System.Directory as Directory
@@ -66,6 +67,7 @@ targets =
   [ 'Calendar.switchCalendar1k
   , 'Calendar.switchCalendar1kReducedPins
   , 'ClockControl.callisto3
+  , 'Synchronizer.tripleFlipFlopSynchronizer
   ]
 
 shakeOpts :: FilePath -> ShakeOptions
