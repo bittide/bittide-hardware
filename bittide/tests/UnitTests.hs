@@ -15,6 +15,7 @@ import Tests.ElasticBuffer
 import Tests.Haxioms
 import Tests.Link
 import Tests.ScatterGather
+import Tests.StabilityChecker
 import Tests.Switch
 import Tests.Wishbone
 
@@ -27,6 +28,7 @@ tests = testGroup "Unittests"
   , memMapGroup
   , ramGroup
   , sgGroup
+  , stabilityGroup
   , switchGroup
   ]
 

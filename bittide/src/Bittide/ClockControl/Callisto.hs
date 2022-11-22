@@ -15,6 +15,7 @@ import Data.Constraint.Nat.Extra (euclid3)
 
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Util
+import Clash.Sized.Extra
 
 import qualified Clash.Cores.Xilinx.Floating as F
 import qualified Clash.Signal.Delayed as D

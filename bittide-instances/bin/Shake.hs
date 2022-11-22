@@ -23,8 +23,9 @@ import Clash.Shake.Vivado
 
 import qualified Bittide.Instances.Calendar as Calendar
 import qualified Bittide.Instances.ClockControl as ClockControl
-import qualified Bittide.Instances.Synchronizer as Synchronizer
 import qualified Bittide.Instances.ElasticBuffer as ElasticBuffer
+import qualified Bittide.Instances.StabilityChecker as StabilityChecker
+import qualified Bittide.Instances.Synchronizer as Synchronizer
 import qualified Clash.Util.Interpolate as I
 import qualified Language.Haskell.TH as TH
 import qualified System.Directory as Directory
@@ -69,6 +70,7 @@ targets =
   , 'Calendar.switchCalendar1kReducedPins
   , 'ClockControl.callisto3
   , 'ElasticBuffer.elasticBuffer5
+  , 'StabilityChecker.stabilityChecker_3_1M
   , 'Synchronizer.tripleFlipFlopSynchronizer
   ]
 
