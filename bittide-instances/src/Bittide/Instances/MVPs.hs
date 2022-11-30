@@ -24,6 +24,44 @@ speedChangeToPins = \case
  SlowDown -> (False, True)
  NoChange -> (False, False)
 
+clockControlDemo1 ::
+  "clkA" ::: Clock Basic200A ->
+  "clkB" ::: Clock Basic200B ->
+  "drainFifoA" ::: Reset Basic200A ->
+  "drainFifoB" ::: Reset Basic200B ->
+  ( "domA" ::: Signal Basic200A
+    ( "" :::
+      ( "FINC" ::: FINC
+      , "FDEC" ::: FDEC
+      )
+    , "Underflowed" ::: Bool
+    , "Overflowed" ::: Bool
+    , "isStable" ::: Bool
+    , "EbMode" ::: EbMode
+    )
+  ,  "domB" ::: Signal Basic200B
+    (
+      "" :::
+      ( "FINC" ::: FINC
+      , "FDEC" ::: FDEC
+      )
+    , "Underflowed" ::: Bool
+    , "Overflowed" ::: Bool
+    , "isStable" ::: Bool
+    , "EbMode" ::: EbMode
+    )
+  )
+clockControlDemo1 clkA clkB drainFifoA drainFifoB = (demoA, demoB)
+ where
+  demoA = genericClockControlDemo0 clockConfigA clkB clkA (unsafeFromHighPolarity $ pure False) drainFifoA (unsafeFromHighPolarity $ pure False)
+  demoB = genericClockControlDemo0 clockConfigB clkA clkB (unsafeFromHighPolarity $ pure False) drainFifoB (unsafeFromHighPolarity $ pure False)
+
+  clockConfigA :: ClockControlConfig Basic200A 12
+  clockConfigA = $(lift (defClockConfig @Basic200A))
+
+  clockConfigB :: ClockControlConfig Basic200B  12
+  clockConfigB = $(lift (defClockConfig @Basic200B))
+
 genericClockControlDemo0 ::
   forall recovered controlled  dataCountBits .
   ( KnownDomain recovered, KnownDomain controlled, KnownNat dataCountBits, 4 <= dataCountBits, dataCountBits <= 17) =>
@@ -103,3 +141,4 @@ stickyBits SNat = mealy go (0 , unpack 0)
       | otherwise   = (unpack 0, predCount)
 
 makeTopEntity 'clockControlDemo0
+makeTopEntity 'clockControlDemo1
