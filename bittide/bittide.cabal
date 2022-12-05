@@ -98,6 +98,7 @@ library
     Bittide.ClockControl
     Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Util
+    Bittide.ClockControl.ClockGenConfig
     Bittide.ClockControl.StabilityChecker
     Bittide.DoubleBufferedRam
     Bittide.ElasticBuffer
