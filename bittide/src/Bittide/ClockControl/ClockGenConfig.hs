@@ -21,6 +21,11 @@ data RegisterOperation = RegisterOperation
 writeRegEntry :: RegisterEntry -> RegisterOperation
 writeRegEntry (regPage, regAddr, Just -> regWrite) = RegisterOperation{regPage, regAddr, regWrite}
 
+data ClockGenRegisterMap preambleEntries configEntries postambleEntries = ClockGenRegisterMap
+  { configPreamble :: Vec preambleEntries RegisterEntry
+  , config :: Vec configEntries RegisterEntry
+  , configPostamble :: Vec postambleEntries RegisterEntry}
+
 data SpiCommand
   = SetAddress Address
   | WriteData Byte
@@ -41,6 +46,58 @@ regWriteToSpiBytes :: Maybe Byte -> Bytes 2
 regWriteToSpiBytes = \case
   Just byte -> (spiCommandToBytes (WriteData byte))
   Nothing   -> (spiCommandToBytes ReadData)
+
+data ConfigState entries
+  = WriteEntry (Index entries)
+  | ReadEntry (Index entries)
+  | Finished
+  | Error
+
+si539xSpi ::
+  forall dom preambleEntries configEntries postambleEntries .
+  ( HiddenClockResetEnable dom
+  , KnownNat preambleEntries
+  , KnownNat configEntries
+  , KnownNat postambleEntries
+  , 1 <= (preambleEntries + configEntries + postambleEntries)) =>
+  Maybe (ClockGenRegisterMap preambleEntries configEntries postambleEntries) ->
+  Signal dom (Maybe RegisterOperation) ->
+  Signal dom Bit ->
+  ( Signal dom (Maybe Byte)
+  , Signal dom Busy
+  , ( Signal dom Bool -- SCK
+    , Signal dom Bit  -- MOSI
+    , Signal dom Bool -- SS
+    )
+  )
+si539xSpi maybeConfig externalOperation miso = case maybeConfig of
+  Just ClockGenRegisterMap{..} -> _
+   where
+    (spiReadByte, spiBusy, spiOut) = si539xSpiDriver spiOperation miso
+    romOut = rom (configPreamble ++ config ++ configPostamble) $ bitCoerce <$> readCounter
+    go oldCnt input = (newCnt, output)
+     where
+
+  Nothing -> si539xSpiDriver externalOperation miso
+
+
+
+ where
+  withConfig ClockGenRegisterMap{..} = _
+   where
+    spiOperation =
+      mux (register True (pure False)) (pure Nothing) $
+      mux configDone externalOperation (Just . writeRegEntry <$> romOut)
+
+    (spiReadByte, spiBusy, spiOut) = si539xSpiDriver spiOperation miso
+
+
+    readCounter = register (0 :: Index (preambleEntries + configEntries + postambleEntries))
+      $ mux (configDone .||. spiBusy) readCounter (satSucc SatBound <$> readCounter)
+
+    configDone = register False (doneIndicator .||. configDone)
+    doneIndicator = readCounter .==. maxBound .&&. not <$> spiBusy
+
 
 si539xSpiDriver ::
   (HiddenClockResetEnable dom) =>
