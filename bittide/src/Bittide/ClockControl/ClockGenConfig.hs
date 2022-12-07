@@ -50,8 +50,18 @@ regWriteToSpiBytes = \case
 data ConfigState entries
   = WriteEntry (Index entries)
   | ReadEntry (Index entries)
+  | FetchReg (Index entries)
+  | Error (Index entries)
   | Finished
-  | Error
+  deriving (Show, Generic, NFDataX)
+
+getStateAddress :: ConfigState entries -> Index entries
+getStateAddress = \case
+  WriteEntry i -> i
+  ReadEntry i -> i
+  FetchReg i -> i
+  Error i -> i
+  Finished -> deepErrorX "getStateAddress: ConfigState Finished does not contain an index"
 
 si539xSpi ::
   forall dom preambleEntries configEntries postambleEntries .
@@ -71,33 +81,35 @@ si539xSpi ::
     )
   )
 si539xSpi maybeConfig externalOperation miso = case maybeConfig of
-  Just ClockGenRegisterMap{..} -> _
+  Just ClockGenRegisterMap{..} -> (configByte, configBusy, spiOut)
    where
-    (spiReadByte, spiBusy, spiOut) = si539xSpiDriver spiOperation miso
+    (driverByte, driverBusy, spiOut) = si539xSpiDriver spiOperation miso
     romOut = rom (configPreamble ++ config ++ configPostamble) $ bitCoerce <$> readCounter
-    go oldCnt input = (newCnt, output)
+    readCounter :: Signal dom (Index (preambleEntries + configEntries + postambleEntries))
+    (readCounter, spiOperation, configBusy, configByte) = mealyB go (FetchReg 0) (romOut, externalOperation, driverByte, driverBusy)
+
+    go currentState ((regPage,regAddr,byte), extSpi, spiByte, spiBusy) =
+      (nextState, (getStateAddress currentState, spiOp, busy, returnedByte))
      where
+      nextState = case (currentState, spiByte) of
+        (WriteEntry i, Just _)            -> ReadEntry i
+        (ReadEntry i, Just b) | b == byte -> FetchReg (succ i)
+                              | otherwise -> FetchReg (succ i) --Error i
+        (FetchReg i, _)                   -> WriteEntry i
+        (state, _)                        -> state
+
+      spiOp = case currentState of
+        (FetchReg _)   -> Nothing
+        (WriteEntry _) -> Just RegisterOperation{regPage, regAddr, regWrite = Just byte}
+        (ReadEntry _)  -> Just RegisterOperation{regPage, regAddr, regWrite = Nothing}
+        _              -> extSpi
+
+      (busy, returnedByte) = case currentState of
+        Finished -> (spiBusy, spiByte)
+        Error _  -> (spiBusy, spiByte)
+        _        -> (True, Nothing)
 
   Nothing -> si539xSpiDriver externalOperation miso
-
-
-
- where
-  withConfig ClockGenRegisterMap{..} = _
-   where
-    spiOperation =
-      mux (register True (pure False)) (pure Nothing) $
-      mux configDone externalOperation (Just . writeRegEntry <$> romOut)
-
-    (spiReadByte, spiBusy, spiOut) = si539xSpiDriver spiOperation miso
-
-
-    readCounter = register (0 :: Index (preambleEntries + configEntries + postambleEntries))
-      $ mux (configDone .||. spiBusy) readCounter (satSucc SatBound <$> readCounter)
-
-    configDone = register False (doneIndicator .||. configDone)
-    doneIndicator = readCounter .==. maxBound .&&. not <$> spiBusy
-
 
 si539xSpiDriver ::
   (HiddenClockResetEnable dom) =>
