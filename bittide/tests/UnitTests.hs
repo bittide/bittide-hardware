@@ -11,6 +11,7 @@ import Test.Tasty.Hedgehog
 
 import Tests.Calendar
 import Tests.DoubleBufferedRam
+import Tests.ElasticBuffer
 import Tests.Haxioms
 import Tests.Link
 import Tests.ScatterGather
@@ -20,6 +21,7 @@ import Tests.Wishbone
 tests :: TestTree
 tests = testGroup "Unittests"
   [ calGroup
+  , ebGroup
   , haxiomsGroup
   , linkGroup
   , memMapGroup

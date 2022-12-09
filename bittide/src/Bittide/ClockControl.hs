@@ -21,6 +21,7 @@ where
 
 import Clash.Explicit.Prelude
 import Clash.Signal.Internal (Femtoseconds(..))
+import Clash.Cores.Xilinx.DcFifo (DataCount)
 import Data.Aeson (ToJSON(toJSON))
 import Data.Proxy (Proxy(..))
 import GHC.Stack (HasCallStack)
@@ -30,7 +31,6 @@ import Bittide.Arithmetic.Time (microseconds)
 
 import Data.Csv
 
-type DataCount n = Unsigned n
 type SettlePeriod = Femtoseconds
 
 -- | Configuration passed to 'clockControl'

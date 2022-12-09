@@ -71,15 +71,15 @@ case_elasticBufferMaxBound = do
   assertBool "elastic buffer should reach its near maximum (read domain)" ((maxBound-1) `elem` dataCounts)
   assertBool "elastic buffer should not reach its minimum" (0 `notElem` dataCounts)
 
--- | When the elasticBuffer is written to more quickly than it is being read from,
--- its data count should reach 'maxBound'.
+-- | When the elasticBuffer is read from more quickly than it is being written to,
+-- its data count should reach 'minBound'.
 case_elasticBufferMinBound :: Assertion
 case_elasticBufferMinBound = do
   let dataCounts = sampleN 1024 (elasticBuffer @5 Saturate (clockGen @Fast) (clockGen @Slow))
   assertBool "elastic buffer should reach its minimum" (0 `elem` dataCounts)
   assertBool "elastic buffer should not reach its maximum" (maxBound `notElem` dataCounts)
 
--- | When the elasticBuffer written to as quikly to as it is read from, it should
+-- | When the elasticBuffer is written to as quickly to as it is read from, it should
 -- reach neiher its maxBound nor minBound.
 case_elasticBufferEq :: Assertion
 case_elasticBufferEq = do
