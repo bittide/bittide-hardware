@@ -142,6 +142,13 @@ mkPlaceTcl outputDir = [__i|
       }
     }
 
+    \# Place all clocks in individual clock groups and make them asynchronous
+    set clkArgs {}
+    foreach clk [get_clocks] {
+      lappend clkArgs -group $clk
+    }
+    set_clock_groups -asynchronous {*}$clkArgs
+
     \# Run optimization & placement
     opt_design
     place_design
