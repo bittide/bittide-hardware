@@ -70,6 +70,7 @@ common common-options
     clash-lib,
     clash-prelude,
     clash-protocols,
+    elastic-buffer-sim,
     containers,
     elastic-buffer-sim,
     filepath,
@@ -93,8 +94,10 @@ library
     Bittide.Instances.Calendar
     Bittide.Instances.ClockControl
     Bittide.Instances.Domains
+    Bittide.Instances.ElasticBuffer
     Bittide.Instances.Hacks
     Bittide.Instances.Synchronizer
+
     Clash.Shake.Extra
     Clash.Shake.Vivado
     Development.Shake.Extra

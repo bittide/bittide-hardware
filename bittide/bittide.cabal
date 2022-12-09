@@ -99,6 +99,7 @@ library
     Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Util
     Bittide.DoubleBufferedRam
+    Bittide.ElasticBuffer
     Bittide.Link
     Bittide.Node
     Bittide.ProcessingElement
@@ -123,6 +124,7 @@ test-suite unittests
   other-modules:
     Tests.Calendar
     Tests.DoubleBufferedRam
+    Tests.ElasticBuffer
     Tests.Haxioms
     Tests.Link
     Tests.ScatterGather
@@ -135,4 +137,5 @@ test-suite unittests
     hedgehog >= 1.0 && < 1.1,
     tasty >= 1.4 && < 1.5,
     tasty-hedgehog >= 1.2 && < 1.3,
+    tasty-hunit,
     constraints >= 0.13.3 && < 0.15
