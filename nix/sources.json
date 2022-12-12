@@ -1,0 +1,70 @@
+{
+    "circuit-notation": {
+        "branch": "master",
+        "description": "A plugin for circuit notation",
+        "homepage": null,
+        "owner": "cchalmers",
+        "repo": "circuit-notation",
+        "rev": "618e37578e699df235f2e7150108b6401731919b",
+        "sha256": "158dnb3jga4c00ngyc9p57x4qsm7gba519gmfrazan91124v9q2p",
+        "type": "tarball",
+        "url": "https://github.com/cchalmers/circuit-notation/archive/618e37578e699df235f2e7150108b6401731919b.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "clash-compiler": {
+        "branch": "master",
+        "description": "Haskell to VHDL/Verilog/SystemVerilog compiler",
+        "homepage": "https://clash-lang.org/",
+        "owner": "clash-lang",
+        "repo": "clash-compiler",
+        "rev": "ca0449ba58bed122bd511cb75959de2b0cea29a3",
+        "sha256": "07kar9djhcv7wd6n1dgn7r965ridcf5jb38avhpi7zwfxmiy5n18",
+        "type": "tarball",
+        "url": "https://github.com/clash-lang/clash-compiler/archive/ca0449ba58bed122bd511cb75959de2b0cea29a3.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "clash-protocols": {
+        "branch": "main",
+        "description": "a battery-included library for dataflow protocols",
+        "homepage": null,
+        "owner": "clash-lang",
+        "repo": "clash-protocols",
+        "rev": "3f3cbb1cec3153b15142d796801eb740961773c8",
+        "sha256": "04wc0pdp87gyxgav9slprq4h6ilfs8rz0yqbmf1jvvsyim6vyyv2",
+        "type": "tarball",
+        "url": "https://github.com/clash-lang/clash-protocols/archive/3f3cbb1cec3153b15142d796801eb740961773c8.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "gitignore": {
+        "branch": "master",
+        "description": "Nix functions for filtering local git sources",
+        "homepage": "",
+        "owner": "hercules-ci",
+        "repo": "gitignore.nix",
+        "rev": "a20de23b925fd8264fd7fad6454652e142fd7f73",
+        "sha256": "07vg2i9va38zbld9abs9lzqblz193vc5wvqd6h7amkmwf66ljcgh",
+        "type": "tarball",
+        "url": "https://github.com/hercules-ci/gitignore.nix/archive/a20de23b925fd8264fd7fad6454652e142fd7f73.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "nixpkgs": {
+        "branch": "nixos-22.11",
+        "description": "Nix Packages collection",
+        "homepage": "",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "7a6a010c3a1d00f8470a5ca888f2f927f1860a19",
+        "sha256": "0va6sx9l57qwqzbc5ihr4klvp25gqpcggxqc3gzami7dmbki2qz2",
+        "type": "tarball",
+        "url": "https://github.com/NixOS/nixpkgs/archive/7a6a010c3a1d00f8470a5ca888f2f927f1860a19.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "tasty-hedgehog": {
+        "homepage": null,
+        "rev": "1.2.0.0",
+        "sha256": "sha256:0yqw2sjvfr8msqfwywssp4wyx754jvjbc9yhjz8qn5kxg7j3vzs3",
+        "type": "tarball",
+        "url": "https://hackage.haskell.org/package/tasty-hedgehog-1.2.0.0/tasty-hedgehog-1.2.0.0.tar.gz",
+        "url_template": "https://hackage.haskell.org/package/tasty-hedgehog-<rev>/tasty-hedgehog-<rev>.tar.gz"
+    }
+}
