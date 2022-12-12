@@ -24,6 +24,7 @@ import Clash.Shake.Vivado
 import qualified Bittide.Instances.Calendar as Calendar
 import qualified Bittide.Instances.ClockControl as ClockControl
 import qualified Bittide.Instances.ElasticBuffer as ElasticBuffer
+import qualified Bittide.Instances.Si5391 as Si5391
 import qualified Bittide.Instances.StabilityChecker as StabilityChecker
 import qualified Bittide.Instances.Synchronizer as Synchronizer
 import qualified Clash.Util.Interpolate as I
@@ -70,7 +71,6 @@ targets =
   , 'Calendar.switchCalendar1kReducedPins
   , 'ClockControl.callisto3
   , 'ElasticBuffer.elasticBuffer5
-  , 'StabilityChecker.stabilityChecker_3_1M
   , 'Synchronizer.safeDffSynchronizer
   ]
 
