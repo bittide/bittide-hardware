@@ -1,18 +1,23 @@
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE NumericUnderscores #-}
+
 module Tests.ClockControl.ClockGenConfig where
 
 import Clash.Prelude
 import Clash.Signal.Internal(Signal((:-)))
+import Clash.Cores.SPI
 
-import Bittide.ClockControl.Si5391
 import Bittide.ClockControl.ClockGenConfig
-import qualified Data.Map as Map
+import Bittide.ClockControl.Si5391
 import Bittide.SharedTypes
 
-import Test.Tasty.HUnit
 import Test.Tasty
-import Clash.Cores.SPI
+import Test.Tasty.HUnit
+import qualified Data.Map as Map
 
 createDomain vXilinxSystem{vPeriod = hzToPeriod 1e6, vName = "Basic1"}
 
@@ -58,4 +63,3 @@ configureSucceeds =
   assertBool "Eventually the configuration indicates becomes true" (or $ fmap snd simOut)
  where
   simOut = sampleN 100_000_000 topEntity
-

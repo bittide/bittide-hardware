@@ -1,6 +1,11 @@
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+
 module Bittide.Instances.Si5391 where
 
 import Clash.Prelude
+
 import Bittide.ClockControl.ClockGenConfig
 import Bittide.ClockControl.Si5391
 import Bittide.Instances.Domains

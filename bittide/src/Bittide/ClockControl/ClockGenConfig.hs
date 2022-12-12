@@ -3,15 +3,17 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -fconstraint-solver-iterations=7 #-}
 
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE FlexibleContexts #-}
 
 module Bittide.ClockControl.ClockGenConfig where
+
 import Clash.Prelude
-import Bittide.SharedTypes
 import Clash.Cores.SPI
+
+import Bittide.SharedTypes
 
 -- | The Si539X chips use "Page"s to increase their address space.
 type Page = Byte
