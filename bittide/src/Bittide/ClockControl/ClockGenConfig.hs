@@ -12,9 +12,6 @@ module Bittide.ClockControl.ClockGenConfig where
 import Clash.Prelude
 import Bittide.SharedTypes
 import Clash.Cores.SPI
-import Data.Maybe
-import Clash.Debug (traceShowId)
-import Debug.Trace
 
 -- | The Si539X chips use "Page"s to increase their address space.
 type Page = Byte
@@ -89,7 +86,7 @@ data ConfigState entries waitCycles
   -- ^ All entries in the 'ClockGenRegisterMap' were correctly written to the @Si539x@ chip.
   | Wait (Index waitCycles) (Index entries)
   -- ^ Waits for the Si539X to be calibrated after writing the configuration preamble from 'ClockGenRegisterMap'.
-  deriving (Show, Generic, NFDataX)
+  deriving (Show, Generic, NFDataX, Eq)
 
 -- | Utility function to retrieve the entry 'Index' from the 'ConfigState'.
 getStateAddress :: ConfigState entries waitCycles-> Index entries
@@ -135,31 +132,37 @@ si539xSpi ::
   -- 3. Outgoing SPI signals: (SCK, MOSI, SS)
   ( Signal dom (Maybe Byte)
   , Signal dom Busy
+  , Signal dom Bool
   , ( Signal dom Bool -- SCK
     , Signal dom Bit  -- MOSI
     , Signal dom Bool -- SS
     )
   )
 si539xSpi ClockGenRegisterMap{..} minTargetPs@SNat externalOperation miso =
-  (configByte, configBusy, spiOut)
+  (configByte, configBusy, configSuccess, spiOut)
  where
   (driverByte, driverBusy, spiOut) = si539xSpiDriver minTargetPs spiOperation miso
   romOut = rom (configPreamble ++ config ++ configPostamble) $ bitCoerce <$> readCounter
 
   readCounter :: Signal dom (Index (preambleEntries + configEntries + postambleEntries))
-  (readCounter, spiOperation, configBusy, configByte) =
+  (readCounter, spiOperation, configBusy, configByte, configSuccess) =
     mealyB go (FetchReg 0) (romOut, externalOperation, driverByte, driverBusy)
 
   go currentState ((regPage,regAddress,byte), extSpi, spiByte, spiBusy) =
-    (nextState, (getStateAddress currentState, spiOp, busy, returnedByte))
-
+    (nextState, (getStateAddress currentState, spiOp, busy, returnedByte, currentState == Finished))
    where
+    isConfigEntry i = (natToNum @preambleEntries) <= i && i < (natToNum @(preambleEntries + configEntries))
     nextState = case (currentState, spiByte) of
-      (WriteEntry i, Just _)            -> ReadEntry i
+      (WriteEntry i, Just _)
+        | i == maxBound -> Finished
+        | i == (natToNum @preambleEntries - 1) -> Wait (0 :: Index (PeriodCycles dom (300*10^9))) i
+        | isConfigEntry i -> ReadEntry i
+        | otherwise -> FetchReg (succ i)
+
       (ReadEntry i, Just b)
-        | b == byte, i == natToNum @(preambleEntries - 1) -> Wait (0 :: Index (PeriodCycles dom (300*10^9))) i
-        | b == byte -> FetchReg (succ i) --Error i
-        | otherwise -> FetchReg (succ i) --Error i
+        | b == byte -> FetchReg (succ i)
+        | otherwise -> Error i
+
       (FetchReg i, _)                   -> WriteEntry i
       (Wait ((==maxBound) -> True) i, _)-> FetchReg (succ i)
       (Wait j i, _)                     -> Wait (succ j) i
@@ -265,3 +268,5 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
     output
       | not commandAcknowledged && idleCycles == 0 = Just $ spiCommandToBytes spiCommand
       | otherwise = Nothing
+
+{-# NOINLINE si539xSpiDriver #-}
