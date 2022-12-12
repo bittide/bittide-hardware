@@ -99,6 +99,7 @@ library
     Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Util
     Bittide.ClockControl.ClockGenConfig
+    Bittide.ClockControl.Si5391
     Bittide.ClockControl.StabilityChecker
     Bittide.DoubleBufferedRam
     Bittide.ElasticBuffer
@@ -126,6 +127,7 @@ test-suite unittests
   ghc-options: -threaded -with-rtsopts=-N
   other-modules:
     Tests.Calendar
+    Tests.ClockControl.ClockGenConfig
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer
     Tests.Haxioms
@@ -140,6 +142,8 @@ test-suite unittests
     clash-prelude-hedgehog >= 1.6 && < 1.8,
     hedgehog >= 1.0 && < 1.1,
     tasty >= 1.4 && < 1.5,
+    HUnit,
+    tasty-hunit,
     tasty-hedgehog >= 1.2 && < 1.3,
     tasty-hunit,
     constraints >= 0.13.3 && < 0.15

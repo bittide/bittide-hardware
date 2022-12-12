@@ -10,6 +10,7 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import Tests.Calendar
+import Tests.ClockControl.ClockGenConfig
 import Tests.DoubleBufferedRam
 import Tests.ElasticBuffer
 import Tests.Haxioms
@@ -30,6 +31,7 @@ tests = testGroup "Unittests"
   , sgGroup
   , stabilityGroup
   , switchGroup
+  , clockGenGroup
   ]
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
