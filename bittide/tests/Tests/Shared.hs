@@ -19,11 +19,13 @@ import Hedgehog
 import Protocols (toSignals)
 import Protocols.Wishbone as Wb
 import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
+import Numeric.Natural
 
 import Bittide.Calendar
 import Bittide.SharedTypes (Bytes)
 
 import qualified Data.List as L
+import qualified GHC.TypeNats as TypeNats
 import qualified Hedgehog.Range as Range
 
 
@@ -32,6 +34,16 @@ data IsInBounds a b c where
   NotInBounds :: IsInBounds a b c
 
 deriving instance Show (IsInBounds a b c)
+
+data SomeSNat where
+  SomeSNat :: forall m. SNat m -> SomeSNat
+
+-- Like 'TypeNats.someNatVal', but generates 'SomeSNat'
+someSNat :: Natural -> SomeSNat
+someSNat n =
+  case TypeNats.someNatVal n of
+    SomeNat p ->
+      SomeSNat (snatProxy p)
 
 -- | Returns 'InBounds' when a <= b <= c, otherwise returns 'NotInBounds'.
 isInBounds :: SNat a -> SNat b -> SNat c -> IsInBounds a b c

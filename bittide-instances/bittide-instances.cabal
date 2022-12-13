@@ -96,6 +96,7 @@ library
     Bittide.Instances.Domains
     Bittide.Instances.ElasticBuffer
     Bittide.Instances.Hacks
+    Bittide.Instances.StabilityChecker
     Bittide.Instances.Synchronizer
 
     Clash.Shake.Extra

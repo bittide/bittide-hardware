@@ -7,6 +7,8 @@ module Bittide.ClockControl.Callisto.Util where
 
 import Clash.Prelude
 
+import Clash.Sized.Extra
+
 -- | A counter that starts at a given value, counts down, and if it reaches
 -- zero wraps around to the initial value.
 wrappingCounter ::
@@ -44,7 +46,3 @@ sumTo32 =
     extend @_ @_ @(32 - (m+n))
   . unsignedToSigned
   . safeSum
-
--- | Safe 'Unsigned' to 'Signed' conversion
-unsignedToSigned :: forall n. KnownNat n => Unsigned n -> Signed (n + 1)
-unsignedToSigned n = bitCoerce (zeroExtend n)
