@@ -33,7 +33,7 @@ tests = testGroup "Unittests"
   ]
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
-setDefaultHedgehogTestLimit (HedgehogTestLimit Nothing) = HedgehogTestLimit (Just 10000)
+setDefaultHedgehogTestLimit (HedgehogTestLimit Nothing) = HedgehogTestLimit (Just 1000)
 setDefaultHedgehogTestLimit opt = opt
 
 main :: IO ()
