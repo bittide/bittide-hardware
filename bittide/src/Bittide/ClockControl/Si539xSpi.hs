@@ -8,11 +8,12 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Bittide.ClockControl.ClockGenConfig where
+module Bittide.ClockControl.Si539xSpi where
 
 import Clash.Prelude
 import Clash.Cores.SPI
 
+import Bittide.Arithmetic.Time
 import Bittide.SharedTypes
 
 -- | The Si539X chips use "Page"s to increase their address space.
@@ -39,7 +40,7 @@ data RegisterOperation = RegisterOperation
 
 -- | Contains the configuration for an Si539x chip, explicitly differentiates between
 -- the configuration preamble, configuration and configuration postamble.
-data ClockGenRegisterMap preambleEntries configEntries postambleEntries = ClockGenRegisterMap
+data Si539xRegisterMap preambleEntries configEntries postambleEntries = Si539xRegisterMap
   { configPreamble :: Vec preambleEntries RegisterEntry
   -- ^ Configuration preamble
   , config :: Vec configEntries RegisterEntry
@@ -75,7 +76,7 @@ spiCommandToBytes = \case
   -- BurstWrite bv   -> pack (0b1110_0000 :: Byte, bv) BurstWrite is not supported by the current spi core.
 
 -- | State of the configuration circuit in 'si539xSpi'.
-data ConfigState entries waitCycles
+data ConfigState dom entries
   = FetchReg (Index entries)
   -- ^ Fetches the 'RegisterEntry' at the 'Index' to be written to the @Si539x@ chip.
   | WriteEntry (Index entries)
@@ -85,13 +86,13 @@ data ConfigState entries waitCycles
   | Error (Index entries)
   -- ^ The 'RegisterEntry' at the 'Index' was not correctly written to the @Si539x@ chip.
   | Finished
-  -- ^ All entries in the 'ClockGenRegisterMap' were correctly written to the @Si539x@ chip.
-  | Wait (Index waitCycles) (Index entries)
-  -- ^ Waits for the Si539X to be calibrated after writing the configuration preamble from 'ClockGenRegisterMap'.
+  -- ^ All entries in the 'Si539xRegisterMap' were correctly written to the @Si539x@ chip.
+  | Wait (Index (PeriodCycles dom (Milliseconds 300))) (Index entries)
+  -- ^ Waits for the Si539X to be calibrated after writing the configuration preamble from 'Si539xRegisterMap'.
   deriving (Show, Generic, NFDataX, Eq)
 
 -- | Utility function to retrieve the entry 'Index' from the 'ConfigState'.
-getStateAddress :: ConfigState entries waitCycles-> Index entries
+getStateAddress :: ConfigState dom entries -> Index entries
 getStateAddress = \case
   FetchReg i -> i
   WriteEntry i -> i
@@ -99,15 +100,6 @@ getStateAddress = \case
   Error i -> i
   Finished -> deepErrorX "getStateAddress: ConfigState Finished does not contain an index"
   Wait _ i -> i
-
--- | Number of clock cycles required at the clock frequency of @dom@ before a minimum @period@ has passed.
--- Is always at least one.
-type PeriodCycles dom period = Max 1 (DivRU period (Max 1 (DomainPeriod dom)))
-
--- | Number of clock cycles at the clock frequency of @dom@ per half period of @period@ to
--- reach a minimum period of @period. Will always be at least one, so the resulting period
--- is always at least twice the period of @dom@.
-type HalfPeriodCycles dom period = Max 1 (DivRU period (Max 1 (2 * DomainPeriod dom)))
 
 -- | Spi interface for a @Si539x@ clock generator chip with an initial configuration.
 -- This component will first write and verify the initial configuration before becoming
@@ -121,13 +113,13 @@ si539xSpi ::
   , KnownNat postambleEntries
   , 1 <= (preambleEntries + configEntries + postambleEntries)) =>
   -- | Initial configuration for the @Si539x@ chip.
-  ClockGenRegisterMap preambleEntries configEntries postambleEntries ->
+  Si539xRegisterMap preambleEntries configEntries postambleEntries ->
   -- | Minimum period of the spi clock frequency for the spi clock divider.
   SNat minTargetPeriodPs ->
   -- | Read or write operation for the @Si539X@ registers.
   Signal dom (Maybe RegisterOperation) ->
   -- | MISO
-  Signal dom Bit ->
+  "MISO" ::: Signal dom Bit ->
   -- |
   -- 1. Byte returned by read / write operation.
   -- 2. The spi interface is 'Busy' and does not accept new operations.
@@ -135,12 +127,12 @@ si539xSpi ::
   ( Signal dom (Maybe Byte)
   , Signal dom Busy
   , Signal dom Bool
-  , ( Signal dom Bool -- SCK
-    , Signal dom Bit  -- MOSI
-    , Signal dom Bool -- SS
+  , ( "SCK"  ::: Signal dom Bool
+    , "MOSI" ::: Signal dom Bit
+    , "SS"   ::: Signal dom Bool
     )
   )
-si539xSpi ClockGenRegisterMap{..} minTargetPs@SNat externalOperation miso =
+si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
   (configByte, configBusy, configSuccess, spiOut)
  where
   (driverByte, driverBusy, spiOut) = si539xSpiDriver minTargetPs spiOperation miso
@@ -153,11 +145,12 @@ si539xSpi ClockGenRegisterMap{..} minTargetPs@SNat externalOperation miso =
   go currentState ((regPage,regAddress,byte), extSpi, spiByte, spiBusy) =
     (nextState, (getStateAddress currentState, spiOp, busy, returnedByte, currentState == Finished))
    where
-    isConfigEntry i = (natToNum @preambleEntries) <= i && i < (natToNum @(preambleEntries + configEntries))
+    isConfigEntry i =
+      (natToNum @preambleEntries) <= i && i < (natToNum @(preambleEntries + configEntries))
     nextState = case (currentState, spiByte) of
       (WriteEntry i, Just _)
         | i == maxBound -> Finished
-        | i == (natToNum @preambleEntries - 1) -> Wait (0 :: Index (PeriodCycles dom (300*10^9))) i
+        | i == (natToNum @preambleEntries - 1) -> Wait @dom 0 i
         | isConfigEntry i -> ReadEntry i
         | otherwise -> FetchReg (succ i)
 
@@ -197,7 +190,7 @@ data DriverState dom = DriverState
   -- ^ Current communication transaction.
   , commandAcknowledged :: Acknowledge
   -- ^ Whether or not the current transaction has already been acknowledged.
-  , idleCycles          :: Index (PeriodCycles dom 95000)
+  , idleCycles          :: Index (PeriodCycles dom (Nanoseconds 95))
   -- ^ After communication, slave select must be high for at least 95ns.
   }
   deriving (Generic, NFDataX)
@@ -213,16 +206,16 @@ si539xSpiDriver ::
   -- | Read or write operation for the @Si539X@ registers.
   Signal dom (Maybe RegisterOperation) ->
   -- | MISO
-  Signal dom Bit ->
+  "MISO" ::: Signal dom Bit ->
   -- |
   -- 1. Byte returned by read / write operation.
   -- 2. The spi interface is 'Busy' and does not accept new operations.
   -- 3. Outgoing SPI signals: (SCK, MOSI, SS)
   ( Signal dom (Maybe Byte)
   , Signal dom Busy
-  , ( Signal dom Bool -- SCK
-    , Signal dom Bit  -- MOSI
-    , Signal dom Bool -- SS
+  , ( "SCK"  ::: Signal dom Bool
+    , "MOSI" ::: Signal dom Bit
+    , "SS"   ::: Signal dom Bool
     )
   )
 si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
@@ -230,7 +223,15 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
   spiOut = (sck, mosi, ss)
   (sck, mosi, ss, spiBusyS, acknowledge, receivedData) =
     spiMaster SPIMode0 (SNat @(HalfPeriodCycles dom minTargetPeriodPs)) d1 spiWrite miso
-  (spiWrite, decoderBusy, fromSlave) = mealyB go (DriverState Nothing Nothing Nothing False 0) (incomingOpS, spiBusyS, acknowledge, receivedData)
+  (spiWrite, decoderBusy, fromSlave) =
+    mealyB go defDriverState (incomingOpS, spiBusyS, acknowledge, receivedData)
+  defDriverState = DriverState
+    { currentPage         = Nothing
+    , currentAddress      = Nothing
+    , currentOp           = Nothing
+    , commandAcknowledged = False
+    , idleCycles          = 0
+    }
 
   go ::
     DriverState dom ->
@@ -248,11 +249,12 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
     sameAddr = currentAddress == Just regAddress
 
     (spiCommand, nextOp, outBytes) = case (samePage, sameAddr, regWrite) of
-      (True , True , Just byte)                             -> (WriteData byte,Nothing, receivedBytes)
-      (True , True , Nothing  )                             -> (ReadData,Nothing, receivedBytes)
-      (True , False, _        )                             -> (SetAddress regAddress,currentOp, Nothing)
-      (False, _    , _        ) | currentAddress == Just 1  -> (WriteData regPage,currentOp, Nothing)
-                                | otherwise                 -> (SetAddress 1,currentOp, Nothing)
+      (True , True , Just byte)     -> (WriteData byte,Nothing, receivedBytes)
+      (True , True , Nothing  )     -> (ReadData,Nothing, receivedBytes)
+      (True , False, _        )     -> (SetAddress regAddress,currentOp, Nothing)
+      (False, _    , _        )
+        | currentAddress == Just 1  -> (WriteData regPage,currentOp, Nothing)
+        | otherwise                 -> (SetAddress 1,currentOp, Nothing)
 
     (nextPage,nextAddress) = case (currentPage, currentAddress, spiCommand) of
       (_,Just 1, WriteData newPage) -> (Just newPage, currentAddress)
@@ -264,8 +266,12 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
       | otherwise = satPred SatZero idleCycles
 
     nextState
-      | commandAcknowledged && not spiBusy = DriverState nextPage nextAddress nextOp False maxBound
-      | otherwise                          = currentState{commandAcknowledged = spiAck || commandAcknowledged, idleCycles = updateIdleCycles}
+      | commandAcknowledged && not spiBusy =
+        DriverState nextPage nextAddress nextOp False maxBound
+      | otherwise                          =
+        currentState
+          { commandAcknowledged = spiAck || commandAcknowledged
+          , idleCycles = updateIdleCycles}
 
     output
       | not commandAcknowledged && idleCycles == 0 = Just $ spiCommandToBytes spiCommand

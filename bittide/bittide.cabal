@@ -98,8 +98,8 @@ library
     Bittide.ClockControl
     Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Util
-    Bittide.ClockControl.ClockGenConfig
-    Bittide.ClockControl.Si5391
+    Bittide.ClockControl.Si5391A
+    Bittide.ClockControl.Si539xSpi
     Bittide.ClockControl.StabilityChecker
     Bittide.DoubleBufferedRam
     Bittide.ElasticBuffer
@@ -127,7 +127,7 @@ test-suite unittests
   ghc-options: -threaded -with-rtsopts=-N
   other-modules:
     Tests.Calendar
-    Tests.ClockControl.ClockGenConfig
+    Tests.ClockControl.Si539xSpi
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer
     Tests.Haxioms

@@ -5,14 +5,14 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE NumericUnderscores #-}
 
-module Tests.ClockControl.ClockGenConfig where
+module Tests.ClockControl.Si539xSpi where
 
 import Clash.Prelude
 import Clash.Signal.Internal(Signal((:-)))
 import Clash.Cores.SPI
 
-import Bittide.ClockControl.ClockGenConfig
-import Bittide.ClockControl.Si5391
+import Bittide.ClockControl.Si539xSpi
+import Bittide.ClockControl.Si5391A
 import Bittide.SharedTypes
 
 import Test.Tasty
@@ -40,23 +40,30 @@ topEntity = bundle (masterBusy, configSuccess)
 
   slaveIn = slaveMachine (deepErrorX "", deepErrorX "", Map.empty) slaveOut
 
-  slaveMachine :: (Page, Address, Map.Map (Bytes 2) Byte) -> Signal Basic1 (Maybe (Bytes 2)) -> Signal Basic1 (Bytes 2)
-  slaveMachine (page, addr, regs) (Nothing :- inputs) = output :- slaveMachine (page, addr, regs) inputs
-    where
-    output = maybe (deepErrorX "") resize (Map.lookup (pack (page, addr)) regs)
-  slaveMachine (page, addr, regs) (Just input :- inputs) = output :- slaveMachine nextState inputs
-    where
-    output = maybe (deepErrorX "") resize (Map.lookup (pack (page, addr)) regs)
-    command :: Byte
-    (command, byte) = split input
-    nextState =case (shiftR command 5, addr) of
-      (0, _) -> (page, byte, regs)
-      (2, 1) -> (byte, addr, regs)
-      (2, _) -> (page, addr, Map.insert (pack (page, addr)) byte regs)
-      (4, _) -> (page, addr, regs)
-      (3, _) -> (page, succ addr, Map.insert (pack (page, addr)) byte regs)
-      (5, _) -> (page, succ addr, regs)
-      _ -> nextState
+  slaveMachine ::
+    (Page, Address, Map.Map (Bytes 2) Byte) ->
+    Signal Basic1 (Maybe (Bytes 2)) ->
+    Signal Basic1 (Bytes 2)
+  slaveMachine oldState@(page, addr, regs) (maybeInput :- inputs) =
+    case maybeInput of
+      Nothing    -> output :- slaveMachine oldState inputs
+      Just input -> output :- slaveMachine newState inputs
+       where
+        (command, byte) = split input
+        newState =case (shiftR command 5, addr) of
+          (0, _) -> (page, byte, regs)
+          (2, 1) -> (byte, addr, regs)
+          (2, _) -> (page, addr, Map.insert (pack (page, addr)) byte regs)
+          (4, _) -> (page, addr, regs)
+          (3, _) -> (page, succ addr, Map.insert (pack (page, addr)) byte regs)
+          (5, _) -> (page, succ addr, regs)
+          _ -> newState
+   where
+    output = maybe undefinedValue resize (Map.lookup (pack (page, addr)) regs)
+    undefinedValue =
+      deepErrorX $ "slaveMachine: Tried reading uninitialized value at " <> show (page, addr)
+
+
 
 configureSucceeds :: Assertion
 configureSucceeds =
