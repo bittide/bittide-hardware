@@ -1,13 +1,17 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Clash.Cores.Extra where
 
 import Clash.Annotations.Primitive
-import Clash.Explicit.Prelude
+import Clash.Explicit.Prelude hiding (Fixed)
 
+import Clash.Netlist.Types (TemplateFunction(..), BlackBoxContext(..), HWType(..))
+import Clash.Netlist.Util (stripVoid)
+import Data.Fixed (Fixed(..), E3)
 import Data.String.Interpolate (__i)
 
 
@@ -18,35 +22,15 @@ import Data.String.Interpolate (__i)
 --
 --     https://docs.xilinx.com/r/en-US/ug901-vivado-synthesis/ASYNC_REG
 --
--- The first flipflop, i.e. the one operating in the source domain, is called
--- @dff_sync_a@. This might not exactly match the name Clash produces, as it
--- needs to generate unique names. I.e., the real signal names will be named
--- according to the following pattern:
---
---   * @dff_sync_a@
---   * @dff_sync_a_0@
---   * @dff_sync_a_1@
---   * etc.
---
--- Similarly, the two flipflops operating in the target domain are called
--- @dff_sync_b@ and @dff_sync_c@. While the registers are automatically packed
--- together, you'll still need to set max delay constraints to prevent undesirable,
--- long paths between the first flipflop and the pair of flipflops. To do so,
--- use the following:
---
--- @
--- set_max_delay
---   -from [get_pins * -filter {NAME =~ "dff_sync_a*_reg/C"}]
---   -to   [get_pins * -filter {NAME =~ "dff_sync_b*_reg/D"}]
---   -datapath_only
---   [get_property -min PERIOD [get_clocks]]
--- @
+-- HDL generation also generates an @.sdc@ file for Vivado with the correct
+-- timing constraints for the synchronizer. The HDL contains unique register
+-- names so the SDC can match on just these registers.
 --
 -- __N.B.__: You cannot synchronize words by combining multiple instantiations
---           of 'tripleFlipFlopSynchronizer'. If you want to do this, look into
+--           of 'safeDffSynchronizer'. If you want to do this, look into
 --           'dcFifo'.
 --
-tripleFlipFlopSynchronizer ::
+safeDffSynchronizer ::
   forall dom1 dom2 a.
   ( KnownDomain dom1
   , KnownDomain dom2
@@ -57,17 +41,33 @@ tripleFlipFlopSynchronizer ::
   a ->
   Signal dom1 a ->
   Signal dom2 a
-tripleFlipFlopSynchronizer clk1 clk2 initVal =
-    flipflop clk2
-  . flipflop clk2
-  . unsafeSynchronizer clk1 clk2
-  . flipflop clk1
+safeDffSynchronizer clk1 clk2 initVal i =
+  snd $ safeDffSynchronizer0 clk1 clk2 initVal i
+
+-- | Like 'safeDffSynchronizer', but the source register is provided on the
+-- output for further use in the source domain
+safeDffSynchronizer0 ::
+  forall dom1 dom2 a.
+  ( KnownDomain dom1
+  , KnownDomain dom2
+  , NFDataX a
+  , BitSize a ~ 1 ) =>
+  Clock dom1 ->
+  Clock dom2 ->
+  a ->
+  Signal dom1 a ->
+  (Signal dom1 a, Signal dom2 a)
+safeDffSynchronizer0 clk1 clk2 initVal i = (sOut, dOut)
  where
+  dOut =   flipflop clk2
+         . flipflop clk2
+         $ unsafeSynchronizer clk1 clk2 sOut
+  sOut = flipflop clk1 i
   flipflop :: KnownDomain dom => Clock dom -> Signal dom a -> Signal dom a
   flipflop clk = delay clk enableGen initVal
-{-# NOINLINE tripleFlipFlopSynchronizer #-}
-{-# ANN tripleFlipFlopSynchronizer hasBlackBox #-}
-{-# ANN tripleFlipFlopSynchronizer (
+{-# NOINLINE safeDffSynchronizer0 #-}
+{-# ANN safeDffSynchronizer0 hasBlackBox #-}
+{-# ANN safeDffSynchronizer0 (
   let
     (  dom1
      : dom2
@@ -85,29 +85,36 @@ tripleFlipFlopSynchronizer clk1 clk2 initVal =
      : regC
      : _
      ) = [(0::Int)..]
+    funcName = 'safeDffSynchronizer0
+    tfName = 'safeDffSynchronizerTF
   in
     InlineYamlPrimitive [Verilog, SystemVerilog] [__i|
       BlackBox:
         kind: Declaration
-        name: Clash.Cores.Extra.tripleFlipFlopSynchronizer
+        name: #{funcName}
         template: |-
-          // begin tripleFlipFlopSynchronizer
-          (* DONT_TOUCH = "yes" *) reg ~GENSYM[dff_sync_a][#{regA}] = ~CONST[#{initVal}];
-          (* ASYNC_REG = "TRUE" *) reg ~GENSYM[dff_sync_b][#{regB}] = ~CONST[#{initVal}], ~GENSYM[dff_sync_c][#{regC}] = ~CONST[#{initVal}];
+          // begin safeDffSynchronizer
+          (* DONT_TOUCH = "yes" *) reg ~INCLUDENAME[0]_~GENSYM[dff_sync_a][#{regA}] = ~CONST[#{initVal}];
+          (* ASYNC_REG = "TRUE" *) reg ~INCLUDENAME[0]_~GENSYM[dff_sync_b][#{regB}] = ~CONST[#{initVal}], ~GENSYM[dff_sync_c][#{regC}] = ~CONST[#{initVal}];
 
           always @(~IF~ACTIVEEDGE[Rising][#{dom1}]~THENposedge~ELSEnegedge~FI ~ARG[#{clock1}]) begin
-            ~SYM[#{regA}] <= ~VAR[in][#{inp}];
+            ~INCLUDENAME[0]_~SYM[#{regA}] <= ~VAR[in][#{inp}];
           end
 
           always @(~IF~ACTIVEEDGE[Rising][#{dom2}]~THENposedge~ELSEnegedge~FI ~ARG[#{clock2}]) begin
-            ~SYM[#{regB}] <= ~SYM[#{regA}];
-            ~SYM[#{regC}] <= ~SYM[#{regB}];
+            ~INCLUDENAME[0]_~SYM[#{regB}] <= ~INCLUDENAME[0]_~SYM[#{regA}];
+            ~SYM[#{regC}] <= ~INCLUDENAME[0]_~SYM[#{regB}];
           end
 
-          assign ~RESULT = ~SYM[#{regC}];
-          // end tripleFlipFlopSynchronizer
+          assign ~RESULT = {~INCLUDENAME[0]_~SYM[#{regA}], ~SYM[#{regC}]};
+          // end safeDffSynchronizer
+        includes:
+          - extension: sdc
+            name: dff_sync
+            format: Haskell
+            templateFunction: #{tfName}
 |]) #-}
-{-# ANN tripleFlipFlopSynchronizer (
+{-# ANN safeDffSynchronizer0 (
   let
     (  dom1
      : dom2
@@ -126,41 +133,84 @@ tripleFlipFlopSynchronizer clk1 clk2 initVal =
      : block
      : _
      ) = [(0::Int)..]
+    funcName = 'safeDffSynchronizer0
+    tfName = 'safeDffSynchronizerTF
   in
     InlineYamlPrimitive [VHDL] [__i|
       BlackBox:
         kind: Declaration
-        name: Clash.Cores.Extra.tripleFlipFlopSynchronizer
+        name: #{funcName}
         template: |-
-          -- begin tripleFlipFlopSynchronizer
-          ~GENSYM[tripleFlipFlopSynchronizer][#{block}] : block
-            signal ~GENSYM[dff_sync_a][#{regA}] : ~TYPO := ~CONST[#{initVal}];
-            signal ~GENSYM[dff_sync_b][#{regB}] : ~TYPO := ~CONST[#{initVal}];
-            signal ~GENSYM[dff_sync_c][#{regC}] : ~TYPO := ~CONST[#{initVal}];
+          -- begin safeDffSynchronizer
+          ~GENSYM[_safeDffSynchronizer][#{block}] : block
+            signal ~INCLUDENAME[0]_~GENSYM[dff_sync_a][#{regA}] : ~TYP[#{inp}] := ~CONST[#{initVal}];
+            signal ~INCLUDENAME[0]_~GENSYM[dff_sync_b][#{regB}] : ~TYP[#{inp}] := ~CONST[#{initVal}];
+            signal ~GENSYM[dff_sync_c][#{regC}] : ~TYP[#{inp}] := ~CONST[#{initVal}];
 
             attribute DONT_TOUCH : string;
-            attribute DONT_TOUCH of ~SYM[#{regA}] : signal is "TRUE";
+            attribute DONT_TOUCH of ~INCLUDENAME[0]_~SYM[#{regA}] : signal is "TRUE";
 
             attribute ASYNC_REG : string;
-            attribute ASYNC_REG of ~SYM[#{regB}] : signal is "TRUE";
+            attribute ASYNC_REG of ~INCLUDENAME[0]_~SYM[#{regB}] : signal is "TRUE";
             attribute ASYNC_REG of ~SYM[#{regC}] : signal is "TRUE";
           begin
             process(~ARG[#{clock1}])
             begin
               if ~IF~ACTIVEEDGE[Rising][#{dom1}]~THENrising_edge~ELSEfalling_edge~FI(~ARG[#{clock1}]) then
-                ~SYM[#{regA}] <= ~VAR[in][#{inp}];
+                ~INCLUDENAME[0]_~SYM[#{regA}] <= ~VAR[in][#{inp}];
               end if;
             end process;
 
             process(~ARG[#{clock2}])
             begin
               if ~IF~ACTIVEEDGE[Rising][#{dom2}]~THENrising_edge~ELSEfalling_edge~FI(~ARG[#{clock2}]) then
-                ~SYM[#{regB}] <= ~SYM[#{regA}];
-                ~SYM[#{regC}] <= ~SYM[#{regB}];
+                ~INCLUDENAME[0]_~SYM[#{regB}] <= ~INCLUDENAME[0]_~SYM[#{regA}];
+                ~SYM[#{regC}] <= ~INCLUDENAME[0]_~SYM[#{regB}];
               end if;
             end process;
 
-            ~RESULT <= ~SYM[#{regC}];
+            ~RESULT <= (~INCLUDENAME[0]_~SYM[#{regA}], ~SYM[#{regC}]);
           end block;
-          -- end tripleFlipFlopSynchronizer
+          -- end safeDffSynchronizer
+        includes:
+          - extension: sdc
+            name: dff_sync
+            format: Haskell
+            templateFunction: #{tfName}
 |]) #-}
+
+safeDffSynchronizerTF :: TemplateFunction
+safeDffSynchronizerTF =
+  let
+    (  dom1Used
+     : dom2Used
+     : _nfdatax
+     : _bitsize
+     : _clock1
+     : _clock2
+     : _initVal
+     : _inp
+     : _
+     ) = [(0::Int)..]
+  in TemplateFunction [dom1Used, dom2Used] (const True) $ \bbCtx ->
+    let [compName] = bbQsysIncName bbCtx
+        [ (_, stripVoid -> dom1, _)
+         , (_, stripVoid -> dom2, _)
+         , _nfdatax
+         , _bitsize
+         , _clock1
+         , _clock2
+         , _initVal
+         , _inp ] = bbInputs bbCtx
+        KnownDomain _ dom1Period _ _ _ _ = dom1
+        KnownDomain _ dom2Period _ _ _ _ = dom2
+        minPeriodNs = MkFixed $ min dom1Period dom2Period :: Fixed E3
+    in pure [__i|
+      set_max_delay \\
+          -datapath_only \\
+          -from \\
+          [get_pins -hierarchical *#{compName}_dff_sync_a*/C] \\
+          -to \\
+          [get_pins -hierarchical *#{compName}_dff_sync_b*/D] \\
+          #{minPeriodNs}
+    |]

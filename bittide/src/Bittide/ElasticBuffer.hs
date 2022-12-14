@@ -72,7 +72,7 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode =
  where
   rstWrite = unsafeFromHighPolarity rstWriteBool
   rstWriteBool =
-    CE.tripleFlipFlopSynchronizer clkRead clkWrite False (unsafeToHighPolarity rstRead)
+    CE.safeDffSynchronizer clkRead clkWrite False (unsafeToHighPolarity rstRead)
 
   FifoOut{readCount, isUnderflow, isOverflow} = dcFifo
     (defConfig @n){dcOverflow=True, dcUnderflow=True}
@@ -92,7 +92,7 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode =
 
   (readEnable, writeEnable) = unbundle (ebModeToReadWrite <$> ebMode)
 
-  writeEnableSynced = CE.tripleFlipFlopSynchronizer clkRead clkWrite False writeEnable
+  writeEnableSynced = CE.safeDffSynchronizer clkRead clkWrite False writeEnable
 
   -- For the time being, we're only interested in data counts, so we feed the
   -- FIFO with static data when writing (@0@).
@@ -120,7 +120,7 @@ resettableXilinxElasticBuffer clkRead clkWrite rstRead =
  where
   (dataCount, under, over) = xilinxElasticBuffer @n clkRead clkWrite fifoReset ebMode
   fifoReset = unsafeFromHighPolarity $ not <$> stable
-  over1 = CE.tripleFlipFlopSynchronizer clkWrite clkRead False over
+  over1 = CE.safeDffSynchronizer clkWrite clkRead False over
 
   controllerReset = unsafeFromHighPolarity (unsafeToHighPolarity rstRead .||. under .||. over1)
 
