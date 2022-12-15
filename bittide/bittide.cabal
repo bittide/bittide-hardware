@@ -68,6 +68,14 @@ common common-options
     -fno-unbox-strict-fields
   default-language: Haskell2010
   build-depends:
+    ghc-typelits-extra,
+    ghc-typelits-knownnat,
+    ghc-typelits-natnormalise,
+
+library
+  import: common-options
+  hs-source-dirs: src
+  build-depends:
     aeson,
     base,
     Cabal,
@@ -83,14 +91,8 @@ common common-options
     constraints >= 0.13.3 && < 0.15,
     containers >= 0.4.0 && < 0.7,
     contranomy,
-    ghc-typelits-extra,
-    ghc-typelits-knownnat,
-    ghc-typelits-natnormalise,
     random,
     string-interpolate ^>= 0.3,
-library
-  import: common-options
-  hs-source-dirs: src
   exposed-modules:
     Bittide.Arithmetic.Ppm
     Bittide.Arithmetic.Time
@@ -117,7 +119,7 @@ library
 executable clash
   import: common-options
   main-is: bin/Clash.hs
-  Build-Depends: clash-ghc, bittide
+  Build-Depends: base, bittide, clash-ghc
 
 test-suite unittests
   import: common-options
@@ -138,12 +140,18 @@ test-suite unittests
     Tests.Switch
     Tests.Wishbone
   build-depends:
+    base,
     bittide,
+    clash-cores,
+    clash-lib,
     clash-prelude-hedgehog >= 1.6 && < 1.8,
+    clash-prelude,
+    clash-protocols,
+    constraints >= 0.13.3 && < 0.15,
+    containers,
     hedgehog >= 1.0 && < 1.1,
     tasty >= 1.4 && < 1.5,
     HUnit,
     tasty-hunit,
     tasty-hedgehog >= 1.2 && < 1.3,
     tasty-hunit,
-    constraints >= 0.13.3 && < 0.15
