@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# OPTIONS_GHC -fconstraint-solver-iterations=0 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
