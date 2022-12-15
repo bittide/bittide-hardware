@@ -142,7 +142,6 @@ wbStorage' ::
   Signal dom (WishboneS2M (Bytes 4))
 wbStorage' initContent wbIn = delayControls wbIn wbOut
  where
-  depth = resize $ bitCoerce (maxBound :: Index depth)
   romOut = case initContent of
     Reloadable content-> bundle $ contentGenerator content
     other -> deepErrorX ("wbStorage': No contentgenerator for " <> show other)
@@ -184,11 +183,15 @@ wbStorage' initContent wbIn = delayControls wbIn wbOut
 
     (bitCoerce . resize -> wbAddr :: Index depth, alignment) =  split @_ @(aw - 2) addr
 
-    -- when the second lowest bit is not set, the address is considered word aligned.
+    -- When the second lowest bit is not set, the address is considered word aligned.
     -- We don't care about the first bit to determine the address alignment because
     -- byte aligned addresses are considered illegal.
     (not -> wordAligned, byteAligned) = bimap unpack unpack $ split alignment
-    addrLegal = addr <= (2 * depth) && not byteAligned
+
+    -- The depth of the memory is defined as the number of words in the memory
+    -- (words are 4 bytes wide). The wishbone interface addresses per byte, so we multiply
+    -- the depth by 4 to get the number of bytes in the memory.
+    addrLegal = addr < (natToNum @(4 * depth)) && not byteAligned
 
     masterActive = strobe && busCycle
     err = masterActive && not addrLegal
@@ -198,27 +201,27 @@ wbStorage' initContent wbIn = delayControls wbIn wbOut
     (bsHigh,bsLow) = split busSelect
     (writeDataHigh, writeDataLow) = split writeData
 
-    ((addrB, byteSelectB0, writeDataB), (addrA, byteSelectA0, writeDataA))
+    ((addrA, byteSelectA0, writeDataA), (addrB, byteSelectB0, writeDataB))
       | wordAligned =
-        ( (wbAddr, bsHigh, writeDataHigh)
-        , (wbAddr, bsLow, writeDataLow))
-      | otherwise =
         ( (wbAddr, bsLow, writeDataLow)
-        , (satSucc SatBound wbAddr, bsHigh, writeDataHigh))
+        , (wbAddr, bsHigh, writeDataHigh))
+      | otherwise =
+        ( (satSucc SatBound wbAddr, bsHigh, writeDataHigh)
+        , (wbAddr, bsLow, writeDataLow))
 
     (romWrite, romDone) = romOut0
     (romWriteB, romWriteA) = splitWrite romWrite
-    (writeEntryB0, writeEntryA0)
-      | isReloadable && not romDone = (romWriteB, romWriteA)
-      | masterWriting = (Just (addrB, writeDataB),Just (addrA, writeDataA))
+    (writeEntryA0, writeEntryB0)
+      | isReloadable && not romDone = (romWriteA, romWriteB)
+      | masterWriting = (Just (addrA, writeDataA),Just (addrB, writeDataB))
       | otherwise = (Nothing,Nothing)
     readData
       | wordAligned = rdB ++# rdA
       | otherwise   = rdA ++# rdB
 
-    (byteSelectB1, byteSelectA1)
+    (byteSelectA1, byteSelectB1)
       | isReloadable && not romDone = (maxBound,maxBound)
-      | otherwise = (byteSelectB0, byteSelectA0)
+      | otherwise = (byteSelectA0, byteSelectB0)
 
   splitWrite ::
     KnownNat bits =>
