@@ -411,6 +411,10 @@ jobs:
           # speed up the tests.
           cabal run -- bittide:unittests -j 1 +RTS -N2
 
+      - name: Doctests
+        run: |
+          cabal run -- bittide:doctests
+
   firmware-lints:
     name: Firmware Lints
     runs-on: self-hosted
