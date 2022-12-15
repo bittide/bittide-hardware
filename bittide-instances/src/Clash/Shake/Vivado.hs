@@ -130,18 +130,6 @@ mkPlaceTcl outputDir = [__i|
     \# Pick up where synthesis left off
     open_checkpoint {#{outputDir </> "checkpoints" </> "post_synth.dcp"}}
 
-    \# See documentation of 'tripleFlipFlopSynchronizer'
-    \# TODO: Primitive should generate this
-    set from_pins [get_pins -quiet -filter {NAME =~ "dff_sync_a*_reg/C"}]
-    set to_pins   [get_pins -quiet -filter {NAME =~ "dff_sync_b*_reg/D"}]
-
-    if {[llength $from_pins]} {
-      if {[llength $to_pins]} {
-        set min_clock_period [get_property -min PERIOD [get_clocks]]
-        set_max_delay -datapath_only -from $from_pins -to $to_pins $min_clock_period
-      }
-    }
-
     \# Place all clocks in individual clock groups and make them asynchronous
     set clkArgs {}
     foreach clk [get_clocks] {

@@ -71,7 +71,7 @@ targets =
   , 'ClockControl.callisto3
   , 'ElasticBuffer.elasticBuffer5
   , 'StabilityChecker.stabilityChecker_3_1M
-  , 'Synchronizer.tripleFlipFlopSynchronizer
+  , 'Synchronizer.safeDffSynchronizer
   ]
 
 shakeOpts :: FilePath -> ShakeOptions

@@ -12,11 +12,11 @@ import qualified Clash.Cores.Extra as Cores
 import Clash.Annotations.TH (makeTopEntity)
 
 
-tripleFlipFlopSynchronizer ::
+safeDffSynchronizer ::
   "clk1"   ::: Clock Basic200 ->
   "clk2"   ::: Clock Basic199 ->
   "source" ::: Signal Basic200 Bit ->
   "target" ::: Signal Basic199 Bit
-tripleFlipFlopSynchronizer clk1 clk2 =
-  Cores.tripleFlipFlopSynchronizer @Basic200 @Basic199 @Bit clk1 clk2 0
-makeTopEntity 'tripleFlipFlopSynchronizer
+safeDffSynchronizer clk1 clk2 =
+  Cores.safeDffSynchronizer @Basic200 @Basic199 @Bit clk1 clk2 0
+makeTopEntity 'safeDffSynchronizer
