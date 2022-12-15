@@ -33,6 +33,7 @@ ebModeToReadWrite = \case
   Drain -> (True, False)
   Pass  -> (True, True)
 
+{-# NOINLINE sticky #-}
 -- | Create a sticky version of a boolean signal.
 sticky ::
   KnownDomain dom =>
@@ -44,6 +45,7 @@ sticky clk rst a = stickyA
  where
   stickyA = E.register clk rst enableGen False (stickyA .||. a)
 
+{-# NOINLINE xilinxElasticBuffer #-}
 -- | An elastic buffer backed by a Xilinx FIFO. It exposes all its control and
 -- monitor signals in its read domain.
 xilinxElasticBuffer ::
@@ -99,6 +101,7 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode =
   writeData = mux writeEnableSynced (pure (Just (0 :: Unsigned 8))) (pure Nothing)
 
 
+{-# NOINLINE resettableXilinxElasticBuffer #-}
 resettableXilinxElasticBuffer ::
   forall readDom writeDom n.
   ( KnownDomain writeDom

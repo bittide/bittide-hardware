@@ -96,6 +96,7 @@ library
     Bittide.Instances.Domains
     Bittide.Instances.ElasticBuffer
     Bittide.Instances.Hacks
+    Bittide.Instances.MVPs
     Bittide.Instances.Si539xSpi
     Bittide.Instances.StabilityChecker
     Bittide.Instances.Synchronizer
