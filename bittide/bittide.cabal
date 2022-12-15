@@ -121,6 +121,19 @@ executable clash
   main-is: bin/Clash.hs
   Build-Depends: base, bittide, clash-ghc
 
+test-suite doctests
+  type:             exitcode-stdio-1.0
+  default-language: Haskell2010
+  main-is:          doctests.hs
+  ghc-options:      -Wall -Wcompat -threaded
+  hs-source-dirs:   tests
+
+  build-depends:
+    base,
+    bittide,
+    doctest-parallel >= 0.2 && < 0.3,
+    filepath
+
 test-suite unittests
   import: common-options
   hs-source-dirs: tests
