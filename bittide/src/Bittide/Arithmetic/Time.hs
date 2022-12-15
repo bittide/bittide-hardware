@@ -20,6 +20,10 @@ type Nanoseconds  (ns :: Nat) = Picoseconds  (1000 * ns)
 -- | Gets time in 'Picoseconds' from time in 'Picoseconds', essentially 'id'.
 type Picoseconds  (ps :: Nat) = ps
 
+-- | Number of clock cycles required at the clock frequency of @dom@ before a minimum @period@ has passed.
+-- Is always at least one.
+type PeriodToCycles dom period = Max 1 (DivRU period (Max 1 (DomainPeriod dom)))
+
 seconds :: Int64 -> Femtoseconds
 seconds s = mapFemtoseconds (* 1000) (milliseconds s)
 
