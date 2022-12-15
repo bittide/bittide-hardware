@@ -68,10 +68,12 @@ type Pad a bw  = (Regs a bw * bw) - BitSize a
 type Regs a bw = DivRU (BitSize a) bw
 
 data ByteOrder = LittleEndian | BigEndian
+
 -- | Stores any arbitrary datatype as a vector of registers.
-newtype RegisterBank regSize content (byteOrder :: ByteOrder)=
+newtype RegisterBank regSize content (byteOrder :: ByteOrder) =
   RegisterBank (Vec (Regs content regSize) (BitVector regSize))
   deriving Generic
+
 instance (KnownNat regSize, 1 <= regSize, BitPack content) =>
   BitPack (RegisterBank regSize content byteOrder) where
   type BitSize _ = Regs content regSize * regSize
@@ -84,12 +86,6 @@ deriving newtype instance
 
 deriving newtype instance (KnownNat regSize, ShowX (RegisterBank regSize content byteOrder)) =>
   ShowX (RegisterBank regSize content byteOrder)
-
-convertLe ::
-  (Paddable a, KnownNat bw, 1 <= bw) =>
-  (RegisterBank bw a 'LittleEndian, a)  ->
-  (a, RegisterBank bw a 'LittleEndian)
-convertLe (regBank, a) = (getDataLe regBank, getRegsLe a)
 
 convertBe ::
   (Paddable a, KnownNat bw, 1 <= bw) =>
