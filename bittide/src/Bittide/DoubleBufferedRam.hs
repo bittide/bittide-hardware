@@ -59,10 +59,10 @@ initializedRam ::
 initializedRam content rd wr = case content of
   Vec vec         -> blockRam vec rd wr
   Blob blob       -> bitCoerce <$> blockRamBlob blob rd (bitCoerce <$> wr)
-  BlobVec blobVec -> registersToData @_ @8 . RegisterBank <$>
+  BlobVec blobVec -> getDataBe @8 . RegisterBank <$>
     bundle ((`blockRamBlob` rd) <$> blobVec <*> unbundle ((`splitWriteInBytes` maxBound) <$> wr))
   File fp -> bitCoerce <$> blockRamFile (SNat @n) fp rd (bitCoerce <$> wr)
-  FileVec fpVec -> registersToData @_ @8 . RegisterBank <$>
+  FileVec fpVec -> getDataBe @8 . RegisterBank <$>
     bundle ((\ fp -> blockRamFile (SNat @n) fp rd)
     <$> fpVec
     <*> unbundle ((`splitWriteInBytes` maxBound) <$> wr))
@@ -357,7 +357,7 @@ blockRamByteAddressable ::
   -- | Data at read address (1 cycle delay).
   Signal dom a
 blockRamByteAddressable initContent readAddr newEntry byteSelect =
-  registersToData @_ @8 . RegisterBank <$> case initContent of
+  getDataBe @8 . RegisterBank <$> case initContent of
     Blob _  -> deepErrorX "blockRamByteAddressable: Singular MemBlobs are not supported. "
     Vec vecOfA -> go (byteRam . Vec <$> transpose (fmap getBytes vecOfA))
     BlobVec blobs -> go (fmap (byteRam . Blob) blobs)
@@ -368,7 +368,7 @@ blockRamByteAddressable initContent readAddr newEntry byteSelect =
    where
     writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
     readBytes = bundle $ brams <*> writeBytes
-  getBytes (getRegs -> RegisterBank (vec :: Vec (Regs a 8) Byte)) = vec
+  getBytes (getRegsBe -> RegisterBank (vec :: Vec (Regs a 8) Byte)) = vec
   byteRam = (`initializedRam` readAddr)
 
 
@@ -387,7 +387,7 @@ blockRamByteAddressableU ::
   -- | Data at read address (1 cycle delay).
   Signal dom a
 blockRamByteAddressableU readAddr newEntry byteSelect =
-  registersToData @_ @8 . RegisterBank <$> readBytes
+  getDataBe @8 . RegisterBank <$> readBytes
  where
   writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
   readBytes = bundle $ ram readAddr <$> writeBytes
@@ -450,7 +450,7 @@ registerWbE ::
   -- | New circuit value.
   Signal dom (Maybe a) ->
   -- | Explicit Byte enables for new circuit value
-  Signal dom (BitVector (Regs a 8)) ->
+  Signal dom (ByteEnable a) ->
   -- |
   -- 1. Outgoing stored value
   -- 2. Outgoing wishbone bus (slave to master)
@@ -478,13 +478,13 @@ registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
     acknowledge = masterActive && not err
     wbWriting = writeEnable && acknowledge
     wbAddr = unpack . resize $ pack alignedAddress :: Index (Max 1 (Regs a (nBytes * 8)))
-    readData = case paddedToRegisters $ Padded regOut0 of
-      RegisterBank vec -> reverse vec !! wbAddr
+    readData = case getRegsLe regOut0 of
+      RegisterBank vec -> vec !! wbAddr
 
     wbByteEnables =
       resize . pack . reverse $ replace wbAddr busSelect (repeat @(Regs a (nBytes*8)) 0)
     sigRegIn = fromMaybe (errorX "registerWb: sigIn is Nothing when Just is expected.") sigIn0
-    wbRegIn = registersToData . RegisterBank $ repeat writeData
+    wbRegIn = getDataLe . RegisterBank $ repeat writeData
     (byteEnables0, regIn0) = case (writePriority, isJust sigIn0, wbWriting) of
       (CircuitPriority , True , _)     -> (sigbyteEnables0, sigRegIn)
       (CircuitPriority , False, True)  -> (wbByteEnables, wbRegIn)
@@ -506,12 +506,13 @@ registerByteAddressable ::
   -- | Stored value.
   Signal dom a
 registerByteAddressable initVal newVal byteEnables =
-  registersToData @_ @8 . RegisterBank <$> bundle regsOut
+  getDataLe @8 . RegisterBank <$> bundle regsOut
  where
   initBytes = getBytes initVal
   newBytes = unbundle $ getBytes <$> newVal
-  regsOut = (`andEnable` register) <$> unbundle (unpack <$> byteEnables) <*> initBytes <*> newBytes
-  getBytes (getRegs -> RegisterBank vec) = vec
+  regsOut = (`andEnable` register) <$>
+    unbundle (reverse . unpack <$> byteEnables) <*> initBytes <*> newBytes
+  getBytes (getRegsLe -> RegisterBank vec) = vec
 
 -- | Takes singular write operation (Maybe (Index maxIndex, writeData)) and splits it up
 -- according to a supplied byteselect bitvector into a vector of byte sized write operations
@@ -526,7 +527,7 @@ splitWriteInBytes ::
   -- | Per byte write operation.
   Vec (Regs writeData 8) (Maybe (LocatedByte maxIndex))
 splitWriteInBytes (Just (addr, writeData)) byteSelect =
-  case paddedToRegisters $ Padded writeData of
+  case getRegsBe writeData of
     RegisterBank vec -> splitWrites <$> unpack byteSelect <*> vec
      where
       splitWrites :: Bool -> Byte -> Maybe (LocatedByte maxIndex)

@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -36,7 +36,7 @@ data TransmissionState preambleWidth seqCountWidth frameWidth
   | TransmitPreamble (Index (Regs (BitVector preambleWidth) frameWidth))
   -- ^ The txUnit is transmitting the preamble, the index keeps track of which frame of
   -- the preamble is being transmitted.
-  | TransmitSeqCounter (Index (Regs (BitVector seqCountWidth) frameWidth))
+  | TransmitSeqCounter (Index (DivRU seqCountWidth frameWidth))
   -- ^ The txUnit is transmitting the stored sequence counter, the index keeps track
   -- of which frame of the sequence counter is being transmitted.
    deriving (Generic, NFDataX)
@@ -68,7 +68,7 @@ txUnit ::
   -- 2. Outgoing frame
   ( Signal core (WishboneS2M (Bytes nBytes))
   , Signal core (DataLink frameWidth))
-txUnit (getRegs -> RegisterBank preamble) sq frameIn wbIn = (wbOut, frameOut)
+txUnit (getRegsBe -> RegisterBank preamble) sq frameIn wbIn = (wbOut, frameOut)
  where
   (stateMachineOn, wbOut)
     | Dict <- timesDivRU @(nBytes * 8) @1
@@ -84,7 +84,7 @@ txUnit (getRegs -> RegisterBank preamble) sq frameIn wbIn = (wbOut, frameOut)
     ( (Unsigned seqCountWidth
     , TransmissionState preambleWidth seqCountWidth frameWidth)
     , DataLink frameWidth)
-  stateMachine (scStored@(getRegs -> RegisterBank sqVec), state) (fIn, scIn) =
+  stateMachine (scStored@(getRegsBe -> RegisterBank sqVec), state) (fIn, scIn) =
     ((nextSc, nextState state), out)
    where
     (nextSc, out) = case state of
@@ -97,10 +97,6 @@ txUnit (getRegs -> RegisterBank preamble) sq frameIn wbIn = (wbOut, frameOut)
 
   -- Once turned on, the txUnit continues to transmit the preamble followed by the sequence
   -- counter.
-  nextState ::
-    (KnownNat pw, KnownNat scw, KnownNat fw, 1 <= fw) =>
-    TransmissionState pw scw fw ->
-    TransmissionState pw scw fw
   nextState = \case
       LinkThrough       -> TransmitPreamble 0
       TransmitPreamble n
@@ -120,11 +116,17 @@ data ReceiverState
   -- ^ Receiver is capturing the sequence counter.
   | Done
   -- ^ Receiver has captured a remote and corresponding local sequence counter.
-  deriving (Generic, ShowX, BitPack)
+  deriving (Generic, ShowX, BitPack, NFDataX)
 
--- | The width of the internal shift register used for capturing the preamble and two
--- sequence counters.
-type ShiftRegWidth paw scw = Max paw (scw + scw)
+-- | We store the remote sequence counter, local sequence counter and 'ReceiverState'
+-- as a vector of words to make sure they are word-aligned.
+type RxRegister nBytes scw =
+  Vec
+  ( Regs (Unsigned scw) (nBytes * 8)
+  + Regs (Unsigned scw) (nBytes * 8)
+  + Regs ReceiverState (nBytes * 8)
+  )
+  (BitVector (nBytes * 8))
 
 {-# NOINLINE rxUnit #-}
 -- | Receives a Bittide link and can be set to detect the given preamble and capture the
@@ -149,71 +151,81 @@ rxUnit ::
   Signal core (WishboneS2M (Bytes nBytes))
 rxUnit preamble localCounter linkIn wbIn = wbOut
  where
-  (regOut, wbOut) = registerWbE WishbonePriority regInit wbIn regIn byteEnables
-  regInit = (0,resize $ pack Empty)
-  (regIn, byteEnables) = unbundle . mealy go 0 $ bundle (regOut, linkIn, localCounter)
+  (regOut, wbOut) = registerWbE WishbonePriority regInit wbIn regIn (pure maxBound)
+  regInit = mkWordAligned (0 :: Unsigned scw, 0 :: Unsigned scw, Empty)
+  regIn = unbundle . mealy go
+    (0,0) $ bundle
+    ( fmap fromWordAligned regOut, linkIn, localCounter)
 
   go ::
-    Index (DivRU scw fw) ->
-    ((BitVector (ShiftRegWidth paw scw), Bytes nBytes), DataLink fw, Unsigned scw) ->
-    ( Index (DivRU scw fw)
-    , (Maybe (BitVector (ShiftRegWidth paw scw), Bytes nBytes)
-    , ByteEnable (BitVector (ShiftRegWidth paw scw + nBytes * 8))))
-  go _ ((shiftOld, unpack . resize -> WaitingForPreamble), link, _) =
-    (0, (regNew, maxBound))
+    (Index (DivRU scw fw), BitVector paw) ->
+    ( (Unsigned scw, Unsigned scw, ReceiverState)
+    , DataLink fw, Unsigned scw) ->
+    ( (Index (DivRU scw fw), BitVector paw)
+    , Maybe (RxRegister nBytes scw)
+    )
+  go
+    (count, shiftOld)
+    ( ( remoteSc0
+      , localSc0
+      , state
+      )
+    , link
+    , localSc1) =
+    ( (nextCount, shiftNext), mkWordAligned <$> wbRegNew)
    where
+    (remoteSc1, RegisterBank remoteFrames0) = convertBe (RegisterBank newVec, remoteSc0)
+     where
+      newVec = tail $ remoteFrames0 :< fromJust link
+    (shiftNew, RegisterBank oldVec) = convertBe (RegisterBank newVec, shiftOld)
+     where
+      newVec = tail $ oldVec :< fromJust link
+
+    preambleFound = validFrame && shiftNew == preamble
+
     validFrame = isJust link
+    firstFrame = validFrame && count == minBound
+    lastFrame  = validFrame && count == maxBound
 
-    shiftNew :: BitVector (ShiftRegWidth paw scw)
-    shiftNew = resize (shiftOld ++# fromMaybe (deepErrorX "undefined ") link)
-    preambleFound = validFrame && resize shiftNew == preamble
+    shiftNext = case (validFrame, state) of
+      (True, WaitingForPreamble) -> shiftNew
+      _                          -> shiftOld
 
-    nextState
-      | preambleFound = CaptureSequenceCounter
-      | otherwise = WaitingForPreamble
+    wbRegNew = case (state, validFrame, firstFrame) of
+      (WaitingForPreamble    ,True,_)    -> Just (remoteSc0, localSc0, nextState)
+      (CaptureSequenceCounter,True,True) -> Just (remoteSc1, localSc1, nextState)
+      (CaptureSequenceCounter,True,_)    -> Just (remoteSc1, localSc0, nextState)
+      _                                  -> Nothing
 
-    regNew
-      | validFrame = Just (shiftNew, resize (pack nextState))
-      | otherwise  = Nothing
+    (nextState, nextCount) = case (preambleFound, lastFrame , state) of
+      (False, _    , WaitingForPreamble)    -> (WaitingForPreamble    , 0)
+      (True , _    , WaitingForPreamble)    -> (CaptureSequenceCounter, 0)
+      (_    , False, CaptureSequenceCounter)-> (CaptureSequenceCounter, succ count)
+      (_    , True , CaptureSequenceCounter)-> (Done                  , 0)
+      _                                     -> (state                 , 0)
 
-  go cnt ((shiftOld, unpack . resize -> CaptureSequenceCounter), link, lc) =
-    (nextCnt, (regNew, maxBound))
+  mkWordAligned ::
+    forall wordSize a b c .
+    (KnownNat wordSize, 1 <= wordSize, Paddable a, Paddable b, Paddable c) =>
+    (a,b,c) ->
+    Vec (Regs a wordSize + Regs b wordSize + Regs c wordSize) (BitVector wordSize)
+  mkWordAligned (a,b,c) = regsA ++ regsB ++ regsC
    where
-    validFrame = isJust link
-    firstFrame = validFrame && cnt == minBound
-    lastFrame = validFrame && cnt == maxBound
+    RegisterBank regsA = getRegsBe a
+    RegisterBank regsB = getRegsBe b
+    RegisterBank regsC = getRegsBe c
 
-    withShifted = resize @_ @_ @scw (shiftOld ++# fromMaybe (deepErrorX "undefined ") link)
-
-    shiftNew :: BitVector (ShiftRegWidth paw scw)
-    shiftNew
-      | firstFrame
-      = setLowerSlice (pack lc ++# withShifted) shiftOld
-      | Dict <- leMaxRight @paw @scw @scw
-      = setLowerSlice withShifted shiftOld
-
-    nextState
-      | lastFrame = Done
-      | otherwise = CaptureSequenceCounter
-
-    nextCnt = case strictlyPositiveDivRu @scw @fw of
-      Dict -> satSucc SatWrap cnt
-
-    regNew
-      | validFrame = Just (shiftNew, resize (pack nextState))
-      | otherwise  = Nothing
-
-  go _ _ = (0, (Nothing,minBound))
-
--- | Accepts two 'BitVector's and replaces the lower bits of the second 'BitVector' with
---  the first 'BitVector'.
-setLowerSlice ::
-  forall slice bv .
-  (KnownNat slice, 1 <= slice, KnownNat bv, slice <= bv) =>
-  BitVector slice ->
-  BitVector bv ->
-  BitVector bv
-setLowerSlice = setSlice @_ @_ @(bv - slice) (SNat @(slice -1)) d0
+  fromWordAligned ::
+    forall wordSize a b c .
+    (KnownNat wordSize, 1 <= wordSize, Paddable a, Paddable b, Paddable c) =>
+    Vec (Regs a wordSize + Regs b wordSize + Regs c wordSize) (BitVector wordSize) ->
+    (a,b,c)
+  fromWordAligned vec = (a,b,c)
+   where
+    (vecA, splitAtI -> (vecB, vecC)) = splitAtI vec
+    a = getDataBe (RegisterBank vecA)
+    b = getDataBe (RegisterBank vecB)
+    c = getDataBe (RegisterBank vecC)
 
 -- | Configuration for a 'Bittide.Link.
 data LinkConfig nBytes addrW where
@@ -237,7 +249,7 @@ linkToPe ::
   , KnownNat nBytesMu, 1 <= nBytesMu
   , KnownNat addrWMu, 2 <= addrWMu
   , KnownNat addrWPe, 2 <= addrWPe
-  , KnownNat scw, 1 <= scw)=>
+  , KnownNat scw, 1 <= scw) =>
   -- | Configuration for a 'Bittide.Link', the receiving end uses this for its @preamble@
   -- and 'ScatterConfig'.
   LinkConfig nBytesMu addrWMu ->

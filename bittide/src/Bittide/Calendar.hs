@@ -283,9 +283,9 @@ calendar SNat bootstrapActive bootstrapShadow wbIn =
 -- | State of the calendar RX hardware, contains registers to store a new entry and
 -- the shadow read address.
 data WishboneRXState regSize calEntry calDepth = WishboneRXState
-  { calStRegisters :: RegisterBank regSize calEntry
+  { calStRegisters :: RegisterBank regSize calEntry 'LittleEndian
     -- ^ Write entry for the shadow calendar
-  , calStReadAddr  :: RegisterBank regSize (Index calDepth)
+  , calStReadAddr  :: RegisterBank regSize (Index calDepth) 'LittleEndian
     -- ^ Read address for the shadow calendar.
   } deriving (Generic)
 
@@ -368,8 +368,8 @@ wbCalRX = case oneLeCLog2n @calDepth of
       wbNewShadowReadAddr = wbWriting && wishboneAddress == shadowReadWbAddr
       wbNewShadowDepth = wbWriting && wishboneAddress == shadowDepthWbAddr
       armCalendarSwap = wbWriting && wishboneAddress == calSwapWbAddr
-      shadowReadAddr = registersToData @_ @(nBytes * 8) calStReadAddr
-      shadowEntryData = registersToData @_ @(nBytes * 8) calStRegisters
+      shadowReadAddr = getDataLe @(nBytes * 8) calStReadAddr
+      shadowEntryData = getDataLe @(nBytes * 8) calStRegisters
 
       wbState1 = wbState
         { calStRegisters = newPartialCalEntry
@@ -385,11 +385,11 @@ wbCalRX = case oneLeCLog2n @calDepth of
       updateRegisters :: forall i a.
         (Enum i, KnownNat (BitSize a)) =>
         i ->
-        RegisterBank (nBytes*8) a->
-        RegisterBank (nBytes*8) a
+        RegisterBank (nBytes*8) a 'LittleEndian ->
+        RegisterBank (nBytes*8) a 'LittleEndian
       updateRegisters i = updateRegBank i busSelect writeData
 
-      calAddr = paddedToData $ bvAsPadded writeData
+      calAddr = bitCoerce $ resize writeData
 
       newShadowDepth
         | wbNewShadowDepth = Just calAddr
@@ -426,7 +426,7 @@ wbCalTX CalendarControl{shadowReadAddr, wishboneActive, wishboneError, wishboneA
  CalendarOutput{shadowEntry, shadowDepth} = wbOut
  where
   readData =
-    case (getRegs shadowEntry, getRegs shadowReadAddr, getRegs shadowDepth) of
+    case (getRegsLe shadowEntry, getRegsLe shadowReadAddr, getRegsLe shadowDepth) of
       (RegisterBank entryVec, RegisterBank readAddrVec, RegisterBank depthVec) ->
        ((entryVec :< 0b0) ++ readAddrVec ++ depthVec) !! wishboneAddress
   wbOut = (emptyWishboneS2M @(Bytes nBytes))
@@ -443,8 +443,8 @@ updateRegBank ::
   i ->
   BitVector nBytes ->
   Bytes nBytes ->
-  RegisterBank (nBytes * 8) a ->
-  RegisterBank (nBytes * 8) a
+  RegisterBank (nBytes * 8) a 'LittleEndian->
+  RegisterBank (nBytes * 8) a 'LittleEndian
 updateRegBank i byteSelect newBV (RegisterBank vec) = RegisterBank newVec
  where
   newVec = replace i (regUpdate byteSelect (vec !! i) newBV) vec

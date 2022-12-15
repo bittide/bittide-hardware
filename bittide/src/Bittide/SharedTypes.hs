@@ -11,14 +11,12 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
-
 module Bittide.SharedTypes where
 
 import Clash.Prelude
 
 import Data.Constraint
 import Data.Constraint.Nat.Extra
-import Data.Proxy
 import Data.Type.Equality ((:~:)(Refl))
 import Protocols.Wishbone
 
@@ -69,75 +67,57 @@ type Pad a bw  = (Regs a bw * bw) - BitSize a
 -- Amount of bw sized registers required to store a.
 type Regs a bw = DivRU (BitSize a) bw
 
--- | Vector of registers that stores data coming from a communication bus. It can be used
--- to store any arbitrary data type, the last register is padded with p bits. The number of
--- registers and the amount of padding depends on the bit size of the stored data.
-newtype RegisterBank regSize content =
+data ByteOrder = LittleEndian | BigEndian
+
+-- | Stores any arbitrary datatype as a vector of registers.
+newtype RegisterBank regSize content (byteOrder :: ByteOrder) =
   RegisterBank (Vec (Regs content regSize) (BitVector regSize))
+  deriving Generic
+
+instance (KnownNat regSize, 1 <= regSize, BitPack content) =>
+  BitPack (RegisterBank regSize content byteOrder) where
+  type BitSize _ = Regs content regSize * regSize
+  pack (RegisterBank vec) = pack vec
+  unpack bv = RegisterBank (unpack bv)
 
 deriving newtype instance
-  (KnownNat regSize, 1 <= regSize, Paddable content, NFDataX (RegisterBank regSize content))
-  => NFDataX (RegisterBank regSize content)
+  (KnownNat regSize, 1 <= regSize, Paddable content, NFDataX (RegisterBank regSize content byteOrder))
+  => NFDataX (RegisterBank regSize content byteOrder)
 
-deriving newtype instance (KnownNat regSize, ShowX (RegisterBank regSize content)) =>
-  ShowX (RegisterBank regSize content)
+deriving newtype instance (KnownNat regSize, ShowX (RegisterBank regSize content byteOrder)) =>
+  ShowX (RegisterBank regSize content byteOrder)
 
--- | Stores any a, along with a type level variable that contains a bit width to which @a@
--- should be padded.
-newtype Padded bw a = Padded {paddedToData :: a}
+convertBe ::
+  (Paddable a, KnownNat bw, 1 <= bw) =>
+  (RegisterBank bw a 'BigEndian, a)  ->
+  (a, RegisterBank bw a 'BigEndian)
+convertBe (regBank, a) = (getDataBe regBank, getRegsBe a)
 
-deriving newtype instance (KnownNat bw, Paddable a, NFDataX a, NFDataX (Padded bw a)) =>
-  NFDataX (Padded bw a)
+-- | Transforms a to _RegisterBank_.
+getRegsLe ::
+  forall bw a .
+  (Paddable a, KnownNat bw, 1 <= bw)
+  => a
+  -> RegisterBank bw a 'LittleEndian
+getRegsLe a = case timesDivRU @bw @(BitSize a) of
+  Dict -> RegisterBank (reverse $ bitCoerce (0 :: BitVector (Pad a bw),a))
 
--- | Transforms a @BitVector bw@ containing a @Padded bw a@ to _Padded_.
-bvAsPadded ::
-  forall bw a.
-  ( Paddable a
-  , KnownNat bw
-  , 1 <= bw ) =>
-  BitVector bw ->
-  Padded bw a
-bvAsPadded bv =
+-- | Transforms a to _RegisterBank_.
+getRegsBe :: forall bw a . (Paddable a, KnownNat bw, 1 <= bw) => a -> RegisterBank bw a 'BigEndian
+getRegsBe a = case timesDivRU @bw @(BitSize a) of
+  Dict -> RegisterBank (bitCoerce (0 :: BitVector (Pad a bw),a))
+
+-- | Transforms _RegisterBank_ to a.
+getDataBe :: forall bw a . (Paddable a, KnownNat bw, 1 <= bw) => RegisterBank bw a 'BigEndian -> a
+getDataBe (RegisterBank vec) =
   case timesDivRU @bw @(BitSize a) of
-    Dict -> case sameNat (Proxy @(Pad a bw + BitSize a)) (Proxy @bw) of
-      Just Refl -> Padded . unpack . snd $ split @_ @(Pad a bw) @(BitSize a) bv
-      _ -> error "bvAsPadded: Negative padding"
+    Dict -> unpack . snd $ split @_ @(Pad a bw) @(BitSize a) (pack vec)
 
--- | Gets the stored data from a _RegisterBank_.
-registersToData ::
-  ( Paddable a
-  , KnownNat regSize
-  , 1 <= regSize ) =>
-  RegisterBank regSize a ->
-  a
-registersToData = paddedToData . registersToPadded
-
--- | Transforms _Padded_ to _RegisterBank_.
-paddedToRegisters ::
-  forall bw a.
-  ( BitPack a
-  , KnownNat bw
-  , 1 <= bw ) =>
-  Padded bw a ->
-  RegisterBank bw a
-paddedToRegisters (Padded a) = case timesDivRU @bw @(BitSize a) of
-  Dict -> RegisterBank (unpack ((0b0 :: BitVector (Pad a bw)) ++# pack a))
-
--- | Transforms _RegisterBank_ to _Padded_.
-registersToPadded ::
-  forall bw a.
-  ( Paddable a
-  , KnownNat bw
-  , 1 <= bw ) =>
-  RegisterBank bw a ->
-  Padded bw a
-registersToPadded (RegisterBank vec) =
+-- | Transforms _RegisterBank_ to a.
+getDataLe :: forall bw a . (Paddable a, KnownNat bw, 1 <= bw) => RegisterBank bw a 'LittleEndian -> a
+getDataLe (RegisterBank (reverse -> vec)) =
   case timesDivRU @bw @(BitSize a) of
-    Dict -> Padded . unpack . snd $ split @_ @(Pad a bw) @(BitSize a) (pack vec)
-
--- Stores its argument in a _RegisterBank_ based on a context-supplied register size.
-getRegs :: (BitPack a, KnownNat regSize, 1 <= regSize) => a -> RegisterBank regSize a
-getRegs = paddedToRegisters . Padded
+    Dict -> unpack . snd $ split @_ @(Pad a bw) @(BitSize a) (pack vec)
 
 -- | Coerces a tuple of index n and a boolean to index (n*2) where the LSB of the result
 -- is determined by the boolean.

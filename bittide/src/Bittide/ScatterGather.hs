@@ -192,7 +192,7 @@ scatterUnitWb (ScatterConfig calConfig) wbInCal linkIn wbInSu =
   (readAddr, upperSelected) = unbundle $ div2Index <$> memAddr
   (scatterUnitRead, wbOutCal, endOfMetacycle) =
     scatterUnit calConfig wbInCal linkIn readAddr
-  (upper, lower) = unbundle $ split <$> scatterUnitRead
+  (lower, upper) = unbundle $ split <$> scatterUnitRead
   selected = register (errorX "scatterUnitWb: Initial selection undefined") upperSelected
   scatteredData = mux selected upper lower
 
@@ -235,5 +235,5 @@ gatherUnitWb (GatherConfig calConfig) wbInCal wbInGu =
   mkWrite address (Just write) = Just (address, write ++# write)
   mkWrite _ _ = Nothing
   mkEnables selected byteEnables
-    | selected  = byteEnables ++# 0b0
-    | otherwise = 0b0 ++# byteEnables
+    | selected  = 0 ++# byteEnables
+    | otherwise = byteEnables ++# 0
