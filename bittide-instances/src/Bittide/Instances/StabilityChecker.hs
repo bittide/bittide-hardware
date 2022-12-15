@@ -16,7 +16,6 @@ stabilityChecker_3_1M ::
   Reset Basic200 ->
   Signal Basic200 (Unsigned 16) ->
   Signal Basic200 Bool
-stabilityChecker_3_1M clk rst = withClockResetEnable clk rst enableGen
-  stabilityChecker strategy
- where
-  strategy = stabilityChecker d3 (SNat @1_000_000)
+stabilityChecker_3_1M clk rst =
+  withClockResetEnable clk rst enableGen $
+    stabilityChecker d3 (SNat @1_000_000)
