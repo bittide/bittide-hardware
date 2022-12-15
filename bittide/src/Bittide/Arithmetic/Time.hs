@@ -22,12 +22,7 @@ type Picoseconds  (ps :: Nat) = ps
 
 -- | Number of clock cycles required at the clock frequency of @dom@ before a minimum @period@ has passed.
 -- Is always at least one.
-type PeriodCycles dom period = Max 1 (DivRU period (Max 1 (DomainPeriod dom)))
-
--- | Number of clock cycles at the clock frequency of @dom@ before a minimum of half @period@
--- has passed. Will always be at least one, so the resulting period is always at least
--- twice the period of @dom@.
-type HalfPeriodCycles dom period = Max 1 (DivRU period (Max 1 (2 * DomainPeriod dom)))
+type PeriodToCycles dom period = Max 1 (DivRU period (Max 1 (DomainPeriod dom)))
 
 seconds :: Int64 -> Femtoseconds
 seconds s = mapFemtoseconds (* 1000) (milliseconds s)

@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# OPTIONS_GHC -fconstraint-solver-iterations=7 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=9 #-}
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -65,7 +65,7 @@ data SpiCommand
   -- ^ Reads data from the selected 'Address' on the selected 'Page' and increments the address.
   deriving Eq
 
--- | Converts an 'SpiCommand' to the corresponding bytes to be sent over Spi.
+-- | Converts an 'SpiCommand' to the corresponding bytes to be sent over SPI.
 spiCommandToBytes :: SpiCommand -> Bytes 2
 spiCommandToBytes = \case
   SetAddress bv   -> pack (0b0000_0000 :: Byte, bv)
@@ -73,7 +73,7 @@ spiCommandToBytes = \case
   ReadData        -> pack (0b1000_0000 :: Byte, 0 :: Byte)
   WriteDataInc bv -> pack (0b0110_0000 :: Byte, bv)
   ReadDataInc     -> pack (0b1000_0000 :: Byte, 0 :: Byte)
-  -- BurstWrite bv   -> pack (0b1110_0000 :: Byte, bv) BurstWrite is not supported by the current spi core.
+  -- BurstWrite bv   -> pack (0b1110_0000 :: Byte, bv) BurstWrite is not supported by the current SPI core.
 
 -- | State of the configuration circuit in 'si539xSpi'.
 data ConfigState dom entries
@@ -87,7 +87,7 @@ data ConfigState dom entries
   -- ^ The 'RegisterEntry' at the 'Index' was not correctly written to the @Si539x@ chip.
   | Finished
   -- ^ All entries in the 'Si539xRegisterMap' were correctly written to the @Si539x@ chip.
-  | Wait (Index (PeriodCycles dom (Milliseconds 300))) (Index entries)
+  | Wait (Index (PeriodToCycles dom (Milliseconds 300))) (Index entries)
   -- ^ Waits for the Si539X to be calibrated after writing the configuration preamble from 'Si539xRegisterMap'.
   deriving (Show, Generic, NFDataX, Eq)
 
@@ -101,7 +101,7 @@ getStateAddress = \case
   Finished -> deepErrorX "getStateAddress: ConfigState Finished does not contain an index"
   Wait _ i -> i
 
--- | Spi interface for a @Si539x@ clock generator chip with an initial configuration.
+-- | SPI interface for a @Si539x@ clock generator chip with an initial configuration.
 -- This component will first write and verify the initial configuration before becoming
 -- available for external circuitry. For an interface that does not initially configure the
 -- chip, see 'si539xDriver'.
@@ -114,7 +114,7 @@ si539xSpi ::
   , 1 <= (preambleEntries + configEntries + postambleEntries)) =>
   -- | Initial configuration for the @Si539x@ chip.
   Si539xRegisterMap preambleEntries configEntries postambleEntries ->
-  -- | Minimum period of the spi clock frequency for the spi clock divider.
+  -- | Minimum period of the SPI clock frequency for the SPI clock divider.
   SNat minTargetPeriodPs ->
   -- | Read or write operation for the @Si539X@ registers.
   Signal dom (Maybe RegisterOperation) ->
@@ -122,7 +122,7 @@ si539xSpi ::
   "MISO" ::: Signal dom Bit ->
   -- |
   -- 1. Byte returned by read / write operation.
-  -- 2. The spi interface is 'Busy' and does not accept new operations.
+  -- 2. The SPI interface is 'Busy' and does not accept new operations.
   -- 3. Outgoing SPI signals: (SCK, MOSI, SS)
   ( Signal dom (Maybe Byte)
   , Signal dom Busy
@@ -179,8 +179,8 @@ si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
       Error _  -> (spiBusy, spiByte)
       _        -> (True, Nothing)
 
--- | Keeps track of the current 'Page' and 'Address' of the @Si539x@ chip.
--- Furthermore is used to track the current communication cycle.
+-- | Keeps track of the current 'Page' and 'Address' of the @Si539x@ chip as well as
+-- the current communication cycle.
 data DriverState dom = DriverState
   { currentPage         :: Maybe Page
   -- ^ Current 'Page' of the @Si539x@ chip.
@@ -190,18 +190,18 @@ data DriverState dom = DriverState
   -- ^ Current communication transaction.
   , commandAcknowledged :: Acknowledge
   -- ^ Whether or not the current transaction has already been acknowledged.
-  , idleCycles          :: Index (PeriodCycles dom (Nanoseconds 95))
+  , idleCycles          :: Index (PeriodToCycles dom (Nanoseconds 95))
   -- ^ After communication, slave select must be high for at least 95ns.
   }
   deriving (Generic, NFDataX)
 
--- | Circuitry that controls an spi core based on a state machine that ensures communication
+-- | Circuitry that controls an SPI core based on a state machine that ensures communication
 -- transactions with an @Si539x@ chip are executed correctly. It makes sure communication
 -- operations target the right register and communication operations are spaced correctly.
 si539xSpiDriver ::
   forall dom minTargetPeriodPs .
   (HiddenClockResetEnable dom, KnownNat (DomainPeriod dom)) =>
-  -- | Minimum period of the spi clock frequency for the spi clock divider.
+  -- | Minimum period of the SPI clock frequency for the SPI clock divider.
   SNat minTargetPeriodPs ->
   -- | Read or write operation for the @Si539X@ registers.
   Signal dom (Maybe RegisterOperation) ->
@@ -209,7 +209,7 @@ si539xSpiDriver ::
   "MISO" ::: Signal dom Bit ->
   -- |
   -- 1. Byte returned by read / write operation.
-  -- 2. The spi interface is 'Busy' and does not accept new operations.
+  -- 2. The SPI interface is 'Busy' and does not accept new operations.
   -- 3. Outgoing SPI signals: (SCK, MOSI, SS)
   ( Signal dom (Maybe Byte)
   , Signal dom Busy
@@ -221,8 +221,8 @@ si539xSpiDriver ::
 si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
  where
   spiOut = (sck, mosi, ss)
-  (sck, mosi, ss, spiBusyS, acknowledge, receivedData) =
-    spiMaster SPIMode0 (SNat @(HalfPeriodCycles dom minTargetPeriodPs)) d1 spiWrite miso
+  (sck, mosi, ss, spiBusyS, acknowledge, receivedData) = spiMaster SPIMode0
+    (SNat @(Max 1 (DivRU (PeriodToCycles dom minTargetPeriodPs) 2))) d1 spiWrite miso
   (spiWrite, decoderBusy, fromSlave) =
     mealyB go defDriverState (incomingOpS, spiBusyS, acknowledge, receivedData)
   defDriverState = DriverState
