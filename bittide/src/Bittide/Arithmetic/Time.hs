@@ -4,10 +4,21 @@
 
 module Bittide.Arithmetic.Time where
 
-import Prelude
+import Clash.Explicit.Prelude
 
 import Clash.Signal.Internal (Femtoseconds (Femtoseconds), mapFemtoseconds)
 import Data.Int (Int64)
+
+-- | Gets time in 'Picoseconds' from time in 'Seconds'.
+type Seconds      (s  :: Nat) = Milliseconds (1000 * s)
+-- | Gets time in 'Picoseconds' from time in 'Milliseconds'.
+type Milliseconds (ms :: Nat) = Microseconds (1000 * ms)
+-- | Gets time in 'Picoseconds' from time in 'Microseconds'.
+type Microseconds (us :: Nat) = Nanoseconds  (1000 * us)
+-- | Gets time in 'Picoseconds' from time in 'Nanoseconds'.
+type Nanoseconds  (ns :: Nat) = Picoseconds  (1000 * ns)
+-- | Gets time in 'Picoseconds' from time in 'Picoseconds', essentially 'id'.
+type Picoseconds  (ps :: Nat) = ps
 
 seconds :: Int64 -> Femtoseconds
 seconds s = mapFemtoseconds (* 1000) (milliseconds s)
