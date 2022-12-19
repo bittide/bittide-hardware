@@ -35,7 +35,7 @@ data RegisterOperation = RegisterOperation
   , regAddress  :: Address
    -- ^ Address at which to perform the read or write
   , regWrite    :: Maybe Byte
-   -- ^ @Nothing@ for a read operation, @Just byte@ to write @byte@ to this page and address.
+   -- ^ @Nothing@ for a read operation, @Just byte@ to write @byte@ to this 'Page' and 'Address'.
   } deriving (Show, Generic, NFDataX)
 
 -- | Contains the configuration for an Si539x chip, explicitly differentiates between
@@ -60,9 +60,9 @@ data SpiCommand
   | ReadData
   -- ^ Reads data from the selected 'Address' on the selected 'Page'.
   | WriteDataInc Byte
-  -- ^ Writes data to the selected 'Address' on the selected 'Page' and increments the address.
+  -- ^ Writes data to the selected 'Address' on the selected 'Page' and increments the 'Address'.
   | ReadDataInc
-  -- ^ Reads data from the selected 'Address' on the selected 'Page' and increments the address.
+  -- ^ Reads data from the selected 'Address' on the selected 'Page' and increments the 'Address'.
   deriving Eq
 
 -- | Converts an 'SpiCommand' to the corresponding bytes to be sent over SPI.
@@ -77,7 +77,9 @@ spiCommandToBytes = \case
 
 -- | State of the configuration circuit in 'si539xSpi'.
 data ConfigState dom entries
-  = FetchReg (Index entries)
+  = WaitForReady
+  -- ^ Continuously read from 'Address' 0xFE at any 'Page', if this returns 0x0F, the device is ready.
+  | FetchReg (Index entries)
   -- ^ Fetches the 'RegisterEntry' at the 'Index' to be written to the @Si539x@ chip.
   | WriteEntry (Index entries)
   -- ^ Writes the 'RegisterEntry' at the 'Index' to the @Si539x@ chip.
@@ -85,6 +87,8 @@ data ConfigState dom entries
   -- ^ Checks if the 'RegisterEntry' at the 'Index' was correctly written to the @Si539x@ chip.
   | Error (Index entries)
   -- ^ The 'RegisterEntry' at the 'Index' was not correctly written to the @Si539x@ chip.
+  | WaitForLock
+  -- ^ Continuously read from 'Address' 0x0C at 'Page' 0x00 until it returns bit 3 is 0.
   | Finished
   -- ^ All entries in the 'Si539xRegisterMap' were correctly written to the @Si539x@ chip.
   | Wait (Index (PeriodToCycles dom (Milliseconds 300))) (Index entries)
@@ -92,13 +96,15 @@ data ConfigState dom entries
   deriving (Show, Generic, NFDataX, Eq)
 
 -- | Utility function to retrieve the entry 'Index' from the 'ConfigState'.
-getStateAddress :: ConfigState dom entries -> Index entries
+getStateAddress :: KnownNat entries => ConfigState dom entries -> Index entries
 getStateAddress = \case
+  WaitForReady -> 0
   FetchReg i -> i
   WriteEntry i -> i
   ReadEntry i -> i
   Error i -> i
-  Finished -> deepErrorX "getStateAddress: ConfigState Finished does not contain an index"
+  WaitForLock -> maxBound
+  Finished -> maxBound
   Wait _ i -> i
 
 -- | SPI interface for a @Si539x@ clock generator chip with an initial configuration.
@@ -140,7 +146,7 @@ si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
 
   readCounter :: Signal dom (Index (preambleEntries + configEntries + postambleEntries))
   (readCounter, spiOperation, configBusy, configByte, configSuccess) =
-    mealyB go (FetchReg 0) (romOut, externalOperation, driverByte, driverBusy)
+    mealyB go WaitForReady (romOut, externalOperation, driverByte, driverBusy)
 
   go currentState ((regPage,regAddress,byte), extSpi, spiByte, spiBusy) =
     (nextState, (getStateAddress currentState, spiOp, busy, returnedByte, currentState == Finished))
@@ -148,29 +154,34 @@ si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
     isConfigEntry i =
       (natToNum @preambleEntries) <= i && i < (natToNum @(preambleEntries + configEntries))
     nextState = case (currentState, spiByte) of
+      (WaitForReady,Just 0x0F)                 -> FetchReg 0
+      (FetchReg i, _)                          -> WriteEntry i
       (WriteEntry i, Just _)
-        | i == maxBound -> Finished
+        | i == maxBound                        -> WaitForLock
         | i == (natToNum @preambleEntries - 1) -> Wait @dom 0 i
-        | isConfigEntry i -> ReadEntry i
-        | otherwise -> FetchReg (succ i)
+        | isConfigEntry i                      -> ReadEntry i
+        | otherwise                            -> FetchReg (succ i)
 
       (ReadEntry i, Just b)
-        | b == byte -> FetchReg (succ i)
-        | otherwise -> Error i
-
-      (FetchReg i, _)                   -> WriteEntry i
-      (Wait ((==maxBound) -> True) i, _)-> FetchReg (succ i)
-      (Wait j i, _)                     -> Wait (succ j) i
-      (WriteEntry _, Nothing)           -> currentState
-      (ReadEntry _, Nothing)            -> currentState
-      (Finished , _)                    -> currentState
-      (Error _ , _)                     -> currentState
+        | b == byte                            -> FetchReg (succ i)
+        | otherwise                            -> Error i
+      (Wait ((==maxBound) -> True) i, _)       -> FetchReg (succ i)
+      (Wait j i, _)                            -> Wait (succ j) i
+      (WaitForLock, Just 0)                    -> Finished
+      (WaitForReady, _)                        -> currentState
+      (WaitForLock, _ )                        -> currentState
+      (WriteEntry _, _)                        -> currentState
+      (ReadEntry _, _)                         -> currentState
+      (Finished , _)                           -> currentState
+      (Error _ , _)                            -> currentState
 
     spiOp = case currentState of
+      WaitForReady -> Just RegisterOperation{regPage = 0x00, regAddress = 0xFE, regWrite = Nothing}
       FetchReg _   -> Nothing
       WriteEntry _ -> Just RegisterOperation{regPage, regAddress, regWrite = Just byte}
       ReadEntry _  -> Just RegisterOperation{regPage, regAddress, regWrite = Nothing}
       Wait _ _     -> Nothing
+      WaitForLock  -> Just RegisterOperation{regPage = 0, regAddress = 0xC0, regWrite = Nothing}
       Finished     -> extSpi
       Error _      -> extSpi
 

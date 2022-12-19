@@ -31,42 +31,46 @@ topEntity = bundle (masterBusy, configSuccess)
   where
   (_, masterBusy, configSuccess, (sclk, mosi,ss)) =
     withClockResetEnable clockGen resetGen enableGen $
-    si539xSpi testConfig (SNat @50000) (pure Nothing) (readFromBiSignal miso)
+    si539xSpi testConfig (SNat @50000) (pure Nothing) miso
+  miso = si5391Mock sclk mosi ss
 
-  slaveOut :: Signal Basic1 (Maybe (Bytes 2))
+
+si5391Mock :: forall dom . KnownDomain dom => Signal dom Bool -> Signal dom Bit -> Signal dom Bool -> Signal dom Bit
+si5391Mock sck mosi ss = readFromBiSignal miso
+ where
+  slaveOut :: Signal dom (Maybe (Bytes 2))
   (veryUnsafeToBiSignalIn -> miso, _, slaveOut) =
     withClockResetEnable clockGen resetGen enableGen $
-    spiSlaveLatticeSBIO SPIMode0 False sclk mosi miso ss slaveIn
+    spiSlaveLatticeSBIO SPIMode0 False sck mosi miso ss slaveIn
 
-  slaveIn = slaveMachine (deepErrorX "", deepErrorX "", Map.empty) slaveOut
+  slaveIn = si5391Model (deepErrorX "", deepErrorX "", Map.fromList [(0x00FE, 0xF), (0x00C0, 0x00)]) slaveOut
 
-  slaveMachine ::
+  si5391Model ::
     (Page, Address, Map.Map (Bytes 2) Byte) ->
-    Signal Basic1 (Maybe (Bytes 2)) ->
-    Signal Basic1 (Bytes 2)
-  slaveMachine oldState@(page, addr, regs) (maybeInput :- inputs) =
+    Signal dom (Maybe (Bytes 2)) ->
+    Signal dom (Bytes 2)
+  si5391Model oldState@(page, addr, regs) (maybeInput :- inputs) =
     case maybeInput of
-      Nothing    -> output :- slaveMachine oldState inputs
-      Just input -> output :- slaveMachine newState inputs
+      Nothing    -> output :- si5391Model oldState inputs
+      Just input -> output :- si5391Model newState inputs
        where
         (command, byte) = split input
         newState =case (shiftR command 5, addr) of
           (0, _) -> (page, byte, regs)
           (2, 1) -> (byte, addr, regs)
-          (2, _) -> (page, addr, Map.insert (pack (page, addr)) byte regs)
+          (2, _) -> (page, addr, Map.insert key byte regs)
           (4, _) -> (page, addr, regs)
-          (3, _) -> (page, succ addr, Map.insert (pack (page, addr)) byte regs)
+          (3, _) -> (page, succ addr, Map.insert key byte regs)
           (5, _) -> (page, succ addr, regs)
           _ -> newState
    where
-    output = maybe undefinedValue resize (Map.lookup (pack (page, addr)) regs)
+    key = pack (page, addr)
+    output = maybe undefinedValue resize (Map.lookup key regs)
     undefinedValue =
-      deepErrorX $ "slaveMachine: Tried reading uninitialized value at " <> show (page, addr)
-
-
+      deepErrorX $ "si5391Model: Tried reading uninitialized value at " <> show (page, addr)
 
 configureSucceeds :: Assertion
 configureSucceeds =
   assertBool "Eventually the configuration indicates becomes true" (or $ fmap snd simOut)
  where
-  simOut = sampleN 100_000_000 topEntity
+  simOut = takeWhile fst $ sample topEntity
