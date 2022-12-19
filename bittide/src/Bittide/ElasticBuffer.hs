@@ -49,10 +49,11 @@ sticky clk rst a = stickyA
 -- | An elastic buffer backed by a Xilinx FIFO. It exposes all its control and
 -- monitor signals in its read domain.
 xilinxElasticBuffer ::
-  forall n readDom writeDom.
+  forall n readDom writeDom a.
   ( HasCallStack
   , KnownDomain readDom
   , KnownDomain writeDom
+  , NFDataX a
   , KnownNat n
   , 4 <= n, n <= 17
   ) =>
@@ -62,25 +63,25 @@ xilinxElasticBuffer ::
   -- ones. Make sure to hold the reset at least 3 cycles in both clock domains.
   Reset readDom ->
   Signal readDom EbMode ->
+  Signal writeDom a ->
   ( Signal readDom (DataCount n)
-
   -- Indicates whether the FIFO under or overflowed. This signal is sticky: it
   -- will only deassert upon reset.
   , Signal readDom Underflow
   , Signal writeDom Overflow
+  , Signal readDom a
   )
-xilinxElasticBuffer clkRead clkWrite rstRead ebMode =
-  (readCount, isUnderflowSticky, isOverflowSticky)
+xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
+  (readCount, isUnderflowSticky, isOverflowSticky, fifoData)
  where
   rstWrite = unsafeFromHighPolarity rstWriteBool
   rstWriteBool =
     CE.safeDffSynchronizer clkRead clkWrite False (unsafeToHighPolarity rstRead)
 
-  FifoOut{readCount, isUnderflow, isOverflow} = dcFifo
+  FifoOut{readCount, isUnderflow, isOverflow, fifoData} = dcFifo
     (defConfig @n){dcOverflow=True, dcUnderflow=True}
     clkWrite noResetWrite clkRead noResetRead
     writeData readEnable
-
 
   -- We make sure to "stickify" the signals in their original domain. The
   -- synchronizer might lose samples depending on clock configurations.
@@ -96,16 +97,15 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode =
 
   writeEnableSynced = CE.safeDffSynchronizer clkRead clkWrite False writeEnable
 
-  -- For the time being, we're only interested in data counts, so we feed the
-  -- FIFO with static data when writing (@0@).
-  writeData = mux writeEnableSynced (pure (Just (0 :: Unsigned 8))) (pure Nothing)
+  writeData = mux writeEnableSynced (Just <$> wdata) (pure Nothing)
 
 
 {-# NOINLINE resettableXilinxElasticBuffer #-}
 resettableXilinxElasticBuffer ::
-  forall readDom writeDom n.
+  forall n readDom writeDom a.
   ( KnownDomain writeDom
   , KnownDomain readDom
+  , NFDataX a
   , KnownNat n
   , 4 <= n, n <= 17) =>
   Clock readDom ->
@@ -113,15 +113,18 @@ resettableXilinxElasticBuffer ::
   -- | Resetting resets the 'Underflow' and 'Overflow' signals, but not the 'DataCount'
   -- ones. Make sure to hold the reset at least 3 cycles in both clock domains.
   Reset readDom ->
+  Signal writeDom a ->
   ( Signal readDom (DataCount n)
   , Signal readDom Underflow
   , Signal readDom Overflow
   , Signal readDom EbMode
+  , Signal readDom a
   )
-resettableXilinxElasticBuffer clkRead clkWrite rstRead =
-  (dataCount, under, over1, ebMode)
+resettableXilinxElasticBuffer clkRead clkWrite rstRead wdata =
+  (dataCount, under, over1, ebMode, readData)
  where
-  (dataCount, under, over) = xilinxElasticBuffer @n clkRead clkWrite fifoReset ebMode
+  (dataCount, under, over, readData) =
+    xilinxElasticBuffer @n clkRead clkWrite fifoReset ebMode wdata
   fifoReset = unsafeFromHighPolarity $ not <$> stable
   over1 = CE.safeDffSynchronizer clkWrite clkRead False over
 

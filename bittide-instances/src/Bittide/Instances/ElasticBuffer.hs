@@ -17,10 +17,12 @@ elasticBuffer5 ::
   "clkReadFast" ::: Clock Fast ->
   "clkWriteSlow" :::Clock Slow ->
   "resetRead" ::: Reset Fast ->
+  "writeData" ::: Signal Slow (Unsigned 8) ->
   ( "dataCount" ::: Signal Fast (Unsigned 5)
   , "underflow" ::: Signal Fast Underflow
   , "overrflow" ::: Signal Fast Overflow
   , "ebMode" ::: Signal Fast EbMode
+  , "readData" ::: Signal Fast (Unsigned 8)
   )
 elasticBuffer5 = resettableXilinxElasticBuffer
 
