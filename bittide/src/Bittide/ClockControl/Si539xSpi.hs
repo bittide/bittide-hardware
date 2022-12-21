@@ -14,6 +14,7 @@ import Clash.Prelude
 import Clash.Cores.SPI
 
 import Bittide.Arithmetic.Time
+import Bittide.ClockControl
 import Bittide.SharedTypes
 
 -- | The Si539X chips use "Page"s to increase their address space.
@@ -77,8 +78,12 @@ spiCommandToBytes = \case
 
 -- | State of the configuration circuit in 'si539xSpi'.
 data ConfigState dom entries
-  = WaitForReady
-  -- ^ Continuously read from 'Address' 0xFE at any 'Page', if this returns 0x0F, the device is ready.
+  = WaitForReady Bool
+  -- ^ Continuously read from 'Address' 0xFE at any 'Page', if this operations returns
+  -- 0x0F twice in a row, the device is considered to be ready for operation.
+  | ResetDriver Bool
+  -- ^ Always after a @WaitForReady False@ state, we reset the SPI driver to make sure
+  -- it first sets the page and address again.
   | FetchReg (Index entries)
   -- ^ Fetches the 'RegisterEntry' at the 'Index' to be written to the @Si539x@ chip.
   | WriteEntry (Index entries)
@@ -98,7 +103,8 @@ data ConfigState dom entries
 -- | Utility function to retrieve the entry 'Index' from the 'ConfigState'.
 getStateAddress :: KnownNat entries => ConfigState dom entries -> Index entries
 getStateAddress = \case
-  WaitForReady -> 0
+  WaitForReady _ -> 0
+  ResetDriver _ -> 0
   FetchReg i -> i
   WriteEntry i -> i
   ReadEntry i -> i
@@ -132,29 +138,37 @@ si539xSpi ::
   -- 3. Outgoing SPI signals: (SCK, MOSI, SS)
   ( Signal dom (Maybe Byte)
   , Signal dom Busy
-  , Signal dom Bool
+  , Signal dom (ConfigState dom (preambleEntries + configEntries + postambleEntries))
   , ( "SCK"  ::: Signal dom Bool
     , "MOSI" ::: Signal dom Bit
     , "SS"   ::: Signal dom Bool
     )
   )
 si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
-  (configByte, configBusy, configSuccess, spiOut)
+  (configByte, configBusy, configState, spiOut)
  where
-  (driverByte, driverBusy, spiOut) = si539xSpiDriver minTargetPs spiOperation miso
-  romOut = rom (configPreamble ++ config ++ configPostamble) $ bitCoerce <$> readCounter
+  (driverByte, driverBusy, spiOut) = withReset driverReset si539xSpiDriver minTargetPs spiOperation miso
+  driverReset = forceReset $ holdTrue d3 $ flip fmap configState $ \case
+    ResetDriver _ -> True
+    _             -> False
 
-  readCounter :: Signal dom (Index (preambleEntries + configEntries + postambleEntries))
-  (readCounter, spiOperation, configBusy, configByte, configSuccess) =
-    mealyB go WaitForReady (romOut, externalOperation, driverByte, driverBusy)
+  romOut = rom (configPreamble ++ config ++ configPostamble) romAddress
+  romAddress = bitCoerce . getStateAddress <$> configState
+
+  (configState, spiOperation, configBusy, configByte) =
+    mealyB go (WaitForReady False) (romOut, externalOperation, driverByte, driverBusy)
 
   go currentState ((regPage,regAddress,byte), extSpi, spiByte, spiBusy) =
-    (nextState, (getStateAddress currentState, spiOp, busy, returnedByte, currentState == Finished))
+    (nextState, (currentState, spiOp, busy, returnedByte))
    where
     isConfigEntry i =
       (natToNum @preambleEntries) <= i && i < (natToNum @(preambleEntries + configEntries))
     nextState = case (currentState, spiByte) of
-      (WaitForReady,Just 0x0F)                 -> FetchReg 0
+      (WaitForReady False, Just 0x0F)          -> ResetDriver True
+      (WaitForReady True, Just 0x0F)           -> FetchReg 0
+      (WaitForReady _, Just _)                 -> ResetDriver False
+      (ResetDriver b, _)                       -> WaitForReady b
+
       (FetchReg i, _)                          -> WriteEntry i
       (WriteEntry i, Just _)
         | i == maxBound                        -> WaitForLock
@@ -168,7 +182,7 @@ si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
       (Wait ((==maxBound) -> True) i, _)       -> FetchReg (succ i)
       (Wait j i, _)                            -> Wait (succ j) i
       (WaitForLock, Just 0)                    -> Finished
-      (WaitForReady, _)                        -> currentState
+      (WaitForReady _, _)                      -> currentState
       (WaitForLock, _ )                        -> currentState
       (WriteEntry _, _)                        -> currentState
       (ReadEntry _, _)                         -> currentState
@@ -176,14 +190,15 @@ si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
       (Error _ , _)                            -> currentState
 
     spiOp = case currentState of
-      WaitForReady -> Just RegisterOperation{regPage = 0x00, regAddress = 0xFE, regWrite = Nothing}
-      FetchReg _   -> Nothing
-      WriteEntry _ -> Just RegisterOperation{regPage, regAddress, regWrite = Just byte}
-      ReadEntry _  -> Just RegisterOperation{regPage, regAddress, regWrite = Nothing}
-      Wait _ _     -> Nothing
-      WaitForLock  -> Just RegisterOperation{regPage = 0, regAddress = 0xC0, regWrite = Nothing}
-      Finished     -> extSpi
-      Error _      -> extSpi
+      WaitForReady _ -> Just RegisterOperation{regPage = 0x00, regAddress = 0xFE, regWrite = Nothing}
+      ResetDriver _  -> Nothing
+      FetchReg _     -> Nothing
+      WriteEntry _   -> Just RegisterOperation{regPage, regAddress, regWrite = Just byte}
+      ReadEntry _    -> Just RegisterOperation{regPage, regAddress, regWrite = Nothing}
+      Wait _ _       -> Nothing
+      WaitForLock    -> Just RegisterOperation{regPage = 0, regAddress = 0xC0, regWrite = Nothing}
+      Finished       -> extSpi
+      Error _        -> extSpi
 
     (busy, returnedByte) = case currentState of
       Finished -> (spiBusy, spiByte)
@@ -241,7 +256,7 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
     , currentAddress      = Nothing
     , currentOp           = Nothing
     , commandAcknowledged = False
-    , idleCycles          = 0
+    , idleCycles          = maxBound
     }
 
   go ::
@@ -289,3 +304,17 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
       | otherwise = Nothing
 
 {-# NOINLINE si539xSpiDriver #-}
+
+holdTrue ::
+  forall dom holdCycles .
+  (HiddenClockResetEnable dom, 1 <= holdCycles) =>
+  SNat holdCycles ->
+  Signal dom Bool ->
+  Signal dom Bool
+holdTrue SNat = mealy go (repeat False)
+ where
+  go :: 1 <= holdCycles => Vec holdCycles Bool -> Bool -> (Vec holdCycles Bool, Bool)
+  go state@(Cons _ _) input = (newState, output)
+   where
+    output = fold (||) state
+    newState = takeI $ input :> state
