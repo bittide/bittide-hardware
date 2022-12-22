@@ -14,7 +14,9 @@ import Clash.Prelude
 import Clash.Cores.SPI
 
 import Bittide.Arithmetic.Time
+import Bittide.ClockControl
 import Bittide.SharedTypes
+import Clash.Cores.Xilinx.DcFifo
 
 -- | The Si539X chips use "Page"s to increase their address space.
 type Page = Byte
@@ -303,6 +305,72 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
       | otherwise = Nothing
 
 {-# NOINLINE si539xSpiDriver #-}
+
+-- | Consumes 'SpeedChange's produced by a clock control algorithm and produces a
+-- 'RegisterOperation' for the 'si539xSpi' core. Consumption rate of 'SpeedUp's and
+-- 'SlowDown' depends on the availability of the SPI core. Uses 'dcFifo' with a depth
+-- of 16 elements for clock domain crossing.
+spiFrequencyController ::
+  forall domCallisto domSpi freqIncrementRange freqDecrementRange .
+  (KnownDomain domCallisto, KnownDomain domSpi) =>
+  -- | The number of times we can increment the frequency from its initial value.
+  SNat freqIncrementRange ->
+  -- | The number of times we can decrement the frequency from its initial value.
+  SNat freqDecrementRange ->
+  -- | Callisto domain's clock.
+  Clock domCallisto ->
+  -- | Callisto domain's reset.
+  Reset domCallisto ->
+  -- | Callisto domain's enable.
+  Enable domCallisto ->
+  -- | SPI domain's clock.
+  Clock domSpi ->
+  -- | SPI domain's reset.
+  Reset domSpi ->
+  -- | SPI domain's enable.
+  Enable domSpi ->
+  -- | Requested 'SpeedChange'.
+  Signal domCallisto SpeedChange ->
+  -- | Incoming 'Busy' signal from the 'si539xSpi' component.
+  Signal domSpi Busy ->
+  -- | Outgoing 'RegisterOperation'.
+  Signal domSpi (Maybe RegisterOperation)
+spiFrequencyController SNat SNat
+  clkCallisto rstCallisto enCallisto
+  clkSpi rstSpi enSpi
+  speedChange spiBusy = spiOp
+ where
+  fifoIn =
+    mux (speedChange .==. pure NoChange .||. not <$> fromEnable enCallisto)
+    (pure Nothing)
+    (Just <$> speedChange)
+
+  FifoOut{..} =
+    dcFifo (defConfig @4) clkCallisto rstCallisto clkSpi rstSpi fifoIn readEnable
+
+  (spiOp, readEnable) = withClockResetEnable clkSpi rstSpi enSpi
+    mealyB go initState (spiBusy, isEmpty, fifoData)
+
+  initState :: (Bool, Index (1 +  freqIncrementRange + freqDecrementRange))
+  initState = (False, natToNum @freqIncrementRange)
+
+  go (fifoValid, stepCount) (spiBusyGo, isEmptyGo, fifoDataGo) =
+    ((readEnableGo, stepCountNext), (spiOpGo, readEnableGo))
+   where
+    readEnableGo = not (isEmptyGo || spiBusyGo)
+    stepCountNext = case (fifoValid, spiBusyGo, fifoDataGo) of
+      (True, False, SpeedUp)  -> satSucc SatBound stepCount
+      (True, False, SlowDown) -> satPred SatBound stepCount
+      _                       -> stepCount
+
+    spiOpGo = case (fifoValid, fifoDataGo, stepCount == maxBound, stepCount == minBound) of
+      (True, SpeedUp, False, _)  ->
+        Just RegisterOperation{regPage = 0x00, regAddress = 0x1D, regWrite = Just 1}
+      (True, SlowDown, _, False)  ->
+        Just RegisterOperation{regPage = 0x00, regAddress = 0x1D, regWrite = Just 2}
+      _ -> Nothing
+
+{-# NOINLINE spiFrequencyController #-}
 
 -- | When this component receives @True@, it will hold it for @holdCycles@ number of
 -- clock cycles. This implementation does not scale well to large values for @holdCycles@
