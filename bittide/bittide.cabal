@@ -101,6 +101,7 @@ library
     Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Util
     Bittide.ClockControl.Si5391A
+    Bittide.ClockControl.Si5395J
     Bittide.ClockControl.Si539xSpi
     Bittide.ClockControl.StabilityChecker
     Bittide.DoubleBufferedRam

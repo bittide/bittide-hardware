@@ -14,7 +14,6 @@ import Clash.Prelude
 import Clash.Cores.SPI
 
 import Bittide.Arithmetic.Time
-import Bittide.ClockControl
 import Bittide.SharedTypes
 
 -- | The Si539X chips use "Page"s to increase their address space.

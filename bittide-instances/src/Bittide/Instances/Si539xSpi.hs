@@ -20,7 +20,7 @@ si5391Spi ::
   "" :::
     ( "readByte" ::: Signal Basic125 (Maybe Byte)
     , "BUSY" ::: Signal Basic125 Busy
-    , "DONE" ::: Signal Basic125 Bool
+    , "STATE" ::: Signal Basic125 (ConfigState Basic125 432)
     , "" :::
       ( "SCLK" ::: Signal Basic125 Bool
       , "MOSI" ::: Signal Basic125 Bit

@@ -27,9 +27,9 @@ clockGenGroup = testGroup "Clock generation group"
 
 
 topEntity :: Signal Basic1 (Bool, Bool)
-topEntity = bundle (masterBusy, configSuccess)
+topEntity = bundle (masterBusy, configState .==. pure Finished)
   where
-  (_, masterBusy, configSuccess, (sclk, mosi,ss)) =
+  (_, masterBusy, configState, (sclk, mosi,ss)) =
     withClockResetEnable clockGen resetGen enableGen $
     si539xSpi testConfig (SNat @50000) (pure Nothing) miso
   miso = si5391Mock sclk mosi ss
