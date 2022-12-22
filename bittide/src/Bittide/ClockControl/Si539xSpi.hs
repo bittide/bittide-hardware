@@ -313,7 +313,4 @@ holdTrue ::
 holdTrue SNat = mealy go (repeat False)
  where
   go :: 1 <= holdCycles => Vec holdCycles Bool -> Bool -> (Vec holdCycles Bool, Bool)
-  go state@(Cons _ _) input = (newState, output)
-   where
-    output = fold (||) state
-    newState = takeI $ input :> state
+  go state@(Cons _ _) input = (takeI $ input :> state, fold (||) state)
