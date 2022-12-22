@@ -82,6 +82,7 @@ targets =
   , 'Si539xSpi.si5391Spi
   , 'StabilityChecker.stabilityChecker_3_1M
   , 'Synchronizer.safeDffSynchronizer
+  , 'Si539xSpi.callistoSpi
   ]
 
 shakeOpts :: FilePath -> ShakeOptions
