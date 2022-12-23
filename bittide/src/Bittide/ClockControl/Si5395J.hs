@@ -1,3 +1,6 @@
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE RecordWildCards #-}
 module Bittide.ClockControl.Si5395J where
 
