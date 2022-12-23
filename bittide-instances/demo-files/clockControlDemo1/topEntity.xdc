@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2022 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+
 # create_clock -name {SYSCLK_300_P} -period 3.333 -waveform {0.000 1.667} [get_ports {SYSCLK_300_P}]
 # create_clock -name {USER_SMA_CLOCK_P} -period 5.000 -waveform {0.000 2.500} [get_ports {USER_SMA_CLOCK_P}]
 
