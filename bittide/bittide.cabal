@@ -104,6 +104,7 @@ library
     Bittide.ClockControl.Si539xSpi
     Bittide.ClockControl.StabilityChecker
     Bittide.DoubleBufferedRam
+    Bittide.Domain
     Bittide.ElasticBuffer
     Bittide.Link
     Bittide.Node
