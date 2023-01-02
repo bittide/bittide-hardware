@@ -19,6 +19,10 @@ import Data.Constraint.Nat.Extra (divWithRemainder)
 import Data.Maybe
 import Data.Bool(bool)
 
+{- $setup
+>>> import Clash.Prelude
+-}
+
 -- Applying this hint yields a compile error
 {-# ANN module "HLint: ignore Functor law" #-}
 
