@@ -98,8 +98,7 @@ gatherUnit calConfig wbIn writeOp byteEnables = (linkOut, wbOut, endOfMetacycle)
  where
   (readAddr, endOfMetacycle, wbOut) = mkCalendar calConfig wbIn
   linkOut = mux (register True ((==0) <$> readAddr)) (pure Nothing) (Just <$> bramOut)
-  bramOut = doubleBufferedRamByteAddressableU
-    (bitCoerce <$> bufSelect0) readAddr writeOp byteEnables
+  bramOut = doubleBufferedRamByteAddressableU bufSelect0 readAddr writeOp byteEnables
   bufSelect0 = register A bufSelect1
   bufSelect1 = mux endOfMetacycle (swapAorB <$> bufSelect0) bufSelect0
 
