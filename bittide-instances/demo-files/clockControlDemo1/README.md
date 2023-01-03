@@ -19,5 +19,5 @@ SPDX-License-Identifier: Apache-2.0
 10. In Vivado's IP catalog, use the clock wizard to generate a clock buffer for the incoming `FMC_HPC_CLK1_M2S clock`, see `topEntity.v` for enabled ports.
 11. In Vivado's IP catalog, use the clock wizard to generate a clock buffer for the incoming `USER_SMA_CLOCK`, see `topEntity.v` for enabled ports.
 
-See the constraint file for all pin mappings.
+See the constraint file, `topEntity.xdc`, for all pin mappings.
 You should be able to create a bitstream now.
