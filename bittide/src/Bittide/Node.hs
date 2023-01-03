@@ -59,13 +59,17 @@ type BussesPerSwitchLink = 2
 data NodeConfig externalLinks gppes where
   NodeConfig ::
     ( KnownNat switchBusses
-    , switchBusses ~ (1 + BussesPerSwitchLink * (externalLinks + (gppes + 1)))) =>
+    , switchBusses ~ (1 + BussesPerSwitchLink * (externalLinks + (gppes + 1)))
+    , KnownNat nmuBusses
+    , nmuBusses ~ ((BussesPerGppe * gppes) + switchBusses + 9)
+    , KnownNat nmuRemBusWidth
+    , nmuRemBusWidth ~ (32 - CLog 2 nmuBusses)) =>
     -- | Configuration for the 'node's 'managementUnit'.
     ManagementConfig ((BussesPerGppe * gppes) + switchBusses) ->
     -- | Configuratoin for the 'node's 'switch'.
-    SwitchConfig (externalLinks + gppes + 1) 4 32 ->
+    SwitchConfig (externalLinks + gppes + 1) 4 nmuRemBusWidth ->
     -- | Configuration for all the node's 'gppe's.
-    Vec gppes GppeConfig ->
+    Vec gppes (GppeConfig nmuRemBusWidth) ->
     NodeConfig externalLinks gppes
 
 -- | A 'node' consists of a 'switch', 'managementUnit' and @0..n@ 'gppe's.
@@ -103,7 +107,7 @@ data ManagementConfig nodeBusses where
   ManagementConfig ::
     (KnownNat nodeBusses) =>
     -- | Configuration for the incoming and outgoing 'Bittide.Link'.
-    LinkConfig 4 32 ->
+    LinkConfig 4 (32 - CLog 2 (nodeBusses + 9)) ->
     -- | Configuration for the 'managementUnit's 'processingElement'. Controls 8 local busses
     -- and all incoming busses from 'calendar's, 'rxUnit's and 'txUnit's.
     PeConfig (nodeBusses + 9) ->
@@ -111,14 +115,14 @@ data ManagementConfig nodeBusses where
 
 -- | Configuration for a general purpose processing element together with its link to the
 -- switch.
-data GppeConfig where
+data GppeConfig nmuRemBusWidth where
   GppeConfig ::
-    LinkConfig 4 32->
+    LinkConfig 4 nmuRemBusWidth ->
     -- | Configuration for a 'gppe's 'processingElement', which statically
     -- has four external busses connected to the instruction memory, data memory
     -- , 'scatterUnitWb' and 'gatherUnitWb'.
     PeConfig 5 ->
-    GppeConfig
+    GppeConfig nmuRemBusWidth
 
 {-# NOINLINE gppe #-}
 
@@ -129,15 +133,15 @@ data GppeConfig where
 -- The order of Wishbone busses is as follows:
 -- ('rxUnit' :> 'scatterUnitWb' :> 'txUnit' :> 'gatherUnitWb' :> Nil).
 gppe ::
-  HiddenClockResetEnable dom =>
+  (KnownNat nmuRemBusWidth, 2 <= nmuRemBusWidth, HiddenClockResetEnable dom) =>
   -- |
   -- ( Configures all local parameters
   -- , Incoming 'Bittide.Link'
   -- , Incoming @Vector@ of master busses
   -- )
-  ( GppeConfig
+  ( GppeConfig nmuRemBusWidth
   , Signal dom (DataLink 64)
-  , Vec 4 (Signal dom (WishboneM2S 32 4 (Bytes 4)))) ->
+  , Vec 4 (Signal dom (WishboneM2S nmuRemBusWidth 4 (Bytes 4)))) ->
   -- |
   -- ( Outgoing 'Bittide.Link'
   -- , Outgoing @Vector@ of slave busses
@@ -162,7 +166,7 @@ gppe (GppeConfig linkConfig peConfig, linkIn, splitAtI -> (nmuM2S0, nmuM2S1)) =
 -- 'WishhboneM2S' signals.
 managementUnit ::
   forall dom nodeBusses .
-  (HiddenClockResetEnable dom, KnownNat nodeBusses) =>
+  (HiddenClockResetEnable dom, KnownNat nodeBusses, CLog 2 (nodeBusses + 9) <= 30) =>
   -- | Configures all local parameters.
   ManagementConfig nodeBusses ->
   -- | Incoming 'Bittide.Link'.
@@ -173,7 +177,7 @@ managementUnit ::
   -- ( Outgoing 'Bittide.Link'
   -- , Outgoing @Vector@ of master busses)
   ( Signal dom (DataLink 64)
-  , Vec nodeBusses (Signal dom (WishboneM2S 32 4 (Bytes 4)))
+  , Vec nodeBusses (Signal dom (WishboneM2S (32 - CLog 2 (nodeBusses + 9)) 4 (Bytes 4)))
   , Signal dom (Maybe (BitVector 4, Bytes 4)))
 managementUnit (ManagementConfig linkConfig peConfig) linkIn nodeS2Ms =
   (linkOut, nodeM2Ss, exposedWrite)

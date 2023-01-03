@@ -15,11 +15,13 @@ module Bittide.DoubleBufferedRam where
 import Clash.Prelude
 
 import Data.Bifunctor
+import Data.Constraint
 import Data.Maybe
 import Protocols (Circuit (Circuit))
 import Protocols.Wishbone
 
 import Bittide.SharedTypes hiding (delayControls)
+import Data.Constraint.Nat.Extra
 import Data.Typeable
 
 data ContentType n a
@@ -91,26 +93,30 @@ contentGenerator content = case compareSNat d1 (SNat @romSize) of
 -- which priorities port A over port B. Transactions are not aborted, but when two transactions
 -- are initiated at the same time, port A will have priority.
 wbStorageDP ::
-  forall dom depth aw .
+  forall dom depth awA awB .
   ( HiddenClockResetEnable dom
-  , KnownNat aw, 2 <= aw
+  , KnownNat awA, 2 <= awA
+  , KnownNat awB, 2 <= awB
   , KnownNat depth, 1 <= depth) =>
   InitialContent depth (Bytes 4) ->
-  Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
-  Signal dom (WishboneM2S aw 4 (Bytes 4)) ->
+  Signal dom (WishboneM2S awA 4 (Bytes 4)) ->
+  Signal dom (WishboneM2S awB 4 (Bytes 4)) ->
   (Signal dom (WishboneS2M (Bytes 4)),Signal dom (WishboneS2M (Bytes 4)))
 wbStorageDP initial aM2S bM2S = (aS2M, bS2M)
  where
-  storageOut = wbStorage' initial storageIn
-  storageIn = mux (nowSelected .==. pure A) aM2S bM2S
+  storageOut = case lessThanMax @awA @awB @2 of
+    Dict -> wbStorage' @_ @depth @(Max awA awB) initial storageIn
+
+  storageIn :: Signal dom (WishboneM2S (Max awA awB) 4 (Bytes 4))
+  storageIn = mux (nowSelected .==. pure A) (resizeM2SAddr <$> aM2S) (resizeM2SAddr <$> bM2S)
 
   -- We keep track of ongoing transactions to respect Read-modify-write operations.
   lastSelected = register A nowSelected
   nowSelected = selectNow <$> aM2S <*> bM2S <*> lastSelected
   selectNow (busCycle -> cycA) (busCycle -> cycB) lastSel
     | lastSel == B && cycB = B
-    | cycA && not cycB  = A
-    | otherwise         = A
+    | cycA && not cycB     = A
+    | otherwise            = A
 
   (aS2M, bS2M) = unbundle $ mux (nowSelected .==. pure A)
     (bundle (storageOut, noTerminate <$> storageOut))
@@ -234,8 +240,8 @@ wbStorage' initContent wbIn = delayControls wbIn wbOut
 
   -- | Delays the output controls to align them with the actual read / write timing.
   delayControls ::
-    (HiddenClockResetEnable dom, NFDataX a) =>
-    Signal dom (WishboneM2S addressWidth selWidth a) -> -- current M2S signal
+    NFDataX a =>
+    Signal dom (WishboneM2S aw selWidth a) -> -- current M2S signal
     Signal dom (WishboneS2M a) ->
     Signal dom (WishboneS2M a)
   delayControls m2s s2m0 = mux inCycle s2m1 (pure emptyWishboneS2M)

@@ -69,13 +69,11 @@ data Transaction addrW selWidth a
 
 -- | Show Instance for 'Transaction' that hides fields irrelevant for the transaction.
 instance (KnownNat addrW, Show a) => Show (Transaction addrW selWidth a) where
-  show (WriteSuccess WishboneM2S{..} WishboneS2M{..})
+  show (WriteSuccess WishboneM2S{..} _)
     = "WriteSuccess: (addr: "
     <> show addr
     <> ", writeData:"
     <> show writeData
-    <> ", readData:"
-    <> show readData
     <> ")"
   show (ReadSuccess WishboneM2S{..} WishboneS2M{..})
     = "ReadSuccess: ("
@@ -113,11 +111,10 @@ instance (KnownNat addrW, KnownNat selWidth, ShowX a) => ShowX (Transaction addr
 -- transaction (e.g. 'writeData' is not relevant during a read transaction).
 instance (KnownNat addrW, KnownNat selWidth, Eq a, NFDataX a) =>
   Eq (Transaction addrW selWidth a) where
-  (WriteSuccess mA sA) == (WriteSuccess mB sB) =
+  (WriteSuccess mA _) == (WriteSuccess mB _) =
     checkField "addr" addr mA mB &&
     checkField "buSelect" busSelect mA mB &&
-    checkField "writeData" writeData mA mB &&
-    checkField "readData" readData sA sB
+    checkField "writeData" writeData mA mB
   (ReadSuccess mA sA) == (ReadSuccess mB sB) =
     checkField "addr" addr mA mB &&
     checkField "busSelect" busSelect mA mB &&
@@ -126,6 +123,7 @@ instance (KnownNat addrW, KnownNat selWidth, Eq a, NFDataX a) =>
   (Retry _) == (Retry _) = True
   (Stall _) == (Stall _) = True
   (Illegal _ _) == (Illegal _ _) = True
+  (Ignored _) == (Ignored _) = True
   _ == _ = False
 
 checkField :: (NFDataX a, Eq a) => String -> (t -> a) -> t -> t -> Bool
@@ -171,7 +169,7 @@ wbToTransaction
   -> [Transaction addressWidth selWidth a]
 wbToTransaction (m@WishboneM2S{..}:restM) (s@WishboneS2M{..}:restS)
   | not strobe || not busCycle                        = nextTransaction
-  | hasMultipleTrues [acknowledge, err, retry, stall] = Illegal m s : nextTransaction
+  | hasMultipleTrues [acknowledge, err, retry, stall] = Illegal m s      : nextTransaction
   | acknowledge && writeEnable                        = WriteSuccess m s : nextTransaction
   | acknowledge                                       = ReadSuccess m s  : nextTransaction
   | err                                               = Error m          : nextTransaction
