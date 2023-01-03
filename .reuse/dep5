@@ -36,3 +36,7 @@ License: Apache-2.0
 Files: bittide-instances/tests/reports/*
 Copyright: 2022 Google LLC
 License: Apache-2.0
+
+Files: verilog-ethernet/*
+Copyright: 2014-2020 Alex Forencich
+License: MIT
