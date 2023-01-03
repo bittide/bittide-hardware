@@ -53,8 +53,12 @@ clockControlDemo1 ::
   )
 clockControlDemo1 clkA clkB drainFifoA drainFifoB = (demoA, demoB)
  where
-  demoA = genericClockControlDemo0 clockConfigA clkB clkA (unsafeFromHighPolarity $ pure False) drainFifoA (unsafeFromHighPolarity $ pure False)
-  demoB = genericClockControlDemo0 clockConfigB clkA clkB (unsafeFromHighPolarity $ pure False) drainFifoB (unsafeFromHighPolarity $ pure False)
+  demoA =
+    genericClockControlDemo0 clockConfigA clkB clkA (unsafeFromHighPolarity $ pure False)
+    drainFifoA (unsafeFromHighPolarity $ pure False)
+  demoB =
+    genericClockControlDemo0 clockConfigB clkA clkB (unsafeFromHighPolarity $ pure False)
+    drainFifoB (unsafeFromHighPolarity $ pure False)
 
   clockConfigA :: ClockControlConfig Basic200A 12
   clockConfigA = $(lift (defClockConfig @Basic200A))
@@ -64,7 +68,11 @@ clockControlDemo1 clkA clkB drainFifoA drainFifoB = (demoA, demoB)
 
 genericClockControlDemo0 ::
   forall recovered controlled  dataCountBits .
-  ( KnownDomain recovered, KnownDomain controlled, KnownNat dataCountBits, 4 <= dataCountBits, dataCountBits <= 17) =>
+  ( KnownDomain recovered
+  , KnownDomain controlled
+  , KnownNat dataCountBits
+  , 4 <= dataCountBits
+  , dataCountBits <= 17) =>
   ClockControlConfig controlled  dataCountBits ->
   Clock recovered ->
   Clock controlled ->
