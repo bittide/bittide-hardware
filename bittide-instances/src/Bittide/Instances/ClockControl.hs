@@ -22,4 +22,7 @@ callisto3 ::
   -- | Speed change requested from clock multiplier
   Signal Basic200 SpeedChange
 callisto3 clk rst ena dataCounts =
-  callistoClockControl clk rst ena config dataCounts
+  callistoClockControl clk rst ena config availableLinkMask dataCounts
+ where
+  -- all links available
+  availableLinkMask = pure $ v2bv $ map (const high) indicesI
