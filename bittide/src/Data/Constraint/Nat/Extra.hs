@@ -81,3 +81,8 @@ euclid3 = unsafeCoerce (Dict :: Dict ())
 oneLeCLog2n :: forall n . (2 <= n) => Dict (1 <= CLog 2 n)
 oneLeCLog2n = unsafeCoerce unsafeCoerce (Dict :: Dict ())
 {-# NOINLINE oneLeCLog2n #-} -- https://github.com/clash-lang/clash-compiler/issues/2376
+
+-- | If @1 <= m@ and @n + m <= u@, then @1 + n <= u@
+useLowerLimit :: forall n m u . (1 <= m, n + m <= u) => Dict (1 + n <= u)
+useLowerLimit = unsafeCoerce (Dict :: Dict ())
+{-# NOINLINE useLowerLimit #-} -- https://github.com/clash-lang/clash-compiler/issues/2376
