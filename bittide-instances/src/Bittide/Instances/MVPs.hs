@@ -45,9 +45,11 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
     config (bufferOccupancy :> Nil)
   clockControlReset = unsafeFromLowPolarity $ (==Pass) <$> ebMode
 
-  (bufferOccupancy, underFlowed, overFlowed, ebMode) =
+  writeData = pure (0 :: Unsigned 8)
+
+  (bufferOccupancy, underFlowed, overFlowed, ebMode, _) =
     withReset rstControlled $
-      resettableXilinxElasticBuffer clkControlled clkRecovered drainFifo
+      resettableXilinxElasticBuffer clkControlled clkRecovered drainFifo writeData
 
   isStable =
     withClockResetEnable clkControlled stabilityCheckReset enableGen $
