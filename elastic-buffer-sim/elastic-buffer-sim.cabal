@@ -85,6 +85,7 @@ library
     directory,
     matplotlib,
     random,
+    deepseq,
     template-haskell
   exposed-modules:
     Bittide.ClockControl.ElasticBuffer
