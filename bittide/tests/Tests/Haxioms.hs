@@ -210,7 +210,7 @@ prop_lessThanMax = property $ do
 --
 prop_useLowerLimit :: Property
 prop_useLowerLimit = property $ do
-  u <- forAll (genNatural 0)
-  n <- forAll (genNatural 0)
-  m <- forAll (genNatural 0)
-  assert (1 > m || n + m > u || n + 1 <= u)
+  m <- forAll (genNatural 1)     -- 1 <= m
+  n <- forAll (genNatural 0)     -- no constraints
+  u <- forAll (genNatural (n+m)) -- n + m <= u
+  assert (1 + n <= u)

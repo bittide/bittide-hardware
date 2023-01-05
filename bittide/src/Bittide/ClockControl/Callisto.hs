@@ -134,10 +134,8 @@ callisto targetCount updateEveryNCycles mask allDataCounts =
   r_k :: DSignal dom F.FromS32DefDelay Float
   r_k = F.fromS32 $ D.fromSignal $
     let
-      nBuffers =
-        case useLowerLimit @n @m @32 of
-          Dict ->
-            sumTo32 <$> (map (unpack . pack) . bv2v <$> mask)
+      nBuffers = case useLowerLimit @n @m @32 of
+        Dict -> safePopCountTo32 <$> mask
       measuredSum = sumTo32 <$> dataCounts
       targetCountSigned =
         case euclid3 @n @m @32 of

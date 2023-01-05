@@ -25,4 +25,4 @@ callisto3 clk rst ena dataCounts =
   callistoClockControl clk rst ena config availableLinkMask dataCounts
  where
   -- all links available
-  availableLinkMask = pure $ v2bv $ map (const high) indicesI
+  availableLinkMask = pure $ complement 0
