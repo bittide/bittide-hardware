@@ -22,6 +22,9 @@ module Bittide.Topology
   , plotTree32
   , plotTree23
   , plotStar7
+  , simNodesFromGraph
+  , plotEbsAPI
+  , absTimes
   )
 where
 
@@ -59,21 +62,18 @@ data GraphAPI (n :: Nat) =
   GraphAPI
     { name :: String
     , graph :: Graph n
-    , available :: Index n -> Index n -> Bit
+    , available :: Index n -> Index n -> Bool
     }
 
 setupGraph :: KnownNat n => String -> Graph n -> GraphAPI n
 setupGraph name graph = GraphAPI name graph available
  where
-  available i j
-    | i == j     = low
-    | otherwise =
-        (A.! (i,j)) $
-          A.accumArray
-            (const id)
-            low
-            ((minBound, minBound), (maxBound, maxBound))
-            (P.zip edgeIndices [high, high ..])
+  available = curry $ (A.!) $
+    A.accumArray
+      (const id)
+      False
+      ((minBound, minBound), (maxBound, maxBound))
+      (P.zip (filter (uncurry (/=)) edgeIndices) [True, True ..])
   edgeIndices =
     fmap (bimap fromIntegral fromIntegral)
       $ edges
@@ -129,14 +129,14 @@ dumpCsv m k = do
       ("_build/clocks" <> show i <> ".csv")
       ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
   let
-    dats = map (encode . fmap flatten)
-      $ simNodesFromGraph defBittideClockConfig g m k offs
+    dats = flip map indicesI
+      $ encode . fmap flatten . simNodesFromGraph defBittideClockConfig g m k offs
   zipWithM_
     (\dat i -> BSL.appendFile ("_build/clocks" <> show i <> ".csv") dat)
     (toList dats)
     [(0 :: Int)..]
  where
-  flatten (a, b, v) = toField a : toField b : fmap toField (toList v)
+  flatten (a, b, v) = toField a : toField b : (toField <$> v)
   (0, n) = A.bounds $ unboundedGraph $ graph g
   g = setupGraph "complete" $ complete (SNat @6)
 
@@ -156,15 +156,16 @@ plotEbsAPI api@GraphAPI{..} m k = do
   offs <- genOffs
   uncurry (matplotWrite name)
     $ unzip
-    $ zipWith ($) plotDats
-    $ imap (\i -> fmap (\(a,b,v) -> (a,b, filterAvailable i v)))
-    $ simNodesFromGraph defBittideClockConfig api m k offs
+    $ flip map indicesI
+    $ plotDats . simNodesFromGraph defBittideClockConfig api m k (force offs)
  where
-  filterAvailable i =
-    catMaybes . toList . zipWith ($) (map (asMaybe . available i) indicesI)
-  asMaybe x
-    | x == high  = Just
-    | otherwise = const Nothing
+  plotDats =
+      force
+    . bimap
+        (uncurry plot . P.unzip)
+        (foldPlots . P.fmap (uncurry plot . P.unzip) . L.transpose)
+    . P.unzip
+    . fmap (\(x,y,z) -> ((x,y), (x,) <$> z))
 
 -- | Given a graph with \(n\) nodes, generate a function which takes
 -- an array of \(n\) offsets (divergence from spec) and returns a
@@ -190,65 +191,76 @@ simNodesFromGraph ::
   Int ->
   Int ->
   Vec n Offset ->
-  Vec n [(Period, Period, Vec n (DataCount m))]
-simNodesFromGraph ccc GraphAPI{..} m k !offsets =
-  let
-    -- elastic buffers
-    genElasticBuffer i j
-      | available i j == high = elasticBuffer Error (clocks !! i) (clocks !! j)
-      | otherwise            = pure 0
-    genEbs i = genElasticBuffer i <$> indicesI
-    ebs = genEbs <$> indicesI
-    -- clocks
-    genClock offset =
-      tunableClockGen
-        (cccSettlePeriod ccc)
-        offset
-        (cccStepSize ccc)
-        Clash.resetGen
-    clocks = genClock <$> offsets <*> clockControls
-    -- clock controls
-    genClockControl clock =
-      callistoClockControl
-        clock
-        Clash.resetGen
-        Clash.enableGen
-        ccc
-    clockControls = genClockControl <$> clocks <*> masks <*> ebs
-    -- clock signals
-    clkSignal = extractPeriods <$> clocks
-  in
-    pointwise
-      $ P.take m
-      $ takeEveryN k
-      $ absTimes
-      $ fmap bundle
-      $ zip clkSignal
-      $ bundle <$> ebs
+  Index n ->
+  [(Period, Period, [DataCount m])]
+simNodesFromGraph ccc GraphAPI{..} m k !offsets i =
+    P.take m
+  $ takeEveryN k
+  $ absTimes (available i)
+  $ bundle (clkSignals !! i, bundle $ ebs !! i)
  where
+  -- elastic buffers
+  !ebs = imap ebv clocks
+  ebv x = flip imap clocks . eb x
+  eb x xClk y yClk
+    | available x y = elasticBuffer Error xClk yClk
+    | otherwise     = pure 0
+  -- clocks
+  !clocks = clock <$> offsets <*> clockControls
+  clock offset =
+    tunableClockGen
+      (cccSettlePeriod ccc)
+      offset
+      (cccStepSize ccc)
+      Clash.resetGen
+  -- clock controls
+  !clockControls = clockControl <$> clocks <*> masks <*> ebs
+  clockControl clk =
+    callistoClockControl
+      clk
+      Clash.resetGen
+      Clash.enableGen
+      ccc
+    . pure
+  -- clock signals
+  !clkSignals = extractPeriods <$> clocks
+  -- available link mask vectors
+  !masks = nVec (v2bv . nVec . avail)
+  avail x y = if available x y then high else low
   nVec = flip map indicesI
-  pointwise xs = nVec (\i -> fmap (!! i) xs)
-  -- available link mask
-  mask = pure . v2bv . nVec . available
-  masks = nVec mask
-  -- absolute time simulation
-  absTimes =
-    go $ replicate SNat (Clash.Femtoseconds 0)
-  go ts v =
-    force (zipWith (\t (p, es) -> (t, p, es)) ts (map Clash.head# v)) :
-    go (zipWith addFs (force ts) (map (fst . Clash.head#) v))
-      (fmap Clash.tail# v)
 
-plotDats ::
-  forall n m.
-  (KnownNat n, KnownNat m) =>
-  Vec n ([(Period, Period, [DataCount m])] -> (Matplotlib, Matplotlib))
-plotDats = replicate (SNat :: SNat n) $
-    bimap
-      (uncurry plot . P.unzip)
-      (foldPlots . P.fmap (uncurry plot . P.unzip) . L.transpose)
-  . P.unzip
-  . fmap (\(x,y,z) -> ((x,y), (x,) <$> z))
+-- absolute time simulation
+absTimes ::
+  (KnownNat n, NFData a) =>
+  (Index n -> Bool) ->
+  Signal dom (Period, Vec n a) ->
+  [(Period, Period, [a])]
+absTimes !available = go $ Clash.Femtoseconds 0
+ where
+  go !t ((p, es) Clash.:- xs) =
+    force (t, p, filterAvailable es) : go (addFs t p) xs
+  filterAvailable = catMaybes . toList . imap (asMaybe . available)
+  asMaybe = \case
+    True  -> Just
+    False -> const Nothing
+--  absTimes =
+--    go $ replicate SNat (Clash.Femtoseconds 0)
+--  go ts v =
+--    force (izipWith (\i t (p, es) -> (t, p, filterAvailable i es)) ts (map Clash.head# v)) :
+--    go (zipWith addFs (force ts) (map (fst . Clash.head#) v))
+--      (fmap Clash.tail# v)
+
+
+
+--pointwise :: (KnownNat n, NFData a) => [Vec n a] -> Vec n [a]
+--pointwise = pw $ replicate SNat []
+--  where
+--    pw !a = \case
+--      []   -> map P.reverse a
+--      x:xr -> pw ((:) <$> force x <*> a) xr
+--  \case
+--    []   -> replicate SNat []
+--    x:xs -> (:) <$> force x <*> pointwise xs
 
 extractPeriods ::
   forall dom. Clash.KnownDomain dom =>
