@@ -304,6 +304,9 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
 
 {-# NOINLINE si539xSpiDriver #-}
 
+-- | When this component receives @True@, it will hold it for @holdCycles@ number of
+-- clock cycles. This implementation does not scale well to large values for @holdCycles@
+-- because it uses 'Vec' internally.
 holdTrue ::
   forall dom holdCycles .
   (HiddenClockResetEnable dom, 1 <= holdCycles) =>
