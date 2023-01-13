@@ -6,6 +6,8 @@
 #![cfg_attr(not(test), no_main)]
 
 use core::fmt::Write;
+
+#[cfg(not(test))]
 use riscv_rt::entry;
 
 use bittide_sys::println;
