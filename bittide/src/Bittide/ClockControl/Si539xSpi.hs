@@ -306,10 +306,15 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
 
 {-# NOINLINE si539xSpiDriver #-}
 
+-- TODO: Look into replacing dcFifo with XPM_CDC_Handshake.
 -- | Consumes 'SpeedChange's produced by a clock control algorithm and produces a
 -- 'RegisterOperation' for the 'si539xSpi' core. Consumption rate of 'SpeedUp's and
 -- 'SlowDown' depends on the availability of the SPI core. Uses 'dcFifo' with a depth
--- of 16 elements for clock domain crossing.
+-- of 16 elements for clock domain crossing. This is an alternative to controlling the
+-- FINC / FDEC pins directly, the advantages are that we already have to use SPI
+-- to configure the chips, so we require less wiring / IO, and we don´t have to concern
+-- ourselves with the timing requirements for controlling FINC / FDEC directly. The only
+-- downside is that it  is not as instantaneous as controlling the pins.
 spiFrequencyController ::
   forall domCallisto domSpi freqIncrementRange freqDecrementRange .
   (KnownDomain domCallisto, KnownDomain domSpi) =>
@@ -341,7 +346,8 @@ spiFrequencyController SNat SNat
   speedChange spiBusy = spiOp
  where
   fifoIn =
-    mux (speedChange .==. pure NoChange .||. not <$> fromEnable enCallisto)
+    mux
+    (speedChange .==. pure NoChange .||. not <$> fromEnable enCallisto)
     (pure Nothing)
     (Just <$> speedChange)
 
