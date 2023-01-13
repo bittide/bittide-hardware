@@ -56,7 +56,7 @@ jobs:
     runs-on: self-hosted
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
@@ -77,8 +77,8 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Build
         run: |
@@ -90,7 +90,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
@@ -111,8 +111,8 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Install poetry
         run: |
@@ -150,7 +150,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
@@ -171,8 +171,8 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Run unittests
         run: |
@@ -184,7 +184,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
@@ -205,8 +205,8 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Run unittests
         run: |
@@ -218,7 +218,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
@@ -239,8 +239,8 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Build Contranomy
         run: |
@@ -293,7 +293,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     strategy:
       matrix:
@@ -334,7 +334,7 @@ jobs:
     needs: [build, lint, firmware-build-integration-tests]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
@@ -361,8 +361,8 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Download Firmware Integration Tests
         uses: actions/download-artifact@v2
@@ -384,7 +384,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
@@ -405,8 +405,8 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Unittests
         run: |
@@ -482,7 +482,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: cargo-cache-${{ hashFiles('Cargo.lock') }}
+          key: cargo-cache-cachebust-1-${{ hashFiles('Cargo.lock') }}
 
       - name: Running Tests
         uses: actions-rs/cargo@v1
@@ -521,7 +521,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
-          key: cargo-cache-${{ hashFiles('firmware/examples/hello/Cargo.lock') }}
+          key: cargo-cache-cachebust-1-${{ hashFiles('firmware/examples/hello/Cargo.lock') }}
 
       - name: Building "hello" Example
         run: cargo build --release
@@ -562,7 +562,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
-          key: cargo-cache-${{ hashFiles('firmware/tests/Cargo.lock') }}
+          key: cargo-cache-cachebust-1-${{ hashFiles('firmware/tests/Cargo.lock') }}
 
       - name: Building Firmware Integration Tests
         run: cargo build --release
@@ -585,7 +585,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
@@ -606,8 +606,8 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Doctests
         run : |
@@ -619,7 +619,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
@@ -640,8 +640,8 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Unit tests
         run : |
@@ -672,7 +672,7 @@ jobs:
           - {top: switchCalendar1kReducedPins, stage: netlist}
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
       volumes:
         - /opt/tools:/opt/tools
       options: --mac-address="6c:5a:b0:6c:13:0b"
@@ -702,8 +702,8 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: HDL generation and synthesis
         run : |
