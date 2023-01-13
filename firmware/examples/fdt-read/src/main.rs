@@ -6,6 +6,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::fmt::Write;
+
+#[cfg(not(test))]
 use riscv_rt::entry;
 
 use bittide_sys::{print, println};

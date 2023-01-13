@@ -10,7 +10,7 @@ use std::path::Path;
 fn main() {
     let out_dir = env::var("OUT_DIR").expect("No out dir");
     let dest_path = Path::new(&out_dir).join("memory.x");
-    fs::write(&dest_path, include_bytes!("memory.x")).expect("Could not write file");
+    fs::write(dest_path, include_bytes!("memory.x")).expect("Could not write file");
 
     if env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "riscv32" {
         println!("cargo:rustc-link-arg=-Tmemory.x");
