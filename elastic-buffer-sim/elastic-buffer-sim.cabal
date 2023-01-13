@@ -92,7 +92,6 @@ library
     Bittide.Simulate
     Bittide.Topology
     Bittide.Topology.Graph
-    Bittide.Topology.TH
     Bittide.Topology.TH.Domain
   other-modules:
     Graphics.Matplotlib.Ext

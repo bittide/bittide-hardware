@@ -36,7 +36,7 @@ case_clockControlMaxBound = do
   let
     config = defClockConfig
     dataCounts = pure maxBound :> Nil
-    mask = pure $ v2bv $ fmap (const high) dataCounts
+    mask = pure $ pack (repeat high)
     changes =
       sampleN
         -- +10_000 assumes callisto's pipeline less than 10_000 deep
@@ -52,7 +52,7 @@ case_clockControlMinBound = do
   let
     config = defClockConfig
     dataCounts = pure 0 :> Nil
-    mask = pure $ v2bv $ fmap (const high) dataCounts
+    mask = pure $ pack (repeat high)
     changes =
       sampleN
         -- +100 assumes callisto's pipeline less than 100 deep

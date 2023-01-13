@@ -22,8 +22,8 @@ module Bittide.Topology
   , plotTree32
   , plotTree23
   , plotStar7
-  , simNodesFromGraph
-  , plotEbsAPI
+  , simulateMesh
+  , plotMesh
   , absTimes
   )
 where
@@ -57,16 +57,17 @@ import Graphics.Matplotlib.Ext
 import Bittide.Topology.TH.Domain (defBittideClockConfig)
 import Control.DeepSeq
 
--- | 'Graph' with a name for
-data GraphAPI (n :: Nat) =
-  GraphAPI
+-- | A 'Graph' with a name and a link availability check
+data Mesh (n :: Nat) =
+  Mesh
     { name :: String
     , graph :: Graph n
     , available :: Index n -> Index n -> Bool
     }
 
-setupGraph :: KnownNat n => String -> Graph n -> GraphAPI n
-setupGraph name graph = GraphAPI name graph available
+-- | Smart 'Mesh' constructor
+mesh :: KnownNat n => String -> Graph n -> Mesh n
+mesh name graph = Mesh name graph available
  where
   available = curry $ (A.!) $
     A.accumArray
@@ -77,7 +78,7 @@ setupGraph name graph = GraphAPI name graph available
   edgeIndices =
     fmap (bimap fromIntegral fromIntegral)
       $ edges
-      $ unboundedGraph graph
+      $ unboundGraph graph
 
 -- | This samples @n@ steps, taking every @k@th datum, and plots clock speeds
 -- and elastic buffer occupancy
@@ -85,37 +86,37 @@ plotEbs :: Int -> Int -> IO ()
 plotEbs = plotC12
 
 plotDiamond :: Int -> Int -> IO ()
-plotDiamond = plotEbsAPI $ setupGraph "diamond" diamond
+plotDiamond = plotMesh $ mesh "diamond" diamond
 
 plotHypercube :: Int -> Int -> IO ()
-plotHypercube = plotEbsAPI $ setupGraph "hypercube3" $ hypercube (SNat @3)
+plotHypercube = plotMesh $ mesh "hypercube3" $ hypercube (SNat @3)
 
 plotHypercube4 :: Int -> Int -> IO ()
-plotHypercube4 = plotEbsAPI $ setupGraph "hypercube4" $ hypercube (SNat @4)
+plotHypercube4 = plotMesh $ mesh "hypercube4" $ hypercube (SNat @4)
 
 plotTorus34 :: Int -> Int -> IO ()
-plotTorus34 = plotEbsAPI $ setupGraph "torus34" $ torus2d (SNat @3) (SNat @4)
+plotTorus34 = plotMesh $ mesh "torus34" $ torus2d (SNat @3) (SNat @4)
 
 plotK2 :: Int -> Int -> IO ()
-plotK2 = plotEbsAPI $ setupGraph "complete2" $ complete (SNat @2)
+plotK2 = plotMesh $ mesh "complete2" $ complete (SNat @2)
 
 plotK3 :: Int -> Int -> IO ()
-plotK3 = plotEbsAPI $ setupGraph "complete3" $ complete (SNat @3)
+plotK3 = plotMesh $ mesh "complete3" $ complete (SNat @3)
 
 plotK6 :: Int -> Int -> IO ()
-plotK6 = plotEbsAPI $ setupGraph "complete6" $ complete (SNat @6)
+plotK6 = plotMesh $ mesh "complete6" $ complete (SNat @6)
 
 plotC12 :: Int -> Int -> IO ()
-plotC12 = plotEbsAPI $ setupGraph "cyclic12" $ cyclic (SNat @12)
+plotC12 = plotMesh $ mesh "cyclic12" $ cyclic (SNat @12)
 
 plotStar7 :: Int -> Int -> IO ()
-plotStar7 = plotEbsAPI $ setupGraph "star7" $ star (SNat @7)
+plotStar7 = plotMesh $ mesh "star7" $ star (SNat @7)
 
 plotTree32 :: Int -> Int -> IO ()
-plotTree32 = plotEbsAPI $ setupGraph "tree32" $ tree (SNat @3) (SNat @2)
+plotTree32 = plotMesh $ mesh "tree32" $ tree (SNat @3) (SNat @2)
 
 plotTree23 :: Int -> Int -> IO ()
-plotTree23 = plotEbsAPI $ setupGraph "tree23" $ tree (SNat @2) (SNat @3)
+plotTree23 = plotMesh $ mesh "tree23" $ tree (SNat @2) (SNat @3)
 
 -- | This samples @n@ steps, taking every @k@th datum; the result can be fed to
 -- @script.py@
@@ -124,59 +125,58 @@ dumpCsv m k = do
   offs <- genOffs
   createDirectoryIfMissing True "_build"
   forM_ [0..n] $ \i ->
-    let eb = unboundedGraph (graph g) A.! i in
+    let eb = unboundGraph (graph g) A.! i in
     writeFile
       ("_build/clocks" <> show i <> ".csv")
       ("t,clk" <> show i <> P.concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
-  let
-    dats = flip map indicesI
-      $ encode . fmap flatten . simNodesFromGraph defBittideClockConfig g m k offs
+  let dats = map (encode . fmap flatten) $ simulateMesh defBittideClockConfig g m k offs
   zipWithM_
     (\dat i -> BSL.appendFile ("_build/clocks" <> show i <> ".csv") dat)
     (toList dats)
     [(0 :: Int)..]
  where
   flatten (a, b, v) = toField a : toField b : (toField <$> v)
-  (0, n) = A.bounds $ unboundedGraph $ graph g
-  g = setupGraph "complete" $ complete (SNat @6)
+  (0, n) = A.bounds $ unboundGraph $ graph g
+  g = mesh "complete" $ complete (SNat @6)
 
--- | Given a 'Graph', create an expression of type
+-- | Creates a and write the plots for a given mesh of type
 --
 -- > Int -> Int -> IO ()
 --
--- which writes/dumps simulation results for a particular graph.
-plotEbsAPI ::
+-- for a given mesh, which writes/dumps simulation results for a
+-- particular graph.
+plotMesh ::
   forall n.
   (KnownNat n, 1 <= n, n <= 20) =>
-  GraphAPI n ->
+  Mesh n ->
   Int ->
   Int ->
   IO ()
-plotEbsAPI api@GraphAPI{..} m k = do
+plotMesh api m k = do
   offs <- genOffs
-  uncurry (matplotWrite name)
+  uncurry (matplotWrite api)
     $ unzip
-    $ flip map indicesI
-    $ plotDats . simNodesFromGraph defBittideClockConfig api m k (force offs)
+    $ map plotDats
+    $ simulateMesh defBittideClockConfig api m k offs
  where
   plotDats =
-      force
-    . bimap
+      bimap
         (uncurry plot . P.unzip)
         (foldPlots . P.fmap (uncurry plot . P.unzip) . L.transpose)
     . P.unzip
     . fmap (\(x,y,z) -> ((x,y), (x,) <$> z))
 
--- | Given a graph with \(n\) nodes, generate a function which takes
--- an array of \(n\) offsets (divergence from spec) and returns a
--- tuple of signals for each clock domain
+-- | Given a mesh with \(n\) vertices, creates a function which takes
+-- a bound @m@ for the number of samples, a bound @k@ for the sampling
+-- period, a vector of \(n\) offsets (divergence from spec) and a
+-- vertex @i@ selected for simulation.
 --
 -- NOTE: All clocks are implicitly synchronized to the same clock
 -- domain at this point, which is ok as long as the dynamic clock
 -- generator is used. Otherwise the domains have to be differentiated
 -- at the type level, which is not straightforward to archive for fully
 -- connected topologies.
-simNodesFromGraph ::
+simulateMesh ::
   forall n m dom.
   ( Clash.KnownDomain dom
   , KnownNat n
@@ -187,17 +187,18 @@ simNodesFromGraph ::
   , 1 + n <= 32
   ) =>
   ClockControlConfig dom m ->
-  GraphAPI n ->
+  Mesh n ->
   Int ->
   Int ->
   Vec n Offset ->
-  Index n ->
-  [(Period, Period, [DataCount m])]
-simNodesFromGraph ccc GraphAPI{..} m k !offsets i =
-    P.take m
+  Vec n [(Period, Period, [DataCount m])]
+simulateMesh ccc Mesh{..} m k !offsets =
+    transposeLV
+  $ P.take m
   $ takeEveryN k
-  $ absTimes (available i)
-  $ bundle (clkSignals !! i, bundle $ ebs !! i)
+  $ absTimes available
+  $ bundle
+  $ zipWith (curry bundle) clkSignals (bundle <$> ebs)
  where
   -- elastic buffers
   !ebs = imap ebv clocks
@@ -229,45 +230,44 @@ simNodesFromGraph ccc GraphAPI{..} m k !offsets i =
   avail x y = if available x y then high else low
   nVec = flip map indicesI
 
--- absolute time simulation
+-- | Absolute time unfolding of the produced signal for generating the
+-- simulation data.
 absTimes ::
   (KnownNat n, NFData a) =>
-  (Index n -> Bool) ->
-  Signal dom (Period, Vec n a) ->
-  [(Period, Period, [a])]
-absTimes !available = go $ Clash.Femtoseconds 0
+  (Index n -> Index n -> Bool) ->
+  -- ^ Available links according to the graph topology
+  Signal dom (Vec n (Period, Vec n a)) ->
+  -- ^ The signal holding the the simulation result
+  [Vec n (Period, Period, [a])]
+  -- ^ The same data as in the input signal, only lazily unfolded as
+  -- an infinite data stream and with the unavailable links
+  -- already thrown out from the last tuple member.
+absTimes available = go $ replicate SNat (Clash.Femtoseconds 0)
  where
-  go !t ((p, es) Clash.:- xs) =
-    force (t, p, filterAvailable es) : go (addFs t p) xs
-  filterAvailable = catMaybes . toList . imap (asMaybe . available)
+  go !ts (v Clash.:- vs) =
+    force (izipWith (\i t (p, es) -> (t, p, filterAvailable i es)) ts v)
+      : go (force $ zipWith addFs ts $ map fst v) vs
+  -- turns a fixed sized vector of data corresponding to the topology
+  -- links to a list data entries reduced to the available links
+  filterAvailable i = catMaybes . toList . imap (asMaybe . available i)
   asMaybe = \case
     True  -> Just
     False -> const Nothing
---  absTimes =
---    go $ replicate SNat (Clash.Femtoseconds 0)
---  go ts v =
---    force (izipWith (\i t (p, es) -> (t, p, filterAvailable i es)) ts (map Clash.head# v)) :
---    go (zipWith addFs (force ts) (map (fst . Clash.head#) v))
---      (fmap Clash.tail# v)
 
+-- | 'L.transpose' for (possibly infinite) lists of vectors
+transposeLV :: KnownNat n => [Vec n a] -> Vec n [a]
+transposeLV = \case
+  []   -> replicate SNat []
+  x:xs -> (:) <$> x <*> transposeLV xs
 
-
---pointwise :: (KnownNat n, NFData a) => [Vec n a] -> Vec n [a]
---pointwise = pw $ replicate SNat []
---  where
---    pw !a = \case
---      []   -> map P.reverse a
---      x:xr -> pw ((:) <$> force x <*> a) xr
---  \case
---    []   -> replicate SNat []
---    x:xs -> (:) <$> force x <*> pointwise xs
-
+-- | Extracts the time periods from a clock
 extractPeriods ::
   forall dom. Clash.KnownDomain dom =>
   Clash.Clock dom ->
-  Clash.Signal dom Clash.Femtoseconds
-extractPeriods (Clash.Clock _ (Just s)) = s
-extractPeriods _ = pure (clockPeriodFs @dom Proxy)
+  Clash.Signal dom Period
+extractPeriods = \case
+  (Clash.Clock _ (Just s)) -> s
+  _                        -> pure (clockPeriodFs @dom Proxy)
 
 -- | Randomly generate a 'Offset', how much a real clock's period may differ
 -- from its spec.
@@ -280,24 +280,29 @@ genOffsets ClockControlConfig{cccDeviation} = do
   offsetPpm <- randomRIO (-cccDeviation, cccDeviation)
   pure (diffPeriod offsetPpm (clockPeriodFs @dom Proxy))
 
+-- | Folds the vectors of generated plots and writes the results to
+-- the disk.
 matplotWrite ::
   KnownNat n =>
-  String ->
+  Mesh n ->
+  -- ^ the `Mesh` the data is generated for
   Vec n Matplotlib ->
+  -- ^ clock plots
   Vec n Matplotlib ->
+  -- ^ elastic buffer plots
   IO ()
-matplotWrite nm clockDats ebDats = do
+matplotWrite Mesh{..} clockDats ebDats = do
   createDirectoryIfMissing True "_build"
   void $
     file
-      ("_build/clocks" P.++ nm P.++ ".pdf")
+      ("_build/clocks" P.++ name P.++ ".pdf")
       ( xlabel "Time (fs)"
       % ylabel "Relative period (fs) [0 = ideal frequency]"
       % foldPlots (toList clockDats)
       )
   void $
     file
-      ("_build/elasticbuffers" P.++ nm P.++ ".pdf")
+      ("_build/elasticbuffers" P.++ name P.++ ".pdf")
       (xlabel "Time (fs)" % foldPlots (toList ebDats))
 
 -- | As an example:

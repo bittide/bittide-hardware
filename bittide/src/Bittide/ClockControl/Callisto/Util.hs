@@ -46,3 +46,15 @@ sumTo32 =
     extend @_ @_ @(32 - (m+n))
   . unsignedToSigned
   . safeSum
+
+-- | Counts the number of 'high' bits in a bitvector.
+safePopCountTo32 ::
+  forall n .
+  ( KnownNat n
+  , (1 + n) <= 32
+  , 1 <= n
+  ) =>
+  BitVector n ->
+  Signed 32
+safePopCountTo32 =
+  sumTo32 . unpack @(Vec n (Unsigned 1))

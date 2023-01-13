@@ -45,7 +45,7 @@ import Data.Tuple (swap)
 import Data.Array qualified as A
 
 newtype Graph (n :: Nat) =
-  BoundedGraph { unboundedGraph :: G.Graph }
+  BoundGraph { unboundGraph :: G.Graph }
   deriving (Show)
 
 -- | @n@ nodes in a line, connected to their neighbors.
@@ -54,13 +54,13 @@ newtype Graph (n :: Nat) =
 -- [mathematical terminology](https://mathworld.wolfram.com/LineGraph.html) but
 -- conforms to callisto)
 line :: KnownNat n => SNat n -> Graph n
-line (snatToNum -> n :: Int) = BoundedGraph $ fromEdgeList es
+line (snatToNum -> n :: Int) = BoundGraph $ fromEdgeList es
  where
   es = [ (i, i-1) | i <- [2..n] ]
 
 -- | @n@-dimensional hypercube
 hypercube :: KnownNat n => SNat n -> Graph (2 ^ n)
-hypercube (snatToNum -> n :: Int) = BoundedGraph $ fromEdgeList es
+hypercube (snatToNum -> n :: Int) = BoundGraph $ fromEdgeList es
  where
   k = (2::Int)^n
   es =
@@ -72,7 +72,7 @@ hypercube (snatToNum -> n :: Int) = BoundedGraph $ fromEdgeList es
 
 -- | Diamond graph
 diamond :: Graph 4
-diamond = BoundedGraph $ A.listArray (0, 3)
+diamond = BoundGraph $ A.listArray (0, 3)
   [[1,3], [0,2,3], [2,3], [0,1,2]]
 
 -- | Given a list of edges, make a directed graph
@@ -99,7 +99,7 @@ torus3d ::
   SNat c ->
   Graph (a * b * c)
 torus3d (snatToNum -> a :: Int) (snatToNum -> b :: Int) (snatToNum -> c :: Int) =
-  BoundedGraph $ fromEdgeList dirEdges
+  BoundGraph $ fromEdgeList dirEdges
  where
   pairs = [ (l, m, n) | l <- [0..(a-1)], m <- [0..(b-1)], n <- [0..(c-1)] ]
   neighborsOf (l, m, n) =
@@ -119,7 +119,7 @@ torus2d ::
   SNat cols ->
   Graph (rows * cols)
 torus2d (snatToNum -> rows :: Int) (snatToNum -> cols :: Int) =
-  BoundedGraph $ fromEdgeList dirEdges
+  BoundGraph $ fromEdgeList dirEdges
  where
   pairs = [ (m, n) | m <- [0..(rows-1)], n <- [0..(cols-1)] ]
   neighborsOf (m, n) =
@@ -136,18 +136,18 @@ grid :: (KnownNat rows, KnownNat cols) =>
   SNat cols ->
   Graph (rows * cols)
 grid (snatToNum -> rows :: Int) (snatToNum -> cols :: Int) =
-  BoundedGraph $ fromEdgeList dirEdges
+  BoundGraph $ fromEdgeList dirEdges
  where
   pairs = [ (m, n) | m <- [1..rows], n <- [1..cols] ]
   mkEdges (m, n) =
     [ (a, b) | a <- [(m-1)..(m+1)], b <- [(n-1)..(n+1)], a /= m || b /= n, a == m || b == n, a > 0, b > 0, a <= rows, b <= cols ]
   dirEdges = concatMap (\p -> fmap (p,) (mkEdges p)) pairs
 
-type family TreeSize (depth :: Nat) (childs :: Nat) where
-  TreeSize depth 0      = 1
-  TreeSize depth 1      = depth + 1
-  TreeSize depth childs =
-    Div ((childs ^ (depth + 1)) - 1) (childs - 1)
+type family TreeSize (depth :: Nat) (children :: Nat) where
+  TreeSize depth 0        = 1
+  TreeSize depth 1        = depth + 1
+  TreeSize depth children =
+    Div ((children ^ (depth + 1)) - 1) (children - 1)
 
 -- | Tree of depth @depth@ with @childs@ children
 tree ::
@@ -155,7 +155,7 @@ tree ::
   SNat depth ->
   SNat childs ->
   Graph (TreeSize depth childs)
-tree (snatToNum -> depth :: Int) (snatToNum -> c :: Int) = BoundedGraph treeGraph
+tree (snatToNum -> depth :: Int) (snatToNum -> c :: Int) = BoundGraph treeGraph
  where
   -- | At depth @d_i@, child node @i@ is connected to the @(i-1) `div` c + 1@st
   -- node at depth @d_i - 1@
@@ -173,7 +173,7 @@ star = tree (SNat :: SNat 1)
 -- vertices.
 cyclic :: (KnownNat n) => SNat n -> Graph n
 cyclic (snatToNum -> n) =
-  BoundedGraph $ A.array bounds (fmap (\i -> (i, neighbors i)) [0..(n-1)])
+  BoundGraph $ A.array bounds (fmap (\i -> (i, neighbors i)) [0..(n-1)])
  where
   bounds = (0, n-1)
   neighbors i = [(i-1) `mod` n, (i+1) `mod` n]
@@ -182,7 +182,7 @@ cyclic (snatToNum -> n) =
 -- vertices.
 complete :: (KnownNat n) => SNat n -> Graph n
 complete (snatToNum -> n) =
-  BoundedGraph $ A.array bounds (fmap (\i -> (i, others i)) [0..(n-1)])
+  BoundGraph $ A.array bounds (fmap (\i -> (i, others i)) [0..(n-1)])
  where
   bounds = (0, n-1)
   others i = [ j | j <- [0..(n-1)], j /= i ]
