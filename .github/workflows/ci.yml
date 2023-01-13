@@ -72,7 +72,7 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
@@ -106,7 +106,7 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
@@ -166,7 +166,7 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
@@ -200,7 +200,7 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
@@ -234,7 +234,7 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
@@ -356,7 +356,7 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
@@ -400,7 +400,7 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
@@ -601,7 +601,7 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
@@ -635,7 +635,7 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
@@ -697,7 +697,7 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
