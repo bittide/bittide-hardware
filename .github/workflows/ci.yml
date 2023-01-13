@@ -22,7 +22,7 @@ jobs:
     container:
       image: ubuntu:22.04
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
     - name: REUSE Compliance Check
       uses: fsfe/reuse-action@v1
 
@@ -35,10 +35,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Install dependencies
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y pcregrep
 
@@ -55,11 +56,11 @@ jobs:
     runs-on: self-hosted
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Set CI flags
         run: |
@@ -71,13 +72,13 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Build
         run: |
@@ -89,11 +90,11 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Set CI flags
         run: |
@@ -105,16 +106,17 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Install poetry
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install python3-distutils -y
           curl -sSL https://install.python-poetry.org | python3 -
@@ -148,11 +150,11 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Set CI flags
         run: |
@@ -164,13 +166,13 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Run unittests
         run: |
@@ -182,11 +184,11 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Set CI flags
         run: |
@@ -198,13 +200,13 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Run unittests
         run: |
@@ -216,11 +218,11 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Set CI flags
         run: |
@@ -232,13 +234,13 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Build Contranomy
         run: |
@@ -291,7 +293,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     strategy:
       matrix:
@@ -301,7 +303,7 @@ jobs:
     steps:
       - name: Checkout
         if: matrix.check != 'formal-checks-disabled'
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Download Contranomy HDL
         if: matrix.check != 'formal-checks-disabled'
@@ -332,11 +334,11 @@ jobs:
     needs: [build, lint, firmware-build-integration-tests]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Set CI flags
         run: |
@@ -344,6 +346,7 @@ jobs:
 
       - name: Install Device Tree Compiler
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y device-tree-compiler
 
@@ -353,13 +356,13 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Download Firmware Integration Tests
         uses: actions/download-artifact@v2
@@ -381,11 +384,11 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Set CI flags
         run: |
@@ -397,13 +400,13 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Unittests
         run: |
@@ -423,10 +426,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Install dependencies
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y curl build-essential
 
@@ -456,10 +460,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Install dependencies
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y curl build-essential
 
@@ -477,7 +482,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: cargo-cache-${{ hashFiles('Cargo.lock') }}
+          key: cargo-cache-cachebust-1-${{ hashFiles('Cargo.lock') }}
 
       - name: Running Tests
         uses: actions-rs/cargo@v1
@@ -493,10 +498,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Install dependencies
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y curl build-essential
 
@@ -515,7 +521,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
-          key: cargo-cache-${{ hashFiles('firmware/examples/hello/Cargo.lock') }}
+          key: cargo-cache-cachebust-1-${{ hashFiles('firmware/examples/hello/Cargo.lock') }}
 
       - name: Building "hello" Example
         run: cargo build --release
@@ -533,10 +539,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Install dependencies
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y curl build-essential
 
@@ -555,7 +562,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
-          key: cargo-cache-${{ hashFiles('firmware/tests/Cargo.lock') }}
+          key: cargo-cache-cachebust-1-${{ hashFiles('firmware/tests/Cargo.lock') }}
 
       - name: Building Firmware Integration Tests
         run: cargo build --release
@@ -578,11 +585,11 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Set CI flags
         run: |
@@ -594,13 +601,13 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Doctests
         run : |
@@ -612,11 +619,11 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Set CI flags
         run: |
@@ -628,13 +635,13 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: Unit tests
         run : |
@@ -665,14 +672,14 @@ jobs:
           - {top: switchCalendar1kReducedPins, stage: netlist}
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-02-02
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
       volumes:
         - /opt/tools:/opt/tools
       options: --mac-address="6c:5a:b0:6c:13:0b"
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Set CI flags
         run: |
@@ -690,16 +697,17 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
 
-          key: packages-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
 
       - name: HDL generation and synthesis
         run : |
+          .github/scripts/set_de_mirror.sh
           .github/scripts/with_vivado.sh cabal run -- bittide-instances:shake ${{ matrix.target.top }}:${{ matrix.target.stage }}
 
       - name: Archive synthesis artifacts
@@ -734,7 +742,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Check dependencies for failures
         run: |
