@@ -39,6 +39,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y pcregrep
 
@@ -115,6 +116,7 @@ jobs:
 
       - name: Install poetry
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install python3-distutils -y
           curl -sSL https://install.python-poetry.org | python3 -
@@ -344,6 +346,7 @@ jobs:
 
       - name: Install Device Tree Compiler
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y device-tree-compiler
 
@@ -427,6 +430,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y curl build-essential
 
@@ -460,6 +464,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y curl build-essential
 
@@ -497,6 +502,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y curl build-essential
 
@@ -537,6 +543,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y curl build-essential
 
@@ -700,6 +707,7 @@ jobs:
 
       - name: HDL generation and synthesis
         run : |
+          .github/scripts/set_de_mirror.sh
           .github/scripts/with_vivado.sh cabal run -- bittide-instances:shake ${{ matrix.target.top }}:${{ matrix.target.stage }}
 
       - name: Archive synthesis artifacts
