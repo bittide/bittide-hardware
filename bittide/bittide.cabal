@@ -5,7 +5,7 @@ License:             Apache-2.0
 license-file:        LICENSE
 author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
-Copyright:           Copyright © 2022 Google LLC
+Copyright:           Copyright © 2022-2023 Google LLC
 
 common common-options
   default-extensions:
