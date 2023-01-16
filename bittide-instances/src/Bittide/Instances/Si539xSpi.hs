@@ -93,9 +93,9 @@ callistoSpi clk125 clkRecovered clkControlled rst125 locked miso =
   clockControlReset = unsafeFromLowPolarity $ ebMode .==. pure Pass
 
   -- The elastic buffer.
-  (bufferOccupancy, _, _, ebMode) =
+  (bufferOccupancy, _, _, ebMode, _) =
     withReset rstControlled $
-      resettableXilinxElasticBuffer clkControlled clkRecovered (unsafeFromLowPolarity $ pure True)
+      resettableXilinxElasticBuffer clkControlled clkRecovered (unsafeFromLowPolarity $ pure True) (pure False)
 
   -- Determine if the controlled clock is synchronized "enough" with the static clock.
   isStable =
