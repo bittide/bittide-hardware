@@ -87,8 +87,8 @@ genericClockControlDemo2 config clkInt clkExtA clkExtB rst drainFifoA drainFifoB
   bufferOccupancyA1 = mux ((==Pass) <$> ebModeA) bufferOccupancyA0 (pure targetDataCount)
   bufferOccupancyB1 = mux ((==Pass) <$> ebModeB) bufferOccupancyB0 (pure targetDataCount)
 
-  (bufferOccupancyA0, _, _, ebModeA) = withReset rst resettableXilinxElasticBuffer clkInt clkExtA drainFifoA
-  (bufferOccupancyB0, _, _, ebModeB) = withReset rst resettableXilinxElasticBuffer clkInt clkExtB drainFifoB
+  (bufferOccupancyA0, _, _, ebModeA, _) = withReset rst resettableXilinxElasticBuffer clkInt clkExtA drainFifoA (pure False)
+  (bufferOccupancyB0, _, _, ebModeB, _) = withReset rst resettableXilinxElasticBuffer clkInt clkExtB drainFifoB (pure False)
 
   isStableA = withClockResetEnable clkInt (unsafeFromLowPolarity $ (==Pass) <$> ebModeA) enableGen
     stabilityChecker d3 (SNat @20_000_000) bufferOccupancyA0
