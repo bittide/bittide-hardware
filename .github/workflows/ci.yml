@@ -521,7 +521,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
-          key: cargo-cache-cachebust-1-${{ hashFiles('firmware/examples/hello/Cargo.lock') }}
+          key: cargo-cache-cachebust-1-${{ hashFiles('Cargo.lock') }}
 
       - name: Building "hello" Example
         run: cargo build --release
@@ -562,7 +562,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
-          key: cargo-cache-cachebust-1-${{ hashFiles('firmware/tests/Cargo.lock') }}
+          key: cargo-cache-cachebust-1-${{ hashFiles('Cargo.lock') }}
 
       - name: Building Firmware Integration Tests
         run: cargo build --release
