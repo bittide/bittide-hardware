@@ -10,6 +10,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-riscv-rt = "0.10.0"
-riscv = "0.7.0"
+riscv-rt = "0.11.0"
+riscv = "^0.10"
 bittide-sys = { path = "../bittide-sys" }

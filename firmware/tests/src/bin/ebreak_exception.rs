@@ -34,7 +34,7 @@ fn main() -> ! {
 
 #[export_name = "ExceptionHandler"]
 fn exception_handler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
-    riscv::interrupt::free(|_| {
+    riscv::interrupt::free(|| {
         println!("... caught an exception. Looping forever now.");
     });
     loop {
