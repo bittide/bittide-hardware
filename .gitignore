@@ -71,9 +71,6 @@ riscv-formal/cores/contranomy/
 # Rust build files
 target/
 
-# Rust workspace lock file (only used for rust-analyzer)
-/Cargo.lock
-
 # ELF file for testing
 contranomy-sim/main.elf
 
