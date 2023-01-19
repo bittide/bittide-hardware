@@ -11,7 +11,7 @@ module Bittide.ClockControl.Callisto
 import Clash.Prelude
 
 import Data.Constraint
-import Data.Constraint.Nat.Extra (euclid3, useLowerLimit)
+import Data.Constraint.Nat.Extra (euclid3)
 
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Util
@@ -134,8 +134,7 @@ callisto targetCount updateEveryNCycles mask allDataCounts =
   r_k :: DSignal dom F.FromS32DefDelay Float
   r_k = F.fromS32 $ D.fromSignal $
     let
-      nBuffers = case useLowerLimit @n @m @32 of
-        Dict -> safePopCountTo32 <$> mask
+      nBuffers = popCountTo32 <$> mask
       measuredSum = sumTo32 <$> dataCounts
       targetCountSigned =
         case euclid3 @n @m @32 of
