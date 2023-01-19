@@ -47,7 +47,7 @@ sumTo32 =
   . unsignedToSigned
   . safeSum
 
-popCountTo32 :: (KnownNat n, n <= 2147483647) => BitVector n -> Signed 32
+popCountTo32 :: KnownNat n => BitVector n -> Signed 32
 popCountTo32 = resize . bitCoerce . popCount
 
 -- | Counts the number of 'high' bits in a bitvector.

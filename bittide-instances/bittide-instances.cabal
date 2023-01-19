@@ -101,6 +101,7 @@ library
     Bittide.Instances.Si539xSpi
     Bittide.Instances.StabilityChecker
     Bittide.Instances.Synchronizer
+    Bittide.Instances.PopCount
 
     Clash.Shake.Extra
     Clash.Shake.Vivado

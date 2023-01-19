@@ -29,6 +29,7 @@ import qualified Bittide.Instances.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Si539xSpi as Si539xSpi
 import qualified Bittide.Instances.StabilityChecker as StabilityChecker
 import qualified Bittide.Instances.Synchronizer as Synchronizer
+import qualified Bittide.Instances.PopCount as PopCount
 import qualified Clash.Util.Interpolate as I
 import qualified Language.Haskell.TH as TH
 import qualified System.Directory as Directory
@@ -75,6 +76,7 @@ targets =
   , 'ElasticBuffer.elasticBuffer5
   , 'MVPs.clockControlDemo0
   , 'MVPs.clockControlDemo1
+  , 'PopCount.popCountTest
   , 'ScatterGather.gatherUnit1K
   , 'ScatterGather.gatherUnit1KReducedPins
   , 'ScatterGather.scatterUnit1K

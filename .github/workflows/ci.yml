@@ -3,14 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 name: CI
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    types:
-      - opened
-      - synchronize
+on: [push]
 
 concurrency:
  group: ${{ github.head_ref || github.run_id }}
@@ -19,7 +12,7 @@ concurrency:
 jobs:
   lint:
     name: Basic linting
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     container:
       image: ubuntu:22.04
 
@@ -29,7 +22,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y pcregrep
 
@@ -43,7 +35,7 @@ jobs:
 
   build:
     name: Build dependencies
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
 
     container:
       image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
@@ -85,6 +77,7 @@ jobs:
     strategy:
       matrix:
         target:
+          - {top: popCountTest,                stage: netlist}
           - {top: callisto3,                   stage: netlist}
 
     container:
@@ -123,7 +116,6 @@ jobs:
 
       - name: HDL generation and synthesis
         run : |
-          .github/scripts/set_de_mirror.sh
           .github/scripts/with_vivado.sh cabal run -- bittide-instances:shake ${{ matrix.target.top }}:${{ matrix.target.stage }}
 
       - name: Archive synthesis artifacts
