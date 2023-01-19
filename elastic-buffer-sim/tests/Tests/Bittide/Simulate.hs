@@ -36,11 +36,12 @@ case_clockControlMaxBound = do
   let
     config = defClockConfig
     dataCounts = pure maxBound :> Nil
+    mask = pure $ pack (repeat high)
     changes =
       sampleN
         -- +10_000 assumes callisto's pipeline less than 10_000 deep
         (fromIntegral (cccPessimisticSettleCycles config + 10_000))
-        (callistoClockControl @_ @_ @Fast clockGen resetGen enableGen config dataCounts)
+        (callistoClockControl @_ @_ @Fast clockGen resetGen enableGen config mask dataCounts)
 
   assertBool
     "only requests speed up"
@@ -51,11 +52,12 @@ case_clockControlMinBound = do
   let
     config = defClockConfig
     dataCounts = pure 0 :> Nil
+    mask = pure $ pack (repeat high)
     changes =
       sampleN
         -- +100 assumes callisto's pipeline less than 100 deep
         (fromIntegral (cccPessimisticSettleCycles config + 100))
-        (callistoClockControl @_ @_ @Fast clockGen resetGen enableGen config dataCounts)
+        (callistoClockControl @_ @_ @Fast clockGen resetGen enableGen config mask dataCounts)
 
   assertBool
     "only requests slow down"

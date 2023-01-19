@@ -27,6 +27,7 @@ haxiomsGroup = testGroup "Haxioms"
   , testPropertyNamed "euclid3 holds" "prop_euclid3" prop_euclid3
   , testPropertyNamed "prop_oneLeCLog2n holds" "prop_oneLeCLog2n" prop_oneLeCLog2n
   , testPropertyNamed "prop_lessThanMax holds" "prop_lessThanMax" prop_lessThanMax
+  , testPropertyNamed "prop_useLowerLimit holds" "prop_useLowerLimit" prop_useLowerLimit
   ]
 
 -- | Generate a 'Natural' greater than or equal to /n/. Can generate 'Natural's
@@ -198,3 +199,18 @@ prop_lessThanMax = property $ do
   a <- forAll (genNatural c)
   b <- forAll (genNatural c)
   assert (c <= max a b)
+
+-- | Test whether the following equation (supplied by 'useLowerLimit') holds:
+--
+--     1 + n <= u
+--
+-- Given:
+--
+--     1 <= m, n + m <= u
+--
+prop_useLowerLimit :: Property
+prop_useLowerLimit = property $ do
+  m <- forAll (genNatural 1)     -- 1 <= m
+  n <- forAll (genNatural 0)     -- no constraints
+  u <- forAll (genNatural (n+m)) -- n + m <= u
+  assert (1 + n <= u)

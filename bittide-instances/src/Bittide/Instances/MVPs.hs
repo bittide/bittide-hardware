@@ -86,9 +86,9 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
   speedChangeSticky =
     withClockResetEnable clkControlled rstControlled enableGen $
       stickyBits d15 (speedChangeToPins <$> speedChange)
-
+  availableLinkMask = pure $ complement 0 -- all links available
   speedChange = callistoClockControl @1 clkControlled clockControlReset enableGen
-    config (bufferOccupancy :> Nil)
+    config availableLinkMask (bufferOccupancy :> Nil)
   clockControlReset = unsafeFromLowPolarity $ (==Pass) <$> ebMode
 
   writeData = pure (0 :: Unsigned 8)

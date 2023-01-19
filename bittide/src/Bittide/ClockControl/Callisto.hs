@@ -11,7 +11,7 @@ module Bittide.ClockControl.Callisto
 import Clash.Prelude
 
 import Data.Constraint
-import Data.Constraint.Nat.Extra (euclid3)
+import Data.Constraint.Nat.Extra (euclid3, useLowerLimit)
 
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Util
@@ -38,12 +38,14 @@ callistoClockControl ::
   Enable dom ->
   -- | Configuration for this component, see individual fields for more info.
   ClockControlConfig dom m ->
+  -- | Link availability mask
+  Signal dom (BitVector n) ->
   -- | Statistics provided by elastic buffers.
   Vec n (Signal dom (DataCount m)) ->
   Signal dom SpeedChange
-callistoClockControl clk rst ena ClockControlConfig{..} =
+callistoClockControl clk rst ena ClockControlConfig{..} mask =
   withClockResetEnable clk rst ena $
-    callisto targetDataCount cccPessimisticSettleCycles . bundle
+    callisto targetDataCount cccPessimisticSettleCycles mask . bundle
 
 -- | State used in 'callisto'
 data ControlSt = ControlSt
@@ -80,7 +82,6 @@ callisto ::
   , KnownNat m
   , 1 <= n
   , 1 <= m
-
   -- 'callisto' sums incoming 'DataCount's and feeds them to a Xilinx signed to
   -- float IP. We can currently only interpret 32 bit signeds to unsigned, so to
   -- make sure we don't overflow any addition we force @n + m <= 32@.
@@ -90,13 +91,18 @@ callisto ::
   DataCount m ->
   -- | Provide an update every /n/ cycles
   Unsigned 32 ->
+  -- | Link availability mask
+  Signal dom (BitVector n) ->
   -- | Data counts from elastic buffers
   Signal dom (Vec n (DataCount m)) ->
   -- | Speed change requested from clock multiplier
   Signal dom SpeedChange
-callisto targetCount updateEveryNCycles dataCounts =
+callisto targetCount updateEveryNCycles mask allDataCounts =
   mux shouldUpdate (D.toSignal b_kNext) (pure NoChange)
  where
+  dataCounts = filterCounts <$> fmap bv2v mask <*> allDataCounts
+  filterCounts vMask vCounts = flip map (zip vMask vCounts) $
+    \(isActive, count) -> if isActive == high then count else 0
   updateCounter = wrappingCounter updateEveryNCycles
   shouldUpdate = updateCounter .==. 0
   state = register initState (mux shouldUpdate updatedState state)
@@ -128,14 +134,15 @@ callisto targetCount updateEveryNCycles dataCounts =
   r_k :: DSignal dom F.FromS32DefDelay Float
   r_k = F.fromS32 $ D.fromSignal $
     let
-      nBuffers = natToNum @n
+      nBuffers = case useLowerLimit @n @m @32 of
+        Dict -> safePopCountTo32 <$> mask
       measuredSum = sumTo32 <$> dataCounts
       targetCountSigned =
         case euclid3 @n @m @32 of
           Dict ->
             extend @_ @_ @(32 - m - 1) (unsignedToSigned targetCount)
     in
-      measuredSum - pure (targetCountSigned * nBuffers)
+      measuredSum - (pure targetCountSigned * nBuffers)
 
   x_kNext :: DSignal dom (F.FromS32DefDelay + F.MulDefDelay + F.AddDefDelay) Float
   x_kNext = D.delayI (errorX "callisto: No start value [3]") x_k `F.add` (p `F.mul` r_k)
