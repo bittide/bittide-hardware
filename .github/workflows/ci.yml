@@ -3,14 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 name: CI
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    types:
-      - opened
-      - synchronize
+
+# XXX: What we'd really like is run on every pull request / pull request change,
+#      which allows GitHub to cancel runs after (force) pushes. Triggering on
+#      these seems to be broken since January 19th 2023 however. Note that not
+#      everyone likes auto-cancellation so we should probably recognize [no-skip]
+#      commits.
+on: [push]
 
 concurrency:
  group: ${{ github.head_ref || github.run_id }}
