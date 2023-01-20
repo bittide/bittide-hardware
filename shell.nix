@@ -24,6 +24,7 @@ pkgs.mkShell {
       pkgs.buildPackages.sbt
       pkgs.buildPackages.scala
       pkgs.buildPackages.verilator
+      pkgs.buildPackages.which
 
       # Rust toolchain. Contains:
       #
@@ -33,6 +34,8 @@ pkgs.mkShell {
       #  * rustfmt
       #  * (.. and more)
       #
+      # XXX: We cannot swich to 1.67 due to 'cargo clippy' throwing an obscure
+      #      error. See: https://github.com/bittide/bittide-hardware/pull/227#issuecomment-1411808302
       ((pkgs.rustChannelOf { channel = "1.65"; }).rust.override {
         targets = [
           "riscv32imc-unknown-none-elf"
@@ -45,6 +48,9 @@ pkgs.mkShell {
       pkgs.buildPackages.symbiyosys
       pkgs.buildPackages.yosys
       pkgs.buildPackages.z3
+
+      # For Cabal to clone git repos
+      pkgs.buildPackages.git
     ]
     ;
 

@@ -1,7 +1,7 @@
 { sources ? import ./sources.nix }:
 
 let
-  moz_overlay = import (builtins.fetchTarball https://github.com/mozilla/nixpkgs-mozilla/archive/d38863db88e100866b3e494a651ee4962b762fcc.tar.gz);
+  moz_overlay = import (builtins.fetchTarball https://github.com/mozilla/nixpkgs-mozilla/archive/f6fe8508b0910b84b74c0e0bfa0ff8593e77d470.tar.gz);
   overlay = _: nixpkgs: {
     # Nix tooling
     niv = (import sources.niv {}).niv;

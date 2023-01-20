@@ -11,13 +11,6 @@ name: CI
 #      commits.
 on: [push]
 
-
-# Updating Rust versions:
-#
-# When updating to a newer (or older) version of Rust for the main build process
-# then the version should be updated in the /rust-toolchain.toml file too.
-# That file determines which version gets used locally on developer machines.
-
 concurrency:
  group: ${{ github.head_ref || github.run_id }}
  cancel-in-progress: true
@@ -59,9 +52,12 @@ jobs:
   build:
     name: Build dependencies
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
@@ -80,10 +76,10 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cabal/store
+            ~/.cabal-nix/store
 
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-1-
+          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-
 
       - name: Build
         run: |
@@ -92,10 +88,13 @@ jobs:
   elastic-buffer-sim-topologies:
     name: Simulate network
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
@@ -114,43 +113,34 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cabal/store
+            ~/.cabal-nix/store
 
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-1-
-
-      - name: Install poetry
-        run: |
-          apt-get update
-          apt-get install python3-distutils -y
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "${HOME}/.local/bin" >> $GITHUB_PATH
-
-      - name: Install Python dependencies
-        run: |
-          cd elastic-buffer-sim && poetry update
+          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-2-
 
       # TODO: simulate + plot multiple topologies
       - name: Plot mesh grid
         run: |
-          cabal build elastic-buffer-sim:sim
-          cd elastic-buffer-sim && poetry run $(cabal list-bin elastic-buffer-sim:sim) +RTS -M8M -RTS plot complete3 150000 100
+          cabal run -- elastic-buffer-sim:sim +RTS -M8M -RTS plot complete3 150000 100
 
       - name: Upload plots
         uses: actions/upload-artifact@v2
         with:
           name: gen-plots-hs
           path: |
-            elastic-buffer-sim/_build/clockscomplete3.pdf
-            elastic-buffer-sim/_build/elasticbufferscomplete3.pdf
+            _build/clockscomplete3.pdf
+            _build/elasticbufferscomplete3.pdf
 
   elastic-buffer-sim-tests:
     name: elastic-buffer-sim unittests
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
@@ -169,22 +159,26 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cabal/store
+            ~/.cabal-nix/store
 
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-1-
+          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-2-
 
       - name: Run unittests
         run: |
           cabal run elastic-buffer-sim:unittests
 
+
   contranomy-tests:
     name: Contranomy tests
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
@@ -203,22 +197,26 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cabal/store
+            ~/.cabal-nix/store
 
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-1-
+          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-2-
 
       - name: Run unittests
         run: |
           cabal run contranomy:unittests
 
+
   contranomy-hdl:
     name: Generate Contranomy HDL
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --keep GITHUB_OUTPUT --pure
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
@@ -237,21 +235,20 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cabal/store
+            ~/.cabal-nix/store
 
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-1-
+          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-2-
 
       - name: Build Contranomy
         run: |
-          cd contranomy
-          cabal run clash -- --version
-          cat ../dist-newstyle/cache/plan.json | python3 -m json.tool | grep -C 1 riscv-altopts
+          cabal run contranomy:clash -- --version
+          cat dist-newstyle/cache/plan.json | python3 -m json.tool | grep -C 1 riscv-altopts
 
       - name: Generate HDL
         run: |
           cd contranomy
-          cabal run -- clash --verilog -main-is contranomyRVFITE Contranomy
+          cabal run -- contranomy:clash --verilog -main-is contranomyRVFITE Contranomy
 
       - name: Archive HDL
         run: |
@@ -291,9 +288,12 @@ jobs:
     #       or dependencies change.
     #
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     strategy:
       matrix:
@@ -331,10 +331,13 @@ jobs:
   contranomy-sim-tests:
     name: ContranomySim tests and firmware integration tests
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     needs: [build, lint, firmware-build-integration-tests]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
@@ -343,11 +346,6 @@ jobs:
       - name: Set CI flags
         run: |
           cp .github/cabal.project.simulation cabal.project.local
-
-      - name: Install Device Tree Compiler
-        run: |
-          apt-get update
-          apt-get install -y device-tree-compiler
 
       - name: Update Cabal index info
         run: |
@@ -358,10 +356,10 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cabal/store
+            ~/.cabal-nix/store
 
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-1-
+          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-2-
 
       - name: Download Firmware Integration Tests
         uses: actions/download-artifact@v2
@@ -380,10 +378,13 @@ jobs:
   bittide-tests:
     name: Bittide tests
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
@@ -402,10 +403,10 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cabal/store
+            ~/.cabal-nix/store
 
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-1-
+          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-2-
 
       - name: Unittests
         run: |
@@ -420,58 +421,37 @@ jobs:
   firmware-lints:
     name: Firmware Lints
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     container:
-      image: ubuntu:22.04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Install dependencies
-        run: |
-          apt-get update
-          apt-get install -y curl build-essential
-
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.67 # See Note [Updating Rust versions]
-          profile: minimal
-          target: riscv32imc-unknown-none-elf
-          components: clippy, rustfmt
-
       - name: Rust formatting
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: |
+          cargo fmt --all -- --check
 
-      - uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --target riscv32imc-unknown-none-elf --all-features
+      - name: Clippy check
+        run: |
+          cargo clippy --target riscv32imc-unknown-none-elf --all-features
 
 
   firmware-unit-tests:
     name: Firmware Unit Tests
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     container:
-      image: ubuntu:22.04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-
-      - name: Install dependencies
-        run: |
-          apt-get update
-          apt-get install -y curl build-essential
-
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.67 # See Note [Updating Rust versions]
-          profile: minimal
-          target: x86_64-unknown-linux-gnu
-
 
       - uses: actions/cache@v3
         name: Cache
@@ -482,34 +462,24 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: cargo-cache-cachebust-1-${{ hashFiles('Cargo.lock') }}
+          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
 
       - name: Running Tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --target x86_64-unknown-linux-gnu --all
+        run: |
+          cargo test --target x86_64-unknown-linux-gnu --all
 
   firmware-build-examples:
     name: Firmware Build Examples
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     container:
-      image: ubuntu:22.04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-
-      - name: Install dependencies
-        run: |
-          apt-get update
-          apt-get install -y curl build-essential
-
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.67 # See Note [Updating Rust versions]
-          profile: minimal
-          target: riscv32imc-unknown-none-elf
 
       - uses: actions/cache@v3
         name: Cache
@@ -520,7 +490,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
-          key: cargo-cache-cachebust-1-${{ hashFiles('Cargo.lock') }}
+          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
 
       - name: Building "hello" Example
         run: cargo build --release
@@ -533,23 +503,15 @@ jobs:
   firmware-build-integration-tests:
     name: Firmware Build Integration Tests
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     container:
-      image: ubuntu:22.04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-
-      - name: Install dependencies
-        run: |
-          apt-get update
-          apt-get install -y curl build-essential
-
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.67 # See Note [Updating Rust versions]
-          profile: minimal
-          target: riscv32imc-unknown-none-elf
 
       - uses: actions/cache@v3
         name: Cache
@@ -560,7 +522,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
-          key: cargo-cache-cachebust-1-${{ hashFiles('Cargo.lock') }}
+          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
 
       - name: Building Firmware Integration Tests
         run: cargo build --release
@@ -580,10 +542,13 @@ jobs:
   bittide-instances-doctests:
     name: bittide-instances doctests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
@@ -602,10 +567,10 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cabal/store
+            ~/.cabal-nix/store
 
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-1-
+          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-2-
 
       - name: Doctests
         run : |
@@ -614,10 +579,13 @@ jobs:
   bittide-instances-unittests:
     name: bittide-instances unittests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
@@ -636,10 +604,10 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cabal/store
+            ~/.cabal-nix/store
 
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-1-
+          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-2-
 
       - name: Unit tests
         run : |
@@ -648,6 +616,10 @@ jobs:
   bittide-instances-hdl:
     name: bittide-instances synthesis
     runs-on: self-hosted
+    defaults:
+      run:
+        # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
+        shell: git-nix-shell {0}
     env:
       SYNTHESIS_PART: xcku040-ffva1156-2-e
       # SYNTHESIS_PART: xcku035-ffva1156-2-e
@@ -670,7 +642,7 @@ jobs:
           - {top: switchCalendar1kReducedPins, stage: netlist}
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
       volumes:
         - /opt/tools:/opt/tools
       options: --mac-address="6c:5a:b0:6c:13:0b"
@@ -698,10 +670,10 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cabal/store
+            ~/.cabal-nix/store
 
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-1-
+          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-2-
 
       - name: HDL generation and synthesis
         run : |
@@ -717,10 +689,13 @@ jobs:
   vex-riscv:
     name: VexRiscv integration
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     needs: [build, lint, vex-riscv-build-integration-tests]
 
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
@@ -741,35 +716,11 @@ jobs:
           path: |
             ~/.cabal/store
 
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-1-
-
-      - name: Install build deps
-        run: |
-          # running this script once in this job is enough
-          .github/scripts/set_de_mirror.sh
-          apt-get update
-          apt-get install gnupg pkg-config -y
-
-      - name: Install Java
-        run: |
-          # install Java 8
-          apt-get update
-          apt-get install openjdk-8-jdk -y
-          update-alternatives --config java
-          update-alternatives --config javac
-
-      - name: Install SBT
-        run: |
-          echo "deb https://repo.scala-sbt.org/scalasbt/debian all main" | tee /etc/apt/sources.list.d/sbt.list
-          echo "deb https://repo.scala-sbt.org/scalasbt/debian /" | tee /etc/apt/sources.list.d/sbt_old.list
-          curl -sL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89B84B2DF73499E82A75642AC823" | apt-key add
-          apt-get update
-          apt-get install sbt -y
+          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-2-
 
       - name: Build VexRiscv
         run: |
-          # export PKG_CONFIG_PATH=/opt/share/pkgconfig/:${PKG_CONFIG_PATH}
           cabal build vex-riscv
 
       - name: Build VexRiscv-test
@@ -792,24 +743,15 @@ jobs:
   vex-riscv-build-integration-tests:
     name: VexRiscv build integration tests
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
     container:
-      image: ubuntu:22.04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
     steps:
       - name: Checkout
         uses: actions/checkout@v1
-
-      - name: Install dependencies
-        run: |
-          .github/scripts/set_de_mirror.sh
-          apt-get update
-          apt-get install -y curl build-essential
-
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.67 # See Note [Updating Rust versions]
-          profile: minimal
-          target: riscv32imc-unknown-none-elf
 
       - uses: actions/cache@v3
         name: Cache
@@ -820,7 +762,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
-          key: cargo-cache-cachebust-1-${{ hashFiles('vex-riscv/vex-test-programs/Cargo.lock') }}
+          key: cargo-cache-cachebust-2-${{ hashFiles('vex-riscv/vex-test-programs/Cargo.lock') }}
 
       - name: Building VexRiscv Integration Tests (Release)
         run: cargo build --release

@@ -40,3 +40,7 @@ License: Apache-2.0
 Files: bittide-instances/tests/reports/*
 Copyright: 2022 Google LLC
 License: Apache-2.0
+
+Files: nix/*
+Copyright: 2022 Google LLC
+License: Apache-2.0
