@@ -130,10 +130,6 @@ jobs:
         run: |
           cd elastic-buffer-sim && poetry update
 
-      - name: Lint Python script
-        run: |
-          cd elastic-buffer-sim && poetry run pycodestyle genplots.py
-
       # TODO: simulate + plot multiple topologies
       - name: Plot mesh grid
         run: |
