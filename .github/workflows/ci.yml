@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   license-check:
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     container:
       image: ubuntu:22.04
     steps:
@@ -28,7 +28,7 @@ jobs:
 
   lint:
     name: Basic linting
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     container:
       image: ubuntu:22.04
 
@@ -51,7 +51,7 @@ jobs:
 
   build:
     name: Build dependencies
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
 
     container:
       image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
@@ -84,7 +84,7 @@ jobs:
 
   elastic-buffer-sim-topologies:
     name: Simulate network
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     needs: [build, lint]
 
     container:
@@ -143,7 +143,7 @@ jobs:
 
   elastic-buffer-sim-tests:
     name: elastic-buffer-sim unittests
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     needs: [build, lint]
 
     container:
@@ -177,7 +177,7 @@ jobs:
 
   contranomy-tests:
     name: Contranomy tests
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     needs: [build, lint]
 
     container:
@@ -211,7 +211,7 @@ jobs:
 
   contranomy-hdl:
     name: Generate Contranomy HDL
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     needs: [build, lint]
 
     container:
@@ -327,7 +327,7 @@ jobs:
 
   contranomy-sim-tests:
     name: ContranomySim tests and firmware integration tests
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     needs: [build, lint, firmware-build-integration-tests]
 
     container:
@@ -376,7 +376,7 @@ jobs:
 
   bittide-tests:
     name: Bittide tests
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     needs: [build, lint]
 
     container:
@@ -416,7 +416,7 @@ jobs:
 
   firmware-lints:
     name: Firmware Lints
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     container:
       image: ubuntu:22.04
 
@@ -449,7 +449,7 @@ jobs:
 
   firmware-unit-tests:
     name: Firmware Unit Tests
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     container:
       image: ubuntu:22.04
 
@@ -486,7 +486,7 @@ jobs:
 
   firmware-build-examples:
     name: Firmware Build Examples
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     container:
       image: ubuntu:22.04
 
@@ -526,7 +526,7 @@ jobs:
 
   firmware-build-integration-tests:
     name: Firmware Build Integration Tests
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     container:
       image: ubuntu:22.04
 
