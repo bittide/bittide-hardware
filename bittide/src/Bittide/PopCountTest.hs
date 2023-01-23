@@ -28,6 +28,11 @@ popCountTest ::
   Signal dom Bool
 popCountTest dataCounts = D.toSignal b_kNext
  where
+  -- Interestingly, changing this implementation to
+  --
+  -- > mask = pure $ complement 0
+  --
+  -- removes the error.
   mask :: Signal dom (BitVector 3)
   mask = pure $ pack $ repeat high
 
