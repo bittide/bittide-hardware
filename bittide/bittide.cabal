@@ -68,9 +68,9 @@ common common-options
     -fno-unbox-strict-fields
   default-language: Haskell2010
   build-depends:
-    ghc-typelits-extra,
-    ghc-typelits-knownnat,
-    ghc-typelits-natnormalise,
+    ghc-typelits-extra >= 0.4.4,
+    ghc-typelits-knownnat >= 0.7.7,
+    ghc-typelits-natnormalise >= 0.7.7,
 
 library
   import: common-options
