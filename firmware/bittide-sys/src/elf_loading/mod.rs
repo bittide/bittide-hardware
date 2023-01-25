@@ -25,7 +25,7 @@ pub unsafe fn load_elf_file(valid_elf: &ValidatedElfFile<'_>) {
         }
 
         let paddr = usize::try_from(p.paddr()).unwrap();
-        let data = p.content();
+        let data = p.content().expect("ELF file contains invalid data indices");
 
         let addr_ptr = paddr as *mut u8;
 
