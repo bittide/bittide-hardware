@@ -22,7 +22,7 @@
     "editor.tabSize": 4
   },
   "haskell.toolchain": {
-    "hls": "1.6.1.0",
+    "hls": "1.8.0.0",
     "ghc": null,
     "cabal": null,
     "stack": null

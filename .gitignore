@@ -76,6 +76,8 @@ contranomy-sim/main.elf
 
 # Firmware integration test binaries
 firmware-integration-tests/
+vex-riscv/vex-riscv-test-binaries.tar
+vex-riscv-test-binaries.tar
 
 # Bittide HDL directories
 bittide/verilog

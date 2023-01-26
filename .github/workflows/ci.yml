@@ -11,6 +11,13 @@ name: CI
 #      commits.
 on: [push]
 
+
+# Updating Rust versions:
+#
+# When updating to a newer (or older) version of Rust for the main build process
+# then the version should be updated in the /rust-toolchain.toml file too.
+# That file determines which version gets used locally on developer machines.
+
 concurrency:
  group: ${{ github.head_ref || github.run_id }}
  cancel-in-progress: true
@@ -431,7 +438,7 @@ jobs:
 
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: 1.65 # See Note [Updating Rust versions]
           profile: minimal
           target: riscv32imc-unknown-none-elf
           components: clippy, rustfmt
@@ -446,6 +453,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --target riscv32imc-unknown-none-elf --all-features
+
 
   firmware-unit-tests:
     name: Firmware Unit Tests
@@ -464,8 +472,10 @@ jobs:
 
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: 1.65 # See Note [Updating Rust versions]
           profile: minimal
+          target: x86_64-unknown-linux-gnu
+
 
       - uses: actions/cache@v3
         name: Cache
@@ -501,7 +511,7 @@ jobs:
 
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: 1.65 # See Note [Updating Rust versions]
           profile: minimal
           target: riscv32imc-unknown-none-elf
 
@@ -541,7 +551,7 @@ jobs:
 
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: 1.65 # See Note [Updating Rust versions]
           profile: minimal
           target: riscv32imc-unknown-none-elf
 
@@ -708,6 +718,133 @@ jobs:
           path: _build
           retention-days: 14
 
+  vex-riscv:
+    name: VexRiscv integration
+    runs-on: ubuntu-22.04
+    needs: [build, lint, vex-riscv-build-integration-tests]
+
+    container:
+      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project.simulation cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cabal/store
+
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-1-
+
+      - name: Install build deps
+        run: |
+          # running this script once in this job is enough
+          .github/scripts/set_de_mirror.sh
+          apt-get update
+          apt-get install gnupg pkg-config -y
+
+      - name: Install Java
+        run: |
+          # install Java 8
+          apt-get update
+          apt-get install openjdk-8-jdk -y
+          update-alternatives --config java
+          update-alternatives --config javac
+
+      - name: Install SBT
+        run: |
+          echo "deb https://repo.scala-sbt.org/scalasbt/debian all main" | tee /etc/apt/sources.list.d/sbt.list
+          echo "deb https://repo.scala-sbt.org/scalasbt/debian /" | tee /etc/apt/sources.list.d/sbt_old.list
+          curl -sL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89B84B2DF73499E82A75642AC823" | apt-key add
+          apt-get update
+          apt-get install sbt -y
+
+      - name: Build VexRiscv
+        run: |
+          # export PKG_CONFIG_PATH=/opt/share/pkgconfig/:${PKG_CONFIG_PATH}
+          cabal build vex-riscv
+
+      - name: Build VexRiscv-test
+        run: |
+          cabal build vex-test
+
+      - name: Download VexRiscv Integration Tests
+        uses: actions/download-artifact@v2
+        with:
+          name: vex-riscv-test-binaries
+
+      - name: Extract VexRiscv Integration Tests
+        run: |
+          tar -x -f vex-riscv-test-binaries.tar
+
+      - name: Run unittests
+        run: |
+          cabal run vex-riscv:unittests
+
+  vex-riscv-build-integration-tests:
+    name: VexRiscv build integration tests
+    runs-on: ubuntu-22.04
+    container:
+      image: ubuntu:22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install dependencies
+        run: |
+          .github/scripts/set_de_mirror.sh
+          apt-get update
+          apt-get install -y curl build-essential
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.65 # See Note [Updating Rust versions]
+          profile: minimal
+          target: riscv32imc-unknown-none-elf
+
+      - uses: actions/cache@v3
+        name: Cache
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ./target/
+          key: cargo-cache-cachebust-1-${{ hashFiles('vex-riscv/vex-test-programs/Cargo.lock') }}
+
+      - name: Building VexRiscv Integration Tests (Release)
+        run: cargo build --release
+        working-directory: vex-riscv/vex-test-programs
+
+      - name: Building VexRiscv Integration Tests (Debug)
+        run: cargo build
+        working-directory: vex-riscv/vex-test-programs
+
+      - name: Archive Integration Tests
+        run: |
+          cd vex-riscv; sh bundle_test_binaries.sh
+
+      - name: Upload VexRiscv Integration Tests
+        uses: actions/upload-artifact@v2
+        with:
+          name: vex-riscv-test-binaries
+          path: vex-riscv/vex-riscv-test-binaries.tar
+
+
   all:
     name: All jobs finished
     if: always()
@@ -729,6 +866,8 @@ jobs:
         firmware-unit-tests,
         license-check,
         lint,
+        vex-riscv,
+        vex-riscv-build-integration-tests,
       ]
     runs-on: ubuntu-22.04
     steps:

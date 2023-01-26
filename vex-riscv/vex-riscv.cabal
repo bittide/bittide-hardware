@@ -1,0 +1,132 @@
+cabal-version:       2.4
+name:                vex-riscv
+version:             0.1
+License:             Apache-2.0
+license-file:        LICENSE
+author:              QBayLogic B.V.
+maintainer:          devops@qbaylogic.com
+Copyright:           Copyright © 2022 Google LLC
+build-type:          Custom
+
+custom-setup
+  setup-depends:
+    base,
+    Cabal,
+    directory
+
+common common-options
+  default-extensions:
+    BangPatterns
+    BinaryLiterals
+    ConstraintKinds
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    NoStarIsType
+    PolyKinds
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    ViewPatterns
+
+    -- TemplateHaskell is used to support convenience functions such as
+    -- 'listToVecTH' and 'bLit'.
+    TemplateHaskell
+    QuasiQuotes
+
+    -- Prelude isn't imported by default as Clash offers Clash.Prelude
+    NoImplicitPrelude
+  ghc-options:
+    -Wall -Wcompat
+
+    -- Plugins to support type-level constraint solving on naturals
+    -fplugin GHC.TypeLits.Extra.Solver
+    -fplugin GHC.TypeLits.Normalise
+    -fplugin GHC.TypeLits.KnownNat.Solver
+
+    -- Clash needs access to the source code in compiled modules
+    -fexpose-all-unfoldings
+
+    -- Worker wrappers introduce unstable names for functions that might have
+    -- blackboxes attached for them. You can disable this, but be sure to add
+    -- a no-specialize pragma to every function with a blackbox.
+    -fno-worker-wrapper
+      -- clash-prelude will set suitable version bounds for the plugins
+  build-depends:
+    base >= 4.14 && < 4.16,
+    clash-prelude >= 1.6 && < 1.8,
+    containers >= 0.6 && < 0.7,
+    ghc-typelits-natnormalise,
+    ghc-typelits-extra,
+    ghc-typelits-knownnat,
+
+  other-modules: Paths_vex_riscv
+
+library
+  import: common-options
+  hs-source-dirs: src
+  exposed-modules:
+    VexRiscv
+    VexRiscv.FFI
+    Utils.Print
+    Utils.ReadElf
+  build-depends:
+    base,
+    clash-prelude,
+    clash-protocols,
+    elf >= 0.31 && < 0.32,
+    bytestring >= 0.10 && < 0.11,
+    process >= 1.6 && < 1.8,
+    directory >= 1.3 && < 1.4,
+    containers
+  extra-libraries: VexRiscvFFI, stdc++
+  include-dirs: src/
+
+executable vex-test
+  import: common-options
+  main-is: Test.hs
+  hs-source-dirs: app
+  build-depends:
+    base,
+    clash-prelude,
+    clash-protocols,
+    vex-riscv,
+    bytestring,
+    containers,
+    directory,
+    bittide-extra,
+    bittide
+
+test-suite unittests
+  import: common-options
+  hs-source-dirs: tests
+  type: exitcode-stdio-1.0
+  ghc-options: -threaded
+  main-is: tests.hs
+  build-depends:
+    base,
+    clash-prelude,
+    clash-protocols,
+    vex-riscv,
+    bytestring,
+    containers,
+    directory,
+    bittide,
+    temporary >=1.1 && <1.4,
+    tasty >= 1.2 && < 1.5,
+    tasty-hunit >= 0.10 && < 0.11,
+    filepath
