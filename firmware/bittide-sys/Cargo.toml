@@ -13,7 +13,7 @@ resolver = "2"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-elf_rs = "0.2.0"
+elf_rs = "0.3.0"
 fdt = "0.1.0"
 
 [dev-dependencies]
