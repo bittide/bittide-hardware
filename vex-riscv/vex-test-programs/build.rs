@@ -16,7 +16,7 @@ fn main() {
         println!("cargo:rustc-link-arg=-Tmemory.x");
         println!("cargo:rustc-link-arg=-Tlink.x"); // linker script from riscv-rt
     }
-    println!("cargo:rustc-link-search={}", out_dir);
+    println!("cargo:rustc-link-search={out_dir}");
 
     println!("cargo:rerun-if-changed=memory.x");
     println!("cargo:rerun-if-changed=build.rs");

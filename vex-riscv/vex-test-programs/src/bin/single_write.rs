@@ -28,7 +28,7 @@ fn print(s: &str) {
 fn main() -> ! {
     let i = 14495943;
     let mut s = String::<16>::new();
-    let _ = writeln!(s, "Hey! {}", i);
+    let _ = writeln!(s, "Hey! {i}");
     print(&s);
 
     loop {
