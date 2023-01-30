@@ -118,15 +118,15 @@ fn best_fit_integer_repr(num: u32) -> heapless::String<20> {
     let mut dec = heapless::String::new();
     let mut hex = heapless::String::new();
 
-    write!(dec, "{}", num).unwrap();
-    write!(hex, "{:X}", num).unwrap();
+    write!(dec, "{num}").unwrap();
+    write!(hex, "{num:X}").unwrap();
 
     let dec_zeroes = dec.chars().filter(|c| *c == '0').count();
     let hex_zeroes = hex.chars().filter(|c| *c == '0').count();
 
     if hex_zeroes > dec_zeroes {
         hex.clear();
-        write!(hex, "0x{:X}", num).unwrap();
+        write!(hex, "0x{num:X}").unwrap();
         hex
     } else {
         dec

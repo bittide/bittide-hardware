@@ -37,6 +37,7 @@ import Data.Maybe (catMaybes)
 import Test.Tasty.HUnit (testCase, Assertion, (@?=))
 import System.IO.Temp (withSystemTempFile)
 import Utils.Print (getPrintContents)
+import System.Exit (exitFailure)
 
 
 emptyInput :: Input
@@ -328,11 +329,13 @@ main = do
   debugTests <- findTests sourceDir debugBinDir
   releaseTests <- findTests sourceDir releaseBinDir
 
-  when (L.null debugTests) $
+  when (L.null debugTests) $ do
     hPutStrLn stderr "No debug tests found! Was `cargo build` run?"
+    exitFailure
 
-  when (L.null releaseTests) $
+  when (L.null releaseTests) $ do
     hPutStrLn stderr "No release tests found! Was `cargo build --release` run?"
+    exitFailure
 
   let debugTestCases = flip L.map debugTests $ \(name, binPath, expectPath) ->
         runTest name "debug" debugCycles binPath expectPath

@@ -35,7 +35,7 @@ fn all_loaded_sections_copied(#[strategy(gen_valid_elf_file())] mut info: ElfCre
             // check if contents of the ELF file have been written to the buffer
             for seg in &info.segments {
                 let start = (seg.addr - base_addr) as usize;
-                let end = start as usize + seg.data.len();
+                let end = start + seg.data.len();
                 let padding_end = end + seg.zero_padding as usize;
                 assert_eq!(&buf[start..end], &seg.data);
                 assert!(buf[end..padding_end].iter().all(|b| *b == 0));

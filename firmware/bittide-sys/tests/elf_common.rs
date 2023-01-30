@@ -350,6 +350,6 @@ pub fn gen_valid_elf_file() -> impl Strategy<Value = ElfCreateInfo> {
         is_64: false,
         machine: object::elf::EM_RISCV,
         segments: segs,
-        entry: entry as u64,
+        entry,
     })
 }
