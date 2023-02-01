@@ -125,7 +125,7 @@ jobs:
           cabal run -- elastic-buffer-sim:sim +RTS -M8M -RTS plot complete3 150000 100
 
       - name: Upload plots
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: gen-plots-hs
           path: |
@@ -259,7 +259,7 @@ jobs:
           tar -c -f contranomy-hdl.tar contranomy/verilog
 
       - name: Upload Contranomy HDL
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: contranomy-hdl
           path: contranomy-hdl.tar
@@ -311,7 +311,7 @@ jobs:
 
       - name: Download Contranomy HDL
         if: matrix.check != 'formal-checks-disabled'
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: contranomy-hdl
 
@@ -326,7 +326,7 @@ jobs:
           .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
 
       - name: Verification failed, uploading results
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: failure()
         with:
           name: verify-${{ matrix.check }}-failed
@@ -367,7 +367,7 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Download Firmware Integration Tests
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: firmware-integration-tests
 
@@ -540,7 +540,7 @@ jobs:
           cd ../../; tar -c -f firmware-integration-tests.tar firmware-integration-tests/
 
       - name: Upload Firmware Integration Tests
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: firmware-integration-tests
           path: firmware-integration-tests.tar
@@ -708,7 +708,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - name: Set CI flags
         run: |
@@ -738,7 +738,7 @@ jobs:
           cabal build vex-test
 
       - name: Download VexRiscv Integration Tests
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: vex-riscv-test-binaries
 
@@ -761,7 +761,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
 
       - uses: actions/cache@v3
         name: Cache
@@ -787,7 +787,7 @@ jobs:
           cd vex-riscv; sh bundle_test_binaries.sh
 
       - name: Upload VexRiscv Integration Tests
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: vex-riscv-test-binaries
           path: vex-riscv/vex-riscv-test-binaries.tar
