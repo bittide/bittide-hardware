@@ -78,7 +78,7 @@ jobs:
           path: |
             ~/.cabal-nix/store
 
-          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: packages-
 
       - name: Build
@@ -115,8 +115,9 @@ jobs:
           path: |
             ~/.cabal-nix/store
 
-          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-2-
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
 
       # TODO: simulate + plot multiple topologies
       - name: Plot mesh grid
@@ -161,8 +162,9 @@ jobs:
           path: |
             ~/.cabal-nix/store
 
-          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-2-
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
 
       - name: Run unittests
         run: |
@@ -199,8 +201,9 @@ jobs:
           path: |
             ~/.cabal-nix/store
 
-          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-2-
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
 
       - name: Run unittests
         run: |
@@ -237,8 +240,9 @@ jobs:
           path: |
             ~/.cabal-nix/store
 
-          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-2-
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
 
       - name: Build Contranomy
         run: |
@@ -358,8 +362,9 @@ jobs:
           path: |
             ~/.cabal-nix/store
 
-          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-2-
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
 
       - name: Download Firmware Integration Tests
         uses: actions/download-artifact@v2
@@ -405,8 +410,9 @@ jobs:
           path: |
             ~/.cabal-nix/store
 
-          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-2-
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
 
       - name: Unittests
         run: |
@@ -569,8 +575,9 @@ jobs:
           path: |
             ~/.cabal-nix/store
 
-          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-2-
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
 
       - name: Doctests
         run : |
@@ -606,8 +613,9 @@ jobs:
           path: |
             ~/.cabal-nix/store
 
-          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-2-
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
 
       - name: Unit tests
         run : |
@@ -672,8 +680,9 @@ jobs:
           path: |
             ~/.cabal-nix/store
 
-          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-2-
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
 
       - name: HDL generation and synthesis
         run : |
@@ -711,13 +720,14 @@ jobs:
           cabal freeze
 
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
-            ~/.cabal/store
+            ~/.cabal-nix/store
 
-          key: packages-cachebust-2-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-2-
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
 
       - name: Build VexRiscv
         run: |
