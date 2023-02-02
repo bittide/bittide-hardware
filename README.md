@@ -22,6 +22,13 @@ The started shell contains everything needed to develop Bittide components.
 
 TODO: Add overview of components
 
+# Development
+We follow a standard GitHub development flow. Our development branch is called `staging`, which periodically gets merged into `main` (after running more expensive CI checks at night). Free free to open a PR. If you're not sure what to do, open a [discussion](https://github.com/bittide/bittide-hardware/discussions) thread.
+
+## Tips & Tricks
+
+  * The full (expensive) test suite only runs nightly on `staging`. If you want to run the full test suite on a PR, add `[force_expensive_checks]` to your commit message.
+
 # About Bittide
 Bittide is a novel distributed system architecture based on the idea
 that synchronous, ahead-of-time scheduling using a logical global

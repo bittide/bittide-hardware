@@ -9,7 +9,21 @@ name: CI
 #      these seems to be broken since January 19th 2023 however. Note that not
 #      everyone likes auto-cancellation so we should probably recognize [no-skip]
 #      commits.
-on: [push]
+on:
+  schedule:
+    # UTC midnight. See the comment at 'branches-ignore' for more information on
+    # our development flow. This job will run in context of the branch 'staging'.
+    - cron:  '0 0 * * *'
+
+  push:
+      branches-ignore:
+        # Developers request to merge their changes into 'staging'. In order to
+        # do so, relatively cheap tests should pass CI. Every night, CI runs our
+        # full test suite on 'staging'. If these pass, a pull request may be
+        # created to get 'main' up to date with 'staging'. Note that this should
+        # be automated in the future, but this will require some engineering.
+        - 'staging'
+        - 'main'
 
 concurrency:
  group: ${{ github.head_ref || github.run_id }}
@@ -17,7 +31,7 @@ concurrency:
 
 jobs:
   license-check:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     container:
       image: ubuntu:22.04
     steps:
@@ -28,7 +42,7 @@ jobs:
 
   lint:
     name: Basic linting
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     container:
       image: ubuntu:22.04
 
@@ -38,6 +52,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          .github/scripts/set_de_mirror.sh
           apt-get update
           apt-get install -y pcregrep
 
@@ -51,7 +66,7 @@ jobs:
 
   build:
     name: Build dependencies
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -87,7 +102,7 @@ jobs:
 
   elastic-buffer-sim-topologies:
     name: Simulate network
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -134,7 +149,7 @@ jobs:
 
   elastic-buffer-sim-tests:
     name: elastic-buffer-sim unittests
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -173,7 +188,7 @@ jobs:
 
   contranomy-tests:
     name: Contranomy tests
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -212,7 +227,7 @@ jobs:
 
   contranomy-hdl:
     name: Generate Contranomy HDL
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --keep GITHUB_OUTPUT --pure
@@ -266,7 +281,7 @@ jobs:
 
       - name: Get test matrix
         run: |
-          if [[ "${{ github.ref_name }}" == "main" ]] && .github/scripts/has_riscv_changes.sh; then
+          if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
             .github/scripts/get_formal_checks.sh
           else
             echo '["formal-checks-disabled"]' > checks.json
@@ -334,7 +349,7 @@ jobs:
 
   contranomy-sim-tests:
     name: ContranomySim tests and firmware integration tests
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -382,7 +397,7 @@ jobs:
 
   bittide-tests:
     name: Bittide tests
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -426,7 +441,7 @@ jobs:
 
   firmware-lints:
     name: Firmware Lints
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -448,7 +463,7 @@ jobs:
 
   firmware-unit-tests:
     name: Firmware Unit Tests
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -476,7 +491,7 @@ jobs:
 
   firmware-build-examples:
     name: Firmware Build Examples
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -508,7 +523,7 @@ jobs:
 
   firmware-build-integration-tests:
     name: Firmware Build Integration Tests
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -547,7 +562,7 @@ jobs:
 
   bittide-instances-doctests:
     name: bittide-instances doctests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -585,7 +600,7 @@ jobs:
 
   bittide-instances-unittests:
     name: bittide-instances unittests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -621,6 +636,29 @@ jobs:
         run : |
           cabal run -- bittide-instances:unittests
 
+  bittide-instances-hdl-matrix:
+    name: bittide-instances synthesis matrix generation
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Generate matrix
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
+            cp .github/synthesis/all.json checks.json
+          else
+            cp .github/synthesis/staging.json checks.json
+          fi
+
+      - name: Set test matrix
+        id: set-matrix
+        run: |
+          echo "check_matrix=$(cat checks.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
+
+    outputs:
+      check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
+
   bittide-instances-hdl:
     name: bittide-instances synthesis
     runs-on: self-hosted
@@ -631,23 +669,12 @@ jobs:
     env:
       SYNTHESIS_PART: xcku040-ffva1156-2-e
       # SYNTHESIS_PART: xcku035-ffva1156-2-e
-    needs: [build, lint]
+    needs: [build, lint, bittide-instances-hdl-matrix]
 
     strategy:
       matrix:
-        target:
-          - {top: callisto3,                   stage: netlist}
-          - {top: clockControlDemo0,           stage: netlist}
-          - {top: elasticBuffer5,              stage: netlist}
-          - {top: gatherUnit1K,                stage: hdl}
-          - {top: gatherUnit1KReducedPins,     stage: netlist}
-          - {top: safeDffSynchronizer,         stage: netlist}
-          - {top: scatterUnit1K,               stage: hdl}
-          - {top: scatterUnit1KReducedPins,    stage: netlist}
-          - {top: si5391Spi,                   stage: netlist}
-          - {top: stabilityChecker_3_1M,       stage: netlist}
-          - {top: switchCalendar1k,            stage: hdl}
-          - {top: switchCalendar1kReducedPins, stage: netlist}
+        target: ${{ fromJson(needs.bittide-instances-hdl-matrix.outputs.check_matrix) }}
+      fail-fast: false
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
@@ -697,7 +724,7 @@ jobs:
 
   vex-riscv:
     name: VexRiscv integration
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -752,7 +779,7 @@ jobs:
 
   vex-riscv-build-integration-tests:
     name: VexRiscv build integration tests
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -798,6 +825,7 @@ jobs:
     if: always()
     needs: [
         bittide-instances-doctests,
+        bittide-instances-hdl-matrix,
         bittide-instances-hdl,
         bittide-instances-unittests,
         bittide-tests,
