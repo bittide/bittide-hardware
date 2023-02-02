@@ -91,3 +91,10 @@ log
 vivado_*
 tight_setup_hold_pins.txt
 .Xil
+
+# RiscV formal
+checks.json
+
+# Docker builds
+.github/docker/*.nix
+.github/docker/nix
