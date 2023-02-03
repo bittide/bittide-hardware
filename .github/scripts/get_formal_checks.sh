@@ -6,7 +6,7 @@
 
 set -exuo pipefail
 IFS=$'\n\t'
-HERE=$(dirname "$0")
+HERE=$(realpath $(dirname "$0"))
 ROOT=$(git rev-parse --show-toplevel)
 
 cd "${HERE}"

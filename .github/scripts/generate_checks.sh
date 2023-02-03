@@ -6,8 +6,8 @@
 
 set -exuo pipefail
 IFS=$'\n\t'
-HERE=$(dirname "$0")
-ROOT=$(git rev-parse --show-toplevel)
+HERE=$(realpath $(dirname "$0"))
+ROOT="${HERE}/../.."
 
 cd "${ROOT}"
 rm -rf riscv-formal/cores/contranomy
