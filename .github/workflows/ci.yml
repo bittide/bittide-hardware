@@ -299,14 +299,7 @@ jobs:
     name: RISC-V Formal checks
     needs: contranomy-hdl
 
-    # We outsource these jobs to public runners, because the formal checks
-    # trigger a massive number of jobs - many more than runners on our local
-    # systems.
-    #
-    # Note: most of the time this shouldn't be triggered - only if contranomy
-    #       or dependencies change.
-    #
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
