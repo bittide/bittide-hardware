@@ -1,0 +1,14 @@
+[
+  {"top": "callisto3",                   "stage": "netlist"},
+  {"top": "clockControlDemo0",           "stage": "netlist"},
+  {"top": "elasticBuffer5",              "stage": "netlist"},
+  {"top": "gatherUnit1K",                "stage": "hdl"    },
+  {"top": "gatherUnit1KReducedPins",     "stage": "netlist"},
+  {"top": "safeDffSynchronizer",         "stage": "netlist"},
+  {"top": "scatterUnit1K",               "stage": "hdl"    },
+  {"top": "scatterUnit1KReducedPins",    "stage": "netlist"},
+  {"top": "si5391Spi",                   "stage": "netlist"},
+  {"top": "stabilityChecker_3_1M",       "stage": "netlist"},
+  {"top": "switchCalendar1k",            "stage": "hdl"    },
+  {"top": "switchCalendar1kReducedPins", "stage": "netlist"}
+]
