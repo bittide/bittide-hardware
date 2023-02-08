@@ -44,7 +44,7 @@ competitors. The properties underlying bittide support the
 orchestration and composition of microservices into a system without
 queueing delays.
 
-_Bittide is part of Google Resarch, and is not an official Google product._
+_Bittide is part of Google Research, and is not an official Google product._
 
 # Licence
 
