@@ -14,6 +14,7 @@ import qualified Data.List as L
 import Paths_contranomy_sim
 import System.Environment (getArgs)
 import System.Exit
+import Numeric
 
 main :: IO ()
 main = do
@@ -34,7 +35,11 @@ main = do
       deviceTree = fmap pack . BS.unpack $ deviceTreeRaw <> BS.pack padding
       deviceTreeMap = I.fromAscList (L.zip [fdtAddr ..] deviceTree)
 
-  let dMem' = dMem `I.union` deviceTreeMap
+  let
+    dMem' = I.unionWithKey (\k _ _ ->
+      error $ "SimContranomy: Overlapping elements in data memory and device tree at address 0x"
+      <> showHex k "")
+      dMem deviceTreeMap
 
   -- Hook up to print-debugging at uts designated address
   hookPrint characterDeviceAddr $

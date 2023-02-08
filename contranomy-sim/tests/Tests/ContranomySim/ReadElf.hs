@@ -14,6 +14,7 @@ import           Test.Tasty.HUnit      (assertEqual, testCase, (@?=))
 import           ContranomySim.ReadElf (readElf)
 import           Data.Elf
 import           Data.IntMap           as I
+import           Numeric
 
 
 riscvElfEmpty :: Elf
@@ -268,8 +269,12 @@ tests = testGroup "Read ELF Tests"
       let (entry, iMem, dMem) = readElf elf
 
       let iDataMap = I.fromList (L.zip [iStart..] (fromIntegral <$> iData))
-      let dDataMap = I.fromList (L.zip [dStart..] (fromIntegral <$> dData))
-                      `I.union` I.fromList (L.zip [bssStart..] (L.replicate (fromIntegral bssLen) 0))
+      let
+        dDataMap = I.unionWithKey (\k _ _ -> error $
+          "Tests.ContranomySim.ReadElf : Overlapping elements in data memory and device tree at address 0x"
+          <> showHex k "")
+          (I.fromList (L.zip [dStart..] (fromIntegral <$> dData)))
+          (I.fromList (L.zip [bssStart..] (L.replicate (fromIntegral bssLen) 0)))
 
       elfEntry elf @?= fromIntegral entry
       assertEqual "instruction memory contains instruction data" iDataMap (I.intersection iMem iDataMap)
