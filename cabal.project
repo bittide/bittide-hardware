@@ -65,7 +65,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-protocols.git
-  tag: 3f3cbb1cec3153b15142d796801eb740961773c8
+  tag: cce5c068bcf95dcd92797d0f284aed0b13eb9e3b
 
 source-repository-package
   type: git

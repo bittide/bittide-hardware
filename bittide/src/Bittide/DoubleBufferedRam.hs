@@ -250,12 +250,11 @@ wbStorage' initContent wbIn = delayControls wbIn wbOut
 
     -- It takes a single cycle to lookup elements in a block ram. We can therfore
     -- only process a request every other clock cycle.
-    ack = (acknowledge <$> s2m0) .&&. (not <$> delayedAck) .&&. inCycle
+    ack = (acknowledge <$> s2m0) .&&. (not <$> err1) .&&. (not <$> delayedAck) .&&. inCycle
     err1 = (err <$> s2m0) .&&. inCycle
     delayedAck = register False ack
-    delayedErr1 = register False err1
     s2m1 = (\wb newAck newErr-> wb{acknowledge = newAck, err = newErr})
-      <$> s2m0 <*> delayedAck <*> delayedErr1
+      <$> s2m0 <*> delayedAck <*> err1
 
 -- | The double buffered Ram component is a memory component that contains two buffers
 -- and enables the user to write to one buffer and read from the other. 'AorB'

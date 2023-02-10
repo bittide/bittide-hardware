@@ -36,11 +36,13 @@ import Bittide.DoubleBufferedRam
 import Tests.Shared
 
 import qualified Clash.Sized.Vector as V
+import qualified Data.IntMap as I
 import qualified Data.List as L
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Prelude as P
+import Numeric (showHex)
 
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRam group"
@@ -72,6 +74,10 @@ ramGroup = testGroup "DoubleBufferedRam group"
       "wbStorageSpecCompliance" wbStorageSpecCompliance
   , testPropertyNamed "Test whether wbStorage acts the same its Behavioral model"
       "wbStorageBehavior" wbStorageBehavior
+  , testPropertyNamed "Test whether wbStorage reports errors at out-of-bounds accesses"
+      "wbStorageRangeErrors" wbStorageRangeErrors
+  , testPropertyNamed "Test whether wbStorage acts the same its Behavioral model (clash-protocols)"
+      "wbStorageProtocolsModel" wbStorageProtocolsModel
   ]
 
 genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
@@ -647,25 +653,31 @@ wbStorageSpecCompliance = property $ do
     go :: forall v m . (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
     go SNat = do
       content <- forAll $ genNonEmptyVec @_ @v (genDefinedBitVector @32)
-      withClockResetEnable clockGen resetGen enableGen $
-        wishbonePropWithModel @System
-          defExpectOptions
-          (\_ _ () -> Right ())
-          (wbStorage (Reloadable $ Vec content))
-          genRequests
-          ()
+      wcre $ wishbonePropWithModel @System
+        defExpectOptions
+        (\_ _ () -> Right ())
+        (wbStorage (Reloadable $ Vec content))
+        (genRequests (snatToNum (SNat @v)))
+        ()
 
-    genRequests = Gen.list (Range.linear 0 32)
-      (genWishboneTransfer @32 (genDefinedBitVector @32))
+    genRequests size = Gen.list (Range.linear 0 32)
+      (genWishboneTransfer @32 size (genDefinedBitVector @32))
 
     genWishboneTransfer ::
       (KnownNat addressWidth, KnownNat (BitSize a)) =>
+      Int -> -- ^ size
       Gen a ->
       Gen (WishboneMasterRequest addressWidth a)
-    genWishboneTransfer genA =
+    genWishboneTransfer size genA =
+      let
+        validAddr = (2*) . fromIntegral <$> Gen.enum 0 (size * 2)
+        invalidAddr = fromIntegral <$> Gen.enum (size * 4) (size * 8)
+      in
       Gen.choice
-        [ Read <$> genDefinedBitVector <*> genDefinedBitVector ,
-          Write <$> genDefinedBitVector <*> genDefinedBitVector <*> genA
+        [ Read <$> validAddr <*> pure (succ 0)
+        , Write <$> validAddr <*> pure (succ 0) <*> genA
+        , Read <$> invalidAddr <*> pure (succ 0)
+        , Write <$> invalidAddr <*> pure (succ 0) <*> genA
         ]
 
 deriving instance ShowX a => ShowX (RamOp i a)
@@ -709,7 +721,11 @@ wbStorageBehavior = property $ do
 
       goldenInput    = fromRight RamNoOp <$> generatedInput
       flatInput      = either ramOpToWb ramOpToWb <$> generatedInput
-      topEntityInput = L.concatMap (\a ->[a, a, emptyWishboneM2S]) flatInput
+      topEntityInput =
+        L.concatMap (\case
+            (Left _, a) -> [a, emptyWishboneM2S]
+            (Right _, a) -> [a, a, emptyWishboneM2S] ) $
+          L.zip generatedInput flatInput
 
       simGolden = simulateN @System (P.length goldenInput) goldenRef goldenInput
       simOut = simulateN (P.length topEntityInput) topEntity topEntityInput
@@ -759,3 +775,124 @@ wbStorageBehaviorModel storedList (ramOp :- ramOps)
     RamWrite ((`div` 2) -> i) a -> (i, Just (i, a))
    where
     addrUndef = deepErrorX "wbStorageBehavior: readAddr undefined."
+
+wbStorageRangeErrors :: Property
+wbStorageRangeErrors = property $ do
+  nat <- forAll $ Gen.enum 1 32
+  case TN.someNatVal (nat - 1) of
+    SomeNat (succSNat . snatProxy -> n) -> go n
+
+  where
+    go :: forall v m . (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
+    go SNat = do
+      content <- forAll $ genNonEmptyVec @_ @v (genDefinedBitVector @32)
+      wcre $ wishbonePropWithModel @System
+        defExpectOptions
+        model
+        (wbStorage (Reloadable $ Vec content))
+        (genRequests (snatToNum (SNat @v)))
+        (snatToInteger (SNat @v) * 4)
+
+    genRequests size = Gen.list (Range.linear 0 32)
+      (genWishboneTransfer @32 size (genDefinedBitVector @32))
+
+    genWishboneTransfer ::
+      (KnownNat addressWidth, KnownNat (BitSize a)) =>
+      Int -> -- ^ size
+      Gen a ->
+      Gen (WishboneMasterRequest addressWidth a)
+    genWishboneTransfer size genA =
+      let
+        validAddr = (2*) . fromIntegral <$> Gen.enum 0 (size * 2 - 1)
+        invalidAddr = fromIntegral <$> Gen.enum (size * 4) (size * 8)
+      in
+      Gen.choice
+        [ Read <$> validAddr <*> pure maxBound
+        , Write <$> validAddr <*> pure maxBound <*> genA
+        , Read <$> invalidAddr <*> pure maxBound
+        , Write <$> invalidAddr <*> pure maxBound <*> genA
+        ]
+
+
+    model (Read addr _) s2m@WishboneS2M{..} st0
+      | addr >= fromIntegral st0 && err = Right st0
+      | addr >= fromIntegral st0 && not err =
+          Left $ "address out of range on read should error: "
+            <> "addr: " <> showHex addr "" <> ", size " <> showHex st0 ""
+      | acknowledge = Right st0
+      | otherwise =
+          Left $ "An in-range read should be ACK'd "
+            <> "addr: " <> showHex addr "" <> ", size " <> showHex st0 ""
+            <> " - " <> show s2m
+    model (Write addr _ _) s2m@WishboneS2M{..} st0
+      | addr >= fromIntegral st0 && err = Right st0
+      | addr >= fromIntegral st0 && not err =
+        Left $ "address out of range on write should error: "
+            <> "addr: " <> showHex addr "" <> ", size " <> showHex st0 ""
+      | acknowledge = Right st0
+      | otherwise =
+          Left $ "An in-range write should be ACK'd "
+            <> "addr: " <> showHex addr "" <> ", size " <> showHex st0 ""
+            <> " - " <> show s2m
+
+
+
+wbStorageProtocolsModel :: Property
+wbStorageProtocolsModel = property $ do
+  nat <- forAll $ Gen.enum 1 32
+  case TN.someNatVal (nat - 1) of
+    SomeNat (succSNat . snatProxy -> n) -> go n
+
+  where
+    go :: forall v m . (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
+    go SNat = do
+      content <- forAll $ genNonEmptyVec @_ @v (genDefinedBitVector @32)
+      wcre $ wishbonePropWithModel @System
+        defExpectOptions
+        model
+        (wbStorage (Reloadable $ Vec content))
+        (genRequests (snatToNum (SNat @v)))
+        (I.fromAscList $ L.zip [0..] (toList content))
+
+    genRequests size = Gen.list (Range.linear 0 32)
+      (genWishboneTransfer @32 size (genDefinedBitVector @32))
+
+    genWishboneTransfer ::
+      (KnownNat addressWidth, KnownNat (BitSize a)) =>
+      Int -> -- ^ size
+      Gen a ->
+      Gen (WishboneMasterRequest addressWidth a)
+    genWishboneTransfer size genA =
+      let
+        validAddr = (4*) . fromIntegral <$> Gen.enum 0 (size - 1)
+      in
+      -- only generating _valid_ requests here
+      Gen.choice
+        [ Read <$> validAddr <*> pure maxBound
+        , Write <$> validAddr <*> pure maxBound <*> genA
+        ]
+
+    model (Read addr _) s2m@WishboneS2M{..} st0
+      | err || retry =
+        Left $ "An in-range read should be ACK'd "
+            <> "addr: " <> showHex addr "" <> ", size " <> showHex (I.size st0 * 4) ""
+            <> " - " <> show s2m
+      | otherwise =
+        let val = st0 I.! modelAddr in
+          if val == readData then
+            Right st0
+          else
+            Left $ "Read from model results in different value. Model: "
+                    <> showHex val "" <> ", Circuit: " <> showHex readData ""
+      where
+        modelAddr = fromIntegral $ addr `div` 4
+
+    model (Write addr _ wr) s2m@WishboneS2M{..} st0
+      | err || retry =
+        Left $ "An in-range write should be ACK'd "
+            <> "addr: " <> showHex addr "" <> ", size " <> showHex (I.size st0 * 4) ""
+            <> " - " <> show s2m
+      | otherwise =
+        Right $ I.insert modelAddr wr st0
+      where
+        modelAddr = fromIntegral $ addr `div` 4
