@@ -271,7 +271,7 @@ tests = testGroup "Read ELF Tests"
       let iDataMap = I.fromList (L.zip [iStart..] (fromIntegral <$> iData))
       let
         dDataMap = I.unionWithKey (\k _ _ -> error $
-          "Tests.ContranomySim.ReadElf : Overlapping elements in data memory and device tree at address 0x"
+          "Tests.ContranomySim.ReadElf : Overlapping elements in `.data` and `.bss` memory at address 0x"
           <> showHex k "")
           (I.fromList (L.zip [dStart..] (fromIntegral <$> dData)))
           (I.fromList (L.zip [bssStart..] (L.replicate (fromIntegral bssLen) 0)))
