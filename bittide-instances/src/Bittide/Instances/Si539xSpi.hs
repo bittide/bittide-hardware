@@ -40,13 +40,21 @@ si5391Spi clk rst extOp miso = withClockResetEnable clk rst enableGen $
 
 makeTopEntity 'si5391Spi
 
--- | An instance that combines the following components
--- * 'Si539xSpi' core to configure the @Si5395J@ chip over SPI and enable further SPI communication
--- * a `resettableXilinxElasticBuffer` to obtain the datacounts for `callisto`.
--- * `callistoClockControl` to run the control algorithm that adjusts the clock frequency.
--- * A `spiFrequencyController` to convert `callisto`s `SpeedChange`s into `RegisterOperation`s
--- for the `Si539xSpi`.
--- * A `stabilityChecker` to indicate when the clocks are considered to be synchronized.
+-- | An instance that combines the following components:
+--
+--     * 'Si539xSpi' core to configure the @Si5395J@ chip over SPI and enable
+--       further SPI communication
+--
+--     * a `resettableXilinxElasticBuffer` to obtain the datacounts for `callisto`.
+--
+--     * `callistoClockControl` to run the control algorithm that adjusts the
+--       clock frequency.
+--
+--     * A `spiFrequencyController` to convert `callisto`s `SpeedChange`s into
+--      `RegisterOperation`s for the `Si539xSpi`.
+--
+--     * A `stabilityChecker` to indicate when the clocks are considered to be
+--       synchronized.
 callistoSpi ::
   "CLK_125MHZ"      ::: Clock Basic125 ->
   "clkRecovered"    ::: Clock Internal ->
@@ -67,7 +75,9 @@ callistoSpi ::
 callistoSpi clk125 clkRecovered clkControlled rst125 locked miso =
   (spiBusy, configState .==. pure Finished, ebMode .==. pure Pass, isStable, spiOut)
  where
-  -- Spi core
+  -- Spi core, the maximum clock period of 75 Nanoseconds leads to a nice 5 to 1 clock
+  -- divider at 125MHz, resulting in a SPI clock frequencu of 12.5MHz. The
+  -- SPI core _should_ be able to support a SPI clock frequency of 20MHz.
   (_, spiBusy, configState, spiOut) = withClockResetEnable clk125 configReset enableGen
     si539xSpi testConfig6_200_5_20 (SNat @(Nanoseconds 75)) freqOp miso
 
