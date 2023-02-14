@@ -94,7 +94,7 @@ callistoSpi clk125 clkRecovered clkControlled rst125 locked miso =
 
   -- Produce a SpeedChange based on the elastic buffer's datacount.
   speedChange200 = callistoClockControl @1 @12 clkControlled clockControlReset enableGen
-    clockConfig (bufferOccupancy :> Nil)
+    clockConfig (pure maxBound) (bufferOccupancy :> Nil)
 
   -- ALl circuitry in the controlled domain should be in reset while the the PLL is not locked.
   rstControlled = unsafeFromLowPolarity locked
