@@ -25,7 +25,7 @@ import           Paths_contranomy_sim
 import           ContranomySim.DeviceTreeCompiler
 import           ContranomySim.MemoryMapConsts
 import           System.Exit (exitFailure)
-import Numeric
+import           Numeric
 
 -- | Load an elf binary, inspect the debug output
 elfExpect :: (FilePath -> IO ()) -- ^ Action to place the @.elf@ file in the given 'FilePath'
