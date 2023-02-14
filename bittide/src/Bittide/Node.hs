@@ -61,7 +61,7 @@ data NodeConfig externalLinks gppes where
     ( KnownNat switchBusses
     , switchBusses ~ (1 + BussesPerSwitchLink * (externalLinks + (gppes + 1)))
     , KnownNat nmuBusses
-    , nmuBusses ~ ((BussesPerGppe * gppes) + switchBusses + 9)
+    , nmuBusses ~ ((BussesPerGppe * gppes) + switchBusses + 8)
     , KnownNat nmuRemBusWidth
     , nmuRemBusWidth ~ (32 - CLog 2 nmuBusses)) =>
     -- | Configuration for the 'node's 'managementUnit'.
@@ -78,16 +78,14 @@ node ::
   ( HiddenClockResetEnable dom, KnownNat extLinks, KnownNat gppes) =>
   NodeConfig extLinks gppes ->
   Vec extLinks (Signal dom (DataLink 64)) ->
-  ( Vec extLinks (Signal dom (DataLink 64))
-  , Vec (1 + gppes) (Signal dom (Maybe (BitVector 4, Bytes 4))))
-node (NodeConfig nmuConfig switchConfig gppeConfigs) linksIn =
-  (linksOut, mnuExposedWrite :> gppeExposedWrites)
+  Vec extLinks (Signal dom (DataLink 64))
+node (NodeConfig nmuConfig switchConfig gppeConfigs) linksIn = linksOut
  where
   (switchOut, swS2Ms) =
     mkSwitch switchConfig swCalM2S swRxM2Ss swTxM2Ss switchIn
   switchIn = nmuToSwitch :> pesToSwitch ++ linksIn
   (splitAtI -> (switchToNmu :> switchToPes, linksOut)) = switchOut
-  (nmuToSwitch, nmuM2Ss, mnuExposedWrite) = managementUnit nmuConfig switchToNmu nmuS2Ms
+  (nmuToSwitch, nmuM2Ss) = managementUnit nmuConfig switchToNmu nmuS2Ms
   (swM2Ss, peM2Ss) = splitAtI nmuM2Ss
 
   (swCalM2S :> swRxM2Ss, swTxM2Ss) = splitAtI swM2Ss
@@ -96,8 +94,8 @@ node (NodeConfig nmuConfig switchConfig gppeConfigs) linksIn =
 
   nmuS2Ms = swCalS2M :> (swRxS2Ms ++ swTxS2Ms ++ peS2Ms)
 
-  (pesToSwitch, concat -> peS2Ms, gppeExposedWrites) =
-    unzip3 $ gppe <$> zip3 gppeConfigs switchToPes (unconcatI peM2Ss)
+  (pesToSwitch, concat -> peS2Ms) =
+    unzip $ gppe <$> zip3 gppeConfigs switchToPes (unconcatI peM2Ss)
 
 -- | Configuration for the 'managementUnit' and its 'Bittide.Link'.
 -- The management unit contains the 4 wishbone busses that each pe has
@@ -107,10 +105,10 @@ data ManagementConfig nodeBusses where
   ManagementConfig ::
     (KnownNat nodeBusses) =>
     -- | Configuration for the incoming and outgoing 'Bittide.Link'.
-    LinkConfig 4 (32 - CLog 2 (nodeBusses + 9)) ->
+    LinkConfig 4 (32 - CLog 2 (nodeBusses + 8)) ->
     -- | Configuration for the 'managementUnit's 'processingElement'. Controls 8 local busses
     -- and all incoming busses from 'calendar's, 'rxUnit's and 'txUnit's.
-    PeConfig (nodeBusses + 9) ->
+    PeConfig (nodeBusses + 8) ->
     ManagementConfig nodeBusses
 
 -- | Configuration for a general purpose processing element together with its link to the
@@ -121,7 +119,7 @@ data GppeConfig nmuRemBusWidth where
     -- | Configuration for a 'gppe's 'processingElement', which statically
     -- has four external busses connected to the instruction memory, data memory
     -- , 'scatterUnitWb' and 'gatherUnitWb'.
-    PeConfig 5 ->
+    PeConfig 4 ->
     GppeConfig nmuRemBusWidth
 
 {-# NOINLINE gppe #-}
@@ -147,14 +145,13 @@ gppe ::
   -- , Outgoing @Vector@ of slave busses
   -- )
   ( Signal dom (DataLink 64)
-  , Vec 4 (Signal dom (WishboneS2M (Bytes 4)))
-  , Signal dom (Maybe (BitVector 4, Bytes 4)))
+  , Vec 4 (Signal dom (WishboneS2M (Bytes 4))))
 gppe (GppeConfig linkConfig peConfig, linkIn, splitAtI -> (nmuM2S0, nmuM2S1)) =
-  (linkOut, nmuS2M0 ++ nmuS2M1, exposedWrite)
+  (linkOut, nmuS2M0 ++ nmuS2M1)
  where
   (suS2M, nmuS2M0) = linkToPe linkConfig linkIn sc suM2S nmuM2S0
   (linkOut, guS2M, nmuS2M1) = peToLink linkConfig sc guM2S nmuM2S1
-  (suM2S :> guM2S :> Nil, exposedWrite) = processingElement peConfig (suS2M :> guS2M :> Nil)
+  (suM2S :> guM2S :> Nil) = processingElement peConfig (suS2M :> guS2M :> Nil)
   sc = sequenceCounter
 
 {-# NOINLINE managementUnit #-}
@@ -166,7 +163,7 @@ gppe (GppeConfig linkConfig peConfig, linkIn, splitAtI -> (nmuM2S0, nmuM2S1)) =
 -- 'WishhboneM2S' signals.
 managementUnit ::
   forall dom nodeBusses .
-  (HiddenClockResetEnable dom, KnownNat nodeBusses, CLog 2 (nodeBusses + 9) <= 30) =>
+  (HiddenClockResetEnable dom, KnownNat nodeBusses, CLog 2 (nodeBusses + 8) <= 30) =>
   -- | Configures all local parameters.
   ManagementConfig nodeBusses ->
   -- | Incoming 'Bittide.Link'.
@@ -177,15 +174,14 @@ managementUnit ::
   -- ( Outgoing 'Bittide.Link'
   -- , Outgoing @Vector@ of master busses)
   ( Signal dom (DataLink 64)
-  , Vec nodeBusses (Signal dom (WishboneM2S (32 - CLog 2 (nodeBusses + 9)) 4 (Bytes 4)))
-  , Signal dom (Maybe (BitVector 4, Bytes 4)))
+  , Vec nodeBusses (Signal dom (WishboneM2S (32 - CLog 2 (nodeBusses + 8)) 4 (Bytes 4))))
 managementUnit (ManagementConfig linkConfig peConfig) linkIn nodeS2Ms =
-  (linkOut, nodeM2Ss, exposedWrite)
+  (linkOut, nodeM2Ss)
  where
   (suS2M, nmuS2M0) = linkToPe linkConfig linkIn sc suM2S nmuM2S0
   (linkOut, guS2M, nmuS2M1) = peToLink linkConfig sc guM2S nmuM2S1
   (suM2S :> guM2S :> rest) = nmuM2Ss
   (splitAtI -> (nmuM2S0, nmuM2S1), nodeM2Ss) = splitAtI rest
-  (nmuM2Ss, exposedWrite) = processingElement peConfig nmuS2Ms
+  nmuM2Ss = processingElement peConfig nmuS2Ms
   nmuS2Ms = suS2M :> guS2M :> nmuS2M0 ++ nmuS2M1 ++ nodeS2Ms
   sc = sequenceCounter
