@@ -201,15 +201,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "firmware-tests"
-version = "0.1.0"
-dependencies = [
- "bittide-sys",
- "riscv 0.10.1",
- "riscv-rt",
-]
-
-[[package]]
 name = "flate2"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -289,6 +280,17 @@ checksum = "10a35a97730320ffe8e2d410b5d3b69279b98d2c14bdb8b70ea89ecf7888d41e"
 dependencies = [
  "autocfg",
  "hashbrown 0.12.3",
+]
+
+[[package]]
+name = "instance-demo-test-program"
+version = "0.1.0"
+dependencies = [
+ "bittide-sys",
+ "heapless",
+ "panic-halt",
+ "riscv 0.10.1",
+ "riscv-rt",
 ]
 
 [[package]]
@@ -731,8 +733,10 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 name = "vex-test-programs"
 version = "0.1.0"
 dependencies = [
+ "bittide-sys",
  "heapless",
  "panic-halt",
+ "riscv 0.10.1",
  "riscv-rt",
 ]
 

@@ -35,8 +35,8 @@ simpleNodeConfig =
   switchCal = CalendarConfig (SNat @1024) (switchEntry :> Nil) (switchEntry :> Nil)
   linkConfig = LinkConfig preamble' (ScatterConfig sgConfig) (GatherConfig sgConfig)
   sgConfig = CalendarConfig (SNat @1024) (sgEntry :> Nil) (sgEntry :> Nil)
-  peConfig = PeConfig memMapPe (Undefined @8192) (Undefined @8192) 0
-  nmuConfig = PeConfig memMapNmu (Undefined @8192) (Undefined @8192) 0
+  peConfig = PeConfig memMapPe (Undefined @8192) (Undefined @8192)
+  nmuConfig = PeConfig memMapNmu (Undefined @8192) (Undefined @8192)
   memMapPe = iterateI (+0x1000) 0
   memMapNmu = iterateI (+0x1000) 0
   preamble' = 0xDEADBEEFA5A5A5A5FACADE :: BitVector 96
@@ -151,7 +151,7 @@ gppe (GppeConfig linkConfig peConfig, linkIn, splitAtI -> (nmuM2S0, nmuM2S1)) =
  where
   (suS2M, nmuS2M0) = linkToPe linkConfig linkIn sc suM2S nmuM2S0
   (linkOut, guS2M, nmuS2M1) = peToLink linkConfig sc guM2S nmuM2S1
-  (suM2S :> guM2S :> Nil) = processingElement peConfig (suS2M :> guS2M :> Nil)
+  (suM2S :> guM2S :> Nil) = vexRiscvProcessingElement peConfig (suS2M :> guS2M :> Nil)
   sc = sequenceCounter
 
 {-# NOINLINE managementUnit #-}
@@ -182,6 +182,6 @@ managementUnit (ManagementConfig linkConfig peConfig) linkIn nodeS2Ms =
   (linkOut, guS2M, nmuS2M1) = peToLink linkConfig sc guM2S nmuM2S1
   (suM2S :> guM2S :> rest) = nmuM2Ss
   (splitAtI -> (nmuM2S0, nmuM2S1), nodeM2Ss) = splitAtI rest
-  nmuM2Ss = processingElement peConfig nmuS2Ms
+  nmuM2Ss = vexRiscvProcessingElement peConfig nmuS2Ms
   nmuS2Ms = suS2M :> guS2M :> nmuS2M0 ++ nmuS2M1 ++ nodeS2Ms
   sc = sequenceCounter

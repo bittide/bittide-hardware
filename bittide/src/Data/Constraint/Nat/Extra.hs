@@ -58,7 +58,7 @@ leMaxLeft = unsafeCoerce (Dict :: Dict ())
 
 -- | If @c <= a@ and @c <= b@, then @c <= Max a b@
 lessThanMax :: forall a b c . (c <= a, c <= b) => Dict (c <= Max a b)
-lessThanMax = unsafeCoerce (Dict :: Dict ())
+lessThanMax = unsafeCoerce (Dict :: Dict (a ~ a))
 
 -- | Postulates that a part is less than or equal to a sum parts, in context
 -- of 'Max's right argument.

@@ -8,6 +8,7 @@
   {"top": "scatterUnit1K",               "stage": "hdl"    },
   {"top": "scatterUnit1KReducedPins",    "stage": "netlist"},
   {"top": "si5391Spi",                   "stage": "netlist"},
+  {"top": "vexRiscv",                    "stage": "netlist"},
   {"top": "stabilityChecker_3_1M",       "stage": "netlist"},
   {"top": "switchCalendar1k",            "stage": "hdl"    },
   {"top": "switchCalendar1kReducedPins", "stage": "netlist"}

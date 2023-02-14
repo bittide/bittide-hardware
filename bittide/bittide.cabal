@@ -90,9 +90,14 @@ library
     clash-protocols,
     constraints >= 0.13.3 && < 0.15,
     containers >= 0.4.0 && < 0.7,
+    vex-riscv,
     contranomy,
     random,
     string-interpolate ^>= 0.3,
+    process,
+    directory,
+    elf,
+    template-haskell,
   exposed-modules:
     Bittide.Arithmetic.Ppm
     Bittide.Arithmetic.Time
@@ -109,6 +114,9 @@ library
     Bittide.Link
     Bittide.Node
     Bittide.ProcessingElement
+    Bittide.ProcessingElement.DeviceTreeCompiler
+    Bittide.ProcessingElement.ReadElf
+    Bittide.ProcessingElement.Util
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Switch

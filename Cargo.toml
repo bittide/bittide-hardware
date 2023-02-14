@@ -16,8 +16,9 @@ members = [
 
   "firmware/examples/fdt-read",
   "firmware/examples/hello",
-  "firmware/tests",
 
-  "vex-riscv/vex-test-programs",
+  "vex-riscv-sim/vex-test-programs",
+
+  "bittide-instances/demo-program",
 ]
 resolver = "2"

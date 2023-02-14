@@ -10,6 +10,7 @@ packages:
   contranomy-sim/
   elastic-buffer-sim/
   vex-riscv/
+  vex-riscv-sim/
 
 write-ghc-environment-files: always
 
@@ -65,7 +66,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-protocols.git
-  tag: cce5c068bcf95dcd92797d0f284aed0b13eb9e3b
+  tag: f7ea04834d396669fe4ef404b03541601a68b136
 
 source-repository-package
   type: git

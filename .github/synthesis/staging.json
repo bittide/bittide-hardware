@@ -1,1 +1,4 @@
-[{"top": "callisto3", "stage": "netlist"}]
+[
+  {"top": "callisto3", "stage": "netlist"},
+  {"top": "vexRiscv",  "stage": "netlist"}
+]

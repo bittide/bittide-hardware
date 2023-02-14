@@ -10,6 +10,7 @@ Copyright:           Copyright © 2022 Google LLC
 data-files:
   tests/reports/*.rpt
   tests/reports/golden/*.rpt
+  device-trees/hello.dts
 
 common common-options
   default-extensions:
@@ -97,6 +98,8 @@ library
     Bittide.Instances.ElasticBuffer
     Bittide.Instances.Hacks
     Bittide.Instances.MVPs
+    Bittide.Instances.ProcessingElementContranomy
+    Bittide.Instances.ProcessingElementVexRiscv
     Bittide.Instances.ScatterGather
     Bittide.Instances.Si539xSpi
     Bittide.Instances.StabilityChecker

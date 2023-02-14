@@ -80,7 +80,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -145,7 +145,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -197,7 +197,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -219,204 +219,6 @@ jobs:
           cabal run elastic-buffer-sim:unittests
 
 
-  contranomy-tests:
-    name: Contranomy tests
-    runs-on: self-hosted
-    defaults:
-      run:
-        shell: git-nix-shell {0} --pure
-    needs: [build, lint]
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project.simulation cabal.project.local
-
-      - name: Update Cabal index info
-        run: |
-          cabal update
-          cabal freeze
-
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cabal-nix/store
-
-          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-3-
-          fail-on-cache-miss: true
-
-      - name: Run unittests
-        run: |
-          cabal run contranomy:unittests
-
-
-  contranomy-hdl:
-    name: Generate Contranomy HDL
-    runs-on: self-hosted
-    defaults:
-      run:
-        shell: git-nix-shell {0} --keep GITHUB_OUTPUT --pure
-    needs: [build, lint]
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project.formal cabal.project.local
-
-      - name: Update Cabal index info
-        run: |
-          cabal update
-          cabal freeze
-
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cabal-nix/store
-
-          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-3-
-          fail-on-cache-miss: true
-
-      - name: Build Contranomy
-        run: |
-          cabal run contranomy:clash -- --version
-          cat dist-newstyle/cache/plan.json | python3 -m json.tool | grep -C 1 riscv-altopts
-
-      - name: Generate HDL
-        run: |
-          cd contranomy
-          cabal run -- contranomy:clash --verilog -main-is contranomyRVFITE Contranomy
-
-      - name: Archive HDL
-        run: |
-          tar -c -f contranomy-hdl.tar contranomy/verilog
-
-      - name: Upload Contranomy HDL
-        uses: actions/upload-artifact@v3
-        with:
-          name: contranomy-hdl
-          path: contranomy-hdl.tar
-
-      - name: Get test matrix
-        run: |
-          echo '["formal-checks-disabled"]' > checks.json
-
-      - name: Set test matrix
-        id: set-matrix
-        run: |
-          echo "check_matrix=$(cat checks.json)" >> "$GITHUB_OUTPUT"
-
-    outputs:
-      check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
-
-  contranomy-formal-tests:
-    name: RISC-V Formal checks
-    needs: contranomy-hdl
-
-    runs-on: self-hosted
-    defaults:
-      run:
-        shell: git-nix-shell {0} --pure
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
-
-    strategy:
-      matrix:
-        check: ${{ fromJson(needs.contranomy-hdl.outputs.check_matrix) }}
-      fail-fast: false
-
-    steps:
-      - name: Checkout
-        if: matrix.check != 'formal-checks-disabled'
-        uses: actions/checkout@v3
-
-      - name: Download Contranomy HDL
-        if: matrix.check != 'formal-checks-disabled'
-        uses: actions/download-artifact@v3
-        with:
-          name: contranomy-hdl
-
-      - name: Extract HDL
-        if: matrix.check != 'formal-checks-disabled'
-        run: |
-          tar -x -f contranomy-hdl.tar
-
-      - name: Verify ${{ matrix.check }}
-        if: matrix.check != 'formal-checks-disabled'
-        run: |
-          .github/scripts/run_riscv_formal_check.sh ${{ matrix.check }}
-
-      - name: Verification failed, uploading results
-        uses: actions/upload-artifact@v3
-        if: failure()
-        with:
-          name: verify-${{ matrix.check }}-failed
-          path: riscv-formal/cores/contranomy/checks/${{ matrix.check }}
-
-  contranomy-sim-tests:
-    name: ContranomySim tests and firmware integration tests
-    runs-on: self-hosted
-    defaults:
-      run:
-        shell: git-nix-shell {0} --pure
-    needs: [build, lint, firmware-build-integration-tests]
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project.simulation cabal.project.local
-
-      - name: Update Cabal index info
-        run: |
-          cabal update
-          cabal freeze
-
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cabal-nix/store
-
-          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
-          restore-keys: packages-cachebust-3-
-          fail-on-cache-miss: true
-
-      - name: Download Firmware Integration Tests
-        uses: actions/download-artifact@v3
-        with:
-          name: firmware-integration-tests
-
-      - name: Extract Firmware Integration Tests
-        run: |
-          tar -x -f firmware-integration-tests.tar
-
-      - name: Run unittests
-        run: |
-          cabal run contranomy-sim:unittests
-
-
   bittide-tests:
     name: Bittide tests
     runs-on: self-hosted
@@ -434,7 +236,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -461,12 +263,13 @@ jobs:
         run: |
           cabal run -- bittide:doctests
 
-  firmware-lints:
-    name: Firmware Lints
+  rust-code-lints:
+    name: Rust code Lints
     runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
+    needs: [lint]
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
@@ -480,15 +283,16 @@ jobs:
 
       - name: Clippy check
         run: |
-          cargo clippy --target riscv32imc-unknown-none-elf --all-features
+          cargo clippy --target x86_64-unknown-linux-gnu --all --tests --all-features -- -D warnings
 
 
-  firmware-unit-tests:
-    name: Firmware Unit Tests
+  rust-unit-tests:
+    name: Run Rust Unit Tests
     runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
+    needs: [lint, rust-code-lints]
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
@@ -511,12 +315,13 @@ jobs:
         run: |
           cargo test --target x86_64-unknown-linux-gnu --all
 
-  firmware-build-examples:
-    name: Firmware Build Examples
+  rust-build-executables:
+    name: Build Rust Executables (examples and integration tests)
     runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
+    needs: [lint, rust-code-lints]
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
 
@@ -535,52 +340,22 @@ jobs:
             ./target/
           key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
 
-      - name: Building "hello" Example
+      - name: Building Debug Executables
+        run: cargo build
+
+      - name: Building Release Executables
         run: cargo build --release
-        working-directory: firmware/examples/hello
 
-      - name: Building "fdt-read" Example
-        run: cargo build --release
-        working-directory: firmware/examples/hello
-
-  firmware-build-integration-tests:
-    name: Firmware Build Integration Tests
-    runs-on: self-hosted
-    defaults:
-      run:
-        shell: git-nix-shell {0} --pure
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - uses: actions/cache@v3
-        name: Cache
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./target/
-          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
-
-      - name: Building Firmware Integration Tests
-        run: cargo build --release
-        working-directory: firmware/tests
-
-      - name: Archive Firmware Integration Tests
+      - name: Archive Integration Tests
         run: |
-          cd firmware/tests; sh copy_test_binaries.sh
-          cd ../../; tar -c -f firmware-integration-tests.tar firmware-integration-tests/
+          cd vex-riscv-sim; sh bundle_test_binaries.sh
 
-      - name: Upload Firmware Integration Tests
+      - name: Upload VexRiscv Integration Tests
         uses: actions/upload-artifact@v3
         with:
-          name: firmware-integration-tests
-          path: firmware-integration-tests.tar
+          name: vex-riscv-test-binaries
+          path: vex-riscv-sim/vex-riscv-test-binaries.tar
+
 
   bittide-instances-doctests:
     name: bittide-instances doctests
@@ -599,7 +374,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.formal cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -637,7 +412,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.formal cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -716,7 +491,7 @@ jobs:
           #
           # TODO: Either switch to VexRisc or update cache strategy.
           #
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -745,12 +520,12 @@ jobs:
           retention-days: 14
 
   vex-riscv:
-    name: VexRiscv integration
+    name: VexRiscv core
     runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
-    needs: [build, lint, vex-riscv-build-integration-tests]
+    needs: [build, lint]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
@@ -761,7 +536,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -782,9 +557,44 @@ jobs:
         run: |
           cabal build vex-riscv
 
-      - name: Build VexRiscv-test
+  vex-riscv-integration-tests:
+    name: VexRiscv integration tests
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
+    needs: [build, lint, vex-riscv, rust-build-executables]
+
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set CI flags
         run: |
-          cabal build vex-test
+          cp .github/cabal.project cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cabal-nix/store
+
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
+
+      - name: Build VexRiscv-sim
+        run: |
+          cabal build vex-riscv-sim
+
 
       - name: Download VexRiscv Integration Tests
         uses: actions/download-artifact@v3
@@ -797,49 +607,7 @@ jobs:
 
       - name: Run unittests
         run: |
-          cabal run vex-riscv:unittests
-
-  vex-riscv-build-integration-tests:
-    name: VexRiscv build integration tests
-    runs-on: self-hosted
-    defaults:
-      run:
-        shell: git-nix-shell {0} --pure
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - uses: actions/cache@v3
-        name: Cache
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./target/
-          key: cargo-cache-cachebust-2-${{ hashFiles('vex-riscv/vex-test-programs/Cargo.lock') }}
-
-      - name: Building VexRiscv Integration Tests (Release)
-        run: cargo build --release
-        working-directory: vex-riscv/vex-test-programs
-
-      - name: Building VexRiscv Integration Tests (Debug)
-        run: cargo build
-        working-directory: vex-riscv/vex-test-programs
-
-      - name: Archive Integration Tests
-        run: |
-          cd vex-riscv; sh bundle_test_binaries.sh
-
-      - name: Upload VexRiscv Integration Tests
-        uses: actions/upload-artifact@v3
-        with:
-          name: vex-riscv-test-binaries
-          path: vex-riscv/vex-riscv-test-binaries.tar
+          cabal run vex-riscv-sim:unittests
 
 
   all:
@@ -852,21 +620,16 @@ jobs:
         bittide-instances-unittests,
         bittide-tests,
         build,
-        contranomy-formal-tests,
-        contranomy-hdl,
-        contranomy-sim-tests,
-        contranomy-tests,
         elastic-buffer-sim-tests,
         elastic-buffer-sim-topologies-matrix,
         elastic-buffer-sim-topologies,
-        firmware-build-examples,
-        firmware-build-integration-tests,
-        firmware-lints,
-        firmware-unit-tests,
+        rust-code-lints,
+        rust-unit-tests,
+        rust-build-executables,
         license-check,
         lint,
         vex-riscv,
-        vex-riscv-build-integration-tests,
+        vex-riscv-integration-tests,
       ]
     runs-on: ubuntu-22.04
     steps:
