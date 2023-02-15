@@ -26,7 +26,8 @@ import Protocols.Wishbone as Wb
 import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
 
 import Bittide.Calendar
-import Bittide.SharedTypes (Bytes, Regs)
+import Bittide.SharedTypes
+
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified GHC.TypeNats as TypeNats
