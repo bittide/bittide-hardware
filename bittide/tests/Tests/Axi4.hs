@@ -205,8 +205,8 @@ wbAxisRxBufferReadStreams = property $ do
           -- Run the simulation until there are no more axi stream operations and
           -- the fifo is empty, run for at least 10 cycles.
           simRunning =
-            uncurry (||) <$> wbStatus
-            .||. isJust <$> axisM2S
+            (uncurry (||) <$> wbStatus)
+            .||. (isJust <$> axisM2S)
             .||. unsafeToHighPolarity (resetGenN d10)
 
           (wbS2M, axisS2M, wbStatus) = wcre $
