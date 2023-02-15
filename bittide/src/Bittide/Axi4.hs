@@ -121,6 +121,21 @@ axisToByteStream = Circuit (mealyB go (0 :: Index dataWidth))
       | otherwise = oldCounter
 
 {-# NOINLINE wbAxisRxBuffer #-}
+
+-- | A wishbone accessible buffer that stores AXI4Stream packets. The buffer stores
+-- a single Axi4 stream packet and exposes a status register that indicates:
+--  * If the buffer contains a packet
+--  * If the buffer is full before, but does not contain a whole packet.
+--
+-- The wishbone addressing must be 4 byte aligned and is as follows:
+--  * 0 .. 4 * (fifoDepth - 1) = Read-only access into the buffer.
+--  * 4 * fifoDepth            = Byte count register.
+--  * 4 * (fifoDepth + 1)      = Status register
+--
+-- After reading a packet, the byte count must be set to 0 and the status register must be
+-- cleared.
+--
+-- The external status clear signals clear on True, set to (False, False) if not used.
 wbAxisRxBuffer ::
   forall dom wbAddrW nBytes fifoDepth conf axiUserType .
   ( HiddenClockResetEnable dom
@@ -129,10 +144,18 @@ wbAxisRxBuffer ::
   , 1 <= fifoDepth
   , 1 <= nBytes * fifoDepth
   , DataWidth conf ~ nBytes) =>
+  -- | Depth of the buffer, each entry in the buffer stores `nBytes` bytes.
   SNat fifoDepth ->
+  -- | Wishbone master bus.
   "wbM2S" ::: Signal dom (WishboneM2S wbAddrW nBytes (Bytes nBytes)) ->
+  -- | Axi4 Stream master bus.
   "axisM2S" ::: Signal dom (Maybe (Axi4StreamM2S conf axiUserType)) ->
+  -- | External controls to clear bits in the status register.
   "clearinterrupts" ::: Signal dom (EndOfPacket, BufferFull) ->
+  -- |
+  -- 1. Wishbone slave bus
+  -- 2. Axi4 Stream slave bus
+  -- 3. Status
   "" :::
   ( "wbS2M" ::: Signal dom (WishboneS2M (Bytes nBytes))
   , "axisS2M" ::: Signal dom Axi4StreamS2M
@@ -227,6 +250,13 @@ wbAxisRxBuffer SNat wbM2S axisM2S statusClearSignal = (wbS2M, axisS2M, statusReg
       }
 
 {-# NOINLINE wbAxisTxBuffer #-}
+-- | A wishbone accessible buffer that can transmit Axi4 stream packets.
+-- Axi4 Stream packets can be written to the buffer over wishbone and the transmission
+-- can be initiated by writing the size of the packet in words to a specific address.
+--
+-- The wishbone addressing must be 4 byte aligned and is as follows:
+--  * 0 .. 4 * (fifoDepth - 1) = Read-only access into the buffer.
+--  * 4 * fifoDepth            = Initiate transmission.
 wbAxisTxBuffer ::
   forall dom addrW nBytes fifoDepth conf .
   ( HiddenClockResetEnable dom
@@ -235,9 +265,15 @@ wbAxisTxBuffer ::
   , 2 <= addrW
   , KnownNat addrW
   , KnownAxi4StreamConfig conf) =>
+  -- | Depth of the buffer.
   SNat fifoDepth ->
+  -- | Wishbone master bus.
   Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
+  -- | Axi4 stream slave bus.
   Signal dom Axi4StreamS2M ->
+  -- |
+  -- 1. Wishbone slave bus
+  -- 2. Axi4 Stream master bus
   ( Signal dom (WishboneS2M (Bytes nBytes))
   , Signal dom (Maybe (Axi4StreamM2S conf Bool)))
 wbAxisTxBuffer SNat wbM2S axisS2M = (wbS2M, axisM2S)
