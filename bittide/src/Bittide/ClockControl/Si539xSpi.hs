@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -fconstraint-solver-iterations=9 #-}
@@ -35,7 +35,7 @@ data RegisterOperation = RegisterOperation
   , regAddress  :: Address
    -- ^ Address at which to perform the read or write
   , regWrite    :: Maybe Byte
-   -- ^ @Nothing@ for a read operation, @Just byte@ to write @byte@ to this page and address.
+   -- ^ @Nothing@ for a read operation, @Just byte@ to write @byte@ to this 'Page' and 'Address'.
   } deriving (Show, Generic, NFDataX)
 
 -- | Contains the configuration for an Si539x chip, explicitly differentiates between
@@ -60,9 +60,9 @@ data SpiCommand
   | ReadData
   -- ^ Reads data from the selected 'Address' on the selected 'Page'.
   | WriteDataInc Byte
-  -- ^ Writes data to the selected 'Address' on the selected 'Page' and increments the address.
+  -- ^ Writes data to the selected 'Address' on the selected 'Page' and increments the 'Address'.
   | ReadDataInc
-  -- ^ Reads data from the selected 'Address' on the selected 'Page' and increments the address.
+  -- ^ Reads data from the selected 'Address' on the selected 'Page' and increments the 'Address'.
   deriving Eq
 
 -- | Converts an 'SpiCommand' to the corresponding bytes to be sent over SPI.
@@ -77,7 +77,13 @@ spiCommandToBytes = \case
 
 -- | State of the configuration circuit in 'si539xSpi'.
 data ConfigState dom entries
-  = FetchReg (Index entries)
+  = WaitForReady Bool
+  -- ^ Continuously read from 'Address' 0xFE at any 'Page', if this operations returns
+  -- 0x0F twice in a row, the device is considered to be ready for operation.
+  | ResetDriver Bool
+  -- ^ Always after a @WaitForReady False@ state, we reset the SPI driver to make sure
+  -- it first sets the page and address again.
+  | FetchReg (Index entries)
   -- ^ Fetches the 'RegisterEntry' at the 'Index' to be written to the @Si539x@ chip.
   | WriteEntry (Index entries)
   -- ^ Writes the 'RegisterEntry' at the 'Index' to the @Si539x@ chip.
@@ -85,6 +91,8 @@ data ConfigState dom entries
   -- ^ Checks if the 'RegisterEntry' at the 'Index' was correctly written to the @Si539x@ chip.
   | Error (Index entries)
   -- ^ The 'RegisterEntry' at the 'Index' was not correctly written to the @Si539x@ chip.
+  | WaitForLock
+  -- ^ Continuously read from 'Address' 0x0C at 'Page' 0x00 until it returns bit 3 is 0.
   | Finished
   -- ^ All entries in the 'Si539xRegisterMap' were correctly written to the @Si539x@ chip.
   | Wait (Index (PeriodToCycles dom (Milliseconds 300))) (Index entries)
@@ -92,13 +100,16 @@ data ConfigState dom entries
   deriving (Show, Generic, NFDataX, Eq)
 
 -- | Utility function to retrieve the entry 'Index' from the 'ConfigState'.
-getStateAddress :: ConfigState dom entries -> Index entries
+getStateAddress :: KnownNat entries => ConfigState dom entries -> Index entries
 getStateAddress = \case
+  WaitForReady _ -> 0
+  ResetDriver _ -> 0
   FetchReg i -> i
   WriteEntry i -> i
   ReadEntry i -> i
   Error i -> i
-  Finished -> deepErrorX "getStateAddress: ConfigState Finished does not contain an index"
+  WaitForLock -> maxBound
+  Finished -> maxBound
   Wait _ i -> i
 
 -- | SPI interface for a @Si539x@ clock generator chip with an initial configuration.
@@ -126,53 +137,67 @@ si539xSpi ::
   -- 3. Outgoing SPI signals: (SCK, MOSI, SS)
   ( Signal dom (Maybe Byte)
   , Signal dom Busy
-  , Signal dom Bool
+  , Signal dom (ConfigState dom (preambleEntries + configEntries + postambleEntries))
   , ( "SCK"  ::: Signal dom Bool
     , "MOSI" ::: Signal dom Bit
     , "SS"   ::: Signal dom Bool
     )
   )
 si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
-  (configByte, configBusy, configSuccess, spiOut)
+  (configByte, configBusy, configState, spiOut)
  where
-  (driverByte, driverBusy, spiOut) = si539xSpiDriver minTargetPs spiOperation miso
-  romOut = rom (configPreamble ++ config ++ configPostamble) $ bitCoerce <$> readCounter
+  (driverByte, driverBusy, spiOut) = withReset driverReset si539xSpiDriver minTargetPs spiOperation miso
+  driverReset = forceReset $ holdTrue d3 $ flip fmap configState $ \case
+    ResetDriver _ -> True
+    _             -> False
 
-  readCounter :: Signal dom (Index (preambleEntries + configEntries + postambleEntries))
-  (readCounter, spiOperation, configBusy, configByte, configSuccess) =
-    mealyB go (FetchReg 0) (romOut, externalOperation, driverByte, driverBusy)
+  romOut = rom (configPreamble ++ config ++ configPostamble) romAddress
+  romAddress = bitCoerce . getStateAddress <$> configState
+
+  (configState, spiOperation, configBusy, configByte) =
+    mealyB go (WaitForReady False) (romOut, externalOperation, driverByte, driverBusy)
 
   go currentState ((regPage,regAddress,byte), extSpi, spiByte, spiBusy) =
-    (nextState, (getStateAddress currentState, spiOp, busy, returnedByte, currentState == Finished))
+    (nextState, (currentState, spiOp, busy, returnedByte))
    where
     isConfigEntry i =
       (natToNum @preambleEntries) <= i && i < (natToNum @(preambleEntries + configEntries))
     nextState = case (currentState, spiByte) of
+      (WaitForReady False, Just 0x0F)          -> ResetDriver True
+      (WaitForReady True, Just 0x0F)           -> FetchReg 0
+      (WaitForReady _, Just _)                 -> ResetDriver False
+      (ResetDriver b, _)                       -> WaitForReady b
+
+      (FetchReg i, _)                          -> WriteEntry i
       (WriteEntry i, Just _)
-        | i == maxBound -> Finished
+        | i == maxBound                        -> WaitForLock
         | i == (natToNum @preambleEntries - 1) -> Wait @dom 0 i
-        | isConfigEntry i -> ReadEntry i
-        | otherwise -> FetchReg (succ i)
+        | isConfigEntry i                      -> ReadEntry i
+        | otherwise                            -> FetchReg (succ i)
 
       (ReadEntry i, Just b)
-        | b == byte -> FetchReg (succ i)
-        | otherwise -> Error i
-
-      (FetchReg i, _)                   -> WriteEntry i
-      (Wait ((==maxBound) -> True) i, _)-> FetchReg (succ i)
-      (Wait j i, _)                     -> Wait (succ j) i
-      (WriteEntry _, Nothing)           -> currentState
-      (ReadEntry _, Nothing)            -> currentState
-      (Finished , _)                    -> currentState
-      (Error _ , _)                     -> currentState
+        | b == byte                            -> FetchReg (succ i)
+        | otherwise                            -> Error i
+      (Wait ((==maxBound) -> True) i, _)       -> FetchReg (succ i)
+      (Wait j i, _)                            -> Wait (succ j) i
+      (WaitForLock, Just 0)                    -> Finished
+      (WaitForReady _, _)                      -> currentState
+      (WaitForLock, _ )                        -> currentState
+      (WriteEntry _, _)                        -> currentState
+      (ReadEntry _, _)                         -> currentState
+      (Finished , _)                           -> currentState
+      (Error _ , _)                            -> currentState
 
     spiOp = case currentState of
-      FetchReg _   -> Nothing
-      WriteEntry _ -> Just RegisterOperation{regPage, regAddress, regWrite = Just byte}
-      ReadEntry _  -> Just RegisterOperation{regPage, regAddress, regWrite = Nothing}
-      Wait _ _     -> Nothing
-      Finished     -> extSpi
-      Error _      -> extSpi
+      WaitForReady _ -> Just RegisterOperation{regPage = 0x00, regAddress = 0xFE, regWrite = Nothing}
+      ResetDriver _  -> Nothing
+      FetchReg _     -> Nothing
+      WriteEntry _   -> Just RegisterOperation{regPage, regAddress, regWrite = Just byte}
+      ReadEntry _    -> Just RegisterOperation{regPage, regAddress, regWrite = Nothing}
+      Wait _ _       -> Nothing
+      WaitForLock    -> Just RegisterOperation{regPage = 0, regAddress = 0xC0, regWrite = Nothing}
+      Finished       -> extSpi
+      Error _        -> extSpi
 
     (busy, returnedByte) = case currentState of
       Finished -> (spiBusy, spiByte)
@@ -230,7 +255,7 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
     , currentAddress      = Nothing
     , currentOp           = Nothing
     , commandAcknowledged = False
-    , idleCycles          = 0
+    , idleCycles          = maxBound
     }
 
   go ::
@@ -278,3 +303,17 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
       | otherwise = Nothing
 
 {-# NOINLINE si539xSpiDriver #-}
+
+-- | When this component receives @True@, it will hold it for @holdCycles@ number of
+-- clock cycles. This implementation does not scale well to large values for @holdCycles@
+-- because it uses 'Vec' internally.
+holdTrue ::
+  forall dom holdCycles .
+  (HiddenClockResetEnable dom, 1 <= holdCycles) =>
+  SNat holdCycles ->
+  Signal dom Bool ->
+  Signal dom Bool
+holdTrue SNat = mealy go (repeat False)
+ where
+  go :: 1 <= holdCycles => Vec holdCycles Bool -> Bool -> (Vec holdCycles Bool, Bool)
+  go state@(Cons _ _) input = (takeI $ input :> state, fold (||) state)
