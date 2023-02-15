@@ -144,6 +144,7 @@ library
     Bittide.Arithmetic.Ppm
     Bittide.Arithmetic.Time
     Bittide.Axi4
+    Bittide.Axi4.Internal
     Bittide.Calendar
     Bittide.ClockControl
     Bittide.ClockControl.Callisto
@@ -227,6 +228,7 @@ test-suite unittests
 
   other-modules:
     Tests.Axi4
+    Tests.Axi4.Generators
     Tests.Calendar
     Tests.ClockControl.Si539xSpi
     Tests.Counter

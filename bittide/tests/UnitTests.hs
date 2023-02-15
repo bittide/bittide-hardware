@@ -23,6 +23,8 @@ import qualified Tests.Transceiver
 import qualified Tests.Transceiver.Prbs
 import qualified Tests.Transceiver.WordAlign
 import qualified Tests.Wishbone
+import qualified Tests.Axi4.Generators
+import qualified Tests.Haxioms
 
 tests :: TestTree
 tests = testGroup "Unittests"
@@ -40,6 +42,8 @@ tests = testGroup "Unittests"
   , Tests.Transceiver.Prbs.tests
   , Tests.Transceiver.WordAlign.tests
   , Tests.Wishbone.tests
+  , Tests.Axi4.Generators.tests
+  , Tests.Haxioms.tests
   ]
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
