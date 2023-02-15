@@ -51,12 +51,16 @@ pkgs.mkShell {
 
       # For Cabal to clone git repos
       pkgs.buildPackages.git
+
+      # HDL dependencies
+      pkgs.verilog-ethernet
     ]
     ;
 
   shellHook = ''
     # Prevents Perl warnings
     export LC_ALL="C.UTF-8";
+    export VERILOG_ETHERNET_SRC="${pkgs.verilog-ethernet}"
 
     # Mixing Nix Cabal and non-Nix Cabal yields some weird linking errors.
     export CABAL_DIR="$HOME/.cabal-nix";
