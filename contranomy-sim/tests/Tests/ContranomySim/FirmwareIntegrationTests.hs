@@ -25,6 +25,7 @@ import           Paths_contranomy_sim
 import           ContranomySim.DeviceTreeCompiler
 import           ContranomySim.MemoryMapConsts
 import           System.Exit (exitFailure)
+import           Numeric
 
 -- | Load an elf binary, inspect the debug output
 elfExpect :: (FilePath -> IO ()) -- ^ Action to place the @.elf@ file in the given 'FilePath'
@@ -48,7 +49,11 @@ elfExpect act n expected = do
     elfBytes <- BS.readFile fp
     let (entry, iMem, dMem) = readElfFromMemory elfBytes
 
-    let dMem' = dMem `I.union` deviceTreeMap
+    let
+      dMem' = I.unionWithKey (\k _ _ -> error $
+        "Tests.ContranomySim.FirmwareIntegrationTests: Overlapping elements in data memory and device tree at address 0x"
+        <> showHex k "")
+        dMem deviceTreeMap
 
     -- Hook up to println-debugging
     let res = getDataBytes (BS.length expected) characterDeviceAddr $ sampleN n $ fmap snd $
