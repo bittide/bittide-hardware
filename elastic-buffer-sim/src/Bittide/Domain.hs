@@ -4,7 +4,7 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Bittide.Topology.TH.Domain where
+module Bittide.Domain where
 
 import Clash.Explicit.Prelude
 

@@ -80,29 +80,37 @@ library
     bytestring,
     cassava,
     clash-cores,
-    constraints,
     containers,
+    deepseq,
     directory,
+    filepath,
     matplotlib,
     random,
-    deepseq,
-    template-haskell
+    text,
+    typelits-witnesses
   exposed-modules:
     Bittide.ClockControl.ElasticBuffer
+    Bittide.Domain
+    Bittide.Plot
     Bittide.Simulate
     Bittide.Topology
     Bittide.Topology.Graph
-    Bittide.Topology.TH.Domain
-  other-modules:
-    Graphics.Matplotlib.Ext
   default-language: Haskell2010
 
 executable sim
   import: common-options
   main-is: exe/Main.hs
   build-depends:
+    aeson,
+    array,
+    random,
+    bytestring,
+    containers,
+    directory,
+    happy-dot,
+    filepath,
     elastic-buffer-sim,
-    docopt
+    optparse-applicative,
   default-language: Haskell2010
   default-extensions: ImplicitPrelude
   -- enable rtsopts so we can setup memory limits

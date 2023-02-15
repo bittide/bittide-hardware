@@ -48,3 +48,7 @@ License: Apache-2.0
 Files: .github/synthesis/*
 Copyright: 2022 Google LLC
 License: Apache-2.0
+
+Files: .github/simulation/*
+Copyright: 2022 Google LLC
+License: Apache-2.0

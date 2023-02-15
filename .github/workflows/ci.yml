@@ -100,13 +100,41 @@ jobs:
         run: |
           cabal build all --only-dependencies
 
+  elastic-buffer-sim-topologies-matrix:
+    name: elastic-buffer-sim-topologies simulation matrix generation
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Generate matrix
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
+            cp .github/simulation/all.json sim.json
+          else
+            cp .github/simulation/staging.json sim.json
+          fi
+
+      - name: Set simulation matrix
+        id: set-sim-matrix
+        run: |
+          echo "sim_matrix=$(cat sim.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
+
+    outputs:
+      sim_matrix: ${{ steps.set-sim-matrix.outputs.sim_matrix }}
+
   elastic-buffer-sim-topologies:
     name: Simulate network
     runs-on: self-hosted
     defaults:
       run:
         shell: git-nix-shell {0} --pure
-    needs: [build, lint]
+    needs: [build, lint, elastic-buffer-sim-topologies-matrix]
+
+    strategy:
+      matrix:
+        target: ${{ fromJson(needs.elastic-buffer-sim-topologies-matrix.outputs.sim_matrix) }}
+      fail-fast: false
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
@@ -134,18 +162,21 @@ jobs:
           restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
 
-      # TODO: simulate + plot multiple topologies
       - name: Plot mesh grid
         run: |
-          cabal run -- elastic-buffer-sim:sim +RTS -M8M -RTS plot complete3 150000 100
+          cabal run -- elastic-buffer-sim:sim +RTS -M16M -RTS \
+            --output-mode pdf \
+            --steps ${{ matrix.target.steps }} \
+            --samples 1000 \
+            --stop-when-stable \
+            ${{ matrix.target.topology }} ${{ matrix.target.args }}
 
       - name: Upload plots
         uses: actions/upload-artifact@v3
         with:
           name: gen-plots-hs
-          path: |
-            _build/clockscomplete3.pdf
-            _build/elasticbufferscomplete3.pdf
+          path: _build
+          retention-days: 14
 
   elastic-buffer-sim-tests:
     name: elastic-buffer-sim unittests
@@ -828,6 +859,7 @@ jobs:
         contranomy-sim-tests,
         contranomy-tests,
         elastic-buffer-sim-tests,
+        elastic-buffer-sim-topologies-matrix,
         elastic-buffer-sim-topologies,
         firmware-build-examples,
         firmware-build-integration-tests,
