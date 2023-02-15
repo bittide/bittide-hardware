@@ -100,6 +100,7 @@ library
   exposed-modules:
     Bittide.Arithmetic.Ppm
     Bittide.Arithmetic.Time
+    Bittide.Axi4
     Bittide.Calendar
     Bittide.ClockControl
     Bittide.ClockControl.Callisto
@@ -165,6 +166,7 @@ test-suite unittests
   main-is: UnitTests.hs
   ghc-options: -threaded -with-rtsopts=-N
   other-modules:
+    Tests.Axi4
     Tests.Calendar
     Tests.ClockControl.Si539xSpi
     Tests.Counter
@@ -182,6 +184,7 @@ test-suite unittests
     HUnit,
     base,
     bittide,
+    bittide-extra,
     bytestring,
     clash-cores,
     clash-lib,
