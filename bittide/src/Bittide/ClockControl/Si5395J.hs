@@ -9,6 +9,9 @@ import Bittide.ClockControl.Si539xSpi
 
 type Si5395RegisterMap = Si539xRegisterMap 3 584 5
 
+-- TODO: Add convenience function to more easily create register maps with configurable
+-- clock frequencies at different outputs with certain divider configurations.
+
 -- | Configuration for Si5395J with all output clocks disabled.
 testConfigAll200 ::  Si5395RegisterMap
 testConfigAll200 = Si539xRegisterMap{..}

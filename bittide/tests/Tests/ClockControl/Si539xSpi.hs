@@ -31,7 +31,7 @@ topEntity = bundle (masterBusy, configState .==. pure Finished)
   where
   (_, masterBusy, configState, (sclk, mosi,ss)) =
     withClockResetEnable clockGen resetGen enableGen $
-    si539xSpi testConfig (SNat @50000) (pure Nothing) miso
+    si539xSpi testConfigA (SNat @50000) (pure Nothing) miso
   miso = si5391Mock sclk mosi ss
 
 
