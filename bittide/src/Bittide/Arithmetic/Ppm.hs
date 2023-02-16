@@ -13,6 +13,7 @@ import Clash.Signal.Internal (Femtoseconds (Femtoseconds), hzToFs, fsToHz)
 
 import Data.Int (Int64)
 import Data.Ratio
+import qualified Control.Exception as E (assert)
 import GHC.Stack (HasCallStack)
 import Numeric.Natural
 import System.Random (Random)
@@ -37,7 +38,7 @@ slowDownHz ppm hz = hz - diffHz ppm hz
 
 -- PPM arithmetic on periods
 diffPeriod :: HasCallStack => Ppm -> Femtoseconds -> Femtoseconds
-diffPeriod (Ppm ppm) (Femtoseconds fs) = Femtoseconds absFs
+diffPeriod (Ppm ppm) (Femtoseconds fs) = E.assert (ppm /= 0) $ Femtoseconds absFs
  where
   absFs = fs `div` (1_000_000 `div` ppm)
 

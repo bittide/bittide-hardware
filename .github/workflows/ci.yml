@@ -164,7 +164,7 @@ jobs:
 
       - name: Plot mesh grid
         run: |
-          cabal run -- elastic-buffer-sim:sim +RTS -M16M -RTS \
+          cabal run -- elastic-buffer-sim:sim +RTS -M32M -RTS \
             --output-mode pdf \
             --steps ${{ matrix.target.steps }} \
             --samples 1000 \
@@ -174,7 +174,7 @@ jobs:
       - name: Upload plots
         uses: actions/upload-artifact@v3
         with:
-          name: gen-plots-hs
+          name: gen-plots-hs-${{ matrix.target.topology }}
           path: _build
           retention-days: 14
 

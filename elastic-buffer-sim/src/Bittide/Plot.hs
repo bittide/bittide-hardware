@@ -72,7 +72,7 @@ import Bittide.Simulate (Offset)
 import Bittide.Domain (defBittideClockConfig)
 import Bittide.ClockControl (ClockControlConfig(..), clockPeriodFs)
 import Bittide.Topology (simulate, simulationEntity, allStable)
-import Bittide.Arithmetic.Ppm (diffPeriod)
+import Bittide.Arithmetic.Ppm (Ppm(..), diffPeriod)
 import Bittide.Topology.Graph
 
 data OutputMode =
@@ -439,8 +439,9 @@ genOffsets ::
   ClockControlConfig dom n ->
   IO Offset
 genOffsets ClockControlConfig{cccDeviation} = do
-  offsetPpm <- randomRIO (-cccDeviation, cccDeviation)
-  pure (diffPeriod offsetPpm (clockPeriodFs @dom Proxy))
+  Ppm offsetPpm <- randomRIO (-cccDeviation, cccDeviation)
+  let nonZeroOffsetPpm = if offsetPpm == 0 then cccDeviation else Ppm offsetPpm
+  pure (diffPeriod nonZeroOffsetPpm (clockPeriodFs @dom Proxy))
 
 someNat :: Int -> Maybe SomeNat
 someNat = someNatVal . toInteger
