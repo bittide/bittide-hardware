@@ -236,9 +236,8 @@ nonRepeatingEntry a = ValidEntry{veEntry = a, veRepeat = 0}
 
 -- | Converts a list of elements into a signal of elements. Unlike 'fromList'
 -- it also takes a clock, reset, and enable. When the reset is asserted, it
--- will [insert a reset value / insert the first value of the given list]. When
--- the enable is deasserted, elements are repeated. As usual, the reset takes
--- precedence over the enable.
+-- will insert the first value of the given list. When the enable is deasserted,
+-- elements are repeated. As usual, the reset takes precedence over the enable.
 --
 -- __NB__: Not translatable to HDL
 fromListWithResetAndEnable ::
