@@ -49,11 +49,14 @@ axi4Group = testGroup "Axi4Group"
     "Axi4Stream downscaling does not affect packet content" "axisToByteStreamUnchangedPackets"
     axisToByteStreamUnchangedPackets
   , testPropertyNamed
-    "Wishbone accessible Axis receive buffer can be written to and read" "wbAxisRxBufferReadStreams"
+    "Read Axi4 Stream packets via Wishbone" "wbAxisRxBufferReadStreams"
     wbAxisRxBufferReadStreams
   , testPropertyNamed
-    "Wishbone accessible Axis transmit buffer can be written to and read" "wbAxisTxBufferWriteStreams"
+    "Write Axi4 Stream packets via Wishbone" "wbAxisTxBufferWriteStreams"
     wbAxisTxBufferWriteStreams
+  , testPropertyNamed
+    "Write and read back Axi4 Stream packets via Wishbone" "wbAxisBuffersBoth"
+    wbAxisBuffersBoth
   ]
 
 type Packet = [Unsigned 8]
@@ -124,6 +127,67 @@ axisFromByteStreamUnchangedPackets = property $ do
         retrievedPackets = axis4ToPackets axiResult
       packets  === retrievedPackets
 
+wbAxisBuffersBoth :: Property
+wbAxisBuffersBoth = property $ do
+  fifoDepth <- forAll $ Gen.enum 1 16
+  busWidth <- forAll $ Gen.enum 1 8
+  nrOfPackets <- forAll $ Gen.enum 1 8
+  packetLengths <- forAll $
+    Gen.list (Range.singleton nrOfPackets) $
+    Gen.enum 1 (busWidth * fifoDepth)
+  packets <- forAll $ traverse
+    (flip Gen.list (genUnsigned @_ @8 Range.constantBounded) . Range.singleton)
+    packetLengths
+  case
+    ( TN.someNatVal $ fromIntegral (fifoDepth - 1)
+    , TN.someNatVal $ fromIntegral (busWidth - 1)) of
+    ( SomeNat (succSNat . snatProxy -> _ :: SNat fifoDepth)
+     ,SomeNat (succSNat . snatProxy -> _ :: SNat busWidth)) -> do
+      let
+        wbReadPacket pl = unpack 0 :
+          (wbRead @32 @busWidth <$> fifoDepth : [0..(pl `div` busWidth)]) <>
+          [wbWrite @32 @busWidth fifoDepth 0, wbWrite (fifoDepth + 1) maxBound]
+        wbOpsA = L.concat $ L.zipWith (packetsToWb @32 @busWidth fifoDepth) packetLengths packets
+        wbOpsB = L.concatMap wbReadPacket packetLengths
+        topEntity = bundle (wbM2SA, wbS2MA, wbM2SB, wbS2MB, axisM2S, axisS2M, wbStatus, simRunning)
+         where
+          (wbS2MA, axisM2S) = wcre $
+            wbAxisTxBuffer @System @32 @busWidth @fifoDepth @(BasicAxiConfig busWidth)
+            SNat wbM2SA axisS2M
+
+          wbM2SA = case cancelMulDiv @busWidth @8 of
+            Dict -> wcre $ wishboneSimDriver wbOpsA wbS2MA
+
+          wbM2SB = case cancelMulDiv @busWidth @8 of
+            Dict -> withClockResetEnable clockGen resetGen (toEnable enableWishboneB)
+             $ wishboneSimDriver wbOpsB wbS2MB
+          enableWishboneB = uncurry (||) <$> wbStatus
+
+          (wbS2MB, axisS2M, wbStatus) = wcre $
+            wbAxisRxBuffer @System @32 @busWidth @fifoDepth @(BasicAxiConfig busWidth)
+            SNat wbM2SB axisM2S (pure (False, False))
+
+          simRunning = not <$> (wbAInactive .&&. wbBInactive .&&. isNothing <$> axisM2S .&&. wbStatus .==. pure (False, False))
+          wbAInactive = (\WishboneM2S{..} -> not $ busCycle || strobe) <$> wbM2SA
+          wbBInactive = (\WishboneM2S{..} -> not $ busCycle || strobe) <$> wbM2SB
+      let
+        (wbWriteM2S, wbWriteS2M, wbReadM2S, wbReadS2M, axisM2S, axisS2M, wStatus, _) = unzip8 . L.takeWhile (\(_,_,_,_,_,_,_,r) -> r)
+         $ sampleN ((10 + sum packetLengths) * 4) topEntity
+        wbWriteTransactions = wbToTransaction wbWriteM2S wbWriteS2M
+        wbReadTransactions = wbToTransaction wbReadM2S wbReadS2M
+      footnote . fromString $ "wbWriteOps:" <> show wbOpsA
+      footnote . fromString $ "wbReadOps:" <> show wbOpsB
+      footnote . fromString $ "wbWriteTransactions:" <> show wbWriteTransactions
+      footnote . fromString $ "wbReadTransactions:" <> show wbReadTransactions
+      footnote . fromString $ "axisM2S:" <> show axisM2S
+      footnote . fromString $ "axisS2M:" <> show axisS2M
+      footnote . fromString $ "wStatus:" <> show wStatus
+      packets === packetFromTransactions wbReadTransactions
+
+unzip8 :: [(a,b,c,d,e,f,g,h)] -> ([a],[b],[c],[d],[e],[f],[g],[h])
+unzip8 =  L.foldr (\(a,b,c,d,e,f,g,h) ~(as,bs,cs,ds,es,fs,gs,hs) ->
+  (a:as,b:bs,c:cs,d:ds,e:es,f:fs,g:gs,h:hs)) ([], [] ,[] ,[] ,[] ,[] ,[], [])
+
 wbAxisTxBufferWriteStreams :: Property
 wbAxisTxBufferWriteStreams = property $ do
   fifoDepth <- forAll $ Gen.enum 1 8
@@ -181,19 +245,8 @@ wbAxisRxBufferReadStreams = property $ do
     ( SomeNat (succSNat . snatProxy -> depthSNat@SNat :: SNat fifoDepth)
      ,SomeNat (succSNat . snatProxy -> busWidthSNat :: SNat busWidth)) -> do
       let
-        -- First element in the Axi4Stream is a Nothing, this will be present during and
-        -- immediately after reset.
-
-        -- Convert the packets to [Maybe (Axi4StreamM2S)]
         axiStream = Nothing : L.concatMap (packetToAxiStream busWidthSNat) packets
 
-        -- For each packet, we first read the packet length at address fifoDepth
-        -- (fifo elements can be read from address [0..(fifoDepth -1)])
-        -- After that we read where we expect the data.(*)
-        -- After reading all the packets, we set the packet length to 0 and clear the
-        -- end of packet and buffer full flag, allowing the buffer to accept a new packet.
-        -- We also start each packet reading attempt with an idle cycle to wait until
-        -- a packet is ready.
         wbReadPacket pl = unpack 0 :
           (wbRead @32 @busWidth <$> fifoDepth : [0..(pl `div` busWidth)]) <>
           [wbWrite @32 @busWidth fifoDepth 0, wbWrite (fifoDepth + 1) maxBound]
@@ -230,22 +283,22 @@ wbAxisRxBufferReadStreams = property $ do
       footnote . fromString $ "(wbM2S, wbS2M, axisM2S, axisS2M, wbStatus, simRunning): " <> show simOut
       footnote . fromString $ "wbOps:" <> show wbOps
       L.take nrOfPackets wbResults === packets
- where
-  -- Convert a list of Transactions to a list of Packets
-  packetFromTransactions :: forall n . KnownNat n => [Transaction 32 n (Bytes n)] -> [Packet]
-  packetFromTransactions [] = []
-  packetFromTransactions (x:xs) = case x of
-    ReadSuccess _ (bitCoerce . resize . readData -> packetLength) -> packet : packetFromTransactions rest
-      where
-       (packetReads, rest) = L.span isRead xs
-       isRead = \case
-        ReadSuccess _ _ -> True
-        _               -> False
-       packet = L.take packetLength $ L.concatMap bytesFromTransaction packetReads
-    WriteSuccess _ _ -> packetFromTransactions xs
-    t -> deepErrorX $
-      "packetFromTransactions: Expected ReadSuccess or WriteSuccess, but encountered" <> show t
 
+-- | Convert a list of Transactions to a list of Packets
+packetFromTransactions :: forall n . KnownNat n => [Transaction 32 n (Bytes n)] -> [Packet]
+packetFromTransactions [] = []
+packetFromTransactions (x:xs) = case x of
+  ReadSuccess _ (bitCoerce . resize . readData -> packetLength) -> packet : packetFromTransactions rest
+   where
+    (packetReads, rest) = L.span isRead xs
+    isRead = \case
+      ReadSuccess _ _ -> True
+      _               -> False
+    packet = L.take packetLength $ L.concatMap bytesFromTransaction packetReads
+  WriteSuccess _ _ -> packetFromTransactions xs
+  t -> deepErrorX $
+    "packetFromTransactions: Expected ReadSuccess or WriteSuccess, but encountered" <> show t
+ where
   -- Retrieve the singular bytes from a ReadSuccess Transaction.
   bytesFromTransaction :: KnownNat n => Transaction 32 n (Bytes n) -> [Unsigned 8]
   bytesFromTransaction = \case
