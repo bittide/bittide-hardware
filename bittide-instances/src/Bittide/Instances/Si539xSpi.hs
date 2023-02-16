@@ -1,8 +1,8 @@
 -- SPDX-FileCopyrightText: 2022-2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Bittide.Instances.Si539xSpi where
