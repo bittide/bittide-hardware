@@ -67,7 +67,6 @@ common common-options
     base,
     bittide-extra,
     bittide,
-    clash-cores,
     clash-lib,
     clash-prelude,
     clash-protocols,
