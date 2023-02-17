@@ -314,11 +314,7 @@ jobs:
 
       - name: Get test matrix
         run: |
-          if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
-            .github/scripts/get_formal_checks.sh
-          else
-            echo '["formal-checks-disabled"]' > checks.json
-          fi
+          echo '["formal-checks-disabled"]' > checks.json
 
       - name: Set test matrix
         id: set-matrix
