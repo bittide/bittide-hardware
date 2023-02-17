@@ -1,10 +1,10 @@
 [
-  {"topology": "diamond",   "steps": 8000000,  "args": "" },
-  {"topology": "complete",  "steps": 8000000,  "args": "--nodes 3"},
-  {"topology": "line",      "steps": 8000000,  "args": "--nodes 4"},
-  {"topology": "star",      "steps": 20000000, "args": "--nodes 7"},
-  {"topology": "torus2d",   "steps": 20000000, "args": "--rows 2 --cols 3"},
-  {"topology": "cycle",     "steps": 20000000, "args": "--nodes 5"},
-  {"topology": "hypercube", "steps": 50000000, "args": "--dimensions 3"},
-  {"topology": "random",    "steps": 50000000, "args": "--nodes 5"}
+  {"topology": "diamond",   "hmem": 16, "steps": 8000000,  "args": "" },
+  {"topology": "complete",  "hmem": 16, "steps": 8000000,  "args": "--nodes 3"},
+  {"topology": "torus2d",   "hmem": 16, "steps": 20000000, "args": "--rows 2 --cols 3"},
+  {"topology": "cycle",     "hmem": 16, "steps": 20000000, "args": "--nodes 5"},
+  {"topology": "star",      "hmem": 64, "steps": 20000000, "args": "--nodes 7"},
+  {"topology": "line",      "hmem": 64, "steps": 50000000, "args": "--nodes 4"},
+  {"topology": "hypercube", "hmem": 64, "steps": 50000000, "args": "--dimensions 3"},
+  {"topology": "random",    "hmem": 64, "steps": 50000000, "args": "--nodes 5"}
 ]

@@ -1,3 +1,3 @@
 [
-  {"topology": "complete", "steps": 1000000, "args": "--nodes 2 --offsets [-2,2] --frame-size 1500"}
+  {"topology": "complete", "hmem": 16, "steps": 1000000, "args": "--nodes 2 --offsets [-2,2] --frame-size 1500"}
 ]
