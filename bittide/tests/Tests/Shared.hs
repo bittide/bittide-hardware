@@ -16,15 +16,17 @@ import Clash.Signal.Internal
 import Data.Constraint (Dict(Dict))
 import Data.Constraint.Nat.Extra (divWithRemainder)
 import Data.List.NonEmpty (NonEmpty)
+import Data.Maybe
 import GHC.Stack (HasCallStack)
 import Hedgehog
 import Numeric.Natural
 import Protocols (toSignals)
+import Protocols.Axi4.Stream
 import Protocols.Wishbone as Wb
 import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
 
 import Bittide.Calendar
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (Bytes, Regs)
 import qualified Data.List as L
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified GHC.TypeNats as TypeNats
@@ -266,3 +268,32 @@ fromListWithResetAndEnable inp =
       | rst       = inpAsSignal
       | ena       = xs
       | otherwise = x :- xs
+
+-- | A simple simulation-only driver that receives a list of Wishbone master requests
+-- alongside the slave bus and drives the master bus. The driver presents the next
+-- request after the current request has been terminated by `acknowledge`, `retry` or `err`.
+wishboneSimDriver ::
+  (HiddenClockResetEnable dom, KnownNat addrW, KnownNat (BitSize a), NFDataX a, ShowX a) =>
+  [WishboneM2S addrW (Regs a 8) a] ->
+  Signal dom (WishboneS2M a) ->
+  Signal dom (WishboneM2S addrW (Regs a 8) a)
+wishboneSimDriver inputList wbS2M = wbM2S
+ where
+  wbM2S = andEnable (getEna <$> wbM2S <*> wbS2M) $ fromListWithResetAndEnable
+    (NonEmpty.fromList $ inputList <> L.repeat emptyWishboneM2S)
+  getEna WishboneM2S{..} WishboneS2M{..} =
+    not (busCycle && strobe) || (busCycle && strobe && (acknowledge || err || retry))
+
+-- | A simple simulation-only driver that receives a list of Axi4Stream master operations
+-- alongside the slave bus and drives the master bus. The driver presents the next
+-- request after the current request has been terminated by accepted by `_tready`.
+axi4StreamSimDriver ::
+  (HiddenClockResetEnable dom, KnownAxi4StreamConfig conf, NFDataX userType, Show userType) =>
+  [Maybe (Axi4StreamM2S conf userType)] ->
+  Signal dom Axi4StreamS2M ->
+  Signal dom (Maybe (Axi4StreamM2S conf userType))
+axi4StreamSimDriver inputList axisS2M = axisM2S
+ where
+  axisM2S = andEnable (getEna <$> axisM2S <*> axisS2M) $ fromListWithResetAndEnable
+    (NonEmpty.fromList $ inputList <> L.repeat Nothing)
+  getEna axi4StreamM2S Axi4StreamS2M{..} = isNothing axi4StreamM2S || _tready
