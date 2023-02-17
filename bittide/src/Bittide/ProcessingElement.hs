@@ -41,11 +41,10 @@ data PeConfig nBusses where
 processingElement ::
   forall dom nBusses .
   ( HiddenClockResetEnable dom
-  , KnownNat nBusses, 3 <= nBusses, CLog 2 nBusses <= 30) =>
+  , KnownNat nBusses, 2 <= nBusses, CLog 2 nBusses <= 30) =>
   PeConfig nBusses ->
-  Vec (nBusses-3) (Signal dom (WishboneS2M (Bytes 4))) ->
-  ( Vec (nBusses-3) (Signal dom (WishboneM2S (32 - CLog 2 nBusses) 4 (Bytes 4)))
-  , Signal dom (Maybe (BitVector 4, BitVector 32)))
+  Vec (nBusses-2) (Signal dom (WishboneS2M (Bytes 4))) ->
+  Vec (nBusses-2) (Signal dom (WishboneM2S (32 - CLog 2 nBusses) 4 (Bytes 4)))
 processingElement config bussesIn = case config of
   PeConfig memMapConfig initI initD pcEntry ->
     go memMapConfig initI initD pcEntry
@@ -57,10 +56,8 @@ processingElement config bussesIn = case config of
     InitialContent depthI (Bytes 4) ->
     InitialContent depthD (Bytes 4) ->
     BitVector 32 ->
-    ( Vec (nBusses-3) (Signal dom (WishboneM2S (32 - CLog 2 nBusses) 4 (Bytes 4)))
-    , Signal dom (Maybe (BitVector 4, BitVector 32))
-    )
-  go memMapConfig initI initD pcEntry = (bussesOut, sinkOut)
+    Vec (nBusses-2) (Signal dom (WishboneM2S (32 - CLog 2 nBusses) 4 (Bytes 4)))
+  go memMapConfig initI initD pcEntry = bussesOut
    where
     tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusS2M, dBusS2M) =
       CoreIn {..}
@@ -74,13 +71,11 @@ processingElement config bussesIn = case config of
 
     (dToCore, unbundle -> toSlaves) = singleMasterInterconnect' memMapConfig dFromCore fromSlaves
 
-    fromSlaves = bundle (iToMap :> dToMap :> sinkS2M :> bussesIn)
-    (iFromMap :> dFromMap :> sinkM2S :> bussesOut) = toSlaves
+    fromSlaves = bundle (iToMap :> dToMap :> bussesIn)
+    (iFromMap :> dFromMap :> bussesOut) = toSlaves
 
     (iToCore, iToMap) = wbStorageDP initI iFromCore iFromMap
     dToMap = wbStorage' initD dFromMap
-
-    (sinkS2M, sinkOut) = unbundle $ wishboneSink sinkM2S
 
 -- | Contranomy RV32IMC core
 rv32 ::
