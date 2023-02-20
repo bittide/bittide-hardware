@@ -207,8 +207,8 @@ wbAxisRxBuffer SNat wbM2S axisM2S statusClearSignal = (wbS2M, axisS2M, statusReg
     wbHandshake = masterActive && not err
 
     (readData, nextReadingFifo, wbAcknowledge)
-      | internalAddress == packetLengthAddress = (resize $ pack packetLength, False, wbHandshake)
-      | internalAddress == statusAddress       = (resize statusBV, False, wbHandshake)
+      | masterActive && internalAddress == packetLengthAddress = (resize $ pack packetLength, False, wbHandshake)
+      | masterActive && internalAddress == statusAddress       = (resize statusBV, False, wbHandshake)
       | otherwise                              = (wbData, wbHandshake && not readingFifo, wbHandshake && readingFifo)
 
     axisReady = not (packetComplete || bufferFull)
