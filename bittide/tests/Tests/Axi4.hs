@@ -225,7 +225,7 @@ wbAxisTxBufferWriteStreams = property $ do
       footnote . fromString $ "wbOps:" <> show wbOps
       footnote . fromString $ "axisM2SList:" <> show axisM2SList
       footnote . fromString $ "axisS2MList:" <> show axisS2MList
-      L.concat packets === axis4ToPackets axisM2SList axisS2MList
+      packets === axis4ToPackets axisM2SList axisS2MList
 
 wbAxisRxBufferReadStreams :: Property
 wbAxisRxBufferReadStreams = property $ do
