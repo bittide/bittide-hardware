@@ -23,7 +23,7 @@ import Data.Aeson.Types (typeMismatch)
 import Control.Monad (forM, forM_, when, replicateM, replicateM_)
 import GHC.Generics (Generic)
 import GHC.Int (Int64)
-import System.Exit (exitSuccess, exitFailure, die)
+import System.Exit (exitSuccess, die)
 import System.FilePath ((</>))
 import System.Directory (createDirectoryIfMissing)
 import Data.ByteString.Lazy qualified as BS
@@ -386,7 +386,7 @@ data Options =
     , offsets            :: [Int64]
     , outDir             :: FilePath
     , jsonArgs           :: Maybe FilePath
-    , stable             :: Bool
+    , stable             :: Maybe Bool
     }
   deriving (Show, Ord, Eq, Generic, ToJSON, FromJSON)
 
@@ -474,7 +474,7 @@ optionParser =
                    )
               )
           )
-    <*> pure False
+    <*> pure Nothing
 
 cliParser :: ParserInfo Options
 cliParser = info (optionParser <**> helper)
@@ -495,6 +495,19 @@ main = do
           Just o  -> return o { jsonArgs }
 
   let
+    safeToFile name g offs isStable = do
+      createDirectoryIfMissing True outDir
+      let topologyFile = outDir </> "topology.gv"
+      writeFile topologyFile $ (<> "\n") $ render $ toDot g name
+      BS.writeFile (outDir </> "simulate.json") $ encode options
+        { stable   = isStable
+        , offsets  = offs
+        , jsonArgs = Nothing
+        , topology = case topology of
+            Just (Random _) -> Just $ DotFile topologyFile
+            _               -> topology
+        }
+
     settings =
       SimulationSettings
         { margin     = stabilityMargin
@@ -505,44 +518,34 @@ main = do
         , dir        = outDir
         , stopStable = stopWhenStable
         , fixOffsets = offsets
+        , save       = \_ _ _ -> return ()
         }
 
-  createDirectoryIfMissing True outDir
-
-  (((isStable, offs), g), name) <- case topology of
-    Just t -> let dName = ttype t in case t of
-      Diamond       -> (,dName) <$> plotDiamond settings
-      Line n        -> (,dName) <$> plotLine settings n
-      HyperCube n   -> (,dName) <$> plotHyperCube settings n
-      Grid r c      -> (,dName) <$> plotGrid settings r c
-      Torus2D r c   -> (,dName) <$> plotTorus2D settings r c
-      Torus3D r c p -> (,dName) <$> plotTorus3D settings r c p
-      Tree d c      -> (,dName) <$> plotTree settings d c
-      Star n        -> (,dName) <$> plotStar settings n
-      Cycle n       -> (,dName) <$> plotCyclic settings n
-      Complete n    -> (,dName) <$> plotComplete settings n
-      Random n      -> (,dName) <$> (randomGraph n >>= plotGraph settings)
-      DotFile f     -> (fromDot <$> readFile f) >>= \case
-        Right (g, name) -> (,name) <$> plotGraph settings g
-        Left err        -> die $ "ERROR: Invalid DOT file - " <> f <> "\n" <> err
+  isStable <- case topology of
+    Just t -> do
+      let simSettings = settings { save = safeToFile $ ttype t }
+      case t of
+        Diamond       -> plotDiamond simSettings
+        Line n        -> plotLine simSettings n
+        HyperCube n   -> plotHyperCube simSettings n
+        Grid r c      -> plotGrid simSettings r c
+        Torus2D r c   -> plotTorus2D simSettings r c
+        Torus3D r c p -> plotTorus3D simSettings r c p
+        Tree d c      -> plotTree simSettings d c
+        Star n        -> plotStar simSettings n
+        Cycle n       -> plotCyclic simSettings n
+        Complete n    -> plotComplete simSettings n
+        Random n      -> randomGraph n >>= plotGraph simSettings
+        DotFile f     -> (fromDot <$> readFile f) >>= \case
+          Right (g, name) -> plotGraph settings { save = safeToFile name } g
+          Left err -> die $ "ERROR: Invalid DOT file - " <> f <> "\n" <> err
     Nothing ->
       handleParseResult $ Failure
         $ parserFailure defaultPrefs cliParser (ShowHelpText Nothing) []
 
-  let topologyFile = outDir </> "topology.gv"
-  writeFile topologyFile $ (<> "\n") $ render $ toDot g name
-  BS.writeFile (outDir </> "simulate.json") $ encode options
-     { stable   = isStable
-     , offsets  = offs
-     , jsonArgs = Nothing
-     , topology = case topology of
-         Just (Random _) -> Just $ DotFile topologyFile
-         _               -> topology
-     }
-
   if isStable
   then exitSuccess
-  else exitFailure
+  else die "Simulated topology did not stabilize in time."
 
 randomGraph :: Int -> IO Graph
 randomGraph n = do
