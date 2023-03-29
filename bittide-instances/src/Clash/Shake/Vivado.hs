@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -18,6 +18,7 @@ module Clash.Shake.Vivado
   , mkNetlistTcl
   , mkSynthesisTcl
   , mkRouteTcl
+  , mkBitstreamTcl
   , meetsTiming
   ) where
 
@@ -94,15 +95,18 @@ mkSynthesisTcl ::
   Bool ->
   -- | Part to synthesize for. E.g., 'xcku040-ffva1156-2-e'.
   String ->
+  -- | List of filepaths to XDC files
+  [FilePath] ->
   -- | Manifests of which the first is the top-level to synthesize
   LocatedManifest ->
   -- | Rendered TCL
   IO String
-mkSynthesisTcl outputDir outOfContext part manifest@LocatedManifest{lmManifest} = do
+mkSynthesisTcl outputDir outOfContext part constraints manifest@LocatedManifest{lmManifest} = do
   baseTcl <- mkBaseTcl outputDir manifest
   pure $ baseTcl <> "\n" <> [__i|
     set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
 
+    #{constraintsString}
     file mkdir {#{outputDir </> "reports"}}
     file mkdir {#{outputDir </> "checkpoints"}}
 
@@ -114,14 +118,16 @@ mkSynthesisTcl outputDir outOfContext part manifest@LocatedManifest{lmManifest} 
 
     \# Netlist
     file mkdir {#{outputDir </> "netlist"}}
-    write_verilog -force {#{outputDir </> "netlist.v"}}
-    write_xdc -no_fixed_only -force {#{outputDir </> "netlist.xdc"}}
+    write_verilog -force {#{outputDir </> "netlist" </> "netlist.v"}}
+    write_xdc -no_fixed_only -force {#{outputDir </> "netlist" </> "netlist.xdc"}}
   |]
  where
   name = topComponent lmManifest
   outOfContextStr
     | outOfContext = "out_of_context" :: String
     | otherwise    = "default"
+  constraintReader constr = "read_xdc {" <> constr <> "}\n"
+  constraintsString = concatMap constraintReader constraints
 
 mkPlaceTcl :: FilePath -> String
 mkPlaceTcl outputDir = [__i|
@@ -173,6 +179,19 @@ mkNetlistTcl outputDir = [__i|
 
     \# Generate netlist and constraints
     file mkdir {#{outputDir </> "netlist"}}
-    write_verilog -force {#{outputDir </> "netlist.v"}}
-    write_xdc -no_fixed_only -force {#{outputDir </> "netlist.xdc"}}
+    write_verilog -force {#{outputDir </> "netlist" </> "netlist.v"}}
+    write_xdc -no_fixed_only -force {#{outputDir </> "netlist" </> "netlist.xdc"}}
+|]
+
+mkBitstreamTcl :: FilePath -> String
+mkBitstreamTcl outputDir = [__i|
+    set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
+
+    \# Pick up where routing left off
+    open_checkpoint {#{outputDir </> "checkpoints" </> "post_route.dcp"}}
+
+    \# Generate bitstream
+    write_bitstream {#{outputDir </> "bitstream.bit"}}
+
+    report_drc -file {#{outputDir </> "reports" </> "post_bitstream_drc.rpt"}}
 |]

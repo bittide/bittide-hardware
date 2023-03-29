@@ -1,6 +1,7 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -8,18 +9,20 @@ module Main where
 
 import Prelude
 
-import Clash.Shake.Extra
 import Control.Monad.Extra (ifM, unlessM)
 import Data.Foldable (for_)
 import Development.Shake
-import Development.Shake.Extra
 import GHC.Stack (HasCallStack)
 import Language.Haskell.TH (nameBase)
 import System.Console.ANSI (setSGR)
 import System.Directory (getCurrentDirectory)
 import System.FilePath (isDrive, (</>), takeDirectory)
 
+import Paths_bittide_instances
+
 import Clash.Shake.Vivado
+import Clash.Shake.Extra
+import Development.Shake.Extra
 
 import qualified Bittide.Instances.Calendar as Calendar
 import qualified Bittide.Instances.ClockControl as ClockControl
@@ -44,6 +47,11 @@ clashBuildDir projectRoot = buildDir projectRoot </> "clash"
 -- | Given Cabal project root, determine directory for Vivado input + output files
 vivadoBuildDir :: FilePath -> FilePath
 vivadoBuildDir projectRoot = buildDir projectRoot </> "vivado"
+
+getConstraintFileName :: TH.Name -> IO FilePath
+getConstraintFileName target =
+  getDataFileName ("data" </> "constraints" </> nameBase target <> ".xdc")
+
 
 -- | Searches for a file called @cabal.project@ It will look for it in the
 -- current working directory. If it can't find it there, it will traverse up
@@ -135,16 +143,24 @@ main = do
         synthesisDir = vivadoBuildDir projectRoot </> show target
         falsePathXdc = synthesisDir </> "false_paths.xdc"
         checkpointsDir = synthesisDir </> "checkpoints"
+        netlistDir = synthesisDir </> "netlist"
         reportDir = synthesisDir </> "reports"
 
-        runSynthTclPath   = synthesisDir </> "run_synth.tcl"
-        runPlaceTclPath   = synthesisDir </> "run_place.tcl"
-        runRouteTclPath   = synthesisDir </> "run_route.tcl"
-        runNetlistTclPath = synthesisDir </> "run_netlist.tcl"
+        runSynthTclPath     = synthesisDir </> "run_synth.tcl"
+        runPlaceTclPath     = synthesisDir </> "run_place.tcl"
+        runRouteTclPath     = synthesisDir </> "run_route.tcl"
+        runNetlistTclPath   = synthesisDir </> "run_netlist.tcl"
+        runBitstreamTclPath = synthesisDir </> "run_bitstream.tcl"
 
         postSynthCheckpointPath = checkpointsDir </> "post_synth.dcp"
         postPlaceCheckpointPath = checkpointsDir </> "post_place.dcp"
         postRouteCheckpointPath = checkpointsDir </> "post_route.dcp"
+
+        netlistPaths =
+          [ netlistDir </> "netlist.v"
+          , netlistDir </> "netlist.xdc"
+          ]
+        bitstreamPath = synthesisDir </> "bitstream.bit"
 
         postRouteTimingSummaryPath = reportDir </> "post_route_timing_summary.rpt"
         postRouteTimingPath = reportDir </> "post_route_timing.rpt"
@@ -182,6 +198,10 @@ main = do
           synthesisPart <- getEnvWithDefault "xcku035-ffva1156-2-e" "SYNTHESIS_PART"
           locatedManifest <- decodeLocatedManifest manifestPath
 
+          constraintFileName <- liftIO (getConstraintFileName target)
+          constraintExists <- liftIO $ Directory.doesFileExist constraintFileName
+          let constraintList = ([constraintFileName | constraintExists])
+
           -- let
           --   LocatedManifest{lmManifest=Manifest{topComponent=lib}} = locatedManifest
           --   falsePathHdlSource = HdlSource XdcSource lib falsePathXdc
@@ -191,6 +211,7 @@ main = do
               synthesisDir            -- Output directory for Vivado
               False                   -- Out of context run
               synthesisPart           -- Part we're synthesizing for
+              constraintList          -- List of filenames with constraints
               locatedManifest
               -- [falsePathHdlSource]    -- Extra files
 
@@ -240,6 +261,18 @@ main = do
         runNetlistTclPath %> \path -> do
           writeFileChanged path (mkNetlistTcl synthesisDir)
 
+        netlistPaths |%> \_ -> do
+          need [runNetlistTclPath, postRouteCheckpointPath]
+          vivadoFromTcl runNetlistTclPath
+
+        -- Bitstream generation
+        runBitstreamTclPath %> \path -> do
+          writeFileChanged path (mkBitstreamTcl synthesisDir)
+
+        bitstreamPath %> \_ -> do
+          need (runBitstreamTclPath : netlistPaths)
+          vivadoFromTcl runBitstreamTclPath
+
       -- User friendly target names
       phony (nameBase target <> ":hdl") $ do
         need [manifestPath]
@@ -254,6 +287,7 @@ main = do
         need [postRouteCheckpointPath]
 
       phony (nameBase target <> ":netlist") $ do
-        need [postRouteCheckpointPath, runNetlistTclPath]
-        vivadoFromTcl runNetlistTclPath
-        produces [synthesisDir </> "netlist.v", synthesisDir </> "netlist.xdc"]
+        need netlistPaths
+
+      phony (nameBase target <> ":bitstream") $ do
+        need [bitstreamPath]

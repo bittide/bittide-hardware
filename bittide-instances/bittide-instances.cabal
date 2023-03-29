@@ -5,9 +5,10 @@ License:             Apache-2.0
 license-file:        LICENSE
 author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
-Copyright:           Copyright © 2022 Google LLC
+Copyright:           Copyright © 2022-2023 Google LLC
 
 data-files:
+  data/constraints/*.xdc
   tests/reports/*.rpt
   tests/reports/golden/*.rpt
 
@@ -132,6 +133,10 @@ executable shake
     , template-haskell
     , text
     , utf8-string
+  other-modules:
+    Paths_bittide_instances
+  autogen-modules:
+    Paths_bittide_instances
 
 executable clash
   import: common-options

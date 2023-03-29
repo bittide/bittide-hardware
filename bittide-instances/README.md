@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2022 Google LLC
+SPDX-FileCopyrightText: 2022-2023 Google LLC
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -17,6 +17,13 @@ We synthesize each component in the package `Bittide` and their composites on th
 The build system automatically generates _false path_ constraints for all input and output pins. Hence, any paths from the input pin to the shift registers, and any paths from the output pin to the output of a flipflop are dismissed from timing analysis. This makes sure only the design under test is analyzed, not the logic inserted to map to a single input/output pin.
 
 **Note that false path constraints are also generated for any reset lines. You therefore need to make sure to properly synchronize your resets before feeding them to a circuit.**
+
+
+## Prerequisites
+* We have tested the build system with Vivado 2022.1
+* To change the part for which the instances are synthesized, set the environment variable `SYNTHESIS_PART`. For the part we've bought use `SYNTHESIS_PART=xcku040-ffva1156-2-e`. Note that for this part you need to use Vivado Enterprise.
+* For the step Bitstream generation an XDC file with pinmappings is required. This file must have the same name as the instance, and be located in the `data/constraints/` directory.
+
 
 ## Shake
 The build rules are defined in `bin/Shake.hs`. Shake can be called using:
@@ -63,4 +70,11 @@ Example:
 
 ```
 cabal run -- bittide-instances:shake scatterUnitWb:netlist
+```
+
+## Bitstream generation
+Example:
+
+```
+cabal run -- bittide-instances:shake clockControlDemo0:bitstream
 ```
