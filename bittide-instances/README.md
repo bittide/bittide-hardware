@@ -22,7 +22,7 @@ The build system automatically generates _false path_ constraints for all input 
 ## Prerequisites
 * We have tested the build system with Vivado 2022.1
 * To change the part for which the instances are synthesized, set the environment variable `SYNTHESIS_PART`. For the part we've bought use `SYNTHESIS_PART=xcku040-ffva1156-2-e`. Note that for this part you need to use Vivado Enterprise.
-* For the step Bitstream generation an XDC file with pinmappings is required. This file must have the same name as the instance, and be located in the `data/constraints/` directory.
+* For the step Bitstream generation and Board programming an XDC file with pinmappings is required. This file must have the same name as the instance, and be located in the `data/constraints/` directory.
 
 
 ## Shake
@@ -77,4 +77,11 @@ Example:
 
 ```
 cabal run -- bittide-instances:shake clockControlDemo0:bitstream
+```
+
+## Board programming
+Example:
+
+```
+cabal run -- bittide-instances:shake clockControlDemo0:program
 ```

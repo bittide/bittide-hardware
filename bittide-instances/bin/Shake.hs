@@ -146,11 +146,12 @@ main = do
         netlistDir = synthesisDir </> "netlist"
         reportDir = synthesisDir </> "reports"
 
-        runSynthTclPath     = synthesisDir </> "run_synth.tcl"
-        runPlaceTclPath     = synthesisDir </> "run_place.tcl"
-        runRouteTclPath     = synthesisDir </> "run_route.tcl"
-        runNetlistTclPath   = synthesisDir </> "run_netlist.tcl"
-        runBitstreamTclPath = synthesisDir </> "run_bitstream.tcl"
+        runSynthTclPath        = synthesisDir </> "run_synth.tcl"
+        runPlaceTclPath        = synthesisDir </> "run_place.tcl"
+        runRouteTclPath        = synthesisDir </> "run_route.tcl"
+        runNetlistTclPath      = synthesisDir </> "run_netlist.tcl"
+        runBitstreamTclPath    = synthesisDir </> "run_bitstream.tcl"
+        runBoardProgramTclPath = synthesisDir </> "run_board_program.tcl"
 
         postSynthCheckpointPath = checkpointsDir </> "post_synth.dcp"
         postPlaceCheckpointPath = checkpointsDir </> "post_place.dcp"
@@ -273,6 +274,10 @@ main = do
           need (runBitstreamTclPath : netlistPaths)
           vivadoFromTcl runBitstreamTclPath
 
+        -- Write bitstream to board
+        runBoardProgramTclPath %> \path -> do
+          writeFileChanged path (mkBoardProgramTcl synthesisDir)
+
       -- User friendly target names
       phony (nameBase target <> ":hdl") $ do
         need [manifestPath]
@@ -291,3 +296,7 @@ main = do
 
       phony (nameBase target <> ":bitstream") $ do
         need [bitstreamPath]
+
+      phony (nameBase target <> ":program") $ do
+        need [bitstreamPath, runBoardProgramTclPath]
+        vivadoFromTcl runBoardProgramTclPath
