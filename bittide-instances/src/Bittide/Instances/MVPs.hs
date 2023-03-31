@@ -8,12 +8,16 @@ module Bittide.Instances.MVPs where
 
 import Clash.Prelude
 
+import Clash.Annotations.TH (makeTopEntity)
+import Clash.Xilinx.ClockGen (clockWizardDifferential)
+import Clash.Cores.Xilinx.Extra (ibufds)
+
 import Bittide.Instances.Domains
 import Bittide.ElasticBuffer
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl
-import Clash.Annotations.TH (makeTopEntity)
 import Bittide.ClockControl.StabilityChecker (stabilityChecker)
+
 
 type FINC = Bool
 type FDEC = Bool
@@ -25,8 +29,10 @@ speedChangeToPins = \case
  NoChange -> (False, False)
 
 clockControlDemo1 ::
-  "clkA" ::: Clock Basic200A ->
-  "clkB" ::: Clock Basic200B ->
+  "USER_SMA_CLOCK_N" ::: Clock Basic200A ->
+  "USER_SMA_CLOCK_P" ::: Clock Basic200A ->
+  "FMC_HPC_CLK1_M2C_N" ::: Clock Basic200B ->
+  "FMC_HPC_CLK1_M2C_P" ::: Clock Basic200B ->
   "drainFifoA" ::: Reset Basic200A ->
   "drainFifoB" ::: Reset Basic200B ->
   ( "domA" ::: Signal Basic200A
@@ -34,31 +40,32 @@ clockControlDemo1 ::
       ( "FINC" ::: FINC
       , "FDEC" ::: FDEC
       )
-    , "Underflowed" ::: Bool
-    , "Overflowed" ::: Bool
     , "isStable" ::: Bool
-    , "EbMode" ::: EbMode
     )
   ,  "domB" ::: Signal Basic200B
-    (
-      "" :::
+    ( "" :::
       ( "FINC" ::: FINC
       , "FDEC" ::: FDEC
       )
-    , "Underflowed" ::: Bool
-    , "Overflowed" ::: Bool
     , "isStable" ::: Bool
-    , "EbMode" ::: EbMode
     )
   )
-clockControlDemo1 clkA clkB drainFifoA drainFifoB = (demoA, demoB)
+clockControlDemo1 clkSmaN clkSmaP clkFmcN clkFmcP drainFifoA drainFifoB =
+  (bundle (fIncDecA, isStableA), bundle (fIncDecB, isStableB))
  where
+  (fIncDecA, _, _, isStableA, _) = unbundle demoA
+  (fIncDecB, _, _, isStableB, _) = unbundle demoB
+
   demoA =
     genericClockControlDemo0 clockConfigA clkB clkA (unsafeFromHighPolarity $ pure False)
     drainFifoA (unsafeFromHighPolarity $ pure False)
+
   demoB =
     genericClockControlDemo0 clockConfigB clkA clkB (unsafeFromHighPolarity $ pure False)
     drainFifoB (unsafeFromHighPolarity $ pure False)
+
+  clkA = ibufds clkSmaP clkSmaN
+  clkB = ibufds clkFmcP clkFmcN
 
   clockConfigA :: ClockControlConfig Basic200A 12
   clockConfigA = $(lift (defClockConfig @Basic200A))
@@ -102,8 +109,10 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
       stabilityChecker d2 (SNat @20_000_000) bufferOccupancy
 
 clockControlDemo0 ::
-  "clkRecovered" ::: Clock Internal ->
-  "clkControlled" ::: Clock External ->
+  "SYSCLK_300_N" ::: Clock Basic300 ->
+  "SYSCLK_300_P" ::: Clock Basic300 ->
+  "USER_SMA_CLOCK_N" ::: Clock External ->
+  "USER_SMA_CLOCK_P" ::: Clock External ->
   "rstExternal" ::: Reset External ->
   "drainFifo" ::: Reset External ->
   "stabilityCheckReset" ::: Reset External ->
@@ -117,10 +126,21 @@ clockControlDemo0 ::
     , "Overflowed" ::: Bool
     , "isStable" ::: Bool
     , "EbMode" ::: EbMode)
-clockControlDemo0 = genericClockControlDemo0 clockConfig
+clockControlDemo0 clkSysN clkSysP clkSmaN clkSmaP =
+  genericClockControlDemo0 clockConfig clkRecovered clkControlled
  where
   clockConfig :: ClockControlConfig External 12
   clockConfig = $(lift (defClockConfig @External))
+  (clkRecovered, _) =
+    clockWizardDifferential
+    @_
+    @Internal
+    (SSymbol @"clkWiz300to200")
+    clkSysN
+    clkSysP
+    resetGen
+
+  clkControlled = ibufds clkSmaP clkSmaN
 
 -- | Holds any @a@ which has any bits set for @stickyCycles@ clock cycles.
 -- On receiving a new @a@ with non-zero bits, it sets the new incoming value as it output
@@ -147,6 +167,7 @@ stickyBits SNat = mealy go (0 , unpack 0)
       | newIncoming = (incomingBits, maxBound)
       | holdingBits = (storedBits, predCount)
       | otherwise   = (unpack 0, predCount)
+
 
 makeTopEntity 'clockControlDemo0
 makeTopEntity 'clockControlDemo1
