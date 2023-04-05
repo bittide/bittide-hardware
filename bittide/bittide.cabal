@@ -123,6 +123,7 @@ library
     Bittide.Switch
     Bittide.Wishbone
     Clash.Cores.Extra
+    Clash.Cores.UART.Extra
     Clash.Cores.Xilinx.Extra
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
