@@ -30,7 +30,7 @@ tests = testGroup "Unittests"
   , ebGroup
   , haxiomsGroup
   , linkGroup
-  , memMapGroup
+  , wbGroup
   , ramGroup
   , readElfTestGroup
   , sgGroup
