@@ -115,6 +115,7 @@ library
     Bittide.Wishbone
     Clash.Cores.Extra
     Clash.Cores.Xilinx.Extra
+    Clash.Signal.Extra
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
 
