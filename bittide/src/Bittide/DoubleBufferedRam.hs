@@ -564,3 +564,57 @@ updateAddrs rdAddr (Just (i, a)) bufSelect =
 
 updateAddrs rdAddr Nothing bufSelect =
   (mul2Index rdAddr bufSelect, Nothing)
+
+{-# NOINLINE fifo #-}
+
+-- | Simple First in, First out buffer the contains a backpressure mechanism.
+fifo ::
+  forall dom fifoDepth a .
+  (HiddenClockResetEnable dom,  2 <= fifoDepth, NFDataX a) =>
+  SNat fifoDepth ->
+  Signal dom (Maybe a) ->
+  Signal dom Bool ->
+  ( Signal dom (Maybe a)
+  , Signal dom Bool
+  , Signal dom (Index (fifoDepth + 1)))
+fifo depth@SNat fifoIn readyIn = (fifoOut, readyOut, dataCount)
+ where
+  bramOut = readNew (blockRamU NoClearOnReset depth (const undefined)) readAddr writeOp
+  (readAddr, writeOp, fifoOut, readyOut, dataCount) = mealyB go (0, 0, 0, True) (fifoIn, readyIn, bramOut)
+  go ::
+    (Index fifoDepth, Index fifoDepth, Index (fifoDepth + 1), Bool) ->
+    (Maybe a, Bool, a) ->
+    ( (Index fifoDepth, Index fifoDepth, Index (fifoDepth + 1), Bool)
+    , (Index fifoDepth, Maybe (Index fifoDepth, a), Maybe a, Bool, Index (fifoDepth + 1)))
+  go (readCounter, writeCounter, dataCountGo, fifoEmpty) (fifoInGo, readyInGo, bramOutGo) =
+    ((readCounterNext, writeCounterNext, dataCountNext, fifoEmptyNext), output)
+   where
+    readSucc  = satSucc SatWrap readCounter
+    writeSucc = satSucc SatWrap writeCounter
+
+    readCounterNext
+      | not fifoEmpty && readyInGo = readSucc
+      | otherwise                  = readCounter
+
+    (writeCounterNext, writeOpGo)
+      | not full && isJust fifoInGo = (writeSucc, (writeCounter,) <$> fifoInGo)
+      | otherwise                   = (writeCounter, Nothing)
+
+    countersSame     = readCounter == writeCounter
+    nextCountersSame = readCounterNext == writeCounterNext
+
+    full = not fifoEmpty && countersSame
+    fifoEmptyNext
+      | fifoEmpty = countersSame
+      | otherwise = readyInGo && nextCountersSame
+    fifoOutGo
+      | fifoEmpty = Nothing
+      | otherwise = Just bramOutGo
+
+    dataCountNext = satAdd SatBound dataCountGo dataCountChange
+    dataCountChange = case (isJust fifoInGo && not full, not fifoEmpty && readyInGo) of
+      (True, False) -> 1
+      (False, True) -> -1
+      _             -> 0
+
+    output = (readCounterNext, writeOpGo, fifoOutGo, not full, dataCountGo)

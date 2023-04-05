@@ -25,25 +25,25 @@ import Data.String
 import Data.Type.Equality (type (:~:)(Refl))
 import Hedgehog
 import Hedgehog.Range as Range
+import Numeric (showHex)
 import Protocols.Hedgehog.Internal
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import Bittide.SharedTypes
 import Bittide.DoubleBufferedRam
+import Bittide.SharedTypes
 import Tests.Shared
 
 import qualified Clash.Sized.Vector as V
 import qualified Data.IntMap as I
 import qualified Data.List as L
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Prelude as P
-import Numeric (showHex)
-
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRam group"
   [ testPropertyNamed "Reading the buffer."
@@ -78,10 +78,26 @@ ramGroup = testGroup "DoubleBufferedRam group"
       "wbStorageRangeErrors" wbStorageRangeErrors
   , testPropertyNamed "Test whether wbStorage acts the same its Behavioral model (clash-protocols)"
       "wbStorageProtocolsModel" wbStorageProtocolsModel
+  , testPropertyNamed "Test whether we get back all elements from the fifo."
+      "testFifo" testFifo
   ]
 
 genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
 genRamContents memDepth = genSomeVec (Range.singleton $ fromIntegral (memDepth - 1))
+
+testFifo :: Property
+testFifo = property $ do
+  readyList <- forAll $ Gen.filter or $ Gen.list (Range.linear 1 5) Gen.bool
+  inputList <- forAll $ Gen.list (Range.linear 1 100) (Gen.maybe $ genUnsigned @_ @8 Range.constantBounded)
+  let
+    topEntity = mux readyIn fifoOut (pure Nothing)
+     where
+      (fifoOut, fifoReady, _) = wcre @System $ fifo d2 fifoIn readyIn
+      fifoIn = withClockResetEnable clockGen resetGen (toEnable fifoReady) $ fromListWithResetAndEnable ( Nothing NonEmpty.:| (inputList <> L.repeat Nothing))
+      readyIn = fromList $ cycle readyList
+    simOut = sampleN (L.length inputList * L.length readyList + 10) topEntity
+
+  catMaybes inputList === catMaybes simOut
 
 -- | This test checks if we can read the initial values of the double buffered Ram.
 readDoubleBufferedRam :: Property
