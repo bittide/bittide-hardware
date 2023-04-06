@@ -9,11 +9,11 @@ packages:
   contranomy/
   contranomy-sim/
   elastic-buffer-sim/
-  vex-riscv/
 
 write-ghc-environment-files: always
 
 with-compiler: ghc-9.0.2
+executable-dynamic: True
 
 tests: True
 
@@ -71,3 +71,9 @@ source-repository-package
   type: git
   location: https://github.com/cchalmers/circuit-notation.git
   tag: 618e37578e699df235f2e7150108b6401731919b
+
+source-repository-package
+  type: git
+  location: https://github.com/clash-lang/clash-vexriscv/
+  tag: e8b12c7268703f6b8a2dd012103b763b6ded05f7
+  subdir: clash-vexriscv
