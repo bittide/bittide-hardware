@@ -8,8 +8,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
+{-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 module Tests.DoubleBufferedRam(ramGroup) where
 
 import Clash.Prelude
@@ -17,7 +18,6 @@ import Clash.Prelude
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
-import Clash.Signal.Internal(Signal(..))
 import Data.Either
 import Data.Maybe
 import Data.Proxy
@@ -25,14 +25,15 @@ import Data.String
 import Data.Type.Equality (type (:~:)(Refl))
 import Hedgehog
 import Hedgehog.Range as Range
+import Numeric (showHex)
 import Protocols.Hedgehog.Internal
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import Bittide.SharedTypes
 import Bittide.DoubleBufferedRam
+import Bittide.SharedTypes
 import Tests.Shared
 
 import qualified Clash.Sized.Vector as V
@@ -42,8 +43,6 @@ import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Prelude as P
-import Numeric (showHex)
-
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRam group"
   [ testPropertyNamed "Reading the buffer."
@@ -657,7 +656,7 @@ wbStorageSpecCompliance = property $ do
         defExpectOptions
         (\_ _ () -> Right ())
         (wbStorage (Reloadable $ Vec content))
-        (genRequests (snatToNum (SNat @v)))
+        (genRequests (snatToNum (SNat @v) - 1))
         ()
 
     genRequests size = Gen.list (Range.linear 0 32)
@@ -670,7 +669,7 @@ wbStorageSpecCompliance = property $ do
       Gen (WishboneMasterRequest addressWidth a)
     genWishboneTransfer size genA =
       let
-        validAddr = (2*) . fromIntegral <$> Gen.enum 0 (size * 2)
+        validAddr = (4*) . fromIntegral <$> Gen.enum 0 (size - 1)
         invalidAddr = fromIntegral <$> Gen.enum (size * 4) (size * 8)
       in
       Gen.choice
@@ -696,48 +695,39 @@ wbStorageBehavior = property $ do
     let
       -- We need the input address to be larger than the memory space to also
       -- test the behavior of out of range addresses.
-      validAddr = (2*) <$> genIndex @_ @(5 * words) (Range.constant 0 (natToNum @(2 * (words - 1))))
-      invalidAddr = Gen.choice @_ @(Index (5 * words))
-        [ replaceBit (0 :: Index 1) 1 <$>
-            genIndex (Range.constant minBound (pred maxBound))
-        , genIndex (Range.constant (natToNum @(4 * words)) maxBound)
+      validAddr = (`shiftL` 2) <$> genIndex @_ @(2^32) (Range.constant 0 (natToNum @(words - 1)))
+      anyAddr = Gen.choice
+        [ genIndex $ Range.constant (natToNum @(words * 4)) maxBound
+        , (\base alignment -> alignment + shiftL (shiftR base 2) 2) <$> validAddr <*> genIndex (Range.constant 1 3)
         ]
 
-    generatedInput <- forAll $ (\l -> Right RamNoOp : l <> [Right RamNoOp]) <$>
-      Gen.list (Range.linear 1 32)
+    generatedInput <- forAll $ (\l -> Right RamNoOp : l ) <$>
+      Gen.list (Range.linear 2 32)
         (Gen.choice
           [ pure (Right RamNoOp)
           , Right . RamRead <$> validAddr
           , Right <$> (RamWrite <$> validAddr <*> genDefinedBitVector)
-          , Left . RamRead <$> invalidAddr
-          , Left <$> (RamWrite <$> invalidAddr <*> genDefinedBitVector)
+          , Left . RamRead <$> anyAddr
+          , Left <$> (RamWrite <$> anyAddr <*> genDefinedBitVector)
           ])
     let
-      goldenRef ramOps = wbStorageBehaviorModel contentList ramOps
+      topEntity = bundle $ (wbM2S, wbS2M)
        where
-        contentList = toList $ concatMap (\(split ->(b,a)) -> a :> b :> Nil) content
-      topEntity wbIn =
-        wcre $ wbStorage' @System @words @32 (NonReloadable $ Vec content) wbIn
+        wbS2M = wcre $ wbStorage' @System @words @32 (NonReloadable $ Vec content) wbM2S
+        wbM2S = wcre $ wishboneSimDriver topEntityInput wbS2M
 
       goldenInput    = fromRight RamNoOp <$> generatedInput
-      flatInput      = either ramOpToWb ramOpToWb <$> generatedInput
-      topEntityInput =
-        L.concatMap (\case
-            (Left _, a) -> [a, emptyWishboneM2S]
-            (Right _, a) -> [a, a, emptyWishboneM2S] ) $
-          L.zip generatedInput flatInput
+      topEntityInput = either ramOpToWb ramOpToWb <$> generatedInput :: [WishboneM2S 32 4 (BitVector 32)]
 
-      simGolden = simulateN @System (P.length goldenInput) goldenRef goldenInput
-      simOut = simulateN (P.length topEntityInput) topEntity topEntityInput
-      simTransactions = wbToTransaction topEntityInput simOut
+      (simWbM2S, simWbS2M) = L.unzip $ sampleN (100) topEntity
+      goldenOutput = wbStorageBehaviorModel (toList content) goldenInput
+      simTransactions = wbToTransaction simWbM2S simWbS2M
 
-      goldenTransactions = L.zipWith expectTransaction generatedInput simGolden
+      goldenTransactions = L.zipWith expectTransaction generatedInput goldenOutput
 
     footnote $ "goldenTransactions" <> show goldenTransactions
     footnote $ "simTransactions" <> show simTransactions
-    footnote $ "simOut" <> show simOut
     footnote $ "topEntityInput" <> show topEntityInput
-    footnote $ "simGolden" <> show simGolden
     footnote $ "goldenInput" <> show goldenInput
     footnote $ "generatedInput" <> show generatedInput
 
@@ -747,34 +737,28 @@ wbStorageBehavior = property $ do
     Right op -> ramOpToTransaction op response
     Left  op -> Just (Error (ramOpToWb op))
 
--- | Behavioral model for 'wbStorage'. It stores is contents as half-words in Little Endian.
+-- | Behavioral model for 'wbStorage'.
 wbStorageBehaviorModel ::
-  forall dom addresses halfWordSize .
-  (KnownNat addresses, KnownNat halfWordSize) =>
-  [BitVector halfWordSize] ->
-  Signal dom (RamOp addresses (BitVector (halfWordSize + halfWordSize))) ->
-  Signal dom (BitVector (halfWordSize + halfWordSize))
-wbStorageBehaviorModel storedList (ramOp :- ramOps)
-  = output :- outputs
+  forall addresses wordSize .
+  ( 1 <= addresses) =>
+  (KnownNat addresses, KnownNat wordSize) =>
+  [BitVector wordSize] ->
+  [RamOp addresses (BitVector wordSize)] ->
+  [BitVector wordSize]
+wbStorageBehaviorModel initList initRamOps = snd $ L.mapAccumL f initList initRamOps
  where
-  (address, writeOp) = decodeRamOp ramOp
-  (preEntry, lower0 : upper0 : postEntry) = L.splitAt (fromIntegral address) storedList
-
-  (_,split -> (upper, lower)) = fromJust writeOp
-
-  newList
-    | isJust writeOp = preEntry L.++ [lower, upper] L.++ postEntry
-    | otherwise = storedList
-
-  output = pack (upper0, lower0)
-  outputs = wbStorageBehaviorModel newList ramOps
-
-  decodeRamOp = \case
-    RamNoOp -> (addrUndef, Nothing)
-    RamRead ((`div` 2) -> i) -> (i, Nothing)
-    RamWrite ((`div` 2) -> i) a -> (i, Just (i, a))
+  f storedList RamNoOp =
+    ( storedList
+    , deepErrorX "wbStorageBehaviorModel: readData is undefined during RamNoOp")
+  f storedList (RamRead i) =
+    ( storedList
+    , storedList L.!! fromIntegral (shiftR i 2))
+  f storedList (RamWrite i a) =
+    ( newList
+    , deepErrorX "wbStorageBehaviorModel: readData is undefined during RamWrite")
    where
-    addrUndef = deepErrorX "wbStorageBehavior: readAddr undefined."
+    (preEntry, _ : postEntry) = L.splitAt (fromIntegral (shiftR i 2)) storedList
+    newList = preEntry L.++ (a : postEntry)
 
 wbStorageRangeErrors :: Property
 wbStorageRangeErrors = property $ do
@@ -803,7 +787,7 @@ wbStorageRangeErrors = property $ do
       Gen (WishboneMasterRequest addressWidth a)
     genWishboneTransfer size genA =
       let
-        validAddr = (2*) . fromIntegral <$> Gen.enum 0 (size * 2 - 1)
+        validAddr = (4*) . fromIntegral <$> Gen.enum 0 (size - 1)
         invalidAddr = fromIntegral <$> Gen.enum (size * 4) (size * 8)
       in
       Gen.choice
@@ -834,8 +818,6 @@ wbStorageRangeErrors = property $ do
           Left $ "An in-range write should be ACK'd "
             <> "addr: " <> showHex addr "" <> ", size " <> showHex st0 ""
             <> " - " <> show s2m
-
-
 
 wbStorageProtocolsModel :: Property
 wbStorageProtocolsModel = property $ do

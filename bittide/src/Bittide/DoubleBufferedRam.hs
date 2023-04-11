@@ -14,7 +14,6 @@ module Bittide.DoubleBufferedRam where
 
 import Clash.Prelude
 
-import Data.Bifunctor
 import Data.Constraint
 import Data.Maybe
 import Protocols (Circuit (Circuit))
@@ -109,24 +108,29 @@ wbStorageDP initial aM2S bM2S = (aS2M, bS2M)
     Dict -> wbStorage' @_ @depth @(Max awA awB) initial storageIn
 
   storageIn :: Signal dom (WishboneM2S (Max awA awB) 4 (Bytes 4))
-  storageIn = mux (nowSelected .==. pure A) (resizeM2SAddr <$> aM2S) (resizeM2SAddr <$> bM2S)
+  storageIn = mux (nowActive .==. pure A) (resizeM2SAddr <$> aM2S) (resizeM2SAddr <$> bM2S)
 
   -- We keep track of ongoing transactions to respect Read-modify-write operations.
-  lastSelected = register A nowSelected
-  nowSelected = selectNow <$> aM2S <*> bM2S <*> lastSelected
-  selectNow (busCycle -> cycA) (busCycle -> cycB) lastSel
-    | lastSel == B && cycB = B
-    | cycA && not cycB     = A
-    | otherwise            = A
+  nowActive = register A nextActive
+  nextActive = selectNow <$> nowActive <*> aM2S <*> aS2M <*> bM2S <*> bS2M
+  active WishboneM2S{busCycle, strobe} = busCycle && strobe
+  terminated WishboneS2M{acknowledge, err} = acknowledge || err
+  selectNow aorb am2s as2m bm2s bs2m  =
+    case (aorb, active am2s, terminated as2m, active bm2s, terminated bs2m) of
+      (_, True , _    , False, _     ) -> A
+      (_, False, _    , True , _     ) -> B
+      (A, True , True , True , _     ) -> B
+      (B, True , _    , True , True  ) -> A
+      _                                -> aorb
 
-  (aS2M, bS2M) = unbundle $ mux (nowSelected .==. pure A)
+  (aS2M, bS2M) = unbundle $ mux (nowActive .==. pure A)
     (bundle (storageOut, noTerminate <$> storageOut))
     (bundle (noTerminate <$> storageOut, storageOut))
 
   noTerminate wb = wb{acknowledge = False, err = False, retry = False, stall = False}
 
 -- | Wishbone storage element with 'Circuit' interface from "Protocols.Wishbone" that
--- allows for half-word aligned reads and writes.
+-- allows for word aligned reads and writes.
 wbStorage ::
   forall dom depth aw .
   ( HiddenClockResetEnable dom
@@ -137,8 +141,7 @@ wbStorage ::
 wbStorage initContent = Circuit $ \(m2s, ()) ->
   (wbStorage' initContent m2s, ())
 
--- | Storage element with a single wishbone port, it is half word addressable to work with
--- RISC-V's C extension. This storage element allows for half-word aligned accesses.
+-- | Storage element with a single wishbone port. Allows for word-aligned addresses.
 wbStorage' ::
   forall dom depth aw .
   ( HiddenClockResetEnable dom
@@ -151,93 +154,45 @@ wbStorage' initContent wbIn = delayControls wbIn wbOut
  where
   romOut = case initContent of
     Reloadable content-> bundle $ contentGenerator content
-    other -> deepErrorX ("wbStorage': No contentgenerator for " <> show other)
+    other -> deepErrorX ("wbStorage': No content generator for " <> show other)
 
-  readDataA = ramA readAddrA writeEntryA byteSelectA
-  readDataB = ramB readAddrB writeEntryB byteSelectB
+  readData = ram readAddr writeEntry byteSelect
 
-  (ramA, ramB, isReloadable) = case initContent of
+  (ram, isReloadable) = case initContent of
     Reloadable _ ->
-      (blockRamByteAddressableU, blockRamByteAddressableU, True)
+      (blockRamByteAddressableU, True)
     Undefined ->
-      (blockRamByteAddressableU, blockRamByteAddressableU, False)
-    NonReloadable (BlobVec (splitAtI -> (b, a))) ->
-      ( blockRamByteAddressable @_ @depth $ BlobVec a
-      , blockRamByteAddressable @_ @depth $ BlobVec b
-      , False)
-    NonReloadable (FileVec (splitAtI -> (b, a))) ->
-      ( blockRamByteAddressable @_ @depth $ FileVec a
-      , blockRamByteAddressable @_ @depth $ FileVec b
-      , False)
-    (NonReloadable (Vec (unzip @depth . bitCoerce -> (b, a)))) ->
-      ( blockRamByteAddressable @_ @depth $ Vec a
-      , blockRamByteAddressable @_ @depth $ Vec b
-      , False)
-    _ -> error $ "wbStorage': " <> show initContent <> " not supported."
+      (blockRamByteAddressableU, False)
+    NonReloadable content ->
+      ( blockRamByteAddressable @_ @depth content, False)
 
-  (readAddrA, readAddrB, writeEntryA, writeEntryB, byteSelectA, byteSelectB, wbOut) =
-    unbundle $ go <$> wbIn <*> readDataB <*> readDataA <*> romOut
+  (readAddr, writeEntry, byteSelect, wbOut) =
+    unbundle (go <$> bundle  (wbIn, readData, romOut))
 
-  go WishboneM2S{..} rdB rdA romOut0 =
-    ( addrA
-    , addrB
-    , writeEntryA0
-    , writeEntryB0
-    , byteSelectA1
-    , byteSelectB1
-    , (emptyWishboneS2M @(Bytes 4)){acknowledge,readData,err})
+  go (WishboneM2S{..}, readDataGo, (romWrite, romDone)) =
+    ( wbAddr
+    , writeEntryGo
+    , byteSelectGo
+    , (emptyWishboneS2M @(Bytes 4)){acknowledge,readData = readDataGo,err})
    where
-
-    (bitCoerce . resize -> wbAddr :: Index depth, alignment) =  split @_ @(aw - 2) addr
-
-    -- When the second lowest bit is not set, the address is considered word aligned.
-    -- We don't care about the first bit to determine the address alignment because
-    -- byte aligned addresses are considered illegal.
-    (not -> wordAligned, byteAligned) = bimap unpack unpack $ split alignment
-
-    -- The depth of the memory is defined as the number of words in the memory
-    -- (words are 4 bytes wide). The wishbone interface addresses per byte, so we multiply
-    -- the depth by 4 to get the number of bytes in the memory.
-    addrLegal = addr < (natToNum @(4 * depth)) && not byteAligned
+    (bitCoerce . resize -> wbAddr :: Index depth, alignment) = split @_ @(aw - 2) @2 addr
+    addrLegal = addr < (natToNum @(4 * depth)) && alignment == 0
 
     masterActive = strobe && busCycle
     err = masterActive && not addrLegal
+
     acknowledge = masterActive && (not isReloadable || romDone) && addrLegal
-    masterWriting = masterActive && writeEnable && not err
 
-    (bsHigh,bsLow) = split busSelect
-    (writeDataHigh, writeDataLow) = split writeData
+    masterWriting = acknowledge && writeEnable
 
-    ((addrA, byteSelectA0, writeDataA), (addrB, byteSelectB0, writeDataB))
-      | wordAligned =
-        ( (wbAddr, bsLow, writeDataLow)
-        , (wbAddr, bsHigh, writeDataHigh))
-      | otherwise =
-        ( (satSucc SatBound wbAddr, bsHigh, writeDataHigh)
-        , (wbAddr, bsLow, writeDataLow))
+    writeEntryGo
+      | isReloadable && not romDone = romWrite
+      | masterWriting = Just (wbAddr, writeData)
+      | otherwise = Nothing
 
-    (romWrite, romDone) = romOut0
-    (romWriteB, romWriteA) = splitWrite romWrite
-    (writeEntryA0, writeEntryB0)
-      | isReloadable && not romDone = (romWriteA, romWriteB)
-      | masterWriting = (Just (addrA, writeDataA),Just (addrB, writeDataB))
-      | otherwise = (Nothing,Nothing)
-    readData
-      | wordAligned = rdB ++# rdA
-      | otherwise   = rdA ++# rdB
-
-    (byteSelectA1, byteSelectB1)
-      | isReloadable && not romDone = (maxBound,maxBound)
-      | otherwise = (byteSelectA0, byteSelectB0)
-
-  splitWrite ::
-    KnownNat bits =>
-    Maybe (LocatedBits n (2*bits)) ->
-    (Maybe (LocatedBits n bits), Maybe (LocatedBits n bits))
-  splitWrite (Just (i, a)) = (Just (i,upper), Just (i, lower))
-   where
-    (upper,lower) = split a
-  splitWrite Nothing = (Nothing, Nothing)
+    byteSelectGo
+      | isReloadable && not romDone = maxBound
+      | otherwise = busSelect
 
   -- | Delays the output controls to align them with the actual read / write timing.
   delayControls ::
