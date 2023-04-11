@@ -567,27 +567,54 @@ updateAddrs rdAddr Nothing bufSelect =
 
 {-# NOINLINE fifo #-}
 
--- | Simple First in, First out buffer the contains a backpressure mechanism.
+-- | State record for the FIFO circuit.
+data FifoState fifoDepth = FifoState
+  { readCounter   :: Index fifoDepth
+  , writeCounter  :: Index fifoDepth
+  , dataCount     :: Index (fifoDepth + 1)
+  , fifoEmpty     :: Bool
+  } deriving (Generic, NFDataX)
+
+-- | A generic First-In-First-Out (FIFO) circuit with a specified depth.
+-- The FIFO circuit allows data elements of type 'a' to be stored and
+-- retrieved in the order they were added. The circuit features a ready-based back pressure mechanism.
 fifo ::
   forall dom fifoDepth a .
   (HiddenClockResetEnable dom,  2 <= fifoDepth, NFDataX a) =>
+  -- | The depth of the FIFO, should be at least 2.
   SNat fifoDepth ->
+  -- | The input data to the FIFO, when it is 'Just a' and the outgoing ready flag is true,
+  -- 'a' is added to the FIFO. When this is 'Nothing', no element is added to the FIFO.
   Signal dom (Maybe a) ->
+  -- | A boolean flag indicating whether the outgoing element is ready to be consumed.
   Signal dom Bool ->
+  -- |
+  -- (1) Output data from the FIFO.
+  -- (2) Boolean flag indicating whether the FIFO accepts incoming elements.
+  -- (3) Number of data elements in the FIFO.
   ( Signal dom (Maybe a)
   , Signal dom Bool
   , Signal dom (Index (fifoDepth + 1)))
-fifo depth@SNat fifoIn readyIn = (fifoOut, readyOut, dataCount)
+fifo depth@SNat fifoIn readyIn = (fifoOut, readyOut, dataCountOut)
  where
   bramOut = readNew (blockRamU NoClearOnReset depth (const undefined)) readAddr writeOp
-  (readAddr, writeOp, fifoOut, readyOut, dataCount) = mealyB go (0, 0, 0, True) (fifoIn, readyIn, bramOut)
+  (readAddr, writeOp, fifoOut, readyOut, dataCountOut) =
+    mealyB go initialState (fifoIn, readyIn, bramOut)
+
+  -- Initial state of the FIFO
+  initialState = FifoState
+    { readCounter  = 0
+    , writeCounter = 0
+    , dataCount    = 0
+    , fifoEmpty    = True
+    }
   go ::
-    (Index fifoDepth, Index fifoDepth, Index (fifoDepth + 1), Bool) ->
+    FifoState fifoDepth ->
     (Maybe a, Bool, a) ->
-    ( (Index fifoDepth, Index fifoDepth, Index (fifoDepth + 1), Bool)
+    ( FifoState fifoDepth
     , (Index fifoDepth, Maybe (Index fifoDepth, a), Maybe a, Bool, Index (fifoDepth + 1)))
-  go (readCounter, writeCounter, dataCountGo, fifoEmpty) (fifoInGo, readyInGo, bramOutGo) =
-    ((readCounterNext, writeCounterNext, dataCountNext, fifoEmptyNext), output)
+  go FifoState{..} (fifoInGo, readyInGo, bramOutGo) =
+      (nextState, output)
    where
     readSucc  = satSucc SatWrap readCounter
     writeSucc = satSucc SatWrap writeCounter
@@ -611,10 +638,17 @@ fifo depth@SNat fifoIn readyIn = (fifoOut, readyOut, dataCount)
       | fifoEmpty = Nothing
       | otherwise = Just bramOutGo
 
-    dataCountNext = satAdd SatBound dataCountGo dataCountChange
+    dataCountNext = satAdd SatBound dataCount dataCountChange
     dataCountChange = case (isJust fifoInGo && not full, not fifoEmpty && readyInGo) of
       (True, False) -> 1
       (False, True) -> -1
       _             -> 0
 
-    output = (readCounterNext, writeOpGo, fifoOutGo, not full, dataCountGo)
+    nextState = FifoState
+      { readCounter  = readCounterNext
+      , writeCounter = writeCounterNext
+      , dataCount    = dataCountNext
+      , fifoEmpty    = fifoEmptyNext
+      }
+
+    output = (readCounterNext, writeOpGo, fifoOutGo, not full, dataCount)
