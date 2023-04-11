@@ -87,15 +87,22 @@ genRamContents memDepth = genSomeVec (Range.singleton $ fromIntegral (memDepth -
 
 testFifo :: Property
 testFifo = property $ do
-  readyList <- forAll $ Gen.filter or $ Gen.list (Range.linear 1 5) Gen.bool
+  enableList <- forAll $ Gen.filter or $ Gen.list (Range.linear 1 5) Gen.bool
+  readyList <- forAll $ Gen.filter (or . L.zipWith (&&) enableList) $ Gen.list (Range.linear 1 5) Gen.bool
+
   inputList <- forAll $ Gen.list (Range.linear 1 100) (Gen.maybe $ genUnsigned @_ @8 Range.constantBounded)
+  resetList <- forAll $ Gen.list (Range.linear 1 10) (pure True)
   let
     topEntity = mux readyIn fifoOut (pure Nothing)
      where
-      (fifoOut, fifoReady, _) = wcre @System $ fifo d2 fifoIn readyIn
-      fifoIn = withClockResetEnable clockGen resetGen (toEnable fifoReady) $ fromListWithResetAndEnable ( Nothing NonEmpty.:| (inputList <> L.repeat Nothing))
+      ena = toEnable @System $ fromList (cycle enableList)
+      rst = unsafeFromHighPolarity @System $ fromList (resetList <> L.repeat False)
       readyIn = fromList $ cycle readyList
-    simOut = sampleN (L.length inputList * L.length readyList + 10) topEntity
+      (fifoOut, fifoReady, _) = withClockResetEnable clockGen rst ena $ fifo d2 fifoIn readyIn
+
+      fifoIn = withClockResetEnable clockGen resetGen (toEnable fifoReady) $ fromListWithResetAndEnable ( Nothing NonEmpty.:| (inputList <> L.repeat Nothing))
+    simDuration = L.length resetList + ((1 + L.length readyList) * (1 + L.length enableList) * (1 + L.length inputList))
+    simOut = sampleN simDuration topEntity
 
   catMaybes inputList === catMaybes simOut
 

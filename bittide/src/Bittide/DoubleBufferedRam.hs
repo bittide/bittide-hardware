@@ -595,8 +595,10 @@ fifo ::
   ( Signal dom (Maybe a)
   , Signal dom Bool
   , Signal dom (Index (fifoDepth + 1)))
-fifo depth@SNat fifoIn readyIn = (fifoOut, readyOut, dataCountOut)
+fifo depth@SNat fifoIn readyIn = (maybeOut, readyOut .&&. active, dataCountOut)
  where
+  maybeOut = mux active fifoOut (pure Nothing)
+  active = unsafeToLowPolarity hasReset .&&. fromEnable hasEnable
   bramOut = readNew (blockRamU NoClearOnReset depth (const undefined)) readAddr writeOp
   (readAddr, writeOp, fifoOut, readyOut, dataCountOut) =
     mealyB go initialState (fifoIn, readyIn, bramOut)
@@ -631,9 +633,11 @@ fifo depth@SNat fifoIn readyIn = (fifoOut, readyOut, dataCountOut)
     nextCountersSame = readCounterNext == writeCounterNext
 
     full = not fifoEmpty && countersSame
+
     fifoEmptyNext
       | fifoEmpty = countersSame
       | otherwise = readyInGo && nextCountersSame
+
     fifoOutGo
       | fifoEmpty = Nothing
       | otherwise = Just bramOutGo
