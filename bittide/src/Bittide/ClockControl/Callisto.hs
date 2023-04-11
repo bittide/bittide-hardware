@@ -45,22 +45,25 @@ callistoClockControl ::
   Signal dom SpeedChange
 callistoClockControl clk rst ena ClockControlConfig{..} mask =
   withClockResetEnable clk rst ena $
-    callisto targetDataCount cccPessimisticSettleCycles mask . bundle
+    callisto targetDataCount cccReframingTime cccPessimisticSettleCycles mask . bundle
 
 -- | State used in 'callisto'
 data ControlSt = ControlSt
-  { _x_k :: !Float
-  -- ^ Integral of the measurement
-  , _z_k :: !(Signed 32)
+  { _z_k :: !(Signed 32)
   -- ^ Accumulated speed change requests, where speedup ~ 1, slowdown ~ -1.
   , _b_k :: !SpeedChange
   -- ^ Previously submitted speed change request. Used to determine the estimated
   -- clock frequency.
+  , _t_r :: !(Maybe (Unsigned 64))
+  -- ^ Counter option for detecting the reframing time. It is set to
+  -- 'Nothing' after the reframing has taken place.
+  , _css :: !Float
+  -- ^ stead-state value determined at the reframing time (before correction).
   } deriving (Generic, NFDataX)
 
 -- | Initial state of control
 initState :: ControlSt
-initState = ControlSt 0 0 NoChange
+initState = ControlSt 0 NoChange (Just 0) 0
 
 -- | Clock correction strategy based on:
 --
@@ -89,6 +92,8 @@ callisto ::
   ) =>
   -- | Target data count. See 'targetDataCount'.
   DataCount m ->
+  -- | Reframing time (in cycles relative to the startup)
+  Unsigned 64 ->
   -- | Provide an update every /n/ cycles
   Unsigned 32 ->
   -- | Link availability mask
@@ -97,7 +102,7 @@ callisto ::
   Signal dom (Vec n (DataCount m)) ->
   -- | Speed change requested from clock multiplier
   Signal dom SpeedChange
-callisto targetCount updateEveryNCycles mask allDataCounts =
+callisto targetCount rft updateEveryNCycles mask allDataCounts =
   mux shouldUpdate (D.toSignal b_kNext) (pure NoChange)
  where
   dataCounts = filterCounts <$> fmap bv2v mask <*> allDataCounts
@@ -105,30 +110,31 @@ callisto targetCount updateEveryNCycles mask allDataCounts =
     \(isActive, count) -> if isActive == high then count else 0
   updateCounter = wrappingCounter updateEveryNCycles
   shouldUpdate = updateCounter .==. 0
-  state = register initState (mux shouldUpdate updatedState state)
+  state = register initState
+    (rfCheck <$> mux shouldUpdate updatedState state <*> D.toSignal c_des)
   updatedState = D.toSignal $
     ControlSt
-      <$> D.delayI (errorX "callisto: No start value [1]") x_kNext
-      <*> D.delayI (errorX "callisto: No start value [2]") z_kNext
+      <$> D.delayI (errorX "callisto: No start value [2]") z_kNext
       <*> b_kNext
+      <*> D.delayI (Just 0) (D.fromSignal (_t_r <$> state))
+      <*> D.delayI 0 (D.fromSignal (_css <$> state))
 
-  -- See fields in 'ControlSt' for documentation of 'x_k', 'z_k', and 'b_k'.
-  x_k :: DSignal dom 0 Float
-  x_k = D.fromSignal (_x_k <$> state)
-
+  -- See fields in 'ControlSt' for documentation of 'z_k', 'b_k', and css.
   z_k :: DSignal dom 0 (Signed 32)
   z_k = D.fromSignal (_z_k <$> state)
 
   b_k :: DSignal dom 0 SpeedChange
   b_k = D.fromSignal (_b_k <$> state)
 
+  css :: DSignal dom 0 Float
+  css = D.fromSignal (_css <$> state)
+
   -- see clock control algorithm simulation here:
   -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
   --
   -- the constants here are chosen to match the above code.
-  k_p, k_i, fStep :: forall d. DSignal dom d Float
+  k_p, fStep :: forall d. DSignal dom d Float
   k_p = pure 2e-4
-  k_i = pure 1e-11
   fStep = pure 5e-4
 
   r_k :: DSignal dom F.FromS32DefDelay Float
@@ -144,28 +150,17 @@ callisto targetCount updateEveryNCycles mask allDataCounts =
     in
       measuredSum - (pure targetCountSigned * nBuffers)
 
-  x_kNext :: DSignal dom (F.FromS32DefDelay + F.MulDefDelay + F.AddDefDelay) Float
-  x_kNext = D.delayI (errorX "callisto: No start value [3]") x_k `F.add` (p `F.mul` r_k)
+  c_def :: DSignal dom (F.FromS32DefDelay + F.MulDefDelay) Float
+  c_def = D.delayI (errorX "callisto: No start value [5]") (k_p `F.mul` r_k)
 
-  c_des :: DSignal dom (F.FromS32DefDelay + 2*F.MulDefDelay + 2*F.AddDefDelay) Float
-  c_des = delayLhs (k_p `F.mul` r_k) `F.add` (k_i `F.mul` x_kNext)
-   where
-    delayLhs = D.delayI (errorX "callisto: No start value [5]")
+  c_des :: DSignal dom (F.FromS32DefDelay + F.MulDefDelay + F.AddDefDelay) Float
+  c_des = c_def `F.add` (delayI 0 css)
 
   z_kNext :: DSignal dom 0 (Signed 32)
   z_kNext = z_k + fmap sign b_k
 
-  c_est :: DSignal dom (F.FromS32DefDelay + 2*F.MulDefDelay + 2*F.AddDefDelay) Float
+  c_est :: DSignal dom (F.FromS32DefDelay + F.MulDefDelay + F.AddDefDelay) Float
   c_est = D.delayI (errorX "callisto: No start value [4]") (fStep `F.mul` F.fromS32 z_kNext)
-
-  -- we are using 200kHz instead of 200MHz
-  -- (see https://github.com/clash-lang/clash-compiler/issues/2328)
-  -- so typical freq. is 0.0002 GHz
-  --
-  -- (this is adjusted by a factor of 100 because our clock corrections are
-  -- faster than those simulated in Callisto; we correct as often as hardware
-  -- allows)
-  p = 1e3 * typicalFreq where typicalFreq = 0.0002
 
   b_kNext =
     flip fmap (F.compare c_des c_est) $ \case
@@ -179,3 +174,11 @@ callisto targetCount updateEveryNCycles mask allDataCounts =
   sign NoChange = 0
   sign SpeedUp = 1
   sign SlowDown = -1
+
+  rfCheck cs@ControlSt{..} d = case _t_r of
+    Just t
+      | t < rft   -> cs { _t_r = Just (t + 1) }
+      | otherwise -> cs { _t_r = Nothing
+                        , _css = d
+                        }
+    Nothing       -> cs

@@ -178,7 +178,6 @@ jobs:
             --output-mode pdf \
             --steps ${{ matrix.target.steps }} \
             --samples 1000 \
-            --stop-when-stable \
             ${{ matrix.target.topology }} ${{ matrix.target.args }}
 
       - name: Generate report
