@@ -19,6 +19,7 @@ module Clash.Shake.Vivado
   , mkSynthesisTcl
   , mkRouteTcl
   , mkBitstreamTcl
+  , mkBoardProgramTcl
   , meetsTiming
   ) where
 
@@ -194,4 +195,27 @@ mkBitstreamTcl outputDir = [__i|
     write_bitstream {#{outputDir </> "bitstream.bit"}}
 
     report_drc -file {#{outputDir </> "reports" </> "post_bitstream_drc.rpt"}}
+|]
+
+mkBoardProgramTcl :: FilePath -> String
+mkBoardProgramTcl outputDir = [__i|
+    set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
+
+    \# Open the Hardware Manager and open the first board
+    open_hw_manager
+    connect_hw_server -url localhost:3121
+    set target [lindex [get_hw_targets] 0]
+    current_hw_target $target
+    open_hw_target
+
+    \# Set the current device to the first device in the JTAG chain
+    set device [lindex [get_hw_devices] 0]
+    current_hw_device $device
+    set_property PROGRAM.FILE {#{outputDir </> "bitstream.bit"}} $device
+
+    \# Program the device and close properly
+    program_hw_devices $device
+    refresh_hw_device $device
+    close_hw_target
+    close_hw_manager
 |]
