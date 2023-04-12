@@ -568,21 +568,24 @@ updateAddrs rdAddr Nothing bufSelect =
 {-# NOINLINE fifo #-}
 
 -- | State record for the FIFO circuit.
-data FifoState fifoDepth = FifoState
-  { readCounter   :: Index fifoDepth
-  , writeCounter  :: Index fifoDepth
-  , dataCount     :: Index (fifoDepth + 1)
+data FifoState depth = FifoState
+  { readCounter   :: Index depth
+  , writeCounter  :: Index depth
+  , dataCount     :: Index (depth + 1)
   , fifoEmpty     :: Bool
   } deriving (Generic, NFDataX)
 
 -- | A generic First-In-First-Out (FIFO) circuit with a specified depth.
 -- The FIFO circuit allows data elements of type 'a' to be stored and
--- retrieved in the order they were added. The circuit features a ready-based back pressure mechanism.
+-- retrieved in the order they were added. The circuit contains a ready-based back pressure
+-- mechanism and does not feature bypassing for an empty fifo.
+-- When the reset is high or the enable is low, the output will be `Nothing` and the ready
+-- flag will be `False`.
 fifo ::
-  forall dom fifoDepth a .
-  (HiddenClockResetEnable dom,  2 <= fifoDepth, NFDataX a) =>
+  forall dom depth a .
+  (HiddenClockResetEnable dom,  2 <= depth, NFDataX a) =>
   -- | The depth of the FIFO, should be at least 2.
-  SNat fifoDepth ->
+  SNat depth ->
   -- | The input data to the FIFO, when it is 'Just a' and the outgoing ready flag is true,
   -- 'a' is added to the FIFO. When this is 'Nothing', no element is added to the FIFO.
   Signal dom (Maybe a) ->
@@ -594,7 +597,7 @@ fifo ::
   -- (3) Number of data elements in the FIFO.
   ( Signal dom (Maybe a)
   , Signal dom Bool
-  , Signal dom (Index (fifoDepth + 1)))
+  , Signal dom (Index (depth + 1)))
 fifo depth@SNat fifoIn readyIn = (maybeOut, readyOut .&&. active, dataCountOut)
  where
   maybeOut = mux active fifoOut (pure Nothing)
@@ -611,10 +614,10 @@ fifo depth@SNat fifoIn readyIn = (maybeOut, readyOut .&&. active, dataCountOut)
     , fifoEmpty    = True
     }
   go ::
-    FifoState fifoDepth ->
+    FifoState depth ->
     (Maybe a, Bool, a) ->
-    ( FifoState fifoDepth
-    , (Index fifoDepth, Maybe (Index fifoDepth, a), Maybe a, Bool, Index (fifoDepth + 1)))
+    ( FifoState depth
+    , (Index depth, Maybe (Index depth, a), Maybe a, Bool, Index (depth + 1)))
   go FifoState{..} (fifoInGo, readyInGo, bramOutGo) =
       (nextState, output)
    where
