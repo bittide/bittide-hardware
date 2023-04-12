@@ -11,11 +11,8 @@ module Tests.Shared where
 import Clash.Prelude
 
 import Clash.Hedgehog.Sized.Unsigned
-import Clash.Signal.Internal
-
 import Data.Constraint (Dict(Dict))
 import Data.Constraint.Nat.Extra (divWithRemainder)
-import Data.List.NonEmpty (NonEmpty)
 import GHC.Stack (HasCallStack)
 import Hedgehog
 import Numeric.Natural
@@ -26,7 +23,6 @@ import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
 import Bittide.Calendar
 import Bittide.SharedTypes (Bytes)
 import qualified Data.List as L
-import qualified Data.List.NonEmpty as NonEmpty
 import qualified GHC.TypeNats as TypeNats
 import qualified Hedgehog.Range as Range
 
