@@ -48,9 +48,6 @@ cabal.config
 *.iml
 
 # HDL directories often created during development cycle
-/contranomy/vhdl
-/contranomy/verilog
-/contranomy/systemverilog
 
 /bittide/vhdl
 /bittide/verilog
@@ -65,19 +62,8 @@ _build/
 # rewrite histories
 *.dat
 
-# Formal checking temporary files
-riscv-formal/cores/contranomy/
-
 # Rust build files
 target/
-
-# ELF file for testing
-contranomy-sim/main.elf
-
-# Firmware integration test binaries
-firmware-integration-tests/
-vex-riscv/vex-riscv-test-binaries.tar
-vex-riscv-test-binaries.tar
 
 # Bittide HDL directories
 bittide/verilog
@@ -91,9 +77,6 @@ log
 vivado_*
 tight_setup_hold_pins.txt
 .Xil
-
-# RiscV formal
-checks.json
 
 # Docker builds
 .github/docker/*.nix

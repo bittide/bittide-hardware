@@ -11,8 +11,7 @@ module Bittide.ProcessingElement where
 
 import Clash.Prelude
 
-import Contranomy.Core(CoreIn(..), CoreOut(..),core)
-import Contranomy.RegisterFile
+import VexRiscv (Input(..), Output(..), vexRiscv)
 import Protocols.Wishbone
 
 import Bittide.DoubleBufferedRam
@@ -32,8 +31,6 @@ data PeConfig nBusses where
     InitialContent depthI (Bytes 4) ->
     -- | Initial content of the data memory, can be smaller than its total depth.
     InitialContent depthD (Bytes 4) ->
-    -- | Program counter reset value.
-    BitVector 32 ->
     PeConfig nBusses
 
 -- | 'Contranomy' based RV32IMC core together with instruction memory, data memory and
@@ -46,8 +43,8 @@ processingElement ::
   Vec (nBusses-2) (Signal dom (WishboneS2M (Bytes 4))) ->
   Vec (nBusses-2) (Signal dom (WishboneM2S (32 - CLog 2 nBusses) 4 (Bytes 4)))
 processingElement config bussesIn = case config of
-  PeConfig memMapConfig initI initD pcEntry ->
-    go memMapConfig initI initD pcEntry
+  PeConfig memMapConfig initI initD ->
+    go memMapConfig initI initD
  where
   go ::
     ( KnownNat depthI, 1 <= depthI
@@ -55,19 +52,18 @@ processingElement config bussesIn = case config of
     MemoryMap nBusses ->
     InitialContent depthI (Bytes 4) ->
     InitialContent depthD (Bytes 4) ->
-    BitVector 32 ->
     Vec (nBusses-2) (Signal dom (WishboneM2S (32 - CLog 2 nBusses) 4 (Bytes 4)))
-  go memMapConfig initI initD pcEntry = bussesOut
+  go memMapConfig initI initD = bussesOut
    where
-    tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusS2M, dBusS2M) =
-      CoreIn {..}
+    tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) =
+      Input {..}
 
     -- Interrupts are not used
-    rvIn = tupToCoreIn <$> bundle (pure False, pure False, pure 0, iToCore, dToCore)
-    rvOut = rv32 pcEntry rvIn
+    rvIn = tupToCoreIn <$> bundle (pure low, pure low, pure low, iToCore, dToCore)
+    rvOut = vexRiscv rvIn
 
-    iFromCore = iBusM2S <$> rvOut
-    dFromCore = dBusM2S <$> rvOut
+    iFromCore = mapAddr ((`shiftL` 2) . extend @_ @_ @2) . iBusWbM2S <$> rvOut
+    dFromCore = mapAddr ((`shiftL` 2) . extend) . dBusWbM2S <$> rvOut
 
     (dToCore, unbundle -> toSlaves) = singleMasterInterconnect' memMapConfig dFromCore fromSlaves
 
@@ -77,18 +73,8 @@ processingElement config bussesIn = case config of
     (iToCore, iToMap) = wbStorageDP initI iFromCore iFromMap
     dToMap = wbStorage' initD dFromMap
 
--- | Contranomy RV32IMC core
-rv32 ::
-  HiddenClockResetEnable dom =>
-  -- | Reset program counter.
-  BitVector 32 ->
-  -- |
-  Signal dom CoreIn ->
-  Signal dom CoreOut
-rv32 entry coreIn =
-  let (coreResult,regWrite,_) = core entry (coreIn,regOut)
-      regOut = registerFile regWrite
-   in coreResult
+    mapAddr :: (BitVector aw1 -> BitVector aw2) -> WishboneM2S aw1 selWidth a -> WishboneM2S aw2 selWidth a
+    mapAddr f wb = wb { addr = f (addr wb) }
 
 -- | Stateless wishbone device that only acknowledges writes to address 0.
 -- Successful writes return the 'writeData' and 'busSelect'.

@@ -16,6 +16,5 @@ members = [
 
   "firmware/examples/fdt-read",
   "firmware/examples/hello",
-  "firmware/tests",
 ]
 resolver = "2"

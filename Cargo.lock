@@ -201,15 +201,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "firmware-tests"
-version = "0.1.0"
-dependencies = [
- "bittide-sys",
- "riscv 0.10.1",
- "riscv-rt",
-]
-
-[[package]]
 name = "flate2"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"

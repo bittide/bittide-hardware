@@ -90,7 +90,6 @@ library
     clash-protocols,
     constraints >= 0.13.3 && < 0.15,
     containers >= 0.4.0 && < 0.7,
-    contranomy,
     clash-vexriscv,
     random,
     string-interpolate ^>= 0.3,
