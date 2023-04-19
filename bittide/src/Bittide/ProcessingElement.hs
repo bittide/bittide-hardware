@@ -2,17 +2,19 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS -fplugin=Protocols.Plugin #-}
 
 module Bittide.ProcessingElement where
 
 import Clash.Prelude
 
-import VexRiscv (Input(..), Output(..), vexRiscv)
+import Protocols
 import Protocols.Wishbone
+import VexRiscv (Input(..), Output(..), vexRiscv)
 
 import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
@@ -41,11 +43,9 @@ processingElement ::
   ( HiddenClockResetEnable dom
   , KnownNat nBusses, 2 <= nBusses, CLog 2 nBusses <= 30) =>
   PeConfig nBusses ->
-  Vec (nBusses-2) (Signal dom (WishboneS2M (Bytes 4))) ->
-  Vec (nBusses-2) (Signal dom (WishboneM2S (32 - CLog 2 nBusses) 4 (Bytes 4)))
-processingElement config bussesIn = case config of
-  PeConfig memMapConfig initI initD ->
-    go memMapConfig initI initD
+  Circuit () (Vec (nBusses-2) (Wishbone dom 'Standard (MappedBus 32 nBusses) (Bytes 4)))
+processingElement (PeConfig memMapConfig' initI' initD') =
+  go memMapConfig' initI' initD'
  where
   go ::
     ( KnownNat depthI, 1 <= depthI
@@ -53,30 +53,46 @@ processingElement config bussesIn = case config of
     MemoryMap nBusses ->
     InitialContent depthI (Bytes 4) ->
     InitialContent depthD (Bytes 4) ->
-    Vec (nBusses-2) (Signal dom (WishboneM2S (32 - CLog 2 nBusses) 4 (Bytes 4)))
-  go memMapConfig initI initD = bussesOut
+    Circuit () (Vec (nBusses-2) (Wishbone dom 'Standard (MappedBus 32 nBusses) (BitVector 32)))
+  go memMapConfig initI initD = circuit $ do
+    (iBus, dBus) <- rvCircuit (pure low) (pure low) (pure low)
+    ([iMemBus, dMemBus], extBusses) <-
+      (splitAtCircuit d2 <| singleMasterInterconnect memMapConfig) -< dBus
+    wbStorage initI -< iBus
+    wbStorageDPC initD -< (iMemBus, dMemBus)
+    idC -< extBusses
+
+splitAtCircuit ::
+  SNat left ->
+  Circuit (Vec (left + right) a) (Vec left a , Vec right a)
+splitAtCircuit SNat = Circuit go
+ where
+  go (fwd,(bwdLeft, bwdRight)) = (bwd,(fwdLeft, fwdRight))
+   where
+    (fwdLeft, fwdRight) = splitAtI fwd
+    bwd = bwdLeft ++ bwdRight
+
+rvCircuit ::
+  (HiddenClockResetEnable dom) =>
+  Signal dom Bit ->
+  Signal dom Bit ->
+  Signal dom Bit ->
+  Circuit () (Wishbone dom 'Standard 32 (Bytes 4), Wishbone dom 'Standard 32 (Bytes 4))
+rvCircuit tInterrupt sInterrupt eInterrupt = Circuit go
+  where
+  go ((),(iBusIn, dBusIn)) = ((),(iBusOut, dBusOut))
    where
     tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) =
       Input {..}
-
-    -- Interrupts are not used
-    rvIn = tupToCoreIn <$> bundle (pure low, pure low, pure low, iToCore, dToCore)
+    rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
     rvOut = vexRiscv rvIn
 
     -- The VexRiscv instruction- and data-busses assume a conceptual [Bytes 4] memory
     -- while our storages work like [Bytes 1]. This is also why the address width of
     -- the VexRiscv busses are 30 bit and still cover the whole address space.
     -- These shifts bring the addresses "back into the byte domain" so to speak.
-    iFromCore = mapAddr ((`shiftL` 2) . extend @_ @_ @2) . iBusWbM2S <$> rvOut
-    dFromCore = mapAddr ((`shiftL` 2) . extend) . dBusWbM2S <$> rvOut
-
-    (dToCore, unbundle -> toSlaves) = singleMasterInterconnect' memMapConfig dFromCore fromSlaves
-
-    fromSlaves = bundle (iToMap :> dToMap :> bussesIn)
-    (iFromMap :> dFromMap :> bussesOut) = toSlaves
-
-    (iToCore, iToMap) = wbStorageDP initI iFromCore iFromMap
-    dToMap = wbStorage' initD dFromMap
+    iBusOut = mapAddr ((`shiftL` 2) . extend @_ @_ @2) . iBusWbM2S <$> rvOut
+    dBusOut = mapAddr ((`shiftL` 2) . extend) . dBusWbM2S <$> rvOut
 
     mapAddr :: (BitVector aw1 -> BitVector aw2) -> WishboneM2S aw1 selWidth a -> WishboneM2S aw2 selWidth a
     mapAddr f wb = wb { addr = f (addr wb) }
