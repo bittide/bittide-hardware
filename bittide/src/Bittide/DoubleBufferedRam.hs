@@ -89,6 +89,32 @@ contentGenerator content = case compareSNat d1 (SNat @romSize) of
   _ -> (pure Nothing, pure True)
 
 
+wbStorageDPC ::
+  forall dom depth awA awB .
+  ( HiddenClockResetEnable dom
+  , KnownNat awA, 2 <= awA
+  , KnownNat awB, 2 <= awB
+  , KnownNat depth, 1 <= depth) =>
+  InitialContent depth (Bytes 4) ->
+  Circuit
+  ( Wishbone dom 'Standard awA (Bytes 4)
+  , Wishbone dom 'Standard awB (Bytes 4)
+  ) ()
+wbStorageDPC content = Circuit go
+ where
+  go ::
+    ( ( Signal dom (WishboneM2S awA 4 (BitVector 32))
+      , Signal dom (WishboneM2S awB 4 (BitVector 32)))
+    , ()
+    ) ->
+    ( ( Signal dom (WishboneS2M (BitVector 32))
+      , Signal dom (WishboneS2M (BitVector 32)))
+    , ()
+    )
+  go ((m2sA, m2sB), ()) = ((s2mA, s2mB),())
+   where
+    (s2mA, s2mB) = wbStorageDP content m2sA m2sB
+
 -- | Dual-ported Wishbone storage element, essentially a wrapper for the single-ported version
 -- which priorities port A over port B. Transactions are not aborted, but when two transactions
 -- are initiated at the same time, port A will have priority.
