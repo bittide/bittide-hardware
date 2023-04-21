@@ -62,6 +62,10 @@ processingElement config bussesIn = case config of
     rvIn = tupToCoreIn <$> bundle (pure low, pure low, pure low, iToCore, dToCore)
     rvOut = vexRiscv rvIn
 
+    -- The VexRiscv instruction- and data-busses assume a conceptual [Bytes 4] memory
+    -- while our storages work like [Bytes 1]. This is also why the address width of
+    -- the VexRiscv busses are 30 bit and still cover the whole address space.
+    -- These shifts bring the addresses "back into the byte domain" so to speak.
     iFromCore = mapAddr ((`shiftL` 2) . extend @_ @_ @2) . iBusWbM2S <$> rvOut
     dFromCore = mapAddr ((`shiftL` 2) . extend) . dBusWbM2S <$> rvOut
 
