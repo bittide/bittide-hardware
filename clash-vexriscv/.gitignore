@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2022 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+ignore
+dist/
+build/
+dist-newstyle/
+.stack-work/
+stack.yaml.lock
+cabal-dev
+/cabal.project.local
+.ghc.environment.*
+a.out
+*.o
+*.o-boot
+*.hi
+*.hi-boot
+*.po
+*.po-boot
+*.p_o
+*.p_o-boot
+*.chi
+*.chs.h
+*.dyn_o
+*.dyn_o-boot
+*.dyn_hi
+*.dyn_hi-boot
+*.local
+.virtualenv
+.hpc
+.hsenv
+.cabal-sandbox/
+cabal.sandbox.config
+cabal.config
+*.prof
+*.aux
+*.hp
+*.bin
+*.log
+*.tar.gz
+
+*~
+*.DS_Store
+
+# IntelliJ
+/.idea
+*.iml
+
+# Nix output
+result*
+
+# Sphinx output
+_build/
+
+# rewrite histories
+*.dat
+
+# Rust build files
+target/
+
+# Vivado
+vivado.jou
+log
+vivado_*
+tight_setup_hold_pins.txt
+.Xil
