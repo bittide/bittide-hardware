@@ -9,7 +9,7 @@ set -xou pipefail
 pcregrep \
     --exclude=*.svg \
     --exclude=*.drawio \
-    --exclude-dir=riscv-formal \
+    --exclude-dir=clash-vexriscv \
     --exclude-dir=.git \
     --binary-files=without-match -LMr '\n\Z' .
 

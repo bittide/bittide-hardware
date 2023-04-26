@@ -47,12 +47,6 @@ cabal.config
 /.idea
 *.iml
 
-# HDL directories often created during development cycle
-
-/bittide/vhdl
-/bittide/verilog
-/bittide/systemverilog
-
 # Nix output
 result*
 
@@ -65,19 +59,9 @@ _build/
 # Rust build files
 target/
 
-# Bittide HDL directories
-bittide/verilog
-bittide/vhdl
-bittide/systemverilog
-vhdl/
-
 # Vivado
 vivado.jou
 log
 vivado_*
 tight_setup_hold_pins.txt
 .Xil
-
-# Docker builds
-.github/docker/*.nix
-.github/docker/nix

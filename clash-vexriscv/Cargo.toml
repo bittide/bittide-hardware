@@ -12,9 +12,6 @@ opt-level = "z"
 
 [workspace]
 members = [
-  "firmware/bittide-sys",
-
-  "firmware/examples/fdt-read",
-  "firmware/examples/hello",
+  "clash-vexriscv-sim/test-programs",
 ]
 resolver = "2"

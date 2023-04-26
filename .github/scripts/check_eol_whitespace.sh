@@ -9,7 +9,7 @@ set -xou pipefail
 grep -E ' $' -n -r . \
     --include=*.{hs,hs-boot,sh,cabal,.md} \
     --exclude-dir=contranomy/dist-newstyle \
-    --exclude-dir=riscv-formal
+    --exclude-dir=clash-vexriscv
 
 if [[ $? == 0 ]]; then
     echo "EOL whitespace detected. See ^"
