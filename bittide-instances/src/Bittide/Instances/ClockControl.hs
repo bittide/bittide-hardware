@@ -10,7 +10,7 @@ import Bittide.ClockControl.Callisto
 import Bittide.Instances.Domains
 import Bittide.ClockControl
 
-config :: ClockControlConfig Basic200 12
+config :: ClockControlConfig Basic200 12 8 1500000
 config = $(lift (defClockConfig @Basic200))
 
 callisto3 ::

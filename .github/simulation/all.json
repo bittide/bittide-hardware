@@ -1,9 +1,9 @@
 [
-  {"topology": "diamond",   "hmem": 16,  "steps": 8000000,  "args": "" },
-  {"topology": "complete",  "hmem": 16,  "steps": 8000000,  "args": "--nodes 3"},
-  {"topology": "cycle",     "hmem": 16,  "steps": 20000000, "args": "--nodes 5"},
+  {"topology": "diamond",   "hmem": 16,  "steps": 20000000, "args": "" },
+  {"topology": "complete",  "hmem": 16,  "steps": 20000000, "args": "--nodes 3"},
+  {"topology": "cycle",     "hmem": 16,  "steps": 30000000, "args": "--nodes 5"},
   {"topology": "torus2d",   "hmem": 32,  "steps": 20000000, "args": "--rows 2 --cols 3"},
-  {"topology": "star",      "hmem": 64,  "steps": 20000000, "args": "--nodes 7"},
+  {"topology": "star",      "hmem": 64,  "steps": 35000000, "args": "--nodes 7"},
   {"topology": "line",      "hmem": 64,  "steps": 50000000, "args": "--nodes 4"},
   {"topology": "random",    "hmem": 64,  "steps": 50000000, "args": "--nodes 5"},
   {"topology": "hypercube", "hmem": 128, "steps": 50000000, "args": "--dimensions 3"}

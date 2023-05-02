@@ -383,6 +383,7 @@ data Options =
     , stabilityMargin    :: Int
     , stabilityFrameSize :: Int
     , stopWhenStable     :: Bool
+    , stopAfterStable    :: Maybe Int
     , offsets            :: [Int64]
     , outDir             :: FilePath
     , jsonArgs           :: Maybe FilePath
@@ -444,6 +445,17 @@ optionParser =
           (  long "stop-when-stable"
           <> short 'x'
           <> help "Stop simulation as soon as all buffers get stable"
+          )
+    <*> optional
+          ( option auto
+              (  long "stop-after-stable"
+              <> short 'X'
+              <> metavar "NUM"
+              <> help
+                   (  "Stop simulation after all buffers have been stable for "
+                   <> " at least the given number of simulation steps"
+                   )
+              )
           )
     <*> option auto
           (  long "offsets"
@@ -516,7 +528,10 @@ main = do
         , periodsize = simulationSteps `quot` simulationSamples
         , mode       = outMode
         , dir        = outDir
-        , stopStable = stopWhenStable
+        , stopStable =
+            if stopWhenStable
+            then Just 0
+            else (`quot` simulationSamples) <$> stopAfterStable
         , fixOffsets = offsets
         , save       = \_ _ _ -> return ()
         }

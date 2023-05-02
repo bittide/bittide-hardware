@@ -34,7 +34,7 @@ import Data.Csv
 type SettlePeriod = Femtoseconds
 
 -- | Configuration passed to 'clockControl'
-data ClockControlConfig dom n = ClockControlConfig
+data ClockControlConfig dom n m c = ClockControlConfig
   { -- | The quickest a clock could possibly run at. Used to (pessimistically)
     -- estimate when a new command can be issued.
     --
@@ -77,18 +77,8 @@ data ClockControlConfig dom n = ClockControlConfig
     -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
     --
   , cccBufferSize :: SNat n
-
-    -- | The time T_0 after which the controller corrects buffer
-    -- occupancies via reframing. T_0 is defined in clock cycles of a
-    -- node since the startup.
-    --
-    -- Note that not all nodes apply the reframing update exactly at
-    -- the same point in time this way. However, under the assumption
-    -- that the hardware clocks are reasonably close, the introduced
-    -- error should be negligible.
-    --
-    -- (for details see: https://arxiv.org/abs/2303.11467)
-  , cccReframingTime :: Unsigned 64
+  , cccStabilityCheckerMargin :: SNat m
+  , cccStabilityCheckerFramesize :: SNat c
   } deriving (Lift)
 
 -- | Calculate target data count given a FIFO size. Currently returns a target
@@ -123,19 +113,18 @@ instance ToJSON Femtoseconds where
 clockPeriodFs :: forall dom. KnownDomain dom => Proxy dom -> Femtoseconds
 clockPeriodFs Proxy = Femtoseconds (1000 * snatToNum (clockPeriod @dom))
 
-defClockConfig :: forall dom. KnownDomain dom => ClockControlConfig dom 12
+defClockConfig :: forall dom. KnownDomain dom => ClockControlConfig dom 12 8 1500000
 defClockConfig = ClockControlConfig
-  { cccPessimisticPeriod       = pessimisticPeriod
-  , cccPessimisticSettleCycles = pessimisticSettleCycles self
-  , cccSettlePeriod            = microseconds 1
-  , cccStepSize                = stepSize
-  , cccBufferSize              = d12 -- 2**12 ~ 4096
-  , cccDeviation               = Ppm 100
-  , cccReframingTime           = rfTime
+  { cccPessimisticPeriod         = pessimisticPeriod
+  , cccPessimisticSettleCycles   = pessimisticSettleCycles self
+  , cccSettlePeriod              = microseconds 1
+  , cccStepSize                  = stepSize
+  , cccBufferSize                = d12 -- 2**12 ~ 4096
+  , cccDeviation                 = Ppm 100
+  , cccStabilityCheckerMargin    = SNat
+  , cccStabilityCheckerFramesize = SNat
   }
  where
-  -- settle after about 20 milliseconds (TODO: determine a practical value for T_0)
-  rfTime = 20000000000 `div` snatToNum (clockPeriod @dom)
   self = defClockConfig @dom
   stepSize = diffPeriod (Ppm 1) (clockPeriodFs @dom Proxy)
   pessimisticPeriod = adjustPeriod (cccDeviation self) (clockPeriodFs @dom Proxy)
@@ -145,10 +134,10 @@ defClockConfig = ClockControlConfig
 -- this for the fastest possible clock.
 --
 pessimisticSettleCycles ::
-  forall dom n.
+  forall dom n m c.
   ( HasCallStack
   , KnownDomain dom ) =>
-  ClockControlConfig dom n ->
+  ClockControlConfig dom n m c->
   -- | It would take a 10 GHz clock only a 10_000 cycles to wait 1 µs. This can be
   -- met by an @Unsigned 14@: @2^14 ~ 16384@. To massively overkill it we bump it
   -- up to 32 bits.

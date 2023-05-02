@@ -11,7 +11,7 @@
 module Bittide.Topology
   ( simulationEntity
   , simulate
-  , allStable
+  , allStableAndCentered
   )
 where
 
@@ -67,7 +67,7 @@ simulationEntity ::
   ) =>
   Graph nodes ->
   -- ^ the topology
-  ClockControlConfig dom dcount ->
+  ClockControlConfig dom dcount margin framesize ->
   -- ^ clock control configuration
   SNat margin ->
   -- ^ margin of the stability checker
@@ -75,7 +75,7 @@ simulationEntity ::
   -- ^ frame size of cycles within the margins required
   Vec nodes Offset ->
   -- ^ initial clock offsets
-  Signal dom (Vec nodes (Period, Vec nodes (DataCount dcount, Bool)))
+  Signal dom (Vec nodes (Period, Vec nodes (DataCount dcount, (Bool, Bool))))
   -- ^ simulation entity
 simulationEntity topology ccc margin framesize !offsets =
     bundle
@@ -94,7 +94,7 @@ simulationEntity topology ccc margin framesize !offsets =
     | hasEdge topology x y =
         withClockResetEnable clk resetGen enableGen $
           stabilityChecker margin framesize
-    | otherwise     = const $ pure False
+    | otherwise = const $ pure (False, False)
   -- clock generators
   !clocks = clock <$> offsets <*> clockControls
   clock offset =
@@ -130,33 +130,37 @@ simulate ::
   ) =>
   Graph nodes ->
   -- ^ the topology
-  Bool ->
-  -- ^ stop simulation as soon as all buffers get stable
+  Maybe Int ->
+  -- ^ stop simulation after all buffers have been stable for @n@ steps
   Int ->
   -- ^ number of samples to keep & pass
   Int ->
   -- ^ number of cycles in one sample period
-  Signal dom (Vec nodes (Period, Vec nodes (DataCount dcount, Bool))) ->
+  Signal dom (Vec nodes (Period, Vec nodes (DataCount dcount, (Bool, Bool)))) ->
   -- ^ simulation entity
-  Vec nodes [(Period, Period, [(DataCount dcount, Bool)])]
-simulate topology stopWhenStable samples periodsize =
+  Vec nodes [(Period, Period, [(DataCount dcount, (Bool, Bool))])]
+simulate topology stopStable samples periodsize =
     transposeLV
-  . takeWhilePlus unstable
+  . takeWhileDelay stopStable (-1)
   . L.take samples
   . takeEveryN periodsize
   . absTimes topology
  where
-  unstable
-    | stopWhenStable = not . allStable
-    | otherwise      = const True
-
-  takeWhilePlus p = \case
-    []   -> []
-    x:xs -> if p x then x : takeWhilePlus p xs else [x]
+  takeWhileDelay = \case
+    Nothing -> const id
+    Just n  -> \m -> \case
+      []     -> []
+      x : xr ->
+        let m' | not (allStableAndCentered x) = -1
+               | m < 0                        = n
+               | m > 0                        = m - 1
+               | otherwise                    = 0
+        in x : if m' == 0 then [] else takeWhileDelay (Just n) m' xr
 
 -- | Checks whether all stability checkers report a stable result.
-allStable :: KnownNat n => Vec n (a, b, [(c, Bool)]) -> Bool
-allStable = and . toList . map ((\(_,_,xs) -> all snd xs))
+allStableAndCentered :: KnownNat n => Vec n (a, b, [(c, (Bool, Bool))]) -> Bool
+allStableAndCentered =
+  and . toList . map ((\(_,_,xs) -> all (snd . snd) xs))
 
 -- | Absolute time unfolding of the produced signal for generating the
 -- simulation data.

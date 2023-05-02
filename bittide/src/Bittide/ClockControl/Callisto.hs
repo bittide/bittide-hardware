@@ -15,6 +15,7 @@ import Data.Constraint.Nat.Extra (euclid3, useLowerLimit)
 
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Util
+import Bittide.ClockControl.StabilityChecker
 import Clash.Sized.Extra
 
 import qualified Clash.Cores.Xilinx.Floating as F
@@ -25,19 +26,22 @@ import qualified Clash.Signal.Delayed as D
 -- all elastic buffers. See 'callisto' for more information.
 --
 callistoClockControl ::
-  forall n m dom.
+  forall n m dom margin framesize.
   ( KnownDomain dom
   , KnownNat n
   , KnownNat m
+  , KnownNat margin
+  , KnownNat framesize
   , 1 <= n
   , 1 <= m
   , n + m <= 32
+  , 1 <= framesize
   ) =>
   Clock dom ->
   Reset dom ->
   Enable dom ->
   -- | Configuration for this component, see individual fields for more info.
-  ClockControlConfig dom m ->
+  ClockControlConfig dom m margin framesize ->
   -- | Link availability mask
   Signal dom (BitVector n) ->
   -- | Statistics provided by elastic buffers.
@@ -45,7 +49,13 @@ callistoClockControl ::
   Signal dom SpeedChange
 callistoClockControl clk rst ena ClockControlConfig{..} mask =
   withClockResetEnable clk rst ena $
-    callisto targetDataCount cccReframingTime cccPessimisticSettleCycles mask . bundle
+    callisto
+      cccStabilityCheckerMargin
+      cccStabilityCheckerFramesize
+      targetDataCount
+      cccPessimisticSettleCycles
+      mask
+      . bundle
 
 -- | State used in 'callisto'
 data ControlSt = ControlSt
@@ -54,16 +64,15 @@ data ControlSt = ControlSt
   , _b_k :: !SpeedChange
   -- ^ Previously submitted speed change request. Used to determine the estimated
   -- clock frequency.
-  , _t_r :: !(Maybe (Unsigned 64))
-  -- ^ Counter option for detecting the reframing time. It is set to
-  -- 'Nothing' after the reframing has taken place.
   , _css :: !Float
-  -- ^ stead-state value determined at the reframing time (before correction).
+  -- ^ Steady-state value determined at the reframing time (before correction).
+  , _rft :: !Bool
+  -- ^ flag for indicating that it's currently reframing time.
   } deriving (Generic, NFDataX)
 
 -- | Initial state of control
 initState :: ControlSt
-initState = ControlSt 0 NoChange (Just 0) 0
+initState = ControlSt 0 NoChange 0.0 False
 
 -- | Clock correction strategy based on:
 --
@@ -79,21 +88,29 @@ initState = ControlSt 0 NoChange (Just 0) 0
 --   * These algorithms will probably run on a Risc core in the future.
 --
 callisto ::
-  forall m n dom.
+  forall m n dom margin framesize.
   ( HiddenClockResetEnable dom
   , KnownNat n
   , KnownNat m
+  , KnownNat margin
+  , KnownNat framesize
   , 1 <= n
   , 1 <= m
   -- 'callisto' sums incoming 'DataCount's and feeds them to a Xilinx signed to
   -- float IP. We can currently only interpret 32 bit signeds to unsigned, so to
   -- make sure we don't overflow any addition we force @n + m <= 32@.
   , n + m <= 32
+  , 1 <= framesize
   ) =>
+  -- | Maximum number of elements the incoming buffer occupancy is
+  -- allowed to deviate from the current @target@ for it to be
+  -- considered "stable".
+  SNat margin ->
+  -- | Minimum number of clock cycles the incoming buffer occupancy
+  -- must remain within the @margin@ for it to be considered "stable".
+  SNat framesize ->
   -- | Target data count. See 'targetDataCount'.
   DataCount m ->
-  -- | Reframing time (in cycles relative to the startup)
-  Unsigned 64 ->
   -- | Provide an update every /n/ cycles
   Unsigned 32 ->
   -- | Link availability mask
@@ -102,22 +119,27 @@ callisto ::
   Signal dom (Vec n (DataCount m)) ->
   -- | Speed change requested from clock multiplier
   Signal dom SpeedChange
-callisto targetCount rft updateEveryNCycles mask allDataCounts =
+callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
   mux shouldUpdate (D.toSignal b_kNext) (pure NoChange)
  where
   dataCounts = filterCounts <$> fmap bv2v mask <*> allDataCounts
   filterCounts vMask vCounts = flip map (zip vMask vCounts) $
     \(isActive, count) -> if isActive == high then count else 0
+  scs = bundle $ map (stabilityChecker margin framesize) $ unbundle dataCounts
   updateCounter = wrappingCounter updateEveryNCycles
   shouldUpdate = updateCounter .==. 0
-  state = register initState
-    (rfCheck <$> mux shouldUpdate updatedState state <*> D.toSignal c_des)
+  state = register initState $
+    rfCheck
+      <$> (fold (&&) . (True :>) . map fst <$> scs) -- all stable
+      <*> (fold (&&) . (True :>) . map snd <$> scs) -- all centered
+      <*> D.toSignal c_des
+      <*> mux shouldUpdate updatedState state
   updatedState = D.toSignal $
     ControlSt
       <$> D.delayI (errorX "callisto: No start value [2]") z_kNext
       <*> b_kNext
-      <*> D.delayI (Just 0) (D.fromSignal (_t_r <$> state))
-      <*> D.delayI 0 (D.fromSignal (_css <$> state))
+      <*> D.delayI (errorX "callisto: No start value [3]") css
+      <*> D.delayI (errorX "callisto: No start value [6]") rft
 
   -- See fields in 'ControlSt' for documentation of 'z_k', 'b_k', and css.
   z_k :: DSignal dom 0 (Signed 32)
@@ -128,6 +150,9 @@ callisto targetCount rft updateEveryNCycles mask allDataCounts =
 
   css :: DSignal dom 0 Float
   css = D.fromSignal (_css <$> state)
+
+  rft :: DSignal dom 0 Bool
+  rft = D.fromSignal (_rft <$> state)
 
   -- see clock control algorithm simulation here:
   -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
@@ -150,11 +175,9 @@ callisto targetCount rft updateEveryNCycles mask allDataCounts =
     in
       measuredSum - (pure targetCountSigned * nBuffers)
 
-  c_def :: DSignal dom (F.FromS32DefDelay + F.MulDefDelay) Float
-  c_def = D.delayI (errorX "callisto: No start value [5]") (k_p `F.mul` r_k)
-
   c_des :: DSignal dom (F.FromS32DefDelay + F.MulDefDelay + F.AddDefDelay) Float
-  c_des = c_def `F.add` (delayI 0 css)
+  c_des = D.delayI (errorX "callisto: No start value [5]") (k_p `F.mul` r_k)
+            `F.add` (delayI 0 css)
 
   z_kNext :: DSignal dom 0 (Signed 32)
   z_kNext = z_k + fmap sign b_k
@@ -175,10 +198,12 @@ callisto targetCount rft updateEveryNCycles mask allDataCounts =
   sign SpeedUp = 1
   sign SlowDown = -1
 
-  rfCheck cs@ControlSt{..} d = case _t_r of
-    Just t
-      | t < rft   -> cs { _t_r = Just (t + 1) }
-      | otherwise -> cs { _t_r = Nothing
-                        , _css = d
-                        }
-    Nothing       -> cs
+  rfCheck stable centered d cst@ControlSt{..}
+    | stable && not centered && not _rft =
+        cst { _css = d
+            , _rft = True
+            }
+    | not stable && _rft =
+        cst { _rft = False }
+    | otherwise =
+        cst

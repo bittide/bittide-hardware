@@ -67,20 +67,23 @@ clockControlDemo1 clkSmaN clkSmaP clkFmcN clkFmcP drainFifoA drainFifoB =
   clkA = ibufds clkSmaP clkSmaN
   clkB = ibufds clkFmcP clkFmcN
 
-  clockConfigA :: ClockControlConfig Basic200A 12
+  clockConfigA :: ClockControlConfig Basic200A 12 8 1500000
   clockConfigA = $(lift (defClockConfig @Basic200A))
 
-  clockConfigB :: ClockControlConfig Basic200B  12
+  clockConfigB :: ClockControlConfig Basic200B  12 8 1500000
   clockConfigB = $(lift (defClockConfig @Basic200B))
 
 genericClockControlDemo0 ::
-  forall recovered controlled  dataCountBits .
+  forall recovered controlled  dataCountBits margin framesize.
   ( KnownDomain recovered
   , KnownDomain controlled
   , KnownNat dataCountBits
+  , KnownNat margin
+  , KnownNat framesize
+  , 1 <= framesize
   , 4 <= dataCountBits
   , dataCountBits <= 17) =>
-  ClockControlConfig controlled  dataCountBits ->
+  ClockControlConfig controlled  dataCountBits margin framesize ->
   Clock recovered ->
   Clock controlled ->
   Reset controlled ->
@@ -106,7 +109,7 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
 
   isStable =
     withClockResetEnable clkControlled stabilityCheckReset enableGen $
-      stabilityChecker d2 (SNat @20_000_000) bufferOccupancy
+      snd <$> stabilityChecker d2 (SNat @20_000_000) bufferOccupancy
 
 clockControlDemo0 ::
   "SYSCLK_300_N" ::: Clock Basic300 ->
@@ -129,7 +132,7 @@ clockControlDemo0 ::
 clockControlDemo0 clkSysN clkSysP clkSmaN clkSmaP =
   genericClockControlDemo0 clockConfig clkRecovered clkControlled
  where
-  clockConfig :: ClockControlConfig External 12
+  clockConfig :: ClockControlConfig External 12 8 1500000
   clockConfig = $(lift (defClockConfig @External))
   (clkRecovered, _) =
     clockWizardDifferential

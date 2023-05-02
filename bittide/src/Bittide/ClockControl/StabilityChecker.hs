@@ -9,34 +9,41 @@ import Clash.Prelude
 import Bittide.ClockControl (targetDataCount)
 import Clash.Sized.Extra
 
--- | Checks whether the @Signal@ of buffer occupancies from an elastic buffer is stable.
--- The @Signal@ is considered stable if it stays within a @margin@ of the target buffer
--- occupancy for @cyclesStable@ number of cycles. The next target is set to the current
--- buffer occupancy when the current buffer occupancy is not within margin of
--- the target.
+-- | Checks whether the @Signal@ of buffer occupancies from an elastic
+-- buffer is stable and close to the target data counter. The @Signal@
+-- is considered stable if it stays within a @margin@ of the target
+-- buffer occupancy for @framesize@ number of cycles. If the
+-- current buffer occupancies exceed that margin, then the target is
+-- updated to the current buffer occupancy. The @Signal@ is considered
+-- to be close to the target data counter, if it is stable and close
+-- (within the @margin@) to the global target data count.
 stabilityChecker ::
-  forall dom margin cyclesStable n .
-  (HiddenClockResetEnable dom, 1 <= cyclesStable, KnownNat n) =>
-  -- | Maximum number of elements the incoming buffer occupancy is allowed to deviate
-  -- from the current @target@ for it to be considered "stable".
+  forall dom margin framesize n .
+  (HiddenClockResetEnable dom, 1 <= framesize, KnownNat n) =>
+  -- | Maximum number of elements the incoming buffer occupancy is
+  -- allowed to deviate from the current @target@ for it to be
+  -- considered "stable".
   SNat margin ->
-  -- | Minimum number of clock cycles the incoming buffer occupancy must remain within the
-  -- @margin@ for it to be considered "stable".
-  SNat cyclesStable ->
+  -- | Minimum number of clock cycles the incoming buffer occupancy
+  -- must remain within the @margin@ for it to be considered "stable".
+  SNat framesize ->
   -- | Incoming buffer occupancy.
   Signal dom (Unsigned n) ->
-  -- | Stability indicator.
-  Signal dom Bool
+  -- | Stability indicators. The first tuple element indicates
+  -- stability of the signal over time, while the second element
+  -- indicates whether the signal is close to 'targetDataCount'.
+  Signal dom (Bool, Bool)
 stabilityChecker SNat SNat = mealy go (0, targetDataCount)
  where
-  go (cnt, target) input = (newState, isStable)
+  go (!cnt, !target) input = (newState, (isStable, isCloseToTarget))
    where
-    withinMargin =
-      abs (unsignedToSigned target `sub` unsignedToSigned input) <= (natToNum @margin)
+    withinMargin !x !y =
+      abs (unsignedToSigned x `sub` unsignedToSigned y) <= (natToNum @margin)
 
-    newState :: (Index (cyclesStable + 1), Unsigned n)
+    newState :: (Index (framesize + 1), Unsigned n)
     newState
-      | withinMargin = (satSucc SatBound cnt, target)
-      | otherwise    = (0, input)
+      | withinMargin target input = (satSucc SatBound cnt, target)
+      | otherwise                 = (0, input)
 
-    isStable = withinMargin && cnt == maxBound
+    isStable = withinMargin target input && cnt == maxBound
+    isCloseToTarget = isStable && withinMargin targetDataCount input

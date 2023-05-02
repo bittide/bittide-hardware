@@ -110,10 +110,10 @@ callistoSpi clk125 clkRecovered clkControlled rst125 locked miso =
   -- Determine if the controlled clock is synchronized "enough" with the static clock.
   isStable =
     withClockResetEnable clkControlled (unsafeFromLowPolarity $ pure True) enableGen $
-      stabilityChecker d5 (SNat @1_000_000) bufferOccupancy
+      snd <$> stabilityChecker d5 (SNat @1_000_000) bufferOccupancy
 
   -- Configuration for Callisto
-  clockConfig :: ClockControlConfig External 12
+  clockConfig :: ClockControlConfig External 12 8 1500000
   clockConfig = $(lift ((defClockConfig @External){cccPessimisticSettleCycles = 20000} ))
 
 makeTopEntity 'callistoSpi
