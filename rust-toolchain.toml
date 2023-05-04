@@ -1,0 +1,5 @@
+[toolchain]
+channel = "nightly"
+date = "2023-05-03"
+components = ["rustfmt", "clippy", "rust-src"]
+targets = ["riscv32imc-unknown-none-elf", "x86_64-unknown-linux-gnu"]

@@ -36,12 +36,15 @@ pkgs.mkShell {
       #
       # XXX: We cannot swich to 1.67 due to 'cargo clippy' throwing an obscure
       #      error. See: https://github.com/bittide/bittide-hardware/pull/227#issuecomment-1411808302
-      ((pkgs.rustChannelOf { channel = "1.65"; }).rust.override {
-        targets = [
-          "riscv32imc-unknown-none-elf"
-          "x86_64-unknown-linux-gnu"
-        ];
+      ((pkgs.rustChannelOf { rustToolchain = ./rust-toolchain.toml; }).rust.override {
+        extensions = ["rust-src"];
       })
+      # ((pkgs.rustChannelOf { channel = "1.65"; }).rust.override {
+      #   targets = [
+      #     "riscv32imc-unknown-none-elf"
+      #     "x86_64-unknown-linux-gnu"
+      #   ];
+      # })
 
       # RiscV formal tests
       pkgs.buildPackages.boolector
