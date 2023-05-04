@@ -1,5 +1,6 @@
 [
   {"top": "callisto3",                   "stage": "netlist"},
+  {"top": "counterReducedPins",          "stage": "netlist"},
   {"top": "clockControlDemo0",           "stage": "bitstream"},
   {"top": "clockControlDemo1",           "stage": "bitstream"},
   {"top": "elasticBuffer5",              "stage": "netlist"},

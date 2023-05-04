@@ -94,6 +94,7 @@ library
   exposed-modules:
     Bittide.Instances.Calendar
     Bittide.Instances.ClockControl
+    Bittide.Instances.Counter
     Bittide.Instances.Domains
     Bittide.Instances.ElasticBuffer
     Bittide.Instances.Hacks

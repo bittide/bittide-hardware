@@ -26,6 +26,7 @@ import Development.Shake.Extra
 
 import qualified Bittide.Instances.Calendar as Calendar
 import qualified Bittide.Instances.ClockControl as ClockControl
+import qualified Bittide.Instances.Counter as Counter
 import qualified Bittide.Instances.ElasticBuffer as ElasticBuffer
 import qualified Bittide.Instances.MVPs as MVPs
 import qualified Bittide.Instances.ScatterGather as ScatterGather
@@ -80,6 +81,7 @@ targets =
   [ 'Calendar.switchCalendar1k
   , 'Calendar.switchCalendar1kReducedPins
   , 'ClockControl.callisto3
+  , 'Counter.counterReducedPins
   , 'ElasticBuffer.elasticBuffer5
   , 'MVPs.clockControlDemo0
   , 'MVPs.clockControlDemo1
