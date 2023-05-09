@@ -342,7 +342,43 @@ jobs:
 
       - name: Building "fdt-read" Example
         run: cargo build --release
-        working-directory: firmware/examples/hello
+        working-directory: firmware/examples/fdt-read
+
+  firmware-limit-checks:
+    name: Firmware Limit Checks
+    runs-on: self-hosted
+    needs: [firmware-build-examples]
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - uses: actions/cache@v3
+        name: Cache
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ./target/
+          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
+
+      - name: Install `elf-limits`
+        run: cargo install --git https://github.com/cuddlefishie/elf-limits
+
+      - name: Checking firmware example limits
+        run: |
+          ~/.cargo/bin/elf-limits \
+            --instruction-mem-limit 64K \
+            --data-mem-limit 64K \
+            target/riscv32imc-unknown-none-elf/release/hello \
+            target/riscv32imc-unknown-none-elf/release/fdt-read
 
 
   bittide-instances-doctests:
@@ -522,6 +558,7 @@ jobs:
         elastic-buffer-sim-topologies-matrix,
         elastic-buffer-sim-topologies,
         firmware-build-examples,
+        firmware-limit-checks,
         firmware-lints,
         firmware-unit-tests,
         license-check,
