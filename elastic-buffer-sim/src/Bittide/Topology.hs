@@ -86,7 +86,7 @@ simulationEntity topology ccc margin framesize !offsets =
   !ebs = imap ebv clocks
   ebv x = flip imap clocks . eb x
   eb x xClk y yClk
-    | hasEdge topology x y = elasticBuffer Error xClk yClk
+    | hasEdge topology x y = elasticBuffer xClk yClk
     | otherwise            = pure 0
   -- stability checkers
   !scs = imap (\i (v, clk) -> imap (sc i clk) v) $ zip ebs clocks

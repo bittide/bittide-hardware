@@ -13,6 +13,7 @@ module Bittide.Plot
   , plotDiamond
   , plotCyclic
   , plotComplete
+  , plotHourglass
   , plotGrid
   , plotStar
   , plotTorus2D
@@ -141,6 +142,19 @@ plotCyclic settings@SimulationSettings{..} nodes =
 plotComplete :: SimulationSettings -> Int -> IO Bool
 plotComplete settings@SimulationSettings{..} nodes =
   case ( simulatableG (SomeGraph . complete) nodes
+       , someNat margin
+       , somePositiveNat framesize
+       ) of
+    (  Just (SomeSimulatableGraph graph)
+     , Just (SomeNat (_ :: Proxy margin))
+     , Just (SomePositiveNat (_ :: Proxy framesize))
+     ) -> simulateTopology clockControlConfig
+            (SNat @margin) (SNat @framesize) graph settings
+    (x, y, z) -> invalidArgs (isNothing x) (isNothing y) (isNothing z)
+
+plotHourglass :: SimulationSettings -> Int -> IO Bool
+plotHourglass settings@SimulationSettings{..} nodes =
+  case ( simulatableG (SomeGraph . hourglass) nodes
        , someNat margin
        , somePositiveNat framesize
        ) of

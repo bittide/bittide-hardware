@@ -56,6 +56,7 @@ data Topology =
   | Star Int
   | Cycle Int
   | Complete Int
+  | Hourglass Int
   | DotFile FilePath
   | Random Int
   deriving (Show, Ord, Eq)
@@ -72,6 +73,7 @@ ttype = \case
   Star{}      -> "star"
   Cycle{}     -> "cycle"
   Complete{}  -> "complete"
+  Hourglass{} -> "hourglass"
   DotFile{}   -> "dotfile"
   Random{}    -> "random"
 
@@ -84,6 +86,7 @@ instance ToJSON Topology where
     Star n        -> [ gt, "nodes"      .= n ]
     Cycle n       -> [ gt, "nodes"      .= n ]
     Complete n    -> [ gt, "nodes"      .= n ]
+    Hourglass n   -> [ gt, "nodes"      .= n ]
     Random n      -> [ gt, "nodes"      .= n ]
     Tree d c      -> [ gt, "depth"      .= d, "childs" .= c ]
     Grid r c      -> [ gt, "rows"       .= r, "cols"   .= c ]
@@ -102,6 +105,7 @@ instance FromJSON Topology where
       "star"      -> Star      <$> o .: "nodes"
       "cycle"     -> Cycle     <$> o .: "nodes"
       "complete"  -> Complete  <$> o .: "nodes"
+      "hourglass" -> Hourglass <$> o .: "nodes"
       "random"    -> Random    <$> o .: "nodes"
       "tree"      -> Tree      <$> o .: "depth" <*> o .: "childs"
       "grid"      -> Grid      <$> o .: "rows"  <*> o .: "cols"
@@ -351,6 +355,29 @@ topologyParser = hsubparser
                 ]
             )
        )
+  <> command (ttype $ Hourglass undefined)
+       (  info
+            ( Hourglass <$> option auto
+                (  long "nodes"
+                <> short 'n'
+                <> metavar "NUM"
+                <> help "number of nodes in one half of the hourglass"
+                )
+            ) $ progDesc "hourglass shaped graph with fully connected 'halves'"
+       <> footerDoc
+            ( Just $ text $ unlines
+                [ "looks like: (for NODES = 3)"
+                , ""
+                , "    o---o"
+                , "     \\ /"
+                , "      o"
+                , "      |"
+                , "      o"
+                , "     / \\"
+                , "    o---o"
+                ]
+            )
+       )
   <> command (ttype $ Random undefined)
        (  info
             ( Random <$> option auto
@@ -550,6 +577,7 @@ main = do
         Star n        -> plotStar simSettings n
         Cycle n       -> plotCyclic simSettings n
         Complete n    -> plotComplete simSettings n
+        Hourglass n   -> plotHourglass simSettings n
         Random n      -> randomGraph n >>= plotGraph simSettings
         DotFile f     -> (fromDot <$> readFile f) >>= \case
           Right (g, name) -> plotGraph settings { save = safeToFile name } g
