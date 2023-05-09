@@ -32,6 +32,7 @@ import Data.Maybe
 import Data.Constraint.Nat.Extra
 import Protocols.Wishbone
 
+import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 
 {-
@@ -391,13 +392,8 @@ wbCalRX = case oneLeCLog2n @calDepth of
 
       calAddr = bitCoerce $ resize writeData
 
-      newShadowDepth
-        | wbNewShadowDepth = Just calAddr
-        | otherwise        = Nothing
-
-      newShadowEntry
-        | wbNewShadowWriteAddr = Just (calAddr, shadowEntryData)
-        | otherwise            = Nothing
+      newShadowDepth = orNothing wbNewShadowDepth calAddr
+      newShadowEntry = orNothing wbNewShadowWriteAddr (calAddr, shadowEntryData)
 
       calControl = CalendarControl
         { newShadowDepth

@@ -20,6 +20,7 @@ import Data.Maybe
 import Protocols (Circuit (Circuit))
 import Protocols.Wishbone
 
+import Bittide.Extra.Maybe
 import Bittide.SharedTypes hiding (delayControls)
 import Data.Constraint.Nat.Extra
 import Data.Typeable
@@ -541,7 +542,7 @@ splitWriteInBytes (Just (addr, writeData)) byteSelect =
     RegisterBank vec -> splitWrites <$> unpack byteSelect <*> vec
      where
       splitWrites :: Bool -> Byte -> Maybe (LocatedByte maxIndex)
-      splitWrites b bv = if b then Just (addr, bv) else Nothing
+      splitWrites b bv = orNothing b (addr, bv)
 
 splitWriteInBytes Nothing _ = repeat Nothing
 

@@ -15,7 +15,9 @@ import Clash.Cores.SPI
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
+import Bittide.Extra.Maybe
 import Bittide.SharedTypes
+
 import Clash.Cores.Xilinx.DcFifo
 
 -- | The Si539X chips use "Page"s to increase their address space.
@@ -300,9 +302,8 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
           { commandAcknowledged = spiAck || commandAcknowledged
           , idleCycles = updateIdleCycles}
 
-    output
-      | not commandAcknowledged && idleCycles == 0 = Just $ spiCommandToBytes spiCommand
-      | otherwise = Nothing
+    spiBytes = spiCommandToBytes spiCommand
+    output = orNothing (not commandAcknowledged && idleCycles == 0) spiBytes
 
 {-# NOINLINE si539xSpiDriver #-}
 
