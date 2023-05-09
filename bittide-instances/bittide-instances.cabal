@@ -104,6 +104,7 @@ library
     Bittide.Instances.ElasticBuffer
     Bittide.Instances.Hacks
     Bittide.Instances.MVPs
+    Bittide.Instances.ProcessingElement
     Bittide.Instances.ScatterGather
     Bittide.Instances.Si539xSpi
     Bittide.Instances.StabilityChecker
@@ -116,10 +117,8 @@ library
     Bittide.Instances.Tests.SyncInSyncOut
     Bittide.Instances.Tests.Transceivers
     Bittide.Instances.Tests.VexRiscv
-  autogen-modules:
-    Paths_bittide_instances
-  other-modules:
-    Paths_bittide_instances
+    Project.FilePath
+
 
 executable get-data-file-name
   import: common-options

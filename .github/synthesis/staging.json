@@ -1,5 +1,7 @@
 [
   {"top": "clockControlDemo0",             "stage": "bitstream"},
+  {"top": "vexRiscUartHello",              "stage": "bitstream"},
+
   {"top": "extendedHardwareInTheLoopTest", "stage": "test", "targets": "All"},
   {"top": "fincFdecTests",                 "stage": "test", "targets": "Specific [-1]"},
   {"top": "fullMeshHwCcTest",              "stage": "test", "targets": "All"},
