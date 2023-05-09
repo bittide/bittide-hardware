@@ -114,7 +114,6 @@ library
     Bittide.Instances.Tests.BoardTest
     Bittide.Instances.Tests.FincFdec
     Bittide.Instances.Tests.FullMeshHwCc
-    Bittide.Instances.Tests.FullMeshHwCcWithRiscv
     Bittide.Instances.Tests.SyncInSyncOut
     Bittide.Instances.Tests.Transceivers
     Bittide.Instances.Tests.VexRiscv

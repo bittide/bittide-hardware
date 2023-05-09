@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 
@@ -25,16 +26,24 @@ module Bittide.Instances.Tests.FullMeshHwCc where
 
 import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
+import Language.Haskell.TH
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
+import Bittide.ProcessingElement
+import Bittide.ProcessingElement.Util
 import Bittide.Counter
 import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
 import Bittide.Transceiver
+import Bittide.SharedTypes
+import Project.FilePath
+import System.FilePath
+import Bittide.ClockControl.Registers
+import Bittide.DoubleBufferedRam
 
 import Bittide.Instances.MVPs (stickyBits, speedChangeToPins, FINC, FDEC)
 
@@ -48,8 +57,12 @@ import Clash.Cores.Xilinx.Ila
 import Clash.Explicit.Reset.Extra
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
+import Protocols.Internal
 
 import qualified Clash.Explicit.Prelude as E
+unitCS :: CSignal dom ()
+unitCS = CSignal (pure ())
+
 
 c_CHANNEL_NAMES :: Vec 7 String
 c_CHANNEL_NAMES =
@@ -104,7 +117,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   , spiDone
   , spiOut
   , transceiversFailedAfterUp
-  , fincFdecIla `hwSeqX` allStable1
+  , fIncDec `hwSeqX` fincFdecIla `hwSeqX` allStable1
   , linkUps
   )
  where
@@ -140,7 +153,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   timer = register sysClk rst enableGen (0, 0) (timeSucc <$> timer)
   milliseconds1 = fst <$> timer
 
-  -- Clock control
+  -- Callisto Clock control
   clockControlReset =
     xpmResetSynchronizer Asserted sysClk txClock $
       orReset (unsafeFromActiveLow allUp) (unsafeFromActiveHigh transceiversFailedAfterUp)
@@ -171,6 +184,71 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   -- very confusing.
   capture = (captureFlag .&&. allUp) .||. unsafeToActiveHigh sysRst
 
+  frequencyAdjustments :: Signal GthTx (FINC, FDEC)
+  frequencyAdjustments =
+    E.delay txClock enableGen minBound {- glitch filter -} $
+      withClockResetEnable txClock clockControlReset enableGen $
+        stickyBits @GthTx d20 (speedChangeToPins <$> speedChange1)
+
+  -- Vex risc clock control
+  (_, CSignal fIncDec) = toSignals
+    ( circuit $ \ unit -> do
+      [wbA, wbB] <- (withClockResetEnable txClock clockControlReset enableGen $ processingElement @GthTx peConfig) -< unit
+      fIncDecCallisto -< wbA
+      fIncDec <- withClockResetEnable txClock clockControlReset enableGen $
+        clockControlWb margin framesize (pure $ complement 0) domainDiffs -< wbB
+      idC -< fIncDec
+    ) ((), unitCS)
+
+  fIncDecCallisto = Circuit goFIncDecCallisto
+   where
+    goFIncDecCallisto (wbM2S, _) = (wbS2M, ())
+     where
+      (_, wbS2M) = withClockResetEnable txClock clockControlReset enableGen $
+        registerWb
+          CircuitPriority
+          (0 :: Signed 32, 0 :: Bytes 4)
+          wbM2S
+          (fmap (Just . (,0)) fincfdecCount)
+      fincfdecCount = countfIncfDecs txClock clockControlReset enableGen $ unbundle $ speedChangeToPins . speedChange <$> callistoResult
+
+  ( (_iStart, _iSize, iMem)
+    , (_dStart, _dSize, dMem)) = $(do
+      root <- runIO $ findParentContaining "cabal.project"
+      let
+        elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" True
+        elfPath = elfDir </> "clock-control"
+      memBlobsFromElf BigEndian elfPath Nothing)
+  margin = d2
+
+  framesize = SNat @(PeriodToCycles GthTx (Seconds 1))
+  {-
+    0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
+    0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
+    0b00xxxxx_xxxxxxxx 0b00 0x0x FINC/FDEC register
+    0b11xxxxx_xxxxxxxx 0b11 0xCx memory mapped hardware clock control
+  -}
+  peConfig =
+    PeConfig
+      (0b10 :> 0b01 :> 0b00 :> 0b11 :> Nil)
+      (Reloadable $ Blob iMem)
+      (Reloadable $ Blob dMem)
+
+  -- Data count processing
+  truncateDataCount :: Signed 32 -> Signed 16
+  truncateDataCount = truncateB
+
+  dataCountCdc =
+      regMaybe sysClk sysRst enableGen 0
+    . xpmCdcMaybeLossy txClock sysClk
+    . fmap Just
+
+  (domainDiffs, _domainActives) =
+    unzip $ fmap unbundle $ rxDiffCounter <$> rxClocks <*> linkUpsRx
+  rxDiffCounter rxClk linkUp =
+    domainDiffCounter rxClk (unsafeFromActiveLow linkUp) txClock clockControlReset
+
+  -- Data capturing
   fincFdecIla :: Signal Basic125 ()
   fincFdecIla = ila
     (ilaConfig $
@@ -216,14 +294,6 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   nFincsSynced = xpmCdcGray txClock sysClk nFincs
   nFdecsSynced = xpmCdcGray txClock sysClk nFdecs
 
-  truncateDataCount :: Signed 32 -> Signed 16
-  truncateDataCount = truncateB
-
-  dataCountCdc =
-      regMaybe sysClk sysRst enableGen 0
-    . xpmCdcMaybeLossy txClock sysClk
-    . fmap Just
-
   captureFlag = captureCounter .==. pure (maxBound :: Index (PeriodToCycles Basic125 (Milliseconds 2)))
   captureCounter = register sysClk sysRst enableGen 0 (satSucc SatWrap <$> captureCounter)
 
@@ -232,18 +302,6 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
 
   isFdec = speedChange1 .==. pure SlowDown
   nFdecs = register txClock clockControlReset (toEnable isFdec) (0 :: Unsigned 32) (nFdecs + 1)
-
-  frequencyAdjustments :: Signal GthTx (FINC, FDEC)
-  frequencyAdjustments =
-    E.delay txClock enableGen minBound {- glitch filter -} $
-      withClockResetEnable txClock clockControlReset enableGen $
-        stickyBits @GthTx d20 (speedChangeToPins <$> speedChange1)
-
-  (domainDiffs, _domainActives) =
-    unzip $ fmap unbundle $ rxDiffCounter <$> rxClocks <*> linkUpsRx
-  rxDiffCounter rxClk linkUp =
-    domainDiffCounter rxClk (unsafeFromActiveLow linkUp) txClock clockControlReset
-
 
 -- | Returns 'True' if incoming signal has been 'True' for 500 ms
 --
@@ -401,6 +459,22 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       (rxRetries     <$> stats6)
       (rxFullRetries <$> stats6)
       (failAfterUps  <$> stats6)
+
+-- | Count the number of FINC / FDEC Pulses, FINC => +1 , FDEC => -1.
+countfIncfDecs ::
+  (KnownDomain dom, KnownNat n) =>
+  Clock dom ->
+  Reset dom ->
+  Enable dom ->
+  (Signal dom Bool, Signal dom Bool) ->
+  Signal dom (Signed n)
+countfIncfDecs clk rst ena (fInc, fDec) = cnt
+ where
+  cntCond = isRising clk rst ena False fInc .||. isRising clk rst ena False fDec
+  cnt = regEn clk rst ena 0 cntCond cnt'
+  cnt' = satAdd SatError <$> cnt <*> mux fInc 1 (-1)
+
+
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.
 {-# ANN fullMeshHwCcTest Synthesize

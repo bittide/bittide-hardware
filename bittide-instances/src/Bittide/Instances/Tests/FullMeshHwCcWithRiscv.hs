@@ -19,6 +19,7 @@ import Clash.Cores.Xilinx.Ila
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Bittide.Instances.MVPs(speedChangeToPins)
+import Bittide.Instances.Tests.FullMeshHwCc
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
@@ -49,17 +50,31 @@ unitCS = CSignal (pure ())
 -- | Worker function of 'fullMeshHwCcWithRiscvTest'. See module documentation
 -- for more information.
 clockControlRegistersInner ::
-  forall dom .
-  KnownDomain dom =>
-  Clock dom ->
-  Reset dom ->
-  Signal dom (CallistoResult 7) ->
-  Vec 7 (Signal dom (DataCount 32)) ->
-  -- Freq increase / freq decrease request to clock board
-  ( "FINC" ::: Signal dom Bool
-  , "FDEC" ::: Signal dom Bool
+  "SMA_MGT_REFCLK_C" ::: Clock Basic200 ->
+  "SYSCLK" ::: Clock Basic125 ->
+  "RST_LOCAL" ::: Reset Basic125 ->
+  "GTH_RX_NS" ::: TransceiverWires GthRx ->
+  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "MISO" ::: Signal Basic125 Bit ->
+  ( "GTH_TX_NS" ::: TransceiverWires GthTx
+  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  , "FINC_FDEC" ::: Signal GthTx (FINC, FDEC)
+  , "CALLISTO_CLOCK" ::: Clock GthTx
+  , "CALLISTO_RESULT" ::: Signal GthTx (CallistoResult 7)
+  , "CALLISTO_RESET" ::: Reset GthTx
+  , "DATA_COUNTERS" ::: Vec 7 (Signal GthTx (DataCount 32))
+  , "stats" ::: Vec 7 (Signal Basic125 GthResetStats)
+  , "spiDone" ::: Signal Basic125 Bool
+  , "" :::
+      ( "SCLK" ::: Signal Basic125 Bool
+      , "MOSI" ::: Signal Basic125 Bit
+      , "CSB"  ::: Signal Basic125 Bool
+      )
+  , "transceiversFailedAfterUp" ::: Signal Basic125 Bool
+  , "ALL_STABLE"   ::: Signal Basic125 Bool
+  , "linkUps" ::: Vec 7 (Signal Basic125 Bool)
   )
-clockControlRegistersInner clk rst callistoResult dataCounts = unbundle fIncDec
+goFullMeshHwCcWithRiscvTest clk rst callistoResult dataCounts = unbundle fIncDec
  where
   (_, CSignal fIncDec) = toSignals
     ( circuit $ \ unit -> do
@@ -128,18 +143,6 @@ clockControlRegistersInner clk rst callistoResult dataCounts = unbundle fIncDec
       (0b10 :> 0b01 :> 0b00 :> 0b11 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
-
-countfIncfDecs ::
-  (KnownDomain dom, KnownNat n) =>
-  Clock dom ->
-  Reset dom ->
-  Enable dom ->
-  (Signal dom Bool, Signal dom Bool) ->
-  Signal dom (Signed n)
-countfIncfDecs clk rst ena (fInc, fDec) = cnt
- where
-  cnt = regEn clk rst ena 0 (isRising clk rst ena False fInc .||. isRising clk rst ena False fDec) cnt'
-  cnt' = satAdd SatError <$> cnt <*> mux fInc 1 (-1)
 
 -- | Top entity for this test. See module documentation for more information.
 fullMeshHwCcWithRiscvTest ::
@@ -350,6 +353,21 @@ fullMeshHwCcWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso = fincFdec
       (failAfterUps  <$> stats6)
 
       (xpmCdcSingle callistoClock sysClk callistoResetBool)
+
+-- | Count the number of FINC / FDEC Pulses, FINC => +1 , FDEC => -1.
+countfIncfDecs ::
+  (KnownDomain dom, KnownNat n) =>
+  Clock dom ->
+  Reset dom ->
+  Enable dom ->
+  (Signal dom Bool, Signal dom Bool) ->
+  Signal dom (Signed n)
+countfIncfDecs clk rst ena (fInc, fDec) = cnt
+ where
+  cntCond = isRising clk rst ena False fInc .||. isRising clk rst ena False fDec
+  cnt = regEn clk rst ena 0 cntCond cnt'
+  cnt' = satAdd SatError <$> cnt <*> mux fInc 1 (-1)
+
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.
 {-# ANN fullMeshHwCcWithRiscvTest Synthesize
