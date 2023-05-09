@@ -5,7 +5,7 @@
 
 [profile.release]
 # Automatically strip symbols from the binary.
-strip = true
+# strip = true
 # Optimize for size
 opt-level = "z"
 lto = true

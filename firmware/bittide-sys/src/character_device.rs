@@ -22,14 +22,16 @@ pub unsafe fn initialise(character_device_addr: *mut u8) -> bool {
     true
 }
 
-impl core::fmt::Write for CharacterDevice {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+impl ufmt::uWrite for CharacterDevice {
+    type Error = ();
+
+    fn write_str(&mut self, s: &str) -> Result<(), Self::Error> {
         // SAFETY: this RISC-V implementation does not support multiple threads
         //         of execution, so the access is essentially thread-local.
         let addr = if let Some(addr) = unsafe { DEVICE_ADDR } {
             addr
         } else {
-            return Err(core::fmt::Error);
+            return Err(());
         };
 
         for b in s.bytes() {
@@ -49,16 +51,22 @@ impl core::fmt::Write for CharacterDevice {
 
 #[macro_export]
 macro_rules! print {
-    ($($t:tt)*) => {
-        write!($crate::character_device::CharacterDevice, $($t)*).unwrap();
+    () => {
+        $crate::print!("")
     };
+    ($($t:tt)*) => {{
+        let _ = ufmt::uwrite!(&mut $crate::character_device::CharacterDevice, $($t)*);
+    }};
 }
 
 #[macro_export]
 macro_rules! println {
-    ($($t:tt)*) => {
-        writeln!($crate::character_device::CharacterDevice, $($t)*).unwrap();
+    () => {
+        $crate::println!("")
     };
+    ($($t:tt)*) => {{
+        let _ = ufmt::uwriteln!(&mut $crate::character_device::CharacterDevice, $($t)*).unwrap();
+    }};
 }
 
 #[macro_export]

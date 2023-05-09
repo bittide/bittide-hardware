@@ -5,8 +5,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use core::fmt::Write;
-
 #[cfg(not(test))]
 use riscv_rt::entry;
 
@@ -23,8 +21,8 @@ fn main() -> ! {
     let names = ["Rust", "RISC-V", "Haskell"];
     loop {
         for name in names {
-            println!("Hello from {name}!");
+            println!("Hello from {}!", name);
         }
-        println!("This can also do {:?} {:#x}", "debug prints", 42);
+        println!("This can also do {} {:#x}", "debug prints", 42);
     }
 }
