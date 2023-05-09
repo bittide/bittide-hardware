@@ -192,7 +192,7 @@ mkBitstreamTcl outputDir = [__i|
     open_checkpoint {#{outputDir </> "checkpoints" </> "post_route.dcp"}}
 
     \# Generate bitstream
-    write_bitstream {#{outputDir </> "bitstream.bit"}}
+    write_bitstream -force {#{outputDir </> "bitstream.bit"}}
 
     report_drc -file {#{outputDir </> "reports" </> "post_bitstream_drc.rpt"}}
 |]
