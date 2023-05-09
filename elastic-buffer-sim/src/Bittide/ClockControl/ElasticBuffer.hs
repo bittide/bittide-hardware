@@ -51,7 +51,7 @@ elasticBuffer mode clkRead clkWrite =
   goRead ticks fillLevel = newFillLevel :- go ticks newFillLevel
    where
     newFillLevel
-      | fillLevel <= 0 = case mode of
-          Saturate -> 0
+      | fillLevel == minBound = case mode of
+          Saturate -> fillLevel
           Error -> error "elasticBuffer: underflow"
       | otherwise = fillLevel - 1

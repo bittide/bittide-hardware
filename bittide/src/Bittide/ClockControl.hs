@@ -21,7 +21,6 @@ where
 
 import Clash.Explicit.Prelude
 import Clash.Signal.Internal (Femtoseconds(..))
-import Clash.Cores.Xilinx.DcFifo (DataCount)
 import Data.Aeson (ToJSON(toJSON))
 import Data.Proxy (Proxy(..))
 import GHC.Stack (HasCallStack)
@@ -81,10 +80,22 @@ data ClockControlConfig dom n m c = ClockControlConfig
   , cccStabilityCheckerFramesize :: SNat c
   } deriving (Lift)
 
--- | Calculate target data count given a FIFO size. Currently returns a target
--- data count of half the FIFO size.
+-- | The (virtual) type of the FIFO's data counter. Setting this to
+-- 'Unsigned' captures the real implementation of the FIFO, while
+-- setting it to 'Signed' results in a virtual correction shifting the
+-- FIFO's center to be always at @0@.
+--
+-- _(remember to also modify 'targetDataCount' below if the
+-- representation of 'DataCount' gets changed.)_
+type DataCount n = Signed n
+
+-- | The target data count within a (virtual) FIFO. It is usually set
+-- to be at the FIFO's center.
+--
+-- _(recommended values are @0@ if 'DataCount' is 'Signed' and @shiftR
+-- maxBound 1 + 1@ if it is 'Unsigned')_
 targetDataCount :: KnownNat n => DataCount n
-targetDataCount = shiftR maxBound 1
+targetDataCount = 0
 
 -- | Safer version of FINC/FDEC signals present on the Si5395/Si5391 clock multipliers.
 data SpeedChange
@@ -102,6 +113,12 @@ instance KnownNat n => ToField (Unsigned n) where
   toField = toField . toInteger
 
 instance KnownNat n => ToJSON (Unsigned n) where
+  toJSON = toJSON . toInteger
+
+instance KnownNat n => ToField (Signed n) where
+  toField = toField . toInteger
+
+instance KnownNat n => ToJSON (Signed n) where
   toJSON = toJSON . toInteger
 
 instance ToField Femtoseconds where

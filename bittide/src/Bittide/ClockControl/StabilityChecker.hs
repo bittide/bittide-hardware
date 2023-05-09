@@ -6,8 +6,8 @@ module Bittide.ClockControl.StabilityChecker where
 
 import Clash.Prelude
 
-import Bittide.ClockControl (targetDataCount)
-import Clash.Sized.Extra
+import Bittide.ClockControl (DataCount, targetDataCount)
+import Bittide.ClockControl.Callisto.Util (dataCountToSigned)
 
 -- | Checks whether the @Signal@ of buffer occupancies from an elastic
 -- buffer is stable and close to the target data counter. The @Signal@
@@ -28,7 +28,7 @@ stabilityChecker ::
   -- must remain within the @margin@ for it to be considered "stable".
   SNat framesize ->
   -- | Incoming buffer occupancy.
-  Signal dom (Unsigned n) ->
+  Signal dom (DataCount n) ->
   -- | Stability indicators. The first tuple element indicates
   -- stability of the signal over time, while the second element
   -- indicates whether the signal is close to 'targetDataCount'.
@@ -38,9 +38,9 @@ stabilityChecker SNat SNat = mealy go (0, targetDataCount)
   go (!cnt, !target) input = (newState, (isStable, isCloseToTarget))
    where
     withinMargin !x !y =
-      abs (unsignedToSigned x `sub` unsignedToSigned y) <= (natToNum @margin)
+      abs (dataCountToSigned x `sub` dataCountToSigned y) <= (natToNum @margin)
 
-    newState :: (Index (framesize + 1), Unsigned n)
+    newState :: (Index (framesize + 1), DataCount n)
     newState
       | withinMargin target input = (satSucc SatBound cnt, target)
       | otherwise                 = (0, input)

@@ -6,14 +6,13 @@
 module Bittide.ElasticBuffer where
 
 import Clash.Prelude
-import Clash.Cores.Xilinx.DcFifo
+import Clash.Cores.Xilinx.DcFifo hiding (DataCount)
 import GHC.Stack
 
-import Bittide.ClockControl (targetDataCount)
+import Bittide.ClockControl (DataCount, targetDataCount)
 
 import qualified Clash.Explicit.Prelude as E
 import qualified Clash.Cores.Extra as CE
-
 
 data EbMode
   -- | Disable write, enable read
@@ -72,7 +71,17 @@ xilinxElasticBuffer ::
   , Signal readDom a
   )
 xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
-  (readCount, isUnderflowSticky, isOverflowSticky, fifoData)
+  ( -- Note that this is chosen to work for 'DataCount' either being
+    -- set to 'Signed' with 'targetDataCount' equals 0 or set to
+    -- 'Unsigned' with 'targetDataCount' equals 'shiftR maxBound 1 + 1'.
+    -- This way, the representation can be easily switched without
+    -- introducing major code changes.
+    (+ targetDataCount) . bitCoerce . (+ (-1 - shiftR maxBound 1))
+      <$> readCount
+  , isUnderflowSticky
+  , isOverflowSticky
+  , fifoData
+  )
  where
   rstWrite = unsafeFromHighPolarity rstWriteBool
   rstWriteBool =
@@ -140,7 +149,7 @@ resettableXilinxElasticBuffer clkRead clkWrite rstRead wdata =
     state1 =
       case state0 of
         Drain
-          | datacount == 0 -> Fill
+          | datacount == minBound -> Fill
           | otherwise -> Drain
         Fill
           | datacount < targetDataCount -> Fill

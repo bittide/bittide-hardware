@@ -101,7 +101,7 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
     config availableLinkMask (bufferOccupancy :> Nil)
   clockControlReset = unsafeFromLowPolarity $ (==Pass) <$> ebMode
 
-  writeData = pure (0 :: Unsigned 8)
+  writeData = pure (0 :: DataCount 8)
 
   (bufferOccupancy, underFlowed, overFlowed, ebMode, _) =
     withReset rstControlled $

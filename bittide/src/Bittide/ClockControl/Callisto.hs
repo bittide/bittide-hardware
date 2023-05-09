@@ -16,7 +16,6 @@ import Data.Constraint.Nat.Extra (euclid3, useLowerLimit)
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Util
 import Bittide.ClockControl.StabilityChecker
-import Clash.Sized.Extra
 
 import qualified Clash.Cores.Xilinx.Floating as F
 import qualified Clash.Signal.Delayed as D
@@ -171,7 +170,7 @@ callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
       targetCountSigned =
         case euclid3 @n @m @32 of
           Dict ->
-            extend @_ @_ @(32 - m - 1) (unsignedToSigned targetCount)
+            extend @_ @_ @(32 - m - 1) (dataCountToSigned targetCount)
     in
       measuredSum - (pure targetCountSigned * nBuffers)
 

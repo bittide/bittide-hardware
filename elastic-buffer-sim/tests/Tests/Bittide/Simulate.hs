@@ -51,7 +51,7 @@ case_clockControlMinBound :: Assertion
 case_clockControlMinBound = do
   let
     config = defClockConfig
-    dataCounts = pure 0 :> Nil
+    dataCounts = pure minBound :> Nil
     mask = pure $ pack (repeat high)
     changes =
       sampleN
@@ -71,14 +71,14 @@ case_elasticBufferMaxBound = do
   -- it never hits exactly the maximum because the occupancy is in the read
   -- domain, i.e. we have to look for one less than the max
   assertBool "elastic buffer should reach its near maximum (read domain)" ((maxBound-1) `elem` dataCounts)
-  assertBool "elastic buffer should not reach its minimum" (0 `notElem` dataCounts)
+  assertBool "elastic buffer should not reach its minimum" (minBound `notElem` dataCounts)
 
 -- | When the elasticBuffer is read from more quickly than it is being written to,
 -- its data count should reach 'minBound'.
 case_elasticBufferMinBound :: Assertion
 case_elasticBufferMinBound = do
   let dataCounts = sampleN 1024 (elasticBuffer @5 Saturate (clockGen @Fast) (clockGen @Slow))
-  assertBool "elastic buffer should reach its minimum" (0 `elem` dataCounts)
+  assertBool "elastic buffer should reach its minimum" (minBound `elem` dataCounts)
   assertBool "elastic buffer should not reach its maximum" (maxBound `notElem` dataCounts)
 
 -- | When the elasticBuffer is written to as quickly to as it is read from, it should
@@ -86,5 +86,5 @@ case_elasticBufferMinBound = do
 case_elasticBufferEq :: Assertion
 case_elasticBufferEq = do
   let dataCounts = sampleN 1024 (elasticBuffer @5 Saturate (clockGen @Slow) (clockGen @Slow))
-  assertBool "elastic buffer should not reach its minimum" (0 `notElem` dataCounts)
+  assertBool "elastic buffer should not reach its minimum" (minBound `notElem` dataCounts)
   assertBool "elastic buffer should not reach its maximum" (maxBound `notElem` dataCounts)
