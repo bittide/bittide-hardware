@@ -20,6 +20,7 @@ import Protocols.Wishbone
 
 import Bittide.Calendar
 import Bittide.DoubleBufferedRam
+import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 
 -- | Existential type to explicitly differentiate between a configuration for
@@ -127,8 +128,7 @@ wbInterface WishboneM2S{..} readData =
   err = masterActive && ((alignedAddress > maxAddress) || not wordAligned)
   acknowledge = masterActive && not err
   wbAddr = unpack . resize $ pack alignedAddress
-  writeOp | strobe && writeEnable && not err = Just writeData
-          | otherwise  = Nothing
+  writeOp = orNothing (strobe && writeEnable && not err) writeData
 
 -- | Adds a stalling address to the 'wbInterface' by demanding an extra address on type level.
 -- When this address is accessed, the outgoing 'WishboneS2M' bus' acknowledge is replaced

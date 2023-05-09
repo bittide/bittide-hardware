@@ -15,6 +15,7 @@ import VexRiscv (Input(..), Output(..), vexRiscv)
 import Protocols.Wishbone
 
 import Bittide.DoubleBufferedRam
+import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
@@ -99,10 +100,7 @@ wishboneSink = fmap go
     acknowledge = masterActive && writeEnable && addrLegal
     err = masterActive && (not writeEnable || not addrLegal)
 
-    output
-      | acknowledge = Just (busSelect, writeData)
-      | otherwise   = Nothing
-
+    output = orNothing acknowledge (busSelect, writeData)
     wbOut = emptyWishboneS2M{acknowledge, err}
 
 -- | Provide a vector of filepaths, and a write operations containing a byteSelect and
