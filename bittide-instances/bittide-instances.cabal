@@ -63,11 +63,13 @@ common common-options
     -fno-worker-wrapper
   default-language: Haskell2010
   build-depends:
+    Glob,
+    MissingH,
     aeson,
     base,
     base16-bytestring,
-    bittide-extra,
     bittide,
+    bittide-extra,
     bytestring,
     clash-cores,
     clash-lib,
@@ -82,8 +84,6 @@ common common-options
     ghc-typelits-extra,
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
-    Glob,
-    MissingH,
     pretty-simple,
     process,
     shake,
