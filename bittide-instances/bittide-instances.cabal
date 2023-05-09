@@ -71,6 +71,7 @@ common common-options
     clash-lib,
     clash-prelude,
     clash-protocols,
+    clash-cores,
     elastic-buffer-sim,
     containers,
     elastic-buffer-sim,
@@ -99,6 +100,7 @@ library
     Bittide.Instances.ElasticBuffer
     Bittide.Instances.Hacks
     Bittide.Instances.MVPs
+    Bittide.Instances.ProcessingElement
     Bittide.Instances.ScatterGather
     Bittide.Instances.Si539xSpi
     Bittide.Instances.StabilityChecker

@@ -33,6 +33,7 @@ import qualified Bittide.Instances.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Si539xSpi as Si539xSpi
 import qualified Bittide.Instances.StabilityChecker as StabilityChecker
 import qualified Bittide.Instances.Synchronizer as Synchronizer
+import qualified Bittide.Instances.ProcessingElement as ProcessingElement
 import qualified Clash.Util.Interpolate as I
 import qualified Language.Haskell.TH as TH
 import qualified System.Directory as Directory
@@ -91,6 +92,7 @@ targets =
   , 'ScatterGather.scatterUnit1KReducedPins
   , 'Si539xSpi.si5391Spi
   , 'StabilityChecker.stabilityChecker_3_1M
+  , 'ProcessingElement.vexRiscUartEcho
   , 'Synchronizer.safeDffSynchronizer
   , 'Si539xSpi.callistoSpi
   ]

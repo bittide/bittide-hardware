@@ -14,5 +14,8 @@ codegen-units = 1
 [workspace]
 members = [
   "firmware/bittide-sys",
+  "firmware/examples/fdt-read",
+  "firmware/examples/hello",
+  "firmware/examples/uart-echo",
 ]
 resolver = "2"
