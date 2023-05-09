@@ -73,6 +73,7 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
+    Bittide.Extra.Maybe
     Bittide.Extra.Wishbone
 
 test-suite doctests
