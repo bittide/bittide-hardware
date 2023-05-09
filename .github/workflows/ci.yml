@@ -258,9 +258,13 @@ jobs:
           # speed up the tests.
           cabal run -- bittide:unittests -j 1 +RTS -N2
 
-      - name: Doctests
+      - name: Bittide Doctests
         run: |
           cabal run -- bittide:doctests
+
+      - name: Bittide.Extra Doctests
+        run: |
+          cabal run -- bittide-extra:doctests
 
   firmware-lints:
     name: Firmware Lints
