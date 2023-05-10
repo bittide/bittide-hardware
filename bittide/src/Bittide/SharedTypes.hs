@@ -83,6 +83,7 @@ type Pad a bw  = (Regs a bw * bw) - BitSize a
 type Regs a bw = DivRU (BitSize a) bw
 
 data ByteOrder = LittleEndian | BigEndian
+  deriving Eq
 
 -- | Stores any arbitrary datatype as a vector of registers.
 newtype RegisterBank regSize content (byteOrder :: ByteOrder) =
