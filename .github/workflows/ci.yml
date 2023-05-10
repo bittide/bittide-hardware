@@ -103,6 +103,13 @@ jobs:
   elastic-buffer-sim-topologies-matrix:
     name: elastic-buffer-sim-topologies simulation matrix generation
     runs-on: self-hosted
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
+
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
+
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -118,10 +125,12 @@ jobs:
       - name: Set simulation matrix
         id: set-sim-matrix
         run: |
-          echo "sim_matrix=$(cat sim.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
+          echo "sim_matrix=$(cat sim.json | jq -c)" | tee -a "$GITHUB_OUTPUT"
+          echo "artifact_names=$(cat sim.json | jq -c '["gen-plots-hs-" + .[].topology]')" | tee -a "$GITHUB_OUTPUT"
 
     outputs:
       sim_matrix: ${{ steps.set-sim-matrix.outputs.sim_matrix }}
+      artifact_names: ${{ steps.set-sim-matrix.outputs.artifact_names }}
 
   elastic-buffer-sim-topologies:
     name: Simulate network
@@ -172,12 +181,65 @@ jobs:
             --stop-when-stable \
             ${{ matrix.target.topology }} ${{ matrix.target.args }}
 
+      - name: Generate report
+        if: always()
+        run: |
+          dot2tex \
+            -f tikz \
+            --figonly \
+            --progoptions "-K neato" \
+            --nodeoptions "every node/.style={fill, text opacity=0,minimum size=1.5em,inner sep=0pt,text width=0pt}" \
+            --edgeoptions "line width=0.3em" \
+            _build/topology.gv > _build/topology.tikz
+          cp .github/simulation/report-template.tex _build/report.tex
+          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "$(date +'%Y-%m-%d %H:%M:%S')" > _build/datetime
+          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > _build/runref
+          cd _build
+          lualatex report.tex
+          rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz
+
       - name: Upload plots
         uses: actions/upload-artifact@v3
         if: always()
         with:
           name: gen-plots-hs-${{ matrix.target.topology }}
           path: _build
+          retention-days: 14
+
+  generate-full-clock-control-simulation-report:
+    name: Generate clock control simulation report
+    runs-on: self-hosted
+    if: always()
+    needs: [build, lint, elastic-buffer-sim-topologies-matrix, elastic-buffer-sim-topologies]
+
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
+
+    steps:
+      - name: Download simulation artifacts
+        uses: actions/download-artifact@v3
+        with:
+          # Note that all artifacts are downloaded, if no 'name' is specified.
+          # Unfortunately, this is the only working solution that github offers
+          # right at the moment. Alternative options exist, like
+          # https://github.com/marketplace/actions/download-multiple-workflow-artifacts,
+          # but this action is currently broken. Once a working solution
+          # is available again, 'artifact_names' from
+          # 'elastic-buffer-sim-topologies-matrix' can be used to only download
+          # the required artifacts instead.
+          path: artifacts
+
+      - name: Generate final report
+        shell: git-nix-shell {0} --pure
+        run: |
+          pdfunite artifacts/*/report.pdf report.pdf
+
+      - name: Upload report
+        uses: actions/upload-artifact@v3
+        with:
+          name: Clock Control Simulation Report
+          path: report.pdf
           retention-days: 14
 
   elastic-buffer-sim-tests:
@@ -568,6 +630,7 @@ jobs:
         elastic-buffer-sim-tests,
         elastic-buffer-sim-topologies-matrix,
         elastic-buffer-sim-topologies,
+        generate-full-clock-control-simulation-report,
         firmware-build-examples,
         firmware-limit-checks,
         firmware-lints,

@@ -25,6 +25,12 @@ pkgs.mkShell {
       pkgs.buildPackages.scala
       pkgs.buildPackages.verilator
       pkgs.buildPackages.which
+      pkgs.buildPackages.jq
+
+      # Simulation report generation
+      pkgs.buildPackages.dot2tex
+      pkgs.buildPackages.texlive.combined.scheme-medium
+      pkgs.buildPackages.poppler_utils
 
       (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
 
