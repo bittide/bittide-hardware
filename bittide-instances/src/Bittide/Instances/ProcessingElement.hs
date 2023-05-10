@@ -41,10 +41,9 @@ vexRiscUartEcho clk_n clk_p rst_in =
 
   (  (_iStart, _iSize, iMem)
    , (_dStart, _dSize, dMem)) = $(do
-      elfPath <- runIO $ getDataFileName "data/binaries/uart-echo"
+      elfPath <- runIO $ getDataFileName "data/binaries/hello"
       memBlobsFromElf BigEndian elfPath Nothing)
 
   peConfig = PeConfig (0 :> 1 :> 2 :> Nil) (Reloadable $ Blob iMem) (Reloadable $ Blob dMem)
 
 makeTopEntity 'vexRiscUartEcho
-

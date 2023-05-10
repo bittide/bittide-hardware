@@ -16,6 +16,5 @@ members = [
   "firmware/bittide-sys",
   "firmware/examples/fdt-read",
   "firmware/examples/hello",
-  "firmware/examples/uart-echo",
 ]
 resolver = "2"
