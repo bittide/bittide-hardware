@@ -11,7 +11,6 @@ module Tests.Shared where
 import Clash.Prelude
 
 import Clash.Hedgehog.Sized.Unsigned
-import Clash.Signal.Internal
 
 import Data.Constraint (Dict(Dict))
 import Data.Constraint.Nat.Extra (divWithRemainder)
@@ -23,13 +22,12 @@ import Numeric.Natural
 import Protocols (toSignals)
 import Protocols.Axi4.Stream
 import Protocols.Wishbone as Wb
-import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
+import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit, WishboneMasterRequest(..))
 
 import Bittide.Calendar
 import Bittide.SharedTypes
 
 import qualified Data.List as L
-import qualified Data.List.NonEmpty as NonEmpty
 import qualified GHC.TypeNats as TypeNats
 import qualified Hedgehog.Range as Range
 
@@ -137,34 +135,6 @@ checkField str f a b
     deepErrorX ("checkField: " <> str <> ", is undefined for one of the transactions.")
   | otherwise = f a == f b
 
--- | Convert a 'RamOp' to 'WishboneM2S'
-ramOpToWb
-  ::
-  forall addrW i a .
-  ( NFDataX a
-  , KnownNat addrW
-  , KnownNat (BitSize a)
-  , KnownNat i
-  , 1 <= i)
-  => RamOp i a
-  -> WishboneM2S addrW (DivRU (BitSize a) 8) a
-
-ramOpToWb (RamRead i) = (emptyWishboneM2S @addrW @a)
-  { addr = resize (pack i)
-  , busCycle = True
-  , strobe = True
-  , busSelect = maxBound}
-
-ramOpToWb (RamWrite i a) = (emptyWishboneM2S @addrW @a)
-  { addr = resize (pack i)
-  , busCycle = True
-  , strobe = True
-  , busSelect = maxBound
-  , writeEnable = True
-  , writeData = a}
-
-ramOpToWb RamNoOp = emptyWishboneM2S @addrW @a
-
 -- | Consumes a list of 'WishboneM2S' requests and a list of 'WishboneS2M' responses
 -- and transforms them to a list of 'Transaction'.
 wbToTransaction
@@ -194,25 +164,64 @@ wbToTransaction (m@WishboneM2S{..}:restM) (s@WishboneS2M{..}:restS)
 
 wbToTransaction _ _ = []
 
+-- | Take a wishbone master and a wishbone slave and return their transactions.
+exposeWbTransactions ::
+  (KnownDomain dom, Eq a, KnownNat addrW, ShowX a, KnownNat (BitSize a)) =>
+  Maybe Int ->
+  Circuit () (Wishbone dom mode addrW a) ->
+  Circuit (Wishbone dom mode addrW a) () ->
+  [Transaction addrW (DivRU (BitSize a) 8) a]
+exposeWbTransactions maybeSampleLength (Circuit master) (Circuit slave) =
+  let ~((), m2s) = master ((), s2m)
+      ~(s2m, ()) = slave (m2s, ())
+   in uncurry wbToTransaction $ L.unzip $ sampleF $ bundle (m2s, s2m)
+ where
+  sampleF = case maybeSampleLength of
+    Just n -> sampleN_lazy n
+    Nothing -> sample_lazy
+
+-- | Transform a `WishboneMasterRequest` into `WishboneM2S`
+wbMasterRequestToM2S ::
+  forall addrW a .
+  ( KnownNat addrW
+  , KnownNat (BitSize a)
+  , NFDataX a
+  ) =>
+  WishboneMasterRequest addrW a ->
+  WishboneM2S addrW (DivRU (BitSize a) 8) a
+wbMasterRequestToM2S = \case
+  Read i busSelect -> (emptyWishboneM2S @addrW @a)
+    { addr = resize (pack i)
+    , busCycle = True
+    , strobe = True
+    , busSelect = busSelect
+    , writeEnable = True
+    }
+  Write i busSelect a -> (emptyWishboneM2S @addrW @a)
+    { addr = resize (pack i)
+    , busCycle = True
+    , strobe = True
+    , busSelect = busSelect
+    , writeEnable = True
+    , writeData = a}
+
 -- | Consumes a list of 'RamOp's and a list of corresponding results @a@ and transforms
 -- them into a list of 'Transaction's.
-ramOpToTransaction
+wbOpToTransaction
   ::
-  forall i addrW a .
-  ( 1 <= i
-  , KnownNat addrW
+  forall addrW a .
+  ( KnownNat addrW
   , KnownNat (BitSize a)
-  , KnownNat i
   , NFDataX a
   )
-  => RamOp i a
+  => WishboneMasterRequest addrW a
   -> a
-  -> Maybe (Transaction addrW (DivRU (BitSize a) 8) a)
-ramOpToTransaction ramOp response = case ramOp of
-  RamNoOp       -> Nothing
-  RamRead _     -> Just (ReadSuccess (ramOpToWb ramOp) slaveResponse)
-  RamWrite _ _  -> Just (WriteSuccess (ramOpToWb ramOp) slaveResponse)
+  -> Transaction addrW (DivRU (BitSize a) 8) a
+wbOpToTransaction ramOp response = case ramOp of
+  Read _ _ -> ReadSuccess wbM2S slaveResponse
+  Write _ _ _ -> WriteSuccess wbM2S slaveResponse
  where
+  wbM2S = wbMasterRequestToM2S ramOp
   slaveResponse = (emptyWishboneS2M @a) {acknowledge = True, readData = response}
 
 validateWb ::
