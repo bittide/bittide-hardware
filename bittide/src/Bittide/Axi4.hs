@@ -19,6 +19,7 @@ import Protocols
 import Protocols.Axi4.Stream
 import Protocols.Wishbone
 import Protocols.Df hiding (const, pure, stall)
+import Protocols.Internal
 
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
@@ -125,6 +126,23 @@ axisToByteStream = Circuit (mealyB go (0 :: Index dataWidth))
 
 {-# NOINLINE wbAxisRxBuffer #-}
 
+wbAxisRxBufferCircuit ::
+  forall dom wbAddrW nBytes fifoDepth conf .
+  ( HiddenClockResetEnable dom
+  , KnownNat wbAddrW, 2 <= wbAddrW
+  , KnownNat nBytes, 1 <= nBytes
+  , 1 <= fifoDepth
+  , 1 <= nBytes * fifoDepth
+  , DataWidth conf ~ nBytes) =>
+  -- | Depth of the buffer, each entry in the buffer stores `nBytes` bytes.
+  SNat fifoDepth ->
+  Circuit
+    (Wishbone dom 'Standard wbAddrW (Bytes nBytes), Axi4Stream dom conf ())
+    (CSignal dom (EndOfPacket, BufferFull))
+wbAxisRxBufferCircuit depth = case cancelMulDiv @nBytes @8 of
+  Dict -> Circuit $ \((wbM2S, axiM2S),_) -> do
+    let (wbS2M, axiS2M,status) = wbAxisRxBuffer depth wbM2S axiM2S $ pure (False, False)
+      in ((wbS2M, axiS2M), CSignal status)
 -- | A wishbone accessible buffer that stores AXI4Stream packets. The buffer stores
 -- a single Axi4 stream packet and exposes a status register that indicates:
 --  * If the buffer contains a packet
