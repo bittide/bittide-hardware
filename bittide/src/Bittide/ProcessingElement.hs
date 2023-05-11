@@ -55,12 +55,17 @@ processingElement (PeConfig memMapConfig' initI' initD') =
     InitialContent depthD (Bytes 4) ->
     Circuit () (Vec (nBusses-2) (Wishbone dom 'Standard (MappedBus 32 nBusses) (BitVector 32)))
   go memMapConfig initI initD = circuit $ do
-    (iBus, dBus) <- rvCircuit (pure low) (pure low) (pure low)
+    (iBus0, dBus) <- rvCircuit (pure low) (pure low) (pure low)
     ([iMemBus, dMemBus], extBusses) <-
       (splitAtCircuit d2 <| singleMasterInterconnect memMapConfig) -< dBus
-    wbStorage initI -< iBus
-    wbStorageDPC initD -< (iMemBus, dMemBus)
+    wbStorage initD -< dMemBus
+    iBus1 <- removeMsb -< iBus0
+    wbStorageDPC initI -< (iBus1, iMemBus)
     idC -< extBusses
+
+  removeMsb :: forall aw a . KnownNat aw => Circuit (Wishbone dom 'Standard (aw + 1) a) (Wishbone dom 'Standard aw a)
+  removeMsb = wbMap (mapAddr (truncateB  :: BitVector (aw + 1) -> BitVector aw)) id
+
 
 splitAtCircuit ::
   SNat left ->
@@ -93,9 +98,6 @@ rvCircuit tInterrupt sInterrupt eInterrupt = Circuit go
     -- These shifts bring the addresses "back into the byte domain" so to speak.
     iBusOut = mapAddr ((`shiftL` 2) . extend @_ @_ @2) . iBusWbM2S <$> rvOut
     dBusOut = mapAddr ((`shiftL` 2) . extend) . dBusWbM2S <$> rvOut
-
-    mapAddr :: (BitVector aw1 -> BitVector aw2) -> WishboneM2S aw1 selWidth a -> WishboneM2S aw2 selWidth a
-    mapAddr f wb = wb { addr = f (addr wb) }
 
 -- | Stateless wishbone device that only acknowledges writes to address 0.
 -- Successful writes return the 'writeData' and 'busSelect'.
@@ -139,3 +141,17 @@ printCharacters paths@(Cons _ _) inps = case inps of
   printToFile path byteSelect char
     | byteSelect = BS.appendFile path $ BS.singleton $ bitCoerce char
     | otherwise  = pure ()
+
+wbMap ::
+  ( WishboneM2S aw0 (BitSize dat0 `DivRU` 8) dat0 ->
+    WishboneM2S aw1 (BitSize dat1 `DivRU` 8) dat1
+  ) ->
+  (WishboneS2M dat1 -> WishboneS2M dat0) ->
+  Circuit (Wishbone dom mode aw0 dat0) (Wishbone dom mode aw1 dat1)
+wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
+
+mapAddr ::
+  (BitVector aw1 -> BitVector aw2) ->
+  WishboneM2S aw1 selWidth a ->
+  WishboneM2S aw2 selWidth a
+mapAddr f wb = wb { addr = f (addr wb) }
