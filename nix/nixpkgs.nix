@@ -1,7 +1,7 @@
 { sources ? import ./sources.nix }:
 
 let
-  moz_overlay = import (builtins.fetchTarball https://github.com/mozilla/nixpkgs-mozilla/archive/78e723925daf5c9e8d0a1837ec27059e61649cb6.tar.gz);
+  rust_overlay = import (builtins.fetchTarball "https://github.com/oxalica/rust-overlay/archive/master.tar.gz");
   overlay = _: nixpkgs: {
     # Nix tooling
     niv = (import sources.niv {}).niv;
@@ -29,4 +29,4 @@ let
     };
   };
 
-in import sources.nixpkgs { overlays = [ moz_overlay overlay ]; }
+in import sources.nixpkgs { overlays = [ rust_overlay overlay ]; }

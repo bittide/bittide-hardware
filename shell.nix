@@ -26,25 +26,7 @@ pkgs.mkShell {
       pkgs.buildPackages.verilator
       pkgs.buildPackages.which
 
-      # Rust toolchain. Contains:
-      #
-      #  * rust-analyzer
-      #  * rustc
-      #  * rustdoc
-      #  * rustfmt
-      #  * (.. and more)
-      #
-      # XXX: We cannot swich to 1.67 due to 'cargo clippy' throwing an obscure
-      #      error. See: https://github.com/bittide/bittide-hardware/pull/227#issuecomment-1411808302
-      ((pkgs.rustChannelOf { rustToolchain = ./rust-toolchain.toml; }).rust.override {
-        extensions = ["rust-src"];
-      })
-      # ((pkgs.rustChannelOf { channel = "1.65"; }).rust.override {
-      #   targets = [
-      #     "riscv32imc-unknown-none-elf"
-      #     "x86_64-unknown-linux-gnu"
-      #   ];
-      # })
+      (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
 
       # RiscV formal tests
       pkgs.buildPackages.boolector
