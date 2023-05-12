@@ -13,6 +13,7 @@ codegen-units = 1
 
 [workspace]
 members = [
-  "firmware/bittide-sys",
+  "fdt-read",
+  "hello",
 ]
 resolver = "2"

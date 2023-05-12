@@ -283,6 +283,15 @@ jobs:
         run: |
           cargo clippy --target riscv32imc-unknown-none-elf --all-features
 
+      - name: Rust formatting (firmware examples)
+        run: cargo fmt --all -- --check
+        working-directory: firmware/examples/
+
+      - name: Clippy check (firmware examples)
+        run: |
+          cargo clippy --target riscv32imc-unknown-none-elf --all-features
+        working-directory: firmware/examples/
+
 
   firmware-unit-tests:
     name: Firmware Unit Tests
@@ -334,15 +343,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
+            ./firmware/examples/target/
           key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
 
-      - name: Building "hello" Example
+      - name: Building Examples
         run: cargo build --release
-        working-directory: firmware/examples/hello
-
-      - name: Building "fdt-read" Example
-        run: cargo build --release
-        working-directory: firmware/examples/fdt-read
+        working-directory: firmware/examples/
 
   firmware-limit-checks:
     name: Firmware Limit Checks
@@ -367,6 +373,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
+            ./firmware/examples/target/
           key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
 
       - name: Install `elf-limits`
@@ -377,8 +384,8 @@ jobs:
           ~/.cargo/bin/elf-limits \
             --instruction-mem-limit 64K \
             --data-mem-limit 64K \
-            target/riscv32imc-unknown-none-elf/release/hello \
-            target/riscv32imc-unknown-none-elf/release/fdt-read
+            firmware/examples/target/riscv32imc-unknown-none-elf/release/hello \
+            firmware/examples/target/riscv32imc-unknown-none-elf/release/fdt-read
 
 
   bittide-instances-doctests:
