@@ -147,6 +147,7 @@ library
     Bittide.ElasticBuffer
     Bittide.Link
     Bittide.Node
+    Bittide.ObliviousFifo
     Bittide.ProcessingElement
     Bittide.ProcessingElement.DeviceTreeCompiler
     Bittide.ProcessingElement.ProgramStream

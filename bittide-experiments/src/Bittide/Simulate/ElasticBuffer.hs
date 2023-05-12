@@ -14,9 +14,11 @@ import Bittide.ClockControl
 -- data counts.
 elasticBuffer ::
   forall n readDom writeDom.
-  (HasCallStack, KnownDomain readDom, KnownDomain writeDom, KnownNat n) =>
+  (HasCallStack, KnownDomain readDom, KnownDomain writeDom, KnownNat n, n <= 65) =>
   Clock readDom ->
   Clock writeDom ->
   Signal readDom (DataCount n)
 elasticBuffer clkRead clkWrite = resize . fst
-  <$> domainDiffCounter clkWrite resetGen clkRead resetGen
+  <$> domainDiffCounter @n @writeDom @readDom
+        clkWrite resetGen enableGen
+        clkRead resetGen enableGen

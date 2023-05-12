@@ -105,7 +105,9 @@ goFincFdecTests clk rst clkControlled testSelect miso =
       -- reset much earlier than 'rstTest'. Doing it the "proper" way would
       -- therefore introduce extra complexity, without adding to the test's
       -- coverage.
-      domainDiffCounter clkControlled rstControlled clk rstTest
+      domainDiffCounter
+        clkControlled rstControlled enableGen
+        clk rstTest enableGen
 
   fIncDec = unbundle $ speedChangeToFincFdec clk rstTest fIncDecRequest
 
