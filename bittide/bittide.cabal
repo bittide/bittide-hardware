@@ -115,6 +115,7 @@ library
     Bittide.Node
     Bittide.ProcessingElement
     Bittide.ProcessingElement.DeviceTreeCompiler
+    Bittide.ProcessingElement.ProgramStream
     Bittide.ProcessingElement.ReadElf
     Bittide.ProcessingElement.Util
     Bittide.ScatterGather
