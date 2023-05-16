@@ -2,22 +2,25 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use core::panic::PanicInfo;
+use crate::uart::Uart;
+use core::fmt::Write;
+static mut PANIC_UART: Option<Uart> = None;
 
-use crate::println;
+pub unsafe fn set_panic_handler_uart(uart: Uart) {
+    PANIC_UART = Some(uart);
+}
 
-#[inline(never)]
 #[panic_handler]
-pub fn panic(info: &PanicInfo) -> ! {
-    match info.location() {
-        Some(loc) => {
-            println!("A panic happened {}:{}", loc.file(), loc.line());
+fn panic_handler(info: &core::panic::PanicInfo) -> ! {
+    let Some(uart) = (unsafe {
+        PANIC_UART.as_mut()
+    }) else {
+        loop {
+            continue;
         }
-        None => {
-            println!("A panic without location information happened, stopping execution now.");
-        }
-    }
+    };
 
+    let _ = writeln!(uart, "{info}");
     loop {
         continue;
     }
