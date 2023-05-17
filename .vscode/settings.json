@@ -29,5 +29,8 @@
   },
   "[haskell]": {
     "editor.formatOnSave": false
-  }
+  },
+  "rust-analyzer.linkedProjects": [
+    "firmware/examples/Cargo.toml"
+  ]
 }

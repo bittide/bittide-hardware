@@ -5,8 +5,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use core::fmt::Write;
-
 #[cfg(not(test))]
 use riscv_rt::entry;
 
@@ -46,15 +44,17 @@ fn print_fdt(depth: usize, node: &fdt::node::FdtNode) {
     for prop in node.properties() {
         indent(depth + 1);
         match prop_value(prop.value) {
-            PropValue::String(s) => println!("{} = {s:?}", prop.name),
-            PropValue::Integer(i) => println!("{} = {}", prop.name, best_fit_integer_repr(i)),
+            PropValue::String(s) => println!("{} = {}", prop.name, s),
+            PropValue::Integer(i) => {
+                println!("{} = {}", prop.name, best_fit_integer_repr(i).as_str())
+            }
             PropValue::TwoIntegers(a, b) => println!(
                 "{} = ({}, {})",
                 prop.name,
-                best_fit_integer_repr(a),
-                best_fit_integer_repr(b)
+                best_fit_integer_repr(a).as_str(),
+                best_fit_integer_repr(b).as_str()
             ),
-            PropValue::Blob(b) => println!("{} = {b:?}", prop.name),
+            PropValue::Blob(b) => println!("{} = {:?}", prop.name, b),
         }
     }
 
@@ -115,18 +115,20 @@ fn prop_value(prop: &'_ [u8]) -> PropValue<'_> {
 // displayed in. For some numbers, a base 10 representation is "nicer", while
 // for others a base 16 representation is more useful.
 fn best_fit_integer_repr(num: u32) -> heapless::String<20> {
+    use ufmt::uwrite;
+
     let mut dec = heapless::String::new();
     let mut hex = heapless::String::new();
 
-    write!(dec, "{num}").unwrap();
-    write!(hex, "{num:X}").unwrap();
+    uwrite!(dec, "{}", num).unwrap();
+    uwrite!(hex, "{:X}", num).unwrap();
 
     let dec_zeroes = dec.chars().filter(|c| *c == '0').count();
     let hex_zeroes = hex.chars().filter(|c| *c == '0').count();
 
     if hex_zeroes > dec_zeroes {
         hex.clear();
-        write!(hex, "0x{num:X}").unwrap();
+        uwrite!(hex, "0x{:X}", num).unwrap();
         hex
     } else {
         dec

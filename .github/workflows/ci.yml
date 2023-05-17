@@ -287,6 +287,15 @@ jobs:
         run: |
           cargo clippy --target riscv32imc-unknown-none-elf --all-features
 
+      - name: Rust formatting (firmware examples)
+        run: cargo fmt --all -- --check
+        working-directory: firmware/examples/
+
+      - name: Clippy check (firmware examples)
+        run: |
+          cargo clippy --target riscv32imc-unknown-none-elf --all-features
+        working-directory: firmware/examples/
+
 
   firmware-unit-tests:
     name: Firmware Unit Tests
@@ -338,15 +347,49 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
+            ./firmware/examples/target/
           key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
 
-      - name: Building "hello" Example
+      - name: Building Examples
         run: cargo build --release
-        working-directory: firmware/examples/hello
+        working-directory: firmware/examples/
 
-      - name: Building "fdt-read" Example
-        run: cargo build --release
-        working-directory: firmware/examples/hello
+  firmware-limit-checks:
+    name: Firmware Limit Checks
+    runs-on: self-hosted
+    needs: [firmware-build-examples]
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - uses: actions/cache@v3
+        name: Cache
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ./target/
+            ./firmware/examples/target/
+          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
+
+      - name: Install `elf-limits`
+        run: cargo install --git https://github.com/cuddlefishie/elf-limits
+
+      - name: Checking firmware example limits
+        run: |
+          ~/.cargo/bin/elf-limits \
+            --instruction-mem-limit 64K \
+            --data-mem-limit 64K \
+            firmware/examples/target/riscv32imc-unknown-none-elf/release/hello \
+            firmware/examples/target/riscv32imc-unknown-none-elf/release/fdt-read
 
 
   bittide-instances-doctests:
@@ -526,6 +569,7 @@ jobs:
         elastic-buffer-sim-topologies-matrix,
         elastic-buffer-sim-topologies,
         firmware-build-examples,
+        firmware-limit-checks,
         firmware-lints,
         firmware-unit-tests,
         license-check,
