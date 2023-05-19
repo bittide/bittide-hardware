@@ -19,11 +19,11 @@ import Protocols.Wishbone
 import Data.Bifunctor
 
 import Bittide.SharedTypes
+import Bittide.DoubleBufferedRam
 import Data.Bool(bool)
-import Data.Constraint.Nat.Extra (divWithRemainder)
 import Data.Maybe
 import Clash.Util.Interpolate
-
+import Data.Constraint.Nat.Extra
 
 {- $setup
 >>> import Clash.Prelude
@@ -282,3 +282,18 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
 
     fifoMeta = FifoMeta {fifoEmpty, fifoFull, fifoDataCount = dataCount}
     output = (readPointerNext, writeOpGo, fifoOutGo, not fifoFull, fifoMeta)
+
+timeWb ::
+  forall dom addrW nBytes .
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , 2 <= addrW
+  , KnownNat nBytes
+  , 1 <= nBytes) =>
+  Circuit (Wishbone dom 'Standard addrW (Bytes nBytes)) ()
+timeWb = case (cancelMulDiv @nBytes @8) of
+  Dict -> Circuit go
+ where
+  go (wbM2S, _) = (wbS2M, ())
+   where
+    (cnt, wbS2M) = registerWb WishbonePriority (0 :: Unsigned 32) wbM2S $ Just . succ <$> cnt

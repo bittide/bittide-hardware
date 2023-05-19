@@ -307,7 +307,7 @@ wbToAxiTx = case cancelMulDiv @nBytes @8 of
     axiM2S = orNothing (masterActive && not err)
       Axi4StreamM2S{_tdata, _tkeep, _tstrb, _tlast, _tid, _tdest, _tuser}
 
-axiPayloadFifo ::
+axiFifo ::
   ( HiddenClockResetEnable dom
   , KnownNat fifoDepth, 1 <= fifoDepth
   , KnownNat nBytes) =>
@@ -315,12 +315,12 @@ axiPayloadFifo ::
   Circuit
     (Axi4Stream dom (AxiStreamBytesOnly nBytes) ())
     (Axi4Stream dom (AxiStreamBytesOnly nBytes) ())
-axiPayloadFifo fifoDepth = Circuit go
+axiFifo fifoDepth = Circuit go
  where
   go (axiLeftM, axiRightS) = ((\ (Ack b) -> Axi4StreamS2M b) <$> dfS, axiRightM)
    where
-    axiRightM = liftA2 (\ axi newData -> axi{_tdata = newData}) <$> axiLeftM <*> fmap dataToMaybe dfM
-    (dfS, dfM) = toSignals (fifo fifoDepth) (maybeToData . fmap _tdata <$> axiLeftM, (Ack . _tready) <$> axiRightS)
+    axiRightM = dataToMaybe <$> dfM
+    (dfS, dfM) = toSignals (fifo fifoDepth) (maybeToData <$> axiLeftM, (Ack . _tready) <$> axiRightS)
 
 axiStreamPacketFifo ::
   ( HiddenClockResetEnable dom
@@ -337,7 +337,7 @@ axiStreamPacketFifo fifoDepth = Circuit goCircuit
     axiOutM2S = mux consumeFifo fifoOut (pure Nothing)
     fifoIn    = mux consumeAxiIn axiInM2S (pure Nothing)
     (consumeFifo, consumeAxiIn) = mealyB goMealy False (fifoOut, fifoReady, axiInM2S)
-    (fifoReady, fifoOut) = toSignals (axiPayloadFifo fifoDepth) (fifoIn, Axi4StreamS2M <$> (fmap _tready axiOutS2M .&&. consumeFifo))
+    (fifoReady, fifoOut) = toSignals (axiFifo fifoDepth) (fifoIn, Axi4StreamS2M <$> (fmap _tready axiOutS2M .&&. consumeFifo))
 
   goMealy packetComplete (fifoOutGo, Axi4StreamS2M fifoReadyGo, axiM2SGo) =
     (packetCompleteNext, (consumeFifoGo, consumeAxiGo))

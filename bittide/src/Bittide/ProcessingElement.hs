@@ -15,6 +15,7 @@ import Clash.Prelude
 import Protocols
 import Protocols.Wishbone
 import VexRiscv (Input(..), Output(..), vexRiscv)
+import Clash.Cores.Xilinx.VIO
 
 import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
@@ -78,6 +79,7 @@ splitAtCircuit SNat = Circuit go
     bwd = bwdLeft ++ bwdRight
 
 rvCircuit ::
+  forall dom .
   (HiddenClockResetEnable dom) =>
   Signal dom Bit ->
   Signal dom Bit ->
@@ -85,14 +87,26 @@ rvCircuit ::
   Circuit () (Wishbone dom 'Standard 32 (Bytes 4), Wishbone dom 'Standard 32 (Bytes 4))
 rvCircuit tInterrupt sInterrupt eInterrupt = Circuit go
   where
-  go ((),(iBusIn, dBusIn)) = ((),(iBusOut, dBusOut))
+  go ((),(iBusIn, dBusIn)) = hwSeqX probes ((),(iBusOut, dBusOut))
    where
     tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) =
       Input {..}
     rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
     rvOut = vexRiscv rvIn
 
-    -- The VexRiscv instruction- and data-busses assume a conceptual [Bytes 4] memory
+    probes =
+      (vioProbe () hasClock (addr <$> iBusOut)) :>
+      (vioProbe () hasClock (busCycle <$> iBusOut)) :>
+      (vioProbe () hasClock (strobe <$> iBusOut)) :>
+      (vioProbe () hasClock (writeEnable <$> iBusOut)) :>
+      (vioProbe () hasClock (writeData <$> iBusOut)) :>
+      (vioProbe () hasClock (acknowledge <$> iBusIn)) :>
+      (vioProbe () hasClock (err <$> iBusIn)) :>
+      (vioProbe () hasClock (readData <$> iBusIn)) :> Nil :: Vec 8 (Signal dom ())
+
+    -- iBusEnable = vioProbe True hasClock $ (\ (WishboneM2S{addr, busCycle, strobe}) -> (addr, busCycle, strobe)) <$> dBusOut
+
+    -- The VexRiscv instruction- and data-buses assume a conceptual [Bytes 4] memory
     -- while our storages work like [Bytes 1]. This is also why the address width of
     -- the VexRiscv busses are 30 bit and still cover the whole address space.
     -- These shifts bring the addresses "back into the byte domain" so to speak.

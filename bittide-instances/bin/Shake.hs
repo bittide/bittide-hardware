@@ -88,6 +88,7 @@ targets =
   , 'MVPs.clockControlDemo1
   , 'ProcessingElement.vexRiscAxiLoopback
   , 'ProcessingElement.vexRiscUartEcho
+  , 'ProcessingElement.vexRiscTcpLoopback
   , 'ScatterGather.gatherUnit1K
   , 'ScatterGather.gatherUnit1KReducedPins
   , 'ScatterGather.scatterUnit1K

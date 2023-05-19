@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#[derive(Debug, Copy, Clone)]
 pub struct Uart {
     payload_addr: *mut u8,
     flags_addr: *const u8,
 }
-
 impl Uart {
     pub const unsafe fn new(base_addr: *mut u8) -> Uart {
         Uart {

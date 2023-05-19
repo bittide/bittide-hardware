@@ -40,12 +40,10 @@ impl Clock {
         }
     // Gets the current number of ticks since the Clock was created.
     pub fn elapsed_ticks(&mut self) -> u64{
-        unsafe {
-            let now = self.get_ticks();
-            self.global_time = self.global_time + (tick_diffs(self.timer_last, now) as u64);
-            self.timer_last = now;
-            self.global_time
-        }
+        let now = self.get_ticks();
+        self.global_time = self.global_time + (tick_diffs(self.timer_last, now) as u64);
+        self.timer_last = now;
+        self.global_time
     }
     pub fn elapsed(&mut self) -> Instant{
         Instant::from_micros((self.elapsed_ticks() / self.ticks_per_micro) as i64)
@@ -58,7 +56,7 @@ impl Clock {
 }
 
 pub fn tick_diffs(old: u32, new : u32) -> u32{
-    let mut ticks_since = 0;
+    let mut ticks_since ;
     if old > new {
         ticks_since = !0 - old;
         ticks_since = ticks_since + new;

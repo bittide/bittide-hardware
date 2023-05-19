@@ -110,7 +110,7 @@ mkSynthesisTcl outputDir outOfContext part constraints manifest@LocatedManifest{
     #{constraintsString}
     file mkdir {#{outputDir </> "reports"}}
     file mkdir {#{outputDir </> "checkpoints"}}
-
+    set_param synth.elaboration.rodinMoreOptions "rt::set_parameter var_size_limit 1000000000"
     \# Synthesis
     synth_design -name #{name} -part #{part} -mode #{outOfContextStr}
     report_timing_summary -file {#{outputDir </> "reports" </> "post_synth_timing_summary.rpt"}}
@@ -193,6 +193,7 @@ mkBitstreamTcl outputDir = [__i|
 
     \# Generate bitstream
     write_bitstream -force {#{outputDir </> "bitstream.bit"}}
+    write_debug_probes -force {#{outputDir </> "probes.ltx"}}
 
     report_drc -file {#{outputDir </> "reports" </> "post_bitstream_drc.rpt"}}
 |]
@@ -212,6 +213,7 @@ mkBoardProgramTcl outputDir = [__i|
     set device [lindex [get_hw_devices] 0]
     current_hw_device $device
     set_property PROGRAM.FILE {#{outputDir </> "bitstream.bit"}} $device
+    set_property PROBES.FILE {#{outputDir </> "probes.ltx"}} $device
 
     \# Program the device and close properly
     program_hw_devices $device

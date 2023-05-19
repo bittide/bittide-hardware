@@ -16,3 +16,4 @@ riscv-rt = "0.11.0"
 riscv = "^0.10"
 heapless = { version = "0.7", default-features = false}
 smoltcp = { version = "0.9.1", default-features = false, features = ["log", "medium-ethernet", "proto-ipv4", "socket-tcp"] }
+bittide-sys = { path = "../../bittide-sys" }

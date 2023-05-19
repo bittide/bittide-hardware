@@ -9,27 +9,31 @@ use core::fmt::Write;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-mod loopback;
+mod soft_loopback;
+mod axi_ethernet;
 mod time;
-mod uart;
-use uart::Uart;
-
-mod panic_handler;
-use panic_handler::set_panic_handler_uart;
-const UART_ADDR:usize = 0x4000_0000;
+mod axi_buffers;
+use bittide_sys::uart::Uart;
+use bittide_sys::panic_handler::set_panic_handler_uart;
+use soft_loopback::Loopback;
 #[cfg(feature = "std")]
 #[allow(dead_code)]
 mod utils;
 
 use core::str;
 
-use loopback::Loopback;
+use axi_ethernet::AxiEthernet;
 use smoltcp::iface::{Config, Interface, SocketSet};
 use smoltcp::phy::Medium;
 use smoltcp::socket::tcp;
 use smoltcp::time::{Duration, Instant};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
-use time::Clock;
+
+const UART_ADDR:usize = 0x4000_0000;
+const TX_AXI_ADDR:usize = 0x6000_0000;
+const RX_AXI_ADDR:usize = 0x8000_0000;
+const TIME_ADDR:usize = 0xa000_0000;
+const RX_BUFFER_SIZE:usize = 256 * 4;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> !{
@@ -38,16 +42,16 @@ fn main() -> !{
     let mut uart = unsafe { Uart::new(UART_ADDR as *mut u8) };
     let mut panic_uart = unsafe { Uart::new(UART_ADDR as *mut u8) };
     unsafe{ set_panic_handler_uart(panic_uart)};
-    writeln!(uart, "Hello!").unwrap();
 
     // Initialize and test clock
-    let mut clock = time::Clock::new(0xa000_0000, 125*10^6);
-    clock.elapsed_ticks();
-    writeln!(uart, "Clock: {:?}", clock).unwrap();
+    let mut clock = time::Clock::new(TIME_ADDR, 25*10^6);
 
     // Create interface
     let mut config = Config::new();
-    let mut device = Loopback::new(Medium::Ethernet);
+    let mut device = AxiEthernet::new(Medium::Ethernet, RX_AXI_ADDR as *mut u8, TX_AXI_ADDR as *mut u8, RX_BUFFER_SIZE);
+    // let mut device = Loopback::new(Medium::Ethernet);
+    writeln!(uart, "Device: {:?}", device).unwrap();
+    writeln!(uart, "Clock: {:?}", clock).unwrap();
     config.hardware_addr = Some(EthernetAddress([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]).into());
 
     let mut iface = Interface::new(config, &mut device);
@@ -86,7 +90,8 @@ fn main() -> !{
     let mut did_listen = false;
     let mut did_connect = false;
     let mut done = false;
-    while !done && clock.elapsed() < Instant::from_millis(1_000) {
+    while !done && clock.elapsed() < Instant::from_millis(10_000) {
+        writeln!(uart, "Ticks: {:?}, time: {}ms", clock.elapsed_ticks(), clock.elapsed().total_millis()).unwrap();
         iface.poll(clock.elapsed(), &mut device, &mut sockets);
 
         let mut socket = sockets.get_mut::<tcp::Socket>(server_handle);
@@ -128,10 +133,10 @@ fn main() -> !{
         match iface.poll_delay(clock.elapsed(), &sockets) {
             Some(Duration::ZERO) => _ = writeln!(uart,"resuming"),
             Some(delay) => {
-                _ = writeln!(uart,"sleeping for {} us", delay.micros());
-                clock.advance(delay)
+                writeln!(uart,"sleeping for {} us", delay.micros()).unwrap();
+                clock.advance(Duration::from_micros(1)) // clock.advance(delay)
             }
-            None => clock.advance(Duration::from_millis(1)),
+            None => clock.advance(Duration::from_micros(1)),
         }
     }
 
@@ -142,12 +147,11 @@ fn main() -> !{
     }
     loop {}
 }
-
 #[export_name = "ExceptionHandler"]
 fn exception_handler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
     let mut uart = unsafe { Uart::new(UART_ADDR as *mut u8) };
     riscv::interrupt::free(|| {
-        writeln!(uart,"... caught an exception. Looping forever now.\n");
+        writeln!(uart,"... caught an exception. Looping forever now.\n").unwrap();
     });
     loop {
         continue;

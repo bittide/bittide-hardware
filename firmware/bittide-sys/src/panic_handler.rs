@@ -20,7 +20,7 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
         }
     };
 
-    let _ = writeln!(uart, "{info}");
+    writeln!(uart, "{info}").unwrap();
     loop {
         continue;
     }

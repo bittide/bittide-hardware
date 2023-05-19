@@ -1,9 +1,8 @@
 use core::ptr;
-use core::slice::from_raw_parts_mut;
+
 #[derive(Debug)]
 pub struct AxiRxBuffer {
     base_addr: *mut u8,
-    buffer_size: usize,
     packet_length: *mut usize,
     status: *mut u8,
 }
@@ -15,7 +14,6 @@ impl AxiRxBuffer {
 
         AxiRxBuffer {
             base_addr,
-            buffer_size,
             packet_length: packet_length_addr as *mut usize,
             status: status_addr as *mut u8,
         }
@@ -25,38 +23,34 @@ impl AxiRxBuffer {
         unsafe { self.status.read_volatile()}
     }
     pub fn packet_length(&self) -> usize {
-        unsafe { self.packet_length.read_volatile()}
+        unsafe {self.packet_length.read_volatile()}
     }
     pub fn is_packet_available(&self) -> bool {
-        unsafe { self.status.read_volatile() & 0x02 == 0x02 }
+        self.read_status() & 0b10 == 0b10
     }
-
-    pub fn is_buffer_full(&self) -> bool {
-        unsafe { self.status.read_volatile() & 0x01 == 0x01}
-    }
-
-    pub fn read_packet(&self, packet: &mut [u8]) -> Option<usize> {
+    pub fn read_packet(&self, buffer: &mut [u8]) -> Option<usize> {
         if !self.is_packet_available() {
             return None;
         }
 
         let packet_size = self.packet_length();
-        if packet_size > self.buffer_size {
+        if !packet_size < buffer.len() {
+            self.clear_packet();
             return None;
         }
-
-        for i in 0..packet.len() {
-            unsafe {packet[i] = self.base_addr.add(i).read_volatile()};
+        for i in 0..packet_size {
+            unsafe {buffer[i] = self.base_addr.add(i).read_volatile()};
         }
-
+        self.clear_packet();
+        Some(packet_size)
+    }
+    pub fn clear_packet(&self) {
         unsafe {
             // Clear the byte count register
             ptr::write_volatile(self.packet_length as *mut u32, 0x00);
             // Clear the status register
             ptr::write_volatile(self.status, 0b11);
         }
-
-        Some(packet_size)
     }
 }
 
@@ -66,7 +60,7 @@ pub struct AxiTxBuffer {
 }
 
 impl AxiTxBuffer {
-    pub fn new(payload_addr: *mut u8, buffer_size: usize) -> Self {
+    pub fn new(payload_addr: *mut u8) -> Self {
         AxiTxBuffer {
             payload_addr,
         }
