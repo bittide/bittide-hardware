@@ -135,6 +135,15 @@ executable clash
   main-is: bin/Clash.hs
   Build-Depends: base, bittide, clash-ghc
 
+executable program-stream
+  import: common-options
+  main-is: bin/ProgramStream.hs
+  Build-Depends:
+    base,
+    bittide,
+    bytestring,
+    clash-prelude,
+
 test-suite doctests
   type:             exitcode-stdio-1.0
   default-language: Haskell2010

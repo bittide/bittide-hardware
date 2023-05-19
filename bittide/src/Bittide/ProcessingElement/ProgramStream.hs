@@ -2,13 +2,13 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.ProcessingElement.ProgramStream (
-    elfStreamStructure,
-    elfStream,
-    ZeroPaddingLength,
-    IsExecutable,
-    Segment,
-    Address
+module Bittide.ProcessingElement.ProgramStream
+  ( elfStreamStructure
+  , elfStream
+  , ZeroPaddingLength
+  , IsExecutable
+  , Segment
+  , Address
   ) where
 
 import Clash.Prelude
@@ -24,11 +24,26 @@ type Segment = (IsExecutable, Address, [BitVector 8], ZeroPaddingLength)
 
 type Address = BitVector 32
 
+-- | Parse the contents of an ELF binary and yield the structures
+-- needed for the streaming format.
 elfStreamStructure :: BS.ByteString -> (Address, [Segment])
 elfStreamStructure contents =
   let elf = parseElf contents
   in readElf elf
 
+-- | Generate a streamable format of the contents of an ELF binary.
+--
+-- The generated stream has the following structure (little endian where needed):
+--
+-- - entry address (32bit)
+-- - number of segments @s@ (32bit)
+-- - @s@ segment streams
+--
+--      - bool to indicate if segment is executable or not
+--      - the starting address of the segment in memory (32bit)
+--      - the length of the data @d@ to be transmitted (32bit)
+--      - the amount of zero-padding to add at the end (32bit)
+--      - the segment contents (@d@ bytes)
 elfStream :: BS.ByteString -> [BitVector 8]
 elfStream contents =
   let (addr, segs) = elfStreamStructure contents
@@ -61,25 +76,21 @@ readElf elf =
     = acc
 
     | PF_X `elem` elfSegmentFlags seg
-    = let
-        segData = elfSegmentData seg
-        fileSz = fromIntegral $ BS.length segData
-        memSz = fromIntegral $ elfSegmentMemSize seg
-        zeroPadding = memSz - fileSz
-        addr = fromIntegral $ elfSegmentPhysAddr seg
-        segEntry = (True, addr, bytes segData, zeroPadding)
-      in segEntry : acc
+    = streamSegment True seg : acc
 
     | PF_R `elem` elfSegmentFlags seg
-    = let
-        segData = elfSegmentData seg
-        fileSz = fromIntegral $ BS.length segData
-        memSz = fromIntegral $ elfSegmentMemSize seg
-        zeroPadding = memSz - fileSz
-        addr = fromIntegral $ elfSegmentPhysAddr seg
-        segEntry   = (False, addr, bytes segData, zeroPadding)
-      in segEntry : acc
+    = streamSegment False seg : acc
 
     | otherwise = acc
 
   bytes str = pack <$> BS.unpack str
+
+  -- stream for a segment
+  streamSegment isExec seg =
+    let
+      segData = elfSegmentData seg
+      fileSz = fromIntegral $ BS.length segData
+      memSz = fromIntegral $ elfSegmentMemSize seg
+      zeroPadding = memSz - fileSz
+      addr = fromIntegral $ elfSegmentPhysAddr seg
+    in (isExec, addr, bytes segData, zeroPadding)
