@@ -8,8 +8,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
+{-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 module Tests.DoubleBufferedRam(ramGroup) where
 
 import Clash.Prelude
@@ -17,22 +18,22 @@ import Clash.Prelude
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
-import Clash.Signal.Internal(Signal(..))
-import Data.Either
+import Data.Constraint.Nat.Extra
 import Data.Maybe
 import Data.Proxy
 import Data.String
 import Data.Type.Equality (type (:~:)(Refl))
 import Hedgehog
 import Hedgehog.Range as Range
+import Numeric (showHex)
 import Protocols.Hedgehog.Internal
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import Bittide.SharedTypes
 import Bittide.DoubleBufferedRam
+import Bittide.SharedTypes
 import Tests.Shared
 
 import qualified Clash.Sized.Vector as V
@@ -42,7 +43,6 @@ import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Prelude as P
-import Numeric (showHex)
 
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRam group"
@@ -101,8 +101,8 @@ readDoubleBufferedRam = property $ do
         topEntity (unbundle -> (switch, readAddr)) = withClockResetEnable @System clockGen
           resetGen enableGen $ doubleBufferedRam @_ @(n+1) (Vec contentsDouble)
           switch readAddr (pure Nothing)
-        topEntityInput = P.zip switchSignal readAddresses
-        simOut = P.tail $ simulateN simLength topEntity topEntityInput
+        allRequests = P.zip switchSignal readAddresses
+        simOut = P.tail $ simulateN simLength topEntity allRequests
         expectedOut = fmap (contentsSingle !!) readAddresses
       simOut === P.init expectedOut
 
@@ -127,9 +127,9 @@ readWriteDoubleBufferedRam = property $ do
       writeEntries <- forAll (Gen.list (Range.singleton simLength)
         $ genUnsigned Range.constantBounded)
       let
-        topEntityInput = L.zip3 switchSignal addresses
+        allRequests = L.zip3 switchSignal addresses
           $ fmap Just (P.zip addresses writeEntries)
-        simOut = simulateN @System simLength topEntity topEntityInput
+        simOut = simulateN @System simLength topEntity allRequests
         expected = toList contentsSingle <> L.take (simLength - ramDepth - 1) writeEntries
       Set.fromList simOut === Set.fromList expected
 
@@ -178,12 +178,12 @@ readWriteByteAddressableBlockram = property $ do
       writeEntries <- forAll (Gen.list simRange $ Gen.maybe genDefinedBitVector)
       byteSelectSignal <- forAll $ Gen.list simRange genDefinedBitVector
       let
-        topEntityInput = L.zip3 readAddresses
+        allRequests = L.zip3 readAddresses
           (P.zipWith (\adr wr -> (adr,) <$> wr) writeAddresses writeEntries) byteSelectSignal
 
-        simOut = simulateN @System simLength topEntity topEntityInput
+        simOut = simulateN @System simLength topEntity allRequests
         (_,expectedOut) = L.mapAccumL byteAddressableRamBehavior
-          (L.head topEntityInput, contents) $ L.tail topEntityInput
+          (L.head allRequests, contents) $ L.tail allRequests
       -- TODO: Due to some unexpected mismatch between the expected behavior of either
       -- blockRam or the behavioral model, the boot behavior is inconsistent. We drop the first
       -- expectedOutput cycle too, we expect this is due to the resets supplied b simulateN.
@@ -211,9 +211,9 @@ byteAddressableBlockRamAsBlockRam = property $ do
       readAddresses <- forAll $ Gen.list simRange $ genIndex Range.constantBounded
       writeEntries <- forAll (Gen.list simRange $ Gen.maybe genDefinedBitVector)
       let
-        topEntityInput = L.zip readAddresses
+        allRequests = L.zip readAddresses
           (P.zipWith (\adr wr -> (adr,) <$> wr) writeAddresses writeEntries)
-        simOut      = simulateN @System simLength topEntity topEntityInput
+        simOut      = simulateN @System simLength topEntity allRequests
         (fstOut, sndOut) = L.unzip simOut
       footnote . fromString $ "simOut: " <> showX simOut
       fstOut === sndOut
@@ -241,11 +241,11 @@ doubleBufferedRamByteAddressable0 = property $ do
       byteSelectSignal <- forAll $ Gen.list simRange genDefinedBitVector
       switchSignal <- forAll $ Gen.list simRange (Gen.element [A,B])
       let
-        topEntityInput = L.zip4 switchSignal readAddresses
+        allRequests = L.zip4 switchSignal readAddresses
           (P.zipWith (\adr wr -> (adr,) <$> wr) writeAddresses writeEntries) byteSelectSignal
-        simOut = simulateN @System simLength topEntity topEntityInput
+        simOut = simulateN @System simLength topEntity allRequests
         (_,expectedOut) = L.mapAccumL byteAddressableDoubleBufferedRamBehavior
-          (L.head topEntityInput, contentsSingle, contentsSingle) $ L.tail topEntityInput
+          (L.head allRequests, contentsSingle, contentsSingle) $ L.tail allRequests
       -- TODO: Due to some unexpected mismatch between the expected behavior of either
       -- blockRam or the behavioral model, the boot behavior is inconsistent. We drop the first
       -- expectedOutput cycle too, we expect this is due to the resets supplied b simulateN.
@@ -274,9 +274,9 @@ doubleBufferedRamByteAddressable1 = property $ do
       writeEntries <- forAll (Gen.list simRange $ Gen.maybe genDefinedBitVector)
       switchSignal <- forAll $ Gen.list simRange (Gen.element [A,B])
       let
-        topEntityInput = L.zip3 switchSignal readAddresses
+        allRequests = L.zip3 switchSignal readAddresses
           (P.zipWith (\adr wr -> (adr,) <$> wr) writeAddresses writeEntries)
-        simOut = simulateN @System simLength topEntity topEntityInput
+        simOut = simulateN @System simLength topEntity allRequests
         (duvOut, refOut) = L.unzip simOut
       duvOut === refOut
 
@@ -340,11 +340,11 @@ registerWbSigToSig = property $ do
         someReg prio sigIn = fst $ withClockResetEnable clockGen resetGen enableGen
           $ registerWbSpecVal @_ @_ @4 @32 prio initVal (pure emptyWishboneM2S) sigIn
         topEntity sigIn = bundle (someReg CircuitPriority sigIn, someReg WishbonePriority sigIn)
-        topEntityInput = (Just <$> writes) <> [Nothing]
-        simOut = simulateN @System simLength topEntity topEntityInput
+        allRequests = (Just <$> writes) <> [Nothing]
+        simOut = simulateN @System simLength topEntity allRequests
         (fstOut, sndOut) = L.unzip simOut
       footnote . fromString $ "simOut: " <> showX simOut
-      footnote . fromString $ "input:" <> showX topEntityInput
+      footnote . fromString $ "input:" <> showX allRequests
       footnote . fromString $ "expected" <> showX writes
       fstOut === sndOut
       writes === L.tail fstOut
@@ -373,14 +373,14 @@ registerWbWbToSig = property $ do
         someReg prio wbIn = fst $ withClockResetEnable clockGen resetGen enableGen $
          registerWbSpecVal @System @_ @4 @32 prio initVal wbIn (pure Nothing)
         topEntity wbIn = bundle (someReg CircuitPriority wbIn, someReg WishbonePriority wbIn)
-        topEntityInput = L.concatMap wbWrite writes <> L.repeat emptyWishboneM2S
-        simOut = simulateN simLength topEntity topEntityInput
+        allRequests = L.concatMap wbWrite writes <> L.repeat emptyWishboneM2S
+        simOut = simulateN simLength topEntity allRequests
         (fstOut, sndOut) = L.unzip simOut
         filteredOut = everyNth regs $ L.tail fstOut
 
       footnote . fromString $ "simOut: " <> showX simOut
       footnote . fromString $ "filteredOut:" <> showX filteredOut
-      footnote . fromString $ "input:" <> showX (L.take simLength topEntityInput)
+      footnote . fromString $ "input:" <> showX (L.take simLength allRequests)
       footnote . fromString $ "expected" <> showX writes
       fstOut === sndOut
       writes === L.take (L.length writes) filteredOut
@@ -419,12 +419,12 @@ registerWbSigToWb = property $ do
         padWrites x = L.take (natToNum @(Regs (BitVector bits) 32)) $ Just x : L.repeat Nothing
         readOps = emptyWishboneM2S : cycle
           (wbRead <$> [(0 :: Int).. (natToNum @(Regs (BitVector bits) 32)-1)])
-        topEntityInput = L.zip (L.concatMap padWrites writes <> [Nothing]) readOps
-        simLength = L.length topEntityInput
-        simOut = simulateN @System simLength topEntity topEntityInput
+        allRequests = L.zip (L.concatMap padWrites writes <> [Nothing]) readOps
+        simLength = L.length allRequests
+        simOut = simulateN @System simLength topEntity allRequests
         (fstOut, sndOut) = L.unzip simOut
       footnote . fromString $ "simOut: " <> showX simOut
-      footnote . fromString $ "input:" <> showX topEntityInput
+      footnote . fromString $ "input:" <> showX allRequests
       footnote . fromString $ "expected" <> showX writes
       postProcWb fstOut === postProcWb sndOut
       writes === wbDecoding (L.tail fstOut)
@@ -483,14 +483,14 @@ registerWbWriteCollisions = property $ do
          registerWbSpecVal @System @_ @4 @32 prio initVal wbIn sigIn
         topEntity (unbundle -> (sigIn, wbIn)) = bundle
           (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
-        topEntityInput = L.zip (Just <$> sigWrites)
+        allRequests = L.zip (Just <$> sigWrites)
           (L.concatMap wbWrite wbWrites <> L.repeat emptyWishboneM2S)
-        simOut = simulateN simLength topEntity topEntityInput
+        simOut = simulateN simLength topEntity allRequests
         (fstOut, sndOut) = L.unzip simOut
 
       footnote . fromString $ "WishbonePrio out: " <> showX sndOut
       footnote . fromString $ "CircuitPrio out: " <> showX fstOut
-      footnote . fromString $ "input:" <> showX (L.take simLength topEntityInput)
+      footnote . fromString $ "input:" <> showX (L.take simLength allRequests)
       footnote . fromString $ "wbIn" <> showX wbWrites
       footnote . fromString $ "sigIn" <> showX sigWrites
       sigWrites === L.tail fstOut
@@ -657,7 +657,7 @@ wbStorageSpecCompliance = property $ do
         defExpectOptions
         (\_ _ () -> Right ())
         (wbStorage (Reloadable $ Vec content))
-        (genRequests (snatToNum (SNat @v)))
+        (genRequests (snatToNum (SNat @v) - 1))
         ()
 
     genRequests size = Gen.list (Range.linear 0 32)
@@ -670,7 +670,7 @@ wbStorageSpecCompliance = property $ do
       Gen (WishboneMasterRequest addressWidth a)
     genWishboneTransfer size genA =
       let
-        validAddr = (2*) . fromIntegral <$> Gen.enum 0 (size * 2)
+        validAddr = (4*) . fromIntegral <$> Gen.enum 0 (size - 1)
         invalidAddr = fromIntegral <$> Gen.enum (size * 4) (size * 8)
       in
       Gen.choice
@@ -693,88 +693,78 @@ wbStorageBehavior = property $ do
   go :: forall words m . (KnownNat words, 2 <= words, Monad m) => SNat words -> PropertyT m ()
   go SNat = do
     content <- forAll $ genVec @_ @words genDefinedBitVector
+    allRequests <- forAll $ Gen.list (Range.linear 0 32)
+      (genWishboneTransfer @32 (natToNum @words) (genDefinedBitVector @32))
+
     let
-      -- We need the input address to be larger than the memory space to also
-      -- test the behavior of out of range addresses.
-      validAddr = (2*) <$> genIndex @_ @(5 * words) (Range.constant 0 (natToNum @(2 * (words - 1))))
-      invalidAddr = Gen.choice @_ @(Index (5 * words))
-        [ replaceBit (0 :: Index 1) 1 <$>
-            genIndex (Range.constant minBound (pred maxBound))
-        , genIndex (Range.constant (natToNum @(4 * words)) maxBound)
-        ]
-
-    generatedInput <- forAll $ (\l -> Right RamNoOp : l <> [Right RamNoOp]) <$>
-      Gen.list (Range.linear 1 32)
-        (Gen.choice
-          [ pure (Right RamNoOp)
-          , Right . RamRead <$> validAddr
-          , Right <$> (RamWrite <$> validAddr <*> genDefinedBitVector)
-          , Left . RamRead <$> invalidAddr
-          , Left <$> (RamWrite <$> invalidAddr <*> genDefinedBitVector)
-          ])
-    let
-      goldenRef ramOps = wbStorageBehaviorModel contentList ramOps
-       where
-        contentList = toList $ concatMap (\(split ->(b,a)) -> a :> b :> Nil) content
-      topEntity wbIn =
-        wcre $ wbStorage' @System @words @32 (NonReloadable $ Vec content) wbIn
-
-      goldenInput    = fromRight RamNoOp <$> generatedInput
-      flatInput      = either ramOpToWb ramOpToWb <$> generatedInput
-      topEntityInput =
-        L.concatMap (\case
-            (Left _, a) -> [a, emptyWishboneM2S]
-            (Right _, a) -> [a, a, emptyWishboneM2S] ) $
-          L.zip generatedInput flatInput
-
-      simGolden = simulateN @System (P.length goldenInput) goldenRef goldenInput
-      simOut = simulateN (P.length topEntityInput) topEntity topEntityInput
-      simTransactions = wbToTransaction topEntityInput simOut
-
-      goldenTransactions = L.zipWith expectTransaction generatedInput simGolden
+      master = driveStandard defExpectOptions $ fmap snd allRequests
+      slave = wcre $ wbStorage @System (NonReloadable $ Vec content)
+      simTransactions = exposeWbTransactions (Just 1000) master slave
+      goldenTransactions = wbStorageBehaviorModel (toList content) $ fmap (fmap fst) allRequests
 
     footnote $ "goldenTransactions" <> show goldenTransactions
     footnote $ "simTransactions" <> show simTransactions
-    footnote $ "simOut" <> show simOut
-    footnote $ "topEntityInput" <> show topEntityInput
-    footnote $ "simGolden" <> show simGolden
-    footnote $ "goldenInput" <> show goldenInput
-    footnote $ "generatedInput" <> show generatedInput
+    footnote $ "allRequests" <> show allRequests
 
-    simTransactions === catMaybes goldenTransactions
-
-  expectTransaction ramOp response = case ramOp of
-    Right op -> ramOpToTransaction op response
-    Left  op -> Just (Error (ramOpToWb op))
-
--- | Behavioral model for 'wbStorage'. It stores is contents as half-words in Little Endian.
-wbStorageBehaviorModel ::
-  forall dom addresses halfWordSize .
-  (KnownNat addresses, KnownNat halfWordSize) =>
-  [BitVector halfWordSize] ->
-  Signal dom (RamOp addresses (BitVector (halfWordSize + halfWordSize))) ->
-  Signal dom (BitVector (halfWordSize + halfWordSize))
-wbStorageBehaviorModel storedList (ramOp :- ramOps)
-  = output :- outputs
- where
-  (address, writeOp) = decodeRamOp ramOp
-  (preEntry, lower0 : upper0 : postEntry) = L.splitAt (fromIntegral address) storedList
-
-  (_,split -> (upper, lower)) = fromJust writeOp
-
-  newList
-    | isJust writeOp = preEntry L.++ [lower, upper] L.++ postEntry
-    | otherwise = storedList
-
-  output = pack (upper0, lower0)
-  outputs = wbStorageBehaviorModel newList ramOps
-
-  decodeRamOp = \case
-    RamNoOp -> (addrUndef, Nothing)
-    RamRead ((`div` 2) -> i) -> (i, Nothing)
-    RamWrite ((`div` 2) -> i) a -> (i, Just (i, a))
+    simTransactions === goldenTransactions
    where
-    addrUndef = deepErrorX "wbStorageBehavior: readAddr undefined."
+    genWishboneTransfer ::
+      (KnownNat addressWidth, KnownNat (BitSize a)) =>
+      Int -> -- ^ size
+      Gen a ->
+      Gen (Bool,(WishboneMasterRequest addressWidth a, Int))
+    genWishboneTransfer size genA =
+      let
+        validAddr = (4 *) . fromIntegral <$> Gen.enum 0 (size - 1)
+        invalidAddr = Gen.choice
+          [ fromIntegral <$> Gen.enum (size * 4) (size * 8)
+          , (+) <$> validAddr <*> (Gen.enum 1 3)
+          ]
+        -- Make wbOps that won't be repeated
+        mkRead address bs = (Read address bs, 0)
+        mkWrite address bs a = (Write address bs a, 0)
+      in
+        -- Generate valid and invalid operations. The boolean represents the validity of the operation.
+      Gen.choice
+        [ (True, ) <$> (mkRead  <$> validAddr   <*> genDefinedBitVector)
+        , (True, ) <$> (mkWrite <$> validAddr   <*> genDefinedBitVector <*> genA)
+        , (False,) <$> (mkRead  <$> invalidAddr <*> genDefinedBitVector)
+        , (False,) <$> (mkWrite <$> invalidAddr <*> genDefinedBitVector <*> genA)
+        ]
+
+
+-- | Behavioral model for 'wbStorage'.
+wbStorageBehaviorModel ::
+  forall addrW bytes .
+  ( 1 <= addrW, KnownNat bytes) =>
+  (KnownNat addrW) =>
+  [Bytes bytes] ->
+  [(Bool, WishboneMasterRequest addrW (Bytes bytes))] ->
+  [Transaction addrW bytes (Bytes bytes)]
+wbStorageBehaviorModel initList initWbOps = case (cancelMulDiv @bytes @8) of
+  Dict -> snd $ L.mapAccumL f initList initWbOps
+   where
+    -- Invalid request
+    f storedList (False, op) = (storedList, Error (wbMasterRequestToM2S op))
+
+    -- Successful Read
+    f storedList (True, op@(Read i _)) = (storedList, ReadSuccess wbM2S wbS2M)
+     where
+      dat = storedList L.!! ((fromIntegral i) `div` 4)
+      wbM2S = wbMasterRequestToM2S op
+      wbS2M = (emptyWishboneS2M @(Bytes bytes)){acknowledge = True, readData = dat}
+
+    -- Successful Write
+    f storedList (True, op@(Write i bs a)) = (newList, WriteSuccess wbM2S wbS2M)
+     where
+      wbM2S = wbMasterRequestToM2S op
+      wbS2M = emptyWishboneS2M{acknowledge = True}
+      (preEntry, oldEntry : postEntry) = L.splitAt (fromIntegral (i `div` 4)) storedList
+      newList = preEntry <> (pack newEntry : postEntry)
+
+      newEntry :: Vec bytes Byte
+      newEntry = zipWith3 (\ b old new -> if b then new else old)
+        (unpack bs) (unpack oldEntry) (unpack a)
 
 wbStorageRangeErrors :: Property
 wbStorageRangeErrors = property $ do
@@ -803,7 +793,7 @@ wbStorageRangeErrors = property $ do
       Gen (WishboneMasterRequest addressWidth a)
     genWishboneTransfer size genA =
       let
-        validAddr = (2*) . fromIntegral <$> Gen.enum 0 (size * 2 - 1)
+        validAddr = (4*) . fromIntegral <$> Gen.enum 0 (size - 1)
         invalidAddr = fromIntegral <$> Gen.enum (size * 4) (size * 8)
       in
       Gen.choice
@@ -834,8 +824,6 @@ wbStorageRangeErrors = property $ do
           Left $ "An in-range write should be ACK'd "
             <> "addr: " <> showHex addr "" <> ", size " <> showHex st0 ""
             <> " - " <> show s2m
-
-
 
 wbStorageProtocolsModel :: Property
 wbStorageProtocolsModel = property $ do

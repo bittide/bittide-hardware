@@ -78,6 +78,7 @@ intMapToMemBlob byteOrder intMap = do
   let
     (startAddr, size, mapAsList) = extractIntMapData byteOrder intMap
     memBlob = memBlobTH Nothing mapAsList
+  runIO $ print (startAddr, size)
   [| (startAddr, size :: Integer, $memBlob) |]
 
 -- | Write a list of `Byte`s to a file to be used with `blockRamFile`.

@@ -5,24 +5,25 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use core::fmt::Write;
+
+use bittide_sys::uart::Uart;
+
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-use bittide_sys::println;
-
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    unsafe {
-        let init = bittide_sys::Initialiser::new().unwrap();
-        init.initialise_character_device("character-device")
-            .unwrap();
-    };
+    let mut uart = unsafe { Uart::new(0x8000_0000 as *mut u8) };
 
     let names = ["Rust", "RISC-V", "Haskell"];
+    for name in names {
+        writeln!(uart, "Hello from {name}!").unwrap();
+    }
+    writeln!(uart, "This can also do {:?} {:#x}", "debug prints", 42).unwrap();
+    writeln!(uart, "Going in echo mode!").unwrap();
     loop {
-        for name in names {
-            println!("Hello from {}!", name);
-        }
-        println!("This can also do {} {:#x}", "debug prints", 42);
+        let c = uart.receive();
+        uart.send(c);
     }
 }

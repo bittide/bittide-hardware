@@ -31,12 +31,9 @@ readElf elf =
    in (fromIntegral (elfEntry elf), iMem, dMem)
  where
   go seg acc@(is, ds)
-    -- skip segments that don't need loading
-    | elfSegmentType seg /= PT_LOAD
-    = acc
 
     | PF_X `elem` elfSegmentFlags seg
-    = (addData (elfSegmentPhysAddr seg) (bytes $ elfSegmentData seg `BS.append` BS.pack [0,0]) is, ds)
+    = (addData (elfSegmentPhysAddr seg) (bytes $ elfSegmentData seg `BS.append` BS.pack [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]) is, ds)
 
     | otherwise
     = let

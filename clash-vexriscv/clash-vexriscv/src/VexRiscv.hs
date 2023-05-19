@@ -33,7 +33,7 @@ data Input = Input
   , iBusWbS2M :: WishboneS2M (BitVector 32)
   , dBusWbS2M :: WishboneS2M (BitVector 32)
   }
-  deriving (Generic, NFDataX, ShowX, Eq)
+  deriving (Generic, NFDataX, ShowX, Eq, BitPack)
 
 data Output = Output
   { iBusWbM2S :: WishboneM2S 30 4 (BitVector 32)
@@ -111,14 +111,27 @@ vexRiscv input =
     )
 
   where
+    -- When passing S2M values from Haskell to VexRiscv over the FFI, undefined
+    -- bits/values cause errors when forcing their evaluation to something that can
+    -- be passed through the FFI.
+    --
+    -- This function makes sure the Wishbone S2M values are free from undefined bits.
+    makeDefined :: WishboneS2M (BitVector 32) -> WishboneS2M (BitVector 32)
+    makeDefined wb = wb {readData = defaultX 0 (readData wb)}
+
+    defaultX :: (NFDataX a) => a -> a -> a
+    defaultX dflt val
+      | hasUndefined val = dflt
+      | otherwise = val
+
     (unbundle -> (timerInterrupt, externalInterrupt, softwareInterrupt, iBusS2M, dBusS2M))
-      = (<$> input) $ \(Input a b c d e) -> (a, b, c, d, e)
+      = (<$> ( unpack 0 :- input)) $ \(Input a b c d e) -> (a, b, c, d, e)
 
     (unbundle -> (iBus_DAT_MISO, iBus_ACK, iBus_ERR))
-      = (<$> iBusS2M) $ \(WishboneS2M a b c _ _) -> (a, b, c)
+      = (<$> iBusS2M) $ (\(WishboneS2M a b c _ _) -> (a, b, c)) . makeDefined
 
     (unbundle -> (dBus_DAT_MISO, dBus_ACK, dBus_ERR))
-      = (<$> dBusS2M) $ \(WishboneS2M a b c _ _) -> (a, b, c)
+      = (<$> dBusS2M) $ (\(WishboneS2M a b c _ _) -> (a, b, c)) . makeDefined
 
     ( iBus_CYC
       , iBus_STB

@@ -9,6 +9,7 @@ import Prelude
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
+import Tests.Axi4
 import Tests.Calendar
 import Tests.ClockControl.Si539xSpi
 import Tests.DoubleBufferedRam
@@ -23,12 +24,13 @@ import Tests.Wishbone
 
 tests :: TestTree
 tests = testGroup "Unittests"
-  [ calGroup
+  [ axi4Group
+  , calGroup
   , clockGenGroup
   , ebGroup
   , haxiomsGroup
   , linkGroup
-  , memMapGroup
+  , wbGroup
   , ramGroup
   , readElfTestGroup
   , sgGroup

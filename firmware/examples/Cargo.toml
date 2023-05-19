@@ -15,5 +15,7 @@ codegen-units = 1
 members = [
   "fdt-read",
   "hello",
+  "axi-loopback",
+  "smoltcp-example",
 ]
 resolver = "2"

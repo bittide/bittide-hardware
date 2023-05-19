@@ -1,8 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Google LLC
-//
-// SPDX-License-Identifier: Apache-2.0
-
-use crate::uart::Uart;
+use crate::Uart;
 use core::fmt::Write;
 static mut PANIC_UART: Option<Uart> = None;
 
@@ -20,7 +16,7 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
         }
     };
 
-    writeln!(uart, "{info}").unwrap();
+    let _ = writeln!(uart, "{info}");
     loop {
         continue;
     }
