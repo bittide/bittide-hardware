@@ -85,6 +85,7 @@ targets =
   , 'ElasticBuffer.elasticBuffer5
   , 'MVPs.clockControlDemo0
   , 'MVPs.clockControlDemo1
+  , 'MVPs.clockControlDemo2
   , 'ScatterGather.gatherUnit1K
   , 'ScatterGather.gatherUnit1KReducedPins
   , 'ScatterGather.scatterUnit1K
