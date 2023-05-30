@@ -8,8 +8,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
+{-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 module Tests.DoubleBufferedRam(ramGroup) where
 
 import Clash.Prelude
@@ -17,22 +18,22 @@ import Clash.Prelude
 import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
-import Clash.Signal.Internal(Signal(..))
-import Data.Either
+import Data.Constraint.Nat.Extra
 import Data.Maybe
 import Data.Proxy
 import Data.String
 import Data.Type.Equality (type (:~:)(Refl))
 import Hedgehog
 import Hedgehog.Range as Range
+import Numeric (showHex)
 import Protocols.Hedgehog.Internal
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import Bittide.SharedTypes
 import Bittide.DoubleBufferedRam
+import Bittide.SharedTypes
 import Tests.Shared
 
 import qualified Clash.Sized.Vector as V
@@ -42,7 +43,6 @@ import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Prelude as P
-import Numeric (showHex)
 
 ramGroup :: TestTree
 ramGroup = testGroup "DoubleBufferedRam group"
@@ -657,7 +657,7 @@ wbStorageSpecCompliance = property $ do
         defExpectOptions
         (\_ _ () -> Right ())
         (wbStorage (Reloadable $ Vec content))
-        (genRequests (snatToNum (SNat @v)))
+        (genRequests (snatToNum (SNat @v) - 1))
         ()
 
     genRequests size = Gen.list (Range.linear 0 32)
@@ -670,7 +670,7 @@ wbStorageSpecCompliance = property $ do
       Gen (WishboneMasterRequest addressWidth a)
     genWishboneTransfer size genA =
       let
-        validAddr = (2*) . fromIntegral <$> Gen.enum 0 (size * 2)
+        validAddr = (4*) . fromIntegral <$> Gen.enum 0 (size - 1)
         invalidAddr = fromIntegral <$> Gen.enum (size * 4) (size * 8)
       in
       Gen.choice
@@ -693,88 +693,78 @@ wbStorageBehavior = property $ do
   go :: forall words m . (KnownNat words, 2 <= words, Monad m) => SNat words -> PropertyT m ()
   go SNat = do
     content <- forAll $ genVec @_ @words genDefinedBitVector
+    wbRequests <- forAll $ Gen.list (Range.linear 0 32)
+      (genWishboneTransfer @32 (natToNum @words) (genDefinedBitVector @32))
+
     let
-      -- We need the input address to be larger than the memory space to also
-      -- test the behavior of out of range addresses.
-      validAddr = (2*) <$> genIndex @_ @(5 * words) (Range.constant 0 (natToNum @(2 * (words - 1))))
-      invalidAddr = Gen.choice @_ @(Index (5 * words))
-        [ replaceBit (0 :: Index 1) 1 <$>
-            genIndex (Range.constant minBound (pred maxBound))
-        , genIndex (Range.constant (natToNum @(4 * words)) maxBound)
-        ]
-
-    generatedInput <- forAll $ (\l -> Right RamNoOp : l <> [Right RamNoOp]) <$>
-      Gen.list (Range.linear 1 32)
-        (Gen.choice
-          [ pure (Right RamNoOp)
-          , Right . RamRead <$> validAddr
-          , Right <$> (RamWrite <$> validAddr <*> genDefinedBitVector)
-          , Left . RamRead <$> invalidAddr
-          , Left <$> (RamWrite <$> invalidAddr <*> genDefinedBitVector)
-          ])
-    let
-      goldenRef ramOps = wbStorageBehaviorModel contentList ramOps
-       where
-        contentList = toList $ concatMap (\(split ->(b,a)) -> a :> b :> Nil) content
-      topEntity wbIn =
-        wcre $ wbStorage' @System @words @32 (NonReloadable $ Vec content) wbIn
-
-      goldenInput    = fromRight RamNoOp <$> generatedInput
-      flatInput      = either ramOpToWb ramOpToWb <$> generatedInput
-      topEntityInput =
-        L.concatMap (\case
-            (Left _, a) -> [a, emptyWishboneM2S]
-            (Right _, a) -> [a, a, emptyWishboneM2S] ) $
-          L.zip generatedInput flatInput
-
-      simGolden = simulateN @System (P.length goldenInput) goldenRef goldenInput
-      simOut = simulateN (P.length topEntityInput) topEntity topEntityInput
-      simTransactions = wbToTransaction topEntityInput simOut
-
-      goldenTransactions = L.zipWith expectTransaction generatedInput simGolden
+      master = driveStandard defExpectOptions $ fmap snd wbRequests
+      slave = wcre $ wbStorage @System (NonReloadable $ Vec content)
+      simTransactions = exposeWbTransactions (Just 1000) master slave
+      goldenTransactions = wbStorageBehaviorModel (toList content) $ fmap (fmap fst) wbRequests
 
     footnote $ "goldenTransactions" <> show goldenTransactions
     footnote $ "simTransactions" <> show simTransactions
-    footnote $ "simOut" <> show simOut
-    footnote $ "topEntityInput" <> show topEntityInput
-    footnote $ "simGolden" <> show simGolden
-    footnote $ "goldenInput" <> show goldenInput
-    footnote $ "generatedInput" <> show generatedInput
+    footnote $ "wbRequests" <> show wbRequests
 
-    simTransactions === catMaybes goldenTransactions
-
-  expectTransaction ramOp response = case ramOp of
-    Right op -> ramOpToTransaction op response
-    Left  op -> Just (Error (ramOpToWb op))
-
--- | Behavioral model for 'wbStorage'. It stores is contents as half-words in Little Endian.
-wbStorageBehaviorModel ::
-  forall dom addresses halfWordSize .
-  (KnownNat addresses, KnownNat halfWordSize) =>
-  [BitVector halfWordSize] ->
-  Signal dom (RamOp addresses (BitVector (halfWordSize + halfWordSize))) ->
-  Signal dom (BitVector (halfWordSize + halfWordSize))
-wbStorageBehaviorModel storedList (ramOp :- ramOps)
-  = output :- outputs
- where
-  (address, writeOp) = decodeRamOp ramOp
-  (preEntry, lower0 : upper0 : postEntry) = L.splitAt (fromIntegral address) storedList
-
-  (_,split -> (upper, lower)) = fromJust writeOp
-
-  newList
-    | isJust writeOp = preEntry L.++ [lower, upper] L.++ postEntry
-    | otherwise = storedList
-
-  output = pack (upper0, lower0)
-  outputs = wbStorageBehaviorModel newList ramOps
-
-  decodeRamOp = \case
-    RamNoOp -> (addrUndef, Nothing)
-    RamRead ((`div` 2) -> i) -> (i, Nothing)
-    RamWrite ((`div` 2) -> i) a -> (i, Just (i, a))
+    simTransactions === goldenTransactions
    where
-    addrUndef = deepErrorX "wbStorageBehavior: readAddr undefined."
+    genWishboneTransfer ::
+      (KnownNat addressWidth, KnownNat (BitSize a)) =>
+      Int -> -- ^ size
+      Gen a ->
+      Gen (Bool,(WishboneMasterRequest addressWidth a, Int))
+    genWishboneTransfer size genA =
+      let
+        validAddr = (4 *) . fromIntegral <$> Gen.enum 0 (size - 1)
+        invalidAddr = Gen.choice
+          [ fromIntegral <$> Gen.enum (size * 4) (size * 8)
+          , (+) <$> validAddr <*> (Gen.enum 1 3)
+          ]
+        -- Make wbOps that won't be repeated
+        mkRead address bs = (Read address bs, 0)
+        mkWrite address bs a = (Write address bs a, 0)
+      in
+        -- Generate valid and invalid operations. The boolean represents the validity of the operation.
+      Gen.choice
+        [ (True, ) <$> (mkRead  <$> validAddr   <*> genDefinedBitVector)
+        , (True, ) <$> (mkWrite <$> validAddr   <*> genDefinedBitVector <*> genA)
+        , (False,) <$> (mkRead  <$> invalidAddr <*> genDefinedBitVector)
+        , (False,) <$> (mkWrite <$> invalidAddr <*> genDefinedBitVector <*> genA)
+        ]
+
+
+-- | Behavioral model for 'wbStorage'.
+wbStorageBehaviorModel ::
+  forall addrW bytes .
+  ( 1 <= addrW, KnownNat bytes) =>
+  (KnownNat addrW) =>
+  [Bytes bytes] ->
+  [(Bool, WishboneMasterRequest addrW (Bytes bytes))] ->
+  [Transaction addrW bytes (Bytes bytes)]
+wbStorageBehaviorModel initList initWbOps = case (cancelMulDiv @bytes @8) of
+  Dict -> snd $ L.mapAccumL f initList initWbOps
+   where
+    -- Invalid request
+    f storedList (False, op) = (storedList, Error (wbMasterRequestToM2S op))
+
+    -- Successful Read
+    f storedList (True, op@(Read i _)) = (storedList, ReadSuccess wbM2S wbS2M)
+     where
+      dat = storedList L.!! ((fromIntegral i) `div` 4)
+      wbM2S = wbMasterRequestToM2S op
+      wbS2M = (emptyWishboneS2M @(Bytes bytes)){acknowledge = True, readData = dat}
+
+    -- Successful Write
+    f storedList (True, op@(Write i bs a)) = (newList, WriteSuccess wbM2S wbS2M)
+     where
+      wbM2S = wbMasterRequestToM2S op
+      wbS2M = emptyWishboneS2M{acknowledge = True}
+      (preEntry, oldEntry : postEntry) = L.splitAt (fromIntegral (i `div` 4)) storedList
+      newList = preEntry <> (pack newEntry : postEntry)
+
+      newEntry :: Vec bytes Byte
+      newEntry = zipWith3 (\ b old new -> if b then new else old)
+        (unpack bs) (unpack oldEntry) (unpack a)
 
 wbStorageRangeErrors :: Property
 wbStorageRangeErrors = property $ do
@@ -803,7 +793,7 @@ wbStorageRangeErrors = property $ do
       Gen (WishboneMasterRequest addressWidth a)
     genWishboneTransfer size genA =
       let
-        validAddr = (2*) . fromIntegral <$> Gen.enum 0 (size * 2 - 1)
+        validAddr = (4*) . fromIntegral <$> Gen.enum 0 (size - 1)
         invalidAddr = fromIntegral <$> Gen.enum (size * 4) (size * 8)
       in
       Gen.choice
@@ -834,8 +824,6 @@ wbStorageRangeErrors = property $ do
           Left $ "An in-range write should be ACK'd "
             <> "addr: " <> showHex addr "" <> ", size " <> showHex st0 ""
             <> " - " <> show s2m
-
-
 
 wbStorageProtocolsModel :: Property
 wbStorageProtocolsModel = property $ do
