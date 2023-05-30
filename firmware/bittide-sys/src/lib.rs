@@ -11,6 +11,7 @@ pub mod character_device;
 pub mod elf_loading;
 pub mod gather_unit;
 pub mod scatter_unit;
+pub mod uart;
 
 #[cfg(target_arch = "riscv32")]
 pub mod panic_handler;
