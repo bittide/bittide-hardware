@@ -145,7 +145,18 @@ uartDf baud = Circuit go
    where
     (received, txBit, ack) = uart baud rxBit (dataToMaybe <$> request)
 
--- |
+-- | Wishbone accessible UART interface with configurable FIFO buffers.
+--   It takes the depths of the transmit and receive buffers and the baud rate as parameters.
+--   The function returns a 'Circuit' with a 'Wishbone' interface and a 'CSignal' for the UART
+--   receive bit as inputs, and outputs a 'CSignal' for the UART transmit bit and a 'CSignal'
+--   tuple indicating the status of the UART.
+--
+--   The register layout is as follows:
+--   - Address 0 (BitVector 8): UART data register (read/write)
+--   - Address 4 (BitVector 2): UART status register (read-only)
+--     Relevant masks:
+--     - 0b01: Transmit buffer full
+--     - 0b10: Receive buffer empty
 uartWb ::
   forall dom addrW nBytes baudRate transmitBufferDepth receiveBufferDepth .
   ( HiddenClockResetEnable dom, ValidBaud dom baudRate
