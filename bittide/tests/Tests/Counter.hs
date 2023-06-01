@@ -39,7 +39,7 @@ top ::
   Reset src ->
   Reset dst ->
   Signal dst (Signed 32)
-top rstSrc rstDst = fst <$> domainDiffCounter clockGen rstSrc clockGen rstDst
+top rstSrc rstDst = fst <$> domainDiffCounter clockGen rstSrc enableGen clockGen rstDst enableGen
 
 -- | 'domainDiffCounter' should continuously emit zeros when applied to the same domain
 case_zeroSameDomain :: Assertion

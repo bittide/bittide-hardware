@@ -121,6 +121,7 @@ library
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Switch
+    Bittide.ObliviousFifo
     Bittide.Wishbone
     Clash.Cores.Extra
     Clash.Cores.UART.Extra
