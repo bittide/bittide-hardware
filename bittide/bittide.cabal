@@ -115,6 +115,7 @@ library
     Bittide.Node
     Bittide.ProcessingElement
     Bittide.ProcessingElement.DeviceTreeCompiler
+    Bittide.ProcessingElement.ProgramStream
     Bittide.ProcessingElement.ReadElf
     Bittide.ProcessingElement.Util
     Bittide.ScatterGather
@@ -134,6 +135,15 @@ executable clash
   import: common-options
   main-is: bin/Clash.hs
   Build-Depends: base, bittide, clash-ghc
+
+executable program-stream
+  import: common-options
+  main-is: bin/ProgramStream.hs
+  Build-Depends:
+    base,
+    bittide,
+    bytestring,
+    clash-prelude,
 
 test-suite doctests
   type:             exitcode-stdio-1.0

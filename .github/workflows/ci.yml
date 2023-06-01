@@ -305,13 +305,33 @@ jobs:
         shell: git-nix-shell {0} --pure
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-02-01
+    needs: [build]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project.simulation cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cabal Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cabal-nix/store
+
+          key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
+
       - uses: actions/cache@v3
-        name: Cache
+        name: Cargo Cache
         with:
           path: |
             ~/.cargo/bin/
@@ -320,6 +340,10 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build program-stream executable
+        run: |
+          cabal build program-stream
 
       - name: Running Tests
         run: |

@@ -4,7 +4,7 @@
 
 #![allow(dead_code)]
 
-use bittide_sys::elf_loading::validation::ElfConfig;
+use bittide_sys::program_stream::MemoryConfiguration;
 use object::{
     elf,
     write::elf::{FileHeader, ProgramHeader, Writer},
@@ -186,36 +186,33 @@ pub unsafe fn with_32bit_addr_buffer<R: 'static>(size: u32, f: impl FnOnce(&mut 
     }
 }
 
-pub fn elf_config_from_segs(segs: &[Segment]) -> ElfConfig {
+pub fn mem_config_from_segs(segs: &[Segment]) -> MemoryConfiguration {
     // The ranges are inversed so that they don't default to 0..MAX
     // but instead are properly read from the segments.
     // Since they are not used as iterators but instead as a pair, it does not
     // matter that they yield no values when iterated.
     #[allow(clippy::reversed_empty_ranges)]
-    let mut config = ElfConfig {
-        instruction_memory_address: usize::MAX..0,
-        data_memory_address: usize::MAX..0,
+    let mut config = MemoryConfiguration {
+        instruction_memory: u32::MAX..0,
+        data_memory: u32::MAX..0,
     };
 
     for seg in segs {
         match seg.ty {
             SegmentType::Text => {
-                config.instruction_memory_address.start = config
-                    .instruction_memory_address
-                    .start
-                    .min(seg.addr as usize);
-                config.instruction_memory_address.end = config
-                    .instruction_memory_address
+                config.instruction_memory.start =
+                    config.instruction_memory.start.min(seg.addr as u32);
+                config.instruction_memory.end = config
+                    .instruction_memory
                     .end
-                    .max(seg.addr as usize + seg.data.len() + seg.zero_padding as usize);
+                    .max(seg.addr as u32 + seg.data.len() as u32 + seg.zero_padding as u32);
             }
             SegmentType::Data | SegmentType::RoData => {
-                config.data_memory_address.start =
-                    config.data_memory_address.start.min(seg.addr as usize);
-                config.data_memory_address.end = config
-                    .data_memory_address
+                config.data_memory.start = config.data_memory.start.min(seg.addr as u32);
+                config.data_memory.end = config
+                    .data_memory
                     .end
-                    .max(seg.addr as usize + seg.data.len() + seg.zero_padding as usize);
+                    .max(seg.addr as u32 + seg.data.len() as u32 + seg.zero_padding as u32);
             }
         }
     }
@@ -223,17 +220,14 @@ pub fn elf_config_from_segs(segs: &[Segment]) -> ElfConfig {
     config
 }
 
-pub fn elf_loaded_buffer_size(info: &ElfCreateInfo) -> usize {
-    let config = elf_config_from_segs(&info.segments);
+pub fn elf_loaded_buffer_size(info: &ElfCreateInfo) -> u32 {
+    let config = mem_config_from_segs(&info.segments);
 
     let start = config
-        .instruction_memory_address
+        .instruction_memory
         .start
-        .min(config.data_memory_address.start);
-    let end = config
-        .instruction_memory_address
-        .end
-        .max(config.data_memory_address.end);
+        .min(config.data_memory.start);
+    let end = config.instruction_memory.end.max(config.data_memory.end);
 
     end - start
 }
