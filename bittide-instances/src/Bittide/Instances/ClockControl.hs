@@ -20,7 +20,7 @@ callisto3 ::
   -- | Data counts from elastic buffers
   Vec 3 (Signal Basic200 (DataCount 12)) ->
   -- | Speed change requested from clock multiplier
-  Signal Basic200 SpeedChange
+  Signal Basic200 (SpeedChange, AllStable, AllSettled)
 callisto3 clk rst ena dataCounts =
   callistoClockControl clk rst ena config availableLinkMask dataCounts
  where

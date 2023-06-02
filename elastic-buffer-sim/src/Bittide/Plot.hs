@@ -72,7 +72,8 @@ import Graphics.Matplotlib
 import Bittide.Simulate (Offset)
 import Bittide.Domain (Bittide, defBittideClockConfig)
 import Bittide.ClockControl (ClockControlConfig(..), clockPeriodFs)
-import Bittide.Topology (simulate, simulationEntity, allStableAndCentered)
+import Bittide.ClockControl.StabilityChecker qualified as SC (StabilityIndication(..))
+import Bittide.Topology (simulate, simulationEntity, allSettled)
 import Bittide.Arithmetic.Ppm (Ppm(..), diffPeriod)
 import Bittide.Topology.Graph
 
@@ -346,9 +347,9 @@ simulateTopology ccc margin framesize graph settings = do
     PDF -> plotTopology simResult
     CSV -> dumpCsv simResult
 
-  let stable = allStableAndCentered $ V.map last simResult
-  saveSettings $ Just stable
-  return stable
+  let result = allSettled $ V.map last simResult
+  saveSettings $ Just result
+  return result
  where
   SimulationSettings
     { samples
@@ -396,40 +397,36 @@ simulateTopology ccc margin framesize graph settings = do
   (0, n) = bounds $ unboundGraph $ graph
 
 -- | Plots the datacount of an elastic buffer and marks those parts of
--- the plots that are reported to be stable/centered by the stability
+-- the plots that are reported to be stable/settled by the stability
 -- checker for the repsective buffer.
 plotEbData ::
-  (ToJSON t, ToJSON d) => [(t, (d, (Bool, Bool)))] -> Matplotlib
+  (ToJSON t, ToJSON d) => [(t, (d, SC.StabilityIndication))] -> Matplotlib
 plotEbData xs = foldPlots markedIntervals % ebPlot
  where
-  markGreen = (@@ [ o1 "g-", o2 "linewidth" (10 :: Int)])
-  markBlue = (@@ [ o1 "b-", o2 "linewidth" (10 :: Int)])
-  ebPlot = uncurry plot $ unzip (pData <$> xs)
+  mGr = (@@ [ o1 "g-", o2 "linewidth" (10 :: Int)]) -- green marking
+  mBl = (@@ [ o1 "b-", o2 "linewidth" (10 :: Int)]) -- blue marking
+  ebPlot = uncurry plot $ unzip ((\(t, (d, _)) -> (t, d)) <$> xs)
 
   markedIntervals =
     (\(mark, ys) -> mark $ uncurry plot $ unzip ys)
       <$> stableIvs [] False False xs
 
   stableIvs a _  _  []     = a
-  stableIvs a as ac (x:xr) = stableIvs a' (stable x) (centered x) xr
+  stableIvs a as ac ((t, (d, sci)):xr) = stableIvs a' stable settled xr
    where
-    a' |      stable x  && not (centered x) && not as           =
-         (markBlue,  [pData x]  ) : a
-       |      stable x  &&      centered x  &&           not ac =
-         (markGreen, [pData x]  ) : a
-       |      stable x  && not (centered x) &&     as &&     ac =
-         (markBlue,  [pData x]  ) : (m, reverse y) : yr
-       |      stable x                      &&     as           =
-         (m,         pData x : y) : yr
-       | not (stable x)                     &&     as           =
-         (m,         reverse y  ) : yr
-       | otherwise                                              =
-                                    a
-    (m, y) : yr = a
+    stable  = SC.stable sci
+    settled = SC.settled sci
+    pData   = (t, d)
 
-  stable (_, (_, (s, _))) = s
-  centered (_, (_, (_, c))) = c
-  pData (t, (d, _)) = (t, d)
+    (m, y) : yr = a
+    rya = (m, reverse y) : yr
+
+    a' |     stable  && not settled && not as           = (mBl, [pData]  ) : a
+       |     stable  &&     settled &&           not ac = (mGr, [pData]  ) : a
+       |     stable  && not settled &&     as &&     ac = (mBl, [pData]  ) : rya
+       |     stable                 &&     as           = (m,   pData : y) : yr
+       | not stable                 &&     as           = rya
+       | otherwise                                      = a
 
 -- | Folds the vectors of generated plots and writes the results to
 -- the disk.

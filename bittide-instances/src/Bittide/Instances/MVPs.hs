@@ -16,7 +16,7 @@ import Bittide.Instances.Domains
 import Bittide.ElasticBuffer
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl
-import Bittide.ClockControl.StabilityChecker (stabilityChecker)
+import Bittide.ClockControl.StabilityChecker (stabilityChecker, settled)
 
 
 type FINC = Bool
@@ -97,8 +97,9 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
     withClockResetEnable clkControlled rstControlled enableGen $
       stickyBits d15 (speedChangeToPins <$> speedChange)
   availableLinkMask = pure $ complement 0 -- all links available
-  speedChange = callistoClockControl @1 clkControlled clockControlReset enableGen
-    config availableLinkMask (bufferOccupancy :> Nil)
+  (speedChange, _allStable, _allCentered) = unbundle
+    $ callistoClockControl @1 clkControlled clockControlReset enableGen
+        config availableLinkMask (bufferOccupancy :> Nil)
   clockControlReset = unsafeFromLowPolarity $ (==Pass) <$> ebMode
 
   writeData = pure (0 :: DataCount 8)
@@ -109,7 +110,7 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
 
   isStable =
     withClockResetEnable clkControlled stabilityCheckReset enableGen $
-      snd <$> stabilityChecker d2 (SNat @20_000_000) bufferOccupancy
+      settled <$> stabilityChecker d2 (SNat @20_000_000) bufferOccupancy
 
 clockControlDemo0 ::
   "SYSCLK_300_N" ::: Clock Basic300 ->

@@ -81,7 +81,6 @@ library
     cassava,
     clash-cores,
     containers,
-    deepseq,
     directory,
     filepath,
     matplotlib,

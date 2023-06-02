@@ -11,7 +11,7 @@
 module Bittide.Topology
   ( simulationEntity
   , simulate
-  , allStableAndCentered
+  , allSettled
   )
 where
 
@@ -25,7 +25,6 @@ import Clash.Signal.Internal
 import Data.Maybe (catMaybes)
 import Data.Proxy (Proxy(..))
 import Data.List qualified as L (take, drop)
-import Control.DeepSeq (NFData, force)
 
 import Bittide.Simulate
 import Bittide.ClockControl
@@ -75,7 +74,15 @@ simulationEntity ::
   -- ^ frame size of cycles within the margins required
   Vec nodes Offset ->
   -- ^ initial clock offsets
-  Signal dom (Vec nodes (Period, Vec nodes (DataCount dcount, (Bool, Bool))))
+  Signal dom
+    ( Vec nodes
+        ( Period
+        , Vec nodes
+            ( DataCount dcount
+            , StabilityIndication
+            )
+        )
+    )
   -- ^ simulation entity
 simulationEntity topology ccc margin framesize !offsets =
     bundle
@@ -94,7 +101,11 @@ simulationEntity topology ccc margin framesize !offsets =
     | hasEdge topology x y =
         withClockResetEnable clk resetGen enableGen $
           stabilityChecker margin framesize
-    | otherwise = const $ pure (False, False)
+    | otherwise = const $ pure
+        StabilityIndication
+          { stable  = False
+          , settled = False
+          }
   -- clock generators
   !clocks = clock <$> offsets <*> clockControls
   clock offset =
@@ -104,7 +115,8 @@ simulationEntity topology ccc margin framesize !offsets =
       (cccStepSize ccc)
       resetGen
   -- clock controls
-  !clockControls = clockControl <$> clocks <*> masks <*> ebs
+  !(clockControls, _allStable, _allSettled) =
+    unzip3 (unbundle <$> (clockControl <$> clocks <*> masks <*> ebs))
   clockControl clk =
     callistoClockControl
       clk
@@ -136,9 +148,17 @@ simulate ::
   -- ^ number of samples to keep & pass
   Int ->
   -- ^ number of cycles in one sample period
-  Signal dom (Vec nodes (Period, Vec nodes (DataCount dcount, (Bool, Bool)))) ->
+  Signal dom
+    ( Vec nodes
+        ( Period
+        , Vec nodes
+            ( DataCount dcount
+            , StabilityIndication
+            )
+        )
+    ) ->
   -- ^ simulation entity
-  Vec nodes [(Period, Period, [(DataCount dcount, (Bool, Bool))])]
+  Vec nodes [(Period, Period, [(DataCount dcount, StabilityIndication)])]
 simulate topology stopStable samples periodsize =
     transposeLV
   . takeWhileDelay stopStable (-1)
@@ -151,21 +171,20 @@ simulate topology stopStable samples periodsize =
     Just n  -> \m -> \case
       []     -> []
       x : xr ->
-        let m' | not (allStableAndCentered x) = -1
+        let m' | not (allSettled x) = -1
                | m < 0                        = n
                | m > 0                        = m - 1
                | otherwise                    = 0
         in x : if m' == 0 then [] else takeWhileDelay (Just n) m' xr
 
 -- | Checks whether all stability checkers report a stable result.
-allStableAndCentered :: KnownNat n => Vec n (a, b, [(c, (Bool, Bool))]) -> Bool
-allStableAndCentered =
-  and . toList . map ((\(_,_,xs) -> all (snd . snd) xs))
+allSettled :: KnownNat n => Vec n (a, b, [(c, StabilityIndication)]) -> Bool
+allSettled = and . toList . map ((\(_,_,xs) -> all (settled . snd) xs))
 
 -- | Absolute time unfolding of the produced signal for generating the
 -- simulation data.
 absTimes ::
-  (KnownNat nodes, NFData a) =>
+  (KnownNat nodes, NFDataX a) =>
   Graph nodes ->
   -- ^ the topology
   Signal dom (Vec nodes (Period, Vec nodes a)) ->
@@ -177,8 +196,8 @@ absTimes ::
 absTimes topology = go $ replicate SNat (Femtoseconds 0)
  where
   go !ts (v :- vs) =
-    force (izipWith (\i t (p, es) -> (t, p, filterAvailable i es)) ts v)
-      : go (force $ zipWith addFs ts $ map fst v) vs
+    forceX (izipWith (\i t (p, es) -> (t, p, filterAvailable i es)) ts v)
+      : go (forceX $ zipWith addFs ts $ map fst v) vs
   -- turns a fixed sized vector of data corresponding to the topology
   -- links to a list of data entries, reduced to the available links
   filterAvailable i =

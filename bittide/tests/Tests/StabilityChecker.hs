@@ -54,7 +54,7 @@ stabilityCheckerTest = property $ do
     dataCounts <- forAll $ Gen.list (Range.singleton simLength)
       (genSigned @_ @dataCountBits Range.constantBounded)
     let
-      topEntity = wcre $ fmap fst . stabilityChecker @System sMargin sCyclesStable
+      topEntity = wcre $ fmap stable . stabilityChecker @System sMargin sCyclesStable
       simOut = simulateN simLength topEntity dataCounts
 
     simOut === golden (snatToNum sMargin) (snatToNum sCyclesStable) dataCounts

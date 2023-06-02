@@ -5,7 +5,9 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Bittide.ClockControl.Callisto
-  ( callistoClockControl
+  ( AllStable
+  , AllSettled
+  , callistoClockControl
   ) where
 
 import Clash.Prelude
@@ -19,6 +21,9 @@ import Bittide.ClockControl.StabilityChecker
 
 import qualified Clash.Cores.Xilinx.Floating as F
 import qualified Clash.Signal.Delayed as D
+
+type AllStable  = Bool
+type AllSettled = Bool
 
 {-# NOINLINE callistoClockControl #-}
 -- | Determines how to influence clock frequency given statistics provided by
@@ -45,7 +50,7 @@ callistoClockControl ::
   Signal dom (BitVector n) ->
   -- | Statistics provided by elastic buffers.
   Vec n (Signal dom (DataCount m)) ->
-  Signal dom SpeedChange
+  Signal dom (SpeedChange, AllStable, AllSettled)
 callistoClockControl clk rst ena ClockControlConfig{..} mask =
   withClockResetEnable clk rst ena $
     callisto
@@ -63,9 +68,9 @@ data ControlSt = ControlSt
   , _b_k :: !SpeedChange
   -- ^ Previously submitted speed change request. Used to determine the estimated
   -- clock frequency.
-  , _css :: !Float
+  , _steadyStateTarget :: !Float
   -- ^ Steady-state value determined at the reframing time (before correction).
-  , _rft :: !Bool
+  , _reframeTime :: !Bool
   -- ^ flag for indicating that it's currently reframing time.
   } deriving (Generic, NFDataX)
 
@@ -116,10 +121,16 @@ callisto ::
   Signal dom (BitVector n) ->
   -- | Data counts from elastic buffers
   Signal dom (Vec n (DataCount m)) ->
-  -- | Speed change requested from clock multiplier
-  Signal dom SpeedChange
+  -- | Speed change requested from clock multiplier, the joint
+  -- stability indication for all buffers, and the joint
+  -- "being-settled" indication for all buffers
+  Signal dom (SpeedChange, AllStable, AllSettled)
 callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
-  mux shouldUpdate (D.toSignal b_kNext) (pure NoChange)
+  bundle
+    ( mux shouldUpdate (D.toSignal b_kNext) (pure NoChange)
+    , allStable
+    , allSettled
+    )
  where
   dataCounts = filterCounts <$> fmap bv2v mask <*> allDataCounts
   filterCounts vMask vCounts = flip map (zip vMask vCounts) $
@@ -127,18 +138,20 @@ callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
   scs = bundle $ map (stabilityChecker margin framesize) $ unbundle dataCounts
   updateCounter = wrappingCounter updateEveryNCycles
   shouldUpdate = updateCounter .==. 0
+  allStable = and . map stable <$> scs
+  allSettled = and . map settled <$> scs
   state = register initState $
     rfCheck
-      <$> (fold (&&) . (True :>) . map fst <$> scs) -- all stable
-      <*> (fold (&&) . (True :>) . map snd <$> scs) -- all centered
+      <$> allStable
+      <*> allSettled
       <*> D.toSignal c_des
       <*> mux shouldUpdate updatedState state
   updatedState = D.toSignal $
     ControlSt
       <$> D.delayI (errorX "callisto: No start value [2]") z_kNext
       <*> b_kNext
-      <*> D.delayI (errorX "callisto: No start value [3]") css
-      <*> D.delayI (errorX "callisto: No start value [6]") rft
+      <*> D.delayI (errorX "callisto: No start value [3]") steadyStateTarget
+      <*> D.delayI (errorX "callisto: No start value [6]") reframeTime
 
   -- See fields in 'ControlSt' for documentation of 'z_k', 'b_k', and css.
   z_k :: DSignal dom 0 (Signed 32)
@@ -147,11 +160,11 @@ callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
   b_k :: DSignal dom 0 SpeedChange
   b_k = D.fromSignal (_b_k <$> state)
 
-  css :: DSignal dom 0 Float
-  css = D.fromSignal (_css <$> state)
+  steadyStateTarget :: DSignal dom 0 Float
+  steadyStateTarget = D.fromSignal (_steadyStateTarget <$> state)
 
-  rft :: DSignal dom 0 Bool
-  rft = D.fromSignal (_rft <$> state)
+  reframeTime :: DSignal dom 0 Bool
+  reframeTime = D.fromSignal (_reframeTime <$> state)
 
   -- see clock control algorithm simulation here:
   -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
@@ -176,7 +189,7 @@ callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
 
   c_des :: DSignal dom (F.FromS32DefDelay + F.MulDefDelay + F.AddDefDelay) Float
   c_des = D.delayI (errorX "callisto: No start value [5]") (k_p `F.mul` r_k)
-            `F.add` (delayI 0 css)
+            `F.add` (delayI 0 steadyStateTarget)
 
   z_kNext :: DSignal dom 0 (Signed 32)
   z_kNext = z_k + fmap sign b_k
@@ -197,12 +210,12 @@ callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
   sign SpeedUp = 1
   sign SlowDown = -1
 
-  rfCheck stable centered d cst@ControlSt{..}
-    | stable && not centered && not _rft =
-        cst { _css = d
-            , _rft = True
-            }
-    | not stable && _rft =
-        cst { _rft = False }
+  rfCheck stable settled newTarget st@ControlSt{..}
+    | stable && not settled && not _reframeTime =
+        st { _steadyStateTarget = newTarget
+              , _reframeTime = True
+              }
+    | not stable && _reframeTime =
+        st { _reframeTime = False }
     | otherwise =
-        cst
+        st

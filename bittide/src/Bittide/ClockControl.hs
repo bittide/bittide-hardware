@@ -74,9 +74,15 @@ data ClockControlConfig dom n m c = ClockControlConfig
   , cccStepSize :: Femtoseconds
 
     -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
-    --
   , cccBufferSize :: SNat n
+
+    -- | Bound on the number of elements the elastic buffer is allowed
+    -- to deviate from while still being considered "stable".
   , cccStabilityCheckerMargin :: SNat m
+
+    -- | The minimum number of clock cycles an elastic buffer must
+    -- remain within the @cccStabilityCheckerMargin@ to be considered
+    -- "stable".
   , cccStabilityCheckerFramesize :: SNat c
   } deriving (Lift)
 
