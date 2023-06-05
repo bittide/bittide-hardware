@@ -4,7 +4,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module Clash.Cores.Xilinx.Extra where
+module Clash.Cores.Xilinx.Extra (module Clash.Cores.Xilinx.Extra, module X) where
 
 import Clash.Prelude
 
@@ -12,6 +12,7 @@ import Data.String.Interpolate (__i)
 
 import Clash.Annotations.Primitive
 
+import Clash.Cores.Xilinx.GTH as X
 
 -- | A differential input buffer. For more information see:
 --
