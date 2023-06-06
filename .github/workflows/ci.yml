@@ -178,6 +178,7 @@ jobs:
             --output-mode pdf \
             --steps ${{ matrix.target.steps }} \
             --samples 1000 \
+            --frame-size 15000000 \
             --stop-after-stable ${{ matrix.target.steps }} \
             ${{ matrix.target.topology }} ${{ matrix.target.args }}
 

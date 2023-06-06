@@ -69,14 +69,26 @@ data ControlSt = ControlSt
   -- ^ Previously submitted speed change request. Used to determine the estimated
   -- clock frequency.
   , _steadyStateTarget :: !Float
-  -- ^ Steady-state value determined at the reframing time (before correction).
+  -- ^ Steady-state value (determined when stability is detected for
+  -- the first time).
+  , _targetCorrection :: !Float
+  -- ^ Correction value to be applied at reframing time.
   , _reframeTime :: !Bool
   -- ^ flag for indicating that it's currently reframing time.
+  , _waitTime :: Unsigned 25
   } deriving (Generic, NFDataX)
 
 -- | Initial state of control
 initState :: ControlSt
-initState = ControlSt 0 NoChange 0.0 False
+initState =
+  ControlSt
+    { _z_k = 0
+    , _b_k = NoChange
+    , _steadyStateTarget = 0.0
+    , _targetCorrection = 0.0
+    , _reframeTime = False
+    , _waitTime = 20000000  -- ~100ms
+    }
 
 -- | Clock correction strategy based on:
 --
@@ -143,7 +155,7 @@ callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
   state = register initState $
     rfCheck
       <$> allStable
-      <*> allSettled
+  --    <*> allSettled
       <*> D.toSignal c_des
       <*> mux shouldUpdate updatedState state
   updatedState = D.toSignal $
@@ -151,7 +163,9 @@ callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
       <$> D.delayI (errorX "callisto: No start value [2]") z_kNext
       <*> b_kNext
       <*> D.delayI (errorX "callisto: No start value [3]") steadyStateTarget
+      <*> D.delayI (errorX "callisto: No start value [4]") targetCorrection
       <*> D.delayI (errorX "callisto: No start value [6]") reframeTime
+      <*> D.delayI (errorX "callisto: No start value [6]") waitTime
 
   -- See fields in 'ControlSt' for documentation of 'z_k', 'b_k', and css.
   z_k :: DSignal dom 0 (Signed 32)
@@ -163,8 +177,14 @@ callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
   steadyStateTarget :: DSignal dom 0 Float
   steadyStateTarget = D.fromSignal (_steadyStateTarget <$> state)
 
+  targetCorrection :: DSignal dom 0 Float
+  targetCorrection = D.fromSignal (_targetCorrection <$> state)
+
   reframeTime :: DSignal dom 0 Bool
   reframeTime = D.fromSignal (_reframeTime <$> state)
+
+  waitTime :: DSignal dom 0 (Unsigned 25)
+  waitTime = D.fromSignal (_waitTime <$> state)
 
   -- see clock control algorithm simulation here:
   -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
@@ -189,7 +209,7 @@ callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
 
   c_des :: DSignal dom (F.FromS32DefDelay + F.MulDefDelay + F.AddDefDelay) Float
   c_des = D.delayI (errorX "callisto: No start value [5]") (k_p `F.mul` r_k)
-            `F.add` (delayI 0 steadyStateTarget)
+            `F.add` (delayI 0 targetCorrection)
 
   z_kNext :: DSignal dom 0 (Signed 32)
   z_kNext = z_k + fmap sign b_k
@@ -210,12 +230,17 @@ callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
   sign SpeedUp = 1
   sign SlowDown = -1
 
-  rfCheck stable settled newTarget st@ControlSt{..}
-    | stable && not settled && not _reframeTime =
+  rfCheck stable {-settled-} newTarget st@ControlSt{..}
+    | stable && not _reframeTime && _waitTime > 0 =
         st { _steadyStateTarget = newTarget
-              , _reframeTime = True
-              }
-    | not stable && _reframeTime =
-        st { _reframeTime = False }
+           , _reframeTime = True
+           }
+    | _reframeTime && _waitTime > 0 =
+        st { _waitTime = _waitTime - 1
+           }
+    | _reframeTime && _waitTime == 0 =
+        st { _targetCorrection = _steadyStateTarget
+           , _reframeTime = False
+           }
     | otherwise =
         st
