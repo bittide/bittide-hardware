@@ -54,6 +54,7 @@ callistoClockControl ::
 callistoClockControl clk rst ena ClockControlConfig{..} mask =
   withClockResetEnable clk rst ena $
     callisto
+      cccEnableReframing
       cccStabilityCheckerMargin
       cccStabilityCheckerFramesize
       targetDataCount
@@ -106,6 +107,10 @@ callisto ::
   , n + m <= 32
   , 1 <= framesize
   ) =>
+  -- | Enable reframing. Reframing allows a system to resettle buffers around
+  -- their midpoints, without dropping any frames. For more information, see
+  -- [arXiv:2303.11467](https://arxiv.org/abs/2303.11467).
+  Bool ->
   -- | Maximum number of elements the incoming buffer occupancy is
   -- allowed to deviate from the current @target@ for it to be
   -- considered "stable".
@@ -125,7 +130,7 @@ callisto ::
   -- stability indication for all buffers, and the joint
   -- "being-settled" indication for all buffers
   Signal dom (SpeedChange, AllStable, AllSettled)
-callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
+callisto reframingEnabled margin framesize targetCount updateEveryNCycles mask allDataCounts =
   bundle
     ( mux shouldUpdate (D.toSignal b_kNext) (pure NoChange)
     , allStable
@@ -161,7 +166,9 @@ callisto margin framesize targetCount updateEveryNCycles mask allDataCounts =
   b_k = D.fromSignal (_b_k <$> state)
 
   steadyStateTarget :: DSignal dom 0 Float
-  steadyStateTarget = D.fromSignal (_steadyStateTarget <$> state)
+  steadyStateTarget
+    | reframingEnabled = D.fromSignal (_steadyStateTarget <$> state)
+    | otherwise        = pure 0.0
 
   reframeTime :: DSignal dom 0 Bool
   reframeTime = D.fromSignal (_reframeTime <$> state)

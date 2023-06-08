@@ -84,6 +84,11 @@ data ClockControlConfig dom n m c = ClockControlConfig
     -- remain within the @cccStabilityCheckerMargin@ to be considered
     -- "stable".
   , cccStabilityCheckerFramesize :: SNat c
+
+    -- | Enable reframing. Reframing allows a system to resettle buffers around
+    -- their midpoints, without dropping any frames. For more information, see
+    -- [arXiv:2303.11467](https://arxiv.org/abs/2303.11467).
+  , cccEnableReframing :: Bool
   } deriving (Lift)
 
 -- | The (virtual) type of the FIFO's data counter. Setting this to
@@ -146,6 +151,7 @@ defClockConfig = ClockControlConfig
   , cccDeviation                 = Ppm 100
   , cccStabilityCheckerMargin    = SNat
   , cccStabilityCheckerFramesize = SNat
+  , cccEnableReframing           = True
   }
  where
   self = defClockConfig @dom
