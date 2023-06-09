@@ -6,6 +6,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ImplicitParams #-}
 
 module Main (main) where
 
@@ -409,6 +410,8 @@ data Options =
     , simulationSamples  :: Int
     , stabilityMargin    :: Int
     , stabilityFrameSize :: Int
+    , disableReframing   :: Bool
+    , waitTime           :: Int
     , stopWhenStable     :: Bool
     , stopAfterStable    :: Maybe Int
     , offsets            :: [Int64]
@@ -466,6 +469,22 @@ optionParser =
           <> help
                (  "Minimum number of clock cycles a buffer occupancy "
                <> "must remain within to be considered stable"
+               )
+          )
+    <*> flag False True
+          (  long "disable-reframing"
+          <> short 'e'
+          <> help "Disables clock control reframing"
+          )
+    <*> option auto
+          (  long "wait-time"
+          <> short 'w'
+          <> metavar "NUM"
+          <> value 20000000
+          <> showDefault
+          <> help
+               (  "Number of clock cycles to wait until reframing takes place "
+               <> "(after stability has been detected, for all elastic buffers)"
                )
           )
     <*> flag False True
@@ -553,6 +572,8 @@ main = do
         , framesize  = stabilityFrameSize
         , samples    = simulationSamples
         , periodsize = simulationSteps `quot` simulationSamples
+        , reframe    = not disableReframing
+        , waittime   = waitTime
         , mode       = outMode
         , dir        = outDir
         , stopStable =
@@ -565,22 +586,24 @@ main = do
 
   isStable <- case topology of
     Just t -> do
-      let simSettings = settings { save = safeToFile $ ttype t }
+      let ?settings = settings { save = safeToFile $ ttype t }
       case t of
-        Diamond       -> plotDiamond simSettings
-        Line n        -> plotLine simSettings n
-        HyperCube n   -> plotHyperCube simSettings n
-        Grid r c      -> plotGrid simSettings r c
-        Torus2D r c   -> plotTorus2D simSettings r c
-        Torus3D r c p -> plotTorus3D simSettings r c p
-        Tree d c      -> plotTree simSettings d c
-        Star n        -> plotStar simSettings n
-        Cycle n       -> plotCyclic simSettings n
-        Complete n    -> plotComplete simSettings n
-        Hourglass n   -> plotHourglass simSettings n
-        Random n      -> randomGraph n >>= plotGraph simSettings
+        Diamond       -> plotDiamond
+        Line n        -> plotLine n
+        HyperCube n   -> plotHyperCube n
+        Grid r c      -> plotGrid r c
+        Torus2D r c   -> plotTorus2D r c
+        Torus3D r c p -> plotTorus3D r c p
+        Tree d c      -> plotTree d c
+        Star n        -> plotStar n
+        Cycle n       -> plotCyclic n
+        Complete n    -> plotComplete n
+        Hourglass n   -> plotHourglass n
+        Random n      -> randomGraph n >>= plotGraph
         DotFile f     -> (fromDot <$> readFile f) >>= \case
-          Right (g, name) -> plotGraph settings { save = safeToFile name } g
+          Right (g, name) ->
+            let ?settings = ?settings { save = safeToFile name }
+            in plotGraph g
           Left err -> die $ "ERROR: Invalid DOT file - " <> f <> "\n" <> err
     Nothing ->
       handleParseResult $ Failure
@@ -710,7 +733,7 @@ fromDot cnt = do
 -- | Successive overlapping pairs.
 --
 -- >>> pairwise [1, 2, 3, 4]
--- [(1,2), (2, 3), (3, 4), (4, 5)]
+-- [(1, 2), (2, 3), (3, 4), (4, 5)]
 -- >>> pairwise []
 -- []
 pairwise :: [a] -> [(a,a)]

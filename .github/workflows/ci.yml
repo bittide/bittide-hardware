@@ -135,6 +135,7 @@ jobs:
   elastic-buffer-sim-topologies:
     name: Simulate network
     runs-on: self-hosted
+    timeout-minutes: 840
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -178,7 +179,6 @@ jobs:
             --output-mode pdf \
             --steps ${{ matrix.target.steps }} \
             --samples 1000 \
-            --frame-size 15000000 \
             --stop-after-stable ${{ matrix.target.steps }} \
             ${{ matrix.target.topology }} ${{ matrix.target.args }}
 

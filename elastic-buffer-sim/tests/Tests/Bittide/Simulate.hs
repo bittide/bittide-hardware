@@ -34,7 +34,7 @@ case_clockControlMaxBound = do
     dataCounts = pure maxBound :> Nil
     mask = pure $ pack (repeat high)
     changes =
-      fmap (\(x, _, _) -> x) $ sampleN
+      fmap speedChange $ sampleN
         -- +10_000 assumes callisto's pipeline less than 10_000 deep
         (fromIntegral (cccPessimisticSettleCycles config + 10_000))
         (callistoClockControl @_ @_ @Fast clockGen resetGen enableGen config mask dataCounts)
@@ -50,7 +50,7 @@ case_clockControlMinBound = do
     dataCounts = pure minBound :> Nil
     mask = pure $ pack (repeat high)
     changes =
-      fmap (\(x, _, _) -> x) $ sampleN
+      fmap speedChange $ sampleN
         -- +100 assumes callisto's pipeline less than 100 deep
         (fromIntegral (cccPessimisticSettleCycles config + 100))
         (callistoClockControl @_ @_ @Fast clockGen resetGen enableGen config mask dataCounts)

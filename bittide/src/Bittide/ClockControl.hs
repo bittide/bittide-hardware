@@ -89,6 +89,11 @@ data ClockControlConfig dom n m c = ClockControlConfig
     -- their midpoints, without dropping any frames. For more information, see
     -- [arXiv:2303.11467](https://arxiv.org/abs/2303.11467).
   , cccEnableReframing :: Bool
+
+    -- | Number of cycles to wait until reframing takes place after
+    -- stability has been detected, as it is used by the "detect,
+    -- store, and wait" reframing approach
+  , cccReframingWaitTime :: Unsigned 32
   } deriving (Lift)
 
 -- | The (virtual) type of the FIFO's data counter. Setting this to
@@ -152,6 +157,7 @@ defClockConfig = ClockControlConfig
   , cccStabilityCheckerMargin    = SNat
   , cccStabilityCheckerFramesize = SNat
   , cccEnableReframing           = True
+  , cccReframingWaitTime         = 20000000
   }
  where
   self = defClockConfig @dom

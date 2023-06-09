@@ -95,11 +95,11 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
  where
   speedChangeSticky =
     withClockResetEnable clkControlled rstControlled enableGen $
-      stickyBits d15 (speedChangeToPins <$> speedChange)
+      stickyBits d15 (speedChangeToPins . speedChange <$> callistoResult)
   availableLinkMask = pure $ complement 0 -- all links available
-  (speedChange, _allStable, _allCentered) = unbundle
-    $ callistoClockControl @1 clkControlled clockControlReset enableGen
-        config availableLinkMask (bufferOccupancy :> Nil)
+  callistoResult =
+    callistoClockControl @1 clkControlled clockControlReset enableGen
+      config availableLinkMask (bufferOccupancy :> Nil)
   clockControlReset = unsafeFromLowPolarity $ (==Pass) <$> ebMode
 
   writeData = pure (0 :: DataCount 8)

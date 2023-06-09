@@ -28,7 +28,7 @@ import Data.List qualified as L (take, drop)
 
 import Bittide.Simulate
 import Bittide.ClockControl
-import Bittide.ClockControl.Callisto
+import Bittide.ClockControl.Callisto hiding (allSettled)
 import Bittide.ClockControl.ElasticBuffer
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Topology.Graph
@@ -43,6 +43,7 @@ import Bittide.Topology.Graph
 -- at the type level, which is not straightforward to archive for
 -- fully connected topologies.
 simulationEntity ::
+  forall dom nodes dcount margin framesize.
   ( KnownDomain dom
   -- ^ domain
   , KnownNat nodes
@@ -68,15 +69,12 @@ simulationEntity ::
   -- ^ the topology
   ClockControlConfig dom dcount margin framesize ->
   -- ^ clock control configuration
-  SNat margin ->
-  -- ^ margin of the stability checker
-  SNat framesize ->
-  -- ^ frame size of cycles within the margins required
   Vec nodes Offset ->
   -- ^ initial clock offsets
   Signal dom
     ( Vec nodes
         ( Period
+        , ReframingState
         , Vec nodes
             ( DataCount dcount
             , StabilityIndication
@@ -84,39 +82,37 @@ simulationEntity ::
         )
     )
   -- ^ simulation entity
-simulationEntity topology ccc margin framesize !offsets =
-    bundle
-  $ zipWith (curry bundle) clkSignals
-  $ bundle <$> zipWith (zipWith (curry bundle)) ebs scs
+simulationEntity topology ccc !offsets =
+  bundle
+  $ zipWith3 (\x y z -> bundle (x, y, z))
+      clkSignals
+      (fmap reframingState <$> callistoResults)
+      $ zipWith
+          (liftA2 zip)
+          (bundle <$> ebs)
+          (fmap stability <$> callistoResults)
  where
   -- elastic buffers
+  ebs :: Vec nodes (Vec nodes (Signal dom (DataCount dcount)))
   !ebs = imap ebv clocks
   ebv x = flip imap clocks . eb x
   eb x xClk y yClk
     | hasEdge topology x y = elasticBuffer xClk yClk
     | otherwise            = pure 0
-  -- stability checkers
-  !scs = imap (\i (v, clk) -> imap (sc i clk) v) $ zip ebs clocks
-  sc x clk y
-    | hasEdge topology x y =
-        withClockResetEnable clk resetGen enableGen $
-          stabilityChecker margin framesize
-    | otherwise = const $ pure
-        StabilityIndication
-          { stable  = False
-          , settled = False
-          }
+
   -- clock generators
-  !clocks = clock <$> offsets <*> clockControls
+  !clocks = clock <$> offsets <*> (fmap speedChange <$> callistoResults)
   clock offset =
     tunableClockGen
       (cccSettlePeriod ccc)
       offset
       (cccStepSize ccc)
       resetGen
+
   -- clock controls
-  !(clockControls, _allStable, _allSettled) =
-    unzip3 (unbundle <$> (clockControl <$> clocks <*> masks <*> ebs))
+  callistoResults :: Vec nodes (Signal dom (CallistoResult nodes))
+  !callistoResults =
+     clockControl <$> clocks <*> masks <*> ebs
   clockControl clk =
     callistoClockControl
       clk
@@ -124,9 +120,13 @@ simulationEntity topology ccc margin framesize !offsets =
       enableGen
       ccc
     . pure
+
   -- clock signals
+  clkSignals :: Vec nodes (Signal dom Period)
   !clkSignals = extractPeriods <$> clocks
+
   -- available link mask vectors
+  masks :: Vec nodes (BitVector nodes)
   !masks = nVec (v2bv . nVec . avail)
   avail x y = if hasEdge topology x y then high else low
   nVec = flip map indicesI
@@ -151,6 +151,7 @@ simulate ::
   Signal dom
     ( Vec nodes
         ( Period
+        , ReframingState
         , Vec nodes
             ( DataCount dcount
             , StabilityIndication
@@ -158,7 +159,16 @@ simulate ::
         )
     ) ->
   -- ^ simulation entity
-  Vec nodes [(Period, Period, [(DataCount dcount, StabilityIndication)])]
+  Vec nodes
+    [ ( Period
+      , Period
+      , ReframingState
+      , [ ( DataCount dcount
+          , StabilityIndication
+          )
+        ]
+      )
+    ]
 simulate topology stopStable samples periodsize =
     transposeLV
   . takeWhileDelay stopStable (-1)
@@ -178,26 +188,26 @@ simulate topology stopStable samples periodsize =
         in x : if m' == 0 then [] else takeWhileDelay (Just n) m' xr
 
 -- | Checks whether all stability checkers report a stable result.
-allSettled :: KnownNat n => Vec n (a, b, [(c, StabilityIndication)]) -> Bool
-allSettled = and . toList . map ((\(_,_,xs) -> all (settled . snd) xs))
+allSettled :: KnownNat n => Vec n (a, b, c, [(d, StabilityIndication)]) -> Bool
+allSettled = and . toList . map ((\(_,_,_,xs) -> all (settled . snd) xs))
 
 -- | Absolute time unfolding of the produced signal for generating the
 -- simulation data.
 absTimes ::
-  (KnownNat nodes, NFDataX a) =>
+  (KnownNat nodes, NFDataX a, NFDataX b) =>
   Graph nodes ->
   -- ^ the topology
-  Signal dom (Vec nodes (Period, Vec nodes a)) ->
+  Signal dom (Vec nodes (Period, b, Vec nodes a)) ->
   -- ^ The signal holding the the simulation result
-  [Vec nodes (Period, Period, [a])]
+  [Vec nodes (Period, Period, b, [a])]
   -- ^ The same data as in the input signal, only lazily unfolded as
   -- an infinite data stream and with the unavailable links
   -- already thrown out from the last tuple member.
 absTimes topology = go $ replicate SNat (Femtoseconds 0)
  where
   go !ts (v :- vs) =
-    forceX (izipWith (\i t (p, es) -> (t, p, filterAvailable i es)) ts v)
-      : go (forceX $ zipWith addFs ts $ map fst v) vs
+    forceX (izipWith (\i t (p, s, es) -> (t, p, s, filterAvailable i es)) ts v)
+      : go (forceX $ zipWith addFs ts $ map (\(x,_,_) -> x) v) vs
   -- turns a fixed sized vector of data corresponding to the topology
   -- links to a list of data entries, reduced to the available links
   filterAvailable i =
