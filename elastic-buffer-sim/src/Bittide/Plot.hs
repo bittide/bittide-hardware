@@ -6,6 +6,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ImplicitParams #-}
 
 module Bittide.Plot
   ( OutputMode(..)
@@ -13,6 +14,7 @@ module Bittide.Plot
   , plotDiamond
   , plotCyclic
   , plotComplete
+  , plotHourglass
   , plotGrid
   , plotStar
   , plotTorus2D
@@ -69,9 +71,11 @@ import Graphics.Matplotlib
   (Matplotlib, (%), (@@), file, plot, xlabel, ylabel, o1, o2, mp)
 
 import Bittide.Simulate (Offset)
-import Bittide.Domain (defBittideClockConfig)
+import Bittide.Domain (Bittide, defBittideClockConfig)
 import Bittide.ClockControl (ClockControlConfig(..), clockPeriodFs)
-import Bittide.Topology (simulate, simulationEntity, allStable)
+import Bittide.ClockControl.StabilityChecker qualified as SC (StabilityIndication(..))
+import Bittide.ClockControl.Callisto (ReframingState(..))
+import Bittide.Topology (simulate, simulationEntity, allSettled)
 import Bittide.Arithmetic.Ppm (Ppm(..), diffPeriod)
 import Bittide.Topology.Graph
 
@@ -107,26 +111,29 @@ data SimulationSettings =
     , framesize  :: Int
     , samples    :: Int
     , periodsize :: Int
+    , reframe    :: Bool
+    , waittime   :: Int
     , mode       :: OutputMode
     , dir        :: FilePath
-    , stopStable :: Bool
+    , stopStable :: Maybe Int
     , fixOffsets :: [Int64]
     , save       :: G.Graph -> [Int64] -> Maybe Bool -> IO ()
     }
 
-plotDiamond :: SimulationSettings -> IO Bool
-plotDiamond settings@SimulationSettings{..} =
+plotDiamond :: (?settings :: SimulationSettings) => IO Bool
+plotDiamond =
   case ( someNat margin
        , somePositiveNat framesize
        ) of
     (  Just (SomeNat (_ :: Proxy margin))
      , Just (SomePositiveNat (_ :: Proxy framesize))
-     ) -> simulateTopology defBittideClockConfig
-            (SNat @margin) (SNat @framesize) diamond settings
+     ) -> simulateTopology (clockControlConfig @margin @framesize) diamond
     (x, y) -> invalidArgs False (isNothing x) $ isNothing y
+ where
+  SimulationSettings{..} = ?settings
 
-plotCyclic :: SimulationSettings -> Int -> IO Bool
-plotCyclic settings@SimulationSettings{..} nodes =
+plotCyclic :: (?settings :: SimulationSettings) => Int -> IO Bool
+plotCyclic nodes =
   case ( simulatableG (SomeGraph . cyclic) nodes
        , someNat margin
        , somePositiveNat framesize
@@ -134,12 +141,13 @@ plotCyclic settings@SimulationSettings{..} nodes =
     (  Just (SomeSimulatableGraph graph)
      , Just (SomeNat (_ :: Proxy margin))
      , Just (SomePositiveNat (_ :: Proxy framesize))
-     ) -> simulateTopology defBittideClockConfig
-            (SNat @margin) (SNat @framesize) graph settings
+     ) -> simulateTopology (clockControlConfig @margin @framesize) graph
     (x, y, z) -> invalidArgs (isNothing x) (isNothing y) (isNothing z)
+ where
+  SimulationSettings{..} = ?settings
 
-plotComplete :: SimulationSettings -> Int -> IO Bool
-plotComplete settings@SimulationSettings{..} nodes =
+plotComplete :: (?settings :: SimulationSettings) => Int -> IO Bool
+plotComplete nodes =
   case ( simulatableG (SomeGraph . complete) nodes
        , someNat margin
        , somePositiveNat framesize
@@ -147,12 +155,27 @@ plotComplete settings@SimulationSettings{..} nodes =
     (  Just (SomeSimulatableGraph graph)
      , Just (SomeNat (_ :: Proxy margin))
      , Just (SomePositiveNat (_ :: Proxy framesize))
-     ) -> simulateTopology defBittideClockConfig
-            (SNat @margin) (SNat @framesize) graph settings
+     ) -> simulateTopology (clockControlConfig @margin @framesize) graph
     (x, y, z) -> invalidArgs (isNothing x) (isNothing y) (isNothing z)
+ where
+  SimulationSettings{..} = ?settings
 
-plotGrid :: SimulationSettings -> Int -> Int -> IO Bool
-plotGrid settings@SimulationSettings{..} rows cols =
+plotHourglass :: (?settings :: SimulationSettings) => Int -> IO Bool
+plotHourglass nodes =
+  case ( simulatableG (SomeGraph . hourglass) nodes
+       , someNat margin
+       , somePositiveNat framesize
+       ) of
+    (  Just (SomeSimulatableGraph graph)
+     , Just (SomeNat (_ :: Proxy margin))
+     , Just (SomePositiveNat (_ :: Proxy framesize))
+     ) -> simulateTopology (clockControlConfig @margin @framesize) graph
+    (x, y, z) -> invalidArgs (isNothing x) (isNothing y) (isNothing z)
+ where
+  SimulationSettings{..} = ?settings
+
+plotGrid :: (?settings :: SimulationSettings) => Int -> Int -> IO Bool
+plotGrid rows cols =
   case ( simulatableG2 ((SomeGraph .) . grid) rows cols
        , someNat margin
        , somePositiveNat framesize
@@ -160,12 +183,13 @@ plotGrid settings@SimulationSettings{..} rows cols =
     (  Just (SomeSimulatableGraph graph)
      , Just (SomeNat (_ :: Proxy margin))
      , Just (SomePositiveNat (_ :: Proxy framesize))
-     ) -> simulateTopology defBittideClockConfig
-            (SNat @margin) (SNat @framesize) graph settings
+     ) -> simulateTopology (clockControlConfig @margin @framesize) graph
     (x, y, z) -> invalidArgs (isNothing x) (isNothing y) (isNothing z)
+ where
+  SimulationSettings{..} = ?settings
 
-plotStar :: SimulationSettings -> Int -> IO Bool
-plotStar settings@SimulationSettings{..} nodes =
+plotStar :: (?settings :: SimulationSettings) => Int -> IO Bool
+plotStar nodes =
   case ( simulatableG (SomeGraph . star) nodes
        , someNat margin
        , somePositiveNat framesize
@@ -173,12 +197,13 @@ plotStar settings@SimulationSettings{..} nodes =
     (  Just (SomeSimulatableGraph graph)
      , Just (SomeNat (_ :: Proxy margin))
      , Just (SomePositiveNat (_ :: Proxy framesize))
-     ) -> simulateTopology defBittideClockConfig
-            (SNat @margin) (SNat @framesize) graph settings
+     ) -> simulateTopology (clockControlConfig @margin @framesize) graph
     (x, y, z) -> invalidArgs (isNothing x) (isNothing y) (isNothing z)
+ where
+  SimulationSettings{..} = ?settings
 
-plotTorus2D :: SimulationSettings -> Int -> Int -> IO Bool
-plotTorus2D settings@SimulationSettings{..} rows cols =
+plotTorus2D :: (?settings :: SimulationSettings) => Int -> Int -> IO Bool
+plotTorus2D rows cols =
   case ( simulatableG2 ((SomeGraph .) . torus2d) rows cols
        , someNat margin
        , somePositiveNat framesize
@@ -186,12 +211,13 @@ plotTorus2D settings@SimulationSettings{..} rows cols =
     (  Just (SomeSimulatableGraph graph)
      , Just (SomeNat (_ :: Proxy margin))
      , Just (SomePositiveNat (_ :: Proxy framesize))
-     ) -> simulateTopology defBittideClockConfig
-           (SNat @margin) (SNat @framesize) graph settings
+     ) -> simulateTopology (clockControlConfig @margin @framesize) graph
     (x, y, z) -> invalidArgs (isNothing x) (isNothing y) (isNothing z)
+ where
+  SimulationSettings{..} = ?settings
 
-plotTorus3D :: SimulationSettings -> Int -> Int -> Int -> IO Bool
-plotTorus3D settings@SimulationSettings{..} rows cols planes =
+plotTorus3D :: (?settings :: SimulationSettings) => Int -> Int -> Int -> IO Bool
+plotTorus3D rows cols planes =
   case ( simulatableG3 (((SomeGraph .) .) . torus3d) rows cols planes
        , someNat margin
        , somePositiveNat framesize
@@ -199,12 +225,13 @@ plotTorus3D settings@SimulationSettings{..} rows cols planes =
     (  Just (SomeSimulatableGraph graph)
      , Just (SomeNat (_ :: Proxy margin))
      , Just (SomePositiveNat (_ :: Proxy framesize))
-     ) -> simulateTopology defBittideClockConfig
-            (SNat @margin) (SNat @framesize) graph settings
+     ) -> simulateTopology (clockControlConfig @margin @framesize) graph
     (x, y, z) -> invalidArgs (isNothing x) (isNothing y) (isNothing z)
+ where
+  SimulationSettings{..} = ?settings
 
-plotTree :: SimulationSettings -> Int -> Int -> IO Bool
-plotTree settings@SimulationSettings{..} depth childs =
+plotTree :: (?settings :: SimulationSettings) => Int -> Int -> IO Bool
+plotTree depth childs =
   case ( simulatableG2 ((SomeGraph .) . tree) depth childs
        , someNat margin
        , somePositiveNat framesize
@@ -212,12 +239,13 @@ plotTree settings@SimulationSettings{..} depth childs =
     (  Just (SomeSimulatableGraph graph)
      , Just (SomeNat (_ :: Proxy margin))
      , Just (SomePositiveNat (_ :: Proxy framesize))
-     ) -> simulateTopology defBittideClockConfig
-            (SNat @margin) (SNat @framesize) graph settings
+     ) -> simulateTopology (clockControlConfig  @margin @framesize) graph
     (x, y, z) -> invalidArgs (isNothing x) (isNothing y) (isNothing z)
+ where
+  SimulationSettings{..} = ?settings
 
-plotLine :: SimulationSettings -> Int -> IO Bool
-plotLine settings@SimulationSettings{..} nodes =
+plotLine :: (?settings :: SimulationSettings) => Int -> IO Bool
+plotLine nodes =
   case ( simulatableG (SomeGraph . line) nodes
        , someNat margin
        , somePositiveNat framesize
@@ -225,12 +253,13 @@ plotLine settings@SimulationSettings{..} nodes =
     (  Just (SomeSimulatableGraph graph)
      , Just (SomeNat (_ :: Proxy margin))
      , Just (SomePositiveNat (_ :: Proxy framesize))
-     ) -> simulateTopology defBittideClockConfig
-            (SNat @margin) (SNat @framesize) graph settings
+     ) -> simulateTopology (clockControlConfig @margin @framesize) graph
     (x, y, z) -> invalidArgs (isNothing x) (isNothing y) (isNothing z)
+ where
+  SimulationSettings{..} = ?settings
 
-plotHyperCube :: SimulationSettings -> Int -> IO Bool
-plotHyperCube settings@SimulationSettings{..} nodes =
+plotHyperCube :: (?settings :: SimulationSettings) => Int -> IO Bool
+plotHyperCube nodes =
   case ( simulatableG (SomeGraph . hypercube) nodes
        , someNat margin
        , somePositiveNat framesize
@@ -238,13 +267,13 @@ plotHyperCube settings@SimulationSettings{..} nodes =
     (  Just (SomeSimulatableGraph graph)
      , Just (SomeNat (_ :: Proxy margin))
      , Just (SomePositiveNat (_ :: Proxy framesize))
-     ) -> simulateTopology defBittideClockConfig
-            (SNat @margin) (SNat @framesize) graph settings
+     ) -> simulateTopology (clockControlConfig @margin @framesize) graph
     (x, y, z) -> invalidArgs (isNothing x) (isNothing y) (isNothing z)
+ where
+  SimulationSettings{..} = ?settings
 
-
-plotGraph :: SimulationSettings -> G.Graph -> IO Bool
-plotGraph settings@SimulationSettings{..} g =
+plotGraph :: (?settings :: SimulationSettings) => G.Graph -> IO Bool
+plotGraph g =
   case ( simulatableG (SomeGraph . givenGraph) n
        , someNat margin
        , somePositiveNat framesize
@@ -252,13 +281,29 @@ plotGraph settings@SimulationSettings{..} g =
     (  Just (SomeSimulatableGraph graph)
      , Just (SomeNat (_ :: Proxy margin))
      , Just (SomePositiveNat (_ :: Proxy framesize))
-     ) -> simulateTopology defBittideClockConfig
-            (SNat @margin) (SNat @framesize) graph settings
+     ) -> simulateTopology (clockControlConfig @margin @framesize) graph
     (x, y, z) -> invalidArgs (isNothing x) (isNothing y) (isNothing z)
  where
+  SimulationSettings{..} = ?settings
   n = let (l, u) = bounds g in u - l + 1
   givenGraph :: KnownNat n => SNat n -> Graph n
   givenGraph = const $ boundGraph g
+
+clockControlConfig ::
+  forall margin framesize.
+  (?settings :: SimulationSettings, KnownNat margin, KnownNat framesize) =>
+  ClockControlConfig Bittide 12 margin framesize
+clockControlConfig =
+  ClockControlConfig
+    { cccStabilityCheckerMargin    = SNat @margin
+    , cccStabilityCheckerFramesize = SNat @framesize
+    , cccEnableReframing           = reframe
+    , cccReframingWaitTime         = fromInteger $ toInteger waittime
+    , ..
+    }
+  where
+    ClockControlConfig{..} = defBittideClockConfig
+    SimulationSettings{..} = ?settings
 
 invalidArgs :: Bool -> Bool -> Bool -> IO Bool
 invalidArgs invalidGraph invalidMargin invalidFramesize
@@ -271,7 +316,9 @@ invalidArgs invalidGraph invalidMargin invalidFramesize
 -- given output mode.
 simulateTopology ::
   forall dom nodes dcount margin framesize.
-  ( KnownDomain dom
+  ( ?settings :: SimulationSettings
+  -- ^ simulation settings
+  , KnownDomain dom
   -- ^ domain
   , KnownNat nodes
   -- ^ the size of the topology is know
@@ -292,19 +339,13 @@ simulateTopology ::
   , 1 <= framesize
   -- ^ frames must at least cover one element
   ) =>
-  ClockControlConfig dom dcount ->
+  ClockControlConfig dom dcount margin framesize ->
   -- ^ clock control configuration
-  SNat margin ->
-  -- ^ margin of the stability checker
-  SNat framesize ->
-  -- ^ frame size of cycles within the margins required
   Graph nodes ->
   -- ^ the topology
-  SimulationSettings ->
-  -- ^ simulation settings
   IO Bool
   -- ^ stability result
-simulateTopology ccc margin framesize graph settings = do
+simulateTopology ccc graph = do
   offsets <- V.zipWith (maybe id const) givenOffsets <$> genOffs ccc
   let
     simResult = sim offsets
@@ -318,9 +359,9 @@ simulateTopology ccc margin framesize graph settings = do
     PDF -> plotTopology simResult
     CSV -> dumpCsv simResult
 
-  let stable = allStable $ V.map last simResult
-  saveSettings $ Just stable
-  return stable
+  let result = allSettled $ V.map last simResult
+  saveSettings $ Just result
+  return result
  where
   SimulationSettings
     { samples
@@ -330,11 +371,11 @@ simulateTopology ccc margin framesize graph settings = do
     , stopStable
     , fixOffsets
     , save
-    } = settings
+    } = ?settings
 
   sim =
    simulate graph stopStable samples periodsize
-    . simulationEntity graph ccc margin framesize
+    . simulationEntity graph ccc
 
   plotTopology =
     uncurry (matplotWrite dir) . V.unzip . V.map plotDats
@@ -344,7 +385,7 @@ simulateTopology ccc margin framesize graph settings = do
         (uncurry plot . unzip)
         (foldPlots . fmap plotEbData . transpose)
     . unzip
-    . fmap (\(x,y,z) -> ((x,y), (x,) <$> z))
+    . fmap (\(a,b,c,d) -> ((a,b), ((a,c),) <$> d))
 
   givenOffsets =
       V.unsafeFromList
@@ -364,34 +405,54 @@ simulateTopology ccc margin framesize graph settings = do
       [(0 :: Int)..]
 
   filename i = dir </> "clocks" <> "_" <> show i <> ".csv"
-  flatten (a, b, v) = toField a : toField b : (toField . fst <$> v)
+  flatten (a, b, _, v) = toField a : toField b : (toField . fst <$> v)
   (0, n) = bounds $ unboundGraph $ graph
 
+data Marking = Waiting | Stable | Settled | None deriving (Eq)
+
 -- | Plots the datacount of an elastic buffer and marks those parts of
--- the plots that are reported to be stable by the stability checker
--- for the repsective buffer.
+-- the plots that are reported to be stable/settled by the stability
+-- checker as well as the time frames at which the reframing detector
+-- is in the waiting state.
 plotEbData ::
-  (ToJSON t, ToJSON d) => [(t, (d, Bool))] -> Matplotlib
+  (ToJSON t, ToJSON d) =>
+  [((t, ReframingState), (d, SC.StabilityIndication))] ->
+  Matplotlib
 plotEbData xs = foldPlots markedIntervals % ebPlot
  where
-  mark = (@@ [ o1 "g-", o2 "linewidth" (10 :: Int)])
-  ebPlot = uncurry plot $ unzip (pData <$> xs)
+  mGr = (@@ [ o1 "g-", o2 "linewidth" (8 :: Int)]) -- green marking
+  mBl = (@@ [ o1 "b-", o2 "linewidth" (8 :: Int)]) -- blue marking
+  mRe = (@@ [ o1 "r-", o2 "linewidth" (8 :: Int)]) -- red marking
+  ebPlot = uncurry plot $ unzip ((\((t, _), (d, _)) -> (t, d)) <$> xs)
+
+  mindMarking ys ms = \case
+    Waiting -> (mRe, reverse ys) : ms
+    Stable  -> (mBl, reverse ys) : ms
+    Settled -> (mGr, reverse ys) : ms
+    None    -> ms
 
   markedIntervals =
-    mark . uncurry plot . unzip
-      <$> stableIvs [] False xs
+    (\(mark, ys) -> mark $ uncurry plot $ unzip ys)
+      <$> collectIntervals ((None, []), []) xs
 
-  stableIvs a _       []     = a
-  stableIvs a collect (x:xr) = stableIvs a' (stable x) xr
+  collectIntervals ((previous, ys), markings) [] =
+    mindMarking ys markings previous
+
+  collectIntervals ((previous, ys), markings) (((t, rfState), (d, sci)) : xr) =
+    collectIntervals a' xr
    where
-    a' | stable x       && not collect = [pData x] : a
-       | stable x       && collect     = (pData x : y) : yr
-       | not (stable x) && collect     = reverse y : yr
-       | otherwise                     = a
-    y : yr = a
+    current = case rfState of
+      Wait {}            -> Waiting
+      _
+        | SC.settled sci -> Settled
+        | SC.stable sci  -> Stable
+        | otherwise      -> None
 
-  stable (_, (_, s)) = s
-  pData (t, (d, _)) = (t, d)
+    markings' = mindMarking ys markings previous
+
+    a' | current == previous = ((current, (t, d) : ys), markings )
+       | current == None     = ((None,    []         ), markings')
+       | otherwise           = ((current, [(t, d)]   ), markings')
 
 -- | Folds the vectors of generated plots and writes the results to
 -- the disk.
@@ -423,17 +484,17 @@ foldPlots = foldl' (%) mp
 
 -- | Generates a vector of random offsets.
 genOffs ::
-  (KnownDomain dom, KnownNat n, KnownNat m) =>
-  ClockControlConfig dom m ->
-  IO (V.Vec n Offset)
+  (KnownDomain dom, KnownNat k, KnownNat n) =>
+  ClockControlConfig dom n m c ->
+  IO (V.Vec k Offset)
 genOffs = V.traverse# genOffsets . V.replicate SNat
 
 -- | Randomly generate an 'Offset', how much a real clock's period may
 -- differ from its spec.
 genOffsets ::
-  forall dom n.
+  forall dom n m c.
   KnownDomain dom =>
-  ClockControlConfig dom n ->
+  ClockControlConfig dom n m c ->
   IO Offset
 genOffsets ClockControlConfig{cccDeviation} = do
   Ppm offsetPpm <- randomRIO (-cccDeviation, cccDeviation)

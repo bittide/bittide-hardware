@@ -93,8 +93,10 @@ callistoSpi clk125 clkRecovered clkControlled rst125 locked miso =
     clk125 rst125 enableGen speedChange200 spiBusy
 
   -- Produce a SpeedChange based on the elastic buffer's datacount.
-  speedChange200 = callistoClockControl @1 @12 clkControlled clockControlReset enableGen
-    clockConfig (pure maxBound) (bufferOccupancy :> Nil)
+  speedChange200 =
+    speedChange <$>
+      callistoClockControl @1 @12 clkControlled clockControlReset enableGen
+        clockConfig (pure maxBound) (bufferOccupancy :> Nil)
 
   -- ALl circuitry in the controlled domain should be in reset while the the PLL is not locked.
   rstControlled = unsafeFromLowPolarity locked
@@ -110,10 +112,10 @@ callistoSpi clk125 clkRecovered clkControlled rst125 locked miso =
   -- Determine if the controlled clock is synchronized "enough" with the static clock.
   isStable =
     withClockResetEnable clkControlled (unsafeFromLowPolarity $ pure True) enableGen $
-      stabilityChecker d5 (SNat @1_000_000) bufferOccupancy
+      settled <$> stabilityChecker d5 (SNat @1_000_000) bufferOccupancy
 
   -- Configuration for Callisto
-  clockConfig :: ClockControlConfig External 12
+  clockConfig :: ClockControlConfig External 12 8 1500000
   clockConfig = $(lift ((defClockConfig @External){cccPessimisticSettleCycles = 20000} ))
 
 makeTopEntity 'callistoSpi

@@ -7,7 +7,16 @@ module Bittide.ClockControl.Callisto.Util where
 
 import Clash.Prelude
 
-import Clash.Sized.Extra
+import Bittide.ClockControl (DataCount)
+
+-- | Safe 'DataCount' to 'Signed' conversion.
+-- (works for both: 'DataCount' being 'Signed' or 'Unsigned')
+dataCountToSigned ::
+  forall n .
+  KnownNat n =>
+  DataCount n ->
+  Signed (n + 1)
+dataCountToSigned = bitCoerce . extend
 
 -- | A counter that starts at a given value, counts down, and if it reaches
 -- zero wraps around to the initial value.
@@ -23,16 +32,18 @@ wrappingCounter upper = counter
   go n = pred n
 
 -- | A version of 'sum' that is guaranteed not to overflow.
+-- (works for both: 'DataCount' being 'Signed' or 'Unsigned')
 safeSum ::
   ( KnownNat n
   , KnownNat m
   , 1 <= n
   ) =>
-  Vec n (Unsigned m) ->
-  Unsigned (m + n - 1)
+  Vec n (DataCount m) ->
+  DataCount (m + n - 1)
 safeSum = sum . map extend
 
--- | Sum a bunch of 'Unsigned's to a @Signed 32@, without overflowing.
+-- | Sum a bunch of 'DataCount's to a @Signed 32@, without overflowing.
+-- (works for both: 'DataCount' being 'Signed' or 'Unsigned')
 sumTo32 ::
   forall n m .
   ( KnownNat m
@@ -40,11 +51,11 @@ sumTo32 ::
   , (m + n) <= 32
   , 1 <= n
   ) =>
-  Vec n (Unsigned m) ->
+  Vec n (DataCount m) ->
   Signed 32
 sumTo32 =
     extend @_ @_ @(32 - (m+n))
-  . unsignedToSigned
+  . dataCountToSigned
   . safeSum
 
 -- | Counts the number of 'high' bits in a bitvector.
@@ -57,4 +68,4 @@ safePopCountTo32 ::
   BitVector n ->
   Signed 32
 safePopCountTo32 =
-  sumTo32 . unpack @(Vec n (Unsigned 1))
+  sumTo32 . unpack @(Vec n (DataCount 1))

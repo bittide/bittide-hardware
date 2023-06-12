@@ -10,7 +10,7 @@ module Tests.StabilityChecker where
 import Clash.Prelude hiding ((^), someNatVal)
 import Prelude ((^))
 
-import Clash.Hedgehog.Sized.Unsigned (genUnsigned)
+import Clash.Hedgehog.Sized.Signed (genSigned)
 import Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
@@ -52,18 +52,18 @@ stabilityCheckerTest = property $ do
   prop SNat sCyclesStable@SNat sMargin@SNat = do
     simLength <- forAll $ Gen.integral (Range.linear 4 1024)
     dataCounts <- forAll $ Gen.list (Range.singleton simLength)
-      (genUnsigned @_ @dataCountBits Range.constantBounded)
+      (genSigned @_ @dataCountBits Range.constantBounded)
     let
-      topEntity = wcre $ stabilityChecker @System sMargin sCyclesStable
+      topEntity = wcre $ fmap stable . stabilityChecker @System sMargin sCyclesStable
       simOut = simulateN simLength topEntity dataCounts
 
     simOut === golden (snatToNum sMargin) (snatToNum sCyclesStable) dataCounts
 
   -- 'stabilityChecker' reference design
-  golden :: forall n . KnownNat n => Integer -> Integer -> [Unsigned n] -> [Bool]
+  golden :: forall n . KnownNat n => Integer -> Integer -> [DataCount n] -> [Bool]
   golden margin cyclesStable dataCounts =
     f
-    (0, fromIntegral (targetDataCount :: Unsigned n))
+    (0, fromIntegral (targetDataCount :: DataCount n))
     (fmap fromIntegral dataCounts)
    where
     f _ [] = []

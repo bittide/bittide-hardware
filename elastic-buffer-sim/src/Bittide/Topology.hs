@@ -11,7 +11,7 @@
 module Bittide.Topology
   ( simulationEntity
   , simulate
-  , allStable
+  , allSettled
   )
 where
 
@@ -25,11 +25,10 @@ import Clash.Signal.Internal
 import Data.Maybe (catMaybes)
 import Data.Proxy (Proxy(..))
 import Data.List qualified as L (take, drop)
-import Control.DeepSeq (NFData, force)
 
 import Bittide.Simulate
 import Bittide.ClockControl
-import Bittide.ClockControl.Callisto
+import Bittide.ClockControl.Callisto hiding (allSettled)
 import Bittide.ClockControl.ElasticBuffer
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Topology.Graph
@@ -44,6 +43,7 @@ import Bittide.Topology.Graph
 -- at the type level, which is not straightforward to archive for
 -- fully connected topologies.
 simulationEntity ::
+  forall dom nodes dcount margin framesize.
   ( KnownDomain dom
   -- ^ domain
   , KnownNat nodes
@@ -67,44 +67,52 @@ simulationEntity ::
   ) =>
   Graph nodes ->
   -- ^ the topology
-  ClockControlConfig dom dcount ->
+  ClockControlConfig dom dcount margin framesize ->
   -- ^ clock control configuration
-  SNat margin ->
-  -- ^ margin of the stability checker
-  SNat framesize ->
-  -- ^ frame size of cycles within the margins required
   Vec nodes Offset ->
   -- ^ initial clock offsets
-  Signal dom (Vec nodes (Period, Vec nodes (DataCount dcount, Bool)))
+  Signal dom
+    ( Vec nodes
+        ( Period
+        , ReframingState
+        , Vec nodes
+            ( DataCount dcount
+            , StabilityIndication
+            )
+        )
+    )
   -- ^ simulation entity
-simulationEntity topology ccc margin framesize !offsets =
-    bundle
-  $ zipWith (curry bundle) clkSignals
-  $ bundle <$> zipWith (zipWith (curry bundle)) ebs scs
+simulationEntity topology ccc !offsets =
+  bundle
+  $ zipWith3 (\x y z -> bundle (x, y, z))
+      clkSignals
+      (fmap reframingState <$> callistoResults)
+      $ zipWith
+          (liftA2 zip)
+          (bundle <$> ebs)
+          (fmap stability <$> callistoResults)
  where
   -- elastic buffers
+  ebs :: Vec nodes (Vec nodes (Signal dom (DataCount dcount)))
   !ebs = imap ebv clocks
   ebv x = flip imap clocks . eb x
   eb x xClk y yClk
-    | hasEdge topology x y = elasticBuffer Error xClk yClk
+    | hasEdge topology x y = elasticBuffer xClk yClk
     | otherwise            = pure 0
-  -- stability checkers
-  !scs = imap (\i (v, clk) -> imap (sc i clk) v) $ zip ebs clocks
-  sc x clk y
-    | hasEdge topology x y =
-        withClockResetEnable clk resetGen enableGen $
-          stabilityChecker margin framesize
-    | otherwise     = const $ pure False
+
   -- clock generators
-  !clocks = clock <$> offsets <*> clockControls
+  !clocks = clock <$> offsets <*> (fmap speedChange <$> callistoResults)
   clock offset =
     tunableClockGen
       (cccSettlePeriod ccc)
       offset
       (cccStepSize ccc)
       resetGen
+
   -- clock controls
-  !clockControls = clockControl <$> clocks <*> masks <*> ebs
+  callistoResults :: Vec nodes (Signal dom (CallistoResult nodes))
+  !callistoResults =
+     clockControl <$> clocks <*> masks <*> ebs
   clockControl clk =
     callistoClockControl
       clk
@@ -112,9 +120,13 @@ simulationEntity topology ccc margin framesize !offsets =
       enableGen
       ccc
     . pure
+
   -- clock signals
+  clkSignals :: Vec nodes (Signal dom Period)
   !clkSignals = extractPeriods <$> clocks
+
   -- available link mask vectors
+  masks :: Vec nodes (BitVector nodes)
   !masks = nVec (v2bv . nVec . avail)
   avail x y = if hasEdge topology x y then high else low
   nVec = flip map indicesI
@@ -130,51 +142,72 @@ simulate ::
   ) =>
   Graph nodes ->
   -- ^ the topology
-  Bool ->
-  -- ^ stop simulation as soon as all buffers get stable
+  Maybe Int ->
+  -- ^ stop simulation after all buffers have been stable for @n@ steps
   Int ->
   -- ^ number of samples to keep & pass
   Int ->
   -- ^ number of cycles in one sample period
-  Signal dom (Vec nodes (Period, Vec nodes (DataCount dcount, Bool))) ->
+  Signal dom
+    ( Vec nodes
+        ( Period
+        , ReframingState
+        , Vec nodes
+            ( DataCount dcount
+            , StabilityIndication
+            )
+        )
+    ) ->
   -- ^ simulation entity
-  Vec nodes [(Period, Period, [(DataCount dcount, Bool)])]
-simulate topology stopWhenStable samples periodsize =
+  Vec nodes
+    [ ( Period
+      , Period
+      , ReframingState
+      , [ ( DataCount dcount
+          , StabilityIndication
+          )
+        ]
+      )
+    ]
+simulate topology stopStable samples periodsize =
     transposeLV
-  . takeWhilePlus unstable
+  . takeWhileDelay stopStable (-1)
   . L.take samples
   . takeEveryN periodsize
   . absTimes topology
  where
-  unstable
-    | stopWhenStable = not . allStable
-    | otherwise      = const True
-
-  takeWhilePlus p = \case
-    []   -> []
-    x:xs -> if p x then x : takeWhilePlus p xs else [x]
+  takeWhileDelay = \case
+    Nothing -> const id
+    Just n  -> \m -> \case
+      []     -> []
+      x : xr ->
+        let m' | not (allSettled x) = -1
+               | m < 0                        = n
+               | m > 0                        = m - 1
+               | otherwise                    = 0
+        in x : if m' == 0 then [] else takeWhileDelay (Just n) m' xr
 
 -- | Checks whether all stability checkers report a stable result.
-allStable :: KnownNat n => Vec n (a, b, [(c, Bool)]) -> Bool
-allStable = and . toList . map ((\(_,_,xs) -> all snd xs))
+allSettled :: KnownNat n => Vec n (a, b, c, [(d, StabilityIndication)]) -> Bool
+allSettled = and . toList . map ((\(_,_,_,xs) -> all (settled . snd) xs))
 
 -- | Absolute time unfolding of the produced signal for generating the
 -- simulation data.
 absTimes ::
-  (KnownNat nodes, NFData a) =>
+  (KnownNat nodes, NFDataX a, NFDataX b) =>
   Graph nodes ->
   -- ^ the topology
-  Signal dom (Vec nodes (Period, Vec nodes a)) ->
+  Signal dom (Vec nodes (Period, b, Vec nodes a)) ->
   -- ^ The signal holding the the simulation result
-  [Vec nodes (Period, Period, [a])]
+  [Vec nodes (Period, Period, b, [a])]
   -- ^ The same data as in the input signal, only lazily unfolded as
   -- an infinite data stream and with the unavailable links
   -- already thrown out from the last tuple member.
 absTimes topology = go $ replicate SNat (Femtoseconds 0)
  where
   go !ts (v :- vs) =
-    force (izipWith (\i t (p, es) -> (t, p, filterAvailable i es)) ts v)
-      : go (force $ zipWith addFs ts $ map fst v) vs
+    forceX (izipWith (\i t (p, s, es) -> (t, p, s, filterAvailable i es)) ts v)
+      : go (forceX $ zipWith addFs ts $ map (\(x,_,_) -> x) v) vs
   -- turns a fixed sized vector of data corresponding to the topology
   -- links to a list of data entries, reduced to the available links
   filterAvailable i =

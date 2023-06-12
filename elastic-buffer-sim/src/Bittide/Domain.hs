@@ -16,5 +16,5 @@ createDomain vSystem{
   , vResetKind=Synchronous
   }
 
-defBittideClockConfig :: ClockControlConfig Bittide 12
+defBittideClockConfig :: ClockControlConfig Bittide 12 8 1500000
 defBittideClockConfig = defClockConfig

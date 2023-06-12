@@ -21,7 +21,6 @@ where
 
 import Clash.Explicit.Prelude
 import Clash.Signal.Internal (Femtoseconds(..))
-import Clash.Cores.Xilinx.DcFifo (DataCount)
 import Data.Aeson (ToJSON(toJSON))
 import Data.Proxy (Proxy(..))
 import GHC.Stack (HasCallStack)
@@ -34,7 +33,7 @@ import Data.Csv
 type SettlePeriod = Femtoseconds
 
 -- | Configuration passed to 'clockControl'
-data ClockControlConfig dom n = ClockControlConfig
+data ClockControlConfig dom n m c = ClockControlConfig
   { -- | The quickest a clock could possibly run at. Used to (pessimistically)
     -- estimate when a new command can be issued.
     --
@@ -75,14 +74,44 @@ data ClockControlConfig dom n = ClockControlConfig
   , cccStepSize :: Femtoseconds
 
     -- | Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
-    --
   , cccBufferSize :: SNat n
+
+    -- | Bound on the number of elements the elastic buffer is allowed
+    -- to deviate from while still being considered "stable".
+  , cccStabilityCheckerMargin :: SNat m
+
+    -- | The minimum number of clock cycles an elastic buffer must
+    -- remain within the @cccStabilityCheckerMargin@ to be considered
+    -- "stable".
+  , cccStabilityCheckerFramesize :: SNat c
+
+    -- | Enable reframing. Reframing allows a system to resettle buffers around
+    -- their midpoints, without dropping any frames. For more information, see
+    -- [arXiv:2303.11467](https://arxiv.org/abs/2303.11467).
+  , cccEnableReframing :: Bool
+
+    -- | Number of cycles to wait until reframing takes place after
+    -- stability has been detected, as it is used by the "detect,
+    -- store, and wait" reframing approach
+  , cccReframingWaitTime :: Unsigned 32
   } deriving (Lift)
 
--- | Calculate target data count given a FIFO size. Currently returns a target
--- data count of half the FIFO size.
+-- | The (virtual) type of the FIFO's data counter. Setting this to
+-- 'Unsigned' captures the real implementation of the FIFO, while
+-- setting it to 'Signed' results in a virtual correction shifting the
+-- FIFO's center to be always at @0@.
+--
+-- _(remember to also modify 'targetDataCount' below if the
+-- representation of 'DataCount' gets changed.)_
+type DataCount n = Signed n
+
+-- | The target data count within a (virtual) FIFO. It is usually set
+-- to be at the FIFO's center.
+--
+-- _(recommended values are @0@ if 'DataCount' is 'Signed' and @shiftR
+-- maxBound 1 + 1@ if it is 'Unsigned')_
 targetDataCount :: KnownNat n => DataCount n
-targetDataCount = shiftR maxBound 1
+targetDataCount = 0
 
 -- | Safer version of FINC/FDEC signals present on the Si5395/Si5391 clock multipliers.
 data SpeedChange
@@ -102,6 +131,12 @@ instance KnownNat n => ToField (Unsigned n) where
 instance KnownNat n => ToJSON (Unsigned n) where
   toJSON = toJSON . toInteger
 
+instance KnownNat n => ToField (Signed n) where
+  toField = toField . toInteger
+
+instance KnownNat n => ToJSON (Signed n) where
+  toJSON = toJSON . toInteger
+
 instance ToField Femtoseconds where
   toField (Femtoseconds fs) = toField fs
 
@@ -111,14 +146,18 @@ instance ToJSON Femtoseconds where
 clockPeriodFs :: forall dom. KnownDomain dom => Proxy dom -> Femtoseconds
 clockPeriodFs Proxy = Femtoseconds (1000 * snatToNum (clockPeriod @dom))
 
-defClockConfig :: forall dom. KnownDomain dom => ClockControlConfig dom 12
+defClockConfig :: forall dom. KnownDomain dom => ClockControlConfig dom 12 8 1500000
 defClockConfig = ClockControlConfig
-  { cccPessimisticPeriod       = pessimisticPeriod
-  , cccPessimisticSettleCycles = pessimisticSettleCycles self
-  , cccSettlePeriod            = microseconds 1
-  , cccStepSize                = stepSize
-  , cccBufferSize              = d12 -- 2**12 ~ 4096
-  , cccDeviation               = Ppm 100
+  { cccPessimisticPeriod         = pessimisticPeriod
+  , cccPessimisticSettleCycles   = pessimisticSettleCycles self
+  , cccSettlePeriod              = microseconds 1
+  , cccStepSize                  = stepSize
+  , cccBufferSize                = d12 -- 2**12 ~ 4096
+  , cccDeviation                 = Ppm 100
+  , cccStabilityCheckerMargin    = SNat
+  , cccStabilityCheckerFramesize = SNat
+  , cccEnableReframing           = True
+  , cccReframingWaitTime         = 20000000
   }
  where
   self = defClockConfig @dom
@@ -130,10 +169,10 @@ defClockConfig = ClockControlConfig
 -- this for the fastest possible clock.
 --
 pessimisticSettleCycles ::
-  forall dom n.
+  forall dom n m c.
   ( HasCallStack
   , KnownDomain dom ) =>
-  ClockControlConfig dom n ->
+  ClockControlConfig dom n m c->
   -- | It would take a 10 GHz clock only a 10_000 cycles to wait 1 µs. This can be
   -- met by an @Unsigned 14@: @2^14 ~ 16384@. To massively overkill it we bump it
   -- up to 32 bits.

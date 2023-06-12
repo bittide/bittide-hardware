@@ -25,6 +25,7 @@ module Bittide.Topology.Graph
   , tree
   , line
   , hypercube
+  , hourglass
   )
 where
 
@@ -228,3 +229,21 @@ complete (snatToNum -> n) =
  where
   bounds = (0, n-1)
   others i = [ j | j <- [0..(n-1)], j /= i ]
+
+-- | A hourglass shaped graph consisting of two independent complete
+-- sub-graphs, only connected via a single edge between two distinct
+-- nodes of each sub-graph.
+hourglass :: KnownNat n => SNat n -> Graph (2 * n)
+hourglass (snatToNum -> n)
+  | n == 0    = boundGraph $ A.array (0,-1) []
+  | otherwise = boundGraph $ A.array bounds
+                  $ fmap (\i -> (i, neighbours i)) [0..2*n-1]
+ where
+  bounds = (0, 2*n-1)
+  neighbours i
+    | even i    =
+      (if i == 0 then (1 :) else id)
+        [ 2*j   | j <- [0..n-1], 2*j   /= i ]
+    | otherwise =
+      (if i == 1 then (0 :) else id)
+        [ 2*j+1 | j <- [0..n-1], 2*j+1 /= i ]

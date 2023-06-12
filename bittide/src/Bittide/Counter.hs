@@ -24,9 +24,9 @@ data DdcState
 type Active = Bool
 
 -- | Determine speed differences between two domains. If the source domain is
--- faster than the destination domain, the result will become smaller. Vice versa,
+-- faster than the destination domain, the result will become larger. Vice versa,
 -- if the source domain is slower than the destination domain, the result will
--- become larger. This is analogous to what would happen to a FIFO's data count
+-- become smaller. This is analogous to what would happen to a FIFO's data count
 -- when continuously written to by the source domain and read from by the
 -- destination domain. To ease integration in control algorithms, this component
 -- makes sure it starts counting at zero. It also waits for the incoming counter
@@ -78,7 +78,7 @@ domainDiffCounter clkSrc rstSrc clkDst rstDst =
   go DdcInReset c1
     | c1 == 0   = (DdcInReset,          (0, False))
     | otherwise = (DdcRunning (c1 + 1), (0, True))
-  go (DdcRunning c0) c1 = (DdcRunning (c0 + 1), (c0 `subAndTruncate` c1, True))
+  go (DdcRunning c0) c1 = (DdcRunning (c0 + 1), (c1 `subAndTruncate` c0, True))
 
   subAndTruncate :: Unsigned 64 -> Unsigned 64 -> Signed 32
   subAndTruncate c0 c1 = truncateB (unsignedToSigned c0 - unsignedToSigned c1)
