@@ -9,7 +9,7 @@ module Main where
 
 import Prelude
 
-import Control.Monad.Extra (ifM, unlessM)
+import Control.Monad.Extra (ifM, unlessM, when)
 import Data.Foldable (for_)
 import Development.Shake
 import GHC.Stack (HasCallStack)
@@ -20,10 +20,12 @@ import System.FilePath (isDrive, (</>), takeDirectory)
 
 import Paths_bittide_instances
 
+import Clash.Shake.Flags
 import Clash.Shake.Vivado
 import Clash.Shake.Extra
 import Development.Shake.Extra
 
+import qualified Bittide.Instances.BoardTest as BoardTest
 import qualified Bittide.Instances.Calendar as Calendar
 import qualified Bittide.Instances.ClockControl as ClockControl
 import qualified Bittide.Instances.Counter as Counter
@@ -49,8 +51,8 @@ clashBuildDir = buildDir </> "clash"
 vivadoBuildDir :: FilePath
 vivadoBuildDir = buildDir </> "vivado"
 
-getConstraintFileName :: TH.Name -> IO FilePath
-getConstraintFileName target =
+getConstraintFilePath :: TH.Name -> IO FilePath
+getConstraintFilePath target =
   getDataFileName ("data" </> "constraints" </> nameBase target <> ".xdc")
 
 
@@ -75,24 +77,61 @@ findProjectRoot = goUp =<< getCurrentDirectory
 
   projectFilename = "cabal.project"
 
+data Target = Target
+  { -- | TemplateHaskell reference to top entity to synthesise
+    targetName :: TH.Name
+
+    -- | Whether target has an associated XDC file in 'data/constraints'. An XDC
+    -- file implies that a bitstream can be generated.
+  , targetHasXdc :: Bool
+
+    -- | Whether target has one or more VIOs
+  , targetHasVio :: Bool
+
+    -- | Whether target has a VIO probe that can be used to run hardware-in-the-
+    -- loop tests. Note that this flag, 'targetHasTest', implies 'targetHasVio'.
+  , targetHasTest :: Bool
+  }
+
+defTarget :: TH.Name -> Target
+defTarget name = Target
+  { targetName = name
+  , targetHasXdc = False
+  , targetHasVio = False
+  , targetHasTest = False
+  }
+
+enforceValidTarget :: Target -> Target
+enforceValidTarget target@Target{..}
+  | targetHasTest && not targetHasVio =
+      error $ show targetName <> " should have set 'targetHasVio', because " <>
+                                 "'targetHasTest' was assserted."
+  | otherwise = target
+
+
 -- | All synthesizable targets
-targets :: [TH.Name]
-targets =
-  [ 'Calendar.switchCalendar1k
-  , 'Calendar.switchCalendar1kReducedPins
-  , 'ClockControl.callisto3
-  , 'Counter.counterReducedPins
-  , 'ElasticBuffer.elasticBuffer5
-  , 'MVPs.clockControlDemo0
-  , 'MVPs.clockControlDemo1
-  , 'ScatterGather.gatherUnit1K
-  , 'ScatterGather.gatherUnit1KReducedPins
-  , 'ScatterGather.scatterUnit1K
-  , 'ScatterGather.scatterUnit1KReducedPins
-  , 'Si539xSpi.si5391Spi
-  , 'StabilityChecker.stabilityChecker_3_1M
-  , 'Synchronizer.safeDffSynchronizer
-  , 'Si539xSpi.callistoSpi
+targets :: [Target]
+targets = map enforceValidTarget
+  [ (defTarget 'BoardTest.simpleHardwareInTheLoopTest)
+    { targetHasXdc = True
+    , targetHasVio = True
+    , targetHasTest = True
+    }
+  , defTarget 'Calendar.switchCalendar1k
+  , defTarget 'Calendar.switchCalendar1kReducedPins
+  , defTarget 'ClockControl.callisto3
+  , defTarget 'Counter.counterReducedPins
+  , defTarget 'ElasticBuffer.elasticBuffer5
+  , (defTarget 'MVPs.clockControlDemo0) {targetHasXdc = True}
+  , (defTarget 'MVPs.clockControlDemo1) {targetHasXdc = True}
+  , defTarget 'ScatterGather.gatherUnit1K
+  , defTarget 'ScatterGather.gatherUnit1KReducedPins
+  , defTarget 'ScatterGather.scatterUnit1K
+  , defTarget 'ScatterGather.scatterUnit1KReducedPins
+  , defTarget 'Si539xSpi.callistoSpi
+  , defTarget 'Si539xSpi.si5391Spi
+  , defTarget 'StabilityChecker.stabilityChecker_3_1M
+  , defTarget 'Synchronizer.safeDffSynchronizer
   ]
 
 shakeOpts :: ShakeOptions
@@ -129,176 +168,232 @@ main :: IO ()
 main = do
   setCurrentDirectory =<< findProjectRoot
 
-  shakeArgs shakeOpts $ do
-    -- 'all' builds all targets defined below
-    phony "all" $ do
-      for_ targets $ \target -> do
-        need [nameBase target <> ":synth"]
+  shakeArgsWith shakeOpts customFlags $ \flags shakeTargets -> pure $ Just $ do
 
-    -- For each target, generate a user callable command (PHONY). Run with
-    -- '--help' to list them.
-    for_ targets $ \target -> do
-      let
-        -- TODO: Dehardcode these paths. They're currently hardcoded in both the
-        --       TCL and here, which smells.
-        manifestPath = getManifestLocation clashBuildDir target
-        synthesisDir = vivadoBuildDir </> show target
-        falsePathXdc = synthesisDir </> "false_paths.xdc"
-        checkpointsDir = synthesisDir </> "checkpoints"
-        netlistDir = synthesisDir </> "netlist"
-        reportDir = synthesisDir </> "reports"
+    let
+      hwTargets = getHardwareTargetsFlag flags
 
-        runSynthTclPath        = synthesisDir </> "run_synth.tcl"
-        runPlaceTclPath        = synthesisDir </> "run_place.tcl"
-        runRouteTclPath        = synthesisDir </> "run_route.tcl"
-        runNetlistTclPath      = synthesisDir </> "run_netlist.tcl"
-        runBitstreamTclPath    = synthesisDir </> "run_bitstream.tcl"
-        runBoardProgramTclPath = synthesisDir </> "run_board_program.tcl"
+      rules = do
+        -- 'all' builds all targets defined below
+        phony "all" $ do
+          for_ targets $ \Target{..} -> do
+            need [nameBase targetName <> ":synth"]
 
-        postSynthCheckpointPath = checkpointsDir </> "post_synth.dcp"
-        postPlaceCheckpointPath = checkpointsDir </> "post_place.dcp"
-        postRouteCheckpointPath = checkpointsDir </> "post_route.dcp"
+        -- For each target, generate a user callable command (PHONY). Run with
+        -- '--help' to list them.
+        for_ targets $ \Target{..}-> do
+          let
+            -- TODO: Dehardcode these paths. They're currently hardcoded in both the
+            --       TCL and here, which smells.
+            manifestPath = getManifestLocation clashBuildDir targetName
+            synthesisDir = vivadoBuildDir </> show targetName
+            falsePathXdc = synthesisDir </> "false_paths.xdc"
+            checkpointsDir = synthesisDir </> "checkpoints"
+            netlistDir = synthesisDir </> "netlist"
+            reportDir = synthesisDir </> "reports"
 
-        netlistPaths =
-          [ netlistDir </> "netlist.v"
-          , netlistDir </> "netlist.xdc"
-          ]
-        bitstreamPath = synthesisDir </> "bitstream.bit"
+            runSynthTclPath        = synthesisDir </> "run_synth.tcl"
+            runPlaceTclPath        = synthesisDir </> "run_place.tcl"
+            runRouteTclPath        = synthesisDir </> "run_route.tcl"
+            runNetlistTclPath      = synthesisDir </> "run_netlist.tcl"
+            runBitstreamTclPath    = synthesisDir </> "run_bitstream.tcl"
+            runProbesGenTclPath    = synthesisDir </> "run_probes_gen.tcl"
+            runBoardProgramTclPath = synthesisDir </> "run_board_program.tcl"
+            runHardwareTestTclPath = synthesisDir </> "run_hardware_test.tcl"
 
-        postRouteTimingSummaryPath = reportDir </> "post_route_timing_summary.rpt"
-        postRouteTimingPath = reportDir </> "post_route_timing.rpt"
+            postSynthCheckpointPath     = checkpointsDir </> "post_synth.dcp"
+            postPlaceCheckpointPath     = checkpointsDir </> "post_place.dcp"
+            postRouteCheckpointPath     = checkpointsDir </> "post_route.dcp"
+            postNetlistCheckpointPath   = checkpointsDir </> "post_netlist.dcp"
 
-        synthReportsPaths = [reportDir </> "post_synth_timing_summary.rpt"]
-        placeReportPaths = [reportDir </> "post_place_timing_summary.rpt"]
-        routeReportsPaths =
-          [ reportDir </> "post_route_clock_util.rpt"
-          , reportDir </> "post_route_drc.rpt"
-          , reportDir </> "post_route_power.rpt"
-          , reportDir </> "post_route_timing.rpt"
-          , reportDir </> "post_route_timing_summary.rpt"
-          , reportDir </> "post_route_util.rpt"
-          ]
+            netlistPaths =
+              [ netlistDir </> "netlist.v"
+              , netlistDir </> "netlist.xdc"
+              ]
+            bitstreamPath = synthesisDir </> "bitstream.bit"
+            probesPath = synthesisDir </> "probes.ltx"
 
-      withoutTargets $ do
-        manifestPath %> \path -> do
-          needDirectory "dist-newstyle"
-          let (buildTool, buildToolArgs) = defaultClashCmd clashBuildDir target
-          command_ [] buildTool buildToolArgs
+            postRouteTimingSummaryPath = reportDir </> "post_route_timing_summary.rpt"
+            postRouteTimingPath = reportDir </> "post_route_timing.rpt"
 
-          -- Clash messes up ANSI escape codes, leaving the rest of the terminal
-          -- printed in bold text. Reset manually:
-          liftIO (setSGR [])
+            synthReportsPaths = [reportDir </> "post_synth_timing_summary.rpt"]
+            placeReportPaths = [reportDir </> "post_place_timing_summary.rpt"]
+            routeReportsPaths =
+              [ reportDir </> "post_route_clock_util.rpt"
+              , reportDir </> "post_route_drc.rpt"
+              , reportDir </> "post_route_power.rpt"
+              , reportDir </> "post_route_timing.rpt"
+              , reportDir </> "post_route_timing_summary.rpt"
+              , reportDir </> "post_route_util.rpt"
+              ]
 
-          produces [path]
+          withoutTargets $ do
+            manifestPath %> \path -> do
+              needDirectory "dist-newstyle"
+              let
+                (buildTool, buildToolArgs) =
+                  defaultClashCmd clashBuildDir targetName
+              command_ [] buildTool buildToolArgs
 
-        falsePathXdc %> \path -> do
-          LocatedManifest{lmManifest} <- decodeLocatedManifest manifestPath
-          writeFileChanged path (mkFalsePathXdc lmManifest)
+              -- Clash messes up ANSI escape codes, leaving the rest of the terminal
+              -- printed in bold text. Reset manually:
+              liftIO (setSGR [])
 
-        -- Synthesis
-        runSynthTclPath %> \path -> do
-          need [falsePathXdc]
-          synthesisPart <- getEnvWithDefault "xcku035-ffva1156-2-e" "SYNTHESIS_PART"
-          locatedManifest <- decodeLocatedManifest manifestPath
+              produces [path]
 
-          constraintFileName <- liftIO (getConstraintFileName target)
-          constraintExists <- liftIO $ Directory.doesFileExist constraintFileName
-          let constraintList = ([constraintFileName | constraintExists])
+            falsePathXdc %> \path -> do
+              LocatedManifest{lmManifest} <- decodeLocatedManifest manifestPath
+              writeFileChanged path (mkFalsePathXdc lmManifest)
 
-          -- let
-          --   LocatedManifest{lmManifest=Manifest{topComponent=lib}} = locatedManifest
-          --   falsePathHdlSource = HdlSource XdcSource lib falsePathXdc
+            -- Synthesis
+            runSynthTclPath %> \path -> do
+              constraintFilePath <- liftIO (getConstraintFilePath targetName)
 
-          tcl <- liftIO $
-            mkSynthesisTcl
-              synthesisDir            -- Output directory for Vivado
-              False                   -- Out of context run
-              synthesisPart           -- Part we're synthesizing for
-              constraintList          -- List of filenames with constraints
-              locatedManifest
-              -- [falsePathHdlSource]    -- Extra files
+              need [falsePathXdc]
 
-          writeFileChanged path tcl
+              constraints <-
+                if targetHasXdc then do
+                  need [constraintFilePath]
+                  pure [constraintFilePath]
+                else
+                  pure []
 
-        (postSynthCheckpointPath : synthReportsPaths) |%> \_ -> do
-          need [runSynthTclPath, manifestPath]
-          vivadoFromTcl runSynthTclPath
+              synthesisPart <- getEnvWithDefault "xcku035-ffva1156-2-e" "SYNTHESIS_PART"
+              locatedManifest <- decodeLocatedManifest manifestPath
 
-        -- Placement
-        runPlaceTclPath %> \path -> do
-          writeFileChanged path (mkPlaceTcl synthesisDir)
+              -- let
+              --   LocatedManifest{lmManifest=Manifest{topComponent=lib}} = locatedManifest
+              --   falsePathHdlSource = HdlSource XdcSource lib falsePathXdc
 
-        (postPlaceCheckpointPath : placeReportPaths) |%> \_ -> do
-          need [runPlaceTclPath, postSynthCheckpointPath]
-          vivadoFromTcl runPlaceTclPath
+              tcl <- liftIO $
+                mkSynthesisTcl
+                  synthesisDir            -- Output directory for Vivado
+                  False                   -- Out of context run
+                  synthesisPart           -- Part we're synthesizing for
+                  constraints             -- List of filenames with constraints
+                  locatedManifest
+                  -- [falsePathHdlSource]    -- Extra files
 
-        -- Routing
-        runRouteTclPath %> \path -> do
-          writeFileChanged path (mkRouteTcl synthesisDir)
+              writeFileChanged path tcl
 
-        (postRouteCheckpointPath : routeReportsPaths) |%> \_ -> do
-          need [runRouteTclPath, postPlaceCheckpointPath]
-          vivadoFromTcl runRouteTclPath
+            (postSynthCheckpointPath : synthReportsPaths) |%> \_ -> do
+              need [runSynthTclPath, manifestPath]
+              vivadoFromTcl runSynthTclPath
 
-          -- Design should meet timing post routing. Note that this is not a
-          -- requirement after synthesis as many of the optimizations only follow
-          -- after.
-          liftIO $ unlessM
-            (meetsTiming postRouteTimingSummaryPath)
-            (error [I.i|
-              Design did not meet timing. Check out the timing summary at:
+            -- Placement
+            runPlaceTclPath %> \path -> do
+              writeFileChanged path (mkPlaceTcl synthesisDir)
 
-                #{postRouteTimingSummaryPath}
+            (postPlaceCheckpointPath : placeReportPaths) |%> \_ -> do
+              need [runPlaceTclPath, postSynthCheckpointPath]
+              vivadoFromTcl runPlaceTclPath
 
-              Alternatively, check out the full report:
+            -- Routing
+            runRouteTclPath %> \path -> do
+              writeFileChanged path (mkRouteTcl synthesisDir)
 
-                #{postRouteTimingPath}
+            (postRouteCheckpointPath : routeReportsPaths) |%> \_ -> do
+              need [runRouteTclPath, postPlaceCheckpointPath]
+              vivadoFromTcl runRouteTclPath
 
-              You can investigate interactively by opening the latest checkpoint with Vivado:
+              -- Design should meet timing post routing. Note that this is not a
+              -- requirement after synthesis as many of the optimizations only follow
+              -- after.
+              liftIO $ unlessM
+                (meetsTiming postRouteTimingSummaryPath)
+                (error [I.i|
+                  Design did not meet timing. Check out the timing summary at:
 
-                vivado #{postRouteCheckpointPath}
+                    #{postRouteTimingSummaryPath}
 
-            |])
+                  Alternatively, check out the full report:
 
-        -- Netlist generation
-        runNetlistTclPath %> \path -> do
-          writeFileChanged path (mkNetlistTcl synthesisDir)
+                    #{postRouteTimingPath}
 
-        netlistPaths |%> \_ -> do
-          need [runNetlistTclPath, postRouteCheckpointPath]
-          vivadoFromTcl runNetlistTclPath
+                  You can investigate interactively by opening the latest checkpoint with Vivado:
 
-        -- Bitstream generation
-        runBitstreamTclPath %> \path -> do
-          writeFileChanged path (mkBitstreamTcl synthesisDir)
+                    vivado #{postRouteCheckpointPath}
 
-        bitstreamPath %> \_ -> do
-          need (runBitstreamTclPath : netlistPaths)
-          vivadoFromTcl runBitstreamTclPath
+                |])
 
-        -- Write bitstream to board
-        runBoardProgramTclPath %> \path -> do
-          writeFileChanged path (mkBoardProgramTcl synthesisDir)
+            -- Netlist generation
+            runNetlistTclPath %> \path -> do
+              writeFileChanged path (mkNetlistTcl synthesisDir)
 
-      -- User friendly target names
-      phony (nameBase target <> ":hdl") $ do
-        need [manifestPath]
+            (postNetlistCheckpointPath : netlistPaths) |%> \_ -> do
+              need [runNetlistTclPath, postRouteCheckpointPath]
+              vivadoFromTcl runNetlistTclPath
 
-      phony (nameBase target <> ":synth") $ do
-        need [postSynthCheckpointPath]
+            -- Bitstream generation
+            runBitstreamTclPath %> \path -> do
+              writeFileChanged path (mkBitstreamTcl synthesisDir)
 
-      phony (nameBase target <> ":place") $ do
-        need [postPlaceCheckpointPath]
+            bitstreamPath %> \_ -> do
+              need [runBitstreamTclPath, postNetlistCheckpointPath]
+              vivadoFromTcl runBitstreamTclPath
 
-      phony (nameBase target <> ":route") $ do
-        need [postRouteCheckpointPath]
+            -- Probes file generation
+            runProbesGenTclPath %> \path -> do
+              writeFileChanged path (mkProbesGenTcl synthesisDir)
 
-      phony (nameBase target <> ":netlist") $ do
-        need netlistPaths
+            probesPath %> \_ -> do
+              need [runProbesGenTclPath, bitstreamPath]
+              vivadoFromTcl runProbesGenTclPath
 
-      phony (nameBase target <> ":bitstream") $ do
-        need [bitstreamPath]
+            -- Write bitstream to board
+            runBoardProgramTclPath %> \path -> do
+              alwaysRerun
+              url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
+              boardProgramTcl <-
+                liftIO $ mkBoardProgramTcl synthesisDir hwTargets url targetHasVio
+              writeFileChanged path boardProgramTcl
 
-      phony (nameBase target <> ":program") $ do
-        need [bitstreamPath, runBoardProgramTclPath]
-        vivadoFromTcl runBoardProgramTclPath
+            -- Run hardware test
+            runHardwareTestTclPath %> \path -> do
+              alwaysRerun
+              url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
+              hardwareTestTcl <- liftIO $ mkHardwareTestTcl synthesisDir hwTargets url
+              writeFileChanged path hardwareTestTcl
+
+
+          -- User friendly target names
+          phony (nameBase targetName <> ":hdl") $ do
+            need [manifestPath]
+
+          phony (nameBase targetName <> ":synth") $ do
+            need [postSynthCheckpointPath]
+
+          phony (nameBase targetName <> ":place") $ do
+            need [postPlaceCheckpointPath]
+
+          phony (nameBase targetName <> ":route") $ do
+            need [postRouteCheckpointPath]
+
+          phony (nameBase targetName <> ":netlist") $ do
+            need [postNetlistCheckpointPath]
+
+          when targetHasXdc $ do
+            phony (nameBase targetName <> ":bitstream") $ do
+              when targetHasVio $ need [probesPath]
+              need [bitstreamPath]
+
+            phony (nameBase targetName <> ":program") $ do
+              when targetHasVio $ need [probesPath]
+              need [runBoardProgramTclPath, bitstreamPath]
+              vivadoFromTcl runBoardProgramTclPath
+
+            when targetHasTest $ do
+              phony (nameBase targetName <> ":test") $ do
+                need
+                  [ runBoardProgramTclPath
+                  , runHardwareTestTclPath
+                  , bitstreamPath
+                  , probesPath
+                  ]
+                vivadoFromTcl runBoardProgramTclPath
+                vivadoFromTcl runHardwareTestTclPath
+
+    if null shakeTargets then
+      rules
+    else
+      want shakeTargets >> withoutActions rules

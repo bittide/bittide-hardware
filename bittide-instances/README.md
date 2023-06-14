@@ -22,20 +22,22 @@ The build system automatically generates _false path_ constraints for all input 
 ## Prerequisites
 * We have tested the build system with Vivado 2022.1
 * To change the part for which the instances are synthesized, set the environment variable `SYNTHESIS_PART`. For the part we've bought use `SYNTHESIS_PART=xcku040-ffva1156-2-e`. Note that for this part you need to use Vivado Enterprise.
-* For the step Bitstream generation and Board programming an XDC file with pinmappings is required. This file must have the same name as the instance, and be located in the `data/constraints/` directory.
+* Only targets which have the flag `targetHasXdc` can be used to generate a bitstream. This XDC file must have the same name as the instance, and be located in the `data/constraints/` directory.
+* For targets which have the flag `targetHasVio`, a probes file is generated alongside the bitstream.
+* Only targets which have the flag `targetHasTest` can be used to perform hardware tests.
 
 
 ## Shake
 The build rules are defined in `bin/Shake.hs`. Shake can be called using:
 
 ```
-cabal run -- bittide-instances:shake
+cabal run -- shake
 ```
 
 You can list all build targets like this:
 
 ```
-cabal run -- bittide-instances:shake --help
+cabal run -- shake --help
 ```
 
 All build results end up in `_build`.
@@ -44,14 +46,14 @@ All build results end up in `_build`.
 Example:
 
 ```
-cabal run -- bittide-instances:shake scatterUnitWb:hdl
+cabal run -- shake scatterUnitWb:hdl
 ```
 
 ## Synthesis
 Example:
 
 ```
-cabal run -- bittide-instances:shake scatterUnitWb:synth
+cabal run -- shake scatterUnitWb:synth
 ```
 
 ## Implementation
@@ -59,29 +61,36 @@ Example:
 
 ```bash
 # For just placement:
-cabal run -- bittide-instances:shake scatterUnitWb:place
+cabal run -- shake scatterUnitWb:place
 
 # For place & route:
-cabal run -- bittide-instances:shake scatterUnitWb:route
+cabal run -- shake scatterUnitWb:route
 ```
 
 ## Netlist
 Example:
 
 ```
-cabal run -- bittide-instances:shake scatterUnitWb:netlist
+cabal run -- shake scatterUnitWb:netlist
 ```
 
 ## Bitstream generation
 Example:
 
 ```
-cabal run -- bittide-instances:shake clockControlDemo0:bitstream
+cabal run -- shake clockControlDemo0:bitstream
 ```
 
 ## Board programming
 Example:
 
 ```
-cabal run -- bittide-instances:shake clockControlDemo0:program
+cabal run -- shake clockControlDemo0:program --hardware-targets=FirstOfKnown
+```
+
+## Hardware testing
+Example:
+
+```
+cabal run -- shake hardwareTest:test --hardware-targets=FirstOfKnown
 ```
