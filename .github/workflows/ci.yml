@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   license-check:
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     container:
       image: ubuntu:22.04
     steps:
@@ -42,7 +42,7 @@ jobs:
 
   lint:
     name: Basic linting
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     container:
       image: ubuntu:22.04
 
@@ -66,7 +66,7 @@ jobs:
 
   build:
     name: Build dependencies
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -102,7 +102,7 @@ jobs:
 
   elastic-buffer-sim-topologies-matrix:
     name: elastic-buffer-sim-topologies simulation matrix generation
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     defaults:
       run:
         shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
@@ -134,7 +134,7 @@ jobs:
 
   elastic-buffer-sim-topologies:
     name: Simulate network
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     timeout-minutes: 840
     defaults:
       run:
@@ -210,7 +210,7 @@ jobs:
 
   generate-full-clock-control-simulation-report:
     name: Generate clock control simulation report
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     if: always()
     needs: [build, lint, elastic-buffer-sim-topologies-matrix, elastic-buffer-sim-topologies]
 
@@ -245,7 +245,7 @@ jobs:
 
   elastic-buffer-sim-tests:
     name: elastic-buffer-sim unittests
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -283,7 +283,7 @@ jobs:
 
   bittide-tests:
     name: Bittide tests
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -331,7 +331,7 @@ jobs:
 
   firmware-lints:
     name: Firmware Lints
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -362,7 +362,7 @@ jobs:
 
   firmware-unit-tests:
     name: Firmware Unit Tests
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -414,7 +414,7 @@ jobs:
 
   firmware-build-examples:
     name: Firmware Build Examples
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -443,7 +443,7 @@ jobs:
 
   firmware-limit-checks:
     name: Firmware Limit Checks
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     needs: [firmware-build-examples]
     defaults:
       run:
@@ -481,7 +481,7 @@ jobs:
 
   bittide-instances-doctests:
     name: bittide-instances doctests
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -519,7 +519,7 @@ jobs:
 
   bittide-instances-unittests:
     name: bittide-instances unittests
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -557,7 +557,7 @@ jobs:
 
   bittide-instances-hdl-matrix:
     name: bittide-instances synthesis matrix generation
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -580,7 +580,7 @@ jobs:
 
   bittide-instances-hdl:
     name: bittide-instances synthesis
-    runs-on: self-hosted
+    runs-on: [self-hosted, compute]
     defaults:
       run:
         # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
