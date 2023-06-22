@@ -68,6 +68,10 @@ jobs:
         run: |
           .github/scripts/self_hosted_docker_check.py
 
+      - name: Check that the 'all' job depends on all other jobs
+        run: |
+          .github/scripts/all_check.py
+
   build:
     name: Build dependencies
     runs-on: [self-hosted, compute]
@@ -692,11 +696,3 @@ jobs:
             echo "One or more dependency failed, or no dependency succeeded."
             exit 1
           fi
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get -y install python3-yaml
-      - name: Check that the 'all' job depends on all other jobs
-        run: |
-          .github/scripts/all_check.py
