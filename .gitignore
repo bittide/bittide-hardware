@@ -79,5 +79,6 @@ tight_setup_hold_pins.txt
 .Xil
 
 # Docker builds
+.github/docker/rust-toolchain.toml
 .github/docker/*.nix
 .github/docker/nix
