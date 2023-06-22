@@ -15,6 +15,7 @@ cd "${HERE}"
 
 cp "${ROOT}/default.nix" .
 cp "${ROOT}/shell.nix" .
+cp "${ROOT}/rust-toolchain.toml" .
 cp -ap "${ROOT}/nix" .
 
 docker build -t "${REPO}/${NAME}:$TODAY" -t "${REPO}/${NAME}:latest" .

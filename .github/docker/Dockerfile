@@ -28,6 +28,7 @@ ENV \
   PATH="/root/.nix-profile/bin:$PATH"
 
 WORKDIR /build
+COPY rust-toolchain.toml rust-toolchain.toml
 COPY default.nix default.nix
 COPY shell.nix shell.nix
 COPY nix /build/nix
