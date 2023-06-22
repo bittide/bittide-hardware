@@ -34,12 +34,6 @@ pkgs.mkShell {
 
       (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
 
-      # RiscV formal tests
-      pkgs.buildPackages.boolector
-      pkgs.buildPackages.symbiyosys
-      pkgs.buildPackages.yosys
-      pkgs.buildPackages.z3
-
       # For Cabal to clone git repos
       pkgs.buildPackages.git
 
