@@ -54,7 +54,7 @@ jobs:
         run: |
           .github/scripts/set_de_mirror.sh
           apt-get update
-          apt-get install -y pcregrep
+          apt-get install -y pcregrep python3-yaml
 
       - name: EOL whitespace
         run: |
@@ -63,6 +63,10 @@ jobs:
       - name: Enforce EOF newline
         run: |
           .github/scripts/check_missing_eof_newline.sh
+
+      - name: Check that all self-hosted jobs run in a docker container
+        run: |
+          .github/scripts/self_hosted_docker_check.py
 
   build:
     name: Build dependencies
@@ -558,6 +562,8 @@ jobs:
   bittide-instances-hdl-matrix:
     name: bittide-instances synthesis matrix generation
     runs-on: [self-hosted, compute]
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-22
     steps:
       - name: Checkout
         uses: actions/checkout@v3
