@@ -15,7 +15,7 @@ import Development.Shake
 import GHC.Stack (HasCallStack)
 import Language.Haskell.TH (nameBase)
 import System.Console.ANSI (setSGR)
-import System.Directory (getCurrentDirectory)
+import System.Directory (getCurrentDirectory, setCurrentDirectory)
 import System.FilePath (isDrive, (</>), takeDirectory)
 
 import Paths_bittide_instances
@@ -38,16 +38,16 @@ import qualified Language.Haskell.TH as TH
 import qualified System.Directory as Directory
 
 -- | Given Cabal project root, determine build directory
-buildDir :: FilePath -> FilePath
-buildDir projectRoot = projectRoot </> "_build"
+buildDir :: FilePath
+buildDir = "_build"
 
 -- | Given Cabal project root, determine Clash HDL output directory
-clashBuildDir :: FilePath -> FilePath
-clashBuildDir projectRoot = buildDir projectRoot </> "clash"
+clashBuildDir :: FilePath
+clashBuildDir = buildDir </> "clash"
 
 -- | Given Cabal project root, determine directory for Vivado input + output files
-vivadoBuildDir :: FilePath -> FilePath
-vivadoBuildDir projectRoot = buildDir projectRoot </> "vivado"
+vivadoBuildDir :: FilePath
+vivadoBuildDir = buildDir </> "vivado"
 
 getConstraintFileName :: TH.Name -> IO FilePath
 getConstraintFileName target =
@@ -95,9 +95,9 @@ targets =
   , 'Si539xSpi.callistoSpi
   ]
 
-shakeOpts :: FilePath -> ShakeOptions
-shakeOpts projectRoot = shakeOptions
-  { shakeFiles = buildDir projectRoot
+shakeOpts :: ShakeOptions
+shakeOpts = shakeOptions
+  { shakeFiles = buildDir
   , shakeChange = ChangeDigest
   , shakeVersion = "5"
   }
@@ -127,9 +127,9 @@ vivadoFromTcl tclPath =
 --
 main :: IO ()
 main = do
-  projectRoot <- findProjectRoot
+  setCurrentDirectory =<< findProjectRoot
 
-  shakeArgs (shakeOpts projectRoot) $ do
+  shakeArgs shakeOpts $ do
     -- 'all' builds all targets defined below
     phony "all" $ do
       for_ targets $ \target -> do
@@ -141,8 +141,8 @@ main = do
       let
         -- TODO: Dehardcode these paths. They're currently hardcoded in both the
         --       TCL and here, which smells.
-        manifestPath = getManifestLocation (clashBuildDir projectRoot) target
-        synthesisDir = vivadoBuildDir projectRoot </> show target
+        manifestPath = getManifestLocation clashBuildDir target
+        synthesisDir = vivadoBuildDir </> show target
         falsePathXdc = synthesisDir </> "false_paths.xdc"
         checkpointsDir = synthesisDir </> "checkpoints"
         netlistDir = synthesisDir </> "netlist"
@@ -181,8 +181,8 @@ main = do
 
       withoutTargets $ do
         manifestPath %> \path -> do
-          needDirectory (projectRoot </> "dist-newstyle")
-          let (buildTool, buildToolArgs) = defaultClashCmd (clashBuildDir projectRoot) target
+          needDirectory "dist-newstyle"
+          let (buildTool, buildToolArgs) = defaultClashCmd clashBuildDir target
           command_ [] buildTool buildToolArgs
 
           -- Clash messes up ANSI escape codes, leaving the rest of the terminal
