@@ -1,0 +1,90 @@
+// SPDX-FileCopyrightText: 2022 Google LLC
+//
+// SPDX-License-Identifier: Apache-2.0
+
+/dts-v1/;
+
+/ {
+
+  #address-cells = <1>;
+  #size-cells = <1>;
+
+  model = "google,vexriscv";
+
+  compatible;
+
+  chassis-type = "embedded";
+
+  cpus {
+    #address-cells = <1>;
+    #size-cells = <0>;
+
+    cpu@0 {
+      device_type = "cpu";
+      reg = <0>;
+
+      timebase-frequency = <82500000>; // 8.25 MHz
+      clock-frequency = <825000000>; // 825 MHz
+
+      status = "okay";
+    };
+  };
+
+  memory@0 {
+    device_type = "memory";
+    reg = <0x00000000 0x80000000 /* 2gb */>;
+  };
+
+  reserved-memory {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    ranges;
+  };
+
+  scatter-unit {
+    #address-cells = <1>;
+    #size-cells = <1>;
+
+    scatter-memory@20000000 {
+      reg = <0x20000000 0x00001000>;
+    };
+
+    local-sequence-counter-reg@21000000 {
+      reg = <0x21000000 0x00000008>;
+    };
+
+    remote-sequence-counter-reg@21000008 {
+      reg = <0x21000008 0x00000008>;
+    };
+
+    record-remote-sequence-counter-reg@21000010 {
+      reg = <0x21000010 0x00000001>;
+    };
+
+    metacycle-reg@21000011 {
+      reg = <0x21000011 0x00000001>;
+    };
+  };
+
+  gather-unit {
+    #address-cells = <1>;
+    #size-cells = <1>;
+
+    gather-memory@30000000 {
+      reg = <0x30000000 0x00001000>;
+    };
+
+    sequence-counter-reg@31000000 {
+      reg = <0x31000000 0x00000008>;
+    };
+
+    send-sequence-counter-reg@31000008 {
+      reg = <0x31000008 0x00000001>;
+    };
+
+    metacycle-reg@31000009 {
+      reg = <0x31000009 0x00000001>;
+    };
+  };
+
+};

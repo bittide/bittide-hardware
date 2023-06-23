@@ -6,6 +6,7 @@ license-file:        LICENSE
 author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
 Copyright:           Copyright © 2022 Google LLC
+extra-source-files:  dts/example.dts
 
 common common-options
   default-extensions:
@@ -25,9 +26,12 @@ common common-options
     InstanceSigs
     KindSignatures
     LambdaCase
+    MultiWayIf
+    NamedFieldPuns
     NoStarIsType
     PolyKinds
     RankNTypes
+    RecordWildCards
     ScopedTypeVariables
     StandaloneDeriving
     TupleSections
@@ -60,19 +64,27 @@ common common-options
   default-language: Haskell2010
   build-depends:
     base,
+    bytestring,
     Cabal,
     array,
     -- clash-prelude will set suitable version bounds for the plugins
     clash-prelude >= 1.6.3 && < 1.8,
     containers >= 0.4.0 && < 0.7,
     clash-protocols,
+    directory,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
+    mtl,
+    parsec,
+    template-haskell
 library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
+    Bittide.Extra.DeviceTree
+    Bittide.Extra.DeviceTree.Parser
+    Bittide.Extra.DeviceTree.Source
     Bittide.Extra.Maybe
     Bittide.Extra.Wishbone
     Clash.Sized.Vector.Extra
