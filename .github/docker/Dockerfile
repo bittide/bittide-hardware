@@ -37,6 +37,6 @@ RUN \
   nix-shell -j32 --run "echo OK"
 
 RUN \
-  echo '#!/usr/bin/env bash'                                                >> /usr/bin/git-nix-shell && \
-  echo 'nix-shell "${GITHUB_WORKSPACE}/shell.nix" "${@:2}" --run "bash $1"' >> /usr/bin/git-nix-shell && \
+  echo '#!/usr/bin/env bash'                                                                 >> /usr/bin/git-nix-shell && \
+  echo 'nix-shell "${GITHUB_WORKSPACE}/shell.nix" "${@:2}" --run "bash -euf -o pipefail $1"' >> /usr/bin/git-nix-shell && \
   chmod +x /usr/bin/git-nix-shell
