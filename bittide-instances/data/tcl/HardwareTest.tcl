@@ -138,8 +138,7 @@ proc run_test_all {probes_file fpga_nrs url} {
     set success [lindex $test_results 1]
     if {$done == 0} {
       puts "\tTest not finished: done flag not set after 5 tries"
-    }
-    if {$success == 0} {
+    } elseif {$success == 0} {
       puts "\tTest failed"
     } else {
       puts "\tTest passed"
