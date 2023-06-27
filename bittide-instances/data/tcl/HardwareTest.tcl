@@ -56,6 +56,14 @@ proc load_target_device {target_name} {
   return $device
 }
 
+# Format a time given in millseconds to a human-readable string
+proc format_time {time_ms} {
+  return [format "%s.%03d" \
+           [clock format [expr {$time_ms / 1000}] -format %T] \
+           [expr {$time_ms % 1000}] \
+         ]
+}
+
 # Program the current hardware device with the given program and probes file.
 proc program_fpga {program_file probes_file} {
   set device [current_hw_device]
@@ -91,10 +99,7 @@ proc run_test {} {
   # Refresh the input probes until the done flag is set. Retries for up to 1
   # second.
   set start_time [clock milliseconds]
-  set timestamp [format "%s.%03d" \
-                    [clock format [expr {$start_time / 1000}] -format %T] \
-                    [expr {$start_time % 1000}] \
-                ]
+  set timestamp [format_time ${start_time}]
   puts "Start time:\t$timestamp"
   while 1 {
     # Check test status, break if test is done
@@ -114,10 +119,7 @@ proc run_test {} {
     }
   }
   set current_time [clock milliseconds]
-  set timestamp [format "%s.%03d" \
-                    [clock format [expr {$current_time / 1000}] -format %T] \
-                    [expr {$current_time % 1000}] \
-                ]
+  set timestamp [format_time ${current_time}]
   puts "End time:\t$timestamp"
   return [list $done $success]
 }
