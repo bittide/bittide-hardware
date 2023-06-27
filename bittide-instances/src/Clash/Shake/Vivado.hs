@@ -19,7 +19,9 @@ module Clash.Shake.Vivado
   , mkSynthesisTcl
   , mkRouteTcl
   , mkBitstreamTcl
+  , mkProbesGenTcl
   , mkBoardProgramTcl
+  , mkHardwareTestTcl
   , meetsTiming
   ) where
 
@@ -30,6 +32,10 @@ import Clash.Driver.Manifest
 import Data.List (isInfixOf)
 import Data.String.Interpolate (__i)
 import System.FilePath ((</>), dropFileName)
+
+import Clash.Shake.Flags (HardwareTargets(..))
+
+import Paths_bittide_instances
 
 -- | Read a timing summary and determine whether it met timing.
 meetsTiming :: FilePath -> IO Bool
@@ -182,40 +188,108 @@ mkNetlistTcl outputDir = [__i|
     file mkdir {#{outputDir </> "netlist"}}
     write_verilog -force {#{outputDir </> "netlist" </> "netlist.v"}}
     write_xdc -no_fixed_only -force {#{outputDir </> "netlist" </> "netlist.xdc"}}
+    write_checkpoint -force {#{outputDir </> "checkpoints" </> "post_netlist.dcp"}}
 |]
 
 mkBitstreamTcl :: FilePath -> String
 mkBitstreamTcl outputDir = [__i|
     set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
 
-    \# Pick up where routing left off
-    open_checkpoint {#{outputDir </> "checkpoints" </> "post_route.dcp"}}
+    \# Pick up where netlist left off
+    open_checkpoint {#{outputDir </> "checkpoints" </> "post_netlist.dcp"}}
 
     \# Generate bitstream
     write_bitstream -force {#{outputDir </> "bitstream.bit"}}
-
-    report_drc -file {#{outputDir </> "reports" </> "post_bitstream_drc.rpt"}}
 |]
 
-mkBoardProgramTcl :: FilePath -> String
-mkBoardProgramTcl outputDir = [__i|
+mkProbesGenTcl :: FilePath -> String
+mkProbesGenTcl outputDir = [__i|
     set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
 
-    \# Open the Hardware Manager and open the first board
-    open_hw_manager
-    connect_hw_server -url localhost:3121
-    set target [lindex [get_hw_targets] 0]
-    current_hw_target $target
-    open_hw_target
+    \# Pick up where netlist left off
+    open_checkpoint {#{outputDir </> "checkpoints" </> "post_netlist.dcp"}}
 
-    \# Set the current device to the first device in the JTAG chain
-    set device [lindex [get_hw_devices] 0]
-    current_hw_device $device
-    set_property PROGRAM.FILE {#{outputDir </> "bitstream.bit"}} $device
-
-    \# Program the device and close properly
-    program_hw_devices $device
-    refresh_hw_device $device
-    close_hw_target
-    close_hw_manager
+    \# Generate probes file
+    write_debug_probes -force {#{outputDir </> "probes.ltx"}}
 |]
+
+-- | Convert HardwareTargets to a Tcl list of target FPGAs. To be used in
+-- combination with `fpga_ids` in `HardwareTest.tcl`
+toTclTarget :: HardwareTargets -> String
+toTclTarget hwTargets = case hwTargets of
+  FirstOfAny -> "[list -1]"
+  FirstOfKnown -> "[list 0]"
+  All -> "{0 1 2 3 4 5 6 7}"
+
+mkBoardProgramTcl ::
+  -- | Directory where the bitstream file are located
+  FilePath ->
+  -- | Hardware targets to program, see `Flags.hs`
+  HardwareTargets ->
+  -- | Hardware server URL
+  String ->
+  -- | Flag indicating if the target has a probes file. If true, the probes file
+  -- is programmed alongside the bitstream.
+  Bool ->
+  -- | Rendered Tcl
+  IO String
+mkBoardProgramTcl outputDir hwTargets url hasProbesFile = do
+  hardwareTestTclPath <- getDataFileName ("data" </> "tcl" </> "HardwareTest.tcl")
+  let
+    probesTcl :: String
+    probesTcl
+      | hasProbesFile = [__i|set probes_file {#{outputDir </> "probes.ltx"}}|]
+      | otherwise = "set probes_file {}"
+
+  pure [__i|
+    source {#{hardwareTestTclPath}}
+    global fpga_ids
+
+    set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
+
+    set fpga_nrs #{toTclTarget hwTargets}
+    set program_file {#{outputDir </> "bitstream.bit"}}
+    set url {#{url}}
+    #{probesTcl}
+
+    set expected_targets [llength $fpga_nrs]
+    connect_expected_targets ${url} ${expected_targets}
+
+    if {[lindex $fpga_nrs 0] == -1} {
+      set device [load_first_device]
+      program_fpga ${program_file} ${probes_file}
+    } else {
+      foreach fpga_nr $fpga_nrs {
+        set target_id [lindex $fpga_ids $fpga_nr]
+        set target_name [get_part_name $url $target_id]
+        set device [load_target_device $target_name]
+        program_fpga ${program_file} ${probes_file}
+      }
+    }
+  |]
+
+
+mkHardwareTestTcl ::
+  -- | Directory where the probes file is located
+  FilePath ->
+  -- | Hardware targets to test, see `Flags.hs`
+  HardwareTargets ->
+  -- | Hardware server URL
+  String ->
+  -- | Rendered Tcl
+  IO String
+mkHardwareTestTcl outputDir hwTargets url = do
+  hardwareTestTclPath <- getDataFileName ("data" </> "tcl" </> "HardwareTest.tcl")
+  pure [__i|
+    source {#{hardwareTestTclPath}}
+    set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
+
+    set fpga_nrs #{toTclTarget hwTargets}
+    set probes_file {#{outputDir </> "probes.ltx"}}
+    set url {#{url}}
+
+    set expected_targets [llength $fpga_nrs]
+    connect_expected_targets ${url} ${expected_targets}
+
+    run_test_all $probes_file $fpga_nrs $url
+  |]

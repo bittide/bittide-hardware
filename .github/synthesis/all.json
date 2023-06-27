@@ -6,6 +6,7 @@
   {"top": "elasticBuffer5",              "stage": "netlist"},
   {"top": "gatherUnit1K",                "stage": "hdl"    },
   {"top": "gatherUnit1KReducedPins",     "stage": "netlist"},
+  {"top": "simpleHardwareInTheLoopTest", "stage": "test"},
   {"top": "safeDffSynchronizer",         "stage": "netlist"},
   {"top": "scatterUnit1K",               "stage": "hdl"    },
   {"top": "scatterUnit1KReducedPins",    "stage": "netlist"},

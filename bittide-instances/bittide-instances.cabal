@@ -68,6 +68,7 @@ common common-options
     base,
     bittide-extra,
     bittide,
+    clash-cores,
     clash-lib,
     clash-prelude,
     clash-protocols,
@@ -92,6 +93,7 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
+    Bittide.Instances.BoardTest
     Bittide.Instances.Calendar
     Bittide.Instances.ClockControl
     Bittide.Instances.Counter
@@ -105,6 +107,7 @@ library
     Bittide.Instances.Synchronizer
 
     Clash.Shake.Extra
+    Clash.Shake.Flags
     Clash.Shake.Vivado
     Development.Shake.Extra
     Language.Haskell.TH.Extra

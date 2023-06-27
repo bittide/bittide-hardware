@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2022 Google LLC
+# SPDX-FileCopyrightText: 2022-2023 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -567,8 +567,13 @@ jobs:
   bittide-instances-hdl-matrix:
     name: bittide-instances synthesis matrix generation
     runs-on: [self-hosted, compute]
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
+
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-23
+
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -580,6 +585,39 @@ jobs:
           else
             cp .github/synthesis/staging.json checks.json
           fi
+
+      - name: Set test matrix
+        id: set-matrix
+        run: |
+          echo "check_matrix=$(cat checks.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
+
+    outputs:
+      check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
+
+  bittide-instances-hardware-in-the-loop-test-matrix:
+    name: bittide-instances hardware-in-the-loop test matrix generation
+    runs-on: [self-hosted, compute]
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
+
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-23
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Generate matrix
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
+            cp .github/synthesis/all.json checks.json
+          else
+            cp .github/synthesis/staging.json checks.json
+          fi
+
+          jq '[.[] | select(.stage=="test")]' checks.json > checks.json.filtered
+          cp checks.json.filtered checks.json
 
       - name: Set test matrix
         id: set-matrix
@@ -643,21 +681,96 @@ jobs:
 
       - name: HDL generation and synthesis
         run : |
-          .github/scripts/with_vivado.sh cabal run -- bittide-instances:shake ${{ matrix.target.top }}:${{ matrix.target.stage }}
+          target="${{ matrix.target.stage }}"
 
-      - name: Archive synthesis artifacts
+          if [[ "${target}" == "program" ]]; then
+            echo "Illegal Shake target on CI: program"
+            exit 1
+          fi
+
+          # Only the local runner connected to the bittide demonstrator (hoeve)
+          # should perform the jobs which need hardware access. And that runner
+          # should do only that, so we let other 'compute' runners do the
+          # bitstream generation.
+          if [[ "${{ matrix.target.stage }}" == "test" ]]; then
+            target="bitstream"
+          fi
+
+          .github/scripts/with_vivado.sh cabal run -- \
+            bittide-instances:shake \
+              ${{ matrix.target.top }}:"${target}"
+
+          # Explicitly generate the Tcl scripts needed for programming and
+          # hardware testing.
+          if [[ "${{ matrix.target.stage }}" == "test" ]]; then
+            # Local machine connected to the bittide demonstrator is called
+            # 'hoeve'. But the docker container of the runner cannot resolve
+            # DNS, so we use its local IP address instead.
+            export HW_SERVER_URL="192.168.102.130:3121"
+            dir=$(ls _build/vivado | grep -E '\.${{ matrix.target.top }}$')
+            tcl_test=_build/vivado/"${dir}"/run_hardware_test.tcl
+            tcl_program=_build/vivado/"${dir}"/run_board_program.tcl
+            cabal run shake -- "${tcl_test}" "${tcl_program}" --hardware-targets=All
+          fi
+
+      - name: Archive build artifacts
         uses: actions/upload-artifact@v3
         with:
           name: _build
-          path: _build
+          # We don't pack `ip`, as it is generally useless for debugging while
+          # also taking up a lot of space.
+          path: |
+            _build
+            !_build/vivado/*/ip
           retention-days: 14
 
+  bittide-instances-hardware-in-the-loop:
+    name: bittide-instances hardware-in-the-loop tests
+    runs-on: [self-hosted, hardware-access]
+    defaults:
+      run:
+        # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
+        shell: git-nix-shell {0}
+    needs: [bittide-instances-hdl, bittide-instances-hardware-in-the-loop-test-matrix]
+
+    strategy:
+      matrix:
+        target: ${{ fromJson(needs.bittide-instances-hardware-in-the-loop-test-matrix.outputs.check_matrix) }}
+      fail-fast: false
+
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-23
+      volumes:
+        - /opt/tools:/opt/tools
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: _build
+          path: _build
+
+      - name: Run tests on hardware
+        run : |
+          dir=$(ls _build/vivado | grep -E '\.${{ matrix.target.top }}$')
+          tcl_test=_build/vivado/"${dir}"/run_hardware_test.tcl
+          tcl_program=_build/vivado/"${dir}"/run_board_program.tcl
+
+          .github/scripts/with_vivado.sh \
+            vivado -mode batch -source "${tcl_program}"
+
+          .github/scripts/with_vivado.sh \
+            vivado -mode batch -source "${tcl_test}"
 
   all:
     name: All jobs finished
     if: always()
     needs: [
         bittide-instances-doctests,
+        bittide-instances-hardware-in-the-loop-test-matrix,
+        bittide-instances-hardware-in-the-loop,
         bittide-instances-hdl-matrix,
         bittide-instances-hdl,
         bittide-instances-unittests,
@@ -666,11 +779,11 @@ jobs:
         elastic-buffer-sim-tests,
         elastic-buffer-sim-topologies-matrix,
         elastic-buffer-sim-topologies,
-        generate-full-clock-control-simulation-report,
         firmware-build-examples,
         firmware-limit-checks,
         firmware-lints,
         firmware-unit-tests,
+        generate-full-clock-control-simulation-report,
         license-check,
         lint,
       ]

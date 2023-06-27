@@ -1,1 +1,4 @@
-[{"top": "clockControlDemo0", "stage": "bitstream"}]
+[
+  {"top": "clockControlDemo0",           "stage": "bitstream"},
+  {"top": "simpleHardwareInTheLoopTest", "stage": "test"}
+]
