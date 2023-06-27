@@ -15,6 +15,8 @@ set fpga_ids {
   210308B0B0C2
 }
 
+set timeout_ms 1000
+
 proc get_part_name {url id} {
   return ${url}/xilinx_tcf/Digilent/${id}
 }
@@ -95,14 +97,19 @@ proc run_test {} {
                 ]
   puts "Start time:\t$timestamp"
   while 1 {
-    set current_time [clock milliseconds]
-    if {{$current_time - $start_time} > 1000} {
-      break
-    }
+    # Check test status, break if test is done
     refresh_hw_vio [get_hw_vios hw_vio_1]
     set done [get_property INPUT_VALUE [get_hw_probes probe_test_done]]
     set success [get_property INPUT_VALUE [get_hw_probes probe_test_success]]
     if {$done == 1} {
+      break
+    }
+
+    # Timeout if test takes longer than `time_ms`
+    global timeout_ms
+    set current_time [clock milliseconds]
+    set time_spent [expr {$current_time - $start_time}]
+    if {${time_spent} > ${timeout_ms}} {
       break
     }
   }
@@ -137,7 +144,8 @@ proc run_test_all {probes_file fpga_nrs url} {
     set done [lindex $test_results 0]
     set success [lindex $test_results 1]
     if {$done == 0} {
-      puts "\tTest not finished: done flag not set after 5 tries"
+      global timeout_ms
+      puts "\tTest timeout: done flag not set after ${timeout_ms} ms"
     } elseif {$success == 0} {
       puts "\tTest failed"
     } else {
