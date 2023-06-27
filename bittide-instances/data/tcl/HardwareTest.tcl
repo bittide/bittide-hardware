@@ -21,6 +21,55 @@ proc get_part_name {url id} {
   return ${url}/xilinx_tcf/Digilent/${id}
 }
 
+# Prints all VIOs in the radix they are set. A current hardware device must be
+# set before calling this function.
+proc print_all_vios {} {
+  set probes [get_hw_probes]
+
+  # Find the maximum widths of each column, with a minimum of the header length
+  set w_name 4
+  set w_value 5
+  set w_radix 5
+  foreach probe $probes {
+    set type [get_property type $probe]
+    set w_name_cur [string length [get_property name $probe]]
+    if {$type == "vio_input"} {
+      set w_value_cur [string length [get_property input_value $probe]]
+      set w_radix_cur [string length [get_property input_value_radix $probe]]
+    } else {
+      set w_value_cur [string length [get_property output_value $probe]]
+      set w_radix_cur [string length [get_property output_value_radix $probe]]
+    }
+      set w_name [expr max($w_name, $w_name_cur)]
+      set w_value [expr max($w_value, $w_value_cur)]
+      set w_radix [expr max($w_radix, $w_radix_cur)]
+    }
+
+  puts "Printing all probes"
+  set sep +-[string repeat - $w_name]-+-[string repeat - $w_value]-+-[string repeat - $w_radix]-+
+  puts $sep
+  puts [format "| %-*s | %-*s | %-*s |" $w_name "Name" $w_value "Value" $w_radix "Radix"]
+  puts $sep
+
+  set input_probes [get_hw_probes -filter {type == vio_input}]
+  foreach input_probe $input_probes {
+    set name [get_property name $input_probe]
+    set value [get_property input_value $input_probe]
+    set radix [get_property input_value_radix $input_probe]
+      puts [format "| %-*s | %*s | %-*s |" $w_name $name $w_value $value $w_radix $radix]
+    }
+  puts $sep
+
+  set output_probes [get_hw_probes -filter {type == vio_output}]
+  foreach output_probe $output_probes {
+    set name [get_property name $output_probe]
+    set value [get_property output_value $output_probe]
+    set radix [get_property output_value_radix $output_probe]
+    puts [format "| %-*s | %*s | %-*s |" $w_name $name $w_value $value $w_radix $radix]
+  }
+  puts $sep
+}
+
 # Open the hardware manager and connect to the hardware server at the given url.
 # Checks whether the expected number of hardware targets or more are connected,
 # if not exit.
@@ -148,8 +197,10 @@ proc run_test_all {probes_file fpga_nrs url} {
     if {$done == 0} {
       global timeout_ms
       puts "\tTest timeout: done flag not set after ${timeout_ms} ms"
+      print_all_vios
     } elseif {$success == 0} {
       puts "\tTest failed"
+      print_all_vios
     } else {
       puts "\tTest passed"
       incr successfull_tests 1
