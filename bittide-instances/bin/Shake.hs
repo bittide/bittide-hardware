@@ -78,7 +78,7 @@ findProjectRoot = goUp =<< getCurrentDirectory
   projectFilename = "cabal.project"
 
 data Target = Target
-  { -- | TemplateHaskell reference to top entity to synthesise
+  { -- | TemplateHaskell reference to top entity to synthesize
     targetName :: TH.Name
 
     -- | Whether target has an associated XDC file in 'data/constraints'. An XDC
@@ -105,7 +105,7 @@ enforceValidTarget :: Target -> Target
 enforceValidTarget target@Target{..}
   | targetHasTest && not targetHasVio =
       error $ show targetName <> " should have set 'targetHasVio', because " <>
-                                 "'targetHasTest' was assserted."
+                                 "'targetHasTest' was asserted."
   | otherwise = target
 
 
