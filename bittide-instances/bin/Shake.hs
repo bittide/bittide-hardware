@@ -265,6 +265,11 @@ main = do
               writeFileChanged path tcl
 
             (postSynthCheckpointPath : synthReportsPaths) |%> \_ -> do
+              -- XXX: Will not re-run if _dependencies_ mentioned in 'manifestPath'
+              --      change. This is only relevant in designs with multiple
+              --      binders with 'Synthesize' pragmas, which we currently do
+              --      not have. Ideally we would parse the manifest file and
+              --      also depend on the dependencies' manifest files, etc.
               need [runSynthTclPath, manifestPath]
               vivadoFromTcl runSynthTclPath
 
