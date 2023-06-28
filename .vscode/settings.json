@@ -32,5 +32,9 @@
   },
   "rust-analyzer.linkedProjects": [
     "firmware/examples/Cargo.toml"
+  ],
+  "cSpell.words": [
+    "bitstream",
+    "Vivado"
   ]
 }
