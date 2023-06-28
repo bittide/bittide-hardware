@@ -187,7 +187,6 @@ main = do
             --       TCL and here, which smells.
             manifestPath = getManifestLocation clashBuildDir targetName
             synthesisDir = vivadoBuildDir </> show targetName
-            falsePathXdc = synthesisDir </> "false_paths.xdc"
             checkpointsDir = synthesisDir </> "checkpoints"
             netlistDir = synthesisDir </> "netlist"
             reportDir = synthesisDir </> "reports"
@@ -241,15 +240,9 @@ main = do
 
               produces [path]
 
-            falsePathXdc %> \path -> do
-              LocatedManifest{lmManifest} <- decodeLocatedManifest manifestPath
-              writeFileChanged path (mkFalsePathXdc lmManifest)
-
             -- Synthesis
             runSynthTclPath %> \path -> do
               constraintFilePath <- liftIO (getConstraintFilePath targetName)
-
-              need [falsePathXdc]
 
               constraints <-
                 if targetHasXdc then do
@@ -261,10 +254,6 @@ main = do
               synthesisPart <- getEnvWithDefault "xcku035-ffva1156-2-e" "SYNTHESIS_PART"
               locatedManifest <- decodeLocatedManifest manifestPath
 
-              -- let
-              --   LocatedManifest{lmManifest=Manifest{topComponent=lib}} = locatedManifest
-              --   falsePathHdlSource = HdlSource XdcSource lib falsePathXdc
-
               tcl <- liftIO $
                 mkSynthesisTcl
                   synthesisDir            -- Output directory for Vivado
@@ -272,7 +261,6 @@ main = do
                   synthesisPart           -- Part we're synthesizing for
                   constraints             -- List of filenames with constraints
                   locatedManifest
-                  -- [falsePathHdlSource]    -- Extra files
 
               writeFileChanged path tcl
 
