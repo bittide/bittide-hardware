@@ -82,3 +82,7 @@ tight_setup_hold_pins.txt
 .github/docker/rust-toolchain.toml
 .github/docker/*.nix
 .github/docker/nix
+
+# Python temporary files
+*.pyc
+__pycache__

@@ -11,17 +11,32 @@ module Clash.Shake.Extra where
 import Prelude
 
 import Clash.Annotations.Primitive (HDL (Verilog))
-import Development.Shake.FilePath ((</>))
 import Data.Char (toLower)
-
-import qualified Language.Haskell.TH.Syntax as TH
-import qualified Language.Haskell.TH.Extra as TH
 import Development.Shake
-import Clash.Shake.Vivado (LocatedManifest (LocatedManifest))
-import Development.Shake.Extra (decodeFile)
+import Development.Shake.FilePath ((</>))
+
+import qualified Crypto.Hash.SHA256 as Sha256
+import qualified Data.ByteString.Base16 as Base16
+import qualified Data.ByteString.Lazy as ByteStringLazy
+import qualified Data.Text.Encoding as Encoding
+import qualified Data.Text as Text
+import qualified Language.Haskell.TH.Extra as TH
+import qualified Language.Haskell.TH.Syntax as TH
 
 hdlToFlag :: HDL -> String
 hdlToFlag = ("--" <>) . map toLower . show
+
+-- | Calculate a SHA256 hex digest of a given file path
+hexDigestFile :: FilePath -> Action String
+hexDigestFile path = do
+  need [path]
+  contents <- liftIO (ByteStringLazy.readFile path)
+  pure
+    $ Text.unpack
+    $ Encoding.decodeUtf8
+    $ Base16.encode
+    $ Sha256.hashlazy
+    $ contents
 
 -- | Generate command to run and arguments to supply for a top entity passed as
 -- a @TemplateHaskell@ name. Generates the expected location of a Clash manifest
@@ -61,6 +76,3 @@ defaultClashCmd buildDir topName = clashCmd buildDir Verilog topName []
 getManifestLocation :: FilePath -> TH.Name -> String
 getManifestLocation buildDir topName =
   buildDir </> show topName </> "clash-manifest.json"
-
-decodeLocatedManifest :: FilePath -> Action LocatedManifest
-decodeLocatedManifest path = LocatedManifest path <$> decodeFile path

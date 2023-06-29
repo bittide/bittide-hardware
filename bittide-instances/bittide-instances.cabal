@@ -8,6 +8,7 @@ maintainer:          devops@qbaylogic.com
 Copyright:           Copyright © 2022-2023 Google LLC
 
 data-files:
+  data/scripts/*.py
   data/constraints/*.xdc
   tests/reports/*.rpt
   tests/reports/golden/*.rpt
@@ -66,14 +67,16 @@ common common-options
   build-depends:
     aeson,
     base,
+    base16-bytestring,
     bittide-extra,
     bittide,
+    bytestring,
     clash-cores,
     clash-lib,
     clash-prelude,
     clash-protocols,
-    elastic-buffer-sim,
     containers,
+    cryptohash-sha256,
     elastic-buffer-sim,
     filepath,
     ghc-typelits-extra,
@@ -82,6 +85,7 @@ common common-options
     Glob,
     MissingH,
     pretty-simple,
+    process,
     shake,
     split,
     string-interpolate,
