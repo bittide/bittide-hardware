@@ -40,10 +40,10 @@ proc print_all_vios {} {
       set w_value_cur [string length [get_property output_value $probe]]
       set w_radix_cur [string length [get_property output_value_radix $probe]]
     }
-      set w_name [expr max($w_name, $w_name_cur)]
-      set w_value [expr max($w_value, $w_value_cur)]
-      set w_radix [expr max($w_radix, $w_radix_cur)]
-    }
+    set w_name [expr max($w_name, $w_name_cur)]
+    set w_value [expr max($w_value, $w_value_cur)]
+    set w_radix [expr max($w_radix, $w_radix_cur)]
+  }
 
   puts "Printing all probes"
   set sep +-[string repeat - $w_name]-+-[string repeat - $w_value]-+-[string repeat - $w_radix]-+
@@ -56,8 +56,8 @@ proc print_all_vios {} {
     set name [get_property name $input_probe]
     set value [get_property input_value $input_probe]
     set radix [get_property input_value_radix $input_probe]
-      puts [format "| %-*s | %*s | %-*s |" $w_name $name $w_value $value $w_radix $radix]
-    }
+    puts [format "| %-*s | %*s | %-*s |" $w_name $name $w_value $value $w_radix $radix]
+  }
   puts $sep
 
   set output_probes [get_hw_probes -filter {type == vio_output}]
@@ -123,33 +123,25 @@ proc program_fpga {program_file probes_file} {
   refresh_hw_device $device
 }
 
-# Test one FPGA and returns as list with two flags: test_done and test_success
-proc run_test {} {
-  # Set the radix of each probe
-  set_property INPUT_VALUE_RADIX BINARY [get_hw_probes probe_test_done]
-  set_property INPUT_VALUE_RADIX BINARY [get_hw_probes probe_test_success]
-  set_property OUTPUT_VALUE_RADIX BINARY [get_hw_probes probe_start_test]
-
+proc run_single_test {start_probe} {
   # Verify that `done` is not set before starting the test
-  set_property OUTPUT_VALUE 0 [get_hw_probes probe_start_test]
+  set_property OUTPUT_VALUE 0 $start_probe
   commit_hw_vio [get_hw_vios hw_vio_1]
   refresh_hw_vio [get_hw_vios hw_vio_1]
-
   set done [get_property INPUT_VALUE [get_hw_probes probe_test_done]]
   if {$done != 0} {
     puts "\tERROR: test is done before starting the test"
+    print_all_vios
     exit 1
   }
 
   # Start the test
-  set_property OUTPUT_VALUE 1 [get_hw_probes probe_start_test]
+  set_property OUTPUT_VALUE 1 $start_probe
   commit_hw_vio [get_hw_vios hw_vio_1]
 
-  # Refresh the input probes until the done flag is set. Retries for up to 1
-  # second.
+  # Refresh the input probes until the done flag is set. Retries for up to
+  # `time_ms` milliseconds.
   set start_time [clock milliseconds]
-  set timestamp [format_time ${start_time}]
-  puts "Start time:\t$timestamp"
   while 1 {
     # Check test status, break if test is done
     refresh_hw_vio [get_hw_vios hw_vio_1]
@@ -167,16 +159,59 @@ proc run_test {} {
       break
     }
   }
-  set current_time [clock milliseconds]
-  set timestamp [format_time ${current_time}]
-  puts "End time:\t$timestamp"
+
+  # Print test results. Prints all VIO probes when a test fails
+  if {$done == 0} {
+    set current_time [clock milliseconds]
+    global timeout_ms
+    puts "\tTest timeout: done flag not set after ${timeout_ms} ms"
+    set timestamp_start [format_time $start_time]
+    puts "\tStarted test: $timestamp_start"
+    set timestamp_end [format_time $current_time]
+    puts "\tEnded test:   $timestamp_end"
+    print_all_vios
+  } elseif {$success == 0} {
+    puts "\tTest failed"
+    print_all_vios
+  } else {
+    puts "\tTest passed"
+  }
+
+  # Reset the start probe for the current test
+  set_property OUTPUT_VALUE 0 $start_probe
+  commit_hw_vio [get_hw_vios hw_vio_1]
+
   return [list $done $success]
+}
+
+# Test one FPGA, where each probe which name starts with 'probe_test_start'
+# indicates one hardware test. Hardware tests are run sequentially.
+proc run_device_tests {} {
+  # Set the radix of each probe
+  set_property INPUT_VALUE_RADIX BINARY [get_hw_probes probe_test_done]
+  set_property INPUT_VALUE_RADIX BINARY [get_hw_probes probe_test_success]
+
+  set start_probes [get_hw_probes probe_test_start*]
+  set successfull_tests 0
+  foreach start_probe $start_probes {
+    set probe_name [get_property name $start_probe]
+    puts "Running test: ${probe_name}"
+    set_property OUTPUT_VALUE_RADIX BINARY $start_probe
+    set res [run_single_test $start_probe]
+    set done [lindex $res 0]
+    set success [lindex $res 1]
+    if {[expr $done == 1] && [expr $success == 1]} {
+      incr successfull_tests 1
+    }
+  }
+  set all_success [expr [llength $start_probes] == $successfull_tests]
+  return $all_success
 }
 
 # Test all FPGAs one-by-one
 proc run_test_all {probes_file fpga_nrs url} {
   global fpga_ids
-  set successfull_tests 0
+  set successful_devices 0
   foreach fpga_nr $fpga_nrs {
     if {$fpga_nr == -1} {
       set device [load_first_device]
@@ -191,25 +226,15 @@ proc run_test_all {probes_file fpga_nrs url} {
     set target [current_hw_target]
     puts "Testing FPGA ${fpga_nr} with target ID ${target}"
 
-    set test_results [run_test]
-    set done [lindex $test_results 0]
-    set success [lindex $test_results 1]
-    if {$done == 0} {
-      global timeout_ms
-      puts "\tTest timeout: done flag not set after ${timeout_ms} ms"
-      print_all_vios
-    } elseif {$success == 0} {
-      puts "\tTest failed"
-      print_all_vios
-    } else {
-      puts "\tTest passed"
-      incr successfull_tests 1
+    set device_test_success [run_device_tests]
+    if {$device_test_success == 1} {
+      incr successful_devices
     }
   }
 
-  set total_tests [llength $fpga_nrs]
-  if {$successfull_tests != $total_tests} {
-    set failed {$total_tests - $successfull_tests}
+  set devices [llength $fpga_nrs]
+  if {$successful_devices != $devices} {
+    set failed [expr {$devices - $successful_devices}]
     puts "Tests failed for ${failed} targets"
     exit 1
   } else {
