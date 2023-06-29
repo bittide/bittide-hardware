@@ -36,6 +36,15 @@ COPY nix /build/nix
 RUN \
   nix-shell -j32 --run "echo OK"
 
+# Vivado hacks / dependencies:
+RUN \
+  apt-get update && \
+  apt-get install language-pack-en-base -y && \
+  locale-gen en_US.UTF-8 && \
+  export LC_ALL=en_US.UTF-8 && \
+  update-locale && \
+  apt-get install libtinfo5 libncurses5 libx11-6 -y
+
 RUN \
   echo '#!/usr/bin/env bash'                                                                 >> /usr/bin/git-nix-shell && \
   echo 'nix-shell "${GITHUB_WORKSPACE}/shell.nix" "${@:2}" --run "bash -euf -o pipefail $1"' >> /usr/bin/git-nix-shell && \
