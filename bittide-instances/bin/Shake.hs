@@ -313,7 +313,7 @@ main = do
               synthesisPart <- getEnvWithDefault "xcku035-ffva1156-2-e" "SYNTHESIS_PART"
               locatedManifest <- decodeLocatedManifest manifestPath
 
-              tcl <- liftIO $
+              tcl <-
                 mkSynthesisTcl
                   synthesisDir            -- Output directory for Vivado
                   False                   -- Out of context run
