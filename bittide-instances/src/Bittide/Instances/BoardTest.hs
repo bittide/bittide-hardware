@@ -2,8 +2,8 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
--- | Checks whether `+` works as expected, though its real purpose is to check
--- whether we can run hardware-in-the-loop tests.
+-- | Checks whether `+` and `-` work as expected, though its real purpose is to
+-- check whether we can run hardware-in-the-loop tests.
 module Bittide.Instances.BoardTest where
 
 import Clash.Explicit.Prelude
@@ -14,7 +14,7 @@ import Clash.Cores.Xilinx.Extra (ibufds)
 
 import Bittide.Instances.Domains
 
-type StartTest = Bool
+type TestStart = Bool
 data TestState = Busy | Done TestSuccess
 data TestSuccess = TestFailed | TestSuccess deriving (Generic, Eq, NFDataX)
 
@@ -63,15 +63,15 @@ simpleHardwareInTheLoopTest ::
 simpleHardwareInTheLoopTest clkP clkN = bundle (testDone, testSuccess)
  where
   clk = ibufds clkP clkN
-  rst = unsafeFromLowPolarity startTest
+  rst = unsafeFromLowPolarity testStart
 
   testState = check clk rst (+) stimuli
   (testDone, testSuccess) = unbundle $ toDoneSuccess <$> testState
 
-  startTest =
+  testStart =
     vioProbe
       ("probe_test_done" :> "probe_test_success" :> Nil)
-      ("probe_start_test" :> Nil)
+      ("probe_test_start" :> Nil)
       False
       clk
       testDone
@@ -86,3 +86,69 @@ simpleHardwareInTheLoopTest clkP clkN = bundle (testDone, testSuccess)
     :> Nil
     )
 makeTopEntity 'simpleHardwareInTheLoopTest
+
+-- | Testing circuit for `plus` and `minus`. Feeds the circuit with inputs and
+-- checks the received output against the expected output.
+extendedHardwareInTheLoopTest ::
+  "CLK_125MHZ_P" ::: Clock Basic125 ->
+  "CLK_125MHZ_N" ::: Clock Basic125 ->
+  "" ::: Signal Basic125
+    ( "done" ::: Bool
+    , "success" ::: Bool
+    )
+extendedHardwareInTheLoopTest clkP clkN = bundle (testDone, testSuccess)
+ where
+  clk = ibufds clkP clkN
+  rstA = unsafeFromLowPolarity testStartA
+  rstB = unsafeFromLowPolarity testStartB
+
+  testStateA = check clk rstA (+) stimuliA
+  (testDoneA, testSuccessA) = unbundle $ toDoneSuccess <$> testStateA
+
+  testStateB = check clk rstB (-) stimuliB
+  (testDoneB, testSuccessB) = unbundle $ toDoneSuccess <$> testStateB
+
+  (testDone, testSuccess) = unbundle $
+    mux
+      testStartA
+      (bundle (testDoneA, testSuccessA))
+      (mux
+        testStartB
+        (bundle (testDoneB, testSuccessB))
+        (pure (False, False))
+      )
+
+
+  (testStartA, testStartB) =
+    unbundle $
+    vioProbe
+      (  "probe_test_done"
+      :> "probe_test_success"
+      :> Nil
+      )
+      (  "probe_test_start_a"
+      :> "probe_test_start_b"
+      :> Nil
+      )
+      (False, False)
+      clk
+      testDone
+      testSuccess
+
+  stimuliA :: Vec 4 (Unsigned 8, Unsigned 8, Unsigned 8)
+  stimuliA = (
+       (  0,   0,   0)
+    :> (  1,   2,   3)
+    :> (255,   0, 255)
+    :> (255,   1,   0)
+    :> Nil
+    )
+  stimuliB :: Vec 4 (Unsigned 8, Unsigned 8, Unsigned 8)
+  stimuliB = (
+       (  0,   0,   0)
+    :> (  3,   2,   1)
+    :> (255,   0, 255)
+    :> (  0,   1, 255)
+    :> Nil
+    )
+makeTopEntity 'extendedHardwareInTheLoopTest

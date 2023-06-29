@@ -117,6 +117,11 @@ targets = map enforceValidTarget
     , targetHasVio = True
     , targetHasTest = True
     }
+  , (defTarget 'BoardTest.extendedHardwareInTheLoopTest)
+    { targetHasXdc = True
+    , targetHasVio = True
+    , targetHasTest = True
+    }
   , defTarget 'Calendar.switchCalendar1k
   , defTarget 'Calendar.switchCalendar1kReducedPins
   , defTarget 'ClockControl.callisto3

@@ -1,4 +1,5 @@
 [
-  {"top": "clockControlDemo0",           "stage": "bitstream"},
-  {"top": "simpleHardwareInTheLoopTest", "stage": "test"}
+  {"top": "clockControlDemo0",             "stage": "bitstream"},
+  {"top": "simpleHardwareInTheLoopTest",   "stage": "test"},
+  {"top": "extendedHardwareInTheLoopTest", "stage": "test"}
 ]
