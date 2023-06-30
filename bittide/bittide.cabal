@@ -93,10 +93,12 @@ library
     directory,
     elf,
     exceptions,
+    mtl,
     process,
     random,
     string-interpolate ^>= 0.3,
     template-haskell,
+    text,
   exposed-modules:
     Bittide.Arithmetic.Ppm
     Bittide.Arithmetic.Time
@@ -121,6 +123,7 @@ library
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Switch
+    Bittide.Transceiver
     Bittide.Wishbone
     Clash.Cores.Extra
     Clash.Cores.UART.Extra
@@ -129,6 +132,9 @@ library
     Data.Constraint.Nat.Extra
     System.IO.Temp.Extra
   other-modules:
+    Clash.Cores.Xilinx.GTH
+    Clash.Cores.Xilinx.GTH.BlackBoxes
+    Clash.Cores.Xilinx.GTH.Internal
     Paths_bittide
 
 executable clash
