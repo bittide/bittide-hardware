@@ -21,7 +21,9 @@ The build system automatically generates _false path_ constraints for all input 
 
 ## Prerequisites
 * We have tested the build system with Vivado 2022.1
-* To change the part for which the instances are synthesized, set the environment variable `SYNTHESIS_PART`. For the part we've bought use `SYNTHESIS_PART=xcku040-ffva1156-2-e`. Note that for this part you need to use Vivado Enterprise.
+* To change the part for which the instances are synthesized, set either environment variable `SYNTHESIS_BOARD` or `SYNTHESIS_PART`.
+  * For the part we've bought use either `SYNTHESIS_BOARD=xilinx.com:kcu105:part0:1.7` or `SYNTHESIS_PART=xcku040-ffva1156-2-e`. Note that for this board/part you need to use Vivado Enterprise.
+  * If neither is set, instances are synthesized for `SYNTHESIS_PART=xcku035-ffva1156-2-e`, which is the smaller cousing of the FPGA we've bought, but which comes with a free license.
 * Only targets which have the flag `targetHasXdc` can be used to generate a bitstream. This XDC file must have the same name as the instance, and be located in the `data/constraints/` directory.
 * For targets which have the flag `targetHasVio`, a probes file is generated alongside the bitstream.
 * Only targets which have the flag `targetHasTest` can be used to perform hardware tests.
