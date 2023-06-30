@@ -635,7 +635,8 @@ jobs:
         # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
         shell: git-nix-shell {0}
     env:
-      SYNTHESIS_PART: xcku040-ffva1156-2-e
+      SYNTHESIS_BOARD: xilinx.com:kcu105:part0:1.7
+      # SYNTHESIS_PART: xcku040-ffva1156-2-e
       # SYNTHESIS_PART: xcku035-ffva1156-2-e
     needs: [build, lint, bittide-instances-hdl-matrix]
 

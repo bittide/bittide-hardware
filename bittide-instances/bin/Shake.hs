@@ -210,6 +210,20 @@ vivadoFromTcl tclPath =
     "vivado"
     ["-mode", "batch", "-source", tclPath]
 
+-- | Constructs a 'BoardPart' based on environment variables @SYNTHESIS_BOARD@
+-- or @SYNTHESIS_PART@. Errors if both are set, returns a default (free) part
+-- if neither is set.
+getBoardPart :: Action BoardPart
+getBoardPart = do
+  boardName <- getEnv "SYNTHESIS_BOARD"
+  partName <- getEnv "SYNTHESIS_PART"
+  case (boardName, partName) of
+    (Just b,  Nothing) -> pure $ Board b
+    (Nothing, Just p)  -> pure $ Part p
+    (Nothing, Nothing) -> pure $ Part "xcku035-ffva1156-2-e"
+    (Just _b,  Just _p)  ->
+      error "Both 'SYNTHESIS_BOARD' and 'SYNTHESIS_PART' are set, unset either and retry"
+
 -- | Defines a Shake build executable for calling Vivado. Like Make, in Shake
 -- you define rules that explain how to build a certain file. For example:
 --
@@ -315,7 +329,7 @@ main = do
                 else
                   pure []
 
-              synthesisPart <- getEnvWithDefault "xcku035-ffva1156-2-e" "SYNTHESIS_PART"
+              synthesisPart <- getBoardPart
               locatedManifest <- decodeLocatedManifest manifestPath
 
               tcl <-
