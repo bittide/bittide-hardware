@@ -68,7 +68,7 @@ import GHC.TypeLits.Witnesses ((%<=?))
 import GHC.TypeLits.Witnesses qualified as TLW (SNat(..))
 
 import Graphics.Matplotlib
-  (Matplotlib, (%), (@@), file, plot, xlabel, ylabel, o1, o2, mp)
+  (Matplotlib, (%), (@@), file, plot, xlabel, ylabel, o1, o2, mp, legend)
 
 import Bittide.Simulate (Offset)
 import Bittide.Domain (Bittide, defBittideClockConfig)
@@ -388,14 +388,26 @@ simulateTopology ccc graph = do
     . simulationEntity graph ccc o
 
   plotTopology =
-    uncurry (matplotWrite dir) . V.unzip . V.map plotDats
+    uncurry (matplotWrite dir) . V.unzip . V.imap plotDats
 
-  plotDats =
+  plotDats i =
       bimap
-        (uncurry plot . unzip)
-        (foldPlots . fmap plotEbData . transpose)
+        ( (% legend)
+        . (@@ [o2 "label" $ fromEnum i])
+        . uncurry plot
+        . unzip
+        )
+        ( foldPlots
+        . fmap (withLegend i)
+        . zip (filter (hasEdge graph i) [0,1..])
+        . fmap plotEbData
+        . transpose
+        )
     . unzip
     . fmap (\(a,b,c,d) -> ((a,b), ((a,c),) <$> d))
+
+  withLegend i (j, p) =
+    (p @@ [o2 "label" $ show i <> " ← " <> show j]) % legend
 
   givenClockOffsets =
       V.unsafeFromList
@@ -421,7 +433,7 @@ simulateTopology ccc graph = do
 
   filename i = dir </> "clocks" <> "_" <> show i <> ".csv"
   flatten (a, b, _, v) = toField a : toField b : (toField . fst <$> v)
-  (0, n) = bounds $ unboundGraph $ graph
+  (0, n) = bounds $ unboundGraph graph
 
 data Marking = Waiting | Stable | Settled | None deriving (Eq)
 
@@ -481,17 +493,15 @@ matplotWrite ::
   -- ^ elastic buffer plots
   IO ()
 matplotWrite dir clockDats ebDats = do
-  void $
-    file
-      ( dir </> "clocks" <> ".pdf")
-      ( xlabel "Time (fs)"
-      % ylabel "Relative period (fs) [0 = ideal frequency]"
-      % foldPlots (V.toList clockDats)
-      )
-  void $
-    file
-      ( dir </> "elasticbuffers" <> ".pdf")
-      (xlabel "Time (fs)" % foldPlots (V.toList ebDats))
+  void $ file (dir </> "clocks" <> ".pdf")
+    ( xlabel "Time (fs)"
+    % ylabel "Relative period (fs) [0 = ideal frequency]"
+    % foldPlots (V.toList clockDats)
+    )
+  void $ file (dir </> "elasticbuffers" <> ".pdf")
+    ( xlabel "Time (fs)"
+    % foldPlots (V.toList ebDats)
+    )
 
 -- | Folds multiple plots together
 foldPlots :: [Matplotlib] -> Matplotlib
