@@ -1,0 +1,17 @@
+[Unit]
+Description=Vivado Hardware Server
+After=network.target
+Before=actions.runner.bittide-bittide-hardware.hoeve-1.service
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -c "source /opt/tools/Xilinx/VivadoEnterprise/Vivado/2022.1/settings64.sh && hw_server"
+Restart=always
+User=graaf
+# XXX: We actually want to run the hw_server as another user. However, it seems
+#      like that user currently does not have hardware access. We did add the
+#      user to the dialout group, but this did not solve the problem. For the
+#      time being, we run the hw_server as user graaf.
+
+[Install]
+WantedBy=multi-user.target
