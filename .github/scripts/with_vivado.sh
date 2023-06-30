@@ -12,8 +12,5 @@ source /opt/tools/Xilinx/VivadoEnterprise/Vivado/2022.1/settings64.sh
 # Work around https://support.xilinx.com/s/question/0D52E000079NURRSA4/synthesis-failed-abnormal-termination-tcmalloc-large-allocation?language=en_US
 export LD_PRELOAD=/lib/x86_64-linux-gnu/libudev.so.1
 
-# Vivado insists on using en_US.UTF-8
-export LC_ALL=en_US.UTF-8
-
 # Run command given as argument
 $@

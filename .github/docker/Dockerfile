@@ -25,7 +25,8 @@ RUN \
 ENV \
   NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
   MANPATH="/root/.nix-profile/share/man:$MANPATH" \
-  PATH="/root/.nix-profile/bin:$PATH"
+  PATH="/root/.nix-profile/bin:$PATH" \
+  LC_ALL=en_US.UTF-8
 
 WORKDIR /build
 COPY rust-toolchain.toml rust-toolchain.toml
@@ -41,7 +42,6 @@ RUN \
   apt-get update && \
   apt-get install language-pack-en-base -y && \
   locale-gen en_US.UTF-8 && \
-  export LC_ALL=en_US.UTF-8 && \
   update-locale && \
   apt-get install libtinfo5 libncurses5 libx11-6 -y
 
