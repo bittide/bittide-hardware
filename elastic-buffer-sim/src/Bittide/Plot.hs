@@ -68,7 +68,7 @@ import GHC.TypeLits.Witnesses ((%<=?))
 import GHC.TypeLits.Witnesses qualified as TLW (SNat(..))
 
 import Graphics.Matplotlib
-  (Matplotlib, (%), (@@), file, plot, xlabel, ylabel, o1, o2, mp)
+  (Matplotlib, (%), (@@), file, plot, xlabel, ylabel, o1, o2, mp, legend)
 
 import Bittide.Simulate (Offset)
 import Bittide.Domain (Bittide, defBittideClockConfig)
@@ -107,17 +107,19 @@ instance FromJSON OutputMode where
 
 data SimulationSettings =
   SimulationSettings
-    { margin     :: Int
-    , framesize  :: Int
-    , samples    :: Int
-    , periodsize :: Int
-    , reframe    :: Bool
-    , waittime   :: Int
-    , mode       :: OutputMode
-    , dir        :: FilePath
-    , stopStable :: Maybe Int
-    , fixOffsets :: [Int64]
-    , save       :: G.Graph -> [Int64] -> Maybe Bool -> IO ()
+    { margin       :: Int
+    , framesize    :: Int
+    , samples      :: Int
+    , periodsize   :: Int
+    , reframe      :: Bool
+    , waittime     :: Int
+    , mode         :: OutputMode
+    , dir          :: FilePath
+    , stopStable   :: Maybe Int
+    , fixClockOffs :: [Int64]
+    , fixStartOffs :: [Int]
+    , maxStartOff  :: Int
+    , save         :: G.Graph -> [Int64] -> [Int] -> Maybe Bool -> IO ()
     }
 
 plotDiamond :: (?settings :: SimulationSettings) => IO Bool
@@ -346,12 +348,18 @@ simulateTopology ::
   IO Bool
   -- ^ stability result
 simulateTopology ccc graph = do
-  offsets <- V.zipWith (maybe id const) givenOffsets <$> genOffs ccc
+  clockOffsets <-
+    V.zipWith (maybe id const) givenClockOffsets
+      <$> genClockOffsets ccc
+  startupOffsets <-
+    V.zipWith (maybe id const) givenStartupOffsets
+      <$> genStartupOffsets maxStartOff
   let
-    simResult = sim offsets
+    simResult = sim clockOffsets startupOffsets
     saveSettings =
       save (unboundGraph graph)
-        $ (\(Femtoseconds x) -> x) <$> V.toList offsets
+        ((\(Femtoseconds x) -> x) <$> V.toList clockOffsets)
+        (V.toList startupOffsets)
 
   saveSettings Nothing
 
@@ -369,28 +377,47 @@ simulateTopology ccc graph = do
     , mode
     , dir
     , stopStable
-    , fixOffsets
+    , fixClockOffs
+    , fixStartOffs
+    , maxStartOff
     , save
     } = ?settings
 
-  sim =
+  sim o =
    simulate graph stopStable samples periodsize
-    . simulationEntity graph ccc
+    . simulationEntity graph ccc o
 
   plotTopology =
-    uncurry (matplotWrite dir) . V.unzip . V.map plotDats
+    uncurry (matplotWrite dir) . V.unzip . V.imap plotDats
 
-  plotDats =
+  plotDats i =
       bimap
-        (uncurry plot . unzip)
-        (foldPlots . fmap plotEbData . transpose)
+        ( (% legend)
+        . (@@ [o2 "label" $ fromEnum i])
+        . uncurry plot
+        . unzip
+        )
+        ( foldPlots
+        . fmap (withLegend i)
+        . zip (filter (hasEdge graph i) [0,1..])
+        . fmap plotEbData
+        . transpose
+        )
     . unzip
     . fmap (\(a,b,c,d) -> ((a,b), ((a,c),) <$> d))
 
-  givenOffsets =
+  withLegend i (j, p) =
+    (p @@ [o2 "label" $ show i <> " ← " <> show j]) % legend
+
+  givenClockOffsets =
       V.unsafeFromList
     $ take (natToNum @nodes)
-    $ (Just . Femtoseconds <$> fixOffsets) <> repeat Nothing
+    $ (Just . Femtoseconds <$> fixClockOffs) <> repeat Nothing
+
+  givenStartupOffsets =
+      V.unsafeFromList
+    $ take (natToNum @nodes)
+    $ (Just <$> fixStartOffs) <> repeat Nothing
 
   dumpCsv simulationResult = do
     forM_ [0..n] $ \i -> do
@@ -406,7 +433,7 @@ simulateTopology ccc graph = do
 
   filename i = dir </> "clocks" <> "_" <> show i <> ".csv"
   flatten (a, b, _, v) = toField a : toField b : (toField . fst <$> v)
-  (0, n) = bounds $ unboundGraph $ graph
+  (0, n) = bounds $ unboundGraph graph
 
 data Marking = Waiting | Stable | Settled | None deriving (Eq)
 
@@ -466,40 +493,38 @@ matplotWrite ::
   -- ^ elastic buffer plots
   IO ()
 matplotWrite dir clockDats ebDats = do
-  void $
-    file
-      ( dir </> "clocks" <> ".pdf")
-      ( xlabel "Time (fs)"
-      % ylabel "Relative period (fs) [0 = ideal frequency]"
-      % foldPlots (V.toList clockDats)
-      )
-  void $
-    file
-      ( dir </> "elasticbuffers" <> ".pdf")
-      (xlabel "Time (fs)" % foldPlots (V.toList ebDats))
+  void $ file (dir </> "clocks" <> ".pdf")
+    ( xlabel "Time (fs)"
+    % ylabel "Relative period (fs) [0 = ideal frequency]"
+    % foldPlots (V.toList clockDats)
+    )
+  void $ file (dir </> "elasticbuffers" <> ".pdf")
+    ( xlabel "Time (fs)"
+    % foldPlots (V.toList ebDats)
+    )
 
 -- | Folds multiple plots together
 foldPlots :: [Matplotlib] -> Matplotlib
 foldPlots = foldl' (%) mp
 
--- | Generates a vector of random offsets.
-genOffs ::
+-- | Generates a vector of random clock offsets.
+genClockOffsets ::
+  forall dom k n m c.
   (KnownDomain dom, KnownNat k, KnownNat n) =>
   ClockControlConfig dom n m c ->
   IO (V.Vec k Offset)
-genOffs = V.traverse# genOffsets . V.replicate SNat
+genClockOffsets ClockControlConfig{cccDeviation} =
+  V.traverse# (const genOffset) $ V.repeat ()
+ where
+  genOffset = do
+    Ppm offsetPpm <- randomRIO (-cccDeviation, cccDeviation)
+    let nonZeroOffsetPpm = if offsetPpm == 0 then cccDeviation else Ppm offsetPpm
+    pure (diffPeriod nonZeroOffsetPpm (clockPeriodFs @dom Proxy))
 
--- | Randomly generate an 'Offset', how much a real clock's period may
--- differ from its spec.
-genOffsets ::
-  forall dom n m c.
-  KnownDomain dom =>
-  ClockControlConfig dom n m c ->
-  IO Offset
-genOffsets ClockControlConfig{cccDeviation} = do
-  Ppm offsetPpm <- randomRIO (-cccDeviation, cccDeviation)
-  let nonZeroOffsetPpm = if offsetPpm == 0 then cccDeviation else Ppm offsetPpm
-  pure (diffPeriod nonZeroOffsetPpm (clockPeriodFs @dom Proxy))
+-- | Generates a vector of random startup offsets.
+genStartupOffsets :: KnownNat k => Int -> IO (V.Vec k Int)
+genStartupOffsets limit =
+  V.traverse# (const ((+1) <$> randomRIO (0, limit))) $ V.repeat ()
 
 someNat :: Int -> Maybe SomeNat
 someNat = someNatVal . toInteger

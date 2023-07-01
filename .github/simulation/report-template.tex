@@ -20,7 +20,8 @@
 
 \newcommand{\printlua}[1]{\luaexec{tex.sprint(#1)}}
 \newcommand{\printtype}[1]{\luaexec{if #1 == "dotfile" then tex.sprint("random") else tex.sprint(#1) end}}
-\newcommand{\printoffsets}[1]{\luaexec{tex.sprint(table.concat(#1, "\\,\\textit{fs}, "))}\,\textit{fs}}
+\newcommand{\printclockoffsets}[1]{\luaexec{tex.sprint(table.concat(#1, "\\,\\textit{fs}, "))}\,\textit{fs}}
+\newcommand{\printstartupoffsets}[1]{\luaexec{tex.sprint(table.concat(#1, ", "))}}
 \newcommand{\printbool}[1]{\luaexec{if #1 then tex.sprint("\\textcolor{green!50!black}{\\ding{51}}") else tex.sprint("\\textcolor{red!50!black}{\\ding{55}}") end}}
 \newcommand{\printnumber}[1]{\printlua{string.format("\%d", #1)}}
 \newcommand{\printafter}[1]{\luaexec{if #1 ~= nil then tex.sprint(string.format("\%d", #1) .. " steps") else tex.sprint("not used") end}}
@@ -42,7 +43,7 @@
 \ \vspace{3em}
 
 \begin{center}
-  \begin{tikzpicture}[overlay, xshift=0.25\textwidth]
+  \begin{tikzpicture}[overlay, xshift=0.30\textwidth]
     \node {\resizebox{!}{10em}{\input{topology.tikz}}};
   \end{tikzpicture}
 \end{center}
@@ -61,6 +62,10 @@
       & \textpm\,\printnumber{data['stabilityMargin']} elements \\
     when stable, automatically stop after:
       & \printafter{data['stopAfterStable']}                    \\
+    clock offsets:
+      & \printclockoffsets{data['clockOffsets']}                \\
+    startup offsets (\# clock cycles):
+      & \printstartupoffsets{data['startupOffsets']}            \\
     stable at the end of simulation:
       & \printbool{data['stable']}                              \\
   \end{tabular}
@@ -69,7 +74,6 @@
 \vfill
 
 \begin{center}
-  clock offsets: \printoffsets{data['offsets']}
   \begin{tikzpicture}
     \node (clocks) at (0,0) {
       \includegraphics[width=.5\textwidth]{clocks.pdf}

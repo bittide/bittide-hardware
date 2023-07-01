@@ -414,7 +414,9 @@ data Options =
     , waitTime           :: Int
     , stopWhenStable     :: Bool
     , stopAfterStable    :: Maybe Int
-    , offsets            :: [Int64]
+    , clockOffsets       :: [Int64]
+    , startupOffsets     :: [Int]
+    , maxStartupOffset   :: Int
     , outDir             :: FilePath
     , jsonArgs           :: Maybe FilePath
     , stable             :: Maybe Bool
@@ -504,12 +506,35 @@ optionParser =
               )
           )
     <*> option auto
-          (  long "offsets"
+          (  long "clock-offsets"
           <> short 't'
           <> metavar "NUM LIST"
           <> value []
           <> showDefault
-          <> help "Initital clock offsets (randomly generated if missing"
+          <> help "Initital clock offsets (randomly generated if missing)"
+          )
+    <*> option auto
+          (  long "startup-offsets"
+          <> short 'T'
+          <> metavar "NUM LIST"
+          <> value []
+          <> showDefault
+          <> help (  "Initital startup offsets, i.e, the number of clock cycles "
+                  <> "to wait before a node gets started (according to the "
+                  <> "node's individual clock, randomly generated if missing)"
+                  )
+
+          )
+    <*> option auto
+          (  long "max-startup-offset"
+          <> short 'u'
+          <> metavar "NUM"
+          <> value 0
+          <> showDefault
+          <> help
+               (  "Maximal number of clock cycles the startup of a node may be "
+               <> "delayed (bounds the randomly generated offsets)"
+               )
           )
     <*> strOption
           (  long "output-directory"
@@ -553,13 +578,14 @@ main = do
           Just o  -> return o { jsonArgs }
 
   let
-    safeToFile name g offs isStable = do
+    safeToFile name g clockOffs startOffs isStable = do
       createDirectoryIfMissing True outDir
       let topologyFile = outDir </> "topology.gv"
       writeFile topologyFile $ (<> "\n") $ render $ toDot g name
       BS.writeFile (outDir </> "simulate.json") $ encode options
         { stable   = isStable
-        , offsets  = offs
+        , clockOffsets = clockOffs
+        , startupOffsets = startOffs
         , jsonArgs = Nothing
         , topology = case topology of
             Just (Random _) -> Just $ DotFile topologyFile
@@ -568,20 +594,22 @@ main = do
 
     settings =
       SimulationSettings
-        { margin     = stabilityMargin
-        , framesize  = stabilityFrameSize
-        , samples    = simulationSamples
-        , periodsize = simulationSteps `quot` simulationSamples
-        , reframe    = not disableReframing
-        , waittime   = waitTime
-        , mode       = outMode
-        , dir        = outDir
-        , stopStable =
+        { margin       = stabilityMargin
+        , framesize    = stabilityFrameSize
+        , samples      = simulationSamples
+        , periodsize   = simulationSteps `quot` simulationSamples
+        , reframe      = not disableReframing
+        , waittime     = waitTime
+        , mode         = outMode
+        , dir          = outDir
+        , stopStable   =
             if stopWhenStable
             then Just 0
             else (`quot` simulationSamples) <$> stopAfterStable
-        , fixOffsets = offsets
-        , save       = \_ _ _ -> return ()
+        , fixClockOffs = clockOffsets
+        , fixStartOffs = startupOffsets
+        , maxStartOff  = maxStartupOffset
+        , save         = \_ _ _ _ -> return ()
         }
 
   isStable <- case topology of

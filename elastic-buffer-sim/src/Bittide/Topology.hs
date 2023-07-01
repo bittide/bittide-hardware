@@ -24,7 +24,7 @@ import Clash.Signal.Internal
 
 import Data.Maybe (catMaybes)
 import Data.Proxy (Proxy(..))
-import Data.List qualified as L (take, drop)
+import Data.List qualified as L (take, drop, repeat, replicate)
 
 import Bittide.Simulate
 import Bittide.ClockControl
@@ -71,6 +71,8 @@ simulationEntity ::
   -- ^ clock control configuration
   Vec nodes Offset ->
   -- ^ initial clock offsets
+  Vec nodes Int ->
+  -- ^ initial startup offsets
   Signal dom
     ( Vec nodes
         ( Period
@@ -82,7 +84,7 @@ simulationEntity ::
         )
     )
   -- ^ simulation entity
-simulationEntity topology ccc !offsets =
+simulationEntity topology ccc !clockOffsets !startupOffsets =
   bundle
   $ zipWith3 (\x y z -> bundle (x, y, z))
       clkSignals
@@ -92,6 +94,10 @@ simulationEntity topology ccc !offsets =
           (bundle <$> ebs)
           (fmap stability <$> callistoResults)
  where
+  -- node specific resets according to the startup offsets
+  rsts :: Vec nodes (Reset dom)
+  !rsts = resetGenN' <$> startupOffsets
+
   -- elastic buffers
   ebs :: Vec nodes (Vec nodes (Signal dom (DataCount dcount)))
   !ebs = imap ebv clocks
@@ -101,22 +107,22 @@ simulationEntity topology ccc !offsets =
     | otherwise            = pure 0
 
   -- clock generators
-  !clocks = clock <$> offsets <*> (fmap speedChange <$> callistoResults)
-  clock offset =
+  !clocks = clock <$> clockOffsets <*> rsts <*> (fmap speedChange <$> callistoResults)
+  clock offset rst =
     tunableClockGen
       (cccSettlePeriod ccc)
       offset
       (cccStepSize ccc)
-      resetGen
+      rst
 
   -- clock controls
   callistoResults :: Vec nodes (Signal dom (CallistoResult nodes))
   !callistoResults =
-     clockControl <$> clocks <*> masks <*> ebs
-  clockControl clk =
+     clockControl <$> clocks <*> rsts <*> masks <*> ebs
+  clockControl clk rst =
     callistoClockControl
       clk
-      resetGen
+      rst
       enableGen
       ccc
     . pure
@@ -130,6 +136,11 @@ simulationEntity topology ccc !offsets =
   !masks = nVec (v2bv . nVec . avail)
   avail x y = if hasEdge topology x y then high else low
   nVec = flip map indicesI
+
+  -- value level version of 'Clash.Signal.Internal.resetGenN' without
+  -- a the need for a blackbox
+  resetGenN' n = unsafeFromHighPolarity $
+    fromList (L.replicate n True <> L.repeat False)
 
 -- | Simulates some topology simulation entity.
 simulate ::

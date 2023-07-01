@@ -187,17 +187,19 @@ jobs:
             --output-mode pdf \
             --steps ${{ matrix.target.steps }} \
             --samples 1000 \
+            --max-startup-offset 2000 \
             --stop-after-stable ${{ matrix.target.steps }} \
             ${{ matrix.target.topology }} ${{ matrix.target.args }}
 
       - name: Generate report
         if: always()
         run: |
+          sed -i -e "s/n\([0-9]*\)/\1/g" _build/topology.gv
           dot2tex \
             -f tikz \
             --figonly \
             --progoptions "-K neato" \
-            --nodeoptions "every node/.style={fill, text opacity=0,minimum size=1.5em,inner sep=0pt,text width=0pt}" \
+            --nodeoptions "every node/.style={fill,text=white,font=\Large\tt,minimum size=2em,inner sep=0pt}" \
             --edgeoptions "line width=0.3em" \
             _build/topology.gv > _build/topology.tikz
           cp .github/simulation/report-template.tex _build/report.tex
