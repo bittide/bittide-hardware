@@ -68,7 +68,9 @@ import GHC.TypeLits.Witnesses ((%<=?))
 import GHC.TypeLits.Witnesses qualified as TLW (SNat(..))
 
 import Graphics.Matplotlib
-  (Matplotlib, (%), (@@), file, plot, xlabel, ylabel, o1, o2, mp, legend)
+  ( Matplotlib, (%), (@@)
+  , file, plot, xlabel, ylabel, o1, o2, mp, legend, axes, figure
+  )
 
 import Bittide.Simulate (Offset)
 import Bittide.Domain (Bittide, defBittideClockConfig)
@@ -392,13 +394,15 @@ simulateTopology ccc graph = do
 
   plotDats i =
       bimap
-        ( (% legend)
+        ( withLegend
         . (@@ [o2 "label" $ fromEnum i])
         . uncurry plot
         . unzip
         )
         ( foldPlots
-        . fmap (withLegend i)
+        . fmap (\(j, p) -> withLegend
+                   (p @@ [o2 "label" $ show i <> " ← " <> show j])
+               )
         . zip (filter (hasEdge graph i) [0,1..])
         . fmap plotEbData
         . transpose
@@ -406,8 +410,11 @@ simulateTopology ccc graph = do
     . unzip
     . fmap (\(a,b,c,d) -> ((a,b), ((a,c),) <$> d))
 
-  withLegend i (j, p) =
-    (p @@ [o2 "label" $ show i <> " ← " <> show j]) % legend
+  withLegend =
+    ( @@ [ o2 "bbox_to_anchor" (1.01 :: Double, 1 :: Double)
+         , o2 "loc" "upper left"
+         ]
+    ) . (% legend)
 
   givenClockOffsets =
       V.unsafeFromList
@@ -493,15 +500,18 @@ matplotWrite ::
   -- ^ elastic buffer plots
   IO ()
 matplotWrite dir clockDats ebDats = do
-  void $ file (dir </> "clocks" <> ".pdf")
+  void $ file (dir </> "clocks" <> ".pdf") $ constrained
     ( xlabel "Time (fs)"
     % ylabel "Relative period (fs) [0 = ideal frequency]"
     % foldPlots (V.toList clockDats)
     )
-  void $ file (dir </> "elasticbuffers" <> ".pdf")
+  void $ file (dir </> "elasticbuffers" <> ".pdf") $ constrained
     ( xlabel "Time (fs)"
     % foldPlots (V.toList ebDats)
     )
+ where
+  constrained =
+    ((figure @@ [o2 "layout" "constrained"] % axes) %)
 
 -- | Folds multiple plots together
 foldPlots :: [Matplotlib] -> Matplotlib
