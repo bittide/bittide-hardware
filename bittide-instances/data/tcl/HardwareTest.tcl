@@ -192,6 +192,11 @@ proc run_device_tests {} {
     set_property INPUT_VALUE_RADIX BINARY [get_hw_probes probe_test_success]
 
     set start_probes [get_hw_probes probe_test_start*]
+    if {[expr [llength start_probes] == 0]} {
+        puts "No probes found with name 'probe_test_start*', which are needed to start tests"
+        exit 1
+    }
+
     set successfull_tests 0
     foreach start_probe $start_probes {
         set probe_name [get_property name $start_probe]
