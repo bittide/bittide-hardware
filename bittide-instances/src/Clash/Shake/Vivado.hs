@@ -102,18 +102,24 @@ mkBaseTcl outputDir LocatedManifest{lmPath} boardPart = do
     file mkdir {#{outputDir </> "ip"}}
     clash::readMetadata {#{topEntityDir}}
 
-    create_project -in_memory
-    #{boardPartTcl}
-    set ips [clash::createIp -dir {#{outputDir </> "ip"}}]
-    set ipFiles [get_property IP_FILE [get_ips $ips]]
-    close_project
+    set hasIp [expr [llength [clash::GetAllTclIfaces {purposes createIp}]] > 0]
+
+    if {${hasIp}} {
+      create_project -in_memory
+      #{boardPartTcl}
+      set ips [clash::createIp -dir {#{outputDir </> "ip"}}]
+      set ipFiles [get_property IP_FILE [get_ips $ips]]
+      close_project
+    }
 
     clash::readHdl
-
     #{boardPartTcl}
-    read_ip $ipFiles
-    set_property GENERATE_SYNTH_CHECKPOINT false [get_files $ipFiles]
-    generate_target {synthesis simulation} [get_ips $ips]
+
+    if {${hasIp}} {
+      read_ip $ipFiles
+      set_property GENERATE_SYNTH_CHECKPOINT false [get_files $ipFiles]
+      generate_target {synthesis simulation} [get_ips $ips]
+    }
 
     clash::readXdc {early normal late}
     set_property TOP $clash::topEntity [current_fileset]
