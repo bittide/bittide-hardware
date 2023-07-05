@@ -33,7 +33,7 @@ import Development.Shake.Extra (decodeFile)
 
 import Clash.DataFiles (tclConnector)
 import Clash.Driver.Manifest
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, intercalate)
 import Data.String.Interpolate (__i)
 import System.FilePath ((</>), dropFileName)
 
@@ -253,10 +253,14 @@ mkProbesGenTcl outputDir = [__i|
 -- | Convert HardwareTargets to a Tcl list of target FPGAs. To be used in
 -- combination with `fpga_ids` in `HardwareTest.tcl`
 toTclTarget :: HardwareTargets -> String
-toTclTarget hwTargets = case hwTargets of
-  FirstOfAny -> "[list -1]"
-  FirstOfKnown -> "[list 0]"
-  All -> "{0 1 2 3 4 5 6 7}"
+toTclTarget hwTargets =
+  let
+    listToTcl :: [Int] -> String
+    listToTcl xs = "[list " <> (intercalate " " $ map show xs) <> "]"
+  in case hwTargets of
+    OneAny -> listToTcl []
+    Specific xs -> listToTcl $ map (`mod` 8) xs
+    All -> listToTcl [0..7]
 
 mkBoardProgramTcl ::
   -- | Directory where the bitstream file are located
@@ -292,7 +296,7 @@ mkBoardProgramTcl outputDir hwTargets url hasProbesFile = do
     set expected_targets [llength $fpga_nrs]
     connect_expected_targets ${url} ${expected_targets}
 
-    if {[lindex $fpga_nrs 0] == -1} {
+    if {[expr [llength $fpga_nrs] == 0]} {
       set device [load_first_device]
       program_fpga ${program_file} ${probes_file}
     } else {
