@@ -11,9 +11,11 @@ name: CI
 #      commits.
 on:
   schedule:
-    # UTC midnight. See the comment at 'branches-ignore' for more information on
-    # our development flow. This job will run in context of the branch 'staging'.
-    - cron:  '0 0 * * *'
+    # Works out to be approx midnight (CET/CEST) accounting for UTC offset and
+    # GitHub scheduling. See the comment at 'branches-ignore' for more
+    # information on our development flow. This job will run in context of the
+    # branch 'staging'.
+    - cron:  '0 19 * * *'
 
   push:
       branches-ignore:
