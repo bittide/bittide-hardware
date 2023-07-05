@@ -15,7 +15,13 @@ set fpga_ids {
     210308B0B0C2
 }
 
-set timeout_ms 1000
+# Timeout specifying how long we should wait for a test to finish before
+# considering it a failed test.
+set test_timeout_ms 1000
+
+# Timeout specifying how long to wait for hardware targets (FPGAs) to become
+# available in the hardware server.
+set hw_server_timeout_ms 5000
 
 proc get_part_name {url id} {
     return ${url}/xilinx_tcf/Digilent/${id}
@@ -77,16 +83,33 @@ proc connect_expected_targets {url expected} {
     open_hw_manager
     connect_hw_server -url $url
 
-    after 1000 refresh_hw_server
+  set start_time [clock milliseconds]
+  set i 0
+  while 1 {
+    # Check is expected number of hardware targets are connected
     set hw_targets [get_hw_targets -quiet]
     set hw_target_count [llength $hw_targets]
-    if {$hw_target_count < $expected} {
-        puts "Expected $expected hardware targets, but found $hw_target_count:"
-        puts "$hw_targets"
-        exit 1
+    if {$hw_target_count >= $expected} {
+      puts "Hardware server at ${url} hosts ${hw_target_count} hardware targets:"
+      puts "$hw_targets"
+      break
     }
-    puts "Hardware server at ${url} hosts ${hw_target_count} hardware targets:"
-    puts "$hw_targets"
+
+    # Timeout if test takes longer than `hw_server_timeout_ms`
+    global hw_server_timeout_ms
+    set current_time [clock milliseconds]
+    set time_spent [expr {$current_time - $start_time}]
+    if {${time_spent} > ${hw_server_timeout_ms}} {
+      puts "Expected $expected hardware targets, but found $hw_target_count:"
+      puts "$hw_targets"
+      exit 1
+    }
+
+    puts "i=${i} : Found ${hw_target_count} out of expected ${expected} hardware targets"
+    incr i 1
+    after 500
+    refresh_hw_server
+  }
 }
 
 # Set the first board found as the current hardware target and return its device
@@ -152,30 +175,30 @@ proc run_single_test {start_probe} {
         }
 
         # Timeout if test takes longer than `time_ms`
-        global timeout_ms
+        global test_timeout_ms
         set current_time [clock milliseconds]
         set time_spent [expr {$current_time - $start_time}]
-        if {${time_spent} > ${timeout_ms}} {
+        if {${time_spent} > ${test_timeout_ms}} {
             break
         }
     }
 
-    # Print test results. Prints all VIO probes when a test fails
-    if {$done == 0} {
-        set current_time [clock milliseconds]
-        global timeout_ms
-        puts "\tTest timeout: done flag not set after ${timeout_ms} ms"
-        set timestamp_start [format_time $start_time]
-        puts "\tStarted test: $timestamp_start"
-        set timestamp_end [format_time $current_time]
-        puts "\tEnded test:     $timestamp_end"
-        print_all_vios
-    } elseif {$success == 0} {
-        puts "\tTest failed"
-        print_all_vios
-    } else {
-        puts "\tTest passed"
-    }
+  # Print test results. Prints all VIO probes when a test fails
+  if {$done == 0} {
+    set current_time [clock milliseconds]
+    global test_timeout_ms
+    puts "\tTest timeout: done flag not set after ${test_timeout_ms} ms"
+    set timestamp_start [format_time $start_time]
+    puts "\tStarted test: $timestamp_start"
+    set timestamp_end [format_time $current_time]
+    puts "\tEnded test:   $timestamp_end"
+    print_all_vios
+  } elseif {$success == 0} {
+    puts "\tTest failed"
+    print_all_vios
+  } else {
+    puts "\tTest passed"
+  }
 
     # Reset the start probe for the current test
     set_property OUTPUT_VALUE 0 $start_probe
