@@ -235,6 +235,7 @@ mkBitstreamTcl outputDir = [__i|
     open_checkpoint {#{outputDir </> "checkpoints" </> "post_netlist.dcp"}}
 
     \# Generate bitstream
+    set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]
     write_bitstream -force {#{outputDir </> "bitstream.bit"}}
 |]
 
