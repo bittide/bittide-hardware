@@ -111,6 +111,9 @@ library
     Bittide.Instances.StabilityChecker
     Bittide.Instances.Synchronizer
 
+    -- Hardware-in-the-loop tests
+    Bittide.Instances.Tests.FincFdec
+
     Clash.Shake.Extra
     Clash.Shake.Flags
     Clash.Shake.Vivado

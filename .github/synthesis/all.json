@@ -1,18 +1,21 @@
 [
   {"top": "callisto3",                     "stage": "netlist"},
-  {"top": "counterReducedPins",            "stage": "netlist"},
   {"top": "clockControlDemo0",             "stage": "bitstream"},
   {"top": "clockControlDemo1",             "stage": "bitstream"},
+  {"top": "counterReducedPins",            "stage": "netlist"},
   {"top": "elasticBuffer5",                "stage": "netlist"},
   {"top": "extendedHardwareInTheLoopTest", "stage": "test"},
-  {"top": "gatherUnit1K",                  "stage": "hdl"    },
+  {"top": "gatherUnit1K",                  "stage": "hdl"},
   {"top": "gatherUnit1KReducedPins",       "stage": "netlist"},
-  {"top": "simpleHardwareInTheLoopTest",   "stage": "test"},
   {"top": "safeDffSynchronizer",           "stage": "netlist"},
-  {"top": "scatterUnit1K",                 "stage": "hdl"    },
+  {"top": "scatterUnit1K",                 "stage": "hdl"},
   {"top": "scatterUnit1KReducedPins",      "stage": "netlist"},
   {"top": "si5391Spi",                     "stage": "netlist"},
   {"top": "stabilityChecker_3_1M",         "stage": "netlist"},
-  {"top": "switchCalendar1k",              "stage": "hdl"    },
-  {"top": "switchCalendar1kReducedPins",   "stage": "netlist"}
+  {"top": "switchCalendar1k",              "stage": "hdl"},
+  {"top": "switchCalendar1kReducedPins",   "stage": "netlist"},
+
+  {"top": "extendedHardwareInTheLoopTest", "stage": "test",   "targets": "All"          },
+  {"top": "fincFdecTests",                 "stage": "test",   "targets": "Specific [-1]"},
+  {"top": "simpleHardwareInTheLoopTest",   "stage": "test",   "targets": "All"          }
 ]

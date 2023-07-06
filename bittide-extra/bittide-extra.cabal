@@ -75,6 +75,8 @@ library
   exposed-modules:
     Bittide.Extra.Maybe
     Bittide.Extra.Wishbone
+    Clash.Reset.Extra
+    Clash.Sized.Vector.Extra
 
 test-suite doctests
   type:             exitcode-stdio-1.0
