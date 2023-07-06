@@ -134,6 +134,7 @@ executable shake
     , clash-ghc
     , clash-lib
     , cryptohash-sha256
+    , deepseq
     , directory
     , extra
     , Glob
