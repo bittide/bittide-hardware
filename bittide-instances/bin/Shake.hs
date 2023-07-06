@@ -93,6 +93,7 @@ ignorePatterns =
 
   -- Used for synthesis, but not for generating Clash output:
   , "bittide-instances/data/constraints/*.xdc"
+  , "bittide-instances/data/tcl/*.tcl"
   ]
 
 -- | Given Cabal project root, determine build directory
