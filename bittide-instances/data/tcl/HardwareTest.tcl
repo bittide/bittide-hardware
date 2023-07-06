@@ -240,6 +240,9 @@ proc run_device_tests {} {
 proc run_test_all {probes_file fpga_nrs url} {
     global fpga_ids
     set successful_devices 0
+    if {[expr [llength $fpga_nrs] == 0]} {
+        set fpga_nrs [list -1]
+    }
     foreach fpga_nr $fpga_nrs {
         if {$fpga_nr == -1} {
             set device [load_first_device]
