@@ -9,6 +9,7 @@ module Main where
 
 import Prelude
 
+import Control.Applicative (liftA2)
 import Control.Monad.Extra (ifM, unlessM, when)
 import Data.Foldable (for_)
 import Development.Shake
@@ -225,6 +226,27 @@ getBoardPart = do
     (Just _b,  Just _p)  ->
       error "Both 'SYNTHESIS_BOARD' and 'SYNTHESIS_PART' are set, unset either and retry"
 
+-- | Inspect DRC and timing report. Throw an error if suspicious strings were
+-- found.
+meetsDrcOrError :: FilePath -> FilePath -> FilePath -> IO ()
+meetsDrcOrError methodologyPath summaryPath checkpointPath =
+  unlessM
+    (liftA2 (&&) (meetsTiming methodologyPath) (meetsTiming summaryPath))
+    (error [I.i|
+      Design did not meet design rule checks (DRC). Check out the timing summary at:
+
+        #{summaryPath}
+
+      Check out the methodology report at:
+
+        #{methodologyPath}
+
+      You can investigate interactively by opening the latest checkpoint with Vivado:
+
+        vivado #{checkpointPath}
+
+    |])
+
 -- | Defines a Shake build executable for calling Vivado. Like Make, in Shake
 -- you define rules that explain how to build a certain file. For example:
 --
@@ -288,6 +310,7 @@ main = do
             bitstreamPath = synthesisDir </> "bitstream.bit"
             probesPath = synthesisDir </> "probes.ltx"
 
+            postRouteMethodologyPath = reportDir </> "post_route_methodology.rpt"
             postRouteTimingSummaryPath = reportDir </> "post_route_timing_summary.rpt"
             postRouteTimingPath = reportDir </> "post_route_timing.rpt"
 
@@ -296,9 +319,10 @@ main = do
             routeReportsPaths =
               [ reportDir </> "post_route_clock_util.rpt"
               , reportDir </> "post_route_drc.rpt"
+              , reportDir </> "post_route_methodology.rpt"
               , reportDir </> "post_route_power.rpt"
-              , reportDir </> "post_route_timing.rpt"
               , reportDir </> "post_route_timing_summary.rpt"
+              , reportDir </> "post_route_timing.rpt"
               , reportDir </> "post_route_util.rpt"
               ]
 
@@ -367,6 +391,28 @@ main = do
             (postRouteCheckpointPath : routeReportsPaths) |%> \_ -> do
               need [runRouteTclPath, postPlaceCheckpointPath]
               vivadoFromTcl runRouteTclPath
+
+              -- Design should meet design rule checks (DRC).
+              liftIO $ unlessM
+                ( liftA2
+                    (&&)
+                    (meetsTiming postRouteMethodologyPath)
+                    (meetsTiming postRouteTimingSummaryPath)
+                )
+                (error [I.i|
+                  Design did not meet design rule checks (DRC). Check out the timing summary at:
+
+                    #{postRouteTimingSummaryPath}
+
+                  Check out the methodology report at:
+
+                    #{postRouteMethodologyPath}
+
+                  You can investigate interactively by opening the latest checkpoint with Vivado:
+
+                    vivado #{postRouteCheckpointPath}
+
+                |])
 
               -- Design should meet timing post routing. Note that this is not a
               -- requirement after synthesis as many of the optimizations only follow

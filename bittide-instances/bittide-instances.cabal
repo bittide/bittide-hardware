@@ -78,6 +78,7 @@ common common-options
     containers,
     cryptohash-sha256,
     elastic-buffer-sim,
+    extra,
     filepath,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
