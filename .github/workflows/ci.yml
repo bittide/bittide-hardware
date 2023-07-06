@@ -721,7 +721,7 @@ jobs:
       - name: Archive build artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: _build
+          name: _build-${{ matrix.target.top }}
           # We don't pack `ip`, as it is generally useless for debugging while
           # also taking up a lot of space.
           path: |
@@ -754,7 +754,7 @@ jobs:
 
       - uses: actions/download-artifact@v3
         with:
-          name: _build
+          name: _build-${{ matrix.target.top }}
           path: _build
 
       - name: Run tests on hardware
