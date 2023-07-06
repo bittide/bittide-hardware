@@ -78,6 +78,7 @@ common common-options
     containers,
     cryptohash-sha256,
     elastic-buffer-sim,
+    extra,
     filepath,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
@@ -133,6 +134,7 @@ executable shake
     , clash-ghc
     , clash-lib
     , cryptohash-sha256
+    , deepseq
     , directory
     , extra
     , Glob

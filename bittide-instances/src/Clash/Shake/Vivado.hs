@@ -24,6 +24,7 @@ module Clash.Shake.Vivado
   , mkBoardProgramTcl
   , mkHardwareTestTcl
   , meetsTiming
+  , meetsDrc
   ) where
 
 import Prelude
@@ -31,6 +32,7 @@ import Prelude
 import Development.Shake
 import Development.Shake.Extra (decodeFile)
 
+import Control.Monad.Extra (andM, orM)
 import Clash.DataFiles (tclConnector)
 import Clash.Driver.Manifest
 import Data.List (isInfixOf, intercalate)
@@ -42,11 +44,30 @@ import Clash.Shake.Flags (HardwareTargets(..))
 
 import Paths_bittide_instances
 
+-- | Satisfied if all actions result in 'False'
+noneM :: Monad m => [m Bool] -> m Bool
+noneM = fmap not . orM
+
+-- | Whether a string occurs in a file
+inFile :: String -> FilePath -> IO Bool
+inFile msg path = do
+  content <- readFile path
+  pure $ (msg `isInfixOf` content)
+
+-- | Read a timing summary or DRC report and determine whether it passed DRC
+-- checks.
+meetsDrc :: FilePath -> IO Bool
+meetsDrc path = noneM
+  [ inFile "No report available as report_methodology has not been run prior." path
+  , inFile "Critical Warning" path
+  ]
+
 -- | Read a timing summary and determine whether it met timing.
 meetsTiming :: FilePath -> IO Bool
-meetsTiming reportPath = do
-  reportContents <- readFile reportPath
-  pure $ not ("Timing constraints are not met." `isInfixOf` reportContents)
+meetsTiming path = andM
+  [ meetsDrc path -- for safety; users should use meetDrc for useful error reporting
+  , fmap not $ inFile "Timing constraints are not met" path
+  ]
 
 -- TODO: Upstream
 data LocatedManifest = LocatedManifest
@@ -151,6 +172,7 @@ mkSynthesisTcl outputDir outOfContext boardPart constraints manifest@LocatedMani
 
     \# Synthesis
     synth_design -name #{name} -mode #{outOfContextStr}
+    report_methodology -file {#{outputDir </> "reports" </> "post_synth_methodology.rpt"}}
     report_timing_summary -file {#{outputDir </> "reports" </> "post_synth_timing_summary.rpt"}}
     report_utilization -file {#{outputDir </> "reports" </> "post_synth_util.rpt"}}
     write_checkpoint -force {#{outputDir </> "checkpoints" </> "post_synth.dcp"}}
@@ -191,6 +213,7 @@ mkPlaceTcl outputDir = [__i|
     place_design
     phys_opt_design
     write_checkpoint -force {#{outputDir </> "checkpoints" </> "post_place.dcp"}}
+    report_methodology -file {#{outputDir </> "reports" </> "post_place_methodology.rpt"}}
     report_timing_summary -file {#{outputDir </> "reports" </> "post_place_timing_summary.rpt"}}
 |]
 
@@ -204,6 +227,7 @@ mkRouteTcl outputDir = [__i|
     \# Routing
     route_design
     write_checkpoint -force {#{outputDir </> "checkpoints" </> "post_route.dcp"}}
+    report_methodology -file {#{outputDir </> "reports" </> "post_route_methodology.rpt"}}
     report_timing_summary -file {#{outputDir </> "reports" </> "post_route_timing_summary.rpt"}}
     report_timing -sort_by group -max_paths 100 -path_type summary -file {#{outputDir </> "reports" </> "post_route_timing.rpt"}}
 

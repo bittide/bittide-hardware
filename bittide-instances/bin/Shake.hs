@@ -9,14 +9,17 @@ module Main where
 
 import Prelude
 
+import Control.Applicative (liftA2)
+import Control.DeepSeq (force)
 import Control.Monad.Extra (ifM, unlessM, when)
 import Data.Foldable (for_)
+import Data.List (isPrefixOf, isInfixOf)
 import Development.Shake
 import GHC.Stack (HasCallStack)
 import Language.Haskell.TH (nameBase)
 import System.Console.ANSI (setSGR)
 import System.Directory (getCurrentDirectory, setCurrentDirectory)
-import System.FilePath (isDrive, (</>), takeDirectory)
+import System.FilePath (isDrive, (</>), takeDirectory, replaceFileName)
 import System.Process (readProcess)
 
 import Paths_bittide_instances
@@ -69,6 +72,44 @@ In the future we might be more precise in our source discovery process.
   handle this case in Shake either.
 -}
 
+-- | "Negative clock pins" used to work around:
+--
+--   https://github.com/clash-lang/clash-compiler/issues/2518
+--
+-- List obtained by scanning our board's XDC file:
+--
+-- @
+-- grep -i -E '(clk|clock)' KCU105_Rev1.0_02292016.xdc | grep -o -i -E '".*_n"' | sort | uniq
+-- @
+--
+negativeClocks :: [String]
+negativeClocks =
+  [ "CLK_125MHZ_N"
+  , "FMC_HPC_CLK0_M2C_N"
+  , "FMC_HPC_CLK1_M2C_N"
+  , "FMC_HPC_GBTCLK0_M2C_C_N"
+  , "FMC_HPC_GBTCLK1_M2C_C_N"
+  , "FMC_LPC_CLK0_M2C_N"
+  , "FMC_LPC_CLK1_M2C_N"
+  , "FMC_LPC_GBTCLK0_M2C_C_N"
+  , "MGT_SI570_CLOCK_C_N"
+  , "PCIE_CLK_QO_N"
+  , "REC_CLOCK_C_N"
+  , "SGMIICLK_N"
+  , "SMA_MGT_REFCLK_C_N"
+  , "SYSCLK_300_N"
+  , "USER_SI570_CLOCK_N"
+  , "USER_SMA_CLOCK_N"
+  ]
+
+-- | Does this line (from an XDC file) create a clock from 'negativeClocks'?
+isNegativeCreateClock :: String -> Bool
+isNegativeCreateClock line =
+  "create_clock" `isPrefixOf` line && containsNegativeClock
+ where
+  containsNegativeClock = or [nm `isInfixOf` line | nm <- tclNegativeClocks]
+  tclNegativeClocks = ["{" <> nm <> "}" | nm <- negativeClocks]
+
 -- | Get all files whose changes will trigger an HDL rebuild. Because we lack a
 -- reliable way to determine which files should trigger a rebuild, this function
 -- returns a (very) pessimistic list: all files in the project's directory,
@@ -93,6 +134,7 @@ ignorePatterns =
 
   -- Used for synthesis, but not for generating Clash output:
   , "bittide-instances/data/constraints/*.xdc"
+  , "bittide-instances/data/tcl/*.tcl"
   ]
 
 -- | Given Cabal project root, determine build directory
@@ -199,7 +241,7 @@ shakeOpts :: ShakeOptions
 shakeOpts = shakeOptions
   { shakeFiles = buildDir
   , shakeChange = ChangeDigest
-  , shakeVersion = "6"
+  , shakeVersion = "7"
   }
 
 -- | Run Vivado on given TCL script
@@ -223,6 +265,27 @@ getBoardPart = do
     (Nothing, Nothing) -> pure $ Part "xcku035-ffva1156-2-e"
     (Just _b,  Just _p)  ->
       error "Both 'SYNTHESIS_BOARD' and 'SYNTHESIS_PART' are set, unset either and retry"
+
+-- | Inspect DRC and timing report. Throw an error if suspicious strings were
+-- found.
+meetsDrcOrError :: FilePath -> FilePath -> FilePath -> IO ()
+meetsDrcOrError methodologyPath summaryPath checkpointPath =
+  unlessM
+    (liftA2 (&&) (meetsTiming methodologyPath) (meetsTiming summaryPath))
+    (error [I.i|
+      Design did not meet design rule checks (DRC). Check out the timing summary at:
+
+        #{summaryPath}
+
+      Check out the methodology report at:
+
+        #{methodologyPath}
+
+      You can investigate interactively by opening the latest checkpoint with Vivado:
+
+        vivado #{checkpointPath}
+
+    |])
 
 -- | Defines a Shake build executable for calling Vivado. Like Make, in Shake
 -- you define rules that explain how to build a certain file. For example:
@@ -261,6 +324,7 @@ main = do
             -- TODO: Dehardcode these paths. They're currently hardcoded in both the
             --       TCL and here, which smells.
             manifestPath = getManifestLocation clashBuildDir targetName
+            clashSdcPath = replaceFileName manifestPath (nameBase targetName <> ".sdc")
             synthesisDir = vivadoBuildDir </> show targetName
             checkpointsDir = synthesisDir </> "checkpoints"
             netlistDir = synthesisDir </> "netlist"
@@ -287,6 +351,7 @@ main = do
             bitstreamPath = synthesisDir </> "bitstream.bit"
             probesPath = synthesisDir </> "probes.ltx"
 
+            postRouteMethodologyPath = reportDir </> "post_route_methodology.rpt"
             postRouteTimingSummaryPath = reportDir </> "post_route_timing_summary.rpt"
             postRouteTimingPath = reportDir </> "post_route_timing.rpt"
 
@@ -295,9 +360,10 @@ main = do
             routeReportsPaths =
               [ reportDir </> "post_route_clock_util.rpt"
               , reportDir </> "post_route_drc.rpt"
+              , reportDir </> "post_route_methodology.rpt"
               , reportDir </> "post_route_power.rpt"
-              , reportDir </> "post_route_timing.rpt"
               , reportDir </> "post_route_timing_summary.rpt"
+              , reportDir </> "post_route_timing.rpt"
               , reportDir </> "post_route_util.rpt"
               ]
 
@@ -315,6 +381,11 @@ main = do
               -- Clash messes up ANSI escape codes, leaving the rest of the terminal
               -- printed in bold text. Reset manually:
               liftIO (setSGR [])
+
+              -- XXX: Workaround https://github.com/clash-lang/clash-compiler/issues/2518
+              sdc0 <- liftIO (force . lines <$> readFile clashSdcPath)
+              let sdc1 = filter (not . isNegativeCreateClock) sdc0
+              writeFileChanged clashSdcPath (unlines sdc1)
 
               produces [path]
 
@@ -366,6 +437,28 @@ main = do
             (postRouteCheckpointPath : routeReportsPaths) |%> \_ -> do
               need [runRouteTclPath, postPlaceCheckpointPath]
               vivadoFromTcl runRouteTclPath
+
+              -- Design should meet design rule checks (DRC).
+              liftIO $ unlessM
+                ( liftA2
+                    (&&)
+                    (meetsTiming postRouteMethodologyPath)
+                    (meetsTiming postRouteTimingSummaryPath)
+                )
+                (error [I.i|
+                  Design did not meet design rule checks (DRC). Check out the timing summary at:
+
+                    #{postRouteTimingSummaryPath}
+
+                  Check out the methodology report at:
+
+                    #{postRouteMethodologyPath}
+
+                  You can investigate interactively by opening the latest checkpoint with Vivado:
+
+                    vivado #{postRouteCheckpointPath}
+
+                |])
 
               -- Design should meet timing post routing. Note that this is not a
               -- requirement after synthesis as many of the optimizations only follow
