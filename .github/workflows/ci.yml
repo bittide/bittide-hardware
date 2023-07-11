@@ -659,6 +659,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: Extract branch name
+        shell: bash
+        run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+        id: extract_branch
+
       - name: Set CI flags
         run: |
           # We use the same flags as the 'build' step to reuse caches. This
@@ -674,7 +679,7 @@ jobs:
           cabal update
           cabal freeze
 
-      - name: Cache
+      - name: Cache Cabal store
         uses: actions/cache@v3
         with:
           path: |
@@ -683,6 +688,17 @@ jobs:
           key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
+
+      - name: Cache Shake build directory
+        uses: actions/cache@v3
+        with:
+          path: |
+            _build
+
+          key: shake-build-cachebust-3-${{ matrix.target.top }}-${{ steps.extract_branch.outputs.branch }}-${{ github.sha }}
+          restore-keys: |
+            shake-build-cachebust-3-${{ matrix.target.top }}-${{ steps.extract_branch.outputs.branch }}-
+            shake-build-cachebust-3-${{ matrix.target.top }}-
 
       - name: HDL generation and synthesis
         run : |
