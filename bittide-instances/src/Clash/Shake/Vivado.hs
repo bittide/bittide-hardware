@@ -317,19 +317,15 @@ mkBoardProgramTcl outputDir hwTargets url hasProbesFile = do
     set url {#{url}}
     #{probesTcl}
 
-    set expected_targets [llength $fpga_nrs]
-    connect_expected_targets ${url} ${expected_targets}
+    open_hw_manager
+    connect_hw_server -url $url
+    set target_dict [get_target_dict ${url} ${fpga_nrs}]
+    has_expected_targets ${url} ${target_dict}
 
-    if {[expr [llength $fpga_nrs] == 0]} {
-      set device [load_first_device]
+    dict for {target_nr target_id} $target_dict {
+      set target_name [get_part_name $url $target_id]
+      set device [load_target_device $target_name]
       program_fpga ${program_file} ${probes_file}
-    } else {
-      foreach fpga_nr $fpga_nrs {
-        set target_id [lindex $fpga_ids $fpga_nr]
-        set target_name [get_part_name $url $target_id]
-        set device [load_target_device $target_name]
-        program_fpga ${program_file} ${probes_file}
-      }
     }
   |]
 
@@ -353,8 +349,10 @@ mkHardwareTestTcl outputDir hwTargets url = do
     set probes_file {#{outputDir </> "probes.ltx"}}
     set url {#{url}}
 
-    set expected_targets [llength $fpga_nrs]
-    connect_expected_targets ${url} ${expected_targets}
+    open_hw_manager
+    connect_hw_server -url $url
+    set target_dict [get_target_dict ${url} ${fpga_nrs}]
+    has_expected_targets ${url} ${target_dict}
 
-    run_test_all $probes_file $fpga_nrs $url
+    run_test_group $probes_file $target_dict $url
   |]
