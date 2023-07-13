@@ -27,6 +27,28 @@ proc get_part_name {url id} {
     return ${url}/xilinx_tcf/Digilent/${id}
 }
 
+# Creates an ordered dictionary which maps indices of FPGAs in the demo rack to
+# their respecive FPGA IDs. If an empty list of fpga_nrs is given, the FPGA ID
+# of the first hardware target is given (this can be any FPGA).
+proc get_target_dict {url fpga_nrs} {
+    global fpga_ids
+    set target_dict [dict create]
+    if {[expr [llength $fpga_nrs] == 0]} {
+        set fpga_nrs [list -1]
+    }
+    foreach fpga_nr $fpga_nrs {
+        if {$fpga_nr == -1} {
+            set target_name [lindex [get_hw_targets] 0]
+            set target_id [lindex [split $target_name /] 3]
+        } else {
+            set target_id [lindex $fpga_ids $fpga_nr]
+        }
+        dict set target_dict $fpga_nr $target_id
+    }
+    return $target_dict
+}
+
+
 # Prints all VIOs in the radix they are set. A current hardware device must be
 # set before calling this function.
 proc print_all_vios {} {
@@ -76,52 +98,61 @@ proc print_all_vios {} {
     puts $sep
 }
 
-# Open the hardware manager and connect to the hardware server at the given url.
-# Checks whether the expected number of hardware targets or more are connected,
-# if not exit.
-proc connect_expected_targets {url expected} {
-    open_hw_manager
-    connect_hw_server -url $url
-
-  set start_time [clock milliseconds]
-  set i 0
-  while 1 {
-    # Check is expected number of hardware targets are connected
-    set hw_targets [get_hw_targets -quiet]
-    set hw_target_count [llength $hw_targets]
-    if {$hw_target_count >= $expected} {
-      puts "Hardware server at ${url} hosts ${hw_target_count} hardware targets:"
-      puts "$hw_targets"
-      break
+# Checks if lista is a subset of listb. Note that this function is O(n^2), and
+# should not be used for big lists.
+proc is_subset_of {lista listb} {
+    foreach elem $lista {
+        if {[lsearch -exact $listb $elem] == -1} {
+            return 0
+        }
     }
-
-    # Timeout if test takes longer than `hw_server_timeout_ms`
-    global hw_server_timeout_ms
-    set current_time [clock milliseconds]
-    set time_spent [expr {$current_time - $start_time}]
-    if {${time_spent} > ${hw_server_timeout_ms}} {
-      puts "Expected $expected hardware targets, but found $hw_target_count:"
-      puts "$hw_targets"
-      exit 1
-    }
-
-    puts "i=${i} : Found ${hw_target_count} out of expected ${expected} hardware targets"
-    incr i 1
-    after 500
-    refresh_hw_server
-  }
+    return 1
 }
 
-# Set the first board found as the current hardware target and return its device
-proc load_first_device {} {
-    set target [lindex [get_hw_targets] 0]
-    return [load_target_device $target]
+# Checks whether the expected hardware targets are connected, if not exit.
+proc has_expected_targets {url expected_target_dict} {
+    set expected_names {}
+    dict for {nr id} $expected_target_dict {
+        lappend expected_names [get_part_name $url $id]
+    }
+    set expected_count [llength [dict values $expected_target_dict]]
+
+    set start_time [clock milliseconds]
+    set i 0
+    while 1 {
+        # Check if expected hardware targets are connected
+        set hw_targets [get_hw_targets -quiet]
+        set all_connected [is_subset_of $expected_names $hw_targets]
+        set hw_target_count [llength $hw_targets]
+        if {$all_connected} {
+            puts "Hardware server at ${url} hosts ${hw_target_count} hardware targets:"
+            puts "$hw_targets"
+            break
+        }
+
+        # Timeout if test takes longer than `hw_server_timeout_ms`
+        global hw_server_timeout_ms
+        set current_time [clock milliseconds]
+        set time_spent [expr {$current_time - $start_time}]
+        if {${time_spent} > ${hw_server_timeout_ms}} {
+            puts "Expected $expected_count hardware targets, but found $hw_target_count:"
+            puts "$hw_targets"
+            exit 1
+        }
+
+        puts "i=${i} : Found ${hw_target_count} out of expected ${expected_count} hardware targets"
+        incr i
+        after 500
+        refresh_hw_server
+    }
 }
 
 # Set the target board as the current hardware target and return its device
 proc load_target_device {target_name} {
-    close_hw_target
-    current_hw_target [get_hw_targets $target_name]
+    if {[expr {$target_name != [get_property NAME [current_hw_target]]}]} {
+        close_hw_target
+        current_hw_target [get_hw_targets $target_name]
+    }
     open_hw_target [current_hw_target]
     current_hw_device [lindex [get_hw_devices] 0]
     set device [current_hw_device]
@@ -131,9 +162,9 @@ proc load_target_device {target_name} {
 # Format a time given in millseconds to a human-readable string
 proc format_time {time_ms} {
     return [format "%s.%03d" \
-                     [clock format [expr {$time_ms / 1000}] -format %T] \
-                     [expr {$time_ms % 1000}] \
-                 ]
+                    [clock format [expr {$time_ms / 1000}] -format %T] \
+                    [expr {$time_ms % 1000}] \
+           ]
 }
 
 # Program the current hardware device with the given program and probes file.
@@ -146,8 +177,8 @@ proc program_fpga {program_file probes_file} {
     refresh_hw_device $device
 }
 
-proc run_single_test {start_probe} {
-    # Verify that `done` is not set before starting the test
+# Verify that `done` is not set before starting the test
+proc verify_before_start {start_probe} {
     set_property OUTPUT_VALUE 0 $start_probe
     commit_hw_vio [get_hw_vios hw_vio_1]
     refresh_hw_vio [get_hw_vios hw_vio_1]
@@ -157,13 +188,11 @@ proc run_single_test {start_probe} {
         print_all_vios
         exit 1
     }
+}
 
-    # Start the test
-    set_property OUTPUT_VALUE 1 $start_probe
-    commit_hw_vio [get_hw_vios hw_vio_1]
-
-    # Refresh the input probes until the done flag is set. Retries for up to
-    # `time_ms` milliseconds.
+# Refresh the input probes until the done flag is set. Retries for up to
+# `test_timeout_ms` milliseconds.
+proc wait_test_end {} {
     set start_time [clock milliseconds]
     while 1 {
         # Check test status, break if test is done
@@ -174,7 +203,7 @@ proc run_single_test {start_probe} {
             break
         }
 
-        # Timeout if test takes longer than `time_ms`
+        # Timeout if test takes longer than `test_timeout_ms`
         global test_timeout_ms
         set current_time [clock milliseconds]
         set time_spent [expr {$current_time - $start_time}]
@@ -182,94 +211,123 @@ proc run_single_test {start_probe} {
             break
         }
     }
-
-  # Print test results. Prints all VIO probes when a test fails
-  if {$done == 0} {
-    set current_time [clock milliseconds]
-    global test_timeout_ms
-    puts "\tTest timeout: done flag not set after ${test_timeout_ms} ms"
-    set timestamp_start [format_time $start_time]
-    puts "\tStarted test: $timestamp_start"
-    set timestamp_end [format_time $current_time]
-    puts "\tEnded test:   $timestamp_end"
-    print_all_vios
-  } elseif {$success == 0} {
-    puts "\tTest failed"
-    print_all_vios
-  } else {
-    puts "\tTest passed"
-  }
-
-    # Reset the start probe for the current test
-    set_property OUTPUT_VALUE 0 $start_probe
-    commit_hw_vio [get_hw_vios hw_vio_1]
-
-    return [list $done $success]
+    set end_time [clock milliseconds]
+    return [list $done $success $start_time $end_time]
 }
 
-# Test one FPGA, where each probe which name starts with 'probe_test_start'
-# indicates one hardware test. Hardware tests are run sequentially.
-proc run_device_tests {} {
-    # Set the radix of each probe
-    set_property INPUT_VALUE_RADIX BINARY [get_hw_probes probe_test_done]
-    set_property INPUT_VALUE_RADIX BINARY [get_hw_probes probe_test_success]
+# Print test results. Prints all VIO probes when a test fails
+proc print_test_results {done success start_time end_time} {
+    if {$done == 0} {
+        global test_timeout_ms
+        puts "\tTest timeout: done flag not set after ${test_timeout_ms} ms"
+        set timestamp_start [format_time $start_time]
+        puts "\tStarted test: $timestamp_start"
+        set timestamp_end [format_time $end_time]
+        puts "\tEnded test:   $timestamp_end"
+        print_all_vios
+    } elseif {$success == 0} {
+        puts "\tTest failed"
+        print_all_vios
+    } else {
+        puts "\tTest passed"
+    }
+}
+
+# Gets the names of probes which start with 'probe_test_start'
+proc get_test_names {probes_file target_dict url} {
+    # Load the device of the first target
+    set target_id [lindex [dict values $target_dict] 0]
+    set target_name [get_part_name $url $target_id]
+    set device [load_target_device $target_name]
+
+    set_property PROBES.FILE ${probes_file} $device
+    refresh_hw_device $device
 
     set start_probes [get_hw_probes probe_test_start*]
     if {[expr [llength start_probes] == 0]} {
         puts "No probes found with name 'probe_test_start*', which are needed to start tests"
         exit 1
     }
-
-    set successfull_tests 0
+    set start_probe_names {}
     foreach start_probe $start_probes {
-        set probe_name [get_property name $start_probe]
-        puts "Running test: ${probe_name}"
-        set_property OUTPUT_VALUE_RADIX BINARY $start_probe
-        set res [run_single_test $start_probe]
-        set done [lindex $res 0]
-        set success [lindex $res 1]
-        if {[expr $done == 1] && [expr $success == 1]} {
-            incr successfull_tests 1
-        }
+        lappend start_probe_names [get_property NAME $start_probe]
     }
-    set all_success [expr [llength $start_probes] == $successfull_tests]
-    return $all_success
+    return $start_probe_names
 }
 
-# Test all FPGAs one-by-one
-proc run_test_all {probes_file fpga_nrs url} {
-    global fpga_ids
-    set successful_devices 0
-    if {[expr [llength $fpga_nrs] == 0]} {
-        set fpga_nrs [list -1]
-    }
-    foreach fpga_nr $fpga_nrs {
-        if {$fpga_nr == -1} {
-            set device [load_first_device]
-        } else {
-            set target_id [lindex $fpga_ids $fpga_nr]
-            set target_name [get_part_name $url $target_id]
-            set device [load_target_device $target_name]
-        }
+proc run_test_group {probes_file target_dict url} {
+    set successful_tests 0
 
-        set_property PROBES.FILE ${probes_file} $device
-        refresh_hw_device $device
-        set target [current_hw_target]
-        puts "Testing FPGA ${fpga_nr} with target ID ${target}"
+    set target_count [llength [dict values $target_dict]]
+    set start_probe_names [get_test_names $probes_file $target_dict $url]
+    set test_count [llength $start_probe_names]
 
-        set device_test_success [run_device_tests]
-        if {$device_test_success == 1} {
-            incr successful_devices
-        }
+    puts "\nFound ${test_count} tests:"
+    foreach start_probe_name $start_probe_names {
+        puts "${start_probe_name}"
     }
 
-    set devices [llength $fpga_nrs]
-    if {$successful_devices != $devices} {
-        set failed [expr {$devices - $successful_devices}]
-        puts "Tests failed for ${failed} targets"
-        exit 1
-    } else {
-        puts "Test passed for all targets"
+    foreach start_probe_name $start_probe_names {
+        set successful_targets 0
+        puts "\nRunning test: $start_probe_name"
+
+        # Verify pre-start condition and start test
+        dict for {target_nr target_id} $target_dict {
+            # Load device
+            set device [load_target_device [get_part_name $url $target_id]]
+            set_property PROBES.FILE ${probes_file} $device
+            refresh_hw_device $device
+            # Verify pre-start condition
+            set start_probe [get_hw_probes $start_probe_name]
+            verify_before_start $start_probe
+            # Start the test
+            set_property OUTPUT_VALUE 1 $start_probe
+            commit_hw_vio [get_hw_vios hw_vio_1]
+            puts "Start test for FPGA ${target_nr} with ID ${target_id}"
+        }
+
+        puts "\nWaiting on test end: $start_probe_name"
+        dict for {target_nr target_id} $target_dict {
+            # Load device
+            set device [load_target_device [get_part_name $url $target_id]]
+            set_property PROBES.FILE ${probes_file} $device
+            refresh_hw_device $device
+            # Wait for the test to end
+            set test_results [wait_test_end]
+            lassign $test_results done success start_time end_time
+            # Print test results of this FPGA
+            puts "\tTested for FPGA ${target_nr} with ID ${target_id}"
+            print_test_results $done $success $start_time $end_time
+            if {[expr $done == 1] && [expr $success == 1]} {
+                incr successful_targets
+            }
+        }
+
+        puts "\nStopping test: $start_probe_name"
+        dict for {target_nr target_id} $target_dict {
+            # Load device
+            set device [load_target_device [get_part_name $url $target_id]]
+            set_property PROBES.FILE ${probes_file} $device
+            refresh_hw_device $device
+            # Reset the start probe for the current test
+            set start_probe [get_hw_probes $start_probe_name]
+            set_property OUTPUT_VALUE 0 $start_probe
+            commit_hw_vio [get_hw_vios hw_vio_1]
+        }
+        # Print summary of individual test
+        puts "\nTest ${start_probe_name} passed on ${successful_targets} out of ${target_count} targets"
+        if {[expr $successful_targets == $target_count]} {
+            incr successful_tests
+        }
+    }
+
+    # Print summary of all tests
+    if {[expr $successful_tests == $test_count]} {
+        puts "\nAll tests passed on ${target_count} targets"
         exit 0
+    } else {
+        set failed_tests [expr ${test_count} - ${successful_tests}]
+        puts "\nFailed for ${failed_tests}/${test_count} tests"
+        exit 1
     }
 }
