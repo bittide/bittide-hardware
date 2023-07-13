@@ -35,21 +35,24 @@ import Clash.Util.Interpolate
 -- | A vector of base addresses, one for each slave.
 type MemoryMap nSlaves = Vec nSlaves (Index nSlaves)
 
+-- | Size of a bus that results from a `singleMasterInterconnect` with `nSlaves` slaves.
+type MappedBus addr nSlaves = addr - CLog 2 nSlaves
+
 {-# NOINLINE singleMasterInterconnect #-}
 -- | Component that maps multiple slave devices to a single master device over the wishbone
 -- bus. It routes the incoming control signals to a slave device based on the 'MemoryMap',
 -- a vector of base addresses.
 singleMasterInterconnect ::
- forall dom nSlaves addrBitsPerBus a .
+ forall dom nSlaves addrW a .
  ( HiddenClockResetEnable dom
  , KnownNat nSlaves, 1 <= nSlaves
- , KnownNat addrBitsPerBus
+ , KnownNat addrW, (CLog 2 nSlaves <= addrW)
  , BitPack a
  , NFDataX a) =>
  MemoryMap nSlaves ->
  Circuit
-  (Wishbone dom 'Standard (BitSize (Index nSlaves) + addrBitsPerBus) a)
-  (Vec nSlaves (Wishbone dom 'Standard addrBitsPerBus a))
+  (Wishbone dom 'Standard addrW a)
+  (Vec nSlaves (Wishbone dom 'Standard (MappedBus addrW nSlaves) a))
 singleMasterInterconnect (fmap pack -> config) =
   Circuit go
  where
@@ -60,7 +63,7 @@ singleMasterInterconnect (fmap pack -> config) =
    where
     oneHotSelected = fmap (==addrIndex) config
     (addrIndex, newAddr) =
-      split @_ @(BitSize (Index nSlaves)) @addrBitsPerBus addr
+      split @_ @(BitSize (Index nSlaves)) @(MappedBus addrW nSlaves) addr
     toSlaves =
       (\newStrobe -> (updateM2SAddr newAddr master){strobe = strobe && newStrobe})
       <$> oneHotSelected
@@ -99,20 +102,20 @@ foldMaybes dflt v@(Cons _ _) = fromMaybe dflt $ fold (<|>) v
 -- | Version of 'singleMasterInterconnect' that does not use the 'Circuit' abstraction
 -- from @clash-protocols@ but exposes 'Signal's directly.
 singleMasterInterconnect' ::
- forall dom nSlaves addrBitsPerBus a .
+ forall dom nSlaves addrW a .
  ( HiddenClockResetEnable dom
  , KnownNat nSlaves, 1 <= nSlaves
- , KnownNat addrBitsPerBus
+ , KnownNat addrW, CLog 2 nSlaves <= addrW
  , BitPack a
  , NFDataX a) =>
  MemoryMap nSlaves ->
- Signal dom (WishboneM2S (BitSize (Index nSlaves) + addrBitsPerBus) (Regs a 8) a) ->
+ Signal dom (WishboneM2S addrW (Regs a 8) a) ->
  Signal dom (Vec nSlaves (WishboneS2M a)) ->
  ( Signal dom (WishboneS2M a)
- , Signal dom (Vec nSlaves (WishboneM2S addrBitsPerBus (Regs a 8) a)))
+ , Signal dom (Vec nSlaves (WishboneM2S (MappedBus addrW nSlaves) (Regs a 8) a)))
 singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
  where
-  Circuit f = singleMasterInterconnect @dom @nSlaves @addrBitsPerBus @a config
+  Circuit f = singleMasterInterconnect @dom @nSlaves @addrW @a config
   (toMaster, toSlaves) =
     case divWithRemainder @(Regs a 8) @8 @7 of
       Dict ->
