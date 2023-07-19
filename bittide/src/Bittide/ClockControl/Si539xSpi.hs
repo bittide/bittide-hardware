@@ -122,7 +122,7 @@ getStateAddress = \case
 -- chip, see 'si539xDriver'.
 si539xSpi ::
   forall dom preambleEntries configEntries postambleEntries minTargetPeriodPs .
-  ( HiddenClockResetEnable dom, KnownNat (DomainPeriod dom)
+  ( HiddenClockResetEnable dom
   , KnownNat preambleEntries, 1 <= preambleEntries
   , KnownNat configEntries
   , KnownNat postambleEntries
@@ -229,7 +229,7 @@ data DriverState dom = DriverState
 -- operations target the right register and communication operations are spaced correctly.
 si539xSpiDriver ::
   forall dom minTargetPeriodPs .
-  (HiddenClockResetEnable dom, KnownNat (DomainPeriod dom)) =>
+  (HiddenClockResetEnable dom) =>
   -- | Minimum period of the SPI clock frequency for the SPI clock divider.
   SNat minTargetPeriodPs ->
   -- | Read or write operation for the @Si539X@ registers.
