@@ -411,6 +411,7 @@ data Options =
     , stabilityMargin    :: Int
     , stabilityFrameSize :: Int
     , disableReframing   :: Bool
+    , rusty              :: Bool
     , waitTime           :: Int
     , stopWhenStable     :: Bool
     , stopAfterStable    :: Maybe Int
@@ -478,11 +479,16 @@ optionParser =
           <> short 'e'
           <> help "Disables clock control reframing"
           )
+    <*> flag False True
+          (  long "get-rusty"
+          <> short 'y'
+          <> help "Simulate clock control via the Rust FFI"
+          )
     <*> option auto
           (  long "wait-time"
           <> short 'w'
           <> metavar "NUM"
-          <> value 20000000
+          <> value 100000
           <> showDefault
           <> help
                (  "Number of clock cycles to wait until reframing takes place "
@@ -602,6 +608,7 @@ main = do
         , waittime     = waitTime
         , mode         = outMode
         , dir          = outDir
+        , rustySim     = rusty
         , stopStable   =
             if stopWhenStable
             then Just 0

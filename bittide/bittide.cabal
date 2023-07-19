@@ -49,6 +49,7 @@ common common-options
     -fplugin GHC.TypeLits.Extra.Solver
     -fplugin GHC.TypeLits.Normalise
     -fplugin GHC.TypeLits.KnownNat.Solver
+    -fconstraint-solver-iterations=8
 
     -- Clash needs access to the source code in compiled modules
     -fexpose-all-unfoldings
@@ -81,6 +82,7 @@ library
     array,
     base,
     bittide-extra,
+    bittide-rust-ffi,
     bytestring,
     cassava,
     clash-cores,
@@ -108,6 +110,8 @@ library
     Bittide.ClockControl
     Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Util
+    Bittide.ClockControl.Callisto.Types
+    Bittide.ClockControl.Callisto.Rust
     Bittide.ClockControl.Si5391A
     Bittide.ClockControl.Si5395J
     Bittide.ClockControl.Si539xSpi

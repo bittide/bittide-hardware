@@ -12,6 +12,10 @@ solved by the constraint solver.
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Data.Constraint.Nat.Extra
   ( module Data.Constraint.Nat.Extra
@@ -19,10 +23,22 @@ module Data.Constraint.Nat.Extra
   ) where
 
 import Data.Constraint
+import Data.Proxy
 import Data.Type.Equality
 import GHC.TypeLits.Extra
+import GHC.TypeLits.KnownNat
 import GHC.TypeNats
 import Unsafe.Coerce
+
+type family OneMore (n :: Nat) :: Nat where
+  OneMore 0 = 0
+  OneMore _ = 1
+
+instance KnownNat n => KnownNat1 $(nameToSymbol ''OneMore) n where
+  natSing1 = case natVal (Proxy @n) of
+    0 -> SNatKn 0
+    _ -> SNatKn 1
+  {-# INLINE natSing1 #-}
 
 -- | b <= ceiling(b/a)*a
 timesDivRU :: forall a b . (1 <= a) => Dict (b <= (Div (b + (a - 1)) a * a))
@@ -76,3 +92,11 @@ oneLeCLog2n = unsafeCoerce (Dict :: Dict (0 <= 0))
 -- | If @1 <= m@ and @n + m <= u@, then @1 + n <= u@
 useLowerLimit :: forall n m u . (1 <= m, n + m <= u) => Dict (1 + n <= u)
 useLowerLimit = unsafeCoerce (Dict :: Dict (0 <= 0))
+
+-- | If @1 <= n@ and @1 <= m@, then @1 <= Div n m + OneMore (Mod n m)@
+oneMore :: forall n m . (1 <= n, 1 <= m) => Dict (1 <= Div n m + OneMore (Mod n m))
+oneMore = unsafeCoerce (Dict :: Dict (0 <= 0))
+
+-- | If @1 <= n@ and @n <= m@, then @Div n m + OneMore (Mod n m) == 1@
+isOne :: forall n m . (1 <= n, n <= m) => Dict (Div n m + OneMore (Mod n m) ~ 1)
+isOne = unsafeCoerce (Dict :: Dict (0 <= 0))
