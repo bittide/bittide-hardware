@@ -94,6 +94,7 @@ library
     elf,
     exceptions,
     mtl,
+    pretty-show,
     process,
     random,
     string-interpolate ^>= 0.3,

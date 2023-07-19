@@ -29,10 +29,8 @@ speedChangeToPins = \case
  NoChange -> (False, False)
 
 clockControlDemo1 ::
-  "USER_SMA_CLOCK_N" ::: Clock Basic200A ->
-  "USER_SMA_CLOCK_P" ::: Clock Basic200A ->
-  "FMC_HPC_CLK1_M2C_N" ::: Clock Basic200B ->
-  "FMC_HPC_CLK1_M2C_P" ::: Clock Basic200B ->
+  "USER_SMA_CLOCK" ::: DiffClock Basic200A ->
+  "FMC_HPC_CLK1_M2C" ::: DiffClock Basic200B ->
   "drainFifoA" ::: Reset Basic200A ->
   "drainFifoB" ::: Reset Basic200B ->
   ( "domA" ::: Signal Basic200A
@@ -50,7 +48,7 @@ clockControlDemo1 ::
     , "isStable" ::: Bool
     )
   )
-clockControlDemo1 clkSmaN clkSmaP clkFmcN clkFmcP drainFifoA drainFifoB =
+clockControlDemo1 clkSma clkFmc drainFifoA drainFifoB =
   (bundle (fIncDecA, isStableA), bundle (fIncDecB, isStableB))
  where
   (fIncDecA, _, _, isStableA, _) = unbundle demoA
@@ -64,8 +62,8 @@ clockControlDemo1 clkSmaN clkSmaP clkFmcN clkFmcP drainFifoA drainFifoB =
     genericClockControlDemo0 clockConfigB clkA clkB (unsafeFromHighPolarity $ pure False)
     drainFifoB (unsafeFromHighPolarity $ pure False)
 
-  clkA = ibufds clkSmaP clkSmaN
-  clkB = ibufds clkFmcP clkFmcN
+  clkA = ibufds clkSma
+  clkB = ibufds clkFmc
 
   clockConfigA :: ClockControlConfig Basic200A 12 8 1500000
   clockConfigA = $(lift (defClockConfig @Basic200A))
@@ -112,11 +110,13 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
     withClockResetEnable clkControlled stabilityCheckReset enableGen $
       settled <$> stabilityChecker d2 (SNat @20_000_000) bufferOccupancy
 
+-- XXX: Remove me when we merge FINC/FDEC test
+noReset :: KnownDomain dom => Reset dom
+noReset = unsafeFromHighPolarity (pure False)
+
 clockControlDemo0 ::
-  "SYSCLK_300_N" ::: Clock Basic300 ->
-  "SYSCLK_300_P" ::: Clock Basic300 ->
-  "USER_SMA_CLOCK_N" ::: Clock External ->
-  "USER_SMA_CLOCK_P" ::: Clock External ->
+  "SYSCLK_300" ::: DiffClock Basic300 ->
+  "USER_SMA_CLOCK" ::: DiffClock External ->
   "rstExternal" ::: Reset External ->
   "drainFifo" ::: Reset External ->
   "stabilityCheckReset" ::: Reset External ->
@@ -130,7 +130,7 @@ clockControlDemo0 ::
     , "Overflowed" ::: Bool
     , "isStable" ::: Bool
     , "EbMode" ::: EbMode)
-clockControlDemo0 clkSysN clkSysP clkSmaN clkSmaP =
+clockControlDemo0 clkSys clkSma =
   genericClockControlDemo0 clockConfig clkRecovered clkControlled
  where
   clockConfig :: ClockControlConfig External 12 8 1500000
@@ -140,11 +140,10 @@ clockControlDemo0 clkSysN clkSysP clkSmaN clkSmaP =
     @_
     @Internal
     (SSymbol @"clkWiz300to200")
-    clkSysN
-    clkSysP
-    resetGen
+    clkSys
+    noReset
 
-  clkControlled = ibufds clkSmaP clkSmaN
+  clkControlled = ibufds clkSma
 
 -- | Holds any @a@ which has any bits set for @stickyCycles@ clock cycles.
 -- On receiving a new @a@ with non-zero bits, it sets the new incoming value as it output

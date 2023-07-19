@@ -2,21 +2,21 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# SYSCLK_300_P
-set_property PACKAGE_PIN AK17        [get_ports "SYSCLK_300_P"]
-set_property IOSTANDARD  DIFF_SSTL12 [get_ports "SYSCLK_300_P"]
-set_property ODT         RTT_48      [get_ports "SYSCLK_300_P"]
-# SYSCLK_300_N
-set_property PACKAGE_PIN AK16        [get_ports "SYSCLK_300_N"]
-set_property IOSTANDARD  DIFF_SSTL12 [get_ports "SYSCLK_300_N"]
-set_property ODT         RTT_48      [get_ports "SYSCLK_300_N"]
+# SYSCLK_300_p
+set_property PACKAGE_PIN AK17        [get_ports "SYSCLK_300_p"]
+set_property IOSTANDARD  DIFF_SSTL12 [get_ports "SYSCLK_300_p"]
+set_property ODT         RTT_48      [get_ports "SYSCLK_300_p"]
+# SYSCLK_300_n
+set_property PACKAGE_PIN AK16        [get_ports "SYSCLK_300_n"]
+set_property IOSTANDARD  DIFF_SSTL12 [get_ports "SYSCLK_300_n"]
+set_property ODT         RTT_48      [get_ports "SYSCLK_300_n"]
 
-# USER_SMA_CLOCK_P
-set_property PACKAGE_PIN D23      [get_ports "USER_SMA_CLOCK_P"]
-set_property IOSTANDARD  LVDS     [get_ports "USER_SMA_CLOCK_P"]
-# USER_SMA_CLOCK_N
-set_property PACKAGE_PIN C23      [get_ports "USER_SMA_CLOCK_N"]
-set_property IOSTANDARD  LVDS     [get_ports "USER_SMA_CLOCK_N"]
+# USER_SMA_CLOCK_p
+set_property PACKAGE_PIN D23      [get_ports "USER_SMA_CLOCK_p"]
+set_property IOSTANDARD  LVDS     [get_ports "USER_SMA_CLOCK_p"]
+# USER_SMA_CLOCK_n
+set_property PACKAGE_PIN C23      [get_ports "USER_SMA_CLOCK_n"]
+set_property IOSTANDARD  LVDS     [get_ports "USER_SMA_CLOCK_n"]
 
 
 # GPIO_SW_E

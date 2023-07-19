@@ -2,21 +2,21 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# USER_SMA_CLOCK_P
-set_property PACKAGE_PIN D23      [get_ports "USER_SMA_CLOCK_P"]
-set_property IOSTANDARD  LVDS     [get_ports "USER_SMA_CLOCK_P"]
-# USER_SMA_CLOCK_N
-set_property PACKAGE_PIN C23      [get_ports "USER_SMA_CLOCK_N"]
-set_property IOSTANDARD  LVDS     [get_ports "USER_SMA_CLOCK_N"]
+# USER_SMA_CLOCK_p
+set_property PACKAGE_PIN D23      [get_ports "USER_SMA_CLOCK_p"]
+set_property IOSTANDARD  LVDS     [get_ports "USER_SMA_CLOCK_p"]
+# USER_SMA_CLOCK_n
+set_property PACKAGE_PIN C23      [get_ports "USER_SMA_CLOCK_n"]
+set_property IOSTANDARD  LVDS     [get_ports "USER_SMA_CLOCK_n"]
 
-# FMC_HPC_CLK1_M2C_P
-set_property PACKAGE_PIN E25      [get_ports "FMC_HPC_CLK1_M2C_P"]
-set_property IOSTANDARD  LVDS     [get_ports "FMC_HPC_CLK1_M2C_P"]
-set_property DIFF_TERM   TRUE     [get_ports "FMC_HPC_CLK1_M2C_P"]
-# FMC_HPC_CLK1_M2C_N
-set_property PACKAGE_PIN D25      [get_ports "FMC_HPC_CLK1_M2C_N"]
-set_property IOSTANDARD  LVDS     [get_ports "FMC_HPC_CLK1_M2C_N"]
-set_property DIFF_TERM   TRUE     [get_ports "FMC_HPC_CLK1_M2C_N"]
+# FMC_HPC_CLK1_M2C_p
+set_property PACKAGE_PIN E25      [get_ports "FMC_HPC_CLK1_M2C_p"]
+set_property IOSTANDARD  LVDS     [get_ports "FMC_HPC_CLK1_M2C_p"]
+set_property DIFF_TERM   TRUE     [get_ports "FMC_HPC_CLK1_M2C_p"]
+# FMC_HPC_CLK1_M2C_n
+set_property PACKAGE_PIN D25      [get_ports "FMC_HPC_CLK1_M2C_n"]
+set_property IOSTANDARD  LVDS     [get_ports "FMC_HPC_CLK1_M2C_n"]
+set_property DIFF_TERM   TRUE     [get_ports "FMC_HPC_CLK1_M2C_n"]
 
 
 # GPIO_SW_E
