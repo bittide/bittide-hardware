@@ -54,15 +54,14 @@ check clk rst dut stimuli =
 -- | Testing circuit for `plus`. Feeds the circuit with inputs and checks
 -- the received output against the expected output.
 simpleHardwareInTheLoopTest ::
-  "CLK_125MHZ_P" ::: Clock Basic125 ->
-  "CLK_125MHZ_N" ::: Clock Basic125 ->
+  "CLK_125MHZ" ::: DiffClock Basic125 ->
   "" ::: Signal Basic125
     ( "done" ::: Bool
     , "success" ::: Bool
     )
-simpleHardwareInTheLoopTest clkP clkN = bundle (testDone, testSuccess)
+simpleHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
  where
-  clk = ibufds clkP clkN
+  clk = ibufds diffClk
   rst = unsafeFromLowPolarity testStart
 
   testState = check clk rst (+) stimuli
@@ -90,15 +89,14 @@ makeTopEntity 'simpleHardwareInTheLoopTest
 -- | Testing circuit for `plus` and `minus`. Feeds the circuit with inputs and
 -- checks the received output against the expected output.
 extendedHardwareInTheLoopTest ::
-  "CLK_125MHZ_P" ::: Clock Basic125 ->
-  "CLK_125MHZ_N" ::: Clock Basic125 ->
+  "CLK_125MHZ" ::: DiffClock Basic125 ->
   "" ::: Signal Basic125
     ( "done" ::: Bool
     , "success" ::: Bool
     )
-extendedHardwareInTheLoopTest clkP clkN = bundle (testDone, testSuccess)
+extendedHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
  where
-  clk = ibufds clkP clkN
+  clk = ibufds diffClk
   rstA = unsafeFromLowPolarity testStartA
   rstB = unsafeFromLowPolarity testStartB
 

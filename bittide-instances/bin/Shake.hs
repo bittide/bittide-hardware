@@ -10,16 +10,14 @@ module Main where
 import Prelude
 
 import Control.Applicative (liftA2)
-import Control.DeepSeq (force)
 import Control.Monad.Extra (ifM, unlessM, when)
 import Data.Foldable (for_)
-import Data.List (isPrefixOf, isInfixOf)
 import Development.Shake
 import GHC.Stack (HasCallStack)
 import Language.Haskell.TH (nameBase)
 import System.Console.ANSI (setSGR)
 import System.Directory (getCurrentDirectory, setCurrentDirectory)
-import System.FilePath (isDrive, (</>), takeDirectory, replaceFileName)
+import System.FilePath (isDrive, (</>), takeDirectory)
 import System.Process (readProcess)
 
 import Paths_bittide_instances
@@ -71,44 +69,6 @@ In the future we might be more precise in our source discovery process.
   in a cabal file, but is imported in a listed one. We therefore will not try to
   handle this case in Shake either.
 -}
-
--- | "Negative clock pins" used to work around:
---
---   https://github.com/clash-lang/clash-compiler/issues/2518
---
--- List obtained by scanning our board's XDC file:
---
--- @
--- grep -i -E '(clk|clock)' KCU105_Rev1.0_02292016.xdc | grep -o -i -E '".*_n"' | sort | uniq
--- @
---
-negativeClocks :: [String]
-negativeClocks =
-  [ "CLK_125MHZ_N"
-  , "FMC_HPC_CLK0_M2C_N"
-  , "FMC_HPC_CLK1_M2C_N"
-  , "FMC_HPC_GBTCLK0_M2C_C_N"
-  , "FMC_HPC_GBTCLK1_M2C_C_N"
-  , "FMC_LPC_CLK0_M2C_N"
-  , "FMC_LPC_CLK1_M2C_N"
-  , "FMC_LPC_GBTCLK0_M2C_C_N"
-  , "MGT_SI570_CLOCK_C_N"
-  , "PCIE_CLK_QO_N"
-  , "REC_CLOCK_C_N"
-  , "SGMIICLK_N"
-  , "SMA_MGT_REFCLK_C_N"
-  , "SYSCLK_300_N"
-  , "USER_SI570_CLOCK_N"
-  , "USER_SMA_CLOCK_N"
-  ]
-
--- | Does this line (from an XDC file) create a clock from 'negativeClocks'?
-isNegativeCreateClock :: String -> Bool
-isNegativeCreateClock line =
-  "create_clock" `isPrefixOf` line && containsNegativeClock
- where
-  containsNegativeClock = or [nm `isInfixOf` line | nm <- tclNegativeClocks]
-  tclNegativeClocks = ["{" <> nm <> "}" | nm <- negativeClocks]
 
 -- | Get all files whose changes will trigger an HDL rebuild. Because we lack a
 -- reliable way to determine which files should trigger a rebuild, this function
@@ -241,7 +201,7 @@ shakeOpts :: ShakeOptions
 shakeOpts = shakeOptions
   { shakeFiles = buildDir
   , shakeChange = ChangeDigest
-  , shakeVersion = "7"
+  , shakeVersion = "6"
   }
 
 -- | Run Vivado on given TCL script
@@ -324,7 +284,6 @@ main = do
             -- TODO: Dehardcode these paths. They're currently hardcoded in both the
             --       TCL and here, which smells.
             manifestPath = getManifestLocation clashBuildDir targetName
-            clashSdcPath = replaceFileName manifestPath (nameBase targetName <> ".sdc")
             synthesisDir = vivadoBuildDir </> show targetName
             checkpointsDir = synthesisDir </> "checkpoints"
             netlistDir = synthesisDir </> "netlist"
@@ -381,11 +340,6 @@ main = do
               -- Clash messes up ANSI escape codes, leaving the rest of the terminal
               -- printed in bold text. Reset manually:
               liftIO (setSGR [])
-
-              -- XXX: Workaround https://github.com/clash-lang/clash-compiler/issues/2518
-              sdc0 <- liftIO (force . lines <$> readFile clashSdcPath)
-              let sdc1 = filter (not . isNegativeCreateClock) sdc0
-              writeFileChanged clashSdcPath (unlines sdc1)
 
               produces [path]
 
