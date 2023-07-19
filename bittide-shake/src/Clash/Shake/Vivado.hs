@@ -42,7 +42,7 @@ import System.FilePath ((</>), dropFileName)
 import Clash.Shake.Extra (hexDigestFile)
 import Clash.Shake.Flags (HardwareTargets(..))
 
-import Paths_bittide_instances
+import Paths_bittide_shake
 
 -- | Satisfied if all actions result in 'False'
 noneM :: Monad m => [m Bool] -> m Bool

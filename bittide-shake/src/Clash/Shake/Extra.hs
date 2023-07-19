@@ -20,8 +20,6 @@ import qualified Data.ByteString.Base16 as Base16
 import qualified Data.ByteString.Lazy as ByteStringLazy
 import qualified Data.Text.Encoding as Encoding
 import qualified Data.Text as Text
-import qualified Language.Haskell.TH.Extra as TH
-import qualified Language.Haskell.TH.Syntax as TH
 
 hdlToFlag :: HDL -> String
 hdlToFlag = ("--" <>) . map toLower . show
@@ -47,7 +45,7 @@ clashCmd ::
   -- | HDL to compile to
   HDL ->
   -- | Entity to compile
-  TH.Name ->
+  TargetName ->
   -- | Extra arguments to pass to Clash
   [String] ->
   -- (command, arguments)
@@ -67,12 +65,29 @@ clashCmd buildDir hdl topName extraArgs =
     ] <> extraArgs
   )
  where
-  (pkgName, modName, funcName) = TH.splitName topName
+  (modName, funcName) = splitName topName
+  pkgName = "bittide-instances"
 
-defaultClashCmd :: FilePath -> TH.Name -> (String, [String])
+
+-- | Fully qualified name to a function. E.g. @Bittide.Foo.topEntity@.
+type TargetName = String
+
+-- | Split a 'TargetName' into the fully qualified module name and the function name.
+splitName :: TargetName -> (String, String)
+splitName qualifiedName =
+    let (f, m) = break (== '.') $ reverse qualifiedName
+    in (reverse $ tail m, reverse f)
+
+entityName :: TargetName -> String
+entityName = snd . splitName
+
+moduleName :: TargetName -> String
+moduleName = fst . splitName
+
+defaultClashCmd :: FilePath -> TargetName -> (String, [String])
 defaultClashCmd buildDir topName = clashCmd buildDir Verilog topName []
 
--- | Given a top entity name, return expected location of Clash manifest file.
-getManifestLocation :: FilePath -> TH.Name -> String
+-- | Given a 'TargetName', return expected location of Clash manifest file.
+getManifestLocation :: FilePath -> TargetName -> String
 getManifestLocation buildDir topName =
-  buildDir </> show topName </> "clash-manifest.json"
+  buildDir </> topName </> "clash-manifest.json"

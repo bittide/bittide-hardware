@@ -1,5 +1,5 @@
 cabal-version:       2.4
-name:                bittide-instances
+name:                bittide-shake
 version:             0.1
 License:             Apache-2.0
 license-file:        LICENSE
@@ -9,7 +9,7 @@ Copyright:           Copyright © 2022-2023 Google LLC
 
 data-files:
   data/scripts/*.py
-  data/constraints/*.xdc
+  data/tcl/*.tcl
 
 common common-options
   default-extensions:
@@ -75,7 +75,6 @@ common common-options
     clash-protocols,
     containers,
     cryptohash-sha256,
-    directory,
     elastic-buffer-sim,
     extra,
     filepath,
@@ -97,46 +96,53 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
-    Bittide.Instances.BoardTest
-    Bittide.Instances.Calendar
-    Bittide.Instances.ClockControl
-    Bittide.Instances.Counter
-    Bittide.Instances.Domains
-    Bittide.Instances.ElasticBuffer
-    Bittide.Instances.Hacks
-    Bittide.Instances.MVPs
-    Bittide.Instances.ScatterGather
-    Bittide.Instances.Si539xSpi
-    Bittide.Instances.StabilityChecker
-    Bittide.Instances.Synchronizer
-
-    -- Hardware-in-the-loop tests
-    Bittide.Instances.Tests.FincFdec
+    Clash.Shake.Extra
+    Clash.Shake.Flags
+    Clash.Shake.Vivado
+    Development.Shake.Extra
   autogen-modules:
-    Paths_bittide_instances
+    Paths_bittide_shake
   other-modules:
-    Paths_bittide_instances
+    Paths_bittide_shake
 
-executable get-data-file-name
+executable shake
   import: common-options
-  main-is: bin/GetDataFileName.hs
-  Build-Depends: bittide-instances
+  main-is: bin/Shake.hs
+  Build-Depends:
+      aeson
+    , ansi-terminal
+    , base16-bytestring
+    , binary
+    , bittide-shake
+    , bytestring
+    , clash-ghc
+    , clash-lib
+    , cryptohash-sha256
+    , deepseq
+    , directory
+    , extra
+    , Glob
+    , pretty-simple
+    , shake
+    , template-haskell
+    , text
+    , utf8-string
   other-modules:
-    Paths_bittide_instances
+    Paths_bittide_shake
   autogen-modules:
-    Paths_bittide_instances
+    Paths_bittide_shake
 
 executable clash
   import: common-options
   main-is: bin/Clash.hs
-  Build-Depends: clash-ghc, bittide-instances
+  Build-Depends: clash-ghc, bittide-shake
 
 test-suite doctests
   type:             exitcode-stdio-1.0
   hs-source-dirs:   tests
   main-is:          doctests.hs
   ghc-options:      -threaded
-  build-depends:    base, bittide-instances, doctest-parallel >= 0.1
+  build-depends:    base, bittide-shake, doctest-parallel >= 0.1
   default-language: Haskell2010
 
 test-suite unittests
@@ -146,11 +152,11 @@ test-suite unittests
   main-is: unittests.hs
   ghc-options: -threaded -with-rtsopts=-N
   other-modules:
-    Paths_bittide_instances
+    Paths_bittide_shake
   autogen-modules:
-    Paths_bittide_instances
+    Paths_bittide_shake
   build-depends:
-    , bittide-instances
+    , bittide-shake
     , filepath
     , pretty-simple
     , tasty
