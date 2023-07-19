@@ -99,19 +99,19 @@ callistoSpi clk125 clkRecovered clkControlled rst125 locked miso =
         clockConfig (pure maxBound) (bufferOccupancy :> Nil)
 
   -- ALl circuitry in the controlled domain should be in reset while the the PLL is not locked.
-  rstControlled = unsafeFromLowPolarity locked
+  rstControlled = unsafeFromActiveLow locked
 
   -- Callisto comes out of reset while the elastic buffer is in Pass mode.
-  clockControlReset = unsafeFromLowPolarity $ ebMode .==. pure Pass
+  clockControlReset = unsafeFromActiveLow $ ebMode .==. pure Pass
 
   -- The elastic buffer.
   (bufferOccupancy, _, _, ebMode, _) =
     withReset rstControlled $
-      resettableXilinxElasticBuffer clkControlled clkRecovered (unsafeFromLowPolarity $ pure True) (pure False)
+      resettableXilinxElasticBuffer clkControlled clkRecovered (unsafeFromActiveLow $ pure True) (pure False)
 
   -- Determine if the controlled clock is synchronized "enough" with the static clock.
   isStable =
-    withClockResetEnable clkControlled (unsafeFromLowPolarity $ pure True) enableGen $
+    withClockResetEnable clkControlled (unsafeFromActiveLow $ pure True) enableGen $
       settled <$> stabilityChecker d5 (SNat @1_000_000) bufferOccupancy
 
   -- Configuration for Callisto

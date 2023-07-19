@@ -83,9 +83,9 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
   , fifoData
   )
  where
-  rstWrite = unsafeFromHighPolarity rstWriteBool
+  rstWrite = unsafeFromActiveHigh rstWriteBool
   rstWriteBool =
-    CE.safeDffSynchronizer clkRead clkWrite False (unsafeToHighPolarity rstRead)
+    CE.safeDffSynchronizer clkRead clkWrite False (unsafeToActiveHigh rstRead)
 
   FifoOut{readCount, isUnderflow, isOverflow, fifoData} = dcFifo
     (defConfig @n){dcOverflow=True, dcUnderflow=True}
@@ -99,8 +99,8 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
 
   -- We don't reset the Xilix FIFO: its reset documentation is self-contradictory
   -- and mentions situations where the FIFO can end up in an unrecoverable state.
-  noResetWrite = unsafeFromHighPolarity (pure False)
-  noResetRead = unsafeFromHighPolarity (pure False)
+  noResetWrite = unsafeFromActiveHigh (pure False)
+  noResetRead = unsafeFromActiveHigh (pure False)
 
   (readEnable, writeEnable) = unbundle (ebModeToReadWrite <$> ebMode)
 
@@ -134,10 +134,10 @@ resettableXilinxElasticBuffer clkRead clkWrite rstRead wdata =
  where
   (dataCount, under, over, readData) =
     xilinxElasticBuffer @n clkRead clkWrite fifoReset ebMode wdata
-  fifoReset = unsafeFromHighPolarity $ not <$> stable
+  fifoReset = unsafeFromActiveHigh $ not <$> stable
   over1 = CE.safeDffSynchronizer clkWrite clkRead False over
 
-  controllerReset = unsafeFromHighPolarity (unsafeToHighPolarity rstRead .||. under .||. over1)
+  controllerReset = unsafeFromActiveHigh (unsafeToActiveHigh rstRead .||. under .||. over1)
 
   (ebMode, stable) = unbundle $
     withClockResetEnable clkRead controllerReset enableGen $

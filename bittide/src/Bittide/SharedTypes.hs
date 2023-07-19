@@ -172,7 +172,7 @@ forceReset ::
   Signal dom Bool ->
   -- | Active when the implicit reset is active or the first argument is True.
   Reset dom
-forceReset force = unsafeFromHighPolarity (unsafeToHighPolarity hasReset .||. force)
+forceReset force = unsafeFromActiveHigh (unsafeToActiveHigh hasReset .||. force)
 
 -- | Divide and round up.
 divRU :: Integral a => a -> a -> a

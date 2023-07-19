@@ -139,7 +139,7 @@ simulationEntity topology ccc !clockOffsets !startupOffsets =
 
   -- value level version of 'Clash.Signal.Internal.resetGenN' without
   -- a the need for a blackbox
-  resetGenN' n = unsafeFromHighPolarity $
+  resetGenN' n = unsafeFromActiveHigh $
     fromList (L.replicate n True <> L.repeat False)
 
 -- | Simulates some topology simulation entity.

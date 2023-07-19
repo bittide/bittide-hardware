@@ -62,7 +62,7 @@ simpleHardwareInTheLoopTest ::
 simpleHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
  where
   clk = ibufds diffClk
-  rst = unsafeFromLowPolarity testStart
+  rst = unsafeFromActiveLow testStart
 
   testState = check clk rst (+) stimuli
   (testDone, testSuccess) = unbundle $ toDoneSuccess <$> testState
@@ -97,8 +97,8 @@ extendedHardwareInTheLoopTest ::
 extendedHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
  where
   clk = ibufds diffClk
-  rstA = unsafeFromLowPolarity testStartA
-  rstB = unsafeFromLowPolarity testStartB
+  rstA = unsafeFromActiveLow testStartA
+  rstB = unsafeFromActiveLow testStartB
 
   testStateA = check clk rstA (+) stimuliA
   (testDoneA, testSuccessA) = unbundle $ toDoneSuccess <$> testStateA

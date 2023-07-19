@@ -98,9 +98,9 @@ transceiverPrbs gtrefclk freeclk rst_all_btn rst_txStim rst_prbsChk chan clkPath
   (gtwiz_userdata_tx_in,txctrl2) = prbsStimuliGen tx_clk txStimRst
   rstPrbsChk =
       resetGlitchFilter (SNat @125000) rx_clk
-    $ unsafeFromHighPolarity
+    $ unsafeFromActiveHigh
     $ unsafeSynchronizer freeclk rx_clk
-    $ unsafeToHighPolarity rst_prbsChk
+    $ unsafeToActiveHigh rst_prbsChk
 
   prbsErrors = prbsChecker rx_clk rstPrbsChk enableGen prbsConf31w64 rx_data
   anyErrors = fmap (pack . reduceOr) prbsErrors
@@ -117,19 +117,19 @@ transceiverPrbs gtrefclk freeclk rst_all_btn rst_txStim rst_prbsChk chan clkPath
 
   txStimRst' =
       resetGlitchFilter (SNat @125000) tx_clk
-    $ unsafeFromHighPolarity
+    $ unsafeFromActiveHigh
     $ unsafeSynchronizer freeclk tx_clk
-    $ unsafeToHighPolarity rst_txStim
+    $ unsafeToActiveHigh rst_txStim
 
   txStimRst =
       resetSynchronizer tx_clk
-    $ orReset txStimRst' (unsafeFromLowPolarity $ fmap bitCoerce tx_active)
+    $ orReset txStimRst' (unsafeFromActiveLow $ fmap bitCoerce tx_active)
 
 orReset :: KnownDomain dom => Reset dom -> Reset dom -> Reset dom
-orReset a b = unsafeFromHighPolarity (unsafeToHighPolarity a .||. unsafeToHighPolarity b)
+orReset a b = unsafeFromActiveHigh (unsafeToActiveHigh a .||. unsafeToActiveHigh b)
 
 noReset :: KnownDomain dom => Reset dom
-noReset = unsafeFromHighPolarity (pure False)
+noReset = unsafeFromActiveHigh (pure False)
 
 data LinkSt = Down | Up deriving (Eq, Show, Generic, NFDataX)
 type LinkStCntr = Index 127
@@ -297,8 +297,8 @@ gthResetManager ::
   , "init_done" ::: Signal freerun Bool
   )
 gthResetManager free_clk reset_all_in tx_clk tx_init_done rx_init_done rx_data_good' =
-  ( unsafeFromHighPolarity reset_all_out_sig
-  , unsafeFromHighPolarity reset_rx_sig
+  ( unsafeFromActiveHigh reset_all_out_sig
+  , unsafeFromActiveHigh reset_rx_sig
   , init_done
   )
  where
