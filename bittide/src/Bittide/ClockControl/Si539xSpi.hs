@@ -1,12 +1,13 @@
 -- SPDX-FileCopyrightText: 2022-2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# OPTIONS_GHC -fconstraint-solver-iterations=9 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=15 #-}
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Bittide.ClockControl.Si539xSpi where
 
@@ -102,6 +103,11 @@ data ConfigState dom entries
   | Wait (Index (PeriodToCycles dom (Milliseconds 300))) (Index entries)
   -- ^ Waits for the Si539X to be calibrated after writing the configuration preamble from 'Si539xRegisterMap'.
   deriving (Show, Generic, NFDataX, Eq)
+
+instance
+  ( 1 <= entries
+  , KnownNat (DomainPeriod dom)
+  , KnownNat entries ) => BitPack (ConfigState dom entries)
 
 -- | Utility function to retrieve the entry 'Index' from the 'ConfigState'.
 getStateAddress :: KnownNat entries => ConfigState dom entries -> Index entries

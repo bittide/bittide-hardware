@@ -4,7 +4,7 @@
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-orphans -fconstraint-solver-iterations=10 #-}
 
 -- | Clock controller types and some constants/defaults.
 module Bittide.ClockControl
@@ -16,6 +16,7 @@ module Bittide.ClockControl
   , pessimisticSettleCycles
   , targetDataCount
   , clockPeriodFs
+  , speedChangeToFincFdec
   )
 where
 
@@ -26,7 +27,7 @@ import Data.Proxy (Proxy(..))
 import GHC.Stack (HasCallStack)
 
 import Bittide.Arithmetic.Ppm
-import Bittide.Arithmetic.Time (microseconds)
+import Bittide.Arithmetic.Time (PeriodToCycles, Nanoseconds, Microseconds, microseconds)
 
 import Data.Csv
 
@@ -119,6 +120,46 @@ data SpeedChange
   | SlowDown
   | NoChange
   deriving (Eq, Show, Generic, ShowX, NFDataX)
+
+data ToFincFdecState dom
+  = Wait (Index (PeriodToCycles dom (Microseconds 1)))
+  | Pulse (Index (PeriodToCycles dom (Nanoseconds 100))) SpeedChange
+  | Idle
+  deriving (Generic, NFDataX)
+
+-- | Convert 'SpeedChange' to a pair of (FINC, FDEC). This is currently hardcoded
+-- to work on the Si5395 constraints:
+--
+--   * Minimum Pulse Width: 100 ns
+--   * Update Rate: 1 us
+--
+-- TODO: De-hardcode
+speedChangeToFincFdec ::
+  forall dom .
+  KnownDomain dom =>
+  Clock dom ->
+  Reset dom ->
+  Signal dom SpeedChange ->
+  Signal dom (Bool, Bool)
+speedChangeToFincFdec clk rst =
+  dflipflop clk . fmap conv . mealy clk rst enableGen go (Wait maxBound)
+ where
+  go :: ToFincFdecState dom -> SpeedChange -> (ToFincFdecState dom, SpeedChange)
+  go (Wait n) _s
+    | n == 0    = (Idle,         NoChange)
+    | otherwise = (Wait (n - 1), NoChange)
+
+  go (Pulse n s) _s
+    | n == 0    = (Wait maxBound, s)
+    | otherwise = (Pulse (n - 1) s, s)
+
+  go Idle NoChange = (Idle, NoChange)
+  go Idle s        = (Pulse maxBound s, NoChange)
+
+  --               FINC   FDEC
+  conv NoChange = (False, False)
+  conv SpeedUp  = (True,  False)
+  conv SlowDown = (False, True)
 
 instance ToField SpeedChange where
   toField SpeedUp = "speedUp"

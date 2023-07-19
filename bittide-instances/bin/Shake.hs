@@ -36,6 +36,9 @@ import qualified Bittide.Instances.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Si539xSpi as Si539xSpi
 import qualified Bittide.Instances.StabilityChecker as StabilityChecker
 import qualified Bittide.Instances.Synchronizer as Synchronizer
+
+import qualified Bittide.Instances.Tests.FincFdec as FincFdec
+
 import qualified Clash.Util.Interpolate as I
 import qualified Language.Haskell.TH as TH
 import qualified System.Directory as Directory
@@ -159,6 +162,14 @@ defTarget name = Target
   , targetHasTest = False
   }
 
+testTarget :: TH.Name -> Target
+testTarget name = Target
+  { targetName = name
+  , targetHasXdc = True
+  , targetHasVio = True
+  , targetHasTest = True
+  }
+
 enforceValidTarget :: Target -> Target
 enforceValidTarget target@Target{..}
   | targetHasTest && not targetHasVio =
@@ -170,17 +181,7 @@ enforceValidTarget target@Target{..}
 -- | All synthesizable targets
 targets :: [Target]
 targets = map enforceValidTarget
-  [ (defTarget 'BoardTest.simpleHardwareInTheLoopTest)
-    { targetHasXdc = True
-    , targetHasVio = True
-    , targetHasTest = True
-    }
-  , (defTarget 'BoardTest.extendedHardwareInTheLoopTest)
-    { targetHasXdc = True
-    , targetHasVio = True
-    , targetHasTest = True
-    }
-  , defTarget 'Calendar.switchCalendar1k
+  [ defTarget 'Calendar.switchCalendar1k
   , defTarget 'Calendar.switchCalendar1kReducedPins
   , defTarget 'ClockControl.callisto3
   , defTarget 'Counter.counterReducedPins
@@ -195,6 +196,10 @@ targets = map enforceValidTarget
   , defTarget 'Si539xSpi.si5391Spi
   , defTarget 'StabilityChecker.stabilityChecker_3_1M
   , defTarget 'Synchronizer.safeDffSynchronizer
+
+  , testTarget 'BoardTest.extendedHardwareInTheLoopTest
+  , testTarget 'BoardTest.simpleHardwareInTheLoopTest
+  , testTarget 'FincFdec.fincFdecTests
   ]
 
 shakeOpts :: ShakeOptions

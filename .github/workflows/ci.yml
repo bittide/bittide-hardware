@@ -731,7 +731,7 @@ jobs:
             dir=$(ls _build/vivado | grep -E '\.${{ matrix.target.top }}$')
             tcl_test=_build/vivado/"${dir}"/run_hardware_test.tcl
             tcl_program=_build/vivado/"${dir}"/run_board_program.tcl
-            cabal run shake -- "${tcl_test}" "${tcl_program}" --hardware-targets=All
+            cabal run shake -- "${tcl_test}" "${tcl_program}" --hardware-targets="${{ matrix.target.targets }}"
           fi
 
       - name: Archive build artifacts
