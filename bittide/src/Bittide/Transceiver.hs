@@ -19,7 +19,7 @@ transceiverPrbsN ::
   , KnownDomain freeclk
   , KnownDomain tx
   , KnownDomain rx
-  , KnownNat (DomainPeriod freeclk)) =>
+  ) =>
   Clock refclk ->
   Clock freeclk ->
 
@@ -52,7 +52,6 @@ transceiverPrbs ::
   ( KnownDomain freeclk
   , KnownDomain tx
   , KnownDomain rx
-  , KnownNat (DomainPeriod freeclk)
   ) =>
 
   Clock refclk ->
@@ -284,7 +283,6 @@ gthResetManager ::
   forall freerun rxUser2 .
   ( KnownDomain freerun
   , KnownDomain rxUser2
-  , KnownNat (DomainPeriod freerun)
   ) =>
   Clock freerun ->
   "reset_all_in" ::: Reset freerun ->
@@ -343,13 +341,7 @@ gthResetManager free_clk reset_all_in tx_clk tx_init_done rx_init_done rx_data_g
   rx_timer = cyclesForMilliSeconds @freerun (SNat @130)
 
 -- | Calculates how many cycles of a certain domain fit in some number of milliseconds
-cyclesForMilliSeconds ::
-  forall dom ms a.
-  ( Num a
-  , KnownNat (DomainPeriod dom)
-  ) =>
-  SNat ms ->
-  a
+cyclesForMilliSeconds :: forall dom ms a . (Num a, KnownDomain dom) => SNat ms -> a
 cyclesForMilliSeconds x =
   fromInteger ((snatToInteger x * 1000_000_000) `div` period)
  where
