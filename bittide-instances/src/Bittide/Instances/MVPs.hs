@@ -55,12 +55,12 @@ clockControlDemo1 clkSma clkFmc drainFifoA drainFifoB =
   (fIncDecB, _, _, isStableB, _) = unbundle demoB
 
   demoA =
-    genericClockControlDemo0 clockConfigA clkB clkA (unsafeFromHighPolarity $ pure False)
-    drainFifoA (unsafeFromHighPolarity $ pure False)
+    genericClockControlDemo0 clockConfigA clkB clkA (unsafeFromActiveHigh $ pure False)
+    drainFifoA (unsafeFromActiveHigh $ pure False)
 
   demoB =
-    genericClockControlDemo0 clockConfigB clkA clkB (unsafeFromHighPolarity $ pure False)
-    drainFifoB (unsafeFromHighPolarity $ pure False)
+    genericClockControlDemo0 clockConfigB clkA clkB (unsafeFromActiveHigh $ pure False)
+    drainFifoB (unsafeFromActiveHigh $ pure False)
 
   clkA = ibufds clkSma
   clkB = ibufds clkFmc
@@ -98,7 +98,7 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
   callistoResult =
     callistoClockControl @1 clkControlled clockControlReset enableGen
       config availableLinkMask (bufferOccupancy :> Nil)
-  clockControlReset = unsafeFromLowPolarity $ (==Pass) <$> ebMode
+  clockControlReset = unsafeFromActiveLow $ (==Pass) <$> ebMode
 
   writeData = pure (0 :: DataCount 8)
 
@@ -112,7 +112,7 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
 
 -- XXX: Remove me when we merge FINC/FDEC test
 noReset :: KnownDomain dom => Reset dom
-noReset = unsafeFromHighPolarity (pure False)
+noReset = unsafeFromActiveHigh (pure False)
 
 clockControlDemo0 ::
   "SYSCLK_300" ::: DiffClock Basic300 ->

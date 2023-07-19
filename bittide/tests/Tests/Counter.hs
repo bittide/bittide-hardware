@@ -23,13 +23,13 @@ createDomain vXilinxSystem{vName="D17", vPeriod=hzToPeriod 170e6}
 createDomain vXilinxSystem{vName="D20", vPeriod=hzToPeriod 200e6}
 
 noRst :: KnownDomain dom => Reset dom
-noRst = unsafeFromHighPolarity (pure False)
+noRst = unsafeFromActiveHigh (pure False)
 
 rst :: KnownDomain dom => Reset dom
-rst = unsafeFromHighPolarity (pure True)
+rst = unsafeFromActiveHigh (pure True)
 
 rstN :: KnownDomain dom => Int -> Reset dom
-rstN n = unsafeFromHighPolarity (fromList (P.replicate n True <> P.repeat False))
+rstN n = unsafeFromActiveHigh (fromList (P.replicate n True <> P.repeat False))
 
 top ::
   forall src dst .

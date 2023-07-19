@@ -279,7 +279,7 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
  where
   circuitFunction (fifoIn, (readyIn, _)) = (Ack <$> readyOut, (fifoOut, CSignal fifoMeta))
    where
-    circuitActive = unsafeToLowPolarity hasReset .&&. fromEnable hasEnable
+    circuitActive = unsafeToActiveLow hasReset .&&. fromEnable hasEnable
     bramOut =
       readNew (blockRamU NoClearOnReset depth (errorX "No reset function"))
       readAddr writeOp
