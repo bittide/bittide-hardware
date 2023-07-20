@@ -75,6 +75,7 @@ common common-options
     clash-protocols,
     containers,
     cryptohash-sha256,
+    directory,
     elastic-buffer-sim,
     extra,
     filepath,
@@ -96,6 +97,7 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
+    Clash.Shake.Cargo
     Clash.Shake.Extra
     Clash.Shake.Flags
     Clash.Shake.Vivado
@@ -119,7 +121,6 @@ executable shake
     , clash-lib
     , cryptohash-sha256
     , deepseq
-    , directory
     , extra
     , Glob
     , pretty-simple
