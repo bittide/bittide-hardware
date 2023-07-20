@@ -3,9 +3,10 @@
 -- SPDX-License-Identifier: CC0-1.0
 
 packages:
-  bittide/
   bittide-extra/
   bittide-instances/
+  bittide-shake/
+  bittide/
   elastic-buffer-sim/
 
   clash-vexriscv/clash-vexriscv/

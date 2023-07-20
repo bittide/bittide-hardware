@@ -717,9 +717,8 @@ jobs:
             target="bitstream"
           fi
 
-          .github/scripts/with_vivado.sh cabal run -- \
-            bittide-instances:shake \
-              ${{ matrix.target.top }}:"${target}"
+          .github/scripts/with_vivado.sh cabal run shake -- \
+            ${{ matrix.target.top }}:"${target}"
 
           # Explicitly generate the Tcl scripts needed for programming and
           # hardware testing.

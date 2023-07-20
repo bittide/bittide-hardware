@@ -18,7 +18,7 @@ Copyright: 2022 Google LLC
 License: Apache-2.0
 
 Files: bittide-instances/imgs/*
-Copyright: 2022 Google LLC
+Copyright: 2022-2023 Google LLC
 License: Apache-2.0
 
 Files: bittide-instances/tests/reports/*

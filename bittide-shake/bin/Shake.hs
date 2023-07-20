@@ -11,36 +11,23 @@ import Prelude
 
 import Control.Applicative (liftA2)
 import Control.Monad.Extra (ifM, unlessM, when)
+import Data.Char(isSpace)
 import Data.Foldable (for_)
+import Data.List (dropWhileEnd)
 import Development.Shake
 import GHC.Stack (HasCallStack)
-import Language.Haskell.TH (nameBase)
 import System.Console.ANSI (setSGR)
 import System.Directory (getCurrentDirectory, setCurrentDirectory)
 import System.FilePath (isDrive, (</>), takeDirectory)
 import System.Process (readProcess)
 
-import Paths_bittide_instances
+import Paths_bittide_shake
 
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
 import Clash.Shake.Extra
 
-import qualified Bittide.Instances.BoardTest as BoardTest
-import qualified Bittide.Instances.Calendar as Calendar
-import qualified Bittide.Instances.ClockControl as ClockControl
-import qualified Bittide.Instances.Counter as Counter
-import qualified Bittide.Instances.ElasticBuffer as ElasticBuffer
-import qualified Bittide.Instances.MVPs as MVPs
-import qualified Bittide.Instances.ScatterGather as ScatterGather
-import qualified Bittide.Instances.Si539xSpi as Si539xSpi
-import qualified Bittide.Instances.StabilityChecker as StabilityChecker
-import qualified Bittide.Instances.Synchronizer as Synchronizer
-
-import qualified Bittide.Instances.Tests.FincFdec as FincFdec
-
 import qualified Clash.Util.Interpolate as I
-import qualified Language.Haskell.TH as TH
 import qualified System.Directory as Directory
 
 {- [Note: invalidating HDL cache]
@@ -112,9 +99,15 @@ clashBuildDir = buildDir </> "clash"
 vivadoBuildDir :: FilePath
 vivadoBuildDir = buildDir </> "vivado"
 
-getConstraintFilePath :: TH.Name -> IO FilePath
-getConstraintFilePath target =
-  getDataFileName ("data" </> "constraints" </> nameBase target <> ".xdc")
+getConstraintFilePath :: String -> IO FilePath
+getConstraintFilePath target = do
+  out <- readProcess "cabal"
+    [ "run"
+    , "-v0"
+    , "get-data-file-name"
+    , "data/constraints" </> entityName target <> ".xdc"
+    ] ""
+  pure $ dropWhileEnd isSpace $ dropWhile isSpace out
 
 
 -- | Searches for a file called @cabal.project@ It will look for it in the
@@ -140,7 +133,7 @@ findProjectRoot = goUp =<< getCurrentDirectory
 
 data Target = Target
   { -- | TemplateHaskell reference to top entity to synthesize
-    targetName :: TH.Name
+    targetName :: TargetName
 
     -- | Whether target has an associated XDC file in 'data/constraints'. An XDC
     -- file implies that a bitstream can be generated.
@@ -154,7 +147,7 @@ data Target = Target
   , targetHasTest :: Bool
   }
 
-defTarget :: TH.Name -> Target
+defTarget :: TargetName -> Target
 defTarget name = Target
   { targetName = name
   , targetHasXdc = False
@@ -162,7 +155,7 @@ defTarget name = Target
   , targetHasTest = False
   }
 
-testTarget :: TH.Name -> Target
+testTarget :: TargetName -> Target
 testTarget name = Target
   { targetName = name
   , targetHasXdc = True
@@ -181,25 +174,25 @@ enforceValidTarget target@Target{..}
 -- | All synthesizable targets
 targets :: [Target]
 targets = map enforceValidTarget
-  [ defTarget 'Calendar.switchCalendar1k
-  , defTarget 'Calendar.switchCalendar1kReducedPins
-  , defTarget 'ClockControl.callisto3
-  , defTarget 'Counter.counterReducedPins
-  , defTarget 'ElasticBuffer.elasticBuffer5
-  , (defTarget 'MVPs.clockControlDemo0) {targetHasXdc = True}
-  , (defTarget 'MVPs.clockControlDemo1) {targetHasXdc = True}
-  , defTarget 'ScatterGather.gatherUnit1K
-  , defTarget 'ScatterGather.gatherUnit1KReducedPins
-  , defTarget 'ScatterGather.scatterUnit1K
-  , defTarget 'ScatterGather.scatterUnit1KReducedPins
-  , defTarget 'Si539xSpi.callistoSpi
-  , defTarget 'Si539xSpi.si5391Spi
-  , defTarget 'StabilityChecker.stabilityChecker_3_1M
-  , defTarget 'Synchronizer.safeDffSynchronizer
+  [ defTarget "Bittide.Instances.Calendar.switchCalendar1k"
+  , defTarget "Bittide.Instances.Calendar.switchCalendar1kReducedPins"
+  , defTarget "Bittide.Instances.ClockControl.callisto3"
+  , defTarget "Bittide.Instances.Counter.counterReducedPins"
+  , defTarget "Bittide.Instances.ElasticBuffer.elasticBuffer5"
+  , (defTarget "Bittide.Instances.MVPs.clockControlDemo0") {targetHasXdc = True}
+  , (defTarget "Bittide.Instances.MVPs.clockControlDemo1") {targetHasXdc = True}
+  , defTarget "Bittide.Instances.ScatterGather.gatherUnit1K"
+  , defTarget "Bittide.Instances.ScatterGather.gatherUnit1KReducedPins"
+  , defTarget "Bittide.Instances.ScatterGather.scatterUnit1K"
+  , defTarget "Bittide.Instances.ScatterGather.scatterUnit1KReducedPins"
+  , defTarget "Bittide.Instances.Si539xSpi.callistoSpi"
+  , defTarget "Bittide.Instances.Si539xSpi.si5391Spi"
+  , defTarget "Bittide.Instances.StabilityChecker.stabilityChecker_3_1M"
+  , defTarget "Bittide.Instances.Synchronizer.safeDffSynchronizer"
 
-  , testTarget 'BoardTest.extendedHardwareInTheLoopTest
-  , testTarget 'BoardTest.simpleHardwareInTheLoopTest
-  , testTarget 'FincFdec.fincFdecTests
+  , testTarget "Bittide.Instances.BoardTest.extendedHardwareInTheLoopTest"
+  , testTarget "Bittide.Instances.BoardTest.simpleHardwareInTheLoopTest"
+  , testTarget "Bittide.Instances.Tests.FincFdec.fincFdecTests"
   ]
 
 shakeOpts :: ShakeOptions
@@ -280,7 +273,7 @@ main = do
         -- 'all' builds all targets defined below
         phony "all" $ do
           for_ targets $ \Target{..} -> do
-            need [nameBase targetName <> ":synth"]
+            need [entityName targetName <> ":synth"]
 
         -- For each target, generate a user callable command (PHONY). Run with
         -- '--help' to list them.
@@ -289,7 +282,7 @@ main = do
             -- TODO: Dehardcode these paths. They're currently hardcoded in both the
             --       TCL and here, which smells.
             manifestPath = getManifestLocation clashBuildDir targetName
-            synthesisDir = vivadoBuildDir </> show targetName
+            synthesisDir = vivadoBuildDir </> targetName
             checkpointsDir = synthesisDir </> "checkpoints"
             netlistDir = synthesisDir </> "netlist"
             reportDir = synthesisDir </> "reports"
@@ -480,33 +473,33 @@ main = do
 
 
           -- User friendly target names
-          phony (nameBase targetName <> ":hdl") $ do
+          phony (entityName targetName <> ":hdl") $ do
             need [manifestPath]
 
-          phony (nameBase targetName <> ":synth") $ do
+          phony (entityName targetName <> ":synth") $ do
             need [postSynthCheckpointPath]
 
-          phony (nameBase targetName <> ":place") $ do
+          phony (entityName targetName <> ":place") $ do
             need [postPlaceCheckpointPath]
 
-          phony (nameBase targetName <> ":route") $ do
+          phony (entityName targetName <> ":route") $ do
             need [postRouteCheckpointPath]
 
-          phony (nameBase targetName <> ":netlist") $ do
+          phony (entityName targetName <> ":netlist") $ do
             need [postNetlistCheckpointPath]
 
           when targetHasXdc $ do
-            phony (nameBase targetName <> ":bitstream") $ do
+            phony (entityName targetName <> ":bitstream") $ do
               when targetHasVio $ need [probesPath]
               need [bitstreamPath]
 
-            phony (nameBase targetName <> ":program") $ do
+            phony (entityName targetName <> ":program") $ do
               when targetHasVio $ need [probesPath]
               need [runBoardProgramTclPath, bitstreamPath]
               vivadoFromTcl runBoardProgramTclPath
 
             when targetHasTest $ do
-              phony (nameBase targetName <> ":test") $ do
+              phony (entityName targetName <> ":test") $ do
                 need
                   [ runBoardProgramTclPath
                   , runHardwareTestTclPath
