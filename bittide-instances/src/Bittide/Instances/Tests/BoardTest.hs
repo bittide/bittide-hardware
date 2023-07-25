@@ -4,7 +4,7 @@
 
 -- | Checks whether `+` and `-` work as expected, though its real purpose is to
 -- check whether we can run hardware-in-the-loop tests.
-module Bittide.Instances.BoardTest where
+module Bittide.Instances.Tests.BoardTest where
 
 import Clash.Explicit.Prelude
 
