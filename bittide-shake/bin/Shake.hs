@@ -343,10 +343,10 @@ main = do
 
             -- Synthesis
             runSynthTclPath %> \path -> do
-              constraintFilePath <- liftIO (getConstraintFilePath targetName)
 
               constraints <-
                 if targetHasXdc then do
+                  constraintFilePath <- liftIO (getConstraintFilePath targetName)
                   need [constraintFilePath]
                   pure [constraintFilePath]
                 else
