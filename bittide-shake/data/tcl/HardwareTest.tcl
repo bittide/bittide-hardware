@@ -60,7 +60,7 @@ proc print_all_vios {} {
     set w_radix 5
     foreach probe $probes {
         set type [get_property type $probe]
-        set w_name_cur [string length [get_property name $probe]]
+        set w_name_cur [string length [get_property name.short $probe]]
         if {$type == "vio_input"} {
             set w_value_cur [string length [get_property input_value $probe]]
             set w_radix_cur [string length [get_property input_value_radix $probe]]
@@ -81,7 +81,7 @@ proc print_all_vios {} {
 
     set input_probes [get_hw_probes -filter {type == vio_input}]
     foreach input_probe $input_probes {
-        set name [get_property name $input_probe]
+        set name [get_property name.short $input_probe]
         set value [get_property input_value $input_probe]
         set radix [get_property input_value_radix $input_probe]
         puts [format "| %-*s | %*s | %-*s |" $w_name $name $w_value $value $w_radix $radix]
@@ -90,7 +90,7 @@ proc print_all_vios {} {
 
     set output_probes [get_hw_probes -filter {type == vio_output}]
     foreach output_probe $output_probes {
-        set name [get_property name $output_probe]
+        set name [get_property name.short $output_probe]
         set value [get_property output_value $output_probe]
         set radix [get_property output_value_radix $output_probe]
         puts [format "| %-*s | %*s | %-*s |" $w_name $name $w_value $value $w_radix $radix]
@@ -182,7 +182,7 @@ proc verify_before_start {start_probe} {
     set_property OUTPUT_VALUE 0 $start_probe
     commit_hw_vio [get_hw_vios hw_vio_1]
     refresh_hw_vio [get_hw_vios hw_vio_1]
-    set done [get_property INPUT_VALUE [get_hw_probes probe_test_done]]
+    set done [get_property INPUT_VALUE [get_hw_probes */probe_test_done]]
     if {$done != 0} {
         puts "\tERROR: test is done before starting the test"
         print_all_vios
@@ -197,8 +197,8 @@ proc wait_test_end {} {
     while 1 {
         # Check test status, break if test is done
         refresh_hw_vio [get_hw_vios hw_vio_1]
-        set done [get_property INPUT_VALUE [get_hw_probes probe_test_done]]
-        set success [get_property INPUT_VALUE [get_hw_probes probe_test_success]]
+        set done [get_property INPUT_VALUE [get_hw_probes */probe_test_done]]
+        set success [get_property INPUT_VALUE [get_hw_probes */probe_test_success]]
         if {$done == 1} {
             break
         }
@@ -233,7 +233,7 @@ proc print_test_results {done success start_time end_time} {
     }
 }
 
-# Gets the names of probes which start with 'probe_test_start'
+# Gets the short names of probes which contain 'probe_test_start'
 proc get_test_names {probes_file target_dict url} {
     # Load the device of the first target
     set target_id [lindex [dict values $target_dict] 0]
@@ -243,14 +243,14 @@ proc get_test_names {probes_file target_dict url} {
     set_property PROBES.FILE ${probes_file} $device
     refresh_hw_device $device
 
-    set start_probes [get_hw_probes probe_test_start*]
-    if {[expr [llength start_probes] == 0]} {
-        puts "No probes found with name 'probe_test_start*', which are needed to start tests"
+    set start_probes [get_hw_probes */probe_test_start*]
+    if {[expr [llength $start_probes] == 0]} {
+        puts "No probes found with name '*probe_test_start*', which are needed to start tests"
         exit 1
     }
     set start_probe_names {}
     foreach start_probe $start_probes {
-        lappend start_probe_names [get_property NAME $start_probe]
+        lappend start_probe_names [get_property name.short $start_probe]
     }
     return $start_probe_names
 }
@@ -278,7 +278,7 @@ proc run_test_group {probes_file target_dict url} {
             set_property PROBES.FILE ${probes_file} $device
             refresh_hw_device $device
             # Verify pre-start condition
-            set start_probe [get_hw_probes $start_probe_name]
+            set start_probe [get_hw_probes */$start_probe_name]
             verify_before_start $start_probe
             # Start the test
             set_property OUTPUT_VALUE 1 $start_probe
@@ -310,7 +310,7 @@ proc run_test_group {probes_file target_dict url} {
             set_property PROBES.FILE ${probes_file} $device
             refresh_hw_device $device
             # Reset the start probe for the current test
-            set start_probe [get_hw_probes $start_probe_name]
+            set start_probe [get_hw_probes */$start_probe_name]
             set_property OUTPUT_VALUE 0 $start_probe
             commit_hw_vio [get_hw_vios hw_vio_1]
         }
@@ -323,7 +323,7 @@ proc run_test_group {probes_file target_dict url} {
 
     # Print summary of all tests
     if {[expr $successful_tests == $test_count]} {
-        puts "\nAll tests passed on ${target_count} targets"
+        puts "\nAll ${successful_tests} tests passed on ${target_count} targets"
         exit 0
     } else {
         set failed_tests [expr ${test_count} - ${successful_tests}]
