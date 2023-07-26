@@ -51,10 +51,10 @@ getBytesMems elfPath maybeDeviceTree = do
   elfBytes <- BS.readFile elfPath
   let (entry, iMem, dMem0) = readElfFromMemory elfBytes
 
-  when (entry /= 0x0000_0000) $ do
+  when (entry /= 0x8000_0000) $ do
     hPutStrLn stderr $
       "Entry point of ELF file at " <> show elfPath <>
-        " must be 0x00000000. Found 0x" <> showHex entry "" <> " instead"
+        " must be 0x80000000. Found 0x" <> showHex entry "" <> " instead"
     exitFailure
 
   -- add device tree as a memory mapped component
@@ -66,8 +66,8 @@ getBytesMems elfPath maybeDeviceTree = do
       "Bittide.ProcessingElement.Util: Overlapping element in data memory and device tree at address 0x"
       <> showHex k "") dMem0 deviceTreeMap
 
-  putStrLn $ "elf file: " <> elfPath <>
-          "\ndevice tree: " <> show (fmap (\(a,b) -> (a,b, L.length b)) maybeDeviceTree)
+  -- putStrLn $ "elf file: " <> elfPath <>
+  --         "\ndevice tree: " <> show (fmap (\(a,b) -> (a,b, L.length b)) maybeDeviceTree)
 
   pure (iMem, if isJust maybeDeviceTree then dMem1 else dMem0)
 

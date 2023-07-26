@@ -165,6 +165,7 @@ wbStorage ::
   Circuit (Wishbone dom 'Standard aw (Bytes 4)) ()
 wbStorage initContent = Circuit $ \(m2s, ()) ->
   (wbStorage' initContent m2s, ())
+{-# NOINLINE wbStorage #-}
 
 -- | Storage element with a single wishbone port. Allows for word-aligned addresses.
 wbStorage' ::

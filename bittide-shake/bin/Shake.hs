@@ -193,6 +193,7 @@ targets = map enforceValidTarget
   , testTarget "Bittide.Instances.BoardTest.extendedHardwareInTheLoopTest"
   , testTarget "Bittide.Instances.BoardTest.simpleHardwareInTheLoopTest"
   , testTarget "Bittide.Instances.Tests.FincFdec.fincFdecTests"
+  , testTarget "Bittide.Instances.Tests.VexRiscv.vexRiscvTest"
   ]
 
 shakeOpts :: ShakeOptions

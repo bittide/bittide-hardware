@@ -112,6 +112,7 @@ library
 
     -- Hardware-in-the-loop tests
     Bittide.Instances.Tests.FincFdec
+    Bittide.Instances.Tests.VexRiscv
   autogen-modules:
     Paths_bittide_instances
   other-modules:

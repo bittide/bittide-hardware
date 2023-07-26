@@ -498,7 +498,7 @@ jobs:
     defaults:
       run:
         shell: git-nix-shell {0} --pure
-    needs: [build, lint]
+    needs: [build, lint, firmware-build-examples]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
@@ -525,6 +525,22 @@ jobs:
           key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
+
+      - uses: actions/cache@v3
+        name: Cargo Cache
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ./target/
+            ./firmware/examples/target/
+          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build Firmware Examples
+        run: cargo build --release
+        working-directory: firmware/examples/
 
       - name: Doctests
         run : |
@@ -536,7 +552,7 @@ jobs:
     defaults:
       run:
         shell: git-nix-shell {0} --pure
-    needs: [build, lint]
+    needs: [build, lint, firmware-build-examples]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
@@ -563,6 +579,22 @@ jobs:
           key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
+
+      - uses: actions/cache@v3
+        name: Cargo Cache
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ./target/
+            ./firmware/examples/target/
+          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build Firmware Examples
+        run: cargo build --release
+        working-directory: firmware/examples/
 
       - name: Unit tests
         run : |
@@ -642,7 +674,7 @@ jobs:
       SYNTHESIS_BOARD: xilinx.com:kcu105:part0:1.7
       # SYNTHESIS_PART: xcku040-ffva1156-2-e
       # SYNTHESIS_PART: xcku035-ffva1156-2-e
-    needs: [build, lint, bittide-instances-hdl-matrix]
+    needs: [build, lint, bittide-instances-hdl-matrix, firmware-build-examples]
 
     strategy:
       matrix:
@@ -688,6 +720,34 @@ jobs:
           key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
+
+      - uses: actions/cache@v3
+        name: Cargo Cache
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ./target/
+            ./firmware/examples/target/
+          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build Firmware Examples
+        run: cargo build --release
+        working-directory: firmware/examples/
+
+      - name: Show project files
+        run: |
+          find . -type f \
+               -not -path './.git/*' \
+            -a -not -path './firmware/examples/target/*' \
+            -a -not -path './clash-vexriscv/clash-vexriscv/build_out_dir/*' \
+            -a -not -path './clash-vexriscv/clash-vexriscv/example-cpu/target/*' \
+            -a -not -path './clash-vexriscv/clash-vexriscv/example-cpu/project/target/*' \
+            -a -not -path './_build/*' \
+            -a -not -path './target/*' \
+            -a -not -path './dist-newstyle/*' \
 
       - name: HDL generation and synthesis
         run : |
@@ -740,7 +800,7 @@ jobs:
       run:
         # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
         shell: git-nix-shell {0}
-    needs: [bittide-instances-hdl, bittide-instances-hardware-in-the-loop-test-matrix]
+    needs: [bittide-instances-hdl, bittide-instances-hardware-in-the-loop-test-matrix, firmware-build-examples]
 
     strategy:
       matrix:
