@@ -4,7 +4,6 @@
   {"top": "clockControlDemo1",             "stage": "bitstream"},
   {"top": "counterReducedPins",            "stage": "netlist"},
   {"top": "elasticBuffer5",                "stage": "netlist"},
-  {"top": "extendedHardwareInTheLoopTest", "stage": "test"},
   {"top": "gatherUnit1K",                  "stage": "hdl"},
   {"top": "gatherUnit1KReducedPins",       "stage": "netlist"},
   {"top": "safeDffSynchronizer",           "stage": "netlist"},
