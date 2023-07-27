@@ -68,6 +68,7 @@ simpleHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
   (testDone, testSuccess) = unbundle $ toDoneSuccess <$> testState
 
   testStart =
+    setName @"vioHitlt" $
     vioProbe
       ("probe_test_done" :> "probe_test_success" :> Nil)
       ("probe_test_start" :> Nil)
@@ -119,6 +120,7 @@ extendedHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
 
   (testStartA, testStartB) =
     unbundle $
+    setName @"vioHitlt" $
     vioProbe
       (  "probe_test_done"
       :> "probe_test_success"

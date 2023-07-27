@@ -153,6 +153,7 @@ syncInSyncOut sysClkDiff syncIn0 = syncOut
 
   startTest :: Signal Basic300 Bool
   startTest =
+    setName @"vioHitlt" $
     vioProbe
       ("probe_test_done" :> "probe_test_success" :> Nil)
       ("probe_test_start" :> Nil)

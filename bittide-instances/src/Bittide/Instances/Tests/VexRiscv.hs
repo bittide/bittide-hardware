@@ -133,15 +133,17 @@ vexRiscvTest diffClk = (testDone, testSuccess)
     ((unsafeFromActiveLow -> testReset) :> Nil) = unbundle probe
 
     probe :: Signal Basic200 (Vec 1 Bool)
-    probe = vioProbe
-      (   "probe_test_done"
-       :> "probe_test_success"
-       :> Nil)
-      ( "probe_test_start" :> Nil)
-      (False :> Nil)
-      clk
-      testDone
-      testSuccess
+    probe =
+      setName @"vioHitlt" $
+      vioProbe
+        (   "probe_test_done"
+        :> "probe_test_success"
+        :> Nil)
+        ( "probe_test_start" :> Nil)
+        (False :> Nil)
+        clk
+        testDone
+        testSuccess
 
 {-# NOINLINE vexRiscvTest #-}
 makeTopEntity 'vexRiscvTest
