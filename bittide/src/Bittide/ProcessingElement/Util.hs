@@ -66,9 +66,6 @@ getBytesMems elfPath maybeDeviceTree = do
       "Bittide.ProcessingElement.Util: Overlapping element in data memory and device tree at address 0x"
       <> showHex k "") dMem0 deviceTreeMap
 
-  -- putStrLn $ "elf file: " <> elfPath <>
-  --         "\ndevice tree: " <> show (fmap (\(a,b) -> (a,b, L.length b)) maybeDeviceTree)
-
   pure (iMem, if isJust maybeDeviceTree then dMem1 else dMem0)
 
 -- | Given an IntMap, return a 3 tuple containing:

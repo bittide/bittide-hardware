@@ -737,18 +737,6 @@ jobs:
         run: cargo build --release
         working-directory: firmware/examples/
 
-      - name: Show project files
-        run: |
-          find . -type f \
-               -not -path './.git/*' \
-            -a -not -path './firmware/examples/target/*' \
-            -a -not -path './clash-vexriscv/clash-vexriscv/build_out_dir/*' \
-            -a -not -path './clash-vexriscv/clash-vexriscv/example-cpu/target/*' \
-            -a -not -path './clash-vexriscv/clash-vexriscv/example-cpu/project/target/*' \
-            -a -not -path './_build/*' \
-            -a -not -path './target/*' \
-            -a -not -path './dist-newstyle/*' \
-
       - name: HDL generation and synthesis
         run : |
           target="${{ matrix.target.stage }}"

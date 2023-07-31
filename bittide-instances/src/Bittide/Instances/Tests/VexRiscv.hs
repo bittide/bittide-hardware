@@ -78,7 +78,13 @@ vexRiscvInner = stateToDoneSuccess <$> status
     0b0100xxxx 0x4x data memory
     0b1100xxxx 0xCx status register
     -}
-    peConfig = PeConfig (0b10 :> 0b01 :> 0b11 :> Nil) (Reloadable $ Blob iMem) (Reloadable $ Blob dMem)
+
+    peConfig = PeConfig
+      (0b10 :> 0b01 :> 0b11 :> Nil)
+      -- these memories need to be reloadable, otherwise synthesis will optimise
+      -- out the entire data memory somehow!
+      (Reloadable $ Blob iMem)
+      (Reloadable $ Blob dMem)
 
     (   (_iStart, _iSize, iMem)
       , (_dStart, _dSize, dMem)) = $(do
