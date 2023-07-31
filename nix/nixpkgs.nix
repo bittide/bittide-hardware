@@ -12,7 +12,7 @@ let
     # Haskell overrides
     haskellPackages = nixpkgs.haskellPackages.override {
       overrides = self: super: {
-        # Disables libray profiling, documentation building, and building/running
+        # Disables library profiling, documentation building, and building/running
         # test suites to speed up compilation times. This should only be applied
         # to local packages. Adding them to others will defeat caching.
         applyPrefs = p:
