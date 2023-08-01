@@ -125,7 +125,6 @@ executable get-data-file-name
   -- We need -xm20000000 because of a memory allocation bug after a kernel update
   ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: bin/GetDataFileName.hs
-  Build-Depends: bittide-instances
   other-modules:
     Paths_bittide_instances
   autogen-modules:
