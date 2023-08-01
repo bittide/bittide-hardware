@@ -179,7 +179,7 @@ wbStorage' initContent wbIn = delayControls wbIn wbOut
  where
   romOut = case initContent of
     Reloadable content-> bundle $ contentGenerator content
-    other -> deepErrorX ("wbStorage': No content generator for " <> show other)
+    other -> deepErrorX $ "wbStorage': No content generator for " <> show other
 
   readData = ram readAddr writeEntry byteSelect
 
@@ -277,7 +277,7 @@ doubleBufferedRamU outputSelect readAddr0 writeFrame0 =
  where
   (readAddr1, writeFrame1) =
     unbundle $ updateAddrs <$> readAddr0 <*> writeFrame0 <*> outputSelect
-  rstFunc = const (errorX "doubleBufferedRamU: reset function undefined")
+  rstFunc = clashCompileError "doubleBufferedRamU: reset function undefined"
 
 -- | The byte addressable double buffered Ram component is a memory component that
 -- consists of two buffers and internally stores its elements as a multiple of 8 bits.
@@ -348,10 +348,10 @@ blockRamByteAddressable ::
   Signal dom a
 blockRamByteAddressable initContent readAddr newEntry byteSelect =
   getDataBe @8 . RegisterBank <$> case initContent of
-    Blob _  -> deepErrorX "blockRamByteAddressable: Singular MemBlobs are not supported. "
+    Blob _  -> clashCompileError "blockRamByteAddressable: Singular MemBlobs are not supported. "
     Vec vecOfA -> go (byteRam . Vec <$> transpose (fmap getBytes vecOfA))
     BlobVec blobs -> go (fmap (byteRam . Blob) blobs)
-    File _ -> deepErrorX "blockRamByteAddressable: Singular source files for initial content are not supported. "
+    File _ -> clashCompileError "blockRamByteAddressable: Singular source files for initial content are not supported. "
     FileVec blobs -> go (fmap (byteRam . File) blobs)
  where
   go brams =  readBytes
@@ -382,7 +382,7 @@ blockRamByteAddressableU readAddr newEntry byteSelect =
   writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
   readBytes = bundle $ ram readAddr <$> writeBytes
   ram = blockRamU NoClearOnReset (SNat @memDepth) rstFunc
-  rstFunc = const (errorX "blockRamByteAddressableU: reset function undefined")
+  rstFunc = clashCompileError "blockRamByteAddressableU: reset function undefined"
 
 data RegisterWritePriority = CircuitPriority | WishbonePriority
 
