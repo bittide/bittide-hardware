@@ -44,12 +44,22 @@ processingElement ::
   PeConfig nBusses ->
   Circuit () (Vec (nBusses-2) (Wishbone dom 'Standard (MappedBus 32 nBusses) (Bytes 4)))
 processingElement (PeConfig memMapConfig initI initD) = circuit $ do
-  (iBus, dBus) <- rvCircuit (pure low) (pure low) (pure low)
+  (iBus0, dBus) <- rvCircuit (pure low) (pure low) (pure low)
   ([iMemBus, dMemBus], extBusses) <-
     (splitAtC d2 <| singleMasterInterconnect memMapConfig) -< dBus
-  wbStorage initI -< iBus
-  wbStorageDPC initD -< (iMemBus, dMemBus)
+  wbStorage initD -< dMemBus
+  iBus1 <- removeMsb -< iBus0
+  wbStorageDPC initI -< (iBus1, iMemBus)
   idC -< extBusses
+ where
+  removeMsb ::
+    forall aw a .
+    KnownNat aw =>
+    Circuit (Wishbone dom 'Standard (aw + 1) a) (Wishbone dom 'Standard aw a)
+  removeMsb = wbMap (mapAddr (truncateB  :: BitVector (aw + 1) -> BitVector aw)) id
+
+  wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
+
 
 -- | Conceptually the same as 'splitAt', but for 'Circuit's
 splitAtC ::
@@ -86,11 +96,12 @@ rvCircuit tInterrupt sInterrupt eInterrupt = Circuit go
     iBusOut = mapAddr ((`shiftL` 2) . extend @_ @_ @2) . iBusWbM2S <$> rvOut
     dBusOut = mapAddr ((`shiftL` 2) . extend) . dBusWbM2S <$> rvOut
 
-    mapAddr ::
-      (BitVector aw1 -> BitVector aw2) ->
-      WishboneM2S aw1 selWidth a ->
-      WishboneM2S aw2 selWidth a
-    mapAddr f wb = wb { addr = f (addr wb) }
+-- | Map a function over the address field of 'WishboneM2S'
+mapAddr ::
+  (BitVector aw1 -> BitVector aw2) ->
+  WishboneM2S aw1 selWidth a ->
+  WishboneM2S aw2 selWidth a
+mapAddr f wb = wb { addr = f (addr wb) }
 
 -- | Stateless wishbone device that only acknowledges writes to address 0.
 -- Successful writes return the 'writeData' and 'busSelect'.

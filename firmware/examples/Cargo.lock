@@ -158,6 +158,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "processing-element-test"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -14,7 +14,7 @@ object ExampleCpu extends App {
     val config = VexRiscvConfig(
       plugins = List(
         new IBusSimplePlugin(
-          resetVector = 0x20000000l,
+          resetVector = 0x80000000l,
           cmdForkOnSecondStage = false,
           cmdForkPersistence = false,
           prediction = NONE,

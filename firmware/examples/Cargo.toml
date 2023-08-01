@@ -15,5 +15,6 @@ codegen-units = 1
 members = [
   "fdt-read",
   "hello",
+  "processing-element-test",
 ]
 resolver = "2"
