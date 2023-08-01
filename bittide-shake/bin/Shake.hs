@@ -19,7 +19,7 @@ import GHC.Stack (HasCallStack)
 import System.Console.ANSI (setSGR)
 import System.Directory (getCurrentDirectory, setCurrentDirectory)
 import System.FilePath (isDrive, (</>), takeDirectory)
-import System.Process (readProcess)
+import System.Process (readProcess, callProcess)
 
 import Paths_bittide_shake
 
@@ -101,12 +101,10 @@ vivadoBuildDir = buildDir </> "vivado"
 
 getConstraintFilePath :: String -> IO FilePath
 getConstraintFilePath target = do
+  let binName = "get-data-file-name"
+  callProcess "cabal" ["-v0", "build", binName]
   out <- readProcess "cabal"
-    [ "run"
-    , "-v0"
-    , "get-data-file-name"
-    , "data/constraints" </> entityName target <> ".xdc"
-    ] ""
+    [ "run", "-v0", binName, "data/constraints" </> entityName target <> ".xdc"] ""
   pure $ dropWhileEnd isSpace $ dropWhile isSpace out
 
 
