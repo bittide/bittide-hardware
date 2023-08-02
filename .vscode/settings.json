@@ -31,8 +31,11 @@
     "editor.formatOnSave": false
   },
   "rust-analyzer.linkedProjects": [
-    "firmware/examples/Cargo.toml"
+    "firmware-support/Cargo.toml",
+    "firmware-binaries/Cargo.toml",
+    "host-tools/Cargo.toml"
   ],
+  "rust-analyzer.check.allTargets": false,
   "cSpell.words": [
     "bitstream",
     "Vivado"

@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2022 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[build]
+target = "x86_64-unknown-linux-gnu"

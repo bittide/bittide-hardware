@@ -13,8 +13,9 @@ codegen-units = 1
 
 [workspace]
 members = [
-  "fdt-read",
-  "hello",
+  "examples/fdt-read",
+  "examples/hello",
+  
   "processing-element-test",
 ]
 resolver = "2"
