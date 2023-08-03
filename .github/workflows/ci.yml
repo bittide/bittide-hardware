@@ -342,8 +342,8 @@ jobs:
         run: |
           cabal run -- bittide-extra:doctests
 
-  firmware-lints:
-    name: Firmware Lints
+  rust-lints:
+    name: Rust Lints
     runs-on: [self-hosted, compute]
     defaults:
       run:
@@ -357,31 +357,22 @@ jobs:
 
       - name: Rust formatting
         run: |
-          cargo fmt --all -- --check
+          ./cargo.sh fmt --all -- --check
 
       - name: Clippy check
         run: |
-          cargo clippy --target riscv32imc-unknown-none-elf --all-features
-
-      - name: Rust formatting (firmware examples)
-        run: cargo fmt --all -- --check
-        working-directory: firmware/examples/
-
-      - name: Clippy check (firmware examples)
-        run: |
-          cargo clippy --target riscv32imc-unknown-none-elf --all-features
-        working-directory: firmware/examples/
+          ./cargo.sh clippy --all-features -- -Dwarnings
 
 
-  firmware-unit-tests:
-    name: Firmware Unit Tests
+  firmware-support-tests:
+    name: Firmware Support Unit Tests
     runs-on: [self-hosted, compute]
+    needs: [build]
     defaults:
       run:
         shell: git-nix-shell {0} --pure
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
-    needs: [build]
 
     steps:
       - name: Checkout
@@ -414,8 +405,8 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
+            ./firmware-support/target
+          key: cargo-cache-cachebust-2-${{ hashFiles('./firmware-support/Cargo.lock') }}
 
       - name: Build program-stream executable
         run: |
@@ -423,9 +414,43 @@ jobs:
 
       - name: Running Tests
         run: |
-          cargo test --target x86_64-unknown-linux-gnu --all
+          cargo test --all
+        working-directory: firmware-support/
 
-  firmware-build-examples:
+  host-tools-tests:
+    name: Host Tools Unit Tests
+    runs-on: [self-hosted, compute]
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project.simulation cabal.project.local
+
+      - uses: actions/cache@v3
+        name: Cargo Cache
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ./host-tools/target/
+          key: cargo-cache-cachebust-2-${{ hashFiles('./host-tools/Cargo.lock') }}
+
+      - name: Running Tests
+        run: |
+          cargo test --all
+        working-directory: host-tools/
+
+  firmware-build-binaries:
     name: Firmware Build Examples
     runs-on: [self-hosted, compute]
     defaults:
@@ -446,18 +471,17 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            ./target/
-            ./firmware/examples/target/
-          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
+            ./firmware-binaries/target/
+          key: cargo-firmware-bins-cache-cachebust-2-${{ hashFiles('./firmware-binaries/Cargo.lock') }}
 
       - name: Building Examples
         run: cargo build --release
-        working-directory: firmware/examples/
+        working-directory: firmware-binaries/
 
   firmware-limit-checks:
     name: Firmware Limit Checks
     runs-on: [self-hosted, compute]
-    needs: [firmware-build-examples]
+    needs: [firmware-build-binaries]
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -476,20 +500,20 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            ./target/
-            ./firmware/examples/target/
-          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
+            ./firmware-binaries/target/
+          key: cargo-firmware-bins-cache-cachebust-2-${{ hashFiles('./firmware-binaries/Cargo.lock') }}
 
       - name: Install `elf-limits`
         run: cargo install --git https://github.com/cuddlefishie/elf-limits
 
-      - name: Checking firmware example limits
+      - name: Checking firmware binary limits
         run: |
           ~/.cargo/bin/elf-limits \
             --instruction-mem-limit 64K \
             --data-mem-limit 64K \
-            firmware/examples/target/riscv32imc-unknown-none-elf/release/hello \
-            firmware/examples/target/riscv32imc-unknown-none-elf/release/fdt-read
+            hello \
+            fdt-read
+        working-directory: firmware-binaries/target/riscv32imc-unknown-none-elf/release
 
 
   bittide-instances-doctests:
@@ -498,7 +522,7 @@ jobs:
     defaults:
       run:
         shell: git-nix-shell {0} --pure
-    needs: [build, lint, firmware-build-examples]
+    needs: [build, lint, firmware-build-binaries]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
@@ -535,12 +559,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
-            ./firmware/examples/target/
-          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
+            ./firmware-binaries/target/
+          key: cargo-firmware-bins-cache-cachebust-2-${{ hashFiles('./firmware-binaries/Cargo.lock') }}
 
-      - name: Build Firmware Examples
+      - name: Build Firmware Binaries
         run: cargo build --release
-        working-directory: firmware/examples/
+        working-directory: firmware-binaries/
 
       - name: Doctests
         run : |
@@ -552,7 +576,7 @@ jobs:
     defaults:
       run:
         shell: git-nix-shell {0} --pure
-    needs: [build, lint, firmware-build-examples]
+    needs: [build, lint, firmware-build-binaries]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
@@ -589,12 +613,13 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
-            ./firmware/examples/target/
-          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
+            ./firmware-binaries/target/
+          key: cargo-firmware-bins-cache-cachebust-2-${{ hashFiles('./firmware-binaries/Cargo.lock') }}
 
-      - name: Build Firmware Examples
+      - name: Build Firmware Binaries
         run: cargo build --release
-        working-directory: firmware/examples/
+        working-directory: firmware-binaries/
+
 
       - name: Unit tests
         run : |
@@ -674,7 +699,7 @@ jobs:
       SYNTHESIS_BOARD: xilinx.com:kcu105:part0:1.7
       # SYNTHESIS_PART: xcku040-ffva1156-2-e
       # SYNTHESIS_PART: xcku035-ffva1156-2-e
-    needs: [build, lint, bittide-instances-hdl-matrix, firmware-build-examples]
+    needs: [build, lint, bittide-instances-hdl-matrix, firmware-build-binaries]
 
     strategy:
       matrix:
@@ -730,12 +755,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ./target/
-            ./firmware/examples/target/
-          key: cargo-cache-cachebust-2-${{ hashFiles('Cargo.lock') }}
+            ./firmware-binaries/target/
+          key: cargo-firmware-bins-cache-cachebust-2-${{ hashFiles('./firmware-binaries/Cargo.lock') }}
 
-      - name: Build Firmware Examples
+      - name: Build Firmware Binaries
         run: cargo build --release
-        working-directory: firmware/examples/
+        working-directory: firmware-binaries/
 
       - name: HDL generation and synthesis
         run : |
@@ -788,7 +813,7 @@ jobs:
       run:
         # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
         shell: git-nix-shell {0}
-    needs: [bittide-instances-hdl, bittide-instances-hardware-in-the-loop-test-matrix, firmware-build-examples]
+    needs: [bittide-instances-hdl, bittide-instances-hardware-in-the-loop-test-matrix, firmware-build-binaries]
 
     strategy:
       matrix:
@@ -836,10 +861,11 @@ jobs:
         elastic-buffer-sim-tests,
         elastic-buffer-sim-topologies-matrix,
         elastic-buffer-sim-topologies,
-        firmware-build-examples,
+        firmware-build-binaries,
         firmware-limit-checks,
-        firmware-lints,
-        firmware-unit-tests,
+        rust-lints,
+        firmware-support-tests,
+        host-tools-tests,
         generate-full-clock-control-simulation-report,
         license-check,
         lint,

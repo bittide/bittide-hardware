@@ -2,6 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+pub struct UartStatus {
+    pub receive_buffer_empty: bool,
+    pub transmit_buffer_full: bool,
+}
+
+pub struct TransmitBufferFull;
+pub struct ReceiveBufferEmpty;
+
 /// `Uart` is a structure representing a universal asynchronous receiver-transmitter.
 pub struct Uart {
     /// `payload_addr` is a mutable pointer to the address of the data payload.
@@ -10,14 +18,14 @@ pub struct Uart {
     flags_addr: *const u8,
 }
 
-pub struct UartStatus {
-    rx_empty: bool,
-    tx_full: bool,
-}
-
 impl Uart {
-    /// The `new` function creates a new `Uart` instance with given base
-    /// address. It's an unsafe function due to the usage of raw pointers.
+    /// Create a new [`Uart`] instance given a base address.
+    ///
+    /// # Safety
+    ///
+    /// The `base_addr` pointer MUST BE a valid pointer that is backed
+    /// by either a memory mapped UART instance or at valid read-writable memory
+    /// (which will likely cause incorrect behaviour, but not break memory safety)
     pub const unsafe fn new(base_addr: *mut u8) -> Uart {
         Uart {
             payload_addr: base_addr.cast(),
@@ -36,8 +44,8 @@ impl Uart {
         let tx_full = flags & tx_mask;
 
         UartStatus {
-            rx_empty: rx_empty != 0,
-            tx_full: tx_full != 0,
+            receive_buffer_empty: rx_empty != 0,
+            transmit_buffer_full: tx_full != 0,
         }
     }
 
@@ -45,7 +53,7 @@ impl Uart {
     /// data is available, it keeps looping until data is available.
     pub fn receive(&mut self) -> u8 {
         loop {
-            if let Some(val) = self.try_receive() {
+            if let Ok(val) = self.try_receive() {
                 return val;
             }
         }
@@ -53,13 +61,13 @@ impl Uart {
 
     /// The `try_receive` function attempts to receive data from the UART. If no
     /// data is available, it returns None.
-    pub fn try_receive(&mut self) -> Option<u8> {
-        if self.read_status().rx_empty {
-            None
+    pub fn try_receive(&mut self) -> Result<u8, ReceiveBufferEmpty> {
+        if self.read_status().receive_buffer_empty {
+            Err(ReceiveBufferEmpty)
         } else {
             unsafe {
                 let data: u8 = self.payload_addr.read_volatile();
-                Some(data)
+                Ok(data)
             }
         }
     }
@@ -76,9 +84,9 @@ impl Uart {
 
     /// The `try_send` function attempts to send the given data to the UART. If
     /// the UART is unable to accept the data, it returns an error.
-    pub fn try_send(&mut self, data: u8) -> Result<(), ()> {
-        if self.read_status().tx_full {
-            Err(())
+    pub fn try_send(&mut self, data: u8) -> Result<(), TransmitBufferFull> {
+        if self.read_status().transmit_buffer_full {
+            Err(TransmitBufferFull)
         } else {
             unsafe {
                 self.payload_addr.write_volatile(data);

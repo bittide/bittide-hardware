@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2022 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[workspace]
+members = [
+  "bittide-sys",
+]
+resolver = "2"
