@@ -107,7 +107,7 @@ vexRiscvInner = stateToDoneSuccess <$> status
 
         root <- runIO findProjectRoot
 
-        let elfPath = root </> "firmware-binaries/target/riscv32imc-unknown-none-elf/release/processing-element-test"
+        let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/processing-element-test"
 
         memBlobsFromElf BigEndian elfPath Nothing)
 
