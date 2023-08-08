@@ -18,6 +18,13 @@ set_property IOSTANDARD  LVDS     [get_ports "USER_SMA_CLOCK_p"]
 set_property PACKAGE_PIN C23      [get_ports "USER_SMA_CLOCK_n"]
 set_property IOSTANDARD  LVDS     [get_ports "USER_SMA_CLOCK_n"]
 
+# Vivado marks all clocks as related by default. Our external clocks are not
+# though, which means that we need to explicitly mark them as unrelated (or
+# "asynchronous").
+set_clock_groups \
+    -asynchronous \
+    -group [get_clocks -include_generated_clocks {SYSCLK_300_p}] \
+    -group [get_clocks -include_generated_clocks {USER_SMA_CLOCK_p}]
 
 # GPIO_SW_E
 set_property PACKAGE_PIN AE8      [get_ports "drainFifo"]

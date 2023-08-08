@@ -201,13 +201,6 @@ mkPlaceTcl outputDir = [__i|
     \# Pick up where synthesis left off
     open_checkpoint {#{outputDir </> "checkpoints" </> "post_synth.dcp"}}
 
-    \# Place all clocks in individual clock groups and make them asynchronous
-    set clkArgs {}
-    foreach clk [get_clocks] {
-      lappend clkArgs -group $clk
-    }
-    set_clock_groups -asynchronous {*}$clkArgs
-
     \# Run optimization & placement
     opt_design
     place_design
