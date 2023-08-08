@@ -45,13 +45,13 @@ storage contents = mealy' go (I.fromAscList $ L.zip [0..] contents)
 readDataSel :: I.IntMap (BitVector 8) -> BitVector 32 -> BitVector 4 -> Maybe (BitVector 32)
 readDataSel mem addr sel =
   case sel of
-    $(bitPattern "0001") -> readByte (addr + 0)
-    $(bitPattern "0010") -> readByte (addr + 1)
-    $(bitPattern "0100") -> readByte (addr + 2)
-    $(bitPattern "1000") -> readByte (addr + 3)
-    $(bitPattern "0011") -> readWord (addr + 0)
-    $(bitPattern "1100") -> readWord (addr + 2)
-    $(bitPattern "1111") -> readDWord addr
+    0b0001 -> readByte (addr + 0)
+    0b0010 -> readByte (addr + 1)
+    0b0100 -> readByte (addr + 2)
+    0b1000 -> readByte (addr + 3)
+    0b0011 -> readWord (addr + 0)
+    0b1100 -> readWord (addr + 2)
+    0b1111 -> readDWord addr
     _                    -> Nothing
   
   where
@@ -68,21 +68,21 @@ readDataSel mem addr sel =
 writeDataSel :: I.IntMap (BitVector 8) -> BitVector 32 -> BitVector 4 -> BitVector 32 -> I.IntMap (BitVector 8)
 writeDataSel mem addr sel val =
   case sel of
-    $(bitPattern "0001") ->
+    0b0001 ->
       I.insert (fromIntegral $ addr + 3) ll mem
-    $(bitPattern "0010") ->
+    0b0010 ->
       I.insert (fromIntegral $ addr + 2) lh mem
-    $(bitPattern "0100") ->
+    0b0100 ->
       I.insert (fromIntegral $ addr + 1) hl mem
-    $(bitPattern "1000") ->
+    0b1000 ->
       I.insert (fromIntegral $ addr + 0) hh mem
-    $(bitPattern "0011") ->
+    0b0011 ->
       I.insert (fromIntegral $ addr + 3) ll $
       I.insert (fromIntegral $ addr + 2) lh mem
-    $(bitPattern "1100") ->
+    0b1100 ->
       I.insert (fromIntegral $ addr + 1) hl $
       I.insert (fromIntegral $ addr + 0) hh mem
-    $(bitPattern "1111") ->
+    0b1111 ->
       I.insert (fromIntegral $ addr + 3) ll $
       I.insert (fromIntegral $ addr + 2) lh $
       I.insert (fromIntegral $ addr + 1) hl $

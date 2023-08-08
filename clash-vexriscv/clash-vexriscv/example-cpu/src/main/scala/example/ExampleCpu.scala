@@ -8,6 +8,8 @@ import spinal.core._
 import spinal.lib._
 import vexriscv.plugin._
 import vexriscv.{VexRiscv, VexRiscvConfig, plugin}
+import vexriscv.ip.{DataCacheConfig}
+import vexriscv.ip.fpu.FpuParameter
 
 object ExampleCpu extends App {
   def cpu() : VexRiscv = {
@@ -21,10 +23,43 @@ object ExampleCpu extends App {
           catchAccessFault = true,
           compressedGen = true // C extension
         ),
-        new DBusSimplePlugin(
-          catchAddressMisaligned = true,
-          catchAccessFault = true
+
+        // new DBusSimplePlugin(
+        //   catchAddressMisaligned = true,
+        //   catchAccessFault = true
+        // ),
+
+        new DBusCachedPlugin(
+          /*
+          config = new DataCacheConfig(
+            cacheSize        = 2048,
+            bytePerLine      = 32,
+            wayCount         = 1,
+            addressWidth     = 32,
+            cpuDataWidth     = 32,
+            memDataWidth     = 32,
+            catchAccessError = true,
+            catchIllegal     = true,
+            catchUnaligned   = true
+          )
+          */
+          config = new DataCacheConfig(
+            cacheSize        = 8,
+            bytePerLine      = 8,
+            wayCount         = 1,
+            addressWidth     = 32,
+            cpuDataWidth     = 32,
+            memDataWidth     = 32,
+            catchAccessError = true,
+            catchIllegal     = true,
+            catchUnaligned   = true
+          )
         ),
+
+        new StaticMemoryTranslatorPlugin(
+          ioRange = _ => True
+        ),
+
         new CsrPlugin(
           CsrPluginConfig.smallest.copy(ebreakGen = true, mtvecAccess = CsrAccess.READ_WRITE)
         ),
@@ -44,6 +79,13 @@ object ExampleCpu extends App {
         // M extension
         new MulPlugin,
         new DivPlugin,
+
+        // F extension
+        new FpuPlugin(
+          p = FpuParameter(
+            withDouble = false // enable for D extension
+          )
+        ),
 
         new LightShifterPlugin,
         new HazardSimplePlugin(
@@ -71,6 +113,11 @@ object ExampleCpu extends App {
           master(plugin.iBus.toWishbone()).setName("iBusWishbone")
         }
         case plugin: DBusSimplePlugin => {
+          plugin.dBus.setAsDirectionLess()
+          master(plugin.dBus.toWishbone()).setName("dBusWishbone")
+        }
+
+        case plugin: DBusCachedPlugin => {
           plugin.dBus.setAsDirectionLess()
           master(plugin.dBus.toWishbone()).setName("dBusWishbone")
         }
