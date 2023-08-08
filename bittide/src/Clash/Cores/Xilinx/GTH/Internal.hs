@@ -82,8 +82,8 @@ gthCore
             workInfo: Always
         |]) #-}
 
-ibufds_gte3 :: Clock dom -> Clock dom -> Clock dom
-ibufds_gte3 !_clkn !clkp = clkp
+ibufds_gte3 :: KnownDomain dom => DiffClock dom -> Clock dom
+ibufds_gte3 !_clk = clockGen
 {-# NOINLINE ibufds_gte3 #-}
 {-# ANN ibufds_gte3 hasBlackBox #-}
 {-# ANN ibufds_gte3 (
