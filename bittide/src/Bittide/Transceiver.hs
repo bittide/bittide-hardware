@@ -9,8 +9,9 @@
 module Bittide.Transceiver (transceiverPrbs, transceiverPrbsN) where
 
 import Clash.Explicit.Prelude
-
+import Clash.Explicit.Reset.Extra
 import Clash.Cores.Xilinx.GTH
+import Clash.Cores.Xilinx.Xpm.Cdc.Single
 
 import Data.Proxy
 
@@ -18,8 +19,11 @@ transceiverPrbsN ::
   ( KnownNat chansUsed
   , HasSynchronousReset tx
   , HasDefinedInitialValues tx
+
   , HasSynchronousReset rx
   , HasDefinedInitialValues rx
+
+  , HasSynchronousReset freeclk
   , HasDefinedInitialValues freeclk
   ) =>
   Clock refclk ->
@@ -53,8 +57,11 @@ transceiverPrbsN refclk freeclk rst_all rst_txStim rst_prbsChk chanNms clkPaths 
 transceiverPrbs ::
   ( HasSynchronousReset tx
   , HasDefinedInitialValues tx
+
   , HasSynchronousReset rx
   , HasDefinedInitialValues rx
+
+  , HasSynchronousReset freeclk
   , HasDefinedInitialValues freeclk
   ) =>
 
@@ -88,11 +95,11 @@ transceiverPrbs gtrefclk freeclk rst_all_btn rst_txStim rst_prbsChk chan clkPath
 
         freeclk -- gtwiz_reset_clk_freerun_in
 
-        rst_all
+        (delayReset Asserted freeclk rst_all {-* filter glitches *-})
         noReset -- gtwiz_reset_tx_pll_and_datapath_in
         noReset -- gtwiz_reset_tx_datapath_in
         noReset -- gtwiz_reset_rx_pll_and_datapath_in
-        rst_rx -- gtwiz_reset_rx_datapath_in
+        (delayReset Asserted freeclk rst_rx {-* filter glitches *-}) -- gtwiz_reset_rx_datapath_in
         gtwiz_userdata_tx_in
         txctrl2
         freeclk -- drpclk_in
@@ -101,9 +108,7 @@ transceiverPrbs gtrefclk freeclk rst_all_btn rst_txStim rst_prbsChk chan clkPath
   (gtwiz_userdata_tx_in,txctrl2) = prbsStimuliGen tx_clk txStimRst
   rstPrbsChk =
       resetGlitchFilter (SNat @125000) rx_clk
-    $ unsafeFromActiveHigh
-    $ unsafeSynchronizer freeclk rx_clk
-    $ unsafeToActiveHigh rst_prbsChk
+    $ xpmResetSynchronizer Asserted freeclk rx_clk rst_prbsChk
 
   prbsErrors = prbsChecker rx_clk rstPrbsChk enableGen prbsConf31w64 rx_data
   anyErrors = fmap (pack . reduceOr) prbsErrors
@@ -113,22 +118,21 @@ transceiverPrbs gtrefclk freeclk rst_all_btn rst_txStim rst_prbsChk chan clkPath
 
   (rst_all, rst_rx, _init_done) =
     gthResetManager
-      freeclk rst_all_in rx_clk
+      freeclk tx_clk rx_clk rst_all_in
       (unpack <$> reset_tx_done)
       (unpack <$> reset_rx_done)
       link_up
 
   txStimRst' =
       resetGlitchFilter (SNat @125000) tx_clk
-    $ unsafeFromActiveHigh
-    $ unsafeSynchronizer freeclk tx_clk
-    $ unsafeToActiveHigh rst_txStim
+    $ xpmResetSynchronizer Asserted freeclk tx_clk rst_txStim
 
   txStimRst =
-      resetSynchronizer tx_clk
+      xpmResetSynchronizer Asserted tx_clk tx_clk
     $ orReset txStimRst' (unsafeFromActiveLow $ fmap bitCoerce tx_active)
 
 data LinkSt = Down | Up deriving (Eq, Show, Generic, NFDataX)
+
 type LinkStCntr = Index 127
 
 linkStateTracker ::
@@ -278,34 +282,38 @@ data GthLinkRstSt
   deriving (Generic,NFDataX)
 
 gthResetManager ::
-  forall freerun rxUser2 .
+  forall freerun txUser2 rxUser2 .
   ( KnownDomain freerun
+  , KnownDomain txUser2
   , KnownDomain rxUser2
   ) =>
   Clock freerun ->
-  "reset_all_in" ::: Reset freerun ->
+  Clock txUser2 ->
   Clock rxUser2 ->
-  "tx_init_done" ::: Signal freerun Bool ->
-  "rx_init_done" ::: Signal freerun Bool ->
+  "reset_all_in" ::: Reset freerun ->
+  "tx_init_done" ::: Signal txUser2 Bool ->
+  "rx_init_done" ::: Signal rxUser2 Bool ->
   "rx_data_good" ::: Signal rxUser2 Bool ->
   ( "reset_all_out" ::: Reset freerun
   , "reset_rx"  ::: Reset freerun
   , "init_done" ::: Signal freerun Bool
   )
-gthResetManager free_clk reset_all_in tx_clk tx_init_done rx_init_done rx_data_good' =
+gthResetManager free_clk tx_clk rx_clk reset_all_in tx_init_done rx_init_done rx_data_good =
   ( unsafeFromActiveHigh reset_all_out_sig
   , unsafeFromActiveHigh reset_rx_sig
   , init_done
   )
  where
-  rx_data_good = dualFlipFlopSynchronizer tx_clk free_clk reset_all_in enableGen False rx_data_good'
   (reset_all_out_sig, reset_rx_sig, init_done) =
     mooreB
       free_clk reset_all_in enableGen
       update
       extractOutput
       initSt
-      (tx_init_done, rx_init_done, rx_data_good)
+      ( xpmCdcSingle tx_clk free_clk tx_init_done
+      , xpmCdcSingle rx_clk free_clk rx_init_done
+      , xpmCdcSingle rx_clk free_clk rx_data_good
+      )
 
   initSt :: GthLinkRstSt
   initSt = Start True
