@@ -59,9 +59,9 @@ debugConfig =
 --
 {-
   InspectBusses
-    500
+    50
     0
-    (Just 150)
+    (Just 300)
     True
     True
 -- -}

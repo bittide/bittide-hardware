@@ -85,6 +85,21 @@ library
     elf >= 0.31 && < 0.32,
     bytestring >= 0.10 && < 0.11,
 
+executable clash
+  import: common-options
+  main-is: app/Clash.hs
+  build-Depends: base, clash-ghc
+
+executable hdl-test
+  import: common-options
+  main-is: app/HdlTest.hs
+  build-Depends:
+    base,
+    clash-prelude,
+    clash-protocols,
+    clash-vexriscv,
+    clash-vexriscv-sim,
+
 executable clash-vexriscv-bin
   import: common-options
   main-is: VexRiscvSimulation.hs

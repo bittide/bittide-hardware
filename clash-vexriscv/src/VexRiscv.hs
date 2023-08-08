@@ -27,17 +27,17 @@ import Language.Haskell.TH.Syntax
 
 
 data Input = Input
-  { timerInterrupt :: Bit
-  , externalInterrupt :: Bit
-  , softwareInterrupt :: Bit
-  , iBusWbS2M :: WishboneS2M (BitVector 32)
-  , dBusWbS2M :: WishboneS2M (BitVector 32)
+  { timerInterrupt :: "TIMER_INTERRUPT" ::: Bit
+  , externalInterrupt :: "EXTERNAL_INTERRUPT" ::: Bit
+  , softwareInterrupt :: "SOFTWARE_INTERRUPT" ::: Bit
+  , iBusWbS2M :: "IBUS_IN_" ::: WishboneS2M (BitVector 32)
+  , dBusWbS2M :: "DBUS_IN_" ::: WishboneS2M (BitVector 32)
   }
   deriving (Generic, NFDataX, ShowX, Eq)
 
 data Output = Output
-  { iBusWbM2S :: WishboneM2S 30 4 (BitVector 32)
-  , dBusWbM2S :: WishboneM2S 30 4 (BitVector 32)
+  { iBusWbM2S :: "IBUS_OUT_" ::: WishboneM2S 30 4 (BitVector 32)
+  , dBusWbM2S :: "DBUS_OUT_" ::: WishboneM2S 30 4 (BitVector 32)
   }
   deriving (Generic, NFDataX, ShowX, Eq)
 
@@ -120,6 +120,11 @@ vexRiscv input =
     (unbundle -> (dBus_DAT_MISO, dBus_ACK, dBus_ERR))
       = (<$> dBusS2M) $ \(WishboneS2M a b c _ _) -> (a, b, c)
 
+    sourcePath = $(do
+          cpuSrcPath <- runIO $ getPackageRelFilePath "example-cpu/VexRiscv.v"
+          pure $ LitE $ StringL cpuSrcPath
+        )
+
     ( iBus_CYC
       , iBus_STB
       , iBus_WE
@@ -136,7 +141,7 @@ vexRiscv input =
       , dBus_SEL
       , dBus_CTI
       , dBus_BTE
-      ) = vexRiscv# hasClock hasReset
+      ) = vexRiscv# sourcePath hasClock hasReset
           timerInterrupt
           externalInterrupt
           softwareInterrupt
@@ -155,7 +160,8 @@ vexRiscv input =
 
 vexRiscv#
   :: KnownDomain dom
-  => Clock dom
+  => String
+  -> Clock dom
   -> Reset dom
   -- input signals
   -> Signal dom Bit  -- ^ timerInterrupt
@@ -193,7 +199,7 @@ vexRiscv#
     , Signal dom (BitVector 3)  -- ^ dBus_CTI
     , Signal dom (BitVector 2)  -- ^ dBus_BTE
     )
-vexRiscv# !_clk rst0
+vexRiscv# _sourcePath !_clk rst0
   timerInterrupt
   externalInterrupt
   softwareInterrupt
@@ -254,6 +260,7 @@ vexRiscv# !_clk rst0
     let
       primName = 'vexRiscv#
       ( _
+       :> srcPath
        :> clk
        :> rst
        :> timerInterrupt
@@ -266,7 +273,7 @@ vexRiscv# !_clk rst0
        :> dBus_ERR
        :> dBus_DAT_MISO
        :> Nil
-       ) = indicesI @12
+       ) = indicesI @13
 
       ( iBus_CYC
        :> iBus_STB
@@ -285,37 +292,18 @@ vexRiscv# !_clk rst0
        :> dBus_CTI
        :> dBus_BTE
        :> Nil
-       ) = (\x -> extend @_ @16 @12 x + 1) <$> indicesI @16
+       ) = (\x -> extend @_ @16 @13 x + 1) <$> indicesI @16
 
       cpu = extend @_ @_ @1 dBus_BTE + 1
-
-      indent n str =
-        let
-          l0 = lines str
-          indentation = Data.List.replicate n ' '
-          l1 = (indentation <>) <$> l0
-        in unlines l1
-
-      vexRiscvSrc0 = $(do
-        cpuSrcPath <- runIO $ getPackageRelFilePath "example-cpu/VexRiscv.v"
-        content <- runIO $ readFile cpuSrcPath
-        pure $ LitE $ StringL content
-        )
-      vexRiscvSrc1 = indent 6 vexRiscvSrc0
     in
       InlineYamlPrimitive [Verilog] [__i|
   BlackBox:
     name: #{primName}
     kind: Declaration
-    includes:
-    - name: vexRiscvSource
-      extension: v
-      template: |-
-        `default_nettype wire
-#{vexRiscvSrc1}
-        `default_nettype none
     template: |-
       // vexRiscv begin
+
+      ~DEVNULL[~FILE[~LIT[#{srcPath}]]]
 
       wire ~GENSYM[iBus_CYC][#{iBus_CYC}];
       wire ~GENSYM[iBus_STB][#{iBus_STB}];

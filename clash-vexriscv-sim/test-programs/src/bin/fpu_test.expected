@@ -1,0 +1,6 @@
+This test makes sure the FPU works as expected
+79823i32 as f32 = 79823
+1.3 + 5.3 = 6.6000004
+5.3 - 1.3 = 4
+24.65 * 43.2 = 1064.88
+12.6 / 4.2 = 3.0000002
