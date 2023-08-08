@@ -130,14 +130,14 @@ library
     Clash.Cores.Extra
     Clash.Cores.UART.Extra
     Clash.Cores.Xilinx.Extra
+    Clash.Cores.Xilinx.GTH
+    Clash.Cores.Xilinx.GTH.BlackBoxes
+    Clash.Cores.Xilinx.GTH.Internal
     Clash.Explicit.Reset.Extra
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
     System.IO.Temp.Extra
   other-modules:
-    Clash.Cores.Xilinx.GTH
-    Clash.Cores.Xilinx.GTH.BlackBoxes
-    Clash.Cores.Xilinx.GTH.Internal
     Paths_bittide
 
 executable clash
