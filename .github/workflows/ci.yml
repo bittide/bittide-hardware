@@ -90,7 +90,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -165,7 +165,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -273,7 +273,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -311,7 +311,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -380,7 +380,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -432,7 +432,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - uses: actions/cache@v3
         name: Cargo Cache
@@ -533,7 +533,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.formal cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -587,7 +587,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project.formal cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
@@ -729,7 +729,7 @@ jobs:
           #
           # TODO: Either switch to VexRisc or update cache strategy.
           #
-          cp .github/cabal.project.simulation cabal.project.local
+          cp .github/cabal.project cabal.project.local
 
       - name: Update Cabal index info
         run: |
