@@ -347,8 +347,8 @@ gthResetManager free_clk tx_clk rx_clk reset_all_in tx_init_done rx_init_done rx
     RxWait _ _     -> (False,    False,      False)
     Monitor        -> (False,    False,      True)
 
-  tx_timer = cyclesForMilliSeconds @freerun (SNat @30 )
-  rx_timer = cyclesForMilliSeconds @freerun (SNat @130)
+  tx_timer = cyclesForMilliSeconds @freerun (SNat @3 )
+  rx_timer = cyclesForMilliSeconds @freerun (SNat @13)
 
 -- | Calculates how many cycles of a certain domain fit in some number of milliseconds
 cyclesForMilliSeconds :: forall dom ms a . (Num a, KnownDomain dom) => SNat ms -> a
