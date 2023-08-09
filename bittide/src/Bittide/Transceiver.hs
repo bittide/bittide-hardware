@@ -16,6 +16,7 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Data.Proxy
 
 transceiverPrbsN ::
+  forall tx rx refclk freeclk txS rxS chansUsed .
   ( KnownNat chansUsed
   , HasSynchronousReset tx
   , HasDefinedInitialValues tx
