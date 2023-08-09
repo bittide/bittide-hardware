@@ -10,6 +10,7 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.VIO (vioProbe)
 
 import Clash.Prelude
+import Clash.Explicit.Prelude (noReset, orReset)
 
 import Bittide.Instances.Domains (Basic200, Basic125)
 import Bittide.DoubleBufferedRam
@@ -24,7 +25,6 @@ import Protocols
 import Protocols.Internal
 import Protocols.Wishbone
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
-import Clash.Reset.Extra (noReset, orReset)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 
 data TestStatus = Running | Success | Fail

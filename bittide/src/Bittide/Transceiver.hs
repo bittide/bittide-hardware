@@ -16,9 +16,11 @@ import Data.Proxy
 
 transceiverPrbsN ::
   ( KnownNat chansUsed
-  , KnownDomain freeclk
-  , KnownDomain tx
-  , KnownDomain rx
+  , HasSynchronousReset tx
+  , HasDefinedInitialValues tx
+  , HasSynchronousReset rx
+  , HasDefinedInitialValues rx
+  , HasDefinedInitialValues freeclk
   ) =>
   Clock refclk ->
   Clock freeclk ->
@@ -49,9 +51,11 @@ transceiverPrbsN refclk freeclk rst_all rst_txStim rst_prbsChk chanNms clkPaths 
     rxps
 
 transceiverPrbs ::
-  ( KnownDomain freeclk
-  , KnownDomain tx
-  , KnownDomain rx
+  ( HasSynchronousReset tx
+  , HasDefinedInitialValues tx
+  , HasSynchronousReset rx
+  , HasDefinedInitialValues rx
+  , HasDefinedInitialValues freeclk
   ) =>
 
   Clock refclk ->
@@ -123,12 +127,6 @@ transceiverPrbs gtrefclk freeclk rst_all_btn rst_txStim rst_prbsChk chan clkPath
   txStimRst =
       resetSynchronizer tx_clk
     $ orReset txStimRst' (unsafeFromActiveLow $ fmap bitCoerce tx_active)
-
-orReset :: KnownDomain dom => Reset dom -> Reset dom -> Reset dom
-orReset a b = unsafeFromActiveHigh (unsafeToActiveHigh a .||. unsafeToActiveHigh b)
-
-noReset :: KnownDomain dom => Reset dom
-noReset = unsafeFromActiveHigh (pure False)
 
 data LinkSt = Down | Up deriving (Eq, Show, Generic, NFDataX)
 type LinkStCntr = Index 127

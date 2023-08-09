@@ -14,7 +14,6 @@ import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
-import Clash.Reset.Extra (orReset, noReset)
 import Clash.Sized.Vector.Extra (findWithDefault)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 
