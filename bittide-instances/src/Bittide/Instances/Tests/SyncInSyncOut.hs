@@ -68,7 +68,6 @@ import Bittide.Arithmetic.Time
 import Clash.Annotations.TH
 import Clash.Cores.Xilinx.VIO
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
-import Clash.Reset.Extra
 import Clash.Xilinx.ClockGen
 
 -- | An 'Index' counting to /n/ seconds on 'Basic300'
