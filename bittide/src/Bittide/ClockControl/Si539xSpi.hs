@@ -14,6 +14,8 @@ module Bittide.ClockControl.Si539xSpi where
 import Clash.Prelude
 import Clash.Cores.SPI
 
+import Data.Maybe
+
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.Extra.Maybe
@@ -225,6 +227,8 @@ data DriverState dom = DriverState
   -- ^ Current communication transaction.
   , commandAcknowledged :: Acknowledge
   -- ^ Whether or not the current transaction has already been acknowledged.
+  , storedByte :: Maybe Byte
+  -- ^ Data we have received from the SPI interface.
   , idleCycles          :: Index (PeriodToCycles dom (Nanoseconds 95))
   -- ^ After communication, slave select must be high for at least 95ns.
   }
@@ -265,6 +269,7 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
     , currentAddress      = Nothing
     , currentOp           = Nothing
     , commandAcknowledged = False
+    , storedByte          = Nothing
     , idleCycles          = maxBound
     }
 
@@ -274,10 +279,10 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
     (DriverState dom, (Maybe (Bytes 2), Busy, Maybe Byte))
 
   go currentState@(currentOp -> Nothing) (incomingOp,_,_, _) =
-    (currentState{currentOp = incomingOp}, (Nothing, False, Nothing))
+    (currentState{currentOp = incomingOp}, (Nothing, False, storedByte currentState))
 
   go currentState@DriverState{..} (_, spiBusy, spiAck, receivedBytes) =
-   (nextState, (output, True,fmap resize outBytes))
+   (nextState, (output, True, storedByte))
    where
     Just (RegisterOperation{..}) = currentOp
     samePage = currentPage == Just regPage
@@ -301,12 +306,14 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
       | otherwise = satPred SatZero idleCycles
 
     nextState
-      | commandAcknowledged && not spiBusy =
-        DriverState nextPage nextAddress nextOp False maxBound
-      | otherwise                          =
-        currentState
+      | commandAcknowledged && not spiBusy && isNothing storedByte
+      = DriverState nextPage nextAddress nextOp False (fmap resize outBytes) maxBound
+      | otherwise
+      = currentState
           { commandAcknowledged = spiAck || commandAcknowledged
-          , idleCycles = updateIdleCycles}
+          , idleCycles = updateIdleCycles
+          , storedByte = fmap resize outBytes
+          }
 
     spiBytes = spiCommandToBytes spiCommand
     output = orNothing (not commandAcknowledged && idleCycles == 0) spiBytes
