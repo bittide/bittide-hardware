@@ -199,7 +199,7 @@ shakeOpts :: ShakeOptions
 shakeOpts = shakeOptions
   { shakeFiles = buildDir
   , shakeChange = ChangeDigest
-  , shakeVersion = "6"
+  , shakeVersion = "7"
   }
 
 -- | Run Vivado on given TCL script
@@ -287,19 +287,16 @@ main = do
             netlistDir = synthesisDir </> "netlist"
             reportDir = synthesisDir </> "reports"
 
-            runSynthTclPath        = synthesisDir </> "run_synth.tcl"
-            runPlaceTclPath        = synthesisDir </> "run_place.tcl"
-            runRouteTclPath        = synthesisDir </> "run_route.tcl"
-            runNetlistTclPath      = synthesisDir </> "run_netlist.tcl"
-            runBitstreamTclPath    = synthesisDir </> "run_bitstream.tcl"
-            runProbesGenTclPath    = synthesisDir </> "run_probes_gen.tcl"
-            runBoardProgramTclPath = synthesisDir </> "run_board_program.tcl"
-            runHardwareTestTclPath = synthesisDir </> "run_hardware_test.tcl"
+            runSynthTclPath         = synthesisDir </> "run_synth.tcl"
+            runPlaceAndRouteTclPath = synthesisDir </> "run_place_and_route.tcl"
+            runBitstreamTclPath     = synthesisDir </> "run_bitstream.tcl"
+            runProbesGenTclPath     = synthesisDir </> "run_probes_gen.tcl"
+            runBoardProgramTclPath  = synthesisDir </> "run_board_program.tcl"
+            runHardwareTestTclPath  = synthesisDir </> "run_hardware_test.tcl"
 
-            postSynthCheckpointPath     = checkpointsDir </> "post_synth.dcp"
-            postPlaceCheckpointPath     = checkpointsDir </> "post_place.dcp"
-            postRouteCheckpointPath     = checkpointsDir </> "post_route.dcp"
-            postNetlistCheckpointPath   = checkpointsDir </> "post_netlist.dcp"
+            postSynthCheckpointPath = checkpointsDir </> "post_synth.dcp"
+            postPlaceCheckpointPath = checkpointsDir </> "post_place.dcp"
+            postRouteCheckpointPath = checkpointsDir </> "post_route.dcp"
 
             netlistPaths =
               [ netlistDir </> "netlist.v"
@@ -313,7 +310,6 @@ main = do
             postRouteTimingPath = reportDir </> "post_route_timing.rpt"
 
             synthReportsPaths = [reportDir </> "post_synth_timing_summary.rpt"]
-            placeReportPaths = [reportDir </> "post_place_timing_summary.rpt"]
             routeReportsPaths =
               [ reportDir </> "post_route_clock_util.rpt"
               , reportDir </> "post_route_drc.rpt"
@@ -374,21 +370,17 @@ main = do
               need [runSynthTclPath, manifestPath]
               vivadoFromTcl runSynthTclPath
 
-            -- Placement
-            runPlaceTclPath %> \path -> do
-              writeFileChanged path (mkPlaceTcl synthesisDir)
+            -- Routing + netlist generation
+            runPlaceAndRouteTclPath %> \path -> do
+              writeFileChanged path (mkPlaceAndRouteTcl synthesisDir)
 
-            (postPlaceCheckpointPath : placeReportPaths) |%> \_ -> do
-              need [runPlaceTclPath, postSynthCheckpointPath]
-              vivadoFromTcl runPlaceTclPath
-
-            -- Routing
-            runRouteTclPath %> \path -> do
-              writeFileChanged path (mkRouteTcl synthesisDir)
-
-            (postRouteCheckpointPath : routeReportsPaths) |%> \_ -> do
-              need [runRouteTclPath, postPlaceCheckpointPath]
-              vivadoFromTcl runRouteTclPath
+            (  postPlaceCheckpointPath
+             : postRouteCheckpointPath
+             : routeReportsPaths
+             <> netlistPaths
+             ) |%> \_ -> do
+              need [runPlaceAndRouteTclPath, postSynthCheckpointPath]
+              vivadoFromTcl runPlaceAndRouteTclPath
 
               -- Design should meet design rule checks (DRC).
               liftIO $ unlessM
@@ -432,20 +424,12 @@ main = do
 
                 |])
 
-            -- Netlist generation
-            runNetlistTclPath %> \path -> do
-              writeFileChanged path (mkNetlistTcl synthesisDir)
-
-            (postNetlistCheckpointPath : netlistPaths) |%> \_ -> do
-              need [runNetlistTclPath, postRouteCheckpointPath]
-              vivadoFromTcl runNetlistTclPath
-
             -- Bitstream generation
             runBitstreamTclPath %> \path -> do
               writeFileChanged path (mkBitstreamTcl synthesisDir)
 
             bitstreamPath %> \_ -> do
-              need [runBitstreamTclPath, postNetlistCheckpointPath]
+              need [runBitstreamTclPath, postRouteCheckpointPath]
               vivadoFromTcl runBitstreamTclPath
 
             -- Probes file generation
@@ -479,14 +463,8 @@ main = do
           phony (entityName targetName <> ":synth") $ do
             need [postSynthCheckpointPath]
 
-          phony (entityName targetName <> ":place") $ do
-            need [postPlaceCheckpointPath]
-
-          phony (entityName targetName <> ":route") $ do
+          phony (entityName targetName <> ":pnr") $ do
             need [postRouteCheckpointPath]
-
-          phony (entityName targetName <> ":netlist") $ do
-            need [postNetlistCheckpointPath]
 
           when targetHasXdc $ do
             phony (entityName targetName <> ":bitstream") $ do

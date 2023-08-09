@@ -15,10 +15,8 @@ module Clash.Shake.Vivado
   ( LocatedManifest(..)
   , BoardPart(..)
   , decodeLocatedManifest
-  , mkPlaceTcl
-  , mkNetlistTcl
   , mkSynthesisTcl
-  , mkRouteTcl
+  , mkPlaceAndRouteTcl
   , mkBitstreamTcl
   , mkProbesGenTcl
   , mkBoardProgramTcl
@@ -194,8 +192,8 @@ mkSynthesisTcl outputDir outOfContext boardPart constraints manifest@LocatedMani
     pathDigest <- hexDigestFile path
     pure [__i|\# #{path}: #{pathDigest}|]
 
-mkPlaceTcl :: FilePath -> String
-mkPlaceTcl outputDir = [__i|
+mkPlaceAndRouteTcl :: FilePath -> String
+mkPlaceAndRouteTcl outputDir = [__i|
     set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
 
     \# Pick up where synthesis left off
@@ -213,16 +211,6 @@ mkPlaceTcl outputDir = [__i|
     place_design
     phys_opt_design
     write_checkpoint -force {#{outputDir </> "checkpoints" </> "post_place.dcp"}}
-    report_methodology -file {#{outputDir </> "reports" </> "post_place_methodology.rpt"}}
-    report_timing_summary -file {#{outputDir </> "reports" </> "post_place_timing_summary.rpt"}}
-|]
-
-mkRouteTcl :: FilePath -> String
-mkRouteTcl outputDir = [__i|
-    set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
-
-    \# Pick up where placement left off
-    open_checkpoint {#{outputDir </> "checkpoints" </> "post_place.dcp"}}
 
     \# Routing
     route_design
@@ -235,20 +223,11 @@ mkRouteTcl outputDir = [__i|
     report_utilization       -file {#{outputDir </> "reports" </> "post_route_util.rpt"}}
     report_power             -file {#{outputDir </> "reports" </> "post_route_power.rpt"}}
     report_drc               -file {#{outputDir </> "reports" </> "post_route_drc.rpt"}}
-|]
-
-mkNetlistTcl :: FilePath -> String
-mkNetlistTcl outputDir = [__i|
-    set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
-
-    \# Pick up where routing left off
-    open_checkpoint {#{outputDir </> "checkpoints" </> "post_route.dcp"}}
 
     \# Generate netlist and constraints
     file mkdir {#{outputDir </> "netlist"}}
     write_verilog -force {#{outputDir </> "netlist" </> "netlist.v"}}
     write_xdc -no_fixed_only -force {#{outputDir </> "netlist" </> "netlist.xdc"}}
-    write_checkpoint -force {#{outputDir </> "checkpoints" </> "post_netlist.dcp"}}
 |]
 
 mkBitstreamTcl :: FilePath -> String
@@ -256,7 +235,7 @@ mkBitstreamTcl outputDir = [__i|
     set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
 
     \# Pick up where netlist left off
-    open_checkpoint {#{outputDir </> "checkpoints" </> "post_netlist.dcp"}}
+    open_checkpoint {#{outputDir </> "checkpoints" </> "post_route.dcp"}}
 
     \# Generate bitstream
     set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]
@@ -268,7 +247,7 @@ mkProbesGenTcl outputDir = [__i|
     set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
 
     \# Pick up where netlist left off
-    open_checkpoint {#{outputDir </> "checkpoints" </> "post_netlist.dcp"}}
+    open_checkpoint {#{outputDir </> "checkpoints" </> "post_route.dcp"}}
 
     \# Generate probes file
     write_debug_probes -force {#{outputDir </> "probes.ltx"}}
