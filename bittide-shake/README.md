@@ -11,9 +11,7 @@ This system can be build to build targets in `bittide-instances` to various leve
 Different build levels:
 * \<target>:hdl => Generate Verilog code for the Clash target.
 * \<target>:synth => Perform synthesis for the target instance.
-* \<target>:place => Perform placement for the target instance.
-* \<target>:route => Perform routing for the target instance.
-* \<target>:netlist => Perform netlist generation for the target instance.
+* \<target>:pnr => Perform place, route, and netlist generation for the target instance.
 * \<target>:bitstream => Perform bitstream generation for the target instance.
 * \<target>:program => Program the FPGA board connected to your PC.
 * \<target>:test => Run hardware-in-the-loop test.
@@ -57,22 +55,11 @@ Example:
 cabal run -- shake scatterUnitWb:synth
 ```
 
-## Implementation
-Example:
-
-```bash
-# For just placement:
-cabal run -- shake scatterUnitWb:place
-
-# For place & route:
-cabal run -- shake scatterUnitWb:route
-```
-
-## Netlist
+## Place, route, and netlist generation
 Example:
 
 ```
-cabal run -- shake scatterUnitWb:netlist
+cabal run -- shake scatterUnitWb:pnr
 ```
 
 ## Bitstream generation
