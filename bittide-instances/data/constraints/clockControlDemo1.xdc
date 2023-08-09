@@ -18,6 +18,14 @@ set_property PACKAGE_PIN D25      [get_ports "FMC_HPC_CLK1_M2C_n"]
 set_property IOSTANDARD  LVDS     [get_ports "FMC_HPC_CLK1_M2C_n"]
 set_property DIFF_TERM   TRUE     [get_ports "FMC_HPC_CLK1_M2C_n"]
 
+# Vivado marks all clocks as related by default. Our external clocks are not
+# though, which means that we need to explicitly mark them as unrelated (or
+# "asynchronous").
+set_clock_groups \
+    -asynchronous \
+    -group [get_clocks -include_generated_clocks {SYSCLK_300_p}] \
+    -group [get_clocks -include_generated_clocks {USER_SMA_CLOCK_p}] \
+    -group [get_clocks -include_generated_clocks {FMC_HPC_CLK1_M2C_p}]
 
 # GPIO_SW_E
 set_property PACKAGE_PIN AE8      [get_ports "drainFifoA"]
