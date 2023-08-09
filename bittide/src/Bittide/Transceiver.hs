@@ -274,10 +274,12 @@ prbsChecker clk rst ena (pLen@SNat, tap'@SNat, SNat, inv) sigPrbsIn =
 
 type Counter = Unsigned 25
 
+type RetryCounter = Index 10
+
 data GthLinkRstSt
-  = Start Bool
-  | TxWait Counter
-  | RxWait Counter
+  = Start  RetryCounter Bool
+  | TxWait RetryCounter Counter
+  | RxWait RetryCounter Counter
   | Monitor
   deriving (Generic,NFDataX)
 
@@ -316,32 +318,34 @@ gthResetManager free_clk tx_clk rx_clk reset_all_in tx_init_done rx_init_done rx
       )
 
   initSt :: GthLinkRstSt
-  initSt = Start True
+  initSt = Start maxBound True
 
   update :: GthLinkRstSt -> (Bool, Bool, Bool) -> GthLinkRstSt
   update st (tx_done, rx_done, rx_good) =
     case st of
-      Start _ -> TxWait 0
+      Start retryCounter _ -> TxWait retryCounter 0
 
-      TxWait cntr
-        | tx_done -> RxWait 0
-        | cntr <= tx_timer -> TxWait (succ cntr)
-        | otherwise -> Start True
+      TxWait retryCntr cntr
+        | tx_done -> RxWait retryCntr 0
+        | cntr <= tx_timer -> TxWait retryCntr (succ cntr)
+        | otherwise -> Start retryCntr True
 
-      RxWait cntr
+      RxWait retryCntr cntr
         | rx_done && rx_good -> Monitor
-        | cntr <= rx_timer -> RxWait (succ cntr)
-        | otherwise -> Start False
+        | cntr <= rx_timer -> RxWait retryCntr (succ cntr)
+        | otherwise -> Start (satPred SatWrap retryCntr) False
 
       Monitor
         | rx_done && rx_good -> Monitor
-        | otherwise -> Start False
+        | otherwise -> Start 0 False
 
   extractOutput st = case st of
-    Start rstAll -> (rstAll, not rstAll, False)
-    TxWait _     -> (False,  False,      False)
-    RxWait _     -> (False,  False,      False)
-    Monitor      -> (False,  False,      True)
+    --                 rst_all   rst_rx      done
+    Start 0 _      -> (True,     False,      False)
+    Start _ rstAll -> (rstAll,   not rstAll, False)
+    TxWait _ _     -> (False,    False,      False)
+    RxWait _ _     -> (False,    False,      False)
+    Monitor        -> (False,    False,      True)
 
   tx_timer = cyclesForMilliSeconds @freerun (SNat @30 )
   rx_timer = cyclesForMilliSeconds @freerun (SNat @130)
