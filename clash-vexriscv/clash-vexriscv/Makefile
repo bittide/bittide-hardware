@@ -45,8 +45,8 @@ $(OUT_DIR)/VVexRiscv__ALL.a: $(VERILATOR_DIR)/VVexRiscv__ALL.a
 
 $(OUT_DIR)/libVexRiscvFFI.a: $(OUT_DIR)/VVexRiscv__ALL.a $(OUT_DIR)/impl.o $(OUT_DIR)/verilated.o
 	rm -f $(OUT_DIR)/libVexRiscvFFI.a
-	ar rcsT \
+	cp $(OUT_DIR)/VVexRiscv__ALL.a $(OUT_DIR)/libVexRiscvFFI.a
+	ar r \
 		$(OUT_DIR)/libVexRiscvFFI.a \
 		$(OUT_DIR)/impl.o \
-		$(OUT_DIR)/VVexRiscv__ALL.a \
 		$(OUT_DIR)/verilated.o

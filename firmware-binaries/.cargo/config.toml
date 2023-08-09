@@ -4,6 +4,7 @@
 
 [build]
 target = "riscv32imc-unknown-none-elf"
+rustflags = ["-C", "target-feature=+f"]
 
 [unstable]
 build-std = ["core,panic_abort"]
