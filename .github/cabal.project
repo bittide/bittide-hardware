@@ -2,18 +2,21 @@
 --
 -- SPDX-License-Identifier: CC0-1.0
 
-package contranomy
-  flags: +riscv-altopts
+package bittide
   ghc-options: -Werror
 
-package bittide
+package bittide-extra
   ghc-options: -Werror
 
 package bittide-instances
   ghc-options: -Werror
 
-package contranomy-sim
+package bittide-shake
   ghc-options: -Werror
+
+-- TODO: Fix upstream
+-- package clash-vexriscv
+--   ghc-options: -Werror
 
 package elastic-buffer-sim
   ghc-options: -Werror
