@@ -5,6 +5,7 @@
 [build]
 target = "riscv32imc-unknown-none-elf"
 rustflags = ["-C", "target-feature=+f"]
+target-dir = "../_build/cargo/firmware-binaries"
 
 [unstable]
 build-std = ["core,panic_abort"]

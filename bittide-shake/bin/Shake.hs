@@ -17,15 +17,16 @@ import Data.List (dropWhileEnd)
 import Development.Shake
 import GHC.Stack (HasCallStack)
 import System.Console.ANSI (setSGR)
-import System.Directory (getCurrentDirectory, setCurrentDirectory)
-import System.FilePath (isDrive, (</>), takeDirectory)
+import System.Directory
+import System.FilePath
 import System.Process (readProcess, callProcess)
 
 import Paths_bittide_shake
 
+import Clash.Shake.Cargo
+import Clash.Shake.Extra
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
-import Clash.Shake.Extra
 
 import qualified Clash.Util.Interpolate as I
 import qualified System.Directory as Directory
@@ -326,6 +327,9 @@ main = do
               needWatchFiles
               needWatchFiles
 
+              -- We build all rust binaries in "firmware-binaries". They are required to
+              -- build bittide-instance because we have instances that includes a binaries.
+              liftIO $ cargoBuildFirmwareProgram "firmware-binaries" Release
               let
                 (buildTool, buildToolArgs) =
                   defaultClashCmd clashBuildDir targetName

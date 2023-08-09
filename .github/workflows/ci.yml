@@ -464,7 +464,7 @@ jobs:
         uses: actions/checkout@v3
 
       - uses: actions/cache@v3
-        name: Cache
+        name: Cargo Cache
         with:
           path: |
             ~/.cargo/bin/
@@ -477,6 +477,15 @@ jobs:
       - name: Building Examples
         run: cargo build --release
         working-directory: firmware-binaries/
+
+      - name: Archive generated cargo binaries
+        uses: actions/upload-artifact@v3
+        with:
+          name: cargo-binaries
+          path: |
+            _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/
+            !_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/*/*
+          retention-days: 14
 
   firmware-limit-checks:
     name: Firmware Limit Checks
@@ -493,7 +502,7 @@ jobs:
         uses: actions/checkout@v3
 
       - uses: actions/cache@v3
-        name: Cache
+        name: Cargo Cache
         with:
           path: |
             ~/.cargo/bin/
@@ -502,6 +511,11 @@ jobs:
             ~/.cargo/git/db/
             ./firmware-binaries/target/
           key: cargo-firmware-bins-cache-cachebust-2-${{ hashFiles('./firmware-binaries/Cargo.lock') }}
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: cargo-binaries
+          path: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release
 
       - name: Install `elf-limits`
         run: cargo install --git https://github.com/cuddlefishie/elf-limits
@@ -513,7 +527,7 @@ jobs:
             --data-mem-limit 64K \
             hello \
             fdt-read
-        working-directory: firmware-binaries/target/riscv32imc-unknown-none-elf/release
+        working-directory: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/
 
 
   bittide-instances-doctests:
@@ -530,6 +544,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: cargo-binaries
+          path: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release
 
       - name: Set CI flags
         run: |
@@ -549,22 +568,6 @@ jobs:
           key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
-
-      - uses: actions/cache@v3
-        name: Cargo Cache
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./target/
-            ./firmware-binaries/target/
-          key: cargo-firmware-bins-cache-cachebust-2-${{ hashFiles('./firmware-binaries/Cargo.lock') }}
-
-      - name: Build Firmware Binaries
-        run: cargo build --release
-        working-directory: firmware-binaries/
 
       - name: Doctests
         run : |
@@ -585,6 +588,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - uses: actions/download-artifact@v3
+        with:
+          name: cargo-binaries
+          path: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release
+
       - name: Set CI flags
         run: |
           cp .github/cabal.project cabal.project.local
@@ -603,23 +611,6 @@ jobs:
           key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
-
-      - uses: actions/cache@v3
-        name: Cargo Cache
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./target/
-            ./firmware-binaries/target/
-          key: cargo-firmware-bins-cache-cachebust-2-${{ hashFiles('./firmware-binaries/Cargo.lock') }}
-
-      - name: Build Firmware Binaries
-        run: cargo build --release
-        working-directory: firmware-binaries/
-
 
       - name: Unit tests
         run : |
@@ -716,6 +707,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - uses: actions/download-artifact@v3
+        with:
+          name: cargo-binaries
+          path: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release
+
       - name: Extract branch name
         shell: bash
         run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
@@ -745,22 +741,6 @@ jobs:
           key: packages-cachebust-3-${{ hashFiles('cabal.project.freeze') }}
           restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
-
-      - uses: actions/cache@v3
-        name: Cargo Cache
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./target/
-            ./firmware-binaries/target/
-          key: cargo-firmware-bins-cache-cachebust-2-${{ hashFiles('./firmware-binaries/Cargo.lock') }}
-
-      - name: Build Firmware Binaries
-        run: cargo build --release
-        working-directory: firmware-binaries/
 
       - name: HDL generation and synthesis
         run : |
@@ -802,7 +782,8 @@ jobs:
           # We don't pack `ip`, as it is generally useless for debugging while
           # also taking up a lot of space.
           path: |
-            _build
+            _build/vivado
+            _build/clash
             !_build/vivado/*/ip
           retention-days: 14
 
