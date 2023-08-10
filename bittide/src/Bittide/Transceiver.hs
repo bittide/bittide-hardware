@@ -2,18 +2,20 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NumericUnderscores #-}
 
-module Bittide.Transceiver (transceiverPrbs, transceiverPrbsN) where
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
+
+module Bittide.Transceiver where
 
 import Clash.Explicit.Prelude
 import Clash.Explicit.Reset.Extra
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 
-import Data.Proxy
+import Bittide.Arithmetic.Time
 
 transceiverPrbsN ::
   forall tx rx refclk freeclk txS rxS chansUsed .
@@ -46,6 +48,7 @@ transceiverPrbsN ::
     , Signal txS (BitVector 1)
     , Signal txS (BitVector 1)
     , Signal rx Bool  -- link up
+    , Signal freeclk GthResetStats
     )
 transceiverPrbsN refclk freeclk rst_all rst_txStim rst_prbsChk chanNms clkPaths rxns rxps =
   zipWith4
@@ -84,9 +87,10 @@ transceiverPrbs ::
   , Signal txS (BitVector 1)
   , Signal txS (BitVector 1)
   , Signal rx Bool  -- link up
+  , Signal freeclk GthResetStats
   )
 transceiverPrbs gtrefclk freeclk rst_all_btn rst_txStim rst_prbsChk chan clkPath rxn rxp
- = (tx_clk, rx_clk, txn, txp, link_up)
+ = (tx_clk, rx_clk, txn, txp, link_up, stats)
  where
   (txn, txp, tx_clk, rx_clk, rx_data, reset_tx_done, reset_rx_done, tx_active)
     = gthCore -- @_ @_ @RxS @Freerun @TxUser2 @RefClk @RefClk @TxS @RxUser2
@@ -117,7 +121,7 @@ transceiverPrbs gtrefclk freeclk rst_all_btn rst_txStim rst_prbsChk chan clkPath
 
   rst_all_in = resetGlitchFilter (SNat @125000) freeclk rst_all_btn
 
-  (rst_all, rst_rx, _init_done) =
+  (rst_all, rst_rx, _init_done, stats) =
     gthResetManager
       freeclk tx_clk rx_clk rst_all_in
       (unpack <$> reset_tx_done)
@@ -273,17 +277,61 @@ prbsChecker clk rst ena (pLen@SNat, tap'@SNat, SNat, inv) sigPrbsIn =
        tap = subSNat pLen tap'
        bitErr = xor inp (xor (lsb bv) (unpack $ slice tap tap bv))
 
-type Counter = Unsigned 25
+-- | 'Index' with its 'maxBound' corresponding to the number of cycles needed to
+-- wait for /n/ milliseconds.
+type IndexMs dom n = Index (PeriodToCycles dom (Milliseconds n))
 
-type RetryCounter = Index 10
+-- | Statistics exported by 'gthResetManager'
+data GthResetStats = GthResetStats
+  { txRetries :: Unsigned 32
+  -- ^ How many times the transmit side was reset
+  , rxRetries :: Index 32
+  -- ^ How many times the receive side was reset. Note that this value in itself
+  -- will reset if the transmit side resets - see 'rxFullRetries'.
+  , rxFullRetries :: Unsigned 32
+  -- ^ How many times 'rxRetries' overflowed. I.e., how many times 'RxWait' moved
+  -- the state machine back to 'StartTx'.
+  , failAfterUps  :: Unsigned 32
+  -- ^ How many times the link failed when in the 'Monitor' state - i.e., after
+  -- detecting it fully worked. This usually happens if the other side drops its
+  -- link because it tried resetting its receive side too many times - see
+  -- 'rxFullRetries'.
+  }
+  deriving (Generic, NFDataX)
 
-data GthLinkRstSt
-  = Start  RetryCounter Bool
-  | TxWait RetryCounter Counter
-  | RxWait RetryCounter Counter
-  | Monitor
-  deriving (Generic,NFDataX)
+-- | Bringing up the transceivers is a stochastic process - at least, that is
+-- what Xilinx reference designs make us believe. We therefore retry a number of
+-- times if we don't see sensible data coming in. See the individual constructors
+-- and 'gthResetManager' for more information.
+--
+-- XXX: Current timeout values for 'TxWait' and 'RxWait' are chosen arbitrarily.
+--      We should investigate what these values should be for quick bring-up.
+data GthResetState dom
+  = StartTx GthResetStats
+  -- ^ Reset everything - transmit and receive side
+  | StartRx GthResetStats
+  -- ^ Reset just the receive side
+  | TxWait GthResetStats (IndexMs dom 3)
+  -- ^ Wait for the transmit side to report it is done. After /n/ milliseconds
+  -- (see type) it times out, moving to 'StartTx'.
+  | RxWait GthResetStats (IndexMs dom 13)
+  -- ^ Wait for the receive side to report it is done _and_ that it can predict
+  -- the data coming from the other side. After /n/ milliseconds (see type) it
+  -- times out. Depending on the value of 'GthResetStat's 'rxRetries' it will
+  -- either reset both the receive and the transmit side, or just the receive
+  -- side. If all is well though, move on to 'Monitor'.
+  | Monitor GthResetStats
+  -- ^ Wait till the end of the universe, or until a link goes down - whichever
+  -- comes first. In case of the latter, the state machine moves to 'StartTx'.
+  deriving (Generic, NFDataX)
 
+-- | Reset manager for transceivers: see 'GthResetState' for more information on
+-- this state machine. See 'GthResetStats' for information on what debug values
+-- are exported.
+--
+-- XXX: While most links come up in milliseconds, some links will take up to a
+--      second or two. We should check whether this occurs in Xilinx reference
+--      designs. If not, what are we doing wrong?
 gthResetManager ::
   forall freerun txUser2 rxUser2 .
   ( KnownDomain freerun
@@ -300,14 +348,16 @@ gthResetManager ::
   ( "reset_all_out" ::: Reset freerun
   , "reset_rx"  ::: Reset freerun
   , "init_done" ::: Signal freerun Bool
+  , "stats" ::: Signal freerun GthResetStats
   )
 gthResetManager free_clk tx_clk rx_clk reset_all_in tx_init_done rx_init_done rx_data_good =
   ( unsafeFromActiveHigh reset_all_out_sig
   , unsafeFromActiveHigh reset_rx_sig
   , init_done
+  , statistics
   )
  where
-  (reset_all_out_sig, reset_rx_sig, init_done) =
+  (reset_all_out_sig, reset_rx_sig, init_done, statistics) =
     mooreB
       free_clk reset_all_in enableGen
       update
@@ -318,42 +368,54 @@ gthResetManager free_clk tx_clk rx_clk reset_all_in tx_init_done rx_init_done rx
       , xpmCdcSingle rx_clk free_clk rx_data_good
       )
 
-  initSt :: GthLinkRstSt
-  initSt = Start maxBound True
+  initSt :: GthResetState freerun
+  initSt = StartTx (GthResetStats
+    { rxRetries=0
+    , rxFullRetries=0
+    , txRetries=0
+    , failAfterUps=0
+    })
 
-  update :: GthLinkRstSt -> (Bool, Bool, Bool) -> GthLinkRstSt
+  update :: GthResetState freerun -> (Bool, Bool, Bool) -> GthResetState freerun
   update st (tx_done, rx_done, rx_good) =
     case st of
-      Start retryCounter _ -> TxWait retryCounter 0
+      -- Reset everything:
+      StartTx stats -> TxWait stats 0
 
-      TxWait retryCntr cntr
-        | tx_done -> RxWait retryCntr 0
-        | cntr <= tx_timer -> TxWait retryCntr (succ cntr)
-        | otherwise -> Start retryCntr True
+      -- Wait for transceiver to indicate it is done
+      TxWait stats@GthResetStats{txRetries} cntr
+        | tx_done          -> RxWait stats 0
+        | cntr == maxBound -> StartTx stats{txRetries=satSucc SatBound txRetries}
+        | otherwise        -> TxWait stats (succ cntr)
 
-      RxWait retryCntr cntr
-        | rx_done && rx_good -> Monitor
-        | cntr <= rx_timer -> RxWait retryCntr (succ cntr)
-        | otherwise -> Start (satPred SatWrap retryCntr) False
+      -- Reset receive side logic
+      StartRx stats -> RxWait stats 0
 
-      Monitor
-        | rx_done && rx_good -> Monitor
-        | otherwise -> Start 0 False
+      -- Wait for a reliable incoming link. This can fail in multiple ways, see
+      -- 'RxWait'.
+      RxWait stats@GthResetStats{rxRetries, rxFullRetries} cntr
+        | rx_done && rx_good ->
+          Monitor stats
+
+        | cntr == maxBound && rxRetries == maxBound ->
+          StartTx stats{rxFullRetries=satSucc SatBound rxFullRetries}
+
+        | cntr == maxBound ->
+          StartRx stats{rxRetries=satSucc SatBound rxRetries}
+
+        | otherwise ->
+          RxWait stats (succ cntr)
+
+      -- Monitor link. Move all the way back to 'StartTx' if the link goes down
+      -- for some reason.
+      Monitor stats@GthResetStats{failAfterUps}
+        | rx_done && rx_good -> Monitor stats
+        | otherwise -> StartTx stats{failAfterUps=satSucc SatBound failAfterUps}
 
   extractOutput st = case st of
-    --                 rst_all   rst_rx      done
-    Start 0 _      -> (True,     False,      False)
-    Start _ rstAll -> (rstAll,   not rstAll, False)
-    TxWait _ _     -> (False,    False,      False)
-    RxWait _ _     -> (False,    False,      False)
-    Monitor        -> (False,    False,      True)
-
-  tx_timer = cyclesForMilliSeconds @freerun (SNat @3 )
-  rx_timer = cyclesForMilliSeconds @freerun (SNat @13)
-
--- | Calculates how many cycles of a certain domain fit in some number of milliseconds
-cyclesForMilliSeconds :: forall dom ms a . (Num a, KnownDomain dom) => SNat ms -> a
-cyclesForMilliSeconds x =
-  fromInteger ((snatToInteger x * 1000_000_000) `div` period)
- where
-  period = natVal (Proxy @(DomainPeriod dom))
+         --             rst_all rst_rx done   statistics
+    StartTx stats   -> (True,   False, False, stats)
+    TxWait  stats _ -> (False,  False, False, stats)
+    StartRx stats   -> (False,  True,  False, stats)
+    RxWait  stats _ -> (False,  False, False, stats)
+    Monitor stats   -> (False,  False, True,  stats)

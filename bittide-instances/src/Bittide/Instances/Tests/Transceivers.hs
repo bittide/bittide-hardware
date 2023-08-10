@@ -3,13 +3,25 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
 
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
+
 -- | Test whether clock boards are configurable and transceiver links come
 -- online. This assumes to run on a fully connected mesh of 8 FPGAs. Also see
--- 'c_CHANNEL_NAMES' and 'c_CLOCK_PATHS'.
+-- 'c_CHANNEL_NAMES' and 'c_CLOCK_PATHS'. It has two tricks up its sleeve:
+--
+--   1. It uses @SYNC_IN@/@SYNC_OUT@ to make sure each board starts programming
+--      its clock boards at the same time.
+--
+--   2. It keeps track of how many times the GTH's reset manager had to reset
+--      the connection and how often it lost connections after establishing
+--      them.
+--
+-- This test will succeed if all links have been up for ten seconds.
+--
 module Bittide.Instances.Tests.Transceivers where
 
-import Clash.Prelude
-import Clash.Explicit.Prelude (noReset, orReset)
+import Clash.Prelude (withClockResetEnable)
+import Clash.Explicit.Prelude
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
@@ -49,6 +61,7 @@ goTransceiversUpTest ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "allUp" ::: Signal Basic125 Bool
+  , "stats" ::: Vec 7 (Signal Basic125 GthResetStats)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK"      ::: Signal Basic125 Bool
@@ -57,7 +70,7 @@ goTransceiversUpTest ::
       )
   )
 goTransceiversUpTest refClk sysClk rst rxns rxps miso =
-  (txns, txps, and <$> bundle linkUps, spiDone, spiOut)
+  (txns, txps, and <$> bundle linkUps, stats, spiDone, spiOut)
  where
   sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
 
@@ -77,7 +90,7 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
   gthChanReset = E.holdReset sysClk enableGen d1024 gthAllReset
   gthStimReset = E.holdReset sysClk enableGen d1024 gthChanReset
 
-  (_txClocks, rxClocks, txns, txps, linkUpsRx) = unzip5 $
+  (_txClocks, rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
     transceiverPrbsN
       @GthTx @GthRx @Basic200 @Basic125 @GthTx @GthRx
       refClk sysClk gthAllReset gthStimReset gthChanReset
@@ -85,6 +98,22 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
 
   syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
   linkUps = zipWith syncLink rxClocks linkUpsRx
+
+-- | Returns 'True' if incoming signal has been 'True' for 10 seconds.
+trueFor10s ::
+  forall dom .
+  KnownDomain dom =>
+  Clock dom ->
+  Reset dom ->
+  Signal dom Bool ->
+  Signal dom Bool
+trueFor10s clk rst =
+  moore clk rst enableGen goState goOutput (0 :: IndexMs dom 10_000)
+ where
+  goState counter  True  = satSucc SatBound counter
+  goState _counter False = 0
+
+  goOutput = (== maxBound)
 
 -- | Top entity for this test. See module documentation for more information.
 transceiversUpTest ::
@@ -119,21 +148,89 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     $ unsafeFromActiveLow
     $ xpmCdcSingle sysClk sysClk syncIn
 
-  (txns, txps, allUp, spiDone, spiOut) =
+  (txns, txps, allUp, stats, spiDone, spiOut) =
     goTransceiversUpTest refClk sysClk testRst rxns rxps miso
+
+  stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
   startTest :: Signal Basic125 Bool
   startTest =
     vioProbe
       (  "probe_test_done"
       :> "probe_test_success"
+
+      -- Debug probes
+      :> "stats0_txRetries"
+      :> "stats0_rxRetries"
+      :> "stats0_rxFullRetries"
+      :> "stats0_failAfterUps"
+      :> "stats1_txRetries"
+      :> "stats1_rxRetries"
+      :> "stats1_rxFullRetries"
+      :> "stats1_failAfterUps"
+      :> "stats2_txRetries"
+      :> "stats2_rxRetries"
+      :> "stats2_rxFullRetries"
+      :> "stats2_failAfterUps"
+      :> "stats3_txRetries"
+      :> "stats3_rxRetries"
+      :> "stats3_rxFullRetries"
+      :> "stats3_failAfterUps"
+      :> "stats4_txRetries"
+      :> "stats4_rxRetries"
+      :> "stats4_rxFullRetries"
+      :> "stats4_failAfterUps"
+      :> "stats5_txRetries"
+      :> "stats5_rxRetries"
+      :> "stats5_rxFullRetries"
+      :> "stats5_failAfterUps"
+      :> "stats6_txRetries"
+      :> "stats6_rxRetries"
+      :> "stats6_rxFullRetries"
+      :> "stats6_failAfterUps"
       :> Nil)
       (  "probe_test_start"
       :> Nil)
       False
       sysClk
-      allUp
+
+      -- Consider test done if links have been up consistently for 5 seconds.
+      (trueFor10s sysClk testRst allUp)
+
+      -- This test either succeeds or times out, so success is set to a static
+      -- 'True'. If you want to see statistics, consider setting it to 'False' -
+      -- it will make the test TCL print out all probe values.
       (pure True :: Signal Basic125 Bool)
+
+      -- Debug probes
+      (txRetries     <$> stats0)
+      (rxRetries     <$> stats0)
+      (rxFullRetries <$> stats0)
+      (failAfterUps  <$> stats0)
+      (txRetries     <$> stats1)
+      (rxRetries     <$> stats1)
+      (rxFullRetries <$> stats1)
+      (failAfterUps  <$> stats1)
+      (txRetries     <$> stats2)
+      (rxRetries     <$> stats2)
+      (rxFullRetries <$> stats2)
+      (failAfterUps  <$> stats2)
+      (txRetries     <$> stats3)
+      (rxRetries     <$> stats3)
+      (rxFullRetries <$> stats3)
+      (failAfterUps  <$> stats3)
+      (txRetries     <$> stats4)
+      (rxRetries     <$> stats4)
+      (rxFullRetries <$> stats4)
+      (failAfterUps  <$> stats4)
+      (txRetries     <$> stats5)
+      (rxRetries     <$> stats5)
+      (rxFullRetries <$> stats5)
+      (failAfterUps  <$> stats5)
+      (txRetries     <$> stats6)
+      (rxRetries     <$> stats6)
+      (rxFullRetries <$> stats6)
+      (failAfterUps  <$> stats6)
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.
 {-# ANN transceiversUpTest Synthesize
