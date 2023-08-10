@@ -23,6 +23,103 @@ set test_timeout_ms 60000
 # available in the hardware server.
 set hw_server_timeout_ms 5000
 
+# Prefix of the name of a VIO probe.
+set vio_prefix ""
+
+# The VIO probes used for hardware-in-the-loop tests (hitlt) must end their
+# prefix with 'vioHitlt'. For example, a probe named 'my_vio_vioHitlt/probe_test_done'
+# has the prefix 'my_vio_vioHitlt'. Throws an error when not exactly 1 VIO core
+# is present.
+proc set_vio_prefix {} {
+    global vio_prefix
+
+    # Use `probe_test_done` as the probe to find full probe names
+    set probe_done [get_hw_probes *vioHitlt/probe_test_done]
+    if {[expr [llength probe_done] != 1]} {
+        puts "Exactly 1 VIO core with the prefix '*vioHitlt' must be present"
+        exit 1
+    }
+    set vio_prefix [lindex [split [get_property name $probe_done] "/"] 0]
+}
+
+# For the Hardware-in-the-Loop test (hitlt) at least 3 specific probes need to
+# be present in the design:
+# - `probe_test_done` indicates when a single test is done
+# - `probe_test_success` indicates whether a single test was successful
+# - `probe_test_start*` indicate the start of a specific test
+# Other VIO probes may be present in the design, but are only used to print
+# debug information when a test fails.
+proc verify_vio_probes {} {
+    global vio_prefix
+
+    set done_probe [get_hw_probes ${vio_prefix}/probe_test_done]
+    if {[expr [llength $done_probe] != 1]} {
+        set done_probe_count [llength $done_probe]
+        puts "Only one probe named '$vio_prefix/probe_test_done' may be present, but ${done_probe_count} were found"
+        print_all_probe_names
+        exit 1
+    } elseif {[expr {[get_property type $done_probe] != "vio_input"}]} {
+        set probe_name [get_property name.short $done_probe]
+        puts "Probe '${probe_name}' must have type 'vio_input'"
+        print_all_probe_names
+        exit 1
+    } elseif {[expr {[get_property width $done_probe] != 1}]} {
+        set probe_name [get_property name.short $done_probe]
+        puts "Probe '${probe_name}' must have a width of 1 bit"
+        print_all_probe_names
+        exit 1
+    }
+
+    set success_probe [get_hw_probes ${vio_prefix}/probe_test_success]
+    if {[expr [llength $success_probe] != 1]} {
+        set success_probe_count [llength $success_probe]
+        puts "Only one probe named '$vio_prefix/probe_test_success' may be present, but ${success_probe_count} were found"
+        print_all_probe_names
+        exit 1
+    }
+    if {[expr {[get_property type $success_probe] != "vio_input"}]} {
+        set probe_name [get_property name.short $success_probe]
+        puts "Probe '${probe_name}' must have type 'vio_input'"
+        print_all_probe_names
+        exit 1
+    } elseif {[expr {[get_property width $success_probe] != 1}]} {
+        set probe_name [get_property name.short $success_probe]
+        puts "Probe '${probe_name}' must have a width of 1 bit"
+        print_all_probe_names
+        exit 1
+    }
+
+    set start_probes [get_hw_probes ${vio_prefix}/probe_test_start*]
+    if {[expr [llength $start_probes] < 1]} {
+        set start_probe_count [llength $start_probes]
+        puts "At least one probe named '$vio_prefix/probe_test_start*' must be present, but none were found"
+        print_all_probe_names
+        exit 1
+    }
+    foreach probe $start_probes {
+        if {[expr {[get_property type $probe] != "vio_output"}]} {
+            set probe_name [get_property name.short $probe]
+            puts "Probe '$probe_name' must have type 'vio_output'"
+            print_all_probe_names
+            exit 1
+        } elseif {[expr {[get_property width $probe] != 1}]} {
+            set probe_name [get_property name.short $probe]
+            puts "Probe '$probe_name' must have a width of 1 bit"
+            print_all_probe_names
+            exit 1
+        }
+    }
+}
+
+proc print_all_probe_names {} {
+    set probes [get_hw_probes]
+    puts "All probes in design:"
+    foreach probe $probes {
+        set probe_name [get_property name $probe]
+        puts "\t${probe_name}"
+    }
+}
+
 proc get_part_name {url id} {
     return ${url}/xilinx_tcf/Digilent/${id}
 }
@@ -213,10 +310,11 @@ proc program_fpga {program_file probes_file} {
 
 # Verify that `done` is not set before starting the test
 proc verify_before_start {start_probe} {
+    global vio_prefix
     set_property OUTPUT_VALUE 0 $start_probe
-    commit_hw_vio [get_hw_vios hw_vio_1]
-    refresh_hw_vio [get_hw_vios hw_vio_1]
-    set done [get_property INPUT_VALUE [get_hw_probes */probe_test_done]]
+    commit_hw_vio [get_hw_vios]
+    refresh_hw_vio [get_hw_vios]
+    set done [get_property INPUT_VALUE [get_hw_probes ${vio_prefix}/probe_test_done]]
     if {$done != 0} {
         puts "\tERROR: test is done before starting the test"
         print_all_vios
@@ -227,12 +325,13 @@ proc verify_before_start {start_probe} {
 # Refresh the input probes until the done flag is set. Retries for up to
 # `test_timeout_ms` milliseconds.
 proc wait_test_end {} {
+    global vio_prefix
     set start_time [clock milliseconds]
     while 1 {
         # Check test status, break if test is done
-        refresh_hw_vio [get_hw_vios hw_vio_1]
-        set done [get_property INPUT_VALUE [get_hw_probes */probe_test_done]]
-        set success [get_property INPUT_VALUE [get_hw_probes */probe_test_success]]
+        refresh_hw_vio [get_hw_vios]
+        set done [get_property INPUT_VALUE [get_hw_probes ${vio_prefix}/probe_test_done]]
+        set success [get_property INPUT_VALUE [get_hw_probes ${vio_prefix}/probe_test_success]]
         if {$done == 1} {
             break
         }
@@ -268,16 +367,9 @@ proc print_test_results {done success start_time end_time} {
 }
 
 # Gets the short names of probes which contain 'probe_test_start'
-proc get_test_names {probes_file target_dict url} {
-    # Load the device of the first target
-    set target_id [lindex [dict values $target_dict] 0]
-    set target_name [get_part_name $url $target_id]
-    set device [load_target_device $target_name]
-
-    set_property PROBES.FILE ${probes_file} $device
-    refresh_hw_device $device
-
-    set start_probes [get_hw_probes */probe_test_start*]
+proc get_test_names {} {
+    global vio_prefix
+    set start_probes [get_hw_probes ${vio_prefix}/probe_test_start*]
     if {[expr [llength $start_probes] == 0]} {
         puts "No probes found with name '*probe_test_start*', which are needed to start tests"
         exit 1
@@ -290,6 +382,18 @@ proc get_test_names {probes_file target_dict url} {
 }
 
 proc run_test_group {probes_file target_dict url} {
+    # Load the device of the first target
+    set target_id [lindex [dict values $target_dict] 0]
+    set target_name [get_part_name $url $target_id]
+    set device [load_target_device $target_name]
+    set_property PROBES.FILE ${probes_file} $device
+    refresh_hw_device $device
+
+    # Set the prefix of VIO probes and verify all required probes are present.
+    set_vio_prefix
+    verify_vio_probes
+    global vio_prefix
+
     set successful_tests 0
 
     set target_count [dict size $target_dict]
@@ -313,11 +417,13 @@ proc run_test_group {probes_file target_dict url} {
             set_property PROBES.FILE ${probes_file} $device
             refresh_hw_device $device -quiet
             # Verify pre-start condition
-            set start_probe [get_hw_probes */$start_probe_name]
+            set start_probe [get_hw_probes ${vio_prefix}/${start_probe_name}]
             verify_before_start $start_probe
+
             # Start the test
             set_property OUTPUT_VALUE 1 $start_probe
-            commit_hw_vio [get_hw_vios hw_vio_1]
+            commit_hw_vio [get_hw_vios]
+
             puts "Start test for FPGA ${target_nr} with ID ${target_id}"
         }
 
@@ -346,9 +452,9 @@ proc run_test_group {probes_file target_dict url} {
             refresh_hw_device $device -quiet
 
             # Reset the start probe for the current test
-            set start_probe [get_hw_probes */$start_probe_name]
+            set start_probe [get_hw_probes ${vio_prefix}/${start_probe_name}]
             set_property OUTPUT_VALUE 0 $start_probe
-            commit_hw_vio [get_hw_vios hw_vio_1]
+            commit_hw_vio [get_hw_vios]
         }
         # Print summary of individual test
         puts "\nTest ${start_probe_name} passed on ${successful_targets} out of ${target_count} targets"
