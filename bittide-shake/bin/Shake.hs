@@ -323,6 +323,8 @@ main = do
               , reportDir </> "post_route_util.rpt"
               ]
 
+            ilaDataPath = synthesisDir </> "ila-data"
+
           withoutTargets $ do
             manifestPath %> \path -> do
               --- XXX: See [Note: invalidating HDL cache]
@@ -458,7 +460,8 @@ main = do
             runHardwareTestTclPath %> \path -> do
               alwaysRerun
               url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
-              hardwareTestTcl <- liftIO $ mkHardwareTestTcl synthesisDir hwTargets url
+              hardwareTestTcl <-
+                liftIO $ mkHardwareTestTcl synthesisDir hwTargets url ilaDataPath
               writeFileChanged path hardwareTestTcl
 
 

@@ -309,9 +309,11 @@ mkHardwareTestTcl ::
   HardwareTargets ->
   -- | Hardware server URL
   String ->
+  -- | Filepath the the ILA data dump directory
+  FilePath ->
   -- | Rendered Tcl
   IO String
-mkHardwareTestTcl outputDir hwTargets url = do
+mkHardwareTestTcl outputDir hwTargets url ilaDataPath = do
   hardwareTestTclPath <- getDataFileName ("data" </> "tcl" </> "HardwareTest.tcl")
   pure [__i|
     source {#{hardwareTestTclPath}} -quiet
@@ -326,5 +328,5 @@ mkHardwareTestTcl outputDir hwTargets url = do
     set target_dict [get_target_dict ${url} ${fpga_nrs}]
     has_expected_targets ${url} ${target_dict}
 
-    run_test_group $probes_file $target_dict $url
+    run_test_group $probes_file $target_dict $url {#{ilaDataPath}}
   |]
