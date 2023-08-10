@@ -90,11 +90,13 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
 transceiversUpTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Basic200 ->
   "SYSCLK_300" ::: DiffClock Basic300 ->
+  "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRx ->
   "GTH_RX_PS" ::: TransceiverWires GthRx ->
   "MISO" ::: Signal Basic125 Bit ->
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
+  , "SYNC_OUT" ::: Signal Basic125 Bool
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK"      ::: Signal Basic125 Bool
@@ -102,15 +104,20 @@ transceiversUpTest ::
       , "CSB"       ::: Signal Basic125 Bool
       )
   )
-transceiversUpTest refClkDiff sysClkDiff rxns rxps miso =
-  (txns, txps, spiDone, spiOut)
+transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
+  (txns, txps, syncOut, spiDone, spiOut)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Basic200
 
   (sysClk, sysLock0) = clockWizardDifferential (SSymbol @"SysClk") sysClkDiff noReset
   sysLock1 = xpmCdcSingle sysClk sysClk sysLock0 -- improvised reset syncer
   sysRst = unsafeFromActiveLow sysLock1
-  testRst = orReset sysRst (unsafeFromActiveLow startTest)
+  testRst = sysRst `orReset` unsafeFromActiveLow startTest `orReset` syncInRst
+  syncOut = startTest
+  syncInRst =
+      resetGlitchFilter (SNat @1024) sysClk
+    $ unsafeFromActiveLow
+    $ xpmCdcSingle sysClk sysClk syncIn
 
   (txns, txps, allUp, spiDone, spiOut) =
     goTransceiversUpTest refClk sysClk testRst rxns rxps miso
@@ -134,6 +141,7 @@ transceiversUpTest refClkDiff sysClkDiff rxns rxps miso =
   , t_inputs =
     [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
     , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
+    , PortName "SYNC_IN"
     , PortName "GTH_RX_NS"
     , PortName "GTH_RX_PS"
     , PortName "MISO"
@@ -142,6 +150,7 @@ transceiversUpTest refClkDiff sysClkDiff rxns rxps miso =
     (PortProduct "")
       [ PortName "GTH_TX_NS"
       , PortName "GTH_TX_PS"
+      , PortName "SYNC_OUT"
       , PortName "spiDone"
       , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
       ]

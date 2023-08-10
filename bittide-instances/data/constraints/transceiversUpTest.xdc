@@ -28,11 +28,11 @@ set_clock_groups \
 # Brown   | PMOD_GND      | GND           | GND (SPI)
 
 # PMOD1_[0..7]
-# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AK25} [get_ports {SYNC_OUT}]
+set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AK25} [get_ports {SYNC_OUT}]
 # set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AN21} [get_ports {FINC}]
 set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AH18} [get_ports {MOSI}]
 set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AM19} [get_ports {SCLK}]
-# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AE26} [get_ports {SYNC_IN}]
+set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AE26} [get_ports {SYNC_IN}]
 # set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AF25} [get_ports {FDEC}]
 set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AE21} [get_ports {CSB}]
 set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AM17} [get_ports {MISO}]
