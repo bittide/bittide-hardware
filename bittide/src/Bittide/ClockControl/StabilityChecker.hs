@@ -19,7 +19,7 @@ data StabilityIndication =
       -- ^ Indicates whether the signal is stable and close to
       -- 'targetDataCount'.
     }
-  deriving (Generic, NFDataX)
+  deriving (Generic, NFDataX, BitPack)
 
 -- | Checks whether the @Signal@ of buffer occupancies from an elastic
 -- buffer is stable and settled. The @Signal@ is considered to be

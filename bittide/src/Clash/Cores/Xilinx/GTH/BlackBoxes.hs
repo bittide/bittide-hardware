@@ -18,7 +18,7 @@ import GHC.Stack (HasCallStack)
 import Clash.Backend (Backend)
 import Clash.Netlist.BlackBox.Types (BlackBoxFunction, emptyBlackBoxMeta)
 import Clash.Netlist.BlackBox.Util (exprToString)
-import Clash.Netlist.Types (TemplateFunction(..), BlackBox(BBFunction), BlackBoxContext)
+import Clash.Netlist.Types
 
 import Clash.Cores.Xilinx.Internal
   (defIpConfig, IpConfig(properties), property, renderTcl, TclPurpose(..), BraceTcl(..))
@@ -244,27 +244,27 @@ ibufds_gte3BBTF ::
   BlackBoxContext ->
   State s Doc
 ibufds_gte3BBTF bbCtx
-  | args@[
-      _clk_n
-    , _clk_p
-    ] <- map fst (DSL.tInputs bbCtx)
+    | [ _knownDomain, clk] <- map fst (DSL.tInputs bbCtx)
+    , DataCon (Product "Clash.Signal.Internal.DiffClock" _ clkTys) _ clkEs <- DSL.eex clk
+    , [clkP@(Identifier _ Nothing), clkN@(Identifier _ Nothing)] <- clkEs
+    , [clkPTy, clkNTy] <- clkTys
   = do
 
   ibufds_gte3InstName <- Id.makeBasic "ibufds_gte3_inst"
 
   let
-    compInps =
+    inps =
       [
-        ("IB",  N.Clock "dom")
-      , ("I", N.Clock "dom")
+        ("I", DSL.TExpr clkPTy clkP)
+      , ("IB", DSL.TExpr clkNTy clkN)
+
+      -- Tied off:
+      , ("CEB", DSL.Low)
       ]
-    tiedOffInps =
-      [
-        ("CEB", DSL.Low)
-      ]
+
     compOuts =
       [
-        ("O",  N.Clock "dom")
+        ("O",  Bit)
       ]
     attrs =
       [
@@ -275,8 +275,6 @@ ibufds_gte3BBTF bbCtx
     ibufds_gte3Name = "IBUFDS_GTE3"
   DSL.declarationReturn bbCtx "ibufds_gte3_inst_block" $ do
 
-    let inps = zip (fst <$> compInps) args
-               <> tiedOffInps
     outs <- mapM (uncurry DSL.declare) compOuts
     DSL.instDecl
       N.Empty

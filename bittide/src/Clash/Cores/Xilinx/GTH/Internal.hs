@@ -46,8 +46,8 @@ gthCore
 
    , "gtwiz_userdata_rx_out" ::: Signal rxUser2 (BitVector RX_DATA_WIDTH)
 
-   , "gtwiz_reset_tx_done_out" ::: Signal freerun (BitVector 1)
-   , "gtwiz_reset_rx_done_out" ::: Signal freerun (BitVector 1)
+   , "gtwiz_reset_tx_done_out" ::: Signal txUser2 (BitVector 1)
+   , "gtwiz_reset_rx_done_out" ::: Signal rxUser2 (BitVector 1)
 
    , "gtwiz_userclk_tx_active_out" ::: Signal txUser2 (BitVector 1)
    )
@@ -82,8 +82,8 @@ gthCore
             workInfo: Always
         |]) #-}
 
-ibufds_gte3 :: Clock dom -> Clock dom -> Clock dom
-ibufds_gte3 !_clkn !clkp = clkp
+ibufds_gte3 :: KnownDomain dom => DiffClock dom -> Clock dom
+ibufds_gte3 !_clk = clockGen
 {-# NOINLINE ibufds_gte3 #-}
 {-# ANN ibufds_gte3 hasBlackBox #-}
 {-# ANN ibufds_gte3 (
