@@ -23,4 +23,4 @@ library
                    Bittide.Simulate.RustFFI.Sizes
   hs-source-dirs:  src
   build-depends:   template-haskell
-  extra-libraries: bittide_rust_ffi
+  extra-libraries: callisto_lib

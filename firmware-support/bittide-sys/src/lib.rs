@@ -7,6 +7,7 @@
 use fdt::Fdt;
 use utils::matches_fdt_name;
 
+pub mod callisto;
 pub mod character_device;
 pub mod gather_unit;
 pub mod program_stream;

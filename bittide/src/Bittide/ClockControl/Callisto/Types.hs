@@ -20,7 +20,7 @@ import Clash.Prelude
 
 import Foreign.Storable (Storable(..))
 import Foreign.C.Types (CUInt, CInt)
-import Foreign.Ptr (Ptr, IntPtr, plusPtr)
+import Foreign.Ptr (plusPtr)
 
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker (StabilityIndication)
@@ -176,14 +176,13 @@ instance (SizeOf ControlSt ~ 24, Alignment ControlSt ~ 4)
 newtype VecS (n :: Nat) a = VecS (Vec n a)
 
 type instance SizeOf (VecS n a) =
-  SizeOf (Ptr a) + SizeOf Int + SizeOf Int + n * SizeOf a
+  SizeOf Int + n * SizeOf a
 
 type instance Alignment (VecS n a) =
   Alignment a
 
 instance
-  ( SizeOf (Ptr a) ~ SizeOf Int
-  , Alignment (Ptr a) ~ Alignment Int
+  ( Alignment a ~ Alignment Int
   , Storable a
   , KnownNat (SizeOf a)
   , KnownNat (Alignment a)
@@ -195,18 +194,16 @@ instance
   alignment = const $ natToNum @(Alignment (VecS n a))
 
   peek p = do
-    let h = natToNum @(SizeOf IntPtr)
+    let h = natToNum @(SizeOf Int)
         s = natToNum @(SizeOf a)
-    vs <- sequence $ map (peekByteOff p . (+ 3*h) . (* s) . fromEnum) indicesI
+    vs <- mapM (peekByteOff p . (+ h) . (* s) . fromEnum) indicesI
     return $ VecS $ vs
 
   poke p (VecS v) = do
-    let h = natToNum @(SizeOf IntPtr)
+    let h = natToNum @(SizeOf Int)
         s = natToNum @(SizeOf a)
-        d = p `plusPtr` (3 * h)
-    pokeByteOff p 0 d
-    pokeByteOff p h (natToNum @n :: Int)
-    pokeByteOff p (2*h) (natToNum @n :: Int)
+        d = p `plusPtr` h
+    pokeByteOff p 0 (natToNum @n :: Int)
     mapM_ (\(x, i) -> pokeByteOff d (s * fromEnum i) x) $ zip v indicesI
 
 type VecI n = Vec n (Index n)

@@ -4,6 +4,7 @@
 
 [workspace]
 members = [
+  "callisto-lib",
   "dummy",
 ]
 resolver = "2"
