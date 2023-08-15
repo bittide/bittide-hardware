@@ -4,7 +4,7 @@
 
 -- | Checks whether `+` and `-` work as expected, though its real purpose is to
 -- check whether we can run hardware-in-the-loop tests.
-module Bittide.Instances.BoardTest where
+module Bittide.Instances.Tests.BoardTest where
 
 import Clash.Explicit.Prelude
 
@@ -68,6 +68,7 @@ simpleHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
   (testDone, testSuccess) = unbundle $ toDoneSuccess <$> testState
 
   testStart =
+    setName @"vioHitlt" $
     vioProbe
       ("probe_test_done" :> "probe_test_success" :> Nil)
       ("probe_test_start" :> Nil)
@@ -119,6 +120,7 @@ extendedHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
 
   (testStartA, testStartB) =
     unbundle $
+    setName @"vioHitlt" $
     vioProbe
       (  "probe_test_done"
       :> "probe_test_success"

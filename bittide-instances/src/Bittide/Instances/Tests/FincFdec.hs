@@ -219,6 +219,7 @@ fincFdecTests diffClk controlledDiffClock spiIn =
 
   startTests :: Signal Basic200A (Vec 4 Bool)
   startTests =
+    setName @"vioHitlt" $
     vioProbe
       (  "probe_test_done"
       :> "probe_test_success"

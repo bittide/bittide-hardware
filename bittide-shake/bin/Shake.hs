@@ -189,8 +189,8 @@ targets = map enforceValidTarget
   , defTarget "Bittide.Instances.StabilityChecker.stabilityChecker_3_1M"
   , defTarget "Bittide.Instances.Synchronizer.safeDffSynchronizer"
 
-  , testTarget "Bittide.Instances.BoardTest.extendedHardwareInTheLoopTest"
-  , testTarget "Bittide.Instances.BoardTest.simpleHardwareInTheLoopTest"
+  , testTarget "Bittide.Instances.Tests.BoardTest.extendedHardwareInTheLoopTest"
+  , testTarget "Bittide.Instances.Tests.BoardTest.simpleHardwareInTheLoopTest"
   , testTarget "Bittide.Instances.Tests.FincFdec.fincFdecTests"
   , testTarget "Bittide.Instances.Tests.SyncInSyncOut.syncInSyncOut"
   , testTarget "Bittide.Instances.Tests.Transceivers.transceiversUpTest"

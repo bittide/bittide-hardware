@@ -97,7 +97,6 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
-    Bittide.Instances.BoardTest
     Bittide.Instances.Calendar
     Bittide.Instances.ClockControl
     Bittide.Instances.Counter
@@ -111,6 +110,7 @@ library
     Bittide.Instances.Synchronizer
 
     -- Hardware-in-the-loop tests
+    Bittide.Instances.Tests.BoardTest
     Bittide.Instances.Tests.FincFdec
     Bittide.Instances.Tests.SyncInSyncOut
     Bittide.Instances.Tests.Transceivers

@@ -155,6 +155,7 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   startTest :: Signal Basic125 Bool
   startTest =
+    setName @"vioHitlt" $
     vioProbe
       (  "probe_test_done"
       :> "probe_test_success"
