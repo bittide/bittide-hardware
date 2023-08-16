@@ -202,7 +202,7 @@ shakeOpts :: ShakeOptions
 shakeOpts = shakeOptions
   { shakeFiles = buildDir
   , shakeChange = ChangeDigest
-  , shakeVersion = "7"
+  , shakeVersion = "8"
   }
 
 -- | Run Vivado on given TCL script

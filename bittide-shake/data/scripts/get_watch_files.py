@@ -52,6 +52,14 @@ def get_untracked_files():
         if line.startswith("?"):
             yield line.split(" ", 1)[1]
 
+def get_deleted_tracked_files():
+    """Return files that are tracked by git, but removed from the filesystem"""
+    lines = check_output_lines(["git", "status", "--short", "--untracked-files=all"])
+    for line in lines:
+        line = line.strip()
+        if line.startswith("D"):
+            yield line.split(" ", 1)[1]
+
 def get_path_parts(path):
     """Yield all parts that make up a path, in reverse order"""
     root, tail = os.path.split(path)
@@ -79,9 +87,10 @@ if __name__ == '__main__':
     os.chdir(get_git_root())
 
     ignores = sys.argv[1:]
-    tracked_files = list(get_tracked_files())
-    untracked_files = list(get_untracked_files())
-    all_files = sorted(set(tracked_files + untracked_files))
+    tracked_files = set(get_tracked_files())
+    untracked_files = set(get_untracked_files())
+    deleted_files = set(get_deleted_tracked_files())
+    all_files = sorted((tracked_files | untracked_files) - deleted_files)
     for file in all_files:
         if not match(file, ignores):
             print(file)
