@@ -134,6 +134,7 @@ library
     Clash.Cores.Xilinx.GTH.BlackBoxes
     Clash.Cores.Xilinx.GTH.Internal
     Clash.Explicit.Reset.Extra
+    Clash.Functor.Extra
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
     System.IO.Temp.Extra
