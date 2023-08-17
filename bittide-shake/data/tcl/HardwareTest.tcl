@@ -111,6 +111,115 @@ proc verify_vio_probes {} {
     }
 }
 
+# Create a list of dictionaries where each dictionary corresponds to one ILA.
+# Each dictionary has the following keys:
+#   name          : short name of the ILA
+#   cell_name     : name of the cell the ILA is in
+#   trigger_probe : name of the trigger probe
+#   capture_probe : name of the capture probe
+#   data_probes   : list of names of all other probes
+proc get_ila_dicts {} {
+    set ila_dicts [list]
+
+    set hw_ilas [get_hw_ilas -quiet]
+    set ila_count [llength $hw_ilas]
+    if {[expr $ila_count == 0]} {
+        puts "\nNo ILAs in design"
+        return [list]
+    }
+
+    puts "\nFound $ila_count ILAs:"
+    foreach hw_ila $hw_ilas {
+        set ila_dict [dict create]
+
+        set cell_name [get_property CELL_NAME $hw_ila]
+        set idx_start [expr [string first "_" $cell_name] + 1]
+        set idx_end [expr [string first "/" $cell_name] - 1]
+        set short_name [string range $cell_name $idx_start $idx_end]
+        dict set ila_dict name $short_name
+        dict set ila_dict cell_name $cell_name
+
+        # Get trigger probe and verify it conforms with ILA framework
+        set trigger_probe [get_hw_probes -of_objects $hw_ila */trigger*]
+        set trigger_probe_count [llength trigger_probe]
+        if {[expr {$trigger_probe_count != 1}]} {
+            puts "Only one probe named 'trigger*' may be present, but $trigger_probe_count were found"
+            print_all_probe_names
+            exit 1
+        } elseif {[expr {[get_property is_trigger $trigger_probe] != 1}]} {
+            set probe_name_short [get_property name.short $trigger_probe]
+            puts "Probe '$probe_name_short' should have probeType Trigger or DataAndTrigger"
+            print_all_probe_names
+            exit 1
+        } elseif {[expr {[get_property width $trigger_probe] != 1}]} {
+            set probe_name_short [get_property name.short $trigger_probe]
+            puts "Probe '$probe_name_short' must have a width of 1 bit"
+            print_all_probe_names
+            exit 1
+        } else {
+            dict set ila_dict trigger_probe [get_property name $trigger_probe]
+        }
+
+        # Get capture probe and verify it conforms with ILA framework
+        set capture_probe [get_hw_probes -of_objects $hw_ila */capture*]
+        set capture_probe_count [llength capture_probe]
+        if {[expr {$capture_probe_count != 1}]} {
+            puts "Only one probe named 'capture*' may be present, but $capture_probe_count were found"
+            print_all_probe_names
+            exit 1
+        } elseif {[expr {[get_property is_trigger $capture_probe] != 1}]} {
+            set probe_name_short [get_property name.short $capture_probe]
+            puts "Probe '$probe_name_short' should have probeType Trigger or DataAndTrigger"
+            print_all_probe_names
+            exit 1
+        } elseif {[expr {[get_property width $capture_probe] != 1}]} {
+            set probe_name_short [get_property name.short $capture_probe]
+            puts "Probe '$probe_name_short' must have a width of 1 bit"
+            print_all_probe_names
+            exit 1
+        } else {
+            dict set ila_dict capture_probe [get_property name $capture_probe]
+        }
+
+        # Get all data probes and verify each conforms with ILA framework
+        set all_probes [get_hw_probes -of_objects $hw_ila]
+        if {[expr {[llength $all_probes] < 3}]} {
+            puts "ILA '$short_name' has no data probes, at least 1 data probe is required"
+            print_all_probe_names
+            exit 1
+        }
+        dict set ila_dict data_probes [list]
+        foreach probe $all_probes {
+            if {[expr {$probe == $trigger_probe} || {$probe == $capture_probe}]} {
+                continue
+            } elseif {[expr {[get_property is_data $probe] != 1}]} {
+                set probe_name_short [get_property name.short $probe]
+                puts "Probe '$probe_name_short' should have probeType Data or DataAndTrigger"
+                print_all_probe_names
+                exit 1
+            } else {
+                dict update ila_dict data_probes probe_list {
+                    lappend probe_list [get_property name $probe]
+                }
+            }
+        }
+        lappend ila_dicts $ila_dict
+
+        # Print all ILA probes
+        puts "ILA $short_name with probes:"
+        set probe_name_short [get_property name.short $trigger_probe]
+        puts "\t$probe_name_short"
+        set probe_name_short [get_property name.short $capture_probe]
+        puts "\t$probe_name_short"
+        foreach probe_name [dict get $ila_dict data_probes] {
+            set idx_start [expr [string first "/" $probe_name] + 1]
+            set probe_name_short [string range $probe_name $idx_start end]
+            puts "\t$probe_name_short"
+        }
+    }
+    return $ila_dicts
+}
+
 proc print_all_probe_names {} {
     set probes [get_hw_probes]
     puts "All probes in design:"
@@ -381,7 +490,7 @@ proc get_test_names {} {
     return $start_probe_names
 }
 
-proc run_test_group {probes_file target_dict url} {
+proc run_test_group {probes_file target_dict url ila_data_dir} {
     # Load the device of the first target
     set target_id [lindex [dict values $target_dict] 0]
     set target_name [get_part_name $url $target_id]
@@ -393,6 +502,8 @@ proc run_test_group {probes_file target_dict url} {
     set_vio_prefix
     verify_vio_probes
     global vio_prefix
+
+    set ila_dicts [get_ila_dicts]
 
     set successful_tests 0
 
@@ -419,6 +530,22 @@ proc run_test_group {probes_file target_dict url} {
             # Verify pre-start condition
             set start_probe [get_hw_probes ${vio_prefix}/${start_probe_name}]
             verify_before_start $start_probe
+
+            # Activate the trigger for each ILA
+            foreach ila_dict $ila_dicts {
+                set cell_name [dict get $ila_dict cell_name]
+                set ila [get_hw_ilas -filter CELL_NAME=={${cell_name}}]
+                # Set trigger probe (active high boolean)
+                set trigger_probe [get_hw_probes [dict get $ila_dict trigger_probe]]
+                set_property trigger_compare_value eq1'b1 $trigger_probe
+
+                # Enable capture control and set capture probe (active high boolean)
+                set_property control.capture_mode BASIC $ila
+                set capture_probe [get_hw_probes [dict get $ila_dict capture_probe]]
+                set_property capture_compare_value eq1'b1 $capture_probe
+
+                run_hw_ila $ila
+            }
 
             # Start the test
             set_property OUTPUT_VALUE 1 $start_probe
@@ -450,6 +577,27 @@ proc run_test_group {probes_file target_dict url} {
             set device [load_target_device [get_part_name $url $target_id]]
             set_property PROBES.FILE ${probes_file} $device
             refresh_hw_device $device -quiet
+
+            # Load the ILA data from the FPGA
+            foreach ila_dict $ila_dicts {
+                # Create the directory, if it does not exist already
+                if {[expr {$target_nr < 0}]} {
+                    set index_id "X_${target_id}"
+                } else {
+                    set index_id "${target_nr}_${target_id}"
+                }
+                set dir [file join $ila_data_dir $start_probe_name $index_id]
+                file mkdir $dir
+                set ila_name [dict get $ila_dict name]
+                set file_path [file join $dir "$ila_name"]
+
+                set cell_name [dict get $ila_dict cell_name]
+                set ila [get_hw_ilas -filter CELL_NAME=={${cell_name}}]
+
+                set ila_data [upload_hw_ila_data $ila]
+                write_hw_ila_data -force -csv_file $file_path $ila_data
+                write_hw_ila_data -force -vcd_file $file_path $ila_data
+            }
 
             # Reset the start probe for the current test
             set start_probe [get_hw_probes ${vio_prefix}/${start_probe_name}]
