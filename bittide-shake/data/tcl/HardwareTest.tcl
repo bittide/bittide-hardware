@@ -35,7 +35,7 @@ proc set_vio_prefix {} {
 
     # Use `probe_test_done` as the probe to find full probe names
     set probe_done [get_hw_probes *vioHitlt/probe_test_done]
-    if {[expr [llength probe_done] != 1]} {
+    if {[expr [llength $probe_done] != 1]} {
         puts "Exactly 1 VIO core with the prefix '*vioHitlt' must be present"
         exit 1
     }
@@ -55,7 +55,7 @@ proc verify_vio_probes {} {
     set done_probe [get_hw_probes ${vio_prefix}/probe_test_done]
     if {[expr [llength $done_probe] != 1]} {
         set done_probe_count [llength $done_probe]
-        puts "Only one probe named '$vio_prefix/probe_test_done' may be present, but ${done_probe_count} were found"
+        puts "Exactly one probe named '$vio_prefix/probe_test_done' must be present, but ${done_probe_count} were found"
         print_all_probe_names
         exit 1
     } elseif {[expr {[get_property type $done_probe] != "vio_input"}]} {
@@ -73,7 +73,7 @@ proc verify_vio_probes {} {
     set success_probe [get_hw_probes ${vio_prefix}/probe_test_success]
     if {[expr [llength $success_probe] != 1]} {
         set success_probe_count [llength $success_probe]
-        puts "Only one probe named '$vio_prefix/probe_test_success' may be present, but ${success_probe_count} were found"
+        puts "Exactly one probe named '$vio_prefix/probe_test_success' must be present, but ${success_probe_count} were found"
         print_all_probe_names
         exit 1
     }
@@ -141,9 +141,9 @@ proc get_ila_dicts {} {
 
         # Get trigger probe and verify it conforms with ILA framework
         set trigger_probe [get_hw_probes -of_objects $hw_ila */trigger*]
-        set trigger_probe_count [llength trigger_probe]
+        set trigger_probe_count [llength $trigger_probe]
         if {[expr {$trigger_probe_count != 1}]} {
-            puts "Only one probe named 'trigger*' may be present, but $trigger_probe_count were found"
+            puts "Exactly one probe named 'trigger*' must be present, but $trigger_probe_count were found"
             print_all_probe_names
             exit 1
         } elseif {[expr {[get_property is_trigger $trigger_probe] != 1}]} {
@@ -162,9 +162,9 @@ proc get_ila_dicts {} {
 
         # Get capture probe and verify it conforms with ILA framework
         set capture_probe [get_hw_probes -of_objects $hw_ila */capture*]
-        set capture_probe_count [llength capture_probe]
+        set capture_probe_count [llength $capture_probe]
         if {[expr {$capture_probe_count != 1}]} {
-            puts "Only one probe named 'capture*' may be present, but $capture_probe_count were found"
+            puts "Exactly one probe named 'capture*' must be present, but $capture_probe_count were found"
             print_all_probe_names
             exit 1
         } elseif {[expr {[get_property is_trigger $capture_probe] != 1}]} {
