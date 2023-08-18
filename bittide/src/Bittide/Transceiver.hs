@@ -89,11 +89,11 @@ transceiverPrbs ::
   , Signal rx Bool  -- link up
   , Signal freeclk GthResetStats
   )
-transceiverPrbs gtrefclk freeclk rst_all_btn rst_txStim rst_prbsChk chan clkPath rxn rxp
+transceiverPrbs gtrefclk freeclk rst_all_in rst_txStim rst_prbsChk chan clkPath rxn rxp
  = (tx_clk, rx_clk, txn, txp, link_up, stats)
  where
   (txn, txp, tx_clk, rx_clk, rx_data, reset_tx_done, reset_rx_done, tx_active)
-    = gthCore -- @_ @_ @RxS @Freerun @TxUser2 @RefClk @RefClk @TxS @RxUser2
+    = gthCore
         chan clkPath
         rxn
         rxp
@@ -111,30 +111,41 @@ transceiverPrbs gtrefclk freeclk rst_all_btn rst_txStim rst_prbsChk chan clkPath
         gtrefclk -- gtrefclk0_in
 
   (gtwiz_userdata_tx_in,txctrl2) = prbsStimuliGen tx_clk txStimRst
-  rstPrbsChk =
-      resetGlitchFilter (SNat @125000) rx_clk
-    $ xpmResetSynchronizer Asserted freeclk rx_clk rst_prbsChk
+  rstPrbsChk = xpmResetSynchronizer Asserted freeclk rx_clk rst_prbsChk
 
-  prbsErrors = prbsChecker rx_clk rstPrbsChk enableGen prbsConf31w64 rx_data
+  rxReset =
+    xpmResetSynchronizer Asserted rx_clk rx_clk $
+      unsafeFromActiveLow $ fmap bitCoerce reset_rx_done
+
+  prbsErrors = prbsChecker rx_clk (orReset rxReset rstPrbsChk) enableGen prbsConf31w64 rx_data
   anyErrors = fmap (pack . reduceOr) prbsErrors
-  link_up = linkStateTracker rx_clk noReset anyErrors
+  link_up = linkStateTracker rx_clk rxReset anyErrors
 
-  rst_all_in = resetGlitchFilter (SNat @125000) freeclk rst_all_btn
+  -- XPM_CDC_SINGLE config used to synchronize 'reset_tx_done' and
+  -- 'reset_rx_done'. We use Xilinx's defaults, except for 'registerInput' which
+  -- we set to 'False'. We do this, because the two 'done' signals are indicative
+  -- of their domain's clocks stability.
+  cdcConfig = XpmCdcSingleConfig
+    { stages = d4 -- default
+    , initialValues = True -- default
+    , registerInput = False
+    }
 
   (rst_all, rst_rx, _init_done, stats) =
     gthResetManager
-      freeclk tx_clk rx_clk rst_all_in
-      (unpack <$> reset_tx_done)
-      (unpack <$> reset_rx_done)
-      link_up
+      freeclk rst_all_in
+      (xpmCdcSingleWith cdcConfig tx_clk freeclk $ unpack <$> reset_tx_done)
+      (xpmCdcSingleWith cdcConfig rx_clk freeclk $ unpack <$> reset_rx_done)
+      (xpmCdcSingle rx_clk freeclk link_up)
 
   txStimRst' =
       resetGlitchFilter (SNat @125000) tx_clk
     $ xpmResetSynchronizer Asserted freeclk tx_clk rst_txStim
 
-  txStimRst =
-      xpmResetSynchronizer Asserted tx_clk tx_clk
-    $ orReset txStimRst' (unsafeFromActiveLow $ fmap bitCoerce tx_active)
+  txStimRst = xpmResetSynchronizer Asserted tx_clk tx_clk $
+              txStimRst'
+    `orReset` (unsafeFromActiveLow $ fmap bitCoerce tx_active)
+    `orReset` (unsafeFromActiveLow $ fmap bitCoerce reset_tx_done)
 
 data LinkSt = Down | Up deriving (Eq, Show, Generic, NFDataX)
 
@@ -328,29 +339,20 @@ data GthResetState dom
 -- | Reset manager for transceivers: see 'GthResetState' for more information on
 -- this state machine. See 'GthResetStats' for information on what debug values
 -- are exported.
---
--- XXX: While most links come up in milliseconds, some links will take up to a
---      second or two. We should check whether this occurs in Xilinx reference
---      designs. If not, what are we doing wrong?
 gthResetManager ::
-  forall freerun txUser2 rxUser2 .
-  ( KnownDomain freerun
-  , KnownDomain txUser2
-  , KnownDomain rxUser2
-  ) =>
-  Clock freerun ->
-  Clock txUser2 ->
-  Clock rxUser2 ->
-  "reset_all_in" ::: Reset freerun ->
-  "tx_init_done" ::: Signal txUser2 Bool ->
-  "rx_init_done" ::: Signal rxUser2 Bool ->
-  "rx_data_good" ::: Signal rxUser2 Bool ->
-  ( "reset_all_out" ::: Reset freerun
-  , "reset_rx"  ::: Reset freerun
-  , "init_done" ::: Signal freerun Bool
-  , "stats" ::: Signal freerun GthResetStats
+  forall dom .
+  KnownDomain dom =>
+  Clock dom ->
+  Reset dom ->
+  "tx_init_done" ::: Signal dom Bool ->
+  "rx_init_done" ::: Signal dom Bool ->
+  "rx_data_good" ::: Signal dom Bool ->
+  ( "reset_all_out" ::: Reset dom
+  , "reset_rx"  ::: Reset dom
+  , "init_done" ::: Signal dom Bool
+  , "stats" ::: Signal dom GthResetStats
   )
-gthResetManager free_clk tx_clk rx_clk reset_all_in tx_init_done rx_init_done rx_data_good =
+gthResetManager clk rst tx_init_done rx_init_done rx_data_good =
   ( unsafeFromActiveHigh reset_all_out_sig
   , unsafeFromActiveHigh reset_rx_sig
   , init_done
@@ -359,16 +361,16 @@ gthResetManager free_clk tx_clk rx_clk reset_all_in tx_init_done rx_init_done rx
  where
   (reset_all_out_sig, reset_rx_sig, init_done, statistics) =
     mooreB
-      free_clk reset_all_in enableGen
+      clk rst enableGen
       update
       extractOutput
       initSt
-      ( xpmCdcSingle tx_clk free_clk tx_init_done
-      , xpmCdcSingle rx_clk free_clk rx_init_done
-      , xpmCdcSingle rx_clk free_clk rx_data_good
+      ( tx_init_done
+      , rx_init_done
+      , rx_data_good
       )
 
-  initSt :: GthResetState freerun
+  initSt :: GthResetState dom
   initSt = StartTx (GthResetStats
     { rxRetries=0
     , rxFullRetries=0
@@ -376,7 +378,7 @@ gthResetManager free_clk tx_clk rx_clk reset_all_in tx_init_done rx_init_done rx
     , failAfterUps=0
     })
 
-  update :: GthResetState freerun -> (Bool, Bool, Bool) -> GthResetState freerun
+  update :: GthResetState dom -> (Bool, Bool, Bool) -> GthResetState dom
   update st (tx_done, rx_done, rx_good) =
     case st of
       -- Reset everything:
