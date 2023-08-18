@@ -32,9 +32,7 @@ transceiverPrbsN ::
   Clock refclk ->
   Clock freeclk ->
 
-  Reset freeclk -> -- ^ rst all
-  Reset freeclk -> -- ^ rst txStim
-  Reset freeclk -> -- ^ rst prbsChk
+  Reset freeclk ->
 
   Vec chansUsed String ->
   Vec chansUsed String ->
@@ -50,13 +48,8 @@ transceiverPrbsN ::
     , Signal rx Bool  -- link up
     , Signal freeclk GthResetStats
     )
-transceiverPrbsN refclk freeclk rst_all rst_txStim rst_prbsChk chanNms clkPaths rxns rxps =
-  zipWith4
-    (transceiverPrbs refclk freeclk rst_all rst_txStim rst_prbsChk)
-    chanNms
-    clkPaths
-    rxns
-    rxps
+transceiverPrbsN refclk freeclk rst chanNms clkPaths rxns rxps =
+  zipWith4 (transceiverPrbs refclk freeclk rst) chanNms clkPaths rxns rxps
 
 transceiverPrbs ::
   ( HasSynchronousReset tx
@@ -73,8 +66,6 @@ transceiverPrbs ::
   Clock freeclk ->
 
   Reset freeclk ->  -- ^ rst all
-  Reset freeclk ->  -- ^ rst txStim
-  Reset freeclk ->  -- ^ rst prbsChk
 
   String -> -- ^ channel, example X0Y18
   String -> -- ^ clkPath, example clk0-2
@@ -89,7 +80,7 @@ transceiverPrbs ::
   , Signal rx Bool  -- link up
   , Signal freeclk GthResetStats
   )
-transceiverPrbs gtrefclk freeclk rst_all_in rst_txStim rst_prbsChk chan clkPath rxn rxp
+transceiverPrbs gtrefclk freeclk rst_all_in chan clkPath rxn rxp
  = (tx_clk, rx_clk, txn, txp, link_up, stats)
  where
   (txn, txp, tx_clk, rx_clk, rx_data, reset_tx_done, reset_rx_done, tx_active)
@@ -111,13 +102,12 @@ transceiverPrbs gtrefclk freeclk rst_all_in rst_txStim rst_prbsChk chan clkPath 
         gtrefclk -- gtrefclk0_in
 
   (gtwiz_userdata_tx_in,txctrl2) = prbsStimuliGen tx_clk txStimRst
-  rstPrbsChk = xpmResetSynchronizer Asserted freeclk rx_clk rst_prbsChk
 
   rxReset =
     xpmResetSynchronizer Asserted rx_clk rx_clk $
       unsafeFromActiveLow $ fmap bitCoerce reset_rx_done
 
-  prbsErrors = prbsChecker rx_clk (orReset rxReset rstPrbsChk) enableGen prbsConf31w64 rx_data
+  prbsErrors = prbsChecker rx_clk rxReset enableGen prbsConf31w64 rx_data
   anyErrors = fmap (pack . reduceOr) prbsErrors
   link_up = linkStateTracker rx_clk rxReset anyErrors
 
@@ -138,13 +128,8 @@ transceiverPrbs gtrefclk freeclk rst_all_in rst_txStim rst_prbsChk chan clkPath 
       (xpmCdcSingleWith cdcConfig rx_clk freeclk $ unpack <$> reset_rx_done)
       (xpmCdcSingle rx_clk freeclk link_up)
 
-  txStimRst' =
-      resetGlitchFilter (SNat @125000) tx_clk
-    $ xpmResetSynchronizer Asserted freeclk tx_clk rst_txStim
-
   txStimRst = xpmResetSynchronizer Asserted tx_clk tx_clk $
-              txStimRst'
-    `orReset` (unsafeFromActiveLow $ fmap bitCoerce tx_active)
+              (unsafeFromActiveLow $ fmap bitCoerce tx_active)
     `orReset` (unsafeFromActiveLow $ fmap bitCoerce reset_tx_done)
 
 data LinkSt = Down | Up deriving (Eq, Show, Generic, NFDataX)

@@ -103,14 +103,12 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
       si539xSpi testConfig6_200_on_0a (SNat @(Microseconds 10)) (pure Nothing) miso
 
   -- Transceiver setup
-  gthAllReset  = E.holdReset sysClk enableGen d1024 (unsafeFromActiveLow spiDone)
-  gthChanReset = E.holdReset sysClk enableGen d1024 gthAllReset
-  gthStimReset = E.holdReset sysClk enableGen d1024 gthChanReset
+  gthAllReset = unsafeFromActiveLow spiDone
 
   (head -> (txClock :: Clock GthTx), rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
     transceiverPrbsN
       @GthTx @GthRx @Basic200 @Basic125 @GthTx @GthRx
-      refClk sysClk gthAllReset gthStimReset gthChanReset
+      refClk sysClk gthAllReset
       c_CHANNEL_NAMES c_CLOCK_PATHS rxns rxps
 
   syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
