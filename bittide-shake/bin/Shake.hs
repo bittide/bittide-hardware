@@ -23,7 +23,6 @@ import System.Process (readProcess, callProcess)
 
 import Paths_bittide_shake
 
-import Clash.Shake.Cargo
 import Clash.Shake.Extra
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
@@ -202,7 +201,7 @@ shakeOpts :: ShakeOptions
 shakeOpts = shakeOptions
   { shakeFiles = buildDir
   , shakeChange = ChangeDigest
-  , shakeVersion = "8"
+  , shakeVersion = "9"
   }
 
 -- | Run Vivado on given TCL script
@@ -333,7 +332,8 @@ main = do
 
               -- We build all rust binaries in "firmware-binaries". They are required to
               -- build bittide-instance because we have instances that includes a binaries.
-              liftIO $ cargoBuildFirmwareProgram "firmware-binaries" Release
+              command_ [Cwd "firmware-binaries"] "cargo" ["build", "--release"]
+
               let
                 (buildTool, buildToolArgs) =
                   defaultClashCmd clashBuildDir targetName

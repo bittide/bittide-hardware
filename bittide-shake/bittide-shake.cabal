@@ -97,7 +97,6 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
-    Clash.Shake.Cargo
     Clash.Shake.Extra
     Clash.Shake.Flags
     Clash.Shake.Vivado
