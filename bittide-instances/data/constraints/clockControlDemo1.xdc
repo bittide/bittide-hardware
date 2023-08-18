@@ -23,7 +23,6 @@ set_property DIFF_TERM   TRUE     [get_ports "FMC_HPC_CLK1_M2C_n"]
 # "asynchronous").
 set_clock_groups \
     -asynchronous \
-    -group [get_clocks -include_generated_clocks {SYSCLK_300_p}] \
     -group [get_clocks -include_generated_clocks {USER_SMA_CLOCK_p}] \
     -group [get_clocks -include_generated_clocks {FMC_HPC_CLK1_M2C_p}]
 
