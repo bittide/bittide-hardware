@@ -432,10 +432,9 @@ proc verify_before_start {start_probe} {
 }
 
 # Refresh the input probes until the done flag is set. Retries for up to
-# `test_timeout_ms` milliseconds.
-proc wait_test_end {} {
+# `test_timeout_ms` milliseconds, counting from a given `start_time`.
+proc wait_test_end {start_time} {
     global vio_prefix
-    set start_time [clock milliseconds]
     while 1 {
         # Check test status, break if test is done
         refresh_hw_vio [get_hw_vios]
@@ -555,13 +554,14 @@ proc run_test_group {probes_file target_dict url ila_data_dir} {
         }
 
         puts "\nWaiting on test end: $start_probe_name"
+        set start_time [clock milliseconds]
         dict for {target_nr target_id} $target_dict {
             # Load device
             set device [load_target_device [get_part_name $url $target_id]]
             set_property PROBES.FILE ${probes_file} $device
             refresh_hw_device $device -quiet
             # Wait for the test to end
-            set test_results [wait_test_end]
+            set test_results [wait_test_end ${start_time}]
             lassign $test_results done success start_time end_time
             # Print test results of this FPGA
             puts "\tTested for FPGA ${target_nr} with ID ${target_id}"
