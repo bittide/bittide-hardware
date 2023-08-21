@@ -827,6 +827,15 @@ jobs:
           .github/scripts/with_vivado.sh \
             vivado -mode batch -source "${tcl_test}"
 
+      - name: Archive ILA data
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: _build-${{ matrix.target.top }}-debug
+          path: |
+            _build/vivado/*/ila-data
+          retention-days: 14
+
   all:
     name: All jobs finished
     if: always()
