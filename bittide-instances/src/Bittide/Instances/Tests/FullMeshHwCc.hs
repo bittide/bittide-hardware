@@ -60,7 +60,7 @@ type TransceiverWires dom = Vec 7 (Signal dom (BitVector 1))
 
 -- | Worker function for 'fullMeshHwCcTest'. See module documentation for more
 -- information.
-goTransceiversUpTest ::
+goFullMeshHwCcTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Basic200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
@@ -79,7 +79,7 @@ goTransceiversUpTest ::
       )
   , "ALL_STABLE"   ::: Signal Basic125 Bool
   )
-goTransceiversUpTest refClk sysClk rst rxns rxps miso =
+goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   ( txns
   , txps
   , frequencyAdjustments
@@ -214,7 +214,7 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     $ xpmCdcSingle sysClk sysClk syncIn
 
   (txns, txps, fincFdecs, stats, spiDone, spiOut, allStable) =
-    goTransceiversUpTest refClk sysClk testRst rxns rxps miso
+    goFullMeshHwCcTest refClk sysClk testRst rxns rxps miso
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 

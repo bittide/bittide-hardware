@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Main where
@@ -10,20 +11,21 @@ module Main where
 import Prelude
 
 import Control.Applicative (liftA2)
+import Control.Monad (forM_, unless)
 import Control.Monad.Extra (ifM, unlessM, when)
 import Data.Char(isSpace)
 import Data.Foldable (for_)
-import Data.List (dropWhileEnd)
+import Data.List (dropWhileEnd, isPrefixOf)
 import Development.Shake
 import GHC.Stack (HasCallStack)
 import System.Console.ANSI (setSGR)
 import System.Directory
 import System.FilePath
+import System.FilePath.Glob (glob)
 import System.Process (readProcess, callProcess)
 
 import Paths_bittide_shake
 
-import Clash.Shake.Cargo
 import Clash.Shake.Extra
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
@@ -202,7 +204,7 @@ shakeOpts :: ShakeOptions
 shakeOpts = shakeOptions
   { shakeFiles = buildDir
   , shakeChange = ChangeDigest
-  , shakeVersion = "7"
+  , shakeVersion = "10"
   }
 
 -- | Run Vivado on given TCL script
@@ -333,7 +335,28 @@ main = do
 
               -- We build all rust binaries in "firmware-binaries". They are required to
               -- build bittide-instance because we have instances that includes a binaries.
-              liftIO $ cargoBuildFirmwareProgram "firmware-binaries" Release
+              command_ [Cwd "firmware-binaries"] "cargo" ["build", "--release"]
+
+              -- XXX: Cabal/GHC doesn't know about files produced by cargo, and
+              --      will therefore fail to invalidate caches. While there are
+              --      ways to tell Cabal/GHC to depend on these files, they are
+              --      known to be broken in our tool versions. This workaround
+              --      removes all build artifacts _except_ for "bittide-shake".
+              --
+              --      See: https://github.com/haskell/cabal/issues/4746
+              --
+              --      We need to manually remove build artifacts, because Cabal
+              --      does not support per package/component cleans:
+              --
+              --      See: https://github.com/haskell/cabal/issues/7506
+              --
+              buildDirs <- liftIO (glob "dist-newstyle/build/*/ghc-*/*")
+              forM_ buildDirs $ \dir -> do
+                let fileName = takeFileName dir
+                unless ("bittide-shake" `isPrefixOf` fileName) $
+                  command_ [] "rm" ["-rf", dir]
+
+              -- Generate RTL
               let
                 (buildTool, buildToolArgs) =
                   defaultClashCmd clashBuildDir targetName
