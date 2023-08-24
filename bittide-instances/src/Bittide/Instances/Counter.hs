@@ -19,10 +19,7 @@ counter ::
 counter clk0 rst0 clk1 rst1 _ =
   domainDiffCounter clk0 rst0 clk1 rst1
 
-counterReducedPins ::
-  Clock Basic200 -> Reset Basic200 ->
-  Clock Basic200 -> Reset Basic200 ->
-  Signal Basic200 Bit
-counterReducedPins clk0 rst0 clk1 rst1 =
-  withClock clk1 $
-    reducePins (counter clk0 rst0 clk1 rst1) (pure 0)
+counterReducedPins :: Clock Basic200 -> Signal Basic200 Bit
+counterReducedPins clk =
+  withClock clk $
+    reducePins (counter clk noReset clk noReset) (pure 0)
