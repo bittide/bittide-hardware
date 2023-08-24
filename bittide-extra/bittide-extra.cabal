@@ -83,6 +83,7 @@ test-suite doctests
   main-is:          doctests.hs
   ghc-options:      -Wall -Wcompat -threaded
   hs-source-dirs:   tests
+  ghc-options: -with-rtsopts=-xm20000000
 
   build-depends:
     base,

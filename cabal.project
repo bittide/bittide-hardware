@@ -26,6 +26,24 @@ package bittide
 package clash-prelude
   flags: -multiple-hidden
 
+package bittide
+  ghc-options: +RTS -xp -RTS
+
+package bittide-extra
+  ghc-options: +RTS -xp -RTS
+
+package bittide-instances
+  ghc-options: +RTS -xp -RTS
+
+package bittide-shake
+  ghc-options: +RTS -xp -RTS
+
+package clash-vexriscv
+  ghc-options: +RTS -xp -RTS
+
+package elastic-buffer-sim
+  ghc-options: +RTS -xp -RTS
+
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
