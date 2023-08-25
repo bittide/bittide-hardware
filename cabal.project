@@ -13,13 +13,18 @@ packages:
 
 write-ghc-environment-files: always
 
+-- index state, to go along with the cabal.project.freeze file. update the index
+-- state by running `cabal update` twice and looking at the index state it
+-- displays to you (as the second update will be a no-op)
+index-state: 2023-08-24T19:08:07Z
+
 with-compiler: ghc-9.0.2
 
 tests: True
 
 package bittide
   -- Tweak haddock stylesheet to enable word wrapping of types.
-  -- We specify the default Linuwial theme as an alnernate
+  -- We specify the default Linuwial theme as an alternate
   -- so we're able to import its css file from the custom theme.
   haddock-options: --theme=linuwial-wrap-types.css --theme=Linuwial
 
