@@ -167,7 +167,7 @@ test-suite doctests
   build-depends:
     base,
     bittide,
-    doctest-parallel >= 0.2 && < 0.3,
+    doctest-parallel >= 0.3.0.1 && < 0.4,
     filepath
 
 test-suite unittests

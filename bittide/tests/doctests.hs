@@ -8,4 +8,7 @@ import System.Environment (getArgs)
 import Test.DocTest (mainFromCabal)
 
 main :: IO ()
-main = mainFromCabal "bittide" =<< getArgs
+main = do
+  args <- getArgs
+  -- We use Nix to setup tooling, not to provide GHC packages so we need to set --no-nix
+  mainFromCabal "bittide" ("--no-nix":args)

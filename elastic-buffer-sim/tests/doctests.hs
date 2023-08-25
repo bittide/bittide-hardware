@@ -8,4 +8,7 @@ import Test.DocTest (mainFromCabal)
 import System.Environment (getArgs)
 
 main :: IO ()
-main = mainFromCabal "elastic-buffer-sim" =<< getArgs
+main = do
+  args <- getArgs
+  -- We use Nix to setup tooling, not to provide GHC packages so we need to set --no-nix
+  mainFromCabal "elastic-buffer-sim" ("--no-nix":args)

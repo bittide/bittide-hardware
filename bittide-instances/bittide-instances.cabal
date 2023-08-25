@@ -145,7 +145,7 @@ test-suite doctests
   main-is:          doctests.hs
   -- We need -xm20000000 because of a memory allocation bug after a kernel update
   ghc-options:      -threaded -with-rtsopts=-xm20000000
-  build-depends:    base, bittide-instances, doctest-parallel >= 0.1
+  build-depends:    base, bittide-instances, doctest-parallel >= 0.3.0.1
   default-language: Haskell2010
 
 test-suite unittests

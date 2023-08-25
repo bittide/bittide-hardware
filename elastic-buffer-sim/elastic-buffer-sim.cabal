@@ -141,5 +141,5 @@ test-suite doctests
   build-depends:
     base,
     elastic-buffer-sim,
-    doctest-parallel >= 0.1
+    doctest-parallel >= 0.3.0.1 && < 0.4,
   default-language: Haskell2010
