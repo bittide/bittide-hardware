@@ -124,7 +124,7 @@ library
 executable get-data-file-name
   import: common-options
   -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options: -with-rtsopts=-xm20000000
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: bin/GetDataFileName.hs
   Build-Depends: bittide-instances
   other-modules:
@@ -135,7 +135,7 @@ executable get-data-file-name
 executable clash
   import: common-options
   -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options: -with-rtsopts=-xm20000000
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: bin/Clash.hs
   Build-Depends: clash-ghc, bittide-instances
 
@@ -144,7 +144,7 @@ test-suite doctests
   hs-source-dirs:   tests
   main-is:          doctests.hs
   -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options:      -threaded -with-rtsopts=-xm20000000
+  ghc-options:      -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   build-depends:    base, bittide-instances, doctest-parallel >= 0.3.0.1
   default-language: Haskell2010
 
@@ -154,7 +154,7 @@ test-suite unittests
   type: exitcode-stdio-1.0
   main-is: unittests.hs
   -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options: -threaded -with-rtsopts=-N -with-rtsopts=-xm20000000
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   other-modules:
     Paths_bittide_instances
   autogen-modules:
