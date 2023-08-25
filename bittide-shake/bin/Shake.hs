@@ -413,6 +413,10 @@ main = do
 
                     vivado #{postRouteCheckpointPath}
 
+                  You can recreate the files (locally) using:
+
+                    shake #{targetName}:pnr
+
                 |])
 
               -- Design should meet timing post routing. Note that this is not a
@@ -432,6 +436,10 @@ main = do
                   You can investigate interactively by opening the latest checkpoint with Vivado:
 
                     vivado #{postRouteCheckpointPath}
+
+                  You can recreate the files (locally) using:
+
+                    shake #{targetName}:pnr
 
                 |])
 
