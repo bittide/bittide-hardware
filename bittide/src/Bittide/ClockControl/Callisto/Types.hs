@@ -24,7 +24,7 @@ import Foreign.Ptr (plusPtr)
 
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker (StabilityIndication)
-import Bittide.Simulate.RustFFI.Sizes
+import Bittide.ClockControl.Foreign.Sizes
 
 import Data.Constraint
 import Data.Constraint.Nat.Extra (OneMore, oneMore)

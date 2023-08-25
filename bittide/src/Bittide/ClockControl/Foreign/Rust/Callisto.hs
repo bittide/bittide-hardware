@@ -5,16 +5,17 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
 
-module Bittide.ClockControl.Callisto.Rust
+module Bittide.ClockControl.Foreign.Rust.Callisto
   ( rustyCallisto
   ) where
 
 import Clash.Prelude
 
-import Foreign.C.Types (CUInt)
+import Foreign.C.Types (CUInt(..))
 import Foreign.Marshal.Alloc
-import Foreign.Ptr (castPtr)
+import Foreign.Ptr (Ptr)
 
 import Foreign.Storable (Storable(..))
 import System.IO.Unsafe
@@ -23,8 +24,7 @@ import Bittide.ClockControl (DataCount)
 import Bittide.ClockControl.Callisto.Types
 import Bittide.ClockControl.StabilityChecker
 
-import Bittide.Simulate.RustFFI
-
+import Data.Word (Word32)
 import Data.Constraint
 import Data.Constraint.Nat.Extra (isOne)
 
@@ -70,11 +70,11 @@ rustyCallisto config m scs counts st =
         poke pConfig config
 
         callisto_rust
-          (castPtr pConfig)
+          pConfig
           (fromInteger $ toInteger mask)
-          (castPtr pVSI)
-          (castPtr pDataCounts)
-          (castPtr pState)
+          pVSI
+          pDataCounts
+          pState
 
         state' <- peek pState
 
@@ -84,3 +84,11 @@ rustyCallisto config m scs counts st =
         free pConfig
 
         return state'
+
+foreign import ccall safe "__c_callisto_rust" callisto_rust ::
+  Ptr (ControlConfig m) ->
+  Word32  ->
+  Ptr (VecS n StabilityIndication) ->
+  Ptr (VecS n (DataCountS m)) ->
+  Ptr (ControlSt) ->
+  IO ()

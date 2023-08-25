@@ -7,7 +7,6 @@ packages:
   bittide-instances/
   bittide-shake/
   bittide/
-  bittide-rust-ffi/
   elastic-buffer-sim/
 
   clash-vexriscv/clash-vexriscv/

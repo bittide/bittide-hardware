@@ -18,7 +18,7 @@ import Data.Constraint.Nat.Extra (euclid3, useLowerLimit)
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Util
 import Bittide.ClockControl.Callisto.Types
-import Bittide.ClockControl.Callisto.Rust
+import Bittide.ClockControl.Foreign.Rust.Callisto
 import Bittide.ClockControl.StabilityChecker
 
 import qualified Clash.Cores.Xilinx.Floating as F

@@ -23,8 +23,9 @@ base types at compile time.
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Bittide.Simulate.RustFFI.Sizes where
+module Bittide.ClockControl.Foreign.Sizes where
 
+import Prelude (Int, Word, Float, Double, ($), pure, undefined, toInteger)
 import Data.Int (Int8, Int16, Int32, Int64)
 import Data.Word (Word8, Word16, Word32, Word64)
 import GHC.TypeLits (Nat)

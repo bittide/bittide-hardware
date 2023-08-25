@@ -14,8 +14,7 @@ import Foreign.Storable (Storable(..))
 
 import Bittide.ClockControl (DataCount, targetDataCount)
 import Bittide.ClockControl.Callisto.Util (dataCountToSigned)
-
-import Bittide.Simulate.RustFFI.Sizes
+import Bittide.ClockControl.Foreign.Sizes
 
 -- | Stability results to be returned by the 'stabilityChecker'.
 data StabilityIndication =

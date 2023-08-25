@@ -32,7 +32,7 @@ import GHC.Stack (HasCallStack)
 
 import Bittide.Arithmetic.Ppm
 import Bittide.Arithmetic.Time (PeriodToCycles, Nanoseconds, Microseconds, microseconds)
-import Bittide.Simulate.RustFFI.Sizes
+import Bittide.ClockControl.Foreign.Sizes
 
 import Data.Csv
 

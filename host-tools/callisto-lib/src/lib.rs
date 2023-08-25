@@ -307,13 +307,13 @@ unsafe fn data_counts_from_ptr<'a>(ptr: *const ()) -> &'a [isize] {
 ///   a `ControlSt`
 #[no_mangle]
 pub unsafe extern "C" fn __c_callisto_rust(
-    config_ptr: *const (),
+    config_ptr: *const ControlConfig,
     availability_mask: u32,
     stability_checks_ptr: *const (),
     data_counts_ptr: *const (),
-    control_state_ptr: *mut (),
+    control_state_ptr: *mut ControlSt,
 ) {
-    let mut state = control_state_from_ffi(&*(control_state_ptr as *const ControlSt));
+    let mut state = control_state_from_ffi(&*control_state_ptr);
 
     callisto::callisto(
         &control_config_from_ffi(&*(config_ptr as *const ControlConfig)),
@@ -323,5 +323,5 @@ pub unsafe extern "C" fn __c_callisto_rust(
         &mut state,
     );
 
-    control_state_to_ffi(&state, &mut *(control_state_ptr as *mut ControlSt))
+    control_state_to_ffi(&state, &mut *control_state_ptr)
 }

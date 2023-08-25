@@ -7,6 +7,9 @@ author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
 Copyright:           Copyright © 2022-2023 Google LLC
 
+custom-setup
+  setup-depends: Cabal, base, directory, process
+
 common common-options
   default-extensions:
     BangPatterns
@@ -82,7 +85,6 @@ library
     array,
     base,
     bittide-extra,
-    bittide-rust-ffi,
     bytestring,
     cassava,
     clash-cores,
@@ -111,7 +113,8 @@ library
     Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Util
     Bittide.ClockControl.Callisto.Types
-    Bittide.ClockControl.Callisto.Rust
+    Bittide.ClockControl.Foreign.Sizes
+    Bittide.ClockControl.Foreign.Rust.Callisto
     Bittide.ClockControl.Si5391A
     Bittide.ClockControl.Si5395J
     Bittide.ClockControl.Si539xSpi
@@ -144,6 +147,7 @@ library
     System.IO.Temp.Extra
   other-modules:
     Paths_bittide
+  extra-libraries: callisto_lib
 
 executable clash
   import: common-options
