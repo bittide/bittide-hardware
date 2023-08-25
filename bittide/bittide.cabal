@@ -143,13 +143,13 @@ library
 
 executable clash
   import: common-options
-  ghc-options: -with-rtsopts=-xm20000000
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: bin/Clash.hs
   Build-Depends: base, bittide, clash-ghc
 
 executable program-stream
   import: common-options
-  ghc-options: -with-rtsopts=-xm20000000
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: bin/ProgramStream.hs
   Build-Depends:
     base,
@@ -161,13 +161,13 @@ test-suite doctests
   type:             exitcode-stdio-1.0
   default-language: Haskell2010
   main-is:          doctests.hs
-  ghc-options:      -Wall -Wcompat -threaded -with-rtsopts=-xm20000000
+  ghc-options:      -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   hs-source-dirs:   tests
 
   build-depends:
     base,
     bittide,
-    doctest-parallel >= 0.2 && < 0.3,
+    doctest-parallel >= 0.3.0.1 && < 0.4,
     filepath
 
 test-suite unittests
@@ -175,7 +175,7 @@ test-suite unittests
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: UnitTests.hs
-  ghc-options: -threaded -with-rtsopts=-N -with-rtsopts=-xm20000000
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   other-modules:
     Tests.Axi4
     Tests.Calendar

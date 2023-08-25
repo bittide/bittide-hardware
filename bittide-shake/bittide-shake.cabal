@@ -20,14 +20,17 @@ common common-options
     base,
     base16-bytestring,
     bytestring,
+    cassava,
     clash-lib,
     clash-prelude,
     cryptohash-sha256,
+    deepseq,
     directory,
     extra,
     filepath,
     Glob,
     process,
+    vector,
     shake,
     string-interpolate,
     text,
@@ -39,7 +42,9 @@ library
     Clash.Shake.Extra
     Clash.Shake.Flags
     Clash.Shake.Vivado
+    Development.Shake.Csv
     Development.Shake.Extra
+    Development.Shake.Vcd
   autogen-modules:
     Paths_bittide_shake
   other-modules:
@@ -47,7 +52,7 @@ library
 
 executable shake
   import: common-options
-  ghc-options: -with-rtsopts=-xm20000000
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: bin/Shake.hs
   Build-Depends:
     , ansi-terminal
@@ -59,7 +64,7 @@ executable shake
 
 executable clash
   import: common-options
-  ghc-options: -with-rtsopts=-xm20000000
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: bin/Clash.hs
   Build-Depends: clash-ghc, bittide-shake
 
@@ -67,6 +72,6 @@ test-suite doctests
   type:             exitcode-stdio-1.0
   hs-source-dirs:   tests
   main-is:          doctests.hs
-  ghc-options:      -threaded -with-rtsopts=-xm20000000
-  build-depends:    base, bittide-shake, doctest-parallel >= 0.1
+  ghc-options:      -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  build-depends:    base, bittide-shake, doctest-parallel >= 0.3.0.1
   default-language: Haskell2010
