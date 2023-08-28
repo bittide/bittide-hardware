@@ -97,16 +97,16 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
   syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
   linkUps = zipWith syncLink rxClocks linkUpsRx
 
--- | Returns 'True' if incoming signal has been 'True' for 10 seconds.
-trueFor10s ::
+-- | Returns 'True' if incoming signal has been 'True' for 50 seconds.
+trueFor50s ::
   forall dom .
   KnownDomain dom =>
   Clock dom ->
   Reset dom ->
   Signal dom Bool ->
   Signal dom Bool
-trueFor10s clk rst =
-  moore clk rst enableGen goState goOutput (0 :: IndexMs dom 10_000)
+trueFor50s clk rst =
+  moore clk rst enableGen goState goOutput (0 :: IndexMs dom 50_000)
  where
   goState counter  True  = satSucc SatBound counter
   goState _counter False = 0
@@ -193,8 +193,10 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       False
       sysClk
 
-      -- Consider test done if links have been up consistently for 5 seconds.
-      (trueFor10s sysClk testRst allUp)
+      -- Consider test done if links have been up consistently for 50 seconds. This
+      -- is just below the test timeout of 60 seconds, so transceivers have ~10
+      -- seconds to come online reliably. This should be plenty.
+      (trueFor50s sysClk testRst allUp)
 
       -- This test either succeeds or times out, so success is set to a static
       -- 'True'. If you want to see statistics, consider setting it to 'False' -
