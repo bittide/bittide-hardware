@@ -97,7 +97,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   , spiDone
   , spiOut
   , transceiversFailedAfterUp
-  , allStable1
+  , fincFdecIla `hwSeqX` allStable1
   )
  where
   sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
