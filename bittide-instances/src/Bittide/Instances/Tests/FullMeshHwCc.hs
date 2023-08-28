@@ -32,6 +32,7 @@ import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
 import Bittide.Counter
+import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
 import Bittide.Transceiver
 
@@ -77,6 +78,7 @@ goFullMeshHwCcTest ::
       , "MOSI" ::: Signal Basic125 Bit
       , "CSB"  ::: Signal Basic125 Bool
       )
+  , "transceiversFailedAfterUp" ::: Signal Basic125 Bool
   , "ALL_STABLE"   ::: Signal Basic125 Bool
   )
 goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
@@ -86,6 +88,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   , stats
   , spiDone
   , spiOut
+  , transceiversFailedAfterUp
   , allStable1
   )
  where
@@ -114,10 +117,13 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
   linkUps = zipWith syncLink rxClocks linkUpsRx
   allUp = trueFor500ms sysClk sysRst (and <$> bundle linkUps)
+  transceiversFailedAfterUp =
+    sticky sysClk sysRst (isFalling sysClk sysRst enableGen False allUp)
 
   -- Clock control
   clockControlReset =
-    xpmResetSynchronizer Asserted sysClk txClock (unsafeFromActiveLow allUp)
+    xpmResetSynchronizer Asserted sysClk txClock $
+      orReset (unsafeFromActiveLow allUp) (unsafeFromActiveHigh transceiversFailedAfterUp)
   clockConfig = $(lift (defClockConfig @GthTx){cccBufferSize = d25})
   availableLinkMask = pure maxBound
 
@@ -213,7 +219,7 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     $ unsafeFromActiveLow
     $ xpmCdcSingle sysClk sysClk syncIn
 
-  (txns, txps, fincFdecs, stats, spiDone, spiOut, allStable) =
+  (txns, txps, fincFdecs, stats, spiDone, spiOut, transceiversFailedAfterUp, allStable) =
     goFullMeshHwCcTest refClk sysClk testRst rxns rxps miso
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
@@ -260,13 +266,8 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       False
       sysClk
 
-      -- Consider test done if clock control has been stable consistently for 5 s
-      (trueFor5s sysClk testRst allStable)
-
-      -- This test either succeeds or times out, so success is set to a static
-      -- 'True'. If you want to see statistics, consider setting it to 'False' -
-      -- it will make the test TCL print out all probe values.
-      (pure True :: Signal Basic125 Bool)
+      (trueFor5s sysClk testRst allStable .||. transceiversFailedAfterUp) -- done
+      (fmap not transceiversFailedAfterUp) -- success
 
       -- Debug probes
       (txRetries     <$> stats0)
