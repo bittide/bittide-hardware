@@ -38,10 +38,15 @@ import Bittide.Transceiver
 
 import Bittide.Instances.MVPs (stickyBits, speedChangeToPins, FINC, FDEC)
 
+import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.VIO (vioProbe)
+import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
+import Clash.Cores.Xilinx.Xpm.Cdc.Gray
+import Clash.Cores.Xilinx.Ila
 import Clash.Explicit.Reset.Extra
+import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
 import qualified Clash.Explicit.Prelude as E
@@ -82,6 +87,7 @@ goFullMeshHwCcTest ::
   , "ALL_STABLE"   ::: Signal Basic125 Bool
   )
 goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
+  fincFdecIla `hwSeqX`
   ( txns
   , txps
   , frequencyAdjustments
@@ -120,6 +126,10 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   transceiversFailedAfterUp =
     sticky sysClk sysRst (isFalling sysClk sysRst enableGen False allUp)
 
+  timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
+  timer = register sysClk rst enableGen (0, 0) (timeSucc <$> timer)
+  milliseconds1 = fst <$> timer
+
   -- Clock control
   clockControlReset =
     xpmResetSynchronizer Asserted sysClk txClock $
@@ -133,6 +143,82 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
       clockConfig availableLinkMask $ fmap (fmap resize) domainDiffs
 
   allStable1 = xpmCdcSingle txClock sysClk allStable0
+
+  dataCount0 :>
+    dataCount1 :>
+    dataCount2 :>
+    dataCount3 :>
+    dataCount4 :>
+    dataCount5 :>
+    dataCount6 :>
+    Nil = (fmap truncateDataCount . dataCountCdc) <$> domainDiffs
+
+  -- Capture every 100 microseconds - this should give us a window of about 5
+  -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
+  -- very confusing.
+  capture = (captureFlag .&&. allUp) .||. unsafeToActiveHigh sysRst
+
+  fincFdecIla :: Signal Basic125 ()
+  fincFdecIla = ila
+    (ilaConfig $
+         "trigger"
+      :> "capture"
+      :> "probe_milliseconds"
+      :> "probe_allStable1"
+      :> "probe_transceiversFailedAfterUp"
+      :> "probe_nFincs"
+      :> "probe_nFdecs"
+      :> "probe_net_nFincs"
+      :> "probe_dataCount_0"
+      :> "probe_dataCount_1"
+      :> "probe_dataCount_2"
+      :> "probe_dataCount_3"
+      :> "probe_dataCount_4"
+      :> "probe_dataCount_5"
+      :> "probe_dataCount_6"
+      :> Nil
+    ){depth = D65536}
+    sysClk
+
+    -- Trigger as soon as we come out of reset
+    (unsafeToActiveLow sysRst)
+
+    capture
+
+    -- Debug probes
+    milliseconds1
+    allStable1
+    transceiversFailedAfterUp
+    nFincsSynced
+    nFdecsSynced
+    (fmap unsignedToSigned nFincsSynced - fmap unsignedToSigned nFdecsSynced)
+    dataCount0
+    dataCount1
+    dataCount2
+    dataCount3
+    dataCount4
+    dataCount5
+    dataCount6
+
+  nFincsSynced = xpmCdcGray txClock sysClk nFincs
+  nFdecsSynced = xpmCdcGray txClock sysClk nFdecs
+
+  truncateDataCount :: Signed 32 -> Signed 16
+  truncateDataCount = truncateB
+
+  dataCountCdc =
+      regMaybe sysClk sysRst enableGen 0
+    . xpmCdcMaybeLossy txClock sysClk
+    . fmap Just
+
+  captureFlag = captureCounter .==. pure (maxBound :: Index (PeriodToCycles Basic125 (Milliseconds 1)))
+  captureCounter = register sysClk sysRst enableGen 0 (satSucc SatWrap <$> captureCounter)
+
+  isFinc = speedChange1 .==. pure SpeedUp
+  nFincs = register txClock clockControlReset (toEnable isFinc) (0 :: Unsigned 32) (nFincs + 1)
+
+  isFdec = speedChange1 .==. pure SlowDown
+  nFdecs = register txClock clockControlReset (toEnable isFdec) (0 :: Unsigned 32) (nFdecs + 1)
 
   frequencyAdjustments :: Signal GthTx (FINC, FDEC)
   frequencyAdjustments =
@@ -224,6 +310,9 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
+  done = trueFor5s sysClk testRst allStable .||. transceiversFailedAfterUp
+  success = fmap not transceiversFailedAfterUp
+
   startTest :: Signal Basic125 Bool
   startTest =
     setName @"vioHitlt" $
@@ -266,8 +355,8 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       False
       sysClk
 
-      (trueFor5s sysClk testRst allStable .||. transceiversFailedAfterUp) -- done
-      (fmap not transceiversFailedAfterUp) -- success
+      done
+      success
 
       -- Debug probes
       (txRetries     <$> stats0)
