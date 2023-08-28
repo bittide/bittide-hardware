@@ -5,8 +5,5 @@
   {"top": "extendedHardwareInTheLoopTest", "stage": "test", "targets": "All"},
   {"top": "fincFdecTests",                 "stage": "test", "targets": "Specific [-1]"},
   {"top": "fullMeshHwCcTest",              "stage": "test", "targets": "All"},
-  {"top": "simpleHardwareInTheLoopTest",   "stage": "test", "targets": "All"},
-  {"top": "syncInSyncOut",                 "stage": "test", "targets": "All"},
-  {"top": "transceiversUpTest",            "stage": "test", "targets": "All"},
-  {"top": "vexRiscvTest",                  "stage": "test", "targets": "Specific [-1]"}
+  {"top": "transceiversUpTest",            "stage": "test", "targets": "All"}
 ]
