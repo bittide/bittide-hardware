@@ -49,6 +49,8 @@ import Clash.Explicit.Reset.Extra
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
+import Data.Proxy
+
 import qualified Clash.Explicit.Prelude as E
 
 c_CHANNEL_NAMES :: Vec 7 String
@@ -134,7 +136,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   clockControlReset =
     xpmResetSynchronizer Asserted sysClk txClock $
       orReset (unsafeFromActiveLow allUp) (unsafeFromActiveHigh transceiversFailedAfterUp)
-  clockConfig = $(lift (defClockConfig @GthTx){cccBufferSize = d25})
+  clockConfig = $(lift (instancesClockConfig (Proxy @GthTx)))
   availableLinkMask = pure maxBound
 
   (speedChange1, _stabilities, allStable0, _allCentered) = unbundle $
