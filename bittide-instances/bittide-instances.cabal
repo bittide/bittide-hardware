@@ -76,13 +76,13 @@ common common-options
     containers,
     cryptohash-sha256,
     directory,
-    elastic-buffer-sim,
     extra,
     filepath,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
     Glob,
+    lift-type,
     MissingH,
     pretty-simple,
     process,
@@ -114,6 +114,7 @@ library
     Bittide.Instances.Tests.BoardTest
     Bittide.Instances.Tests.FincFdec
     Bittide.Instances.Tests.FullMeshHwCc
+    Bittide.Instances.Tests.FullMeshHwCc.IlaPlot
     Bittide.Instances.Tests.SyncInSyncOut
     Bittide.Instances.Tests.Transceivers
     Bittide.Instances.Tests.VexRiscv

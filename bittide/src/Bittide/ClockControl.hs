@@ -18,6 +18,7 @@ module Bittide.ClockControl
   , targetDataCount
   , clockPeriodFs
   , speedChangeToFincFdec
+  , sign
   )
 where
 
@@ -124,10 +125,10 @@ targetDataCount = 0
 
 -- | Safer version of FINC/FDEC signals present on the Si5395/Si5391 clock multipliers.
 data SpeedChange
-  = SpeedUp
+  = NoChange
   | SlowDown
-  | NoChange
-  deriving (Eq, Show, Generic, ShowX, NFDataX, Enum)
+  | SpeedUp
+  deriving (Eq, Show, Generic, BitPack, ShowX, NFDataX)
 
 type instance SizeOf SpeedChange =
   SizeOf CUInt
@@ -154,6 +155,14 @@ instance (SizeOf SpeedChange ~ 4, Alignment SpeedChange ~ 4)
       SpeedUp  -> 0
       SlowDown -> 1
       NoChange -> 2
+
+-- | Converts speed changes into a normalized scalar, which reflects
+-- their effect on clock control.
+sign :: Num a => SpeedChange -> a
+sign = \case
+  SpeedUp  -> 1
+  NoChange -> 0
+  SlowDown -> -1
 
 data ToFincFdecState dom
   = Wait (Index (PeriodToCycles dom (Microseconds 1)))

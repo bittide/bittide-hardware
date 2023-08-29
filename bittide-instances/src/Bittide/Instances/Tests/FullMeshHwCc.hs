@@ -26,16 +26,19 @@ module Bittide.Instances.Tests.FullMeshHwCc where
 import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
 
+import Control.Arrow ((***), second)
+
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Si5395J
-import Bittide.ClockControl.Si539xSpi
+import Bittide.ClockControl.Si539xSpi (ConfigState(Error, Finished), si539xSpi)
 import Bittide.Counter
 import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
 import Bittide.Transceiver
 
+import Bittide.Instances.Tests.FullMeshHwCc.IlaPlot
 import Bittide.Instances.MVPs (stickyBits, speedChangeToPins, FINC, FDEC)
 
 import Clash.Class.Counter
@@ -44,14 +47,26 @@ import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Cores.Xilinx.Xpm.Cdc.Gray
-import Clash.Cores.Xilinx.Ila
+import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
 import Clash.Explicit.Reset.Extra
+import Clash.Explicit.Signal.Extra
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
+import Data.Bool (bool)
 import Data.Proxy
 
+import LiftType (liftTypeQ)
+
 import qualified Clash.Explicit.Prelude as E
+
+type NodeCount = 8 :: Nat
+type DataCountSize = 25 :: Nat
+
+clockControlConfig ::
+  $(case (instancesClockConfig (Proxy @GthTx)) of { (_ :: t) -> liftTypeQ @t })
+clockControlConfig =
+  $(lift (instancesClockConfig (Proxy @GthTx)))
 
 c_CHANNEL_NAMES :: Vec 7 String
 c_CHANNEL_NAMES =
@@ -72,6 +87,7 @@ goFullMeshHwCcTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Basic200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
+  "ILA_CTRL" ::: IlaControl Basic125 ->
   "GTH_RX_NS" ::: TransceiverWires GthRx ->
   "GTH_RX_PS" ::: TransceiverWires GthRx ->
   "MISO" ::: Signal Basic125 Bit ->
@@ -86,9 +102,10 @@ goFullMeshHwCcTest ::
       , "CSB"  ::: Signal Basic125 Bool
       )
   , "transceiversFailedAfterUp" ::: Signal Basic125 Bool
+  , "ALL_UP" ::: Signal Basic125 Bool
   , "ALL_STABLE"   ::: Signal Basic125 Bool
   )
-goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
+goFullMeshHwCcTest refClk sysClk testRst IlaControl{..} rxns rxps miso =
   fincFdecIla `hwSeqX`
   ( txns
   , txps
@@ -97,10 +114,11 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   , spiDone
   , spiOut
   , transceiversFailedAfterUp
+  , allUp
   , allStable1
   )
  where
-  sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
+  sysRst = orReset testRst (unsafeFromActiveLow (fmap not spiErr))
 
   -- Clock programming
   spiDone = E.dflipflop sysClk $ (==Finished) <$> spiState
@@ -129,20 +147,29 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
     sticky sysClk sysRst (isFalling sysClk sysRst enableGen False allUp)
 
   timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
-  timer = register sysClk rst enableGen (0, 0) (timeSucc <$> timer)
+  timer = register sysClk testRst enableGen (0, 0) (timeSucc <$> timer)
   milliseconds1 = fst <$> timer
 
   -- Clock control
   clockControlReset =
-    xpmResetSynchronizer Asserted sysClk txClock $
-      orReset (unsafeFromActiveLow allUp) (unsafeFromActiveHigh transceiversFailedAfterUp)
-  clockConfig = $(lift (instancesClockConfig (Proxy @GthTx)))
+    xpmResetSynchronizer Asserted sysClk txClock
+      $ orReset (unsafeFromActiveLow allUp)
+      $ orReset (unsafeFromActiveHigh transceiversFailedAfterUp)
+                (unsafeFromActiveLow syncStart)
+
   availableLinkMask = pure maxBound
 
-  (speedChange1, _stabilities, allStable0, _allCentered) = unbundle $
-    fmap (\CallistoResult{..} -> (speedChange, stability, allStable, allSettled))
-    $ callistoClockControl @7 @25 @GthTx txClock clockControlReset enableGen
-      clockConfig availableLinkMask $ fmap (fmap resize) domainDiffs
+  (speedChange1, _stabilities, allStable0, _allCentered) = unbundle
+    $ fmap (\CallistoResult{..} -> (speedChange, stability, allStable, allSettled))
+    $ callistoClockControlWithIla @(NodeCount - 1) @DataCountSize @GthTx
+        sysClk txClock clockControlReset enableGen
+        clockControlConfig IlaControl{..} availableLinkMask
+          $ fmap (fmap resize) domainDiffs
+
+  speedChange2 =
+    mux (xpmCdcSingle sysClk txClock calibrate)
+      (pure NoChange)
+      speedChange1
 
   allStable1 = xpmCdcSingle txClock sysClk allStable0
 
@@ -163,8 +190,8 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   fincFdecIla :: Signal Basic125 ()
   fincFdecIla = ila
     (ilaConfig $
-         "trigger"
-      :> "capture"
+         "trigger_0"
+      :> "capture_0"
       :> "probe_milliseconds"
       :> "probe_allStable1"
       :> "probe_transceiversFailedAfterUp"
@@ -216,17 +243,17 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   captureFlag = captureCounter .==. pure (maxBound :: Index (PeriodToCycles Basic125 (Milliseconds 1)))
   captureCounter = register sysClk sysRst enableGen 0 (satSucc SatWrap <$> captureCounter)
 
-  isFinc = speedChange1 .==. pure SpeedUp
+  isFinc = speedChange2 .==. pure SpeedUp
   nFincs = register txClock clockControlReset (toEnable isFinc) (0 :: Unsigned 32) (nFincs + 1)
 
-  isFdec = speedChange1 .==. pure SlowDown
+  isFdec = speedChange2 .==. pure SlowDown
   nFdecs = register txClock clockControlReset (toEnable isFdec) (0 :: Unsigned 32) (nFdecs + 1)
 
   frequencyAdjustments :: Signal GthTx (FINC, FDEC)
   frequencyAdjustments =
     E.delay txClock enableGen minBound {- glitch filter -} $
       withClockResetEnable txClock clockControlReset enableGen $
-        stickyBits @GthTx d20 (speedChangeToPins <$> speedChange1)
+        stickyBits @GthTx d20 (speedChangeToPins <$> speedChange2)
 
   (domainDiffs, _domainActives) =
     unzip $ fmap unbundle $ rxDiffCounter <$> rxClocks <*> linkUpsRx
@@ -300,20 +327,66 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (sysClk, sysLock0) = clockWizardDifferential (SSymbol @"SysClk") sysClkDiff noReset
   sysLock1 = xpmCdcSingle sysClk sysClk sysLock0 -- improvised reset syncer
   sysRst = unsafeFromActiveLow sysLock1
-  testRst = sysRst `orReset` unsafeFromActiveLow startTest `orReset` syncInRst
-  syncOut = startTest
-  syncInRst =
-      resetGlitchFilter (SNat @1024) sysClk
+
+  syncIn1 = (startTest .&&.)
+    $ unsafeToActiveLow
+    $ resetGlitchFilter (SNat @1024) sysClk
     $ unsafeFromActiveLow
     $ xpmCdcSingle sysClk sysClk syncIn
 
-  (txns, txps, fincFdecs, stats, spiDone, spiOut, transceiversFailedAfterUp, allStable) =
-    goFullMeshHwCcTest refClk sysClk testRst rxns rxps miso
+  syncInChangepoints =
+    changepoints sysClk syncStartRst enableGen syncIn1
+
+  syncInRst =
+      unsafeFromActiveLow
+    $ sticky sysClk sysRst
+    $ isRising sysClk sysRst enableGen False
+      syncIn1
+
+  testRst = sysRst `orReset` syncInRst
+
+  syncStart =
+      sticky sysClk sysRst
+    $ isFalling sysClk sysRst enableGen False
+      syncIn1
+
+  syncStartRst = unsafeFromActiveLow syncStart
+
+  startBeforeAllUp = sticky sysClk sysRst
+    (syncStart .&&. ((not <$> allUp) .||. transceiversFailedAfterUp))
+
+  syncOut =
+    syncOutGenerator sysClk sysRst enableGen
+      (startTest, trueFor5s sysClk sysRst allUp)
+
+  globalTimestamp :: Signal Basic125 GlobalTimestamp
+  globalTimestamp = register sysClk syncStartRst enableGen (0,0) $
+    mux syncInChangepoints
+      (((+1) *** const 0) <$> globalTimestamp)
+      (second (+1) <$> globalTimestamp)
+
+  -- calibrate over the first 200 sync pulses
+  calibrate =
+    moore sysClk syncStartRst enableGen
+      (\s -> bool s $ satSucc SatBound s)
+      (/= maxBound)
+      (minBound :: Index 200)
+      syncInChangepoints
+
+  calibrationDone =
+    isFalling sysClk sysRst enableGen False calibrate
+
+  -- TODO: not implemented yet
+  syncEnd = pure False
+
+  (txns, txps, fincFdecs, stats, spiDone, spiOut
+    , transceiversFailedAfterUp, allUp, allStable) =
+    goFullMeshHwCcTest refClk sysClk testRst IlaControl{..} rxns rxps miso
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
-  done = trueFor5s sysClk testRst allStable .||. transceiversFailedAfterUp
-  success = fmap not transceiversFailedAfterUp
+  endSuccess :: Signal Basic125 Bool
+  endSuccess = trueFor5s sysClk testRst allStable
 
   startTest :: Signal Basic125 Bool
   startTest =
@@ -357,8 +430,11 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       False
       sysClk
 
-      done
-      success
+      -- done
+      (endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp)
+
+      -- success
+      (not <$> (transceiversFailedAfterUp .||. startBeforeAllUp))
 
       -- Debug probes
       (txRetries     <$> stats0)
