@@ -213,7 +213,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
     . xpmCdcMaybeLossy txClock sysClk
     . fmap Just
 
-  captureFlag = captureCounter .==. pure (maxBound :: Index (PeriodToCycles Basic125 (Milliseconds 1)))
+  captureFlag = captureCounter .==. pure (maxBound :: Index (PeriodToCycles Basic125 (Milliseconds 2)))
   captureCounter = register sysClk sysRst enableGen 0 (satSucc SatWrap <$> captureCounter)
 
   isFinc = speedChange1 .==. pure SpeedUp
