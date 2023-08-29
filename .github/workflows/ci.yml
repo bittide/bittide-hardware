@@ -828,6 +828,11 @@ jobs:
           .github/scripts/with_vivado.sh \
             vivado -mode batch -source "${tcl_test}"
 
+      - name: Shorten ILA data dump names
+        if: always()
+        run: |
+          python3 bittide-shake/data/scripts/shorten_names.py
+
       - name: Archive ILA data
         if: always()
         uses: actions/upload-artifact@v3

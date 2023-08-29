@@ -13,7 +13,6 @@ module Main where
 import Prelude
 
 import Control.Applicative (liftA2)
-import Control.DeepSeq (force)
 import Control.Monad (forM_, unless)
 import Control.Monad.Extra (ifM, unlessM, when)
 import Data.Char(isSpace)
@@ -34,9 +33,6 @@ import Clash.Shake.Flags
 import Clash.Shake.Vivado
 
 import qualified Clash.Util.Interpolate as I
-import qualified Data.ByteString.Lazy as ByteStringLazy
-import qualified Development.Shake.Csv as Csv
-import qualified Development.Shake.Vcd as Vcd
 import qualified System.Directory as Directory
 
 -- | Get all files whose changes will trigger an HDL rebuild. Because we lack a
@@ -513,26 +509,9 @@ main = do
                 vivadoFromTcl runBoardProgramTclPath
                 vivadoFromTcl runHardwareTestTclPath
 
-                -- VCD dumps have unusually long probe names. GTKWave doesn't
-                -- allow you to make the window with signal names smaller leaving
-                -- us with a tiny window for the waveform. This workaround removes
-                -- prefixes, making the names easy to look at again.
-                liftIO $ do
-                  vcdPaths <- glob (ilaDir </> "*" </> "*" </> "*.vcd")
-                  forM_ vcdPaths $ \vcdPath -> do
-                    (force -> !vcd0) <- readFile vcdPath
-                    case Vcd.shortenNames vcd0 of
-                      Left err -> error $ "Failed to parse " <> vcdPath <> ": " <> err
-                      Right vcd1 -> writeFile vcdPath vcd1
-
-                -- And the same thing for CSVs
-                liftIO $ do
-                  csvPaths <- glob (ilaDir </> "*" </> "*" </> "*.csv")
-                  forM_ csvPaths $ \csvPath -> do
-                    (force -> !csv0) <- ByteStringLazy.readFile csvPath
-                    case Csv.shortenNames csv0 of
-                      Left err -> error $ "Failed to parse " <> csvPath <> ": " <> err
-                      Right csv1 -> ByteStringLazy.writeFile csvPath csv1
+                shortenNamesPy <- liftIO $
+                  getDataFileName ("data" </> "scripts" </> "shorten_names.py")
+                command_ [] "python3" [shortenNamesPy]
 
     if null shakeTargets then
       rules
