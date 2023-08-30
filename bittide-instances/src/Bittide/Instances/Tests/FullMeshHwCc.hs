@@ -44,6 +44,7 @@ import Project.FilePath
 import System.FilePath
 import Bittide.ClockControl.Registers
 import Bittide.DoubleBufferedRam
+import Bittide.Extra.Maybe
 
 import Bittide.Instances.MVPs (stickyBits, speedChangeToPins, FINC, FDEC)
 
@@ -89,6 +90,7 @@ goFullMeshHwCcTest ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "FINC_FDEC" ::: Signal GthTx (FINC, FDEC)
+  , "FINC_FDEC" ::: Signal GthTx (FINC, FDEC)
   , "CALLISTO_CLOCK" ::: Clock GthTx
   , "CALLISTO_RESULT" ::: Signal GthTx (CallistoResult 7)
   , "CALLISTO_RESET" ::: Reset GthTx
@@ -108,7 +110,8 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   fincFdecIla `hwSeqX`
   ( txns
   , txps
-  , fIncDec
+  , hardFrequencyAdjustments
+  , softFrequencyAdjustments
   , txClock
   , callistoResult
   , clockControlReset
@@ -117,7 +120,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   , spiDone
   , spiOut
   , transceiversFailedAfterUp
-  , frequencyAdjustments `hwSeqX` fincFdecIla `hwSeqX` allStable1
+  , fincFdecIla `hwSeqX` allStable1
   , linkUps
   )
  where
@@ -184,14 +187,14 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   -- very confusing.
   capture = (captureFlag .&&. allUp) .||. unsafeToActiveHigh sysRst
 
-  frequencyAdjustments :: Signal GthTx (FINC, FDEC)
-  frequencyAdjustments =
+  hardFrequencyAdjustments :: Signal GthTx (FINC, FDEC)
+  hardFrequencyAdjustments =
     E.delay txClock enableGen minBound {- glitch filter -} $
       withClockResetEnable txClock clockControlReset enableGen $
         stickyBits @GthTx d20 (speedChangeToPins <$> speedChange1)
 
   -- Vex risc clock control
-  (_, CSignal fIncDec) = toSignals
+  (_, CSignal softFrequencyAdjustments) = toSignals
     ( circuit $ \ unit -> do
       [wbA, wbB] <- (withClockResetEnable txClock clockControlReset enableGen $ processingElement @GthTx peConfig) -< unit
       fIncDecCallisto -< wbA
@@ -363,30 +366,36 @@ fullMeshHwCcTest ::
   , "linkUps" ::: Vec 7 (Signal Basic125 Bool)
   )
 fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, unbundle fincFdecs, syncOut, spiDone, spiOut, linkUps)
+  (txns, txps, frequencyAdjustments, syncOut, spiDone, spiOut, linkUps)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Basic200
 
   (sysClk, sysLock0) = clockWizardDifferential (SSymbol @"SysClk") sysClkDiff noReset
   sysLock1 = xpmCdcSingle sysClk sysClk sysLock0 -- improvised reset syncer
   sysRst = unsafeFromActiveLow sysLock1
-  testRst = sysRst `orReset` unsafeFromActiveLow startTest `orReset` syncInRst
-  syncOut = startTest
+  testRst = sysRst `orReset` unsafeFromActiveLow syncOut `orReset` syncInRst
+  syncOut =  or <$> startTests
   syncInRst =
       resetGlitchFilter (SNat @1024) sysClk
     $ unsafeFromActiveLow
     $ xpmCdcSingle sysClk sysClk syncIn
 
-  (txns, txps, fincFdecs, _, _, _, _, stats, spiDone, spiOut, transceiversFailedAfterUp, allStable, linkUps) =
+  (txns, txps, hardFincFdecs, softFincFdecs, callistoClock, _, _, _, stats, spiDone, spiOut, transceiversFailedAfterUp, allStable, linkUps) =
     goFullMeshHwCcTest refClk sysClk testRst rxns rxps miso
 
+  frequencyAdjustments = unbundle $ dflipflop callistoClock $
+    fromMaybesL (False, False) <$>
+    (zipWith orNothing <$> startTestsTx <*> bundle testIncDecs)
+
+  testIncDecs = pure (False, False) :> hardFincFdecs :> softFincFdecs :> Nil
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
   done = trueFor5s sysClk testRst allStable .||. transceiversFailedAfterUp
   success = fmap not transceiversFailedAfterUp
 
-  startTest :: Signal Basic125 Bool
-  startTest =
+  startTestsTx = bundle $ fmap (xpmCdcSingle sysClk callistoClock) (unbundle startTests)
+  startTests :: Signal Basic125 (Vec 3 Bool)
+  startTests =
     setName @"vioHitlt" $
     vioProbe
       (  "probe_test_done"
@@ -422,9 +431,13 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       :> "stats6_rxFullRetries"
       :> "stats6_failAfterUps"
       :> Nil)
-      (  "probe_test_start"
+
+      (  "probe_test_start_no_control"
+      :> "probe_test_start_hard_control"
+      :> "probe_test_start_soft_control"
       :> Nil)
-      False
+
+      (repeat False)
       sysClk
 
       done
