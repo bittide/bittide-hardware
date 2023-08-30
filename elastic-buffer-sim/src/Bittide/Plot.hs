@@ -114,6 +114,7 @@ data SimulationSettings =
     , samples      :: Int
     , periodsize   :: Int
     , reframe      :: Bool
+    , rustySim     :: Bool
     , waittime     :: Int
     , mode         :: OutputMode
     , dir          :: FilePath
@@ -303,6 +304,7 @@ clockControlConfig =
     , cccStabilityCheckerFramesize = SNat @framesize
     , cccEnableReframing           = reframe
     , cccReframingWaitTime         = fromInteger $ toInteger waittime
+    , cccEnableRustySimulation     = rustySim
     , ..
     }
   where

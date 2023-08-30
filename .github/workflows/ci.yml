@@ -145,7 +145,7 @@ jobs:
   elastic-buffer-sim-topologies:
     name: Simulate network
     runs-on: [self-hosted, compute]
-    timeout-minutes: 840
+    timeout-minutes: 1200
     defaults:
       run:
         shell: git-nix-shell {0} --pure
@@ -187,6 +187,7 @@ jobs:
           cabal run -- elastic-buffer-sim:sim \
             +RTS -M${{ matrix.target.hmem }}M -RTS \
             --output-mode pdf \
+            --get-rusty \
             --steps ${{ matrix.target.steps }} \
             --samples 1000 \
             --max-startup-offset 2000 \

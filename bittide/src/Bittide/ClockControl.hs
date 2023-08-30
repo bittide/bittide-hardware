@@ -4,6 +4,7 @@
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans -fconstraint-solver-iterations=10 #-}
 
 -- | Clock controller types and some constants/defaults.
@@ -24,10 +25,14 @@ import Clash.Explicit.Prelude
 import Clash.Signal.Internal (Femtoseconds(..))
 import Data.Aeson (ToJSON(toJSON))
 import Data.Proxy (Proxy(..))
+import Foreign.C.Types (CUInt)
+import Foreign.Ptr (Ptr, castPtr)
+import Foreign.Storable (Storable(..))
 import GHC.Stack (HasCallStack)
 
 import Bittide.Arithmetic.Ppm
 import Bittide.Arithmetic.Time (PeriodToCycles, Nanoseconds, Microseconds, microseconds)
+import Bittide.ClockControl.Foreign.Sizes
 
 import Data.Csv
 
@@ -91,10 +96,13 @@ data ClockControlConfig dom n m c = ClockControlConfig
     -- [arXiv:2303.11467](https://arxiv.org/abs/2303.11467).
   , cccEnableReframing :: Bool
 
-    -- | Number of cycles to wait until reframing takes place after
-    -- stability has been detected, as it is used by the "detect,
-    -- store, and wait" reframing approach
+    -- | Number of pessimistic settle cycles to wait until reframing
+    -- takes place after stability has been detected, as it is used by
+    -- the "detect, store, and wait" reframing approach
   , cccReframingWaitTime :: Unsigned 32
+
+    -- | If set, then the clock control algorithm is simulated via the Rust FFI.
+  , cccEnableRustySimulation :: Bool
   } deriving (Lift)
 
 -- | The (virtual) type of the FIFO's data counter. Setting this to
@@ -119,7 +127,33 @@ data SpeedChange
   = SpeedUp
   | SlowDown
   | NoChange
-  deriving (Eq, Show, Generic, ShowX, NFDataX)
+  deriving (Eq, Show, Generic, ShowX, NFDataX, Enum)
+
+type instance SizeOf SpeedChange =
+  SizeOf CUInt
+
+type instance Alignment SpeedChange =
+  Alignment CUInt
+
+instance (SizeOf SpeedChange ~ 4, Alignment SpeedChange ~ 4)
+  => Storable SpeedChange where
+  sizeOf = const $ natToNum @(SizeOf SpeedChange)
+  alignment = const $ natToNum @(Alignment SpeedChange)
+
+  peek p = from <$> peek (castPtr p :: Ptr CUInt)
+   where
+    from = \case
+      0 -> SpeedUp
+      1 -> SlowDown
+      2 -> NoChange
+      _ -> error "out of range"
+
+  poke p = poke (castPtr p :: Ptr CUInt) . to
+   where
+    to = \case
+      SpeedUp  -> 0
+      SlowDown -> 1
+      NoChange -> 2
 
 data ToFincFdecState dom
   = Wait (Index (PeriodToCycles dom (Microseconds 1)))
@@ -198,7 +232,8 @@ defClockConfig = ClockControlConfig
   , cccStabilityCheckerMargin    = SNat
   , cccStabilityCheckerFramesize = SNat
   , cccEnableReframing           = True
-  , cccReframingWaitTime         = 20000000
+  , cccReframingWaitTime         = 100000
+  , cccEnableRustySimulation     = False
   }
  where
   self = defClockConfig @dom

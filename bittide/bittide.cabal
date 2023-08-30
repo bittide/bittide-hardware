@@ -7,6 +7,9 @@ author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
 Copyright:           Copyright © 2022-2023 Google LLC
 
+custom-setup
+  setup-depends: Cabal, base, directory, process
+
 common common-options
   default-extensions:
     BangPatterns
@@ -49,6 +52,7 @@ common common-options
     -fplugin GHC.TypeLits.Extra.Solver
     -fplugin GHC.TypeLits.Normalise
     -fplugin GHC.TypeLits.KnownNat.Solver
+    -fconstraint-solver-iterations=8
 
     -- Clash needs access to the source code in compiled modules
     -fexpose-all-unfoldings
@@ -108,6 +112,9 @@ library
     Bittide.ClockControl
     Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Util
+    Bittide.ClockControl.Callisto.Types
+    Bittide.ClockControl.Foreign.Sizes
+    Bittide.ClockControl.Foreign.Rust.Callisto
     Bittide.ClockControl.Si5391A
     Bittide.ClockControl.Si5395J
     Bittide.ClockControl.Si539xSpi
@@ -140,6 +147,7 @@ library
     System.IO.Temp.Extra
   other-modules:
     Paths_bittide
+  extra-libraries: callisto_lib
 
 executable clash
   import: common-options
