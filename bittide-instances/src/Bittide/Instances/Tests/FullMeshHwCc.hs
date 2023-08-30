@@ -108,7 +108,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   fincFdecIla `hwSeqX`
   ( txns
   , txps
-  , frequencyAdjustments
+  , fIncDec
   , txClock
   , callistoResult
   , clockControlReset
@@ -117,7 +117,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   , spiDone
   , spiOut
   , transceiversFailedAfterUp
-  , fIncDec `hwSeqX` fincFdecIla `hwSeqX` allStable1
+  , frequencyAdjustments `hwSeqX` fincFdecIla `hwSeqX` allStable1
   , linkUps
   )
  where
