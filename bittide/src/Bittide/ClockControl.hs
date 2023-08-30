@@ -127,7 +127,7 @@ data SpeedChange
   = SpeedUp
   | SlowDown
   | NoChange
-  deriving (Eq, Show, Generic, ShowX, NFDataX, Enum)
+  deriving (Eq, Show, Generic, ShowX, NFDataX, Enum, BitPack)
 
 type instance SizeOf SpeedChange =
   SizeOf CUInt

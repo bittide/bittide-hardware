@@ -327,3 +327,42 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
 
     fifoMeta = FifoMeta {fifoEmpty, fifoFull, fifoDataCount = dataCount}
     output = (readPointerNext, writeOpGo, fifoOutGo, not fifoFull, fifoMeta)
+
+-- | Transforms a wishbone interface into a vector based interface.
+-- Write operations will produce a 'Just (Bytes nBytes)' on the index corresponding
+-- to the word-aligned Wishbone address.
+-- Read operations will read from the index corresponding to the world-aligned
+-- Wishbone address.
+wbToVec ::
+  forall dom nBytes addrW nRegisters .
+  ( HiddenClockResetEnable dom
+  , KnownNat nBytes
+  , 1 <= nBytes
+  , KnownNat addrW
+  , 2 <= addrW
+  , KnownNat nRegisters
+  , 1 <= nRegisters) =>
+  -- | Readable data.
+  Vec nRegisters (Bytes nBytes) ->
+  -- | Wishbone bus (master to slave)
+  WishboneM2S addrW nBytes (Bytes nBytes) ->
+  -- |
+  -- 1. Written data
+  -- 2. Outgoing wishbone bus (slave to master)
+  ( Vec nRegisters (Maybe (Bytes nBytes))
+  , WishboneS2M (Bytes nBytes))
+wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
+ where
+  (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
+  addressRange = maxBound :: Index nRegisters
+  invalidAddress = (alignedAddress > resize (pack addressRange)) || alignment /= 0
+  masterActive = strobe && busCycle
+  err = masterActive && invalidAddress
+  acknowledge = masterActive && not err
+  wbWriting = writeEnable && acknowledge
+  wbAddr = unpack $ resize alignedAddress :: Index nRegisters
+  readData = readableData !! wbAddr
+  writtenData
+    | wbWriting = replace wbAddr (Just writeData) (repeat Nothing)
+    | otherwise = repeat Nothing
+  wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}

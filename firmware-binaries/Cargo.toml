@@ -15,7 +15,8 @@ codegen-units = 1
 members = [
   "examples/fdt-read",
   "examples/hello",
-  
+
   "processing-element-test",
+  "clock-control",
 ]
 resolver = "2"

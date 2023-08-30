@@ -49,8 +49,6 @@ import Clash.Explicit.Reset.Extra
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
-import Data.Proxy
-
 import qualified Clash.Explicit.Prelude as E
 
 c_CHANNEL_NAMES :: Vec 7 String
@@ -78,6 +76,10 @@ goFullMeshHwCcTest ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "FINC_FDEC" ::: Signal GthTx (FINC, FDEC)
+  , "CALLISTO_CLOCK" ::: Clock GthTx
+  , "CALLISTO_RESULT" ::: Signal GthTx (CallistoResult 7)
+  , "CALLISTO_RESET" ::: Reset GthTx
+  , "DATA_COUNTERS" ::: Vec 7 (Signal GthTx (DataCount 32))
   , "stats" ::: Vec 7 (Signal Basic125 GthResetStats)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
@@ -87,17 +89,23 @@ goFullMeshHwCcTest ::
       )
   , "transceiversFailedAfterUp" ::: Signal Basic125 Bool
   , "ALL_STABLE"   ::: Signal Basic125 Bool
+  , "linkUps" ::: Vec 7 (Signal Basic125 Bool)
   )
 goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   fincFdecIla `hwSeqX`
   ( txns
   , txps
   , frequencyAdjustments
+  , txClock
+  , callistoResult
+  , clockControlReset
+  , domainDiffs
   , stats
   , spiDone
   , spiOut
   , transceiversFailedAfterUp
   , fincFdecIla `hwSeqX` allStable1
+  , linkUps
   )
  where
   sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
@@ -136,12 +144,15 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   clockControlReset =
     xpmResetSynchronizer Asserted sysClk txClock $
       orReset (unsafeFromActiveLow allUp) (unsafeFromActiveHigh transceiversFailedAfterUp)
-  clockConfig = $(lift (instancesClockConfig (Proxy @GthTx)))
+  clockConfig = $(lift (defClockConfig @GthTx){cccBufferSize = d25})
   availableLinkMask = pure maxBound
 
   (speedChange1, _stabilities, allStable0, _allCentered) = unbundle $
-    fmap (\CallistoResult{..} -> (speedChange, stability, allStable, allSettled))
-    $ callistoClockControl @7 @25 @GthTx txClock clockControlReset enableGen
+    fmap (\CallistoResult{..} -> (speedChange, stability, allStable, allSettled)) callistoResult
+
+  callistoResult =
+    callistoClockControl
+      @7 @25 @GthTx txClock clockControlReset enableGen
       clockConfig availableLinkMask $ fmap (fmap resize) domainDiffs
 
   allStable1 = xpmCdcSingle txClock sysClk allStable0
@@ -291,9 +302,10 @@ fullMeshHwCcTest ::
       , "MOSI"      ::: Signal Basic125 Bit
       , "CSB"       ::: Signal Basic125 Bool
       )
+  , "linkUps" ::: Vec 7 (Signal Basic125 Bool)
   )
 fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, unbundle fincFdecs, syncOut, spiDone, spiOut)
+  (txns, txps, unbundle fincFdecs, syncOut, spiDone, spiOut, linkUps)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Basic200
 
@@ -307,7 +319,7 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     $ unsafeFromActiveLow
     $ xpmCdcSingle sysClk sysClk syncIn
 
-  (txns, txps, fincFdecs, stats, spiDone, spiOut, transceiversFailedAfterUp, allStable) =
+  (txns, txps, fincFdecs, _, _, _, _, stats, spiDone, spiOut, transceiversFailedAfterUp, allStable, linkUps) =
     goFullMeshHwCcTest refClk sysClk testRst rxns rxps miso
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
@@ -409,5 +421,6 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       , PortName "SYNC_OUT"
       , PortName "spiDone"
       , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
+      , PortName "linkUps"
       ]
   } #-}
