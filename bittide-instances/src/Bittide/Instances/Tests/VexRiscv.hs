@@ -12,20 +12,20 @@ import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Prelude
 import Clash.Explicit.Prelude (noReset, orReset)
 
-import Bittide.Instances.Domains (Basic200, Basic125)
-import Bittide.DoubleBufferedRam
+import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
+import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Language.Haskell.TH (runIO)
-import System.Directory
-import System.FilePath
-import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util (memBlobsFromElf)
-import Bittide.SharedTypes
-
 import Protocols
 import Protocols.Internal
 import Protocols.Wishbone
-import Clash.Xilinx.ClockGen (clockWizardDifferential)
-import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
+import System.FilePath
+
+import Bittide.DoubleBufferedRam
+import Bittide.Instances.Domains (Basic200, Basic125)
+import Bittide.ProcessingElement
+import Bittide.ProcessingElement.Util (memBlobsFromElf)
+import Bittide.SharedTypes
+import Project.FilePath
 
 data TestStatus = Running | Success | Fail
   deriving (Enum, Eq, Generic, NFDataX, BitPack)
@@ -89,25 +89,10 @@ vexRiscvInner = stateToDoneSuccess <$> status
     (   (_iStart, _iSize, iMem)
       , (_dStart, _dSize, dMem)) = $(do
 
+        root <- runIO $ findParentContaining "cabal.project"
         let
-          findProjectRoot :: IO FilePath
-          findProjectRoot = goUp =<< getCurrentDirectory
-            where
-              goUp :: FilePath -> IO FilePath
-              goUp path
-                | isDrive path = error "Could not find 'cabal.project'"
-                | otherwise = do
-                    exists <- doesFileExist (path </> projectFilename)
-                    if exists then
-                      return path
-                    else
-                      goUp (takeDirectory path)
-
-              projectFilename = "cabal.project"
-
-        root <- runIO findProjectRoot
-
-        let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/processing-element-test"
+          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" True
+          elfPath = elfDir </> "processing-element-test"
 
         memBlobsFromElf BigEndian elfPath Nothing)
 

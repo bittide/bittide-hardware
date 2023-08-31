@@ -13,6 +13,7 @@
   {"top": "stabilityChecker_3_1M",         "stage": "pnr"},
   {"top": "switchCalendar1k",              "stage": "hdl"},
   {"top": "switchCalendar1kReducedPins",   "stage": "pnr"},
+  {"top": "vexRiscUartHello",              "stage": "bitstream"},
 
   {"top": "extendedHardwareInTheLoopTest", "stage": "test",   "targets": "All"          },
   {"top": "fincFdecTests",                 "stage": "test",   "targets": "Specific [-1]"},

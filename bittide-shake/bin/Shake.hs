@@ -164,6 +164,7 @@ targets = map enforceValidTarget
   , defTarget "Bittide.Instances.ElasticBuffer.elasticBuffer5"
   , (defTarget "Bittide.Instances.MVPs.clockControlDemo0") {targetHasXdc = True}
   , (defTarget "Bittide.Instances.MVPs.clockControlDemo1") {targetHasXdc = True}
+  , (defTarget "Bittide.Instances.ProcessingElement.vexRiscUartHello") {targetHasXdc = True}
   , defTarget "Bittide.Instances.ScatterGather.gatherUnit1K"
   , defTarget "Bittide.Instances.ScatterGather.gatherUnit1KReducedPins"
   , defTarget "Bittide.Instances.ScatterGather.scatterUnit1K"
