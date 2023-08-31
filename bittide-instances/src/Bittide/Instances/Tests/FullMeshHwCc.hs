@@ -89,6 +89,7 @@ goFullMeshHwCcTest ::
   "GTH_RX_NS" ::: TransceiverWires GthRx ->
   "GTH_RX_PS" ::: TransceiverWires GthRx ->
   "MISO" ::: Signal Basic125 Bit ->
+  "USB_UART_TX" ::: Signal GthTx Bit ->
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "FINC_FDEC" ::: Signal GthTx (FINC, FDEC)
@@ -107,8 +108,10 @@ goFullMeshHwCcTest ::
   , "transceiversFailedAfterUp" ::: Signal Basic125 Bool
   , "ALL_STABLE"   ::: Signal Basic125 Bool
   , "linkUps" ::: Vec 7 (Signal Basic125 Bool)
+  , "USB_UART_RX" ::: Signal GthTx Bit
   )
-goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
+
+goFullMeshHwCcTest refClk sysClk rst rxns rxps miso uartRx =
   fincFdecIla `hwSeqX`
   ( txns
   , txps
@@ -122,8 +125,9 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   , spiDone
   , spiOut
   , transceiversFailedAfterUp
-  , fincFdecIla `hwSeqX` allStable1
+  , allStable1
   , linkUps
+  , uartTx
   )
  where
   sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
@@ -196,14 +200,16 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
         stickyBits @GthTx d20 (speedChangeToPins <$> speedChange1)
 
   -- Vex risc clock control
-  (_, CSignal softFrequencyAdjustments) = toSignals
-    ( circuit $ \ unit -> do
-      [wbA, wbB] <- (withClockResetEnable txClock clockControlReset enableGen $ processingElement @GthTx peConfig) -< unit
-      fIncDecCallisto <| withClock txClock ilaWb -< wbA
+  (_, (CSignal softFrequencyAdjustments, CSignal uartTx)) = toSignals
+    ( circuit $ \ uartRxC -> do
+      [wbA, wbB, uartWb] <- (withClockResetEnable txClock clockControlReset enableGen $ processingElement @GthTx peConfig) -< ()
+      let ila' = withClock txClock ilaWb
+      fIncDecCallisto <| ila' -< wbA
+      (uartTxC, _uartStatus) <- withClockResetEnable txClock clockControlReset enableGen (uartWb d16 d16 (SNat @921600)) -< (uartWb, uartRxC)
       fIncDec <- withClockResetEnable txClock clockControlReset enableGen $
         clockControlWb (cccStabilityCheckerMargin clockConfig) (cccStabilityCheckerFramesize clockConfig) (pure $ complement 0) domainDiffs -< wbB
-      idC -< fIncDec
-    ) ((), unitCS)
+      idC -< (fIncDec, uartTxC)
+    ) (CSignal uartRx,(unitCS, unitCS) )
 
   fIncDecCallisto = Circuit goFIncDecCallisto
    where
@@ -233,7 +239,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   -}
   peConfig =
     PeConfig
-      (0b10 :> 0b01 :> 0b00 :> 0b11 :> Nil)
+      (0b010 :> 0b001 :> 0b000 :> 0b011 :> 0b100 :>Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
 
@@ -350,6 +356,7 @@ fullMeshHwCcTest ::
   "GTH_RX_NS" ::: TransceiverWires GthRx ->
   "GTH_RX_PS" ::: TransceiverWires GthRx ->
   "MISO" ::: Signal Basic125 Bit ->
+  "USB_UART_TX" ::: Signal GthTx Bit ->
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "" :::
@@ -364,9 +371,10 @@ fullMeshHwCcTest ::
       , "CSB"       ::: Signal Basic125 Bool
       )
   , "linkUps" ::: Vec 7 (Signal Basic125 Bool)
+  , "USB_UART_RX" ::: Signal GthTx Bit
   )
-fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, frequencyAdjustments, syncOut, spiDone, spiOut, linkUps)
+fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso uartRx =
+  (txns, txps, frequencyAdjustments, syncOut, spiDone, spiOut, linkUps, uartTx)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Basic200
 
@@ -380,8 +388,8 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     $ unsafeFromActiveLow
     $ xpmCdcSingle sysClk sysClk syncIn
 
-  (txns, txps, hardFincFdecs, softFincFdecs, callistoClock, _, _, _, stats, spiDone, spiOut, transceiversFailedAfterUp, allStable, linkUps) =
-    goFullMeshHwCcTest refClk sysClk testRst rxns rxps miso
+  (txns, txps, hardFincFdecs, softFincFdecs, callistoClock, _, _, _, stats, spiDone, spiOut, transceiversFailedAfterUp, allStable, linkUps, uartTx) =
+    goFullMeshHwCcTest refClk sysClk testRst rxns rxps miso uartRx
 
   frequencyAdjustments = unbundle $ dflipflop callistoClock $
     fromMaybesL (False, False) <$>

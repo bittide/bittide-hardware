@@ -53,3 +53,9 @@ set_property BOARD_PART_PIN GPIO_LED_5_LS [get_ports "linkUps[4]"]
 set_property BOARD_PART_PIN GPIO_LED_6_LS [get_ports "linkUps[5]"]
 # GPIO_LED_6_LS
 set_property BOARD_PART_PIN GPIO_LED_7_LS [get_ports "linkUps[6]"]
+
+set_property PACKAGE_PIN K26 [get_ports USB_UART_RX]
+set_property IOSTANDARD LVCMOS18 [get_ports USB_UART_RX]
+# Bank  95 VCCO -          - IO_L3N_T0L_N5_AD15N_A27_65
+set_property PACKAGE_PIN G25 [get_ports USB_UART_TX]
+set_property IOSTANDARD LVCMOS18 [get_ports USB_UART_TX]
