@@ -24,7 +24,7 @@
 --
 module Bittide.Instances.Tests.FullMeshHwCc where
 
-import Clash.Prelude (withClockResetEnable)
+import Clash.Prelude (withClockResetEnable, withClock)
 import Clash.Explicit.Prelude
 import Language.Haskell.TH
 
@@ -39,6 +39,7 @@ import Bittide.Counter
 import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
 import Bittide.Transceiver
+import Bittide.Wishbone
 import Bittide.SharedTypes
 import Project.FilePath
 import System.FilePath
@@ -198,7 +199,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   (_, CSignal softFrequencyAdjustments) = toSignals
     ( circuit $ \ unit -> do
       [wbA, wbB] <- (withClockResetEnable txClock clockControlReset enableGen $ processingElement @GthTx peConfig) -< unit
-      fIncDecCallisto -< wbA
+      fIncDecCallisto <| withClock txClock ilaWb -< wbA
       fIncDec <- withClockResetEnable txClock clockControlReset enableGen $
         clockControlWb (cccStabilityCheckerMargin clockConfig) (cccStabilityCheckerFramesize clockConfig) (pure $ complement 0) domainDiffs -< wbB
       idC -< fIncDec
@@ -390,7 +391,7 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   testDone = trueFor5s sysClk testRst $ mux (head <$> startTests) (or <$> bundle linkUps) allStable
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
-  done = testDone.||. transceiversFailedAfterUp
+  done = testDone .||. transceiversFailedAfterUp
   success = fmap not transceiversFailedAfterUp
 
   startTestsTx = bundle $ fmap (xpmCdcSingle sysClk callistoClock) (unbundle startTests)

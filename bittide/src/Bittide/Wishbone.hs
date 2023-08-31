@@ -17,12 +17,14 @@ import Protocols.Df hiding (zipWith, pure, bimap, first, second, route)
 import Protocols.Internal
 import Protocols.Wishbone
 import Data.Bifunctor
+import Clash.Cores.Xilinx.Ila (ila, ilaConfig)
 
 import Bittide.SharedTypes
 import Data.Bool(bool)
 import Data.Constraint.Nat.Extra (divWithRemainder)
 import Data.Maybe
 import Clash.Util.Interpolate
+import qualified Protocols.Wishbone as Wishbone
 
 
 {- $setup
@@ -366,3 +368,41 @@ wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
     | wbWriting = replace wbAddr (Just writeData) (repeat Nothing)
     | otherwise = repeat Nothing
   wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}
+
+ilaWb ::
+  forall dom addrW a .
+  HiddenClock dom =>
+  Circuit
+    (Wishbone dom 'Standard addrW a)
+    (Wishbone dom 'Standard addrW a)
+ilaWb = Circuit $ \(m2s, s2m) ->
+  let
+    ilaInst :: Signal dom ()
+    ilaInst = ila
+      (ilaConfig $
+           "m2s_addr"
+        :> "m2s_writeData"
+        :> "m2s_busSelect"
+        :> "m2s_busCycle"
+        :> "m2s_strobe"
+        :> "m2s_writeEnable"
+        :> "s2m_readData"
+        :> "s2m_acknowledge"
+        :> "s2m_err"
+        :> "s2m_stall"
+        :> "s2m_retry"
+        :> Nil)
+      hasClock
+      (Wishbone.addr        <$> m2s)
+      (Wishbone.writeData   <$> m2s)
+      (Wishbone.busSelect   <$> m2s)
+      (Wishbone.busCycle    <$> m2s)
+      (Wishbone.strobe      <$> m2s)
+      (Wishbone.writeEnable <$> m2s)
+      (Wishbone.readData    <$> s2m)
+      (Wishbone.acknowledge <$> s2m)
+      (Wishbone.err         <$> s2m)
+      (Wishbone.stall       <$> s2m)
+      (Wishbone.retry       <$> s2m)
+  in
+    ilaInst `hwSeqX` (s2m, m2s)
