@@ -239,7 +239,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso uartRx =
   -}
   peConfig =
     PeConfig
-      (0b010 :> 0b001 :> 0b000 :> 0b011 :> 0b100 :>Nil)
+      (0b100 :> 0b001 :> 0b000 :> 0b011 :> 0b010 :>Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
 
@@ -510,6 +510,7 @@ countfIncfDecs clk rst ena (fInc, fDec) = cnt
     , PortName "GTH_RX_NS"
     , PortName "GTH_RX_PS"
     , PortName "MISO"
+    , PortName "USB_UART_TX"
     ]
   , t_output =
     (PortProduct "")
@@ -520,5 +521,6 @@ countfIncfDecs clk rst ena (fInc, fDec) = cnt
       , PortName "spiDone"
       , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
       , PortName "linkUps"
+      , PortName "USB_UART_RX"
       ]
   } #-}
