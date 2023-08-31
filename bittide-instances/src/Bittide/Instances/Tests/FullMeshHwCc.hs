@@ -24,7 +24,7 @@
 --
 module Bittide.Instances.Tests.FullMeshHwCc where
 
-import Clash.Prelude (withClockResetEnable, withClock)
+import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
 import Language.Haskell.TH
 
@@ -203,8 +203,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso uartRx =
   (_, (CSignal softFrequencyAdjustments, CSignal uartTx)) = toSignals
     ( circuit $ \ uartRxC -> do
       [wbA, wbB, uartWb] <- (withClockResetEnable txClock clockControlReset enableGen $ processingElement @GthTx peConfig) -< ()
-      let ila' = withClock txClock ilaWb
-      fIncDecCallisto <| ila' -< wbA
+      fIncDecCallisto -< wbA
       (uartTxC, _uartStatus) <- withClockResetEnable txClock clockControlReset enableGen (uartWb d16 d16 (SNat @921600)) -< (uartWb, uartRxC)
       fIncDec <- withClockResetEnable txClock clockControlReset enableGen $
         clockControlWb (cccStabilityCheckerMargin clockConfig) (cccStabilityCheckerFramesize clockConfig) (pure $ complement 0) domainDiffs -< wbB
