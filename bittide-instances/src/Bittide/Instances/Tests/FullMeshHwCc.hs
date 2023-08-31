@@ -186,7 +186,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
   -- very confusing.
-  capture = captureFlag
+  capture = (captureFlag .&&. allUp) .||. unsafeToActiveHigh sysRst
 
   hardFrequencyAdjustments :: Signal GthTx (FINC, FDEC)
   hardFrequencyAdjustments =
