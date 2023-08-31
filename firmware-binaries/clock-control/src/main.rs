@@ -19,11 +19,9 @@ fn main() -> ! {
     loop {
         let callisto_val = unsafe { callisto_reg_addr.read_volatile() };
         let mut change = SpeedChange::NoChange;
-        if callisto_val > old_callisto_val
-        {
+        if callisto_val > old_callisto_val {
             change = SpeedChange::SpeedUp;
-        } else if callisto_val > old_callisto_val
-        {
+        } else if callisto_val > old_callisto_val {
             change = SpeedChange::SlowDown;
         }
         old_callisto_val = callisto_val;
