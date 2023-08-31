@@ -200,7 +200,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
       [wbA, wbB] <- (withClockResetEnable txClock clockControlReset enableGen $ processingElement @GthTx peConfig) -< unit
       fIncDecCallisto -< wbA
       fIncDec <- withClockResetEnable txClock clockControlReset enableGen $
-        clockControlWb margin framesize (pure $ complement 0) domainDiffs -< wbB
+        clockControlWb (CccStabilityCheckerMargin clockConfig) (cccStabilityCheckerFramesize clockConfig) (pure $ complement 0) domainDiffs -< wbB
       idC -< fIncDec
     ) ((), unitCS)
 
@@ -223,9 +223,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
         elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" True
         elfPath = elfDir </> "clock-control"
       memBlobsFromElf BigEndian elfPath Nothing)
-  margin = d2
 
-  framesize = SNat @(PeriodToCycles GthTx (Seconds 1))
   {-
     0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
     0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
