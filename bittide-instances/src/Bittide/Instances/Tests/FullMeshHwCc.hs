@@ -186,7 +186,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
   -- very confusing.
-  capture = (captureFlag .&&. allUp) .||. unsafeToActiveHigh sysRst
+  capture = captureFlag .||. unsafeToActiveHigh sysRst
 
   hardFrequencyAdjustments :: Signal GthTx (FINC, FDEC)
   hardFrequencyAdjustments =
@@ -296,7 +296,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
   nFincsSynced = xpmCdcGray txClock sysClk nFincs
   nFdecsSynced = xpmCdcGray txClock sysClk nFdecs
 
-  captureFlag = captureCounter .==. pure (maxBound :: Index (PeriodToCycles Basic125 (Milliseconds 2)))
+  captureFlag = captureCounter .==. pure (maxBound :: Index (PeriodToCycles Basic125 (Milliseconds 1)))
   captureCounter = register sysClk sysRst enableGen 0 (satSucc SatWrap <$> captureCounter)
 
   isFinc = speedChange1 .==. pure SpeedUp
@@ -430,6 +430,7 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       :> "stats6_rxRetries"
       :> "stats6_rxFullRetries"
       :> "stats6_failAfterUps"
+      :> "linkUps"
       :> Nil)
 
       (  "probe_test_start_no_control"
@@ -472,6 +473,7 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       (rxRetries     <$> stats6)
       (rxFullRetries <$> stats6)
       (failAfterUps  <$> stats6)
+      (bundle linkUps)
 
 -- | Count the number of FINC / FDEC Pulses, FINC => +1 , FDEC => -1.
 countfIncfDecs ::
