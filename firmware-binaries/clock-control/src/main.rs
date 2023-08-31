@@ -20,7 +20,7 @@ fn main() -> ! {
     let mut old_callisto_val = 0;
     loop {
         let callisto_val = unsafe { callisto_reg_addr.read_volatile() };
-        let change = match callisto_val.cmp(&old_callisto_val){
+        let change = match callisto_val.cmp(&old_callisto_val) {
             Ordering::Greater => SpeedChange::SpeedUp,
             Ordering::Less => SpeedChange::SlowDown,
             Ordering::Equal => SpeedChange::NoChange,
