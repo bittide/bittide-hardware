@@ -5,6 +5,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use core::cmp::Ordering;
+
 use bittide_sys::clock_control::{ClockControl, SpeedChange};
 
 #[cfg(not(test))]
@@ -18,12 +20,11 @@ fn main() -> ! {
     let mut old_callisto_val = 0;
     loop {
         let callisto_val = unsafe { callisto_reg_addr.read_volatile() };
-        let mut change = SpeedChange::NoChange;
-        if callisto_val > old_callisto_val {
-            change = SpeedChange::SpeedUp;
-        } else if callisto_val > old_callisto_val {
-            change = SpeedChange::SlowDown;
-        }
+        let change = match callisto_val.cmp(&old_callisto_val){
+            Ordering::Greater => SpeedChange::SpeedUp,
+            Ordering::Less => SpeedChange::SlowDown,
+            Ordering::Equal => SpeedChange::NoChange,
+        };
         old_callisto_val = callisto_val;
         cc.change_speed(change);
     }
