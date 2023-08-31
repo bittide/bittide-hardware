@@ -200,7 +200,7 @@ goFullMeshHwCcTest refClk sysClk rst rxns rxps miso =
       [wbA, wbB] <- (withClockResetEnable txClock clockControlReset enableGen $ processingElement @GthTx peConfig) -< unit
       fIncDecCallisto -< wbA
       fIncDec <- withClockResetEnable txClock clockControlReset enableGen $
-        clockControlWb (CccStabilityCheckerMargin clockConfig) (cccStabilityCheckerFramesize clockConfig) (pure $ complement 0) domainDiffs -< wbB
+        clockControlWb (cccStabilityCheckerMargin clockConfig) (cccStabilityCheckerFramesize clockConfig) (pure $ complement 0) domainDiffs -< wbB
       idC -< fIncDec
     ) ((), unitCS)
 
