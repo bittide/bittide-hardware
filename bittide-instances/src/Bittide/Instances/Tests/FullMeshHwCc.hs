@@ -385,11 +385,12 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   frequencyAdjustments = unbundle $ dflipflop callistoClock $
     fromMaybesL (False, False) <$>
     (zipWith orNothing <$> startTestsTx <*> bundle testIncDecs)
-
   testIncDecs = pure (False, False) :> hardFincFdecs :> softFincFdecs :> Nil
+
+  testDone = trueFor5s sysClk testRst $ mux (head <$> startTests) (or <$> bundle linkUps) allStable
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
-  done = trueFor5s sysClk testRst allStable .||. transceiversFailedAfterUp
+  done = testDone.||. transceiversFailedAfterUp
   success = fmap not transceiversFailedAfterUp
 
   startTestsTx = bundle $ fmap (xpmCdcSingle sysClk callistoClock) (unbundle startTests)
