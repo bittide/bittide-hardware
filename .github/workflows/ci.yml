@@ -562,8 +562,9 @@ jobs:
           ~/.cargo/bin/elf-limits \
             --instruction-mem-limit 64K \
             --data-mem-limit 64K \
+            clock-control \
             hello \
-            fdt-read
+            processing-element-test
         working-directory: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/
 
 

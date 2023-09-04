@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use bittide_sys::callisto;
+use bittide_sys::{callisto, clock_control};
 use std::mem::{align_of, size_of};
 
 /// Rust sibling of `Bittide.ClockControl.SpeedChange`.
@@ -213,19 +213,19 @@ const _: () = assert!(
     }
 );
 
-fn speed_change_from_ffi(val: &SpeedChange) -> callisto::SpeedChange {
+fn speed_change_from_ffi(val: &SpeedChange) -> clock_control::SpeedChange {
     match val {
-        SpeedChange::SpeedUp => callisto::SpeedChange::SpeedUp,
-        SpeedChange::SlowDown => callisto::SpeedChange::SlowDown,
-        SpeedChange::NoChange => callisto::SpeedChange::NoChange,
+        SpeedChange::SpeedUp => clock_control::SpeedChange::SpeedUp,
+        SpeedChange::SlowDown => clock_control::SpeedChange::SlowDown,
+        SpeedChange::NoChange => clock_control::SpeedChange::NoChange,
     }
 }
 
-fn speed_change_to_ffi(val: &callisto::SpeedChange) -> SpeedChange {
+fn speed_change_to_ffi(val: &clock_control::SpeedChange) -> SpeedChange {
     match val {
-        callisto::SpeedChange::SpeedUp => SpeedChange::SpeedUp,
-        callisto::SpeedChange::SlowDown => SpeedChange::SlowDown,
-        callisto::SpeedChange::NoChange => SpeedChange::NoChange,
+        clock_control::SpeedChange::SpeedUp => SpeedChange::SpeedUp,
+        clock_control::SpeedChange::SlowDown => SpeedChange::SlowDown,
+        clock_control::SpeedChange::NoChange => SpeedChange::NoChange,
     }
 }
 
@@ -315,11 +315,24 @@ pub unsafe extern "C" fn __c_callisto_rust(
 ) {
     let mut state = control_state_from_ffi(&*control_state_ptr);
 
+    let vsi = vsi_from_ptr(stability_checks_ptr);
+    let data_counts = data_counts_from_ptr(data_counts_ptr);
+
+    let links_stable = {
+        let mut mask = 0u32;
+        for (i, indication) in vsi.iter().enumerate() {
+            if indication.stable() {
+                mask |= 1 << i;
+            }
+        }
+        mask
+    };
+
     callisto::callisto(
         &control_config_from_ffi(&*(config_ptr as *const ControlConfig)),
         availability_mask,
-        vsi_from_ptr(stability_checks_ptr),
-        data_counts_from_ptr(data_counts_ptr),
+        links_stable,
+        data_counts.iter().copied(),
         &mut state,
     );
 

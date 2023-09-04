@@ -12,6 +12,10 @@ resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+panic-handler = []
+default = []
+
 [dependencies]
 fdt = "0.1.0"
 ufmt = "0.2.0"

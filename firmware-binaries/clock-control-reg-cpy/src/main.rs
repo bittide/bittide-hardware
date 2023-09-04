@@ -12,7 +12,7 @@ use riscv_rt::entry;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32).unwrap() };
+    let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32) };
 
     let callisto_reg_addr = 0x0000_0004 as *const u32;
 
@@ -25,5 +25,12 @@ fn main() -> ! {
         };
 
         cc.change_speed(change);
+    }
+}
+
+#[panic_handler]
+fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
+    loop {
+        continue;
     }
 }

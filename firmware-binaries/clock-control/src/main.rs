@@ -5,25 +5,44 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_sys::clock_control::{ClockControl, SpeedChange};
+use core::panic::PanicInfo;
 
+use bittide_sys::{
+    callisto::{self, ControlConfig, ControlSt, ReframingState},
+    clock_control::{ClockControl, SpeedChange},
+};
 #[cfg(not(test))]
 use riscv_rt::entry;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32).unwrap() };
+    let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32) };
 
-    let callisto_reg_addr = 0x0000_0004 as *const u32;
+    let config = ControlConfig {
+        target_count: 0,
+        wait_time: 0,
+        reframing_enabled: 0,
+    };
+    let mut state = ControlSt {
+        z_k: 0,
+        b_k: SpeedChange::NoChange,
+        steady_state_target: 0.0f32,
+        rf_state: ReframingState::Detect,
+    };
 
     loop {
-        let callisto_val = unsafe { callisto_reg_addr.read_volatile() };
-        let change = match callisto_val {
-            0 => SpeedChange::SpeedUp,
-            1 => SpeedChange::SlowDown,
-            _ => SpeedChange::NoChange,
-        };
+        let data_counts = cc.data_counts().map(|x| x as isize);
+        let links_stable = cc.links_stable();
 
-        cc.change_speed(change);
+        callisto::callisto(&config, 0b0000_1111, links_stable, data_counts, &mut state);
+
+        cc.change_speed(state.b_k);
+    }
+}
+
+#[panic_handler]
+fn panic_handler(_info: &PanicInfo) -> ! {
+    loop {
+        continue;
     }
 }
