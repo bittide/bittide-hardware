@@ -144,17 +144,17 @@ instance (SizeOf SpeedChange ~ 4, Alignment SpeedChange ~ 4)
   peek p = from <$> peek (castPtr p :: Ptr CUInt)
    where
     from = \case
-      0 -> SpeedUp
+      0 -> NoChange
       1 -> SlowDown
-      2 -> NoChange
+      2 -> SpeedUp
       _ -> error "out of range"
 
   poke p = poke (castPtr p :: Ptr CUInt) . to
    where
     to = \case
-      SpeedUp  -> 0
+      NoChange -> 0
       SlowDown -> 1
-      NoChange -> 2
+      SpeedUp  -> 2
 
 -- | Converts speed changes into a normalized scalar, which reflects
 -- their effect on clock control.

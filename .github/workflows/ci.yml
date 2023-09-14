@@ -225,12 +225,37 @@ jobs:
     name: Generate clock control simulation report
     runs-on: [self-hosted, compute]
     if: always()
-    needs: [build, lint, elastic-buffer-sim-topologies-matrix, elastic-buffer-sim-topologies]
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure
+    needs: [build, lint, elastic-buffer-sim-topologies-matrix, elastic-buffer-sim-topologies, bittide-instances-hardware-in-the-loop]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project cabal.project.local
+
+      - name: Update Cabal index info
+        run: |
+          cabal update
+          cabal freeze
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cabal-nix/store
+
+          key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
+          restore-keys: packages-cachebust-3-
+          fail-on-cache-miss: true
+
       - name: Download simulation artifacts
         uses: actions/download-artifact@v3
         with:
@@ -244,17 +269,28 @@ jobs:
           # the required artifacts instead.
           path: artifacts
 
-      - name: Generate final report
-        shell: git-nix-shell {0} --pure
+      - name: Generate final simulation report
         run: |
           set +f # Enable globbing
           pdfunite artifacts/*/report.pdf report.pdf
 
-      - name: Upload report
+      - name: Upload simulation report
         uses: actions/upload-artifact@v3
         with:
           name: Clock Control Simulation Report
           path: report.pdf
+          retention-days: 14
+
+      - name: Generate HITL based plots
+        run: |
+          mkdir hitl-plots
+          ./cargo.sh build --release && cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Tests.FullMeshHwCc.fullMeshHwCcTest/ila-data/probe_test_start/ hitl-plots Bittide_Instances_Tests_FullMeshHwCc_fullMeshHwCcTest_callistoClockControlWithIla
+
+      - name: Upload HITL based plots
+        uses: actions/upload-artifact@v3
+        with:
+          name: Clock Control HITL Plots
+          path: hitl-plots
           retention-days: 14
 
   elastic-buffer-sim-tests:
