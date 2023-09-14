@@ -681,7 +681,7 @@ jobs:
       check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
 
   bittide-instances-hdl:
-    name: bittide-instances synthesis
+    name: synth
     runs-on: [self-hosted, compute]
     defaults:
       run:
@@ -789,7 +789,7 @@ jobs:
           retention-days: 14
 
   bittide-instances-hardware-in-the-loop:
-    name: bittide-instances hardware-in-the-loop tests
+    name: HITL
     runs-on: [self-hosted, hardware-access]
     defaults:
       run:
@@ -827,6 +827,11 @@ jobs:
 
           .github/scripts/with_vivado.sh \
             vivado -mode batch -source "${tcl_test}"
+
+      - name: Shorten ILA data dump names
+        if: always()
+        run: |
+          python3 bittide-shake/data/scripts/shorten_names.py
 
       - name: Archive ILA data
         if: always()
