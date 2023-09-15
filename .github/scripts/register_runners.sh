@@ -88,11 +88,21 @@ do
     #  --labels vivado_standard_2022.1_0420_0327 \
 
     # Remove previous systemd jobs
-    sudo rm -f "/etc/systemd/system/multi-user.target.wants/actions.runner.${ORG}-${REPO}.${runner_name}.service"
-    sudo rm -f "/etc/systemd/system/actions.runner.${ORG}-${REPO}.${runner_name}.service"
+    service_name="actions.runner.${ORG}-${REPO}.${runner_name}.service"
+    service_file="/etc/systemd/system/${service_name}"
+    sudo rm -f "/etc/systemd/system/multi-user.target.wants/${service_name}"
+    sudo rm -f "${service_file}"
 
     # Install as service
     sudo ./svc.sh install
+
+    # Remove ill-advised entries
+    sudo sed -i '/^KillMode=/d' "${service_file}"
+    sudo sed -i '/^KillSignal=/d' "${service_file}"
+
+    # Make systemd aware of changes
+    sudo systemctl daemon-reload
+    sudo systemctl restart "${service_name}"
 
     cd ..
 done
