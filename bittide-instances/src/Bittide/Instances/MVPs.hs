@@ -11,22 +11,14 @@ import Clash.Prelude
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Clash.Cores.Xilinx.Extra (ibufds)
+import Data.Maybe
 
 import Bittide.Instances.Domains
 import Bittide.ElasticBuffer
-import Bittide.ClockControl.Callisto
 import Bittide.ClockControl
+import Bittide.ClockControl.Callisto
+import Bittide.ClockControl.Callisto.Util (FINC, FDEC, stickyBits, speedChangeToPins)
 import Bittide.ClockControl.StabilityChecker (stabilityChecker, settled)
-
-
-type FINC = Bool
-type FDEC = Bool
-
-speedChangeToPins :: SpeedChange -> (FINC, FDEC)
-speedChangeToPins = \case
- SpeedUp -> (True, False)
- SlowDown -> (False, True)
- NoChange -> (False, False)
 
 clockControlDemo1 ::
   "USER_SMA_CLOCK" ::: DiffClock Basic200A ->
@@ -93,7 +85,7 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
  where
   speedChangeSticky =
     withClockResetEnable clkControlled rstControlled enableGen $
-      stickyBits d15 (speedChangeToPins . speedChange <$> callistoResult)
+      stickyBits d15 (speedChangeToPins . fromMaybe NoChange . maybeSpeedChange  <$> callistoResult)
   availableLinkMask = pure $ complement 0 -- all links available
   callistoResult =
     callistoClockControl @1 clkControlled clockControlReset enableGen
@@ -144,33 +136,6 @@ clockControlDemo0 clkSys clkSma =
     noReset
 
   clkControlled = ibufds clkSma
-
--- | Holds any @a@ which has any bits set for @stickyCycles@ clock cycles.
--- On receiving a new @a@ with non-zero bits, it sets the new incoming value as it output
--- and holds it for @stickyCycles@ clock cycles.
-stickyBits ::
-  forall dom stickyCycles a .
-  ( HiddenClockResetEnable dom
-  , KnownNat (BitSize a)
-  , NFDataX a
-  , BitPack a
-  , 1 <= stickyCycles) =>
-  SNat stickyCycles ->
-  Signal dom a ->
-  Signal dom a
-stickyBits SNat = mealy go (0 , unpack 0)
- where
-  go :: (Index stickyCycles, a) -> a -> ((Index stickyCycles, a), a)
-  go (count, storedBits) incomingBits = ((nextCount, nextStored), storedBits)
-   where
-    newIncoming = pack incomingBits /= 0
-    predCount = satPred SatZero count
-    holdingBits = count /= 0
-    (nextStored, nextCount)
-      | newIncoming = (incomingBits, maxBound)
-      | holdingBits = (storedBits, predCount)
-      | otherwise   = (unpack 0, predCount)
-
 
 makeTopEntity 'clockControlDemo0
 makeTopEntity 'clockControlDemo1

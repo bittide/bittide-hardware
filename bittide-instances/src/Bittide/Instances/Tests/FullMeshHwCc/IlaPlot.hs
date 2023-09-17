@@ -177,7 +177,7 @@ callistoClockControlWithIla sysClk clk rst ena ccc IlaControl{..} mask ebs =
         <*> (orNothing <$> seU <*> (settled <$> ind))
     in PlotData
       <$> bundle (zipWith4 combine ebs stableUpdates settledUpdates indicators)
-      <*> accwindow height clk rst ena (speedChange <$> result)
+      <*> accwindow height clk rst ena (fromMaybe NoChange . maybeSpeedChange <$> result)
       <*> mux modeUpdate (rfStageChange <$> result) (pure Stable)
 
   plotData = mux calibrate (pure Nothing)

@@ -20,6 +20,7 @@ import Bittide.ClockControl.StabilityChecker
 import Bittide.ElasticBuffer
 import Bittide.Instances.Domains
 import Bittide.SharedTypes
+import Data.Maybe
 
 si5391Spi ::
   "CLK_125MHZ_P" ::: Clock Basic125 ->
@@ -94,7 +95,7 @@ callistoSpi clk125 clkRecovered clkControlled rst125 locked miso =
 
   -- Produce a SpeedChange based on the elastic buffer's datacount.
   speedChange200 =
-    speedChange <$>
+    (fromMaybe NoChange . maybeSpeedChange) <$>
       callistoClockControl @1 @12 clkControlled clockControlReset enableGen
         clockConfig (pure maxBound) (bufferOccupancy :> Nil)
 

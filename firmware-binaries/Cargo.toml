@@ -17,5 +17,6 @@ members = [
   "examples/hello",
   
   "processing-element-test",
+  "clock-control",
 ]
 resolver = "2"

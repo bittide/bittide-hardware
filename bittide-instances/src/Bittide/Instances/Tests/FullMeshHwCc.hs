@@ -4,6 +4,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
 
+{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 
 -- | Test whether clock boards are configurable and transceiver links come
@@ -25,26 +26,41 @@ module Bittide.Instances.Tests.FullMeshHwCc where
 
 import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
+import qualified Clash.Explicit.Prelude as E
 
 import Control.Arrow ((***), second)
+import Data.Bool (bool)
+import Data.Maybe (fromMaybe)
+import Data.Proxy
+import Language.Haskell.TH (runIO)
+import LiftType (liftTypeQ)
+import System.Directory
+import System.FilePath
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
+import Bittide.ClockControl.Callisto.Util (stickyBits, speedChangeToPins, FINC, FDEC)
+import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState(Error, Finished), si539xSpi)
+import Bittide.DoubleBufferedRam
+  ( InitialContent(Reloadable), ContentType(Blob), RegisterWritePriority(CircuitPriority)
+  , registerWb
+  )
 import Bittide.Counter
 import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
+import Bittide.ProcessingElement (PeConfig(..), processingElement)
+import Bittide.ProcessingElement.Util (memBlobsFromElf)
+import Bittide.SharedTypes (Bytes, ByteOrder(BigEndian))
 import Bittide.Transceiver
 
 import Bittide.Instances.Tests.FullMeshHwCc.IlaPlot
-import Bittide.Instances.MVPs (stickyBits, speedChangeToPins, FINC, FDEC)
 
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.VIO (vioProbe)
-import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Cores.Xilinx.Xpm.Cdc.Gray
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
@@ -53,12 +69,10 @@ import Clash.Explicit.Signal.Extra
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
-import Data.Bool (bool)
-import Data.Proxy
+import Protocols
+import Protocols.Wishbone
+import Protocols.Internal
 
-import LiftType (liftTypeQ)
-
-import qualified Clash.Explicit.Prelude as E
 
 type NodeCount = 8 :: Nat
 type DataCountSize = 25 :: Nat
@@ -81,9 +95,110 @@ c_CLOCK_PATHS =
 -- domain encodes them as related.
 type TransceiverWires dom = Vec 7 (Signal dom (BitVector 1))
 
--- | Worker function for 'fullMeshHwCcTest'. See module documentation for more
--- information.
-goFullMeshHwCcTest ::
+unitCS :: CSignal dom ()
+unitCS = CSignal (pure ())
+
+-- | Instantiates a RiscV core that copies instructions coming from a hardware
+-- implementation of Callisto (see 'fullMeshHwTest') and copies it to a register
+-- tied to FINC/FDEC.
+fullMeshRiscvCopyTest ::
+  forall dom .
+  KnownDomain dom =>
+  Clock dom ->
+  Reset dom ->
+  Signal dom (CallistoResult 7) ->
+  Vec 7 (Signal dom (DataCount 32)) ->
+  -- Freq increase / freq decrease request to clock board
+  ( "FINC" ::: Signal dom Bool
+  , "FDEC" ::: Signal dom Bool
+  )
+fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
+ where
+  (_, CSignal fIncDec) = toSignals
+    ( circuit $ \unit -> do
+      [wbA, wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< unit
+      fIncDecCallisto -< wbA
+      fIncDec <- withClockResetEnable clk rst enableGen $
+        clockControlWb margin framesize (pure $ complement 0) dataCounts -< wbB
+      idC -< fIncDec
+    ) ((), unitCS)
+
+  fIncDecCallisto ::
+    forall aw nBytes .
+    (KnownNat aw, 2 <= aw, nBytes ~ 4) =>
+    Circuit
+      (Wishbone dom 'Standard aw (Bytes nBytes))
+      ()
+  fIncDecCallisto = Circuit goFIncDecCallisto
+   where
+    goFIncDecCallisto (wbM2S, _) = (wbS2M, ())
+     where
+      (_, wbS2M) = withClockResetEnable clk rst enableGen $
+        registerWb
+          CircuitPriority
+          (0 :: Bytes nBytes, 0 :: Bytes nBytes)
+          wbM2S
+          (fmap (fmap ((,0) . extend . pack)) fincfdec)
+
+      fincfdec :: Signal dom (Maybe SpeedChange)
+      fincfdec =
+        clearOnAck
+          <$> fmap acknowledge wbS2M
+          <*> fmap maybeSpeedChange callistoResult
+
+      -- Clear register if register is read from (or written to, but we assume
+      -- this doesn't happen). This makes sure the RiscV doesn't read the same
+      -- result from the hardware clock control twice.
+      clearOnAck :: ("ACK" ::: Bool) -> Maybe SpeedChange -> Maybe SpeedChange
+      clearOnAck False maybeSpeedChange   = maybeSpeedChange
+      clearOnAck True  (Just speedChange) = Just speedChange
+      clearOnAck True  Nothing            = Just NoChange
+
+  margin = d2
+
+  framesize = SNat @(PeriodToCycles dom (Seconds 1))
+
+  (   (_iStart, _iSize, iMem)
+    , (_dStart, _dSize, dMem)) = $(do
+
+    let
+      findProjectRoot :: IO FilePath
+      findProjectRoot = goUp =<< getCurrentDirectory
+        where
+          goUp :: FilePath -> IO FilePath
+          goUp path
+            | isDrive path = error "Could not find 'cabal.project'"
+            | otherwise = do
+                exists <- doesFileExist (path </> projectFilename)
+                if exists then
+                  return path
+                else
+                  goUp (takeDirectory path)
+
+          projectFilename = "cabal.project"
+
+    root <- runIO findProjectRoot
+
+    let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/clock-control"
+
+    memBlobsFromElf BigEndian elfPath Nothing)
+
+  {-
+    0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
+    0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
+    0b00xxxxx_xxxxxxxx 0b00 0x0x FINC/FDEC register
+    0b11xxxxx_xxxxxxxx 0b11 0xCx memory mapped hardware clock control
+  -}
+  peConfig =
+    PeConfig
+      (0b10 :> 0b01 :> 0b00 :> 0b11 :> Nil)
+      (Reloadable $ Blob iMem)
+      (Reloadable $ Blob dMem)
+
+-- | Instantiates a hardware implementation of Callisto and exports its results. Can
+-- be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
+-- results to a RiscV core (see 'fullMeshRiscvCopyTest')
+fullMeshHwTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Basic200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
@@ -94,6 +209,10 @@ goFullMeshHwCcTest ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "FINC_FDEC" ::: Signal GthTx (FINC, FDEC)
+  , "CALLISTO_CLOCK" ::: Clock GthTx
+  , "CALLISTO_RESULT" ::: Signal GthTx (CallistoResult 7)
+  , "CALLISTO_RESET" ::: Reset GthTx
+  , "DATA_COUNTERS" ::: Vec 7 (Signal GthTx (DataCount 32))
   , "stats" ::: Vec 7 (Signal Basic125 GthResetStats)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
@@ -105,11 +224,15 @@ goFullMeshHwCcTest ::
   , "ALL_UP" ::: Signal Basic125 Bool
   , "ALL_STABLE"   ::: Signal Basic125 Bool
   )
-goFullMeshHwCcTest refClk sysClk testRst IlaControl{..} rxns rxps miso =
+fullMeshHwTest refClk sysClk testRst IlaControl{..} rxns rxps miso =
   fincFdecIla `hwSeqX`
   ( txns
   , txps
   , frequencyAdjustments
+  , txClock
+  , callistoResult
+  , clockControlReset
+  , domainDiffs
   , stats
   , spiDone
   , spiOut
@@ -159,28 +282,24 @@ goFullMeshHwCcTest refClk sysClk testRst IlaControl{..} rxns rxps miso =
 
   availableLinkMask = pure maxBound
 
-  (speedChange1, _stabilities, allStable0, _allCentered) = unbundle
-    $ fmap (\CallistoResult{..} -> (speedChange, stability, allStable, allSettled))
-    $ callistoClockControlWithIla @(NodeCount - 1) @DataCountSize @GthTx
-        sysClk txClock clockControlReset enableGen
-        clockControlConfig IlaControl{..} availableLinkMask
-          $ fmap (fmap resize) domainDiffs
+  (maybeSpeedChange1, _stabilities, allStable0, _allCentered) = unbundle $
+    fmap
+      (\CallistoResult{..} -> (maybeSpeedChange, stability, allStable, allSettled))
+      callistoResult
+
+  callistoResult =
+    callistoClockControlWithIla @(NodeCount - 1) @DataCountSize @GthTx
+      sysClk txClock clockControlReset enableGen
+      clockControlConfig IlaControl{..} availableLinkMask
+      (fmap (fmap resize) domainDiffs)
 
   speedChange2 =
-    mux (xpmCdcSingle sysClk txClock calibrate)
-      (pure NoChange)
-      speedChange1
+    mux
+      (xpmCdcSingle sysClk txClock calibrate)
+      (pure Nothing)
+      maybeSpeedChange1
 
   allStable1 = xpmCdcSingle txClock sysClk allStable0
-
-  dataCount0 :>
-    dataCount1 :>
-    dataCount2 :>
-    dataCount3 :>
-    dataCount4 :>
-    dataCount5 :>
-    dataCount6 :>
-    Nil = (fmap truncateDataCount . dataCountCdc) <$> domainDiffs
 
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
@@ -198,15 +317,8 @@ goFullMeshHwCcTest refClk sysClk testRst IlaControl{..} rxns rxps miso =
       :> "probe_nFincs"
       :> "probe_nFdecs"
       :> "probe_net_nFincs"
-      :> "probe_dataCount_0"
-      :> "probe_dataCount_1"
-      :> "probe_dataCount_2"
-      :> "probe_dataCount_3"
-      :> "probe_dataCount_4"
-      :> "probe_dataCount_5"
-      :> "probe_dataCount_6"
       :> Nil
-    ){depth = D65536}
+    ){depth = D16384}
     sysClk
 
     -- Trigger as soon as we come out of reset
@@ -221,39 +333,24 @@ goFullMeshHwCcTest refClk sysClk testRst IlaControl{..} rxns rxps miso =
     nFincsSynced
     nFdecsSynced
     (fmap unsignedToSigned nFincsSynced - fmap unsignedToSigned nFdecsSynced)
-    dataCount0
-    dataCount1
-    dataCount2
-    dataCount3
-    dataCount4
-    dataCount5
-    dataCount6
 
   nFincsSynced = xpmCdcGray txClock sysClk nFincs
   nFdecsSynced = xpmCdcGray txClock sysClk nFdecs
 
-  truncateDataCount :: Signed 32 -> Signed 16
-  truncateDataCount = truncateB
-
-  dataCountCdc =
-      regMaybe sysClk sysRst enableGen 0
-    . xpmCdcMaybeLossy txClock sysClk
-    . fmap Just
-
   captureFlag = captureCounter .==. pure (maxBound :: Index (PeriodToCycles Basic125 (Milliseconds 1)))
   captureCounter = register sysClk sysRst enableGen 0 (satSucc SatWrap <$> captureCounter)
 
-  isFinc = speedChange2 .==. pure SpeedUp
+  isFinc = speedChange2 .==. pure (Just SpeedUp)
   nFincs = register txClock clockControlReset (toEnable isFinc) (0 :: Unsigned 32) (nFincs + 1)
 
-  isFdec = speedChange2 .==. pure SlowDown
+  isFdec = speedChange2 .==. pure (Just SlowDown)
   nFdecs = register txClock clockControlReset (toEnable isFdec) (0 :: Unsigned 32) (nFdecs + 1)
 
   frequencyAdjustments :: Signal GthTx (FINC, FDEC)
   frequencyAdjustments =
     E.delay txClock enableGen minBound {- glitch filter -} $
       withClockResetEnable txClock clockControlReset enableGen $
-        stickyBits @GthTx d20 (speedChangeToPins <$> speedChange2)
+        stickyBits @GthTx d20 (speedChangeToPins . fromMaybe NoChange <$> speedChange2)
 
   (domainDiffs, _domainActives) =
     unzip $ fmap unbundle $ rxDiffCounter <$> rxClocks <*> linkUpsRx
@@ -320,7 +417,7 @@ fullMeshHwCcTest ::
       )
   )
 fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, unbundle fincFdecs, syncOut, spiDone, spiOut)
+  (txns, txps, (riscvFinc, riscvFdec), syncOut, spiDone, spiOut)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Basic200
 
@@ -389,9 +486,13 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   syncEnd = isFalling sysClk testRst enableGen False syncActive
 
-  (txns, txps, fincFdecs, stats, spiDone, spiOut
-    , transceiversFailedAfterUp, allUp, allStable) =
-    goFullMeshHwCcTest refClk sysClk testRst IlaControl{..} rxns rxps miso
+  (   txns, txps, _hwFincFdecs, callistoClock, callistoResult, callistoReset
+    , dataCounts, stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
+    , allStable ) =
+    fullMeshHwTest refClk sysClk testRst IlaControl{..} rxns rxps miso
+
+  (riscvFinc, riscvFdec) =
+    fullMeshRiscvCopyTest callistoClock callistoReset callistoResult dataCounts
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 

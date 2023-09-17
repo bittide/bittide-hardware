@@ -7,7 +7,7 @@ module Bittide.ClockControl.Callisto.Util where
 
 import Clash.Prelude
 
-import Bittide.ClockControl (DataCount)
+import Bittide.ClockControl (DataCount, SpeedChange(..))
 
 -- | Safe 'DataCount' to 'Signed' conversion.
 -- (works for both: 'DataCount' being 'Signed' or 'Unsigned')
@@ -69,3 +69,37 @@ safePopCountTo32 ::
   Signed 32
 safePopCountTo32 =
   sumTo32 . unpack @(Vec n (DataCount 1))
+
+type FINC = Bool
+type FDEC = Bool
+
+speedChangeToPins :: SpeedChange -> (FINC, FDEC)
+speedChangeToPins = \case
+ SpeedUp -> (True, False)
+ SlowDown -> (False, True)
+ NoChange -> (False, False)
+
+-- | Holds any @a@ which has any bits set for @stickyCycles@ clock cycles.
+-- On receiving a new @a@ with non-zero bits, it sets the new incoming value as it output
+-- and holds it for @stickyCycles@ clock cycles.
+stickyBits ::
+  forall dom stickyCycles a .
+  ( HiddenClockResetEnable dom
+  , NFDataX a
+  , BitPack a
+  , 1 <= stickyCycles) =>
+  SNat stickyCycles ->
+  Signal dom a ->
+  Signal dom a
+stickyBits SNat = mealy go (0 , unpack 0)
+ where
+  go :: (Index stickyCycles, a) -> a -> ((Index stickyCycles, a), a)
+  go (count, storedBits) incomingBits = ((nextCount, nextStored), storedBits)
+   where
+    newIncoming = pack incomingBits /= 0
+    predCount = satPred SatZero count
+    holdingBits = count /= 0
+    (nextStored, nextCount)
+      | newIncoming = (incomingBits, maxBound)
+      | holdingBits = (storedBits, predCount)
+      | otherwise   = (unpack 0, predCount)
