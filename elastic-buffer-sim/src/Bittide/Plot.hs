@@ -10,6 +10,7 @@
 
 module Bittide.Plot
   ( OutputMode(..)
+  , ReframingStage(..)
   , SimulationSettings(..)
   , plotDiamond
   , plotCyclic
@@ -23,6 +24,7 @@ module Bittide.Plot
   , plotLine
   , plotHyperCube
   , plotGraph
+  , plotTopology
   , simulateTopology
   ) where
 
@@ -124,6 +126,16 @@ data SimulationSettings =
     , maxStartOff  :: Int
     , save         :: G.Graph -> [Int64] -> [Int] -> Maybe Bool -> IO ()
     }
+
+-- | 'Bittide.ClockControl.Callisto.ReframingState' reduced to its
+-- stages.
+data ReframingStage = RSDetect | RSWait | RSDone deriving (Show)
+
+fromRfState :: ReframingState -> ReframingStage
+fromRfState = \case
+  Detect {} -> RSDetect
+  Wait {}   -> RSWait
+  Done {}   -> RSDone
 
 plotDiamond :: (?settings :: SimulationSettings) => IO Bool
 plotDiamond =
@@ -318,6 +330,40 @@ invalidArgs invalidGraph invalidMargin invalidFramesize
   | invalidFramesize = die "ERROR: the given frame size must be positive"
   | otherwise        = return False
 
+
+plotTopology ::
+  (KnownNat n, ToJSON b, ToJSON t, ToJSON d) =>
+  FilePath ->
+  Graph n ->
+  V.Vec n [(t, b, ReframingStage, [(d, SC.StabilityIndication)])] ->
+  IO ()
+plotTopology dir graph =
+  uncurry (matplotWrite dir) . V.unzip . V.imap plotDats
+ where
+  plotDats i =
+      bimap
+        ( withLegend
+        . (@@ [o2 "label" $ fromEnum i])
+        . uncurry plot
+        . unzip
+        )
+        ( foldPlots
+        . fmap (\(j, p) -> withLegend
+                   (p @@ [o2 "label" $ show i <> " ← " <> show j])
+               )
+        . zip (filter (hasEdge graph i) [0,1..])
+        . fmap plotEbData
+        . transpose
+        )
+    . unzip
+    . fmap (\(a,b,c,d) -> ((a,b), ((a,c),) <$> d))
+
+  withLegend =
+    ( @@ [ o2 "bbox_to_anchor" (1.01 :: Double, 1 :: Double)
+         , o2 "loc" "upper left"
+         ]
+    ) . (% legend)
+
 -- | Creates and write plots for a given topology according to the
 -- given output mode.
 simulateTopology ::
@@ -368,7 +414,8 @@ simulateTopology ccc graph = do
   saveSettings Nothing
 
   case mode of
-    PDF -> plotTopology simResult
+    PDF -> plotTopology dir graph
+             $ fmap (fmap (\(a,b,c,d) -> (a,b,fromRfState c,d))) simResult
     CSV -> dumpCsv simResult
 
   let result = allSettled $ V.map last simResult
@@ -390,33 +437,6 @@ simulateTopology ccc graph = do
   sim o =
    simulate graph stopStable samples periodsize
     . simulationEntity graph ccc o
-
-  plotTopology =
-    uncurry (matplotWrite dir) . V.unzip . V.imap plotDats
-
-  plotDats i =
-      bimap
-        ( withLegend
-        . (@@ [o2 "label" $ fromEnum i])
-        . uncurry plot
-        . unzip
-        )
-        ( foldPlots
-        . fmap (\(j, p) -> withLegend
-                   (p @@ [o2 "label" $ show i <> " ← " <> show j])
-               )
-        . zip (filter (hasEdge graph i) [0,1..])
-        . fmap plotEbData
-        . transpose
-        )
-    . unzip
-    . fmap (\(a,b,c,d) -> ((a,b), ((a,c),) <$> d))
-
-  withLegend =
-    ( @@ [ o2 "bbox_to_anchor" (1.01 :: Double, 1 :: Double)
-         , o2 "loc" "upper left"
-         ]
-    ) . (% legend)
 
   givenClockOffsets =
       V.unsafeFromList
@@ -452,7 +472,7 @@ data Marking = Waiting | Stable | Settled | None deriving (Eq)
 -- is in the waiting state.
 plotEbData ::
   (ToJSON t, ToJSON d) =>
-  [((t, ReframingState), (d, SC.StabilityIndication))] ->
+  [((t, ReframingStage), (d, SC.StabilityIndication))] ->
   Matplotlib
 plotEbData xs = foldPlots markedIntervals % ebPlot
  where
@@ -474,11 +494,11 @@ plotEbData xs = foldPlots markedIntervals % ebPlot
   collectIntervals ((previous, ys), markings) [] =
     mindMarking ys markings previous
 
-  collectIntervals ((previous, ys), markings) (((t, rfState), (d, sci)) : xr) =
+  collectIntervals ((previous, ys), markings) (((t, mode), (d, sci)) : xr) =
     collectIntervals a' xr
    where
-    current = case rfState of
-      Wait {}            -> Waiting
+    current = case mode of
+      RSWait {}          -> Waiting
       _
         | SC.settled sci -> Settled
         | SC.stable sci  -> Stable

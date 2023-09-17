@@ -193,11 +193,6 @@ callisto ControlConfig{..} mask scs dataCounts state =
       -- TODO: Propagate errors upwards?
       F.NaN -> NoChange
 
-  sign = \case
-    NoChange -> 0
-    SpeedUp  -> 1
-    SlowDown -> -1
-
   rfStateUpdate stable target st@ControlSt{..}
     | not reframingEnabled = st
     | otherwise = case rfState of

@@ -115,6 +115,28 @@ executable sim
   -- enable rtsopts so we can setup memory limits
   ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
 
+executable plot
+  import: common-options
+  main-is: plot/Main.hs
+  build-depends:
+    array,
+    bittide,
+    bittide-instances,
+    bytestring,
+    cassava,
+    cassava-conduit,
+    conduit,
+    containers,
+    directory,
+    elastic-buffer-sim,
+    filepath,
+    text,
+    vector
+  default-language: Haskell2010
+  default-extensions: ImplicitPrelude
+  -- enable rtsopts so we can setup memory limits
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+
 test-suite unittests
   import:           common-options
   type:             exitcode-stdio-1.0
