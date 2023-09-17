@@ -30,6 +30,9 @@ haxiomsGroup = testGroup "Haxioms"
   , testPropertyNamed "prop_useLowerLimit holds" "prop_useLowerLimit" prop_useLowerLimit
   , testPropertyNamed "prop_oneMore holds" "prop_oneMore" prop_oneMore
   , testPropertyNamed "prop_isOne holds" "prop_isOne" prop_isOne
+  , testPropertyNamed "prop_subZeroMin holds" "prop_subZeroMin" prop_subZeroMin
+  , testPropertyNamed "prop_minLeq holds" "prop_minLeq" prop_minLeq
+  , testPropertyNamed "prop_maxGeqPlus holds" "prop_maxGeqPlus" prop_maxGeqPlus
   ]
 
 -- | Generate a 'Natural' greater than or equal to /n/. Can generate 'Natural's
@@ -250,3 +253,38 @@ oneMore :: Natural -> Natural
 oneMore = \case
   0 -> 0
   _ -> 1
+
+-- | Test whether the following equation (supplied by 'subZeroMin') holds:
+--
+--     a ~ SubZero a b + Min a b
+--
+prop_subZeroMin :: Property
+prop_subZeroMin = property $ do
+  a <- forAll (genNatural 0)
+  b <- forAll (genNatural 0)
+  assert (a == subZero a b + min a b)
+
+-- | See 'Data.Constraint.Nat.Extra'.
+subZero :: Natural -> Natural -> Natural
+subZero a b = if a <= b then 0 else a - b
+
+-- | Test whether the following equation (supplied by 'minLeq') holds:
+--
+--     Min a b <= b
+--
+prop_minLeq :: Property
+prop_minLeq = property $ do
+  a <- forAll (genNatural 0)
+  b <- forAll (genNatural 0)
+  assert (min a b <= b)
+
+-- | Test whether the following equation (supplied by 'maxLeqPlus') holds:
+--
+--     a <= Max a b + c
+--
+prop_maxGeqPlus :: Property
+prop_maxGeqPlus = property $ do
+  a <- forAll (genNatural 0)
+  b <- forAll (genNatural 0)
+  c <- forAll (genNatural 0)
+  assert (a <= max a b + c)

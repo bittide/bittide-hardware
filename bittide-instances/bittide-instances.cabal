@@ -107,7 +107,7 @@ library
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.FullMeshHwCc
     Bittide.Instances.Hitl.FullMeshSwCc
-    Bittide.Instances.Hitl.FullMeshHwCc.IlaPlot
+    Bittide.Instances.Hitl.IlaPlot
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.Transceivers
     Bittide.Instances.Hitl.VexRiscv
@@ -172,12 +172,16 @@ test-suite unittests
   -- We need -xm20000000 because of a memory allocation bug after a kernel update
   ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   other-modules:
+    Tests.OverflowResistantDiff
     Paths_bittide_instances
   autogen-modules:
     Paths_bittide_instances
   build-depends:
     , bittide-instances
+    , clash-prelude-hedgehog >= 1.6 && < 1.10
     , filepath
+    , hedgehog >= 1.0 && < 1.1
     , pretty-simple
     , tasty
     , tasty-golden
+    , tasty-hedgehog >= 1.2 && < 1.3

@@ -525,7 +525,7 @@ matplotWrite dir clockDats ebDats = do
   void $ file (dir </> "clocks" <> ".pdf") $ constrained
     ( xlabel "Time (fs)"
     % ylabel "Relative period (fs) [0 = ideal frequency]"
-    % foldPlots (V.toList clockDats)
+    % foldPlots (reverse $ V.toList clockDats)
     )
   void $ file (dir </> "elasticbuffers" <> ".pdf") $ constrained
     ( xlabel "Time (fs)"

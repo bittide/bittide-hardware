@@ -7,9 +7,11 @@ module Main where
 import Prelude
 import Test.Tasty
 
+import Tests.OverflowResistantDiff
+
 tests :: TestTree
 tests = testGroup "Unittests"
-  [
+  [ ordGroup
   ]
 
 main :: IO ()
