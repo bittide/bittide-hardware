@@ -20,6 +20,7 @@ import Bittide.ClockControl.Callisto.Util
 import Bittide.ClockControl.Callisto.Types
 import Bittide.ClockControl.Foreign.Rust.Callisto
 import Bittide.ClockControl.StabilityChecker
+import Bittide.Extra.Maybe
 
 import qualified Clash.Cores.Xilinx.Floating as F
 import qualified Clash.Signal.Delayed as D
@@ -74,7 +75,7 @@ callistoClockControl clk rst ena ClockControlConfig{..} mask allDataCounts =
         cccStabilityCheckerFramesize
     in
       CallistoResult
-        <$> mux shouldUpdate (_b_k <$> state') (pure NoChange)
+        <$> (orNothing <$> shouldUpdate <*> fmap _b_k state')
         <*> scs
         <*> allStable
         <*> allSettled

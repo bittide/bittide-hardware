@@ -32,8 +32,9 @@ import Data.Constraint.Nat.Extra (OneMore, oneMore)
 -- | Result of the clock control algorithm.
 data CallistoResult (n :: Nat) =
   CallistoResult
-    { speedChange :: SpeedChange
-    -- ^ Speed change requested from clock multiplier.
+    { maybeSpeedChange :: Maybe SpeedChange
+    -- ^ Speed change requested for clock multiplier. This is 'Just' for a single
+    -- cycle.
     , stability :: Vec n StabilityIndication
     -- ^ All stability indicators for all of the elastic buffers.
     , allStable :: Bool

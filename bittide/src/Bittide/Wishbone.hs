@@ -11,18 +11,23 @@ module Bittide.Wishbone where
 
 import Clash.Prelude
 
-import Clash.Cores.UART(uart, ValidBaud)
+import Bittide.SharedTypes
+
+import Clash.Cores.UART (uart, ValidBaud)
+import Clash.Cores.Xilinx.Ila (ila, ilaConfig)
+import Clash.Util.Interpolate
+
+import Data.Bifunctor
+import Data.Bool(bool)
 import Data.Constraint (Dict(Dict))
+import Data.Constraint.Nat.Extra (divWithRemainder)
+import Data.Maybe
+
 import Protocols.Df hiding (zipWith, pure, bimap, first, second, route)
 import Protocols.Internal
 import Protocols.Wishbone
-import Data.Bifunctor
 
-import Bittide.SharedTypes
-import Data.Bool(bool)
-import Data.Constraint.Nat.Extra (divWithRemainder)
-import Data.Maybe
-import Clash.Util.Interpolate
+import qualified Protocols.Wishbone as Wishbone
 
 
 {- $setup
@@ -70,6 +75,63 @@ singleMasterInterconnect (fmap pack -> config) =
     toMaster
       | busCycle && strobe = foldMaybes emptyWishboneS2M (maskToMaybes slaves oneHotSelected)
       | otherwise = emptyWishboneS2M
+
+dupWb ::
+  forall dom aw .
+  (KnownDomain dom, KnownNat aw) =>
+  Circuit
+    (Wishbone dom 'Standard aw (Bytes 4))
+    ( Wishbone dom 'Standard aw (Bytes 4)
+    , ( CSignal dom (WishboneM2S aw 4 (Bytes 4))
+      , CSignal dom (WishboneS2M (Bytes 4))
+      )
+    )
+dupWb = Circuit go
+  where
+    go (m2s0, (s2m0, (CSignal _, CSignal _))) =
+      (s2m0, (m2s0, (CSignal m2s0, CSignal s2m0)))
+
+unitCS :: CSignal dom ()
+unitCS = CSignal (pure ())
+
+
+ilaWb ::
+  forall dom addrW a .
+  HiddenClock dom =>
+  Circuit
+    (Wishbone dom 'Standard addrW a)
+    (Wishbone dom 'Standard addrW a)
+ilaWb = Circuit $ \(m2s, s2m) ->
+  let
+    ilaInst :: Signal dom ()
+    ilaInst = ila
+      (ilaConfig $
+           "m2s_addr"
+        :> "m2s_writeData"
+        :> "m2s_busSelect"
+        :> "m2s_busCycle"
+        :> "m2s_strobe"
+        :> "m2s_writeEnable"
+        :> "s2m_readData"
+        :> "s2m_acknowledge"
+        :> "s2m_err"
+        :> "s2m_stall"
+        :> "s2m_retry"
+        :> Nil)
+      hasClock
+      (Wishbone.addr        <$> m2s)
+      (Wishbone.writeData   <$> m2s)
+      (Wishbone.busSelect   <$> m2s)
+      (Wishbone.busCycle    <$> m2s)
+      (Wishbone.strobe      <$> m2s)
+      (Wishbone.writeEnable <$> m2s)
+      (Wishbone.readData    <$> s2m)
+      (Wishbone.acknowledge <$> s2m)
+      (Wishbone.err         <$> s2m)
+      (Wishbone.stall       <$> s2m)
+      (Wishbone.retry       <$> s2m)
+  in
+    ilaInst `hwSeqX` (s2m, m2s)
 
 -- | Given a vector with elements and a mask, promote all values with a corresponding
 -- 'True' to 'Just', others to 'Nothing'.
@@ -327,3 +389,42 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
 
     fifoMeta = FifoMeta {fifoEmpty, fifoFull, fifoDataCount = dataCount}
     output = (readPointerNext, writeOpGo, fifoOutGo, not fifoFull, fifoMeta)
+
+-- | Transforms a wishbone interface into a vector based interface.
+-- Write operations will produce a 'Just (Bytes nBytes)' on the index corresponding
+-- to the word-aligned Wishbone address.
+-- Read operations will read from the index corresponding to the world-aligned
+-- Wishbone address.
+wbToVec ::
+  forall dom nBytes addrW nRegisters .
+  ( HiddenClockResetEnable dom
+  , KnownNat nBytes
+  , 1 <= nBytes
+  , KnownNat addrW
+  , 2 <= addrW
+  , KnownNat nRegisters
+  , 1 <= nRegisters) =>
+  -- | Readable data.
+  Vec nRegisters (Bytes nBytes) ->
+  -- | Wishbone bus (master to slave)
+  WishboneM2S addrW nBytes (Bytes nBytes) ->
+  -- |
+  -- 1. Written data
+  -- 2. Outgoing wishbone bus (slave to master)
+  ( Vec nRegisters (Maybe (Bytes nBytes))
+  , WishboneS2M (Bytes nBytes))
+wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
+ where
+  (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
+  addressRange = maxBound :: Index nRegisters
+  invalidAddress = (alignedAddress > resize (pack addressRange)) || alignment /= 0
+  masterActive = strobe && busCycle
+  err = masterActive && invalidAddress
+  acknowledge = masterActive && not err
+  wbWriting = writeEnable && acknowledge
+  wbAddr = unpack $ resize alignedAddress :: Index nRegisters
+  readData = readableData !! wbAddr
+  writtenData
+    | wbWriting = replace wbAddr (Just writeData) (repeat Nothing)
+    | otherwise = repeat Nothing
+  wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}

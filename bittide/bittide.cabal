@@ -111,10 +111,11 @@ library
     Bittide.Calendar
     Bittide.ClockControl
     Bittide.ClockControl.Callisto
-    Bittide.ClockControl.Callisto.Util
     Bittide.ClockControl.Callisto.Types
-    Bittide.ClockControl.Foreign.Sizes
+    Bittide.ClockControl.Callisto.Util
     Bittide.ClockControl.Foreign.Rust.Callisto
+    Bittide.ClockControl.Foreign.Sizes
+    Bittide.ClockControl.Registers
     Bittide.ClockControl.Si5391A
     Bittide.ClockControl.Si5395J
     Bittide.ClockControl.Si539xSpi

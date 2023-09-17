@@ -11,13 +11,13 @@ import Clash.Prelude
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Clash.Cores.Xilinx.Extra (ibufds)
+import Data.Maybe
 
 import Bittide.Instances.Domains
 import Bittide.ElasticBuffer
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker (stabilityChecker, settled)
-
 
 type FINC = Bool
 type FDEC = Bool
@@ -93,7 +93,7 @@ genericClockControlDemo0 config clkRecovered clkControlled rstControlled drainFi
  where
   speedChangeSticky =
     withClockResetEnable clkControlled rstControlled enableGen $
-      stickyBits d15 (speedChangeToPins . speedChange <$> callistoResult)
+      stickyBits d15 (speedChangeToPins . fromMaybe NoChange . maybeSpeedChange  <$> callistoResult)
   availableLinkMask = pure $ complement 0 -- all links available
   callistoResult =
     callistoClockControl @1 clkControlled clockControlReset enableGen
