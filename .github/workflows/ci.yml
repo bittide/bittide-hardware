@@ -283,8 +283,11 @@ jobs:
 
       - name: Generate HITL based plots
         run: |
-          mkdir hitl-plots
-          ./cargo.sh build --release && cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Tests.FullMeshHwCc.fullMeshHwCcTest/ila-data/probe_test_start/ hitl-plots Bittide_Instances_Tests_FullMeshHwCc_fullMeshHwCcTest_callistoClockControlWithIla
+          mkdir -p hitl-plots/hw
+          mkdir -p hitl-plots/sw
+          ./cargo.sh build --release
+          cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Tests.FullMeshHwCc.fullMeshHwCcTest/ila-data/probe_test_start/ hitl-plots/hw Bittide_Instances_Tests_FullMeshHwCc_fullMeshHwCcTest_callistoClockControlWithIla
+          cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Tests.FullMeshSwCc.fullMeshSwCcTest/ila-data/probe_test_start/ hitl-plots/sw Bittide_Instances_Tests_FullMeshSwCc_fullMeshSwCcTest_callistoClockControlWithIla
 
       - name: Upload HITL based plots
         uses: actions/upload-artifact@v3

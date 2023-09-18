@@ -7,12 +7,12 @@ use std::mem::{align_of, size_of};
 /// Rust sibling of `Bittide.ClockControl.SpeedChange`.
 #[repr(u32)]
 pub enum SpeedChange {
-    /// Increases clock speed.
-    SpeedUp = 0,
+    /// Keeps the clock as it is.
+    NoChange = 0,
     /// Decreases clock speed.
     SlowDown = 1,
-    /// Keeps the clock as it is.
-    NoChange = 2,
+    /// Increases clock speed.
+    SpeedUp = 2,
 }
 
 // We use a static assertion to verify that the memory layout appears

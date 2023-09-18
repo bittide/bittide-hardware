@@ -62,9 +62,9 @@ impl ClockControl {
 
     pub fn change_speed(&mut self, speed_change: SpeedChange) {
         let n = match speed_change {
-            SpeedChange::SpeedUp => 0,
+            SpeedChange::NoChange => 0,
             SpeedChange::SlowDown => 1,
-            SpeedChange::NoChange => 2,
+            SpeedChange::SpeedUp => 2,
         };
 
         // SAFETY: This is safe since this function can only be called

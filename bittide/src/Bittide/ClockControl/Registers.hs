@@ -43,6 +43,7 @@ clockControlWb ::
   , KnownNat addrW
   , 2 <= addrW
   , 1 <= framesize
+  , 1 <= nLinks
   , KnownNat nLinks
   , KnownNat m
   , m <= 32
@@ -62,10 +63,10 @@ clockControlWb ::
   -- | Wishbone accessible clock control circuitry
   Circuit
     (Wishbone dom 'Standard addrW (BitVector 32))
-    (CSignal dom ("FINC" ::: Bool, "FDEC" ::: Bool))
+    (CSignal dom ("FINC" ::: Bool, "FDEC" ::: Bool), CSignal dom ("ALL_STABLE" ::: Bool))
 clockControlWb margin framesize linkMask counters = Circuit go
  where
-  go (wbM2S, _) = (wbS2M, CSignal fIncDec3)
+  go (wbM2S, _) = (wbS2M, (CSignal fIncDec3, CSignal (all (==True) <$> (fmap stable <$> stabilityIndications))))
    where
     stabilityIndications = bundle $ stabilityChecker margin framesize <$> counters
     readVec = dflipflop <$> (

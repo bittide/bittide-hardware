@@ -22,7 +22,7 @@
 -- This test will succeed if all clocks have been stable for 5 seconds. Note:
 -- this doesn't test reframing yet.
 --
-module Bittide.Instances.Tests.FullMeshHwCc where
+module Bittide.Instances.Tests.FullMeshSwCc where
 
 import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
@@ -101,7 +101,7 @@ unitCS = CSignal (pure ())
 -- | Instantiates a RiscV core that copies instructions coming from a hardware
 -- implementation of Callisto (see 'fullMeshHwTest') and copies it to a register
 -- tied to FINC/FDEC.
-fullMeshRiscvCopyTest ::
+fullMeshRiscvTest ::
   forall dom .
   KnownDomain dom =>
   Clock dom ->
@@ -112,7 +112,7 @@ fullMeshRiscvCopyTest ::
   ( "FINC" ::: Signal dom Bool
   , "FDEC" ::: Signal dom Bool
   )
-fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
+fullMeshRiscvTest clk rst callistoResult dataCounts = unbundle fIncDec
  where
   (_, CSignal fIncDec) = toSignals
     ( circuit $ \unit -> do
@@ -179,7 +179,7 @@ fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
 
     root <- runIO findProjectRoot
 
-    let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/clock-control-reg-cpy"
+    let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/clock-control"
 
     memBlobsFromElf BigEndian elfPath Nothing)
 
@@ -191,7 +191,7 @@ fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
   -}
   peConfig =
     PeConfig
-      (0b10 :> 0b01 :> 0b00 :> 0b11 :> Nil)
+      (0b10 :> 0b01 :> 0b11 :> 0b00 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
 
@@ -395,7 +395,7 @@ trueFor5s clk rst =
   goOutput = (== maxBound)
 
 -- | Top entity for this test. See module documentation for more information.
-fullMeshHwCcTest ::
+fullMeshSwCcTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Basic200 ->
   "SYSCLK_300" ::: DiffClock Basic300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
@@ -416,7 +416,7 @@ fullMeshHwCcTest ::
       , "CSB"       ::: Signal Basic125 Bool
       )
   )
-fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
+fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (txns, txps, (riscvFinc, riscvFdec), syncOut, spiDone, spiOut)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Basic200
@@ -424,67 +424,61 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (sysClk, sysLock0) = clockWizardDifferential (SSymbol @"SysClk") sysClkDiff noReset
   sysLock1 = xpmCdcSingle sysClk sysClk sysLock0 -- improvised reset syncer
   sysRst = unsafeFromActiveLow sysLock1
-    `orReset` unsafeFromActiveLow startTest
-  --
-  -- 'syncOutGenerator' is used to drive the 'SYNC_OUT' signal, which
-  -- is only connected for the last node in the network and wired back
-  -- to 'SYNC_IN' of all nodes from there.
-  --
-  -- Note that all nodes are in reset before their local 'startTest' VIO
-  -- signal gets asserted, as 'startTest' is directly driving 'sysRst'.
-  -- Thus, for the other nodes to capture the 'SYNC_OUT' signal correctly,
-  -- the node receiving the `startTest` rising edge last must be the one
-  -- with it's 'SYNC_OUT' physically connected to the 'SYNC_IN' of all
-  -- nodes in the network. This assumption is tested by
-  -- 'Bittide.Instances.Tests.SyncInSyncOut'.
+
+  syncIn1 = (startTest .&&.)
+    $ unsafeToActiveLow
+    $ resetGlitchFilter (SNat @1024) sysClk
+    $ unsafeFromActiveLow
+    $ xpmCdcSingle sysClk sysClk syncIn
+
+  syncInChangepoints =
+    changepoints sysClk syncStartRst enableGen syncIn1
+
+  syncInRst =
+      unsafeFromActiveLow
+    $ sticky sysClk sysRst
+    $ isRising sysClk sysRst enableGen False
+      syncIn1
+
+  testRst = sysRst `orReset` syncInRst
+
+  syncStart =
+      sticky sysClk sysRst
+    $ isFalling sysClk sysRst enableGen False
+      syncIn1
+
+  syncStartRst = unsafeFromActiveLow syncStart
+
+  startBeforeAllUp = sticky sysClk sysRst
+    (syncStart .&&. ((not <$> allUp) .||. transceiversFailedAfterUp))
+
   syncOut =
       dflipflop sysClk
     $ syncOutGenerator sysClk startTest
     $ trueFor5s sysClk testRst allUp
 
-  -- first synchronize SYNC_IN to the local clock and filter from
-  -- potential glitches
-  syncIn1 =
-      unsafeToActiveLow
-    $ resetGlitchFilter (SNat @1024) sysClk
-    $ unsafeFromActiveLow
-    $ xpmCdcSingle sysClk sysClk syncIn
+  --  syncOutGenerator sysClk sysRst enableGen
+  --    (startTest, trueFor5s sysClk sysRst allUp)
 
-  -- generate a pulse on every change of SYNC_IN
-  syncInChangepoints =
-    changepoints sysClk sysRst enableGen syncIn1
-
-  -- recover the activity and readiness states from SYNC_IN
-  (syncActive, syncStart) = unbundle $ syncInRecover sysClk sysRst syncIn1
-
-  -- tests are reset with on `sysRst` or if not synchronously active
-  testRst = sysRst `orReset` unsafeFromActiveLow syncActive
-
-  -- checks that tests are not synchronously start before all
-  -- transceivers are up
-  startBeforeAllUp = sticky sysClk testRst
-    (syncStart .&&. ((not <$> allUp) .||. transceiversFailedAfterUp))
-
-  -- generate the global timestamp from the synchronous rising and
-  -- falling edges of SYNC_IN
   globalTimestamp :: Signal Basic125 GlobalTimestamp
-  globalTimestamp = register sysClk testRst enableGen (0,0) $
+  globalTimestamp = register sysClk syncStartRst enableGen (0,0) $
     mux syncInChangepoints
       (((+1) *** const 0) <$> globalTimestamp)
       (second (+1) <$> globalTimestamp)
 
   -- calibrate over the first 200 sync pulses
   calibrate =
-    moore sysClk testRst enableGen
+    moore sysClk syncStartRst enableGen
       (\s -> bool s $ satSucc SatBound s)
       (/= maxBound)
       (minBound :: Index 200)
       syncInChangepoints
 
   calibrationDone =
-    isFalling sysClk testRst enableGen False calibrate
+    isFalling sysClk sysRst enableGen False calibrate
 
-  syncEnd = isFalling sysClk testRst enableGen False syncActive
+  -- TODO: not implemented yet
+  syncEnd = pure False
 
   (   txns, txps, _hwFincFdecs, callistoClock, callistoResult, callistoReset
     , dataCounts, stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
@@ -492,7 +486,7 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     fullMeshHwTest refClk sysClk testRst IlaControl{..} rxns rxps miso
 
   (riscvFinc, riscvFdec) =
-    fullMeshRiscvCopyTest callistoClock callistoReset callistoResult dataCounts
+    fullMeshRiscvTest callistoClock callistoReset callistoResult dataCounts
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
@@ -578,8 +572,8 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       (failAfterUps  <$> stats6)
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.
-{-# ANN fullMeshHwCcTest Synthesize
-  { t_name = "fullMeshHwCcTest"
+{-# ANN fullMeshSwCcTest Synthesize
+  { t_name = "fullMeshSwCcTest"
   , t_inputs =
     [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
     , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]

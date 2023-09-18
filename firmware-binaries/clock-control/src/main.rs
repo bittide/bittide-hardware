@@ -16,7 +16,8 @@ use riscv_rt::entry;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32) };
+    #[allow(clippy::zero_ptr)] // we might want to change the address!
+    let mut cc = unsafe { ClockControl::from_base_addr(0x0000_0000 as *const u32) };
 
     let config = ControlConfig {
         target_count: 0,
@@ -34,7 +35,7 @@ fn main() -> ! {
         let data_counts = cc.data_counts().map(|x| x as isize);
         let links_stable = cc.links_stable();
 
-        callisto::callisto(&config, 0b0000_1111, links_stable, data_counts, &mut state);
+        callisto::callisto(&config, 0b0111_1111, links_stable, data_counts, &mut state);
 
         cc.change_speed(state.b_k);
     }

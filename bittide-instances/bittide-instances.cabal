@@ -114,6 +114,7 @@ library
     Bittide.Instances.Tests.BoardTest
     Bittide.Instances.Tests.FincFdec
     Bittide.Instances.Tests.FullMeshHwCc
+    Bittide.Instances.Tests.FullMeshSwCc
     Bittide.Instances.Tests.FullMeshHwCc.IlaPlot
     Bittide.Instances.Tests.SyncInSyncOut
     Bittide.Instances.Tests.Transceivers

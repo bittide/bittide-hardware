@@ -19,9 +19,9 @@ fn main() -> ! {
     loop {
         let callisto_val = unsafe { callisto_reg_addr.read_volatile() };
         let change = match callisto_val {
-            0 => SpeedChange::SpeedUp,
+            0 => SpeedChange::NoChange,
             1 => SpeedChange::SlowDown,
-            _ => SpeedChange::NoChange,
+            _ => SpeedChange::SpeedUp,
         };
 
         cc.change_speed(change);

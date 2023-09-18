@@ -18,6 +18,7 @@
   {"top": "extendedHardwareInTheLoopTest", "stage": "test",   "targets": "All"          },
   {"top": "fincFdecTests",                 "stage": "test",   "targets": "Specific [-1]"},
   {"top": "fullMeshHwCcTest",              "stage": "test",   "targets": "All"          },
+  {"top": "fullMeshSwCcTest",              "stage": "test",   "targets": "All"          },
   {"top": "fullMeshHwCcWithRiscvTest",     "stage": "test",   "targets": "All"          },
   {"top": "simpleHardwareInTheLoopTest",   "stage": "test",   "targets": "All"          },
   {"top": "syncInSyncOut",                 "stage": "test",   "targets": "All"          },
