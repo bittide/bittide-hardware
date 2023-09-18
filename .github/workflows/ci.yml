@@ -284,13 +284,29 @@ jobs:
       - name: Generate HITL based plots
         run: |
           mkdir hitl-plots
-          ./cargo.sh build --release && cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Tests.FullMeshHwCc.fullMeshHwCcTest/ila-data/probe_test_start/ hitl-plots Bittide_Instances_Tests_FullMeshHwCc_fullMeshHwCcTest_callistoClockControlWithIla
+          ./cargo.sh build --release
+
+          # Full HW tests
+          cabal run -- \
+            elastic-buffer-sim:plot \
+            artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Tests.FullMeshHwCc.fullMeshHwCcTest/ila-data/probe_test_start_hw/ \
+            hitl-plots-hw \
+            Bittide_Instances_Tests_FullMeshHwCc_fullMeshHwCcTest_callistoClockControlWithIla
+
+          # HW + Riscv tests
+          cabal run -- \
+            elastic-buffer-sim:plot \
+            artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Tests.FullMeshHwCc.fullMeshHwCcTest/ila-data/probe_test_start_hw_riscv/ \
+            hitl-plots-hw_riscv \
+            Bittide_Instances_Tests_FullMeshHwCc_fullMeshHwCcTest_callistoClockControlWithIla
 
       - name: Upload HITL based plots
         uses: actions/upload-artifact@v3
         with:
           name: Clock Control HITL Plots
-          path: hitl-plots
+          path: |
+            hitl-plots-hw
+            hitl-plots-hw_riscv
           retention-days: 14
 
   elastic-buffer-sim-tests:

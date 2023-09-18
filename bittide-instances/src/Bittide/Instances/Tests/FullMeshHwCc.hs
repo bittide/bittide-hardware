@@ -417,7 +417,7 @@ fullMeshHwCcTest ::
       )
   )
 fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, (riscvFinc, riscvFdec), syncOut, spiDone, spiOut)
+  (txns, txps, unbundle fincFdecs, syncOut, spiDone, spiOut)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Basic200
 
@@ -486,12 +486,12 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   syncEnd = isFalling sysClk testRst enableGen False syncActive
 
-  (   txns, txps, _hwFincFdecs, callistoClock, callistoResult, callistoReset
+  (   txns, txps, hwFincFdecs, callistoClock, callistoResult, callistoReset
     , dataCounts, stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
     , allStable ) =
     fullMeshHwTest refClk sysClk testRst IlaControl{..} rxns rxps miso
 
-  (riscvFinc, riscvFdec) =
+  riscvFincFdecs =
     fullMeshRiscvCopyTest callistoClock callistoReset callistoResult dataCounts
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
@@ -499,8 +499,22 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   endSuccess :: Signal Basic125 Bool
   endSuccess = trueFor5s sysClk testRst allStable
 
-  startTest :: Signal Basic125 Bool
-  startTest =
+  startTest = startHwTest .||. startHwRiscvTest
+  (startHwTest, startHwRiscvTest) = unbundle startTests
+
+  fincFdecs :: Signal GthTx ("FINC" ::: Bool, "FDEC" ::: Bool)
+  fincFdecs =
+    mux
+      (xpmCdcSingle sysClk callistoClock startHwTest)
+      hwFincFdecs
+      (mux
+        (xpmCdcSingle sysClk callistoClock startHwRiscvTest)
+        (bundle riscvFincFdecs)
+        (pure (False, False))
+      )
+
+  startTests :: Signal Basic125 (Bool, Bool)
+  startTests =
     setName @"vioHitlt" $
     vioProbe
       (  "probe_test_done"
@@ -536,9 +550,10 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       :> "stats6_rxFullRetries"
       :> "stats6_failAfterUps"
       :> Nil)
-      (  "probe_test_start"
+      (  "probe_test_start_hw"
+      :> "probe_test_start_hw_riscv"
       :> Nil)
-      False
+      (False, False)
       sysClk
 
       -- done
