@@ -16,6 +16,7 @@ module Bittide.Instances.Tests.FullMeshHwCc.IlaPlot
   , AccWindowHeight
   , SyncPulsePeriod
   , syncOutGenerator
+  , syncInRecover
   , callistoClockControlWithIla
   ) where
 
@@ -37,7 +38,7 @@ import Data.Maybe (isJust, fromMaybe)
 
 type AccWindowHeight = 3 :: Nat
 type SyncPulsePeriod = Milliseconds 5
-type SyncPulseIndex dom = Index (PeriodToCycles dom SyncPulsePeriod)
+type SyncPulseCycles dom = PeriodToCycles dom SyncPulsePeriod
 
 -- | A global timestamp consists of the number of synchronized pulses
 -- received and the number of cycles of the local stable clock
@@ -235,13 +236,12 @@ callistoClockControlWithIla sysClk clk rst ena ccc IlaControl{..} mask ebs =
     , dRfStageChange = Stable
     }
 
--- | The state space of the mealy machine for producing @SYNC_OUT@.
+-- | The state space of the Mealy machine for producing @SYNC_OUT@.
 data SyncOutGen dom =
-    WaitForStart
-  | WaitAtLeast (SyncPulseIndex dom)
+    WaitAtLeast (Index (SyncPulseCycles dom))
   | WaitForTransceivers
-  | SyncPulse Bool (SyncPulseIndex dom)
-  | Freeze Bool
+  | SyncPulse Bool (Index (SyncPulseCycles dom))
+  | Failure
   deriving (Generic, NFDataX)
 
 -- | The signal transformer for producing @SYNC_OUT@.
@@ -249,23 +249,53 @@ syncOutGenerator ::
   forall dom.
   KnownDomain dom =>
   Clock dom ->
-  Reset dom ->
-  Enable dom ->
-  (Signal dom Bool, Signal dom Bool) ->
+  Signal dom Bool ->
+  Signal dom Bool ->
   Signal dom Bool
-syncOutGenerator clk rst ena =
-  mealyB clk rst ena transF (WaitForStart :: SyncOutGen dom)
+syncOutGenerator clk start inp =
+  start .&&.
+    mealyB clk (unsafeFromActiveLow start) enableGen
+      transF (WaitAtLeast maxBound :: SyncOutGen dom) inp
  where
-  transF WaitForStart        (True, _   ) = (WaitAtLeast maxBound,       True )
-  transF WaitForStart        (_   , _   ) = (WaitForStart,               False)
-  transF (WaitAtLeast 0)     (True, True) = (SyncPulse False maxBound,   False)
-  transF (WaitAtLeast 0)     (True, _   ) = (WaitForTransceivers,        True )
-  transF (WaitAtLeast n)     (True, _   ) = (WaitAtLeast (n - 1),        True )
-  transF (WaitAtLeast _)     _            = (Freeze True,                True )
-  transF WaitForTransceivers (True, True) = (SyncPulse False maxBound,   False)
-  transF WaitForTransceivers (True, _   ) = (WaitForTransceivers,        True )
-  transF WaitForTransceivers _            = (Freeze True,                True )
-  transF (SyncPulse o 0)     (True, True) = (SyncPulse (not o) maxBound, not o)
-  transF (SyncPulse o n)     (True, True) = (SyncPulse o (n - 1),        o    )
-  transF (SyncPulse o _)     _            = (Freeze o,                   o    )
-  transF (Freeze o)          _            = (Freeze o,                   o    )
+  transF (WaitAtLeast 0)     True = (SyncPulse False maxBound,   False)
+  transF (WaitAtLeast 0)     _    = (WaitForTransceivers,        True )
+  transF (WaitAtLeast n)     _    = (WaitAtLeast (n - 1),        True )
+  transF WaitForTransceivers True = (SyncPulse False maxBound,   False)
+  transF WaitForTransceivers _    = (WaitForTransceivers,        True )
+  transF (SyncPulse o 0)     True = (SyncPulse (not o) maxBound, not o)
+  transF (SyncPulse o n)     True = (SyncPulse o (n - 1),        o    )
+  transF _                   _    = (Failure,                    True )
+
+-- | The state space of the Moore machine for recovering @SYNC_OUT@.
+data SyncInRec dom =
+    WaitForStart
+  | WaitForReady
+  | WaitForChange Bool (Index (Div (SyncPulseCycles dom) 10 + SyncPulseCycles dom))
+  | FailureDetect
+  deriving (Generic, NFDataX)
+
+-- | Recovers the activity cycle of a test as shared via @SYNC_OUT@.
+syncInRecover ::
+  forall dom.
+  KnownDomain dom =>
+  Clock dom ->
+  Reset dom ->
+  Signal dom Bool ->
+  Signal dom (Bool, Bool)
+syncInRecover clk rst =
+  moore clk rst enableGen transF out (WaitForStart :: SyncInRec dom)
+ where
+  transF WaitForStart            True = WaitForReady
+  transF WaitForReady            True = WaitForReady
+  transF WaitForReady            _    = WaitForChange False maxBound
+  transF (WaitForChange True 0)  True = FailureDetect
+  transF (WaitForChange o n) i
+    | o == i                          = WaitForChange o (n - 1)
+    | otherwise                       = WaitForChange i maxBound
+  transF FailureDetect           True = FailureDetect
+  transF _                       _    = WaitForStart
+
+  out WaitForStart    = (False, False)
+  out WaitForReady    = (True,  False)
+  out WaitForChange{} = (True,  True )
+  out FailureDetect   = (True,  False)
