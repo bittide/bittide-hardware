@@ -53,13 +53,13 @@ check clk rst dut stimuli =
 
 -- | Testing circuit for `plus`. Feeds the circuit with inputs and checks
 -- the received output against the expected output.
-simpleHardwareInTheLoopTest ::
+boardTestSimple ::
   "CLK_125MHZ" ::: DiffClock Basic125 ->
   "" ::: Signal Basic125
     ( "done" ::: Bool
     , "success" ::: Bool
     )
-simpleHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
+boardTestSimple diffClk = bundle (testDone, testSuccess)
  where
   clk = ibufds diffClk
   rst = unsafeFromActiveLow testStart
@@ -85,17 +85,17 @@ simpleHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
     :> (255,   1,   0)
     :> Nil
     )
-makeTopEntity 'simpleHardwareInTheLoopTest
+makeTopEntity 'boardTestSimple
 
 -- | Testing circuit for `plus` and `minus`. Feeds the circuit with inputs and
 -- checks the received output against the expected output.
-extendedHardwareInTheLoopTest ::
+boardTestExtended ::
   "CLK_125MHZ" ::: DiffClock Basic125 ->
   "" ::: Signal Basic125
     ( "done" ::: Bool
     , "success" ::: Bool
     )
-extendedHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
+boardTestExtended diffClk = bundle (testDone, testSuccess)
  where
   clk = ibufds diffClk
   rstA = unsafeFromActiveLow testStartA
@@ -151,4 +151,4 @@ extendedHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
     :> (  0,   1, 255)
     :> Nil
     )
-makeTopEntity 'extendedHardwareInTheLoopTest
+makeTopEntity 'boardTestExtended
