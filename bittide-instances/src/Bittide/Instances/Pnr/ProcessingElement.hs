@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
-module Bittide.Instances.ProcessingElement where
+module Bittide.Instances.Pnr.ProcessingElement where
 
 import Clash.Prelude
 

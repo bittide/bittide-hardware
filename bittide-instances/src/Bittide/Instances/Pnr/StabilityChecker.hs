@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE NumericUnderscores #-}
 
-module Bittide.Instances.StabilityChecker where
+module Bittide.Instances.Pnr.StabilityChecker where
 
 import Clash.Prelude
 

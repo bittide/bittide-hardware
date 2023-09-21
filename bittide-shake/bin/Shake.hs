@@ -153,32 +153,32 @@ enforceValidTarget target@Target{..}
 -- | All synthesizable targets
 targets :: [Target]
 targets = map enforceValidTarget
-  [ defTarget "Bittide.Instances.Calendar.switchCalendar1k"
-  , defTarget "Bittide.Instances.Calendar.switchCalendar1kReducedPins"
-  , defTarget "Bittide.Instances.ClockControl.callisto3"
-  , defTarget "Bittide.Instances.Counter.counterReducedPins"
-  , defTarget "Bittide.Instances.ElasticBuffer.elasticBuffer5"
-  , (defTarget "Bittide.Instances.MVPs.clockControlDemo0") {targetHasXdc = True}
-  , (defTarget "Bittide.Instances.MVPs.clockControlDemo1") {targetHasXdc = True}
-  , (defTarget "Bittide.Instances.ProcessingElement.vexRiscUartHello") {targetHasXdc = True}
-  , defTarget "Bittide.Instances.ScatterGather.gatherUnit1K"
-  , defTarget "Bittide.Instances.ScatterGather.gatherUnit1KReducedPins"
-  , defTarget "Bittide.Instances.ScatterGather.scatterUnit1K"
-  , defTarget "Bittide.Instances.ScatterGather.scatterUnit1KReducedPins"
-  , defTarget "Bittide.Instances.Si539xSpi.callistoSpi"
-  , defTarget "Bittide.Instances.Si539xSpi.si5391Spi"
-  , defTarget "Bittide.Instances.StabilityChecker.stabilityChecker_3_1M"
-  , defTarget "Bittide.Instances.Synchronizer.safeDffSynchronizer"
+  [ defTarget "Bittide.Instances.Pnr.Calendar.switchCalendar1k"
+  , defTarget "Bittide.Instances.Pnr.Calendar.switchCalendar1kReducedPins"
+  , defTarget "Bittide.Instances.Pnr.ClockControl.callisto3"
+  , defTarget "Bittide.Instances.Pnr.Counter.counterReducedPins"
+  , defTarget "Bittide.Instances.Pnr.ElasticBuffer.elasticBuffer5"
+  , (defTarget "Bittide.Instances.Pnr.MVPs.clockControlDemo0") {targetHasXdc = True}
+  , (defTarget "Bittide.Instances.Pnr.MVPs.clockControlDemo1") {targetHasXdc = True}
+  , (defTarget "Bittide.Instances.Pnr.ProcessingElement.vexRiscUartHello") {targetHasXdc = True}
+  , defTarget "Bittide.Instances.Pnr.ScatterGather.gatherUnit1K"
+  , defTarget "Bittide.Instances.Pnr.ScatterGather.gatherUnit1KReducedPins"
+  , defTarget "Bittide.Instances.Pnr.ScatterGather.scatterUnit1K"
+  , defTarget "Bittide.Instances.Pnr.ScatterGather.scatterUnit1KReducedPins"
+  , defTarget "Bittide.Instances.Pnr.Si539xSpi.callistoSpi"
+  , defTarget "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
+  , defTarget "Bittide.Instances.Pnr.StabilityChecker.stabilityChecker_3_1M"
+  , defTarget "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
 
-  , testTarget "Bittide.Instances.Tests.BoardTest.boardTestExtended"
-  , testTarget "Bittide.Instances.Tests.BoardTest.boardTestSimple"
-  , testTarget "Bittide.Instances.Tests.FincFdec.fincFdecTests"
-  , testTarget "Bittide.Instances.Tests.FullMeshHwCc.fullMeshHwCcTest"
-  , testTarget "Bittide.Instances.Tests.FullMeshSwCc.fullMeshSwCcTest"
-  , testTarget "Bittide.Instances.Tests.FullMeshHwCcWithRiscv.fullMeshHwCcWithRiscvTest"
-  , testTarget "Bittide.Instances.Tests.SyncInSyncOut.syncInSyncOut"
-  , testTarget "Bittide.Instances.Tests.Transceivers.transceiversUpTest"
-  , testTarget "Bittide.Instances.Tests.VexRiscv.vexRiscvTest"
+  , testTarget "Bittide.Instances.Hitl.BoardTest.boardTestExtended"
+  , testTarget "Bittide.Instances.Hitl.BoardTest.boardTestSimple"
+  , testTarget "Bittide.Instances.Hitl.FincFdec.fincFdecTests"
+  , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest"
+  , testTarget "Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest"
+  , testTarget "Bittide.Instances.Hitl.FullMeshHwCcWithRiscv.fullMeshHwCcWithRiscvTest"
+  , testTarget "Bittide.Instances.Hitl.SyncInSyncOut.syncInSyncOut"
+  , testTarget "Bittide.Instances.Hitl.Transceivers.transceiversUpTest"
+  , testTarget "Bittide.Instances.Hitl.VexRiscv.vexRiscvTest"
   ]
 
 shakeOpts :: ShakeOptions

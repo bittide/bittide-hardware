@@ -18,7 +18,7 @@
 --
 -- This test will succeed if all links have been up for ten seconds.
 --
-module Bittide.Instances.Tests.Transceivers where
+module Bittide.Instances.Hitl.Transceivers where
 
 import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude

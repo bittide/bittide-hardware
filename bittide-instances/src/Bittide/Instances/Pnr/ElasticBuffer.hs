@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Bittide.Instances.ElasticBuffer where
+module Bittide.Instances.Pnr.ElasticBuffer where
 
 import Clash.Prelude
 import Clash.Annotations.TH

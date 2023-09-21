@@ -58,7 +58,7 @@
 --
 --   4. Wrong SYNC_OUT is connected. Same result as (3).
 --
-module Bittide.Instances.Tests.SyncInSyncOut where
+module Bittide.Instances.Hitl.SyncInSyncOut where
 
 import Clash.Explicit.Prelude
 

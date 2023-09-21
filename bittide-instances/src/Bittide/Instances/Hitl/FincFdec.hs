@@ -6,7 +6,7 @@
 
 -- | A couple of tests testing clock board programming, and subsequently the
 -- FINC and FDEC pins.
-module Bittide.Instances.Tests.FincFdec where
+module Bittide.Instances.Hitl.FincFdec where
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Extra (ibufds)

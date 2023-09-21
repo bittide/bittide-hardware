@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Instances.ClockControl where
+module Bittide.Instances.Pnr.ClockControl where
 
 import Clash.Prelude
 
