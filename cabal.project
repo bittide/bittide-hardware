@@ -46,6 +46,9 @@ package bittide-shake
 package clash-vexriscv
   ghc-options: +RTS -xp -RTS
 
+package clash-vexriscv-sim
+  ghc-options: +RTS -xp -RTS
+
 package elastic-buffer-sim
   ghc-options: +RTS -xp -RTS
 
