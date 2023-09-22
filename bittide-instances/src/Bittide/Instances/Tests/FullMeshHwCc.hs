@@ -32,28 +32,17 @@ import Control.Arrow ((***), second)
 import Data.Bool (bool)
 import Data.Maybe (fromMaybe)
 import Data.Proxy
-import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
-import System.Directory
-import System.FilePath
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Callisto.Util (stickyBits, speedChangeToPins, FINC, FDEC)
-import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState(Error, Finished), si539xSpi)
-import Bittide.DoubleBufferedRam
-  ( InitialContent(Reloadable), ContentType(Blob), RegisterWritePriority(CircuitPriority)
-  , registerWb
-  )
 import Bittide.Counter
 import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
-import Bittide.ProcessingElement (PeConfig(..), processingElement)
-import Bittide.ProcessingElement.Util (memBlobsFromElf)
-import Bittide.SharedTypes (Bytes, ByteOrder(BigEndian))
 import Bittide.Transceiver
 
 import Bittide.Instances.Tests.FullMeshHwCc.IlaPlot
@@ -69,8 +58,6 @@ import Clash.Explicit.Signal.Extra
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
-import Protocols
-import Protocols.Wishbone
 import Protocols.Internal
 
 
@@ -98,106 +85,8 @@ type TransceiverWires dom = Vec 7 (Signal dom (BitVector 1))
 unitCS :: CSignal dom ()
 unitCS = CSignal (pure ())
 
--- | Instantiates a RiscV core that copies instructions coming from a hardware
--- implementation of Callisto (see 'fullMeshHwTest') and copies it to a register
--- tied to FINC/FDEC.
-fullMeshRiscvCopyTest ::
-  forall dom .
-  KnownDomain dom =>
-  Clock dom ->
-  Reset dom ->
-  Signal dom (CallistoResult 7) ->
-  Vec 7 (Signal dom (DataCount 32)) ->
-  -- Freq increase / freq decrease request to clock board
-  ( "FINC" ::: Signal dom Bool
-  , "FDEC" ::: Signal dom Bool
-  )
-fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
- where
-  (_, CSignal fIncDec) = toSignals
-    ( circuit $ \unit -> do
-      [wbA, wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< unit
-      fIncDecCallisto -< wbA
-      fIncDec <- withClockResetEnable clk rst enableGen $
-        clockControlWb margin framesize (pure $ complement 0) dataCounts -< wbB
-      idC -< fIncDec
-    ) ((), unitCS)
-
-  fIncDecCallisto ::
-    forall aw nBytes .
-    (KnownNat aw, 2 <= aw, nBytes ~ 4) =>
-    Circuit
-      (Wishbone dom 'Standard aw (Bytes nBytes))
-      ()
-  fIncDecCallisto = Circuit goFIncDecCallisto
-   where
-    goFIncDecCallisto (wbM2S, _) = (wbS2M, ())
-     where
-      (_, wbS2M) = withClockResetEnable clk rst enableGen $
-        registerWb
-          CircuitPriority
-          (0 :: Bytes nBytes, 0 :: Bytes nBytes)
-          wbM2S
-          (fmap (fmap ((,0) . extend . pack)) fincfdec)
-
-      fincfdec :: Signal dom (Maybe SpeedChange)
-      fincfdec =
-        clearOnAck
-          <$> fmap acknowledge wbS2M
-          <*> fmap maybeSpeedChange callistoResult
-
-      -- Clear register if register is read from (or written to, but we assume
-      -- this doesn't happen). This makes sure the RiscV doesn't read the same
-      -- result from the hardware clock control twice.
-      clearOnAck :: ("ACK" ::: Bool) -> Maybe SpeedChange -> Maybe SpeedChange
-      clearOnAck False maybeSpeedChange   = maybeSpeedChange
-      clearOnAck True  (Just speedChange) = Just speedChange
-      clearOnAck True  Nothing            = Just NoChange
-
-  margin = d2
-
-  framesize = SNat @(PeriodToCycles dom (Seconds 1))
-
-  (   (_iStart, _iSize, iMem)
-    , (_dStart, _dSize, dMem)) = $(do
-
-    let
-      findProjectRoot :: IO FilePath
-      findProjectRoot = goUp =<< getCurrentDirectory
-        where
-          goUp :: FilePath -> IO FilePath
-          goUp path
-            | isDrive path = error "Could not find 'cabal.project'"
-            | otherwise = do
-                exists <- doesFileExist (path </> projectFilename)
-                if exists then
-                  return path
-                else
-                  goUp (takeDirectory path)
-
-          projectFilename = "cabal.project"
-
-    root <- runIO findProjectRoot
-
-    let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/clock-control"
-
-    memBlobsFromElf BigEndian elfPath Nothing)
-
-  {-
-    0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
-    0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
-    0b00xxxxx_xxxxxxxx 0b00 0x0x FINC/FDEC register
-    0b11xxxxx_xxxxxxxx 0b11 0xCx memory mapped hardware clock control
-  -}
-  peConfig =
-    PeConfig
-      (0b10 :> 0b01 :> 0b00 :> 0b11 :> Nil)
-      (Reloadable $ Blob iMem)
-      (Reloadable $ Blob dMem)
-
--- | Instantiates a hardware implementation of Callisto and exports its results. Can
--- be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
--- results to a RiscV core (see 'fullMeshRiscvCopyTest')
+-- | Instantiates a hardware implementation of Callisto and exports its results.
+-- Drives FINC/FDEC directly (see @FINC_FDEC@ result)
 fullMeshHwTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Basic200 ->
   "SYSCLK" ::: Clock Basic125 ->
@@ -486,35 +375,25 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   syncEnd = isFalling sysClk testRst enableGen False syncActive
 
-  (   txns, txps, hwFincFdecs, callistoClock, callistoResult, callistoReset
-    , dataCounts, stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
+  (   txns, txps, hwFincFdecs, callistoClock, _callistoResult, _callistoReset
+    , _dataCounts, stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
     , allStable ) =
     fullMeshHwTest refClk sysClk testRst IlaControl{..} rxns rxps miso
-
-  riscvFincFdecs =
-    fullMeshRiscvCopyTest callistoClock callistoReset callistoResult dataCounts
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
   endSuccess :: Signal Basic125 Bool
   endSuccess = trueFor5s sysClk testRst allStable
 
-  startTest = startHwTest .||. startHwRiscvTest
-  (startHwTest, startHwRiscvTest) = unbundle startTests
-
   fincFdecs :: Signal GthTx ("FINC" ::: Bool, "FDEC" ::: Bool)
   fincFdecs =
     mux
-      (xpmCdcSingle sysClk callistoClock startHwTest)
+      (xpmCdcSingle sysClk callistoClock startTest)
       hwFincFdecs
-      (mux
-        (xpmCdcSingle sysClk callistoClock startHwRiscvTest)
-        (bundle riscvFincFdecs)
-        (pure (False, False))
-      )
+      (pure (False, False))
 
-  startTests :: Signal Basic125 (Bool, Bool)
-  startTests =
+  startTest :: Signal Basic125 Bool
+  startTest =
     setName @"vioHitlt" $
     vioProbe
       (  "probe_test_done"
@@ -551,9 +430,8 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       :> "stats6_failAfterUps"
       :> Nil)
       (  "probe_test_start_hw"
-      :> "probe_test_start_hw_riscv"
       :> Nil)
-      (False, False)
+      False
       sysClk
 
       -- done
