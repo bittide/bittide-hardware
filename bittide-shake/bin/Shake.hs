@@ -174,6 +174,8 @@ targets = map enforceValidTarget
   , testTarget "Bittide.Instances.Tests.BoardTest.simpleHardwareInTheLoopTest"
   , testTarget "Bittide.Instances.Tests.FincFdec.fincFdecTests"
   , testTarget "Bittide.Instances.Tests.FullMeshHwCc.fullMeshHwCcTest"
+  , testTarget "Bittide.Instances.Tests.FullMeshSwCc.fullMeshSwCcTest"
+  , testTarget "Bittide.Instances.Tests.FullMeshHwCcWithRiscv.fullMeshHwCcWithRiscvTest"
   , testTarget "Bittide.Instances.Tests.SyncInSyncOut.syncInSyncOut"
   , testTarget "Bittide.Instances.Tests.Transceivers.transceiversUpTest"
   , testTarget "Bittide.Instances.Tests.VexRiscv.vexRiscvTest"

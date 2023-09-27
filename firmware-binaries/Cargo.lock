@@ -47,6 +47,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
+name = "clock-control"
+version = "0.1.0"
+dependencies = [
+ "bittide-sys",
+ "riscv-rt",
+]
+
+[[package]]
+name = "clock-control-reg-cpy"
+version = "0.1.0"
+dependencies = [
+ "bittide-sys",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
 name = "critical-section"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -67,17 +84,6 @@ name = "fdt"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "784a4df722dc6267a04af36895398f59d21d07dce47232adf31ec0ff2fa45e67"
-
-[[package]]
-name = "fdt-read"
-version = "0.1.0"
-dependencies = [
- "bittide-sys",
- "fdt",
- "heapless",
- "riscv-rt",
- "ufmt",
-]
 
 [[package]]
 name = "hash32"

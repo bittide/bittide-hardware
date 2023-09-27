@@ -42,7 +42,10 @@ processingElement ::
   ( HiddenClockResetEnable dom
   , KnownNat nBusses, 2 <= nBusses, CLog 2 nBusses <= 30) =>
   PeConfig nBusses ->
-  Circuit () (Vec (nBusses-2) (Wishbone dom 'Standard (MappedBus 32 nBusses) (Bytes 4)))
+  Circuit
+    ()
+    ( Vec (nBusses-2) (Wishbone dom 'Standard (MappedBus 32 nBusses) (Bytes 4))
+    )
 processingElement (PeConfig memMapConfig initI initD) = circuit $ do
   (iBus0, dBus) <- rvCircuit (pure low) (pure low) (pure low)
   ([iMemBus, dMemBus], extBusses) <-
@@ -55,7 +58,9 @@ processingElement (PeConfig memMapConfig initI initD) = circuit $ do
   removeMsb ::
     forall aw a .
     KnownNat aw =>
-    Circuit (Wishbone dom 'Standard (aw + 1) a) (Wishbone dom 'Standard aw a)
+    Circuit
+      (Wishbone dom 'Standard (aw + 1) a)
+      (Wishbone dom 'Standard aw a)
   removeMsb = wbMap (mapAddr (truncateB  :: BitVector (aw + 1) -> BitVector aw)) id
 
   wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
@@ -79,7 +84,8 @@ rvCircuit ::
   Signal dom Bit ->
   Circuit
     ()
-    (Wishbone dom 'Standard 32 (Bytes 4), Wishbone dom 'Standard 32 (Bytes 4))
+    ( Wishbone dom 'Standard 32 (Bytes 4)
+    , Wishbone dom 'Standard 32 (Bytes 4) )
 rvCircuit tInterrupt sInterrupt eInterrupt = Circuit go
   where
   go ((),(iBusIn, dBusIn)) = ((),(iBusOut, dBusOut))

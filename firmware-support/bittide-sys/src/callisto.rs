@@ -2,6 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use ufmt::derive::uDebug;
+
+use crate::clock_control::SpeedChange;
+
 /// Rust sibling of
 /// `Bittide.ClockControl.StabilityChecker.StabilityIndication`.
 #[repr(transparent)]
@@ -22,7 +26,7 @@ impl StabilityIndication {
 
 /// Rust version of
 /// `Bittide.ClockControl.Callisto.Types.ControlConfig`.
-#[derive(Debug, Clone)]
+#[derive(uDebug, Clone)]
 pub struct ControlConfig {
     /// Enable reframing. Reframing allows a system to resettle buffers around
     /// their midpoints, without dropping any frames. For more information, see
@@ -35,30 +39,9 @@ pub struct ControlConfig {
     pub target_count: isize,
 }
 
-/// Rust version of `Bittide.ClockControl.SpeedChange`.
-#[derive(Debug, Copy, Clone)]
-pub enum SpeedChange {
-    /// Increases clock speed.
-    SpeedUp,
-    /// Decreases clock speed.
-    SlowDown,
-    /// Keeps the clock as it is.
-    NoChange,
-}
-
-impl SpeedChange {
-    fn sign(&self) -> i32 {
-        match &self {
-            SpeedChange::SpeedUp => 1,
-            SpeedChange::NoChange => 0,
-            SpeedChange::SlowDown => -1,
-        }
-    }
-}
-
 /// Rust version of
 /// `Bittide.ClockControl.Callisto.Types.ReframingState`.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum ReframingState {
     /// The controller remains in this state until stability has been
     /// detected.
@@ -77,7 +60,7 @@ pub enum ReframingState {
 }
 
 /// Rust version of `Bittide.ClockControl.Callisto.Types.ControlSt`.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ControlSt {
     /// Accumulated speed change requests, where
     /// * `speedup ~ 1`
@@ -124,16 +107,16 @@ impl ControlSt {
 pub fn callisto(
     config: &ControlConfig,
     availability_mask: u32,
-    stability_checks: &[StabilityIndication],
-    data_counts: &[isize],
+    links_stable: u32,
+    data_counts: impl Iterator<Item = isize>,
     state: &mut ControlSt,
 ) {
     const K_P: f32 = 2e-4;
     const FSTEP: f32 = 5e-4;
 
-    let n_buffers = availability_mask.count_ones() as i32;
-    let measured_sum = data_counts.iter().sum::<isize>() as i32;
-    let r_k = (measured_sum - n_buffers * config.target_count as i32) as f32;
+    let n_buffers = availability_mask.count_ones();
+    let measured_sum = data_counts.sum::<isize>() as i32;
+    let r_k = (measured_sum - n_buffers as i32 * config.target_count as i32) as f32;
     let c_des = K_P * r_k + state.steady_state_target;
 
     state.z_k += state.b_k.sign();
@@ -151,7 +134,7 @@ pub fn callisto(
     state.rf_state_update(
         config.wait_time,
         config.reframing_enabled != 0,
-        stability_checks.iter().all(|x| x.stable()),
+        links_stable.count_ones() == n_buffers,
         c_des,
     );
 }

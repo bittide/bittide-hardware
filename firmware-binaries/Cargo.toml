@@ -13,9 +13,11 @@ codegen-units = 1
 
 [workspace]
 members = [
-  "examples/fdt-read",
   "examples/hello",
-  
+
+  "clock-control",
   "processing-element-test",
+  "clock-control",
+  "clock-control-reg-cpy",
 ]
 resolver = "2"

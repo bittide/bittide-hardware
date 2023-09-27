@@ -8,14 +8,11 @@ use fdt::Fdt;
 use utils::matches_fdt_name;
 
 pub mod callisto;
-pub mod character_device;
+pub mod clock_control;
 pub mod gather_unit;
 pub mod program_stream;
 pub mod scatter_unit;
 pub mod uart;
-
-#[cfg(target_arch = "riscv32")]
-pub mod panic_handler;
 
 pub(crate) mod utils;
 
@@ -99,40 +96,5 @@ impl<'a> Initialiser<'a> {
             .ok_or(ComponentLoadError::FdtNodeNotFound(name))?;
 
         gather_unit::GatherUnit::from_fdt_node(&node)
-    }
-
-    /// Initialise a character-device (debug printing) component.
-    ///
-    /// # Safety
-    ///
-    /// The `name` must correspond to a node in the device tree,
-    /// the contents of this node must all be valid for the configuration of the
-    /// hardware this function gets executed on.
-    pub unsafe fn initialise_character_device(
-        &self,
-        name: &'static str,
-    ) -> Result<(), ComponentLoadError> {
-        let node = self
-            .fdt
-            .find_node("/")
-            .unwrap()
-            .children()
-            .find(|child| matches_fdt_name(child, name))
-            .ok_or(ComponentLoadError::FdtNodeNotFound(name))?;
-
-        let addr = node
-            .reg()
-            .ok_or(ComponentLoadError::RegNotFound {
-                component: "character device",
-            })?
-            .next()
-            .ok_or(ComponentLoadError::RegNotFound {
-                component: "character device",
-            })?
-            .starting_address;
-
-        character_device::initialise(addr as *mut _);
-
-        Ok(())
     }
 }

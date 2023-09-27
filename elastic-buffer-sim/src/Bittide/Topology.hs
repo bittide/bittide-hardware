@@ -22,7 +22,7 @@ import Clash.Signal.Internal
   , Femtoseconds(..)
   )
 
-import Data.Maybe (catMaybes)
+import Data.Maybe
 import Data.Proxy (Proxy(..))
 import Data.List qualified as L (take, drop, repeat, replicate)
 
@@ -107,7 +107,7 @@ simulationEntity topology ccc !clockOffsets !startupOffsets =
     | otherwise            = pure 0
 
   -- clock generators
-  !clocks = clock <$> clockOffsets <*> rsts <*> (fmap speedChange <$> callistoResults)
+  !clocks = clock <$> clockOffsets <*> rsts <*> (fmap (fromMaybe NoChange . maybeSpeedChange) <$> callistoResults)
   clock offset rst =
     tunableClockGen
       (cccSettlePeriod ccc)
