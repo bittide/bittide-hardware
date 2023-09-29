@@ -12,7 +12,7 @@ use riscv_rt::entry;
 
 use ufmt::uwrite;
 
-const STATUS_REG_ADDR: *mut u32 = 0xC000_0000 as *mut u32;
+const STATUS_REG_ADDR: *mut u32 = 0xE000_0000 as *mut u32;
 
 fn test_success() {
     unsafe {

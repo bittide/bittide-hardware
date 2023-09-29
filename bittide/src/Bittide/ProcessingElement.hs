@@ -12,13 +12,16 @@ module Bittide.ProcessingElement where
 import Clash.Prelude
 
 import Protocols
+import Protocols.Internal
 import Protocols.Wishbone
-import VexRiscv (Input(..), Output(..), vexRiscv)
+import VexRiscv (CpuIn(..), CpuOut(..), JtagIn, JtagOut, vexRiscv)
 
 import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 import Bittide.Wishbone
+
+import Clash.Cores.Xilinx.Ila (Depth(D4096))
 
 import qualified Data.ByteString as BS
 
@@ -35,7 +38,7 @@ data PeConfig nBusses where
     InitialContent depthD (Bytes 4) ->
     PeConfig nBusses
 
--- | 'Contranomy' based RV32IMC core together with instruction memory, data memory and
+-- | VexRiscV based RV32IMC core together with instruction memory, data memory and
 -- 'singleMasterInterconnect'.
 processingElement ::
   forall dom nBusses .
@@ -43,25 +46,28 @@ processingElement ::
   , KnownNat nBusses, 2 <= nBusses, CLog 2 nBusses <= 30) =>
   PeConfig nBusses ->
   Circuit
-    ()
-    ( Vec (nBusses-2) (Wishbone dom 'Standard (MappedBus 32 nBusses) (Bytes 4))
+    (CSignal dom JtagIn)
+    ( Vec (nBusses-2) (Wishbone dom 'Standard (MappedBusAddrWidth 32 nBusses) (Bytes 4))
+    , CSignal dom JtagOut
     )
-processingElement (PeConfig memMapConfig initI initD) = circuit $ do
-  (iBus0, dBus) <- rvCircuit (pure low) (pure low) (pure low)
+processingElement (PeConfig memMapConfig initI initD) = circuit $ \jtagIn0 -> do
+  (iBus0, dBus0, jtagOut0) <- rvCircuit (pure low) (pure low) (pure low) -< jtagIn0
+  iBus1 <- setName @"instr_bus" (ilaWb 0 D4096) -< iBus0
+  dBus1 <- setName @"data_bus" (ilaWb 0 D4096) -< dBus0
   ([iMemBus, dMemBus], extBusses) <-
-    (splitAtC d2 <| singleMasterInterconnect memMapConfig) -< dBus
+    (splitAtC d2 <| singleMasterInterconnect memMapConfig) -< dBus1
   wbStorage initD -< dMemBus
-  iBus1 <- removeMsb -< iBus0
-  wbStorageDPC initI -< (iBus1, iMemBus)
-  idC -< extBusses
+  iBus2 <- removeMsb -< iBus1 -- XXX: <= This should be handled by an interconnect
+  wbStorageDPC initI -< (iBus2, iMemBus)
+  idC -< (extBusses, jtagOut0)
  where
   removeMsb ::
     forall aw a .
     KnownNat aw =>
     Circuit
-      (Wishbone dom 'Standard (aw + 1) a)
+      (Wishbone dom 'Standard (aw + 4) a)
       (Wishbone dom 'Standard aw a)
-  removeMsb = wbMap (mapAddr (truncateB  :: BitVector (aw + 1) -> BitVector aw)) id
+  removeMsb = wbMap (mapAddr (truncateB  :: BitVector (aw + 4) -> BitVector aw)) id
 
   wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
 
@@ -83,24 +89,30 @@ rvCircuit ::
   Signal dom Bit ->
   Signal dom Bit ->
   Circuit
-    ()
+    (CSignal dom JtagIn)
     ( Wishbone dom 'Standard 32 (Bytes 4)
-    , Wishbone dom 'Standard 32 (Bytes 4) )
+    , Wishbone dom 'Standard 32 (Bytes 4)
+    , CSignal dom JtagOut )
 rvCircuit tInterrupt sInterrupt eInterrupt = Circuit go
   where
-  go ((),(iBusIn, dBusIn)) = ((),(iBusOut, dBusOut))
-   where
-    tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) =
-      Input {..}
+  --go :: (CSignal dom JtagIn,
+  --            (Signal dom (WishboneS2M (BitVector 32)),
+  --             Signal dom (WishboneS2M (BitVector 32)), CSignal dom ()))
+  --           -> (CSignal dom (),
+  --               (Signal dom (WishboneM2S 32 4 (BitVector 32)),
+  --                Signal dom (WishboneM2S 32 4 (BitVector 32)), CSignal dom JtagOut))
+
+  go ((CSignal jtagIn0),(iBusIn, dBusIn, CSignal _)) = ((CSignal $ pure ()),(iBusOut, dBusOut, CSignal jtagOut))   where
+    tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) = CpuIn {..}
     rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
-    rvOut = vexRiscv rvIn
+    (cpuOut, jtagOut) = vexRiscv hasClock hasReset rvIn jtagIn0
 
     -- The VexRiscv instruction- and data-busses assume a conceptual [Bytes 4] memory
     -- while our storages work like [Bytes 1]. This is also why the address width of
     -- the VexRiscv busses are 30 bit and still cover the whole address space.
     -- These shifts bring the addresses "back into the byte domain" so to speak.
-    iBusOut = mapAddr ((`shiftL` 2) . extend @_ @_ @2) . iBusWbM2S <$> rvOut
-    dBusOut = mapAddr ((`shiftL` 2) . extend) . dBusWbM2S <$> rvOut
+    iBusOut = mapAddr ((`shiftL` 2) . extend @_ @_ @2) . iBusWbM2S <$> cpuOut
+    dBusOut = mapAddr ((`shiftL` 2) . extend) . dBusWbM2S <$> cpuOut
 
 -- | Map a function over the address field of 'WishboneM2S'
 mapAddr ::

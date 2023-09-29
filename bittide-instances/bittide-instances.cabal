@@ -73,6 +73,7 @@ common common-options
     clash-lib,
     clash-prelude,
     clash-protocols,
+    clash-vexriscv,
     containers,
     cryptohash-sha256,
     directory,

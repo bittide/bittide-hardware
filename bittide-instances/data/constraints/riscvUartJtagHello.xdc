@@ -1,31 +1,89 @@
-# SPDX-FileCopyrightText: 2022-2023 Google LLC
+# SPDX-FileCopyrightText: 2023 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
 
+# For pinout, see:
+#
+#   https://github.com/Xilinx/XilinxBoardStore/tree/2022.2/boards/Xilinx/kcu105/1.7
+#
+#   https://www.xilinx.com/support/documents/boards_and_kits/kcu105/ug917-kcu105-eval-bd.pdf
+#
+# To see which pins are global clock (GC) capable, check out:
+#
+#   Page 183: FFVA1156 (XCKU040) and RFA1156 (XQKU040)
+#   https://www.xilinx.com/support/documentation/user_guides/ug575-ultrascale-pkg-pinout.pdf
 
-# CLK_125MHZ
-set_property BOARD_PART_PIN sysclk_125_p [get_ports {CLK_125MHZ_p}]
-set_property BOARD_PART_PIN sysclk_125_n [get_ports {CLK_125MHZ_n}]
+# Bank  45 VCCO - VCC1V2_FPGA_3A - IO_L12P_T1U_N10_GC_45
+set_property IOSTANDARD DIFF_SSTL12 [get_ports SYSCLK_300_p]
+set_property ODT RTT_48 [get_ports SYSCLK_300_p]
+#
+# Bank  45 VCCO - VCC1V2_FPGA_3A - IO_L12N_T1U_N11_GC_45
+set_property PACKAGE_PIN AK17 [get_ports SYSCLK_300_p]
+set_property PACKAGE_PIN AK16 [get_ports SYSCLK_300_n]
+set_property IOSTANDARD DIFF_SSTL12 [get_ports SYSCLK_300_n]
+set_property ODT RTT_48 [get_ports SYSCLK_300_n]
 
-# GPIO_LED_0_LS
-set_property BOARD_PART_PIN GPIO_LED_0_LS [get_ports {done}]
-# GPIO_LED_1_LS
-set_property BOARD_PART_PIN GPIO_LED_1_LS [get_ports {success}]
+set_property PACKAGE_PIN AN8 [get_ports CPU_RESET]
+set_property IOSTANDARD LVCMOS18 [get_ports CPU_RESET]
 
-# PMOD0_[0..7]
+# Color   | FPGA pin      | LVLSHFT       | Direction | Connection
+# --------|---------------|---------------|-----------|-----------
+# Red     | PMODx_0       | IO1           | FPGA OUT  | UART_RXD
+# Yellow  | PMODx_1       | IO2           | FPGA IN   | UART_TXD
+# Blue    | PMODx_2       | IO3           | FPGA IN   | JTAG_TCK
+# Gray    | PMODx_3       | IO4           | FPGA IN   | JTAG_TDI
+# Brown   | PMODx_4       | IO5           | FPGA IN   | JTAG_RST
+# Orange  | PMODx_5       | IO6           | FPGA IN   | JTAG_TMS
+# Green   | PMODx_6       | IO7           | FPGA OUT  | JTAG_TDO
+# Purple  | PMODx_7       | IO8           |           |
+# Black   | PMOD_3V3      | VCCB          |           |
+# White   | PMOD_GND      | GND           |           |
+
+# PMOD0[0..7]
 # Note that AH18 is a global clock capable pin
-set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AK25} [get_ports {USB_UART_RXD}]
-set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AN21} [get_ports {USB_UART_TXD}]
+set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AK25} [get_ports {UART_RXD}]
+set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AN21} [get_ports {UART_TXD}]
 set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AH18} [get_ports {JTAG_TCK}]
 set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AM19} [get_ports {JTAG_TDI}]
-set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AE26} [get_ports {JTAG_RST}]
+# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AE26} [get_ports {JTAG_RST}]
 set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AF25} [get_ports {JTAG_TMS}]
 set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AE21} [get_ports {JTAG_TDO}]
 # set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AM17} [get_ports {}]
 
+# PMOD1[0..7]
+# Note that AP16 is **not** a global clock capable pin - and none of the others are.
+# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AL14} [get_ports {UART_RXD}]
+# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AM14} [get_ports {UART_TXD}]
+# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AP16} [get_ports {JTAG_TCK}]
+# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AP15} [get_ports {JTAG_TDI}]
+# # set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AM16} [get_ports {JTAG_RST}]
+# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AM15} [get_ports {JTAG_TMS}]
+# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AN18} [get_ports {JTAG_TDO}]
+# # set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AN17} [get_ports {}]
+
+# Old JTAG config:
+# # JTAG clock. We set it to 50 MHz, although we expect that JTAG doesn't run at
+# # this clock speed, we set it optimistically high. If we meet that, we can always
+# # run at a slower frequency in practise.
+# create_clock -name {JTAG_TCK} -period 20.000 [get_ports {JTAG_TCK}]
+
+# # TODO: Figure out "good" values for input/output delays. We set it to 3.0 to
+# # copy a DE1-Soc example design, in hopes that the manufacturer set sensible
+# # values.
+# #
+# # Note that for PMOD1 we connect TCK to a non global clock capable pin, so there
+# # should already be a delay on the clock line induced by the indirect connection.
+# set_input_delay  3.0 -clock [get_clocks {JTAG_TCK}] -clock_fall [get_ports {JTAG_TDI JTAG_TMS}]
+# set_output_delay 3.0 -clock [get_clocks {JTAG_TCK}] [get_ports {JTAG_TDO}]
+
+# set_input_delay -clock [get_clocks {JTAG_TCK}] -min 6.0 [get_ports {JTAG_TDI}]
+# set_input_delay -clock [get_clocks {JTAG_TCK}] -max 6.0 [get_ports {JTAG_TDI}]
+# set_input_delay -clock [get_clocks {JTAG_TCK}] -min 6.0 [get_ports {JTAG_TMS}]
+# set_input_delay -clock [get_clocks {JTAG_TCK}] -max 6.0 [get_ports {JTAG_TMS}]
+
 set_clock_groups \
   -asynchronous \
-  -group [get_clocks -include_generated_clocks {CLK_125MHZ_p}]
+  -group [get_clocks -include_generated_clocks {SYSCLK_300_p}]
 
 # Usually JTAG_TCK would be appended to the command above, but Intel JTAG config
 # (see below) already does this for us:
