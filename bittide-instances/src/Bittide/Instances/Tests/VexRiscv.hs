@@ -19,6 +19,7 @@ import Protocols
 import Protocols.Internal
 import Protocols.Wishbone
 import System.FilePath
+import VexRiscv
 
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains (Basic200, Basic125)
@@ -33,20 +34,24 @@ data TestStatus = Running | Success | Fail
 vexRiscvInner ::
   forall dom.
   HiddenClockResetEnable dom =>
-  Signal dom (Bool, Bool)
-vexRiscvInner = stateToDoneSuccess <$> status
+  Signal dom JtagIn ->
+  Signal dom (Bool, Bool, JtagOut)
+vexRiscvInner jtagIn0 = bundle (done, success, jtagOut1)
   where
+
+    (unbundle -> (done, success)) = stateToDoneSuccess <$> status
 
     stateToDoneSuccess Running = (False, False)
     stateToDoneSuccess Success = (True, True)
     stateToDoneSuccess Fail    = (True, False)
 
     unitC = CSignal (pure ())
-    (_, CSignal status) = circuitFn ((), unitC)
+    (_, (CSignal status, CSignal jtagOut1)) = circuitFn (CSignal jtagIn0, (unitC, unitC))
 
-    Circuit circuitFn = circuit $ \unit -> do
-        [wb] <- processingElement peConfig -< unit
-        statusRegister -< wb
+    Circuit circuitFn = circuit $ \jtagIn1 -> do
+        ([wb], jtagOut0) <- processingElement peConfig -< jtagIn1
+        testResult <- statusRegister -< wb
+        idC -< (testResult, jtagOut0)
 
     statusRegister :: Circuit (Wishbone dom 'Standard 30 (Bytes 4)) (CSignal dom TestStatus)
     statusRegister = Circuit $ \(fwd, CSignal _) ->
@@ -99,20 +104,26 @@ vexRiscvInner = stateToDoneSuccess <$> status
 
 vexRiscvTest ::
   "CLK_125MHZ" ::: DiffClock Basic125 ->
+  "TMS" ::: Signal Basic200 Bit ->
+  "TDI" ::: Signal Basic200 Bit ->
+  "TCK" ::: Signal Basic200 Bit ->
   "" :::
     ( "done"    ::: Signal Basic200 Bool
     , "success" ::: Signal Basic200 Bool
+    , "TDO" ::: Signal Basic200 Bit
     )
-vexRiscvTest diffClk = (testDone, testSuccess)
+vexRiscvTest diffClk tms tdi tck = (testDone, testSuccess, tdo)
   where
     (clk, clkStable0) = clockWizardDifferential (SSymbol @"pll") diffClk noReset
     clkStable1 = xpmCdcSingle clk clk clkStable0 -- improvised reset syncer
 
     clkStableRst = unsafeFromActiveLow clkStable1
 
-    (unbundle -> (testDone, testSuccess)) =
+    jtagIn0 = JtagIn <$> tms <*> tdi <*> tck
+
+    (unbundle -> (testDone, testSuccess, fmap testDataOut -> tdo)) =
       hwSeqX probe $
-      withClockResetEnable clk reset enableGen (vexRiscvInner @Basic200)
+      withClockResetEnable clk reset enableGen (vexRiscvInner @Basic200) jtagIn0
 
     reset = orReset clkStableRst testReset
     ((unsafeFromActiveLow -> testReset) :> Nil) = unbundle probe

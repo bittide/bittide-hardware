@@ -9,7 +9,10 @@ module Bittide.Node where
 import Clash.Prelude
 
 import Protocols
+import Protocols.Internal
 import Protocols.Wishbone
+
+import VexRiscv
 
 import Bittide.Calendar
 import Bittide.DoubleBufferedRam
@@ -152,7 +155,7 @@ gppe (GppeConfig linkConfig peConfig, linkIn, splitAtI -> (nmuM2S0, nmuM2S1)) =
  where
   (suS2M, nmuS2M0) = linkToPe linkConfig linkIn sc suM2S nmuM2S0
   (linkOut, guS2M, nmuS2M1) = peToLink linkConfig sc guM2S nmuM2S1
-  (_, nmuM2Ss) = toSignals (processingElement peConfig) ((), nmuS2Ms)
+  (_, (nmuM2Ss, _)) = toSignals (processingElement peConfig) (CSignal . pure $ JtagIn low low low, (nmuS2Ms, CSignal $ pure ()))
   (suM2S :> guM2S :> Nil) = nmuM2Ss
   nmuS2Ms = suS2M :> guS2M :> Nil
   sc = sequenceCounter
@@ -185,6 +188,6 @@ managementUnit (ManagementConfig linkConfig peConfig) linkIn nodeS2Ms =
   (linkOut, guS2M, nmuS2M1) = peToLink linkConfig sc guM2S nmuM2S1
   (suM2S :> guM2S :> rest) = nmuM2Ss
   (splitAtI -> (nmuM2S0, nmuM2S1), nodeM2Ss) = splitAtI rest
-  (_, nmuM2Ss) = toSignals (processingElement peConfig) ((), nmuS2Ms)
+  (_, (nmuM2Ss, _)) = toSignals (processingElement peConfig) (CSignal . pure $ JtagIn low low low, (nmuS2Ms, CSignal $ pure ()))
   nmuS2Ms = suS2M :> guS2M :> nmuS2M0 ++ nmuS2M1 ++ nodeS2Ms
   sc = sequenceCounter

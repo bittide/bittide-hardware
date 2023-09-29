@@ -12,8 +12,9 @@ module Bittide.ProcessingElement where
 import Clash.Prelude
 
 import Protocols
+import Protocols.Internal
 import Protocols.Wishbone
-import VexRiscv (Input(..), Output(..), vexRiscv)
+import VexRiscv (Input(..), Output(..), vexRiscv, JtagIn, JtagOut)
 
 import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
@@ -43,17 +44,18 @@ processingElement ::
   , KnownNat nBusses, 2 <= nBusses, CLog 2 nBusses <= 30) =>
   PeConfig nBusses ->
   Circuit
-    ()
+    (CSignal dom JtagIn)
     ( Vec (nBusses-2) (Wishbone dom 'Standard (MappedBus 32 nBusses) (Bytes 4))
+    , CSignal dom JtagOut
     )
-processingElement (PeConfig memMapConfig initI initD) = circuit $ do
-  (iBus0, dBus) <- rvCircuit (pure low) (pure low) (pure low)
+processingElement (PeConfig memMapConfig initI initD) = circuit $ \jtagIn0 -> do
+  (iBus0, dBus, jtagOut0) <- rvCircuit (pure low) (pure low) (pure low) -< jtagIn0
   ([iMemBus, dMemBus], extBusses) <-
     (splitAtC d2 <| singleMasterInterconnect memMapConfig) -< dBus
   wbStorage initD -< dMemBus
   iBus1 <- removeMsb -< iBus0
   wbStorageDPC initI -< (iBus1, iMemBus)
-  idC -< extBusses
+  idC -< (extBusses, jtagOut0)
  where
   removeMsb ::
     forall aw a .
@@ -83,17 +85,25 @@ rvCircuit ::
   Signal dom Bit ->
   Signal dom Bit ->
   Circuit
-    ()
+    (CSignal dom JtagIn)
     ( Wishbone dom 'Standard 32 (Bytes 4)
-    , Wishbone dom 'Standard 32 (Bytes 4) )
+    , Wishbone dom 'Standard 32 (Bytes 4)
+    , CSignal dom JtagOut )
 rvCircuit tInterrupt sInterrupt eInterrupt = Circuit go
   where
-  go ((),(iBusIn, dBusIn)) = ((),(iBusOut, dBusOut))
-   where
-    tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) =
+  --go :: (CSignal dom JtagIn,
+  --            (Signal dom (WishboneS2M (BitVector 32)),
+  --             Signal dom (WishboneS2M (BitVector 32)), CSignal dom ()))
+  --           -> (CSignal dom (),
+  --               (Signal dom (WishboneM2S 32 4 (BitVector 32)),
+  --                Signal dom (WishboneM2S 32 4 (BitVector 32)), CSignal dom JtagOut))
+
+  go ((CSignal jtagIn0),(iBusIn, dBusIn, CSignal _)) = ((CSignal $ pure ()),(iBusOut, dBusOut, CSignal jtagOut0))   where
+    tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) jtagIn =
       Input {..}
-    rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
+    rvIn = tupToCoreIn <$> (bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)) <*> jtagIn0
     rvOut = vexRiscv rvIn
+    jtagOut0 = jtagOut <$> rvOut
 
     -- The VexRiscv instruction- and data-busses assume a conceptual [Bytes 4] memory
     -- while our storages work like [Bytes 1]. This is also why the address width of
