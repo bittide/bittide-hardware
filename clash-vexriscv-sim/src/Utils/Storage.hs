@@ -30,11 +30,12 @@ storage contents = mealy' go (I.fromAscList $ L.zip [0..] contents)
   -- Version of mealy that doesn't require NFDataX for the state.
   -- This is needed because IntMap (Word8) does not implement NFDataX
   mealy' fn st0 (i :- is) = o :- mealy' fn st1 is 
-    where (st1, o) = fn st0 i
+    where (!st1, o) = fn st0 i
 
   go mem WishboneM2S{..}
     | not (busCycle && strobe)        = (mem, emptyWishboneS2M)
-    | addr >= fromIntegral size       = (mem, emptyWishboneS2M { err = True })
+    | addr >= fromIntegral size       =
+        (mem, emptyWishboneS2M { err = True })
     | not writeEnable      {- read -} =
         case readDataSel mem addr busSelect of
           Nothing -> (mem, emptyWishboneS2M { err = True })
@@ -52,7 +53,7 @@ readDataSel mem addr sel =
     0b0011 -> readWord (addr + 0)
     0b1100 -> readWord (addr + 2)
     0b1111 -> readDWord addr
-    _                    -> Nothing
+    _      -> Nothing
   
   where
     readByte addr' = resize @_ @8 @32 <$> I.lookup (fromIntegral addr') mem

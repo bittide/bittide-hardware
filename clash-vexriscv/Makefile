@@ -13,7 +13,7 @@ VERILATOR_FLAGS = -CFLAGS '-O3 -fPIC' -Wno-fatal +1364-2001ext+v
 VERILATOR_CFLAGS = $(shell pkg-config --cflags verilator)
 FFI_CPPFLAGS = $(VERILATOR_CFLAGS) -fPIC -O3 -I$(VERILATOR_DIR)
 
-all: $(OUT_DIR)/libVexRiscvFFI.a
+all: $(OUT_DIR)/libVexRiscvFFI.a # $(OUT_DIR)/libVexRiscvFFI.so
 
 clean:
 	rm $(VERILATOR_DIR) -rf
@@ -50,3 +50,10 @@ $(OUT_DIR)/libVexRiscvFFI.a: $(OUT_DIR)/VVexRiscv__ALL.a $(OUT_DIR)/impl.o $(OUT
 		$(OUT_DIR)/libVexRiscvFFI.a \
 		$(OUT_DIR)/impl.o \
 		$(OUT_DIR)/verilated.o
+
+$(OUT_DIR)/libVexRiscvFFI.so: $(OUT_DIR)/libVexRiscvFFI.a
+	rm -f $(OUT_DIR)/libVexRiscvFFI.so
+	$(CXX) -shared -o $(OUT_DIR)/libVexRiscvFFI.so \
+		-Wl,--whole-archive \
+			$(OUT_DIR)/libVexRiscvFFI.a \
+		-Wl,--no-whole-archive

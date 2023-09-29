@@ -39,7 +39,7 @@ runProgramExpect act n expected = withSystemTempFile "ELF" $ \fp _ -> do
 
   let _all@(unbundle -> (_circuit, writes, _iBus, _dBus)) =
         withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $
-          bundle (cpu iMem dMem)
+          bundle (cpu Nothing iMem dMem)
 
   let output = L.take (BS.length expected) $
         flip mapMaybe (sampleN_lazy n writes) $ \case

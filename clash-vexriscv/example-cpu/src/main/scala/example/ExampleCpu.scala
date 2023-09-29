@@ -6,6 +6,9 @@ package example
 
 import spinal.core._
 import spinal.lib._
+import spinal.lib.com.jtag.Jtag
+import spinal.lib.bus.wishbone.{Wishbone, WishboneConfig}
+
 import vexriscv.plugin._
 import vexriscv.{VexRiscv, VexRiscvConfig, plugin}
 import vexriscv.ip.{DataCacheConfig}
@@ -13,6 +16,7 @@ import vexriscv.ip.fpu.FpuParameter
 
 object ExampleCpu extends App {
   def cpu() : VexRiscv = {
+
     val config = VexRiscvConfig(
       plugins = List(
         new IBusSimplePlugin(
@@ -100,7 +104,9 @@ object ExampleCpu extends App {
         new BranchPlugin(
           earlyBranch = false,
           catchAddressMisaligned = true
-        )
+        ),
+        new DebugPlugin(ClockDomain.current),
+        new YamlPlugin("ExampleCpu.yaml")
       )
     )
 
@@ -120,6 +126,12 @@ object ExampleCpu extends App {
         case plugin: DBusCachedPlugin => {
           plugin.dBus.setAsDirectionLess()
           master(plugin.dBus.toWishbone()).setName("dBusWishbone")
+        }
+        
+        case plugin: DebugPlugin => plugin.debugClockDomain {
+          plugin.io.bus.setAsDirectionLess() 
+          val jtag = slave(new Jtag()).setName("jtag")
+          jtag <> plugin.io.bus.fromJtag()
         }
         case _ =>
       }
