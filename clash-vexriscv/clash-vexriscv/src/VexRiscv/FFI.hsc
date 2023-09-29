@@ -29,12 +29,18 @@ data INPUT = INPUT
   , timerInterrupt :: Bit
   , externalInterrupt :: Bit
   , softwareInterrupt :: Bit
+  
   , iBusWishbone_ACK :: Bit
   , iBusWishbone_DAT_MISO :: Word32
   , iBusWishbone_ERR :: Bit
+  
   , dBusWishbone_ACK :: Bit
   , dBusWishbone_DAT_MISO :: Word32
   , dBusWishbone_ERR :: Bit
+  
+  , jtag_TMS :: Bit
+  , jtag_TDI :: Bit
+  , jtag_TCK :: Bit
   }
   deriving (Show)
 
@@ -47,6 +53,7 @@ data OUTPUT = OUTPUT
   , iBusWishbone_SEL :: Word8
   , iBusWishbone_CTI :: Word8
   , iBusWishbone_BTE :: Word8
+  
   , dBusWishbone_CYC :: Bit
   , dBusWishbone_STB :: Bit
   , dBusWishbone_WE :: Bit
@@ -55,6 +62,9 @@ data OUTPUT = OUTPUT
   , dBusWishbone_SEL :: Word8
   , dBusWishbone_CTI :: Word8
   , dBusWishbone_BTE :: Word8
+
+  , debug_resetOut :: Bit
+  , jtag_TDO :: Bit
   }
   deriving (Show)
 
@@ -79,6 +89,9 @@ instance Storable INPUT where
       <*> (#peek INPUT, dBusWishbone_ACK) ptr
       <*> (#peek INPUT, dBusWishbone_DAT_MISO) ptr
       <*> (#peek INPUT, dBusWishbone_ERR) ptr
+      <*> (#peek INPUT, jtag_TMS) ptr
+      <*> (#peek INPUT, jtag_TDI) ptr
+      <*> (#peek INPUT, jtag_TCK) ptr
 
     {-# INLINE poke #-}
     poke ptr this = do
@@ -86,12 +99,18 @@ instance Storable INPUT where
       (#poke INPUT, timerInterrupt) ptr (timerInterrupt this)
       (#poke INPUT, externalInterrupt) ptr (externalInterrupt this)
       (#poke INPUT, softwareInterrupt) ptr (softwareInterrupt this)
+      
       (#poke INPUT, iBusWishbone_ACK) ptr (iBusWishbone_ACK this)
       (#poke INPUT, iBusWishbone_DAT_MISO) ptr (iBusWishbone_DAT_MISO this)
       (#poke INPUT, iBusWishbone_ERR) ptr (iBusWishbone_ERR this)
+      
       (#poke INPUT, dBusWishbone_ACK) ptr (dBusWishbone_ACK this)
       (#poke INPUT, dBusWishbone_DAT_MISO) ptr (dBusWishbone_DAT_MISO this)
       (#poke INPUT, dBusWishbone_ERR) ptr (dBusWishbone_ERR this)
+      
+      (#poke INPUT, jtag_TMS) ptr (jtag_TMS this)
+      (#poke INPUT, jtag_TDI) ptr (jtag_TDI this)
+      (#poke INPUT, jtag_TCK) ptr (jtag_TCK this)
       return ()
 
 instance Storable OUTPUT where
@@ -107,6 +126,7 @@ instance Storable OUTPUT where
       <*> (#peek OUTPUT, iBusWishbone_SEL) ptr
       <*> (#peek OUTPUT, iBusWishbone_CTI) ptr
       <*> (#peek OUTPUT, iBusWishbone_BTE) ptr
+
       <*> (#peek OUTPUT, dBusWishbone_CYC) ptr
       <*> (#peek OUTPUT, dBusWishbone_STB) ptr
       <*> (#peek OUTPUT, dBusWishbone_WE) ptr
@@ -115,6 +135,9 @@ instance Storable OUTPUT where
       <*> (#peek OUTPUT, dBusWishbone_SEL) ptr
       <*> (#peek OUTPUT, dBusWishbone_CTI) ptr
       <*> (#peek OUTPUT, dBusWishbone_BTE) ptr
+
+      <*> (#peek OUTPUT, debug_resetOut) ptr
+      <*> (#peek OUTPUT, jtag_TDO) ptr
 
     {-# INLINE poke #-}
     poke ptr this = do
@@ -126,6 +149,7 @@ instance Storable OUTPUT where
       (#poke OUTPUT, iBusWishbone_SEL) ptr (iBusWishbone_SEL this)
       (#poke OUTPUT, iBusWishbone_CTI) ptr (iBusWishbone_CTI this)
       (#poke OUTPUT, iBusWishbone_BTE) ptr (iBusWishbone_BTE this)
+      
       (#poke OUTPUT, dBusWishbone_CYC) ptr (dBusWishbone_CYC this)
       (#poke OUTPUT, dBusWishbone_STB) ptr (dBusWishbone_STB this)
       (#poke OUTPUT, dBusWishbone_WE) ptr (dBusWishbone_WE this)
@@ -134,4 +158,7 @@ instance Storable OUTPUT where
       (#poke OUTPUT, dBusWishbone_SEL) ptr (dBusWishbone_SEL this)
       (#poke OUTPUT, dBusWishbone_CTI) ptr (dBusWishbone_CTI this)
       (#poke OUTPUT, dBusWishbone_BTE) ptr (dBusWishbone_BTE this)
+      
+      (#poke OUTPUT, debug_resetOut) ptr (debug_resetOut this)
+      (#poke OUTPUT, jtag_TDO) ptr (jtag_TDO this)
       return ()

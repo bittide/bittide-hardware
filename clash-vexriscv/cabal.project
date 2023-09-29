@@ -7,7 +7,7 @@ packages:
   clash-vexriscv-sim/
 
 write-ghc-environment-files: always
-
+-- executable-dynamic: True
 with-compiler: ghc-9.0.2
 
 tests: True

@@ -22,6 +22,10 @@ typedef struct {
   bit      dBusWishbone_ACK;
   uint32_t dBusWishbone_DAT_MISO;
   bit      dBusWishbone_ERR;
+
+  bit      jtag_TMS;
+  bit      jtag_TDI;
+  bit      jtag_TCK;
 } INPUT;
 
 typedef struct {
@@ -42,41 +46,10 @@ typedef struct {
   uint8_t  dBusWishbone_SEL;
   uint8_t  dBusWishbone_CTI;
   uint8_t  dBusWishbone_BTE;
+
+  bit      debug_resetOut;
+  bit      jtag_TDO;
 } OUTPUT;
 
 
 #endif
-
-/*
-  input               reset
-  input               timerInterrupt,
-  input               externalInterrupt,
-  input               softwareInterrupt,
-
-  input               iBusWishbone_ACK,
-  input      [31:0]   iBusWishbone_DAT_MISO,
-  input               iBusWishbone_ERR,
-
-  input               dBusWishbone_ACK,
-  input      [31:0]   dBusWishbone_DAT_MISO,
-  input               dBusWishbone_ERR,
-
-
-  output              iBusWishbone_CYC,
-  output              iBusWishbone_STB,
-  output              iBusWishbone_WE,
-  output     [29:0]   iBusWishbone_ADR,
-  output     [31:0]   iBusWishbone_DAT_MOSI,
-  output     [3:0]    iBusWishbone_SEL,
-  output     [2:0]    iBusWishbone_CTI,
-  output     [1:0]    iBusWishbone_BTE,
-
-  output              dBusWishbone_CYC,
-  output              dBusWishbone_STB,
-  output              dBusWishbone_WE,
-  output     [29:0]   dBusWishbone_ADR,
-  output     [31:0]   dBusWishbone_DAT_MOSI,
-  output reg [3:0]    dBusWishbone_SEL,
-  output     [2:0]    dBusWishbone_CTI,
-  output     [1:0]    dBusWishbone_BTE,
-*/

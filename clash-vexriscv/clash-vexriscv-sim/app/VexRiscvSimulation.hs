@@ -22,6 +22,7 @@ import Text.Printf (printf)
 
 import Utils.ProgramLoad (loadProgram)
 import Utils.Cpu (cpu)
+import System.Exit (exitFailure)
 
 --------------------------------------
 --
@@ -77,18 +78,25 @@ main = do
     withClockResetEnable @System clockGen resetGen enableGen $
       loadProgram @System elfFile
 
-  let cpuOut@(unbundle -> (_circuit, writes, iBus, dBus)) =
+  let cpuOut@(unbundle -> (_circuit, writes, _iBus, _dBus)) =
         withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $
-          bundle (cpu iMem dMem)
+          let (circ, writes1, iBus, dBus) = cpu (Just 7894) iMem dMem
+              dBus' = register emptyWishboneS2M dBus
+          in bundle (circ, writes1, iBus, dBus')
 
   case debugConfig of
     RunCharacterDevice ->
-      forM_ (sample_lazy @System (bundle (dBus, iBus, writes))) $ \(dS2M, iS2M, write) -> do
-        when (err dS2M) $
-          putStrLn "D-bus ERR reply"
+      forM_ (sample_lazy @System cpuOut) $ \(out, write, dS2M, iS2M) -> do
+        when (err dS2M) $ do
+          let dBusM2S = dBusWbM2S out
+          let dAddr = toInteger (addr dBusM2S) -- `shiftL` 2
+          printf "D-bus ERR reply % 8X (% 8X)\n" (toInteger $ dAddr `shiftL` 2) (toInteger dAddr)
+          exitFailure
 
-        when (err iS2M) $
-          putStrLn "I-bus ERR reply"
+        when (err iS2M) $ do
+          let iBusM2S = iBusWbM2S out
+          let iAddr = toInteger (addr iBusM2S) -- `shiftL` 2
+          printf "I-bus ERR reply % 8X (% 8X)\n" (toInteger $ iAddr `shiftL` 2) (toInteger iAddr)
         
         case write of
           Just (address, value) | address == 0x0000_1000 -> do
