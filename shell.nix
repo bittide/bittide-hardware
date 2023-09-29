@@ -49,6 +49,7 @@ pkgs.mkShell {
 
       # VexRiscv OpenOCD
       pkgs.openocd-vexriscv
+      pkgs.gdb
 
       # For upgrading Nix env. To update dependencies (within bounds of the currently
       # tracking NixOS version) use:

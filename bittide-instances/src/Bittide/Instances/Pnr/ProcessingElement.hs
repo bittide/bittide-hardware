@@ -3,17 +3,21 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
+
 module Bittide.Instances.Pnr.ProcessingElement where
 
 import Clash.Prelude
 
 import Clash.Annotations.TH
+import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Explicit.Prelude(orReset, noReset)
 import Clash.Xilinx.ClockGen
 import Language.Haskell.TH
 import Protocols
-import Protocols.Internal
+import Protocols.Wishbone
+import Protocols.Internal (CSignal(..))
 import System.FilePath
+import VexRiscv
 
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains
@@ -22,6 +26,15 @@ import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes
 import Bittide.Wishbone
 import Project.FilePath
+
+stripCSignal :: CSignal dom a -> Signal dom a
+stripCSignal (CSignal s) = s
+
+alwaysAck :: KnownNat nBytes => Circuit (Wishbone dom 'Standard addrW (Bytes nBytes)) ()
+alwaysAck = Circuit go
+ where
+  go (_m2s, ()) = (pure emptyWishboneS2M{acknowledge=True}, ())
+
 
 -- | A simple instance containing just VexRisc and UART as peripheral.
 -- Runs the `hello` binary from `firmware-binaries`.
@@ -45,7 +58,7 @@ vexRiscUartHello diffClk rst_in =
     , (_dStart, _dSize, dMem)) = $(do
       root <- runIO $ findParentContaining "cabal.project"
       let
-        elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" True
+        elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" False
         elfPath = elfDir </> "hello"
       memBlobsFromElf BigEndian elfPath Nothing)
 

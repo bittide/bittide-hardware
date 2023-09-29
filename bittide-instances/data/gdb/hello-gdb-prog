@@ -1,0 +1,26 @@
+file "./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/debug/processing-element-test"
+target extended-remote :3333
+
+# Load binary on CPU
+load
+
+# Set a breakpoint at 'test_success' (note the CPU starts at '_start')
+break test_success
+
+# Reset program
+jump _start
+
+# Continue running until we hit 'test_success'
+continue
+
+# List register values
+i r
+
+# Show stack trace
+bt
+
+# Show available functions
+info functions
+
+# Quit GDB
+quit

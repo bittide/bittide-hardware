@@ -186,7 +186,7 @@ mkSynthesisTcl outputDir outOfContext boardPart constraints manifest@LocatedMani
   outOfContextStr
     | outOfContext = "out_of_context" :: String
     | otherwise    = "default"
-  constraintReader constr = "read_xdc {" <> constr <> "}\n"
+  constraintReader constr = "read_xdc -unmanaged {" <> constr <> "}\n"
   constraintsString = concatMap constraintReader constraints
 
   constraintDigest path = do

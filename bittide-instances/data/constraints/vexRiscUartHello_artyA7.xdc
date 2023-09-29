@@ -1,31 +1,49 @@
-# SPDX-FileCopyrightText: 2022-2023 Google LLC
+# SPDX-FileCopyrightText: 2023 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
 
+# For pinout, see:
+#
+#   https://github.com/Xilinx/XilinxBoardStore/tree/2022.2/boards/Xilinx/kcu105/1.7
+#
+#   https://www.xilinx.com/support/documents/boards_and_kits/kcu105/ug917-kcu105-eval-bd.pdf
+#
+# To see which pins are global clock (GC) capable, check out:
+#
+#   Page 183: FFVA1156 (XCKU040) and RFA1156 (XQKU040)
+#   https://www.xilinx.com/support/documentation/user_guides/ug575-ultrascale-pkg-pinout.pdf
 
-# CLK_125MHZ
-set_property BOARD_PART_PIN sysclk_125_p [get_ports {CLK_125MHZ_p}]
-set_property BOARD_PART_PIN sysclk_125_n [get_ports {CLK_125MHZ_n}]
 
-# GPIO_LED_0_LS
-set_property BOARD_PART_PIN GPIO_LED_0_LS [get_ports {done}]
-# GPIO_LED_1_LS
-set_property BOARD_PART_PIN GPIO_LED_1_LS [get_ports {success}]
+## Clock signal
+set_property -dict { PACKAGE_PIN E3    IOSTANDARD LVCMOS33 } [get_ports { CLK100MHZ }]; #IO_L12P_T1_MRCC_35 Sch=gclk[100]
+# create_clock -add -name CLK100MHZ -period 10.00 -waveform {0 5} [get_ports { CLK100MHZ }];
 
-# PMOD0[0..7]
-# Note that AH18 is a global clock capable pin
-# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AK25} [get_ports {UART_RXD}]
-# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AN21} [get_ports {UART_TXD}]
-set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AH18} [get_ports {JTAG_TCK}]
-set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AM19} [get_ports {JTAG_TDI}]
-# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AE26} [get_ports {JTAG_RST}]
-set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AF25} [get_ports {JTAG_TMS}]
-set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AE21} [get_ports {JTAG_TDO}]
-# set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AM17} [get_ports {}]
+# Color   | FPGA pin      | LVLSHFT       | Direction | Connection
+# --------|---------------|---------------|-----------|-----------
+# Red     | PMODx_0       | IO1           | FPGA OUT  | UART_RXD
+# Yellow  | PMODx_1       | IO2           | FPGA IN   | UART_TXD
+# Blue    | PMODx_2       | IO3           | FPGA IN   | JTAG_TCK
+# Gray    | PMODx_3       | IO4           | FPGA IN   | JTAG_TDI
+# Brown   | PMODx_4       | IO5           | FPGA IN   | JTAG_RST
+# Orange  | PMODx_5       | IO6           | FPGA IN   | JTAG_TMS
+# Green   | PMODx_6       | IO7           | FPGA OUT  | JTAG_TDO
+# Purple  | PMODx_7       | IO8           |           |
+# Black   | PMOD_3V3      | VCCB          |           |
+# White   | PMOD_GND      | GND           |           |
+
+## Pmod Header JD
+set_property -dict { PACKAGE_PIN D4    IOSTANDARD LVCMOS33 } [get_ports { UART_RXD }]; #IO_L11N_T1_SRCC_35 Sch=jd[1]
+set_property -dict { PACKAGE_PIN D3    IOSTANDARD LVCMOS33 } [get_ports { UART_TXD }]; #IO_L12N_T1_MRCC_35 Sch=jd[2]
+set_property -dict { PACKAGE_PIN F4    IOSTANDARD LVCMOS33 } [get_ports { JTAG_TCK }]; #IO_L13P_T2_MRCC_35 Sch=jd[3]
+set_property -dict { PACKAGE_PIN F3    IOSTANDARD LVCMOS33 } [get_ports { JTAG_TDI }]; #IO_L13N_T2_MRCC_35 Sch=jd[4]
+# set_property -dict { PACKAGE_PIN E2    IOSTANDARD LVCMOS33 } [get_ports { JTAG_RST }]; #IO_L14P_T2_SRCC_35 Sch=jd[7]
+set_property -dict { PACKAGE_PIN D2    IOSTANDARD LVCMOS33 } [get_ports { JTAG_TMS }]; #IO_L14N_T2_SRCC_35 Sch=jd[8]
+set_property -dict { PACKAGE_PIN H2    IOSTANDARD LVCMOS33 } [get_ports { JTAG_TDO }]; #IO_L15P_T2_DQS_35 Sch=jd[9]
+# set_property -dict { PACKAGE_PIN G2    IOSTANDARD LVCMOS33 } [get_ports {  }]; #IO_L15N_T2_DQS_35 Sch=jd[10]
 
 set_clock_groups \
   -asynchronous \
-  -group [get_clocks -include_generated_clocks {CLK_125MHZ_p}]
+  -group [get_clocks -include_generated_clocks {CLK100MHZ}]
 
 # Usually JTAG_TCK would be appended to the command above, but Intel JTAG config
 # (see below) already does this for us:
