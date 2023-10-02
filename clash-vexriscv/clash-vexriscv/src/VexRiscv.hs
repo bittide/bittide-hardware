@@ -360,7 +360,7 @@ vexRiscv# !_sourcePath !_clk rst0
 
        :> cpu
        :> Nil
-       ) = indicesI
+       ) = indicesI @35
     in
       InlineYamlPrimitive [Verilog] [__i|
   BlackBox:
