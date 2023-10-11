@@ -9,7 +9,8 @@
 extern "C" {
   VVexRiscv* vexr_init();
   void vexr_shutdown(VVexRiscv *top);
-  void vexr_step(VVexRiscv *top, const INPUT *input, OUTPUT *output);
+  void vexr_cpu_step(VVexRiscv *top, const INPUT *input, OUTPUT *output);
+  void vexr_jtag_step(VVexRiscv *top, const JTAG_INPUT *input, JTAG_OUTPUT *output);
 }
 
 
@@ -23,7 +24,7 @@ void vexr_shutdown(VVexRiscv *top)
   delete top;
 }
 
-void vexr_step(VVexRiscv *top, const INPUT *input, OUTPUT *output)
+void vexr_cpu_step(VVexRiscv *top, const INPUT *input, OUTPUT *output)
 {
   // set inputs
   top->reset = input->reset;
@@ -36,10 +37,6 @@ void vexr_step(VVexRiscv *top, const INPUT *input, OUTPUT *output)
   top->dBusWishbone_ACK = input->dBusWishbone_ACK;
   top->dBusWishbone_DAT_MISO = input->dBusWishbone_DAT_MISO;
   top->dBusWishbone_ERR = input->dBusWishbone_ERR;
-
-  top->jtag_tms = input->jtag_TMS;
-  top->jtag_tdi = input->jtag_TDI;
-  top->jtag_tck = input->jtag_TCK;
 
   // run one cycle of the simulation
   top->clk = true;
@@ -64,7 +61,21 @@ void vexr_step(VVexRiscv *top, const INPUT *input, OUTPUT *output)
   output->dBusWishbone_SEL = top->dBusWishbone_SEL;
   output->dBusWishbone_CTI = top->dBusWishbone_CTI;
   output->dBusWishbone_BTE = top->dBusWishbone_BTE;
+}
 
+void vexr_jtag_step(VVexRiscv *top, const JTAG_INPUT *input, JTAG_OUTPUT *output)
+{
+  // set inputs
+  top->jtag_tms = input->jtag_TMS;
+  top->jtag_tdi = input->jtag_TDI;
+
+  // run one cycle
+  top->jtag_tck = true;
+  top->eval();
+  top->jtag_tck = false;
+  top->eval();
+
+  // update outputs
   output->debug_resetOut = top->debug_resetOut;
   output->jtag_TDO = top->jtag_tdo;
 }

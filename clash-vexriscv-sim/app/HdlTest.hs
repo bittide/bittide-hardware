@@ -10,10 +10,14 @@ import VexRiscv
 circuit ::
   "CLK" ::: Clock System ->
   "RST" ::: Reset System ->
+  "TCK" ::: Clock System ->
   "INPUT" ::: Signal System Input ->
-  "OUTPUT" ::: Signal System Output
-circuit clk rst input =
-  withClockResetEnable clk rst enableGen vexRiscv input
+  "JTAG_IN_" ::: Signal System JtagIn ->
+  "" :::
+    ( "OUTPUT" ::: Signal System Output
+    , "JTAG_OUT_" ::: Signal System JtagOut)
+circuit clk rst tck input jtagIn =
+  vexRiscv clk rst tck enableGen input jtagIn
 
 makeTopEntity 'circuit
 

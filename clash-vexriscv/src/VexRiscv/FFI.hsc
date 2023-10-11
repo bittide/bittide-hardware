@@ -22,7 +22,8 @@ foreign import ccall unsafe "vexr_init" vexrInit :: IO (Ptr VexRiscv)
 
 foreign import ccall unsafe "vexr_shutdown" vexrShutdown :: Ptr VexRiscv -> IO ()
 
-foreign import ccall unsafe "vexr_step" vexrStep :: Ptr VexRiscv -> Ptr INPUT -> Ptr OUTPUT -> IO ()
+foreign import ccall unsafe "vexr_cpu_step" vexrCpuStep :: Ptr VexRiscv -> Ptr INPUT -> Ptr OUTPUT -> IO ()
+foreign import ccall unsafe "vexr_jtag_step" vexrJtagStep :: Ptr VexRiscv -> Ptr JTAG_INPUT -> Ptr JTAG_OUTPUT -> IO ()
 
 data INPUT = INPUT
   { reset :: Bit
@@ -37,10 +38,12 @@ data INPUT = INPUT
   , dBusWishbone_ACK :: Bit
   , dBusWishbone_DAT_MISO :: Word32
   , dBusWishbone_ERR :: Bit
-  
-  , jtag_TMS :: Bit
+  }
+  deriving (Show)
+
+data JTAG_INPUT = JTAG_INPUT
+  { jtag_TMS :: Bit
   , jtag_TDI :: Bit
-  , jtag_TCK :: Bit
   }
   deriving (Show)
 
@@ -62,8 +65,11 @@ data OUTPUT = OUTPUT
   , dBusWishbone_SEL :: Word8
   , dBusWishbone_CTI :: Word8
   , dBusWishbone_BTE :: Word8
+  }
+  deriving (Show)
 
-  , debug_resetOut :: Bit
+data JTAG_OUTPUT = JTAG_OUTPUT
+  { debug_resetOut :: Bit
   , jtag_TDO :: Bit
   }
   deriving (Show)
@@ -89,9 +95,6 @@ instance Storable INPUT where
       <*> (#peek INPUT, dBusWishbone_ACK) ptr
       <*> (#peek INPUT, dBusWishbone_DAT_MISO) ptr
       <*> (#peek INPUT, dBusWishbone_ERR) ptr
-      <*> (#peek INPUT, jtag_TMS) ptr
-      <*> (#peek INPUT, jtag_TDI) ptr
-      <*> (#peek INPUT, jtag_TCK) ptr
 
     {-# INLINE poke #-}
     poke ptr this = do
@@ -107,10 +110,20 @@ instance Storable INPUT where
       (#poke INPUT, dBusWishbone_ACK) ptr (dBusWishbone_ACK this)
       (#poke INPUT, dBusWishbone_DAT_MISO) ptr (dBusWishbone_DAT_MISO this)
       (#poke INPUT, dBusWishbone_ERR) ptr (dBusWishbone_ERR this)
-      
-      (#poke INPUT, jtag_TMS) ptr (jtag_TMS this)
-      (#poke INPUT, jtag_TDI) ptr (jtag_TDI this)
-      (#poke INPUT, jtag_TCK) ptr (jtag_TCK this)
+      return ()
+
+instance Storable JTAG_INPUT where
+    alignment _ = #alignment JTAG_INPUT
+    sizeOf _ = #size JTAG_INPUT
+    {-# INLINE peek #-}
+    peek ptr = const JTAG_INPUT <$> pure ()
+      <*> (#peek JTAG_INPUT, jtag_TMS) ptr
+      <*> (#peek JTAG_INPUT, jtag_TDI) ptr
+
+    {-# INLINE poke #-}
+    poke ptr this = do
+      (#poke JTAG_INPUT, jtag_TMS) ptr (jtag_TMS this)
+      (#poke JTAG_INPUT, jtag_TDI) ptr (jtag_TDI this)
       return ()
 
 instance Storable OUTPUT where
@@ -136,9 +149,6 @@ instance Storable OUTPUT where
       <*> (#peek OUTPUT, dBusWishbone_CTI) ptr
       <*> (#peek OUTPUT, dBusWishbone_BTE) ptr
 
-      <*> (#peek OUTPUT, debug_resetOut) ptr
-      <*> (#peek OUTPUT, jtag_TDO) ptr
-
     {-# INLINE poke #-}
     poke ptr this = do
       (#poke OUTPUT, iBusWishbone_CYC) ptr (iBusWishbone_CYC this)
@@ -158,7 +168,18 @@ instance Storable OUTPUT where
       (#poke OUTPUT, dBusWishbone_SEL) ptr (dBusWishbone_SEL this)
       (#poke OUTPUT, dBusWishbone_CTI) ptr (dBusWishbone_CTI this)
       (#poke OUTPUT, dBusWishbone_BTE) ptr (dBusWishbone_BTE this)
-      
-      (#poke OUTPUT, debug_resetOut) ptr (debug_resetOut this)
-      (#poke OUTPUT, jtag_TDO) ptr (jtag_TDO this)
+      return ()
+
+instance Storable JTAG_OUTPUT where
+    alignment _ = #alignment JTAG_OUTPUT
+    sizeOf _ = #size JTAG_OUTPUT
+    {-# INLINE peek #-}
+    peek ptr = const JTAG_OUTPUT <$> pure ()
+      <*> (#peek JTAG_OUTPUT, debug_resetOut) ptr
+      <*> (#peek JTAG_OUTPUT, jtag_TDO) ptr
+
+    {-# INLINE poke #-}
+    poke ptr this = do
+      (#poke JTAG_OUTPUT, debug_resetOut) ptr (debug_resetOut this)
+      (#poke JTAG_OUTPUT, jtag_TDO) ptr (jtag_TDO this)
       return ()
