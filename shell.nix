@@ -44,6 +44,9 @@ pkgs.mkShell {
       pkgs.buildPackages.python310Packages.docopt
       pkgs.buildPackages.python310Packages.dateutil
       pkgs.mc
+
+      # VexRiscv OpenOCD
+      pkgs.openocd-vexriscv
     ]
     ;
 
@@ -51,6 +54,7 @@ pkgs.mkShell {
     # Prevents Perl warnings
     export LC_ALL="C.UTF-8";
     export VERILOG_ETHERNET_SRC="${pkgs.verilog-ethernet}"
+    export OPENOCD_DIST="${pkgs.openocd-vexriscv}"
 
     # Mixing Nix Cabal and non-Nix Cabal yields some weird linking errors.
     export CABAL_DIR="$HOME/.cabal-nix";
