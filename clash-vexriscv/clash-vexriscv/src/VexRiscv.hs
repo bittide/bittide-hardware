@@ -7,6 +7,13 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
+
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
+
+
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 module VexRiscv where
 
@@ -19,21 +26,23 @@ import Foreign.Marshal (alloca)
 import Foreign.Storable
 import GHC.IO (unsafePerformIO)
 import GHC.Stack (HasCallStack)
+import Language.Haskell.TH.Syntax
 import Protocols
 import Protocols.Wishbone
 import VexRiscv.FFI
 import VexRiscv.TH
-import Language.Haskell.TH.Syntax
 
 data JtagIn = JtagIn
   { testModeSelect :: "TMS" ::: Bit
   , testDataIn :: "TDI" ::: Bit
-  , testClock :: "TCK" ::: Bit
   }
-  deriving (Generic, Eq, NFDataX, ShowX)
+  deriving (Generic, Eq, NFDataX, ShowX, BitPack)
 
-newtype JtagOut = JtagOut { testDataOut :: "TDO" ::: Bit }
-  deriving (Generic, NFDataX, ShowX, Eq)
+data JtagOut = JtagOut
+  { testDataOut :: "TDO" ::: Bit
+  , debugReset :: "RST" ::: Bit
+  }
+  deriving (Generic, NFDataX, ShowX, Eq, BitPack)
 
 data Input = Input
   { timerInterrupt :: "TIMER_INTERRUPT" ::: Bit
@@ -41,17 +50,14 @@ data Input = Input
   , softwareInterrupt :: "SOFTWARE_INTERRUPT" ::: Bit
   , iBusWbS2M :: "IBUS_IN_" ::: WishboneS2M (BitVector 32)
   , dBusWbS2M :: "DBUS_IN_" ::: WishboneS2M (BitVector 32)
-  , jtagIn :: "JTAG_IN_" ::: JtagIn
   }
-  deriving (Generic, NFDataX, ShowX, Eq)
+  deriving (Generic, NFDataX, ShowX, Eq, BitPack)
 
 data Output = Output
   { iBusWbM2S :: "IBUS_OUT_" ::: WishboneM2S 30 4 (BitVector 32)
   , dBusWbM2S :: "DBUS_OUT_" ::: WishboneM2S 30 4 (BitVector 32)
-  , jtagOut :: "JTAG_OUT_" ::: JtagOut
-  , debugReset :: "DEBUG_RESET" ::: Bit
   }
-  deriving (Generic, NFDataX, ShowX, Eq)
+  deriving (Generic, NFDataX, ShowX, Eq, BitPack)
 
 
 data Jtag (dom :: Domain)
@@ -77,45 +83,65 @@ inputToFFI reset Input {..} =
     , dBusWishbone_ACK = boolToBit $ acknowledge dBusWbS2M
     , dBusWishbone_DAT_MISO = unpack $ readData dBusWbS2M
     , dBusWishbone_ERR = boolToBit $ err dBusWbS2M
-
-    , jtag_TMS = testModeSelect jtagIn
-    , jtag_TDI = testDataIn jtagIn
-    , jtag_TCK = testClock jtagIn
     }
 
 outputFromFFI :: OUTPUT -> Output
-outputFromFFI OUTPUT {..} =
-  Output
-    { iBusWbM2S =
-        (emptyWishboneM2S @30 @(BitVector 32))
-          { busCycle = bitToBool iBusWishbone_CYC,
-            strobe = bitToBool iBusWishbone_STB,
-            writeEnable = bitToBool iBusWishbone_WE,
-            addr = truncateB $ pack iBusWishbone_ADR,
-            writeData = pack iBusWishbone_DAT_MOSI,
-            busSelect = resize $ pack iBusWishbone_SEL,
-            cycleTypeIdentifier = unpack $ resize $ pack iBusWishbone_CTI,
-            burstTypeExtension = unpack $ resize $ pack iBusWishbone_BTE
-          },
-      dBusWbM2S =
-        (emptyWishboneM2S @30 @(BitVector 32))
-          { busCycle = bitToBool dBusWishbone_CYC,
-            strobe = bitToBool dBusWishbone_STB,
-            writeEnable = bitToBool dBusWishbone_WE,
-            addr = truncateB $ pack dBusWishbone_ADR,
-            writeData = pack dBusWishbone_DAT_MOSI,
-            busSelect = resize $ pack dBusWishbone_SEL,
-            cycleTypeIdentifier = unpack $ resize $ pack dBusWishbone_CTI,
-            burstTypeExtension = unpack $ resize $ pack dBusWishbone_BTE
-          },
-      
-      debugReset = debug_resetOut,
-      jtagOut = JtagOut { testDataOut = jtag_TDO }
-    }
+outputFromFFI OUTPUT {..} = output
+  where
+    output = Output
+      { iBusWbM2S =
+          (emptyWishboneM2S @30 @(BitVector 32))
+            { busCycle = bitToBool iBusWishbone_CYC,
+              strobe = bitToBool iBusWishbone_STB,
+              writeEnable = bitToBool iBusWishbone_WE,
+              addr = truncateB $ pack iBusWishbone_ADR,
+              writeData = pack iBusWishbone_DAT_MOSI,
+              busSelect = resize $ pack iBusWishbone_SEL,
+              cycleTypeIdentifier = unpack $ resize $ pack iBusWishbone_CTI,
+              burstTypeExtension = unpack $ resize $ pack iBusWishbone_BTE
+            },
+        dBusWbM2S =
+          (emptyWishboneM2S @30 @(BitVector 32))
+            { busCycle = bitToBool dBusWishbone_CYC,
+              strobe = bitToBool dBusWishbone_STB,
+              writeEnable = bitToBool dBusWishbone_WE,
+              addr = truncateB $ pack dBusWishbone_ADR,
+              writeData = pack dBusWishbone_DAT_MOSI,
+              busSelect = resize $ pack dBusWishbone_SEL,
+              cycleTypeIdentifier = unpack $ resize $ pack dBusWishbone_CTI,
+              burstTypeExtension = unpack $ resize $ pack dBusWishbone_BTE
+            }
+      }
 
-vexRiscv :: (HasCallStack, HiddenClockResetEnable dom) => Signal dom Input -> Signal dom Output
-vexRiscv input =
-  Output <$>
+-- When passing S2M values from Haskell to VexRiscv over the FFI, undefined
+-- bits/values cause errors when forcing their evaluation to something that can
+-- be passed through the FFI.
+--
+-- This function makes sure the Wishbone S2M values are free from undefined bits.
+makeDefined :: WishboneS2M (BitVector 32) -> WishboneS2M (BitVector 32)
+makeDefined wb = wb {readData = defaultX 0 (readData wb)}
+
+defaultX :: (NFDataX a) => a -> a -> a
+defaultX dflt val
+  | hasUndefined val = dflt
+  | otherwise = val
+
+vexRiscv ::
+  forall domCpu domJtag .
+  ( HasCallStack
+  , KnownDomain domCpu
+  , KnownDomain domJtag) =>
+  Clock domCpu ->
+  Reset domCpu ->
+  Clock domJtag ->
+  Enable domJtag ->
+  Signal domCpu Input ->
+  Signal domJtag JtagIn ->
+  ( Signal domCpu Output
+  , Signal domJtag JtagOut
+  )
+vexRiscv clk rst jtagClk jtag_EN cpuInput jtagInput =
+  ( Output <$>
     (WishboneM2S
       <$> iBus_ADR
       <*> iBus_DAT_MOSI
@@ -139,21 +165,30 @@ vexRiscv input =
       <*> (unpack <$> dBus_CTI)
       <*> (unpack <$> dBus_BTE)
     )
-    <*> (JtagOut <$> jtag_TDO)
-    <*> debug_resetOut
+  , JtagOut <$> jtag_TDO <*> debug_resetOut
+  )
 
   where
-    (unbundle -> (timerInterrupt, externalInterrupt, softwareInterrupt, iBusS2M, dBusS2M, jtagIn))
-      = (<$> input) $ \(Input a b c d e f) -> (a, b, c, d, e, f)
+    (unbundle -> (timerInterrupt, externalInterrupt, softwareInterrupt, iBusS2M, dBusS2M))
+      -- A hack that enables us to both generate synthesizable HDL and simulate vexRisc in Haskell/Clash
+      = (<$> if clashSimulation then unpack 0 :- cpuInput else cpuInput)
+        $ \(Input a b c d e) -> (a, b, c, d, e)
 
     (unbundle -> (iBus_DAT_MISO, iBus_ACK, iBus_ERR))
-      = (<$> iBusS2M) $ \(WishboneS2M a b c _ _) -> (a, b, c)
+      = (\(WishboneS2M a b c _ _) -> (a, b, c))
+      -- A hack that enables us to both generate synthesizable HDL and simulate vexRisc in Haskell/Clash
+      . (if clashSimulation then makeDefined else id)
+      <$> iBusS2M
 
     (unbundle -> (dBus_DAT_MISO, dBus_ACK, dBus_ERR))
-      = (<$> dBusS2M) $ \(WishboneS2M a b c _ _) -> (a, b, c)
+      = (\(WishboneS2M a b c _ _) -> (a, b, c))
+      -- A hack that enables us to both generate synthesizable HDL and simulate vexRisc in Haskell/Clash
+      . (if clashSimulation then makeDefined else id)
+      <$> dBusS2M
 
-    (unbundle -> (jtag_TMS, jtag_TDI, jtag_TCK))
-      = (<$> jtagIn) $ \(JtagIn a b c) -> (a, b ,c)
+    (unbundle -> (jtag_TMS, jtag_TDI))
+      -- A hack that enables us to both generate synthesizable HDL and simulate vexRisc in Haskell/Clash
+      = bitCoerce <$> (if clashSimulation then unpack 0 :- jtagInput else jtagInput)
 
     sourcePath = $(do
           cpuSrcPath <- runIO $ getPackageRelFilePath "example-cpu/VexRiscv.v"
@@ -178,7 +213,7 @@ vexRiscv input =
       , dBus_BTE
       , debug_resetOut
       , jtag_TDO
-      ) = vexRiscv# sourcePath hasClock hasReset
+      ) = vexRiscv# sourcePath clk rst
           timerInterrupt
           externalInterrupt
           softwareInterrupt
@@ -191,63 +226,65 @@ vexRiscv input =
           dBus_ERR
           dBus_DAT_MISO
 
+          jtagClk
+          jtag_EN
           jtag_TMS
           jtag_TDI
-          jtag_TCK
-
-
-
+          
 
 
 vexRiscv#
-  :: KnownDomain dom
+  :: KnownDomain domCpu
+  => KnownDomain domJtag
   => String
-  -> Clock dom
-  -> Reset dom
+  -> Clock domCpu
+  -> Reset domCpu
   -- input signals
-  -> Signal dom Bit  -- ^ timerInterrupt
-  -> Signal dom Bit  -- ^ externalInterrupt
-  -> Signal dom Bit  -- ^ softwareInterrupt
+  -> Signal domCpu Bit  -- ^ timerInterrupt
+  -> Signal domCpu Bit  -- ^ externalInterrupt
+  -> Signal domCpu Bit  -- ^ softwareInterrupt
     -- iBusWbS2M
-  -> Signal dom Bool           -- ^ iBus_ACK
-  -> Signal dom Bool           -- ^ iBus_ERR
-  -> Signal dom (BitVector 32) -- ^ iBus_DAT_MISO
+  -> Signal domCpu Bool           -- ^ iBus_ACK
+  -> Signal domCpu Bool           -- ^ iBus_ERR
+  -> Signal domCpu (BitVector 32) -- ^ iBus_DAT_MISO
     -- dBusWbS2M
-  -> Signal dom Bool           -- ^ dBus_ACK
-  -> Signal dom Bool           -- ^ dBus_ERR
-  -> Signal dom (BitVector 32) -- ^ dBus_DAT_MISO
+  -> Signal domCpu Bool           -- ^ dBus_ACK
+  -> Signal domCpu Bool           -- ^ dBus_ERR
+  -> Signal domCpu (BitVector 32) -- ^ dBus_DAT_MISO
 
-  -> Signal dom Bit -- ^ jtag_TMS
-  -> Signal dom Bit -- ^ jtag_TDI
-  -> Signal dom Bit -- ^ jtag_TCK
+  -> Clock domJtag -- ^ jtag_TCK
+  -> Enable domJtag -- ^ only used in simulation, ignored in synthesis
+  -> Signal domJtag Bit -- ^ jtag_TMS
+  -> Signal domJtag Bit -- ^ jtag_TDI
+
 
   -- output signals
   ->
     (
       -- iBus M2S
-      Signal dom Bool           -- ^ iBus_CYC
-    , Signal dom Bool           -- ^ iBus_STB
-    , Signal dom Bool           -- ^ iBus_WE
-    , Signal dom (BitVector 30) -- ^ iBus_ADR
-    , Signal dom (BitVector 32) -- ^ iBus_DAT_MOSI
-    , Signal dom (BitVector 4)  -- ^ iBus_SEL
-    , Signal dom (BitVector 3)  -- ^ iBus_CTI
-    , Signal dom (BitVector 2)  -- ^ iBus_BTE
+      Signal domCpu Bool           -- ^ iBus_CYC
+    , Signal domCpu Bool           -- ^ iBus_STB
+    , Signal domCpu Bool           -- ^ iBus_WE
+    , Signal domCpu (BitVector 30) -- ^ iBus_ADR
+    , Signal domCpu (BitVector 32) -- ^ iBus_DAT_MOSI
+    , Signal domCpu (BitVector 4)  -- ^ iBus_SEL
+    , Signal domCpu (BitVector 3)  -- ^ iBus_CTI
+    , Signal domCpu (BitVector 2)  -- ^ iBus_BTE
 
     -- dBus M2S
-    , Signal dom Bool           -- ^ dBus_CYC
-    , Signal dom Bool           -- ^ dBus_STB
-    , Signal dom Bool           -- ^ dBus_WE
-    , Signal dom (BitVector 30) -- ^ dBus_ADR
-    , Signal dom (BitVector 32) -- ^ dBus_DAT_MOSI
-    , Signal dom (BitVector 4)  -- ^ dBus_SEL
-    , Signal dom (BitVector 3)  -- ^ dBus_CTI
-    , Signal dom (BitVector 2)  -- ^ dBus_BTE
+    , Signal domCpu Bool           -- ^ dBus_CYC
+    , Signal domCpu Bool           -- ^ dBus_STB
+    , Signal domCpu Bool           -- ^ dBus_WE
+    , Signal domCpu (BitVector 30) -- ^ dBus_ADR
+    , Signal domCpu (BitVector 32) -- ^ dBus_DAT_MOSI
+    , Signal domCpu (BitVector 4)  -- ^ dBus_SEL
+    , Signal domCpu (BitVector 3)  -- ^ dBus_CTI
+    , Signal domCpu (BitVector 2)  -- ^ dBus_BTE
 
-    , Signal dom Bit -- ^ debug_resetOut
-    , Signal dom Bit -- ^ jtag_TDO
+    , Signal domJtag Bit -- ^ debug_resetOut
+    , Signal domJtag Bit -- ^ jtag_TDO
     )
-vexRiscv# !_sourcePath !_clk rst0
+vexRiscv# !_sourcePath clk rst0
   timerInterrupt
   externalInterrupt
   softwareInterrupt
@@ -259,30 +296,83 @@ vexRiscv# !_sourcePath !_clk rst0
   dBus_ERR
   dBus_DAT_MISO
 
+  jtag_TCK
+  jtag_EN
   jtag_TMS
   jtag_TDI
-  jtag_TCK
-
+  
   =
     let
+      (cpuStep, jtagStep, _) = unsafePerformIO vexCPU
+
       iBusS2M = WishboneS2M <$> iBus_DAT_MISO <*> iBus_ACK <*> iBus_ERR <*> pure False <*> pure False
       dBusS2M = WishboneS2M <$> dBus_DAT_MISO <*> dBus_ACK <*> dBus_ERR <*> pure False <*> pure False
 
-      jtagIn = JtagIn <$> jtag_TMS <*> jtag_TDI <*> jtag_TCK
+      flattenedTicks = go (clockTicks clk jtag_TCK)
+        where
+          go [] = error "Clock tick list should be infinite"
+          go (ClockA : rest) = ClockA : go rest
+          go (ClockB : rest) = ClockB : go rest
+          go (ClockAB : rest) = ClockA : ClockB : go rest
 
-      input = Input <$> timerInterrupt <*> externalInterrupt <*> softwareInterrupt <*> iBusS2M <*> dBusS2M <*> jtagIn
+      bothOutputs ::
+        [ClockAB] ->
+        Signal domCpu Bool -> -- ^ reset
+        Signal domCpu Input ->
+        Signal domJtag Bool -> -- ^ enable
+        Signal domJtag JtagIn ->
+        (Signal domCpu Output, Signal domJtag JtagOut)
+      bothOutputs (ClockA:ticks) (r :- rsts) (c :- cpuIn) jtagEn jtagIn =
+        let (cpuSig, jtagSig) = bothOutputs ticks rsts cpuIn jtagEn jtagIn
+            cpuOut = unsafePerformIO $ cpuStep r c
+        in
+        (cpuOut :- cpuSig, jtagSig)
+      bothOutputs (ClockB:ticks) rsts cpuIn (en :- enables) (j :- jtagIn) =
+        let (cpuSig, jtagSig) = bothOutputs ticks rsts cpuIn enables jtagIn
+            jtagOut = if en
+                then unsafePerformIO $ jtagStep j
+                else JtagOut { testDataOut = low, debugReset = low } 
+        in
+        (cpuSig, jtagOut :- jtagSig)
+      bothOutputs (ClockAB:_ticks) _rsts _cpuIn _jtagEn _jtagIn = error "ClockAB should not happen"
+      bothOutputs [] _ _ _ _ = error "Clock tick list should be infinite"
 
-      output = unsafePerformIO $ do
-        (step, _) <- vexCPU
-        pure $ go step (unsafeFromReset rst0) input
+      
+      cpuInput = Input <$> timerInterrupt <*> externalInterrupt <*> softwareInterrupt <*> iBusS2M <*> dBusS2M
+      
+      jtagInput = JtagIn <$> jtag_TMS <*> jtag_TDI
 
-      (unbundle -> (iBusM2S, dBusM2S, jtagOut, debug_resetOut)) = (<$> output) $ \(Output iBus dBus jtag debugResetOut) -> (iBus, dBus, jtag, debugResetOut)
-      jtag_TDO = (\(JtagOut x) -> x) <$> jtagOut
+      (cpuOutput, jtagOutput) =
+        bothOutputs
+          flattenedTicks
+          (unsafeToActiveHigh rst0)
+          cpuInput
+          (fromEnable jtag_EN)
+          jtagInput
 
-      (unbundle -> (iBus_ADR, iBus_DAT_MOSI, iBus_SEL, iBus_CYC, iBus_STB, iBus_WE, iBus_CTI, iBus_BTE)) =
+
+      (unbundle -> (iBusM2S, dBusM2S)) = (<$> cpuOutput) $ \(Output iBus dBus) -> (iBus, dBus)
+      (unbundle -> (jtag_TDO, debug_resetOut)) = bitCoerce <$> jtagOutput
+
+      (unbundle -> ( iBus_ADR
+                   , iBus_DAT_MOSI
+                   , iBus_SEL
+                   , iBus_CYC
+                   , iBus_STB
+                   , iBus_WE
+                   , iBus_CTI
+                   , iBus_BTE
+                   )) =
         (<$> iBusM2S) $ \(WishboneM2S a b c _ e f g h i) -> (a, b, c, e, f, g, h, i)
 
-      (unbundle -> (dBus_ADR, dBus_DAT_MOSI, dBus_SEL, dBus_CYC, dBus_STB, dBus_WE, dBus_CTI, dBus_BTE)) =
+      (unbundle -> ( dBus_ADR
+                   , dBus_DAT_MOSI
+                   , dBus_SEL
+                   , dBus_CYC
+                   , dBus_STB
+                   , dBus_WE
+                   , dBus_CTI
+                   , dBus_BTE)) =
         (<$> dBusM2S) $ \(WishboneM2S a b c _ e f g h i) -> (a, b, c, e, f, g, h, i)
     in
       ( -- iBus
@@ -309,10 +399,7 @@ vexRiscv# !_sourcePath !_clk rst0
       , jtag_TDO
       )
   where
-    {-# NOINLINE go #-}
-    go step (rst :- rsts) (input :- inputs) = unsafePerformIO $ do
-      out <- step rst input
-      pure $ out :- go step rsts inputs
+
 {-# NOINLINE vexRiscv# #-}
 {-# ANN vexRiscv# (
     let
@@ -334,9 +421,10 @@ vexRiscv# !_sourcePath !_clk rst0
        :> dBus_ACK
        :> dBus_ERR
        :> dBus_DAT_MISO
+       :> jtag_TCK
+       :> _
        :> jtag_TMS
        :> jtag_TDI
-       :> jtag_TCK
 
        -- GENSYMs
        :> iBus_CYC
@@ -360,7 +448,7 @@ vexRiscv# !_sourcePath !_clk rst0
 
        :> cpu
        :> Nil
-       ) = indicesI @35
+       ) = indicesI @36
     in
       InlineYamlPrimitive [Verilog] [__i|
   BlackBox:
@@ -461,14 +549,21 @@ vexRiscv# !_sourcePath !_clk rst0
 
 -- | Return a function that performs an execution step and a function to free
 -- the internal CPU state
-vexCPU :: IO (Bool -> Input -> IO Output, IO ())
+vexCPU :: IO (Bool -> Input -> IO Output, JtagIn -> IO JtagOut, IO ())
 vexCPU = do
   v <- vexrInit
   let
-    step reset input = alloca $ \inputFFI -> alloca $ \outputFFI -> do
+    cpuStep reset input = alloca $ \inputFFI -> alloca $ \outputFFI -> do
       poke inputFFI (inputToFFI reset input)
-      vexrStep v inputFFI outputFFI
+      vexrCpuStep v inputFFI outputFFI
       outVal <- peek outputFFI
       pure $ outputFromFFI outVal
+
+    jtagStep JtagIn{..} = alloca $ \inputFFI -> alloca $ \outputFFI -> do
+      poke inputFFI (JTAG_INPUT { jtag_TMS = testModeSelect, jtag_TDI = testDataIn })
+      vexrJtagStep v inputFFI outputFFI
+      JTAG_OUTPUT{..} <- peek outputFFI
+      pure $ JtagOut { testDataOut = jtag_TDO, debugReset = debug_resetOut }
+
     shutDown = vexrShutdown v
-  pure (step, shutDown)
+  pure (cpuStep, jtagStep, shutDown)

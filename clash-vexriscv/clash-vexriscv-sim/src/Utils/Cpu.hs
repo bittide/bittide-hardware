@@ -9,7 +9,6 @@ module Utils.Cpu where
 
 import Clash.Prelude
 
-import Clash.Signal.Internal (Signal((:-)))
 import Protocols.Wishbone
 import VexRiscv
 import VexRiscv.JtagTcpBridge as JTag
@@ -27,8 +26,7 @@ emptyInput =
       externalInterrupt = low,
       softwareInterrupt = low,
       iBusWbS2M = (emptyWishboneS2M @(BitVector 32)) {readData = 0},
-      dBusWbS2M = (emptyWishboneS2M @(BitVector 32)) {readData = 0},
-      jtagIn = JtagIn { testModeSelect = low, testDataIn = low, testClock = low }
+      dBusWbS2M = (emptyWishboneS2M @(BitVector 32)) {readData = 0}
     }
 
 
@@ -54,12 +52,11 @@ cpu ::
   )
 cpu jtagPort bootIMem bootDMem = (output, writes, iS2M, dS2M)
   where
-    output = vexRiscv (emptyInput :- input)
+    (output, jtagOut) = vexRiscv hasClock hasReset hasClock jtagEnable input jtagIn
 
-
-    (jtagIn', _debugReset) = case jtagPort of
-      Just port -> unbundle $ unsafePerformIO $ jtagTcpBridge' (fromInteger port) hasReset (jtagOut <$> output)
-      Nothing -> (pure JTag.defaultIn, pure low)
+    (jtagEnable, jtagIn) = case jtagPort of
+      Just port -> unsafePerformIO $ jtagTcpBridge' (fromInteger port) jtagOut
+      Nothing -> (toEnable (pure False), pure JTag.defaultIn)
     -- (unbundle -> (jtagIn', _debugReset)) = unsafePerformIO $ jtagTcpBridge' 7894 hasReset (jtagOut <$> output) 
 
     dM2S = dBusWbM2S <$> output
@@ -80,19 +77,17 @@ cpu jtagPort bootIMem bootDMem = (output, writes, iS2M, dS2M)
       ((0x0000_0000, dummyS2M) :> (0x4000_0000, bootDS2M) :> Nil)
 
     input =
-      ( \iBus dBus jtagIn ->
+      ( \iBus dBus ->
           Input
             { timerInterrupt = low,
               externalInterrupt = low,
               softwareInterrupt = low,
               iBusWbS2M = makeDefined iBus,
-              dBusWbS2M = makeDefined dBus,
-              jtagIn = jtagIn
+              dBusWbS2M = makeDefined dBus
             }
       )
         <$> iS2M
         <*> dS2M
-        <*> jtagIn'
 
     unBusAddr = mapAddr ((`shiftL` 2) . extend @_ @_ @2)
 
@@ -108,19 +103,6 @@ cpu jtagPort bootIMem bootDMem = (output, writes, iS2M, dS2M)
             pure $ Just (extend $ addr dM2S' `shiftL` 2, writeData dM2S')
         )
         (pure Nothing)
-
--- When passing S2M values from Haskell to VexRiscv over the FFI, undefined
--- bits/values cause errors when forcing their evaluation to something that can
--- be passed through the FFI.
---
--- This function makes sure the Wishbone S2M values are free from undefined bits.
-makeDefined :: WishboneS2M (BitVector 32) -> WishboneS2M (BitVector 32)
-makeDefined wb = wb {readData = defaultX 0 (readData wb)}
-
-defaultX :: (NFDataX a) => a -> a -> a
-defaultX dflt val
-  | hasUndefined val = dflt
-  | otherwise = val
 
 mapAddr :: (BitVector aw1 -> BitVector aw2) -> WishboneM2S aw1 selWidth a -> WishboneM2S aw2 selWidth a
 mapAddr f wb = wb {addr = f (addr wb)}
@@ -149,7 +131,7 @@ dummyWb m2s' = delayControls m2s' (reply <$> m2s')
       where
         inCycle = (busCycle <$> m2s) .&&. (strobe <$> m2s)
 
-        -- It takes a single cycle to lookup elements in a block ram. We can therfore
+        -- It takes a single cycle to lookup elements in a block ram. We can therefore
         -- only process a request every other clock cycle.
         ack = (acknowledge <$> s2m0) .&&. (not <$> delayedAck) .&&. inCycle
         err1 = (err <$> s2m0) .&&. inCycle
