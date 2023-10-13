@@ -9,6 +9,7 @@ module Bittide.Instances.Tests.BoardTest where
 import Clash.Explicit.Prelude
 
 import Clash.Annotations.TH (makeTopEntity)
+import Clash.Cores.Xilinx.Ila
 import Clash.Cores.Xilinx.VIO
 import Clash.Cores.Xilinx.Extra (ibufds)
 
@@ -95,7 +96,7 @@ boardTestExtended ::
     ( "done" ::: Bool
     , "success" ::: Bool
     )
-boardTestExtended diffClk = bundle (testDone, testSuccess)
+boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
  where
   clk = ibufds diffClk
   rstA = unsafeFromActiveLow testStartA
@@ -134,6 +135,33 @@ boardTestExtended diffClk = bundle (testDone, testSuccess)
       clk
       testDone
       testSuccess
+
+
+  boardTestIla :: Signal Basic125 ()
+  boardTestIla =
+    setName @"boardTestIla" $
+    ila
+      (ilaConfig $
+           "trigger_AorB"
+        :> "capture"
+        :> "testStartA"
+        :> "testStartB"
+        :> "testDone"
+        :> "testSuccess"
+        :> Nil
+      )
+      clk
+      -- Trigger when starting either test
+      (testStartA .||. testStartB)
+      -- Always capture
+      (pure True :: Signal Basic125 Bool)
+
+      -- Debug probes
+      testStartA
+      testStartB
+      testDone
+      testSuccess
+
 
   stimuliA :: Vec 4 (Unsigned 8, Unsigned 8, Unsigned 8)
   stimuliA = (
