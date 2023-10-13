@@ -3,9 +3,12 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Main where
@@ -13,15 +16,18 @@ module Main where
 import Prelude
 
 import Control.Applicative (liftA2)
-import Control.Monad (forM_, unless)
-import Control.Monad.Extra (ifM, unlessM, when)
+import Control.Monad (forM_, unless, when)
+import Control.Monad.Extra (ifM, unlessM)
 import Data.Char(isSpace)
 import Data.Foldable (for_)
+import Data.Function ((&))
 import Data.List (dropWhileEnd, isPrefixOf, sort)
 import Development.Shake
+import Development.Shake.Classes
 import GHC.Stack (HasCallStack)
 import System.Console.ANSI (setSGR)
 import System.Directory
+import System.Exit (ExitCode(..), exitWith)
 import System.FilePath
 import System.FilePath.Glob (glob)
 import System.Process (readProcess, callProcess)
@@ -188,9 +194,17 @@ shakeOpts = shakeOptions
   , shakeVersion = "10"
   }
 
--- | Run Vivado on given TCL script
-vivadoFromTcl :: FilePath -> Action ()
+-- | Run Vivado on given TCL script. Can collect the ExitCode.
+vivadoFromTcl :: CmdResult r => FilePath -> Action r
 vivadoFromTcl tclPath =
+  command
+    [AddEnv "XILINX_LOCAL_USER_DATA" "no"] -- Prevents multiprocessing issues
+    "vivado"
+    ["-mode", "batch", "-source", tclPath]
+
+-- | Run Vivado on given TCL script
+vivadoFromTcl_ :: FilePath -> Action ()
+vivadoFromTcl_ tclPath =
   command_
     [AddEnv "XILINX_LOCAL_USER_DATA" "no"] -- Prevents multiprocessing issues
     "vivado"
@@ -231,6 +245,15 @@ meetsDrcOrError methodologyPath summaryPath checkpointPath =
 
     |])
 
+-- | Newtype used for adding oracle rules for flags to Shake
+newtype HardwareTargetsFlag = HardwareTargetsFlag ()
+  deriving (Show, Eq, Typeable, Hashable, Binary, NFData)
+type instance RuleResult HardwareTargetsFlag = HardwareTargets
+
+newtype ForceTestRerun = ForceTestRerun ()
+  deriving (Show, Eq, Typeable, Hashable, Binary, NFData)
+type instance RuleResult ForceTestRerun = Bool
+
 -- | Defines a Shake build executable for calling Vivado. Like Make, in Shake
 -- you define rules that explain how to build a certain file. For example:
 --
@@ -253,9 +276,12 @@ main = do
   shakeArgsWith shakeOpts customFlags $ \flags shakeTargets -> pure $ Just $ do
 
     let
-      hwTargets = getHardwareTargetsFlag flags
+      Options{..} = foldl (&) defaultOptions flags
 
       rules = do
+        _ <- addOracle $ \(ForceTestRerun _) -> return forceTestRerun
+        _ <- addOracle $ \(HardwareTargetsFlag _) -> return hardwareTargets
+
         -- 'all' builds all targets defined below
         phony "all" $ do
           for_ targets $ \Target{..} -> do
@@ -297,6 +323,7 @@ main = do
               ]
             bitstreamPath = synthesisDir </> "bitstream.bit"
             probesPath = synthesisDir </> "probes.ltx"
+            testExitCodePath = synthesisDir </> "test_exit_code"
 
             postRouteMethodologyPath = reportDir </> "post_route_methodology.rpt"
             postRouteTimingSummaryPath = reportDir </> "post_route_timing_summary.rpt"
@@ -383,7 +410,7 @@ main = do
               --      not have. Ideally we would parse the manifest file and
               --      also depend on the dependencies' manifest files, etc.
               need [runSynthTclPath, manifestPath]
-              vivadoFromTcl runSynthTclPath
+              vivadoFromTcl_ runSynthTclPath
 
             -- Routing + netlist generation
             runPlaceAndRouteTclPath %> \path -> do
@@ -395,7 +422,7 @@ main = do
              <> netlistPaths
              ) |%> \_ -> do
               need [runPlaceAndRouteTclPath, postSynthCheckpointPath]
-              vivadoFromTcl runPlaceAndRouteTclPath
+              vivadoFromTcl_ runPlaceAndRouteTclPath
 
               -- Design should meet design rule checks (DRC).
               liftIO $ unlessM
@@ -453,7 +480,7 @@ main = do
 
             bitstreamPath %> \_ -> do
               need [runBitstreamTclPath, postRouteCheckpointPath]
-              vivadoFromTcl runBitstreamTclPath
+              vivadoFromTcl_ runBitstreamTclPath
 
             -- Probes file generation
             runProbesGenTclPath %> \path -> do
@@ -461,11 +488,11 @@ main = do
 
             probesPath %> \_ -> do
               need [runProbesGenTclPath, bitstreamPath]
-              vivadoFromTcl runProbesGenTclPath
+              vivadoFromTcl_ runProbesGenTclPath
 
             -- Write bitstream to board
             runBoardProgramTclPath %> \path -> do
-              alwaysRerun
+              hwTargets <- askOracle $ HardwareTargetsFlag ()
               url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
               boardProgramTcl <-
                 liftIO $ mkBoardProgramTcl synthesisDir hwTargets url targetHasVio
@@ -473,11 +500,30 @@ main = do
 
             -- Run hardware test
             runHardwareTestTclPath %> \path -> do
-              alwaysRerun
+              hwTargets <- askOracle $ HardwareTargetsFlag ()
+              forceRerun <- askOracle $ ForceTestRerun ()
+              when forceRerun alwaysRerun
               url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
               hardwareTestTcl <-
                 liftIO $ mkHardwareTestTcl synthesisDir hwTargets url ilaDir
               writeFileChanged path hardwareTestTcl
+
+            testExitCodePath %> \path -> do
+              forceRerun <- askOracle $ ForceTestRerun ()
+              when forceRerun alwaysRerun
+              need
+                [ runBoardProgramTclPath
+                , runHardwareTestTclPath
+                , bitstreamPath
+                , probesPath
+                ]
+              vivadoFromTcl_ runBoardProgramTclPath
+              exitCode <- vivadoFromTcl @ExitCode runHardwareTestTclPath
+              writeFileChanged path $ show exitCode
+
+              shortenNamesPy <- liftIO $
+                getDataFileName ("data" </> "scripts" </> "shorten_names.py")
+              command_ [] "python3" [shortenNamesPy]
 
 
           -- User friendly target names
@@ -498,18 +544,14 @@ main = do
             phony (entityName targetName <> ":program") $ do
               when targetHasVio $ need [probesPath]
               need [runBoardProgramTclPath, bitstreamPath]
-              vivadoFromTcl runBoardProgramTclPath
+              vivadoFromTcl_ runBoardProgramTclPath
 
             when targetHasTest $ do
               phony (entityName targetName <> ":test") $ do
-                need
-                  [ runBoardProgramTclPath
-                  , runHardwareTestTclPath
-                  , bitstreamPath
-                  , probesPath
-                  ]
-                vivadoFromTcl runBoardProgramTclPath
-                vivadoFromTcl runHardwareTestTclPath
+                need [testExitCodePath]
+                exitCode <- read <$> readFile' testExitCodePath
+                unless (exitCode == ExitSuccess) $ do
+                  liftIO $ exitWith exitCode
 
                 shortenNamesPy <- liftIO $
                   getDataFileName ("data" </> "scripts" </> "shorten_names.py")
