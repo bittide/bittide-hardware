@@ -31,6 +31,7 @@ common common-options
     vector,
     shake,
     string-interpolate,
+    tasty-hunit,
     text,
 
 library

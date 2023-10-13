@@ -22,6 +22,7 @@ import Data.Char(isSpace)
 import Data.Foldable (for_)
 import Data.Function ((&))
 import Data.List (dropWhileEnd, isPrefixOf, sort)
+import Data.Maybe (fromJust, isJust)
 import Development.Shake
 import Development.Shake.Classes
 import GHC.Stack (HasCallStack)
@@ -31,8 +32,9 @@ import System.Exit (ExitCode(..), exitWith)
 import System.FilePath
 import System.FilePath.Glob (glob)
 import System.Process (readProcess, callProcess)
+import Test.Tasty.HUnit (Assertion)
 
-import Paths_bittide_shake
+import Paths_bittide_shake (getDataFileName)
 
 import Clash.Shake.Extra
 import Clash.Shake.Flags
@@ -94,6 +96,12 @@ getConstraintFilePath target = do
     [ "run", "-v0", binName, "data/constraints" </> entityName target <> ".xdc"] ""
   pure $ dropWhileEnd isSpace $ dropWhile isSpace out
 
+-- | Build and run the executable for post processing of ILA data
+doPostProcessing :: String -> FilePath -> ExitCode -> Assertion
+doPostProcessing postProcessMain ilaDir testExitCode = do
+  callProcess "cabal" ["build", postProcessMain]
+  callProcess "cabal" ["run", postProcessMain, ilaDir, show testExitCode]
+
 
 -- | Searches for a file called @cabal.project@ It will look for it in the
 -- current working directory. If it can't find it there, it will traverse up
@@ -130,7 +138,12 @@ data Target = Target
     -- | Whether target has a VIO probe that can be used to run hardware-in-the-
     -- loop tests. Note that this flag, 'targetHasTest', implies 'targetHasVio'.
   , targetHasTest :: Bool
+
+    -- | Name of the executable for post processing of ILA CSV data, or Nothing
+    -- if it has none.
+  , targetPostProcess :: Maybe String
   }
+
 
 defTarget :: TargetName -> Target
 defTarget name = Target
@@ -138,6 +151,7 @@ defTarget name = Target
   , targetHasXdc = False
   , targetHasVio = False
   , targetHasTest = False
+  , targetPostProcess = Nothing
   }
 
 testTarget :: TargetName -> Target
@@ -146,6 +160,7 @@ testTarget name = Target
   , targetHasXdc = True
   , targetHasVio = True
   , targetHasTest = True
+  , targetPostProcess = Nothing
   }
 
 enforceValidTarget :: Target -> Target
@@ -176,7 +191,8 @@ targets = map enforceValidTarget
   , defTarget "Bittide.Instances.Pnr.StabilityChecker.stabilityChecker_3_1M"
   , defTarget "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
 
-  , testTarget "Bittide.Instances.Hitl.BoardTest.boardTestExtended"
+  , (testTarget "Bittide.Instances.Hitl.BoardTest.boardTestExtended")
+      {targetPostProcess = Just "post-board-test-extended"}
   , testTarget "Bittide.Instances.Hitl.BoardTest.boardTestSimple"
   , testTarget "Bittide.Instances.Hitl.FincFdec.fincFdecTests"
   , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest"
@@ -554,12 +570,17 @@ main = do
               phony (entityName targetName <> ":test") $ do
                 need [testExitCodePath]
                 exitCode <- read <$> readFile' testExitCodePath
+                when (isJust targetPostProcess) $ do
+                  liftIO $ doPostProcessing (fromJust targetPostProcess) ilaDir exitCode
                 unless (exitCode == ExitSuccess) $ do
                   liftIO $ exitWith exitCode
 
-                shortenNamesPy <- liftIO $
-                  getDataFileName ("data" </> "scripts" </> "shorten_names.py")
-                command_ [] "python3" [shortenNamesPy]
+              when (isJust targetPostProcess) $ do
+                phony (entityName targetName <> ":post-process") $ do
+                  need [testExitCodePath]
+                  exitCode <- read <$> readFile' testExitCodePath
+                  liftIO $ doPostProcessing (fromJust targetPostProcess) ilaDir exitCode
+
 
     if null shakeTargets then
       rules

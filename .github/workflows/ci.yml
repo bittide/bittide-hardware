@@ -686,11 +686,6 @@ jobs:
           .github/scripts/with_vivado.sh \
             shake ${{ matrix.target.top }}:test --hardware-targets="${{ matrix.target.targets}}"
 
-      - name: Shorten ILA data dump names
-        if: always()
-        run: |
-          python3 bittide-shake/data/scripts/shorten_names.py
-
       - name: Archive ILA data
         if: always()
         uses: actions/upload-artifact@v3

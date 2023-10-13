@@ -604,7 +604,8 @@ proc run_test_group {probes_file target_dict url ila_data_dir} {
                 set ila [get_hw_ilas -filter CELL_NAME=={${cell_name}}]
 
                 set ila_data [upload_hw_ila_data $ila]
-                write_hw_ila_data -force -csv_file $file_path $ila_data
+                # Legacy CSV excludes radix information
+                write_hw_ila_data -force -legacy_csv_file $file_path $ila_data
                 write_hw_ila_data -force -vcd_file $file_path $ila_data
             }
         }

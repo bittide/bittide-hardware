@@ -102,3 +102,21 @@ for each test
     print test summary
 print summary all tests
 ```
+
+
+## Post processing of ILA data
+If a Shake target has a post processing function, this is executed after the
+hardware test as part of the `:test` call. The post processing function can also
+be called without performing the hardware test using `:post-process`.
+
+To add post processing to a bittide instance:
+
+1. Create a Haskell file in `bittide-instances/bin/Post/` with a `main`
+function. This file can import any file from `Bittide.Instances`. The function
+is called from Shake with 2 arguments: filepath of the ILA data directory and
+the exit code of the hardware test which generated the ILA data.
+2. Add an executable in `bittide-instances.cabal` for the new Haskell file.
+3. In `Shake.hs`, add a `Target` for the instance, and set `targetPostProcess`
+to the name of the executable created in the step above.
+
+See the example for the instance `boardTestExtended`.
