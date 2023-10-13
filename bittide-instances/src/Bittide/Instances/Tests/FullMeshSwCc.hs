@@ -103,34 +103,36 @@ unitCS = CSignal (pure ())
 -- implementation of Callisto (see 'fullMeshHwTest') and copies it to a register
 -- tied to FINC/FDEC.
 fullMeshRiscvTest ::
-  forall dom .
-  KnownDomain dom =>
-  Clock dom ->
-  Reset dom ->
-  Signal dom (CallistoResult 7) ->
-  Vec 7 (Signal dom (DataCount 32)) ->
+  forall cpuDom jtagDom .
+  (KnownDomain cpuDom, KnownDomain jtagDom) =>
+  Clock cpuDom ->
+  Reset cpuDom ->
+  Clock jtagDom ->
+  Signal cpuDom (CallistoResult 7) ->
+  "JTAG_IN_" ::: Signal jtagDom JtagIn ->
+  Vec 7 (Signal cpuDom (DataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
-  ( "FINC" ::: Signal dom Bool
-  , "FDEC" ::: Signal dom Bool
+  ( "FINC" ::: Signal cpuDom Bool
+  , "FDEC" ::: Signal cpuDom Bool
+  , "JTAG_OUT_" ::: Signal jtagDom JtagOut
   )
-fullMeshRiscvTest clk rst callistoResult dataCounts = unbundle fIncDec
+fullMeshRiscvTest clk rst tck callistoResult jtagIn dataCounts = (fInc, fDec, jtagOut)
  where
-  (_, CSignal fIncDec) = toSignals
-    ( circuit $ \jtagIn0 -> do
-      ([wbA, wbB], _jtagOut0) <-
-        withClockResetEnable clk rst enableGen $ processingElement @dom peConfig
-          -< jtagIn0
+  ((), (CSignal (unbundle -> (fInc, fDec)), jtagOut)) = toSignals
+    ( circuit $ do
+      ([wbA, wbB], jtag) <-
+        processingElement peConfig clk rst tck enableGen
       fIncDecCallisto -< wbA
       (fIncDec, _allStable) <- withClockResetEnable clk rst enableGen $
         clockControlWb margin framesize (pure $ complement 0) dataCounts -< wbB
-      idC -< fIncDec
-    ) (CSignal . pure $ JtagIn low low low, unitCS)
+      idC -< (fIncDec, jtag)
+    ) ((), (unitCS, jtagIn))
 
   fIncDecCallisto ::
     forall aw nBytes .
     (KnownNat aw, 2 <= aw, nBytes ~ 4) =>
     Circuit
-      (Wishbone dom 'Standard aw (Bytes nBytes))
+      (Wishbone cpuDom 'Standard aw (Bytes nBytes))
       ()
   fIncDecCallisto = Circuit goFIncDecCallisto
    where
@@ -143,7 +145,7 @@ fullMeshRiscvTest clk rst callistoResult dataCounts = unbundle fIncDec
           wbM2S
           (fmap (fmap ((,0) . extend . pack)) fincfdec)
 
-      fincfdec :: Signal dom (Maybe SpeedChange)
+      fincfdec :: Signal cpuDom (Maybe SpeedChange)
       fincfdec =
         clearOnAck
           <$> fmap acknowledge wbS2M
@@ -159,7 +161,7 @@ fullMeshRiscvTest clk rst callistoResult dataCounts = unbundle fIncDec
 
   margin = d2
 
-  framesize = SNat @(PeriodToCycles dom (Seconds 1))
+  framesize = SNat @(PeriodToCycles cpuDom (Seconds 1))
 
   (   (_iStart, _iSize, iMem)
     , (_dStart, _dSize, dMem)) = $(do
@@ -488,8 +490,8 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     , allStable ) =
     fullMeshHwTest refClk sysClk testRst IlaControl{..} rxns rxps miso
 
-  (riscvFinc, riscvFdec) =
-    fullMeshRiscvTest callistoClock callistoReset callistoResult dataCounts
+  (riscvFinc, riscvFdec, _jtagOut) =
+    fullMeshRiscvTest callistoClock callistoReset callistoClock callistoResult (pure $ JtagIn low low) dataCounts
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 

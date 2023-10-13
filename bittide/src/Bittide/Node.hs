@@ -9,7 +9,6 @@ module Bittide.Node where
 import Clash.Prelude
 
 import Protocols
-import Protocols.Internal
 import Protocols.Wishbone
 
 import VexRiscv
@@ -78,18 +77,22 @@ data NodeConfig externalLinks gppes where
 
 -- | A 'node' consists of a 'switch', 'managementUnit' and @0..n@ 'gppe's.
 node ::
-  forall dom extLinks gppes .
-  ( HiddenClockResetEnable dom, KnownNat extLinks, KnownNat gppes) =>
+  forall cpuDom jtagDom extLinks gppes .
+  (KnownDomain cpuDom, KnownDomain jtagDom, KnownNat extLinks, KnownNat gppes) =>
   NodeConfig extLinks gppes ->
-  Vec extLinks (Signal dom (DataLink 64)) ->
-  Vec extLinks (Signal dom (DataLink 64))
-node (NodeConfig nmuConfig switchConfig gppeConfigs) linksIn = linksOut
+  Clock cpuDom ->
+  Reset cpuDom ->
+  Clock jtagDom ->
+  Enable jtagDom ->
+  Vec extLinks (Signal cpuDom (DataLink 64)) ->
+  Vec extLinks (Signal cpuDom (DataLink 64))
+node (NodeConfig nmuConfig switchConfig gppeConfigs) clk rst tck jtagEn linksIn = linksOut
  where
   (switchOut, swS2Ms) =
-    mkSwitch switchConfig swCalM2S swRxM2Ss swTxM2Ss switchIn
+    withClockResetEnable clk rst enableGen mkSwitch switchConfig swCalM2S swRxM2Ss swTxM2Ss switchIn
   switchIn = nmuToSwitch :> pesToSwitch ++ linksIn
   (splitAtI -> (switchToNmu :> switchToPes, linksOut)) = switchOut
-  (nmuToSwitch, nmuM2Ss) = managementUnit nmuConfig switchToNmu nmuS2Ms
+  (nmuToSwitch, nmuM2Ss) = managementUnit clk rst tck jtagEn nmuConfig switchToNmu nmuS2Ms
   (swM2Ss, peM2Ss) = splitAtI nmuM2Ss
 
   (swCalM2S :> swRxM2Ss, swTxM2Ss) = splitAtI swM2Ss
@@ -98,8 +101,10 @@ node (NodeConfig nmuConfig switchConfig gppeConfigs) linksIn = linksOut
 
   nmuS2Ms = swCalS2M :> (swRxS2Ms ++ swTxS2Ms ++ peS2Ms)
 
-  (pesToSwitch, concat -> peS2Ms) =
-    unzip $ gppe <$> zip3 gppeConfigs switchToPes (unconcatI peM2Ss)
+  jtagIn = repeat $ pure $ JtagIn low low
+
+  (pesToSwitch, concat -> peS2Ms, _jtagOut) =
+    unzip3 $ gppe clk rst tck jtagEn <$> zip4 gppeConfigs switchToPes (unconcatI peM2Ss) jtagIn
 
 -- | Configuration for the 'managementUnit' and its 'Bittide.Link'.
 -- The management unit contains the 4 wishbone busses that each pe has
@@ -135,30 +140,36 @@ data GppeConfig nmuRemBusWidth where
 -- The order of Wishbone busses is as follows:
 -- ('rxUnit' :> 'scatterUnitWb' :> 'txUnit' :> 'gatherUnitWb' :> Nil).
 gppe ::
-  (KnownNat nmuRemBusWidth, 2 <= nmuRemBusWidth, HiddenClockResetEnable dom) =>
+  (KnownNat nmuRemBusWidth, 2 <= nmuRemBusWidth, KnownDomain cpuDom, KnownDomain jtagDom) =>
+  Clock cpuDom ->
+  Reset cpuDom ->
+  Clock jtagDom ->
+  Enable jtagDom ->
   -- |
   -- ( Configures all local parameters
   -- , Incoming 'Bittide.Link'
   -- , Incoming @Vector@ of master busses
   -- )
   ( GppeConfig nmuRemBusWidth
-  , Signal dom (DataLink 64)
-  , Vec 4 (Signal dom (WishboneM2S nmuRemBusWidth 4 (Bytes 4)))) ->
+  , Signal cpuDom (DataLink 64)
+  , Vec 4 (Signal cpuDom (WishboneM2S nmuRemBusWidth 4 (Bytes 4)))
+  , Signal jtagDom JtagIn) ->
   -- |
   -- ( Outgoing 'Bittide.Link'
   -- , Outgoing @Vector@ of slave busses
   -- )
-  ( Signal dom (DataLink 64)
-  , Vec 4 (Signal dom (WishboneS2M (Bytes 4))))
-gppe (GppeConfig linkConfig peConfig, linkIn, splitAtI -> (nmuM2S0, nmuM2S1)) =
-  (linkOut, nmuS2M0 ++ nmuS2M1)
+  ( Signal cpuDom (DataLink 64)
+  , Vec 4 (Signal cpuDom (WishboneS2M (Bytes 4)))
+  , Signal jtagDom JtagOut)
+gppe clk rst tck jtagEn (GppeConfig linkConfig peConfig, linkIn, splitAtI -> (nmuM2S0, nmuM2S1), jtagIn) =
+  (linkOut, nmuS2M0 ++ nmuS2M1, jtagOut)
  where
-  (suS2M, nmuS2M0) = linkToPe linkConfig linkIn sc suM2S nmuM2S0
-  (linkOut, guS2M, nmuS2M1) = peToLink linkConfig sc guM2S nmuM2S1
-  (_, (nmuM2Ss, _)) = toSignals (processingElement peConfig) (CSignal . pure $ JtagIn low low low, (nmuS2Ms, CSignal $ pure ()))
+  (suS2M, nmuS2M0) = withClockResetEnable clk rst enableGen linkToPe linkConfig linkIn sc suM2S nmuM2S0
+  (linkOut, guS2M, nmuS2M1) = withClockResetEnable clk rst enableGen peToLink linkConfig sc guM2S nmuM2S1
+  ((), (nmuM2Ss, jtagOut)) = toSignals (processingElement peConfig clk rst tck jtagEn) ((), (nmuS2Ms, jtagIn))
   (suM2S :> guM2S :> Nil) = nmuM2Ss
   nmuS2Ms = suS2M :> guS2M :> Nil
-  sc = sequenceCounter
+  sc = withClockResetEnable clk rst enableGen sequenceCounter
 
 {-# NOINLINE managementUnit #-}
 
@@ -168,26 +179,31 @@ gppe (GppeConfig linkConfig peConfig, linkIn, splitAtI -> (nmuM2S0, nmuM2S1)) =
 -- 'WishboneS2M' signals and produces the outgoing link alongside a vector of
 -- 'WishhboneM2S' signals.
 managementUnit ::
-  forall dom nodeBusses .
-  (HiddenClockResetEnable dom, KnownNat nodeBusses, CLog 2 (nodeBusses + 8) <= 30) =>
+  forall cpuDom jtagDom nodeBusses .
+  (KnownDomain cpuDom, KnownDomain jtagDom, KnownNat nodeBusses, CLog 2 (nodeBusses + 8) <= 30) =>
+  Clock cpuDom ->
+  Reset cpuDom ->
+  Clock jtagDom ->
+  Enable jtagDom ->
   -- | Configures all local parameters.
   ManagementConfig nodeBusses ->
   -- | Incoming 'Bittide.Link'.
-  Signal dom (DataLink 64) ->
+  Signal cpuDom (DataLink 64) ->
   -- | Incoming @Vector@ of slave busses.
-  Vec nodeBusses  (Signal dom (WishboneS2M (Bytes 4))) ->
+  Vec nodeBusses  (Signal cpuDom (WishboneS2M (Bytes 4))) ->
   -- |
   -- ( Outgoing 'Bittide.Link'
   -- , Outgoing @Vector@ of master busses)
-  ( Signal dom (DataLink 64)
-  , Vec nodeBusses (Signal dom (WishboneM2S (32 - CLog 2 (nodeBusses + 8)) 4 (Bytes 4))))
-managementUnit (ManagementConfig linkConfig peConfig) linkIn nodeS2Ms =
+  ( Signal cpuDom (DataLink 64)
+  , Vec nodeBusses (Signal cpuDom (WishboneM2S (32 - CLog 2 (nodeBusses + 8)) 4 (Bytes 4))))
+managementUnit clk rst tck jtagEn (ManagementConfig linkConfig peConfig) linkIn nodeS2Ms =
   (linkOut, nodeM2Ss)
  where
-  (suS2M, nmuS2M0) = linkToPe linkConfig linkIn sc suM2S nmuM2S0
-  (linkOut, guS2M, nmuS2M1) = peToLink linkConfig sc guM2S nmuM2S1
+  (suS2M, nmuS2M0) = withClockResetEnable clk rst enableGen linkToPe linkConfig linkIn sc suM2S nmuM2S0
+  (linkOut, guS2M, nmuS2M1) = withClockResetEnable clk rst enableGen peToLink linkConfig sc guM2S nmuM2S1
   (suM2S :> guM2S :> rest) = nmuM2Ss
   (splitAtI -> (nmuM2S0, nmuM2S1), nodeM2Ss) = splitAtI rest
-  (_, (nmuM2Ss, _)) = toSignals (processingElement peConfig) (CSignal . pure $ JtagIn low low low, (nmuS2Ms, CSignal $ pure ()))
+  jtagIn = pure $ JtagIn low low
+  ((), (nmuM2Ss, _jtag)) = toSignals (processingElement peConfig clk rst tck jtagEn) ((), (nmuS2Ms, jtagIn))
   nmuS2Ms = suS2M :> guS2M :> nmuS2M0 ++ nmuS2M1 ++ nodeS2Ms
-  sc = sequenceCounter
+  sc = withClockResetEnable clk rst enableGen sequenceCounter

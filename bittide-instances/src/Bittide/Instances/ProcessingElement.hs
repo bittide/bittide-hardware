@@ -29,18 +29,24 @@ import Project.FilePath
 vexRiscUartHello ::
   "SYSCLK_300" ::: DiffClock Basic300 ->
   "CPU_RESET" ::: Reset Basic200 ->
-  "USB_UART_TX" ::: CSignal Basic200 Bit ->
-  "USB_UART_RX" ::: CSignal Basic200 Bit
-vexRiscUartHello diffClk rst_in usbUartTx =
-  usbUartRx
+  "TCK" ::: Clock Basic50 ->
+  "JTAG_EN" ::: Enable Basic50 ->
+  "TDI" ::: Signal Basic50 Bit ->
+  "TMS" ::: Signal Basic50 Bit ->
+  "USB_UART_TX" ::: Signal Basic200 Bit ->
+  ( "USB_UART_RX" ::: Signal Basic200 Bit
+  , "TDO" ::: Signal Basic50 Bit )
+vexRiscUartHello diffClk rst_in tck jtagEn tdi tms usbUartTx =
+  (usbUartRx, tdo)
  where
-  (_, usbUartRx) = circuitFn ((usbUartTx, CSignal . pure $ JtagIn low low low), CSignal $ pure ())
+  (_, (CSignal usbUartRx, fmap testDataOut -> tdo)) =
+    circuitFn (CSignal usbUartTx, (CSignal $ pure (), JtagIn <$> tms <*> tdi))
 
-  circuitFn = toSignals $ withClockResetEnable clk200 rst200 enableGen $
-    circuit $ \(uartRx, jtagIn0) -> do
-      ([uartBus], _jtagOut0) <- (processingElement @Basic200 peConfig) -< jtagIn0
-      (uartTx, _uartStatus) <- uartWb d16 d16 (SNat @921600) -< (uartBus, uartRx)
-      idC -< uartTx
+  circuitFn = toSignals $
+    circuit $ \uartRx -> do
+      ([uartBus], jtag) <- processingElement peConfig clk200 rst200 tck jtagEn
+      (uartTx, _uartStatus) <- withClockResetEnable clk200 rst200 enableGen uartWb d16 d16 (SNat @921600) -< (uartBus, uartRx)
+      idC -< (uartTx, jtag)
 
   (clk200, pllLock) = clockWizardDifferential (SSymbol @"pll_300_200") diffClk noReset
   rst200 = resetSynchronizer clk200 (orReset rst_in (unsafeFromActiveLow pllLock))

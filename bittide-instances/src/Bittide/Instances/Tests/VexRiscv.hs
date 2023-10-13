@@ -9,8 +9,8 @@ module Bittide.Instances.Tests.VexRiscv where
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.VIO (vioProbe)
 
-import Clash.Prelude
-import Clash.Explicit.Prelude (noReset, orReset)
+import Clash.Prelude hiding (mealy)
+import Clash.Explicit.Prelude (noReset, orReset, mealy)
 
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
@@ -22,7 +22,7 @@ import System.FilePath
 import VexRiscv
 
 import Bittide.DoubleBufferedRam
-import Bittide.Instances.Domains (Basic200, Basic125)
+import Bittide.Instances.Domains (Basic200, Basic125, Basic50)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
 import Bittide.SharedTypes
@@ -32,11 +32,15 @@ data TestStatus = Running | Success | Fail
   deriving (Enum, Eq, Generic, NFDataX, BitPack)
 
 vexRiscvInner ::
-  forall dom.
-  HiddenClockResetEnable dom =>
-  Signal dom JtagIn ->
-  Signal dom (Bool, Bool, JtagOut)
-vexRiscvInner jtagIn0 = bundle (done, success, jtagOut1)
+  forall cpuDom jtagDom.
+  (KnownDomain cpuDom, KnownDomain jtagDom) =>
+  Clock cpuDom ->
+  Reset cpuDom ->
+  Clock jtagDom ->
+  Enable jtagDom ->
+  Signal jtagDom JtagIn ->
+  (Signal cpuDom Bool, Signal cpuDom Bool, Signal jtagDom JtagOut)
+vexRiscvInner clk rst tck jtagEn jtagIn = (done, success, jtagOut)
   where
 
     (unbundle -> (done, success)) = stateToDoneSuccess <$> status
@@ -46,16 +50,16 @@ vexRiscvInner jtagIn0 = bundle (done, success, jtagOut1)
     stateToDoneSuccess Fail    = (True, False)
 
     unitC = CSignal (pure ())
-    (_, (CSignal status, CSignal jtagOut1)) = circuitFn (CSignal jtagIn0, (unitC, unitC))
+    (_, (CSignal status, jtagOut)) = circuitFn ((), (unitC, jtagIn))
 
-    Circuit circuitFn = circuit $ \jtagIn1 -> do
-        ([wb], jtagOut0) <- processingElement peConfig -< jtagIn1
+    Circuit circuitFn = circuit $ do
+        ([wb], jtagOut) <- processingElement peConfig clk rst tck jtagEn
         testResult <- statusRegister -< wb
-        idC -< (testResult, jtagOut0)
+        idC -< (testResult, jtagOut)
 
-    statusRegister :: Circuit (Wishbone dom 'Standard 30 (Bytes 4)) (CSignal dom TestStatus)
+    statusRegister :: Circuit (Wishbone cpuDom 'Standard 30 (Bytes 4)) (CSignal cpuDom TestStatus)
     statusRegister = Circuit $ \(fwd, CSignal _) ->
-        let (unbundle -> (m2s, st)) = mealy go Running fwd
+        let (unbundle -> (m2s, st)) = mealy clk rst enableGen go Running fwd
         in (m2s, CSignal st)
       where
         go st WishboneM2S{..}
@@ -104,26 +108,27 @@ vexRiscvInner jtagIn0 = bundle (done, success, jtagOut1)
 
 vexRiscvTest ::
   "CLK_125MHZ" ::: DiffClock Basic125 ->
-  "TMS" ::: Signal Basic200 Bit ->
-  "TDI" ::: Signal Basic200 Bit ->
-  "TCK" ::: Signal Basic200 Bit ->
+  "TCK" ::: Clock Basic50 ->
+  "JTAG_EN" ::: Enable Basic50 ->
+  "TMS" ::: Signal Basic50 Bit ->
+  "TDI" ::: Signal Basic50 Bit ->
   "" :::
     ( "done"    ::: Signal Basic200 Bool
     , "success" ::: Signal Basic200 Bool
-    , "TDO" ::: Signal Basic200 Bit
+    , "TDO" ::: Signal Basic50 Bit
     )
-vexRiscvTest diffClk tms tdi tck = (testDone, testSuccess, tdo)
+vexRiscvTest diffClk tck jtagEn tms tdi = (testDone, testSuccess, tdo)
   where
     (clk, clkStable0) = clockWizardDifferential (SSymbol @"pll") diffClk noReset
     clkStable1 = xpmCdcSingle clk clk clkStable0 -- improvised reset syncer
 
     clkStableRst = unsafeFromActiveLow clkStable1
 
-    jtagIn0 = JtagIn <$> tms <*> tdi <*> tck
+    jtagIn0 = JtagIn <$> tms <*> tdi
 
-    (unbundle -> (testDone, testSuccess, fmap testDataOut -> tdo)) =
+    (testDone, testSuccess, fmap testDataOut -> tdo) =
       hwSeqX probe $
-      withClockResetEnable clk reset enableGen (vexRiscvInner @Basic200) jtagIn0
+      vexRiscvInner clk reset tck jtagEn jtagIn0
 
     reset = orReset clkStableRst testReset
     ((unsafeFromActiveLow -> testReset) :> Nil) = unbundle probe
