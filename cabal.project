@@ -55,38 +55,38 @@ package elastic-buffer-sim
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
-index-state: 2023-05-02T21:48:25Z
+index-state: 2023-09-12T05:36:44Z
 
 -- We need an up-to-date Clash and libraries. Among other features, this adds
 -- support for dynamic clocks and Xilinx primitive support.
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 3234dac5516b8afa9c5efb49233c731158283f45
+  tag: f08ba8287438717b54ac03f4ee66963f45974a13
   subdir: clash-prelude
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 3234dac5516b8afa9c5efb49233c731158283f45
+  tag: f08ba8287438717b54ac03f4ee66963f45974a13
   subdir: clash-ghc
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 3234dac5516b8afa9c5efb49233c731158283f45
+  tag: f08ba8287438717b54ac03f4ee66963f45974a13
   subdir: clash-lib
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 3234dac5516b8afa9c5efb49233c731158283f45
+  tag: f08ba8287438717b54ac03f4ee66963f45974a13
   subdir: clash-prelude-hedgehog
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 3234dac5516b8afa9c5efb49233c731158283f45
+  tag: f08ba8287438717b54ac03f4ee66963f45974a13
   subdir: clash-cores
 
 source-repository-package
