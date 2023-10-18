@@ -325,7 +325,7 @@ pub unsafe extern "C" fn __c_callisto_rust(
                 mask |= 1 << i;
             }
         }
-        mask
+        mask & availability_mask
     };
 
     callisto::callisto(
