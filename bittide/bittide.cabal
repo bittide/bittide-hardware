@@ -120,6 +120,7 @@ library
     Bittide.ClockControl.Si5391A
     Bittide.ClockControl.Si5395J
     Bittide.ClockControl.Si539xSpi
+    Bittide.ClockControl.SiClkSerial
     Bittide.ClockControl.StabilityChecker
     Bittide.Counter
     Bittide.DoubleBufferedRam

@@ -6,16 +6,16 @@ module Bittide.ClockControl.Si5391A where
 
 import Clash.Prelude
 
-import Bittide.ClockControl.Si539xSpi
+import Bittide.ClockControl.SiClkSerial
 
-type Si5391ARegisterMap = Si539xRegisterMap 2 427 3
+type Si5391ARegisterMap = SiLabsRegisterMap 2 427 3
 
 -- TODO: Add convenience function to more easily create register maps with configurable
 -- clock frequencies at different outputs with certain divider configurations.
 
 -- | Configuration for Si5391A with all output clocks disabled.
 testConfigA :: Si5391ARegisterMap
-testConfigA = Si539xRegisterMap{..}
+testConfigA = SiLabsRegisterMap{..}
  where
   configPreamble = (0x0B, 0x24, 0xC0) :> (0x0B, 0x25, 0x00) :> Nil
   configPostamble = (0x00, 0x1C, 0x01) :> (0x0B, 0x24, 0xC3) :> (0x0B, 0x25, 0x02) :> Nil
@@ -452,7 +452,7 @@ testConfigA = Si539xRegisterMap{..}
 -- | Configuration for Si5391A with all output clocks enabled at 200MHz and routed through
 -- divider N0.
 testConfigB :: Si5391ARegisterMap
-testConfigB = Si539xRegisterMap{..}
+testConfigB = SiLabsRegisterMap{..}
  where
   configPreamble = (0x0B, 0x24, 0xC0) :> (0x0B, 0x25, 0x00) :> Nil
   configPostamble = (0x00, 0x1C, 0x01) :> (0x0B, 0x24, 0xC3) :> (0x0B, 0x25, 0x02) :> Nil

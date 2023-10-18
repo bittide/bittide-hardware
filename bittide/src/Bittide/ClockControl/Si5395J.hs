@@ -5,9 +5,9 @@
 module Bittide.ClockControl.Si5395J where
 
 import Clash.Prelude
-import Bittide.ClockControl.Si539xSpi
+import Bittide.ClockControl.SiClkSerial
 
-type Si5395RegisterMap = Si539xRegisterMap 3 584 5
+type Si5395RegisterMap = SiLabsRegisterMap 3 584 5
 
 -- | Configuration for Si5395J with the following configuration:
 --
@@ -17,7 +17,7 @@ type Si5395RegisterMap = Si539xRegisterMap 3 584 5
 --
 --  all of them doing 1ppb steps on Finc/Fdec
 testConfig6_200_on_0a ::  Si5395RegisterMap
-testConfig6_200_on_0a = Si539xRegisterMap{..}
+testConfig6_200_on_0a = SiLabsRegisterMap{..}
  where
   configPreamble =
     (0x0B, 0x24, 0xC0) :>
@@ -621,7 +621,7 @@ testConfig6_200_on_0a = Si539xRegisterMap{..}
 
 -- | Configuration for Si5395J with out6 at 200MHz, 1ppm FSTEP and out3 at 20MHz, 0.1% FSTEP
 testConfig6_200_5_20 ::  Si5395RegisterMap
-testConfig6_200_5_20 = Si539xRegisterMap{..}
+testConfig6_200_5_20 = SiLabsRegisterMap{..}
  where
   configPreamble = (0x0B, 0x24, 0xC0) :> (0x0B, 0x25, 0x00) :> (0x05, 0x40, 0x01) :> Nil
   configPostamble = (0x05, 0x14, 0x01) :> (0x00, 0x1C, 0x01) :> (0x05, 0x40, 0x00) :> (0x0B, 0x24, 0xC3) :> (0x0B, 0x25, 0x02) :> Nil
@@ -1220,7 +1220,7 @@ testConfig6_200_5_20 = Si539xRegisterMap{..}
   all of them doing 10ppb steps on Finc/Fdec
 -}
 testConfig6_200_on_0a_and_0 ::  Si5395RegisterMap
-testConfig6_200_on_0a_and_0 = Si539xRegisterMap{..}
+testConfig6_200_on_0a_and_0 = SiLabsRegisterMap{..}
  where
   configPreamble = (0x0B, 0x24, 0xC0) :> (0x0B, 0x25, 0x00) :> (0x05, 0x40, 0x01) :> Nil
   configPostamble = (0x05, 0x14, 0x01) :> (0x00, 0x1C, 0x01) :> (0x05, 0x40, 0x00) :> (0x0B, 0x24, 0xC3) :> (0x0B, 0x25, 0x02) :> Nil

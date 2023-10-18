@@ -18,63 +18,16 @@ import Data.Maybe
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
+import Bittide.ClockControl.Callisto.Util
+import Bittide.ClockControl.SiClkSerial
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 
 import Clash.Cores.Xilinx.DcFifo
 
--- | The Si539X chips use "Page"s to increase their address space.
-type Page = Byte
--- | Different memory location depending on the current 'Page'.
-type Address = Byte
--- | Indicates that the interface producing this is currently Busy and will not respond to inputs.
-type Busy = Bool
--- | Indicates tgat the interface producing this value has captured the input.
-type Acknowledge = Bool
-
--- | A Si539X register entry consists of a 'Page', and 'Address' and a 'Byte' value.
-type RegisterEntry = (Page, Address, Byte)
-
--- | Used to read from or write to a register on a Si539x chip via SPI.
-data RegisterOperation = RegisterOperation
-  { regPage     :: Page
-   -- ^ Page at which to perform the read or write.
-  , regAddress  :: Address
-   -- ^ Address at which to perform the read or write
-  , regWrite    :: Maybe Byte
-   -- ^ @Nothing@ for a read operation, @Just byte@ to write @byte@ to this 'Page' and 'Address'.
-  } deriving (Show, Generic, NFDataX)
-
--- | Contains the configuration for an Si539x chip, explicitly differentiates between
--- the configuration preamble, configuration and configuration postamble.
-data Si539xRegisterMap preambleEntries configEntries postambleEntries = Si539xRegisterMap
-  { configPreamble :: Vec preambleEntries RegisterEntry
-  -- ^ Configuration preamble
-  , config :: Vec configEntries RegisterEntry
-  -- ^ Configuration
-  , configPostamble :: Vec postambleEntries RegisterEntry
-  -- ^ Configuration postamble
-  }
-
--- | Operations supported by the Si539x chip, @BurstWrite@ is omitted because the
--- current SPI core does not support writing a variable number of bytes while slave select
--- is low.
-data SpiCommand
-  = SetAddress Address
-  -- ^ Sets the selected register 'Address' on the Si539x chip.
-  | WriteData Byte
-  -- ^ Writes data to the selected 'Address' on the selected 'Page'.
-  | ReadData
-  -- ^ Reads data from the selected 'Address' on the selected 'Page'.
-  | WriteDataInc Byte
-  -- ^ Writes data to the selected 'Address' on the selected 'Page' and increments the 'Address'.
-  | ReadDataInc
-  -- ^ Reads data from the selected 'Address' on the selected 'Page' and increments the 'Address'.
-  deriving Eq
-
--- | Converts an 'SpiCommand' to the corresponding bytes to be sent over SPI.
-spiCommandToBytes :: SpiCommand -> Bytes 2
-spiCommandToBytes = \case
+-- | Converts an 'SerialCommand' to the corresponding bytes to be sent over SPI.
+serialCommandToSpiBytes :: SerialCommand -> Bytes 2
+serialCommandToSpiBytes = \case
   SetAddress bv   -> pack (0b0000_0000 :: Byte, bv)
   WriteData bv    -> pack (0b0100_0000 :: Byte, bv)
   ReadData        -> pack (0b1000_0000 :: Byte, 0 :: Byte)
@@ -101,9 +54,9 @@ data ConfigState dom entries
   | WaitForLock
   -- ^ Continuously read from 'Address' 0x0C at 'Page' 0x00 until it returns bit 3 is 0.
   | Finished
-  -- ^ All entries in the 'Si539xRegisterMap' were correctly written to the @Si539x@ chip.
+  -- ^ All entries in the 'SiLabsRegisterMap' were correctly written to the @Si539x@ chip.
   | Wait (Index (PeriodToCycles dom (Milliseconds 300))) (Index entries)
-  -- ^ Waits for the Si539X to be calibrated after writing the configuration preamble from 'Si539xRegisterMap'.
+  -- ^ Waits for the Si539X to be calibrated after writing the configuration preamble from 'SiLabsRegisterMap'.
   deriving (Show, Generic, NFDataX, Eq)
 
 instance
@@ -136,7 +89,7 @@ si539xSpi ::
   , KnownNat postambleEntries
   , 1 <= (preambleEntries + configEntries + postambleEntries)) =>
   -- | Initial configuration for the @Si539x@ chip.
-  Si539xRegisterMap preambleEntries configEntries postambleEntries ->
+  SiLabsRegisterMap preambleEntries configEntries postambleEntries ->
   -- | Minimum period of the SPI clock frequency for the SPI clock divider.
   SNat minTargetPeriodPs ->
   -- | Read or write operation for the @Si539X@ registers.
@@ -155,11 +108,11 @@ si539xSpi ::
     , "SS"   ::: Signal dom Bool
     )
   )
-si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
+si539xSpi SiLabsRegisterMap{..} minTargetPs@SNat externalOperation miso =
   (configByte, configBusy, configState, spiOut)
  where
   (driverByte, driverBusy, spiOut) = withReset driverReset si539xSpiDriver minTargetPs spiOperation miso
-  driverReset = forceReset $ holdTrue d3 $ flip fmap configState $ \case
+  driverReset = forceReset $ stickyBits d3 $ flip fmap configState $ \case
     ResetDriver _ -> True
     _             -> False
 
@@ -315,7 +268,7 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
           , storedByte = fmap resize outBytes
           }
 
-    spiBytes = spiCommandToBytes spiCommand
+    spiBytes = serialCommandToSpiBytes spiCommand
     output = orNothing (not commandAcknowledged && idleCycles == 0) spiBytes
 
 {-# NOINLINE si539xSpiDriver #-}
@@ -391,17 +344,3 @@ spiFrequencyController SNat SNat
       _ -> Nothing
 
 {-# NOINLINE spiFrequencyController #-}
-
--- | When this component receives @True@, it will hold it for @holdCycles@ number of
--- clock cycles. This implementation does not scale well to large values for @holdCycles@
--- because it uses 'Vec' internally.
-holdTrue ::
-  forall dom holdCycles .
-  (HiddenClockResetEnable dom, 1 <= holdCycles) =>
-  SNat holdCycles ->
-  Signal dom Bool ->
-  Signal dom Bool
-holdTrue SNat = mealy go (repeat False)
- where
-  go :: 1 <= holdCycles => Vec holdCycles Bool -> Bool -> (Vec holdCycles Bool, Bool)
-  go state@(Cons _ _) input = (takeI $ input :> state, fold (||) state)
