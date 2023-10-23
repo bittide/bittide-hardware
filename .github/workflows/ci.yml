@@ -675,6 +675,8 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
             cp .github/synthesis/all.json checks.json
+          elif [[ -f .github/synthesis/debug.json ]]; then
+            cp .github/synthesis/debug.json checks.json
           else
             cp .github/synthesis/staging.json checks.json
           fi
@@ -705,6 +707,8 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
             cp .github/synthesis/all.json checks.json
+          elif [[ -f .github/synthesis/debug.json ]]; then
+            cp .github/synthesis/debug.json checks.json
           else
             cp .github/synthesis/staging.json checks.json
           fi
@@ -922,6 +926,12 @@ jobs:
           # Test whether success/fail variables contain sane values
           if [[ "${success}" != "true" && "${success}" != "false" ]]; then exit 1; fi
           if [[ "${fail}"    != "true" && "${fail}"    != "false" ]]; then exit 1; fi
+
+          # If this is a debug run, fail even when all dependencies succeeded.
+          if [[ -f .github/synthesis/debug.json ]]; then
+            echo "This is a debug run, which may never succeed. Remove '.github/synthesis/debug.json' before trying to merge."
+            exit 1
+          fi
 
           # We want to fail if one or more dependencies fail. For safety, we introduce
           # a second check: if no dependencies succeeded something weird is going on.
