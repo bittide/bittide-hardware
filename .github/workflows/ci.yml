@@ -95,7 +95,6 @@ jobs:
       - name: Update Cabal index info
         run: |
           cabal update
-          cabal freeze
 
       - name: Cache
         uses: actions/cache@v3
@@ -104,7 +103,6 @@ jobs:
             ~/.cabal-nix/store
 
           key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          restore-keys: packages-
 
       - name: Build
         run: |
@@ -170,7 +168,6 @@ jobs:
       - name: Update Cabal index info
         run: |
           cabal update
-          cabal freeze
 
       - name: Cache
         uses: actions/cache@v3
@@ -179,7 +176,6 @@ jobs:
             ~/.cabal-nix/store
 
           key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
 
       - name: Plot mesh grid
@@ -244,7 +240,6 @@ jobs:
       - name: Update Cabal index info
         run: |
           cabal update
-          cabal freeze
 
       - name: Cache
         uses: actions/cache@v3
@@ -253,7 +248,6 @@ jobs:
             ~/.cabal-nix/store
 
           key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
 
       - name: Download simulation artifacts
@@ -318,7 +312,6 @@ jobs:
       - name: Update Cabal index info
         run: |
           cabal update
-          cabal freeze
 
       - name: Cache
         uses: actions/cache@v3
@@ -327,7 +320,6 @@ jobs:
             ~/.cabal-nix/store
 
           key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
 
       - name: Run unittests
@@ -356,7 +348,6 @@ jobs:
       - name: Update Cabal index info
         run: |
           cabal update
-          cabal freeze
 
       - name: Cache
         uses: actions/cache@v3
@@ -365,7 +356,6 @@ jobs:
             ~/.cabal-nix/store
 
           key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
 
       - name: Unittests
@@ -425,7 +415,6 @@ jobs:
       - name: Update Cabal index info
         run: |
           cabal update
-          cabal freeze
 
       - name: Cabal Cache
         uses: actions/cache@v3
@@ -434,7 +423,6 @@ jobs:
             ~/.cabal-nix/store
 
           key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
 
       - uses: actions/cache@v3
@@ -598,7 +586,6 @@ jobs:
       - name: Update Cabal index info
         run: |
           cabal update
-          cabal freeze
 
       - name: Cache
         uses: actions/cache@v3
@@ -607,7 +594,6 @@ jobs:
             ~/.cabal-nix/store
 
           key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
 
       - name: Doctests
@@ -641,7 +627,6 @@ jobs:
       - name: Update Cabal index info
         run: |
           cabal update
-          cabal freeze
 
       - name: Cache
         uses: actions/cache@v3
@@ -650,7 +635,6 @@ jobs:
             ~/.cabal-nix/store
 
           key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
 
       - name: Unit tests
@@ -775,7 +759,6 @@ jobs:
       - name: Update Cabal index info
         run: |
           cabal update
-          cabal freeze
 
       - name: Cache Cabal store
         uses: actions/cache@v3
@@ -784,7 +767,6 @@ jobs:
             ~/.cabal-nix/store
 
           key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          restore-keys: packages-cachebust-3-
           fail-on-cache-miss: true
 
       - name: HDL generation and synthesis
