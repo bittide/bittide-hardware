@@ -361,11 +361,15 @@ main = do
               --
               --      See: https://github.com/haskell/cabal/issues/7506
               --
-              buildDirs <- liftIO (glob "dist-newstyle/build/*/ghc-*/*")
-              forM_ buildDirs $ \dir -> do
-                let fileName = takeFileName dir
-                unless ("bittide-shake" `isPrefixOf` fileName) $
-                  command_ [] "rm" ["-rf", dir]
+              ci <- getEnvWithDefault "false" "CI"
+              unless (ci == "true" || ci == "false") $ do
+                error $ "Environment variable 'CI' must be either 'true' or 'false', but it is: " <> ci
+              when (ci == "false") $ do
+                buildDirs <- liftIO (glob "dist-newstyle/build/*/ghc-*/*")
+                forM_ buildDirs $ \dir -> do
+                  let fileName = takeFileName dir
+                  unless ("bittide-shake" `isPrefixOf` fileName) $
+                    command_ [] "rm" ["-rf", dir]
 
               -- Generate RTL
               let
