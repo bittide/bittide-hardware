@@ -526,6 +526,12 @@ proc run_test_group {probes_file target_dict url ila_data_dir} {
             set device [load_target_device [get_part_name $url $target_id]]
             set_property PROBES.FILE ${probes_file} $device
             refresh_hw_device $device -quiet
+            # Reset all start probes
+            foreach probe_name $start_probe_names {
+                set start_probe [get_hw_probes ${vio_prefix}/${probe_name}]
+                set_property OUTPUT_VALUE 0 $start_probe
+            }
+            commit_hw_vio [get_hw_vios]
             # Verify pre-start condition
             set start_probe [get_hw_probes ${vio_prefix}/${start_probe_name}]
             verify_before_start $start_probe
@@ -601,11 +607,6 @@ proc run_test_group {probes_file target_dict url ila_data_dir} {
                 write_hw_ila_data -force -csv_file $file_path $ila_data
                 write_hw_ila_data -force -vcd_file $file_path $ila_data
             }
-
-            # Reset the start probe for the current test
-            set start_probe [get_hw_probes ${vio_prefix}/${start_probe_name}]
-            set_property OUTPUT_VALUE 0 $start_probe
-            commit_hw_vio [get_hw_vios]
         }
         # Print summary of individual test
         puts "\nTest ${start_probe_name} passed on ${successful_targets} out of ${target_count} targets"
@@ -617,6 +618,7 @@ proc run_test_group {probes_file target_dict url ila_data_dir} {
     # Print summary of all tests
     if {[expr $successful_tests == $test_count]} {
         puts "\nAll ${successful_tests} tests passed on ${target_count} targets"
+        print_all_vios
         exit 0
     } else {
         set failed_tests [expr ${test_count} - ${successful_tests}]
