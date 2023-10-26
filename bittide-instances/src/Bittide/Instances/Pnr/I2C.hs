@@ -13,9 +13,10 @@ import Bittide.Instances.Domains
 import Clash.Cores.Xilinx.VIO
 import Clash.Cores.Xilinx.Ila
 import Clash.Cores.I2C
+import Clash.Cores.I2C.ByteMaster(I2COperation(..))
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Extra
-data I2CControllerState = Idle | WriteAddress | WriteData | ReadData
+data I2CControllerState = I2CIdle | I2CWriteAddress | I2CWriteData | I2CReadData
   deriving (Generic, NFDataX, Eq)
 
 i2cController ::
@@ -27,12 +28,9 @@ i2cController ::
   Signal dom Bool ->
   Signal dom Bool ->
   ( Signal dom Bool
-  , Signal dom Bool
-  , Signal dom Bool
-  , Signal dom Bool
-  , Signal dom (BitVector 8)
+  , Signal dom (Maybe I2COperation)
   , Signal dom Bool)
-i2cController clk rst ena ramOp' hostAck' arbLost' = mealyB clk rst ena go Idle
+i2cController clk rst ena ramOp' hostAck' arbLost' = mealyB clk rst ena go I2CIdle
   (ramOp', hostAck', arbLost')
  where
   deconstructRamOp RamNoOp = (0, 0)
@@ -41,22 +39,22 @@ i2cController clk rst ena ramOp' hostAck' arbLost' = mealyB clk rst ena go Idle
 
   go state (ramOp, hostAck, arbLost) = (nextState, coreInput)
    where
-    coreInput = (start, stop, read, write, dIn, cmdAck)
-    cmdAck = state /= Idle && nextState == Idle
+    coreInput = (claimBus, i2cOp, cmdAck)
+    cmdAck = state /= I2CIdle && nextState == I2CIdle
     (ramOpAddr, ramOpData) = deconstructRamOp ramOp
-    (start, stop, read, write, dIn) = case state of
-      Idle         -> (False, False, False, False, 0)
-      WriteAddress -> (True, False, False, True, ramOpAddr)
-      WriteData    -> (False, True, False, True, ramOpData)
-      ReadData     -> (False, True, True, False, 0)
+    (claimBus, i2cOp) = case state of
+      I2CIdle         -> (False, Nothing)
+      I2CWriteAddress -> (True, Just $ WriteData ramOpAddr)
+      I2CWriteData    -> (True, Just $ WriteData ramOpData)
+      I2CReadData     -> (True, Just $ ReadData)
 
     nextState = case (state, ramOp, hostAck, arbLost) of
-      (Idle, RamNoOp, _, _)                     -> Idle
-      (Idle, _, _, _)                           -> WriteAddress
-      (WriteAddress, RamRead _, True, False)    -> ReadData
-      (WriteAddress, RamWrite _ _, True, False) -> WriteData
+      (I2CIdle, RamNoOp, _, _)                     -> I2CIdle
+      (I2CIdle, _, _, _)                           -> I2CWriteAddress
+      (I2CWriteAddress, RamRead _, True, False)    -> I2CReadData
+      (I2CWriteAddress, RamWrite _ _, True, False) -> I2CWriteData
       (_, _, False, False)                      -> state
-      _                                         -> Idle
+      _                                         -> I2CIdle
 
 orNothing :: Bool -> a -> Maybe a
 orNothing True a = Just a
@@ -80,12 +78,12 @@ i2cTest diffClk sdaIn  = hwSeqX ilaInstance
   clk = ibufds diffClk
   sdaOut = fmap (bitCoerce . not) sdaOen
   sclOut = fmap (bitCoerce . not) sclOen
-  (_sclOut,fmap not -> sclOen,_sdaOut, fmap not -> sdaOen) = unbundle i2cO
+  (fmap not -> sclOen, fmap not -> sdaOen) = unbundle i2cO
   i2cIn = bundle (fmap bitCoerce sclOut, mux sdaOen sdaOut sdaIn) --readFromBiSignal sdaIn)
-  (dout,hostAck,busy,al,ackOut,i2cO) = i2c clk vioAsyncReset vioStatemachineReset vioEnaCore clkCnt start stop read write ackIn din i2cIn
-  (start, stop, read, write, din, cmdAck) = i2cController clk vioAsyncReset vioEnaController ramOp hostAck al
+  (dout,hostAck,busy,al,ackOut,i2cO) = i2c clk vioAsyncReset vioStatemachineReset vioEnaCore clkCnt claimBus i2cOp ackIn i2cIn
+  (claimBus, i2cOp, cmdAck) = i2cController clk vioAsyncReset vioEnaController ramOp hostAck al
   ramOp = regEn clk vioAsyncReset enableGen RamNoOp (startOpEdge .||. cmdAck .||. al) $ mux startOpEdge vioRamOp (pure RamNoOp)
-  vioRamOp = mux vioIsWriteOp (RamWrite <$> vioAddr <*> vioWriteData) (RamRead <$> vioAddr)
+  vioRamOp = mux vioIsWriteOp (RamWrite <$> vioAddr <*> vioI2CWriteData) (RamRead <$> vioAddr)
   startOpEdge = isRising clk vioAsyncReset enableGen False vioStartOp
 
   capturedData = regEn clk vioAsyncReset enableGen 0 hostAck dout
@@ -98,7 +96,7 @@ i2cTest diffClk sdaIn  = hwSeqX ilaInstance
    , vioStartOp
    , vioIsWriteOp
    , vioAddr
-   , vioWriteData
+   , vioI2CWriteData
    , mux_select
    ) = unbundle $ setName @"i2cVio" $
    vioProbe
@@ -117,7 +115,7 @@ i2cTest diffClk sdaIn  = hwSeqX ilaInstance
     :> "vioStartOp"
     :> "vioIsWriteOp"
     :> "vioAddr"
-    :> "vioWriteData"
+    :> "vioI2CWriteData"
     :> "mux_select"
     :> Nil)
 
@@ -142,11 +140,7 @@ i2cTest diffClk sdaIn  = hwSeqX ilaInstance
         :> "i2c_busy"
         :> "i2c_al"
         :> "i2c_ackOut"
-        :> "i2c_start"
-        :> "i2c_stop"
-        :> "i2c_read"
-        :> "i2c_write"
-        :> "i2c_din"
+        :> "i2c_op"
         :> Nil
       ) {stages = 2, depth = D16384, advancedTriggers = True }
       clk
@@ -161,11 +155,7 @@ i2cTest diffClk sdaIn  = hwSeqX ilaInstance
       (dflipflop clk $ busy)
       (dflipflop clk $ al)
       (dflipflop clk $ ackOut)
-      (dflipflop clk $ start)
-      (dflipflop clk $ stop)
-      (dflipflop clk $ read)
-      (dflipflop clk $ write)
-      (dflipflop clk $ din)
+      (dflipflop clk $ i2cOp)
 
 
 makeTopEntity 'i2cTest
