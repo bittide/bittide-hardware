@@ -131,6 +131,7 @@ library
     Bittide.Instances.Pnr.ClockControl
     Bittide.Instances.Pnr.Counter
     Bittide.Instances.Pnr.ElasticBuffer
+    Bittide.Instances.Pnr.I2C
     Bittide.Instances.Pnr.ProcessingElement
     Bittide.Instances.Pnr.ScatterGather
     Bittide.Instances.Pnr.Si539xSpi
