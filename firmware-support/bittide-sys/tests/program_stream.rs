@@ -53,6 +53,7 @@ fn program_stream_exec_path() -> Option<PathBuf> {
 
     let output = Command::new("cabal")
         .arg("list-bin")
+        .arg("-v0")
         .arg("program-stream")
         .current_dir(&root)
         .output()
