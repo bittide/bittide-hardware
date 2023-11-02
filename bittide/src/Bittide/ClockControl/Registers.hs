@@ -81,4 +81,4 @@ clockControlWb margin framesize linkMask counters = Circuit go
     fIncDec3 =
       delay minBound {- glitch filter -} $
         stickyBits d20 (speedChangeToPins <$> fIncDec2)
-    (writeVec, wbS2M) = unbundle $ wbToVec <$> bundle readVec <*> wbM2S
+    (writeVec, _, wbS2M) = unbundle $ wbToVec <$> bundle readVec <*> pure True <*> wbM2S

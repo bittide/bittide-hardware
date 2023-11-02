@@ -18,6 +18,7 @@ import Clash.Cores.UART (uart, ValidBaud)
 import Clash.Cores.Xilinx.Ila (ila, ilaConfig, IlaConfig(..), Depth)
 import Clash.Util.Interpolate
 
+import Bittide.Extra.Maybe
 import Data.Bifunctor
 import Data.Bool(bool)
 import Data.Constraint.Nat.Extra
@@ -425,23 +426,28 @@ wbToVec ::
   , 1 <= nRegisters) =>
   -- | Readable data.
   Vec nRegisters (Bytes nBytes) ->
+  -- | Read acknowledgement ->
+  Bool ->
   -- | Wishbone bus (master to slave)
   WishboneM2S addrW nBytes (Bytes nBytes) ->
   -- |
   -- 1. Written data
+  -- 2. Transaction address
   -- 2. Outgoing wishbone bus (slave to master)
   ( Vec nRegisters (Maybe (Bytes nBytes))
+  , Maybe (Index nRegisters)
   , WishboneS2M (Bytes nBytes))
-wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
+wbToVec readableData readAck WishboneM2S{..} = (writtenData, transAddr, wbS2M)
  where
   (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
   addressRange = maxBound :: Index nRegisters
   invalidAddress = (alignedAddress > resize (pack addressRange)) || alignment /= 0
   masterActive = strobe && busCycle
   err = masterActive && invalidAddress
-  acknowledge = masterActive && not err
-  wbWriting = writeEnable && acknowledge
+  acknowledge = masterActive && not err && readAck
+  wbWriting = writeEnable && masterActive && not err
   wbAddr = unpack $ resize alignedAddress :: Index nRegisters
+  transAddr = orNothing (masterActive && not err) wbAddr
   readData = readableData !! wbAddr
   writtenData
     | wbWriting = replace wbAddr (Just writeData) (repeat Nothing)
@@ -466,5 +472,5 @@ timeWb = Circuit $ \(wbM2S, _) -> (mealy goMealy (0,0) wbM2S, ())
     nextFrozen = if isJust (head writes) then count else frozen
     RegisterBank (splitAtI -> (frozenMsbs, frozenLsbs)) = getRegsBe @8 frozen
     RegisterBank (splitAtI -> (freqMsbs, freqLsbs)) = getRegsBe @8 freq
-    (writes, wbS2M) = wbToVec
-      (0 :> fmap pack (frozenLsbs :> frozenMsbs :> freqLsbs :> freqMsbs :> Nil)) wbM2S
+    (writes, _, wbS2M) = wbToVec
+      (0 :> fmap pack (frozenLsbs :> frozenMsbs :> freqLsbs :> freqMsbs :> Nil)) True wbM2S
