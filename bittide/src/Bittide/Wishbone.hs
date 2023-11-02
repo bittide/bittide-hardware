@@ -15,22 +15,23 @@ import Bittide.Arithmetic.Time(DomainFrequency)
 import Bittide.SharedTypes
 
 import Clash.Cores.UART (uart, ValidBaud)
+import Clash.Cores.I2C
 import Clash.Cores.Xilinx.Ila (ila, ilaConfig, IlaConfig(..), Depth)
 import Clash.Util.Interpolate
 
 import Bittide.Extra.Maybe
+import Clash.Functor.Extra
 import Data.Bifunctor
 import Data.Bool(bool)
 import Data.Constraint.Nat.Extra
 import Data.Maybe
 
-import Protocols
-import Protocols.Internal(CSignal(..))
+import Protocols.Df hiding (zipWith, pure, bimap, first, second, route, zip)
+import Protocols.Internal
 import Protocols.Wishbone
 
-import qualified Protocols.Df as Df
+import qualified Clash.Cores.I2C.ByteMaster as I2C
 import qualified Protocols.Wishbone as Wishbone
-
 
 {- $setup
 >>> import Clash.Prelude
@@ -210,7 +211,7 @@ singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
 -- This function is unsafe because data can be lost when the input is @Just _@ and
 -- the receiving circuit tries to apply back pressure.
 unsafeToDf :: Circuit (CSignal dom (Maybe a)) (Df dom a)
-unsafeToDf = Circuit $ \ (CSignal cSig, _) -> (CSignal $ pure (), Df.maybeToData <$> cSig)
+unsafeToDf = Circuit $ \ (CSignal cSig, _) -> (CSignal $ pure (), maybeToData <$> cSig)
 
 -- | 'Df' version of 'uart'.
 uartDf ::
@@ -231,7 +232,7 @@ uartDf baud = Circuit go
     ( (Ack <$> ack, CSignal $ pure ())
     , (CSignal received, CSignal txBit) )
    where
-    (received, txBit, ack) = uart baud rxBit (Df.dataToMaybe <$> request)
+    (received, txBit, ack) = uart baud rxBit (dataToMaybe <$> request)
 
 -- | Wishbone accessible UART interface with configurable FIFO buffers.
 --   It takes the depths of the transmit and receive buffers and the baud rate as parameters.
@@ -290,36 +291,36 @@ uartWb txDepth@SNat rxDepth@SNat baud = circuit $ \(wb, uartRx) -> do
    where
     third f (a, b, c) = (a, b, f c)
     unCSignal (CSignal s) = s
-    go ((WishboneM2S{..}, Df.dataToMaybe -> rxData, fifoFull -> txFull), (Ack txAck, _))
+    go ((WishboneM2S{..}, dataToMaybe -> rxData, fifoFull -> txFull), (Ack txAck, _))
       -- not in cycle
       | not (busCycle && strobe)
       = ( ((emptyWishboneS2M @()) { readData = invalidReq }, Ack False, ())
-        , (Df.NoData, status)
+        , (NoData, status)
         )
       -- illegal addr
       | not addrLegal
       = ( ((emptyWishboneS2M @()) { err = True, readData = invalidReq }, Ack False, ())
-        , (Df.NoData, status)
+        , (NoData, status)
         )
       -- read at 0
       | not writeEnable && internalAddr == 0 =
         ( ( (emptyWishboneS2M @())
             {acknowledge = True, readData = resize $ fromMaybe 0 rxData}, Ack True, ())
-          , (Df.NoData, status)
+          , (NoData, status)
         )
       -- write at 0
       | writeEnable && internalAddr == 0 =
         ( ( (emptyWishboneS2M @())
             {acknowledge = txAck , readData = invalidReq}, Ack False, ())
-          , (Df.Data $ resize writeData, status)
+          , (Data $ resize writeData, status)
         )
       -- read at 1
       | not writeEnable && internalAddr == 1 =
         ( ( (emptyWishboneS2M @())
             {acknowledge = True, readData = resize $ pack status}, Ack False, ())
-          , (Df.NoData, status)
+          , (NoData, status)
         )
-      | otherwise = ((emptyWishboneS2M { err = True }, Ack False, ()), (Df.NoData, status))
+      | otherwise = ((emptyWishboneS2M { err = True }, Ack False, ()), (NoData, status))
      where
       (alignedAddr, alignment) = split @_ @(addrW - 2) @2 addr
       internalAddr = bitCoerce $ resize alignedAddr :: Index 2
@@ -378,15 +379,15 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
     }
   go ::
     FifoState depth ->
-    (Bool, Df.Data a, Ack, a) ->
+    (Bool, Data a, Ack, a) ->
     ( FifoState depth
-    , (Index depth, Maybe (Index depth, a), Df.Data a, Bool, FifoMeta depth))
-  go state@FifoState{..} (False, _, _,_) = (state,(readPointer, Nothing, Df.NoData, False, fifoMeta))
+    , (Index depth, Maybe (Index depth, a), Data a, Bool, FifoMeta depth))
+  go state@FifoState{..} (False, _, _,_) = (state,(readPointer, Nothing, NoData, False, fifoMeta))
    where
     fifoEmpty = dataCount == 0
     fifoFull = dataCount == maxBound
     fifoMeta = FifoMeta {fifoEmpty, fifoFull, fifoDataCount = dataCount}
-  go FifoState{..} (True, Df.dataToMaybe -> fifoIn, Ack readyIn, bramOut) = (nextState, output)
+  go FifoState{..} (True, dataToMaybe -> fifoIn, Ack readyIn, bramOut) = (nextState, output)
    where
     fifoEmpty = dataCount == 0
     fifoFull = dataCount == maxBound
@@ -397,7 +398,7 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
 
     readPointerNext = if readSuccess then satSucc SatWrap readPointer else readPointer
     writeOpGo = if writeSuccess then (writePointer,) <$> fifoIn else Nothing
-    fifoOutGo = if fifoEmpty then Df.NoData else Df.Data bramOut
+    fifoOutGo = if fifoEmpty then NoData else Data bramOut
 
     dataCountNext = dataCountDx dataCount
     dataCountDx = case (writeSuccess, readSuccess) of
@@ -475,5 +476,57 @@ timeWb = Circuit $ \(wbM2S, _) -> (mealy goMealy (0,0) wbM2S, ())
     nextFrozen = if isJust (head writes) then count else frozen
     RegisterBank (splitAtI -> (frozenMsbs, frozenLsbs)) = getRegsBe @8 frozen
     RegisterBank (splitAtI -> (freqMsbs, freqLsbs)) = getRegsBe @8 freq
-    (writes, wbS2M) = wbToVec
-      (0 :> fmap pack (frozenLsbs :> frozenMsbs :> freqLsbs :> freqMsbs :> Nil)) wbM2S
+    (writes, _, wbS2M) = wbToVec
+      (0 :> fmap pack (frozenLsbs :> frozenMsbs :> freqLsbs :> freqMsbs :> Nil)) True wbM2S
+
+i2cWb ::
+  forall dom addrW nBytes .
+  ( HiddenClockResetEnable dom
+  , 2 <= addrW
+  , KnownNat addrW
+  , KnownNat nBytes, 1 <= nBytes
+  ) =>
+  Circuit
+    (Wishbone dom 'Standard addrW (Bytes nBytes), CSignal dom (Bit, Bit))
+    (CSignal dom (Maybe Bit, Maybe Bit))
+i2cWb = case (cancelMulDiv @nBytes @8) of
+  Dict -> Circuit go
+    where
+      go ((wbM2S, CSignal i2cIn), _) = ((wbS2M, CSignal $ pure ()), CSignal i2cOut)
+       where
+        -- Wishbone interface consists of:
+        -- 0. i2c data Read-Write
+        -- 1. clock divider Read-Write
+        -- 3. flags: MSBs are Read-Only flags, LSBs are Read-Write flags.
+        (vecOut, readRequest, wbS2M) = unbundle $ wbToVec <$> bundle vecIn <*> readAck <*> wbM2S
+        vecIn = fmap resize dOut :> fmap (resize . pack) clkDiv :> flagsRead :> Nil
+        (i2cWrite :> clkDivWrite :> flagsWrite :> Nil) = unbundle vecOut
+
+        -- busy is the only Read-only flag, other flags are Read-Write.
+        flagsRead = resize . pack <$> bundle (busy, rwFlagsReg)
+        rwFlagsWrite :: Signal dom (Maybe (Vec 5 Bool))
+        rwFlagsWrite = (unpack . resize) <<$>> flagsWrite
+
+        rwFlagsReg = regMaybe
+          (False :> False :> False :> False :> True :> Nil)
+          rwFlagsRegNext
+        (_ :> _ :> ackIn :> claimBus :> smReset :> Nil) = unbundle rwFlagsReg
+
+        -- ReadWrite flags
+        rwFlagsRegSetters = bundle $ al :> ackOut :> ackIn :> claimBus :> smReset :> Nil
+
+        -- Alternative of wishbone write and updated i2c status signals.
+        rwFlagsRegNext = (<|>) <$> rwFlagsWrite <*>
+          (orNothing <$> (al .||. ackOut) <*> (zipWith (||) <$> rwFlagsReg <*> rwFlagsRegSetters))
+
+        clkDiv = regMaybe maxBound (unpack . resize <<$>> clkDivWrite)
+
+        -- Alternative based on i2cWrite and readRequest
+        i2cOp = (<|>)
+          <$> ((I2C.WriteData . resize) <<$>> i2cWrite)
+          <*> (flip orNothing I2C.ReadData <$> (readRequest .==. pure (Just 0)))
+
+        -- If the wishbone interface targets the i2c core, wait for acknowledgement.
+        readAck = (pure (Just 0) ./=. readRequest) .||. hostAck
+        (dOut,hostAck,busy,al,ackOut,i2cOut) =
+          i2c hasClock hasReset smReset (fromEnable hasEnable) clkDiv claimBus i2cOp ackIn i2cIn
