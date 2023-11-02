@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
+    error::Error,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -42,13 +43,13 @@ fn build_program_stream_exec(root_path: &Path) -> bool {
     status.success()
 }
 
-fn program_stream_exec_path() -> Option<PathBuf> {
-    let root = find_cabal_root()?;
+fn program_stream_exec_path() -> Result<PathBuf, Box<dyn Error>> {
+    let root = find_cabal_root().ok_or("Can't find cabal root")?;
     let compile_success = build_program_stream_exec(&root);
 
     if !compile_success {
         eprintln!("building of program-stream executable not successful!!");
-        return None;
+        return Err("Could not build `program-stream` executable")?;
     }
 
     let output = Command::new("cabal")
@@ -56,28 +57,26 @@ fn program_stream_exec_path() -> Option<PathBuf> {
         .arg("-v0")
         .arg("program-stream")
         .current_dir(&root)
-        .output()
-        .ok()?;
+        .output()?;
 
     if !output.status.success() {
-        eprintln!("list-bin failed");
-        return None;
+        eprintln!("Running `list-bin` failed");
+        return Err("Running `list-bin` failed")?;
     }
 
-    let path_str = String::from_utf8(output.stdout).ok()?;
+    let path_str = String::from_utf8(output.stdout)?;
 
-    Some(PathBuf::from(path_str.trim_end()))
+    Ok(PathBuf::from(path_str.trim_end()))
 }
 
-fn stream_for_elf(elf: &Path) -> Option<Vec<u8>> {
-    let output = Command::new(&*PROG_STREAM_EXEC).arg(elf).output().ok()?;
+fn stream_for_elf(elf: &Path) -> Result<Vec<u8>, Box<dyn Error>> {
+    let output = Command::new(&*PROG_STREAM_EXEC).arg(elf).output()?;
 
     if !output.status.success() {
-        eprintln!("ERROR");
-        return None;
+        return Err(format!("Running `{}` failed", PROG_STREAM_EXEC.display()))?;
     }
 
-    Some(output.stdout)
+    Ok(output.stdout)
 }
 
 lazy_static::lazy_static! {
@@ -119,7 +118,7 @@ fn all_elfs_can_be_converted_to_streaming(#[strategy(gen_valid_elf_file())] info
     use std::io::Write;
     let mut file = tempfile::NamedTempFile::new().unwrap();
     let elf = create_elf_file(&info);
-    file.write(&elf).unwrap();
+    let _ = file.write(&elf).unwrap();
 
     let _ = stream_for_elf(file.path()).expect("creating program-stream works");
 }
@@ -130,7 +129,7 @@ fn all_streams_are_smaller_than_elfs(#[strategy(gen_valid_elf_file())] info: Elf
     use std::io::Write;
     let mut file = tempfile::NamedTempFile::new().unwrap();
     let elf = create_elf_file(&info);
-    file.write(&elf).unwrap();
+    let _ = file.write(&elf).unwrap();
 
     let stream = stream_for_elf(file.path()).expect("creating program-stream works");
 
@@ -146,14 +145,14 @@ fn all_elfs_are_loaded_properly(#[strategy(gen_valid_elf_file())] mut info: ElfC
     let buffer_size = elf_loaded_buffer_size(&info);
 
     unsafe {
-        with_32bit_addr_buffer(u32::try_from(buffer_size).unwrap(), |buf| {
+        with_32bit_addr_buffer(buffer_size, |buf| {
             let base_addr = buf.as_mut_ptr() as usize as u64;
 
             elf_info_set_base_addr(&mut info, base_addr);
 
             let mut file = tempfile::NamedTempFile::new().unwrap();
             let elf = create_elf_file(&info);
-            file.write(&elf).unwrap();
+            let _ = file.write(&elf).unwrap();
 
             let stream = stream_for_elf(file.path()).expect("creating program-stream works");
 
