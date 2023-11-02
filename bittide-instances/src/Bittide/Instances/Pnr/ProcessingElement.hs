@@ -14,6 +14,7 @@ import Language.Haskell.TH
 import Protocols
 import Protocols.Internal
 import System.FilePath
+import Data.Maybe
 
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains
@@ -28,15 +29,35 @@ import Project.FilePath
 vexRiscUartHello ::
   "SYSCLK_300" ::: DiffClock Basic300 ->
   "CPU_RESET" ::: Reset Basic200 ->
-  ("USB_UART_TX" ::: CSignal Basic200 Bit, CSignal Basic200 ()) ->
-  (CSignal Basic200 (), "USB_UART_RX" ::: CSignal Basic200 Bit)
-vexRiscUartHello diffClk rst_in =
-  toSignals $ withClockResetEnable clk200 rst200 enableGen $
-    circuit $ \uartRx -> do
-      [uartBus] <- (processingElement @Basic200 peConfig) -< ()
-      (uartTx, _uartStatus) <- uartWb d16 d16 (SNat @921600) -< (uartBus, uartRx)
-      idC -< uartTx
+  ( "USB_UART_TX" ::: CSignal Basic200 Bit
+  , "sclBs" ::: BiSignalIn 'Floating Basic200 1
+  , "sdaIn" ::: Signal Basic200 Bit
+  ) ->
+  ( "USB_UART_RX" ::: CSignal Basic200 Bit
+  , "sclBs" ::: BiSignalOut 'Floating Basic200 1
+  , "sdaOut" ::: Signal Basic200 Bit
+  , "mux_select" ::: BitVector 3)
+vexRiscUartHello diffClk rst_in (uartIn, sclBs, sdaIn) =
+  ( uartOut
+  , writeToBiSignal sclBs sclOut
+  , fromMaybe 1 <$> sdaOut
+  , 0b100
+  )
  where
+  peFunction =
+    toSignals $ withClockResetEnable clk200 rst200 enableGen $
+      circuit $ \(uartRx, i2cIn) -> do
+        [uartBus, i2cBus] <- processingElement @Basic200 peConfig -< ()
+        (uartTx, _uartStatus) <- uartWb d16 d16 (SNat @921600) -< (uartBus, uartRx)
+        i2cOut <- i2cWb -< (i2cBus, i2cIn)
+        idC -< (uartTx, i2cOut)
+
+  (_,(uartOut, i2cO)) =
+    peFunction ((uartIn, i2cIn), (CSignal $ pure (), CSignal $ pure ()))
+  (CSignal (unbundle -> (sclOut, sdaOut))) = i2cO
+
+  i2cIn :: CSignal Basic200 (Bit, Bit)
+  i2cIn = CSignal $ bundle (readFromBiSignal sclBs, fromMaybe <$> sdaIn <*> sdaOut)
   (clk200, pllLock) = clockWizardDifferential (SSymbol @"pll_300_200") diffClk noReset
   rst200 = resetSynchronizer clk200 (orReset rst_in (unsafeFromActiveLow pllLock))
 
@@ -48,6 +69,6 @@ vexRiscUartHello diffClk rst_in =
         elfPath = elfDir </> "hello"
       memBlobsFromElf BigEndian elfPath Nothing)
 
-  peConfig = PeConfig (0 :> 1 :> 2 :> Nil) (Reloadable $ Blob iMem) (Reloadable $ Blob dMem)
+  peConfig = PeConfig (0 :> 1 :> 2 :> 3 :> Nil) (Reloadable $ Blob iMem) (Reloadable $ Blob dMem)
 
 makeTopEntity 'vexRiscUartHello
