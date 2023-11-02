@@ -17,6 +17,7 @@ import Clash.Cores.UART (uart, ValidBaud)
 import Clash.Cores.Xilinx.Ila (ila, ilaConfig, IlaConfig(..), Depth)
 import Clash.Util.Interpolate
 
+import Bittide.Extra.Maybe
 import Data.Bifunctor
 import Data.Bool(bool)
 import Data.Constraint (Dict(Dict))
@@ -427,23 +428,28 @@ wbToVec ::
   , 1 <= nRegisters) =>
   -- | Readable data.
   Vec nRegisters (Bytes nBytes) ->
+  -- | Read acknowledgement ->
+  Bool ->
   -- | Wishbone bus (master to slave)
   WishboneM2S addrW nBytes (Bytes nBytes) ->
   -- |
   -- 1. Written data
+  -- 2. Read request
   -- 2. Outgoing wishbone bus (slave to master)
   ( Vec nRegisters (Maybe (Bytes nBytes))
+  , Maybe (Index nRegisters)
   , WishboneS2M (Bytes nBytes))
-wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
+wbToVec readableData readAck WishboneM2S{..} = (writtenData, readRequest, wbS2M)
  where
   (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
   addressRange = maxBound :: Index nRegisters
   invalidAddress = (alignedAddress > resize (pack addressRange)) || alignment /= 0
   masterActive = strobe && busCycle
   err = masterActive && invalidAddress
-  acknowledge = masterActive && not err
+  acknowledge = masterActive && not err && (writeEnable || readAck)
   wbWriting = writeEnable && acknowledge
   wbAddr = unpack $ resize alignedAddress :: Index nRegisters
+  readRequest = orNothing (masterActive && not err && not writeEnable) wbAddr
   readData = readableData !! wbAddr
   writtenData
     | wbWriting = replace wbAddr (Just writeData) (repeat Nothing)
