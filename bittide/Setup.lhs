@@ -33,6 +33,7 @@ dependencies with the `bittide` library.
 >   ( Verbosity, silent
 >   )
 > import System.Directory
+> import System.FilePath
 >
 > main :: IO ()
 > main =
@@ -69,8 +70,9 @@ https://github.com/haskell/cabal/issues/2641
 >       libraryBuildInfo = PD.libBuildInfo library
 >   dir <- getCurrentDirectory
 >
->   let hostToolsDir = dir ++ "/../host-tools"
->   let hostToolsTargetDir = hostToolsDir ++ "/target/x86_64-unknown-linux-gnu"
+>   let hostToolsDir = dir </> ".." </> "host-tools"
+>   let hostBuildDir = dir </> ".." </> "_build" </> "cargo" </> "host-tools"
+>   let hostToolsTargetDir = hostBuildDir </> "x86_64-unknown-linux-gnu"
 >
 >   rawSystemInDir hostToolsDir silent
 >     "cargo"
@@ -80,8 +82,8 @@ https://github.com/haskell/cabal/issues/2641
 >     { localPkgDescr = packageDescription
 >       { PD.library = Just $ library
 >         { PD.libBuildInfo = libraryBuildInfo
->           { PD.extraLibDirs = (hostToolsTargetDir ++ "/release") :
->                               (hostToolsTargetDir ++ "/debug") :
+>           { PD.extraLibDirs = (hostToolsTargetDir </> "release") :
+>                               (hostToolsTargetDir </> "debug") :
 >             PD.extraLibDirs libraryBuildInfo
 >     } } } }
 
