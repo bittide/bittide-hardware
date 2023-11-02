@@ -15,10 +15,13 @@ import Bittide.Arithmetic.Time(DomainFrequency)
 import Bittide.SharedTypes
 
 import Clash.Cores.UART (uart, ValidBaud)
+import Clash.Cores.Experimental.I2C
 import Clash.Cores.Xilinx.Ila (ila, ilaConfig, IlaConfig(..), Depth)
+import Clash.Sized.Vector.ToTuple
 import Clash.Util.Interpolate
 
 import Bittide.Extra.Maybe
+import Clash.Functor.Extra
 import Data.Bifunctor
 import Data.Bool(bool)
 import Data.Constraint.Nat.Extra
@@ -27,9 +30,9 @@ import Data.Maybe
 import Protocols
 import Protocols.Wishbone
 
+import qualified Clash.Cores.Experimental.I2C.ByteMaster as I2C
 import qualified Protocols.Df as Df
 import qualified Protocols.Wishbone as Wishbone
-
 
 {- $setup
 >>> import Clash.Prelude
@@ -474,3 +477,55 @@ timeWb = Circuit $ \(wbM2S, _) -> (mealy goMealy (0,0) wbM2S, ())
     RegisterBank (splitAtI -> (freqMsbs, freqLsbs)) = getRegsBe @8 freq
     (writes, _, wbS2M) = wbToVec
       (0 :> fmap pack (frozenLsbs :> frozenMsbs :> freqLsbs :> freqMsbs :> Nil)) True wbM2S
+
+i2cWb ::
+  forall dom addrW nBytes .
+  ( HiddenClockResetEnable dom
+  , 2 <= addrW
+  , KnownNat addrW
+  , KnownNat nBytes, 1 <= nBytes
+  ) =>
+  Circuit
+    (Wishbone dom 'Standard addrW (Bytes nBytes), CSignal dom (Bit, Bit))
+    (CSignal dom (Maybe Bit, Maybe Bit))
+i2cWb = case (cancelMulDiv @nBytes @8) of
+  Dict -> Circuit go
+    where
+      go ((wbM2S, i2cIn), _) = ((wbS2M, pure ()), i2cOut)
+       where
+        -- Wishbone interface consists of:
+        -- 0. i2c data Read-Write
+        -- 1. clock divider Read-Write
+        -- 2. flags: MSBs are Read-Only flags, LSBs are Read-Write flags.
+        (vecOut, transAddr, wbS2M) = unbundle $ wbToVec <$> bundle vecIn <*> wbAck <*> wbM2S
+        vecIn = fmap resize dOut :> fmap (resize . pack) clkDiv :> flagsRead :> Nil
+        (i2cWrite, clkDivWrite, flagsWrite) = (vecToTuple . unbundle) vecOut
+
+        -- busy is the only Read-only flag, other flags are Read-Write.
+        flagsRead = resize . pack <$> bundle (busy, rwFlagsReg)
+        rwFlagsWrite :: Signal dom (Maybe (Vec 5 Bool))
+        rwFlagsWrite = (unpack . resize) <<$>> flagsWrite
+
+        rwFlagsReg = regMaybe
+          (False :> False :> False :> False :> True :> Nil)
+          rwFlagsRegNext
+        (_, _, ackIn, claimBus, smReset) = (vecToTuple . unbundle) rwFlagsReg
+
+        -- ReadWrite flags
+        rwFlagsRegSetters = bundle $ al :> ackOut :> ackIn :> claimBus :> smReset :> Nil
+
+        -- Alternative of wishbone write and updated i2c status signals.
+        rwFlagsRegNext = (<|>) <$> rwFlagsWrite <*>
+          (orNothing <$> (al .||. ackOut) <*> (zipWith (||) <$> rwFlagsReg <*> rwFlagsRegSetters))
+
+        clkDiv = regMaybe maxBound (unpack . resize <<$>> clkDivWrite)
+
+        -- Alternative based on i2cWrite and readRequest
+        i2cOp = (<|>)
+          <$> ((I2C.WriteData . resize) <<$>> i2cWrite)
+          <*> (flip orNothing I2C.ReadData <$> (transAddr .==. pure (Just 0)))
+
+        -- If the wishbone interface targets the i2c core, wait for acknowledgement.
+        wbAck = (pure (Just 0) ./=. transAddr) .||. hostAck
+        (dOut,hostAck,busy,al,ackOut,i2cOut) =
+          i2c hasClock hasReset smReset (fromEnable hasEnable) clkDiv claimBus i2cOp ackIn i2cIn
