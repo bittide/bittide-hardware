@@ -8,7 +8,7 @@ maintainer:          devops@qbaylogic.com
 Copyright:           Copyright © 2022-2023 Google LLC
 
 custom-setup
-  setup-depends: Cabal, base, directory, process
+  setup-depends: Cabal, base, directory, process, filepath
 
 common common-options
   default-extensions:
