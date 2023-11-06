@@ -13,4 +13,4 @@ source /opt/tools/Xilinx/VivadoEnterprise/Vivado/2022.1/settings64.sh
 export LD_PRELOAD=/lib/x86_64-linux-gnu/libudev.so.1
 
 # Run command given as argument
-$@
+"$@"
