@@ -12,6 +12,7 @@ import Test.Tasty.Hedgehog
 import Tests.Axi4
 import Tests.Calendar
 import Tests.ClockControl.Si539xSpi
+import Tests.ClockControl.QuotaControl
 import Tests.DoubleBufferedRam
 import Tests.ElasticBuffer
 import Tests.Haxioms
@@ -27,6 +28,7 @@ tests = testGroup "Unittests"
   [ axi4Group
   , calGroup
   , clockGenGroup
+  , quotaControlGroup
   , ebGroup
   , haxiomsGroup
   , linkGroup

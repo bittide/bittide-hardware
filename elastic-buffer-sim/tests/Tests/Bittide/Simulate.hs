@@ -52,8 +52,8 @@ case_clockControlMinBound = do
     mask = pure $ pack (repeat high)
     changes =
       fmap (fromMaybe NoChange . maybeSpeedChange) $ sampleN
-        -- +100 assumes callisto's pipeline less than 100 deep
-        (fromIntegral (cccPessimisticSettleCycles config + 100))
+        -- +10_000 assumes callisto's pipeline less than 10_000 deep
+        (fromIntegral (cccPessimisticSettleCycles config + 10_000))
         (callistoClockControl @_ @_ @Fast clockGen resetGen enableGen config mask dataCounts)
 
   assertBool

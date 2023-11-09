@@ -19,8 +19,8 @@ import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Util
 import Bittide.ClockControl.Callisto.Types
 import Bittide.ClockControl.Foreign.Rust.Callisto
+import Bittide.ClockControl.QuotaControl
 import Bittide.ClockControl.StabilityChecker
-import Bittide.Extra.Maybe
 
 import qualified Clash.Cores.Xilinx.Floating as F
 import qualified Clash.Signal.Delayed as D
@@ -70,18 +70,35 @@ callistoClockControl clk rst ena ClockControlConfig{..} mask allDataCounts =
         (clockControl controlConfig mask scs dataCounts state)
         state
 
+      guardedSpeedChangeRequest =
+        mealyB temporallyAlign Nothing
+          ( shouldUpdate
+            -- callisto already introduces a lot of gate-level
+            -- operations, which is why we need to introduce a
+            -- delay here to meet timing constraints. This won't
+            -- cause problems, as the @temporallyAlign@ state
+            -- machine compensates for the temporal cost
+            -- introduced by bounding clock control anyway.
+          , delay Nothing $ quotaControl $ delay NoChange $ fmap _b_k state'
+          )
+
       stabilityCheck = stabilityChecker
         cccStabilityCheckerMargin
         cccStabilityCheckerFramesize
     in
       CallistoResult
-        <$> (orNothing <$> shouldUpdate <*> fmap _b_k state')
+        <$> guardedSpeedChangeRequest
         <*> scs
         <*> allStable
         <*> allSettled
         <*> (rfState <$> state')
 
  where
+  temporallyAlign oldValue (upd, newValue) =
+    if upd
+    then (Nothing, newValue <|> oldValue <|> pure NoChange)
+    else (newValue <|> oldValue, Nothing)
+
   controlConfig =
     ControlConfig
       { reframingEnabled = cccEnableReframing
