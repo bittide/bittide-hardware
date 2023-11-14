@@ -4,11 +4,12 @@
 
 -- | Checks whether `+` and `-` work as expected, though its real purpose is to
 -- check whether we can run hardware-in-the-loop tests.
-module Bittide.Instances.Tests.BoardTest where
+module Bittide.Instances.Hitl.BoardTest where
 
 import Clash.Explicit.Prelude
 
 import Clash.Annotations.TH (makeTopEntity)
+import Clash.Cores.Xilinx.Ila
 import Clash.Cores.Xilinx.VIO
 import Clash.Cores.Xilinx.Extra (ibufds)
 
@@ -53,13 +54,13 @@ check clk rst dut stimuli =
 
 -- | Testing circuit for `plus`. Feeds the circuit with inputs and checks
 -- the received output against the expected output.
-simpleHardwareInTheLoopTest ::
+boardTestSimple ::
   "CLK_125MHZ" ::: DiffClock Basic125 ->
   "" ::: Signal Basic125
     ( "done" ::: Bool
     , "success" ::: Bool
     )
-simpleHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
+boardTestSimple diffClk = bundle (testDone, testSuccess)
  where
   clk = ibufds diffClk
   rst = unsafeFromActiveLow testStart
@@ -85,17 +86,17 @@ simpleHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
     :> (255,   1,   0)
     :> Nil
     )
-makeTopEntity 'simpleHardwareInTheLoopTest
+makeTopEntity 'boardTestSimple
 
 -- | Testing circuit for `plus` and `minus`. Feeds the circuit with inputs and
 -- checks the received output against the expected output.
-extendedHardwareInTheLoopTest ::
+boardTestExtended ::
   "CLK_125MHZ" ::: DiffClock Basic125 ->
   "" ::: Signal Basic125
     ( "done" ::: Bool
     , "success" ::: Bool
     )
-extendedHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
+boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
  where
   clk = ibufds diffClk
   rstA = unsafeFromActiveLow testStartA
@@ -135,6 +136,33 @@ extendedHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
       testDone
       testSuccess
 
+
+  boardTestIla :: Signal Basic125 ()
+  boardTestIla =
+    setName @"boardTestIla" $
+    ila
+      (ilaConfig $
+           "trigger_AorB"
+        :> "capture"
+        :> "testStartA"
+        :> "testStartB"
+        :> "testDone"
+        :> "testSuccess"
+        :> Nil
+      )
+      clk
+      -- Trigger when starting either test
+      (testStartA .||. testStartB)
+      -- Always capture
+      (pure True :: Signal Basic125 Bool)
+
+      -- Debug probes
+      testStartA
+      testStartB
+      testDone
+      testSuccess
+
+
   stimuliA :: Vec 4 (Unsigned 8, Unsigned 8, Unsigned 8)
   stimuliA = (
        (  0,   0,   0)
@@ -151,4 +179,4 @@ extendedHardwareInTheLoopTest diffClk = bundle (testDone, testSuccess)
     :> (  0,   1, 255)
     :> Nil
     )
-makeTopEntity 'extendedHardwareInTheLoopTest
+makeTopEntity 'boardTestExtended

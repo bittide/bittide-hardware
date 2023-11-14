@@ -27,6 +27,14 @@ on:
         - 'staging'
         - 'main'
 
+env:
+  # Local machine connected to the bittide demonstrator is called
+  # 'hoeve'. But the docker container of the runner cannot resolve
+  # DNS, so we use its local IP address instead.
+  HW_SERVER_URL: 192.168.102.130:3121
+  S3_PASSWORD: ${{ secrets.S3_PASSWORD }}
+  SYNTHESIS_BOARD: xilinx.com:kcu105:part0:1.7
+
 concurrency:
  group: ${{ github.head_ref || github.run_id }}
  cancel-in-progress: true
@@ -79,10 +87,10 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure
+        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
 
     steps:
       - name: Checkout
@@ -92,21 +100,25 @@ jobs:
         run: |
           cp .github/cabal.project cabal.project.local
 
+      - run: cache clean
+      - run: cache pull cabal --missing-ok --write-cache-found
+      - run: cache pull cargo --missing-ok
+
       - name: Update Cabal index info
         run: |
-          cabal update
+          if [[ $(cat cache_found) == 0 ]]; then
+            cabal update
+          else
+            echo "Restored cache, no need to update cabal package list"
+          fi
 
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cabal-nix/store
+      - run: ./cargo.sh build --release
+      - run: ./cargo.sh build
+      - run: cabal build all
 
-          key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-
-      - name: Build
-        run: |
-          cabal build all --only-dependencies
+      - run: cache push cabal
+      - run: cache push cargo
+      - run: cache push build
 
   elastic-buffer-sim-topologies-matrix:
     name: elastic-buffer-sim-topologies simulation matrix generation
@@ -116,7 +128,7 @@ jobs:
         shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
 
     steps:
       - name: Checkout
@@ -146,7 +158,7 @@ jobs:
     timeout-minutes: 1200
     defaults:
       run:
-        shell: git-nix-shell {0} --pure
+        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     needs: [build, lint, elastic-buffer-sim-topologies-matrix]
 
     strategy:
@@ -155,7 +167,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
 
     steps:
       - name: Checkout
@@ -165,18 +177,8 @@ jobs:
         run: |
           cp .github/cabal.project cabal.project.local
 
-      - name: Update Cabal index info
-        run: |
-          cabal update
-
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cabal-nix/store
-
-          key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          fail-on-cache-miss: true
+      - run: cache pull cabal
+      - run: cache pull build
 
       - name: Plot mesh grid
         run: |
@@ -214,7 +216,9 @@ jobs:
         if: always()
         with:
           name: gen-plots-hs-${{ matrix.target.topology }}
-          path: _build
+          path: |
+            _build
+            !_build/cargo
           retention-days: 14
 
   generate-full-clock-control-simulation-report:
@@ -223,11 +227,11 @@ jobs:
     if: always()
     defaults:
       run:
-        shell: git-nix-shell {0} --pure
+        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     needs: [build, lint, elastic-buffer-sim-topologies-matrix, elastic-buffer-sim-topologies, bittide-instances-hardware-in-the-loop]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
 
     steps:
       - name: Checkout
@@ -237,18 +241,9 @@ jobs:
         run: |
           cp .github/cabal.project cabal.project.local
 
-      - name: Update Cabal index info
-        run: |
-          cabal update
-
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cabal-nix/store
-
-          key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          fail-on-cache-miss: true
+      - run: cache pull cabal
+      - run: cache pull cargo
+      - run: cache pull build
 
       - name: Download simulation artifacts
         uses: actions/download-artifact@v3
@@ -280,8 +275,8 @@ jobs:
           mkdir -p hitl-plots/hw
           mkdir -p hitl-plots/sw
           ./cargo.sh build --release
-          cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Tests.FullMeshHwCc.fullMeshHwCcTest/ila-data/probe_test_start/ hitl-plots/hw Bittide_Instances_Tests_FullMeshHwCc_fullMeshHwCcTest_callistoClockControlWithIla
-          cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Tests.FullMeshSwCc.fullMeshSwCcTest/ila-data/probe_test_start/ hitl-plots/sw Bittide_Instances_Tests_FullMeshSwCc_fullMeshSwCcTest_callistoClockControlWithIla
+          cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest/ila-data/probe_test_start/ hitl-plots/hw Bittide_Instances_Hitl_FullMeshHwCc_fullMeshHwCcTest_callistoClockControlWithIla
+          cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest/ila-data/probe_test_start/ hitl-plots/sw Bittide_Instances_Hitl_FullMeshSwCc_fullMeshSwCcTest_callistoClockControlWithIla
 
       - name: Upload HITL based plots
         uses: actions/upload-artifact@v3
@@ -295,11 +290,11 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure
+        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
 
     steps:
       - name: Checkout
@@ -309,18 +304,8 @@ jobs:
         run: |
           cp .github/cabal.project cabal.project.local
 
-      - name: Update Cabal index info
-        run: |
-          cabal update
-
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cabal-nix/store
-
-          key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          fail-on-cache-miss: true
+      - run: cache pull cabal
+      - run: cache pull build
 
       - name: Run unittests
         run: |
@@ -331,11 +316,11 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure
+        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
 
     steps:
       - name: Checkout
@@ -345,18 +330,8 @@ jobs:
         run: |
           cp .github/cabal.project cabal.project.local
 
-      - name: Update Cabal index info
-        run: |
-          cabal update
-
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cabal-nix/store
-
-          key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          fail-on-cache-miss: true
+      - run: cache pull cabal
+      - run: cache pull build
 
       - name: Unittests
         run: |
@@ -377,13 +352,16 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure
+        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+    needs: [build]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+
+      - run: cache pull cargo
 
       - name: Rust formatting
         run: |
@@ -393,16 +371,15 @@ jobs:
         run: |
           ./cargo.sh clippy --all-features -- -Dwarnings
 
-
   firmware-support-tests:
     name: Firmware Support Unit Tests
     runs-on: [self-hosted, compute]
-    needs: [build]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure
+        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+    needs: [build]
 
     steps:
       - name: Checkout
@@ -412,33 +389,9 @@ jobs:
         run: |
           cp .github/cabal.project cabal.project.local
 
-      - name: Update Cabal index info
-        run: |
-          cabal update
-
-      - name: Cabal Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cabal-nix/store
-
-          key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          fail-on-cache-miss: true
-
-      - uses: actions/cache@v3
-        name: Cargo Cache
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./firmware-support/target
-          key: cargo-cache-cachebust-2-${{ hashFiles('./firmware-support/Cargo.lock') }}
-
-      - name: Build program-stream executable
-        run: |
-          cabal build program-stream
+      - run: cache pull cabal
+      - run: cache pull cargo
+      - run: cache pull build
 
       - name: Running Tests
         run: |
@@ -450,9 +403,10 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure
+        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+    needs: [build]
 
     steps:
       - name: Checkout
@@ -462,88 +416,29 @@ jobs:
         run: |
           cp .github/cabal.project cabal.project.local
 
-      - uses: actions/cache@v3
-        name: Cargo Cache
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./host-tools/target/
-          key: cargo-cache-cachebust-2-${{ hashFiles('./host-tools/Cargo.lock') }}
+      - run: cache pull cargo
 
       - name: Running Tests
         run: |
           cargo test --all
         working-directory: host-tools/
 
-  firmware-build-binaries:
-    name: Firmware Build Examples
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --pure
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - uses: actions/cache@v3
-        name: Cargo Cache
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./firmware-binaries/target/
-          key: cargo-firmware-bins-cache-cachebust-2-${{ hashFiles('./firmware-binaries/Cargo.lock') }}
-
-      - name: Building Examples
-        run: cargo build --release
-        working-directory: firmware-binaries/
-
-      - name: Archive generated cargo binaries
-        uses: actions/upload-artifact@v3
-        with:
-          name: cargo-binaries
-          path: |
-            _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/
-            !_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/*/*
-          retention-days: 14
-
   firmware-limit-checks:
     name: Firmware Limit Checks
     runs-on: [self-hosted, compute]
-    needs: [firmware-build-binaries]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure
+        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+    needs: [build]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - uses: actions/cache@v3
-        name: Cargo Cache
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./firmware-binaries/target/
-          key: cargo-firmware-bins-cache-cachebust-2-${{ hashFiles('./firmware-binaries/Cargo.lock') }}
-
-      - uses: actions/download-artifact@v3
-        with:
-          name: cargo-binaries
-          path: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release
+      - run: cache pull cargo
+      - run: cache pull build
 
       - name: Install `elf-limits`
         run: cargo install --git https://github.com/cuddlefishie/elf-limits
@@ -558,43 +453,27 @@ jobs:
             processing-element-test
         working-directory: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/
 
-
   bittide-instances-doctests:
     name: bittide-instances doctests
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure
-    needs: [build, lint, firmware-build-binaries]
+        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+    needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - uses: actions/download-artifact@v3
-        with:
-          name: cargo-binaries
-          path: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release
-
       - name: Set CI flags
         run: |
           cp .github/cabal.project cabal.project.local
 
-      - name: Update Cabal index info
-        run: |
-          cabal update
-
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cabal-nix/store
-
-          key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          fail-on-cache-miss: true
+      - run: cache pull cabal
+      - run: cache pull build
 
       - name: Doctests
         run : |
@@ -605,37 +484,22 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure
-    needs: [build, lint, firmware-build-binaries]
+        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+    needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - uses: actions/download-artifact@v3
-        with:
-          name: cargo-binaries
-          path: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release
-
       - name: Set CI flags
         run: |
           cp .github/cabal.project cabal.project.local
 
-      - name: Update Cabal index info
-        run: |
-          cabal update
-
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cabal-nix/store
-
-          key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          fail-on-cache-miss: true
+      - run: cache pull cabal
+      - run: cache pull build
 
       - name: Unit tests
         run : |
@@ -649,7 +513,7 @@ jobs:
         shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
 
     steps:
       - name: Checkout
@@ -681,7 +545,7 @@ jobs:
         shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
 
     steps:
       - name: Checkout
@@ -715,11 +579,7 @@ jobs:
       run:
         # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
         shell: git-nix-shell {0}
-    env:
-      SYNTHESIS_BOARD: xilinx.com:kcu105:part0:1.7
-      # SYNTHESIS_PART: xcku040-ffva1156-2-e
-      # SYNTHESIS_PART: xcku035-ffva1156-2-e
-    needs: [build, lint, bittide-instances-hdl-matrix, firmware-build-binaries]
+    needs: [build, lint, bittide-instances-hdl-matrix]
 
     strategy:
       matrix:
@@ -727,7 +587,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
       volumes:
         - /opt/tools:/opt/tools
       options: --init --mac-address="6c:5a:b0:6c:13:0b"
@@ -735,16 +595,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-
-      - uses: actions/download-artifact@v3
-        with:
-          name: cargo-binaries
-          path: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release
-
-      - name: Extract branch name
-        shell: bash
-        run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
-        id: extract_branch
 
       - name: Set CI flags
         run: |
@@ -756,18 +606,9 @@ jobs:
           #
           cp .github/cabal.project cabal.project.local
 
-      - name: Update Cabal index info
-        run: |
-          cabal update
-
-      - name: Cache Cabal store
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cabal-nix/store
-
-          key: packages-cachebust-4-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          fail-on-cache-miss: true
+      - run: cache pull cabal
+      - run: cache pull cargo
+      - run: cache pull build
 
       - name: HDL generation and synthesis
         run : |
@@ -782,25 +623,12 @@ jobs:
           # should perform the jobs which need hardware access. And that runner
           # should do only that, so we let other 'compute' runners do the
           # bitstream generation.
-          if [[ "${{ matrix.target.stage }}" == "test" ]]; then
+          if [[ "${target}" == "test" ]]; then
             target="bitstream"
           fi
 
-          .github/scripts/with_vivado.sh cabal run shake -- \
-            ${{ matrix.target.top }}:"${target}"
-
-          # Explicitly generate the Tcl scripts needed for programming and
-          # hardware testing.
-          if [[ "${{ matrix.target.stage }}" == "test" ]]; then
-            # Local machine connected to the bittide demonstrator is called
-            # 'hoeve'. But the docker container of the runner cannot resolve
-            # DNS, so we use its local IP address instead.
-            export HW_SERVER_URL="192.168.102.130:3121"
-            dir=$(ls _build/vivado | grep -E '\.${{ matrix.target.top }}$')
-            tcl_test=_build/vivado/"${dir}"/run_hardware_test.tcl
-            tcl_program=_build/vivado/"${dir}"/run_board_program.tcl
-            cabal run shake -- "${tcl_test}" "${tcl_program}" --hardware-targets="${{ matrix.target.targets }}"
-          fi
+          .github/scripts/with_vivado.sh \
+            shake ${{ matrix.target.top }}:"${target}"
 
       - name: Archive build artifacts
         uses: actions/upload-artifact@v3
@@ -809,8 +637,10 @@ jobs:
           # We don't pack `ip`, as it is generally useless for debugging while
           # also taking up a lot of space.
           path: |
-            _build/vivado
             _build/clash
+            _build/vivado
+            _build/.shake.database
+            _build/.shake.lock
             !_build/vivado/*/ip
           retention-days: 14
 
@@ -821,7 +651,7 @@ jobs:
       run:
         # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
         shell: git-nix-shell {0}
-    needs: [bittide-instances-hdl, bittide-instances-hardware-in-the-loop-test-matrix, firmware-build-binaries]
+    needs: [bittide-instances-hdl, bittide-instances-hardware-in-the-loop-test-matrix]
 
     strategy:
       matrix:
@@ -829,7 +659,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-06-30
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
       volumes:
         - /opt/tools:/opt/tools
 
@@ -837,27 +667,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - uses: actions/download-artifact@v3
+      - name: Set CI flags
+        run: |
+          cp .github/cabal.project cabal.project.local
+
+      - name: Download artifact _build directory
+        uses: actions/download-artifact@v3
         with:
           name: _build-${{ matrix.target.top }}
           path: _build
 
+      - run: cache pull cabal
+      - run: cache pull cargo
+      - run: cache pull build
+
       - name: Run tests on hardware
         run : |
-          dir=$(ls _build/vivado | grep -E '\.${{ matrix.target.top }}$')
-          tcl_test=_build/vivado/"${dir}"/run_hardware_test.tcl
-          tcl_program=_build/vivado/"${dir}"/run_board_program.tcl
-
           .github/scripts/with_vivado.sh \
-            vivado -mode batch -source "${tcl_program}"
-
-          .github/scripts/with_vivado.sh \
-            vivado -mode batch -source "${tcl_test}"
-
-      - name: Shorten ILA data dump names
-        if: always()
-        run: |
-          python3 bittide-shake/data/scripts/shorten_names.py
+            shake ${{ matrix.target.top }}:test --hardware-targets="${{ matrix.target.targets}}"
 
       - name: Archive ILA data
         if: always()
@@ -883,14 +710,13 @@ jobs:
         elastic-buffer-sim-tests,
         elastic-buffer-sim-topologies-matrix,
         elastic-buffer-sim-topologies,
-        firmware-build-binaries,
         firmware-limit-checks,
-        rust-lints,
         firmware-support-tests,
-        host-tools-tests,
         generate-full-clock-control-simulation-report,
+        host-tools-tests,
         license-check,
         lint,
+        rust-lints,
       ]
     runs-on: ubuntu-22.04
     steps:

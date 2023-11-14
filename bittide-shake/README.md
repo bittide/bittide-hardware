@@ -15,6 +15,7 @@ Different build levels:
 * \<target>:bitstream => Perform bitstream generation for the target instance.
 * \<target>:program => Program the FPGA board connected to your PC.
 * \<target>:test => Run hardware-in-the-loop test.
+* \<target>:post-process => Run ILA data post processing.
 
 ## Prerequisites
 * We have tested the build system with Vivado 2022.1
@@ -30,13 +31,20 @@ Different build levels:
 The build rules are defined in `bin/Shake.hs`. Shake can be called using:
 
 ```
-cabal run -- shake
+shake
 ```
+
+Which is a command alias for:
+
+```
+cabal run shake -- $@
+```
+
 
 You can list all build targets like this:
 
 ```
-cabal run -- shake --help
+shake --help
 ```
 
 All build results end up in `_build`.
@@ -45,40 +53,47 @@ All build results end up in `_build`.
 Example:
 
 ```
-cabal run -- shake scatterUnitWb:hdl
+shake scatterUnitWb:hdl
 ```
 
 ## Synthesis
 Example:
 
 ```
-cabal run -- shake scatterUnitWb:synth
+shake scatterUnitWb:synth
 ```
 
 ## Place, route, and netlist generation
 Example:
 
 ```
-cabal run -- shake scatterUnitWb:pnr
+shake scatterUnitWb:pnr
 ```
 
 ## Bitstream generation
 Example:
 
 ```
-cabal run -- shake clockControlDemo0:bitstream
+shake clockControlDemo0:bitstream
 ```
 
 ## Board programming
 Example:
 
 ```
-cabal run -- shake clockControlDemo0:program --hardware-targets=OneAny
+shake clockControlDemo0:program --hardware-targets=OneAny
 ```
 
 ## Hardware testing
 Example:
 
 ```
-cabal run -- shake hardwareTest:test --hardware-targets=OneAny
+shake boardTestExtended:test --hardware-targets=OneAny
+```
+
+## ILA data post processing
+Example:
+
+```
+shake boardTestExtended:post-process --hardware-targets=OneAny
 ```

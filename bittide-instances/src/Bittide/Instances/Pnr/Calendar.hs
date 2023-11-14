@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
-module Bittide.Instances.Calendar where
+module Bittide.Instances.Pnr.Calendar where
 
 import Clash.Prelude
 

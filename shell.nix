@@ -39,6 +39,11 @@ pkgs.mkShell {
 
       # HDL dependencies
       pkgs.verilog-ethernet
+
+      # CI cache scripts
+      pkgs.buildPackages.python310Packages.docopt
+      pkgs.buildPackages.python310Packages.dateutil
+      pkgs.mc
     ]
     ;
 

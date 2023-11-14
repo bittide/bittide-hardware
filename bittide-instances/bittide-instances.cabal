@@ -8,7 +8,6 @@ maintainer:          devops@qbaylogic.com
 Copyright:           Copyright © 2022-2023 Google LLC
 
 data-files:
-  data/scripts/*.py
   data/constraints/*.xdc
 
 common common-options
@@ -69,6 +68,7 @@ common common-options
     bittide-extra,
     bittide,
     bytestring,
+    cassava,
     clash-cores,
     clash-lib,
     clash-prelude,
@@ -89,36 +89,45 @@ common common-options
     shake,
     split,
     string-interpolate,
+    tasty-hunit,
     template-haskell,
     text,
-    unix
+    unix,
+    vector
 
 library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
-    Bittide.Instances.Calendar
-    Bittide.Instances.ClockControl
-    Bittide.Instances.Counter
     Bittide.Instances.Domains
-    Bittide.Instances.ElasticBuffer
     Bittide.Instances.Hacks
-    Bittide.Instances.MVPs
-    Bittide.Instances.ProcessingElement
-    Bittide.Instances.ScatterGather
-    Bittide.Instances.Si539xSpi
-    Bittide.Instances.StabilityChecker
-    Bittide.Instances.Synchronizer
 
     -- Hardware-in-the-loop tests
-    Bittide.Instances.Tests.BoardTest
-    Bittide.Instances.Tests.FincFdec
-    Bittide.Instances.Tests.FullMeshHwCc
-    Bittide.Instances.Tests.FullMeshSwCc
-    Bittide.Instances.Tests.FullMeshHwCc.IlaPlot
-    Bittide.Instances.Tests.SyncInSyncOut
-    Bittide.Instances.Tests.Transceivers
-    Bittide.Instances.Tests.VexRiscv
+    Bittide.Instances.Hitl.BoardTest
+    Bittide.Instances.Hitl.FincFdec
+    Bittide.Instances.Hitl.FullMeshHwCc
+    Bittide.Instances.Hitl.FullMeshSwCc
+    Bittide.Instances.Hitl.FullMeshHwCc.IlaPlot
+    Bittide.Instances.Hitl.SyncInSyncOut
+    Bittide.Instances.Hitl.Transceivers
+    Bittide.Instances.Hitl.VexRiscv
+
+    -- Postprocessing of ILA data
+    Bittide.Instances.Hitl.Post.BoardTestExtended
+    Bittide.Instances.Hitl.Post.PostProcess
+
+    -- Place and route tests
+    Bittide.Instances.Pnr.Calendar
+    Bittide.Instances.Pnr.ClockControl
+    Bittide.Instances.Pnr.Counter
+    Bittide.Instances.Pnr.ElasticBuffer
+    Bittide.Instances.Pnr.MVPs
+    Bittide.Instances.Pnr.ProcessingElement
+    Bittide.Instances.Pnr.ScatterGather
+    Bittide.Instances.Pnr.Si539xSpi
+    Bittide.Instances.Pnr.StabilityChecker
+    Bittide.Instances.Pnr.Synchronizer
+
     Project.FilePath
 
 
@@ -138,6 +147,13 @@ executable clash
   ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: bin/Clash.hs
   Build-Depends: clash-ghc, bittide-instances
+
+executable post-board-test-extended
+  import: common-options
+  -- We need -xm20000000 because of a memory allocation bug after a kernel update
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  main-is: bin/Post/BoardTestExtended.hs
+  build-depends: bittide-instances
 
 test-suite doctests
   type:             exitcode-stdio-1.0

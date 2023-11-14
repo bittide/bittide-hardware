@@ -8,6 +8,7 @@ let
     gitignore = import sources.gitignore { inherit (nixpkgs) lib; };
 
     verilog-ethernet = import ./verilog-ethernet.nix { inherit (nixpkgs) pkgs; };
+    mc = import ./mc.nix { inherit (nixpkgs) pkgs; };
 
     # Haskell overrides
     haskellPackages = nixpkgs.haskellPackages.override {

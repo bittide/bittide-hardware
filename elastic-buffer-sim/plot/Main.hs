@@ -51,8 +51,8 @@ import System.FilePath ((</>), takeExtensions, takeBaseName)
 import Bittide.Plot
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker
-import Bittide.Instances.Tests.FullMeshHwCc
-import Bittide.Instances.Tests.FullMeshHwCc.IlaPlot
+import Bittide.Instances.Hitl.FullMeshHwCc
+import Bittide.Instances.Hitl.FullMeshHwCc.IlaPlot
 import Bittide.Instances.Domains
 import Bittide.Topology.Graph
 
@@ -88,7 +88,7 @@ instance BitPack a => FromField (Hex a) where
       in  log2' 0
 
 -- | The captured data entries, as they are dumped by the ILA of
--- 'Bittide.Instances.Tests.FullMeshHwCc.callistoClockControlWithIla'.
+-- 'Bittide.Instances.Hitl.FullMeshHwCc.callistoClockControlWithIla'.
 data Capture (n :: Nat) (m :: Nat) =
   Capture
     { sampleInBuffer  :: Int
@@ -258,7 +258,7 @@ main = getArgs >>= \case
   ilaDir : xr -> do
     let (outDir, yr) = fromMaybe (".", []) $ uncons xr
     prefix <- case yr of
-      []  -> return $ "Bittide_Instances_Tests_FullMeshHwCc_fullMeshHwCcTest_"
+      []  -> return $ "Bittide_Instances_Hitl_FullMeshHwCc_fullMeshHwCcTest_"
                    <> "callistoClockControlWithIla"
       [x] -> return x
       _   -> wrongNumberOfArguments

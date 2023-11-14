@@ -5,7 +5,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Bittide.Instances.Si539xSpi where
+module Bittide.Instances.Pnr.Si539xSpi where
 
 import Clash.Prelude
 

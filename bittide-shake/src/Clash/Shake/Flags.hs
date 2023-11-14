@@ -2,14 +2,29 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
+
 -- | Flags used by Shake
 module Clash.Shake.Flags where
 
 import Prelude
 
-import Data.Maybe (fromMaybe)
 import Text.Read (readMaybe)
-import System.Console.GetOpt (OptDescr(Option), ArgDescr(ReqArg))
+import System.Console.GetOpt (OptDescr(Option), ArgDescr(ReqArg, NoArg))
+import GHC.Generics (Generic)
+import Development.Shake.Classes
+
+data Options = Options
+  { hardwareTargets :: HardwareTargets
+  , forceTestRerun :: Bool
+  }
+
+defaultOptions :: Options
+defaultOptions = Options
+  { hardwareTargets = OneAny
+  , forceTestRerun = False
+  }
 
 -- | Number of hardware targets to program and optionally test
 data HardwareTargets
@@ -23,36 +38,32 @@ data HardwareTargets
   -- FPGAs in our possesion. If we can't find them all, the program will exit with
   -- and error code.
   | All
-  deriving (Read)
+  deriving (Read, Show, Eq, Typeable, Generic, Hashable, Binary, NFData)
 
--- | Like 'last', but returns 'Nothing' if given list is empty
-lastMaybe :: [a] -> Maybe a
-lastMaybe [] = Nothing
-lastMaybe (x:xs) = Just $ last (x:xs)
 
 -- | Parse string to 'HardwareTargets'. Return 'Left' if given string could not
 -- be parsed.
-parseHardwareTargetsFlag :: String -> Either String HardwareTargets
+parseHardwareTargetsFlag :: String -> Either String (Options -> Options)
 parseHardwareTargetsFlag s =
   case readMaybe s of
     Just f ->
       case f of
         Specific [] -> Left ("Specify at least one index from the demo rack, or use OneAny")
-        _ -> Right f
+        _ -> Right (\opts -> opts {hardwareTargets = f})
     Nothing -> Left ("Not a valid hardware target: " ++ s)
-
--- | Get hardware flag based on a list of parsed flags. Defaults to 'OneAny'. If
--- multiple options are given, the last one is picked.
-getHardwareTargetsFlag :: [HardwareTargets] -> HardwareTargets
-getHardwareTargetsFlag = fromMaybe OneAny . lastMaybe
 
 -- | List of custom flags supported by us. Note that we currently support only
 -- one flag, 'HardwareTargets'.
-customFlags :: [OptDescr (Either String HardwareTargets)]
+customFlags :: [OptDescr (Either String (Options -> Options))]
 customFlags =
   [ Option
       "" -- no short flags
       ["hardware-targets"] -- long name of flag
       (ReqArg parseHardwareTargetsFlag "TARGET")
       "Options: OneAny, Specific, All. See 'HardwareTargets' in 'Flags.hs'."
+  , Option
+      "" -- no short flags
+      ["force-test-rerun"]
+      (NoArg $ Right (\opts -> opts { forceTestRerun = True }))
+      "Force the rerun of hardware in the loop tests"
   ]

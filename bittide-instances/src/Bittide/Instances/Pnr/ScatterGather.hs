@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -fconstraint-solver-iterations=7 #-}
 
-module Bittide.Instances.ScatterGather where
+module Bittide.Instances.Pnr.ScatterGather where
 
 import Clash.Prelude
 

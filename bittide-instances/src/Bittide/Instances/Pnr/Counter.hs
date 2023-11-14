@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Instances.Counter where
+module Bittide.Instances.Pnr.Counter where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClock)

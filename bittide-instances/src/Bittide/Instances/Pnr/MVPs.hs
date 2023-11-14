@@ -4,7 +4,7 @@
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NumericUnderscores #-}
-module Bittide.Instances.MVPs where
+module Bittide.Instances.Pnr.MVPs where
 
 import Clash.Prelude
 

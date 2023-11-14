@@ -4,7 +4,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
-module Bittide.Instances.Tests.VexRiscv where
+module Bittide.Instances.Hitl.VexRiscv where
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.VIO (vioProbe)
