@@ -193,7 +193,7 @@ jobs:
             ${{ matrix.target.topology }} ${{ matrix.target.args }}
 
       - name: Generate report
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           sed -i -e "s/n\([0-9]*\)/\1/g" _build/topology.gv
           dot2tex \
@@ -213,7 +213,7 @@ jobs:
 
       - name: Upload plots
         uses: actions/upload-artifact@v3
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           name: gen-plots-hs-${{ matrix.target.topology }}
           path: |
@@ -224,7 +224,7 @@ jobs:
   generate-full-clock-control-simulation-report:
     name: Generate clock control simulation report
     runs-on: [self-hosted, compute]
-    if: always()
+    if: ${{ !cancelled() }}
     defaults:
       run:
         shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
@@ -632,6 +632,7 @@ jobs:
 
       - name: Archive build artifacts
         uses: actions/upload-artifact@v3
+        if: ${{ !cancelled() }}
         with:
           name: _build-${{ matrix.target.top }}
           # We don't pack `ip`, as it is generally useless for debugging while
@@ -687,7 +688,7 @@ jobs:
             shake ${{ matrix.target.top }}:test --hardware-targets="${{ matrix.target.targets}}"
 
       - name: Archive ILA data
-        if: always()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v3
         with:
           name: _build-${{ matrix.target.top }}-debug
@@ -697,7 +698,7 @@ jobs:
 
   all:
     name: All jobs finished
-    if: always()
+    if: ${{ !cancelled() }}
     needs: [
         bittide-instances-doctests,
         bittide-instances-hardware-in-the-loop-test-matrix,
