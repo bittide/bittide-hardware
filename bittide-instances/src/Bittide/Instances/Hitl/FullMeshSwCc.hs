@@ -8,8 +8,8 @@
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 
 -- | Test whether clock boards are configurable and transceiver links come
--- online. If they do, run clock control and wait for the clocks to stabilize.
--- This assumes to run on a fully connected mesh of 8 FPGAs. Also see
+-- online. If they do, run clock control in software and wait for the clocks to
+-- stabilize. This assumes to run on a fully connected mesh of 8 FPGAs. Also see
 -- 'c_CHANNEL_NAMES' and 'c_CLOCK_PATHS'. It has two tricks up its sleeve:
 --
 --   1. It uses @SYNC_IN@/@SYNC_OUT@ to make sure each board starts programming
@@ -22,7 +22,12 @@
 -- This test will succeed if all clocks have been stable for 5 seconds. Note:
 -- this doesn't test reframing yet.
 --
-module Bittide.Instances.Hitl.FullMeshSwCc where
+module Bittide.Instances.Hitl.FullMeshSwCc
+  ( fullMeshSwCcTest
+  , NodeCount
+  , DataCountSize
+  , clockControlConfig
+  ) where
 
 import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
@@ -43,16 +48,13 @@ import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState(Error, Finished), si539xSpi)
-import Bittide.DoubleBufferedRam
-  ( InitialContent(Reloadable), ContentType(Blob), RegisterWritePriority(CircuitPriority)
-  , registerWb
-  )
+import Bittide.DoubleBufferedRam (InitialContent(Reloadable), ContentType(Blob))
 import Bittide.Counter
 import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig(..), processingElement)
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
-import Bittide.SharedTypes (Bytes, ByteOrder(BigEndian))
+import Bittide.SharedTypes (ByteOrder(BigEndian))
 import Bittide.Transceiver
 
 import Bittide.Instances.Hitl.FullMeshHwCc.IlaPlot
@@ -70,7 +72,6 @@ import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
 import Protocols
-import Protocols.Wishbone
 import Protocols.Internal
 
 
@@ -98,61 +99,26 @@ type TransceiverWires dom = Vec 7 (Signal dom (BitVector 1))
 unitCS :: CSignal dom ()
 unitCS = CSignal (pure ())
 
--- | Instantiates a RiscV core that copies instructions coming from a hardware
--- implementation of Callisto (see 'fullMeshHwTest') and copies it to a register
--- tied to FINC/FDEC.
+-- | Instantiates a RiscV core
 fullMeshRiscvTest ::
   forall dom .
   KnownDomain dom =>
   Clock dom ->
   Reset dom ->
-  Signal dom (CallistoResult 7) ->
   Vec 7 (Signal dom (DataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
   ( "FINC" ::: Signal dom Bool
   , "FDEC" ::: Signal dom Bool
   )
-fullMeshRiscvTest clk rst callistoResult dataCounts = unbundle fIncDec
+fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
  where
   (_, CSignal fIncDec) = toSignals
     ( circuit $ \unit -> do
-      [wbA, wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< unit
-      fIncDecCallisto -< wbA
+      [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< unit
       (fIncDec, _allStable) <- withClockResetEnable clk rst enableGen $
         clockControlWb margin framesize (pure $ complement 0) dataCounts -< wbB
       idC -< fIncDec
     ) ((), unitCS)
-
-  fIncDecCallisto ::
-    forall aw nBytes .
-    (KnownNat aw, 2 <= aw, nBytes ~ 4) =>
-    Circuit
-      (Wishbone dom 'Standard aw (Bytes nBytes))
-      ()
-  fIncDecCallisto = Circuit goFIncDecCallisto
-   where
-    goFIncDecCallisto (wbM2S, _) = (wbS2M, ())
-     where
-      (_, wbS2M) = withClockResetEnable clk rst enableGen $
-        registerWb
-          CircuitPriority
-          (0 :: Bytes nBytes, 0 :: Bytes nBytes)
-          wbM2S
-          (fmap (fmap ((,0) . extend . pack)) fincfdec)
-
-      fincfdec :: Signal dom (Maybe SpeedChange)
-      fincfdec =
-        clearOnAck
-          <$> fmap acknowledge wbS2M
-          <*> fmap maybeSpeedChange callistoResult
-
-      -- Clear register if register is read from (or written to, but we assume
-      -- this doesn't happen). This makes sure the RiscV doesn't read the same
-      -- result from the hardware clock control twice.
-      clearOnAck :: ("ACK" ::: Bool) -> Maybe SpeedChange -> Maybe SpeedChange
-      clearOnAck False maybeSpeedChange   = maybeSpeedChange
-      clearOnAck True  (Just speedChange) = Just speedChange
-      clearOnAck True  Nothing            = Just NoChange
 
   margin = d2
 
@@ -186,18 +152,15 @@ fullMeshRiscvTest clk rst callistoResult dataCounts = unbundle fIncDec
   {-
     0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
     0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
-    0b00xxxxx_xxxxxxxx 0b00 0x0x FINC/FDEC register
     0b11xxxxx_xxxxxxxx 0b11 0xCx memory mapped hardware clock control
   -}
   peConfig =
     PeConfig
-      (0b10 :> 0b01 :> 0b11 :> 0b00 :> Nil)
+      (0b10 :> 0b01 :> 0b11 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
 
--- | Instantiates a hardware implementation of Callisto and exports its results. Can
--- be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
--- results to a RiscV core (see 'fullMeshRiscvCopyTest')
+-- | Instantiates a hardware implementation of Callisto and exports its results.
 fullMeshHwTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Basic200 ->
   "SYSCLK" ::: Clock Basic125 ->
@@ -480,13 +443,13 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   -- TODO: not implemented yet
   syncEnd = pure False
 
-  (   txns, txps, _hwFincFdecs, callistoClock, callistoResult, callistoReset
+  (   txns, txps, _hwFincFdecs, callistoClock, _callistoResult, callistoReset
     , dataCounts, stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
     , allStable ) =
     fullMeshHwTest refClk sysClk testRst IlaControl{..} rxns rxps miso
 
   (riscvFinc, riscvFdec) =
-    fullMeshRiscvTest callistoClock callistoReset callistoResult dataCounts
+    fullMeshRiscvTest callistoClock callistoReset dataCounts
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
