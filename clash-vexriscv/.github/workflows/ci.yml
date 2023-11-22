@@ -18,9 +18,9 @@ jobs:
     container:
       image: ubuntu:22.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: REUSE Compliance Check
-      uses: fsfe/reuse-action@v1
+      uses: fsfe/reuse-action@v2
 
 
   rust-checks:
@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -63,7 +63,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -92,7 +92,7 @@ jobs:
           cd clash-vexriscv-sim; sh bundle_test_binaries.sh
       
       - name: Upload Integration Test Binaries
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: vexriscv-test-binaries
           path: clash-vexriscv-sim/vexriscv-test-binaries.tar
@@ -108,18 +108,19 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
 
       - name: Update Cabal index info
         run: |
+          cp .github/cabal.project cabal.project.local
           cabal update
           cabal freeze
       - name: Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.cabal/store
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze') }}
+          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
           restore-keys: packages-cachebust-1-
 
       - name: Install build deps
@@ -140,16 +141,22 @@ jobs:
           curl -sL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89B84B2DF73499E82A75642AC823" | apt-key add
           apt-get update
           apt-get install sbt -y
+      - name: Stash existing VexRiscv.v
+        run: |
+          cp clash-vexriscv/example-cpu/VexRiscv.v clash-vexriscv/example-cpu/VexRiscv.v.comitted
       - name: Build clash-vexriscv
         run: |
           export PKG_CONFIG_PATH=/opt/share/pkgconfig/:${PKG_CONFIG_PATH}
           cabal build clash-vexriscv
+      - name: Check whether committed VexRiscv.v corresponds to generated one
+        run: |
+          diff -u clash-vexriscv/example-cpu/VexRiscv.v clash-vexriscv/example-cpu/VexRiscv.v.comitted
       - name: Build clash-vexriscv-sim
         run: |
           cabal build clash-vexriscv-sim
 
       - name: Download VexRiscv Integration Tests
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: vexriscv-test-binaries
 

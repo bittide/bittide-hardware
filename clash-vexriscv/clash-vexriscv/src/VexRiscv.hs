@@ -8,6 +8,8 @@
 {-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE QuasiQuotes #-}
 
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
+
 module VexRiscv where
 
 import Clash.Prelude
@@ -19,11 +21,10 @@ import Foreign.Marshal (alloca)
 import Foreign.Storable
 import GHC.IO (unsafePerformIO)
 import GHC.Stack (HasCallStack)
+import Language.Haskell.TH.Syntax
 import Protocols.Wishbone
 import VexRiscv.FFI
 import VexRiscv.TH
-import qualified Data.List
-import Language.Haskell.TH.Syntax
 
 
 data Input = Input
@@ -33,13 +34,13 @@ data Input = Input
   , iBusWbS2M :: "IBUS_IN_" ::: WishboneS2M (BitVector 32)
   , dBusWbS2M :: "DBUS_IN_" ::: WishboneS2M (BitVector 32)
   }
-  deriving (Generic, NFDataX, ShowX, Eq)
+  deriving (Generic, NFDataX, ShowX, Eq, BitPack)
 
 data Output = Output
   { iBusWbM2S :: "IBUS_OUT_" ::: WishboneM2S 30 4 (BitVector 32)
   , dBusWbM2S :: "DBUS_OUT_" ::: WishboneM2S 30 4 (BitVector 32)
   }
-  deriving (Generic, NFDataX, ShowX, Eq)
+  deriving (Generic, NFDataX, ShowX, Eq, BitPack)
 
 inputToFFI :: Bool -> Input -> INPUT
 inputToFFI reset Input {..} =
@@ -83,6 +84,19 @@ outputFromFFI OUTPUT {..} =
           }
     }
 
+-- When passing S2M values from Haskell to VexRiscv over the FFI, undefined
+-- bits/values cause errors when forcing their evaluation to something that can
+-- be passed through the FFI.
+--
+-- This function makes sure the Wishbone S2M values are free from undefined bits.
+makeDefined :: WishboneS2M (BitVector 32) -> WishboneS2M (BitVector 32)
+makeDefined wb = wb {readData = defaultX 0 (readData wb)}
+
+defaultX :: (NFDataX a) => a -> a -> a
+defaultX dflt val
+  | hasUndefined val = dflt
+  | otherwise = val
+
 vexRiscv :: (HasCallStack, HiddenClockResetEnable dom) => Signal dom Input -> Signal dom Output
 vexRiscv input =
   Output <$>
@@ -112,13 +126,21 @@ vexRiscv input =
 
   where
     (unbundle -> (timerInterrupt, externalInterrupt, softwareInterrupt, iBusS2M, dBusS2M))
-      = (<$> input) $ \(Input a b c d e) -> (a, b, c, d, e)
+      -- A hack that enables us to both generate synthesizable HDL and simulate vexRisc in Haskell/Clash
+      = (<$> if clashSimulation then unpack 0 :- input else input)
+      $ \(Input a b c d e) -> (a, b, c, d, e)
 
     (unbundle -> (iBus_DAT_MISO, iBus_ACK, iBus_ERR))
-      = (<$> iBusS2M) $ \(WishboneS2M a b c _ _) -> (a, b, c)
+      = (\(WishboneS2M a b c _ _) -> (a, b, c))
+      -- A hack that enables us to both generate synthesizable HDL and simulate vexRisc in Haskell/Clash
+      . (if clashSimulation then makeDefined else id)
+      <$> iBusS2M
 
     (unbundle -> (dBus_DAT_MISO, dBus_ACK, dBus_ERR))
-      = (<$> dBusS2M) $ \(WishboneS2M a b c _ _) -> (a, b, c)
+      = (\(WishboneS2M a b c _ _) -> (a, b, c))
+      -- A hack that enables us to both generate synthesizable HDL and simulate vexRisc in Haskell/Clash
+      . (if clashSimulation then makeDefined else id)
+      <$> dBusS2M
 
     sourcePath = $(do
           cpuSrcPath <- runIO $ getPackageRelFilePath "example-cpu/VexRiscv.v"
@@ -199,7 +221,7 @@ vexRiscv#
     , Signal dom (BitVector 3)  -- ^ dBus_CTI
     , Signal dom (BitVector 2)  -- ^ dBus_BTE
     )
-vexRiscv# _sourcePath !_clk rst0
+vexRiscv# !_sourcePath !_clk rst0
   timerInterrupt
   externalInterrupt
   softwareInterrupt
