@@ -224,7 +224,7 @@ vivadoFromTcl_ tclPath =
   command_
     [AddEnv "XILINX_LOCAL_USER_DATA" "no"] -- Prevents multiprocessing issues
     "vivado"
-    ["-mode", "batch", "-source", tclPath]
+    ["-mode", "batch", "-source", tclPath, "-notrace"]
 
 -- | Constructs a 'BoardPart' based on environment variables @SYNTHESIS_BOARD@
 -- or @SYNTHESIS_PART@. Errors if both are set, returns a default (free) part
