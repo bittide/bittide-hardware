@@ -110,22 +110,20 @@ vexRiscvTest diffClk = (testDone, testSuccess)
 
     clkStableRst = unsafeFromActiveLow clkStable1
 
-    (unbundle -> (testDone, testSuccess)) =
-      hwSeqX probe $
+    (testDone, testSuccess) = unbundle $
       withClockResetEnable clk reset enableGen (vexRiscvInner @Basic200)
 
-    reset = orReset clkStableRst testReset
-    ((unsafeFromActiveLow -> testReset) :> Nil) = unbundle probe
+    reset = orReset clkStableRst (unsafeFromActiveLow testReset)
 
-    probe :: Signal Basic200 (Vec 1 Bool)
-    probe =
+    testReset :: Signal Basic200 Bool
+    testReset =
       setName @"vioHitlt" $
       vioProbe
-        (   "probe_test_done"
+        (  "probe_test_done"
         :> "probe_test_success"
         :> Nil)
         ( "probe_test_start" :> Nil)
-        (False :> Nil)
+        False
         clk
         testDone
         testSuccess
