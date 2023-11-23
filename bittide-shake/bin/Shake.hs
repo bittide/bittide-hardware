@@ -88,12 +88,21 @@ vivadoBuildDir = buildDir </> "vivado"
 watchFilesPath :: FilePath
 watchFilesPath = buildDir </> "watch_files.txt"
 
+-- | Get absolute path to a constraint file based on a target name. Target name
+-- example: @Bittide.Instances.Tests.FincFdec.fincFdecTests@.
+getConstraintFilePathFromTarget :: String -> IO FilePath
+getConstraintFilePathFromTarget target =
+  getConstraintFilePath (entityName target <> ".xdc")
+
+-- | Get absolute path to a constraint file based on a relative file path. For
+-- example: @features/jtag.xdc@ would resolve to
+-- @$REPO_ROOT/bittide-instances/data/constraints/features/jtag.xdc@.
 getConstraintFilePath :: String -> IO FilePath
-getConstraintFilePath target = do
+getConstraintFilePath relativePath = do
   let binName = "get-data-file-name"
   callProcess "cabal" ["-v0", "build", binName]
   out <- readProcess "cabal"
-    [ "run", "-v0", binName, "data/constraints" </> entityName target <> ".xdc"] ""
+    [ "run", "-v0", binName, "data/constraints" </> relativePath] ""
   pure $ dropWhileEnd isSpace $ dropWhile isSpace out
 
 -- | Build and run the executable for post processing of ILA data
@@ -142,6 +151,9 @@ data Target = Target
     -- | Name of the executable for post processing of ILA CSV data, or Nothing
     -- if it has none.
   , targetPostProcess :: Maybe String
+
+    -- | Extra constraints to be sourced. Will be sourced _after_ main XDC.
+  , targetExtraXdc :: [FilePath]
   }
 
 
@@ -152,6 +164,7 @@ defTarget name = Target
   , targetHasVio = False
   , targetHasTest = False
   , targetPostProcess = Nothing
+  , targetExtraXdc = []
   }
 
 testTarget :: TargetName -> Target
@@ -161,6 +174,7 @@ testTarget name = Target
   , targetHasVio = True
   , targetHasTest = True
   , targetPostProcess = Nothing
+  , targetExtraXdc = []
   }
 
 enforceValidTarget :: Target -> Target
@@ -404,9 +418,10 @@ main = do
 
               constraints <-
                 if targetHasXdc then do
-                  constraintFilePath <- liftIO (getConstraintFilePath targetName)
-                  need [constraintFilePath]
-                  pure [constraintFilePath]
+                  constraintFilePath <- liftIO (getConstraintFilePathFromTarget targetName)
+                  extraConstraintFilePaths <- liftIO (mapM getConstraintFilePath targetExtraXdc)
+                  need (constraintFilePath : extraConstraintFilePaths)
+                  pure (constraintFilePath : extraConstraintFilePaths)
                 else
                   pure []
 
