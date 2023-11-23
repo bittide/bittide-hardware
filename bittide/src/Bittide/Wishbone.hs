@@ -14,7 +14,7 @@ import Clash.Prelude
 import Bittide.SharedTypes
 
 import Clash.Cores.UART (uart, ValidBaud)
-import Clash.Cores.Xilinx.Ila (ila, ilaConfig, advancedTriggers)
+import Clash.Cores.Xilinx.Ila (ila, ilaConfig, IlaConfig(..), Depth)
 import Clash.Util.Interpolate
 
 import Data.Bifunctor
@@ -102,10 +102,16 @@ unitCS = CSignal (pure ())
 ilaWb ::
   forall dom addrW a .
   HiddenClock dom =>
+  -- | Number of registers to insert at each probe. Supported values: 0-6.
+  -- Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  Index 7 ->
+  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
+  -- by 'ilaConfig' equals 'D4096'.
+  Depth ->
   Circuit
     (Wishbone dom 'Standard addrW a)
     (Wishbone dom 'Standard addrW a)
-ilaWb = Circuit $ \(m2s, s2m) ->
+ilaWb stages0 depth0 = Circuit $ \(m2s, s2m) ->
   let
     -- Our TCL infrastructure looks for 'trigger' and 'capture' and uses it to
     -- trigger the ILA and do selective capture. Though defaults are changable
@@ -130,7 +136,7 @@ ilaWb = Circuit $ \(m2s, s2m) ->
         :> "s2m_retry"
         :> "capture"
         :> "trigger"
-        :> Nil) { advancedTriggers = True }
+        :> Nil) { advancedTriggers = True, stages = stages0, depth = depth0 }
       hasClock
       (Wishbone.addr        <$> m2s)
       (Wishbone.writeData   <$> m2s)
