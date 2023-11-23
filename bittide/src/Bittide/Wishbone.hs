@@ -14,7 +14,7 @@ import Clash.Prelude
 import Bittide.SharedTypes
 
 import Clash.Cores.UART (uart, ValidBaud)
-import Clash.Cores.Xilinx.Ila (ila, ilaConfig)
+import Clash.Cores.Xilinx.Ila (ila, ilaConfig, IlaConfig(..), Depth)
 import Clash.Util.Interpolate
 
 import Data.Bifunctor
@@ -94,15 +94,32 @@ dupWb = Circuit go
 unitCS :: CSignal dom ()
 unitCS = CSignal (pure ())
 
-
+-- | An ILA monitoring all M2S and S2M signals on a Wishbone bus. Installs two
+-- extra signals 'capture' and 'trigger' that can be used as defaults for triggering
+-- the ILA and conditional capturing. Trigger will be active for every valid
+-- transaction, while capture will be active for as long as trigger and a cycle
+-- after it.
 ilaWb ::
   forall dom addrW a .
   HiddenClock dom =>
+  -- | Number of registers to insert at each probe. Supported values: 0-6.
+  -- Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  Index 7 ->
+  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
+  -- by 'ilaConfig' equals 'D4096'.
+  Depth ->
   Circuit
     (Wishbone dom 'Standard addrW a)
     (Wishbone dom 'Standard addrW a)
-ilaWb = Circuit $ \(m2s, s2m) ->
+ilaWb stages0 depth0 = Circuit $ \(m2s, s2m) ->
   let
+    -- Our TCL infrastructure looks for 'trigger' and 'capture' and uses it to
+    -- trigger the ILA and do selective capture. Though defaults are changable
+    -- using Vivado, we set it to capture only valid Wishbone transactions plus
+    -- a single cycle after it.
+    trigger = Wishbone.strobe <$> m2s .&&. Wishbone.busCycle <$> m2s
+    capture = trigger .||. dflipflop trigger
+
     ilaInst :: Signal dom ()
     ilaInst = ila
       (ilaConfig $
@@ -117,7 +134,9 @@ ilaWb = Circuit $ \(m2s, s2m) ->
         :> "s2m_err"
         :> "s2m_stall"
         :> "s2m_retry"
-        :> Nil)
+        :> "capture"
+        :> "trigger"
+        :> Nil) { advancedTriggers = True, stages = stages0, depth = depth0 }
       hasClock
       (Wishbone.addr        <$> m2s)
       (Wishbone.writeData   <$> m2s)
@@ -130,6 +149,8 @@ ilaWb = Circuit $ \(m2s, s2m) ->
       (Wishbone.err         <$> s2m)
       (Wishbone.stall       <$> s2m)
       (Wishbone.retry       <$> s2m)
+      capture
+      trigger
   in
     ilaInst `hwSeqX` (s2m, m2s)
 

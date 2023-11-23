@@ -9,6 +9,7 @@ let
 
     verilog-ethernet = import ./verilog-ethernet.nix { inherit (nixpkgs) pkgs; };
     mc = import ./mc.nix { inherit (nixpkgs) pkgs; };
+    openocd-vexriscv = import ./openocd-vexriscv.nix { inherit (nixpkgs) pkgs; };
 
     # Haskell overrides
     haskellPackages = nixpkgs.haskellPackages.override {
