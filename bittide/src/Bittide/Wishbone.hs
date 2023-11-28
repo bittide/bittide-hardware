@@ -15,7 +15,7 @@ import Bittide.SharedTypes
 
 import Clash.Cores.UART (uart, ValidBaud)
 import Clash.Cores.I2C
-import Clash.Cores.Xilinx.Ila (ila, ilaConfig, IlaConfig(..), Depth)
+import Clash.Cores.Xilinx.Ila hiding (Data)
 import Clash.Util.Interpolate
 
 import Bittide.Extra.Maybe
@@ -25,7 +25,7 @@ import Data.Bool(bool)
 import Data.Constraint.Nat.Extra
 import Data.Maybe
 
-import Protocols.Df hiding (zipWith, pure, bimap, first, second, route, zip)
+import Protocols.Df hiding (zipWith, pure, bimap, first, second, route, zip, snd)
 import Protocols.Internal
 import Protocols.Wishbone
 
@@ -440,17 +440,17 @@ wbToVec ::
   ( Vec nRegisters (Maybe (Bytes nBytes))
   , Maybe (Index nRegisters)
   , WishboneS2M (Bytes nBytes))
-wbToVec readableData readAck WishboneM2S{..} = (writtenData, readRequest, wbS2M)
+wbToVec readableData ack WishboneM2S{..} = (writtenData, transAddr, wbS2M)
  where
   (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
   addressRange = maxBound :: Index nRegisters
   invalidAddress = (alignedAddress > resize (pack addressRange)) || alignment /= 0
   masterActive = strobe && busCycle
   err = masterActive && invalidAddress
-  acknowledge = masterActive && not err && (writeEnable || readAck)
-  wbWriting = writeEnable && acknowledge
+  acknowledge = masterActive && not err && ack
+  wbWriting = writeEnable && masterActive && not err
   wbAddr = unpack $ resize alignedAddress :: Index nRegisters
-  readRequest = orNothing (masterActive && not err && not writeEnable) wbAddr
+  transAddr = orNothing (masterActive && not err) wbAddr
   readData = readableData !! wbAddr
   writtenData
     | wbWriting = replace wbAddr (Just writeData) (repeat Nothing)
@@ -470,13 +470,13 @@ i2cWb ::
 i2cWb = case (cancelMulDiv @nBytes @8) of
   Dict -> Circuit go
     where
-      go ((wbM2S, CSignal i2cIn), _) = ((wbS2M, CSignal $ pure ()), CSignal i2cOut)
+      go ((wbM2S, CSignal i2cIn), _) = hwSeqX ilaInstance ((wbS2M, CSignal $ pure ()), CSignal i2cOut)
        where
         -- Wishbone interface consists of:
         -- 0. i2c data Read-Write
         -- 1. clock divider Read-Write
         -- 3. flags: MSBs are Read-Only flags, LSBs are Read-Write flags.
-        (vecOut, readRequest, wbS2M) = unbundle $ wbToVec <$> bundle vecIn <*> readAck <*> wbM2S
+        (vecOut, transAddr, wbS2M) = unbundle $ wbToVec <$> bundle vecIn <*> wbAck <*> wbM2S
         vecIn = fmap resize dOut :> fmap (resize . pack) clkDiv :> flagsRead :> Nil
         (i2cWrite :> clkDivWrite :> flagsWrite :> Nil) = unbundle vecOut
 
@@ -488,23 +488,58 @@ i2cWb = case (cancelMulDiv @nBytes @8) of
         rwFlagsReg = regMaybe
           (False :> False :> False :> False :> True :> Nil)
           rwFlagsRegNext
-        (_ :> _ :> ackIn :> claimBus :> smReset :> Nil) = unbundle rwFlagsReg
+        (_ :> ackOutReg :> ackIn :> claimBus :> smReset :> Nil) = unbundle rwFlagsReg
 
         -- ReadWrite flags
-        rwFlagsRegSetters = bundle $ al :> ackOut :> ackIn :> claimBus :> smReset :> Nil
+        rwFlagsRegSetters = bundle $ al :> (mux hostAck (fmap not ackOut) ackOutReg) :> ackIn :> claimBus :> smReset :> Nil
 
         -- Alternative of wishbone write and updated i2c status signals.
         rwFlagsRegNext = (<|>) <$> rwFlagsWrite <*>
-          (orNothing <$> (al .||. ackOut) <*> (zipWith (||) <$> rwFlagsReg <*> rwFlagsRegSetters))
+          (orNothing <$> (al .||. hostAck) <*> (zipWith (||) <$> rwFlagsReg <*> rwFlagsRegSetters))
 
         clkDiv = regMaybe maxBound (unpack . resize <<$>> clkDivWrite)
 
-        -- Alternative based on i2cWrite and readRequest
+        -- Alternative based on i2cWrite and transAddr
         i2cOp = (<|>)
           <$> ((I2C.WriteData . resize) <<$>> i2cWrite)
-          <*> (flip orNothing I2C.ReadData <$> (readRequest .==. pure (Just 0)))
+          <*> (flip orNothing I2C.ReadData <$> (transAddr .==. pure (Just 0)))
 
         -- If the wishbone interface targets the i2c core, wait for acknowledgement.
-        readAck = (pure (Just 0) ./=. readRequest) .||. hostAck
+        wbAck = (pure (Just 0) ./=. transAddr) .||. hostAck
         (dOut,hostAck,busy,al,ackOut,i2cOut) =
           i2c hasClock hasReset smReset (fromEnable hasEnable) clkDiv claimBus i2cOp ackIn i2cIn
+
+        (sclMaybe, sdaMaybe) = unbundle i2cOut
+        ilaInstance :: Signal dom ()
+        ilaInstance =
+          ila
+            ( ilaConfig $
+              "probe_sdaIn"
+              :> "probe_sclOut"
+              :> "probe_sdaOut"
+              :> "probe_i2c_dout"
+              :> "probe_i2c_hostAck"
+              :> "probe_i2c_busy"
+              :> "probe_i2c_al"
+              :> "probe_i2c_ackOut"
+              :> "probe_i2c_op"
+              :> "probe_rwFlagsReg"
+              :> "probe_clkDiv"
+              :> "probe_i2cWrite"
+              :> "probe_transAddr"
+              :> Nil
+            ) {stages = 2, depth = D32768, advancedTriggers = True }
+            hasClock
+            (dflipflop $ snd <$> i2cIn)
+            (dflipflop $ fmap isNothing sclMaybe)
+            (dflipflop $ fmap isNothing sdaMaybe)
+            (dflipflop dOut)
+            (dflipflop hostAck)
+            (dflipflop busy)
+            (dflipflop al)
+            (dflipflop $ fmap not ackOut)
+            (dflipflop i2cOp)
+            (dflipflop rwFlagsReg)
+            (dflipflop clkDiv)
+            (dflipflop i2cWrite)
+            (dflipflop transAddr)

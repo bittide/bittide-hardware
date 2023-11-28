@@ -23,19 +23,34 @@ fn main() -> ! {
         uwriteln!(uart, "Hello from {}!", name).unwrap();
     }
     uwriteln!(uart, "This can also do {} {:#x}", "debug prints", 42).unwrap();
+    _ = uart.receive();
     uwriteln!(uart, "i2c device:\n{:?}", i2c).unwrap();
-    let mut flags = i2c.read_flags();
-    uwriteln!(uart, "i2c flags:\n{:?}", flags).unwrap();
 
+    // Deasserting i2c reset
     uwriteln!(uart, "Deasserting i2c statemachine reset").unwrap();
+    let mut flags = i2c.read_flags();
     flags.statemachine_reset = false;
     i2c.write_flags(flags);
     uwriteln!(uart, "i2c flags:\n{:?}", flags).unwrap();
+
+    // Getting and setting clock divider
+    let mut clk_div = i2c.get_clock_divider();
+    uwriteln!(uart, "i2c clk div:\n{:?}", clk_div).unwrap();
+    clk_div = 300;
+    uwriteln!(uart, "Changing i2c clk div to {}", clk_div).unwrap();
+    i2c.set_clock_divider(clk_div);
+    clk_div = i2c.get_clock_divider();
+    uwriteln!(uart, "i2c clk div:\n{:?}", clk_div).unwrap();
+
+    // Initiating i2c communication
     uwriteln!(uart, "Claiming i2c bus").unwrap();
     if i2c.claim_bus().is_err() {
         uwriteln!(uart, "I2CError").unwrap();
+    } else {
+        let flags = i2c.read_flags();
+        uwriteln!(uart, "i2c bus claimed, status:\n{:?}", flags).unwrap();
     };
-    uwriteln!(uart, "i2c bus claimed, status:\n{:?}", i2c.read_flags()).unwrap();
+
     let a = 0x69;
     match i2c.write_byte((a << 1) + 1) {
         Ok(_) => (),
@@ -55,7 +70,8 @@ fn main() -> ! {
     };
 
     i2c.release_bus();
-    uwriteln!(uart, "i2c bus released, status: {:?}", i2c.read_flags()).unwrap();
+    let flags = i2c.read_flags();
+    uwriteln!(uart, "i2c bus released, status: {:?}", flags).unwrap();
     uwriteln!(uart, "Going in echo mode!").unwrap();
     loop {
         let c = uart.receive();
