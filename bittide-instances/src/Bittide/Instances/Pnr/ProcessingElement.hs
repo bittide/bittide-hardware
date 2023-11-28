@@ -8,6 +8,7 @@ module Bittide.Instances.Pnr.ProcessingElement where
 import Clash.Prelude
 
 import Clash.Annotations.TH
+import Clash.Cores.Xilinx.Ila (Depth(D4096))
 import Clash.Explicit.Prelude(orReset, noReset)
 import Clash.Xilinx.ClockGen
 import Language.Haskell.TH
@@ -47,9 +48,10 @@ vexRiscUartHello diffClk rst_in (uartIn, sclBs, sdaIn) =
   peFunction =
     toSignals $ withClockResetEnable clk200 rst200 enableGen $
       circuit $ \(uartRx, i2cIn) -> do
-        [uartBus, i2cBus, timeBus] <- processingElement @Basic200 peConfig -< ()
+        [uartBus, i2cBus0, timeBus] <- processingElement @Basic200 peConfig -< ()
         (uartTx, _uartStatus) <- uartWb d16 d16 (SNat @921600) -< (uartBus, uartRx)
-        i2cOut <- i2cWb -< (i2cBus, i2cIn)
+        i2cBus1 <- ilaWb 0 D4096 -< i2cBus0
+        i2cOut <- i2cWb -< (i2cBus1, i2cIn)
         timeWb -< timeBus
         idC -< (uartTx, i2cOut)
 
