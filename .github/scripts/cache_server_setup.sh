@@ -22,7 +22,15 @@ sudo cp minio /etc/default/minio
 sudo systemctl stop minio.service || true
 
 # Download and install minio
+sudo apt install curl -y
 curl -o minio.deb -L "https://dl.min.io/server/minio/release/linux-amd64/archive/minio_${MINIO_VERSION}_amd64.deb"
 echo "${MINIO_HASH}  minio.deb" | shasum -a 256 -c
 sudo apt install ./minio.deb
 rm minio.deb
+
+# systemd starts minio as 'minio-user', but Debian package does not create this
+# user on its own.
+sudo adduser --disabled-password --gecos "" minio-user
+
+# Start service
+sudo systemctl start minio.service

@@ -90,7 +90,7 @@ jobs:
         shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
 
     steps:
       - name: Checkout
@@ -128,7 +128,7 @@ jobs:
         shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
 
     steps:
       - name: Checkout
@@ -167,7 +167,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
 
     steps:
       - name: Checkout
@@ -231,7 +231,7 @@ jobs:
     needs: [build, lint, elastic-buffer-sim-topologies-matrix, elastic-buffer-sim-topologies, bittide-instances-hardware-in-the-loop]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
 
     steps:
       - name: Checkout
@@ -294,7 +294,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
 
     steps:
       - name: Checkout
@@ -320,7 +320,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
 
     steps:
       - name: Checkout
@@ -354,7 +354,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
     needs: [build]
 
     steps:
@@ -378,7 +378,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
     needs: [build]
 
     steps:
@@ -405,7 +405,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
     needs: [build]
 
     steps:
@@ -430,7 +430,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
     needs: [build]
 
     steps:
@@ -462,7 +462,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
 
     steps:
       - name: Checkout
@@ -488,7 +488,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
 
     steps:
       - name: Checkout
@@ -513,7 +513,7 @@ jobs:
         shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
 
     steps:
       - name: Checkout
@@ -545,7 +545,7 @@ jobs:
         shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
 
     steps:
       - name: Checkout
@@ -587,7 +587,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
       volumes:
         - /opt/tools:/opt/tools
       options: --init --mac-address="6c:5a:b0:6c:13:0b"
@@ -660,7 +660,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-10-25
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
       volumes:
         - /opt/tools:/opt/tools
 
