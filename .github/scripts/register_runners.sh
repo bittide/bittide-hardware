@@ -67,7 +67,6 @@ for i in $(seq $N_RUNNERS)
 do
     runner_name="$(hostname)-$i"
     echo "$(tput bold)Registering ${runner_name}$(tput sgr0)"
-    continue
 
     rm -rf actions-runner-$i
     mkdir -p actions-runner-$i
