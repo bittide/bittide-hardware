@@ -47,6 +47,18 @@ impl I2C {
         }
     }
 
+    pub fn init(&mut self) {
+        let flags = I2CFlags {
+            bus_busy: false,
+            arbitration_lost: false,
+            acknowledge_incoming: false,
+            transaction_acknowledged: false,
+            bus_claimed: false,
+            statemachine_reset: false,
+        };
+        self.write_flags(flags);
+    }
+
     pub fn claim_bus(&mut self) -> Result<(), I2CError> {
         let mut flags = self.read_flags();
         if flags.bus_busy && !flags.bus_claimed {
