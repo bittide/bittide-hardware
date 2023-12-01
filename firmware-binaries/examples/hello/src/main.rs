@@ -7,7 +7,8 @@
 
 use ufmt::uwriteln;
 
-use bittide_sys::i2c::{I2CError, I2C};
+use bittide_sys::i2c::I2CError;
+use bittide_sys::si534x::SI534X;
 use bittide_sys::uart::Uart;
 
 #[cfg(not(test))]
@@ -17,7 +18,7 @@ use riscv_rt::entry;
 fn main() -> ! {
     // Initialize peripherals.
     let mut uart = unsafe { Uart::new((2 << 29) as *mut u8) };
-    let mut i2c = unsafe { I2C::new((3 << 29) as *mut u8) };
+    let mut si534x = unsafe { SI534X::new((3 << 29) as *mut u8, 0x69) };
 
     // Print Hello Worlds
     let names = ["Rust", "RISC-V", "Haskell"];
@@ -26,54 +27,28 @@ fn main() -> ! {
     }
     uwriteln!(uart, "This can also do {} {:#x}", "debug prints", 42).unwrap();
     _ = uart.receive();
-    uwriteln!(uart, "i2c device:\n{:?}", i2c).unwrap();
-
-    // Deasserting i2c reset
-    uwriteln!(uart, "Deasserting i2c statemachine reset").unwrap();
-    let mut flags = i2c.read_flags();
-    flags.statemachine_reset = false;
-    i2c.write_flags(flags);
-    uwriteln!(uart, "i2c flags:\n{:?}", flags).unwrap();
 
     // Getting and setting clock divider
-    let mut clk_div = i2c.get_clock_divider();
+    let mut clk_div = si534x.get_clock_divider();
     uwriteln!(uart, "i2c clk div:\n{:?}", clk_div).unwrap();
     clk_div = 300;
     uwriteln!(uart, "Changing i2c clk div to {}", clk_div).unwrap();
-    i2c.set_clock_divider(clk_div);
-    clk_div = i2c.get_clock_divider();
+    si534x.set_clock_divider(clk_div);
+    clk_div = si534x.get_clock_divider();
     uwriteln!(uart, "i2c clk div:\n{:?}", clk_div).unwrap();
 
-    // Initiating i2c communication
-    uwriteln!(uart, "Claiming i2c bus").unwrap();
-    if i2c.claim_bus().is_err() {
-        uwriteln!(uart, "I2CError").unwrap();
-    } else {
-        let flags = i2c.read_flags();
-        uwriteln!(uart, "i2c bus claimed, status:\n{:?}", flags).unwrap();
-    };
+    // Read data at all addresses on page 0
+    for addr in 0..255 {
+        match si534x.read_byte(0x00, addr) {
+            Ok(data) => uwriteln!(uart, "Read address {:X} with {:X}", addr, data).unwrap(),
+            Err(e) => match e {
+                I2CError::ArbitrationLost => uwriteln!(uart, "I2CError::ArbitrationLost").unwrap(),
+                I2CError::NotAcknowledged => uwriteln!(uart, "I2CError::NotAcknowledged").unwrap(),
+                _ => (),
+            },
+        };
+    }
 
-    let a = 0x69;
-    match i2c.write_byte((a << 1) + 1) {
-        Ok(_) => (),
-        Err(e) => match e {
-            I2CError::ArbitrationLost => uwriteln!(uart, "I2CError::ArbitrationLost").unwrap(),
-            I2CError::NotAcknowledged => uwriteln!(uart, "I2CError::NotAcknowledged").unwrap(),
-            _ => (),
-        },
-    };
-    match i2c.read_byte() {
-        Ok(d) => uwriteln!(uart, "Read {:X} from {:X}", d, a).unwrap(),
-        Err(e) => match e {
-            I2CError::ArbitrationLost => uwriteln!(uart, "I2CError::ArbitrationLost").unwrap(),
-            I2CError::NotAcknowledged => uwriteln!(uart, "I2CError::NotAcknowledged").unwrap(),
-            _ => (),
-        },
-    };
-
-    i2c.release_bus();
-    let flags = i2c.read_flags();
-    uwriteln!(uart, "i2c bus released, status: {:?}", flags).unwrap();
     uwriteln!(uart, "Going in echo mode!").unwrap();
     loop {
         let c = uart.receive();
