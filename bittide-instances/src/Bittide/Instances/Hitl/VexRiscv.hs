@@ -12,7 +12,6 @@ import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Prelude
 import Clash.Explicit.Prelude (noReset, orReset)
 
-import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Language.Haskell.TH (runIO)
 import Protocols
@@ -21,7 +20,7 @@ import Protocols.Wishbone
 import System.FilePath
 
 import Bittide.DoubleBufferedRam
-import Bittide.Instances.Domains (Basic200, Basic125)
+import Bittide.Instances.Domains (Basic200, Ext125)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
 import Bittide.SharedTypes
@@ -98,17 +97,14 @@ vexRiscvInner = stateToDoneSuccess <$> status
 
 
 vexRiscvTest ::
-  "CLK_125MHZ" ::: DiffClock Basic125 ->
+  "CLK_125MHZ" ::: DiffClock Ext125 ->
   "" :::
     ( "done"    ::: Signal Basic200 Bool
     , "success" ::: Signal Basic200 Bool
     )
 vexRiscvTest diffClk = (testDone, testSuccess)
   where
-    (clk, clkStable0) = clockWizardDifferential (SSymbol @"pll") diffClk noReset
-    clkStable1 = xpmCdcSingle clk clk clkStable0 -- improvised reset syncer
-
-    clkStableRst = unsafeFromActiveLow clkStable1
+    (clk, clkStableRst) = clockWizardDifferential diffClk noReset
 
     (testDone, testSuccess) = unbundle $
       withClockResetEnable clk reset enableGen (vexRiscvInner @Basic200)

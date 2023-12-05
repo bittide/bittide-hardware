@@ -26,7 +26,7 @@ import Project.FilePath
 -- | A simple instance containing just VexRisc and UART as peripheral.
 -- Runs the `hello` binary from `firmware-binaries`.
 vexRiscUartHello ::
-  "SYSCLK_300" ::: DiffClock Basic300 ->
+  "SYSCLK_300" ::: DiffClock Ext300 ->
   "CPU_RESET" ::: Reset Basic200 ->
   ("USB_UART_TX" ::: CSignal Basic200 Bit, CSignal Basic200 ()) ->
   (CSignal Basic200 (), "USB_UART_RX" ::: CSignal Basic200 Bit)
@@ -37,8 +37,8 @@ vexRiscUartHello diffClk rst_in =
       (uartTx, _uartStatus) <- uartWb d16 d16 (SNat @921600) -< (uartBus, uartRx)
       idC -< uartTx
  where
-  (clk200, pllLock) = clockWizardDifferential (SSymbol @"pll_300_200") diffClk noReset
-  rst200 = resetSynchronizer clk200 (orReset rst_in (unsafeFromActiveLow pllLock))
+  (clk200, rst200_) = clockWizardDifferential diffClk noReset
+  rst200 = rst200_ `orReset` rst_in
 
   ( (_iStart, _iSize, iMem)
     , (_dStart, _dSize, dMem)) = $(do

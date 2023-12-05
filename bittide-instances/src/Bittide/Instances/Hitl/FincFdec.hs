@@ -11,7 +11,6 @@ module Bittide.Instances.Hitl.FincFdec where
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Extra (ibufds)
 import Clash.Cores.Xilinx.VIO (vioProbe)
-import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Clash.Sized.Vector.Extra (findWithDefault)
@@ -54,34 +53,34 @@ testStateToDoneSuccess = \case
   Success -> (True, True)
 
 goFincFdecTests ::
-  Clock Basic200A ->
-  Reset Basic200A ->
-  Clock Basic200B ->
-  Signal Basic200A Test ->
-  "MISO" ::: Signal Basic200A Bit -> -- SPI
+  Clock Basic200 ->
+  Reset Basic200 ->
+  Clock Ext200 ->
+  Signal Basic200 Test ->
+  "MISO" ::: Signal Basic200 Bit -> -- SPI
   "" :::
-    ( Signal Basic200A TestState
+    ( Signal Basic200 TestState
 
     -- Freq increase / freq decrease request to clock board
     , "" :::
-      ( "FINC"    ::: Signal Basic200A Bool
-      , "FDEC"    ::: Signal Basic200A Bool
+      ( "FINC"    ::: Signal Basic200 Bool
+      , "FDEC"    ::: Signal Basic200 Bool
       )
 
       -- SPI to clock board:
     , "" :::
-      ( "SCLK" ::: Signal Basic200A Bool
-      , "MOSI" ::: Signal Basic200A Bit
-      , "CSB"  ::: Signal Basic200A Bool
+      ( "SCLK" ::: Signal Basic200 Bool
+      , "MOSI" ::: Signal Basic200 Bit
+      , "CSB"  ::: Signal Basic200 Bool
       )
 
       -- Debug signals:
     , "" :::
-      ( "SPI_BUSY" ::: Signal Basic200A Bool
-      , "SPI_STATE" ::: Signal Basic200A (BitVector 40)
-      , "SI_LOCKED" ::: Signal Basic200A Bool
-      , "COUNTER_ACTIVE" ::: Signal Basic200A Bool
-      , "COUNTER" ::: Signal Basic200A (Signed 32)
+      ( "SPI_BUSY" ::: Signal Basic200 Bool
+      , "SPI_STATE" ::: Signal Basic200 (BitVector 40)
+      , "SI_LOCKED" ::: Signal Basic200 Bool
+      , "COUNTER_ACTIVE" ::: Signal Basic200 Bool
+      , "COUNTER" ::: Signal Basic200 (Signed 32)
       )
     )
 goFincFdecTests clk rst clkControlled testSelect miso =
@@ -98,11 +97,7 @@ goFincFdecTests clk rst clkControlled testSelect miso =
         miso
 
   rstTest = unsafeFromActiveLow siClkLocked
-
-  rstControlled =
-    unsafeFromActiveLow $
-      xpmCdcSingle clk clkControlled $ -- improvised reset syncer
-        unsafeToActiveLow rst
+  rstControlled = convertReset clk clkControlled rst
 
   (counter, counterActive) =
     unbundle $
@@ -168,29 +163,29 @@ goFincFdecTests clk rst clkControlled testSelect miso =
 
 fincFdecTests ::
   -- Pins from internal oscillator:
-  "CLK_125MHZ" ::: DiffClock Basic125 ->
+  "CLK_125MHZ" ::: DiffClock Ext125 ->
 
   -- Pins from clock board:
-  "USER_SMA_CLOCK" ::: DiffClock Basic200B ->
-  "MISO" ::: Signal Basic200A Bit -> -- SPI
+  "USER_SMA_CLOCK" ::: DiffClock Ext200 ->
+  "MISO" ::: Signal Basic200 Bit -> -- SPI
 
   "" :::
     ( "" :::
-      ( "done"    ::: Signal Basic200A Bool
-      , "success" ::: Signal Basic200A Bool
+      ( "done"    ::: Signal Basic200 Bool
+      , "success" ::: Signal Basic200 Bool
       )
 
     -- Freq increase / freq decrease request to clock board
     , "" :::
-      ( "FINC"    ::: Signal Basic200A Bool
-      , "FDEC"    ::: Signal Basic200A Bool
+      ( "FINC"    ::: Signal Basic200 Bool
+      , "FDEC"    ::: Signal Basic200 Bool
       )
 
       -- SPI to clock board:
     , "" :::
-      ( "SCLK" ::: Signal Basic200A Bool
-      , "MOSI" ::: Signal Basic200A Bit
-      , "CSB"  ::: Signal Basic200A Bool
+      ( "SCLK" ::: Signal Basic200 Bool
+      , "MOSI" ::: Signal Basic200 Bit
+      , "CSB"  ::: Signal Basic200 Bool
       )
     )
 fincFdecTests diffClk controlledDiffClock spiIn =
@@ -198,10 +193,9 @@ fincFdecTests diffClk controlledDiffClock spiIn =
  where
   clkControlled = ibufds controlledDiffClock
 
-  (clk, clkStable0) = clockWizardDifferential (SSymbol @"pll") diffClk noReset
-  clkStable1 = xpmCdcSingle clk clk clkStable0 -- improvised reset syncer
+  (clk, clkStableRst) = clockWizardDifferential diffClk noReset
+  clkStable1 = unsafeToActiveLow clkStableRst
 
-  clkStableRst = unsafeFromActiveLow clkStable1
   anyStarted = fold (||) <$> startTests
   testRst = orReset clkStableRst (unsafeFromActiveLow anyStarted)
   testRstBool = unsafeToActiveHigh testRst
@@ -217,7 +211,7 @@ fincFdecTests diffClk controlledDiffClock spiIn =
 
   (spiBusy, spiState, siClkLocked, counterActive, counter) = debugSignals
 
-  startTests :: Signal Basic200A (Vec 4 Bool)
+  startTests :: Signal Basic200 (Vec 4 Bool)
   startTests =
     setName @"vioHitlt" $
     vioProbe

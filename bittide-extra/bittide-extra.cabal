@@ -63,7 +63,7 @@ common common-options
     Cabal,
     array,
     -- clash-prelude will set suitable version bounds for the plugins
-    clash-prelude >= 1.6.3 && < 1.8,
+    clash-prelude >= 1.6.3 && < 1.10,
     containers >= 0.4.0 && < 0.7,
     clash-protocols,
     ghc-typelits-extra,

@@ -130,14 +130,13 @@ testStatusToDoneSuccess = \case
 
 -- | Entry point for test. See module documentation for more information.
 syncInSyncOut ::
-  "SYSCLK_300" ::: DiffClock Basic300 ->
+  "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic300 Bool ->
   "SYNC_OUT" ::: Signal Basic300 Bool
 syncInSyncOut sysClkDiff syncIn0 = syncOut
  where
-  (sysClk, sysLock0) = clockWizardDifferential (SSymbol @"pll") sysClkDiff noReset
-  sysLock1 = unsafeFromActiveLow (xpmCdcSingle sysClk sysClk sysLock0)
-  testRst = orReset sysLock1 (unsafeFromActiveLow startTest)
+  (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
+  testRst = sysRst `orReset` (unsafeFromActiveLow startTest)
   syncIn1 =
       unsafeToActiveHigh
     $ resetGlitchFilter (SNat @1024) sysClk

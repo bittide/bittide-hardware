@@ -42,7 +42,7 @@ import Language.Dot.Pretty (render)
 import Language.Dot.Parser (parse)
 
 import Options.Applicative
-import Options.Applicative.Help.Pretty (text)
+import Options.Applicative.Help.Pretty (pretty)
 
 import Bittide.Plot
 
@@ -131,7 +131,7 @@ topologyParser = hsubparser
             )
             $ progDesc "diamond graph"
        <> footerDoc
-            ( Just $ text $ unlines
+            ( Just $ pretty $ unlines
                 [ "looks like:"
                 , ""
                 , "      o"
@@ -153,7 +153,7 @@ topologyParser = hsubparser
             )
             $ progDesc "line graph"
        <> footerDoc
-            ( Just $ text $ unlines
+            ( Just $ pretty $ unlines
                 [ "looks like: (for n = 3)"
                 , ""
                 , "  o---o---o"
@@ -171,7 +171,7 @@ topologyParser = hsubparser
             )
             $ progDesc "hyper cube"
        <> footerDoc
-            ( Just $ text $ unlines
+            ( Just $ pretty $ unlines
                 [ "looks like: (for n = 3)"
                 , ""
                 , "      o---o"
@@ -200,7 +200,7 @@ topologyParser = hsubparser
                       )
             ) $ progDesc "2-dimensional grid"
        <> footerDoc
-            ( Just $ text $ unlines
+            ( Just $ pretty $ unlines
                 [ "looks like: (for r = 3, c = 4)"
                 , ""
                 , "   o---o---o---o"
@@ -229,7 +229,7 @@ topologyParser = hsubparser
             )
             $ progDesc "2-dimensional torus"
        <> footerDoc
-            ( Just $ text $ unlines
+            ( Just $ pretty $ unlines
                 [  "c.f. https://www.researchgate.net/figure/"
                 <> "The-two-dimensional-torus-4x4_fig1_221134153"
                 ]
@@ -258,7 +258,7 @@ topologyParser = hsubparser
                       )
             ) $ progDesc "3-dimensional torus"
        <> footerDoc
-            ( Just $ text $ unlines
+            ( Just $ pretty $ unlines
                 [  "c.f. https://upload.wikimedia.org/wikipedia/"
                 <> "commons/thumb/3/3f/2x2x2torus.svg/"
                 <> "220px-2x2x2torus.svg.png"
@@ -282,7 +282,7 @@ topologyParser = hsubparser
                       )
             ) $ progDesc "balanced tree"
        <> footerDoc
-            ( Just $ text $ unlines
+            ( Just $ pretty $ unlines
                 [ "looks like: (for d = 2, c = 2)"
                 , ""
                 , "       o"
@@ -303,7 +303,7 @@ topologyParser = hsubparser
                 )
             ) $ progDesc "star shaped graph"
        <> footerDoc
-            ( Just $ text $ unlines
+            ( Just $ pretty $ unlines
                 [ "looks like: (for n = 8)"
                 , ""
                 , "    o o o"
@@ -324,7 +324,7 @@ topologyParser = hsubparser
                 )
             ) $ progDesc "cycle shaped graph"
        <> footerDoc
-            ( Just $ text $ unlines
+            ( Just $ pretty $ unlines
                 [ "looks like: (for NODES = 6)"
                 , ""
                 , "     o--o"
@@ -345,7 +345,7 @@ topologyParser = hsubparser
                 )
             ) $ progDesc "fully connected graph"
        <> footerDoc
-            ( Just $ text $ unlines
+            ( Just $ pretty $ unlines
                 [ "looks like: (for NODES = 4)"
                 , ""
                 , "      o"
@@ -366,7 +366,7 @@ topologyParser = hsubparser
                 )
             ) $ progDesc "hourglass shaped graph with fully connected 'halves'"
        <> footerDoc
-            ( Just $ text $ unlines
+            ( Just $ pretty $ unlines
                 [ "looks like: (for NODES = 3)"
                 , ""
                 , "    o---o"
