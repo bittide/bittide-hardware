@@ -241,7 +241,7 @@ defClockConfig = ClockControlConfig
   , cccStabilityCheckerMargin    = SNat
   , cccStabilityCheckerFramesize = SNat
   , cccEnableReframing           = True
-  , cccReframingWaitTime         = 100000
+  , cccReframingWaitTime         = 160000
   , cccEnableRustySimulation     = False
   }
  where
