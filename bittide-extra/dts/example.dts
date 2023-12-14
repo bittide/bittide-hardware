@@ -4,35 +4,87 @@
 
 /dts-v1/;
 
-/ {
+/memreserve/ 0 4;
+
+/ { // Bittide domain
+    // clock-frequency
+    { // Bittide nodes
+      { //processing elements
+        { // processing element 0
+          { // memory
+            // memory
+            // memory
+            // uart
+            // timing
+            // scatter engine
+            // gather engine
+          };
+        // processing element 1
+          { // memory
+            // memory
+            // uart
+            // timing
+            // scatter engine
+            // gather engine
+          };
+      };
 
   #address-cells = <1>;
   #size-cells = <1>;
 
-  model = "google,vexriscv";
+  model = "bittide,processing-element";
 
   compatible;
 
   chassis-type = "embedded";
 
+  // Contains a single cpu along with:
+  // - instruction memory
+  // - data memory
+  // - uart perihperal with 2 fifos of depth 16.
+  // - timing peripheral
   cpus {
     #address-cells = <1>;
     #size-cells = <0>;
 
+    // Single riscv cpu
     cpu@0 {
       device_type = "cpu";
-      reg = <0>;
+      reg = <0>; // required field
 
-      timebase-frequency = <82500000>; // 8.25 MHz
-      clock-frequency = <825000000>; // 825 MHz
+      timebase-frequency = <200000000>; // 200Mhz
+      clock-frequency = <200000000>; // 200Mhz
 
       status = "okay";
     };
   };
 
-  memory@0 {
+  // 32kb instruction memory
+  memory@4 {
     device_type = "memory";
-    reg = <0x00000000 0x80000000 /* 2gb */>;
+    reg = <0x00000004 0x00008000>;
+  };
+
+  // 32kb data memory
+  memory@8004 {
+    device_type = "memory";
+    reg = <0x00008004 0x00008000>;
+  };
+
+  // uart peripheral with 2 fifos of depth 16.
+  serial@10010 {
+    compatible = "bittide,serial,ns16550"; //National Semiconductor 16450/16550 Compatible UART Requirements
+    clock-frequency = <200000000>;
+    current-speed = <921600>;
+    reg = <0x00010010 0x0000008>;
+    tx-fifo-depth = <16>;
+    rx-fifo-depth = <16>;
+  };
+
+  // timing peripheral
+  timer@10020 {
+    compatible = "bittide,timer";
+    reg = <0x00010020 0x00000008>;
   };
 
   reserved-memory {
