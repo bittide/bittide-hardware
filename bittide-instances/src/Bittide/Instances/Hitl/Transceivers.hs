@@ -1,11 +1,9 @@
 -- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
@@ -31,22 +29,17 @@ import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
 import Bittide.ElasticBuffer (sticky)
-import Bittide.Hitl (HitlTests, NoPostProcData(..), FpgaIndex, hitlVio)
+import Bittide.Hitl (HitlTests, hitlVioBool, noConfigTest, allFpgas)
 import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.Setup
 import Bittide.Transceiver
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Xilinx.ClockGen
-import Data.Maybe (fromMaybe, isJust)
 
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Clash.Explicit.Prelude as E
-import qualified Data.List as L
-import qualified Data.Map as Map
-import qualified Data.Text as Text
 
 -- | Start value of the counters used in 'counter' and 'expectCounter'. This is
 -- a non-zero start value, as a regression test for a bug where the transceivers
@@ -76,18 +69,25 @@ expectCounter clk rst = sticky clk rst . mealy clk rst enableGen go counterStart
 -- | Worker function for 'transceiversUpTest'. See module documentation for more
 -- information.
 goTransceiversUpTest ::
-  Signal Basic125 FpgaIndex ->
-  "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
-  "SYSCLK" ::: Clock Basic125 ->
+  forall ref rx tx.
+  ( HasSynchronousReset ref, HasSynchronousReset rx, HasSynchronousReset tx
+  , HasDefinedInitialValues rx, HasDefinedInitialValues tx
+  , KnownDomain ref, KnownDomain rx, KnownDomain tx
+  ) =>
+  Unsigned 3 ->
+  String ->
+  String ->
+  "SMA_MGT_REFCLK_C" ::: Clock ref ->
+  "BASIC125CLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: Signal rx (BitVector 1) ->
+  "GTH_RX_PS" ::: Signal rx (BitVector 1) ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: Signal tx (BitVector 1)
+  , "GTH_TX_PS" ::: Signal tx (BitVector 1)
   , "allUp" ::: Signal Basic125 Bool
   , "anyErrors" ::: Signal Basic125 Bool
-  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
+  , "stats" ::: Signal Basic125 ResetManager.Statistics
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK"      ::: Signal Basic125 Bool
@@ -95,19 +95,12 @@ goTransceiversUpTest ::
       , "CSB"       ::: Signal Basic125 Bool
       )
   )
-goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
-  ( transceivers.txNs
-  , transceivers.txPs
-  , allUp
-  , expectCounterErrorSys
-  , transceivers.stats
-  , spiDone
-  , spiOut
-  )
+goTransceiversUpTest
+  transceiverIndex channelName clockPath
+  refClock sysClk rst rxN rxP miso
+  = (txN, txP, linkUp, expectCounterErrorSys, stats, spiDone, spiOut)
  where
-  allUp = and <$> bundle transceivers.linkUps
-
-  sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
+  sysRst = orReset rst $ unsafeFromActiveLow $ fmap not spiErr
 
   -- Clock programming
   spiDone = E.dflipflop sysClk $ (==Finished) <$> spiState
@@ -121,106 +114,88 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
       si539xSpi testConfig6_200_on_0a_1ppb (SNat @(Microseconds 10)) (pure Nothing) miso
 
   -- Transceiver setup
-  gthAllReset = unsafeFromActiveLow spiDone
-
-  -- Send counters
-  counters =
-    zipWith3
-      counter
-      transceivers.txClocks
-      transceivers.txResets
-      transceivers.txSamplings
-
-  expectCounterError =
-    zipWith3
-      expectCounter
-      transceivers.rxClocks
-      transceivers.rxResets
-      transceivers.rxDatas
+  Output{..} =
+    transceiverPrbs @tx @rx @ref @Basic125 @tx @rx defConfig Input
+      { clock = sysClk
+      , reset = unsafeFromActiveLow spiDone
+      , txData = counter txClock txReset txSampling
+      , txReady = pure True
+      , rxReady = pure True
+      , ..
+      }
 
   expectCounterErrorSys =
-      fmap and
-    $ bundle
-    $ zipWith (.&&.) transceivers.linkUps
-    $ zipWith (`xpmCdcSingle` sysClk) transceivers.rxClocks expectCounterError
-
-  transceivers =
-    transceiverPrbsN
-      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
-      defConfig{debugIla=True, debugFpgaIndex=bitCoerce <$> fpgaIndex}
-      Inputs
-        { clock = sysClk
-        , reset = gthAllReset
-        , refClock = refClk
-        , channelNames
-        , clockPaths
-        , rxNs
-        , rxPs
-        , txDatas = counters
-        , txReadys = repeat (pure True)
-        , rxReadys = repeat (pure True)
-        }
+    linkUp .&&. xpmCdcSingle rxClock sysClk (expectCounter rxClock rxReset rxData)
 
 -- | Top entity for this test. See module documentation for more information.
 transceiversUpTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200A ->
+  "PCIE_CLK_Q0" ::: DiffClock Ext200B ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
-  "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
-  "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
-  , "SYNC_OUT" ::: Signal Basic125 Bool
+  "GTH_RX_NS_0" ::: Signal GthRxA (BitVector 1) ->
+  "GTH_RX_PS_0" ::: Signal GthRxA (BitVector 1) ->
+  "GTH_RX_NS_1" ::: Signal GthRxB (BitVector 1) ->
+  "GTH_RX_PS_1" ::: Signal GthRxB (BitVector 1) ->
+  "MISO_0" ::: Signal Basic125 Bit ->
+  "MISO_1" ::: Signal Basic125 Bit ->
+  ( "GTH_TX_NS_0" ::: Signal GthRxA (BitVector 1)
+  , "GTH_TX_PS_0" ::: Signal GthRxA (BitVector 1)
+  , "GTH_TX_NS_1" ::: Signal GthRxB (BitVector 1)
+  , "GTH_TX_PS_1" ::: Signal GthRxB (BitVector 1)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
-      ( "SCLK"      ::: Signal Basic125 Bool
-      , "MOSI"      ::: Signal Basic125 Bit
-      , "CSB"       ::: Signal Basic125 Bool
+      ( "SCLK_0"      ::: Signal Basic125 Bool
+      , "MOSI_0"      ::: Signal Basic125 Bit
+      , "CSB_0"       ::: Signal Basic125 Bool
+      )
+  , "" :::
+      ( "SCLK_1"      ::: Signal Basic125 Bool
+      , "MOSI_1"      ::: Signal Basic125 Bit
+      , "CSB_1"       ::: Signal Basic125 Bool
       )
   )
-transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, syncOut, spiDone, spiOut)
+transceiversUpTest
+  refClkDiff0 refClkDiff1 sysClkDiff
+  rxns0 rxps0
+  rxns1 rxps1
+  miso0 miso1
+  = ( txns0, txps0
+    , txns1, txps1
+    , spiDone0 .&&. spiDone1
+    , spiOut0, spiOut1
+    )
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
+  refClk0 = ibufds_gte3 refClkDiff0 :: Clock Ext200A
+  refClk1 = ibufds_gte3 refClkDiff1 :: Clock Ext200B
 
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
 
-  testRst = sysRst `orReset` unsafeFromActiveLow startTest `orReset` syncInRst
-  syncOut = startTest
-  syncInRst =
-      resetGlitchFilter (SNat @1024) sysClk
-    $ unsafeFromActiveLow
-    $ xpmCdcSingle sysClk sysClk syncIn
+  testRst = sysRst `orReset` unsafeFromActiveLow startTest
 
-  (txns, txps, allUp, anyErrors, _stats, spiDone, spiOut) =
-    goTransceiversUpTest fpgaIndex refClk sysClk testRst rxns rxps miso
+  (txns0, txps0, allUp0, anyErrors0, _stats0, spiDone0, spiOut0) =
+    goTransceiversUpTest 0 "X0Y10" "clk0" refClk0 sysClk testRst rxns0 rxps0 miso0
 
-  failAfterUp = isFalling sysClk testRst enableGen False allUp
+  (txns1, txps1, allUp1, anyErrors1, _stats1, spiDone1, spiOut1) =
+    goTransceiversUpTest 1 "X0Y9" "clk0-1" refClk1 sysClk testRst rxns1 rxps1 miso1
+
+  failAfterUp = isFalling sysClk testRst enableGen False (allUp0 .&&. allUp1)
   failAfterUpSticky = sticky sysClk testRst failAfterUp
 
-  startTest = isJust <$> maybeFpgaIndex
-  fpgaIndex = fromMaybe 0 <$> maybeFpgaIndex
+  startTest :: Signal Basic125 Bool
+  startTest = hitlVioBool sysClk
+    -- Consider test done if links have been up consistently for 40 seconds. This
+    -- is just below the test timeout of 60 seconds, so transceivers have ~20
+    -- seconds to come online reliably. This should be plenty.
+    (    trueFor (SNat @(Seconds 40)) sysClk testRst (allUp0 .&&. allUp1)
+    .||. failAfterUpSticky
+    .||. anyErrors0
+    .||. anyErrors1
+    )
 
-  maybeFpgaIndex :: Signal Basic125 (Maybe FpgaIndex)
-  maybeFpgaIndex =
-    hitlVio
-      0
-      sysClk
+    -- Success?
+    (fmap not failAfterUpSticky .&&. fmap not (anyErrors0 .||. anyErrors1))
 
-      -- Consider test done if links have been up consistently for 40 seconds. This
-      -- is just below the test timeout of 60 seconds, so transceivers have ~20
-      -- seconds to come online reliably. This should be plenty.
-      (trueFor (SNat @(Seconds 40)) sysClk testRst allUp .||. failAfterUpSticky .||. anyErrors)
-
-      -- Success?
-      (fmap not failAfterUpSticky .&&. fmap not anyErrors)
 makeTopEntity 'transceiversUpTest
 
-tests :: HitlTests FpgaIndex
-tests = Map.fromList testsAsList
- where
-  fpgaIndices = [0..]
-  nTests = 1
-  testNames = ["T" <> Text.pack (show n) | n <- [(0::Int)..nTests-1]]
-  testsAsList = [(nm, (L.zip fpgaIndices fpgaIndices, NoPostProcData)) | nm <- testNames]
+tests :: HitlTests ()
+tests = noConfigTest "Transceivers" allFpgas
