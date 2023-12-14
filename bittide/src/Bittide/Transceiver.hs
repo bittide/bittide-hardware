@@ -52,6 +52,7 @@ transceiverPrbsN refclk freeclk rst chanNms clkPaths rxns rxps =
   zipWith4 (transceiverPrbs refclk freeclk rst) chanNms clkPaths rxns rxps
 
 transceiverPrbs ::
+  forall tx rx refclk freeclk txS rxS .
   ( HasSynchronousReset tx
   , HasDefinedInitialValues tx
 

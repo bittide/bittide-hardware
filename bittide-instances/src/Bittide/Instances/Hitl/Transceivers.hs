@@ -37,32 +37,31 @@ import Clash.Xilinx.ClockGen
 
 import qualified Clash.Explicit.Prelude as E
 
-c_CHANNEL_NAMES :: Vec 7 String
-c_CHANNEL_NAMES =
-  "X0Y10":> "X0Y9":> "X0Y16" :> "X0Y17" :> "X0Y18" :> "X0Y19" :> "X0Y11" :> Nil
-
-c_CLOCK_PATHS :: Vec 7 String
-c_CLOCK_PATHS =
-  "clk0" :> "clk0":> "clk0-2":> "clk0-2":> "clk0-2":> "clk0-2":> "clk0"  :> Nil
-
 -- | Data wires from/to transceivers. No logic should be inserted on these
 -- wires. Should be considered asynchronous to one another - even though their
 -- domain encodes them as related.
-type TransceiverWires dom = Vec 7 (Signal dom (BitVector 1))
+type TransceiverWires dom = Vec 2 (Signal dom (BitVector 1))
 
 -- | Worker function for 'transceiversUpTest'. See module documentation for more
 -- information.
 goTransceiversUpTest ::
-  "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
-  "SYSCLK" ::: Clock Basic125 ->
+  forall ref rx tx.
+  ( HasSynchronousReset ref, HasSynchronousReset rx, HasSynchronousReset tx
+  , HasDefinedInitialValues rx, HasDefinedInitialValues tx
+  , KnownDomain ref, KnownDomain rx, KnownDomain tx
+  ) =>
+  String ->
+  String ->
+  "SMA_MGT_REFCLK_C" ::: Clock ref ->
+  "BASIC125CLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: Signal rx (BitVector 1) ->
+  "GTH_RX_PS" ::: Signal rx (BitVector 1) ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: Signal tx (BitVector 1)
+  , "GTH_TX_PS" ::: Signal tx (BitVector 1)
   , "allUp" ::: Signal Basic125 Bool
-  , "stats" ::: Vec 7 (Signal Basic125 GthResetStats)
+  , "stats" ::: Signal Basic125 GthResetStats
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK"      ::: Signal Basic125 Bool
@@ -70,8 +69,8 @@ goTransceiversUpTest ::
       , "CSB"       ::: Signal Basic125 Bool
       )
   )
-goTransceiversUpTest refClk sysClk rst rxns rxps miso =
-  (txns, txps, and <$> bundle linkUps, stats, spiDone, spiOut)
+goTransceiversUpTest cname cpath refClk sysClk rst rxns rxps miso =
+  (txns, txps, linkUp, stats, spiDone, spiOut)
  where
   sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
 
@@ -89,14 +88,12 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
 
-  (_txClocks, rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
-    transceiverPrbsN
-      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
+  (_txClocks, rxClock, txns, txps, linkUpRx, stats) =
+    transceiverPrbs @tx @rx @ref @Basic125 @tx @rx
       refClk sysClk gthAllReset
-      c_CHANNEL_NAMES c_CLOCK_PATHS rxns rxps
+      cname cpath rxns rxps
 
-  syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
-  linkUps = zipWith syncLink rxClocks linkUpsRx
+  linkUp = xpmCdcSingle rxClock sysClk linkUpRx
 
 -- | Returns 'True' if incoming signal has been 'True' for 50 seconds.
 trueFor50s ::
@@ -116,38 +113,54 @@ trueFor50s clk rst =
 
 -- | Top entity for this test. See module documentation for more information.
 transceiversUpTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200A ->
+  "PCIE_CLK_Q0_C" ::: DiffClock Ext200B ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
-  "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
-  "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
-  , "SYNC_OUT" ::: Signal Basic125 Bool
+  "GTH_RX_NS_0" ::: Signal GthRxA (BitVector 1) ->
+  "GTH_RX_PS_0" ::: Signal GthRxA (BitVector 1) ->
+  "GTH_RX_NS_1" ::: Signal GthRxB (BitVector 1) ->
+  "GTH_RX_PS_1" ::: Signal GthRxB (BitVector 1) ->
+  "MISO_0" ::: Signal Basic125 Bit ->
+  "MISO_1" ::: Signal Basic125 Bit ->
+  ( "GTH_TX_NS_0" ::: Signal GthRxA (BitVector 1)
+  , "GTH_TX_PS_0" ::: Signal GthRxA (BitVector 1)
+  , "GTH_TX_NS_1" ::: Signal GthRxB (BitVector 1)
+  , "GTH_TX_PS_1" ::: Signal GthRxB (BitVector 1)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
-      ( "SCLK"      ::: Signal Basic125 Bool
-      , "MOSI"      ::: Signal Basic125 Bit
-      , "CSB"       ::: Signal Basic125 Bool
+      ( "SCLK_0"      ::: Signal Basic125 Bool
+      , "MOSI_0"      ::: Signal Basic125 Bit
+      , "CSB_0"       ::: Signal Basic125 Bool
+      )
+  , "" :::
+      ( "SCLK_1"      ::: Signal Basic125 Bool
+      , "MOSI_1"      ::: Signal Basic125 Bit
+      , "CSB_1"       ::: Signal Basic125 Bool
       )
   )
-transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, syncOut, spiDone, spiOut)
+transceiversUpTest
+  refClkDiff0 refClkDiff1 sysClkDiff
+  rxns0 rxps0
+  rxns1 rxps1
+  miso0 miso1
+  = ( txns0, txps0
+    , txns1, txps1
+    , spiDone0 .&&. spiDone1
+    , spiOut0, spiOut1
+    )
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
+  refClk0 = ibufds_gte3 refClkDiff0 :: Clock Ext200A
+  refClk1 = ibufds_gte3 refClkDiff1 :: Clock Ext200B
 
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
 
-  testRst = sysRst `orReset` unsafeFromActiveLow startTest `orReset` syncInRst
-  syncOut = startTest
-  syncInRst =
-      resetGlitchFilter (SNat @1024) sysClk
-    $ unsafeFromActiveLow
-    $ xpmCdcSingle sysClk sysClk syncIn
+  testRst = sysRst `orReset` unsafeFromActiveLow startTest
 
-  (txns, txps, allUp, _stats, spiDone, spiOut) =
-    goTransceiversUpTest refClk sysClk testRst rxns rxps miso
+  (txns0, txps0, allUp0, _stats0, spiDone0, spiOut0) =
+    goTransceiversUpTest "X0Y10" "clk0" refClk0 sysClk testRst rxns0 rxps0 miso0
+
+  (txns1, txps1, allUp1, _stats1, spiDone1, spiOut1) =
+    goTransceiversUpTest "X0Y9" "clk0-1" refClk1 sysClk testRst rxns1 rxps1 miso1
 
   startTest :: Signal Basic125 Bool
   startTest =
@@ -157,7 +170,7 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       -- Consider test done if links have been up consistently for 50 seconds. This
       -- is just below the test timeout of 60 seconds, so transceivers have ~10
       -- seconds to come online reliably. This should be plenty.
-      (trueFor50s sysClk testRst allUp)
+      (trueFor50s sysClk testRst (allUp0 .&&. allUp1))
 
       -- This test either succeeds or times out, so success is set to a static
       -- 'True'. If you want to see statistics, consider setting it to 'False' -
@@ -170,19 +183,24 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   { t_name = "transceiversUpTest"
   , t_inputs =
     [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
+    , (PortProduct "PCIE_CLK_Q0") [PortName "p", PortName "n"]
     , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
-    , PortName "SYNC_IN"
-    , PortName "GTH_RX_NS"
-    , PortName "GTH_RX_PS"
-    , PortName "MISO"
+    , PortName "GTH_RX_NS_0"
+    , PortName "GTH_RX_PS_0"
+    , PortName "GTH_RX_NS_1"
+    , PortName "GTH_RX_PS_1"
+    , PortName "MISO_0"
+    , PortName "MISO_1"
     ]
   , t_output =
     (PortProduct "")
-      [ PortName "GTH_TX_NS"
-      , PortName "GTH_TX_PS"
-      , PortName "SYNC_OUT"
+      [ PortName "GTH_TX_NS_0"
+      , PortName "GTH_TX_PS_0"
+      , PortName "GTH_TX_NS_1"
+      , PortName "GTH_TX_PS_1"
       , PortName "spiDone"
-      , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
+      , (PortProduct "") [PortName "SCLK_0", PortName "MOSI_0", PortName "CSB_0"]
+      , (PortProduct "") [PortName "SCLK_1", PortName "MOSI_1", PortName "CSB_1"]
       ]
   } #-}
 
