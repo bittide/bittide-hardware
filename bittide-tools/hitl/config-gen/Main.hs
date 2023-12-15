@@ -50,7 +50,6 @@ configs = sequence $
   [ -- Generate config based on Haskell definitions
     makeConfig 'FincFdec.fincFdecTests                 FincFdec.tests
   , makeConfig 'FullMeshHwCc.fullMeshHwCcTest          FullMeshHwCc.tests
-  , makeConfig 'FullMeshHwCc.fullMeshHwCcWithRiscvTest FullMeshHwCc.tests
   , makeConfig 'FullMeshSwCc.fullMeshSwCcTest          FullMeshSwCc.tests
   , makeConfig 'SyncInSyncOut.syncInSyncOut            SyncInSyncOut.tests
   , makeConfig 'Transceivers.transceiversUpTest        Transceivers.tests

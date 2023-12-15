@@ -122,10 +122,10 @@ transceiversUpTest ::
   "GTH_RX_PS_1" ::: Signal GthRxB (BitVector 1) ->
   "MISO_0" ::: Signal Basic125 Bit ->
   "MISO_1" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS_0" ::: Signal GthRxA (BitVector 1)
-  , "GTH_TX_PS_0" ::: Signal GthRxA (BitVector 1)
-  , "GTH_TX_NS_1" ::: Signal GthRxB (BitVector 1)
-  , "GTH_TX_PS_1" ::: Signal GthRxB (BitVector 1)
+  ( "GTH_TX_NS_0" ::: Signal GthTxA (BitVector 1)
+  , "GTH_TX_PS_0" ::: Signal GthTxA (BitVector 1)
+  , "GTH_TX_NS_1" ::: Signal GthTxB (BitVector 1)
+  , "GTH_TX_PS_1" ::: Signal GthTxB (BitVector 1)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK_0"      ::: Signal Basic125 Bool

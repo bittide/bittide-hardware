@@ -24,8 +24,7 @@
 -- this doesn't test reframing yet.
 --
 module Bittide.Instances.Hitl.FullMeshHwCc
-  ( fullMeshHwCcWithRiscvTest
-  , fullMeshHwCcTest
+  ( fullMeshHwCcTest
   , clockControlConfig
   , tests
   ) where
@@ -36,27 +35,16 @@ import qualified Clash.Explicit.Prelude as E
 
 import Data.Maybe (fromMaybe)
 import Data.Proxy
-import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
-import System.Directory
-import System.FilePath
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
-import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState(Error, Finished), si539xSpi)
-import Bittide.DoubleBufferedRam
-  ( InitialContent(Reloadable), ContentType(Blob), RegisterWritePriority(CircuitPriority)
-  , registerWb
-  )
 import Bittide.Counter
 import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
-import Bittide.ProcessingElement (PeConfig(..), processingElement)
-import Bittide.ProcessingElement.Util (memBlobsFromElf)
-import Bittide.SharedTypes (Bytes, ByteOrder(BigEndian))
 import Bittide.Transceiver
 
 import Bittide.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
@@ -71,143 +59,37 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
-import Protocols
-import Protocols.Wishbone
-
-type NodeCount = 8 :: Nat
+type NodeCount = 2 :: Nat
 
 clockControlConfig ::
   $(case (instancesClockConfig (Proxy @Basic125)) of { (_ :: t) -> liftTypeQ @t })
 clockControlConfig =
   $(lift (instancesClockConfig (Proxy @Basic125)))
 
-c_CHANNEL_NAMES :: Vec 7 String
-c_CHANNEL_NAMES =
-  "X0Y10":> "X0Y9":> "X0Y16" :> "X0Y17" :> "X0Y18" :> "X0Y19" :> "X0Y11" :> Nil
-
-c_CLOCK_PATHS :: Vec 7 String
-c_CLOCK_PATHS =
-  "clk0" :> "clk0":> "clk0-2":> "clk0-2":> "clk0-2":> "clk0-2":> "clk0"  :> Nil
-
--- | Data wires from/to transceivers. No logic should be inserted on these
--- wires. Should be considered asynchronous to one another - even though their
--- domain encodes them as related.
-type TransceiverWires dom = Vec 7 (Signal dom (BitVector 1))
-
--- | Instantiates a RiscV core that copies instructions coming from a hardware
--- implementation of Callisto (see 'fullMeshHwTest') and copies it to a register
--- tied to FINC/FDEC.
-fullMeshRiscvCopyTest ::
-  forall dom .
-  KnownDomain dom =>
-  Clock dom ->
-  Reset dom ->
-  Signal dom (CallistoResult 7) ->
-  Vec 7 (Signal dom (DataCount 32)) ->
-  -- Freq increase / freq decrease request to clock board
-  ( "FINC" ::: Signal dom Bool
-  , "FDEC" ::: Signal dom Bool
-  )
-fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
- where
-  (_, fIncDec) = toSignals
-    ( circuit $ \unit -> do
-      [wbA, wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< unit
-      fIncDecCallisto -< wbA
-      (fIncDec, _allStable) <- withClockResetEnable clk rst enableGen $
-        clockControlWb margin framesize (pure $ complement 0) dataCounts -< wbB
-      idC -< fIncDec
-    ) ((), pure ())
-
-  fIncDecCallisto ::
-    forall aw nBytes .
-    (KnownNat aw, 2 <= aw, nBytes ~ 4) =>
-    Circuit
-      (Wishbone dom 'Standard aw (Bytes nBytes))
-      ()
-  fIncDecCallisto = Circuit goFIncDecCallisto
-   where
-    goFIncDecCallisto (wbM2S, _) = (wbS2M, ())
-     where
-      (_, wbS2M) = withClockResetEnable clk rst enableGen $
-        registerWb
-          CircuitPriority
-          (0 :: Bytes nBytes, 0 :: Bytes nBytes)
-          wbM2S
-          (fmap (fmap ((,0) . extend . pack)) fincfdec)
-
-      fincfdec :: Signal dom (Maybe SpeedChange)
-      fincfdec =
-        clearOnAck
-          <$> fmap acknowledge wbS2M
-          <*> fmap maybeSpeedChange callistoResult
-
-      -- Clear register if register is read from (or written to, but we assume
-      -- this doesn't happen). This makes sure the RiscV doesn't read the same
-      -- result from the hardware clock control twice.
-      clearOnAck :: ("ACK" ::: Bool) -> Maybe SpeedChange -> Maybe SpeedChange
-      clearOnAck False maybeSpeedChange   = maybeSpeedChange
-      clearOnAck True  (Just speedChange) = Just speedChange
-      clearOnAck True  Nothing            = Just NoChange
-
-  margin = d2
-
-  framesize = SNat @(PeriodToCycles dom (Seconds 1))
-
-  (   (_iStart, _iSize, iMem)
-    , (_dStart, _dSize, dMem)) = $(do
-
-    let
-      findProjectRoot :: IO FilePath
-      findProjectRoot = goUp =<< getCurrentDirectory
-        where
-          goUp :: FilePath -> IO FilePath
-          goUp path
-            | isDrive path = error "Could not find 'cabal.project'"
-            | otherwise = do
-                exists <- doesFileExist (path </> projectFilename)
-                if exists then
-                  return path
-                else
-                  goUp (takeDirectory path)
-
-          projectFilename = "cabal.project"
-
-    root <- runIO findProjectRoot
-
-    let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/clock-control-reg-cpy"
-
-    memBlobsFromElf BigEndian elfPath Nothing)
-
-  {-
-    0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
-    0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
-    0b00xxxxx_xxxxxxxx 0b00 0x0x FINC/FDEC register
-    0b11xxxxx_xxxxxxxx 0b11 0xCx memory mapped hardware clock control
-  -}
-  peConfig =
-    PeConfig
-      (0b10 :> 0b01 :> 0b00 :> 0b11 :> Nil)
-      (Reloadable $ Blob iMem)
-      (Reloadable $ Blob dMem)
-
 -- | Instantiates a hardware implementation of Callisto and exports its results. Can
 -- be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
 -- results to a RiscV core (see 'fullMeshRiscvCopyTest')
 fullMeshHwTest ::
-  "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
+  forall ref rx tx.
+  ( HasSynchronousReset ref, HasSynchronousReset rx, HasSynchronousReset tx
+  , HasDefinedInitialValues rx, HasDefinedInitialValues tx
+  , KnownDomain ref, KnownDomain rx, KnownDomain tx
+  ) =>
+  String ->
+  String ->
+  "SMA_MGT_REFCLK_C" ::: Clock ref ->
   "SYSCLK" ::: Clock Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: Signal rx (BitVector 1) ->
+  "GTH_RX_PS" ::: Signal rx (BitVector 1) ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: Signal tx (BitVector 1)
+  , "GTH_TX_PS" ::: Signal tx (BitVector 1)
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
-  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult 7)
+  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult 1)
   , "CALLISTO_RESET" ::: Reset Basic125
-  , "DATA_COUNTERS" ::: Vec 7 (Signal Basic125 (DataCount 32))
-  , "stats" ::: Vec 7 (Signal Basic125 GthResetStats)
+  , "DATA_COUNTER" ::: Signal Basic125 (DataCount 32)
+  , "stats" ::: Signal Basic125 GthResetStats
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK" ::: Signal Basic125 Bool
@@ -218,14 +100,14 @@ fullMeshHwTest ::
   , "ALL_UP" ::: Signal Basic125 Bool
   , "ALL_STABLE"   ::: Signal Basic125 Bool
   )
-fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
+fullMeshHwTest cname cpath refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   fincFdecIla `hwSeqX`
   ( txns
   , txps
   , frequencyAdjustments
   , callistoResult
   , clockControlReset
-  , domainDiffs
+  , domainDiff
   , stats
   , spiDone
   , spiOut
@@ -250,15 +132,14 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
 
-  (txClocks, rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
-    transceiverPrbsN
-      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
+  (txClock :: Clock tx, rxClock, txns, txps, linkUpRx, stats) =
+    transceiverPrbs
+      @tx @rx @ref @Basic125 @tx @rx
       refClk sysClk gthAllReset
-      c_CHANNEL_NAMES c_CLOCK_PATHS rxns rxps
+      cname cpath rxns rxps
 
-  syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
-  linkUps = zipWith syncLink rxClocks linkUpsRx
-  allUp = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle linkUps)
+  linkUp = xpmCdcSingle rxClock sysClk linkUpRx
+  allUp = trueFor (SNat @(Milliseconds 500)) sysClk syncRst linkUp
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allUp)
 
@@ -281,8 +162,8 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
 
   callistoResult =
     callistoClockControlWithIla @(NodeCount - 1) @CccBufferSize
-      (head txClocks) sysClk clockControlReset clockControlConfig
-      IlaControl{..} availableLinkMask (fmap (fmap resize) domainDiffs)
+      txClock sysClk clockControlReset clockControlConfig
+      IlaControl{..} availableLinkMask (singleton (resize <$> domainDiff))
 
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
@@ -336,126 +217,87 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
       withClockResetEnable sysClk clockControlReset enableGen $
         stickyBits @Basic125 d20 (speedChangeToPins . fromMaybe NoChange <$> clockMod)
 
-  domainDiffs =
-    domainDiffCounterExt sysClk clockControlReset
-      <$> rxClocks
-      <*> txClocks
-
--- | Top entity for this test. See module documentation for more information.
-fullMeshHwCcWithRiscvTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
-  "SYSCLK_300" ::: DiffClock Ext300 ->
-  "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
-  "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
-  , "" :::
-      ( "FINC"      ::: Signal Basic125 Bool
-      , "FDEC"      ::: Signal Basic125 Bool
-      )
-  , "SYNC_OUT" ::: Signal Basic125 Bool
-  , "spiDone" ::: Signal Basic125 Bool
-  , "" :::
-      ( "SCLK"      ::: Signal Basic125 Bool
-      , "MOSI"      ::: Signal Basic125 Bit
-      , "CSB"       ::: Signal Basic125 Bool
-      )
-  )
-fullMeshHwCcWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, (riscvFinc, riscvFdec), syncOut, spiDone, spiOut)
- where
-  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
-
-  (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
-
-  ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
-
-  (   txns, txps, _hwFincFdecs, callistoResult, callistoReset
-    , dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
-    , allStable ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso
-
-  (riscvFinc, riscvFdec) =
-    fullMeshRiscvCopyTest sysClk callistoReset callistoResult dataCounts
-
-  -- check that tests are not synchronously start before all
-  -- transceivers are up
-  startBeforeAllUp = sticky sysClk syncRst
-    (startTest .&&. syncStart .&&. ((not <$> allUp) .||. transceiversFailedAfterUp))
-
-  endSuccess :: Signal Basic125 Bool
-  endSuccess = trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
-
-  done = endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp
-  success = not <$> (transceiversFailedAfterUp .||. startBeforeAllUp)
-
-  startTest :: Signal Basic125 Bool
-  startTest = hitlVioBool sysClk done success
-
--- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
---      generates warnings in combination with 'Vec'.
-{-# ANN fullMeshHwCcWithRiscvTest Synthesize
-  { t_name = "fullMeshHwCcWithRiscvTest"
-  , t_inputs =
-    [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
-    , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
-    , PortName "SYNC_IN"
-    , PortName "GTH_RX_NS"
-    , PortName "GTH_RX_PS"
-    , PortName "MISO"
-    ]
-  , t_output =
-    (PortProduct "")
-      [ PortName "GTH_TX_NS"
-      , PortName "GTH_TX_PS"
-      , PortProduct "" [PortName "FINC", PortName "FDEC"]
-      , PortName "SYNC_OUT"
-      , PortName "spiDone"
-      , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
-      ]
-  } #-}
+  domainDiff =
+    domainDiffCounterExt sysClk clockControlReset rxClock txClock
 
 -- | Top entity for this test. See module documentation for more information.
 fullMeshHwCcTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200A ->
+  "PCIE_CLK_Q0_C" ::: DiffClock Ext200B ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
-  "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
-  "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  "GTH_RX_NS_0" ::: Signal GthRxA (BitVector 1) ->
+  "GTH_RX_PS_0" ::: Signal GthRxA (BitVector 1) ->
+  "GTH_RX_NS_1" ::: Signal GthRxB (BitVector 1) ->
+  "GTH_RX_PS_1" ::: Signal GthRxB (BitVector 1) ->
+  "MISO_0" ::: Signal Basic125 Bit ->
+  "MISO_1" ::: Signal Basic125 Bit ->
+  ( "GTH_TX_NS_0" ::: Signal GthTxA (BitVector 1)
+  , "GTH_TX_PS_0" ::: Signal GthTxA (BitVector 1)
+  , "GTH_TX_NS_1" ::: Signal GthTxB (BitVector 1)
+  , "GTH_TX_PS_1" ::: Signal GthTxB (BitVector 1)
   , "" :::
-      ( "FINC"      ::: Signal Basic125 Bool
-      , "FDEC"      ::: Signal Basic125 Bool
+      ( "FINC0"      ::: Signal Basic125 Bool
+      , "FDEC0"      ::: Signal Basic125 Bool
       )
-  , "SYNC_OUT" ::: Signal Basic125 Bool
+  , "" :::
+      ( "FINC1"      ::: Signal Basic125 Bool
+      , "FDEC1"      ::: Signal Basic125 Bool
+      )
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
-      ( "SCLK"      ::: Signal Basic125 Bool
-      , "MOSI"      ::: Signal Basic125 Bit
-      , "CSB"       ::: Signal Basic125 Bool
+      ( "SCLK_0"      ::: Signal Basic125 Bool
+      , "MOSI_0"      ::: Signal Basic125 Bit
+      , "CSB_0"       ::: Signal Basic125 Bool
+      )
+  , "" :::
+      ( "SCLK_1"      ::: Signal Basic125 Bool
+      , "MOSI_1"      ::: Signal Basic125 Bit
+      , "CSB_1"       ::: Signal Basic125 Bool
       )
   )
-fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, unbundle hwFincFdecs, syncOut, spiDone, spiOut)
+fullMeshHwCcTest
+  refClkDiff0 refClkDiff1 sysClkDiff
+  rxns0 rxps0
+  rxns1 rxps1
+  miso0 miso1
+  = ( txns0, txps0
+    , txns1, txps1
+    , unbundle hwFincFdecs0
+    , unbundle hwFincFdecs1
+    , spiDone0 .&&. spiDone1
+    , spiOut0
+    , spiOut1
+    )
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
-  (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
-  ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
+  refClk0 = ibufds_gte3 refClkDiff0 :: Clock Ext200A
+  refClk1 = ibufds_gte3 refClkDiff1 :: Clock Ext200B
 
-  (   txns, txps, hwFincFdecs, _callistoResult, _callistoReset
-    , _dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
-    , allStable ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso
+  (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
+  ilaControl0 = ilaPlotSetup IlaPlotSetup {allUp = allUp0, ..}
+  ilaControl1 = ilaPlotSetup IlaPlotSetup {allUp = allUp1, ..}
+  syncIn = syncOut ilaControl0
+
+  (   txns0, txps0, hwFincFdecs0, _callistoResult0, _callistoReset0
+    , _dataCounts0, _stats0, spiDone0, spiOut0, transceiversFailedAfterUp0, allUp0
+    , allStable0 ) = fullMeshHwTest @Ext200A @GthRxA @GthTxA
+                       "X0Y10" "clk0" refClk0 sysClk ilaControl0 rxns0 rxps0 miso0
+
+  (   txns1, txps1, hwFincFdecs1, _callistoResult1, _callistoReset1
+    , _dataCounts1, _stats1, spiDone1, spiOut1, transceiversFailedAfterUp1, allUp1
+    , allStable1 ) = fullMeshHwTest @Ext200B @GthRxB @GthTxB
+                       "X0Y9" "clk0-1" refClk1 sysClk ilaControl1 rxns1 rxps1 miso1
 
   -- check that tests are not synchronously start before all
   -- transceivers are up
-  startBeforeAllUp = sticky sysClk syncRst
-    (syncStart .&&. ((not <$> allUp) .||. transceiversFailedAfterUp))
+  startBeforeAllUp0 = sticky sysClk (syncRst ilaControl0)
+    (syncStart ilaControl0 .&&. ((not <$> allUp0) .||. transceiversFailedAfterUp0))
+
+  startBeforeAllUp1 = sticky sysClk (syncRst ilaControl1)
+    (syncStart ilaControl1 .&&. ((not <$> allUp1) .||. transceiversFailedAfterUp1))
 
   endSuccess :: Signal Basic125 Bool
-  endSuccess = trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
+  endSuccess = trueFor (SNat @(Seconds 5)) sysClk (syncRst ilaControl0) allStable0
+          .&&. trueFor (SNat @(Seconds 5)) sysClk (syncRst ilaControl1) allStable1
 
   startTest :: Signal Basic125 Bool
   startTest =
@@ -463,10 +305,20 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       sysClk
 
       -- done
-      (endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp)
+      (    endSuccess      .||. transceiversFailedAfterUp0
+      .||. startBeforeAllUp0
+      .||. transceiversFailedAfterUp1
+      .||. startBeforeAllUp1
+      )
 
       -- success
-      (not <$> (transceiversFailedAfterUp .||. startBeforeAllUp))
+      (not <$>
+         (    transceiversFailedAfterUp0
+         .||. startBeforeAllUp0
+         .||. transceiversFailedAfterUp1
+         .||. startBeforeAllUp1
+         )
+      )
 
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.
@@ -474,20 +326,26 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   { t_name = "fullMeshHwCcTest"
   , t_inputs =
     [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
+    , (PortProduct "PCIE_CLK_Q0_C") [PortName "p", PortName "n"]
     , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
-    , PortName "SYNC_IN"
-    , PortName "GTH_RX_NS"
-    , PortName "GTH_RX_PS"
-    , PortName "MISO"
+    , PortName "GTH_RX_NS_0"
+    , PortName "GTH_RX_PS_0"
+    , PortName "GTH_RX_NS_1"
+    , PortName "GTH_RX_PS_1"
+    , PortName "MISO_0"
+    , PortName "MISO_1"
     ]
   , t_output =
     (PortProduct "")
-      [ PortName "GTH_TX_NS"
-      , PortName "GTH_TX_PS"
-      , PortProduct "" [PortName "FINC", PortName "FDEC"]
-      , PortName "SYNC_OUT"
+      [ PortName "GTH_TX_NS_0"
+      , PortName "GTH_TX_PS_0"
+      , PortName "GTH_TX_NS_1"
+      , PortName "GTH_TX_PS_1"
+      , PortProduct "" [PortName "FINC_0", PortName "FDEC_0"]
+      , PortProduct "" [PortName "FINC_1", PortName "FDEC_1"]
       , PortName "spiDone"
-      , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
+      , (PortProduct "") [PortName "SCLK_0", PortName "MOSI_0", PortName "CSB_0"]
+      , (PortProduct "") [PortName "SCLK_1", PortName "MOSI_1", PortName "CSB_1"]
       ]
   } #-}
 
