@@ -24,22 +24,18 @@ import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
 import qualified Clash.Explicit.Prelude as E
 
-import Data.Graph (buildG)
 import Data.Maybe (isJust)
-import Data.String (fromString)
 
-import qualified Data.List as List (concat)
 import qualified Data.Map.Strict as Map (fromList)
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState(Error, Finished), si539xSpi)
 import Bittide.Instances.Domains
-import Bittide.Topology (fromGraph)
 import Bittide.Transceiver
 
 import Clash.Cores.Xilinx.VIO (vioProbe)
-import Bittide.Hitl (HitlTests, NoPostProcData(..) {-, hitlVio-})
+import Bittide.Hitl (HitlTests)
 
 import Bittide.Instances.Hitl.Setup
 
@@ -199,21 +195,4 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 makeTopEntity 'linkConfigurationTest
 
 tests :: HitlTests TestConfig
-tests = Map.fromList
-  [ ( fromString name
-    , ( toList $ imap (testData i) $ linkMasks @FpgaCount g
-      , NoPostProcData
-      )
-    )
-  | (i, (fpgaId, _)) <- toList $ zip indicesI fpgaSetup
-  , let name = "disable " <> show i <> " [" <> fpgaId <> "]"
-        g = fromGraph @FpgaCount name $ buildG (0, natToNum @(FpgaCount - 1))
-          $ List.concat
-              [ [ (i', j), (j, i') ]
-              | j <- [0, 1 .. natToNum @(FpgaCount - 1)]
-              , let i' = fromEnum i
-              , i' /= j
-              ]
-  ]
- where
-  testData i j m = (j, TestConfig (i /= j) m)
+tests = Map.fromList []

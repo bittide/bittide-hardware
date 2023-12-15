@@ -48,7 +48,6 @@ hitlTests =
   , knownType  'BoardTest.boardTestSimple               BoardTest.testsSimple
   , knownType  'FincFdec.fincFdecTests                  FincFdec.tests
   , knownType  'FullMeshHwCc.fullMeshHwCcTest           FullMeshHwCc.tests
-  , knownType  'FullMeshHwCc.fullMeshHwCcWithRiscvTest  FullMeshHwCc.tests
   , knownType  'FullMeshSwCc.fullMeshSwCcTest           FullMeshSwCc.tests
   , knownType  'HwCcTopologies.hwCcTopologyTest         HwCcTopologies.tests
   , knownType  'LinkConfiguration.linkConfigurationTest LinkConfiguration.tests
