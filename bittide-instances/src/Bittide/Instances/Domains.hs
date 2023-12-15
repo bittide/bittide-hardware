@@ -58,10 +58,10 @@ instancesClockConfig Proxy = ClockControlConfig
   , cccDeviation                 = Ppm 100
   , cccStabilityCheckerMargin    = SNat
   , cccStabilityCheckerFramesize = SNat
-  , cccEnableReframing           = False
+  , cccEnableReframing           = True
   -- changed from defClockConfig, which uses a fixed number of cycles independent
   -- the clock speed of the domain
-  , cccReframingWaitTime         = natToNum @(PeriodToCycles dom (Seconds 1))
+  , cccReframingWaitTime         = 10000000
   , cccEnableRustySimulation     = False
   }
  where
