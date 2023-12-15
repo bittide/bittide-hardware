@@ -30,7 +30,7 @@ createDomain vXilinxSystem{vName="GthTx", vPeriod= hzToPeriod 125e6}
 createDomain vXilinxSystem{vName="Internal", vPeriod=hzToPeriod 200e6}
 
 type CccBufferSize = 25 :: Nat
-type CccStabilityCheckerMargin = 16 :: Nat
+type CccStabilityCheckerMargin = 25 :: Nat
 type CccStabilityCheckerFramesize dom = PeriodToCycles dom (Seconds 2)
 type CccReframingWaitTime dom = PeriodToCycles dom (Seconds 5)
 
@@ -57,10 +57,10 @@ instancesClockConfig Proxy = ClockControlConfig
   , cccDeviation                 = Ppm 100
   , cccStabilityCheckerMargin    = SNat
   , cccStabilityCheckerFramesize = SNat
-  , cccEnableReframing           = False
+  , cccEnableReframing           = True
   -- changed from defClockConfig, which uses a fixed number of cycles independent
   -- the clock speed of the domain
-  , cccReframingWaitTime         = natToNum @(PeriodToCycles dom (Seconds 1))
+  , cccReframingWaitTime         = 10000000
   , cccEnableRustySimulation     = False
   }
  where
