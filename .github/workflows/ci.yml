@@ -147,188 +147,6 @@ jobs:
       - run: cache push cargo
       - run: cache push build
 
-  cc-sim-topologies-matrix:
-    name: cc-sim-topologies simulation matrix generation
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-03-13
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Generate matrix
-        run: |
-          if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
-            cp .github/simulation/safe.json sim.json
-          else
-            cp .github/simulation/staging.json sim.json
-          fi
-
-      - name: Set simulation matrix
-        id: set-sim-matrix
-        run: |
-          echo "sim_matrix=$(cat sim.json | jq -c)" | tee -a "$GITHUB_OUTPUT"
-          echo "artifact_names=$(cat sim.json | jq -c '["gen-plots-hs-" + .[].topology]')" | tee -a "$GITHUB_OUTPUT"
-
-    outputs:
-      sim_matrix: ${{ steps.set-sim-matrix.outputs.sim_matrix }}
-      artifact_names: ${{ steps.set-sim-matrix.outputs.artifact_names }}
-
-  cc-sim-topologies:
-    name: Simulate network
-    runs-on: [self-hosted, compute]
-    timeout-minutes: 1200
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build, lint, cc-sim-topologies-matrix]
-
-    strategy:
-      matrix:
-        target: ${{ fromJson(needs.cc-sim-topologies-matrix.outputs.sim_matrix) }}
-      fail-fast: false
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-03-13
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cabal
-      - run: cache pull build
-
-      - name: Plot mesh grid
-        run: |
-          cabal run -- bittide-tools:cc-sim \
-            +RTS -M${{ matrix.target.hmem }}M -RTS \
-            --output-mode pdf \
-            --get-rusty \
-            --steps ${{ matrix.target.steps }} \
-            --samples 1000 \
-            --max-startup-offset 2000 \
-            --stop-after-stable ${{ matrix.target.steps }} \
-            ${{ matrix.target.topology }} ${{ matrix.target.args }}
-
-      - name: Generate report
-        if: ${{ !cancelled() }}
-        run: |
-          sed -i -e "s/n\([0-9]*\)/\1/g" _build/topology.gv
-          dot2tex \
-            -f tikz \
-            --figonly \
-            --progoptions "-K neato" \
-            --nodeoptions "every node/.style={fill,text=white,font=\Large\tt,minimum size=2em,inner sep=0pt}" \
-            --edgeoptions "line width=0.3em" \
-            _build/topology.gv > _build/topology.tikz
-          cp .github/simulation/report-template.tex _build/report.tex
-          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > _build/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > _build/runref
-          cd _build
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz
-
-      - name: Upload plots
-        uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: gen-plots-hs-${{ matrix.target.topology }}
-          path: |
-            _build
-            !_build/cargo
-          retention-days: 14
-
-  generate-full-clock-control-simulation-report:
-    name: Generate clock control simulation report
-    runs-on: [self-hosted, compute]
-    if: ${{ !cancelled() }}
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build, lint, cc-sim-topologies-matrix, cc-sim-topologies, bittide-instances-hardware-in-the-loop]
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-03-13
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cabal
-      - run: cache pull cargo
-      - run: cache pull build
-
-      - name: Download simulation artifacts
-        uses: actions/download-artifact@v4
-        with:
-          # Note that all artifacts are downloaded, if no 'name' is specified.
-          # Unfortunately, this is the only working solution that github offers
-          # right at the moment. Alternative options exist, like
-          # https://github.com/marketplace/actions/download-multiple-workflow-artifacts,
-          # but this action is currently broken. Once a working solution
-          # is available again, 'artifact_names' from
-          # 'cc-sim-topologies-matrix' can be used to only download
-          # the required artifacts instead.
-          path: artifacts
-
-      - name: Generate HITL based plots
-        run: |
-          mkdir -p reports
-          mkdir -p hitl-plots/hw
-          ./cargo.sh build --frozen --release
-          cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest/ila-data/CC/ hitl-plots/hw
-          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/hw/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/hw/topology.tikz
-          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/hw/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/hw/runref
-          cd hitl-plots/hw
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} topology.tikz
-          cd ../..
-          mv hitl-plots/hw/report.pdf reports/HITL-FullMeshHwCc-Report.pdf
-          mkdir -p hitl-plots/sw
-          cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest/ila-data/CC/ hitl-plots/sw
-          cp .github/hitl/FullMeshSwCcReportTemplate.tex hitl-plots/sw/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/sw/topology.tikz
-          mv hitl-plots/hw/datetime hitl-plots/sw/datetime
-          mv hitl-plots/hw/runref hitl-plots/sw/runref
-          cd hitl-plots/sw
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz
-          cd ../..
-          mv hitl-plots/sw/report.pdf reports/HITL-FullMeshSwCc-Report.pdf
-
-      - name: Generate final simulation report
-        run: |
-          set +f # Enable globbing
-          mkdir -p reports
-          pdfunite artifacts/*/report.pdf reports/Simulation-Report.pdf
-
-      - name: Upload Reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: Clock Control Reports
-          path: reports
-          retention-days: 14
-
   bittide-experiments-tests:
     name: bittide-experiments unittests
     runs-on: [self-hosted, compute]
@@ -590,42 +408,6 @@ jobs:
     outputs:
       check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
 
-  bittide-instances-hardware-in-the-loop-test-matrix:
-    name: bittide-instances hardware-in-the-loop test matrix generation
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-03-13
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Generate matrix
-        run: |
-          if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
-            cp .github/synthesis/all.json checks.json
-          elif [[ -f .github/synthesis/debug.json ]]; then
-            cp .github/synthesis/debug.json checks.json
-          else
-            cp .github/synthesis/staging.json checks.json
-          fi
-
-          jq '[.[] | select(.stage=="test")]' checks.json > checks.json.filtered
-          cp checks.json.filtered checks.json
-
-      - name: Set test matrix
-        id: set-matrix
-        run: |
-          echo "check_matrix=$(cat checks.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
-
-    outputs:
-      check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
-
   bittide-instances-hdl:
     name: synth
     runs-on: [self-hosted, compute]
@@ -699,76 +481,19 @@ jobs:
             !_build/vivado/*/ip
           retention-days: 14
 
-  bittide-instances-hardware-in-the-loop:
-    name: HITL
-    runs-on: [self-hosted, hardware-access]
-    defaults:
-      run:
-        # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
-        shell: git-nix-shell {0} --option connect-timeout 360
-    needs: [bittide-instances-hdl, bittide-instances-hardware-in-the-loop-test-matrix]
-
-    strategy:
-      matrix:
-        target: ${{ fromJson(needs.bittide-instances-hardware-in-the-loop-test-matrix.outputs.check_matrix) }}
-      fail-fast: false
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-03-13
-      volumes:
-        - /opt/tools:/opt/tools
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project cabal.project.local
-
-      - name: Download artifact _build directory
-        uses: actions/download-artifact@v4
-        with:
-          name: _build-${{ matrix.target.top }}
-          path: _build
-
-      - run: cache pull cabal
-      - run: cache pull cargo
-      - run: cache pull build
-
-      - name: Run tests on hardware
-        run : |
-          .github/scripts/with_vivado.sh \
-            shake ${{ matrix.target.top }}:test --hardware-targets="${{ matrix.target.targets}}"
-
-      - name: Archive ILA data
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: _build-${{ matrix.target.top }}-debug
-          path: |
-            _build/vivado/*/ila-data
-          retention-days: 14
-
   all:
     name: All jobs finished
     if: ${{ !cancelled() }}
     needs: [
         bittide-instances-doctests,
-        bittide-instances-hardware-in-the-loop-test-matrix,
-        bittide-instances-hardware-in-the-loop,
         bittide-instances-hdl-matrix,
         bittide-instances-hdl,
         bittide-instances-unittests,
         bittide-tests,
         build,
         bittide-experiments-tests,
-        cc-sim-topologies-matrix,
-        cc-sim-topologies,
         firmware-limit-checks,
         firmware-support-tests,
-        generate-full-clock-control-simulation-report,
         host-tools-tests,
         license-check,
         license-year,
