@@ -8,6 +8,7 @@ use fdt::Fdt;
 use utils::matches_fdt_name;
 
 pub mod callisto;
+pub mod clock_config;
 pub mod clock_control;
 pub mod gather_unit;
 pub mod i2c;
