@@ -13,6 +13,7 @@ import Clash.Cores.SPI
 
 import Bittide.ClockControl.Si539xSpi
 import Bittide.ClockControl.Si5391A
+import Bittide.ClockControl.SiClkSerial
 import Bittide.SharedTypes
 
 import Test.Tasty

@@ -13,9 +13,11 @@ import Clash.Annotations.TH (makeTopEntity)
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
+import Bittide.ClockControl.Callisto.Util
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
+import Bittide.ClockControl.SiClkSerial
 import Bittide.ClockControl.StabilityChecker
 import Bittide.ElasticBuffer
 import Bittide.Instances.Domains
@@ -84,7 +86,7 @@ callistoSpi clk125 clkRecovered clkControlled rst125 locked miso =
 
   -- Reset the spi core when configuration fails to try again.
   configReset = withClockResetEnable clk125 rst125 enableGen $
-    forceReset . holdTrue d3 $ flip fmap configState \case
+    forceReset . stickyBits d3 $ flip fmap configState \case
       Error _ -> True
       _       -> False
 

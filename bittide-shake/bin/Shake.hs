@@ -193,6 +193,7 @@ targets = map enforceValidTarget
   , defTarget "Bittide.Instances.Pnr.ClockControl.callisto3"
   , defTarget "Bittide.Instances.Pnr.Counter.counterReducedPins"
   , defTarget "Bittide.Instances.Pnr.ElasticBuffer.elasticBuffer5"
+  , (defTarget "Bittide.Instances.Pnr.I2C.i2cTest") {targetHasXdc = True, targetHasVio = True}
   , (defTarget "Bittide.Instances.Pnr.MVPs.clockControlDemo0") {targetHasXdc = True}
   , (defTarget "Bittide.Instances.Pnr.MVPs.clockControlDemo1") {targetHasXdc = True}
   , (defTarget "Bittide.Instances.Pnr.ProcessingElement.vexRiscUartHello") {targetHasXdc = True}
