@@ -7,10 +7,10 @@
 
 use ufmt::uwriteln;
 
+use bittide_sys::clock_config::{self, ConfigEntry};
 use bittide_sys::i2c::I2CError;
 use bittide_sys::si534x::SI534X;
 use bittide_sys::uart::Uart;
-
 #[cfg(not(test))]
 use riscv_rt::entry;
 
@@ -27,6 +27,23 @@ fn main() -> ! {
     }
     uwriteln!(uart, "This can also do {} {:#x}", "debug prints", 42).unwrap();
     _ = uart.receive();
+
+    // Parse config.csv using bittide::clock_config
+    let config = include_str!("config.csv");
+    let mut parser = clock_config::ClockConfigParser::new();
+    for line in config.lines() {
+        if !parser.is_done() {
+            match parser.parse_line(line) {
+                Ok(Some(ConfigEntry { page, addr, data })) => {
+                    uwriteln!(uart, "{:02x}{:02x} {:02x}", page, addr, data).unwrap();
+                }
+                Ok(None) => uwriteln!(uart, "{}", line).unwrap(),
+                Err(e) => {
+                    uwriteln!(uart, "Error: {}", e).unwrap();
+                }
+            }
+        }
+    }
 
     // Getting and setting clock divider
     let mut clk_div = si534x.get_clock_divider();
@@ -50,6 +67,7 @@ fn main() -> ! {
     }
 
     uwriteln!(uart, "Going in echo mode!").unwrap();
+
     loop {
         let c = uart.receive();
         uart.send(c);
