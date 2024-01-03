@@ -70,13 +70,15 @@ clockControlConfig =
 -- be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
 -- results to a RiscV core (see 'fullMeshRiscvCopyTest')
 fullMeshHwTest ::
-  forall ref rx tx.
+  forall ref rx tx i.
   ( HasSynchronousReset ref, HasSynchronousReset rx, HasSynchronousReset tx
   , HasDefinedInitialValues rx, HasDefinedInitialValues tx
   , KnownDomain ref, KnownDomain rx, KnownDomain tx
+  , KnownNat i, 1 <= i
   ) =>
   String ->
   String ->
+  SNat i ->
   "SMA_MGT_REFCLK_C" ::: Clock ref ->
   "SYSCLK" ::: Clock Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
@@ -100,7 +102,7 @@ fullMeshHwTest ::
   , "ALL_UP" ::: Signal Basic125 Bool
   , "ALL_STABLE"   ::: Signal Basic125 Bool
   )
-fullMeshHwTest cname cpath refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
+fullMeshHwTest cname cpath i refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   fincFdecIla `hwSeqX`
   ( txns
   , txps
@@ -161,7 +163,7 @@ fullMeshHwTest cname cpath refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps
       callistoResult
 
   callistoResult =
-    callistoClockControlWithIla @(NodeCount - 1) @CccBufferSize
+    callistoClockControlWithIla @(NodeCount - 1) @CccBufferSize i
       txClock sysClk clockControlReset clockControlConfig
       IlaControl{..} availableLinkMask (singleton (resize <$> domainDiff))
 
@@ -222,8 +224,8 @@ fullMeshHwTest cname cpath refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps
 
 -- | Top entity for this test. See module documentation for more information.
 fullMeshHwCcTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200A ->
-  "PCIE_CLK_Q0_C" ::: DiffClock Ext200B ->
+  "PCIE_CLK_Q0" ::: DiffClock Ext200A ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200B ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "GTH_RX_NS_0" ::: Signal GthRxA (BitVector 1) ->
   "GTH_RX_PS_0" ::: Signal GthRxA (BitVector 1) ->
@@ -280,12 +282,14 @@ fullMeshHwCcTest
   (   txns0, txps0, hwFincFdecs0, _callistoResult0, _callistoReset0
     , _dataCounts0, _stats0, spiDone0, spiOut0, transceiversFailedAfterUp0, allUp0
     , allStable0 ) = fullMeshHwTest @Ext200A @GthRxA @GthTxA
-                       "X0Y10" "clk0" refClk0 sysClk ilaControl0 rxns0 rxps0 miso0
+                       "X0Y10" "clk0" (SNat @1)
+                       refClk0 sysClk ilaControl0 rxns0 rxps0 miso0
 
   (   txns1, txps1, hwFincFdecs1, _callistoResult1, _callistoReset1
     , _dataCounts1, _stats1, spiDone1, spiOut1, transceiversFailedAfterUp1, allUp1
     , allStable1 ) = fullMeshHwTest @Ext200B @GthRxB @GthTxB
-                       "X0Y9" "clk0-1" refClk1 sysClk ilaControl1 rxns1 rxps1 miso1
+                       "X0Y9" "clk0-1" (SNat @2)
+                       refClk1 sysClk ilaControl1 rxns1 rxps1 miso1
 
   -- check that tests are not synchronously start before all
   -- transceivers are up
@@ -325,8 +329,8 @@ fullMeshHwCcTest
 {-# ANN fullMeshHwCcTest Synthesize
   { t_name = "fullMeshHwCcTest"
   , t_inputs =
-    [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
-    , (PortProduct "PCIE_CLK_Q0_C") [PortName "p", PortName "n"]
+    [ (PortProduct "PCIE_CLK_Q0") [PortName "p", PortName "n"]
+    , (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
     , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
     , PortName "GTH_RX_NS_0"
     , PortName "GTH_RX_PS_0"

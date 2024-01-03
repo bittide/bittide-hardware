@@ -237,7 +237,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
       callistoResult
 
   callistoResult =
-    callistoClockControlWithIla @(NodeCount - 1) @CccBufferSize
+    callistoClockControlWithIla @(NodeCount - 1) @CccBufferSize (SNat @1)
       (head txClocks) sysClk clockControlReset clockControlConfig
       IlaControl{..} availableLinkMask (fmap (fmap resize) domainDiffs)
 

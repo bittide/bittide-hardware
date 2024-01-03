@@ -114,7 +114,7 @@ trueFor50s clk rst =
 -- | Top entity for this test. See module documentation for more information.
 transceiversUpTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200A ->
-  "PCIE_CLK_Q0_C" ::: DiffClock Ext200B ->
+  "PCIE_CLK_Q0" ::: DiffClock Ext200B ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "GTH_RX_NS_0" ::: Signal GthRxA (BitVector 1) ->
   "GTH_RX_PS_0" ::: Signal GthRxA (BitVector 1) ->

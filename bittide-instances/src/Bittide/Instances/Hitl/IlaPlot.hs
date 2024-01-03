@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -406,11 +406,12 @@ data DiffResult a =
 -- additionally dumping all the data that is required for producing
 -- plots of the clock control behavior.
 callistoClockControlWithIla ::
-  forall n m sys dyn margin framesize. HasCallStack =>
-  (KnownDomain dyn , KnownDomain sys, HasSynchronousReset sys) =>
-  (KnownNat n, KnownNat m, KnownNat margin, KnownNat framesize) =>
-  (1 <= n, 1 <= m, n + m <= 32, 1 <= framesize, 6 + n * (m + 4) <= 1024) =>
+  forall n m sys dyn margin framesize i. HasCallStack =>
+  (KnownDomain dyn, KnownDomain sys, HasSynchronousReset sys) =>
+  (KnownNat i, KnownNat n, KnownNat m, KnownNat margin, KnownNat framesize) =>
+  (1 <= i, 1 <= n, 1 <= m, n + m <= 32, 1 <= framesize, 6 + n * (m + 4) <= 1024) =>
   CompressedBufferSize <= m =>
+  SNat i ->
   Clock dyn ->
   Clock sys ->
   Reset sys ->
@@ -422,7 +423,7 @@ callistoClockControlWithIla ::
   Vec n (Signal sys (DataCount m)) ->
   -- ^ Statistics provided by elastic buffers.
   Signal sys (CallistoResult n)
-callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
+callistoClockControlWithIla i dynClk clk rst ccc IlaControl{..} mask ebs =
   hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> result)
  where
   result = callistoClockControl clk rst enableGen ccc mask ebs
@@ -530,15 +531,22 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
 
   ilaInstance :: Signal sys ()
   ilaInstance =
-    setName @"ilaPlot" $ ila
-      ( ilaConfig
-           $ "trigger_1"
-          :> "capture_1"
-          :> "condition"
-          :> "global"
-          :> "local"
-          :> "data"
-          :> Nil
+    ila
+      ( ilaConfig $ case snatToNum i :: Integer of
+          2 -> "trigger_2"
+            :> "capture_2"
+            :> "condition_2"
+            :> "global_2"
+            :> "local_2"
+            :> "data_2"
+            :> Nil
+          _ -> "trigger_1"
+            :> "capture_1"
+            :> "condition_1"
+            :> "global_1"
+            :> "local_1"
+            :> "data_1"
+            :> Nil
       ) { depth = D16384 }
       -- the ILA must run on a stable clock
       clk
