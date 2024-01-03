@@ -24,7 +24,7 @@ createDomain vXilinxSystem{vName="Ext200B", vPeriod=hzToPeriod 200e6, vResetKind
 createDomain vXilinxSystem{vName="Basic300", vPeriod=hzToPeriod 300e6}
 createDomain vXilinxSystem{vName="Ext300", vPeriod=hzToPeriod 300e6, vResetKind=Asynchronous}
 createDomain vXilinxSystem{vName="Basic50", vPeriod= hzToPeriod 50e6}
-createDomain vXilinxSystem{vName="External", vPeriod=hzToPeriod 200e6, vResetKind=Asynchronous}
+createDomain vXilinxSystem{vName="External", vPeriod=hzToPeriod 200e6}
 createDomain vXilinxSystem{vName="GthRx", vPeriod=hzToPeriod 125e6}
 createDomain vXilinxSystem{vName="GthTx", vPeriod= hzToPeriod 125e6}
 createDomain vXilinxSystem{vName="Internal", vPeriod=hzToPeriod 200e6}
