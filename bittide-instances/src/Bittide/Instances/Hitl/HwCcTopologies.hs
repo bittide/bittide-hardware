@@ -384,7 +384,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       callistoResult
 
   callistoResult =
-    callistoClockControlWithIla @(FpgaCount - 1) @CccBufferSize
+    callistoClockControlWithIla @(FpgaCount - 1) @CccBufferSize (SNat @1)
       (head transceivers.txClocks) sysClk clockControlReset clockControlConfig
       IlaControl{..} (mask <$> cfg) (fmap (fmap resize) domainDiffs)
 
