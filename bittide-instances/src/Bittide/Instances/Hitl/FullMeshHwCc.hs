@@ -205,7 +205,7 @@ fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
 -- be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
 -- results to a RiscV core (see 'fullMeshRiscvCopyTest')
 fullMeshHwTest ::
-  "SMA_MGT_REFCLK_C" ::: Clock Basic200 ->
+  "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
@@ -265,7 +265,7 @@ fullMeshHwTest refClk sysClk testRst IlaControl{..} rxns rxps miso =
 
   (head -> (txClock :: Clock GthTx), rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
     transceiverPrbsN
-      @GthTx @GthRx @Basic200 @Basic125 @GthTx @GthRx
+      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       refClk sysClk gthAllReset
       c_CHANNEL_NAMES c_CLOCK_PATHS rxns rxps
 
@@ -402,8 +402,8 @@ trueFor5s clk rst =
 
 -- | Top entity for this test. See module documentation for more information.
 fullMeshHwCcWithRiscvTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Basic200 ->
-  "SYSCLK_300" ::: DiffClock Basic300 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRx ->
   "GTH_RX_PS" ::: TransceiverWires GthRx ->
@@ -425,12 +425,11 @@ fullMeshHwCcWithRiscvTest ::
 fullMeshHwCcWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (txns, txps, (riscvFinc, riscvFdec), syncOut, spiDone, spiOut)
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Basic200
+  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
 
-  (sysClk, sysLock0) = clockWizardDifferential (SSymbol @"SysClk") sysClkDiff noReset
-  sysLock1 = xpmCdcSingle sysClk sysClk sysLock0 -- improvised reset syncer
-  sysRst = unsafeFromActiveLow sysLock1
-    `orReset` unsafeFromActiveLow startTest
+  (sysClk, sysRst0) = clockWizardDifferential sysClkDiff noReset
+  sysRst = sysRst0 `orReset` unsafeFromActiveLow startTest
+
   --
   -- 'syncOutGenerator' is used to drive the 'SYNC_OUT' signal, which
   -- is only connected for the last node in the network and wired back
@@ -607,8 +606,8 @@ fullMeshHwCcWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
 -- | Top entity for this test. See module documentation for more information.
 fullMeshHwCcTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Basic200 ->
-  "SYSCLK_300" ::: DiffClock Basic300 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRx ->
   "GTH_RX_PS" ::: TransceiverWires GthRx ->
@@ -630,12 +629,11 @@ fullMeshHwCcTest ::
 fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (txns, txps, unbundle hwFincFdecs, syncOut, spiDone, spiOut)
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Basic200
+  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
 
-  (sysClk, sysLock0) = clockWizardDifferential (SSymbol @"SysClk") sysClkDiff noReset
-  sysLock1 = xpmCdcSingle sysClk sysClk sysLock0 -- improvised reset syncer
-  sysRst = unsafeFromActiveLow sysLock1
-    `orReset` unsafeFromActiveLow startTest
+  (sysClk, sysRst0) = clockWizardDifferential sysClkDiff noReset
+  sysRst = sysRst0 `orReset` unsafeFromActiveLow startTest
+
   --
   -- 'syncOutGenerator' is used to drive the 'SYNC_OUT' signal, which
   -- is only connected for the last node in the network and wired back

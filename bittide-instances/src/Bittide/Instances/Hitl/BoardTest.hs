@@ -55,8 +55,8 @@ check clk rst dut stimuli =
 -- | Testing circuit for `plus`. Feeds the circuit with inputs and checks
 -- the received output against the expected output.
 boardTestSimple ::
-  "CLK_125MHZ" ::: DiffClock Basic125 ->
-  "" ::: Signal Basic125
+  "CLK_125MHZ" ::: DiffClock Ext125 ->
+  "" ::: Signal Ext125
     ( "done" ::: Bool
     , "success" ::: Bool
     )
@@ -91,8 +91,8 @@ makeTopEntity 'boardTestSimple
 -- | Testing circuit for `plus` and `minus`. Feeds the circuit with inputs and
 -- checks the received output against the expected output.
 boardTestExtended ::
-  "CLK_125MHZ" ::: DiffClock Basic125 ->
-  "" ::: Signal Basic125
+  "CLK_125MHZ" ::: DiffClock Ext125 ->
+  "" ::: Signal Ext125
     ( "done" ::: Bool
     , "success" ::: Bool
     )
@@ -137,7 +137,7 @@ boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
       testSuccess
 
 
-  boardTestIla :: Signal Basic125 ()
+  boardTestIla :: Signal Ext125 ()
   boardTestIla =
     setName @"boardTestIla" $
     ila
@@ -154,7 +154,7 @@ boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
       -- Trigger when starting either test
       (testStartA .||. testStartB)
       -- Always capture
-      (pure True :: Signal Basic125 Bool)
+      (pure True :: Signal Ext125 Bool)
 
       -- Debug probes
       testStartA

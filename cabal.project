@@ -16,7 +16,7 @@ write-ghc-environment-files: always
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
-index-state: 2023-08-24T19:08:07Z
+index-state: 2023-12-05T05:33:28Z
 
 with-compiler: ghc-9.0.2
 
@@ -55,44 +55,44 @@ package elastic-buffer-sim
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
-index-state: 2023-05-02T21:48:25Z
+index-state: 2023-12-05T05:33:28Z
 
 -- We need an up-to-date Clash and libraries. Among other features, this adds
 -- support for dynamic clocks and Xilinx primitive support.
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 3234dac5516b8afa9c5efb49233c731158283f45
+  tag: 72edd7aabb50537910c306c7efe57cf5f82bf759
   subdir: clash-prelude
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 3234dac5516b8afa9c5efb49233c731158283f45
+  tag: 72edd7aabb50537910c306c7efe57cf5f82bf759
   subdir: clash-ghc
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 3234dac5516b8afa9c5efb49233c731158283f45
+  tag: 72edd7aabb50537910c306c7efe57cf5f82bf759
   subdir: clash-lib
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 3234dac5516b8afa9c5efb49233c731158283f45
+  tag: 72edd7aabb50537910c306c7efe57cf5f82bf759
   subdir: clash-prelude-hedgehog
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 3234dac5516b8afa9c5efb49233c731158283f45
+  tag: 72edd7aabb50537910c306c7efe57cf5f82bf759
   subdir: clash-cores
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-protocols.git
-  tag: cce5c068bcf95dcd92797d0f284aed0b13eb9e3b
+  tag: fcd72e95d06224e7d749451a6646ae1e1b892607
 
 source-repository-package
   type: git

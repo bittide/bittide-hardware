@@ -52,7 +52,7 @@ type TransceiverWires dom = Vec 7 (Signal dom (BitVector 1))
 -- | Worker function for 'transceiversUpTest'. See module documentation for more
 -- information.
 goTransceiversUpTest ::
-  "SMA_MGT_REFCLK_C" ::: Clock Basic200 ->
+  "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
   "GTH_RX_NS" ::: TransceiverWires GthRx ->
@@ -90,7 +90,7 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
 
   (_txClocks, rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
     transceiverPrbsN
-      @GthTx @GthRx @Basic200 @Basic125 @GthTx @GthRx
+      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       refClk sysClk gthAllReset
       c_CHANNEL_NAMES c_CLOCK_PATHS rxns rxps
 
@@ -115,8 +115,8 @@ trueFor50s clk rst =
 
 -- | Top entity for this test. See module documentation for more information.
 transceiversUpTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Basic200 ->
-  "SYSCLK_300" ::: DiffClock Basic300 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRx ->
   "GTH_RX_PS" ::: TransceiverWires GthRx ->
@@ -134,11 +134,10 @@ transceiversUpTest ::
 transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (txns, txps, syncOut, spiDone, spiOut)
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Basic200
+  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
 
-  (sysClk, sysLock0) = clockWizardDifferential (SSymbol @"SysClk") sysClkDiff noReset
-  sysLock1 = xpmCdcSingle sysClk sysClk sysLock0 -- improvised reset syncer
-  sysRst = unsafeFromActiveLow sysLock1
+  (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
+
   testRst = sysRst `orReset` unsafeFromActiveLow startTest `orReset` syncInRst
   syncOut = startTest
   syncInRst =

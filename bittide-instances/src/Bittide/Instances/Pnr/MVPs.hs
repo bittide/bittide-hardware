@@ -29,18 +29,18 @@ speedChangeToPins = \case
  NoChange -> (False, False)
 
 clockControlDemo1 ::
-  "USER_SMA_CLOCK" ::: DiffClock Basic200A ->
-  "FMC_HPC_CLK1_M2C" ::: DiffClock Basic200B ->
-  "drainFifoA" ::: Reset Basic200A ->
-  "drainFifoB" ::: Reset Basic200B ->
-  ( "domA" ::: Signal Basic200A
+  "USER_SMA_CLOCK" ::: DiffClock Ext200A ->
+  "FMC_HPC_CLK1_M2C" ::: DiffClock Ext200B ->
+  "drainFifoA" ::: Reset Ext200A ->
+  "drainFifoB" ::: Reset Ext200B ->
+  ( "domA" ::: Signal Ext200A
     ( "" :::
       ( "FINC" ::: FINC
       , "FDEC" ::: FDEC
       )
     , "isStable" ::: Bool
     )
-  ,  "domB" ::: Signal Basic200B
+  ,  "domB" ::: Signal Ext200B
     ( "" :::
       ( "FINC" ::: FINC
       , "FDEC" ::: FDEC
@@ -65,11 +65,11 @@ clockControlDemo1 clkSma clkFmc drainFifoA drainFifoB =
   clkA = ibufds clkSma
   clkB = ibufds clkFmc
 
-  clockConfigA :: ClockControlConfig Basic200A 12 8 1500000
-  clockConfigA = $(lift (defClockConfig @Basic200A))
+  clockConfigA :: ClockControlConfig Ext200A 12 8 1500000
+  clockConfigA = $(lift (defClockConfig @Ext200A))
 
-  clockConfigB :: ClockControlConfig Basic200B  12 8 1500000
-  clockConfigB = $(lift (defClockConfig @Basic200B))
+  clockConfigB :: ClockControlConfig Ext200B  12 8 1500000
+  clockConfigB = $(lift (defClockConfig @Ext200B))
 
 genericClockControlDemo0 ::
   forall recovered controlled  dataCountBits margin framesize.
@@ -115,7 +115,7 @@ noReset :: KnownDomain dom => Reset dom
 noReset = unsafeFromActiveHigh (pure False)
 
 clockControlDemo0 ::
-  "SYSCLK_300" ::: DiffClock Basic300 ->
+  "SYSCLK_300" ::: DiffClock Ext300 ->
   "USER_SMA_CLOCK" ::: DiffClock External ->
   "rstExternal" ::: Reset External ->
   "drainFifo" ::: Reset External ->
@@ -135,13 +135,9 @@ clockControlDemo0 clkSys clkSma =
  where
   clockConfig :: ClockControlConfig External 12 8 1500000
   clockConfig = $(lift (defClockConfig @External))
+
   (clkRecovered, _) =
-    clockWizardDifferential
-    @_
-    @Internal
-    (SSymbol @"clkWiz300to200")
-    clkSys
-    noReset
+    clockWizardDifferential @(Clock Internal, Reset Internal) clkSys noReset
 
   clkControlled = ibufds clkSma
 
