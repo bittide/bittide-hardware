@@ -69,17 +69,28 @@ BUILD_CACHE_PATTERNS = (
     f"{PWD}/dist-newstyle/",
 )
 
+def log(msg):
+    """A poor man's logging function"""
+    print(f"[{datetime.datetime.now().isoformat()}] {msg}", file=sys.stderr)
+
 @functools.lru_cache()
 def get_all_git_files():
     output = subprocess.check_output(["git", "ls-files"]).decode()
     paths = (line.strip() for line in output.split("\n") if line.strip())
     return frozenset(paths)
 
+def sha256sum_file(path : str) -> str:
+    hash = hashlib.sha256()
+    with open(path, "rb") as fp:
+        hash.update(fp.read())
+    digest = hash.hexdigest()
+    log(f"{digest} {path}")
+    return digest
+
 def sha256sum_files(file_paths : Sequence[str]) -> str:
     hash = hashlib.sha256()
     for path in sorted(set(file_paths)):
-        with open(path, "rb") as fp:
-            hash.update(fp.read())
+        hash.update(sha256sum_file(path).encode())
     return hash.hexdigest()
 
 
@@ -139,8 +150,7 @@ class Mc:
         self._run(["mc", "mb", "--ignore-existing", self._get_bucket()])
 
     def _get_pretty_cmd(self, cmd):
-        cmd = ' '.join(cmd).replace(self.password, "<masked-password>")
-        return f"[{datetime.datetime.now().isoformat()}] {cmd}"
+        return ' '.join(cmd).replace(self.password, "<masked-password>")
 
     def _pipe(self, cmd0, cmd1):
         """
@@ -151,7 +161,7 @@ class Mc:
         Prints executed command to stderr (with masked password).
         """
         cmds = cmd0 + ["|"] + cmd1
-        print(f"{self._get_pretty_cmd(cmds)}", file=sys.stderr)
+        log(self._get_pretty_cmd(cmds))
 
         cmd0_ps = subprocess.Popen(cmd0, stdout=subprocess.PIPE)
         try:
@@ -170,7 +180,7 @@ class Mc:
 
         Prints executed command to stderr (with masked password).
         """
-        print(self._get_pretty_cmd(cmd), file=sys.stderr)
+        log(self._get_pretty_cmd(cmd))
         return subprocess.check_output(cmd)
 
     def _get_filename(self):
