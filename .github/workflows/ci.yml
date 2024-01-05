@@ -112,8 +112,8 @@ jobs:
             echo "Restored cache, no need to update cabal package list"
           fi
 
-      - run: ./cargo.sh build --release
-      - run: ./cargo.sh build
+      - run: ./cargo.sh build --frozen --release
+      - run: ./cargo.sh build --frozen
       - run: cabal build all
 
       - run: cache push cabal
@@ -274,7 +274,7 @@ jobs:
         run: |
           mkdir -p hitl-plots/hw
           mkdir -p hitl-plots/sw
-          ./cargo.sh build --release
+          ./cargo.sh build --frozen --release
           cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest/ila-data/probe_test_start/ hitl-plots/hw Bittide_Instances_Hitl_FullMeshHwCc_fullMeshHwCcTest_callistoClockControlWithIla
           cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest/ila-data/probe_test_start/ hitl-plots/sw Bittide_Instances_Hitl_FullMeshSwCc_fullMeshSwCcTest_callistoClockControlWithIla
 
