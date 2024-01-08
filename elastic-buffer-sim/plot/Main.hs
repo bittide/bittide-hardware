@@ -5,26 +5,35 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -fplugin GHC.TypeLits.Extra.Solver #-}
+{-# OPTIONS_GHC -fplugin GHC.TypeLits.Normalise #-}
+{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
+
+{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 module Main (main) where
 
 import Clash.Prelude
-  ( BitPack(..), SNat(..), BitSize, Nat, KnownNat, Vec
-  , type (*), type (-), type (<=), (.&&.), (.|.)
-  , natToNum, shift
-  )
+  (BitPack(..), SNat(..), BitSize, Vec, (.&&.), (.|.), natToNum, shift, extend)
+
 import Clash.Signal.Internal (Femtoseconds(..))
 import qualified Clash.Sized.Vector as Vec
-  ( unsafeFromList, toList, repeat, zip, zipWith
-  )
+  (unsafeFromList, toList, repeat, zip, zipWith)
+
+import GHC.TypeLits
+import Data.Type.Equality ((:~:)(..))
+import GHC.TypeLits.Compare ((:<=?)(..))
+import GHC.TypeLits.Witnesses ((%<=?))
+import GHC.TypeLits.Witnesses qualified as TLW (SNat(..))
 
 import Conduit
   ( ConduitT, Void, (.|)
   , runConduit, sourceHandle, scanlC, dropC, mapC, sinkList, yield, await
   )
 import Control.Exception (Exception, throw)
-import Control.Monad (when, forM, foldM, filterM)
+import Control.Monad (forM, foldM, filterM)
 import Data.ByteString.Internal (w2c)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
@@ -37,22 +46,22 @@ import Data.Csv.Conduit
   ( CsvStreamRecordParseError, CsvStreamHaltParseError(..)
   , fromCsvStreamError
   )
-import Data.List (uncons)
-import Data.Maybe (fromMaybe)
+import Data.List (uncons, sort)
+import Data.Maybe (fromMaybe, fromJust)
 import Data.Proxy (Proxy(..))
 import qualified Data.Text as Text (unpack)
 import qualified Data.Vector as Vector (length)
 import GHC.IO.Exception (IOException(..), IOErrorType(..))
 import System.IO (IOMode(..), Handle, openFile, hClose)
-import System.Directory (listDirectory, doesDirectoryExist, createDirectoryIfMissing)
+import System.Directory
+  (listDirectory, doesDirectoryExist, createDirectoryIfMissing)
 import System.Environment (getArgs, getProgName)
 import System.FilePath ((</>), takeExtensions, takeBaseName)
 
 import Bittide.Plot
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker
-import Bittide.Instances.Hitl.FullMeshHwCc
-import Bittide.Instances.Hitl.FullMeshHwCc.IlaPlot
+import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Domains
 import Bittide.Topology.Graph
 
@@ -97,15 +106,16 @@ data Capture (n :: Nat) (m :: Nat) =
     , triggerSignal   :: Hex Bool
     , capture         :: Hex Bool
     , captureCond     :: Hex CaptureCondition
-    , globalTimestamp :: Hex GlobalTimestamp
-    , localTimestamp  :: Hex LocalTimestamp
+    , globalTimestamp :: Hex (GlobalTimestamp Basic125)
+    , localTimestamp  :: Hex (DiffResult (LocalTimestamp GthTx))
     , plotData        :: Hex (PlotData n m)
     }
 
 instance (KnownNat n, KnownNat m) => FromRecord (Capture n m) where
   parseRecord v =
-    if Vector.length v /= 9
-    then fail $ "Row with more than 9 fields" <> show v
+    let len = 9 in
+    if Vector.length v /= len
+    then fail $ "Row with more than " <> show len <> " fields"
     else Capture
       <$> v .! 0 <*> v .! 1 <*> v .! 2 <*> v .! 3 <*> v .! 4
       <*> v .! 5 <*> v .! 6 <*> v .! 7 <*> v .! 8
@@ -113,27 +123,33 @@ instance (KnownNat n, KnownNat m) => FromRecord (Capture n m) where
 -- | A data point resulting from post processing the captured data.
 data DataPoint (n :: Nat) (m :: Nat) =
   DataPoint
-    { dpIndex       :: Int
+    { dpIndex :: Int
       -- ^ the index of the corresponding sample of the dump
-    , dpLocalStamp  :: LocalTimestamp
-      -- ^ the local time stamp counting the cycles of the dynamic clock
-    , dpGlobalTime  :: Femtoseconds
+    , dpGlobalTime :: Femtoseconds
       -- ^ the absolute number of femtoseconds since the start of the
       -- dump according to the global synchronized clock
-    , dpLocalTime   :: Femtoseconds
+    , dpLastScheduledGlobalTime :: Femtoseconds
       -- ^ the absolute number of femtoseconds since the start of the
-      -- dump according to the local dynamic clock
-    , dpDrift       :: Double
+      -- dump according to the global synchronized clock at the time
+      -- of the last scheduled capture
+    , dpLocalTime :: Femtoseconds
+      -- ^ the absolute number of femtoseconds since the start of the
+      -- dump according to the local clock
+    , dpLastScheduledLocalTime :: Femtoseconds
+      -- ^ the absolute number of femtoseconds since the start of the
+      -- dump according to the local clock at the time
+      -- of the last scheduled capture
+    , dpDrift :: Femtoseconds
       -- ^ the drift between the global an the local clocks in
-      -- femtoseconds per cycle of the global clock
-    , dpCCChanges   :: Int
+      -- femtoseconds per scheduled capture period
+    , dpCCChanges :: Int
       -- ^ the accumulated number FINC/FDECs integrated over time
-    , dpDataCounts  :: Vec n (DataCount m)
-      -- ^ the elastic buffer data counts
-    , dpStability   :: Vec n StabilityIndication
-      -- ^ the stability indicators for each of the elastic buffers
-    , dpRfStage      :: ReframingStage
+    , dpRfStage :: ReframingStage
       -- ^ the reframing stage
+    , dpDataCounts :: Vec n (DataCount m)
+      -- ^ the elastic buffer data counts
+    , dpStability :: Vec n StabilityIndication
+      -- ^ the stability indicators for each of the elastic buffers
     }
 
 -- | Multiplies some 'Femtoseconds' with any numerical value. Note
@@ -153,76 +169,102 @@ instance Exception (CsvParseError CsvStreamRecordParseError)
 
 -- | Data post processor.
 postProcess ::
-  (KnownNat n, KnownNat k, Monad m) =>
-  ConduitT (Capture n k) (DataPoint n k) m ()
+  forall n k c m .
+  (KnownNat n, KnownNat k, KnownNat c, Monad m, c <= k) =>
+  ConduitT (Capture n c) (DataPoint n k) m ()
 postProcess = scanlC process initDummy
-  -- finally drop the dummy, the trigger and the calibration entry
-  .| (dropC 3 >> mapC id)
+  -- finally drop the dummy, the trigger and the calibration entries
+  .| (dropC 4 >> mapC id)
  where
   process prevDP Capture{..} =
     let PlotData{..}    = fromHex plotData
         captureType     = fromHex captureCond
-        localStamp      = fromHex localTimestamp
+
+        localStamp      =
+          let ref = "[" <> show sampleInBuffer <> "]"
+          in case fromHex localTimestamp of
+            NoReference  -> error $ "LT: no reference " <> ref
+            TooLarge     -> error $ "LT: too large " <> ref
+            Difference x -> x + 1
+
+        globalTime      = globalTsToFs $ fromHex globalTimestamp
+        localTime       = case captureType of
+          UntilTrigger -> globalTime
+          _            -> dpLocalTime prevDP
+                        + localStamp ~* clockPeriodFs (Proxy @GthTx)
+
+        globalTimeDelta = globalTime
+                        - dpLastScheduledGlobalTime prevDP
+        localTimeDelta  = localTime
+                        - dpLastScheduledLocalTime prevDP
+
+        driftPerCycle   = case captureType of
+          DataChange -> dpDrift prevDP
+          _          -> fromIntegral (globalTimeDelta - localTimeDelta)
+
         ccChanges       = dpCCChanges prevDP
                         + natToNum @AccWindowHeight * sign dSpeedChange
-        globalTime      = globalTsToFs $ fromHex globalTimestamp
-        globalTimeDelta = globalTime - dpGlobalTime prevDP
-        localTime       = case captureType of
-          UntilTrigger -> 0
-          _            ->  (+) (dpLocalTime prevDP)
-                        $ (~*) (localStamp - dpLocalStamp prevDP)
-                        $  (+) (clockPeriodFs (Proxy @GthTx))
-                        $ (~*) (dpCCChanges prevDP)
-                               (cccStepSize clockControlConfig)
-        localTimeDelta  = localTime - dpLocalTime prevDP
-        driftPerCycle   = fromIntegral (globalTimeDelta - localTimeDelta)
-                        / fromIntegral globalTimeDelta
-    in DataPoint
-         { dpIndex      = sampleInBuffer
-         , dpLocalStamp = localStamp
-         , dpGlobalTime = globalTime
-         , dpLocalTime  = localTime
-         , dpDrift      = driftPerCycle
-         , dpCCChanges  = ccChanges
-         , dpDataCounts = (\(x,_,_) -> x) <$> dEBData
-         , dpStability  =
-             let combine (_, st, se) StabilityIndication{..} =
-                   StabilityIndication
-                     { stable  = fromMaybe stable st
-                     , settled = fromMaybe settled se
-                     }
-              in Vec.zipWith combine dEBData $ dpStability prevDP
-         , dpRfStage = case dRfStageChange of
-             Stable   -> dpRfStage prevDP
-             ToDetect -> RSDetect
-             ToWait   -> RSWait
-             ToDone   -> RSDone
-         }
 
-  globalTsToFs :: GlobalTimestamp -> Femtoseconds
+        dataCounts      = (\(x,_,_) y -> extend @_ @c @(k - c) x + y)
+                            <$> dEBData
+                            <*> dpDataCounts prevDP
+     in DataPoint
+          { dpIndex                   = sampleInBuffer
+          , dpGlobalTime              = globalTime
+          , dpLastScheduledGlobalTime =
+              case captureType of
+                DataChange -> dpLastScheduledGlobalTime prevDP
+                _          -> globalTime
+          , dpLocalTime               = localTime
+          , dpLastScheduledLocalTime  =
+              case captureType of
+                DataChange -> dpLastScheduledLocalTime prevDP
+                _          -> localTime
+          , dpDrift                   = driftPerCycle
+          , dpCCChanges               = ccChanges
+          , dpRfStage                 =
+              case dRfStageChange of
+                Stable   -> dpRfStage prevDP
+                ToDetect -> RSDetect
+                ToWait   -> RSWait
+                ToDone   -> RSDone
+          , dpDataCounts              = dataCounts
+          , dpStability               =
+              let combine (_, st, se) StabilityIndication{..} =
+                    StabilityIndication
+                      { stable  = fromMaybe stable st
+                      , settled = fromMaybe settled se
+                      }
+               in Vec.zipWith combine dEBData $ dpStability prevDP
+          }
+
+  initDummy = DataPoint
+    { dpIndex                   = -1
+    , dpGlobalTime              = 0
+    , dpLastScheduledGlobalTime = 0
+    , dpLocalTime               = 0
+    , dpLastScheduledLocalTime  = 0
+    , dpDrift                   = 0
+    , dpCCChanges               = 0
+    , dpRfStage                 = RSDetect
+    , dpDataCounts              = Vec.repeat 0
+    , dpStability               =
+        Vec.repeat $ StabilityIndication
+          { stable  = False
+          , settled = False
+          }
+    }
+
+  globalTsToFs :: GlobalTimestamp Basic125 -> Femtoseconds
   globalTsToFs (pulses, cycles) =
     (pulses ~* syncPulsePeriodFs) +
     (cycles ~* clockPeriodFs (Proxy @Basic125))
    where
     syncPulsePeriodFs = Femtoseconds $ natToNum @(1000 * SyncPulsePeriod)
 
-  initDummy = DataPoint
-    { dpIndex      = -1
-    , dpLocalStamp = 0
-    , dpGlobalTime = 0
-    , dpLocalTime  = 0
-    , dpDrift      = 0
-    , dpCCChanges  = 0
-    , dpDataCounts = Vec.repeat 0
-    , dpStability  = Vec.repeat $ StabilityIndication
-        { stable  = False
-        , settled = False
-        }
-    , dpRfStage    = RSDetect
-    }
-
 fromCsvDump ::
-  (KnownNat n, KnownNat m, 1 <= n) =>
+  forall n m.
+  (KnownNat n, KnownNat m, 1 <= n, CompressedBufferSize <= m) =>
   (Handle, FilePath) ->
   ConduitT () Void IO [DataPoint (n - 1) m]
 fromCsvDump  (csvHandle, csvFile) =
@@ -234,7 +276,7 @@ fromCsvDump  (csvHandle, csvFile) =
      -- data entries are valid
   .| (dropC 2 >> checkForErrors)
      -- post process the data
-  .| postProcess
+  .| postProcess @(n - 1) @m @CompressedBufferSize
      -- return as a list
   .| sinkList
  where
@@ -262,34 +304,35 @@ main = getArgs >>= \case
                    <> "callistoClockControlWithIla"
       [x] -> return x
       _   -> wrongNumberOfArguments
-    postProcessData <- do
-      dirs <- listDirectory ilaDir
-        >>= filterM doesDirectoryExist
-          . fmap (ilaDir </>)
-      when (length dirs /= nodeCount) $
-        error $ "There are "
-             <> (if length dirs > nodeCount then "more" else "less")
-             <> " than " <> show nodeCount <> " directories in "
-             <> ilaDir <> ". Aborting"
-      forM dirs $ \d -> listDirectory d
-        >>= fmap fst
-          . maybe
-              (error $ d <> " does not contain a matching .csv file. Aborting.")
-              return
-          . uncons
-          . filter (isIlaDumpFile prefix)
-          . fmap (d </>)
-        >>= \file -> do
-          h <- openFile file ReadMode
-          rs <- runConduit $ fromCsvDump @NodeCount @DataCountSize (h, file)
-          hClose h
-          return (toPlotData <$> rs)
-    createDirectoryIfMissing True outDir
-    plotTopology outDir (complete (SNat :: SNat NodeCount))
-      $ Vec.unsafeFromList postProcessData
- where
-  nodeCount = natToNum @NodeCount
 
+    dirs <- listDirectory ilaDir
+      >>= filterM doesDirectoryExist . fmap (ilaDir </>)
+
+    case fromJust $ someNatVal $ toInteger $ length dirs of
+      SomeNat (_ :: p n) -> case TLW.SNat @1 %<=? TLW.SNat @n of
+        LE Refl -> do
+          postProcessData <- do
+            forM (sort dirs) $ \d -> listDirectory d
+              >>= fmap fst
+                . maybe
+                    (error $ d <> " does not contain a matching .csv file. "
+                          <> "Aborting.")
+                    return
+                . uncons
+                . filter (isIlaDumpFile prefix)
+                . fmap (d </>)
+              >>= \file -> do
+                h <- openFile file ReadMode
+                rs <- runConduit $ fromCsvDump @n @CccBufferSize (h, file)
+                hClose h
+                return (toPlotData <$> rs)
+
+          createDirectoryIfMissing True outDir
+          plotTopology outDir (complete (SNat :: SNat n))
+            $ Vec.unsafeFromList postProcessData
+
+        _ -> error $ ilaDir <> " is expected to contain sub-directories."
+ where
   isIlaDumpFile prefix =
          (== ".csv") . takeExtensions
     .&&. and . zipWith (==) prefix . takeBaseName

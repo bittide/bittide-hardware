@@ -1,0 +1,45 @@
+
+\begin{tikzpicture}[>=latex,line join=bevel,]
+%%
+\begin{scope}[every node/.style={fill,text=white,font=\Large\tt,minimum size=2em,inner sep=0pt}]
+  \node (0) at (27.0bp,77.122bp) [draw,ellipse] {7};
+  \node (1) at (122.01bp,74.355bp) [draw,ellipse] {3};
+  \node (2) at (74.982bp,18.0bp) [draw,ellipse] {5};
+  \node (3) at (55.356bp,111.02bp) [draw,ellipse] {1};
+  \node (4) at (98.387bp,108.32bp) [draw,ellipse] {2};
+  \node (5) at (71.74bp,68.437bp) [draw,ellipse] {0};
+  \node (6) at (37.295bp,35.192bp) [draw,ellipse] {6};
+  \node (7) at (111.47bp,35.359bp) [draw,ellipse] {4};
+\end{scope}
+\begin{scope}[line width=0.3em]
+  \draw [] (0) ..controls (66.946bp,75.959bp) and (82.056bp,75.519bp)  .. (1);
+  \draw [] (0) ..controls (46.882bp,52.625bp) and (55.119bp,42.475bp)  .. (2);
+  \draw [] (0) ..controls (40.76bp,93.57bp) and (41.341bp,94.264bp)  .. (3);
+  \draw [] (0) ..controls (58.132bp,90.729bp) and (67.301bp,94.737bp)  .. (4);
+  \draw [] (0) ..controls (53.437bp,71.99bp) and (53.589bp,71.961bp)  .. (5);
+  \draw [] (0) ..controls (31.905bp,57.144bp) and (32.394bp,55.156bp)  .. (6);
+  \draw [] (0) ..controls (61.269bp,60.18bp) and (76.948bp,52.428bp)  .. (7);
+  \draw [] (1) ..controls (102.25bp,50.677bp) and (94.594bp,41.503bp)  .. (2);
+  \draw [] (1) ..controls (93.138bp,90.235bp) and (84.324bp,95.082bp)  .. (3);
+  \draw [] (1) ..controls (110.29bp,91.211bp) and (110.1bp,91.481bp)  .. (4);
+  \draw [] (1) ..controls (95.014bp,71.177bp) and (94.921bp,71.166bp)  .. (5);
+  \draw [] (1) ..controls (87.396bp,58.355bp) and (72.074bp,51.271bp)  .. (6);
+  \draw [] (1) ..controls (116.85bp,55.273bp) and (116.59bp,54.313bp)  .. (7);
+  \draw [] (2) ..controls (67.745bp,52.3bp) and (62.666bp,76.372bp)  .. (3);
+  \draw [] (2) ..controls (83.683bp,51.577bp) and (89.595bp,74.393bp)  .. (4);
+  \draw [] (2) ..controls (73.522bp,40.724bp) and (73.211bp,45.564bp)  .. (5);
+  \draw [] (2) ..controls (52.497bp,28.257bp) and (52.371bp,28.315bp)  .. (6);
+  \draw [] (2) ..controls (97.171bp,28.556bp) and (97.291bp,28.613bp)  .. (7);
+  \draw [] (3) ..controls (82.499bp,109.32bp) and (82.634bp,109.31bp)  .. (4);
+  \draw [] (3) ..controls (63.086bp,90.927bp) and (63.984bp,88.593bp)  .. (5);
+  \draw [] (3) ..controls (48.218bp,81.048bp) and (44.472bp,65.322bp)  .. (6);
+  \draw [] (3) ..controls (76.945bp,81.91bp) and (89.914bp,64.426bp)  .. (7);
+  \draw [] (4) ..controls (85.815bp,89.504bp) and (84.354bp,87.319bp)  .. (5);
+  \draw [] (4) ..controls (74.954bp,80.273bp) and (60.959bp,63.52bp)  .. (6);
+  \draw [] (4) ..controls (103.62bp,79.147bp) and (106.18bp,64.891bp)  .. (7);
+  \draw [] (5) ..controls (54.991bp,52.271bp) and (53.842bp,51.163bp)  .. (6);
+  \draw [] (5) ..controls (90.672bp,52.676bp) and (92.556bp,51.108bp)  .. (7);
+  \draw [] (6) ..controls (70.946bp,35.268bp) and (77.827bp,35.284bp)  .. (7);
+\end{scope}
+%
+\end{tikzpicture}
