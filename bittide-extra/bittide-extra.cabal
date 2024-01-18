@@ -75,8 +75,9 @@ library
   exposed-modules:
     Bittide.Extra.Maybe
     Bittide.Extra.Wishbone
-    Clash.Sized.Vector.Extra
     Clash.Explicit.Signal.Extra
+    Clash.Signal.Extra
+    Clash.Sized.Vector.Extra
 
 test-suite doctests
   type:             exitcode-stdio-1.0
@@ -90,3 +91,24 @@ test-suite doctests
     bittide-extra,
     doctest-parallel >= 0.3.0.1 && < 0.4,
     filepath
+
+test-suite unittests
+  import: common-options
+  hs-source-dirs: tests/unittests
+  type: exitcode-stdio-1.0
+  main-is: unittests.hs
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  other-modules:
+    Tests.Extra
+    Tests.Clash.Signal.Extra
+  build-depends:
+    HUnit,
+    base,
+    bittide-extra,
+    bytestring,
+    hedgehog >= 1.0 && < 1.1,
+    tasty >= 1.4 && < 1.5,
+    tasty-hedgehog >= 1.2 && < 1.3,
+    tasty-hunit,
+    tasty-th,
+    template-haskell,
