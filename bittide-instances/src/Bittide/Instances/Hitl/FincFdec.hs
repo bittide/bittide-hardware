@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022-2023 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -13,7 +13,6 @@ import Clash.Cores.Xilinx.Extra (ibufds)
 import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
-import Clash.Sized.Vector.Extra (findWithDefault)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 
 import Bittide.Arithmetic.Time
@@ -196,23 +195,19 @@ fincFdecTests diffClk controlledDiffClock spiIn =
   (clk, clkStableRst) = clockWizardDifferential diffClk noReset
   clkStable1 = unsafeToActiveLow clkStableRst
 
-  anyStarted = fold (||) <$> startTests
-  testRst = orReset clkStableRst (unsafeFromActiveLow anyStarted)
+  testRst = orReset clkStableRst (unsafeFromActiveLow startTest)
   testRstBool = unsafeToActiveHigh testRst
 
   (fInc, fDec) = fIncDec
 
-  testF = fst . findWithDefault (FDec, True) snd . zip allTests <$> startTests
-
   (testResult, fIncDec, spiOut, debugSignals) =
-    goFincFdecTests clk testRst clkControlled testF spiIn
+    goFincFdecTests clk testRst clkControlled testType spiIn
 
   (testDone, testSuccess) = unbundle $ testStateToDoneSuccess <$> testResult
 
   (spiBusy, spiState, siClkLocked, counterActive, counter) = debugSignals
 
-  startTests :: Signal Basic200 (Vec 4 Bool)
-  startTests =
+  (startTest, testType) = unbundle $
     setName @"vioHitlt" $
     vioProbe
       (  "probe_test_done"
@@ -229,12 +224,10 @@ fincFdecTests diffClk controlledDiffClock spiIn =
       :> "probe_fInc"
       :> "probe_fDec"
       :> Nil)
-      (  "probe_test_start_fdec"
-      :> "probe_test_start_finc"
-      :> "probe_test_start_fdecfinc"
-      :> "probe_test_start_fincfdec"
+      (  "probe_test_start"
+      :> "testType"
       :> Nil)
-      (repeat False)
+      (False, FDec)
       clk
       testDone
       testSuccess

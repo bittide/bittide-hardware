@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -99,27 +99,14 @@ boardTestExtended ::
 boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
  where
   clk = ibufds diffClk
-  rstA = unsafeFromActiveLow testStartA
-  rstB = unsafeFromActiveLow testStartB
+  rstA = unsafeFromActiveLow (testStart .&&. (not <$> testSelect))
+  rstB = unsafeFromActiveLow (testStart .&&. testSelect)
 
   testStateA = check clk rstA (+) stimuliA
-  (testDoneA, testSuccessA) = unbundle $ toDoneSuccess <$> testStateA
-
   testStateB = check clk rstB (-) stimuliB
-  (testDoneB, testSuccessB) = unbundle $ toDoneSuccess <$> testStateB
 
-  (testDone, testSuccess) = unbundle $
-    mux
-      testStartA
-      (bundle (testDoneA, testSuccessA))
-      (mux
-        testStartB
-        (bundle (testDoneB, testSuccessB))
-        (pure (False, False))
-      )
-
-
-  (testStartA, testStartB) =
+  (testDone, testSuccess) = unbundle $ toDoneSuccess <$> mux testSelect testStateB testStateA
+  (testStart, testSelect) =
     unbundle $
     setName @"vioHitlt" $
     vioProbe
@@ -127,8 +114,8 @@ boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
       :> "probe_test_success"
       :> Nil
       )
-      (  "probe_test_start_a"
-      :> "probe_test_start_b"
+      ( "probe_test_start"
+      :> "testSelect"
       :> Nil
       )
       (False, False)
@@ -144,21 +131,19 @@ boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
       (ilaConfig $
            "trigger_AorB"
         :> "capture"
-        :> "testStartA"
-        :> "testStartB"
-        :> "testDone"
-        :> "testSuccess"
+        :> "ilaTestSelect"
+        :> "ilaTestDone"
+        :> "ilaTestSuccess"
         :> Nil
       )
       clk
       -- Trigger when starting either test
-      (testStartA .||. testStartB)
+      testStart
       -- Always capture
       (pure True :: Signal Ext125 Bool)
 
       -- Debug probes
-      testStartA
-      testStartB
+      testSelect
       testDone
       testSuccess
 

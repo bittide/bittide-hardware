@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022-2023 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -322,6 +322,7 @@ mkHardwareTestTcl outputDir hwTargets url ilaDataPath = do
 
     set fpga_nrs #{toTclTarget hwTargets}
     set probes_file {#{outputDir </> "probes.ltx"}}
+    set test_config_file {#{outputDir </> "test_config.yml"}}
     set url {#{url}}
 
     open_hw_manager
@@ -329,5 +330,5 @@ mkHardwareTestTcl outputDir hwTargets url ilaDataPath = do
     set target_dict [get_target_dict ${url} ${fpga_nrs}]
     has_expected_targets ${url} ${target_dict}
 
-    run_test_group $probes_file $target_dict $url {#{ilaDataPath}}
+    run_test_group $probes_file $test_config_file $target_dict $url {#{ilaDataPath}}
   |]

@@ -1,9 +1,10 @@
-# SPDX-FileCopyrightText: 2023 Google LLC
+# SPDX-FileCopyrightText: 2023-2024 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
 
 # The IDs of the Digilent chips on each FPGA board. The indices match the
 # position of each FPGA in the mining rig.
+package require yaml
 set fpga_ids {
     210308B3B272
     210308B0992E
@@ -41,7 +42,52 @@ proc set_vio_prefix {} {
     }
     set vio_prefix [lindex [split [get_property name $probe_done] "/"] 0]
 }
+proc get_extra_probes {} {
+    global vio_prefix
+    set vio_probes [get_hw_probes ${vio_prefix}/*]
+    set extra_probes []
+    foreach probe $vio_probes {
+        set is_done [string equal $probe ${vio_prefix}/probe_test_done]
+        set is_success [string equal $probe ${vio_prefix}/probe_test_success]
+        set is_start [string equal $probe ${vio_prefix}/probe_test_start]
+        set is_input [string equal [get_property type $probe] "vio_input"]
+        set is_extra [expr {!$is_done && !$is_success && !$is_start && !$is_input}]
+        if {$is_extra} {
+            lappend extra_probes $probe
+        }
+    }
+    return $extra_probes
+}
 
+# Besides the required probes, the design may contain extra VIO probes. This
+# function receives the test config and verifies exclusively all probes in the default
+# section are present in the design.
+proc verify_extra_vio_probes {test_config} {
+    puts -nonewline "Verifying extra probes: "
+    global vio_prefix
+    set probe_names [dict keys [dict get $test_config default probes]]
+    set extra_probes [get_extra_probes]
+    foreach probe_name $probe_names {
+        if {[lsearch -exact $extra_probes ${vio_prefix}/$probe_name] != -1} {
+            set index [lsearch -exact $extra_probes ${vio_prefix}/$probe_name]
+            set extra_probes [lreplace $extra_probes $index $index]
+        }
+    }
+    if {[llength $extra_probes] == 0} {
+        puts "Done"
+    } else {
+        puts "Failed"
+        puts "There are unmatched extra probes:"
+        foreach probe $extra_probes {
+            puts $probe
+        }
+        puts "Existing probes: "
+        foreach probe_name $probe_names {
+            puts $probe_name
+        }
+        exit 1
+    }
+}
 # For the Hardware-in-the-Loop test (hitlt) at least 3 specific probes need to
 # be present in the design:
 # - `probe_test_done` indicates when a single test is done
@@ -49,11 +95,13 @@ proc set_vio_prefix {} {
 # - `probe_test_start*` indicate the start of a specific test
 # Other VIO probes may be present in the design, but are only used to print
 # debug information when a test fails.
-proc verify_vio_probes {} {
+proc verify_required_vio_probes {} {
+    puts -nonewline "Verifying required VIO probes: "
     global vio_prefix
 
     set done_probe [get_hw_probes ${vio_prefix}/probe_test_done]
-    if {[expr [llength $done_probe] != 1]} {
+    set done_probe_count [llength $done_probe]
+    if {$done_probe_count != 1} {
         set done_probe_count [llength $done_probe]
         puts "Exactly one probe named '$vio_prefix/probe_test_done' must be present, but ${done_probe_count} were found"
         print_all_probe_names
@@ -71,7 +119,8 @@ proc verify_vio_probes {} {
     }
 
     set success_probe [get_hw_probes ${vio_prefix}/probe_test_success]
-    if {[expr [llength $success_probe] != 1]} {
+    set success_probe_count [llength $success_probe]
+    if {$success_probe_count != 1} {
         set success_probe_count [llength $success_probe]
         puts "Exactly one probe named '$vio_prefix/probe_test_success' must be present, but ${success_probe_count} were found"
         print_all_probe_names
@@ -89,26 +138,25 @@ proc verify_vio_probes {} {
         exit 1
     }
 
-    set start_probes [get_hw_probes ${vio_prefix}/probe_test_start*]
-    if {[expr [llength $start_probes] < 1]} {
-        set start_probe_count [llength $start_probes]
-        puts "At least one probe named '$vio_prefix/probe_test_start*' must be present, but none were found"
+    set start_probe [get_hw_probes ${vio_prefix}/probe_test_start]
+    set start_probe_count [llength $start_probe]
+    if {$start_probe_count != 1} {
+        puts "Exactly one probe named '$vio_prefix/probe_test_start' must be present, but ${start_probe_count} were found"
         print_all_probe_names
         exit 1
     }
-    foreach probe $start_probes {
-        if {[expr {[get_property type $probe] != "vio_output"}]} {
-            set probe_name [get_property name.short $probe]
-            puts "Probe '$probe_name' must have type 'vio_output'"
-            print_all_probe_names
-            exit 1
-        } elseif {[expr {[get_property width $probe] != 1}]} {
-            set probe_name [get_property name.short $probe]
-            puts "Probe '$probe_name' must have a width of 1 bit"
-            print_all_probe_names
-            exit 1
-        }
+    if {[expr {[get_property type $start_probe] != "vio_output"}]} {
+        set probe_name [get_property name.short $start_probe]
+        puts "Probe '$probe_name' must have type 'vio_output'"
+        print_all_probe_names
+        exit 1
+    } elseif {[expr {[get_property width $start_probe] != 1}]} {
+        set probe_name [get_property name.short $start_probe]
+        puts "Probe '$probe_name' must have a width of 1 bit"
+        print_all_probe_names
+        exit 1
     }
+    puts "Done"
 }
 
 # Create a list of dictionaries where each dictionary corresponds to one ILA.
@@ -418,10 +466,8 @@ proc program_fpga {program_file probes_file} {
 }
 
 # Verify that `done` is not set before starting the test
-proc verify_before_start {start_probe} {
+proc verify_before_start {} {
     global vio_prefix
-    set_property OUTPUT_VALUE 0 $start_probe
-    commit_hw_vio [get_hw_vios]
     refresh_hw_vio [get_hw_vios]
     set done [get_property INPUT_VALUE [get_hw_probes ${vio_prefix}/probe_test_done]]
     if {$done != 0} {
@@ -474,22 +520,79 @@ proc print_test_results {done success start_time end_time} {
     }
 }
 
-# Gets the short names of probes which contain 'probe_test_start'
-proc get_test_names {} {
+# Get the test names from the test config file.
+# The test names are the keys of the tests dictionary in the yaml file, exluding
+# the default key, which is used for default values.
+proc get_test_names {test_config} {
     global vio_prefix
-    set start_probes [get_hw_probes ${vio_prefix}/probe_test_start*]
-    if {[expr [llength $start_probes] == 0]} {
-        puts "No probes found with name '*probe_test_start*', which are needed to start tests"
-        exit 1
-    }
-    set start_probe_names {}
-    foreach start_probe $start_probes {
-        lappend start_probe_names [get_property name.short $start_probe]
-    }
-    return $start_probe_names
+    set tests [dict get $test_config tests]
+    set test_names [dict keys $tests]
+    set test_names [lsearch -all -inline -not -exact $test_names default]
+    return $test_names
 }
 
-proc run_test_group {probes_file target_dict url ila_data_dir} {
+# Receives the test config, the index of the currently active FPGA and current test name.
+# It sets the extra probes defined in the test config for the specified test and FPGA.
+proc set_extra_probes {yaml_dict fpga_index test_name} {
+    puts -nonewline "Setting extra probes for test: $test_name, fpga: $fpga_index: "
+    global fpga_ids
+    global vio_prefix
+    set default_dict [dict get $yaml_dict default]
+
+    set probe_dicts []
+
+    # Add the default probes to the list of probe_dicts
+    if {[dict exists $default_dict probes]} {
+        lappend probe_dicts [dict get $default_dict probes]
+    }
+
+    # Add test specific probes
+    set test_dict [dict get $yaml_dict tests $test_name]
+    if {[dict exists $test_dict probes]} {
+        lappend probe_dicts [dict get $test_dict probes]
+    }
+
+    # Add FPGA specific probes
+    if {[dict exists $test_dict targets]} {
+        set target_list [dict get $test_dict targets]
+        foreach target $target_list {
+            if {[dict get $target target index] == $fpga_index} {
+                if {[dict exists $target probes]} {
+                    lappend probe_dicts [dict get $target probes]
+                }
+            }
+        }
+    }
+
+    # For each probe dictionary, set the probes
+    set changed_vios []
+    foreach probe_dict $probe_dicts {
+        dict for {vio_name vio_value} $probe_dict {
+            set probe [get_hw_probes ${vio_prefix}/${vio_name}]
+            if {[lsearch -exact $changed_vios $probe] }  {
+                lappend changed_vios $probe
+            }
+            set bit_width [get_property width $probe]
+            set hex_width [expr {(3 + $bit_width)/4}]
+            set vio_value [format %0${hex_width}llX $vio_value]
+            puts "Setting ${vio_name} to ${vio_value}"
+            set_property OUTPUT_VALUE $vio_value $probe
+        }
+    }
+
+    # Commit the probes if any were set
+    if {[llength $changed_vios] == 0} {
+        puts "No extra probes to set"
+    } else {
+        puts "Done"
+        commit_hw_vio $changed_vios
+        foreach vio $changed_vios {
+            puts "Set [get_property name.short $vio] to [get_property output_value $vio]"
+        }
+    }
+}
+
+proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} {
     # Load the device of the first target
     set target_id [lindex [dict values $target_dict] 0]
     set target_name [get_part_name $url $target_id]
@@ -499,42 +602,40 @@ proc run_test_group {probes_file target_dict url ila_data_dir} {
 
     # Set the prefix of VIO probes and verify all required probes are present.
     set_vio_prefix
-    verify_vio_probes
+    verify_required_vio_probes
     global vio_prefix
-
+    set test_config [yaml::yaml2dict -file $test_config_path]
+    verify_extra_vio_probes $test_config
     set ila_dicts [get_ila_dicts]
-
     set successful_tests 0
-
     set target_count [dict size $target_dict]
 
     # Get all the test names
-    set start_probe_names [get_test_names]
-    set test_count [llength $start_probe_names]
+    set test_names [get_test_names $test_config]
+    set test_count [llength $test_names]
     puts "\nFound ${test_count} tests:"
-    foreach start_probe_name $start_probe_names {
-        puts "\t${start_probe_name}"
+    foreach test_name $test_names {
+        puts "\t${test_name}"
     }
 
-    foreach start_probe_name $start_probe_names {
+    foreach test_name $test_names {
         set successful_targets 0
-        puts "\nRunning test: $start_probe_name"
+        puts "\nRunning test: $test_name"
 
         # Verify pre-start condition and start test
         dict for {target_nr target_id} $target_dict {
+
             # Load device
             set device [load_target_device [get_part_name $url $target_id]]
             set_property PROBES.FILE ${probes_file} $device
             refresh_hw_device $device -quiet
-            # Reset all start probes
-            foreach probe_name $start_probe_names {
-                set start_probe [get_hw_probes ${vio_prefix}/${probe_name}]
-                set_property OUTPUT_VALUE 0 $start_probe
-            }
+
+            # Reset all start probes and check if done is not set.
+            set start_probe [get_hw_probes ${vio_prefix}/probe_test_start]
+            set_property OUTPUT_VALUE 0 $start_probe
             commit_hw_vio [get_hw_vios]
-            # Verify pre-start condition
-            set start_probe [get_hw_probes ${vio_prefix}/${start_probe_name}]
-            verify_before_start $start_probe
+            verify_before_start
+            set_extra_probes $test_config $target_nr $test_name
 
             # Activate the trigger for each ILA
             foreach ila_dict $ila_dicts {
@@ -562,16 +663,18 @@ proc run_test_group {probes_file target_dict url ila_data_dir} {
             puts "Start test for FPGA ${target_nr} with ID ${target_id}"
         }
 
-        puts "\nWaiting on test end: $start_probe_name"
+        puts "\nWaiting on test end: $test_name"
         set start_time [clock milliseconds]
         dict for {target_nr target_id} $target_dict {
             # Load device
             set device [load_target_device [get_part_name $url $target_id]]
             set_property PROBES.FILE ${probes_file} $device
             refresh_hw_device $device -quiet
+
             # Wait for the test to end
             set test_results [wait_test_end ${start_time}]
             lassign $test_results done success start_time end_time
+
             # Print test results of this FPGA
             puts "\tTested for FPGA ${target_nr} with ID ${target_id}"
             print_test_results $done $success $start_time $end_time
@@ -580,7 +683,7 @@ proc run_test_group {probes_file target_dict url ila_data_dir} {
             }
         }
 
-        puts "\nStopping test: $start_probe_name"
+        puts "\nStopping test: $test_name"
         dict for {target_nr target_id} $target_dict {
             # Load device
             set device [load_target_device [get_part_name $url $target_id]]
@@ -595,7 +698,7 @@ proc run_test_group {probes_file target_dict url ila_data_dir} {
                 } else {
                     set index_id "${target_nr}_${target_id}"
                 }
-                set dir [file join $ila_data_dir $start_probe_name $index_id]
+                set dir [file join $ila_data_dir $test_name $index_id]
                 file mkdir $dir
                 set ila_name [dict get $ila_dict name]
                 set file_path [file join $dir "$ila_name"]
@@ -610,7 +713,7 @@ proc run_test_group {probes_file target_dict url ila_data_dir} {
             }
         }
         # Print summary of individual test
-        puts "\nTest ${start_probe_name} passed on ${successful_targets} out of ${target_count} targets"
+        puts "\nTest ${test_name} passed on ${successful_targets} out of ${target_count} targets"
         if {[expr $successful_targets == $target_count]} {
             incr successful_tests
         }

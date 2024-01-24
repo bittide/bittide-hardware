@@ -18,7 +18,7 @@ import Prelude
 import Clash.Shake.Extra
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
-import Control.Applicative (liftA2)
+import Control.Applicative (liftA2, (<|>))
 import Control.Exception (throw)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.Extra (ifM, unlessM)
@@ -354,7 +354,7 @@ main = do
               ]
             bitstreamPath = synthesisDir </> "bitstream.bit"
             probesPath = synthesisDir </> "probes.ltx"
-            vioConfigPath = synthesisDir </> "vio_config.yml"
+            testConfigPath = synthesisDir </> "test_config.yml"
             testExitCodePath = synthesisDir </> "test_exit_code"
 
             postRouteMethodologyPath = reportDir </> "post_route_methodology.rpt"
@@ -547,6 +547,15 @@ main = do
                 liftIO $ mkHardwareTestTcl synthesisDir hwTargets url ilaDir
               writeFileChanged path hardwareTestTcl
 
+            -- Create test configuration file
+            testConfigPath %> \_ -> do
+              let
+                specificRelPath = "data/test_configs" </> entityName targetName <> ".yml"
+                defaultRelPath = "data/test_configs/default.yml"
+              specAbsPath <- liftIO $ getInstanceDataFileName CheckExists specificRelPath
+              defAbsPath <- liftIO $ getInstanceDataFileName CheckExists defaultRelPath
+              copyFileChanged (fromJust $ specAbsPath <|> defAbsPath) testConfigPath
+
             testExitCodePath %> \path -> do
               forceRerun <- askOracle $ ForceTestRerun ()
               when forceRerun alwaysRerun
@@ -555,14 +564,8 @@ main = do
                 , runHardwareTestTclPath
                 , bitstreamPath
                 , probesPath
+                , testConfigPath
                 ]
-              -- Check if we have a VIO config file. If so, copy it to the
-              -- synthesis directory.
-              let configName = "data/vio_configs" </> entityName targetName <> ".yml"
-              vioConfigSourcePath <- liftIO $ getInstanceDataFileName NoCheckExists configName
-              case vioConfigSourcePath of
-                Just fp -> copyFileChanged fp vioConfigPath
-                Nothing -> liftIO $ putStrLn $ "Vio config " <> configName <> " not found."
               vivadoFromTcl_ runBoardProgramTclPath
               exitCode <- vivadoFromTcl @ExitCode runHardwareTestTclPath
               writeFileChanged path $ show exitCode

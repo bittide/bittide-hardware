@@ -292,7 +292,7 @@ jobs:
           mkdir -p reports
           mkdir -p hitl-plots/hw
           ./cargo.sh build --frozen --release
-          cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest/ila-data/probe_test_start/ hitl-plots/hw
+          cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest/ila-data/single_test/ hitl-plots/hw
           cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/hw/report.tex
           cp .github/hitl/topology.tikz hitl-plots/hw/topology.tikz
           export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -304,7 +304,7 @@ jobs:
           cd ../..
           mv hitl-plots/hw/report.pdf reports/HITL-FullMeshHwCc-Report.pdf
           mkdir -p hitl-plots/sw
-          cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest/ila-data/probe_test_start/ hitl-plots/sw
+          cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest/ila-data/single_test/ hitl-plots/sw
           cp .github/hitl/FullMeshSwCcReportTemplate.tex hitl-plots/sw/report.tex
           cp .github/hitl/topology.tikz hitl-plots/sw/topology.tikz
           mv hitl-plots/hw/datetime hitl-plots/sw/datetime
