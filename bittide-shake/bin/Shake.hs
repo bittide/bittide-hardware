@@ -18,7 +18,7 @@ import Prelude
 import Clash.Shake.Extra
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
-import Control.Applicative (liftA2, Alternative ((<|>)))
+import Control.Applicative (liftA2)
 import Control.Exception (throw)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.Extra (ifM, unlessM)
@@ -32,7 +32,7 @@ import Development.Shake.Classes
 import GHC.Stack (HasCallStack)
 import Paths_bittide_shake (getDataFileName)
 import System.Console.ANSI (setSGR)
-import System.Directory
+import System.Directory hiding (doesFileExist)
 import System.Exit (ExitCode(..), exitWith)
 import System.FilePath
 import System.FilePath.Glob (glob)
@@ -354,6 +354,7 @@ main = do
               ]
             bitstreamPath = synthesisDir </> "bitstream.bit"
             probesPath = synthesisDir </> "probes.ltx"
+            vioConfigPath = synthesisDir </> "vio_config.yml"
             testExitCodePath = synthesisDir </> "test_exit_code"
 
             postRouteMethodologyPath = reportDir </> "post_route_methodology.rpt"
@@ -555,6 +556,13 @@ main = do
                 , bitstreamPath
                 , probesPath
                 ]
+              -- Check if we have a VIO config file. If so, copy it to the
+              -- synthesis directory.
+              let configName = "data/vio_configs" </> entityName targetName <> ".yml"
+              vioConfigSourcePath <- liftIO $ getInstanceDataFileName NoCheckExists configName
+              case vioConfigSourcePath of
+                Just fp -> copyFileChanged fp vioConfigPath
+                Nothing -> liftIO $ putStrLn $ "Vio config " <> configName <> " not found."
               vivadoFromTcl_ runBoardProgramTclPath
               exitCode <- vivadoFromTcl @ExitCode runHardwareTestTclPath
               writeFileChanged path $ show exitCode
