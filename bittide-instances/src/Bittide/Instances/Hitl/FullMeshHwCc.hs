@@ -64,9 +64,7 @@ import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
-import Clash.Cores.Xilinx.Xpm.Cdc.Gray
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
-import Clash.Explicit.Reset.Extra
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
@@ -77,9 +75,9 @@ import Protocols.Internal
 type NodeCount = 8 :: Nat
 
 clockControlConfig ::
-  $(case (instancesClockConfig (Proxy @GthTx)) of { (_ :: t) -> liftTypeQ @t })
+  $(case (instancesClockConfig (Proxy @Basic125)) of { (_ :: t) -> liftTypeQ @t })
 clockControlConfig =
-  $(lift (instancesClockConfig (Proxy @GthTx)))
+  $(lift (instancesClockConfig (Proxy @Basic125)))
 
 c_CHANNEL_NAMES :: Vec 7 String
 c_CHANNEL_NAMES =
@@ -206,11 +204,10 @@ fullMeshHwTest ::
   "MISO" ::: Signal Basic125 Bit ->
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
-  , "FINC_FDEC" ::: Signal GthTx (FINC, FDEC)
-  , "CALLISTO_CLOCK" ::: Clock GthTx
-  , "CALLISTO_RESULT" ::: Signal GthTx (CallistoResult 7)
-  , "CALLISTO_RESET" ::: Reset GthTx
-  , "DATA_COUNTERS" ::: Vec 7 (Signal GthTx (DataCount 32))
+  , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
+  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult 7)
+  , "CALLISTO_RESET" ::: Reset Basic125
+  , "DATA_COUNTERS" ::: Vec 7 (Signal Basic125 (DataCount 32))
   , "stats" ::: Vec 7 (Signal Basic125 GthResetStats)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
@@ -227,7 +224,6 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   ( txns
   , txps
   , frequencyAdjustments
-  , txClock
   , callistoResult
   , clockControlReset
   , domainDiffs
@@ -236,7 +232,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   , spiOut
   , transceiversFailedAfterUp
   , allUp
-  , allStable1
+  , allStable0
   )
  where
   syncRst = rst `orReset` (unsafeFromActiveLow (fmap not spiErr))
@@ -255,7 +251,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
 
-  (head -> (txClock :: Clock GthTx), rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
+  (txClocks, rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       refClk sysClk gthAllReset
@@ -273,10 +269,9 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
 
   -- Clock control
   clockControlReset =
-    xpmResetSynchronizer Asserted sysClk txClock
-      $ orReset (unsafeFromActiveLow allUp)
-      $ orReset (unsafeFromActiveHigh transceiversFailedAfterUp)
-                (unsafeFromActiveLow syncStart)
+      orReset (unsafeFromActiveLow allUp)
+    $ orReset (unsafeFromActiveHigh transceiversFailedAfterUp)
+              (unsafeFromActiveLow syncStart)
 
   availableLinkMask = pure maxBound
 
@@ -286,11 +281,9 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
       callistoResult
 
   callistoResult =
-    callistoClockControlWithIla @(NodeCount - 1) @CccBufferSize @GthTx
-      sysClk txClock clockControlReset enableGen clockControlConfig
+    callistoClockControlWithIla @(NodeCount - 1) @CccBufferSize
+      (head txClocks) sysClk clockControlReset clockControlConfig
       IlaControl{..} availableLinkMask (fmap (fmap resize) domainDiffs)
-
-  allStable1 = xpmCdcSingle txClock sysClk allStable0
 
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
@@ -303,7 +296,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
          "trigger_0"
       :> "capture_0"
       :> "probe_milliseconds"
-      :> "probe_allStable1"
+      :> "probe_allStable0"
       :> "probe_transceiversFailedAfterUp"
       :> "probe_nFincs"
       :> "probe_nFdecs"
@@ -319,38 +312,35 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
 
     -- Debug probes
     milliseconds1
-    allStable1
+    allStable0
     transceiversFailedAfterUp
-    nFincsSynced
-    nFdecsSynced
-    (fmap unsignedToSigned nFincsSynced - fmap unsignedToSigned nFdecsSynced)
-
-  nFincsSynced = xpmCdcGray txClock sysClk nFincs
-  nFdecsSynced = xpmCdcGray txClock sysClk nFdecs
+    nFincs
+    nFdecs
+    (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
 
   captureFlag = riseEvery sysClk syncRst enableGen
     (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
 
-  nFincs = regEn txClock clockControlReset enableGen
+  nFincs = regEn sysClk clockControlReset enableGen
     (0 :: Unsigned 32)
     ((== Just SpeedUp) <$> clockMod)
     (satSucc SatBound <$> nFincs)
 
-  nFdecs = regEn txClock clockControlReset enableGen
+  nFdecs = regEn sysClk clockControlReset enableGen
     (0 :: Unsigned 32)
     ((== Just SlowDown) <$> clockMod)
     (satSucc SatBound <$> nFdecs)
 
-  frequencyAdjustments :: Signal GthTx (FINC, FDEC)
+  frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
   frequencyAdjustments =
-    E.delay txClock enableGen minBound {- glitch filter -} $
-      withClockResetEnable txClock clockControlReset enableGen $
-        stickyBits @GthTx d20 (speedChangeToPins . fromMaybe NoChange <$> clockMod)
+    E.delay sysClk enableGen minBound {- glitch filter -} $
+      withClockResetEnable sysClk clockControlReset enableGen $
+        stickyBits @Basic125 d20 (speedChangeToPins . fromMaybe NoChange <$> clockMod)
 
-  (domainDiffs, _domainActives) =
-    unzip $ fmap unbundle $ rxDiffCounter <$> rxClocks <*> linkUpsRx
-  rxDiffCounter rxClk linkUp =
-    domainDiffCounter rxClk (unsafeFromActiveLow linkUp) txClock clockControlReset
+  domainDiffs =
+    domainDiffCounterExt sysClk clockControlReset
+      <$> rxClocks
+      <*> txClocks
 
 -- | Top entity for this test. See module documentation for more information.
 fullMeshHwCcWithRiscvTest ::
@@ -363,8 +353,8 @@ fullMeshHwCcWithRiscvTest ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "" :::
-      ( "FINC"      ::: Signal GthTx Bool
-      , "FDEC"      ::: Signal GthTx Bool
+      ( "FINC"      ::: Signal Basic125 Bool
+      , "FDEC"      ::: Signal Basic125 Bool
       )
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "spiDone" ::: Signal Basic125 Bool
@@ -383,12 +373,12 @@ fullMeshHwCcWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
 
-  (   txns, txps, _hwFincFdecs, callistoClock, callistoResult, callistoReset
+  (   txns, txps, _hwFincFdecs, callistoResult, callistoReset
     , dataCounts, stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
     , allStable ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso
 
   (riscvFinc, riscvFdec) =
-    fullMeshRiscvCopyTest callistoClock callistoReset callistoResult dataCounts
+    fullMeshRiscvCopyTest sysClk callistoReset callistoResult dataCounts
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
@@ -511,8 +501,8 @@ fullMeshHwCcTest ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "" :::
-      ( "FINC"      ::: Signal GthTx Bool
-      , "FDEC"      ::: Signal GthTx Bool
+      ( "FINC"      ::: Signal Basic125 Bool
+      , "FDEC"      ::: Signal Basic125 Bool
       )
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "spiDone" ::: Signal Basic125 Bool
@@ -529,7 +519,7 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
   ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
 
-  (   txns, txps, hwFincFdecs, _callistoClock, _callistoResult, _callistoReset
+  (   txns, txps, hwFincFdecs, _callistoResult, _callistoReset
     , _dataCounts, stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
     , allStable ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso
 
