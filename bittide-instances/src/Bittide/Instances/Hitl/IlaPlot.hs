@@ -82,7 +82,7 @@ type family DDivCheck (a :: Nat) (b :: Nat) (c :: Nat) :: Nat where
 
 -- | The window high of 'accWindow' for reducing the number of
 -- reported clock modifications.
-type AccWindowHeight = 3 :: Nat
+type AccWindowHeight = 5 :: Nat
 
 -- | The period of the sync pulse used to share a synchronized time
 -- stamp between the nodes.
