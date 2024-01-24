@@ -16,7 +16,7 @@
 module Main (main) where
 
 import Clash.Prelude
-  (BitPack(..), SNat(..), BitSize, Vec, (.&&.), (.|.), natToNum, shift, extend)
+  (BitPack(..), SNat(..), BitSize, Vec, (.|.), natToNum, shift, extend)
 
 import Clash.Signal.Internal (Femtoseconds(..))
 import qualified Clash.Sized.Vector as Vec
@@ -32,8 +32,8 @@ import Conduit
   ( ConduitT, Void, (.|)
   , runConduit, sourceHandle, scanlC, dropC, mapC, sinkList, yield, await
   )
-import Control.Exception (Exception, throw)
-import Control.Monad (forM, foldM, filterM)
+import Control.Exception (SomeException(..), Exception(..), throw, handle)
+import Control.Monad (forM, foldM, filterM, unless)
 import Data.ByteString.Internal (w2c)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
@@ -56,7 +56,7 @@ import System.IO (IOMode(..), Handle, openFile, hClose)
 import System.Directory
   (listDirectory, doesDirectoryExist, createDirectoryIfMissing)
 import System.Environment (getArgs, getProgName)
-import System.FilePath ((</>), takeExtensions, takeBaseName)
+import System.FilePath ((</>), takeExtensions, takeBaseName, takeFileName)
 
 import Bittide.Plot
 import Bittide.ClockControl
@@ -299,12 +299,7 @@ main = getArgs >>= \case
   []          -> wrongNumberOfArguments
   ilaDir : xr -> do
     let (outDir, yr) = fromMaybe (".", []) $ uncons xr
-    prefix <- case yr of
-      []  -> return $ "Bittide_Instances_Hitl_FullMeshHwCc_fullMeshHwCcTest_"
-                   <> "callistoClockControlWithIla"
-      [x] -> return x
-      _   -> wrongNumberOfArguments
-
+    unless (null yr) $ wrongNumberOfArguments
     dirs <- listDirectory ilaDir
       >>= filterM doesDirectoryExist . fmap (ilaDir </>)
 
@@ -312,18 +307,14 @@ main = getArgs >>= \case
       SomeNat (_ :: p n) -> case TLW.SNat @1 %<=? TLW.SNat @n of
         LE Refl -> do
           postProcessData <- do
-            forM (sort dirs) $ \d -> listDirectory d
-              >>= fmap fst
-                . maybe
-                    (error $ d <> " does not contain a matching .csv file. "
-                          <> "Aborting.")
-                    return
-                . uncons
-                . filter (isIlaDumpFile prefix)
-                . fmap (d </>)
-              >>= \file -> do
+            forM (sort dirs) $ \d -> concat <$> do
+              csvFiles <- checkCsvFilesExist d <$> listDirectory d
+              forM csvFiles $ \file -> do
                 h <- openFile file ReadMode
-                rs <- runConduit $ fromCsvDump @n @CccBufferSize (h, file)
+                rs <- handle (\SomeException{} -> return []) $ do
+                  rs <- runConduit $ fromCsvDump @n @CccBufferSize (h, file)
+                  putStrLn $ "Using " <> (takeBaseName d </> takeFileName file)
+                  return rs
                 hClose h
                 return (toPlotData <$> rs)
 
@@ -333,14 +324,16 @@ main = getArgs >>= \case
 
         _ -> error $ ilaDir <> " is expected to contain sub-directories."
  where
-  isIlaDumpFile prefix =
-         (== ".csv") . takeExtensions
-    .&&. and . zipWith (==) prefix . takeBaseName
+  checkCsvFilesExist d xs =
+    let ys = filter ((== ".csv") . takeExtensions) $ fmap (d </>) xs
+     in case ys of
+       [] -> error $ d <> " does not contain any *.csv files. Aborting."
+       _  -> ys
 
   wrongNumberOfArguments = do
     name <- getProgName
     error $ "Wrong number of arguments. Aborting.\n\nUsage: " <> name
-         <> " <ila plot directory> [<output directory>] [<csv file prefix>]"
+         <> " <ila plot directory> [<output directory>]"
 
   toPlotData DataPoint{..} =
     ( dpGlobalTime

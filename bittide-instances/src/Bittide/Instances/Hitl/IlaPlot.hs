@@ -58,10 +58,10 @@ import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Extra.Maybe (orNothing)
 
-import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra (xpmCdcMaybeLossy)
 import Clash.Cores.Xilinx.Xpm.Cdc.Gray (xpmCdcGray)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
+import Clash.Explicit.Reset.Extra
 
 import Control.Arrow ((***), second)
 import Data.Bool (bool)
@@ -82,7 +82,7 @@ type family DDivCheck (a :: Nat) (b :: Nat) (c :: Nat) :: Nat where
 
 -- | The window high of 'accWindow' for reducing the number of
 -- reported clock modifications.
-type AccWindowHeight = 3 :: Nat
+type AccWindowHeight = 5 :: Nat
 
 -- | The period of the sync pulse used to share a synchronized time
 -- stamp between the nodes.
@@ -401,91 +401,46 @@ data DiffResult a =
     -- reference got to large to fit into the output type.
   deriving (Generic, BitPack, NFDataX, Functor, Eq, Ord, Show)
 
--- | Turns a signal with single clock cycle pulses into an inverting
--- one, which flips its polarity on every incoming pulse. The
--- conversion is used to work around the missing XPM_CDC_PULSE via
--- XPM_CDC_SINGLE.
-fromPulse ::
-  KnownDomain dom =>
-  Clock dom ->
-  Reset dom ->
-  Enable dom ->
-  Signal dom Bool ->
-  Signal dom Bool
-fromPulse clk rst ena inp = out
- where
-  out = register clk rst ena False $ mux inp (not <$> out) out
-
--- | Turns an Boolean signal into a pulsing one delivering a one clock
--- cycle pulse on every polarity change. The conversion is used to
--- work around the missing XPM_CDC_PULSE via XPM_CDC_SINGLE.
-toPulse ::
-  KnownDomain dom =>
-  Clock dom ->
-  Reset dom ->
-  Enable dom ->
-  Signal dom Bool ->
-  Signal dom Bool
-toPulse clk rst ena = mealy clk rst ena transF Nothing
- where
-  transF s i = (Just i, maybe False (i /=) s)
-
--- | Implements the missing XPM_CDC_PULSE via XPM_CDC_SINGLE. This
--- workaround suffices here, as we only need to deliver pulses on a
--- low frequency compared to the one of the source and destination
--- clocks.
-xpmCdcPulseWorkaround ::
-  (KnownDomain src, KnownDomain dst) =>
-  Clock src ->
-  Reset src ->
-  Clock dst ->
-  Reset dst ->
-  Signal src Bool ->
-  Signal dst Bool
-xpmCdcPulseWorkaround srcClk srcRst dstClk dstRst =
-    toPulse dstClk dstRst enableGen
-  . xpmCdcSingle srcClk dstClk
-  . fromPulse srcClk srcRst enableGen
-
 {-# NOINLINE callistoClockControlWithIla #-}
 -- | Wrapper on 'Bittide.ClockControl.Callisto.callistoClockControl'
 -- additionally dumping all the data that is required for producing
 -- plots of the clock control behavior.
 callistoClockControlWithIla ::
-  forall n m dom domIla margin framesize. HasCallStack =>
-  (KnownDomain dom , KnownDomain domIla) =>
+  forall n m sys dyn margin framesize. HasCallStack =>
+  (KnownDomain dyn , KnownDomain sys, HasSynchronousReset sys) =>
   (KnownNat n, KnownNat m, KnownNat margin, KnownNat framesize) =>
   (1 <= n, 1 <= m, n + m <= 32, 1 <= framesize, 6 + n * (m + 4) <= 1024) =>
   CompressedBufferSize <= m =>
-  Clock domIla ->
-  Clock dom ->
-  Reset dom ->
-  Enable dom ->
-  ClockControlConfig dom m margin framesize ->
-  IlaControl domIla ->
+  Clock dyn ->
+  Clock sys ->
+  Reset sys ->
+  ClockControlConfig sys m margin framesize ->
+  IlaControl sys ->
   -- ^ Ila trigger and capture conditions
-  Signal dom (BitVector n) ->
+  Signal sys (BitVector n) ->
   -- ^ Link availability mask
-  Vec n (Signal dom (DataCount m)) ->
+  Vec n (Signal sys (DataCount m)) ->
   -- ^ Statistics provided by elastic buffers.
-  Signal dom (CallistoResult n)
-callistoClockControlWithIla sysClk clk ccRst ena ccc IlaControl{..} mask ebs =
+  Signal sys (CallistoResult n)
+callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
   hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> result)
  where
-  result = callistoClockControl clk ccRst ena ccc mask ebs
+  result = callistoClockControl clk rst enableGen ccc mask ebs
 
   maxGeqPlusApp = maxGeqPlus @1
-    @(DivRU ScheduledCapturePeriod (Max 1 (DomainPeriod dom)))
-    @(Div (ScheduledCaptureCycles dom) 10)
+    @(DivRU ScheduledCapturePeriod (Max 1 (DomainPeriod dyn)))
+    @(Div (ScheduledCaptureCycles dyn) 10)
 
   -- local timestamp on the stable clock
-  localTs :: Signal domIla (DiffResult (LocalTimestamp dom))
+  localTs :: Signal sys (DiffResult (LocalTimestamp dyn))
   localTs = case maxGeqPlusApp of
-    Dict -> overflowResistantDiff sysClk syncRst
-              (delay sysClk enableGen False (isJust <$> captureCond))
-          $ let lts :: Signal dom (Unsigned 8)
-                lts = register clk ccRst ena minBound (satSucc SatWrap <$> lts)
-             in xpmCdcGray clk sysClk lts
+    Dict -> overflowResistantDiff clk rst
+              (delay clk enableGen False (isJust <$> captureCond))
+          $ let ccRst = xpmResetSynchronizer Asserted clk dynClk rst
+                lts :: Signal dyn (Unsigned 8)
+                lts = register dynClk ccRst enableGen minBound
+                    $ satSucc SatWrap <$> lts
+             in xpmCdcGray dynClk clk lts
 
   -- collect all plot data
   localData =
@@ -497,12 +452,12 @@ callistoClockControlWithIla sysClk clk ccRst ena ccc IlaControl{..} mask ebs =
         height = SNat @AccWindowHeight
         idcs = unbundle (stability <$> result)
 
-        ebsC = ebsDiffCompress scheduledTrigger <$> ebs
+        ebsC = ebsDiffCompress scheduledCapture <$> ebs
 
         -- get the points in time where the monitored values change
-        stableUpdates  = changepoints clk ccRst ena <$> (fmap stable <$> idcs)
-        settledUpdates = changepoints clk ccRst ena <$> (fmap settled <$> idcs)
-        modeUpdate     = changepoints clk ccRst ena (rfStageChange <$> result)
+        stableUpdates  = changepoints clk rst enableGen <$> (fmap stable <$> idcs)
+        settledUpdates = changepoints clk rst enableGen <$> (fmap settled <$> idcs)
+        modeUpdate     = changepoints clk rst enableGen (rfStageChange <$> result)
 
         combine eb stU seU ind = (,,)
           <$> eb
@@ -513,7 +468,7 @@ callistoClockControlWithIla sysClk clk ccRst ena ccc IlaControl{..} mask ebs =
 
      in PlotData
           <$> bundle (zipWith4 combine ebsC stableUpdates settledUpdates idcs)
-          <*> accWindow height clk ccRst ena (noChange <$> result)
+          <*> accWindow height clk rst enableGen (noChange <$> result)
           <*> mux modeUpdate (rfStageChange <$> result) (pure Stable)
 
   -- compress the elastic buffer data via only reporting the
@@ -532,23 +487,15 @@ callistoClockControlWithIla sysClk clk ccRst ena ccc IlaControl{..} mask ebs =
            in (, truncDiff)
             $ bool lastDataCount curDataCount
             $ trigger || abs diff > half
-     in mealyB clk ccRst enableGen transF (0 :: DataCount m)
-
-  -- This is a quick workaround to send single pulses from one clock
-  -- domain to another. Eventually, we should use an XPM_CDC_PULSE
-  -- instead. Note that pulses may get lost if directly send through a
-  -- XPM_CDC_SINGLE instead.
-  scheduledTrigger =
-    xpmCdcPulseWorkaround sysClk syncRst clk ccRst
-      scheduledCapture
+     in mealyB clk rst enableGen transF (0 :: DataCount m)
 
   -- produce at least two calibration captures
-  calibrating = unsafeToActiveLow ccRst .&&.
-    moore clk ccRst enableGen
+  calibrating = unsafeToActiveLow rst .&&.
+    moore clk rst enableGen
       (\s -> bool s $ satSucc SatBound s)
       (/= maxBound)
       (minBound :: Index 3)
-      scheduledTrigger
+      scheduledCapture
 
   -- do not forward clock modifications during calibration
   muteDuringCalibration active ccResult = ccResult
@@ -561,7 +508,7 @@ callistoClockControlWithIla sysClk clk ccRst ena ccc IlaControl{..} mask ebs =
   -- but only after it. Hence, if the trigger position is at 0, then
   -- we store exactly one capture that is marked with the
   -- @UntilTrigger@ flag this way.
-  captureCond :: Signal domIla (Maybe CaptureCondition)
+  captureCond :: Signal sys (Maybe CaptureCondition)
   captureCond = mux (not <$> syncStart)
     (pure $ Just UntilTrigger)
     (fmap fst <$> plotData)
@@ -578,10 +525,9 @@ callistoClockControlWithIla sysClk clk ccRst ena ccc IlaControl{..} mask ebs =
           || dSpeedChange /= NoChange
           || dRfStageChange /= Stable
 
-     in xpmCdcMaybeLossy clk sysClk
-          (captureType <$> calibrating <*> scheduledTrigger <*> localData)
+     in captureType <$> calibrating <*> scheduledCapture <*> localData
 
-  ilaInstance :: Signal domIla ()
+  ilaInstance :: Signal sys ()
   ilaInstance =
     ila
       ( ilaConfig
@@ -594,7 +540,7 @@ callistoClockControlWithIla sysClk clk ccRst ena ccc IlaControl{..} mask ebs =
           :> Nil
       ) { depth = D16384 }
       -- the ILA must run on a stable clock
-      sysClk
+      clk
       -- trigger as soon as we start
       syncStart
       -- capture on relevant data changes
