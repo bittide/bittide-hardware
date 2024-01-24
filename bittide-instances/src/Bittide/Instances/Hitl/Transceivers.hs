@@ -29,8 +29,9 @@ import Bittide.ClockControl.Si539xSpi
 import Bittide.Instances.Domains
 import Bittide.Transceiver
 
+import Bittide.Instances.Hitl
+
 import Clash.Cores.Xilinx.GTH
-import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
 
@@ -150,15 +151,9 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
-  startTest :: Signal Basic125 Bool
   startTest =
-    setName @"vioHitlt" $
-    vioProbe
-      (  "probe_test_done"
-      :> "probe_test_success"
-
-      -- Debug probes
-      :> "stats0_txRetries"
+    testActive $ vioHitlt @SimpleTest
+      (  "stats0_txRetries"
       :> "stats0_rxRetries"
       :> "stats0_rxFullRetries"
       :> "stats0_failAfterUps"
@@ -186,10 +181,8 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       :> "stats6_rxRetries"
       :> "stats6_rxFullRetries"
       :> "stats6_failAfterUps"
-      :> Nil)
-      (  "probe_test_start"
-      :> Nil)
-      False
+      :> Nil
+      )
       sysClk
 
       -- Consider test done if links have been up consistently for 50 seconds. This

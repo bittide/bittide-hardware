@@ -7,7 +7,6 @@
 module Bittide.Instances.Hitl.VexRiscv where
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx.VIO (vioProbe)
 
 import Clash.Prelude
 import Clash.Explicit.Prelude (noReset, orReset)
@@ -20,6 +19,7 @@ import Protocols.Wishbone
 import System.FilePath
 
 import Bittide.DoubleBufferedRam
+import Bittide.Instances.Hitl
 import Bittide.Instances.Domains (Basic200, Ext125)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
@@ -111,18 +111,7 @@ vexRiscvTest diffClk = (testDone, testSuccess)
 
     reset = orReset clkStableRst (unsafeFromActiveLow testReset)
 
-    testReset :: Signal Basic200 Bool
-    testReset =
-      setName @"vioHitlt" $
-      vioProbe
-        (  "probe_test_done"
-        :> "probe_test_success"
-        :> Nil)
-        ( "probe_test_start" :> Nil)
-        False
-        clk
-        testDone
-        testSuccess
+    testReset = testActive $ vioHitlt @SimpleTest Nil clk testDone testSuccess
 
 {-# NOINLINE vexRiscvTest #-}
 makeTopEntity 'vexRiscvTest

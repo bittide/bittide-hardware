@@ -53,12 +53,12 @@ import Bittide.ProcessingElement.Util (memBlobsFromElf)
 import Bittide.SharedTypes (ByteOrder(BigEndian))
 import Bittide.Transceiver
 
+import Bittide.Instances.Hitl
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Pnr.MVPs (stickyBits, speedChangeToPins, FINC, FDEC)
 
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
-import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
 import Clash.Sized.Extra (unsignedToSigned)
@@ -345,15 +345,9 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   endSuccess :: Signal Basic125 Bool
   endSuccess = trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
 
-  startTest :: Signal Basic125 Bool
   startTest =
-    setName @"vioHitlt" $
-    vioProbe
-      (  "probe_test_done"
-      :> "probe_test_success"
-
-      -- Debug probes
-      :> "stats0_txRetries"
+    testActive $ vioHitlt @SimpleTest
+      (  "stats0_txRetries"
       :> "stats0_rxRetries"
       :> "stats0_rxFullRetries"
       :> "stats0_failAfterUps"
@@ -382,9 +376,6 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       :> "stats6_rxFullRetries"
       :> "stats6_failAfterUps"
       :> Nil)
-      (  "probe_test_start"
-      :> Nil)
-      False
       sysClk
 
       -- done

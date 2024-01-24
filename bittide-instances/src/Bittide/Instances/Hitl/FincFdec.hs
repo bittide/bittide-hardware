@@ -3,6 +3,9 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 -- | A couple of tests testing clock board programming, and subsequently the
 -- FINC and FDEC pins.
@@ -10,22 +13,24 @@ module Bittide.Instances.Hitl.FincFdec where
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Extra (ibufds)
-import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
-import Clash.Sized.Vector.Extra (findWithDefault)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
+
+import Data.Maybe (isJust, fromMaybe)
+import Data.Aeson (FromJSON(..), withText)
 
 import Bittide.Arithmetic.Time
 import Bittide.Counter (domainDiffCounter)
 import Bittide.ClockControl (SpeedChange(NoChange, SlowDown, SpeedUp), speedChangeToFincFdec)
 import Bittide.ClockControl.Si539xSpi (si539xSpi, ConfigState(Finished))
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl (HitltConfig, vioHitlt)
 
 import qualified Bittide.ClockControl.Si5395J as Si5395J
 
 data TestState = Busy | Fail | Success
-data Test
+data FIncFDecTest
   -- | Keep pressing FDEC, see if counter falls below certain threshold
   = FDec
   -- | Keep pressing FINC, see if counter exceeds certain threshold
@@ -34,10 +39,30 @@ data Test
   | FDecInc
   -- | 'FInc' test followed by an 'FDec' one
   | FIncDec
-  deriving (Enum, Generic, NFDataX)
+  deriving (Enum, Generic, NFDataX, BitPack)
+
+instance Default FIncFDecTest where
+  def = FDec
+
+instance HitltConfig FIncFDecTest
+  '[ "probe_test_start_fdec"
+   , "probe_test_start_finc"
+   , "probe_test_start_fdecfinc"
+   , "probe_test_start_fincfdec"
+   ]
+
+instance FromJSON FIncFDecTest where
+  parseJSON = withText (show ''FIncFDecTest) $ \case
+    "FDec"    -> pure FDec
+    "FInc"    -> pure FInc
+    "FDecInc" -> pure FDecInc
+    "FIncDec" -> pure FIncDec
+    _         -> fail $ "parsing " <>  (show ''FIncFDecTest) <> " failed, "
+              <> "expected on of the following values: "
+              <> "FDec, FInc, FDecInc, FIncDec"
 
 -- | Lists all contructors of 'Test'
-allTests :: Vec 4 Test
+allTests :: Vec 4 FIncFDecTest
 allTests = FDec :> FInc :> FDecInc :> FIncDec :> Nil
 
 -- | Counter threshold after which a test is considered passed/failed. In theory
@@ -56,7 +81,7 @@ goFincFdecTests ::
   Clock Basic200 ->
   Reset Basic200 ->
   Clock Ext200 ->
-  Signal Basic200 Test ->
+  Signal Basic200 FIncFDecTest ->
   "MISO" ::: Signal Basic200 Bit -> -- SPI
   "" :::
     ( Signal Basic200 TestState
@@ -137,7 +162,7 @@ goFincFdecTests clk rst clkControlled testSelect miso =
 
   -- Keep pressing FDEC, expect counter to go below -@threshold@, then keep pressing
   -- FINC, expect counter to go above 0.
-  goFdecFinc :: Test -> Signed 32 -> (Test, (SpeedChange, TestState))
+  goFdecFinc :: FIncFDecTest -> Signed 32 -> (FIncFDecTest, (SpeedChange, TestState))
   goFdecFinc FDec n
     | n > threshold = (FDec, (NoChange, Fail))
     | n < -threshold = (FInc, (NoChange, Busy))
@@ -150,7 +175,7 @@ goFincFdecTests clk rst clkControlled testSelect miso =
 
   -- Keep pressing FINC, expect counter to go above @threshold@, then keep pressing
   -- FDEC, expect counter to go below 0.
-  goFincFdec :: Test -> Signed 32 -> (Test, (SpeedChange, TestState))
+  goFincFdec :: FIncFDecTest -> Signed 32 -> (FIncFDecTest, (SpeedChange, TestState))
   goFincFdec FInc n
     | n > threshold  = (FDec, (NoChange, Busy))
     | n < -threshold = (FInc, (NoChange, Fail))
@@ -196,13 +221,13 @@ fincFdecTests diffClk controlledDiffClock spiIn =
   (clk, clkStableRst) = clockWizardDifferential diffClk noReset
   clkStable1 = unsafeToActiveLow clkStableRst
 
-  anyStarted = fold (||) <$> startTests
+  anyStarted = isJust <$> testConfig
   testRst = orReset clkStableRst (unsafeFromActiveLow anyStarted)
   testRstBool = unsafeToActiveHigh testRst
 
   (fInc, fDec) = fIncDec
 
-  testF = fst . findWithDefault (FDec, True) snd . zip allTests <$> startTests
+  testF = fromMaybe def . fmap snd <$> testConfig
 
   (testResult, fIncDec, spiOut, debugSignals) =
     goFincFdecTests clk testRst clkControlled testF spiIn
@@ -211,15 +236,9 @@ fincFdecTests diffClk controlledDiffClock spiIn =
 
   (spiBusy, spiState, siClkLocked, counterActive, counter) = debugSignals
 
-  startTests :: Signal Basic200 (Vec 4 Bool)
-  startTests =
-    setName @"vioHitlt" $
-    vioProbe
-      (  "probe_test_done"
-      :> "probe_test_success"
-
-      -- Debug signals:
-      :> "probe_clkStable1"
+  testConfig =
+    vioHitlt @FIncFDecTest
+      (  "probe_clkStable1"
       :> "probe_testRstBool"
       :> "probe_spiBusy"
       :> "probe_spiState"
@@ -229,12 +248,6 @@ fincFdecTests diffClk controlledDiffClock spiIn =
       :> "probe_fInc"
       :> "probe_fDec"
       :> Nil)
-      (  "probe_test_start_fdec"
-      :> "probe_test_start_finc"
-      :> "probe_test_start_fdecfinc"
-      :> "probe_test_start_fincfdec"
-      :> Nil)
-      (repeat False)
       clk
       testDone
       testSuccess

@@ -91,6 +91,7 @@ common common-options
     string-interpolate,
     tasty-hunit,
     template-haskell,
+    typelits-witnesses,
     text,
     unix,
     vector
@@ -103,6 +104,7 @@ library
     Bittide.Instances.Hacks
 
     -- Hardware-in-the-loop tests
+    Bittide.Instances.Hitl
     Bittide.Instances.Hitl.BoardTest
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.FullMeshHwCc

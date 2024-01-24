@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2022-2023 Google LLC
+SPDX-FileCopyrightText: 2022-2024 Google LLC
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -10,7 +10,7 @@ have constructed a demo rig, which consists of 8 FPGA boards (KCU105), which are
 all connected to a PC through their JTAG ports. This PC runs a GitHub runner.
 
 To run a hardware-in-the-loop test:
-- The design must include a VIO (see [VIO](#vio))
+- The design must include a HITLT VIO (see [VIO](#vio))
 - Add topentity to list of targets ([Shake.hs](/bittide-shake/bin/Shake.hs))
 - Add topentity to CI
     - [staging](/.github/synthesis/staging.json) runs on every PR,
@@ -24,28 +24,59 @@ framework described in the next chapters.
 
 
 ## VIO
-The VIO component should be called `vioHitlt`, this name may include a module
-prefix (e.g. `fincFdecTest30_vioHitlt`). The name of the component can be set as
-such:
-
-```haskell
-myVio = setName @"vioHitlt" $ vioProbe ...
-```
-
-This component must have at least 3 probes. More start probes can be added,
-where each start probe defines a single test. The tests are executed one-by-one,
-in the order they are given to the `vioProbe` function.
+Use the `vioHitlt` interface of
+[Bittide.Instances.Hitl](/bittide-instances/src/Bittide/Instances/Hitl.hs)
+to instantiate the VIO. Each HITLT VIO can be associated a unique type
+interface for test case selection and passing configuration data to the
+selected test. This component offers at least 3 probes.
 
 2 input probes:
-- `probe_test_done` indicates when a single test is done
-- `probe_test_success` indicates whether a single test was successful
+- `probe_test_done` indicates when the currently selected test is done
+- `probe_test_success` indicates whether the currently selected test was
+  successful
 
 1 output probe:
-- `probe_test_start*` indicate the start of a specific test
+- `probe_test_start` indicates the start of a specific test case and passes
+  configuration data to the test
 
 The `done` signal should be `0` before a test is started. The `success` signal
 should only be read when `done` is `1`, otherwise its value is not defined.
+More input probes can be added to the vio for debugging purposes, but they
+won't affect the execution of the tests.
 
+The output probe controls the test activation, selects the test case and
+passes configuration data to the test. It offers values of type
+`Maybe (Index n, a)` holding a `Just` value only during test activation. The
+currently active test case is selected via the first component, where `n`
+is the number of test cases in total. The second component offers the
+corresponding configuration  associated with the test. The polymorphic type
+`a` is associated with the test through a decitated test interface:
+
+If only a single test case is required, the pre-defined `SimpleTest` type should
+be used. It does neither require any particular test name nor a dedicated YAML
+configuration file.
+
+```haskell
+myHitltVio = vioHitlt @SimpleTest ...
+```
+
+If multiple test cases are required, but no configuration data needs to be
+passed to the test, the `SimpleTests` type should be used. The names of the test
+cases are proveded as a symbol list.
+
+```haskell
+myHitltVio = vioHitlt @(SimpleTests '["test1", "test2", "test3"]) ...
+```
+
+If dedicated configuration data of type `a` needs to be passed to one or multiple
+test cases, an class instance of the `HitltConfig` class must be declared. The
+instance also associates the type with all test case names of the test. See
+[Bittide.Instances.Hitl.FincFdec](/bittide-instances/src/Bittide/Instances/Hitl/FincFdec.hs)
+for an example.
+
+Test activity and configuration data for particular test cases can be selected
+via the `testActive` and `testConfig` helpers using the name of the particular
+test case to be selected as a type level symbol argument.
 
 ## ILA
 All ILAs present in the design are armed before the VIO test is started. Each

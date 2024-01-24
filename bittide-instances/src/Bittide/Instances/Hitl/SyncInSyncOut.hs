@@ -62,11 +62,11 @@ module Bittide.Instances.Hitl.SyncInSyncOut where
 
 import Clash.Explicit.Prelude
 
+import Bittide.Instances.Hitl
 import Bittide.Instances.Domains
 import Bittide.Arithmetic.Time
 
 import Clash.Annotations.TH
-import Clash.Cores.Xilinx.VIO
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
 
@@ -150,14 +150,5 @@ syncInSyncOut sysClkDiff syncIn0 = syncOut
     delay sysClk enableGen False $ -- << filter glitches in output
       mealy sysClk testRst enableGen genFsm GInReset (pure ())
 
-  startTest :: Signal Basic300 Bool
-  startTest =
-    setName @"vioHitlt" $
-    vioProbe
-      ("probe_test_done" :> "probe_test_success" :> Nil)
-      ("probe_test_start" :> Nil)
-      False
-      sysClk
-      testDone
-      testSuccess
+  startTest = testActive $ vioHitlt @SimpleTest Nil sysClk testDone testSuccess
 makeTopEntity 'syncInSyncOut

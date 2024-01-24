@@ -4,20 +4,22 @@
 
 -- | Checks whether `+` and `-` work as expected, though its real purpose is to
 -- check whether we can run hardware-in-the-loop tests.
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Bittide.Instances.Hitl.BoardTest where
 
 import Clash.Explicit.Prelude
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Ila
-import Clash.Cores.Xilinx.VIO
 import Clash.Cores.Xilinx.Extra (ibufds)
 
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl
 
 type TestStart = Bool
-data TestState = Busy | Done TestSuccess
-data TestSuccess = TestFailed | TestSuccess deriving (Generic, Eq, NFDataX)
+data TestState = Busy | Done TestResult
+data TestResult = TestFailed | TestSuccess deriving (Generic, Eq, NFDataX)
 
 toDoneSuccess :: TestState -> (Bool, Bool)
 toDoneSuccess Busy = (False, False)
@@ -25,7 +27,7 @@ toDoneSuccess (Done s) = (True, s == TestSuccess)
 
 data CheckState n
   = CsChecking (Index n)
-  | CsDone TestSuccess
+  | CsDone TestResult
   deriving (Generic, NFDataX)
 
 check ::
@@ -69,14 +71,7 @@ boardTestSimple diffClk = bundle (testDone, testSuccess)
   (testDone, testSuccess) = unbundle $ toDoneSuccess <$> testState
 
   testStart =
-    setName @"vioHitlt" $
-    vioProbe
-      ("probe_test_done" :> "probe_test_success" :> Nil)
-      ("probe_test_start" :> Nil)
-      False
-      clk
-      testDone
-      testSuccess
+    testActive $ vioHitlt @SimpleTest Nil clk testDone testSuccess
 
   stimuli :: Vec 4 (Unsigned 8, Unsigned 8, Unsigned 8)
   stimuli = (
@@ -87,6 +82,11 @@ boardTestSimple diffClk = bundle (testDone, testSuccess)
     :> Nil
     )
 makeTopEntity 'boardTestSimple
+
+type BoardTestExtended = SimpleTests
+  '[ "test_a"
+   , "test_b"
+   ]
 
 -- | Testing circuit for `plus` and `minus`. Feeds the circuit with inputs and
 -- checks the received output against the expected output.
@@ -120,22 +120,10 @@ boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
 
 
   (testStartA, testStartB) =
-    unbundle $
-    setName @"vioHitlt" $
-    vioProbe
-      (  "probe_test_done"
-      :> "probe_test_success"
-      :> Nil
-      )
-      (  "probe_test_start_a"
-      :> "probe_test_start_b"
-      :> Nil
-      )
-      (False, False)
-      clk
-      testDone
-      testSuccess
-
+    let hitl = vioHitlt @BoardTestExtended Nil clk testDone testSuccess
+     in ( testActive @"test_a" hitl
+        , testActive @"test_b" hitl
+        )
 
   boardTestIla :: Signal Ext125 ()
   boardTestIla =
