@@ -5,12 +5,14 @@
 module Bittide.Counter
   ( Active
   , domainDiffCounter
+  , domainDiffCounterExt
   ) where
 
 import Clash.Explicit.Prelude
 
 import Clash.Cores.Xilinx.Xpm (xpmCdcGray)
 import Clash.Sized.Extra (unsignedToSigned, concatUnsigneds)
+import Clash.Explicit.Reset.Extra (Asserted(..), xpmResetSynchronizer)
 
 -- | State of 'domainDiffCounter'
 data DdcState
@@ -82,6 +84,35 @@ domainDiffCounter clkSrc rstSrc clkDst rstDst =
 
   subAndTruncate :: Unsigned 64 -> Unsigned 64 -> Signed 32
   subAndTruncate c0 c1 = truncateB (unsignedToSigned c0 - unsignedToSigned c1)
+
+-- | A variant of 'domainDiffCounter' for determination of speed differences
+-- between two domains, but which are captured in another external domain.
+domainDiffCounterExt ::
+  forall ext src dst.
+  ( KnownDomain ext
+  , KnownDomain src
+  , KnownDomain dst
+  , HasSynchronousReset ext
+  , HasDefinedInitialValues src
+  , HasDefinedInitialValues dst
+  ) =>
+  Clock ext -> Reset ext ->
+  Clock src -> Clock dst ->
+  Signal ext (Signed 32)
+domainDiffCounterExt clkExt rstExt clkSrc clkDst = truncateB <$>
+  ((-) <$> extendedGrayCounter clkSrc <*> extendedGrayCounter clkDst)
+ where
+  -- 64 bits is enough for approximately 3 millenia @ 200 MHz
+  extendedGrayCounter :: KnownDomain dom =>  Clock dom -> Signal ext (Signed 65)
+  extendedGrayCounter clk =
+      fmap unsignedToSigned
+    $ extendSuccCounter clkExt rstExt
+    $ xpmCdcGray clk clkExt counter
+   where
+    counter = register
+      clk (xpmResetSynchronizer Deasserted clkExt clk rstExt) enableGen
+      (minBound :: Unsigned 8)
+      (satSucc SatWrap <$> counter)
 
 -- | A counter that counts /up/, synchronized from the domain @src@ to domain @dst@. To
 -- reset this component, the reset should be asserted for at least one cycle in the
