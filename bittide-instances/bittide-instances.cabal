@@ -9,6 +9,7 @@ Copyright:           Copyright © 2022-2023 Google LLC
 
 data-files:
   data/constraints/*.xdc
+  data/hitltconfigs/*.yml
 
 common common-options
   default-extensions:
@@ -110,6 +111,7 @@ library
     Bittide.Instances.Hitl.FullMeshHwCc
     Bittide.Instances.Hitl.FullMeshSwCc
     Bittide.Instances.Hitl.IlaPlot
+    Bittide.Instances.Hitl.Setup
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.Transceivers
     Bittide.Instances.Hitl.VexRiscv
@@ -138,6 +140,19 @@ executable get-data-file-name
   -- We need -xm20000000 because of a memory allocation bug after a kernel update
   ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: bin/GetDataFileName.hs
+  other-modules:
+    Paths_bittide_instances
+  autogen-modules:
+    Paths_bittide_instances
+
+executable yamlpack
+  import: common-options
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  build-depends:
+    bittide-instances,
+    data-default,
+    yaml
+  main-is: bin/YamlPack.hs
   other-modules:
     Paths_bittide_instances
   autogen-modules:

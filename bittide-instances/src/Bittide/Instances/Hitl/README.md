@@ -72,7 +72,9 @@ If dedicated configuration data of type `a` needs to be passed to one or multipl
 test cases, an class instance of the `HitltConfig` class must be declared. The
 instance also associates the type with all test case names of the test. See
 [Bittide.Instances.Hitl.FincFdec](/bittide-instances/src/Bittide/Instances/Hitl/FincFdec.hs)
-for an example.
+for an example. If a custom type is needed to pass additional configuration data
+to a test, then this type must associated with a corresponding configuration file
+name in [YamlPack.hs](/bittide-instances/bin/YamlPack.hs).
 
 Test activity and configuration data for particular test cases can be selected
 via the `testActive` and `testConfig` helpers using the name of the particular
