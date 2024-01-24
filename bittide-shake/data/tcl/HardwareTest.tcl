@@ -220,9 +220,8 @@ proc get_ila_dicts {} {
         set ila_dict {}
 
         set cell_name [get_property CELL_NAME $hw_ila]
-        set idx_start [expr {[string first _ $cell_name] + 1}]
-        set idx_end [expr {[string first / $cell_name] - 1}]
-        set short_name [string range $cell_name $idx_start $idx_end]
+        set after_last [expr [string last "/" $cell_name] + 1]
+        set short_name [string range $cell_name $after_last end]
         dict set ila_dict name $short_name
         dict set ila_dict cell_name $cell_name
 
