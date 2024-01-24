@@ -452,8 +452,6 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
         height = SNat @AccWindowHeight
         idcs = unbundle (stability <$> result)
 
-        ebsC = ebsDiffCompress scheduledCapture <$> ebs
-
         -- get the points in time where the monitored values change
         stableUpdates  = changepoints clk rst enableGen <$> (fmap stable <$> idcs)
         settledUpdates = changepoints clk rst enableGen <$> (fmap settled <$> idcs)
@@ -473,21 +471,21 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
 
   -- compress the elastic buffer data via only reporting the
   -- differences since the last capture
-  ebsDiffCompress = curry $
-    let transF lastDataCount (trigger, curDataCount) =
-          let diff = curDataCount - lastDataCount
+  (ebDataChange, ebsC) = second unbundle $
+    let transF storedDataCounts (trigger, curDataCounts) =
+          let diffs = zipWith (-) curDataCounts storedDataCounts
               half = extend @_
                 @(CompressedBufferSize - 1)
                 @(m - CompressedBufferSize + 1)
                 maxBound
-              truncDiff = truncateB @_
+              truncDiffs = truncateB @_
                 @CompressedBufferSize
                 @(m - CompressedBufferSize)
-                diff
-           in (, truncDiff)
-            $ bool lastDataCount curDataCount
-            $ trigger || abs diff > half
-     in mealyB clk rst enableGen transF (0 :: DataCount m)
+                <$> diffs
+           in if trigger || any ((> half) . abs) diffs
+              then (curDataCounts,    (True,  truncDiffs))
+              else (storedDataCounts, (False, repeat 0))
+     in mealyB clk rst enableGen transF (repeat 0) (scheduledCapture, bundle ebs)
 
   -- produce at least two calibration captures
   calibrating = unsafeToActiveLow rst .&&.
@@ -514,22 +512,25 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
     (fmap fst <$> plotData)
 
   plotData =
-    let captureType calibrate scheduled dat
-          | scheduled && calibrate          = Just (Calibrate,  dat)
-          | scheduled                       = Just (Scheduled,  dat)
-          | dataChange dat && not calibrate = Just (DataChange, dat)
-          | otherwise                       = Nothing
+    let captureType calibrate scheduled dc dat
+          | scheduled && calibrate                = Just (Calibrate,  dat)
+          | scheduled                             = Just (Scheduled,  dat)
+          | dc || dataChange dat && not calibrate = Just (DataChange, dat)
+          | otherwise                             = Nothing
 
         dataChange PlotData{..} =
              any (\(_, x, y) -> isJust x || isJust y) dEBData
           || dSpeedChange /= NoChange
           || dRfStageChange /= Stable
-
-     in captureType <$> calibrating <*> scheduledCapture <*> localData
+     in captureType
+          <$> calibrating
+          <*> scheduledCapture
+          <*> ebDataChange
+          <*> localData
 
   ilaInstance :: Signal sys ()
   ilaInstance =
-    ila
+    setName @"ilaPlot" $ ila
       ( ilaConfig
            $ "trigger_1"
           :> "capture_1"
