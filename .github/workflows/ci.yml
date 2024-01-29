@@ -44,17 +44,18 @@ jobs:
     runs-on: [self-hosted, compute]
     container:
       image: ubuntu:22.04
+      options: --memory=11g
     steps:
     - uses: actions/checkout@v3
     - name: REUSE Compliance Check
       uses: fsfe/reuse-action@v1
-
 
   lint:
     name: Basic linting
     runs-on: [self-hosted, compute]
     container:
       image: ubuntu:22.04
+      options: --memory=11g
 
     steps:
       - name: Checkout
@@ -91,6 +92,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
 
     steps:
       - name: Checkout
@@ -129,6 +131,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
 
     steps:
       - name: Checkout
@@ -168,6 +171,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
 
     steps:
       - name: Checkout
@@ -232,6 +236,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
 
     steps:
       - name: Checkout
@@ -309,6 +314,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
 
     steps:
       - name: Checkout
@@ -335,6 +341,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
 
     steps:
       - name: Checkout
@@ -369,6 +376,7 @@ jobs:
         shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
     needs: [build]
 
     steps:
@@ -393,6 +401,7 @@ jobs:
         shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
     needs: [build]
 
     steps:
@@ -420,6 +429,7 @@ jobs:
         shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
     needs: [build]
 
     steps:
@@ -445,6 +455,7 @@ jobs:
         shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
     needs: [build]
 
     steps:
@@ -477,6 +488,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
 
     steps:
       - name: Checkout
@@ -503,6 +515,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
 
     steps:
       - name: Checkout
@@ -528,6 +541,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
 
     steps:
       - name: Checkout
@@ -560,6 +574,7 @@ jobs:
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
 
     steps:
       - name: Checkout
@@ -604,7 +619,7 @@ jobs:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
       volumes:
         - /opt/tools:/opt/tools
-      options: --init --mac-address="6c:5a:b0:6c:13:0b"
+      options: --init --mac-address="6c:5a:b0:6c:13:0b" --memory=11g
 
     steps:
       - name: Checkout
@@ -677,6 +692,7 @@ jobs:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
       volumes:
         - /opt/tools:/opt/tools
+      options: --memory=11g
 
     steps:
       - name: Checkout

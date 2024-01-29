@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Make sure all self-hosted jobs run in a docker container
+Make sure all self-hosted jobs run in a docker container and that each docker
+container has a maximum amount of memory it can use.
 """
 
-# SPDX-FileCopyrightText: 2022 Google LLC
+# SPDX-FileCopyrightText: 2022-2024 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
 
-import sys
 import yaml
 
 CI_PATH = ".github/workflows/ci.yml"
@@ -26,6 +26,12 @@ def main():
                 job["container"]["image"]
             except KeyError:
                 raise ValueError(f"self-hosted jobs should run in docker containers, '{job_name}' does not")
+            try:
+                options = job["container"]["options"]
+                if "--memory=" not in options:
+                    raise ValueError(f"Containers should have limited memory, '{job_name}' does not")
+            except KeyError:
+                raise ValueError(f"Containers should have limited memory, '{job_name}' does not")
 
 
 if __name__ == "__main__":
