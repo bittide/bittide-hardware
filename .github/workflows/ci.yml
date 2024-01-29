@@ -46,7 +46,7 @@ jobs:
       image: ubuntu:22.04
       options: --memory=11g
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: REUSE Compliance Check
       uses: fsfe/reuse-action@v1
 
@@ -59,7 +59,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -96,7 +96,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set CI flags
         run: |
@@ -135,7 +135,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Generate matrix
         run: |
@@ -175,7 +175,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set CI flags
         run: |
@@ -216,7 +216,7 @@ jobs:
           rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz
 
       - name: Upload plots
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
           name: gen-plots-hs-${{ matrix.target.topology }}
@@ -240,7 +240,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set CI flags
         run: |
@@ -251,7 +251,7 @@ jobs:
       - run: cache pull build
 
       - name: Download simulation artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           # Note that all artifacts are downloaded, if no 'name' is specified.
           # Unfortunately, this is the only working solution that github offers
@@ -298,7 +298,7 @@ jobs:
           pdfunite artifacts/*/report.pdf reports/Simulation-Report.pdf
 
       - name: Upload Reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Clock Control Reports
           path: reports
@@ -318,7 +318,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set CI flags
         run: |
@@ -345,7 +345,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set CI flags
         run: |
@@ -381,7 +381,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - run: cache pull cargo
 
@@ -406,7 +406,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set CI flags
         run: |
@@ -434,7 +434,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set CI flags
         run: |
@@ -460,7 +460,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - run: cache pull cargo
       - run: cache pull build
@@ -492,7 +492,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set CI flags
         run: |
@@ -519,7 +519,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set CI flags
         run: |
@@ -545,7 +545,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Generate matrix
         run: |
@@ -578,7 +578,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Generate matrix
         run: |
@@ -623,7 +623,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set CI flags
         run: |
@@ -660,7 +660,7 @@ jobs:
             shake ${{ matrix.target.top }}:"${target}"
 
       - name: Archive build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
           name: _build-${{ matrix.target.top }}
@@ -696,14 +696,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set CI flags
         run: |
           cp .github/cabal.project cabal.project.local
 
       - name: Download artifact _build directory
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: _build-${{ matrix.target.top }}
           path: _build
@@ -719,7 +719,7 @@ jobs:
 
       - name: Archive ILA data
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: _build-${{ matrix.target.top }}-debug
           path: |
@@ -752,7 +752,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Check dependencies for failures
         run: |
