@@ -61,8 +61,8 @@ vexRiscUartHello diffClk rst_in (uartIn, sclBs, sdaIn) =
 
   i2cIn :: CSignal Basic200 (Bit, Bit)
   i2cIn = CSignal $ bundle (readFromBiSignal sclBs, fromMaybe <$> sdaIn <*> sdaOut)
-  (clk200, pllLock) = clockWizardDifferential (SSymbol @"pll_300_200") diffClk noReset
-  rst200 = resetSynchronizer clk200 (orReset rst_in (unsafeFromActiveLow pllLock))
+  (clk200, pllLock :: Reset Basic200) = clockWizardDifferential diffClk noReset
+  rst200 = resetSynchronizer clk200 (orReset rst_in pllLock)
 
   ( (_iStart, _iSize, iMem)
     , (_dStart, _dSize, dMem)) = $(do
