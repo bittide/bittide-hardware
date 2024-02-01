@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2022 Google LLC
+# SPDX-FileCopyrightText: 2022-2024 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -21,6 +21,7 @@ pkgs.mkShell {
       pkgs.buildPackages.python310Full
       pkgs.buildPackages.python310Packages.matplotlib
       pkgs.buildPackages.python310Packages.scipy
+      pkgs.buildPackages.python310Packages.GitPython
       pkgs.buildPackages.sbt
       pkgs.buildPackages.scala
       pkgs.buildPackages.verilator
