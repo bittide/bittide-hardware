@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2022-2023 Google LLC
+# SPDX-FileCopyrightText: 2022-2024 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -40,6 +40,29 @@ concurrency:
  cancel-in-progress: true
 
 jobs:
+  license-year:
+    name: License year check
+    runs-on: [self-hosted, compute]
+    defaults:
+      run:
+        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
+      options: --memory=11g
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Check needs access to all branches
+          fetch-depth: 0
+
+      - name: Check license year of all files per commit
+        run: |
+          # XXX: We want to pass in the target branch of the PR, but we only run
+          #      on 'push' (see 'on' section in this YAML). Because of this, GH
+          #      sets the target branch to an empty string.
+          .github/scripts/check_copyright_years.py origin/staging
+
   license-check:
     runs-on: [self-hosted, compute]
     container:
@@ -746,6 +769,7 @@ jobs:
         generate-full-clock-control-simulation-report,
         host-tools-tests,
         license-check,
+        license-year,
         lint,
         rust-lints,
       ]
