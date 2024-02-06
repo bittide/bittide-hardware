@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE OverloadedStrings #-}
 
 -- | Checks whether `+` and `-` work as expected, though its real purpose is to
 -- check whether we can run hardware-in-the-loop tests.
@@ -10,14 +11,16 @@ import Clash.Explicit.Prelude
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Ila
-import Clash.Cores.Xilinx.VIO
 import Clash.Cores.Xilinx.Extra (ibufds)
+import Clash.Hitl (HitlTests, allFpgas, testsFromEnum, hitlVioBool, hitlVio, noConfigTest)
 
 import Bittide.Instances.Domains
 
 type TestStart = Bool
 data TestState = Busy | Done TestSuccess
 data TestSuccess = TestFailed | TestSuccess deriving (Generic, Eq, NFDataX)
+
+data Test = A | B deriving (Generic, Eq, Show, BitPack, Bounded, Enum, ShowX)
 
 toDoneSuccess :: TestState -> (Bool, Bool)
 toDoneSuccess Busy = (False, False)
@@ -68,15 +71,7 @@ boardTestSimple diffClk = bundle (testDone, testSuccess)
   testState = check clk rst (+) stimuli
   (testDone, testSuccess) = unbundle $ toDoneSuccess <$> testState
 
-  testStart =
-    setName @"vioHitlt" $
-    vioProbe
-      ("probe_test_done" :> "probe_test_success" :> Nil)
-      ("probe_test_start" :> Nil)
-      False
-      clk
-      testDone
-      testSuccess
+  testStart = hitlVioBool clk testDone testSuccess
 
   stimuli :: Vec 4 (Unsigned 8, Unsigned 8, Unsigned 8)
   stimuli = (
@@ -99,30 +94,19 @@ boardTestExtended ::
 boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
  where
   clk = ibufds diffClk
-  rstA = unsafeFromActiveLow (testStart .&&. (not <$> testSelect))
-  rstB = unsafeFromActiveLow (testStart .&&. testSelect)
+  rstA = unsafeFromActiveLow testStartA
+  rstB = unsafeFromActiveLow testStartB
 
   testStateA = check clk rstA (+) stimuliA
   testStateB = check clk rstB (-) stimuliB
 
-  (testDone, testSuccess) = unbundle $ toDoneSuccess <$> mux testSelect testStateB testStateA
-  (testStart, testSelect) =
-    unbundle $
-    setName @"vioHitlt" $
-    vioProbe
-      (  "probe_test_done"
-      :> "probe_test_success"
-      :> Nil
-      )
-      ( "probe_test_start"
-      :> "testSelect"
-      :> Nil
-      )
-      (False, False)
-      clk
-      testDone
-      testSuccess
+  (testDone, testSuccess) =
+    unbundle $ toDoneSuccess <$> mux testStartA testStateA testStateB
 
+  testStartA = testStartAB .==. pure (Just A)
+  testStartB = testStartAB .==. pure (Just B)
+
+  testStartAB = hitlVio A clk testDone testSuccess
 
   boardTestIla :: Signal Ext125 ()
   boardTestIla =
@@ -131,19 +115,21 @@ boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
       (ilaConfig $
            "trigger_AorB"
         :> "capture"
-        :> "ilaTestSelect"
+        :> "ilaTestStartA"
+        :> "ilaTestStartB"
         :> "ilaTestDone"
         :> "ilaTestSuccess"
         :> Nil
       )
       clk
       -- Trigger when starting either test
-      testStart
+      (testStartA .||. testStartB)
       -- Always capture
       (pure True :: Signal Ext125 Bool)
 
       -- Debug probes
-      testSelect
+      testStartA
+      testStartB
       testDone
       testSuccess
 
@@ -165,3 +151,9 @@ boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
     :> Nil
     )
 makeTopEntity 'boardTestExtended
+
+testsSimple :: HitlTests ()
+testsSimple = noConfigTest "Simple" allFpgas
+
+testsExtended :: HitlTests Test
+testsExtended = testsFromEnum allFpgas

@@ -12,6 +12,7 @@ import Clash.Cores.Xilinx.Extra
 import Clash.Cores.Xilinx.VIO
 import Data.Maybe
 
+{-# NOINLINE extraProbesTest #-}
 -- | A circuit that verifies the correct behavior of the TCL infrastructure for
 -- setting extra probes in Hitl tests.
 extraProbesTest ::
@@ -36,7 +37,6 @@ extraProbesTest diffClk = testSuccess
       testDone
       testSuccess
       fpgaId
-{-# NOINLINE extraProbesTest #-}
 
 -- | Produce the test result based on the test state and the extra probe value.
 -- These values should correspond to the yaml configuration.

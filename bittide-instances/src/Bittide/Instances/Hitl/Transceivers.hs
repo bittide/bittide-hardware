@@ -1,7 +1,8 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
@@ -30,8 +31,8 @@ import Bittide.Instances.Domains
 import Bittide.Transceiver
 
 import Clash.Cores.Xilinx.GTH
-import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
+import Clash.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
 import Clash.Xilinx.ClockGen
 
 import qualified Clash.Explicit.Prelude as E
@@ -145,51 +146,12 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     $ unsafeFromActiveLow
     $ xpmCdcSingle sysClk sysClk syncIn
 
-  (txns, txps, allUp, stats, spiDone, spiOut) =
+  (txns, txps, allUp, _stats, spiDone, spiOut) =
     goTransceiversUpTest refClk sysClk testRst rxns rxps miso
-
-  stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
   startTest :: Signal Basic125 Bool
   startTest =
-    setName @"vioHitlt" $
-    vioProbe
-      (  "probe_test_done"
-      :> "probe_test_success"
-
-      -- Debug probes
-      :> "stats0_txRetries"
-      :> "stats0_rxRetries"
-      :> "stats0_rxFullRetries"
-      :> "stats0_failAfterUps"
-      :> "stats1_txRetries"
-      :> "stats1_rxRetries"
-      :> "stats1_rxFullRetries"
-      :> "stats1_failAfterUps"
-      :> "stats2_txRetries"
-      :> "stats2_rxRetries"
-      :> "stats2_rxFullRetries"
-      :> "stats2_failAfterUps"
-      :> "stats3_txRetries"
-      :> "stats3_rxRetries"
-      :> "stats3_rxFullRetries"
-      :> "stats3_failAfterUps"
-      :> "stats4_txRetries"
-      :> "stats4_rxRetries"
-      :> "stats4_rxFullRetries"
-      :> "stats4_failAfterUps"
-      :> "stats5_txRetries"
-      :> "stats5_rxRetries"
-      :> "stats5_rxFullRetries"
-      :> "stats5_failAfterUps"
-      :> "stats6_txRetries"
-      :> "stats6_rxRetries"
-      :> "stats6_rxFullRetries"
-      :> "stats6_failAfterUps"
-      :> Nil)
-      (  "probe_test_start"
-      :> Nil)
-      False
+    hitlVioBool
       sysClk
 
       -- Consider test done if links have been up consistently for 50 seconds. This
@@ -202,35 +164,6 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       -- it will make the test TCL print out all probe values.
       (pure True :: Signal Basic125 Bool)
 
-      -- Debug probes
-      (txRetries     <$> stats0)
-      (rxRetries     <$> stats0)
-      (rxFullRetries <$> stats0)
-      (failAfterUps  <$> stats0)
-      (txRetries     <$> stats1)
-      (rxRetries     <$> stats1)
-      (rxFullRetries <$> stats1)
-      (failAfterUps  <$> stats1)
-      (txRetries     <$> stats2)
-      (rxRetries     <$> stats2)
-      (rxFullRetries <$> stats2)
-      (failAfterUps  <$> stats2)
-      (txRetries     <$> stats3)
-      (rxRetries     <$> stats3)
-      (rxFullRetries <$> stats3)
-      (failAfterUps  <$> stats3)
-      (txRetries     <$> stats4)
-      (rxRetries     <$> stats4)
-      (rxFullRetries <$> stats4)
-      (failAfterUps  <$> stats4)
-      (txRetries     <$> stats5)
-      (rxRetries     <$> stats5)
-      (rxFullRetries <$> stats5)
-      (failAfterUps  <$> stats5)
-      (txRetries     <$> stats6)
-      (rxRetries     <$> stats6)
-      (rxFullRetries <$> stats6)
-      (failAfterUps  <$> stats6)
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.
 {-# ANN transceiversUpTest Synthesize
@@ -252,3 +185,6 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
       ]
   } #-}
+
+tests :: HitlTests ()
+tests = noConfigTest "Transceivers" allFpgas

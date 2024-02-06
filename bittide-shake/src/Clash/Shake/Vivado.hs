@@ -304,9 +304,11 @@ mkBoardProgramTcl outputDir hwTargets url hasProbesFile = do
 
 
 mkHardwareTestTcl ::
+  -- | Path to test configuration
+  FilePath ->
   -- | Directory where the probes file is located
   FilePath ->
-  -- | Hardware targets to test, see `Flags.hs`
+  -- | Hardware targets to program, see `Flags.hs`
   HardwareTargets ->
   -- | Hardware server URL
   String ->
@@ -314,7 +316,7 @@ mkHardwareTestTcl ::
   FilePath ->
   -- | Rendered Tcl
   IO String
-mkHardwareTestTcl outputDir hwTargets url ilaDataPath = do
+mkHardwareTestTcl testConfigPath outputDir hwTargets url ilaDataPath = do
   hardwareTestTclPath <- getDataFileName ("data" </> "tcl" </> "HardwareTest.tcl")
   pure [__i|
     source {#{hardwareTestTclPath}} -notrace
@@ -322,7 +324,7 @@ mkHardwareTestTcl outputDir hwTargets url ilaDataPath = do
 
     set fpga_nrs #{toTclTarget hwTargets}
     set probes_file {#{outputDir </> "probes.ltx"}}
-    set test_config_file {#{outputDir </> "test_config.yml"}}
+    set test_config_file {#{testConfigPath}}
     set url {#{url}}
 
     open_hw_manager

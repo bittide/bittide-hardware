@@ -18,7 +18,7 @@ import Prelude
 import Clash.Shake.Extra
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
-import Control.Applicative (liftA2, (<|>))
+import Control.Applicative (liftA2)
 import Control.Exception (throw)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.Extra (ifM, unlessM)
@@ -83,6 +83,9 @@ clashBuildDir = buildDir </> "clash"
 -- | Directory for Vivado input + output files
 vivadoBuildDir :: FilePath
 vivadoBuildDir = buildDir </> "vivado"
+
+hitlBuildDir :: FilePath
+hitlBuildDir = buildDir </> "hitl"
 
 -- | List of files to watch for Cabal/Cargo cache invalidation
 watchFilesPath :: FilePath
@@ -223,7 +226,7 @@ shakeOpts :: ShakeOptions
 shakeOpts = shakeOptions
   { shakeFiles = buildDir
   , shakeChange = ChangeDigest
-  , shakeVersion = "10"
+  , shakeVersion = "11"
   }
 
 -- | Run Vivado on given TCL script. Can collect the ExitCode.
@@ -319,6 +322,11 @@ main = do
           for_ targets $ \Target{..} -> do
             need [entityName targetName <> ":synth"]
 
+        (hitlBuildDir </> "*.yml") %> \path -> do
+          needWatchFiles
+          let entity = takeFileName (dropExtension path)
+          command_ [] "cabal" ["run", "--", "bittide-instances:hitl", "write", entity]
+
         -- Files used for cache invalidation
         watchFilesPath %> \_ -> do
           alwaysRerun
@@ -355,8 +363,8 @@ main = do
               ]
             bitstreamPath = synthesisDir </> "bitstream.bit"
             probesPath = synthesisDir </> "probes.ltx"
-            testConfigPath = synthesisDir </> "test_config.yml"
             testExitCodePath = synthesisDir </> "test_exit_code"
+            hitlConfigPath = hitlBuildDir </> targetName <> ".yml"
 
             postRouteMethodologyPath = reportDir </> "post_route_methodology.rpt"
             postRouteTimingSummaryPath = reportDir </> "post_route_timing_summary.rpt"
@@ -541,21 +549,13 @@ main = do
             -- Run hardware test
             runHardwareTestTclPath %> \path -> do
               hwTargets <- askOracle $ HardwareTargetsFlag ()
+              need [hitlConfigPath]
               forceRerun <- askOracle $ ForceTestRerun ()
               when forceRerun alwaysRerun
               url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
               hardwareTestTcl <-
-                liftIO $ mkHardwareTestTcl synthesisDir hwTargets url ilaDir
+                liftIO $ mkHardwareTestTcl hitlConfigPath synthesisDir hwTargets url ilaDir
               writeFileChanged path hardwareTestTcl
-
-            -- Create test configuration file
-            testConfigPath %> \_ -> do
-              let
-                specificRelPath = "data/test_configs" </> entityName targetName <> ".yml"
-                defaultRelPath = "data/test_configs/default.yml"
-              specAbsPath <- liftIO $ getInstanceDataFileName CheckExists specificRelPath
-              defAbsPath <- liftIO $ getInstanceDataFileName CheckExists defaultRelPath
-              copyFileChanged (fromJust $ specAbsPath <|> defAbsPath) testConfigPath
 
             testExitCodePath %> \path -> do
               forceRerun <- askOracle $ ForceTestRerun ()
@@ -565,7 +565,7 @@ main = do
                 , runHardwareTestTclPath
                 , bitstreamPath
                 , probesPath
-                , testConfigPath
+                , hitlConfigPath
                 ]
               vivadoFromTcl_ runBoardProgramTclPath
               exitCode <- vivadoFromTcl @ExitCode runHardwareTestTclPath

@@ -5,7 +5,7 @@ License:             Apache-2.0
 license-file:        LICENSE
 author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
-Copyright:           Copyright © 2022-2023 Google LLC
+Copyright:           Copyright © 2022-2024 Google LLC
 
 common common-options
   default-extensions:
@@ -69,6 +69,7 @@ common common-options
     ghc-typelits-extra,
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
+    template-haskell,
 library
   import: common-options
   hs-source-dirs: src

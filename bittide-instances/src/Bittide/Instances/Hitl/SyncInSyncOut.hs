@@ -2,6 +2,8 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | Test to confirm physical connection of SYNC_IN / SYNC_OUT.
 --
 -- For some tests in Bittide is important that our demo rig (consisting of eight
@@ -62,12 +64,12 @@ module Bittide.Instances.Hitl.SyncInSyncOut where
 
 import Clash.Explicit.Prelude
 
-import Bittide.Instances.Domains
 import Bittide.Arithmetic.Time
+import Bittide.Instances.Domains
 
 import Clash.Annotations.TH
-import Clash.Cores.Xilinx.VIO
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
+import Clash.Hitl (HitlTests, allFpgas, hitlVioBool, noConfigTest)
 import Clash.Xilinx.ClockGen
 
 -- | An 'Index' counting to /n/ seconds on 'Basic300'
@@ -151,13 +153,8 @@ syncInSyncOut sysClkDiff syncIn0 = syncOut
       mealy sysClk testRst enableGen genFsm GInReset (pure ())
 
   startTest :: Signal Basic300 Bool
-  startTest =
-    setName @"vioHitlt" $
-    vioProbe
-      ("probe_test_done" :> "probe_test_success" :> Nil)
-      ("probe_test_start" :> Nil)
-      False
-      sysClk
-      testDone
-      testSuccess
+  startTest = hitlVioBool sysClk testDone testSuccess
 makeTopEntity 'syncInSyncOut
+
+tests :: HitlTests ()
+tests = noConfigTest "SyncInSyncOut" allFpgas
