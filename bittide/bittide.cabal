@@ -115,6 +115,7 @@ library
     Bittide.ClockControl.Callisto.Util
     Bittide.ClockControl.Foreign.Rust.Callisto
     Bittide.ClockControl.Foreign.Sizes
+    Bittide.ClockControl.QuotaControl
     Bittide.ClockControl.Registers
     Bittide.ClockControl.Si5391A
     Bittide.ClockControl.Si5395J
@@ -190,6 +191,7 @@ test-suite unittests
     Tests.Axi4
     Tests.Calendar
     Tests.ClockControl.Si539xSpi
+    Tests.ClockControl.QuotaControl
     Tests.Counter
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer
