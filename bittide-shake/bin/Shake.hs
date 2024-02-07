@@ -214,6 +214,7 @@ targets = map enforceValidTarget
   , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcWithRiscvTest"
   , testTarget "Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest"
   , testTarget "Bittide.Instances.Hitl.SyncInSyncOut.syncInSyncOut"
+  , testTarget "Bittide.Instances.Hitl.Tcl.ExtraProbes.extraProbesTest"
   , testTarget "Bittide.Instances.Hitl.Transceivers.transceiversUpTest"
   , testTarget "Bittide.Instances.Hitl.VexRiscv.vexRiscvTest"
   ]
