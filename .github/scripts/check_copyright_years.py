@@ -62,10 +62,16 @@ def is_valid_commit_file(repo, commit, path) -> bool:
     notices.
     """
     commit_year = commit.authored_datetime.year
-    max_year, line_no = max(get_copyright_years(repo, commit, path))
+    years_and_line_nos = list(get_copyright_years(repo, commit, path))
+
+    if not years_and_line_nos:
+        return True
+
+    max_year, line_no = max(years_and_line_nos)
 
     if max_year != commit_year:
         print(f"{commit.hexsha} {path}:{line_no} Unexpected copyright year. Expected {commit_year}, got {max_year}.", file=sys.stderr)
+        return False
 
     return True
 
@@ -89,7 +95,10 @@ def is_valid_commit(repo, commit, seen_files) -> Tuple[bool, Set[str]]:
 
     all_valid = True
     for file in files:
-        all_valid &= is_valid_commit_file(repo, commit, file)
+        try:
+            all_valid &= is_valid_commit_file(repo, commit, file)
+        except:
+            raise ValueError(f"Unexpected exception when validating {commit.hexsha}:{file}")
 
     return all_valid, files
 
@@ -101,6 +110,9 @@ def main(merge_base_branch):
     current_branch = repo.active_branch
     common_ancestor_hexdigest = repo.git.merge_base(merge_base_branch, current_branch.name)
     common_ancestor = repo.commit(common_ancestor_hexdigest)
+
+    if merge_base_branch == "origin/staging" and current_branch == "staging":
+        return
 
     if current_branch.commit.binsha == common_ancestor.binsha:
         exit(f"No commits on top of base branch '{merge_base_branch}'. Empty PR?")
