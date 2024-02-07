@@ -62,7 +62,12 @@ def is_valid_commit_file(repo, commit, path) -> bool:
     notices.
     """
     commit_year = commit.authored_datetime.year
-    max_year, line_no = max(get_copyright_years(repo, commit, path))
+    years_and_line_nos = list(get_copyright_years(repo, commit, path))
+
+    if not years_and_line_nos:
+        return True
+
+    max_year, line_no = max(years_and_line_nos)
 
     if max_year != commit_year:
         print(f"{commit.hexsha} {path}:{line_no} Unexpected copyright year. Expected {commit_year}, got {max_year}.", file=sys.stderr)
