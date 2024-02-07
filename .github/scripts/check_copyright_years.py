@@ -89,7 +89,10 @@ def is_valid_commit(repo, commit, seen_files) -> Tuple[bool, Set[str]]:
 
     all_valid = True
     for file in files:
-        all_valid &= is_valid_commit_file(repo, commit, file)
+        try:
+            all_valid &= is_valid_commit_file(repo, commit, file)
+        except:
+            raise ValueError(f"Unexpected exception when validating {commit.hexsha}:{file}")
 
     return all_valid, files
 
