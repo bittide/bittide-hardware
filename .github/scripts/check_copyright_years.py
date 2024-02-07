@@ -71,6 +71,7 @@ def is_valid_commit_file(repo, commit, path) -> bool:
 
     if max_year != commit_year:
         print(f"{commit.hexsha} {path}:{line_no} Unexpected copyright year. Expected {commit_year}, got {max_year}.", file=sys.stderr)
+        return False
 
     return True
 
