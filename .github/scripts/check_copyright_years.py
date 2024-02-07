@@ -105,6 +105,9 @@ def main(merge_base_branch):
     common_ancestor_hexdigest = repo.git.merge_base(merge_base_branch, current_branch.name)
     common_ancestor = repo.commit(common_ancestor_hexdigest)
 
+    if merge_base_branch == "origin/staging" and current_branch == "staging":
+        return
+
     if current_branch.commit.binsha == common_ancestor.binsha:
         exit(f"No commits on top of base branch '{merge_base_branch}'. Empty PR?")
 
