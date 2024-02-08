@@ -13,7 +13,13 @@ import git
 
 from typing import Set, Tuple
 
-SPDX_MAGIC = "SPDX-FileCopyrightText:"
+COPYRIGHT_RES = [
+    # Cabal
+    re.compile("^Copyright:"),
+
+    # SPDX
+    re.compile("SPDX-FileCopyrightText:"),
+]
 
 YEAR_RE = re.compile(r"\d{4}")
 
@@ -47,14 +53,15 @@ def get_copyright_years(repo, commit, path):
     lines = content.split("\n")
 
     for lineno, line in enumerate(lines, start=1):
-        if SPDX_MAGIC in line:
-            matches = YEAR_RE.findall(line)
-            if not matches:
-                # XXX: We don't error on "poorly formatted" SPDX headers, as our
-                #      current check also triggers on things like our SPDX_MAGIC
-                #      definition.
-                continue
-            yield int(matches[-1]), lineno
+        for copyright_re in COPYRIGHT_RES:
+            if copyright_re.search(line) != None:
+                matches = YEAR_RE.findall(line)
+                if not matches:
+                    # XXX: We don't error on "poorly formatted" SPDX headers, as our
+                    #      current check also triggers on things like our SPDX_MAGIC
+                    #      definition.
+                    continue
+                yield int(matches[-1]), lineno
 
 def is_valid_commit_file(repo, commit, path) -> bool:
     """

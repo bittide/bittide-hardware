@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -12,6 +12,7 @@ import Test.Tasty.Hedgehog
 import Tests.Axi4
 import Tests.Calendar
 import Tests.ClockControl.Si539xSpi
+import Tests.Clash.Cores.Xilinx.Dna
 import Tests.DoubleBufferedRam
 import Tests.ElasticBuffer
 import Tests.Haxioms
@@ -27,15 +28,16 @@ tests = testGroup "Unittests"
   [ axi4Group
   , calGroup
   , clockGenGroup
+  , dnaTestGroup
   , ebGroup
   , haxiomsGroup
   , linkGroup
-  , wbGroup
   , ramGroup
   , readElfTestGroup
   , sgGroup
   , stabilityGroup
   , switchGroup
+  , wbGroup
   ]
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
