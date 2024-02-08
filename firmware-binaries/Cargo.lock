@@ -296,6 +296,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "time_self_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-sys",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
 name = "ufmt"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

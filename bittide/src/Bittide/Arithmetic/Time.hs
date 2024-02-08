@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -23,6 +23,10 @@ type Picoseconds  (ps :: Nat) = ps
 -- | Number of clock cycles required at the clock frequency of @dom@ before a minimum @period@ has passed.
 -- Is always at least one.
 type PeriodToCycles dom period = Max 1 (DivRU period (Max 1 (DomainPeriod dom)))
+
+-- | The domain's clock frequency in Hertz, calculated based on the period stored in ps.
+-- This might lead to rounding errors.
+type DomainFrequency dom = Div (Seconds 1) (DomainPeriod dom)
 
 seconds :: Int64 -> Femtoseconds
 seconds s = mapFemtoseconds (* 1000) (milliseconds s)

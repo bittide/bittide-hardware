@@ -1,7 +1,7 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
+{-# OPTIONS_GHC -fconstraint-solver-iterations=100 #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PartialTypeSignatures #-}
@@ -11,6 +11,7 @@ module Bittide.Wishbone where
 
 import Clash.Prelude
 
+import Bittide.Arithmetic.Time(DomainFrequency)
 import Bittide.SharedTypes
 
 import Clash.Cores.UART (uart, ValidBaud)
@@ -19,14 +20,14 @@ import Clash.Util.Interpolate
 
 import Data.Bifunctor
 import Data.Bool(bool)
-import Data.Constraint (Dict(Dict))
-import Data.Constraint.Nat.Extra (divWithRemainder)
+import Data.Constraint.Nat.Extra
 import Data.Maybe
 
-import Protocols.Df hiding (zipWith, pure, bimap, first, second, route)
-import Protocols.Internal
+import Protocols
+import Protocols.Internal(CSignal(..))
 import Protocols.Wishbone
 
+import qualified Protocols.Df as Df
 import qualified Protocols.Wishbone as Wishbone
 
 
@@ -208,7 +209,7 @@ singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
 -- This function is unsafe because data can be lost when the input is @Just _@ and
 -- the receiving circuit tries to apply back pressure.
 unsafeToDf :: Circuit (CSignal dom (Maybe a)) (Df dom a)
-unsafeToDf = Circuit $ \ (CSignal cSig, _) -> (CSignal $ pure (), maybeToData <$> cSig)
+unsafeToDf = Circuit $ \ (CSignal cSig, _) -> (CSignal $ pure (), Df.maybeToData <$> cSig)
 
 -- | 'Df' version of 'uart'.
 uartDf ::
@@ -229,7 +230,7 @@ uartDf baud = Circuit go
     ( (Ack <$> ack, CSignal $ pure ())
     , (CSignal received, CSignal txBit) )
    where
-    (received, txBit, ack) = uart baud rxBit (dataToMaybe <$> request)
+    (received, txBit, ack) = uart baud rxBit (Df.dataToMaybe <$> request)
 
 -- | Wishbone accessible UART interface with configurable FIFO buffers.
 --   It takes the depths of the transmit and receive buffers and the baud rate as parameters.
@@ -288,36 +289,36 @@ uartWb txDepth@SNat rxDepth@SNat baud = circuit $ \(wb, uartRx) -> do
    where
     third f (a, b, c) = (a, b, f c)
     unCSignal (CSignal s) = s
-    go ((WishboneM2S{..}, dataToMaybe -> rxData, fifoFull -> txFull), (Ack txAck, _))
+    go ((WishboneM2S{..}, Df.dataToMaybe -> rxData, fifoFull -> txFull), (Ack txAck, _))
       -- not in cycle
       | not (busCycle && strobe)
       = ( ((emptyWishboneS2M @()) { readData = invalidReq }, Ack False, ())
-        , (NoData, status)
+        , (Df.NoData, status)
         )
       -- illegal addr
       | not addrLegal
       = ( ((emptyWishboneS2M @()) { err = True, readData = invalidReq }, Ack False, ())
-        , (NoData, status)
+        , (Df.NoData, status)
         )
       -- read at 0
       | not writeEnable && internalAddr == 0 =
         ( ( (emptyWishboneS2M @())
             {acknowledge = True, readData = resize $ fromMaybe 0 rxData}, Ack True, ())
-          , (NoData, status)
+          , (Df.NoData, status)
         )
       -- write at 0
       | writeEnable && internalAddr == 0 =
         ( ( (emptyWishboneS2M @())
             {acknowledge = txAck , readData = invalidReq}, Ack False, ())
-          , (Data $ resize writeData, status)
+          , (Df.Data $ resize writeData, status)
         )
       -- read at 1
       | not writeEnable && internalAddr == 1 =
         ( ( (emptyWishboneS2M @())
             {acknowledge = True, readData = resize $ pack status}, Ack False, ())
-          , (NoData, status)
+          , (Df.NoData, status)
         )
-      | otherwise = ((emptyWishboneS2M { err = True }, Ack False, ()), (NoData, status))
+      | otherwise = ((emptyWishboneS2M { err = True }, Ack False, ()), (Df.NoData, status))
      where
       (alignedAddr, alignment) = split @_ @(addrW - 2) @2 addr
       internalAddr = bitCoerce $ resize alignedAddr :: Index 2
@@ -376,15 +377,15 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
     }
   go ::
     FifoState depth ->
-    (Bool, Data a, Ack, a) ->
+    (Bool, Df.Data a, Ack, a) ->
     ( FifoState depth
-    , (Index depth, Maybe (Index depth, a), Data a, Bool, FifoMeta depth))
-  go state@FifoState{..} (False, _, _,_) = (state,(readPointer, Nothing, NoData, False, fifoMeta))
+    , (Index depth, Maybe (Index depth, a), Df.Data a, Bool, FifoMeta depth))
+  go state@FifoState{..} (False, _, _,_) = (state,(readPointer, Nothing, Df.NoData, False, fifoMeta))
    where
     fifoEmpty = dataCount == 0
     fifoFull = dataCount == maxBound
     fifoMeta = FifoMeta {fifoEmpty, fifoFull, fifoDataCount = dataCount}
-  go FifoState{..} (True, dataToMaybe -> fifoIn, Ack readyIn, bramOut) = (nextState, output)
+  go FifoState{..} (True, Df.dataToMaybe -> fifoIn, Ack readyIn, bramOut) = (nextState, output)
    where
     fifoEmpty = dataCount == 0
     fifoFull = dataCount == maxBound
@@ -395,7 +396,7 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
 
     readPointerNext = if readSuccess then satSucc SatWrap readPointer else readPointer
     writeOpGo = if writeSuccess then (writePointer,) <$> fifoIn else Nothing
-    fifoOutGo = if fifoEmpty then NoData else Data bramOut
+    fifoOutGo = if fifoEmpty then Df.NoData else Df.Data bramOut
 
     dataCountNext = dataCountDx dataCount
     dataCountDx = case (writeSuccess, readSuccess) of
@@ -449,3 +450,24 @@ wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
     | wbWriting = replace wbAddr (Just writeData) (repeat Nothing)
     | otherwise = repeat Nothing
   wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}
+
+-- | Wishbone accessible circuit that contains a free running 64 bit counter. We can
+-- observe this counter to get a sense of time, overflows should be accounted for by
+-- the master.
+timeWb ::
+  forall dom addrW .
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , 2 <= addrW
+  , 1 <= DomainPeriod dom) =>
+  Circuit (Wishbone dom 'Standard addrW (Bytes 4)) ()
+timeWb = Circuit $ \(wbM2S, _) -> (mealy goMealy (0,0) wbM2S, ())
+ where
+  goMealy (frozen, count :: Unsigned 64) wbM2S = ((nextFrozen, succ count), wbS2M)
+       where
+    freq = natToNum @(DomainFrequency dom) :: Unsigned 64
+    nextFrozen = if isJust (head writes) then count else frozen
+    RegisterBank (splitAtI -> (frozenMsbs, frozenLsbs)) = getRegsBe @8 frozen
+    RegisterBank (splitAtI -> (freqMsbs, freqLsbs)) = getRegsBe @8 freq
+    (writes, wbS2M) = wbToVec
+      (0 :> fmap pack (frozenLsbs :> frozenMsbs :> freqLsbs :> freqMsbs :> Nil)) wbM2S

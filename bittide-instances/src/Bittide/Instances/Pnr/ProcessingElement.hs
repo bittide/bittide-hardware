@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE RecordWildCards #-}
@@ -33,8 +33,9 @@ vexRiscUartHello ::
 vexRiscUartHello diffClk rst_in =
   toSignals $ withClockResetEnable clk200 rst200 enableGen $
     circuit $ \uartRx -> do
-      [uartBus] <- (processingElement @Basic200 peConfig) -< ()
+      [uartBus, timeBus] <- processingElement @Basic200 peConfig -< ()
       (uartTx, _uartStatus) <- uartWb d16 d16 (SNat @921600) -< (uartBus, uartRx)
+      timeWb -< timeBus
       idC -< uartTx
  where
   (clk200, rst200_) = clockWizardDifferential diffClk noReset
@@ -48,6 +49,9 @@ vexRiscUartHello diffClk rst_in =
         elfPath = elfDir </> "hello"
       memBlobsFromElf BigEndian elfPath Nothing)
 
-  peConfig = PeConfig (0 :> 1 :> 2 :> Nil) (Reloadable $ Blob iMem) (Reloadable $ Blob dMem)
+  peConfig =
+    PeConfig (0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil)
+    (Reloadable $ Blob iMem)
+    (Reloadable $ Blob dMem)
 
 makeTopEntity 'vexRiscUartHello
