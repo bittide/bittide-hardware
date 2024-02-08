@@ -137,6 +137,7 @@ jobs:
             echo "Restored cache, no need to update cabal package list"
           fi
 
+      - run: ./cargo.sh fetch
       - run: ./cargo.sh build --frozen --release
       - run: ./cargo.sh build --frozen
       - run: cabal build all
