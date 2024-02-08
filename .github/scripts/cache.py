@@ -19,7 +19,7 @@ Options:
   --empty-pattern-ok   Allow patterns to not match any files
 """
 
-# SPDX-FileCopyrightText: 2022 Google LLC
+# SPDX-FileCopyrightText: 2022-2024 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -53,7 +53,7 @@ TOUCH_AFTER=datetime.timedelta(days=1)
 
 CARGO_CACHE_BUST = 2
 CARGO_KEY_PREFIX = f"cargo-{CARGO_CACHE_BUST}-"
-CARGO_KEY_PATTERNS = ("**/Cargo.lock", "**/Cargo.toml")
+CARGO_KEY_PATTERNS = ("**/Cargo.lock", "**/Cargo.toml", "**/rust-toolchain.toml")
 CARGO_CACHE_PATTERNS = ("~/.cargo",)
 
 CABAL_CACHE_BUST = 2
