@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Google LLC
+// SPDX-FileCopyrightText: 2022-2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -12,6 +12,7 @@ pub mod clock_control;
 pub mod gather_unit;
 pub mod program_stream;
 pub mod scatter_unit;
+pub mod time;
 pub mod uart;
 
 pub(crate) mod utils;

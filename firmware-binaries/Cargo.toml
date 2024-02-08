@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2022 Google LLC
+# SPDX-FileCopyrightText: 2024 Google LLC
 #
 # SPDX-License-Identifier: CC0-1.0
 
@@ -14,6 +14,7 @@ codegen-units = 1
 [workspace]
 members = [
   "examples/hello",
+  "test-cases/time_self_test",
 
   "clock-control",
   "processing-element-test",
