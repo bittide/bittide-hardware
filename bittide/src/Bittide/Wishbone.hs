@@ -20,6 +20,7 @@ import Clash.Cores.Xilinx.Ila (ila, ilaConfig, IlaConfig(..), Depth)
 import Clash.Sized.Vector.ToTuple
 import Clash.Util.Interpolate
 
+import Bittide.DoubleBufferedRam (RegisterWritePriority(..), registerWb)
 import Bittide.Extra.Maybe
 import Clash.Functor.Extra
 import Data.Bifunctor
@@ -529,3 +530,41 @@ i2cWb = case (cancelMulDiv @nBytes @8) of
         wbAck = (pure (Just 0) ./=. transAddr) .||. hostAck
         (dOut,hostAck,busy,al,ackOut,i2cOut) =
           i2c hasClock hasReset smReset (fromEnable hasEnable) clkDiv claimBus i2cOp ackIn i2cIn
+
+-- Wishbone accessible register circuit which can only be written to from the circuit.
+statusRegWb ::
+  forall dom a nBytes addrW .
+  ( HiddenClockResetEnable dom
+  , BitPack a, NFDataX a
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat addrW, 2 <= addrW
+  ) =>
+  a ->
+  Circuit
+    (CSignal dom (Maybe a), Wishbone dom 'Standard addrW (Bytes nBytes))
+    ()
+statusRegWb initVal = case (cancelMulDiv @nBytes @8) of
+  Dict -> fromSignals go
+   where
+    go ((inp,wbM2S), _) = ((pure (), wbS2M), ())
+     where
+       (_, wbS2M) = registerWb CircuitPriority initVal wbM2S inp
+
+-- Wishbone accessible register circuit which can only be written to by the wishbone bus.
+controlRegWb ::
+  forall dom a nBytes addrW .
+  ( HiddenClockResetEnable dom
+  , BitPack a, NFDataX a
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat addrW, 2 <= addrW
+  ) =>
+  a ->
+  Circuit
+    (Wishbone dom 'Standard addrW (Bytes nBytes))
+    (CSignal dom a)
+controlRegWb initVal = case (cancelMulDiv @nBytes @8) of
+  Dict -> fromSignals go
+   where
+    go (wbM2S, _) = (wbS2M, a)
+     where
+       (a, wbS2M) = registerWb WishbonePriority initVal wbM2S (pure Nothing)
