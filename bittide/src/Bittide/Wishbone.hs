@@ -19,6 +19,7 @@ import Clash.Cores.I2C
 import Clash.Cores.Xilinx.Ila hiding (Data)
 import Clash.Util.Interpolate
 
+import Bittide.DoubleBufferedRam (RegisterWritePriority(..), registerWb)
 import Bittide.Extra.Maybe
 import Clash.Functor.Extra
 import Data.Bifunctor
@@ -531,37 +532,41 @@ i2cWb = case (cancelMulDiv @nBytes @8) of
         (dOut,hostAck,busy,al,ackOut,i2cOut) =
           i2c hasClock hasReset smReset (fromEnable hasEnable) clkDiv claimBus i2cOp ackIn i2cIn
 
-        (sclMaybe, sdaMaybe) = unbundle i2cOut
-        ilaInstance :: Signal dom ()
-        ilaInstance =
-          ila
-            ( ilaConfig $
-              "probe_sdaIn"
-              :> "probe_sclOut"
-              :> "probe_sdaOut"
-              :> "probe_i2c_dout"
-              :> "probe_i2c_hostAck"
-              :> "probe_i2c_busy"
-              :> "probe_i2c_al"
-              :> "probe_i2c_ackOut"
-              :> "probe_i2c_op"
-              :> "probe_rwFlagsReg"
-              :> "probe_clkDiv"
-              :> "probe_i2cWrite"
-              :> "probe_transAddr"
-              :> Nil
-            ) {stages = 2, depth = D32768, advancedTriggers = True }
-            hasClock
-            (dflipflop $ snd <$> i2cIn)
-            (dflipflop $ fmap isNothing sclMaybe)
-            (dflipflop $ fmap isNothing sdaMaybe)
-            (dflipflop dOut)
-            (dflipflop hostAck)
-            (dflipflop busy)
-            (dflipflop al)
-            (dflipflop $ fmap not ackOut)
-            (dflipflop i2cOp)
-            (dflipflop rwFlagsReg)
-            (dflipflop clkDiv)
-            (dflipflop i2cWrite)
-            (dflipflop transAddr)
+-- Wishbone accessible register circuit which can only be written to from the circuit.
+statusRegWb ::
+  forall dom a nBytes addrW .
+  ( HiddenClockResetEnable dom
+  , BitPack a, NFDataX a
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat addrW, 2 <= addrW
+  ) =>
+  RegisterWritePriority ->
+  a ->
+  Circuit
+    (CSignal dom (Maybe a), Wishbone dom 'Standard addrW (Bytes nBytes))
+    ()
+statusRegWb writePriority initVal = case (cancelMulDiv @nBytes @8) of
+  Dict -> fromSignals go
+   where
+    go ((CSignal inp,wbM2S), _) = ((CSignal $ pure (), wbS2M), ())
+     where
+       (_, wbS2M) = registerWb writePriority initVal wbM2S inp
+
+-- Wishbone accessible register circuit which can only be written to by the wishbone bus.
+controlRegWb ::
+  forall dom a nBytes addrW .
+  ( HiddenClockResetEnable dom
+  , BitPack a, NFDataX a
+  , KnownNat nBytes, 1 <= nBytes
+  , KnownNat addrW, 2 <= addrW
+  ) =>
+  a ->
+  Circuit
+    (Wishbone dom 'Standard addrW (Bytes nBytes))
+    (CSignal dom a)
+controlRegWb initVal = case (cancelMulDiv @nBytes @8) of
+  Dict -> fromSignals go
+   where
+    go (wbM2S, _) = (wbS2M, CSignal a)
+     where
+       (a, wbS2M) = registerWb WishbonePriority initVal wbM2S (pure Nothing)
