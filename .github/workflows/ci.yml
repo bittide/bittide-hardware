@@ -45,7 +45,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
       options: --memory=11g
@@ -111,7 +111,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
@@ -151,7 +151,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
@@ -185,7 +185,7 @@ jobs:
     timeout-minutes: 1200
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     needs: [build, lint, elastic-buffer-sim-topologies-matrix]
 
     strategy:
@@ -255,7 +255,7 @@ jobs:
     if: ${{ !cancelled() }}
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     needs: [build, lint, elastic-buffer-sim-topologies-matrix, elastic-buffer-sim-topologies, bittide-instances-hardware-in-the-loop]
 
     container:
@@ -333,7 +333,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     needs: [build, lint]
 
     container:
@@ -360,7 +360,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     needs: [build, lint]
 
     container:
@@ -397,7 +397,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
       options: --memory=11g
@@ -422,7 +422,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
       options: --memory=11g
@@ -450,7 +450,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
       options: --memory=11g
@@ -476,7 +476,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
       options: --memory=11g
@@ -507,7 +507,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     needs: [build, lint]
 
     container:
@@ -534,7 +534,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     needs: [build, lint]
 
     container:
@@ -561,7 +561,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
@@ -594,7 +594,7 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --pure --keep "GITHUB_OUTPUT"
+        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2023-11-30
@@ -631,7 +631,7 @@ jobs:
     defaults:
       run:
         # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
-        shell: git-nix-shell {0}
+        shell: git-nix-shell {0} --option connect-timeout 360
     needs: [build, lint, bittide-instances-hdl-matrix]
 
     strategy:
@@ -704,7 +704,7 @@ jobs:
     defaults:
       run:
         # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
-        shell: git-nix-shell {0}
+        shell: git-nix-shell {0} --option connect-timeout 360
     needs: [bittide-instances-hdl, bittide-instances-hardware-in-the-loop-test-matrix]
 
     strategy:
