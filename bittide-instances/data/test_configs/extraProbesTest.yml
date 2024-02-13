@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2024 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
-default:
+defaults:
   probes:
     testState: 0
     extraProbe: 0
