@@ -37,8 +37,7 @@ proc set_vio_prefix {} {
     # Use `probe_test_done` as the probe to find full probe names
     set probe_done [get_hw_probes *vioHitlt/probe_test_done]
     if {[expr [llength $probe_done] != 1]} {
-        puts "Exactly 1 VIO core with the prefix '*vioHitlt' must be present"
-        exit 1
+        error "Exactly 1 VIO core with the prefix '*vioHitlt' must be present"
     }
     set vio_prefix [lindex [split [get_property name $probe_done] "/"] 0]
 }
@@ -77,7 +76,6 @@ proc verify_extra_vio_probes {test_config} {
         puts "Done"
     } else {
         puts "Failed"
-        puts "There are unmatched extra probes:"
         foreach probe $extra_probes {
             puts $probe
         }
@@ -85,7 +83,7 @@ proc verify_extra_vio_probes {test_config} {
         foreach probe_name $probe_names {
             puts $probe_name
         }
-        exit 1
+        error "There are unmatched extra probes in the design"
     }
 }
 # For the Hardware-in-the-Loop test (hitlt) at least 3 specific probes need to
@@ -103,58 +101,49 @@ proc verify_required_vio_probes {} {
     set done_probe_count [llength $done_probe]
     if {$done_probe_count != 1} {
         set done_probe_count [llength $done_probe]
-        puts "Exactly one probe named '$vio_prefix/probe_test_done' must be present, but ${done_probe_count} were found"
         print_all_probe_names
-        exit 1
+        error "Exactly one probe named '$vio_prefix/probe_test_done' must be present, but ${done_probe_count} were found"
     } elseif {[expr {[get_property type $done_probe] != "vio_input"}]} {
         set probe_name [get_property name.short $done_probe]
-        puts "Probe '${probe_name}' must have type 'vio_input'"
         print_all_probe_names
-        exit 1
+        error "Probe '${probe_name}' must have type 'vio_input'"
     } elseif {[expr {[get_property width $done_probe] != 1}]} {
         set probe_name [get_property name.short $done_probe]
-        puts "Probe '${probe_name}' must have a width of 1 bit"
         print_all_probe_names
-        exit 1
+        error "Probe '${probe_name}' must have a width of 1 bit"
     }
 
     set success_probe [get_hw_probes ${vio_prefix}/probe_test_success]
     set success_probe_count [llength $success_probe]
     if {$success_probe_count != 1} {
         set success_probe_count [llength $success_probe]
-        puts "Exactly one probe named '$vio_prefix/probe_test_success' must be present, but ${success_probe_count} were found"
         print_all_probe_names
-        exit 1
+        error "Exactly one probe named '$vio_prefix/probe_test_success' must be present, but ${success_probe_count} were found"
     }
     if {[expr {[get_property type $success_probe] != "vio_input"}]} {
         set probe_name [get_property name.short $success_probe]
-        puts "Probe '${probe_name}' must have type 'vio_input'"
         print_all_probe_names
-        exit 1
+        error "Probe '${probe_name}' must have type 'vio_input'"
     } elseif {[expr {[get_property width $success_probe] != 1}]} {
         set probe_name [get_property name.short $success_probe]
-        puts "Probe '${probe_name}' must have a width of 1 bit"
         print_all_probe_names
-        exit 1
+        error "Probe '${probe_name}' must have a width of 1 bit"
     }
 
     set start_probe [get_hw_probes ${vio_prefix}/probe_test_start]
     set start_probe_count [llength $start_probe]
     if {$start_probe_count != 1} {
-        puts "Exactly one probe named '$vio_prefix/probe_test_start' must be present, but ${start_probe_count} were found"
         print_all_probe_names
-        exit 1
+        error "Exactly one probe named '$vio_prefix/probe_test_start' must be present, but ${start_probe_count} were found"
     }
     if {[expr {[get_property type $start_probe] != "vio_output"}]} {
         set probe_name [get_property name.short $start_probe]
-        puts "Probe '$probe_name' must have type 'vio_output'"
         print_all_probe_names
-        exit 1
+        error "Probe '$probe_name' must have type 'vio_output'"
     } elseif {[expr {[get_property width $start_probe] != 1}]} {
         set probe_name [get_property name.short $start_probe]
-        puts "Probe '$probe_name' must have a width of 1 bit"
         print_all_probe_names
-        exit 1
+        error "Probe '$probe_name' must have a width of 1 bit"
     }
     puts "Done"
 }
@@ -191,19 +180,16 @@ proc get_ila_dicts {} {
         set trigger_probe [get_hw_probes -of_objects $hw_ila */trigger*]
         set trigger_probe_count [llength $trigger_probe]
         if {[expr {$trigger_probe_count != 1}]} {
-            puts "Exactly one probe named 'trigger*' must be present, but $trigger_probe_count were found"
             print_all_probe_names
-            exit 1
+            error "Exactly one probe named 'trigger*' must be present, but $trigger_probe_count were found"
         } elseif {[expr {[get_property is_trigger $trigger_probe] != 1}]} {
             set probe_name_short [get_property name.short $trigger_probe]
-            puts "Probe '$probe_name_short' should have probeType Trigger or DataAndTrigger"
             print_all_probe_names
-            exit 1
+            error "Probe '$probe_name_short' should have probeType Trigger or DataAndTrigger"
         } elseif {[expr {[get_property width $trigger_probe] != 1}]} {
             set probe_name_short [get_property name.short $trigger_probe]
-            puts "Probe '$probe_name_short' must have a width of 1 bit"
             print_all_probe_names
-            exit 1
+            error "Probe '$probe_name_short' must have a width of 1 bit"
         } else {
             dict set ila_dict trigger_probe [get_property name $trigger_probe]
         }
@@ -212,19 +198,16 @@ proc get_ila_dicts {} {
         set capture_probe [get_hw_probes -of_objects $hw_ila */capture*]
         set capture_probe_count [llength $capture_probe]
         if {[expr {$capture_probe_count != 1}]} {
-            puts "Exactly one probe named 'capture*' must be present, but $capture_probe_count were found"
             print_all_probe_names
-            exit 1
+            error "Exactly one probe named 'capture*' must be present, but $capture_probe_count were found"
         } elseif {[expr {[get_property is_trigger $capture_probe] != 1}]} {
             set probe_name_short [get_property name.short $capture_probe]
-            puts "Probe '$probe_name_short' should have probeType Trigger or DataAndTrigger"
             print_all_probe_names
-            exit 1
+            error "Probe '$probe_name_short' should have probeType Trigger or DataAndTrigger"
         } elseif {[expr {[get_property width $capture_probe] != 1}]} {
             set probe_name_short [get_property name.short $capture_probe]
-            puts "Probe '$probe_name_short' must have a width of 1 bit"
             print_all_probe_names
-            exit 1
+            error "Probe '$probe_name_short' must have a width of 1 bit"
         } else {
             dict set ila_dict capture_probe [get_property name $capture_probe]
         }
@@ -232,9 +215,8 @@ proc get_ila_dicts {} {
         # Get all data probes and verify each conforms with ILA framework
         set all_probes [get_hw_probes -of_objects $hw_ila]
         if {[expr {[llength $all_probes] < 3}]} {
-            puts "ILA '$short_name' has no data probes, at least 1 data probe is required"
             print_all_probe_names
-            exit 1
+            error "ILA '$short_name' has no data probes, at least 1 data probe is required"
         }
         dict set ila_dict data_probes [list]
         foreach probe $all_probes {
@@ -242,9 +224,8 @@ proc get_ila_dicts {} {
                 continue
             } elseif {[expr {[get_property is_data $probe] != 1}]} {
                 set probe_name_short [get_property name.short $probe]
-                puts "Probe '$probe_name_short' should have probeType Data or DataAndTrigger"
                 print_all_probe_names
-                exit 1
+                error "Probe '$probe_name_short' should have probeType Data or DataAndTrigger"
             } else {
                 dict update ila_dict data_probes probe_list {
                     lappend probe_list [get_property name $probe]
@@ -425,7 +406,7 @@ proc has_expected_targets {url expected_target_dict} {
                     puts $tgt
                 }
             }
-            exit 1
+            error "Could not find all expected hardware targets"
         }
 
         puts "Attempt ${i} : Found ${found_targets_count} out of expected ${expected_count} hardware targets"
@@ -471,10 +452,8 @@ proc verify_before_start {} {
     refresh_hw_vio [get_hw_vios]
     set done [get_property INPUT_VALUE [get_hw_probes ${vio_prefix}/probe_test_done]]
     if {$done != 0} {
-        puts "\tERROR: test is done before starting the test"
         print_all_vios
-        exit 1
-    }
+        error "Test is done before starting the test"
 }
 
 # Refresh the input probes until the done flag is set. Retries for up to
@@ -726,7 +705,6 @@ proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} 
         exit 0
     } else {
         set failed_tests [expr ${test_count} - ${successful_tests}]
-        puts "\nFailed for ${failed_tests}/${test_count} tests"
-        exit 1
+        error "\nFailed for ${failed_tests}/${test_count} tests"
     }
 }
