@@ -2,9 +2,10 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+package require yaml
+
 # The IDs of the Digilent chips on each FPGA board. The indices match the
 # position of each FPGA in the mining rig.
-package require yaml
 set fpga_ids {
     210308B3B272
     210308B0992E
@@ -25,7 +26,7 @@ set test_timeout_ms 60000
 set hw_server_timeout_ms 5000
 
 # Prefix of the name of a VIO probe.
-set vio_prefix ""
+set vio_prefix {}
 
 # The VIO probes used for hardware-in-the-loop tests (hitlt) must end their
 # prefix with 'vioHitlt'. For example, a probe named 'my_vio_vioHitlt/probe_test_done'
@@ -36,22 +37,21 @@ proc set_vio_prefix {} {
 
     # Use `probe_test_done` as the probe to find full probe names
     set probe_done [get_hw_probes *vioHitlt/probe_test_done]
-    if {[expr [llength $probe_done] != 1]} {
-        error "Exactly 1 VIO core with the prefix '*vioHitlt' must be present"
+    if {[llength $probe_done] != 1} {
+        error {Exactly 1 VIO core with the prefix '*vioHitlt' must be present}
     }
-    set vio_prefix [lindex [split [get_property name $probe_done] "/"] 0]
+    set vio_prefix [lindex [split [get_property name $probe_done] /] 0]
 }
 proc get_extra_probes {} {
     global vio_prefix
-    set vio_probes [get_hw_probes ${vio_prefix}/*]
+    set vio_probes [get_hw_probes $vio_prefix/*]
     set extra_probes []
     foreach probe $vio_probes {
-        set is_done [string equal $probe ${vio_prefix}/probe_test_done]
-        set is_success [string equal $probe ${vio_prefix}/probe_test_success]
-        set is_start [string equal $probe ${vio_prefix}/probe_test_start]
-        set is_input [string equal [get_property type $probe] "vio_input"]
-        set is_extra [expr {!$is_done && !$is_success && !$is_start && !$is_input}]
-        if {$is_extra} {
+        set is_done [string equal $probe $vio_prefix/probe_test_done]
+        set is_success [string equal $probe $vio_prefix/probe_test_success]
+        set is_start [string equal $probe $vio_prefix/probe_test_start]
+        set is_input [string equal [get_property type $probe] vio_input]
+        if {!$is_done && !$is_success && !$is_start && !$is_input} {
             lappend extra_probes $probe
         }
     }
@@ -62,28 +62,29 @@ proc get_extra_probes {} {
 # function receives the test config and verifies exclusively all probes in the default
 # section are present in the design.
 proc verify_extra_vio_probes {test_config} {
-    puts -nonewline "Verifying extra probes: "
+    puts -nonewline {Verifying extra probes: }
     global vio_prefix
     set probe_names [dict keys [dict get $test_config default probes]]
     set extra_probes [get_extra_probes]
     foreach probe_name $probe_names {
-        if {[lsearch -exact $extra_probes ${vio_prefix}/$probe_name] != -1} {
-            set index [lsearch -exact $extra_probes ${vio_prefix}/$probe_name]
+        set index [lsearch -exact $extra_probes $vio_prefix/$probe_name]
+        if {$index != -1} {
             set extra_probes [lreplace $extra_probes $index $index]
         }
     }
     if {[llength $extra_probes] == 0} {
-        puts "Done"
+        puts Done
     } else {
-        puts "Failed"
+        puts Failed
+        set err_msg "There are unmatched extra probes:\n"
         foreach probe $extra_probes {
-            puts $probe
+            append err_msg $probe \n
         }
-        puts "Existing probes: "
+        append err_msg {Existing probes:} \n
         foreach probe_name $probe_names {
-            puts $probe_name
+            append err_msg $probe_name \n
         }
-        error "There are unmatched extra probes in the design"
+        error $err_msg
     }
 }
 # For the Hardware-in-the-Loop test (hitlt) at least 3 specific probes need to
@@ -94,58 +95,68 @@ proc verify_extra_vio_probes {test_config} {
 # Other VIO probes may be present in the design, but are only used to print
 # debug information when a test fails.
 proc verify_required_vio_probes {} {
-    puts -nonewline "Verifying required VIO probes: "
+    puts -nonewline {Verifying required VIO probes: }
     global vio_prefix
 
-    set done_probe [get_hw_probes ${vio_prefix}/probe_test_done]
+    set done_probe [get_hw_probes $vio_prefix/probe_test_done]
     set done_probe_count [llength $done_probe]
     if {$done_probe_count != 1} {
-        set done_probe_count [llength $done_probe]
-        print_all_probe_names
-        error "Exactly one probe named '$vio_prefix/probe_test_done' must be present, but ${done_probe_count} were found"
-    } elseif {[expr {[get_property type $done_probe] != "vio_input"}]} {
+        set err_msg "Exactly one probe named '$vio_prefix/probe_test_done' "
+        append err_msg "must be present, but $done_probe_count were found" \n \
+                [all_probe_names_msg]
+        error $err_msg
+    } elseif {[get_property type $done_probe] ne {vio_input}} {
         set probe_name [get_property name.short $done_probe]
-        print_all_probe_names
-        error "Probe '${probe_name}' must have type 'vio_input'"
-    } elseif {[expr {[get_property width $done_probe] != 1}]} {
+        set err_msg "Probe '$probe_name' must have type 'vio_input'\n"
+        append err_msg [all_probe_names_msg]
+        error $err_msg
+    } elseif {[get_property width $done_probe] != 1} {
         set probe_name [get_property name.short $done_probe]
-        print_all_probe_names
-        error "Probe '${probe_name}' must have a width of 1 bit"
+        set err_msg "Probe '$probe_name' must have a width of 1 bit\n"
+        append err_msg [all_probe_names_msg]
+        error $err_msg
     }
 
-    set success_probe [get_hw_probes ${vio_prefix}/probe_test_success]
+    set success_probe [get_hw_probes $vio_prefix/probe_test_success]
     set success_probe_count [llength $success_probe]
     if {$success_probe_count != 1} {
-        set success_probe_count [llength $success_probe]
-        print_all_probe_names
-        error "Exactly one probe named '$vio_prefix/probe_test_success' must be present, but ${success_probe_count} were found"
+        set err_msg "Exactly one probe named '$vio_prefix/probe_test_success' "
+        append err_msg "must be present, but $success_probe_count were found" \
+                \n [all_probe_names_msg]
+        error $err_msg
     }
-    if {[expr {[get_property type $success_probe] != "vio_input"}]} {
+    if {[get_property type $success_probe] ne {vio_input}} {
         set probe_name [get_property name.short $success_probe]
-        print_all_probe_names
-        error "Probe '${probe_name}' must have type 'vio_input'"
-    } elseif {[expr {[get_property width $success_probe] != 1}]} {
+        set err_msg "Probe '$probe_name' must have type 'vio_input'\n"
+        append err_msg [all_probe_names_msg]
+        error $err_msg
+    } elseif {[get_property width $success_probe] != 1} {
         set probe_name [get_property name.short $success_probe]
-        print_all_probe_names
-        error "Probe '${probe_name}' must have a width of 1 bit"
+        set err_msg "Probe '$probe_name' must have a width of 1 bit\n"
+        append err_msg [all_probe_names_msg]
+        error $err_msg
     }
 
-    set start_probe [get_hw_probes ${vio_prefix}/probe_test_start]
+    set start_probe [get_hw_probes $vio_prefix/probe_test_start]
     set start_probe_count [llength $start_probe]
     if {$start_probe_count != 1} {
-        print_all_probe_names
-        error "Exactly one probe named '$vio_prefix/probe_test_start' must be present, but ${start_probe_count} were found"
+        set err_msg "Exactly one probe named '$vio_prefix/probe_test_start' "
+        append err_msg "must be present, but $start_probe_count were found" \
+                [all_probe_names_msg]
+        error $err_msg
     }
-    if {[expr {[get_property type $start_probe] != "vio_output"}]} {
+    if {[get_property type $start_probe] ne {vio_output}} {
         set probe_name [get_property name.short $start_probe]
-        print_all_probe_names
-        error "Probe '$probe_name' must have type 'vio_output'"
-    } elseif {[expr {[get_property width $start_probe] != 1}]} {
+        set err_msg "Probe '$probe_name' must have type 'vio_output'\n"
+        append err_msg [all_probe_names_msg]
+        error $err_msg
+    } elseif {[get_property width $start_probe] != 1} {
         set probe_name [get_property name.short $start_probe]
-        print_all_probe_names
-        error "Probe '$probe_name' must have a width of 1 bit"
+        set err_msg "Probe '$probe_name' must have a width of 1 bit\n"
+        append err_msg [all_probe_names_msg]
+        error $err_msg
     }
-    puts "Done"
+    puts Done
 }
 
 # Create a list of dictionaries where each dictionary corresponds to one ILA.
@@ -156,22 +167,22 @@ proc verify_required_vio_probes {} {
 #   capture_probe : name of the capture probe
 #   data_probes   : list of names of all other probes
 proc get_ila_dicts {} {
-    set ila_dicts [list]
+    set ila_dicts {}
 
     set hw_ilas [get_hw_ilas -quiet]
     set ila_count [llength $hw_ilas]
-    if {[expr $ila_count == 0]} {
+    if {$ila_count == 0} {
         puts "\nNo ILAs in design"
-        return [list]
+        return {}
     }
 
     puts "\nFound $ila_count ILAs:"
     foreach hw_ila $hw_ilas {
-        set ila_dict [dict create]
+        set ila_dict {}
 
         set cell_name [get_property CELL_NAME $hw_ila]
-        set idx_start [expr [string first "_" $cell_name] + 1]
-        set idx_end [expr [string first "/" $cell_name] - 1]
+        set idx_start [expr {[string first _ $cell_name] + 1}]
+        set idx_end [expr {[string first / $cell_name] - 1}]
         set short_name [string range $cell_name $idx_start $idx_end]
         dict set ila_dict name $short_name
         dict set ila_dict cell_name $cell_name
@@ -179,17 +190,21 @@ proc get_ila_dicts {} {
         # Get trigger probe and verify it conforms with ILA framework
         set trigger_probe [get_hw_probes -of_objects $hw_ila */trigger*]
         set trigger_probe_count [llength $trigger_probe]
-        if {[expr {$trigger_probe_count != 1}]} {
-            print_all_probe_names
-            error "Exactly one probe named 'trigger*' must be present, but $trigger_probe_count were found"
-        } elseif {[expr {[get_property is_trigger $trigger_probe] != 1}]} {
+        if {$trigger_probe_count != 1} {
+            set err_msg "Exactly one probe named 'trigger*' must be present, "
+            append err_msg "but $trigger_probe_count were found" \n \
+                    [all_probe_names_msg]
+            error $err_msg
+        } elseif {[get_property is_trigger $trigger_probe] != 1} {
             set probe_name_short [get_property name.short $trigger_probe]
-            print_all_probe_names
-            error "Probe '$probe_name_short' should have probeType Trigger or DataAndTrigger"
-        } elseif {[expr {[get_property width $trigger_probe] != 1}]} {
+            set err_msg "Probe '$probe_name_short' should have probeType "
+            append err_msg {Trigger or DataAndTrigger} \n [all_probe_names_msg]
+            error $err_msg
+        } elseif {[get_property width $trigger_probe] != 1} {
             set probe_name_short [get_property name.short $trigger_probe]
-            print_all_probe_names
-            error "Probe '$probe_name_short' must have a width of 1 bit"
+            set err_msg "Probe '$probe_name_short' must have a width of 1 bit\n"
+            append err_msg [all_probe_names_msg]
+            error $err_msg
         } else {
             dict set ila_dict trigger_probe [get_property name $trigger_probe]
         }
@@ -197,35 +212,41 @@ proc get_ila_dicts {} {
         # Get capture probe and verify it conforms with ILA framework
         set capture_probe [get_hw_probes -of_objects $hw_ila */capture*]
         set capture_probe_count [llength $capture_probe]
-        if {[expr {$capture_probe_count != 1}]} {
-            print_all_probe_names
-            error "Exactly one probe named 'capture*' must be present, but $capture_probe_count were found"
-        } elseif {[expr {[get_property is_trigger $capture_probe] != 1}]} {
+        if {$capture_probe_count != 1} {
+            set err_msg {Exactly one probe named 'capture*' must be present, }
+            append err_msg "but $capture_probe_count were found" \n \
+                    [all_probe_names_msg]
+            error $err_msg
+        } elseif {[get_property is_trigger $capture_probe] != 1} {
             set probe_name_short [get_property name.short $capture_probe]
-            print_all_probe_names
-            error "Probe '$probe_name_short' should have probeType Trigger or DataAndTrigger"
-        } elseif {[expr {[get_property width $capture_probe] != 1}]} {
+            set err_msg "Probe '$probe_name_short' should have probeType "
+            append err_msg {Trigger or DataAndTrigger} \n [all_probe_names_msg]
+            error $err_msg
+        } elseif {[get_property width $capture_probe] != 1} {
             set probe_name_short [get_property name.short $capture_probe]
-            print_all_probe_names
-            error "Probe '$probe_name_short' must have a width of 1 bit"
+            set err_msg "Probe '$probe_name_short' must have a width of 1 bit\n"
+            append err_msg [all_probe_names_msg]
+            error $err_msg
         } else {
             dict set ila_dict capture_probe [get_property name $capture_probe]
         }
 
         # Get all data probes and verify each conforms with ILA framework
         set all_probes [get_hw_probes -of_objects $hw_ila]
-        if {[expr {[llength $all_probes] < 3}]} {
-            print_all_probe_names
-            error "ILA '$short_name' has no data probes, at least 1 data probe is required"
+        if {[llength $all_probes] < 3} {
+            set err_msg "ILA '$short_name' has no data probes, at least 1 "
+            append err_msg {data probe is required} \n [all_probe_names_msg]
+            error $err_msg
         }
         dict set ila_dict data_probes [list]
         foreach probe $all_probes {
-            if {[expr {$probe == $trigger_probe} || {$probe == $capture_probe}]} {
+            if {$probe eq $trigger_probe || $probe eq $capture_probe} {
                 continue
-            } elseif {[expr {[get_property is_data $probe] != 1}]} {
+            } elseif {[get_property is_data $probe] != 1} {
                 set probe_name_short [get_property name.short $probe]
-                print_all_probe_names
-                error "Probe '$probe_name_short' should have probeType Data or DataAndTrigger"
+                set err_msg "Probe '$probe_name_short' should have probeType "
+                append err_msg {Data or DataAndTrigger} \n [all_probe_names_msg]
+                error $err_msg
             } else {
                 dict update ila_dict data_probes probe_list {
                     lappend probe_list [get_property name $probe]
@@ -241,7 +262,7 @@ proc get_ila_dicts {} {
         set probe_name_short [get_property name.short $capture_probe]
         puts "\t$probe_name_short"
         foreach probe_name [dict get $ila_dict data_probes] {
-            set idx_start [expr [string first "/" $probe_name] + 1]
+            set idx_start [expr {[string first / $probe_name] + 1}]
             set probe_name_short [string range $probe_name $idx_start end]
             puts "\t$probe_name_short"
         }
@@ -249,17 +270,17 @@ proc get_ila_dicts {} {
     return $ila_dicts
 }
 
-proc print_all_probe_names {} {
+proc all_probe_names_msg {} {
     set probes [get_hw_probes]
-    puts "All probes in design:"
+    set msg "All probes in design:\n"
     foreach probe $probes {
-        set probe_name [get_property name $probe]
-        puts "\t${probe_name}"
+        append msg \t [get_property name $probe] \n
     }
+    return msg
 }
 
 proc get_part_name {url id} {
-    return ${url}/xilinx_tcf/Digilent/${id}
+    return $url/xilinx_tcf/Digilent/$id
 }
 
 # Creates an ordered dictionary which maps indices of FPGAs in the demo rack to
@@ -268,8 +289,8 @@ proc get_part_name {url id} {
 proc get_target_dict {url fpga_nrs} {
     global fpga_ids
     set target_dict [dict create]
-    if {[expr [llength $fpga_nrs] == 0]} {
-        set fpga_nrs [list -1]
+    if {[llength $fpga_nrs] == 0} {
+        set fpga_nrs -1
     }
     foreach fpga_nr $fpga_nrs {
         if {$fpga_nr == -1} {
@@ -284,9 +305,10 @@ proc get_target_dict {url fpga_nrs} {
 }
 
 
-# Prints all VIOs in the radix they are set. A current hardware device must be
-# set before calling this function. Probes are grouped by VIO.
-proc print_all_vios {} {
+# Build a string that shows all VIOs in the radix they are set. A current
+# hardware device must be set before calling this function. Probes are grouped
+# by VIO.
+proc all_vios_msg {} {
     set probes [get_hw_probes -of_objects [get_hw_vios]]
 
     # Find the maximum widths of each column, with a minimum of the header length
@@ -296,23 +318,24 @@ proc print_all_vios {} {
     foreach probe $probes {
         set type [get_property type $probe]
         set w_name_cur [string length [get_property name.short $probe]]
-        if {$type == "vio_input"} {
+        if {$type eq {vio_input}} {
             set w_value_cur [string length [get_property input_value $probe]]
             set w_radix_cur [string length [get_property input_value_radix $probe]]
         } else {
             set w_value_cur [string length [get_property output_value $probe]]
             set w_radix_cur [string length [get_property output_value_radix $probe]]
         }
-        set w_name [expr max($w_name, $w_name_cur)]
-        set w_value [expr max($w_value, $w_value_cur)]
-        set w_radix [expr max($w_radix, $w_radix_cur)]
+        set w_name [expr {max($w_name, $w_name_cur)}]
+        set w_value [expr {max($w_value, $w_value_cur)}]
+        set w_radix [expr {max($w_radix, $w_radix_cur)}]
     }
 
-    puts "Printing all probes"
-    set sep +-[string repeat - $w_name]-+-[string repeat - $w_value]-+-[string repeat - $w_radix]-+
-    puts $sep
-    puts [format "| %-*s | %-*s | %-*s |" $w_name "Name" $w_value "Value" $w_radix "Radix"]
-    puts $sep
+    set msg "Printing all probes\n"
+    set sep +-[string repeat - $w_name]-+-[string repeat - $w_value]-+-[\
+            string repeat - $w_radix]-+
+    set hdr [format {| %-*s | %-*s | %-*s |} $w_name Name $w_value Value \
+            $w_radix Radix]
+    append msg $sep \n $hdr \n $sep \n
 
     foreach vio [get_hw_vios] {
         set input_probes [get_hw_probes -of_objects $vio -filter {type == vio_input} -quiet]
@@ -320,18 +343,22 @@ proc print_all_vios {} {
             set name [get_property name.short $input_probe]
             set value [get_property input_value $input_probe]
             set radix [get_property input_value_radix $input_probe]
-            puts [format "| %-*s | %*s | %-*s |" $w_name $name $w_value $value $w_radix $radix]
+            set row [format {| %-*s | %*s | %-*s |} $w_name $name $w_value \
+                    $value $w_radix $radix]
+            append msg $row \n
         }
-        puts $sep
+        append msg $sep \n
 
         set output_probes [get_hw_probes -of_objects $vio -filter {type == vio_output} -quiet]
         foreach output_probe $output_probes {
             set name [get_property name.short $output_probe]
             set value [get_property output_value $output_probe]
             set radix [get_property output_value_radix $output_probe]
-            puts [format "| %-*s | %*s | %-*s |" $w_name $name $w_value $value $w_radix $radix]
+            set row [format {| %-*s | %*s | %-*s |} $w_name $name $w_value \
+                    $value $w_radix $radix]
+            append msg $row \n
         }
-        puts $sep
+        append msg $sep \n
     }
 }
 
@@ -350,7 +377,7 @@ proc difference {lista listb} {
 # Return the intersection of two lists. Note that this functions complexity is
 # O(n^2), and should not be used for big lists.
 proc intersection {lista listb} {
-    set intersect [list]
+    set intersect {}
     foreach a $lista {
         if {$a in $listb} {
             lappend intersect $a
@@ -375,12 +402,12 @@ proc has_expected_targets {url expected_target_dict} {
         set hw_target_count [llength $hw_targets]
         set found_targets [intersection $expected_names $hw_targets]
         set found_targets_count [llength $found_targets]
-        if {[expr {$found_targets_count == $expected_count}]} {
-            puts "Hardware server at ${url} hosts ${hw_target_count} hardware targets:"
+        if {$found_targets_count == $expected_count} {
+            puts "Hardware server at $url hosts $hw_target_count hardware targets:"
             foreach hw_target $hw_targets {
                 puts "\t$hw_target"
             }
-            puts ""
+            puts {}
             break
         }
 
@@ -388,28 +415,27 @@ proc has_expected_targets {url expected_target_dict} {
         global hw_server_timeout_ms
         set current_time [clock milliseconds]
         set time_spent [expr {$current_time - $start_time}]
-        if {${time_spent} > ${hw_server_timeout_ms}} {
-            puts "Expected hardware targets:"
+        if {$time_spent > $hw_server_timeout_ms} {
+            set err_msg "Expected hardware targets:\n"
             dict for {nr id} $expected_target_dict {
                 set tgt [get_part_name $url $id]
-                if {[expr {[lsearch -exact $hw_targets $tgt] == -1}]} {
-                    set not_found "<- not found"
-                } else {
-                    set not_found ""
+                append err_msg "$tgt - FPGA $nr"
+                if {[lsearch -exact $hw_targets $tgt] == -1} {
+                    append err_msg { <- not found}
                 }
-                puts "$tgt - FPGA $nr $not_found"
+                append err_msg \n
             }
             set unexpected_targets [difference $hw_targets $expected_names]
-            if {[expr [llength $unexpected_targets] > 0]} {
-                puts "Hardware targets which are not expected:"
+            if {[llength $unexpected_targets] > 0]} {
+                append err_msg "Hardware targets which are not expected:\n"
                 foreach tgt $unexpected_targets {
-                    puts $tgt
+                    append err_msg $tgt \n
                 }
             }
-            error "Could not find all expected hardware targets"
+            error $err_msg
         }
 
-        puts "Attempt ${i} : Found ${found_targets_count} out of expected ${expected_count} hardware targets"
+        puts "Attempt $i : Found $found_targets_count out of expected $expected_count hardware targets"
         incr i
         after 500
         refresh_hw_server
@@ -418,7 +444,7 @@ proc has_expected_targets {url expected_target_dict} {
 
 # Set the target board as the current hardware target and return its device
 proc load_target_device {target_name} {
-    if {[expr {$target_name != [get_property NAME [current_hw_target]]}]} {
+    if {$target_name ne [get_property NAME [current_hw_target]]} {
         close_hw_target
         current_hw_target [get_hw_targets $target_name]
     }
@@ -430,7 +456,7 @@ proc load_target_device {target_name} {
 
 # Format a time given in millseconds to a human-readable string
 proc format_time {time_ms} {
-    return [format "%s.%03d" \
+    return [format %s.%03d \
                     [clock format [expr {$time_ms / 1000}] -format %T] \
                     [expr {$time_ms % 1000}] \
            ]
@@ -439,8 +465,8 @@ proc format_time {time_ms} {
 # Program the current hardware device with the given program and probes file.
 proc program_fpga {program_file probes_file} {
     set device [current_hw_device]
-    set_property PROGRAM.FILE ${program_file} $device
-    set_property PROBES.FILE ${probes_file} $device
+    set_property PROGRAM.FILE $program_file $device
+    set_property PROBES.FILE $probes_file $device
     # Program the device and close properly
     program_hw_devices $device
     refresh_hw_device $device
@@ -450,10 +476,12 @@ proc program_fpga {program_file probes_file} {
 proc verify_before_start {} {
     global vio_prefix
     refresh_hw_vio [get_hw_vios]
-    set done [get_property INPUT_VALUE [get_hw_probes ${vio_prefix}/probe_test_done]]
+    set done [get_property INPUT_VALUE [get_hw_probes $vio_prefix/probe_test_done]]
     if {$done != 0} {
-        print_all_vios
-        error "Test is done before starting the test"
+        set err_msg "\tERROR: test is done before starting the test\n"
+        append err_msg [all_vios_msg]
+        error $err_msg
+    }
 }
 
 # Refresh the input probes until the done flag is set. Retries for up to
@@ -463,8 +491,8 @@ proc wait_test_end {start_time} {
     while 1 {
         # Check test status, break if test is done
         refresh_hw_vio [get_hw_vios]
-        set done [get_property INPUT_VALUE [get_hw_probes ${vio_prefix}/probe_test_done]]
-        set success [get_property INPUT_VALUE [get_hw_probes ${vio_prefix}/probe_test_success]]
+        set done [get_property INPUT_VALUE [get_hw_probes $vio_prefix/probe_test_done]]
+        set success [get_property INPUT_VALUE [get_hw_probes $vio_prefix/probe_test_success]]
         if {$done == 1} {
             break
         }
@@ -473,7 +501,7 @@ proc wait_test_end {start_time} {
         global test_timeout_ms
         set current_time [clock milliseconds]
         set time_spent [expr {$current_time - $start_time}]
-        if {${time_spent} > ${test_timeout_ms}} {
+        if {$time_spent > $test_timeout_ms} {
             break
         }
     }
@@ -490,10 +518,10 @@ proc print_test_results {done success start_time end_time} {
         puts "\tStarted test: $timestamp_start"
         set timestamp_end [format_time $end_time]
         puts "\tEnded test:   $timestamp_end"
-        print_all_vios
+        puts [all_vios_msg]
     } elseif {$success == 0} {
         puts "\tTest failed"
-        print_all_vios
+        puts [all_vios_msg]
     } else {
         puts "\tTest passed"
     }
@@ -547,23 +575,23 @@ proc set_extra_probes {yaml_dict fpga_index test_name} {
     set changed_vios []
     foreach probe_dict $probe_dicts {
         dict for {vio_name vio_value} $probe_dict {
-            set probe [get_hw_probes ${vio_prefix}/${vio_name}]
+            set probe [get_hw_probes $vio_prefix/$vio_name]
             if {[lsearch -exact $changed_vios $probe] }  {
                 lappend changed_vios $probe
             }
             set bit_width [get_property width $probe]
             set hex_width [expr {(3 + $bit_width)/4}]
             set vio_value [format %0${hex_width}llX $vio_value]
-            puts "Setting ${vio_name} to ${vio_value}"
+            puts "Setting $vio_name to $vio_value"
             set_property OUTPUT_VALUE $vio_value $probe
         }
     }
 
     # Commit the probes if any were set
     if {[llength $changed_vios] == 0} {
-        puts "No extra probes to set"
+        puts {No extra probes to set}
     } else {
-        puts "Done"
+        puts Done
         commit_hw_vio $changed_vios
         foreach vio $changed_vios {
             puts "Set [get_property name.short $vio] to [get_property output_value $vio]"
@@ -576,7 +604,7 @@ proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} 
     set target_id [lindex [dict values $target_dict] 0]
     set target_name [get_part_name $url $target_id]
     set device [load_target_device $target_name]
-    set_property PROBES.FILE ${probes_file} $device
+    set_property PROBES.FILE $probes_file $device
     refresh_hw_device $device
 
     # Set the prefix of VIO probes and verify all required probes are present.
@@ -592,9 +620,9 @@ proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} 
     # Get all the test names
     set test_names [get_test_names $test_config]
     set test_count [llength $test_names]
-    puts "\nFound ${test_count} tests:"
+    puts "\nFound $test_count tests:"
     foreach test_name $test_names {
-        puts "\t${test_name}"
+        puts "\t$test_name"
     }
 
     foreach test_name $test_names {
@@ -606,11 +634,11 @@ proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} 
 
             # Load device
             set device [load_target_device [get_part_name $url $target_id]]
-            set_property PROBES.FILE ${probes_file} $device
+            set_property PROBES.FILE $probes_file $device
             refresh_hw_device $device -quiet
 
             # Reset all start probes and check if done is not set.
-            set start_probe [get_hw_probes ${vio_prefix}/probe_test_start]
+            set start_probe [get_hw_probes $vio_prefix/probe_test_start]
             set_property OUTPUT_VALUE 0 $start_probe
             commit_hw_vio [get_hw_vios]
             verify_before_start
@@ -619,7 +647,7 @@ proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} 
             # Activate the trigger for each ILA
             foreach ila_dict $ila_dicts {
                 set cell_name [dict get $ila_dict cell_name]
-                set ila [get_hw_ilas -filter CELL_NAME=={${cell_name}}]
+                set ila [get_hw_ilas -filter CELL_NAME=={$cell_name}]
                 # Set trigger probe (active high boolean)
                 set trigger_probe [get_hw_probes [dict get $ila_dict trigger_probe]]
                 set_property trigger_compare_value eq1'b1 $trigger_probe
@@ -639,7 +667,7 @@ proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} 
             set_property OUTPUT_VALUE 1 $start_probe
             commit_hw_vio [get_hw_vios]
 
-            puts "Start test for FPGA ${target_nr} with ID ${target_id}"
+            puts "Start test for FPGA $target_nr with ID $target_id"
         }
 
         puts "\nWaiting on test end: $test_name"
@@ -647,17 +675,17 @@ proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} 
         dict for {target_nr target_id} $target_dict {
             # Load device
             set device [load_target_device [get_part_name $url $target_id]]
-            set_property PROBES.FILE ${probes_file} $device
+            set_property PROBES.FILE $probes_file $device
             refresh_hw_device $device -quiet
 
             # Wait for the test to end
-            set test_results [wait_test_end ${start_time}]
+            set test_results [wait_test_end $start_time]
             lassign $test_results done success start_time end_time
 
             # Print test results of this FPGA
-            puts "\tTested for FPGA ${target_nr} with ID ${target_id}"
+            puts "\tTested for FPGA $target_nr with ID $target_id"
             print_test_results $done $success $start_time $end_time
-            if {[expr $done == 1] && [expr $success == 1]} {
+            if {$done == 1 && $success == 1} {
                 incr successful_targets
             }
         }
@@ -666,24 +694,24 @@ proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} 
         dict for {target_nr target_id} $target_dict {
             # Load device
             set device [load_target_device [get_part_name $url $target_id]]
-            set_property PROBES.FILE ${probes_file} $device
+            set_property PROBES.FILE $probes_file $device
             refresh_hw_device $device -quiet
 
             # Load the ILA data from the FPGA
             foreach ila_dict $ila_dicts {
                 # Create the directory, if it does not exist already
-                if {[expr {$target_nr < 0}]} {
-                    set index_id "X_${target_id}"
+                if {$target_nr < 0} {
+                    set index_id "X_$target_id"
                 } else {
-                    set index_id "${target_nr}_${target_id}"
+                    set index_id "${target_nr}_$target_id"
                 }
                 set dir [file join $ila_data_dir $test_name $index_id]
                 file mkdir $dir
                 set ila_name [dict get $ila_dict name]
-                set file_path [file join $dir "$ila_name"]
+                set file_path [file join $dir $ila_name]
 
                 set cell_name [dict get $ila_dict cell_name]
-                set ila [get_hw_ilas -filter CELL_NAME=={${cell_name}}]
+                set ila [get_hw_ilas -filter CELL_NAME=={$cell_name}]
 
                 set ila_data [upload_hw_ila_data $ila]
                 # Legacy CSV excludes radix information
@@ -692,19 +720,20 @@ proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} 
             }
         }
         # Print summary of individual test
-        puts "\nTest ${test_name} passed on ${successful_targets} out of ${target_count} targets"
-        if {[expr $successful_targets == $target_count]} {
+        puts "\nTest $test_name passed on $successful_targets out of $target_count targets"
+        if {$successful_targets == $target_count} {
             incr successful_tests
         }
     }
 
     # Print summary of all tests
-    if {[expr $successful_tests == $test_count]} {
-        puts "\nAll ${successful_tests} tests passed on ${target_count} targets"
-        print_all_vios
+    if {$successful_tests == $test_count} {
+        puts "\nAll $successful_tests tests passed on $target_count targets"
+        puts [all_vios_msg]
         exit 0
     } else {
-        set failed_tests [expr ${test_count} - ${successful_tests}]
-        error "\nFailed for ${failed_tests}/${test_count} tests"
+        set failed_tests [expr {$test_count - $successful_tests}]
+        puts "\nFailed for $failed_tests/$test_count tests"
+        exit 1
     }
 }
