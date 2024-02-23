@@ -17,6 +17,7 @@ members = [
 
   "test-cases/dna_port_e2_test",
   "test-cases/time_self_test",
+  "test-cases/axi_stream_self_test",
 
   "clock-control-reg-cpy",
   "clock-control",
