@@ -29,7 +29,6 @@ import Language.Haskell.TH
 import Project.FilePath
 import Protocols
 import Protocols.Axi4.Stream
-import Protocols.Internal(CSignal(..))
 import Protocols.Wishbone
 import System.FilePath
 import Test.Tasty
@@ -46,11 +45,11 @@ case_axi_stream_rust_self_test :: Assertion
 case_axi_stream_rust_self_test =
   -- Run the test with HUnit
   case parseTestResults simResult of
-    Left err -> assertFailure $ show err <> "\n" <> simResult
+    Left errMsg -> assertFailure $ show errMsg <> "\n" <> simResult
     Right results -> do
       forM_ results $ \result -> assertResult result
  where
-  assertResult (TestResult name (Just err)) = assertFailure ("Test " <> name <> " failed with error \"" <> err <> "\"")
+  assertResult (TestResult name (Just errMsg)) = assertFailure ("Test " <> name <> " failed with error \"" <> errMsg <> "\"")
   assertResult (TestResult _ Nothing) = return ()
   baud = SNat @921600
   clk = clockGen
@@ -58,7 +57,7 @@ case_axi_stream_rust_self_test =
   ena = enableGen
   simResult = fmap (asciiToChar . fromIntegral) $ catMaybes $ sampleN 2_500_00 uartStream
   (uartStream, _, _) = withClockResetEnable (clockGen @Basic50) rst ena $ uart baud uartTx (pure Nothing)
-  (_, CSignal uartTx) = dut baud (clockToDiffClock clk) rst (pure 0, pure ())
+  (_, uartTx) = dut baud (clockToDiffClock clk) rst (pure 0, pure ())
 
 -- | A simple instance containing just VexRisc and UART as peripheral.
 -- Runs the `hello` binary from `firmware-binaries`.
@@ -68,8 +67,8 @@ dut ::
   SNat baud ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "CPU_RESET" ::: Reset dom ->
-  ("USB_UART_TX" ::: CSignal dom Bit, CSignal dom ()) ->
-  (CSignal dom (), "USB_UART_RX" ::: CSignal dom Bit)
+  ("USB_UART_TX" ::: Signal dom Bit, Signal dom ()) ->
+  (Signal dom (), "USB_UART_RX" ::: Signal dom Bit)
 dut baud diffClk rst_in =
   toSignals $ withClockResetEnable clk200 rst200 enableGen $
     circuit $ \uartTx -> do
