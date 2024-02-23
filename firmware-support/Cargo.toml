@@ -1,9 +1,10 @@
-# SPDX-FileCopyrightText: 2022 Google LLC
+# SPDX-FileCopyrightText: 2022-2024 Google LLC
 #
 # SPDX-License-Identifier: CC0-1.0
 
 [workspace]
 members = [
   "bittide-sys",
+  "embedded-std",
 ]
 resolver = "2"

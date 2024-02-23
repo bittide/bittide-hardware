@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2024 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "embedded-std"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Google LLC"]
+resolver = "2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+panic-handler = []
+default = []
+
+[dependencies]
+ufmt = "0.2.0"
+heapless = { version = "0.7", default-features = false}
+
+[dev-dependencies]
+proptest = "1.0"
+object = { version = "0.28", features = ["write"] }
+libc = "0.2"
+test-strategy = "0.2.0"
+rand = "0.8"
+lazy_static = "1.0"
+tempfile = "3"
