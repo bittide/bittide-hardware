@@ -161,6 +161,7 @@ test-suite unittests
   ghc-options: -Wall -Wcompat -threaded
   other-modules:
     Tests.OverflowResistantDiff
+    Wishbone.Axi
     Wishbone.Time
   build-depends:
     , bittide-instances
