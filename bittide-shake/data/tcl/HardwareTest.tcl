@@ -98,12 +98,12 @@ proc get_extra_probes {} {
 }
 
 # Besides the required probes, the design may contain extra VIO probes. This
-# function receives the test config and verifies exclusively all probes in the default
+# function receives the test config and verifies exclusively all probes in the 'defaults'
 # section are present in the design.
 proc verify_extra_vio_probes {test_config} {
     puts -nonewline {Verifying extra probes: }
     global vio_prefix
-    set probe_names [dict keys [dict get $test_config default probes]]
+    set probe_names [dict keys [dict get $test_config defaults probes]]
     set extra_probes [get_extra_probes]
     foreach probe_name $probe_names {
         set index [lsearch -exact $extra_probes $vio_prefix/$probe_name]
@@ -568,12 +568,12 @@ proc print_test_results {done success start_time end_time} {
 
 # Get the test names from the test config file.
 # The test names are the keys of the tests dictionary in the yaml file, exluding
-# the default key, which is used for default values.
+# the 'defaults' key, which is used for default values.
 proc get_test_names {test_config} {
     global vio_prefix
     set tests [dict get $test_config tests]
     set test_names [dict keys $tests]
-    set test_names [lsearch -all -inline -not -exact $test_names default]
+    set test_names [lsearch -all -inline -not -exact $test_names defaults]
     return $test_names
 }
 
@@ -583,13 +583,13 @@ proc set_extra_probes {yaml_dict fpga_index test_name} {
     puts -nonewline "Setting extra probes for test: $test_name, fpga: $fpga_index: "
     global fpga_ids
     global vio_prefix
-    set default_dict [dict get $yaml_dict default]
+    set defaults_dict [dict get $yaml_dict defaults]
 
     set probe_dicts []
 
     # Add the default probes to the list of probe_dicts
-    if {[dict exists $default_dict probes]} {
-        lappend probe_dicts [dict get $default_dict probes]
+    if {[dict exists $defaults_dict probes]} {
+        lappend probe_dicts [dict get $defaults_dict probes]
     }
 
     # Add test specific probes

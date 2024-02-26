@@ -1,7 +1,8 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
@@ -26,6 +27,7 @@ module Bittide.Instances.Hitl.FullMeshHwCc
   ( fullMeshHwCcWithRiscvTest
   , fullMeshHwCcTest
   , clockControlConfig
+  , tests
   ) where
 
 import Clash.Prelude (withClockResetEnable)
@@ -62,9 +64,9 @@ import Bittide.Instances.Pnr.MVPs (stickyBits, speedChangeToPins, FINC, FDEC)
 
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
-import Clash.Cores.Xilinx.VIO (vioProbe)
-import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
+import Clash.Cores.Xilinx.Xpm.Cdc.Single
+import Clash.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
@@ -374,13 +376,11 @@ fullMeshHwCcWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
 
   (   txns, txps, _hwFincFdecs, callistoResult, callistoReset
-    , dataCounts, stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
+    , dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
     , allStable ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso
 
   (riscvFinc, riscvFdec) =
     fullMeshRiscvCopyTest sysClk callistoReset callistoResult dataCounts
-
-  stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
   -- check that tests are not synchronously start before all
   -- transceivers are up
@@ -390,83 +390,12 @@ fullMeshHwCcWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   endSuccess :: Signal Basic125 Bool
   endSuccess = trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
 
+  done = endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp
+  success = not <$> (transceiversFailedAfterUp .||. startBeforeAllUp)
+
   startTest :: Signal Basic125 Bool
-  startTest =
-    setName @"vioHitlt" $
-    vioProbe
-      (  "probe_test_done"
-      :> "probe_test_success"
+  startTest = hitlVioBool sysClk done success
 
-      -- Debug probes
-      :> "stats0_txRetries"
-      :> "stats0_rxRetries"
-      :> "stats0_rxFullRetries"
-      :> "stats0_failAfterUps"
-      :> "stats1_txRetries"
-      :> "stats1_rxRetries"
-      :> "stats1_rxFullRetries"
-      :> "stats1_failAfterUps"
-      :> "stats2_txRetries"
-      :> "stats2_rxRetries"
-      :> "stats2_rxFullRetries"
-      :> "stats2_failAfterUps"
-      :> "stats3_txRetries"
-      :> "stats3_rxRetries"
-      :> "stats3_rxFullRetries"
-      :> "stats3_failAfterUps"
-      :> "stats4_txRetries"
-      :> "stats4_rxRetries"
-      :> "stats4_rxFullRetries"
-      :> "stats4_failAfterUps"
-      :> "stats5_txRetries"
-      :> "stats5_rxRetries"
-      :> "stats5_rxFullRetries"
-      :> "stats5_failAfterUps"
-      :> "stats6_txRetries"
-      :> "stats6_rxRetries"
-      :> "stats6_rxFullRetries"
-      :> "stats6_failAfterUps"
-      :> Nil)
-      (  "probe_test_start"
-      :> Nil)
-      False
-      sysClk
-
-      -- done
-      (endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp)
-
-      -- success
-      (not <$> (transceiversFailedAfterUp .||. startBeforeAllUp))
-
-      -- Debug probes
-      (txRetries     <$> stats0)
-      (rxRetries     <$> stats0)
-      (rxFullRetries <$> stats0)
-      (failAfterUps  <$> stats0)
-      (txRetries     <$> stats1)
-      (rxRetries     <$> stats1)
-      (rxFullRetries <$> stats1)
-      (failAfterUps  <$> stats1)
-      (txRetries     <$> stats2)
-      (rxRetries     <$> stats2)
-      (rxFullRetries <$> stats2)
-      (failAfterUps  <$> stats2)
-      (txRetries     <$> stats3)
-      (rxRetries     <$> stats3)
-      (rxFullRetries <$> stats3)
-      (failAfterUps  <$> stats3)
-      (txRetries     <$> stats4)
-      (rxRetries     <$> stats4)
-      (rxFullRetries <$> stats4)
-      (failAfterUps  <$> stats4)
-      (txRetries     <$> stats5)
-      (rxRetries     <$> stats5)
-      (rxFullRetries <$> stats5)
-      (failAfterUps  <$> stats5)
-      (txRetries     <$> stats6)
-      (rxRetries     <$> stats6)
-      (rxFullRetries <$> stats6)
-      (failAfterUps  <$> stats6)
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.
 {-# ANN fullMeshHwCcWithRiscvTest Synthesize
@@ -520,10 +449,8 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
 
   (   txns, txps, hwFincFdecs, _callistoResult, _callistoReset
-    , _dataCounts, stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
+    , _dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
     , allStable ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso
-
-  stats0 :> stats1 :> stats2 :> stats3 :> stats4 :> stats5 :> stats6 :> Nil = stats
 
   -- check that tests are not synchronously start before all
   -- transceivers are up
@@ -535,44 +462,7 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   startTest :: Signal Basic125 Bool
   startTest =
-    setName @"vioHitlt" $
-    vioProbe
-      (  "probe_test_done"
-      :> "probe_test_success"
-
-      -- Debug probes
-      :> "stats0_txRetries"
-      :> "stats0_rxRetries"
-      :> "stats0_rxFullRetries"
-      :> "stats0_failAfterUps"
-      :> "stats1_txRetries"
-      :> "stats1_rxRetries"
-      :> "stats1_rxFullRetries"
-      :> "stats1_failAfterUps"
-      :> "stats2_txRetries"
-      :> "stats2_rxRetries"
-      :> "stats2_rxFullRetries"
-      :> "stats2_failAfterUps"
-      :> "stats3_txRetries"
-      :> "stats3_rxRetries"
-      :> "stats3_rxFullRetries"
-      :> "stats3_failAfterUps"
-      :> "stats4_txRetries"
-      :> "stats4_rxRetries"
-      :> "stats4_rxFullRetries"
-      :> "stats4_failAfterUps"
-      :> "stats5_txRetries"
-      :> "stats5_rxRetries"
-      :> "stats5_rxFullRetries"
-      :> "stats5_failAfterUps"
-      :> "stats6_txRetries"
-      :> "stats6_rxRetries"
-      :> "stats6_rxFullRetries"
-      :> "stats6_failAfterUps"
-      :> Nil)
-      (  "probe_test_start"
-      :> Nil)
-      False
+    hitlVioBool
       sysClk
 
       -- done
@@ -581,35 +471,6 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       -- success
       (not <$> (transceiversFailedAfterUp .||. startBeforeAllUp))
 
-      -- Debug probes
-      (txRetries     <$> stats0)
-      (rxRetries     <$> stats0)
-      (rxFullRetries <$> stats0)
-      (failAfterUps  <$> stats0)
-      (txRetries     <$> stats1)
-      (rxRetries     <$> stats1)
-      (rxFullRetries <$> stats1)
-      (failAfterUps  <$> stats1)
-      (txRetries     <$> stats2)
-      (rxRetries     <$> stats2)
-      (rxFullRetries <$> stats2)
-      (failAfterUps  <$> stats2)
-      (txRetries     <$> stats3)
-      (rxRetries     <$> stats3)
-      (rxFullRetries <$> stats3)
-      (failAfterUps  <$> stats3)
-      (txRetries     <$> stats4)
-      (rxRetries     <$> stats4)
-      (rxFullRetries <$> stats4)
-      (failAfterUps  <$> stats4)
-      (txRetries     <$> stats5)
-      (rxRetries     <$> stats5)
-      (rxFullRetries <$> stats5)
-      (failAfterUps  <$> stats5)
-      (txRetries     <$> stats6)
-      (rxRetries     <$> stats6)
-      (rxFullRetries <$> stats6)
-      (failAfterUps  <$> stats6)
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.
 {-# ANN fullMeshHwCcTest Synthesize
@@ -632,3 +493,6 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
       ]
   } #-}
+
+tests :: HitlTests ()
+tests = noConfigTest "CC" allFpgas

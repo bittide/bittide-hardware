@@ -25,7 +25,8 @@ data Row = Row
   , sampleInWindow :: Int
   , trigger :: Bool
   , capture :: Bool
-  , testSelect :: Bool
+  , testStartA :: Bool
+  , testStartB :: Bool
   , testDone :: Bool
   , testSuccess :: Bool
   } deriving Show
@@ -36,7 +37,8 @@ instance FromNamedRecord Row where
     m .: "Sample in Window" <*>
     (toEnum <$> m .: "trigger_AorB") <*>
     (toEnum <$> m .: "capture") <*>
-    (toEnum <$> m .: "ilaTestSelect") <*>
+    (toEnum <$> m .: "ilaTestStartA") <*>
+    (toEnum <$> m .: "ilaTestStartB") <*>
     (toEnum <$> m .: "ilaTestDone") <*>
     (toEnum <$> m .: "ilaTestSuccess")
 

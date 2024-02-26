@@ -5,7 +5,7 @@ License:             Apache-2.0
 license-file:        LICENSE
 author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
-Copyright:           Copyright © 2022-2023 Google LLC
+Copyright:           Copyright © 2022-2024 Google LLC
 
 custom-setup
   setup-depends: Cabal, base, directory, process, filepath
@@ -82,6 +82,7 @@ library
   build-depends:
     Cabal,
     aeson,
+    aeson-pretty,
     array,
     base,
     bittide-extra,
@@ -145,6 +146,7 @@ library
     Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
     Clash.Explicit.Reset.Extra
     Clash.Functor.Extra
+    Clash.Hitl
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
     System.IO.Temp.Extra

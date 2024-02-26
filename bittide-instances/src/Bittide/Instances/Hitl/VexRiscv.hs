@@ -1,18 +1,19 @@
--- SPDX-FileCopyrightText: 2022-2023 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Bittide.Instances.Hitl.VexRiscv where
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx.VIO (vioProbe)
 
 import Clash.Prelude
 import Clash.Explicit.Prelude (noReset, orReset)
 
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
+import Clash.Hitl (HitlTests, allFpgas, hitlVioBool, noConfigTest)
 import Language.Haskell.TH (runIO)
 import Protocols
 import Protocols.Internal
@@ -109,20 +110,13 @@ vexRiscvTest diffClk = (testDone, testSuccess)
     (testDone, testSuccess) = unbundle $
       withClockResetEnable clk reset enableGen (vexRiscvInner @Basic200)
 
-    reset = orReset clkStableRst (unsafeFromActiveLow testReset)
+    reset = orReset clkStableRst (unsafeFromActiveLow testStarted)
 
-    testReset :: Signal Basic200 Bool
-    testReset =
-      setName @"vioHitlt" $
-      vioProbe
-        (  "probe_test_done"
-        :> "probe_test_success"
-        :> Nil)
-        ( "probe_test_start" :> Nil)
-        False
-        clk
-        testDone
-        testSuccess
+    testStarted :: Signal Basic200 Bool
+    testStarted = hitlVioBool clk testDone testSuccess
 
 {-# NOINLINE vexRiscvTest #-}
 makeTopEntity 'vexRiscvTest
+
+tests :: HitlTests ()
+tests = noConfigTest "VexRiscV" allFpgas

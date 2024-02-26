@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- | A couple of tests testing clock board programming, and subsequently the
 -- FINC and FDEC pins.
@@ -10,8 +11,8 @@ module Bittide.Instances.Hitl.FincFdec where
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Extra (ibufds)
-import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Explicit.Prelude
+import Clash.Hitl (HitlTests, testsFromEnum, hitlVio, singleFpga)
 import Clash.Prelude (withClockResetEnable)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 
@@ -20,6 +21,8 @@ import Bittide.Counter (domainDiffCounter)
 import Bittide.ClockControl (SpeedChange(NoChange, SlowDown, SpeedUp), speedChangeToFincFdec)
 import Bittide.ClockControl.Si539xSpi (si539xSpi, ConfigState(Finished))
 import Bittide.Instances.Domains
+
+import Data.Maybe (isJust)
 
 import qualified Bittide.ClockControl.Si5395J as Si5395J
 
@@ -33,11 +36,7 @@ data Test
   | FDecInc
   -- | 'FInc' test followed by an 'FDec' one
   | FIncDec
-  deriving (Enum, Generic, NFDataX)
-
--- | Lists all contructors of 'Test'
-allTests :: Vec 4 Test
-allTests = FDec :> FInc :> FDecInc :> FIncDec :> Nil
+  deriving (Enum, Generic, NFDataX, Bounded, BitPack, ShowX, Show)
 
 -- | Counter threshold after which a test is considered passed/failed. In theory
 -- clocks can diverge at +-20 kHz (at 200 MHz), which gives the tests 500 ms to
@@ -193,54 +192,25 @@ fincFdecTests diffClk controlledDiffClock spiIn =
   clkControlled = ibufds controlledDiffClock
 
   (clk, clkStableRst) = clockWizardDifferential diffClk noReset
-  clkStable1 = unsafeToActiveLow clkStableRst
 
-  testRst = orReset clkStableRst (unsafeFromActiveLow startTest)
-  testRstBool = unsafeToActiveHigh testRst
+  started = isJust <$> testInput
+  testRst = orReset clkStableRst (unsafeFromActiveLow started)
 
-  (fInc, fDec) = fIncDec
-
-  (testResult, fIncDec, spiOut, debugSignals) =
-    goFincFdecTests clk testRst clkControlled testType spiIn
+  (testResult, fIncDec, spiOut, _debugSignals) =
+    goFincFdecTests clk testRst clkControlled (fromJustX <$> testInput) spiIn
 
   (testDone, testSuccess) = unbundle $ testStateToDoneSuccess <$> testResult
 
-  (spiBusy, spiState, siClkLocked, counterActive, counter) = debugSignals
+  -- For debugging, add to separate VIO?
+  -- clkStable1 = unsafeToActiveLow clkStableRst
+  -- testRstBool = unsafeToActiveHigh testRst
+  -- (fInc, fDec) = fIncDec
+  -- (spiBusy, spiState, siClkLocked, counterActive, counter) = debugSignals
 
-  (startTest, testType) = unbundle $
-    setName @"vioHitlt" $
-    vioProbe
-      (  "probe_test_done"
-      :> "probe_test_success"
-
-      -- Debug signals:
-      :> "probe_clkStable1"
-      :> "probe_testRstBool"
-      :> "probe_spiBusy"
-      :> "probe_spiState"
-      :> "probe_siClkLocked"
-      :> "probe_counterActive"
-      :> "probe_counter"
-      :> "probe_fInc"
-      :> "probe_fDec"
-      :> Nil)
-      (  "probe_test_start"
-      :> "testType"
-      :> Nil)
-      (False, FDec)
-      clk
-      testDone
-      testSuccess
-
-      -- Debug signals
-      clkStable1
-      testRstBool
-      spiBusy
-      spiState
-      siClkLocked
-      counterActive
-      counter
-      fInc
-      fDec
+  testInput :: Signal Basic200 (Maybe Test)
+  testInput = hitlVio FDec clk testDone testSuccess
 {-# NOINLINE fincFdecTests #-}
 makeTopEntity 'fincFdecTests
+
+tests :: HitlTests Test
+tests = testsFromEnum (singleFpga maxBound)

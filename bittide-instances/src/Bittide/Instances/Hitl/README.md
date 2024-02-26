@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2022-2023 Google LLC
+SPDX-FileCopyrightText: 2022-2024 Google LLC
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -9,43 +9,18 @@ Besides simulation, we also want to test our designs on physical hardware. We
 have constructed a demo rig, which consists of 8 FPGA boards (KCU105), which are
 all connected to a PC through their JTAG ports. This PC runs a GitHub runner.
 
-To run a hardware-in-the-loop test:
-- The design must include a VIO (see [VIO](#vio))
-- Add topentity to list of targets ([Shake.hs](/bittide-shake/bin/Shake.hs))
-- Add topentity to CI
-    - [staging](/.github/synthesis/staging.json) runs on every PR,
+To add a HTIL test:
+
+- Instantiate `Clash.Hitl.hitlVio` in your design
+- Add your test to `configs` in ([Hitl.hs](/bittide-instances/bin/Hitl.hs))
+- Add your test to `targets` in ([Shake.hs](/bittide-shake/bin/Shake.hs))
+- Add your test to CI:
+  - [staging](/.github/synthesis/staging.json) runs on every PR,
     [all](/.github/synthesis/all.json) runs every night
-    - Stage is `test`
-    - Targets can be `All`, `OneAny` or `Specific [{list of indices in rig}]`
-    see [Flags.hs](/bittide-shake/src/Clash/Shake/Flags.hs)
+  - Set stage to `test`
 
 A design marked as a Hardware-in-the-loop test (hitlt) should adhere to
 framework described in the next chapters.
-
-
-## VIO
-The VIO component should be called `vioHitlt`, this name may include a module
-prefix (e.g. `fincFdecTest30_vioHitlt`). The name of the component can be set as
-such:
-
-```haskell
-myVio = setName @"vioHitlt" $ vioProbe ...
-```
-
-This component must have at least 3 probes. More start probes can be added,
-where each start probe defines a single test. The tests are executed one-by-one,
-in the order they are given to the `vioProbe` function.
-
-2 input probes:
-- `probe_test_done` indicates when a single test is done
-- `probe_test_success` indicates whether a single test was successful
-
-1 output probe:
-- `probe_test_start*` indicate the start of a specific test
-
-The `done` signal should be `0` before a test is started. The `success` signal
-should only be read when `done` is `1`, otherwise its value is not defined.
-
 
 ## ILA
 All ILAs present in the design are armed before the VIO test is started. Each

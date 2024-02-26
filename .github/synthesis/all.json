@@ -17,7 +17,7 @@
 
   {"top": "boardTestExtended",             "stage": "test",   "targets": "All"          },
   {"top": "boardTestSimple",               "stage": "test",   "targets": "All"          },
-  {"top": "extraProbesTest",               "stage": "test",   "targets": "Specific [0]"       },
+  {"top": "extraProbesTest",               "stage": "test",   "targets": "Specific [0]" },
   {"top": "fincFdecTests",                 "stage": "test",   "targets": "Specific [-1]"},
   {"top": "fullMeshHwCcTest",              "stage": "test",   "targets": "All"          },
   {"top": "fullMeshHwCcWithRiscvTest",     "stage": "test",   "targets": "All"          },
