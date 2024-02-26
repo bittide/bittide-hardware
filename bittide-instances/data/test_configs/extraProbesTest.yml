@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2024 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+default:
+  probes:
+    testState: 0
+    extraProbe: 0
+
+tests:
+  testDefaultProbes: null
+  testSpecificProbes:
+    probes:
+      testState: 1
+      extraProbe: 0xDEADABBA
+  testFpgaSpecificProbes:
+    # We set the extraProbes to the DNA identifier of the respective FPGA
+    probes:
+      testState: 2
+    targets:
+      - target: { index:  0 }
+        probes:
+          extraProbe: 0x00000000400200010169c040044164c5
+      - target: { index:  1 }
+        probes:
+          extraProbe: 0x0000000040020001815160e805108285
+      - target: { index:  2 }
+        probes:
+          extraProbe: 0x000000004002000101695ce72c808445
+      - target: { index:  3 }
+        probes:
+          extraProbe: 0x000000004002000101695ce72c702305
+      - target: { index:  4 }
+        probes:
+          extraProbe: 0x0000000040020001016ba8e52581a285
+      - target: { index:  5 }
+        probes:
+          extraProbe: 0x00000000400200010157f4862d01c345
+      - target: { index:  6 }
+        probes:
+          extraProbe: 0x00000000400200010169c04004308185
+      - target: { index:  7 }
+        probes:
+          extraProbe: 0x0000000040020001015664862d20e405

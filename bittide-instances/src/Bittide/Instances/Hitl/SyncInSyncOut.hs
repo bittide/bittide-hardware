@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -136,7 +136,7 @@ syncInSyncOut ::
 syncInSyncOut sysClkDiff syncIn0 = syncOut
  where
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
-  testRst = sysRst `orReset` (unsafeFromActiveLow startTest)
+  testRst = sysRst `orReset` unsafeFromActiveLow startTest
   syncIn1 =
       unsafeToActiveHigh
     $ resetGlitchFilter (SNat @1024) sysClk

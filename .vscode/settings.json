@@ -30,6 +30,12 @@
   "[haskell]": {
     "editor.formatOnSave": false
   },
+  "yaml.schemas": {
+    ".vscode/schemas/hitl-test-schema.json": [
+      "_build/hitl/*.yml",
+      "bittide-instances/data/test_configs/*.yml"
+    ]
+  },
   "rust-analyzer.linkedProjects": [
     "firmware-support/Cargo.toml",
     "firmware-binaries/Cargo.toml",

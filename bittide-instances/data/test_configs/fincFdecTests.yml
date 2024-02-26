@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2024 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+default:
+  probes:
+    testType: 0
+
+tests:
+  FDec:
+    probes:
+      testType: 0
+  FInc:
+    probes:
+      testType: 1
+  FDecFInc:
+    probes:
+      testType: 2
+  FIncFDec:
+    probes:
+      testType: 3

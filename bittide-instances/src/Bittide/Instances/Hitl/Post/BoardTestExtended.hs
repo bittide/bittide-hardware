@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -25,8 +25,7 @@ data Row = Row
   , sampleInWindow :: Int
   , trigger :: Bool
   , capture :: Bool
-  , testStartA :: Bool
-  , testStartB :: Bool
+  , testSelect :: Bool
   , testDone :: Bool
   , testSuccess :: Bool
   } deriving Show
@@ -37,10 +36,9 @@ instance FromNamedRecord Row where
     m .: "Sample in Window" <*>
     (toEnum <$> m .: "trigger_AorB") <*>
     (toEnum <$> m .: "capture") <*>
-    (toEnum <$> m .: "testStartA") <*>
-    (toEnum <$> m .: "testStartB") <*>
-    (toEnum <$> m .: "testDone") <*>
-    (toEnum <$> m .: "testSuccess")
+    (toEnum <$> m .: "ilaTestSelect") <*>
+    (toEnum <$> m .: "ilaTestDone") <*>
+    (toEnum <$> m .: "ilaTestSuccess")
 
 
 assertTriggerAtStart :: [Row] -> Assertion
@@ -62,6 +60,6 @@ postBoardTestExtended :: ExitCode -> [FlattenedIlaCsvPath] -> Assertion
 postBoardTestExtended _exitCode ilaCsvPaths = do
   let
     csvToProcess = filter ((== "boardTestIla") . ilaName) ilaCsvPaths
-  assertBool "Expected at least 1 CSV file, but got 0" $ ((length csvToProcess) > 0)
-  _ <- sequence $ map (processCsv . csvPath) csvToProcess
+  assertBool "Expected at least 1 CSV file, but got 0" $ not (null csvToProcess)
+  mapM_ (processCsv . csvPath) csvToProcess
   putStrLn $ "Successfully performed post processing of " <> show (length csvToProcess) <> " ILA CSV dumps"

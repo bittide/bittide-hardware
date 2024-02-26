@@ -109,6 +109,7 @@ library
     Bittide.Instances.Hitl.FullMeshSwCc
     Bittide.Instances.Hitl.IlaPlot
     Bittide.Instances.Hitl.SyncInSyncOut
+    Bittide.Instances.Hitl.Tcl.ExtraProbes
     Bittide.Instances.Hitl.Transceivers
     Bittide.Instances.Hitl.VexRiscv
 

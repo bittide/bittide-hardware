@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -62,7 +62,7 @@ toFpgaNum fpgaName =
 -- | Create NestedIlaCsvPaths using a list of filepaths of CSV dumps and the
 -- base directory of ILA data.
 toNestedIlaCsvPaths :: HasCallStack => FilePath -> [FilePath] -> NestedIlaCsvPaths
-toNestedIlaCsvPaths ilaDir = foldl addIlaCsvPath Map.empty . (toFlattenedIlaCsvPathList ilaDir)
+toNestedIlaCsvPaths ilaDir = foldl addIlaCsvPath Map.empty . toFlattenedIlaCsvPathList ilaDir
 
 -- | Create a list of FlattenedIlaCsvPath using a list of filepaths of CSV dumps
 -- and the base directory of ILA data.

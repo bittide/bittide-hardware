@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022-2023 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -15,7 +15,11 @@ module Main where
 
 import Prelude
 
-import Control.Applicative (liftA2)
+import Clash.Shake.Extra
+import Clash.Shake.Flags
+import Clash.Shake.Vivado
+import Control.Applicative (liftA2, (<|>))
+import Control.Exception (throw)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.Extra (ifM, unlessM)
 import Data.Char(isSpace)
@@ -26,19 +30,15 @@ import Data.Maybe (fromJust, isJust)
 import Development.Shake
 import Development.Shake.Classes
 import GHC.Stack (HasCallStack)
+import Paths_bittide_shake (getDataFileName)
 import System.Console.ANSI (setSGR)
-import System.Directory
+import System.Directory hiding (doesFileExist)
 import System.Exit (ExitCode(..), exitWith)
 import System.FilePath
 import System.FilePath.Glob (glob)
 import System.Process (readProcess, callProcess)
+import System.Process.Extra (readProcessWithExitCode)
 import Test.Tasty.HUnit (Assertion)
-
-import Paths_bittide_shake (getDataFileName)
-
-import Clash.Shake.Extra
-import Clash.Shake.Flags
-import Clash.Shake.Vivado
 
 import qualified Clash.Util.Interpolate as I
 import qualified System.Directory as Directory
@@ -88,29 +88,30 @@ vivadoBuildDir = buildDir </> "vivado"
 watchFilesPath :: FilePath
 watchFilesPath = buildDir </> "watch_files.txt"
 
--- | Get absolute path to a constraint file based on a target name. Target name
--- example: @Bittide.Instances.Tests.FincFdec.fincFdecTests@.
-getConstraintFilePathFromTarget :: String -> IO FilePath
-getConstraintFilePathFromTarget target =
-  getConstraintFilePath (entityName target <> ".xdc")
-
--- | Get absolute path to a constraint file based on a relative file path. For
--- example: @features/jtag.xdc@ would resolve to
--- @$REPO_ROOT/bittide-instances/data/constraints/features/jtag.xdc@.
-getConstraintFilePath :: String -> IO FilePath
-getConstraintFilePath relativePath = do
-  let binName = "get-data-file-name"
+data CheckExists = CheckExists | NoCheckExists
+  deriving (Eq, Show)
+-- | Get the absolute path to a data file in `bittide-instances` based on a relative
+-- file path.
+getInstanceDataFileName :: CheckExists -> FilePath -> IO (Maybe FilePath)
+getInstanceDataFileName check relativePath = do
+  let
+    binName = "get-data-file-name"
+    flags = (["--no-check" | check == NoCheckExists])
+    cabalArgs = ["run", "-v0", "--", binName, relativePath] ++ flags
   callProcess "cabal" ["-v0", "build", binName]
-  out <- readProcess "cabal"
-    [ "run", "-v0", binName, "data/constraints" </> relativePath] ""
-  pure $ dropWhileEnd isSpace $ dropWhile isSpace out
+  (exitCode, stdOut, stdErr) <- readProcessWithExitCode "cabal" cabalArgs ""
+  case (check, exitCode) of
+    (_, ExitSuccess) -> pure $ Just $ dropWhileEnd isSpace $ dropWhile isSpace stdOut
+    (NoCheckExists, ExitFailure _) ->
+      throw $ userError $ unwords
+      [unwords $ "cabal":cabalArgs, "failed with exit code", show exitCode, ":\n", stdErr]
+    _ -> pure Nothing
 
 -- | Build and run the executable for post processing of ILA data
 doPostProcessing :: String -> FilePath -> ExitCode -> Assertion
 doPostProcessing postProcessMain ilaDir testExitCode = do
   callProcess "cabal" ["build", postProcessMain]
   callProcess "cabal" ["run", postProcessMain, ilaDir, show testExitCode]
-
 
 -- | Searches for a file called @cabal.project@ It will look for it in the
 -- current working directory. If it can't find it there, it will traverse up
@@ -213,6 +214,7 @@ targets = map enforceValidTarget
   , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcWithRiscvTest"
   , testTarget "Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest"
   , testTarget "Bittide.Instances.Hitl.SyncInSyncOut.syncInSyncOut"
+  , testTarget "Bittide.Instances.Hitl.Tcl.ExtraProbes.extraProbesTest"
   , testTarget "Bittide.Instances.Hitl.Transceivers.transceiversUpTest"
   , testTarget "Bittide.Instances.Hitl.VexRiscv.vexRiscvTest"
   ]
@@ -353,6 +355,7 @@ main = do
               ]
             bitstreamPath = synthesisDir </> "bitstream.bit"
             probesPath = synthesisDir </> "probes.ltx"
+            testConfigPath = synthesisDir </> "test_config.yml"
             testExitCodePath = synthesisDir </> "test_exit_code"
 
             postRouteMethodologyPath = reportDir </> "post_route_methodology.rpt"
@@ -415,13 +418,15 @@ main = do
 
             -- Synthesis
             runSynthTclPath %> \path -> do
-
+              let
+                xdcNames = entityName targetName <> ".xdc" : targetExtraXdc
+                relativeXdcPaths = map ("data/constraints" </>) xdcNames
               constraints <-
                 if targetHasXdc then do
-                  constraintFilePath <- liftIO (getConstraintFilePathFromTarget targetName)
-                  extraConstraintFilePaths <- liftIO (mapM getConstraintFilePath targetExtraXdc)
-                  need (constraintFilePath : extraConstraintFilePaths)
-                  pure (constraintFilePath : extraConstraintFilePaths)
+                  constraintPaths <- liftIO $ mapM
+                    (fmap fromJust . getInstanceDataFileName CheckExists) relativeXdcPaths
+                  need constraintPaths
+                  pure constraintPaths
                 else
                   pure []
 
@@ -543,6 +548,15 @@ main = do
                 liftIO $ mkHardwareTestTcl synthesisDir hwTargets url ilaDir
               writeFileChanged path hardwareTestTcl
 
+            -- Create test configuration file
+            testConfigPath %> \_ -> do
+              let
+                specificRelPath = "data/test_configs" </> entityName targetName <> ".yml"
+                defaultRelPath = "data/test_configs/default.yml"
+              specAbsPath <- liftIO $ getInstanceDataFileName CheckExists specificRelPath
+              defAbsPath <- liftIO $ getInstanceDataFileName CheckExists defaultRelPath
+              copyFileChanged (fromJust $ specAbsPath <|> defAbsPath) testConfigPath
+
             testExitCodePath %> \path -> do
               forceRerun <- askOracle $ ForceTestRerun ()
               when forceRerun alwaysRerun
@@ -551,6 +565,7 @@ main = do
                 , runHardwareTestTclPath
                 , bitstreamPath
                 , probesPath
+                , testConfigPath
                 ]
               vivadoFromTcl_ runBoardProgramTclPath
               exitCode <- vivadoFromTcl @ExitCode runHardwareTestTclPath
