@@ -2,6 +2,45 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+# Tools to run hardware-in-the-loop (HITL) tests. Most users should consider
+# `runTestGroup` as the main entry point. This function runs a group of tests
+# according to a test configuration file. The test configuration file is defined
+# in YAML, and looks like the following:
+#
+# ```yaml
+# defaults:
+#   probes:
+#     $probe1: 0
+#     $probe2: 0
+#
+# tests:
+#   $test_name:
+#     probes:
+#       $probe1: 1
+#       $probe2: 0xDEADABBA
+#
+#     targets:
+#       - target: { index:  $fpga_index }
+#         probes:
+#           $probe1: 1
+#           $probe2: 0xDEADABBA
+# ```
+#
+# The `defaults` section contains default values for the probes. The `tests`
+# section contains a list of tests, each with a list of targets and a list of
+# probes. The `targets` section contains a list of targets, each with an index
+# that corresponds to the index of the FPGA in the demo rig. Note that the defaults
+# can be overridden by the test specific values, and the test specific values can
+# be overridden by the target specific values.
+#
+# In the example posted above, the strings prefixed by a dollar sign are meant to
+# illustrate that these are arbitrary values to be set by the user. For example,
+# `$test_name` could be `test1`, and `$probe2` could be `device_id`.
+#
+# TODO: Allow the user to specify the timeout for the test.
+#
+# TODO: Allow multiple ways of specifying FPGA targets. E.g., device ID.
+
 package require yaml
 
 # The IDs of the Digilent chips on each FPGA board. The indices match the
@@ -599,6 +638,24 @@ proc set_extra_probes {yaml_dict fpga_index test_name} {
     }
 }
 
+# Run a group of tests according to a test configuration file. See module documentation.
+#
+# Arguments:
+#
+#   probes_file: The path to the probes file - an LTX file produced by Vivado.
+#
+#   test_config_path:
+#     The path to the test configuration file, see the module documentation for
+#     more information.
+#
+#   target_dict:
+#     An ordered dictionary which maps indices of FPGAs in the demo rack to
+#     their FPGA device IDs.
+#
+#   url: The URL of the hardware server.
+#
+#   ila_data_dir: The directory where the ILA data will be stored.
+#
 proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} {
     # Load the device of the first target
     set target_id [lindex [dict values $target_dict] 0]
