@@ -94,10 +94,11 @@ library
     clash-protocols,
     clash-vexriscv,
     constraints >= 0.13.3 && < 0.15,
-    containers >= 0.4.0 && < 0.7,
+    containers >= 0.4.0 && < 0.8,
     directory,
     elf,
     exceptions,
+    infinite-list,
     mtl,
     pretty-show,
     process,
@@ -156,13 +157,13 @@ library
 
 executable clash
   import: common-options
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded -rtsopts
   main-is: bin/Clash.hs
   Build-Depends: base, bittide, clash-ghc
 
 executable program-stream
   import: common-options
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded -rtsopts
   main-is: bin/ProgramStream.hs
   Build-Depends:
     base,
@@ -174,7 +175,7 @@ test-suite doctests
   type:             exitcode-stdio-1.0
   default-language: Haskell2010
   main-is:          doctests.hs
-  ghc-options:      -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options:      -Wall -Wcompat -threaded -rtsopts
   hs-source-dirs:   tests
 
   build-depends:
@@ -188,7 +189,7 @@ test-suite unittests
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: UnitTests.hs
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded -rtsopts
   other-modules:
     Tests.Axi4
     Tests.Calendar
@@ -219,8 +220,8 @@ test-suite unittests
     constraints >= 0.13.3 && < 0.15,
     containers,
     elf,
-    hedgehog >= 1.0 && < 1.1,
-    tasty >= 1.4 && < 1.5,
-    tasty-hedgehog >= 1.2 && < 1.3,
+    hedgehog >= 1.0 && < 1.5,
+    tasty >= 1.4 && < 1.6,
+    tasty-hedgehog >= 1.2 && < 1.5,
     tasty-hunit,
     tasty-th,

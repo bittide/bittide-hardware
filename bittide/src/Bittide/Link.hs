@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -20,6 +20,7 @@ module Bittide.Link where
 
 import Clash.Prelude
 
+import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Data.Constraint
 import Data.Constraint.Nat.Extra
 import Data.Maybe
@@ -269,8 +270,8 @@ linkToPe ::
 linkToPe linkConfig linkIn localCounter peM2S linkM2S = case linkConfig of
   LinkConfig preamble scatConfig _ -> (peS2M, linkS2M)
    where
-    linkS2M =  rxS2M :> calS2M :> Nil
-    (rxM2S :> calM2S :> Nil) = linkM2S
+    linkS2M = rxS2M :> calS2M :> Nil
+    (rxM2S, calM2S) = vecToTuple linkM2S
     rxS2M = rxUnit preamble localCounter linkIn rxM2S
     (peS2M,calS2M) = scatterUnitWb scatConfig calM2S linkIn peM2S
 
@@ -316,7 +317,7 @@ peToLink linkConfig localCounter peM2S linkM2S = case linkConfig of
   go preamble calConfig = (linkOut, peS2M, linkS2M)
    where
     linkS2M =  txS2M :> calS2M :> Nil
-    (txM2S :> calM2S :> Nil) = linkM2S
+    (txM2S, calM2S) = vecToTuple linkM2S
     (txS2M,linkOut) = txUnit preamble localCounter gatherOut txM2S
     (gatherOut, peS2M,calS2M) = gatherUnitWb calConfig calM2S peM2S
 

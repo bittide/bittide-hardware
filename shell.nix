@@ -14,14 +14,15 @@ pkgs.mkShell {
     #
     [
       pkgs.cabal-install
+      pkgs.cacert
       pkgs.dtc
       pkgs.gcc
-      pkgs.ghc
+      pkgs.haskell.compiler.ghc94
       pkgs.pkg-config
-      pkgs.python310Full
-      pkgs.python310Packages.matplotlib
-      pkgs.python310Packages.scipy
-      pkgs.python310Packages.GitPython
+      pkgs.python311Full
+      pkgs.python311Packages.GitPython
+      pkgs.python311Packages.matplotlib
+      pkgs.python311Packages.scipy
       pkgs.sbt
       pkgs.scala
       pkgs.verilator
@@ -42,12 +43,23 @@ pkgs.mkShell {
       pkgs.verilog-ethernet
 
       # CI cache scripts
-      pkgs.python310Packages.docopt
-      pkgs.python310Packages.dateutil
+      pkgs.python311Packages.docopt
+      pkgs.python311Packages.dateutil
       pkgs.mc
 
       # VexRiscv OpenOCD
       pkgs.openocd-vexriscv
+
+      # For upgrading Nix env. To update dependencies (within bounds of the currently
+      # tracking NixOS version) use:
+      #
+      #   niv update
+      #
+      # If you want to upgrade nixpkgs to another NixOS version, use:
+      #
+      #   niv update nixpkgs -b nixos-23.11
+      #
+      pkgs.niv
     ]
     ;
 

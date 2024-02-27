@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -15,7 +15,6 @@ import Data.Int (Int64)
 import Data.Ratio
 import qualified Control.Exception as E (assert)
 import GHC.Stack (HasCallStack)
-import Numeric.Natural
 import System.Random (Random)
 
 newtype Ppm = Ppm Int64

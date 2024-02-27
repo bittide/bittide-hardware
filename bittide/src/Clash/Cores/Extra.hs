@@ -1,18 +1,20 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Clash.Cores.Extra where
 
 import Clash.Annotations.Primitive
-import Clash.Explicit.Prelude hiding (Fixed)
+import Clash.Explicit.Prelude hiding (Fixed, (:<))
 
 import Clash.Netlist.Types (TemplateFunction(..), BlackBoxContext(..), HWType(..))
 import Clash.Netlist.Util (stripVoid)
 import Data.Fixed (Fixed(..), E3)
 import Data.String.Interpolate (__i)
+import Data.List.Infinite (Infinite((:<)), (...))
 
 
 -- | A typical dual flipflop synchronizer, prepended with a flipflop operating
@@ -69,22 +71,22 @@ safeDffSynchronizer0 clk1 clk2 initVal i = (sOut, dOut)
 {-# ANN safeDffSynchronizer0 hasBlackBox #-}
 {-# ANN safeDffSynchronizer0 (
   let
-    (  dom1
-     : dom2
-     : _nfdatax
-     : _bitsize
-     : clock1
-     : clock2
-     : initVal
-     : inp
-     : _
-     ) = [(0::Int)..]
+    (   dom1
+     :< dom2
+     :< _nfdatax
+     :< _bitsize
+     :< clock1
+     :< clock2
+     :< initVal
+     :< inp
+     :< _
+     ) = ((0::Int)...)
 
-    (  regA
-     : regB
-     : regC
-     : _
-     ) = [(0::Int)..]
+    (   regA
+     :< regB
+     :< regC
+     :< _
+     ) = ((0::Int)...)
     funcName = 'safeDffSynchronizer0
     tfName = 'safeDffSynchronizerTF
   in
@@ -116,23 +118,22 @@ safeDffSynchronizer0 clk1 clk2 initVal i = (sOut, dOut)
 |]) #-}
 {-# ANN safeDffSynchronizer0 (
   let
-    (  dom1
-     : dom2
-     : _nfdatax
-     : _bitsize
-     : clock1
-     : clock2
-     : initVal
-     : inp
-     : _
-     ) = [(0::Int)..]
+    (   dom1
+     :< dom2
+     :< _nfdatax
+     :< _bitsize
+     :< clock1
+     :< clock2
+     :< initVal
+     :< inp
+     :< _ ) = ((0 :: Int)...)
 
-    (  regA
-     : regB
-     : regC
-     : block
-     : _
-     ) = [(0::Int)..]
+    (   regA
+     :< regB
+     :< regC
+     :< block
+     :< _
+     ) = ((0::Int)...)
     funcName = 'safeDffSynchronizer0
     tfName = 'safeDffSynchronizerTF
   in
@@ -183,15 +184,15 @@ safeDffSynchronizerTF :: TemplateFunction
 safeDffSynchronizerTF =
   let
     (  dom1Used
-     : dom2Used
-     : _nfdatax
-     : _bitsize
-     : _clock1
-     : _clock2
-     : _initVal
-     : _inp
-     : _
-     ) = [(0::Int)..]
+     :< dom2Used
+     :< _nfdatax
+     :< _bitsize
+     :< _clock1
+     :< _clock2
+     :< _initVal
+     :< _inp
+     :< _
+     ) = ((0::Int)...)
   in TemplateFunction [dom1Used, dom2Used] (const True) $ \bbCtx ->
     let [compName] = bbQsysIncName bbCtx
         [ (_, stripVoid -> dom1, _)

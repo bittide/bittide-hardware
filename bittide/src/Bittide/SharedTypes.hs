@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -92,7 +92,7 @@ newtype RegisterBank regSize content (byteOrder :: ByteOrder) =
 
 instance (KnownNat regSize, 1 <= regSize, BitPack content) =>
   BitPack (RegisterBank regSize content byteOrder) where
-  type BitSize _ = Regs content regSize * regSize
+  type BitSize (RegisterBank regSize content byteOrder) = Regs content regSize * regSize
   pack (RegisterBank vec) = pack vec
   unpack bv = RegisterBank (unpack bv)
 

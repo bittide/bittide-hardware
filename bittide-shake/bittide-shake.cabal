@@ -5,7 +5,7 @@ License:             Apache-2.0
 license-file:        LICENSE
 author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
-Copyright:           Copyright © 2022-2023 Google LLC
+Copyright:           Copyright © 2022-2024 Google LLC
 
 data-files:
   data/scripts/*.py
@@ -49,7 +49,7 @@ library
 
 executable shake
   import: common-options
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded -rtsopts
   main-is: bin/Shake.hs
   Build-Depends:
     , ansi-terminal
@@ -61,7 +61,7 @@ executable shake
 
 executable clash
   import: common-options
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded -rtsopts
   main-is: bin/Clash.hs
   Build-Depends: clash-ghc, bittide-shake
 
@@ -69,6 +69,6 @@ test-suite doctests
   type:             exitcode-stdio-1.0
   hs-source-dirs:   tests
   main-is:          doctests.hs
-  ghc-options:      -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options:      -Wall -Wcompat -threaded -rtsopts
   build-depends:    base, bittide-shake, doctest-parallel >= 0.3.0.1
   default-language: Haskell2010
