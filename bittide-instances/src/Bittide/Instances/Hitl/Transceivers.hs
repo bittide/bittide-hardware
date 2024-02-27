@@ -27,12 +27,12 @@ import Clash.Explicit.Prelude
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
+import Bittide.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
 import Bittide.Instances.Domains
 import Bittide.Transceiver
 
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
-import Clash.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
 import Clash.Xilinx.ClockGen
 
 import qualified Clash.Explicit.Prelude as E

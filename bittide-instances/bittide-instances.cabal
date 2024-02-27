@@ -67,6 +67,7 @@ common common-options
     base16-bytestring,
     bittide-extra,
     bittide,
+    bittide-experiments,
     bytestring,
     cassava,
     clash-cores,

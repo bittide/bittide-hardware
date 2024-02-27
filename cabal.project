@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: CC0-1.0
 
 packages:
+  bittide-experiments/
   bittide-extra/
   bittide-instances/
   bittide-shake/
@@ -32,6 +33,9 @@ package clash-prelude
   flags: -multiple-hidden
 
 package bittide
+  ghc-options: +RTS -xp -RTS
+
+package bittide-experiments
   ghc-options: +RTS -xp -RTS
 
 package bittide-extra

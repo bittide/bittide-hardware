@@ -82,7 +82,6 @@ library
   build-depends:
     Cabal,
     aeson,
-    aeson-pretty,
     array,
     base,
     bittide-extra,
@@ -146,7 +145,6 @@ library
     Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
     Clash.Explicit.Reset.Extra
     Clash.Functor.Extra
-    Clash.Hitl
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
     System.IO.Temp.Extra

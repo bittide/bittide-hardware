@@ -15,7 +15,6 @@ module Main where
 
 import Prelude
 
-import Clash.Hitl (HitlTests, packAndEncode)
 import Control.Monad (forM_, when)
 import Data.List (intercalate)
 import Options.Applicative
@@ -24,6 +23,8 @@ import System.Directory (createDirectoryIfMissing)
 import System.Exit (die)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
+
+import Bittide.Hitl (HitlTests, packAndEncode)
 
 import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec

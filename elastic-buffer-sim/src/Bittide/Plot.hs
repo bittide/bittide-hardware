@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -74,14 +74,14 @@ import Graphics.Matplotlib
   , file, plot, xlabel, ylabel, o1, o2, mp, legend, axes, figure
   )
 
-import Bittide.Simulate (Offset)
 import Bittide.Domain (Bittide, defBittideClockConfig)
 import Bittide.ClockControl (ClockControlConfig(..), clockPeriodFs)
 import Bittide.ClockControl.StabilityChecker qualified as SC (StabilityIndication(..))
 import Bittide.ClockControl.Callisto (ReframingState(..))
-import Bittide.Topology (simulate, simulationEntity, allSettled)
+import Bittide.Simulate (Offset)
+import Bittide.Simulate.Topology (simulate, simulationEntity, allSettled)
 import Bittide.Arithmetic.Ppm (Ppm(..), diffPeriod)
-import Bittide.Topology.Graph
+import Bittide.Topology
 
 data OutputMode =
     CSV

@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -8,7 +8,7 @@
 -- | This module defines the top entity for simulation, where every
 --  non-empty topology is supported. The top entity can be simulated
 --  using 'simulate'.
-module Bittide.Topology
+module Bittide.Simulate.Topology
   ( simulationEntity
   , simulate
   , allSettled
@@ -31,7 +31,7 @@ import Bittide.ClockControl
 import Bittide.ClockControl.Callisto hiding (allSettled)
 import Bittide.ClockControl.ElasticBuffer
 import Bittide.ClockControl.StabilityChecker
-import Bittide.Topology.Graph
+import Bittide.Topology
 
 -- | The entity to be simulated consisting of the tunable clock
 -- generators, the elastic buffers, the stability checkers, and the

@@ -65,11 +65,11 @@ module Bittide.Instances.Hitl.SyncInSyncOut where
 import Clash.Explicit.Prelude
 
 import Bittide.Arithmetic.Time
+import Bittide.Hitl (HitlTests, allFpgas, hitlVioBool, noConfigTest)
 import Bittide.Instances.Domains
 
 import Clash.Annotations.TH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
-import Clash.Hitl (HitlTests, allFpgas, hitlVioBool, noConfigTest)
 import Clash.Xilinx.ClockGen
 
 -- | An 'Index' counting to /n/ seconds on 'Basic300'

@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -63,7 +63,7 @@ import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Domains
-import Bittide.Topology.Graph
+import Bittide.Topology
 
 -- A newtype wrapper for working with hex encoded types.
 newtype Hex a = Hex { fromHex :: a }

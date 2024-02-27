@@ -38,7 +38,7 @@
 --   3. Shake builds a bitstream, programs the FPGA, and runs the HITL tests using
 --      the configuration file and @HardwareTest.tcl@.
 --
-module Clash.Hitl
+module Bittide.Hitl
   ( HitlTests
   , Probes
   , FpgaIndex

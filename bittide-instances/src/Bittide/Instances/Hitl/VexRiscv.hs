@@ -13,7 +13,6 @@ import Clash.Prelude
 import Clash.Explicit.Prelude (noReset, orReset)
 
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
-import Clash.Hitl (HitlTests, allFpgas, hitlVioBool, noConfigTest)
 import Language.Haskell.TH (runIO)
 import Protocols
 import Protocols.Internal
@@ -21,6 +20,7 @@ import Protocols.Wishbone
 import System.FilePath
 
 import Bittide.DoubleBufferedRam
+import Bittide.Hitl (HitlTests, allFpgas, hitlVioBool, noConfigTest)
 import Bittide.Instances.Domains (Basic200, Ext125)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
