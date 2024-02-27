@@ -40,13 +40,17 @@ $(OUT_DIR)/impl.o: $(FFI_DIR)/impl.cpp $(FFI_DIR)/interface.h
 $(OUT_DIR)/verilated.o: $(shell pkg-config --variable=includedir verilator)/verilated.cpp
 	$(CXX) $(FFI_CPPFLAGS) -c $(shell pkg-config --variable=includedir verilator)/verilated.cpp -o $(OUT_DIR)/verilated.o
 
+$(OUT_DIR)/verilated_threads.o: $(shell pkg-config --variable=includedir verilator)/verilated_threads.cpp
+	$(CXX) $(FFI_CPPFLAGS) -c $(shell pkg-config --variable=includedir verilator)/verilated_threads.cpp -o $(OUT_DIR)/verilated_threads.o
+
 $(OUT_DIR)/VVexRiscv__ALL.a: $(VERILATOR_DIR)/VVexRiscv__ALL.a
 	cp $(VERILATOR_DIR)/VVexRiscv__ALL.a $(OUT_DIR)/VVexRiscv__ALL.a
 
-$(OUT_DIR)/libVexRiscvFFI.a: $(OUT_DIR)/VVexRiscv__ALL.a $(OUT_DIR)/impl.o $(OUT_DIR)/verilated.o
+$(OUT_DIR)/libVexRiscvFFI.a: $(OUT_DIR)/VVexRiscv__ALL.a $(OUT_DIR)/impl.o $(OUT_DIR)/verilated.o $(OUT_DIR)/verilated_threads.o
 	rm -f $(OUT_DIR)/libVexRiscvFFI.a
 	cp $(OUT_DIR)/VVexRiscv__ALL.a $(OUT_DIR)/libVexRiscvFFI.a
 	ar r \
 		$(OUT_DIR)/libVexRiscvFFI.a \
 		$(OUT_DIR)/impl.o \
-		$(OUT_DIR)/verilated.o
+		$(OUT_DIR)/verilated.o \
+		$(OUT_DIR)/verilated_threads.o
