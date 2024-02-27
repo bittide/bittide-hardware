@@ -26,11 +26,12 @@ import Data.Maybe
 import Data.Proxy (Proxy(..))
 import Data.List qualified as L (take, drop, repeat, replicate)
 
-import Bittide.Simulate
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto hiding (allSettled)
-import Bittide.ClockControl.ElasticBuffer
 import Bittide.ClockControl.StabilityChecker
+
+import Bittide.Simulate
+import Bittide.Simulate.ElasticBuffer
 import Bittide.Topology
 
 -- | The entity to be simulated consisting of the tunable clock

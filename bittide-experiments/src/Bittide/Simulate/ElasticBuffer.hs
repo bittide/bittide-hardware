@@ -1,8 +1,8 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.ClockControl.ElasticBuffer where
+module Bittide.Simulate.ElasticBuffer where
 
 import Clash.Prelude
 import GHC.Stack
