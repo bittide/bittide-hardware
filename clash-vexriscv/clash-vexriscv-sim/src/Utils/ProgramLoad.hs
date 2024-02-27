@@ -33,8 +33,8 @@ loadProgram path = do
 
   let
       endianSwap dat =
-        L.concatMap (\[a, b, c, d] -> [d, c, b, a]) $
-        chunkFill 4 0 dat
+        L.concatMap (\(a, b, c, d) -> [d, c, b, a]) $
+        chunkFill4 0 dat
 
       -- endian swap instructions
       iMemContents = endianSwap $
@@ -51,9 +51,10 @@ loadProgram path = do
     content :: BinaryData -> [BitVector 8]
     content bin = L.map snd $ I.toAscList bin
 
-    chunkFill :: Int -> a -> [a] -> [[a]]
-    chunkFill _ _ [] = []
-    chunkFill n fill xs =
-      let (first0, rest) = L.splitAt n xs
-          first1 = first0 <> L.replicate (n - L.length first0) fill
-       in first1 : chunkFill n fill rest
+    chunkFill4 :: a -> [a] -> [(a, a, a, a)]
+    chunkFill4 fill = \case
+      [] -> []
+      [a] -> [(a, fill, fill, fill)]
+      [a, b] -> [(a, b, fill, fill)]
+      [a, b, c] -> [(a, b, c, fill)]
+      (a:b:c:d:rest) -> (a, b, c, d) : chunkFill4 fill rest

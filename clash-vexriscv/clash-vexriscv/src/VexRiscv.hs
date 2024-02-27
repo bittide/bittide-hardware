@@ -25,6 +25,7 @@ import Language.Haskell.TH.Syntax
 import Protocols.Wishbone
 import VexRiscv.FFI
 import VexRiscv.TH
+import VexRiscv.VecToTuple
 
 
 data Input = Input
@@ -282,39 +283,37 @@ vexRiscv# !_sourcePath !_clk rst0
     let
       primName = 'vexRiscv#
       ( _
-       :> srcPath
-       :> clk
-       :> rst
-       :> timerInterrupt
-       :> externalInterrupt
-       :> softwareInterrupt
-       :> iBus_ACK
-       :> iBus_ERR
-       :> iBus_DAT_MISO
-       :> dBus_ACK
-       :> dBus_ERR
-       :> dBus_DAT_MISO
-       :> Nil
-       ) = indicesI @13
+       , srcPath
+       , clk
+       , rst
+       , timerInterrupt
+       , externalInterrupt
+       , softwareInterrupt
+       , iBus_ACK
+       , iBus_ERR
+       , iBus_DAT_MISO
+       , dBus_ACK
+       , dBus_ERR
+       , dBus_DAT_MISO
+       ) = vecToTuple (indicesI @13)
 
       ( iBus_CYC
-       :> iBus_STB
-       :> iBus_WE
-       :> iBus_ADR
-       :> iBus_DAT_MOSI
-       :> iBus_SEL
-       :> iBus_CTI
-       :> iBus_BTE
-       :> dBus_CYC
-       :> dBus_STB
-       :> dBus_WE
-       :> dBus_ADR
-       :> dBus_DAT_MOSI
-       :> dBus_SEL
-       :> dBus_CTI
-       :> dBus_BTE
-       :> Nil
-       ) = (\x -> extend @_ @16 @13 x + 1) <$> indicesI @16
+       , iBus_STB
+       , iBus_WE
+       , iBus_ADR
+       , iBus_DAT_MOSI
+       , iBus_SEL
+       , iBus_CTI
+       , iBus_BTE
+       , dBus_CYC
+       , dBus_STB
+       , dBus_WE
+       , dBus_ADR
+       , dBus_DAT_MOSI
+       , dBus_SEL
+       , dBus_CTI
+       , dBus_BTE
+       ) = vecToTuple $ (\x -> extend @_ @16 @13 x + 1) <$> indicesI @16
 
       cpu = extend @_ @_ @1 dBus_BTE + 1
     in
