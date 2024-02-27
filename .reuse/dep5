@@ -16,8 +16,8 @@ Files: .vscode/*
 Copyright: 2022 Google LLC
 License: CC0-1.0
 
-Files: elastic-buffer-sim/imgs/*
-Copyright: 2022 Google LLC
+Files: bittide-tools/clockcontrol/sim/imgs/*
+Copyright: 2022-2024 Google LLC
 License: Apache-2.0
 
 Files: bittide-instances/imgs/*

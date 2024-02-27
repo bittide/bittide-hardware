@@ -1,11 +1,13 @@
 cabal-version:       2.4
-name:                elastic-buffer-sim
+name:                bittide-tools
+synopsis:            Bittide specific tools required for development, CI,
+                     and testing
 version:             0.1
 License:             Apache-2.0
 license-file:        LICENSE
 author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
-Copyright:           Copyright © 2022-2024 Google LLC
+Copyright:           Copyright © 2024 Google LLC
 
 common common-options
   default-extensions:
@@ -41,9 +43,6 @@ common common-options
     -- 'listToVecTH' and 'bLit'.
     TemplateHaskell
     QuasiQuotes
-
-    -- Prelude isn't imported by default as Clash offers Clash.Prelude
-    NoImplicitPrelude
   ghc-options:
     -Wall -Wcompat
     -haddock
@@ -70,49 +69,27 @@ common common-options
     ghc-typelits-extra,
     ghc-typelits-knownnat
 
-library
+executable cc-sim
   import: common-options
-  hs-source-dirs: src
-  build-depends:
-    array,
-    aeson,
-    bittide,
-    bittide-experiments,
-    bytestring,
-    cassava,
-    clash-cores,
-    containers,
-    directory,
-    filepath,
-    matplotlib,
-    random,
-    text,
-    typelits-witnesses
-  exposed-modules:
-    Bittide.Domain
-    Bittide.Plot
-  default-language: Haskell2010
-
-executable sim
-  import: common-options
-  main-is: exe/Main.hs
+  hs-source-dirs: cc-sim/src
+  main-is: Main.hs
+  other-modules: Domain
   build-depends:
     aeson,
     bittide-experiments,
     bytestring,
-    elastic-buffer-sim,
     directory,
     filepath,
     happy-dot,
     optparse-applicative
   default-language: Haskell2010
-  default-extensions: ImplicitPrelude
   -- enable rtsopts so we can setup memory limits
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded
+               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
 
-executable plot
+executable cc-plot
   import: common-options
-  main-is: plot/Main.hs
+  main-is: cc-plot/Main.hs
   build-depends:
     array,
     bittide,
@@ -124,12 +101,12 @@ executable plot
     conduit,
     containers,
     directory,
-    elastic-buffer-sim,
     filepath,
     text,
     typelits-witnesses,
-    vector
+    vector,
   default-language: Haskell2010
   default-extensions: ImplicitPrelude
   -- enable rtsopts so we can setup memory limits
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded
+               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS

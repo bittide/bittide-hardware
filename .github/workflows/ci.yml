@@ -146,8 +146,8 @@ jobs:
       - run: cache push cargo
       - run: cache push build
 
-  elastic-buffer-sim-topologies-matrix:
-    name: elastic-buffer-sim-topologies simulation matrix generation
+  cc-sim-topologies-matrix:
+    name: cc-sim-topologies simulation matrix generation
     runs-on: [self-hosted, compute]
     defaults:
       run:
@@ -179,18 +179,18 @@ jobs:
       sim_matrix: ${{ steps.set-sim-matrix.outputs.sim_matrix }}
       artifact_names: ${{ steps.set-sim-matrix.outputs.artifact_names }}
 
-  elastic-buffer-sim-topologies:
+  cc-sim-topologies:
     name: Simulate network
     runs-on: [self-hosted, compute]
     timeout-minutes: 1200
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build, lint, elastic-buffer-sim-topologies-matrix]
+    needs: [build, lint, cc-sim-topologies-matrix]
 
     strategy:
       matrix:
-        target: ${{ fromJson(needs.elastic-buffer-sim-topologies-matrix.outputs.sim_matrix) }}
+        target: ${{ fromJson(needs.cc-sim-topologies-matrix.outputs.sim_matrix) }}
       fail-fast: false
 
     container:
@@ -210,7 +210,7 @@ jobs:
 
       - name: Plot mesh grid
         run: |
-          cabal run -- elastic-buffer-sim:sim \
+          cabal run -- bittide-tools:cc-sim \
             +RTS -M${{ matrix.target.hmem }}M -RTS \
             --output-mode pdf \
             --get-rusty \
@@ -256,7 +256,7 @@ jobs:
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build, lint, elastic-buffer-sim-topologies-matrix, elastic-buffer-sim-topologies, bittide-instances-hardware-in-the-loop]
+    needs: [build, lint, cc-sim-topologies-matrix, cc-sim-topologies, bittide-instances-hardware-in-the-loop]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-03-08
@@ -283,7 +283,7 @@ jobs:
           # https://github.com/marketplace/actions/download-multiple-workflow-artifacts,
           # but this action is currently broken. Once a working solution
           # is available again, 'artifact_names' from
-          # 'elastic-buffer-sim-topologies-matrix' can be used to only download
+          # 'cc-sim-topologies-matrix' can be used to only download
           # the required artifacts instead.
           path: artifacts
 
@@ -292,7 +292,7 @@ jobs:
           mkdir -p reports
           mkdir -p hitl-plots/hw
           ./cargo.sh build --frozen --release
-          cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest/ila-data/CC/ hitl-plots/hw
+          cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest/ila-data/CC/ hitl-plots/hw
           cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/hw/report.tex
           cp .github/hitl/topology.tikz hitl-plots/hw/topology.tikz
           export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -304,7 +304,7 @@ jobs:
           cd ../..
           mv hitl-plots/hw/report.pdf reports/HITL-FullMeshHwCc-Report.pdf
           mkdir -p hitl-plots/sw
-          cabal run -- elastic-buffer-sim:plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest/ila-data/CC/ hitl-plots/sw
+          cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest/ila-data/CC/ hitl-plots/sw
           cp .github/hitl/FullMeshSwCcReportTemplate.tex hitl-plots/sw/report.tex
           cp .github/hitl/topology.tikz hitl-plots/sw/topology.tikz
           mv hitl-plots/hw/datetime hitl-plots/sw/datetime
@@ -328,8 +328,8 @@ jobs:
           path: reports
           retention-days: 14
 
-  elastic-buffer-sim-tests:
-    name: elastic-buffer-sim unittests
+  bittide-experiments-tests:
+    name: bittide-experiments unittests
     runs-on: [self-hosted, compute]
     defaults:
       run:
@@ -353,7 +353,7 @@ jobs:
 
       - name: Run unittests
         run: |
-          cabal run elastic-buffer-sim:unittests
+          cabal run bittide-experiments:unittests
 
   bittide-tests:
     name: Bittide tests
@@ -762,9 +762,9 @@ jobs:
         bittide-instances-unittests,
         bittide-tests,
         build,
-        elastic-buffer-sim-tests,
-        elastic-buffer-sim-topologies-matrix,
-        elastic-buffer-sim-topologies,
+        bittide-experiments-tests,
+        cc-sim-topologies-matrix,
+        cc-sim-topologies,
         firmware-limit-checks,
         firmware-support-tests,
         generate-full-clock-control-simulation-report,

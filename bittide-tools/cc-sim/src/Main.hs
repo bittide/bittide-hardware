@@ -10,11 +10,14 @@
 
 module Main (main) where
 
+import Domain
+
 import Bittide.Plot
 import Bittide.Topology
 
 import Data.Aeson (ToJSON(..), FromJSON(..), encode, decode)
 import Data.ByteString.Lazy qualified as BS
+import Data.Proxy (Proxy(..))
 
 import GHC.Generics (Generic)
 import GHC.Int (Int64)
@@ -208,6 +211,10 @@ main = do
           Nothing -> die $ "ERROR: Invalid JSON file - " <> file
           Just o  -> return o { jsonArgs }
 
+  ccc <- clockControlConfig (Proxy @Bittide)
+           (not disableReframing) rusty waitTime
+           stabilityMargin stabilityFrameSize
+
   let
     safeToFile name g clockOffs startOffs isStable = do
       createDirectoryIfMissing True outDir
@@ -225,15 +232,10 @@ main = do
 
     settings =
       SimulationSettings
-        { margin       = stabilityMargin
-        , framesize    = stabilityFrameSize
-        , samples      = simulationSamples
+        { samples      = simulationSamples
         , periodsize   = simulationSteps `quot` simulationSamples
-        , reframe      = not disableReframing
-        , waittime     = waitTime
         , mode         = outMode
         , dir          = outDir
-        , rustySim     = rusty
         , stopStable   =
             if stopWhenStable
             then Just 0
@@ -241,6 +243,7 @@ main = do
         , fixClockOffs = clockOffsets
         , fixStartOffs = startupOffsets
         , maxStartOff  = maxStartupOffset
+        , ccConfig     = ccc
         , save         = \_ _ _ _ -> return ()
         }
 

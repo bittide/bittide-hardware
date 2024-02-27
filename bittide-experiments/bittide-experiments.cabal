@@ -81,15 +81,20 @@ library
     array,
     bittide,
     bytestring,
+    cassava,
     clash-cores,
     clash-lib,
     containers,
+    filepath,
     happy-dot,
+    matplotlib,
     optparse-applicative,
     random,
-    text
+    text,
+    typelits-witnesses
   exposed-modules:
     Bittide.Hitl
+    Bittide.Plot
     Bittide.Simulate
     Bittide.Simulate.ElasticBuffer
     Bittide.Simulate.Topology
