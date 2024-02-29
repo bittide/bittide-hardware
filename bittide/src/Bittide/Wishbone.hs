@@ -509,19 +509,19 @@ i2cWb = case (cancelMulDiv @nBytes @8) of
         rwFlagsReg = regMaybe
           (False :> False :> False :> False :> True :> Nil)
           rwFlagsRegNext
-        (_, _, ackIn, claimBus, smReset) = (vecToTuple . unbundle) rwFlagsReg
+        (_, ackOutReg, ackIn, claimBus, smReset) = (vecToTuple . unbundle) rwFlagsReg
 
         -- ReadWrite flags
-        rwFlagsRegSetters = bundle $ al :> ackOut :> ackIn :> claimBus :> smReset :> Nil
+        rwFlagsRegSetters = bundle $ al :> (mux hostAck (fmap not ackOut) ackOutReg) :> ackIn :> claimBus :> smReset :> Nil
 
         -- Alternative of wishbone write and updated i2c status signals.
         rwFlagsRegNext = (<|>) <$> rwFlagsWrite <*>
-          (orNothing <$> (al .||. ackOut) <*> (zipWith (||) <$> rwFlagsReg <*> rwFlagsRegSetters))
+          (orNothing <$> (al .||. hostAck) <*> (zipWith (||) <$> rwFlagsReg <*> rwFlagsRegSetters))
 
         clkDiv = regMaybe maxBound (unpack . resize <<$>> clkDivWrite)
 
-        -- Alternative based on i2cWrite and readRequest
-        i2cOp = (<|>)
+        -- Alternative based on i2cWrite and transAddr
+        i2cOp = mux hostAck (pure Nothing) $ (<|>)
           <$> ((I2C.WriteData . resize) <<$>> i2cWrite)
           <*> (flip orNothing I2C.ReadData <$> (transAddr .==. pure (Just 0)))
 
