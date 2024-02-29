@@ -6,6 +6,7 @@ module Bittide.Counter
   ( Active
   , domainDiffCounter
   , domainDiffCounterExt
+  , synchronizedSuccCounter
   ) where
 
 import Clash.Explicit.Prelude

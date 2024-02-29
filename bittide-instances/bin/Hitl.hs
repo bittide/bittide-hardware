@@ -27,6 +27,7 @@ import System.IO (hPutStrLn, stderr)
 
 import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
+import qualified Bittide.Instances.Hitl.FmcClock as FmcClock
 import qualified Bittide.Instances.Hitl.FullMeshHwCc as FullMeshHwCc
 import qualified Bittide.Instances.Hitl.FullMeshSwCc as FullMeshSwCc
 import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
@@ -48,6 +49,7 @@ configs :: IO [Config]
 configs = sequence $
   [ -- Generate config based on Haskell definitions
     makeConfig 'FincFdec.fincFdecTests                 FincFdec.tests
+  , makeConfig 'FmcClock.fmcClockTests                 FmcClock.tests
   , makeConfig 'FullMeshHwCc.fullMeshHwCcTest          FullMeshHwCc.tests
   , makeConfig 'FullMeshHwCc.fullMeshHwCcWithRiscvTest FullMeshHwCc.tests
   , makeConfig 'FullMeshSwCc.fullMeshSwCcTest          FullMeshSwCc.tests
