@@ -14,6 +14,7 @@ import Bittide.Arithmetic.Ppm
 import Data.Proxy
 
 createDomain vXilinxSystem{vName="Basic100", vPeriod= hzToPeriod 100e6}
+createDomain vXilinxSystem{vName="Basic124", vPeriod=hzToPeriod 124e6}
 createDomain vXilinxSystem{vName="Basic125", vPeriod= hzToPeriod 125e6}
 createDomain vXilinxSystem{vName="Ext125", vPeriod= hzToPeriod 125e6, vResetKind=Asynchronous}
 createDomain vXilinxSystem{vName="Basic25", vPeriod= hzToPeriod 25e6}

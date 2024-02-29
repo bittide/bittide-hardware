@@ -110,6 +110,7 @@ library
     -- Hardware-in-the-loop tests
     Bittide.Instances.Hitl.BoardTest
     Bittide.Instances.Hitl.FincFdec
+    Bittide.Instances.Hitl.FmcClock
     Bittide.Instances.Hitl.FullMeshHwCc
     Bittide.Instances.Hitl.FullMeshSwCc
     Bittide.Instances.Hitl.HwCcTopologies
