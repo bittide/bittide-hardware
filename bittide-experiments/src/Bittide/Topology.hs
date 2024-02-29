@@ -35,6 +35,7 @@ module Bittide.Topology
   , randomGraph
   , toDot
   , fromDot
+  , pairwise
   ) where
 
 import Prelude
@@ -752,7 +753,7 @@ fromDot cnt = do
 -- | Successive overlapping pairs.
 --
 -- >>> pairwise [1, 2, 3, 4]
--- [(1, 2), (2, 3), (3, 4), (4, 5)]
+-- [(1,2),(2,3),(3,4)]
 -- >>> pairwise []
 -- []
 pairwise :: [a] -> [(a,a)]

@@ -18,7 +18,7 @@ import Prelude
 import Control.Monad (forM_, when)
 import Data.List (intercalate)
 import Options.Applicative
-import Paths_bittide_instances (getDataFileName)
+import Paths.Bittide.Instances (getDataFileName)
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (die)
 import System.FilePath ((</>))

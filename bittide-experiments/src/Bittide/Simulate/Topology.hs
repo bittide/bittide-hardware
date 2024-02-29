@@ -12,6 +12,7 @@ module Bittide.Simulate.Topology
   ( simulationEntity
   , simulate
   , allSettled
+  , takeEveryN
   )
 where
 

@@ -1,5 +1,7 @@
 cabal-version:       2.4
 name:                bittide
+synopsis:            Bittide hardware descriptions, which should be
+                     target independent, loosely connected / standalone
 version:             0.1
 License:             Apache-2.0
 license-file:        LICENSE
@@ -152,27 +154,12 @@ library
     Paths_bittide
   extra-libraries: callisto_lib
 
-executable clash
-  import: common-options
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
-  main-is: bin/Clash.hs
-  Build-Depends: base, bittide, clash-ghc
-
-executable program-stream
-  import: common-options
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
-  main-is: bin/ProgramStream.hs
-  Build-Depends:
-    base,
-    bittide,
-    bytestring,
-    clash-prelude,
-
 test-suite doctests
   type:             exitcode-stdio-1.0
   default-language: Haskell2010
   main-is:          doctests.hs
-  ghc-options:      -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options:      -Wall -Wcompat -threaded
+                    -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   hs-source-dirs:   tests
 
   build-depends:
@@ -186,7 +173,8 @@ test-suite unittests
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: UnitTests.hs
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded
+               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   other-modules:
     Tests.Axi4
     Tests.Calendar

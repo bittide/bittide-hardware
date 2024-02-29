@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -7,4 +7,4 @@ import System.Environment (getArgs)
 import Clash.Main (defaultMain)
 
 main :: IO ()
-main = getArgs >>= defaultMain
+main = defaultMain =<< getArgs

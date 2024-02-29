@@ -62,16 +62,27 @@ common common-options
   build-depends:
     base,
     Cabal,
-
     -- clash-prelude will set suitable version bounds for the plugins
     clash-prelude >= 1.7.0 && < 1.10,
     ghc-typelits-natnormalise,
     ghc-typelits-extra,
     ghc-typelits-knownnat
+  default-language: Haskell2010
+
+executable program-stream
+  import: common-options
+  ghc-options: -Wall -Wcompat -threaded
+               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  main-is: program/stream/Main.hs
+  Build-Depends:
+    base,
+    bittide,
+    bytestring,
+    clash-prelude,
 
 executable cc-sim
   import: common-options
-  hs-source-dirs: cc-sim/src
+  hs-source-dirs: clockcontrol/sim/src
   main-is: Main.hs
   other-modules: Domain
   build-depends:
@@ -82,14 +93,13 @@ executable cc-sim
     filepath,
     happy-dot,
     optparse-applicative
-  default-language: Haskell2010
   -- enable rtsopts so we can setup memory limits
   ghc-options: -Wall -Wcompat -threaded
                -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
 
 executable cc-plot
   import: common-options
-  main-is: cc-plot/Main.hs
+  main-is: clockcontrol/plot/Main.hs
   build-depends:
     array,
     bittide,
@@ -105,8 +115,22 @@ executable cc-plot
     text,
     typelits-witnesses,
     vector,
-  default-language: Haskell2010
   default-extensions: ImplicitPrelude
   -- enable rtsopts so we can setup memory limits
+  ghc-options: -Wall -Wcompat -threaded
+               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+
+executable hitl-config-gen
+  import: common-options
+  main-is: hitl/config-gen/Main.hs
+  build-depends:
+    bittide-instances,
+    bittide-experiments,
+    bytestring,
+    directory,
+    filepath,
+    optparse-applicative,
+    template-haskell
+  -- We need -xm20000000 because of a memory allocation bug after a kernel update
   ghc-options: -Wall -Wcompat -threaded
                -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS

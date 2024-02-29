@@ -1,5 +1,8 @@
 cabal-version:       2.4
 name:                bittide-instances
+synopsis:            Top-entities for synthesis fixing target specific
+                     parameters and connecting independent components to
+                     architectures
 version:             0.1
 License:             Apache-2.0
 license-file:        LICENSE
@@ -82,11 +85,9 @@ common common-options
     ghc-typelits-extra,
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
-    Glob,
     lift-type,
     MissingH,
     pretty-simple,
-    process,
     shake,
     split,
     string-interpolate,
@@ -130,52 +131,21 @@ library
     Bittide.Instances.Pnr.StabilityChecker
     Bittide.Instances.Pnr.Synchronizer
 
+    -- Paths
+    Paths.Bittide.Instances
     Project.FilePath
-
-
-executable get-data-file-name
-  import: common-options
-  -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
-  main-is: bin/GetDataFileName.hs
   other-modules:
     Paths_bittide_instances
   autogen-modules:
     Paths_bittide_instances
-
-executable hitl
-  import: common-options
-  build-depends:
-    bittide-instances,
-    optparse-applicative,
-  -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
-  main-is: bin/Hitl.hs
-  other-modules:
-    Paths_bittide_instances
-  autogen-modules:
-    Paths_bittide_instances
-
-executable clash
-  import: common-options
-  -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
-  main-is: bin/Clash.hs
-  Build-Depends: clash-ghc, bittide-instances
-
-executable post-board-test-extended
-  import: common-options
-  -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
-  main-is: bin/Post/BoardTestExtended.hs
-  build-depends: bittide-instances
 
 test-suite doctests
   type:             exitcode-stdio-1.0
   hs-source-dirs:   tests
   main-is:          doctests.hs
   -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options:      -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options:      -Wall -Wcompat -threaded
+                    -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   build-depends:    base, bittide-instances, doctest-parallel >= 0.3.0.1
   default-language: Haskell2010
 
@@ -185,13 +155,11 @@ test-suite unittests
   type: exitcode-stdio-1.0
   main-is: unittests.hs
   -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded
+               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   other-modules:
     Tests.OverflowResistantDiff
-    Paths_bittide_instances
     Wishbone.Time
-  autogen-modules:
-    Paths_bittide_instances
   build-depends:
     , bittide-instances
     , clash-prelude-hedgehog >= 1.6 && < 1.10
@@ -204,3 +172,24 @@ test-suite unittests
     , tasty-golden
     , tasty-hedgehog >= 1.2 && < 1.3
     , tasty-th
+
+executable clash
+  import: common-options
+  -- We need -xm20000000 because of a memory allocation bug after a kernel update
+  ghc-options: -Wall -Wcompat -threaded
+               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  main-is: exe/clash/Main.hs
+  build-depends:
+      clash-ghc
+    , bittide-instances
+
+executable post-board-test-extended
+  import: common-options
+  -- We need -xm20000000 because of a memory allocation bug after a kernel update
+  ghc-options: -Wall -Wcompat -threaded
+               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  main-is: exe/post-board-test-extended/Main.hs
+  build-depends:
+      bittide-instances
+    , filepath
+    , Glob

@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -19,7 +20,7 @@ import Clash.Shake.Extra
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
 import Control.Applicative (liftA2)
-import Control.Exception (throw)
+import Control.Exception (throwIO)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.Extra (ifM, unlessM)
 import Data.Char(isSpace)
@@ -30,17 +31,17 @@ import Data.Maybe (fromJust, isJust)
 import Development.Shake
 import Development.Shake.Classes
 import GHC.Stack (HasCallStack)
-import Paths_bittide_shake (getDataFileName)
 import System.Console.ANSI (setSGR)
 import System.Directory hiding (doesFileExist)
 import System.Exit (ExitCode(..), exitWith)
 import System.FilePath
 import System.FilePath.Glob (glob)
 import System.Process (readProcess, callProcess)
-import System.Process.Extra (readProcessWithExitCode)
 import Test.Tasty.HUnit (Assertion)
 
 import qualified Clash.Util.Interpolate as I
+import qualified Paths.Bittide.Instances as Instances (getDataFileName)
+import qualified Paths.Bittide.Shake as Shake (getDataFileName)
 import qualified System.Directory as Directory
 
 -- | Get all files whose changes will trigger an HDL rebuild. Because we lack a
@@ -49,7 +50,8 @@ import qualified System.Directory as Directory
 -- except files ignored by git and files matching patterns in 'ignorePatterns'.
 getWatchFiles :: IO [String]
 getWatchFiles = do
-  getWatchFilesPy <- getDataFileName ("data" </> "scripts" </> "get_watch_files.py")
+  getWatchFilesPy <-
+    Shake.getDataFileName ("data" </> "scripts" </> "get_watch_files.py")
   lines <$> readProcess getWatchFilesPy ignorePatterns ""
 
 -- | Call 'need' on output of 'getWatchFiles'
@@ -97,18 +99,13 @@ data CheckExists = CheckExists | NoCheckExists
 -- file path.
 getInstanceDataFileName :: CheckExists -> FilePath -> IO (Maybe FilePath)
 getInstanceDataFileName check relativePath = do
-  let
-    binName = "get-data-file-name"
-    flags = (["--no-check" | check == NoCheckExists])
-    cabalArgs = ["run", "-v0", "--", binName, relativePath] ++ flags
-  callProcess "cabal" ["-v0", "build", binName]
-  (exitCode, stdOut, stdErr) <- readProcessWithExitCode "cabal" cabalArgs ""
-  case (check, exitCode) of
-    (_, ExitSuccess) -> pure $ Just $ dropWhileEnd isSpace $ dropWhile isSpace stdOut
-    (NoCheckExists, ExitFailure _) ->
-      throw $ userError $ unwords
-      [unwords $ "cabal":cabalArgs, "failed with exit code", show exitCode, ":\n", stdErr]
-    _ -> pure Nothing
+  fPath <- Instances.getDataFileName relativePath
+  unless (check == NoCheckExists)
+    $ unlessM (Directory.doesFileExist fPath)
+      $ throwIO $ userError $ unwords
+          ["File", show relativePath, "does not exist in bittide-instances."]
+
+  pure $ Just $ dropWhileEnd isSpace $ dropWhile isSpace fPath
 
 -- | Build and run the executable for post processing of ILA data
 doPostProcessing :: String -> FilePath -> ExitCode -> Assertion
@@ -282,11 +279,13 @@ meetsDrcOrError methodologyPath summaryPath checkpointPath =
 
 -- | Newtype used for adding oracle rules for flags to Shake
 newtype HardwareTargetsFlag = HardwareTargetsFlag ()
-  deriving (Show, Eq, Typeable, Hashable, Binary, NFData)
+  deriving (Show)
+  deriving newtype (Eq, Typeable, Hashable, Binary, NFData)
 type instance RuleResult HardwareTargetsFlag = HardwareTargets
 
 newtype ForceTestRerun = ForceTestRerun ()
-  deriving (Show, Eq, Typeable, Hashable, Binary, NFData)
+  deriving (Show)
+  deriving newtype (Eq, Typeable, Hashable, Binary, NFData)
 type instance RuleResult ForceTestRerun = Bool
 
 -- | Defines a Shake build executable for calling Vivado. Like Make, in Shake
@@ -325,7 +324,11 @@ main = do
         (hitlBuildDir </> "*.yml") %> \path -> do
           needWatchFiles
           let entity = takeFileName (dropExtension path)
-          command_ [] "cabal" ["run", "--", "bittide-instances:hitl", "write", entity]
+          command_ [] "cabal"
+            [ "run", "--"
+            , "bittide-tools:hitl-config-gen"
+            , "write", entity
+            ]
 
         -- Files used for cache invalidation
         watchFilesPath %> \_ -> do
@@ -572,7 +575,7 @@ main = do
               writeFileChanged path $ show exitCode
 
               shortenNamesPy <- liftIO $
-                getDataFileName ("data" </> "scripts" </> "shorten_names.py")
+                Shake.getDataFileName ("data" </> "scripts" </> "shorten_names.py")
               command_ [] "python3" [shortenNamesPy]
 
 
