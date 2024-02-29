@@ -493,7 +493,7 @@ i2cWb ::
 i2cWb = case (cancelMulDiv @nBytes @8) of
   Dict -> Circuit go
     where
-      go ((wbM2S, CSignal i2cIn), _) = hwSeqX ilaInstance ((wbS2M, CSignal $ pure ()), CSignal i2cOut)
+      go ((wbM2S, CSignal i2cIn), _) = ((wbS2M, CSignal $ pure ()), CSignal i2cOut)
        where
         -- Wishbone interface consists of:
         -- 0. i2c data Read-Write
@@ -514,7 +514,7 @@ i2cWb = case (cancelMulDiv @nBytes @8) of
         (_ :> ackOutReg :> ackIn :> claimBus :> smReset :> Nil) = unbundle rwFlagsReg
 
         -- ReadWrite flags
-        rwFlagsRegSetters = bundle $ al :> (mux hostAck (fmap not ackOut) ackOutReg) :> ackIn :> claimBus :> smReset :> Nil
+        rwFlagsRegSetters = bundle $ al :> (mux hostAck ackOut ackOutReg) :> ackIn :> claimBus :> smReset :> Nil
 
         -- Alternative of wishbone write and updated i2c status signals.
         rwFlagsRegNext = (<|>) <$> rwFlagsWrite <*>
@@ -523,7 +523,7 @@ i2cWb = case (cancelMulDiv @nBytes @8) of
         clkDiv = regMaybe maxBound (unpack . resize <<$>> clkDivWrite)
 
         -- Alternative based on i2cWrite and transAddr
-        i2cOp = (<|>)
+        i2cOp = mux hostAck (pure Nothing) $ (<|>)
           <$> ((I2C.WriteData . resize) <<$>> i2cWrite)
           <*> (flip orNothing I2C.ReadData <$> (transAddr .==. pure (Just 0)))
 

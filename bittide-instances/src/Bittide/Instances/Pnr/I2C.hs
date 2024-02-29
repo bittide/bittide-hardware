@@ -11,7 +11,6 @@ import Clash.Explicit.Prelude hiding (read)
 
 import Bittide.Instances.Domains
 import Clash.Cores.Xilinx.VIO
-import Clash.Cores.Xilinx.Ila
 import Clash.Cores.I2C
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Extra
@@ -64,16 +63,13 @@ orNothing False _ = Nothing
 
 i2cTest ::
   "sys_125" ::: DiffClock Basic125 ->
-  -- "sclIn" ::: BiSignalIn 'Floating Basic125 1 ->
-  -- "sdaIn" ::: BiSignalIn 'Floating Basic125 1 ->
   "sdaIn" ::: Signal Basic125 Bit ->
-  --( "sclOut" ::: BiSignalOut 'Floating Basic125 1
-  ( "sclOut" ::: Signal Basic125 Bit -- "sclOut" ::: BiSignalOut 'Floating Basic125 1
+  ( "sclOut" ::: Signal Basic125 Bit
   , "sdaOut" ::: Signal Basic125 Bit
   , "mux_select" ::: Signal Basic125 (BitVector 3))
-i2cTest diffClk sdaIn  = hwSeqX ilaInstance
-  ( sclOut -- writeToBiSignal sclIn (orNothing <$> sclOen <*> sclOut)
-  , sdaOut --writeToBiSignal sdaIn (orNothing <$> sdaOen <*> sdaOut)
+i2cTest diffClk sdaIn =
+  ( sclOut
+  , sdaOut
   , mux_select
   )
  where
@@ -81,7 +77,7 @@ i2cTest diffClk sdaIn  = hwSeqX ilaInstance
   sdaOut = fmap (bitCoerce . isNothing) sdaMaybe
   sclOut = fmap (bitCoerce . isNothing) sclMaybe
   (sclMaybe, sdaMaybe) = unbundle i2cO
-  i2cIn = bundle (fmap bitCoerce sclOut, fromMaybe <$> sdaIn <*> sdaMaybe) --readFromBiSignal sdaIn)
+  i2cIn = bundle (fmap bitCoerce sclOut, fromMaybe <$> sdaIn <*> sdaMaybe)
 
   (dout,hostAck,busy,al,ackOut,i2cO) = i2c clk vioAsyncReset vioStatemachineReset vioEnaCore clkCnt claimBus i2cOp ackIn i2cIn
   (claimBus, i2cOp, cmdAck) = i2cController clk vioAsyncReset vioEnaController ramOp hostAck al
@@ -128,32 +124,5 @@ i2cTest diffClk sdaIn  = hwSeqX ilaInstance
    busy
    al
    ackOut
-
-  ilaInstance :: Signal Basic125 ()
-  ilaInstance =
-    ila
-      ( ilaConfig $
-        "probe_sdaIn"
-        :> "probe_sclOut"
-        :> "probe_sdaOut"
-        :> "probe_i2c_dout"
-        :> "probe_i2c_hostAck"
-        :> "probe_i2c_busy"
-        :> "probe_i2c_al"
-        :> "probe_i2c_ackOut"
-        :> "probe_i2c_op"
-        :> Nil
-      ) {stages = 2, depth = D32768, advancedTriggers = True }
-      clk
-      (dflipflop clk sdaIn)
-      (dflipflop clk $ fmap isNothing sclMaybe)
-      (dflipflop clk $ fmap isNothing sdaMaybe)
-      (dflipflop clk dout)
-      (dflipflop clk hostAck)
-      (dflipflop clk busy)
-      (dflipflop clk al)
-      (dflipflop clk ackOut)
-      (dflipflop clk i2cOp)
-
 
 makeTopEntity 'i2cTest
