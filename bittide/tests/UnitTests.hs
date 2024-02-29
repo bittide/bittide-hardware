@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022-2023 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -15,7 +15,6 @@ import Tests.ClockControl.Si539xSpi
 import Tests.Clash.Cores.Xilinx.Dna
 import Tests.DoubleBufferedRam
 import Tests.ElasticBuffer
-import Tests.Haxioms
 import Tests.Link
 import Tests.ProcessingElement.ReadElf
 import Tests.ScatterGather
@@ -30,7 +29,6 @@ tests = testGroup "Unittests"
   , clockGenGroup
   , dnaTestGroup
   , ebGroup
-  , haxiomsGroup
   , linkGroup
   , ramGroup
   , readElfTestGroup

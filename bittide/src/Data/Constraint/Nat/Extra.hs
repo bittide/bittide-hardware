@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -7,6 +7,9 @@ NOTE [constraint solver addition]
 
 The functions in this module enable us introduce trivial constraints that are not
 solved by the constraint solver.
+
+Machine verifiable Agda proofs of the properties claimed in this file
+can be found in @bittide/proofs/TypeNatProofs.agda@
 -}
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
