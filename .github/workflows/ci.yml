@@ -291,30 +291,43 @@ jobs:
       - name: Generate HITL based plots
         run: |
           mkdir -p reports
-          mkdir -p hitl-plots/hw
+          mkdir -p hitl-plots/diamond
           ./cargo.sh build --frozen --release
-          cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest/ila-data/CC/ hitl-plots/hw
-          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/hw/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/hw/topology.tikz
+          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/Diamond hitl-plots/diamond
+          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/diamond/report.tex
+          cp .github/hitl/topology.tikz hitl-plots/diamond/topology.tikz
           export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/hw/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/hw/runref
-          cd hitl-plots/hw
+          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/diamond/datetime
+          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/diamond/runref
+          cd hitl-plots/diamond
           lualatex report.tex
           rm -Rf report.{aux,log,out,tex} topology.tikz
           cd ../..
-          mv hitl-plots/hw/report.pdf reports/HITL-FullMeshHwCc-Report.pdf
-          mkdir -p hitl-plots/sw
-          cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest/ila-data/CC/ hitl-plots/sw
-          cp .github/hitl/FullMeshSwCcReportTemplate.tex hitl-plots/sw/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/sw/topology.tikz
-          mv hitl-plots/hw/datetime hitl-plots/sw/datetime
-          mv hitl-plots/hw/runref hitl-plots/sw/runref
-          cd hitl-plots/sw
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz
-          cd ../..
-          mv hitl-plots/sw/report.pdf reports/HITL-FullMeshSwCc-Report.pdf
+          mv hitl-plots/diamond/report.pdf reports/HITL-HwCcTopologyDiamond-Report.pdf
+#          mkdir -p hitl-plots/hw
+#          ./cargo.sh build --frozen --release
+#          cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest/ila-data/CC/ hitl-plots/hw
+#          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/hw/report.tex
+#          cp .github/hitl/topology.tikz hitl-plots/hw/topology.tikz
+#          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+#          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/hw/datetime
+#          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/hw/runref
+#          cd hitl-plots/hw
+#          lualatex report.tex
+#          rm -Rf report.{aux,log,out,tex} topology.tikz
+#          cd ../..
+#          mv hitl-plots/hw/report.pdf reports/HITL-FullMeshHwCc-Report.pdf
+#          mkdir -p hitl-plots/sw
+#          cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest/ila-data/CC/ hitl-plots/sw
+#          cp .github/hitl/FullMeshSwCcReportTemplate.tex hitl-plots/sw/report.tex
+#          cp .github/hitl/topology.tikz hitl-plots/sw/topology.tikz
+#          mv hitl-plots/hw/datetime hitl-plots/sw/datetime
+#          mv hitl-plots/hw/runref hitl-plots/sw/runref
+#          cd hitl-plots/sw
+#          lualatex report.tex
+#          rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz
+#          cd ../..
+#          mv hitl-plots/sw/report.pdf reports/HITL-FullMeshSwCc-Report.pdf
 
       - name: Generate final simulation report
         run: |
@@ -749,6 +762,7 @@ jobs:
           name: _build-${{ matrix.target.top }}-debug
           path: |
             _build/vivado/*/ila-data
+            _build/hitl/*
           retention-days: 14
 
   all:

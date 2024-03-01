@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -37,7 +37,6 @@ module Bittide.Instances.Hitl.IlaPlot
   , ScheduledCaptureCycles
   , DDiv
   , DDivCheck
-  , trueFor
   , accWindow
   , overflowResistantDiff
   , DiffResult(..)
@@ -51,7 +50,7 @@ import Clash.Explicit.Prelude
 import Clash.Explicit.Signal.Extra
 import Clash.Sized.Extra (concatUnsigneds)
 
-import Bittide.Arithmetic.Time (Seconds, Milliseconds, PeriodToCycles)
+import Bittide.Arithmetic.Time (Seconds, Milliseconds, PeriodToCycles, trueFor)
 import Bittide.ClockControl (SpeedChange(..), DataCount, ClockControlConfig)
 import Bittide.ClockControl.Callisto
   (CallistoResult(..), ReframingState(..), callistoClockControl)
@@ -209,6 +208,8 @@ data IlaControl dom =
       -- ^ Synchronized pre-scheduled capture trigger
     , globalTimestamp :: Signal dom (GlobalTimestamp dom)
       -- ^ Synchronized pulse counter
+    , skipTest :: Signal dom Bool
+      -- ^ Skip this test
     }
 
 -- | The ILA plot setup controller.
@@ -258,25 +259,7 @@ ilaPlotSetup IlaPlotSetup{..} = IlaControl{..}
       (minBound :: Index ScheduledPulseCount)
       syncInChangepoints
 
--- | Rises after the incoming signal has been 'True' for the specified
--- amount of time.
-trueFor ::
-  forall dom t. HasCallStack =>
-  (KnownDomain dom, KnownNat t) =>
-  SNat t ->
-  -- ^ Use the type aliases of 'Bittide.Arithmetic.Time' for time span
-  -- specification.
-  Clock dom ->
-  Reset dom ->
-  Signal dom Bool ->
-  Signal dom Bool
-trueFor _ clk rst =
-  moore clk rst enableGen transF (== maxBound)
-    (0 :: Index (PeriodToCycles dom t))
- where
-  transF counter = \case
-    True -> satSucc SatBound counter
-    _    -> 0
+  skipTest = pure False
 
 -- | A single data type for covering all of the non-clock related data
 -- to be included into a capture.
@@ -543,7 +526,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
       -- the ILA must run on a stable clock
       clk
       -- trigger as soon as we start
-      syncStart
+      (syncStart .&&. (not <$> skipTest))
       -- capture on relevant data changes
       (isJust <$> captureCond)
       -- capture the capture condition
