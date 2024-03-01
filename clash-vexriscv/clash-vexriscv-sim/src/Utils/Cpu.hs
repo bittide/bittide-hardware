@@ -11,6 +11,7 @@ import Clash.Prelude
 
 import Protocols.Wishbone
 import VexRiscv
+import VexRiscv.VecToTuple (vecToTuple)
 
 import GHC.Stack (HasCallStack)
 
@@ -61,7 +62,7 @@ cpu bootIMem bootDMem = (output, writes, iS2M, dS2M)
     dummyS2M = dummy dummyM2S
     bootDS2M = bootDMem bootDM2S
 
-    (dS2M, unbundle -> (dummyM2S :> bootDM2S :> Nil)) = interconnectTwo
+    (dS2M, vecToTuple . unbundle -> (dummyM2S, bootDM2S)) = interconnectTwo
       (unBusAddr <$> dM2S)
       ((0x0000_0000, dummyS2M) :> (0x4000_0000, bootDS2M) :> Nil)
 

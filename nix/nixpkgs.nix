@@ -4,7 +4,6 @@ let
   rust_overlay = import (builtins.fetchTarball "https://github.com/oxalica/rust-overlay/archive/master.tar.gz");
   overlay = _: nixpkgs: {
     # Nix tooling
-    niv = (import sources.niv {}).niv;
     gitignore = import sources.gitignore { inherit (nixpkgs) lib; };
 
     verilog-ethernet = import ./verilog-ethernet.nix { inherit (nixpkgs) pkgs; };

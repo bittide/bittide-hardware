@@ -27,11 +27,15 @@ IGNORE_STARTSWITH = (
     "clash-vexriscv",
 )
 
+IGNORE_COMMTIS_STARTSWITH = (
+    "Squashed 'clash-vexriscv/' changes",
+)
+
 def iter_change_types(diff_index, change_types):
     for change_type in change_types:
         yield from diff_index.iter_change_type(change_type)
 
-def get_pr_commits(repo, common_ancestor):
+def get_pr_commits(repo, common_ancestor, ignore=IGNORE_COMMTIS_STARTSWITH):
     """
     Gets all commits from the current one to (but not including) a common ancestor
     given as an argument.
@@ -39,6 +43,10 @@ def get_pr_commits(repo, common_ancestor):
     for commit in repo.iter_commits():
         if commit.binsha == common_ancestor.binsha:
             break
+
+        if commit.message.startswith(ignore):
+            continue
+
         yield commit
 
 def get_relevant_files_from_diff_index(diff_index):

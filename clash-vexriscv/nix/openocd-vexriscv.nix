@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2023 Google LLC
+
+# SPDX-License-Identifier: CC0-1.0
 { pkgs ? import ./nixpkgs.nix {} }:
 
 pkgs.stdenv.mkDerivation rec {
@@ -19,9 +22,7 @@ pkgs.stdenv.mkDerivation rec {
   src = pkgs.fetchgit {
     url = "https://github.com/SpinalHDL/openocd_riscv.git";
     rev = "058dfa50d625893bee9fecf8d604141911fac125";
-    sha256 = "sha256-LbT0L+VDFLlSrLkHa0P5pfmZHJI5uaMazrLXj8WFpck=";
-    fetchSubmodules = true;
-    deepClone = true;
+    sha256 = "sha256-5BvR45A3/7NqivQpYwaFnu7ra/Rf8giRig8R3zSYVd8=";
   };
 
   installPhase = ''

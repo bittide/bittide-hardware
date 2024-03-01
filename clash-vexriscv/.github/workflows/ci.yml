@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2022 Google LLC
-# 
+#
 # SPDX-License-Identifier: Apache-2.0
 
 name: CI
@@ -54,7 +54,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --target riscv32imc-unknown-none-elf --all-features
-  
+
   rust-build-programs:
     name: Build Programs
     runs-on: ubuntu-22.04
@@ -69,6 +69,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y curl build-essential
+
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: 1.67.1 # See Note [Updating Rust versions]
@@ -76,21 +77,24 @@ jobs:
           target: riscv32imc-unknown-none-elf
           components: clippy, rustfmt
 
+      - name: Caching
+        uses: Swatinem/rust-cache@v2
+
       - name: Build release binaries
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release
-      
+
       - name: Build debug binaries
         uses: actions-rs/cargo@v1
         with:
           command: build
-      
+
       - name: Archive Integration Test Binaries
         run: |
           cd clash-vexriscv-sim; sh bundle_test_binaries.sh
-      
+
       - name: Upload Integration Test Binaries
         uses: actions/upload-artifact@v3
         with:
@@ -103,8 +107,16 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [rust-build-programs]
 
+    strategy:
+      fail-fast: false
+      matrix:
+        ghc:
+          - "9.0.2"
+          - "9.2.8"
+          - "9.4.8"
+
     container:
-      image: ghcr.io/clash-lang/clash-ci-9.0.2:2022-12-13
+      image: ghcr.io/clash-lang/clash-ci:${{ matrix.ghc }}-20240221
 
     steps:
       - name: Checkout
@@ -120,8 +132,8 @@ jobs:
         with:
           path: |
             ~/.cabal/store
-          key: packages-cachebust-1-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          restore-keys: packages-cachebust-1-
+          key: packages-cachebust-2-${{ matrix.ghc }}-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
+          restore-keys: packages-cachebust-2-${{ matrix.ghc }}
 
       - name: Install build deps
         run: |
@@ -163,6 +175,11 @@ jobs:
       - name: Extract VexRiscv Integration Tests
         run: |
           tar -x -f vexriscv-test-binaries.tar
-      - name: Run unittests
+
+      - name: Run `clash-vexriscv` unittests
+        run: |
+          cabal run clash-vexriscv:unittests
+
+      - name: Run `clash-vexriscv-sim` unittests
         run: |
           cabal run clash-vexriscv-sim:unittests

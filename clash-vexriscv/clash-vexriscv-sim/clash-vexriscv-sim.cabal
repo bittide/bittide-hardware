@@ -60,9 +60,9 @@ common common-options
     -fno-worker-wrapper
       -- clash-prelude will set suitable version bounds for the plugins
   build-depends:
-    base >= 4.14 && < 4.16,
+    base >= 4.14 && < 4.19,
     clash-prelude >= 1.6 && < 1.10,
-    containers >= 0.6 && < 0.7,
+    containers >= 0.6 && < 0.8,
     ghc-typelits-natnormalise,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
@@ -79,11 +79,11 @@ library
     Utils.Storage
   build-depends:
     base,
+    bytestring >= 0.10 && < 0.13,
     clash-prelude,
     clash-protocols,
     clash-vexriscv,
     elf >= 0.31 && < 0.32,
-    bytestring >= 0.10 && < 0.11,
 
 executable clash
   import: common-options
@@ -132,6 +132,6 @@ test-suite unittests
     containers,
     directory,
     temporary >=1.1 && <1.4,
-    tasty >= 1.2 && < 1.5,
+    tasty >= 1.2 && < 1.6,
     tasty-hunit >= 0.10 && < 0.11,
     filepath

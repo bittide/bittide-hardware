@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022-2023 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -fconstraint-solver-iterations=15 #-}
@@ -284,7 +284,7 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
   go currentState@DriverState{..} (_, spiBusy, spiAck, receivedBytes) =
    (nextState, (output, True, storedByte))
    where
-    Just (RegisterOperation{..}) = currentOp
+    RegisterOperation{..} = fromJust currentOp
     samePage = currentPage == Just regPage
     sameAddr = currentAddress == Just regAddress
 

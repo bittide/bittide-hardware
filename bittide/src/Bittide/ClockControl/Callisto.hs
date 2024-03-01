@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -172,8 +172,12 @@ callisto ControlConfig{..} mask scs dataCounts state =
       nBuffers = case useLowerLimit @n @m @32 of
         Dict -> safePopCountTo32 <$> mask
       measuredSum = sumTo32 <$> dataCounts
-      targetCountSigned = case euclid3 @n @m @32 of
-        Dict -> extend @_ @_ @(32 - m - 1) $ dataCountToSigned targetCount
+      -- euclid3 :: forall a b c .  (a + b <= c)  => Dict (a <= c  - b)
+      -- euclid3 :: forall n m 32 . (n + m <= 32) => Dict (n <= 32 - m)
+      targetCountSigned =
+        case euclid3 @n @m @32 of
+          Dict ->
+            extend @_ @_ @(32 - m - 1) $ dataCountToSigned targetCount
     in
       measuredSum - (pure targetCountSigned * nBuffers)
 
