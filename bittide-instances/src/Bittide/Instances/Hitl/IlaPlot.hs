@@ -209,6 +209,8 @@ data IlaControl dom =
       -- ^ Synchronized pre-scheduled capture trigger
     , globalTimestamp :: Signal dom (GlobalTimestamp dom)
       -- ^ Synchronized pulse counter
+    , skipTest :: Signal dom Bool
+      -- ^ Skip this test
     }
 
 -- | Names of the additional ILA plot probes.
@@ -268,6 +270,8 @@ ilaPlotSetup IlaPlotSetup{..} = IlaControl{..}
       (\c i -> (if i then satSucc SatWrap c else c, i && c == minBound))
       (minBound :: Index ScheduledPulseCount)
       syncInChangepoints
+
+  skipTest = pure False
 
 -- | A single data type for covering all of the non-clock related data
 -- to be included into a capture.
@@ -418,6 +422,12 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
  where
   result = callistoClockControl clk rst enableGen ccc mask ebs
 
+  filterCounts vMask vCounts = flip map (zip vMask vCounts) $
+    \(isActive, count) -> if isActive == high then count else 0
+
+  filterIndicators vMask vCounts = flip map (zip vMask vCounts) $
+    \(isActive, ind) -> if isActive == high then ind else StabilityIndication False False
+
   maxGeqPlusApp = maxGeqPlus @1
     @(DivRU ScheduledCapturePeriod (Max 1 (DomainPeriod dyn)))
     @(Div (ScheduledCaptureCycles dyn) 10)
@@ -441,7 +451,8 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
           Done {}   -> ToDone
 
         height = SNat @AccWindowHeight
-        idcs = unbundle (stability <$> result)
+        idcs = unbundle
+          (filterIndicators <$> fmap bv2v mask <*> (stability <$> result))
 
         -- get the points in time where the monitored values change
         stableUpdates  = changepoints clk rst enableGen <$> (fmap stable <$> idcs)
@@ -476,7 +487,10 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
            in if trigger || any ((> half) . abs) diffs
               then (curDataCounts,    (True,  truncDiffs))
               else (storedDataCounts, (False, repeat 0))
-     in mealyB clk rst enableGen transF (repeat 0) (scheduledCapture, bundle ebs)
+     in mealyB clk rst enableGen transF (repeat 0)
+          ( scheduledCapture
+          , filterCounts <$> fmap bv2v mask <*> bundle ebs
+          )
 
   -- produce at least two calibration captures
   calibrating = unsafeToActiveLow rst .&&.
@@ -526,9 +540,9 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
       -- the ILA must run on a stable clock
       clk
       -- trigger as soon as we start
-      syncStart
+      (syncStart .&&. (not <$> skipTest))
       -- capture on relevant data changes
-      (isJust <$> captureCond)
+      (syncStart .&&. (isJust <$> captureCond) .&&. (not <$> skipTest))
       -- capture the capture condition
       (fromMaybe UntilTrigger <$> captureCond)
       -- capture the globally synchronized timestamp
@@ -604,14 +618,15 @@ syncInRecover ::
 syncInRecover clk rst = curry $
   moore clk rst enableGen transF out (WaitForStart :: SyncInRec dom) . bundle
  where
-  transF WaitForStart        (True, True) = WaitForReady
-  transF WaitForStart        (_   , _   ) = WaitForStart
-  transF WaitForReady        (_   , True) = WaitForReady
-  transF WaitForReady        (_   , _   ) = WaitForChange False maxBound
-  transF (WaitForChange _ 0) (_   , True) = WaitForStart
-  transF (WaitForChange o n) (_   , i   )
-    | o == i                              = WaitForChange o (n - 1)
-    | otherwise                           = WaitForChange i maxBound
+  transF _                   (False, _   ) = WaitForStart
+  transF WaitForStart        (_    , True) = WaitForReady
+  transF WaitForStart        (_    , _   ) = WaitForStart
+  transF WaitForReady        (_    , True) = WaitForReady
+  transF WaitForReady        (_    , _   ) = WaitForChange False maxBound
+  transF (WaitForChange _ 0) (_    , True) = WaitForStart
+  transF (WaitForChange o n) (_    , i   )
+    | o == i                               = WaitForChange o (n - 1)
+    | otherwise                            = WaitForChange i maxBound
 
   out WaitForStart    = (False, False)
   out WaitForReady    = (True,  False)

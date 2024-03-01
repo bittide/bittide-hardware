@@ -58,8 +58,8 @@ callistoClockControl clk rst ena ClockControlConfig{..} mask allDataCounts =
       updateCounter = wrappingCounter cccPessimisticSettleCycles
       shouldUpdate = updateCounter .==. 0
       scs = bundle $ map stabilityCheck $ unbundle dataCounts
-      allStable  = all stable <$> scs
-      allSettled = all settled <$> scs
+      allStable  = allAvailable stable <$> mask <*> scs
+      allSettled = allAvailable settled <$> mask <*> scs
       state = register initState state'
 
       clockControl =
@@ -100,6 +100,9 @@ callistoClockControl clk rst ena ClockControlConfig{..} mask allDataCounts =
 
   filterCounts vMask vCounts = flip map (zip vMask vCounts) $
     \(isActive, count) -> if isActive == high then count else 0
+
+  allAvailable f x y =
+    and $ zipWith ((||) . not) (bitToBool <$> bv2v x) (f <$> y)
 
 -- | Clock correction strategy based on:
 --

@@ -1,6 +1,7 @@
 [
   {"top": "fullMeshHwCcTest",              "stage": "test", "targets": "All"},
   {"top": "fullMeshSwCcTest",              "stage": "test", "targets": "All"},
+  {"top": "hwCcTopologyTest",              "stage": "test", "targets": "All"},
   {"top": "linkConfigurationTest",         "stage": "test", "targets": "All"},
   {"top": "vexRiscvTest",                  "stage": "test", "targets": "Specific [-1]"}
 ]

@@ -202,6 +202,7 @@ targets = map enforceValidTarget
   , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest"
   , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcWithRiscvTest"
   , testTarget "Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest"
+  , testTarget "Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest"
   , testTarget "Bittide.Instances.Hitl.LinkConfiguration.linkConfigurationTest"
   , testTarget "Bittide.Instances.Hitl.SyncInSyncOut.syncInSyncOut"
   , testTarget "Bittide.Instances.Hitl.Tcl.ExtraProbes.extraProbesTest"
