@@ -1,0 +1,15 @@
+name: Self-hosted runners test
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  No-container:
+    runs-on: [self-hosted, new-director, compute]
+    steps:
+      - run: cat /etc/os-release
+  #With-container:
+  #  runs-on: self-hosted-compute
+  #  container: alpine
+  #  steps:
+  #    - run: cat /etc/os-release
