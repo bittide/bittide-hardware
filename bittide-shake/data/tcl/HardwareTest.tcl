@@ -399,6 +399,7 @@ proc all_vios_msg {} {
         }
         append msg $sep \n
     }
+    return $msg
 }
 
 # Return all values in lista, which are not listb.
