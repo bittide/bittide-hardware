@@ -14,7 +14,9 @@ typedef struct {
   bit      timerInterrupt;
   bit      externalInterrupt;
   bit      softwareInterrupt;
+} NON_COMB_INPUT;
 
+typedef struct {
   bit      iBusWishbone_ACK;
   uint32_t iBusWishbone_DAT_MISO;
   bit      iBusWishbone_ERR;
@@ -22,7 +24,7 @@ typedef struct {
   bit      dBusWishbone_ACK;
   uint32_t dBusWishbone_DAT_MISO;
   bit      dBusWishbone_ERR;
-} INPUT;
+} COMB_INPUT;
 
 typedef struct {
   bit      iBusWishbone_CYC;
@@ -44,39 +46,4 @@ typedef struct {
   uint8_t  dBusWishbone_BTE;
 } OUTPUT;
 
-
 #endif
-
-/*
-  input               reset
-  input               timerInterrupt,
-  input               externalInterrupt,
-  input               softwareInterrupt,
-
-  input               iBusWishbone_ACK,
-  input      [31:0]   iBusWishbone_DAT_MISO,
-  input               iBusWishbone_ERR,
-
-  input               dBusWishbone_ACK,
-  input      [31:0]   dBusWishbone_DAT_MISO,
-  input               dBusWishbone_ERR,
-
-
-  output              iBusWishbone_CYC,
-  output              iBusWishbone_STB,
-  output              iBusWishbone_WE,
-  output     [29:0]   iBusWishbone_ADR,
-  output     [31:0]   iBusWishbone_DAT_MOSI,
-  output     [3:0]    iBusWishbone_SEL,
-  output     [2:0]    iBusWishbone_CTI,
-  output     [1:0]    iBusWishbone_BTE,
-
-  output              dBusWishbone_CYC,
-  output              dBusWishbone_STB,
-  output              dBusWishbone_WE,
-  output     [29:0]   dBusWishbone_ADR,
-  output     [31:0]   dBusWishbone_DAT_MOSI,
-  output reg [3:0]    dBusWishbone_SEL,
-  output     [2:0]    dBusWishbone_CTI,
-  output     [1:0]    dBusWishbone_BTE,
-*/

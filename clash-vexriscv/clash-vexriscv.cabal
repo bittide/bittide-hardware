@@ -87,9 +87,9 @@ common common-options
     -fno-worker-wrapper
       -- clash-prelude will set suitable version bounds for the plugins
   build-depends:
-    base >= 4.14 && < 4.16,
-    clash-prelude >= 1.6 && < 1.8,
-    containers >= 0.6 && < 0.7,
+    base >= 4.14 && < 4.18,
+    clash-prelude >= 1.6 && < 1.10,
+    containers >= 0.6 && < 0.8,
     ghc-typelits-natnormalise,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
@@ -102,19 +102,44 @@ library
   default-language: Haskell2010
   exposed-modules:
     VexRiscv
+    VexRiscv.ClockTicks
     VexRiscv.FFI
     VexRiscv.TH
+    VexRiscv.VecToTuple
+
   build-depends:
     base,
+    bytestring >= 0.10 && < 0.13,
     clash-prelude,
     clash-protocols,
-    bytestring >= 0.10 && < 0.11,
-    process >= 1.6 && < 1.8,
+    containers,
     directory >= 1.3 && < 1.4,
     filepath,
-    containers,
-    string-interpolate,
-    template-haskell,
     Glob,
+    process >= 1.6 && < 1.8,
+    string-interpolate,
+    tagged,
+    template-haskell,
   extra-libraries: VexRiscvFFI, stdc++
   include-dirs: src/
+
+test-suite unittests
+  import: common-options
+  hs-source-dirs: tests/unittests
+  type: exitcode-stdio-1.0
+  main-is: main.hs
+  ghc-options: -Wall -Wcompat -threaded -rtsopts
+  other-modules:
+    Tests.Extra
+    Tests.VexRiscv.ClockTicks
+  build-depends:
+    HUnit,
+    base,
+    clash-vexriscv,
+    bytestring,
+    hedgehog >= 1.0 && < 1.5,
+    tasty >= 1.4 && < 1.6,
+    tasty-hedgehog >= 1.2 && < 1.5,
+    tasty-hunit,
+    tasty-th,
+    template-haskell,
