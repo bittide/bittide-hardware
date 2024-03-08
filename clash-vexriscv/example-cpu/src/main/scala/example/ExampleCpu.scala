@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Google LLC
+// SPDX-FileCopyrightText: 2022-2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -6,6 +6,7 @@ package example
 
 import spinal.core._
 import spinal.lib._
+import spinal.lib.com.jtag.Jtag
 import vexriscv.plugin._
 import vexriscv.{VexRiscv, VexRiscvConfig, plugin}
 import vexriscv.ip.{DataCacheConfig}
@@ -100,7 +101,12 @@ object ExampleCpu extends App {
         new BranchPlugin(
           earlyBranch = false,
           catchAddressMisaligned = true
-        )
+        ),
+        new DebugPlugin(
+          debugClockDomain = ClockDomain.current,
+          hardwareBreakpointCount = 5
+        ),
+        new YamlPlugin("ExampleCpu.yaml")
       )
     )
 
@@ -121,6 +127,13 @@ object ExampleCpu extends App {
           plugin.dBus.setAsDirectionLess()
           master(plugin.dBus.toWishbone()).setName("dBusWishbone")
         }
+
+        case plugin: DebugPlugin => plugin.debugClockDomain {
+          plugin.io.bus.setAsDirectionLess()
+          val jtag = slave(new Jtag()).setName("jtag")
+          jtag <> plugin.io.bus.fromJtag()
+        }
+
         case _ =>
       }
     }
