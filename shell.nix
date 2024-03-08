@@ -13,41 +13,53 @@ pkgs.mkShell {
     # pkgs.haskellPackages.bittide-extra.env.nativeBuildInputs ++
     #
     [
-      pkgs.buildPackages.cabal-install
-      pkgs.buildPackages.dtc
-      pkgs.buildPackages.gcc
-      pkgs.buildPackages.ghc
-      pkgs.buildPackages.pkg-config
-      pkgs.buildPackages.python310Full
-      pkgs.buildPackages.python310Packages.matplotlib
-      pkgs.buildPackages.python310Packages.scipy
-      pkgs.buildPackages.python310Packages.GitPython
-      pkgs.buildPackages.sbt
-      pkgs.buildPackages.scala
-      pkgs.buildPackages.verilator
-      pkgs.buildPackages.which
-      pkgs.buildPackages.jq
+      pkgs.cabal-install
+      pkgs.dtc
+      pkgs.gcc
+      pkgs.haskell.compiler.ghc90
+      pkgs.pkg-config
+      pkgs.python311Full
+      pkgs.python311Packages.matplotlib
+      pkgs.python311Packages.scipy
+      pkgs.python311Packages.GitPython
+      pkgs.sbt
+      pkgs.scala
+      pkgs.verilator
+      pkgs.which
+      pkgs.jq
 
       # Simulation report generation
-      pkgs.buildPackages.dot2tex
-      pkgs.buildPackages.texlive.combined.scheme-medium
-      pkgs.buildPackages.poppler_utils
+      pkgs.dot2tex
+      pkgs.texlive.combined.scheme-medium
+      pkgs.poppler_utils
 
       (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
 
       # For Cabal to clone git repos
-      pkgs.buildPackages.git
+      pkgs.git
+      pkgs.cacert
 
       # HDL dependencies
       pkgs.verilog-ethernet
 
       # CI cache scripts
-      pkgs.buildPackages.python310Packages.docopt
-      pkgs.buildPackages.python310Packages.dateutil
+      pkgs.python311Packages.docopt
+      pkgs.python311Packages.dateutil
       pkgs.mc
 
       # VexRiscv OpenOCD
       pkgs.openocd-vexriscv
+
+      # For upgrading Nix env. To update dependencies (within bounds of the currently
+      # tracking NixOS version) use:
+      #
+      #   niv update
+      #
+      # If you want to upgrade nixpkgs to another NixOS version, use:
+      #
+      #   niv update nixpkgs -b nixos-23.11
+      #
+      pkgs.niv
     ]
     ;
 

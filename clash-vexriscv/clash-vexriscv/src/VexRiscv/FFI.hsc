@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -19,19 +19,27 @@ import Data.Word
 data VexRiscv
 
 foreign import ccall unsafe "vexr_init" vexrInit :: IO (Ptr VexRiscv)
-
 foreign import ccall unsafe "vexr_shutdown" vexrShutdown :: Ptr VexRiscv -> IO ()
 
-foreign import ccall unsafe "vexr_step" vexrStep :: Ptr VexRiscv -> Ptr INPUT -> Ptr OUTPUT -> IO ()
+foreign import ccall unsafe "vexr_init_stage1" vexrInitStage1 :: Ptr VexRiscv -> Ptr NON_COMB_INPUT -> Ptr OUTPUT -> IO ()
+foreign import ccall unsafe "vexr_init_stage2" vexrInitStage2 :: Ptr VexRiscv -> Ptr COMB_INPUT -> IO ()
+foreign import ccall unsafe "vexr_step_rising_edge" vexrStepRisingEdge :: Ptr VexRiscv -> Word64 -> Ptr NON_COMB_INPUT -> Ptr OUTPUT -> IO ()
+foreign import ccall unsafe "vexr_step_falling_edge" vexrStepFallingEdge :: Ptr VexRiscv -> Word64 -> Ptr COMB_INPUT -> IO ()
 
-data INPUT = INPUT
+-- | CPU input that cannot combinatorially depend on the CPU output
+data NON_COMB_INPUT = NON_COMB_INPUT
   { reset :: Bit
   , timerInterrupt :: Bit
   , externalInterrupt :: Bit
   , softwareInterrupt :: Bit
-  , iBusWishbone_ACK :: Bit
+  }
+
+-- | CPU input that can combinatorially depend on the CPU output
+data COMB_INPUT = COMB_INPUT
+  { iBusWishbone_ACK :: Bit
   , iBusWishbone_DAT_MISO :: Word32
   , iBusWishbone_ERR :: Bit
+
   , dBusWishbone_ACK :: Bit
   , dBusWishbone_DAT_MISO :: Word32
   , dBusWishbone_ERR :: Bit
@@ -47,6 +55,7 @@ data OUTPUT = OUTPUT
   , iBusWishbone_SEL :: Word8
   , iBusWishbone_CTI :: Word8
   , iBusWishbone_BTE :: Word8
+
   , dBusWishbone_CYC :: Bit
   , dBusWishbone_STB :: Bit
   , dBusWishbone_WE :: Bit
@@ -64,34 +73,45 @@ instance Storable Bit where
     peek = fmap boolToBit . peek . castPtr
     poke ptr = poke (castPtr ptr) . bitToBool
 
-instance Storable INPUT where
-    alignment _ = #alignment INPUT
-    sizeOf _ = #size INPUT
+instance Storable NON_COMB_INPUT where
+    alignment _ = #alignment NON_COMB_INPUT
+    sizeOf _ = #size NON_COMB_INPUT
     {-# INLINE peek #-}
-    peek ptr = const INPUT <$> pure ()
-      <*> (#peek INPUT, reset) ptr
-      <*> (#peek INPUT, timerInterrupt) ptr
-      <*> (#peek INPUT, externalInterrupt) ptr
-      <*> (#peek INPUT, softwareInterrupt) ptr
-      <*> (#peek INPUT, iBusWishbone_ACK) ptr
-      <*> (#peek INPUT, iBusWishbone_DAT_MISO) ptr
-      <*> (#peek INPUT, iBusWishbone_ERR) ptr
-      <*> (#peek INPUT, dBusWishbone_ACK) ptr
-      <*> (#peek INPUT, dBusWishbone_DAT_MISO) ptr
-      <*> (#peek INPUT, dBusWishbone_ERR) ptr
+    peek ptr = const NON_COMB_INPUT <$> pure ()
+      <*> (#peek NON_COMB_INPUT, reset) ptr
+      <*> (#peek NON_COMB_INPUT, timerInterrupt) ptr
+      <*> (#peek NON_COMB_INPUT, externalInterrupt) ptr
+      <*> (#peek NON_COMB_INPUT, softwareInterrupt) ptr
 
     {-# INLINE poke #-}
     poke ptr this = do
-      (#poke INPUT, reset) ptr (reset this)
-      (#poke INPUT, timerInterrupt) ptr (timerInterrupt this)
-      (#poke INPUT, externalInterrupt) ptr (externalInterrupt this)
-      (#poke INPUT, softwareInterrupt) ptr (softwareInterrupt this)
-      (#poke INPUT, iBusWishbone_ACK) ptr (iBusWishbone_ACK this)
-      (#poke INPUT, iBusWishbone_DAT_MISO) ptr (iBusWishbone_DAT_MISO this)
-      (#poke INPUT, iBusWishbone_ERR) ptr (iBusWishbone_ERR this)
-      (#poke INPUT, dBusWishbone_ACK) ptr (dBusWishbone_ACK this)
-      (#poke INPUT, dBusWishbone_DAT_MISO) ptr (dBusWishbone_DAT_MISO this)
-      (#poke INPUT, dBusWishbone_ERR) ptr (dBusWishbone_ERR this)
+      (#poke NON_COMB_INPUT, reset) ptr (reset this)
+      (#poke NON_COMB_INPUT, timerInterrupt) ptr (timerInterrupt this)
+      (#poke NON_COMB_INPUT, externalInterrupt) ptr (externalInterrupt this)
+      (#poke NON_COMB_INPUT, softwareInterrupt) ptr (softwareInterrupt this)
+      return ()
+
+instance Storable COMB_INPUT where
+    alignment _ = #alignment COMB_INPUT
+    sizeOf _ = #size COMB_INPUT
+    {-# INLINE peek #-}
+    peek ptr = const COMB_INPUT <$> pure ()
+      <*> (#peek COMB_INPUT, iBusWishbone_ACK) ptr
+      <*> (#peek COMB_INPUT, iBusWishbone_DAT_MISO) ptr
+      <*> (#peek COMB_INPUT, iBusWishbone_ERR) ptr
+      <*> (#peek COMB_INPUT, dBusWishbone_ACK) ptr
+      <*> (#peek COMB_INPUT, dBusWishbone_DAT_MISO) ptr
+      <*> (#peek COMB_INPUT, dBusWishbone_ERR) ptr
+
+    {-# INLINE poke #-}
+    poke ptr this = do
+      (#poke COMB_INPUT, iBusWishbone_ACK) ptr (iBusWishbone_ACK this)
+      (#poke COMB_INPUT, iBusWishbone_DAT_MISO) ptr (iBusWishbone_DAT_MISO this)
+      (#poke COMB_INPUT, iBusWishbone_ERR) ptr (iBusWishbone_ERR this)
+
+      (#poke COMB_INPUT, dBusWishbone_ACK) ptr (dBusWishbone_ACK this)
+      (#poke COMB_INPUT, dBusWishbone_DAT_MISO) ptr (dBusWishbone_DAT_MISO this)
+      (#poke COMB_INPUT, dBusWishbone_ERR) ptr (dBusWishbone_ERR this)
       return ()
 
 instance Storable OUTPUT where
@@ -107,6 +127,7 @@ instance Storable OUTPUT where
       <*> (#peek OUTPUT, iBusWishbone_SEL) ptr
       <*> (#peek OUTPUT, iBusWishbone_CTI) ptr
       <*> (#peek OUTPUT, iBusWishbone_BTE) ptr
+
       <*> (#peek OUTPUT, dBusWishbone_CYC) ptr
       <*> (#peek OUTPUT, dBusWishbone_STB) ptr
       <*> (#peek OUTPUT, dBusWishbone_WE) ptr
@@ -126,6 +147,7 @@ instance Storable OUTPUT where
       (#poke OUTPUT, iBusWishbone_SEL) ptr (iBusWishbone_SEL this)
       (#poke OUTPUT, iBusWishbone_CTI) ptr (iBusWishbone_CTI this)
       (#poke OUTPUT, iBusWishbone_BTE) ptr (iBusWishbone_BTE this)
+
       (#poke OUTPUT, dBusWishbone_CYC) ptr (dBusWishbone_CYC this)
       (#poke OUTPUT, dBusWishbone_STB) ptr (dBusWishbone_STB this)
       (#poke OUTPUT, dBusWishbone_WE) ptr (dBusWishbone_WE this)

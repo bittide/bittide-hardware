@@ -7,8 +7,8 @@ let
   rust_overlay = import (builtins.fetchTarball "https://github.com/oxalica/rust-overlay/archive/master.tar.gz");
   overlay = _: nixpkgs: {
     # Nix tooling
-    niv = (import sources.niv {}).niv;
     gitignore = import sources.gitignore { inherit (nixpkgs) lib; };
+    openocd-vexriscv = import ./openocd-vexriscv.nix { inherit (nixpkgs) pkgs; };
 
     # Haskell overrides
     haskellPackages = nixpkgs.haskellPackages.override {
