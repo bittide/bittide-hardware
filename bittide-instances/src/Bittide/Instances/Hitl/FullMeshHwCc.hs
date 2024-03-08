@@ -73,6 +73,7 @@ import Clash.Xilinx.ClockGen
 import Protocols
 import Protocols.Wishbone
 import Protocols.Internal
+import VexRiscv
 
 type NodeCount = 8 :: Nat
 
@@ -114,13 +115,15 @@ fullMeshRiscvCopyTest ::
 fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
  where
   (_, CSignal fIncDec) = toSignals
-    ( circuit $ \unit -> do
-      [wbA, wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< unit
+    ( circuit $ \jtagIn0 -> do
+      ([wbA, wbB], _jtagOut0) <-
+        withClockResetEnable clk rst enableGen $ processingElement @dom peConfig
+          -< jtagIn0
       fIncDecCallisto -< wbA
       (fIncDec, _allStable) <- withClockResetEnable clk rst enableGen $
         clockControlWb margin framesize (pure $ complement 0) dataCounts -< wbB
       idC -< fIncDec
-    ) ((), unitCS)
+    ) (CSignal . pure $ JtagIn low low low, unitCS)
 
   fIncDecCallisto ::
     forall aw nBytes .

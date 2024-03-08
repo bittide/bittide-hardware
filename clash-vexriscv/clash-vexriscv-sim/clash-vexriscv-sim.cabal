@@ -7,6 +7,9 @@ author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
 Copyright:           Copyright © 2022 Google LLC
 
+extra-source-files:
+  data/*.cfg
+
 common common-options
   default-extensions:
     BangPatterns
@@ -43,6 +46,13 @@ common common-options
 
     -- Prelude isn't imported by default as Clash offers Clash.Prelude
     NoImplicitPrelude
+
+  -- See https://github.com/clash-lang/clash-compiler/pull/2511
+  if impl(ghc >= 9.4)
+    CPP-Options: -DCLASH_OPAQUE=OPAQUE
+  else
+    CPP-Options: -DCLASH_OPAQUE=NOINLINE
+
   ghc-options:
     -Wall -Wcompat
 
@@ -73,6 +83,7 @@ library
   default-language: Haskell2010
   exposed-modules:
     Utils.Cpu
+    Utils.Instance
     Utils.Interconnect
     Utils.ProgramLoad
     Utils.ReadElf
@@ -85,19 +96,13 @@ library
     clash-vexriscv,
     elf >= 0.31 && < 0.32,
 
-executable clash
-  import: common-options
-  main-is: app/Clash.hs
-  build-Depends: base, clash-ghc
-
+-- XXX: Doesn't really belong in clash-vexriscv-SIM
 executable hdl-test
   import: common-options
   main-is: app/HdlTest.hs
   build-Depends:
     base,
-    clash-prelude,
-    clash-protocols,
-    clash-vexriscv,
+    clash-ghc,
     clash-vexriscv-sim,
 
 executable clash-vexriscv-bin
@@ -105,6 +110,7 @@ executable clash-vexriscv-bin
   main-is: VexRiscvSimulation.hs
   hs-source-dirs: app
   default-language: Haskell2010
+  ghc-options: -threaded -rtsopts "-with-rtsopts=-M100M"
   build-depends:
     base,
     clash-prelude,
@@ -122,18 +128,28 @@ test-suite unittests
   type: exitcode-stdio-1.0
   -- TODO: enable parallel tests:
   -- ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-tool-depends:
+    clash-vexriscv-sim:clash-vexriscv-bin
+  autogen-modules:
+    Paths_clash_vexriscv_sim
   ghc-options: -threaded
   main-is: tests.hs
+  other-modules:
+    Paths_clash_vexriscv_sim
+    Tests.Jtag
   build-depends:
+    async,
     base,
+    bytestring,
     clash-prelude,
     clash-protocols,
-    clash-vexriscv,
     clash-vexriscv-sim,
-    bytestring,
+    clash-vexriscv,
     containers,
     directory,
-    temporary >=1.1 && <1.4,
+    extra,
+    filepath,
+    process,
     tasty >= 1.2 && < 1.6,
     tasty-hunit >= 0.10 && < 0.11,
-    filepath
+    temporary >=1.1 && <1.4,

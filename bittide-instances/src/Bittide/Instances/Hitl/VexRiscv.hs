@@ -19,6 +19,7 @@ import Protocols
 import Protocols.Internal
 import Protocols.Wishbone
 import System.FilePath
+import VexRiscv
 
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains (Basic200, Ext125)
@@ -33,20 +34,24 @@ data TestStatus = Running | Success | Fail
 vexRiscvInner ::
   forall dom.
   HiddenClockResetEnable dom =>
-  Signal dom (Bool, Bool)
-vexRiscvInner = stateToDoneSuccess <$> status
+  Signal dom JtagIn ->
+  Signal dom (Bool, Bool, JtagOut)
+vexRiscvInner jtagIn0 = bundle (done, success, jtagOut1)
   where
+
+    (unbundle -> (done, success)) = stateToDoneSuccess <$> status
 
     stateToDoneSuccess Running = (False, False)
     stateToDoneSuccess Success = (True, True)
     stateToDoneSuccess Fail    = (True, False)
 
     unitC = CSignal (pure ())
-    (_, CSignal status) = circuitFn ((), unitC)
+    (_, (CSignal status, CSignal jtagOut1)) = circuitFn (CSignal jtagIn0, (unitC, unitC))
 
-    Circuit circuitFn = circuit $ \unit -> do
-        [wb] <- processingElement peConfig -< unit
-        statusRegister -< wb
+    Circuit circuitFn = circuit $ \jtagIn1 -> do
+        ([wb], jtagOut0) <- processingElement peConfig -< jtagIn1
+        testResult <- statusRegister -< wb
+        idC -< (testResult, jtagOut0)
 
     statusRegister :: Circuit (Wishbone dom 'Standard 30 (Bytes 4)) (CSignal dom TestStatus)
     statusRegister = Circuit $ \(fwd, CSignal _) ->
@@ -74,13 +79,15 @@ vexRiscvInner = stateToDoneSuccess <$> status
               in (state, (emptyWishboneS2M { acknowledge = True }, state))
 
     {-
-    0b1000xxxx 0x8x instruction memory
-    0b0100xxxx 0x4x data memory
-    0b1100xxxx 0xCx status register
+    bin        hex  bus  description
+    0b00xxxxxx 0x0. 0    NOT USED
+    0b11xxxxxx 0xC. 1    instruction memory
+    0b01xxxxxx 0x4. 2    data memory
+    0b10xxxxxx 0x8. 3    status register
     -}
 
     peConfig = PeConfig
-      (0b10 :> 0b01 :> 0b11 :> Nil)
+      (0b11 :> 0b01 :> 0b10 :> Nil)
       -- these memories need to be reloadable, otherwise synthesis will optimise
       -- out the entire data memory somehow!
       (Reloadable $ Blob iMem)
@@ -99,11 +106,13 @@ vexRiscvInner = stateToDoneSuccess <$> status
 
 vexRiscvTest ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->
+  "JTAG" ::: Signal Basic200 JtagIn ->
   "" :::
     ( "done"    ::: Signal Basic200 Bool
     , "success" ::: Signal Basic200 Bool
+    , "JTAG"    ::: Signal Basic200 JtagOut
     )
-vexRiscvTest diffClk = (testDone, testSuccess)
+vexRiscvTest diffClk jtagIn = (testDone, testSuccess, jtagOut)
   where
     (clk, clkStableRst) = clockWizardDifferential diffClk noReset
 

@@ -73,6 +73,7 @@ common common-options
     clash-lib,
     clash-prelude,
     clash-protocols,
+    clash-vexriscv,
     containers,
     cryptohash-sha256,
     directory,
@@ -106,7 +107,6 @@ library
     Bittide.Instances.Hitl.BoardTest
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.FullMeshHwCc
-    Bittide.Instances.Hitl.FullMeshSwCc
     Bittide.Instances.Hitl.IlaPlot
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.Tcl.ExtraProbes
@@ -167,6 +167,13 @@ executable post-board-test-extended
   -- We need -xm20000000 because of a memory allocation bug after a kernel update
   ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: bin/Post/BoardTestExtended.hs
+  build-depends: bittide-instances
+
+executable post-vex-riscv-test
+  import: common-options
+  -- We need -xm20000000 because of a memory allocation bug after a kernel update
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  main-is: bin/Post/VexRiscvTest.hs
   build-depends: bittide-instances
 
 test-suite doctests

@@ -5,11 +5,16 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE RecordWildCards #-}
 
+-- it doesn't like lazy matching on `Signal`s it seems?
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+
 module Utils.Storage
   ( storage
+  , dualPortStorage
   ) where
 
 import Clash.Prelude
+import Clash.Signal.Internal (Signal((:-)))
 
 import Data.Either (isLeft)
 import Protocols.Wishbone
@@ -31,14 +36,69 @@ instance NFDataX MappedMemory where
   -- WHNF ~ NF, so we only need to check the values.
   hasUndefined m =
        isLeft (isX (unMappedMemory m))
-    || (any hasUndefined $ I.elems $ unMappedMemory m)
+    || any hasUndefined (I.elems $ unMappedMemory m)
 
   -- Not a product type, so no spine
   ensureSpine = id
 
-  -- This is a strict map, so we dont need to do anything. Note that WHNF ~ NF for
+  -- This is a strict map, so we don't need to do anything. Note that WHNF ~ NF for
   -- 'BitVector'.
   rnfX x = seq x ()
+
+dualPortStorage ::
+  forall dom.
+  ( KnownDomain dom,
+    HiddenClockResetEnable dom
+  ) =>
+  [BitVector 8] ->
+  -- ^ contents
+  Signal dom (WishboneM2S 32 4 (BitVector 32)) ->
+  -- ^ in A
+  Signal dom (WishboneM2S 32 4 (BitVector 32)) ->
+  -- ^ in B
+  ( Signal dom (WishboneS2M (BitVector 32))
+  -- ^ out A
+  , Signal dom (WishboneS2M (BitVector 32))
+  -- ^ out B
+  )
+dualPortStorage contents portA portB = (aReply, bReply)
+  where
+    actualResult = storage contents inSignal
+
+    (_port, inSignal, aReply, bReply) = unbundle $ go A portA portB actualResult
+
+    go !currentPort (a :- inA) (b :- inB) ~(res :- actualResult')
+      -- neither active, just say A is current, do nothing
+      | not aActive && not bActive =
+          (A, a, res, emptyWishboneS2M) :- (res `seq` next)
+      -- A current, A active -> do A
+      | currentPort == A && aActive =
+          (A, a, res, emptyWishboneS2M) :- (res `seq` next)
+      -- current A, A not active but B is, do B and switch to B
+      | currentPort == A && not aActive && bActive =
+          (B, b, emptyWishboneS2M, res) :- (res `seq` next)
+      -- current B, B active -> do B
+      | currentPort == B && bActive =
+          (B, b, emptyWishboneS2M, res) :- (res `seq` next)
+      -- current B, B not active, but A is, do A and switch to A
+      | currentPort == B && not bActive && aActive =
+          (A, a, res, emptyWishboneS2M) :- (res `seq` next)
+      where
+        aActive = strobe a && busCycle a
+        bActive = strobe b && busCycle b
+
+        nextPort = case (currentPort, aActive, bActive) of
+          (_, False, False) -> A
+          (A, False, True)  -> B
+          (A, True, _)      -> A
+          (B, _, True)      -> B
+          (B, True, False)  -> A
+
+        next = go nextPort inA inB actualResult'
+
+data AorB = A | B deriving (Generic, NFDataX, Eq)
+
+
 
 storage ::
   forall dom.
@@ -53,7 +113,7 @@ storage contents = mealy go (MappedMemory $ I.fromAscList $ L.zip [0..] contents
  where
   size = L.length contents
 
-  go (MappedMemory mem) WishboneM2S{..}
+  go (MappedMemory !mem) WishboneM2S{..}
     | not (busCycle && strobe)        = (MappedMemory mem, emptyWishboneS2M)
     | addr >= fromIntegral size       =
         (MappedMemory mem, emptyWishboneS2M { err = True })

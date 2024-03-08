@@ -14,7 +14,7 @@ use riscv_rt::entry;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let mut uart = unsafe { Uart::new(0x8000_0000 as *mut u8) };
+    let mut uart = unsafe { Uart::new(0xC000_0000 as *mut u8) };
 
     let names = ["Rust", "RISC-V", "Haskell"];
     for name in names {
@@ -22,10 +22,14 @@ fn main() -> ! {
     }
     uwriteln!(uart, "This can also do {} {:#x}", "debug prints", 42).unwrap();
     uwriteln!(uart, "Going in echo mode!").unwrap();
+    start_echo(); // Used as breakpoint
     loop {
         let c = uart.receive();
         uart.send(c);
     }
+}
+
+fn start_echo() {
 }
 
 #[panic_handler]
