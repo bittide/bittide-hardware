@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2023 Google LLC
+
+# SPDX-License-Identifier: CC0-1.0
+{ pkgs ? import ./nixpkgs.nix {} }:
+
+pkgs.stdenv.mkDerivation rec {
+  name = "openocd-vexriscv";
+
+  buildInputs = [
+    pkgs.autoconf
+    pkgs.automake
+    pkgs.coreutils
+    pkgs.git
+    pkgs.libtool
+    pkgs.libusb1
+    pkgs.libyaml
+    pkgs.pkg-config
+    pkgs.texinfo
+    pkgs.which
+  ];
+
+  src = pkgs.fetchgit {
+    url = "https://github.com/SpinalHDL/openocd_riscv.git";
+    rev = "058dfa50d625893bee9fecf8d604141911fac125";
+    sha256 = "sha256-5BvR45A3/7NqivQpYwaFnu7ra/Rf8giRig8R3zSYVd8=";
+  };
+
+  installPhase = ''
+    SKIP_SUBMODULE=1 ./bootstrap
+    ./configure --enable-ftdi --enable-dummy --prefix=$out
+    make -j $(nproc)
+    make install
+    mv $out/bin/openocd $out/bin/openocd-vexriscv
+  '';
+}

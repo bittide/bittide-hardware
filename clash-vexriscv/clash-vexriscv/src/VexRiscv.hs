@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022-2023 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -16,16 +16,23 @@ import Clash.Prelude
 
 import Clash.Annotations.Primitive
 import Clash.Signal.Internal
+import Data.Bifunctor (first)
 import Data.String.Interpolate (__i)
+import Data.Word (Word64)
+import Foreign (Ptr)
 import Foreign.Marshal (alloca)
 import Foreign.Storable
-import GHC.IO (unsafePerformIO)
+import GHC.IO (unsafePerformIO, unsafeInterleaveIO)
 import GHC.Stack (HasCallStack)
 import Language.Haskell.TH.Syntax
 import Protocols.Wishbone
+
+import VexRiscv.ClockTicks
 import VexRiscv.FFI
 import VexRiscv.TH
+import VexRiscv.VecToTuple
 
+import qualified VexRiscv.FFI as FFI
 
 data Input = Input
   { timerInterrupt :: "TIMER_INTERRUPT" ::: Bit
@@ -41,48 +48,6 @@ data Output = Output
   , dBusWbM2S :: "DBUS_OUT_" ::: WishboneM2S 30 4 (BitVector 32)
   }
   deriving (Generic, NFDataX, ShowX, Eq, BitPack)
-
-inputToFFI :: Bool -> Input -> INPUT
-inputToFFI reset Input {..} =
-  INPUT
-    { reset = boolToBit reset
-    , timerInterrupt
-    , externalInterrupt
-    , softwareInterrupt
-    , iBusWishbone_ACK = boolToBit $ acknowledge iBusWbS2M
-    , iBusWishbone_DAT_MISO = unpack $ readData iBusWbS2M
-    , iBusWishbone_ERR = boolToBit $ err iBusWbS2M
-    , dBusWishbone_ACK = boolToBit $ acknowledge dBusWbS2M
-    , dBusWishbone_DAT_MISO = unpack $ readData dBusWbS2M
-    , dBusWishbone_ERR = boolToBit $ err dBusWbS2M
-    }
-
-outputFromFFI :: OUTPUT -> Output
-outputFromFFI OUTPUT {..} =
-  Output
-    { iBusWbM2S =
-        (emptyWishboneM2S @30 @(BitVector 32))
-          { busCycle = bitToBool iBusWishbone_CYC,
-            strobe = bitToBool iBusWishbone_STB,
-            writeEnable = bitToBool iBusWishbone_WE,
-            addr = truncateB $ pack iBusWishbone_ADR,
-            writeData = pack iBusWishbone_DAT_MOSI,
-            busSelect = resize $ pack iBusWishbone_SEL,
-            cycleTypeIdentifier = unpack $ resize $ pack iBusWishbone_CTI,
-            burstTypeExtension = unpack $ resize $ pack iBusWishbone_BTE
-          },
-      dBusWbM2S =
-        (emptyWishboneM2S @30 @(BitVector 32))
-          { busCycle = bitToBool dBusWishbone_CYC,
-            strobe = bitToBool dBusWishbone_STB,
-            writeEnable = bitToBool dBusWishbone_WE,
-            addr = truncateB $ pack dBusWishbone_ADR,
-            writeData = pack dBusWishbone_DAT_MOSI,
-            busSelect = resize $ pack dBusWishbone_SEL,
-            cycleTypeIdentifier = unpack $ resize $ pack dBusWishbone_CTI,
-            burstTypeExtension = unpack $ resize $ pack dBusWishbone_BTE
-          }
-    }
 
 -- When passing S2M values from Haskell to VexRiscv over the FFI, undefined
 -- bits/values cause errors when forcing their evaluation to something that can
@@ -126,9 +91,7 @@ vexRiscv input =
 
   where
     (unbundle -> (timerInterrupt, externalInterrupt, softwareInterrupt, iBusS2M, dBusS2M))
-      -- A hack that enables us to both generate synthesizable HDL and simulate vexRisc in Haskell/Clash
-      = (<$> if clashSimulation then unpack 0 :- input else input)
-      $ \(Input a b c d e) -> (a, b, c, d, e)
+      = (\(Input a b c d e) -> (a, b, c, d, e)) <$> input
 
     (unbundle -> (iBus_DAT_MISO, iBus_ACK, iBus_ERR))
       = (\(WishboneS2M a b c _ _) -> (a, b, c))
@@ -221,7 +184,7 @@ vexRiscv#
     , Signal dom (BitVector 3)  -- ^ dBus_CTI
     , Signal dom (BitVector 2)  -- ^ dBus_BTE
     )
-vexRiscv# !_sourcePath !_clk rst0
+vexRiscv# !_sourcePath clk rst0
   timerInterrupt
   externalInterrupt
   softwareInterrupt
@@ -231,90 +194,135 @@ vexRiscv# !_sourcePath !_clk rst0
 
   dBus_ACK
   dBus_ERR
-  dBus_DAT_MISO
+  dBus_DAT_MISO = unsafePerformIO $ do
+    (v, initStage1, initStage2, stepRising, stepFalling, _shutDown) <- vexCPU
 
-  =
     let
-      iBusS2M = WishboneS2M <$> iBus_DAT_MISO <*> iBus_ACK <*> iBus_ERR <*> pure False <*> pure False
-      dBusS2M = WishboneS2M <$> dBus_DAT_MISO <*> dBus_ACK <*> dBus_ERR <*> pure False <*> pure False
+      nonCombInput = NON_COMB_INPUT
+        <$> (boolToBit <$> unsafeToActiveHigh rst0)
+        <*> timerInterrupt
+        <*> externalInterrupt
+        <*> softwareInterrupt
 
-      input = Input <$> timerInterrupt <*> externalInterrupt <*> softwareInterrupt <*> iBusS2M <*> dBusS2M
+      combInput = COMB_INPUT
+        <$> (boolToBit <$> iBus_ACK)
+        <*> (unpack    <$> iBus_DAT_MISO)
+        <*> (boolToBit <$> iBus_ERR)
+        <*> (boolToBit <$> dBus_ACK)
+        <*> (unpack    <$> dBus_DAT_MISO)
+        <*> (boolToBit <$> dBus_ERR)
 
-      output = unsafePerformIO $ do
-        (step, _) <- vexCPU
-        pure $ go step (unsafeFromReset rst0) input
+      simInitThenCycles ::
+        Signal dom NON_COMB_INPUT ->
+        Signal dom COMB_INPUT ->
+        IO (Signal dom OUTPUT)
+      simInitThenCycles (cnc :- cncs) ~(cc :- ccs) = do
+        let
+          -- Note: we don't need @ticks@ for the initialization stages, because this
+          -- first cycle of a 'Signal' is meant to model what happens _before_ a
+          -- clock edge.
+          ticks = first fromIntegral <$> singleClockEdgesRelative clk
 
-      (unbundle -> (iBusM2S, dBusM2S)) = (<$> output) $ \(Output iBus dBus) -> (iBus, dBus)
+        out0 <- initStage1 v cnc
+        stage2Out <- unsafeInterleaveIO (initStage2 v cc)
+        out1 <- unsafeInterleaveIO (simCycles ticks cncs ccs)
 
-      (unbundle -> (iBus_ADR, iBus_DAT_MOSI, iBus_SEL, iBus_CYC, iBus_STB, iBus_WE, iBus_CTI, iBus_BTE)) =
-        (<$> iBusM2S) $ \(WishboneM2S a b c _ e f g h i) -> (a, b, c, e, f, g, h, i)
+        pure $ out0 :- (stage2Out `seq` out1)
 
-      (unbundle -> (dBus_ADR, dBus_DAT_MOSI, dBus_SEL, dBus_CYC, dBus_STB, dBus_WE, dBus_CTI, dBus_BTE)) =
-        (<$> dBusM2S) $ \(WishboneM2S a b c _ e f g h i) -> (a, b, c, e, f, g, h, i)
-    in
+      simCycles ::
+        [(Word64, ActiveEdge)] ->
+        Signal dom NON_COMB_INPUT ->
+        Signal dom COMB_INPUT ->
+        IO (Signal dom OUTPUT)
+      simCycles ((fsSinceLastEvent, Rising) : ts) (cnc :- cncs) ccs = do
+        out0 <- stepRising v fsSinceLastEvent cnc
+        out1 <- unsafeInterleaveIO (simCycles ts cncs ccs)
+        pure $ out0 :- out1
+
+      simCycles ((fsSinceLastEvent, Falling) : ts) cncs (cc :- ccs) = do
+        stepFalling v fsSinceLastEvent cc
+        simCycles ts cncs ccs
+
+      simCycles [] _ _ = error "Empty ticks: should never happen"
+
+    output <- simInitThenCycles nonCombInput combInput
+
+    let
+      iBus_CYC      = FFI.iBusWishbone_CYC      <$> output
+      iBus_STB      = FFI.iBusWishbone_STB      <$> output
+      iBus_WE       = FFI.iBusWishbone_WE       <$> output
+      iBus_ADR      = FFI.iBusWishbone_ADR      <$> output
+      iBus_DAT_MOSI = FFI.iBusWishbone_DAT_MOSI <$> output
+      iBus_SEL      = FFI.iBusWishbone_SEL      <$> output
+      iBus_CTI      = FFI.iBusWishbone_CTI      <$> output
+      iBus_BTE      = FFI.iBusWishbone_BTE      <$> output
+
+      dBus_CYC      = FFI.dBusWishbone_CYC      <$> output
+      dBus_STB      = FFI.dBusWishbone_STB      <$> output
+      dBus_WE       = FFI.dBusWishbone_WE       <$> output
+      dBus_ADR      = FFI.dBusWishbone_ADR      <$> output
+      dBus_DAT_MOSI = FFI.dBusWishbone_DAT_MOSI <$> output
+      dBus_SEL      = FFI.dBusWishbone_SEL      <$> output
+      dBus_CTI      = FFI.dBusWishbone_CTI      <$> output
+      dBus_BTE      = FFI.dBusWishbone_BTE      <$> output
+
+    pure
       ( -- iBus
-        iBus_CYC
-      , iBus_STB
-      , iBus_WE
-      , iBus_ADR
-      , iBus_DAT_MOSI
-      , iBus_SEL
-      , pack <$> iBus_CTI
-      , pack <$> iBus_BTE
+        bitToBool <$> iBus_CYC
+      , bitToBool <$> iBus_STB
+      , bitToBool <$> iBus_WE
+      , truncateB . pack <$> iBus_ADR
+      , pack <$> iBus_DAT_MOSI
+      , truncateB . pack <$> iBus_SEL
+      , truncateB . pack <$> iBus_CTI
+      , truncateB . pack <$> iBus_BTE
 
       -- dBus
-      , dBus_CYC
-      , dBus_STB
-      , dBus_WE
-      , dBus_ADR
-      , dBus_DAT_MOSI
-      , dBus_SEL
-      , pack <$> dBus_CTI
-      , pack <$> dBus_BTE
+      , bitToBool <$> dBus_CYC
+      , bitToBool <$> dBus_STB
+      , bitToBool <$> dBus_WE
+      , truncateB . pack <$> dBus_ADR
+      , pack <$> dBus_DAT_MOSI
+      , truncateB . pack <$> dBus_SEL
+      , truncateB . pack <$> dBus_CTI
+      , truncateB . pack <$> dBus_BTE
       )
-  where
-    {-# NOINLINE go #-}
-    go step (rst :- rsts) (input :- inputs) = unsafePerformIO $ do
-      out <- step rst input
-      pure $ out :- go step rsts inputs
 {-# NOINLINE vexRiscv# #-}
 {-# ANN vexRiscv# (
     let
       primName = 'vexRiscv#
       ( _
-       :> srcPath
-       :> clk
-       :> rst
-       :> timerInterrupt
-       :> externalInterrupt
-       :> softwareInterrupt
-       :> iBus_ACK
-       :> iBus_ERR
-       :> iBus_DAT_MISO
-       :> dBus_ACK
-       :> dBus_ERR
-       :> dBus_DAT_MISO
-       :> Nil
-       ) = indicesI @13
+       , srcPath
+       , clk
+       , rst
+       , timerInterrupt
+       , externalInterrupt
+       , softwareInterrupt
+       , iBus_ACK
+       , iBus_ERR
+       , iBus_DAT_MISO
+       , dBus_ACK
+       , dBus_ERR
+       , dBus_DAT_MISO
+       ) = vecToTuple (indicesI @13)
 
       ( iBus_CYC
-       :> iBus_STB
-       :> iBus_WE
-       :> iBus_ADR
-       :> iBus_DAT_MOSI
-       :> iBus_SEL
-       :> iBus_CTI
-       :> iBus_BTE
-       :> dBus_CYC
-       :> dBus_STB
-       :> dBus_WE
-       :> dBus_ADR
-       :> dBus_DAT_MOSI
-       :> dBus_SEL
-       :> dBus_CTI
-       :> dBus_BTE
-       :> Nil
-       ) = (\x -> extend @_ @16 @13 x + 1) <$> indicesI @16
+       , iBus_STB
+       , iBus_WE
+       , iBus_ADR
+       , iBus_DAT_MOSI
+       , iBus_SEL
+       , iBus_CTI
+       , iBus_BTE
+       , dBus_CYC
+       , dBus_STB
+       , dBus_WE
+       , dBus_ADR
+       , dBus_DAT_MOSI
+       , dBus_SEL
+       , dBus_CTI
+       , dBus_BTE
+       ) = vecToTuple $ (\x -> extend @_ @16 @13 x + 1) <$> indicesI @16
 
       cpu = extend @_ @_ @1 dBus_BTE + 1
     in
@@ -402,16 +410,47 @@ vexRiscv# !_sourcePath !_clk rst0
     |] ) #-}
 
 
+
 -- | Return a function that performs an execution step and a function to free
 -- the internal CPU state
-vexCPU :: IO (Bool -> Input -> IO Output, IO ())
+vexCPU :: IO
+  ( Ptr VexRiscv
+  , Ptr VexRiscv -> NON_COMB_INPUT -> IO OUTPUT           -- initStage1
+  , Ptr VexRiscv -> COMB_INPUT -> IO ()                   -- initStage2
+  , Ptr VexRiscv -> Word64 -> NON_COMB_INPUT -> IO OUTPUT -- rising
+  , Ptr VexRiscv -> Word64 -> COMB_INPUT -> IO ()         -- falling
+  , Ptr VexRiscv -> IO ()
+  )
 vexCPU = do
   v <- vexrInit
+
   let
-    step reset input = alloca $ \inputFFI -> alloca $ \outputFFI -> do
-      poke inputFFI (inputToFFI reset input)
-      vexrStep v inputFFI outputFFI
-      outVal <- peek outputFFI
-      pure $ outputFromFFI outVal
-    shutDown = vexrShutdown v
-  pure (step, shutDown)
+    {-# NOINLINE initStage1 #-}
+    initStage1 vPtr nonCombInput =
+      alloca $ \nonCombInputFFI -> alloca $ \outputFFI -> do
+        poke nonCombInputFFI nonCombInput
+        vexrInitStage1 vPtr nonCombInputFFI outputFFI
+        peek outputFFI
+
+    {-# NOINLINE initStage2 #-}
+    initStage2 vPtr combInput =
+      alloca $ \combInputFFI -> do
+        poke combInputFFI combInput
+        vexrInitStage2 vPtr combInputFFI
+
+    {-# NOINLINE stepRising #-}
+    stepRising vPtr fsSinceLastEvent nonCombInput =
+      alloca $ \nonCombInputFFI -> alloca $ \outputFFI -> do
+        poke nonCombInputFFI nonCombInput
+        vexrStepRisingEdge vPtr fsSinceLastEvent nonCombInputFFI outputFFI
+        peek outputFFI
+
+    {-# NOINLINE stepFalling #-}
+    stepFalling vPtr fsSinceLastEvent combInput =
+      alloca $ \combInputFFI -> do
+        poke combInputFFI combInput
+        vexrStepFallingEdge vPtr fsSinceLastEvent combInputFFI
+
+    shutDown = vexrShutdown
+
+  pure (v, initStage1, initStage2, stepRising, stepFalling, shutDown)

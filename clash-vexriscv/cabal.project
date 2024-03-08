@@ -8,8 +8,6 @@ packages:
 
 write-ghc-environment-files: always
 
-with-compiler: ghc-9.0.2
-
 tests: True
 
 
@@ -49,9 +47,9 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-protocols.git
-  tag: f7ea04834d396669fe4ef404b03541601a68b136
+  tag: eb76cd1be746ae91beff60c0f16d8c1dd888662c
 
 source-repository-package
   type: git
   location: https://github.com/cchalmers/circuit-notation.git
-  tag: 618e37578e699df235f2e7150108b6401731919b
+  tag: 19b386c4aa3ff690758ae089c7754303f3500cc9
