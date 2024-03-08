@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022-2023 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
@@ -17,11 +17,10 @@ import System.Exit (exitFailure)
 import System.FilePath
 import System.IO
 import System.IO.Temp (withSystemTempFile)
-
 import Test.Tasty
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
 
-import Utils.ProgramLoad (loadProgram)
+import Utils.ProgramLoad (loadProgramDmem)
 import Utils.Cpu (cpu)
 
 
@@ -35,11 +34,12 @@ runProgramExpect ::
   Assertion
 runProgramExpect act n expected = withSystemTempFile "ELF" $ \fp _ -> do
   act fp
-  (iMem, dMem) <- withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $ loadProgram fp
+  (iMem, dMem) <- withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $
+    loadProgramDmem fp
 
   let _all@(unbundle -> (_circuit, writes, _iBus, _dBus)) =
         withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $
-          bundle (cpu iMem dMem)
+          bundle (cpu Nothing iMem dMem)
 
   let output = L.take (BS.length expected) $
         flip mapMaybe (sampleN_lazy n writes) $ \case
@@ -127,8 +127,10 @@ main = do
   let tests =
         testGroup
           "VexRiscv Tests"
-          [ testGroup "Debug builds" debugTestCases,
-            testGroup "Release builds" releaseTestCases
+          [ testGroup "Debug builds" debugTestCases
+          , testGroup "Release builds" releaseTestCases
+          -- XXX: Disabled, we need to add OpenOCD + GDB to CI (or use the Nix shell?)
+          -- , Jtag.tests
           ]
 
   defaultMain tests

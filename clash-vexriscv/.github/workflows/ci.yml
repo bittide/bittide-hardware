@@ -131,7 +131,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cabal/store
+            ~/.local/state/cabal/store/
           key: packages-cachebust-2-${{ matrix.ghc }}-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
           restore-keys: packages-cachebust-2-${{ matrix.ghc }}
 
@@ -172,6 +172,10 @@ jobs:
         with:
           name: vexriscv-test-binaries
 
+      - name: Work around dubious owner error
+        run: |
+          git config --global --add safe.directory "$(pwd)"
+
       - name: Extract VexRiscv Integration Tests
         run: |
           tar -x -f vexriscv-test-binaries.tar
@@ -183,3 +187,7 @@ jobs:
       - name: Run `clash-vexriscv-sim` unittests
         run: |
           cabal run clash-vexriscv-sim:unittests
+
+      - name: Run `clash-vexriscv-sim` HDL test
+        run: |
+          cabal run clash-vexriscv-sim:hdl-test

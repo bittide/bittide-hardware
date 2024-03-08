@@ -13,5 +13,6 @@ opt-level = "z"
 [workspace]
 members = [
   "clash-vexriscv-sim/test-programs",
+  "debug-test",
 ]
 resolver = "2"

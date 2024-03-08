@@ -5,18 +5,25 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
+
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module Utils.Cpu where
 
 import Clash.Prelude
 
 import Protocols.Wishbone
 import VexRiscv
+import VexRiscv.JtagTcpBridge as JTag
 import VexRiscv.VecToTuple (vecToTuple)
 
 import GHC.Stack (HasCallStack)
 
-import Utils.ProgramLoad (Memory)
+import Utils.ProgramLoad (Memory, DMemory)
 import Utils.Interconnect (interconnectTwo)
+import Clash.Explicit.Prelude (unsafeOrReset)
+
+createDomain vXilinxSystem{vName="Basic50", vPeriod= hzToPeriod 50_000_000}
 
 {-
 Address space
@@ -26,10 +33,16 @@ Address space
 0b0100 0x4000_0000 data memory
 -}
 cpu ::
-  (HasCallStack, HiddenClockResetEnable dom) =>
-  Memory dom ->
-  Memory dom ->
-  ( Signal dom Output,
+  ( HasCallStack
+  , HiddenClockResetEnable dom
+  -- XXX: VexRiscv responds asynchronously to the reset signal. Figure out how
+  --      convenient it is to use this within a design with synchronous resets.
+  -- , HasAsynchronousReset dom
+  ) =>
+  Maybe Integer ->
+  DMemory dom ->
+  DMemory dom ->
+  ( Signal dom CpuOut,
     -- writes
     Signal dom (Maybe (BitVector 32, BitVector 32)),
     -- iBus responses
@@ -37,27 +50,59 @@ cpu ::
     -- dBus responses
     Signal dom (WishboneS2M (BitVector 32))
   )
-cpu bootIMem bootDMem = (output, writes, iS2M, dS2M)
+cpu jtagPort bootIMem bootDMem =
+  ( output
+  , writes
+  , iS2M
+  , dS2M
+  )
   where
-    output = vexRiscv input
+    (output, jtagOut) = vexRiscv hasClock (hasReset `unsafeOrReset` jtagReset) input jtagIn
+
+    jtagReset =
+      unsafeFromActiveHigh $ register False $
+        bitToBool . debugReset <$> jtagOut
+
+    jtagIn = case jtagPort of
+      Just port -> vexrJtagBridge (fromInteger port) jtagOut
+      Nothing -> pure JTag.defaultIn
+
+    {-
+    00000000 - dummy area
+    20000000 - instruction memory
+    40000000 - data memory
+    -}
+
+    -- The I-bus is only split once, for the D-mem and everything below.
+    (iS2M, vecToTuple . unbundle -> (iMemIM2S, dMemIM2S)) = interconnectTwo
+      (unBusAddr . iBusWbM2S <$> output)
+      ((0x0000_0000, iMemIS2M) :> (0x4000_0000, dMemIS2M) :> Nil)
+
+    -- Because the dummy region should never be accessed by the instruction bus
+    -- it's just "ignored"
+    (iMemIS2M, iMemDS2M) = bootIMem (mapAddr (\x -> complement 0x2000_0000 .&. x) <$> iMemIM2S) iMemDM2S
+
+    -- needed for 'writes' below
     dM2S = dBusWbM2S <$> output
 
-    iM2S = unBusAddr . iBusWbM2S <$> output
-
-    iS2M = bootIMem (mapAddr (\x -> x - 0x2000_0000) <$> iM2S)
-
-    dummy = dummyWb
-
-    dummyS2M = dummy dummyM2S
-    bootDS2M = bootDMem bootDM2S
-
-    (dS2M, vecToTuple . unbundle -> (dummyM2S, bootDM2S)) = interconnectTwo
+    -- because of the memory map having the dummy at 0x0.., then instructions
+    -- and then data memory, the D-bus is split in an "upper" and "lower" region,
+    -- where the "upper" region is just the D-mem, the "lower" region gets split
+    -- again for the instruction memory and the dummy
+    (dS2M, vecToTuple . unbundle -> (dLowerRegionM2S, dUpperRegionM2S)) = interconnectTwo
       (unBusAddr <$> dM2S)
-      ((0x0000_0000, dummyS2M) :> (0x4000_0000, bootDS2M) :> Nil)
+      ((0x0000_0000, dLowerRegionS2M) :> (0x4000_0000, dUpperRegionS2M) :> Nil)
+
+    (dLowerRegionS2M, vecToTuple . unbundle -> (dDummyM2S, iMemDM2S)) = interconnectTwo
+      dLowerRegionM2S
+      ((0x0000_0000, dDummyS2M) :> (0x2000_0000, iMemDS2M) :> Nil)
+
+    (dUpperRegionS2M, dMemIS2M) = bootDMem dUpperRegionM2S dMemIM2S
+    dDummyS2M = dummyWb dDummyM2S
 
     input =
       ( \iBus dBus ->
-          Input
+          CpuIn
             { timerInterrupt = low,
               externalInterrupt = low,
               softwareInterrupt = low,
