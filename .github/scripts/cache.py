@@ -51,18 +51,20 @@ CLEAR_AFTER_DAYS=7
 CLEAR_AFTER=f"{CLEAR_AFTER_DAYS}d00h00m00s"
 TOUCH_AFTER=datetime.timedelta(days=1)
 
+GLOBAL_CACHE_BUST = 0
+
 CARGO_CACHE_BUST = 2
-CARGO_KEY_PREFIX = f"cargo-{CARGO_CACHE_BUST}-"
+CARGO_KEY_PREFIX = f"cargo-g{GLOBAL_CACHE_BUST}-l{CARGO_CACHE_BUST}-"
 CARGO_KEY_PATTERNS = ("**/Cargo.lock", "**/Cargo.toml", "**/rust-toolchain.toml")
 CARGO_CACHE_PATTERNS = ("~/.cargo",)
 
 CABAL_CACHE_BUST = 2
-CABAL_KEY_PREFIX = f"cabal-{CABAL_CACHE_BUST}-"
+CABAL_KEY_PREFIX = f"cabal-g{GLOBAL_CACHE_BUST}-l{CABAL_CACHE_BUST}-"
 CABAL_KEY_PATTERNS = ("**/cabal.project", "**/cabal.project.freeze")
 CABAL_CACHE_PATTERNS = ("~/.cabal-nix",)
 
 BUILD_CACHE_BUST = 2
-BUILD_KEY_PREFIX = f"build-products-{BUILD_CACHE_BUST}-"
+BUILD_KEY_PREFIX = f"build-products-g{GLOBAL_CACHE_BUST}-l{BUILD_CACHE_BUST}-"
 BUILD_CACHE_PATTERNS = (
     f"{PWD}/_build/",
     f"{PWD}/clash-vexriscv/clash-vexriscv/build_out_dir/",
