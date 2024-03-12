@@ -12,9 +12,9 @@ import Clash.Explicit.Prelude
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Ila
 import Clash.Cores.Xilinx.Extra (ibufds)
-import Clash.Hitl (HitlTests, allFpgas, testsFromEnum, hitlVioBool, hitlVio, noConfigTest)
 
 import Bittide.Instances.Domains
+import Bittide.Hitl (HitlTests, allFpgas, testsFromEnum, hitlVioBool, hitlVio, noConfigTest)
 
 type TestStart = Bool
 data TestState = Busy | Done TestSuccess

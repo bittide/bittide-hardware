@@ -3,11 +3,12 @@
 -- SPDX-License-Identifier: CC0-1.0
 
 packages:
+  bittide-experiments/
   bittide-extra/
   bittide-instances/
   bittide-shake/
+  bittide-tools/
   bittide/
-  elastic-buffer-sim/
 
   clash-vexriscv/clash-vexriscv/
 
@@ -34,6 +35,9 @@ package clash-prelude
 package bittide
   ghc-options: +RTS -xp -RTS
 
+package bittide-experiments
+  ghc-options: +RTS -xp -RTS
+
 package bittide-extra
   ghc-options: +RTS -xp -RTS
 
@@ -43,13 +47,13 @@ package bittide-instances
 package bittide-shake
   ghc-options: +RTS -xp -RTS
 
+package bittide-tools
+  ghc-options: +RTS -xp -RTS
+
 package clash-vexriscv
   ghc-options: +RTS -xp -RTS
 
 package clash-vexriscv-sim
-  ghc-options: +RTS -xp -RTS
-
-package elastic-buffer-sim
   ghc-options: +RTS -xp -RTS
 
 -- index state, to go along with the cabal.project.freeze file. update the index

@@ -12,7 +12,6 @@ module Bittide.Instances.Hitl.FincFdec where
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Extra (ibufds)
 import Clash.Explicit.Prelude
-import Clash.Hitl (HitlTests, testsFromEnum, hitlVio, singleFpga)
 import Clash.Prelude (withClockResetEnable)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 
@@ -20,6 +19,7 @@ import Bittide.Arithmetic.Time
 import Bittide.Counter (domainDiffCounter)
 import Bittide.ClockControl (SpeedChange(NoChange, SlowDown, SpeedUp), speedChangeToFincFdec)
 import Bittide.ClockControl.Si539xSpi (si539xSpi, ConfigState(Finished))
+import Bittide.Hitl (HitlTests, testsFromEnum, hitlVio, singleFpga)
 import Bittide.Instances.Domains
 
 import Data.Maybe (isJust)

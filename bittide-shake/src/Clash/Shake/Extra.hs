@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -67,7 +67,6 @@ clashCmd buildDir hdl topName extraArgs =
  where
   (modName, funcName) = splitName topName
   pkgName = "bittide-instances"
-
 
 -- | Fully qualified name to a function. E.g. @Bittide.Foo.topEntity@.
 type TargetName = String

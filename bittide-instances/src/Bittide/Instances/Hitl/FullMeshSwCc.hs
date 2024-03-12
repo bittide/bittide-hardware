@@ -55,6 +55,8 @@ import Bittide.ProcessingElement.Util (memBlobsFromElf)
 import Bittide.SharedTypes (ByteOrder(BigEndian))
 import Bittide.Transceiver
 
+import Bittide.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
+
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Pnr.MVPs (stickyBits, speedChangeToPins, FINC, FDEC)
 
@@ -62,7 +64,6 @@ import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
-import Clash.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
