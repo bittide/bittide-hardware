@@ -73,7 +73,6 @@ import Clash.Xilinx.ClockGen
 
 import Protocols
 import Protocols.Wishbone
-import Protocols.Internal
 
 type NodeCount = 8 :: Nat
 
@@ -95,9 +94,6 @@ c_CLOCK_PATHS =
 -- domain encodes them as related.
 type TransceiverWires dom = Vec 7 (Signal dom (BitVector 1))
 
-unitCS :: CSignal dom ()
-unitCS = CSignal (pure ())
-
 -- | Instantiates a RiscV core that copies instructions coming from a hardware
 -- implementation of Callisto (see 'fullMeshHwTest') and copies it to a register
 -- tied to FINC/FDEC.
@@ -114,14 +110,14 @@ fullMeshRiscvCopyTest ::
   )
 fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
  where
-  (_, CSignal fIncDec) = toSignals
+  (_, fIncDec) = toSignals
     ( circuit $ \unit -> do
       [wbA, wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< unit
       fIncDecCallisto -< wbA
       (fIncDec, _allStable) <- withClockResetEnable clk rst enableGen $
         clockControlWb margin framesize (pure $ complement 0) dataCounts -< wbB
       idC -< fIncDec
-    ) ((), unitCS)
+    ) ((), pure ())
 
   fIncDecCallisto ::
     forall aw nBytes .

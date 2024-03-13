@@ -68,7 +68,6 @@ import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
 import Protocols
-import Protocols.Internal
 
 type NodeCount = 8 :: Nat
 
@@ -90,9 +89,6 @@ c_CLOCK_PATHS =
 -- domain encodes them as related.
 type TransceiverWires dom = Vec 7 (Signal dom (BitVector 1))
 
-unitCS :: CSignal dom ()
-unitCS = CSignal (pure ())
-
 -- | Instantiates a RiscV core
 fullMeshRiscvTest ::
   forall dom .
@@ -106,13 +102,13 @@ fullMeshRiscvTest ::
   )
 fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
  where
-  (_, CSignal fIncDec) = toSignals
+  (_, fIncDec) = toSignals
     ( circuit $ \unit -> do
       [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< unit
       (fIncDec, _allStable) <- withClockResetEnable clk rst enableGen $
         clockControlWb margin framesize (pure $ complement 0) dataCounts -< wbB
       idC -< fIncDec
-    ) ((), unitCS)
+    ) ((), pure ())
 
   margin = d2
 

@@ -24,7 +24,6 @@ import Data.Maybe
 import Language.Haskell.TH
 import Project.FilePath
 import Protocols
-import Protocols.Internal(CSignal(..))
 import System.FilePath
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -51,7 +50,7 @@ case_time_rust_self_test =
   ena = enableGen
   simResult = fmap (asciiToChar . fromIntegral) $ catMaybes $ sampleN 1_000_000 uartStream
   (uartStream, _, _) = withClockResetEnable (clockGen @Basic50) rst ena $ uart baud uartTx (pure Nothing)
-  (_, CSignal uartTx) = dut baud (clockToDiffClock clk) rst (CSignal $ pure 0, CSignal $ pure ())
+  (_, uartTx) = dut baud (clockToDiffClock clk) rst (pure 0, pure ())
 
 -- | A simple instance containing just VexRisc and UART as peripheral.
 -- Runs the `hello` binary from `firmware-binaries`.
@@ -61,8 +60,8 @@ dut ::
   SNat baud ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "CPU_RESET" ::: Reset dom ->
-  ("USB_UART_TX" ::: CSignal dom Bit, CSignal dom ()) ->
-  (CSignal dom (), "USB_UART_RX" ::: CSignal dom Bit)
+  ("USB_UART_TX" ::: Signal dom Bit, Signal dom ()) ->
+  (Signal dom (), "USB_UART_RX" ::: Signal dom Bit)
 dut baud diffClk rst_in =
   toSignals $ withClockResetEnable clk200 rst200 enableGen $
     circuit $ \uartRx -> do
