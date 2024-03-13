@@ -27,6 +27,7 @@ import Data.Maybe (isJust)
 import qualified Bittide.ClockControl.Si5395J as Si5395J
 
 data TestState = Busy | Fail | Success
+  deriving (Generic, NFDataX, BitPack)
 data Test
   -- | Keep pressing FDEC, see if counter falls below certain threshold
   = FDec
@@ -36,7 +37,7 @@ data Test
   | FDecInc
   -- | 'FInc' test followed by an 'FDec' one
   | FIncDec
-  deriving (Enum, Generic, NFDataX, Bounded, BitPack, ShowX, Show)
+  deriving (Enum, Generic, NFDataX, Bounded, BitPack, ShowX, Show, Eq)
 
 -- | Counter threshold after which a test is considered passed/failed. In theory
 -- clocks can diverge at +-20 kHz (at 200 MHz), which gives the tests 500 ms to

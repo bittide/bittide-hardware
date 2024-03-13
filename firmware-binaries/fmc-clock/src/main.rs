@@ -6,10 +6,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use core::panic::PanicInfo;
-use ufmt::uwriteln;
+use ufmt::{derive::uDebug, uwriteln};
 
 use bittide_sys::{
     clock_config::{self, ConfigEntry, ParserState},
+    data_counts::DataCounts,
     i2c::I2CError,
     si534x::SI534X,
     time::{Clock, Duration},
@@ -18,12 +19,73 @@ use bittide_sys::{
 #[cfg(not(test))]
 use riscv_rt::entry;
 
+#[derive(uDebug)]
+pub enum TestState {
+    Busy,
+    Fail,
+    Success,
+}
+
+#[derive(uDebug)]
+pub struct ControlRegister {
+    addr : *mut u8,
+    clock_init_done: bool,
+    test_state: TestState,
+}
+
+impl ControlRegister {
+    pub fn new(base_addr: *mut u8) -> ControlRegister {
+        ControlRegister {
+            addr: base_addr,
+            clock_init_done: false,
+            test_state: TestState::Busy,
+        }
+    }
+
+    pub fn set_clock_init_done(&mut self) {
+        self.clock_init_done = true;
+        self.update();
+    }
+
+    pub fn set_test_state(&mut self, ts: TestState) {
+        self.test_state = ts;
+        self.update();
+    }
+
+    fn update(&mut self) {
+        let mut p:u8 = 0x00;
+        if self.clock_init_done {
+            p |= 0b100;
+        }
+        match self.test_state {
+            TestState::Busy => p |= 0b000,
+            TestState::Fail => p |= 0b001,
+            TestState::Success => p |= 0b010,
+        }
+        unsafe { self.addr.write_volatile(p)};
+    }
+}
+
+pub enum Test {
+    Idle,
+    /// Keep pressing FDEC, see if counter falls below certain threshold
+    FDec,
+    /// Keep pressing FINC, see if counter exceeds certain threshold
+    FInc,
+    /// 'FDec' test followed by an 'FInc' one
+    FDecInc,
+    /// 'FInc' test followed by an 'FDec' one
+    FIncDec,
+}
+
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let clock = unsafe { Clock::new((0b001 << 29) as *const u32) };
-    let mut si534x = unsafe { SI534X::new((0b011 << 29) as *mut u8, 0x69) };
-    let clock_init_done_addr = (0b101 << 29) as *mut u8;
-    let mut uart = unsafe { Uart::new((0b110 << 29) as *mut u8) };
+    let clock = unsafe { Clock::new((0b11_000 << 27) as *const u32) };
+    let mut si534x = unsafe { SI534X::new((0b11_001 << 27) as *mut u8, 0x69) };
+    let mut control_reg = ControlRegister::new((0b11_010 << 27) as *mut u8);
+    let status_reg_addr = (0b11_011 << 27) as *mut u8;
+    let datacounts = unsafe { DataCounts::from_base_addr((0b11_100 << 27) as *mut u32)};
+    let mut uart = unsafe { Uart::new((0b11_101 << 27) as *mut u8) };
 
     uwriteln!(uart, "Starting RiscV core").unwrap();
 
@@ -93,7 +155,9 @@ fn main() -> ! {
     uwriteln!(uart, "Configured clock chip").unwrap();
 
     // Communicate to hardware that the CPU is done programming the I2C chip
-    unsafe { clock_init_done_addr.write_volatile(1) };
+    control_reg.set_clock_init_done();
+
+    // Do the FInc FDec tests
 
     uwriteln!(uart, "Going in echo mode!").unwrap();
     loop {
