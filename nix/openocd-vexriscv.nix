@@ -19,9 +19,13 @@ pkgs.stdenv.mkDerivation rec {
   src = pkgs.fetchgit {
     url = "https://github.com/SpinalHDL/openocd_riscv.git";
     rev = "058dfa50d625893bee9fecf8d604141911fac125";
-    sha256 = "sha256-LbT0L+VDFLlSrLkHa0P5pfmZHJI5uaMazrLXj8WFpck=";
+    sha256 = "sha256-UuX4Zfr9DiJx60nvBAv+9xCbWXExrk5KNSC5V5e4rsw=";
     fetchSubmodules = true;
     deepClone = true;
+    postFetch = ''
+      # See: https://github.com/NixOS/nixpkgs/issues/8567#issuecomment-1846499599
+      find "$out/" -type d -name '.git' | xargs rm -rf
+    '';
   };
 
   installPhase = ''
