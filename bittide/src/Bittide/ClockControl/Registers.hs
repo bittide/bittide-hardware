@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -11,7 +11,6 @@ module Bittide.ClockControl.Registers where
 import Clash.Prelude
 
 import Protocols
-import Protocols.Internal
 import Protocols.Wishbone
 
 import Bittide.ClockControl
@@ -66,7 +65,7 @@ clockControlWb ::
     (CSignal dom ("FINC" ::: Bool, "FDEC" ::: Bool), CSignal dom ("ALL_STABLE" ::: Bool))
 clockControlWb margin framesize linkMask counters = Circuit go
  where
-  go (wbM2S, _) = (wbS2M, (CSignal fIncDec3, CSignal (all (==True) <$> (fmap stable <$> stabilityIndications))))
+  go (wbM2S, _) = (wbS2M, (fIncDec3, all (==True) <$> (fmap stable <$> stabilityIndications)))
    where
     stabilityIndications = bundle $ stabilityChecker margin framesize <$> counters
     readVec = dflipflop <$> (

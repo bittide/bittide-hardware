@@ -15,7 +15,6 @@ import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Language.Haskell.TH (runIO)
 import Protocols
-import Protocols.Internal
 import Protocols.Wishbone
 import System.FilePath
 
@@ -41,17 +40,16 @@ vexRiscvInner = stateToDoneSuccess <$> status
     stateToDoneSuccess Success = (True, True)
     stateToDoneSuccess Fail    = (True, False)
 
-    unitC = CSignal (pure ())
-    (_, CSignal status) = circuitFn ((), unitC)
+    (_, status) = circuitFn ((), pure ())
 
     Circuit circuitFn = circuit $ \unit -> do
         [wb] <- processingElement peConfig -< unit
         statusRegister -< wb
 
     statusRegister :: Circuit (Wishbone dom 'Standard 30 (Bytes 4)) (CSignal dom TestStatus)
-    statusRegister = Circuit $ \(fwd, CSignal _) ->
+    statusRegister = Circuit $ \(fwd, _) ->
         let (unbundle -> (m2s, st)) = mealy go Running fwd
-        in (m2s, CSignal st)
+        in (m2s, st)
       where
         go st WishboneM2S{..}
           -- out of cycle, no response, same state

@@ -24,7 +24,6 @@ import Data.Constraint.Nat.Extra
 import Data.Maybe
 
 import Protocols
-import Protocols.Internal(CSignal(..))
 import Protocols.Wishbone
 
 import qualified Protocols.Df as Df
@@ -89,11 +88,8 @@ dupWb ::
     )
 dupWb = Circuit go
   where
-    go (m2s0, (s2m0, (CSignal _, CSignal _))) =
-      (s2m0, (m2s0, (CSignal m2s0, CSignal s2m0)))
-
-unitCS :: CSignal dom ()
-unitCS = CSignal (pure ())
+    go (m2s0, (s2m0, _)) =
+      (s2m0, (m2s0, (m2s0, s2m0)))
 
 -- | An ILA monitoring all M2S and S2M signals on a Wishbone bus. Installs two
 -- extra signals 'capture' and 'trigger' that can be used as defaults for triggering
@@ -209,7 +205,7 @@ singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
 -- This function is unsafe because data can be lost when the input is @Just _@ and
 -- the receiving circuit tries to apply back pressure.
 unsafeToDf :: Circuit (CSignal dom (Maybe a)) (Df dom a)
-unsafeToDf = Circuit $ \ (CSignal cSig, _) -> (CSignal $ pure (), Df.maybeToData <$> cSig)
+unsafeToDf = Circuit $ \ (cSig, _) -> (pure (), Df.maybeToData <$> cSig)
 
 -- | 'Df' version of 'uart'.
 uartDf ::
@@ -226,9 +222,9 @@ uartDf ::
     )
 uartDf baud = Circuit go
  where
-  go ((request, ~(CSignal rxBit)),_) =
-    ( (Ack <$> ack, CSignal $ pure ())
-    , (CSignal received, CSignal txBit) )
+  go ((request, rxBit),_) =
+    ( (Ack <$> ack, pure ())
+    , (received, txBit) )
    where
     (received, txBit, ack) = uart baud rxBit (Df.dataToMaybe <$> request)
 
@@ -281,14 +277,12 @@ uartWb txDepth@SNat rxDepth@SNat baud = circuit $ \(wb, uartRx) -> do
       , CSignal dom (Bool, Bool) -- (rxEmpty, txFull)
       )
   wbToDf = Circuit $
-    bimap (third CSignal . unbundle) (second CSignal . unbundle) .
+    bimap unbundle unbundle .
     unbundle .
     fmap go .
     bundle .
-    bimap (bundle . third unCSignal) (bundle . second unCSignal)
+    bimap bundle bundle
    where
-    third f (a, b, c) = (a, b, f c)
-    unCSignal (CSignal s) = s
     go ((WishboneM2S{..}, Df.dataToMaybe -> rxData, fifoFull -> txFull), (Ack txAck, _))
       -- not in cycle
       | not (busCycle && strobe)
@@ -361,7 +355,7 @@ fifoWithMeta ::
   Circuit (Df dom a) (Df dom a, CSignal dom (FifoMeta depth))
 fifoWithMeta depth@SNat = Circuit circuitFunction
  where
-  circuitFunction (fifoIn, (readyIn, _)) = (Ack <$> readyOut, (fifoOut, CSignal fifoMeta))
+  circuitFunction (fifoIn, (readyIn, _)) = (Ack <$> readyOut, (fifoOut, fifoMeta))
    where
     circuitActive = unsafeToActiveLow hasReset .&&. fromEnable hasEnable
     bramOut =

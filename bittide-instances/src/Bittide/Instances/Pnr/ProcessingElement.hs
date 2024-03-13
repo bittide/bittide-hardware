@@ -12,7 +12,6 @@ import Clash.Explicit.Prelude(orReset, noReset)
 import Clash.Xilinx.ClockGen
 import Language.Haskell.TH
 import Protocols
-import Protocols.Internal
 import System.FilePath
 
 import Bittide.DoubleBufferedRam
@@ -28,8 +27,8 @@ import Project.FilePath
 vexRiscUartHello ::
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "CPU_RESET" ::: Reset Basic200 ->
-  ("USB_UART_TX" ::: CSignal Basic200 Bit, CSignal Basic200 ()) ->
-  (CSignal Basic200 (), "USB_UART_RX" ::: CSignal Basic200 Bit)
+  ("USB_UART_TX" ::: Signal Basic200 Bit, Signal Basic200 ()) ->
+  (Signal Basic200 (), "USB_UART_RX" ::: Signal Basic200 Bit)
 vexRiscUartHello diffClk rst_in =
   toSignals $ withClockResetEnable clk200 rst200 enableGen $
     circuit $ \uartRx -> do
