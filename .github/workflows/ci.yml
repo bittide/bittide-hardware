@@ -165,7 +165,7 @@ jobs:
       - name: Generate matrix
         run: |
           if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
-            cp .github/simulation/all.json sim.json
+            cp .github/simulation/safe.json sim.json
           else
             cp .github/simulation/staging.json sim.json
           fi
