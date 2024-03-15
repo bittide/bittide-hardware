@@ -538,7 +538,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
       -- trigger as soon as we start
       (syncStart .&&. (not <$> skipTest))
       -- capture on relevant data changes
-      (isJust <$> captureCond)
+      ((isJust <$> captureCond) .&&. (not <$> skipTest))
       -- capture the capture condition
       (fromMaybe UntilTrigger <$> captureCond)
       -- capture the globally synchronized timestamp

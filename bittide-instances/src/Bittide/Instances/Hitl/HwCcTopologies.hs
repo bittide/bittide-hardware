@@ -468,7 +468,8 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       disabled
       sysClk
       -- done
-      (skip .||. endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp)
+      (startTest .&&.
+         (skip .||. endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp))
       -- success
       (skip .||.
         (allStable .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllUp))))
@@ -498,8 +499,13 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
 tests :: HitlTests TestConfig
 tests = Map.fromList
-  [ ( testTopology "Diamond" diamond
-    )
+  [ testTopology "diamond"     diamond
+  , testTopology "complete"  $ complete d3
+  , testTopology "cycle"     $ cyclic d5
+  , testTopology "torus2d"   $ torus2d d2 d3
+  , testTopology "star"      $ star d7
+  , testTopology "line"      $ line d4
+  , testTopology "hourglass" $ hourglass d3
   ]
  where
   testTopology ::
@@ -509,7 +515,7 @@ tests = Map.fromList
   testTopology name graph =
     ( name
     , toList (imap testData $ linkMasks @n graph)
-      <> [ (i, disabled)
+      <> [ (fromInteger i, disabled)
          | i <- [natToNum @n, natToNum @n + 1 .. natToNum @(FpgaCount - 1)]
          ]
     )
