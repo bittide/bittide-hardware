@@ -410,6 +410,12 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
  where
   result = callistoClockControl clk rst enableGen ccc mask ebs
 
+  filterCounts vMask vCounts = flip map (zip vMask vCounts) $
+    \(isActive, count) -> if isActive == high then count else 0
+
+  filterIndicators vMask vCounts = flip map (zip vMask vCounts) $
+    \(isActive, ind) -> if isActive == high then ind else StabilityIndication False False
+
   maxGeqPlusApp = maxGeqPlus @1
     @(DivRU ScheduledCapturePeriod (Max 1 (DomainPeriod dyn)))
     @(Div (ScheduledCaptureCycles dyn) 10)
@@ -433,7 +439,8 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
           Done {}   -> ToDone
 
         height = SNat @AccWindowHeight
-        idcs = unbundle (stability <$> result)
+        idcs = unbundle
+          (filterIndicators <$> fmap bv2v mask <*> (stability <$> result))
 
         -- get the points in time where the monitored values change
         stableUpdates  = changepoints clk rst enableGen <$> (fmap stable <$> idcs)
@@ -468,7 +475,10 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
            in if trigger || any ((> half) . abs) diffs
               then (curDataCounts,    (True,  truncDiffs))
               else (storedDataCounts, (False, repeat 0))
-     in mealyB clk rst enableGen transF (repeat 0) (scheduledCapture, bundle ebs)
+     in mealyB clk rst enableGen transF (repeat 0)
+          ( scheduledCapture
+          , filterCounts <$> fmap bv2v mask <*> bundle ebs
+          )
 
   -- produce at least two calibration captures
   calibrating = unsafeToActiveLow rst .&&.
