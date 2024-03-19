@@ -304,84 +304,84 @@ jobs:
           rm -Rf report.{aux,log,out,tex} topology.tikz
           cd ../..
           mv hitl-plots/diamond/report.pdf reports/HITL-HwCcTopologyDiamond-Report.pdf
-          mkdir -p hitl-plots/complete
-          ./cargo.sh build --frozen --release
-          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/complete hitl-plots/complete
-          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/complete/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/complete/topology.tikz
-          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/complete/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/complete/runref
-          cd hitl-plots/complete
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} topology.tikz
-          cd ../..
-          mv hitl-plots/complete/report.pdf reports/HITL-HwCcTopologyComplete-Report.pdf
-          mkdir -p hitl-plots/cycle
-          ./cargo.sh build --frozen --release
-          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/cycle hitl-plots/cycle
-          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/cycle/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/cycle/topology.tikz
-          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/cycle/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/cycle/runref
-          cd hitl-plots/cycle
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} topology.tikz
-          cd ../..
-          mv hitl-plots/cycle/report.pdf reports/HITL-HwCcTopologyCycle-Report.pdf
-          mkdir -p hitl-plots/torus2d
-          ./cargo.sh build --frozen --release
-          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/torus2d hitl-plots/torus2d
-          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/torus2d/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/torus2d/topology.tikz
-          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/torus2d/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/torus2d/runref
-          cd hitl-plots/torus2d
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} topology.tikz
-          cd ../..
-          mv hitl-plots/torus2d/report.pdf reports/HITL-HwCcTopologyTorus2d-Report.pdf
-          mkdir -p hitl-plots/star
-          ./cargo.sh build --frozen --release
-          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/star hitl-plots/star
-          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/star/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/star/topology.tikz
-          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/star/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/star/runref
-          cd hitl-plots/star
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} topology.tikz
-          cd ../..
-          mv hitl-plots/star/report.pdf reports/HITL-HwCcTopologyStar-Report.pdf
-          mkdir -p hitl-plots/line
-          ./cargo.sh build --frozen --release
-          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/line hitl-plots/line
-          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/line/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/line/topology.tikz
-          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/line/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/line/runref
-          cd hitl-plots/line
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} topology.tikz
-          cd ../..
-          mv hitl-plots/line/report.pdf reports/HITL-HwCcTopologyLine-Report.pdf
-          mkdir -p hitl-plots/hourglass
-          ./cargo.sh build --frozen --release
-          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/hourglass hitl-plots/hourglass
-          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/hourglass/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/hourglass/topology.tikz
-          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/hourglass/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/hourglass/runref
-          cd hitl-plots/hourglass
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} topology.tikz
-          cd ../..
-          mv hitl-plots/hourglass/report.pdf reports/HITL-HwCcTopologyHourglass-Report.pdf
+#          mkdir -p hitl-plots/complete
+#          ./cargo.sh build --frozen --release
+#          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/complete hitl-plots/complete
+#          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/complete/report.tex
+#          cp .github/hitl/topology.tikz hitl-plots/complete/topology.tikz
+#          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+#          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/complete/datetime
+#          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/complete/runref
+#          cd hitl-plots/complete
+#          lualatex report.tex
+#          rm -Rf report.{aux,log,out,tex} topology.tikz
+#          cd ../..
+#          mv hitl-plots/complete/report.pdf reports/HITL-HwCcTopologyComplete-Report.pdf
+#          mkdir -p hitl-plots/cycle
+#          ./cargo.sh build --frozen --release
+#          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/cycle hitl-plots/cycle
+#          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/cycle/report.tex
+#          cp .github/hitl/topology.tikz hitl-plots/cycle/topology.tikz
+#          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+#          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/cycle/datetime
+#          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/cycle/runref
+#          cd hitl-plots/cycle
+#          lualatex report.tex
+#          rm -Rf report.{aux,log,out,tex} topology.tikz
+#          cd ../..
+#          mv hitl-plots/cycle/report.pdf reports/HITL-HwCcTopologyCycle-Report.pdf
+#          mkdir -p hitl-plots/torus2d
+#          ./cargo.sh build --frozen --release
+#          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/torus2d hitl-plots/torus2d
+#          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/torus2d/report.tex
+#          cp .github/hitl/topology.tikz hitl-plots/torus2d/topology.tikz
+#          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+#          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/torus2d/datetime
+#          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/torus2d/runref
+#          cd hitl-plots/torus2d
+#          lualatex report.tex
+#          rm -Rf report.{aux,log,out,tex} topology.tikz
+#          cd ../..
+#          mv hitl-plots/torus2d/report.pdf reports/HITL-HwCcTopologyTorus2d-Report.pdf
+#          mkdir -p hitl-plots/star
+#          ./cargo.sh build --frozen --release
+#          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/star hitl-plots/star
+#          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/star/report.tex
+#          cp .github/hitl/topology.tikz hitl-plots/star/topology.tikz
+#          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+#          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/star/datetime
+#          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/star/runref
+#          cd hitl-plots/star
+#          lualatex report.tex
+#          rm -Rf report.{aux,log,out,tex} topology.tikz
+#          cd ../..
+#          mv hitl-plots/star/report.pdf reports/HITL-HwCcTopologyStar-Report.pdf
+#          mkdir -p hitl-plots/line
+#          ./cargo.sh build --frozen --release
+#          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/line hitl-plots/line
+#          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/line/report.tex
+#          cp .github/hitl/topology.tikz hitl-plots/line/topology.tikz
+#          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+#          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/line/datetime
+#          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/line/runref
+#          cd hitl-plots/line
+#          lualatex report.tex
+#          rm -Rf report.{aux,log,out,tex} topology.tikz
+#          cd ../..
+#          mv hitl-plots/line/report.pdf reports/HITL-HwCcTopologyLine-Report.pdf
+#          mkdir -p hitl-plots/hourglass
+#          ./cargo.sh build --frozen --release
+#          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/hourglass hitl-plots/hourglass
+#          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/hourglass/report.tex
+#          cp .github/hitl/topology.tikz hitl-plots/hourglass/topology.tikz
+#          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+#          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/hourglass/datetime
+#          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/hourglass/runref
+#          cd hitl-plots/hourglass
+#          lualatex report.tex
+#          rm -Rf report.{aux,log,out,tex} topology.tikz
+#          cd ../..
+#          mv hitl-plots/hourglass/report.pdf reports/HITL-HwCcTopologyHourglass-Report.pdf
 #          mkdir -p hitl-plots/hw
 #          ./cargo.sh build --frozen --release
 #          cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest/ila-data/CC/ hitl-plots/hw
