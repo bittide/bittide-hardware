@@ -30,6 +30,7 @@ module Bittide.Instances.Hitl.IlaPlot
   , PlotData(..)
   , RfStageChange(..)
     -- * ILA Plot
+  , ilaProbeNames
   , ilaPlotSetup
   , callistoClockControlWithIla
     -- * Helpers
@@ -142,7 +143,7 @@ data RfStageChange =
     -- ^ Indicates that the reframing stage changed to the @WAIT@ state.
   | ToDone
     -- ^ Indicates that the reframing stage changed to the @DONE@ state.
-  deriving (Eq, Generic, BitPack, NFDataX)
+  deriving (Eq, Generic, BitPack, Bounded, NFDataX)
 
 -- | The ILA capture type.
 data CaptureCondition =
@@ -164,7 +165,7 @@ data CaptureCondition =
   | DataChange
     -- ^ Identifies intermediate captures that are triggered by data
     -- changes.
-  deriving (Eq, Generic, NFDataX, BitPack)
+  deriving (Eq, Generic, BitPack, Bounded, NFDataX)
 
 -- | All signals, as they are required for using clock control with
 -- ILA plotting capabilities.
@@ -211,6 +212,17 @@ data IlaControl dom =
     , skipTest :: Signal dom Bool
       -- ^ Skip this test
     }
+
+-- | Names of the additional ILA plot probes.
+ilaProbeNames :: Vec 6 String
+ilaProbeNames =
+     "trigger_1"
+  :> "capture_1"
+  :> "condition"
+  :> "global"
+  :> "local"
+  :> "data"
+  :> Nil
 
 -- | The ILA plot setup controller.
 ilaPlotSetup ::
@@ -269,7 +281,13 @@ data PlotData (n :: Nat) (m :: Nat) =
     , dSpeedChange   :: SpeedChange
     , dRfStageChange :: RfStageChange
     }
-  deriving (Generic, NFDataX, BitPack)
+  deriving (Generic, BitPack, NFDataX)
+
+instance (KnownNat n, KnownNat m) => Bounded (PlotData n m) where
+  -- allow every possible bit-sequence matching the bit size of the
+  -- type
+  minBound = unpack minBound
+  maxBound = unpack maxBound
 
 -- | Accumulates over multiple @FINC@/@FDEC@s to reduce the number of
 -- captures recorded by the ILA (which are mostly jitter otherwise).
@@ -383,6 +401,10 @@ data DiffResult a =
     -- ^ Indicates that the difference against the last stored
     -- reference got to large to fit into the output type.
   deriving (Generic, BitPack, NFDataX, Functor, Eq, Ord, Show)
+
+instance Bounded a => Bounded (DiffResult a) where
+  minBound = NoReference
+  maxBound = TooLarge
 
 {-# NOINLINE callistoClockControlWithIla #-}
 -- | Wrapper on 'Bittide.ClockControl.Callisto.callistoClockControl'
@@ -524,15 +546,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
   ilaInstance :: Signal sys ()
   ilaInstance =
     setName @"ilaPlot" $ ila
-      ( ilaConfig
-           $ "trigger_1"
-          :> "capture_1"
-          :> "condition"
-          :> "global"
-          :> "local"
-          :> "data"
-          :> Nil
-      ) { depth = D16384 }
+      (ilaConfig ilaProbeNames) { depth = D16384 }
       -- the ILA must run on a stable clock
       clk
       -- trigger as soon as we start

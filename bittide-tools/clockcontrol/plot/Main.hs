@@ -2,9 +2,12 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE MagicHash #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -16,11 +19,14 @@
 module Main (main) where
 
 import Clash.Prelude
-  (BitPack(..), SNat(..), BitSize, Vec, (.|.), natToNum, shift, extend)
+  ( BitPack(..), SNat(..), BitSize, Vec, Index
+  , (.|.), (.&.), xor, natToNum, shift, extend
+  )
 
 import Clash.Signal.Internal (Femtoseconds(..))
+import Clash.Sized.Internal.BitVector (BitVector(..))
 import qualified Clash.Sized.Vector as Vec
-  (unsafeFromList, toList, repeat, zip, zipWith)
+  ((!!), unsafeFromList, toList, repeat, zip, zipWith, length)
 
 import GHC.TypeLits
 import Data.Type.Equality ((:~:)(..))
@@ -32,25 +38,26 @@ import Conduit
   ( ConduitT, Void, (.|)
   , runConduit, sourceHandle, scanlC, dropC, mapC, sinkList, yield, await
   )
-import Control.Exception (SomeException(..), Exception(..), throw, handle)
+import Control.Exception (Exception(..), throw, catch)
 import Control.Monad (forM, foldM, filterM, unless)
 import Data.ByteString.Internal (w2c)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import Data.Char (isHexDigit, digitToInt)
 import Data.Csv
-  ( FromField(..), FromRecord(..), HasHeader(..), (.!)
+  ( FromField(..), FromNamedRecord(..), (.:)
   , defaultDecodeOptions
   )
 import Data.Csv.Conduit
-  ( CsvStreamRecordParseError, CsvStreamHaltParseError(..)
-  , fromCsvStreamError
+  ( CsvStreamRecordParseError(..), CsvStreamHaltParseError(..)
+  , fromNamedCsvStreamError
   )
 import Data.List (uncons, sort)
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Proxy (Proxy(..))
+import Data.String (fromString)
 import qualified Data.Text as Text (unpack)
-import qualified Data.Vector as Vector (length)
+import qualified Data.HashMap.Strict as HashMap (size)
 import GHC.IO.Exception (IOException(..), IOErrorType(..))
 import System.IO (IOMode(..), Handle, openFile, hClose)
 import System.Directory
@@ -69,9 +76,11 @@ import Bittide.Topology
 newtype Hex a = Hex { fromHex :: a }
   deriving newtype (BitPack)
 
-instance BitPack a => FromField (Hex a) where
-  parseField bs = (unpack <$>) $ foldM pHex 0
-    $ reverse $ zip [0,1..] $ reverse (w2c <$> BS.unpack bs)
+instance (Bounded a, BitPack a) => FromField (Hex a) where
+  parseField bs = do
+    bits <- foldM pHex 0 $ reverse $ zip [0,1..] $ reverse (w2c <$> BS.unpack bs)
+    checkBounds bits
+    return $ unpack bits
    where
     pHex !a (i, c)
       | not (isHexDigit c) =
@@ -80,6 +89,22 @@ instance BitPack a => FromField (Hex a) where
           fail $ "Value is out of range: " <> BSC.unpack bs
       | otherwise =
           return $ shift a 4 .|. digitToNum c
+
+    checkBounds bits
+      | bits > roundUp (pack (maxBound @a)) =
+          fail $ "Value is greater than maximum.\n"
+              <> show bits <> " > " <> show (roundUp (pack (maxBound @a)))
+      | bits < roundDown (pack (minBound @a)) =
+          fail $ "Value is smaller than minimum.\n"
+              <> show bits <> " < " <> show (roundUp (pack (minBound @a)))
+      | otherwise =
+          return ()
+
+    roundDown :: BitVector n -> BitVector n
+    roundDown (BV m i) = BV 0 (i .&. (xor i  m))
+
+    roundUp :: BitVector n -> BitVector n
+    roundUp (BV m i) = BV 0 (i .|. m)
 
     -- 'digitToInt' produces only 16 different values. Hence, it can be
     --  extended to work for any 'Num' instance.
@@ -111,14 +136,25 @@ data Capture (n :: Nat) (m :: Nat) =
     , plotData        :: Hex (PlotData n m)
     }
 
-instance (KnownNat n, KnownNat m) => FromRecord (Capture n m) where
-  parseRecord v =
-    let len = 9 in
-    if Vector.length v /= len
-    then fail $ "Row with more than " <> show len <> " fields"
+instance (KnownNat n, KnownNat m) => FromNamedRecord (Capture n m) where
+  parseNamedRecord v =
+    if HashMap.size v /= 3 + Vec.length ilaProbeNames
+    then fail "Row with more than 8 fields"
     else Capture
-      <$> v .! 0 <*> v .! 1 <*> v .! 2 <*> v .! 3 <*> v .! 4
-      <*> v .! 5 <*> v .! 6 <*> v .! 7 <*> v .! 8
+      <$> v .: "Sample in Buffer"
+      <*> v .: "Sample in Window"
+      <*> v .: "TRIGGER"
+      <*> v .: portName 0
+      <*> v .: portName 1
+      <*> v .: portName 2
+      <*> v .: portName 3
+      <*> v .: portName 4
+      <*> v .: portName 5
+   where
+    portName = portName# ilaProbeNames
+
+    portName# :: KnownNat k => Vec k String -> Index k -> BS.ByteString
+    portName# names = fromString . (names Vec.!!)
 
 -- | A data point resulting from post processing the captured data.
 data DataPoint (n :: Nat) (m :: Nat) =
@@ -164,8 +200,9 @@ deriving newtype instance Real Femtoseconds
 deriving newtype instance Enum Femtoseconds
 deriving newtype instance Integral Femtoseconds
 
-newtype CsvParseError e = CsvParseError e deriving newtype (Show)
-instance Exception (CsvParseError CsvStreamRecordParseError)
+type CsvParseError = CsvParseError# CsvStreamRecordParseError
+data CsvParseError# e = CsvParseError Int e deriving (Show)
+instance Exception CsvParseError
 
 -- | Data post processor.
 postProcess ::
@@ -271,10 +308,10 @@ fromCsvDump  (csvHandle, csvFile) =
      -- turn the input file into a conduit source
      sourceHandle csvHandle
      -- plugin the CSV parser
-  .| fromCsvStreamError defaultDecodeOptions NoHeader toIOE
+  .| fromNamedCsvStreamError defaultDecodeOptions toIOE
      -- drop the first two header lines and ensure that the remaining
      -- data entries are valid
-  .| (dropC 2 >> checkForErrors)
+  .| (dropC 1 >> checkForErrors 0)
      -- post process the data
   .| postProcess @(n - 1) @m @CompressedBufferSize
      -- return as a list
@@ -289,10 +326,10 @@ fromCsvDump  (csvHandle, csvFile) =
     , ioe_filename    = Just csvFile
     }
 
-  checkForErrors = await >>= \case
+  checkForErrors n = await >>= \case
     Nothing        -> return ()
-    Just (Left e)  -> throw $ CsvParseError e
-    Just (Right x) -> yield x >> checkForErrors
+    Just (Left e)  -> throw $ CsvParseError n e
+    Just (Right x) -> yield x >> checkForErrors (n + 1)
 
 main :: IO ()
 main = getArgs >>= \case
@@ -309,12 +346,26 @@ main = getArgs >>= \case
           postProcessData <- do
             forM (sort dirs) $ \d -> concat <$> do
               csvFiles <- checkCsvFilesExist d <$> listDirectory d
-              forM csvFiles $ \file -> do
-                h <- openFile file ReadMode
-                rs <- handle (\SomeException{} -> return []) $ do
-                  rs <- runConduit $ fromCsvDump @n @CccBufferSize (h, file)
-                  putStrLn $ "Using " <> (takeBaseName d </> takeFileName file)
-                  return rs
+              forM csvFiles $ \f -> do
+                h <- openFile f ReadMode
+                rs <- catch
+                  (do rs <- runConduit $ fromCsvDump @n @CccBufferSize (h, f)
+                      putStrLn ("Using " <> (takeBaseName d </> takeFileName f))
+                      return rs
+                  ) $ \(err :: CsvParseError) -> case err of
+                      -- Ignore additional CSV files that may have
+                      -- been produced by other ILAs. They are
+                      -- identified via an error while parsing the
+                      -- header row.
+                      CsvParseError 0 _ -> return []
+                      CsvParseError n (CsvStreamRecordParseError msg) ->
+                        error $ unlines
+                          [ "Error while parsing"
+                          , ""
+                          , "  " <> f
+                          , ""
+                          , "Line " <> show (n + 3) <> ", " <> Text.unpack msg
+                          ]
                 hClose h
                 return (toPlotData <$> rs)
 

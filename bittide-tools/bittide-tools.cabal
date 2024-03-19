@@ -114,6 +114,7 @@ executable cc-plot
     filepath,
     text,
     typelits-witnesses,
+    unordered-containers,
     vector,
   default-extensions: ImplicitPrelude
   -- enable rtsopts so we can setup memory limits
