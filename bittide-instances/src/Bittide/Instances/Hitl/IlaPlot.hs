@@ -628,14 +628,15 @@ syncInRecover ::
 syncInRecover clk rst = curry $
   moore clk rst enableGen transF out (WaitForStart :: SyncInRec dom) . bundle
  where
-  transF WaitForStart        (True, True) = WaitForReady
-  transF WaitForStart        (_   , _   ) = WaitForStart
-  transF WaitForReady        (_   , True) = WaitForReady
-  transF WaitForReady        (_   , _   ) = WaitForChange False maxBound
-  transF (WaitForChange _ 0) (_   , True) = WaitForStart
-  transF (WaitForChange o n) (_   , i   )
-    | o == i                              = WaitForChange o (n - 1)
-    | otherwise                           = WaitForChange i maxBound
+  transF _                   (False, _   ) = WaitForStart
+  transF WaitForStart        (_    , True) = WaitForReady
+  transF WaitForStart        (_    , _   ) = WaitForStart
+  transF WaitForReady        (_    , True) = WaitForReady
+  transF WaitForReady        (_    , _   ) = WaitForChange False maxBound
+  transF (WaitForChange _ 0) (_    , True) = WaitForStart
+  transF (WaitForChange o n) (_    , i   )
+    | o == i                               = WaitForChange o (n - 1)
+    | otherwise                            = WaitForChange i maxBound
 
   out WaitForStart    = (False, False)
   out WaitForReady    = (True,  False)

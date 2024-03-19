@@ -500,7 +500,7 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 tests :: HitlTests TestConfig
 tests = Map.fromList
   [ testTopology "diamond"     diamond
---  , testTopology "complete"  $ complete d3
+  , testTopology "complete"  $ complete d3
 --  , testTopology "cycle"     $ cyclic d5
 --  , testTopology "torus2d"   $ torus2d d2 d3
 --  , testTopology "star"      $ star d7

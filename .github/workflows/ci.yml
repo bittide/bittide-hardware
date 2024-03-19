@@ -304,19 +304,19 @@ jobs:
           rm -Rf report.{aux,log,out,tex} topology.tikz
           cd ../..
           mv hitl-plots/diamond/report.pdf reports/HITL-HwCcTopologyDiamond-Report.pdf
-#          mkdir -p hitl-plots/complete
-#          ./cargo.sh build --frozen --release
-#          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/complete hitl-plots/complete
-#          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/complete/report.tex
-#          cp .github/hitl/topology.tikz hitl-plots/complete/topology.tikz
-#          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-#          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/complete/datetime
-#          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/complete/runref
-#          cd hitl-plots/complete
-#          lualatex report.tex
-#          rm -Rf report.{aux,log,out,tex} topology.tikz
-#          cd ../..
-#          mv hitl-plots/complete/report.pdf reports/HITL-HwCcTopologyComplete-Report.pdf
+          mkdir -p hitl-plots/complete
+          ./cargo.sh build --frozen --release
+          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/complete hitl-plots/complete
+          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/complete/report.tex
+          cp .github/hitl/topology.tikz hitl-plots/complete/topology.tikz
+          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/complete/datetime
+          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/complete/runref
+          cd hitl-plots/complete
+          lualatex report.tex
+          rm -Rf report.{aux,log,out,tex} topology.tikz
+          cd ../..
+          mv hitl-plots/complete/report.pdf reports/HITL-HwCcTopologyComplete-Report.pdf
 #          mkdir -p hitl-plots/cycle
 #          ./cargo.sh build --frozen --release
 #          cabal run -- bittide-tools:cc-plot artifacts/_build-hwCcTopologyTest-debug/vivado/Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest/ila-data/cycle hitl-plots/cycle
