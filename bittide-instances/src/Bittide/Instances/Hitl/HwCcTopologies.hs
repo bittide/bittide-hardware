@@ -154,9 +154,7 @@ riscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
 
   framesize = SNat @(PeriodToCycles dom (Seconds 1))
 
-  (   (_iStart, _iSize, iMem)
-    , (_dStart, _dSize, dMem)) = $(do
-
+  (iMem, dMem) = $(do
     let
       findProjectRoot :: IO FilePath
       findProjectRoot = goUp =<< getCurrentDirectory
@@ -177,7 +175,7 @@ riscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
 
     let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/clock-control-reg-cpy"
 
-    memBlobsFromElf BigEndian elfPath Nothing)
+    memBlobsFromElf BigEndian (Nothing, Nothing) elfPath Nothing)
 
   {-
     0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory

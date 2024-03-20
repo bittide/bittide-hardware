@@ -78,13 +78,15 @@ dut baud diffClk rst_in usbUartTx = usbUartRx
   (clk200 :: Clock dom, pllLock :: Reset dom) = clockWizardDifferential diffClk noReset
   rst200 = resetSynchronizer clk200 (unsafeOrReset rst_in pllLock)
 
-  ( (_iStart, _iSize, iMem)
-    , (_dStart, _dSize, dMem)) = $(do
+  (iMem, dMem) = $(do
       root <- runIO $ findParentContaining "cabal.project"
       let
         elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" True
         elfPath = elfDir </> "time_self_test"
-      memBlobsFromElf BigEndian elfPath Nothing)
+
+        iSize = 64 * 1024 -- 64 KB
+        dSize = 64 * 1024 -- 64 KB
+      memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing)
 
   peConfig =
     PeConfig (0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil)

@@ -105,8 +105,7 @@ fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
 
   framesize = SNat @(PeriodToCycles dom (Seconds 1))
 
-  (   (_iStart, _iSize, iMem)
-    , (_dStart, _dSize, dMem)) = $(do
+  (iMem, dMem) = $(do
 
     let
       findProjectRoot :: IO FilePath
@@ -126,9 +125,11 @@ fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
 
     root <- runIO findProjectRoot
 
-    let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/clock-control"
-
-    memBlobsFromElf BigEndian elfPath Nothing)
+    let
+      elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/clock-control"
+      iSize = 64 * 1024 -- 64 KB
+      dSize = 64 * 1024 -- 64 KB
+    memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing)
 
   {-
     0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
