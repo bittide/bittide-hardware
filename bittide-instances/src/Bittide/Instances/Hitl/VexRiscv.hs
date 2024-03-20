@@ -84,15 +84,16 @@ vexRiscvInner = stateToDoneSuccess <$> status
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
 
-    (   (_iStart, _iSize, iMem)
-      , (_dStart, _dSize, dMem)) = $(do
+    (iMem, dMem) = $(do
 
         root <- runIO $ findParentContaining "cabal.project"
         let
           elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" True
           elfPath = elfDir </> "processing-element-test"
+          iSize = 64 * 1024
+          dSize = 64 * 1024
 
-        memBlobsFromElf BigEndian elfPath Nothing)
+        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing)
 
 
 vexRiscvTest ::

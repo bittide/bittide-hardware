@@ -39,14 +39,14 @@ vexRiscUartHello diffClk rst_in =
  where
   (clk200, rst200_) = clockWizardDifferential diffClk noReset
   rst200 = rst200_ `orReset` rst_in
-
-  ( (_iStart, _iSize, iMem)
-    , (_dStart, _dSize, dMem)) = $(do
+  (iMem, dMem) = $(do
       root <- runIO $ findParentContaining "cabal.project"
       let
         elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" True
         elfPath = elfDir </> "hello"
-      memBlobsFromElf BigEndian elfPath Nothing)
+        iSize = 64 * 1024
+        dSize = 64 * 1024
+      memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing)
 
   peConfig =
     PeConfig (0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil)
