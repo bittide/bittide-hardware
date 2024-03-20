@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -132,10 +132,21 @@ transceiverPrbs gtrefclk freeclk rst_all_in chan clkPath rxn rxp
               (unsafeFromActiveLow $ fmap bitCoerce tx_active)
     `orReset` (unsafeFromActiveLow $ fmap bitCoerce reset_tx_done)
 
-data LinkSt = Down | Up deriving (Eq, Show, Generic, NFDataX)
+data LinkSt
+  = Down (Index 127)
+  -- ^ Link is considered down. Needs 127 cycles of \"good\" input to transition
+  -- to 'Up'.
+  | Up
+  -- ^ Link has not seen errors in at least 127 cycles.
+  deriving (Eq, Show, Generic, NFDataX)
 
-type LinkStCntr = Index 127
+isUp :: LinkSt -> Bool
+isUp Up = True
+isUp _ = False
 
+-- | Small state machine tracking whether a link is stable. A link is considered
+-- stable, if no errors were detected for a number of cycles (see "LinkSt").
+-- Whenever a bit error is detected, it immediately deasserts its output.
 linkStateTracker ::
   (KnownDomain dom, KnownNat w) =>
   Clock dom ->
@@ -143,23 +154,17 @@ linkStateTracker ::
   Signal dom (BitVector w) ->
   Signal dom Bool
 linkStateTracker clk rst =
-  fst . mooreB clk rst enableGen update genOutput initSt . (reduceOr <$>)
+  mooreB clk rst enableGen update isUp initSt . fmap (/= 0)
  where
-  initSt = (Down,0)
-  update :: (LinkSt, LinkStCntr) -> Bit -> (LinkSt, LinkStCntr)
-  update (st,cntr) anyErrs =
-    case (st,anyErrs) of
-      (Down,1) -> (Down,0)
-      (Down,_)
-        | cntr < maxBound -> (Down, cntr+1)
-        | otherwise       -> (Up, cntr)
-      (Up,1)
-        | cntr > 33 -> (Up, cntr-34)
-        | otherwise -> (Down, 0)
-      (Up,_) -> (Up, boundedAdd cntr 1)
+  initSt = Down maxBound
 
-  genOutput :: (LinkSt, LinkStCntr) -> (Bool, LinkStCntr)
-  genOutput (st, cntr) = (st == Up, cntr)
+  update :: LinkSt -> Bool -> LinkSt
+  update _  True = initSt
+  update st False =
+    case st of
+      Down 0 -> Up
+      Down n -> Down (n - 1)
+      Up -> Up
 
 prbsStimuliGen ::
   forall dom .
