@@ -8,6 +8,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -20,13 +21,11 @@ import Clash.Shake.Extra
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
 import Control.Applicative (liftA2)
-import Control.Exception (throwIO)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.Extra (ifM, unlessM)
-import Data.Char(isSpace)
 import Data.Foldable (for_)
 import Data.Function ((&))
-import Data.List (dropWhileEnd, isPrefixOf, sort)
+import Data.List (isPrefixOf, sort, uncons)
 import Data.Maybe (fromJust, isJust)
 import Development.Shake
 import Development.Shake.Classes
@@ -40,7 +39,6 @@ import System.Process (readProcess, callProcess)
 import Test.Tasty.HUnit (Assertion)
 
 import qualified Clash.Util.Interpolate as I
-import qualified Paths.Bittide.Instances as Instances (getDataFileName)
 import qualified Paths.Bittide.Shake as Shake (getDataFileName)
 import qualified System.Directory as Directory
 
@@ -70,8 +68,8 @@ ignorePatterns =
   , ".vscode"
 
   -- Used for synthesis, but not for generating Clash output:
-  , "bittide-instances/data/constraints/*.xdc"
-  , "bittide-instances/data/tcl/*.tcl"
+  , dataFilesDir </> "**" </> "*.xdc"
+  , dataFilesDir </> "**" </> "*.tcl"
   ]
 
 -- | Build directory for Shake/Vivado/Cargo (not Cabal, it ignores builddir settings)
@@ -89,23 +87,12 @@ vivadoBuildDir = buildDir </> "vivado"
 hitlBuildDir :: FilePath
 hitlBuildDir = buildDir </> "hitl"
 
+dataFilesDir :: FilePath
+dataFilesDir = buildDir </> "data"
+
 -- | List of files to watch for Cabal/Cargo cache invalidation
 watchFilesPath :: FilePath
 watchFilesPath = buildDir </> "watch_files.txt"
-
-data CheckExists = CheckExists | NoCheckExists
-  deriving (Eq, Show)
--- | Get the absolute path to a data file in `bittide-instances` based on a relative
--- file path.
-getInstanceDataFileName :: CheckExists -> FilePath -> IO (Maybe FilePath)
-getInstanceDataFileName check relativePath = do
-  fPath <- Instances.getDataFileName relativePath
-  unless (check == NoCheckExists)
-    $ unlessM (Directory.doesFileExist fPath)
-      $ throwIO $ userError $ unwords
-          ["File", show relativePath, "does not exist in bittide-instances."]
-
-  pure $ Just $ dropWhileEnd isSpace $ dropWhile isSpace fPath
 
 -- | Build and run the executable for post processing of ILA data
 doPostProcessing :: String -> FilePath -> ExitCode -> Assertion
@@ -330,6 +317,30 @@ main = do
             , "write", entity
             ]
 
+        (dataFilesDir </> "**") %> \_ -> do
+          Stdout out <-
+            command [] "cabal"
+              [ "sdist"
+              , "bittide"
+              , "bittide-extra"
+              , "bittide-experiments"
+              , "bittide-instances"
+              , "bittide-tools"
+              ]
+          command_ [] "mkdir" ["-p", dataFilesDir ]
+          for_ (filter (((==) (Just '/')) . fmap fst . uncons) $ lines out)
+            $ \sdist -> do
+              (Exit (_ :: ExitCode), Stderr ()) <- command [] "tar"
+                [ "--strip-components=2"
+                , "--overwrite"
+                , "-C"
+                , dataFilesDir
+                , "-xf"
+                , sdist
+                , takeBaseName (takeBaseName sdist) </> "data"
+                ]
+              return ()
+
         -- Files used for cache invalidation
         watchFilesPath %> \_ -> do
           alwaysRerun
@@ -431,13 +442,11 @@ main = do
             runSynthTclPath %> \path -> do
               let
                 xdcNames = entityName targetName <> ".xdc" : targetExtraXdc
-                relativeXdcPaths = map ("data/constraints" </>) xdcNames
+                xdcPaths = map ((dataFilesDir </> "constraints") </>) xdcNames
               constraints <-
                 if targetHasXdc then do
-                  constraintPaths <- liftIO $ mapM
-                    (fmap fromJust . getInstanceDataFileName CheckExists) relativeXdcPaths
-                  need constraintPaths
-                  pure constraintPaths
+                  need xdcPaths
+                  pure xdcPaths
                 else
                   pure []
 

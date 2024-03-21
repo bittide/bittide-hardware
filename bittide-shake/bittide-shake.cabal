@@ -60,7 +60,6 @@ executable shake
   main-is: exe/Main.hs
   Build-Depends:
     , ansi-terminal
-    , bittide-instances
     , bittide-shake
     , directory
     , Glob
