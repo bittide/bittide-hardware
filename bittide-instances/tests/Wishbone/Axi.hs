@@ -84,13 +84,15 @@ dut baud diffClk rst_in =
   (clk200 :: Clock dom, pllLock :: Reset dom) = clockWizardDifferential diffClk noReset
   rst200 = resetSynchronizer clk200 (unsafeOrReset rst_in pllLock)
 
-  ( (_iStart, _iSize, iMem)
-    , (_dStart, _dSize, dMem)) = $(do
+  (iMem, dMem) = $(do
       root <- runIO $ findParentContaining "cabal.project"
       let
         elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" True
         elfPath = elfDir </> "axi_stream_self_test"
-      memBlobsFromElf BigEndian elfPath Nothing)
+
+        iSize = 64 * 1024
+        dSize = 64 * 1024
+      memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing)
 
 
 
