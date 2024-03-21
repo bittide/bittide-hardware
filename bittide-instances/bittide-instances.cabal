@@ -12,6 +12,7 @@ Copyright:           Copyright © 2022-2024 Google LLC
 
 data-files:
   data/constraints/*.xdc
+  data/test_configs/*.yml
 
 common common-options
   default-extensions:
