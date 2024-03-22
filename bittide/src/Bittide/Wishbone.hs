@@ -38,7 +38,7 @@ import qualified Protocols.Wishbone as Wishbone
 {-# ANN module "HLint: ignore Functor law" #-}
 
 -- | A vector of base addresses, one for each slave.
-type MemoryMap nSlaves = Vec nSlaves (Index nSlaves)
+type MemoryMap nSlaves = Vec nSlaves (Unsigned (CLog 2 nSlaves))
 
 -- | Size of a bus that results from a `singleMasterInterconnect` with `nSlaves` slaves.
 type MappedBus addr nSlaves = addr - CLog 2 nSlaves
@@ -68,7 +68,7 @@ singleMasterInterconnect (fmap pack -> config) =
    where
     oneHotSelected = fmap (==addrIndex) config
     (addrIndex, newAddr) =
-      split @_ @(BitSize (Index nSlaves)) @(MappedBus addrW nSlaves) addr
+      split @_ @_ @(MappedBus addrW nSlaves) addr
     toSlaves =
       (\newStrobe -> (updateM2SAddr newAddr master){strobe = strobe && newStrobe})
       <$> oneHotSelected

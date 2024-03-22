@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -15,7 +15,6 @@ module Tests.Wishbone(wbGroup) where
 
 import Clash.Prelude hiding (sample)
 
-import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Vector
 import Clash.Sized.Vector(unsafeFromList)
 import Data.Bifunctor
@@ -38,7 +37,6 @@ import Bittide.Wishbone
 import Tests.Shared
 
 import qualified Data.List as L
-import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 
@@ -126,15 +124,17 @@ uartWbCircuitTest = do
   idWithModel expectOptions dataGen id (wcre dut)
 
 -- | generates a 'MemoryMap' for 'singleMasterInterconnect'.
+--
+-- TODO: It currently generates a shuffled list of @[0..nSlaves-1]@, though the
+--       interconnect can handle @[0..(clog2 nSlaves)-1]@. We should update the
+--       test infrastructure such that it can handle the latter.
 genConfig ::
   forall nSlaves .
+  (1 <= nSlaves) =>
   SNat nSlaves ->
   Gen (MemoryMap nSlaves)
-genConfig SNat = do
-  let
-    s = Gen.set (Range.singleton $ natToNum @nSlaves) (genIndex Range.constantBounded)
-    l = Set.toList <$> s
-  unsafeFromList <$> (Gen.shuffle =<< l)
+genConfig nSlaves@SNat = do
+  unsafeFromList <$> Gen.shuffle [0..snatToNum nSlaves - 1]
 
 -- | Creates a memory map with 'simpleSlave' devices and a list of read addresses and checks
 -- if the correct 'simpleSlave' responds to the read operation. Reading outside of a 'simpleSlave' its
@@ -178,15 +178,15 @@ readingSlaves = property $ do
 
   getExpected ::
     forall nSlaves .
-    ( KnownNat nSlaves, 1 <= nSlaves, BitSize (Index nSlaves) <= 32
-    , BitSize (Index nSlaves) <= 32) =>
-    Vec nSlaves (Index nSlaves) ->
-    Vec nSlaves (BitVector (32 - BitSize (Index nSlaves))) ->
-    WishboneM2S 32 (Regs (Index nSlaves) 8) (Index nSlaves) ->
-    WishboneS2M (Index nSlaves)
+    ( KnownNat nSlaves, 1 <= nSlaves, BitSize (Unsigned (CLog 2 nSlaves)) <= 32
+    , BitSize (Unsigned (CLog 2 nSlaves)) <= 32) =>
+    Vec nSlaves (Unsigned (CLog 2 nSlaves)) ->
+    Vec nSlaves (BitVector (32 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
+    WishboneM2S 32 (Regs (Unsigned (CLog 2 nSlaves)) 8) (Unsigned (CLog 2 nSlaves)) ->
+    WishboneS2M (Unsigned (CLog 2 nSlaves))
   getExpected config ranges WishboneM2S{..}
     | commAttempt && isMapped && inRange =
-      (emptyWishboneS2M @(Index nSlaves)){acknowledge, readData}
+      (emptyWishboneS2M @(Unsigned (CLog 2 nSlaves))){acknowledge, readData}
     | commAttempt && isMapped            = emptyWishboneS2M{err}
     | otherwise                          = emptyWishboneS2M
    where
@@ -244,24 +244,24 @@ writingSlaves = property $ do
 
   getExpected ::
     forall nSlaves .
-    ( KnownNat nSlaves, 1 <= nSlaves, BitSize (Index nSlaves) <= 32
-    , BitSize (Index nSlaves) <= 32) =>
-    Vec nSlaves (Index nSlaves) ->
-    Vec nSlaves (BitVector (32 - BitSize (Index nSlaves))) ->
-    WishboneM2S 32 (DivRU (32 - BitSize (Index nSlaves)) 8)
-      (BitVector (32 - BitSize (Index nSlaves))) ->
-    WishboneS2M (BitVector (32 - BitSize (Index nSlaves)))
+    ( KnownNat nSlaves, 1 <= nSlaves, BitSize (Unsigned (CLog 2 nSlaves)) <= 32
+    , BitSize (Unsigned (CLog 2 nSlaves)) <= 32) =>
+    Vec nSlaves (Unsigned (CLog 2 nSlaves)) ->
+    Vec nSlaves (BitVector (32 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
+    WishboneM2S 32 (DivRU (32 - BitSize (Unsigned (CLog 2 nSlaves))) 8)
+      (BitVector (32 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
+    WishboneS2M (BitVector (32 - BitSize (Unsigned (CLog 2 nSlaves))))
   getExpected config ranges WishboneM2S{..}
     | commAttempt && isMapped && inRange && writeEnable =
       emptyWishboneS2M{acknowledge}
     | commAttempt && isMapped && inRange                =
-      (emptyWishboneS2M @(Index nSlaves)){acknowledge, readData}
+      (emptyWishboneS2M @(Unsigned (CLog 2 nSlaves))){acknowledge, readData}
     | commAttempt && isMapped                           =
-      (emptyWishboneS2M @(BitVector (32 - BitSize (Index nSlaves)))){err}
+      (emptyWishboneS2M @(BitVector (32 - BitSize (Unsigned (CLog 2 nSlaves))))){err}
     | otherwise                                         = emptyWishboneS2M
    where
     (readData, acknowledge, err) = (restAddr, True, True)
-    (indexBV, restAddr) = split @_ @(BitSize (Index nSlaves)) addr
+    (indexBV, restAddr) = split @_ @_ addr
     index = unpack indexBV
     commAttempt = busCycle && strobe
     isMapped = bitCoerce (resize indexBV) < length config
