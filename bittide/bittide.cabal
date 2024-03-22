@@ -9,6 +9,9 @@ author:              QBayLogic B.V.
 maintainer:          devops@qbaylogic.com
 Copyright:           Copyright © 2022-2024 Google LLC
 
+data-files:
+  data/clock_configs/*.csv
+
 custom-setup
   setup-depends: Cabal, base, directory, process, filepath
 
@@ -99,6 +102,8 @@ library
     directory,
     elf,
     exceptions,
+    extra,
+    filepath,
     mtl,
     pretty-show,
     process,
@@ -117,6 +122,7 @@ library
     Bittide.ClockControl.Callisto.Util
     Bittide.ClockControl.Foreign.Rust.Callisto
     Bittide.ClockControl.Foreign.Sizes
+    Bittide.ClockControl.ParseRegisters
     Bittide.ClockControl.Registers
     Bittide.ClockControl.Si5391A
     Bittide.ClockControl.Si5395J

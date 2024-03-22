@@ -104,6 +104,7 @@ executable cc-plot
     array,
     bittide,
     bittide-experiments,
+    bittide-extra,
     bittide-instances,
     bytestring,
     cassava,

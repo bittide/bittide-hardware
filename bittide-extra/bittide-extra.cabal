@@ -78,6 +78,7 @@ library
     Bittide.Extra.Wishbone
     Clash.Explicit.Signal.Extra
     Clash.Sized.Vector.Extra
+    Numeric.Extra
 
 test-suite doctests
   type:             exitcode-stdio-1.0
