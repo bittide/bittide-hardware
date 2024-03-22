@@ -16,7 +16,7 @@ type Si5395RegisterMap = Si539xRegisterMap 3 584 5
 --  out9:  12.5MHz LVDS 1.8V
 --  out9a:  200MHz LVDS 1.8V
 --
---  all of them doing 1ppb steps on Finc/Fdec
+--  all of them doing 1ppm steps on Finc/Fdec
 testConfig6_200_on_0a :: Si539xRegisterMap 3 590 5
 testConfig6_200_on_0a = $(parseFromFileToRegisterMap "testConfig6_200_on_0a")
 
