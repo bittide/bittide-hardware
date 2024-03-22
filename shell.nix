@@ -27,6 +27,7 @@ pkgs.mkShell {
       pkgs.verilator
       pkgs.which
       pkgs.jq
+      pkgs.unzip
 
       # Simulation report generation
       pkgs.dot2tex

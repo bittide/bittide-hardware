@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE MagicHash #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -26,7 +27,7 @@ import Clash.Prelude
 import Clash.Signal.Internal (Femtoseconds(..))
 import Clash.Sized.Internal.BitVector (BitVector(..))
 import qualified Clash.Sized.Vector as Vec
-  ((!!), unsafeFromList, toList, repeat, zip, zipWith, length)
+  ((!!), unsafeFromList, imap, toList, repeat, zip, zipWith, length)
 
 import GHC.TypeLits
 import Data.Type.Equality ((:~:)(..))
@@ -39,11 +40,11 @@ import Conduit
   , runConduit, sourceHandle, scanlC, dropC, mapC, sinkList, yield, await
   )
 import Control.Exception (Exception(..), throw, catch)
-import Control.Monad (forM, foldM, filterM, unless)
+import Control.Monad (forM, forM_, foldM, filterM, unless)
 import Data.ByteString.Internal (w2c)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
-import Data.Char (isHexDigit, digitToInt)
+import Data.Char (isHexDigit, digitToInt, isDigit)
 import Data.Csv
   ( FromField(..), FromNamedRecord(..), (.:)
   , defaultDecodeOptions
@@ -52,24 +53,26 @@ import Data.Csv.Conduit
   ( CsvStreamRecordParseError(..), CsvStreamHaltParseError(..)
   , fromNamedCsvStreamError
   )
-import Data.List (uncons, sort)
+import Data.List (uncons, sort, isPrefixOf, isSuffixOf)
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Proxy (Proxy(..))
 import Data.String (fromString)
 import qualified Data.Text as Text (unpack)
 import qualified Data.HashMap.Strict as HashMap (size)
+import qualified Data.Set as Set (fromList, isSubsetOf)
 import GHC.IO.Exception (IOException(..), IOErrorType(..))
-import System.IO (IOMode(..), Handle, openFile, hClose)
-import System.Directory
-  (listDirectory, doesDirectoryExist, createDirectoryIfMissing)
+import System.Directory (listDirectory, doesDirectoryExist, createDirectoryIfMissing)
 import System.Environment (getArgs, getProgName)
 import System.FilePath ((</>), takeExtensions, takeBaseName, takeFileName)
+import System.IO (IOMode(..), Handle, openFile, hClose)
 
 import Bittide.Plot
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Instances.Hitl.IlaPlot
+import Bittide.Instances.Hitl.Setup
 import Bittide.Instances.Domains
+import Bittide.Network.Artifacts
 import Bittide.Topology
 
 -- A newtype wrapper for working with hex encoded types.
@@ -331,60 +334,52 @@ fromCsvDump  (csvHandle, csvFile) =
     Just (Left e)  -> throw $ CsvParseError n e
     Just (Right x) -> yield x >> checkForErrors (n + 1)
 
-main :: IO ()
-main = getArgs >>= \case
-  []          -> wrongNumberOfArguments
-  ilaDir : xr -> do
-    let (outDir, yr) = fromMaybe (".", []) $ uncons xr
-    unless (null yr) $ wrongNumberOfArguments
-    dirs <- listDirectory ilaDir
-      >>= filterM doesDirectoryExist . fmap (ilaDir </>)
+plotTest :: FilePath -> [FilePath] -> FilePath -> IO ()
+plotTest testDir dirs globalOutDir =
+  case fromJust $ someNatVal $ toInteger $ length dirs of
+    SomeNat (_ :: p n) -> case TLW.SNat @1 %<=? TLW.SNat @n of
+      LE Refl -> do
+        putStrLn $ "Creating plots for test case: " <> testName
+        postProcessData <- do
+          forM (sort dirs) $ \d -> concat <$> do
+            csvFiles <- checkCsvFilesExist d <$> listDirectory d
+            forM csvFiles $ \f -> do
+              h <- openFile f ReadMode
+              rs <- catch
+                (do rs <- runConduit $ fromCsvDump @n @CccBufferSize (h, f)
+                    putStrLn ("Using " <> (takeBaseName d </> takeFileName f))
+                    return rs
+                ) $ \(err :: CsvParseError) -> case err of
+                    -- Ignore additional CSV files that may have
+                    -- been produced by other ILAs. They are
+                    -- identified via an error while parsing the
+                    -- header row.
+                    CsvParseError 0 _ -> return []
+                    CsvParseError n (CsvStreamRecordParseError msg) ->
+                      error $ unlines
+                        [ "Error while parsing"
+                        , ""
+                        , "  " <> f
+                        , ""
+                        , "Line " <> show (n + 3) <> ", " <> Text.unpack msg
+                        ]
+              hClose h
+              return (toPlotData <$> rs)
 
-    case fromJust $ someNatVal $ toInteger $ length dirs of
-      SomeNat (_ :: p n) -> case TLW.SNat @1 %<=? TLW.SNat @n of
-        LE Refl -> do
-          postProcessData <- do
-            forM (sort dirs) $ \d -> concat <$> do
-              csvFiles <- checkCsvFilesExist d <$> listDirectory d
-              forM csvFiles $ \f -> do
-                h <- openFile f ReadMode
-                rs <- catch
-                  (do rs <- runConduit $ fromCsvDump @n @CccBufferSize (h, f)
-                      putStrLn ("Using " <> (takeBaseName d </> takeFileName f))
-                      return rs
-                  ) $ \(err :: CsvParseError) -> case err of
-                      -- Ignore additional CSV files that may have
-                      -- been produced by other ILAs. They are
-                      -- identified via an error while parsing the
-                      -- header row.
-                      CsvParseError 0 _ -> return []
-                      CsvParseError n (CsvStreamRecordParseError msg) ->
-                        error $ unlines
-                          [ "Error while parsing"
-                          , ""
-                          , "  " <> f
-                          , ""
-                          , "Line " <> show (n + 3) <> ", " <> Text.unpack msg
-                          ]
-                hClose h
-                return (toPlotData <$> rs)
+        createDirectoryIfMissing True $ outDir
+        plotTopology outDir (complete (SNat :: SNat n))
+          $ Vec.unsafeFromList postProcessData
 
-          createDirectoryIfMissing True outDir
-          plotTopology outDir (complete (SNat :: SNat n))
-            $ Vec.unsafeFromList postProcessData
-
-        _ -> error $ ilaDir <> " is expected to contain sub-directories."
+      _ -> error $ testDir <> " is expected to contain sub-directories."
  where
+  testName = takeFileName testDir
+  outDir = globalOutDir </> testName
+
   checkCsvFilesExist d xs =
     let ys = filter ((== ".csv") . takeExtensions) $ fmap (d </>) xs
      in case ys of
        [] -> error $ d <> " does not contain any *.csv files. Aborting."
        _  -> ys
-
-  wrongNumberOfArguments = do
-    name <- getProgName
-    error $ "Wrong number of arguments. Aborting.\n\nUsage: " <> name
-         <> " <ila plot directory> [<output directory>]"
 
   toPlotData DataPoint{..} =
     ( dpGlobalTime
@@ -392,3 +387,73 @@ main = getArgs >>= \case
     , dpRfStage
     , Vec.toList $ Vec.zip dpDataCounts dpStability
     )
+
+main :: IO ()
+main = getArgs >>= \case
+  [] -> wrongNumberOfArguments
+  ilaSource : xr -> do
+    (ilaDir, outDir, mArtifactName) <- do
+      isDir <- doesDirectoryExist ilaSource
+      (ilaDir, yr, mA) <-
+        if isDir
+        then return (ilaSource, xr, Nothing)
+        else case isRunArtifactReference ilaSource of
+          Nothing -> error $ "ERROR - Invalid argument: " <> ilaSource
+          Just (runId, artifactName) -> case xr of
+            [] -> wrongNumberOfArguments
+            dir : yr ->
+              let fullArtifactName = "_build-" <> artifactName <> "-debug"
+               in retrieveArtifact runId fullArtifactName dir >>= \case
+                    Just err -> error $ unlines
+                      [ "ERROR - Cannot retrieve artifact."
+                      , show err
+                      ]
+                    Nothing -> return (dir, yr, Just artifactName)
+      let (outDir, zr) = fromMaybe (".", []) $ uncons yr
+      unless (null zr) wrongNumberOfArguments
+      return (ilaDir, outDir, mA)
+
+    testDirs <- do
+      let epsfix = maybe (Left "Bittide.Instances.Hitl.") Right mArtifactName
+      dir <- diveDownInto epsfix ilaDir
+      listDirectory dir
+        >>= filterM doesDirectoryExist . fmap (dir </>)
+
+    forM_ testDirs $ \testDir -> do
+      nodeDirs <- listDirectory testDir
+        >>= filterM doesDirectoryExist . fmap (testDir </>)
+
+      unless (allExpectedFpgaIds (takeFileName <$> nodeDirs)) $
+        error ""
+
+      plotTest testDir nodeDirs outDir
+ where
+  allExpectedFpgaIds xs =
+   Set.isSubsetOf (Set.fromList xs) $ Set.fromList
+      $ Vec.toList $ Vec.imap (\i a -> show i <> "_" <> fst a) fpgaSetup
+
+  diveDownInto epsfix dir =
+    listDirectory dir
+      >>= filterM doesDirectoryExist . fmap (dir </>)
+      >>= \case
+        [] -> error $ "ERROR - empty directory: " <> dir
+        dirs -> let subDirs = takeFileName <$> dirs in if
+          | "vivado" `elem` subDirs ->
+              diveDownInto epsfix $ dir </> "vivado"
+          | "ila-data" `elem` subDirs ->
+              diveDownInto epsfix $ dir </> "ila-data"
+          | otherwise ->
+              case filter (either isPrefixOf isSuffixOf epsfix) subDirs of
+                subDir : _ -> diveDownInto epsfix $ dir </> subDir
+                _ -> return dir
+
+  isRunArtifactReference arg = case span ((/=) ':') arg of
+    (xs, ':':ys)
+      | all isDigit xs && ':' `notElem` ys -> Just (xs, ys)
+      | otherwise -> Nothing
+    _ -> Nothing
+
+  wrongNumberOfArguments = do
+    name <- getProgName
+    error $ "Wrong number of arguments. Aborting.\n\nUsage: " <> name
+         <> " <ila plot directory> [<output directory>]"
