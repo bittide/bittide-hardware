@@ -199,7 +199,7 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 tests :: HitlTests TestConfig
 tests = Map.fromList
   [ ( "disable " <> fromString (show i) <> " [" <> fromString fpgaId <> "]"
-    , toList $ imap (testData i) $ linkMasks @FpgaCount g
+    , (toList $ imap (testData i) $ linkMasks @FpgaCount g, ())
     )
   | (i, (fpgaId, _)) <- toList $ zip indicesI fpgaSetup
   , i == 1
