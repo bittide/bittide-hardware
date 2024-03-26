@@ -58,11 +58,12 @@ import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig(..), processingElement)
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
+import Bittide.Simulate.Config (SimulationConfig(..))
 import Bittide.SharedTypes (Bytes, ByteOrder(BigEndian))
 import Bittide.Transceiver
 import Bittide.Topology
 
-import Bittide.Hitl (HitlTests, TestName, Probes, hitlVio)
+import Bittide.Hitl (HitlTestsWithPostprocData, TestName, Probes, hitlVio)
 
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
@@ -75,7 +76,7 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
-import Protocols
+import Protocols hiding (SimulationConfig)
 import Protocols.Wishbone
 
 data TestConfig =
@@ -497,7 +498,7 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       ]
   } #-}
 
-tests :: HitlTests TestConfig
+tests :: HitlTestsWithPostprocData TestConfig SimulationConfig
 tests = Map.fromList
   [ testTopology "diamond"     diamond
   , testTopology "complete"  $ complete d3
@@ -508,16 +509,30 @@ tests = Map.fromList
 --  , testTopology "hourglass" $ hourglass d3
   ]
  where
+  ClockControlConfig{..} = clockControlConfig
+
   testTopology ::
     forall n.
     (KnownNat n, n <= FpgaCount) =>
-    TestName -> Graph n -> (TestName, Probes TestConfig)
+    TestName -> Graph n -> (TestName, (Probes TestConfig, SimulationConfig))
   testTopology name graph =
     ( name
-    , toList (imap testData $ linkMasks @n graph)
-      <> [ (fromInteger i, disabled)
-         | i <- [natToNum @n, natToNum @n + 1 .. natToNum @(FpgaCount - 1)]
-         ]
+    , ( toList (imap testData $ linkMasks @n graph)
+         <> [ (fromInteger i, disabled)
+            | i <- [natToNum @n, natToNum @n + 1 .. natToNum @(FpgaCount - 1)]
+            ]
+      , def { topology = Nothing
+            , simulationSamples = 1000
+            , simulationSteps = natToNum @(PeriodToCycles Basic125 (Seconds 60))
+            , stabilityMargin = snatToNum cccStabilityCheckerMargin
+            , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
+            , disableReframing = not $ cccEnableReframing
+            , rusty = cccEnableRustySimulation
+            , waitTime = fromEnum cccReframingWaitTime
+            , clockOffsets = toList $ repeat @n 0
+            , startupOffsets = toList $ repeat @n 0
+            }
+      )
     )
 
   testData ::

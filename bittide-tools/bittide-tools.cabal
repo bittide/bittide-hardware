@@ -89,9 +89,6 @@ executable cc-sim
     aeson,
     bittide-experiments,
     bytestring,
-    directory,
-    filepath,
-    happy-dot,
     optparse-applicative
   -- enable rtsopts so we can setup memory limits
   ghc-options: -Wall -Wcompat -threaded
@@ -114,6 +111,7 @@ executable cc-plot
     cassava-conduit,
     conduit,
     containers,
+    data-default,
     directory,
     filepath,
     http-conduit,
@@ -133,6 +131,7 @@ executable hitl-config-gen
   import: common-options
   main-is: hitl/config-gen/Main.hs
   build-depends:
+    aeson,
     bittide-instances,
     bittide-experiments,
     bytestring,
