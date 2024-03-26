@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -22,7 +22,7 @@ import Protocols.Wishbone as Wb
 import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit, WishboneMasterRequest(..))
 
 import Bittide.Calendar
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes
 
 import qualified Data.List as L
 import qualified GHC.TypeNats as TypeNats

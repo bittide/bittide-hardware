@@ -160,6 +160,7 @@ test-suite unittests
                -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   other-modules:
     Tests.OverflowResistantDiff
+    Wishbone.Axi
     Wishbone.Time
   build-depends:
     , bittide-instances
