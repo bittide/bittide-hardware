@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023-2024 Google LLC
+-- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
@@ -9,9 +9,9 @@
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 
 -- | Test whether clock boards are configurable and transceiver links come
--- online. If they do, run clock control in software and wait for the clocks to
--- stabilize. This assumes to run on a fully connected mesh of 8 FPGAs. Also see
--- 'Bittide.Instances.Hitl.Setup'. It has two tricks up its sleeve:
+-- online. If they do, run clock control and wait for the clocks to stabilize.
+-- Also see  'Bittide.Instances.Hitl.Setup'. It has two tricks up its
+-- sleeve:
 --
 --   1. It uses @SYNC_IN@/@SYNC_OUT@ to make sure each board starts programming
 --      its clock boards at the same time.
@@ -23,8 +23,9 @@
 -- This test will succeed if all clocks have been stable for 5 seconds. Note:
 -- this doesn't test reframing yet.
 --
-module Bittide.Instances.Hitl.FullMeshSwCc
-  ( fullMeshSwCcTest
+module Bittide.Instances.Hitl.HwCcTopologies
+  ( hwCcTopologyWithRiscvTest
+  , hwCcTopologyTest
   , clockControlConfig
   , tests
   ) where
@@ -33,12 +34,14 @@ import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
 import qualified Clash.Explicit.Prelude as E
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Proxy
 import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
 import System.Directory
 import System.FilePath
+
+import qualified Data.Map.Strict as Map (fromList)
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
@@ -46,16 +49,21 @@ import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState(Error, Finished), si539xSpi)
-import Bittide.DoubleBufferedRam (InitialContent(Reloadable), ContentType(Blob))
+import Bittide.DoubleBufferedRam
+  ( InitialContent(Reloadable), ContentType(Blob), RegisterWritePriority(CircuitPriority)
+  , registerWb
+  )
 import Bittide.Counter
 import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig(..), processingElement)
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
-import Bittide.SharedTypes (ByteOrder(BigEndian))
+import Bittide.Simulate.Config (SimulationConfig(..))
+import Bittide.SharedTypes (Bytes, ByteOrder(BigEndian))
 import Bittide.Transceiver
+import Bittide.Topology
 
-import Bittide.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
+import Bittide.Hitl (HitlTestsWithPostprocData, TestName, Probes, hitlVio)
 
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
@@ -68,33 +76,76 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
-import Protocols
+import Protocols hiding (SimulationConfig)
+import Protocols.Wishbone
+
+data TestConfig =
+  TestConfig
+    { fpgaEnabled :: Bool
+    , mask :: BitVector (FpgaCount - 1)
+    }
+  deriving (Generic, NFDataX, BitPack)
 
 clockControlConfig ::
   $(case (instancesClockConfig (Proxy @Basic125)) of { (_ :: t) -> liftTypeQ @t })
 clockControlConfig =
   $(lift (instancesClockConfig (Proxy @Basic125)))
 
--- | Instantiates a RiscV core
-fullMeshRiscvTest ::
+-- | Instantiates a RiscV core that copies instructions coming from a hardware
+-- implementation of Callisto (see 'topologyTest') and copies it to a register
+-- tied to FINC/FDEC.
+riscvCopyTest ::
   forall dom .
   KnownDomain dom =>
   Clock dom ->
   Reset dom ->
-  Vec 7 (Signal dom (DataCount 32)) ->
+  Signal dom (CallistoResult (FpgaCount - 1)) ->
+  Vec (FpgaCount - 1) (Signal dom (DataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
   ( "FINC" ::: Signal dom Bool
   , "FDEC" ::: Signal dom Bool
   )
-fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
+riscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
  where
   (_, fIncDec) = toSignals
     ( circuit $ \unit -> do
-      [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< unit
+      [wbA, wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< unit
+      fIncDecCallisto -< wbA
       (fIncDec, _allStable) <- withClockResetEnable clk rst enableGen $
         clockControlWb margin framesize (pure $ complement 0) dataCounts -< wbB
       idC -< fIncDec
     ) ((), pure ())
+
+  fIncDecCallisto ::
+    forall aw nBytes .
+    (KnownNat aw, 2 <= aw, nBytes ~ 4) =>
+    Circuit
+      (Wishbone dom 'Standard aw (Bytes nBytes))
+      ()
+  fIncDecCallisto = Circuit goFIncDecCallisto
+   where
+    goFIncDecCallisto (wbM2S, _) = (wbS2M, ())
+     where
+      (_, wbS2M) = withClockResetEnable clk rst enableGen $
+        registerWb
+          CircuitPriority
+          (0 :: Bytes nBytes, 0 :: Bytes nBytes)
+          wbM2S
+          (fmap (fmap ((,0) . extend . pack)) fincfdec)
+
+      fincfdec :: Signal dom (Maybe SpeedChange)
+      fincfdec =
+        clearOnAck
+          <$> fmap acknowledge wbS2M
+          <*> fmap maybeSpeedChange callistoResult
+
+      -- Clear register if register is read from (or written to, but we assume
+      -- this doesn't happen). This makes sure the RiscV doesn't read the same
+      -- result from the hardware clock control twice.
+      clearOnAck :: ("ACK" ::: Bool) -> Maybe SpeedChange -> Maybe SpeedChange
+      clearOnAck False maybeSpeedChange   = maybeSpeedChange
+      clearOnAck True  (Just speedChange) = Just speedChange
+      clearOnAck True  Nothing            = Just NoChange
 
   margin = d2
 
@@ -121,36 +172,40 @@ fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
 
     root <- runIO findProjectRoot
 
-    let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/clock-control"
+    let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/clock-control-reg-cpy"
 
     memBlobsFromElf BigEndian elfPath Nothing)
 
   {-
     0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
     0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
+    0b00xxxxx_xxxxxxxx 0b00 0x0x FINC/FDEC register
     0b11xxxxx_xxxxxxxx 0b11 0xCx memory mapped hardware clock control
   -}
   peConfig =
     PeConfig
-      (0b10 :> 0b01 :> 0b11 :> Nil)
+      (0b10 :> 0b01 :> 0b00 :> 0b11 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
 
--- | Instantiates a hardware implementation of Callisto and exports its results.
-fullMeshHwTest ::
+-- | Instantiates a hardware implementation of Callisto and exports its results. Can
+-- be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
+-- results to a RiscV core (see 'riscvCopyTest')
+topologyTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
   "GTH_RX_NS" ::: TransceiverWires GthRx ->
   "GTH_RX_PS" ::: TransceiverWires GthRx ->
   "MISO" ::: Signal Basic125 Bit ->
+  "LINKS" ::: Signal Basic125 (BitVector (FpgaCount - 1)) ->
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
-  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult 7)
+  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult (FpgaCount - 1))
   , "CALLISTO_RESET" ::: Reset Basic125
-  , "DATA_COUNTERS" ::: Vec 7 (Signal Basic125 (DataCount 32))
-  , "stats" ::: Vec 7 (Signal Basic125 GthResetStats)
+  , "DATA_COUNTERS" ::: Vec (FpgaCount - 1) (Signal Basic125 (DataCount 32))
+  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 GthResetStats)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK" ::: Signal Basic125 Bool
@@ -161,7 +216,7 @@ fullMeshHwTest ::
   , "ALL_UP" ::: Signal Basic125 Bool
   , "ALL_STABLE"   ::: Signal Basic125 Bool
   )
-fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
+topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso mask =
   fincFdecIla `hwSeqX`
   ( txns
   , txps
@@ -215,8 +270,6 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
     $ orReset (unsafeFromActiveHigh transceiversFailedAfterUp)
               (unsafeFromActiveLow syncStart)
 
-  availableLinkMask = pure maxBound
-
   (clockMod, _stabilities, allStable0, _allCentered) = unbundle $
     fmap
       (\CallistoResult{..} -> (maybeSpeedChange, stability, allStable, allSettled))
@@ -225,7 +278,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   callistoResult =
     callistoClockControlWithIla @(FpgaCount - 1) @CccBufferSize
       (head txClocks) sysClk clockControlReset clockControlConfig
-      IlaControl{..} availableLinkMask (fmap (fmap resize) domainDiffs)
+      IlaControl{..} mask (fmap (fmap resize) domainDiffs)
 
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
@@ -285,7 +338,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
       <*> txClocks
 
 -- | Top entity for this test. See module documentation for more information.
-fullMeshSwCcTest ::
+hwCcTopologyWithRiscvTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
@@ -306,43 +359,46 @@ fullMeshSwCcTest ::
       , "CSB"       ::: Signal Basic125 Bool
       )
   )
-fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
+hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (txns, txps, (riscvFinc, riscvFdec), syncOut, spiDone, spiOut)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Ext200
-  (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
-  ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
 
-  (   txns, txps, _hwFincFdecs, _callistoResult, callistoReset
+  (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
+
+  ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
+  startTest = isJust <$> testConfig
+
+  (   txns, txps, _hwFincFdecs, callistoResult, callistoReset
     , dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
-    , allStable ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso
+    , allStable ) = topologyTest refClk sysClk ilaControl { skipTest = skip }
+                      rxns rxps miso (maybe 0 mask <$> testConfig)
 
   (riscvFinc, riscvFdec) =
-    fullMeshRiscvTest sysClk callistoReset dataCounts
+    riscvCopyTest sysClk callistoReset callistoResult dataCounts
 
-  -- checks that tests are not synchronously start before all
+  -- check that tests are not synchronously start before all
   -- transceivers are up
   startBeforeAllUp = sticky sysClk syncRst
-    (syncStart .&&. ((not <$> allUp) .||. transceiversFailedAfterUp))
+    (startTest .&&. syncStart .&&. ((not <$> allUp) .||. transceiversFailedAfterUp))
 
   endSuccess :: Signal Basic125 Bool
   endSuccess = trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
 
-  startTest :: Signal Basic125 Bool
-  startTest =
-    hitlVioBool
-      sysClk
+  done = endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp
+  success = not <$> (transceiversFailedAfterUp .||. startBeforeAllUp)
 
-      -- done
-      (endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp)
+  skip =
+    register sysClk sysRst enableGen False
+      (maybe False (not . fpgaEnabled) <$> testConfig)
 
-      -- success
-      (not <$> (transceiversFailedAfterUp .||. startBeforeAllUp))
+  testConfig :: Signal Basic125 (Maybe TestConfig)
+  testConfig = hitlVio disabled sysClk done success
 
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.
-{-# ANN fullMeshSwCcTest Synthesize
-  { t_name = "fullMeshSwCcTest"
+{-# ANN hwCcTopologyWithRiscvTest Synthesize
+  { t_name = "hwCcTopologyWithRiscvTest"
   , t_inputs =
     [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
     , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
@@ -362,5 +418,134 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       ]
   } #-}
 
-tests :: HitlTests ()
-tests = noConfigTest "CC" allFpgas
+-- | Top entity for this test. See module documentation for more information.
+hwCcTopologyTest ::
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SYSCLK_300" ::: DiffClock Ext300 ->
+  "SYNC_IN" ::: Signal Basic125 Bool ->
+  "GTH_RX_NS" ::: TransceiverWires GthRx ->
+  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "MISO" ::: Signal Basic125 Bit ->
+  ( "GTH_TX_NS" ::: TransceiverWires GthTx
+  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  , "" :::
+      ( "FINC"      ::: Signal Basic125 Bool
+      , "FDEC"      ::: Signal Basic125 Bool
+      )
+  , "SYNC_OUT" ::: Signal Basic125 Bool
+  , "spiDone" ::: Signal Basic125 Bool
+  , "" :::
+      ( "SCLK"      ::: Signal Basic125 Bool
+      , "MOSI"      ::: Signal Basic125 Bit
+      , "CSB"       ::: Signal Basic125 Bool
+      )
+  )
+hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
+  (txns, txps, unbundle hwFincFdecs, syncOut, spiDone, spiOut)
+ where
+  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
+  (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
+  ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
+  startTest = isJust <$> testConfig
+
+  (   txns, txps, hwFincFdecs, _callistoResult, _callistoReset
+    , _dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
+    , allStable ) = topologyTest refClk sysClk ilaControl { skipTest = skip }
+                      rxns rxps miso (maybe 0 mask <$> testConfig)
+
+  -- check that tests are not synchronously start before all
+  -- transceivers are up
+  startBeforeAllUp = sticky sysClk syncRst
+    (syncStart .&&. ((not <$> allUp) .||. transceiversFailedAfterUp))
+
+  endSuccess :: Signal Basic125 Bool
+  endSuccess = trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
+
+  skip = maybe False (not . fpgaEnabled) <$> testConfig
+
+  testConfig :: Signal Basic125 (Maybe TestConfig)
+  testConfig =
+    hitlVio
+      disabled
+      sysClk
+      -- done
+      (startTest .&&.
+         (skip .||. endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp))
+      -- success
+      (skip .||.
+        (allStable .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllUp))))
+
+-- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
+--      generates warnings in combination with 'Vec'.
+{-# ANN hwCcTopologyTest Synthesize
+  { t_name = "hwCcTopologyTest"
+  , t_inputs =
+    [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
+    , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
+    , PortName "SYNC_IN"
+    , PortName "GTH_RX_NS"
+    , PortName "GTH_RX_PS"
+    , PortName "MISO"
+    ]
+  , t_output =
+    (PortProduct "")
+      [ PortName "GTH_TX_NS"
+      , PortName "GTH_TX_PS"
+      , PortProduct "" [PortName "FINC", PortName "FDEC"]
+      , PortName "SYNC_OUT"
+      , PortName "spiDone"
+      , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
+      ]
+  } #-}
+
+tests :: HitlTestsWithPostprocData TestConfig SimulationConfig
+tests = Map.fromList
+  [ testTopology "diamond"     diamond
+  , testTopology "complete"  $ complete d3
+--  , testTopology "cycle"     $ cyclic d5
+--  , testTopology "torus2d"   $ torus2d d2 d3
+--  , testTopology "star"      $ star d7
+--  , testTopology "line"      $ line d4
+--  , testTopology "hourglass" $ hourglass d3
+  ]
+ where
+  ClockControlConfig{..} = clockControlConfig
+
+  testTopology ::
+    forall n.
+    (KnownNat n, n <= FpgaCount) =>
+    TestName -> Graph n -> (TestName, (Probes TestConfig, SimulationConfig))
+  testTopology name graph =
+    ( name
+    , ( toList (imap testData $ linkMasks @n graph)
+         <> [ (fromInteger i, disabled)
+            | i <- [natToNum @n, natToNum @n + 1 .. natToNum @(FpgaCount - 1)]
+            ]
+      , def { topology = Nothing
+            , simulationSamples = 1000
+            , simulationSteps = natToNum @(PeriodToCycles Basic125 (Seconds 60))
+            , stabilityMargin = snatToNum cccStabilityCheckerMargin
+            , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
+            , disableReframing = not $ cccEnableReframing
+            , rusty = cccEnableRustySimulation
+            , waitTime = fromEnum cccReframingWaitTime
+            , clockOffsets = toList $ repeat @n 0
+            , startupOffsets = toList $ repeat @n 0
+            }
+      )
+    )
+
+  testData ::
+    forall n.
+    (KnownNat n, n <= FpgaCount) =>
+    Index n -> BitVector (FpgaCount - 1) -> (Index FpgaCount, TestConfig)
+  testData i mask =
+    ( zeroExtend @Index @n @(FpgaCount - n) i
+    , TestConfig{ fpgaEnabled = True, .. }
+    )
+
+disabled :: TestConfig
+disabled = TestConfig
+  { fpgaEnabled = False
+  , mask = maxBound
+  }

@@ -89,9 +89,6 @@ executable cc-sim
     aeson,
     bittide-experiments,
     bytestring,
-    directory,
-    filepath,
-    happy-dot,
     optparse-applicative
   -- enable rtsopts so we can setup memory limits
   ghc-options: -Wall -Wcompat -threaded
@@ -99,8 +96,12 @@ executable cc-sim
 
 executable cc-plot
   import: common-options
-  main-is: clockcontrol/plot/Main.hs
+  hs-source-dirs: clockcontrol/plot
+  main-is: Main.hs
+  other-modules:
+    Bittide.Network.Artifacts
   build-depends:
+    aeson,
     array,
     bittide,
     bittide-experiments,
@@ -110,10 +111,16 @@ executable cc-plot
     cassava-conduit,
     conduit,
     containers,
+    data-default,
     directory,
     filepath,
+    http-conduit,
+    http-types,
+    process,
+    temporary,
     text,
     typelits-witnesses,
+    unordered-containers,
     vector,
   default-extensions: ImplicitPrelude
   -- enable rtsopts so we can setup memory limits
@@ -124,6 +131,7 @@ executable hitl-config-gen
   import: common-options
   main-is: hitl/config-gen/Main.hs
   build-depends:
+    aeson,
     bittide-instances,
     bittide-experiments,
     bytestring,

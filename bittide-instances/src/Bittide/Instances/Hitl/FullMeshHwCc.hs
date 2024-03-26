@@ -62,6 +62,7 @@ import Bittide.Transceiver
 import Bittide.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
 
 import Bittide.Instances.Hitl.IlaPlot
+import Bittide.Instances.Hitl.Setup
 import Bittide.Instances.Pnr.MVPs (stickyBits, speedChangeToPins, FINC, FDEC)
 
 import Clash.Class.Counter
@@ -74,25 +75,10 @@ import Clash.Xilinx.ClockGen
 import Protocols
 import Protocols.Wishbone
 
-type NodeCount = 8 :: Nat
-
 clockControlConfig ::
   $(case (instancesClockConfig (Proxy @Basic125)) of { (_ :: t) -> liftTypeQ @t })
 clockControlConfig =
   $(lift (instancesClockConfig (Proxy @Basic125)))
-
-c_CHANNEL_NAMES :: Vec 7 String
-c_CHANNEL_NAMES =
-  "X0Y10":> "X0Y9":> "X0Y16" :> "X0Y17" :> "X0Y18" :> "X0Y19" :> "X0Y11" :> Nil
-
-c_CLOCK_PATHS :: Vec 7 String
-c_CLOCK_PATHS =
-  "clk0" :> "clk0":> "clk0-2":> "clk0-2":> "clk0-2":> "clk0-2":> "clk0"  :> Nil
-
--- | Data wires from/to transceivers. No logic should be inserted on these
--- wires. Should be considered asynchronous to one another - even though their
--- domain encodes them as related.
-type TransceiverWires dom = Vec 7 (Signal dom (BitVector 1))
 
 -- | Instantiates a RiscV core that copies instructions coming from a hardware
 -- implementation of Callisto (see 'fullMeshHwTest') and copies it to a register
@@ -102,8 +88,8 @@ fullMeshRiscvCopyTest ::
   KnownDomain dom =>
   Clock dom ->
   Reset dom ->
-  Signal dom (CallistoResult 7) ->
-  Vec 7 (Signal dom (DataCount 32)) ->
+  Signal dom (CallistoResult (FpgaCount - 1)) ->
+  Vec (FpgaCount - 1) (Signal dom (DataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
   ( "FINC" ::: Signal dom Bool
   , "FDEC" ::: Signal dom Bool
@@ -204,10 +190,10 @@ fullMeshHwTest ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
-  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult 7)
+  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult (FpgaCount - 1))
   , "CALLISTO_RESET" ::: Reset Basic125
-  , "DATA_COUNTERS" ::: Vec 7 (Signal Basic125 (DataCount 32))
-  , "stats" ::: Vec 7 (Signal Basic125 GthResetStats)
+  , "DATA_COUNTERS" ::: Vec (FpgaCount - 1) (Signal Basic125 (DataCount 32))
+  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 GthResetStats)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK" ::: Signal Basic125 Bool
@@ -254,7 +240,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       refClk sysClk gthAllReset
-      c_CHANNEL_NAMES c_CLOCK_PATHS rxns rxps
+      channelNames clockPaths rxns rxps
 
   syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
   linkUps = zipWith syncLink rxClocks linkUpsRx
@@ -280,7 +266,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
       callistoResult
 
   callistoResult =
-    callistoClockControlWithIla @(NodeCount - 1) @CccBufferSize
+    callistoClockControlWithIla @(FpgaCount - 1) @CccBufferSize
       (head txClocks) sysClk clockControlReset clockControlConfig
       IlaControl{..} availableLinkMask (fmap (fmap resize) domainDiffs)
 

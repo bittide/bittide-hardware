@@ -85,6 +85,8 @@ library
     clash-cores,
     clash-lib,
     containers,
+    data-default,
+    directory,
     filepath,
     happy-dot,
     matplotlib,
@@ -96,6 +98,7 @@ library
     Bittide.Hitl
     Bittide.Plot
     Bittide.Simulate
+    Bittide.Simulate.Config
     Bittide.Simulate.ElasticBuffer
     Bittide.Simulate.Topology
     Bittide.Topology

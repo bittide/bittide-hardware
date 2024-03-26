@@ -16,6 +16,7 @@ module Main where
 import Prelude
 
 import Control.Monad (forM_, when)
+import Data.Aeson (ToJSON)
 import Data.List (intercalate)
 import Options.Applicative
 import Paths.Bittide.Instances (getDataFileName)
@@ -24,12 +25,14 @@ import System.Exit (die)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 
-import Bittide.Hitl (HitlTests, packAndEncode)
+import Bittide.Hitl (HitlTestsWithPostprocData, packAndEncode)
 
 import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
 import qualified Bittide.Instances.Hitl.FullMeshHwCc as FullMeshHwCc
 import qualified Bittide.Instances.Hitl.FullMeshSwCc as FullMeshSwCc
+import qualified Bittide.Instances.Hitl.HwCcTopologies as HwCcTopologies
+import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
 import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
 import qualified Bittide.Instances.Hitl.Tcl.ExtraProbes as ExtraProbes
 import qualified Bittide.Instances.Hitl.Transceivers as Transceivers
@@ -48,15 +51,17 @@ data Config = Config
 configs :: IO [Config]
 configs = sequence $
   [ -- Generate config based on Haskell definitions
-    makeConfig 'FincFdec.fincFdecTests                 FincFdec.tests
-  , makeConfig 'FullMeshHwCc.fullMeshHwCcTest          FullMeshHwCc.tests
-  , makeConfig 'FullMeshHwCc.fullMeshHwCcWithRiscvTest FullMeshHwCc.tests
-  , makeConfig 'FullMeshSwCc.fullMeshSwCcTest          FullMeshSwCc.tests
-  , makeConfig 'SyncInSyncOut.syncInSyncOut            SyncInSyncOut.tests
-  , makeConfig 'Transceivers.transceiversUpTest        Transceivers.tests
-  , makeConfig 'VexRiscv.vexRiscvTest                  VexRiscv.tests
-  , makeConfig 'BoardTest.boardTestSimple              BoardTest.testsSimple
-  , makeConfig 'BoardTest.boardTestExtended            BoardTest.testsExtended
+    makeConfig 'FincFdec.fincFdecTests                  FincFdec.tests
+  , makeConfig 'FullMeshHwCc.fullMeshHwCcTest           FullMeshHwCc.tests
+  , makeConfig 'FullMeshHwCc.fullMeshHwCcWithRiscvTest  FullMeshHwCc.tests
+  , makeConfig 'HwCcTopologies.hwCcTopologyTest         HwCcTopologies.tests
+  , makeConfig 'LinkConfiguration.linkConfigurationTest LinkConfiguration.tests
+  , makeConfig 'FullMeshSwCc.fullMeshSwCcTest           FullMeshSwCc.tests
+  , makeConfig 'SyncInSyncOut.syncInSyncOut             SyncInSyncOut.tests
+  , makeConfig 'Transceivers.transceiversUpTest         Transceivers.tests
+  , makeConfig 'VexRiscv.vexRiscvTest                   VexRiscv.tests
+  , makeConfig 'BoardTest.boardTestSimple               BoardTest.testsSimple
+  , makeConfig 'BoardTest.boardTestExtended             BoardTest.testsExtended
 
     -- Load config from 'bittide-instances/data/test_configs'
   , loadConfig 'ExtraProbes.extraProbesTest "extraProbesTest.yml"
@@ -109,7 +114,12 @@ loadConfig nm fileName = do
     }
 
 -- | Create config based on a 'HitlTests'
-makeConfig :: forall a. C.BitPack a => TH.Name -> HitlTests a -> IO Config
+makeConfig ::
+  forall a b.
+  (C.BitPack a, ToJSON b) =>
+  TH.Name ->
+  HitlTestsWithPostprocData a b ->
+  IO Config
 makeConfig nm config = pure $ Config
   { name = show nm
   , yaml = packAndEncode config

@@ -4,6 +4,7 @@
 
 module Bittide.Arithmetic.Time where
 
+import GHC.Stack (HasCallStack)
 import Clash.Explicit.Prelude
 
 import Clash.Signal.Internal (Femtoseconds (Femtoseconds), mapFemtoseconds)
@@ -50,3 +51,23 @@ picoseconds s = mapFemtoseconds (* 1000) (femtoseconds s)
 femtoseconds :: Int64 -> Femtoseconds
 femtoseconds = Femtoseconds
 {-# INLINE femtoseconds #-}
+
+-- | Rises after the incoming signal has been 'True' for the specified
+-- amount of time.
+trueFor ::
+  forall dom t. HasCallStack =>
+  (KnownDomain dom, KnownNat t) =>
+  SNat t ->
+  -- ^ Use the type aliases of 'Bittide.Arithmetic.Time' for time span
+  -- specification.
+  Clock dom ->
+  Reset dom ->
+  Signal dom Bool ->
+  Signal dom Bool
+trueFor _ clk rst =
+  moore clk rst enableGen transF (== maxBound)
+    (0 :: Index (PeriodToCycles dom t))
+ where
+  transF counter = \case
+    True -> satSucc SatBound counter
+    _    -> 0

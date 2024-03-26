@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -30,6 +30,7 @@ module Bittide.Instances.Hitl.IlaPlot
   , PlotData(..)
   , RfStageChange(..)
     -- * ILA Plot
+  , ilaProbeNames
   , ilaPlotSetup
   , callistoClockControlWithIla
     -- * Helpers
@@ -37,7 +38,6 @@ module Bittide.Instances.Hitl.IlaPlot
   , ScheduledCaptureCycles
   , DDiv
   , DDivCheck
-  , trueFor
   , accWindow
   , overflowResistantDiff
   , DiffResult(..)
@@ -51,7 +51,7 @@ import Clash.Explicit.Prelude
 import Clash.Explicit.Signal.Extra
 import Clash.Sized.Extra (concatUnsigneds)
 
-import Bittide.Arithmetic.Time (Seconds, Milliseconds, PeriodToCycles)
+import Bittide.Arithmetic.Time (Seconds, Milliseconds, PeriodToCycles, trueFor)
 import Bittide.ClockControl (SpeedChange(..), DataCount, ClockControlConfig)
 import Bittide.ClockControl.Callisto
   (CallistoResult(..), ReframingState(..), callistoClockControl)
@@ -143,7 +143,7 @@ data RfStageChange =
     -- ^ Indicates that the reframing stage changed to the @WAIT@ state.
   | ToDone
     -- ^ Indicates that the reframing stage changed to the @DONE@ state.
-  deriving (Eq, Generic, BitPack, NFDataX)
+  deriving (Eq, Generic, BitPack, Bounded, NFDataX)
 
 -- | The ILA capture type.
 data CaptureCondition =
@@ -165,7 +165,7 @@ data CaptureCondition =
   | DataChange
     -- ^ Identifies intermediate captures that are triggered by data
     -- changes.
-  deriving (Eq, Generic, NFDataX, BitPack)
+  deriving (Eq, Generic, BitPack, Bounded, NFDataX)
 
 -- | All signals, as they are required for using clock control with
 -- ILA plotting capabilities.
@@ -209,7 +209,20 @@ data IlaControl dom =
       -- ^ Synchronized pre-scheduled capture trigger
     , globalTimestamp :: Signal dom (GlobalTimestamp dom)
       -- ^ Synchronized pulse counter
+    , skipTest :: Signal dom Bool
+      -- ^ Skip this test
     }
+
+-- | Names of the additional ILA plot probes.
+ilaProbeNames :: Vec 6 String
+ilaProbeNames =
+     "trigger_1"
+  :> "capture_1"
+  :> "condition"
+  :> "global"
+  :> "local"
+  :> "data"
+  :> Nil
 
 -- | The ILA plot setup controller.
 ilaPlotSetup ::
@@ -258,25 +271,7 @@ ilaPlotSetup IlaPlotSetup{..} = IlaControl{..}
       (minBound :: Index ScheduledPulseCount)
       syncInChangepoints
 
--- | Rises after the incoming signal has been 'True' for the specified
--- amount of time.
-trueFor ::
-  forall dom t. HasCallStack =>
-  (KnownDomain dom, KnownNat t) =>
-  SNat t ->
-  -- ^ Use the type aliases of 'Bittide.Arithmetic.Time' for time span
-  -- specification.
-  Clock dom ->
-  Reset dom ->
-  Signal dom Bool ->
-  Signal dom Bool
-trueFor _ clk rst =
-  moore clk rst enableGen transF (== maxBound)
-    (0 :: Index (PeriodToCycles dom t))
- where
-  transF counter = \case
-    True -> satSucc SatBound counter
-    _    -> 0
+  skipTest = pure False
 
 -- | A single data type for covering all of the non-clock related data
 -- to be included into a capture.
@@ -286,7 +281,13 @@ data PlotData (n :: Nat) (m :: Nat) =
     , dSpeedChange   :: SpeedChange
     , dRfStageChange :: RfStageChange
     }
-  deriving (Generic, NFDataX, BitPack)
+  deriving (Generic, BitPack, NFDataX)
+
+instance (KnownNat n, KnownNat m) => Bounded (PlotData n m) where
+  -- allow every possible bit-sequence matching the bit size of the
+  -- type
+  minBound = unpack minBound
+  maxBound = unpack maxBound
 
 -- | Accumulates over multiple @FINC@/@FDEC@s to reduce the number of
 -- captures recorded by the ILA (which are mostly jitter otherwise).
@@ -401,6 +402,10 @@ data DiffResult a =
     -- reference got to large to fit into the output type.
   deriving (Generic, BitPack, NFDataX, Functor, Eq, Ord, Show)
 
+instance Bounded a => Bounded (DiffResult a) where
+  minBound = NoReference
+  maxBound = TooLarge
+
 {-# NOINLINE callistoClockControlWithIla #-}
 -- | Wrapper on 'Bittide.ClockControl.Callisto.callistoClockControl'
 -- additionally dumping all the data that is required for producing
@@ -427,6 +432,12 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
  where
   result = callistoClockControl clk rst enableGen ccc mask ebs
 
+  filterCounts vMask vCounts = flip map (zip vMask vCounts) $
+    \(isActive, count) -> if isActive == high then count else 0
+
+  filterIndicators vMask vCounts = flip map (zip vMask vCounts) $
+    \(isActive, ind) -> if isActive == high then ind else StabilityIndication False False
+
   maxGeqPlusApp = maxGeqPlus @1
     @(DivRU ScheduledCapturePeriod (Max 1 (DomainPeriod dyn)))
     @(Div (ScheduledCaptureCycles dyn) 10)
@@ -450,7 +461,8 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
           Done {}   -> ToDone
 
         height = SNat @AccWindowHeight
-        idcs = unbundle (stability <$> result)
+        idcs = unbundle
+          (filterIndicators <$> fmap bv2v mask <*> (stability <$> result))
 
         -- get the points in time where the monitored values change
         stableUpdates  = changepoints clk rst enableGen <$> (fmap stable <$> idcs)
@@ -485,7 +497,10 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
            in if trigger || any ((> half) . abs) diffs
               then (curDataCounts,    (True,  truncDiffs))
               else (storedDataCounts, (False, repeat 0))
-     in mealyB clk rst enableGen transF (repeat 0) (scheduledCapture, bundle ebs)
+     in mealyB clk rst enableGen transF (repeat 0)
+          ( scheduledCapture
+          , filterCounts <$> fmap bv2v mask <*> bundle ebs
+          )
 
   -- produce at least two calibration captures
   calibrating = unsafeToActiveLow rst .&&.
@@ -531,21 +546,13 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
   ilaInstance :: Signal sys ()
   ilaInstance =
     setName @"ilaPlot" $ ila
-      ( ilaConfig
-           $ "trigger_1"
-          :> "capture_1"
-          :> "condition"
-          :> "global"
-          :> "local"
-          :> "data"
-          :> Nil
-      ) { depth = D16384 }
+      (ilaConfig ilaProbeNames) { depth = D16384 }
       -- the ILA must run on a stable clock
       clk
       -- trigger as soon as we start
-      syncStart
+      (syncStart .&&. (not <$> skipTest))
       -- capture on relevant data changes
-      (isJust <$> captureCond)
+      ((isJust <$> captureCond) .&&. (not <$> skipTest))
       -- capture the capture condition
       (fromMaybe UntilTrigger <$> captureCond)
       -- capture the globally synchronized timestamp
@@ -621,14 +628,15 @@ syncInRecover ::
 syncInRecover clk rst = curry $
   moore clk rst enableGen transF out (WaitForStart :: SyncInRec dom) . bundle
  where
-  transF WaitForStart        (True, True) = WaitForReady
-  transF WaitForStart        (_   , _   ) = WaitForStart
-  transF WaitForReady        (_   , True) = WaitForReady
-  transF WaitForReady        (_   , _   ) = WaitForChange False maxBound
-  transF (WaitForChange _ 0) (_   , True) = WaitForStart
-  transF (WaitForChange o n) (_   , i   )
-    | o == i                              = WaitForChange o (n - 1)
-    | otherwise                           = WaitForChange i maxBound
+  transF _                   (False, _   ) = WaitForStart
+  transF WaitForStart        (_    , True) = WaitForReady
+  transF WaitForStart        (_    , _   ) = WaitForStart
+  transF WaitForReady        (_    , True) = WaitForReady
+  transF WaitForReady        (_    , _   ) = WaitForChange False maxBound
+  transF (WaitForChange _ 0) (_    , True) = WaitForStart
+  transF (WaitForChange o n) (_    , i   )
+    | o == i                               = WaitForChange o (n - 1)
+    | otherwise                            = WaitForChange i maxBound
 
   out WaitForStart    = (False, False)
   out WaitForReady    = (True,  False)

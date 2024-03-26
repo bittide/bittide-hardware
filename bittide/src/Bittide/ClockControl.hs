@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -128,7 +128,7 @@ data SpeedChange
   = NoChange
   | SlowDown
   | SpeedUp
-  deriving (Eq, Show, Generic, BitPack, ShowX, NFDataX)
+  deriving (Eq, Show, Generic, BitPack, Bounded, ShowX, NFDataX)
 
 type instance SizeOf SpeedChange =
   SizeOf CUInt
