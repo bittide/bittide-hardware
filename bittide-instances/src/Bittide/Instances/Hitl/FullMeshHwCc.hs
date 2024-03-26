@@ -33,6 +33,7 @@ import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
 import qualified Clash.Explicit.Prelude as E
 
+import Data.Bool (bool)
 import Data.Maybe (fromMaybe)
 import Data.Proxy
 import LiftType (liftTypeQ)
@@ -70,15 +71,16 @@ clockControlConfig =
 -- be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
 -- results to a RiscV core (see 'fullMeshRiscvCopyTest')
 fullMeshHwTest ::
-  forall ref rx tx i.
+  forall ref rx tx i o.
   ( HasSynchronousReset ref, HasSynchronousReset rx, HasSynchronousReset tx
   , HasDefinedInitialValues rx, HasDefinedInitialValues tx
   , KnownDomain ref, KnownDomain rx, KnownDomain tx
-  , KnownNat i, 1 <= i
+  , KnownNat i, KnownNat o, 1 <= i
   ) =>
   String ->
   String ->
   SNat i ->
+  SNat o ->
   "SMA_MGT_REFCLK_C" ::: Clock ref ->
   "SYSCLK" ::: Clock Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
@@ -102,7 +104,7 @@ fullMeshHwTest ::
   , "ALL_UP" ::: Signal Basic125 Bool
   , "ALL_STABLE"   ::: Signal Basic125 Bool
   )
-fullMeshHwTest cname cpath i refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
+fullMeshHwTest cname cpath i SNat refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   fincFdecIla `hwSeqX`
   ( txns
   , txps
@@ -131,8 +133,10 @@ fullMeshHwTest cname cpath i refClk sysClk IlaControl{syncRst = rst, ..} rxns rx
     withClockResetEnable sysClk syncRst enableGen $
       si539xSpi testConfig6_200_on_0a (SNat @(Microseconds 10)) (pure Nothing) miso
 
+  adjustStart = spiDone
+
   -- Transceiver setup
-  gthAllReset = unsafeFromActiveLow spiDone
+  gthAllReset = unsafeFromActiveLow clocksAdjusted
 
   (txClock :: Clock tx, rxClock, txns, txps, linkUpRx, stats) =
     transceiverPrbs
@@ -151,7 +155,8 @@ fullMeshHwTest cname cpath i refClk sysClk IlaControl{syncRst = rst, ..} rxns rx
 
   -- Clock control
   clockControlReset =
-      orReset (unsafeFromActiveLow allUp)
+      orReset (unsafeFromActiveLow clocksAdjusted)
+    $ orReset (unsafeFromActiveLow allUp)
     $ orReset (unsafeFromActiveHigh transceiversFailedAfterUp)
               (unsafeFromActiveLow syncStart)
 
@@ -213,11 +218,27 @@ fullMeshHwTest cname cpath i refClk sysClk IlaControl{syncRst = rst, ..} rxns rx
     ((== Just SlowDown) <$> clockMod)
     (satSucc SatBound <$> nFdecs)
 
+  clocksAdjusted = (== maxBound) <$> adjustCount
+  adjustCount = register sysClk (unsafeFromActiveLow adjustStart) enableGen
+    (minBound :: Index (o+2))
+      $ (\c -> bool c (satSucc SatBound c))
+          <$> adjustCount
+          <*> ( isFalling sysClk (unsafeFromActiveLow adjustStart) enableGen False
+              $ fst <$> frequencyAdjustments
+              )
+
+  adjusting = adjustStart .&&. (not <$> clocksAdjusted)
+
   frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
   frequencyAdjustments =
-    E.delay sysClk enableGen minBound {- glitch filter -} $
-      withClockResetEnable sysClk clockControlReset enableGen $
-        stickyBits @Basic125 d20 (speedChangeToPins . fromMaybe NoChange <$> clockMod)
+    E.delay sysClk enableGen minBound $
+    mux adjusting
+      ( speedChangeToFincFdec sysClk (unsafeFromActiveLow adjustStart) $ pure SpeedUp
+      )
+      ( E.delay sysClk enableGen minBound {- glitch filter -}
+      $ withClockResetEnable sysClk clockControlReset enableGen
+      $ stickyBits @Basic125 d20 (speedChangeToPins . fromMaybe NoChange <$> clockMod)
+      )
 
   domainDiff =
     domainDiffCounterExt sysClk clockControlReset rxClock txClock
@@ -282,13 +303,13 @@ fullMeshHwCcTest
   (   txns0, txps0, hwFincFdecs0, _callistoResult0, _callistoReset0
     , _dataCounts0, _stats0, spiDone0, spiOut0, transceiversFailedAfterUp0, allUp0
     , allStable0 ) = fullMeshHwTest @Ext200A @GthRxA @GthTxA
-                       "X0Y10" "clk0" (SNat @1)
+                       "X0Y10" "clk0" (SNat @1) (SNat @100000)
                        refClk0 sysClk ilaControl0 rxns0 rxps0 miso0
 
   (   txns1, txps1, hwFincFdecs1, _callistoResult1, _callistoReset1
     , _dataCounts1, _stats1, spiDone1, spiOut1, transceiversFailedAfterUp1, allUp1
     , allStable1 ) = fullMeshHwTest @Ext200B @GthRxB @GthTxB
-                       "X0Y9" "clk0-1" (SNat @2)
+                       "X0Y9" "clk0-1" (SNat @2) (SNat @0)
                        refClk1 sysClk ilaControl1 rxns1 rxps1 miso1
 
   -- check that tests are not synchronously start before all
