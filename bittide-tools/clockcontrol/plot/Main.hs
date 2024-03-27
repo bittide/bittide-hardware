@@ -20,7 +20,7 @@ import Clash.Prelude
 
 import Clash.Signal.Internal (Femtoseconds(..))
 import qualified Clash.Sized.Vector as Vec
-  (unsafeFromList, toList, repeat, zip, zipWith)
+  (unsafeFromList, toList, repeat, zip, zipWith, indicesI)
 
 import GHC.TypeLits
 import Data.Type.Equality ((:~:)(..))
@@ -36,21 +36,23 @@ import Control.Exception (SomeException(..), Exception(..), throw, handle)
 import Control.Monad (forM, foldM, filterM, unless)
 import Data.ByteString.Internal (w2c)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Char8 as BSC
 import Data.Char (isHexDigit, digitToInt)
 import Data.Csv
-  ( FromField(..), FromRecord(..), HasHeader(..), (.!)
-  , defaultDecodeOptions
+  ( FromField(..), FromRecord(..), HasHeader(..), ToNamedRecord(..), (.!)
+  , defaultDecodeOptions, encodeByName
   )
 import Data.Csv.Conduit
   ( CsvStreamRecordParseError, CsvStreamHaltParseError(..)
   , fromCsvStreamError
   )
+import qualified Data.HashMap.Strict as HM (fromList)
 import Data.List (uncons, sort)
 import Data.Maybe (fromMaybe, fromJust)
 import Data.Proxy (Proxy(..))
 import qualified Data.Text as Text (unpack)
-import qualified Data.Vector as Vector (length)
+import qualified Data.Vector as Vector (length, fromList)
 import GHC.IO.Exception (IOException(..), IOErrorType(..))
 import System.IO (IOMode(..), Handle, openFile, hClose)
 import System.Directory
@@ -151,6 +153,35 @@ data DataPoint (n :: Nat) (m :: Nat) =
     , dpStability :: Vec n StabilityIndication
       -- ^ the stability indicators for each of the elastic buffers
     }
+
+instance (KnownNat n, KnownNat m) => ToNamedRecord (DataPoint n m) where
+  toNamedRecord DataPoint{..} = HM.fromList $
+    fmap (\(x, y) -> (BSC.pack x, BSC.pack y)) $
+      [ ("Index", show dpIndex)
+      , ("Synchronized Time (fs)", show $ toInteger dpGlobalTime)
+      , ("Local Clock time (fs)", show $ toInteger dpLocalTime)
+      , ("Clock Period Drift (fs)", show $ toInteger dpDrift)
+      , ("Integrated FINC/FDECs", show dpCCChanges)
+      , ("Reframing State", rf2bs dpRfStage)
+      ] <>
+      [ ("EB " <> show i, show $ toInteger x)
+      | (i, x) <- Vec.toList $ Vec.zip Vec.indicesI dpDataCounts
+      ] <>
+      [ (show i <> " is stable", b2bs $ stable x)
+      | (i, x) <- Vec.toList $ Vec.zip Vec.indicesI dpStability
+      ] <>
+      [ (show i <> " is settled", b2bs $ settled x)
+      | (i, x) <- Vec.toList $ Vec.zip Vec.indicesI dpStability
+      ]
+   where
+    b2bs = \case
+      False -> "0"
+      True  -> "1"
+
+    rf2bs = \case
+      RSDetect -> "Detect"
+      RSWait   -> "Wait"
+      RSDone   -> "Done"
 
 -- | Multiplies some 'Femtoseconds' with any numerical value. Note
 -- that this operation can produce negative values, which is
@@ -316,6 +347,22 @@ main = getArgs >>= \case
                   putStrLn $ "Using " <> (takeBaseName d </> takeFileName file)
                   return rs
                 hClose h
+                let
+                  k = length dirs - 1
+                  header = Vector.fromList $ map BSC.pack $
+                    [ "Index"
+                    , "Synchronized Time (fs)"
+                    , "Local Clock time (fs)"
+                    , "Clock Period Drift (fs)"
+                    , "Integrated FINC/FDECs"
+                    , "Reframing State"
+                    ]
+                    <> (("EB " <>) . show <$> [0,1..k - 1])
+                    <> ((<> " is stable") . show <$> [0,1..k - 1])
+                    <> ((<> " is settled") . show <$> [0,1..k - 1])
+
+                BSL.writeFile (outDir </> (takeFileName d <> ".csv"))
+                  $ encodeByName header rs
                 return (toPlotData <$> rs)
 
           createDirectoryIfMissing True outDir
