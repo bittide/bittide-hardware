@@ -291,6 +291,7 @@ jobs:
       - name: Generate HITL based plots
         run: |
           mkdir -p reports
+          mkdir -p plot-sources
           mkdir -p hitl-plots/hw
           ./cargo.sh build --frozen --release
           cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest/ila-data/CC/ hitl-plots/hw
@@ -301,20 +302,22 @@ jobs:
           echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/hw/runref
           cd hitl-plots/hw
           lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} topology.tikz
+          rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz elasticbuffers.pdf clocks.pdf
           cd ../..
           mv hitl-plots/hw/report.pdf reports/HITL-FullMeshHwCc-Report.pdf
+          mv hitl-plots/hw plot-sources/FullMeshHwCc
           mkdir -p hitl-plots/sw
           cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest/ila-data/CC/ hitl-plots/sw
           cp .github/hitl/FullMeshSwCcReportTemplate.tex hitl-plots/sw/report.tex
           cp .github/hitl/topology.tikz hitl-plots/sw/topology.tikz
-          mv hitl-plots/hw/datetime hitl-plots/sw/datetime
-          mv hitl-plots/hw/runref hitl-plots/sw/runref
+          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/sw/datetime
+          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/sw/runref
           cd hitl-plots/sw
           lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz
+          rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz elasticbuffers.pdf clocks.pdf
           cd ../..
           mv hitl-plots/sw/report.pdf reports/HITL-FullMeshSwCc-Report.pdf
+          mv hitl-plots/sw plot-sources/FullMeshSwCc
 
       - name: Generate final simulation report
         run: |
@@ -327,6 +330,13 @@ jobs:
         with:
           name: Clock Control Reports
           path: reports
+          retention-days: 14
+
+      - name: Upload HITLT Plot Sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: CC-HITLT Plot Sources
+          path: plot-sources
           retention-days: 14
 
   bittide-experiments-tests:

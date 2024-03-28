@@ -361,8 +361,10 @@ main = getArgs >>= \case
                     <> ((<> " is stable") . show <$> [0,1..k - 1])
                     <> ((<> " is settled") . show <$> [0,1..k - 1])
 
-                BSL.writeFile (outDir </> (takeFileName d <> ".csv"))
-                  $ encodeByName header rs
+                unless (null rs) $
+                  BSL.writeFile (outDir </> (takeFileName d <> ".csv"))
+                    $ encodeByName header rs
+
                 return (toPlotData <$> rs)
 
           createDirectoryIfMissing True outDir
