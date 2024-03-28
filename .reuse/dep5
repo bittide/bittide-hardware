@@ -9,7 +9,7 @@ Source: https://github.com/google-research/bittide/
 # Copyright: $YEAR $NAME <$CONTACT>
 # License: ...
 Files: cabal.project.freeze
-Copyright: 2023 Google LLC
+Copyright: 2023-2024 Google LLC
 License: CC0-1.0
 
 Files: .vscode/*
