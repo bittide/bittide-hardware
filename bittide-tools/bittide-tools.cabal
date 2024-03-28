@@ -101,6 +101,7 @@ executable cc-plot
   import: common-options
   main-is: clockcontrol/plot/Main.hs
   build-depends:
+    aeson,
     array,
     bittide,
     bittide-experiments,
