@@ -4,7 +4,6 @@
 
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PackageImports #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 -- | Program that writes YAML configuration files to '_build/hitl', to be used
 -- by the TCL using Vivado to run hardware-in-the-loop tests.
@@ -16,6 +15,7 @@ module Main where
 import Prelude
 
 import Control.Monad (forM_, when)
+import Data.Aeson (ToJSON)
 import Data.List (intercalate)
 import Options.Applicative
 import Paths.Bittide.Instances (getDataFileName)
@@ -24,7 +24,7 @@ import System.Exit (die)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 
-import Bittide.Hitl (HitlTests, packAndEncode)
+import Bittide.Hitl (HitlTestsWithPostProcData, packAndEncode)
 
 import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
@@ -46,7 +46,7 @@ data Config = Config
 
 -- | Known configurations that can be written to @_build/hitl@
 configs :: IO [Config]
-configs = sequence $
+configs = sequence
   [ -- Generate config based on Haskell definitions
     makeConfig 'FincFdec.fincFdecTests                 FincFdec.tests
   , makeConfig 'FullMeshHwCc.fullMeshHwCcTest          FullMeshHwCc.tests
@@ -109,7 +109,12 @@ loadConfig nm fileName = do
     }
 
 -- | Create config based on a 'HitlTests'
-makeConfig :: forall a. C.BitPack a => TH.Name -> HitlTests a -> IO Config
+makeConfig ::
+  forall a b.
+  (C.BitPack a, ToJSON b) =>
+  TH.Name ->
+  HitlTestsWithPostProcData a b ->
+  IO Config
 makeConfig nm config = pure $ Config
   { name = show nm
   , yaml = packAndEncode config

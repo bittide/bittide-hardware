@@ -125,6 +125,7 @@ executable hitl-config-gen
   import: common-options
   main-is: hitl/config-gen/Main.hs
   build-depends:
+    aeson,
     bittide-instances,
     bittide-experiments,
     bytestring,
