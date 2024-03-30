@@ -18,19 +18,10 @@ parseHex s =
   pHex !a (i, c)
     | not (isHexDigit c) =
         Left $ "Non-hexadecimal digit: " <> [c]
-    | i * 4 + log2 (digitToNum c) > natToNum @(BitSize a) =
+    | i * 4 + log2 (digitToInt c) > natToNum @(BitSize a) =
         Left $ "Value is out of range: " <> s
     | otherwise =
-        return $ shift a 4 .|. digitToNum c
-
-  -- 'digitToInt' produces only 16 different values. Hence, it can be
-  --  extended to work for any 'Num' instance.
-  digitToNum x = case digitToInt x of
-    { 0 -> 0; 1 -> 1; 2 -> 2; 3 -> 3; 4 -> 4; 5 -> 5; 6 -> 6; 7 -> 7; 8 -> 8
-    ; 9 -> 9; 10 -> 10; 11 -> 11; 12 -> 12; 13 -> 13; 14 -> 14; 15 -> 15
-    ; y | y < 0     -> error "digitToInt returned some negative value"
-        | otherwise -> error "digitToInt returned some value greater than 15"
-    }
+        return $ shift a 4 .|. fromInteger (toInteger (digitToInt c))
 
   log2 :: Int -> Int
   log2 =
