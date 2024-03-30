@@ -66,14 +66,17 @@ singleMasterInterconnect (fmap pack -> config) =
 
   route master@(WishboneM2S{..}) slaves = (toMaster, toSlaves)
    where
-    oneHotSelected = fmap (==addrIndex) config
+    oneHotOrZeroSelected = fmap (==addrIndex) config
     (addrIndex, newAddr) =
       split @_ @_ @(MappedBusAddrWidth addrW nSlaves) addr
     toSlaves =
       (\newStrobe -> (updateM2SAddr newAddr master){strobe = strobe && newStrobe})
-      <$> oneHotSelected
+      <$> oneHotOrZeroSelected
     toMaster
-      | busCycle && strobe = foldMaybes emptyWishboneS2M (maskToMaybes slaves oneHotSelected)
+      | busCycle && strobe =
+          foldMaybes
+          emptyWishboneS2M{err=True} -- master tries to access unmapped memory
+          (maskToMaybes slaves oneHotOrZeroSelected)
       | otherwise = emptyWishboneS2M
 
 dupWb ::
