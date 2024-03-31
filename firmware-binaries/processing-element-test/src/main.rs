@@ -1,7 +1,7 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 
-// SPDX-FileCopyrightText: 2022 Google LLC
+// SPDX-FileCopyrightText: 2022-2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -12,7 +12,7 @@ use riscv_rt::entry;
 
 use ufmt::uwrite;
 
-const STATUS_REG_ADDR: *mut u32 = 0xC000_0000 as *mut u32;
+const STATUS_REG_ADDR: *mut u32 = 0xE000_0000 as *mut u32;
 
 fn test_success() {
     unsafe {

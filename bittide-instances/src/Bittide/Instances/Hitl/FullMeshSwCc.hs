@@ -71,6 +71,7 @@ import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
 import Protocols
+import VexRiscv
 
 import qualified Data.Map as Map (singleton)
 
@@ -93,12 +94,12 @@ fullMeshRiscvTest ::
 fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
  where
   (_, fIncDec) = toSignals
-    ( circuit $ \unit -> do
-      [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< unit
+    ( circuit $ \jtag -> do
+      [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
       (fIncDec, _allStable) <- withClockResetEnable clk rst enableGen $
         clockControlWb margin framesize (pure $ complement 0) dataCounts -< wbB
       idC -< fIncDec
-    ) ((), pure ())
+    ) (pure $ JtagIn low low low, pure ())
 
   margin = d2
 

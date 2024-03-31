@@ -704,12 +704,19 @@ jobs:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
       volumes:
         - /opt/tools:/opt/tools
+        - /dev:/dev
 
       # XXX: User '1001' corresponds to 'bittide' on Linux installation that has
       #      access to the hardware. We need to set this, lest Docker will write
       #      files as 'root' and the runner software will be unable to run
       #      cleaning jobs.
-      options: --memory=11g --userns host --privileged --user 1001:1001
+      options: >-
+        --memory=11g
+        --userns host
+        --privileged
+        --user 1001:1001
+        --group-add plugdev
+        --group-add dialout
 
     steps:
       - name: Checkout
