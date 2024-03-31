@@ -392,8 +392,8 @@ jobs:
       - name: Unittests
         run: |
           # While Hedgehog can fill many cores with "work", it doesn't actually
-          # speed up the tests.
-          cabal run -- bittide:unittests -j 1 +RTS -N2
+          # speed up the tests that much (<5% runtime benefits).
+          cabal run -- bittide:unittests -j 2 +RTS -N4
 
       - name: Bittide Doctests
         run: |
@@ -402,6 +402,12 @@ jobs:
       - name: Bittide.Extra Doctests
         run: |
           cabal run -- bittide-extra:doctests
+
+      - name: Bittide.Extra Unittests
+        run: |
+          # While Hedgehog can fill many cores with "work", it doesn't actually
+          # speed up the tests that much (<5% runtime benefits).
+          cabal run -- bittide-extra:unittests -j 2 +RTS -N4
 
   rust-lints:
     name: Rust Lints

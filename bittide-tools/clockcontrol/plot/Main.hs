@@ -35,10 +35,9 @@ import Conduit
   )
 import Control.Exception (SomeException(..), Exception(..), throw, handle)
 import Control.Monad (forM, filterM, unless)
-import Data.ByteString.Internal (w2c)
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.UTF8 as UTF8
 import Data.Csv
   ( FromField(..), FromRecord(..), HasHeader(..), ToNamedRecord(..), (.!)
   , defaultDecodeOptions, encodeByName
@@ -73,7 +72,7 @@ newtype Hex a = Hex { fromHex :: a }
   deriving newtype (BitPack)
 
 instance BitPack a => FromField (Hex a) where
-  parseField = either fail pure . parseHex . fmap w2c . BS.unpack
+  parseField = either fail pure . parseHex . UTF8.toString
 
 -- | The captured data entries, as they are dumped by the ILA of
 -- 'Bittide.Instances.Hitl.FullMeshHwCc.callistoClockControlWithIla'.
