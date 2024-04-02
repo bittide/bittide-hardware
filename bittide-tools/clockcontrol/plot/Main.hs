@@ -371,8 +371,8 @@ plotTest testDir dirs globalOutDir =
 
               return (toPlotData <$> rs)
 
-        createDirectoryIfMissing True $ outDir
-        plotTopology outDir (complete (SNat :: SNat n))
+        createDirectoryIfMissing True outDir
+        plot outDir (complete (SNat :: SNat n))
           $ Vec.unsafeFromList postProcessData
 
       _ -> error $ testDir <> " is expected to contain sub-directories."

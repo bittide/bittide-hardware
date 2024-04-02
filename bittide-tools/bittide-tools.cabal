@@ -89,9 +89,6 @@ executable cc-sim
     aeson,
     bittide-experiments,
     bytestring,
-    directory,
-    filepath,
-    happy-dot,
     optparse-applicative
   -- enable rtsopts so we can setup memory limits
   ghc-options: -Wall -Wcompat -threaded
@@ -112,6 +109,7 @@ executable cc-plot
     cassava-conduit,
     conduit,
     containers,
+    data-default,
     directory,
     filepath,
     text,

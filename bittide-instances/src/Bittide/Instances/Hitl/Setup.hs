@@ -55,7 +55,7 @@ fpgaSetup =
 -- >>> import Clash.Prelude
 -- >>> import Bittide.Topology
 -- >>> let edges = [(0, 1), (0, 2), (1, 2), (1, 0), (2, 0), (2, 1)]
--- >>> let g = boundGraph @3 $ buildG (0, 2) edges
+-- >>> let g = fromGraph @3 "test" $ buildG (0, 2) edges
 -- >>> linkMask g d0
 -- 0b010_0001
 -- >>> linkMask g d1
@@ -65,7 +65,7 @@ fpgaSetup =
 linkMask ::
   forall n i.
   (KnownNat n, KnownNat i, n <= FpgaCount, i + 1 <= n) =>
-  Graph n -> SNat i -> BitVector (FpgaCount - 1)
+  Topology n -> SNat i -> BitVector (FpgaCount - 1)
 linkMask g i = case leqTrans @(i + 1) @n @FpgaCount of
   Dict -> pack $ map edge $ snd $ at @i @(FpgaCount - i - 1) i fpgaSetup
  where
@@ -76,7 +76,7 @@ linkMask g i = case leqTrans @(i + 1) @n @FpgaCount of
 linkMasks ::
   forall n.
   (KnownNat n, n <= FpgaCount) =>
-  Graph n -> Vec n (BitVector (FpgaCount - 1))
+  Topology n -> Vec n (BitVector (FpgaCount - 1))
 linkMasks g = smap (const . linkMask') indicesI
  where
   -- workaround, which is required to compensate for the missing upper

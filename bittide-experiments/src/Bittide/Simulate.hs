@@ -1,100 +1,274 @@
-{-|
-
-Provides a rudimentary simulation of elastic buffers.
-
--}
-
--- SPDX-FileCopyrightText: 2022-2024 Google LLC
+-- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE OverloadedStrings #-}
-
-module Bittide.Simulate where
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ImplicitPrelude #-}
+{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
+module Bittide.Simulate
+  ( OutputMode(..)
+  , SimPlotSettings(..)
+  , simPlot
+  , someCCC
+  ) where
 
 import Clash.Prelude
-import Clash.Signal.Internal
-import Data.Proxy
-import GHC.Stack
+  ( KnownDomain
+  , KnownNat
+  , SomeNat(..)
+  , type (<=)
+  , type (+)
+  , someNatVal
+  , natToNum
+  , snatProxy
+  )
 
-import Bittide.ClockControl
+import Clash.Sized.Vector qualified as V
+import Clash.Signal.Internal (Femtoseconds(..))
 
--- Number of type aliases for documentation purposes in various functions defined
--- down below.
-type Offset = Femtoseconds
-type StepSize = Femtoseconds
-type Period = Femtoseconds
+import GHC.Int (Int64)
+import System.Exit (die)
+import Text.Read (Read(..), lexP, pfail, readMaybe)
+import Text.Read.Lex (Lexeme(Ident))
+import Data.Proxy (Proxy(..))
+import Data.Aeson (ToJSON, FromJSON, Value(..))
+import Data.Aeson.Types (typeMismatch)
+import Data.Aeson qualified as A
+import Data.Text qualified as T
+import Data.Array ((!), bounds)
+import Data.Csv (toField, encode)
+import Control.Monad (zipWithM_, forM_)
+import System.FilePath ((</>))
+import System.Random (randomRIO)
+import Data.ByteString.Lazy qualified as BSL (appendFile)
 
-addFs :: Femtoseconds -> Femtoseconds -> Femtoseconds
-addFs (Femtoseconds a) (Femtoseconds b) = Femtoseconds (a + b)
+import Data.Type.Equality ((:~:)(..))
+import GHC.TypeLits.Compare ((:<=?)(..))
+import GHC.TypeLits.Witnesses ((%<=?))
+import GHC.TypeLits.Witnesses qualified as TLW (SNat(..))
 
-subFsZero :: Femtoseconds -> Femtoseconds -> Femtoseconds
-subFsZero (Femtoseconds a) (Femtoseconds b)
-  | aMinB < 0 = Femtoseconds 0
-  | otherwise = Femtoseconds aMinB
- where
-  aMinB = a - b
+import Bittide.Arithmetic.Ppm (Ppm(..), diffPeriod)
+import Bittide.ClockControl (ClockControlConfig(..), clockPeriodFs, defClockConfig)
+import Bittide.Plot (plot, fromRfState)
+import Bittide.Simulate.Time (Offset)
+import Bittide.Simulate.Topology (simulate, simulationEntity, allSettled)
+import Bittide.Topology
 
---
--- TODO:
---
---   * Reset adjustment to zero after reset assertion
---
-tunableClockGen ::
+data OutputMode = CSV | PDF
+  deriving (Ord, Eq)
+
+instance Show OutputMode where
+  show = \case
+    CSV -> "csv"
+    PDF -> "pdf"
+
+instance Read OutputMode where
+  readPrec = lexP >>= \case
+    Ident "csv" -> return CSV
+    Ident "pdf" -> return PDF
+    _           -> pfail
+
+instance ToJSON OutputMode where
+  toJSON = String . T.pack . show
+
+instance FromJSON OutputMode where
+  parseJSON v = case v of
+    String str -> maybe tmm return $ readMaybe $ T.unpack str
+    _          -> tmm
+   where
+    tmm = typeMismatch "OutputMode" v
+
+data SimPlotSettings =
+  SimPlotSettings
+    { samples      :: Int
+    , periodsize   :: Int
+    , mode         :: OutputMode
+    , dir          :: FilePath
+    , stopStable   :: Maybe Int
+    , fixClockOffs :: [Int64]
+    , fixStartOffs :: [Int]
+    , maxStartOff  :: Int
+    , sccc         :: SomeClockControlConfig
+    , save         :: [Int64] -> [Int] -> Maybe Bool -> IO ()
+    }
+
+-- | Creates some clock control configuration from the default with
+-- the given parameters modified.
+someCCC ::
   forall dom.
-  (HasCallStack, KnownDomain dom) =>
-  -- | Period it takes for a clock frequency request to settle. This is not
-  -- modelled, but an error is thrown if a request is submitted more often than
-  -- this.
-  SettlePeriod ->
-  -- | Offset from the ideal period (encoded in the domain) of this clock. For
-  -- the Si5395/Si5391 oscillators, this value lies between ±100 ppm.
-  Offset ->
-  -- | The size of the clock frequency should "jump" on a speed change request.
-  StepSize ->
-  -- | When asserted, clock multiplier resets the outgoing clock to its original
-  -- frequency. TODO: Implement.
-  Reset dom ->
-  -- | Speed change request. After submitting 'SpeedUp'/'SpeedDown', caller
-  -- shouldn't submit another request for 1 microsecond (i.e., the clock tuner
-  -- effectively operates at 1 MHz).
-  --
-  -- TODO: For the actual boards this needs to be modelled as a pulse. This pulse
-  -- should be asserted for at least 100 ns and at a maximum rate of 1 MHz.
-  --
-  Signal dom SpeedChange ->
-  -- | Clock with a dynamic frequency. At the time of writing, Clash primitives
-  -- don't account for this yet, so be careful when using them. Note that dynamic
-  -- frequencies are only relevant for components handling multiple domains.
-  Clock dom
-tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
-  let
-    period = clockPeriodFs @dom Proxy
-    initPeriod = period `addFs` periodOffset
-    clockSignal = initPeriod :- go settlePeriod initPeriod speedChange
-  in
-    Clock SSymbol (Just clockSignal)
+  KnownDomain dom =>
+  Proxy dom -> Bool -> Bool -> Int -> Integer -> Integer ->
+  IO SomeClockControlConfig
+someCCC _ reframe rustySim waittime margin framesize =
+  case someNatVal margin of
+    Just (SomeNat pMargin) -> case somePositiveNat framesize of
+      Just (SomePositiveNat pFramesize) ->
+        return $ SomeClockControlConfig @dom @12 $ ClockControlConfig
+          { cccStabilityCheckerMargin    = snatProxy pMargin
+          , cccStabilityCheckerFramesize = snatProxy pFramesize
+          , cccEnableReframing           = reframe
+          , cccReframingWaitTime         = fromInteger $ toInteger waittime
+          , cccEnableRustySimulation     = rustySim
+          , ..
+          }
+      _ -> die "ERROR: the given frame size must be positive"
+    _ -> die "ERROR: the given margin must be non-negative"
  where
-  go ::
-    Femtoseconds ->
-    Period ->
-    Signal dom SpeedChange ->
-    Signal dom StepSize
-  go !settleCounter !period (sc :- scs) =
-    let
-      vars =
-           "settlePeriod: " <> show settlePeriod <> ", "
-        <> "settleCounter: " <> show settleCounter <> ", "
-        <> "period: " <> show period <> ", "
+  ClockControlConfig{..} = defClockConfig @dom
 
-      (newSettleCounter, newPeriod) = case sc of
-        SpeedUp
-          | settleCounter >= settlePeriod -> (Femtoseconds 0, period `subFsZero` stepSize)
-          | otherwise -> error $ "tunableClockGen: frequency change requested too often. " <> vars
-        SlowDown
-          | settleCounter >= settlePeriod -> (Femtoseconds 0, period `addFs` stepSize)
-          | otherwise -> error $ "tunableClockGen: frequency change requested too often. " <> vars
-        NoChange ->
-          (settleCounter `addFs` period, period)
-    in
-      newPeriod :- go newSettleCounter newPeriod scs
+  somePositiveNat :: Integer -> Maybe SomePositiveNat
+  somePositiveNat n = someNatVal n >>= \(SomeNat (_ :: p n)) ->
+    case TLW.SNat @1 %<=? TLW.SNat @n of
+      LE Refl -> Just $ SomePositiveNat (Proxy @n)
+      _       -> Nothing
+
+-- | Simulates and plots the given topology according to the given
+-- parameters.
+simPlot :: STop -> SimPlotSettings -> IO Bool
+simPlot (STop (t :: Topology n)) settings@SimPlotSettings{..} =
+  case TLW.SNat @1 %<=? topSize t of
+    LE Refl -> case topSize t %<=? TLW.SNat @20 of
+      LE Refl -> case sccc of
+        SomeClockControlConfig (ccc :: ClockControlConfig dom d m f) ->
+          case TLW.SNat @1 %<=? TLW.SNat @f of
+            LE Refl -> case TLW.SNat @1 %<=? TLW.SNat @d of
+              LE Refl -> case TLW.SNat @(n + d) %<=? TLW.SNat @32 of
+                LE Refl -> case TLW.SNat @(1 + n) %<=? TLW.SNat @32 of
+                  LE Refl -> simPlot# settings ccc t
+                  _ -> die "ERROR: 1 + nodes <= 32"
+                _ -> die "ERROR: nodes + dcount <= 32"
+              _ -> die "ERROR: elastic buffer data counts must contain data"
+            _ -> die "ERROR: the given frame size must be positive"
+      _  -> die "ERROR: the given topology must have not more than 20 nodes"
+    _  -> die "ERROR: the given topology must have at least 1 node"
+ where
+  topSize :: KnownNat n => Topology n -> TLW.SNat n
+  topSize = const TLW.SNat
+
+-- | Creates and write plots for a given topology according to the
+-- given output mode.
+simPlot# ::
+  forall dom nodes dcount margin framesize.
+  ( KnownDomain dom
+  -- ^ domain
+  , KnownNat nodes
+  -- ^ the size of the topology is know
+  , KnownNat dcount
+  -- ^ the size of the data counts is known
+  , KnownNat margin
+  -- ^ the margins of the stability checker are known
+  , KnownNat framesize
+  -- ^ the frame size of cycles within the margins required is known
+  , 1 <= nodes
+  -- ^ the topology consists of at least one node
+  , 1 <= dcount
+  -- ^ data counts must contain data
+  , nodes + dcount <= 32
+  -- ^ computational limit of the clock control
+  , 1 + nodes <= 32
+  -- ^ computational limit of the clock control
+  , 1 <= framesize
+  -- ^ frames must at least cover one element
+  ) =>
+  SimPlotSettings ->
+  -- ^ simulation settings
+  ClockControlConfig dom dcount margin framesize ->
+  -- ^ clock control configuration
+  Topology nodes ->
+  -- ^ the topology
+  IO Bool
+  -- ^ stability result
+simPlot# simSettings ccc t = do
+  clockOffsets <-
+    V.zipWith (maybe id const) givenClockOffsets
+      <$> genClockOffsets ccc
+  startupOffsets <-
+    V.zipWith (maybe id const) givenStartupOffsets
+      <$> genStartupOffsets maxStartOff
+  let
+    simResult = simulate t stopStable samples periodsize
+              $ simulationEntity t ccc clockOffsets startupOffsets
+    saveSettings = save
+      ((\(Femtoseconds x) -> x) <$> V.toList clockOffsets)
+      (V.toList startupOffsets)
+
+  saveSettings Nothing
+
+  case mode of
+    PDF -> plot dir t $ fmap (fmap (\(a,b,c,d) -> (a,b,fromRfState c,d))) simResult
+    CSV -> dumpCsv simResult
+
+  let result = allSettled $ V.map last simResult
+  saveSettings $ Just result
+  return result
+ where
+  SimPlotSettings
+    { samples
+    , periodsize
+    , mode
+    , dir
+    , stopStable
+    , fixClockOffs
+    , fixStartOffs
+    , maxStartOff
+    , save
+    } = simSettings
+
+  givenClockOffsets =
+      V.unsafeFromList
+    $ take (natToNum @nodes)
+    $ (Just . Femtoseconds <$> fixClockOffs) <> repeat Nothing
+
+  givenStartupOffsets =
+      V.unsafeFromList
+    $ take (natToNum @nodes)
+    $ (Just <$> fixStartOffs) <> repeat Nothing
+
+  dumpCsv simulationResult = do
+    forM_ [0..n] $ \i -> do
+      let eb = topologyGraph t ! i
+      writeFile (filename i)
+        ( "t,clk" <> show i
+            <> concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
+    let dats = V.map (encode . fmap flatten) simulationResult
+    zipWithM_
+      (\dat i -> BSL.appendFile (filename i) dat)
+      (V.toList dats)
+      [(0 :: Int)..]
+
+  filename i = dir </> "clocks" <> "_" <> show i <> ".csv"
+  flatten (a, b, _, v) = toField a : toField b : (toField . fst <$> v)
+  (0, n) = bounds $ topologyGraph t
+
+-- | Generates a vector of random clock offsets.
+genClockOffsets ::
+  forall dom k n m c.
+  (KnownDomain dom, KnownNat k, KnownNat n) =>
+  ClockControlConfig dom n m c ->
+  IO (V.Vec k Offset)
+genClockOffsets ClockControlConfig{cccDeviation} =
+  V.traverse# (const genOffset) $ V.repeat ()
+ where
+  genOffset = do
+    Ppm offsetPpm <- randomRIO (-cccDeviation, cccDeviation)
+    let nonZeroOffsetPpm = if offsetPpm == 0 then cccDeviation else Ppm offsetPpm
+    pure (diffPeriod nonZeroOffsetPpm (clockPeriodFs @dom Proxy))
+
+-- | Generates a vector of random startup offsets.
+genStartupOffsets :: KnownNat k => Int -> IO (V.Vec k Int)
+genStartupOffsets limit =
+  V.traverse# (const ((+1) <$> randomRIO (0, limit))) $ V.repeat ()
+
+data SomePositiveNat =
+  forall n. (KnownNat n, 1 <= n) =>
+    SomePositiveNat (Proxy n)
+
+data SomeClockControlConfig =
+  forall dom dcount margin framesize.
+    ( KnownDomain dom
+    , KnownNat dcount
+    , KnownNat margin
+    , KnownNat framesize
+    ) => SomeClockControlConfig (ClockControlConfig dom dcount margin framesize)
