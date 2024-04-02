@@ -6,6 +6,7 @@
   {"top": "boardTestSimple",               "stage": "test", "targets": "All"},
   {"top": "extraProbesTest",               "stage": "test", "targets": "Specific [0]"},
   {"top": "fincFdecTests",                 "stage": "test", "targets": "Specific [-1]"},
+  {"top": "linkConfigurationTest",         "stage": "test", "targets": "All"},
   {"top": "fullMeshHwCcTest",              "stage": "test", "targets": "All"},
   {"top": "fullMeshSwCcTest",              "stage": "test", "targets": "All"},
   {"top": "syncInSyncOut",                 "stage": "test", "targets": "All"},

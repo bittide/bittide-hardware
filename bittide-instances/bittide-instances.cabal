@@ -111,6 +111,8 @@ library
     Bittide.Instances.Hitl.FullMeshHwCc
     Bittide.Instances.Hitl.FullMeshSwCc
     Bittide.Instances.Hitl.IlaPlot
+    Bittide.Instances.Hitl.LinkConfiguration
+    Bittide.Instances.Hitl.Setup
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.Tcl.ExtraProbes
     Bittide.Instances.Hitl.Transceivers
