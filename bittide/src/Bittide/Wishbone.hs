@@ -41,7 +41,7 @@ import qualified Protocols.Wishbone as Wishbone
 type MemoryMap nSlaves = Vec nSlaves (Unsigned (CLog 2 nSlaves))
 
 -- | Size of a bus that results from a `singleMasterInterconnect` with `nSlaves` slaves.
-type MappedBus addr nSlaves = addr - CLog 2 nSlaves
+type MappedBusAddrWidth addr nSlaves = addr - CLog 2 nSlaves
 
 {-# NOINLINE singleMasterInterconnect #-}
 -- | Component that maps multiple slave devices to a single master device over the wishbone
@@ -57,7 +57,7 @@ singleMasterInterconnect ::
  MemoryMap nSlaves ->
  Circuit
   (Wishbone dom 'Standard addrW a)
-  (Vec nSlaves (Wishbone dom 'Standard (MappedBus addrW nSlaves) a))
+  (Vec nSlaves (Wishbone dom 'Standard (MappedBusAddrWidth addrW nSlaves) a))
 singleMasterInterconnect (fmap pack -> config) =
   Circuit go
  where
@@ -66,14 +66,17 @@ singleMasterInterconnect (fmap pack -> config) =
 
   route master@(WishboneM2S{..}) slaves = (toMaster, toSlaves)
    where
-    oneHotSelected = fmap (==addrIndex) config
+    oneHotOrZeroSelected = fmap (==addrIndex) config
     (addrIndex, newAddr) =
-      split @_ @_ @(MappedBus addrW nSlaves) addr
+      split @_ @_ @(MappedBusAddrWidth addrW nSlaves) addr
     toSlaves =
       (\newStrobe -> (updateM2SAddr newAddr master){strobe = strobe && newStrobe})
-      <$> oneHotSelected
+      <$> oneHotOrZeroSelected
     toMaster
-      | busCycle && strobe = foldMaybes emptyWishboneS2M (maskToMaybes slaves oneHotSelected)
+      | busCycle && strobe =
+          foldMaybes
+          emptyWishboneS2M{err=True} -- master tries to access unmapped memory
+          (maskToMaybes slaves oneHotOrZeroSelected)
       | otherwise = emptyWishboneS2M
 
 dupWb ::
@@ -192,7 +195,7 @@ singleMasterInterconnect' ::
  Signal dom (WishboneM2S addrW (Regs a 8) a) ->
  Signal dom (Vec nSlaves (WishboneS2M a)) ->
  ( Signal dom (WishboneS2M a)
- , Signal dom (Vec nSlaves (WishboneM2S (MappedBus addrW nSlaves) (Regs a 8) a)))
+ , Signal dom (Vec nSlaves (WishboneM2S (MappedBusAddrWidth addrW nSlaves) (Regs a 8) a)))
 singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
  where
   Circuit f = singleMasterInterconnect @dom @nSlaves @addrW @a config

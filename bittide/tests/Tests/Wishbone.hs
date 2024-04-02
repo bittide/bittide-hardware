@@ -20,7 +20,6 @@ import Clash.Sized.Vector(unsafeFromList)
 import Data.Bifunctor
 import Data.Constraint (Dict(Dict))
 import Data.Constraint.Nat.Extra (cancelMulDiv, divWithRemainder)
-import Data.Maybe
 import Data.String
 import Hedgehog
 import Hedgehog.Range as Range
@@ -113,7 +112,7 @@ uartWbCircuitTest = do
     dut :: HiddenClockResetEnable System => Circuit (Df System Byte) (Df System Byte)
     dut = circuit $ \dfIn -> do
       (wb, dfOut) <- uartMachine -< dfIn
-      (uartTx, _status) <- (uartWb @System @32 d2 d2 (SNat @6250000)) -< (wb, uartTx)
+      (uartTx, _status) <- uartWb @System @32 d2 d2 (SNat @6250000) -< (wb, uartTx)
       idC -< dfOut
     expectOptions = ExpectOptions
       { eoEmptyTail = 50
@@ -123,22 +122,19 @@ uartWbCircuitTest = do
       }
   idWithModel expectOptions dataGen id (wcre dut)
 
--- | generates a 'MemoryMap' for 'singleMasterInterconnect'.
---
--- TODO: It currently generates a shuffled list of @[0..nSlaves-1]@, though the
---       interconnect can handle @[0..(clog2 nSlaves)-1]@. We should update the
---       test infrastructure such that it can handle the latter.
+-- | Generates a 'MemoryMap' for 'singleMasterInterconnect' for a specific number
+-- of slaves.
 genConfig ::
   forall nSlaves .
   (1 <= nSlaves) =>
   SNat nSlaves ->
   Gen (MemoryMap nSlaves)
-genConfig nSlaves@SNat = do
-  unsafeFromList <$> Gen.shuffle [0..snatToNum nSlaves - 1]
+genConfig nSlaves@SNat =
+  unsafeFromList . L.take (snatToNum nSlaves) <$> Gen.shuffle [0..]
 
 -- | Creates a memory map with 'simpleSlave' devices and a list of read addresses and checks
 -- if the correct 'simpleSlave' responds to the read operation. Reading outside of a 'simpleSlave' its
--- range should return an err.
+-- range should return an error.
 readingSlaves :: Property
 readingSlaves = property $ do
   devices <- forAll $ Gen.enum 2 16
@@ -171,8 +167,8 @@ readingSlaves = property $ do
 
   topEntity config ranges masterIn = toMaster
    where
-    slaves = withClockResetEnable @System clockGen resetGen enableGen simpleSlave <$>
-      ranges <*> config <*> unbundle toSlaves
+    slaves = withClockResetEnable @System clockGen resetGen enableGen $
+      simpleSlave <$> ranges <*> config <*> unbundle toSlaves
     (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen
       singleMasterInterconnect' config masterIn $ bundle slaves
 
@@ -185,18 +181,16 @@ readingSlaves = property $ do
     WishboneM2S 32 (Regs (Unsigned (CLog 2 nSlaves)) 8) (Unsigned (CLog 2 nSlaves)) ->
     WishboneS2M (Unsigned (CLog 2 nSlaves))
   getExpected config ranges WishboneM2S{..}
-    | commAttempt && isMapped && inRange =
-      (emptyWishboneS2M @(Unsigned (CLog 2 nSlaves))){acknowledge, readData}
-    | commAttempt && isMapped            = emptyWishboneS2M{err}
-    | otherwise                          = emptyWishboneS2M
+    | not commAttempt = emptyWishboneS2M
+    | Nothing <- maybeIndex = emptyWishboneS2M{err=True}
+    | Just index <- maybeIndex, not (inRange index) = emptyWishboneS2M{err=True}
+    | otherwise = (emptyWishboneS2M @(Unsigned (CLog 2 nSlaves)))
+        {acknowledge=True, readData=unpack indexBV}
    where
-    (readData, acknowledge, err) = (index, True, True)
-    (indexBV, restAddr) = split addr
-    index = unpack indexBV
     commAttempt = busCycle && strobe
-    isMapped = bitCoerce (resize indexBV) < length config
-    range = ranges !! fromJust (elemIndex index config)
-    inRange = restAddr <= range
+    maybeIndex = elemIndex (unpack indexBV) config
+    (indexBV :: BitVector (CLog 2 nSlaves), restAddr) = split addr
+    inRange index = restAddr <= (ranges !! index)
 
 -- | Creates a memory map with 'simpleSlave' devices and a list of write addresses and checks
 -- that if we 'simpleSlave' responds to the read operation. Reading outside of a 'simpleSlave' its
@@ -235,8 +229,8 @@ writingSlaves = property $ do
 
   topEntity config ranges masterIn = toMaster
    where
-    slaves = withClockResetEnable @System clockGen resetGen enableGen simpleSlave <$>
-      ranges <*> ranges <*> unbundle toSlaves
+    slaves = withClockResetEnable @System clockGen resetGen enableGen $
+      simpleSlave <$> ranges <*> ranges <*> unbundle toSlaves
     (toMaster, toSlaves) = withClockResetEnable clockGen resetGen enableGen
       singleMasterInterconnect' config masterIn $ bundle slaves
 
@@ -252,21 +246,17 @@ writingSlaves = property $ do
       (BitVector (32 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
     WishboneS2M (BitVector (32 - BitSize (Unsigned (CLog 2 nSlaves))))
   getExpected config ranges WishboneM2S{..}
-    | commAttempt && isMapped && inRange && writeEnable =
-      emptyWishboneS2M{acknowledge}
-    | commAttempt && isMapped && inRange                =
-      (emptyWishboneS2M @(Unsigned (CLog 2 nSlaves))){acknowledge, readData}
-    | commAttempt && isMapped                           =
-      (emptyWishboneS2M @(BitVector (32 - BitSize (Unsigned (CLog 2 nSlaves))))){err}
-    | otherwise                                         = emptyWishboneS2M
+    | not commAttempt = emptyWishboneS2M
+    | Nothing <- maybeIndex = emptyWishboneS2M{err=True}
+    | Just index <- maybeIndex, not (inRange index) = emptyWishboneS2M{err=True}
+    | writeEnable = emptyWishboneS2M{acknowledge=True}
+    | otherwise = (emptyWishboneS2M @(Unsigned (CLog 2 nSlaves)))
+        {acknowledge=True, readData=restAddr}
    where
-    (readData, acknowledge, err) = (restAddr, True, True)
-    (indexBV, restAddr) = split @_ @_ addr
-    index = unpack indexBV
     commAttempt = busCycle && strobe
-    isMapped = bitCoerce (resize indexBV) < length config
-    range = ranges !! fromJust (elemIndex index config)
-    inRange = restAddr <= range
+    maybeIndex = elemIndex (unpack indexBV) config
+    (indexBV :: BitVector (CLog 2 nSlaves), restAddr) = split addr
+    inRange index = restAddr <= (ranges !! index)
 
 -- | transforms an address to a 'WishboneM2S' read operation.
 wbRead
@@ -306,7 +296,8 @@ simpleSlave' ::
   BitVector aw ->
   a ->
   Circuit (Wishbone dom 'Standard aw a) ()
-simpleSlave' range readData0 = Circuit $ \(wbIn, ()) -> (mealy go readData0 wbIn, ())
+simpleSlave' range readDataInit =
+  Circuit $ \(wbIn, ()) -> (mealy go readDataInit wbIn, ())
  where
   go readData1 WishboneM2S{..} =
     (readData2, (emptyWishboneS2M @a){readData, acknowledge, err})
@@ -332,8 +323,8 @@ simpleSlave ::
   a ->
   Signal dom (WishboneM2S aw (Regs a 8) a) ->
   Signal dom (WishboneS2M a)
-simpleSlave range readData wbIn =
+simpleSlave range readDataInit wbIn =
   case divWithRemainder @(Regs a 8) @8 @7 of
     Dict -> fst $ toSignals slaveCircuit (wbIn, ())
  where
-  slaveCircuit = validatorCircuit |> simpleSlave' range readData
+  slaveCircuit = validatorCircuit |> simpleSlave' range readDataInit

@@ -102,3 +102,9 @@ source-repository-package
   type: git
   location: https://github.com/cchalmers/circuit-notation.git
   tag: 19b386c4aa3ff690758ae089c7754303f3500cc9
+
+source-repository-package
+    type: git
+    location: https://github.com/martijnbastiaan/haskell-hedgehog.git
+    tag: ddfa34501d16b12fb621efa72bed892910cb5475
+    subdir: hedgehog

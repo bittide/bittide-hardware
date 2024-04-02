@@ -165,13 +165,13 @@ test-suite unittests
     , bittide-instances
     , clash-prelude-hedgehog >= 1.6 && < 1.10
     , filepath
-    , hedgehog >= 1.0 && < 1.1
+    , hedgehog >= 1.0 && < 1.5
     , HUnit
     , parsec
     , pretty-simple
     , tasty
     , tasty-golden
-    , tasty-hedgehog >= 1.2 && < 1.3
+    , tasty-hedgehog >= 1.2 && < 1.5
     , tasty-th
 
 executable clash

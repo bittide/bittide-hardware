@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -44,7 +44,7 @@ processingElement ::
   PeConfig nBusses ->
   Circuit
     ()
-    ( Vec (nBusses-2) (Wishbone dom 'Standard (MappedBus 32 nBusses) (Bytes 4))
+    ( Vec (nBusses-2) (Wishbone dom 'Standard (MappedBusAddrWidth 32 nBusses) (Bytes 4))
     )
 processingElement (PeConfig memMapConfig initI initD) = circuit $ do
   (iBus0, dBus) <- rvCircuit (pure low) (pure low) (pure low)
