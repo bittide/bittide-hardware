@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -40,6 +41,7 @@
 --
 module Bittide.Hitl
   ( HitlTests
+  , HitlTestsWithPostProcData
   , Probes
   , FpgaIndex
   , TestName
@@ -91,6 +93,8 @@ type TestName = Text
 
 -- | A collection of (named) tests that should performed with hardware in the
 -- loop. Each test defines what data a specific FPGA should receive (see "Probes").
+-- Furthermore, some additional data can be provided, if required by subsequent
+-- post-processing steps (which must have a 'ToJSON' instance).
 --
 -- === __Example: Test without configuration__
 -- A test that runs for all FPGAs, and does not require any input:
@@ -110,7 +114,7 @@ type TestName = Text
 --
 -- This must be accompanied by a @hitlVio \@ABC@ in the design.
 --
--- === __Example: Test with custom configuration__
+-- === __Example: Test with custom configuration and no post processing data__
 -- A test that runs on specific FPGAs, and requires a (hypothetical) 8-bit number
 -- indicating the \"number of stages\" to be set on each FPGA:
 --
@@ -119,27 +123,71 @@ type TestName = Text
 -- > tests :: HitlTests NumberOfStages
 -- > tests = Map.fromList
 -- >   [ ( "Twelve stages on FPGA 2 and 5"
--- >     , [ (2, 12)
--- >       , (5, 12)
--- >       ]
+-- >     , ( [ (2, 12)
+-- >         , (5, 12)
+-- >         ]
+-- >       , NoPostProcData
+-- >       )
 -- >     )
 -- >   , ( "Six stages on FPGA 3, seven on FPGA 4"
--- >     , [ (3, 6)
--- >       , (4, 7)
--- >       ]
+-- >     , ( [ (3, 6)
+-- >         , (4, 7)
+-- >         ]
+-- >       , NoPostProcData
+-- >       )
 -- >     )
 -- >   ]
 --
 -- This must be accompanied by a @hitlVio \@NumberOfStages@ in the design.
-type HitlTests a = Map TestName (Probes a)
+--
+-- === __Example: Test with custom configuration and post processing data__
+-- A test that runs on specific FPGAs, and requires a (hypothetical) 8-bit number
+-- indicating the \"number of stages\" to be set on each FPGA. Additionally,
+-- some 'Int' constant gets fixed for each test, which will be written to
+-- the generated config files, but is not passed to the HITL test:
+--
+-- > type NumberOfStages = Unsigned 8
+-- >
+-- > tests :: HitlTests NumberOfStages Int
+-- > tests = Map.fromList
+-- >   [ ( "Twelve stages on FPGA 2 and 5"
+-- >     , ( [ (2, 12)
+-- >         , (5, 12)
+-- >         ]
+-- >       , 42
+-- >       )
+-- >     )
+-- >   , ( "Six stages on FPGA 3, seven on FPGA 4"
+-- >     , ( [ (3, 6)
+-- >         , (4, 7)
+-- >         ]
+-- >       , 13
+-- >       )
+-- >     )
+-- >   ]
+--
+-- This must be accompanied by a @hitlVio \@NumberOfStages@ in the design.
+--
+type HitlTestsWithPostProcData a b = Map TestName (Probes a, b)
+
+-- | The type synonym for tests without additional post processing data.
+type HitlTests a = HitlTestsWithPostProcData a NoPostProcData
 
 -- | A list of values to set on a specific FPGA. See convenience methods
 -- 'allFpgas' and 'singleFpga'.
 type Probes a = [(FpgaIndex, a)]
 
+-- | A custom data type for indicating tests without any additional
+-- post processing data with a custom 'ToJSON' instance. This is
+-- required, because the TCL -> YAML interface does not support empty
+-- lists or empty objects.
+data NoPostProcData = NoPostProcData
+
+instance ToJSON NoPostProcData where toJSON _ = Aeson.Null
+
 -- | Set one specific value on all FPGAs
 allFpgas :: a -> Probes a
-allFpgas a = zip [0..] (repeat a)
+allFpgas a = (, a) <$> [0..]
 
 -- | Perform a test on just a single FPGA
 singleFpga :: FpgaIndex -> a -> Probes a
@@ -153,7 +201,7 @@ singleFpga ix a = [(ix, a)]
 -- > tests :: HitlTests ()
 -- > tests = noConfigTest allFpgas
 noConfigTest :: TestName -> (forall a. a -> Probes a) -> HitlTests ()
-noConfigTest nm f = Map.singleton nm (f ())
+noConfigTest nm f = Map.singleton nm (f (), NoPostProcData)
 
 -- | Generate a set of tests from an enum. E.g., if you defined a data type looking
 -- like:
@@ -167,7 +215,8 @@ noConfigTest nm f = Map.singleton nm (f ())
 -- > tests = testsFromEnum allFpgas
 --
 testsFromEnum :: (Show a, Bounded a, Enum a) => (a -> Probes a) -> HitlTests a
-testsFromEnum f = Map.fromList $ map (\a -> (Text.pack (show a), f a)) [minBound..]
+testsFromEnum f = Map.fromList
+  $ map (\a -> (Text.pack (show a), (f a, NoPostProcData))) [minBound..]
 
 -- | A list, but with a custom "ToJSON" instance to work around Vivado issues
 newtype PackedList a = PackedList [a]
@@ -203,19 +252,20 @@ data PackedTarget = PackedTarget
   deriving (Generic, ToJSON)
 
 -- | See "PackedTests"
-newtype PackedTest = PackedTest
+data PackedTest a = PackedTest
   { targets :: PackedList PackedTarget
+  , postproc :: a
   }
   deriving (Generic, ToJSON)
 
 -- | Intermediate representation of "HitlTests". There to provide trivial instances
 -- of "ToJSON".
-data PackedTests = PackedTests
+data PackedTests a = PackedTests
   { defaults :: PackedProbes
-  , tests :: Map Text PackedTest
+  , tests :: Map Text (PackedTest a)
   }
 
-instance ToJSON PackedTests where
+instance ToJSON a => ToJSON (PackedTests a) where
   toJSON (PackedTests{defaults, tests}) = object
     [ "defaults" .= object ["probes" .= defaults]
     , "tests"    .= toJSON tests
@@ -223,17 +273,27 @@ instance ToJSON PackedTests where
 
 -- | Convert an \"unpacked\" "HitlTests" to a packed version. The packed version
 -- is convertible to JSON, which in turn can be interpreted by the @HardwareTest.tcl@.
-toPacked :: forall a. BitPack a => HitlTests a -> PackedTests
+toPacked ::
+  forall a b.
+  (BitPack a, ToJSON b) =>
+  HitlTestsWithPostProcData a b ->
+  PackedTests b
 toPacked hitlTests = PackedTests{defaults, tests}
  where
   bitSizeA = natToInteger @(BitSize a)
-  tests = fromList [(name, goProbes probes) | (name, probes) <- toList hitlTests]
+  tests = fromList
+    [ (name, goProbes probes ppData)
+    | (name, (probes, ppData)) <- toList hitlTests
+    ]
   defaults
     -- If @a@ is a zero-width type, we don't want to generate any data probes
     | bitSizeA == 0 = PackedProbes []
     | otherwise     = PackedProbes [("probe_test_data", 0)]
 
-  goProbes = PackedTest . PackedList . goTargetList
+  goProbes probes postproc = PackedTest
+    { targets = PackedList $ goTargetList probes
+    , ..
+    }
 
   goTargetList probes
     | bitSizeA == 0 =
@@ -270,7 +330,11 @@ toPacked hitlTests = PackedTests{defaults, tests}
 -- >   testname2:
 -- >     ...
 --
-packAndEncode :: forall a. BitPack a => HitlTests a -> LazyByteString.ByteString
+packAndEncode ::
+  forall a b.
+  (BitPack a, ToJSON b) =>
+  HitlTestsWithPostProcData a b ->
+  LazyByteString.ByteString
 packAndEncode = encodePretty . toPacked
 
 -- | Whether a test has been completed, see 'hitlVio'.
