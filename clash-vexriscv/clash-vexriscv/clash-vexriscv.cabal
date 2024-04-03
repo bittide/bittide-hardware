@@ -70,6 +70,13 @@ common common-options
 
     -- Prelude isn't imported by default as Clash offers Clash.Prelude
     NoImplicitPrelude
+
+  -- See https://github.com/clash-lang/clash-compiler/pull/2511
+  if impl(ghc >= 9.4)
+    CPP-Options: -DCLASH_OPAQUE=OPAQUE
+  else
+    CPP-Options: -DCLASH_OPAQUE=NOINLINE
+
   ghc-options:
     -Wall -Wcompat
 
@@ -104,6 +111,7 @@ library
     VexRiscv
     VexRiscv.ClockTicks
     VexRiscv.FFI
+    VexRiscv.JtagTcpBridge
     VexRiscv.TH
     VexRiscv.VecToTuple
 
@@ -116,6 +124,7 @@ library
     directory >= 1.3 && < 1.4,
     filepath,
     Glob,
+    network,
     process >= 1.6 && < 1.8,
     string-interpolate,
     tagged,

@@ -13,7 +13,7 @@ import Clash.Prelude
 
 import Protocols
 import Protocols.Wishbone
-import VexRiscv (Input(..), Output(..), vexRiscv)
+import VexRiscv (CpuIn(..), CpuOut(..), JtagIn(..), vexRiscv)
 
 import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
@@ -91,9 +91,10 @@ rvCircuit tInterrupt sInterrupt eInterrupt = Circuit go
   go ((),(iBusIn, dBusIn)) = ((),(iBusOut, dBusOut))
    where
     tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) =
-      Input {..}
+      CpuIn {..}
     rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
-    rvOut = vexRiscv rvIn
+    jtagIn = pure (JtagIn 0 0 0)
+    (rvOut, _jtagOut) = vexRiscv hasClock hasReset rvIn jtagIn
 
     -- The VexRiscv instruction- and data-busses assume a conceptual [Bytes 4] memory
     -- while our storages work like [Bytes 1]. This is also why the address width of

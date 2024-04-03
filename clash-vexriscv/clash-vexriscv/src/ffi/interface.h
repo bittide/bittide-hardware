@@ -24,6 +24,10 @@ typedef struct {
   bit      dBusWishbone_ACK;
   uint32_t dBusWishbone_DAT_MISO;
   bit      dBusWishbone_ERR;
+
+  bit      jtag_TCK;
+  bit      jtag_TMS;
+  bit      jtag_TDI;
 } COMB_INPUT;
 
 typedef struct {
@@ -44,6 +48,20 @@ typedef struct {
   uint8_t  dBusWishbone_SEL;
   uint8_t  dBusWishbone_CTI;
   uint8_t  dBusWishbone_BTE;
+
+  bit      jtag_debug_resetOut;
+  bit      jtag_TDO;
 } OUTPUT;
+
+typedef struct {
+  bit      tck;
+  bit      tms;
+  bit      tdi;
+} JTAG_INPUT;
+
+typedef struct {
+  bit      debug_resetOut;
+  bit      tdo;
+} JTAG_OUTPUT;
 
 #endif
