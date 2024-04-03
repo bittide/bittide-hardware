@@ -13,5 +13,5 @@ set -euo pipefail
 # SPDX-FileCopyrightText: 2022-2024 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
-
+cd "$(git rev-parse --show-toplevel)"
 git subtree pull --prefix clash-vexriscv/ https://github.com/clash-lang/clash-vexriscv.git "$1" --squash
