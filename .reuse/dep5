@@ -48,6 +48,10 @@ Files: .github/systemd/*
 Copyright: 2023 Google LLC
 License: Apache-2.0
 
+Files: bittide/data/clock_configs/*
+Copyright: 2024 Google LLC
+License: Apache-2.0
+
 # This is already handled in the clash-vexriscv repository, but reuse doesn't
 # check the nested dep5 file :(
 Files: clash-vexriscv/clash-vexriscv-sim/test-programs/src/bin/*.expected

@@ -104,6 +104,7 @@ executable cc-plot
     array,
     bittide,
     bittide-experiments,
+    bittide-extra,
     bittide-instances,
     bytestring,
     cassava,
@@ -115,6 +116,7 @@ executable cc-plot
     text,
     typelits-witnesses,
     unordered-containers,
+    utf8-string,
     vector,
   default-extensions: ImplicitPrelude
   -- enable rtsopts so we can setup memory limits

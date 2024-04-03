@@ -2,9 +2,10 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PackageImports #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -16,7 +17,7 @@
 module Main (main) where
 
 import Clash.Prelude
-  (BitPack(..), SNat(..), BitSize, Vec, (.|.), natToNum, shift, extend)
+  (BitPack(..), SNat(..), Vec, natToNum, extend)
 
 import Clash.Signal.Internal (Femtoseconds(..))
 import qualified Clash.Sized.Vector as Vec
@@ -33,12 +34,10 @@ import Conduit
   , runConduit, sourceHandle, scanlC, dropC, mapC, sinkList, yield, await
   )
 import Control.Exception (SomeException(..), Exception(..), throw, handle)
-import Control.Monad (forM, foldM, filterM, unless)
-import Data.ByteString.Internal (w2c)
-import qualified Data.ByteString as BS
+import Control.Monad (forM, filterM, unless)
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Char8 as BSC
-import Data.Char (isHexDigit, digitToInt)
+import qualified Data.ByteString.UTF8 as UTF8
 import Data.Csv
   ( FromField(..), FromRecord(..), HasHeader(..), ToNamedRecord(..), (.!)
   , defaultDecodeOptions, encodeByName
@@ -59,6 +58,7 @@ import System.Directory
   (listDirectory, doesDirectoryExist, createDirectoryIfMissing)
 import System.Environment (getArgs, getProgName)
 import System.FilePath ((</>), takeExtensions, takeBaseName, takeFileName)
+import "bittide-extra" Numeric.Extra (parseHex)
 
 import Bittide.Plot
 import Bittide.ClockControl
@@ -72,31 +72,7 @@ newtype Hex a = Hex { fromHex :: a }
   deriving newtype (BitPack)
 
 instance BitPack a => FromField (Hex a) where
-  parseField bs = (unpack <$>) $ foldM pHex 0
-    $ reverse $ zip [0,1..] $ reverse (w2c <$> BS.unpack bs)
-   where
-    pHex !a (i, c)
-      | not (isHexDigit c) =
-          fail $ "Non-hexadecimal digit: " <> [c]
-      | i * 4 + log2 (digitToNum c) > natToNum @(BitSize a) =
-          fail $ "Value is out of range: " <> BSC.unpack bs
-      | otherwise =
-          return $ shift a 4 .|. digitToNum c
-
-    -- 'digitToInt' produces only 16 different values. Hence, it can be
-    --  extended to work for any 'Num' instance.
-    digitToNum x = case digitToInt x of
-      { 0 -> 0; 1 -> 1; 2 -> 2; 3 -> 3; 4 -> 4; 5 -> 5; 6 -> 6; 7 -> 7; 8 -> 8
-      ; 9 -> 9; 10 -> 10; 11 -> 11; 12 -> 12; 13 -> 13; 14 -> 14; 15 -> 15
-      ; y | y < 0     -> error "digitToInt returned some negative value"
-          | otherwise -> error "digitToInt returned some value greater than 15"
-      }
-
-    log2 :: Int -> Int
-    log2 =
-      let log2' !a 0 = a
-          log2' !a n = log2' (a + 1) $ n `div` 2
-      in  log2' 0
+  parseField = either fail pure . parseHex . UTF8.toString
 
 -- | The captured data entries, as they are dumped by the ILA of
 -- 'Bittide.Instances.Hitl.FullMeshHwCc.callistoClockControlWithIla'.

@@ -70,6 +70,7 @@ common common-options
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
     template-haskell,
+
 library
   import: common-options
   hs-source-dirs: src
@@ -78,14 +79,36 @@ library
     Bittide.Extra.Wishbone
     Clash.Explicit.Signal.Extra
     Clash.Sized.Vector.Extra
+    Numeric.Extra
+
+test-suite unittests
+  import: common-options
+  type:             exitcode-stdio-1.0
+  main-is:          Main.hs
+  hs-source-dirs:   tests/unittests
+  default-language: Haskell2010
+  ghc-options:      -Wall -Wcompat -threaded
+                    -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  hs-source-dirs:   tests/doctests
+  other-modules:
+    Tests.Numeric.Extra
+  build-depends:
+    base,
+    bittide-extra,
+    clash-prelude-hedgehog,
+    clash-prelude,
+    hedgehog,
+    tasty-hedgehog,
+    tasty-th,
+    tasty,
 
 test-suite doctests
   type:             exitcode-stdio-1.0
   default-language: Haskell2010
-  main-is:          doctests.hs
+  main-is:          Main.hs
   ghc-options:      -Wall -Wcompat -threaded
                     -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
-  hs-source-dirs:   tests
+  hs-source-dirs:   tests/doctests
 
   build-depends:
     base,
