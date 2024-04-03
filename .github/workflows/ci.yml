@@ -279,6 +279,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           # Note that all artifacts are downloaded, if no 'name' is specified.
+          # This is still required for the generation of the simulation plots.
           # Unfortunately, this is the only working solution that github offers
           # right at the moment. Alternative options exist, like
           # https://github.com/marketplace/actions/download-multiple-workflow-artifacts,
@@ -292,32 +293,31 @@ jobs:
         run: |
           mkdir -p reports
           mkdir -p plot-sources
-          mkdir -p hitl-plots/hw
           ./cargo.sh build --frozen --release
-          cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshHwCcTest-debug/Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest/ila-data/CC/ hitl-plots/hw
-          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/hw/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/hw/topology.tikz
+          export BITTIDE_ARTIFACT_ACCESS_TOKEN="${{ secrets.GITHUB_TOKEN }}"
           export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/hw/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/hw/runref
-          cd hitl-plots/hw
+          cabal run -- bittide-tools:cc-plot ${{ github.run_id }}:fullMeshHwCcTest _build/plot hitl-plots/hw
+          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/hw/CC/report.tex
+          cp .github/hitl/topology.tikz hitl-plots/hw/CC/topology.tikz
+          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/hw/CC/datetime
+          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/hw/CC/runref
+          cd hitl-plots/hw/CC
           lualatex report.tex
           rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz elasticbuffers.pdf clocks.pdf
-          cd ../..
-          mv hitl-plots/hw/report.pdf reports/HITL-FullMeshHwCc-Report.pdf
-          mv hitl-plots/hw plot-sources/FullMeshHwCc
-          mkdir -p hitl-plots/sw
-          cabal run -- bittide-tools:cc-plot artifacts/_build-fullMeshSwCcTest-debug/Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest/ila-data/CC/ hitl-plots/sw
-          cp .github/hitl/FullMeshSwCcReportTemplate.tex hitl-plots/sw/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/sw/topology.tikz
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/sw/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/sw/runref
-          cd hitl-plots/sw
+          cd ../../..
+          mv hitl-plots/hw/CC/report.pdf reports/HITL-FullMeshHwCc-Report.pdf
+          mv hitl-plots/hw/CC plot-sources/FullMeshHwCc
+          cabal run -- bittide-tools:cc-plot ${{ github.run_id }}:fullMeshSwCcTest _build/plot hitl-plots/sw
+          cp .github/hitl/FullMeshSwCcReportTemplate.tex hitl-plots/sw/CC/report.tex
+          cp .github/hitl/topology.tikz hitl-plots/sw/CC/topology.tikz
+          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/sw/CC/datetime
+          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/sw/CC/runref
+          cd hitl-plots/sw/CC
           lualatex report.tex
           rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz elasticbuffers.pdf clocks.pdf
-          cd ../..
-          mv hitl-plots/sw/report.pdf reports/HITL-FullMeshSwCc-Report.pdf
-          mv hitl-plots/sw plot-sources/FullMeshSwCc
+          cd ../../..
+          mv hitl-plots/sw/CC/report.pdf reports/HITL-FullMeshSwCc-Report.pdf
+          mv hitl-plots/sw/CC plot-sources/FullMeshSwCc
 
       - name: Generate final simulation report
         run: |

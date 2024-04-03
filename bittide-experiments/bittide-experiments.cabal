@@ -85,14 +85,21 @@ library
     clash-cores,
     clash-lib,
     containers,
+    directory,
     filepath,
     happy-dot,
+    http-conduit,
+    http-types,
     matplotlib,
     optparse-applicative,
+    process,
     random,
+    temporary,
     text,
-    typelits-witnesses
+    typelits-witnesses,
+    vector
   exposed-modules:
+    Bittide.Github.Artifacts
     Bittide.Hitl
     Bittide.Plot
     Bittide.Simulate

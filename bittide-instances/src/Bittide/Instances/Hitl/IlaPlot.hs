@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -30,6 +30,7 @@ module Bittide.Instances.Hitl.IlaPlot
   , PlotData(..)
   , RfStageChange(..)
     -- * ILA Plot
+  , ilaProbeNames
   , ilaPlotSetup
   , callistoClockControlWithIla
     -- * Helpers
@@ -210,6 +211,17 @@ data IlaControl dom =
     , globalTimestamp :: Signal dom (GlobalTimestamp dom)
       -- ^ Synchronized pulse counter
     }
+
+-- | Names of the additional ILA plot probes.
+ilaProbeNames :: Vec 6 String
+ilaProbeNames =
+     "trigger_1"
+  :> "capture_1"
+  :> "condition"
+  :> "global"
+  :> "local"
+  :> "data"
+  :> Nil
 
 -- | The ILA plot setup controller.
 ilaPlotSetup ::
@@ -531,15 +543,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
   ilaInstance :: Signal sys ()
   ilaInstance =
     setName @"ilaPlot" $ ila
-      ( ilaConfig
-           $ "trigger_1"
-          :> "capture_1"
-          :> "condition"
-          :> "global"
-          :> "local"
-          :> "data"
-          :> Nil
-      ) { depth = D16384 }
+      (ilaConfig ilaProbeNames) { depth = D16384 }
       -- the ILA must run on a stable clock
       clk
       -- trigger as soon as we start
