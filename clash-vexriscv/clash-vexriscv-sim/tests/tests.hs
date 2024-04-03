@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022-2023 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
@@ -10,6 +10,8 @@ import qualified Data.List as L
 
 import Control.Monad (forM)
 import Data.Maybe (catMaybes, mapMaybe)
+import Data.Proxy
+import Data.Tuple.Extra (fst3)
 import Data.Word (Word8)
 import GHC.Base (when)
 import System.Directory (copyFile, doesFileExist, listDirectory)
@@ -17,13 +19,14 @@ import System.Exit (exitFailure)
 import System.FilePath
 import System.IO
 import System.IO.Temp (withSystemTempFile)
-
 import Test.Tasty
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
+import Test.Tasty.Options
 
-import Utils.ProgramLoad (loadProgram)
+import Utils.ProgramLoad (loadProgramDmem)
 import Utils.Cpu (cpu)
 
+import qualified Tests.Jtag
 
 runProgramExpect ::
   -- | action to copy ELF file
@@ -35,11 +38,12 @@ runProgramExpect ::
   Assertion
 runProgramExpect act n expected = withSystemTempFile "ELF" $ \fp _ -> do
   act fp
-  (iMem, dMem) <- withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $ loadProgram fp
+  (iMem, dMem) <- withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $
+    loadProgramDmem fp
 
   let _all@(unbundle -> (_circuit, writes, _iBus, _dBus)) =
         withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $
-          bundle (cpu iMem dMem)
+          bundle (cpu Nothing iMem dMem)
 
   let output = L.take (BS.length expected) $
         flip mapMaybe (sampleN_lazy n writes) $ \case
@@ -107,8 +111,8 @@ runTest name mode n elfPath expectPath =
 
 main :: IO ()
 main = do
-  debugTests <- findTests sourceDir debugBinDir
-  releaseTests <- findTests sourceDir releaseBinDir
+  debugTests <- L.sortOn fst3 <$> findTests sourceDir debugBinDir
+  releaseTests <- L.sortOn fst3 <$> findTests sourceDir releaseBinDir
 
   when (L.null debugTests) $ do
     hPutStrLn stderr "No debug tests found! Was `cargo build` run?"
@@ -127,8 +131,11 @@ main = do
   let tests =
         testGroup
           "VexRiscv Tests"
-          [ testGroup "Debug builds" debugTestCases,
-            testGroup "Release builds" releaseTestCases
+          [ testGroup "Debug builds" debugTestCases
+          , testGroup "Release builds" releaseTestCases
+          , Tests.Jtag.tests
           ]
 
-  defaultMain tests
+  defaultMainWithIngredients
+    (includingOptions [Option (Proxy :: Proxy Tests.Jtag.JtagDebug)] : defaultIngredients)
+    tests

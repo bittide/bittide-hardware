@@ -18,6 +18,8 @@ import Data.Word
 
 data VexRiscv
 
+data VexRiscvJtagBridge
+
 foreign import ccall unsafe "vexr_init" vexrInit :: IO (Ptr VexRiscv)
 foreign import ccall unsafe "vexr_shutdown" vexrShutdown :: Ptr VexRiscv -> IO ()
 
@@ -25,6 +27,10 @@ foreign import ccall unsafe "vexr_init_stage1" vexrInitStage1 :: Ptr VexRiscv ->
 foreign import ccall unsafe "vexr_init_stage2" vexrInitStage2 :: Ptr VexRiscv -> Ptr COMB_INPUT -> IO ()
 foreign import ccall unsafe "vexr_step_rising_edge" vexrStepRisingEdge :: Ptr VexRiscv -> Word64 -> Ptr NON_COMB_INPUT -> Ptr OUTPUT -> IO ()
 foreign import ccall unsafe "vexr_step_falling_edge" vexrStepFallingEdge :: Ptr VexRiscv -> Word64 -> Ptr COMB_INPUT -> IO ()
+
+foreign import ccall unsafe "vexr_jtag_bridge_init" vexrJtagBridgeInit :: Word16 -> IO (Ptr VexRiscvJtagBridge)
+foreign import ccall unsafe "vexr_jtag_bridge_step" vexrJtagBridgeStep :: Ptr VexRiscvJtagBridge -> Ptr JTAG_OUTPUT -> Ptr JTAG_INPUT -> IO ()
+foreign import ccall unsafe "vexr_jtag_bridge_shutdown" vexrJtagBridgeShutdown :: Ptr VexRiscvJtagBridge -> IO ()
 
 -- | CPU input that cannot combinatorially depend on the CPU output
 data NON_COMB_INPUT = NON_COMB_INPUT
@@ -43,6 +49,10 @@ data COMB_INPUT = COMB_INPUT
   , dBusWishbone_ACK :: Bit
   , dBusWishbone_DAT_MISO :: Word32
   , dBusWishbone_ERR :: Bit
+
+  , jtag_TCK :: Bit
+  , jtag_TMS :: Bit
+  , jtag_TDI :: Bit
   }
   deriving (Show)
 
@@ -64,6 +74,22 @@ data OUTPUT = OUTPUT
   , dBusWishbone_SEL :: Word8
   , dBusWishbone_CTI :: Word8
   , dBusWishbone_BTE :: Word8
+
+  , jtag_debug_resetOut :: Bit
+  , jtag_TDO :: Bit
+  }
+  deriving (Show)
+
+data JTAG_INPUT = JTAG_INPUT
+  { tck :: Bit
+  , tms :: Bit
+  , tdi :: Bit
+  }
+  deriving (Show)
+
+data JTAG_OUTPUT = JTAG_OUTPUT
+  { debug_resetOut :: Bit
+  , tdo :: Bit
   }
   deriving (Show)
 
@@ -102,6 +128,9 @@ instance Storable COMB_INPUT where
       <*> (#peek COMB_INPUT, dBusWishbone_ACK) ptr
       <*> (#peek COMB_INPUT, dBusWishbone_DAT_MISO) ptr
       <*> (#peek COMB_INPUT, dBusWishbone_ERR) ptr
+      <*> (#peek COMB_INPUT, jtag_TCK) ptr
+      <*> (#peek COMB_INPUT, jtag_TMS) ptr
+      <*> (#peek COMB_INPUT, jtag_TDI) ptr
 
     {-# INLINE poke #-}
     poke ptr this = do
@@ -112,6 +141,10 @@ instance Storable COMB_INPUT where
       (#poke COMB_INPUT, dBusWishbone_ACK) ptr (dBusWishbone_ACK this)
       (#poke COMB_INPUT, dBusWishbone_DAT_MISO) ptr (dBusWishbone_DAT_MISO this)
       (#poke COMB_INPUT, dBusWishbone_ERR) ptr (dBusWishbone_ERR this)
+
+      (#poke COMB_INPUT, jtag_TCK) ptr (jtag_TCK this)
+      (#poke COMB_INPUT, jtag_TMS) ptr (jtag_TMS this)
+      (#poke COMB_INPUT, jtag_TDI) ptr (jtag_TDI this)
       return ()
 
 instance Storable OUTPUT where
@@ -137,6 +170,9 @@ instance Storable OUTPUT where
       <*> (#peek OUTPUT, dBusWishbone_CTI) ptr
       <*> (#peek OUTPUT, dBusWishbone_BTE) ptr
 
+      <*> (#peek OUTPUT, jtag_debug_resetOut) ptr
+      <*> (#peek OUTPUT, jtag_TDO) ptr
+
     {-# INLINE poke #-}
     poke ptr this = do
       (#poke OUTPUT, iBusWishbone_CYC) ptr (iBusWishbone_CYC this)
@@ -156,4 +192,36 @@ instance Storable OUTPUT where
       (#poke OUTPUT, dBusWishbone_SEL) ptr (dBusWishbone_SEL this)
       (#poke OUTPUT, dBusWishbone_CTI) ptr (dBusWishbone_CTI this)
       (#poke OUTPUT, dBusWishbone_BTE) ptr (dBusWishbone_BTE this)
+
+      (#poke OUTPUT, jtag_debug_resetOut) ptr (jtag_debug_resetOut this)
+      (#poke OUTPUT, jtag_TDO) ptr (jtag_TDO this)
+      return ()
+
+instance Storable JTAG_OUTPUT where
+    alignment _ = #alignment JTAG_OUTPUT
+    sizeOf _ = #size JTAG_OUTPUT
+    {-# INLINE peek #-}
+    peek ptr = const JTAG_OUTPUT <$> pure ()
+      <*> (#peek JTAG_OUTPUT, debug_resetOut) ptr
+      <*> (#peek JTAG_OUTPUT, tdo) ptr
+
+    {-# INLINE poke #-}
+    poke ptr this = do
+      (#poke JTAG_OUTPUT, debug_resetOut) ptr (debug_resetOut this)
+      (#poke JTAG_OUTPUT, tdo) ptr (tdo this)
+
+instance Storable JTAG_INPUT where
+    alignment _ = #alignment JTAG_INPUT
+    sizeOf _ = #size JTAG_INPUT
+    {-# INLINE peek #-}
+    peek ptr = const JTAG_INPUT <$> pure ()
+      <*> (#peek JTAG_INPUT, tck) ptr
+      <*> (#peek JTAG_INPUT, tms) ptr
+      <*> (#peek JTAG_INPUT, tdi) ptr
+
+    {-# INLINE poke #-}
+    poke ptr this = do
+      (#poke JTAG_INPUT, tck) ptr (tck this)
+      (#poke JTAG_INPUT, tms) ptr (tms this)
+      (#poke JTAG_INPUT, tdi) ptr (tdi this)
       return ()

@@ -65,3 +65,9 @@ log
 vivado_*
 tight_setup_hold_pins.txt
 .Xil
+
+# Verilator debug output
+simulation_dump.vcd
+
+# Clash output
+verilog

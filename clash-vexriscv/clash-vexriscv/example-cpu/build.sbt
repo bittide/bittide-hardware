@@ -4,7 +4,7 @@
 
 import Dependencies._
 
-val spinalVersion = "1.7.1"
+val spinalVersion = "1.10.1"
 
 ThisBuild / scalaVersion     := "2.11.12"
 ThisBuild / version          := "0.1.0-SNAPSHOT"
@@ -17,7 +17,8 @@ lazy val root = (project in file("."))
     libraryDependencies ++= Seq(
       "com.github.spinalhdl" % "spinalhdl-core_2.11" % spinalVersion,
       "com.github.spinalhdl" % "spinalhdl-lib_2.11" % spinalVersion,
-      compilerPlugin("com.github.spinalhdl" % "spinalhdl-idsl-plugin_2.11" % spinalVersion)
+      compilerPlugin("com.github.spinalhdl" % "spinalhdl-idsl-plugin_2.11" % spinalVersion),
+      "org.yaml" % "snakeyaml" % "1.8"
     )
   )
 

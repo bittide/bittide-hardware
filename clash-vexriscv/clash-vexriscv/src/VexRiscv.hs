@@ -2,11 +2,12 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE MagicHash #-}
-{-# LANGUAGE TemplateHaskellQuotes #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskellQuotes #-}
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
@@ -25,6 +26,7 @@ import Foreign.Storable
 import GHC.IO (unsafePerformIO, unsafeInterleaveIO)
 import GHC.Stack (HasCallStack)
 import Language.Haskell.TH.Syntax
+import Protocols
 import Protocols.Wishbone
 
 import VexRiscv.ClockTicks
@@ -34,7 +36,20 @@ import VexRiscv.VecToTuple
 
 import qualified VexRiscv.FFI as FFI
 
-data Input = Input
+data JtagIn = JtagIn
+  { testClock :: "TCK" ::: Bit
+  , testModeSelect :: "TMS" ::: Bit
+  , testDataIn :: "TDI" ::: Bit
+  }
+  deriving (Generic, Eq, NFDataX, ShowX, BitPack)
+
+data JtagOut = JtagOut
+  { testDataOut :: "TDO" ::: Bit
+  , debugReset :: "RST" ::: Bit
+  }
+  deriving (Generic, NFDataX, ShowX, Eq, BitPack)
+
+data CpuIn = CpuIn
   { timerInterrupt :: "TIMER_INTERRUPT" ::: Bit
   , externalInterrupt :: "EXTERNAL_INTERRUPT" ::: Bit
   , softwareInterrupt :: "SOFTWARE_INTERRUPT" ::: Bit
@@ -43,11 +58,19 @@ data Input = Input
   }
   deriving (Generic, NFDataX, ShowX, Eq, BitPack)
 
-data Output = Output
+data CpuOut = CpuOut
   { iBusWbM2S :: "IBUS_OUT_" ::: WishboneM2S 30 4 (BitVector 32)
   , dBusWbM2S :: "DBUS_OUT_" ::: WishboneM2S 30 4 (BitVector 32)
   }
   deriving (Generic, NFDataX, ShowX, Eq, BitPack)
+
+
+data Jtag (dom :: Domain)
+
+instance Protocol (Jtag dom) where
+  type Fwd (Jtag dom) = Signal dom JtagOut
+  type Bwd (Jtag dom) = Signal dom JtagIn
+
 
 -- When passing S2M values from Haskell to VexRiscv over the FFI, undefined
 -- bits/values cause errors when forcing their evaluation to something that can
@@ -62,9 +85,19 @@ defaultX dflt val
   | hasUndefined val = dflt
   | otherwise = val
 
-vexRiscv :: (HasCallStack, HiddenClockResetEnable dom) => Signal dom Input -> Signal dom Output
-vexRiscv input =
-  Output <$>
+vexRiscv ::
+  forall dom .
+  ( HasCallStack
+  , KnownDomain dom) =>
+  Clock dom ->
+  Reset dom ->
+  Signal dom CpuIn ->
+  Signal dom JtagIn ->
+  ( Signal dom CpuOut
+  , Signal dom JtagOut
+  )
+vexRiscv clk rst cpuInput jtagInput =
+  ( CpuOut <$>
     (WishboneM2S
       <$> iBus_ADR
       <*> iBus_DAT_MOSI
@@ -88,10 +121,19 @@ vexRiscv input =
       <*> (unpack <$> dBus_CTI)
       <*> (unpack <$> dBus_BTE)
     )
+  , JtagOut <$> jtag_TDO1 <*> debug_resetOut1
+  )
 
   where
+
+    jtag_TDO1 =
+          jtag_TDO
+
+    debug_resetOut1 =
+          debug_resetOut
+
     (unbundle -> (timerInterrupt, externalInterrupt, softwareInterrupt, iBusS2M, dBusS2M))
-      = (\(Input a b c d e) -> (a, b, c, d, e)) <$> input
+      = (\(CpuIn a b c d e) -> (a, b, c, d, e)) <$> cpuInput
 
     (unbundle -> (iBus_DAT_MISO, iBus_ACK, iBus_ERR))
       = (\(WishboneS2M a b c _ _) -> (a, b, c))
@@ -105,11 +147,16 @@ vexRiscv input =
       . (if clashSimulation then makeDefined else id)
       <$> dBusS2M
 
+    (unbundle -> (jtag_TCK, jtag_TMS, jtag_TDI))
+      = bitCoerce <$> jtagInput
+
     sourcePath = $(do
           cpuSrcPath <- runIO $ getPackageRelFilePath "example-cpu/VexRiscv.v"
           pure $ LitE $ StringL cpuSrcPath
         )
 
+    -- TODO: Remove need for 'vexRiscv#' by doing construction / deconstruction of
+    --       product types in HDL using BlackBoxHaskell functions.
     ( iBus_CYC
       , iBus_STB
       , iBus_WE
@@ -126,7 +173,9 @@ vexRiscv input =
       , dBus_SEL
       , dBus_CTI
       , dBus_BTE
-      ) = vexRiscv# sourcePath hasClock hasReset
+      , debug_resetOut
+      , jtag_TDO
+      ) = vexRiscv# sourcePath clk rst
           timerInterrupt
           externalInterrupt
           softwareInterrupt
@@ -139,8 +188,9 @@ vexRiscv input =
           dBus_ERR
           dBus_DAT_MISO
 
-
-
+          jtag_TCK
+          jtag_TMS
+          jtag_TDI
 
 
 vexRiscv#
@@ -160,6 +210,11 @@ vexRiscv#
   -> Signal dom Bool           -- ^ dBus_ACK
   -> Signal dom Bool           -- ^ dBus_ERR
   -> Signal dom (BitVector 32) -- ^ dBus_DAT_MISO
+
+  -> Signal dom Bit -- ^ jtag_TCK
+  -> Signal dom Bit -- ^ jtag_TMS
+  -> Signal dom Bit -- ^ jtag_TDI
+
 
   -- output signals
   ->
@@ -183,6 +238,9 @@ vexRiscv#
     , Signal dom (BitVector 4)  -- ^ dBus_SEL
     , Signal dom (BitVector 3)  -- ^ dBus_CTI
     , Signal dom (BitVector 2)  -- ^ dBus_BTE
+
+    , Signal dom Bit -- ^ debug_resetOut
+    , Signal dom Bit -- ^ jtag_TDO
     )
 vexRiscv# !_sourcePath clk rst0
   timerInterrupt
@@ -194,7 +252,11 @@ vexRiscv# !_sourcePath clk rst0
 
   dBus_ACK
   dBus_ERR
-  dBus_DAT_MISO = unsafePerformIO $ do
+  dBus_DAT_MISO
+
+  jtag_TCK
+  jtag_TMS
+  jtag_TDI = unsafePerformIO $ do
     (v, initStage1, initStage2, stepRising, stepFalling, _shutDown) <- vexCPU
 
     let
@@ -211,6 +273,9 @@ vexRiscv# !_sourcePath clk rst0
         <*> (boolToBit <$> dBus_ACK)
         <*> (unpack    <$> dBus_DAT_MISO)
         <*> (boolToBit <$> dBus_ERR)
+        <*> jtag_TCK
+        <*> jtag_TMS
+        <*> jtag_TDI
 
       simInitThenCycles ::
         Signal dom NON_COMB_INPUT ->
@@ -286,12 +351,20 @@ vexRiscv# !_sourcePath clk rst0
       , truncateB . pack <$> dBus_SEL
       , truncateB . pack <$> dBus_CTI
       , truncateB . pack <$> dBus_BTE
+
+      -- JTAG
+      , FFI.jtag_debug_resetOut <$> output
+      , FFI.jtag_TDO <$> output
       )
-{-# NOINLINE vexRiscv# #-}
+{-# CLASH_OPAQUE vexRiscv# #-}
 {-# ANN vexRiscv# (
     let
       primName = 'vexRiscv#
-      ( _
+
+
+      (
+       -- ARGs
+       _
        , srcPath
        , clk
        , rst
@@ -304,9 +377,12 @@ vexRiscv# !_sourcePath clk rst0
        , dBus_ACK
        , dBus_ERR
        , dBus_DAT_MISO
-       ) = vecToTuple (indicesI @13)
+       , jtag_TCK
+       , jtag_TMS
+       , jtag_TDI
 
-      ( iBus_CYC
+       -- GENSYMs
+       , iBus_CYC
        , iBus_STB
        , iBus_WE
        , iBus_ADR
@@ -322,9 +398,11 @@ vexRiscv# !_sourcePath clk rst0
        , dBus_SEL
        , dBus_CTI
        , dBus_BTE
-       ) = vecToTuple $ (\x -> extend @_ @16 @13 x + 1) <$> indicesI @16
+       , debug_resetOut
+       , jtag_TDO
 
-      cpu = extend @_ @_ @1 dBus_BTE + 1
+       , cpu
+       ) = vecToTuple $ indicesI @35
     in
       InlineYamlPrimitive [Verilog] [__i|
   BlackBox:
@@ -352,6 +430,9 @@ vexRiscv# !_sourcePath clk rst0
       wire [3:0] ~GENSYM[dBus_SEL][#{dBus_SEL}];
       wire [2:0] ~GENSYM[dBus_CTI][#{dBus_CTI}];
       wire [1:0] ~GENSYM[dBus_BTE][#{dBus_BTE}];
+
+      wire ~GENSYM[debug_resetOut][#{debug_resetOut}];
+      wire ~GENSYM[jtag_TDO][#{jtag_TDO}];
 
       VexRiscv ~GENSYM[cpu][#{cpu}] (
         .timerInterrupt    ( ~ARG[#{timerInterrupt}] ),
@@ -382,6 +463,13 @@ vexRiscv# !_sourcePath clk rst0
         .dBusWishbone_CTI      ( ~SYM[#{dBus_CTI}] ),
         .dBusWishbone_BTE      ( ~SYM[#{dBus_BTE}] ),
 
+        .jtag_tms       ( ~ARG[#{jtag_TMS}]),
+        .jtag_tdi       ( ~ARG[#{jtag_TDI}]),
+        .jtag_tck       ( ~ARG[#{jtag_TCK}]),
+        .jtag_tdo       ( ~SYM[#{jtag_TDO}] ),
+
+        .debug_resetOut ( ~SYM[#{debug_resetOut}] ),
+
         .clk   ( ~ARG[#{clk}] ),
         .reset ( ~ARG[#{rst}] )
       );
@@ -402,7 +490,9 @@ vexRiscv# !_sourcePath clk rst0
         ~SYM[#{dBus_DAT_MOSI}],
         ~SYM[#{dBus_SEL}],
         ~SYM[#{dBus_CTI}],
-        ~SYM[#{dBus_BTE}]
+        ~SYM[#{dBus_BTE}],
+        ~SYM[#{debug_resetOut}],
+        ~SYM[#{jtag_TDO}]
       };
 
       // vexRiscv end

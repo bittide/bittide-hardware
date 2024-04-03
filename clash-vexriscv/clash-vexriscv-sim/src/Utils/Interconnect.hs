@@ -35,9 +35,12 @@ interconnectTwo m2s ((aAddr', aS2M') :> (bAddr', bS2M') :> Nil) =
         Vec 2 (WishboneM2S 32 4 (BitVector 32))
       )
     go m@WishboneM2S{..} aAddr aS2M bAddr bS2M
-      | not (busCycle && strobe) = (emptyWishboneS2M, m :> m :> Nil)
-      | addr >= bAddr = (bS2M, emptyWishboneM2S :> m { addr = addr - bAddr } :> Nil)
-      | addr >= aAddr = (aS2M, m { addr = addr - aAddr } :> emptyWishboneM2S :> Nil)
+      | not (busCycle && strobe) =
+          (emptyWishboneS2M, m :> m :> Nil)
+      | addr >= bAddr =
+          (bS2M, emptyWishboneM2S :> m { addr = addr - bAddr } :> Nil)
+      | addr >= aAddr =
+          (aS2M, m { addr = addr - aAddr } :> emptyWishboneM2S :> Nil)
       | otherwise     =
           ( emptyWishboneS2M { err = True },
             emptyWishboneM2S :> emptyWishboneM2S :> Nil

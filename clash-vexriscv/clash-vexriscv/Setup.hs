@@ -24,7 +24,7 @@ makeExtLib _ flags = do
   rawSystemExit
     verbosity
     "env"
-    ["make"]
+    ["make", "-j"]
   return emptyHookedBuildInfo
 
 updateExtraLibDirs :: LocalBuildInfo -> IO LocalBuildInfo
