@@ -31,30 +31,37 @@ package bittide
 
 package clash-prelude
   flags: -multiple-hidden
+  ghc-options: +RTS -qn8 -A64M -RTS -j8
+
+package clash-lib
+  ghc-options: +RTS -qn8 -A64M -RTS -j8
+
+package clash-ghc
+  ghc-options: +RTS -qn8 -A64M -RTS -j8
 
 package bittide
-  ghc-options: +RTS -xp -RTS
+  ghc-options: +RTS -xp -qn8 -A64M -RTS -j8
 
 package bittide-experiments
-  ghc-options: +RTS -xp -RTS
+  ghc-options: +RTS -xp -qn8 -A64M -RTS -j8
 
 package bittide-extra
-  ghc-options: +RTS -xp -RTS
+  ghc-options: +RTS -xp -qn8 -A64M -RTS -j8
 
 package bittide-instances
-  ghc-options: +RTS -xp -RTS
+  ghc-options: +RTS -xp -qn8 -A64M -RTS -j8
 
 package bittide-shake
-  ghc-options: +RTS -xp -RTS
+  ghc-options: +RTS -xp -qn8 -A64M -RTS -j8
 
 package bittide-tools
-  ghc-options: +RTS -xp -RTS
+  ghc-options: +RTS -xp -qn8 -A64M -RTS -j8
 
 package clash-vexriscv
-  ghc-options: +RTS -xp -RTS
+  ghc-options: +RTS -xp -qn8 -A64M -RTS -j8
 
 package clash-vexriscv-sim
-  ghc-options: +RTS -xp -RTS
+  ghc-options: +RTS -xp -qn8 -A64M -RTS -j8
 
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
