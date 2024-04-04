@@ -31,8 +31,9 @@ import Bittide.ClockControl
 import Bittide.ClockControl.Callisto hiding (allSettled)
 import Bittide.ClockControl.StabilityChecker
 
-import Bittide.Simulate
 import Bittide.Simulate.ElasticBuffer
+import Bittide.Simulate.Time
+import Bittide.Simulate.TunableClockGen
 import Bittide.Topology
 
 -- | The entity to be simulated consisting of the tunable clock
@@ -67,7 +68,7 @@ simulationEntity ::
   , 1 <= framesize
   -- ^ frames must at least cover one element
   ) =>
-  Graph nodes ->
+  Topology nodes ->
   -- ^ the topology
   ClockControlConfig dom dcount margin framesize ->
   -- ^ clock control configuration
@@ -153,7 +154,7 @@ simulate ::
   , KnownNat dcount
   -- ^ the size of the data counts is known
   ) =>
-  Graph nodes ->
+  Topology nodes ->
   -- ^ the topology
   Maybe Int ->
   -- ^ stop simulation after all buffers have been stable for @n@ steps
@@ -208,7 +209,7 @@ allSettled = and . toList . map ((\(_,_,_,xs) -> all (settled . snd) xs))
 -- simulation data.
 absTimes ::
   (KnownNat nodes, NFDataX a, NFDataX b) =>
-  Graph nodes ->
+  Topology nodes ->
   -- ^ the topology
   Signal dom (Vec nodes (Period, b, Vec nodes a)) ->
   -- ^ The signal holding the the simulation result

@@ -85,6 +85,7 @@ library
     clash-cores,
     clash-lib,
     containers,
+    data-default,
     directory,
     filepath,
     happy-dot,
@@ -103,8 +104,11 @@ library
     Bittide.Hitl
     Bittide.Plot
     Bittide.Simulate
+    Bittide.Simulate.Config
     Bittide.Simulate.ElasticBuffer
+    Bittide.Simulate.Time
     Bittide.Simulate.Topology
+    Bittide.Simulate.TunableClockGen
     Bittide.Topology
   default-language: Haskell2010
 

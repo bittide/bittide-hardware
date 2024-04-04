@@ -34,7 +34,7 @@ import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState(Error, Finished), si539xSpi)
 import Bittide.Instances.Domains
-import Bittide.Topology (boundGraph)
+import Bittide.Topology (fromGraph)
 import Bittide.Transceiver
 
 import Clash.Cores.Xilinx.VIO (vioProbe)
@@ -196,13 +196,14 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
 tests :: HitlTests TestConfig
 tests = Map.fromList
-  [ ( "disable " <> fromString (show i) <> " [" <> fromString fpgaId <> "]"
+  [ ( fromString name
     , ( toList $ imap (testData i) $ linkMasks @FpgaCount g
       , NoPostProcData
       )
     )
   | (i, (fpgaId, _)) <- toList $ zip indicesI fpgaSetup
-  , let g = boundGraph @FpgaCount $ buildG (0, natToNum @(FpgaCount - 1))
+  , let name = "disable " <> show i <> " [" <> fpgaId <> "]"
+        g = fromGraph @FpgaCount name $ buildG (0, natToNum @(FpgaCount - 1))
           $ List.concat
               [ [ (i', j), (j, i') ]
               | j <- [0, 1 .. natToNum @(FpgaCount - 1)]
