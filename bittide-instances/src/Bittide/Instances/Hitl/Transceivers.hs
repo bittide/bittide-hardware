@@ -29,6 +29,7 @@ import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
 import Bittide.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.Setup
 import Bittide.Transceiver
 
 import Clash.Cores.Xilinx.GTH
@@ -36,19 +37,6 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
 
 import qualified Clash.Explicit.Prelude as E
-
-c_CHANNEL_NAMES :: Vec 7 String
-c_CHANNEL_NAMES =
-  "X0Y10":> "X0Y9":> "X0Y16" :> "X0Y17" :> "X0Y18" :> "X0Y19" :> "X0Y11" :> Nil
-
-c_CLOCK_PATHS :: Vec 7 String
-c_CLOCK_PATHS =
-  "clk0" :> "clk0":> "clk0-2":> "clk0-2":> "clk0-2":> "clk0-2":> "clk0"  :> Nil
-
--- | Data wires from/to transceivers. No logic should be inserted on these
--- wires. Should be considered asynchronous to one another - even though their
--- domain encodes them as related.
-type TransceiverWires dom = Vec 7 (Signal dom (BitVector 1))
 
 -- | Worker function for 'transceiversUpTest'. See module documentation for more
 -- information.
@@ -62,7 +50,7 @@ goTransceiversUpTest ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "allUp" ::: Signal Basic125 Bool
-  , "stats" ::: Vec 7 (Signal Basic125 GthResetStats)
+  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 GthResetStats)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK"      ::: Signal Basic125 Bool
@@ -93,26 +81,10 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       refClk sysClk gthAllReset
-      c_CHANNEL_NAMES c_CLOCK_PATHS rxns rxps
+      channelNames clockPaths rxns rxps
 
   syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
   linkUps = zipWith syncLink rxClocks linkUpsRx
-
--- | Returns 'True' if incoming signal has been 'True' for 50 seconds.
-trueFor50s ::
-  forall dom .
-  KnownDomain dom =>
-  Clock dom ->
-  Reset dom ->
-  Signal dom Bool ->
-  Signal dom Bool
-trueFor50s clk rst =
-  moore clk rst enableGen goState goOutput (0 :: IndexMs dom 50_000)
- where
-  goState counter  True  = satSucc SatBound counter
-  goState _counter False = 0
-
-  goOutput = (== maxBound)
 
 -- | Top entity for this test. See module documentation for more information.
 transceiversUpTest ::
@@ -157,7 +129,7 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       -- Consider test done if links have been up consistently for 50 seconds. This
       -- is just below the test timeout of 60 seconds, so transceivers have ~10
       -- seconds to come online reliably. This should be plenty.
-      (trueFor50s sysClk testRst allUp)
+      (trueFor (SNat @(Seconds 50)) sysClk testRst allUp)
 
       -- This test either succeeds or times out, so success is set to a static
       -- 'True'. If you want to see statistics, consider setting it to 'False' -

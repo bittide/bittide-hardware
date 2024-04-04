@@ -131,6 +131,7 @@ transceiverPrbs gtrefclk freeclk rst_all_in chan clkPath rxn rxp
   txStimRst = xpmResetSynchronizer Asserted tx_clk tx_clk $
               (unsafeFromActiveLow $ fmap bitCoerce tx_active)
     `orReset` (unsafeFromActiveLow $ fmap bitCoerce reset_tx_done)
+    `orReset` xpmResetSynchronizer Asserted freeclk tx_clk rst_all_in
 
 data LinkSt
   = Down (Index 127)

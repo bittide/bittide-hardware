@@ -11,7 +11,7 @@
 -- | Test whether clock boards are configurable and transceiver links come
 -- online. If they do, run clock control in software and wait for the clocks to
 -- stabilize. This assumes to run on a fully connected mesh of 8 FPGAs. Also see
--- 'c_CHANNEL_NAMES' and 'c_CLOCK_PATHS'. It has two tricks up its sleeve:
+-- 'Bittide.Instances.Hitl.Setup'. It has two tricks up its sleeve:
 --
 --   1. It uses @SYNC_IN@/@SYNC_OUT@ to make sure each board starts programming
 --      its clock boards at the same time.
@@ -58,6 +58,7 @@ import Bittide.Transceiver
 import Bittide.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
 
 import Bittide.Instances.Hitl.IlaPlot
+import Bittide.Instances.Hitl.Setup
 import Bittide.Instances.Pnr.MVPs (stickyBits, speedChangeToPins, FINC, FDEC)
 
 import Clash.Class.Counter
@@ -69,25 +70,10 @@ import Clash.Xilinx.ClockGen
 
 import Protocols
 
-type NodeCount = 8 :: Nat
-
 clockControlConfig ::
   $(case (instancesClockConfig (Proxy @Basic125)) of { (_ :: t) -> liftTypeQ @t })
 clockControlConfig =
   $(lift (instancesClockConfig (Proxy @Basic125)))
-
-c_CHANNEL_NAMES :: Vec 7 String
-c_CHANNEL_NAMES =
-  "X0Y10":> "X0Y9":> "X0Y16" :> "X0Y17" :> "X0Y18" :> "X0Y19" :> "X0Y11" :> Nil
-
-c_CLOCK_PATHS :: Vec 7 String
-c_CLOCK_PATHS =
-  "clk0" :> "clk0":> "clk0-2":> "clk0-2":> "clk0-2":> "clk0-2":> "clk0"  :> Nil
-
--- | Data wires from/to transceivers. No logic should be inserted on these
--- wires. Should be considered asynchronous to one another - even though their
--- domain encodes them as related.
-type TransceiverWires dom = Vec 7 (Signal dom (BitVector 1))
 
 -- | Instantiates a RiscV core
 fullMeshRiscvTest ::
@@ -211,7 +197,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       refClk sysClk gthAllReset
-      c_CHANNEL_NAMES c_CLOCK_PATHS rxns rxps
+      channelNames clockPaths rxns rxps
 
   syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
   linkUps = zipWith syncLink rxClocks linkUpsRx
@@ -237,7 +223,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
       callistoResult
 
   callistoResult =
-    callistoClockControlWithIla @(NodeCount - 1) @CccBufferSize
+    callistoClockControlWithIla @(FpgaCount - 1) @CccBufferSize
       (head txClocks) sysClk clockControlReset clockControlConfig
       IlaControl{..} availableLinkMask (fmap (fmap resize) domainDiffs)
 

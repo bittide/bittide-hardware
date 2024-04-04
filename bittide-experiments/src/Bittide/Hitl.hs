@@ -42,6 +42,7 @@
 module Bittide.Hitl
   ( HitlTests
   , HitlTestsWithPostProcData
+  , NoPostProcData(..)
   , Probes
   , FpgaIndex
   , TestName

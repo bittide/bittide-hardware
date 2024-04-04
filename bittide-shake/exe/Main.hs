@@ -197,6 +197,7 @@ targets = map enforceValidTarget
       {targetPostProcess = Just "post-board-test-extended"}
   , testTarget "Bittide.Instances.Hitl.BoardTest.boardTestSimple"
   , testTarget "Bittide.Instances.Hitl.FincFdec.fincFdecTests"
+  , testTarget "Bittide.Instances.Hitl.LinkConfiguration.linkConfigurationTest"
   , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest"
   , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcWithRiscvTest"
   , testTarget "Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest"
