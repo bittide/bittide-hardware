@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -24,7 +24,6 @@ import Clash.Sized.Vector (unsafeFromList)
 import Data.Proxy
 import Data.String
 import Data.Type.Equality ((:~:)(Refl))
-import GHC.Natural
 import Hedgehog
 import Hedgehog.Gen as Gen
 import Hedgehog.Range as Range
@@ -121,6 +120,8 @@ genCalendarConfig ms elemGen = do
       forall maxDepth depthA depthB .
       ( LessThan depthA maxDepth
       , LessThan depthB maxDepth
+      , 1 <= depthA
+      , 1 <= depthB
       , 2 <= maxDepth
       , NatFitsInBits (Regs (ValidEntry a validityBits) (nBytes * 8) + ExtraRegs) addrW) =>
       SNat maxDepth ->

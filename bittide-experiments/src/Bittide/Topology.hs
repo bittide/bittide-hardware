@@ -256,36 +256,38 @@ instance FromJSON a => FromJSON (TopologyType IO a) where
    where
     tmm = typeMismatch "Topology" v
 
+newtype FUN a = FUN (forall n . SNat n -> a)
+
 -- | Generates some topology of the given topology type, if possible.
 fromTopologyType ::
   (Integral n, Applicative m) =>
   TopologyType m n -> m (Either String STop)
 fromTopologyType tt = case tt of
   Diamond -> ret $ Just $ STop diamond
-  Line n -> ret $ (\sn@SNat -> STop $ line sn) <#> n
-  HyperCube n -> ret $ (\sn@SNat -> STop $ hypercube sn) <#> n
+  Line n -> ret $ FUN (\sn@SNat -> STop $ line sn) <#> n
+  HyperCube n -> ret $ FUN (\sn@SNat -> STop $ hypercube sn) <#> n
   Grid rows cols ->
-    let grid# :: forall a. SNat a -> forall b. SNat b -> STop
-        grid# n@SNat m@SNat = STop $ grid n m
+    let grid# :: FUN (FUN STop)
+        grid# = FUN (\n@SNat -> FUN (\m@SNat -> STop $ grid n m))
      in ret $ grid# <#> rows <!> cols
   Torus2D rows cols ->
-    let torus2d# :: forall a. SNat a -> forall b. SNat b -> STop
-        torus2d# r@SNat c@SNat = STop $ torus2d r c
+    let torus2d# :: FUN (FUN STop)
+        torus2d# = FUN (\r@SNat -> FUN (\c@SNat -> STop $ torus2d r c))
      in ret $ torus2d# <#> rows <!> cols
   Torus3D rows cols planes ->
-    let torus3d# :: forall a. SNat a -> forall b. SNat b -> forall c. SNat c -> STop
-        torus3d# r@SNat c@SNat p@SNat = STop $ torus3d r c p
+    let torus3d# :: FUN (FUN (FUN STop))
+        torus3d# = FUN (\r@SNat -> FUN (\c@SNat -> FUN (\p@SNat -> STop $ torus3d r c p)))
      in ret $ torus3d# <#> rows <!> cols <!> planes
   Tree depth childs ->
-    let tree# :: forall a. SNat a -> forall b. SNat b -> STop
-        tree# n@SNat m@SNat = STop $ tree n m
+    let tree# :: FUN (FUN STop)
+        tree# = FUN (\n@SNat -> FUN (\m@SNat -> STop $ tree n m))
      in ret $ tree# <#> depth <!> childs
-  Star n -> ret $ (\sn@SNat -> STop $ star sn) <#> n
-  Cycle n -> ret $ (\sn@SNat -> STop $ cyclic sn) <#> n
-  Complete n -> ret $ (\sn@SNat -> STop $ complete sn) <#> n
-  Hourglass n -> ret $ (\sn@SNat -> STop $ hourglass sn) <#> n
+  Star n -> ret $ FUN (\sn@SNat -> STop $ star sn) <#> n
+  Cycle n -> ret $ FUN (\sn@SNat -> STop $ cyclic sn) <#> n
+  Complete n -> ret $ FUN (\sn@SNat -> STop $ complete sn) <#> n
+  Hourglass n -> ret $ FUN (\sn@SNat -> STop $ hourglass sn) <#> n
   Random n -> either (return . Left) (Right <$>) $
-    maybeToEither $ (\sn@SNat -> STop <$> randomTopology sn) <#> n
+    maybeToEither $ FUN (\sn@SNat -> STop <$> randomTopology sn) <#> n
   DotFile f -> readFile f >>=
     return . first (("Invalid DOT file - " <> f <> "\n") <>) . fromDot
  where
@@ -293,15 +295,16 @@ fromTopologyType tt = case tt of
   maybeToEither = maybe (Left "cannot construct SNat arguments") Right
 
   infixl 8 <!>
-  (<!>) :: Integral i => Maybe (forall n. SNat n -> a) -> i -> Maybe a
+  (<!>) :: Integral i => Maybe (FUN a) -> i -> Maybe a
   msnf <!> n = do
     snf <- msnf
     SomeNat p <- someNatVal $ toInteger n
-    return $ snf $ snatProxy p
+    case snf of
+      FUN f -> pure (f (snatProxy p))
 
   infixl 8 <#>
-  (<#>) :: Integral i => (forall n. SNat n -> a) -> i -> Maybe a
-  (<#>) = (<!>) . Just
+  (<#>) :: Integral i => FUN a -> i -> Maybe a
+  (<#>) f i = Just f <!> i
 
 -- | Given a list of edges, turn it into a directed graph.
 fromEdgeList :: forall a. Ord a => [(a, a)] -> Graph

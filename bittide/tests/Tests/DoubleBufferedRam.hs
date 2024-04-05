@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -389,10 +389,10 @@ registerWbWbToSig = property $ do
     wbWrite v = L.zipWith bv2WbWrite [0.. L.length l - 1] l
      where
       RegisterBank (toList -> l) = getRegsLe v
-  everyNth n l  | L.length l >= n = x : everyNth n xs
+  everyNth n l  | L.length l >= n = L.head xs : everyNth n (L.tail xs)
                 | otherwise = []
    where
-    (x:xs) = L.drop (n-1) l
+    xs = L.drop (n-1) l
 
 -- | This test checks that 'registerWb' can be written to by the circuit and read from
 -- with the wishbone bus. This test makes sure that the behavior with 'CircuitPriority'
@@ -759,8 +759,9 @@ wbStorageBehaviorModel initList initWbOps = case (cancelMulDiv @bytes @8) of
      where
       wbM2S = wbMasterRequestToM2S op
       wbS2M = emptyWishboneS2M{acknowledge = True}
-      (preEntry, oldEntry : postEntry) = L.splitAt (fromIntegral (i `div` 4)) storedList
-      newList = preEntry <> (pack newEntry : postEntry)
+      (preEntry, postEntry) = L.splitAt (fromIntegral (i `div` 4)) storedList
+      oldEntry = L.head postEntry
+      newList = preEntry <> (pack newEntry : L.tail postEntry)
 
       newEntry :: Vec bytes Byte
       newEntry = zipWith3 (\ b old new -> if b then new else old)

@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
@@ -451,6 +451,6 @@ registerN ::
   SNat n -> o -> Signal dom o -> Signal dom o
 registerN n a = mealy go (replicate n a)
  where
-  go state0 inp = (state1, out)
+  go state0 inp = (tail z, head z)
    where
-    (out :> state1) = state0 :< inp
+    z = state0 :< inp

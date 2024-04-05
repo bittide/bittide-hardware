@@ -1,17 +1,20 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Clash.Cores.Extra where
 
 import Clash.Annotations.Primitive
-import Clash.Explicit.Prelude hiding (Fixed)
+import Clash.Explicit.Prelude hiding (Fixed, (:<))
 
 import Clash.Netlist.Types (TemplateFunction(..), BlackBoxContext(..), HWType(..))
 import Clash.Netlist.Util (stripVoid)
 import Data.Fixed (Fixed(..), E3)
+import Data.List.Infinite (Infinite((:<)), (...))
+import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (__i)
 
 
@@ -69,22 +72,22 @@ safeDffSynchronizer0 clk1 clk2 initVal i = (sOut, dOut)
 {-# ANN safeDffSynchronizer0 hasBlackBox #-}
 {-# ANN safeDffSynchronizer0 (
   let
-    (  dom1
-     : dom2
-     : _nfdatax
-     : _bitsize
-     : clock1
-     : clock2
-     : initVal
-     : inp
-     : _
-     ) = [(0::Int)..]
+    (   dom1
+     :< dom2
+     :< _nfdatax
+     :< _bitsize
+     :< clock1
+     :< clock2
+     :< initVal
+     :< inp
+     :< _
+     ) = ((0::Int)...)
 
-    (  regA
-     : regB
-     : regC
-     : _
-     ) = [(0::Int)..]
+    (   regA
+     :< regB
+     :< regC
+     :< _
+     ) = ((0::Int)...)
     funcName = 'safeDffSynchronizer0
     tfName = 'safeDffSynchronizerTF
   in
@@ -116,23 +119,23 @@ safeDffSynchronizer0 clk1 clk2 initVal i = (sOut, dOut)
 |]) #-}
 {-# ANN safeDffSynchronizer0 (
   let
-    (  dom1
-     : dom2
-     : _nfdatax
-     : _bitsize
-     : clock1
-     : clock2
-     : initVal
-     : inp
-     : _
-     ) = [(0::Int)..]
+    (   dom1
+     :< dom2
+     :< _nfdatax
+     :< _bitsize
+     :< clock1
+     :< clock2
+     :< initVal
+     :< inp
+     :< _
+     ) = ((0::Int)...)
 
-    (  regA
-     : regB
-     : regC
-     : block
-     : _
-     ) = [(0::Int)..]
+    (   regA
+     :< regB
+     :< regC
+     :< block
+     :< _
+     ) = ((0::Int)...)
     funcName = 'safeDffSynchronizer0
     tfName = 'safeDffSynchronizerTF
   in
@@ -182,18 +185,19 @@ safeDffSynchronizer0 clk1 clk2 initVal i = (sOut, dOut)
 safeDffSynchronizerTF :: TemplateFunction
 safeDffSynchronizerTF =
   let
-    (  dom1Used
-     : dom2Used
-     : _nfdatax
-     : _bitsize
-     : _clock1
-     : _clock2
-     : _initVal
-     : _inp
-     : _
-     ) = [(0::Int)..]
+    (   dom1Used
+     :< dom2Used
+     :< _nfdatax
+     :< _bitsize
+     :< _clock1
+     :< _clock2
+     :< _initVal
+     :< _inp
+     :< _
+     ) = ((0::Int)...)
   in TemplateFunction [dom1Used, dom2Used] (const True) $ \bbCtx ->
-    let [compName] = bbQsysIncName bbCtx
+    pure . fromMaybe (error "Pattern match failure") $ do
+        [compName] <- pure (bbQsysIncName bbCtx)
         [ (_, stripVoid -> dom1, _)
          , (_, stripVoid -> dom2, _)
          , _nfdatax
@@ -201,11 +205,11 @@ safeDffSynchronizerTF =
          , _clock1
          , _clock2
          , _initVal
-         , _inp ] = bbInputs bbCtx
-        KnownDomain _ dom1Period _ _ _ _ = dom1
-        KnownDomain _ dom2Period _ _ _ _ = dom2
-        minPeriodNs = MkFixed $ min dom1Period dom2Period :: Fixed E3
-    in pure [__i|
+         , _inp ] <- pure (bbInputs bbCtx)
+        KnownDomain _ dom1Period _ _ _ _ <- pure dom1
+        KnownDomain _ dom2Period _ _ _ _ <- pure dom2
+        let minPeriodNs = MkFixed $ min dom1Period dom2Period :: Fixed E3
+        [__i|
       set_max_delay \\
           -datapath_only \\
           -from \\
