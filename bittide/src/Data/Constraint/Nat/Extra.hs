@@ -122,11 +122,11 @@ oneMore = unsafeCoerce (Dict :: Dict (0 <= 0))
 
 -- | If @1 <= n@ and @n <= m@, then @Div n m + OneMore (Mod n m) == 1@
 isOne :: forall n m . (1 <= n, n <= m) => Dict (Div n m + OneMore (Mod n m) ~ 1)
-isOne = unsafeCoerce (Dict :: Dict (0 <= 0))
+isOne = unsafeCoerce (Dict :: Dict (0 ~ 0))
 
 -- | Postulates that @SatSubZero a b + Min a b == a@
 satSubZeroMin :: forall a b. Dict (SatSubZero a b + Min a b ~ a)
-satSubZeroMin = unsafeCoerce (Dict :: Dict (0 <= 0))
+satSubZeroMin = unsafeCoerce (Dict :: Dict (0 ~ 0))
 
 -- | Postulates that the minimum of a and b can't be larger than b
 minLeq :: forall a b. Dict (Min a b <= b)
