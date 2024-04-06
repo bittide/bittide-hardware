@@ -73,8 +73,12 @@ toFlattenedIlaCsvPathList ilaDir = map go
     go csvPath = FlattenedIlaCsvPath{..}
      where
       relativeCsvPath = makeRelative ilaDir csvPath
-      [testName, toFpgaNum -> fpgaNum, takeBaseName -> ilaName] =
-        splitDirectories relativeCsvPath
+      (testName, toFpgaNum -> fpgaNum, takeBaseName -> ilaName) =
+        case splitDirectories relativeCsvPath of
+          [a,b,c] -> (a,b,c)
+          zs -> error $
+            "Execpted to split " <> show relativeCsvPath <> " in tree parts," <>
+            " but was able to split it into: " <> show zs
 
 -- | Like 'Map.!', but mentions key in error message if it can't be found
 get :: (HasCallStack, Ord k, Show k) => Map k v -> k -> v

@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -16,7 +16,6 @@ import Data.Constraint (Dict(Dict))
 import Data.Constraint.Nat.Extra (divWithRemainder)
 import GHC.Stack (HasCallStack)
 import Hedgehog
-import Numeric.Natural
 import Protocols (toSignals, Circuit(..))
 import Protocols.Wishbone as Wb
 import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit, WishboneMasterRequest(..))

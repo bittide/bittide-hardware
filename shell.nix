@@ -16,7 +16,7 @@ pkgs.mkShell {
       pkgs.cabal-install
       pkgs.dtc
       pkgs.gcc
-      pkgs.haskell.compiler.ghc90
+      pkgs.haskell.compiler.ghc94
       pkgs.pkg-config
       pkgs.python311Full
       pkgs.python311Packages.matplotlib

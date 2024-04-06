@@ -240,7 +240,8 @@ simPlot# simSettings ccc t = do
 
   filename i = dir </> "clocks" <> "_" <> show i <> ".csv"
   flatten (a, b, _, v) = toField a : toField b : (toField . fst <$> v)
-  (0, n) = bounds $ topologyGraph t
+  (z, n) | z == 0    = bounds $ topologyGraph t
+         | otherwise = error "lower bound not 0"
 
 -- | Generates a vector of random clock offsets.
 genClockOffsets ::

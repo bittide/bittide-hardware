@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -17,7 +17,6 @@ import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Vector
 import Clash.Sized.Vector ( unsafeFromList)
 import Data.String
-import GHC.Natural
 import Hedgehog
 import Protocols.Wishbone
 import Test.Tasty
