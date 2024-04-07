@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE BangPatterns #-}
@@ -7,6 +7,7 @@
 
 module Clash.Cores.Xilinx.Extra
   ( ibufds
+  , readDnaPortE2I
   , module GTH
 
   -- * Internal
@@ -17,10 +18,11 @@ import Clash.Prelude
 
 import Data.String.Interpolate (__i)
 
-import Control.Monad.State (State)
 import Clash.Annotations.Primitive
 import Clash.Backend (Backend)
+import Clash.Cores.Xilinx.Unisim.DnaPortE2 (readDnaPortE2)
 import Clash.Netlist.Types
+import Control.Monad.State (State)
 import Data.Text.Prettyprint.Doc.Extra (Doc)
 import Text.Show.Pretty (ppShow)
 
@@ -29,6 +31,15 @@ import Clash.Cores.Xilinx.GTH as GTH
 import qualified Clash.Netlist.Id as Id
 import qualified Clash.Primitives.DSL as DSL
 import qualified Prelude as P
+
+-- | Like 'dnaPortE2', but with a hidden clock, reset, and enable
+readDnaPortE2I ::
+  HiddenClockResetEnable dom =>
+  -- | DNA value to use in simulation
+  BitVector 96 ->
+  -- | Extracted DNA value from FPGA. Will take ~100 cycles to become available.
+  Signal dom (Maybe (BitVector 96))
+readDnaPortE2I = hideClockResetEnable readDnaPortE2
 
 -- | A differential input buffer. For more information see:
 --

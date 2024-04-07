@@ -12,7 +12,6 @@ import Test.Tasty.Hedgehog
 import Tests.Axi4
 import Tests.Calendar
 import Tests.ClockControl.Si539xSpi
-import Tests.Clash.Cores.Xilinx.Dna
 import Tests.DoubleBufferedRam
 import Tests.ElasticBuffer
 import Tests.Link
@@ -27,7 +26,6 @@ tests = testGroup "Unittests"
   [ axi4Group
   , calGroup
   , clockGenGroup
-  , dnaTestGroup
   , ebGroup
   , linkGroup
   , ramGroup

@@ -5,10 +5,10 @@ module Bittide.Instances.Hitl.Tcl.ExtraProbes where
 
 import Clash.Prelude
 
-import Clash.Cores.Xilinx.Dna
 import Bittide.Instances.Domains
 import Clash.Annotations.TH ( makeTopEntity )
 import Clash.Cores.Xilinx.Extra
+import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Clash.Cores.Xilinx.VIO
 import Data.Maybe
 
@@ -25,7 +25,7 @@ extraProbesTest diffClk = testSuccess
   testSuccess = testResult <$> testState <*> extraProbe <*> fpgaId
   testDone = testStart .&&. fmap isJust fpgaId
   rst = unsafeFromActiveLow testStart
-  fpgaId = withClockResetEnable clk rst enableGen deviceDna defaultSimDNA
+  fpgaId = withClockResetEnable clk rst enableGen $ readDnaPortE2I simDna2
   (testStart, testState, extraProbe) =
     unbundle $
     setName @"vioHitlt" $
@@ -44,7 +44,7 @@ testResult :: TestState -> BitVector 96 -> Maybe (BitVector 96) -> Bool
 testResult s extraProbe fpgaId = case (s, extraProbe) of
   (SetDefaultProbes, 0) -> True
   (SetTestProbes, 0xDEADABBA) -> True
-  (SetFpgaSpecificProbes, _) -> extraProbe == fromMaybe defaultSimDNA fpgaId
+  (SetFpgaSpecificProbes, _) -> extraProbe == fromMaybe simDna2 fpgaId
   _ -> False
 
 data TestState
