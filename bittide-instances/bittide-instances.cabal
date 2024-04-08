@@ -78,6 +78,7 @@ common common-options
     clash-lib,
     clash-prelude,
     clash-protocols,
+    constraints >= 0.13.3 && < 0.15,
     containers,
     cryptohash-sha256,
     directory,
@@ -114,6 +115,7 @@ library
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.Setup
     Bittide.Instances.Hitl.SyncInSyncOut
+    Bittide.Instances.Hitl.Tests
     Bittide.Instances.Hitl.Tcl.ExtraProbes
     Bittide.Instances.Hitl.Transceivers
     Bittide.Instances.Hitl.VexRiscv

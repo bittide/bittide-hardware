@@ -135,7 +135,3 @@ minLeq = unsafeCoerce (Dict :: Dict (0 <= 0))
 -- | Postulates that the minimum of a and b can't be larger than b
 maxGeqPlus :: forall a b c. Dict (a <= Max a b + c)
 maxGeqPlus = unsafeCoerce (Dict :: Dict (0 <= 0))
-
--- | Transitivity of @<=@.
-leqTrans :: forall n m k. (n <= m, m <= k) => Dict (n <= k)
-leqTrans = unsafeCoerce (Dict :: Dict (0 <= 0))

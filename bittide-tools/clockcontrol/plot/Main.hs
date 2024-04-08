@@ -17,14 +17,14 @@
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
-module Main (main) where
+module Main (main, knownTestsWithSimConf) where
 
 import Clash.Prelude
   (BitPack(..), SNat(..), Vec, Index, natToNum, extend)
 
 import Clash.Signal.Internal (Femtoseconds(..))
 import qualified Clash.Sized.Vector as Vec
-  ((!!), unsafeFromList, toList, repeat, zip, zipWith, indicesI, length)
+  ((!!), imap, unsafeFromList, toList, repeat, zip, zipWith, indicesI, length)
 
 import GHC.TypeLits
 import Data.Type.Equality ((:~:)(..))
@@ -36,8 +36,11 @@ import Conduit
   ( ConduitT, Void, (.|)
   , runConduit, sourceHandle, scanlC, dropC, mapC, sinkList, yield, await
   )
+import Control.Arrow (first)
 import Control.Exception (Exception(..), catch, throw)
-import Control.Monad (forM, forM_, filterM, unless)
+import Control.Monad (forM, forM_, filterM, when, unless)
+import Data.Bool
+import Data.Bifunctor (bimap)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Char8 as BSC
@@ -51,26 +54,40 @@ import Data.Csv.Conduit
   ( CsvStreamRecordParseError(..), CsvStreamHaltParseError(..)
   , fromNamedCsvStreamError
   )
-import Data.List (uncons, sort, isPrefixOf, isSuffixOf)
-import Data.Maybe (fromMaybe, fromJust)
+import Data.Functor ((<&>))
+import Data.List (uncons, sort, isPrefixOf, isSuffixOf, find)
+import Data.Maybe (fromMaybe, fromJust, isNothing)
 import Data.Proxy (Proxy(..))
 import Data.String (fromString)
+import qualified Data.Map as Map (toList)
 import qualified Data.Text as Text (unpack)
 import qualified Data.Vector as Vector (fromList)
 import qualified Data.HashMap.Strict as HashMap (fromList, size)
+import qualified Data.Set as Set (fromList, toList, isProperSubsetOf, difference)
 import GHC.IO.Exception (IOException(..), IOErrorType(..))
-import System.Directory (listDirectory, doesDirectoryExist, createDirectoryIfMissing)
+import System.Directory
+  (listDirectory, doesDirectoryExist, createDirectoryIfMissing)
 import System.Environment (getArgs, getProgName)
-import System.FilePath ((</>), takeExtensions, takeBaseName, takeFileName)
+import System.Exit (die)
+import System.FilePath
+ ((</>), takeExtensions, takeBaseName, takeFileName, isExtensionOf)
 import Numeric.Extra (parseHex)
-import System.IO (IOMode(..), Handle, openFile, hClose)
+import System.IO ( BufferMode(..), IOMode(..), Handle, openFile, hClose
+                 , withFile, hSetBuffering, hPutStr, hFlush
+                 )
 
 import Bittide.Plot
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Github.Artifacts
+import Bittide.Hitl
 import Bittide.Instances.Hitl.IlaPlot
+import Bittide.Instances.Hitl.Setup
+import Bittide.Instances.Hitl.Tests
 import Bittide.Instances.Domains
+import Bittide.Report.ClockControl
+import Bittide.Simulate.Config
+ (SimConf(mTopologyType, outDir), simTopologyFileName, saveSimConfig)
 import Bittide.Topology
 
 -- A newtype wrapper for working with hex encoded types.
@@ -149,7 +166,7 @@ data DataPoint (n :: Nat) (m :: Nat) =
 
 instance (KnownNat n, KnownNat m) => ToNamedRecord (DataPoint n m) where
   toNamedRecord DataPoint{..} = HashMap.fromList $
-    fmap (\(x, y) -> (BSC.pack x, BSC.pack y)) $
+    fmap (bimap BSC.pack BSC.pack) $
       [ ("Index", show dpIndex)
       , ("Synchronized Time (fs)", show $ toInteger dpGlobalTime)
       , ("Local Clock time (fs)", show $ toInteger dpLocalTime)
@@ -319,11 +336,23 @@ fromCsvDump  (csvHandle, csvFile) =
     Just (Left e)  -> throw $ CsvParseError n e
     Just (Right x) -> yield x >> checkForErrors (n + 1)
 
-plotTest :: FilePath -> [FilePath] -> FilePath -> IO ()
-plotTest testDir dirs globalOutDir =
+-- | The HITL tests, whose post proc data offers a simulation config
+-- for plotting.
+knownTestsWithSimConf :: [(String, [(String, Maybe SimConf)])]
+knownTestsWithSimConf = hasSimConf <$> hitlTests
+ where
+  hasSimConf = \case
+    LoadConfig name _ -> (name, [])
+    KnownType name test ->
+      (name, first Text.unpack <$> Map.toList (mGetPPD @_ @SimConf test))
+
+plotTest :: FilePath -> Maybe SimConf -> [FilePath] -> FilePath -> IO ()
+plotTest testDir mCfg dirs globalOutDir =
   case fromJust $ someNatVal $ toInteger $ length dirs of
     SomeNat (_ :: p n) -> case TLW.SNat @1 %<=? TLW.SNat @n of
       LE Refl -> do
+        unless (isNothing mCfg) $
+          checkDependencies >>= maybe (return ()) die
         putStrLn $ "Creating plots for test case: " <> testName
         postProcessData <- do
           forM (sort dirs) $ \d -> concat <$> do
@@ -365,7 +394,7 @@ plotTest testDir dirs globalOutDir =
                   <> ((<> " is settled") . show <$> [0,1..k - 1])
 
               unless (null rs) $ do
-                createDirectoryIfMissing True $ outDir
+                createDirectoryIfMissing True outDir
                 BSL.writeFile (outDir </> (takeFileName d <> ".csv"))
                   $ encodeByName header rs
 
@@ -375,7 +404,21 @@ plotTest testDir dirs globalOutDir =
         plot outDir (complete (SNat :: SNat n))
           $ Vec.unsafeFromList postProcessData
 
-      _ -> error $ testDir <> " is expected to contain sub-directories."
+        case mCfg of
+          Nothing -> return ()
+          Just cfg' -> do
+            let cfg = cfg' { outDir = outDir }
+            case mTopologyType cfg of
+              Nothing -> writeTop Nothing
+              Just (Random{}) -> writeTop Nothing
+              Just (DotFile f) -> readFile f >>= writeTop . Just
+              Just tt -> fromTopologyType tt >>= \case
+                Left err -> die err
+                Right t  -> saveSimConfig t cfg
+            checkIntermediateResults outDir
+              >>= maybe (generateReport "HITLT Report" outDir cfg) die
+
+      _ -> die $ testDir <> " is expected to contain sub-directories."
  where
   testName = takeFileName testDir
   outDir = globalOutDir </> testName
@@ -393,47 +436,81 @@ plotTest testDir dirs globalOutDir =
     , Vec.toList $ Vec.zip dpDataCounts dpStability
     )
 
+  writeTop (fromMaybe "digraph{}" -> str) =
+    withFile (outDir </> simTopologyFileName) WriteMode $ \h -> do
+      hSetBuffering h NoBuffering
+      hPutStr h str
+      hFlush h
+      hClose h
+
 main :: IO ()
 main = getArgs >>= \case
   [] -> wrongNumberOfArguments
-  ilaSource : xr -> do
-    (ilaDir, outDir, mArtifactName) <- do
-      isDir <- doesDirectoryExist ilaSource
-      (ilaDir, yr, mA) <-
+  plotDataSource : xr -> do
+    (plotDataDir, outDir, mArtifactName) <- do
+      isDir <- doesDirectoryExist plotDataSource
+      (plotDataDir, yr, mA) <-
         if isDir
-        then return (ilaSource, xr, Nothing)
-        else case isRunArtifactReference ilaSource of
-          Nothing -> error $ "ERROR - Invalid argument: " <> ilaSource
+        then return (plotDataSource, xr, Nothing)
+        else case isRunArtifactReference plotDataSource of
+          Nothing -> die $ "Invalid argument: " <> plotDataSource
           Just (runId, artifactName) -> case xr of
             [] -> wrongNumberOfArguments
             dir : yr ->
               let fullArtifactName = "_build-" <> artifactName <> "-debug"
                in retrieveArtifact runId fullArtifactName dir >>= \case
-                    Just err -> error $ unlines
-                      [ "ERROR - Cannot retrieve artifact."
+                    Just err -> die $ unlines
+                      [ "Cannot retrieve artifact."
                       , show err
                       ]
                     Nothing -> return (dir, yr, Just artifactName)
       let (outDir, zr) = fromMaybe (".", []) $ uncons yr
       unless (null zr) wrongNumberOfArguments
-      return (ilaDir, outDir, mA)
+      return (plotDataDir, outDir, mA)
 
-    testDirs <- do
+    tests <- do
+      dirs <- listDirectory plotDataDir
+      let hitlDir = plotDataDir </> "hitl"
+      files <- bool
+        (die $ "No 'hitl' folder in " <> fromMaybe plotDataDir mArtifactName)
+        (listDirectory hitlDir)
+        ("hitl" `elem` dirs)
+      case filter (".yml" `isExtensionOf`) files of
+        []  -> die $ "No YAML files in " <> hitlDir
+        [x] -> return $ getTestsWithSimConf $ takeBaseName x
+        _   -> die $ "Too many YAML files in " <> hitlDir
+
+    (testDirs, testsDir) <- do
       let epsfix = maybe (Left "Bittide.Instances.Hitl.") Right mArtifactName
-      dir <- diveDownInto epsfix ilaDir
-      listDirectory dir
-        >>= filterM doesDirectoryExist . fmap (dir </>)
+      dir <- diveDownInto epsfix plotDataDir
+      listDirectory dir >>= filterM (doesDirectoryExist . (dir </>))
+        <&> (, dir)
 
-    forM_ testDirs $ \testDir -> do
-      nodeDirs <- listDirectory testDir
-        >>= filterM doesDirectoryExist . fmap (testDir </>)
-      plotTest testDir nodeDirs outDir
+    let sDirs  = Set.fromList testDirs
+        sNames = Set.fromList $ fst <$> tests
+    when (sDirs /= sNames) $ die $
+      if sDirs `Set.isProperSubsetOf` sNames
+      then "Missing tests "
+        <> show (Set.toList (sNames `Set.difference` sDirs))
+        <> " in " <> testsDir
+      else "Unknown tests "
+        <> show (Set.toList (sDirs `Set.difference` sNames))
+        <> " in " <> testsDir
+
+    forM_ tests $ \(test, cfg) -> do
+      let dir = testsDir </> test
+      nodeDirs <- listDirectory dir >>= filterM (doesDirectoryExist . (dir </>))
+      allExpectedFpgaIds dir nodeDirs
+      plotTest test cfg ((dir </>) <$> nodeDirs) outDir
  where
+  getTestsWithSimConf name =
+    maybe [] snd $ find ((== name) . fst) knownTestsWithSimConf
+
   diveDownInto epsfix dir =
     listDirectory dir
       >>= filterM doesDirectoryExist . fmap (dir </>)
       >>= \case
-        [] -> error $ "ERROR - empty directory: " <> dir
+        [] -> die $ "Empty directory: " <> dir
         dirs -> let subDirs = takeFileName <$> dirs in if
           | "vivado" `elem` subDirs ->
               diveDownInto epsfix $ dir </> "vivado"
@@ -444,7 +521,20 @@ main = getArgs >>= \case
                 subDir : _ -> diveDownInto epsfix $ dir </> subDir
                 _ -> return dir
 
-  isRunArtifactReference arg = case span ((/=) ':') arg of
+  allExpectedFpgaIds dir (Set.fromList -> xs) =
+    let knownIds = Set.fromList
+                 $ Vec.toList
+                 $ Vec.imap (\i a -> show i <> "_" <> fst a)
+                   fpgaSetup
+     in if xs == knownIds
+        then return ()
+        else die $ "The directory " <> dir <> " is expected to contain "
+                <> "the following directories\n "
+                <> concatMap ((' ':) . show) (Set.toList knownIds)
+                <> ",\n, but found\n "
+                <> concatMap ((' ':) . show) (Set.toList xs)
+
+  isRunArtifactReference arg = case span (/= ':') arg of
     (xs, ':':ys)
       | all isDigit xs && ':' `notElem` ys -> Just (xs, ys)
       | otherwise -> Nothing
@@ -452,5 +542,5 @@ main = getArgs >>= \case
 
   wrongNumberOfArguments = do
     name <- getProgName
-    error $ "Wrong number of arguments. Aborting.\n\nUsage: " <> name
-         <> " <ila plot directory> [<output directory>]"
+    die $ "Wrong number of arguments. Aborting.\n\n"
+       <> "Usage: " <> name <> " <ila plot directory> [<output directory>]"

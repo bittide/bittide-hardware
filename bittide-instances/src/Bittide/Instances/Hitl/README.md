@@ -12,7 +12,7 @@ all connected to a PC through their JTAG ports. This PC runs a GitHub runner.
 To add a HTIL test:
 
 - Instantiate `Clash.Hitl.hitlVio` in your design
-- Add your test to `configs` in ([Hitl.hs](/bittide-instances/bin/Hitl.hs))
+- Add your test to `hitlTests` in ([Tests.hs](/bittide-instances/src/Bittide/Instances/Hitl/Tests.hs))
 - Add your test to `targets` in ([Shake.hs](/bittide-shake/bin/Shake.hs))
 - Add your test to CI:
   - [staging](/.github/synthesis/staging.json) runs on every PR,
@@ -47,7 +47,7 @@ that a lot of CSV files can be generated, e.g. a hardware-in-the-loop test with
 2 start probes and 2 ILAs programmed on all 8 FPGAs in the demo rig results in
 32 CSV files.
 
-The default ILA configuration (`ilaConfig`, see Clash.Cores.Xilinx.Ila) is valid
+The default ILA configuration (`ilaConfig`, see [Clash.Cores.Xilinx.Ila](https://github.com/clash-lang/clash-compiler/blob/master/clash-cores/src/Clash/Cores/Xilinx/Ila.hs#L63) is valid
 for hardware-in-the-loop tests. If a custom configuration is used, make sure to
 set `captureControl` to `True`, and use the `probeType`s described above.
 

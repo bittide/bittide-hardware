@@ -2,6 +2,8 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedLists #-}
@@ -42,6 +44,7 @@
 module Bittide.Hitl
   ( HitlTests
   , HitlTestsWithPostProcData
+  , MayHavePostProcData(..)
   , NoPostProcData(..)
   , Probes
   , FpgaIndex
@@ -178,6 +181,18 @@ type HitlTests a = HitlTestsWithPostProcData a NoPostProcData
 -- 'allFpgas' and 'singleFpga'.
 type Probes a = [(FpgaIndex, a)]
 
+-- | A class for extracting optional post processing data from a test.
+class MayHavePostProcData b c where
+  -- | Returns the test names with some post processing data of type @c@,
+  -- if that data exists.
+  mGetPPD ::
+    forall a.
+    HitlTestsWithPostProcData a b ->
+    Map TestName (Maybe c)
+
+instance MayHavePostProcData a a where
+  mGetPPD = fmap (Just . snd)
+
 -- | A custom data type for indicating tests without any additional
 -- post processing data with a custom 'ToJSON' instance. This is
 -- required, because the TCL -> YAML interface does not support empty
@@ -185,6 +200,7 @@ type Probes a = [(FpgaIndex, a)]
 data NoPostProcData = NoPostProcData
 
 instance ToJSON NoPostProcData where toJSON _ = Aeson.Null
+instance MayHavePostProcData NoPostProcData a where mGetPPD = const []
 
 -- | Set one specific value on all FPGAs
 allFpgas :: a -> Probes a

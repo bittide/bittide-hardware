@@ -15,7 +15,8 @@ module Bittide.Instances.Hitl.Setup
 import Clash.Prelude
 
 import Bittide.Topology
-import Data.Constraint.Nat.Extra (Dict(..), leqTrans)
+import Data.Constraint ((:-)(..), Dict(..))
+import Data.Constraint.Nat (leTrans)
 
 -- | The number of FPGAs in the current setup
 type FpgaCount = 8 :: Nat
@@ -66,8 +67,8 @@ linkMask ::
   forall n i.
   (KnownNat n, KnownNat i, n <= FpgaCount, i + 1 <= n) =>
   Topology n -> SNat i -> BitVector (FpgaCount - 1)
-linkMask g i = case leqTrans @(i + 1) @n @FpgaCount of
-  Dict -> pack $ map edge $ snd $ at @i @(FpgaCount - i - 1) i fpgaSetup
+linkMask g i = case leTrans @(i + 1) @n @FpgaCount of
+  Sub Dict -> pack $ map edge $ snd $ at @i @(FpgaCount - i - 1) i fpgaSetup
  where
   edge j =
     j <= (natToNum @(n - 1))
