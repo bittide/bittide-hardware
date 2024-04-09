@@ -146,7 +146,6 @@ library
     Bittide.Wishbone
     Clash.Cores.Extra
     Clash.Cores.UART.Extra
-    Clash.Cores.Xilinx.Dna
     Clash.Cores.Xilinx.Extra
     Clash.Cores.Xilinx.GTH
     Clash.Cores.Xilinx.GTH.BlackBoxes
@@ -185,7 +184,6 @@ test-suite unittests
   other-modules:
     Tests.Axi4
     Tests.Calendar
-    Tests.Clash.Cores.Xilinx.Dna
     Tests.ClockControl.Si539xSpi
     Tests.Counter
     Tests.DoubleBufferedRam
