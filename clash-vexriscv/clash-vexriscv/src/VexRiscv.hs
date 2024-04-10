@@ -68,8 +68,8 @@ data CpuOut = CpuOut
 data Jtag (dom :: Domain)
 
 instance Protocol (Jtag dom) where
-  type Fwd (Jtag dom) = Signal dom JtagOut
-  type Bwd (Jtag dom) = Signal dom JtagIn
+  type Fwd (Jtag dom) = Signal dom JtagIn
+  type Bwd (Jtag dom) = Signal dom JtagOut
 
 
 -- When passing S2M values from Haskell to VexRiscv over the FFI, undefined

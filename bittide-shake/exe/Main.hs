@@ -70,6 +70,11 @@ ignorePatterns =
   -- Used for synthesis, but not for generating Clash output:
   , dataFilesDir </> "**" </> "*.xdc"
   , dataFilesDir </> "**" </> "*.tcl"
+
+  -- Used for HITL tests
+  , "bittide-instances/data/openocd/*"
+  , "bittide-instances/data/picocom/*"
+  , "bittide-instances/data/gdb/*"
   ]
 
 -- | Build directory for Shake/Vivado/Cargo (not Cabal, it ignores builddir settings)
@@ -183,7 +188,6 @@ targets = map enforceValidTarget
   , defTarget "Bittide.Instances.Pnr.ElasticBuffer.elasticBuffer5"
   , (defTarget "Bittide.Instances.Pnr.MVPs.clockControlDemo0") {targetHasXdc = True}
   , (defTarget "Bittide.Instances.Pnr.MVPs.clockControlDemo1") {targetHasXdc = True}
-  , (defTarget "Bittide.Instances.Pnr.ProcessingElement.vexRiscUartHello") {targetHasXdc = True}
   , defTarget "Bittide.Instances.Pnr.ScatterGather.gatherUnit1K"
   , defTarget "Bittide.Instances.Pnr.ScatterGather.gatherUnit1KReducedPins"
   , defTarget "Bittide.Instances.Pnr.ScatterGather.scatterUnit1K"
@@ -204,7 +208,10 @@ targets = map enforceValidTarget
   , testTarget "Bittide.Instances.Hitl.SyncInSyncOut.syncInSyncOut"
   , testTarget "Bittide.Instances.Hitl.Tcl.ExtraProbes.extraProbesTest"
   , testTarget "Bittide.Instances.Hitl.Transceivers.transceiversUpTest"
-  , testTarget "Bittide.Instances.Hitl.VexRiscv.vexRiscvTest"
+  , (testTarget "Bittide.Instances.Hitl.VexRiscv.vexRiscvTest")
+      { targetPostProcess = Just "post-vex-riscv-test"
+      , targetExtraXdc = ["jtag.xdc"]
+      }
   ]
 
 shakeOpts :: ShakeOptions
@@ -403,6 +410,7 @@ main = do
               -- We build all rust binaries in "firmware-binaries". They are required to
               -- build bittide-instance because we have instances that includes a binaries.
               command_ [Cwd "firmware-binaries"] "cargo" ["build", "--release"]
+              command_ [Cwd "firmware-binaries"] "cargo" ["build"]
 
               -- XXX: Cabal/GHC doesn't know about files produced by cargo, and
               --      will therefore fail to invalidate caches. While there are

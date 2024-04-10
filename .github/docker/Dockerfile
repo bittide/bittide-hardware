@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2022 Google LLC
+# SPDX-FileCopyrightText: 2022-2024 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
 FROM ubuntu:22.04
@@ -45,7 +45,14 @@ RUN \
   update-locale && \
   apt-get install libtinfo5 libncurses5 libx11-6 -y
 
+# Convenience wrapper for CI
 RUN \
   echo '#!/usr/bin/env bash'                                                                 >> /usr/bin/git-nix-shell && \
   echo 'nix-shell "${GITHUB_WORKSPACE}/shell.nix" "${@:2}" --run "bash -euf -o pipefail $1"' >> /usr/bin/git-nix-shell && \
   chmod +x /usr/bin/git-nix-shell
+
+# For HITL purposes we need to run as a normal user. 1001 is the user with plugdev
+# access on the runner.
+RUN \
+  addgroup --gid 1001 bittide && \
+  adduser --uid 1001 bittide --ingroup bittide

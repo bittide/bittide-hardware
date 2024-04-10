@@ -30,6 +30,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.TH
 import Text.Parsec
 import Text.Parsec.String
+import VexRiscv
 
 
 -- | Run the timing module self test with processingElement and inspect it's uart output.
@@ -50,7 +51,7 @@ case_time_rust_self_test =
   ena = enableGen
   simResult = fmap (asciiToChar . fromIntegral) $ catMaybes $ sampleN 1_000_000 uartStream
   (uartStream, _, _) = withClockResetEnable (clockGen @Basic50) rst ena $ uart baud uartTx (pure Nothing)
-  (_, uartTx) = dut baud (clockToDiffClock clk) rst (pure 0, pure ())
+  uartTx = dut baud (clockToDiffClock clk) rst (pure 0)
 
 -- | A simple instance containing just VexRisc and UART as peripheral.
 -- Runs the `hello` binary from `firmware-binaries`.
@@ -60,16 +61,20 @@ dut ::
   SNat baud ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "CPU_RESET" ::: Reset dom ->
-  ("USB_UART_TX" ::: Signal dom Bit, Signal dom ()) ->
-  (Signal dom (), "USB_UART_RX" ::: Signal dom Bit)
-dut baud diffClk rst_in =
-  toSignals $ withClockResetEnable clk200 rst200 enableGen $
-    circuit $ \uartRx -> do
-      [uartBus, timeBus] <- processingElement @dom peConfig -< ()
-      (uartTx, _uartStatus) <- uartWb d256 d16 baud -< (uartBus, uartRx)
-      timeWb -< timeBus
-      idC -< uartTx
+  "USB_UART_TX" ::: Signal dom Bit ->
+  "USB_UART_RX" ::: Signal dom Bit
+dut baud diffClk rst_in usbUartTx = usbUartRx
  where
+  (_, usbUartRx) = go ((usbUartTx, pure $ JtagIn low low low), pure ())
+
+  go =
+    toSignals $ withClockResetEnable clk200 rst200 enableGen $
+      circuit $ \(uartRx, jtag) -> do
+        [uartBus, timeBus] <- processingElement @dom peConfig -< jtag
+        (uartTx, _uartStatus) <- uartWb d256 d16 baud -< (uartBus, uartRx)
+        timeWb -< timeBus
+        idC -< uartTx
+
   (clk200 :: Clock dom, pllLock :: Reset dom) = clockWizardDifferential diffClk noReset
   rst200 = resetSynchronizer clk200 (unsafeOrReset rst_in pllLock)
 

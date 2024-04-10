@@ -122,7 +122,7 @@ ilaWb stages0 depth0 = Circuit $ \(m2s, s2m) ->
 
     ilaInst :: Signal dom ()
     ilaInst = ila
-      (ilaConfig $
+      ((ilaConfig $
            "m2s_addr"
         :> "m2s_writeData"
         :> "m2s_busSelect"
@@ -136,7 +136,7 @@ ilaWb stages0 depth0 = Circuit $ \(m2s, s2m) ->
         :> "s2m_retry"
         :> "capture"
         :> "trigger"
-        :> Nil) { advancedTriggers = True, stages = stages0, depth = depth0 }
+        :> Nil) { advancedTriggers = True, stages = stages0, depth = depth0 })
       hasClock
       (Wishbone.addr        <$> m2s)
       (Wishbone.writeData   <$> m2s)

@@ -69,15 +69,16 @@ common common-options
     aeson,
     base,
     base16-bytestring,
+    bittide-experiments,
     bittide-extra,
     bittide,
-    bittide-experiments,
     bytestring,
     cassava,
     clash-cores,
     clash-lib,
     clash-prelude,
     clash-protocols,
+    clash-vexriscv,
     constraints >= 0.13.3 && < 0.15,
     containers,
     cryptohash-sha256,
@@ -97,7 +98,7 @@ common common-options
     template-haskell,
     text,
     unix,
-    vector
+    vector,
 
 library
   import: common-options
@@ -181,12 +182,9 @@ test-suite unittests
 executable clash
   import: common-options
   -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options: -Wall -Wcompat -threaded
-               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: exe/clash/Main.hs
-  build-depends:
-      clash-ghc
-    , bittide-instances
+  Build-Depends: clash-ghc, bittide-instances
 
 executable post-board-test-extended
   import: common-options
@@ -198,3 +196,18 @@ executable post-board-test-extended
       bittide-instances
     , filepath
     , Glob
+
+executable post-vex-riscv-test
+  import: common-options
+  -- We need -xm20000000 because of a memory allocation bug after a kernel update
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  main-is: exe/post-vex-riscv-test/Main.hs
+  build-depends:
+    bittide-instances,
+    extra,
+    tasty-hunit,
+    tasty-th,
+    tasty,
+    temporary,
+    process,
+  other-modules: Paths_bittide_instances

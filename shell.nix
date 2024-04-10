@@ -50,6 +50,10 @@ pkgs.mkShell {
 
       # VexRiscv OpenOCD
       pkgs.openocd-vexriscv
+      pkgs.gdb
+
+      # UART communication
+      pkgs.picocom
 
       # For upgrading Nix env. To update dependencies (within bounds of the currently
       # tracking NixOS version) use:

@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022-2023 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -13,6 +13,7 @@ import Bittide.Arithmetic.Time
 import Bittide.Arithmetic.Ppm
 import Data.Proxy
 
+createDomain vXilinxSystem{vName="Basic100", vPeriod= hzToPeriod 100e6}
 createDomain vXilinxSystem{vName="Basic125", vPeriod= hzToPeriod 125e6}
 createDomain vXilinxSystem{vName="Ext125", vPeriod= hzToPeriod 125e6, vResetKind=Asynchronous}
 createDomain vXilinxSystem{vName="Basic25", vPeriod= hzToPeriod 25e6}
