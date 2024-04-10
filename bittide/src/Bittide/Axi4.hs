@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -12,6 +12,7 @@ module Bittide.Axi4 where
 
 import Clash.Prelude
 
+import Clash.Cores.Xilinx.Ila
 import Clash.Sized.Internal.BitVector (popCountBV)
 import Data.Constraint
 import Data.Maybe
@@ -672,3 +673,34 @@ eqAxi axiA axiB = lastSame && idSame && destSame && userSame && and keepsSame &&
     dataSame = (==) <$> _tdata axiA <*> _tdata axiB
     strbSame = (==) <$> _tstrb axiA <*> _tstrb axiB
     bytesValid = zipWith3 (\ k d s -> (not k) || (d && s)) keeps strbSame dataSame
+
+-- | Integrated logic analyzer for an Axi4Stream bus, it captures the data, keep, ready and last signals.
+ilaAxi ::
+  forall dom conf userType .
+  (HiddenClock dom, KnownAxi4StreamConfig conf) =>
+  -- | Number of registers to insert at each probe. Supported values: 0-6.
+  -- Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  Index 7 ->
+  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
+  -- by 'ilaConfig' equals 'D4096'.
+  Depth ->
+  Circuit
+    (Axi4Stream dom conf userType)
+    (Axi4Stream dom conf userType)
+ilaAxi stages0 depth0 = Circuit $ \(m2s, s2m) ->
+  let
+    ilaInst :: Signal dom ()
+    ilaInst = ila
+      (ilaConfig $
+           "m2s_tdata"
+        :> "m2s_tkeep"
+        :> "m2s_tlast"
+        :> "s2m_tready"
+        :> Nil) { advancedTriggers = True, stages = stages0, depth = depth0 }
+      hasClock
+      (_tdata . fromJust <$> m2s)
+      (_tkeep . fromJust <$> m2s)
+      (_tlast . fromJust <$> m2s)
+      (_tready <$> s2m)
+  in
+    ilaInst `hwSeqX` (s2m, m2s)
