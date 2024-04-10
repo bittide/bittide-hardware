@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Google LLC
+// SPDX-FileCopyrightText: 2022-2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -10,6 +10,7 @@ pub struct UartStatus {
 pub struct TransmitBufferFull;
 pub struct ReceiveBufferEmpty;
 
+#[derive(Clone)]
 /// `Uart` is a structure representing a universal asynchronous receiver-transmitter.
 pub struct Uart {
     /// `payload_addr` is a mutable pointer to the address of the data payload.
@@ -34,7 +35,7 @@ impl Uart {
     }
 
     /// UART status register output
-    pub fn read_status(&mut self) -> UartStatus {
+    pub fn read_status(&self) -> UartStatus {
         let flags: u8 = unsafe { self.flags_addr.read_volatile() };
 
         let rx_mask = 0b10;
@@ -51,7 +52,7 @@ impl Uart {
 
     /// The `receive` function attempts to receive data from the UART. If no
     /// data is available, it keeps looping until data is available.
-    pub fn receive(&mut self) -> u8 {
+    pub fn receive(&self) -> u8 {
         loop {
             if let Ok(val) = self.try_receive() {
                 return val;
@@ -61,7 +62,7 @@ impl Uart {
 
     /// The `try_receive` function attempts to receive data from the UART. If no
     /// data is available, it returns None.
-    pub fn try_receive(&mut self) -> Result<u8, ReceiveBufferEmpty> {
+    pub fn try_receive(&self) -> Result<u8, ReceiveBufferEmpty> {
         if self.read_status().receive_buffer_empty {
             Err(ReceiveBufferEmpty)
         } else {
@@ -74,7 +75,7 @@ impl Uart {
 
     /// The `send` function sends the given data to the UART. If the UART is
     /// unable to accept the data, it keeps looping until it can send the data.
-    pub fn send(&mut self, data: u8) {
+    pub fn send(&self, data: u8) {
         loop {
             if let Ok(()) = self.try_send(data) {
                 return;
@@ -84,7 +85,7 @@ impl Uart {
 
     /// The `try_send` function attempts to send the given data to the UART. If
     /// the UART is unable to accept the data, it returns an error.
-    pub fn try_send(&mut self, data: u8) -> Result<(), TransmitBufferFull> {
+    pub fn try_send(&self, data: u8) -> Result<(), TransmitBufferFull> {
         if self.read_status().transmit_buffer_full {
             Err(TransmitBufferFull)
         } else {
