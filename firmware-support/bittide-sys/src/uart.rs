@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod log;
 pub struct UartStatus {
     pub receive_buffer_empty: bool,
     pub transmit_buffer_full: bool,
@@ -106,4 +107,13 @@ impl ufmt::uWrite for Uart {
     }
 
     type Error = ();
+}
+
+impl core::fmt::Write for Uart {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        for b in s.bytes() {
+            self.send(b);
+        }
+        Ok(())
+    }
 }
