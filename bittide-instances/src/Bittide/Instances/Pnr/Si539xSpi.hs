@@ -37,7 +37,7 @@ si5391Spi ::
       , "CSB" ::: Signal Basic125 Bool)
   )
 si5391Spi clk rst extOp miso = withClockResetEnable clk rst enableGen $
-  si539xSpi testConfig6_200_on_0a (SNat @50000) extOp miso
+  si539xSpi testConfig6_200_on_0a_1ppb (SNat @50000) extOp miso
 
 makeTopEntity 'si5391Spi
 

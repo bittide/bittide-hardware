@@ -88,7 +88,7 @@ transceiversStartAndObserve refClk sysClk rst rxns rxps miso =
 
   (_, _, spiState, spiOut) =
     withClockResetEnable sysClk sysRst enableGen $
-      si539xSpi testConfig6_200_on_0a (SNat @(Microseconds 10)) (pure Nothing) miso
+      si539xSpi testConfig6_200_on_0a_1ppb (SNat @(Microseconds 10)) (pure Nothing) miso
 
   -- Transceiver setup
   gthAllReset = rst `orReset` unsafeFromActiveLow spiDone
