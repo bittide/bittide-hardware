@@ -23,6 +23,18 @@ type TestConfig6_200_on_0a_TotalRegs   =                   3 + 590 + 5
 testConfig6_200_on_0a_1ppb :: TestConfig6_200_on_0a_RegisterMap
 testConfig6_200_on_0a_1ppb = $(parseFromFileToRegisterMap "Si5395J-200MHz-1ppb-Registers")
 
+-- | Same as 'testConfig6_200_on_0a_1ppb', but with a 10 ppb step size
+testConfig6_200_on_0a_10ppb :: TestConfig6_200_on_0a_RegisterMap
+testConfig6_200_on_0a_10ppb = $(parseFromFileToRegisterMap "Si5395J-200MHz-10ppb-Registers")
+
+-- | Same as 'testConfig6_200_on_0a_1ppb', but with a 100 ppb step size
+testConfig6_200_on_0a_100ppb :: TestConfig6_200_on_0a_RegisterMap
+testConfig6_200_on_0a_100ppb = $(parseFromFileToRegisterMap "Si5395J-200MHz-100ppb-Registers")
+
+-- | Same as 'testConfig6_200_on_0a_1ppb', but with a 1 ppm step size
+testConfig6_200_on_0a_1ppm :: TestConfig6_200_on_0a_RegisterMap
+testConfig6_200_on_0a_1ppm = $(parseFromFileToRegisterMap "Si5395J-200MHz-1ppm-Registers")
+
 -- | Configuration for Si5395J with out6 at 200MHz, 1ppm FSTEP and out3 at 20MHz, 0.1% FSTEP
 testConfig6_200_5_20 ::  Si5395RegisterMap
 testConfig6_200_5_20 = Si539xRegisterMap{..}
