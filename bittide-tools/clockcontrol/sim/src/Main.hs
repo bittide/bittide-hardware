@@ -11,12 +11,15 @@ module Main (main) where
 
 import Domain
 
+import Bittide.Report.ClockControl
 import Bittide.Simulate
 import Bittide.Simulate.Config
 import Bittide.Topology
 
+import Control.Monad (when)
 import Data.Aeson (decode)
 import Data.ByteString.Lazy qualified as BS
+import Data.Maybe (isJust)
 import Data.Proxy (Proxy(..))
 
 import Options.Applicative
@@ -34,6 +37,10 @@ main = do
         case decode cnt of
           Nothing -> die $ "ERROR: Invalid JSON file - " <> file
           Just o  -> return o { jsonArgs }
+
+  when createReport $
+    checkDependencies
+      >>= maybe (return ()) die
 
   sccc <- someCCC (Proxy @Bittide)
     (not disableReframing) rusty waitTime
@@ -57,12 +64,15 @@ main = do
         , fixClockOffs = clockOffsets
         , fixStartOffs = startupOffsets
         , maxStartOff  = maxStartupOffset
-        , save         = \clockOffs startOffs isStable ->
-            saveSimConfig t simCfg
-              { stable         = isStable
-              , clockOffsets   = clockOffs
-              , startupOffsets = startOffs
-              }
+        , save         = \clockOffs startOffs isStable -> do
+            let cfg = simCfg { stable         = isStable
+                             , clockOffsets   = clockOffs
+                             , startupOffsets = startOffs
+                             }
+            saveSimConfig t cfg
+            when (isJust isStable && createReport) $
+              checkIntermediateResults outDir
+                 >>= maybe (generateReport "Simulation Report" outDir cfg) die
         , ..
         }
 

@@ -265,6 +265,3 @@ maxGeqPlus n m (suc k)
   rewrite +-comm (n ⊔ m) (suc k)
   rewrite +-comm k (n ⊔ m)
   = m≤n⇒m≤1+n (maxGeqPlus n m k)
-
-leqTrans : {n m k : ℕ} -> (n ≤ m) -> (m ≤ k) -> (n ≤ k)
-leqTrans = ≤-trans

@@ -29,7 +29,7 @@ import System.Directory (createDirectoryIfMissing, listDirectory)
 import System.Environment (lookupEnv, getProgName)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import System.Process (callCommand)
+import System.Process (callCommand, callProcess)
 
 import qualified Data.Map.Strict       as Map        (fromList, lookup)
 import qualified Data.ByteString.Char8 as ByteString (pack)
@@ -158,10 +158,10 @@ retrieveArtifact runId artifactName destination = do
                       req (jsonValue <$ response) "curl download failed"
                 Nothing -> do
                   putStrLn " Success."
-                  callCommand $ unwords ["unzip", "-q", file, "-d", path]
-                  callCommand $ unwords ["rm", file]
+                  callProcess "unzip" ["-q", file, "-d", path]
+                  callProcess "rm" [file]
                   createDirectoryIfMissing True destination
-                  (>>=) (listDirectory path) $ mapM_ $ \x -> do
-                    callCommand $ unwords ["rm", "-Rf", destination </> x]
-                    callCommand $ unwords ["mv", path </> x, destination </> x]
+                  (listDirectory path >>=) $ mapM_ $ \x -> do
+                    callProcess "rm" ["-Rf", destination </> x]
+                    callProcess "mv" [path </> x, destination </> x]
                   return Nothing

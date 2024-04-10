@@ -211,34 +211,19 @@ jobs:
 
       - name: Plot mesh grid
         run: |
+          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          mkdir -p _build/reports/simulation
           cabal run -- bittide-tools:cc-sim \
             +RTS -M${{ matrix.target.hmem }}M -RTS \
+            --output-directory _build/reports/simulation \
             --output-mode pdf \
             --get-rusty \
             --steps ${{ matrix.target.steps }} \
             --samples 1000 \
             --max-startup-offset 2000 \
             --stop-after-stable ${{ matrix.target.steps }} \
+            --create-report \
             ${{ matrix.target.topology }} ${{ matrix.target.args }}
-
-      - name: Generate report
-        if: ${{ !cancelled() }}
-        run: |
-          sed -i -e "s/n\([0-9]*\)/\1/g" _build/topology.gv
-          dot2tex \
-            -f tikz \
-            --figonly \
-            --progoptions "-K neato" \
-            --nodeoptions "every node/.style={fill,text=white,font=\Large\tt,minimum size=2em,inner sep=0pt}" \
-            --edgeoptions "line width=0.3em" \
-            _build/topology.gv > _build/topology.tikz
-          cp .github/simulation/report-template.tex _build/report.tex
-          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > _build/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > _build/runref
-          cd _build
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz
 
       - name: Upload plots
         uses: actions/upload-artifact@v4
@@ -297,25 +282,9 @@ jobs:
           export BITTIDE_ARTIFACT_ACCESS_TOKEN="${{ secrets.GITHUB_TOKEN }}"
           export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           cabal run -- bittide-tools:cc-plot ${{ github.run_id }}:fullMeshHwCcTest _build/plot hitl-plots/hw
-          cp .github/hitl/FullMeshHwCcReportTemplate.tex hitl-plots/hw/CC/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/hw/CC/topology.tikz
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/hw/CC/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/hw/CC/runref
-          cd hitl-plots/hw/CC
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz elasticbuffers.pdf clocks.pdf
-          cd ../../..
           mv hitl-plots/hw/CC/report.pdf reports/HITL-FullMeshHwCc-Report.pdf
           mv hitl-plots/hw/CC plot-sources/FullMeshHwCc
           cabal run -- bittide-tools:cc-plot ${{ github.run_id }}:fullMeshSwCcTest _build/plot hitl-plots/sw
-          cp .github/hitl/FullMeshSwCcReportTemplate.tex hitl-plots/sw/CC/report.tex
-          cp .github/hitl/topology.tikz hitl-plots/sw/CC/topology.tikz
-          echo "$(date +'%Y-%m-%d %H:%M:%S')" > hitl-plots/sw/CC/datetime
-          echo "\\textit{\\href{$RUNREF}{$RUNREF}}" > hitl-plots/sw/CC/runref
-          cd hitl-plots/sw/CC
-          lualatex report.tex
-          rm -Rf report.{aux,log,out,tex} runref datetime topology.tikz elasticbuffers.pdf clocks.pdf
-          cd ../../..
           mv hitl-plots/sw/CC/report.pdf reports/HITL-FullMeshSwCc-Report.pdf
           mv hitl-plots/sw/CC plot-sources/FullMeshSwCc
 
@@ -323,7 +292,9 @@ jobs:
         run: |
           set +f # Enable globbing
           mkdir -p reports
-          pdfunite artifacts/*/report.pdf reports/Simulation-Report.pdf
+          pdfunite \
+            artifacts/*/reports/simulation/report.pdf \
+            reports/Simulation-Report.pdf
 
       - name: Upload Reports
         uses: actions/upload-artifact@v4
@@ -759,7 +730,7 @@ jobs:
       - run: cache pull build
 
       - name: Run tests on hardware
-        run : |
+        run: |
           .github/scripts/with_vivado.sh \
             shake ${{ matrix.target.top }}:test --hardware-targets="${{ matrix.target.targets}}"
 
@@ -770,6 +741,7 @@ jobs:
           name: _build-${{ matrix.target.top }}-debug
           path: |
             _build/vivado/*/ila-data
+            _build/hitl/*
           retention-days: 14
 
   all:

@@ -7,6 +7,8 @@ module Bittide.Plot
   ( ReframingStage(..)
   , fromRfState
   , plot
+  , plotClocksFileName
+  , plotElasticBuffersFileName
   ) where
 
 import Clash.Prelude (KnownNat, Vec)
@@ -31,6 +33,14 @@ import Bittide.Topology
 -- | 'Bittide.ClockControl.Callisto.ReframingState' reduced to its
 -- stages.
 data ReframingStage = RSDetect | RSWait | RSDone deriving (Show)
+
+-- | Default name of the clocks plot file.
+plotClocksFileName :: String
+plotClocksFileName = "clocks.pdf"
+
+-- | Default name of the elastic buffers plot file.
+plotElasticBuffersFileName :: String
+plotElasticBuffersFileName = "elasticbuffers.pdf"
 
 fromRfState :: ReframingState -> ReframingStage
 fromRfState = \case
@@ -133,12 +143,12 @@ matplotWrite ::
   -- ^ elastic buffer plots
   IO ()
 matplotWrite dir clockDats ebDats = do
-  void $ file (dir </> "clocks" <> ".pdf") $ constrained
+  void $ file (dir </> plotClocksFileName) $ constrained
     ( xlabel "Time (fs)"
     % ylabel "Relative period (fs) [0 = ideal frequency]"
     % foldPlots (reverse $ Vec.toList clockDats)
     )
-  void $ file (dir </> "elasticbuffers" <> ".pdf") $ constrained
+  void $ file (dir </> plotElasticBuffersFileName) $ constrained
     ( xlabel "Time (fs)"
     % foldPlots (Vec.toList ebDats)
     )

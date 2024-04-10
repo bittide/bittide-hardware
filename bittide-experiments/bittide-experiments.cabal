@@ -103,6 +103,7 @@ library
     Bittide.Github.Artifacts
     Bittide.Hitl
     Bittide.Plot
+    Bittide.Report.ClockControl
     Bittide.Simulate
     Bittide.Simulate.Config
     Bittide.Simulate.ElasticBuffer

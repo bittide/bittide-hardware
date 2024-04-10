@@ -6,6 +6,8 @@
 {-# LANGUAGE RecordWildCards #-}
 module Bittide.Simulate.Config
   ( SimConf(..)
+  , simJsonConfigFileName
+  , simTopologyFileName
   , simConfigCLIParser
   , saveSimConfig
   ) where
@@ -23,6 +25,14 @@ import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 
 import Options.Applicative
+
+-- | Default name of the simulation JSON configuration file.
+simJsonConfigFileName :: String
+simJsonConfigFileName = "simulate.json"
+
+-- | Default name of the simulation topology Graphviz file.
+simTopologyFileName :: String
+simTopologyFileName = "topology.gv"
 
 -- | Collection of all simulation configuration parameters. Have a
 -- look at the implementation of 'simConfigCLIParser' for a
@@ -43,6 +53,7 @@ data SimConf =
     , clockOffsets       :: [Int64]
     , startupOffsets     :: [Int]
     , maxStartupOffset   :: Int
+    , createReport       :: Bool
     , outDir             :: FilePath
     , jsonArgs           :: Maybe FilePath
     , stable             :: Maybe Bool
@@ -65,6 +76,7 @@ instance Default SimConf where
     , clockOffsets       = []
     , startupOffsets     = []
     , maxStartupOffset   = 0
+    , createReport       = False
     , outDir             = "_build"
     , jsonArgs           = Nothing
     , stable             = Nothing
@@ -189,6 +201,11 @@ simConfigCLIParser =
                <> "delayed (bounds the randomly generated offsets)"
                )
           )
+    <*> flag (createReport def) (not $ createReport def)
+          (  long "create-report"
+          <> short 'r'
+          <> help "Create a simulation report"
+          )
     <*> strOption
           (  long "output-directory"
           <> short 'o'
@@ -217,9 +234,9 @@ simConfigCLIParser =
 saveSimConfig :: STop -> SimConf -> IO ()
 saveSimConfig (STop t) cfg@SimConf{..} = do
   createDirectoryIfMissing True outDir
-  let topologyFile = outDir </> "topology.gv"
+  let topologyFile = outDir </> simTopologyFileName
   writeFile topologyFile $ (<> "\n") $ render $ toDot t
-  BS.writeFile (outDir </> "simulate.json") $ encode cfg
+  BS.writeFile (outDir </> simJsonConfigFileName) $ encode cfg
     { jsonArgs = Nothing
     , mTopologyType = case mTopologyType of
         Just (Random{}) -> Just $ DotFile topologyFile

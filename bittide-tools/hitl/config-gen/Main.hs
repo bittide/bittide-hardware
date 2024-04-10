@@ -13,8 +13,9 @@
 module Main where
 
 import Prelude
+import Clash.Prelude (BitPack)
 
-import Control.Monad (forM_, when)
+import Control.Monad (forM, forM_, when)
 import Data.Aeson (ToJSON)
 import Data.List (intercalate)
 import Options.Applicative
@@ -25,20 +26,9 @@ import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 
 import Bittide.Hitl (HitlTestsWithPostProcData, packAndEncode)
-
-import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
-import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
-import qualified Bittide.Instances.Hitl.FullMeshHwCc as FullMeshHwCc
-import qualified Bittide.Instances.Hitl.FullMeshSwCc as FullMeshSwCc
-import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
-import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
-import qualified Bittide.Instances.Hitl.Tcl.ExtraProbes as ExtraProbes
-import qualified Bittide.Instances.Hitl.Transceivers as Transceivers
-import qualified Bittide.Instances.Hitl.VexRiscv as VexRiscv
+import Bittide.Instances.Hitl.Tests (HitlTest(..), hitlTests)
 
 import qualified Data.ByteString.Lazy.Char8 as LazyByteString
-import qualified Clash.Prelude as C
-import qualified Language.Haskell.TH as TH
 
 data Config = Config
   { name :: String
@@ -47,21 +37,9 @@ data Config = Config
 
 -- | Known configurations that can be written to @_build/hitl@
 configs :: IO [Config]
-configs = sequence
-  [ -- Generate config based on Haskell definitions
-    makeConfig 'BoardTest.boardTestExtended             BoardTest.testsExtended
-  , makeConfig 'BoardTest.boardTestSimple               BoardTest.testsSimple
-  , makeConfig 'FincFdec.fincFdecTests                  FincFdec.tests
-  , makeConfig 'FullMeshHwCc.fullMeshHwCcTest           FullMeshHwCc.tests
-  , makeConfig 'FullMeshHwCc.fullMeshHwCcWithRiscvTest  FullMeshHwCc.tests
-  , makeConfig 'FullMeshSwCc.fullMeshSwCcTest           FullMeshSwCc.tests
-  , makeConfig 'LinkConfiguration.linkConfigurationTest LinkConfiguration.tests
-  , makeConfig 'SyncInSyncOut.syncInSyncOut             SyncInSyncOut.tests
-  , makeConfig 'Transceivers.transceiversUpTest         Transceivers.tests
-  , makeConfig 'VexRiscv.vexRiscvTest                   VexRiscv.tests
-    -- Load config from 'bittide-instances/data/test_configs'
-  , loadConfig 'ExtraProbes.extraProbesTest "extraProbesTest.yml"
-  ]
+configs = forM hitlTests $ \case
+  KnownType nm config    -> pure $ makeConfig nm config
+  LoadConfig nm fileName -> loadConfig nm fileName
 
 -- | First argument on command line, as Haskell type
 data Arg
@@ -100,26 +78,27 @@ writeConfigsParser =
     <> help "For example, 'Bittide.Instances.Hitl.FincFdec.fincFdecTests'"
 
 -- | Load config from an existing YAML file in 'data/test_configs'
-loadConfig :: TH.Name -> FilePath -> IO Config
+loadConfig :: String -> FilePath -> IO Config
 loadConfig nm fileName = do
   fullPath <- getDataFileName ("data" </> "test_configs" </> fileName)
   yamlContents <- LazyByteString.readFile fullPath
   pure $ Config
-    { name = show nm
+    { name = nm
     , yaml = yamlContents
     }
 
--- | Create config based on a 'HitlTests'
+-- | Create config from a known HITL test.
 makeConfig ::
   forall a b.
-  (C.BitPack a, ToJSON b) =>
-  TH.Name ->
+  (BitPack a, ToJSON b) =>
+  String ->
   HitlTestsWithPostProcData a b ->
-  IO Config
-makeConfig nm config = pure $ Config
-  { name = show nm
-  , yaml = packAndEncode config
-  }
+  Config
+makeConfig nm config =
+  Config
+    { name = nm
+    , yaml = packAndEncode config
+    }
 
 main :: IO ()
 main = do

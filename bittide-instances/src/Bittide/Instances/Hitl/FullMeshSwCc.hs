@@ -46,16 +46,18 @@ import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState(Error, Finished), si539xSpi)
-import Bittide.DoubleBufferedRam (InitialContent(Reloadable), ContentType(Blob))
 import Bittide.Counter
+import Bittide.DoubleBufferedRam (InitialContent(Reloadable), ContentType(Blob))
 import Bittide.ElasticBuffer (sticky)
+import Bittide.Hitl (HitlTestsWithPostProcData, hitlVioBool, allFpgas)
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig(..), processingElement)
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
+import Bittide.Simulate.Config (SimConf(..))
 import Bittide.SharedTypes (ByteOrder(BigEndian))
+import Bittide.Topology (TopologyType(..))
 import Bittide.Transceiver
 
-import Bittide.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
 
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
@@ -69,6 +71,8 @@ import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
 import Protocols
+
+import qualified Data.Map as Map (singleton)
 
 clockControlConfig ::
   $(case (instancesClockConfig (Proxy @Basic125)) of { (_ :: t) -> liftTypeQ @t })
@@ -362,5 +366,20 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       ]
   } #-}
 
-tests :: HitlTests ()
-tests = noConfigTest "CC" allFpgas
+tests :: HitlTestsWithPostProcData () SimConf
+tests = Map.singleton "CC" $
+  ( allFpgas ()
+  , def { mTopologyType = Just $ Complete (natToInteger @FpgaCount)
+        , simulationSamples = 1000
+        , simulationSteps = natToNum @(PeriodToCycles Basic125 (Seconds 60))
+        , stabilityMargin = snatToNum cccStabilityCheckerMargin
+        , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
+        , disableReframing = not $ cccEnableReframing
+        , rusty = cccEnableRustySimulation
+        , waitTime = fromEnum cccReframingWaitTime
+        , clockOffsets = toList $ repeat @FpgaCount 0
+        , startupOffsets = toList $ repeat @FpgaCount 0
+        }
+  )
+ where
+  ClockControlConfig{..} = clockControlConfig
