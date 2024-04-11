@@ -89,7 +89,7 @@ goFincFdecTests clk rst clkControlled testSelect miso =
   (_, spiBusy, spiState@(fmap (==Finished) -> siClkLocked), spiOut) =
     withClockResetEnable clk rst enableGen $
       si539xSpi
-        Si5395J.testConfig6_200_on_0a_and_0
+        Si5395J.testConfig6_200_on_0a_1ppb_and_0
         (SNat @(Microseconds 1))
         (pure Nothing)
         miso

@@ -20,8 +20,20 @@ type TestConfig6_200_on_0a_TotalRegs   =                   3 + 590 + 5
 --  out9a:  200MHz LVDS 1.8V
 --
 --  all of them doing 1ppb steps on Finc/Fdec
-testConfig6_200_on_0a :: TestConfig6_200_on_0a_RegisterMap
-testConfig6_200_on_0a = $(parseFromFileToRegisterMap "testConfig6_200_on_0a")
+testConfig6_200_on_0a_1ppb :: TestConfig6_200_on_0a_RegisterMap
+testConfig6_200_on_0a_1ppb = $(parseFromFileToRegisterMap "Si5395J-200MHz-1ppb-Registers")
+
+-- | Same as 'testConfig6_200_on_0a_1ppb', but with a 10 ppb step size
+testConfig6_200_on_0a_10ppb :: TestConfig6_200_on_0a_RegisterMap
+testConfig6_200_on_0a_10ppb = $(parseFromFileToRegisterMap "Si5395J-200MHz-10ppb-Registers")
+
+-- | Same as 'testConfig6_200_on_0a_1ppb', but with a 100 ppb step size
+testConfig6_200_on_0a_100ppb :: TestConfig6_200_on_0a_RegisterMap
+testConfig6_200_on_0a_100ppb = $(parseFromFileToRegisterMap "Si5395J-200MHz-100ppb-Registers")
+
+-- | Same as 'testConfig6_200_on_0a_1ppb', but with a 1 ppm step size
+testConfig6_200_on_0a_1ppm :: TestConfig6_200_on_0a_RegisterMap
+testConfig6_200_on_0a_1ppm = $(parseFromFileToRegisterMap "Si5395J-200MHz-1ppm-Registers")
 
 -- | Configuration for Si5395J with out6 at 200MHz, 1ppm FSTEP and out3 at 20MHz, 0.1% FSTEP
 testConfig6_200_5_20 ::  Si5395RegisterMap
@@ -623,8 +635,8 @@ testConfig6_200_5_20 = Si539xRegisterMap{..}
   out9a: 200MHz LVDS 1.8V
   all of them doing 10ppb steps on Finc/Fdec
 -}
-testConfig6_200_on_0a_and_0 ::  Si5395RegisterMap
-testConfig6_200_on_0a_and_0 = Si539xRegisterMap{..}
+testConfig6_200_on_0a_1ppb_and_0 ::  Si5395RegisterMap
+testConfig6_200_on_0a_1ppb_and_0 = Si539xRegisterMap{..}
  where
   configPreamble = (0x0B, 0x24, 0xC0) :> (0x0B, 0x25, 0x00) :> (0x05, 0x40, 0x01) :> Nil
   configPostamble = (0x05, 0x14, 0x01) :> (0x00, 0x1C, 0x01) :> (0x05, 0x40, 0x00) :> (0x0B, 0x24, 0xC3) :> (0x0B, 0x25, 0x02) :> Nil
