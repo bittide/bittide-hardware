@@ -81,7 +81,7 @@ dut baud diffClk rst_in usbUartTx = usbUartRx
   (iMem, dMem) = $(do
       root <- runIO $ findParentContaining "cabal.project"
       let
-        elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" True
+        elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
         elfPath = elfDir </> "time_self_test"
 
         iSize = 64 * 1024 -- 64 KB

@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 module Project.FilePath where
@@ -31,27 +31,32 @@ buildDir = "_build"
 cargoDir :: FilePath
 cargoDir = buildDir </> "cargo"
 
+data CargoBuildType = Release | Debug
+  deriving (Eq)
 -- | Relative path to the firmware binaries directory.
 --
 -- Example:
 --
--- >>> firmwareBinariesDir "riscv32imc-unknown-none-elf" True
+-- >>> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
 -- "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release"
-firmwareBinariesDir :: String -> Bool -> FilePath
-firmwareBinariesDir rustTargetArchitecture release =
+firmwareBinariesDir :: String -> CargoBuildType -> FilePath
+firmwareBinariesDir rustTargetArchitecture buildType =
   cargoDir
   </> "firmware-binaries"
-  </> rustBinSubDir rustTargetArchitecture release
+  </> rustBinSubDir rustTargetArchitecture buildType
 
 -- | Firmware binaries directory relative to cargo's target directory.
 --
 -- Example:
 --
--- >>> rustBinSubDir "riscv32imc-unknown-none-elf" True
+-- >>> rustBinSubDir "riscv32imc-unknown-none-elf" Release
 -- "riscv32imc-unknown-none-elf/release"
-rustBinSubDir :: String -> Bool -> FilePath
-rustBinSubDir rustTargetArchitecture release =
-  rustTargetArchitecture </> if release then "release" else "debug"
+rustBinSubDir :: String -> CargoBuildType -> FilePath
+rustBinSubDir rustTargetArchitecture buildType =
+  rustTargetArchitecture </>
+  case buildType of
+    Release -> "release"
+    Debug   -> "debug"
 
 -- | Recursive function that returns a parent directory containing a certain filename.
 findParentContaining :: String -> IO FilePath

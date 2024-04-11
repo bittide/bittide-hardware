@@ -40,7 +40,6 @@ import Data.Proxy
 import Data.String (fromString)
 import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
-import System.Directory
 import System.FilePath
 
 import Bittide.Arithmetic.Time
@@ -68,6 +67,7 @@ import Bittide.Hitl (HitlTestsWithPostProcData, TestName, Probes, hitlVio)
 
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
+import Project.FilePath
 
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
@@ -155,26 +155,10 @@ riscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
   framesize = SNat @(PeriodToCycles dom (Seconds 1))
 
   (iMem, dMem) = $(do
+    root <- runIO $ findParentContaining "cabal.project"
     let
-      findProjectRoot :: IO FilePath
-      findProjectRoot = goUp =<< getCurrentDirectory
-        where
-          goUp :: FilePath -> IO FilePath
-          goUp path
-            | isDrive path = error "Could not find 'cabal.project'"
-            | otherwise = do
-                exists <- doesFileExist (path </> projectFilename)
-                if exists then
-                  return path
-                else
-                  goUp (takeDirectory path)
-
-          projectFilename = "cabal.project"
-
-    root <- runIO findProjectRoot
-
-    let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/clock-control-reg-cpy"
-
+      elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
+      elfPath = elfDir </> "clock-control-reg-cpy"
     memBlobsFromElf BigEndian (Nothing, Nothing) elfPath Nothing)
 
   {-
