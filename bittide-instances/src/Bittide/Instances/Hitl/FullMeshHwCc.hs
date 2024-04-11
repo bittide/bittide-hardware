@@ -44,6 +44,7 @@ import System.FilePath
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
+import Bittide.ClockControl.Callisto.Util (FINC, FDEC, stickyBits, speedChangeToPins)
 import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState(Error, Finished), si539xSpi)
@@ -65,7 +66,6 @@ import Bittide.Transceiver
 
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
-import Bittide.Instances.Pnr.MVPs (stickyBits, speedChangeToPins, FINC, FDEC)
 
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
