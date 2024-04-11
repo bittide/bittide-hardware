@@ -1,7 +1,5 @@
 [
   {"top": "callisto3",                     "stage": "pnr"},
-  {"top": "clockControlDemo0",             "stage": "bitstream"},
-  {"top": "clockControlDemo1",             "stage": "bitstream"},
   {"top": "counterReducedPins",            "stage": "pnr"},
   {"top": "elasticBuffer5",                "stage": "pnr"},
   {"top": "gatherUnit1K",                  "stage": "hdl"},

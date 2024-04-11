@@ -1,14 +1,6 @@
 [
-  {"top": "clockControlDemo0",             "stage": "bitstream"},
-
-  {"top": "boardTestExtended",             "stage": "test", "targets": "All"},
-  {"top": "boardTestSimple",               "stage": "test", "targets": "All"},
-  {"top": "extraProbesTest",               "stage": "test", "targets": "Specific [0]"},
-  {"top": "fincFdecTests",                 "stage": "test", "targets": "Specific [-1]"},
-  {"top": "linkConfigurationTest",         "stage": "test", "targets": "All"},
   {"top": "fullMeshHwCcTest",              "stage": "test", "targets": "All"},
   {"top": "fullMeshSwCcTest",              "stage": "test", "targets": "All"},
-  {"top": "syncInSyncOut",                 "stage": "test", "targets": "All"},
-  {"top": "transceiversUpTest",            "stage": "test", "targets": "All"},
+  {"top": "linkConfigurationTest",         "stage": "test", "targets": "All"},
   {"top": "vexRiscvTest",                  "stage": "test", "targets": "Specific [-1]"}
 ]
