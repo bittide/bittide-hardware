@@ -276,25 +276,24 @@ jobs:
 
       - name: Generate HITL based plots
         run: |
-          mkdir -p reports
-          mkdir -p plot-sources
           ./cargo.sh build --frozen --release
           export BITTIDE_ARTIFACT_ACCESS_TOKEN="${{ secrets.GITHUB_TOKEN }}"
           export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          cabal run -- bittide-tools:cc-plot ${{ github.run_id }}:fullMeshHwCcTest _build/plot hitl-plots/hw
-          mv hitl-plots/hw/CC/report.pdf reports/HITL-FullMeshHwCc-Report.pdf
-          mv hitl-plots/hw/CC plot-sources/FullMeshHwCc
-          cabal run -- bittide-tools:cc-plot ${{ github.run_id }}:fullMeshSwCcTest _build/plot hitl-plots/sw
-          mv hitl-plots/sw/CC/report.pdf reports/HITL-FullMeshSwCc-Report.pdf
-          mv hitl-plots/sw/CC plot-sources/FullMeshSwCc
+          cabal run -- bittide-tools:cc-plot ${{ github.run_id }}:hwCcTopologyTest _build/plot hitl-topology-plots
 
-      - name: Generate final simulation report
+      - name: Generate clock control reports
         run: |
           set +f # Enable globbing
           mkdir -p reports
           pdfunite \
             artifacts/*/reports/simulation/report.pdf \
             reports/Simulation-Report.pdf
+          pdfunite \
+            hitl-topology-plots/*/report.pdf \
+            reports/HITLT-Report.pdf
+          rm hitl-topology-plots/*/report.pdf
+          mkdir -p plot-sources
+          mv hitl-topology-plots plot-sources/hwCcTopologyTest
 
       - name: Upload Reports
         uses: actions/upload-artifact@v4

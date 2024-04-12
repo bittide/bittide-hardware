@@ -681,6 +681,7 @@ proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} 
     puts "\nFound $test_count tests:"
     foreach test_name $test_names {
         puts "\t$test_name"
+        set last_test $test_name
     }
 
     foreach test_name $test_names {
@@ -775,6 +776,13 @@ proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} 
                 # Legacy CSV excludes radix information
                 write_hw_ila_data -force -legacy_csv_file $file_path $ila_data
                 write_hw_ila_data -force -vcd_file $file_path $ila_data
+            }
+
+            # Reset all start probes
+            if {$test_name != $last_test} {
+                set start_probe [get_hw_probes $vio_prefix/probe_test_start]
+                set_property OUTPUT_VALUE 0 $start_probe
+                commit_hw_vio [get_hw_vios]
             }
         }
         # Print summary of individual test

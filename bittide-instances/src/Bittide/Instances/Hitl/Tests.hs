@@ -18,6 +18,7 @@ import qualified Bittide.Instances.Hitl.BoardTest         as BoardTest
 import qualified Bittide.Instances.Hitl.FincFdec          as FincFdec
 import qualified Bittide.Instances.Hitl.FullMeshHwCc      as FullMeshHwCc
 import qualified Bittide.Instances.Hitl.FullMeshSwCc      as FullMeshSwCc
+import qualified Bittide.Instances.Hitl.HwCcTopologies    as HwCcTopologies
 import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
 import qualified Bittide.Instances.Hitl.SyncInSyncOut     as SyncInSyncOut
 import qualified Bittide.Instances.Hitl.Tcl.ExtraProbes   as ExtraProbes
@@ -49,6 +50,7 @@ hitlTests =
   , knownType  'FullMeshHwCc.fullMeshHwCcTest           FullMeshHwCc.tests
   , knownType  'FullMeshHwCc.fullMeshHwCcWithRiscvTest  FullMeshHwCc.tests
   , knownType  'FullMeshSwCc.fullMeshSwCcTest           FullMeshSwCc.tests
+  , knownType  'HwCcTopologies.hwCcTopologyTest         HwCcTopologies.tests
   , knownType  'LinkConfiguration.linkConfigurationTest LinkConfiguration.tests
   , knownType  'SyncInSyncOut.syncInSyncOut             SyncInSyncOut.tests
   , knownType  'Transceivers.transceiversUpTest         Transceivers.tests
