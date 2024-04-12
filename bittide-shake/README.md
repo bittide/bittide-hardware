@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2022-2023 Google LLC
+SPDX-FileCopyrightText: 2022-2024 Google LLC
 
 SPDX-License-Identifier: Apache-2.0
 -->
@@ -74,14 +74,14 @@ shake scatterUnitWb:pnr
 Example:
 
 ```
-shake clockControlDemo0:bitstream
+shake boardTestExtended:bitstream
 ```
 
 ## Board programming
 Example:
 
 ```
-shake clockControlDemo0:program --hardware-targets=OneAny
+shake boardTestExtended:program --hardware-targets=OneAny
 ```
 
 ## Hardware testing
