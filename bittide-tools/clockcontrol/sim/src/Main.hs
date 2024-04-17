@@ -42,9 +42,8 @@ main = do
     checkDependencies
       >>= maybe (return ()) die
 
-  sccc <- someCCC (Proxy @Bittide)
-    (not disableReframing) rusty waitTime
-      (toInteger stabilityMargin) (toInteger stabilityFrameSize)
+  sccc <- someCCC (Proxy @Bittide) reframe rusty waitTime
+    (toInteger stabilityMargin) (toInteger stabilityFrameSize)
 
   isStable <- case mTopologyType of
     Nothing ->
@@ -53,21 +52,21 @@ main = do
     Just tt -> fromTopologyType tt >>= \case
       Left err -> die $ "Error : " <> err
       Right t -> simPlot t SimPlotSettings
-        { samples      = simulationSamples
-        , periodsize   = simulationSteps `quot` simulationSamples
-        , mode         = outMode
-        , dir          = outDir
-        , stopStable   =
+        { plotSamples = samples
+        , periodsize = duration `quot` samples
+        , mode = outMode
+        , dir = outDir
+        , stopStable =
             if stopWhenStable
             then Just 0
-            else (`quot` simulationSamples) <$> stopAfterStable
+            else (`quot` samples) <$> stopAfterStable
         , fixClockOffs = clockOffsets
-        , fixStartOffs = startupOffsets
-        , maxStartOff  = maxStartupOffset
-        , save         = \clockOffs startOffs isStable -> do
-            let cfg = simCfg { stable         = isStable
-                             , clockOffsets   = clockOffs
-                             , startupOffsets = startOffs
+        , fixStartDelays = startupDelays
+        , maxStartDelay = maxStartupDelay
+        , save = \clockOffs startDelays isStable -> do
+            let cfg = simCfg { stable        = isStable
+                             , clockOffsets  = clockOffs
+                             , startupDelays = startDelays
                              }
             saveSimConfig t cfg
             when (isJust isStable && createReport) $

@@ -469,16 +469,16 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 tests :: HitlTestsWithPostProcData () SimConf
 tests = Map.singleton "CC" $
   ( allFpgas ()
-  , def { mTopologyType = Just $ Complete (natToInteger @FpgaCount)
-        , simulationSamples = 1000
-        , simulationSteps = natToNum @(PeriodToCycles Basic125 (Seconds 60))
-        , stabilityMargin = snatToNum cccStabilityCheckerMargin
+  , def { mTopologyType      = Just $ Complete (natToInteger @FpgaCount)
+        , samples            = 1000
+        , duration           = natToNum @(PeriodToCycles Basic125 (Seconds 60))
+        , stabilityMargin    = snatToNum cccStabilityCheckerMargin
         , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
-        , disableReframing = not $ cccEnableReframing
-        , rusty = cccEnableRustySimulation
-        , waitTime = fromEnum cccReframingWaitTime
-        , clockOffsets = toList $ repeat @FpgaCount 0
-        , startupOffsets = toList $ repeat @FpgaCount 0
+        , reframe            = cccEnableReframing
+        , rusty              = cccEnableRustySimulation
+        , waitTime           = fromEnum cccReframingWaitTime
+        , clockOffsets       = toList $ repeat @FpgaCount 0
+        , startupDelays      = toList $ repeat @FpgaCount 0
         }
   )
  where

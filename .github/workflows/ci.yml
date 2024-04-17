@@ -220,7 +220,7 @@ jobs:
             --get-rusty \
             --steps ${{ matrix.target.steps }} \
             --samples 1000 \
-            --max-startup-offset 2000 \
+            --max-startup-delay 2000 \
             --stop-after-stable ${{ matrix.target.steps }} \
             --create-report \
             ${{ matrix.target.topology }} ${{ matrix.target.args }}

@@ -435,9 +435,9 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
   -- local timestamp on the stable clock
   localTs :: Signal sys (DiffResult (LocalTimestamp dyn))
   localTs = case maxGeqPlusApp of
-    Dict -> overflowResistantDiff clk rst
+    Dict -> overflowResistantDiff clk syncRst
               (delay clk enableGen False (isJust <$> captureCond))
-          $ let ccRst = xpmResetSynchronizer Asserted clk dynClk rst
+          $ let ccRst = xpmResetSynchronizer Asserted clk dynClk syncRst
                 lts :: Signal dyn (Unsigned 8)
                 lts = register dynClk ccRst enableGen minBound
                     $ satSucc SatWrap <$> lts
@@ -493,8 +493,8 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
           )
 
   -- produce at least two calibration captures
-  calibrating = unsafeToActiveLow rst .&&.
-    moore clk rst enableGen
+  calibrating = unsafeToActiveLow syncRst .&&.
+    moore clk syncRst enableGen
       (\s -> bool s $ satSucc SatBound s)
       (/= maxBound)
       (minBound :: Index 3)
