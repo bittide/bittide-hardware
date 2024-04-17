@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
@@ -10,9 +10,9 @@ import Bittide.ProcessingElement.DeviceTreeCompiler
 import Bittide.ProcessingElement.ReadElf
 import Bittide.SharedTypes
 
-import Clash.Explicit.BlockRam.File
 import Control.Monad (when)
 import Data.Maybe
+import GHC.Stack
 import Language.Haskell.TH
 import Numeric (showHex)
 import System.Exit
@@ -22,25 +22,46 @@ import qualified Data.ByteString as BS
 import qualified Data.IntMap as I
 import qualified Data.List as L
 
+-- | Given a `Maybe Int` and a list, if the `Maybe Int` is `Just s`, pad the list to
+-- size `s` with the given element. If the length of the list is greater than `s`,
+-- throw an error. If the `Maybe Int` is `Nothing`, return the list as is.
+padToSize :: HasCallStack => String -> Maybe Int -> a -> [a] -> [a]
+padToSize _ Nothing _ l = l
+padToSize name (Just s) a xs
+  | s >= l = xs <> L.replicate (s - l) a
+  | otherwise = error $ "Bittide.ProcessingElement.Util: " <> name <> " with length " <>
+    show l <> " is longer than the specified size " <> show s
+  where
+    l = L.length xs
+
+
 -- | Given the path to an elf file, the path to a device tree and a starting address
 --  for the device tree. Return a 3 tuple containing:
 --  (initial program counter, instruction memory blob, data memory blob)
 memBlobsFromElf ::
+  HasCallStack =>
   -- | How the words should be ordered in the memBlob
   ByteOrder ->
+  -- | Optional size in bytes to which we should pad the instruction memBlob and data memBlob.
+  -- Rounds up to the nearest word size.
+  (Maybe Int, Maybe Int) ->
   -- | Source file, assumed to be Little Endian.
   FilePath ->
   -- | Optional tuple of starting address and filepath to a device tree.
   Maybe (I.Key, FilePath) ->
   -- | (instruction memBlob, data memBlob)
    Q Exp
-memBlobsFromElf byteOrder elfPath maybeDeviceTree = do
+memBlobsFromElf byteOrder (iSize, dSize) elfPath maybeDeviceTree = do
   (iMemIntMap, dMemIntMap) <- runIO (getBytesMems elfPath maybeDeviceTree)
   let
-    iResult = intMapToMemBlob byteOrder iMemIntMap
-    dResult = intMapToMemBlob byteOrder dMemIntMap
+    (_iStartAddr, _, iList) = extractIntMapData byteOrder iMemIntMap
+    (_dStartAddr, _, dList) = extractIntMapData byteOrder dMemIntMap
+    iListPadded = padToSize "Instruction memory" (fmap ((`div` 4) . (+3)) iSize) 0 iList
+    dListPadded = padToSize "Data memory" (fmap ((`div` 4) . (+3)) dSize) 0 dList
+    iBlob = memBlobTH Nothing iListPadded
+    dBlob = memBlobTH Nothing dListPadded
 
-  [|($iResult, $dResult)|]
+  [|($iBlob, $dBlob)|]
 
 -- | Given the path to an elf file, the path to a device tree and a starting address
 --  for the device tree. Return a 3 tuple containing:
@@ -67,21 +88,6 @@ getBytesMems elfPath maybeDeviceTree = do
       <> showHex k "") dMem0 deviceTreeMap
 
   pure (iMem, if isJust maybeDeviceTree then dMem1 else dMem0)
-
--- | Given an IntMap, return a 3 tuple containing:
--- (starting address, size, memBlob)
-intMapToMemBlob :: ByteOrder -> I.IntMap Byte -> Q Exp
-intMapToMemBlob byteOrder intMap = do
-  let
-    (startAddr, size, mapAsList) = extractIntMapData byteOrder intMap
-    memBlob = memBlobTH Nothing mapAsList
-  [| (startAddr, size :: Integer, $memBlob) |]
-
--- | Write a list of `Byte`s to a file to be used with `blockRamFile`.
-writeByteListToFile :: FilePath -> [Byte] -> IO ()
-writeByteListToFile filePath byteList = do
-  let fileContent = memFile Nothing byteList
-  writeFile filePath fileContent
 
 -- | Given an IntMap, return the starting address, size and content as @[Bytes 4]@
 extractIntMapData ::
