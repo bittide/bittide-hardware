@@ -61,7 +61,7 @@ instancesClockConfig Proxy = ClockControlConfig
   , cccEnableReframing           = True
   -- changed from defClockConfig, which uses a fixed number of cycles independent
   -- the clock speed of the domain
-  , cccReframingWaitTime         = 10000000
+  , cccReframingWaitTime         = 30000000
   , cccEnableRustySimulation     = False
   }
  where
