@@ -73,8 +73,10 @@ import Clash.Prelude
 
 import Clash.Cores.Xilinx.VIO (vioProbe)
 
-import Data.Aeson (ToJSON(toJSON), object, (.=))
-import Data.Aeson.Encode.Pretty (encodePretty)
+import Data.Aeson (ToJSON(toJSON), Value(Number), object, (.=))
+import Data.Aeson.Encode.Pretty
+  ( Config(..), NumberFormat(..), encodePretty', defConfig )
+import Data.Aeson.Text (encodeToTextBuilder)
 import Data.Map (Map)
 import Data.Maybe (isJust)
 import Data.Text (Text)
@@ -352,7 +354,11 @@ packAndEncode ::
   (BitPack a, ToJSON b) =>
   HitlTestsWithPostProcData a b ->
   LazyByteString.ByteString
-packAndEncode = encodePretty . toPacked
+packAndEncode = encodePretty'
+  defConfig
+    { confNumFormat = Custom (encodeToTextBuilder . Number)
+    }
+  . toPacked
 
 -- | Whether a test has been completed, see 'hitlVio'.
 type Done = Bool

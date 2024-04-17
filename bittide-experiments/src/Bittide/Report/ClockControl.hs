@@ -196,7 +196,7 @@ toLatex datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} = unline
   , "\\begin{large}"
   , "  \\begin{tabular}{rl}"
   , "    duration \\textit{(clock cycles)}:"
-  , "      & " <> show simulationSteps <> " \\\\"
+  , "      & " <> show duration <> " \\\\"
   , "    stability detector - framesize:"
   , "      & " <> show stabilityFrameSize <> " \\\\"
   , "    stability detector - margin:"
@@ -205,14 +205,14 @@ toLatex datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} = unline
   , "      & " <> maybe "not used" show stopAfterStable <> " \\\\"
   , "    clock offsets \\textit{(fs)}:"
   , "      & " <> intercalate ", " (show <$> clockOffsets) <> " \\\\"
-  , "    startup offsets \\textit{(clock cycles)}:"
-  , "      & " <> intercalate ", " (show <$> startupOffsets) <> " \\\\"
+  , "    startup delays \\textit{(clock cycles)}:"
+  , "      & " <> intercalate ", " (show <$> startupDelays) <> " \\\\"
   , "    reframing:"
   , "      & " <> "\\textit{"
-               <> bool "enabled" "disabled" disableReframing
+               <> bool "disabled" "enabled" reframe
                <> "} \\\\"
-  , if disableReframing then "" else
-      "    wait time: & " <> show waitTime <> " \\\\"
+  , if reframe then "    wait time: & " <> show waitTime <> " \\\\" else ""
+
   , "    all buffers stable at the end of simulation:"
   , "      & " <> maybe ""
                    ( bool "\\textcolor{red!50!black}{\\ding{55}}"
@@ -250,7 +250,7 @@ toLatex datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} = unline
   , "    (D) at ($ (C.north east) + (0.2,0) $) {"
   , "      \\small\\textit{buffer is stable and centered}"
   , "    };"
-  , if disableReframing then "" else unlines
+  , if not reframe then "" else unlines
       [ "    \\node[overlay,anchor=north west,fill=red]"
       , "    (E) at ($ (A.south west) + (0,-0.2) $) {};"
       , "    \\node[overlay,anchor=north west,inner sep=0pt]"
