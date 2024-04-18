@@ -82,6 +82,8 @@ import VexRiscv
 
 import qualified Data.Map.Strict as Map (fromList)
 
+type AllStablePeriod = Seconds 5
+
 data TestConfig =
   TestConfig
     { fpgaEnabled :: Bool
@@ -369,7 +371,7 @@ hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     (startTest .&&. syncStart .&&. ((not <$> allUp) .||. transceiversFailedAfterUp))
 
   endSuccess :: Signal Basic125 Bool
-  endSuccess = trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
+  endSuccess = trueFor (SNat @AllStablePeriod) sysClk syncRst allStable
 
   done = endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp
   success = not <$> (transceiversFailedAfterUp .||. startBeforeAllUp)
@@ -517,6 +519,8 @@ tests = Map.fromList
             , waitTime = fromEnum cccReframingWaitTime
             , clockOffsets = toList $ repeat @n 0
             , startupOffsets = toList $ repeat @n 0
+            , stopAfterStable =
+                Just $ natToNum @(PeriodToCycles Basic125 AllStablePeriod)
             }
       )
     )

@@ -29,10 +29,12 @@ generateReport ::
   -- ^ Document description header
   FilePath ->
   -- ^ Directory containing the intermediate plot results
+  [(Integer, String)] ->
+  -- ^ Node identifiers
   SimConf ->
   -- ^ The utilized simulation configuration
   IO ()
-generateReport (("Bittide - " <>) -> header) dir cfg =
+generateReport (("Bittide - " <>) -> header) dir ids cfg =
   withSystemTempDirectory "generate-report" $ \tmpDir -> do
     Just runref <- lookupEnv "RUNREF"
     -- remove the 'n' prefix from the node names
@@ -50,7 +52,7 @@ generateReport (("Bittide - " <>) -> header) dir cfg =
           <> intercalate ","
                [ "fill"
                , "text=white"
-               , "font=\\Large\tt"
+               , "font=\\Large\\tt"
                , "minimum size=2em"
                , "inner sep=0pt"
                ]
@@ -65,7 +67,7 @@ generateReport (("Bittide - " <>) -> header) dir cfg =
     -- create the latex report
     withFile (tmpDir </> "report.tex") WriteMode $ \h -> do
       hSetBuffering h NoBuffering
-      hPutStr h $ toLatex datetime runref header clocksPdf ebsPdf topTikz cfg
+      hPutStr h $ toLatex datetime runref header clocksPdf ebsPdf topTikz ids cfg
       hFlush h
       hClose h
     -- create the report pdf
@@ -131,20 +133,23 @@ toLatex ::
   -- ^ File path of the elastic buffers plot pdf
   String ->
   -- ^ Tikz plot of the topology
+  [(Integer, String)] ->
+  -- ^ Node identifiers
   SimConf ->
   -- ^ The utilized simulation configuration
   String
-toLatex datetime runref header clocksPdf ebsPdf topTikz SimConf{..} = unlines
+toLatex datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} = unlines
   [ "\\documentclass[landscape]{article}"
   , ""
   , "\\usepackage[top=3cm,bottom=3cm,left=1.5cm,right=1.5cm]{geometry}"
   , "\\usepackage[hidelinks]{hyperref}"
+  , "\\usepackage[dvipsnames]{xcolor}"
   , "\\usepackage{graphicx}"
   , "\\usepackage{pifont}"
   , "\\usepackage{fancyhdr}"
   , "\\usepackage{tikz}"
   , ""
-  , "\\usetikzlibrary{shapes, calc}"
+  , "\\usetikzlibrary{shapes, calc, shadows}"
   , ""
   , "\\pagestyle{fancy}"
   , "\\fancyhf{}"
@@ -165,36 +170,53 @@ toLatex datetime runref header clocksPdf ebsPdf topTikz SimConf{..} = unlines
   , "\\ \\vspace{3em}"
   , ""
   , "\\begin{center}"
-  , "  \\begin{tikzpicture}[overlay, xshift=0.30\\textwidth]"
-  , "    \\node {\\resizebox{!}{10em}{" <> topTikz <> "}};"
-  , "  \\end{tikzpicture}"
+  , "\\begin{tikzpicture}[overlay, xshift=0.27\\textwidth, yshift=-3]"
+  , "\\node {"
+  , "\\begin{tikzpicture}"
+  , "\\node (A) {\\resizebox{!}{10em}{"
+  , topTikz
+  , "}};"
+  , if null ids then "" else unlines $
+      [ "\\node at ($ (A.east) + (3,0) $) {"
+      , "\\small\\tt"
+      , "\\begin{tabular}{r|c}"
+      , "  & \\textbf{FPGA ID} \\\\[0.1em]"
+      , "\\hline \\\\[-0.9em]"
+      ] <> map (\(i,n) -> show i <> " & " <> n <> " \\\\") ids <>
+      [ "\\end{tabular}"
+      , "};"
+      ]
+  , "\\end{tikzpicture}"
+  , "};"
+  , "\\end{tikzpicture}"
   , "\\end{center}"
   , ""
   , "\\vspace{-5em}"
   , ""
   , "\\begin{large}"
   , "  \\begin{tabular}{rl}"
-  , "    simulation steps:"
+  , "    duration \\textit{(clock cycles)}:"
   , "      & " <> show simulationSteps <> " \\\\"
-  , "    collected samples:"
-  , "      & " <> show simulationSamples <> " \\\\"
   , "    stability detector - framesize:"
   , "      & " <> show stabilityFrameSize <> " \\\\"
   , "    stability detector - margin:"
   , "      & \\textpm\\," <> show stabilityMargin <> " elements \\\\"
-  , "    when stable, automatically stop after:"
-  , "      & " <> maybe "not used" ((<> " steps") . show) stopAfterStable
-               <> " \\\\"
-  , "    clock offsets:"
-  , "      & " <> intercalate "\\,\\textit{fs}, " (show <$> clockOffsets)
-               <> " \\\\"
-  , "    startup offsets (\\# clock cycles):"
-  , "      & " <> intercalate ", " (show <$> startupOffsets)
-               <> " \\\\"
-  , "    stable at the end of simulation:"
+  , "    when stable, automatically stop after \\textit{(clock cycles)}:"
+  , "      & " <> maybe "not used" show stopAfterStable <> " \\\\"
+  , "    clock offsets \\textit{(fs)}:"
+  , "      & " <> intercalate ", " (show <$> clockOffsets) <> " \\\\"
+  , "    startup offsets \\textit{(clock cycles)}:"
+  , "      & " <> intercalate ", " (show <$> startupOffsets) <> " \\\\"
+  , "    reframing:"
+  , "      & " <> "\\textit{"
+               <> bool "enabled" "disabled" disableReframing
+               <> "} \\\\"
+  , if disableReframing then "" else
+      "    wait time: & " <> show waitTime <> " \\\\"
+  , "    all buffers stable at the end of simulation:"
   , "      & " <> maybe ""
-                   ( bool "\\textcolor{green!50!black}{\\ding{51}}"
-                          "\\textcolor{red!50!black}{\\ding{55}}"
+                   ( bool "\\textcolor{red!50!black}{\\ding{55}}"
+                          "\\textcolor{green!50!black}{\\ding{51}}"
                    ) stable
                <> " \\\\"
   , "  \\end{tabular}"
@@ -205,17 +227,37 @@ toLatex datetime runref header clocksPdf ebsPdf topTikz SimConf{..} = unlines
   , "\\begin{center}"
   , "  \\begin{tikzpicture}"
   , "    \\node (clocks) at (0,0) {"
-  , "      \\includegraphics[width=.5\\textwidth]{" <> clocksPdf <> "}"
+  , "      \\includegraphics[width=.49\\textwidth]{" <> clocksPdf <> "}"
   , "    };"
-  , "    \\node (ebs) at (0.5\\textwidth, 0) {"
-  , "      \\includegraphics[width=.5\\textwidth]{" <> ebsPdf <> "}"
+  , "    \\node (ebs) at (0.51\\textwidth, 0) {"
+  , "      \\includegraphics[width=.49\\textwidth]{" <> ebsPdf <> "}"
   , "    };"
-  , "    \\node at ($ (clocks.north) + (0,-1) $) {"
+  , "    \\node at ($ (clocks.north) + (0,0) $) {"
   , "      \\textbf{Clocks}"
   , "    };"
-  , "    \\node at ($ (ebs.north) + (0,-1) $) {"
+  , "    \\node at ($ (ebs.north) + (0,0) $) {"
   , "      \\textbf{Elastic Buffer Occupancies}"
   , "    };"
+  , "    \\node[overlay,anchor=north west,fill=blue]"
+  , "    (A) at ($ (ebs.south west) + (1.55,0) $) {};"
+  , "    \\node[overlay,anchor=north west,inner sep=0pt]"
+  , "    (B) at ($ (A.north east) + (0.2,0) $) {"
+  , "      \\small\\textit{buffer is stable}"
+  , "    };"
+  , "    \\node[overlay,anchor=north west,fill=OliveGreen]"
+  , "    (C) at ($ (B.north east) + (0.6,0) $) {};"
+  , "    \\node[overlay,anchor=north west,inner sep=0pt]"
+  , "    (D) at ($ (C.north east) + (0.2,0) $) {"
+  , "      \\small\\textit{buffer is stable and centered}"
+  , "    };"
+  , if disableReframing then "" else unlines
+      [ "    \\node[overlay,anchor=north west,fill=red]"
+      , "    (E) at ($ (A.south west) + (0,-0.2) $) {};"
+      , "    \\node[overlay,anchor=north west,inner sep=0pt]"
+      , "    (F) at ($ (E.north east) + (0.2,0) $) {"
+      , "      \\small\\textit{waiting period (reframing)}"
+      , "    };"
+      ]
   , "  \\end{tikzpicture}"
   , "\\end{center}"
   , ""

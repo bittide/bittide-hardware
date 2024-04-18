@@ -8,6 +8,7 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -20,11 +21,16 @@
 module Main (main, knownTestsWithSimConf) where
 
 import Clash.Prelude
-  (BitPack(..), SNat(..), Vec, Index, natToNum, extend)
+  ( BitPack(..), SNat(..), Vec, Index
+  , checkedTruncateB, clockPeriod, extend
+  , natToInteger, natToNum, snatProxy, snatToInteger
+  )
 
 import Clash.Signal.Internal (Femtoseconds(..))
 import qualified Clash.Sized.Vector as Vec
-  ((!!), imap, unsafeFromList, toList, repeat, zip, zipWith, indicesI, length)
+  ( (!!), imap, unsafeFromList, toList, repeat
+  , zip, zipWith, indicesI, length, take
+  )
 
 import GHC.TypeLits
 import Data.Type.Equality ((:~:)(..))
@@ -39,6 +45,7 @@ import Conduit
 import Control.Arrow (first)
 import Control.Exception (Exception(..), catch, throw)
 import Control.Monad (forM, forM_, filterM, when, unless)
+import Control.Monad.Extra (unlessM)
 import Data.Bool
 import Data.Bifunctor (bimap)
 import qualified Data.ByteString as BS
@@ -55,7 +62,7 @@ import Data.Csv.Conduit
   , fromNamedCsvStreamError
   )
 import Data.Functor ((<&>))
-import Data.List (uncons, sort, isPrefixOf, isSuffixOf, find)
+import Data.List (uncons, isPrefixOf, isSuffixOf, find, sortOn)
 import Data.Maybe (fromMaybe, fromJust, isNothing)
 import Data.Proxy (Proxy(..))
 import Data.String (fromString)
@@ -63,7 +70,8 @@ import qualified Data.Map as Map (toList)
 import qualified Data.Text as Text (unpack)
 import qualified Data.Vector as Vector (fromList)
 import qualified Data.HashMap.Strict as HashMap (fromList, size)
-import qualified Data.Set as Set (fromList, toList, isProperSubsetOf, difference)
+import qualified Data.Set as Set
+  (fromList, toList, isProperSubsetOf, difference, member)
 import GHC.IO.Exception (IOException(..), IOErrorType(..))
 import System.Directory
   (listDirectory, doesDirectoryExist, createDirectoryIfMissing)
@@ -71,7 +79,7 @@ import System.Environment (getArgs, getProgName)
 import System.Exit (die)
 import System.FilePath
  ((</>), takeExtensions, takeBaseName, takeFileName, isExtensionOf)
-import Numeric.Extra (parseHex)
+import "bittide-extra" Numeric.Extra (parseHex)
 import System.IO ( BufferMode(..), IOMode(..), Handle, openFile, hClose
                  , withFile, hSetBuffering, hPutStr, hFlush
                  )
@@ -86,9 +94,10 @@ import Bittide.Instances.Hitl.Setup
 import Bittide.Instances.Hitl.Tests
 import Bittide.Instances.Domains
 import Bittide.Report.ClockControl
-import Bittide.Simulate.Config
- (SimConf(mTopologyType, outDir), simTopologyFileName, saveSimConfig)
+import Bittide.Simulate.Config (SimConf, simTopologyFileName, saveSimConfig)
 import Bittide.Topology
+
+import qualified Bittide.Simulate.Config as SimConf (SimConf(..))
 
 -- A newtype wrapper for working with hex encoded types.
 newtype Hex a = Hex { fromHex :: a }
@@ -137,6 +146,10 @@ data DataPoint (n :: Nat) (m :: Nat) =
   DataPoint
     { dpIndex :: Int
       -- ^ the index of the corresponding sample of the dump
+    , dpGlobalLast :: GlobalTimestamp Basic125
+      -- ^ the global time stamp of the previous scheduled capture
+    , dpCycleDiff  :: Femtoseconds
+      -- ^ the number of clock cycles since the last cheduled capture
     , dpGlobalTime :: Femtoseconds
       -- ^ the absolute number of femtoseconds since the start of the
       -- dump according to the global synchronized clock
@@ -222,6 +235,19 @@ postProcess = scanlC process initDummy
     let PlotData{..}    = fromHex plotData
         captureType     = fromHex captureCond
 
+        cycleDiff       = case captureType of
+          DataChange -> dpCycleDiff prevDP
+          _ -> let (toInteger -> pL, toInteger -> cL) = dpGlobalLast prevDP
+                   (toInteger -> pN, toInteger -> cN) = fromHex globalTimestamp
+                in Femtoseconds $ fromInteger
+                     $ (pN - pL) * natToInteger @(SyncPulseCycles Basic125)
+                     + (cN - cL)
+
+        knownClockDifference = Femtoseconds $ fromIntegral $ (1000 *)
+          $ snatToInteger (clockPeriod @Basic125)
+          - snatToInteger (clockPeriod @External)
+
+
         localStamp      =
           let ref = "[" <> show sampleInBuffer <> "]"
           in case fromHex localTimestamp of
@@ -233,7 +259,7 @@ postProcess = scanlC process initDummy
         localTime       = case captureType of
           UntilTrigger -> globalTime
           _            -> dpLocalTime prevDP
-                        + localStamp ~* clockPeriodFs (Proxy @GthTx)
+                        + localStamp ~* clockPeriodFs (Proxy @External)
 
         globalTimeDelta = globalTime
                         - dpLastScheduledGlobalTime prevDP
@@ -242,7 +268,8 @@ postProcess = scanlC process initDummy
 
         driftPerCycle   = case captureType of
           DataChange -> dpDrift prevDP
-          _          -> fromIntegral (globalTimeDelta - localTimeDelta)
+          _          -> (globalTimeDelta - localTimeDelta) `div` cycleDiff
+                      - knownClockDifference
 
         ccChanges       = dpCCChanges prevDP
                         + natToNum @AccWindowHeight * sign dSpeedChange
@@ -252,6 +279,11 @@ postProcess = scanlC process initDummy
                             <*> dpDataCounts prevDP
      in DataPoint
           { dpIndex                   = sampleInBuffer
+          , dpGlobalLast              =
+              case captureType of
+                DataChange -> dpGlobalLast prevDP
+                _          -> fromHex globalTimestamp
+          , dpCycleDiff               = cycleDiff
           , dpGlobalTime              = globalTime
           , dpLastScheduledGlobalTime =
               case captureType of
@@ -282,6 +314,8 @@ postProcess = scanlC process initDummy
 
   initDummy = DataPoint
     { dpIndex                   = -1
+    , dpGlobalLast              = (0,0)
+    , dpCycleDiff               = 0
     , dpGlobalTime              = 0
     , dpLastScheduledGlobalTime = 0
     , dpLocalTime               = 0
@@ -346,21 +380,44 @@ knownTestsWithSimConf = hasSimConf <$> hitlTests
     KnownType name test ->
       (name, first Text.unpack <$> Map.toList (mGetPPD @_ @SimConf test))
 
-plotTest :: FilePath -> Maybe SimConf -> [FilePath] -> FilePath -> IO ()
-plotTest testDir mCfg dirs globalOutDir =
-  case fromJust $ someNatVal $ toInteger $ length dirs of
-    SomeNat (_ :: p n) -> case TLW.SNat @1 %<=? TLW.SNat @n of
+plotTest :: FilePath -> Maybe SimConf -> FilePath -> FilePath -> IO ()
+plotTest testDir mCfg dir globalOutDir = do
+  unless (isNothing mCfg) $ checkDependencies >>= maybe (return ()) die
+  putStrLn $ "Creating plots for test case: " <> testName
+
+  let
+    knownId = flip Set.member $ Set.fromList $ Vec.toList
+      $ Vec.imap (\i a -> show i <> "_" <> fst a) fpgaSetup
+    topFromDirs = listDirectory dir
+      >>= filterM (doesDirectoryExist . (dir </>))
+      >>= return . fromJust . someNatVal . toInteger . length . filter knownId
+      >>= \case
+        SomeNat p ->
+          return $ STop $ complete $ snatProxy p
+
+  STop (t :: Topology n) <- case mCfg of
+    Nothing  -> topFromDirs
+    Just cfg -> case SimConf.mTopologyType cfg of
+      Nothing          -> topFromDirs
+      Just (Random {}) -> topFromDirs
+      Just (DotFile f) -> readFile f >>= either die return . fromDot
+      Just tt          -> fromTopologyType tt >>= either die return
+
+  case TLW.SNat @n %<=? TLW.SNat @FpgaCount of
+    LE Refl -> case TLW.SNat @1 %<=? TLW.SNat @n of
       LE Refl -> do
-        unless (isNothing mCfg) $
-          checkDependencies >>= maybe (return ()) die
-        putStrLn $ "Creating plots for test case: " <> testName
+        let fpgas = Vec.toList $ Vec.imap (,)
+                  $ Vec.take @n @(FpgaCount - n) SNat fpgaSetup
+
         postProcessData <- do
-          forM (sort dirs) $ \d -> concat <$> do
+          forM fpgas $ \(i, (fpgaId, links)) -> concat . filter (not . null) <$> do
+            let d = dir </> (show i <> "_" <> fpgaId)
+            unlessM (doesDirectoryExist d) $ die $ "No directory: " <> d
             csvFiles <- checkCsvFilesExist d <$> listDirectory d
             forM csvFiles $ \f -> do
               h <- openFile f ReadMode
               rs <- catch
-                (do rs <- runConduit $ fromCsvDump @n @CccBufferSize (h, f)
+                (do rs <- runConduit $ fromCsvDump @FpgaCount @CccBufferSize (h, f)
                     putStrLn ("Using " <> (takeBaseName d </> takeFileName f))
                     return rs
                 ) $ \(err :: CsvParseError) -> case err of
@@ -380,7 +437,7 @@ plotTest testDir mCfg dirs globalOutDir =
               hClose h
 
               let
-                k = length dirs - 1
+                k = natToNum @(n - 1) :: Integer
                 header = Vector.fromList $ map BSC.pack $
                   [ "Index"
                   , "Synchronized Time (fs)"
@@ -398,27 +455,30 @@ plotTest testDir mCfg dirs globalOutDir =
                 BSL.writeFile (outDir </> (takeFileName d <> ".csv"))
                   $ encodeByName header rs
 
-              return (toPlotData <$> rs)
+              return (toPlotData t i links <$> rs)
 
         createDirectoryIfMissing True outDir
-        plot outDir (complete (SNat :: SNat n))
-          $ Vec.unsafeFromList postProcessData
+        plot outDir t $ Vec.unsafeFromList postProcessData
+
+        let allStable = and $ (\(_,_,_,xs) -> all (stable . snd) xs) . last
+              <$> postProcessData
 
         case mCfg of
           Nothing -> return ()
           Just cfg' -> do
-            let cfg = cfg' { outDir = outDir }
-            case mTopologyType cfg of
+            let cfg = cfg' { SimConf.outDir = outDir
+                           , SimConf.stable = Just allStable
+                           }
+                ids = bimap toInteger fst <$> fpgas
+            case SimConf.mTopologyType cfg of
               Nothing -> writeTop Nothing
               Just (Random{}) -> writeTop Nothing
               Just (DotFile f) -> readFile f >>= writeTop . Just
-              Just tt -> fromTopologyType tt >>= \case
-                Left err -> die err
-                Right t  -> saveSimConfig t cfg
+              Just tt -> fromTopologyType tt >>= either die (`saveSimConfig` cfg)
             checkIntermediateResults outDir
-              >>= maybe (generateReport "HITLT Report" outDir cfg) die
-
-      _ -> die $ testDir <> " is expected to contain sub-directories."
+              >>= maybe (generateReport "HITLT Report" outDir ids cfg) die
+      _ -> die "Empty topology"
+    _ -> die "Topology is larger than expected"
  where
   testName = takeFileName testDir
   outDir = globalOutDir </> testName
@@ -429,11 +489,30 @@ plotTest testDir mCfg dirs globalOutDir =
        [] -> error $ d <> " does not contain any *.csv files. Aborting."
        _  -> ys
 
-  toPlotData DataPoint{..} =
+  toPlotData ::
+    forall n m.
+    (KnownNat n, 1 <= n, n <= FpgaCount) =>
+    Topology n ->
+    Index n ->
+    Vec (FpgaCount - 1) (Index FpgaCount) ->
+    DataPoint (FpgaCount - 1) m ->
+    ( Femtoseconds
+    , Femtoseconds
+    , ReframingStage
+    , [(DataCount m, StabilityIndication)]
+    )
+  toPlotData t i links DataPoint{..} =
     ( dpGlobalTime
     , dpDrift
     , dpRfStage
-    , Vec.toList $ Vec.zip dpDataCounts dpStability
+    , fmap snd
+        $ sortOn fst
+        $ filter (hasEdge t i . fst)
+        $ fmap (first $ checkedTruncateB @n @(FpgaCount - n))
+        $ filter ((<= natToNum @(n-1)) . fst)
+        $ Vec.toList
+        $ Vec.zip links
+        $ Vec.zip dpDataCounts dpStability
     )
 
   writeTop (fromMaybe "digraph{}" -> str) =
@@ -497,11 +576,8 @@ main = getArgs >>= \case
         <> show (Set.toList (sDirs `Set.difference` sNames))
         <> " in " <> testsDir
 
-    forM_ tests $ \(test, cfg) -> do
-      let dir = testsDir </> test
-      nodeDirs <- listDirectory dir >>= filterM (doesDirectoryExist . (dir </>))
-      allExpectedFpgaIds dir nodeDirs
-      plotTest test cfg ((dir </>) <$> nodeDirs) outDir
+    forM_ tests $ \(test, cfg) ->
+      plotTest test cfg (testsDir </> test) outDir
  where
   getTestsWithSimConf name =
     maybe [] snd $ find ((== name) . fst) knownTestsWithSimConf
@@ -520,19 +596,6 @@ main = getArgs >>= \case
               case filter (either isPrefixOf isSuffixOf epsfix) subDirs of
                 subDir : _ -> diveDownInto epsfix $ dir </> subDir
                 _ -> return dir
-
-  allExpectedFpgaIds dir (Set.fromList -> xs) =
-    let knownIds = Set.fromList
-                 $ Vec.toList
-                 $ Vec.imap (\i a -> show i <> "_" <> fst a)
-                   fpgaSetup
-     in if xs == knownIds
-        then return ()
-        else die $ "The directory " <> dir <> " is expected to contain "
-                <> "the following directories\n "
-                <> concatMap ((' ':) . show) (Set.toList knownIds)
-                <> ",\n, but found\n "
-                <> concatMap ((' ':) . show) (Set.toList xs)
 
   isRunArtifactReference arg = case span (/= ':') arg of
     (xs, ':':ys)
