@@ -466,7 +466,7 @@ proc has_expected_targets {url expected_target_dict} {
                 append err_msg \n
             }
             set unexpected_targets [difference $hw_targets $expected_names]
-            if {[llength $unexpected_targets] > 0]} {
+            if {[llength $unexpected_targets] > 0} {
                 append err_msg "Hardware targets which are not expected:\n"
                 foreach tgt $unexpected_targets {
                     append err_msg $tgt \n
