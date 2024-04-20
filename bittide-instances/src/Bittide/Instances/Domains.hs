@@ -31,8 +31,8 @@ createDomain vXilinxSystem{vName="GthTx", vPeriod= hzToPeriod 125e6}
 createDomain vXilinxSystem{vName="Internal", vPeriod=hzToPeriod 200e6}
 
 type CccBufferSize = 25 :: Nat
-type CccStabilityCheckerMargin = 10 :: Nat
-type CccStabilityCheckerFramesize dom = PeriodToCycles dom (Seconds 2)
+type CccStabilityCheckerMargin = 16 :: Nat
+type CccStabilityCheckerFramesize dom = PeriodToCycles dom (Seconds 8)
 type CccReframingWaitTime dom = PeriodToCycles dom (Seconds 5)
 
 -- | Clock configuration used for instances.
