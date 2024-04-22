@@ -10,6 +10,7 @@ use utils::matches_fdt_name;
 pub mod callisto;
 pub mod clock_config;
 pub mod clock_control;
+pub mod data_counts;
 pub mod gather_unit;
 pub mod i2c;
 pub mod program_stream;
