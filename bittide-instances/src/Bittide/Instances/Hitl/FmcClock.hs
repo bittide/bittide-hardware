@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023-2024 Google LLC
+-- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
@@ -7,77 +7,113 @@
 {-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Bittide.Instances.Hitl.FmcClock where
 
 import Clash.Prelude
 import Clash.Explicit.Prelude (orReset, noReset)
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Protocols
 import Protocols.Internal
+import Protocols.Wishbone
 import System.Directory
 import System.FilePath
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.UART (ValidBaud)
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
-import Clash.Cores.Xilinx.Xpm (xpmCdcGray)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Language.Haskell.TH
 
+import Bittide.ClockControl
 import Bittide.Counter (domainDiffCounter)
 import Bittide.DoubleBufferedRam
-import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
+import Bittide.ClockControl.Registers (dataCountsWb)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
-import Clash.Cores.Xilinx.GTH (gthCore)
-import Clash.Cores.Xilinx.GTH.Internal (ibufds_gte3)
+import Bittide.Instances.Hitl.FincFdec (TestState(..), Test(..), testStateToDoneSuccess)
+
+import Clash.Cores.Xilinx.GTH (ibufds_gte3, gthCore)
 import Clash.Explicit.Reset.Extra (Asserted(..), xpmResetSynchronizer)
-import Clash.Hitl (HitlTests, hitlVioBool, noConfigTest, singleFpga)
+import Clash.Hitl (HitlTests, testsFromEnum, hitlVio, singleFpga)
 
 
 onChange :: (HiddenClockResetEnable dom, Eq a, NFDataX a) => Signal dom a -> Signal dom Bool
 onChange x = (Just <$> x) ./=. register Nothing (Just <$> x)
 
 fmcClockRiscv ::
-  forall dom .
+  forall dom n .
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
-  , ValidBaud dom 921600 ) =>
+  , ValidBaud dom 921600
+  , KnownNat n
+  , n <= 32 ) =>
   "sclBs" ::: BiSignalIn 'PullUp dom 1 ->
   "sdaIn" ::: Signal dom Bit ->
+  "datacounts" ::: Vec 1 (Signal dom (DataCount n)) ->
   "USB_UART_TX" ::: Signal dom Bit ->
+  "testSelect" ::: Signal dom (Maybe Test) ->
   ( "sclBs" ::: BiSignalOut 'PullUp dom 1
   , "sdaOut" ::: Signal dom Bit
   , "muxSelect" ::: BitVector 3
   , "clockInitDone" ::: Signal dom Bool
+  , "testResult" ::: Signal dom TestState
   , "USB_UART_RX" ::: Signal dom Bit
   )
-fmcClockRiscv sclBs sdaIn uartIn =
+fmcClockRiscv sclBs sdaIn dataCounts uartIn testSelect =
   ( writeToBiSignal sclBs sclOut
   , fromMaybe 1 <$> sdaOut
   , 0b100
   , clockInitDoneO
+  , testResultO
   , uartOut
   )
  where
-  (_, (CSignal (unbundle -> (sclOut, sdaOut)), CSignal clockInitDoneO, CSignal uartOut)) = toSignals
-    ( circuit $ \(i2cIn, uartRx) -> do
-      [timeBus, i2cBus, clockInitDoneBus, uartBus] <- processingElement @dom peConfig -< ()
+  (_, (CSignal (unbundle -> (sclOut, sdaOut)), CSignal (unbundle -> (clockInitDoneO, testResultO)), CSignal uartOut)) = toSignals
+    ( circuit $ \(i2cIn, statusRegIn, uartRx) -> do
+      [timeBus, i2cBus, controlRegBus, statusRegBus, dataCountsBus, uartBus, dummyBus] <- processingElement @dom peConfig -< ()
       (uartTx, _uartStatus) <- uartWb d16 d16 (SNat @921600) -< (uartBus, uartRx)
       i2cOut <- i2cWb -< (i2cBus, i2cIn)
+      dummyWb -< dummyBus
       timeWb -< timeBus
-      clockInitDone <- controlRegWb False -< clockInitDoneBus
-      idC -< (i2cOut, clockInitDone, uartTx)
-    ) ((CSignal i2cIn, CSignal uartIn), (unitCS, unitCS, unitCS))
+      statusRegWb Nothing -< (statusRegIn, statusRegBus)
+      controlReg <- controlRegWb (False, Busy) -< controlRegBus
+      dataCountsWb dataCounts -< dataCountsBus
+      idC -< (i2cOut, controlReg, uartTx)
+    ) ((CSignal i2cIn, CSignal (Just <$> testSelect), CSignal uartIn), (unitCS, unitCS, unitCS))
 
   sclIn = readFromBiSignal sclBs
   i2cIn :: Signal dom (Bit, Bit)
   i2cIn = bundle (sclIn, fromMaybe <$> sdaIn <*> sdaOut)
+
+  dummyWb :: NFDataX a => Circuit (Wishbone dom 'Standard aw a) ()
+  dummyWb = Circuit $ const (pure emptyWishboneS2M, ())
+
+  {-
+    MSBs   Device
+    0b1000 Instruction memory
+    0b0100 Data memory
+    0b0001 Memory mapped time component
+    0b0010 Memory mapped I2C core
+    0b0011 Memory mapped control register
+    0b0101 Memory mapped status register
+    0b0110 Memory mapped datacounts
+    0b0111 Memory mapped UART core
+    0b0000 Memory mapped dummy device
+
+    Dummy device is needed because the total number of devices cannot be equal to a power
+    of 2. The dummy device must then be mapped to the zero-address.
+  -}
+  peConfig =
+    PeConfig
+      (0b1000 :> 0b0100 :> 0b0001 :> 0b0010 :> 0b0011 :> 0b0101 :> 0b0110 :> 0b0111 :> (0b0000  :: Unsigned 4) :> Nil)
+      (Reloadable $ Blob iMem)
+      (Reloadable $ Blob dMem)
 
   (   (_iStart, _iSize, iMem)
     , (_dStart, _dSize, dMem)) = $(do
@@ -104,45 +140,30 @@ fmcClockRiscv sclBs sdaIn uartIn =
 
     memBlobsFromElf BigEndian elfPath Nothing)
 
-  {-
-    MSBs  Device
-    0b100 Instruction memory
-    0b010 Data memory
-    0b001 Memory mapped time component
-    0b011 Memory mapped I2C core
-    0b101 Memory mapped clock initialization done reg
-    0b110 Memory mapped UART core
-  -}
-  peConfig =
-    PeConfig
-      (0b100 :> 0b010 :> 0b001 :> 0b011 :> 0b101 :> 0b110 :> Nil)
-      (Reloadable $ Blob iMem)
-      (Reloadable $ Blob dMem)
-
 fmcClockTests ::
   "SYSCLK_125" ::: DiffClock Ext125 ->
   "FMC_HPC_GBTCLK1_M2C" ::: DiffClock Ext200 ->
-  "sclBs" ::: BiSignalIn 'PullUp Basic124 1 ->
-  "sdaIn" ::: Signal Basic124 Bit ->
-  "USB_UART_TX" ::: Signal Basic124 Bit ->
-  ( "sclBs" ::: BiSignalOut 'PullUp Basic124 1
-  , "sdaOut" ::: Signal Basic124 Bit
+  "sclBs" ::: BiSignalIn 'PullUp Basic125 1 ->
+  "sdaIn" ::: Signal Basic125 Bit ->
+  "USB_UART_TX" ::: Signal Basic125 Bit ->
+  ( "sclBs" ::: BiSignalOut 'PullUp Basic125 1
+  , "sdaOut" ::: Signal Basic125 Bit
   , "muxSelect" ::: BitVector 3
   , "" :::
-    ( "done"    ::: Signal Basic124 Bool
-    , "success" ::: Signal Basic124 Bool
+    ( "done"    ::: Signal Basic125 Bool
+    , "success" ::: Signal Basic125 Bool
     )
-  , "USB_UART_RX" ::: Signal Basic124 Bit
+  , "USB_UART_RX" ::: Signal Basic125 Bit
   )
 fmcClockTests sysClkDiff fmcClkDiff sclBsIn sdaIn uartIn =
   fmcClockIla `hwSeqX`
   (sclBsOut, sdaOut, muxSelect, (testDone, testSuccess), uartOut)
  where
-  (sysClk, sysRst :: Reset Basic124) = clockWizardDifferential sysClkDiff noReset
+  (sysClk, sysRst :: Reset Basic125) = clockWizardDifferential sysClkDiff noReset
 
-  (sclBsOut, sdaOut, muxSelect, clockInitDone, uartOut) =
+  (sclBsOut, sdaOut, muxSelect, clockInitDone, testResult, uartOut) =
     withClockResetEnable sysClk sysRst enableGen $
-      fmcClockRiscv sclBsIn sdaIn uartIn
+      fmcClockRiscv sclBsIn sdaIn (domainDiff :> Nil) uartIn testInput
 
   fmcClk = ibufds_gte3 fmcClkDiff :: Clock Ext200
 
@@ -153,46 +174,32 @@ fmcClockTests sysClkDiff fmcClkDiff sclBsIn sdaIn uartIn =
     , _gtwiz_userdata_rx_out
     , _gtwiz_reset_tx_done_out
     , _gtwiz_reset_rx_done_out
-    , xpmResetSynchronizer Asserted txClock txClock . unsafeFromActiveLow . fmap unpack -> txLock
+    , xpmResetSynchronizer Asserted txClock txClock . unsafeFromActiveLow . fmap unpack -> txClkRst
     ) =
     gthCore
       "X0Y10" "clk0" (pure 0) (pure 0)
       sysClk
-      sysRst noReset noReset noReset noReset (pure 0) (pure 0)
+      gthRst noReset noReset noReset noReset (pure 0) (pure 0)
       sysClk fmcClk
 
+  gthRst =
+    sysRst `orReset`
+    unsafeFromActiveLow clockInitDone
   testRst =
     sysRst `orReset`
     unsafeFromActiveLow clockInitDone `orReset`
-    unsafeFromActiveLow startTest
-  testRstSync = txLock `orReset` xpmResetSynchronizer Asserted sysClk txClock testRst
-
-  -- The source domain (125 MHz) runs faster than the destination domain (124 MHz).
-  -- Therefore, we expect the counter to become larger. Specifically, we expect
-  -- the following: after 124M cycles in the destination domain, the domainDiff
-  -- should be around 1M with a margin to be safe.
-  expected = 1_000_000
-  margin = 10_000
+    unsafeFromActiveLow testStarted
 
   (domainDiff, dcActive) =
-    unbundle $ domainDiffCounter txClock txLock sysClk testRst
-  counterSys :: Signal Basic124 (Unsigned 32)
-  counterSys = E.register sysClk testRst enableGen 0 (counterSys + 1)
+    unbundle $ domainDiffCounter txClock txClkRst sysClk testRst
 
-  counterFmc :: Signal GthTx (Unsigned 32)
-  counterFmc = E.register txClock testRstSync enableGen 0 (counterFmc + 1)
-  counterFmcSync = xpmCdcGray txClock sysClk counterFmc
+  testStarted = isJust <$> testInput
+  (testDone, testSuccess) = unbundle $ testStateToDoneSuccess <$> testResult
 
-  inRange = (pure (expected - margin) .<. domainDiff) .&&. (domainDiff .<. pure (expected + margin))
-
-  testDone = sticky sysClk testRst (counterSys .>. 124_000_000)
-  testDoneLast = E.register sysClk testRst enableGen False testDone
-  testDonePulse = testDone .&&. (not <$> testDoneLast)
-  testSuccess = E.register sysClk testRst (toEnable testDonePulse) False inRange
-
-  startTest :: Signal Basic124 Bool
-  startTest =
-    hitlVioBool
+  testInput :: Signal Basic125 (Maybe Test)
+  testInput =
+    hitlVio
+      FDec
       sysClk
       testDone
       testSuccess
@@ -201,44 +208,42 @@ fmcClockTests sysClkDiff fmcClkDiff sclBsIn sdaIn uartIn =
   capture =
     withClockResetEnable sysClk sysRst enableGen $
     onChange $ bundle
-      ( flip testBit 13 <$> counterSys
+      ( domainDiff
+      , testInput
+      , testDone
+      , testSuccess
+      , clockInitDone
       )
 
-  fmcClockIla :: Signal Basic124 ()
+  fmcClockIla :: Signal Basic125 ()
   fmcClockIla = setName @"fmcClockIla" $ ila
     (ilaConfig $
          "trigger"
       :> "capture"
-      :> "probe_startTest"
+      :> "probe_testInput"
       :> "probe_testDone"
       :> "probe_testSuccess"
-      :> "probe_counterSys"
-      :> "probe_counterFmcSync"
-      :> "probe_domainDiff"
-      :> "probe_dcActive"
       :> "probe_clockInitDone"
-      :> "probe_inRange"
       :> "probe_testRst"
-      :> "probe_txLock"
+      :> "probe_txLockRst"
+      :> "probe_domainDiffActive"
+      :> "probe_domainDiff"
       :> Nil
     ) { depth = D32768 }
     sysClk
-    startTest
+    testStarted
     capture
     -- Debug signals
-    startTest
+    testInput
     testDone
     testSuccess
-    counterSys
-    counterFmcSync
-    domainDiff
-    dcActive
     clockInitDone
-    inRange
     (unsafeToActiveHigh testRst)
-    (unsafeToActiveHigh $ xpmResetSynchronizer Asserted txClock sysClk txLock)
-
+    (unsafeToActiveHigh $ xpmResetSynchronizer Asserted txClock sysClk txClkRst)
+    dcActive
+    domainDiff
+{-# NOINLINE fmcClockTests #-}
 makeTopEntity 'fmcClockTests
 
-tests :: HitlTests ()
-tests = noConfigTest "FmcClock" (singleFpga maxBound)
+tests :: HitlTests Test
+tests = testsFromEnum (singleFpga maxBound)
