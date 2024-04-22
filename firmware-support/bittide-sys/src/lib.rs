@@ -13,6 +13,7 @@ pub mod gather_unit;
 pub mod i2c;
 pub mod program_stream;
 pub mod scatter_unit;
+pub mod si534x;
 pub mod time;
 pub mod uart;
 
