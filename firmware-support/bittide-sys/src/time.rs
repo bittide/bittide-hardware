@@ -16,7 +16,11 @@ insignificant for timing purposes.
 use core::cmp;
 use core::ops;
 use ufmt::derive::uDebug;
+use ufmt::uDisplay;
+use ufmt::uWrite;
+use ufmt::uwrite;
 pub mod self_test;
+
 /// A representation of an absolute time value.
 ///
 /// The `Instant` type is a wrapper around a `u64` value that represents the number
@@ -367,5 +371,18 @@ impl Clock {
     /// - The frequency of the time counter as a `u64`.
     pub fn get_frequency(&self) -> u64 {
         unsafe { self.frequency.read_volatile() }
+    }
+}
+impl uDisplay for Instant {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized,
+    {
+        let hours = self.to_hours();
+        let mins = self.to_mins() % 60;
+        let secs = self.to_secs() % 60;
+        let millis = self.to_millis() % 1000;
+
+        uwrite!(f, "{}:{}:{}.{}", hours, mins, secs, millis)
     }
 }
