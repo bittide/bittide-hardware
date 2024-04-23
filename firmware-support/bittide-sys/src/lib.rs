@@ -15,6 +15,7 @@ pub mod gather_unit;
 pub mod mac;
 pub mod program_stream;
 pub mod scatter_unit;
+pub mod smoltcp;
 pub mod time;
 pub mod uart;
 

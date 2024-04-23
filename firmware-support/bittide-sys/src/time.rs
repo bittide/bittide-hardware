@@ -373,6 +373,19 @@ impl Clock {
         unsafe { self.frequency.read_volatile() }
     }
 }
+
+impl From<Instant> for smoltcp::time::Instant {
+    fn from(val: Instant) -> Self {
+        smoltcp::time::Instant::from_micros(val.to_micros() as i64)
+    }
+}
+
+impl From<smoltcp::time::Duration> for Duration {
+    fn from(duration: smoltcp::time::Duration) -> Self {
+        Duration::from_micros(duration.micros())
+    }
+}
+
 impl uDisplay for Instant {
     fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
     where
