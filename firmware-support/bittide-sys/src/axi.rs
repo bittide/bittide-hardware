@@ -22,11 +22,12 @@ impl AxiRx {
     ///
     /// # Safety
     ///
-    /// - `base_addr` must be a valid mutable pointer to `usize`.
-    /// - `buffer_size` must be a valid buffer size.
+    /// - `base_addr` must post to a memory mapped AXI Rx peripheral.
+    /// - `buffer_size` must match the buffer size of the AXI Rx peripheral.
     ///
-    pub unsafe fn new(base_addr: *mut usize, buffer_size: usize) -> Self {
+    pub unsafe fn new(addr: *const (), buffer_size: usize) -> Self {
         unsafe {
+            let base_addr = addr as *mut usize;
             let buffer_addrs = buffer_size / 4;
             let packet_length_addr = base_addr.add(buffer_addrs);
             let status_addr = base_addr.add(buffer_addrs + 1);
@@ -116,42 +117,45 @@ impl AxiRx {
 
 #[derive(uDebug, Copy, Clone)]
 pub struct AxiTx {
-    payload_addr: *mut u8,
+    base_addr: *mut u8,
 }
 
 impl AxiTx {
-    pub fn new(payload_addr: *mut u8) -> Self {
-        AxiTx { payload_addr }
+    /// Creates a new instance of `AxiTx`.
+    /// # Safety
+    /// - `base_addr` Must be the base address of the Axi Tx peripheral.
+    pub unsafe fn new(base_addr: *const ()) -> Self {
+        AxiTx {
+            base_addr: base_addr as *mut u8,
+        }
     }
 
     pub fn send(&mut self, packet: &[u8]) {
-        // Split packet into a slice of words and a slice of bytes
-        let len = packet.len();
-        let words = len / 4;
-        let (words_slice, bytes_slice) = packet.split_at(words * 4);
+        // Deal with unaligned packets by splitting them into 3 parts
+        // The use of align_to is safe because the binary representation of 4 bytes is the same as 1 word
+        let (bytes_slice_prefix, words_slice, bytes_slice_suffix) = unsafe { packet.align_to() };
 
-        // Coerce the payload address to a u32 pointer
-        let dst = self.payload_addr as *mut u32;
-
-        // Separately write each 4-byte chunk to the payload address.
-        for chunk in words_slice.chunks_exact(4) {
-            // Convert each 4-byte chunk to a u32 word considering endianness
-            let word = u32::from_ne_bytes(chunk.try_into().unwrap());
-            // Perform the volatile write
+        for byte in bytes_slice_prefix {
             unsafe {
-                dst.write_volatile(word);
+                self.base_addr.write_volatile(*byte);
             }
         }
-
-        for byte in bytes_slice {
+        // Coerce the payload address to a u32 pointer
+        let dst = self.base_addr as *mut u32;
+        for word in words_slice {
             unsafe {
-                self.payload_addr.write_volatile(*byte);
+                dst.write_volatile(*word);
+            }
+        }
+        for byte in bytes_slice_suffix {
+            unsafe {
+                self.base_addr.write_volatile(*byte);
             }
         }
 
         // Initiate transmission by writing the packet size in words to the send_bytes register
         unsafe {
-            self.payload_addr.add(4).write_volatile(0);
+            self.base_addr.add(4).write_volatile(0);
         }
     }
 }

@@ -8,7 +8,11 @@ pub struct Mac {
 }
 
 impl Mac {
-    pub fn new(addr: usize) -> Mac {
+    /// Creates a new instance of `Mac`.
+    ///
+    /// # Safety
+    /// - `addr` must be the base address of the Mac status peripheral.
+    pub unsafe fn new(addr: *const ()) -> Mac {
         Mac {
             status: addr as *const MacStatus,
         }

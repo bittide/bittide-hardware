@@ -365,6 +365,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "smoltcp_echo"
+version = "0.1.0"
+dependencies = [
+ "bittide-sys",
+ "heapless 0.8.0",
+ "log",
+ "riscv",
+ "riscv-rt",
+ "smoltcp",
+ "ufmt",
+]
+
+[[package]]
 name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

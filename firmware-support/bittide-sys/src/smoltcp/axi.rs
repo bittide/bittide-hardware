@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 use crate::axi::{AxiRx, AxiTx};
-use log::info;
+use log::debug;
 use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 pub struct AxiEthernet<const MTU: usize> {
@@ -33,8 +33,12 @@ impl<const MTU: usize> Device for AxiEthernet<MTU> {
     }
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
+        // If there is data available,
         if self.axi_rx.has_data() {
-            info!("Data available");
+            debug!("Data available");
+
+            // Produce a receive toking with the data and tx token that can
+            // be used to respond to the received data.
             let rx = RxToken {
                 axi_rx: &mut self.axi_rx,
             };
@@ -54,8 +58,6 @@ impl<const MTU: usize> Device for AxiEthernet<MTU> {
     }
 }
 
-#[doc(hidden)]
-#[derive()]
 pub struct RxToken<'a> {
     axi_rx: &'a mut AxiRx,
 }
@@ -65,19 +67,24 @@ impl phy::RxToken for RxToken<'_> {
     where
         F: FnOnce(&mut [u8]) -> R,
     {
+        // Get a slice containing the received data
         let buf = self.axi_rx.get_slice();
 
-        // TODO: This is a hack to get around the fact that the buffer is not mutable
-        // in the smoltcp API. We should probably fix this in the smoltcp API.
+        // TODO: This is a hack to get around the fact that the buffer is not mutable,
+        // but the smoltcp API requires it to be. This Should be fixed by
+        // https://github.com/smoltcp-rs/smoltcp/pull/924
         #[allow(clippy::cast_ref_to_mut)]
         let mutable_buf =
             unsafe { core::slice::from_raw_parts_mut(buf.as_ptr().cast_mut(), buf.len()) };
 
         // Process the received data
         let r = f(mutable_buf);
+
+        // Clear the packet and status registers
         self.axi_rx.clear_packet();
         self.axi_rx.clear_status();
-        info!("Consumed {} bytes", buf.len());
+        debug!("Consumed {} bytes", buf.len());
+
         r
     }
 }
@@ -97,6 +104,8 @@ impl<'a, const BUFFER_SIZE: usize> phy::TxToken for TxToken<'a, BUFFER_SIZE> {
     where
         F: FnOnce(&mut [u8]) -> R,
     {
+        // The HAL of our peripheral manually sends the packet word by word and byte by byte.
+        // For this reason we need to ensure that all bytes
         let mut buffer = [0; BUFFER_SIZE];
         let packet = &mut buffer[0..len];
         let result: R = f(packet);

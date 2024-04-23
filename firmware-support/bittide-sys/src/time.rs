@@ -314,10 +314,11 @@ impl Clock {
     /// # Safety
     ///
     /// `addr` needs to point to a mapped memory address for a timer component.
-    pub unsafe fn new(addr: *const u32) -> Clock {
+    pub unsafe fn new(base_addr: *const ()) -> Clock {
         unsafe {
+            let addr = base_addr as *mut u32;
             Clock {
-                freeze_count: addr.cast_mut(),
+                freeze_count: addr,
                 counter: addr.add(1).cast::<u64>(),
                 frequency: addr.add(3).cast::<u64>(),
             }

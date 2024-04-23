@@ -15,8 +15,8 @@ use riscv_rt::entry;
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals.
-    let mut uart = unsafe { Uart::new(0x8000_0000 as *mut u8) };
-    let clock = unsafe { Clock::new(0xc000_0000 as *const u32) };
+    let mut uart = unsafe { Uart::new(0x8000_0000 as *const ()) };
+    let clock = unsafe { Clock::new(0xc000_0000 as *const ()) };
     let test_results = self_test(clock);
     uwriteln!(uart, "Start time self test").unwrap();
     for (name, result) in test_results {

@@ -16,7 +16,7 @@ const DNA_ADDR: *const DnaValue = 0xC000_0000 as *const DnaValue;
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals.
-    let mut uart = unsafe { Uart::new(0x8000_0000 as *mut u8) };
+    let mut uart = unsafe { Uart::new(0x8000_0000 as *const ()) };
     let dna = dna_to_u128(unsafe { *DNA_ADDR });
     uwriteln!(uart, "{}", dna).unwrap();
     loop {
