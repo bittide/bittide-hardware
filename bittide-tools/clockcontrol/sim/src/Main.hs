@@ -72,7 +72,7 @@ main = do
             saveSimConfig t cfg
             when (isJust isStable && createReport) $
               checkIntermediateResults outDir
-                 >>= maybe (generateReport "Simulation Report" outDir cfg) die
+                 >>= maybe (generateReport "Simulation Report" outDir [] cfg) die
         , ..
         }
 

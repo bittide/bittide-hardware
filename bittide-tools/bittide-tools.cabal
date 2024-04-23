@@ -111,6 +111,7 @@ executable cc-plot
     containers,
     data-default,
     directory,
+    extra,
     filepath,
     text,
     typelits-witnesses,
