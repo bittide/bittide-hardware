@@ -14,48 +14,48 @@ import Clash.Prelude
 import Clash.Explicit.Prelude (orReset, noReset)
 
 import Data.Maybe (fromMaybe, isJust)
-import Protocols
-import Protocols.Internal
-import Protocols.Wishbone
-import System.Directory
+import Language.Haskell.TH (runIO)
 import System.FilePath
+
+import Protocols
+import Protocols.Wishbone
+
+import VexRiscv
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.UART (ValidBaud)
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
-import Language.Haskell.TH
 
 import Bittide.ClockControl
+import Bittide.ClockControl.Registers (dataCountsWb)
 import Bittide.Counter (domainDiffCounter)
 import Bittide.DoubleBufferedRam
-import Bittide.Instances.Domains
-import Bittide.ClockControl.Registers (dataCountsWb)
+import Bittide.Hitl (HitlTests, testsFromEnum, hitlVio, singleFpga)
 import Bittide.ProcessingElement
-import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes
+import Bittide.ProcessingElement.Util (memBlobsFromElf)
+import Bittide.SharedTypes (ByteOrder(BigEndian))
 import Bittide.Wishbone
 
+import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.FincFdec (TestState(..), Test(..), testStateToDoneSuccess)
+import Project.FilePath
 
 import Clash.Cores.Xilinx.GTH (ibufds_gte3, gthCore)
 import Clash.Explicit.Reset.Extra (Asserted(..), xpmResetSynchronizer)
-import Clash.Hitl (HitlTests, testsFromEnum, hitlVio, singleFpga)
 
 
 onChange :: (HiddenClockResetEnable dom, Eq a, NFDataX a) => Signal dom a -> Signal dom Bool
 onChange x = (Just <$> x) ./=. register Nothing (Just <$> x)
 
 fmcClockRiscv ::
-  forall dom n .
+  forall dom .
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
-  , ValidBaud dom 921600
-  , KnownNat n
-  , n <= 32 ) =>
+  , ValidBaud dom 921600 ) =>
   "sclBs" ::: BiSignalIn 'PullUp dom 1 ->
   "sdaIn" ::: Signal dom Bit ->
-  "datacounts" ::: Vec 1 (Signal dom (DataCount n)) ->
+  "datacounts" ::: Vec 1 (Signal dom (DataCount 32)) ->
   "USB_UART_TX" ::: Signal dom Bit ->
   "testSelect" ::: Signal dom (Maybe Test) ->
   ( "sclBs" ::: BiSignalOut 'PullUp dom 1
@@ -65,27 +65,31 @@ fmcClockRiscv ::
   , "testResult" ::: Signal dom TestState
   , "USB_UART_RX" ::: Signal dom Bit
   )
-fmcClockRiscv sclBs sdaIn dataCounts uartIn testSelect =
+fmcClockRiscv sclBs sdaIn dataCounts uartRx testSelect =
   ( writeToBiSignal sclBs sclOut
   , fromMaybe 1 <$> sdaOut
   , 0b100
   , clockInitDoneO
   , testResultO
-  , uartOut
+  , uartTx
   )
  where
-  (_, (CSignal (unbundle -> (sclOut, sdaOut)), CSignal (unbundle -> (clockInitDoneO, testResultO)), CSignal uartOut)) = toSignals
-    ( circuit $ \(i2cIn, statusRegIn, uartRx) -> do
-      [timeBus, i2cBus, controlRegBus, statusRegBus, dataCountsBus, uartBus, dummyBus] <- processingElement @dom peConfig -< ()
-      (uartTx, _uartStatus) <- uartWb d16 d16 (SNat @921600) -< (uartBus, uartRx)
-      i2cOut <- i2cWb -< (i2cBus, i2cIn)
-      dummyWb -< dummyBus
-      timeWb -< timeBus
-      statusRegWb Nothing -< (statusRegIn, statusRegBus)
-      controlReg <- controlRegWb (False, Busy) -< controlRegBus
-      dataCountsWb dataCounts -< dataCountsBus
-      idC -< (i2cOut, controlReg, uartTx)
-    ) ((CSignal i2cIn, CSignal (Just <$> testSelect), CSignal uartIn), (unitCS, unitCS, unitCS))
+  (_, (i2cOut, controlReg, uartTx)) =
+    circuitFn (((i2cIn, Just <$> testSelect, uartRx), pure (JtagIn low low low)), (pure (), pure (), pure ()))
+
+  Circuit circuitFn = circuit $ \((i2cIn, statusRegIn, uartRx), jtag) -> do
+    [timeBus, i2cBus, controlRegBus, statusRegBus, dataCountsBus, uartBus, dummyBus] <- processingElement @dom peConfig -< jtag
+    (uartTx, _uartStatus) <- uartWb d16 d16 (SNat @921600) -< (uartBus, uartRx)
+    i2cOut <- i2cWb -< (i2cBus, i2cIn)
+    dummyWb -< dummyBus
+    timeWb -< timeBus
+    statusRegWb Nothing -< (statusRegIn, statusRegBus)
+    controlReg <- controlRegWb (False, Busy) -< controlRegBus
+    dataCountsWb dataCounts -< dataCountsBus
+    idC -< (i2cOut, controlReg, uartTx)
+
+  (sclOut, sdaOut) = unbundle i2cOut
+  (clockInitDoneO, testResultO) = unbundle controlReg
 
   sclIn = readFromBiSignal sclBs
   i2cIn :: Signal dom (Bit, Bit)
@@ -93,6 +97,15 @@ fmcClockRiscv sclBs sdaIn dataCounts uartIn testSelect =
 
   dummyWb :: NFDataX a => Circuit (Wishbone dom 'Standard aw a) ()
   dummyWb = Circuit $ const (pure emptyWishboneS2M, ())
+
+  (iMem, dMem) = $(do
+    root <- runIO $ findParentContaining "cabal.project"
+    let
+      elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
+      elfPath = elfDir </> "fmc-clock"
+      iSize = 64 * 1024 -- 64 KB
+      dSize = 64 * 1024 -- 64 KB
+    memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing)
 
   {-
     MSBs   Device
@@ -114,31 +127,6 @@ fmcClockRiscv sclBs sdaIn dataCounts uartIn testSelect =
       (0b1000 :> 0b0100 :> 0b0001 :> 0b0010 :> 0b0011 :> 0b0101 :> 0b0110 :> 0b0111 :> (0b0000  :: Unsigned 4) :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
-
-  (   (_iStart, _iSize, iMem)
-    , (_dStart, _dSize, dMem)) = $(do
-
-    let
-      findProjectRoot :: IO FilePath
-      findProjectRoot = goUp =<< getCurrentDirectory
-        where
-          goUp :: FilePath -> IO FilePath
-          goUp path
-            | isDrive path = error "Could not find 'cabal.project'"
-            | otherwise = do
-                exists <- doesFileExist (path </> projectFilename)
-                if exists then
-                  return path
-                else
-                  goUp (takeDirectory path)
-
-          projectFilename = "cabal.project"
-
-    root <- runIO findProjectRoot
-
-    let elfPath = root </> "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/fmc-clock"
-
-    memBlobsFromElf BigEndian elfPath Nothing)
 
 fmcClockTests ::
   "SYSCLK_125" ::: DiffClock Ext125 ->
@@ -218,8 +206,8 @@ fmcClockTests sysClkDiff fmcClkDiff sclBsIn sdaIn uartIn =
   fmcClockIla :: Signal Basic125 ()
   fmcClockIla = setName @"fmcClockIla" $ ila
     (ilaConfig $
-         "trigger"
-      :> "capture"
+         "trigger_0"
+      :> "capture_0"
       :> "probe_testInput"
       :> "probe_testDone"
       :> "probe_testSuccess"
