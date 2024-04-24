@@ -103,8 +103,8 @@ fmcClockRiscv sclBs sdaIn dataCounts uartRx testSelect =
     let
       elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
       elfPath = elfDir </> "fmc-clock"
-      iSize = 64 * 1024 -- 64 KB
-      dSize = 64 * 1024 -- 64 KB
+      iSize = 128 * 1024 -- 128 KiB
+      dSize =  64 * 1024 --  64 KiB
     memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing)
 
   {-
