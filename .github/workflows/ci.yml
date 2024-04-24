@@ -43,7 +43,7 @@ jobs:
   license-year:
     name: License year check
     runs-on: [self-hosted, compute]
-    if: ${{ github.event_name != 'schedule' }}
+    if: ${{ github.event_name != 'schedule' && github.ref != 'refs/heads/staging' }}
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
