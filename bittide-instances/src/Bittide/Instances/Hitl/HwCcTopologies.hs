@@ -31,6 +31,7 @@ module Bittide.Instances.Hitl.HwCcTopologies
   , tests
   ) where
 
+import Clash.Class.BitPack.Internal
 import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
 import qualified Clash.Explicit.Prelude as E
@@ -80,6 +81,8 @@ import Clash.Xilinx.ClockGen
 import Protocols hiding (SimulationConfig)
 import Protocols.Wishbone
 import VexRiscv
+
+import GHC.Generics (Rep)
 
 import qualified Data.Map.Strict as Map (fromList)
 
@@ -301,7 +304,8 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso c
 
       -- TODO: create some generic method for generating this, which
       -- does not rely on template haskell
-      cfgOptions = PPB_1 :> PPB_10 :> PPB_100 :> PPM_1 :> Nil
+      cfgOptions :: Vec (GConstructorCount (Rep StepSizeSelect)) StepSizeSelect
+      cfgOptions = bitCoerce <$> indicesI
 
       -- turn the selected configuration into an vector mask
       optionMask = fmap . (==) <$> cfgOptions <*> repeat (stepSizeSelect <$> cfg)
