@@ -28,7 +28,6 @@ import Clash.Prelude
 import Clash.Sized.Vector qualified as V
 import Clash.Signal.Internal (Femtoseconds(..))
 
-import GHC.Int (Int64)
 import System.Exit (die)
 import Text.Read (Read(..), lexP, pfail, readMaybe)
 import Text.Read.Lex (Lexeme(Ident))
@@ -41,7 +40,7 @@ import Data.Array ((!), bounds)
 import Data.Csv (toField, encode)
 import Control.Monad (zipWithM_, forM_)
 import System.FilePath ((</>))
-import System.Random (randomRIO)
+import System.Random (Random(..), randomRIO)
 import Data.ByteString.Lazy qualified as BSL (appendFile)
 
 import Data.Type.Equality ((:~:)(..))
@@ -52,7 +51,6 @@ import GHC.TypeLits.Witnesses qualified as TLW (SNat(..))
 import Bittide.Arithmetic.Ppm (Ppm(..), diffPeriod)
 import Bittide.ClockControl (ClockControlConfig(..), clockPeriodFs, defClockConfig)
 import Bittide.Plot (plot, fromRfState)
-import Bittide.Simulate.Time (Offset)
 import Bittide.Simulate.Topology (simulate, simulationEntity, allSettled)
 import Bittide.Topology
 
@@ -82,16 +80,16 @@ instance FromJSON OutputMode where
 
 data SimPlotSettings =
   SimPlotSettings
-    { samples      :: Int
-    , periodsize   :: Int
-    , mode         :: OutputMode
-    , dir          :: FilePath
-    , stopStable   :: Maybe Int
-    , fixClockOffs :: [Int64]
-    , fixStartOffs :: [Int]
-    , maxStartOff  :: Int
-    , sccc         :: SomeClockControlConfig
-    , save         :: [Int64] -> [Int] -> Maybe Bool -> IO ()
+    { plotSamples    :: Int
+    , periodsize     :: Int
+    , mode           :: OutputMode
+    , dir            :: FilePath
+    , stopStable     :: Maybe Int
+    , fixClockOffs   :: [Float]
+    , fixStartDelays :: [Int]
+    , maxStartDelay  :: Int
+    , sccc           :: SomeClockControlConfig
+    , save           :: [Float] -> [Int] -> Maybe Bool -> IO ()
     }
 
 -- | Creates some clock control configuration from the default with
@@ -184,15 +182,15 @@ simPlot# simSettings ccc t = do
   clockOffsets <-
     V.zipWith (maybe id const) givenClockOffsets
       <$> genClockOffsets ccc
-  startupOffsets <-
-    V.zipWith (maybe id const) givenStartupOffsets
-      <$> genStartupOffsets maxStartOff
+  startupDelays <-
+    V.zipWith (maybe id const) givenStartupDelays
+      <$> genStartupOffsets maxStartDelay
   let
-    simResult = simulate t stopStable samples periodsize
-              $ simulationEntity t ccc clockOffsets startupOffsets
-    saveSettings = save
-      ((\(Femtoseconds x) -> x) <$> V.toList clockOffsets)
-      (V.toList startupOffsets)
+    simResult = simulate t stopStable plotSamples periodsize
+              $ simulationEntity t ccc
+                  (Femtoseconds . floor <$> clockOffsets)
+                  startupDelays
+    saveSettings = save (V.toList clockOffsets) (V.toList startupDelays)
 
   saveSettings Nothing
 
@@ -205,26 +203,26 @@ simPlot# simSettings ccc t = do
   return result
  where
   SimPlotSettings
-    { samples
+    { plotSamples
     , periodsize
     , mode
     , dir
     , stopStable
     , fixClockOffs
-    , fixStartOffs
-    , maxStartOff
+    , fixStartDelays
+    , maxStartDelay
     , save
     } = simSettings
 
   givenClockOffsets =
       V.unsafeFromList
     $ take (natToNum @nodes)
-    $ (Just . Femtoseconds <$> fixClockOffs) <> repeat Nothing
+    $ (Just <$> fixClockOffs) <> repeat Nothing
 
-  givenStartupOffsets =
+  givenStartupDelays =
       V.unsafeFromList
     $ take (natToNum @nodes)
-    $ (Just <$> fixStartOffs) <> repeat Nothing
+    $ (Just <$> fixStartDelays) <> repeat Nothing
 
   dumpCsv simulationResult = do
     forM_ [0..n] $ \i -> do
@@ -245,20 +243,21 @@ simPlot# simSettings ccc t = do
 
 -- | Generates a vector of random clock offsets.
 genClockOffsets ::
-  forall dom k n m c.
-  (KnownDomain dom, KnownNat k, KnownNat n) =>
+  forall dom k n m c a.
+  (KnownDomain dom, KnownNat k, KnownNat n, Random a, Num a) =>
   ClockControlConfig dom n m c ->
-  IO (V.Vec k Offset)
+  IO (V.Vec k a)
 genClockOffsets ClockControlConfig{cccDeviation} =
   V.traverse# (const genOffset) $ V.repeat ()
  where
   genOffset = do
     Ppm offsetPpm <- randomRIO (-cccDeviation, cccDeviation)
     let nonZeroOffsetPpm = if offsetPpm == 0 then cccDeviation else Ppm offsetPpm
-    pure (diffPeriod nonZeroOffsetPpm (clockPeriodFs @dom Proxy))
+        Femtoseconds fs = diffPeriod nonZeroOffsetPpm $ clockPeriodFs @dom Proxy
+    pure $ fromIntegral fs
 
 -- | Generates a vector of random startup offsets.
-genStartupOffsets :: KnownNat k => Int -> IO (V.Vec k Int)
+genStartupOffsets :: (Random a, Num a, KnownNat k) => a -> IO (V.Vec k a)
 genStartupOffsets limit =
   V.traverse# (const ((+1) <$> randomRIO (0, limit))) $ V.repeat ()
 

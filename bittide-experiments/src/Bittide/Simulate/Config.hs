@@ -19,7 +19,6 @@ import Data.Aeson (ToJSON(..), FromJSON(..), encode)
 import Data.ByteString.Lazy qualified as BS (writeFile)
 import Data.Default (Default(..))
 import GHC.Generics (Generic)
-import GHC.Int (Int64)
 import Language.Dot.Pretty (render)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
@@ -34,29 +33,62 @@ simJsonConfigFileName = "simulate.json"
 simTopologyFileName :: String
 simTopologyFileName = "topology.gv"
 
--- | Collection of all simulation configuration parameters. Have a
--- look at the implementation of 'simConfigCLIParser' for a
--- description of the individual fields.
+-- | Collection of all simulation configuration parameters.
 data SimConf =
   SimConf
-    { mTopologyType      :: Maybe (TopologyType IO Integer)
-    , outMode            :: OutputMode
-    , simulationSteps    :: Int
-    , simulationSamples  :: Int
-    , stabilityMargin    :: Int
+    { mTopologyType :: Maybe (TopologyType IO Integer)
+      -- ^ The topology type of the network to be simulated. Have a
+      -- look at 'Bittide.Topology' for more insights on the supported
+      -- topology types and their corresponding topologies.
+    , outMode :: OutputMode
+      -- ^ Some selector of how the data of the simulation result is
+      -- returned for furhter processing.
+    , duration :: Int
+      -- ^ The number of clock cycles to simulate.
+    , samples :: Int
+      -- ^ The number of samples to be utilized for result
+      -- generation. From the 'duration' many samples available, only
+      -- every @duration `quot` samples@th sample is used.
+    , stabilityMargin :: Int
+      -- ^ Maximum number of elements a buffer occupancy is allowed to
+      -- deviate to be considered stable.
+      -- (cf. 'Bittide.ClockControl.StabilityChecker')
     , stabilityFrameSize :: Int
-    , disableReframing   :: Bool
-    , rusty              :: Bool
-    , waitTime           :: Int
-    , stopWhenStable     :: Bool
-    , stopAfterStable    :: Maybe Int
-    , clockOffsets       :: [Int64]
-    , startupOffsets     :: [Int]
-    , maxStartupOffset   :: Int
-    , createReport       :: Bool
-    , outDir             :: FilePath
-    , jsonArgs           :: Maybe FilePath
-    , stable             :: Maybe Bool
+      -- ^ The minimum number of clock cycles a buffer occupancy must
+      -- remain within to be considered stable.
+      -- (cf. 'Bittide.ClockControl.StabilityChecker')
+    , reframe :: Bool
+      -- ^ Some flag for enabeling or disabling reframing.
+    , rusty :: Bool
+      -- ^ Some flag for enabeling or disabling the simulation of
+      -- clock control via the Rust FFI.
+    , waitTime :: Int
+      -- ^ Number of clock cycles to wait until reframing takes place
+      -- (after stability has been detected, for all elastic buffers).
+    , stopWhenStable :: Bool
+      -- ^ Stop simulation as soon as all buffers get stable.
+    , stopAfterStable :: Maybe Int
+      -- ^ Stop simulation after all buffers have been stable for
+      -- at least the given number of clock cycles.
+    , clockOffsets :: [Float]
+      -- ^ The initital clock offsets in Femtoseconds
+      -- (randomly generated if missing).
+    , startupDelays :: [Int]
+      -- ^ The Initital startup offsets, i.e, the number of clock
+      -- cycles to wait before a node gets started (according to the
+      -- node's individual clock, randomly generated if missing).
+    , maxStartupDelay :: Int
+      -- ^ Maximal number of clock cycles the startup of a node may be
+      -- delayed (bounds the randomly generated offsets)".
+    , createReport :: Bool
+      -- ^ Some flag for enabling or disabling report generation.
+    , outDir :: FilePath
+      -- ^ The directory, in which the generated files are stored.
+    , jsonArgs :: Maybe FilePath
+      -- ^ Read arguments from a 'simulate.json' file, if given.
+    , stable :: Maybe Bool
+      -- ^ Stability result of the elastic buffers at the end of
+      -- simulation, if available.
     }
   deriving (Show, Ord, Eq, Generic, ToJSON, FromJSON)
 
@@ -64,18 +96,18 @@ instance Default SimConf where
   def = SimConf
     { mTopologyType      = Nothing
     , outMode            = PDF
-    , simulationSteps    = 150000
-    , simulationSamples  = 100
+    , duration           = 150000
+    , samples            = 100
     , stabilityMargin    = 8
     , stabilityFrameSize = 1500000
-    , disableReframing   = False
+    , reframe            = True
     , rusty              = False
     , waitTime           = 100000
     , stopWhenStable     = False
     , stopAfterStable    = Nothing
     , clockOffsets       = []
-    , startupOffsets     = []
-    , maxStartupOffset   = 0
+    , startupDelays      = []
+    , maxStartupDelay    = 0
     , createReport       = False
     , outDir             = "_build"
     , jsonArgs           = Nothing
@@ -99,7 +131,7 @@ simConfigCLIParser =
           (  long "steps"
           <> short 's'
           <> metavar "NUM"
-          <> value (simulationSteps def)
+          <> value (duration def)
           <> showDefault
           <> help "Number of clock cycles to simulate"
           )
@@ -107,7 +139,7 @@ simConfigCLIParser =
           (  long "samples"
           <> short 'a'
           <> metavar "NUM"
-          <> value (simulationSamples def)
+          <> value (samples def)
           <> showDefault
           <> help "Number of samples to keep & pass to matplotlib"
           )
@@ -133,7 +165,7 @@ simConfigCLIParser =
                <> "must remain within to be considered stable"
                )
           )
-    <*> flag (disableReframing def) (not $ disableReframing def)
+    <*> flag False True
           (  long "disable-reframing"
           <> short 'e'
           <> help "Disables clock control reframing"
@@ -179,10 +211,10 @@ simConfigCLIParser =
           <> help "Initital clock offsets (randomly generated if missing)"
           )
     <*> option auto
-          (  long "startup-offsets"
+          (  long "startup-delays"
           <> short 'T'
           <> metavar "NUM LIST"
-          <> value (startupOffsets def)
+          <> value (startupDelays def)
           <> showDefault
           <> help (  "Initital startup offsets, i.e, the number of clock cycles "
                   <> "to wait before a node gets started (according to the "
@@ -191,10 +223,10 @@ simConfigCLIParser =
 
           )
     <*> option auto
-          (  long "max-startup-offset"
+          (  long "max-startup-delay"
           <> short 'u'
           <> metavar "NUM"
-          <> value (maxStartupOffset def)
+          <> value (maxStartupDelay def)
           <> showDefault
           <> help
                (  "Maximal number of clock cycles the startup of a node may be "
@@ -213,7 +245,7 @@ simConfigCLIParser =
           <> action "directory"
           <> value (outDir def)
           <> showDefault
-          <> help "Directory, to which the generated files are written"
+          <> help "Directory, in which the generated files are stored"
           )
     <*> optional
           ( strOption

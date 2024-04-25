@@ -35,6 +35,7 @@ import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
 import qualified Clash.Explicit.Prelude as E
 
+import Data.Bifunctor (bimap)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Proxy
 import Data.String (fromString)
@@ -84,10 +85,66 @@ import qualified Data.Map.Strict as Map (fromList)
 
 type AllStablePeriod = Seconds 5
 
+-- | The number of FINCs (if positive) or FDECs (if negative) applied
+-- prior to the test start leading to some desired initial clock
+-- offset.
+--
+-- Note that the value is limited to fit within 16 bits right now to
+-- avoid the generation of YAML files with integers that are larger
+-- than 63 bits.
+type InitialClockShift = Signed 32
+
+-- | The number of clock cycles to wait before starting clock control
+-- according to the local, but stable system clock of a node.
+type StartupDelay = Unsigned 32
+
+-- | Availabe step size configurations.
+data StepSizeSelect =
+  PPB_1 | PPB_10 | PPB_100 | PPM_1
+  deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded)
+
+-- | Calibration stages
+data CCCalibrationStage =
+  NoCCCalibration | CCCalibrate | CCCalibrationValidation
+  deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded)
+
+-- | The step size, as it is used by all tests. Note that changing the
+-- step size for individual tests requires recalibration of the clock
+-- offsets, which is why we fix it to a single and common value here.
+commonStepSizeSelect :: StepSizeSelect
+commonStepSizeSelect = PPB_10
+
+-- | Accepted noise between the inital clock control calibration run
+-- and the last calibration verifiction run.
+acceptableNoiseLevel :: InitialClockShift
+acceptableNoiseLevel = 6
+
+-- | The test configuration.
 data TestConfig =
   TestConfig
     { fpgaEnabled :: Bool
+      -- ^ Enables or disables an FPGA depending on the selected
+      -- topology. Disabled FPGAs immediediatly succeed after the test
+      -- start.
+      --
+      -- Also note that the flag only disables clock control, while
+      -- other functionality, as for example SYNC_IN/SYNC_OUT time
+      -- synchronization, needs to stay alive.
+    , calibrate :: CCCalibrationStage
+      -- ^ Indicates the selected calibration stage.
+    , stepSizeSelect :: StepSizeSelect
+      -- ^ The selected step size of the test. Note that changing the
+      -- step size between tests requires re-calibration of the device
+      -- based inital clock shift.
+    , initialClockShift :: InitialClockShift
+      -- ^ Some artificical clock shift applied prior to the test
+      -- start. The shift is given in FINCs (if positive) or FDECs (if
+      -- negative) and, thus, depdends on 'stepSizeSelect'.
+    , startupDelay :: StartupDelay
+      -- ^ Some intial startup delay given in the number of clock
+      -- cycles of the stable clock.
     , mask :: BitVector (FpgaCount - 1)
+      -- ^ The link mask depending on the selected topology.
     }
   deriving (Generic, NFDataX, BitPack)
 
@@ -181,11 +238,12 @@ riscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
 topologyTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
+  "SYSRST" ::: Reset Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
   "GTH_RX_NS" ::: TransceiverWires GthRx ->
   "GTH_RX_PS" ::: TransceiverWires GthRx ->
   "MISO" ::: Signal Basic125 Bit ->
-  "LINKS" ::: Signal Basic125 (BitVector (FpgaCount - 1)) ->
+  "TEST_CFG" ::: Signal Basic125 TestConfig ->
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
@@ -201,10 +259,12 @@ topologyTest ::
       )
   , "transceiversFailedAfterUp" ::: Signal Basic125 Bool
   , "ALL_UP" ::: Signal Basic125 Bool
-  , "ALL_STABLE"   ::: Signal Basic125 Bool
+  , "ALL_STABLE"  ::: Signal Basic125 Bool
+  , "CALIB_I" ::: Signal Basic125 InitialClockShift
+  , "CALIB_E" ::: Signal Basic125 InitialClockShift
   )
-topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso mask =
-  fincFdecIla `hwSeqX`
+topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso cfg
+  = fincFdecIla `hwSeqX`
   ( txns
   , txps
   , frequencyAdjustments
@@ -217,11 +277,14 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso mask =
   , transceiversFailedAfterUp
   , allUp
   , allStable0
+  , calibratedClockShift
+  , validationClockShift
   )
  where
-  syncRst = rst `orReset` (unsafeFromActiveLow (fmap not spiErr))
+  syncRst = rst `orReset` unsafeFromActiveHigh spiErr
 
-  -- Clock programming
+  -- Clock board programming
+
   spiDone = E.dflipflop sysClk $ (==Finished) <$> spiState
   spiErr = E.dflipflop sysClk $ isErr <$> spiState
 
@@ -229,12 +292,36 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso mask =
   isErr _         = False
 
   (_, _, spiState, spiOut) =
-    withClockResetEnable sysClk syncRst enableGen $
-      si539xSpi testConfig6_200_on_0a_10ppb
-        (SNat @(Microseconds 10)) (pure Nothing) miso
+    let
+      selectConfig = \case
+        PPB_1   -> testConfig6_200_on_0a_1ppb
+        PPB_10  -> testConfig6_200_on_0a_10ppb
+        PPB_100 -> testConfig6_200_on_0a_100ppb
+        PPM_1   -> testConfig6_200_on_0a_1ppm
+
+      -- TODO: create some generic method for generating this, which
+      -- does not rely on template haskell
+      cfgOptions = PPB_1 :> PPB_10 :> PPB_100 :> PPM_1 :> Nil
+
+      -- turn the selected configuration into an vector mask
+      optionMask = fmap . (==) <$> cfgOptions <*> repeat (stepSizeSelect <$> cfg)
+      -- retrieve the corresponding resets from the mask
+      rsts = orReset syncRst . unsafeFromActiveLow <$> optionMask
+      -- only the reset and the selected configuration differ according to
+      -- 'stepSizeSelect'
+      si539xSpi# r c = withClockResetEnable sysClk r enableGen
+        $ si539xSpi c (SNat @(Microseconds 10)) (pure Nothing) miso
+      -- create an SPI interface for each of the supported configurations
+      spis = si539xSpi# <$> rsts <*> (selectConfig <$> cfgOptions)
+    in
+      (\(a,b,c,d) -> (a,b,c,unbundle d)) . unbundle
+        $ (!!) <$> bundle ((\(a,b,c,d) -> bundle (a,b,c,bundle d)) <$> spis)
+               -- mux the selected interface according to 'stepSizeSelect'
+               <*> (stepSizeSelect <$> cfg)
 
   -- Transceiver setup
-  gthAllReset = unsafeFromActiveLow spiDone
+
+  gthAllReset = unsafeFromActiveLow clocksAdjusted
 
   (txClocks, rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
     transceiverPrbsN
@@ -242,7 +329,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso mask =
       refClk sysClk gthAllReset
       channelNames clockPaths rxns rxps
 
-  syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
+  syncLink rxClock = xpmCdcSingle rxClock sysClk
   linkUps = zipWith syncLink rxClocks linkUpsRx
   allUp = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle linkUps)
   transceiversFailedAfterUp =
@@ -252,11 +339,23 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso mask =
   timer = register sysClk syncRst enableGen (0, 0) (timeSucc <$> timer)
   milliseconds1 = fst <$> timer
 
-  -- Clock control
-  clockControlReset =
-      orReset (unsafeFromActiveLow allUp)
+  -- Startup delay
+
+  startupDelayRst =
+      orReset (unsafeFromActiveLow clocksAdjusted)
+    $ orReset (unsafeFromActiveLow allUp)
     $ orReset (unsafeFromActiveHigh transceiversFailedAfterUp)
               (unsafeFromActiveLow syncStart)
+
+  delayCount = register sysClk startupDelayRst enableGen (0 :: StartupDelay)
+    $ (\c s -> if c < s then satSucc SatBound c else c)
+       <$> delayCount
+       <*> (startupDelay <$> cfg)
+
+  -- Clock control
+
+  clockControlReset = startupDelayRst `orReset`
+    unsafeFromActiveLow ((==) <$> delayCount <*> (startupDelay <$> cfg))
 
   (clockMod, _stabilities, allStable0, _allCentered) = unbundle $
     fmap
@@ -266,7 +365,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso mask =
   callistoResult =
     callistoClockControlWithIla @(FpgaCount - 1) @CccBufferSize
       (head txClocks) sysClk clockControlReset clockControlConfig
-      IlaControl{..} mask (fmap (fmap resize) domainDiffs)
+      IlaControl{..} (mask <$> cfg) (fmap (fmap resize) domainDiffs)
 
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
@@ -314,11 +413,70 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso mask =
     ((== Just SlowDown) <$> clockMod)
     (satSucc SatBound <$> nFdecs)
 
+  -- Clock calibration
+
+  clockShiftUpd = \case
+    Just SpeedUp  -> satSucc SatBound
+    Just SlowDown -> satPred SatBound
+    _ -> id
+
+  notInCCReset = unsafeToActiveLow clockControlReset
+
+  clockShift = regEn sysClk sysRst enableGen
+    (0 :: InitialClockShift)
+    (notInCCReset .&&. (== CCCalibrate) . calibrate <$> cfg)
+    (clockShiftUpd <$> clockMod <*> clockShift)
+
+  calibratedClockShift = register sysClk sysRst enableGen 0 $
+    mux ( isFalling sysClk sysRst enableGen False
+        $ (== CCCalibrate) . calibrate <$> cfg
+        )
+      clockShift
+      calibratedClockShift
+
+  validationClockShift = regEn sysClk sysRst enableGen
+    (0 :: InitialClockShift)
+    (notInCCReset .&&. (== CCCalibrationValidation) . calibrate <$> cfg)
+    (clockShiftUpd <$> clockMod <*> validationClockShift)
+
+  -- Initial Clock adjustment
+
+  -- without the additional delay of 1 second here, some of the
+  -- initial FINC/FDECs prior to test start will be lost.
+  adjustStart = trueFor (SNat @(Seconds 1)) sysClk syncRst spiDone
+  clocksAdjusted = spiDone
+    .&&. (    (/= NoCCCalibration) . calibrate <$> cfg
+         .||. (==) <$> initialAdjust <*> adjustCount
+         )
+  adjusting = adjustStart .&&. (not <$> clocksAdjusted)
+  adjustRst = unsafeFromActiveLow adjustStart
+
+  initialAdjust = (+) <$> calibratedClockShift <*> (initialClockShift <$> cfg)
+
+  adjustCount = regEn sysClk adjustRst enableGen (0 :: InitialClockShift)
+    adjusting $ flip upd <$> adjustCount
+      <*> let f = isFalling sysClk adjustRst enableGen False
+           in bundle $ bimap f f $ unbundle frequencyAdjustments
+   where
+    upd (True, _) = satSucc SatBound
+    upd (_, True) = satPred SatBound
+    upd _         = id
+
   frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
-  frequencyAdjustments =
-    E.delay sysClk enableGen minBound {- glitch filter -} $
-      withClockResetEnable sysClk clockControlReset enableGen $
-        stickyBits @Basic125 d20 (speedChangeToPins . fromMaybe NoChange <$> clockMod)
+  frequencyAdjustments = E.delay sysClk enableGen minBound {- glitch filter -}
+    $ mux adjusting
+        ( speedChangeToFincFdec sysClk adjustRst
+        $ opSelect <$> initialAdjust <*> adjustCount
+        )
+        ( withClockResetEnable sysClk clockControlReset enableGen
+        $ stickyBits @Basic125 d20
+        $ speedChangeToPins . fromMaybe NoChange <$> clockMod
+        )
+   where
+    opSelect calib adjust = case compare calib adjust of
+      LT -> SlowDown
+      EQ -> NoChange
+      GT -> SpeedUp
 
   domainDiffs =
     domainDiffCounterExt sysClk clockControlReset
@@ -357,13 +515,18 @@ hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
   startTest = isJust <$> testConfig
 
-  (   txns, txps, _hwFincFdecs, callistoResult, callistoReset
-    , dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
-    , allStable ) = topologyTest refClk sysClk ilaControl { skipTest = skip }
-                      rxns rxps miso (maybe 0 mask <$> testConfig)
+  cfg = fromMaybe disabled <$> testConfig
 
-  (riscvFinc, riscvFdec) =
-    riscvCopyTest sysClk callistoReset callistoResult dataCounts
+  (   txns, txps, hwFincFdecs, callistoResult, callistoReset
+    , dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
+    , allStable, calibI, calibE
+    ) = topologyTest refClk sysClk sysRst
+          ilaControl { skipTest = skip }
+          rxns rxps miso cfg
+
+  (riscvFinc, riscvFdec) = unbundle
+    $ mux (unsafeToActiveHigh callistoReset) hwFincFdecs $ bundle
+    $ riscvCopyTest sysClk callistoReset callistoResult dataCounts
 
   -- check that tests are not synchronously start before all
   -- transceivers are up
@@ -372,6 +535,9 @@ hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   endSuccess :: Signal Basic125 Bool
   endSuccess = trueFor (SNat @AllStablePeriod) sysClk syncRst allStable
+    .&&. (    (/= CCCalibrationValidation) . calibrate <$> cfg
+         .||. (\i e -> abs (i - e) < acceptableNoiseLevel) <$> calibI <*> calibE
+         )
 
   done = endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp
   success = not <$> (transceiversFailedAfterUp .||. startBeforeAllUp)
@@ -436,10 +602,14 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
   startTest = isJust <$> testConfig
 
+  cfg = fromMaybe disabled <$> testConfig
+
   (   txns, txps, hwFincFdecs, _callistoResult, _callistoReset
     , _dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
-    , allStable ) = topologyTest refClk sysClk ilaControl { skipTest = skip }
-                      rxns rxps miso (maybe 0 mask <$> testConfig)
+    , allStable, calibI, calibE
+    ) = topologyTest refClk sysClk sysRst
+          ilaControl { skipTest = skip }
+          rxns rxps miso cfg
 
   -- check that tests are not synchronously start before all
   -- transceivers are up
@@ -448,6 +618,9 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   endSuccess :: Signal Basic125 Bool
   endSuccess = trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
+    .&&. (    (/= CCCalibrationValidation) . calibrate <$> cfg
+         .||. (\i e -> abs (i - e) < acceptableNoiseLevel) <$> calibI <*> calibE
+         )
 
   skip = maybe False (not . fpgaEnabled) <$> testConfig
 
@@ -488,54 +661,158 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
 tests :: HitlTestsWithPostProcData TestConfig SimConf
 tests = Map.fromList
-  [ testTopology   diamond
-  , testTopology $ complete d3
-  , testTopology $ cyclic d5
-  , testTopology $ torus2d d2 d3
-  , testTopology $ star d7
-  , testTopology $ line d4
-  , testTopology $ hourglass d3
+  [ -- CALIBRATION --
+    -----------------
+
+    -- detect the natual clock offsets to be elided from the later tests
+    calibrateClockOffsets
+
+    -- TESTS --
+    -----------
+
+    -- initial clock shifts   startup delays            topology
+  , tt icsDiamond             ((m *) <$> sdDiamond)     diamond
+  , tt icsComplete            ((m *) <$> sdComplete)  $ complete d3
+  , tt icsCyclic              ((m *) <$> sdCyclic)    $ cyclic d5
+  , tt icsTorus               ((m *) <$> sdTorus)     $ torus2d d2 d3
+  , tt icsStar                ((m *) <$> sdStar)      $ star d7
+  , tt icsLine                ((m *) <$> sdLine)      $ line d4
+  , tt icsHourglass           ((m *) <$> sdHourglass) $ hourglass d3
+
+    -- CALIBRATION VERIFICATON --
+    -----------------------------
+  , validateClockOffsetCalibration
   ]
  where
+  m = 1_000_000
+
+  icsDiamond = -1000 :> -500 :> 2000 :> 3000 :> Nil
+  sdDiamond  =     0 :>   10 :>  200 :>    3 :> Nil
+
+  icsComplete = -10000 :> 0 :> 10000 :> Nil
+  sdComplete  =    200 :> 0 :>   200 :> Nil
+
+  icsCyclic = 0 :> 500 :> 1000 :> 1500 :> 2000 :> Nil
+  sdCyclic  = 0 :>  10 :>    0 :>  100 :>    0 :> Nil
+
+  icsTorus = -3000 :> -3500 :> -4000 :> 4000 :> 3500 :> 3000 :> Nil
+  sdTorus  =     0 :>     0 :>     0 :>  100 :>  100 :> 100  :> Nil
+
+  icsStar = 0 :> 1000 :> -1000 :> 2000 :> -2000 :> 3000 :> -3000 :> 4000 :> Nil
+  sdStar  = 0 :>   40 :>    80 :>  120 :>   160 :>  200 :>   240 :>  280 :> Nil
+
+  icsLine = 10000 :> 0 :> 0 :> -10000 :> Nil
+  sdLine  =   200 :> 0 :> 0 :>    200 :> Nil
+
+  icsHourglass = -10000 :> 10000 :> -10000 :> 10000 :> -10000 :> 10000 :> Nil
+  sdHourglass  =      0 :>   200 :>      0 :>   200 :>      0 :>   200 :> Nil
+
   ClockControlConfig{..} = clockControlConfig
 
-  testTopology ::
+  defSimCfg = def
+    { samples            = 1000
+    , duration           = natToNum @(PeriodToCycles Basic125 (Seconds 60))
+    , stabilityMargin    = snatToNum cccStabilityCheckerMargin
+    , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
+    , reframe            = cccEnableReframing
+    , rusty              = cccEnableRustySimulation
+    , waitTime           = fromEnum cccReframingWaitTime
+    , stopAfterStable    = Just
+                         $ natToNum @(PeriodToCycles Basic125 AllStablePeriod)
+    }
+
+  calibrateClockOffsets = calibrateCC False
+  validateClockOffsetCalibration = calibrateCC True
+  calibrateCC validate =
+    ( -- the names must be chosen such that the run is executed first/last
+      (if validate then "zzz_validate" else "0_calibrate") <> "_clock_offsets"
+    , ( toList $ imap (,) $ repeat @FpgaCount TestConfig
+          { fpgaEnabled       = True
+          , calibrate         = if validate
+                                then CCCalibrationValidation
+                                else CCCalibrate
+          , stepSizeSelect    = commonStepSizeSelect
+          , initialClockShift = 0
+          , startupDelay      = 0
+          , mask              = maxBound
+          }
+      , defSimCfg
+          { mTopologyType = Just $ Complete $ natToInteger @FpgaCount
+          , clockOffsets  = toList $ repeat @FpgaCount 0
+          , startupDelays = toList $ repeat @FpgaCount 0
+          }
+      )
+    )
+
+
+
+  -- tests the given topology
+  tt ::
     forall n.
     (KnownNat n, n <= FpgaCount) =>
-    Topology n -> (TestName, (Probes TestConfig, SimConf))
-  testTopology t =
+    Vec n InitialClockShift ->
+    Vec n StartupDelay ->
+    Topology n ->
+    (TestName, (Probes TestConfig, SimConf))
+  tt clockShifts startDelays t =
     ( fromString $ topologyName t
-    , ( toList (imap testData $ linkMasks @n t)
-         <> [ (fromInteger i, disabled)
-            | i <- [natToNum @n, natToNum @n + 1 .. natToNum @(FpgaCount - 1)]
-            ]
-      , def { mTopologyType = Just $ topologyType t
-            , simulationSamples = 1000
-            , simulationSteps = natToNum @(PeriodToCycles Basic125 (Seconds 60))
-            , stabilityMargin = snatToNum cccStabilityCheckerMargin
-            , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
-            , disableReframing = not $ cccEnableReframing
-            , rusty = cccEnableRustySimulation
-            , waitTime = fromEnum cccReframingWaitTime
-            , clockOffsets = toList $ repeat @n 0
-            , startupOffsets = toList $ repeat @n 0
-            , stopAfterStable =
-                Just $ natToNum @(PeriodToCycles Basic125 AllStablePeriod)
-            }
+    , ( toList ( zipWith4 testData indicesI clockShifts startDelays
+               $ linkMasks @n t
+               )
+          <> [ (fromInteger i, disabled)
+             | let n = natToNum @n
+             , i <- [n, n + 1 .. natToNum @(FpgaCount - 1)]
+             ]
+      , let
+          -- clock period in picoseconds
+          clkPeriodPs :: Num a => a
+          clkPeriodPs = case clockControlConfig of
+            (_ :: ClockControlConfig dom a b c) ->
+              snatToNum (clockPeriod @dom)
+          -- a 1000 times the factor of the selected parts-per-x scale
+          -- ratio, where the reduction by a factor of 1000 accounts
+          -- to the required conversion of from Picoseconds to
+          -- Femtoseconds for 'clkPeriodPs' already applied at this
+          -- point to reduce the loss-op-presion introduced otherwise.
+          stepSizeDiv = case commonStepSizeSelect of
+            PPB_1   -> 1_000_000
+            PPB_10  ->   100_000
+            PPB_100 ->    10_000
+            PPM_1   ->     1_000
+        in
+          defSimCfg { mTopologyType = Just $ topologyType t
+                    , clockOffsets  =
+                        (/ stepSizeDiv) . (* clkPeriodPs) . fromIntegral
+                          <$> toList clockShifts
+                    , startupDelays = fromIntegral <$> toList startDelays
+                    }
       )
     )
 
   testData ::
     forall n.
     (KnownNat n, n <= FpgaCount) =>
-    Index n -> BitVector (FpgaCount - 1) -> (Index FpgaCount, TestConfig)
-  testData i mask =
+    Index n ->
+    InitialClockShift ->
+    StartupDelay ->
+    BitVector (FpgaCount - 1) ->
+    (Index FpgaCount, TestConfig)
+  testData i initialClockShift startupDelay mask =
     ( zeroExtend @Index @n @(FpgaCount - n) i
-    , TestConfig{ fpgaEnabled = True, .. }
+    , TestConfig
+        { fpgaEnabled    = True
+        , calibrate      = NoCCCalibration
+        , stepSizeSelect = commonStepSizeSelect
+        , ..
+        }
     )
 
 disabled :: TestConfig
 disabled = TestConfig
-  { fpgaEnabled = False
-  , mask = 0
+  { fpgaEnabled       = False
+  , calibrate         = NoCCCalibration
+  , stepSizeSelect    = commonStepSizeSelect
+  , initialClockShift = 0
+  , startupDelay      = 0
+  , mask              = 0
   }
