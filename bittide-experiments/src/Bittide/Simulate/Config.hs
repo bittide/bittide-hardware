@@ -165,7 +165,7 @@ simConfigCLIParser =
                <> "must remain within to be considered stable"
                )
           )
-    <*> flag False True
+    <*> flag (reframe def) False
           (  long "disable-reframing"
           <> short 'e'
           <> help "Disables clock control reframing"
