@@ -14,6 +14,7 @@ module Bittide.Plot
 import Clash.Prelude (KnownNat, Vec)
 import Clash.Sized.Vector qualified as Vec
 
+import Data.Graph (edges)
 import Data.List (foldl', transpose)
 import Data.Aeson (ToJSON)
 import Data.Bifunctor (bimap)
@@ -61,6 +62,8 @@ plot ::
 plot dir graph =
   uncurry (matplotWrite dir) . Vec.unzip . Vec.imap plotDats
  where
+  edgeCount = length $ edges $ topologyGraph graph
+
   plotDats i =
       bimap
         ( withLegend
@@ -69,8 +72,13 @@ plot dir graph =
         . unzip
         )
         ( foldPlots
-        . fmap (\(j, p) -> withLegend
-                   (p @@ [o2 "label" $ show i <> " ← " <> show j])
+        . fmap ( -- Too many legend entries don't fit. We picked 20 by
+                 -- simply observing when legend entries wouldn't fit
+                 -- anymore.
+                 if edgeCount <= 20
+                 then \(j, p) ->
+                   withLegend $ p @@ [o2 "label" $ show i <> " ← " <> show j]
+                 else snd
                )
         . zip (filter (hasEdge graph i) [0,1..])
         . fmap plotEbData
