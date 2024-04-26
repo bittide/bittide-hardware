@@ -9,6 +9,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PackageImports #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -28,7 +29,7 @@ import Clash.Prelude
 
 import Clash.Signal.Internal (Femtoseconds(..))
 import qualified Clash.Sized.Vector as Vec
-  ( (!!), imap, unsafeFromList, toList, repeat
+  ( (!!), imap, unsafeFromList, toList, repeat, replace
   , zip, zipWith, indicesI, length, take
   )
 
@@ -42,6 +43,7 @@ import Conduit
   ( ConduitT, Void, (.|)
   , runConduit, sourceHandle, scanlC, dropC, mapC, sinkList, yield, await
   )
+import Control.Applicative (liftA2)
 import Control.Arrow (first)
 import Control.Exception (Exception(..), catch, throw)
 import Control.Monad (forM, forM_, filterM, when, unless)
@@ -62,8 +64,8 @@ import Data.Csv.Conduit
   , fromNamedCsvStreamError
   )
 import Data.Functor ((<&>))
-import Data.List (uncons, isPrefixOf, isSuffixOf, find, sortOn)
-import Data.Maybe (fromMaybe, fromJust, isNothing)
+import Data.List (uncons, isPrefixOf, isSuffixOf, find)
+import Data.Maybe (catMaybes, fromMaybe, fromJust, isNothing, mapMaybe)
 import Data.Proxy (Proxy(..))
 import Data.String (fromString)
 import qualified Data.Map as Map (toList)
@@ -107,21 +109,26 @@ instance BitPack a => FromField (Hex a) where
   parseField = either fail pure . parseHex . UTF8.toString
 
 -- | The captured data entries, as they are dumped by the ILA of
--- 'Bittide.Instances.Hitl.FullMeshHwCc.callistoClockControlWithIla'.
-data Capture (n :: Nat) (m :: Nat) =
+-- 'Bittide.Instances.Hitl.IlaPlot.callistoClockControlWithIla'.
+data Capture (nodeCount :: Nat) (compressedElasticBufferBits :: Nat) =
   Capture
-    { sampleInBuffer  :: Int
-    , sampleInWindow  :: Int
-    , trigger         :: Hex Bool
-    , triggerSignal   :: Hex Bool
-    , capture         :: Hex Bool
-    , captureCond     :: Hex CaptureCondition
+    { sampleInBuffer :: Int
+    , sampleInWindow :: Int
+    , trigger :: Hex Bool
+    , triggerSignal :: Hex Bool
+    , capture :: Hex Bool
+    , captureCond :: Hex CaptureCondition
     , globalTimestamp :: Hex (GlobalTimestamp Basic125)
-    , localTimestamp  :: Hex (DiffResult (LocalTimestamp GthTx))
-    , plotData        :: Hex (PlotData n m)
+    , localTimestamp :: Hex (DiffResult (LocalTimestamp GthTx))
+    , plotData :: Hex (PlotData (nodeCount - 1) compressedElasticBufferBits)
     }
 
-instance (KnownNat n, KnownNat m) => FromNamedRecord (Capture n m) where
+instance
+  ( KnownNat nodeCount, KnownNat compressedElasticBufferBits
+  , 1 <= nodeCount
+  ) =>
+  FromNamedRecord (Capture nodeCount compressedElasticBufferBits)
+ where
   parseNamedRecord v =
     if HashMap.size v /= 3 + Vec.length ilaProbeNames
     then fail "Row with more than 8 fields"
@@ -138,11 +145,11 @@ instance (KnownNat n, KnownNat m) => FromNamedRecord (Capture n m) where
    where
     portName = portName# ilaProbeNames
 
-    portName# :: KnownNat k => Vec k String -> Index k -> BS.ByteString
+    portName# :: KnownNat n => Vec n String -> Index n -> BS.ByteString
     portName# names = fromString . (names Vec.!!)
 
 -- | A data point resulting from post processing the captured data.
-data DataPoint (n :: Nat) (m :: Nat) =
+data DataPoint (nodeCount :: Nat) (decompressedElasticBufferBits :: Nat) =
   DataPoint
     { dpIndex :: Int
       -- ^ the index of the corresponding sample of the dump
@@ -171,13 +178,20 @@ data DataPoint (n :: Nat) (m :: Nat) =
       -- ^ the accumulated number FINC/FDECs integrated over time
     , dpRfStage :: ReframingStage
       -- ^ the reframing stage
-    , dpDataCounts :: Vec n (DataCount m)
-      -- ^ the elastic buffer data counts
-    , dpStability :: Vec n StabilityIndication
+    , dpDataCounts :: Vec nodeCount
+                        (Maybe (DataCount decompressedElasticBufferBits))
+      -- ^ the elastic buffer data counts of the available links
+    , dpStability :: Vec nodeCount (Maybe StabilityIndication)
       -- ^ the stability indicators for each of the elastic buffers
+      -- of the available links
     }
 
-instance (KnownNat n, KnownNat m) => ToNamedRecord (DataPoint n m) where
+instance
+  ( KnownNat nodeCount, KnownNat decompressedElasticBufferBits
+  , 1 <= nodeCount
+  ) =>
+  ToNamedRecord (DataPoint nodeCount decompressedElasticBufferBits)
+ where
   toNamedRecord DataPoint{..} = HashMap.fromList $
     fmap (bimap BSC.pack BSC.pack) $
       [ ("Index", show dpIndex)
@@ -188,15 +202,20 @@ instance (KnownNat n, KnownNat m) => ToNamedRecord (DataPoint n m) where
       , ("Reframing State", rf2bs dpRfStage)
       ] <>
       [ ("EB " <> show i, show $ toInteger x)
-      | (i, x) <- Vec.toList $ Vec.zip Vec.indicesI dpDataCounts
+      | (i, x) <- topologyView dpDataCounts
       ] <>
       [ (show i <> " is stable", b2bs $ stable x)
-      | (i, x) <- Vec.toList $ Vec.zip Vec.indicesI dpStability
+      | (i, x) <- topologyView dpStability
       ] <>
       [ (show i <> " is settled", b2bs $ settled x)
-      | (i, x) <- Vec.toList $ Vec.zip Vec.indicesI dpStability
+      | (i, x) <- topologyView dpStability
       ]
    where
+    topologyView = catMaybes
+                 . Vec.toList
+                 . fmap (\(i,x) -> (i,) <$> x)
+                 . Vec.zip Vec.indicesI
+
     b2bs = \case
       False -> "0"
       True  -> "1"
@@ -224,13 +243,52 @@ instance Exception CsvParseError
 
 -- | Data post processor.
 postProcess ::
-  forall n k c m .
-  (KnownNat n, KnownNat k, KnownNat c, Monad m, c <= k) =>
-  ConduitT (Capture n c) (DataPoint n k) m ()
-postProcess = scanlC process initDummy
+  forall
+    topologySize
+    -- ^ the size of the topology underlying the data to be processed
+    decompressedElasticBufferBits
+    -- ^ the bitsize of the elastic buffer entries after decompression
+    utilizedFpgaCount
+    -- ^ the number of hardware nodes used to generated the data
+    compressedElasticBufferBits
+    -- ^ the bitsize of the elastic buffer entries before decompression
+    anyMonad
+    .
+  ( KnownNat topologySize
+  , KnownNat decompressedElasticBufferBits
+  , KnownNat utilizedFpgaCount
+  , KnownNat compressedElasticBufferBits
+  , Monad anyMonad
+  , compressedElasticBufferBits <= decompressedElasticBufferBits
+  , 1 <= topologySize
+  , 1 <= utilizedFpgaCount
+  , topologySize <= utilizedFpgaCount
+  ) =>
+  Topology topologySize ->
+  Index topologySize ->
+  Vec (utilizedFpgaCount - 1) (Index utilizedFpgaCount) ->
+  ConduitT
+    (Capture utilizedFpgaCount compressedElasticBufferBits)
+    (DataPoint topologySize decompressedElasticBufferBits)
+    anyMonad
+    ()
+postProcess t i links = scanlC process initDummy
   -- finally drop the dummy, the trigger and the calibration entries
   .| (dropC 4 >> mapC id)
  where
+  topologyView ::
+    Vec (utilizedFpgaCount - 1) a ->
+    Vec topologySize (Maybe a)
+  topologyView =
+      foldr (\(j, x) -> Vec.replace j $ Just x) (Vec.repeat Nothing)
+    . filter (hasEdge t i . fst)
+    . fmap ( first
+           $ checkedTruncateB @topologySize @(utilizedFpgaCount - topologySize)
+           )
+    . filter ((<= natToNum @(topologySize - 1)) . fst)
+    . Vec.toList
+    . Vec.zip links
+
   process prevDP Capture{..} =
     let PlotData{..}    = fromHex plotData
         captureType     = fromHex captureCond
@@ -274,8 +332,18 @@ postProcess = scanlC process initDummy
         ccChanges       = dpCCChanges prevDP
                         + natToNum @AccWindowHeight * sign dSpeedChange
 
-        dataCounts      = (\(x,_,_) y -> extend @_ @c @(k - c) x + y)
-                            <$> dEBData
+        dataCounts      = (\a b ->
+                             ( \(x,_,_) y ->
+                                 extend
+                                   @_
+                                   @compressedElasticBufferBits
+                                   @( decompressedElasticBufferBits
+                                    -   compressedElasticBufferBits
+                                    ) x
+                                 + y
+                             ) <$> a
+                               <*> b
+                          ) <$> topologyView dEBData
                             <*> dpDataCounts prevDP
      in DataPoint
           { dpIndex                   = sampleInBuffer
@@ -304,12 +372,15 @@ postProcess = scanlC process initDummy
                 ToDone   -> RSDone
           , dpDataCounts              = dataCounts
           , dpStability               =
-              let combine (_, st, se) StabilityIndication{..} =
-                    StabilityIndication
+              let combine (Just  (_, st, se)) (Just (StabilityIndication{..})) =
+                    Just StabilityIndication
                       { stable  = fromMaybe stable st
                       , settled = fromMaybe settled se
                       }
-               in Vec.zipWith combine dEBData $ dpStability prevDP
+                  combine _ _ = Nothing
+               in Vec.zipWith combine
+                    (topologyView dEBData)
+                    (dpStability prevDP)
           }
 
   initDummy = DataPoint
@@ -323,12 +394,11 @@ postProcess = scanlC process initDummy
     , dpDrift                   = 0
     , dpCCChanges               = 0
     , dpRfStage                 = RSDetect
-    , dpDataCounts              = Vec.repeat 0
-    , dpStability               =
-        Vec.repeat $ StabilityIndication
-          { stable  = False
-          , settled = False
-          }
+    , dpDataCounts              = topologyView $ Vec.repeat 0
+    , dpStability               = topologyView $ Vec.repeat StabilityIndication
+                                    { stable  = False
+                                    , settled = False
+                                    }
     }
 
   globalTsToFs :: GlobalTimestamp Basic125 -> Femtoseconds
@@ -339,11 +409,28 @@ postProcess = scanlC process initDummy
     syncPulsePeriodFs = Femtoseconds $ natToNum @(1000 * SyncPulsePeriod)
 
 fromCsvDump ::
-  forall n m.
-  (KnownNat n, KnownNat m, 1 <= n, CompressedBufferSize <= m) =>
+  forall
+    decompressedElasticBufferBits
+    -- ^ the bitsize of the elastic buffer entries after decompression
+    topologySize
+    -- ^ the size of the topology underlying the data to be processed
+    utilizedFpgaCount
+    -- ^ the number of hardware nodes used to generated the data
+    .
+  ( KnownNat decompressedElasticBufferBits
+  , CompressedBufferSize <= decompressedElasticBufferBits
+  , KnownNat topologySize
+  , KnownNat utilizedFpgaCount
+  , 1 <= topologySize
+  , 1 <= utilizedFpgaCount
+  , topologySize <= utilizedFpgaCount
+  ) =>
+  Topology topologySize ->
+  Index topologySize ->
+  Vec (utilizedFpgaCount - 1) (Index utilizedFpgaCount) ->
   (Handle, FilePath) ->
-  ConduitT () Void IO [DataPoint (n - 1) m]
-fromCsvDump  (csvHandle, csvFile) =
+  ConduitT () Void IO [DataPoint topologySize decompressedElasticBufferBits]
+fromCsvDump t i links (csvHandle, csvFile) =
      -- turn the input file into a conduit source
      sourceHandle csvHandle
      -- plugin the CSV parser
@@ -352,7 +439,12 @@ fromCsvDump  (csvHandle, csvFile) =
      -- data entries are valid
   .| (dropC 1 >> checkForErrors 0)
      -- post process the data
-  .| postProcess @(n - 1) @m @CompressedBufferSize
+  .| postProcess
+       @topologySize
+       @decompressedElasticBufferBits
+       @utilizedFpgaCount
+       @CompressedBufferSize
+       t i links
      -- return as a list
   .| sinkList
  where
@@ -392,10 +484,9 @@ plotTest testDir mCfg dir globalOutDir = do
       >>= filterM (doesDirectoryExist . (dir </>))
       >>= return . fromJust . someNatVal . toInteger . length . filter knownId
       >>= \case
-        SomeNat p ->
-          return $ STop $ complete $ snatProxy p
+        SomeNat n -> return $ STop $ complete $ snatProxy n
 
-  STop (t :: Topology n) <- case mCfg of
+  STop (t :: Topology topologySize) <- case mCfg of
     Nothing  -> topFromDirs
     Just cfg -> case SimConf.mTopologyType cfg of
       Nothing          -> topFromDirs
@@ -403,11 +494,12 @@ plotTest testDir mCfg dir globalOutDir = do
       Just (DotFile f) -> readFile f >>= either die return . fromDot
       Just tt          -> fromTopologyType tt >>= either die return
 
-  case TLW.SNat @n %<=? TLW.SNat @FpgaCount of
-    LE Refl -> case TLW.SNat @1 %<=? TLW.SNat @n of
+  case TLW.SNat @topologySize %<=? TLW.SNat @FpgaCount of
+    LE Refl -> case TLW.SNat @1 %<=? TLW.SNat @topologySize of
       LE Refl -> do
         let fpgas = Vec.toList $ Vec.imap (,)
-                  $ Vec.take @n @(FpgaCount - n) SNat fpgaSetup
+                  $ Vec.take @topologySize @(FpgaCount - topologySize)
+                      SNat fpgaSetup
 
         postProcessData <- do
           forM fpgas $ \(i, (fpgaId, links)) -> concat . filter (not . null) <$> do
@@ -417,7 +509,7 @@ plotTest testDir mCfg dir globalOutDir = do
             forM csvFiles $ \f -> do
               h <- openFile f ReadMode
               rs <- catch
-                (do rs <- runConduit $ fromCsvDump @FpgaCount @CccBufferSize (h, f)
+                (do rs <- runConduit $ fromCsvDump @CccBufferSize t i links (h, f)
                     putStrLn ("Using " <> (takeBaseName d </> takeFileName f))
                     return rs
                 ) $ \(err :: CsvParseError) -> case err of
@@ -437,7 +529,7 @@ plotTest testDir mCfg dir globalOutDir = do
               hClose h
 
               let
-                k = natToNum @(n - 1) :: Integer
+                ls = show <$> filter (hasEdge t i) (Vec.toList Vec.indicesI)
                 header = Vector.fromList $ map BSC.pack $
                   [ "Index"
                   , "Synchronized Time (fs)"
@@ -446,22 +538,22 @@ plotTest testDir mCfg dir globalOutDir = do
                   , "Integrated FINC/FDECs"
                   , "Reframing State"
                   ]
-                  <> (("EB " <>) . show <$> [0,1..k - 1])
-                  <> ((<> " is stable") . show <$> [0,1..k - 1])
-                  <> ((<> " is settled") . show <$> [0,1..k - 1])
+                  <> (("EB " <>) <$> ls)
+                  <> ((<> " is stable") <$> ls)
+                  <> ((<> " is settled") <$> ls)
 
               unless (null rs) $ do
                 createDirectoryIfMissing True outDir
                 BSL.writeFile (outDir </> (takeFileName d <> ".csv"))
                   $ encodeByName header rs
 
-              return (toPlotData t i links <$> rs)
+              return (toPlotData <$> rs)
 
         createDirectoryIfMissing True outDir
         plot outDir t $ Vec.unsafeFromList postProcessData
 
-        let allStable = and $ (\(_,_,_,xs) -> all (stable . snd) xs) . last
-              <$> postProcessData
+        let allStable = all ((\(_,_,_,xs) -> all (stable . snd) xs) . last)
+                            postProcessData
 
         case mCfg of
           Nothing -> return ()
@@ -489,30 +581,12 @@ plotTest testDir mCfg dir globalOutDir = do
        [] -> error $ d <> " does not contain any *.csv files. Aborting."
        _  -> ys
 
-  toPlotData ::
-    forall n m.
-    (KnownNat n, 1 <= n, n <= FpgaCount) =>
-    Topology n ->
-    Index n ->
-    Vec (FpgaCount - 1) (Index FpgaCount) ->
-    DataPoint (FpgaCount - 1) m ->
-    ( Femtoseconds
-    , Femtoseconds
-    , ReframingStage
-    , [(DataCount m, StabilityIndication)]
-    )
-  toPlotData t i links DataPoint{..} =
+  toPlotData DataPoint{..} =
     ( dpGlobalTime
     , dpDrift
     , dpRfStage
-    , fmap snd
-        $ sortOn fst
-        $ filter (hasEdge t i . fst)
-        $ fmap (first $ checkedTruncateB @n @(FpgaCount - n))
-        $ filter ((<= natToNum @(n-1)) . fst)
-        $ Vec.toList
-        $ Vec.zip links
-        $ Vec.zip dpDataCounts dpStability
+    , mapMaybe (uncurry $ liftA2 (,))
+        $ Vec.toList $ Vec.zip dpDataCounts dpStability
     )
 
   writeTop (fromMaybe "digraph{}" -> str) =
