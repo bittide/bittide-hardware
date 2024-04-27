@@ -1,11 +1,10 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ForeignFunctionInterface #-}
 
 module Bittide.ClockControl.Foreign.Rust.Callisto
   ( rustyCallisto
@@ -14,19 +13,12 @@ module Bittide.ClockControl.Foreign.Rust.Callisto
 import Clash.Prelude
 
 import Foreign.C.Types (CUInt(..))
-import Foreign.Marshal.Alloc
-import Foreign.Ptr (Ptr)
 
-import Foreign.Storable (Storable(..))
-import System.IO.Unsafe
 
 import Bittide.ClockControl (DataCount)
 import Bittide.ClockControl.Callisto.Types
 import Bittide.ClockControl.StabilityChecker
 
-import Data.Word (Word32)
-import Data.Constraint
-import Data.Constraint.Nat.Extra (isOne)
 
 -- | Variant of 'Bittide.ClockControl.Callisto.callisto', which is
 -- implemented in Rust and uses the Rust FFI for being simulated.
@@ -53,42 +45,4 @@ rustyCallisto ::
   Signal dom ControlSt ->
   -- | Updated state.
   Signal dom ControlSt
-rustyCallisto config m scs counts st =
-  callisto <$> m <*> scs <*> counts <*> st
- where
-  callisto mask stabilityChecks dataCounts state =
-    case isOne @m @(BitsOf Int) of
-      Dict ->  unsafePerformIO $ do
-        pState      <- malloc
-        pVSI        <- malloc
-        pDataCounts <- malloc
-        pConfig     <- malloc
-
-        poke pVSI $ VecS stabilityChecks
-        poke pState state
-        poke pDataCounts $ VecS (DataCountS <$> dataCounts)
-        poke pConfig config
-
-        callisto_rust
-          pConfig
-          (fromInteger $ toInteger mask)
-          pVSI
-          pDataCounts
-          pState
-
-        state' <- peek pState
-
-        free pState
-        free pVSI
-        free pDataCounts
-        free pConfig
-
-        return state'
-
-foreign import ccall safe "__c_callisto_rust" callisto_rust ::
-  Ptr (ControlConfig m) ->
-  Word32  ->
-  Ptr (VecS n StabilityIndication) ->
-  Ptr (VecS n (DataCountS m)) ->
-  Ptr (ControlSt) ->
-  IO ()
+rustyCallisto _config _m _scs _counts _st = error "X"

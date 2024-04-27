@@ -12,9 +12,6 @@ Copyright:           Copyright © 2022-2024 Google LLC
 data-files:
   data/clock_configs/*.csv
 
-custom-setup
-  setup-depends: Cabal, base, directory, process, filepath
-
 common common-options
   default-extensions:
     BangPatterns
@@ -158,7 +155,7 @@ library
     System.IO.Temp.Extra
   other-modules:
     Paths_bittide
-  extra-libraries: callisto_lib
+  -- extra-libraries: callisto_lib
 
 test-suite doctests
   type:             exitcode-stdio-1.0
