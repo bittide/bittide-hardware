@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -21,8 +21,8 @@ import qualified Data.List as L
 createDomain vXilinxSystem{vPeriod=hzToPeriod 200e6, vName="Fast"}
 createDomain vXilinxSystem{vPeriod=hzToPeriod 20e6, vName="Slow"}
 
-ebGroup :: TestTree
-ebGroup = testGroup "ElasticBuffer group"
+tests :: TestTree
+tests = testGroup "Tests.ElasticBuffer"
   [ testGroup "xilinxElasticBuffer"
     [ testCase "case_xilinxElasticBufferMaxBound" case_xilinxElasticBufferMaxBound
     , testCase "case_xilinxElasticBufferMinBound" case_xilinxElasticBufferMinBound

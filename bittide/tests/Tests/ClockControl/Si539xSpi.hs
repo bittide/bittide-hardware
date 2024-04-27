@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022-2023 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -21,8 +21,8 @@ import qualified Data.Map as Map
 
 createDomain vXilinxSystem{vPeriod = hzToPeriod 1e6, vName = "Basic1"}
 
-clockGenGroup :: TestTree
-clockGenGroup = testGroup "Clock generation group"
+tests :: TestTree
+tests = testGroup "Tests.ClockControl.Si539xSpi"
  [ testCase "Configuration succeeds" configureSucceeds]
 
 

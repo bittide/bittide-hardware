@@ -11,7 +11,7 @@
 
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
-module Tests.DoubleBufferedRam(ramGroup) where
+module Tests.DoubleBufferedRam(tests) where
 
 import Clash.Prelude
 
@@ -44,8 +44,8 @@ import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Prelude as P
 
-ramGroup :: TestTree
-ramGroup = testGroup "DoubleBufferedRam group"
+tests :: TestTree
+tests = testGroup "Tests.DoubleBufferedRam"
   [ testPropertyNamed "Reading the buffer."
       "readDoubleBufferedRam" readDoubleBufferedRam
   , testPropertyNamed "Writing and reading back buffers."

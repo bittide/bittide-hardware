@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
@@ -38,8 +38,8 @@ import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
-axi4Group :: TestTree
-axi4Group = testGroup "Axi4Group"
+tests :: TestTree
+tests = testGroup "Tests.Axi4"
   [ testPropertyNamed
       "Axi4Stream up scaling does not affect packet content"
       "axisFromByteStreamUnchangedPackets"

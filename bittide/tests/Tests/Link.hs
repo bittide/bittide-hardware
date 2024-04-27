@@ -36,8 +36,8 @@ import qualified Hedgehog.Gen as Gen hiding (resize)
 import Data.Bifunctor
 
 
-linkGroup :: TestTree
-linkGroup = testGroup "Link group"
+tests :: TestTree
+tests = testGroup "Tests.Link"
   [ testPropertyNamed "txUnit can be set to continuously transmit the preamble and sequence counter."
     "txSendSC" txSendSC
   , testPropertyNamed "rxUnit can be set to continuously detect the preamble and store the sequence counter."

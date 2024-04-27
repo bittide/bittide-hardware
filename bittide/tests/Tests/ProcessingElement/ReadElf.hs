@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -101,8 +101,8 @@ dataSegment = ElfSegment
   , elfSegmentMemSize = 0
   }
 
-readElfTestGroup :: TestTree
-readElfTestGroup = testGroup "Read ELF Tests"
+tests :: TestTree
+tests = testGroup "Read ELF Tests"
   [ testCase "ELF file empty" $ do
     let
       elf = riscvElfEmpty

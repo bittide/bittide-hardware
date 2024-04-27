@@ -13,7 +13,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Tests.Calendar(calGroup, genCalendarConfig, genValidEntry) where
+module Tests.Calendar(tests, genCalendarConfig, genValidEntry) where
 
 import Clash.Prelude
 
@@ -41,8 +41,8 @@ import qualified GHC.TypeNats as TN
 import qualified Prelude as P
 import qualified Clash.Util.Interpolate as I
 
-calGroup :: TestTree
-calGroup = testGroup "Calendar group"
+tests :: TestTree
+tests = testGroup "Tests.Calendar"
   [ testPropertyNamed "Reading the calendar." "readCalendar" readCalendar
   , testPropertyNamed "Writing and reading new calendars" "reconfigCalendar" reconfigCalendar
   , testPropertyNamed "Reading shadow buffer with wishbone" "readShadowCalendar" readShadowCalendar

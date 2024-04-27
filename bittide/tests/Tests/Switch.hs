@@ -9,7 +9,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Tests.Switch(switchGroup) where
+module Tests.Switch(tests) where
 
 import Clash.Prelude
 
@@ -24,7 +24,7 @@ import Test.Tasty.Hedgehog
 
 import Bittide.Calendar
 import Bittide.Switch
-import Tests.Calendar
+import Tests.Calendar hiding (tests)
 import Tests.Shared
 
 import qualified Data.Sequence as Seq
@@ -33,8 +33,8 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import qualified Prelude as P
 
-switchGroup :: TestTree
-switchGroup = testGroup "Switch group"
+tests :: TestTree
+tests = testGroup "Tests.Switch"
   [testPropertyNamed "Routing works" "switchFrameRoutingWorks" switchFrameRoutingWorks]
 
 data SwitchTestConfig  nBytes addrW where

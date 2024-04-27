@@ -11,7 +11,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
-module Tests.Wishbone(wbGroup) where
+module Tests.Wishbone(tests) where
 
 import Clash.Prelude hiding (sample)
 
@@ -39,8 +39,8 @@ import qualified Data.List as L
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 
-wbGroup :: TestTree
-wbGroup = testGroup "Wishbone group"
+tests :: TestTree
+tests = testGroup "Tests.Wishbone"
   [ testPropertyNamed "Reading readData from slaves." "readingSlaves" readingSlaves
   , testPropertyNamed "Writing and reading from slaves." "writingSlaves" writingSlaves
   , testPropertyNamed "Send and receive bytes via uartWb" "uartWbCircuitTest" uartWbCircuitTest
