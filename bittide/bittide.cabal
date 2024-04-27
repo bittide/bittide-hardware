@@ -165,7 +165,6 @@ test-suite doctests
   default-language: Haskell2010
   main-is:          doctests.hs
   ghc-options:      -Wall -Wcompat -threaded
-                    -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   hs-source-dirs:   tests
 
   build-depends:
@@ -180,7 +179,6 @@ test-suite unittests
   type: exitcode-stdio-1.0
   main-is: UnitTests.hs
   ghc-options: -Wall -Wcompat -threaded
-               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   other-modules:
     Tests.Axi4
     Tests.Calendar

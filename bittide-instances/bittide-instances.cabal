@@ -149,9 +149,7 @@ test-suite doctests
   type:             exitcode-stdio-1.0
   hs-source-dirs:   tests
   main-is:          doctests.hs
-  -- We need -xm20000000 because of a memory allocation bug after a kernel update
   ghc-options:      -Wall -Wcompat -threaded
-                    -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   build-depends:    base, bittide-instances, doctest-parallel >= 0.3.0.1
   default-language: Haskell2010
 
@@ -160,9 +158,7 @@ test-suite unittests
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: unittests.hs
-  -- We need -xm20000000 because of a memory allocation bug after a kernel update
   ghc-options: -Wall -Wcompat -threaded
-               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   other-modules:
     Tests.OverflowResistantDiff
     Wishbone.Time
@@ -181,16 +177,13 @@ test-suite unittests
 
 executable clash
   import: common-options
-  -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded
   main-is: exe/clash/Main.hs
   Build-Depends: clash-ghc, bittide-instances
 
 executable post-board-test-extended
   import: common-options
-  -- We need -xm20000000 because of a memory allocation bug after a kernel update
   ghc-options: -Wall -Wcompat -threaded
-               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: exe/post-board-test-extended/Main.hs
   build-depends:
       bittide-instances
@@ -199,8 +192,7 @@ executable post-board-test-extended
 
 executable post-vex-riscv-test
   import: common-options
-  -- We need -xm20000000 because of a memory allocation bug after a kernel update
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded
   main-is: exe/post-vex-riscv-test/Main.hs
   build-depends:
     bittide-instances,

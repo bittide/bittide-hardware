@@ -88,7 +88,6 @@ test-suite unittests
   hs-source-dirs:   tests/unittests
   default-language: Haskell2010
   ghc-options:      -Wall -Wcompat -threaded
-                    -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   hs-source-dirs:   tests/doctests
   other-modules:
     Tests.Numeric.Extra
@@ -107,7 +106,6 @@ test-suite doctests
   default-language: Haskell2010
   main-is:          Main.hs
   ghc-options:      -Wall -Wcompat -threaded
-                    -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   hs-source-dirs:   tests/doctests
 
   build-depends:
