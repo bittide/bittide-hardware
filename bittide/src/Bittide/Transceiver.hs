@@ -199,12 +199,11 @@ type PrbsConfig polyLength polyTap nBits =
   ( SNat polyLength
   , SNat polyTap
   , SNat nBits
-  , Bool
   )
 
 
 prbsConf31w64 :: PrbsConfig 31 28 64
-prbsConf31w64 = (d31,d28,d64,True)
+prbsConf31w64 = (SNat, SNat, SNat)
 
 prbsGen ::
   forall dom polyLength polyTap nBits _n0 _n1 _n2 _n3 .
@@ -217,7 +216,7 @@ prbsGen ::
   Clock dom -> Reset dom -> Enable dom ->
   PrbsConfig polyLength polyTap nBits ->
   Signal dom (BitVector nBits)
-prbsGen clk rst ena (pLen@SNat, tap'@SNat, SNat, inv) =
+prbsGen clk rst ena (pLen@SNat, tap'@SNat, SNat) =
   mealy clk rst ena go (maxBound,maxBound) (pure ())
  where
   go ::
@@ -226,7 +225,7 @@ prbsGen clk rst ena (pLen@SNat, tap'@SNat, SNat, inv) =
     ((BitVector polyLength, BitVector nBits), BitVector nBits)
   go (prbs_reg, prbs_out_prev) _ =
     ( ( last prbs
-      , (if inv then complement else id) $ pack (reverse $ map msb prbs))
+      , pack (reverse $ map msb prbs))
     , prbs_out_prev
     )
    where
@@ -252,12 +251,12 @@ prbsChecker ::
   PrbsConfig polyLength polyTap nBits ->
   Signal dom (BitVector nBits) ->
   Signal dom (BitVector nBits)
-prbsChecker clk rst ena (pLen@SNat, tap'@SNat, SNat, inv) sigPrbsIn =
+prbsChecker clk rst ena (pLen@SNat, tap'@SNat, SNat) sigPrbsIn =
   mealy
     clk rst ena
     go
     (maxBound, maxBound)
-    (fmap (if inv then complement else id) sigPrbsIn)
+    sigPrbsIn
  where
   go ::
     (BitVector polyLength, BitVector nBits) ->
