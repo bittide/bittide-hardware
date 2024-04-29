@@ -16,7 +16,7 @@ import Bittide.SharedTypes
 
 import Clash.Cores.UART (uart, ValidBaud)
 import Clash.Cores.Experimental.I2C
-import Clash.Cores.Xilinx.Ila (ila, ilaConfig, IlaConfig(..), Depth)
+import Clash.Cores.Xilinx.Ila (ila, ilaConfig, IlaConfig(..), Depth (..))
 import Clash.Sized.Vector.ToTuple
 import Clash.Util.Interpolate
 
@@ -492,7 +492,7 @@ i2cWb ::
 i2cWb = case (cancelMulDiv @nBytes @8) of
   Dict -> Circuit go
     where
-      go ((wbM2S, i2cIn), _) = ((wbS2M, pure ()), i2cOut)
+      go ((wbM2S, i2cIn), _) =  i2cWbIla `hwSeqX` ((wbS2M, pure ()), i2cOut)
        where
         -- Wishbone interface consists of:
         -- 0. i2c data Read-Write
@@ -530,6 +530,56 @@ i2cWb = case (cancelMulDiv @nBytes @8) of
         wbAck = (pure (Just 0) ./=. transAddr) .||. hostAck
         (dOut,hostAck,busy,al,ackOut,i2cOut) =
           i2c hasClock hasReset smReset (fromEnable hasEnable) clkDiv claimBus i2cOp ackIn i2cIn
+
+        onChange :: (HiddenClockResetEnable dom, Eq a, NFDataX a) => Signal dom a -> Signal dom Bool
+        onChange x = (Just <$> x) ./=. register Nothing (Just <$> x)
+
+        capture :: Signal dom Bool
+        capture = withClockResetEnable hasClock hasReset enableGen $
+          onChange $ bundle
+            ( isJust <$> i2cOp
+            , wbAck
+            , flagsRead
+            , isJust <$> transAddr
+            , hostAck
+            , busy
+            , al
+            , ackOut
+            , ackIn
+            , claimBus
+            )
+
+        i2cWbIla :: Signal dom ()
+        i2cWbIla = setName @"i2cWbIla" $ ila
+          ((ilaConfig $
+               "trigger_2"
+            :> "capture_2"
+            :> "i2cOp"
+            :> "wbAck"
+            :> "flagsRead"
+            :> "transAddr"
+            :> "hostAck"
+            :> "busy"
+            :> "al"
+            :> "ackOut"
+            :> "ackIn"
+            :> "claimBus"
+            :> Nil
+          ) { depth = D16384 })
+          hasClock
+          (pure True :: Signal dom Bool)
+          capture
+          -- Debug signals
+          i2cOp
+          wbAck
+          flagsRead
+          transAddr
+          hostAck
+          busy
+          al
+          ackOut
+          ackIn
+          claimBus
 
 -- Wishbone accessible register circuit which can only be written to from the circuit.
 statusRegWb ::

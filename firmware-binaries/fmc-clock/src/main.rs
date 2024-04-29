@@ -187,13 +187,22 @@ pub fn configure_clock_chip(
     for line in si534x_config.lines() {
         if !parser.is_done() {
             let old_state = parser.state;
-            if let Ok(Some(ConfigEntry { page, addr, data })) = parser.parse_line(line) {
-                si534x.write_byte(page, addr, data)?;
+            match parser.parse_line(line) {
+                Ok(Some(ConfigEntry { page, addr, data })) => {
+                    si534x.write_byte(page, addr, data)?;
+                    uwriteln!(uart, "Wrote: {:2X} {:2X} {:2X}", page, addr, data).unwrap();
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    uwriteln!(uart, "Error: {:?}", e).unwrap();
+                }
             }
             if old_state == ParserState::Preamble && parser.state == ParserState::PostPreambleDelay
             {
                 // Wait 300ms after writing the preamble
+                uwriteln!(uart, "Waiting 300 ms after preamble...").unwrap();
                 clock.wait(Duration::from_millis(300));
+                uwriteln!(uart, "Done waiting").unwrap();
             }
         }
     }
@@ -220,6 +229,18 @@ fn main() -> ! {
         // Communicate to hardware that the CPU is done programming the I2C chip
         control_reg.set_clock_init_done();
     }
+
+    // Try to read and write the page number
+    match si534x.read_byte(0x0, 0x01) {
+        Ok(d) => uwriteln!(uart, "Current page: {:2X}", d).unwrap(),
+        Err(e) => uwriteln!(uart, "ERROR: {:?}", e).unwrap(),
+    }
+    _ = si534x.set_page(0x1);
+    match si534x.read_byte(0x1, 0x01) {
+        Ok(d) => uwriteln!(uart, "Current page: {:2X}", d).unwrap(),
+        Err(e) => uwriteln!(uart, "ERROR: {:?}", e).unwrap(),
+    }
+    uwriteln!(uart, "Checked pages, continuing...").unwrap();
 
     // Do the FInc FDec tests
     let mut last_status_reg;
