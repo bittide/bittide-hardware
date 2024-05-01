@@ -72,7 +72,6 @@ common common-options
 executable program-stream
   import: common-options
   ghc-options: -Wall -Wcompat -threaded
-               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: program/stream/Main.hs
   Build-Depends:
     base,
@@ -91,8 +90,7 @@ executable cc-sim
     bytestring,
     optparse-applicative
   -- enable rtsopts so we can setup memory limits
-  ghc-options: -Wall -Wcompat -threaded
-               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded -rtsopts
 
 executable cc-plot
   import: common-options
@@ -120,8 +118,7 @@ executable cc-plot
     vector,
   default-extensions: ImplicitPrelude
   -- enable rtsopts so we can setup memory limits
-  ghc-options: -Wall -Wcompat -threaded
-               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
+  ghc-options: -Wall -Wcompat -threaded -rtsopts
 
 executable hitl-config-gen
   import: common-options
@@ -135,6 +132,4 @@ executable hitl-config-gen
     filepath,
     optparse-applicative,
     template-haskell
-  -- We need -xm20000000 because of a memory allocation bug after a kernel update
   ghc-options: -Wall -Wcompat -threaded
-               -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS

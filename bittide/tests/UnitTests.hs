@@ -9,31 +9,31 @@ import Prelude
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import Tests.Axi4
-import Tests.Calendar
-import Tests.ClockControl.Si539xSpi
-import Tests.DoubleBufferedRam
-import Tests.ElasticBuffer
-import Tests.Link
-import Tests.ProcessingElement.ReadElf
-import Tests.ScatterGather
-import Tests.StabilityChecker
-import Tests.Switch
-import Tests.Wishbone
+import qualified Tests.Axi4
+import qualified Tests.Calendar
+import qualified Tests.ClockControl.Si539xSpi
+import qualified Tests.DoubleBufferedRam
+import qualified Tests.ElasticBuffer
+import qualified Tests.Link
+import qualified Tests.ProcessingElement.ReadElf
+import qualified Tests.ScatterGather
+import qualified Tests.StabilityChecker
+import qualified Tests.Switch
+import qualified Tests.Wishbone
 
 tests :: TestTree
 tests = testGroup "Unittests"
-  [ axi4Group
-  , calGroup
-  , clockGenGroup
-  , ebGroup
-  , linkGroup
-  , ramGroup
-  , readElfTestGroup
-  , sgGroup
-  , stabilityGroup
-  , switchGroup
-  , wbGroup
+  [ Tests.Axi4.tests
+  , Tests.Calendar.tests
+  , Tests.ClockControl.Si539xSpi.tests
+  , Tests.DoubleBufferedRam.tests
+  , Tests.ElasticBuffer.tests
+  , Tests.Link.tests
+  , Tests.ProcessingElement.ReadElf.tests
+  , Tests.ScatterGather.tests
+  , Tests.StabilityChecker.tests
+  , Tests.Switch.tests
+  , Tests.Wishbone.tests
   ]
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit

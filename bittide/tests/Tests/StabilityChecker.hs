@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -22,8 +22,8 @@ import Tests.Shared
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
-stabilityGroup :: TestTree
-stabilityGroup = testGroup "StabilityChecker"
+tests :: TestTree
+tests = testGroup "Tests.StabilityChecker"
   [ testPropertyNamed "stabilityCheckerTest behaves the same as its golden reference"
     "stabilityCheckerTest" stabilityCheckerTest]
 

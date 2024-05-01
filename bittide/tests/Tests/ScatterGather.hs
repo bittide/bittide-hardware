@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -14,7 +14,7 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Tests.ScatterGather(sgGroup) where
+module Tests.ScatterGather(tests) where
 
 import Clash.Prelude hiding (fromList)
 import qualified Prelude as P
@@ -56,8 +56,8 @@ genFrame = Gen.maybe genData
 genFrameList :: Range Int -> Gen [Maybe (BitVector 64)]
 genFrameList range = Gen.list range genFrame
 
-sgGroup :: TestTree
-sgGroup = testGroup "Scatter Gather group"
+tests :: TestTree
+tests = testGroup "Tests.ScatterGather"
   [ testPropertyNamed "scatterUnitWb - No overwriting implies no lost frames."
       "scatterUnitNoFrameLoss" scatterUnitNoFrameLoss
   , testPropertyNamed "gatherUnitWb - No overwriting implies no lost frames."

@@ -49,14 +49,12 @@ test-suite doctests
   hs-source-dirs:   tests
   main-is:          doctests.hs
   ghc-options:      -Wall -Wcompat -threaded
-                    -rtsopts -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   build-depends:    base, bittide-shake, doctest-parallel >= 0.3.0.1
   default-language: Haskell2010
 
 executable shake
   import: common-options
   ghc-options: -Wall -Wcompat -threaded -rtsopts
-               -with-rtsopts=-xm20000000 +RTS -xm20000000 -RTS
   main-is: exe/Main.hs
   Build-Depends:
     , ansi-terminal

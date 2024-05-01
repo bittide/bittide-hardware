@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 
@@ -195,29 +196,36 @@ prbsStimuliGen clk rst =
 
   prbs = prbsGen clk rst enableGen prbsConf31w64
 
-type PrbsConfig polyLength polyTap nBits =
-  ( SNat polyLength
-  , SNat polyTap
-  , SNat nBits
-  , Bool
-  )
+data PrbsConfig polyLength polyTap nBits where
+  PrbsConfig ::
+    ( KnownNat polyLength
+    , KnownNat polyTap
+    , KnownNat nBits
+
+    , 1 <= nBits
+    , 1 <= polyTap
+    , (polyTap + 1) <= polyLength
+
+    -- Same constraints, but written differently for type checking purposes:
+    , (_n0 + 1) ~ nBits
+    , (polyTap + _n1) ~ polyLength
+    , polyTap ~ (_n2 + 1)
+    , _n1 ~ (_n3 + 1)
+    ) =>
+    PrbsConfig polyLength polyTap nBits
 
 
+-- | PRBS configuration where we use the full 64 data bits for the PRBS.
 prbsConf31w64 :: PrbsConfig 31 28 64
-prbsConf31w64 = (d31,d28,d64,True)
+prbsConf31w64 = PrbsConfig
 
 prbsGen ::
-  forall dom polyLength polyTap nBits _n0 _n1 _n2 _n3 .
-  ( KnownDomain dom
-  , (_n0 + 1) ~ nBits
-  , (polyTap + _n1) ~ polyLength
-  , polyTap ~ (_n2 + 1)
-  , _n1 ~ (_n3 + 1)
-  ) =>
+  forall dom polyLength polyTap nBits .
+  KnownDomain dom =>
   Clock dom -> Reset dom -> Enable dom ->
   PrbsConfig polyLength polyTap nBits ->
   Signal dom (BitVector nBits)
-prbsGen clk rst ena (pLen@SNat, tap'@SNat, SNat, inv) =
+prbsGen clk rst ena PrbsConfig =
   mealy clk rst ena go (maxBound,maxBound) (pure ())
  where
   go ::
@@ -226,7 +234,7 @@ prbsGen clk rst ena (pLen@SNat, tap'@SNat, SNat, inv) =
     ((BitVector polyLength, BitVector nBits), BitVector nBits)
   go (prbs_reg, prbs_out_prev) _ =
     ( ( last prbs
-      , (if inv then complement else id) $ pack (reverse $ map msb prbs))
+      , pack (reverse $ map msb prbs))
     , prbs_out_prev
     )
    where
@@ -237,27 +245,18 @@ prbsGen clk rst ena (pLen@SNat, tap'@SNat, SNat, inv) =
      goPrbs bv = (o,o)
       where
        o = nb +>>. bv
-       tap = subSNat pLen tap'
+       tap = SNat @(polyLength - polyTap)
        nb = xor (lsb bv) (unpack $ slice tap tap bv)
 
 
 prbsChecker ::
-  forall dom polyLength polyTap nBits _n0 _n1 _n2 .
-  ( KnownDomain dom
-  , (_n0 + 1) ~ nBits
-  , (polyTap + _n1) ~ polyLength
-  , polyTap ~ (_n2 + 1)
-  ) =>
+  forall dom polyLength polyTap nBits .
+  KnownDomain dom =>
   Clock dom -> Reset dom -> Enable dom ->
   PrbsConfig polyLength polyTap nBits ->
   Signal dom (BitVector nBits) ->
   Signal dom (BitVector nBits)
-prbsChecker clk rst ena (pLen@SNat, tap'@SNat, SNat, inv) sigPrbsIn =
-  mealy
-    clk rst ena
-    go
-    (maxBound, maxBound)
-    (fmap (if inv then complement else id) sigPrbsIn)
+prbsChecker clk rst ena PrbsConfig = mealy clk rst ena go (maxBound, maxBound)
  where
   go ::
     (BitVector polyLength, BitVector nBits) ->
@@ -276,7 +275,7 @@ prbsChecker clk rst ena (pLen@SNat, tap'@SNat, SNat, inv) sigPrbsIn =
      goPrbs bv inp = (o, bitErr)
       where
        o = inp +>>. bv
-       tap = subSNat pLen tap'
+       tap = SNat @(polyLength - polyTap)
        bitErr = xor inp (xor (lsb bv) (unpack $ slice tap tap bv))
 
 -- | 'Index' with its 'maxBound' corresponding to the number of cycles needed to
