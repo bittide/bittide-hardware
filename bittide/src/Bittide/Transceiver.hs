@@ -2,10 +2,13 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
@@ -17,6 +20,48 @@ import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 
 import Bittide.Arithmetic.Time
+
+-- | Careful: the domains for each transceiver are different, even if their
+-- types say otherwise.
+data TransceiverOutputs n tx rx txS freeclk = TransceiverOutputs
+  { txClocks :: Vec n (Clock tx)
+  -- ^ Transmit clocks. Can only be used if associated 'linkUps' is asserted.
+  --
+  -- TODO: Export more signals such that this clock can be used earlier.
+  , rxClocks :: Vec n (Clock rx)
+  -- ^ Receive clocks, recovered from the incoming data stream. Can only be used
+  -- if associated 'linkUps' is asserted.
+  --
+  -- TODO: Export more signals such that these clocks can be used earlier.
+  , txPs :: Vec n (Signal txS (BitVector 1))
+  -- ^ Transmit data (and implicitly a clock), positive
+  , txNs :: Vec n (Signal txS (BitVector 1))
+  -- ^ Transmit data (and implicitly a clock), negative
+  , linkUps :: Vec n (Signal rx Bool)
+  -- ^ True if the link is considered stable. See 'linkStateTracker'.
+  , stats :: Vec n (Signal freeclk GthResetStats)
+  -- ^ Statistics exported by 'gthResetManager'
+  }
+
+data TransceiverOutput tx rx txS freeclk = TransceiverOutput
+  { txClock :: Clock tx
+  -- ^ Transmit clock. Can only be used after 'linkUp' is asserted.
+  --
+  -- TODO: Export more signals such that this clock can be used earlier.
+  , rxClock :: Clock rx
+  -- ^ Receive clock, recovered from the incoming data stream. Can only be used
+  -- after 'linkUp' is asserted.
+  --
+  -- TODO: Export more signals such that this clock can be used earlier.
+  , txP :: Signal txS (BitVector 1)
+  -- ^ Transmit data (and implicitly a clock), positive
+  , txN :: Signal txS (BitVector 1)
+  -- ^ Transmit data (and implicitly a clock), negative
+  , linkUp :: Signal rx Bool
+  -- ^ True if the link is considered stable. See 'linkStateTracker'.
+  , stats :: Signal freeclk GthResetStats
+  -- ^ Statistics exported by 'gthResetManager'
+  }
 
 transceiverPrbsN ::
   forall tx rx refclk freeclk txS rxS chansUsed .
@@ -41,16 +86,17 @@ transceiverPrbsN ::
   Vec chansUsed (Signal rxS (BitVector 1)) ->
   Vec chansUsed (Signal rxS (BitVector 1)) ->
 
-  Vec chansUsed
-    ( Clock tx
-    , Clock rx
-    , Signal txS (BitVector 1)
-    , Signal txS (BitVector 1)
-    , Signal rx Bool  -- link up
-    , Signal freeclk GthResetStats
-    )
-transceiverPrbsN refclk freeclk rst chanNms clkPaths rxns rxps =
-  zipWith4 (transceiverPrbs refclk freeclk rst) chanNms clkPaths rxns rxps
+  TransceiverOutputs chansUsed tx rx txS freeclk
+transceiverPrbsN refclk freeclk rst chanNms clkPaths rxns rxps = TransceiverOutputs
+  { txClocks = map (.txClock) outputs
+  , rxClocks = map (.rxClock) outputs
+  , txPs     = map (.txP)     outputs
+  , txNs     = map (.txN)     outputs
+  , linkUps  = map (.linkUp)  outputs
+  , stats    = map (.stats)   outputs
+  }
+ where
+  outputs = zipWith4 (transceiverPrbs refclk freeclk rst) chanNms clkPaths rxns rxps
 
 transceiverPrbs ::
   ( HasSynchronousReset tx
@@ -74,15 +120,15 @@ transceiverPrbs ::
   Signal rxS (BitVector 1) ->
   Signal rxS (BitVector 1) ->
 
-  ( Clock tx
-  , Clock rx
-  , Signal txS (BitVector 1)
-  , Signal txS (BitVector 1)
-  , Signal rx Bool  -- link up
-  , Signal freeclk GthResetStats
-  )
-transceiverPrbs gtrefclk freeclk rst_all_in chan clkPath rxn rxp
- = (tx_clk, rx_clk, txn, txp, link_up, stats)
+  TransceiverOutput tx rx txS freeclk
+transceiverPrbs gtrefclk freeclk rst_all_in chan clkPath rxn rxp = TransceiverOutput
+  { txClock = tx_clk
+  , rxClock = rx_clk
+  , txP = txp
+  , txN = txn
+  , linkUp = link_up
+  , stats = stats
+  }
  where
   (txn, txp, tx_clk, rx_clk, rx_data, reset_tx_done, reset_rx_done, tx_active)
     = gthCore
