@@ -5,6 +5,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
@@ -265,13 +266,13 @@ topologyTest ::
   )
 topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso cfg
   = fincFdecIla `hwSeqX`
-  ( txns
-  , txps
+  ( transceivers.txNs
+  , transceivers.txPs
   , frequencyAdjustments
   , callistoResult
   , clockControlReset
   , domainDiffs
-  , stats
+  , transceivers.stats
   , spiDone
   , spiOut
   , transceiversFailedAfterUp
@@ -323,14 +324,14 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso c
 
   gthAllReset = unsafeFromActiveLow clocksAdjusted
 
-  (txClocks, rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
+  transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       refClk sysClk gthAllReset
       channelNames clockPaths rxns rxps
 
   syncLink rxClock = xpmCdcSingle rxClock sysClk
-  linkUps = zipWith syncLink rxClocks linkUpsRx
+  linkUps = zipWith syncLink transceivers.rxClocks transceivers.linkUps
   allUp = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle linkUps)
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allUp)
@@ -364,7 +365,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso c
 
   callistoResult =
     callistoClockControlWithIla @(FpgaCount - 1) @CccBufferSize
-      (head txClocks) sysClk clockControlReset clockControlConfig
+      (head transceivers.txClocks) sysClk clockControlReset clockControlConfig
       IlaControl{..} (mask <$> cfg) (fmap (fmap resize) domainDiffs)
 
   -- Capture every 100 microseconds - this should give us a window of about 5
@@ -480,8 +481,8 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso c
 
   domainDiffs =
     domainDiffCounterExt sysClk clockControlReset
-      <$> rxClocks
-      <*> txClocks
+      <$> transceivers.rxClocks
+      <*> transceivers.txClocks
 
 -- | Top entity for this test. See module documentation for more information.
 hwCcTopologyWithRiscvTest ::

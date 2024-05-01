@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
@@ -59,7 +60,13 @@ goTransceiversUpTest ::
       )
   )
 goTransceiversUpTest refClk sysClk rst rxns rxps miso =
-  (txns, txps, and <$> bundle linkUps, stats, spiDone, spiOut)
+  ( transceivers.txNs
+  , transceivers.txPs
+  , and <$> bundle linkUps
+  , transceivers.stats
+  , spiDone
+  , spiOut
+  )
  where
   sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
 
@@ -77,14 +84,14 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
 
-  (_txClocks, rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
+  transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       refClk sysClk gthAllReset
       channelNames clockPaths rxns rxps
 
   syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
-  linkUps = zipWith syncLink rxClocks linkUpsRx
+  linkUps = zipWith syncLink transceivers.rxClocks transceivers.linkUps
 
 -- | Top entity for this test. See module documentation for more information.
 transceiversUpTest ::

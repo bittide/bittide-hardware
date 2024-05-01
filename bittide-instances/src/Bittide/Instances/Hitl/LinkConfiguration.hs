@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
@@ -74,7 +75,13 @@ transceiversStartAndObserve ::
       )
   )
 transceiversStartAndObserve refClk sysClk rst rxns rxps miso =
-  (txns, txps, v2bv . fmap boolToBit <$> linkUps, stats, spiDone, spiOut)
+  ( transceivers.txNs
+  , transceivers.txPs
+  , v2bv . fmap boolToBit <$> linkUps
+  , transceivers.stats
+  , spiDone
+  , spiOut
+  )
  where
   sysRst = rst `orReset` unsafeFromActiveLow (fmap not spiErr)
 
@@ -93,14 +100,15 @@ transceiversStartAndObserve refClk sysClk rst rxns rxps miso =
   -- Transceiver setup
   gthAllReset = rst `orReset` unsafeFromActiveLow spiDone
 
-  (_txClocks, rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
+  -- (_txClocks, rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
+  transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       refClk sysClk gthAllReset
       channelNames clockPaths rxns rxps
 
   syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
-  linkUps = bundle $ zipWith syncLink rxClocks linkUpsRx
+  linkUps = bundle $ zipWith syncLink transceivers.rxClocks transceivers.linkUps
 
 -- | Top entity for this test. See module documentation for more information.
 linkConfigurationTest ::
