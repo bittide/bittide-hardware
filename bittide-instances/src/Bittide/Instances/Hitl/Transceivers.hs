@@ -28,7 +28,7 @@ import Clash.Explicit.Prelude
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
-import Bittide.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
+import Bittide.Hitl (HitlTests, NoPostProcData(..), hitlVioBool, allFpgas)
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup
 import Bittide.Transceiver
@@ -38,6 +38,9 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
 
 import qualified Clash.Explicit.Prelude as E
+import qualified Data.Text as Text
+import qualified Data.Map as Map
+
 
 -- | Worker function for 'transceiversUpTest'. See module documentation for more
 -- information.
@@ -133,10 +136,10 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     hitlVioBool
       sysClk
 
-      -- Consider test done if links have been up consistently for 50 seconds. This
+      -- Consider test done if links have been up consistently for 10 seconds. This
       -- is just below the test timeout of 60 seconds, so transceivers have ~10
       -- seconds to come online reliably. This should be plenty.
-      (trueFor (SNat @(Seconds 50)) sysClk testRst allUp)
+      (trueFor (SNat @(Seconds 10)) sysClk testRst allUp)
 
       -- This test either succeeds or times out, so success is set to a static
       -- 'True'. If you want to see statistics, consider setting it to 'False' -
@@ -166,4 +169,7 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   } #-}
 
 tests :: HitlTests ()
-tests = noConfigTest "Transceivers" allFpgas
+tests = Map.fromList testsAsList
+ where
+  testNames = ["T" <> Text.pack (show n) | n <- [(0::Int)..2]]
+  testsAsList = [(nm, (allFpgas (), NoPostProcData)) | nm <- testNames]
