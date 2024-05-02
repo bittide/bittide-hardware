@@ -157,6 +157,7 @@ data WbAxisRxBufferState fifoDepth nBytes = WbAxisRxBufferState
   , writeCounter :: Index fifoDepth
   , packetComplete :: Bool
   , bufferFull :: Bool
+  , packetError :: Bool
   } deriving (Generic, NFDataX, Show)
 
 {-# NOINLINE wbAxisRxBuffer #-}
@@ -172,7 +173,7 @@ wbAxisRxBufferCircuit ::
   -- | Depth of the buffer, each entry in the buffer stores `nBytes` bytes.
   SNat fifoDepth ->
   Circuit
-    (Wishbone dom 'Standard wbAddrW (Bytes nBytes), Axi4Stream dom conf ())
+    (Wishbone dom 'Standard wbAddrW (Bytes nBytes), Axi4Stream dom conf Bool)
     (CSignal dom (EndOfPacket, BufferFull))
 wbAxisRxBufferCircuit depth = case cancelMulDiv @nBytes @8 of
   Dict -> Circuit $ \((wbM2S, axiM2S),_) -> do
@@ -194,20 +195,19 @@ wbAxisRxBufferCircuit depth = case cancelMulDiv @nBytes @8 of
 --
 -- The external status clear signals clear on True, set to (False, False) if not used.
 wbAxisRxBuffer ::
-  forall dom wbAddrW nBytes fifoDepth conf axiUserType .
+  forall dom wbAddrW nBytes fifoDepth conf  .
   ( HiddenClockResetEnable dom
   , KnownNat wbAddrW, 2 <= wbAddrW
   , KnownNat nBytes, 1 <= nBytes
   , 1 <= fifoDepth
   , 1 <= nBytes * fifoDepth
-  , DataWidth conf ~ nBytes
-  , Show axiUserType) =>
+  , DataWidth conf ~ nBytes) =>
   -- | Depth of the buffer, each entry in the buffer stores `nBytes` bytes.
   SNat fifoDepth ->
   -- | Wishbone master bus.
   "wbM2S" ::: Signal dom (WishboneM2S wbAddrW nBytes (Bytes nBytes)) ->
   -- | Axi4 Stream master bus.
-  "axisM2S" ::: Signal dom (Maybe (Axi4StreamM2S conf axiUserType)) ->
+  "axisM2S" ::: Signal dom (Maybe (Axi4StreamM2S conf Bool)) ->
   -- | External controls to clear bits in the status register.
   "clearinterrupts" ::: Signal dom (EndOfPacket, BufferFull) ->
   -- |
@@ -233,11 +233,12 @@ wbAxisRxBuffer SNat wbM2S axisM2S statusClearSignal = (wbS2M, axisS2M, statusReg
     , writeCounter = 0
     , packetComplete = False
     , bufferFull = False
+    , packetError = False
     }
   go ::
     WbAxisRxBufferState fifoDepth nBytes ->
     ( WishboneM2S wbAddrW nBytes (Bytes nBytes)
-    , Maybe (Axi4StreamM2S conf axiUserType)
+    , Maybe (Axi4StreamM2S conf Bool)
     , Bytes nBytes, (EndOfPacket, BufferFull)
     ) ->
     ( WbAxisRxBufferState fifoDepth nBytes
@@ -270,7 +271,7 @@ wbAxisRxBuffer SNat wbM2S axisM2S statusClearSignal = (wbS2M, axisS2M, statusReg
       (True, _) -> (wbData, wbHandshake && not readingFifo, wbHandshake && readingFifo)
       (False, _) -> (deepErrorX "undefined", False, False)
 
-    axisReady = not (packetComplete || bufferFull)
+    axisReady = packetError || not (packetComplete || bufferFull)
     axisHandshake = axisReady && isJust maybeAxisM2S
 
     output =
@@ -289,9 +290,9 @@ wbAxisRxBuffer SNat wbM2S axisM2S statusClearSignal = (wbS2M, axisS2M, statusReg
       | otherwise = unpack $ statusBV `xor` pack clearStatus
 
     nextWriteCounter
-      | axisHandshake  = satSucc SatBound writeCounter
-      | packetComplete || bufferFull = 0
-      | otherwise      = writeCounter
+      | axisHandshake                 = satSucc SatBound writeCounter
+      | packetComplete || bufferFull  = 0
+      | otherwise                     = writeCounter
 
     bytesInStream = maybe (0 :: Index (nBytes + 1)) (leToPlus @1 @nBytes popCountBV . pack ._tkeep) maybeAxisM2S
 
@@ -303,13 +304,16 @@ wbAxisRxBuffer SNat wbM2S axisM2S statusClearSignal = (wbS2M, axisS2M, statusReg
       | otherwise
         = packetLength
 
-    newState = WbAxisRxBufferState
-      { readingFifo = nextReadingFifo
-      , packetLength = nextPacketLength
-      , writeCounter = nextWriteCounter
-      , packetComplete = nextPacketComplete
-      , bufferFull = nextBufferFull
-      }
+    newState
+      | packetError && maybe False _tlast maybeAxisM2S = initState
+      | otherwise = WbAxisRxBufferState
+        { readingFifo = nextReadingFifo
+        , packetLength = nextPacketLength
+        , writeCounter = nextWriteCounter
+        , packetComplete = nextPacketComplete
+        , bufferFull = nextBufferFull
+        , packetError = packetError || maybe False _tuser maybeAxisM2S
+        }
 
 data BufferState bufferSize = AwaitingData | BufferFull | PacketComplete (Index (bufferSize + 1))
   deriving (Generic, NFDataX, Show)

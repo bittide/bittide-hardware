@@ -37,6 +37,7 @@ import qualified Data.List as L
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
+import qualified Protocols.DfConv as DfConv
 
 tests :: TestTree
 tests = testGroup "Tests.Axi4"
@@ -262,11 +263,14 @@ wbAxisRxBufferReadStreams = property $ do
       (Axi4Stream System ('Axi4StreamConfig 4 0 0 ) ())
       (Axi4Stream System ('Axi4StreamConfig 4 0 0 ) ())
   tb = circuit $ \axiIn0 -> do
-    axiIn1 <- axiPacking -< axiIn0
+    axiIn1 <- addUser <| axiPacking -< axiIn0
     _status <- wbAxisRxBufferCircuit @System @32 depth -< (wb, axiIn1)
     (wb, axiOut) <- rxReadMasterC depth -< ()
     idC -< axiOut
 
+  proxyA = Proxy @(Axi4Stream System ('Axi4StreamConfig 4 0 0) Bool)
+  proxyB = Proxy @(Axi4Stream System ('Axi4StreamConfig 4 0 0) ())
+  addUser = withClockResetEnable clockGen resetGen enableGen $ DfConv.map proxyB proxyA (\axi -> axi{_tuser = False})
 packetConversions :: Property
 packetConversions = property $ do
   packets <- forAll $ Gen.list (Range.linear 1 4) $ Gen.list (Range.linear 1 128) $ genUnsigned Range.constantBounded
