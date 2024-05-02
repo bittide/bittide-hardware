@@ -5,8 +5,8 @@ pkgs.stdenv.mkDerivation rec {
 
   src = pkgs.fetchgit {
     url = "https://github.com/alexforencich/verilog-ethernet.git";
-    rev = "ab0c382123f2f0b80480d99c3d9837af028e7295";
-    sha256 = "sha256-xFhQXSRb+aaL5rHRmwgKCpJmgjpWib+PvaYp5kgP6To=";
+    rev = "baac5f8d811d43853d59d69957975ead8bbed088";
+    sha256 = "sha256-rxoUHjOxxQc/JjEp06vibCJ2OIWbsbEtnkqS1gS+A7g=";
   };
 
   installPhase = ''
