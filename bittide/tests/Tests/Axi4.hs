@@ -201,7 +201,7 @@ axisFromByteStreamUnchangedPackets = property $ do
       let
         conf = SimulationConfig 0 300 True
         transactions = catMaybes $ withClockResetEnable @System clockGen noReset enableGen
-          $ sampleC conf $ (axisFromByteStream @_ @busWidth) <| driveC conf inputData
+          $ sampleC conf $ axiDropUser <| (axisFromByteStream @_ @busWidth <| driveC conf inputData)
       footnote $ "inputData: " <> show inputData
       footnote $ "transactions: " <> show transactions
       axiStreamToPackets (catMaybes inputData) === axiStreamToPackets transactions
@@ -245,7 +245,6 @@ axiPackingId = property $ do
  where
   conf = SimulationConfig 0 300 False
 
-  -- inputData <- forAll $ Gen.list (Range.linear 1 16) (Gen.maybe $ genAxisM2S @('Axi4StreamConfig 4 0 0) $ pure ())
 wbAxisRxBufferReadStreams :: Property
 wbAxisRxBufferReadStreams = property $ do
   inputData <- forAll $ (genAxiPackets @('Axi4StreamConfig 4 0 0))

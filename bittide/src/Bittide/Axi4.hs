@@ -55,30 +55,34 @@ axisFromByteStream ::
   , NFDataX userType) =>
   Circuit
     (Axi4Stream dom ('Axi4StreamConfig 1 idWidth destWidth) userType)
-    (PackedAxi4Stream dom ('Axi4StreamConfig (addedWidth + 1) idWidth destWidth) userType)
+    (PackedAxi4Stream dom
+      ('Axi4StreamConfig (addedWidth + 1) idWidth destWidth)
+      (Vec (addedWidth + 1) userType))
 axisFromByteStream = Circuit (mealyB go Nothing)
  where
   go axiStored (axiIn, Axi4StreamS2M{_tready}) = (axiNext, (lhsS2M, rhsM2S))
    where
-
+    undefUser = deepErrorX "axisFromByteStream: _tuser undefined"
     -- Try to append the incoming axi to the stored axi
-    combinedAxi = concatAxi axiStored axiIn
+    combinedAxi = axiUserMap (\(v1, v2) -> v1 :< v2) <$> concatAxi axiStored axiIn
     inpValid = isJust axiIn && isJust combinedAxi
     inpInvalid = isJust axiIn && isNothing combinedAxi
 
     -- Shifting bytes
-    axiPreShift = combinedAxi <|> concatAxi axiStored Nothing
+    axiPreShift = combinedAxi <|> (axiUserMap extendWithErrorX . extendAxi <$> axiStored)
     axiBytes =
-      zipWith3 (\d k s -> orNothing k (d, s))
+      zipWith4 (\d k s u -> orNothing k (d, s, u))
       (maybe (repeat 0) _tdata axiPreShift)
       (maybe (repeat False) _tkeep axiPreShift)
       (maybe (repeat False) _tstrb axiPreShift)
+      (maybe (repeat undefUser) _tuser axiPreShift)
 
-    (newData, newKeeps, newStrobes) =
-      unzip3 $ (\m -> (maybe 0 fst m, isJust m, maybe False snd m)) <$> shiftPackVec axiBytes
+    (newData, newKeeps, newStrobes, newUsers) = unzip4 $
+      (maybe (0, False, False, undefUser) (\(d, s, u) -> (d, True, s, u))) <$> shiftPackVec axiBytes
 
     axiPostShift =
-      (\a -> a{ _tdata = newData, _tkeep = newKeeps, _tstrb = newStrobes}) <$> axiPreShift
+      (\a -> a{ _tdata = newData, _tkeep = newKeeps, _tstrb = newStrobes, _tuser = newUsers})
+      <$> axiPreShift
 
     shiftingDone = fromMaybe False
       $ (\pre post -> _tkeep pre == _tkeep post) <$> axiPreShift <*> axiPostShift
@@ -91,7 +95,7 @@ axisFromByteStream = Circuit (mealyB go Nothing)
     rhsValid = shiftingDone && (and newKeeps || inpInvalid || maybe False _tlast axiPostShift)
     rhsM2S
       | rhsValid = axiPostShift
-      | otherwise   = Nothing
+      | otherwise = Nothing
     rhsHandshake = rhsValid && _tready
 
     -- Axi LHS
@@ -105,7 +109,7 @@ axisFromByteStream = Circuit (mealyB go Nothing)
     -- State update
     axiNext
       | rhsHandshake = Nothing
-      | otherwise    = fst $ splitAxi @_ @1 axiPostShift
+      | otherwise    = fst $ splitAxi @_ @1 $ (axiUserMap (\v -> (init v, ()))) <$> axiPostShift
 
 -- | Shifts all @Just a@ in a `Vec n (Maybe a)` in the direction of head by one position.
 -- The first element is replaced by @Nothing@.
@@ -555,13 +559,13 @@ packVec = foldr f (repeat Nothing)
 -- output is `Nothing`. If the second output is `Just`, the _tlast of the first output
 -- is `False` and the _tlast of the second output is `True`.
 splitAxi ::
-  forall widthA widthB idWith destWidth userType .
+  forall widthA widthB idWith destWidth userTypeA userTypeB .
   ( KnownNat widthA
   , KnownNat widthB
   ) =>
-  Maybe (Axi4StreamM2S ('Axi4StreamConfig (widthA + widthB) idWith destWidth) userType) ->
-  ( Maybe (Axi4StreamM2S ('Axi4StreamConfig widthA idWith destWidth) userType)
-  , Maybe (Axi4StreamM2S ('Axi4StreamConfig widthB idWith destWidth) userType))
+  Maybe (Axi4StreamM2S ('Axi4StreamConfig (widthA + widthB) idWith destWidth) (userTypeA, userTypeB)) ->
+  ( Maybe (Axi4StreamM2S ('Axi4StreamConfig widthA idWith destWidth) userTypeA)
+  , Maybe (Axi4StreamM2S ('Axi4StreamConfig widthB idWith destWidth) userTypeB))
 splitAxi Nothing = (Nothing, Nothing)
 splitAxi (Just axi) = (orNothing aValid axiA, orNothing bValid axiB)
  where
@@ -572,7 +576,7 @@ splitAxi (Just axi) = (orNothing aValid axiA, orNothing bValid axiB)
     , _tlast = lastA
     , _tid = _tid axi
     , _tdest = _tdest axi
-    , _tuser = _tuser axi}
+    , _tuser = fst $ _tuser axi}
 
   axiB = Axi4StreamM2S
     {_tdata = dataB
@@ -581,7 +585,7 @@ splitAxi (Just axi) = (orNothing aValid axiA, orNothing bValid axiB)
     , _tlast = lastB
     , _tid = _tid axi
     , _tdest = _tdest axi
-    , _tuser = _tuser axi}
+    , _tuser = snd $ _tuser axi}
 
   (dataA, dataB) = splitAtI $ _tdata axi
   (keepA, keepB) = splitAtI $ _tkeep axi
@@ -596,31 +600,50 @@ splitAxi (Just axi) = (orNothing aValid axiA, orNothing bValid axiB)
 -- This is the case if the @_tid@, @_tdest@ and @_tuser@ are equal and the @_tlast@ of the first
 -- Axi4StreamM2S is not set.
 compatibleAxis ::
-  forall widthA widthB destWidth idWidth userType .
-  ( KnownNat destWidth, KnownNat idWidth, Eq userType) =>
-  Axi4StreamM2S ('Axi4StreamConfig widthA idWidth destWidth) userType ->
-  Axi4StreamM2S ('Axi4StreamConfig widthB idWidth destWidth) userType ->
+  forall widthA widthB destWidth idWidth userTypeA userTypeB.
+  ( KnownNat destWidth, KnownNat idWidth) =>
+  Axi4StreamM2S ('Axi4StreamConfig widthA idWidth destWidth) userTypeA ->
+  Axi4StreamM2S ('Axi4StreamConfig widthB idWidth destWidth) userTypeB ->
   Bool
 compatibleAxis axiA axiB =
   _tid axiA == _tid axiB &&
   _tdest axiA == _tdest axiB &&
-  _tuser axiA == _tuser axiB &&
   not (_tlast axiA)
+
+extendAxi ::
+  forall widthA widthB idWith destWidth userType .
+  ( KnownNat widthA
+  , KnownNat widthB
+  , KnownNat idWith
+  , KnownNat destWidth
+  ) =>
+  Axi4StreamM2S ('Axi4StreamConfig widthA idWith destWidth) userType ->
+  Axi4StreamM2S ('Axi4StreamConfig (widthA + widthB) idWith destWidth) userType
+extendAxi axi = Axi4StreamM2S
+  { _tdata = _tdata axi ++ repeat 0
+  , _tkeep = _tkeep axi ++ repeat False
+  , _tstrb = _tstrb axi ++ repeat False
+  , _tlast = _tlast axi
+  , _tid = _tid axi
+  , _tdest = _tdest axi
+  , _tuser = _tuser axi
+  }
 
 -- | Combines two Axi4StreamM2S into a single Axi4StreamM2S. The data, keep and strobe
 -- vectors are concatenated. If both Axi4Streams are `Just`, it uses @compatibleAxis@ to
 -- determine if we can concatenate them. The vectors of the axi streams are concatenated.
 concatAxi ::
-  forall widthA widthB idWidth destWidth userType.
+  forall widthA widthB idWidth destWidth userTypeA userTypeB.
   ( KnownNat widthA
   , KnownNat widthB
   , KnownNat idWidth
   , KnownNat destWidth
-  , Eq userType
+  , NFDataX userTypeA
+  , NFDataX userTypeB
   ) =>
-  Maybe (Axi4StreamM2S ('Axi4StreamConfig widthA idWidth destWidth) userType) ->
-  Maybe (Axi4StreamM2S ('Axi4StreamConfig widthB idWidth destWidth) userType) ->
-  Maybe (Axi4StreamM2S ('Axi4StreamConfig (widthA + widthB) idWidth destWidth) userType)
+  Maybe (Axi4StreamM2S ('Axi4StreamConfig widthA idWidth destWidth) userTypeA) ->
+  Maybe (Axi4StreamM2S ('Axi4StreamConfig widthB idWidth destWidth) userTypeB) ->
+  Maybe (Axi4StreamM2S ('Axi4StreamConfig (widthA + widthB) idWidth destWidth) (userTypeA, userTypeB))
 concatAxi maybeAxiA maybeAxiB = case (maybeAxiA, maybeAxiB) of
   (Just axiA, Just axiB) -> orNothing (compatibleAxis axiA axiB) axiNew
    where
@@ -631,7 +654,7 @@ concatAxi maybeAxiA maybeAxiB = case (maybeAxiA, maybeAxiB) of
       , _tlast = _tlast axiB
       , _tid   = _tid   axiA
       , _tdest = _tdest axiA
-      , _tuser = _tuser axiA
+      , _tuser = (_tuser axiA, _tuser axiB)
       }
   (Just axi, Nothing) -> Just $ Axi4StreamM2S
     { _tdata = _tdata axi ++ repeat 0
@@ -640,7 +663,7 @@ concatAxi maybeAxiA maybeAxiB = case (maybeAxiA, maybeAxiB) of
     , _tlast = _tlast axi
     , _tid   = _tid   axi
     , _tdest = _tdest axi
-    , _tuser = _tuser axi
+    , _tuser = (_tuser axi, deepErrorX "concatAxi: Undefined second _tuser")
     }
   (Nothing, Just axi) -> Just $ Axi4StreamM2S
     { _tdata = repeat 0 ++ _tdata axi
@@ -649,9 +672,14 @@ concatAxi maybeAxiA maybeAxiB = case (maybeAxiA, maybeAxiB) of
     , _tlast = _tlast axi
     , _tid   = _tid   axi
     , _tdest = _tdest axi
-    , _tuser = _tuser axi
+    , _tuser = (deepErrorX "concatAxi: Undefined first _tuser", _tuser axi)
     }
   _ -> Nothing
+
+axiUserMap ::
+  forall userTypeA userTypeB conf.
+  (userTypeA -> userTypeB) -> Axi4StreamM2S conf userTypeA -> Axi4StreamM2S conf userTypeB
+axiUserMap f axi = axi{_tuser = f (_tuser axi)}
 
 -- | A custom of `==` for Axi4StreamM2S that only checks the data bytes if they are valid.
 -- TODO: We should make better use of ADTs in `Axi4StreamM2S` to allow us to use derived
@@ -704,3 +732,18 @@ ilaAxi stages0 depth0 = Circuit $ \(m2s, s2m) ->
       (_tready <$> s2m)
   in
     ilaInst `hwSeqX` (s2m, m2s)
+
+extendWithErrorX ::
+  forall n m a . (KnownNat n, KnownNat m, NFDataX a) =>
+  Vec n a -> Vec (n + m) a
+extendWithErrorX = (++ deepErrorX "extendWithErrorX: Undefined")
+
+axiDropUser ::
+  forall dom conf userType .
+  ( KnownAxi4StreamConfig conf
+  , HiddenClockResetEnable dom
+  , NFDataX userType) =>
+  Circuit
+    (Axi4Stream dom conf userType)
+    (Axi4Stream dom conf ())
+axiDropUser = DfConv.map Proxy Proxy (\axi -> axi{_tuser = ()})
