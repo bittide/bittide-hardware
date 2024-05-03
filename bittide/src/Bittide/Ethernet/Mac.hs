@@ -9,13 +9,19 @@ module Bittide.Ethernet.Mac where
 import Clash.Explicit.Prelude hiding ((:<))
 
 import Bittide.Extra.Maybe
+import Bittide.SharedTypes
+import Bittide.Wishbone
 import Clash.Annotations.Primitive
 import Clash.Cores.Xilinx.Ethernet.Gmii.Internal
+import Data.Constraint.Nat.Extra
 import Data.List.Infinite (Infinite((:<)), (...))
 import Data.Maybe
 import Data.String.Interpolate (__i)
 import Protocols.Axi4.Stream
 import Protocols.Internal
+import Protocols.Wishbone
+
+import qualified Clash.Prelude as CP
 
 data EthMacStatus = EthMacStatus
   { txFifoUnderflow :: "txFifoUnderflow" ::: Bool
@@ -28,6 +34,36 @@ data EthMacStatus = EthMacStatus
   , rxFifoBadFrame :: "rxFifoBadFrame" ::: Bool
   , rxFifoGoodFrame :: "rxFifoGoodFrame" ::: Bool
   } deriving (Generic, NFDataX, BitPack)
+
+-- | Wishbone peripheral that keeps track of the status flags of the Ethernet MAC.
+-- Every cycle that a flag is set, will be counted with a counter. The width of the counters
+-- is configurable using the first `SNat counterWidth` argument.
+macStatusInterfaceWb ::
+  forall dom aw nBytes counterWidth .
+  ( CP.HiddenClockResetEnable dom
+  , KnownNat nBytes
+  , KnownNat aw
+  , 2 <= aw
+  , 1 <= nBytes
+  , counterWidth <= nBytes * 8)  =>
+  -- | Number of bits of the counters
+  SNat counterWidth ->
+  Circuit
+    (Wishbone dom 'Standard aw (Bytes nBytes), CSignal dom EthMacStatus)
+    ()
+macStatusInterfaceWb SNat = case (cancelMulDiv @nBytes @8) of
+  Dict -> Circuit circuitGo
+   where
+    circuitGo ((wbM2S, macStatus), _) = ((wbS2M, pure ()), ())
+     where
+      (_, wbS2M) = unbundle $ wbToVec <$> counts <*> wbM2S
+      pulses = fmap bitCoerce macStatus :: Signal dom (Vec (BitSize EthMacStatus) Bool)
+      extendF = signExtend @_ @_ @(nBytes * 8 - counterWidth)
+      counts = bundle $ fmap (fmap (pack . extendF)) $ pulseCount <$> unbundle pulses
+      pulseCount :: Signal dom Bool -> Signal dom (Unsigned counterWidth)
+      pulseCount pulse = cnt
+       where
+        cnt = CP.regEn 0 (CP.isRising True pulse) (succ <$> cnt)
 
 ethMac1GFifoC ::
   ( KnownDomain sys
