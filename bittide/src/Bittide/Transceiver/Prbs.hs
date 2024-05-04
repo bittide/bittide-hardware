@@ -4,10 +4,20 @@
 
 {-# LANGUAGE GADTs #-}
 
+-- | A pseudo-random bit sequence (PRBS) generator and checker. These functions
+-- are used to test the signal integrity of transceivers. The generator generates
+-- a PRBS stream, while the checker checks whether the received stream is the
+-- same as the generated stream. Note that the checker is "self synchronizing",
+-- meaning that it will synchronize with the generator after /polyLength/ cycles.
 module Bittide.Transceiver.Prbs where
 
 import Clash.Explicit.Prelude
 
+-- | Configuration for a PRBS generator or checker. Note that this can only
+-- specify PRBS streams with two taps: the first tap is always the MSB
+-- (@polyLength@), and the second tap is the @polyTap@-th bit.
+--
+-- See https://en.wikipedia.org/wiki/Pseudorandom_binary_sequence for more information.
 data PrbsConfig polyLength polyTap nBits where
   PrbsConfig ::
     ( KnownNat polyLength
@@ -27,9 +37,9 @@ data PrbsConfig polyLength polyTap nBits where
     PrbsConfig polyLength polyTap nBits
 
 
--- | PRBS configuration where we use the full 64 data bits for the PRBS.
-prbsConf31w64 :: PrbsConfig 31 28 64
-prbsConf31w64 = PrbsConfig
+-- | PRBS31: @x^31 + x^28 + 1@
+prbsConf31 :: forall n . (31 <= n, KnownNat n) => PrbsConfig 31 28 n
+prbsConf31 = leToPlus @31 @n $ PrbsConfig
 
 
 prbsGen ::
@@ -57,9 +67,9 @@ prbsGen clk rst ena PrbsConfig =
      goPrbs :: BitVector polyLength -> (BitVector polyLength, BitVector polyLength)
      goPrbs bv = (o,o)
       where
-       o = nb +>>. bv
+       o = newBit +>>. bv
        tap = SNat @(polyLength - polyTap)
-       nb = xor (lsb bv) (unpack $ slice tap tap bv)
+       newBit = xor (lsb bv) (unpack $ slice tap tap bv)
 
 
 prbsChecker ::
@@ -69,24 +79,22 @@ prbsChecker ::
   PrbsConfig polyLength polyTap nBits ->
   Signal dom (BitVector nBits) ->
   Signal dom (BitVector nBits)
-prbsChecker clk rst ena PrbsConfig = mealy clk rst ena go (maxBound, maxBound)
+prbsChecker clk rst ena PrbsConfig =
+  moore clk rst ena go snd (maxBound, maxBound)
  where
   go ::
     (BitVector polyLength, BitVector nBits) ->
     BitVector nBits ->
-    ((BitVector polyLength, BitVector nBits), BitVector nBits)
-  go (prbs_reg, prbs_out_prev) prbsIn =
-    ( (prbs_state, pack $ reverse prbs_out)
-    , prbs_out_prev
-    )
+    (BitVector polyLength, BitVector nBits)
+  go (prbs_reg, _) prbsIn = (prbs_state, pack $ reverse prbs_out)
    where
      prbs_out :: Vec nBits Bit
      prbs_state :: BitVector polyLength
      (prbs_state, prbs_out) = mapAccumL goPrbs prbs_reg (reverse $ unpack prbsIn)
 
      goPrbs :: BitVector polyLength -> Bit -> (BitVector polyLength, Bit)
-     goPrbs bv inp = (o, bitErr)
+     goPrbs bv newBit = (o, bitErr)
       where
-       o = inp +>>. bv
+       o = newBit +>>. bv
        tap = SNat @(polyLength - polyTap)
-       bitErr = xor inp (xor (lsb bv) (unpack $ slice tap tap bv))
+       bitErr = xor newBit (xor (lsb bv) (unpack $ slice tap tap bv))
