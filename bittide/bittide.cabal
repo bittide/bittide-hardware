@@ -156,6 +156,7 @@ library
     Bittide.SharedTypes
     Bittide.Switch
     Bittide.Transceiver
+    Bittide.Transceiver.Prbs
     Bittide.Wishbone
     Clash.Cores.Extra
     Clash.Cores.UART.Extra
