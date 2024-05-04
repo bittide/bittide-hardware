@@ -186,6 +186,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
+      defTransceiverOptions
       refClk sysClk gthAllReset
       channelNames clockPaths rxns rxps
 

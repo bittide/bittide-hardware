@@ -98,6 +98,7 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
+      defTransceiverOptions{debugVio=True, debugIla=True}
       refClk sysClk gthAllReset
       (takeI channelNames) (takeI clockPaths) rxns rxps
 

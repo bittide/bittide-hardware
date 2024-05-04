@@ -14,15 +14,32 @@
 
 module Bittide.Transceiver where
 
+import Clash.Cores.Xilinx.GTH
+import Clash.Cores.Xilinx.Ila (IlaConfig(advancedTriggers, depth, stages), ilaConfig, ila, Depth(D2048))
+import Clash.Cores.Xilinx.VIO (vioProbe)
+import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra (xpmCdcMaybeLossy)
+import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Explicit.Prelude
 import Clash.Explicit.Reset.Extra
-import Clash.Cores.Xilinx.GTH
-import Clash.Cores.Xilinx.Xpm.Cdc.Single
+import Control.Monad (when)
 import Data.Maybe (isNothing, fromMaybe)
 
 import Bittide.Arithmetic.Time
 import Bittide.SharedTypes (Bytes, Byte)
 import Bittide.Transceiver.Prbs (prbsChecker, prbsConf31, prbsGen)
+
+data TransceiverOptions = TransceiverOptions
+  { debugVio :: Bool
+  -- ^ Instantiate a debug VIOs
+  , debugIla :: Bool
+  -- ^ Instantiate a debug ILAs
+  }
+
+defTransceiverOptions :: TransceiverOptions
+defTransceiverOptions = TransceiverOptions
+  { debugVio = False
+  , debugIla = False
+  }
 
 -- | Careful: the domains for each transceiver are different, even if their
 -- types say otherwise.
@@ -78,6 +95,8 @@ transceiverPrbsN ::
   , HasSynchronousReset freeclk
   , HasDefinedInitialValues freeclk
   ) =>
+  TransceiverOptions ->
+
   Clock refclk ->
   Clock freeclk ->
 
@@ -90,7 +109,7 @@ transceiverPrbsN ::
   Vec chansUsed (Signal rxS (BitVector 1)) ->
 
   TransceiverOutputs chansUsed tx rx txS freeclk
-transceiverPrbsN refclk freeclk rst chanNms clkPaths rxns rxps = TransceiverOutputs
+transceiverPrbsN opts refclk freeclk rst chanNms clkPaths rxns rxps = TransceiverOutputs
   { txClocks = map (.txClock) outputs
   , rxClocks = map (.rxClock) outputs
   , txPs     = map (.txP)     outputs
@@ -99,9 +118,10 @@ transceiverPrbsN refclk freeclk rst chanNms clkPaths rxns rxps = TransceiverOutp
   , stats    = map (.stats)   outputs
   }
  where
-  outputs = zipWith4 (transceiverPrbs refclk freeclk rst) chanNms clkPaths rxns rxps
+  outputs = zipWith4 (transceiverPrbs opts refclk freeclk rst) chanNms clkPaths rxns rxps
 
 transceiverPrbs ::
+  forall tx rx refclk freeclk txS rxS .
   ( HasSynchronousReset tx
   , HasDefinedInitialValues tx
 
@@ -111,6 +131,7 @@ transceiverPrbs ::
   , HasSynchronousReset freeclk
   , HasDefinedInitialValues freeclk
   ) =>
+  TransceiverOptions ->
 
   Clock refclk ->
   Clock freeclk ->
@@ -124,15 +145,59 @@ transceiverPrbs ::
   Signal rxS (BitVector 1) ->
 
   TransceiverOutput tx rx txS freeclk
-transceiverPrbs gtrefclk freeclk rst_all_in chan clkPath rxn rxp = TransceiverOutput
-  { txClock = tx_clk
-  , rxClock = rx_clk
-  , txP = txp
-  , txN = txn
-  , linkUp = link_up
-  , stats = stats
-  }
+transceiverPrbs opts gtrefclk freeclk rst_all_in chan clkPath rxn rxp =
+           when opts.debugVio debugVio
+  `hwSeqX` when opts.debugVio debugIla
+  `hwSeqX` result
  where
+  debugIla :: Signal freeclk ()
+  debugIla = ila
+    ((ilaConfig $
+         "ila_probe_prbsErrors"
+      :> "ila_probe_linkUp"
+      :> "ila_probe_stats_txRetries"
+      :> "ila_probe_stats_rxRetries"
+      :> "ila_probe_stats_rxFullRetries"
+      :> "ila_probe_stats_failAfterUps"
+      :> "capture"
+      :> "trigger"
+      :> Nil) { advancedTriggers = True, stages = 1, depth = D2048 })
+    freeclk
+    (xpmCdcMaybeLossy  rx_clk freeclk (Just <$> prbsErrors))
+    (xpmCdcSingle rx_clk freeclk result.linkUp)
+    ((.txRetries) <$> stats)
+    ((.rxRetries) <$> stats)
+    ((.rxFullRetries) <$> stats)
+    ((.failAfterUps) <$> stats)
+    (pure True :: Signal freeclk Bool) -- capture
+    (xpmCdcSingle rx_clk freeclk link_up) -- trigger
+
+  debugVio :: Signal freeclk ()
+  debugVio = vioProbe
+    (  "probe_link_up"
+    :> "probe_stats_txRetries"
+    :> "probe_stats_rxRetries"
+    :> "probe_stats_rxFullRetries"
+    :> "probe_stats_failAfterUps"
+    :> Nil )
+    Nil
+    ()
+    freeclk
+    (xpmCdcSingle rx_clk freeclk result.linkUp)
+    ((.txRetries) <$> stats)
+    ((.rxRetries) <$> stats)
+    ((.rxFullRetries) <$> stats)
+    ((.failAfterUps) <$> stats)
+
+  result = TransceiverOutput
+    { txClock = tx_clk
+    , rxClock = rx_clk
+    , txP = txp
+    , txN = txn
+    , linkUp = link_up
+    , stats = stats
+    }
+
   (txn, txp, tx_clk, rx_clk, rx_data, reset_tx_done, reset_rx_done, tx_active)
     = gthCore
         chan clkPath
@@ -163,8 +228,8 @@ transceiverPrbs gtrefclk freeclk rst_all_in chan clkPath rxn rxp = TransceiverOu
       unsafeFromActiveLow $ fmap bitCoerce reset_rx_done
 
   prbsErrors = prbsChecker rx_clk rxReset enableGen prbsConfig rx_data
-  anyErrors = fmap (pack . reduceOr) prbsErrors
-  link_up = linkStateTracker rx_clk rxReset anyErrors
+  anyPrbsErrors = prbsErrors ./=. pure 0
+  link_up = linkStateTracker rx_clk rxReset anyPrbsErrors
 
   -- XPM_CDC_SINGLE config used to synchronize 'reset_tx_done' and
   -- 'reset_rx_done'. We use Xilinx's defaults, except for 'registerInput' which
@@ -204,13 +269,15 @@ isUp _ = False
 -- stable, if no errors were detected for a number of cycles (see "LinkSt").
 -- Whenever a bit error is detected, it immediately deasserts its output.
 linkStateTracker ::
-  (KnownDomain dom, KnownNat w) =>
+  KnownDomain dom =>
   Clock dom ->
   Reset dom ->
-  Signal dom (BitVector w) ->
+  Signal dom Bool ->
+  -- ^ PRBS error detected
   Signal dom Bool
+  -- ^ Link OK
 linkStateTracker clk rst =
-  mooreB clk rst enableGen update isUp initSt . fmap (/= 0)
+  mooreB clk rst enableGen update isUp initSt
  where
   initSt = Down maxBound
 
