@@ -18,8 +18,10 @@ import Clash.Explicit.Prelude
 import Clash.Explicit.Reset.Extra
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
+import Data.Maybe (isNothing, fromMaybe)
 
 import Bittide.Arithmetic.Time
+import Bittide.SharedTypes (Bytes, Byte)
 
 -- | Careful: the domains for each transceiver are different, even if their
 -- types say otherwise.
@@ -144,17 +146,22 @@ transceiverPrbs gtrefclk freeclk rst_all_in chan clkPath rxn rxp = TransceiverOu
         noReset -- gtwiz_reset_rx_pll_and_datapath_in
         (delayReset Asserted freeclk rst_rx {-* filter glitches *-}) -- gtwiz_reset_rx_datapath_in
         gtwiz_userdata_tx_in
-        txctrl2
+        txctrl
         freeclk -- drpclk_in
         gtrefclk -- gtrefclk0_in
 
-  (gtwiz_userdata_tx_in,txctrl2) = prbsStimuliGen tx_clk txStimRst
+  prbsConfig = prbsConf31w64
+
+  (commas, txctrl) = commaGen defCommaGenCycles tx_clk txStimRst
+  commasDone = isNothing <$> commas
+  prbs = prbsGen tx_clk (unsafeFromActiveLow commasDone) enableGen prbsConfig
+  gtwiz_userdata_tx_in = fromMaybe <$> prbs <*> commas
 
   rxReset =
     xpmResetSynchronizer Asserted rx_clk rx_clk $
       unsafeFromActiveLow $ fmap bitCoerce reset_rx_done
 
-  prbsErrors = prbsChecker rx_clk rxReset enableGen prbsConf31w64 rx_data
+  prbsErrors = prbsChecker rx_clk rxReset enableGen prbsConfig rx_data
   anyErrors = fmap (pack . reduceOr) prbsErrors
   link_up = linkStateTracker rx_clk rxReset anyErrors
 
@@ -214,33 +221,36 @@ linkStateTracker clk rst =
       Down n -> Down (n - 1)
       Up -> Up
 
-prbsStimuliGen ::
-  forall dom .
-  KnownDomain dom =>
+-- | Number of cycles to generate commas for, pulled from Xilinx example code.
+defCommaGenCycles :: SNat 10240
+defCommaGenCycles = SNat
+
+-- | Generate commas (transceiver alignment symbols) for a number of cycles
+commaGen ::
+  forall nCycles nBytes dom .
+  ( KnownDomain dom
+  , KnownNat nBytes
+  , 1 <= nCycles ) =>
+  SNat nCycles ->
   Clock dom ->
   Reset dom ->
-  ( Signal dom (BitVector 64)
-  , Signal dom (BitVector 8) )
-prbsStimuliGen clk rst =
-  ( mux sendCommas (pure commas)   prbs
-  , mux sendCommas (pure maxBound) (pure 0))
+  -- | (comma, tx control)
+  ( Signal dom (Maybe (Bytes nBytes))
+  , Signal dom (BitVector nBytes)
+  )
+commaGen _nCycles@SNat clk rst =
+  ( mux sendCommas (pure $ Just commas) (pure Nothing)
+  , mux sendCommas (pure maxBound)      (pure 0)
+  )
  where
-  comma :: BitVector 8
+  comma :: Byte
   comma = 0xbc
 
-  commas :: BitVector 64
-  commas = pack $ repeat comma
+  commas :: Bytes nBytes
+  commas = pack (repeat comma)
 
-  sendCommas :: Signal dom Bool
-  sendCommas =
-    moore
-      clk rst enableGen
-      (\s _ -> satSucc SatBound s)
-      (/= maxBound)
-      (0::Index 10240)
-      (pure ())
-
-  prbs = prbsGen clk rst enableGen prbsConf31w64
+  sendCommas = counter ./=. pure maxBound
+  counter = register clk rst enableGen (0 :: Index nCycles) (satSucc SatBound <$> counter)
 
 data PrbsConfig polyLength polyTap nBits where
   PrbsConfig ::
