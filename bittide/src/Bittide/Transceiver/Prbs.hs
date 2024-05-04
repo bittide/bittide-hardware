@@ -49,17 +49,15 @@ prbsGen ::
   PrbsConfig polyLength polyTap nBits ->
   Signal dom (BitVector nBits)
 prbsGen clk rst ena PrbsConfig =
-  mealy clk rst ena go (maxBound, maxBound) (pure ())
+  moore clk rst ena go snd (maxBound, maxBound) (pure ())
  where
   go ::
     (BitVector polyLength, BitVector nBits) ->
     () ->
-    ((BitVector polyLength, BitVector nBits), BitVector nBits)
-  go (prbs_reg, prbs_out_prev) _ =
-    ( ( last prbs
-      , pack (reverse $ map msb prbs))
-    , prbs_out_prev
-    )
+    (BitVector polyLength, BitVector nBits)
+  go (prbs_reg, _) _ =
+    ( last prbs
+    , pack (reverse $ map msb prbs) )
    where
      prbs :: Vec nBits (BitVector polyLength)
      prbs = unfoldrI goPrbs prbs_reg
