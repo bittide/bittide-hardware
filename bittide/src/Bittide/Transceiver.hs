@@ -22,7 +22,7 @@ import Data.Maybe (isNothing, fromMaybe)
 
 import Bittide.Arithmetic.Time
 import Bittide.SharedTypes (Bytes, Byte)
-import Bittide.Transceiver.Prbs (prbsChecker, prbsConf31w64, prbsGen)
+import Bittide.Transceiver.Prbs (prbsChecker, prbsConf31, prbsGen)
 
 -- | Careful: the domains for each transceiver are different, even if their
 -- types say otherwise.
@@ -151,7 +151,7 @@ transceiverPrbs gtrefclk freeclk rst_all_in chan clkPath rxn rxp = TransceiverOu
         freeclk -- drpclk_in
         gtrefclk -- gtrefclk0_in
 
-  prbsConfig = prbsConf31w64
+  prbsConfig = prbsConf31 @64
 
   (commas, txctrl) = commaGen defCommaGenCycles tx_clk txStimRst
   commasDone = isNothing <$> commas
