@@ -28,9 +28,9 @@ import Clash.Explicit.Prelude
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
-import Bittide.Hitl (HitlTests, NoPostProcData(..), hitlVioBool, allFpgas)
+import Bittide.Hitl (HitlTests, NoPostProcData(..), hitlVioBool)
 import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.Setup
+import Bittide.Instances.Hitl.Setup hiding (FpgaCount, TransceiverWires)
 import Bittide.Transceiver
 
 import Clash.Cores.Xilinx.GTH
@@ -40,6 +40,14 @@ import Clash.Xilinx.ClockGen
 import qualified Clash.Explicit.Prelude as E
 import qualified Data.Text as Text
 import qualified Data.Map as Map
+
+-- | The number of FPGAs in the current setup
+type FpgaCount = 2 :: Nat
+
+-- | Data wires from/to transceivers. No logic should be inserted on these
+-- wires. Should be considered asynchronous to one another - even though their
+-- domain encodes them as related.
+type TransceiverWires dom = Vec (FpgaCount - 1) (Signal dom (BitVector 1))
 
 
 -- | Worker function for 'transceiversUpTest'. See module documentation for more
@@ -91,7 +99,7 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       refClk sysClk gthAllReset
-      channelNames clockPaths rxns rxps
+      (takeI channelNames) (takeI clockPaths) rxns rxps
 
   syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
   linkUps = zipWith syncLink transceivers.rxClocks transceivers.linkUps
@@ -172,4 +180,4 @@ tests :: HitlTests ()
 tests = Map.fromList testsAsList
  where
   testNames = ["T" <> Text.pack (show n) | n <- [(0::Int)..2]]
-  testsAsList = [(nm, (allFpgas (), NoPostProcData)) | nm <- testNames]
+  testsAsList = [(nm, ([(0, ()), (3, ())], NoPostProcData)) | nm <- testNames]
