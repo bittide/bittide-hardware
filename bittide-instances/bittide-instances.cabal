@@ -136,6 +136,7 @@ library
     Bittide.Instances.Pnr.Si539xSpi
     Bittide.Instances.Pnr.StabilityChecker
     Bittide.Instances.Pnr.Synchronizer
+    Bittide.Instances.Pnr.TemperatureMonitor
 
     -- Paths
     Paths.Bittide.Instances

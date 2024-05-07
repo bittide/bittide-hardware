@@ -194,6 +194,8 @@ targets = map enforceValidTarget
   , defTarget "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
   , defTarget "Bittide.Instances.Pnr.StabilityChecker.stabilityChecker_3_1M"
   , defTarget "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
+  , (defTarget "Bittide.Instances.Pnr.TemperatureMonitor.temperatureMonitorTop")
+      { targetHasXdc = True, targetHasVio = True}
 
   , (testTarget "Bittide.Instances.Hitl.BoardTest.boardTestExtended")
       {targetPostProcess = Just "post-board-test-extended"}
