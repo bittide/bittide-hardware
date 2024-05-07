@@ -157,14 +157,12 @@ sysMon ::
   -- | (SYSMON status ports, DRP data ready, DRP data)
   Signal dom (SysMonStatus, Bool, BitVector 16)
 sysMon dClk rst dEn dAddr dWe dI
-  | natToInteger @(DomainPeriod dom) > 1_326_000_000
-  = clashCompileError $ "DRP clock cannot be larger than 1326 MHz, but is " <> show (natToInteger @(DomainPeriod dom))
+  | clk_div > 255 = clashCompileError $ "ADC clock divider cannot be larger than 255, but is " <> show clk_div
   | clashSimulation = sim
   | otherwise = synth
  where
   -- Definition used for HDL generation
-  clk_div :: BitVector 8
-  clk_div = natToNum @(AdcClockDiv dom)
+  clk_div = natToNum @(AdcClockDiv dom) `shiftL` 8
   synth = bundle (sysMonStatus,dRdy,dO)
    where
     sysMonStatus = SysMonStatus <$> busy <*> channel <*> eoc <*> eos
@@ -209,7 +207,7 @@ sysMon dClk rst dEn dAddr dWe dI
         -- INIT_40 - INIT_44: SYSMON configuration registers
         (Param @"INIT_40" @(BitVector 16) 0x9000) -- 16 sample average filter, disable averaging of calibration coefficients
         (Param @"INIT_41" @(BitVector 16) 0x2ED0) -- Continuous seq mode, disable ALM[6:4], enable calibration
-        (Param @"INIT_42" @(BitVector 16) (clk_div ++# 0))
+        (Param @"INIT_42" @(BitVector 16) clk_div) -- DCLK-div=4
         (Param @"INIT_43" @(BitVector 16) 0x000F) -- Disable ALM[11:8]
         (Param @"INIT_44" @(BitVector 16) 0)
         -- INIT_46 - INIT_4F: Sequence Registers
