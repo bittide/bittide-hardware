@@ -4,8 +4,8 @@ Strict caching script, that uploads to a hardcoded S3 server. Users should set
 an environment variable 'S3_PASSWORD'.
 
 Usage:
-  cache push (cabal|cargo|build) [--empty-pattern-ok] [--write-cache-found] [--overwrite-ok]
-  cache pull (cabal|cargo|build) [--missing-ok] [--overwrite-ok] [--write-cache-found]
+  cache push (cabal|cargo|build|build-post-synth) [--prefix=<prefix>] [--empty-pattern-ok] [--write-cache-found] [--overwrite-ok]
+  cache pull (cabal|cargo|build|build-post-synth) [--prefix=<prefix>] [--missing-ok] [--overwrite-ok] [--write-cache-found]
   cache clean
   cache -h | --help
   cache --version
@@ -17,6 +17,7 @@ Options:
   --overwrite-ok       Allow file overwrites on pull, or cache overwrites on push
   --write-cache-found  Writes '0' or '1' to 'cache_found', depending on whether a cache existed
   --empty-pattern-ok   Allow patterns to not match any files
+  --prefix=<prefix>    Add prefix to the cache key
 """
 
 # SPDX-FileCopyrightText: 2022-2024 Google LLC
@@ -71,6 +72,15 @@ BUILD_CACHE_PATTERNS = (
     f"{PWD}/dist-newstyle/",
 )
 
+BUILD_POST_SYNTH_CACHE_BUST = 1
+BUILD_POST_SYNTH_KEY_PREFIX = f"build-products-post-synth-g{GLOBAL_CACHE_BUST}-l{BUILD_CACHE_BUST}-"
+BUILD_POST_SYNTH_CACHE_PATTERNS = (
+    f"{PWD}/_build/clash",
+    f"{PWD}/_build/vivado",
+    f"{PWD}/_build/.shake.database",
+    f"{PWD}/_build/.shake.lock",
+)
+
 def log(msg):
     """A poor man's logging function"""
     print(f"[{datetime.datetime.now().isoformat()}] {msg}", file=sys.stderr)
@@ -123,6 +133,10 @@ def get_build_key():
     return BUILD_KEY_PREFIX + os.environ["GITHUB_SHA"]
 
 
+def get_build_post_synth_key():
+    return BUILD_POST_SYNTH_KEY_PREFIX + os.environ["GITHUB_SHA"]
+
+
 def get_random_string():
     return ''.join(random.choice(string.ascii_letters) for i in range(10))
 
@@ -145,8 +159,10 @@ def parse_ls_line(line):
     return timestamp, filename
 
 class Mc:
-    def __init__(self, key):
+    def __init__(self, key, *, prefix=None):
         self.key = key
+        if prefix is not None:
+            self.key = f"{prefix}-{self.key}"
         self.password = os.environ["S3_PASSWORD"]
         self._run(["mc", "alias", "set", "cache", CACHE_URL, CACHE_USER, self.password])
         self._run(["mc", "mb", "--ignore-existing", self._get_bucket()])
@@ -318,13 +334,16 @@ def main(opts):
     elif opts["build"]:
         key = get_build_key()
         patterns = BUILD_CACHE_PATTERNS
+    elif opts["build-post-synth"]:
+        key = get_build_post_synth_key()
+        patterns = BUILD_POST_SYNTH_CACHE_PATTERNS
     elif opts["clean"]:
         key = None
         patterns = ()
     else:
         raise ValueError("Unrecognized name")
 
-    mc = Mc(key)
+    mc = Mc(key, prefix=opts["--prefix"])
 
     if opts["clean"]:
         mc.clean()
