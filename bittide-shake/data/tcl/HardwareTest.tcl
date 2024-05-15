@@ -58,7 +58,8 @@ set fpga_ids {
 
 # Timeout specifying how long we should wait for a test to finish before
 # considering it a failed test.
-set test_timeout_ms 60000
+# Increased to 24 hours and 20 minutes for the static clock drift test.
+set test_timeout_ms 87600000
 
 # Timeout specifying how long to wait for hardware targets (FPGAs) to become
 # available in the hardware server.

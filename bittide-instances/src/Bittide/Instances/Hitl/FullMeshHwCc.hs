@@ -413,15 +413,17 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   (   txns, txps, hwFincFdecs, _callistoResult, _callistoReset
     , _dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allReady
-    , allStable ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso
+    , _allStable ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso
 
   -- check that tests are not synchronously start before all
   -- transceivers are up
   startBeforeAllReady = sticky sysClk syncRst
     (syncStart .&&. ((not <$> allReady) .||. transceiversFailedAfterUp))
 
-  endSuccess :: Signal Basic125 Bool
-  endSuccess = trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
+  testDone :: Signal Basic125 Bool
+  testDone = sticky sysClk syncRst driftTestEnd
+   where
+    driftTestEnd = (fst <$> ilaControl.globalTimestamp) .==. (natToNum @DriftTestEndCount)
 
   startTest :: Signal Basic125 Bool
   startTest =
@@ -429,7 +431,7 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       sysClk
 
       -- done
-      (endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllReady)
+      (testDone .||. transceiversFailedAfterUp .||. startBeforeAllReady)
 
       -- success
       (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady))

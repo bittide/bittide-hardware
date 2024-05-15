@@ -695,6 +695,9 @@ jobs:
   bittide-instances-hardware-in-the-loop:
     name: HITL
     runs-on: [self-hosted, hardware-access]
+    # Timeout specifically for the static clock drift test, which should run for 24h. Timeout is set
+    # to 24 hours and 40 minutes to have a margin.
+    timeout-minutes: 1480
     defaults:
       run:
         # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu

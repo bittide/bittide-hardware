@@ -20,6 +20,7 @@ module Bittide.Instances.Hitl.IlaPlot
   , AccWindowHeight
   , CompressedBufferSize
   , MaxPulseCount
+  , DriftTestEndCount
     -- * Timestamp Types
   , GlobalTimestamp
   , LocalTimestamp
@@ -86,16 +87,18 @@ type AccWindowHeight = 5 :: Nat
 
 -- | The period of the sync pulse used to share a synchronized time
 -- stamp between the nodes.
-type SyncPulsePeriod = Milliseconds 5
+type SyncPulsePeriod = Milliseconds 400
 
 -- | The period of the scheduled capture (must be a multiple of 'SyncPulsePeriod').
-type ScheduledCapturePeriod = Milliseconds 20
+type ScheduledCapturePeriod = Milliseconds 1600
 
 -- | An upper bound on the number of synchronized pulses during a test
--- run. The bound allows to count pulses up to 5 minutes without
+-- run. The bound allows to count pulses up to 25 hours without
 -- producing an overflow. We assume that the test has finished or was
 -- canceled within that time.
-type MaxPulseCount = DDiv (5 * 60 * Seconds 1) SyncPulsePeriod
+type MaxPulseCount = DDiv (25 * 60 * 60 * Seconds 1) SyncPulsePeriod
+
+type DriftTestEndCount = DDiv (24 * 60 * 60 * Seconds 1) SyncPulsePeriod
 
 -- | The number of cycles within the given domain that fit into one
 -- sync pulse period.
@@ -537,7 +540,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
   ilaInstance :: Signal sys ()
   ilaInstance =
     setName @"ilaPlot" $ ila
-      (ilaConfig ilaProbeNames) { depth = D16384, stages = 2 }
+      (ilaConfig ilaProbeNames) { depth = D131072, stages = 2 }
       -- the ILA must run on a stable clock
       clk
       -- trigger as soon as we start
