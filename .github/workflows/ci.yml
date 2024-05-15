@@ -670,6 +670,9 @@ jobs:
           .github/scripts/with_vivado.sh \
             shake ${{ matrix.target.top }}:"${target}"
 
+      - name: cache push build-post-synth
+        run: cache push build-post-synth --prefix="${{ matrix.target.top }}"
+
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -725,15 +728,11 @@ jobs:
         run: |
           cp .github/cabal.project cabal.project.local
 
-      - name: Download artifact _build directory
-        uses: actions/download-artifact@v4
-        with:
-          name: _build-${{ matrix.target.top }}
-          path: _build
-
       - run: cache pull cabal
       - run: cache pull cargo
       - run: cache pull build
+      - name: cache pull build-post-synth
+        run: cache pull build-post-synth --prefix="${{ matrix.target.top }}"
 
       - name: Run tests on hardware
         run: |
