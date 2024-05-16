@@ -18,16 +18,17 @@ import Clash.Prelude (withClockResetEnable)
 
 import Bittide.Transceiver.ResetManager (IndexMs)
 import Bittide.ElasticBuffer (sticky)
-import Bittide.Arithmetic.Time (Milliseconds, trueFor)
+import Bittide.Arithmetic.Time (Milliseconds, trueForSteps)
+import Clash.Class.Counter (countSucc)
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (IlaConfig(advancedTriggers, depth, stages), ilaConfig, ila, Depth(D1024))
 import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc.ArraySingle (xpmCdcArraySingle)
-import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra (xpmCdcMaybeLossy)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Explicit.Reset.Extra (Asserted(Asserted), delayReset, xpmResetSynchronizer)
 import Control.Monad (when)
 import Data.Maybe (isNothing, fromMaybe)
+import Data.Proxy
 
 import qualified Bittide.Transceiver.Cdc as Cdc
 import qualified Bittide.Transceiver.Comma as Comma
@@ -61,7 +62,11 @@ data Meta = Meta
 prettifyMetaBits :: BitVector 8 -> BitVector 12
 prettifyMetaBits bv = pack $
   let meta = unpack @Meta bv in
-  (low, low, meta.prbsOk, meta.lastPrbsWord, low, meta.fpgaIndex, low, meta.transceiverIndex)
+  ( low, low, meta.prbsOk
+  , meta.lastPrbsWord
+  , low, meta.fpgaIndex
+  , low, meta.transceiverIndex
+  )
 
 data TransceiverOptions dom = TransceiverOptions
   { debugVio :: Bool
@@ -100,6 +105,8 @@ data TransceiverOutputs n tx rx txS freeclk = TransceiverOutputs
   -- ^ Transmit data (and implicitly a clock), negative
   , linkUps :: Vec n (Signal freeclk Bool)
   -- ^ True if the link is considered stable. See 'PRBS.tracker'.
+  , linkUpAfterMs :: Vec n (Signal freeclk (Unsigned 32))
+  -- ^ Number of milliseconds it took for the transceivers to come up
   , stats :: Vec n (Signal freeclk ResetManager.Statistics)
   -- ^ Statistics exported by 'ResetManager.resetManager'
   }
@@ -120,6 +127,8 @@ data TransceiverOutput tx rx txS freeclk = TransceiverOutput
   -- ^ Transmit data (and implicitly a clock), negative
   , linkUp :: Signal freeclk Bool
   -- ^ True if the link is considered stable. See 'Prbs.Tracker'.
+  , linkUpAfterMs :: Signal freeclk (Unsigned 32)
+  -- ^ Number of milliseconds it took for this transceiver to come up
   , stats :: Signal freeclk ResetManager.Statistics
   -- ^ Statistics exported by 'ResetManager.resetManager'
   }
@@ -151,12 +160,13 @@ transceiverPrbsN ::
 
   TransceiverOutputs chansUsed tx rx txS freeclk
 transceiverPrbsN opts refclk freeclk rst chanNms clkPaths rxns rxps = TransceiverOutputs
-  { txClocks = map (.txClock) outputs
-  , rxClocks = map (.rxClock) outputs
-  , txPs     = map (.txP)     outputs
-  , txNs     = map (.txN)     outputs
-  , linkUps  = map (.linkUp)  outputs
-  , stats    = map (.stats)   outputs
+  { txClocks      = map (.txClock)       outputs
+  , rxClocks      = map (.rxClock)       outputs
+  , txPs          = map (.txP)           outputs
+  , txNs          = map (.txN)           outputs
+  , linkUps       = map (.linkUp)        outputs
+  , stats         = map (.stats)         outputs
+  , linkUpAfterMs = map (.linkUpAfterMs) outputs
   }
  where
   transIndices = iterateI (+1) 0
@@ -261,23 +271,21 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
   debugVio :: Signal freeclk ()
   debugVio = vioProbe
     (  "probe_link_up"
-    :> "probe_alignedAlignBits"
-    :> "probe_alignedMetaBits"
-    :> "probe_stats_txRetries"
-    :> "probe_stats_rxRetries"
-    :> "probe_stats_rxFullRetries"
-    :> "probe_stats_failAfterUps"
+    :> "probe_resetManager_txRetries"
+    :> "probe_resetManager_rxRetries"
+    :> "probe_resetManager_rxFullRetries"
+    :> "probe_resetManager_failAfterUps"
+    :> "probe_linkUpAfter"
     :> Nil )
     Nil
     ()
     freeclk
     linkUp
-    (xpmCdcMaybeLossy rx_clk freeclk (Just <$> alignedAlignBits))
-    (xpmCdcMaybeLossy rx_clk freeclk (Just <$> alignedMetaBits))
     ((.txRetries) <$> stats)
     ((.rxRetries) <$> stats)
     ((.rxFullRetries) <$> stats)
     ((.failAfterUps) <$> stats)
+    linkUpAfter
 
   result = TransceiverOutput
     { txClock = tx_clk
@@ -285,12 +293,21 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
     , txP = txp
     , txN = txn
     , linkUp = linkUp
+    , linkUpAfterMs = linkUpAfterMs
     , stats = stats
     }
 
   failAfterUp = isFalling freeclk rst_all_in enableGen False linkUp
   counter = register freeclk rst_all_in enableGen (0 :: IndexMs freeclk 10_000) (satSucc SatBound <$> counter)
   timeout = counter .==. pure maxBound
+
+  linkUpAfter@(unbundle -> (linkUpAfterMs, _)) =
+    register
+      freeclk
+      rst_all_in
+      (toEnable (not <$> linkUp))
+      (0 :: Unsigned 32, 0 :: IndexMs freeclk 1)
+      (countSucc <$> linkUpAfter)
 
   linkUp =
          withLockTxFree userDataTx
@@ -359,7 +376,13 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
       (pure True)
       (Prbs.tracker rx_clk rxReset (anyPrbsErrors .||. alignError))
 
-  prbsOkDelayed = trueFor (SNat @(Milliseconds 500)) rx_clk rxReset prbsOk
+  -- 'prbsWaitMs' is the number of milliseconds representing the worst case time
+  -- it takes for the PRBS to stabilize. I.e., after this time we can be sure the
+  -- neighbor doesn't reset its transceiver anymore.
+  prbsWaitMs =
+          ((1 :: Unsigned 1) `add` opts.resetManagerConfig.rxRetries)
+    `mul` opts.resetManagerConfig.rxTimeout
+  prbsOkDelayed = trueForSteps (Proxy @(Milliseconds 1)) prbsWaitMs rx_clk rxReset prbsOk
   validMeta = mux userDataRx (pure False) prbsOkDelayed
 
   metaRx = mux validMeta (Just . unpack @Meta <$> alignedMetaBits) (pure Nothing)
@@ -401,5 +424,3 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
   withLockTxFree = Cdc.withLock tx_clk (unpack <$> reset_tx_done) freeclk rst_all_in
   withLockRxFree = Cdc.withLock rx_clk (unpack <$> reset_rx_done) freeclk rst_all_in
   withLockRxTx   = Cdc.withLock rx_clk (unpack <$> reset_rx_done) tx_clk txStimRst
-
-  -- withLockFreeRx = Cdc.withLock freeclk (unsafeToActiveLow rst_all_in) rx_clk rxReset
