@@ -236,6 +236,7 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
       :> "ila_probe_lastTxFree"
       :> "ila_probe_linkUpAfterMs"
       :> "ila_probe_linkUpAfterSubMs"
+      :> "ila_probe_ugn"
       :> "capture"
       :> "trigger"
       :> Nil) { advancedTriggers = True, stages = 1, depth = D1024 })
@@ -269,8 +270,13 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
     lastTxFree
     linkUpAfterMs
     linkUpAfterSubMs
+    ugn
     (pure True :: Signal freeclk Bool) -- capture
     (failAfterUp .||. (fmap not linkUp .&&. timeout) .||. lastTxFree) -- trigger
+
+  ugn = liftA2 (-) (xpmCdcArraySingle tx_clk freeclk gtwiz_userdata_tx_in)
+                   (xpmCdcArraySingle rx_clk freeclk rx_data0)
+
 
   debugVio :: Signal freeclk ()
   debugVio = vioProbe
