@@ -281,6 +281,7 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
     :> "probe_resetManager_failAfterUps"
     :> "probe_linkUpAfterMs"
     :> "probe_linkUpAfterSubMs"
+    :> "probe_transIndex"
     :> Nil )
     Nil
     ()
@@ -292,6 +293,7 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
     ((.failAfterUps) <$> stats)
     linkUpAfterMs
     linkUpAfterSubMs
+    (pure @(Signal freeclk) transIndex)
 
   result = TransceiverOutput
     { txClock = tx_clk
