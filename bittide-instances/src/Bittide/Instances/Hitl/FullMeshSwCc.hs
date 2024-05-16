@@ -131,11 +131,11 @@ fullMeshHwTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
   , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult 7)
   , "CALLISTO_RESET" ::: Reset Basic125
@@ -185,7 +185,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
 
   transceivers =
     transceiverPrbsN
-      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
+      @GthTx @GthRx @Ext200 @Basic125 @GthTxS @GthRxS
       defTransceiverOptions
       refClk sysClk gthAllReset
       channelNames clockPaths rxns rxps
@@ -278,11 +278,11 @@ fullMeshSwCcTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS
   , "" :::
       ( "FINC"      ::: Signal Basic125 Bool
       , "FDEC"      ::: Signal Basic125 Bool
