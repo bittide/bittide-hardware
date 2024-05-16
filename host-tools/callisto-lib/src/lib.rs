@@ -302,7 +302,7 @@ unsafe fn data_counts_from_ptr<'a>(ptr: *const ()) -> &'a [isize] {
 /// - `stability_checks_ptr` needs to point to a valid memory block holding
 ///   a `VecS n StabilityIndication`
 /// - `data_counts_ptr` needs to point to a valid memory address holding
-///   a `VecS n (DataCountS m)
+///   a `VecS n (RelDataCountS m)
 /// - `control_state_ptr` needs to point to a valid memory address holding
 ///   a `ControlSt`
 #[no_mangle]
