@@ -1,3 +1,6 @@
+-- SPDX-FileCopyrightText: 2024 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
 module Bittide.Transceiver.Comma where
 
 import Clash.Explicit.Prelude
