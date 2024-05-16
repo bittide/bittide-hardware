@@ -66,7 +66,7 @@ rustyCallisto config m scs counts st =
 
         poke pVSI $ VecS stabilityChecks
         poke pState state
-        poke pDataCounts $ VecS (DataCountS <$> dataCounts)
+        poke pDataCounts $ VecS (RelDataCountS <$> dataCounts)
         poke pConfig config
 
         callisto_rust
@@ -89,6 +89,6 @@ foreign import ccall safe "__c_callisto_rust" callisto_rust ::
   Ptr (ControlConfig m) ->
   Word32  ->
   Ptr (VecS n StabilityIndication) ->
-  Ptr (VecS n (DataCountS m)) ->
+  Ptr (VecS n (RelDataCountS m)) ->
   Ptr (ControlSt) ->
   IO ()
