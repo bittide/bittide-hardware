@@ -36,7 +36,7 @@ import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
 import qualified Clash.Explicit.Prelude as E
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, fromJust, isJust)
 import Data.Proxy
 import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
@@ -71,6 +71,7 @@ import Project.FilePath
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.GTH
+import Clash.Cores.Xilinx.SystemMonitor (temperatureMonitor)
 import Clash.Xilinx.ClockGen
 
 import Protocols
@@ -262,7 +263,15 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
   callistoResult =
     callistoClockControlWithIla @(FpgaCount - 1) @CccBufferSize
       (head transceivers.txClocks) sysClk clockControlReset clockControlConfig
-      IlaControl{..} availableLinkMask (fmap (fmap resize) domainDiffs)
+      IlaControl{..} availableLinkMask (fmap (fmap resize) domainDiffs) temperature
+
+  temperature =
+    E.regEn sysClk clockControlReset enableGen
+    0
+    (isJust <$> temperatureMaybe)
+    (fromJust <$> temperatureMaybe)
+  (_sysMonStatus, temperatureMaybe) = unbundle $
+    withClockResetEnable sysClk clockControlReset enableGen temperatureMonitor
 
   frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
   frequencyAdjustments =

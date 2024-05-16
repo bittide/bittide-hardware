@@ -218,7 +218,7 @@ data IlaControl dom =
     }
 
 -- | Names of the additional ILA plot probes.
-ilaProbeNames :: Vec 6 String
+ilaProbeNames :: Vec 7 String
 ilaProbeNames =
      "trigger_1"
   :> "capture_1"
@@ -226,6 +226,7 @@ ilaProbeNames =
   :> "syncPulse"
   :> "freeClock"
   :> "controlledClock"
+  :> "temperature"
   :> Nil
 
 -- | The ILA plot setup controller.
@@ -420,8 +421,10 @@ callistoClockControlWithIla ::
   -- ^ Link availability mask
   Vec n (Signal sys (DataCount m)) ->
   -- ^ Statistics provided by elastic buffers.
+  Signal sys (BitVector 10) ->
+  -- ^ Temperature measurement
   Signal sys (CallistoResult n)
-callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
+callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs temperature =
   hwSeqX ilaInstance ccResultOut
  where
   result = callistoClockControl clk rst enableGen ccc mask ebs
@@ -549,6 +552,8 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
       (snd <$> globalTimestamp)
       -- capture the local timestamp
       localTs
+      -- temperature
+      temperature
 
 -- | The state space of the Mealy machine for producing @SYNC_OUT@.
 data SyncOutGen dom =

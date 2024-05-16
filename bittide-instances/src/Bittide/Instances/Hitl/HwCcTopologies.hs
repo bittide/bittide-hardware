@@ -388,7 +388,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   callistoResult =
     callistoClockControlWithIla @(FpgaCount - 1) @CccBufferSize
       (head transceivers.txClocks) sysClk clockControlReset clockControlConfig
-      IlaControl{..} (mask <$> cfg) (fmap (fmap resize) domainDiffs)
+      IlaControl{..} (mask <$> cfg) (fmap (fmap resize) domainDiffs) (pure 0)
 
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
