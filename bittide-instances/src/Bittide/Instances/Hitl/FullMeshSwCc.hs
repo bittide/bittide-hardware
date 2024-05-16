@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
@@ -67,13 +68,13 @@ import Project.FilePath
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
-import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
 import Protocols
 import VexRiscv
 
+import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Data.Map as Map (singleton)
 
 clockControlConfig ::
@@ -140,7 +141,7 @@ fullMeshHwTest ::
   , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult 7)
   , "CALLISTO_RESET" ::: Reset Basic125
   , "DATA_COUNTERS" ::: Vec 7 (Signal Basic125 (DataCount 32))
-  , "stats" ::: Vec 7 (Signal Basic125 GthResetStats)
+  , "stats" ::: Vec 7 (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK" ::: Signal Basic125 Bool
@@ -163,7 +164,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   , spiDone
   , spiOut
   , transceiversFailedAfterUp
-  , allUp
+  , allReady
   , allStable0
   )
  where
@@ -186,14 +187,23 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
-      refClk sysClk gthAllReset
-      channelNames clockPaths rxns rxps
+      defTransceiverOptions
+      TransceiverInputs
+        { clock = sysClk
+        , reset = gthAllReset
+        , referenceClock = refClk
+        , channels = channelNames
+        , clockPaths
+        , rxNs = rxns
+        , rxPs = rxps
+        , txDatas = repeat (pure 0)
+        , txReadys = repeat (pure False)
+        , rxReadys = repeat (pure True)
+        }
 
-  syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
-  linkUps = zipWith syncLink transceivers.rxClocks transceivers.linkUps
-  allUp = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle linkUps)
+  allReady = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle transceivers.linkReadys)
   transceiversFailedAfterUp =
-    sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allUp)
+    sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
 
   timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
   timer = register sysClk syncRst enableGen (0, 0) (timeSucc <$> timer)
@@ -201,7 +211,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
 
   -- Clock control
   clockControlReset =
-      orReset (unsafeFromActiveLow allUp)
+      orReset (unsafeFromActiveLow allReady)
     $ orReset (unsafeFromActiveHigh transceiversFailedAfterUp)
               (unsafeFromActiveLow syncStart)
 
@@ -220,7 +230,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
   -- very confusing.
-  capture = (captureFlag .&&. allUp) .||. unsafeToActiveHigh syncRst
+  capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
 
   fincFdecIla :: Signal Basic125 ()
   fincFdecIla = ila
@@ -304,7 +314,7 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
 
   (   txns, txps, _hwFincFdecs, _callistoResult, callistoReset
-    , dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
+    , dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allReady
     , allStable ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso
 
   (riscvFinc, riscvFdec) =
@@ -312,8 +322,8 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   -- checks that tests are not synchronously start before all
   -- transceivers are up
-  startBeforeAllUp = sticky sysClk syncRst
-    (syncStart .&&. ((not <$> allUp) .||. transceiversFailedAfterUp))
+  startBeforeAllReady = sticky sysClk syncRst
+    (syncStart .&&. ((not <$> allReady) .||. transceiversFailedAfterUp))
 
   endSuccess :: Signal Basic125 Bool
   endSuccess = trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
@@ -324,10 +334,10 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       sysClk
 
       -- done
-      (endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp)
+      (endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllReady)
 
       -- success
-      (not <$> (transceiversFailedAfterUp .||. startBeforeAllUp))
+      (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady))
 
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.

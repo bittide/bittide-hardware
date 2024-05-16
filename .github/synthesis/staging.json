@@ -4,5 +4,6 @@
   {"top": "hwCcTopologyTest",              "stage": "test", "targets": "All"},
   {"top": "linkConfigurationTest",         "stage": "test", "targets": "All"},
   {"top": "safeDffSynchronizer",           "stage": "hdl"},
+  {"top": "transceiversUpTest",            "stage": "test", "targets": "All"},
   {"top": "vexRiscvTest",                  "stage": "test", "targets": "Specific [-1]"}
 ]

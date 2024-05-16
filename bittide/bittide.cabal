@@ -143,7 +143,11 @@ library
     Bittide.SharedTypes
     Bittide.Switch
     Bittide.Transceiver
+    Bittide.Transceiver.Cdc
+    Bittide.Transceiver.Comma
     Bittide.Transceiver.Prbs
+    Bittide.Transceiver.ResetManager
+    Bittide.Transceiver.WordAlign
     Bittide.Wishbone
     Clash.Cores.Extra
     Clash.Cores.UART.Extra
@@ -193,6 +197,7 @@ test-suite unittests
     Tests.Shared
     Tests.StabilityChecker
     Tests.Switch
+    Tests.Transceiver.WordAlign
     Tests.Wishbone
   build-depends:
     HUnit,

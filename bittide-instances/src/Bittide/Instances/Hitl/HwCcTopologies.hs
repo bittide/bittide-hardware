@@ -2,10 +2,11 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE MagicHash #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
@@ -74,7 +75,6 @@ import Project.FilePath
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
-import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
@@ -82,6 +82,7 @@ import Protocols hiding (SimulationConfig)
 import Protocols.Wishbone
 import VexRiscv
 
+import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Data.Map.Strict as Map (fromList)
 
 type AllStablePeriod = Seconds 5
@@ -251,7 +252,7 @@ topologyTest ::
   , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult (FpgaCount - 1))
   , "CALLISTO_RESET" ::: Reset Basic125
   , "DATA_COUNTERS" ::: Vec (FpgaCount - 1) (Signal Basic125 (DataCount 32))
-  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 GthResetStats)
+  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK" ::: Signal Basic125 Bool
@@ -259,7 +260,7 @@ topologyTest ::
       , "CSB"  ::: Signal Basic125 Bool
       )
   , "transceiversFailedAfterUp" ::: Signal Basic125 Bool
-  , "ALL_UP" ::: Signal Basic125 Bool
+  , "ALL_READY" ::: Signal Basic125 Bool
   , "ALL_STABLE"  ::: Signal Basic125 Bool
   , "CALIB_I" ::: Signal Basic125 InitialClockShift
   , "CALIB_E" ::: Signal Basic125 InitialClockShift
@@ -276,7 +277,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso c
   , spiDone
   , spiOut
   , transceiversFailedAfterUp
-  , allUp
+  , allReady
   , allStable0
   , calibratedClockShift
   , validationClockShift
@@ -327,14 +328,23 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso c
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
-      refClk sysClk gthAllReset
-      channelNames clockPaths rxns rxps
+      defTransceiverOptions
+      TransceiverInputs
+        { clock = sysClk
+        , reset = gthAllReset
+        , referenceClock = refClk
+        , channels = channelNames
+        , clockPaths
+        , rxNs = rxns
+        , rxPs = rxps
+        , txDatas = repeat (pure 0)
+        , txReadys = repeat (pure False)
+        , rxReadys = repeat (pure True)
+        }
 
-  syncLink rxClock = xpmCdcSingle rxClock sysClk
-  linkUps = zipWith syncLink transceivers.rxClocks transceivers.linkUps
-  allUp = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle linkUps)
+  allReady = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle transceivers.linkReadys)
   transceiversFailedAfterUp =
-    sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allUp)
+    sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
 
   timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
   timer = register sysClk syncRst enableGen (0, 0) (timeSucc <$> timer)
@@ -344,7 +354,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso c
 
   startupDelayRst =
       orReset (unsafeFromActiveLow clocksAdjusted)
-    $ orReset (unsafeFromActiveLow allUp)
+    $ orReset (unsafeFromActiveLow allReady)
     $ orReset (unsafeFromActiveHigh transceiversFailedAfterUp)
               (unsafeFromActiveLow syncStart)
 
@@ -371,7 +381,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso c
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
   -- very confusing.
-  capture = (captureFlag .&&. allUp) .||. unsafeToActiveHigh syncRst
+  capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
 
   fincFdecIla :: Signal Basic125 ()
   fincFdecIla = ila
@@ -519,7 +529,7 @@ hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   cfg = fromMaybe disabled <$> testConfig
 
   (   txns, txps, hwFincFdecs, callistoResult, callistoReset
-    , dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
+    , dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allReady
     , allStable, calibI, calibE
     ) = topologyTest refClk sysClk sysRst
           ilaControl { skipTest = skip }
@@ -531,8 +541,8 @@ hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   -- check that tests are not synchronously start before all
   -- transceivers are up
-  startBeforeAllUp = sticky sysClk syncRst
-    (startTest .&&. syncStart .&&. ((not <$> allUp) .||. transceiversFailedAfterUp))
+  startBeforeAllReady = sticky sysClk syncRst
+    (startTest .&&. syncStart .&&. ((not <$> allReady) .||. transceiversFailedAfterUp))
 
   endSuccess :: Signal Basic125 Bool
   endSuccess = trueFor (SNat @AllStablePeriod) sysClk syncRst allStable
@@ -540,8 +550,8 @@ hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
          .||. (\i e -> abs (i - e) < acceptableNoiseLevel) <$> calibI <*> calibE
          )
 
-  done = endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp
-  success = not <$> (transceiversFailedAfterUp .||. startBeforeAllUp)
+  done = endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllReady
+  success = not <$> (transceiversFailedAfterUp .||. startBeforeAllReady)
 
   skip =
     register sysClk sysRst enableGen False
@@ -606,7 +616,7 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   cfg = fromMaybe disabled <$> testConfig
 
   (   txns, txps, hwFincFdecs, _callistoResult, _callistoReset
-    , _dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allUp
+    , _dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allReady
     , allStable, calibI, calibE
     ) = topologyTest refClk sysClk sysRst
           ilaControl { skipTest = skip }
@@ -614,8 +624,8 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   -- check that tests are not synchronously start before all
   -- transceivers are up
-  startBeforeAllUp = sticky sysClk syncRst
-    (syncStart .&&. ((not <$> allUp) .||. transceiversFailedAfterUp))
+  startBeforeAllReady = sticky sysClk syncRst
+    (syncStart .&&. ((not <$> allReady) .||. transceiversFailedAfterUp))
 
   endSuccess :: Signal Basic125 Bool
   endSuccess = trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
@@ -632,10 +642,10 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       sysClk
       -- done
       (startTest .&&.
-         (skip .||. endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllUp))
+         (skip .||. endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllReady))
       -- success
       (skip .||.
-        (allStable .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllUp))))
+        (allStable .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady))))
 
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.
