@@ -47,6 +47,8 @@ import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
 
+import qualified Bittide.Transceiver.ResetManager as ResetManager
+
 data TestConfig =
   TestConfig
     { fpgaEnabled :: Bool
@@ -66,7 +68,7 @@ transceiversStartAndObserve ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "LINK_UPS" ::: Signal Basic125 (BitVector (FpgaCount - 1))
-  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 GthResetStats)
+  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK"      ::: Signal Basic125 Bool
@@ -77,7 +79,7 @@ transceiversStartAndObserve ::
 transceiversStartAndObserve refClk sysClk rst rxns rxps miso =
   ( transceivers.txNs
   , transceivers.txPs
-  , v2bv . fmap boolToBit <$> linkUps
+  , v2bv . fmap boolToBit <$> bundle transceivers.linkUps
   , transceivers.stats
   , spiDone
   , spiOut
@@ -104,11 +106,9 @@ transceiversStartAndObserve refClk sysClk rst rxns rxps miso =
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
-      refClk sysClk gthAllReset
+      defTransceiverOptions
+      refClk sysClk gthAllReset (pure 0)
       channelNames clockPaths rxns rxps
-
-  syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
-  linkUps = bundle $ zipWith syncLink transceivers.rxClocks transceivers.linkUps
 
 -- | Top entity for this test. See module documentation for more information.
 linkConfigurationTest ::

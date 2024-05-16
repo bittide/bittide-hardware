@@ -28,31 +28,27 @@ import Clash.Explicit.Prelude
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
-import Bittide.Hitl (HitlTests, NoPostProcData(..), hitlVioBool)
+import Bittide.Hitl (HitlTests, NoPostProcData(..), FpgaIndex, hitlVio)
 import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.Setup hiding (FpgaCount, TransceiverWires)
+import Bittide.Instances.Hitl.Setup
 import Bittide.Transceiver
 
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
+import Data.Maybe (fromMaybe, isJust)
 
+import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Clash.Explicit.Prelude as E
-import qualified Data.Text as Text
+import qualified Data.List as L
 import qualified Data.Map as Map
-
--- | The number of FPGAs in the current setup
-type FpgaCount = 2 :: Nat
-
--- | Data wires from/to transceivers. No logic should be inserted on these
--- wires. Should be considered asynchronous to one another - even though their
--- domain encodes them as related.
-type TransceiverWires dom = Vec (FpgaCount - 1) (Signal dom (BitVector 1))
+import qualified Data.Text as Text
 
 
 -- | Worker function for 'transceiversUpTest'. See module documentation for more
 -- information.
 goTransceiversUpTest ::
+  Signal Basic125 FpgaIndex ->
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
@@ -62,7 +58,7 @@ goTransceiversUpTest ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "allUp" ::: Signal Basic125 Bool
-  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 GthResetStats)
+  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK"      ::: Signal Basic125 Bool
@@ -70,10 +66,10 @@ goTransceiversUpTest ::
       , "CSB"       ::: Signal Basic125 Bool
       )
   )
-goTransceiversUpTest refClk sysClk rst rxns rxps miso =
+goTransceiversUpTest fpgaIndex refClk sysClk rst rxns rxps miso =
   ( transceivers.txNs
   , transceivers.txPs
-  , and <$> bundle linkUps
+  , and <$> bundle transceivers.linkUps
   , transceivers.stats
   , spiDone
   , spiOut
@@ -98,11 +94,9 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
-      refClk sysClk gthAllReset
-      (takeI channelNames) (takeI clockPaths) rxns rxps
-
-  syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
-  linkUps = zipWith syncLink transceivers.rxClocks transceivers.linkUps
+      defTransceiverOptions{debugVio=True, debugIla=True}
+      refClk sysClk gthAllReset fpgaIndex
+      channelNames clockPaths rxns rxps
 
 -- | Top entity for this test. See module documentation for more information.
 transceiversUpTest ::
@@ -137,22 +131,29 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     $ xpmCdcSingle sysClk sysClk syncIn
 
   (txns, txps, allUp, _stats, spiDone, spiOut) =
-    goTransceiversUpTest refClk sysClk testRst rxns rxps miso
+    goTransceiversUpTest fpgaIndex refClk sysClk testRst rxns rxps miso
 
-  startTest :: Signal Basic125 Bool
-  startTest =
-    hitlVioBool
+  failAfterUp = isFalling sysClk testRst enableGen False allUp
+  failAfterUpSticky = register sysClk testRst enableGen False (failAfterUp .||. failAfterUpSticky)
+
+  startTest = isJust <$> maybeFpgaIndex
+  fpgaIndex = fromMaybe 0 <$> maybeFpgaIndex
+
+  maybeFpgaIndex :: Signal Basic125 (Maybe FpgaIndex)
+  maybeFpgaIndex =
+    hitlVio
+      0
       sysClk
 
       -- Consider test done if links have been up consistently for 10 seconds. This
       -- is just below the test timeout of 60 seconds, so transceivers have ~10
       -- seconds to come online reliably. This should be plenty.
-      (trueFor (SNat @(Seconds 10)) sysClk testRst allUp)
+      (trueFor (SNat @(Seconds 10)) sysClk testRst allUp .||. failAfterUpSticky)
 
       -- This test either succeeds or times out, so success is set to a static
       -- 'True'. If you want to see statistics, consider setting it to 'False' -
       -- it will make the test TCL print out all probe values.
-      (pure True :: Signal Basic125 Bool)
+      (not <$> failAfterUpSticky)
 
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.
@@ -176,8 +177,9 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       ]
   } #-}
 
-tests :: HitlTests ()
+tests :: HitlTests FpgaIndex
 tests = Map.fromList testsAsList
  where
-  testNames = ["T" <> Text.pack (show n) | n <- [(0::Int)..2]]
-  testsAsList = [(nm, ([(0, ()), (3, ())], NoPostProcData)) | nm <- testNames]
+  fpgaIndices = [0..]
+  testNames = ["T" <> Text.pack (show n) | n <- [(0::Int)..500]]
+  testsAsList = [(nm, (L.zip fpgaIndices fpgaIndices, NoPostProcData)) | nm <- testNames]

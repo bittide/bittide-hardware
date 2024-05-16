@@ -1,3 +1,4 @@
 [
-  {"top": "transceiversUpTest", "stage": "test",   "targets": "All"}
+  {"top": "transceiversUpTest", "stage": "test",   "targets": "All"},
+  {"top": "linkConfigurationTest", "stage": "test", "targets": "All"}
 ]

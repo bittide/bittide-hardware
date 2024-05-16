@@ -18,8 +18,8 @@ import Clash.Explicit.Prelude
 -- (@polyLength@), and the second tap is the @polyTap@-th bit.
 --
 -- See https://en.wikipedia.org/wiki/Pseudorandom_binary_sequence for more information.
-data PrbsConfig polyLength polyTap nBits where
-  PrbsConfig ::
+data Config polyLength polyTap nBits where
+  Config ::
     ( KnownNat polyLength
     , KnownNat polyTap
     , KnownNat nBits
@@ -34,21 +34,21 @@ data PrbsConfig polyLength polyTap nBits where
     , polyTap ~ (_n2 + 1)
     , _n1 ~ (_n3 + 1)
     ) =>
-    PrbsConfig polyLength polyTap nBits
+    Config polyLength polyTap nBits
 
 
 -- | PRBS31: @x^31 + x^28 + 1@
-prbsConf31 :: forall n . (31 <= n, KnownNat n) => PrbsConfig 31 28 n
-prbsConf31 = leToPlus @31 @n $ PrbsConfig
+conf31 :: forall n . (31 <= n, KnownNat n) => Config 31 28 n
+conf31 = leToPlus @31 @n Config
 
 
-prbsGen ::
+generator ::
   forall dom polyLength polyTap nBits .
   KnownDomain dom =>
   Clock dom -> Reset dom -> Enable dom ->
-  PrbsConfig polyLength polyTap nBits ->
+  Config polyLength polyTap nBits ->
   Signal dom (BitVector nBits)
-prbsGen clk rst ena PrbsConfig =
+generator clk rst ena Config =
   moore clk rst ena go snd (maxBound, maxBound) (pure ())
  where
   go ::
@@ -70,21 +70,23 @@ prbsGen clk rst ena PrbsConfig =
        newBit = xor (lsb bv) (unpack $ slice tap tap bv)
 
 
-prbsChecker ::
+checker ::
   forall dom polyLength polyTap nBits .
   KnownDomain dom =>
   Clock dom -> Reset dom -> Enable dom ->
-  PrbsConfig polyLength polyTap nBits ->
+  Config polyLength polyTap nBits ->
   Signal dom (BitVector nBits) ->
   Signal dom (BitVector nBits)
-prbsChecker clk rst ena PrbsConfig =
-  moore clk rst ena go snd (maxBound, maxBound)
+checker clk rst ena Config = mealy clk rst ena go (maxBound, maxBound)
  where
   go ::
     (BitVector polyLength, BitVector nBits) ->
     BitVector nBits ->
-    (BitVector polyLength, BitVector nBits)
-  go (prbs_reg, _) prbsIn = (prbs_state, pack $ reverse prbs_out)
+    ((BitVector polyLength, BitVector nBits), BitVector nBits)
+  go (prbs_reg, prbs_out_prev) prbsIn =
+    ( (prbs_state, pack $ reverse prbs_out)
+    , prbs_out_prev
+    )
    where
      prbs_out :: Vec nBits Bit
      prbs_state :: BitVector polyLength
@@ -96,3 +98,39 @@ prbsChecker clk rst ena PrbsConfig =
        o = newBit +>>. bv
        tap = SNat @(polyLength - polyTap)
        bitErr = xor newBit (xor (lsb bv) (unpack $ slice tap tap bv))
+
+data TrackerState
+  = Down (Index 8096)
+  -- ^ Link is considered down. Needs 127 cycles of \"good\" input to transition
+  -- to 'Up'.
+  | Up
+  -- ^ Link has not seen errors in at least 127 cycles.
+  deriving (Eq, Show, Generic, NFDataX)
+
+isUp :: TrackerState -> Bool
+isUp Up = True
+isUp _ = False
+
+-- | Small state machine tracking whether a link is stable. A link is considered
+-- stable, if no errors were detected for a number of cycles (see "PrbsTrackerState").
+-- Whenever a bit error is detected, it immediately deasserts its output.
+tracker ::
+  KnownDomain dom =>
+  Clock dom ->
+  Reset dom ->
+  Signal dom Bool ->
+  -- ^ PRBS error detected
+  Signal dom Bool
+  -- ^ Link OK
+tracker clk rst =
+  mealy clk rst enableGen go initSt
+ where
+  initSt = Down maxBound
+
+  go :: TrackerState -> Bool -> (TrackerState, Bool)
+  go _ True = (initSt, False)
+  go st False =
+    case st of
+      Down 0 -> (Up, False)
+      Down n -> (Down (n - 1), False)
+      Up     -> (Up, True)

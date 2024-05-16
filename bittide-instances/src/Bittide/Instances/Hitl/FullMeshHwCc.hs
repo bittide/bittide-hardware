@@ -71,7 +71,6 @@ import Project.FilePath
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
-import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
@@ -80,6 +79,7 @@ import Protocols.Wishbone
 import VexRiscv
 
 import qualified Data.Map as Map (singleton)
+import qualified Bittide.Transceiver.ResetManager as ResetManager
 
 clockControlConfig ::
   $(case (instancesClockConfig (Proxy @Basic125)) of { (_ :: t) -> liftTypeQ @t })
@@ -183,7 +183,7 @@ fullMeshHwTest ::
   , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult (FpgaCount - 1))
   , "CALLISTO_RESET" ::: Reset Basic125
   , "DATA_COUNTERS" ::: Vec (FpgaCount - 1) (Signal Basic125 (DataCount 32))
-  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 GthResetStats)
+  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK" ::: Signal Basic125 Bool
@@ -229,12 +229,11 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
-      refClk sysClk gthAllReset
+      defTransceiverOptions
+      refClk sysClk gthAllReset (pure 0)
       channelNames clockPaths rxns rxps
 
-  syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
-  linkUps = zipWith syncLink transceivers.rxClocks transceivers.linkUps
-  allUp = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle linkUps)
+  allUp = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle transceivers.linkUps)
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allUp)
 

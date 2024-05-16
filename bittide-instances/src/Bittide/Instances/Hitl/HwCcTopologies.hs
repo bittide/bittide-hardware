@@ -74,7 +74,6 @@ import Project.FilePath
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
-import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
@@ -82,6 +81,7 @@ import Protocols hiding (SimulationConfig)
 import Protocols.Wishbone
 import VexRiscv
 
+import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Data.Map.Strict as Map (fromList)
 
 type AllStablePeriod = Seconds 5
@@ -251,7 +251,7 @@ topologyTest ::
   , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult (FpgaCount - 1))
   , "CALLISTO_RESET" ::: Reset Basic125
   , "DATA_COUNTERS" ::: Vec (FpgaCount - 1) (Signal Basic125 (DataCount 32))
-  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 GthResetStats)
+  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK" ::: Signal Basic125 Bool
@@ -327,12 +327,11 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso c
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
-      refClk sysClk gthAllReset
+      defTransceiverOptions
+      refClk sysClk gthAllReset (pure 0)
       channelNames clockPaths rxns rxps
 
-  syncLink rxClock = xpmCdcSingle rxClock sysClk
-  linkUps = zipWith syncLink transceivers.rxClocks transceivers.linkUps
-  allUp = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle linkUps)
+  allUp = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle transceivers.linkUps)
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allUp)
 
