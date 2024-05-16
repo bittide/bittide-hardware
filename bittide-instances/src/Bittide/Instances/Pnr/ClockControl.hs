@@ -18,7 +18,7 @@ callisto3 ::
   Reset Basic200 ->
   Enable Basic200 ->
   -- | Data counts from elastic buffers
-  Vec 3 (Signal Basic200 (DataCount 12)) ->
+  Vec 3 (Signal Basic200 (RelDataCount 12)) ->
   -- | Speed change requested from clock multiplier
   Signal Basic200 (CallistoResult 3)
 callisto3 clk rst ena dataCounts =

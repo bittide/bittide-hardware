@@ -59,7 +59,7 @@ data ControlConfig (m :: Nat) =
     , waitTime :: Unsigned 32
       -- ^ Number of cycles to wait until reframing takes place after
       -- stability has been detected.
-    , targetCount :: DataCount m
+    , targetCount :: RelDataCount m
       -- ^ Target data count. See 'targetDataCount'.
     }
 
@@ -250,7 +250,7 @@ instance (KnownNat n, 1 <= n) => Storable (DataCountS n) where
         v :: Vec (Elems n) Int
         v = fromEnum <$> unpack' (pack $ resize' c)
 
-        resize' :: DataCount n -> DataCount (BitsOf (DataCountS n))
+        resize' :: RelDataCount n -> RelDataCount (BitsOf (DataCountS n))
         resize' = resize
 
         unpack' ::
