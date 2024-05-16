@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -18,7 +18,8 @@ type TX_DATA_WIDTH = 64
 type RX_DATA_WIDTH = 64
 
 gthCore
-  :: String -- ^ channel
+  :: forall txUser2 rxUser2 refclk0 freerun txS rxS
+   . String -- ^ channel
   -> String -- ^ refClkSpec
   -> "gthrxn_in" ::: Signal rxS (BitVector 1)
   -> "gthrxp_in" ::: Signal rxS (BitVector 1)
@@ -50,6 +51,11 @@ gthCore
    , "gtwiz_reset_rx_done_out" ::: Signal rxUser2 (BitVector 1)
 
    , "gtwiz_userclk_tx_active_out" ::: Signal txUser2 (BitVector 1)
+
+   , "rxctrl0_out" ::: Signal rxUser2 (BitVector 16)
+   , "rxctrl1_out" ::: Signal rxUser2 (BitVector 16)
+   , "rxctrl2_out" ::: Signal rxUser2 (BitVector 8)
+   , "rxctrl3_out" ::: Signal rxUser2 (BitVector 8)
    )
 gthCore
   !_channel
@@ -69,7 +75,9 @@ gthCore
   !_drpclk_in
   !_gtrefclk0_in
  = ( undefined, undefined, undefined, undefined
-   , undefined, undefined, undefined, undefined )
+   , undefined, undefined, undefined, undefined
+   , undefined, undefined, undefined, undefined
+   )
 {-# NOINLINE gthCore #-}
 {-# ANN gthCore hasBlackBox #-}
 {-# ANN gthCore (

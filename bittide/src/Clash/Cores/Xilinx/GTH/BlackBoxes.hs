@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -124,6 +124,11 @@ gthCoreBBTF bbCtx
       , ("gtwiz_reset_rx_done_out", N.BitVector 1)
 
       , ("gtwiz_userclk_tx_active_out", N.BitVector 1)
+
+      , ("rxctrl0_out", N.BitVector 16)
+      , ("rxctrl1_out", N.BitVector 16)
+      , ("rxctrl2_out", N.BitVector 8)
+      , ("rxctrl3_out", N.BitVector 8)
       ]
 
   DSL.declarationReturn bbCtx "gthCore_inst_block" $ do

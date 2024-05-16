@@ -1,9 +1,11 @@
 -- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
@@ -28,20 +30,52 @@ import Clash.Explicit.Prelude
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
-import Bittide.Hitl (HitlTests, hitlVioBool, allFpgas, noConfigTest)
+import Bittide.ElasticBuffer (sticky)
+import Bittide.Hitl (HitlTests, NoPostProcData(..), FpgaIndex, hitlVio)
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup
 import Bittide.Transceiver
 
 import Clash.Cores.Xilinx.GTH
-import Clash.Cores.Xilinx.Xpm.Cdc.Single
+import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Xilinx.ClockGen
+import Data.Maybe (fromMaybe, isJust)
 
+import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Clash.Explicit.Prelude as E
+import qualified Data.List as L
+import qualified Data.Map as Map
+import qualified Data.Text as Text
+
+-- | Start value of the counters used in 'counter' and 'expectCounter'. This is
+-- a non-zero start value, as a regression test for a bug where the transceivers
+-- would not come up if the counters started at zero.
+counterStart :: BitVector 64
+counterStart = 0xDEAD_BEEF_CA55_E77E
+
+-- | A counter starting at 'counterStart'
+counter :: KnownDomain dom => Clock dom -> Reset dom -> Signal dom Bool -> Signal dom (BitVector 64)
+counter clk rst ena = let c = register clk rst (toEnable ena) counterStart (c + 1) in c
+
+-- | Expect a counter starting at 'counterStart' and incrementing by one on each
+-- cycle.
+expectCounter ::
+  KnownDomain dom =>
+  Clock dom ->
+  Reset dom ->
+  Signal dom (Maybe (BitVector 64)) ->
+  -- ^ Received data
+  Signal dom Bool
+  -- ^ Error
+expectCounter clk rst = sticky clk rst . mealy clk rst enableGen go counterStart
+ where
+  go c (Just e) = (c + 1, c /= e)
+  go c Nothing  = (c, False)
 
 -- | Worker function for 'transceiversUpTest'. See module documentation for more
 -- information.
 goTransceiversUpTest ::
+  Signal Basic125 FpgaIndex ->
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
@@ -51,7 +85,8 @@ goTransceiversUpTest ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "allUp" ::: Signal Basic125 Bool
-  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 GthResetStats)
+  , "anyErrors" ::: Signal Basic125 Bool
+  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK"      ::: Signal Basic125 Bool
@@ -59,15 +94,18 @@ goTransceiversUpTest ::
       , "CSB"       ::: Signal Basic125 Bool
       )
   )
-goTransceiversUpTest refClk sysClk rst rxns rxps miso =
+goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
   ( transceivers.txNs
   , transceivers.txPs
-  , and <$> bundle linkUps
+  , allUp
+  , expectCounterErrorSys
   , transceivers.stats
   , spiDone
   , spiOut
   )
  where
+  allUp = and <$> bundle transceivers.linkUps
+
   sysRst = orReset rst (unsafeFromActiveLow (fmap not spiErr))
 
   -- Clock programming
@@ -84,14 +122,43 @@ goTransceiversUpTest refClk sysClk rst rxns rxps miso =
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
 
+  -- Send counters
+  counters =
+    zipWith3
+      counter
+      transceivers.txClocks
+      transceivers.txResets
+      transceivers.txSamplings
+
+  expectCounterError =
+    zipWith3
+      expectCounter
+      transceivers.rxClocks
+      transceivers.rxResets
+      transceivers.rxDatas
+
+  expectCounterErrorSys =
+      fmap and
+    $ bundle
+    $ zipWith (.&&.) transceivers.linkUps
+    $ zipWith (`xpmCdcSingle` sysClk) transceivers.rxClocks expectCounterError
+
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
-      refClk sysClk gthAllReset
-      channelNames clockPaths rxns rxps
-
-  syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
-  linkUps = zipWith syncLink transceivers.rxClocks transceivers.linkUps
+      defConfig{debugIla=True, debugFpgaIndex=bitCoerce <$> fpgaIndex}
+      Inputs
+        { clock = sysClk
+        , reset = gthAllReset
+        , refClock = refClk
+        , channelNames
+        , clockPaths
+        , rxNs
+        , rxPs
+        , txDatas = counters
+        , txReadys = repeat (pure True)
+        , rxReadys = repeat (pure True)
+        }
 
 -- | Top entity for this test. See module documentation for more information.
 transceiversUpTest ::
@@ -125,23 +192,28 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     $ unsafeFromActiveLow
     $ xpmCdcSingle sysClk sysClk syncIn
 
-  (txns, txps, allUp, _stats, spiDone, spiOut) =
-    goTransceiversUpTest refClk sysClk testRst rxns rxps miso
+  (txns, txps, allUp, anyErrors, _stats, spiDone, spiOut) =
+    goTransceiversUpTest fpgaIndex refClk sysClk testRst rxns rxps miso
 
-  startTest :: Signal Basic125 Bool
-  startTest =
-    hitlVioBool
+  failAfterUp = isFalling sysClk testRst enableGen False allUp
+  failAfterUpSticky = sticky sysClk testRst failAfterUp
+
+  startTest = isJust <$> maybeFpgaIndex
+  fpgaIndex = fromMaybe 0 <$> maybeFpgaIndex
+
+  maybeFpgaIndex :: Signal Basic125 (Maybe FpgaIndex)
+  maybeFpgaIndex =
+    hitlVio
+      0
       sysClk
 
-      -- Consider test done if links have been up consistently for 50 seconds. This
-      -- is just below the test timeout of 60 seconds, so transceivers have ~10
+      -- Consider test done if links have been up consistently for 40 seconds. This
+      -- is just below the test timeout of 60 seconds, so transceivers have ~20
       -- seconds to come online reliably. This should be plenty.
-      (trueFor (SNat @(Seconds 50)) sysClk testRst allUp)
+      (trueFor (SNat @(Seconds 40)) sysClk testRst allUp .||. failAfterUpSticky .||. anyErrors)
 
-      -- This test either succeeds or times out, so success is set to a static
-      -- 'True'. If you want to see statistics, consider setting it to 'False' -
-      -- it will make the test TCL print out all probe values.
-      (pure True :: Signal Basic125 Bool)
+      -- Success?
+      (fmap not failAfterUpSticky .&&. fmap not anyErrors)
 
 -- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
 --      generates warnings in combination with 'Vec'.
@@ -165,5 +237,10 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       ]
   } #-}
 
-tests :: HitlTests ()
-tests = noConfigTest "Transceivers" allFpgas
+tests :: HitlTests FpgaIndex
+tests = Map.fromList testsAsList
+ where
+  fpgaIndices = [0..]
+  nTests = 1
+  testNames = ["T" <> Text.pack (show n) | n <- [(0::Int)..nTests-1]]
+  testsAsList = [(nm, (L.zip fpgaIndices fpgaIndices, NoPostProcData)) | nm <- testNames]
