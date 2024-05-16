@@ -1,8 +1,14 @@
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NoFieldSelectors #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+
+{-# OPTIONS_GHC -Wno-ambiguous-fields #-}
 
 module Bittide.Transceiver.ResetManager where
 
 import Clash.Explicit.Prelude
+import Clash.Class.Counter (countSucc)
 
 import Bittide.Arithmetic.Time (PeriodToCycles, Milliseconds)
 
@@ -10,11 +16,14 @@ import Bittide.Arithmetic.Time (PeriodToCycles, Milliseconds)
 -- wait for /n/ milliseconds.
 type IndexMs dom n = Index (PeriodToCycles dom (Milliseconds n))
 
+-- | Number of milliseconds
+type Ms = Unsigned 8
+
 -- | Statistics exported by 'resetManager'
 data Statistics = Statistics
   { txRetries :: Unsigned 32
   -- ^ How many times the transmit side was reset
-  , rxRetries :: Index 8
+  , rxRetries :: Unsigned 8
   -- ^ How many times the receive side was reset. Note that this value in itself
   -- will reset if the transmit side resets - see 'rxFullRetries'.
   , rxFullRetries :: Unsigned 32
@@ -28,22 +37,44 @@ data Statistics = Statistics
   }
   deriving (Generic, NFDataX)
 
+-- | Configuration for 'resetManager'
+data Config = Config
+  { txTimeout :: Ms
+  -- ^ Number of milliseconds to wait for the transmit side to be ready, before
+  -- resetting the transmit subsystem.
+  , rxTimeout :: Ms
+  -- ^ Number of milliseconds to wait for the receive side to be ready, before
+  -- resetting the receiver subsystem.
+  , rxRetries :: Unsigned 8
+  -- ^ Number of times to retry the receive side before resetting the transmit
+  -- side as well.
+  }
+  deriving (Generic, NFDataX)
+
+-- | Default configuration for 'resetManager'
+--
+-- XXX: Current timeout values for 'TxWait' and 'RxWait' are chosen arbitrarily.
+--      We should investigate what these values should be for quick bring-up.
+defConfig :: Config
+defConfig = Config
+  { txTimeout = 1
+  , rxTimeout = 5
+  , rxRetries = 8
+  }
+
 -- | Bringing up the transceivers is a stochastic process - at least, that is
 -- what Xilinx reference designs make us believe. We therefore retry a number of
 -- times if we don't see sensible data coming in. See the individual constructors
 -- and 'resetManager' for more information.
---
--- XXX: Current timeout values for 'TxWait' and 'RxWait' are chosen arbitrarily.
---      We should investigate what these values should be for quick bring-up.
 data State dom
   = StartTx Statistics
   -- ^ Reset everything - transmit and receive side
   | StartRx Statistics
   -- ^ Reset just the receive side
-  | TxWait Statistics (IndexMs dom 1)
+  | TxWait Statistics (Ms, IndexMs dom 1)
   -- ^ Wait for the transmit side to report it is done. After /n/ milliseconds
   -- (see type) it times out, moving to 'StartTx'.
-  | RxWait Statistics (IndexMs dom 5)
+  | RxWait Statistics (Ms, IndexMs dom 1)
   -- ^ Wait for the receive side to report it is done _and_ that it can predict
   -- the data coming from the other side. After /n/ milliseconds (see type) it
   -- times out. Depending on the value of 'ResetStat's 'rxRetries' it will
@@ -60,6 +91,7 @@ data State dom
 resetManager ::
   forall dom .
   KnownDomain dom =>
+  Config ->
   Clock dom ->
   Reset dom ->
   "tx_init_done" ::: Signal dom Bool ->
@@ -70,7 +102,7 @@ resetManager ::
   , "init_done" ::: Signal dom Bool
   , "stats" ::: Signal dom Statistics
   )
-resetManager clk rst tx_init_done rx_init_done rx_data_good =
+resetManager config clk rst tx_init_done rx_init_done rx_data_good =
   ( unsafeFromActiveHigh reset_all_out_sig
   , unsafeFromActiveHigh reset_rx_sig
   , init_done
@@ -100,31 +132,31 @@ resetManager clk rst tx_init_done rx_init_done rx_data_good =
   update st (tx_done, rx_done, rx_good) =
     case st of
       -- Reset everything:
-      StartTx stats -> TxWait stats 0
+      StartTx stats -> TxWait stats minBound
 
       -- Wait for transceiver to indicate it is done
-      TxWait stats@Statistics{txRetries} cntr
-        | tx_done          -> RxWait stats 0
-        | cntr == maxBound -> StartTx stats{txRetries=satSucc SatBound txRetries}
-        | otherwise        -> TxWait stats (succ cntr)
+      TxWait stats@Statistics{txRetries} cntr@(ms, _)
+        | tx_done                -> RxWait stats minBound
+        | ms == config.txTimeout -> StartTx stats{txRetries=satSucc SatBound txRetries}
+        | otherwise              -> TxWait stats (countSucc cntr)
 
       -- Reset receive side logic
-      StartRx stats -> RxWait stats 0
+      StartRx stats -> RxWait stats minBound
 
       -- Wait for a reliable incoming link. This can fail in multiple ways, see
       -- 'RxWait'.
-      RxWait stats@Statistics{rxRetries, rxFullRetries} cntr
+      RxWait stats@Statistics{rxRetries, rxFullRetries} cntr@(ms, _)
         | rx_done && rx_good ->
           Monitor stats
 
-        | cntr == maxBound && rxRetries == maxBound ->
+        | ms == config.rxTimeout && rxRetries >= config.rxRetries ->
           StartTx stats{rxFullRetries=satSucc SatBound rxFullRetries}
 
-        | cntr == maxBound ->
+        | ms == config.rxTimeout ->
           StartRx stats{rxRetries=satSucc SatBound rxRetries}
 
         | otherwise ->
-          RxWait stats (succ cntr)
+          RxWait stats (countSucc cntr)
 
       -- Monitor link. Move all the way back to 'StartTx' if the link goes down
       -- for some reason.

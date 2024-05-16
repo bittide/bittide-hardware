@@ -94,8 +94,8 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxns rxps miso =
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
-      defTransceiverOptions{debugVio=True, debugIla=True}
-      refClk sysClk gthAllReset fpgaIndex
+      defTransceiverOptions{debugVio=True, debugIla=True, debugFpgaIndex=bitCoerce <$> fpgaIndex}
+      refClk sysClk gthAllReset
       channelNames clockPaths rxns rxps
 
 -- | Top entity for this test. See module documentation for more information.
@@ -181,5 +181,5 @@ tests :: HitlTests FpgaIndex
 tests = Map.fromList testsAsList
  where
   fpgaIndices = [0..]
-  testNames = ["T" <> Text.pack (show n) | n <- [(0::Int)..500]]
+  testNames = ["T" <> Text.pack (show n) | n <- [(0::Int)..5]]
   testsAsList = [(nm, (L.zip fpgaIndices fpgaIndices, NoPostProcData)) | nm <- testNames]

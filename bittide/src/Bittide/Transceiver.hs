@@ -8,7 +8,6 @@
 {-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
@@ -17,6 +16,9 @@ module Bittide.Transceiver where
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 
+import Bittide.Transceiver.ResetManager (IndexMs)
+import Bittide.ElasticBuffer (sticky)
+import Bittide.Arithmetic.Time (Milliseconds, trueFor)
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (IlaConfig(advancedTriggers, depth, stages), ilaConfig, ila, Depth(D1024))
 import Clash.Cores.Xilinx.VIO (vioProbe)
@@ -32,9 +34,6 @@ import qualified Bittide.Transceiver.Comma as Comma
 import qualified Bittide.Transceiver.Prbs as Prbs
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Bittide.Transceiver.WordAlign as WordAlign
-import Bittide.Transceiver.ResetManager (IndexMs)
-import Bittide.ElasticBuffer (sticky)
-import Bittide.Arithmetic.Time (Milliseconds, trueFor)
 
 -- | Meta information send along with the PRBS and alignment symbols. See module
 -- documentation for more information.
@@ -43,33 +42,44 @@ data Meta = Meta
   -- ^ PRBS data is valid
   , lastPrbsWord :: Bool
   -- ^ Next word will be user data
-  , fpgaIndex :: Index 8
-  , transceiverIndex :: Index 7
+  , fpgaIndex :: Unsigned 3
+  -- ^ FPGA index to use for debug signals
+  , transceiverIndex :: Unsigned 3
+  -- ^ Transceiver index to use for debug signals
   }
   deriving (Generic, NFDataX, BitPack)
 
-metaMagic :: BitVector 6
-metaMagic = 0b11_0001
+-- | Insert zeroes such that each of the following are encoded in 4 bits, making
+-- them easier to read when formatted as a hex value:
+--
+--   * prbsOk, lastPrbsWord
+--   * fpgaIndex
+--   * transceiverIndex
+--
+-- This is useful for when we don't control formatting (such as when looking at
+-- ILA traces).
+prettifyMetaBits :: BitVector 8 -> BitVector 12
+prettifyMetaBits bv = pack $
+  let meta = unpack @Meta bv in
+  (low, low, meta.prbsOk, meta.lastPrbsWord, low, meta.fpgaIndex, low, meta.transceiverIndex)
 
-emptyMeta :: Meta
-emptyMeta = Meta
-  { prbsOk = False
-  , lastPrbsWord = False
-  , fpgaIndex = 0
-  , transceiverIndex = 0
-  }
-
-data TransceiverOptions = TransceiverOptions
+data TransceiverOptions dom = TransceiverOptions
   { debugVio :: Bool
   -- ^ Instantiate a debug VIOs
   , debugIla :: Bool
   -- ^ Instantiate a debug ILAs
+  , debugFpgaIndex :: Signal dom (Unsigned 3)
+  -- ^ FPGA index to use for debug signals
+  , resetManagerConfig :: ResetManager.Config
+  -- ^ Configuration for 'ResetManager.resetManager'
   }
 
-defTransceiverOptions :: TransceiverOptions
+defTransceiverOptions :: TransceiverOptions dom
 defTransceiverOptions = TransceiverOptions
   { debugVio = False
   , debugIla = False
+  , debugFpgaIndex = pure 0
+  , resetManagerConfig = ResetManager.defConfig
   }
 
 -- | Careful: the domains for each transceiver are different, even if their
@@ -126,14 +136,12 @@ transceiverPrbsN ::
   , HasSynchronousReset freeclk
   , HasDefinedInitialValues freeclk
   ) =>
-  TransceiverOptions ->
+  TransceiverOptions freeclk ->
 
   Clock refclk ->
   Clock freeclk ->
 
   Reset freeclk ->
-
-  Signal freeclk (Index 8) ->
 
   Vec chansUsed String ->
   Vec chansUsed String ->
@@ -142,7 +150,7 @@ transceiverPrbsN ::
   Vec chansUsed (Signal rxS (BitVector 1)) ->
 
   TransceiverOutputs chansUsed tx rx txS freeclk
-transceiverPrbsN opts refclk freeclk rst fpgaIndex chanNms clkPaths rxns rxps = TransceiverOutputs
+transceiverPrbsN opts refclk freeclk rst chanNms clkPaths rxns rxps = TransceiverOutputs
   { txClocks = map (.txClock) outputs
   , rxClocks = map (.rxClock) outputs
   , txPs     = map (.txP)     outputs
@@ -152,7 +160,7 @@ transceiverPrbsN opts refclk freeclk rst fpgaIndex chanNms clkPaths rxns rxps = 
   }
  where
   transIndices = iterateI (+1) 0
-  outputs = zipWith5 (transceiverPrbs opts refclk freeclk rst fpgaIndex) transIndices chanNms clkPaths rxns rxps
+  outputs = zipWith5 (transceiverPrbs opts refclk freeclk rst) transIndices chanNms clkPaths rxns rxps
 
 transceiverPrbs ::
   forall tx rx refclk freeclk txS rxS .
@@ -165,16 +173,14 @@ transceiverPrbs ::
   , HasSynchronousReset freeclk
   , HasDefinedInitialValues freeclk
   ) =>
-  TransceiverOptions ->
+  TransceiverOptions freeclk ->
 
   Clock refclk ->
   Clock freeclk ->
 
   Reset freeclk ->  -- ^ rst all
 
-  Signal freeclk (Index 8) ->
-
-  Index 7 ->
+  Unsigned 3 ->
 
   String -> -- ^ channel, example X0Y18
   String -> -- ^ clkPath, example clk0-2
@@ -183,7 +189,7 @@ transceiverPrbs ::
   Signal rxS (BitVector 1) ->
 
   TransceiverOutput tx rx txS freeclk
-transceiverPrbs opts gtrefclk freeclk rst_all_in fpgaIndex transIndex chan clkPath rxn rxp =
+transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp =
            when opts.debugVio debugVio
   `hwSeqX` when opts.debugVio debugIla
   `hwSeqX` result
@@ -222,8 +228,8 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in fpgaIndex transIndex chan clkPa
       :> "trigger"
       :> Nil) { advancedTriggers = True, stages = 1, depth = D1024 })
     freeclk
-    fpgaIndex
-    (pure transIndex :: Signal freeclk (Index 7))
+    opts.debugFpgaIndex
+    (pure transIndex :: Signal freeclk (Unsigned 3))
     (xpmCdcArraySingle rx_clk freeclk rx_data0)
     (xpmCdcArraySingle rx_clk freeclk alignedRxData0)
     (xpmCdcArraySingle tx_clk freeclk gtwiz_userdata_tx_in)
@@ -251,11 +257,6 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in fpgaIndex transIndex chan clkPa
     lastTxFree
     (pure True :: Signal freeclk Bool) -- capture
     (failAfterUp .||. (fmap not linkUp .&&. timeout) .||. lastTxFree) -- trigger
-
-  prettifyMetaBits :: BitVector 8 -> BitVector 12
-  prettifyMetaBits bv = pack $
-    let meta = unpack @Meta bv in
-    (low, low, meta.prbsOk, meta.lastPrbsWord, low, meta.fpgaIndex, low, meta.transceiverIndex)
 
   debugVio :: Signal freeclk ()
   debugVio = vioProbe
@@ -381,11 +382,12 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in fpgaIndex transIndex chan clkPa
     -- We shouldn't sync with 'xpmCdcArraySingle' here, as the individual bits in
     -- 'fpgaIndex' are related to each other. Still, we know fpgaIndex is basically
     -- a constant so :shrug:.
-    <*> xpmCdcArraySingle freeclk tx_clk fpgaIndex
+    <*> xpmCdcArraySingle freeclk tx_clk opts.debugFpgaIndex
     <*> pure transIndex
 
   (rst_all, rst_rx, _init_done, stats) =
     ResetManager.resetManager
+      opts.resetManagerConfig
       freeclk rst_all_in
       (withLockTxFree (pure True))
       (withLockRxFree (pure True))

@@ -328,7 +328,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso c
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       defTransceiverOptions
-      refClk sysClk gthAllReset (pure 0)
+      refClk sysClk gthAllReset
       channelNames clockPaths rxns rxps
 
   allUp = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle transceivers.linkUps)

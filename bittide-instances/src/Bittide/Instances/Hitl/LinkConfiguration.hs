@@ -107,7 +107,7 @@ transceiversStartAndObserve refClk sysClk rst rxns rxps miso =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       defTransceiverOptions
-      refClk sysClk gthAllReset (pure 0)
+      refClk sysClk gthAllReset
       channelNames clockPaths rxns rxps
 
 -- | Top entity for this test. See module documentation for more information.
