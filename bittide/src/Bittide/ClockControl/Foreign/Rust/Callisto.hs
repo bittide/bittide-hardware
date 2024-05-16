@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -20,7 +20,7 @@ import Foreign.Ptr (Ptr)
 import Foreign.Storable (Storable(..))
 import System.IO.Unsafe
 
-import Bittide.ClockControl (DataCount)
+import Bittide.ClockControl (RelDataCount)
 import Bittide.ClockControl.Callisto.Types
 import Bittide.ClockControl.StabilityChecker
 
@@ -48,7 +48,7 @@ rustyCallisto ::
   -- | Stability indicators for each of the elastic buffers.
   Signal dom (Vec n StabilityIndication) ->
   -- | Data counts from elastic buffers.
-  Signal dom (Vec n (DataCount m)) ->
+  Signal dom (Vec n (RelDataCount m)) ->
   -- | Current state.
   Signal dom ControlSt ->
   -- | Updated state.

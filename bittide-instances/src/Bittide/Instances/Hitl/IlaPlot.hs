@@ -52,7 +52,7 @@ import Clash.Explicit.Signal.Extra
 import Clash.Sized.Extra (concatUnsigneds)
 
 import Bittide.Arithmetic.Time (Seconds, Milliseconds, PeriodToCycles, trueFor)
-import Bittide.ClockControl (SpeedChange(..), DataCount, ClockControlConfig)
+import Bittide.ClockControl (SpeedChange(..), RelDataCount, ClockControlConfig)
 import Bittide.ClockControl.Callisto
   (CallistoResult(..), ReframingState(..), callistoClockControl)
 import Bittide.ClockControl.StabilityChecker
@@ -278,7 +278,7 @@ ilaPlotSetup IlaPlotSetup{..} = IlaControl{..}
 -- to be included into a capture.
 data PlotData (n :: Nat) (m :: Nat) =
   PlotData
-    { dEBData        :: Vec n (DataCount m, Maybe Bool, Maybe Bool)
+    { dEBData        :: Vec n (RelDataCount m, Maybe Bool, Maybe Bool)
     , dSpeedChange   :: SpeedChange
     , dRfStageChange :: RfStageChange
     }
@@ -415,7 +415,7 @@ callistoClockControlWithIla ::
   -- ^ Ila trigger and capture conditions
   Signal sys (BitVector n) ->
   -- ^ Link availability mask
-  Vec n (Signal sys (DataCount m)) ->
+  Vec n (Signal sys (RelDataCount m)) ->
   -- ^ Statistics provided by elastic buffers.
   Signal sys (CallistoResult n)
 callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =

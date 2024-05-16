@@ -17,6 +17,6 @@ elasticBuffer ::
   (HasCallStack, KnownDomain readDom, KnownDomain writeDom, KnownNat n) =>
   Clock readDom ->
   Clock writeDom ->
-  Signal readDom (DataCount n)
+  Signal readDom (RelDataCount n)
 elasticBuffer clkRead clkWrite = resize . fst
   <$> domainDiffCounter clkWrite resetGen clkRead resetGen

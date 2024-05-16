@@ -49,7 +49,7 @@ callistoClockControl ::
   -- | Link availability mask
   Signal dom (BitVector n) ->
   -- | Statistics provided by elastic buffers.
-  Vec n (Signal dom (DataCount m)) ->
+  Vec n (Signal dom (RelDataCount m)) ->
   Signal dom (CallistoResult n)
 callistoClockControl clk rst ena ClockControlConfig{..} mask allDataCounts =
   withClockResetEnable clk rst ena $
@@ -110,7 +110,7 @@ callistoClockControl clk rst ena ClockControlConfig{..} mask allDataCounts =
 --
 -- Note that this is an incredibly wasteful implementation: it instantiates
 -- numerous floating point multipliers and adders, even though they're not doing
--- any useful work 99% of the time. Furthermore, 'DataCount' isn't properly
+-- any useful work 99% of the time. Furthermore, 'RelDataCount' isn't properly
 -- scaled to match elastic buffer sizes, resulting in unnecessarily big integer
 -- adders. Optimization work has been postponed because:
 --
@@ -123,7 +123,7 @@ callisto ::
   , KnownNat m
   , 1 <= n
   , 1 <= m
-  -- 'callisto' sums incoming 'DataCount's and feeds them to a Xilinx signed to
+  -- 'callisto' sums incoming 'RelDataCount's and feeds them to a Xilinx signed to
   -- float IP. We can currently only interpret 32 bit signeds to unsigned, so to
   -- make sure we don't overflow any addition we force @n + m <= 32@.
   , n + m <= 32
@@ -135,7 +135,7 @@ callisto ::
   -- | Stability indicators for each of the elastic buffers.
   Signal dom (Vec n StabilityIndication) ->
   -- | Data counts from elastic buffers.
-  Signal dom (Vec n (DataCount m)) ->
+  Signal dom (Vec n (RelDataCount m)) ->
   -- | Current state.
   Signal dom ControlSt ->
   -- | Updated state.

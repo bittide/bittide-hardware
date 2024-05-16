@@ -14,7 +14,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import Bittide.ElasticBuffer
-import Bittide.ClockControl (DataCount, targetDataCount)
+import Bittide.ClockControl (RelDataCount, targetDataCount)
 
 import qualified Data.List as L
 
@@ -95,7 +95,7 @@ case_resettableXilinxElasticBufferEq = do
     (dataCounts, underflows, overflows, ebModes, _) = L.unzip5 .
       L.dropWhile (\(_, _, _, eb, _)-> eb == Drain || eb == Fill) $ sampleN 256
         (bundle (resettableXilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Slow) resetGen wData))
-    dataCountBounds = L.all ((< 3) . abs . subtract (toInteger (targetDataCount :: DataCount 5)) . toInteger) dataCounts
+    dataCountBounds = L.all ((< 3) . abs . subtract (toInteger (targetDataCount :: RelDataCount 5)) . toInteger) dataCounts
 
   assertBool "elastic buffer should get out of its Fill state" ((>0) $ L.length ebModes)
   assertBool "elastic buffer should not overflow after stabalising" (not $ or overflows)

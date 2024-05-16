@@ -25,7 +25,7 @@ type StableBool = Bool
 type SettledBool = Bool
 
 -- | A wishbone accessible clock control interface.
--- This interface receives the link mask and 'DataCount's from all links.
+-- This interface receives the link mask and 'RelDataCount's from all links.
 -- Furthermore it produces FINC/FDEC pulses for the clock control boards.
 --
 -- The word-aligned address layout of the Wishbone interface is as follows:
@@ -58,7 +58,7 @@ clockControlWb ::
   -- | Link mask
   Signal dom (BitVector nLinks) ->
   -- | Counters
-  Vec nLinks (Signal dom (DataCount m)) ->
+  Vec nLinks (Signal dom (RelDataCount m)) ->
   -- | Wishbone accessible clock control circuitry
   Circuit
     (Wishbone dom 'Standard addrW (BitVector 32))
