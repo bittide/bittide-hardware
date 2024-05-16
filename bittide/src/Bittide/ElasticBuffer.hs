@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NamedFieldPuns #-}
@@ -6,10 +6,10 @@
 module Bittide.ElasticBuffer where
 
 import Clash.Prelude
-import Clash.Cores.Xilinx.DcFifo hiding (DataCount)
+import Clash.Cores.Xilinx.DcFifo
 import GHC.Stack
 
-import Bittide.ClockControl (DataCount, targetDataCount)
+import Bittide.ClockControl (RelDataCount, targetDataCount)
 
 import qualified Clash.Explicit.Prelude as E
 import qualified Clash.Cores.Extra as CE
@@ -58,12 +58,12 @@ xilinxElasticBuffer ::
   ) =>
   Clock readDom ->
   Clock writeDom ->
-  -- | Resetting resets the 'Underflow' and 'Overflow' signals, but not the 'DataCount'
+  -- | Resetting resets the 'Underflow' and 'Overflow' signals, but not the 'RelDataCount'
   -- ones. Make sure to hold the reset at least 3 cycles in both clock domains.
   Reset readDom ->
   Signal readDom EbMode ->
   Signal writeDom a ->
-  ( Signal readDom (DataCount n)
+  ( Signal readDom (RelDataCount n)
   -- Indicates whether the FIFO under or overflowed. This signal is sticky: it
   -- will only deassert upon reset.
   , Signal readDom Underflow
@@ -71,7 +71,7 @@ xilinxElasticBuffer ::
   , Signal readDom a
   )
 xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
-  ( -- Note that this is chosen to work for 'DataCount' either being
+  ( -- Note that this is chosen to work for 'RelDataCount' either being
     -- set to 'Signed' with 'targetDataCount' equals 0 or set to
     -- 'Unsigned' with 'targetDataCount' equals 'shiftR maxBound 1 + 1'.
     -- This way, the representation can be easily switched without
@@ -119,11 +119,11 @@ resettableXilinxElasticBuffer ::
   , 4 <= n, n <= 17) =>
   Clock readDom ->
   Clock writeDom ->
-  -- | Resetting resets the 'Underflow' and 'Overflow' signals, but not the 'DataCount'
+  -- | Resetting resets the 'Underflow' and 'Overflow' signals, but not the 'RelDataCount'
   -- ones. Make sure to hold the reset at least 3 cycles in both clock domains.
   Reset readDom ->
   Signal writeDom a ->
-  ( Signal readDom (DataCount n)
+  ( Signal readDom (RelDataCount n)
   , Signal readDom Underflow
   , Signal readDom Overflow
   , Signal readDom EbMode
@@ -143,7 +143,7 @@ resettableXilinxElasticBuffer clkRead clkWrite rstRead wdata =
     withClockResetEnable clkRead controllerReset enableGen $
      mealy goControl Drain dataCount
 
-  goControl :: EbMode -> DataCount n -> (EbMode, (EbMode, Bool))
+  goControl :: EbMode -> RelDataCount n -> (EbMode, (EbMode, Bool))
   goControl state0 datacount = (state1, (state0, stable0))
    where
     state1 =

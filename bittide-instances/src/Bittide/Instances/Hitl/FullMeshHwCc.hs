@@ -98,7 +98,7 @@ fullMeshRiscvCopyTest ::
   Clock dom ->
   Reset dom ->
   Signal dom (CallistoResult (FpgaCount - 1)) ->
-  Vec (FpgaCount - 1) (Signal dom (DataCount 32)) ->
+  Vec (FpgaCount - 1) (Signal dom (RelDataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
   ( "FINC" ::: Signal dom Bool
   , "FDEC" ::: Signal dom Bool
@@ -185,7 +185,7 @@ fullMeshHwTest ::
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
   , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult (FpgaCount - 1))
   , "CALLISTO_RESET" ::: Reset Basic125
-  , "DATA_COUNTERS" ::: Vec (FpgaCount - 1) (Signal Basic125 (DataCount 32))
+  , "DATA_COUNTERS" ::: Vec (FpgaCount - 1) (Signal Basic125 (RelDataCount 32))
   , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::

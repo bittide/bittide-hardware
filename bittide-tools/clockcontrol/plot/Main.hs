@@ -179,7 +179,7 @@ data DataPoint (nodeCount :: Nat) (decompressedElasticBufferBits :: Nat) =
     , dpRfStage :: ReframingStage
       -- ^ the reframing stage
     , dpDataCounts :: Vec nodeCount
-                        (Maybe (DataCount decompressedElasticBufferBits))
+                        (Maybe (RelDataCount decompressedElasticBufferBits))
       -- ^ the elastic buffer data counts of the available links
     , dpStability :: Vec nodeCount (Maybe StabilityIndication)
       -- ^ the stability indicators for each of the elastic buffers

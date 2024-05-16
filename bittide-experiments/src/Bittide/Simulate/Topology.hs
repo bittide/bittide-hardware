@@ -81,7 +81,7 @@ simulationEntity ::
         ( Period
         , ReframingState
         , Vec nodes
-            ( DataCount dcount
+            ( RelDataCount dcount
             , StabilityIndication
             )
         )
@@ -102,7 +102,7 @@ simulationEntity topology ccc !clockOffsets !startupOffsets =
   !rsts = resetGenN' <$> startupOffsets
 
   -- elastic buffers
-  ebs :: Vec nodes (Vec nodes (Signal dom (DataCount dcount)))
+  ebs :: Vec nodes (Vec nodes (Signal dom (RelDataCount dcount)))
   !ebs = imap ebv clocks
   ebv x = flip imap clocks . eb x
   eb x xClk y yClk
@@ -167,7 +167,7 @@ simulate ::
         ( Period
         , ReframingState
         , Vec nodes
-            ( DataCount dcount
+            ( RelDataCount dcount
             , StabilityIndication
             )
         )
@@ -177,7 +177,7 @@ simulate ::
     [ ( Period
       , Period
       , ReframingState
-      , [ ( DataCount dcount
+      , [ ( RelDataCount dcount
           , StabilityIndication
           )
         ]

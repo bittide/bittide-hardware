@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -10,7 +10,7 @@
 -- | Clock controller types and some constants/defaults.
 module Bittide.ClockControl
   ( ClockControlConfig (..)
-  , DataCount
+  , RelDataCount
   , SettlePeriod
   , SpeedChange (..)
   , defClockConfig
@@ -112,15 +112,15 @@ data ClockControlConfig dom n m c = ClockControlConfig
 -- FIFO's center to be always at @0@.
 --
 -- _(remember to also modify 'targetDataCount' below if the
--- representation of 'DataCount' gets changed.)_
-type DataCount n = Signed n
+-- representation of 'RelDataCount' gets changed.)_
+type RelDataCount n = Signed n
 
 -- | The target data count within a (virtual) FIFO. It is usually set
 -- to be at the FIFO's center.
 --
--- _(recommended values are @0@ if 'DataCount' is 'Signed' and @shiftR
+-- _(recommended values are @0@ if 'RelDataCount' is 'Signed' and @shiftR
 -- maxBound 1 + 1@ if it is 'Unsigned')_
-targetDataCount :: KnownNat n => DataCount n
+targetDataCount :: KnownNat n => RelDataCount n
 targetDataCount = 0
 
 -- | Safer version of FINC/FDEC signals present on the Si5395/Si5391 clock multipliers.
