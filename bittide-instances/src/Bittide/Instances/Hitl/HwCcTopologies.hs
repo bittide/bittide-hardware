@@ -254,12 +254,12 @@ topologyTest ::
   "SYSCLK" ::: Clock Basic125 ->
   "SYSRST" ::: Reset Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS ->
   "MISO" ::: Signal Basic125 Bit ->
   "TEST_CFG" ::: Signal Basic125 TestConfig ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
   , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult (FpgaCount - 1))
   , "CALLISTO_RESET" ::: Reset Basic125
@@ -339,7 +339,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
   transceivers =
     transceiverPrbsN
-      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
+      @GthTx @GthRx @Ext200 @Basic125 @GthTxS @GthRxS
       Transceiver.defConfig
       Transceiver.Inputs
         { clock = sysClk
@@ -511,11 +511,11 @@ hwCcTopologyWithRiscvTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS
   , "" :::
       ( "FINC"      ::: Signal Basic125 Bool
       , "FDEC"      ::: Signal Basic125 Bool
@@ -578,11 +578,11 @@ hwCcTopologyTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS
   , "" :::
       ( "FINC"      ::: Signal Basic125 Bool
       , "FDEC"      ::: Signal Basic125 Bool

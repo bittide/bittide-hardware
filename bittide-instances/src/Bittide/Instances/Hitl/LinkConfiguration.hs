@@ -101,11 +101,11 @@ transceiversStartAndObserve ::
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
   "MY_INDEX" ::: Signal Basic125 (Index FpgaCount) ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS
   , "allReady" ::: Signal Basic125 Bool
   , "success" ::: Signal Basic125 Bool
   , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
@@ -145,7 +145,7 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxNs rxPs miso =
   -- Transceiver setup
   transceivers =
     transceiverPrbsN
-      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
+      @GthTx @GthRx @Ext200 @Basic125 @GthTxS @GthRxS
       Transceiver.defConfig
       Transceiver.Inputs
         { clock = sysClk
@@ -183,11 +183,11 @@ linkConfigurationTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::

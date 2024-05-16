@@ -28,6 +28,8 @@ createDomain vXilinxSystem{vName="Basic50", vPeriod= hzToPeriod 50e6}
 createDomain vXilinxSystem{vName="External", vPeriod=hzToPeriod 200e6}
 createDomain vXilinxSystem{vName="GthRx", vPeriod=hzToPeriod 125e6}
 createDomain vXilinxSystem{vName="GthTx", vPeriod= hzToPeriod 125e6}
+createDomain vXilinxSystem{vName="GthRxS", vPeriod=hzToPeriod 10e9}
+createDomain vXilinxSystem{vName="GthTxS", vPeriod= hzToPeriod 10e9}
 createDomain vXilinxSystem{vName="Internal", vPeriod=hzToPeriod 200e6}
 
 type CccBufferSize = 25 :: Nat
