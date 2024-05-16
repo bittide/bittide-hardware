@@ -234,6 +234,8 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
       :> "ila_probe_timeout"
       :> "ila_probe_linkUp"
       :> "ila_probe_lastTxFree"
+      :> "ila_probe_linkUpAfterMs"
+      :> "ila_probe_linkUpAfterSubMs"
       :> "capture"
       :> "trigger"
       :> Nil) { advancedTriggers = True, stages = 1, depth = D1024 })
@@ -265,6 +267,8 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
     timeout
     linkUp
     lastTxFree
+    linkUpAfterMs
+    linkUpAfterSubMs
     (pure True :: Signal freeclk Bool) -- capture
     (failAfterUp .||. (fmap not linkUp .&&. timeout) .||. lastTxFree) -- trigger
 
@@ -275,7 +279,8 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
     :> "probe_resetManager_rxRetries"
     :> "probe_resetManager_rxFullRetries"
     :> "probe_resetManager_failAfterUps"
-    :> "probe_linkUpAfter"
+    :> "probe_linkUpAfterMs"
+    :> "probe_linkUpAfterSubMs"
     :> Nil )
     Nil
     ()
@@ -285,7 +290,8 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
     ((.rxRetries) <$> stats)
     ((.rxFullRetries) <$> stats)
     ((.failAfterUps) <$> stats)
-    linkUpAfter
+    linkUpAfterMs
+    linkUpAfterSubMs
 
   result = TransceiverOutput
     { txClock = tx_clk
@@ -301,7 +307,7 @@ transceiverPrbs opts gtrefclk freeclk rst_all_in transIndex chan clkPath rxn rxp
   counter = register freeclk rst_all_in enableGen (0 :: IndexMs freeclk 10_000) (satSucc SatBound <$> counter)
   timeout = counter .==. pure maxBound
 
-  linkUpAfter@(unbundle -> (linkUpAfterMs, _)) =
+  linkUpAfter@(unbundle -> (linkUpAfterMs, linkUpAfterSubMs)) =
     register
       freeclk
       rst_all_in
