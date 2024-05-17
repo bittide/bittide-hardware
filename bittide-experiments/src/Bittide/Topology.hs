@@ -31,9 +31,12 @@ module Bittide.Topology
   , torus2d
   , torus3d
   , tree
+  , pendulum
   , line
   , hypercube
+  , dumbbell
   , hourglass
+  , beads
     -- * Utilities
   , fromGraph
   , fromTopologyType
@@ -46,25 +49,12 @@ module Bittide.Topology
 import Prelude
 
 import Clash.Prelude
-  ( SNat(..)
-  , SomeNat(..)
-  , Nat
-  , Index
-  , KnownNat
-  , type (^)
-  , type (*)
-  , type (+)
-  , type (-)
-  , type Div
-  , d0
-  , natToInteger
-  , snatProxy
-  , snatToNum
-  , snatToInteger
-  , someNatVal
+  ( SNat(..) , SomeNat(..), Nat , Index, KnownNat
+  , type (^), type (*), type (+), type (-), type Div
+  , d0, d1, natToInteger, snatProxy, snatToNum, snatToInteger, someNatVal
   )
 
-import Control.Monad (forM, forM_, when, replicateM, replicateM_)
+import Control.Monad (forM, forM_, when, unless, replicateM, replicateM_)
 import Data.Aeson (ToJSON(..), FromJSON(..), Value(..), (.=), (.:), object)
 import Data.Aeson.Types (typeMismatch)
 import Data.Array.IO (IOUArray)
@@ -133,6 +123,7 @@ fromGraph name graph =
 -- be parameterized.
 data TopologyType m n where
   Diamond :: TopologyType m n
+  Pendulum :: n -> n -> TopologyType m n
   Line :: n -> TopologyType m n
   HyperCube :: n -> TopologyType m n
   Grid :: n -> n -> TopologyType m n
@@ -142,13 +133,16 @@ data TopologyType m n where
   Star :: n -> TopologyType m n
   Cycle :: n -> TopologyType m n
   Complete :: n -> TopologyType m n
+  Dumbbell :: n -> n -> n -> TopologyType m n
   Hourglass :: n -> TopologyType m n
+  Beads :: n -> n -> n -> TopologyType m n
   DotFile :: FilePath -> TopologyType IO n
   Random :: n -> TopologyType IO n
 
 instance Show (TopologyType m a) where
   show = \case
     Diamond{}   -> topologyName   diamond
+    Pendulum{}  -> topologyName $ pendulum d0 d0
     Line{}      -> topologyName $ line d0
     HyperCube{} -> topologyName $ hypercube d0
     Grid{}      -> topologyName $ grid d0 d0
@@ -158,74 +152,88 @@ instance Show (TopologyType m a) where
     Star{}      -> topologyName $ star d0
     Cycle{}     -> topologyName $ cyclic d0
     Complete{}  -> topologyName $ complete d0
+    Dumbbell{}  -> topologyName $ dumbbell d0 d0 d0
     Hourglass{} -> topologyName $ hourglass d0
+    Beads{}     -> topologyName $ beads d0 d0 d0
     DotFile{}   -> "dotfile"
     Random{}    -> "random"
 
 -- Unfortunately, we cannot derive 'Eq' and 'Ord' for GADTs.
 instance Eq a => Eq (TopologyType m a) where
   x == y = case (x, y) of
-    (Diamond,       Diamond          ) -> True
-    (Line n,        Line n'          ) -> n == n'
-    (HyperCube n,   HyperCube n'     ) -> n == n'
-    (Grid n m,      Grid n' m'       ) -> n == n' && m == m'
-    (Torus2D n m,   Torus2D n' m'    ) -> n == n' && m == m'
-    (Torus3D n m k, Torus3D n' m' k' ) -> n == n' && m == m' && k == k'
-    (Tree n m,      Tree n' m'       ) -> n == n' && m == m'
-    (Star n,        Star n'          ) -> n == n'
-    (Cycle n,       Cycle n'         ) -> n == n'
-    (Complete n,    Complete n'      ) -> n == n'
-    (Hourglass n,   Hourglass n'     ) -> n == n'
-    (DotFile p,     DotFile p'       ) -> p == p'
-    _                                  -> False
+    (Diamond,        Diamond          ) -> True
+    (Pendulum n m,   Pendulum n' m'   ) -> n == n' && m == m'
+    (Line n,         Line n'          ) -> n == n'
+    (HyperCube n,    HyperCube n'     ) -> n == n'
+    (Grid n m,       Grid n' m'       ) -> n == n' && m == m'
+    (Torus2D n m,    Torus2D n' m'    ) -> n == n' && m == m'
+    (Torus3D n m k,  Torus3D n' m' k' ) -> n == n' && m == m' && k == k'
+    (Tree n m,       Tree n' m'       ) -> n == n' && m == m'
+    (Star n,         Star n'          ) -> n == n'
+    (Cycle n,        Cycle n'         ) -> n == n'
+    (Complete n,     Complete n'      ) -> n == n'
+    (Dumbbell n m k, Dumbbell n' m' k') -> n == n' && m == m' && k == k'
+    (Hourglass n,    Hourglass n'     ) -> n == n'
+    (Beads n m k,    Beads n' m' k'   ) -> n == n' && m == m' && k == k'
+    (DotFile p,      DotFile p'       ) -> p == p'
+    _                                   -> False
 
 instance Ord a => Ord (TopologyType m a) where
   compare x y = case (x, y) of
-    (Diamond,       Diamond          ) -> EQ
-    (Line n,        Line n'          ) -> compare n n'
-    (HyperCube n,   HyperCube n'     ) -> compare n n'
-    (Grid n m,      Grid n' m'       ) -> compare (n, m) (n', m')
-    (Torus2D n m,   Torus2D n' m'    ) -> compare (n, m) (n', m')
-    (Torus3D n m k, Torus3D n' m' k' ) -> compare (n, m, k) (n', m', k')
-    (Tree n m,      Tree n' m'       ) -> compare (n, m) (n', m')
-    (Star n,        Star n'          ) -> compare n n'
-    (Cycle n,       Cycle n'         ) -> compare n n'
-    (Complete n,    Complete n'      ) -> compare n n'
-    (Hourglass n,   Hourglass n'     ) -> compare n n'
-    (DotFile p,     DotFile p'       ) -> compare p p'
-    (Random{},      Random{}         ) -> LT
+    (Diamond,        Diamond          ) -> EQ
+    (Pendulum n m,   Pendulum n' m'   ) -> compare (n, m) (n', m')
+    (Line n,         Line n'          ) -> compare n n'
+    (HyperCube n,    HyperCube n'     ) -> compare n n'
+    (Grid n m,       Grid n' m'       ) -> compare (n, m) (n', m')
+    (Torus2D n m,    Torus2D n' m'    ) -> compare (n, m) (n', m')
+    (Torus3D n m k,  Torus3D n' m' k' ) -> compare (n, m, k) (n', m', k')
+    (Tree n m,       Tree n' m'       ) -> compare (n, m) (n', m')
+    (Star n,         Star n'          ) -> compare n n'
+    (Cycle n,        Cycle n'         ) -> compare n n'
+    (Complete n,     Complete n'      ) -> compare n n'
+    (Dumbbell n m k, Dumbbell n' m' k') -> compare (n, m, k) (n', m', k')
+    (Hourglass n,    Hourglass n'     ) -> compare n n'
+    (Beads n m k,    Beads n' m' k'   ) -> compare (n, m, k) (n', m', k')
+    (DotFile p,      DotFile p'       ) -> compare p p'
+    (Random{},       Random{}         ) -> LT
     _ -> compare (ordId x) (ordId y)
    where
     ordId = \case
       Diamond{}   -> 0 :: Int
-      Line{}      -> 1
-      HyperCube{} -> 2
-      Grid{}      -> 3
-      Torus2D{}   -> 4
-      Torus3D{}   -> 5
-      Tree{}      -> 6
-      Star{}      -> 7
-      Cycle{}     -> 8
-      Complete{}  -> 9
-      Hourglass{} -> 10
-      DotFile{}   -> 11
-      Random{}    -> 12
+      Pendulum{}  -> 1
+      Line{}      -> 2
+      HyperCube{} -> 3
+      Grid{}      -> 4
+      Torus2D{}   -> 5
+      Torus3D{}   -> 6
+      Tree{}      -> 7
+      Star{}      -> 8
+      Cycle{}     -> 9
+      Complete{}  -> 10
+      Dumbbell{}  -> 11
+      Hourglass{} -> 12
+      Beads{}     -> 13
+      DotFile{}   -> 14
+      Random{}    -> 15
 
 instance ToJSON a => ToJSON (TopologyType m a) where
   toJSON t = object $ case t of
-    Diamond       -> [ gt ]
-    DotFile f     -> [ gt, "filepath"   .= f ]
-    Line n        -> [ gt, "nodes"      .= n ]
-    HyperCube n   -> [ gt, "dimensions" .= n ]
-    Star n        -> [ gt, "nodes"      .= n ]
-    Cycle n       -> [ gt, "nodes"      .= n ]
-    Complete n    -> [ gt, "nodes"      .= n ]
-    Hourglass n   -> [ gt, "nodes"      .= n ]
-    Random n      -> [ gt, "nodes"      .= n ]
-    Tree d c      -> [ gt, "depth"      .= d, "childs" .= c ]
-    Grid r c      -> [ gt, "rows"       .= r, "cols"   .= c ]
-    Torus2D r c   -> [ gt, "rows"       .= r, "cols"   .= c ]
-    Torus3D r c p -> [ gt, "rows"       .= r, "cols"   .= c, "planes" .= p ]
+    Diamond        -> [ gt ]
+    DotFile f      -> [ gt, "filepath"   .= f ]
+    Line n         -> [ gt, "nodes"      .= n ]
+    HyperCube n    -> [ gt, "dimensions" .= n ]
+    Star n         -> [ gt, "nodes"      .= n ]
+    Cycle n        -> [ gt, "nodes"      .= n ]
+    Complete n     -> [ gt, "nodes"      .= n ]
+    Hourglass n    -> [ gt, "nodes"      .= n ]
+    Random n       -> [ gt, "nodes"      .= n ]
+    Pendulum l w   -> [ gt, "length"     .= l, "weight"   .= w ]
+    Tree d c       -> [ gt, "depth"      .= d, "childs"   .= c ]
+    Grid r c       -> [ gt, "rows"       .= r, "cols"     .= c ]
+    Torus2D r c    -> [ gt, "rows"       .= r, "cols"     .= c ]
+    Dumbbell w l r -> [ gt, "width"      .= w, "left"     .= l, "right"  .= r ]
+    Beads c d w    -> [ gt, "count"      .= c, "distance" .= d, "weight" .= w ]
+    Torus3D r c p  -> [ gt, "rows"       .= r, "cols"     .= c, "planes" .= p ]
    where
     gt = "graph" .= show t
 
@@ -241,14 +249,25 @@ instance FromJSON a => FromJSON (TopologyType IO a) where
       "complete"  -> Complete  <$> o .: "nodes"
       "hourglass" -> Hourglass <$> o .: "nodes"
       "random"    -> Random    <$> o .: "nodes"
-      "tree"      -> Tree      <$> o .: "depth" <*> o .: "childs"
-      "grid"      -> Grid      <$> o .: "rows"  <*> o .: "cols"
-      "torus2d"   -> Torus2D   <$> o .: "rows"  <*> o .: "cols"
+      "pendulum"  -> Pendulum  <$> o .: "length" <*> o .: "weight"
+      "tree"      -> Tree      <$> o .: "depth"  <*> o .: "childs"
+      "grid"      -> Grid      <$> o .: "rows"   <*> o .: "cols"
+      "torus2d"   -> Torus2D   <$> o .: "rows"   <*> o .: "cols"
       "torus3d"   ->
         Torus3D
           <$> o .: "rows"
           <*> o .: "cols"
           <*> o .: "planes"
+      "dumbbell"  ->
+        Dumbbell
+          <$> o .: "width"
+          <*> o .: "left"
+          <*> o .: "right"
+      "beads"     ->
+        Beads
+          <$> o .: "count"
+          <*> o .: "distance"
+          <*> o .: "weight"
       _ -> tmm
     _ -> tmm
    where
@@ -262,6 +281,10 @@ fromTopologyType ::
   TopologyType m n -> m (Either String STop)
 fromTopologyType tt = case tt of
   Diamond -> ret $ Just $ STop diamond
+  Pendulum n m ->
+    let pendulum# :: FUN (FUN STop)
+        pendulum# = FUN (\l@SNat -> FUN (\w@SNat -> STop $ pendulum l w))
+     in ret $ pendulum# <#> n <!> m
   Line n -> ret $ FUN (\sn@SNat -> STop $ line sn) <#> n
   HyperCube n -> ret $ FUN (\sn@SNat -> STop $ hypercube sn) <#> n
   Grid rows cols ->
@@ -283,7 +306,15 @@ fromTopologyType tt = case tt of
   Star n -> ret $ FUN (\sn@SNat -> STop $ star sn) <#> n
   Cycle n -> ret $ FUN (\sn@SNat -> STop $ cyclic sn) <#> n
   Complete n -> ret $ FUN (\sn@SNat -> STop $ complete sn) <#> n
+  Dumbbell n m k ->
+    let dumbbell# :: FUN (FUN (FUN STop))
+        dumbbell# = FUN (\w@SNat -> FUN (\l@SNat -> FUN (\r@SNat -> STop $ dumbbell w l r)))
+     in ret $ dumbbell# <#> n <!> m <!> k
   Hourglass n -> ret $ FUN (\sn@SNat -> STop $ hourglass sn) <#> n
+  Beads n m k ->
+    let beads# :: FUN (FUN (FUN STop))
+        beads# = FUN (\c@SNat -> FUN (\d@SNat -> FUN (\w@SNat -> STop $ beads c d w)))
+     in ret $ beads# <#> n <!> m <!> k
   Random n -> either (return . Left) (Right <$>) $
     maybeToEither $ FUN (\sn@SNat -> STop <$> randomTopology sn) <#> n
   DotFile f -> readFile f >>=
@@ -321,18 +352,25 @@ fromEdgeList es = dirGraph
   (dirGraph, _, _) =
     graphFromEdges ((\(key, keys) -> ((), key, keys)) <$> adjList)
 
+-- | @n@ nodes in a line, with a fully connected blob of @m@ nodes at one end.
+pendulum :: SNat l -> SNat w -> Topology (l + w)
+pendulum sl sw =
+  ( dumbbell sl d0 sw )
+  { topologyName = "pendulum"
+  , topologyType = Pendulum (snatToInteger sl) $ snatToInteger sw
+  }
+
 -- | @n@ nodes in a line, connected to their neighbors.
 --
 -- (differs from the
 -- [mathematical terminology](https://mathworld.wolfram.com/LineGraph.html) but
 -- conforms to callisto)
 line :: SNat n -> Topology n
-line sn@SNat =
-  ( fromGraph "line" $ fromEdgeList es )
-  { topologyType = Line n }
- where
-  n = snatToInteger sn
-  es = [ (i, i-1) | i <- [2..n] ]
+line sn =
+  ( dumbbell sn d0 d0 )
+  { topologyName = "line"
+  , topologyType = Line $ snatToInteger sn
+  }
 
 -- | @n@-dimensional hypercube
 hypercube :: SNat n -> Topology (2 ^ n)
@@ -457,7 +495,7 @@ tree snDepth@SNat snChilds@SNat =
 -- | [Star graph](https://mathworld.wolfram.com/StarGraph.html)
 star :: SNat childs -> Topology (TreeSize 1 childs)
 star sn =
-  (tree SNat sn)
+  ( tree SNat sn )
   { topologyName = "star"
   , topologyType = Star $ snatToInteger sn
   }
@@ -465,45 +503,96 @@ star sn =
 -- | [Cyclic graph](https://mathworld.wolfram.com/CycleGraph.html) with @n@
 -- vertices.
 cyclic :: SNat n -> Topology n
-cyclic sn@SNat =
-  ( fromGraph "cycle" $ A.array bounds ((\i -> (i, neighbors i)) <$> [0..(n-1)]) )
-  { topologyType = Cycle $ snatToInteger sn }
- where
-  n = snatToNum sn
-  bounds = (0, n-1)
-  neighbors i = [(i-1) `mod` n, (i+1) `mod` n]
+cyclic sn =
+  ( beads sn d0 d1 )
+  { topologyName = "cycle"
+  , topologyType = Cycle $ snatToInteger sn
+  }
 
 -- | [Complete graph](https://mathworld.wolfram.com/CompleteGraph.html) with @n@
 -- vertices.
 complete :: SNat n -> Topology n
-complete sn@SNat =
-  ( fromGraph "complete" $ A.array bounds ((\i -> (i, others i)) <$> [0..(n-1)]) )
-  { topologyType = Complete $ snatToInteger sn }
+complete sn =
+  ( beads d1 d0 sn )
+  { topologyName = "complete"
+  , topologyType = Complete $ snatToInteger sn
+  }
+
+-- | An dumbbell shaped graph consisting of two independent complete
+-- sub-graphs of size @l@ and @r@, connected via a chain of @w@ nodes
+-- in between two distinct nodes of each sub-graph.
+dumbbell :: SNat w -> SNat l -> SNat r -> Topology (w + l + r)
+dumbbell sw@SNat sl@SNat sr@SNat =
+  t { topologyType = Dumbbell (sn2i sw) (sn2i sl) (sn2i sr) }
  where
-  n = snatToNum sn
-  bounds = (0, n-1)
-  others i = [ j | j <- [0..(n-1)], j /= i ]
+  sn2i = snatToInteger
+  w = snatToNum sw
+  l = snatToNum sl
+  r = snatToNum sr
+  m = w + l + r - 1
+
+  t = fromGraph "dumbbell" $
+        if w + l + r == 0
+        then A.array (0,-1) []
+        else A.array (0, m) $ fmap (\i -> (i, neighbours i)) [0..m]
+
+  neighbours i
+    | i <  l =
+       (if i == l - 1 && w + r > 0 then (l :) else id)
+         [ j | j <- [0..l - 1], j /= i ]
+    | i >= w + l =
+       (if i == w + l && w + l > 0 then ((w + l - 1) :) else id)
+         [ j + w + l | j <- [0..r - 1], j + w + l /= i ]
+    | otherwise =
+         (if l > 0 || i > l then ((i - 1) :) else id)
+       $ (if r > 0 || i < l + w - 1 then ((i + 1) :) else id)
+         []
 
 -- | An hourglass shaped graph consisting of two independent complete
 -- sub-graphs, only connected via a single edge between two distinct
 -- nodes of each sub-graph.
-hourglass :: SNat n -> Topology (2 * n)
-hourglass sn@SNat = t { topologyType = Hourglass $ snatToInteger sn }
- where
-  t = fromGraph "hourglass" $
-        if n == 0
-        then A.array (0,-1) []
-        else A.array bounds $ fmap (\i -> (i, neighbours i)) [0..2*n-1]
+hourglass :: SNat n -> Topology (n + n)
+hourglass sn =
+  ( dumbbell sn d0 sn )
+  { topologyName = "hourglass"
+  , topologyType = Hourglass $ snatToInteger sn
+  }
 
-  n = snatToNum sn
-  bounds = (0, 2*n-1)
-  neighbours i
-    | even i    =
-      (if i == 0 then (1 :) else id)
-        [ 2*j   | j <- [0..n-1], 2*j   /= i ]
-    | otherwise =
-      (if i == 1 then (0 :) else id)
-        [ 2*j+1 | j <- [0..n-1], 2*j+1 /= i ]
+-- | A beads shaped graph consisting of two @c@ independend complete
+-- subgraphs of size @w@ (representing the beads), connected via a
+-- closed circular chain of @d@ nodes in between (representing the
+-- thread).
+beads :: SNat c -> SNat d -> SNat w -> Topology (c * (d + w))
+beads sc@SNat sd@SNat sw@SNat =
+  ( fromGraph "beads" $ fromEdgeList es )
+  { topologyType = Beads (sn2i sc) (sn2i sd) (sn2i sw) }
+ where
+  sn2i = snatToInteger
+  c = snatToNum sc :: Int
+  d = snatToNum sd :: Int
+  w = snatToNum sw :: Int
+  s = c * (d + w)
+  es = [ (x + i, x + j)
+       | n <- [0..c - 1]
+       , i <- [0..w - 1]
+       , j <- [0..w - 1]
+       , i /= j
+       , let x = n * (d + w)
+       ]
+    <> [ (x', x)
+       | w > 0
+       , n <- [0..c - 1]
+       , let x' = n * (d + w)
+             x = (x' - 1) `mod` s
+       , x /= x'
+       ]
+    <> [ (x', x)
+       | n <- [0..c - 1]
+       , i <- [0..d - 1]
+       , let x' = n * (d + w) + w + i
+             x = (x' - 1) `mod` s
+       , x /= x'
+       ]
 
 -- | Command line parser for the different topology types.
 topTypeCLIParser :: Parser (TopologyType IO Integer)
@@ -527,11 +616,43 @@ topTypeCLIParser = hsubparser
                 ]
             )
        )
+  <> command (show $ Pendulum () ())
+       (  info
+            ( Pendulum
+                <$> option auto
+                      (  long "length"
+                      <> short 'L'
+                      <> metavar "NUM"
+                      <> help "number of nodes representing the thread"
+                      )
+                <*> option auto
+                      (  long "weight"
+                      <> short 'W'
+                      <> metavar "NUM"
+                      <> help "number of nodes representing the weight"
+                      )
+            ) $ progDesc "pendulum shaped graph"
+       <> footerDoc
+            ( Just $ pretty $ unlines
+                [ "looks like: (for LENGTH = 2, WEIGHT = 4)"
+                , ""
+                , "    o"
+                , "    |"
+                , "    o"
+                , "    |"
+                , "    o"
+                , "   /|\\"
+                , "  o-+-o"
+                , "   \\|/"
+                , "    o"
+                ]
+            )
+       )
   <> command (show $ Line ())
        (  info
             ( Line <$> option auto
                 (  long "nodes"
-                <> short 'n'
+                <> short 'N'
                 <> metavar "NUM"
                 <> help "number of nodes of the graph"
                 )
@@ -539,7 +660,7 @@ topTypeCLIParser = hsubparser
             $ progDesc "line graph"
        <> footerDoc
             ( Just $ pretty $ unlines
-                [ "looks like: (for n = 3)"
+                [ "looks like: (for NODES = 3)"
                 , ""
                 , "  o---o---o"
                 ]
@@ -549,7 +670,7 @@ topTypeCLIParser = hsubparser
        (  info
             ( HyperCube <$> option auto
                 (  long "dimensions"
-                <> short 'n'
+                <> short 'N'
                 <> metavar "NUM"
                 <> help "number of dimensions"
                 )
@@ -557,7 +678,7 @@ topTypeCLIParser = hsubparser
             $ progDesc "hyper cube"
        <> footerDoc
             ( Just $ pretty $ unlines
-                [ "looks like: (for n = 3)"
+                [ "looks like: (for DIMENSIONS = 3)"
                 , ""
                 , "      o---o"
                 , "     /|  /|"
@@ -573,20 +694,20 @@ topTypeCLIParser = hsubparser
             ( Grid
                 <$> option auto
                       (  long "rows"
-                      <> short 'r'
+                      <> short 'R'
                       <> metavar "NUM"
                       <> help "number of rows"
                       )
                 <*> option auto
                       (  long "cols"
-                      <> short 'c'
+                      <> short 'C'
                       <> metavar "NUM"
                       <> help "number of columns"
                       )
             ) $ progDesc "2-dimensional grid"
        <> footerDoc
             ( Just $ pretty $ unlines
-                [ "looks like: (for r = 3, c = 4)"
+                [ "looks like: (for ROWS = 3, COLS = 4)"
                 , ""
                 , "   o---o---o---o"
                 , "   |   |   |   |"
@@ -601,13 +722,13 @@ topTypeCLIParser = hsubparser
             ( Torus2D
                 <$> option auto
                       (  long "rows"
-                      <> short 'r'
+                      <> short 'R'
                       <> metavar "NUM"
                       <> help "number of rows"
                       )
                 <*> option auto
                       (  long "cols"
-                      <> short 'c'
+                      <> short 'C'
                       <> metavar "NUM"
                       <> help "number of columns"
                       )
@@ -625,19 +746,19 @@ topTypeCLIParser = hsubparser
             ( Torus3D
                 <$> option auto
                       (  long "rows"
-                      <> short 'r'
+                      <> short 'R'
                       <> metavar "NUM"
                       <> help "number of rows"
                       )
                 <*> option auto
                       (  long "cols"
-                      <> short 'c'
+                      <> short 'C'
                       <> metavar "NUM"
                       <> help "number of columns"
                       )
                 <*> option auto
                       (  long "planes"
-                      <> short 'k'
+                      <> short 'P'
                       <> metavar "NUM"
                       <> help "number of planes"
                       )
@@ -655,20 +776,20 @@ topTypeCLIParser = hsubparser
             ( Tree
                 <$> option auto
                       (  long "depth"
-                      <> short 'd'
+                      <> short 'D'
                       <> metavar "NUM"
                       <> help "depth of the tree"
                       )
                 <*> option auto
                       (  long "childs"
-                      <> short 'c'
+                      <> short 'C'
                       <> metavar "NUM"
                       <> help "number of children"
                       )
             ) $ progDesc "balanced tree"
        <> footerDoc
             ( Just $ pretty $ unlines
-                [ "looks like: (for d = 2, c = 2)"
+                [ "looks like: (for CHILDS = 2, DEPTH = 2)"
                 , ""
                 , "       o"
                 , "      / \\"
@@ -682,14 +803,14 @@ topTypeCLIParser = hsubparser
        (  info
             ( Star <$> option auto
                 (  long "nodes"
-                <> short 'n'
+                <> short 'N'
                 <> metavar "NUM"
                 <> help "number of non-central nodes of the graph"
                 )
             ) $ progDesc "star shaped graph"
        <> footerDoc
             ( Just $ pretty $ unlines
-                [ "looks like: (for n = 8)"
+                [ "looks like: (for NODES = 8)"
                 , ""
                 , "    o o o"
                 , "     \\|/"
@@ -703,7 +824,7 @@ topTypeCLIParser = hsubparser
        (  info
             ( Cycle <$> option auto
                 (  long "nodes"
-                <> short 'n'
+                <> short 'N'
                 <> metavar "NUM"
                 <> help "number of nodes of the graph"
                 )
@@ -724,7 +845,7 @@ topTypeCLIParser = hsubparser
        (  info
             ( Complete <$> option auto
                 (  long "nodes"
-                <> short 'n'
+                <> short 'N'
                 <> metavar "NUM"
                 <> help "number of nodes of the graph"
                 )
@@ -741,6 +862,40 @@ topTypeCLIParser = hsubparser
                 ]
             )
        )
+  <> command (show $ Dumbbell () () ())
+       (  info
+            ( Dumbbell
+                <$> option auto
+                      (  long "width"
+                      <> short 'W'
+                      <> metavar "NUM"
+                      <> help "number of nodes representing the thread"
+                      )
+                <*> option auto
+                      (  long "left"
+                      <> short 'L'
+                      <> metavar "NUM"
+                      <> help "number of nodes representing the left weight"
+                      )
+                <*> option auto
+                      (  long "right"
+                      <> short 'R'
+                      <> metavar "NUM"
+                      <> help "number of nodes representing the right weight"
+                      )
+            ) $ progDesc "dumbbell shaped graph"
+       <> footerDoc
+            ( Just $ pretty $ unlines
+                [ "looks like: (for WIDTH = 2, LEFT = 3, RIGHT = 4)"
+                , ""
+                , "    o            o"
+                , "    |\\          /|\\"
+                , "    | o--o--o--o-+-o"
+                , "    |/          \\|/"
+                , "    o            o"
+                ]
+            )
+       )
   <> command (show $ Hourglass ())
        (  info
             ( Hourglass <$> option auto
@@ -749,7 +904,7 @@ topTypeCLIParser = hsubparser
                 <> metavar "NUM"
                 <> help "number of nodes in one half of the hourglass"
                 )
-            ) $ progDesc "hourglass shaped graph with fully connected 'halves'"
+            ) $ progDesc "hourglass shaped graph"
        <> footerDoc
             ( Just $ pretty $ unlines
                 [ "looks like: (for NODES = 3)"
@@ -761,6 +916,42 @@ topTypeCLIParser = hsubparser
                 , "      o"
                 , "     / \\"
                 , "    o---o"
+                ]
+            )
+       )
+  <> command (show $ Beads () () ())
+       (  info
+            ( Beads
+                <$> option auto
+                      (  long "count"
+                      <> short 'C'
+                      <> metavar "NUM"
+                      <> help "number of beads"
+                      )
+                <*> option auto
+                      (  long "distance"
+                      <> short 'D'
+                      <> metavar "NUM"
+                      <> help "number of nodes in between two beads"
+                      )
+                <*> option auto
+                      (  long "weight"
+                      <> short 'W'
+                      <> metavar "NUM"
+                      <> help "number of nodes representing a bead"
+                      )
+            ) $ progDesc "beads shaped graph"
+       <> footerDoc
+            ( Just $ pretty $ unlines
+                [ "looks like: (for COUNT = 3, DISTANCE = 1, WEIGHT = 3)"
+                , ""
+                , "        o---o"
+                , "       / \\ / \\"
+                , "      o   o   o"
+                , "     /         \\"
+                , "    o---o   o---o"
+                , "     \\ /     \\ /"
+                , "      o---o---o"
                 ]
             )
        )
@@ -812,9 +1003,9 @@ randomTopology sn@SNat = do
   forM_ is $ \i ->
     writeArray aE (i, i) False
   forM_ [(i, j) | i <- is, j <- is, i /= j] $ \(i, j) -> do
-    d1 <- readArray aE (i, j)
-    d2 <- readArray aE (j, i)
-    when (d1 /= d2) $ do
+    x1 <- readArray aE (i, j)
+    x2 <- readArray aE (j, i)
+    when (x1 /= x2) $ do
       writeArray aE (i, j) False
       writeArray aE (j, i) False
 
@@ -862,7 +1053,7 @@ fromDot ::
 fromDot cnt = do
   (strict, gType, maybe "" fromDotName -> name, statements) <- parse cnt
 
-  when (not strict) $ Left "Graph must be strict"
+  unless strict $ Left "Graph must be strict"
   when (gType == Digraph) $ Left "Graph must be undirected"
 
   edgeChains <- catMaybes <$> mapM fromStatement statements
