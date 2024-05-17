@@ -670,6 +670,10 @@ jobs:
           .github/scripts/with_vivado.sh \
             shake ${{ matrix.target.top }}:"${target}"
 
+          # Workaround for https://github.com/bittide/bittide-hardware/issues/523
+          mkdir -p _build/vivado
+          touch _build/vivado/workaround-issue-523
+
       - name: cache push build-post-synth
         run: cache push build-post-synth --prefix="${{ matrix.target.top }}"
 
