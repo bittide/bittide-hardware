@@ -271,6 +271,8 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
       :> "probe_ugn4"
       :> "probe_ugn5"
       :> "probe_ugn6"
+      :> "probe_linkReadys"
+      :> "probe_linkUps"
       :> Nil
     ){depth = D16384}
     sysClk
@@ -288,6 +290,8 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
     nFdecs
     (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
     ugn0 ugn1 ugn2 ugn3 ugn4 ugn5 ugn6
+    (bundle transceivers.linkReadys)
+    (bundle transceivers.linkUps)
 
   captureFlag = riseEvery sysClk syncRst enableGen
     (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
