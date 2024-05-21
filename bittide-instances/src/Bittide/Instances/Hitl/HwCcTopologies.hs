@@ -671,44 +671,42 @@ tests = Map.fromList
     -- TESTS --
     -----------
 
-    -- initial clock shifts   startup delays            topology
-  , tt icsDiamond             ((m *) <$> sdDiamond)     diamond
-  , tt icsComplete            ((m *) <$> sdComplete)  $ complete d3
-  , tt icsCyclic              ((m *) <$> sdCyclic)    $ cyclic d5
-  , tt icsTorus               ((m *) <$> sdTorus)     $ torus2d d2 d3
-  , tt icsStar                ((m *) <$> sdStar)      $ star d7
-  , tt icsLine                ((m *) <$> sdLine)      $ line d4
-  , tt icsHourglass           ((m *) <$> sdHourglass) $ hourglass d3
+    -- initial clock shifts   startup delays   name    topology
+  , tt icsConstOff            (repeat 0)       "D08" $ dumbbell d0 d0 d8
+  , tt icsConstOff            (repeat 0)       "D17" $ dumbbell d0 d1 d7
+  , tt icsConstOff            (repeat 0)       "D26" $ dumbbell d0 d2 d6
+  , tt icsConstOff            (repeat 0)       "D35" $ dumbbell d0 d3 d5
+  , tt icsConstOff            (repeat 0)       "D44" $ dumbbell d0 d4 d4
+  , tt icsConstOff            (repeat 0)       "D53" $ dumbbell d0 d5 d3
+  , tt icsConstOff            (repeat 0)       "D62" $ dumbbell d0 d6 d2
+  , tt icsConstOff            (repeat 0)       "D71" $ dumbbell d0 d7 d1
+  , tt icsConstOff            (repeat 0)       "D80" $ dumbbell d0 d8 d0
+
+  , tt icsConstOff            (repeat 0)       "P80" $ pendulum d8 d0
+  , tt icsConstOff            (repeat 0)       "P71" $ pendulum d7 d1
+  , tt icsConstOff            (repeat 0)       "P62" $ pendulum d6 d2
+  , tt icsConstOff            (repeat 0)       "P53" $ pendulum d5 d3
+  , tt icsConstOff            (repeat 0)       "P44" $ pendulum d4 d4
+  , tt icsConstOff            (repeat 0)       "P35" $ pendulum d3 d5
+  , tt icsConstOff            (repeat 0)       "P26" $ pendulum d2 d6
+  , tt icsConstOff            (repeat 0)       "P17" $ pendulum d1 d7
+  , tt icsConstOff            (repeat 0)       "P08" $ pendulum d0 d8
+
+  , tt icsDipole              (repeat 0)       "B23" $ beads d2 d1 d3
+  , tt icsConstOff            sdSepInit        "D17" $ cyclic d8
 
     -- CALIBRATION VERIFICATON --
     -----------------------------
   , validateClockOffsetCalibration
   ]
  where
-  m = 1_000_000
-
-  icsDiamond = -1000 :> -500 :> 2000 :> 3000 :> Nil
-  sdDiamond  =     0 :>   10 :>  200 :>    3 :> Nil
-
-  icsComplete = -10000 :> 0 :> 10000 :> Nil
-  sdComplete  =    200 :> 0 :>   200 :> Nil
-
-  icsCyclic = 0 :> 500 :> 1000 :> 1500 :> 2000 :> Nil
-  sdCyclic  = 0 :>  10 :>    0 :>  100 :>    0 :> Nil
-
-  icsTorus = -3000 :> -3500 :> -4000 :> 4000 :> 3500 :> 3000 :> Nil
-  sdTorus  =     0 :>     0 :>     0 :>  100 :>  100 :> 100  :> Nil
-
-  icsStar = 0 :> 1000 :> -1000 :> 2000 :> -2000 :> 3000 :> -3000 :> 4000 :> Nil
-  sdStar  = 0 :>   40 :>    80 :>  120 :>   160 :>  200 :>   240 :>  280 :> Nil
-
-  icsLine = 10000 :> 0 :> 0 :> -10000 :> Nil
-  sdLine  =   200 :> 0 :> 0 :>    200 :> Nil
-
-  icsHourglass = -10000 :> 10000 :> -10000 :> 10000 :> -10000 :> 10000 :> Nil
-  sdHourglass  =      0 :>   200 :>      0 :>   200 :>      0 :>   200 :> Nil
-
   ClockControlConfig{..} = clockControlConfig
+
+  icsConstOff = 0 :> 1000 :> -1000 :> 2000 :> -2000 :> 3000 :> -3000 :> 4000 :> Nil
+  icsDipole =  10000 :>  10000 :>  10000 :>  10000 :>
+              -10000 :> -10000 :> -10000 :> -10000 :> Nil
+
+  sdSepInit = 2000 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> Nil
 
   defSimCfg = def
     { samples            = 1000
@@ -745,18 +743,17 @@ tests = Map.fromList
       )
     )
 
-
-
   -- tests the given topology
   tt ::
     forall n.
     (KnownNat n, n <= FpgaCount) =>
     Vec n InitialClockShift ->
     Vec n StartupDelay ->
+    String ->
     Topology n ->
     (TestName, (Probes TestConfig, SimConf))
-  tt clockShifts startDelays t =
-    ( fromString $ topologyName t
+  tt clockShifts startDelays name t =
+    ( fromString name
     , ( toList ( zipWith4 testData indicesI clockShifts startDelays
                $ linkMasks @n t
                )
