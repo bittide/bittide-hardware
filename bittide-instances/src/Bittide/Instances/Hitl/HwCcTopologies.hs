@@ -672,30 +672,16 @@ tests = Map.fromList
     -----------
 
     -- initial clock shifts   startup delays   name    topology
-  , tt icsConstOff            (repeat 0)       "D08" $ dumbbell d0 d0 d8
-  , tt icsConstOff            (repeat 0)       "D17" $ dumbbell d0 d1 d7
-  , tt icsConstOff            (repeat 0)       "D26" $ dumbbell d0 d2 d6
-  , tt icsConstOff            (repeat 0)       "D35" $ dumbbell d0 d3 d5
-  , tt icsConstOff            (repeat 0)       "D44" $ dumbbell d0 d4 d4
-  , tt icsConstOff            (repeat 0)       "D53" $ dumbbell d0 d5 d3
-  , tt icsConstOff            (repeat 0)       "D62" $ dumbbell d0 d6 d2
-  , tt icsConstOff            (repeat 0)       "D71" $ dumbbell d0 d7 d1
-  , tt icsConstOff            (repeat 0)       "D80" $ dumbbell d0 d8 d0
-
-  , tt icsConstOff            (repeat 0)       "P80" $ pendulum d8 d0
-  , tt icsConstOff            (repeat 0)       "P71" $ pendulum d7 d1
-  , tt icsConstOff            (repeat 0)       "P62" $ pendulum d6 d2
-  , tt icsConstOff            (repeat 0)       "P53" $ pendulum d5 d3
-  , tt icsConstOff            (repeat 0)       "P44" $ pendulum d4 d4
-  , tt icsConstOff            (repeat 0)       "P35" $ pendulum d3 d5
-  , tt icsConstOff            (repeat 0)       "P26" $ pendulum d2 d6
-  , tt icsConstOff            (repeat 0)       "P17" $ pendulum d1 d7
-  , tt icsConstOff            (repeat 0)       "P08" $ pendulum d0 d8
-
-  , tt icsBeads               (repeat 0)       "B23" $ beads d2 d1 d3
-  , tt icsConstOff            ((m *) <$> sdc)  "D17" $ cyclic d8
-  , tt icsDumbbell            (repeat 0)       "D23" $ dumbbell d2 d3 d3
-  , tt icsDumbbell            (repeat 0)       "L8" $ line d8
+  , tt icsAlternate           (repeat 0)       "LA"  $ line d8
+  , tt icsAlternate           sdStep           "LO"  $ line d8
+  , tt icsAlternate           (repeat 0)       "CA"  $ cyclic d8
+  , tt icsAlternate           sdStep           "CO"  $ cyclic d8
+  , tt icsAlternate           (repeat 0)       "SA"  $ star d7
+  , tt icsAlternate           sdStep           "SO"  $ star d7
+  , tt icsDumbbell            (repeat 0)       "DF"  $ dumbbell d1 d1 d6
+  , tt icsHourglass           (repeat 0)       "DO"  $ hourglass d4
+  , tt icsTree                (repeat 0)       "TA"  $ tree d2 d2
+  , tt icsTrade               (repeat 0)       "DT"  $ dumbbell d2 d3 d3
 
     -- CALIBRATION VERIFICATON --
     -----------------------------
@@ -706,11 +692,21 @@ tests = Map.fromList
 
   ClockControlConfig{..} = clockControlConfig
 
-  icsConstOff = 0 :> 100 :> -100 :> 200 :> -200 :> 300 :> -300 :> 400 :> Nil
-  icsBeads = 0 :> 0 :> 0 :>  10000 :> 0 :> 0 :> 0 :> -10000 :> Nil
-  icsDumbbell = 10000 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> -10000 :> Nil
+  icsAlternate = 10000 :> -10000 :> 10000 :> -10000 :>
+                 10000 :> -10000 :> 10000 :> -10000 :> Nil
 
-  sdc = 2000 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> Nil
+  icsDumbbell = -10000 :>     0 :> 10000 :> 10000 :>
+                 10000 :> 10000 :> 10000 :> 10000 :> Nil
+
+  icsHourglass = -10000 :> -10000 :> -10000 :> 10000 :>
+                 -10000 :>  10000 :>  10000 :> 10000 :> Nil
+
+  icsTree = 0 :> 0 :> 0 :> 10000 :> -10000 :> 10000 :> -10000 :> Nil
+
+  icsTrade = -10000 :> 10000 :> 0 :> 0 :> 0 :> 0 :> 10000 :> -10000 :> Nil
+
+  sdStep = (m *) <$> (0 :> 200 :> 400 :> 600 :> 800 :> 1000 :> 1200 :> 1400 :> Nil)
+
 
   defSimCfg = def
     { samples            = 1000
