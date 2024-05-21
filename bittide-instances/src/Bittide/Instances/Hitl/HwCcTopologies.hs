@@ -692,21 +692,25 @@ tests = Map.fromList
   , tt icsConstOff            (repeat 0)       "P17" $ pendulum d1 d7
   , tt icsConstOff            (repeat 0)       "P08" $ pendulum d0 d8
 
-  , tt icsDipole              (repeat 0)       "B23" $ beads d2 d1 d3
-  , tt icsConstOff            sdSepInit        "D17" $ cyclic d8
+  , tt icsBeads               (repeat 0)       "B23" $ beads d2 d1 d3
+  , tt icsConstOff            ((m *) <$> sdc)  "D17" $ cyclic d8
+  , tt icsDumbbell            (repeat 0)       "D23" $ dumbbell d2 d3 d3
+  , tt icsDumbbell            (repeat 0)       "L8" $ line d8
 
     -- CALIBRATION VERIFICATON --
     -----------------------------
   , validateClockOffsetCalibration
   ]
  where
+  m = 1_000_000
+
   ClockControlConfig{..} = clockControlConfig
 
-  icsConstOff = 0 :> 1000 :> -1000 :> 2000 :> -2000 :> 3000 :> -3000 :> 4000 :> Nil
-  icsDipole =  10000 :>  10000 :>  10000 :>  10000 :>
-              -10000 :> -10000 :> -10000 :> -10000 :> Nil
+  icsConstOff = 0 :> 100 :> -100 :> 200 :> -200 :> 300 :> -300 :> 400 :> Nil
+  icsBeads = 0 :> 0 :> 0 :>  10000 :> 0 :> 0 :> 0 :> -10000 :> Nil
+  icsDumbbell = 10000 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> -10000 :> Nil
 
-  sdSepInit = 2000 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> Nil
+  sdc = 2000 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> Nil
 
   defSimCfg = def
     { samples            = 1000
