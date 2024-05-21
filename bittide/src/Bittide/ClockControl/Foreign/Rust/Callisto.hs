@@ -1,11 +1,13 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RecordWildCards #-}
+
+#ifdef RUSTY_CALLISTO
 {-# LANGUAGE ForeignFunctionInterface #-}
+#endif
 
 module Bittide.ClockControl.Foreign.Rust.Callisto
   ( rustyCallisto
@@ -13,20 +15,22 @@ module Bittide.ClockControl.Foreign.Rust.Callisto
 
 import Clash.Prelude
 
+import Bittide.ClockControl (DataCount)
+import Bittide.ClockControl.Callisto.Types
+import Bittide.ClockControl.StabilityChecker
+
 import Foreign.C.Types (CUInt(..))
+
+#ifdef RUSTY_CALLISTO
+import Data.Word (Word32)
+import Data.Constraint
+import Data.Constraint.Nat.Extra (isOne)
+
 import Foreign.Marshal.Alloc
 import Foreign.Ptr (Ptr)
 
 import Foreign.Storable (Storable(..))
 import System.IO.Unsafe
-
-import Bittide.ClockControl (DataCount)
-import Bittide.ClockControl.Callisto.Types
-import Bittide.ClockControl.StabilityChecker
-
-import Data.Word (Word32)
-import Data.Constraint
-import Data.Constraint.Nat.Extra (isOne)
 
 -- | Variant of 'Bittide.ClockControl.Callisto.callisto', which is
 -- implemented in Rust and uses the Rust FFI for being simulated.
@@ -92,3 +96,29 @@ foreign import ccall safe "__c_callisto_rust" callisto_rust ::
   Ptr (VecS n (DataCountS m)) ->
   Ptr (ControlSt) ->
   IO ()
+#else
+rustyCallisto ::
+  forall m n dom.
+  ( HiddenClockResetEnable dom
+  , KnownNat n
+  , KnownNat m
+  , 1 <= n
+  , 1 <= m
+  , n + m <= 32
+  , n <= BitsOf CUInt
+  , m <= BitsOf CUInt
+  ) =>
+  -- | Configuration parameters.
+  ControlConfig m ->
+  -- | Link availability mask.
+  Signal dom (BitVector n) ->
+  -- | Stability indicators for each of the elastic buffers.
+  Signal dom (Vec n StabilityIndication) ->
+  -- | Data counts from elastic buffers.
+  Signal dom (Vec n (DataCount m)) ->
+  -- | Current state.
+  Signal dom ControlSt ->
+  -- | Updated state.
+  Signal dom ControlSt
+rustyCallisto !_config !_m !_scs !_counts !_st = errorX "Rusty Callisto not enabled"
+#endif
