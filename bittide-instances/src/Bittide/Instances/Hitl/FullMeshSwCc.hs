@@ -50,7 +50,7 @@ import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState(Error, Finished), si539xSpi)
 import Bittide.Counter
 import Bittide.DoubleBufferedRam (InitialContent(Reloadable), ContentType(Blob))
-import Bittide.ElasticBuffer (sticky)
+import Bittide.ElasticBuffer (resettableXilinxElasticBuffer, sticky)
 import Bittide.Hitl (HitlTestsWithPostProcData, hitlVioBool, allFpgas)
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig(..), processingElement)
@@ -68,6 +68,8 @@ import Project.FilePath
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
+import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra (xpmCdcMaybeLossy)
+import Clash.Sized.Vector.ToTuple
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
@@ -196,10 +198,29 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
         , clockPaths
         , rxNs = rxns
         , rxPs = rxps
-        , txDatas = repeat (pure 0)
-        , txReadys = repeat (pure False)
+        , txDatas = txCounters
+        , txReadys = repeat (pure True)
         , rxReadys = repeat (pure True)
         }
+
+  txCounters = zipWith ugnCounter transceivers.txClocks transceivers.txResets
+  ugnCounter txClk txRst = result
+   where
+    result = register txClk txRst enableGen (0 :: BitVector 64) (result + 1)
+
+  -- rxCounters :: _
+  rxCounters = zipWith4 go transceivers.txClocks transceivers.rxClocks transceivers.txResets transceivers.rxDatas
+   where
+    go txClk rxClk txRst rxData = resettableXilinxElasticBuffer @4 txClk rxClk txRst rxData
+
+  -- ugns :: _
+  ugns = zipWith (-) txCounters (map ((\(_,_,_,_,x)-> fmap (fromMaybe 0) x)) rxCounters)
+  freeUgns :: Vec 7 (Signal Basic125 (BitVector 64))
+  freeUgns = zipWith3 go transceivers.txClocks (repeat sysClk) (map (fmap Just) ugns)
+   where
+    -- go :: Clock clkIn -> Clock clkOut -> Signal clkIn (Maybe (BitVector 64)) -> Signal clkOut (BitVector 64)
+    go clkIn clkOut mx = regMaybe clkOut noReset enableGen 0 (xpmCdcMaybeLossy clkIn clkOut mx)
+  (ugn0, ugn1, ugn2, ugn3, ugn4, ugn5, ugn6) = vecToTuple freeUgns
 
   allReady = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle transceivers.linkReadys)
   transceiversFailedAfterUp =
@@ -243,6 +264,13 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
       :> "probe_nFincs"
       :> "probe_nFdecs"
       :> "probe_net_nFincs"
+      :> "probe_ugn0"
+      :> "probe_ugn1"
+      :> "probe_ugn2"
+      :> "probe_ugn3"
+      :> "probe_ugn4"
+      :> "probe_ugn5"
+      :> "probe_ugn6"
       :> Nil
     ){depth = D16384}
     sysClk
@@ -259,6 +287,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
     nFincs
     nFdecs
     (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
+    ugn0 ugn1 ugn2 ugn3 ugn4 ugn5 ugn6
 
   captureFlag = riseEvery sysClk syncRst enableGen
     (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
