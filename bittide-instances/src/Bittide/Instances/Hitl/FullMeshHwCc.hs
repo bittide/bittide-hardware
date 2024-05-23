@@ -70,10 +70,7 @@ import Bittide.Instances.Hitl.Setup
 import Project.FilePath
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
-import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
-import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
 import Protocols
@@ -198,7 +195,6 @@ fullMeshHwTest ::
   , "ALL_STABLE"   ::: Signal Basic125 Bool
   )
 fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
-  fincFdecIla `hwSeqX`
   ( transceivers.txNs
   , transceivers.txPs
   , frequencyAdjustments
@@ -250,10 +246,6 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
 
-  timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
-  timer = register sysClk syncRst enableGen (0, 0) (timeSucc <$> timer)
-  milliseconds1 = fst <$> timer
-
   -- Clock control
   clockControlReset =
       orReset (unsafeFromActiveLow allReady)
@@ -271,52 +263,6 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
     callistoClockControlWithIla @(FpgaCount - 1) @CccBufferSize
       (head transceivers.txClocks) sysClk clockControlReset clockControlConfig
       IlaControl{..} availableLinkMask (fmap (fmap resize) domainDiffs)
-
-  -- Capture every 100 microseconds - this should give us a window of about 5
-  -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
-  -- very confusing.
-  capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
-
-  fincFdecIla :: Signal Basic125 ()
-  fincFdecIla = setName @"fincFdecIla" $ ila
-    (ilaConfig $
-         "trigger_0"
-      :> "capture_0"
-      :> "probe_milliseconds"
-      :> "probe_allStable0"
-      :> "probe_transceiversFailedAfterUp"
-      :> "probe_nFincs"
-      :> "probe_nFdecs"
-      :> "probe_net_nFincs"
-      :> Nil
-    ){depth = D16384}
-    sysClk
-
-    -- Trigger as soon as we come out of reset
-    (unsafeToActiveLow syncRst)
-
-    capture
-
-    -- Debug probes
-    milliseconds1
-    allStable0
-    transceiversFailedAfterUp
-    nFincs
-    nFdecs
-    (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
-
-  captureFlag = riseEvery sysClk syncRst enableGen
-    (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
-
-  nFincs = regEn sysClk clockControlReset enableGen
-    (0 :: Unsigned 32)
-    ((== Just SpeedUp) <$> clockMod)
-    (satSucc SatBound <$> nFincs)
-
-  nFdecs = regEn sysClk clockControlReset enableGen
-    (0 :: Unsigned 32)
-    ((== Just SlowDown) <$> clockMod)
-    (satSucc SatBound <$> nFdecs)
 
   frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
   frequencyAdjustments =
