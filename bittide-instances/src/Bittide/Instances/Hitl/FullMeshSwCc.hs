@@ -198,15 +198,15 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
         , clockPaths
         , rxNs = rxns
         , rxPs = rxps
-        , txDatas = repeat (pure 0) -- txCounters
+        , txDatas = txCounters
         , txReadys = repeat (pure True)
         , rxReadys = repeat (pure True)
         }
 
-  txCounters = zipWith ugnCounter transceivers.txClocks transceivers.txResets
-  ugnCounter txClk txRst = result
+  txCounters = zipWith3 ugnCounter transceivers.txClocks transceivers.txResets transceivers.txSamplings
+  ugnCounter txClk txRst txSampl = result
    where
-    result = register txClk txRst enableGen (0 :: BitVector 64) (result + 1)
+    result = register txClk txRst (toEnable txSampl) (0 :: BitVector 64) (result + 1)
 
   -- rxCounters :: _
   rxCounters = zipWith4 go transceivers.txClocks transceivers.rxClocks transceivers.txResets transceivers.rxDatas
