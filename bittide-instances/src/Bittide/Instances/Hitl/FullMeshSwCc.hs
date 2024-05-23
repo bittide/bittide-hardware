@@ -251,7 +251,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
   -- very confusing.
-  capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
+  capture = (captureFlag {- .&&. allReady -} ) .||. unsafeToActiveHigh syncRst
 
   fincFdecIla :: Signal Basic125 ()
   fincFdecIla = ila
@@ -278,7 +278,8 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
     sysClk
 
     -- Trigger as soon as we come out of reset
-    (unsafeToActiveLow syncRst)
+    -- (unsafeToActiveLow syncRst)
+    allReady
 
     capture
 
