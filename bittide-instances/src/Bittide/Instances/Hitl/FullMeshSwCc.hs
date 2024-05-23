@@ -199,7 +199,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
         , rxNs = rxns
         , rxPs = rxps
         , txDatas = txCounters
-        , txReadys = repeat (pure True)
+        , txReadys = repeat (pure False)
         , rxReadys = repeat (pure True)
         }
 
