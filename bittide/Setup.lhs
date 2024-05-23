@@ -1,4 +1,4 @@
-% SPDX-FileCopyrightText: 2023 Google LLC
+% SPDX-FileCopyrightText: 2023-2024 Google LLC
 %
 % SPDX-License-Identifier: CC0-1.0
 
@@ -9,11 +9,15 @@ not used any more this `Setup.lhs` still survived for linking the Rust
 dependencies with the `bittide` library.
 
 > import Control.Exception (bracket)
+> import Control.Monad.Extra (ifM)
+> import Data.List (isInfixOf)
+> import Data.List.Extra (trim)
 > import Data.Maybe
 > import qualified Distribution.PackageDescription as PD
 > import Distribution.Simple
 >   ( Args,
 >     UserHooks (confHook, preConf),
+>     defaultMain,
 >     defaultMainWithHooks,
 >     simpleUserHooks,
 >   )
@@ -36,12 +40,19 @@ dependencies with the `bittide` library.
 > import System.FilePath
 >
 > main :: IO ()
-> main =
->   defaultMainWithHooks
->     simpleUserHooks
->       { confHook = rustConfHook
->       , buildHook = rustBuildHook
->       }
+> main = do
+>   -- This is a hack: we can't pass flags to Setup.lhs AFAIK
+>   let localProjectFile = "../cabal.project.local"
+>   localCabalConfig <- ifM (doesFileExist localProjectFile) (readFile localProjectFile) (pure "")
+>   let localCabalConfigLines = map trim (lines localCabalConfig)
+>   if (any (=="flags: -rusty-callisto") localCabalConfigLines)
+>   then defaultMain
+>   else
+>     defaultMainWithHooks
+>       simpleUserHooks
+>         { confHook = rustConfHook
+>         , buildHook = rustBuildHook
+>         }
 >
 > rawSystemInDir
 >   :: String
