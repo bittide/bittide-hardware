@@ -15,7 +15,7 @@ data-files:
 custom-setup
   setup-depends: Cabal, base, directory, process, filepath, extra
 
--- You problably want add a `cabal.project.local` that looks like:
+-- You probably want add a `cabal.project.local` that looks like:
 --
 --   package bittide
 --      flags: -rusty-callisto
