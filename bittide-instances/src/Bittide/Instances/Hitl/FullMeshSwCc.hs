@@ -31,6 +31,7 @@ module Bittide.Instances.Hitl.FullMeshSwCc
   , tests
   ) where
 
+import qualified Prelude as P
 import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
 import qualified Clash.Explicit.Prelude as E
@@ -77,7 +78,8 @@ import Protocols
 import VexRiscv
 
 import qualified Bittide.Transceiver.ResetManager as ResetManager
-import qualified Data.Map as Map (singleton)
+import qualified Data.Map as Map
+import qualified Data.Text as Text
 
 clockControlConfig ::
   $(case (instancesClockConfig (Proxy @Basic125)) of { (_ :: t) -> liftTypeQ @t })
@@ -397,7 +399,7 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   } #-}
 
 tests :: HitlTestsWithPostProcData () SimConf
-tests = Map.singleton "CC" $
+tests = Map.fromList $ P.zip ["CC" <> Text.pack (show n) | n <- [(0::Int)..9]] $ P.repeat
   ( allFpgas ()
   , def { mTopologyType      = Just $ Complete (natToInteger @FpgaCount)
         , samples            = 1000
