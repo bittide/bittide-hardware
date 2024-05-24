@@ -463,7 +463,7 @@ transceiverPrbs opts args@TransceiverInput{clock, reset} =
   prbs = Prbs.generator txClock (unsafeFromActiveLow commasDone) enableGen prbsConfig
   prbsWithMeta = WordAlign.joinMsbs @8 <$> fmap pack metaTx <*> prbs
   prbsWithMetaAndAlign = WordAlign.joinMsbs @8 WordAlign.alignSymbol <$> prbsWithMeta
-  gtwiz_userdata_tx_in =
+  gtwiz_userdata_tx_in = register txClock txReset enableGen 0 $
     mux
       txUserData
       args.txData
