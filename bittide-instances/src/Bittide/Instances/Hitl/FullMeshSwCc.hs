@@ -191,7 +191,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxns rxps miso =
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTxS @GthRxS
-      defTransceiverOptions
+      defTransceiverOptions { debugIla = True }
       TransceiverInputs
         { clock = sysClk
         , reset = gthAllReset

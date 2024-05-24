@@ -383,8 +383,8 @@ transceiverPrbs opts args@TransceiverInput{clock, reset} =
       :> "ila_probe_metaTx"
       :> "ila_probe_linkUp"
       :> "ila_probe_txLastFree"
-      :> "capture"
-      :> "trigger"
+      :> "captureTrans"
+      :> "triggerTrans"
       :> Nil) { advancedTriggers = True, stages = 1, depth = D1024 })
     clock
     opts.debugFpgaIndex
