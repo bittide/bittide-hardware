@@ -717,7 +717,7 @@ proc run_test_group {probes_file test_config_path target_dict url ila_data_dir} 
                 set_property capture_compare_value eq1'b1 $capture_probe
 
                 # Set the trigger position
-                set_property control.trigger_position 0 $ila
+                set_property control.trigger_position 20 $ila
 
                 run_hw_ila $ila
             }
