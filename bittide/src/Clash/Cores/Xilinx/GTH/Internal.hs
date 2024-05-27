@@ -69,7 +69,7 @@ gthCore
    , undefined, undefined, undefined, undefined
    , undefined, undefined, undefined, undefined
    )
-{-# NOINLINE gthCore #-}
+{-# OPAQUE gthCore #-}
 {-# ANN gthCore hasBlackBox #-}
 {-# ANN gthCore (
    let primName = 'gthCore
@@ -83,7 +83,7 @@ gthCore
 
 ibufds_gte3 :: KnownDomain dom => DiffClock dom -> Clock dom
 ibufds_gte3 !_clk = clockGen
-{-# NOINLINE ibufds_gte3 #-}
+{-# OPAQUE ibufds_gte3 #-}
 {-# ANN ibufds_gte3 hasBlackBox #-}
 {-# ANN ibufds_gte3 (
    let primName = 'ibufds_gte3
