@@ -70,11 +70,11 @@ gthCore
   !_gtwiz_reset_tx_datapath_in
   !_gtwiz_reset_rx_pll_and_datapath_in
   !_gtwiz_reset_rx_datapath_in
-  !_gtwiz_userdata_tx_in
+  gtwiz_userdata_tx_in
   !_txctrl2_in
   !_drpclk_in
   !_gtrefclk0_in
- = ( undefined, undefined, undefined, undefined
+ = ( undefined, undefined, gtwiz_userdata_tx_in `seq` undefined, undefined
    , undefined, undefined, undefined, undefined
    , undefined, undefined, undefined, undefined
    )
