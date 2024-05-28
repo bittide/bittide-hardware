@@ -100,8 +100,12 @@ dupWb = Circuit go
 -- transaction, while capture will be active for as long as trigger and a cycle
 -- after it.
 ilaWb ::
-  forall dom addrW a .
+  forall name dom addrW a .
   HiddenClock dom =>
+  -- | Name of the module of the `ila` wrapper. Naming the internal ILA is
+  -- unreliable when more than one ILA is used with the same arguments, but the
+  -- module name can be set reliably.
+  SSymbol name ->
   -- | Number of registers to insert at each probe. Supported values: 0-6.
   -- Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
   Index 7 ->
@@ -111,7 +115,7 @@ ilaWb ::
   Circuit
     (Wishbone dom 'Standard addrW a)
     (Wishbone dom 'Standard addrW a)
-ilaWb stages0 depth0 = Circuit $ \(m2s, s2m) ->
+ilaWb SSymbol stages0 depth0 = Circuit $ \(m2s, s2m) ->
   let
     -- Our TCL infrastructure looks for 'trigger' and 'capture' and uses it to
     -- trigger the ILA and do selective capture. Though defaults are changable
@@ -121,7 +125,7 @@ ilaWb stages0 depth0 = Circuit $ \(m2s, s2m) ->
     capture = trigger .||. dflipflop trigger
 
     ilaInst :: Signal dom ()
-    ilaInst = ila
+    ilaInst = setName @name $ ila
       ((ilaConfig $
            "m2s_addr"
         :> "m2s_writeData"
