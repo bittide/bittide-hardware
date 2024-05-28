@@ -553,7 +553,7 @@ dumbbell sw@SNat sl@SNat sr@SNat =
 -- nodes of each sub-graph.
 hourglass :: SNat n -> Topology (n + n)
 hourglass sn =
-  ( dumbbell sn d0 sn )
+  ( dumbbell d0 sn sn )
   { topologyName = "hourglass"
   , topologyType = Hourglass $ snatToInteger sn
   }
