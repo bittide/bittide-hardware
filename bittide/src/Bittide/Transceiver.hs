@@ -91,7 +91,7 @@ import Clash.Explicit.Prelude
 
 import Bittide.Arithmetic.Time (Milliseconds, trueForSteps)
 import Bittide.ElasticBuffer (sticky)
-import Clash.Cores.Xilinx.GTH (gthCore)
+import Clash.Cores.Xilinx.GTH (GthCore)
 import Clash.Cores.Xilinx.Ila (IlaConfig(advancedTriggers, depth, stages), ilaConfig, ila, Depth(D1024))
 import Clash.Cores.Xilinx.Xpm.Cdc.ArraySingle (xpmCdcArraySingle)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
@@ -107,6 +107,7 @@ import qualified Bittide.Transceiver.Comma as Comma
 import qualified Bittide.Transceiver.Prbs as Prbs
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Bittide.Transceiver.WordAlign as WordAlign
+import qualified Clash.Cores.Xilinx.GTH as Gth
 
 -- | Meta information send along with the PRBS and alignment symbols. See module
 -- documentation for more information.
@@ -188,7 +189,7 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.stats'
   }
 
-data Output tx rx txS free = Output
+data Output tx rx txS free serializedData = Output
   { txClock :: Clock tx
   -- ^ Transmit clock. See 'txReset'.
   , txReset :: Reset tx
@@ -200,9 +201,9 @@ data Output tx rx txS free = Output
   , txSampling :: Signal tx Bool
   -- ^ Data is sampled from 'Input.txSampling'
 
-  , txP :: Signal txS (BitVector 1)
+  , txP :: Signal txS serializedData
   -- ^ Transmit data (and implicitly a clock), positive
-  , txN :: Signal txS (BitVector 1)
+  , txN :: Signal txS serializedData
   -- ^ Transmit data (and implicitly a clock), negative
 
   , rxClock :: Clock rx
@@ -222,7 +223,7 @@ data Output tx rx txS free = Output
   -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
   }
 
-data Input tx rx ref free rxS = Input
+data Input tx rx ref free rxS serializedData = Input
   { clock :: Clock free
   -- ^ Any "always on" clock
   , reset :: Reset free
@@ -237,8 +238,8 @@ data Input tx rx ref free rxS = Input
   , clockPath :: String
   -- ^ Clock path, example \"clk0-2\"
 
-  , rxN :: Signal rxS (BitVector 1)
-  , rxP :: Signal rxS (BitVector 1)
+  , rxN :: Signal rxS serializedData
+  , rxP :: Signal rxS serializedData
 
   , txData :: Signal tx (BitVector 64)
   -- ^ Data to transmit to the neighbor. Is sampled on sample after
@@ -335,13 +336,13 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} = Outputs
     inputs.rxReadys
 
   go transceiverIndex channelName clockPath rxN rxP txData txReady rxReady =
-    transceiverPrbs opts Input
+    transceiverPrbs Gth.gthCore opts Input
       { channelName, clockPath, rxN, rxP, txData, txReady, rxReady, transceiverIndex
       , clock, reset, refClock
       }
 
 transceiverPrbs ::
-  forall tx rx ref free txS rxS .
+  forall tx rx ref free txS rxS serializedData .
   ( HasSynchronousReset tx
   , HasDefinedInitialValues tx
 
@@ -351,10 +352,11 @@ transceiverPrbs ::
   , HasSynchronousReset free
   , HasDefinedInitialValues free
   ) =>
+  GthCore tx rx ref free txS rxS serializedData ->
   Config free ->
-  Input tx rx ref free rxS ->
-  Output tx rx txS free
-transceiverPrbs opts args@Input{clock, reset} =
+  Input tx rx ref free rxS serializedData ->
+  Output tx rx txS free serializedData
+transceiverPrbs gthCore opts args@Input{clock, reset} =
   when opts.debugIla debugIla `hwSeqX` result
  where
 
@@ -441,8 +443,6 @@ transceiverPrbs opts args@Input{clock, reset} =
   ( txN, txP, txClock, rxClock, rx_data0, reset_tx_done, reset_rx_done, tx_active
    , rxCtrl0, rxCtrl1, rxCtrl2, rxCtrl3 )
     = gthCore
-        @tx @rx @ref @free @txS @rxS
-
         args.channelName args.clockPath
         args.rxN
         args.rxP

@@ -17,12 +17,11 @@ import Clash.Cores.Xilinx.GTH.BlackBoxes
 type TX_DATA_WIDTH = 64
 type RX_DATA_WIDTH = 64
 
-gthCore
-  :: forall txUser2 rxUser2 refclk0 freerun txS rxS
-   . String -- ^ channel
+type GthCore txUser2 rxUser2 refclk0 freerun txS rxS serializedData =
+     String -- ^ channel
   -> String -- ^ refClkSpec
-  -> "gthrxn_in" ::: Signal rxS (BitVector 1)
-  -> "gthrxp_in" ::: Signal rxS (BitVector 1)
+  -> "gthrxn_in" ::: Signal rxS serializedData
+  -> "gthrxp_in" ::: Signal rxS serializedData
 
   -> "gtwiz_reset_clk_freerun_in" ::: Clock freerun
 
@@ -39,8 +38,8 @@ gthCore
   -> "gtrefclk0_in" ::: Clock refclk0
 
   ->
-   ( "gthtxn_out" ::: Signal txS (BitVector 1)
-   , "gthtxp_out" ::: Signal txS (BitVector 1)
+   ( "gthtxn_out" ::: Signal txS serializedData
+   , "gthtxp_out" ::: Signal txS serializedData
 
    , "gtwiz_userclk_tx_usrclk2_out" ::: Clock txUser2
    , "gtwiz_userclk_rx_usrclk2_out" ::: Clock rxUser2
@@ -57,6 +56,8 @@ gthCore
    , "rxctrl2_out" ::: Signal rxUser2 (BitVector 8)
    , "rxctrl3_out" ::: Signal rxUser2 (BitVector 8)
    )
+
+gthCore :: GthCore txUser2 rxUser2 refclk0 freerun txS rxS (BitVector 1)
 gthCore
   !_channel
   !_refClkSpec
