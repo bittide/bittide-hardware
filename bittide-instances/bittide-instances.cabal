@@ -204,3 +204,32 @@ executable post-vex-riscv-test
     temporary,
     process,
   other-modules: Paths_bittide_instances
+
+executable streaming-source
+  import common-options
+  ghc-options: -Wall -Wcompat -threaded
+  main-is: exe/streaming/Source.hs
+  build-depends:
+    base,
+    network-simple,
+    streaming,
+    streaming-bytestring,
+    binary,
+    protobuf == 0.2.1.4,
+    text,
+    hex,
+    bytestring
+
+executable streaming-sink
+  import common-options
+  ghc-options: -Wall -Wcompat -threaded
+  main-is: exe/streaming/Sink.hs
+  build-depends:
+    base,
+    network-simple,
+    streaming,
+    streaming-bytestring,
+    binary,
+    protobuf == 0.2.1.4,
+    text,
+    bytestring

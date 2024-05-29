@@ -39,7 +39,6 @@ cabal.config
 *.bin
 *.log
 *.tar.gz
-
 *~
 *.DS_Store
 
@@ -86,3 +85,6 @@ tight_setup_hold_pins.txt
 # Python temporary files
 *.pyc
 __pycache__
+
+
+.agda

@@ -135,3 +135,6 @@ minLeq = unsafeCoerce (Dict :: Dict (0 <= 0))
 -- | Postulates that the minimum of a and b can't be larger than b
 maxGeqPlus :: forall a b c. Dict (a <= Max a b + c)
 maxGeqPlus = unsafeCoerce (Dict :: Dict (0 <= 0))
+
+leMult :: forall a b . (1 <= a, 1 <= b) => Dict (1 <= a * b)
+leMult = unsafeCoerce (Dict :: Dict (0 <= 0))

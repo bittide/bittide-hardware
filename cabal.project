@@ -66,7 +66,7 @@ package clash-vexriscv-sim
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
-index-state: 2023-12-05T05:33:28Z
+index-state: 2024-05-23T10:06:48Z
 
 -- We need an up-to-date Clash and libraries. Among other features, this adds
 -- support for dynamic clocks and Xilinx primitive support.

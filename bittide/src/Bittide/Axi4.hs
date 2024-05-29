@@ -5,10 +5,36 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE MagicHash #-}
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
+{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
-module Bittide.Axi4 where
+module Bittide.Axi4
+(
+  -- Scaling circuits
+  axisFromByteStream,
+  axisToByteStream,
+  axiPacking,
+
+  -- Wishbone interfaces
+  wbAxisRxBufferCircuit,
+  wbAxisRxBuffer,
+  wbToAxiTx,
+
+  -- Other circuits
+  axiStreamPacketFifo,
+  ilaAxi4Stream,
+  rxReadMasterC,
+
+  -- Utility functions
+  combineAxi4Stream,
+  splitAxi4Stream,
+  packAxi4Stream,
+  dropUserAxi4Stream,
+  eqAxi4Stream,
+) where
 
 import Clash.Prelude
 
@@ -20,6 +46,7 @@ import Data.Proxy
 import Protocols
 import Protocols.Axi4.Stream
 import Protocols.Wishbone
+import Clash.Debug
 
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
@@ -31,10 +58,14 @@ import qualified Protocols.DfConv as DfConv
 -}
 
 -- | An Axi4Stream in with no gaps in the data. For each transaction the following holds:
+--
 -- * For a transaction that is not the last in a packet, all _tkeep bits are set.
 -- * For a transaction that is the last in a packet, the _tlast bit is set and the
 -- first n bits of _tkeep are set, where n is the number of bytes in the transaction.
 type PackedAxi4Stream dom conf userType = Axi4Stream dom conf userType
+
+deriving instance (KnownAxi4StreamConfig conf, BitPack userType) => BitPack (Axi4StreamM2S conf userType)
+deriving instance BitPack Axi4StreamS2M
 
 {-# NOINLINE axisFromByteStream #-}
 -- | Transforms an Axi4 stream of 1 byte wide into an Axi4 stream of /n/ bytes
@@ -60,13 +91,13 @@ axisFromByteStream ::
       (Vec (addedWidth + 1) userType))
 axisFromByteStream = Circuit (mealyB go Nothing)
  where
-  go axiStored (axiIn, Axi4StreamS2M{_tready}) = (axiNext, (lhsS2M, rhsM2S))
+  go axiStored (input, Axi4StreamS2M{_tready = outputReady}) = (axiNext, (inputReady, output))
    where
     undefUser = deepErrorX "axisFromByteStream: _tuser undefined"
     -- Try to append the incoming axi to the stored axi
-    combinedAxi = axiUserMap (\(v1, v2) -> v1 :< v2) <$> concatAxi axiStored axiIn
-    inpValid = isJust axiIn && isJust combinedAxi
-    inpInvalid = isJust axiIn && isNothing combinedAxi
+    combinedAxi = axiUserMap (\(v1, v2) -> v1 :< v2) <$> combineAxi4Stream axiStored input
+    inpPass = isJust input && isJust combinedAxi
+    inpBlocked = isJust input && isNothing combinedAxi
 
     -- Shifting bytes
     axiPreShift = combinedAxi <|> (axiUserMap extendWithErrorX . extendAxi <$> axiStored)
@@ -77,6 +108,8 @@ axisFromByteStream = Circuit (mealyB go Nothing)
       (maybe (repeat False) _tstrb axiPreShift)
       (maybe (repeat undefUser) _tuser axiPreShift)
 
+    -- TODO: Replace shiftPackVec with a more resource efficient implementation.
+    -- https://github.com/bittide/bittide-hardware/issues/521
     (newData, newKeeps, newStrobes, newUsers) = unzip4 $
       (maybe (0, False, False, undefUser) (\(d, s, u) -> (d, True, s, u))) <$> shiftPackVec axiBytes
 
@@ -92,24 +125,23 @@ axisFromByteStream = Circuit (mealyB go Nothing)
     -- * All keep bits of the output are set
     -- * We can not combine the lhs axi with the stored axi
     -- * The last bit of the output is set.
-    rhsValid = shiftingDone && (and newKeeps || inpInvalid || maybe False _tlast axiPostShift)
-    rhsM2S
-      | rhsValid = axiPostShift
+    outputValid = shiftingDone && (and newKeeps || inpBlocked || maybe False _tlast axiPostShift)
+    output
+      | outputValid = axiPostShift
       | otherwise = Nothing
-    rhsHandshake = rhsValid && _tready
+    outputHandshake = outputValid && outputReady
 
     -- Axi LHS
     -- The lhs is acknowledged if we can combine it with the stored axi and one
     -- of the following holds:
     -- * The rhs is not valid yet
     -- * THe rhs is valid and ready
-    lhsReady = inpValid && (rhsHandshake || not rhsValid)
-    lhsS2M = Axi4StreamS2M{_tready = lhsReady}
+    inputReady = Axi4StreamS2M $ inpPass && (outputHandshake || not outputValid)
 
     -- State update
     axiNext
-      | rhsHandshake = Nothing
-      | otherwise    = fst $ splitAxi @_ @1 $ (axiUserMap (\v -> (init v, ()))) <$> axiPostShift
+      | outputHandshake = Nothing
+      | otherwise    = fst $ splitAxi4Stream @_ @1 $ (axiUserMap (\v -> (init v, ()))) <$> axiPostShift
 
 -- | Shifts all @Just a@ in a `Vec n (Maybe a)` in the direction of head by one position.
 -- The first element is replaced by @Nothing@.
@@ -123,9 +155,9 @@ shiftPackVec v = zipWith3 f canShift v (v <<+ Nothing)
   canShift = scanl (||) (head availables) (tail availables)
 
 -- | Transforms an Axi4 stream of /n/ bytes wide into an Axi4 stream of 1 byte
--- wide. It stores the incoming stream and shifts it out one by one. The incoming stream is acknowledged when the last byte is
--- acknowledged by the outgoing stream. The '_tuser', '_tdest' and '_tid' are
--- blindly routed to the output.
+-- wide. It stores the incoming transaction and shifts it out one by one. The incoming
+-- transaction is acknowledged when the last byte is acknowledged by the outgoing transaction.
+-- The '_tuser', '_tdest' and '_tid' are blindly routed to the output.
 axisToByteStream ::
   forall dom dataWidth idWidth destWidth userType .
   ( HiddenClockResetEnable dom
@@ -140,45 +172,27 @@ axisToByteStream ::
     (Axi4Stream dom ('Axi4StreamConfig 1 idWidth destWidth) userType)
 axisToByteStream = Circuit (mealyB go Nothing)
  where
-  go axiStored (axiIn, Axi4StreamS2M{_tready}) = (axiNext, (bigS2M, rhsM2S))
+  go axiStored (input, Axi4StreamS2M{_tready = outputReady}) = (axiNext, (inputReady, output))
    where
-    (rhsM2S, axiRest) = splitAxi @1 (concatAxi axiStored Nothing)
+    (output, axiRest) = splitAxi4Stream @1 (combineAxi4Stream axiStored Nothing)
     axiNext
-      | isNothing rhsM2S || _tready = axiRest <|> axiIn
+      | isNothing output || outputReady = axiRest <|> input
       | otherwise = axiStored
-    bigS2M = Axi4StreamS2M{_tready = isNothing axiRest && (isNothing rhsM2S || _tready)}
+    inputReady = Axi4StreamS2M{_tready = isNothing axiRest && (isNothing output || outputReady)}
 
 type EndOfPacket = Bool
 type BufferFull = Bool
 
-data WbAxisRxBufferState fifoDepth nBytes = WbAxisRxBufferState
-  { readingFifo :: Bool
-  , packetLength :: Index (fifoDepth * nBytes + 1)
-  , writeCounter :: Index fifoDepth
+data WbAxisRxBufferState bufferDepth wbBytes = WbAxisRxBufferState
+  { readingBuffer :: Bool
+  , packetLength :: Index (bufferDepth * wbBytes + 1)
+  , writeCounter :: Index bufferDepth
   , packetComplete :: Bool
   , bufferFull :: Bool
-  , packetError :: Bool
+  , abortPacket :: Bool
   } deriving (Generic, NFDataX, Show)
 
 {-# NOINLINE wbAxisRxBuffer #-}
-
-wbAxisRxBufferCircuit ::
-  forall dom wbAddrW nBytes fifoDepth conf .
-  ( HiddenClockResetEnable dom
-  , KnownNat wbAddrW, 2 <= wbAddrW
-  , KnownNat nBytes, 1 <= nBytes
-  , 1 <= fifoDepth
-  , 1 <= nBytes * fifoDepth
-  , DataWidth conf ~ nBytes) =>
-  -- | Depth of the buffer, each entry in the buffer stores `nBytes` bytes.
-  SNat fifoDepth ->
-  Circuit
-    (Wishbone dom 'Standard wbAddrW (Bytes nBytes), Axi4Stream dom conf Bool)
-    (CSignal dom (EndOfPacket, BufferFull))
-wbAxisRxBufferCircuit depth = case cancelMulDiv @nBytes @8 of
-  Dict -> Circuit $ \((wbM2S, axiM2S),_) -> do
-    let (wbS2M, axiS2M,status) = wbAxisRxBuffer depth wbM2S axiM2S $ pure (False, False)
-      in ((wbS2M, axiS2M), status)
 
 -- | A wishbone accessible buffer that stores AXI4Stream packets. The buffer stores
 -- a single Axi4 stream packet and exposes a status register that indicates:
@@ -191,23 +205,38 @@ wbAxisRxBufferCircuit depth = case cancelMulDiv @nBytes @8 of
 --  * 4 * (fifoDepth + 1)      = Status register
 --
 -- After reading a packet, the byte count must be set to 0 and the status register must be
--- cleared.
---
--- The external status clear signals clear on True, set to (False, False) if not used.
-wbAxisRxBuffer ::
-  forall dom wbAddrW nBytes fifoDepth conf  .
+-- cleared. The incoming Axi4Stream interface contains a side channel that can be used to abort
+-- the incoming packet. If a packet is aborted, the buffer will consume the remaining transactions
+-- until the end of the packet is reached, after which it will reset the buffer to its initial state.
+wbAxisRxBufferCircuit ::
+  forall dom wbAddrW wbBytes bufferBytes .
   ( HiddenClockResetEnable dom
   , KnownNat wbAddrW, 2 <= wbAddrW
-  , KnownNat nBytes, 1 <= nBytes
-  , 1 <= fifoDepth
-  , 1 <= nBytes * fifoDepth
-  , DataWidth conf ~ nBytes) =>
-  -- | Depth of the buffer, each entry in the buffer stores `nBytes` bytes.
-  SNat fifoDepth ->
+  , KnownNat wbBytes, 1 <= wbBytes
+  , 1 <= bufferBytes) =>
+  -- | Number of bytes that can be stored in the buffer.
+  SNat bufferBytes ->
+  Circuit
+    (Wishbone dom 'Standard wbAddrW (Bytes wbBytes), Axi4Stream dom ('Axi4StreamConfig wbBytes 0 0) Bool)
+    (CSignal dom (EndOfPacket, BufferFull))
+wbAxisRxBufferCircuit bytes = case cancelMulDiv @wbBytes @8 of
+  Dict -> Circuit $ \((wbM2S, axiM2S),_) -> do
+    let (wbS2M, axiS2M,status) = wbAxisRxBuffer bytes wbM2S axiM2S
+      in ((wbS2M, axiS2M), status)
+
+wbAxisRxBuffer ::
+  forall dom wbAddrW wbBytes bufferBytes .
+  ( HiddenClockResetEnable dom
+  , KnownNat wbAddrW, 2 <= wbAddrW
+  , KnownNat wbBytes, 1 <= wbBytes
+  , 1 <= bufferBytes) =>
+  -- | Minimum number of bytes that can be stored in the buffer, will be rounded up
+  -- to the nearest multiple of wbBytes.
+  SNat bufferBytes ->
   -- | Wishbone master bus.
-  "wbM2S" ::: Signal dom (WishboneM2S wbAddrW nBytes (Bytes nBytes)) ->
+  "wbM2S" ::: Signal dom (WishboneM2S wbAddrW wbBytes (Bytes wbBytes)) ->
   -- | Axi4 Stream master bus.
-  "axisM2S" ::: Signal dom (Maybe (Axi4StreamM2S conf Bool)) ->
+  "axisM2S" ::: Signal dom (Maybe (Axi4StreamM2S ('Axi4StreamConfig wbBytes 0 0) Bool)) ->
   -- | External controls to clear bits in the status register.
   "clearinterrupts" ::: Signal dom (EndOfPacket, BufferFull) ->
   -- |
@@ -215,105 +244,153 @@ wbAxisRxBuffer ::
   -- 2. Axi4 Stream slave bus
   -- 3. Status
   "" :::
-  ( "wbS2M" ::: Signal dom (WishboneS2M (Bytes nBytes))
+  ( "wbS2M" ::: Signal dom (WishboneS2M (Bytes wbBytes))
   , "axisS2M" ::: Signal dom Axi4StreamS2M
   , "status" ::: Signal dom (EndOfPacket, BufferFull)
   )
-wbAxisRxBuffer SNat wbM2S axisM2S statusClearSignal = (wbS2M, axisS2M, statusReg)
- where
-  fifoOut =
-    blockRamU NoClearOnReset (SNat @fifoDepth)
-    (const $ errorX "wbAxisRxBuffer: reset function undefined")
-    bramAddr bramWrite
-  (wbS2M, axisS2M, bramAddr, bramWrite, statusReg) =
-    mealyB go initState (wbM2S, axisM2S, fifoOut, statusClearSignal)
-  initState = WbAxisRxBufferState
-    { readingFifo = False
-    , packetLength = 0
-    , writeCounter = 0
-    , packetComplete = False
-    , bufferFull = False
-    , packetError = False
-    }
-  go ::
-    WbAxisRxBufferState fifoDepth nBytes ->
-    ( WishboneM2S wbAddrW nBytes (Bytes nBytes)
-    , Maybe (Axi4StreamM2S conf Bool)
-    , Bytes nBytes, (EndOfPacket, BufferFull)
-    ) ->
-    ( WbAxisRxBufferState fifoDepth nBytes
-    , ( WishboneS2M (Bytes nBytes)
-      , Axi4StreamS2M, Index fifoDepth
-      , Maybe (Index fifoDepth, Bytes nBytes)
-      , (EndOfPacket, BufferFull)
-      )
-    )
-  go
-    WbAxisRxBufferState{..}
-    ~(WishboneM2S{..}, maybeAxisM2S, wbData, clearStatus)
-    = (newState, output)
+wbAxisRxBuffer SNat = case strictlyPositiveDivRu @bufferBytes @wbBytes of
+  Dict -> case leMult @wbBytes @(DivRU bufferBytes wbBytes) of
+    Dict -> wbAxisRxBuffer# (SNat @(wbBytes * (DivRU bufferBytes wbBytes)))
+
+-- | A wishbone accessible buffer of configurable depth that can store a single Axi4Stream packet.
+-- A read transaction from the buffer takes at least two cycles to complete.
+--
+-- The wishbone interface offers access to the buffer and exposes a status register that indicates:
+--  * If the buffer contains a packet
+--  * If the buffer is full before, but does not contain a whole packet.
+--
+-- The wishbone addressing must be 4 byte aligned and is as follows:
+--  0 .. (bufferBytes - 1) = Read-only access into the buffer.
+--  bufferBytes            = Byte count register.
+--  (bufferBytes + 4)      = Status register
+--
+-- After reading a packet, the byte count must be set to 0 and the status register must be
+-- cleared. The incoming Axi4Stream interface contains a side channel that can be used to abort
+-- the incoming packet. If a packet is aborted, the buffer will consume the remaining transactions
+-- until the end of the packet is reached, after which it will reset the buffer to its initial state.
+wbAxisRxBuffer# ::
+  forall dom wbAddrW wbBytes fifoDepth  .
+  ( HiddenClockResetEnable dom
+  , KnownNat wbAddrW, 2 <= wbAddrW
+  , KnownNat wbBytes, 1 <= wbBytes
+  , 1 <= fifoDepth
+  , 1 <= wbBytes * fifoDepth) =>
+  -- | Depth of the buffer, each entry in the buffer stores `nBytes` bytes.
+  SNat fifoDepth ->
+  -- | Wishbone master bus.
+  "wbM2S" ::: Signal dom (WishboneM2S wbAddrW wbBytes (Bytes wbBytes)) ->
+  -- | Axi4 Stream master bus.
+  "axisM2S" ::: Signal dom (Maybe (Axi4StreamM2S ('Axi4StreamConfig wbBytes 0 0) Bool)) ->
+  -- |
+  -- 1. Wishbone slave bus
+  -- 2. Axi4 Stream slave bus
+  -- 3. Status
+  "" :::
+  ( "wbS2M" ::: Signal dom (WishboneS2M (Bytes wbBytes))
+  , "axisS2M" ::: Signal dom Axi4StreamS2M
+  , "status" ::: Signal dom (EndOfPacket, BufferFull)
+  )
+wbAxisRxBuffer# fifoDepth@SNat wbM2S axisM2S = (wbS2M, axisS2M, statusReg)
    where
-    masterActive = busCycle && strobe
-    (alignedAddress, alignment) = split @_ @(wbAddrW - 2) @2 addr
-
-    packetLengthAddress = maxBound - 1
-    statusAddress       = maxBound :: Index (fifoDepth + 2)
-    internalAddress     = (bitCoerce $ resize alignedAddress) :: Index (fifoDepth + 2)
-
-    err = masterActive && (alignment /= 0 || alignedAddress > resize (pack statusAddress))
-
-    statusBV = pack (packetComplete, bufferFull)
-    wbHandshake = masterActive && not err
-
-    (readData, nextReadingFifo, wbAcknowledge) = case (masterActive, internalAddress) of
-      (True, (== packetLengthAddress) -> True) -> (resize $ pack packetLength, False, wbHandshake)
-      (True, (== statusAddress) -> True) -> (resize statusBV, False, wbHandshake)
-      (True, _) -> (wbData, wbHandshake && not readingFifo, wbHandshake && readingFifo)
-      (False, _) -> (deepErrorX "undefined", False, False)
-
-    axisReady = packetError || not (packetComplete || bufferFull)
-    axisHandshake = axisReady && isJust maybeAxisM2S
-
-    output =
-      ( (emptyWishboneS2M @(Bytes nBytes)){readData, err, acknowledge = wbAcknowledge}
-      , Axi4StreamS2M axisReady
-      , unpack . resize $ pack internalAddress
-      , maybeAxisM2S >>= orNothing axisHandshake . (writeCounter,) . pack . reverse . _tdata
-      , (packetComplete, bufferFull)
+    fifoOut =
+      blockRamU NoClearOnReset fifoDepth
+      (const $ errorX "wbAxisRxBuffer: reset function undefined")
+      bramAddr bramWrite
+    (wbS2M, axisS2M, bramAddr, bramWrite, statusReg) =
+      mealyB go initState (wbM2S, axisM2S, fifoOut)
+    initState = WbAxisRxBufferState
+      { readingBuffer = False
+      , packetLength = 0
+      , writeCounter = 0
+      , packetComplete = False
+      , bufferFull = False
+      , abortPacket = False
+      }
+    go ::
+      WbAxisRxBufferState fifoDepth wbBytes ->
+      ( WishboneM2S wbAddrW wbBytes (Bytes wbBytes)
+      , Maybe (Axi4StreamM2S ('Axi4StreamConfig wbBytes 0 0) Bool)
+      , Bytes wbBytes
+      ) ->
+      ( WbAxisRxBufferState fifoDepth wbBytes
+      , ( WishboneS2M (Bytes wbBytes)
+        , Axi4StreamS2M, Index fifoDepth
+        , Maybe (Index fifoDepth, Bytes wbBytes)
+        , (EndOfPacket, BufferFull)
+        )
       )
+    go
+      s@WbAxisRxBufferState{..}
+      ~(WishboneM2S{..}, maybeAxisM2S, wbData)
+      = (traceShowId $ newState, output)
+     where
+      masterActive = busCycle && strobe
+      (alignedAddress, alignment) = split @_ @(wbAddrW - 2) @2 addr
 
-    -- Next state
-    (nextPacketComplete, nextBufferFull)
-      | wbAcknowledge && writeEnable && internalAddress == statusAddress
-        = unpack $ resize writeData
-      | axisHandshake = (packetComplete || maybe False _tlast maybeAxisM2S, bufferFull || writeCounter == maxBound)
-      | otherwise = unpack $ statusBV `xor` pack clearStatus
+      packetLengthAddress = maxBound - 1
+      statusAddress       = maxBound
+      internalAddress     = (bitCoerce $ resize alignedAddress) :: Index (fifoDepth + 2)
 
-    nextWriteCounter
-      | axisHandshake                 = satSucc SatBound writeCounter
-      | packetComplete || bufferFull  = 0
-      | otherwise                     = writeCounter
+      err = masterActive && (alignment /= 0 || alignedAddress > resize (pack statusAddress))
 
-    bytesInStream = maybe (0 :: Index (nBytes + 1)) (leToPlus @1 @nBytes popCountBV . pack ._tkeep) maybeAxisM2S
+      statusBV = pack (packetComplete, bufferFull)
+      wbHandshake = masterActive && not err
 
-    nextPacketLength
-      | wbAcknowledge && writeEnable && internalAddress == packetLengthAddress
-        = unpack $ resize writeData
-      | axisHandshake
-        = satAdd SatBound packetLength (bitCoerce $ resize bytesInStream)
-      | otherwise
-        = packetLength
+      -- Since fetching data from the buffer introduces one cycle of latency, we need to
+      -- wait for the next cycle to acknowledge the read.
+      (readData, nextReadingBuffer, wbAcknowledge) = case (masterActive, internalAddress) of
+        (True, (== packetLengthAddress) -> True) -> (resize $ pack packetLength, False, wbHandshake)
+        (True, (== statusAddress) -> True) -> (resize statusBV, False, wbHandshake)
+        (True, _) -> (wbData, wbHandshake && not readingBuffer, wbHandshake && readingBuffer)
+        (False, _) -> (deepErrorX "undefined", False, False)
 
-    newState
-      | packetError && maybe False _tlast maybeAxisM2S = initState
-      | otherwise = WbAxisRxBufferState
-        { readingFifo = nextReadingFifo
-        , packetLength = nextPacketLength
-        , writeCounter = nextWriteCounter
-        , packetComplete = nextPacketComplete
-        , bufferFull = nextBufferFull
-        , packetError = packetError || maybe False _tuser maybeAxisM2S
-        }
+      axisReady = abortPacket || not (packetComplete || bufferFull)
+      axisHandshake = axisReady && isJust maybeAxisM2S
+
+      output =
+        ( (emptyWishboneS2M @(Bytes wbBytes)){readData, err, acknowledge = wbAcknowledge}
+        , Axi4StreamS2M axisReady
+        , unpack . resize $ pack internalAddress
+        , maybeAxisM2S >>= orNothing axisHandshake . (writeCounter,) . pack . reverse . _tdata
+        , (packetComplete, bufferFull)
+        )
+
+      -- Next state
+      (nextPacketComplete, nextBufferFull)
+        | wbAcknowledge && writeEnable && internalAddress == statusAddress
+          = unpack $ resize writeData
+        | axisHandshake =
+          ( packetComplete || maybe False _tlast maybeAxisM2S
+          , bufferFull || writeCounter == maxBound
+          )
+        | otherwise = unpack $ statusBV
+
+      nextWriteCounter
+        | axisHandshake                 = satSucc SatBound writeCounter
+        | packetComplete || bufferFull  = 0
+        | otherwise                     = writeCounter
+
+      popCountKeep = leToPlus @1 @wbBytes popCountBV . pack ._tkeep
+      bytesInStream = maybe (0 :: Index (wbBytes + 1)) popCountKeep maybeAxisM2S
+
+      nextPacketLength
+        | wbAcknowledge && writeEnable && internalAddress == packetLengthAddress
+          = unpack $ resize writeData
+        | axisHandshake
+          = satAdd SatBound packetLength (bitCoerce $ resize bytesInStream)
+        | otherwise
+          = packetLength
+
+      newState
+        | abortPacket && maybe False _tlast maybeAxisM2S = initState
+        | otherwise = WbAxisRxBufferState
+          { readingBuffer = nextReadingBuffer
+          , packetLength = nextPacketLength
+          , writeCounter = nextWriteCounter
+          , packetComplete = nextPacketComplete
+          , bufferFull = nextBufferFull
+          , abortPacket = abortPacket || maybe False _tuser maybeAxisM2S
+          }
 
 data BufferState bufferSize = AwaitingData | BufferFull | PacketComplete (Index (bufferSize + 1))
   deriving (Generic, NFDataX, Show)
@@ -471,10 +548,10 @@ axiStreamPacketFifo ::
     (Axi4Stream dom (AxiStreamBytesOnly nBytes) userType)
 axiStreamPacketFifo fifoDepth = Circuit goCircuit
  where
-  goCircuit (lhsM2S, fmap _tready -> rhsS2M) = (lhsS2M, rhsM2S)
+  goCircuit (lhsM2S, fmap _tready -> rhsS2M) = (inputReady, output)
    where
-    lhsS2M = Axi4StreamS2M <$> (consumeAxi .&&. fifoReady)
-    rhsM2S = mux produceFifo fifoOut (pure Nothing)
+    inputReady = Axi4StreamS2M <$> (consumeAxi .&&. fifoReady)
+    output = mux produceFifo fifoOut (pure Nothing)
     fifoIn = mux consumeAxi lhsM2S (pure Nothing)
     axiProxy = Proxy @(Axi4Stream dom (AxiStreamBytesOnly nBytes) userType)
     fifo = DfConv.fifo axiProxy axiProxy fifoDepth
@@ -496,10 +573,11 @@ axiStreamPacketFifo fifoDepth = Circuit goCircuit
 
   goOut = \case
     AxiAccumulating -> (True, False)
-    (AxiPacketComplete _) -> (False, True)
+    (AxiPacketComplete _) -> (True, True)
     AxiPassThrough -> (True, True)
 
--- | Circuit for resizing an Axi4Stream, produces packed streams.
+-- | Circuit to convert a sparse stream into a contiguous stream while remaining the throughput of
+-- the input stream.
 axiPacking ::
   forall dom dataWidth idWidth destWidth .
   ( HiddenClockResetEnable dom
@@ -510,30 +588,42 @@ axiPacking ::
 axiPacking = Circuit (mealyB go (Nothing, False))
  where
   go (_, False) _ = ((Nothing, True), (Axi4StreamS2M False, Nothing))
-  go (axiBuffer, True) ~(axiIn :: axiType, s2mRight) = ((newStored, True), (s2mLeft, m2sRight))
+  go (axiStored, True) ~(input, Axi4StreamS2M outputReady) =
+    ((newStored, True), (Axi4StreamS2M consumableInput, output))
    where
 
     -- Axi Right
-    validRight = maybe False (and . _tkeep) outputBuffer || maybe False _tlast outputBuffer || inpInvalid
-    m2sRight = if validRight then outputBuffer else Nothing
+    -- Produce when:
+    --  Data has overflowed into the excess buffer.
+    --  Output buffer contains the end of a packet.
+    outputValid = isJust excessBuffer || maybe False _tlast outputBuffer
+    output = if outputValid then outputBuffer else Nothing
+    handshakeOutput = outputValid && outputReady
 
     -- Axi Left
-    inpValid = not validRight && isJust axiIn && isJust combinedAxi
-    inpInvalid = isJust axiIn && isNothing combinedAxi
-    readyLeft = isNothing excessBuffer && inpValid
-    s2mLeft = Axi4StreamS2M readyLeft
-    handshakeLeft = isJust axiIn && readyLeft
+    -- Accept input if we can consume the input into the remainder and we don't have valid output being blocked.
+    consumableInput = isJust packedAxi4Stream
+    inputReady = consumableInput && not (outputValid && not outputReady)
+    inputBlock = isJust input && not inputReady
 
     -- State update
-    (outputBuffer, excessBuffer) = splitAxi axiBuffer
-    combinedAxi = concatAxi outputBuffer axiIn
-    newStored = case (validRight, _tready s2mRight, handshakeLeft) of
-      (True, False,_) -> axiBuffer
-      (True, True, False) -> concatAxi excessBuffer Nothing
-      (_, _, False) ->  concatAxi outputBuffer Nothing
-      (_, _, True) -> myPack <$> combinedAxi
+    -- Split the state into the output buffer and the excess buffer.
+    -- Determine the remainder and create a new packed Axi4Stream using the remainder and the input.
+    (outputBuffer, excessBuffer) = splitAxi4Stream axiStored
+    remainder = if handshakeOutput then excessBuffer else outputBuffer
+    packedAxi4Stream = packAxi4Stream <$> combineAxi4Stream remainder input
 
-    myPack = packAxi @('Axi4StreamConfig (dataWidth + dataWidth) idWidth destWidth)
+    newStored
+      -- The output buffer is consumed and we can add the input to the excess buffer
+      | handshakeOutput && consumableInput = packedAxi4Stream
+      -- The output buffer is consumed, but We can not add the input to the excess buffer
+      | handshakeOutput = combineAxi4Stream excessBuffer Nothing
+      -- Our output has not been consumed
+      | outputValid = axiStored
+      -- We can not consume the input
+      | inputBlock = axiStored
+      -- We can consume the input
+      | otherwise = packedAxi4Stream
 
 -- | Function to move all keep, data and strobes in an Axi4Stream to the front of the vectors based on the
 -- _tkeep field.
@@ -562,7 +652,7 @@ packVec = foldr f (repeat Nothing)
 -- bits is set. If _tlast is set, the _tlast of the first output is set if the second
 -- output is `Nothing`. If the second output is `Just`, the _tlast of the first output
 -- is `False` and the _tlast of the second output is `True`.
-splitAxi ::
+splitAxi4Stream ::
   forall widthA widthB idWith destWidth userTypeA userTypeB .
   ( KnownNat widthA
   , KnownNat widthB
@@ -570,8 +660,8 @@ splitAxi ::
   Maybe (Axi4StreamM2S ('Axi4StreamConfig (widthA + widthB) idWith destWidth) (userTypeA, userTypeB)) ->
   ( Maybe (Axi4StreamM2S ('Axi4StreamConfig widthA idWith destWidth) userTypeA)
   , Maybe (Axi4StreamM2S ('Axi4StreamConfig widthB idWith destWidth) userTypeB))
-splitAxi Nothing = (Nothing, Nothing)
-splitAxi (Just axi) = (orNothing aValid axiA, orNothing bValid axiB)
+splitAxi4Stream Nothing = (Nothing, Nothing)
+splitAxi4Stream (Just axi) = (orNothing aValid axiA, orNothing bValid axiB)
  where
   axiA = Axi4StreamM2S
     {_tdata = dataA
@@ -636,7 +726,7 @@ extendAxi axi = Axi4StreamM2S
 -- | Combines two Axi4StreamM2S into a single Axi4StreamM2S. The data, keep and strobe
 -- vectors are concatenated. If both Axi4Streams are `Just`, it uses @compatibleAxis@ to
 -- determine if we can concatenate them. The vectors of the axi streams are concatenated.
-concatAxi ::
+combineAxi4Stream ::
   forall widthA widthB idWidth destWidth userTypeA userTypeB.
   ( KnownNat widthA
   , KnownNat widthB
@@ -648,7 +738,7 @@ concatAxi ::
   Maybe (Axi4StreamM2S ('Axi4StreamConfig widthA idWidth destWidth) userTypeA) ->
   Maybe (Axi4StreamM2S ('Axi4StreamConfig widthB idWidth destWidth) userTypeB) ->
   Maybe (Axi4StreamM2S ('Axi4StreamConfig (widthA + widthB) idWidth destWidth) (userTypeA, userTypeB))
-concatAxi maybeAxiA maybeAxiB = case (maybeAxiA, maybeAxiB) of
+combineAxi4Stream maybeAxiA maybeAxiB = case (maybeAxiA, maybeAxiB) of
   (Just axiA, Just axiB) -> orNothing (compatibleAxis axiA axiB) axiNew
    where
     axiNew = Axi4StreamM2S
@@ -667,7 +757,7 @@ concatAxi maybeAxiA maybeAxiB = case (maybeAxiA, maybeAxiB) of
     , _tlast = _tlast axi
     , _tid   = _tid   axi
     , _tdest = _tdest axi
-    , _tuser = (_tuser axi, deepErrorX "concatAxi: Undefined second _tuser")
+    , _tuser = (_tuser axi, deepErrorX "combineAxi4Stream: Undefined second _tuser")
     }
   (Nothing, Just axi) -> Just $ Axi4StreamM2S
     { _tdata = repeat 0 ++ _tdata axi
@@ -676,7 +766,7 @@ concatAxi maybeAxiA maybeAxiB = case (maybeAxiA, maybeAxiB) of
     , _tlast = _tlast axi
     , _tid   = _tid   axi
     , _tdest = _tdest axi
-    , _tuser = (deepErrorX "concatAxi: Undefined first _tuser", _tuser axi)
+    , _tuser = (deepErrorX "combineAxi4Stream: Undefined first _tuser", _tuser axi)
     }
   _ -> Nothing
 
@@ -707,7 +797,7 @@ eqAxi axiA axiB = lastSame && idSame && destSame && userSame && and keepsSame &&
     bytesValid = zipWith3 (\ k d s -> (not k) || (d && s)) keeps strbSame dataSame
 
 -- | Integrated logic analyzer for an Axi4Stream bus, it captures the data, keep, ready and last signals.
-ilaAxi ::
+ilaAxi4Stream ::
   forall dom conf userType .
   (HiddenClock dom, KnownAxi4StreamConfig conf) =>
   -- | Number of registers to insert at each probe. Supported values: 0-6.
@@ -719,7 +809,7 @@ ilaAxi ::
   Circuit
     (Axi4Stream dom conf userType)
     (Axi4Stream dom conf userType)
-ilaAxi stages0 depth0 = Circuit $ \(m2s, s2m) ->
+ilaAxi4Stream stages0 depth0 = Circuit $ \(m2s, s2m) ->
   let
     ilaInst :: Signal dom ()
     ilaInst = ila
@@ -742,7 +832,7 @@ extendWithErrorX ::
   Vec n a -> Vec (n + m) a
 extendWithErrorX = (++ deepErrorX "extendWithErrorX: Undefined")
 
-axiDropUser ::
+dropUserAxi4Stream ::
   forall dom conf userType .
   ( KnownAxi4StreamConfig conf
   , HiddenClockResetEnable dom
@@ -750,4 +840,4 @@ axiDropUser ::
   Circuit
     (Axi4Stream dom conf userType)
     (Axi4Stream dom conf ())
-axiDropUser = DfConv.map Proxy Proxy (\axi -> axi{_tuser = ()})
+dropUserAxi4Stream = DfConv.map Proxy Proxy (\axi -> axi{_tuser = ()})

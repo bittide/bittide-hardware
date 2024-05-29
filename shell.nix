@@ -17,17 +17,18 @@ pkgs.mkShell {
       pkgs.dtc
       pkgs.gcc
       pkgs.haskell.compiler.ghc94
+      pkgs.jq
       pkgs.pkg-config
       pkgs.python311Full
+      pkgs.python311Packages.GitPython
       pkgs.python311Packages.matplotlib
       pkgs.python311Packages.scipy
-      pkgs.python311Packages.GitPython
       pkgs.sbt
       pkgs.scala
+      pkgs.unzip
       pkgs.verilator
       pkgs.which
-      pkgs.jq
-      pkgs.unzip
+      pkgs.agda
 
       # Simulation report generation
       pkgs.dot2tex
@@ -79,5 +80,6 @@ pkgs.mkShell {
 
     # Allow writing 'shake ...' instead of 'cabal run shake -- ...'
     export PATH="$(git rev-parse --show-toplevel)/nix/bin:$PATH";
+
   '';
 }
