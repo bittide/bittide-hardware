@@ -43,6 +43,7 @@ import Bittide.Hitl (HitlTests, NoPostProcData(..) {-, hitlVio-})
 
 import Bittide.Instances.Hitl.Setup
 
+import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
@@ -56,6 +57,12 @@ data TestConfig =
     , disabledLinkMask :: BitVector (FpgaCount - 1)
     }
   deriving (Generic, NFDataX, BitPack, Show)
+
+disabled :: TestConfig
+disabled = TestConfig
+  { fpgaEnabled = False
+  , disabledLinkMask = 0
+  }
 
 -- | Configures the clock boards, fires up all of the transceivers and
 -- observes the incoming links.
@@ -189,28 +196,7 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxns rxps miso =
         linkReadys
     in
       mux start (Just <$> dat) (pure Nothing)
-
--- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
---      generates warnings in combination with 'Vec'.
-{-# ANN linkConfigurationTest Synthesize
-  { t_name = "linkConfigurationTest"
-  , t_inputs =
-    [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
-    , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
-    , PortName "SYNC_IN"
-    , PortName "GTH_RX_NS"
-    , PortName "GTH_RX_PS"
-    , PortName "MISO"
-    ]
-  , t_output =
-    (PortProduct "")
-      [ PortName "GTH_TX_NS"
-      , PortName "GTH_TX_PS"
-      , PortName "SYNC_OUT"
-      , PortName "spiDone"
-      , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
-      ]
-  } #-}
+makeTopEntity 'linkConfigurationTest
 
 tests :: HitlTests TestConfig
 tests = Map.fromList
@@ -231,9 +217,3 @@ tests = Map.fromList
   ]
  where
   testData i j m = (j, TestConfig (i /= j) m)
-
-disabled :: TestConfig
-disabled = TestConfig
-  { fpgaEnabled = False
-  , disabledLinkMask = 0
-  }

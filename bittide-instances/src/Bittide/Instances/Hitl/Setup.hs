@@ -24,7 +24,7 @@ type FpgaCount = 8 :: Nat
 -- | Data wires from/to transceivers. No logic should be inserted on these
 -- wires. Should be considered asynchronous to one another - even though their
 -- domain encodes them as related.
-type TransceiverWires dom = Vec (FpgaCount - 1) (Signal dom (BitVector 1))
+type TransceiverWires dom = Signal dom (BitVector (FpgaCount - 1))
 
 channelNames :: Vec (FpgaCount - 1) String
 channelNames =

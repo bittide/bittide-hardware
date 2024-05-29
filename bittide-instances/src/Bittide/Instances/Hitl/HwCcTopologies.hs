@@ -72,6 +72,7 @@ import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
 import Project.FilePath
 
+import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
@@ -121,6 +122,16 @@ commonStepSizeSelect = PPB_10
 -- and the last calibration verifiction run.
 acceptableNoiseLevel :: InitialClockShift
 acceptableNoiseLevel = 6
+
+disabled :: TestConfig
+disabled = TestConfig
+  { fpgaEnabled       = False
+  , calibrate         = NoCCCalibration
+  , stepSizeSelect    = commonStepSizeSelect
+  , initialClockShift = 0
+  , startupDelay      = 0
+  , mask              = 0
+  }
 
 -- | The test configuration.
 data TestConfig =
@@ -560,29 +571,7 @@ hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   testConfig :: Signal Basic125 (Maybe TestConfig)
   testConfig = hitlVio disabled sysClk done success
-
--- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
---      generates warnings in combination with 'Vec'.
-{-# ANN hwCcTopologyWithRiscvTest Synthesize
-  { t_name = "hwCcTopologyWithRiscvTest"
-  , t_inputs =
-    [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
-    , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
-    , PortName "SYNC_IN"
-    , PortName "GTH_RX_NS"
-    , PortName "GTH_RX_PS"
-    , PortName "MISO"
-    ]
-  , t_output =
-    (PortProduct "")
-      [ PortName "GTH_TX_NS"
-      , PortName "GTH_TX_PS"
-      , PortProduct "" [PortName "FINC", PortName "FDEC"]
-      , PortName "SYNC_OUT"
-      , PortName "spiDone"
-      , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
-      ]
-  } #-}
+makeTopEntity 'hwCcTopologyWithRiscvTest
 
 -- | Top entity for this test. See module documentation for more information.
 hwCcTopologyTest ::
@@ -647,29 +636,7 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       -- success
       (skip .||.
         (allStable .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady))))
-
--- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
---      generates warnings in combination with 'Vec'.
-{-# ANN hwCcTopologyTest Synthesize
-  { t_name = "hwCcTopologyTest"
-  , t_inputs =
-    [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
-    , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
-    , PortName "SYNC_IN"
-    , PortName "GTH_RX_NS"
-    , PortName "GTH_RX_PS"
-    , PortName "MISO"
-    ]
-  , t_output =
-    (PortProduct "")
-      [ PortName "GTH_TX_NS"
-      , PortName "GTH_TX_PS"
-      , PortProduct "" [PortName "FINC", PortName "FDEC"]
-      , PortName "SYNC_OUT"
-      , PortName "spiDone"
-      , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
-      ]
-  } #-}
+makeTopEntity 'hwCcTopologyTest
 
 tests :: HitlTestsWithPostProcData TestConfig SimConf
 tests = Map.fromList
@@ -818,13 +785,3 @@ tests = Map.fromList
         , ..
         }
     )
-
-disabled :: TestConfig
-disabled = TestConfig
-  { fpgaEnabled       = False
-  , calibrate         = NoCCCalibration
-  , stepSizeSelect    = commonStepSizeSelect
-  , initialClockShift = 0
-  , startupDelay      = 0
-  , mask              = 0
-  }

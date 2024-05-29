@@ -69,6 +69,7 @@ import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
 import Project.FilePath
 
+import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
@@ -379,29 +380,7 @@ fullMeshHwCcWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   startTest :: Signal Basic125 Bool
   startTest = hitlVioBool sysClk done success
-
--- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
---      generates warnings in combination with 'Vec'.
-{-# ANN fullMeshHwCcWithRiscvTest Synthesize
-  { t_name = "fullMeshHwCcWithRiscvTest"
-  , t_inputs =
-    [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
-    , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
-    , PortName "SYNC_IN"
-    , PortName "GTH_RX_NS"
-    , PortName "GTH_RX_PS"
-    , PortName "MISO"
-    ]
-  , t_output =
-    (PortProduct "")
-      [ PortName "GTH_TX_NS"
-      , PortName "GTH_TX_PS"
-      , PortProduct "" [PortName "FINC", PortName "FDEC"]
-      , PortName "SYNC_OUT"
-      , PortName "spiDone"
-      , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
-      ]
-  } #-}
+makeTopEntity 'fullMeshHwCcWithRiscvTest
 
 -- | Top entity for this test. See module documentation for more information.
 fullMeshHwCcTest ::
@@ -454,29 +433,7 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
       -- success
       (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady))
-
--- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
---      generates warnings in combination with 'Vec'.
-{-# ANN fullMeshHwCcTest Synthesize
-  { t_name = "fullMeshHwCcTest"
-  , t_inputs =
-    [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
-    , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
-    , PortName "SYNC_IN"
-    , PortName "GTH_RX_NS"
-    , PortName "GTH_RX_PS"
-    , PortName "MISO"
-    ]
-  , t_output =
-    (PortProduct "")
-      [ PortName "GTH_TX_NS"
-      , PortName "GTH_TX_PS"
-      , PortProduct "" [PortName "FINC", PortName "FDEC"]
-      , PortName "SYNC_OUT"
-      , PortName "spiDone"
-      , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
-      ]
-  } #-}
+makeTopEntity 'fullMeshHwCcTest
 
 tests :: HitlTestsWithPostProcData () SimConf
 tests = Map.singleton "CC" $

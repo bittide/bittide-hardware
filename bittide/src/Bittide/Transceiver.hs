@@ -168,9 +168,9 @@ data Outputs n tx rx txS free = Outputs
   , txSamplings :: Vec n (Signal tx Bool)
   -- ^ See 'Output.txSampling'
 
-  , txPs :: Vec n (Signal txS (BitVector 1))
+  , txPs :: Signal txS (BitVector n)
   -- ^ See 'Output.txP'
-  , txNs :: Vec n (Signal txS (BitVector 1))
+  , txNs :: Signal txS (BitVector n)
   -- ^ See 'Output.txN'
 
   , rxClocks :: Vec n (Clock rx)
@@ -266,9 +266,9 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.channel'
   , clockPaths :: Vec n String
   -- ^ See 'Input.clockPath'
-  , rxNs :: Vec n (Signal rxS (BitVector 1))
+  , rxNs :: Signal rxS (BitVector n)
   -- ^ See 'Input.rxN'
-  , rxPs :: Vec n (Signal rxS (BitVector 1))
+  , rxPs :: Signal rxS (BitVector n)
   -- ^ See 'Input.rxP'
   , txDatas :: Vec n (Signal tx (BitVector 64))
   -- ^ See 'Input.txData'
@@ -307,8 +307,8 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} = Outputs
   , rxDatas  = map (.rxData) outputs
 
   -- transceiver
-  , txPs = map (.txP)     outputs
-  , txNs = map (.txN)     outputs
+  , txPs = pack <$> bundle (map (.txP) outputs)
+  , txNs = pack <$> bundle (map (.txN) outputs)
 
   -- free
   , linkUps    = map (.linkUp)  outputs
@@ -328,8 +328,8 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} = Outputs
                       -- only use this for debugging.
     inputs.channelNames
     inputs.clockPaths
-    inputs.rxNs
-    inputs.rxPs
+    (unbundle (unpack <$> inputs.rxNs))
+    (unbundle (unpack <$> inputs.rxPs))
     inputs.txDatas
     inputs.txReadys
     inputs.rxReadys

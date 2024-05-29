@@ -65,6 +65,7 @@ import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
 import Project.FilePath
 
+import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
@@ -89,7 +90,7 @@ fullMeshRiscvTest ::
   KnownDomain dom =>
   Clock dom ->
   Reset dom ->
-  Vec 7 (Signal dom (DataCount 32)) ->
+  Vec (FpgaCount - 1) (Signal dom (DataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
   ( "FINC" ::: Signal dom Bool
   , "FDEC" ::: Signal dom Bool
@@ -139,10 +140,10 @@ fullMeshHwTest ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
-  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult 7)
+  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult (FpgaCount - 1))
   , "CALLISTO_RESET" ::: Reset Basic125
-  , "DATA_COUNTERS" ::: Vec 7 (Signal Basic125 (DataCount 32))
-  , "stats" ::: Vec 7 (Signal Basic125 ResetManager.Statistics)
+  , "DATA_COUNTERS" ::: Vec (FpgaCount - 1) (Signal Basic125 (DataCount 32))
+  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK" ::: Signal Basic125 Bool
@@ -339,29 +340,7 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
       -- success
       (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady))
-
--- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
---      generates warnings in combination with 'Vec'.
-{-# ANN fullMeshSwCcTest Synthesize
-  { t_name = "fullMeshSwCcTest"
-  , t_inputs =
-    [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
-    , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
-    , PortName "SYNC_IN"
-    , PortName "GTH_RX_NS"
-    , PortName "GTH_RX_PS"
-    , PortName "MISO"
-    ]
-  , t_output =
-    (PortProduct "")
-      [ PortName "GTH_TX_NS"
-      , PortName "GTH_TX_PS"
-      , PortProduct "" [PortName "FINC", PortName "FDEC"]
-      , PortName "SYNC_OUT"
-      , PortName "spiDone"
-      , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
-      ]
-  } #-}
+makeTopEntity 'fullMeshSwCcTest
 
 tests :: HitlTestsWithPostProcData () SimConf
 tests = Map.singleton "CC" $
