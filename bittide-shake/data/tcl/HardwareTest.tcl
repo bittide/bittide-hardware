@@ -219,10 +219,14 @@ proc get_ila_dicts {} {
     foreach hw_ila $hw_ilas {
         set ila_dict {}
 
+        # The short name is the name of the module the ILA is in. For example a
+        # cell named `fullMeshSwCcTest/ilaPlot/ila_inst` will give the short
+        # name `ilaPlot`.
         set cell_name [get_property CELL_NAME $hw_ila]
-        set idx_start [expr {[string first _ $cell_name] + 1}]
-        set idx_end [expr {[string first / $cell_name] - 1}]
-        set short_name [string range $cell_name $idx_start $idx_end]
+        set before_last [expr [string last / $cell_name] - 1]
+        set module_name [string range $cell_name 0 $before_last]
+        set after_second_to_last [expr [string last / $module_name] + 1]
+        set short_name [string range $cell_name $after_second_to_last $before_last]
         dict set ila_dict name $short_name
         dict set ila_dict cell_name $cell_name
 

@@ -11,8 +11,10 @@ module Bittide.Instances.Hitl.Post.BoardTestExtended (postBoardTestExtended) whe
 import Prelude
 
 import Data.Csv
+import Data.List (isSuffixOf)
 import System.Exit (ExitCode(..))
 import Test.Tasty.HUnit
+import System.FilePath
 
 import Bittide.Instances.Hitl.Post.PostProcess
 
@@ -61,7 +63,9 @@ processCsv csvPath_ = do
 postBoardTestExtended :: ExitCode -> [FlattenedIlaCsvPath] -> Assertion
 postBoardTestExtended _exitCode ilaCsvPaths = do
   let
-    csvToProcess = filter ((== "boardTestIla") . ilaName) ilaCsvPaths
+    csvToProcess = filter ((baseNameEndsWith "boardTestIla") . ilaName) ilaCsvPaths
   assertBool "Expected at least 1 CSV file, but got 0" $ not (null csvToProcess)
   mapM_ (processCsv . csvPath) csvToProcess
   putStrLn $ "Successfully performed post processing of " <> show (length csvToProcess) <> " ILA CSV dumps"
+ where
+  baseNameEndsWith x = isSuffixOf x . takeBaseName

@@ -374,7 +374,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxns rxps miso c
   capture = (captureFlag .&&. allUp) .||. unsafeToActiveHigh syncRst
 
   fincFdecIla :: Signal Basic125 ()
-  fincFdecIla = ila
+  fincFdecIla = setName @"fincFdecIla" ila
     (ilaConfig $
          "trigger_0"
       :> "capture_0"
