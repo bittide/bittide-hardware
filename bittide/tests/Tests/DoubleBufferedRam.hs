@@ -26,6 +26,7 @@ import Data.Type.Equality (type (:~:)(Refl))
 import Hedgehog
 import Hedgehog.Range as Range
 import Numeric (showHex)
+import Protocols
 import Protocols.Hedgehog.Internal
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog
@@ -43,6 +44,9 @@ import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
 import qualified Prelude as P
+import qualified Data.Map as Map
+import qualified Clash.Sized.Internal.BitVector as BV
+import qualified Data.Foldable as F
 
 tests :: TestTree
 tests = testGroup "Tests.DoubleBufferedRam"
@@ -78,6 +82,8 @@ tests = testGroup "Tests.DoubleBufferedRam"
       "wbStorageRangeErrors" wbStorageRangeErrors
   , testPropertyNamed "Test whether wbStorage acts the same its Behavioral model (clash-protocols)"
       "wbStorageProtocolsModel" wbStorageProtocolsModel
+  , testPropertyNamed "Test whether wbStorageTDPBehavior acts the same its Behavioral model"
+      "wbStorageTDPBehavior" wbStorageTDPBehavior
   ]
 
 genRamContents :: (MonadGen m, Integral i) => i -> m a -> m (SomeVec 1 a)
@@ -885,3 +891,169 @@ wbStorageProtocolsModel = property $ do
         Right $ I.insert modelAddr wr st0
       where
         modelAddr = fromIntegral $ addr `div` 4
+
+-- | Compare transaction with undefined value in the Read data field
+compareTransWithUndef :: (KnownNat addrW, KnownNat selWidth, KnownNat n) =>
+  (Transaction addrW selWidth (BitVector n)) -> (Transaction addrW selWidth (BitVector n)) -> Bool
+compareTransWithUndef transA transB =
+  case (transA, transB) of
+    ((WriteSuccess mA _), (WriteSuccess mB _)) ->
+        checkField "addr" addr mA mB &&
+        checkField "buSelect" busSelect mA mB &&
+        checkField "writeData" writeData mA mB
+    ((ReadSuccess mA sA), (ReadSuccess mB sB)) ->
+        checkField "addr" addr mA mB &&
+        checkField "busSelect" busSelect mA mB &&
+        checkBitVectorField readData sA sB
+    ((Error _), (Error _)) -> True
+    ((Retry _), (Retry _)) -> True
+    ((Stall _), (Stall _)) -> True
+    ((Illegal _ _), (Illegal _ _)) -> True
+    ((Ignored _), (Ignored _)) -> True
+    (_, _) -> False
+
+checkBitVectorField :: (KnownNat n) => (t -> BitVector n) -> t -> t -> Bool
+checkBitVectorField f a b =
+    (f a) `eqBitVec` (f b)
+
+-- | Behavioral test for 'wbStorageTDP', it checks whether the behavior of
+-- 'wbStorageTDP' matches the 'wbStorageTDPBehaviorModel'.
+wbStorageTDPBehavior :: Property
+wbStorageTDPBehavior = verifiedTermination . withTests 1000 . property $ do
+  nWordsA <- forAll $ Gen.enum 2 32
+  nWordsB <- forAll $ Gen.enum 2 32
+  case (TN.someNatVal (nWordsA - 2), TN.someNatVal (nWordsB - 2)) of
+    (SomeNat (addSNat d2 . snatProxy -> nWordsA0), SomeNat (addSNat d2 . snatProxy -> nWordsB0)) -> go nWordsA0 nWordsB0
+ where
+  go :: forall wordsA wordsB m . (KnownNat wordsA, 2 <= wordsA, KnownNat wordsB, 2 <= wordsB, Monad m) => SNat wordsA -> SNat wordsB -> PropertyT m ()
+  go SNat SNat = do
+    wbRequestsNum <- forAll $ Gen.integral (Range.linearFrom 0 (0) 32)
+    wbRequestsA <- forAll $ Gen.list (Range.singleton wbRequestsNum)
+      (genWishboneTransfer @32 (natToNum @wordsA) (genDefinedBitVector @32))
+    wbRequestsB <- forAll $ Gen.list (Range.singleton wbRequestsNum)
+      (genWishboneTransfer @32 (natToNum @wordsB) (genDefinedBitVector @32))
+
+    cover 5 "equal address" $ or (L.zipWith checkAddressEqual (L.map fst wbRequestsA) (L.map fst wbRequestsB))
+
+    F.for_ (L.map (getAddressWbRequest . fst) (wbRequestsA L.++ wbRequestsB)) $ \x -> do
+        classify "low address" $ x == minBound
+        classify "mid address" $ x > minBound && x < maxBound
+        classify "high address" $ x == maxBound
+
+    F.for_ (L.map (getByteEnableWbRequest . fst) (wbRequestsA L.++ wbRequestsB)) $ \x -> do
+        classify "ByteEnable: 0000" $ x == 0
+        classify "ByteEnable: 0001" $ x == 1
+        classify "ByteEnable: 0010" $ x == 2
+        classify "ByteEnable: 0100" $ x == 4
+        classify "ByteEnable: 1000" $ x == 8
+
+    let
+      masterA = driveStandard defExpectOptions wbRequestsA
+      masterB = driveStandard defExpectOptions wbRequestsB
+      master = prod2C masterA masterB
+      slave = wbStorageTDPC @System @System @32 clockGen resetGen enableGen clockGen resetGen enableGen
+      (simTransactionsA, simTransactionsB) = exposeDoubleWbTransactions (Just 1000) master slave
+      (goldenTransactionsA, goldenTransactionsB) = L.unzip (wbStorageTDPBehaviorModel (fmap fst wbRequestsA) (fmap fst wbRequestsB))
+
+    footnote $ "simTransactionsA" <> show simTransactionsA
+    footnote $ "simTransactionsB" <> show simTransactionsB
+    footnote $ "wbRequestsA" <> show wbRequestsA
+    footnote $ "wbRequestsB" <> show wbRequestsB
+    footnote $ "goldenTransactionsA" <> show goldenTransactionsA
+    footnote $ "goldenTransactionsB" <> show goldenTransactionsB
+
+    assert $ and (L.zipWith compareTransWithUndef simTransactionsA goldenTransactionsA)
+    assert $ and (L.zipWith compareTransWithUndef simTransactionsB goldenTransactionsB)
+
+   where
+    genWishboneTransfer ::
+      (KnownNat addressWidth, KnownNat (BitSize a)) =>
+      Int -> -- ^ size
+      Gen a ->
+      Gen (WishboneMasterRequest addressWidth a, Int)
+    genWishboneTransfer size genA =
+      let
+        validAddr = (4 *) . fromIntegral <$> Gen.enum 0 (size - 1)
+        -- Make wbOps that won't be repeated
+        mkRead address bs = (Read address bs, 0)
+        mkWrite address bs a = (Write address bs a, 0)
+      in
+        -- Generate valid operations. The boolean represents the validity of the operation.
+      Gen.choice
+        [ (mkRead  <$> validAddr <*> genDefinedBitVector)
+        , (mkWrite <$> validAddr <*> genDefinedBitVector <*> genA)
+        ]
+
+    checkAddressEqual :: (KnownNat addressWidth, KnownNat (BitSize a)) =>
+        WishboneMasterRequest addressWidth a ->
+        WishboneMasterRequest addressWidth a ->
+        Bool
+    checkAddressEqual req1 req2 = extractAddress req1 == extractAddress req2
+        where
+            extractAddress :: WishboneMasterRequest addressWidth a -> BitVector addressWidth
+            extractAddress (Read addr _) = addr
+            extractAddress (Write addr _ _) = addr
+
+    getAddressWbRequest :: (KnownNat addressWidth, KnownNat (BitSize a)) =>
+        WishboneMasterRequest addressWidth a -> Unsigned addressWidth
+    getAddressWbRequest (Read addr _) = unpack addr
+    getAddressWbRequest (Write addr _ _) = unpack addr
+
+    getByteEnableWbRequest :: (KnownNat addressWidth, KnownNat (BitSize a)) =>
+        WishboneMasterRequest addressWidth a -> Unsigned (BitSize a `DivRU` 8)
+    getByteEnableWbRequest (Read _ be) = unpack be
+    getByteEnableWbRequest (Write _ be _) = unpack be
+
+-- | Memory Model
+type MemoryModel a b = Map.Map a b
+
+-- | Behavioral model for 'wbStorageTDPM'.
+wbStorageTDPBehaviorModel ::
+  forall addrW bytes .
+  ( 1 <= addrW, KnownNat bytes) =>
+  (KnownNat addrW) =>
+  [WishboneMasterRequest addrW (Bytes bytes)] -> [WishboneMasterRequest addrW (Bytes bytes)] ->
+  [(Transaction addrW bytes (Bytes bytes),Transaction addrW bytes (Bytes bytes))]
+wbStorageTDPBehaviorModel initWbOpsA initWbOpsB = case (cancelMulDiv @bytes @8) of
+  Dict -> snd $ L.mapAccumL g emptyMemoryMap (L.zipWith (\wbA wbB -> (wbA, wbB)) initWbOpsA initWbOpsB)
+   where
+    emptyMemoryMap = Map.empty :: MemoryModel (BitVector addrW) (Bytes bytes)
+
+    fromMaybeBytes :: Maybe (Bytes bytes) -> Bytes bytes
+    fromMaybeBytes x = case x of
+                    Just a  -> a
+                    Nothing -> 0
+
+    g storedMap (opA, opB) = (storedMapB, (transA, transB))
+      where
+        (storedMapA, transA) = f storedMap opA
+        (storedMapB, transB) = f storedMapA opB
+
+    -- Successful Read
+    f storedMap op@(Read i _) = (storedMap, ReadSuccess wbM2S wbS2M)
+     where
+      dat = fromMaybeBytes $ Map.lookup i storedMap
+      wbM2S = wbMasterRequestToM2S op
+      wbS2M = (emptyWishboneS2M @(Bytes bytes)){acknowledge = True, readData = dat}
+
+    -- Successful Write
+    f storedMap op@(Write i bs a) = (updatedStoredMap, WriteSuccess wbM2S wbS2M)
+     where
+      wbM2S = wbMasterRequestToM2S op
+      wbS2M = emptyWishboneS2M{acknowledge = True}
+      dat = fromMaybeBytes $ Map.lookup i storedMap
+      updatedStoredMap = Map.insert i (pack newEntry) storedMap
+
+      newEntry :: Vec bytes Byte
+      newEntry = zipWith3 (\ b old new -> if b then new else old)
+        (unpack bs) (unpack dat) (unpack a)
+
+-- | Check equiality of two BitVectors containing the undefined values ('.')
+-- Example:
+--  x: "000111..."
+--  y: "01.01.01."
+--  result: False
+eqBitVec :: (KnownNat n) => BitVector n -> BitVector n -> Bool
+eqBitVec x@(BV.BV xMask _) y =
+    case (x `xor` y) of
+        BV.BV m v -> xMask == m && v == 0

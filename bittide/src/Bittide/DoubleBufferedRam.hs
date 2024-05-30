@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -9,10 +9,12 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 
 module Bittide.DoubleBufferedRam where
 
 import Clash.Prelude
+import Clash.Cores.Xilinx.BlockRam (tdpbram)
 
 import Data.Constraint
 import Data.Maybe
@@ -87,6 +89,159 @@ contentGenerator content = case compareSNat d1 (SNat @romSize) of
     romAddr1 = satSucc SatWrap <$> romAddr0
     element = initializedRam content (bitCoerce <$> romAddr1) (pure Nothing)
   _ -> (pure Nothing, pure True)
+
+-- | Circuit wrapper around `wbStorageTDP`.
+wbStorageTDPC ::
+  forall domA domB nAddrs .
+  ( KnownDomain domA
+  , KnownDomain domB
+  , KnownNat nAddrs
+  ) =>
+  Clock domA ->
+  Reset domA ->
+  Enable domA ->
+  Clock domB ->
+  Reset domB ->
+  Enable domB ->
+  Circuit
+     (
+       Wishbone domA 'Standard nAddrs (Bytes 4)
+     , Wishbone domB 'Standard nAddrs (Bytes 4)
+    )
+    ()
+wbStorageTDPC clkA rstA enA clkB rstB enB = Circuit go
+ where
+  go ::
+    ( (
+        Signal domA (WishboneM2S nAddrs 4 (BitVector 32))
+      , Signal domB (WishboneM2S nAddrs 4 (BitVector 32)))
+    , ()
+    ) ->
+    ( ( Signal domA (WishboneS2M (BitVector 32))
+      , Signal domB (WishboneS2M (BitVector 32)))
+    , ()
+    )
+  go ((m2sA, m2sB), ()) = ((s2mA, s2mB),())
+   where
+    (s2mA, s2mB) = wbStorageTDP clkA rstA enA clkB rstB enB m2sA m2sB
+
+-- | Create a type synonym
+type TdpbramType nAddrs domA domB nBytes a =
+  forall .
+  ( KnownNat nAddrs
+  , KnownDomain domA
+  , KnownDomain domB
+  , KnownNat nBytes
+  , BitSize a ~ (8 * nBytes)
+  , NFDataX a
+  , BitPack a
+  , Num a
+  ) =>
+
+  Clock domA ->
+  -- | Port enable
+  Enable domA ->
+  -- | Address
+  Signal domA (Index nAddrs) ->
+  -- | Write byte enable
+  Signal domA (BitVector nBytes) ->
+  -- | Write data
+  Signal domA a ->
+
+  Clock domB ->
+  -- | Port enable
+  Enable domB ->
+  -- | Address
+  Signal domB (Index nAddrs) ->
+  -- | Write byte enable
+  Signal domB (BitVector nBytes) ->
+  -- | Write data
+  Signal domB a ->
+
+  ( Signal domA a
+  , Signal domB a
+  )
+
+-- | Wrapper for the True Dual Port block ram
+wbStorageTDP ::
+  forall domA domB nAddrs .
+  ( KnownDomain domA
+  , KnownDomain domB
+  , KnownNat nAddrs
+  ) =>
+  Clock domA ->
+  Reset domA ->
+  Enable domA ->
+  Clock domB ->
+  Reset domB ->
+  Enable domB ->
+  Signal domA (WishboneM2S nAddrs 4 (Bytes 4)) ->
+  Signal domB (WishboneM2S nAddrs 4 (Bytes 4)) ->
+  (Signal domA (WishboneS2M (Bytes 4)), Signal domB (WishboneS2M (Bytes 4)))
+wbStorageTDP = wbStorageTDPM tdpbram
+
+-- | Wrapper for the True Dual Port block ram with model
+wbStorageTDPM ::
+  forall domA domB nAddrs .
+  ( KnownDomain domA
+  , KnownDomain domB
+  , KnownNat nAddrs
+  ) =>
+  (TdpbramType (2 ^ nAddrs) domA domB 4 (BitVector 32)) ->
+  Clock domA ->
+  Reset domA ->
+  Enable domA ->
+  Clock domB ->
+  Reset domB ->
+  Enable domB ->
+  Signal domA (WishboneM2S nAddrs 4 (Bytes 4)) ->
+  Signal domB (WishboneM2S nAddrs 4 (Bytes 4)) ->
+  (Signal domA (WishboneS2M (Bytes 4)), Signal domB (WishboneS2M (Bytes 4)))
+wbStorageTDPM tdpbramModule clkA rstA enA clkB rstB enB aM2S bM2S =
+    (responseWb clkA rstA enA aM2S datA, responseWb clkB rstB enB bM2S datB)
+    where
+        addrBitToIndex :: forall dom n . (KnownDomain dom, KnownNat n) =>
+            Signal dom (WishboneM2S n 4 (Bytes 4)) -> Signal dom (Index (2 ^ n))
+        addrBitToIndex wbM2S = bv2i . addr <$> wbM2S
+        writeDataWb :: forall dom . (KnownDomain dom) =>
+            Signal dom (WishboneM2S nAddrs 4 (Bytes 4)) -> Signal dom (BitVector 32)
+        writeDataWb wbM2S = writeData <$> wbM2S
+        byteEna :: forall dom . (KnownDomain dom) =>
+            Signal dom (WishboneM2S nAddrs 4 (Bytes 4)) -> Signal dom (BitVector 4)
+        byteEna wbM2S = (\wb -> if writeEnable wb then busSelect wb else 0 :: BitVector 4) <$> wbM2S
+        enableWb :: forall dom . (KnownDomain dom) =>
+            Signal dom (WishboneM2S nAddrs 4 (Bytes 4)) -> Enable dom
+        enableWb wbM2S = toEnable $ (\wb -> busCycle wb && strobe wb) <$> wbM2S
+        (datA, datB) = tdpbramModule
+            clkA
+            (enableWb aM2S) (addrBitToIndex aM2S) (byteEna aM2S) (writeDataWb aM2S)
+            clkB
+            (enableWb bM2S) (addrBitToIndex bM2S) (byteEna bM2S) (writeDataWb bM2S)
+
+        -- | Create a response on the wishbone bus from wishbone request and
+        -- data from the tdpbram
+        responseWb ::
+          forall dom a .
+          ( KnownDomain dom
+            , BitSize a ~ 32
+            , NFDataX a
+            , BitPack a
+          ) =>
+          Clock dom ->
+          Reset dom ->
+          Enable dom ->
+          Signal dom (WishboneM2S nAddrs 4 a) -> -- current M2S signal
+          Signal dom a ->                        -- data from tdpbram
+          Signal dom (WishboneS2M a)             -- S2M signal
+        responseWb clk rst en m2s dat = mux inCycle s2m (pure emptyWishboneS2M)
+         where
+          inCycle = (busCycle <$> m2s) .&&. (strobe <$> m2s)
+          -- It takes a single cycle to lookup elements in a block ram. We can therfore
+          -- only process a request every other clock cycle.
+          ack = (not <$> delayedAck) .&&. inCycle
+          delayedAck = withClockResetEnable clk rst en $ register False ack
+          s2m = (\newAck newDat-> (emptyWishboneS2M @(Bytes 4)){acknowledge = newAck, readData = newDat})
+            <$> delayedAck <*> dat
 
 -- | Circuit wrapper around `wbStorageDP`.
 wbStorageDPC ::

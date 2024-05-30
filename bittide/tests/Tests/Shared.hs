@@ -176,6 +176,23 @@ exposeWbTransactions maybeSampleLength (Circuit master) (Circuit slave) =
     Just n -> sampleN_lazy n
     Nothing -> sample_lazy
 
+exposeDoubleWbTransactions ::
+    (KnownDomain dom, Eq a, KnownNat addrW, ShowX a, KnownNat (BitSize a)) =>
+    Maybe Int ->
+    Circuit ((),()) (Wishbone dom mode addrW a, Wishbone dom mode addrW a) ->
+    Circuit (Wishbone dom mode addrW a, Wishbone dom mode addrW a) () ->
+    ( [Transaction addrW (DivRU (BitSize a) 8) a]
+    , [Transaction addrW (DivRU (BitSize a) 8) a] )
+exposeDoubleWbTransactions maybeSampleLength (Circuit master) (Circuit slave) =
+    let ~((_), (m2sA, m2sB)) = master (((), ()), (s2mA, s2mB))
+        ~((s2mA, s2mB), ()) = slave ((m2sA, m2sB), ())
+    in ( uncurry wbToTransaction $ L.unzip $ sampleF $ bundle (m2sA, s2mA)
+       , uncurry wbToTransaction $ L.unzip $ sampleF $ bundle (m2sB, s2mB))
+    where
+        sampleF = case maybeSampleLength of
+            Just n  -> sampleN_lazy n
+            Nothing -> sample_lazy
+
 -- | Transform a `WishboneMasterRequest` into `WishboneM2S`
 wbMasterRequestToM2S ::
   forall addrW a .
