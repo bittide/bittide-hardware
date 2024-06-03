@@ -208,6 +208,7 @@ test-suite unittests
     Tests.Shared
     Tests.StabilityChecker
     Tests.Switch
+    Tests.Haxioms
     Tests.Wishbone
   build-depends:
     HUnit,
