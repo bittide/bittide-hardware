@@ -232,6 +232,7 @@ test-suite unittests
     Tests.Counter
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer
+    Tests.Haxioms
     Tests.Link
     Tests.ProcessingElement.ReadElf
     Tests.ScatterGather
