@@ -4,43 +4,45 @@
 {-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE NumericUnderscores #-}
 
-module Clash.Cores.Xilinx.SystemMonitor (Status(..), temperatureMonitor) where
+module Clash.Cores.Xilinx.SystemMonitor
+  ( Status(..)
+  , temperatureMonitorCelcius
+  , temperatureMonitor
+  , adcToTemperature
+  ) where
 
 import Clash.Prelude
 
 import Clash.Cores.Xilinx.Xpm.Cdc.Internal
+import Clash.Functor.Extra ((<<$>>))
 
 
--- | A wrapper for a SYSMONE1 instance which only monitors the FPGA temperature.
-temperatureMonitor ::
+-- | A wrapper for a SYSMONE1 instance which only monitors the FPGA temperature. Converts the ADC
+-- value of the temperature sensor to the temperature in degree Celcius.
+temperatureMonitorCelcius ::
   forall dom .
   (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
   Signal dom (Status, Maybe (Signed 11))
-temperatureMonitor = bundle (status, tOut)
+temperatureMonitorCelcius = bundle (status, temperature)
  where
-  tOut = mux dRdy (Just <$> temperature) (pure Nothing)
-  temperature = toSigned <$> (dflipflop $ adcToTemperature <$> (dflipflop adc))
-
-  toSigned :: forall int frac . (KnownNat int, KnownNat frac) => SFixed int frac -> Signed int
-  toSigned = (resize . bitCoerce) . (flip shiftR (natToNum @frac))
-
-  -- The 10-bit ADC value is stored in the MSBs.
-  adc = unpack . resize . (flip shiftR 6) <$> dO
-  (status, dRdy, dO) = unbundle $ sysMon @dom hasClock hasReset dEn dAddr dWe dI
-
-  dEn   = (counter .==. (pure 0))
-  dWe   = pure False
-  dAddr = pure 0x00
-  dI    = pure 0x00
-
-  counter = register (0 :: Index 10) $ satSucc SatWrap <$> counter
+  (status, adc) = unbundle temperatureMonitor
+  temperature = toSigned <<$>> (dflipflop $ adcToTemperature <<$>> (dflipflop adc))
+   where
+    toSigned :: forall int frac . (KnownNat int, KnownNat frac) => SFixed int frac -> Signed int
+    toSigned = (resize . bitCoerce) . (flip shiftR (natToNum @frac))
 
 -- | Calculates the temperature based on the ADC value. Assumes the temperature sensor uses the
 -- on-chip reference. For more information see:
 --
 --     https://docs.amd.com/v/u/en-US/ug580-ultrascale-sysmon
 --
-adcToTemperature :: forall adcDepth . KnownNat adcDepth => Unsigned adcDepth -> SFixed (adcDepth + 1) 14
+-- XXX: This function can lead to timing issues because the instantiated DSP does
+--      not include input/output registers.
+adcToTemperature ::
+  forall adcDepth .
+  KnownNat adcDepth =>
+  BitVector adcDepth ->
+  SFixed (adcDepth + 1) 14
 adcToTemperature adc = t
  where
   t = adcSF * (a `shiftR` (natToNum @adcDepth)) + b
@@ -49,6 +51,26 @@ adcToTemperature adc = t
   a = 501.3743
   b = -273.6777
 
+-- | A wrapper for a SYSMONE1 instance which only monitors the FPGA temperature and outputs the
+-- ADC value.
+temperatureMonitor ::
+  forall dom .
+  (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
+  Signal dom (Status, Maybe (BitVector 10))
+temperatureMonitor = bundle (status, tOut)
+ where
+  tOut = mux dRdy (Just <$> adc) (pure Nothing)
+
+  -- The 10-bit ADC value is stored in the MSBs.
+  adc = resize . (flip shiftR 6) <$> dO
+  (status, dRdy, dO) = unbundle $ sysMon @dom hasClock hasReset dEn dAddr dWe dI
+
+  dEn   = (counter .==. (pure 0))
+  dWe   = pure False
+  dAddr = pure 0x00
+  dI    = pure 0x00
+
+  counter = register (0 :: Index 10) $ satSucc SatWrap <$> counter
 
 data Status = Status
   { busy :: Bool
