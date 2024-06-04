@@ -1,0 +1,90 @@
+cabal-version: 3.4
+name: vivado-hs
+version: 0.1.0.0
+synopsis: Haskell wrapper around Vivado TCL
+homepage: https://github.com/bittide/bittide
+license: Apache-2.0
+license-file: LICENSE
+author: QBayLogic B.V.
+maintainer: devops@qbaylogic.com
+copyright: Google LLC
+category: Development
+build-type: Simple
+
+common common-options
+  default-extensions:
+    -- TemplateHaskell is used to support convenience functions such as
+    -- 'listToVecTH' and 'bLit'.
+    BangPatterns
+    BinaryLiterals
+    ConstraintKinds
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    NoStarIsType
+    PolyKinds
+    QuasiQuotes
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneDeriving
+    TemplateHaskell
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    ViewPatterns
+
+  ghc-options:
+    -Wall
+    -Wcompat
+
+library
+  import: common-options
+  exposed-modules:
+    Vivado
+    Vivado.Internal
+
+  build-depends:
+    base,
+    containers,
+    deepseq,
+    extra,
+    process,
+    string-interpolate,
+    temporary,
+
+  hs-source-dirs: src
+  default-language: GHC2021
+
+test-suite unittests
+  import: common-options
+  type: exitcode-stdio-1.0
+  main-is: unittests.hs
+  other-modules:
+    Tests.Vivado
+
+  build-depends:
+    async,
+    base,
+    tasty,
+    tasty-hunit,
+    tasty-th,
+    vivado-hs,
+
+  ghc-options:
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N
+
+  hs-source-dirs: tests
+  default-language: GHC2021
