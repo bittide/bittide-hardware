@@ -4,28 +4,50 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
-module Clash.Cores.Xilinx.SystemMonitor (Status (..), temperatureMonitorCelcius) where
+module Clash.Cores.Xilinx.SystemMonitor (
+  Status (..),
+  temperatureMonitorCelcius,
+  temperatureMonitor,
+  toCelcius,
+) where
 
 import Clash.Prelude
 
 import Clash.Cores.Xilinx.Xpm.Cdc.Internal
+import Clash.Functor.Extra ((<<$>>))
 
--- | A wrapper for a SYSMONE1 instance which only monitors the FPGA temperature.
+{- | A wrapper for a SYSMONE1 instance which only monitors the FPGA temperature. Converts
+the measured value of the temperature sensor to the temperature in degree Celcius.
+
+XXX: This function can lead to timing issues because the instantiated DSP does
+     not include input/output registers.
+-}
 temperatureMonitorCelcius ::
   forall dom.
   (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
   Signal dom (Status, Maybe (Signed 11))
-temperatureMonitorCelcius = bundle (status, tOut)
+temperatureMonitorCelcius = bundle (status, temperature)
  where
-  tOut = mux dRdy (Just <$> temperature) (pure Nothing)
-  temperature = toSigned <$> dflipflop (toCelcius <$> dflipflop measurement)
+  (status, measurement) = unbundle temperatureMonitor
+  temperature = toSigned <<$>> dflipflop (toCelcius . unpack <<$>> dflipflop measurement)
+   where
+    toSigned ::
+      forall int frac. (KnownNat int, KnownNat frac) => SFixed int frac -> Signed int
+    toSigned = (resize . bitCoerce) . flip shiftR (natToNum @frac)
 
-  toSigned ::
-    forall int frac. (KnownNat int, KnownNat frac) => SFixed int frac -> Signed int
-  toSigned = (resize . bitCoerce) . flip shiftR (natToNum @frac)
+{- | A wrapper for a SYSMONE1 instance which only monitors the FPGA temperature and
+outputs the raw measurement.
+-}
+temperatureMonitor ::
+  forall dom.
+  (HiddenClockResetEnable dom, 1 <= DomainPeriod dom) =>
+  Signal dom (Status, Maybe (BitVector 10))
+temperatureMonitor = bundle (status, tOut)
+ where
+  tOut = mux dRdy (Just <$> measurement) (pure Nothing)
 
   -- The 10-bit measurement is stored in the MSBs.
-  measurement = unpack . resize . flip shiftR 6 <$> dO
+  measurement = resize . flip shiftR 6 <$> dO
   (status, dRdy, dO) = unbundle $ sysMon @dom hasClock hasReset dEn dAddr dWe dI
 
   dEn = counter .==. pure 0
