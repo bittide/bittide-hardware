@@ -93,12 +93,12 @@ type SyncPulsePeriod = Milliseconds 200
 type ScheduledCapturePeriod = Milliseconds 800
 
 -- | An upper bound on the number of synchronized pulses during a test
--- run. The bound allows to count pulses up to 25 hours without
+-- run. The bound allows to count pulses up to 6 minutes without
 -- producing an overflow. We assume that the test has finished or was
 -- canceled within that time.
-type MaxPulseCount = DDiv (25 * 60 * 60 * Seconds 1) SyncPulsePeriod
+type MaxPulseCount = DDiv (6 * 60 * Seconds 1) SyncPulsePeriod
 
-type DriftTestEndCount = DDiv (24 * 60 * 60 * Seconds 1) SyncPulsePeriod
+type DriftTestEndCount = DDiv (5 * 60 * Seconds 1) SyncPulsePeriod
 
 -- | The number of cycles within the given domain that fit into one
 -- sync pulse period.
