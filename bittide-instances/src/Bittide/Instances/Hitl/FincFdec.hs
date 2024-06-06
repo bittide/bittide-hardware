@@ -39,10 +39,10 @@ data Test
   deriving (Enum, Generic, NFDataX, Bounded, BitPack, ShowX, Show)
 
 -- | Counter threshold after which a test is considered passed/failed. In theory
--- clocks can diverge at +-20 kHz (at 200 MHz), which gives the tests 500 ms to
--- adjust their clocks - which should be plenty.
+-- clocks can diverge at +-12.5 kHz (at 125 MHz), which gives the tests 500 ms
+-- to adjust their clocks - which should be plenty.
 threshold :: Signed 32
-threshold = 20_000
+threshold = 12_500
 
 testStateToDoneSuccess :: TestState -> (Bool, Bool)
 testStateToDoneSuccess = \case
@@ -51,35 +51,35 @@ testStateToDoneSuccess = \case
   Success -> (True, True)
 
 goFincFdecTests ::
-  Clock Basic200 ->
-  Reset Basic200 ->
+  Clock Basic125 ->
+  Reset Basic125 ->
   Clock GthTx ->
   Reset GthTx ->
-  Signal Basic200 Test ->
-  "MISO" ::: Signal Basic200 Bit -> -- SPI
+  Signal Basic125 Test ->
+  "MISO" ::: Signal Basic125 Bit -> -- SPI
   "" :::
-    ( Signal Basic200 TestState
+    ( Signal Basic125 TestState
 
     -- Freq increase / freq decrease request to clock board
     , "" :::
-      ( "FINC"    ::: Signal Basic200 Bool
-      , "FDEC"    ::: Signal Basic200 Bool
+      ( "FINC"    ::: Signal Basic125 Bool
+      , "FDEC"    ::: Signal Basic125 Bool
       )
 
       -- SPI to clock board:
     , "" :::
-      ( "SCLK" ::: Signal Basic200 Bool
-      , "MOSI" ::: Signal Basic200 Bit
-      , "CSB"  ::: Signal Basic200 Bool
+      ( "SCLK" ::: Signal Basic125 Bool
+      , "MOSI" ::: Signal Basic125 Bit
+      , "CSB"  ::: Signal Basic125 Bool
       )
 
       -- Debug signals:
     , "" :::
-      ( "SPI_BUSY" ::: Signal Basic200 Bool
-      , "SPI_STATE" ::: Signal Basic200 (BitVector 40)
-      , "SI_LOCKED" ::: Signal Basic200 Bool
-      , "COUNTER_ACTIVE" ::: Signal Basic200 Bool
-      , "COUNTER" ::: Signal Basic200 (Signed 32)
+      ( "SPI_BUSY" ::: Signal Basic125 Bool
+      , "SPI_STATE" ::: Signal Basic125 (BitVector 40)
+      , "SI_LOCKED" ::: Signal Basic125 Bool
+      , "COUNTER_ACTIVE" ::: Signal Basic125 Bool
+      , "COUNTER" ::: Signal Basic125 (Signed 32)
       )
     )
 goFincFdecTests clk rst clkControlled clkControlledRst testSelect miso =
@@ -168,31 +168,31 @@ fincFdecTests ::
 
   -- Pins from clock board:
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
-  "MISO" ::: Signal Basic200 Bit -> -- SPI
+  "MISO" ::: Signal Basic125 Bit -> -- SPI
 
   "" :::
     ( "" :::
-      ( "done"    ::: Signal Basic200 Bool
-      , "success" ::: Signal Basic200 Bool
+      ( "done"    ::: Signal Basic125 Bool
+      , "success" ::: Signal Basic125 Bool
       )
 
     -- Freq increase / freq decrease request to clock board
     , "" :::
-      ( "FINC"    ::: Signal Basic200 Bool
-      , "FDEC"    ::: Signal Basic200 Bool
+      ( "FINC"    ::: Signal Basic125 Bool
+      , "FDEC"    ::: Signal Basic125 Bool
       )
 
       -- SPI to clock board:
     , "" :::
-      ( "SCLK" ::: Signal Basic200 Bool
-      , "MOSI" ::: Signal Basic200 Bit
-      , "CSB"  ::: Signal Basic200 Bool
+      ( "SCLK" ::: Signal Basic125 Bool
+      , "MOSI" ::: Signal Basic125 Bit
+      , "CSB"  ::: Signal Basic125 Bool
       )
     )
 fincFdecTests diffClk controlledDiffClock spiIn =
   ((testDone, testSuccess), fIncDec, spiOut)
  where
-  (clk, clkStableRst :: Reset Basic200) = clockWizardDifferential diffClk noReset
+  (clk, clkStableRst :: Reset Basic125) = clockWizardDifferential diffClk noReset
 
   clkControlled = ibufds_gte3 controlledDiffClock :: Clock Ext200
 
@@ -207,7 +207,7 @@ fincFdecTests diffClk controlledDiffClock spiIn =
     , _rxCtrl0, _rxCtrl1, _rxCtrl2, _rxCtrl3
     ) =
     gthCore
-      @GthTx @GthRx @Ext200 @Basic200 @GthTx @GthRx
+      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       "X0Y10" "clk0"
       (pure 0) (pure 0) -- rxN and rxP
       clk
@@ -234,7 +234,7 @@ fincFdecTests diffClk controlledDiffClock spiIn =
 
   (_spiBusy, _spiState, spiDone, _diffCounterActive, _diffCounter) = debugSignals
 
-  testInput :: Signal Basic200 (Maybe Test)
+  testInput :: Signal Basic125 (Maybe Test)
   testInput = hitlVio FDec clk testDone testSuccess
 {-# NOINLINE fincFdecTests #-}
 makeTopEntity 'fincFdecTests
