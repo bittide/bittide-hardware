@@ -13,12 +13,8 @@ module Bittide.Transceiver.ResetManager where
 
 import Clash.Explicit.Prelude
 
-import Bittide.Arithmetic.Time (PeriodToCycles, Milliseconds)
+import Bittide.Arithmetic.Time (IndexMs)
 import Clash.Class.Counter (countSucc)
-
--- | 'Index' with its 'maxBound' corresponding to the number of cycles needed to
--- wait for /n/ milliseconds.
-type IndexMs dom n = Index (PeriodToCycles dom (Milliseconds n))
 
 -- | See 'Config.txTimeoutMs'
 type MaxTxTimeoutMs = Index 128
@@ -64,7 +60,7 @@ data Config = Config
   -- ^ Number of times to retry the receive side before resetting the transmit
   -- side as well.
   }
-  deriving (Generic, NFDataX)
+  deriving (Generic, NFDataX, Show)
 
 -- | Default configuration for 'resetManager'
 --

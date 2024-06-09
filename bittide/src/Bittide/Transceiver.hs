@@ -291,6 +291,11 @@ transceiverPrbsN ::
 
   , HasSynchronousReset free
   , HasDefinedInitialValues free
+
+  , KnownDomain rxS
+  , KnownDomain txS
+  , KnownDomain ref
+  , KnownDomain free
   ) =>
   Config free ->
   Inputs tx rx ref free rxS n ->
@@ -351,6 +356,11 @@ transceiverPrbs ::
 
   , HasSynchronousReset free
   , HasDefinedInitialValues free
+
+  , KnownDomain rxS
+  , KnownDomain txS
+  , KnownDomain ref
+  , KnownDomain free
   ) =>
   GthCore tx rx ref free txS rxS serializedData ->
   Config free ->
@@ -450,18 +460,14 @@ transceiverPrbs gthCore opts args@Input{clock, reset} =
         clock -- gtwiz_reset_clk_freerun_in
 
         (delayReset Asserted clock rst_all {-* filter glitches *-})
-        noReset -- gtwiz_reset_tx_pll_and_datapath_in
-        noReset -- gtwiz_reset_tx_datapath_in
-        noReset -- gtwiz_reset_rx_pll_and_datapath_in
         (delayReset Asserted clock rst_rx {-* filter glitches *-}) -- gtwiz_reset_rx_datapath_in
         gtwiz_userdata_tx_in
         txctrl
-        clock -- drpclk_in
         args.refClock -- gtrefclk0_in
 
   prbsConfig = Prbs.conf31 @48
 
-  (commas, txctrl) = Comma.generator Comma.defCycles txClock txReset
+  (commas, txctrl) = Comma.generator Comma.defTimeout txClock txReset
   commasDone = isNothing <$> commas
   prbs = Prbs.generator txClock (unsafeFromActiveLow commasDone) enableGen prbsConfig
   prbsWithMeta = WordAlign.joinMsbs @8 <$> fmap pack metaTx <*> prbs

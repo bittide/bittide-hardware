@@ -101,7 +101,7 @@ checker clk rst ena Config = mealy clk rst ena go (maxBound, maxBound)
        bitErr = xor newBit (xor (lsb bv) (unpack $ slice tap tap bv))
 
 data TrackerState
-  = Down (Index 8096)
+  = Down (Index 127)
   -- ^ Link is considered down. Needs 127 cycles of \"good\" input to transition
   -- to 'Up'.
   | Up

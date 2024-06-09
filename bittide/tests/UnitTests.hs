@@ -20,6 +20,7 @@ import qualified Tests.ScatterGather
 import qualified Tests.StabilityChecker
 import qualified Tests.Switch
 import qualified Tests.Transceiver.WordAlign
+import qualified Tests.Transceiver
 import qualified Tests.Wishbone
 
 tests :: TestTree
@@ -34,6 +35,7 @@ tests = testGroup "Unittests"
   , Tests.ScatterGather.tests
   , Tests.StabilityChecker.tests
   , Tests.Switch.tests
+  , Tests.Transceiver.tests
   , Tests.Transceiver.WordAlign.tests
   , Tests.Wishbone.tests
   ]

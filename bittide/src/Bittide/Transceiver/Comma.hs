@@ -5,19 +5,21 @@ module Bittide.Transceiver.Comma where
 
 import Clash.Explicit.Prelude
 
+import Bittide.Arithmetic.Time (IndexMs)
 import Bittide.SharedTypes (Bytes, Byte)
+import Clash.Class.Counter (Counter(countSuccOverflow))
 
--- | Number of cycles to generate commas for, pulled from Xilinx example code.
-defCycles :: SNat 125000
-defCycles = SNat
+-- | Number of milliseconds to generate commas for
+defTimeout :: SNat 1
+defTimeout = SNat
 
--- | Generate commas (transceiver alignment symbols) for a number of cycles
+-- | Generate commas (transceiver alignment symbols) for a number of milliseconds
 generator ::
-  forall nCycles nBytes dom .
+  forall ms nBytes dom .
   ( KnownDomain dom
   , KnownNat nBytes
-  , 1 <= nCycles ) =>
-  SNat nCycles ->
+  , 1 <= ms ) =>
+  SNat ms ->
   Clock dom ->
   Reset dom ->
   -- | (comma, tx control)
@@ -36,4 +38,12 @@ generator _nCycles@SNat clk rst = unbundle $
   commas :: Bytes nBytes
   commas = pack (repeat comma)
 
-  counter = register clk rst enableGen (0 :: Index nCycles) (satSucc SatBound <$> counter)
+  counter =
+    register
+      clk rst enableGen
+      (0 :: Index ms, 0 :: IndexMs dom 1)
+      (next <$> counter)
+
+  next n = case countSuccOverflow n of
+    (True, _) -> n
+    (_, nextN) -> nextN
