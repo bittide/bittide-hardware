@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | A couple of tests testing clock board programming, and subsequently the
@@ -261,7 +262,7 @@ fincFdecTests diffClk controlledDiffClock spiIn =
         (pure 0) -- userdata_tx_in and txctrl
         clkControlled
 
-  (reset_all_out_sig, _gthStats) =
+  (reset_all_out_sig, gthStats) =
     gthResetManagerWithoutRx
       clk
       (unsafeFromActiveLow spiDone)
@@ -322,24 +323,52 @@ fincFdecTests diffClk controlledDiffClock spiIn =
       (False, True) -> (satPred SatBound n, n)
       _ -> (n, n)
 
-  onChange ::
-    (HiddenClockResetEnable dom, Eq a, NFDataX a) => Signal dom a -> Signal dom Bool
-  onChange x = (Just <$> x) ./=. register hasClock hasReset hasEnable Nothing (Just <$> x)
+  captureCond :: Signal Basic125 (Vec 4 Bool)
+  captureCond =
+    bundle
+      ( captureGthStats
+          :> captureResets
+          :> captureTestState
+          :> captureDomainDiff
+          :> Nil
+      )
+   where
+    onChange ::
+      (HiddenClockResetEnable dom, Eq a, NFDataX a) => Signal dom a -> Signal dom Bool
+    onChange x = (Just <$> x) ./=. register hasClock hasReset hasEnable Nothing (Just <$> x)
 
-  capture :: Signal Basic125 Bool
-  capture =
-    withClockResetEnable clk clkStableRst enableGen
-      $ onChange
-      $ bundle
-        ( testInput
-        , testDone
-        , testSuccess
-        , txActiveFree
-        , nettoFincs
-        , slice d39 d36 . pack <$> spiState -- Constructor bits
-        , spiDone
-        , diffCounterActive
-        )
+    captureTestState :: Signal Basic125 Bool
+    captureTestState =
+      withClockResetEnable clk clkStableRst enableGen
+        $ onChange (bundle (testInput, testDone, testSuccess))
+
+    captureDomainDiff :: Signal Basic125 Bool
+    captureDomainDiff =
+      spiDone .&&. (abs (diffCounter - lastSample) .>=. 8)
+     where
+      lastSample = regEn clk clkStableRst enableGen 0 captureDomainDiff diffCounter
+
+    captureResets :: Signal Basic125 Bool
+    captureResets =
+      withClockResetEnable clk clkStableRst enableGen
+        $ onChange
+        $ bundle
+          ( spiDone
+          , resetTxDoneFree
+          , txActiveFree
+          , unsafeToActiveHigh reset_all_out_sig
+          )
+
+    captureGthStats :: Signal Basic125 Bool
+    captureGthStats =
+      withClockResetEnable clk clkStableRst enableGen
+        $ onChange
+        $ bundle
+          ( (.txRetries) <$> gthStats
+          , (.rxRetries) <$> gthStats
+          , (.rxFullRetries) <$> gthStats
+          , (.failAfterUps) <$> gthStats
+          )
 
   fincFdecIla :: Signal Basic125 ()
   fincFdecIla =
@@ -356,19 +385,24 @@ fincFdecTests diffClk controlledDiffClock spiIn =
             :> "txActive"
             :> "spiDone"
             :> "spiState"
+            :> "txRetries"
+            :> "rxRetries"
+            :> "rxFullRetries"
+            :> "failAfterUps"
             :> "nettoFincs"
             :> "diffCounterActive"
             :> "diffCounter"
             :> "counterSys"
             :> "counterGht"
+            :> "condition"
             :> Nil
         )
-          { depth = D65536
+          { depth = D8192
           }
         clk
         -- Trigger on when the system clock becomes stable
         (unsafeToActiveLow clkStableRst)
-        capture
+        (fmap or captureCond)
         -- Debug probes
         testInput
         testDone
@@ -378,11 +412,16 @@ fincFdecTests diffClk controlledDiffClock spiIn =
         txActiveFree
         spiDone
         spiState
+        ((.txRetries) <$> gthStats)
+        ((.rxRetries) <$> gthStats)
+        ((.rxFullRetries) <$> gthStats)
+        ((.failAfterUps) <$> gthStats)
         nettoFincs
         diffCounterActive
         diffCounter
         counterSys
         counterGht
+        captureCond
 
   testInput :: Signal Basic125 (Maybe Test)
   testInput = hitlVio FDec clk testDone testSuccess
