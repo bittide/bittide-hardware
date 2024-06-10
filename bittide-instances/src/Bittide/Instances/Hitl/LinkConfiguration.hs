@@ -73,7 +73,7 @@ expectedTargetIndex ::
   Signal src (Index FpgaCount) ->
   Clock dst ->
   Reset dst ->
-  Index (FpgaCount - 1) ->
+  Index LinkCount ->
   Signal dst (Maybe (Index FpgaCount))
 expectedTargetIndex srcClk myIndex dstClk dstRst link =
   fmap ((!! link) . snd . (fpgaSetup !!))
@@ -101,14 +101,14 @@ transceiversStartAndObserve ::
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
   "MY_INDEX" ::: Signal Basic125 (Index FpgaCount) ->
-  "GTH_RX_NS" ::: TransceiverWires GthRxS ->
-  "GTH_RX_PS" ::: TransceiverWires GthRxS ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTxS
-  , "GTH_TX_PS" ::: TransceiverWires GthTxS
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "allReady" ::: Signal Basic125 Bool
   , "success" ::: Signal Basic125 Bool
-  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
+  , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK"      ::: Signal Basic125 Bool
@@ -183,11 +183,11 @@ linkConfigurationTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRxS ->
-  "GTH_RX_PS" ::: TransceiverWires GthRxS ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTxS
-  , "GTH_TX_PS" ::: TransceiverWires GthTxS
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
