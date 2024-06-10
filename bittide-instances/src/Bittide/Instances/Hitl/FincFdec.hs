@@ -16,9 +16,10 @@ import Clash.Explicit.Reset.Extra (Asserted(..), xpmResetSynchronizer, delayRese
 import Clash.Prelude (withClockResetEnable)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 
-import Bittide.Counter (domainDiffCounter)
 import Bittide.ClockControl (SpeedChange(NoChange, SlowDown, SpeedUp), speedChangeToFincFdec)
 import Bittide.ClockControl.Si539xSpi (si539xSpi, ConfigState(Finished))
+import Bittide.Counter (domainDiffCounter)
+import Bittide.ElasticBuffer (sticky)
 import Bittide.Hitl (HitlTests, testsFromEnum, hitlVio, allFpgas)
 import Bittide.Instances.Domains
 
@@ -229,7 +230,7 @@ fincFdecTests diffClk controlledDiffClock spiIn =
     , _rxCtrl0, _rxCtrl1, _rxCtrl2, _rxCtrl3
     ) =
     gthCore
-      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
+      @GthTx @GthRx @Ext200 @Basic125 @GthTxS @GthRxS
       "X0Y10" "clk0"
       (pure 0) (pure 0) -- rxN and rxP
       clk
@@ -262,7 +263,11 @@ fincFdecTests diffClk controlledDiffClock spiIn =
       (fromJustX <$> testInput)
       spiIn
 
-  (testDone, testSuccess) = unbundle $ testStateToDoneSuccess <$> testResult
+  (testDone, testSuccess) =
+    (mapTuple stickyResult) . unbundle $ testStateToDoneSuccess <$> testResult
+   where
+    mapTuple f (a,b) = (f a, f b)
+    stickyResult = sticky clk testRst
 
   (_spiBusy, _spiState, spiDone, _diffCounterActive, _diffCounter) = debugSignals
 
