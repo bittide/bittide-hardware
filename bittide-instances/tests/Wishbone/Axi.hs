@@ -11,14 +11,15 @@ module Wishbone.Axi where
 import Clash.Explicit.Prelude
 
 import Bittide.Axi4
+import Bittide.Axi4.Internal
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes
 import Bittide.Wishbone
-import Clash.Cores.UART(uart, ValidBaud)
 import Clash.Cores.UART.Extra(MaxBaudRate)
+import Clash.Cores.UART(uart, ValidBaud)
 import Clash.Explicit.Testbench
 import Clash.Prelude(withClockResetEnable)
 import Clash.Xilinx.ClockGen
@@ -79,10 +80,10 @@ dut baud diffClk rst_in =
       wbAlwaysAck -< wbNull
       (uartRx, _uartStatus) <- uartWb d32 d16 baud -< (uartBus, uartTx)
       _interrupts <- wbAxisRxBufferCircuit (SNat @32) -< (axiRxBus, axiStream)
-      axiStream <- DfConv.fifo axiProxy axiProxy (SNat @2048) <| axiPacking <| wbToAxiTx -< axiTxBus
+      axiStream <- axiMapC (axiUserMap $ const False) <| DfConv.fifo axiProxy axiProxy (SNat @2048) <| axiPacking <| wbToAxiTx -< axiTxBus
       idC -< uartRx
  where
-  axiProxy = Proxy @(Axi4Stream dom (AxiStreamBytesOnly 4) ())
+  axiProxy = Proxy @(Axi4Stream dom ('Axi4StreamConfig 4 0 0) ())
   (clk200 :: Clock dom, pllLock :: Reset dom) = clockWizardDifferential diffClk noReset
   rst200 = resetSynchronizer clk200 (unsafeOrReset rst_in pllLock)
 

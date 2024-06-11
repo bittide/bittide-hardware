@@ -20,6 +20,8 @@ import qualified Tests.ScatterGather
 import qualified Tests.StabilityChecker
 import qualified Tests.Switch
 import qualified Tests.Wishbone
+import qualified Tests.Axi4.Generators
+import qualified Tests.Haxioms
 
 tests :: TestTree
 tests = testGroup "Unittests"
@@ -34,6 +36,8 @@ tests = testGroup "Unittests"
   , Tests.StabilityChecker.tests
   , Tests.Switch.tests
   , Tests.Wishbone.tests
+  , Tests.Axi4.Generators.tests
+  , Tests.Haxioms.tests
   ]
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
