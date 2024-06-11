@@ -98,12 +98,12 @@ library
   import: common-options
   hs-source-dirs: src
   build-depends:
-    Cabal,
     aeson,
     array,
     base,
     bittide-extra,
     bytestring,
+    Cabal,
     cassava,
     clash-cores,
     clash-lib >= 1.6.3 && < 1.10,
@@ -112,11 +112,13 @@ library
     clash-vexriscv,
     constraints >= 0.13.3 && < 0.15,
     containers >= 0.4.0 && < 0.7,
+    deepseq,
     directory,
     elf,
     exceptions,
     extra,
     filepath,
+    hashable,
     infinite-list,
     mtl,
     pretty-show,
@@ -168,6 +170,9 @@ library
     Clash.Explicit.Reset.Extra
     Clash.Functor.Extra
     Clash.Sized.Extra
+    Protocols.PacketStream
+    Protocols.PacketStream.Converters
+    Protocols.PacketStream.PacketBuffer
     Data.Constraint.Nat.Extra
     System.IO.Temp.Extra
   other-modules:
