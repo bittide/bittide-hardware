@@ -25,6 +25,8 @@ import Bittide.Instances.Domains
 import Data.Maybe (isJust)
 
 import qualified Bittide.ClockControl.Si5395J as Si5395J
+import qualified Bittide.Transceiver.Cdc as Cdc
+import qualified Bittide.Transceiver.ResetManager as ResetManager
 
 data TestState = Busy | Fail | Success
 data Test
@@ -37,6 +39,29 @@ data Test
   -- | 'FInc' test followed by an 'FDec' one
   | FIncDec
   deriving (Enum, Generic, NFDataX, Bounded, BitPack, ShowX, Show)
+
+-- | Reset manager for transceivers which ignores the rx domain. Use this
+-- alternative to `ResetManager.resetManager` when the transceivers are only
+-- used to extract a clock from a transceiver-only clock input (e.g.
+-- `SMA_MGT_REFCLK_C`).
+gthResetManagerWithoutRx ::
+  forall dom .
+  KnownDomain dom =>
+  Clock dom ->
+  Reset dom ->
+  "tx_init_done" ::: Signal dom Bool ->
+  ( "reset_all_out" ::: Reset dom
+  , "stats" ::: Signal dom ResetManager.Statistics
+  )
+gthResetManagerWithoutRx clk rst tx_init_done =
+  ( reset_all_out_sig
+  , statistics
+  )
+ where
+  (reset_all_out_sig, _reset_rx_sig, statistics) =
+    ResetManager.resetManager
+      ResetManager.defConfig
+      clk rst tx_init_done (pure True) (pure True)
 
 -- | Counter threshold after which a test is considered passed/failed. In theory
 -- clocks can diverge at +-12.5 kHz (at 125 MHz), which gives the tests 500 ms
@@ -54,7 +79,7 @@ goFincFdecTests ::
   Clock Basic125 ->
   Reset Basic125 ->
   Clock GthTx ->
-  Reset GthTx ->
+  Reset Basic125 ->
   Signal Basic125 Test ->
   "MISO" ::: Signal Basic125 Bit -> -- SPI
   "" :::
@@ -82,7 +107,7 @@ goFincFdecTests ::
       , "COUNTER" ::: Signal Basic125 (Signed 32)
       )
     )
-goFincFdecTests clk rst clkControlled clkControlledRst testSelect miso =
+goFincFdecTests clk rst clkControlled resetControlledFree testSelect miso =
   (testResult, fIncDec, spiOut, debugSignals)
  where
   debugSignals = (spiBusy, pack <$> spiState, spiDone, counterActive, counter)
@@ -95,22 +120,19 @@ goFincFdecTests clk rst clkControlled clkControlledRst testSelect miso =
         (pure Nothing)
         miso
 
-  rstTest =
-    unsafeFromActiveLow spiDone `orReset`
-    (xpmResetSynchronizer Asserted clkControlled clk clkControlledRst)
-  rstControlled = convertReset clk clkControlled rst
+  rstControlled = xpmResetSynchronizer Asserted clk clkControlled rst
 
   (counter, counterActive) =
     unbundle $
       -- Note that in a "real" Bittide system the clocks would be wired up the
       -- other way around: the controlled domain would be the target domain. We
       -- don't do that here because we know 'rstControlled' will come out of
-      -- reset much earlier than 'rstTest'. Doing it the "proper" way would
-      -- therefore introduce extra complexity, without adding to the test's
-      -- coverage.
-      domainDiffCounter clkControlled rstControlled clk rstTest
+      -- reset much earlier than 'resetControlledFree'. Doing it the "proper"
+      -- way would therefore introduce extra complexity, without adding to the
+      -- test's coverage.
+      domainDiffCounter clkControlled rstControlled clk resetControlledFree
 
-  fIncDec = unbundle $ speedChangeToFincFdec clk rstTest fIncDecRequest
+  fIncDec = unbundle $ speedChangeToFincFdec clk resetControlledFree fIncDecRequest
 
   (fIncDecRequest, testResult) = unbundle $
     (!!)
@@ -119,8 +141,8 @@ goFincFdecTests clk rst clkControlled clkControlledRst testSelect miso =
 
   fDecResult = goFdec <$> counter
   fIncResult = goFinc <$> counter
-  fDecIncResult = mealy clk rstTest enableGen goFdecFinc FDec counter
-  fIncDecResult = mealy clk rstTest enableGen goFincFdec FInc counter
+  fDecIncResult = mealy clk resetControlledFree enableGen goFdecFinc FDec counter
+  fIncDecResult = mealy clk resetControlledFree enableGen goFincFdec FInc counter
 
   -- Keep pressing FDEC, expect counter to go below -@threshold@
   goFdec :: Signed 32 -> (SpeedChange, TestState)
@@ -201,7 +223,7 @@ fincFdecTests diffClk controlledDiffClock spiIn =
     , txClock
     , _rxClock
     , _rx_data
-    , _reset_tx_done
+    , reset_tx_done
     , _reset_rx_done
     , txActive
     , _rxCtrl0, _rxCtrl1, _rxCtrl2, _rxCtrl3
@@ -211,22 +233,32 @@ fincFdecTests diffClk controlledDiffClock spiIn =
       "X0Y10" "clk0"
       (pure 0) (pure 0) -- rxN and rxP
       clk
-      (delayReset Asserted clk gthRst) -- reset_all
+      (delayReset Asserted clk reset_all_out_sig) -- reset_all
       noReset -- gtwiz_reset_rx_datapath_in
       (pure 0) (pure 0) -- userdata_tx_in and txctrl
       clkControlled
 
+  (reset_all_out_sig, _gthStats) =
+    gthResetManagerWithoutRx
+      clk (unsafeFromActiveLow spiDone)
+      resetTxDoneFree
+
+  resetControlledFree =
+      orReset clkStableRst
+    $ orReset (unsafeFromActiveLow spiDone)
+    $ orReset (unsafeFromActiveLow resetTxDoneFree)
+              (unsafeFromActiveLow txActiveFree)
+
+  resetTxDoneFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clk clkStableRst (pure True)
+  txActiveFree    = Cdc.withLock txClock (unpack <$> txActive) clk clkStableRst (pure True)
+
   started = isJust <$> testInput
   testRst = clkStableRst `orReset` (unsafeFromActiveLow started)
-  gthRst  = delayReset Asserted clk $
-      orReset clkStableRst
-    $ orReset (unsafeFromActiveLow started)
-              (unsafeFromActiveLow spiDone)
 
   (testResult, fIncDec, spiOut, debugSignals) =
     goFincFdecTests
       clk testRst
-      txClock (xpmResetSynchronizer Asserted txClock txClock $ unsafeFromActiveLow $ unpack <$> txActive)
+      txClock resetControlledFree
       (fromJustX <$> testInput)
       spiIn
 
