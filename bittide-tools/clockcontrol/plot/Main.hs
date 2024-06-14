@@ -43,7 +43,7 @@ import Conduit
   ( ConduitT, Void, (.|)
   , runConduit, sourceHandle, scanlC, dropC, mapC, sinkList, yield, await
   )
-import Control.Applicative (liftA2)
+import Control.Applicative ((<|>), liftA2)
 import Control.Arrow (first)
 import Control.Exception (Exception(..), catch, throw)
 import Control.Monad (forM, forM_, filterM, when, unless)
@@ -136,12 +136,12 @@ instance
       <$> v .: "Sample in Buffer"
       <*> v .: "Sample in Window"
       <*> v .: "TRIGGER"
-      <*> v .: portName 0
-      <*> v .: portName 1
-      <*> v .: portName 2
-      <*> v .: portName 3
-      <*> v .: portName 4
-      <*> v .: portName 5
+      <*> ((v .: (portName 0 <> "_1")) <|> (v .: (portName 0 <> "_2")))
+      <*> ((v .: (portName 1 <> "_1")) <|> (v .: (portName 1 <> "_2")))
+      <*> ((v .: (portName 2 <> "_1")) <|> (v .: (portName 2 <> "_2")))
+      <*> ((v .: (portName 3 <> "_1")) <|> (v .: (portName 3 <> "_2")))
+      <*> ((v .: (portName 4 <> "_1")) <|> (v .: (portName 4 <> "_2")))
+      <*> ((v .: (portName 5 <> "_1")) <|> (v .: (portName 5 <> "_2")))
    where
     portName = portName# ilaProbeNames
 

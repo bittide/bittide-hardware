@@ -217,8 +217,8 @@ data IlaControl dom =
 -- | Names of the additional ILA plot probes.
 ilaProbeNames :: Vec 6 String
 ilaProbeNames =
-     "trigger_1"
-  :> "capture_1"
+     "trigger"
+  :> "capture"
   :> "condition"
   :> "global"
   :> "local"
