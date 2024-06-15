@@ -375,6 +375,10 @@ transceiverPrbs gthCore opts args@Input{clock, reset} =
     ((ilaConfig $
          "ila_probe_fpgaIndex"
       :> "ila_probe_transIndex"
+      :> "ila_probe_txRetries"
+      :> "ila_probe_rxRetries"
+      :> "ila_probe_rxFullRetries"
+      :> "ila_probe_failAfterUps"
       :> "ila_probe_rx_data0"
       :> "ila_probe_alignedRxData0"
       :> "ila_probe_gtwiz_userdata_tx_in"
@@ -404,6 +408,10 @@ transceiverPrbs gthCore opts args@Input{clock, reset} =
     clock
     opts.debugFpgaIndex
     (pure args.transceiverIndex :: Signal free (Unsigned 3))
+    ((.txRetries) <$> stats)
+    ((.rxRetries) <$> stats)
+    ((.rxFullRetries) <$> stats)
+    ((.failAfterUps) <$> stats)
     (xpmCdcArraySingle rxClock clock rx_data0)
     (xpmCdcArraySingle rxClock clock alignedRxData0)
     (xpmCdcArraySingle txClock clock gtwiz_userdata_tx_in)
