@@ -12,11 +12,14 @@
 module Tests.Transceiver where
 
 import Clash.Explicit.Prelude
+import Clash.Prelude (withClock)
 import Hedgehog
 
 import Bittide.Arithmetic.Time (PeriodToCycles, Microseconds, Milliseconds)
+import Bittide.SharedTypes (Bytes)
 import Clash.Annotations.Primitive (dontTranslate)
 import Clash.Cores.Xilinx.GTH (GthCore)
+import Clash.Hedgehog.Sized.Index (genIndex)
 import Clash.Signal.Internal (Signal ((:-)))
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy(Proxy))
@@ -26,6 +29,7 @@ import Test.Tasty.Hedgehog (testPropertyNamed, HedgehogTestLimit (HedgehogTestLi
 
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
+import qualified Bittide.Transceiver.WordAlign as WordAlign
 import qualified Data.List as List
 import qualified Data.Sequence as Seq
 import qualified Hedgehog.Gen as Gen
@@ -82,6 +86,8 @@ gthCoreMock ::
   Natural ->
   -- | Number of cycles it takes for TX to be out of reset
   Natural ->
+  -- Offset
+  Index 8 ->
 
   GthCore tx rx ref free tx rx (Maybe (BitVector 64))
 gthCoreMock
@@ -90,6 +96,7 @@ gthCoreMock
   nRxResetCycles
   nTxResetCycles
   nTxDoneCycles
+  offset
 
   _channelName
   _clockPath
@@ -108,7 +115,11 @@ gthCoreMock
    , 0, 0, 0, 0
    )
  where
-  rxWord = fromMaybe <$> noise rxClk <*> rxSerial
+  rxWord =
+    withClock rxClk $
+      WordAlign.aligner WordAlign.dealignLsbFirst (pure False) (pure offset) $
+        fromMaybe <$> noise rxClk <*> rxSerial
+
   txSerial = Just <$> txWord
 
   registerRx = register rxClk rxRstRx enableGen
@@ -142,7 +153,7 @@ data Input tx rx = Input
   }
 
 dut ::
-  forall freeA freeB txA txB ref a .
+  forall freeA freeB txA txB ref n .
   ( KnownDomain ref
   , HasSynchronousReset txA, HasDefinedInitialValues txA
   , HasSynchronousReset txB, HasDefinedInitialValues txB
@@ -154,19 +165,20 @@ dut ::
   -- | Number of word clock cycles delay from B -> A
   Natural ->
   ResetManager.Config ->
-  GthCore txA txB ref freeA txA txB (Maybe a) ->
-  GthCore txB txA ref freeB txB txA (Maybe a) ->
+  GthCore txA txB ref freeA txA txB (Maybe (Bytes n)) ->
+  GthCore txB txA ref freeB txB txA (Maybe (Bytes n)) ->
   Clock freeA ->
   Reset freeA ->
   Clock freeB ->
   Reset freeB ->
   Input txA txB ->
   Input txB txA ->
-  ( Transceiver.Output txA txB txA freeA (Maybe a)
-  , Transceiver.Output txB txA txB freeB (Maybe a)
+  ( Transceiver.Output txA txB txA freeA (Maybe (Bytes n))
+  , Transceiver.Output txB txA txB freeB (Maybe (Bytes n))
   )
-dut abDelay baDelay resetManagerConfig gthCoreA gthCoreB freeClkA freeRstA freeClkB freeRstB inputA inputB =
-  (outputA, outputB)
+dut
+  abDelay baDelay resetManagerConfig gthCoreA gthCoreB
+  freeClkA freeRstA freeClkB freeRstB inputA inputB = (outputA, outputB)
  where
   outputA = Transceiver.transceiverPrbs
     gthCoreA
@@ -236,6 +248,13 @@ dutRandomized f inputA inputB Proxy = property $ do
   txStableB <- fromIntegral <$> forAll genTimeoutMax
   txDoneB   <- fromIntegral <$> forAll genTimeoutMax
 
+  -- XXX: Note that a single, static offset is generated. This is not realistic:
+  --      in practise, the offset is random, and "determined" after resetting the
+  --      rx subsystem. We currently don't rely on this behavior, due to the logic
+  --      in "Bittide.Transceiver.WordAlign".
+  aOffset   <- forAll (genIndex Range.constantBounded)
+  bOffset   <- forAll (genIndex Range.constantBounded)
+
   -- A cable of 1km "stores" 42 words of 64 bits. In theory these links can be
   -- assymetric, although they rarely are in practise.
   abDelay <- fromIntegral <$> forAll (Gen.word64 (Range.linear 0 42))
@@ -248,12 +267,12 @@ dutRandomized f inputA inputB Proxy = property $ do
     --      investigate how to randomize.
     resetManagerConfig = ResetManager.defConfig
 
-    gthCoreA = gthCoreMock "A" rxStableA txStableA txDoneA
-    gthCoreB = gthCoreMock "B" rxStableB txStableB txDoneB
+    gthCoreA = gthCoreMock "A" rxStableA txStableA txDoneA aOffset
+    gthCoreB = gthCoreMock "B" rxStableB txStableB txDoneB bOffset
 
   let
     (outputA, outputB) = dut
-      @free @free @txA @txB @RefIsUnused @(BitVector 64)
+      @free @free @txA @txB @RefIsUnused @8
       abDelay
       baDelay
       resetManagerConfig
