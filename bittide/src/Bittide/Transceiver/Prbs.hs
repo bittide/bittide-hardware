@@ -38,8 +38,8 @@ data Config polyLength polyTap nBits where
 
 
 -- | PRBS31: @x^31 + x^28 + 1@
-conf31 :: forall n . (31 <= n, KnownNat n) => Config 31 28 n
-conf31 = leToPlus @31 @n Config
+conf31 :: forall n . (KnownNat n, 1 <= n) => Config 31 28 n
+conf31 = leToPlus @1 @n Config
 
 -- | PRBS generator, see module documentation.
 generator ::

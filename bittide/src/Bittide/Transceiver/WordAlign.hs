@@ -9,15 +9,15 @@
 -- end. The IP makes sure that any received are byte aligned. That means that a
 -- stream:
 --
--- > ----------------------------------
--- > | A3 A2 A1 A0 | B3 B2 B1 B0 | ...
--- > ----------------------------------
+-- > ---------------------------------------------------
+-- > ... | A3 A2 A1 A0 | B3 B2 B1 B0 | C3 C2 C1 C0 | ...
+-- > ---------------------------------------------------
 --
--- ..might be received on the other end as:
+-- ..might be, assuming LSB first transmission, received on the other end as:
 --
--- > -----------------------------------------------
--- > | .. .. A3 A2 | A1 A0 B3 B2 | B1 B0 .. .. | ...
--- > -----------------------------------------------
+-- > -----------------------------------------------------------------
+-- > ... | A1 A0 .. .. | A3 A2 B1 B0 | C1 C0 B3 B2 | .. .. C3 C2 | ...
+-- > -----------------------------------------------------------------
 
 -- or by any other shift (or none at all!). This module provides utilities to end
 -- up with a word aligned stream. The basic idea is that, while \"booting\" the
@@ -30,12 +30,21 @@
 --       this should work though.
 module Bittide.Transceiver.WordAlign
   ( alignBytesFromMsbs
-  , align
 
   -- * Convenience functions
   , alignSymbol
   , splitMsbs
   , joinMsbs
+
+  -- * Core functions and utilities
+  , AlignmentFn
+  , aligner
+  , alignLsbFirst
+  , alignMsbFirst
+
+  -- * Dealigning (for testing purposes)
+  , dealignLsbFirst
+  , dealignMsbFirst
   ) where
 
 import Clash.Prelude
@@ -45,15 +54,6 @@ import Clash.Explicit.Prelude (noReset)
 import Data.Bifunctor (Bifunctor (bimap))
 import Data.Maybe (fromMaybe)
 import Data.Tuple.Extra (curry3)
-
-data State n m = State { prev :: BitVector (n * m), offset :: Index n }
-  deriving (Show, Generic, ShowX, NFDataX)
-
-defState :: (KnownNat n, KnownNat m) => State n m
-defState = State{prev=0, offset=0}
-
-alignSymbol :: forall n . (KnownNat n, 1 <= n) => BitVector n
-alignSymbol = 1 +>>. 0
 
 -- | Split the MSBs of a 'BitVector's \"bytes\" into a 'BitVector' of MSBs and a
 -- 'BitVector' of the remaining bits.
@@ -87,65 +87,106 @@ joinMsbs msbs bvs = pack $
     (unpack @(Vec nBytes Bool) msbs)
     (unpack @(Vec nBytes (BitVector(byteWidth - 1))) bvs)
 
--- | Specialized version of 'align' that works on 'BitVector' and assumes that
--- the alignment bits are stored in the MSBs of the bytes.
+alignSymbol :: forall n . (KnownNat n, 1 <= n) => BitVector n
+alignSymbol = 1 +>>. 0
+
+-- | Specialized version of 'aligner' that assumes an 'alignSymbol' is stored in
+-- the MSB of each byte.
 alignBytesFromMsbs ::
   forall n dom .
   ( HiddenClock dom
   , KnownNat n
   , 1 <= n
   ) =>
-  -- | Freeze alignment symbol updates
+  -- | Alignment function (typically 'alignLsbFirst' or 'alignMsbFirst')
+  AlignmentFn n ->
+  -- | Freeze alignment symbol updates (i.e., keep the current alignment)
   Signal dom Bool ->
   -- | Data with alignment bits in the byte's MSBs
   Signal dom (Bytes n) ->
   -- | Aligned data, according to alignment data saved in the last cycle
   Signal dom (Bytes n)
-alignBytesFromMsbs freeze dat =
-  let msbs = fst . splitMsbs @n <$> dat
-   in align freeze (unpack <$> msbs) dat
+alignBytesFromMsbs alignFn freeze dat =
+  aligner alignFn freeze (oneHotDecoder <$> msbs) dat
+ where
+  msbs = unpack . fst . splitMsbs @n <$> dat
+  oneHotDecoder = fromMaybe 0 . elemIndex True
 
--- | Align data according to an alignment signal. The alignment signal is a
--- one-hot encoded signal that indicates which bit is the alignment bit. Note
--- that the behavior of this function is undefined when:
---
---   * Switching from one alignment bit to another alignment bit
---   * No alignment bit or multiple are asserted
---
--- Alignment can be "frozen" by asserting the freeze signal. This is useful when
--- switching over from a handshake protocol to a data protocol.
-align ::
-  forall n m dom .
+data State n = State { prev :: Bytes n, offset :: Index n }
+  deriving (Show, Generic, ShowX, NFDataX)
+
+-- | Alignment circuit that is generic in its alignment function
+aligner ::
+  forall n dom .
   ( HiddenClock dom
   , KnownNat n
-  , KnownNat m
   , 1 <= n
   ) =>
-  -- | Freeze alignment symbol updates
+  -- | Alignment function (e.g., 'alignLsbFirst'). Can also be used to dealign.
+  AlignmentFn n ->
+  -- | Freeze offset signal (i.e., keep the current offset). Note: it takes one
+  -- cycle to flush the state of this circuit, so if you don't want to see garbage
+  -- data, you should make sure the offset signal has been stable for at least
+  -- two cycles before freezing it.
   Signal dom Bool ->
-  -- | One hot encoded alignment signal. Behavior is undefined when multiple
-  -- bits or none are asserted.
-  Signal dom (Vec n Bool) ->
+  -- | Offset
+  Signal dom (Index n) ->
   -- | Data
-  Signal dom (BitVector (n * m)) ->
+  Signal dom (Bytes n) ->
   -- | Aligned data, according to alignment data saved in the last cycle
-  Signal dom (BitVector (n * m))
-align =
+  Signal dom (Bytes n)
+aligner alignFn =
   withEnable enableGen $
     withReset noReset $
-      curry3 (mealy go (defState @n @m) . bundle)
+      curry3 (mealy go State{prev=0, offset=0} . bundle)
  where
-  go :: State n m -> (Bool, Vec n Bool, BitVector (n * m)) -> (State n m, BitVector (n * m))
-  go (State{prev, offset}) (freeze, alignment, current) =
+  go :: State n -> (Bool, Index n, Bytes n) -> (State n, Bytes n)
+  go (State{prev, offset}) (freeze, suggestedOffset, current) =
     ( State{prev=current, offset=newOffset}
-    , takeMsbs (shiftL (prev ++# current) (fromIntegral (offset `mul` mAsIndex)))
-    )
+    , alignFn offset prev current )
    where
-    mAsIndex = maxBound :: Index (m + 1)
+    newOffset = if freeze then offset else suggestedOffset
 
-    newOffset
-      | freeze = offset
-      | otherwise = fromMaybe 0 (elemIndex True alignment)
+-- | (De-)alignment function that can be used in 'aligner'
+type AlignmentFn n =
+  KnownNat n =>
+  -- | Offset
+  Index n ->
+  -- | \"Old\" data
+  Bytes n ->
+  -- | \"New\" data
+  Bytes n ->
+  -- | (De-)aligned data
+  Bytes n
 
-  takeMsbs :: forall i . KnownNat i => BitVector (i * 2) -> BitVector i
-  takeMsbs bv = truncateB (shiftR bv (natToNum @i))
+-- | De-align bytes for to emulate LSB-first transmission
+dealignLsbFirst :: AlignmentFn n
+dealignLsbFirst offset old new = takeLsbs $ shiftBytesR (new ++# old) offset
+
+-- | Align bytes for LSB-first transmission
+alignLsbFirst :: AlignmentFn n
+alignLsbFirst offset old new = takeMsbs $ shiftBytesL (new ++# old) offset
+
+-- | De-align bytes for to emulate MSB-first transmission
+dealignMsbFirst :: AlignmentFn n
+dealignMsbFirst offset old new = takeLsbs $ shiftBytesR (old ++# new) offset
+
+-- | Align bytes for MSB-first transmission
+alignMsbFirst :: AlignmentFn n
+alignMsbFirst offset old new = takeMsbs $ shiftBytesL (old ++# new) offset
+
+-- | Like 'shiftR', but for 'Bytes'
+shiftBytesR :: forall n. KnownNat n => Bytes (2 * n) -> Index n -> Bytes (2 * n)
+shiftBytesR bv n = shiftR bv (8 * fromIntegral n)
+
+-- | Like 'shiftL', but for 'Bytes'
+shiftBytesL :: forall n. KnownNat n => Bytes (2 * n) -> Index n -> Bytes (2 * n)
+shiftBytesL bv n = shiftL bv (8 * fromIntegral n)
+
+-- | Take upper bits of given 'BitVector'
+takeMsbs :: forall n. KnownNat n => Bytes (2 * n) -> Bytes n
+takeMsbs = fst . unpack @(Bytes n, Bytes n)
+
+-- | Take lower bits of given 'BitVector'
+takeLsbs :: forall n. KnownNat n => Bytes (2 * n) -> Bytes n
+takeLsbs = truncateB

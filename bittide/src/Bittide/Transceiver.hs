@@ -485,7 +485,7 @@ transceiverPrbs gthCore opts args@Input{clock, reset} =
 
   alignedRxData0 :: Signal rx (BitVector 64)
   alignedRxData0 = withClock rxClock $
-    WordAlign.alignBytesFromMsbs @8 (rxUserData .||. rxLast) rx_data0
+    WordAlign.alignBytesFromMsbs @8 WordAlign.alignLsbFirst (rxUserData .||. rxLast) rx_data0
 
   (alignedAlignBits, alignedRxData1) = unbundle $
     WordAlign.splitMsbs @8 @8 <$> alignedRxData0

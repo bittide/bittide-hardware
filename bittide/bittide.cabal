@@ -213,6 +213,7 @@ test-suite unittests
     Tests.Shared
     Tests.StabilityChecker
     Tests.Switch
+    Tests.Transceiver.Prbs
     Tests.Transceiver.WordAlign
     Tests.Transceiver
     Tests.Wishbone
@@ -230,9 +231,11 @@ test-suite unittests
     containers,
     containers,
     elf,
+    extra,
     hedgehog >= 1.0 && < 1.5,
     HUnit,
     tasty >= 1.4 && < 1.6,
+    tasty-expected-failure,
     tasty-hedgehog >= 1.2 && < 1.5,
     tasty-hunit,
     tasty-th,
