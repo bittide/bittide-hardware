@@ -67,7 +67,7 @@ generator clk rst ena Config =
       where
        o = newBit +>>. bv
        tap = SNat @(polyLength - polyTap)
-       newBit = xor (lsb bv) (unpack $ slice tap tap bv)
+       newBit = bitStep bv tap
 
 
 -- | PRBS checker, see module documentation.
@@ -98,7 +98,19 @@ checker clk rst ena Config = mealy clk rst ena go (maxBound, maxBound)
       where
        o = newBit +>>. bv
        tap = SNat @(polyLength - polyTap)
-       bitErr = xor newBit (xor (lsb bv) (unpack $ slice tap tap bv))
+       bitErr = xor newBit (bitStep bv tap)
+
+bitStep ::
+  ( BitSize a ~ ((1 + n) + i)
+  , BitPack a
+  , KnownNat n
+  , KnownNat i ) =>
+  a ->
+  SNat n ->
+  Bit
+bitStep bv tap =
+  -- XXX: Replacing 'slice' by 'testBit' makes tests fail?
+  xor (lsb bv) (unpack $ slice tap tap bv)
 
 data TrackerState
   = Down (Index 127)
