@@ -341,12 +341,33 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} = Outputs
     inputs.rxReadys
 
   go transceiverIndex channelName clockPath rxN rxP txData txReady rxReady =
-    transceiverPrbs Gth.gthCore opts Input
+    transceiverPrbs opts Input
       { channelName, clockPath, rxN, rxP, txData, txReady, rxReady, transceiverIndex
       , clock, reset, refClock
       }
 
 transceiverPrbs ::
+  forall tx rx ref free txS rxS .
+  ( HasSynchronousReset tx
+  , HasDefinedInitialValues tx
+
+  , HasSynchronousReset rx
+  , HasDefinedInitialValues rx
+
+  , HasSynchronousReset free
+  , HasDefinedInitialValues free
+
+  , KnownDomain rxS
+  , KnownDomain txS
+  , KnownDomain ref
+  , KnownDomain free
+  ) =>
+  Config free ->
+  Input tx rx ref free rxS (BitVector 1) ->
+  Output tx rx txS free (BitVector 1)
+transceiverPrbs = transceiverPrbsWith Gth.gthCore
+
+transceiverPrbsWith ::
   forall tx rx ref free txS rxS serializedData .
   ( HasSynchronousReset tx
   , HasDefinedInitialValues tx
@@ -366,7 +387,7 @@ transceiverPrbs ::
   Config free ->
   Input tx rx ref free rxS serializedData ->
   Output tx rx txS free serializedData
-transceiverPrbs gthCore opts args@Input{clock, reset} =
+transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   when opts.debugIla debugIla `hwSeqX` result
  where
 

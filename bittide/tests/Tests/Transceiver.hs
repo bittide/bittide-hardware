@@ -180,7 +180,7 @@ dut
   abDelay baDelay resetManagerConfig gthCoreA gthCoreB
   freeClkA freeRstA freeClkB freeRstB inputA inputB = (outputA, outputB)
  where
-  outputA = Transceiver.transceiverPrbs
+  outputA = Transceiver.transceiverPrbsWith
     gthCoreA
     Transceiver.defConfig{Transceiver.resetManagerConfig}
     Transceiver.Input
@@ -197,7 +197,7 @@ dut
       , rxReady = inputA.rxReady
       }
 
-  outputB = Transceiver.transceiverPrbs
+  outputB = Transceiver.transceiverPrbsWith
     gthCoreB
     Transceiver.defConfig{Transceiver.resetManagerConfig}
     Transceiver.Input
