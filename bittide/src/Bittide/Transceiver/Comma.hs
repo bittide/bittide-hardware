@@ -9,10 +9,6 @@ import Bittide.Arithmetic.Time (IndexMs)
 import Bittide.SharedTypes (Bytes, Byte)
 import Clash.Class.Counter (Counter(countSuccOverflow))
 
--- | Number of milliseconds to generate commas for
-defTimeout :: SNat 1
-defTimeout = SNat
-
 -- | Generate commas (transceiver alignment symbols) for a number of milliseconds
 generator ::
   forall ms nBytes dom .

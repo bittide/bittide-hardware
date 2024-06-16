@@ -496,7 +496,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
 
   prbsConfig = Prbs.conf31 @48
 
-  (commas, txctrl) = Comma.generator Comma.defTimeout txClock txReset
+  (commas, txctrl) = Comma.generator d1 txClock txReset
   commasDone = isNothing <$> commas
   prbs = Prbs.generator txClock (unsafeFromActiveLow commasDone) enableGen prbsConfig
   prbsWithMeta = WordAlign.joinMsbs @8 <$> fmap pack metaTx <*> prbs
