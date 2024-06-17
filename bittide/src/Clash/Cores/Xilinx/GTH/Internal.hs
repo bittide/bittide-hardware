@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -17,40 +17,41 @@ import Clash.Cores.Xilinx.GTH.BlackBoxes
 type TX_DATA_WIDTH = 64
 type RX_DATA_WIDTH = 64
 
-gthCore
-  :: String -- ^ channel
-  -> String -- ^ refClkSpec
-  -> "gthrxn_in" ::: Signal rxS (BitVector 1)
-  -> "gthrxp_in" ::: Signal rxS (BitVector 1)
+type GthCore txUser2 rxUser2 refclk0 freerun txS rxS serializedData =
+  ( KnownDomain txUser2
+  , KnownDomain rxUser2
+  , KnownDomain refclk0
+  , KnownDomain freerun
+  , KnownDomain txS
+  , KnownDomain rxS
+  ) =>
+  String ->
+  -- ^ channel
+  String ->
+  -- ^ refClkSpec
+  "gthrxn_in" ::: Signal rxS serializedData ->
+  "gthrxp_in" ::: Signal rxS serializedData ->
+  "gtwiz_reset_clk_freerun_in" ::: Clock freerun ->
+  "gtwiz_reset_all_in" ::: Reset freerun ->
+  "gtwiz_reset_rx_datapath_in" ::: Reset freerun ->
+  "gtwiz_userdata_tx_in" ::: Signal txUser2 (BitVector TX_DATA_WIDTH) ->
+  "txctrl2_in" ::: Signal txUser2 (BitVector (DivRU TX_DATA_WIDTH 8)) ->
+  "gtrefclk0_in" ::: Clock refclk0 ->
+  ( "gthtxn_out" ::: Signal txS serializedData
+  , "gthtxp_out" ::: Signal txS serializedData
+  , "gtwiz_userclk_tx_usrclk2_out" ::: Clock txUser2
+  , "gtwiz_userclk_rx_usrclk2_out" ::: Clock rxUser2
+  , "gtwiz_userdata_rx_out" ::: Signal rxUser2 (BitVector RX_DATA_WIDTH)
+  , "gtwiz_reset_tx_done_out" ::: Signal txUser2 (BitVector 1)
+  , "gtwiz_reset_rx_done_out" ::: Signal rxUser2 (BitVector 1)
+  , "gtwiz_userclk_tx_active_out" ::: Signal txUser2 (BitVector 1)
+  , "rxctrl0_out" ::: Signal rxUser2 (BitVector 16)
+  , "rxctrl1_out" ::: Signal rxUser2 (BitVector 16)
+  , "rxctrl2_out" ::: Signal rxUser2 (BitVector 8)
+  , "rxctrl3_out" ::: Signal rxUser2 (BitVector 8)
+  )
 
-  -> "gtwiz_reset_clk_freerun_in" ::: Clock freerun
-
-  -> "gtwiz_reset_all_in" ::: Reset freerun
-  -> "gtwiz_reset_tx_pll_and_datapath_in" ::: Reset freerun
-  -> "gtwiz_reset_tx_datapath_in" ::: Reset freerun
-  -> "gtwiz_reset_rx_pll_and_datapath_in" ::: Reset freerun
-  -> "gtwiz_reset_rx_datapath_in" ::: Reset freerun
-  -> "gtwiz_userdata_tx_in" ::: Signal txUser2 (BitVector TX_DATA_WIDTH)
-  -> "txctrl2_in" ::: Signal txUser2 (BitVector (DivRU TX_DATA_WIDTH 8))
-
-  -- -> "gtrefclk00_in" ::: Clock refclk00
-  -> "drpclk_in" ::: Clock freerun
-  -> "gtrefclk0_in" ::: Clock refclk0
-
-  ->
-   ( "gthtxn_out" ::: Signal txS (BitVector 1)
-   , "gthtxp_out" ::: Signal txS (BitVector 1)
-
-   , "gtwiz_userclk_tx_usrclk2_out" ::: Clock txUser2
-   , "gtwiz_userclk_rx_usrclk2_out" ::: Clock rxUser2
-
-   , "gtwiz_userdata_rx_out" ::: Signal rxUser2 (BitVector RX_DATA_WIDTH)
-
-   , "gtwiz_reset_tx_done_out" ::: Signal txUser2 (BitVector 1)
-   , "gtwiz_reset_rx_done_out" ::: Signal rxUser2 (BitVector 1)
-
-   , "gtwiz_userclk_tx_active_out" ::: Signal txUser2 (BitVector 1)
-   )
+gthCore :: GthCore txUser2 rxUser2 refclk0 freerun txS rxS (BitVector 1)
 gthCore
   !_channel
   !_refClkSpec
@@ -60,16 +61,14 @@ gthCore
   !_gtwiz_reset_clk_freerun_in
 
   !_gtwiz_reset_all_in
-  !_gtwiz_reset_tx_pll_and_datapath_in
-  !_gtwiz_reset_tx_datapath_in
-  !_gtwiz_reset_rx_pll_and_datapath_in
   !_gtwiz_reset_rx_datapath_in
   !_gtwiz_userdata_tx_in
   !_txctrl2_in
-  !_drpclk_in
   !_gtrefclk0_in
  = ( undefined, undefined, undefined, undefined
-   , undefined, undefined, undefined, undefined )
+   , undefined, undefined, undefined, undefined
+   , undefined, undefined, undefined, undefined
+   )
 {-# NOINLINE gthCore #-}
 {-# ANN gthCore hasBlackBox #-}
 {-# ANN gthCore (

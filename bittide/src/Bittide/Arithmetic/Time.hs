@@ -7,8 +7,11 @@ module Bittide.Arithmetic.Time where
 import GHC.Stack (HasCallStack)
 import Clash.Explicit.Prelude
 
+import Clash.Class.Counter (countSucc, Counter)
 import Clash.Signal.Internal (Femtoseconds (Femtoseconds), mapFemtoseconds)
+import Data.Data (Proxy)
 import Data.Int (Int64)
+import Data.Kind (Type)
 
 -- | Gets time in 'Picoseconds' from time in 'Seconds'.
 type Seconds      (s  :: Nat) = Milliseconds (1000 * s)
@@ -28,6 +31,10 @@ type PeriodToCycles dom period = Max 1 (DivRU period (Max 1 (DomainPeriod dom)))
 -- | The domain's clock frequency in Hertz, calculated based on the period stored in ps.
 -- This might lead to rounding errors.
 type DomainFrequency dom = Div (Seconds 1) (DomainPeriod dom)
+
+-- | 'Index' with its 'maxBound' corresponding to the number of cycles needed to
+-- wait for /n/ milliseconds.
+type IndexMs dom n = Index (PeriodToCycles dom (Milliseconds n))
 
 seconds :: Int64 -> Femtoseconds
 seconds s = mapFemtoseconds (* 1000) (milliseconds s)
@@ -52,8 +59,9 @@ femtoseconds :: Int64 -> Femtoseconds
 femtoseconds = Femtoseconds
 {-# INLINE femtoseconds #-}
 
--- | Rises after the incoming signal has been 'True' for the specified
--- amount of time.
+-- | Rises after the incoming signal has been 'True' for the specified amount of
+-- time. Use this function if you know the time to wait for at compile time. If
+-- not, use 'trueForSteps'.
 trueFor ::
   forall dom t. HasCallStack =>
   (KnownDomain dom, KnownNat t) =>
@@ -71,3 +79,36 @@ trueFor _ clk rst =
   transF counter = \case
     True -> satSucc SatBound counter
     _    -> 0
+
+-- | Rises after the incoming signal has been 'True' for the specified amount of
+-- time given as a configurable number of steps of a given step size (i.e., wait
+-- for @stepSize * numberOfSteps@)). Example invocation:
+--
+-- > trueForSteps @(Milliseconds 1) Proxy someLimit clk rst signal
+--
+-- which will wait for @someLimit@ milliseconds. Use 'trueFor' if you know the
+-- time to wait for at compile time. If not, use 'trueForSteps'.
+trueForSteps ::
+  forall (stepSize :: Nat) (dom :: Domain) (counter :: Type) .
+  ( HasCallStack
+  , KnownDomain dom
+  , KnownNat stepSize
+  , NFDataX counter, Bounded counter, Counter counter, Eq counter, Num counter
+  ) =>
+  Proxy stepSize ->
+  -- ^ Step size. Use the type aliases of 'Bittide.Arithmetic.Time' for time span
+  -- specification.
+  counter ->
+  -- ^ Number of steps to wait for
+  Clock dom ->
+  Reset dom ->
+  Signal dom Bool ->
+  Signal dom Bool
+trueForSteps _ limit clk rst =
+  moore clk rst enableGen transF ((== limit) . fst) (0, 0 :: Index (PeriodToCycles dom stepSize))
+ where
+  transF cntr@(ms, _) = \case
+    True
+      | ms == limit -> cntr
+      | otherwise   -> countSucc cntr
+    _    -> minBound

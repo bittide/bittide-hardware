@@ -156,6 +156,11 @@ library
     Bittide.SharedTypes
     Bittide.Switch
     Bittide.Transceiver
+    Bittide.Transceiver.Cdc
+    Bittide.Transceiver.Comma
+    Bittide.Transceiver.Prbs
+    Bittide.Transceiver.ResetManager
+    Bittide.Transceiver.WordAlign
     Bittide.Wishbone
     Clash.Cores.Extra
     Clash.Cores.UART.Extra
@@ -194,7 +199,7 @@ test-suite unittests
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: UnitTests.hs
-  ghc-options: -Wall -Wcompat -threaded
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-N12
   other-modules:
     Tests.Axi4
     Tests.Calendar
@@ -208,23 +213,29 @@ test-suite unittests
     Tests.Shared
     Tests.StabilityChecker
     Tests.Switch
+    Tests.Transceiver.Prbs
+    Tests.Transceiver.WordAlign
+    Tests.Transceiver
     Tests.Wishbone
   build-depends:
-    HUnit,
     base,
-    bittide,
     bittide-extra,
+    bittide,
     bytestring,
     clash-cores,
     clash-lib,
-    clash-prelude,
     clash-prelude-hedgehog >= 1.6 && < 1.10,
+    clash-prelude,
     clash-protocols,
     constraints >= 0.13.3 && < 0.15,
     containers,
+    containers,
     elf,
+    extra,
     hedgehog >= 1.0 && < 1.5,
+    HUnit,
     tasty >= 1.4 && < 1.6,
+    tasty-expected-failure,
     tasty-hedgehog >= 1.2 && < 1.5,
     tasty-hunit,
     tasty-th,

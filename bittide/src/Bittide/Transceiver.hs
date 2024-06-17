@@ -7,453 +7,586 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NoFieldSelectors #-}
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
+-- | Transceiver module for the Bittide project. This module is a wrapper around
+-- the 'Clash.Cores.Xilinx.GTH.gthCore' function, adding additional functionality
+-- such as PRBS generation and checking, comma insertion, word alignment, and
+-- user data handshaking.
+--
+-- __CAUTION__: When instantiating multiple transceivers you might want to use
+-- 'transceiverPrbsN'. Make sure to read its documentation before proceeding.
+--
+-- = Internals
+-- This section will cover the internals of the transceiver module. Feel free to
+-- skip reading this if you just want to use the transceiver.
+--
+-- __Commas__
+-- We've configured the Xilinx transceiver IP to use 8b/10b encoding. In order
+-- for the decoding to work properly, the transceivers need to byte-align. This
+-- is done by detecting comma symbols in the incoming data stream. We start out
+-- by sending them for a number of cycles (see @Comma.@'Comma.defCycles').
+--
+-- __Word alignment__
+-- After sending commas, we assume the receiver receives our words in a byte-aligned
+-- fashion. We can use this fact by reserving the MSB of each byte for an alignment
+-- symbol - see "Bittide.Transceiver.WordAlign".
+--
+-- __Meta data__
+-- We send along meta data with each word. This meta data is used to signal to the
+-- neighbor that we're ready to receive user data, or that the next word will be
+-- user data. The meta data also contains the FPGA and transceiver index, which
+-- can be used for debugging.
+--
+-- __Reset manager__
+-- A reset manager is used as a sort of \"watchdog\" while booting the
+-- transceivers. It will reset the receive side of the transceiver if it doesn't
+-- receive sensible (PRBS) data for a certain amount of time. After resetting the
+-- receive side for a number of times, it will reset the transmit side as well if
+-- the received data is still considered gibberish. Note that this means that if
+-- you receive *good* data for @'Bittide.Transceiver.ResetManager.rxRetries' *
+-- 'Bittide.Transceiver.ResetManager.rxTimeoutMs'@ milliseconds, you can be sure
+-- the neighbor won't reset its transceiver anymore.
+--
+-- __Word format__
+-- An (aligned) 64 bit word is formatted as follows:
+--
+-- > +----------+----------+----------+----------+----------+----------+----------+----------+
+-- > | 1mpppppp | 0mpppppp | 0mpppppp | 0mpppppp | 0mpppppp | 0mpppppp | 0mpppppp | 0mpppppp |
+-- > +----------+----------+----------+----------+----------+----------+----------+----------+
+--
+--  * 1/0: alignment symbol
+--  * m: meta data
+--  * p: PRBS data
+--
+-- __Protocol__
+-- The protocol is as follows:
+--
+-- Transmit:
+--
+--  1. Send commas for a number of cycles
+--  2. Send PRBS data with meta data
+--  3. Wait for receiver to signal it has successfully decoded PRBS data for a long time
+--  4. Send meta data with 'ready' set to 'True'
+--  5. Wait for 'Input.txReady'
+--  6. Send meta data with 'lastPrbsWord' set to 'True'
+--  7. Send user data
+--
+-- Note that the reset manager might decide to reset in steps (2) and (3).
+--
+-- Receive:
+--
+--  1. Detect alignment symbol and shift data accordingly
+--  2. Check PRBS data
+--  3. Signal that PRBS data is OK after observing it for some time (see section
+--    __Reset manager__).
+--  4. Wait for 'Meta.lastPrbsWord'
+--  5. Freeze alignment logic
+--
 module Bittide.Transceiver where
 
 import Clash.Explicit.Prelude
-import Clash.Explicit.Reset.Extra
-import Clash.Cores.Xilinx.GTH
-import Clash.Cores.Xilinx.Xpm.Cdc.Single
 
-import Bittide.Arithmetic.Time
+import Bittide.Arithmetic.Time (Milliseconds, trueForSteps)
+import Bittide.ElasticBuffer (sticky)
+import Clash.Cores.Xilinx.GTH (GthCore)
+import Clash.Cores.Xilinx.Ila (IlaConfig(advancedTriggers, depth, stages), ilaConfig, ila, Depth(D1024))
+import Clash.Cores.Xilinx.Xpm.Cdc.ArraySingle (xpmCdcArraySingle)
+import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
+import Clash.Explicit.Reset.Extra (Asserted(Asserted), delayReset, xpmResetSynchronizer)
+import Clash.Prelude (withClock)
+import Clash.Sized.Vector.Extra (zipWith8)
+import Control.Monad (when)
+import Data.Maybe (isNothing, fromMaybe)
+import Data.Proxy (Proxy(Proxy))
+
+import qualified Bittide.Transceiver.Cdc as Cdc
+import qualified Bittide.Transceiver.Comma as Comma
+import qualified Bittide.Transceiver.Prbs as Prbs
+import qualified Bittide.Transceiver.ResetManager as ResetManager
+import qualified Bittide.Transceiver.WordAlign as WordAlign
+import qualified Clash.Cores.Xilinx.GTH as Gth
+
+-- | Meta information send along with the PRBS and alignment symbols. See module
+-- documentation for more information.
+data Meta = Meta
+  { ready :: Bool
+  -- ^ Ready to receive user data
+  , lastPrbsWord :: Bool
+  -- ^ Next word will be user data
+  , fpgaIndex :: Unsigned 3
+  -- ^ FPGA index to use (debug only, logic does not rely on this)
+  , transceiverIndex :: Unsigned 3
+  -- ^ Transceiver index to use (debug only, logic does not rely on this)
+  }
+  deriving (Generic, NFDataX, BitPack)
+
+-- | Insert zeroes such that each of the following are encoded in 4 bits, making
+-- them easier to read when formatted as a hex value:
+--
+--   * prbsOk, lastPrbsWord
+--   * fpgaIndex
+--   * transceiverIndex
+--
+-- This is useful for when we don't control formatting (such as when looking at
+-- ILA traces).
+prettifyMetaBits :: BitVector 8 -> BitVector 12
+prettifyMetaBits bv = pack $
+  let meta = unpack @Meta bv in
+  ( low, low, meta.ready
+  , meta.lastPrbsWord
+  , low, meta.fpgaIndex
+  , low, meta.transceiverIndex
+  )
+
+data Config dom = Config
+  { debugIla :: Bool
+  -- ^ Instantiate a debug ILAs
+  , debugFpgaIndex :: Signal dom (Unsigned 3)
+  -- ^ FPGA index to use for debug signals
+  , resetManagerConfig :: ResetManager.Config
+  -- ^ Configuration for 'ResetManager.resetManager'
+  }
+
+defConfig :: Config dom
+defConfig = Config
+  { debugIla = False
+  , debugFpgaIndex = pure 0
+  , resetManagerConfig = ResetManager.defConfig
+  }
 
 -- | Careful: the domains for each transceiver are different, even if their
 -- types say otherwise.
-data TransceiverOutputs n tx rx txS freeclk = TransceiverOutputs
+data Outputs n tx rx txS free = Outputs
   { txClocks :: Vec n (Clock tx)
-  -- ^ Transmit clocks. Can only be used if associated 'linkUps' is asserted.
-  --
-  -- TODO: Export more signals such that this clock can be used earlier.
+  -- ^ See 'Output.txClock'
+  , txResets :: Vec n (Reset tx)
+  -- ^ See 'Output.txReset'
+  , txReadys :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.txReady'
+  , txSamplings :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.txSampling'
+
+  , txPs :: Signal txS (BitVector n)
+  -- ^ See 'Output.txP'
+  , txNs :: Signal txS (BitVector n)
+  -- ^ See 'Output.txN'
+
   , rxClocks :: Vec n (Clock rx)
-  -- ^ Receive clocks, recovered from the incoming data stream. Can only be used
-  -- if associated 'linkUps' is asserted.
-  --
-  -- TODO: Export more signals such that these clocks can be used earlier.
-  , txPs :: Vec n (Signal txS (BitVector 1))
-  -- ^ Transmit data (and implicitly a clock), positive
-  , txNs :: Vec n (Signal txS (BitVector 1))
-  -- ^ Transmit data (and implicitly a clock), negative
-  , linkUps :: Vec n (Signal rx Bool)
-  -- ^ True if the link is considered stable. See 'linkStateTracker'.
-  , stats :: Vec n (Signal freeclk GthResetStats)
-  -- ^ Statistics exported by 'gthResetManager'
+  -- ^ See 'Output.rxClock'
+  , rxResets :: Vec n (Reset rx)
+  -- ^ See 'Output.rxReset'
+  , rxDatas :: Vec n (Signal rx (Maybe (BitVector 64)))
+  -- ^ See 'Output.rxData'
+
+  , linkUps :: Vec n (Signal free Bool)
+  -- ^ See 'Output.linkUp'
+  , linkReadys :: Vec n (Signal free Bool)
+  -- ^ See 'Output.linkReady'
+  , stats :: Vec n (Signal free ResetManager.Statistics)
+  -- ^ See 'Output.stats'
   }
 
-data TransceiverOutput tx rx txS freeclk = TransceiverOutput
+data Output tx rx txS free serializedData = Output
   { txClock :: Clock tx
-  -- ^ Transmit clock. Can only be used after 'linkUp' is asserted.
-  --
-  -- TODO: Export more signals such that this clock can be used earlier.
-  , rxClock :: Clock rx
-  -- ^ Receive clock, recovered from the incoming data stream. Can only be used
-  -- after 'linkUp' is asserted.
-  --
-  -- TODO: Export more signals such that this clock can be used earlier.
-  , txP :: Signal txS (BitVector 1)
+  -- ^ Transmit clock. See 'txReset'.
+  , txReset :: Reset tx
+  -- ^ Reset signal for the transmit side. Clock can be unstable until this reset
+  -- is deasserted.
+  , txReady :: Signal tx Bool
+  -- ^ Ready to signal to neigbor that next word will be user data. Waiting for
+  -- 'Input.txReady' to be asserted before starting to send 'txData'.
+  , txSampling :: Signal tx Bool
+  -- ^ Data is sampled from 'Input.txSampling'
+
+  , txP :: Signal txS serializedData
   -- ^ Transmit data (and implicitly a clock), positive
-  , txN :: Signal txS (BitVector 1)
+  , txN :: Signal txS serializedData
   -- ^ Transmit data (and implicitly a clock), negative
-  , linkUp :: Signal rx Bool
-  -- ^ True if the link is considered stable. See 'linkStateTracker'.
-  , stats :: Signal freeclk GthResetStats
-  -- ^ Statistics exported by 'gthResetManager'
+
+  , rxClock :: Clock rx
+  -- ^ Receive clock, recovered from the incoming data stream. See 'rxReset'.
+  , rxReset :: Reset rx
+  -- ^ Reset signal for the receive side. Clock can be unstable until this reset
+  -- is deasserted.
+  , rxData :: Signal rx (Maybe (BitVector 64))
+  -- ^ User data received from the neighbor
+
+  , linkUp :: Signal free Bool
+  -- ^ True if both the transmit and receive side are either handling user data
+  , linkReady :: Signal free Bool
+  -- ^ True if both the transmit and receive side ready to handle user data or
+  -- doing so. I.e., 'linkUp' implies 'linkReady'. Note that this
+  , stats :: Signal free ResetManager.Statistics
+  -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
   }
+
+data Input tx rx ref free rxS serializedData = Input
+  { clock :: Clock free
+  -- ^ Any "always on" clock
+  , reset :: Reset free
+  -- ^ Reset signal for the entire transceiver
+  , refClock :: Clock ref
+  -- ^ Reference clock. Used to synthesize transmit clock.
+
+  , transceiverIndex :: Unsigned 3
+  -- ^ Index of this transceiver, used for debugging. Can be set to 0 if not used.
+  , channelName :: String
+  -- ^ Channel name, example \"X0Y18\"
+  , clockPath :: String
+  -- ^ Clock path, example \"clk0-2\"
+
+  , rxN :: Signal rxS serializedData
+  , rxP :: Signal rxS serializedData
+
+  , txData :: Signal tx (BitVector 64)
+  -- ^ Data to transmit to the neighbor. Is sampled on sample after
+  -- 'Output.txSamplingOnNext' is asserted. Is sampled when
+  -- 'Output.txData' is asserted.
+  , txReady :: Signal tx Bool
+  -- ^ When asserted, signal to neighbor that next word will be user data. This
+  -- signal is ignored until 'Output.txReady' is asserted. Can be tied
+  -- to 'True'.
+  , rxReady :: Signal rx Bool
+  -- ^ When asserted, allow signalling to the neighbor that we are ready to
+  -- receive user data. Once asserted, it should stay asserted. Note that the
+  -- neighbor might decide to not send user data for a long time, even if this
+  -- is asserted.
+  }
+
+data Inputs tx rx ref free rxS n = Inputs
+  { clock :: Clock free
+  -- ^ See 'Input.clock'
+  , reset :: Reset free
+  -- ^ See 'Input.reset'
+  , refClock :: Clock ref
+  -- ^ See 'Input.refClock'
+  , channelNames :: Vec n String
+  -- ^ See 'Input.channel'
+  , clockPaths :: Vec n String
+  -- ^ See 'Input.clockPath'
+  , rxNs :: Signal rxS (BitVector n)
+  -- ^ See 'Input.rxN'
+  , rxPs :: Signal rxS (BitVector n)
+  -- ^ See 'Input.rxP'
+  , txDatas :: Vec n (Signal tx (BitVector 64))
+  -- ^ See 'Input.txData'
+  , txReadys :: Vec n (Signal tx Bool)
+  -- ^ See 'Input.txReady'
+  , rxReadys :: Vec n (Signal rx Bool)
+  -- ^ See 'Input.rxReady'
+  }
+
 
 transceiverPrbsN ::
-  forall tx rx refclk freeclk txS rxS chansUsed .
-  ( KnownNat chansUsed
+  forall tx rx ref free txS rxS n .
+  ( KnownNat n
   , HasSynchronousReset tx
   , HasDefinedInitialValues tx
 
   , HasSynchronousReset rx
   , HasDefinedInitialValues rx
 
-  , HasSynchronousReset freeclk
-  , HasDefinedInitialValues freeclk
+  , HasSynchronousReset free
+  , HasDefinedInitialValues free
+
+  , KnownDomain rxS
+  , KnownDomain txS
+  , KnownDomain ref
+  , KnownDomain free
   ) =>
-  Clock refclk ->
-  Clock freeclk ->
+  Config free ->
+  Inputs tx rx ref free rxS n ->
+  Outputs n tx rx txS free
+transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} = Outputs
+  -- tx
+  { txClocks          = map (.txClock) outputs
+  , txResets          = map (.txReset) outputs
+  , txReadys          = map (.txReady) outputs
+  , txSamplings       = map (.txSampling) outputs
 
-  Reset freeclk ->
-
-  Vec chansUsed String ->
-  Vec chansUsed String ->
-
-  Vec chansUsed (Signal rxS (BitVector 1)) ->
-  Vec chansUsed (Signal rxS (BitVector 1)) ->
-
-  TransceiverOutputs chansUsed tx rx txS freeclk
-transceiverPrbsN refclk freeclk rst chanNms clkPaths rxns rxps = TransceiverOutputs
-  { txClocks = map (.txClock) outputs
+  -- rx
   , rxClocks = map (.rxClock) outputs
-  , txPs     = map (.txP)     outputs
-  , txNs     = map (.txN)     outputs
-  , linkUps  = map (.linkUp)  outputs
-  , stats    = map (.stats)   outputs
+  , rxResets = map (.rxReset) outputs
+  , rxDatas  = map (.rxData) outputs
+
+  -- transceiver
+  , txPs = pack <$> bundle (map (.txP) outputs)
+  , txNs = pack <$> bundle (map (.txN) outputs)
+
+  -- free
+  , linkUps    = map (.linkUp)  outputs
+  , linkReadys = map (.linkReady)  outputs
+  , stats      = map (.stats)   outputs
   }
  where
-  outputs = zipWith4 (transceiverPrbs refclk freeclk rst) chanNms clkPaths rxns rxps
+  -- XXX: Replacing 'zipWithN' with '<$>' and '<*>' triggers a combination of:
+  --
+  --       * https://github.com/clash-lang/clash-compiler/issues/2723
+  --       * https://github.com/clash-lang/clash-compiler/issues/2722
+  --
+  -- Note that these bugs break the instantiation of multiple ILAs.
+  outputs = zipWith8 go
+    (iterateI (+1) 0) -- Note that the target type is only 3 bits, so this will
+                      -- wrap around after 8 transceivers. This is fine, as we
+                      -- only use this for debugging.
+    inputs.channelNames
+    inputs.clockPaths
+    (unbundle (unpack <$> inputs.rxNs))
+    (unbundle (unpack <$> inputs.rxPs))
+    inputs.txDatas
+    inputs.txReadys
+    inputs.rxReadys
+
+  go transceiverIndex channelName clockPath rxN rxP txData txReady rxReady =
+    transceiverPrbs opts Input
+      { channelName, clockPath, rxN, rxP, txData, txReady, rxReady, transceiverIndex
+      , clock, reset, refClock
+      }
 
 transceiverPrbs ::
+  forall tx rx ref free txS rxS .
   ( HasSynchronousReset tx
   , HasDefinedInitialValues tx
 
   , HasSynchronousReset rx
   , HasDefinedInitialValues rx
 
-  , HasSynchronousReset freeclk
-  , HasDefinedInitialValues freeclk
+  , HasSynchronousReset free
+  , HasDefinedInitialValues free
+
+  , KnownDomain rxS
+  , KnownDomain txS
+  , KnownDomain ref
+  , KnownDomain free
   ) =>
+  Config free ->
+  Input tx rx ref free rxS (BitVector 1) ->
+  Output tx rx txS free (BitVector 1)
+transceiverPrbs = transceiverPrbsWith Gth.gthCore
 
-  Clock refclk ->
-  Clock freeclk ->
+transceiverPrbsWith ::
+  forall tx rx ref free txS rxS serializedData .
+  ( HasSynchronousReset tx
+  , HasDefinedInitialValues tx
 
-  Reset freeclk ->  -- ^ rst all
+  , HasSynchronousReset rx
+  , HasDefinedInitialValues rx
 
-  String -> -- ^ channel, example X0Y18
-  String -> -- ^ clkPath, example clk0-2
+  , HasSynchronousReset free
+  , HasDefinedInitialValues free
 
-  Signal rxS (BitVector 1) ->
-  Signal rxS (BitVector 1) ->
-
-  TransceiverOutput tx rx txS freeclk
-transceiverPrbs gtrefclk freeclk rst_all_in chan clkPath rxn rxp = TransceiverOutput
-  { txClock = tx_clk
-  , rxClock = rx_clk
-  , txP = txp
-  , txN = txn
-  , linkUp = link_up
-  , stats = stats
-  }
+  , KnownDomain rxS
+  , KnownDomain txS
+  , KnownDomain ref
+  , KnownDomain free
+  ) =>
+  GthCore tx rx ref free txS rxS serializedData ->
+  Config free ->
+  Input tx rx ref free rxS serializedData ->
+  Output tx rx txS free serializedData
+transceiverPrbsWith gthCore opts args@Input{clock, reset} =
+  when opts.debugIla debugIla `hwSeqX` result
  where
-  (txn, txp, tx_clk, rx_clk, rx_data, reset_tx_done, reset_rx_done, tx_active)
-    = gthCore
-        chan clkPath
-        rxn
-        rxp
 
-        freeclk -- gtwiz_reset_clk_freerun_in
+  debugIla :: Signal free ()
+  debugIla = ila
+    ((ilaConfig $
+         "ila_probe_fpgaIndex"
+      :> "ila_probe_transIndex"
+      :> "ila_probe_txRetries"
+      :> "ila_probe_rxRetries"
+      :> "ila_probe_rxFullRetries"
+      :> "ila_probe_failAfterUps"
+      :> "ila_probe_rx_data0"
+      :> "ila_probe_alignedRxData0"
+      :> "ila_probe_gtwiz_userdata_tx_in"
+      :> "ila_probe_reset_rx_done"
+      :> "ila_probe_reset_tx_done"
+      :> "ila_probe_reset"
+      :> "ila_probe_alignError"
+      :> "ila_probe_prbsErrors"
+      :> "ila_probe_alignedAlignBits"
+      :> "ila_probe_alignedMetaBits"
+      :> "ila_probe_rxCtrl0"
+      :> "ila_probe_rxCtrl1"
+      :> "ila_probe_rxCtrl2"
+      :> "ila_probe_rxCtrl3"
+      :> "ila_probe_prbsOk"
+      :> "ila_probe_prbsOkDelayed"
+      :> "ila_probe_rst_all"
+      :> "ila_probe_rst_rx"
+      :> "ila_probe_rxReset"
+      :> "ila_probe_txReset"
+      :> "ila_probe_metaTx"
+      :> "ila_probe_linkUp"
+      :> "ila_probe_txLastFree"
+      :> "capture"
+      :> "trigger"
+      :> Nil) { advancedTriggers = True, stages = 1, depth = D1024 })
+    clock
+    opts.debugFpgaIndex
+    (pure args.transceiverIndex :: Signal free (Unsigned 3))
+    ((.txRetries) <$> stats)
+    ((.rxRetries) <$> stats)
+    ((.rxFullRetries) <$> stats)
+    ((.failAfterUps) <$> stats)
+    (xpmCdcArraySingle rxClock clock rx_data0)
+    (xpmCdcArraySingle rxClock clock alignedRxData0)
+    (xpmCdcArraySingle txClock clock gtwiz_userdata_tx_in)
+    (xpmCdcArraySingle rxClock clock reset_rx_done)
+    (xpmCdcArraySingle txClock clock reset_tx_done)
+    (unsafeToActiveHigh reset)
+    (xpmCdcArraySingle rxClock clock alignError)
+    (xpmCdcArraySingle rxClock clock prbsErrors)
+    (xpmCdcArraySingle rxClock clock alignedAlignBits)
+    (xpmCdcArraySingle rxClock clock (prettifyMetaBits <$> alignedMetaBits))
+    (xpmCdcArraySingle rxClock clock rxCtrl0)
+    (xpmCdcArraySingle rxClock clock rxCtrl1)
+    (xpmCdcArraySingle rxClock clock rxCtrl2)
+    (xpmCdcArraySingle rxClock clock rxCtrl3)
+    (xpmCdcSingle rxClock clock prbsOk)
+    (xpmCdcSingle rxClock clock prbsOkDelayed)
+    (unsafeToActiveHigh rst_all)
+    (unsafeToActiveHigh rst_rx)
+    (xpmCdcSingle rxClock clock $ unsafeToActiveHigh rxReset)
+    (xpmCdcSingle txClock clock $ unsafeToActiveHigh txReset)
+    (xpmCdcArraySingle txClock clock (prettifyMetaBits . pack <$> metaTx))
+    linkUp
+    txLastFree
+    (pure True :: Signal free Bool) -- capture
+    txLastFree -- trigger
 
-        (delayReset Asserted freeclk rst_all {-* filter glitches *-})
-        noReset -- gtwiz_reset_tx_pll_and_datapath_in
-        noReset -- gtwiz_reset_tx_datapath_in
-        noReset -- gtwiz_reset_rx_pll_and_datapath_in
-        (delayReset Asserted freeclk rst_rx {-* filter glitches *-}) -- gtwiz_reset_rx_datapath_in
-        gtwiz_userdata_tx_in
-        txctrl2
-        freeclk -- drpclk_in
-        gtrefclk -- gtrefclk0_in
-
-  (gtwiz_userdata_tx_in,txctrl2) = prbsStimuliGen tx_clk txStimRst
-
-  rxReset =
-    xpmResetSynchronizer Asserted rx_clk rx_clk $
-      unsafeFromActiveLow $ fmap bitCoerce reset_rx_done
-
-  prbsErrors = prbsChecker rx_clk rxReset enableGen prbsConf31w64 rx_data
-  anyErrors = fmap (pack . reduceOr) prbsErrors
-  link_up = linkStateTracker rx_clk rxReset anyErrors
-
-  -- XPM_CDC_SINGLE config used to synchronize 'reset_tx_done' and
-  -- 'reset_rx_done'. We use Xilinx's defaults, except for 'registerInput' which
-  -- we set to 'False'. We do this, because the two 'done' signals are indicative
-  -- of their domain's clocks stability.
-  cdcConfig = XpmCdcSingleConfig
-    { stages = d4 -- default
-    , initialValues = True -- default
-    , registerInput = False
+  result = Output
+    { txSampling = txUserData
+    , rxData = mux rxUserData (Just <$> alignedRxData0) (pure Nothing)
+    , txReady
+    , txN, txP
+    , txClock
+    , txReset
+    , rxClock
+    , rxReset
+    , linkUp
+    , linkReady
+    , stats
     }
 
-  (rst_all, rst_rx, _init_done, stats) =
-    gthResetManager
-      freeclk rst_all_in
-      (xpmCdcSingleWith cdcConfig tx_clk freeclk $ unpack <$> reset_tx_done)
-      (xpmCdcSingleWith cdcConfig rx_clk freeclk $ unpack <$> reset_rx_done)
-      (xpmCdcSingle rx_clk freeclk link_up)
+  linkUp =
+         withLockTxFree txUserData
+    .&&. withLockRxFree rxUserData
 
-  txStimRst = xpmResetSynchronizer Asserted tx_clk tx_clk $
-              (unsafeFromActiveLow $ fmap bitCoerce tx_active)
-    `orReset` (unsafeFromActiveLow $ fmap bitCoerce reset_tx_done)
-    `orReset` xpmResetSynchronizer Asserted freeclk tx_clk rst_all_in
+  linkReady = linkUp .||. withLockRxFree rxReadySticky
 
-data LinkSt
-  = Down (Index 127)
-  -- ^ Link is considered down. Needs 127 cycles of \"good\" input to transition
-  -- to 'Up'.
-  | Up
-  -- ^ Link has not seen errors in at least 127 cycles.
-  deriving (Eq, Show, Generic, NFDataX)
+  ( txN, txP, txClock, rxClock, rx_data0, reset_tx_done, reset_rx_done, tx_active
+   , rxCtrl0, rxCtrl1, rxCtrl2, rxCtrl3 )
+    = gthCore
+        args.channelName args.clockPath
+        args.rxN
+        args.rxP
 
-isUp :: LinkSt -> Bool
-isUp Up = True
-isUp _ = False
+        clock -- gtwiz_reset_clk_freerun_in
 
--- | Small state machine tracking whether a link is stable. A link is considered
--- stable, if no errors were detected for a number of cycles (see "LinkSt").
--- Whenever a bit error is detected, it immediately deasserts its output.
-linkStateTracker ::
-  (KnownDomain dom, KnownNat w) =>
-  Clock dom ->
-  Reset dom ->
-  Signal dom (BitVector w) ->
-  Signal dom Bool
-linkStateTracker clk rst =
-  mooreB clk rst enableGen update isUp initSt . fmap (/= 0)
- where
-  initSt = Down maxBound
+        (delayReset Asserted clock rst_all {-* filter glitches *-})
+        (delayReset Asserted clock rst_rx {-* filter glitches *-}) -- gtwiz_reset_rx_datapath_in
+        gtwiz_userdata_tx_in
+        txctrl
+        args.refClock -- gtrefclk0_in
 
-  update :: LinkSt -> Bool -> LinkSt
-  update _  True = initSt
-  update st False =
-    case st of
-      Down 0 -> Up
-      Down n -> Down (n - 1)
-      Up -> Up
+  prbsConfig = Prbs.conf31 @48
 
-prbsStimuliGen ::
-  forall dom .
-  KnownDomain dom =>
-  Clock dom ->
-  Reset dom ->
-  ( Signal dom (BitVector 64)
-  , Signal dom (BitVector 8) )
-prbsStimuliGen clk rst =
-  ( mux sendCommas (pure commas)   prbs
-  , mux sendCommas (pure maxBound) (pure 0))
- where
-  comma :: BitVector 8
-  comma = 0xbc
+  (commas, txctrl) = Comma.generator d1 txClock txReset
+  commasDone = isNothing <$> commas
+  prbs = Prbs.generator txClock (unsafeFromActiveLow commasDone) enableGen prbsConfig
+  prbsWithMeta = WordAlign.joinMsbs @8 <$> fmap pack metaTx <*> prbs
+  prbsWithMetaAndAlign = WordAlign.joinMsbs @8 WordAlign.alignSymbol <$> prbsWithMeta
+  gtwiz_userdata_tx_in =
+    mux
+      txUserData
+      args.txData
+      (fromMaybe <$> prbsWithMetaAndAlign <*> commas)
 
-  commas :: BitVector 64
-  commas = pack $ repeat comma
+  rxReset =
+    xpmResetSynchronizer Asserted rxClock rxClock $
+                unsafeFromActiveLow (bitCoerce <$> reset_rx_done)
+      `orReset` xpmResetSynchronizer Asserted clock rxClock reset
 
-  sendCommas :: Signal dom Bool
-  sendCommas =
-    moore
-      clk rst enableGen
-      (\s _ -> satSucc SatBound s)
-      (/= maxBound)
-      (0::Index 10240)
-      (pure ())
+  alignedRxData0 :: Signal rx (BitVector 64)
+  alignedRxData0 = withClock rxClock $
+    WordAlign.alignBytesFromMsbs @8 WordAlign.alignLsbFirst (rxUserData .||. rxLast) rx_data0
 
-  prbs = prbsGen clk rst enableGen prbsConf31w64
+  (alignedAlignBits, alignedRxData1) = unbundle $
+    WordAlign.splitMsbs @8 @8 <$> alignedRxData0
 
-data PrbsConfig polyLength polyTap nBits where
-  PrbsConfig ::
-    ( KnownNat polyLength
-    , KnownNat polyTap
-    , KnownNat nBits
+  (alignedMetaBits, alignedRxData2) = unbundle $
+    WordAlign.splitMsbs @8 @7 <$> alignedRxData1
 
-    , 1 <= nBits
-    , 1 <= polyTap
-    , (polyTap + 1) <= polyLength
+  prbsErrors = Prbs.checker rxClock rxReset enableGen prbsConfig alignedRxData2
+  anyPrbsErrors = prbsErrors ./=. pure 0
+  alignError = alignedAlignBits ./=. pure WordAlign.alignSymbol
 
-    -- Same constraints, but written differently for type checking purposes:
-    , (_n0 + 1) ~ nBits
-    , (polyTap + _n1) ~ polyLength
-    , polyTap ~ (_n2 + 1)
-    , _n1 ~ (_n3 + 1)
-    ) =>
-    PrbsConfig polyLength polyTap nBits
+  -- We consider the control symbols as errors, as they should not be present in
+  -- the user data stream. 8b/10b encoding errors naturally count as errors too.
+  -- Note that the upper bits of rxCtrl0 and rxCtrl1 are unused.
+  --
+  -- TODO: Truncate rxCtrl0 and rxCtrl1 in GTH primitive.
+  rxCtrlOrError =
+         fmap (truncateB @_ @8) rxCtrl0 ./=. pure 0
+    .||. fmap (truncateB @_ @8) rxCtrl1 ./=. pure 0
+    .||.                        rxCtrl2 ./=. pure 0
+    .||.                        rxCtrl3 ./=. pure 0
 
+  prbsOk =
+         rxUserData
+    .||. Prbs.tracker rxClock rxReset (anyPrbsErrors .||. alignError .||. rxCtrlOrError)
 
--- | PRBS configuration where we use the full 64 data bits for the PRBS.
-prbsConf31w64 :: PrbsConfig 31 28 64
-prbsConf31w64 = PrbsConfig
+  -- 'prbsWaitMs' is the number of milliseconds representing the worst case time
+  -- it takes for the PRBS to stabilize. I.e., after this time we can be sure the
+  -- neighbor doesn't reset its transceiver anymore. We add a single retry to
+  -- account for clock speed variations.
+  prbsWaitMs =
+          ((1 :: Index 2) `add` opts.resetManagerConfig.rxRetries)
+    `mul` opts.resetManagerConfig.rxTimeoutMs
+  prbsOkDelayed = trueForSteps (Proxy @(Milliseconds 1)) prbsWaitMs rxClock rxReset prbsOk
+  validMeta = mux rxUserData (pure False) prbsOkDelayed
 
-prbsGen ::
-  forall dom polyLength polyTap nBits .
-  KnownDomain dom =>
-  Clock dom -> Reset dom -> Enable dom ->
-  PrbsConfig polyLength polyTap nBits ->
-  Signal dom (BitVector nBits)
-prbsGen clk rst ena PrbsConfig =
-  mealy clk rst ena go (maxBound,maxBound) (pure ())
- where
-  go ::
-    (BitVector polyLength, BitVector nBits) ->
-    () ->
-    ((BitVector polyLength, BitVector nBits), BitVector nBits)
-  go (prbs_reg, prbs_out_prev) _ =
-    ( ( last prbs
-      , pack (reverse $ map msb prbs))
-    , prbs_out_prev
-    )
-   where
-     prbs :: Vec nBits (BitVector polyLength)
-     prbs = unfoldrI goPrbs prbs_reg
+  rxMeta = mux validMeta (Just . unpack @Meta <$> alignedMetaBits) (pure Nothing)
+  rxLast = maybe False (.lastPrbsWord) <$> rxMeta
+  rxReady = maybe False (.ready) <$> rxMeta
 
-     goPrbs :: BitVector polyLength -> (BitVector polyLength, BitVector polyLength)
-     goPrbs bv = (o,o)
-      where
-       o = nb +>>. bv
-       tap = SNat @(polyLength - polyTap)
-       nb = xor (lsb bv) (unpack $ slice tap tap bv)
+  rxUserData = sticky rxClock rxReset rxLast
+  txUserData = sticky txClock txReset txLast
 
+  txReady = txLast .||. withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
 
-prbsChecker ::
-  forall dom polyLength polyTap nBits .
-  KnownDomain dom =>
-  Clock dom -> Reset dom -> Enable dom ->
-  PrbsConfig polyLength polyTap nBits ->
-  Signal dom (BitVector nBits) ->
-  Signal dom (BitVector nBits)
-prbsChecker clk rst ena PrbsConfig = mealy clk rst ena go (maxBound, maxBound)
- where
-  go ::
-    (BitVector polyLength, BitVector nBits) ->
-    BitVector nBits ->
-    ((BitVector polyLength, BitVector nBits), BitVector nBits)
-  go (prbs_reg, prbs_out_prev) prbsIn =
-    ( (prbs_state, pack $ reverse prbs_out)
-    , prbs_out_prev
-    )
-   where
-     prbs_out :: Vec nBits Bit
-     prbs_state :: BitVector polyLength
-     (prbs_state, prbs_out) = mapAccumL goPrbs prbs_reg (reverse $ unpack prbsIn)
+  rxReadySticky = sticky rxClock rxReset rxReady
+  txLast = args.txReady .&&. withLockRxTx rxReadySticky
+  txLastFree = xpmCdcSingle txClock clock txLast
 
-     goPrbs :: BitVector polyLength -> Bit -> (BitVector polyLength, Bit)
-     goPrbs bv inp = (o, bitErr)
-      where
-       o = inp +>>. bv
-       tap = SNat @(polyLength - polyTap)
-       bitErr = xor inp (xor (lsb bv) (unpack $ slice tap tap bv))
+  metaTx :: Signal tx Meta
+  metaTx = Meta
+    <$> txReady
+    <*> txLast
+    -- We shouldn't sync with 'xpmCdcArraySingle' here, as the individual bits in
+    -- 'fpgaIndex' are related to each other. Still, we know fpgaIndex is basically
+    -- a constant so :shrug:.
+    <*> xpmCdcArraySingle clock txClock opts.debugFpgaIndex
+    <*> pure args.transceiverIndex
 
--- | 'Index' with its 'maxBound' corresponding to the number of cycles needed to
--- wait for /n/ milliseconds.
-type IndexMs dom n = Index (PeriodToCycles dom (Milliseconds n))
+  (rst_all, rst_rx, stats) =
+    ResetManager.resetManager
+      opts.resetManagerConfig
+      clock reset
+      (withLockTxFree (pure True))
+      (withLockRxFree (pure True))
+      (withLockRxFree (prbsOk .||. rxUserData))
 
--- | Statistics exported by 'gthResetManager'
-data GthResetStats = GthResetStats
-  { txRetries :: Unsigned 32
-  -- ^ How many times the transmit side was reset
-  , rxRetries :: Index 32
-  -- ^ How many times the receive side was reset. Note that this value in itself
-  -- will reset if the transmit side resets - see 'rxFullRetries'.
-  , rxFullRetries :: Unsigned 32
-  -- ^ How many times 'rxRetries' overflowed. I.e., how many times 'RxWait' moved
-  -- the state machine back to 'StartTx'.
-  , failAfterUps  :: Unsigned 32
-  -- ^ How many times the link failed when in the 'Monitor' state - i.e., after
-  -- detecting it fully worked. This usually happens if the other side drops its
-  -- link because it tried resetting its receive side too many times - see
-  -- 'rxFullRetries'.
-  }
-  deriving (Generic, NFDataX)
+  txReset = xpmResetSynchronizer Asserted txClock txClock $
+              unsafeFromActiveLow (bitCoerce <$> tx_active)
+    `orReset` unsafeFromActiveLow (bitCoerce <$> reset_tx_done)
+    `orReset` xpmResetSynchronizer Asserted clock txClock reset
 
--- | Bringing up the transceivers is a stochastic process - at least, that is
--- what Xilinx reference designs make us believe. We therefore retry a number of
--- times if we don't see sensible data coming in. See the individual constructors
--- and 'gthResetManager' for more information.
---
--- XXX: Current timeout values for 'TxWait' and 'RxWait' are chosen arbitrarily.
---      We should investigate what these values should be for quick bring-up.
-data GthResetState dom
-  = StartTx GthResetStats
-  -- ^ Reset everything - transmit and receive side
-  | StartRx GthResetStats
-  -- ^ Reset just the receive side
-  | TxWait GthResetStats (IndexMs dom 3)
-  -- ^ Wait for the transmit side to report it is done. After /n/ milliseconds
-  -- (see type) it times out, moving to 'StartTx'.
-  | RxWait GthResetStats (IndexMs dom 13)
-  -- ^ Wait for the receive side to report it is done _and_ that it can predict
-  -- the data coming from the other side. After /n/ milliseconds (see type) it
-  -- times out. Depending on the value of 'GthResetStat's 'rxRetries' it will
-  -- either reset both the receive and the transmit side, or just the receive
-  -- side. If all is well though, move on to 'Monitor'.
-  | Monitor GthResetStats
-  -- ^ Wait till the end of the universe, or until a link goes down - whichever
-  -- comes first. In case of the latter, the state machine moves to 'StartTx'.
-  deriving (Generic, NFDataX)
-
--- | Reset manager for transceivers: see 'GthResetState' for more information on
--- this state machine. See 'GthResetStats' for information on what debug values
--- are exported.
-gthResetManager ::
-  forall dom .
-  KnownDomain dom =>
-  Clock dom ->
-  Reset dom ->
-  "tx_init_done" ::: Signal dom Bool ->
-  "rx_init_done" ::: Signal dom Bool ->
-  "rx_data_good" ::: Signal dom Bool ->
-  ( "reset_all_out" ::: Reset dom
-  , "reset_rx"  ::: Reset dom
-  , "init_done" ::: Signal dom Bool
-  , "stats" ::: Signal dom GthResetStats
-  )
-gthResetManager clk rst tx_init_done rx_init_done rx_data_good =
-  ( unsafeFromActiveHigh reset_all_out_sig
-  , unsafeFromActiveHigh reset_rx_sig
-  , init_done
-  , statistics
-  )
- where
-  (reset_all_out_sig, reset_rx_sig, init_done, statistics) =
-    mooreB
-      clk rst enableGen
-      update
-      extractOutput
-      initSt
-      ( tx_init_done
-      , rx_init_done
-      , rx_data_good
-      )
-
-  initSt :: GthResetState dom
-  initSt = StartTx (GthResetStats
-    { rxRetries=0
-    , rxFullRetries=0
-    , txRetries=0
-    , failAfterUps=0
-    })
-
-  update :: GthResetState dom -> (Bool, Bool, Bool) -> GthResetState dom
-  update st (tx_done, rx_done, rx_good) =
-    case st of
-      -- Reset everything:
-      StartTx stats -> TxWait stats 0
-
-      -- Wait for transceiver to indicate it is done
-      TxWait stats@GthResetStats{txRetries} cntr
-        | tx_done          -> RxWait stats 0
-        | cntr == maxBound -> StartTx stats{txRetries=satSucc SatBound txRetries}
-        | otherwise        -> TxWait stats (succ cntr)
-
-      -- Reset receive side logic
-      StartRx stats -> RxWait stats 0
-
-      -- Wait for a reliable incoming link. This can fail in multiple ways, see
-      -- 'RxWait'.
-      RxWait stats@GthResetStats{rxRetries, rxFullRetries} cntr
-        | rx_done && rx_good ->
-          Monitor stats
-
-        | cntr == maxBound && rxRetries == maxBound ->
-          StartTx stats{rxFullRetries=satSucc SatBound rxFullRetries}
-
-        | cntr == maxBound ->
-          StartRx stats{rxRetries=satSucc SatBound rxRetries}
-
-        | otherwise ->
-          RxWait stats (succ cntr)
-
-      -- Monitor link. Move all the way back to 'StartTx' if the link goes down
-      -- for some reason.
-      Monitor stats@GthResetStats{failAfterUps}
-        | rx_done && rx_good -> Monitor stats
-        | otherwise -> StartTx stats{failAfterUps=satSucc SatBound failAfterUps}
-
-  extractOutput st = case st of
-         --             rst_all rst_rx done   statistics
-    StartTx stats   -> (True,   False, False, stats)
-    TxWait  stats _ -> (False,  False, False, stats)
-    StartRx stats   -> (False,  True,  False, stats)
-    RxWait  stats _ -> (False,  False, False, stats)
-    Monitor stats   -> (False,  False, True,  stats)
+  withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
+  withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
+  withLockRxTx   = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset

@@ -175,8 +175,9 @@ data IlaPlotSetup dom =
       -- ^ The stable system clock.
     , sysRst :: Reset dom
       -- ^ The system's reset line.
-    , allUp :: Signal dom Bool
-      -- ^ A boolean signal indicating that all transceivers are up.
+    , allReady :: Signal dom Bool
+      -- ^ A boolean signal indicating that all transceivers are ready. See
+      -- 'Bittide.Transceiver.Output.linkReady'.
     , startTest :: Signal dom Bool
       -- ^ The test start signal coming from the HITLT VIO interface.
     , syncIn :: Signal dom Bool
@@ -237,7 +238,7 @@ ilaPlotSetup IlaPlotSetup{..} = IlaControl{..}
   syncOut =
       dflipflop sysClk
     $ syncOutGenerator sysClk startTest
-    $ trueFor (SNat @(Seconds 5)) sysClk syncRst allUp
+    $ trueFor (SNat @(Seconds 5)) sysClk syncRst allReady
 
   -- first synchronize SYNC_IN to the local clock and filter from
   -- potential glitches

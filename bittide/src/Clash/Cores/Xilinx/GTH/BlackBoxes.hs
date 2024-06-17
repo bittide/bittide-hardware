@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -14,6 +14,7 @@ import Data.String (fromString)
 import Data.Text (Text)
 import Data.Text.Prettyprint.Doc.Extra (Doc)
 import GHC.Stack (HasCallStack)
+import Text.Show.Pretty (ppShow)
 
 import Clash.Backend (Backend)
 import Clash.Netlist.BlackBox.Types (BlackBoxFunction, emptyBlackBoxMeta)
@@ -42,6 +43,11 @@ gthCoreBBF _isD _primName _args _resTys = pure $ Right (bbMeta, bb)
   bb :: BlackBox
   bb = BBFunction (show 'gthCoreTF) 0 gthCoreTF
 
+nConstraints :: Int
+nConstraints = 6
+
+nNameArgs :: Int
+nNameArgs = 2
 
 -- | Instantiate IP generated with 'gthCoreTclTF'
 gthCoreTF :: HasCallStack => TemplateFunction
@@ -59,17 +65,13 @@ gthCoreBBTF bbCtx
   | args@[
       _gthrxn_in  -- " ::: Signal rxS (BitVector ChansUsed)
     , _gthrxp_in  -- " ::: Signal rxS (BitVector ChansUsed)
-    , _gtwiz_reset_clk_freerun_in  -- " ::: Clock freerun
+    , gtwiz_reset_clk_freerun_in  -- " ::: Clock freerun
     , _gtwiz_reset_all_in  -- " ::: Reset freerun
-    , _gtwiz_reset_tx_pll_and_datapath_in  -- " ::: Reset freerun
-    , _gtwiz_reset_tx_datapath_in  -- " ::: Reset freerun
-    , _gtwiz_reset_rx_pll_and_datapath_in  -- " ::: Reset freerun
     , _gtwiz_reset_rx_datapath_in  -- " ::: Reset freerun
     , _gtwiz_userdata_tx_in  -- " ::: Signal txUser2 (BitVector (ChansUsed*TX_DATA_WIDTH))
     , _txctrl2_in  -- " ::: Signal txUser2 (BitVector (ChansUsed*TX_DATA_WIDTH/8))
-    , _drpclk_in  -- " ::: Clock freerun
     , _gtrefclk0_in  -- " ::: Clock refclk0
-    ] <- drop 2 $ map fst (DSL.tInputs bbCtx)
+    ] <- drop (nConstraints + nNameArgs) $ map fst (DSL.tInputs bbCtx)
   , [tResult] <- map DSL.ety (DSL.tResults bbCtx)
   , [gthCoreName] <- N.bbQsysIncName bbCtx
   = do
@@ -87,21 +89,23 @@ gthCoreBBTF bbCtx
       , ("gtwiz_reset_clk_freerun_in",  N.Clock "freerun" )
       , ("gtwiz_reset_all_in",  N.Reset "freerun" )
 
-      , ("gtwiz_reset_tx_pll_and_datapath_in",  N.Reset "freerun" )
-      , ("gtwiz_reset_tx_datapath_in",  N.Reset "freerun" )
-      , ("gtwiz_reset_rx_pll_and_datapath_in",  N.Reset "freerun" )
       , ("gtwiz_reset_rx_datapath_in",  N.Reset "freerun" )
       , ("gtwiz_userdata_tx_in",  N.BitVector (chansUsed*tX_DATA_WIDTH))
       , ("txctrl2_in",  N.BitVector (chansUsed*(tX_DATA_WIDTH `div` 8)))
 
       -- , ("gtrefclk00_in",  N.Clock "refclk00" )
-      , ("drpclk_in",  N.Clock "freerun" )
       , ("gtrefclk0_in",  N.Clock "refclk0" )
-      ] <> map (fmap DSL.ety) tiedOffInps
-    tiedOffInps =
-      [
-        ("txctrl0_in", DSL.bvLit 16 0)
+      ] <> map (fmap DSL.ety) otherInps
+
+    otherInps =
+      [ ("drpclk_in", gtwiz_reset_clk_freerun_in)
+
+      , ("txctrl0_in", DSL.bvLit 16 0)
       , ("txctrl1_in", DSL.bvLit 16 0)
+
+      , ("gtwiz_reset_tx_pll_and_datapath_in", DSL.bvLit 1 0)
+      , ("gtwiz_reset_tx_datapath_in",         DSL.bvLit 1 0)
+      , ("gtwiz_reset_rx_pll_and_datapath_in", DSL.bvLit 1 0)
 
       , ("tx8b10ben_in", DSL.bvLit  1 1)
       , ("rx8b10ben_in", DSL.bvLit  1 1)
@@ -124,13 +128,18 @@ gthCoreBBTF bbCtx
       , ("gtwiz_reset_rx_done_out", N.BitVector 1)
 
       , ("gtwiz_userclk_tx_active_out", N.BitVector 1)
+
+      , ("rxctrl0_out", N.BitVector 16)
+      , ("rxctrl1_out", N.BitVector 16)
+      , ("rxctrl2_out", N.BitVector 8)
+      , ("rxctrl3_out", N.BitVector 8)
       ]
 
   DSL.declarationReturn bbCtx "gthCore_inst_block" $ do
 
     DSL.compInBlock gthCoreName compInps compOuts
 
-    let inps = zip (fst <$> compInps) args <> tiedOffInps
+    let inps = zip (fst <$> compInps) args <> otherInps
     outs <- mapM (uncurry DSL.declare) compOuts
     DSL.instDecl
       N.Empty
@@ -141,7 +150,7 @@ gthCoreBBTF bbCtx
       (zip (fst <$> compOuts) outs)
     pure [DSL.constructProduct tResult outs]
 
-gthCoreBBTF bbCtx = error ("gthCoreBBTF, bad bbCtx: " <> show bbCtx)
+gthCoreBBTF bbCtx = error ("gthCoreBBTF, bad bbCtx:\n\n" <> ppShow bbCtx)
 
 -- | Renders Tcl file conforming to the /Clash\<->Tcl API/, creating the Xilinx
 -- IP with @create_ip@
@@ -158,7 +167,8 @@ gthCoreTclBBTF ::
   State s Doc
 gthCoreTclBBTF bbCtx
   | [gthCoreName] <- N.bbQsysIncName bbCtx
-  , (exprToString -> Just channelNm,_,_) : (exprToString -> Just refClkNm,_,_) : _ <- N.bbInputs bbCtx
+  , (exprToString -> Just channelNm,_,_) : (exprToString -> Just refClkNm,_,_) : _
+    <- drop nConstraints (N.bbInputs bbCtx)
   = pure (renderTcl [IpConfigPurpose $ ipConfig gthCoreName channelNm refClkNm ])
   where
   ipConfig nm channelNm refClkNm =
@@ -218,7 +228,7 @@ gthCoreTclBBTF bbCtx
 
     ]
 
-gthCoreTclBBTF bbCtx = error ("gthCoreTclBBTF, bad bbCtx: " <> show bbCtx)
+gthCoreTclBBTF bbCtx = error ("gthCoreTclBBTF, bad bbCtx:\n\n" <> ppShow bbCtx)
 
 
 ibufds_gte3BBF :: HasCallStack => BlackBoxFunction

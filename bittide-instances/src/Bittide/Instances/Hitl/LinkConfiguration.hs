@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -43,9 +43,13 @@ import Bittide.Hitl (HitlTests, NoPostProcData(..) {-, hitlVio-})
 
 import Bittide.Instances.Hitl.Setup
 
+import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
+
+import qualified Bittide.Transceiver as Transceiver
+import qualified Bittide.Transceiver.ResetManager as ResetManager
 
 data TestConfig =
   TestConfig
@@ -53,6 +57,12 @@ data TestConfig =
     , disabledLinkMask :: BitVector (FpgaCount - 1)
     }
   deriving (Generic, NFDataX, BitPack, Show)
+
+disabled :: TestConfig
+disabled = TestConfig
+  { fpgaEnabled = False
+  , disabledLinkMask = 0
+  }
 
 -- | Configures the clock boards, fires up all of the transceivers and
 -- observes the incoming links.
@@ -65,8 +75,8 @@ transceiversStartAndObserve ::
   "MISO" ::: Signal Basic125 Bit ->
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
-  , "LINK_UPS" ::: Signal Basic125 (BitVector (FpgaCount - 1))
-  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 GthResetStats)
+  , "LINK_READYS" ::: Signal Basic125 (BitVector (FpgaCount - 1))
+  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK"      ::: Signal Basic125 Bool
@@ -74,10 +84,10 @@ transceiversStartAndObserve ::
       , "CSB"       ::: Signal Basic125 Bool
       )
   )
-transceiversStartAndObserve refClk sysClk rst rxns rxps miso =
+transceiversStartAndObserve refClk sysClk rst rxNs rxPs miso =
   ( transceivers.txNs
   , transceivers.txPs
-  , v2bv . fmap boolToBit <$> linkUps
+  , v2bv . fmap boolToBit <$> bundle transceivers.linkReadys
   , transceivers.stats
   , spiDone
   , spiOut
@@ -100,15 +110,22 @@ transceiversStartAndObserve refClk sysClk rst rxns rxps miso =
   -- Transceiver setup
   gthAllReset = rst `orReset` unsafeFromActiveLow spiDone
 
-  -- (_txClocks, rxClocks, txns, txps, linkUpsRx, stats) = unzip6 $
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
-      refClk sysClk gthAllReset
-      channelNames clockPaths rxns rxps
-
-  syncLink rxClock linkUp = xpmCdcSingle rxClock sysClk linkUp
-  linkUps = bundle $ zipWith syncLink transceivers.rxClocks transceivers.linkUps
+      Transceiver.defConfig
+      Transceiver.Inputs
+        { clock = sysClk
+        , reset = gthAllReset
+        , refClock = refClk
+        , channelNames
+        , clockPaths
+        , rxNs
+        , rxPs
+        , txDatas = repeat 0
+        , rxReadys = repeat (pure True)
+        , txReadys = repeat (pure False)
+        }
 
 -- | Top entity for this test. See module documentation for more information.
 linkConfigurationTest ::
@@ -154,20 +171,20 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   skip = maybe False (not . fpgaEnabled) <$> testConfig
   mask = maybe 0 disabledLinkMask <$> testConfig
 
-  (txns, txps, linkUps, _stats, spiDone, spiOut) =
+  (txns, txps, linkReadys, _stats, spiDone, spiOut) =
     transceiversStartAndObserve refClk sysClk testRst rxns rxps miso
 
   -- Consider the test done if the enabled links have been up
   -- consistently for a second.
   endSuccess = trueFor (SNat @(Seconds 1)) sysClk testRst linkMaskMatch
 
-  linkMaskMatch = and . fmap bitToBool . bv2v <$> (xor <$> mask <*> linkUps)
+  linkMaskMatch = and . fmap bitToBool . bv2v <$> (xor <$> mask <*> linkReadys)
 
   testConfig :: Signal Basic125 (Maybe TestConfig)
   testConfig =
     let
       (start, dat) = unbundle $ setName @"vioHitlt" $ vioProbe
-        ("probe_test_done" :> "probe_test_success" :> "linksUps" :>  Nil)
+        ("probe_test_done" :> "probe_test_success" :> "linksReadys" :>  Nil)
         ("probe_test_start" :> "probe_test_data" :> Nil)
         (False, disabled)
         sysClk
@@ -176,31 +193,10 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxns rxps miso =
         -- success
         (skip .||. linkMaskMatch)
         -- other
-        linkUps
+        linkReadys
     in
       mux start (Just <$> dat) (pure Nothing)
-
--- XXX: We use an explicit top entity annotation here, as 'makeTopEntity'
---      generates warnings in combination with 'Vec'.
-{-# ANN linkConfigurationTest Synthesize
-  { t_name = "linkConfigurationTest"
-  , t_inputs =
-    [ (PortProduct "SMA_MGT_REFCLK_C") [PortName "p", PortName "n"]
-    , (PortProduct "SYSCLK_300") [PortName "p", PortName "n"]
-    , PortName "SYNC_IN"
-    , PortName "GTH_RX_NS"
-    , PortName "GTH_RX_PS"
-    , PortName "MISO"
-    ]
-  , t_output =
-    (PortProduct "")
-      [ PortName "GTH_TX_NS"
-      , PortName "GTH_TX_PS"
-      , PortName "SYNC_OUT"
-      , PortName "spiDone"
-      , (PortProduct "") [PortName "SCLK", PortName "MOSI", PortName "CSB"]
-      ]
-  } #-}
+makeTopEntity 'linkConfigurationTest
 
 tests :: HitlTests TestConfig
 tests = Map.fromList
@@ -221,9 +217,3 @@ tests = Map.fromList
   ]
  where
   testData i j m = (j, TestConfig (i /= j) m)
-
-disabled :: TestConfig
-disabled = TestConfig
-  { fpgaEnabled = False
-  , disabledLinkMask = 0
-  }
