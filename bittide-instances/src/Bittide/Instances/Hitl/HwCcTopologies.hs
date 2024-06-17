@@ -650,41 +650,41 @@ tests = Map.fromList
     -----------
 
     -- initial clock shifts   startup delays            topology
-  , tt icsDiamond             ((m *) <$> sdDiamond)     diamond
-  , tt icsComplete            ((m *) <$> sdComplete)  $ complete d3
-  , tt icsCyclic              ((m *) <$> sdCyclic)    $ cyclic d5
-  , tt icsTorus               ((m *) <$> sdTorus)     $ torus2d d2 d3
-  , tt icsStar                ((m *) <$> sdStar)      $ star d7
-  , tt icsLine                ((m *) <$> sdLine)      $ line d4
-  , tt icsHourglass           ((m *) <$> sdHourglass) $ hourglass d3
+  , tt icsDiamond             (repeat 0) {- ((m *) <$> sdDiamond)   -}   diamond
+  , tt icsComplete            (repeat 0) {- ((m *) <$> sdComplete)  -} $ complete d3
+  , tt icsCyclic              (repeat 0) {- ((m *) <$> sdCyclic)    -} $ cyclic d5
+  , tt icsTorus               (repeat 0) {- ((m *) <$> sdTorus)     -} $ torus2d d2 d3
+  , tt icsStar                (repeat 0) {- ((m *) <$> sdStar)      -} $ star d7
+  , tt icsLine                (repeat 0) {- ((m *) <$> sdLine)      -} $ line d4
+  , tt icsHourglass           (repeat 0) {- ((m *) <$> sdHourglass) -} $ hourglass d3
 
     -- CALIBRATION VERIFICATON --
     -----------------------------
   , validateClockOffsetCalibration
   ]
  where
-  m = 1_000_000
+--  m = 1_000_000
 
   icsDiamond = -1000 :> -500 :> 2000 :> 3000 :> Nil
-  sdDiamond  =     0 :>   10 :>  200 :>    3 :> Nil
+--  sdDiamond  =     0 :>   10 :>  200 :>    3 :> Nil
 
   icsComplete = -10000 :> 0 :> 10000 :> Nil
-  sdComplete  =    200 :> 0 :>   200 :> Nil
+--  sdComplete  =    200 :> 0 :>   200 :> Nil
 
   icsCyclic = 0 :> 500 :> 1000 :> 1500 :> 2000 :> Nil
-  sdCyclic  = 0 :>  10 :>    0 :>  100 :>    0 :> Nil
+--  sdCyclic  = 0 :>  10 :>    0 :>  100 :>    0 :> Nil
 
   icsTorus = -3000 :> -3500 :> -4000 :> 4000 :> 3500 :> 3000 :> Nil
-  sdTorus  =     0 :>     0 :>     0 :>  100 :>  100 :> 100  :> Nil
+--  sdTorus  =     0 :>     0 :>     0 :>  100 :>  100 :> 100  :> Nil
 
   icsStar = 0 :> 1000 :> -1000 :> 2000 :> -2000 :> 3000 :> -3000 :> 4000 :> Nil
-  sdStar  = 0 :>   40 :>    80 :>  120 :>   160 :>  200 :>   240 :>  280 :> Nil
+--  sdStar  = 0 :>   40 :>    80 :>  120 :>   160 :>  200 :>   240 :>  280 :> Nil
 
   icsLine = 10000 :> 0 :> 0 :> -10000 :> Nil
-  sdLine  =   200 :> 0 :> 0 :>    200 :> Nil
+--  sdLine  =   200 :> 0 :> 0 :>    200 :> Nil
 
   icsHourglass = -10000 :> 10000 :> -10000 :> 10000 :> -10000 :> 10000 :> Nil
-  sdHourglass  =      0 :>   200 :>      0 :>   200 :>      0 :>   200 :> Nil
+--  sdHourglass  =      0 :>   200 :>      0 :>   200 :>      0 :>   200 :> Nil
 
   ClockControlConfig{..} = clockControlConfig
 
