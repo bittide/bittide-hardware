@@ -143,7 +143,9 @@ resetManager config clk rst tx_init_done rx_init_done rx_data_good =
   update :: (State dom, Statistics) -> (Bool, Bool, Bool) -> (State dom, Statistics)
   update st (tx_done, rx_done, rx_good) =
     case st of
-      -- Reset everything:
+      -- The reset of the PLLs and data directions is triggerd by the fallig
+      -- edge of the active-high reset_all signal. So the actual reset is
+      -- initialized one cycle later.
       (StartTx, stats) -> (TxWait minBound, stats)
 
       -- Wait for transceiver to indicate it is done
