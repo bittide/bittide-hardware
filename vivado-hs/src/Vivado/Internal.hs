@@ -16,6 +16,7 @@ import Prelude
 import Control.Exception (Exception, finally, throwIO)
 import Control.Monad (forM_, unless, void)
 import Data.Foldable (toList)
+import Data.List (intercalate)
 import Data.List.Extra (isPrefixOf, splitOn, trim)
 import Data.Maybe (fromJust)
 import Data.Sequence (Seq ((:|>)))
@@ -47,8 +48,9 @@ data VivadoHandle = VivadoHandle
 
 data TclException = TclException
   { cmd :: String
-  , stdout :: [String]
-  , error :: String
+  , stdout :: String
+  , retCode :: ErrorCode
+  , errMsg :: String
   , logPath :: String
   , prettyLogPath :: String
   }
@@ -56,20 +58,20 @@ data TclException = TclException
 
 instance Show TclException where
   show :: TclException -> String
-  show (TclException{error = e, ..}) =
+  show (TclException{..}) =
     "TclException: "
       <> [__i|
-    Got error while executing:
+    Got return code #{retCode} while executing:
 
       #{cmd}
 
-    Error was:
+    Error message was:
 
-      #{e}
+      #{errMsg}
 
     Output before and during the crash:
 
-      #{trim (unlines stdout)}
+      #{trim stdout}
 
     Log up to the crash:
 
@@ -79,14 +81,14 @@ instance Show TclException where
 
 instance Exception TclException
 
-{- | Magic string that Vivado will echo back to us to signal that it has
-finished processing a command.
+{- | Magic string that we'll instruct Vivado to echo back to us to signal that
+it has finished processing a command.
 -}
 magic :: String
 magic = "471ac6f71ba9bd7982741d53edfe809d50f43035645fe99f890761b2bf1ef6bfac18"
 
-data Error = Ok | Error String
-data Filter = Continue | Stop Error
+type ErrorCode = String
+data Filter = Continue | Stop | StopWithError ErrorCode
 
 {- | Utility function that reads lines from a handle, and applies a filter to
 each line. If the filter returns 'Continue', the function will continue
@@ -97,25 +99,23 @@ successfully. If the filter returns @Stop e@, the function will return a
 expectLine ::
   (HasCallStack) =>
   VivadoHandle ->
-  (String -> Filter) ->
-  IO (Seq String, Maybe String)
+  (String -> IO Filter) ->
+  IO (Seq String, Maybe ErrorCode)
 expectLine v f = go mempty
  where
-  go lines0 = do
+  go :: Seq String -> IO (Seq String, Maybe ErrorCode)
+  go acc = do
     line <- IO.hGetLine v.stdout
+
     IO.hPutStrLn v.logHandle line
     unless (magic `isPrefixOf` line) $
       IO.hPutStrLn v.prettyLogHandle line
 
-    let
-      lines1 = lines0 :|> line
-      cont = go lines1
-    if null line
-      then cont
-      else case f line of
-        Continue -> cont
-        Stop Ok -> pure (lines1, Nothing)
-        Stop (Error e) -> pure (lines1, Just e)
+    let lines' = acc :|> line
+    f line >>= \case
+      Continue -> go lines'
+      Stop -> return (lines', Nothing)
+      StopWithError code -> return (lines', Just code)
 
 -- | Write a line to the Vivado handle
 writeLine :: VivadoHandle -> String -> String -> IO ()
@@ -124,53 +124,70 @@ writeLine v prettyS s = do
   forM_ (lines s) $ \l -> IO.hPutStrLn v.logHandle (">>> " <> l)
   IO.hPutStrLn v.stdin s
 
-{- | Execute a command in Vivado and return the output
+{- | Execute a command in Vivado and return the resulting standard output and
+the command result.
 
 Careful: do not use this function with unverified user input, as it does not
 attempt to sanitize the input.
 -}
-exec :: VivadoHandle -> String -> IO String
+exec :: VivadoHandle -> String -> IO (String, String)
 exec v cmd = do
+  -- handle exceptionHandler $ do
+  -- Write a line that would let Vivado run the command in a catch construct and
+  -- print our magic string after that. If an error occurred, the return code is
+  -- included and what is returned is the error message. Otherwise the command
+  -- result is returned.
   writeLine
     v
     cmd
     [__i|
-    if { [catch {#{cmd}} error_#{magic}] } {
-      puts -nonewline {#{magic} }
-      puts -nonewline {ERR }
-      puts $error_#{magic}
+    if { [catch {#{cmd}} result_#{magic} opt_dict_#{magic}] } {
+      puts {}
+      puts -nonewline {#{magic} ERR }
+      puts [dict get $opt_dict_#{magic} {-code}]
+      puts $result_#{magic}
     } else {
+      puts {}
       puts {#{magic} OK}
+      puts $result_#{magic}
     }
   |]
 
-  expectLine v go >>= \case
-    (stdout, Just e) -> do
-      IO.hPutStrLn v.prettyLogHandle e
+  -- Discard the line with the magic string at the end
+  (stdout :|> _, mErr) <- expectLine v filtUntilMagic
+  let stdoutS = intercalate "\n" $ toList stdout
+
+  -- The return value
+  (retVal, _) <- expectLine v filtUntilEnd
+  let retValS = intercalate "\n" $ toList retVal
+
+  case mErr of
+    Nothing ->
+      return (stdoutS, retValS)
+    Just returnCode -> do
       throwIO
         ( TclException
-            { cmd
-            , stdout = toList stdout
-            , error = e
+            { cmd = cmd
+            , stdout = stdoutS
+            , retCode = returnCode
+            , errMsg = retValS
             , logPath = v.logPath
             , prettyLogPath = v.prettyLogPath
             }
         )
-    (stdout, Nothing) -> pure (unlines (toList (seqInit stdout)))
  where
-  seqInit (x :|> _) = x
-  seqInit x = x
+  filtUntilMagic :: String -> IO Filter
+  filtUntilMagic line
+    | magic `isPrefixOf` line = case splitOn " " line of
+        [_magic, "OK"] -> return Stop
+        [_magic, "ERR", code] -> return (StopWithError code)
+        _ -> error $ "Unexpected magic string format: " <> line
+    | otherwise = return Continue
 
-  go :: String -> Filter
-  go s =
-    case splitOn " " (trim s) of
-      (w : ws) | w == magic ->
-        case ws of
-          ["OK"] -> Stop Ok
-          ("ERR" : err) -> Stop (Error (unwords err))
-          [] -> error "Internal error: unexpected bare magic string"
-          err -> error $ "Internal error: unexpected magic string arguments: " <> unwords err
-      _ -> Continue
+  filtUntilEnd :: String -> IO Filter
+  filtUntilEnd _ = do
+    inputAvailable <- IO.hReady v.stdout
+    return $ if inputAvailable then Continue else Stop
 
 {- | Execute a command in Vivado, ignore its output
 
@@ -179,6 +196,17 @@ attempt to sanitize the input.
 -}
 exec_ :: VivadoHandle -> String -> IO ()
 exec_ v cmd = void (exec v cmd)
+
+execPrint :: VivadoHandle -> String -> IO String
+execPrint v cmd = do
+  (stdout, result) <- exec v cmd
+  putStr stdout
+  return result
+
+execPrint_ :: VivadoHandle -> String -> IO ()
+execPrint_ v cmd = do
+  (stdout, _) <- exec v cmd
+  putStr stdout
 
 {- | Run a block of code with a Vivado handle. Example usage:
 
@@ -202,7 +230,6 @@ with f = do
             IO.hSetBuffering stdout IO.LineBuffering
             IO.hSetBuffering stdin IO.LineBuffering
             let v = VivadoHandle{..}
-            exec_ v "puts init"
             f v
       )
       -- finally:

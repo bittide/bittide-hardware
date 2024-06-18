@@ -6,6 +6,9 @@ module Vivado (
   with,
   exec,
   exec_,
+  execPrint,
+  execPrint_,
+  VivadoHandle (..),
   TclException (..),
 ) where
 

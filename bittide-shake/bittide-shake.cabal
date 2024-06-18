@@ -24,12 +24,14 @@ common common-options
     clash-lib,
     clash-prelude,
     cryptohash-sha256,
+    directory,
     extra,
     filepath,
     shake,
     string-interpolate,
     text,
     vector,
+    vivado-hs,
 
 library
   import: common-options
@@ -79,3 +81,4 @@ executable shake
     directory,
     process,
     tasty-hunit,
+    vivado-hs,
