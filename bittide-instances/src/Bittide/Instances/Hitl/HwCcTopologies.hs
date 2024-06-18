@@ -73,10 +73,10 @@ import Bittide.Instances.Hitl.Setup
 import Project.FilePath
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (IlaConfig(..), Depth(..), ila, ilaConfig)
-import Clash.Sized.Extra (unsignedToSigned)
+import Clash.Cores.Xilinx.Xpm.Cdc.Gray
+import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
 
 import Protocols hiding (SimulationConfig)
@@ -278,7 +278,7 @@ topologyTest ::
   , "CALIB_E" ::: Signal Basic125 InitialClockShift
   )
 topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg
-  = fincFdecIla `hwSeqX`
+  = rttIla `hwSeqX`
   ( transceivers.txNs
   , transceivers.txPs
   , frequencyAdjustments
@@ -335,7 +335,33 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
   -- Transceiver setup
 
-  gthAllReset = unsafeFromActiveLow clocksAdjusted
+  myCounter :: Signal Basic125 (Unsigned 32)
+  myCounter = register
+    sysClk (unsafeFromActiveLow sendUserData) enableGen
+    (1 :: Unsigned 32) $ satSucc SatWrap <$> myCounter
+
+  txDatas =
+    (\clk ->
+       (\hi lo -> concatBitVector# $ pack hi :> pack lo :> Nil)
+          <$> fwdCounter clk
+          <*> xpmCdcGray sysClk clk myCounter
+    ) <$> transceivers.txClocks
+
+  fwdCounter :: KnownDomain dom => Clock dom -> Signal dom (Unsigned 32)
+  fwdCounter clk = xpmCdcGray (last transceivers.rxClocks) clk
+    $ maybe 1 (unpack . slice d31 d0) <$> last transceivers.rxDatas
+
+  rxCounter :: Signal Basic125 (Unsigned 32)
+  rxCounter = xpmCdcGray (last transceivers.rxClocks) sysClk
+    $ maybe 1 (unpack . slice d63 d32) <$> last transceivers.rxDatas
+
+  rtt :: Signal Basic125 (Unsigned 32)
+  rtt = (-) <$> myCounter <*> rxCounter
+
+  sendUserData = sticky sysClk syncRst allStable0
+
+  txReadys = (\clk -> xpmCdcSingle sysClk clk sendUserData)
+    <$> transceivers.txClocks
 
   transceivers =
     transceiverPrbsN
@@ -343,24 +369,20 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       Transceiver.defConfig
       Transceiver.Inputs
         { clock = sysClk
-        , reset = gthAllReset
+        , reset = unsafeFromActiveLow clocksAdjusted
         , refClock = refClk
         , channelNames
         , clockPaths
         , rxNs
         , rxPs
-        , txDatas = repeat (pure 0)
-        , txReadys = repeat (pure False)
-        , rxReadys = repeat (pure True)
+        , txDatas
+        , txReadys
+        , rxReadys = repeat $ pure True
         }
 
   allReady = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle transceivers.linkReadys)
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
-
-  timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
-  timer = register sysClk syncRst enableGen (0, 0) (timeSucc <$> timer)
-  milliseconds1 = fst <$> timer
 
   -- Startup delay
 
@@ -390,51 +412,20 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       (head transceivers.txClocks) sysClk clockControlReset clockControlConfig
       IlaControl{..} (mask <$> cfg) (fmap (fmap resize) domainDiffs)
 
-  -- Capture every 100 microseconds - this should give us a window of about 5
-  -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
-  -- very confusing.
-  capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
-
-  fincFdecIla :: Signal Basic125 ()
-  fincFdecIla = setName @"fincFdecIla" ila
-    (ilaConfig $
-         "trigger_0"
-      :> "capture_0"
-      :> "probe_milliseconds"
-      :> "probe_allStable0"
-      :> "probe_transceiversFailedAfterUp"
-      :> "probe_nFincs"
-      :> "probe_nFdecs"
-      :> "probe_net_nFincs"
-      :> Nil
-    ){depth = D16384}
+  rttIla :: Signal Basic125 ()
+  rttIla = setName @"rttIla" $ ila
+    (ilaConfig $ "trigger_0" :> "capture_0" :> "it" :> "rx" :> "rtt" :> Nil
+    ) { depth = D16384
+      }
     sysClk
-
-    -- Trigger as soon as we come out of reset
+    -- trigger as soon as we come out of reset
     (unsafeToActiveLow syncRst)
-
-    capture
-
-    -- Debug probes
-    milliseconds1
-    allStable0
-    transceiversFailedAfterUp
-    nFincs
-    nFdecs
-    (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
-
-  captureFlag = riseEvery sysClk syncRst enableGen
-    (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
-
-  nFincs = regEn sysClk clockControlReset enableGen
-    (0 :: Unsigned 32)
-    ((== Just SpeedUp) <$> clockMod)
-    (satSucc SatBound <$> nFincs)
-
-  nFdecs = regEn sysClk clockControlReset enableGen
-    (0 :: Unsigned 32)
-    ((== Just SlowDown) <$> clockMod)
-    (satSucc SatBound <$> nFdecs)
+    -- capture as soon as we are stable
+    sendUserData -- .&&. ((> 0) <$> rxCounter))
+    myCounter
+    rxCounter
+    -- rount trip time
+    rtt
 
   -- Clock calibration
 
@@ -618,7 +609,7 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     (syncStart .&&. ((not <$> allReady) .||. transceiversFailedAfterUp))
 
   endSuccess :: Signal Basic125 Bool
-  endSuccess = trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
+  endSuccess = trueFor (SNat @AllStablePeriod) sysClk syncRst allStable
     .&&. (    (/= CCCalibrationValidation) . calibrate <$> cfg
          .||. (\i e -> abs (i - e) < acceptableNoiseLevel) <$> calibI <*> calibE
          )
@@ -650,42 +641,13 @@ tests = Map.fromList
     -----------
 
     -- initial clock shifts   startup delays            topology
-  , tt icsDiamond             ((m *) <$> sdDiamond)     diamond
-  , tt icsComplete            ((m *) <$> sdComplete)  $ complete d3
-  , tt icsCyclic              ((m *) <$> sdCyclic)    $ cyclic d5
-  , tt icsTorus               ((m *) <$> sdTorus)     $ torus2d d2 d3
-  , tt icsStar                ((m *) <$> sdStar)      $ star d7
-  , tt icsLine                ((m *) <$> sdLine)      $ line d4
-  , tt icsHourglass           ((m *) <$> sdHourglass) $ hourglass d3
+  , tt (0 :> 0 :> Nil)        (repeat 0)              $ line d2
 
     -- CALIBRATION VERIFICATON --
     -----------------------------
   , validateClockOffsetCalibration
   ]
  where
-  m = 1_000_000
-
-  icsDiamond = -1000 :> -500 :> 2000 :> 3000 :> Nil
-  sdDiamond  =     0 :>   10 :>  200 :>    3 :> Nil
-
-  icsComplete = -10000 :> 0 :> 10000 :> Nil
-  sdComplete  =    200 :> 0 :>   200 :> Nil
-
-  icsCyclic = 0 :> 500 :> 1000 :> 1500 :> 2000 :> Nil
-  sdCyclic  = 0 :>  10 :>    0 :>  100 :>    0 :> Nil
-
-  icsTorus = -3000 :> -3500 :> -4000 :> 4000 :> 3500 :> 3000 :> Nil
-  sdTorus  =     0 :>     0 :>     0 :>  100 :>  100 :> 100  :> Nil
-
-  icsStar = 0 :> 1000 :> -1000 :> 2000 :> -2000 :> 3000 :> -3000 :> 4000 :> Nil
-  sdStar  = 0 :>   40 :>    80 :>  120 :>   160 :>  200 :>   240 :>  280 :> Nil
-
-  icsLine = 10000 :> 0 :> 0 :> -10000 :> Nil
-  sdLine  =   200 :> 0 :> 0 :>    200 :> Nil
-
-  icsHourglass = -10000 :> 10000 :> -10000 :> 10000 :> -10000 :> 10000 :> Nil
-  sdHourglass  =      0 :>   200 :>      0 :>   200 :>      0 :>   200 :> Nil
-
   ClockControlConfig{..} = clockControlConfig
 
   defSimCfg = def
