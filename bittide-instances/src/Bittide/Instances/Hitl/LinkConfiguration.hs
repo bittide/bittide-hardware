@@ -9,12 +9,11 @@
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 
--- | Test whether the transceiver link setup matches with the
+-- | Tests whether the transceiver link setup matches with the
 -- configuration defined in 'Bittide.Instances.Hitl.Setup.fpgaSetup'.
--- To this end, the test disables all transceivers of a selected node,
--- which then can be observed by all the other nodes and checked
--- against the link mask derived from the table. The check is repeated
--- for each node in the network.
+-- To this end, each node sends its own index to all of it's
+-- neighbours, which then verify that the result matches with the
+-- definition.
 module Bittide.Instances.Hitl.LinkConfiguration
   ( linkConfigurationTest
   , tests
@@ -24,45 +23,76 @@ import Clash.Prelude (withClockResetEnable)
 import Clash.Explicit.Prelude
 import qualified Clash.Explicit.Prelude as E
 
-import Data.Graph (buildG)
-import Data.Maybe (isJust)
-import Data.String (fromString)
-
-import qualified Data.List as List (concat)
 import qualified Data.Map.Strict as Map (fromList)
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState(Error, Finished), si539xSpi)
+import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
-import Bittide.Topology (fromGraph)
 import Bittide.Transceiver
 
-import Clash.Cores.Xilinx.VIO (vioProbe)
-import Bittide.Hitl (HitlTests, NoPostProcData(..) {-, hitlVio-})
+import Bittide.Hitl (HitlTests, NoPostProcData(..), hitlVio)
 
 import Bittide.Instances.Hitl.Setup
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.GTH
+import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
+import Data.Maybe (fromMaybe, isJust)
 
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 
-data TestConfig =
-  TestConfig
-    { fpgaEnabled :: Bool
-    , disabledLinkMask :: BitVector (FpgaCount - 1)
-    }
-  deriving (Generic, NFDataX, BitPack, Show)
+-- | Checks whether the received index matches with the corresponding
+-- entry in 'Bittide.Instances.Hitl.Setup.fpgaSetup' and sychronizes
+-- to the right clock domain accordingly.
+checkData ::
+  forall n src dst.
+  (KnownDomain src, KnownDomain dst, KnownNat n, 1 <= n, BitSize (Index n) <= 64) =>
+  Clock dst ->
+  Clock src ->
+  Signal dst Bool ->
+  Signal src (Maybe (BitVector 64)) ->
+  Signal src (Maybe (Index n)) ->
+  Signal dst Bool
+checkData dstClk srcClk ready rx setup =
+  ready .&&. xpmCdcSingle srcClk dstClk (match <$> rx <*> setup)
+ where
+  match ma mb = fromMaybe False (ma .==. (zExtend . pack <$> mb))
+  zExtend = zeroExtend @_ @(BitSize (Index n)) @(64 - BitSize (Index n))
 
-disabled :: TestConfig
-disabled = TestConfig
-  { fpgaEnabled = False
-  , disabledLinkMask = 0
-  }
+-- | Extracts the corresponding target FPGA index from
+-- 'Bittide.Instances.Hitl.Setup.fpgaSetup' according to the given
+-- link index and synchronizes it to the provided clock domain.
+expectedTargetIndex ::
+  (KnownDomain src, KnownDomain dst) =>
+  Clock src ->
+  Signal src (Index FpgaCount) ->
+  Clock dst ->
+  Reset dst ->
+  Index (FpgaCount - 1) ->
+  Signal dst (Maybe (Index FpgaCount))
+expectedTargetIndex srcClk myIndex dstClk dstRst link =
+  fmap ((!! link) . snd . (fpgaSetup !!))
+    <$> xpmCdcStable srcClk myIndex dstClk dstRst
+
+-- | Synchronizes the fixed FPGA index from some given source domain
+-- to the given target domain. Lossy synchronization is sufficient
+-- here, as the index is considered to be stable stable once the test
+-- has been started.
+xpmCdcStable ::
+  ( KnownDomain src, KnownDomain dst
+  , BitPack a, NFDataX a, 1 <= BitSize a, BitSize a <= 1024
+  ) =>
+  Clock src              -> Signal src a         ->
+  Clock dst -> Reset dst -> Signal dst (Maybe a)
+xpmCdcStable srcClk idx dstClk dstRst = mIdx
+ where
+  mIdx = register dstClk dstRst enableGen Nothing
+    $ (<|>) <$> xpmCdcMaybeLossy srcClk dstClk (pure <$> idx) <*> mIdx
 
 -- | Configures the clock boards, fires up all of the transceivers and
 -- observes the incoming links.
@@ -70,12 +100,14 @@ transceiversStartAndObserve ::
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
+  "MY_INDEX" ::: Signal Basic125 (Index FpgaCount) ->
   "GTH_RX_NS" ::: TransceiverWires GthRx ->
   "GTH_RX_PS" ::: TransceiverWires GthRx ->
   "MISO" ::: Signal Basic125 Bit ->
   ( "GTH_TX_NS" ::: TransceiverWires GthTx
   , "GTH_TX_PS" ::: TransceiverWires GthTx
-  , "LINK_READYS" ::: Signal Basic125 (BitVector (FpgaCount - 1))
+  , "allReady" ::: Signal Basic125 Bool
+  , "success" ::: Signal Basic125 Bool
   , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
@@ -84,15 +116,17 @@ transceiversStartAndObserve ::
       , "CSB"       ::: Signal Basic125 Bool
       )
   )
-transceiversStartAndObserve refClk sysClk rst rxNs rxPs miso =
+transceiversStartAndObserve refClk sysClk rst myIndex rxNs rxPs miso =
   ( transceivers.txNs
   , transceivers.txPs
-  , v2bv . fmap boolToBit <$> bundle transceivers.linkReadys
+  , allReady
+  , success
   , transceivers.stats
   , spiDone
   , spiOut
   )
  where
+  allReady = and <$> bundle transceivers.linkReadys
   sysRst = rst `orReset` unsafeFromActiveLow (fmap not spiErr)
 
   -- Clock programming
@@ -105,27 +139,44 @@ transceiversStartAndObserve refClk sysClk rst rxNs rxPs miso =
 
   (_, _, spiState, spiOut) =
     withClockResetEnable sysClk sysRst enableGen $
-      si539xSpi testConfig6_200_on_0a_1ppb (SNat @(Microseconds 10)) (pure Nothing) miso
+      si539xSpi testConfig6_200_on_0a_1ppb
+        (SNat @(Microseconds 10)) (pure Nothing) miso
 
   -- Transceiver setup
-  gthAllReset = rst `orReset` unsafeFromActiveLow spiDone
-
   transceivers =
     transceiverPrbsN
       @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
       Transceiver.defConfig
       Transceiver.Inputs
         { clock = sysClk
-        , reset = gthAllReset
+        , reset = rst `orReset` unsafeFromActiveLow spiDone
         , refClock = refClk
         , channelNames
         , clockPaths
         , rxNs
         , rxPs
-        , txDatas = repeat 0
-        , rxReadys = repeat (pure True)
-        , txReadys = repeat (pure False)
+        , txDatas = myIndexTxN
+        , rxReadys = repeat $ pure True
+        , txReadys = repeat $ pure True
         }
+
+  -- synchronizes the FPGA's stable index to the individual TX clock
+  -- domains of the transceivers
+  myIndexTxN = fmap (zeroExtend . pack . fromMaybe 0)
+    <$> zipWith (xpmCdcStable sysClk myIndex)
+          transceivers.txClocks
+          transceivers.txResets
+
+  -- check that all the received data matches with our expectations
+  success = fmap and $ bundle
+    $ zipWith4 (checkData @FpgaCount sysClk)
+        transceivers.rxClocks
+        transceivers.linkReadys
+        transceivers.rxDatas
+    $ zipWith3 (expectedTargetIndex sysClk myIndex)
+        transceivers.rxClocks
+        transceivers.rxResets
+        indicesI
 
 -- | Top entity for this test. See module documentation for more information.
 linkConfigurationTest ::
@@ -153,6 +204,8 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   -- the test starts with a valid configuration coming in
   startTest = isJust <$> testConfig
+  -- derive the test settings from the passed configuration
+  myIndex = fromMaybe 0 <$> testConfig
 
   -- use some simple SYNC_IN / SYNC_OUT synchronization to
   -- synchronously start the test
@@ -162,58 +215,32 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     $ xpmCdcSingle sysClk sysClk syncIn
   syncOut = startTest
 
-  testRst =   sysRst
+  testRst  =  sysRst
     `orReset` syncInRst
     `orReset` unsafeFromActiveLow startTest
-    `orReset` unsafeFromActiveHigh skip
 
-  -- derive the test settings from the passed configuration
-  skip = maybe False (not . fpgaEnabled) <$> testConfig
-  mask = maybe 0 disabledLinkMask <$> testConfig
+  (txns, txps, allReady, success, _stats, spiDone, spiOut) =
+    transceiversStartAndObserve refClk sysClk testRst myIndex rxns rxps miso
 
-  (txns, txps, linkReadys, _stats, spiDone, spiOut) =
-    transceiversStartAndObserve refClk sysClk testRst rxns rxps miso
+  failAfterUp = isFalling sysClk testRst enableGen False allReady
+  failAfterUpSticky = sticky sysClk testRst failAfterUp
 
-  -- Consider the test done if the enabled links have been up
-  -- consistently for a second.
-  endSuccess = trueFor (SNat @(Seconds 1)) sysClk testRst linkMaskMatch
+  -- Consider the test done if links have been up consistently for 40
+  -- seconds. This is just below the test timeout of 60 seconds, so
+  -- transceivers have ~20 seconds to come online reliably. This
+  -- should be plenty. The test will stop immediately on success,
+  -- i.e., if all neighbours have transmitted the expected ids
+  -- alltogether at least once.
+  done = success
+    .||. failAfterUpSticky
+    .||. trueFor (SNat @(Seconds 40)) sysClk testRst allReady
 
-  linkMaskMatch = and . fmap bitToBool . bv2v <$> (xor <$> mask <*> linkReadys)
+  testConfig :: Signal Basic125 (Maybe (Index FpgaCount))
+  testConfig = hitlVio 0 sysClk done (success .&&. (not <$> failAfterUpSticky))
 
-  testConfig :: Signal Basic125 (Maybe TestConfig)
-  testConfig =
-    let
-      (start, dat) = unbundle $ setName @"vioHitlt" $ vioProbe
-        ("probe_test_done" :> "probe_test_success" :> "linksReadys" :>  Nil)
-        ("probe_test_start" :> "probe_test_data" :> Nil)
-        (False, disabled)
-        sysClk
-        -- done
-        (skip .||. endSuccess)
-        -- success
-        (skip .||. linkMaskMatch)
-        -- other
-        linkReadys
-    in
-      mux start (Just <$> dat) (pure Nothing)
 makeTopEntity 'linkConfigurationTest
 
-tests :: HitlTests TestConfig
+tests :: HitlTests (Index FpgaCount)
 tests = Map.fromList
-  [ ( fromString name
-    , ( toList $ imap (testData i) $ linkMasks @FpgaCount g
-      , NoPostProcData
-      )
-    )
-  | (i, (fpgaId, _)) <- toList $ zip indicesI fpgaSetup
-  , let name = "disable " <> show i <> " [" <> fpgaId <> "]"
-        g = fromGraph @FpgaCount name $ buildG (0, natToNum @(FpgaCount - 1))
-          $ List.concat
-              [ [ (i', j), (j, i') ]
-              | j <- [0, 1 .. natToNum @(FpgaCount - 1)]
-              , let i' = fromEnum i
-              , i' /= j
-              ]
+  [ ("LinkConfiguration", (toList $ zip indicesI indicesI, NoPostProcData))
   ]
- where
-  testData i j m = (j, TestConfig (i /= j) m)
