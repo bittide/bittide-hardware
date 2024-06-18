@@ -157,7 +157,10 @@ resetManager config clk rst tx_init_done rx_init_done rx_data_good =
 
       -- Wait for a reliable incoming link. This can fail in multiple ways, see
       -- 'RxWait'.
-      (RxWait cntr@(ms, _), stats@Statistics{rxRetries, rxFullRetries})
+      (RxWait cntr@(ms, _), stats@Statistics{txRetries, rxRetries, rxFullRetries})
+        | not tx_done ->
+          (StartTx, stats{txRetries=satSucc SatBound txRetries})
+
         | rx_done && rx_good ->
           (Monitor, stats)
 
@@ -171,8 +174,13 @@ resetManager config clk rst tx_init_done rx_init_done rx_data_good =
           (RxWait (countSucc cntr), stats)
 
       -- Monitor link. Move all the way back to 'StartTx' if the link goes down
-      -- for some reason.
-      (Monitor, stats@Statistics{failAfterUps})
+      -- for some reason. On startup `tx_done` can be True while it should not
+      -- be. When the receiver is not connected, this causes the reset manager
+      -- to claim it is done. We therefore also check `tx_done` in `Monitor`,
+      -- going back to `StartTx` when it goes down. We expect this to only
+      -- happen once.
+      (Monitor, stats@Statistics{txRetries, failAfterUps})
+        | not tx_done -> (StartTx, stats{txRetries=satSucc SatBound txRetries})
         | rx_done && rx_good -> (Monitor, stats)
         | otherwise -> (StartTx, stats{failAfterUps=satSucc SatBound failAfterUps})
 
