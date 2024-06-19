@@ -97,7 +97,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 9afc2262a66cbf98c7c157d5472cbb46d0016f7f
+  tag: ffb8667908b37f248c461e417676892695d4bf31
   subdir: clash-cores
 
 source-repository-package
