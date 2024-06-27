@@ -16,6 +16,7 @@ import qualified Tests.DoubleBufferedRam
 import qualified Tests.ElasticBuffer
 import qualified Tests.Link
 import qualified Tests.ProcessingElement.ReadElf
+import qualified Tests.ObliviousFifo
 import qualified Tests.ScatterGather
 import qualified Tests.StabilityChecker
 import qualified Tests.Switch
@@ -33,6 +34,7 @@ tests = testGroup "Unittests"
   , Tests.ElasticBuffer.tests
   , Tests.Link.tests
   , Tests.ProcessingElement.ReadElf.tests
+  , Tests.ObliviousFifo.tests
   , Tests.ScatterGather.tests
   , Tests.StabilityChecker.tests
   , Tests.Switch.tests

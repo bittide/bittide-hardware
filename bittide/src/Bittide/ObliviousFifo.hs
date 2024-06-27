@@ -1,95 +1,27 @@
 -- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RecordWildCards #-}
+
 module Bittide.ObliviousFifo where
 
 import GHC.Stack
 
 import Clash.Explicit.Prelude
 import Clash.Cores.Xilinx.DcFifo hiding (DataCount)
-import qualified Clash.Cores.Extra as CE
+import Clash.Cores.Xilinx.Xpm (xpmCdcSingle)
 
-import Data.Constraint.Nat.Extra (Dict(..), leMaxLeft, leMaxRight)
+import Control.Arrow (second)
 
-import Bittide.ClockControl (DataCount, targetDataCount)
-import Bittide.ElasticBuffer (EbMode(..), ebModeToReadWrite)
+import Data.Coerce (coerce)
+
+import Bittide.ClockControl (DataCount)
 import Bittide.Counter (domainDiffCounter)
+import Bittide.ObliviousFifo.Frame
 
--- | A 'Frame' separates data frames into valid data or accumulated
--- lost data. Furthermore, it is also used to indicate an empty buffer.
-data Frame n a =
-    Data a
-    -- ^ a single frame holding some data
-  | Empty
-    -- ^ the empty buffer indication frame
-  | Lost (Unsigned n)
-    -- ^ some number of frames whose data got lost
-  deriving (Eq, Ord, Show, Generic, NFDataX)
-
-instance (BitPack a, KnownNat n) => BitPack (Frame n a) where
-  -- 'Frame' either holds some counted lost frames or valid data. The
-  -- state space is shared among the two.
-  type BitSize(Frame n a) = 1 + Max n (BitSize a)
-
-  -- The most significant bit is used to distinguish between
-  --
-  --   * data (the MSB is not set) and
-  --   * lost frame counters or the empty buffer indication frame
-  --     (the MSB is set).
-  --
-  -- The empty buffer indication frame is bit-mapped to zero (except
-  -- for the MSB), while lost counters are mapped to everything above
-  -- zero (except for the MSB). Note that there must be always at
-  -- least one frame that got lost.
-  pack = \case
-    Empty  -> (`setBit` (natToNum @(Max n (BitSize a)))) 0
-    Lost n -> (`setBit` (natToNum @(Max n (BitSize a)))) $
-      case leMaxLeft @n @(BitSize a) @0 of
-        Dict -> ( zeroExtend ::
-                    ( 1 + Max n (BitSize a) - n + n
-                    ~ 1 + Max n (BitSize a)
-                    ) =>
-                    BitVector n ->
-                    BitVector (1 + Max n (BitSize a))
-                ) $ pack n
-    Data x ->
-      case leMaxRight @n @(BitSize a) @0 of
-        Dict ->
-          ( zeroExtend ::
-              ( (1 + Max n (BitSize a) - BitSize a) + BitSize a
-              ~ 1 + Max n (BitSize a)
-              ) =>
-              BitVector (BitSize a) ->
-              BitVector (1 + Max n (BitSize a))
-          ) $ pack x
-
-  unpack bv
-    | testBit bv (natToNum @(Max n (BitSize a))) =
-        let tbv = case leMaxLeft @n @(BitSize a) @0 of
-                    Dict ->
-                      ( truncateB ::
-                          ( n + (1 + Max n (BitSize a) - n)
-                          ~ 1 + Max n (BitSize a)
-                          ) =>
-                          BitVector (1 + Max n (BitSize a)) ->
-                          BitVector n
-                      ) bv
-        in case unpack tbv of
-          0 -> Empty
-          n -> Lost n
-    | otherwise = Data $ unpack $
-        case leMaxRight @n @(BitSize a) @0 of
-          Dict ->
-            ( truncateB ::
-                ( BitSize a + (1 +  Max n (BitSize a) - BitSize a)
-                ~ 1 + Max n (BitSize a)
-                ) =>
-                BitVector (1 + Max n (BitSize a)) ->
-                BitVector (BitSize a)
-            ) bv
+type Ready = Bool
 
 -- | This FIFO combines 'Clash.Cores.Xilinx.DcFifo.dcFifo' with
 -- 'Bittide.Counter.domainDiffCounter' to create an oblivious FIFO
@@ -106,131 +38,212 @@ instance (BitPack a, KnownNat n) => BitPack (Frame n a) where
 --
 -- Due to the maximum depth of 17 of
 -- 'Clash.Cores.Xilinx.DcFifo.dcFifo', the current implementation
--- requires the real FIFO to be not continuously full for more than
+-- requires the real FIFO to not be continuously full for more than
 -- 2^16-1 (= 65535) cycles. Note that this would require a read domain
 -- whose clock is 65535 times faster than the one of the write
--- domain. Hence, this should only rarely be a limitation in practice.
-
+-- domain, which will be rarely a limitation in practice.
+--
+-- The FIFO supports enable signals for both domains, which can be
+-- used to simulate fill and drain behavior.
+--
+--   * source enabled  && destination enabled  -> FIFO @Pass@
+--   * source disabled && destination enabled  -> FIFO @Drain@
+--   * source enabled  && destination disabled -> FIFO @Fill@
+--   * source disabled && destination disabled -> disabled FIFO
 {-# NOINLINE xilinxObliviousFifo #-}
 xilinxObliviousFifo ::
-  forall n m readDom writeDom a.
+  forall n m writeDom readDom a.
   ( HasCallStack
   , KnownDomain readDom
   , KnownDomain writeDom
   , NFDataX a
-  , KnownNat n  -- the FIFO is able to hold 2^n-1 virtual elements
-  , KnownNat m  -- the FIFO is able to hold 2^m-1 real data elements
+  , BitPack a
+  , KnownNat n
+    -- ^ the FIFO is able to hold 2^n-1 virtual elements
+  , KnownNat m
+    -- ^ the FIFO is able to hold 2^m-1 real data elements
   , 4 <= m, m <= 17
-  , 16 <= n, n <= 65
+  , m <= n, n <= 65
   ) =>
-  SNat m ->
-  Clock readDom ->
   Clock writeDom ->
+  Enable writeDom ->
+  Clock readDom ->
   Reset readDom ->
-  Signal readDom EbMode ->
+  Enable readDom ->
   Signal writeDom a ->
   ( Signal readDom (DataCount n)
-  , Signal readDom (Frame 16 a)
+    -- ^ the virtual elements count
+  , Signal readDom (Unsigned m)
+    -- ^ the real data elements count
+  , Signal readDom (Frame a)
+    -- ^ the data frame
+  , Signal readDom Ready
+    -- ^ a Boolean ready flag indicating that the component has been
+    -- initialized
   )
-xilinxObliviousFifo SNat clkRead clkWrite rstRead ebMode wData =
-  -- the FIFO remains passive until the 'domainDiffCounter' gets ready
-  unbundle $ mux ready (pure (0, Empty)) $ bundle
-    ( -- Note that this is chosen to work for 'DataCount' either being
-      -- set to 'Signed' with 'targetDataCount' equals 0 or set to
-      -- 'Unsigned' with 'targetDataCount' equals 'shiftR maxBound 1 + 1'.
-      -- This way, the representation can be easily switched without
-      -- introducing major code changes.
-      (+ targetDataCount) . bitCoerce . (+ (-1 - shiftR maxBound 1))
-        <$> diffCount
-    , -- always return the empty frame if the FIFO is empty
-      readData
-    )
+xilinxObliviousFifo clkW enbW clkR rstR enbR inputData =
+  (ddcCount, readCount, readData, ddcReadyR)
  where
-  FifoOut{readCount = _readCount, isEmpty, isFull, fifoData = rData} =
-    dcFifo (defConfig @16)
-      clkWrite noResetWrite
-      clkRead noResetRead
-      writeData fifoRead
+  FifoOut{..} =
+    dcFifo (defConfig @m)
+      clkW noResetW
+      clkR noResetR
+      (coerce <$> dcFifoWriteData)
+      readFromDcFifo
 
-  (diffCount, ready) = unbundle $
+  (ddcCount, ddcReadyR) = unbundle $
     domainDiffCounter @n
-      clkWrite resetGen (toEnable writeEnableSynced)
-      clkRead resetGen (toEnable readEnable)
+      clkW rstW enbW
+      clkR rstR enbR
 
   -- We don't reset the Xilix FIFO: its reset documentation is self-contradictory
   -- and mentions situations where the FIFO can end up in an unrecoverable state.
-  noResetWrite = unsafeFromActiveHigh (pure False)
-  noResetRead = unsafeFromActiveHigh (pure False)
+  noResetW = unsafeFromActiveHigh $ pure False
+  noResetR = unsafeFromActiveHigh $ pure False
 
-  (readEnable, writeEnable) = unbundle (ebModeToReadWrite <$> ebMode)
+  rstW = unsafeFromActiveLow $ xpmCdcSingle clkR clkW $ unsafeToActiveLow rstR
 
-  rstWriteSynced = unsafeToReset $
-    CE.safeDffSynchronizer clkRead clkWrite False (not <$> ready)
+  ddcReadyW = xpmCdcSingle clkR clkW ddcReadyR
 
-  writeEnableSynced =
-    CE.safeDffSynchronizer clkRead clkWrite False writeEnable
-
-  ---------------------
-
-  writeData =
-    mealy clkWrite rstWriteSynced enableGen goW 0
-      $ bundle (wData, isFull, writeEnableSynced)
-
-  goW ::
-    (KnownNat n, n <= 65) =>
-    Unsigned n -> (a, Bool, Bool) ->
-    (Unsigned n, Maybe (Frame 16 a))
-
-  --  c  wData  isFull  writeEnableSynced  c'         writeData
-  goW n (_    , _     , False         ) = (n        , Nothing             )
-  goW 0 (d    , False , True          ) = (0        , Just (Data d)       )
-  goW 0 (_    , True  , True          ) = (1        , Nothing             )
-  goW n (_    , True  , True          ) = (n+1      , Nothing             )
-  goW n (_    , False , True          )
-    | n > 65534                         = (n - 65534, Just (Lost 65535))
-    | otherwise                         = (0        , Just (Lost (tb n+1)))
-
-  tb ::
-    ( KnownNat n
-    , (n - 16) + 16 ~ n
-    , 16 + (n - 16) ~ n
-    ) =>
-    Unsigned n ->
-    Unsigned 16
-  tb = truncateB
+  rstReadyR = unsafeFromActiveLow ddcReadyR
+  rstReadyW = unsafeFromActiveLow ddcReadyW
 
   ---------------------
 
-  (readData, fifoRead) = unbundle $
-    mealy clkRead rstRead enableGen goR (0, True)
-      $ bundle (mux isEmpty (pure Empty) rData, readEnable)
-
-  -- for simplicity only 'Lost 1' gets currently reported in case of a
-  -- lost frame, while technically the number of consecutively lost
-  -- packages can be reported up to 2%16.
-  goR ::
-    (KnownNat n, n <= 65) =>
-    (Unsigned n, Bool) -> (Frame 16 a, Bool) ->
-    ((Unsigned n, Bool), (Frame 16 a, Bool))
-
-  --   c  _re     rData   re      c'     re    readData    fifoRead
-  goR (n, True ) (Lost m, re) = ((n+ze m-1, re), (Lost 1    , n+ze m == 1 && re))
-  goR (n, False) (Lost m, re) = ((n+ze m  , re), (undefined , False            ))
-  goR (0, _    ) (mdata , re) = ((0       , re), (mdata     , re               ))
-  goR (n, True ) (_     , re) = ((n-1     , re), (Lost 1    , n == 1           ))
-  goR (n, False) (_     , re) = ((n       , re), (undefined , False            ))
-
-
-  ze ::
-    ( KnownNat n
-    , (n - 16) + 16 ~ n
-    , 16 + (n - 16) ~ n
-    ) =>
-    Unsigned 16 ->
-    Unsigned n
-  ze = zeroExtend
+  dcFifoWriteData =
+    mux (not <$> (fromEnable enbW .&&. ddcReadyW)) (pure NoWrite)
+      $ mealy clkW rstReadyW enbW transW 0
+          $ mux isFull (pure DcFifoIsFull) (SafeToWrite <$> inputData)
+   where
+    transW :: (BitPack a, KnownNat n) =>
+      Unsigned n ->
+      -- ^ the internal state holding the accumulated number of lost
+      -- frames
+      WriteGuard a ->
+      -- ^ guarded input data, which may be forwarded to the dcFifo
+      ( Unsigned n
+        -- ^ the new internal state
+      , WriteData (Frame a)
+        -- ^ data to be written to the dcFifo
+      )
+    transW n =
+      let n' = satSucc SatBound n
+          mb = case compareSNat (SNat @n) (SNat @(BitSize a)) of
+            SNatLE -> maxBound
+            SNatGT ->
+              (zeroExtend ::
+                  ( (n - (BitSize a)) + (BitSize a) ~ n
+                  , (BitSize a) + (n - (BitSize a)) ~ n
+                  ) => Unsigned (BitSize a) -> Unsigned n
+              ) maxBound
+       in \case
+         -- increase the number of lost frames, if the dcFifo is full
+         DcFifoIsFull -> (n', NoWrite)
+         SafeToWrite d
+           -- send the data, if no lost frames have accumulated
+           | n == 0    -> (0, Write $ Data d)
+           -- send the number of lost frames otherwise,
+           | n < mb    -> (0, Write $ Lost $ bitCoerce $ resize n')
+           -- where they are split into multiple frames, if they exceed
+           -- the maximum of 2^(BitSize a)-1
+           | otherwise -> (n - mb + 1, Write $ Lost maxBound)
 
   ---------------------
 
-  -- the FIFO should preserve the following invariant:
-  -- readCount < (maxbound :: Unsigned 16) `implies` readCount == diffCount
+  (readData, readFromDcFifo) =
+    muxB (not <$> ddcReadyR) (pure Empty, pure False)
+      $ second (.&&. (fromEnable enbR))
+      $ mealyB clkR rstReadyR enableGen transR 0
+          $ rFrame <$> fifoData
+                   <*> register clkR rstReadyR enableGen (True, True)
+                         (bundle (readFromDcFifo, isEmpty))
+   where
+    muxB b t f = unbundle $ mux b (bundle t) (bundle f)
+
+    --     fifoData  readFromDcFifo  isEmpty
+    rFrame _        (True          , True   ) = Read Empty
+    rFrame d        (True          , _      ) = Read d
+    rFrame _        (_             , _      ) = NoRead
+
+    -- for simplicity only 'Lost 1' gets currently reported in case of a
+    -- lost frame, while technically the number of consecutively lost
+    -- packages can be reported up to 2^(BitSize a)-1.
+    transR :: (BitPack a, KnownNat n) =>
+      Unsigned n ->
+      -- ^ the internal state holding the accumulated number of lost
+      -- frames
+      ReadData (Frame a) ->
+      -- ^ the data that is read from the FIFO, if 'fifoRead' was
+      -- enabled in the previous cycle
+      ( Unsigned n
+        -- ^ the new internal state
+      , (Frame a, ReadCondition)
+        -- ^ the returned frame and some potential `fifoRead` enable
+        -- restricton
+      )
+
+    -- accumulate lost data via the internal state and disable the
+    -- dcFifo until all lost entries have been reported
+    -- [INVARIANT: m > 0]
+    transR n (Read (Lost m)) =
+      let n' = n + (resize @_ @(BitSize a) @n $ bitCoerce $ satPred SatBound m)
+       in (n', (LostFrame, OnlyReadIfEnabledAnd (n' == 0)))
+    -- if there are no lost frames left to report and data arrives, then
+    -- we report the data
+    transR 0 (Read dataFrame) =
+      (0, (dataFrame, ReadIfEnabled))
+    -- we disable the dcFifo in case of any outstanding frames present,
+    -- hence it cannot happen that we receive any data in that case
+    transR _ (Read _) =
+      deepErrorX "impossible"
+    -- if there is neither data nor outstanding lost frames, then the
+    -- oblivious FIFO must not be enabled
+    transR 0 NoRead =
+      (0, (deepErrorX "Oblivious FIFO - Enable off", ReadIfEnabled))
+    -- report lost frames still to be reported, even if there is no data
+    -- from the dcFifo
+    transR n NoRead =
+      let n' = satPred SatBound n in
+      (n', (LostFrame, OnlyReadIfEnabledAnd (n' == 0)))
+
+
+newtype WriteGuard a = WriteGuard (Maybe a) deriving (Bundle)
+
+pattern DcFifoIsFull :: WriteGuard a
+pattern DcFifoIsFull = WriteGuard Nothing
+
+pattern SafeToWrite :: a -> WriteGuard a
+pattern SafeToWrite d = WriteGuard (Just d)
+
+{-# COMPLETE DcFifoIsFull, SafeToWrite #-}
+
+newtype WriteData a = WriteData (Maybe a) deriving (Bundle)
+
+pattern NoWrite :: WriteData a
+pattern NoWrite = WriteData Nothing
+
+pattern Write :: a -> WriteData a
+pattern Write d = WriteData (Just d)
+
+{-# COMPLETE NoWrite, Write #-}
+
+newtype ReadData a = ReadData (Maybe a) deriving (Bundle)
+
+pattern NoRead :: ReadData a
+pattern NoRead = ReadData Nothing
+
+pattern Read :: a -> ReadData a
+pattern Read d = ReadData (Just d)
+
+{-# COMPLETE NoRead, Read #-}
+
+type ReadCondition = Bool
+
+pattern OnlyReadIfEnabledAnd :: Bool -> Bool
+pattern OnlyReadIfEnabledAnd a = a
+
+pattern ReadIfEnabled :: Bool
+pattern ReadIfEnabled = True
+
+pattern LostFrame :: (NFDataX a, BitPack a) => Frame a
+pattern LostFrame = Lost 1
