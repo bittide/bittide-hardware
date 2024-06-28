@@ -8,7 +8,6 @@ packages:
   bittide-shake/
   bittide-tools/
   bittide/
-
   clash-protocols-memmap/
   clash-vexriscv/clash-vexriscv/
 

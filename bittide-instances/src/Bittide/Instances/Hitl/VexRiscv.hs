@@ -27,6 +27,13 @@ import Bittide.Instances.Domains (Basic125, Ext125)
 import Bittide.ProcessingElement
 import Bittide.SharedTypes
 import Bittide.Wishbone
+import Protocols.MemoryMap (
+  BackwardAnnotated,
+  MemoryMap (..),
+  MemoryMapped,
+  annotationSnd',
+  withPrefix,
+ )
 
 data TestStatus = Running | Success | Fail
   deriving (Enum, Eq, Generic, NFDataX, BitPack)
@@ -61,14 +68,86 @@ vexRiscvInner jtagIn0 uartRx =
   ((_, jtagOut), (status, uartTx)) =
     circuitFn ((uartRx, jtagIn0), (pure (), pure ()))
 
-  Circuit circuitFn = circuit $ \(uartRx, jtag) -> do
-    [timeBus, uartBus, statusRegisterBus] <- processingElement peConfig -< jtag
-    (uartTx, _uartStatus) <- uartWb @dom d16 d16 (SNat @921600) -< (uartBus, uartRx)
-    timeWb -< timeBus
-    testResult <- statusRegister -< statusRegisterBus
+  circuitFn ::
+    ( Fwd (CSignal dom Bit, Jtag dom)
+    , Bwd (CSignal dom TestStatus, CSignal dom Bit)
+    ) ->
+    ( Bwd (CSignal dom Bit, Jtag dom)
+    , Fwd (CSignal dom TestStatus, CSignal dom Bit)
+    )
+  circuitFn = toSignals circ'
+
+  circ' :: Circuit (CSignal dom Bit, Jtag dom) (CSignal dom TestStatus, CSignal dom Bit)
+  circ' = removeAnnSnd circ
+
+  removeAnnSnd :: Circuit (a, BackwardAnnotated ann b) c -> Circuit (a, b) c
+  removeAnnSnd (Circuit f) = Circuit $ \(fwd, bwd) ->
+    let ((bwdA, (_, bwdB)), fwd') = f (fwd, bwd)
+     in ((bwdA, bwdB), fwd')
+
+  SimOnly _memoryMap = annotationSnd' circ
+
+  -- circ :: Circuit (MemoryMapped (CSignal dom Bit, Jtag dom)) (CSignal dom TestStatus, CSignal dom Bit)
+  -- circ = undefined
+
+  -- circ :: Circuit (MemoryMapped (CSignal dom Bit, Jtag dom)) ()
+  -- circ = circuit $ \(uartRx, jtag) -> do
+  --   [timeBus, uartBus, statusRegisterBus] <- processingElementM
+  --           0b010 (Undefined @(Div (64 * 1024) 4))
+  --           0b100 (Undefined @(Div (64 * 1024) 4)) -< jtag
+  --   (uartTx, _uartStatus) <- withPrefix 0b110 (uartM @dom "UART" d16 d16 (SNat @921600)) -< (uartBus, uartRx)
+  --   withPrefix 0b101 (timeM "Timer") -< timeBus
+  --   testResult <- withPrefix 0b111 statusRegister -< statusRegisterBus
+  --   idC -< (testResult, uartTx)
+
+  circ ::
+    Circuit
+      (CSignal dom Bit, MemoryMapped (Jtag dom))
+      (CSignal dom TestStatus, CSignal dom Bit)
+  circ = circuit $ \(uartRx, jtag) -> do
+    [timeBus, uartBus, statusRegisterBus] <-
+      processingElementM
+        0b010
+        (Undefined @(Div (64 * 1024) 4))
+        0b100
+        (Undefined @(Div (64 * 1024) 4))
+        -< jtag
+    withPrefix 0b101 (timeM "Timer") -< timeBus
+    (uartTx, _uartStatus) <-
+      withPrefixFst
+        0b110
+        (uartM @dom @29 @4 "UART" d16 d16 (SNat @921600))
+        -< (uartBus, uartRx)
+    testResult <- withPrefix 0b111 statusRegM -< statusRegisterBus
     idC -< (testResult, uartTx)
 
-  statusRegister :: Circuit (Wishbone dom 'Standard 29 (Bytes 4)) (CSignal dom TestStatus)
+  -- circ' = circuit $ \(uartRx, jtag) -> do
+  --   [timeBus, uartBus, statusRegisterBus] <- processingElement peConfig -< jtag
+  --   (uartTx, _uartStatus) <- uartWb @dom d16 d16 (SNat @921600) -< (uartBus, uartRx)
+  --   timeWb -< timeBus
+  --   testResult <- statusRegister -< statusRegisterBus
+  --   idC -< (testResult, uartTx)
+
+  withPrefixFst ::
+    BitVector n ->
+    Circuit (BackwardAnnotated ann a, b) c ->
+    Circuit (BackwardAnnotated (BitVector n, ann) a, b) c
+  withPrefixFst prefix (Circuit f) = Circuit $ \(fwd, bwd) ->
+    let (((ann, bwdA), bwdB), fwd') = f (fwd, bwd)
+     in ((((prefix, ann), bwdA), bwdB), fwd')
+
+  statusRegM ::
+    Circuit (MemoryMapped (Wishbone dom 'Standard addr (Bytes 4))) (CSignal dom TestStatus)
+  statusRegM = Circuit go
+   where
+    go (fwd, _) =
+      ((SimOnly memMap, bwd), status')
+     where
+      Circuit f = statusRegister
+      (bwd, status') = f (fwd, pure ())
+      memMap = MemoryMap{deviceDefs = mempty, tree = errorX ""}
+
+  statusRegister :: Circuit (Wishbone dom 'Standard addr (Bytes 4)) (CSignal dom TestStatus)
   statusRegister = Circuit $ \(fwd, _) ->
     let (unbundle -> (m2s, st)) = mealy go Running fwd
      in (m2s, st)
@@ -110,7 +189,7 @@ vexRiscvInner jtagIn0 uartRx =
   -- ╰────────┴───────┴───────┴────────────────────────────────────╯
   --
   -- peConfig :: PeConfig 5
-  peConfig =
+  _peConfig =
     PeConfig
       (0b100 :> 0b010 :> 0b101 :> 0b110 :> 0b111 :> Nil)
       (Undefined @(Div (64 * 1024) 4)) -- 64 KiB

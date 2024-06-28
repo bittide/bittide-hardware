@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
@@ -13,6 +13,7 @@ module Bittide.DoubleBufferedRam where
 import Clash.Prelude
 
 import Data.Constraint
+import qualified Data.Map.Strict as Map
 import Data.Maybe
 import Protocols (Ack (Ack), CSignal, Circuit (Circuit), Df)
 import Protocols.Df (dataToMaybe)
@@ -22,6 +23,9 @@ import Bittide.Extra.Maybe
 import Bittide.SharedTypes hiding (delayControls)
 import Data.Constraint.Nat.Extra
 import Data.Typeable
+import GHC.Stack (HasCallStack, callStack, getCallStack)
+import Protocols.MemoryMap (Access (ReadWrite), DeviceDefinition (..), MemoryMap (..), MemoryMapTree (DeviceInstance), MemoryMapped, Name (..), Register (..))
+import Protocols.MemoryMap.FieldType (ToFieldType (toFieldType))
 
 data ContentType n a
   = Vec (Vec n a)
@@ -102,6 +106,64 @@ contentGenerator content = case compareSNat d1 (SNat @romSize) of
     element = initializedRam content (bitCoerce <$> romAddr1) (pure Nothing)
   _ -> (pure Nothing, pure True)
 
+wbStorageDPM ::
+  forall dom depth awA awB.
+  ( HiddenClockResetEnable dom
+  , HasCallStack
+  , KnownNat awA
+  , 2 <= awA
+  , KnownNat awB
+  , 2 <= awB
+  , KnownNat depth
+  , 1 <= depth
+  ) =>
+  String ->
+  InitialContent depth (Bytes 4) ->
+  Circuit
+    ( MemoryMapped (Wishbone dom 'Standard awA (Bytes 4))
+    , MemoryMapped (Wishbone dom 'Standard awB (Bytes 4))
+    )
+    ()
+wbStorageDPM name initContent = Circuit go
+ where
+  go ((m2sA, m2sB), ()) = (((SimOnly memoryMap, s2mA), (SimOnly memoryMap, s2mB)), ())
+   where
+    (s2mA, s2mB) = wbStorageDP initContent m2sA m2sB
+
+    (defLoc, instanceLoc) = case getCallStack callStack of
+      ((_, d') : (_, i') : _) -> (d', i')
+      _ -> error "wbStorageDPM needs to be called with `HasCallStack`"
+    memoryMap =
+      MemoryMap
+        { tree = DeviceInstance instanceLoc Nothing name deviceName
+        , deviceDefs = deviceDefs
+        }
+    deviceName = "Storage_" <> name
+
+    sizeWords = snatToInteger (SNat @depth)
+    sizeBytes = sizeWords * 4
+
+    deviceDefs = Map.singleton deviceName definition
+    definition =
+      DeviceDefinition
+        { deviceName =
+            Name
+              { name = deviceName
+              , description = ""
+              }
+        , registers = [(dataRegDesc, defLoc, dataReg)]
+        , defLocation = defLoc
+        }
+    dataRegDesc = Name{name = "data", description = ""}
+    dataReg =
+      Register
+        { access = ReadWrite
+        , address = 0
+        , fieldType = toFieldType @(Vec depth (Bytes 4))
+        , fieldSize = sizeBytes
+        , reset = Nothing
+        }
+
 -- | Circuit wrapper around `wbStorageDP`.
 wbStorageDPC ::
   forall dom depth awA awB.
@@ -181,6 +243,58 @@ wbStorageDP initial aM2S bM2S = (aS2M, bS2M)
         (bundle (noTerminate <$> storageOut, storageOut))
 
   noTerminate wb = wb{acknowledge = False, err = False, retry = False, stall = False}
+
+wbStorageM ::
+  forall dom depth aw.
+  ( HiddenClockResetEnable dom
+  , HasCallStack
+  , KnownNat aw
+  , 2 <= aw
+  , KnownNat depth
+  , 1 <= depth
+  ) =>
+  String ->
+  InitialContent depth (Bytes 4) ->
+  Circuit (MemoryMapped (Wishbone dom 'Standard aw (Bytes 4))) ()
+wbStorageM name initContent = Circuit go
+ where
+  go (m2s, ()) = ((SimOnly memoryMap, s2m), ())
+   where
+    s2m = wbStorage' initContent m2s
+
+    (defLoc, instanceLoc) = case getCallStack callStack of
+      ((_, d') : (_, i') : _) -> (d', i')
+      _ -> error "wbStorageM needs to be called with `HasCallStack`"
+    memoryMap =
+      MemoryMap
+        { tree = DeviceInstance instanceLoc Nothing name deviceName
+        , deviceDefs = deviceDefs
+        }
+    deviceName = "Storage_" <> name
+
+    sizeWords = snatToInteger (SNat @depth)
+    sizeBytes = sizeWords * 4
+
+    deviceDefs = Map.singleton deviceName definition
+    definition =
+      DeviceDefinition
+        { deviceName =
+            Name
+              { name = deviceName
+              , description = ""
+              }
+        , registers = [(dataRegDesc, defLoc, dataReg)]
+        , defLocation = defLoc
+        }
+    dataRegDesc = Name{name = "data", description = ""}
+    dataReg =
+      Register
+        { access = ReadWrite
+        , address = 0
+        , fieldType = toFieldType @(Vec depth (Bytes 4))
+        , fieldSize = sizeBytes
+        , reset = Nothing
+        }
 
 {- | Wishbone storage element with 'Circuit' interface from "Protocols.Wishbone" that
 allows for word aligned reads and writes.

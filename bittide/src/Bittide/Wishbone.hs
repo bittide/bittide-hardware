@@ -23,12 +23,18 @@ import Clash.Util.Interpolate
 import Data.Bifunctor
 import Data.Bool (bool)
 import Data.Constraint.Nat.Extra
+import qualified Data.List as List
+import qualified Data.Map.Strict as Map
 import Data.Maybe
 
 import Protocols
 import Protocols.Wishbone
 
+import GHC.Stack (HasCallStack, SrcLoc (..), callStack, getCallStack)
 import qualified Protocols.Df as Df
+import Protocols.MemoryMap (BackwardAnnotated, MemoryMapped)
+import qualified Protocols.MemoryMap as MM
+import Protocols.MemoryMap.FieldType
 import qualified Protocols.Wishbone as Wishbone
 
 {- $setup
@@ -43,6 +49,55 @@ type MemoryMap nSlaves = Vec nSlaves (Unsigned (CLog 2 nSlaves))
 
 -- | Size of a bus that results from a `singleMasterInterconnect` with `nSlaves` slaves.
 type MappedBusAddrWidth addr nSlaves = addr - CLog 2 nSlaves
+
+singleMasterInterconnectM ::
+  forall dom nSlaves addrW a.
+  ( HiddenClockResetEnable dom
+  , HasCallStack
+  , KnownNat nSlaves
+  , 1 <= nSlaves
+  , KnownNat addrW
+  , (CLog 2 nSlaves <= addrW)
+  , BitPack a
+  , NFDataX a
+  ) =>
+  Maybe Integer ->
+  Circuit
+    (MemoryMapped (Wishbone dom 'Standard addrW a))
+    ( Vec
+        nSlaves
+        ( BackwardAnnotated
+            (BitVector (CLog 2 nSlaves), SimOnly MM.MemoryMap)
+            (Wishbone dom 'Standard (MappedBusAddrWidth addrW nSlaves) a)
+        )
+    )
+singleMasterInterconnectM absAddr' = Circuit go
+ where
+  go (m2s, unzip -> (unzip -> (prefixes, mmaps), s2ms)) =
+    ((SimOnly memoryMap, s2m), unbundle m2ss)
+   where
+    loc = case getCallStack callStack of
+      (_, l) : _ -> l
+      _ -> emptyLocation
+
+    memoryMap =
+      MM.MemoryMap
+        { deviceDefs = unionAll (MM.deviceDefs . unSim <$> toList mmaps)
+        , tree = MM.Interconnect loc absAddr' (toList descs)
+        }
+
+    size = maxBound :: BitVector (addrW - CLog 2 nSlaves)
+    unionAll = List.foldl Map.union Map.empty
+    unSim (SimOnly x) = x
+    relAddrs = prefixToAddr <$> prefixes
+    descs = zip3 relAddrs (repeat (toInteger size)) (MM.tree . unSim <$> mmaps)
+
+    internalMap = bitCoerce <$> prefixes
+    prefixToAddr prefix = toInteger prefix `shiftL` fromInteger shift'
+     where
+      shift' = snatToInteger $ SNat @(addrW - CLog 2 nSlaves)
+
+    (s2m, m2ss) = singleMasterInterconnect' @dom internalMap m2s (bundle s2ms)
 
 {-# NOINLINE singleMasterInterconnect #-}
 
@@ -256,6 +311,111 @@ uartDf baud = Circuit go
     )
    where
     (received, txBit, ack) = uart baud rxBit (Df.dataToMaybe <$> request)
+
+uartM ::
+  forall dom addrW nBytes baudRate transmitBufferDepth receiveBufferDepth.
+  ( HasCallStack
+  , HiddenClockResetEnable dom
+  , ValidBaud dom baudRate
+  , 1 <= transmitBufferDepth
+  , 1 <= receiveBufferDepth
+  , 2 <= addrW
+  , KnownNat addrW
+  , KnownNat nBytes
+  , 1 <= nBytes
+  ) =>
+  -- | Name of the UART instance
+  String ->
+  -- | Recommended value: 16. This seems to be a good balance between resource
+  -- usage and usability.
+  SNat transmitBufferDepth ->
+  -- | Recommended value: 16. This seems to be a good balance between resource
+  -- usage and usability.
+  SNat receiveBufferDepth ->
+  -- | Valid baud rates are constrained by @clash-cores@'s 'ValidBaud' constraint.
+  SNat baudRate ->
+  Circuit
+    ( MemoryMapped
+        (Wishbone dom 'Standard addrW (Bytes nBytes))
+    , CSignal dom Bit
+    )
+    (CSignal dom Bit, CSignal dom (Bool, Bool))
+uartM name txDepth@SNat rxDepth@SNat baud = Circuit go
+ where
+  go ::
+    ( Fwd
+        ( BackwardAnnotated
+            (SimOnly MM.MemoryMap)
+            (Wishbone dom 'Standard addrW (BitVector (nBytes * 8)))
+        , CSignal dom Bit
+        )
+    , Bwd (CSignal dom Bit, CSignal dom (Bool, Bool))
+    ) ->
+    ( Bwd
+        ( BackwardAnnotated
+            (SimOnly MM.MemoryMap)
+            (Wishbone dom 'Standard addrW (BitVector (nBytes * 8)))
+        , CSignal dom Bit
+        )
+    , Fwd (CSignal dom Bit, CSignal dom (Bool, Bool))
+    )
+  go ((m2s, rx), _) = (((SimOnly memoryMap, s2m), pure ()), (tx, status))
+   where
+    (defLoc, instanceLoc) = case getCallStack callStack of
+      ((_, d') : (_, i') : _) -> (d', i')
+      _ -> error "uartM needs to be called with `HasCallStack`"
+
+    memoryMap = MM.MemoryMap{deviceDefs, tree}
+    tree = MM.DeviceInstance instanceLoc Nothing name "UART"
+    deviceDefs = Map.singleton "UART" definition
+    definition =
+      MM.DeviceDefinition
+        { deviceName =
+            MM.Name
+              { name = "UART"
+              , description = ""
+              }
+        , registers =
+            [ (dataRegDesc, emptyLocation, dataReg)
+            , (statusRegDesc, emptyLocation, statusReg)
+            ]
+        , defLocation = defLoc
+        }
+
+    dataRegDesc = MM.Name{name = "data", description = ""}
+    dataReg =
+      MM.Register
+        { access = MM.ReadWrite
+        , address = 0
+        , fieldType = toFieldType @(BitVector 8)
+        , fieldSize = 1
+        , reset = Nothing
+        }
+
+    statusRegDesc = MM.Name{name = "status", description = ""}
+    statusReg =
+      MM.Register
+        { access = MM.ReadOnly
+        , address = 4
+        , fieldType = toFieldType @(BitVector 2)
+        , fieldSize = 1
+        , reset = Nothing
+        }
+
+    Circuit uartFn = uartWb @dom @addrW @nBytes txDepth rxDepth baud
+    ((s2m, _), (tx, status)) = uartFn ((m2s, rx), (pure (), pure ()))
+
+emptyLocation :: SrcLoc
+emptyLocation =
+  SrcLoc
+    { srcLocPackage = ""
+    , srcLocModule = ""
+    , srcLocFile = ""
+    , srcLocStartLine = 0
+    , srcLocEndLine = 0
+    , srcLocStartCol = 0
+    , srcLocEndCol = 0
+    }
 
 {- | Wishbone accessible UART interface with configurable FIFO buffers.
   It takes the depths of the transmit and receive buffers and the baud rate as parameters.
@@ -506,6 +666,83 @@ wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
     | otherwise = repeat Nothing
   wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}
 
+timeM ::
+  forall dom addrW.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , 2 <= addrW
+  , 1 <= DomainPeriod dom
+  ) =>
+  String ->
+  Circuit (MemoryMapped (Wishbone dom 'Standard addrW (Bytes 4))) ()
+timeM name = Circuit go
+ where
+  go ::
+    ( Fwd (MemoryMapped (Wishbone dom 'Standard addrW (BitVector 32)))
+    , Bwd ()
+    ) ->
+    ( Bwd
+        (MemoryMapped (Wishbone dom 'Standard addrW (BitVector 32)))
+    , Fwd ()
+    )
+  go (m2s, ()) = ((SimOnly memoryMap, s2m), ())
+   where
+    (defLoc, instanceLoc) = case getCallStack callStack of
+      ((_, d') : (_, i') : _) -> (d', i')
+      _ -> error "timeM needs to be called with `HasCallStack`"
+
+    memoryMap = MM.MemoryMap{deviceDefs, tree}
+    tree = MM.DeviceInstance instanceLoc Nothing name "Timer"
+    deviceDefs = Map.singleton "Timer" definition
+    definition =
+      MM.DeviceDefinition
+        { deviceName =
+            MM.Name
+              { name = "Timer"
+              , description =
+                  "Circuit that contains a free running 64 bit counter. We can observe this counter to get a sense of time, overflows should be accounted for by the master."
+              }
+        , registers =
+            [ (freezeRegDesc, emptyLocation, freezeReg)
+            , (counterRegDesc, emptyLocation, counterReg)
+            , (frequencyRegDesc, emptyLocation, frequencyReg)
+            ]
+        , defLocation = defLoc
+        }
+
+    freezeRegDesc = MM.Name{name = "freeze_count", description = ""}
+    freezeReg =
+      MM.Register
+        { access = MM.WriteOnly
+        , address = 0
+        , fieldType = toFieldType @(BitVector 1)
+        , fieldSize = 1
+        , reset = Nothing
+        }
+
+    counterRegDesc = MM.Name{name = "counter", description = ""}
+    counterReg =
+      MM.Register
+        { access = MM.ReadOnly
+        , address = 8
+        , fieldType = toFieldType @(BitVector 64)
+        , fieldSize = 8
+        , reset = Nothing
+        }
+
+    frequencyRegDesc = MM.Name{name = "frequency", description = ""}
+    frequencyReg =
+      MM.Register
+        { access = MM.ReadOnly
+        , address = 16
+        , fieldType = toFieldType @(BitVector 64)
+        , fieldSize = 8
+        , reset = Nothing
+        }
+
+    Circuit timeFn = timeWb
+    (s2m, ()) = timeFn (m2s, ())
+
 {- | Wishbone accessible circuit that contains a free running 64 bit counter. We can
 observe this counter to get a sense of time, overflows should be accounted for by
 the master.
@@ -528,7 +765,7 @@ timeWb = Circuit $ \(wbM2S, _) -> (mealy goMealy (0, 0) wbM2S, ())
     RegisterBank (splitAtI -> (freqMsbs, freqLsbs)) = getRegsBe @8 freq
     (writes, wbS2M) =
       wbToVec
-        (0 :> fmap pack (frozenLsbs :> frozenMsbs :> freqLsbs :> freqMsbs :> Nil))
+        (0 :> 0 :> fmap pack (frozenLsbs :> frozenMsbs :> freqLsbs :> freqMsbs :> Nil))
         wbM2S
 
 {- | Wishbone wrapper for DnaPortE2, adds extra register with wishbone interface

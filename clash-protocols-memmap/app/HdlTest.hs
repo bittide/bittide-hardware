@@ -6,6 +6,5 @@ import Prelude
 
 import qualified Clash.Main as Clash
 
-
 main :: IO ()
 main = Clash.defaultMain ["Internal.HdlTest.UartMock", "-main-is", "topLevel", "--verilog"]

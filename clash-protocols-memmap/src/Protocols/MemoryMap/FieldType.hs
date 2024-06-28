@@ -1,13 +1,17 @@
+-- SPDX-FileCopyrightText: 2024 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module Protocols.MemoryMap.FieldType where
 
 import Clash.Prelude
+import Data.Int
+import Data.Word
 import GHC.Generics hiding (moduleName, packageName)
 import qualified GHC.Generics
-import Data.Word
-import Data.Int
 
 data TypeName = TypeName
   { name :: String
@@ -45,7 +49,8 @@ class (KnownNat (Generics a)) => ToFieldType (a :: Type) where
   args :: Vec (Generics a) FieldType
   args = repeat undefined
 
-  default toFieldType :: (Generic (WithVars a), GToFieldType (Rep (WithVars a))) => FieldType
+  default toFieldType ::
+    (Generic (WithVars a), GToFieldType (Rep (WithVars a))) => FieldType
   toFieldType = case (gToFieldType @(Rep (WithVars a)), toList (args @a)) of
     (ft, []) -> ft
     (TypeReference _ft _args', _args'') -> error "shouldn't happen!??"
@@ -86,8 +91,6 @@ instance (ToFieldType a, ToFieldType b) => ToFieldType (Either a b) where
   type WithVars (Either a b) = Either (Var 0) (Var 1)
   args = toFieldType @a :> toFieldType @b :> Nil
 
-
-
 data MyTestType
   = SomeVar
   | AnotherVar (Maybe (BitVector 8))
@@ -105,23 +108,22 @@ instance (ToFieldType a) => ToFieldType (MyTestGen a) where
 
   args = toFieldType @a :> Nil
 
-
 instance ToFieldType Bool where
   toFieldType = BoolFieldType
 
 instance ToFieldType Bit where
   toFieldType = BitVectorFieldType 1
 
-instance forall n . (KnownNat n) => ToFieldType (BitVector n) where
+instance forall n. (KnownNat n) => ToFieldType (BitVector n) where
   toFieldType = BitVectorFieldType (fromIntegral $ snatToInteger $ SNat @n)
 
-instance forall n . (KnownNat n) => ToFieldType (Signed n) where
+instance forall n. (KnownNat n) => ToFieldType (Signed n) where
   toFieldType = SignedFieldType (fromIntegral $ snatToInteger $ SNat @n)
 
-instance forall n . (KnownNat n) => ToFieldType (Unsigned n) where
+instance forall n. (KnownNat n) => ToFieldType (Unsigned n) where
   toFieldType = SignedFieldType (fromIntegral $ snatToInteger $ SNat @n)
 
-instance forall n a . (KnownNat n, ToFieldType a) => ToFieldType (Vec n a) where
+instance forall n a. (KnownNat n, ToFieldType a) => ToFieldType (Vec n a) where
   toFieldType = VecFieldType (fromIntegral $ snatToInteger $ SNat @n) (toFieldType @a)
 
 instance ToFieldType Word8 where toFieldType = UnsignedFieldType 8
@@ -140,12 +142,12 @@ class GToFieldType f where
 
 instance (Datatype m, GFieldTypeCons inner) => GToFieldType (D1 m inner) where
   gToFieldType = SumOfProductFieldType name' $ gToFieldTypeCons @inner
-    where
-      name' = TypeName { name = tyName, moduleName = mod', packageName = pck, isNewType = newtype' }
-      mod' = GHC.Generics.moduleName @m undefined
-      tyName = datatypeName @m undefined
-      newtype' = isNewtype @m undefined
-      pck = GHC.Generics.packageName @m undefined
+   where
+    name' = TypeName{name = tyName, moduleName = mod', packageName = pck, isNewType = newtype'}
+    mod' = GHC.Generics.moduleName @m undefined
+    tyName = datatypeName @m undefined
+    newtype' = isNewtype @m undefined
+    pck = GHC.Generics.packageName @m undefined
 
 instance (ToFieldType inner) => GToFieldType (Rec0 inner) where
   gToFieldType = toFieldType @inner
@@ -158,12 +160,11 @@ instance GFieldTypeCons V1 where
 
 instance (Constructor m, GFieldTypeFields inner) => GFieldTypeCons (C1 m inner) where
   gToFieldTypeCons = [(conName', gFieldTypeFields @inner)]
-    where
-      conName' = conName @m undefined
+   where
+    conName' = conName @m undefined
 
 instance (GFieldTypeCons a, GFieldTypeCons b) => GFieldTypeCons (a :+: b) where
   gToFieldTypeCons = gToFieldTypeCons @a <> gToFieldTypeCons @b
-
 
 class GFieldTypeFields f where
   gFieldTypeFields :: [Named FieldType]
@@ -173,8 +174,8 @@ instance GFieldTypeFields U1 where
 
 instance (Selector m, GToFieldType inner) => GFieldTypeFields (S1 m inner) where
   gFieldTypeFields = [(fieldName, gToFieldType @inner)]
-    where
-      fieldName = selName @m undefined
+   where
+    fieldName = selName @m undefined
 
 instance (GFieldTypeFields a, GFieldTypeFields b) => GFieldTypeFields (a :*: b) where
   gFieldTypeFields = gFieldTypeFields @a <> gFieldTypeFields @b

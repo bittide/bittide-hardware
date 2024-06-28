@@ -24,6 +24,9 @@ import Bittide.Wishbone
 import Clash.Cores.Xilinx.Ila (Depth (D4096))
 
 import qualified Data.ByteString as BS
+import GHC.Stack (HasCallStack)
+import Protocols.MemoryMap (BackwardAnnotated, MemoryMapped, passAnn)
+import qualified Protocols.MemoryMap as MM
 
 -- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where
@@ -41,6 +44,81 @@ data PeConfig nBusses where
     InitialContent depthD (Bytes 4) ->
     PeConfig nBusses
 
+processingElementM ::
+  forall dom nBusses depthI depthD.
+  ( HasCallStack
+  , HiddenClockResetEnable dom
+  , KnownNat nBusses
+  , 2 <= nBusses
+  , CLog 2 nBusses <= 30
+  , KnownNat depthI
+  , 1 <= depthI
+  , KnownNat depthD
+  , 1 <= depthD
+  ) =>
+  -- | Prefix of the instruction memory
+  BitVector (CLog 2 nBusses) ->
+  -- | Initial content of the instruction memory, can be smaller than its total depth.
+  InitialContent depthI (Bytes 4) ->
+  -- | Prefix of the data memory
+  BitVector (CLog 2 nBusses) ->
+  -- | Initial content of the data memory, can be smaller than its total depth.
+  InitialContent depthD (Bytes 4) ->
+  Circuit
+    (MemoryMapped (Jtag dom))
+    ( Vec
+        (nBusses - 2)
+        ( BackwardAnnotated
+            (BitVector (CLog 2 nBusses), SimOnly MM.MemoryMap)
+            ( Wishbone dom 'Standard (MappedBusAddrWidth 32 nBusses) (Bytes 4)
+            )
+        )
+    )
+processingElementM iPre initI dPre initD =
+  circuit $ \jtagIn -> do
+    (iBus0, dBus0) <- rvM (pure low) (pure low) (pure low) -< jtagIn
+
+    iBus1 <- passAnn (ilaWb (SSymbol @"instructionBus") 2 D4096) -< iBus0
+    dBus1 <- passAnn (ilaWb (SSymbol @"dataBus") 2 D4096) -< dBus0
+
+    ([iMemBus, dMemBus], extBusses) <-
+      (splitAtC d2 <| singleMasterInterconnectM Nothing) -< dBus1
+    MM.withPrefix dPre (wbStorageM "" initD) -< dMemBus
+    iBus2 <- stripPrefix removeMsb -< iBus1 -- XXX: <= This should be handled by an interconnect
+    withPrefixDouble iPre (wbStorageDPM "" initI) -< (iBus2, iMemBus)
+    idC -< extBusses
+ where
+  removeMsb ::
+    forall aw a ann.
+    (KnownNat aw) =>
+    Circuit
+      (MM.BackwardAnnotated ann (Wishbone dom 'Standard (aw + 4) a))
+      (MM.BackwardAnnotated ann (Wishbone dom 'Standard aw a))
+  removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + 4) -> BitVector aw)) id
+
+  wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
+
+  stripPrefix ::
+    (HasCallStack) =>
+    Circuit (BackwardAnnotated (BitVector n, ann) a) b ->
+    Circuit (BackwardAnnotated ann a) b
+  stripPrefix (Circuit f) = Circuit $ \(fwd, bwd) ->
+    let
+      (((_p, ann), bwd'), fwd') = f (fwd, bwd)
+     in
+      ((ann, bwd'), fwd')
+
+  withPrefixDouble ::
+    (HasCallStack) =>
+    BitVector n ->
+    Circuit (BackwardAnnotated ann a, BackwardAnnotated ann b) c ->
+    Circuit (BackwardAnnotated (BitVector n, ann) a, BackwardAnnotated (BitVector n, ann) b) c
+  withPrefixDouble p (Circuit f) = Circuit $ \((fwdA, fwdB), bwd) ->
+    let
+      (((annA, bwdA), (annB, bwdB)), fwd') = f ((fwdA, fwdB), bwd)
+     in
+      ((((p, annA), bwdA), ((p, annB), bwdB)), fwd')
+
 {- | VexRiscV based RV32IMC core together with instruction memory, data memory and
 'singleMasterInterconnect'.
 -}
@@ -54,7 +132,11 @@ processingElement ::
   PeConfig nBusses ->
   Circuit
     (Jtag dom)
-    (Vec (nBusses - 2) (Wishbone dom 'Standard (MappedBusAddrWidth 32 nBusses) (Bytes 4)))
+    ( Vec
+        (nBusses - 2)
+        ( Wishbone dom 'Standard (MappedBusAddrWidth 32 nBusses) (Bytes 4)
+        )
+    )
 processingElement (PeConfig memMapConfig initI initD) = circuit $ \jtagIn -> do
   (iBus0, dBus0) <- rvCircuit (pure low) (pure low) (pure low) -< jtagIn
   iBus1 <- ilaWb (SSymbol @"instructionBus") 2 D4096 -< iBus0
@@ -86,6 +168,33 @@ splitAtC SNat = Circuit go
    where
     (fwdLeft, fwdRight) = splitAtI fwd
     bwd = bwdLeft ++ bwdRight
+
+rvM ::
+  (HasCallStack, HiddenClockResetEnable dom) =>
+  Signal dom Bit ->
+  Signal dom Bit ->
+  Signal dom Bit ->
+  Circuit
+    (MemoryMapped (Jtag dom))
+    ( MemoryMapped (Wishbone dom 'Standard 32 (Bytes 4))
+    , MemoryMapped (Wishbone dom 'Standard 32 (Bytes 4))
+    )
+rvM tInterrupt sInterrupt eInterrupt = Circuit go
+ where
+  go (jtagIn, ((SimOnly iMM, iBusIn), (SimOnly dMM, dBusIn))) =
+    ((SimOnly memoryMap, jtagOut), (iBusOut, dBusOut))
+   where
+    rv = toSignals (rvCircuit tInterrupt sInterrupt eInterrupt)
+    (jtagOut, (iBusOut, dBusOut)) = rv (jtagIn, (iBusIn, dBusIn))
+
+    memoryMap =
+      MM.MemoryMap
+        { MM.deviceDefs = MM.mergeDeviceDefs (MM.deviceDefs <$> [iMM, dMM])
+        , -- IMPORTANT: we're ignoring the tree of the iBus here, presumably
+          -- there is only one storage connected to that bus
+          -- and that same storage is also mapped on the dBus
+          MM.tree = MM.tree dMM
+        }
 
 rvCircuit ::
   (HiddenClockResetEnable dom) =>
