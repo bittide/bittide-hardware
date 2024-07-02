@@ -11,6 +11,32 @@ import Clash.Prelude
 
 type Si5395RegisterMap = Si539xRegisterMap 3 584 5
 
+type TestConfig6_250_on_0a_RegisterMap = Si539xRegisterMap 3 590 5
+type TestConfig6_250_on_0a_TotalRegs = 3 + 590 + 5
+
+{- | Configuration for Si5395J with the following configuration:
+
+ out0:   250MHz LVDS 1.8V
+ out0a:  250MHz LVDS 1.8V
+ out9a: 12.5MHz LVDS 1.8V
+
+ all of them doing 1ppb steps on Finc/Fdec
+-}
+testConfig6_250_on_0a_1ppb :: TestConfig6_250_on_0a_RegisterMap
+testConfig6_250_on_0a_1ppb = $(parseFromFileToRegisterMap "Si5395J-250MHz-1ppb-Registers")
+
+-- | Same as 'testConfig6_250_on_0a_1ppb', but with a 10 ppb step size
+testConfig6_250_on_0a_10ppb :: TestConfig6_250_on_0a_RegisterMap
+testConfig6_250_on_0a_10ppb = $(parseFromFileToRegisterMap "Si5395J-250MHz-10ppb-Registers")
+
+-- | Same as 'testConfig6_250_on_0a_1ppb', but with a 100 ppb step size
+testConfig6_250_on_0a_100ppb :: TestConfig6_250_on_0a_RegisterMap
+testConfig6_250_on_0a_100ppb = $(parseFromFileToRegisterMap "Si5395J-250MHz-100ppb-Registers")
+
+-- | Same as 'testConfig6_250_on_0a_1ppb', but with a 1 ppm step size
+testConfig6_250_on_0a_1ppm :: TestConfig6_250_on_0a_RegisterMap
+testConfig6_250_on_0a_1ppm = $(parseFromFileToRegisterMap "Si5395J-250MHz-1ppm-Registers")
+
 type TestConfig6_200_on_0a_RegisterMap = Si539xRegisterMap 3 590 5
 type TestConfig6_200_on_0a_TotalRegs = 3 + 590 + 5
 
