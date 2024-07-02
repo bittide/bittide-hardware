@@ -193,7 +193,6 @@ targets =
     , defTarget "Bittide.Instances.Pnr.ScatterGather.gatherUnit1KReducedPins"
     , defTarget "Bittide.Instances.Pnr.ScatterGather.scatterUnit1K"
     , defTarget "Bittide.Instances.Pnr.ScatterGather.scatterUnit1KReducedPins"
-    , defTarget "Bittide.Instances.Pnr.Si539xSpi.callistoSpi"
     , defTarget "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
     , defTarget "Bittide.Instances.Pnr.StabilityChecker.stabilityChecker_3_1M"
     , defTarget "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
