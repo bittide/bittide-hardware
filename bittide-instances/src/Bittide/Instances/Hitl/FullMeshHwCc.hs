@@ -184,7 +184,7 @@ be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
 results to a RiscV core (see 'fullMeshRiscvCopyTest')
 -}
 fullMeshHwTest ::
-  "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: Clock Ext250 ->
   "SYSCLK" ::: Clock Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
@@ -243,7 +243,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
     transceiverPrbsN
       @GthTx
       @GthRx
-      @Ext200
+      @Ext250
       @Basic125
       @GthTxS
       @GthRxS
@@ -367,7 +367,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
 
 -- | Top entity for this test. See module documentation for more information.
 fullMeshHwCcWithRiscvTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext250 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
@@ -390,7 +390,7 @@ fullMeshHwCcWithRiscvTest ::
 fullMeshHwCcWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (txns, txps, (riscvFinc, riscvFdec), syncOut, spiDone, spiOut)
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
+  refClk = ibufds_gte3 refClkDiff :: Clock Ext250
 
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
 
@@ -434,7 +434,7 @@ makeTopEntity 'fullMeshHwCcWithRiscvTest
 
 -- | Top entity for this test. See module documentation for more information.
 fullMeshHwCcTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext250 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
@@ -457,7 +457,7 @@ fullMeshHwCcTest ::
 fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (txns, txps, unbundle hwFincFdecs, syncOut, spiDone, spiOut)
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
+  refClk = ibufds_gte3 refClkDiff :: Clock Ext250
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
   ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
 

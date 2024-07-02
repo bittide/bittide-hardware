@@ -56,11 +56,7 @@ counterStart = 0xDEAD_BEEF_CA55_E77E
 
 -- | A counter starting at 'counterStart'
 counter ::
-  (KnownDomain dom) =>
-  Clock dom ->
-  Reset dom ->
-  Signal dom Bool ->
-  Signal dom (BitVector 64)
+  (KnownDomain dom) => Clock dom -> Reset dom -> Signal dom Bool -> Signal dom (BitVector 64)
 counter clk rst ena = let c = register clk rst (toEnable ena) counterStart (c + 1) in c
 
 {- | Expect a counter starting at 'counterStart' and incrementing by one on each
@@ -84,7 +80,7 @@ information.
 -}
 goTransceiversUpTest ::
   Signal Basic125 FpgaIndex ->
-  "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: Clock Ext250 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
@@ -155,7 +151,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
     transceiverPrbsN
       @GthTx
       @GthRx
-      @Ext200
+      @Ext250
       @Basic125
       @GthTxS
       @GthRxS
@@ -175,7 +171,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
 
 -- | Top entity for this test. See module documentation for more information.
 transceiversUpTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext250 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
@@ -194,7 +190,7 @@ transceiversUpTest ::
 transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (txns, txps, syncOut, spiDone, spiOut)
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
+  refClk = ibufds_gte3 refClkDiff :: Clock Ext250
 
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
 

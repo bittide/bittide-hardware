@@ -205,7 +205,7 @@ fincFdecTests ::
   -- Pins from internal oscillator:
   "CLK_125MHZ" ::: DiffClock Ext125 ->
   -- Pins from clock board:
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext250 ->
   "MISO" ::: Signal Basic125 Bit -> -- SPI
   ""
     ::: ( ""
@@ -229,7 +229,7 @@ fincFdecTests diffClk controlledDiffClock spiIn =
  where
   (clk, clkStableRst :: Reset Basic125) = clockWizardDifferential diffClk noReset
 
-  clkControlled = ibufds_gte3 controlledDiffClock :: Clock Ext200
+  clkControlled = ibufds_gte3 controlledDiffClock :: Clock Ext250
 
   ( _txn
     , _txp
@@ -247,7 +247,7 @@ fincFdecTests diffClk controlledDiffClock spiIn =
       gthCore
         @GthTx
         @GthRx
-        @Ext200
+        @Ext250
         @Basic125
         @GthTxS
         @GthRxS

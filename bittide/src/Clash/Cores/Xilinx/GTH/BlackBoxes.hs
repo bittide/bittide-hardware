@@ -183,7 +183,7 @@ gthCoreTclBBTF bbCtx
     , property @Text "LOCATE_TX_USER_CLOCKING" "CORE"
     , property @Text "LOCATE_USER_DATA_WIDTH_SIZING" "CORE"
     , property @Text "FREERUN_FREQUENCY" "125.0"
-    , property @Text "RX_REFCLK_FREQUENCY" "200"
+    , property @Text "RX_REFCLK_FREQUENCY" "250"
     , -- .X_REFCLK_SOURCE syntax: X0Yn clk[0,1]([+,-]q
       property
         "RX_REFCLK_SOURCE"
@@ -205,11 +205,10 @@ gthCoreTclBBTF bbCtx
       -- , property @Text "RX_COMMA_M_VAL" "1010000011"
       -- , property @Text "RX_COMMA_MASK" "1111111111"
       property @Bool "RX_COMMA_SHOW_REALIGN_ENABLE" False
-    , property @Text "TX_REFCLK_FREQUENCY" "200"
+    , property @Text "TX_REFCLK_FREQUENCY" "250"
     , property
         "TX_REFCLK_SOURCE"
         (BraceTcl @Text $ fromString $ unwords [channelNm, refClkNm])
-    , property @Text "TXPROGDIV_FREQ_VAL" "250"
     , property @Text "TX_DATA_ENCODING" "8B10B"
     , property @Text "TX_INT_DATA_WIDTH" "40"
     , property @Text "TX_LINE_RATE" "10"
