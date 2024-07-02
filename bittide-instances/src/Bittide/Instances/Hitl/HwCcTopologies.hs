@@ -328,10 +328,10 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   (_, _, spiState, spiOut) =
     let
       selectConfig = \case
-        PPB_1 -> testConfig6_200_on_0a_1ppb
-        PPB_10 -> testConfig6_200_on_0a_10ppb
-        PPB_100 -> testConfig6_200_on_0a_100ppb
-        PPM_1 -> testConfig6_200_on_0a_1ppm
+        PPB_1 -> testConfig6_250_on_0a_1ppb
+        PPB_10 -> testConfig6_250_on_0a_10ppb
+        PPB_100 -> testConfig6_250_on_0a_100ppb
+        PPM_1 -> testConfig6_250_on_0a_1ppm
 
       -- TODO: create some generic method for generating this, which
       -- does not rely on template haskell

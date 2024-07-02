@@ -154,7 +154,7 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxNs rxPs miso =
   (_, _, spiState, spiOut) =
     withClockResetEnable sysClk sysRst enableGen
       $ si539xSpi
-        testConfig6_200_on_0a_1ppb
+        testConfig6_250_on_0a_1ppb
         (SNat @(Microseconds 10))
         (pure Nothing)
         miso

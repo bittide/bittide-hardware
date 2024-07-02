@@ -125,7 +125,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
 
   (_, _, spiState, spiOut) =
     withClockResetEnable sysClk sysRst enableGen
-      $ si539xSpi testConfig6_200_on_0a_1ppb (SNat @(Microseconds 10)) (pure Nothing) miso
+      $ si539xSpi testConfig6_250_on_0a_1ppb (SNat @(Microseconds 10)) (pure Nothing) miso
 
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
