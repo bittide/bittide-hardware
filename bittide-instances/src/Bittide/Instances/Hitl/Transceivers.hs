@@ -56,7 +56,11 @@ counterStart = 0xDEAD_BEEF_CA55_E77E
 
 -- | A counter starting at 'counterStart'
 counter ::
-  (KnownDomain dom) => Clock dom -> Reset dom -> Signal dom Bool -> Signal dom (BitVector 64)
+  (KnownDomain dom) =>
+  Clock dom ->
+  Reset dom ->
+  Signal dom Bool ->
+  Signal dom (BitVector 64)
 counter clk rst ena = let c = register clk rst (toEnable ena) counterStart (c + 1) in c
 
 {- | Expect a counter starting at 'counterStart' and incrementing by one on each

@@ -253,6 +253,7 @@ fincFdecTests diffClk controlledDiffClock spiIn =
         @GthRxS
         "X0Y10"
         "clk0"
+        "TXPLLREFCLK_DIV1"
         (pure 0)
         (pure 0) -- rxN and rxP
         clk

@@ -51,17 +51,19 @@ gthCoreBBF _isD _primName _args _resTys = pure $ Right (bbMeta, bb)
   bb :: BlackBox
   bb = BBFunction (show 'gthCoreTF) 0 gthCoreTF
 
+-- | Number of constraints gthCore has
 nConstraints :: Int
 nConstraints = 6
 
-nNameArgs :: Int
-nNameArgs = 2
+-- | Number of "parameters" (non Signal arguments) gthCore has
+nParamArgs :: Int
+nParamArgs = 3
 
 -- | Instantiate IP generated with 'gthCoreTclTF'
 gthCoreTF :: (HasCallStack) => TemplateFunction
 gthCoreTF =
   TemplateFunction
-    [0 .. 10]
+    [0 .. 15]
     (const True)
     gthCoreBBTF
 
@@ -79,7 +81,7 @@ gthCoreBBTF bbCtx
           , _txctrl2_in -- " ::: Signal txUser2 (BitVector (ChansUsed*TX_DATA_WIDTH/8))
           , _gtrefclk0_in -- " ::: Clock refclk0
           ] <-
-      drop (nConstraints + nNameArgs) $ map fst (DSL.tInputs bbCtx)
+      drop (nConstraints + nParamArgs) $ map fst (DSL.tInputs bbCtx)
   , [tResult] <- map DSL.ety (DSL.tResults bbCtx)
   , [gthCoreName] <- N.bbQsysIncName bbCtx =
       do
@@ -153,7 +155,7 @@ IP with @create_ip@
 gthCoreTclTF :: (HasCallStack) => TemplateFunction
 gthCoreTclTF =
   TemplateFunction
-    [0, 1] -- used arguments
+    (fmap (nConstraints +) [0, 1, 2]) -- used arguments
     (const True)
     gthCoreTclBBTF
 
@@ -163,16 +165,18 @@ gthCoreTclBBTF ::
   State s Doc
 gthCoreTclBBTF bbCtx
   | [gthCoreName] <- N.bbQsysIncName bbCtx
-  , (exprToString -> Just channelNm, _, _) : (exprToString -> Just refClkNm, _, _) : _ <-
+  , (exprToString -> Just channelNm, _, _) : (exprToString -> Just refClkNm, _, _)
+      : (exprToString -> Just txOutClkSrc, _, _)
+      : _ <-
       drop nConstraints (N.bbInputs bbCtx) =
-      pure (renderTcl [IpConfigPurpose $ ipConfig gthCoreName channelNm refClkNm])
+      pure (renderTcl [IpConfigPurpose $ ipConfig gthCoreName channelNm refClkNm txOutClkSrc])
  where
-  ipConfig nm channelNm refClkNm =
+  ipConfig nm channelNm refClkNm txOutClkSrc =
     (defIpConfig "gtwizard_ultrascale " "1.7" nm)
-      { properties = props channelNm refClkNm
+      { properties = props channelNm refClkNm txOutClkSrc
       }
 
-  props channelNm refClkNm =
+  props channelNm refClkNm txOutClkSrc =
     [ property @Text "CHANNEL_ENABLE" (fromString channelNm)
     , property @Text "LOCATE_COMMON" "CORE"
     , property @Text "LOCATE_IN_SYSTEM_IBERT_CORE" "NONE"
@@ -209,6 +213,7 @@ gthCoreTclBBTF bbCtx
     , property
         "TX_REFCLK_SOURCE"
         (BraceTcl @Text $ fromString $ unwords [channelNm, refClkNm])
+    , property @Text "TX_OUTCLK_SOURCE" (fromString txOutClkSrc)
     , property @Text "TX_DATA_ENCODING" "8B10B"
     , property @Text "TX_INT_DATA_WIDTH" "40"
     , property @Text "TX_LINE_RATE" "10"
