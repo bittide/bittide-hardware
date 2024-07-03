@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NamedFieldPuns #-}
 
+-- | Check a memory map for overlapping address-ranges in its components.
 module Protocols.MemoryMap.Check.Overlap where
 
 import Prelude
@@ -12,7 +13,6 @@ import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust)
 import GHC.Stack (SrcLoc)
 import Protocols.MemoryMap
-import Protocols.MemoryMap.FieldType
 
 data OverlapError
   = SizeExceedsError
@@ -41,7 +41,7 @@ checkOverlap availableRange MemoryMap{deviceDefs = M.map deviceSize -> dss, tree
     interconnectSizeError <> overlapErrors <> concat componentErrors
    where
     comps1 = zip (L.map (`InterconnectComponent` path) [0 ..]) comps
-    comps2 = L.sortOn (\(_, (addr, _, _)) -> addr) comps1
+    comps2 = L.sortOn (\(_, (addr', _, _)) -> addr') comps1
     (_, (addr, size, _)) = L.last comps2
     interconnectSize = addr + size
     availableSize = end - start
@@ -56,7 +56,7 @@ checkOverlap availableRange MemoryMap{deviceDefs = M.map deviceSize -> dss, tree
         }
       | interconnectSize > availableSize
       ]
-    componentErrors = flip map comps2 $ \(path, (addr, size, comp)) -> walk path (start + addr, start + addr + size) comp
+    componentErrors = flip map comps2 $ \(path', (addr', size', comp)) -> walk path' (start + addr', start + addr' + size') comp
   walk path (start, end) (DeviceInstance loc _ _instanceName deviceName) =
     let
       defSize = fromJust $ M.lookup deviceName dss

@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
@@ -27,27 +28,157 @@ import Bittide.Instances.Domains (Basic125, Ext125)
 import Bittide.ProcessingElement
 import Bittide.SharedTypes
 import Bittide.Wishbone
+
+import qualified Data.Map.Strict as Map
+
+import BitPackC (BitPackC)
+import GHC.Stack (HasCallStack, callStack, getCallStack)
 import Protocols.MemoryMap (
+  Access (..),
   BackwardAnnotated,
+  DeviceDefinition (..),
   MemoryMap (..),
+  MemoryMapTree (DeviceInstance),
   MemoryMapped,
-  annotationSnd',
+  Name (..),
+  Register (..),
   withPrefix,
  )
+import Protocols.MemoryMap.FieldType (ToFieldType (toFieldType))
+
+-- import Protocols.MemoryMap (BackwardAnnotated)
 
 data TestStatus = Running | Success | Fail
-  deriving (Enum, Eq, Generic, NFDataX, BitPack)
+  deriving (Enum, Eq, Generic, NFDataX, BitPack, ToFieldType, BitPackC)
 
 type TestDone = Bool
 type TestSuccess = Bool
 type UartRx = Bit
 type UartTx = Bit
 
+-- ╭────────┬───────┬───────┬────────────────────────────────────╮
+-- │ bin    │ hex   │ bus   │ description                        │
+-- ├────────┼───────┼───────┼────────────────────────────────────┤
+-- │ 0b000. │ 0x0   │       │                                    │
+-- │ 0b001. │ 0x2   │       │                                    │
+-- │ 0b010. │ 0x4   │ 1     │ Data memory                        │
+-- │ 0b011. │ 0x6   │       │                                    │
+-- │ 0b100. │ 0x8   │ 0     │ Instruction memory                 │
+-- │ 0b101. │ 0xA   │ 2     │ Time                               │
+-- │ 0b110. │ 0xC   │ 3     │ UART                               │
+-- │ 0b111. │ 0xE   │ 4     │ Test status register               │
+-- ╰────────┴───────┴───────┴────────────────────────────────────╯
+
+-- | The internal CPU circuit used for this test.
+cpuCircuit ::
+  forall dom.
+  ( HiddenClockResetEnable dom
+  , 1 <= DomainPeriod dom
+  , ValidBaud dom 921600
+  , HasCallStack
+  ) =>
+  Circuit
+    (CSignal dom Bit, MemoryMapped (Jtag dom))
+    (CSignal dom TestStatus, CSignal dom Bit)
+cpuCircuit = circuit $ \(uartRx, jtag) -> do
+  [timeBus, uartBus, statusRegisterBus] <-
+    processingElementM
+      0b100
+      (Undefined @(Div (64 * 1024) 4))
+      0b010
+      (Undefined @(Div (64 * 1024) 4))
+      -< jtag
+  withPrefix 0b101 (timeM "Timer") -< timeBus
+  (uartTx, _uartStatus) <-
+    withPrefixFst
+      0b110
+      (uartM @dom "UART" d16 d16 (SNat @921600))
+      -< (uartBus, uartRx)
+  testResult <- withPrefix 0b111 statusRegM -< statusRegisterBus
+  idC -< (testResult, uartTx)
+ where
+  withPrefixFst ::
+    BitVector n ->
+    Circuit (BackwardAnnotated ann a, b) c ->
+    Circuit (BackwardAnnotated (BitVector n, ann) a, b) c
+  withPrefixFst prefix (Circuit f) = Circuit $ \(fwd, bwd) ->
+    let (((ann, bwdA), bwdB), fwd') = f (fwd, bwd)
+     in ((((prefix, ann), bwdA), bwdB), fwd')
+
+-- | Memory-mapped wrapper for 'statusRegister'
+statusRegM ::
+  forall dom addr.
+  (HiddenClockResetEnable dom, HasCallStack) =>
+  Circuit
+    (MemoryMapped (Wishbone dom 'Standard addr (Bytes 4)))
+    (CSignal dom TestStatus)
+statusRegM = Circuit go
+ where
+  go (fwd, _) =
+    ((SimOnly memMap, bwd), status')
+   where
+    Circuit f = statusRegister
+    (bwd, status') = f (fwd, pure ())
+
+    ((_, defLoc) : (_, instanceLoc) : _) = getCallStack callStack
+    deviceDef =
+      DeviceDefinition
+        { deviceName = Name{name = "StatusReg", description = ""}
+        , registers = [(statusRegName, defLoc, statusRegDesc)]
+        , defLocation = defLoc
+        }
+    statusRegName = Name{name = "status", description = ""}
+    statusRegDesc =
+      Register
+        { access = WriteOnly
+        , address = 0
+        , reset = Nothing
+        , fieldType = toFieldType @TestStatus
+        , fieldSize = 1
+        }
+    deviceInstance = DeviceInstance instanceLoc Nothing "StatusReg" "StatusReg"
+    memMap = MemoryMap{deviceDefs = Map.singleton "StatusReg" deviceDef, tree = deviceInstance}
+
+-- | A memory mapped register to communicate the test result to the system.
+statusRegister ::
+  forall dom addr.
+  (HiddenClockResetEnable dom) =>
+  Circuit
+    (Wishbone dom 'Standard addr (Bytes 4))
+    (CSignal dom TestStatus)
+statusRegister = Circuit $ \(fwd, _) ->
+  let (unbundle -> (m2s, st)) = mealy go Running fwd
+   in (m2s, st)
+ where
+  go st WishboneM2S{..}
+    -- out of cycle, no response, same state
+    | not (busCycle && strobe) = (st, (emptyWishboneS2M, st))
+    -- already done, ACK and same state
+    | st /= Running = (st, (emptyWishboneS2M{acknowledge = True}, st))
+    -- read, this is write-only, so error, same state
+    | not writeEnable =
+        ( st
+        ,
+          ( (emptyWishboneS2M @(Bytes 4))
+              { err = True
+              , readData = errorX "status register is write-only"
+              }
+          , st
+          )
+        )
+    -- write! change state, ACK
+    | otherwise =
+        let state = case writeData of
+              1 -> Success
+              _ -> Fail
+         in (state, (emptyWishboneS2M{acknowledge = True}, state))
+
 vexRiscvInner ::
   forall dom.
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
   , ValidBaud dom 921600
+  , HasCallStack
   ) =>
   Signal dom JtagIn ->
   Signal dom UartRx ->
@@ -78,122 +209,12 @@ vexRiscvInner jtagIn0 uartRx =
   circuitFn = toSignals circ'
 
   circ' :: Circuit (CSignal dom Bit, Jtag dom) (CSignal dom TestStatus, CSignal dom Bit)
-  circ' = removeAnnSnd circ
+  circ' = removeAnnSnd cpuCircuit
 
   removeAnnSnd :: Circuit (a, BackwardAnnotated ann b) c -> Circuit (a, b) c
   removeAnnSnd (Circuit f) = Circuit $ \(fwd, bwd) ->
     let ((bwdA, (_, bwdB)), fwd') = f (fwd, bwd)
      in ((bwdA, bwdB), fwd')
-
-  SimOnly _memoryMap = annotationSnd' circ
-
-  -- circ :: Circuit (MemoryMapped (CSignal dom Bit, Jtag dom)) (CSignal dom TestStatus, CSignal dom Bit)
-  -- circ = undefined
-
-  -- circ :: Circuit (MemoryMapped (CSignal dom Bit, Jtag dom)) ()
-  -- circ = circuit $ \(uartRx, jtag) -> do
-  --   [timeBus, uartBus, statusRegisterBus] <- processingElementM
-  --           0b010 (Undefined @(Div (64 * 1024) 4))
-  --           0b100 (Undefined @(Div (64 * 1024) 4)) -< jtag
-  --   (uartTx, _uartStatus) <- withPrefix 0b110 (uartM @dom "UART" d16 d16 (SNat @921600)) -< (uartBus, uartRx)
-  --   withPrefix 0b101 (timeM "Timer") -< timeBus
-  --   testResult <- withPrefix 0b111 statusRegister -< statusRegisterBus
-  --   idC -< (testResult, uartTx)
-
-  circ ::
-    Circuit
-      (CSignal dom Bit, MemoryMapped (Jtag dom))
-      (CSignal dom TestStatus, CSignal dom Bit)
-  circ = circuit $ \(uartRx, jtag) -> do
-    [timeBus, uartBus, statusRegisterBus] <-
-      processingElementM
-        0b010
-        (Undefined @(Div (64 * 1024) 4))
-        0b100
-        (Undefined @(Div (64 * 1024) 4))
-        -< jtag
-    withPrefix 0b101 (timeM "Timer") -< timeBus
-    (uartTx, _uartStatus) <-
-      withPrefixFst
-        0b110
-        (uartM @dom @29 @4 "UART" d16 d16 (SNat @921600))
-        -< (uartBus, uartRx)
-    testResult <- withPrefix 0b111 statusRegM -< statusRegisterBus
-    idC -< (testResult, uartTx)
-
-  -- circ' = circuit $ \(uartRx, jtag) -> do
-  --   [timeBus, uartBus, statusRegisterBus] <- processingElement peConfig -< jtag
-  --   (uartTx, _uartStatus) <- uartWb @dom d16 d16 (SNat @921600) -< (uartBus, uartRx)
-  --   timeWb -< timeBus
-  --   testResult <- statusRegister -< statusRegisterBus
-  --   idC -< (testResult, uartTx)
-
-  withPrefixFst ::
-    BitVector n ->
-    Circuit (BackwardAnnotated ann a, b) c ->
-    Circuit (BackwardAnnotated (BitVector n, ann) a, b) c
-  withPrefixFst prefix (Circuit f) = Circuit $ \(fwd, bwd) ->
-    let (((ann, bwdA), bwdB), fwd') = f (fwd, bwd)
-     in ((((prefix, ann), bwdA), bwdB), fwd')
-
-  statusRegM ::
-    Circuit (MemoryMapped (Wishbone dom 'Standard addr (Bytes 4))) (CSignal dom TestStatus)
-  statusRegM = Circuit go
-   where
-    go (fwd, _) =
-      ((SimOnly memMap, bwd), status')
-     where
-      Circuit f = statusRegister
-      (bwd, status') = f (fwd, pure ())
-      memMap = MemoryMap{deviceDefs = mempty, tree = errorX ""}
-
-  statusRegister :: Circuit (Wishbone dom 'Standard addr (Bytes 4)) (CSignal dom TestStatus)
-  statusRegister = Circuit $ \(fwd, _) ->
-    let (unbundle -> (m2s, st)) = mealy go Running fwd
-     in (m2s, st)
-   where
-    go st WishboneM2S{..}
-      -- out of cycle, no response, same state
-      | not (busCycle && strobe) = (st, (emptyWishboneS2M, st))
-      -- already done, ACK and same state
-      | st /= Running = (st, (emptyWishboneS2M{acknowledge = True}, st))
-      -- read, this is write-only, so error, same state
-      | not writeEnable =
-          ( st
-          ,
-            ( (emptyWishboneS2M @(Bytes 4))
-                { err = True
-                , readData = errorX "status register is write-only"
-                }
-            , st
-            )
-          )
-      -- write! change state, ACK
-      | otherwise =
-          let state = case writeData of
-                1 -> Success
-                _ -> Fail
-           in (state, (emptyWishboneS2M{acknowledge = True}, state))
-
-  -- ╭────────┬───────┬───────┬────────────────────────────────────╮
-  -- │ bin    │ hex   │ bus   │ description                        │
-  -- ├────────┼───────┼───────┼────────────────────────────────────┤
-  -- │ 0b000. │ 0x0   │       │                                    │
-  -- │ 0b001. │ 0x2   │       │                                    │
-  -- │ 0b010. │ 0x4   │ 1     │ Data memory                        │
-  -- │ 0b011. │ 0x6   │       │                                    │
-  -- │ 0b100. │ 0x8   │ 0     │ Instruction memory                 │
-  -- │ 0b101. │ 0xA   │ 2     │ Time                               │
-  -- │ 0b110. │ 0xC   │ 3     │ UART                               │
-  -- │ 0b111. │ 0xE   │ 4     │ Test status register               │
-  -- ╰────────┴───────┴───────┴────────────────────────────────────╯
-  --
-  -- peConfig :: PeConfig 5
-  _peConfig =
-    PeConfig
-      (0b100 :> 0b010 :> 0b101 :> 0b110 :> 0b111 :> Nil)
-      (Undefined @(Div (64 * 1024) 4)) -- 64 KiB
-      (Undefined @(Div (64 * 1024) 4)) -- 64 KiB
 
 vexRiscvTest ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->

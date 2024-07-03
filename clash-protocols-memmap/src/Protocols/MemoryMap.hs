@@ -4,29 +4,18 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 module Protocols.MemoryMap where
 
 import Clash.Prelude
 
-import BitPackC (BitPackC (ByteSizeC, packC))
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe)
-import GHC.Stack (HasCallStack, SrcLoc, callStack, getCallStack)
+import GHC.Stack (HasCallStack, SrcLoc)
 import Protocols
-import Protocols.Wishbone (
-  Wishbone,
-  WishboneM2S (..),
-  WishboneMode (Standard),
-  WishboneS2M (..),
-  emptyWishboneM2S,
-  emptyWishboneS2M,
- )
 
-import Protocols.MemoryMap.FieldType (FieldType, ToFieldType (..))
+import Protocols.MemoryMap.FieldType (FieldType)
 
 -- | Absolute address or offset in bytes
 type Address = Integer
@@ -89,6 +78,15 @@ annotation circ = ann'
  where
   Circuit f = withClockResetEnable clockGen resetGen enableGen circ
   ((ann', _), _) = f (deepErrorX "")
+
+annotationSnd ::
+  (KnownDomain dom, NFDataX (Fwd a), NFDataX (Fwd b), NFDataX (Bwd c)) =>
+  ((HiddenClockResetEnable dom) => Circuit (a, BackwardAnnotated ann b) c) ->
+  ann
+annotationSnd circ = ann'
+ where
+  Circuit f = withClockResetEnable clockGen resetGen enableGen circ
+  ((_, (ann', _)), _) = f (deepErrorX "")
 
 data Name = Name
   { name :: String
@@ -165,286 +163,10 @@ data ComponentPath
   | InterconnectComponent Integer ComponentPath
   deriving (Show)
 
-deviceDef' ::
-  forall dom a n addrWidth.
-  Circuit
-    (MemoryMapped (Wishbone dom 'Standard addrWidth a))
-    (Vec n (Wishbone dom 'Standard addrWidth ()))
-deviceDef' = undefined
-
-deviceDefinition ::
-  forall dom a n addrWidth.
-  ( HasCallStack
-  , ToFieldType a
-  , NFDataX a
-  , KnownNat (BitSize a)
-  , KnownNat n
-  , KnownNat addrWidth
-  , HiddenClockResetEnable dom
-  , 1 <= n
-  ) =>
-  String ->
-  AbsoluteAddress ->
-  Name ->
-  Circuit
-    (MemoryMapped (Wishbone dom 'Standard addrWidth a))
-    ( Vec
-        n
-        ( BackwardAnnotated
-            (BitVector addrWidth, SimOnly (NamedLoc Register))
-            (Wishbone dom 'Standard addrWidth a)
-        )
-    )
-deviceDefinition instanceName absAddr' deviceDesc = Circuit $ \(m2s, bwds) ->
-  let
-    annotations = fst <$> bwds
-    s2ms = bundle $ snd <$> bwds
-    addrs = fst <$> annotations
-    regs = (\(_, SimOnly x) -> x) <$> annotations
-    memMap =
-      MemoryMap
-        { deviceDefs = Map.singleton (name deviceDesc) definition
-        , tree = DeviceInstance instanceLoc absAddr' instanceName (name deviceDesc)
-        }
-    definition =
-      DeviceDefinition
-        { deviceName = deviceDesc
-        , registers = toList regs
-        , defLocation = defLoc
-        }
-
-    (s2m, m2ss) = go addrs m2s s2ms
-   in
-    ((SimOnly memMap, s2m), m2ss)
- where
-  ((_, defLoc) : (_, instanceLoc) : _) = getCallStack callStack
-
-  go addrs m2s s2ms = (s2m, m2ss)
-   where
-    active :: Signal dom (Maybe (Index n))
-    active = register Nothing newActive
-    (unbundle -> (s2m, unbundle -> m2ss, newActive)) = inner (addrRange addrs) <$> m2s <*> s2ms <*> active
-
-  inner ranges m2s@WishboneM2S{..} s2ms active
-    | not (busCycle && strobe) = (emptyWishboneS2M, m2ss, Nothing)
-    -- no existing transaction, no new transaction
-    -- => ERROR, we're in a cycle but couldn't find a subordinate that matches the address
-    -- which shouldn't ever happen, but if it does it should be an error!
-    | Nothing <- active
-    , Nothing <- newActive =
-        (emptyWishboneS2M{err = True}, m2ss, Nothing)
-    -- no previous transaction, but a new one!
-    | Nothing <- active
-    , Just idx <- newActive =
-        (s2ms !! idx, replace idx m2s m2ss, Just idx)
-    -- have an existing transaction, use that one
-    | Just idx <- active = (s2ms !! idx, replace idx m2s m2ss, active)
-   where
-    m2ss = repeat emptyWishboneM2S
-    newActive = findIndex (\(start, end) -> addr >= start && addr < end) ranges
-
-deviceReg' ::
-  forall dom a addrWidth.
-  ( HasCallStack
-  , ToFieldType a
-  , NFDataX a
-  , BitPackC a
-  , KnownNat addrWidth
-  , HiddenClockResetEnable dom
-  ) =>
-  String ->
-  Access ->
-  BitVector addrWidth ->
-  a ->
-  Circuit
-    ( BackwardAnnotated
-        (BitVector addrWidth, SimOnly (NamedLoc Register))
-        (Wishbone dom 'Standard addrWidth (BitVector 32))
-    )
-    ()
-deviceReg' name' access' addr' def' = Circuit $ \(m2s0, ()) ->
-  (((addr', SimOnly reg'), go m2s0), ())
- where
-  defBytes :: BitVector 32
-  defBytes = resize $ packC def'
-
-  (_, loc) : _ = getCallStack callStack
-  reg' =
-    ( Name
-        { name = name'
-        , description = ""
-        }
-    , loc
-    , Register
-        { access = access'
-        , address = toInteger addr'
-        , fieldType = toFieldType @a
-        , fieldSize = snatToInteger (SNat @(ByteSizeC a))
-        , reset = Nothing
-        }
-    )
-  go m2s = s2m
-   where
-    registerVal = register defBytes $ fromMaybe <$> registerVal <*> nextVal
-    (unbundle -> (s2m, nextVal)) = inner <$> m2s <*> registerVal
-
-  inner WishboneM2S{..} val
-    | not (busCycle && strobe) = (emptyWishboneS2M, Nothing)
-    | writeEnable = (emptyWishboneS2M{acknowledge = True}, Just writeData)
-    | otherwise = ((emptyWishboneS2M @a){acknowledge = True, readData = 0}, Nothing)
-
-deviceReg ::
-  forall dom a addrWidth.
-  ( HasCallStack
-  , ToFieldType a
-  , NFDataX a
-  , KnownNat addrWidth
-  , HiddenClockResetEnable dom
-  ) =>
-  String ->
-  Access ->
-  BitVector addrWidth ->
-  a ->
-  Circuit
-    ( BackwardAnnotated
-        (BitVector addrWidth, SimOnly (NamedLoc Register))
-        (Wishbone dom 'Standard addrWidth a)
-    )
-    ()
-deviceReg name' access' addr' def' = Circuit $ \(m2s0, ()) ->
-  (((addr', SimOnly reg'), go m2s0), ())
- where
-  (_, loc) : _ = getCallStack callStack
-  reg' =
-    ( Name
-        { name = name'
-        , description = ""
-        }
-    , loc
-    , Register
-        { access = access'
-        , address = toInteger addr'
-        , fieldType = toFieldType @a
-        , fieldSize = error "use deviceReg' with BitPackC"
-        , reset = Nothing
-        }
-    )
-  go m2s = s2m
-   where
-    registerVal = register def' $ fromMaybe <$> registerVal <*> nextVal
-    (unbundle -> (s2m, nextVal)) = inner <$> m2s <*> registerVal
-
-  inner WishboneM2S{..} val
-    | not (busCycle && strobe) = (emptyWishboneS2M, Nothing)
-    | writeEnable = (emptyWishboneS2M{acknowledge = True}, Just writeData)
-    | otherwise = ((emptyWishboneS2M @a){acknowledge = True, readData = val}, Nothing)
-
-deviceVecField' ::
-  forall dom n a addrWidth.
-  ( HasCallStack
-  , KnownNat n
-  , ToFieldType a
-  , NFDataX a
-  , BitPackC a
-  , BitPackC (Vec n a)
-  , KnownNat addrWidth
-  , HiddenClockResetEnable dom
-  ) =>
-  String ->
-  Access ->
-  BitVector addrWidth ->
-  SNat n ->
-  a ->
-  Circuit
-    ( BackwardAnnotated
-        (BitVector addrWidth, SimOnly (NamedLoc Register))
-        (Wishbone dom 'Standard addrWidth (BitVector 32))
-    )
-    ()
-deviceVecField' name' access' addr' _size def' = Circuit $ \(m2s0, ()) ->
-  (((addr', SimOnly reg'), go m2s0), ())
- where
-  (_, loc) : _ = getCallStack callStack
-
-  defBytes :: BitVector 32
-  defBytes = resize $ packC def'
-
-  reg' =
-    ( Name
-        { name = name'
-        , description = ""
-        }
-    , loc
-    , Register
-        { access = access'
-        , address = toInteger addr'
-        , fieldType = toFieldType @(Vec n a)
-        , fieldSize = snatToInteger (SNat @(ByteSizeC (Vec n a)))
-        , reset = Nothing
-        }
-    )
-  go m2s = s2m
-   where
-    registerVal = register defBytes $ fromMaybe <$> registerVal <*> nextVal
-    (unbundle -> (s2m, nextVal)) = inner <$> m2s <*> registerVal
-
-  inner WishboneM2S{..} val
-    | not (busCycle && strobe) = (emptyWishboneS2M, Nothing)
-    | writeEnable = (emptyWishboneS2M{acknowledge = True}, Just writeData)
-    | otherwise = ((emptyWishboneS2M @a){acknowledge = True, readData = val}, Nothing)
-
-deviceVecField ::
-  forall dom n a addrWidth.
-  ( HasCallStack
-  , KnownNat n
-  , ToFieldType a
-  , NFDataX a
-  , KnownNat addrWidth
-  , HiddenClockResetEnable dom
-  ) =>
-  String ->
-  Access ->
-  BitVector addrWidth ->
-  SNat n ->
-  a ->
-  Circuit
-    ( BackwardAnnotated
-        (BitVector addrWidth, SimOnly (NamedLoc Register))
-        (Wishbone dom 'Standard addrWidth a)
-    )
-    ()
-deviceVecField name' access' addr' _size def' = Circuit $ \(m2s0, ()) ->
-  (((addr', SimOnly reg'), go m2s0), ())
- where
-  (_, loc) : _ = getCallStack callStack
-  reg' =
-    ( Name
-        { name = name'
-        , description = ""
-        }
-    , loc
-    , Register
-        { access = access'
-        , address = toInteger addr'
-        , fieldType = toFieldType @(Vec n a)
-        , fieldSize = error "use deviceVecField' with BitPackC"
-        , reset = Nothing
-        }
-    )
-  go m2s = s2m
-   where
-    registerVal = register def' $ fromMaybe <$> registerVal <*> nextVal
-    (unbundle -> (s2m, nextVal)) = inner <$> m2s <*> registerVal
-
-  inner WishboneM2S{..} val
-    | not (busCycle && strobe) = (emptyWishboneS2M, Nothing)
-    | writeEnable = (emptyWishboneS2M{acknowledge = True}, Just writeData)
-    | otherwise = ((emptyWishboneS2M @a){acknowledge = True, readData = val}, Nothing)
-
 withPrefix ::
   (HasCallStack) =>
   BitVector n ->
-  Circuit (BackwardAnnotated ann a) b ->
+  ((HasCallStack) => Circuit (BackwardAnnotated ann a) b) ->
   Circuit (BackwardAnnotated (BitVector n, ann) a) b
 withPrefix p (Circuit f) = Circuit $ \(fwd, bwd) ->
   let
@@ -459,97 +181,5 @@ passAnn (Circuit f) = Circuit $ \(fwd, (ann, bwd)) ->
   let (bwd', fwd') = f (fwd, bwd)
    in ((ann, bwd'), fwd')
 
-interconnect ::
-  forall dom addrWidth a n.
-  ( HasCallStack
-  , KnownNat n
-  , KnownNat addrWidth
-  , NFDataX a
-  , KnownNat (BitSize a)
-  , (CLog 2 n <= addrWidth)
-  , 1 <= n
-  , KnownNat (addrWidth - CLog 2 n)
-  ) =>
-  AbsoluteAddress ->
-  Circuit
-    (MemoryMapped (Wishbone dom 'Standard addrWidth a))
-    ( Vec
-        n
-        ( BackwardAnnotated
-            (BitVector (CLog 2 n), SimOnly MemoryMap)
-            (Wishbone dom 'Standard (addrWidth - CLog 2 n) a)
-        )
-    )
-interconnect absAddr' = Circuit go
- where
-  (_, loc) : _ = getCallStack callStack
-
-  go ::
-    ( Signal dom (WishboneM2S addrWidth (Div (BitSize a + 7) 8) a)
-    , Vec n ((BitVector (CLog 2 n), SimOnly MemoryMap), Signal dom (WishboneS2M a))
-    ) ->
-    ( (SimOnly MemoryMap, Signal dom (WishboneS2M a))
-    , Vec n (Signal dom (WishboneM2S (addrWidth - CLog 2 n) (Div (BitSize a + 7) 8) a))
-    )
-  go (m2s, unzip -> (unzip -> (prefixes, mmaps), s2ms)) = ((SimOnly memoryMap, s2m), unbundle m2ss)
-   where
-    memoryMap =
-      MemoryMap
-        { deviceDefs = mergeDeviceDefs (deviceDefs . unSim <$> toList mmaps)
-        , tree = Interconnect loc absAddr' (toList descs)
-        }
-
-    size = maxBound :: BitVector (addrWidth - CLog 2 n)
-    relAddrs = prefixToAddr <$> prefixes
-    descs = zip3 relAddrs (repeat (toInteger size)) (tree . unSim <$> mmaps)
-    unSim (SimOnly x) = x
-
-    prefixToAddr :: BitVector (CLog 2 n) -> Address
-    prefixToAddr prefix = toInteger prefix `shiftL` fromInteger shift'
-     where
-      shift' = snatToInteger $ SNat @(addrWidth - CLog 2 n)
-
-    (unbundle -> (s2m, m2ss)) = inner prefixes <$> m2s <*> bundle s2ms
-
-  inner ::
-    Vec n (BitVector (CLog 2 n)) ->
-    WishboneM2S addrWidth (Div (BitSize a + 7) 8) a ->
-    Vec n (WishboneS2M a) ->
-    (WishboneS2M a, Vec n (WishboneM2S (addrWidth - CLog 2 n) (Div (BitSize a + 7) 8) a))
-  inner prefixes m2s@WishboneM2S{..} s2ms
-    | not (busCycle && strobe) = (emptyWishboneS2M, m2ss)
-    -- no valid index selected
-    | Nothing <- selected = (emptyWishboneS2M{err = True}, m2ss)
-    | Just idx <- selected = (s2ms !! idx, replace idx m2sStripped m2ss)
-   where
-    m2ss = repeat emptyWishboneM2S
-    m2sStripped = m2s{addr = internalAddr}
-    (compIdx, internalAddr) = split @_ @(CLog 2 n) @(addrWidth - CLog 2 n) addr
-    selected = elemIndex compIdx prefixes
-
 mergeDeviceDefs :: [Map.Map String DeviceDefinition] -> Map.Map String DeviceDefinition
 mergeDeviceDefs = List.foldl Map.union Map.empty
-
-addrRange :: forall a n. (Bounded a) => Vec n a -> Vec n (a, a)
-addrRange startAddrs = zip startAddrs bounds
- where
-  bounds = startAddrs <<+ maxBound
-
-{-
--- | Remove memory map information from a circuit
-unMemoryMapped :: Circuit a (MemoryMapped a)
-unMemoryMapped = Circuit $ \(fwdA, (_mm, bwdA)) -> (bwdA, fwdA)
-
--- | Add memory map information to a circuit
-memoryMapped :: Named MemoryMap -> Circuit (MemoryMapped a) a
-memoryMapped mm = Circuit $ \(fwdA, bwdA) -> ((SimOnly mm, bwdA), fwdA)
-
--- | Extract the memory map from a circuit. Note that the circuit needs to be
--- lazy enough: if the memory map depends on any signals, this function will
--- error.
-extractMemoryMap :: (NFDataX (Fwd a), NFDataX (Bwd b)) => Circuit (MemoryMapped a) b -> Named MemoryMap
-extractMemoryMap (Circuit f) =
-  let ((SimOnly mm, _), _) = f (deepErrorX "") in
-  mm
-
--}

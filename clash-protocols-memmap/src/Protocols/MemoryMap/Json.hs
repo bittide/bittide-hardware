@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
+-- | Generate a JSON representation of a 'MemoryMapValid'
 module Protocols.MemoryMap.Json where
 
 import Clash.Prelude
@@ -23,8 +24,9 @@ import Protocols.MemoryMap.TypeCollect
 
 import Data.Aeson.Key (fromString)
 import qualified Data.Map.Strict as Map
-import GHC.Stack (SrcLoc (..), prettySrcLoc)
+import GHC.Stack (SrcLoc (..))
 
+-- | Generate a JSON representation of a 'MemoryMapValid'
 memoryMapJson :: MemoryMapValid -> Value
 memoryMapJson MemoryMapValid{..} =
   object
@@ -34,12 +36,12 @@ memoryMapJson MemoryMapValid{..} =
     ]
  where
   devicesVal =
-    (\(name, def) -> fromString name .= generateDeviceDef def)
+    (\(name, def') -> fromString name .= generateDeviceDef def')
       <$> Map.toList (deviceDefs validMap)
 
   validTree = tree validMap
   types =
-    (\(name, def) -> fromString (FT.name name) .= generateTypeDesc def)
+    (\(name, def') -> fromString (FT.name name) .= generateTypeDesc def')
       <$> Map.toList validTypes
 
 generateTypeDesc :: TypeDescription -> Value
@@ -61,7 +63,7 @@ generateTypeDef ft = case ft of
   FT.BoolFieldType -> "bool"
   FT.BitVectorFieldType n -> toJSON ["bitvector", toJSON n]
   FT.SignedFieldType n -> toJSON ["signed", toJSON n]
-  FT.SumOfProductFieldType tyName def ->
+  FT.SumOfProductFieldType tyName def' ->
     object
       [ "name" .= FT.name tyName
       , "meta"
@@ -70,7 +72,7 @@ generateTypeDef ft = case ft of
             , "package" .= FT.packageName tyName
             , "is_newtype" .= FT.isNewType tyName
             ]
-      , "variants" .= (genVariant <$> def)
+      , "variants" .= (genVariant <$> def')
       ]
    where
     genVariant :: FT.Named [FT.Named FT.FieldType] -> Value

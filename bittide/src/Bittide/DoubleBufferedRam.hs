@@ -24,7 +24,15 @@ import Bittide.SharedTypes hiding (delayControls)
 import Data.Constraint.Nat.Extra
 import Data.Typeable
 import GHC.Stack (HasCallStack, callStack, getCallStack)
-import Protocols.MemoryMap (Access (ReadWrite), DeviceDefinition (..), MemoryMap (..), MemoryMapTree (DeviceInstance), MemoryMapped, Name (..), Register (..))
+import Protocols.MemoryMap (
+  Access (ReadWrite),
+  DeviceDefinition (..),
+  MemoryMap (..),
+  MemoryMapTree (DeviceInstance),
+  MemoryMapped,
+  Name (..),
+  Register (..),
+ )
 import Protocols.MemoryMap.FieldType (ToFieldType (toFieldType))
 
 data ContentType n a
@@ -106,6 +114,7 @@ contentGenerator content = case compareSNat d1 (SNat @romSize) of
     element = initializedRam content (bitCoerce <$> romAddr1) (pure Nothing)
   _ -> (pure Nothing, pure True)
 
+-- | Wishbone Dual Port storage component with memory-map information attached.
 wbStorageDPM ::
   forall dom depth awA awB.
   ( HiddenClockResetEnable dom
@@ -244,6 +253,7 @@ wbStorageDP initial aM2S bM2S = (aS2M, bS2M)
 
   noTerminate wb = wb{acknowledge = False, err = False, retry = False, stall = False}
 
+-- | Wishbone storage component with memory map information attached.
 wbStorageM ::
   forall dom depth aw.
   ( HiddenClockResetEnable dom

@@ -32,6 +32,16 @@ toLittleEndian bits = pack bytes'
 fromLittleEndian :: forall n. (KnownNat n) => BitVector (n * 8) -> BitVector (n * 8)
 fromLittleEndian = toLittleEndian @n -- hehe
 
+{- | Typeclass that can be implemented (or derived) to enable C-FFI safe
+representation of Haskell types.
+
+This can be derived automatically as long as 'Generic' is implemented for the
+type.
+Currently there is a high likelihood that more complex types need an unusual
+amount of constraints on the instance. Ideally this won't be necessary when
+@ghc-typelits-extra@ gets extended to automatically discharge those
+constraints.
+-}
 class
   (KnownNat (ByteSizeC a), KnownNat (AlignmentC a), 1 <= AlignmentC a) =>
   BitPackC a

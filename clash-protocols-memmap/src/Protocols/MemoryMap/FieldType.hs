@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 
+-- | Generate a description of a type for use in a memory map.
 module Protocols.MemoryMap.FieldType where
 
 import Clash.Prelude
@@ -23,6 +24,7 @@ data TypeName = TypeName
 
 type Named a = (String, a)
 
+-- | Description of an allowed type in a device register within a memory map.
 data FieldType
   = BoolFieldType
   | BitVectorFieldType Word
@@ -34,11 +36,23 @@ data FieldType
   | TypeVariable Integer
   deriving (Show, Eq)
 
+{- | Generate a description of the type for use in a memory map.
+
+This class can be derived automatically for non-generic types.
+Types with generic arguments can provide a minimal instance definition
+which specifies 'Generics', 'WithVars' and 'args'.
+-}
 class (KnownNat (Generics a)) => ToFieldType (a :: Type) where
+  -- | The number of type variables this type has.
   type Generics a :: Nat
+
   type Generics a = 0
 
+  -- | A version of this type where each type variable is instantiated to be
+  -- numerated versions of 'Var', a placeholder used to keep track of type
+  -- variable instances within the type.
   type WithVars a :: Type
+
   type WithVars a = a
 
   generics :: SNat (Generics a)
@@ -52,10 +66,11 @@ class (KnownNat (Generics a)) => ToFieldType (a :: Type) where
   default toFieldType ::
     (Generic (WithVars a), GToFieldType (Rep (WithVars a))) => FieldType
   toFieldType = case (gToFieldType @(Rep (WithVars a)), toList (args @a)) of
-    (ft, []) -> ft
+    (ft, []) -> TypeReference ft []
     (TypeReference _ft _args', _args'') -> error "shouldn't happen!??"
     (ft, args') -> TypeReference ft args'
 
+-- | Placeholder type to keep track of generic arguments in a type.
 newtype Var (n :: Nat) = Var Integer
 
 instance (KnownNat n) => ToFieldType (Var n) where
@@ -90,23 +105,6 @@ instance (ToFieldType a, ToFieldType b) => ToFieldType (Either a b) where
   type Generics (Either a b) = 2
   type WithVars (Either a b) = Either (Var 0) (Var 1)
   args = toFieldType @a :> toFieldType @b :> Nil
-
-data MyTestType
-  = SomeVar
-  | AnotherVar (Maybe (BitVector 8))
-  | YetAnotherVar Bool (Either (Signed 8) (Unsigned 8))
-  deriving (Generic, ToFieldType)
-
-data MyTestGen a
-  = Yep
-  | UhOh (Maybe a)
-  deriving (Generic)
-
-instance (ToFieldType a) => ToFieldType (MyTestGen a) where
-  type Generics (MyTestGen a) = 1
-  type WithVars (MyTestGen a) = MyTestGen (Var 0)
-
-  args = toFieldType @a :> Nil
 
 instance ToFieldType Bool where
   toFieldType = BoolFieldType

@@ -2,6 +2,4 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-[workspace]
-members = ["bittide-sys", "memmap-generate"]
-resolver = "2"
+src/wrappers/memory_map.rs

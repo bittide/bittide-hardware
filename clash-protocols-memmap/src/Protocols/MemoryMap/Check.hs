@@ -5,6 +5,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 
+-- | Validity checks performed on memory maps
 module Protocols.MemoryMap.Check where
 
 import Clash.Prelude
@@ -24,6 +25,9 @@ import Text.Printf (printf)
 import qualified Data.List as L
 import qualified Data.Map.Strict as Map
 
+{- | A validated memory map, containing a 'MemoryMap' with absolute addressess
+and the set of types used in device registers and their definitions.
+-}
 data MemoryMapValid = MemoryMapValid
   { validMap :: MemoryMap
   , validTypes :: Map.Map TypeName TypeDescription
@@ -41,6 +45,7 @@ data CheckConfiguration = CheckConfiguration
   , endAddr :: Address
   }
 
+-- | Validate a 'MemoryMap' based on a configuration.
 check ::
   CheckConfiguration -> MemoryMap -> Either MemoryMapValidationErrors MemoryMapValid
 check CheckConfiguration{..} mm@MemoryMap{..} =
@@ -62,17 +67,15 @@ check CheckConfiguration{..} mm@MemoryMap{..} =
 shortLocation :: SrcLoc -> String
 shortLocation SrcLoc{..} = srcLocFile <> ":" <> show srcLocStartLine <> ":" <> show srcLocStartCol
 
-checkMemoryMap ::
-  forall dom a b.
-  (KnownDomain dom, NFDataX (Fwd a), NFDataX (Bwd b)) =>
+{- | Validate a 'MemoryMap' in TemplateHaskell, reporting any errors at compile
+time.
+-}
+checkMemoryMapTH ::
   CheckConfiguration ->
-  ((HiddenClockResetEnable dom) => Circuit (MemoryMapped a) b) ->
+  MemoryMap ->
   DecsQ
-checkMemoryMap config circuitFn = do
-  let
-    SimOnly ann = annotation @dom circuitFn
-
-  case check config ann of
+checkMemoryMapTH config mmap =
+  case check config mmap of
     Right _mmValid -> pure []
     Left MemoryMapValidationErrors{..} -> do
       let absErrorMsgs = flip L.map absAddrErrors $ \AbsAddressValidateError{..} ->
@@ -109,9 +112,40 @@ checkMemoryMap config circuitFn = do
       reportError (unlines $ absErrorMsgs <> overlapErrorMsgs)
 
       pure []
- where
-  -- fail "Something wrong with the MemoryMap"
 
-  prettyPrintPath :: ComponentPath -> String
-  prettyPrintPath Root = "root"
-  prettyPrintPath (InterconnectComponent idx path) = prettyPrintPath path <> "." <> show idx
+-- fail "Something wrong with the MemoryMap"
+
+prettyPrintPath :: ComponentPath -> String
+prettyPrintPath Root = "root"
+prettyPrintPath (InterconnectComponent idx path) = prettyPrintPath path <> "." <> show idx
+
+{- | Validate a 'Circuit' in TemplateHaskell, reporting any errors at compile
+time.
+-}
+checkCircuitTH ::
+  forall dom a b.
+  (KnownDomain dom, NFDataX (Fwd a), NFDataX (Bwd b)) =>
+  CheckConfiguration ->
+  ((HiddenClockResetEnable dom) => Circuit (MemoryMapped a) b) ->
+  DecsQ
+checkCircuitTH config circuitFn =
+  let
+    SimOnly ann = annotation @dom circuitFn
+   in
+    checkMemoryMapTH config ann
+
+{- | Validate a 'Circuit' which contains memory-map information in its 'snd'
+input in TemplateHaskell, reporting any errors at compile time.
+-}
+checkCircuitSndTH ::
+  forall dom a b c.
+  (KnownDomain dom, NFDataX (Fwd a), NFDataX (Fwd b), NFDataX (Bwd c)) =>
+  CheckConfiguration ->
+  ((HiddenClockResetEnable dom) => Circuit (a, MemoryMapped b) c) ->
+  DecsQ
+checkCircuitSndTH config circuitFn =
+  let
+    circ = withClockResetEnable clockGen resetGen enableGen circuitFn
+    SimOnly ann = annotationSnd' circ
+   in
+    checkMemoryMapTH config ann

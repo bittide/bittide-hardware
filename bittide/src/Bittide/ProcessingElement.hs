@@ -44,6 +44,7 @@ data PeConfig nBusses where
     InitialContent depthD (Bytes 4) ->
     PeConfig nBusses
 
+-- | Processing Element component with attached memory map information.
 processingElementM ::
   forall dom nBusses depthI depthD.
   ( HasCallStack
@@ -83,9 +84,9 @@ processingElementM iPre initI dPre initD =
 
     ([iMemBus, dMemBus], extBusses) <-
       (splitAtC d2 <| singleMasterInterconnectM Nothing) -< dBus1
-    MM.withPrefix dPre (wbStorageM "" initD) -< dMemBus
+    MM.withPrefix dPre (wbStorageM "Data" initD) -< dMemBus
     iBus2 <- stripPrefix removeMsb -< iBus1 -- XXX: <= This should be handled by an interconnect
-    withPrefixDouble iPre (wbStorageDPM "" initI) -< (iBus2, iMemBus)
+    withPrefixDouble iPre (wbStorageDPM "Instruction" initI) -< (iBus2, iMemBus)
     idC -< extBusses
  where
   removeMsb ::

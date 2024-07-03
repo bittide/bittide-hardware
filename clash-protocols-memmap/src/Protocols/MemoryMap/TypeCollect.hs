@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE RecordWildCards #-}
 
+-- | Collect all types referenced in a 'MemoryMap' and create a type-map.
 module Protocols.MemoryMap.TypeCollect where
 
 import Clash.Prelude hiding (def)
@@ -20,13 +21,14 @@ data TypeDescription = TypeDescription
   }
   deriving (Show)
 
+-- | Collect all referenced types in a 'MemoryMap' into a type map.
+collect :: MemoryMap -> Map.Map TypeName TypeDescription
+collect mm = typeMap $ collectTypeDefsFromMM mm
+
 typeMap :: [(TypeName, TypeDescription)] -> Map.Map TypeName TypeDescription
 typeMap = L.foldl go Map.empty
  where
   go m (name, def) = Map.insert name def m
-
-collect :: MemoryMap -> Map.Map TypeName TypeDescription
-collect mm = typeMap $ collectTypeDefsFromMM mm
 
 collectTypeDefsFromMM :: MemoryMap -> [(TypeName, TypeDescription)]
 collectTypeDefsFromMM MemoryMap{..} = go $ snd <$> Map.toList deviceDefs

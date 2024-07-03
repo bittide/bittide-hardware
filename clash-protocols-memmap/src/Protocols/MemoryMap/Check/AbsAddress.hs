@@ -1,14 +1,18 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
+{-# HLINT ignore "Use list comprehension" #-}
+
+{- | Check a memory map for valid absolute addresses and populate the memory map
+with correct absolute addresses if they are missing.
+-}
 module Protocols.MemoryMap.Check.AbsAddress where
 
 import Prelude
 
-import Data.Maybe (catMaybes, fromJust)
+import Data.Maybe (fromJust)
 import GHC.Stack (SrcLoc)
 import Protocols.MemoryMap
 
@@ -17,7 +21,7 @@ type AddressWidth = Integer
 makeAbsolute :: Address -> MemoryMapTree -> MemoryMapTree
 makeAbsolute currAddr mmap =
   case mmap of
-    DeviceInstance loc _ name typeName -> DeviceInstance loc (Just currAddr) name typeName
+    DeviceInstance loc _ name' typeName -> DeviceInstance loc (Just currAddr) name' typeName
     Interconnect loc _ comps ->
       let
         makeAbsComp (addr, size, comp) =
@@ -48,24 +52,24 @@ validateAbsAddresses ::
   MemoryMapTree ->
   MemoryMapTree ->
   [AbsAddressValidateError]
-validateAbsAddresses path (DeviceInstance loc a name _) (DeviceInstance _ b _ _) =
+validateAbsAddresses path' (DeviceInstance loc a name' _) (DeviceInstance _ b _ _) =
   if checkAbsAddr a b
     then []
     else
       [ AbsAddressValidateError
-          { path = path
-          , componentName = Just name
+          { path = path'
+          , componentName = Just name'
           , expected = fromJust a
           , got = fromJust b
           , location = loc
           }
       ]
-validateAbsAddresses path (Interconnect loc a compsA) (Interconnect _ b compsB) =
+validateAbsAddresses path' (Interconnect loc a compsA) (Interconnect _ b compsB) =
   if checkAbsAddr a b
     then results
     else
       AbsAddressValidateError
-        { path = path
+        { path = path'
         , componentName = Nothing
         , expected = fromJust a
         , got = fromJust b
@@ -77,8 +81,8 @@ validateAbsAddresses path (Interconnect loc a compsA) (Interconnect _ b compsB) 
   comps = zip3 [0 ..] compsA compsB
   checkComps (i, (_, _, compA'), (_, _, compB')) =
     let
-      path' = InterconnectComponent i path
-      compRes = validateAbsAddresses path' compA' compB'
+      curPath = InterconnectComponent i path'
+      compRes = validateAbsAddresses curPath compA' compB'
      in
       compRes
 validateAbsAddresses _ _ _ = error "should not happen"

@@ -50,6 +50,9 @@ type MemoryMap nSlaves = Vec nSlaves (Unsigned (CLog 2 nSlaves))
 -- | Size of a bus that results from a `singleMasterInterconnect` with `nSlaves` slaves.
 type MappedBusAddrWidth addr nSlaves = addr - CLog 2 nSlaves
 
+{- | Single Master Interconnect component with memory map information attached.
+Prefixes of the sub-components are provided in their back-channels.
+-}
 singleMasterInterconnectM ::
   forall dom nSlaves addrW a.
   ( HiddenClockResetEnable dom
@@ -312,6 +315,7 @@ uartDf baud = Circuit go
    where
     (received, txBit, ack) = uart baud rxBit (Df.dataToMaybe <$> request)
 
+-- | Wishbone UART component with memory map information attached.
 uartM ::
   forall dom addrW nBytes baudRate transmitBufferDepth receiveBufferDepth.
   ( HasCallStack
@@ -666,12 +670,14 @@ wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
     | otherwise = repeat Nothing
   wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}
 
+-- | Version of 'timeWb' with memory map information attached.
 timeM ::
   forall dom addrW.
   ( HiddenClockResetEnable dom
   , KnownNat addrW
   , 2 <= addrW
   , 1 <= DomainPeriod dom
+  , HasCallStack
   ) =>
   String ->
   Circuit (MemoryMapped (Wishbone dom 'Standard addrW (Bytes 4))) ()

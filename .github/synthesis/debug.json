@@ -1,0 +1,7 @@
+[
+  {
+    "top": "vexRiscvTest",
+    "stage": "test",
+    "targets": "Specific [-1]"
+  }
+]

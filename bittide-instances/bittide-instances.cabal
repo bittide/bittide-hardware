@@ -111,6 +111,7 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
+    -- Hardware-in-the-loop tests
     Bittide.Instances.Domains
     Bittide.Instances.Hacks
     Bittide.Instances.Hitl.BoardTest
@@ -128,6 +129,8 @@ library
     Bittide.Instances.Hitl.Tests
     Bittide.Instances.Hitl.Transceivers
     Bittide.Instances.Hitl.VexRiscv
+    Bittide.Instances.MemoryMapLogic
+    Bittide.Instances.MemoryMaps
     Bittide.Instances.Pnr.Calendar
     Bittide.Instances.Pnr.ClockControl
     Bittide.Instances.Pnr.Counter
