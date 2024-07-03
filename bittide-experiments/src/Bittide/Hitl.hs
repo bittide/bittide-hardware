@@ -8,27 +8,36 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-{- | Tooling to define hardware-in-the-loop (HITL) tests. HITL tests are FPGA instances
-that incorporate a [VIO](https://www.xilinx.com/products/intellectual-property/vio.html)
-to start tests and communicate test statusses. In practise, developers writing
-HITL tests should make sure to do two things:
+{- | Tooling to define hardware-in-the-loop (HITL) tests. HITL tests in the
+Bittide project involve FPGA designs that incorporate a
+[VIO](https://www.xilinx.com/products/intellectual-property/vio.html) to
+interface with the HITL test controller. It is used to start tests and
+communicate test statusses. In practice, developers writing HITL tests should
+make sure to do two things:
 
-  1. They should incorporate a HITL VIO in their design. See 'hitlVio' and 'hitlVioBool'.
+  1. They should incorporate a HITL VIO in their design. The HITL test controller
+     expects such a VIO to have at minimum an output probe named
+     @probe_test_start@ and input probes named @probe_test_done@ and
+     @probe_test_success@, all of type 'Bool'. See 'hitlVio' and
+     'hitlVioBool' for examples. Additional probes could be added when needed
+     for a specific test.
 
-  2. They should define the targets to run the tests against (multiple FPGAs, or just
-     one), and with which inputs/parameters the tests should be run. See 'HitlTests'
-     for examples, together with it's convenience functions 'testsFromEnum',
-     'noConfigTest', 'allFpgas', and 'singleFpga'.
+  2. They should define the hardware targets to run the tests against
+     (multiple FPGAs, or just one), and with which inputs/parameters the
+     tests should be run. See 'HitlTests' for examples, together with it's
+     convenience functions 'testsFromEnum', 'noConfigTest', 'allFpgas', and
+     'singleFpga'.
 
-Tests are collected in @bin/Hitl.hs@. This command line utility can create
+Tests are collected in @Bittide.Instances.Hitl.Tests@. The command line
+utility at @bittide-tools\/hitl\/config-gen\/Main.hs@ can create YAML
 configuration files that can be processed by @HardwareTest.tcl@, and in turn
-configure FPGAs appropriately.
+configure hardware targets appropriately.
 
 === __Manual test definition__
-If you cannot reasonably use `tests` to define your tests, you can manually
-write a configuration file. This file should be a YAML file as specified in
+If you cannot reasonably use `HitlTests` to define your tests, you can manually
+write a HITL test configuration file. This file should be a YAML file as specified in
 @HardwareTest.tcl@. In order for Shake to find it, it must still be defined
-in @bin/Hitl.hs@, including the definition using @loadConfig@. This will load
+in @Bittide.Instances.Hitl.Tests@, including the definition using @loadConfig@. This will load
 the configuration from a file in @bittide-instances\/data\/test_configs@.
 
 === __Flow overview__
@@ -45,7 +54,7 @@ module Bittide.Hitl (
   HitlTestsWithPostProcData,
   MayHavePostProcData (..),
   NoPostProcData (..),
-  Probes,
+  OutProbes,
   FpgaIndex,
   TestName,
 
@@ -108,8 +117,8 @@ type FpgaIndex = Index 8
 
 type TestName = Text
 
-{- | A collection of (named) tests that should performed with hardware in the
-loop. Each test defines what data a specific FPGA should receive (see "Probes").
+{- | A collection of (named) tests that should be performed with hardware in the
+loop. Each test defines what data a specific FPGA should receive (see "OutProbes").
 Furthermore, some additional data can be provided, if required by subsequent
 post-processing steps (which must have a 'ToJSON' instance).
 
@@ -185,15 +194,15 @@ the generated config files, but is not passed to the HITL test:
 
 This must be accompanied by a @hitlVio \@NumberOfStages@ in the design.
 -}
-type HitlTestsWithPostProcData a b = Map TestName (Probes a, b)
+type HitlTestsWithPostProcData a b = Map TestName (OutProbes a, b)
 
 -- | The type synonym for tests without additional post processing data.
 type HitlTests a = HitlTestsWithPostProcData a NoPostProcData
 
-{- | A list of values to set on a specific FPGA. See convenience methods
-'allFpgas' and 'singleFpga'.
+{- | A list of values to be driven by output probes of VIO core instances on
+specific FPGAs. See convenience methods 'allFpgas' and 'singleFpga'.
 -}
-type Probes a = [(FpgaIndex, a)]
+type OutProbes a = [(FpgaIndex, a)]
 
 -- | A class for extracting optional post processing data from a test.
 class MayHavePostProcData b c where
@@ -217,12 +226,12 @@ data NoPostProcData = NoPostProcData
 instance ToJSON NoPostProcData where toJSON _ = Aeson.Null
 instance MayHavePostProcData NoPostProcData a where mGetPPD = const []
 
--- | Set one specific value on all FPGAs
-allFpgas :: a -> Probes a
+-- | Drive a value on the `probe_test_data` VIO output probe on each FPGAs.
+allFpgas :: a -> OutProbes a
 allFpgas a = (,a) <$> [0 ..]
 
--- | Perform a test on just a single FPGA
-singleFpga :: FpgaIndex -> a -> Probes a
+-- | Drive a value on the `probe_test_data` VIO output probe on one specific FPGA.
+singleFpga :: FpgaIndex -> a -> OutProbes a
 singleFpga ix a = [(ix, a)]
 
 {- | Define a 'HitlTests' for a test that does not accept any input. Use of 'noConfigTest'
@@ -233,7 +242,7 @@ Example invocation:
 > tests :: HitlTests ()
 > tests = noConfigTest allFpgas
 -}
-noConfigTest :: TestName -> (forall a. a -> Probes a) -> HitlTests ()
+noConfigTest :: TestName -> (forall a. a -> OutProbes a) -> HitlTests ()
 noConfigTest nm f = Map.singleton nm (f (), NoPostProcData)
 
 {- | Generate a set of tests from an enum. E.g., if you defined a data type looking
@@ -247,7 +256,7 @@ constructor of @ABC@:
 > tests :: HitlTests ABC
 > tests = testsFromEnum allFpgas
 -}
-testsFromEnum :: (Show a, Bounded a, Enum a) => (a -> Probes a) -> HitlTests a
+testsFromEnum :: (Show a, Bounded a, Enum a) => (a -> OutProbes a) -> HitlTests a
 testsFromEnum f =
   Map.fromList $
     map (\a -> (Text.pack (show a), (f a, NoPostProcData))) [minBound ..]

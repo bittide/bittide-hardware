@@ -30,6 +30,7 @@ import Bittide.Instances.Hitl.Tests (HitlTest (..), hitlTests)
 
 import Data.ByteString.Lazy.Char8 qualified as LazyByteString
 
+-- | A HITL test configuration encoded as YAML accompanied by a test name.
 data Config = Config
   { name :: String
   , yaml :: LazyByteString.ByteString
