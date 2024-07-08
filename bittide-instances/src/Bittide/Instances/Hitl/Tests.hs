@@ -14,16 +14,17 @@ import Bittide.Hitl (HitlTestsWithPostProcData, MayHavePostProcData)
 import Clash.Prelude (BitPack, String, FilePath, show)
 import Data.Aeson (ToJSON)
 
-import qualified Bittide.Instances.Hitl.BoardTest         as BoardTest
-import qualified Bittide.Instances.Hitl.FincFdec          as FincFdec
-import qualified Bittide.Instances.Hitl.FullMeshHwCc      as FullMeshHwCc
-import qualified Bittide.Instances.Hitl.FullMeshSwCc      as FullMeshSwCc
-import qualified Bittide.Instances.Hitl.HwCcTopologies    as HwCcTopologies
+import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
+import qualified Bittide.Instances.Hitl.FincFdec  as FincFdec
+import qualified Bittide.Instances.Hitl.FullMeshHwCc as FullMeshHwCc
+import qualified Bittide.Instances.Hitl.FullMeshSwCc as FullMeshSwCc
+import qualified Bittide.Instances.Hitl.HwCcTopologies as HwCcTopologies
 import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
-import qualified Bittide.Instances.Hitl.SyncInSyncOut     as SyncInSyncOut
-import qualified Bittide.Instances.Hitl.Tcl.ExtraProbes   as ExtraProbes
-import qualified Bittide.Instances.Hitl.Transceivers      as Transceivers
-import qualified Bittide.Instances.Hitl.VexRiscv          as VexRiscv
+import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
+import qualified Bittide.Instances.Hitl.TemperatureMonitor as TemperatureMonitor
+import qualified Bittide.Instances.Hitl.Tcl.ExtraProbes as ExtraProbes
+import qualified Bittide.Instances.Hitl.Transceivers as Transceivers
+import qualified Bittide.Instances.Hitl.VexRiscv as VexRiscv
 
 -- | Existential wrapper for tests with known Haskell types.
 data HitlTest where
@@ -53,6 +54,7 @@ hitlTests =
   , knownType  'HwCcTopologies.hwCcTopologyTest         HwCcTopologies.tests
   , knownType  'LinkConfiguration.linkConfigurationTest LinkConfiguration.tests
   , knownType  'SyncInSyncOut.syncInSyncOut             SyncInSyncOut.tests
+  , knownType  'TemperatureMonitor.temperatureMonitor   TemperatureMonitor.tests
   , knownType  'Transceivers.transceiversUpTest         Transceivers.tests
   , knownType  'VexRiscv.vexRiscvTest                   VexRiscv.tests
     -- tests that are loaded from config files

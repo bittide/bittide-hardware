@@ -117,8 +117,9 @@ library
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.Setup
     Bittide.Instances.Hitl.SyncInSyncOut
-    Bittide.Instances.Hitl.Tests
     Bittide.Instances.Hitl.Tcl.ExtraProbes
+    Bittide.Instances.Hitl.TemperatureMonitor
+    Bittide.Instances.Hitl.Tests
     Bittide.Instances.Hitl.Transceivers
     Bittide.Instances.Hitl.VexRiscv
 
