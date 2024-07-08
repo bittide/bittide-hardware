@@ -419,9 +419,8 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
 -- Read operations will read from the index corresponding to the world-aligned
 -- Wishbone address.
 wbToVec ::
-  forall dom nBytes addrW nRegisters .
-  ( HiddenClockResetEnable dom
-  , KnownNat nBytes
+  forall nBytes addrW nRegisters .
+  ( KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
   , 2 <= addrW
