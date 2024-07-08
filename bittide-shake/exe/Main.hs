@@ -219,6 +219,7 @@ targets =
     , testTarget "Bittide.Instances.Hitl.LinkConfiguration.linkConfigurationTest"
     , testTarget "Bittide.Instances.Hitl.SyncInSyncOut.syncInSyncOut"
     , testTarget "Bittide.Instances.Hitl.Tcl.ExtraProbes.extraProbesTest"
+    , testTarget "Bittide.Instances.Hitl.TemperatureMonitor.temperatureMonitor"
     , testTarget "Bittide.Instances.Hitl.Transceivers.transceiversUpTest"
     , (testTarget "Bittide.Instances.Hitl.VexRiscv.vexRiscvTest")
         { targetPostProcess = Just "post-vex-riscv-test"

@@ -22,6 +22,7 @@
   {"top": "hwCcTopologyTest",              "stage": "test",   "targets": "All"          },
   {"top": "linkConfigurationTest",         "stage": "test",   "targets": "All"          },
   {"top": "syncInSyncOut",                 "stage": "test",   "targets": "All"          },
+  {"top": "temperatureMonitor",            "stage": "test",   "targets": "All"          },
   {"top": "transceiversUpTest",            "stage": "test",   "targets": "All"          },
   {"top": "vexRiscvTest",                  "stage": "test",   "targets": "Specific [-1]"}
 ]
