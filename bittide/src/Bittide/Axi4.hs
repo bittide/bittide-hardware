@@ -63,6 +63,7 @@ import qualified Protocols.DfConv as DfConv
 --   first n bits of _tkeep are set, where n is the number of bytes in the transaction.
 type PackedAxi4Stream dom conf userType = Axi4Stream dom conf userType
 
+-- TODO: Add test that verifies throughput requirements.
 {-# NOINLINE axisFromByteStream #-}
 -- | Transforms an Axi4 stream of 1 byte wide into an Axi4 stream of /n/ bytes
 -- wide. If it encounters '_tlast' or has captured /n/ bytes, it will present
@@ -95,7 +96,6 @@ axisFromByteStream = AS.forceResetSanity |> Circuit (mealyB go Nothing)
     -- Try to append the incoming axi to the stored axi.
     dropInput = maybe False (\a -> not (or (_tlast a :> _tkeep a))) input
     combinedAxi = axiUserMap (uncurry (:<)) <$> combineAxi4Stream axiStored input
-    -- inputReady = Axi4StreamS2M $ dropInput || isJust combinedAxi
 
     -- Shift the internal axi towards HEAD by one position.
     -- If the head of the pre-shifted axi has its keep bit set, shifting is done.
@@ -104,9 +104,8 @@ axisFromByteStream = AS.forceResetSanity |> Circuit (mealyB go Nothing)
     (axiHead, axiPostShift) = splitAxi4Stream @1 $
       fmap (axiUserMap (\ v -> (head v, tail v))) axiPreShift
 
-    shiftingDone = isJust axiHead
     -- Output the pre-shifted axi if we can not shift anymore.
-    output = if not dropInput && shiftingDone then axiPreShift else Nothing
+    output = if not dropInput && isJust axiHead then axiPreShift else Nothing
 
     -- State update
     (axiNext, inputReady)
@@ -115,7 +114,7 @@ axisFromByteStream = AS.forceResetSanity |> Circuit (mealyB go Nothing)
       | isJust output && not outputReady   = (axiStored, False)
       | otherwise                          = (axiPostShift, isJust combinedAxi)
 
-
+-- TODO: Add test that verifies throughput requirements.
 -- | Transforms an Axi4 stream of /n/ bytes wide into an Axi4 stream of 1 byte
 -- wide. It stores the incoming transaction and shifts it out one by one. The incoming
 -- transaction is acknowledged when the last byte is acknowledged by the outgoing transaction.
@@ -156,6 +155,7 @@ data WbAxisRxBufferState bufferDepth wbBytes = WbAxisRxBufferState
 
 {-# NOINLINE wbAxisRxBuffer #-}
 
+-- TODO: Replace with PacketStream
 -- | A wishbone accessible buffer of configurable depth that can store a single Axi4Stream packet.
 -- The wishbone interface offers access to the buffer and exposes a status register that indicates:
 --  * If the buffer contains a packet
@@ -217,6 +217,7 @@ wbAxisRxBuffer ::
 wbAxisRxBuffer SNat = case strictlyPositiveDivRu @bufferBytes @wbBytes of
   Dict -> case leMult @wbBytes @(DivRU bufferBytes wbBytes) of
     Dict -> wbAxisRxBuffer# (SNat @(DivRU bufferBytes wbBytes))
+
 
 -- | A wishbone accessible buffer of configurable depth that can store a single Axi4Stream packet.
 -- A read transaction from the buffer takes at least two cycles to complete.
@@ -387,7 +388,6 @@ rxReadMasterC ::
 rxReadMasterC s = case cancelMulDiv @nBytes @8 of
   Dict -> fromSignals $ \ (_, bwd) -> ((), rxReadMaster s bwd)
 
-
 -- | Circuit capable of reading the wishbone interface of @wbAxisRxBuffer@ and
 -- extracting Axi packets. Mostly useful for verification, but can be synthesized.
 -- The internal statemachine continuously reads the satus register of the buffer,
@@ -513,6 +513,7 @@ mkKeep nBytes
 
 type AxiStreamBytesOnly nBytes = 'Axi4StreamConfig nBytes 0 0
 
+-- TODO: Replace with PacketStream
 -- | Wishbone to Axi4Stream interface, write operations to address 0 write to the Axi4Stream.
 -- The _tkeep bits are set based on the busSelect bits, when writing to address 1, a transaction
 -- is created that contains no data, but has the _tlast bit set.
@@ -557,6 +558,7 @@ data AxiPacketFifoState maxPackets = AxiPacketFifoState
   }
   deriving (Generic, NFDataX, Show)
 
+-- TODO: Replace with PacketStream
 -- | A Fifo circuit for Axi4Stream that stores an entire packet before
 -- producing the packet at the output. If the fifo is full, it will start transmitting
 -- the packet at the output.
@@ -610,6 +612,7 @@ axiStreamPacketFifo SNat fifoDepth@SNat = AS.forceResetSanity |> Circuit goCircu
         | stallInp  = s{packetCount = packetCount1}
         | otherwise = AxiPacketFifoState packetCount2 newPacketSr1 dumpPacket1
 
+-- TODO: Add test that verifies throughput requirements.
 -- | Circuit to convert a sparse stream into a contiguous stream while remaining the throughput of
 -- the input stream.
 axiPacking ::
