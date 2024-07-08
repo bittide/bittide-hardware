@@ -1,15 +1,21 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: 2022 Google LLC
+# SPDX-FileCopyrightText: 2022,2024 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 # Usage:
 #
-#    register_runners <n_runners> <github_token>
+#    register_runners <n_runners> <labelA,labelB,...> <github_token>
 #
 # Example:
 #
-#    register_runners 8 jbg2PSMoQLfqvj0ZeBUW
+#    register_runners 8 compute jbg2PSMoQLfqvj0ZeBUW
+#
+# Currently we're labelling runners with either "compute" or "hardware-access".
+# Note that a label "self-hosted" gets applied automatically.
+#
+# With a privileged enough account the token can be found at:
+# https://github.com/organizations/[ORG_NAME]/settings/actions/runners/new
 #
 # If you're installing this on a fresh server, make sure to install docker:
 #
@@ -45,15 +51,16 @@
 set -euf -o pipefail
 
 N_RUNNERS="$1"
-TOKEN="$2"
+LABELS="$2"
+TOKEN="$3"
 
 ORG=bittide
 REPO=bittide-hardware
 
 URL="https://github.com/${ORG}/${REPO}"
 
-RUNNER_VERSION="2.296.2"
-RUNNER_HASH="34a8f34956cdacd2156d4c658cce8dd54c5aef316a16bbbc95eb3ca4fd76429a"
+RUNNER_VERSION="2.317.0"
+RUNNER_HASH="9e883d210df8c6028aff475475a457d380353f9d01877d51cc01a17b2a91161d"
 
 # Stop previous runners (if any)
 sudo systemctl stop "actions.runner.${ORG}-${REPO}.$(hostname)-*.service"
@@ -81,6 +88,7 @@ do
       --replace \
       --url "${URL}" \
       --token "${TOKEN}" \
+      --labels "${LABELS}" \
       --name "${runner_name}"
 
     # TODO:
