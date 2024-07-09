@@ -87,10 +87,10 @@ type AccWindowHeight = 5 :: Nat
 
 -- | The period of the sync pulse used to share a synchronized time
 -- stamp between the nodes.
-type SyncPulsePeriod = Milliseconds 400
+type SyncPulsePeriod = Milliseconds 200
 
 -- | The period of the scheduled capture (must be a multiple of 'SyncPulsePeriod').
-type ScheduledCapturePeriod = Milliseconds 1600
+type ScheduledCapturePeriod = Milliseconds 800
 
 -- | An upper bound on the number of synchronized pulses during a test
 -- run. The bound allows to count pulses up to 25 hours without
