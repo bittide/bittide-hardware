@@ -290,7 +290,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   , spiOut
   , transceiversFailedAfterUp
   , allReady
-  , allStable0
+  , allStable0 .&&. allSettled0
   , calibratedClockShift
   , validationClockShift
   )
@@ -380,7 +380,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   clockControlReset = startupDelayRst `orReset`
     unsafeFromActiveLow ((==) <$> delayCount <*> (startupDelay <$> cfg))
 
-  (clockMod, _stabilities, allStable0, _allCentered) = unbundle $
+  (clockMod, _stabilities, allStable0, allSettled0) = unbundle $
     fmap
       (\CallistoResult{..} -> (maybeSpeedChange, stability, allStable, allSettled))
       callistoResult
