@@ -218,7 +218,7 @@ data IlaControl dom =
     }
 
 -- | Names of the additional ILA plot probes.
-ilaProbeNames :: Vec 7 String
+ilaProbeNames :: Vec 8 String
 ilaProbeNames =
      "trigger_1"
   :> "capture_1"
@@ -227,6 +227,7 @@ ilaProbeNames =
   :> "freeClock"
   :> "controlledClock"
   :> "temperature"
+  :> "netFincs"
   :> Nil
 
 -- | The ILA plot setup controller.
@@ -513,6 +514,14 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs temperatu
     { maybeSpeedChange = bool (maybeSpeedChange ccResult) Nothing active
     }
 
+  netFincs :: Signal sys (Signed 40)
+  netFincs = mealy clk rst enableGen go 0 (maybeSpeedChange <$> ccResultOut)
+   where
+    go n sc = case sc of
+      Just SpeedUp  -> (satSucc SatBound n, n)
+      Just SlowDown -> (satPred SatBound n, n)
+      _             -> (n, n)
+
   -- Note that we always need to capture everything before the trigger
   -- fires, because the data that the ILA captures is undefined
   -- otherwise. Moreover, @syncStart@ does not hold at the trigger,
@@ -554,6 +563,8 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs temperatu
       localTs
       -- temperature
       temperature
+      -- Net FINC presses
+      netFincs
 
 -- | The state space of the Mealy machine for producing @SYNC_OUT@.
 data SyncOutGen dom =
