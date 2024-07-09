@@ -223,9 +223,9 @@ ilaProbeNames =
      "trigger_1"
   :> "capture_1"
   :> "condition"
-  :> "global"
-  :> "local"
-  :> "data"
+  :> "syncPulse"
+  :> "freeClock"
+  :> "controlledClock"
   :> Nil
 
 -- | The ILA plot setup controller.
@@ -422,7 +422,7 @@ callistoClockControlWithIla ::
   -- ^ Statistics provided by elastic buffers.
   Signal sys (CallistoResult n)
 callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
-  hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> result)
+  hwSeqX ilaInstance ccResultOut
  where
   result = callistoClockControl clk rst enableGen ccc mask ebs
 
@@ -477,7 +477,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
 
   -- compress the elastic buffer data via only reporting the
   -- differences since the last capture
-  (ebDataChange, ebsC) = second unbundle $
+  (_ebDataChange, ebsC) = second unbundle $
     let transF storedDataCounts (trigger, curDataCounts) =
           let diffs = zipWith (-) curDataCounts storedDataCounts
               half = extend @_
@@ -505,6 +505,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
       scheduledCapture
 
   -- do not forward clock modifications during calibration
+  ccResultOut = muteDuringCalibration <$> calibrating <*> result
   muteDuringCalibration active ccResult = ccResult
     { maybeSpeedChange = bool (maybeSpeedChange ccResult) Nothing active
     }
@@ -521,20 +522,13 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
     (fmap fst <$> plotData)
 
   plotData =
-    let captureType calibrate scheduled dc dat
+    let captureType calibrate scheduled dat
           | scheduled && calibrate                = Just (Calibrate,  dat)
           | scheduled                             = Just (Scheduled,  dat)
-          | dc || dataChange dat && not calibrate = Just (DataChange, dat)
           | otherwise                             = Nothing
-
-        dataChange PlotData{..} =
-             any (\(_, x, y) -> isJust x || isJust y) dEBData
-          || dSpeedChange /= NoChange
-          || dRfStageChange /= Stable
      in captureType
           <$> calibrating
           <*> scheduledCapture
-          <*> ebDataChange
           <*> localData
 
   ilaInstance :: Signal sys ()
@@ -549,18 +543,12 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
       (syncStart .&&. (isJust <$> captureCond) .&&. (not <$> skipTest))
       -- capture the capture condition
       (fromMaybe UntilTrigger <$> captureCond)
-      -- capture the globally synchronized timestamp
-      globalTimestamp
+      -- Sync pulse count
+      (fst <$> globalTimestamp)
+      -- Stable clock counter
+      (snd <$> globalTimestamp)
       -- capture the local timestamp
       localTs
-      -- capture all relevant plot data
-      (maybe dummy snd <$> plotData)
-
-  dummy = PlotData
-    { dEBData        = repeat (0, Nothing, Nothing)
-    , dSpeedChange   = NoChange
-    , dRfStageChange = Stable
-    }
 
 -- | The state space of the Mealy machine for producing @SYNC_OUT@.
 data SyncOutGen dom =
