@@ -15,6 +15,7 @@ import Clash.Prelude (BitPack, String, FilePath, show)
 import Data.Aeson (ToJSON)
 
 import qualified Bittide.Instances.Hitl.BoardTest         as BoardTest
+import qualified Bittide.Instances.Hitl.Ethernet          as Ethernet
 import qualified Bittide.Instances.Hitl.FincFdec          as FincFdec
 import qualified Bittide.Instances.Hitl.FullMeshHwCc      as FullMeshHwCc
 import qualified Bittide.Instances.Hitl.FullMeshSwCc      as FullMeshSwCc
@@ -55,6 +56,7 @@ hitlTests =
   , knownType  'SyncInSyncOut.syncInSyncOut             SyncInSyncOut.tests
   , knownType  'Transceivers.transceiversUpTest         Transceivers.tests
   , knownType  'VexRiscv.vexRiscvTest                   VexRiscv.tests
+  , knownType  'Ethernet.vexRiscvTcpTest                Ethernet.tests
     -- tests that are loaded from config files
   , loadConfig 'ExtraProbes.extraProbesTest             "extraProbesTest.yml"
   ]

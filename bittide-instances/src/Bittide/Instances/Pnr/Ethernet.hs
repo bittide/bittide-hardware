@@ -14,6 +14,7 @@ import Clash.Explicit.Reset.Extra
 
 import Clash.Cores.UART (ValidBaud)
 import Clash.Cores.Xilinx.Ethernet.Gmii
+import Clash.Cores.Xilinx.Unisim.DnaPortE2(simDna2)
 import Clash.Xilinx.ClockGen
 import Protocols
 import VexRiscv
@@ -64,14 +65,15 @@ vexRiscGmii ::
 vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
   (\((_,_,jtagBwd),(uartFwd, gmiiFwd, gpioFwd)) -> (uartFwd, gmiiFwd, jtagBwd, gpioFwd)) $ toSignals (
   circuit $ \(uartTx, gmiiRx, jtag) -> do
-    [uartBus, timeBus, wbAxiRx, wbAxiTx, macWb, gpioWb] <- pe -< jtag
+    [uartBus, timeBus, wbAxiRx, wbAxiTx, dnaWb, gpioWb] <- pe -< jtag
     (uartRx, _uartStatus) <- uart -< (uartBus, uartTx)
     time -< timeBus
-    macStatIf -< (macWb, macStatus)
+    dna -< dnaWb
+    -- macStatIf -< (macWb, macStatus)
     gpioDf <- idleSource -< ()
     gpioOut <- gpio -< (gpioWb, gpioDf)
 
-    (axiRx0, gmiiTx, macStatus) <- mac -< (axiTx1, gmiiRx)
+    (axiRx0, gmiiTx, _macStatus) <- mac -< (axiTx1, gmiiRx)
     axiRx1 <- axiRxPipe -< axiRx0
     axiTx0 <- wbToAxiTx' -< wbAxiTx
     axiTx1 <- axiTxPipe -< axiTx0
@@ -82,8 +84,9 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
 
  where
   time = wcre timeWb
+  dna = wcre readDnaPortE2Wb simDna2
   mac = ethMac1GFifoC (SNat @1500) (SNat @1500) sysClk sysRst txClk txRst rxClk rxRst miiSel txClkEna rxClkEna
-  macStatIf = wcre $ macStatusInterfaceWb d16
+  -- macStatIf = wcre $ macStatusInterfaceWb d16
   uart = wcre uartWb d32 d2 baud
   pe = wcre processingElement peConfig
   wbToAxiTx' = wcre wbToAxiTx
@@ -130,8 +133,8 @@ vexRiscEthernet sysClk sysRst sgmiiPhyClk (jtagin, uartIn, sgmiiIn) =
   (uartOut, gmiiOut, jtagOut, gpioOut) = vexRiscGmii SNat sysClk sysRst rxClk rxRst rxClk rxRst (uartIn, bridgeGmiiRx, jtagin)
 
 vexRiscEthernetTop ::
-  "CLK_300MHZ" ::: DiffClock Ext300 ->
-  "CPU_RESET" ::: Reset Ext300 ->
+  "CLK_125MHZ" ::: DiffClock Ext125 ->
+  "CPU_RESET" ::: Reset Ext125 ->
   "sgmii_phyclk" ::: DiffClock Basic625 ->
     ( "JTAG" ::: Signal Basic125B JtagIn
     , "USB_UART_TXD" ::: Signal Basic125B Bit
@@ -156,7 +159,7 @@ vexRiscEthernetTop diffClk cpuReset sgmiiClk inp = (j, u , s)
                 , PortProduct ""
                   [ PortProduct "JTAG"
                     [ PortName "TCK", PortName "TMS", PortName "TDI"]
-                  , PortName "USB_UART_TX"
+                  , PortName "USB_UART_TXD"
                   , PortProduct "SGMII"
                     [ PortName "RX_P", PortName "RX_N"]
                   ]
@@ -167,7 +170,7 @@ vexRiscEthernetTop diffClk cpuReset sgmiiClk inp = (j, u , s)
         [ PortName "TDO"
         , PortName "RST"
         ]
-      , PortName "USB_UART_RX"
+      , PortName "USB_UART_RXD"
       , PortProduct "SGMII"
         [PortName "TX_P", PortName "TX_N"]
       ]

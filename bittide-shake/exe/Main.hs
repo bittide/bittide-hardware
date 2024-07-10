@@ -200,12 +200,13 @@ targets = map enforceValidTarget
   , defTarget "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
   , defTarget "Bittide.Instances.Pnr.StabilityChecker.stabilityChecker_3_1M"
   , defTarget "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
-  , (defTarget "Bittide.Instances.Pnr.Ethernet.vexRiscEthernet")
+  , (defTarget "Bittide.Instances.Pnr.Ethernet.vexRiscEthernetTop")
       { targetHasXdc = True
       , targetExternalHdl =
         [ "$env(VERILOG_ETHERNET_SRC)/rtl/*.v"
         , "$env(VERILOG_ETHERNET_SRC)/lib/axis/rtl/*.v"
         ]
+      , targetHasVio = True
       , targetExtraXdc =
         [ "jtag_config.xdc", "jtag_pmod1.xdc", "sgmii.xdc"]
       }
@@ -227,6 +228,17 @@ targets = map enforceValidTarget
       { targetPostProcess = Just "post-vex-riscv-test"
       , targetExtraXdc = ["jtag_config.xdc", "jtag_pmod1.xdc"]
       }
+  , (testTarget "Bittide.Instances.Hitl.Ethernet.vexRiscvTcpTest")
+      { targetPostProcess = Just "post-vex-riscv-tcp-test"
+      , targetHasXdc = True
+      , targetExternalHdl =
+        [ "$env(VERILOG_ETHERNET_SRC)/rtl/*.v"
+        , "$env(VERILOG_ETHERNET_SRC)/lib/axis/rtl/*.v"
+        ]
+      , targetExtraXdc = [ "jtag_config.xdc", "jtag_pmod1.xdc", "sgmii.xdc"]
+      }
+
+
   ]
 
 shakeOpts :: ShakeOptions
