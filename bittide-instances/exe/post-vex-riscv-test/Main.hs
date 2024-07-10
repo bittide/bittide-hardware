@@ -4,90 +4,20 @@
 
 import Prelude
 
-import Paths_bittide_instances
-
-import Control.Monad (unless)
-import Control.Monad.Extra (forM_)
-import Data.List.Extra (isPrefixOf, trim)
+import Data.List.Extra (isPrefixOf)
 import Data.Maybe (fromJust)
+import Paths_bittide_instances
+import Project.Handle
+import Project.Programs
 import System.Environment (withArgs)
 import System.IO
-import System.IO.Temp
 import System.Process
 
 import Test.Tasty.HUnit
 import Test.Tasty.TH
 
-data Error = Ok | Error String
-data Filter = Continue | Stop Error
-
-getOpenOcdStartPath :: IO FilePath
-getOpenOcdStartPath = getDataFileName "data/openocd/start.sh"
-
-getPicocomStartPath :: IO FilePath
-getPicocomStartPath = getDataFileName "data/picocom/start.sh"
-
-getGdbProgPath :: IO FilePath
-getGdbProgPath = getDataFileName "data/gdb/test-gdb-prog"
-
-{- | XXX: Currently hardcoded to a very specific position. Maybe we could probe
-       using JTAG to see what device we're connected to?
--}
-getUartDev :: IO String
-getUartDev = pure "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.1:1.1-port0"
-
-{- | Copy the GDB program obtained from 'getGdbProgPath' to a temporary file,
-prepend each non-comment, non-empty line with 'echo > {line}\n'. This effectively
-emulates Bash's 'set -x' for the GDB program. This can in turn be used to
-wait for specific commands to be executed, or simply for debugging.
--}
-withAnnotatedGdbProgPath :: (String -> IO ()) -> IO ()
-withAnnotatedGdbProgPath action = do
-  srcPath <- getGdbProgPath
-  withSystemTempFile "test-gdb-prog" $ \dstPath dstHandle -> do
-    withFile srcPath ReadMode $ \srcHandle -> do
-      srcLines <- lines <$> hGetContents srcHandle
-      forM_ srcLines $ \line -> do
-        let trimmedLine = trim line
-        unless
-          (null trimmedLine || "#" `isPrefixOf` trimmedLine)
-          ( hPutStr dstHandle "echo > "
-              >> hPutStr dstHandle line
-              >> hPutStrLn dstHandle "\\n"
-          )
-        hPutStrLn dstHandle line
-
-    hClose dstHandle
-    action dstPath
-
-{- | Utility function that reads lines from a handle, and applies a filter to
-each line. If the filter returns 'Continue', the function will continue
-reading lines. If the filter returns @Stop Ok@, the function will return
-successfully. If the filter returns @Stop (Error msg)@, the function will
-fail with the given message.
--}
-expectLine :: (HasCallStack) => Handle -> (String -> Filter) -> Assertion
-expectLine h f = do
-  line <- trim <$> hGetLine h
-  let cont = expectLine h f
-  if null line
-    then cont
-    else case f line of
-      Continue -> cont
-      Stop Ok -> pure ()
-      Stop (Error msg) -> assertFailure msg
-
-{- | Utility function that reads lines from a handle, and waits for a specific
-line to appear. Though this function does not fail in the traditional sense,
-it will get stuck if the expected line does not appear. Only use in combination
-with sensible time outs (also see 'main').
--}
-waitForLine :: Handle -> String -> IO ()
-waitForLine h expected =
-  expectLine h $ \s ->
-    if s == expected
-      then Stop Ok
-      else Continue
+getGdbScriptPath :: IO FilePath
+getGdbScriptPath = getDataFileName "data/gdb/test-gdb-prog"
 
 {- | Test that the GDB program works as expected. This test will start OpenOCD,
 Picocom, and GDB, and will wait for the GDB program to execute specific
@@ -109,8 +39,9 @@ case_testGdbProgram = do
   startOpenOcdPath <- getOpenOcdStartPath
   startPicocomPath <- getPicocomStartPath
   uartDev <- getUartDev
+  gdbScriptPath <- getGdbScriptPath
 
-  withAnnotatedGdbProgPath $ \gdbProgPath -> do
+  withAnnotatedGdbScriptPath gdbScriptPath $ \gdbProgPath -> do
     let
       openOcdProc = (proc startOpenOcdPath []){std_err = CreatePipe}
       picocomProc = (proc startPicocomPath [uartDev]){std_out = CreatePipe, std_in = CreatePipe}
