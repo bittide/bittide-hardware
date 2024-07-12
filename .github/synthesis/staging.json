@@ -4,5 +4,6 @@
   {"top": "linkConfigurationTest",         "stage": "test"},
   {"top": "safeDffSynchronizer",           "stage": "hdl"},
   {"top": "transceiversUpTest",            "stage": "test"},
-  {"top": "vexRiscvTest",                  "stage": "test"}
+  {"top": "vexRiscvTest",                  "stage": "test"},
+  {"top": "vexRiscvTcpTest",               "stage": "test"}
 ]
