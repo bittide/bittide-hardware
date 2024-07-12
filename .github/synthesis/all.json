@@ -22,5 +22,6 @@
   {"top": "hwCcTopologyTest",              "stage": "test",   "targets": "All"          },
   {"top": "syncInSyncOut",                 "stage": "test",   "targets": "All"          },
   {"top": "transceiversUpTest",            "stage": "test",   "targets": "All"          },
-  {"top": "vexRiscvTest",                  "stage": "test",   "targets": "Specific [-1]"}
+  {"top": "vexRiscvTest",                  "stage": "test",   "targets": "Specific [-1]"},
+  {"top": "vexRiscvTcpTest",                "stage": "test",  "targets": "Specific [-1]"}
 ]
