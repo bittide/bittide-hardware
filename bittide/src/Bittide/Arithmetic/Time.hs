@@ -1,17 +1,21 @@
 -- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
+{-# LANGUAGE FlexibleInstances,MultiParamTypeClasses,TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 module Bittide.Arithmetic.Time where
 
 import GHC.Stack (HasCallStack)
-import Clash.Explicit.Prelude
+import Clash.Explicit.Prelude hiding (natVal)
 
 import Clash.Class.Counter (countSucc, Counter)
 import Clash.Signal.Internal (Femtoseconds (Femtoseconds), mapFemtoseconds)
-import Data.Data (Proxy)
+import Data.Data (Proxy(Proxy))
 import Data.Int (Int64)
 import Data.Kind (Type)
+
+import GHC.TypeNats (natVal)
+import GHC.TypeLits.KnownNat (KnownNat1 (..),SNatKn(..), nameToSymbol)
 
 -- | Gets time in 'Picoseconds' from time in 'Seconds'.
 type Seconds      (s  :: Nat) = Milliseconds (1000 * s)
@@ -23,6 +27,11 @@ type Microseconds (us :: Nat) = Nanoseconds  (1000 * us)
 type Nanoseconds  (ns :: Nat) = Picoseconds  (1000 * ns)
 -- | Gets time in 'Picoseconds' from time in 'Picoseconds', essentially 'id'.
 type Picoseconds  (ps :: Nat) = ps
+
+-- Make ghc-typelits-knownnat look through the Picoseconds type alias
+instance (KnownNat ps) => KnownNat1 $(nameToSymbol ''Picoseconds) ps where
+  natSing1 = SNatKn (natVal (Proxy @ps))
+  {-# NOINLINE natSing1 #-}
 
 -- | Number of clock cycles required at the clock frequency of @dom@ before a minimum @period@ has passed.
 -- Is always at least one.
