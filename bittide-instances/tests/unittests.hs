@@ -5,14 +5,18 @@
 module Main where
 
 import Prelude
+
 import Test.Tasty
+
+import qualified Tests.OverflowResistantDiff as Ord
+import qualified Wishbone.DnaPortE2 as DnaPortE2
 import qualified Wishbone.Time as Time
 
-import Tests.OverflowResistantDiff
 
 tests :: TestTree
 tests = testGroup "Unittests"
-  [ ordGroup
+  [ DnaPortE2.tests
+  , Ord.tests
   , Time.tests
   ]
 

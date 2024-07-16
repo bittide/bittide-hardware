@@ -12,10 +12,12 @@ module Bittide.Wishbone where
 import Clash.Prelude
 
 import Bittide.Arithmetic.Time(DomainFrequency)
+import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
 
 import Clash.Cores.UART (uart, ValidBaud)
 import Clash.Cores.Xilinx.Ila (ila, ilaConfig, IlaConfig(..), Depth)
+import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Clash.Util.Interpolate
 
 import Data.Bifunctor
@@ -324,7 +326,7 @@ uartWb txDepth@SNat rxDepth@SNat baud = circuit $ \(wb, uartRx) -> do
       (alignedAddr, alignment) = split @_ @(addrW - 2) @2 addr
       internalAddr = bitCoerce $ resize alignedAddr :: Index 2
       addrLegal = alignedAddr <= 1 && alignment == 0
-      rxEmpty = not $ isJust rxData
+      rxEmpty = isNothing rxData
       status = (rxEmpty, txFull)
       invalidReq = deepErrorX
         [i|uartWb: Invalid request.
@@ -471,3 +473,29 @@ timeWb = Circuit $ \(wbM2S, _) -> (mealy goMealy (0,0) wbM2S, ())
     RegisterBank (splitAtI -> (freqMsbs, freqLsbs)) = getRegsBe @8 freq
     (writes, wbS2M) = wbToVec
       (0 :> fmap pack (frozenLsbs :> frozenMsbs :> freqLsbs :> freqMsbs :> Nil)) wbM2S
+
+-- | Wishbone wrapper for DnaPortE2, adds extra register with wishbone interface
+-- to access the DNA device identifier. The DNA device identifier is a 96-bit
+-- value, stored in big-endian format.
+readDnaPortE2Wb ::
+  forall dom addrW nBytes .
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , 2 <= addrW
+  , KnownNat nBytes
+  , 1 <= nBytes
+  ) =>
+  -- | Simulation DNA value
+  BitVector 96 ->
+  Circuit (Wishbone dom 'Standard addrW (Bytes nBytes)) ()
+readDnaPortE2Wb simDna = circuit $ \wb -> do
+  dnaDf <- dnaCircuit -< ()
+  _dna <- reg -< (wb, dnaDf)
+  idC -< ()
+ where
+  maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna
+  regRst = unsafeFromActiveHigh $ register True
+    $ fmap isNothing maybeDna .||. unsafeToActiveHigh hasReset
+  reg = withReset regRst $ registerWbC @dom @_ @nBytes @addrW WishbonePriority 0
+  dnaCircuit ::  Circuit () (Df dom (BitVector 96))
+  dnaCircuit = Circuit $ const ((), Df.maybeToData <$> maybeDna)

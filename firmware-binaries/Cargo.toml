@@ -14,11 +14,13 @@ codegen-units = 1
 [workspace]
 members = [
   "examples/hello",
+
+  "test-cases/dna_port_e2_test",
   "test-cases/time_self_test",
 
+  "clock-control-reg-cpy",
+  "clock-control",
   "clock-control",
   "processing-element-test",
-  "clock-control",
-  "clock-control-reg-cpy",
 ]
 resolver = "2"

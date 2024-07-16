@@ -391,10 +391,8 @@ data RegisterWritePriority = CircuitPriority | WishbonePriority
 
 -- | Register with additional wishbone interface, this component has a configurable
 -- priority that determines which value gets stored in the register during a write conflict.
--- With 'CircuitPriority', the incoming value in the fourth argument gets stored on a
--- collision and the wishbone bus gets acknowledged, but the value is silently ignored.
--- With 'WishbonePriority', the incoming wishbone write gets accepted and the value in the
--- fourth argument gets ignored.
+-- The `RegisterWritePriority` determines if the wishbone write gets accepted or if the
+-- `Df` write gets accepted. The other value is discarded.
 registerWbC ::
   forall dom a nBytes aw .
   (HiddenClockResetEnable dom, Paddable a, KnownNat nBytes, 1 <= nBytes, KnownNat aw, 2 <= aw) =>

@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2023 Google LLC
+-- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -21,8 +21,8 @@ import qualified GHC.TypeNats as TN
 
 import Bittide.Instances.Hitl.IlaPlot
 
-ordGroup :: TestTree
-ordGroup = testGroup "OverflowResistantDiff"
+tests :: TestTree
+tests = testGroup "OverflowResistantDiff"
   [ testPropertyNamed "test with step-wise incrementing counter"
       "testStepwise" $ ordTest True
   , testPropertyNamed "test with randomly incrementing counter"
