@@ -15,6 +15,7 @@
 module Clash.Shake.Vivado
   ( LocatedManifest(..)
   , BoardPart(..)
+  , TclGlobPattern
   , decodeLocatedManifest
   , mkSynthesisTcl
   , mkPlaceAndRouteTcl
@@ -68,6 +69,9 @@ meetsTiming path = andM
   , fmap not $ inFile "Timing constraints are not met" path
   ]
 
+-- | Patterns compatible with https://www.tcl.tk/man/tcl8.6/TclCmd/glob.htm
+type TclGlobPattern = String
+
 -- TODO: Upstream
 data LocatedManifest = LocatedManifest
   { -- | Path pointing to the manifest file itself
@@ -99,19 +103,34 @@ mkBoardPartTcl boardPart = case boardPart of
 mkBaseTcl ::
   -- | Where to create ip directory.
   FilePath ->
+  -- | List of glob patterns to external HDL files.
+  [TclGlobPattern] ->
   -- | Top entity directory
   LocatedManifest ->
   -- | Board part or part to synthesize for
   BoardPart ->
   -- | TCL script
   Action String
-mkBaseTcl outputDir LocatedManifest{lmPath} boardPart = do
+mkBaseTcl outputDir globPatterns LocatedManifest{lmPath} boardPart = do
   connector <- liftIO tclConnector
   connectorDigest <- hexDigestFile connector
   lmPathDigest <- hexDigestFile lmPath
   let
     topEntityDir = dropFileName lmPath
     boardPartTcl = mkBoardPartTcl boardPart
+    globTcl
+      | null globPatterns = "" :: String
+      | otherwise = [__i|
+        set extra_hdl_files [list]
+        \# We use file join to be able to retrieve environment variables
+        \# from our paths
+        set glob_patterns "#{unlines $ fmap (\p -> "[file join " <> p <> "]") globPatterns}"
+        foreach pat $glob_patterns {
+          puts "Adding files matching $pat"
+          set extra_hdl_files [concat $extra_hdl_files [glob $pat]]
+        }
+        add_files $extra_hdl_files
+        |]
 
   pure [__i|
     \# #{lmPath}: #{lmPathDigest}
@@ -134,7 +153,7 @@ mkBaseTcl outputDir LocatedManifest{lmPath} boardPart = do
 
     clash::readHdl
     #{boardPartTcl}
-
+    #{globTcl}
     if {${hasIp}} {
       read_ip $ipFiles
       set_property GENERATE_SYNTH_CHECKPOINT false [get_files $ipFiles]
@@ -154,12 +173,15 @@ mkSynthesisTcl ::
   BoardPart ->
   -- | List of filepaths to XDC files
   [FilePath] ->
+  -- | List of glob patterns to external HDL files.
+  [TclGlobPattern] ->
   -- | Manifests of which the first is the top-level to synthesize
   LocatedManifest ->
   -- | Rendered TCL
   Action String
-mkSynthesisTcl outputDir outOfContext boardPart constraints manifest@LocatedManifest{lmManifest} = do
-  baseTcl <- mkBaseTcl outputDir manifest boardPart
+mkSynthesisTcl outputDir outOfContext boardPart constraints globPatterns
+  manifest@LocatedManifest{lmManifest} = do
+  baseTcl <- mkBaseTcl outputDir globPatterns manifest boardPart
   constraintDigests <- unlines <$> mapM constraintDigest constraints
   pure $ baseTcl <> "\n" <> [__i|
     #{constraintDigests}

@@ -147,6 +147,10 @@ data Target = Target
 
     -- | Extra constraints to be sourced. Will be sourced _after_ main XDC.
   , targetExtraXdc :: [FilePath]
+
+  -- | A list of patterns that match the external HDL files that are used by the
+  -- instance. Generates tck that utilizes https://www.tcl.tk/man/tcl8.6/TclCmd/glob.htm
+  , targetExternalHdl :: [TclGlobPattern]
   }
 
 
@@ -158,6 +162,7 @@ defTarget name = Target
   , targetHasTest = False
   , targetPostProcess = Nothing
   , targetExtraXdc = []
+  , targetExternalHdl = []
   }
 
 testTarget :: TargetName -> Target
@@ -168,6 +173,7 @@ testTarget name = Target
   , targetHasTest = True
   , targetPostProcess = Nothing
   , targetExtraXdc = []
+  , targetExternalHdl = []
   }
 
 enforceValidTarget :: Target -> Target
@@ -468,6 +474,7 @@ main = do
                   False                   -- Out of context run
                   synthesisPart           -- Part we're synthesizing for
                   constraints             -- List of filenames with constraints
+                  targetExternalHdl       -- List of external HDL files to be included in synthesis
                   locatedManifest
 
               writeFileChanged path tcl
