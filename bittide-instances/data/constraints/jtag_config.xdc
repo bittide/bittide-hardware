@@ -2,7 +2,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-
 ## JTAG CONFIG. Stolen from Intel documentation.
 #
 # Search "---customize here---" for the few decisions you need to make
