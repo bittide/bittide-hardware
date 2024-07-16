@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -16,7 +16,8 @@ import Clash.Prelude
 
 import Data.Constraint
 import Data.Maybe
-import Protocols (Circuit (Circuit))
+import Protocols (Circuit (Circuit), CSignal, Df, Ack (Ack))
+import Protocols.Df (dataToMaybe)
 import Protocols.Wishbone
 
 import Bittide.Extra.Maybe
@@ -386,6 +387,31 @@ blockRamByteAddressableU readAddr newEntry byteSelect =
   rstFunc = clashCompileError "blockRamByteAddressableU: reset function undefined"
 
 data RegisterWritePriority = CircuitPriority | WishbonePriority
+ deriving Eq
+
+-- | Register with additional wishbone interface, this component has a configurable
+-- priority that determines which value gets stored in the register during a write conflict.
+-- With 'CircuitPriority', the incoming value in the fourth argument gets stored on a
+-- collision and the wishbone bus gets acknowledged, but the value is silently ignored.
+-- With 'WishbonePriority', the incoming wishbone write gets accepted and the value in the
+-- fourth argument gets ignored.
+registerWbC ::
+  forall dom a nBytes aw .
+  (HiddenClockResetEnable dom, Paddable a, KnownNat nBytes, 1 <= nBytes, KnownNat aw, 2 <= aw) =>
+  -- | Determines the write priority on write collisions
+  RegisterWritePriority ->
+  -- | Initial value.
+  a ->
+  Circuit (Wishbone dom 'Standard aw (Bytes nBytes), Df dom a) (CSignal dom a)
+registerWbC prio initVal = case cancelMulDiv @nBytes @8 of
+  Dict -> Circuit go
+   where
+    go ((wbM2S, fmap dataToMaybe -> dfM2S), _) = ((wbS2M, fmap Ack dfS2M), aOut)
+     where
+      (aOut, wbS2M) = registerWb prio initVal wbM2S dfM2S
+      dfS2M
+        | prio == WishbonePriority = (\WishboneM2S{..} -> not (strobe && busCycle)) <$> wbM2S
+        | otherwise = pure True
 
 -- | Register with additional wishbone interface, this component has a configurable
 -- priority that determines which value gets stored in the register during a write conflict.
