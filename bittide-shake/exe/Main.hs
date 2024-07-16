@@ -206,7 +206,8 @@ targets = map enforceValidTarget
         [ "$env(VERILOG_ETHERNET_SRC)/rtl/*.v"
         , "$env(VERILOG_ETHERNET_SRC)/lib/axis/rtl/*.v"
         ]
-      , targetExtraXdc = ["jtag.xdc", "sgmii.xdc"]
+      , targetExtraXdc =
+        [ "jtag_config.xdc", "jtag_pmod1.xdc", "sgmii.xdc"]
       }
 
   , (testTarget "Bittide.Instances.Hitl.BoardTest.boardTestExtended")
@@ -224,7 +225,7 @@ targets = map enforceValidTarget
   , testTarget "Bittide.Instances.Hitl.Transceivers.transceiversUpTest"
   , (testTarget "Bittide.Instances.Hitl.VexRiscv.vexRiscvTest")
       { targetPostProcess = Just "post-vex-riscv-test"
-      , targetExtraXdc = ["jtag.xdc"]
+      , targetExtraXdc = ["jtag_config.xdc", "jtag_pmod1.xdc"]
       }
   ]
 
