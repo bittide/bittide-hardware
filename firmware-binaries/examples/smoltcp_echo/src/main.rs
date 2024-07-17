@@ -8,8 +8,10 @@
 #![no_main]
 
 use bittide_sys::axi::{AxiRx, AxiTx};
+use bittide_sys::dna_port_e2::{dna_to_u128, DnaValue};
 use bittide_sys::mac::Mac;
 use bittide_sys::smoltcp::axi::AxiEthernet;
+use bittide_sys::smoltcp::{set_local, set_unicast};
 use bittide_sys::time::{Clock, Duration};
 use bittide_sys::uart::Uart;
 use log::{self, debug};
@@ -22,11 +24,13 @@ use smoltcp::socket::tcp::{Socket, SocketBuffer};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use ufmt::uwriteln;
 
-const UART_ADDR: usize = 0b0010 << 28;
 const CLOCK_ADDR: usize = 0b0011 << 28;
+const DNA_ADDR: usize = 0b0111 << 28;
+const MAC_ADDR: usize = 0b1001 << 28;
 const RX_AXI_ADDR: usize = 0b0101 << 28;
 const TX_AXI_ADDR: usize = 0b0110 << 28;
-const MAC_ADDR: usize = 0b1001 << 28;
+const UART_ADDR: usize = 0b0010 << 28;
+
 const MTU: usize = 1500;
 const RX_BUFFER_SIZE: usize = 2048;
 
@@ -40,7 +44,11 @@ fn main() -> ! {
     let mut clock = unsafe { Clock::new(CLOCK_ADDR as *const u32) };
 
     // Create interface
-    let eth_addr = EthernetAddress([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]);
+    let dna = unsafe { dna_to_u128(*(DNA_ADDR as *const DnaValue)) };
+    let mut eth_addr = EthernetAddress::from_bytes(&dna.to_be_bytes()[0..6]);
+
+    set_unicast(&mut eth_addr);
+    set_local(&mut eth_addr);
     let mut config = Config::new(eth_addr.into());
     let axi_tx = AxiTx::new(TX_AXI_ADDR as *mut u8);
     let axi_rx = unsafe { AxiRx::new(RX_AXI_ADDR as *mut usize, RX_BUFFER_SIZE) };
