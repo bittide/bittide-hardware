@@ -10,7 +10,7 @@ pkgs.stdenv.mkDerivation rec {
     sha256 = "sha256-rxoUHjOxxQc/JjEp06vibCJ2OIWbsbEtnkqS1gS+A7g=";
   };
 
-  verilog-ethernet-patches = pkgs.applyPatches {
+  verilog-ethernet-patched = pkgs.applyPatches {
     name = "verilog-ethernet-patched";
     src = verilog-ethernet-src;
     patches = [
