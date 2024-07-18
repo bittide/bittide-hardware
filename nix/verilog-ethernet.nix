@@ -2,7 +2,7 @@
 
 pkgs.stdenv.mkDerivation rec {
   name = "verilog-ethernet";
-  src = verilog-ethernet-patches;
+  src = verilog-ethernet-patched;
 
   verilog-ethernet-src = pkgs.fetchgit {
     url = "https://github.com/alexforencich/verilog-ethernet.git";
