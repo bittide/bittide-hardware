@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=6 #-}
 
 
@@ -81,4 +80,36 @@ clockControlWb margin framesize linkMask counters = Circuit go
     fIncDec3 =
       delay minBound {- glitch filter -} $
         stickyBits d20 (speedChangeToPins <$> fIncDec2)
-    (writeVec, wbS2M) = unbundle $ wbToVec <$> bundle readVec <*> wbM2S
+    (writeVec, _, wbS2M) = unbundle $ wbToVec <$> bundle readVec <*> pure True <*> wbM2S
+
+-- | A wishbone accessible interface which exposes the datacounts.
+--
+-- The word-aligned address layout of the Wishbone interface is as follows:
+--
+-- - Address 0: Number of links
+-- - Addresses 1 to (1 + nLinks): Data counts (Addr 1 is link 0)
+dataCountsWb ::
+  forall dom addrW nLinks m .
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , 2 <= addrW
+  , 1 <= nLinks
+  , KnownNat nLinks
+  , KnownNat m
+  , m <= 32
+  , nLinks <= 32
+  ) =>
+  -- | Counters
+  Vec nLinks (Signal dom (DataCount m)) ->
+  -- | Wishbone accessible clock control circuitry
+  Circuit
+    (Wishbone dom 'Standard addrW (BitVector 32))
+    ()
+dataCountsWb counters = Circuit go
+ where
+  go (wbM2S, _) = (wbS2M, ())
+   where
+    readVec = dflipflop <$> (
+         pure (natToNum @nLinks)
+      :> (pack . (extend @_ @_ @(32 - m)) <<$>> counters))
+    (_, _, wbS2M) = unbundle $ wbToVec <$> bundle readVec <*> pure True <*> wbM2S

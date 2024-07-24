@@ -165,6 +165,7 @@ mkSynthesisTcl outputDir outOfContext boardPart constraints manifest@LocatedMani
     #{constraintDigests}
     set_msg_config -severity {CRITICAL WARNING} -new_severity ERROR
 
+    set_param synth.elaboration.rodinMoreOptions "rt::set_parameter var_size_limit 4194304"
     #{constraintsString}
     file mkdir {#{outputDir </> "reports"}}
     file mkdir {#{outputDir </> "checkpoints"}}

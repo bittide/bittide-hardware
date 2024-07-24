@@ -16,6 +16,7 @@ import Data.Aeson (ToJSON)
 
 import qualified Bittide.Instances.Hitl.BoardTest         as BoardTest
 import qualified Bittide.Instances.Hitl.FincFdec          as FincFdec
+import qualified Bittide.Instances.Hitl.FmcClock          as FmcClock
 import qualified Bittide.Instances.Hitl.FullMeshHwCc      as FullMeshHwCc
 import qualified Bittide.Instances.Hitl.FullMeshSwCc      as FullMeshSwCc
 import qualified Bittide.Instances.Hitl.HwCcTopologies    as HwCcTopologies
@@ -47,6 +48,7 @@ hitlTests =
     knownType  'BoardTest.boardTestExtended             BoardTest.testsExtended
   , knownType  'BoardTest.boardTestSimple               BoardTest.testsSimple
   , knownType  'FincFdec.fincFdecTests                  FincFdec.tests
+  , knownType  'FmcClock.fmcClockTests                  FmcClock.tests
   , knownType  'FullMeshHwCc.fullMeshHwCcTest           FullMeshHwCc.tests
   , knownType  'FullMeshHwCc.fullMeshHwCcWithRiscvTest  FullMeshHwCc.tests
   , knownType  'FullMeshSwCc.fullMeshSwCcTest           FullMeshSwCc.tests

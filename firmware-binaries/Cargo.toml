@@ -17,8 +17,8 @@ members = [
   "test-cases/time_self_test",
 
   "clock-control",
-  "processing-element-test",
-  "clock-control",
   "clock-control-reg-cpy",
+  "fmc-clock",
+  "processing-element-test",
 ]
 resolver = "2"

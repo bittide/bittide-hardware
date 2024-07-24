@@ -110,6 +110,7 @@ library
     -- Hardware-in-the-loop tests
     Bittide.Instances.Hitl.BoardTest
     Bittide.Instances.Hitl.FincFdec
+    Bittide.Instances.Hitl.FmcClock
     Bittide.Instances.Hitl.FullMeshHwCc
     Bittide.Instances.Hitl.FullMeshSwCc
     Bittide.Instances.Hitl.HwCcTopologies
@@ -131,6 +132,7 @@ library
     Bittide.Instances.Pnr.ClockControl
     Bittide.Instances.Pnr.Counter
     Bittide.Instances.Pnr.ElasticBuffer
+    Bittide.Instances.Pnr.I2C
     Bittide.Instances.Pnr.ProcessingElement
     Bittide.Instances.Pnr.ScatterGather
     Bittide.Instances.Pnr.Si539xSpi
