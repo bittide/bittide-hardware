@@ -9,7 +9,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 
 module Bittide.DoubleBufferedRam where
 
@@ -200,23 +199,13 @@ wbStorageTDPM ::
 wbStorageTDPM tdpbramModule clkA rstA enA clkB rstB enB aM2S bM2S =
     (responseWb clkA rstA enA aM2S datA, responseWb clkB rstB enB bM2S datB)
     where
-        addrBitToIndex :: forall dom n . (KnownDomain dom, KnownNat n) =>
-            Signal dom (WishboneM2S n 4 (Bytes 4)) -> Signal dom (Index (2 ^ n))
-        addrBitToIndex wbM2S = bv2i . addr <$> wbM2S
-        writeDataWb :: forall dom . (KnownDomain dom) =>
-            Signal dom (WishboneM2S nAddrs 4 (Bytes 4)) -> Signal dom (BitVector 32)
-        writeDataWb wbM2S = writeData <$> wbM2S
-        byteEna :: forall dom . (KnownDomain dom) =>
-            Signal dom (WishboneM2S nAddrs 4 (Bytes 4)) -> Signal dom (BitVector 4)
         byteEna wbM2S = (\wb -> if writeEnable wb then busSelect wb else 0 :: BitVector 4) <$> wbM2S
-        enableWb :: forall dom . (KnownDomain dom) =>
-            Signal dom (WishboneM2S nAddrs 4 (Bytes 4)) -> Enable dom
         enableWb wbM2S = toEnable $ (\wb -> busCycle wb && strobe wb) <$> wbM2S
         (datA, datB) = tdpbramModule
             clkA
-            (enableWb aM2S) (addrBitToIndex aM2S) (byteEna aM2S) (writeDataWb aM2S)
+            (enableWb aM2S) (bv2i . addr <$> aM2S) (byteEna aM2S) (writeData <$> aM2S)
             clkB
-            (enableWb bM2S) (addrBitToIndex bM2S) (byteEna bM2S) (writeDataWb bM2S)
+            (enableWb bM2S) (bv2i . addr <$> bM2S) (byteEna bM2S) (writeData <$> bM2S)
 
         -- | Create a response on the wishbone bus from wishbone request and
         -- data from the tdpbram
