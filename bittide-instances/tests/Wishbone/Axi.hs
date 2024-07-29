@@ -103,7 +103,7 @@ dut baud diffClk rst_in =
     (Reloadable $ Blob dMem)
 
 
-data TestResult = TestResult String (Maybe String) deriving Show
+data TestResult = TestResult String (Maybe String) deriving (Show, Eq)
 
 wbAlwaysAck :: NFDataX a => Circuit
   (Wishbone dom 'Standard addrW a)
@@ -124,8 +124,23 @@ testResultsParser = do
   where
     done = try (string "Done") >> endOfLine >> return ()
 
+-- | Parse test results from the simulation output. See 'case_parseTestResults'
+-- for example inputs.
 parseTestResults :: String -> Either ParseError [TestResult]
 parseTestResults = parse testResultsParser ""
+
+case_parseTestResults :: Assertion
+case_parseTestResults = do
+  Right [] @=? parseTestResults "Start axi self test\nDone\n"
+
+  Right [TestResult "a" Nothing] @=?
+    parseTestResults "Start axi self test\na: None\nDone\n"
+
+  Right [TestResult "a" Nothing, TestResult "b" Nothing] @=?
+    parseTestResults "Start axi self test\na: None\nb: None\nDone\n"
+
+  Right [TestResult "a" (Just "1"),TestResult "b" Nothing] @=?
+    parseTestResults "Start axi self test\na: Some(1)\nb: None\nDone\n"
 
 tests :: TestTree
 tests = $(testGroupGenerator)

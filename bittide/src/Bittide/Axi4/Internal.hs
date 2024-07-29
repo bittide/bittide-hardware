@@ -17,8 +17,13 @@ import Protocols
 
 import qualified Protocols.DfConv as DfConv
 
--- | Function to move all keep, data and strobes in an Axi4Stream to the front of the vectors based on the
--- _tkeep field.
+{- $setup
+>>> import Clash.Prelude
+>>> import Data.Maybe
+-}
+
+-- | Function to move all keep, data and strobes in an Axi4Stream to the front of
+-- the vectors based on the _tkeep field.
 packAxi4Stream ::
   (KnownAxi4StreamConfig conf) =>
   Axi4StreamM2S conf userType -> Axi4StreamM2S conf userType
@@ -31,6 +36,11 @@ packAxi4Stream axi = output
 
 -- | Function that moves all @Just@ values in a `Vec n (Maybe a)` to the front of
 -- the vector.
+--
+-- >>> packVec (Just 1 :> Nothing :> Just 2 :> Nil)
+-- Just 1 :> Just 2 :> Nothing :> Nil
+-- >>> packVec (Nothing :> Nothing :> Just 3 :> Nil)
+-- Just 3 :> Nothing :> Nothing :> Nil
 packVec :: KnownNat n => Vec n (Maybe a) -> Vec n (Maybe a)
 packVec = foldr f (repeat Nothing)
  where

@@ -40,6 +40,7 @@ import qualified Data.List as L
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
+import qualified Test.Tasty.HUnit as HU
 
 tests :: TestTree
 tests = testGroup "Tests.Axi4"
@@ -61,6 +62,8 @@ tests = testGroup "Tests.Axi4"
   --         ]
   --
   -- , testPropertyNamed "axiStreamFromByteStream produces dense streams" "prop_axiStreamFromByteStream_dense" prop_axiStreamFromByteStream_dense
+
+  , HU.testCase "case_isDenseAxi4Stream" case_isDenseAxi4Stream
   ]
 
 type Packet = [Unsigned 8]
@@ -75,6 +78,43 @@ isDenseAxi4Stream Axi4StreamM2S{..}
  where
   rising = snd . mapAccumL (\prevKeep keep -> (keep, not prevKeep && keep)) True
   hasGaps = or .  rising
+
+case_isDenseAxi4Stream :: HU.Assertion
+case_isDenseAxi4Stream = do
+  HU.assertBool "Expected dense" $ go (repeat @1 True) False
+  HU.assertBool "Expected dense" $ go (repeat @2 True) False
+  HU.assertBool "Expected dense" $ go (repeat @3 True) False
+  HU.assertBool "Expected dense" $ go (repeat @1 False) True
+  HU.assertBool "Expected dense" $ go (repeat @2 False) True
+  HU.assertBool "Expected dense" $ go (repeat @3 False) True
+  HU.assertBool "Expected dense" $ go (repeat @1 True ++ repeat @1 False) True
+  HU.assertBool "Expected dense" $ go (repeat @1 True ++ repeat @2 False) True
+  HU.assertBool "Expected dense" $ go (repeat @1 True ++ repeat @3 False) True
+  HU.assertBool "Expected dense" $ go (repeat @2 True ++ repeat @1 False) True
+  HU.assertBool "Expected dense" $ go (repeat @3 True ++ repeat @2 False) True
+
+  HU.assertBool "Expected sparse" $ not $ go (False :> True :> Nil) True
+  HU.assertBool "Expected sparse" $ not $ go (False :> True :> False :> Nil) True
+  HU.assertBool "Expected sparse" $ not $ go (False :> True :> True :> Nil) False
+  HU.assertBool "Expected sparse" $ not $ go (False :> True :> True :> Nil) False
+  HU.assertBool "Expected sparse" $ not $ go (True :> False :> True :> Nil) False
+  HU.assertBool "Expected sparse" $ not $ go (True :> True :> False :> Nil) False
+  HU.assertBool "Expected sparse" $ not $ go (False :> True :> False :> Nil) False
+  HU.assertBool "Expected sparse" $ not $ go (False :> False :> False :> Nil) False
+
+ where
+  go keep last0 = isDenseAxi4Stream $ mkM2S keep last0
+
+  mkM2S :: KnownNat n => Vec n Bool -> Bool -> Axi4StreamM2S ('Axi4StreamConfig n 0 0 ) ()
+  mkM2S keep last0 = Axi4StreamM2S
+    { _tdata = repeat 0
+    , _tkeep = keep
+    , _tstrb = repeat True
+    , _tlast = last0
+    , _tid   = 0
+    , _tdest = 0
+    , _tuser = ()
+    }
 
 prop_axiStreamToByteStream_id :: Property
 prop_axiStreamToByteStream_id =
@@ -185,6 +225,8 @@ prop_axiStreamFromByteStream_dense = propWithModel defExpectOptions gen model im
     footnote $ "bs is dense: " <> show (isDenseAxi4Stream <$> bs)
     assert $ all isDenseAxi4Stream bs
 
+-- | Extract the data and strobe bytes. 'Nothing' if the corresponding keep bit
+-- is low, 'Just' if the keep bit is high.
 catKeepBytes ::
   KnownNat (DataWidth conf) =>
   Axi4StreamM2S conf userType ->
@@ -312,5 +354,7 @@ packetToAxiStream w@SNat !bs
   keeps = unsafeFromList $
        L.replicate (L.length bs) True <> L.repeat False
 
+-- | Force all invalid bytes to zero. This is useful for a poor man's version
+-- of '=='.
 forceKeepLowZero :: Axi4StreamM2S conf userType -> Axi4StreamM2S conf userType
 forceKeepLowZero a = a{_tdata = zipWith (\k d -> if k then d else 0) (_tkeep a) (_tdata a)}

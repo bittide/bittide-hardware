@@ -13,27 +13,30 @@
 
 module Bittide.Axi4
 (
-  -- Scaling circuits
+  -- * Scaling circuits
   axiStreamFromByteStream,
   axiStreamToByteStream,
   axiPacking,
 
-  -- Wishbone interfaces
+  -- * Wishbone interfaces
   wbAxisRxBufferCircuit,
   wbToAxiTx,
 
-  -- Other circuits
+  -- * Other circuits
   axiStreamPacketFifo,
   ilaAxi4Stream,
   rxReadMasterC,
 
-  -- Utility functions
+  -- * Utility functions
   combineAxi4Stream,
   splitAxi4Stream,
   packAxi4Stream,
   eqAxi4Stream,
   axiUserMap,
-  axiUserMapC
+  axiUserMapC,
+
+  -- * Internal
+  mkKeep
 ) where
 
 import Clash.Prelude
@@ -503,6 +506,11 @@ rxReadMaster# SNat = mealyB go (AwaitingData @fifoDepth @wbBytes, Idle)
       lastBytes _ _ = False
 
 -- | Convert a @n@ number of bytes to an @m@ byte enable Vector to be used with Axi4Stream.
+--
+-- >>> mkKeep @8 @4 3
+-- True :> True :> True :> False :> Nil
+-- >>> mkKeep @8 @4 7
+-- True :> True :> True :> True :> Nil
 mkKeep ::
   forall maxIndex byteEnables .
   ( KnownNat maxIndex
@@ -511,6 +519,8 @@ mkKeep ::
   Index maxIndex ->
   Vec byteEnables Bool
 mkKeep nBytes
+  -- This can be written more neatly if we fix
+  -- https://github.com/clash-lang/clash-compiler/issues/2779
   | nBytes < natToNum @byteEnables = fmap (< checkedResize nBytes) indicesI
   | otherwise = repeat True
 
