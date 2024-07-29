@@ -46,11 +46,21 @@ tests = testGroup "Unittests"
   , Tests.Haxioms.tests
   ]
 
+-- | Default number of tests is 100, which is too low for our (complicated)
+-- state machinery.
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
 setDefaultHedgehogTestLimit (HedgehogTestLimit Nothing) = HedgehogTestLimit (Just 1000)
 setDefaultHedgehogTestLimit opt = opt
 
+-- | Hedgehog seemingly gets stuck in an infinite loop when shrinking - probably
+-- due to the way our generators depend on each other. We limit the number of
+-- shrinks to 100.
+setDefaultHedgehogShrinkLimit :: HedgehogShrinkLimit -> HedgehogShrinkLimit
+setDefaultHedgehogShrinkLimit (HedgehogShrinkLimit Nothing) = HedgehogShrinkLimit (Just 100)
+setDefaultHedgehogShrinkLimit opt = opt
+
 main :: IO ()
-main = defaultMain $
-  adjustOption setDefaultHedgehogTestLimit
-  tests
+main = defaultMain
+  $ adjustOption setDefaultHedgehogTestLimit
+  $ adjustOption setDefaultHedgehogShrinkLimit
+  $ tests

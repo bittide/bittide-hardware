@@ -114,10 +114,8 @@ uartWbCircuitTest = do
       (wb, dfOut) <- uartMachine -< dfIn
       (uartTx, _status) <- uartWb @System @32 d2 d2 (SNat @6250000) -< (wb, uartTx)
       idC -< dfOut
-    expectOptions = ExpectOptions
-      { eoEmptyTail = 50
-      , eoTimeout = Just 200
-      , eoResetCycles = 15
+    expectOptions = defExpectOptions
+      { eoResetCycles = 15
       , eoDriveEarly = True
       }
   idWithModel expectOptions dataGen id (wcre dut)

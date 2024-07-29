@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -30,7 +31,6 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import Bittide.Axi4
-import Bittide.Axi4.Internal
 import Bittide.Extra.Maybe
 import Protocols.Hedgehog
 import Tests.Axi4.Generators
@@ -48,18 +48,25 @@ tests = testGroup "Tests.Axi4"
       wbAxisRxBufferReadStreams
   , testPropertyNamed "Various operation on Axi4StreamM2S: splitAxi4Stream combineAxi4Stream packAxi4Stream" "axiOperations" axiOperations
   , testPropertyNamed "Packet conversion utilies" "packetConversions" packetConversions
-  , testPropertyNamed "axisToByteStream as identity" "prop_axisToByteStream_id" prop_axisToByteStream_id
-  , testPropertyNamed "axisToByteStream produces dense streams" "prop_axisToByteStream_dense" prop_axisToByteStream_dense
   , testPropertyNamed "Axi4StreamPacketFifo as identity" "prop_axi4StreamPacketFifo_id" prop_axi4StreamPacketFifo_id
   , testPropertyNamed "Axi4StreamPacketFifo produces uninterrupted packets" "axi4StreamPacketFifoUninterrupted" axi4StreamPacketFifoUninterrupted
-  -- , testPropertyNamed "axisFromByteStream as identity" "prop_axisFromByteStream_id" prop_axisFromByteStream_id
-  -- , testPropertyNamed "axisFromByteStream produces dense streams" "prop_axisFromByteStream_dense" prop_axisFromByteStream_dense
+  , testPropertyNamed "axiStreamToByteStream as identity" "prop_axiStreamToByteStream_id" prop_axiStreamToByteStream_id
+  , testPropertyNamed "axiStreamToByteStream produces dense streams" "prop_axiStreamToByteStream_dense" prop_axiStreamToByteStream_dense
+  , testPropertyNamed "axiStreamFromByteStream as identity" "prop_axiStreamFromByteStream_id" prop_axiStreamFromByteStream_id
+
+  -- XXX: This test is disabled because it is failing. It produces something akin:
+  --
+  --         [ M2S(tkeep=[True], tlast=False)
+  --         , M2S(tkeep=[False], tlast=True)
+  --         ]
+  --
+  -- , testPropertyNamed "axiStreamFromByteStream produces dense streams" "prop_axiStreamFromByteStream_dense" prop_axiStreamFromByteStream_dense
   ]
 
 type Packet = [Unsigned 8]
 
--- | Checks if an Axi4Stream transaction is contigious, i.e. there are no gaps in the data.
--- A transaction can contain null bytes, but only if _tlast is set and they are not followed
+-- | Checks if an Axi4Stream transfer is dense, i.e. there are no gaps in the data.
+-- A transfer can contain null bytes, but only if _tlast is set and they are not followed
 -- by data bytes or position bytes.
 isDenseAxi4Stream :: KnownNat (DataWidth conf) => Axi4StreamM2S conf userType -> Bool
 isDenseAxi4Stream Axi4StreamM2S{..}
@@ -69,27 +76,28 @@ isDenseAxi4Stream Axi4StreamM2S{..}
   rising = snd . mapAccumL (\prevKeep keep -> (keep, not prevKeep && keep)) True
   hasGaps = or .  rising
 
-prop_axisToByteStream_id :: Property
-prop_axisToByteStream_id = propWithModel defExpectOptions gen model impl prop
+prop_axiStreamToByteStream_id :: Property
+prop_axiStreamToByteStream_id =
+  propWithModel defExpectOptions gen model1 impl prop
  where
-  impl = wcre @System axisToByteStream
+  impl = wcre @System axiStreamToByteStream
 
-  model = fmap extendAxi . L.filter (\a -> or (_tkeep a :<_tlast a))
+  model1 = L.concatMap (catMaybes . packetToAxiStream d1) . axiStreamToPackets
 
-  packetGen = catMaybes <$> genAxiPacket d1 d0 d0 Sparse
+  packetGen = catMaybes <$> genAxiPacket d4 d0 d0 Sparse
     [Null, Data, Position, Reserved] (Range.linear 0 16) (pure ())
   gen = L.concat <$> Gen.list (Range.linear 0 3) packetGen
 
   prop as bs = axiStreamToPackets as === axiStreamToPackets bs
 
-prop_axisToByteStream_dense :: Property
-prop_axisToByteStream_dense = propWithModel defExpectOptions gen model impl prop
+prop_axiStreamToByteStream_dense :: Property
+prop_axiStreamToByteStream_dense = propWithModel defExpectOptions gen model1 impl prop
  where
-  impl = wcre @System axisToByteStream
+  impl = wcre @System axiStreamToByteStream
 
-  model = fmap extendAxi . L.filter (\a -> or (_tkeep a :<_tlast a))
+  model1 = L.concatMap (catMaybes . packetToAxiStream d1) . axiStreamToPackets
 
-  packetGen = catMaybes <$> genAxiPacket d1 d0 d0 Sparse
+  packetGen = catMaybes <$> genAxiPacket d4 d0 d0 Sparse
     [Null, Data, Position, Reserved] (Range.linear 0 16) (pure ())
 
   gen = L.concat <$> Gen.list (Range.linear 0 3) packetGen
@@ -97,7 +105,8 @@ prop_axisToByteStream_dense = propWithModel defExpectOptions gen model impl prop
   prop _ bs = assert $ all isDenseAxi4Stream bs
 
 prop_axi4StreamPacketFifo_id :: Property
-prop_axi4StreamPacketFifo_id = propWithModel defExpectOptions gen id impl prop
+prop_axi4StreamPacketFifo_id =
+  propWithModel defExpectOptions gen id impl prop
  where
   impl = wcre @System $ axiStreamPacketFifo d2 d8
 
@@ -108,16 +117,16 @@ prop_axi4StreamPacketFifo_id = propWithModel defExpectOptions gen id impl prop
 
   prop _ bs = axiStreamToPackets bs === axiStreamToPackets bs
 
--- | Check if a list of Axi4StreamM2S transactions form an uninterrupted stream.
+-- | Check if a list of Axi4StreamM2S transfers form an uninterrupted stream.
 -- When a packet transmission is started, all elements should be Just until the
--- last transaction of the packet is reached.
+-- last transfer of the packet is reached.
 unInterruptedAxi4Packets :: [Maybe (Axi4StreamM2S conf userType)] -> Bool
 unInterruptedAxi4Packets xs = case break (maybe False _tlast) (dropWhile isNothing xs) of
   (packet, lastTransaction : rest) ->
     all isJust (packet <> [lastTransaction]) && unInterruptedAxi4Packets rest
   (ys, []) -> all isJust ys
 
--- | Generate a 'axisFromByteStream' component with variable output bus width
+-- | Generate a 'axiStreamFromByteStream' component with variable output bus width
 -- and test if a stream of multiple generated 'Packet's can be routed through it
 -- without being changed.
 axi4StreamPacketFifoUninterrupted :: Property
@@ -143,12 +152,12 @@ axi4StreamPacketFifoUninterrupted = property $ do
       footnote $ "simOut: " <> show simOut
       assert $ unInterruptedAxi4Packets simOut
 
--- | Verify that the 'axisFromByteStream' component does not change the content of the stream
--- when converting 1 byte wide transactions to 4 byte wide transactions.
-prop_axisFromByteStream_id :: Property
-prop_axisFromByteStream_id = propWithModel defExpectOptions gen model impl prop
+-- | Verify that the 'axiStreamFromByteStream' component does not change the content of the stream
+-- when converting 1 byte wide transfers to 4 byte wide transfers.
+prop_axiStreamFromByteStream_id :: Property
+prop_axiStreamFromByteStream_id = propWithModel defExpectOptions gen model impl prop
  where
-  impl = wcre @System $ axiUserMapC (const ()) <| axisFromByteStream
+  impl = wcre @System $ axiUserMapC (const ()) <| axiStreamFromByteStream
   model = L.concatMap (catMaybes . packetToAxiStream d4) . axiStreamToPackets
 
   packetGen = catMaybes <$> genAxiPacket d1 d0 d0 Sparse
@@ -158,12 +167,12 @@ prop_axisFromByteStream_id = propWithModel defExpectOptions gen model impl prop
 
   prop as (fmap (axiUserMap (const ())) -> bs) = axiStreamToPackets as === axiStreamToPackets bs
 
--- | Verify that the 'axisFromByteStream' component produces dense streams when converting
--- 1 byte wide transactions to 4 byte wide transactions.
-prop_axisFromByteStream_dense :: Property
-prop_axisFromByteStream_dense = propWithModel defExpectOptions gen model impl prop
+-- | Verify that the 'axiStreamFromByteStream' component produces dense streams when converting
+-- 1 byte wide transfers to 4 byte wide transfers.
+prop_axiStreamFromByteStream_dense :: Property
+prop_axiStreamFromByteStream_dense = propWithModel defExpectOptions gen model impl prop
  where
-  impl = wcre @System $ axiUserMapC (const ()) <| axisFromByteStream
+  impl = wcre @System $ axiUserMapC (const ()) <| axiStreamFromByteStream
 
   model = L.concatMap (catMaybes . packetToAxiStream d4) . axiStreamToPackets
 
@@ -173,6 +182,7 @@ prop_axisFromByteStream_dense = propWithModel defExpectOptions gen model impl pr
   gen = L.concat <$> Gen.list (Range.linear 0 3) packetGen
   prop _ bs = do
     footnote $ "bs: " <> show bs
+    footnote $ "bs is dense: " <> show (isDenseAxi4Stream <$> bs)
     assert $ all isDenseAxi4Stream bs
 
 catKeepBytes ::
@@ -190,7 +200,7 @@ axiOperations = property $ do
     splitConcatA = splitAxi4Stream @4 @4 (combineAxi4Stream @4 @4 (Just axi) Nothing)
     splitConcatB = splitAxi4Stream @4 @4 (combineAxi4Stream @4 @4 Nothing (Just axi))
   keepBytesA === keepBytesB
-  -- Differentiate between empty and non-empty transactions
+  -- Differentiate between empty and non-empty transfers
   if all not (_tkeep axi) && not (_tlast axi)
     then ( do
       (Nothing, Nothing) === splitConcatA
@@ -239,11 +249,11 @@ wbAxisRxBufferReadStreams = property $ do
   extraBufferBytes <- forAll $ Gen.integral (Range.linear 31 31)
   case (TN.someNatVal extraBufferBytes) of
     SomeNat (Proxy :: Proxy extraBufferBytes) -> do
-      let transactions = catMaybes $ wcre
+      let transfers = catMaybes $ wcre
             $ sampleC conf $ tb (SNat @(1 + extraBufferBytes)) <| driveC conf inputData
-      footnote $ "transactions: " <> show transactions
+      footnote $ "transfers: " <> show transfers
       footnote $ "inputData: " <> show inputData
-      axiStreamToPackets (catMaybes inputData) === axiStreamToPackets transactions
+      axiStreamToPackets (catMaybes inputData) === axiStreamToPackets transfers
  where
   conf = SimulationConfig 0 500 False
   tb :: (1 <= bufferBytes, HiddenClockResetEnable System) =>
@@ -261,9 +271,9 @@ packetConversions :: Property
 packetConversions = property $ do
   packets <- forAll $ Gen.list (Range.linear 1 4) $ Gen.list (Range.linear 1 128) $ genUnsigned Range.constantBounded
   let
-    transactions = fmap (packetToAxiStream d4) packets
-  footnote $ "transactions:" <> show transactions
-  packets === axiStreamToPackets (L.concatMap catMaybes transactions)
+    transfers = fmap (packetToAxiStream d4) packets
+  footnote $ "transfers:" <> show transfers
+  packets === axiStreamToPackets (L.concatMap catMaybes transfers)
 
 axiStreamToPackets ::
   KnownNat nBytes =>
@@ -284,8 +294,8 @@ packetToAxiStream ::
   Packet ->
   [Maybe (Axi4StreamM2S ('Axi4StreamConfig nBytes 0 0) ())]
 packetToAxiStream w@SNat !bs
-  | bs /= [] = Just axis : packetToAxiStream w rest
-  | otherwise  = []
+  | rest /= [] = Just axis : packetToAxiStream w rest
+  | otherwise  = [Just axis]
   where
   busWidth = natToNum @nBytes
   (firstWords, rest) = L.splitAt busWidth bs

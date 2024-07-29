@@ -262,6 +262,7 @@ test-suite unittests
     elf,
     extra,
     hedgehog >=1.0 && <1.5,
+    lifted-async,
     tasty >=1.4 && <1.6,
     tasty-expected-failure,
     tasty-hedgehog >=1.2 && <1.5,

@@ -14,8 +14,8 @@
 module Bittide.Axi4
 (
   -- Scaling circuits
-  axisFromByteStream,
-  axisToByteStream,
+  axiStreamFromByteStream,
+  axiStreamToByteStream,
   axiPacking,
 
   -- Wishbone interfaces
@@ -56,24 +56,27 @@ import qualified Protocols.DfConv as DfConv
 >>> import Clash.Prelude
 -}
 
--- | An Axi4Stream in with no gaps in the data. For each transaction the following holds:
+-- | An 'Axi4Stream' without gaps in the data. This means that for each transfer
+-- the following holds:
 --
--- * For a transaction that is not the last in a packet, all _tkeep bits are set.
--- * For a transaction that is the last in a packet, the _tlast bit is set and the
---   first n bits of _tkeep are set, where n is the number of bytes in the transaction.
+-- * For a transfer with _tlast deasserted, all _tkeep bools are set.
+-- * For a transfer with _tlast asserted, the first /n/ bools of _tkeep are set,
+--   where n is the number of bytes in the transfer.
 type PackedAxi4Stream dom conf userType = Axi4Stream dom conf userType
 
--- TODO: Add test that verifies throughput requirements.
-{-# NOINLINE axisFromByteStream #-}
--- | Transforms an Axi4 stream of 1 byte wide into an Axi4 stream of /n/ bytes
+{-# NOINLINE axiStreamFromByteStream #-}
+-- | Transforms an 'Axi4Stream' of 1 byte wide into an 'Axi4Stream' of /n/ bytes
 -- wide. If it encounters '_tlast' or has captured /n/ bytes, it will present
--- the transaction at the output. Note that if less than /n/ bytes have been
--- captured, but '_tlast' is set, the component will immediately output the
--- captured bytes with appropriately set '_tkeep' bits. The '_tuser', _tdest'
--- and '_tid' signals are blindly routed to the output. This effectively means
--- that all but the last '_tuser', '_tdest', '_tid' are linked to a valid
--- transaction.
-axisFromByteStream ::
+-- the transfer at the output. Note that if less than /n/ bytes have been
+-- captured, but '_tlast' is set, the component will output the captured bytes
+-- with appropriately set '_tkeep' bits. The '_tuser', _tdest' and '_tid' signals
+-- are blindly routed to the output. This effectively means that all but the
+-- last '_tuser', '_tdest', '_tid' are linked to a valid transfer.
+--
+-- TODO: Add test that verifies throughput requirements.
+-- TODO: Make user specify the number of bytes to capture, instead of number of
+--       bytes minus one (@addedWidth@).
+axiStreamFromByteStream ::
   forall dom addedWidth idWidth destWidth userType .
   ( HiddenClockResetEnable dom
   , KnownNat addedWidth
@@ -87,11 +90,12 @@ axisFromByteStream ::
     (PackedAxi4Stream dom
       ('Axi4StreamConfig (addedWidth + 1) idWidth destWidth)
       (Vec (addedWidth + 1) userType))
-axisFromByteStream = AS.forceResetSanity |> Circuit (mealyB go Nothing)
+axiStreamFromByteStream = AS.forceResetSanity |> Circuit (mealyB go Nothing)
  where
-  go axiStored ~(input, ~Axi4StreamS2M{_tready = outputReady}) = (axiNext, (Axi4StreamS2M inputReady, output))
+  go axiStored ~(input, Axi4StreamS2M{_tready = outputReady}) =
+    (axiNext, (Axi4StreamS2M inputReady, output))
    where
-    undefUser = deepErrorX "axisFromByteStream: _tuser undefined"
+    undefUser = deepErrorX "axiStreamFromByteStream: _tuser undefined"
 
     -- Try to append the incoming axi to the stored axi.
     dropInput = maybe False (\a -> not (or (_tlast a :> _tkeep a))) input
@@ -116,10 +120,10 @@ axisFromByteStream = AS.forceResetSanity |> Circuit (mealyB go Nothing)
 
 -- TODO: Add test that verifies throughput requirements.
 -- | Transforms an Axi4 stream of /n/ bytes wide into an Axi4 stream of 1 byte
--- wide. It stores the incoming transaction and shifts it out one by one. The incoming
--- transaction is acknowledged when the last byte is acknowledged by the outgoing transaction.
+-- wide. It stores the incoming transfer and shifts it out one by one. The incoming
+-- transfer is acknowledged when the last byte is acknowledged by the outgoing transfer.
 -- The '_tuser', '_tdest' and '_tid' are blindly routed to the output.
-axisToByteStream ::
+axiStreamToByteStream ::
   forall dom dataWidth idWidth destWidth userType .
   ( HiddenClockResetEnable dom
   , KnownNat dataWidth
@@ -131,7 +135,7 @@ axisToByteStream ::
   Circuit
     (PackedAxi4Stream dom ('Axi4StreamConfig dataWidth idWidth destWidth) userType)
     (Axi4Stream dom ('Axi4StreamConfig 1 idWidth destWidth) userType)
-axisToByteStream = AS.forceResetSanity |> Circuit (mealyB go Nothing)
+axiStreamToByteStream = AS.forceResetSanity |> Circuit (mealyB go Nothing)
  where
   go axiStored (input, Axi4StreamS2M{_tready = outputReady}) = (axiNext, (inputReady, output))
    where
@@ -168,7 +172,7 @@ data WbAxisRxBufferState bufferDepth wbBytes = WbAxisRxBufferState
 --
 -- After reading a packet, the byte count must be set to 0 and the status register must be
 -- cleared. The incoming Axi4Stream interface contains a side channel that can be used to abort
--- the incoming packet. If a packet is aborted, the buffer will consume the remaining transactions
+-- the incoming packet. If a packet is aborted, the buffer will consume the remaining transfers
 -- until the end of the packet is reached, after which it will reset the buffer to its initial state.
 wbAxisRxBufferCircuit ::
   forall dom wbAddrW wbBytes bufferBytes .
@@ -220,7 +224,7 @@ wbAxisRxBuffer SNat = case strictlyPositiveDivRu @bufferBytes @wbBytes of
 
 
 -- | A wishbone accessible buffer of configurable depth that can store a single Axi4Stream packet.
--- A read transaction from the buffer takes at least two cycles to complete.
+-- A read transfer from the buffer takes at least two cycles to complete.
 --
 -- The wishbone interface offers access to the buffer and exposes a status register that indicates:
 --  * If the buffer contains a packet
@@ -233,7 +237,7 @@ wbAxisRxBuffer SNat = case strictlyPositiveDivRu @bufferBytes @wbBytes of
 --
 -- After reading a packet, the byte count must be set to 0 and the status register must be
 -- cleared. The incoming Axi4Stream interface contains a side channel that can be used to abort
--- the incoming packet. If a packet is aborted, the buffer will consume the remaining transactions
+-- the incoming packet. If a packet is aborted, the buffer will consume the remaining transfers
 -- until the end of the packet is reached, after which it will reset the buffer to its initial state.
 wbAxisRxBuffer# ::
   forall dom wbAddrW wbBytes fifoDepth  .
@@ -515,7 +519,7 @@ type AxiStreamBytesOnly nBytes = 'Axi4StreamConfig nBytes 0 0
 
 -- TODO: Replace with PacketStream
 -- | Wishbone to Axi4Stream interface, write operations to address 0 write to the Axi4Stream.
--- The _tkeep bits are set based on the busSelect bits, when writing to address 1, a transaction
+-- The _tkeep bits are set based on the busSelect bits, when writing to address 1, a transfer
 -- is created that contains no data, but has the _tlast bit set.
 wbToAxiTx ::
   forall dom addrW nBytes .
@@ -604,7 +608,9 @@ axiStreamPacketFifo SNat fifoDepth@SNat = AS.forceResetSanity |> Circuit goCircu
 
       stallInp = packetCount == maxBound && or newPacketSr
       consumeInp = not stallInp
-      dumpPacket1 = (not dumpPacket && isJust inpM2S && not fifoReady1) || (dumpPacket && maybe False _tlast inpM2S)
+      dumpPacket1 =
+           (not dumpPacket && isJust inpM2S && not fifoReady1)
+        || (dumpPacket && maybe False _tlast inpM2S)
       produceOut = dumpPacket || packetCount /= minBound
       newPacketSr1 = newPacketSr <<+ addPacket
 

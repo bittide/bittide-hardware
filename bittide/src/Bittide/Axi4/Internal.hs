@@ -38,22 +38,22 @@ packVec = foldr f (repeat Nothing)
   f Nothing acc = acc
 
 -- | Splits an Axi4StreamM2S into a tuple of two Axi4StreamM2S. The first contains
--- all lower bytes of the transaction, the second contains the upper bytes. The first
--- output contains a transaction if at least one of the corresponding keep bits is
--- high, or none of the keep bits are high. The second output will contain a transaction
--- only if at least one of the corresponding keep bits is high. A transaction with
--- only null bytes and _tlast set will produce a transaction with _tlast set in the
+-- all lower bytes of the transfer, the second contains the upper bytes. The first
+-- output contains a transfer if at least one of the corresponding keep bits is
+-- high, or none of the keep bits are high. The second output will contain a transfer
+-- only if at least one of the corresponding keep bits is high. A transfer with
+-- only null bytes and _tlast set will produce a transfer with _tlast set in the
 -- first output, the second output will be @Nothing@.
 splitAxi4Stream ::
   forall widthA widthB idWith destWidth userTypeA userTypeB .
   ( KnownNat widthA
   , KnownNat widthB
   ) =>
-  -- | Axi4Stream transaction to split into two transactions.
+  -- | Axi4Stream transfer to split into two transfers.
   Maybe (Axi4StreamM2S ('Axi4StreamConfig (widthA + widthB) idWith destWidth) (userTypeA, userTypeB)) ->
   -- |
-  -- 1. Axi4Stream transaction with the first half of the data, keep and strobe vectors.
-  -- 2. Axi4Stream transaction with the second half of the data, keep and strobe vectors.
+  -- 1. Axi4Stream transfer with the first half of the data, keep and strobe vectors.
+  -- 2. Axi4Stream transfer with the second half of the data, keep and strobe vectors.
   ( Maybe (Axi4StreamM2S ('Axi4StreamConfig widthA idWith destWidth) userTypeA)
   , Maybe (Axi4StreamM2S ('Axi4StreamConfig widthB idWith destWidth) userTypeB))
 splitAxi4Stream Nothing = (Nothing, Nothing)
@@ -81,7 +81,7 @@ splitAxi4Stream (Just axi) = (orNothing aValid axiA, orNothing bValid axiB)
   (keepA, keepB) = splitAtI $ _tkeep axi
   (strbA, strbB) = splitAtI $ _tstrb axi
 
-  -- An asserted last signal will be assigned to the "last" valid transaction
+  -- An asserted last signal will be assigned to the "last" valid transfer
   lastA = _tlast axi && not bValid
   lastB = _tlast axi && bValid
 
@@ -92,7 +92,7 @@ splitAxi4Stream (Just axi) = (orNothing aValid axiA, orNothing bValid axiB)
   bValid = or keepB
 
 -- | Extends an @Axi4StreamM2S@ with null bytes. The lower indices of the vectors containing
--- data, keep and strobe are copied from the input transaction. The upper indices are filled
+-- data, keep and strobe are copied from the input transfer. The upper indices are filled
 -- with null bytes. The _tlast, _tid, _tdest and _tuser fields are passed through.
 extendAxi ::
   forall widthA widthB idWith destWidth userType .
@@ -114,9 +114,9 @@ extendAxi axi = Axi4StreamM2S
   }
 
 -- | Combines two Axi4StreamM2S into a single Axi4StreamM2S. The data, keep and strobe
--- vectors are concatenated. The first transaction must contain the lower part of the
--- data, the second transaction must contain the upper part of the data. If _tlast is
--- set in the first transaction, a second transaction is not allowed and the function
+-- vectors are concatenated. The first transfer must contain the lower part of the
+-- data, the second transfer must contain the upper part of the data. If _tlast is
+-- set in the first transfer, a second transfer is not allowed and the function
 -- will return @Nothing@.
 combineAxi4Stream ::
   forall widthA widthB idWidth destWidth userTypeA userTypeB.
@@ -127,11 +127,11 @@ combineAxi4Stream ::
   , NFDataX userTypeA
   , NFDataX userTypeB
   ) =>
-  -- | First Axi4Stream transaction, should contain the lower bytes.
+  -- | First Axi4Stream transfer, should contain the lower bytes.
   Maybe (Axi4StreamM2S ('Axi4StreamConfig widthA idWidth destWidth) userTypeA) ->
-  -- | Second Axi4Stream transaction, should contain the upper bytes.
+  -- | Second Axi4Stream transfer, should contain the upper bytes.
   Maybe (Axi4StreamM2S ('Axi4StreamConfig widthB idWidth destWidth) userTypeB) ->
-  -- | Combined Axi4Stream transaction, or @Nothing@ if the transactions are not compatible.
+  -- | Combined Axi4Stream transfer, or @Nothing@ if the transfers are not compatible.
   Maybe (Axi4StreamM2S ('Axi4StreamConfig (widthA + widthB) idWidth destWidth) (userTypeA, userTypeB))
 combineAxi4Stream maybeAxiA maybeAxiB = case (maybeAxiA, maybeAxiB) of
   (Just axiA, Just axiB) -> orNothing compatibleAxis axiNew
@@ -146,7 +146,7 @@ combineAxi4Stream maybeAxiA maybeAxiB = case (maybeAxiA, maybeAxiB) of
       , _tuser = (_tuser axiA, _tuser axiB)
       }
     -- We can only combine two Axi4Streams if they have the same id, dest and the first
-    -- transaction is not the end of a packet.
+    -- transfer is not the end of a packet.
     compatibleAxis =
       _tid axiA == _tid axiB && _tdest axiA == _tdest axiB && not (_tlast axiA)
 
