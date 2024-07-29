@@ -48,7 +48,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
     steps:
       - name: Checkout
@@ -115,7 +115,7 @@ jobs:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
 
     steps:
@@ -155,7 +155,7 @@ jobs:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
 
     steps:
@@ -195,7 +195,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
 
     steps:
@@ -245,7 +245,7 @@ jobs:
     needs: [build, lint, cc-sim-topologies-matrix, cc-sim-topologies, bittide-instances-hardware-in-the-loop]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
 
     steps:
@@ -318,7 +318,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
 
     steps:
@@ -345,7 +345,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
 
     steps:
@@ -386,7 +386,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
     needs: [build]
 
@@ -411,7 +411,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
     needs: [build]
 
@@ -439,7 +439,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
     needs: [build]
 
@@ -465,7 +465,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
     needs: [build]
 
@@ -498,7 +498,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
 
     steps:
@@ -525,7 +525,7 @@ jobs:
     needs: [build, lint]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
 
     steps:
@@ -551,7 +551,7 @@ jobs:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
 
     steps:
@@ -584,7 +584,7 @@ jobs:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       options: --memory=11g
 
     steps:
@@ -627,7 +627,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       volumes:
         - /opt/tools:/opt/tools
       options: --init --mac-address="6c:5a:b0:6c:13:0b" --memory=11g
@@ -707,7 +707,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-04-06
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-07-30
       volumes:
         - /opt/tools:/opt/tools
         - /dev:/dev
