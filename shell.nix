@@ -14,6 +14,7 @@ pkgs.mkShell {
     #
     [
       pkgs.cabal-install
+      pkgs.haskellPackages.cabal-gild
       pkgs.dtc
       pkgs.gcc
       pkgs.haskell.compiler.ghc94
