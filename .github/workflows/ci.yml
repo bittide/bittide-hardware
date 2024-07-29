@@ -112,6 +112,11 @@ jobs:
         run: |
           .github/scripts/all_check.py
 
+      - name: Check that all cabal files are formatted correctly
+        run: |
+          .github/scripts/cabal-gild.sh check
+          git diff --exit-code
+
   build:
     name: Build dependencies
     runs-on: [self-hosted, compute]
