@@ -1,16 +1,22 @@
-cabal-version:       2.4
-name:                bittide-tools
-synopsis:            Bittide specific tools required for development, CI,
-                     and testing
-version:             0.1
-License:             Apache-2.0
-license-file:        LICENSE
-author:              QBayLogic B.V.
-maintainer:          devops@qbaylogic.com
-Copyright:           Copyright © 2024 Google LLC
+cabal-version: 2.4
+name: bittide-tools
+synopsis:
+  Bittide specific tools required for development, CI,
+  and testing
+
+version: 0.1
+license: Apache-2.0
+license-file: LICENSE
+author: QBayLogic B.V.
+maintainer: devops@qbaylogic.com
+copyright: Copyright © 2024 Google LLC
 
 common common-options
   default-extensions:
+    -- TemplateHaskell is used to support convenience functions such as
+    -- 'listToVecTH' and 'bLit'.
+    --
+    -- `NoImplicitPrelude` is used because Clash offers Clash.Prelude
     BangPatterns
     BinaryLiterals
     ConstraintKinds
@@ -30,50 +36,57 @@ common common-options
     LambdaCase
     NoStarIsType
     PolyKinds
+    QuasiQuotes
     RankNTypes
     ScopedTypeVariables
     StandaloneDeriving
+    TemplateHaskell
     TupleSections
     TypeApplications
     TypeFamilies
     TypeOperators
     ViewPatterns
 
-    -- TemplateHaskell is used to support convenience functions such as
-    -- 'listToVecTH' and 'bLit'.
-    TemplateHaskell
-    QuasiQuotes
   ghc-options:
-    -Wall -Wcompat
-    -haddock
-
-    -- Plugins to support type-level constraint solving on naturals
-    -fplugin GHC.TypeLits.Extra.Solver
-    -fplugin GHC.TypeLits.Normalise
-    -fplugin GHC.TypeLits.KnownNat.Solver
-
-    -- Clash needs access to the source code in compiled modules
-    -fexpose-all-unfoldings
-
+    -- Plugins to support type-level constraint solving on naturals:
+    --   - GHC.TypeLits.Extra.Solver
+    --   - GHC.TypeLits.Normalise
+    --   - GHC.TypeLits.KnownNat.Solver
+    -- Clash needs access to the source code in compiled modules:
+    --   -fexpose-all-unfoldings
     -- Worker wrappers introduce unstable names for functions that might have
     -- blackboxes attached for them. You can disable this, but be sure to add
     -- a no-specialize pragma to every function with a blackbox.
+    --   -fno-worker-wrapper
+    -Wall
+    -Wcompat
+    -haddock
+    -fplugin=GHC.TypeLits.Extra.Solver
+    -fplugin=GHC.TypeLits.Normalise
+    -fplugin=GHC.TypeLits.KnownNat.Solver
+    -fexpose-all-unfoldings
     -fno-worker-wrapper
+
   build-depends:
-    base,
-    Cabal,
     -- clash-prelude will set suitable version bounds for the plugins
-    clash-prelude >= 1.7.0 && < 1.10,
-    ghc-typelits-natnormalise,
+    Cabal,
+    base,
+    clash-prelude >=1.7.0 && <1.10,
     ghc-typelits-extra,
-    ghc-typelits-knownnat
+    ghc-typelits-knownnat,
+    ghc-typelits-natnormalise,
+
   default-language: Haskell2010
 
 executable program-stream
   import: common-options
-  ghc-options: -Wall -Wcompat -threaded
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
   main-is: program/stream/Main.hs
-  Build-Depends:
+  build-depends:
     base,
     bittide,
     bytestring,
@@ -88,9 +101,14 @@ executable cc-sim
     aeson,
     bittide-experiments,
     bytestring,
-    optparse-applicative
+    optparse-applicative,
+
   -- enable rtsopts so we can setup memory limits
-  ghc-options: -Wall -Wcompat -threaded -rtsopts
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+    -rtsopts
 
 executable cc-plot
   import: common-options
@@ -116,20 +134,29 @@ executable cc-plot
     unordered-containers,
     utf8-string,
     vector,
+
   default-extensions: ImplicitPrelude
   -- enable rtsopts so we can setup memory limits
-  ghc-options: -Wall -Wcompat -threaded -rtsopts
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+    -rtsopts
 
 executable hitl-config-gen
   import: common-options
   main-is: hitl/config-gen/Main.hs
   build-depends:
     aeson,
-    bittide-instances,
     bittide-experiments,
+    bittide-instances,
     bytestring,
     directory,
     filepath,
     optparse-applicative,
-    template-haskell
-  ghc-options: -Wall -Wcompat -threaded
+    template-haskell,
+
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
