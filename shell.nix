@@ -23,6 +23,7 @@ pkgs.mkShell {
       pkgs.python311Packages.matplotlib
       pkgs.python311Packages.scipy
       pkgs.python311Packages.GitPython
+      pkgs.python311Packages.pyaml
       pkgs.sbt
       pkgs.scala
       pkgs.verilator
