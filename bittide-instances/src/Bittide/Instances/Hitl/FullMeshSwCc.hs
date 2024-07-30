@@ -477,7 +477,7 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (   txns, txps, _hwFincFdecs, _callistoResult, callistoReset
     , dataCounts, _stats, spiDone, spiOut, transceiversFailedAfterUp, allReady
     , allStable
-    , ugnsStable
+    , ugnsStable :: Vec LinkCount (Signal Basic125 Bool) -- adding this causes "Evaluator.instantiate: Not a tylambda: Lambda"
     ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso
 
   (riscvFinc, riscvFdec) =
