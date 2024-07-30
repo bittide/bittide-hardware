@@ -6,8 +6,8 @@ SPDX-License-Identifier: CC0-1.0
 
 MEMORY
 {
-  IMEM : ORIGIN = 0x80000000, LENGTH = 64K
-  DMEM : ORIGIN = 0x40000000, LENGTH = 64K
+  IMEM : ORIGIN = {imem_start}, LENGTH = {imem_size}
+  DMEM : ORIGIN = {dmem_start}, LENGTH = {dmem_size}
 }
 
 REGION_ALIAS("REGION_TEXT", IMEM);
