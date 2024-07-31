@@ -10,10 +10,12 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import qualified Tests.VexRiscv.ClockTicks
+import qualified Tests.VexRiscv.Random
 
 tests :: TestTree
 tests = testGroup "Tests"
   [ Tests.VexRiscv.ClockTicks.tests
+  , Tests.VexRiscv.Random.tests
   ]
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
