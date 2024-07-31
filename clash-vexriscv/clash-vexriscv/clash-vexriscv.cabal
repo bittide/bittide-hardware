@@ -112,6 +112,7 @@ library
     VexRiscv.ClockTicks
     VexRiscv.FFI
     VexRiscv.JtagTcpBridge
+    VexRiscv.Random
     VexRiscv.TH
     VexRiscv.VecToTuple
 
@@ -126,6 +127,7 @@ library
     Glob,
     network,
     process >= 1.6 && < 1.8,
+    random,
     string-interpolate,
     tagged,
     template-haskell,
@@ -141,9 +143,11 @@ test-suite unittests
   other-modules:
     Tests.Extra
     Tests.VexRiscv.ClockTicks
+    Tests.VexRiscv.Random
   build-depends:
     HUnit,
     base,
+    clash-prelude-hedgehog,
     clash-vexriscv,
     bytestring,
     hedgehog >= 1.0 && < 1.5,

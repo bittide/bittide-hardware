@@ -1,21 +1,26 @@
-cabal-version:       2.4
-name:                bittide-instances
-synopsis:            Top-entities for synthesis fixing target specific
-                     parameters and connecting independent components to
-                     architectures
-version:             0.1
-License:             Apache-2.0
-license-file:        LICENSE
-author:              QBayLogic B.V.
-maintainer:          devops@qbaylogic.com
-Copyright:           Copyright © 2022-2024 Google LLC
+cabal-version: 2.4
+name: bittide-instances
+synopsis:
+  Top-entities for synthesis fixing target specific
+  parameters and connecting independent components to
+  architectures
 
+version: 0.1
+license: Apache-2.0
+license-file: LICENSE
+author: QBayLogic B.V.
+maintainer: devops@qbaylogic.com
+copyright: Copyright © 2022-2024 Google LLC
 data-files:
   data/constraints/*.xdc
   data/test_configs/*.yml
 
 common common-options
   default-extensions:
+    -- TemplateHaskell is used to support convenience functions such as
+    -- 'listToVecTH' and 'bLit'.
+    --
+    -- `NoImplicitPrelude` is used because Clash offers Clash.Prelude
     BangPatterns
     BinaryLiterals
     ConstraintKinds
@@ -32,46 +37,48 @@ common common-options
     InstanceSigs
     KindSignatures
     LambdaCase
+    NoImplicitPrelude
     NoStarIsType
     PolyKinds
+    QuasiQuotes
     RankNTypes
     ScopedTypeVariables
     StandaloneDeriving
+    TemplateHaskell
     TupleSections
     TypeApplications
     TypeFamilies
     TypeOperators
     ViewPatterns
 
-    -- TemplateHaskell is used to support convenience functions such as
-    -- 'listToVecTH' and 'bLit'.
-    TemplateHaskell
-    QuasiQuotes
-
-    -- Prelude isn't imported by default as Clash offers Clash.Prelude
-    NoImplicitPrelude
   ghc-options:
-    -Wall -Wcompat
-    -- Plugins to support type-level constraint solving on naturals
-    -fplugin GHC.TypeLits.Extra.Solver
-    -fplugin GHC.TypeLits.Normalise
-    -fplugin GHC.TypeLits.KnownNat.Solver
-
-    -- Clash needs access to the source code in compiled modules
-    -fexpose-all-unfoldings
-
+    -- Plugins to support type-level constraint solving on naturals:
+    --   - GHC.TypeLits.Extra.Solver
+    --   - GHC.TypeLits.Normalise
+    --   - GHC.TypeLits.KnownNat.Solver
+    -- Clash needs access to the source code in compiled modules:
+    --   -fexpose-all-unfoldings
     -- Worker wrappers introduce unstable names for functions that might have
     -- blackboxes attached for them. You can disable this, but be sure to add
     -- a no-specialize pragma to every function with a blackbox.
+    --   -fno-worker-wrapper
+    -Wall
+    -Wcompat
+    -fplugin=GHC.TypeLits.Extra.Solver
+    -fplugin=GHC.TypeLits.Normalise
+    -fplugin=GHC.TypeLits.KnownNat.Solver
+    -fexpose-all-unfoldings
     -fno-worker-wrapper
+
   default-language: Haskell2010
   build-depends:
+    MissingH,
     aeson,
     base,
     base16-bytestring,
+    bittide,
     bittide-experiments,
     bittide-extra,
-    bittide,
     bytestring,
     cassava,
     clash-cores,
@@ -79,7 +86,7 @@ common common-options
     clash-prelude,
     clash-protocols,
     clash-vexriscv,
-    constraints >= 0.13.3 && < 0.15,
+    constraints >=0.13.3 && <0.15,
     containers,
     cryptohash-sha256,
     directory,
@@ -89,7 +96,6 @@ common common-options
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
     lift-type,
-    MissingH,
     pretty-simple,
     shake,
     split,
@@ -106,8 +112,6 @@ library
   exposed-modules:
     Bittide.Instances.Domains
     Bittide.Instances.Hacks
-
-    -- Hardware-in-the-loop tests
     Bittide.Instances.Hitl.BoardTest
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.FullMeshHwCc
@@ -115,18 +119,14 @@ library
     Bittide.Instances.Hitl.HwCcTopologies
     Bittide.Instances.Hitl.IlaPlot
     Bittide.Instances.Hitl.LinkConfiguration
-    Bittide.Instances.Hitl.Setup
-    Bittide.Instances.Hitl.SyncInSyncOut
-    Bittide.Instances.Hitl.Tests
-    Bittide.Instances.Hitl.Tcl.ExtraProbes
-    Bittide.Instances.Hitl.Transceivers
-    Bittide.Instances.Hitl.VexRiscv
-
-    -- Postprocessing of ILA data
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
-
-    -- Place and route tests
+    Bittide.Instances.Hitl.Setup
+    Bittide.Instances.Hitl.SyncInSyncOut
+    Bittide.Instances.Hitl.Tcl.ExtraProbes
+    Bittide.Instances.Hitl.Tests
+    Bittide.Instances.Hitl.Transceivers
+    Bittide.Instances.Hitl.VexRiscv
     Bittide.Instances.Pnr.Calendar
     Bittide.Instances.Pnr.ClockControl
     Bittide.Instances.Pnr.Counter
@@ -136,21 +136,29 @@ library
     Bittide.Instances.Pnr.Si539xSpi
     Bittide.Instances.Pnr.StabilityChecker
     Bittide.Instances.Pnr.Synchronizer
-
-    -- Paths
     Paths.Bittide.Instances
     Project.FilePath
+
   other-modules:
     Paths_bittide_instances
+
   autogen-modules:
     Paths_bittide_instances
 
 test-suite doctests
-  type:             exitcode-stdio-1.0
-  hs-source-dirs:   tests
-  main-is:          doctests.hs
-  ghc-options:      -Wall -Wcompat -threaded
-  build-depends:    base, bittide-instances, doctest-parallel >= 0.3.0.1
+  type: exitcode-stdio-1.0
+  hs-source-dirs: tests
+  main-is: doctests.hs
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
+  build-depends:
+    base,
+    bittide-instances,
+    doctest-parallel >=0.3.0.1,
+
   default-language: Haskell2010
 
 test-suite unittests
@@ -158,48 +166,68 @@ test-suite unittests
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: unittests.hs
-  ghc-options: -Wall -Wcompat -threaded
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
   other-modules:
     Tests.OverflowResistantDiff
     Wishbone.Time
+
   build-depends:
-    , bittide-instances
-    , clash-prelude-hedgehog >= 1.6 && < 1.10
-    , filepath
-    , hedgehog >= 1.0 && < 1.5
-    , HUnit
-    , parsec
-    , pretty-simple
-    , tasty
-    , tasty-golden
-    , tasty-hedgehog >= 1.2 && < 1.5
-    , tasty-th
+    HUnit,
+    bittide-instances,
+    clash-prelude-hedgehog >=1.6 && <1.10,
+    filepath,
+    hedgehog >=1.0 && <1.5,
+    parsec,
+    pretty-simple,
+    tasty,
+    tasty-golden,
+    tasty-hedgehog >=1.2 && <1.5,
+    tasty-th,
 
 executable clash
   import: common-options
-  ghc-options: -Wall -Wcompat -threaded
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
   main-is: exe/clash/Main.hs
-  Build-Depends: clash-ghc, bittide-instances
+  build-depends:
+    bittide-instances,
+    clash-ghc,
 
 executable post-board-test-extended
   import: common-options
-  ghc-options: -Wall -Wcompat -threaded
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
   main-is: exe/post-board-test-extended/Main.hs
   build-depends:
-      bittide-instances
-    , filepath
-    , Glob
+    Glob,
+    bittide-instances,
+    filepath,
 
 executable post-vex-riscv-test
   import: common-options
-  ghc-options: -Wall -Wcompat -threaded
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
   main-is: exe/post-vex-riscv-test/Main.hs
   build-depends:
     bittide-instances,
     extra,
+    process,
+    tasty,
     tasty-hunit,
     tasty-th,
-    tasty,
     temporary,
-    process,
+
   other-modules: Paths_bittide_instances

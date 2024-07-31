@@ -14,6 +14,7 @@ pkgs.mkShell {
     #
     [
       pkgs.cabal-install
+      pkgs.haskellPackages.cabal-gild
       pkgs.dtc
       pkgs.gcc
       pkgs.haskell.compiler.ghc94
@@ -22,6 +23,7 @@ pkgs.mkShell {
       pkgs.python311Packages.matplotlib
       pkgs.python311Packages.scipy
       pkgs.python311Packages.GitPython
+      pkgs.python311Packages.pyaml
       pkgs.sbt
       pkgs.scala
       pkgs.verilator

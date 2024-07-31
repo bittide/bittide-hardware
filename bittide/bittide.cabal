@@ -1,19 +1,26 @@
-cabal-version:       2.4
-name:                bittide
-synopsis:            Bittide hardware descriptions, which should be
-                     target independent, loosely connected / standalone
-version:             0.1
-License:             Apache-2.0
-license-file:        LICENSE
-author:              QBayLogic B.V.
-maintainer:          devops@qbaylogic.com
-Copyright:           Copyright © 2022-2024 Google LLC
+cabal-version: 2.4
+name: bittide
+synopsis:
+  Bittide hardware descriptions, which should be
+  target independent, loosely connected / standalone
 
+version: 0.1
+license: Apache-2.0
+license-file: LICENSE
+author: QBayLogic B.V.
+maintainer: devops@qbaylogic.com
+copyright: Copyright © 2022-2024 Google LLC
 data-files:
   data/clock_configs/*.csv
 
 custom-setup
-  setup-depends: Cabal, base, directory, process, filepath, extra
+  setup-depends:
+    Cabal,
+    base,
+    directory,
+    extra,
+    filepath,
+    process,
 
 -- You probably want add a `cabal.project.local` that looks like:
 --
@@ -25,11 +32,16 @@ flag rusty-callisto
     Enable the Rust FFI for the Callisto clock control. Disable this if you want
     working HLS for the bittide package. Obviously, any tests using the Callisto
     Rust implementation will fail.
+
   default: True
   manual: True
 
 common common-options
   default-extensions:
+    -- TemplateHaskell is used to support convenience functions such as
+    -- 'listToVecTH' and 'bLit'.
+    --
+    -- `NoImplicitPrelude` is used because Clash offers Clash.Prelude
     BangPatterns
     BinaryLiterals
     ConstraintKinds
@@ -46,53 +58,55 @@ common common-options
     InstanceSigs
     KindSignatures
     LambdaCase
+    NoImplicitPrelude
     NoStarIsType
     PolyKinds
+    QuasiQuotes
     RankNTypes
     ScopedTypeVariables
     StandaloneDeriving
+    TemplateHaskell
     TupleSections
     TypeApplications
     TypeFamilies
     TypeOperators
     ViewPatterns
 
-    -- TemplateHaskell is used to support convenience functions such as
-    -- 'listToVecTH' and 'bLit'.
-    TemplateHaskell
-    QuasiQuotes
-
-    -- Prelude isn't imported by default as Clash offers Clash.Prelude
-    NoImplicitPrelude
   ghc-options:
-    -Wall -Wcompat
-    -- Plugins to support type-level constraint solving on naturals
-    -fplugin GHC.TypeLits.Extra.Solver
-    -fplugin GHC.TypeLits.Normalise
-    -fplugin GHC.TypeLits.KnownNat.Solver
-    -fconstraint-solver-iterations=8
-
-    -- Clash needs access to the source code in compiled modules
-    -fexpose-all-unfoldings
-
+    -- Plugins to support type-level constraint solving on naturals:
+    --   - GHC.TypeLits.Extra.Solver
+    --   - GHC.TypeLits.Normalise
+    --   - GHC.TypeLits.KnownNat.Solver
+    -- Clash needs access to the source code in compiled modules:
+    --   -fexpose-all-unfoldings
     -- Worker wrappers introduce unstable names for functions that might have
     -- blackboxes attached for them. You can disable this, but be sure to add
     -- a no-specialize pragma to every function with a blackbox.
-    -fno-worker-wrapper
-
+    --   -fno-worker-wrapper
     -- Strict annotations - while sometimes preventing space leaks - trigger
     -- optimizations Clash can't deal with. See:
     --
     --    https://github.com/clash-lang/clash-compiler/issues/2361
     --
-    -- These flags disables the optimization.
+    -- These flags disables the optimization:
+    --   -fno-unbox-small-strict-fields
+    --   -fno-unbox-strict-fields
+    -Wall
+    -Wcompat
+    -fplugin=GHC.TypeLits.Extra.Solver
+    -fplugin=GHC.TypeLits.Normalise
+    -fplugin=GHC.TypeLits.KnownNat.Solver
+    -fconstraint-solver-iterations=8
+    -fexpose-all-unfoldings
+    -fno-worker-wrapper
     -fno-unbox-small-strict-fields
     -fno-unbox-strict-fields
+
   default-language: Haskell2010
   build-depends:
-    ghc-typelits-extra >= 0.4.4,
-    ghc-typelits-knownnat >= 0.7.7,
-    ghc-typelits-natnormalise >= 0.7.7,
+    ghc-typelits-extra >=0.4.4,
+    ghc-typelits-knownnat >=0.7.7,
+    ghc-typelits-natnormalise >=0.7.7,
 
 library
   import: common-options
@@ -106,12 +120,12 @@ library
     bytestring,
     cassava,
     clash-cores,
-    clash-lib >= 1.6.3 && < 1.10,
-    clash-prelude >= 1.6.3 && < 1.10,
+    clash-lib >=1.6.3 && <1.10,
+    clash-prelude >=1.6.3 && <1.10,
     clash-protocols,
     clash-vexriscv,
-    constraints >= 0.13.3 && < 0.15,
-    containers >= 0.4.0 && < 0.7,
+    constraints >=0.13.3 && <0.15,
+    containers >=0.4.0 && <0.7,
     directory,
     elf,
     exceptions,
@@ -122,9 +136,10 @@ library
     pretty-show,
     process,
     random,
-    string-interpolate ^>= 0.3,
+    string-interpolate ^>=0.3,
     template-haskell,
     text,
+
   exposed-modules:
     Bittide.Arithmetic.Ppm
     Bittide.Arithmetic.Time
@@ -174,6 +189,7 @@ library
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
     System.IO.Temp.Extra
+
   other-modules:
     Paths_bittide
 
@@ -182,24 +198,33 @@ library
     cpp-options: -DRUSTY_CALLISTO
 
 test-suite doctests
-  type:             exitcode-stdio-1.0
+  type: exitcode-stdio-1.0
   default-language: Haskell2010
-  main-is:          doctests.hs
-  ghc-options:      -Wall -Wcompat -threaded
-  hs-source-dirs:   tests
+  main-is: doctests.hs
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
 
+  hs-source-dirs: tests
   build-depends:
     base,
     bittide,
-    doctest-parallel >= 0.3.0.1 && < 0.4,
-    filepath
+    doctest-parallel >=0.3.0.1 && <0.4,
+    filepath,
 
 test-suite unittests
   import: common-options
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: UnitTests.hs
-  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-N12
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N12
+
   other-modules:
     Tests.Axi4
     Tests.Calendar
@@ -213,29 +238,29 @@ test-suite unittests
     Tests.Shared
     Tests.StabilityChecker
     Tests.Switch
+    Tests.Transceiver
     Tests.Transceiver.Prbs
     Tests.Transceiver.WordAlign
-    Tests.Transceiver
     Tests.Wishbone
+
   build-depends:
+    HUnit,
     base,
-    bittide-extra,
     bittide,
+    bittide-extra,
     bytestring,
     clash-cores,
     clash-lib,
-    clash-prelude-hedgehog >= 1.6 && < 1.10,
     clash-prelude,
+    clash-prelude-hedgehog >=1.6 && <1.10,
     clash-protocols,
-    constraints >= 0.13.3 && < 0.15,
-    containers,
+    constraints >=0.13.3 && <0.15,
     containers,
     elf,
     extra,
-    hedgehog >= 1.0 && < 1.5,
-    HUnit,
-    tasty >= 1.4 && < 1.6,
+    hedgehog >=1.0 && <1.5,
+    tasty >=1.4 && <1.6,
     tasty-expected-failure,
-    tasty-hedgehog >= 1.2 && < 1.5,
+    tasty-hedgehog >=1.2 && <1.5,
     tasty-hunit,
     tasty-th,
