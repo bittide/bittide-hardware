@@ -110,10 +110,6 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
-    -- Hardware-in-the-loop tests
-    -- Postprocessing of ILA data
-    -- Place and route tests
-    -- Paths
     Bittide.Instances.Domains
     Bittide.Instances.Hacks
     Bittide.Instances.Hitl.BoardTest
