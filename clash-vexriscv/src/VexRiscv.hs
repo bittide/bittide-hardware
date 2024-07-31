@@ -31,6 +31,7 @@ import Protocols.Wishbone
 
 import VexRiscv.ClockTicks
 import VexRiscv.FFI
+import VexRiscv.Random
 import VexRiscv.TH
 import VexRiscv.VecToTuple
 
@@ -70,20 +71,6 @@ data Jtag (dom :: Domain)
 instance Protocol (Jtag dom) where
   type Fwd (Jtag dom) = Signal dom JtagIn
   type Bwd (Jtag dom) = Signal dom JtagOut
-
-
--- When passing S2M values from Haskell to VexRiscv over the FFI, undefined
--- bits/values cause errors when forcing their evaluation to something that can
--- be passed through the FFI.
---
--- This function makes sure the Wishbone S2M values are free from undefined bits.
-makeDefined :: WishboneS2M (BitVector 32) -> WishboneS2M (BitVector 32)
-makeDefined wb = wb {readData = defaultX 0 (readData wb)}
-
-defaultX :: (NFDataX a) => a -> a -> a
-defaultX dflt val
-  | hasUndefined val = dflt
-  | otherwise = val
 
 vexRiscv ::
   forall dom .
@@ -136,16 +123,10 @@ vexRiscv clk rst cpuInput jtagInput =
       = (\(CpuIn a b c d e) -> (a, b, c, d, e)) <$> cpuInput
 
     (unbundle -> (iBus_DAT_MISO, iBus_ACK, iBus_ERR))
-      = (\(WishboneS2M a b c _ _) -> (a, b, c))
-      -- A hack that enables us to both generate synthesizable HDL and simulate vexRisc in Haskell/Clash
-      . (if clashSimulation then makeDefined else id)
-      <$> iBusS2M
+      = (\(WishboneS2M a b c _ _) -> (a, b, c)) <$> iBusS2M
 
     (unbundle -> (dBus_DAT_MISO, dBus_ACK, dBus_ERR))
-      = (\(WishboneS2M a b c _ _) -> (a, b, c))
-      -- A hack that enables us to both generate synthesizable HDL and simulate vexRisc in Haskell/Clash
-      . (if clashSimulation then makeDefined else id)
-      <$> dBusS2M
+      = (\(WishboneS2M a b c _ _) -> (a, b, c)) <$> dBusS2M
 
     (unbundle -> (jtag_TCK, jtag_TMS, jtag_TDI))
       = bitCoerce <$> jtagInput
@@ -243,39 +224,55 @@ vexRiscv#
     , Signal dom Bit -- ^ jtag_TDO
     )
 vexRiscv# !_sourcePath clk rst0
-  timerInterrupt
-  externalInterrupt
-  softwareInterrupt
-  iBus_ACK
-  iBus_ERR
-  iBus_DAT_MISO
+  timerInterrupt0
+  externalInterrupt0
+  softwareInterrupt0
+  iBus_ACK0
+  iBus_ERR0
+  iBus_DAT_MISO0
 
-  dBus_ACK
-  dBus_ERR
-  dBus_DAT_MISO
+  dBus_ACK0
+  dBus_ERR0
+  dBus_DAT_MISO0
 
-  jtag_TCK
-  jtag_TMS
-  jtag_TDI = unsafePerformIO $ do
+  jtag_TCK0
+  jtag_TMS0
+  jtag_TDI0 = unsafePerformIO $ do
     (v, initStage1, initStage2, stepRising, stepFalling, _shutDown) <- vexCPU
+
+    -- Make sure all the inputs are defined
+    let
+      rst1 = unsafeMakeDefinedRandom <$> unsafeToActiveHigh rst0
+      timerInterrupt1 = unsafeMakeDefinedRandom <$> timerInterrupt0
+      externalInterrupt1 = unsafeMakeDefinedRandom <$> externalInterrupt0
+      softwareInterrupt1 = unsafeMakeDefinedRandom <$> softwareInterrupt0
+      iBus_ACK1 = unsafeMakeDefinedRandom <$> iBus_ACK0
+      iBus_DAT_MISO1 = unsafeMakeDefinedRandom <$> iBus_DAT_MISO0
+      iBus_ERR1 = unsafeMakeDefinedRandom <$> iBus_ERR0
+      dBus_ACK1 = unsafeMakeDefinedRandom <$> dBus_ACK0
+      dBus_DAT_MISO1 = unsafeMakeDefinedRandom <$> dBus_DAT_MISO0
+      dBus_ERR1 = unsafeMakeDefinedRandom <$> dBus_ERR0
+      jtag_TCK1 = unsafeMakeDefinedRandom <$> jtag_TCK0
+      jtag_TMS1 = unsafeMakeDefinedRandom <$> jtag_TMS0
+      jtag_TDI1 = unsafeMakeDefinedRandom <$> jtag_TDI0
 
     let
       nonCombInput = NON_COMB_INPUT
-        <$> (boolToBit <$> unsafeToActiveHigh rst0)
-        <*> timerInterrupt
-        <*> externalInterrupt
-        <*> softwareInterrupt
+        <$> (boolToBit <$> rst1)
+        <*> timerInterrupt1
+        <*> externalInterrupt1
+        <*> softwareInterrupt1
 
       combInput = COMB_INPUT
-        <$> (boolToBit <$> iBus_ACK)
-        <*> (unpack    <$> iBus_DAT_MISO)
-        <*> (boolToBit <$> iBus_ERR)
-        <*> (boolToBit <$> dBus_ACK)
-        <*> (unpack    <$> dBus_DAT_MISO)
-        <*> (boolToBit <$> dBus_ERR)
-        <*> jtag_TCK
-        <*> jtag_TMS
-        <*> jtag_TDI
+        <$> (boolToBit <$> iBus_ACK1)
+        <*> (unpack    <$> iBus_DAT_MISO1)
+        <*> (boolToBit <$> iBus_ERR1)
+        <*> (boolToBit <$> dBus_ACK1)
+        <*> (unpack    <$> dBus_DAT_MISO1)
+        <*> (boolToBit <$> dBus_ERR1)
+        <*> jtag_TCK1
+        <*> jtag_TMS1
+        <*> jtag_TDI1
 
       simInitThenCycles ::
         Signal dom NON_COMB_INPUT ->

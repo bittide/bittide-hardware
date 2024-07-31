@@ -106,8 +106,8 @@ cpu jtagPort bootIMem bootDMem =
             { timerInterrupt = low,
               externalInterrupt = low,
               softwareInterrupt = low,
-              iBusWbS2M = makeDefined iBus,
-              dBusWbS2M = makeDefined dBus
+              iBusWbS2M = iBus,
+              dBusWbS2M = dBus
             }
       )
         <$> iS2M
