@@ -17,7 +17,7 @@ import tempfile
 
 from subprocess import check_output, check_call, run
 
-HEX_RE = "[a-f0-9]{7}"
+HEX_RE = "[a-f0-9]+"
 SUBTREE_RE = re.compile(f"Squashed 'clash-vexriscv/' changes from (?P<from>{HEX_RE})..(?P<to>{HEX_RE})")
 
 CLASH_VEXRISCV_REPO = "https://github.com/clash-lang/clash-vexriscv.git"
