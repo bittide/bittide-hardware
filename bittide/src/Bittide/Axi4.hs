@@ -34,6 +34,7 @@ module Bittide.Axi4
   eqAxi4Stream,
   axiUserMap,
   axiUserMapC,
+  isPackedTransfer,
 
   -- * Internal
   mkKeep
@@ -44,7 +45,7 @@ import Clash.Prelude
 import Bittide.Axi4.Internal
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
-import Clash.Cores.Xilinx.Ila
+import Clash.Cores.Xilinx.Ila hiding (Data)
 import Clash.Sized.Internal.BitVector (popCountBV)
 import Data.Constraint
 import Data.Constraint.Nat.Extra
@@ -57,6 +58,7 @@ import qualified Protocols.DfConv as DfConv
 
 {- $setup
 >>> import Clash.Prelude
+>>> import Protocols.Axi4.Stream
 -}
 
 -- | An 'Axi4Stream' without gaps in the data. This means that for each transfer
@@ -108,18 +110,22 @@ axiStreamFromByteStream = AS.forceResetSanity |> Circuit (mealyB go Nothing)
     -- If the head of the pre-shifted axi has its keep bit set, shifting is done.
     extendedAxi = fmap (axiUserMap (:< undefUser) . extendAxi @_ @1) axiStored
     axiPreShift = combinedAxi <|> extendedAxi
-    (axiHead, axiPostShift) = splitAxi4Stream @1 $
+    axiPostShift = snd $ splitAxi4Stream @1 $
       fmap (axiUserMap (\ v -> (head v, tail v))) axiPreShift
 
     -- Output the pre-shifted axi if we can not shift anymore.
-    output = if not dropInput && isJust axiHead then axiPreShift else Nothing
+    shiftingDone = not dropInput && maybe False isPackedTransfer axiPreShift
+    capturedLast = maybe False _tlast axiPreShift
+    output = if shiftingDone then axiPreShift else Nothing
 
-    -- State update
+    -- Flow control
     (axiNext, inputReady)
-      | dropInput                          = (axiStored, True)
-      | isJust output && outputReady       = (Nothing, isJust combinedAxi)
-      | isJust output && not outputReady   = (axiStored, False)
-      | otherwise                          = (axiPostShift, isJust combinedAxi)
+      | dropInput                          = (axiStored, True)                  -- Drop the input
+      | shiftingDone && outputReady        = (Nothing, isJust combinedAxi)      -- valid output, accepted
+      | shiftingDone && not outputReady    = (axiStored, False)                 -- valid output, not accepted
+      | not shiftingDone && isJust input   = (axiPostShift, isJust combinedAxi) -- Shift when input
+      | not shiftingDone && capturedLast   = (axiPostShift, False)              -- Shift when captured _tlast
+      | otherwise                          = (axiStored, False)                 -- No input
 
 -- TODO: Add test that verifies throughput requirements.
 -- | Transforms an Axi4 stream of /n/ bytes wide into an Axi4 stream of 1 byte
@@ -501,8 +507,8 @@ rxReadMaster# SNat = mealyB go (AwaitingData @fifoDepth @wbBytes, Idle)
           (ClearingPacketLength, _) -> (bufState, ClearingStatus)
           (ClearingStatus,_) -> (AwaitingData, Idle)
 
-      lastBytes (PacketComplete s) (ReadingPacket i) = s <= (4 * (checkedResize i))
-      lastBytes (BufferFull) (ReadingPacket i) = i == maxBound
+      lastBytes (PacketComplete s) (ReadingPacket i) = s <= (4 * checkedResize i)
+      lastBytes BufferFull (ReadingPacket i) = i == maxBound
       lastBytes _ _ = False
 
 -- | Convert a @n@ number of bytes to an @m@ byte enable Vector to be used with Axi4Stream.
@@ -523,7 +529,6 @@ mkKeep nBytes
   -- https://github.com/clash-lang/clash-compiler/issues/2779
   | nBytes < natToNum @byteEnables = fmap (< checkedResize nBytes) indicesI
   | otherwise = repeat True
-
 
 type AxiStreamBytesOnly nBytes = 'Axi4StreamConfig nBytes 0 0
 
@@ -640,42 +645,35 @@ axiPacking ::
     (PackedAxi4Stream dom ('Axi4StreamConfig dataWidth idWidth destWidth) ())
 axiPacking = AS.forceResetSanity |> Circuit (mealyB go Nothing)
  where
-  go axiStored ~(input, Axi4StreamS2M outputReady) =
-    (newStored, (Axi4StreamS2M consumableInput, output))
+  go axiStored ~(input, Axi4StreamS2M{_tready = outputReady}) =
+    (axiNext, (Axi4StreamS2M inputReady, output))
    where
+    -- undefUser = deepErrorX "axiStreamFromByteStream: _tuser undefined"
 
-    -- Axi Right
-    -- Produce when:
-    --  Data has overflowed into the excess buffer.
-    --  Output buffer contains the end of a packet.
-    outputValid = isJust excessBuffer || maybe False _tlast outputBuffer
-    output = if outputValid then outputBuffer else Nothing
-    handshakeOutput = outputValid && outputReady
+    -- Try to append the incoming axi to the stored axi.
+    dropInput = maybe False (\a -> not (or (_tlast a :> _tkeep a))) input
+    combinedAxi = axiUserMap (const ()) <$> combineAxi4Stream axiStored input
 
-    -- Axi Left
-    -- Accept input if we can consume the input into the remainder and we don't have valid output being blocked.
-    consumableInput = isJust packedAxi4Stream
-    inputReady = consumableInput && not (outputValid && not outputReady)
-    inputBlock = isJust input && not inputReady
+    -- Shift the internal axi towards HEAD by one position.
+    -- If the head of the pre-shifted axi has its keep bit set, shifting is done.
+    extendedAxi = fmap extendAxi axiStored
+    packedAxi = fmap packAxi4Stream $ combinedAxi <|> extendedAxi
 
-    -- State update
-    -- Split the state into the output buffer and the excess buffer.
-    -- Determine the remainder and create a new packed Axi4Stream using the remainder and the input.
-    (outputBuffer, excessBuffer) = splitAxi4Stream axiStored
-    remainder = if handshakeOutput then excessBuffer else outputBuffer
-    packedAxi4Stream = packAxi4Stream <$> combineAxi4Stream remainder input
+    (outputBuffer, excessBuffer) = splitAxi4Stream $ fmap (axiUserMap (const ((),()))) packedAxi
 
-    newStored
-      -- The output buffer is consumed and we can add the input to the excess buffer
-      | handshakeOutput && consumableInput = packedAxi4Stream
-      -- The output buffer is consumed, but We can not add the input to the excess buffer
-      | handshakeOutput = combineAxi4Stream excessBuffer Nothing
-      -- Our output has not been consumed
-      | outputValid = axiStored
-      -- We can not consume the input
-      | inputBlock = axiStored
-      -- We can consume the input
-      | otherwise = packedAxi4Stream
+    -- Output the pre-shifted axi if we can not shift anymore.
+    shiftingDone = not dropInput && maybe False isPackedTransfer outputBuffer
+    capturedLast = maybe False _tlast outputBuffer
+    output = if shiftingDone then outputBuffer else Nothing
+
+    -- Flow control
+    (axiNext, inputReady)
+      | dropInput                        = (axiStored, True)                  -- Drop the input
+      | shiftingDone && outputReady      = (excessBuffer, isJust combinedAxi) -- valid output, accepted
+      | shiftingDone && not outputReady  = (axiStored, False)                 -- valid output, not accepted
+      | not shiftingDone && isJust input = (outputBuffer, isJust combinedAxi) -- Shift when input
+      | not shiftingDone && capturedLast = (outputBuffer, False)              -- Shift when captured _tlast
+      | otherwise                        = (axiStored, False)                 -- No input
 
 -- | Integrated logic analyzer for an Axi4Stream bus, it captures the data, keep, ready and last signals.
 ilaAxi4Stream ::
@@ -707,3 +705,25 @@ ilaAxi4Stream stages0 depth0 = Circuit $ \(m2s, s2m) ->
       (_tready <$> s2m)
   in
     ilaInst `hwSeqX` (s2m, m2s)
+
+-- | A packed transfer is a transfer where either:
+-- * _tlast is not set and all _tkeep bits are set.
+-- * _tlast is set and only the first n _tkeep bits are set.
+-- >>> let mkAxi keep last = Axi4StreamM2S @('Axi4StreamConfig 2 0 0) (repeat 0) keep (repeat True) last 0 0 ()
+-- >>> isPackedTransfer $ mkAxi (False :> False :> Nil) False
+-- False
+-- >>> isPackedTransfer $ mkAxi (True :> False :> Nil) False
+-- False
+-- >>> isPackedTransfer $ mkAxi (True :> True :> Nil) False
+-- True
+-- >>> isPackedTransfer $ mkAxi (False :> False :> Nil) True
+-- True
+-- >>> isPackedTransfer $ mkAxi (False :> True :> Nil) True
+-- False
+isPackedTransfer :: KnownNat (DataWidth conf) => Axi4StreamM2S conf a -> Bool
+isPackedTransfer Axi4StreamM2S{..}
+  | _tlast = not $ hasGaps _tkeep
+  | otherwise = and _tkeep
+ where
+  rising = snd . mapAccumL (\prevKeep keep -> (keep, not prevKeep && keep)) True
+  hasGaps = or .  rising

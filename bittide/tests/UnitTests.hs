@@ -10,10 +10,13 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import qualified Tests.Axi4
+import qualified Tests.Axi4.Generators
+import qualified Tests.Axi4.Properties
 import qualified Tests.Calendar
 import qualified Tests.ClockControl.Si539xSpi
 import qualified Tests.DoubleBufferedRam
 import qualified Tests.ElasticBuffer
+import qualified Tests.Haxioms
 import qualified Tests.Link
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ScatterGather
@@ -23,8 +26,6 @@ import qualified Tests.Transceiver
 import qualified Tests.Transceiver.Prbs
 import qualified Tests.Transceiver.WordAlign
 import qualified Tests.Wishbone
-import qualified Tests.Axi4.Generators
-import qualified Tests.Haxioms
 
 tests :: TestTree
 tests = testGroup "Unittests"
@@ -43,6 +44,7 @@ tests = testGroup "Unittests"
   , Tests.Transceiver.WordAlign.tests
   , Tests.Wishbone.tests
   , Tests.Axi4.Generators.tests
+  , Tests.Axi4.Properties.tests
   , Tests.Haxioms.tests
   ]
 

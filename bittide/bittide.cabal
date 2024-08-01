@@ -229,6 +229,8 @@ test-suite unittests
   other-modules:
     Tests.Axi4
     Tests.Axi4.Generators
+    Tests.Axi4.Properties
+    Tests.Axi4.Types
     Tests.Calendar
     Tests.ClockControl.Si539xSpi
     Tests.Counter
