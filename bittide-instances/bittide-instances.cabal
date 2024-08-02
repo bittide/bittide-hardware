@@ -173,6 +173,7 @@ test-suite unittests
 
   other-modules:
     Tests.OverflowResistantDiff
+    Wishbone.DnaPortE2
     Wishbone.Time
 
   build-depends:
