@@ -44,7 +44,7 @@ PWD = os.getcwd()
 GITHUB_ORG="bittide"
 GITHUB_REPO="bittide-hardware"
 
-CACHE_URL="http://192.168.102.234:9000"
+CACHE_URL="http://hertme.local:9000"
 CACHE_USER="root"
 CACHE_BUCKET=f"github.org/{GITHUB_ORG}/{GITHUB_REPO}"
 
