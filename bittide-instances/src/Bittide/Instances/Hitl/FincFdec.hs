@@ -15,7 +15,6 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 
-import Bittide.Arithmetic.Time
 import Bittide.Counter (domainDiffCounter)
 import Bittide.ClockControl (SpeedChange(NoChange, SlowDown, SpeedUp), speedChangeToFincFdec)
 import Bittide.ClockControl.Si539xSpi (si539xSpi, ConfigState(Finished))

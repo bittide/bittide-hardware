@@ -1,11 +1,12 @@
 -- SPDX-FileCopyrightText: 2023-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE NamedFieldPuns #-}
 
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
@@ -33,7 +34,7 @@ module Bittide.Instances.Hitl.FullMeshSwCc
 
 import qualified Prelude as P
 import Clash.Prelude (withClockResetEnable)
-import Clash.Explicit.Prelude
+import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import qualified Clash.Explicit.Prelude as E
 
 import Data.Maybe (fromMaybe)

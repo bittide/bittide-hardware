@@ -2,44 +2,51 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleInstances,MultiParamTypeClasses,TemplateHaskell #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Bittide.Arithmetic.Time where
 
 import GHC.Stack (HasCallStack)
-import Clash.Explicit.Prelude hiding (natVal)
+import Clash.Explicit.Prelude hiding (natVal, PeriodToCycles)
 
 import Clash.Class.Counter (countSucc, Counter)
 import Clash.Signal.Internal (Femtoseconds (Femtoseconds), mapFemtoseconds)
-import Data.Data (Proxy(Proxy))
+import Data.Data (Proxy(..))
 import Data.Int (Int64)
 import Data.Kind (Type)
 
 import GHC.TypeNats (natVal)
 import GHC.TypeLits.KnownNat (KnownNat1 (..),SNatKn(..), nameToSymbol)
 
--- | Gets time in 'Picoseconds' from time in 'Seconds'.
-type Seconds      (s  :: Nat) = Milliseconds (1000 * s)
--- | Gets time in 'Picoseconds' from time in 'Milliseconds'.
-type Milliseconds (ms :: Nat) = Microseconds (1000 * ms)
--- | Gets time in 'Picoseconds' from time in 'Microseconds'.
-type Microseconds (us :: Nat) = Nanoseconds  (1000 * us)
--- | Gets time in 'Picoseconds' from time in 'Nanoseconds'.
-type Nanoseconds  (ns :: Nat) = Picoseconds  (1000 * ns)
--- | Gets time in 'Picoseconds' from time in 'Picoseconds', essentially 'id'.
-type Picoseconds  (ps :: Nat) = ps
+-- | XXX: We currently retain this in favor of @clash-prelude@s 'PeriodToCycles'
+-- until @1 <= DomainPeriod dom@ is trivially true. Related issue:
+-- https://github.com/clash-lang/ghc-typelits-extra/issues/56
+--
+--Number of clock cycles required at the clock frequency of @dom@ before a minimum @period@ has passed.
+-- Is always at least one.
+type PeriodToCycles dom period = Max 1 (DivRU period (Max 1 (DomainPeriod dom)))
 
--- Make ghc-typelits-knownnat look through the Picoseconds type alias
+-- Make ghc-typelits-knownnat look through time related type aliases.
+-- https://github.com/clash-lang/ghc-typelits-knownnat/issues/53
 instance (KnownNat ps) => KnownNat1 $(nameToSymbol ''Picoseconds) ps where
   natSing1 = SNatKn (natVal (Proxy @ps))
   {-# NOINLINE natSing1 #-}
 
--- | Number of clock cycles required at the clock frequency of @dom@ before a minimum @period@ has passed.
--- Is always at least one.
-type PeriodToCycles dom period = Max 1 (DivRU period (Max 1 (DomainPeriod dom)))
+instance (KnownNat ps) => KnownNat1 $(nameToSymbol ''Nanoseconds) ps where
+  natSing1 = SNatKn (natVal (Proxy @(1_000 * ps)))
+  {-# NOINLINE natSing1 #-}
 
--- | The domain's clock frequency in Hertz, calculated based on the period stored in ps.
--- This might lead to rounding errors.
-type DomainFrequency dom = Div (Seconds 1) (DomainPeriod dom)
+instance (KnownNat ps) => KnownNat1 $(nameToSymbol ''Microseconds) ps where
+  natSing1 = SNatKn (natVal (Proxy @(1_000_000 * ps)))
+  {-# NOINLINE natSing1 #-}
+
+instance (KnownNat ps) => KnownNat1 $(nameToSymbol ''Milliseconds) ps where
+  natSing1 = SNatKn (natVal (Proxy @(1_000_000_000 * ps)))
+  {-# NOINLINE natSing1 #-}
+
+instance (KnownNat ps) => KnownNat1 $(nameToSymbol ''Seconds) ps where
+  natSing1 = SNatKn (natVal (Proxy @(1_000_000_000_000 * ps)))
+  {-# NOINLINE natSing1 #-}
 
 -- | 'Index' with its 'maxBound' corresponding to the number of cycles needed to
 -- wait for /n/ milliseconds.

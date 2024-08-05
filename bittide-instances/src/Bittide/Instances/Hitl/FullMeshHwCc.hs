@@ -33,7 +33,7 @@ module Bittide.Instances.Hitl.FullMeshHwCc
   ) where
 
 import Clash.Prelude (withClockResetEnable)
-import Clash.Explicit.Prelude
+import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import qualified Clash.Explicit.Prelude as E
 
 import Data.Maybe (fromMaybe)
