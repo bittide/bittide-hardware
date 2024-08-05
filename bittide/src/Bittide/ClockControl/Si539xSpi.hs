@@ -11,7 +11,7 @@
 
 module Bittide.ClockControl.Si539xSpi where
 
-import Clash.Prelude
+import Clash.Prelude hiding (PeriodToCycles)
 import Clash.Cores.SPI
 
 import Data.Maybe

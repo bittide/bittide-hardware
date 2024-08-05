@@ -62,7 +62,7 @@
 --
 module Bittide.Instances.Hitl.SyncInSyncOut where
 
-import Clash.Explicit.Prelude
+import Clash.Explicit.Prelude hiding (PeriodToCycles)
 
 import Bittide.Arithmetic.Time
 import Bittide.Hitl (HitlTests, allFpgas, hitlVioBool, noConfigTest)

@@ -47,11 +47,11 @@ module Bittide.Instances.Hitl.IlaPlot
 
 import GHC.Stack (HasCallStack)
 
-import Clash.Explicit.Prelude
+import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import Clash.Explicit.Signal.Extra
 import Clash.Sized.Extra (concatUnsigneds)
 
-import Bittide.Arithmetic.Time (Seconds, Milliseconds, PeriodToCycles, trueFor)
+import Bittide.Arithmetic.Time (PeriodToCycles, trueFor)
 import Bittide.ClockControl (SpeedChange(..), RelDataCount, ClockControlConfig)
 import Bittide.ClockControl.Callisto
   (CallistoResult(..), ReframingState(..), callistoClockControl)

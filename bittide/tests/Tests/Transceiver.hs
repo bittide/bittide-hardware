@@ -11,11 +11,11 @@
 
 module Tests.Transceiver where
 
-import Clash.Explicit.Prelude
+import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import Clash.Prelude (withClock)
 import Hedgehog
 
-import Bittide.Arithmetic.Time (PeriodToCycles, Microseconds, Milliseconds)
+import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.SharedTypes (Bytes)
 import Clash.Annotations.Primitive (dontTranslate)
 import Clash.Cores.Xilinx.GTH (GthCore)

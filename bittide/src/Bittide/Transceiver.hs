@@ -89,7 +89,7 @@ module Bittide.Transceiver where
 
 import Clash.Explicit.Prelude
 
-import Bittide.Arithmetic.Time (Milliseconds, trueForSteps)
+import Bittide.Arithmetic.Time (trueForSteps)
 import Bittide.ElasticBuffer (sticky)
 import Clash.Cores.Xilinx.GTH (GthCore)
 import Clash.Cores.Xilinx.Ila (IlaConfig(advancedTriggers, depth, stages), ilaConfig, ila, Depth(D1024))

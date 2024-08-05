@@ -11,7 +11,6 @@ import Clash.Prelude
 
 import Clash.Annotations.TH (makeTopEntity)
 
-import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Si5395J

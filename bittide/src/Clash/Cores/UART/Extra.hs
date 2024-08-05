@@ -20,13 +20,12 @@ import Protocols
 import Protocols.Df hiding (catMaybes, sample, pure)
 import System.IO
 
-import Bittide.Arithmetic.Time
 import Bittide.Wishbone
 
 import qualified Protocols.Df as Df
 
 -- | The maximum baud rate for a given domain, useful for simulation purposes
-type MaxBaudRate dom = Div (DomainFrequency dom) 16
+type MaxBaudRate dom = Div (DomainToHz dom) 16
 
 -- | A simulation function for circuits that expose a UART connection.
 -- This function reads from the provided input handle and feeds that to the UART circuit.

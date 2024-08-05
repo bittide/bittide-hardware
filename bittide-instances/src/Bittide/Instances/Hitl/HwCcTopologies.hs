@@ -34,7 +34,7 @@ module Bittide.Instances.Hitl.HwCcTopologies
   ) where
 
 import Clash.Prelude (withClockResetEnable)
-import Clash.Explicit.Prelude
+import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import qualified Clash.Explicit.Prelude as E
 
 import Data.Bifunctor (bimap)

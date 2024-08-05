@@ -22,7 +22,7 @@ module Bittide.ClockControl
   )
 where
 
-import Clash.Explicit.Prelude
+import Clash.Explicit.Prelude  hiding (PeriodToCycles)
 import Clash.Signal.Internal (Femtoseconds(..))
 import Data.Aeson (ToJSON(toJSON))
 import Data.Proxy (Proxy(..))
@@ -32,7 +32,7 @@ import Foreign.Storable (Storable(..))
 import GHC.Stack (HasCallStack)
 
 import Bittide.Arithmetic.Ppm
-import Bittide.Arithmetic.Time (PeriodToCycles, Nanoseconds, Microseconds, microseconds)
+import Bittide.Arithmetic.Time (PeriodToCycles, microseconds)
 import Bittide.ClockControl.Foreign.Sizes
 
 import Data.Csv
