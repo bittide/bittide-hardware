@@ -60,10 +60,10 @@ stabilityCheckerTest = property $ do
     simOut === golden (snatToNum sMargin) (snatToNum sCyclesStable) dataCounts
 
   -- 'stabilityChecker' reference design
-  golden :: forall n . KnownNat n => Integer -> Integer -> [DataCount n] -> [Bool]
+  golden :: forall n . KnownNat n => Integer -> Integer -> [RelDataCount n] -> [Bool]
   golden margin cyclesStable dataCounts =
     f
-    (0, fromIntegral (targetDataCount :: DataCount n))
+    (0, fromIntegral (targetDataCount :: RelDataCount n))
     (fmap fromIntegral dataCounts)
    where
     f _ [] = []

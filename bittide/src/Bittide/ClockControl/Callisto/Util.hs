@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -7,14 +7,14 @@ module Bittide.ClockControl.Callisto.Util where
 
 import Clash.Prelude
 
-import Bittide.ClockControl (DataCount, SpeedChange(..))
+import Bittide.ClockControl (RelDataCount, SpeedChange(..))
 
--- | Safe 'DataCount' to 'Signed' conversion.
--- (works for both: 'DataCount' being 'Signed' or 'Unsigned')
+-- | Safe 'RelDataCount' to 'Signed' conversion.
+-- (works for both: 'RelDataCount' being 'Signed' or 'Unsigned')
 dataCountToSigned ::
   forall n .
   KnownNat n =>
-  DataCount n ->
+  RelDataCount n ->
   Signed (n + 1)
 dataCountToSigned = bitCoerce . extend
 
@@ -32,18 +32,18 @@ wrappingCounter upper = counter
   go n = pred n
 
 -- | A version of 'sum' that is guaranteed not to overflow.
--- (works for both: 'DataCount' being 'Signed' or 'Unsigned')
+-- (works for both: 'RelDataCount' being 'Signed' or 'Unsigned')
 safeSum ::
   ( KnownNat n
   , KnownNat m
   , 1 <= n
   ) =>
-  Vec n (DataCount m) ->
-  DataCount (m + n - 1)
+  Vec n (RelDataCount m) ->
+  RelDataCount (m + n - 1)
 safeSum = sum . map extend
 
--- | Sum a bunch of 'DataCount's to a @Signed 32@, without overflowing.
--- (works for both: 'DataCount' being 'Signed' or 'Unsigned')
+-- | Sum a bunch of 'RelDataCount's to a @Signed 32@, without overflowing.
+-- (works for both: 'RelDataCount' being 'Signed' or 'Unsigned')
 sumTo32 ::
   forall n m .
   ( KnownNat m
@@ -51,7 +51,7 @@ sumTo32 ::
   , (m + n) <= 32
   , 1 <= n
   ) =>
-  Vec n (DataCount m) ->
+  Vec n (RelDataCount m) ->
   Signed 32
 sumTo32 =
     extend @_ @_ @(32 - (m+n))
@@ -68,7 +68,7 @@ safePopCountTo32 ::
   BitVector n ->
   Signed 32
 safePopCountTo32 =
-  sumTo32 . unpack @(Vec n (DataCount 1))
+  sumTo32 . unpack @(Vec n (RelDataCount 1))
 
 type FINC = Bool
 type FDEC = Bool

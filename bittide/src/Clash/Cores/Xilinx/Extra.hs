@@ -48,7 +48,7 @@ readDnaPortE2I = hideClockResetEnable readDnaPortE2
 ibufds :: (KnownDomain dom)  => DiffClock dom -> Clock dom
 ibufds !_ = clockGen
 {-# ANN ibufds hasBlackBox #-}
-{-# NOINLINE ibufds #-}
+{-# OPAQUE ibufds #-}
 {-# ANN ibufds (InlineYamlPrimitive [minBound..] [__i|
   BlackBox:
     name: Clash.Cores.Xilinx.Extra.ibufds

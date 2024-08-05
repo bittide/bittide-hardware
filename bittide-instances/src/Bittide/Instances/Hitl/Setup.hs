@@ -4,6 +4,7 @@
 
 module Bittide.Instances.Hitl.Setup
   ( FpgaCount
+  , LinkCount
   , TransceiverWires
   , channelNames
   , clockPaths
@@ -21,23 +22,25 @@ import Data.Constraint.Nat (leTrans)
 -- | The number of FPGAs in the current setup
 type FpgaCount = 8 :: Nat
 
+type LinkCount = FpgaCount - 1
+
 -- | Data wires from/to transceivers. No logic should be inserted on these
 -- wires. Should be considered asynchronous to one another - even though their
 -- domain encodes them as related.
-type TransceiverWires dom = Signal dom (BitVector (FpgaCount - 1))
+type TransceiverWires dom n = Signal dom (BitVector n)
 
-channelNames :: Vec (FpgaCount - 1) String
+channelNames :: Vec LinkCount String
 channelNames =
   "X0Y10":> "X0Y9":> "X0Y16" :> "X0Y17" :> "X0Y18" :> "X0Y19" :> "X0Y11" :> Nil
 
-clockPaths :: Vec (FpgaCount - 1) String
+clockPaths :: Vec LinkCount String
 clockPaths =
   "clk0" :> "clk0":> "clk0-2":> "clk0-2":> "clk0-2":> "clk0-2":> "clk0"  :> Nil
 
 -- | Some order of the FPGA ids and a mapping to their connected
 -- neighbors (via the index position in the vector) according to the
 -- different hardware interfaces on the boards.
-fpgaSetup :: Vec FpgaCount (String, Vec (FpgaCount - 1) (Index FpgaCount))
+fpgaSetup :: Vec FpgaCount (String, Vec LinkCount (Index FpgaCount))
 fpgaSetup =
   --   FPGA Id         SFP0    SFP1    J4    J5    J6    J7    SMA
      ( "210308B3B272", 3    :> 2    :> 4  :> 5  :> 6  :> 7  :> 1   :> Nil )

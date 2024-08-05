@@ -68,7 +68,7 @@ safeDffSynchronizer0 clk1 clk2 initVal i = (sOut, dOut)
   sOut = flipflop clk1 i
   flipflop :: KnownDomain dom => Clock dom -> Signal dom a -> Signal dom a
   flipflop clk = delay clk enableGen initVal
-{-# NOINLINE safeDffSynchronizer0 #-}
+{-# OPAQUE safeDffSynchronizer0 #-}
 {-# ANN safeDffSynchronizer0 hasBlackBox #-}
 {-# ANN safeDffSynchronizer0 (
   let

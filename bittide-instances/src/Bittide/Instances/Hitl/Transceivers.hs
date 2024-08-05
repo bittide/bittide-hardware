@@ -80,14 +80,14 @@ goTransceiversUpTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "allUp" ::: Signal Basic125 Bool
   , "anyErrors" ::: Signal Basic125 Bool
-  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
+  , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK"      ::: Signal Basic125 Bool
@@ -146,7 +146,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
 
   transceivers =
     transceiverPrbsN
-      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
+      @GthTx @GthRx @Ext200 @Basic125 @GthTxS @GthRxS
       defConfig{debugIla=True, debugFpgaIndex=bitCoerce <$> fpgaIndex}
       Inputs
         { clock = sysClk
@@ -166,11 +166,11 @@ transceiversUpTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::

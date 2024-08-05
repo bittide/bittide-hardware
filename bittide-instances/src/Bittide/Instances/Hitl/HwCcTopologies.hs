@@ -157,7 +157,7 @@ data TestConfig =
     , startupDelay :: StartupDelay
       -- ^ Some intial startup delay given in the number of clock
       -- cycles of the stable clock.
-    , mask :: BitVector (FpgaCount - 1)
+    , mask :: BitVector LinkCount
       -- ^ The link mask depending on the selected topology.
     }
   deriving (Generic, NFDataX, BitPack)
@@ -175,8 +175,8 @@ riscvCopyTest ::
   KnownDomain dom =>
   Clock dom ->
   Reset dom ->
-  Signal dom (CallistoResult (FpgaCount - 1)) ->
-  Vec (FpgaCount - 1) (Signal dom (DataCount 32)) ->
+  Signal dom (CallistoResult LinkCount) ->
+  Vec LinkCount (Signal dom (RelDataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
   ( "FINC" ::: Signal dom Bool
   , "FDEC" ::: Signal dom Bool
@@ -254,17 +254,17 @@ topologyTest ::
   "SYSCLK" ::: Clock Basic125 ->
   "SYSRST" ::: Reset Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
   "TEST_CFG" ::: Signal Basic125 TestConfig ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
-  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult (FpgaCount - 1))
+  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult LinkCount)
   , "CALLISTO_RESET" ::: Reset Basic125
-  , "DATA_COUNTERS" ::: Vec (FpgaCount - 1) (Signal Basic125 (DataCount 32))
-  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
+  , "DATA_COUNTERS" ::: Vec LinkCount (Signal Basic125 (RelDataCount 32))
+  , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK" ::: Signal Basic125 Bool
@@ -339,7 +339,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
   transceivers =
     transceiverPrbsN
-      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
+      @GthTx @GthRx @Ext200 @Basic125 @GthTxS @GthRxS
       Transceiver.defConfig
       Transceiver.Inputs
         { clock = sysClk
@@ -386,7 +386,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       callistoResult
 
   callistoResult =
-    callistoClockControlWithIla @(FpgaCount - 1) @CccBufferSize
+    callistoClockControlWithIla @LinkCount @CccBufferSize
       (head transceivers.txClocks) sysClk clockControlReset clockControlConfig
       IlaControl{..} (mask <$> cfg) (fmap (fmap resize) domainDiffs)
 
@@ -511,11 +511,11 @@ hwCcTopologyWithRiscvTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "" :::
       ( "FINC"      ::: Signal Basic125 Bool
       , "FDEC"      ::: Signal Basic125 Bool
@@ -578,11 +578,11 @@ hwCcTopologyTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "" :::
       ( "FINC"      ::: Signal Basic125 Bool
       , "FDEC"      ::: Signal Basic125 Bool
@@ -740,7 +740,7 @@ tests = Map.fromList
                )
           <> [ (fromInteger i, disabled)
              | let n = natToNum @n
-             , i <- [n, n + 1 .. natToNum @(FpgaCount - 1)]
+             , i <- [n, n + 1 .. natToNum @LinkCount]
              ]
       , let
           -- clock period in picoseconds
@@ -774,7 +774,7 @@ tests = Map.fromList
     Index n ->
     InitialClockShift ->
     StartupDelay ->
-    BitVector (FpgaCount - 1) ->
+    BitVector LinkCount ->
     (Index FpgaCount, TestConfig)
   testData i initialClockShift startupDelay mask =
     ( zeroExtend @Index @n @(FpgaCount - n) i

@@ -97,8 +97,8 @@ fullMeshRiscvCopyTest ::
   KnownDomain dom =>
   Clock dom ->
   Reset dom ->
-  Signal dom (CallistoResult (FpgaCount - 1)) ->
-  Vec (FpgaCount - 1) (Signal dom (DataCount 32)) ->
+  Signal dom (CallistoResult LinkCount) ->
+  Vec LinkCount (Signal dom (RelDataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
   ( "FINC" ::: Signal dom Bool
   , "FDEC" ::: Signal dom Bool
@@ -177,16 +177,16 @@ fullMeshHwTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
-  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult (FpgaCount - 1))
+  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult LinkCount)
   , "CALLISTO_RESET" ::: Reset Basic125
-  , "DATA_COUNTERS" ::: Vec (FpgaCount - 1) (Signal Basic125 (DataCount 32))
-  , "stats" ::: Vec (FpgaCount - 1) (Signal Basic125 ResetManager.Statistics)
+  , "DATA_COUNTERS" ::: Vec LinkCount (Signal Basic125 (RelDataCount 32))
+  , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
   , "spiDone" ::: Signal Basic125 Bool
   , "" :::
       ( "SCLK" ::: Signal Basic125 Bool
@@ -231,7 +231,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
 
   transceivers =
     transceiverPrbsN
-      @GthTx @GthRx @Ext200 @Basic125 @GthTx @GthRx
+      @GthTx @GthRx @Ext200 @Basic125 @GthTxS @GthRxS
       Transceiver.defConfig
       Transceiver.Inputs
         { clock = sysClk
@@ -268,7 +268,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
       callistoResult
 
   callistoResult =
-    callistoClockControlWithIla @(FpgaCount - 1) @CccBufferSize
+    callistoClockControlWithIla @LinkCount @CccBufferSize
       (head transceivers.txClocks) sysClk clockControlReset clockControlConfig
       IlaControl{..} availableLinkMask (fmap (fmap resize) domainDiffs)
 
@@ -334,11 +334,11 @@ fullMeshHwCcWithRiscvTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "" :::
       ( "FINC"      ::: Signal Basic125 Bool
       , "FDEC"      ::: Signal Basic125 Bool
@@ -387,11 +387,11 @@ fullMeshHwCcTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRx ->
-  "GTH_RX_PS" ::: TransceiverWires GthRx ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTx
-  , "GTH_TX_PS" ::: TransceiverWires GthTx
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "" :::
       ( "FINC"      ::: Signal Basic125 Bool
       , "FDEC"      ::: Signal Basic125 Bool

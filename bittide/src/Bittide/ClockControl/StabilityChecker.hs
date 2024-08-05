@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -12,7 +12,7 @@ import Clash.Prelude
 
 import Foreign.Storable (Storable(..))
 
-import Bittide.ClockControl (DataCount, targetDataCount)
+import Bittide.ClockControl (RelDataCount, targetDataCount)
 import Bittide.ClockControl.Callisto.Util (dataCountToSigned)
 import Bittide.ClockControl.Foreign.Sizes
 
@@ -69,7 +69,7 @@ stabilityChecker ::
   -- must remain within the @margin@ for it to be considered "stable".
   SNat framesize ->
   -- | Incoming buffer occupancy.
-  Signal dom (DataCount n) ->
+  Signal dom (RelDataCount n) ->
   -- | Stability indicators
   Signal dom StabilityIndication
 stabilityChecker SNat SNat = mealy go (0, targetDataCount)
@@ -79,7 +79,7 @@ stabilityChecker SNat SNat = mealy go (0, targetDataCount)
     withinMargin !x !y =
       abs (dataCountToSigned x `sub` dataCountToSigned y) <= (natToNum @margin)
 
-    newState :: (Index (framesize + 1), DataCount n)
+    newState :: (Index (framesize + 1), RelDataCount n)
     newState
       | withinMargin target input = (satSucc SatBound cnt, target)
       | otherwise                 = (0, input)

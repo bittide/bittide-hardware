@@ -12,7 +12,7 @@ module Bittide.ClockControl.Callisto.Types
   , ReframingState(..)
   , ControlConfig(..)
   , ControlSt(..)
-  , DataCountS(..)
+  , RelDataCountS(..)
   , VecS(..)
   , BitsOf
   ) where
@@ -59,15 +59,15 @@ data ControlConfig (m :: Nat) =
     , waitTime :: Unsigned 32
       -- ^ Number of cycles to wait until reframing takes place after
       -- stability has been detected.
-    , targetCount :: DataCount m
+    , targetCount :: RelDataCount m
       -- ^ Target data count. See 'targetDataCount'.
     }
 
 type instance SizeOf (ControlConfig m) =
-  SizeOf Int + SizeOf Int + SizeOf (DataCountS m)
+  SizeOf Int + SizeOf Int + SizeOf (RelDataCountS m)
 
 type instance Alignment (ControlConfig m) =
-  Alignment (DataCountS m)
+  Alignment (RelDataCountS m)
 
 instance
   ( KnownNat m
@@ -215,18 +215,18 @@ type BitsOf a = 8 * SizeOf a
 type Elems n =
   Div n (BitsOf Int) + OneMore (Mod n (BitsOf Int))
 
-newtype DataCountS (n :: Nat) = DataCountS (Signed n)
+newtype RelDataCountS (n :: Nat) = RelDataCountS (Signed n)
   deriving newtype (Show, Eq, Ord, Bits, Num, Real, Integral, Enum)
 
-type instance SizeOf (DataCountS n) =
+type instance SizeOf (RelDataCountS n) =
   SizeOf Int * Elems n
 
-type instance Alignment (DataCountS n) =
+type instance Alignment (RelDataCountS n) =
   SizeOf Int
 
-instance (KnownNat n, 1 <= n) => Storable (DataCountS n) where
-  sizeOf = const $ natToNum @(SizeOf (DataCountS n))
-  alignment = const $ natToNum @(Alignment (DataCountS n))
+instance (KnownNat n, 1 <= n) => Storable (RelDataCountS n) where
+  sizeOf = const $ natToNum @(SizeOf (RelDataCountS n))
+  alignment = const $ natToNum @(Alignment (RelDataCountS n))
 
   peek p = case oneMore @n @(BitsOf Int) of
     Dict ->
@@ -239,10 +239,10 @@ instance (KnownNat n, 1 <= n) => Storable (DataCountS n) where
         toEnum' :: Int -> BitVector (BitsOf Int)
         toEnum' = toEnum
       in
-       DataCountS . resize . unpack . pack
+       RelDataCountS . resize . unpack . pack
          <$> (sequence $ map (fmap toEnum' . peekByteOff p . (* s) . fromEnum) v)
 
-  poke p (DataCountS c) = case oneMore @n @(BitsOf Int) of
+  poke p (RelDataCountS c) = case oneMore @n @(BitsOf Int) of
     Dict ->
       let
         s = natToNum @(BitsOf Int)
@@ -250,11 +250,11 @@ instance (KnownNat n, 1 <= n) => Storable (DataCountS n) where
         v :: Vec (Elems n) Int
         v = fromEnum <$> unpack' (pack $ resize' c)
 
-        resize' :: DataCount n -> DataCount (BitsOf (DataCountS n))
+        resize' :: RelDataCount n -> RelDataCount (BitsOf (RelDataCountS n))
         resize' = resize
 
         unpack' ::
-          BitVector (BitsOf (DataCountS n)) ->
+          BitVector (BitsOf (RelDataCountS n)) ->
           Vec (Elems n) (BitVector (BitsOf Int))
         unpack' = unpack
       in

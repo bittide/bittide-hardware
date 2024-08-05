@@ -15,7 +15,7 @@ module Bittide.ClockControl.Foreign.Rust.Callisto
 
 import Clash.Prelude
 
-import Bittide.ClockControl (DataCount)
+import Bittide.ClockControl (RelDataCount)
 import Bittide.ClockControl.Callisto.Types
 import Bittide.ClockControl.StabilityChecker
 
@@ -52,7 +52,7 @@ rustyCallisto ::
   -- | Stability indicators for each of the elastic buffers.
   Signal dom (Vec n StabilityIndication) ->
   -- | Data counts from elastic buffers.
-  Signal dom (Vec n (DataCount m)) ->
+  Signal dom (Vec n (RelDataCount m)) ->
   -- | Current state.
   Signal dom ControlSt ->
   -- | Updated state.
@@ -70,7 +70,7 @@ rustyCallisto config m scs counts st =
 
         poke pVSI $ VecS stabilityChecks
         poke pState state
-        poke pDataCounts $ VecS (DataCountS <$> dataCounts)
+        poke pDataCounts $ VecS (RelDataCountS <$> dataCounts)
         poke pConfig config
 
         callisto_rust
@@ -93,7 +93,7 @@ foreign import ccall safe "__c_callisto_rust" callisto_rust ::
   Ptr (ControlConfig m) ->
   Word32  ->
   Ptr (VecS n StabilityIndication) ->
-  Ptr (VecS n (DataCountS m)) ->
+  Ptr (VecS n (RelDataCountS m)) ->
   Ptr (ControlSt) ->
   IO ()
 #else
@@ -115,7 +115,7 @@ rustyCallisto ::
   -- | Stability indicators for each of the elastic buffers.
   Signal dom (Vec n StabilityIndication) ->
   -- | Data counts from elastic buffers.
-  Signal dom (Vec n (DataCount m)) ->
+  Signal dom (Vec n (RelDataCount m)) ->
   -- | Current state.
   Signal dom ControlSt ->
   -- | Updated state.

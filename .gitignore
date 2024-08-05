@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2022 Google LLC
+# SPDX-FileCopyrightText: 2022-2024 Google LLC
 #
 # SPDX-License-Identifier: CC0-1.0
 
@@ -48,10 +48,9 @@ cabal.config
 *.iml
 
 # HDL directories often created during development cycle
-
-/bittide/vhdl
-/bittide/verilog
-/bittide/systemverilog
+vhdl/
+verilog/
+systemverilog/
 
 # Nix output
 result*
@@ -64,12 +63,6 @@ _build/
 
 # Rust build files
 target/
-
-# Bittide HDL directories
-bittide/verilog
-bittide/vhdl
-bittide/systemverilog
-vhdl/
 
 # Vivado
 vivado.jou

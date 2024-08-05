@@ -232,3 +232,20 @@ executable post-vex-riscv-test
     temporary,
 
   other-modules: Paths_bittide_instances
+
+executable post-fullMeshSwCcTest
+  import: common-options
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
+  main-is: exe/post-fullMeshSwCcTest/Main.hs
+  build-depends:
+    base,
+    bittide-instances,
+    bytestring,
+    cassava,
+    deepseq,
+    filepath,
+    vector,
