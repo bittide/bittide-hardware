@@ -8,7 +8,7 @@
 {-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=0 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 {-# HLINT ignore "Functor law" #-}
 {-# HLINT ignore "Used otherwise as a pattern" #-}

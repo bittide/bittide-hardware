@@ -11,7 +11,6 @@ module Bittide.Wishbone where
 
 import Clash.Prelude
 
-import Bittide.Arithmetic.Time(DomainFrequency)
 import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
 
@@ -467,7 +466,7 @@ timeWb = Circuit $ \(wbM2S, _) -> (mealy goMealy (0,0) wbM2S, ())
  where
   goMealy (frozen, count :: Unsigned 64) wbM2S = ((nextFrozen, succ count), wbS2M)
        where
-    freq = natToNum @(DomainFrequency dom) :: Unsigned 64
+    freq = natToNum @(DomainToHz dom) :: Unsigned 64
     nextFrozen = if isJust (head writes) then count else frozen
     RegisterBank (splitAtI -> (frozenMsbs, frozenLsbs)) = getRegsBe @8 frozen
     RegisterBank (splitAtI -> (freqMsbs, freqLsbs)) = getRegsBe @8 freq

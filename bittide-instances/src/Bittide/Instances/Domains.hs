@@ -6,7 +6,7 @@
 
 module Bittide.Instances.Domains where
 
-import Clash.Explicit.Prelude
+import Clash.Explicit.Prelude hiding (PeriodToCycles)
 
 import Bittide.ClockControl
 import Bittide.Arithmetic.Time
