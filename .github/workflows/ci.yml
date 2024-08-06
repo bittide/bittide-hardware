@@ -114,6 +114,10 @@ jobs:
           .github/scripts/cabal-gild.sh check
           git diff --exit-code
 
+      - name: Check that we don't introduce accidental infinite loops in type checkers
+        run: |
+          ! grep --include=*.hs -E -r '\-fconstraint-solver-iterations *= *0'
+
   build:
     name: Build dependencies
     runs-on: [self-hosted, compute]
