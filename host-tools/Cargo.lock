@@ -7,6 +7,7 @@ name = "bittide-sys"
 version = "0.1.0"
 dependencies = [
  "fdt",
+ "log",
  "ufmt",
 ]
 
@@ -26,6 +27,12 @@ name = "fdt"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "784a4df722dc6267a04af36895398f59d21d07dce47232adf31ec0ff2fa45e67"
+
+[[package]]
+name = "log"
+version = "0.4.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 
 [[package]]
 name = "proc-macro2"
