@@ -17,7 +17,10 @@ pkgs.mkShell {
       pkgs.haskellPackages.cabal-gild
       pkgs.dtc
       pkgs.gcc
-      pkgs.haskell.compiler.ghc94
+
+      # Clash throws an error on 9.4.8 to 9.6.2
+      # See https://github.com/clash-lang/clash-compiler/pull/2711/files#diff-b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5R80
+      pkgs.haskell.compiler.ghc947
       pkgs.pkg-config
       pkgs.python311Full
       pkgs.python311Packages.matplotlib

@@ -14,8 +14,8 @@ write-ghc-environment-files: always
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
-index-state: 2023-12-05T05:33:28Z
-with-compiler: ghc-9.4.8
+index-state: 2024-08-06T03:18:13Z
+with-compiler: ghc-9.4.7
 tests: True
 
 package bittide
