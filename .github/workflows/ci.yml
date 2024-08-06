@@ -28,10 +28,7 @@ on:
         - 'main'
 
 env:
-  # Local machine connected to the bittide demonstrator is called
-  # 'hoeve'. But the docker container of the runner cannot resolve
-  # DNS, so we use its local IP address instead.
-  HW_SERVER_URL: 192.168.102.130:3121
+  HW_SERVER_URL: hoeve.local:3121
   S3_PASSWORD: ${{ secrets.S3_PASSWORD }}
   SYNTHESIS_BOARD: xilinx.com:kcu105:part0:1.7
 
