@@ -161,6 +161,7 @@ library
     Bittide.Counter
     Bittide.DoubleBufferedRam
     Bittide.ElasticBuffer
+    Bittide.Ethernet.Mac
     Bittide.Link
     Bittide.Node
     Bittide.ProcessingElement

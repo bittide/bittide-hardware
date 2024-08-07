@@ -147,6 +147,10 @@ data Target = Target
 
     -- | Extra constraints to be sourced. Will be sourced _after_ main XDC.
   , targetExtraXdc :: [FilePath]
+
+  -- | A list of patterns that match the external HDL files that are used by the
+  -- instance. Generates tck that utilizes https://www.tcl.tk/man/tcl8.6/TclCmd/glob.htm
+  , targetExternalHdl :: [TclGlobPattern]
   }
 
 
@@ -158,6 +162,7 @@ defTarget name = Target
   , targetHasTest = False
   , targetPostProcess = Nothing
   , targetExtraXdc = []
+  , targetExternalHdl = []
   }
 
 testTarget :: TargetName -> Target
@@ -168,6 +173,7 @@ testTarget name = Target
   , targetHasTest = True
   , targetPostProcess = Nothing
   , targetExtraXdc = []
+  , targetExternalHdl = []
   }
 
 enforceValidTarget :: Target -> Target
@@ -194,6 +200,15 @@ targets = map enforceValidTarget
   , defTarget "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
   , defTarget "Bittide.Instances.Pnr.StabilityChecker.stabilityChecker_3_1M"
   , defTarget "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
+  , (defTarget "Bittide.Instances.Pnr.Ethernet.vexRiscEthernet")
+      { targetHasXdc = True
+      , targetExternalHdl =
+        [ "$env(VERILOG_ETHERNET_SRC)/rtl/*.v"
+        , "$env(VERILOG_ETHERNET_SRC)/lib/axis/rtl/*.v"
+        ]
+      , targetExtraXdc =
+        [ "jtag_config.xdc", "jtag_pmod1.xdc", "sgmii.xdc"]
+      }
 
   , (testTarget "Bittide.Instances.Hitl.BoardTest.boardTestExtended")
       {targetPostProcess = Just "post-board-test-extended"}
@@ -210,7 +225,7 @@ targets = map enforceValidTarget
   , testTarget "Bittide.Instances.Hitl.Transceivers.transceiversUpTest"
   , (testTarget "Bittide.Instances.Hitl.VexRiscv.vexRiscvTest")
       { targetPostProcess = Just "post-vex-riscv-test"
-      , targetExtraXdc = ["jtag.xdc"]
+      , targetExtraXdc = ["jtag_config.xdc", "jtag_pmod1.xdc"]
       }
   ]
 
@@ -468,6 +483,7 @@ main = do
                   False                   -- Out of context run
                   synthesisPart           -- Part we're synthesizing for
                   constraints             -- List of filenames with constraints
+                  targetExternalHdl       -- List of external HDL files to be included in synthesis
                   locatedManifest
 
               writeFileChanged path tcl
