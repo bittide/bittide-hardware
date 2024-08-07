@@ -1,4 +1,4 @@
-% SPDX-FileCopyrightText: 2023-2024 Google LLC
+% SPDX-FileCopyrightText: 2023 Google LLC
 %
 % SPDX-License-Identifier: CC0-1.0
 

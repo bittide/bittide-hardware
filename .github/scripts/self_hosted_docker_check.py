@@ -4,7 +4,7 @@ Make sure all self-hosted jobs run in a docker container and that each docker
 container has a maximum amount of memory it can use.
 """
 
-# SPDX-FileCopyrightText: 2022-2024 Google LLC
+# SPDX-FileCopyrightText: 2022 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
 

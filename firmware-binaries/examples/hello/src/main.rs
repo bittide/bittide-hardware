@@ -1,7 +1,7 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 
-// SPDX-FileCopyrightText: 2022-2024 Google LLC
+// SPDX-FileCopyrightText: 2022 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 
