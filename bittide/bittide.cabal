@@ -162,6 +162,8 @@ library
     Bittide.ElasticBuffer
     Bittide.Link
     Bittide.Node
+    Bittide.ObliviousFifo
+    Bittide.ObliviousFifo.Frame
     Bittide.ProcessingElement
     Bittide.ProcessingElement.DeviceTreeCompiler
     Bittide.ProcessingElement.ProgramStream
@@ -234,6 +236,7 @@ test-suite unittests
     Tests.ElasticBuffer
     Tests.Link
     Tests.ProcessingElement.ReadElf
+    Tests.ObliviousFifo
     Tests.ScatterGather
     Tests.Shared
     Tests.StabilityChecker
