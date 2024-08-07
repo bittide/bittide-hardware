@@ -10,7 +10,7 @@ set -euo pipefail
 #   ./update-clash-vexriscv-subtree.sh 6a0805f237ec511d2db9cbabbb8f28e6bbe93db4
 #
 
-# SPDX-FileCopyrightText: 2022-2024 Google LLC
+# SPDX-FileCopyrightText: 2022 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
 cd "$(git rev-parse --show-toplevel)"
