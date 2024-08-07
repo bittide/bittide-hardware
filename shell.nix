@@ -15,6 +15,7 @@ pkgs.mkShell {
     [
       pkgs.cabal-install
       pkgs.haskellPackages.cabal-gild
+      pkgs.haskellPackages.fourmolu
       pkgs.dtc
       pkgs.gcc
 

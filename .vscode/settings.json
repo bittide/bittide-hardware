@@ -15,7 +15,7 @@
   "files.trimTrailingWhitespace": true,
   "editor.rulers": [
     80,
-    100
+    90
   ],
   "editor.tabSize": 2,
   "[rust]": {
