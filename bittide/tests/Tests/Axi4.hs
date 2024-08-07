@@ -2,13 +2,15 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# OPTIONS_GHC -Wno-type-defaults #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
+{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 {-# HLINT ignore "Functor law" #-}
 {-# HLINT ignore "Used otherwise as a pattern" #-}
@@ -16,21 +18,24 @@
 module Tests.Axi4 where
 
 import Clash.Prelude
+import Clash.Explicit.Prelude (noReset)
 
 import Clash.Hedgehog.Sized.Unsigned
-import Clash.Hedgehog.Sized.Vector (genVec)
-import Clash.Sized.Vector(unsafeFromList)
+import Data.Either
 import Data.Maybe
+import Data.Proxy
 import Hedgehog
 import Protocols
 import Protocols.Axi4.Stream
-import Protocols.Wishbone
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import Bittide.Axi4
 import Bittide.Extra.Maybe
-import Bittide.SharedTypes
+import Protocols.Hedgehog
+import Tests.Axi4.Generators
+import Tests.Axi4.Properties
+import Tests.Axi4.Types
 import Tests.Shared
 
 import qualified Data.List as L
@@ -41,201 +46,225 @@ import qualified Hedgehog.Range as Range
 tests :: TestTree
 tests = testGroup "Tests.Axi4"
   [ testPropertyNamed
-      "Axi4Stream up scaling does not affect packet content"
-      "axisFromByteStreamUnchangedPackets"
-      axisFromByteStreamUnchangedPackets
-  , testPropertyNamed
-      "Axi4Stream down scaling does not affect packet content"
-      "axisToByteStreamUnchangedPackets"
-      axisToByteStreamUnchangedPackets
+      "Read Axi4 Stream packets via Wishbone" "prop_wbAxisRxBufferReadStreams"
+      prop_wbAxisRxBufferReadStreams
+  , testPropertyNamed "Various operation on Axi4StreamM2S: splitAxi4Stream combineAxi4Stream packAxi4Stream" "prop_axiOperations" prop_axiOperations
+  , testPropertyNamed "Packet conversion utilies" "prop_packetConversions" prop_packetConversions
+  , testPropertyNamed "Axi4StreamPacketFifo" "prop_axi4StreamPacketFifo" prop_axi4StreamPacketFifo
+  , testPropertyNamed "Axi4StreamPacketFifo produces uninterrupted packets" "prop_axi4StreamPacketFifo_Uninterrupted" prop_axi4StreamPacketFifo_Uninterrupted
+  , testPropertyNamed "axiStreamToByteStream" "prop_axiStreamToByteStream" prop_axiStreamToByteStream
+  , testPropertyNamed "axiStreamFromByteStream " "prop_axiStreamFromByteStream" prop_axiStreamFromByteStream
+  , testPropertyNamed "packAxi4Stream" "prop_packAxi4Stream" prop_packAxi4Stream
+  , testPropertyNamed "prop_axiPacking" "prop_axiPacking" prop_axiPacking
   ]
 
-type Packet = [Unsigned 8]
-type BasicAxiConfig nBytes = 'Axi4StreamConfig nBytes 0 0
+-- This test only checks that the data and position bytes are not changed by the component,
+-- _tdest, _tid and _tuser are not checked.
+prop_axiStreamToByteStream :: Property
+prop_axiStreamToByteStream =
+  propWithModel defExpectOptions gen model impl prop
+ where
+  impl = wcre @System axiStreamToByteStream
 
-genAxisM2S ::
-  KnownAxi4StreamConfig conf =>
-  Gen userType ->
-  Gen (Axi4StreamM2S conf userType)
-genAxisM2S genUser = do
-  _tdata <- genVec $ genUnsigned Range.constantBounded
-  _tkeep <- genVec Gen.bool
-  _tstrb <- genVec Gen.bool
-  _tlast <- Gen.bool
-  _tid   <- genUnsigned Range.constantBounded
-  _tdest <- genUnsigned Range.constantBounded
-  _tuser <- genUser
+  model = L.concatMap (catMaybes . packetToAxiStream d1) . axiStreamToPackets
 
-  pure $ Axi4StreamM2S{..}
+  packetGen = catMaybes <$> genRandomAxiPacket d4 d0 d0
+    [NullByte, DataByte, PositionByte] (Range.linear 0 16) (pure ())
+  gen = L.concat <$> Gen.list (Range.linear 0 3) packetGen
 
--- | Generate a `axisToByteStream` component with variable input bus width and
--- test if a stream of multiple generated `Packet`s can be routed through it
--- without being changed.
-axisToByteStreamUnchangedPackets :: Property
-axisToByteStreamUnchangedPackets = property $ do
-  busWidth <- forAll @_ @Integer $ Gen.enum 1 8
-  nrOfPackets <- forAll $ Gen.enum 1 4
-  packetLengths <- forAll $ Gen.list (Range.singleton nrOfPackets) $ Gen.enum 1 16
-  packets <- forAll $ traverse
-    (flip Gen.list (genUnsigned @_ @8 Range.constantBounded) . Range.singleton)
-    packetLengths
-  repeatingReadyList <- forAll $ Gen.filter or $ Gen.list (Range.linear 1 8) Gen.bool
-  case TN.someNatVal $ fromIntegral (busWidth - 1) of
-    SomeNat (succSNat . snatProxy -> _ :: SNat busWidth) -> do
-      let
-        axiStream = Nothing : L.concatMap (packetToAxiStream (SNat @busWidth)) packets
-        axiSlave ::
-          Circuit
-            (Axi4Stream System (BasicAxiConfig 1) ())
-            (Axi4Stream System (BasicAxiConfig 1) ())
-        axiSlave = let ackSignal = fromList (cycle repeatingReadyList) in
-          Circuit
-          (\(fwd, _) -> (Axi4StreamS2M <$> ackSignal, mux ackSignal fwd (pure Nothing)))
-        maxSimDuration = 100 + ((1 + sum packetLengths) * L.length repeatingReadyList)
-        axiResult = catMaybes . L.take maxSimDuration $ wcre $
-          sampleC def (driveC def axiStream |> axisToByteStream |> axiSlave)
-        retrievedPackets = axis4ToPackets axiResult
-      packets  === retrievedPackets
+  prop expected sampled = do
+    let bytetypes = fmap getPacketByteTypes $ rights $ separatePackets sampled
+    footnote $ "expected: " <> show expected
+    footnote $ "sampled: " <> show sampled
+    footnote $ "bytetypes: " <> show bytetypes
 
+    -- None of the packets start with null bytes
+    assert $ not (any hasLeadingNullBytes bytetypes)
 
--- | Generate a 'axisFromByteStream' component with variable output bus width
+    -- All packets are packed
+    assert $ all isPackedAxi4StreamPacket bytetypes
+
+    -- The extracted packets are the same for both the expected and sampled data
+    axiStreamToPackets expected === axiStreamToPackets sampled
+
+prop_axi4StreamPacketFifo :: Property
+prop_axi4StreamPacketFifo =
+  idWithModel defExpectOptions gen id impl
+ where
+  impl = wcre @System $ axiStreamPacketFifo d8 d64
+
+  packetGen = catMaybes <$> genRandomAxiPacket d4 d0 d0
+    [NullByte, DataByte, PositionByte] (Range.linear 0 32) (pure ())
+
+  gen = L.concat <$> Gen.list (Range.linear 0 10) packetGen
+
+-- | Generate a 'axiStreamFromByteStream' component with variable output bus width
 -- and test if a stream of multiple generated 'Packet's can be routed through it
 -- without being changed.
-axisFromByteStreamUnchangedPackets :: Property
-axisFromByteStreamUnchangedPackets = property $ do
-  busWidth <- forAll @_ @Integer $ Gen.enum 1 8
-  nrOfPackets <- forAll $ Gen.enum 1 4
-  packetLengths <- forAll $ Gen.list (Range.singleton nrOfPackets) $ Gen.enum 1 16
-  packets <- forAll $ traverse
-    (flip Gen.list (genUnsigned @_ @8 Range.constantBounded) . Range.singleton)
-    packetLengths
-  repeatingReadyList <- forAll $ Gen.filter or $ Gen.list (Range.linear 1 8) Gen.bool
+prop_axi4StreamPacketFifo_Uninterrupted :: Property
+prop_axi4StreamPacketFifo_Uninterrupted = property $ do
+  busWidth <- forAll $ Gen.integral $ Range.linear 1 8
+  extraFifoDepth <- forAll $ Gen.integral $ Range.linear 2 64
   case
-    TN.someNatVal $ fromIntegral (busWidth - 1) of
-    SomeNat (succSNat . snatProxy -> _ :: SNat busWidth) -> do
+    ( TN.someNatVal $ fromIntegral busWidth
+     ,TN.someNatVal $ fromIntegral extraFifoDepth
+     ) of
+    ( SomeNat (Proxy :: Proxy busWidth)
+     ,SomeNat (Proxy :: Proxy extraFifoDepth)
+     ) -> do
+      let packetGen = genRandomAxiPacket (SNat @busWidth) d0 d0
+            [NullByte, DataByte, PositionByte] (Range.linear 0 (extraFifoDepth - 2)) (pure ())
+      inputData <- forAll (L.concat <$> Gen.list (Range.linear 0 10) packetGen)
       let
-        axiStream = Nothing : L.concatMap (packetToAxiStream d1) packets
+        conf = SimulationConfig 0 100 True
+        simOut = withClockResetEnable @System clockGen noReset enableGen
+          $ sampleC conf $ axiStreamPacketFifo d2 (SNat @(2 + extraFifoDepth)) <| driveC conf inputData
 
-        axiSlave ::
-          Circuit
-            (Axi4Stream System (BasicAxiConfig busWidth) ())
-            (Axi4Stream System (BasicAxiConfig busWidth) ())
-        axiSlave = let ackSignal = fromList (cycle repeatingReadyList) in
-          Circuit
-          (\(fwd, _) -> (Axi4StreamS2M <$> ackSignal, mux ackSignal fwd (pure Nothing)))
+      footnote $ "inputData: " <> show inputData
+      footnote $ "simOut: " <> show simOut
+      assert $ unInterruptedAxi4Packets simOut
 
-        maxSimDuration = 100 + ((1 + sum packetLengths) * L.length repeatingReadyList)
-        axiResult = catMaybes . L.take maxSimDuration $ wcre $
-          sampleC def (driveC def axiStream |> axisFromByteStream |> axiSlave)
-        retrievedPackets = axis4ToPackets axiResult
-      packets  === retrievedPackets
-
--- | Extract a 'Packet' by observing an Axi4 Stream.
-axis4ToPackets ::
-  (Show userType, KnownNat (DataWidth conf)) =>
-  [Axi4StreamM2S conf userType] ->
-  [Packet]
-axis4ToPackets transactions = fmap (catMaybes . L.concatMap getKeepBytes) packets
+-- | Verify that the 'axiStreamFromByteStream' component does not change the content of the stream
+-- when converting 1 byte wide transfers to 4 byte wide transfers.
+prop_axiStreamFromByteStream :: Property
+prop_axiStreamFromByteStream = propWithModel defExpectOptions gen model impl prop
  where
-  packetEnds = L.findIndices _tlast transactions
-  packets = getPackets packetEnds transactions 0
+  impl = wcre @System $ axiUserMapC (const ()) <| axiStreamFromByteStream
+  model = L.concatMap (catMaybes . packetToAxiStream d4) . axiStreamToPackets
 
-  getKeepBytes Axi4StreamM2S{..} = toList (orNothing <$> _tkeep <*> _tdata)
-  getPackets [] _  _ = []
-  getPackets (i:iii) list acc = pre : getPackets iii post (acc + toTake)
-   where
-    (pre, post) = L.splitAt toTake list
-    toTake = i - acc + 1
+  packetGen = catMaybes <$> genRandomAxiPacket d1 d0 d0
+    [NullByte, DataByte, PositionByte] (Range.linear 0 16) (pure ())
 
--- | Convert a given 'Packet' to a list of Wishbone master operations that write
--- the packet to the slave interface as a contiguous blob of memory with the bytes from
--- the packet arranged in big-endian format. The last operation writes the size
--- of the packet in words to the provided 'packetSizeAddress'.
-packetsToWb ::
-  forall addrW nBytes .
-  (KnownNat addrW, KnownNat nBytes) =>
-  Int ->
-  Int ->
-  Packet ->
-  [WishboneM2S addrW nBytes (Bytes nBytes)]
-packetsToWb packetSizeAddress packetLength allBytes = f 0 allBytes <>
-  [(emptyWishboneM2S @addrW @(Bytes nBytes))
-      { addr = 4 * fromIntegral packetSizeAddress
-      , strobe = True
-      , busCycle = True
-      , writeData = fromIntegral $ ((packetLength + busWidth - 1) `div` busWidth) - 1
-      , busSelect = maxBound
-      , writeEnable = True}]
+  gen = L.concat <$> Gen.list (Range.linear 0 3) packetGen
+
+  prop expected sampled = do
+    let bytetypes = fmap getPacketByteTypes $ rights $ separatePackets sampled
+    footnote $ "expected: " <> show expected
+    footnote $ "sampled: " <> show sampled
+    footnote $ "bytetypes: " <> show bytetypes
+
+    -- None of the packets start with null bytes
+    assert $ not (any hasLeadingNullBytes bytetypes)
+
+    -- All packets are packed
+    assert $ all isPackedAxi4StreamPacket bytetypes
+
+    -- The extracted packets are the same for both the expected and sampled data
+    axiStreamToPackets expected === axiStreamToPackets sampled
+
+prop_packAxi4Stream :: Property
+prop_packAxi4Stream = property $ do
+  -- A transaction can only contain null bytes and be packed if _tlast is True
+  axiWithNulls <- forAll $ genAxisM2S d8 d0 d0 [NullByte, DataByte, PositionByte] [True] $ pure ()
+  axiWithoutNulls <- forAll $ genAxisM2S d8 d0 d0 [DataByte, PositionByte] [True, False] $ pure ()
+  let
+    resultWithNulls = packAxi4Stream axiWithNulls
+    resultWithoutNulls = packAxi4Stream axiWithoutNulls
+  footnote $ "resultWithNulls: " <> show resultWithNulls
+  footnote $ "resultWithoutNulls: " <> show resultWithoutNulls
+  assert (isPackedTransfer resultWithNulls)
+  assert (isPackedTransfer resultWithoutNulls)
+
+-- | Extract the data and strobe bytes. 'Nothing' if the corresponding keep bit
+-- is low, 'Just' if the keep bit is high.
+catKeepBytes ::
+  KnownNat (DataWidth conf) =>
+  Axi4StreamM2S conf userType ->
+  Vec (DataWidth conf) (Maybe (Unsigned 8, Bool))
+catKeepBytes Axi4StreamM2S{..} = orNothing <$> _tkeep <*> zip _tdata _tstrb
+
+prop_axiOperations :: Property
+prop_axiOperations = property $ do
+  axi <- forAll $ genAxisM2S d4 d0 d0 [NullByte, DataByte, PositionByte] [True, False] $ pure ()
+  let
+    keepBytesA = catMaybes $ toList $ catKeepBytes axi
+    keepBytesB = catMaybes $ toList $ catKeepBytes (packAxi4Stream axi)
+    splitConcatA = splitAxi4Stream @4 @4 (combineAxi4Stream @4 @4 (Just axi) Nothing)
+    splitConcatB = splitAxi4Stream @4 @4 (combineAxi4Stream @4 @4 Nothing (Just axi))
+  keepBytesA === keepBytesB
+  -- Differentiate between empty and non-empty transfers
+  if all not (_tkeep axi) && not (_tlast axi)
+    then ( do
+      (Nothing, Nothing) === splitConcatA
+      Nothing === uncurry (<|>) splitConcatA
+      Nothing === uncurry (flip (<|>)) splitConcatA
+      )
+    else
+      do
+      (Just axi, Nothing) === splitConcatA
+      Just axi === uncurry (<|>) splitConcatA
+      Just axi === uncurry (flip (<|>)) splitConcatA
+      -- TODO: Overhaul of `Axi4Stream` representation for correct `Eq` instance
+      assert (maybe False (eqAxi4Stream axi) (uncurry (flip (<|>)) splitConcatB))
+
+prop_axiPacking :: Property
+prop_axiPacking = propWithModel defExpectOptions gen model impl prop
  where
-  busWidth = natToNum @nBytes
-  f i bytes =
-    (emptyWishboneM2S @addrW @(Bytes nBytes))
-      { addr = 4 * i
-      , strobe = True
-      , busCycle = True
-      , writeData
-      , busSelect
-      , writeEnable = True} : if otherBytes == [] then [] else f (succ i) otherBytes
-    where
-    (bytesToSend, otherBytes) = L.splitAt busWidth bytes
-    writeData = pack $ unsafeFromList (L.reverse $ L.take busWidth (bytesToSend <> L.repeat 0))
-    busSelect = pack . unsafeFromList $
-      L.replicate (busWidth - L.length bytesToSend) False <>
-      L.replicate (L.length bytesToSend) True
+  impl = wcre @System axiPacking
+  model = id --
 
--- Transform a `Packet` into a list of Axi Stream operations.
-packetToAxiStream ::
-  forall nBytes .
-  SNat nBytes ->
-  Packet ->
-  [Maybe (Axi4StreamM2S (BasicAxiConfig nBytes) ())]
-packetToAxiStream w@SNat !bs
-  | bs /= [] = Just axis : packetToAxiStream w rest
-  | otherwise  = []
-  where
-  busWidth = natToNum @nBytes
-  (firstWords, rest) = L.splitAt busWidth bs
-  word = L.take busWidth (firstWords <> L.replicate (busWidth - 1) 0)
-  axis = Axi4StreamM2S
-    { _tdata = unsafeFromList word
-    , _tkeep = keeps
-    , _tstrb = repeat True
-    , _tlast = null rest
-    , _tid   = 0
-    , _tdest = 0
-    , _tuser = deepErrorX ""
-    }
-  keeps = unsafeFromList $
-       L.replicate (L.length bs) True
-    <> L.replicate (busWidth - L.length bs) False
+  packetGen = catMaybes <$> genRandomAxiPacket d1 d0 d0
+    [NullByte, DataByte, PositionByte] (Range.linear 0 32) (pure ())
 
--- Write a value with Wishbone to a 4 byte aligned address.
-wbWrite::
-  forall addrW nBytes .
-  (KnownNat addrW, KnownNat nBytes) =>
-  Int ->
-  Bytes nBytes ->
-  WishboneM2S addrW nBytes (Bytes nBytes)
-wbWrite a d =
-  (emptyWishboneM2S @addrW @(Bytes nBytes))
-  { busCycle    = True
-  , strobe      = True
-  , addr        = resize . pack $ a * 4
-  , writeEnable = True
-  , busSelect   = maxBound
-  , writeData   = d
-  }
+  gen = L.concat <$> Gen.list (Range.linear 0 3) packetGen
 
--- Read a value from a 4 byte aligned address.
-wbRead::
-  forall addrW nBytes .
-  (KnownNat addrW, KnownNat nBytes) =>
-  Int ->
-  WishboneM2S addrW nBytes (Bytes nBytes)
-wbRead a =
-  (emptyWishboneM2S @addrW @(Bytes nBytes))
-  { busCycle  = True
-  , strobe    = True
-  , addr      = resize . pack $ a * 4
-  , busSelect = minBound
-  }
+  prop expected sampled = do
+    let bytetypes = fmap getPacketByteTypes $ rights $ separatePackets sampled
+    footnote $ "expected: " <> show expected
+    footnote $ "sampled: " <> show sampled
+    footnote $ "bytetypes: " <> show bytetypes
+
+    -- None of the packets start with null bytes
+    assert $ not (any hasLeadingNullBytes bytetypes)
+
+    -- All packets are packed
+    assert $ all isPackedAxi4StreamPacket bytetypes
+
+    -- The extracted packets are the same for both the expected and sampled data
+    axiStreamToPackets expected === axiStreamToPackets sampled
+
+prop_wbAxisRxBufferReadStreams :: Property
+prop_wbAxisRxBufferReadStreams = property $ do
+  let packetGen = Gen.filter (byteTypeFilter conditions . catMaybes) $ genRandomAxiPacket d4 d0 d0
+        [NullByte, DataByte] (Range.linear 0 16) (pure ())
+  inputData <- forAll (L.concat <$> Gen.list (Range.linear 0 3) packetGen)
+  extraBufferBytes <- forAll $ Gen.integral (Range.linear 31 31)
+  case TN.someNatVal extraBufferBytes of
+    SomeNat (Proxy :: Proxy extraBufferBytes) -> do
+      let transfers = catMaybes $ wcre
+            $ sampleC conf $ tb (SNat @(1 + extraBufferBytes)) <| driveC conf inputData
+      footnote $ "transfers: " <> show transfers
+      footnote $ "inputData: " <> show inputData
+      axiStreamToPackets (catMaybes inputData) === axiStreamToPackets transfers
+ where
+  conditions =
+    [ isPackedAxi4StreamPacket
+    , not . hasLeadingNullBytes
+    ]
+  conf = SimulationConfig 0 500 False
+  tb :: (1 <= bufferBytes, HiddenClockResetEnable System) =>
+    SNat bufferBytes ->
+    Circuit
+      (Axi4Stream System ('Axi4StreamConfig 4 0 0 ) ())
+      (Axi4Stream System ('Axi4StreamConfig 4 0 0 ) ())
+  tb bufferBytes = circuit $ \axiIn0 -> do
+    axiIn1 <- axiUserMapC (const False) -< axiIn0
+    _status <- wbAxisRxBufferCircuit @System @32 bufferBytes -< (wb, axiIn1)
+    (wb, axiOut) <- rxReadMasterC bufferBytes -< ()
+    idC -< axiOut
+
+prop_packetConversions :: Property
+prop_packetConversions = property $ do
+  packets <- forAll
+    $ Gen.list (Range.linear 1 4)
+    $ Gen.list (Range.linear 1 128)
+    $ genUnsigned Range.constantBounded
+  let
+    transfers = fmap (packetToAxiStream d4) packets
+  footnote $ "transfers:" <> show transfers
+  packets === axiStreamToPackets (L.concatMap catMaybes transfers)
+
+-- | Force all invalid bytes to zero. This is useful for a poor man's version
+-- of '=='.
+forceKeepLowZero :: Axi4StreamM2S conf userType -> Axi4StreamM2S conf userType
+forceKeepLowZero a = a{_tdata = zipWith (\k d -> if k then d else 0) (_tkeep a) (_tdata a)}

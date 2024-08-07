@@ -144,6 +144,7 @@ library
     Bittide.Arithmetic.Ppm
     Bittide.Arithmetic.Time
     Bittide.Axi4
+    Bittide.Axi4.Internal
     Bittide.Calendar
     Bittide.ClockControl
     Bittide.ClockControl.Callisto
@@ -227,11 +228,15 @@ test-suite unittests
 
   other-modules:
     Tests.Axi4
+    Tests.Axi4.Generators
+    Tests.Axi4.Properties
+    Tests.Axi4.Types
     Tests.Calendar
     Tests.ClockControl.Si539xSpi
     Tests.Counter
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer
+    Tests.Haxioms
     Tests.Link
     Tests.ProcessingElement.ReadElf
     Tests.ScatterGather
@@ -259,6 +264,7 @@ test-suite unittests
     elf,
     extra,
     hedgehog >=1.0 && <1.5,
+    lifted-async,
     tasty >=1.4 && <1.6,
     tasty-expected-failure,
     tasty-hedgehog >=1.2 && <1.5,

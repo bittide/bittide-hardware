@@ -14,6 +14,7 @@ import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes
 import Bittide.Wishbone
 import Clash.Cores.UART(uart, ValidBaud)
+import Clash.Cores.UART.Extra(MaxBaudRate)
 import Clash.Explicit.Prelude
 import Clash.Explicit.Testbench
 import Clash.Prelude(withClockResetEnable)
@@ -45,7 +46,7 @@ case_time_rust_self_test =
  where
   assertResult (TestResult name (Just err)) = assertFailure ("Test " <> name <> " failed with error" <> err)
   assertResult (TestResult _ Nothing) = return ()
-  baud = SNat @921600
+  baud = SNat @(MaxBaudRate Basic50)
   clk = clockGen
   rst = resetGen
   ena = enableGen

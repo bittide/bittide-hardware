@@ -7,6 +7,7 @@
 use fdt::Fdt;
 use utils::matches_fdt_name;
 
+pub mod axi;
 pub mod callisto;
 pub mod clock_control;
 pub mod dna_port_e2;
