@@ -242,11 +242,18 @@ jobs:
   generate-full-clock-control-simulation-report:
     name: Generate clock control simulation report
     runs-on: [self-hosted, compute]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.bittide-instances-hardware-in-the-loop-test-matrix.outputs.should_generate_report == 'true' }}
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build, lint, cc-sim-topologies-matrix, cc-sim-topologies, bittide-instances-hardware-in-the-loop]
+    needs: [
+      build,
+      lint,
+      cc-sim-topologies-matrix,
+      cc-sim-topologies,
+      bittide-instances-hardware-in-the-loop,
+      bittide-instances-hardware-in-the-loop-test-matrix,
+    ]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-06
@@ -611,10 +618,15 @@ jobs:
       - name: Set test matrix
         id: set-matrix
         run: |
+
           echo "check_matrix=$(cat checks.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
+
+          should_generate_report=$(jq 'map(select(.top == "hwCcTopologyTest")) | length > 0' checks.json)
+          echo "should_generate_report=${should_generate_report}" | tee -a "$GITHUB_OUTPUT"
 
     outputs:
       check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
+      should_generate_report: ${{ steps.set-matrix.outputs.should_generate_report }}
 
   bittide-instances-hdl:
     name: synth
