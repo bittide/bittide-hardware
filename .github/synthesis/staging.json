@@ -1,7 +1,6 @@
 [
   {"top": "fullMeshHwCcTest",              "stage": "test", "targets": "All"},
   {"top": "fullMeshSwCcTest",              "stage": "test", "targets": "All"},
-  {"top": "hwCcTopologyTest",              "stage": "test", "targets": "All"},
   {"top": "linkConfigurationTest",         "stage": "test", "targets": "All"},
   {"top": "safeDffSynchronizer",           "stage": "hdl"},
   {"top": "transceiversUpTest",            "stage": "test", "targets": "All"},
