@@ -1,11 +1,11 @@
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RecordWildCards #-}
--- SPDX-FileCopyrightText: 2022 Google LLC
---
--- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 

@@ -1,11 +1,11 @@
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
--- SPDX-FileCopyrightText: 2022 Google LLC
---
--- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -fconstraint-solver-iterations=7 #-}
 
 module Bittide.DoubleBufferedRam where

@@ -1,7 +1,7 @@
-{-# LANGUAGE GADTs #-}
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE GADTs #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=6 #-}
 
 module Bittide.Node where

@@ -1,3 +1,6 @@
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -6,9 +9,6 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
--- SPDX-FileCopyrightText: 2022 Google LLC
---
--- SPDX-License-Identifier: Apache-2.0
 {-# OPTIONS_GHC -fconstraint-solver-iterations=8 #-}
 
 module Bittide.SharedTypes where

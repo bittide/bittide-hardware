@@ -1,7 +1,7 @@
-{-# LANGUAGE FlexibleContexts #-}
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS -fplugin=Protocols.Plugin #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
