@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -9,9 +8,9 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 #endif
 
-module Bittide.ClockControl.Foreign.Rust.Callisto
-  ( rustyCallisto
-  ) where
+module Bittide.ClockControl.Foreign.Rust.Callisto (
+  rustyCallisto,
+) where
 
 import Clash.Prelude
 
@@ -19,7 +18,7 @@ import Bittide.ClockControl (RelDataCount)
 import Bittide.ClockControl.Callisto.Types
 import Bittide.ClockControl.StabilityChecker
 
-import Foreign.C.Types (CUInt(..))
+import Foreign.C.Types (CUInt (..))
 
 #ifdef RUSTY_CALLISTO
 import Data.Word (Word32)

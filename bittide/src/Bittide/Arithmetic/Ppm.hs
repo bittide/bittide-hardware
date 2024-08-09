@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NumericUnderscores #-}
@@ -9,11 +8,11 @@
 module Bittide.Arithmetic.Ppm where
 
 import Clash.Explicit.Prelude
-import Clash.Signal.Internal (Femtoseconds (Femtoseconds), hzToFs, fsToHz)
+import Clash.Signal.Internal (Femtoseconds (Femtoseconds), fsToHz, hzToFs)
 
+import qualified Control.Exception as E (assert)
 import Data.Int (Int64)
 import Data.Ratio
-import qualified Control.Exception as E (assert)
 import GHC.Stack (HasCallStack)
 import System.Random (Random)
 
@@ -24,24 +23,24 @@ newtype Ppm = Ppm Int64
 type Hz = Ratio Natural
 
 -- PPM arithmetic on Hz
-diffHz :: HasCallStack => Ppm -> Hz -> Hz
+diffHz :: (HasCallStack) => Ppm -> Hz -> Hz
 diffHz (Ppm ppm) hz
-  | ppm < 0   = error $ "diffHz: ppm must be absolute, not" <> show ppm
+  | ppm < 0 = error $ "diffHz: ppm must be absolute, not" <> show ppm
   | otherwise = hz / (1e6 / (fromIntegral ppm % 1))
 
-speedUpHz :: HasCallStack => Ppm -> Hz -> Hz
+speedUpHz :: (HasCallStack) => Ppm -> Hz -> Hz
 speedUpHz ppm hz = hz + diffHz ppm hz
 
-slowDownHz :: HasCallStack => Ppm -> Hz -> Hz
+slowDownHz :: (HasCallStack) => Ppm -> Hz -> Hz
 slowDownHz ppm hz = hz - diffHz ppm hz
 
 -- PPM arithmetic on periods
-diffPeriod :: HasCallStack => Ppm -> Femtoseconds -> Femtoseconds
+diffPeriod :: (HasCallStack) => Ppm -> Femtoseconds -> Femtoseconds
 diffPeriod (Ppm ppm) (Femtoseconds fs) = E.assert (ppm /= 0) $ Femtoseconds absFs
  where
   absFs = fs `div` (1_000_000 `div` ppm)
 
-adjustPeriod :: HasCallStack => Ppm -> Femtoseconds -> Femtoseconds
+adjustPeriod :: (HasCallStack) => Ppm -> Femtoseconds -> Femtoseconds
 adjustPeriod (Ppm ppm) fs =
   case compare ppm 0 of
     LT -> hzToFs (slowDownHz (Ppm (abs ppm)) (fsToHz fs))

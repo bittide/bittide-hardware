@@ -1,26 +1,25 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Post processing of ILA data for 'boardTestExtended', serves as an example
--- of post processing.
+{- | Post processing of ILA data for 'boardTestExtended', serves as an example
+of post processing.
+-}
 module Bittide.Instances.Hitl.Post.BoardTestExtended (postBoardTestExtended) where
 
 import Prelude
 
 import Data.Csv
 import Data.List (isSuffixOf)
-import System.Exit (ExitCode(..))
-import Test.Tasty.HUnit
+import System.Exit (ExitCode (..))
 import System.FilePath
+import Test.Tasty.HUnit
 
 import Bittide.Instances.Hitl.Post.PostProcess
 
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Vector as V
-
 
 data Row = Row
   { sampleInBuffer :: Int
@@ -31,19 +30,20 @@ data Row = Row
   , testStartB :: Bool
   , testDone :: Bool
   , testSuccess :: Bool
-  } deriving Show
+  }
+  deriving (Show)
 
 instance FromNamedRecord Row where
-  parseNamedRecord m = Row <$>
-    m .: "Sample in Buffer" <*>
-    m .: "Sample in Window" <*>
-    (toEnum <$> m .: "trigger_AorB") <*>
-    (toEnum <$> m .: "capture") <*>
-    (toEnum <$> m .: "ilaTestStartA") <*>
-    (toEnum <$> m .: "ilaTestStartB") <*>
-    (toEnum <$> m .: "ilaTestDone") <*>
-    (toEnum <$> m .: "ilaTestSuccess")
-
+  parseNamedRecord m =
+    Row
+      <$> m .: "Sample in Buffer"
+      <*> m .: "Sample in Window"
+      <*> (toEnum <$> m .: "trigger_AorB")
+      <*> (toEnum <$> m .: "capture")
+      <*> (toEnum <$> m .: "ilaTestStartA")
+      <*> (toEnum <$> m .: "ilaTestStartB")
+      <*> (toEnum <$> m .: "ilaTestDone")
+      <*> (toEnum <$> m .: "ilaTestSuccess")
 
 assertTriggerAtStart :: [Row] -> Assertion
 assertTriggerAtStart rows =
@@ -66,6 +66,9 @@ postBoardTestExtended _exitCode ilaCsvPaths = do
     csvToProcess = filter ((baseNameEndsWith "boardTestIla") . ilaName) ilaCsvPaths
   assertBool "Expected at least 1 CSV file, but got 0" $ not (null csvToProcess)
   mapM_ (processCsv . csvPath) csvToProcess
-  putStrLn $ "Successfully performed post processing of " <> show (length csvToProcess) <> " ILA CSV dumps"
+  putStrLn $
+    "Successfully performed post processing of "
+      <> show (length csvToProcess)
+      <> " ILA CSV dumps"
  where
   baseNameEndsWith x = isSuffixOf x . takeBaseName

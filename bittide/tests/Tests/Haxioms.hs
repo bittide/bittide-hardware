@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
+
 module Tests.Haxioms where
 
 import Clash.Prelude
@@ -19,6 +20,8 @@ prop_leMult = property $ do
   assert (1 <= a * b)
 
 tests :: TestTree
-tests = testGroup "Haxioms"
-  [ testProperty "prop_leMult" prop_leMult
-  ]
+tests =
+  testGroup
+    "Haxioms"
+    [ testProperty "prop_leMult" prop_leMult
+    ]

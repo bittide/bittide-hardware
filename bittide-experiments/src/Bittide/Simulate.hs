@@ -1,57 +1,57 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE ImplicitPrelude #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
-module Bittide.Simulate
-  ( OutputMode(..)
-  , SimPlotSettings(..)
-  , simPlot
-  , someCCC
-  ) where
+{-# LANGUAGE ImplicitPrelude #-}
 
-import Clash.Prelude
-  ( KnownDomain
-  , KnownNat
-  , SomeNat(..)
-  , type (<=)
-  , type (+)
-  , someNatVal
-  , natToNum
-  , snatProxy
-  )
+module Bittide.Simulate (
+  OutputMode (..),
+  SimPlotSettings (..),
+  simPlot,
+  someCCC,
+) where
 
+import Clash.Prelude (
+  KnownDomain,
+  KnownNat,
+  SomeNat (..),
+  natToNum,
+  snatProxy,
+  someNatVal,
+  type (+),
+  type (<=),
+ )
+
+import Clash.Signal.Internal (Femtoseconds (..))
 import Clash.Sized.Vector qualified as V
-import Clash.Signal.Internal (Femtoseconds(..))
 
-import System.Exit (die)
-import Text.Read (Read(..), lexP, pfail, readMaybe)
-import Text.Read.Lex (Lexeme(Ident))
-import Data.Proxy (Proxy(..))
-import Data.Aeson (ToJSON, FromJSON, Value(..))
-import Data.Aeson.Types (typeMismatch)
+import Control.Monad (forM_, zipWithM_)
+import Data.Aeson (FromJSON, ToJSON, Value (..))
 import Data.Aeson qualified as A
-import Data.Text qualified as T
-import Data.Array ((!), bounds)
-import Data.Csv (toField, encode)
-import Control.Monad (zipWithM_, forM_)
-import System.FilePath ((</>))
-import System.Random (Random(..), randomRIO)
+import Data.Aeson.Types (typeMismatch)
+import Data.Array (bounds, (!))
 import Data.ByteString.Lazy qualified as BSL (appendFile)
+import Data.Csv (encode, toField)
+import Data.Proxy (Proxy (..))
+import Data.Text qualified as T
+import System.Exit (die)
+import System.FilePath ((</>))
+import System.Random (Random (..), randomRIO)
+import Text.Read (Read (..), lexP, pfail, readMaybe)
+import Text.Read.Lex (Lexeme (Ident))
 
-import Data.Type.Equality ((:~:)(..))
-import GHC.TypeLits.Compare ((:<=?)(..))
+import Data.Type.Equality ((:~:) (..))
+import GHC.TypeLits.Compare ((:<=?) (..))
 import GHC.TypeLits.Witnesses ((%<=?))
-import GHC.TypeLits.Witnesses qualified as TLW (SNat(..))
+import GHC.TypeLits.Witnesses qualified as TLW (SNat (..))
 
-import Bittide.Arithmetic.Ppm (Ppm(..), diffPeriod)
-import Bittide.ClockControl (ClockControlConfig(..), clockPeriodFs, defClockConfig)
-import Bittide.Plot (plot, fromRfState)
-import Bittide.Simulate.Topology (simulate, simulationEntity, allSettled)
+import Bittide.Arithmetic.Ppm (Ppm (..), diffPeriod)
+import Bittide.ClockControl (ClockControlConfig (..), clockPeriodFs, defClockConfig)
+import Bittide.Plot (fromRfState, plot)
+import Bittide.Simulate.Topology (allSettled, simulate, simulationEntity)
 import Bittide.Topology
 
 data OutputMode = CSV | PDF
@@ -63,10 +63,11 @@ instance Show OutputMode where
     PDF -> "pdf"
 
 instance Read OutputMode where
-  readPrec = lexP >>= \case
-    Ident "csv" -> return CSV
-    Ident "pdf" -> return PDF
-    _           -> pfail
+  readPrec =
+    lexP >>= \case
+      Ident "csv" -> return CSV
+      Ident "pdf" -> return PDF
+      _ -> pfail
 
 instance ToJSON OutputMode where
   toJSON = String . T.pack . show
@@ -74,56 +75,65 @@ instance ToJSON OutputMode where
 instance FromJSON OutputMode where
   parseJSON v = case v of
     String str -> maybe tmm return $ readMaybe $ T.unpack str
-    _          -> tmm
+    _ -> tmm
    where
     tmm = typeMismatch "OutputMode" v
 
-data SimPlotSettings =
-  SimPlotSettings
-    { plotSamples    :: Int
-    , periodsize     :: Int
-    , mode           :: OutputMode
-    , dir            :: FilePath
-    , stopStable     :: Maybe Int
-    , fixClockOffs   :: [Float]
-    , fixStartDelays :: [Int]
-    , maxStartDelay  :: Int
-    , sccc           :: SomeClockControlConfig
-    , save           :: [Float] -> [Int] -> Maybe Bool -> IO ()
-    }
+data SimPlotSettings = SimPlotSettings
+  { plotSamples :: Int
+  , periodsize :: Int
+  , mode :: OutputMode
+  , dir :: FilePath
+  , stopStable :: Maybe Int
+  , fixClockOffs :: [Float]
+  , fixStartDelays :: [Int]
+  , maxStartDelay :: Int
+  , sccc :: SomeClockControlConfig
+  , save :: [Float] -> [Int] -> Maybe Bool -> IO ()
+  }
 
--- | Creates some clock control configuration from the default with
--- the given parameters modified.
+{- | Creates some clock control configuration from the default with
+the given parameters modified.
+-}
 someCCC ::
   forall dom.
-  KnownDomain dom =>
-  Proxy dom -> Bool -> Bool -> Int -> Integer -> Integer ->
+  (KnownDomain dom) =>
+  Proxy dom ->
+  Bool ->
+  Bool ->
+  Int ->
+  Integer ->
+  Integer ->
   IO SomeClockControlConfig
 someCCC _ reframe rustySim waittime margin framesize =
   case someNatVal margin of
     Just (SomeNat pMargin) -> case somePositiveNat framesize of
       Just (SomePositiveNat pFramesize) ->
-        return $ SomeClockControlConfig @dom @12 $ ClockControlConfig
-          { cccStabilityCheckerMargin    = snatProxy pMargin
-          , cccStabilityCheckerFramesize = snatProxy pFramesize
-          , cccEnableReframing           = reframe
-          , cccReframingWaitTime         = fromInteger $ toInteger waittime
-          , cccEnableRustySimulation     = rustySim
-          , ..
-          }
+        return $
+          SomeClockControlConfig @dom @12 $
+            ClockControlConfig
+              { cccStabilityCheckerMargin = snatProxy pMargin
+              , cccStabilityCheckerFramesize = snatProxy pFramesize
+              , cccEnableReframing = reframe
+              , cccReframingWaitTime = fromInteger $ toInteger waittime
+              , cccEnableRustySimulation = rustySim
+              , ..
+              }
       _ -> die "ERROR: the given frame size must be positive"
     _ -> die "ERROR: the given margin must be non-negative"
  where
   ClockControlConfig{..} = defClockConfig @dom
 
   somePositiveNat :: Integer -> Maybe SomePositiveNat
-  somePositiveNat n = someNatVal n >>= \(SomeNat (_ :: p n)) ->
-    case TLW.SNat @1 %<=? TLW.SNat @n of
-      LE Refl -> Just $ SomePositiveNat (Proxy @n)
-      _       -> Nothing
+  somePositiveNat n =
+    someNatVal n >>= \(SomeNat (_ :: p n)) ->
+      case TLW.SNat @1 %<=? TLW.SNat @n of
+        LE Refl -> Just $ SomePositiveNat (Proxy @n)
+        _ -> Nothing
 
--- | Simulates and plots the given topology according to the given
--- parameters.
+{- | Simulates and plots the given topology according to the given
+parameters.
+-}
 simPlot :: STop -> SimPlotSettings -> IO Bool
 simPlot (STop (t :: Topology n)) settings@SimPlotSettings{..} =
   case TLW.SNat @1 %<=? topSize t of
@@ -139,45 +149,47 @@ simPlot (STop (t :: Topology n)) settings@SimPlotSettings{..} =
                 _ -> die "ERROR: nodes + dcount <= 32"
               _ -> die "ERROR: elastic buffer data counts must contain data"
             _ -> die "ERROR: the given frame size must be positive"
-      _  -> die "ERROR: the given topology must have not more than 20 nodes"
-    _  -> die "ERROR: the given topology must have at least 1 node"
+      _ -> die "ERROR: the given topology must have not more than 20 nodes"
+    _ -> die "ERROR: the given topology must have at least 1 node"
  where
-  topSize :: KnownNat n => Topology n -> TLW.SNat n
+  topSize :: (KnownNat n) => Topology n -> TLW.SNat n
   topSize = const TLW.SNat
 
--- | Creates and write plots for a given topology according to the
--- given output mode.
+{- | Creates and write plots for a given topology according to the
+given output mode.
+-}
 simPlot# ::
   forall dom nodes dcount margin framesize.
   ( KnownDomain dom
-  -- ^ domain
-  , KnownNat nodes
-  -- ^ the size of the topology is know
-  , KnownNat dcount
-  -- ^ the size of the data counts is known
-  , KnownNat margin
-  -- ^ the margins of the stability checker are known
-  , KnownNat framesize
-  -- ^ the frame size of cycles within the margins required is known
-  , 1 <= nodes
-  -- ^ the topology consists of at least one node
-  , 1 <= dcount
-  -- ^ data counts must contain data
-  , nodes + dcount <= 32
-  -- ^ computational limit of the clock control
-  , 1 + nodes <= 32
-  -- ^ computational limit of the clock control
-  , 1 <= framesize
-  -- ^ frames must at least cover one element
+  , -- \^ domain
+    KnownNat nodes
+  , -- \^ the size of the topology is know
+    KnownNat dcount
+  , -- \^ the size of the data counts is known
+    KnownNat margin
+  , -- \^ the margins of the stability checker are known
+    KnownNat framesize
+  , -- \^ the frame size of cycles within the margins required is known
+    1 <= nodes
+  , -- \^ the topology consists of at least one node
+    1 <= dcount
+  , -- \^ data counts must contain data
+    nodes + dcount <= 32
+  , -- \^ computational limit of the clock control
+    1 + nodes <= 32
+  , -- \^ computational limit of the clock control
+    1 <= framesize
   ) =>
+  -- \^ frames must at least cover one element
+
+  -- | simulation settings
   SimPlotSettings ->
-  -- ^ simulation settings
+  -- | clock control configuration
   ClockControlConfig dom dcount margin framesize ->
-  -- ^ clock control configuration
+  -- | the topology
   Topology nodes ->
-  -- ^ the topology
+  -- | stability result
   IO Bool
-  -- ^ stability result
 simPlot# simSettings ccc t = do
   clockOffsets <-
     V.zipWith (maybe id const) givenClockOffsets
@@ -186,16 +198,19 @@ simPlot# simSettings ccc t = do
     V.zipWith (maybe id const) givenStartupDelays
       <$> genStartupOffsets maxStartDelay
   let
-    simResult = simulate t stopStable plotSamples periodsize
-              $ simulationEntity t ccc
-                  (Femtoseconds . floor <$> clockOffsets)
-                  startupDelays
+    simResult =
+      simulate t stopStable plotSamples periodsize $
+        simulationEntity
+          t
+          ccc
+          (Femtoseconds . floor <$> clockOffsets)
+          startupDelays
     saveSettings = save (V.toList clockOffsets) (V.toList startupDelays)
 
   saveSettings Nothing
 
   case mode of
-    PDF -> plot dir t $ fmap (fmap (\(a,b,c,d) -> (a,b,fromRfState c,d))) simResult
+    PDF -> plot dir t $ fmap (fmap (\(a, b, c, d) -> (a, b, fromRfState c, d))) simResult
     CSV -> dumpCsv simResult
 
   let result = allSettled $ V.map last simResult
@@ -215,31 +230,36 @@ simPlot# simSettings ccc t = do
     } = simSettings
 
   givenClockOffsets =
-      V.unsafeFromList
-    $ take (natToNum @nodes)
-    $ (Just <$> fixClockOffs) <> repeat Nothing
+    V.unsafeFromList $
+      take (natToNum @nodes) $
+        (Just <$> fixClockOffs) <> repeat Nothing
 
   givenStartupDelays =
-      V.unsafeFromList
-    $ take (natToNum @nodes)
-    $ (Just <$> fixStartDelays) <> repeat Nothing
+    V.unsafeFromList $
+      take (natToNum @nodes) $
+        (Just <$> fixStartDelays) <> repeat Nothing
 
   dumpCsv simulationResult = do
-    forM_ [0..n] $ \i -> do
+    forM_ [0 .. n] $ \i -> do
       let eb = topologyGraph t ! i
-      writeFile (filename i)
-        ( "t,clk" <> show i
-            <> concatMap (\j -> ",eb" <> show i <> show j) eb <>  "\n")
+      writeFile
+        (filename i)
+        ( "t,clk"
+            <> show i
+            <> concatMap (\j -> ",eb" <> show i <> show j) eb
+            <> "\n"
+        )
     let dats = V.map (encode . fmap flatten) simulationResult
     zipWithM_
       (\dat i -> BSL.appendFile (filename i) dat)
       (V.toList dats)
-      [(0 :: Int)..]
+      [(0 :: Int) ..]
 
   filename i = dir </> "clocks" <> "_" <> show i <> ".csv"
   flatten (a, b, _, v) = toField a : toField b : (toField . fst <$> v)
-  (z, n) | z == 0    = bounds $ topologyGraph t
-         | otherwise = error "lower bound not 0"
+  (z, n)
+    | z == 0 = bounds $ topologyGraph t
+    | otherwise = error "lower bound not 0"
 
 -- | Generates a vector of random clock offsets.
 genClockOffsets ::
@@ -259,16 +279,18 @@ genClockOffsets ClockControlConfig{cccDeviation} =
 -- | Generates a vector of random startup offsets.
 genStartupOffsets :: (Random a, Num a, KnownNat k) => a -> IO (V.Vec k a)
 genStartupOffsets limit =
-  V.traverse# (const ((+1) <$> randomRIO (0, limit))) $ V.repeat ()
+  V.traverse# (const ((+ 1) <$> randomRIO (0, limit))) $ V.repeat ()
 
-data SomePositiveNat =
-  forall n. (KnownNat n, 1 <= n) =>
+data SomePositiveNat
+  = forall n.
+    (KnownNat n, 1 <= n) =>
     SomePositiveNat (Proxy n)
 
-data SomeClockControlConfig =
-  forall dom dcount margin framesize.
+data SomeClockControlConfig
+  = forall dom dcount margin framesize.
     ( KnownDomain dom
     , KnownNat dcount
     , KnownNat margin
     , KnownNat framesize
-    ) => SomeClockControlConfig (ClockControlConfig dom dcount margin framesize)
+    ) =>
+    SomeClockControlConfig (ClockControlConfig dom dcount margin framesize)

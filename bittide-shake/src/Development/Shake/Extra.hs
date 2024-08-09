@@ -14,7 +14,7 @@ import qualified Data.Aeson as Aeson
 suppressOutput :: [CmdOption]
 suppressOutput = [EchoStdout False, EchoStderr True]
 
-decodeFile :: Aeson.FromJSON a => FilePath -> Action a
+decodeFile :: (Aeson.FromJSON a) => FilePath -> Action a
 decodeFile path = do
   need [path]
   fromJust <$> liftIO (Aeson.decodeFileStrict path)

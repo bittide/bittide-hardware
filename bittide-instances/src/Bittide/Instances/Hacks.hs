@@ -7,24 +7,24 @@
 
 module Bittide.Instances.Hacks where
 
-import Clash.Prelude
 import qualified Clash.Explicit.Prelude as E
+import Clash.Prelude
 
--- | Chaotically distributes a single incoming bit to input bits of the given
--- function. Similarly, it chaotically reduces the all output bits of a function
--- into a single bit. Both the input and output of the function will be directly
--- connected to a register after applying 'reducePins'.
---
--- This function is useful for synthesis analysis: although it feeds the circuit
--- with garbage values, it only needs one input and one output pin. Because all
--- the in and output pins of the circuit under test are directly connected to
--- a register, synthesis timing results will (somewhat) realistically reflect
--- timing capabilities.
---
--- See 'reducePins' for a 'BitPack' version of this function.
---
+{- | Chaotically distributes a single incoming bit to input bits of the given
+function. Similarly, it chaotically reduces the all output bits of a function
+into a single bit. Both the input and output of the function will be directly
+connected to a register after applying 'reducePins'.
+
+This function is useful for synthesis analysis: although it feeds the circuit
+with garbage values, it only needs one input and one output pin. Because all
+the in and output pins of the circuit under test are directly connected to
+a register, synthesis timing results will (somewhat) realistically reflect
+timing capabilities.
+
+See 'reducePins' for a 'BitPack' version of this function.
+-}
 reducePins# ::
-  forall dom m n .
+  forall dom m n.
   (HiddenClock dom, KnownNat m, KnownNat n) =>
   (Signal dom (BitVector m) -> Signal dom (BitVector n)) ->
   Signal dom Bit ->
@@ -41,7 +41,7 @@ reducePins# f pin = out
   -- try to do.
   --
   shiftRegIn = liftA2 (.<<+) shiftReg (xor <$> pin <*> out)
-  shiftReg = E.delay @dom @(BitVector (m+n)) clk ena  0 shiftRegIn
+  shiftReg = E.delay @dom @(BitVector (m + n)) clk ena 0 shiftRegIn
   out = go <$> outs <*> E.delay clk ena 0 (f ins)
   (ins, outs) = unbundle (split @_ @m @n <$> shiftReg)
   go a b = reduceXor (a `xor` b)
@@ -49,19 +49,19 @@ reducePins# f pin = out
   clk = hasClock
   ena = enableGen
 
--- | Chaotically distributes a single incoming bit to input bits of the given
--- function. Similarly, it chaotically reduces the all output bits of a function
--- into a single bit. Both the input and output of the function will be directly
--- connected to a register after applying 'reducePins'.
---
--- This function is useful for synthesis analysis: although it feeds the circuit
--- with garbage values, it only needs one input and one output pin. Because all
--- the in and output pins of the circuit under test are directly connected to
--- a register, synthesis timing results will (somewhat) realistically reflect
--- timing capabilities.
---
+{- | Chaotically distributes a single incoming bit to input bits of the given
+function. Similarly, it chaotically reduces the all output bits of a function
+into a single bit. Both the input and output of the function will be directly
+connected to a register after applying 'reducePins'.
+
+This function is useful for synthesis analysis: although it feeds the circuit
+with garbage values, it only needs one input and one output pin. Because all
+the in and output pins of the circuit under test are directly connected to
+a register, synthesis timing results will (somewhat) realistically reflect
+timing capabilities.
+-}
 reducePins ::
-  forall dom a b .
+  forall dom a b.
   (HiddenClock dom, BitPack a, BitPack b) =>
   (Signal dom a -> Signal dom b) ->
   Signal dom Bit ->
@@ -70,7 +70,7 @@ reducePins f = reducePins# (fmap pack . f . fmap unpack)
 
 -- | Bundled version of 'reducePins'.
 reducePinsB ::
-  forall dom a b .
+  forall dom a b.
   (HiddenClock dom, Bundle a, BitPack a, BitPack b, Bundle b) =>
   (Unbundled dom a -> Unbundled dom b) ->
   Signal dom Bit ->

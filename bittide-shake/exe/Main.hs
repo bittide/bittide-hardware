@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -32,20 +31,21 @@ import Development.Shake.Classes
 import GHC.Stack (HasCallStack)
 import System.Console.ANSI (setSGR)
 import System.Directory hiding (doesFileExist)
-import System.Exit (ExitCode(..), exitWith)
+import System.Exit (ExitCode (..), exitWith)
 import System.FilePath
 import System.FilePath.Glob (glob)
-import System.Process (readProcess, callProcess)
+import System.Process (callProcess, readProcess)
 import Test.Tasty.HUnit (Assertion)
 
 import qualified Clash.Util.Interpolate as I
 import qualified Paths.Bittide.Shake as Shake (getDataFileName)
 import qualified System.Directory as Directory
 
--- | Get all files whose changes will trigger an HDL rebuild. Because we lack a
--- reliable way to determine which files should trigger a rebuild, this function
--- returns a (very) pessimistic list: all files in the project's directory,
--- except files ignored by git and files matching patterns in 'ignorePatterns'.
+{- | Get all files whose changes will trigger an HDL rebuild. Because we lack a
+reliable way to determine which files should trigger a rebuild, this function
+returns a (very) pessimistic list: all files in the project's directory,
+except files ignored by git and files matching patterns in 'ignorePatterns'.
+-}
 getWatchFiles :: IO [String]
 getWatchFiles = do
   getWatchFilesPy <-
@@ -58,21 +58,20 @@ needWatchFiles = do
   need [watchFilesPath]
   need =<< liftIO (lines <$> readFile watchFilesPath)
 
--- | File patterns of file we do _not_ want to make trigger a rebuild of HDL
--- files. Also see 'getWatchFiles'.
+{- | File patterns of file we do _not_ want to make trigger a rebuild of HDL
+files. Also see 'getWatchFiles'.
+-}
 ignorePatterns :: [String]
 ignorePatterns =
   [ "*.md"
   , ".github"
   , ".reuse"
   , ".vscode"
-
-  -- Used for synthesis, but not for generating Clash output:
-  , dataFilesDir </> "**" </> "*.xdc"
+  , -- Used for synthesis, but not for generating Clash output:
+    dataFilesDir </> "**" </> "*.xdc"
   , dataFilesDir </> "**" </> "*.tcl"
-
-  -- Used for HITL tests
-  , "bittide-instances/data/openocd/*"
+  , -- Used for HITL tests
+    "bittide-instances/data/openocd/*"
   , "bittide-instances/data/picocom/*"
   , "bittide-instances/data/gdb/*"
   ]
@@ -105,14 +104,14 @@ doPostProcessing postProcessMain ilaDir testExitCode = do
   callProcess "cabal" ["build", postProcessMain]
   callProcess "cabal" ["run", postProcessMain, ilaDir, show testExitCode]
 
--- | Searches for a file called @cabal.project@ It will look for it in the
--- current working directory. If it can't find it there, it will traverse up
--- until it finds the file.
---
--- The returned path points to the directory containing @cabal.project@. Errors
--- if it could not find @cabal.project@ anywhere.
---
-findProjectRoot :: HasCallStack => IO FilePath
+{- | Searches for a file called @cabal.project@ It will look for it in the
+current working directory. If it can't find it there, it will traverse up
+until it finds the file.
+
+The returned path points to the directory containing @cabal.project@. Errors
+if it could not find @cabal.project@ anywhere.
+-}
+findProjectRoot :: (HasCallStack) => IO FilePath
 findProjectRoot = goUp =<< getCurrentDirectory
  where
   goUp :: FilePath -> IO FilePath
@@ -127,117 +126,117 @@ findProjectRoot = goUp =<< getCurrentDirectory
   projectFilename = "cabal.project"
 
 data Target = Target
-  { -- | TemplateHaskell reference to top entity to synthesize
-    targetName :: TargetName
-
-    -- | Whether target has an associated XDC file in 'data/constraints'. An XDC
-    -- file implies that a bitstream can be generated.
+  { targetName :: TargetName
+  -- ^ TemplateHaskell reference to top entity to synthesize
   , targetHasXdc :: Bool
-
-    -- | Whether target has one or more VIOs
+  -- ^ Whether target has an associated XDC file in 'data/constraints'. An XDC
+  -- file implies that a bitstream can be generated.
   , targetHasVio :: Bool
-
-    -- | Whether target has a VIO probe that can be used to run hardware-in-the-
-    -- loop tests. Note that this flag, 'targetHasTest', implies 'targetHasVio'.
+  -- ^ Whether target has one or more VIOs
   , targetHasTest :: Bool
-
-    -- | Name of the executable for post processing of ILA CSV data, or Nothing
-    -- if it has none.
+  -- ^ Whether target has a VIO probe that can be used to run hardware-in-the-
+  -- loop tests. Note that this flag, 'targetHasTest', implies 'targetHasVio'.
   , targetPostProcess :: Maybe String
-
-    -- | Extra constraints to be sourced. Will be sourced _after_ main XDC.
+  -- ^ Name of the executable for post processing of ILA CSV data, or Nothing
+  -- if it has none.
   , targetExtraXdc :: [FilePath]
-
-  -- | A list of patterns that match the external HDL files that are used by the
-  -- instance. Generates tck that utilizes https://www.tcl.tk/man/tcl8.6/TclCmd/glob.htm
+  -- ^ Extra constraints to be sourced. Will be sourced _after_ main XDC.
   , targetExternalHdl :: [TclGlobPattern]
+  -- ^ A list of patterns that match the external HDL files that are used by the
+  -- instance. Generates tck that utilizes https://www.tcl.tk/man/tcl8.6/TclCmd/glob.htm
   }
-
 
 defTarget :: TargetName -> Target
-defTarget name = Target
-  { targetName = name
-  , targetHasXdc = False
-  , targetHasVio = False
-  , targetHasTest = False
-  , targetPostProcess = Nothing
-  , targetExtraXdc = []
-  , targetExternalHdl = []
-  }
+defTarget name =
+  Target
+    { targetName = name
+    , targetHasXdc = False
+    , targetHasVio = False
+    , targetHasTest = False
+    , targetPostProcess = Nothing
+    , targetExtraXdc = []
+    , targetExternalHdl = []
+    }
 
 testTarget :: TargetName -> Target
-testTarget name = Target
-  { targetName = name
-  , targetHasXdc = True
-  , targetHasVio = True
-  , targetHasTest = True
-  , targetPostProcess = Nothing
-  , targetExtraXdc = []
-  , targetExternalHdl = []
-  }
+testTarget name =
+  Target
+    { targetName = name
+    , targetHasXdc = True
+    , targetHasVio = True
+    , targetHasTest = True
+    , targetPostProcess = Nothing
+    , targetExtraXdc = []
+    , targetExternalHdl = []
+    }
 
 enforceValidTarget :: Target -> Target
 enforceValidTarget target@Target{..}
   | targetHasTest && not targetHasVio =
-      error $ show targetName <> " should have set 'targetHasVio', because " <>
-                                 "'targetHasTest' was asserted."
+      error $
+        show targetName
+          <> " should have set 'targetHasVio', because "
+          <> "'targetHasTest' was asserted."
   | otherwise = target
-
 
 -- | All synthesizable targets
 targets :: [Target]
-targets = map enforceValidTarget
-  [ defTarget "Bittide.Instances.Pnr.Calendar.switchCalendar1k"
-  , defTarget "Bittide.Instances.Pnr.Calendar.switchCalendar1kReducedPins"
-  , defTarget "Bittide.Instances.Pnr.ClockControl.callisto3"
-  , defTarget "Bittide.Instances.Pnr.Counter.counterReducedPins"
-  , defTarget "Bittide.Instances.Pnr.ElasticBuffer.elasticBuffer5"
-  , defTarget "Bittide.Instances.Pnr.ScatterGather.gatherUnit1K"
-  , defTarget "Bittide.Instances.Pnr.ScatterGather.gatherUnit1KReducedPins"
-  , defTarget "Bittide.Instances.Pnr.ScatterGather.scatterUnit1K"
-  , defTarget "Bittide.Instances.Pnr.ScatterGather.scatterUnit1KReducedPins"
-  , defTarget "Bittide.Instances.Pnr.Si539xSpi.callistoSpi"
-  , defTarget "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
-  , defTarget "Bittide.Instances.Pnr.StabilityChecker.stabilityChecker_3_1M"
-  , defTarget "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
-  , (defTarget "Bittide.Instances.Pnr.Ethernet.vexRiscEthernet")
-      { targetHasXdc = True
-      , targetExternalHdl =
-        [ "$env(VERILOG_ETHERNET_SRC)/rtl/*.v"
-        , "$env(VERILOG_ETHERNET_SRC)/lib/axis/rtl/*.v"
-        ]
-      , targetExtraXdc =
-        [ "jtag_config.xdc", "jtag_pmod1.xdc", "sgmii.xdc"]
-      }
-
-  , (testTarget "Bittide.Instances.Hitl.BoardTest.boardTestExtended")
-      {targetPostProcess = Just "post-board-test-extended"}
-  , testTarget "Bittide.Instances.Hitl.BoardTest.boardTestSimple"
-  , testTarget "Bittide.Instances.Hitl.FincFdec.fincFdecTests"
-  , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest"
-  , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcWithRiscvTest"
-  , (testTarget "Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest")
-      {targetPostProcess = Just "post-fullMeshSwCcTest"}
-  , testTarget "Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest"
-  , testTarget "Bittide.Instances.Hitl.LinkConfiguration.linkConfigurationTest"
-  , testTarget "Bittide.Instances.Hitl.SyncInSyncOut.syncInSyncOut"
-  , testTarget "Bittide.Instances.Hitl.Tcl.ExtraProbes.extraProbesTest"
-  , testTarget "Bittide.Instances.Hitl.Transceivers.transceiversUpTest"
-  , (testTarget "Bittide.Instances.Hitl.VexRiscv.vexRiscvTest")
-      { targetPostProcess = Just "post-vex-riscv-test"
-      , targetExtraXdc = ["jtag_config.xdc", "jtag_pmod1.xdc"]
-      }
-  ]
+targets =
+  map
+    enforceValidTarget
+    [ defTarget "Bittide.Instances.Pnr.Calendar.switchCalendar1k"
+    , defTarget "Bittide.Instances.Pnr.Calendar.switchCalendar1kReducedPins"
+    , defTarget "Bittide.Instances.Pnr.ClockControl.callisto3"
+    , defTarget "Bittide.Instances.Pnr.Counter.counterReducedPins"
+    , defTarget "Bittide.Instances.Pnr.ElasticBuffer.elasticBuffer5"
+    , defTarget "Bittide.Instances.Pnr.ScatterGather.gatherUnit1K"
+    , defTarget "Bittide.Instances.Pnr.ScatterGather.gatherUnit1KReducedPins"
+    , defTarget "Bittide.Instances.Pnr.ScatterGather.scatterUnit1K"
+    , defTarget "Bittide.Instances.Pnr.ScatterGather.scatterUnit1KReducedPins"
+    , defTarget "Bittide.Instances.Pnr.Si539xSpi.callistoSpi"
+    , defTarget "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
+    , defTarget "Bittide.Instances.Pnr.StabilityChecker.stabilityChecker_3_1M"
+    , defTarget "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
+    , (defTarget "Bittide.Instances.Pnr.Ethernet.vexRiscEthernet")
+        { targetHasXdc = True
+        , targetExternalHdl =
+            [ "$env(VERILOG_ETHERNET_SRC)/rtl/*.v"
+            , "$env(VERILOG_ETHERNET_SRC)/lib/axis/rtl/*.v"
+            ]
+        , targetExtraXdc =
+            ["jtag_config.xdc", "jtag_pmod1.xdc", "sgmii.xdc"]
+        }
+    , (testTarget "Bittide.Instances.Hitl.BoardTest.boardTestExtended")
+        { targetPostProcess = Just "post-board-test-extended"
+        }
+    , testTarget "Bittide.Instances.Hitl.BoardTest.boardTestSimple"
+    , testTarget "Bittide.Instances.Hitl.FincFdec.fincFdecTests"
+    , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest"
+    , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcWithRiscvTest"
+    , (testTarget "Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest")
+        { targetPostProcess = Just "post-fullMeshSwCcTest"
+        }
+    , testTarget "Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest"
+    , testTarget "Bittide.Instances.Hitl.LinkConfiguration.linkConfigurationTest"
+    , testTarget "Bittide.Instances.Hitl.SyncInSyncOut.syncInSyncOut"
+    , testTarget "Bittide.Instances.Hitl.Tcl.ExtraProbes.extraProbesTest"
+    , testTarget "Bittide.Instances.Hitl.Transceivers.transceiversUpTest"
+    , (testTarget "Bittide.Instances.Hitl.VexRiscv.vexRiscvTest")
+        { targetPostProcess = Just "post-vex-riscv-test"
+        , targetExtraXdc = ["jtag_config.xdc", "jtag_pmod1.xdc"]
+        }
+    ]
 
 shakeOpts :: ShakeOptions
-shakeOpts = shakeOptions
-  { shakeFiles = buildDir
-  , shakeChange = ChangeDigest
-  , shakeVersion = "11"
-  }
+shakeOpts =
+  shakeOptions
+    { shakeFiles = buildDir
+    , shakeChange = ChangeDigest
+    , shakeVersion = "11"
+    }
 
 -- | Run Vivado on given TCL script. Can collect the ExitCode.
-vivadoFromTcl :: CmdResult r => FilePath -> Action r
+vivadoFromTcl :: (CmdResult r) => FilePath -> Action r
 vivadoFromTcl tclPath =
   command
     [AddEnv "XILINX_LOCAL_USER_DATA" "no"] -- Prevents multiprocessing issues
@@ -252,27 +251,30 @@ vivadoFromTcl_ tclPath =
     "vivado"
     ["-mode", "batch", "-source", tclPath, "-notrace"]
 
--- | Constructs a 'BoardPart' based on environment variables @SYNTHESIS_BOARD@
--- or @SYNTHESIS_PART@. Errors if both are set, returns a default (free) part
--- if neither is set.
+{- | Constructs a 'BoardPart' based on environment variables @SYNTHESIS_BOARD@
+or @SYNTHESIS_PART@. Errors if both are set, returns a default (free) part
+if neither is set.
+-}
 getBoardPart :: Action BoardPart
 getBoardPart = do
   boardName <- getEnv "SYNTHESIS_BOARD"
   partName <- getEnv "SYNTHESIS_PART"
   case (boardName, partName) of
-    (Just b,  Nothing) -> pure $ Board b
-    (Nothing, Just p)  -> pure $ Part p
+    (Just b, Nothing) -> pure $ Board b
+    (Nothing, Just p) -> pure $ Part p
     (Nothing, Nothing) -> pure $ Part "xcku035-ffva1156-2-e"
-    (Just _b,  Just _p)  ->
+    (Just _b, Just _p) ->
       error "Both 'SYNTHESIS_BOARD' and 'SYNTHESIS_PART' are set, unset either and retry"
 
--- | Inspect DRC and timing report. Throw an error if suspicious strings were
--- found.
+{- | Inspect DRC and timing report. Throw an error if suspicious strings were
+found.
+-}
 meetsDrcOrError :: FilePath -> FilePath -> FilePath -> IO ()
 meetsDrcOrError methodologyPath summaryPath checkpointPath =
   unlessM
     (liftA2 (&&) (meetsTiming methodologyPath) (meetsTiming summaryPath))
-    (error [I.i|
+    ( error
+        [I.i|
       Design did not meet design rule checks (DRC). Check out the timing summary at:
 
         #{summaryPath}
@@ -285,12 +287,14 @@ meetsDrcOrError methodologyPath summaryPath checkpointPath =
 
         vivado #{checkpointPath}
 
-    |])
+    |]
+    )
 
 -- | Newtype used for adding oracle rules for flags to Shake
 newtype HardwareTargetsFlag = HardwareTargetsFlag ()
   deriving (Show)
   deriving newtype (Eq, Typeable, Hashable, Binary, NFData)
+
 type instance RuleResult HardwareTargetsFlag = HardwareTargets
 
 newtype ForceTestRerun = ForceTestRerun ()
@@ -298,27 +302,26 @@ newtype ForceTestRerun = ForceTestRerun ()
   deriving newtype (Eq, Typeable, Hashable, Binary, NFData)
 type instance RuleResult ForceTestRerun = Bool
 
--- | Defines a Shake build executable for calling Vivado. Like Make, in Shake
--- you define rules that explain how to build a certain file. For example:
---
---     manifestPath %> ...
---
--- means: to build @manifestPath@ I need to do dot-dot-dot. See the README for
--- an overview of which commands are user-passable (or simply scroll down).
---
--- For a fundamental introduction into Shake, read the (lightweight!) paper
--- introducing it:
---
---   https://ndmitchell.com/downloads/paper-shake_before_building-10_sep_2012.pdf.
---
--- Or, see https://shakebuild.com/.
---
+{- | Defines a Shake build executable for calling Vivado. Like Make, in Shake
+you define rules that explain how to build a certain file. For example:
+
+    manifestPath %> ...
+
+means: to build @manifestPath@ I need to do dot-dot-dot. See the README for
+an overview of which commands are user-passable (or simply scroll down).
+
+For a fundamental introduction into Shake, read the (lightweight!) paper
+introducing it:
+
+  https://ndmitchell.com/downloads/paper-shake_before_building-10_sep_2012.pdf.
+
+Or, see https://shakebuild.com/.
+-}
 main :: IO ()
 main = do
   setCurrentDirectory =<< findProjectRoot
 
   shakeArgsWith shakeOpts customFlags $ \flags shakeTargets -> pure $ Just $ do
-
     let
       Options{..} = foldl (&) defaultOptions flags
 
@@ -334,15 +337,21 @@ main = do
         (hitlBuildDir </> "*.yml") %> \path -> do
           needWatchFiles
           let entity = takeFileName (dropExtension path)
-          command_ [] "cabal"
-            [ "run", "--"
+          command_
+            []
+            "cabal"
+            [ "run"
+            , "--"
             , "bittide-tools:hitl-config-gen"
-            , "write", entity
+            , "write"
+            , entity
             ]
 
         (dataFilesDir </> "**") %> \_ -> do
           Stdout out <-
-            command [] "cabal"
+            command
+              []
+              "cabal"
               [ "sdist"
               , "bittide"
               , "bittide-extra"
@@ -350,18 +359,21 @@ main = do
               , "bittide-instances"
               , "bittide-tools"
               ]
-          command_ [] "mkdir" ["-p", dataFilesDir ]
-          for_ (filter (((==) (Just '/')) . fmap fst . uncons) $ lines out)
-            $ \sdist -> do
-              (Exit (_ :: ExitCode), Stderr ()) <- command [] "tar"
-                [ "--strip-components=2"
-                , "--overwrite"
-                , "-C"
-                , dataFilesDir
-                , "-xf"
-                , sdist
-                , takeBaseName (takeBaseName sdist) </> "data"
-                ]
+          command_ [] "mkdir" ["-p", dataFilesDir]
+          for_ (filter (((==) (Just '/')) . fmap fst . uncons) $ lines out) $
+            \sdist -> do
+              (Exit (_ :: ExitCode), Stderr ()) <-
+                command
+                  []
+                  "tar"
+                  [ "--strip-components=2"
+                  , "--overwrite"
+                  , "-C"
+                  , dataFilesDir
+                  , "-xf"
+                  , sdist
+                  , takeBaseName (takeBaseName sdist) </> "data"
+                  ]
               return ()
 
         -- Files used for cache invalidation
@@ -372,7 +384,7 @@ main = do
 
         -- For each target, generate a user callable command (PHONY). Run with
         -- '--help' to list them.
-        for_ targets $ \Target{..}-> do
+        for_ targets $ \Target{..} -> do
           let
             -- TODO: Dehardcode these paths. They're currently hardcoded in both the
             --       TCL and here, which smells.
@@ -383,12 +395,12 @@ main = do
             reportDir = synthesisDir </> "reports"
             ilaDir = synthesisDir </> "ila-data"
 
-            runSynthTclPath         = synthesisDir </> "run_synth.tcl"
+            runSynthTclPath = synthesisDir </> "run_synth.tcl"
             runPlaceAndRouteTclPath = synthesisDir </> "run_place_and_route.tcl"
-            runBitstreamTclPath     = synthesisDir </> "run_bitstream.tcl"
-            runProbesGenTclPath     = synthesisDir </> "run_probes_gen.tcl"
-            runBoardProgramTclPath  = synthesisDir </> "run_board_program.tcl"
-            runHardwareTestTclPath  = synthesisDir </> "run_hardware_test.tcl"
+            runBitstreamTclPath = synthesisDir </> "run_bitstream.tcl"
+            runProbesGenTclPath = synthesisDir </> "run_probes_gen.tcl"
+            runBoardProgramTclPath = synthesisDir </> "run_board_program.tcl"
+            runHardwareTestTclPath = synthesisDir </> "run_hardware_test.tcl"
 
             postSynthCheckpointPath = checkpointsDir </> "post_synth.dcp"
             postPlaceCheckpointPath = checkpointsDir </> "post_place.dcp"
@@ -468,22 +480,22 @@ main = do
                 xdcNames = entityName targetName <> ".xdc" : targetExtraXdc
                 xdcPaths = map ((dataFilesDir </> "constraints") </>) xdcNames
               constraints <-
-                if targetHasXdc then do
-                  need xdcPaths
-                  pure xdcPaths
-                else
-                  pure []
+                if targetHasXdc
+                  then do
+                    need xdcPaths
+                    pure xdcPaths
+                  else pure []
 
               synthesisPart <- getBoardPart
               locatedManifest <- decodeLocatedManifest manifestPath
 
               tcl <-
                 mkSynthesisTcl
-                  synthesisDir            -- Output directory for Vivado
-                  False                   -- Out of context run
-                  synthesisPart           -- Part we're synthesizing for
-                  constraints             -- List of filenames with constraints
-                  targetExternalHdl       -- List of external HDL files to be included in synthesis
+                  synthesisDir -- Output directory for Vivado
+                  False -- Out of context run
+                  synthesisPart -- Part we're synthesizing for
+                  constraints -- List of filenames with constraints
+                  targetExternalHdl -- List of external HDL files to be included in synthesis
                   locatedManifest
 
               writeFileChanged path tcl
@@ -501,22 +513,25 @@ main = do
             runPlaceAndRouteTclPath %> \path -> do
               writeFileChanged path (mkPlaceAndRouteTcl synthesisDir)
 
-            (  postPlaceCheckpointPath
-             : postRouteCheckpointPath
-             : routeReportsPaths
-             <> netlistPaths
-             ) |%> \_ -> do
-              need [runPlaceAndRouteTclPath, postSynthCheckpointPath]
-              vivadoFromTcl_ runPlaceAndRouteTclPath
+            ( postPlaceCheckpointPath
+                : postRouteCheckpointPath
+                : routeReportsPaths
+                  <> netlistPaths
+              )
+              |%> \_ -> do
+                need [runPlaceAndRouteTclPath, postSynthCheckpointPath]
+                vivadoFromTcl_ runPlaceAndRouteTclPath
 
-              -- Design should meet design rule checks (DRC).
-              liftIO $ unlessM
-                ( liftA2
-                    (&&)
-                    (meetsTiming postRouteMethodologyPath)
-                    (meetsTiming postRouteTimingSummaryPath)
-                )
-                (error [I.i|
+                -- Design should meet design rule checks (DRC).
+                liftIO $
+                  unlessM
+                    ( liftA2
+                        (&&)
+                        (meetsTiming postRouteMethodologyPath)
+                        (meetsTiming postRouteTimingSummaryPath)
+                    )
+                    ( error
+                        [I.i|
                   Design did not meet design rule checks (DRC). Check out the timing summary at:
 
                     #{postRouteTimingSummaryPath}
@@ -533,14 +548,17 @@ main = do
 
                     shake #{targetName}:pnr
 
-                |])
+                |]
+                    )
 
-              -- Design should meet timing post routing. Note that this is not a
-              -- requirement after synthesis as many of the optimizations only follow
-              -- after.
-              liftIO $ unlessM
-                (meetsTiming postRouteTimingSummaryPath)
-                (error [I.i|
+                -- Design should meet timing post routing. Note that this is not a
+                -- requirement after synthesis as many of the optimizations only follow
+                -- after.
+                liftIO $
+                  unlessM
+                    (meetsTiming postRouteTimingSummaryPath)
+                    ( error
+                        [I.i|
                   Design did not meet timing. Check out the timing summary at:
 
                     #{postRouteTimingSummaryPath}
@@ -557,7 +575,8 @@ main = do
 
                     shake #{targetName}:pnr
 
-                |])
+                |]
+                    )
 
             -- Bitstream generation
             runBitstreamTclPath %> \path -> do
@@ -608,10 +627,10 @@ main = do
               exitCode <- vivadoFromTcl @ExitCode runHardwareTestTclPath
               writeFileChanged path $ show exitCode
 
-              shortenNamesPy <- liftIO $
-                Shake.getDataFileName ("data" </> "scripts" </> "shorten_names.py")
+              shortenNamesPy <-
+                liftIO $
+                  Shake.getDataFileName ("data" </> "scripts" </> "shorten_names.py")
               command_ [] "python3" [shortenNamesPy]
-
 
           -- User friendly target names
           phony (entityName targetName <> ":hdl") $ do
@@ -648,8 +667,6 @@ main = do
                   exitCode <- read <$> readFile' testExitCodePath
                   liftIO $ doPostProcessing (fromJust targetPostProcess) ilaDir exitCode
 
-
-    if null shakeTargets then
-      rules
-    else
-      want shakeTargets >> withoutActions rules
+    if null shakeTargets
+      then rules
+      else want shakeTargets >> withoutActions rules

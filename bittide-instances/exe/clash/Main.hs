@@ -2,9 +2,9 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-import Prelude
-import System.Environment (getArgs)
 import Clash.Main (defaultMain)
+import System.Environment (getArgs)
+import Prelude
 
 main :: IO ()
 main = defaultMain =<< getArgs

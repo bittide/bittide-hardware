@@ -3,18 +3,26 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Checks whether `+` and `-` work as expected, though its real purpose is to
--- check whether we can run hardware-in-the-loop tests.
+{- | Checks whether `+` and `-` work as expected, though its real purpose is to
+check whether we can run hardware-in-the-loop tests.
+-}
 module Bittide.Instances.Hitl.BoardTest where
 
 import Clash.Explicit.Prelude
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx.Ila
 import Clash.Cores.Xilinx.Extra (ibufds)
+import Clash.Cores.Xilinx.Ila
 
+import Bittide.Hitl (
+  HitlTests,
+  allFpgas,
+  hitlVio,
+  hitlVioBool,
+  noConfigTest,
+  testsFromEnum,
+ )
 import Bittide.Instances.Domains
-import Bittide.Hitl (HitlTests, allFpgas, testsFromEnum, hitlVioBool, hitlVio, noConfigTest)
 
 type TestStart = Bool
 data TestState = Busy | Done TestSuccess
@@ -32,7 +40,7 @@ data CheckState n
   deriving (Generic, NFDataX)
 
 check ::
-  forall n a b c dom .
+  forall n a b c dom.
   ( KnownDomain dom
   , KnownNat n
   , Eq c
@@ -51,18 +59,22 @@ check clk rst dut stimuli =
    where
     (a, b, c) = stimuli !! n
     testResult = dut a b == c
-    s | not testResult = CsDone TestFailed
+    s
+      | not testResult = CsDone TestFailed
       | n == maxBound = CsDone TestSuccess
       | otherwise = CsChecking (n + 1)
 
--- | Testing circuit for `plus`. Feeds the circuit with inputs and checks
--- the received output against the expected output.
+{- | Testing circuit for `plus`. Feeds the circuit with inputs and checks
+the received output against the expected output.
+-}
 boardTestSimple ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->
-  "" ::: Signal Ext125
-    ( "done" ::: Bool
-    , "success" ::: Bool
-    )
+  ""
+    ::: Signal
+          Ext125
+          ( "done" ::: Bool
+          , "success" ::: Bool
+          )
 boardTestSimple diffClk = bundle (testDone, testSuccess)
  where
   clk = ibufds diffClk
@@ -74,23 +86,27 @@ boardTestSimple diffClk = bundle (testDone, testSuccess)
   testStart = hitlVioBool clk testDone testSuccess
 
   stimuli :: Vec 4 (Unsigned 8, Unsigned 8, Unsigned 8)
-  stimuli = (
-       (  0,   0,   0)
-    :> (  1,   2,   3)
-    :> (255,   0, 255)
-    :> (255,   1,   0)
-    :> Nil
+  stimuli =
+    ( (0, 0, 0)
+        :> (1, 2, 3)
+        :> (255, 0, 255)
+        :> (255, 1, 0)
+        :> Nil
     )
+
 makeTopEntity 'boardTestSimple
 
--- | Testing circuit for `plus` and `minus`. Feeds the circuit with inputs and
--- checks the received output against the expected output.
+{- | Testing circuit for `plus` and `minus`. Feeds the circuit with inputs and
+checks the received output against the expected output.
+-}
 boardTestExtended ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->
-  "" ::: Signal Ext125
-    ( "done" ::: Bool
-    , "success" ::: Bool
-    )
+  ""
+    ::: Signal
+          Ext125
+          ( "done" ::: Bool
+          , "success" ::: Bool
+          )
 boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
  where
   clk = ibufds diffClk
@@ -110,46 +126,45 @@ boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
 
   boardTestIla :: Signal Ext125 ()
   boardTestIla =
-    setName @"boardTestIla" $
-    ila
-      (ilaConfig $
-           "trigger_AorB"
-        :> "capture"
-        :> "ilaTestStartA"
-        :> "ilaTestStartB"
-        :> "ilaTestDone"
-        :> "ilaTestSuccess"
-        :> Nil
-      )
-      clk
-      -- Trigger when starting either test
-      (testStartA .||. testStartB)
-      -- Always capture
-      (pure True :: Signal Ext125 Bool)
-
-      -- Debug probes
-      testStartA
-      testStartB
-      testDone
-      testSuccess
-
+    setName @"boardTestIla"
+      $ ila
+        ( ilaConfig
+            $ "trigger_AorB"
+            :> "capture"
+            :> "ilaTestStartA"
+            :> "ilaTestStartB"
+            :> "ilaTestDone"
+            :> "ilaTestSuccess"
+            :> Nil
+        )
+        clk
+        -- Trigger when starting either test
+        (testStartA .||. testStartB)
+        -- Always capture
+        (pure True :: Signal Ext125 Bool)
+        -- Debug probes
+        testStartA
+        testStartB
+        testDone
+        testSuccess
 
   stimuliA :: Vec 4 (Unsigned 8, Unsigned 8, Unsigned 8)
-  stimuliA = (
-       (  0,   0,   0)
-    :> (  1,   2,   3)
-    :> (255,   0, 255)
-    :> (255,   1,   0)
-    :> Nil
+  stimuliA =
+    ( (0, 0, 0)
+        :> (1, 2, 3)
+        :> (255, 0, 255)
+        :> (255, 1, 0)
+        :> Nil
     )
   stimuliB :: Vec 4 (Unsigned 8, Unsigned 8, Unsigned 8)
-  stimuliB = (
-       (  0,   0,   0)
-    :> (  3,   2,   1)
-    :> (255,   0, 255)
-    :> (  0,   1, 255)
-    :> Nil
+  stimuliB =
+    ( (0, 0, 0)
+        :> (3, 2, 1)
+        :> (255, 0, 255)
+        :> (0, 1, 255)
+        :> Nil
     )
+
 makeTopEntity 'boardTestExtended
 
 testsSimple :: HitlTests ()

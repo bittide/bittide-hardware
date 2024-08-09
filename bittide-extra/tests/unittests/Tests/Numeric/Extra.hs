@@ -16,12 +16,13 @@ import Numeric.Extra (parseHex)
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import qualified Hedgehog.Range as Range
-import qualified Hedgehog.Internal.Gen as Gen
 import Data.Proxy
+import qualified Hedgehog.Internal.Gen as Gen
+import qualified Hedgehog.Range as Range
 
--- | Generate an in range value, convert it to hex, and parse it back. The result
--- should be the same as the original value.
+{- | Generate an in range value, convert it to hex, and parse it back. The result
+should be the same as the original value.
+-}
 parseHexInRange ::
   forall a m.
   (Monad m, BitPack a, Eq a, Show a, Bounded a, Integral a) =>
@@ -41,8 +42,9 @@ parseHexInRangeUnsigned = property $ do
     SomeNat (Proxy :: Proxy n) ->
       parseHexInRange (genUnsigned @_ @n Range.constantBounded)
 
--- | Generate an in range value, add @maxBound + 1@ to it, convert it to hex, and
--- parse it back. The result should yield a parse error.
+{- | Generate an in range value, add @maxBound + 1@ to it, convert it to hex, and
+parse it back. The result should yield a parse error.
+-}
 parseHexOutOfRange ::
   forall a m.
   (Monad m, BitPack a, Eq a, Show a, Bounded a, Integral a, Typeable a) =>
@@ -72,11 +74,18 @@ parseHexOutOfRangeUnsigned = property $ do
       parseHexOutOfRange (genUnsigned @_ @n Range.constantBounded)
 
 tests :: TestTree
-tests = testGroup "Tests.Numeric.Extra"
-  [ testGroup "parseHexRountTrip"
-    [ testPropertyNamed
-        "Unsigned in range" "parseHexInRangeUnsigned" parseHexInRangeUnsigned
-    , testPropertyNamed
-        "Unsigned out of range" "parseHexOutOfRangeUnsigned" parseHexOutOfRangeUnsigned
+tests =
+  testGroup
+    "Tests.Numeric.Extra"
+    [ testGroup
+        "parseHexRountTrip"
+        [ testPropertyNamed
+            "Unsigned in range"
+            "parseHexInRangeUnsigned"
+            parseHexInRangeUnsigned
+        , testPropertyNamed
+            "Unsigned out of range"
+            "parseHexOutOfRangeUnsigned"
+            parseHexOutOfRangeUnsigned
+        ]
     ]
-  ]

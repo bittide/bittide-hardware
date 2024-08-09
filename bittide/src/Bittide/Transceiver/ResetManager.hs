@@ -3,9 +3,8 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-
+{-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -Wno-ambiguous-fields #-}
 
 -- | Functions to reset the transceiver subsystems during bringup
@@ -35,7 +34,7 @@ data Statistics = Statistics
   , rxFullRetries :: Unsigned 32
   -- ^ How many times 'rxRetries' overflowed. I.e., how many times 'RxWait' moved
   -- the state machine back to 'StartTx'.
-  , failAfterUps  :: Unsigned 32
+  , failAfterUps :: Unsigned 32
   -- ^ How many times the link failed when in the 'Monitor' state - i.e., after
   -- detecting it fully worked. This usually happens if the other side drops its
   -- link because it tried resetting its receive side too many times - see
@@ -43,12 +42,13 @@ data Statistics = Statistics
   }
   deriving (Generic, NFDataX)
 
--- | Configuration for 'resetManager'
---
--- Develop notes: the current API is a balance between the tightest possible
--- hardware and the most flexible API. We could make the API more flexible by
--- exposing 'MaxTxTimeoutMs' and friends as type parameters, but that severely
--- impacts verbosity and readability.
+{- | Configuration for 'resetManager'
+
+Develop notes: the current API is a balance between the tightest possible
+hardware and the most flexible API. We could make the API more flexible by
+exposing 'MaxTxTimeoutMs' and friends as type parameters, but that severely
+impacts verbosity and readability.
+-}
 data Config = Config
   { txTimeoutMs :: MaxTxTimeoutMs
   -- ^ Number of milliseconds to wait for the transmit side to be ready, before
@@ -62,46 +62,50 @@ data Config = Config
   }
   deriving (Generic, NFDataX, Show)
 
--- | Default configuration for 'resetManager'
---
--- XXX: Current timeout values for 'TxWait' and 'RxWait' are chosen arbitrarily.
---      We should investigate what these values should be for quick bring-up.
-defConfig :: Config
-defConfig = Config
-  { txTimeoutMs = 1
-  , rxTimeoutMs = 5
-  , rxRetries = 8
-  }
+{- | Default configuration for 'resetManager'
 
--- | Bringing up the transceivers is a stochastic process - at least, that is
--- what Xilinx reference designs make us believe. We therefore retry a number of
--- times if we don't see sensible data coming in. See the individual constructors
--- and 'resetManager' for more information.
+XXX: Current timeout values for 'TxWait' and 'RxWait' are chosen arbitrarily.
+     We should investigate what these values should be for quick bring-up.
+-}
+defConfig :: Config
+defConfig =
+  Config
+    { txTimeoutMs = 1
+    , rxTimeoutMs = 5
+    , rxRetries = 8
+    }
+
+{- | Bringing up the transceivers is a stochastic process - at least, that is
+what Xilinx reference designs make us believe. We therefore retry a number of
+times if we don't see sensible data coming in. See the individual constructors
+and 'resetManager' for more information.
+-}
 data State dom
-  = StartTx
-  -- ^ Reset everything - transmit and receive side
-  | StartRx
-  -- ^ Reset just the receive side
-  | TxWait (MaxTxTimeoutMs, IndexMs dom 1)
-  -- ^ Wait for the transmit side to report it is done. After /n/ milliseconds
-  -- (see type) it times out, moving to 'StartTx'.
-  | RxWait (MaxRxTimeoutMs, IndexMs dom 1)
-  -- ^ Wait for the receive side to report it is done _and_ that it can predict
-  -- the data coming from the other side. After /n/ milliseconds (see type) it
-  -- times out. Depending on the value of 'ResetStat's 'rxRetries' it will
-  -- either reset both the receive and the transmit side, or just the receive
-  -- side. If all is well though, move on to 'Monitor'.
-  | Monitor
-  -- ^ Wait till the end of the universe, or until a link goes down - whichever
-  -- comes first. In case of the latter, the state machine moves to 'StartTx'.
+  = -- | Reset everything - transmit and receive side
+    StartTx
+  | -- | Reset just the receive side
+    StartRx
+  | -- | Wait for the transmit side to report it is done. After /n/ milliseconds
+    -- (see type) it times out, moving to 'StartTx'.
+    TxWait (MaxTxTimeoutMs, IndexMs dom 1)
+  | -- | Wait for the receive side to report it is done _and_ that it can predict
+    -- the data coming from the other side. After /n/ milliseconds (see type) it
+    -- times out. Depending on the value of 'ResetStat's 'rxRetries' it will
+    -- either reset both the receive and the transmit side, or just the receive
+    -- side. If all is well though, move on to 'Monitor'.
+    RxWait (MaxRxTimeoutMs, IndexMs dom 1)
+  | -- | Wait till the end of the universe, or until a link goes down - whichever
+    -- comes first. In case of the latter, the state machine moves to 'StartTx'.
+    Monitor
   deriving (Generic, NFDataX, Eq)
 
--- | Reset manager for transceivers: see 'State' for more information on
--- this state machine. See 'Statistics' for information on what debug values
--- are exported.
+{- | Reset manager for transceivers: see 'State' for more information on
+this state machine. See 'Statistics' for information on what debug values
+are exported.
+-}
 resetManager ::
-  forall dom .
-  KnownDomain dom =>
+  forall dom.
+  (KnownDomain dom) =>
   Config ->
   Clock dom ->
   Reset dom ->
@@ -109,7 +113,7 @@ resetManager ::
   "rx_init_done" ::: Signal dom Bool ->
   "rx_data_good" ::: Signal dom Bool ->
   ( "reset_all_out" ::: Reset dom
-  , "reset_rx"  ::: Reset dom
+  , "reset_rx" ::: Reset dom
   , "stats" ::: Signal dom Statistics
   )
 resetManager config clk rst tx_init_done rx_init_done rx_data_good =
@@ -120,7 +124,9 @@ resetManager config clk rst tx_init_done rx_init_done rx_data_good =
  where
   (reset_all_out_sig, reset_rx_sig, statistics) =
     mooreB
-      clk rst enableGen
+      clk
+      rst
+      enableGen
       update
       extractOutput
       (initState, initStats)
@@ -130,12 +136,13 @@ resetManager config clk rst tx_init_done rx_init_done rx_data_good =
       )
 
   initStats :: Statistics
-  initStats = Statistics
-    { txRetries=0
-    , rxRetries=0
-    , rxFullRetries=0
-    , failAfterUps=0
-    }
+  initStats =
+    Statistics
+      { txRetries = 0
+      , rxRetries = 0
+      , rxFullRetries = 0
+      , failAfterUps = 0
+      }
 
   initState :: State dom
   initState = StartTx
@@ -145,36 +152,29 @@ resetManager config clk rst tx_init_done rx_init_done rx_data_good =
     case st of
       -- Reset everything:
       (StartTx, stats) -> (TxWait minBound, stats)
-
       -- Wait for transceiver to indicate it is done
       (TxWait cntr@(ms, _), stats@Statistics{txRetries})
-        | tx_done                  -> (RxWait minBound, stats)
-        | ms == config.txTimeoutMs -> (StartTx, stats{txRetries=satSucc SatBound txRetries})
-        | otherwise                -> (TxWait (countSucc cntr), stats)
-
+        | tx_done -> (RxWait minBound, stats)
+        | ms == config.txTimeoutMs -> (StartTx, stats{txRetries = satSucc SatBound txRetries})
+        | otherwise -> (TxWait (countSucc cntr), stats)
       -- Reset receive side logic
       (StartRx, stats) -> (RxWait minBound, stats)
-
       -- Wait for a reliable incoming link. This can fail in multiple ways, see
       -- 'RxWait'.
       (RxWait cntr@(ms, _), stats@Statistics{rxRetries, rxFullRetries})
         | rx_done && rx_good ->
-          (Monitor, stats)
-
+            (Monitor, stats)
         | ms == config.rxTimeoutMs && rxRetries >= config.rxRetries ->
-          (StartTx, stats{rxFullRetries=satSucc SatBound rxFullRetries})
-
+            (StartTx, stats{rxFullRetries = satSucc SatBound rxFullRetries})
         | ms == config.rxTimeoutMs ->
-          (StartRx, stats{rxRetries=satSucc SatBound rxRetries})
-
+            (StartRx, stats{rxRetries = satSucc SatBound rxRetries})
         | otherwise ->
-          (RxWait (countSucc cntr), stats)
-
+            (RxWait (countSucc cntr), stats)
       -- Monitor link. Move all the way back to 'StartTx' if the link goes down
       -- for some reason.
       (Monitor, stats@Statistics{failAfterUps})
         | rx_done && rx_good -> (Monitor, stats)
-        | otherwise -> (StartTx, stats{failAfterUps=satSucc SatBound failAfterUps})
+        | otherwise -> (StartTx, stats{failAfterUps = satSucc SatBound failAfterUps})
 
   extractOutput (st, stats) =
     ( st == StartTx

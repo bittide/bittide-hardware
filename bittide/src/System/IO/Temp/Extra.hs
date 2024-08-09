@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-module System.IO.Temp.Extra(withTempBinaryFile) where
+module System.IO.Temp.Extra (withTempBinaryFile) where
 
 import Prelude
 
@@ -11,9 +11,10 @@ import System.IO
 
 import qualified Control.Monad.Catch as MC
 
--- | Create, open, and use a temporary binary file in the given directory.
---
--- The temp file is deleted after use.
+{- | Create, open, and use a temporary binary file in the given directory.
+
+The temp file is deleted after use.
+-}
 withTempBinaryFile ::
   (MonadIO m, MC.MonadMask m) =>
   -- | Parent directory to create the file in
@@ -30,5 +31,5 @@ withTempBinaryFile tmpDir template action =
     (\(name, handle) -> liftIO (hClose handle >> ignoringIOErrors (removeFile name)))
     (uncurry action)
 
-ignoringIOErrors :: MC.MonadCatch m => m () -> m ()
+ignoringIOErrors :: (MC.MonadCatch m) => m () -> m ()
 ignoringIOErrors ioe = ioe `MC.catch` (\e -> const (return ()) (e :: IOError))

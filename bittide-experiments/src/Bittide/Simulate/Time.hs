@@ -2,13 +2,13 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Simulate.Time
-  ( Offset
-  , StepSize
-  , Period
-  , addFs
-  , subFsZero
-  ) where
+module Bittide.Simulate.Time (
+  Offset,
+  StepSize,
+  Period,
+  addFs,
+  subFsZero,
+) where
 
 import Clash.Prelude
 import Clash.Signal.Internal

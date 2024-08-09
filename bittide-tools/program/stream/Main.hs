@@ -6,8 +6,8 @@ import Prelude
 
 import Bittide.ProcessingElement.ProgramStream
 
-import qualified Data.ByteString as BS
-import qualified Clash.Prelude as C
+import Clash.Prelude qualified as C
+import Data.ByteString qualified as BS
 
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)

@@ -8,4 +8,7 @@ echo "Formatting Cabal files.."
 "${ROOT}"/.github/scripts/cabal-gild.sh
 
 echo "Formatting Rust files.."
-./cargo.sh fmt --all -- --emit files
+"${ROOT}"/cargo.sh fmt --all -- --emit files
+
+echo "Formatting Haskell files.."
+"${ROOT}"/.github/scripts/fourmolu.sh

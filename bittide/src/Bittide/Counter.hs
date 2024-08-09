@@ -2,72 +2,74 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Counter
-  ( Active
-  , domainDiffCounter
-  , domainDiffCounterExt
-  ) where
+module Bittide.Counter (
+  Active,
+  domainDiffCounter,
+  domainDiffCounterExt,
+) where
 
 import Clash.Explicit.Prelude
 
 import Clash.Cores.Xilinx.Xpm (xpmCdcGray)
-import Clash.Sized.Extra (unsignedToSigned, concatUnsigneds)
-import Clash.Explicit.Reset.Extra (Asserted(..), xpmResetSynchronizer)
+import Clash.Explicit.Reset.Extra (Asserted (..), xpmResetSynchronizer)
+import Clash.Sized.Extra (concatUnsigneds, unsignedToSigned)
 
 -- | State of 'domainDiffCounter'
 data DdcState
-  -- | In reset, or waiting for the incoming counter to change
-  = DdcInReset
-  -- | Counting and comparing with incoming domain
-  | DdcRunning (Unsigned 64)
+  = -- | In reset, or waiting for the incoming counter to change
+    DdcInReset
+  | -- | Counting and comparing with incoming domain
+    DdcRunning (Unsigned 64)
   deriving (Generic, NFDataX)
 
 -- | Indicates whether 'domainDiffCounter' is actively counting or still in reset.
 type Active = Bool
 
--- | Determine speed differences between two domains. If the source domain is
--- faster than the destination domain, the result will become larger. Vice versa,
--- if the source domain is slower than the destination domain, the result will
--- become smaller. This is analogous to what would happen to a FIFO's data count
--- when continuously written to by the source domain and read from by the
--- destination domain. To ease integration in control algorithms, this component
--- makes sure it starts counting at zero. It also waits for the incoming counter
--- to become active, i.e. non-zero, before starting to count itself.
---
--- If both domains support initial values, 'domainDiffCounter' does not need to
--- be reset.
---
--- To reset this component, the reset should be asserted for at least one cycle in
--- the source domain _plus_ four cycles in the destination domain. The reset in the
--- destination domain should be deasserted at the same time or *after* the one in
--- the source domain for glitchless operation.
---
--- __N.B.__:
---   This function will only work properly if the given domains are pretty close
---   to another for a number of reasons:
---
---     1. It uses an 8-bit Gray counter internally for CDC
---
---     2. It uses one 64-bit counter in each domain
---
---     3. Its output is constrained to @Signed 32@
---
---   These values have been chosen such that:
---
---     * The 64-bit counter only overflows once every 3000 years at 200 MHz
---
---     * The 32-bit output only overflows after running at maximum divergence
---       rate (100 ppm) at 200 MHz for 2 days. We expect systems to stabilize
---       after a few milliseconds and reframing should nudge counters back to
---       zero ever so often.
---
+{- | Determine speed differences between two domains. If the source domain is
+faster than the destination domain, the result will become larger. Vice versa,
+if the source domain is slower than the destination domain, the result will
+become smaller. This is analogous to what would happen to a FIFO's data count
+when continuously written to by the source domain and read from by the
+destination domain. To ease integration in control algorithms, this component
+makes sure it starts counting at zero. It also waits for the incoming counter
+to become active, i.e. non-zero, before starting to count itself.
+
+If both domains support initial values, 'domainDiffCounter' does not need to
+be reset.
+
+To reset this component, the reset should be asserted for at least one cycle in
+the source domain _plus_ four cycles in the destination domain. The reset in the
+destination domain should be deasserted at the same time or *after* the one in
+the source domain for glitchless operation.
+
+__N.B.__:
+  This function will only work properly if the given domains are pretty close
+  to another for a number of reasons:
+
+    1. It uses an 8-bit Gray counter internally for CDC
+
+    2. It uses one 64-bit counter in each domain
+
+    3. Its output is constrained to @Signed 32@
+
+  These values have been chosen such that:
+
+    * The 64-bit counter only overflows once every 3000 years at 200 MHz
+
+    * The 32-bit output only overflows after running at maximum divergence
+      rate (100 ppm) at 200 MHz for 2 days. We expect systems to stabilize
+      after a few milliseconds and reframing should nudge counters back to
+      zero ever so often.
+-}
 domainDiffCounter ::
-  forall src dst .
+  forall src dst.
   ( KnownDomain src
   , KnownDomain dst
   ) =>
-  Clock src -> Reset src ->
-  Clock dst -> Reset dst ->
+  Clock src ->
+  Reset src ->
+  Clock dst ->
+  Reset dst ->
   -- | Counter and boolean indicating whether the component is currently active
   Signal dst (Signed 32, Active)
 domainDiffCounter clkSrc rstSrc clkDst rstDst =
@@ -78,15 +80,16 @@ domainDiffCounter clkSrc rstSrc clkDst rstDst =
 
   go :: DdcState -> Unsigned 64 -> (DdcState, (Signed 32, Bool))
   go DdcInReset c1
-    | c1 == 0   = (DdcInReset,          (0, False))
+    | c1 == 0 = (DdcInReset, (0, False))
     | otherwise = (DdcRunning (c1 + 1), (0, True))
   go (DdcRunning c0) c1 = (DdcRunning (c0 + 1), (c1 `subAndTruncate` c0, True))
 
   subAndTruncate :: Unsigned 64 -> Unsigned 64 -> Signed 32
   subAndTruncate c0 c1 = truncateB (unsignedToSigned c0 - unsignedToSigned c1)
 
--- | A variant of 'domainDiffCounter' for determination of speed differences
--- between two domains, but which are captured in another external domain.
+{- | A variant of 'domainDiffCounter' for determination of speed differences
+between two domains, but which are captured in another external domain.
+-}
 domainDiffCounterExt ::
   forall ext src dst.
   ( KnownDomain ext
@@ -96,77 +99,95 @@ domainDiffCounterExt ::
   , HasDefinedInitialValues src
   , HasDefinedInitialValues dst
   ) =>
-  Clock ext -> Reset ext ->
-  Clock src -> Clock dst ->
+  Clock ext ->
+  Reset ext ->
+  Clock src ->
+  Clock dst ->
   Signal ext (Signed 32)
-domainDiffCounterExt clkExt rstExt clkSrc clkDst = truncateB <$>
-  ((-) <$> extendedGrayCounter clkSrc <*> extendedGrayCounter clkDst)
+domainDiffCounterExt clkExt rstExt clkSrc clkDst =
+  truncateB
+    <$> ((-) <$> extendedGrayCounter clkSrc <*> extendedGrayCounter clkDst)
  where
   -- 64 bits is enough for approximately 3 millenia @ 200 MHz
-  extendedGrayCounter :: KnownDomain dom =>  Clock dom -> Signal ext (Signed 65)
+  extendedGrayCounter :: (KnownDomain dom) => Clock dom -> Signal ext (Signed 65)
   extendedGrayCounter clk =
-      fmap unsignedToSigned
-    $ extendSuccCounter clkExt rstExt
-    $ xpmCdcGray clk clkExt counter
+    fmap unsignedToSigned
+      $ extendSuccCounter clkExt rstExt
+      $ xpmCdcGray clk clkExt counter
    where
-    counter = register
-      clk (xpmResetSynchronizer Deasserted clkExt clk rstExt) enableGen
-      (minBound :: Unsigned 8)
-      (satSucc SatWrap <$> counter)
+    counter =
+      register
+        clk
+        (xpmResetSynchronizer Deasserted clkExt clk rstExt)
+        enableGen
+        (minBound :: Unsigned 8)
+        (satSucc SatWrap <$> counter)
 
--- | A counter that counts /up/, synchronized from the domain @src@ to domain @dst@. To
--- reset this component, the reset should be asserted for at least one cycle in the
--- source domain _plus_ four cycles in the destination domain.
---
--- __N.B.__: This function uses an 8-bit Gray counter internally, and will therefore
---           only work properly if both clock speeds are pretty close to one another.
+{- | A counter that counts /up/, synchronized from the domain @src@ to domain @dst@. To
+reset this component, the reset should be asserted for at least one cycle in the
+source domain _plus_ four cycles in the destination domain.
+
+__N.B.__: This function uses an 8-bit Gray counter internally, and will therefore
+          only work properly if both clock speeds are pretty close to one another.
+-}
 synchronizedSuccCounter ::
-  forall n src dst .
+  forall n src dst.
   ( KnownDomain src
   , KnownDomain dst
   , KnownNat n
   , 8 <= n
   ) =>
-  Clock src -> Reset src ->
-  Clock dst -> Reset dst ->
+  Clock src ->
+  Reset src ->
+  Clock dst ->
+  Reset dst ->
   Signal dst (Unsigned n)
 synchronizedSuccCounter clkSrc rstSrc clkDst rstDst =
-  extendSuccCounter @8 @(n - 8) clkDst rstDst $
-    xpmCdcGray @8 clkSrc clkDst counter
+  extendSuccCounter @8 @(n - 8) clkDst rstDst
+    $ xpmCdcGray @8 clkSrc clkDst counter
  where
   counter :: Signal src (Unsigned 8)
   counter = register clkSrc rstSrc enableGen 0 (counter + 1)
 
 -- | State of 'extendSuccCounter'
 data EscState m
-  -- | In reset, or waiting for an overflow
-  = EscInReset
-  -- | Counting - whenever an overflow occurs, this constructors field is upped
-  | EscRunning (Unsigned m)
+  = -- | In reset, or waiting for an overflow
+    EscInReset
+  | -- | Counting - whenever an overflow occurs, this constructors field is upped
+    EscRunning (Unsigned m)
   deriving (Generic, NFDataX)
 
--- | Given a counter that counts /up/, extend the size of the counter. After its
--- reset is deasserted, it will wait until it sees an overflow to ensure the
--- counter is glitchless and always starts at 0.
---
--- This can be used to extend computationally complex counter components, such as
--- Gray counters.
+{- | Given a counter that counts /up/, extend the size of the counter. After its
+reset is deasserted, it will wait until it sees an overflow to ensure the
+counter is glitchless and always starts at 0.
+
+This can be used to extend computationally complex counter components, such as
+Gray counters.
+-}
 extendSuccCounter ::
-  forall n m dom .
+  forall n m dom.
   ( KnownDomain dom
   , KnownNat n
-  , KnownNat m ) =>
-  Clock dom -> Reset dom ->
+  , KnownNat m
+  ) =>
+  Clock dom ->
+  Reset dom ->
   Signal dom (Unsigned n) ->
   Signal dom (Unsigned (m + n))
 extendSuccCounter clk rst counterLower =
-  mealyB clk rst enableGen go EscInReset
+  mealyB
+    clk
+    rst
+    enableGen
+    go
+    EscInReset
     ( isFalling clk rst enableGen 0 (msb <$> counterLower)
-    , counterLower )
+    , counterLower
+    )
  where
   go :: EscState m -> (Bool, Unsigned n) -> (EscState m, Unsigned (m + n))
-  go EscInReset      (False,    _)  = (EscInReset,    0)
-  go EscInReset      (True,     n0) = (EscRunning 0,  extend n0)
+  go EscInReset (False, _) = (EscInReset, 0)
+  go EscInReset (True, n0) = (EscRunning 0, extend n0)
   go (EscRunning m0) (overflow, n0) = (EscRunning m1, n1)
    where
     m1 = if overflow then m0 + 1 else m0

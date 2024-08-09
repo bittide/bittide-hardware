@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RecordWildCards #-}
+
 module Bittide.Ethernet.Mac where
 
 import Clash.Explicit.Prelude hiding ((:<))
@@ -14,7 +15,7 @@ import Bittide.Wishbone
 import Clash.Annotations.Primitive
 import Clash.Cores.Xilinx.Ethernet.Gmii.Internal
 import Data.Constraint.Nat.Extra
-import Data.List.Infinite (Infinite((:<)), (...))
+import Data.List.Infinite (Infinite ((:<)), (...))
 import Data.Maybe
 import Data.String.Interpolate (__i)
 import Protocols.Axi4.Stream
@@ -30,22 +31,25 @@ data EthMacStatus = EthMacStatus
   , txFifoGoodFrame :: "txFifoGoodFrame" ::: Bool
   , rxBadFrame :: "rxBadFrame" ::: Bool
   , rxBadFcs :: "rxBadFcs" ::: Bool
-  , rxFifoOverflow :: "rxFifoOverflow" :::Bool
+  , rxFifoOverflow :: "rxFifoOverflow" ::: Bool
   , rxFifoBadFrame :: "rxFifoBadFrame" ::: Bool
   , rxFifoGoodFrame :: "rxFifoGoodFrame" ::: Bool
-  } deriving (Generic, NFDataX, BitPack)
+  }
+  deriving (Generic, NFDataX, BitPack)
 
--- | Wishbone peripheral that keeps track of the status flags of the Ethernet MAC.
--- Every cycle that a flag is set, will be counted with a counter. The width of the counters
--- is configurable using the first `SNat counterWidth` argument.
+{- | Wishbone peripheral that keeps track of the status flags of the Ethernet MAC.
+Every cycle that a flag is set, will be counted with a counter. The width of the counters
+is configurable using the first `SNat counterWidth` argument.
+-}
 macStatusInterfaceWb ::
-  forall dom aw nBytes counterWidth .
+  forall dom aw nBytes counterWidth.
   ( CP.HiddenClockResetEnable dom
   , KnownNat nBytes
   , KnownNat aw
   , 2 <= aw
   , 1 <= nBytes
-  , counterWidth <= nBytes * 8)  =>
+  , counterWidth <= nBytes * 8
+  ) =>
   -- | Number of bits of the counters
   SNat counterWidth ->
   Circuit
@@ -71,11 +75,13 @@ ethMac1GFifoC ::
   , KnownDomain rx
   ) =>
   -- Configuration
+
   -- | TX FIFO depth
   SNat txFifoDepth ->
   -- | RX FIFO depth
   SNat rxFifoDepth ->
   -- Clocks and resets
+
   -- | Logic clock
   Clock sys ->
   -- | Logic reset
@@ -97,14 +103,37 @@ ethMac1GFifoC ::
   Circuit
     (Axi4Stream sys ('Axi4StreamConfig 1 0 0) Bool, CSignal rx Gmii)
     (Axi4Stream sys ('Axi4StreamConfig 1 0 0) Bool, CSignal tx Gmii, CSignal sys EthMacStatus)
-ethMac1GFifoC txFifoDepth rxFifoDepth sysClk sysRst txClk txRst rxClk rxRst miiSel txClkEna
+ethMac1GFifoC
+  txFifoDepth
+  rxFifoDepth
+  sysClk
+  sysRst
+  txClk
+  txRst
+  rxClk
+  rxRst
+  miiSel
+  txClkEna
   rxClkEna = Circuit go
- where
-  go ((axiTxM2S, gmiiRx), (axiRxS2M, _, _))  = ((axiTxS2M, pure ()), (axiRxM2S, gmiiTx, ethStatus))
    where
-    (axiTxS2M, axiRxM2S, gmiiTx, ethStatus) =
-      ethMac1GFifo txFifoDepth rxFifoDepth sysClk sysRst txClk txRst rxClk rxRst miiSel
-      txClkEna rxClkEna axiTxM2S gmiiRx axiRxS2M
+    go ((axiTxM2S, gmiiRx), (axiRxS2M, _, _)) = ((axiTxS2M, pure ()), (axiRxM2S, gmiiTx, ethStatus))
+     where
+      (axiTxS2M, axiRxM2S, gmiiTx, ethStatus) =
+        ethMac1GFifo
+          txFifoDepth
+          rxFifoDepth
+          sysClk
+          sysRst
+          txClk
+          txRst
+          rxClk
+          rxRst
+          miiSel
+          txClkEna
+          rxClkEna
+          axiTxM2S
+          gmiiRx
+          axiRxS2M
 
 ethMac1GFifo ::
   ( KnownDomain sys
@@ -112,11 +141,13 @@ ethMac1GFifo ::
   , KnownDomain rx
   ) =>
   -- Configuration
+
   -- | TX FIFO depth
   SNat txFifoDepth ->
   -- | RX FIFO depth
   SNat rxFifoDepth ->
   -- Clocks and resets
+
   -- | Logic clock
   Clock sys ->
   -- | Logic reset
@@ -143,63 +174,132 @@ ethMac1GFifo ::
   Signal sys Axi4StreamS2M ->
   ( -- TX Axi outputs
     Signal sys Axi4StreamS2M
-    -- RX Axi outputs
-  , Signal sys (Maybe (Axi4StreamM2S ('Axi4StreamConfig 1 0 0) Bool))
-    -- GMII outputs
-  , Signal tx Gmii
-    -- TX Status
-  , Signal sys EthMacStatus
+  , -- RX Axi outputs
+    Signal sys (Maybe (Axi4StreamM2S ('Axi4StreamConfig 1 0 0) Bool))
+  , -- GMII outputs
+    Signal tx Gmii
+  , -- TX Status
+    Signal sys EthMacStatus
   )
+ethMac1GFifo
+  txFifoDepth
+  rxFifoDepth
+  sysClk
+  sysRst
+  txClk
+  txRst
+  rxClk
+  rxRst
+  miiSel
+  txClkEna
+  rxClkEna
+  txAxiM2S
+  rxGmii
+  rxAxiS2M =
+    (txAxiS2M, rxAxiM2S, gmiiTx, ethStatus)
+   where
+    txAxiS2M = Axi4StreamS2M <$> txAxiReady
 
-ethMac1GFifo txFifoDepth rxFifoDepth sysClk sysRst txClk txRst rxClk rxRst miiSel txClkEna
- rxClkEna txAxiM2S rxGmii rxAxiS2M
-  = (txAxiS2M, rxAxiM2S, gmiiTx, ethStatus)
- where
-  txAxiS2M = Axi4StreamS2M <$> txAxiReady
+    txAxiData = _tdata . fromJust <$> txAxiM2S
+    txAxiKeep = _tkeep . fromJust <$> txAxiM2S
+    txAxiValid = isJust <$> txAxiM2S
+    txAxiLast = _tlast . fromJust <$> txAxiM2S
+    txAxiUser = _tuser . fromJust <$> txAxiM2S
 
-  txAxiData = _tdata . fromJust <$> txAxiM2S
-  txAxiKeep = _tkeep . fromJust <$> txAxiM2S
-  txAxiValid = isJust <$> txAxiM2S
-  txAxiLast = _tlast . fromJust <$> txAxiM2S
-  txAxiUser = _tuser . fromJust <$> txAxiM2S
+    rxAxiReady = _tready <$> rxAxiS2M
+    gmiiRxData' = bitCoerce . gmiiData <$> rxGmii
+    gmiiRxValid' = bitCoerce . gmiiValid <$> rxGmii
+    gmiiRxError' = bitCoerce . gmiiError <$> rxGmii
 
-  rxAxiReady = _tready <$> rxAxiS2M
-  gmiiRxData' = bitCoerce . gmiiData <$> rxGmii
-  gmiiRxValid' = bitCoerce . gmiiValid <$> rxGmii
-  gmiiRxError' = bitCoerce . gmiiError <$> rxGmii
+    -- Instantiate the blackbox
+    gmiiTx = Gmii <$> gmiiTxData' <*> fmap bitCoerce gmiiTxEnable' <*> fmap bitCoerce gmiiTxError'
+    ( txAxiReady
+      , rxAxiData
+      , rxAxiKeep
+      , rxAxiValid
+      , rxAxiLast
+      , rxAxiUser
+      , gmiiTxData'
+      , gmiiTxEnable'
+      , gmiiTxError'
+      , txFifoUnderflow
+      , txFifoOverflow
+      , txFifoBadFrame
+      , txFifoGoodFrame
+      , rxBadFrame
+      , rxBadFcs
+      , rxFifoOverflow
+      , rxFifoBadFrame
+      , rxFifoGoodFrame
+      ) =
+        ethMac1GFifoBb
+          txFifoDepth
+          rxFifoDepth
+          sysClk
+          sysRst
+          txClk
+          txRst
+          rxClk
+          rxRst
+          miiSel
+          txClkEna
+          rxClkEna
+          txAxiData
+          txAxiKeep
+          txAxiValid
+          txAxiLast
+          txAxiUser
+          gmiiRxData'
+          gmiiRxValid'
+          gmiiRxError'
+          rxAxiReady
 
-  -- Instantiate the blackbox
-  gmiiTx = Gmii <$> gmiiTxData' <*> fmap bitCoerce gmiiTxEnable' <*> fmap bitCoerce gmiiTxError'
-  ( txAxiReady, rxAxiData, rxAxiKeep, rxAxiValid, rxAxiLast, rxAxiUser, gmiiTxData'
-    , gmiiTxEnable', gmiiTxError', txFifoUnderflow, txFifoOverflow, txFifoBadFrame
-    , txFifoGoodFrame, rxBadFrame, rxBadFcs, rxFifoOverflow, rxFifoBadFrame
-    , rxFifoGoodFrame
-    ) =
-    ethMac1GFifoBb txFifoDepth rxFifoDepth sysClk sysRst txClk txRst rxClk rxRst
-    miiSel txClkEna rxClkEna txAxiData txAxiKeep txAxiValid txAxiLast txAxiUser
-    gmiiRxData' gmiiRxValid' gmiiRxError' rxAxiReady
+    ethStatus =
+      makeEthStatus
+        <$> txFifoUnderflow
+        <*> txFifoOverflow
+        <*> txFifoBadFrame
+        <*> txFifoGoodFrame
+        <*> rxBadFrame
+        <*> rxBadFcs
+        <*> rxFifoOverflow
+        <*> rxFifoBadFrame
+        <*> rxFifoGoodFrame
 
-  ethStatus = makeEthStatus <$> txFifoUnderflow <*> txFifoOverflow <*> txFifoBadFrame
-    <*> txFifoGoodFrame <*> rxBadFrame <*> rxBadFcs <*> rxFifoOverflow <*> rxFifoBadFrame
-    <*> rxFifoGoodFrame
+    rxAxiM2S = makeAxi <$> rxAxiValid <*> rxAxiData <*> rxAxiKeep <*> rxAxiUser <*> rxAxiLast
 
-  rxAxiM2S = makeAxi <$> rxAxiValid <*> rxAxiData <*> rxAxiKeep <*> rxAxiUser <*> rxAxiLast
-
--- | Utility function to create an Axi4StreamM2S from it's components.
--- Exists to explicitly show the order of the arguments closely to the code that uses it.
-makeAxi :: KnownNat n => Bool -> Vec n (Unsigned 8) -> Vec n Bool -> Bool -> Bool ->
+{- | Utility function to create an Axi4StreamM2S from it's components.
+Exists to explicitly show the order of the arguments closely to the code that uses it.
+-}
+makeAxi ::
+  (KnownNat n) =>
+  Bool ->
+  Vec n (Unsigned 8) ->
+  Vec n Bool ->
+  Bool ->
+  Bool ->
   Maybe (Axi4StreamM2S ('Axi4StreamConfig n 0 0) Bool)
 makeAxi _tvalid _tdata _tkeep _tuser _tlast = orNothing _tvalid Axi4StreamM2S{..}
-   where
-    _tid = 0
-    _tdest = 0
-    _tstrb = repeat True
+ where
+  _tid = 0
+  _tdest = 0
+  _tstrb = repeat True
 
--- | Utility function to create the EthMacStatus from it's components.
--- Exists to explicitly show the order of the arguments closely to the code that uses it.
-makeEthStatus :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> EthMacStatus
-makeEthStatus txFifoUnderflow txFifoOverflow txFifoBadFrame txFifoGoodFrame rxBadFrame
-  rxBadFcs rxFifoOverflow rxFifoBadFrame rxFifoGoodFrame = EthMacStatus{..}
+{- | Utility function to create the EthMacStatus from it's components.
+Exists to explicitly show the order of the arguments closely to the code that uses it.
+-}
+makeEthStatus ::
+  Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> EthMacStatus
+makeEthStatus
+  txFifoUnderflow
+  txFifoOverflow
+  txFifoBadFrame
+  txFifoGoodFrame
+  rxBadFrame
+  rxBadFcs
+  rxFifoOverflow
+  rxFifoBadFrame
+  rxFifoGoodFrame = EthMacStatus{..}
 
 -- | 1G Ethernet MAC with TX and RX FIFOs
 ethMac1GFifoBb ::
@@ -208,11 +308,13 @@ ethMac1GFifoBb ::
   , KnownDomain rx
   ) =>
   -- Configuration
+
   -- | TX FIFO depth
   SNat txFifoDepth ->
   -- | RX FIFO depth
   SNat rxFifoDepth ->
   -- Clocks and resets
+
   -- | Logic clock
   Clock sys ->
   -- | Logic reset
@@ -231,8 +333,8 @@ ethMac1GFifoBb ::
   Signal tx Bool ->
   -- | RX Clock enable
   Signal rx Bool ->
-
   -- TX Axi inputs
+
   -- | TX Axi data
   Signal sys (Vec 1 (Unsigned 8)) ->
   -- | TX Axi keep
@@ -243,120 +345,118 @@ ethMac1GFifoBb ::
   Signal sys Bool ->
   -- | TX Axi user
   Signal sys Bool ->
-
   -- RX Gmii inputs
+
   -- | RX Gmii data
   Signal rx (BitVector 8) ->
   -- | RX Gmii valid
   Signal rx Bool ->
   -- | RX Gmii error
   Signal rx Bool ->
-
   -- RX Axi inputs
+
   -- | RX Axi ready
   Signal sys Bool ->
-  (
-    -- TX Axi outputs
-    -- | TX Axi ready
-    Signal sys Bool,
-
-    -- RX Axi outputs
-    -- | RX Axi data
-    Signal sys (Vec 1 (Unsigned 8)),
-    -- | RX Axi keep
-    Signal sys (Vec 1 Bool),
-    -- | RX Axi valid
-    Signal sys Bool,
-    -- | RX Axi last
-    Signal sys Bool,
-    -- | RX Axi user
-    Signal sys Bool,
-
-    -- GMII outputs
-    -- | GMII TX data
-    Signal tx (BitVector 8),
-    -- | GMII TX enable
-    Signal tx Bool,
-    -- | GMII TX error
-    Signal tx Bool,
-
-    -- TX Status
-    -- | TX FIFO underflow
-    Signal sys Bool,
-    -- | TX FIFO overflow
-    Signal sys Bool,
-    -- | TX FIFO bad frame
-    Signal sys Bool,
-    -- | TX FIFO good frame
-    Signal sys Bool,
-
-    -- RX Status
-    -- | RX error bad frame
-    Signal sys Bool,
-    -- | RX error bad FCS
-    Signal sys Bool,
-    -- | RX FIFO overflow
-    Signal sys Bool,
-    -- | RX FIFO bad frame
-    Signal sys Bool,
-    -- | RX FIFO good frame
+  ( -- TX Axi outputs
+    -- \| TX Axi ready
+    Signal sys Bool
+  , -- RX Axi outputs
+    -- \| RX Axi data
+    Signal sys (Vec 1 (Unsigned 8))
+  , -- \| RX Axi keep
+    Signal sys (Vec 1 Bool)
+  , -- \| RX Axi valid
+    Signal sys Bool
+  , -- \| RX Axi last
+    Signal sys Bool
+  , -- \| RX Axi user
+    Signal sys Bool
+  , -- GMII outputs
+    -- \| GMII TX data
+    Signal tx (BitVector 8)
+  , -- \| GMII TX enable
+    Signal tx Bool
+  , -- \| GMII TX error
+    Signal tx Bool
+  , -- TX Status
+    -- \| TX FIFO underflow
+    Signal sys Bool
+  , -- \| TX FIFO overflow
+    Signal sys Bool
+  , -- \| TX FIFO bad frame
+    Signal sys Bool
+  , -- \| TX FIFO good frame
+    Signal sys Bool
+  , -- RX Status
+    -- \| RX error bad frame
+    Signal sys Bool
+  , -- \| RX error bad FCS
+    Signal sys Bool
+  , -- \| RX FIFO overflow
+    Signal sys Bool
+  , -- \| RX FIFO bad frame
+    Signal sys Bool
+  , -- \| RX FIFO good frame
     Signal sys Bool
   )
 ethMac1GFifoBb SNat SNat !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ =
   (err, err, err, err, err, err, err, err, err, err, err, err, err, err, err, err, err, err)
  where
-  err :: forall dom a . NFDataX a => Signal dom a
+  err :: forall dom a. (NFDataX a) => Signal dom a
   err = pure $ deepErrorX "simulation model not implemented"
-
 {-# NOINLINE ethMac1GFifoBb #-}
 {-# ANN ethMac1GFifoBb hasBlackBox #-}
-{-# ANN ethMac1GFifoBb (
-  let
-    (  _sys
-     :< _tx
-     :< _rx
-     :< txFifoDepth
-     :< rxFifoDepth
-     :< sysClk
-     :< sysRst
-     :< txClk
-     :< txRst
-     :< rxClk
-     :< rxRst
-     :< miiSel
-     :< txClkEna
-     :< rxClkEna
-     :< txAxiData
-     :< txAxiKeep
-     :< txAxiValid
-     :< txAxiLast
-     :< txAxiUser
-     :< gmiiRxData
-     :< gmiiRxValid
-     :< gmiiRxError
-     :< rxAxiReady
-     :< txAxiReady
-     :< rxAxiData
-     :< rxAxiKeep
-     :< rxAxiValid
-     :< rxAxiLast
-     :< rxAxiUser
-     :< gmiiTxData
-     :< gmiiTxEn
-     :< gmiiTxErr
-     :< txFifoUnderflow
-     :< txFifoOverflow
-     :< txFifoBadFrame
-     :< txFifoGoodFrame
-     :< rxBadFrame
-     :< rxBadFcs
-     :< rxFifoOverflow
-     :< rxFifoBadFrame
-     :< rxFifoGoodFrame
-     :< _ ) = ((0::Int)...)
-    funcName = 'ethMac1GFifoBb
-  in
-    InlineYamlPrimitive [Verilog] [__i|
+{-# ANN
+  ethMac1GFifoBb
+  ( let
+      ( _sys
+          :< _tx
+          :< _rx
+          :< txFifoDepth
+          :< rxFifoDepth
+          :< sysClk
+          :< sysRst
+          :< txClk
+          :< txRst
+          :< rxClk
+          :< rxRst
+          :< miiSel
+          :< txClkEna
+          :< rxClkEna
+          :< txAxiData
+          :< txAxiKeep
+          :< txAxiValid
+          :< txAxiLast
+          :< txAxiUser
+          :< gmiiRxData
+          :< gmiiRxValid
+          :< gmiiRxError
+          :< rxAxiReady
+          :< txAxiReady
+          :< rxAxiData
+          :< rxAxiKeep
+          :< rxAxiValid
+          :< rxAxiLast
+          :< rxAxiUser
+          :< gmiiTxData
+          :< gmiiTxEn
+          :< gmiiTxErr
+          :< txFifoUnderflow
+          :< txFifoOverflow
+          :< txFifoBadFrame
+          :< txFifoGoodFrame
+          :< rxBadFrame
+          :< rxBadFcs
+          :< rxFifoOverflow
+          :< rxFifoBadFrame
+          :< rxFifoGoodFrame
+          :< _
+        ) = ((0 :: Int) ...)
+      funcName = 'ethMac1GFifoBb
+     in
+      InlineYamlPrimitive
+        [Verilog]
+        [__i|
       BlackBox:
         kind: Declaration
         name: #{funcName}
@@ -448,4 +548,5 @@ ethMac1GFifoBb SNat SNat !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ =
             .cfg_rx_enable(1'b1)
           );
         |]
-  ) #-}
+  )
+  #-}
