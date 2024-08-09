@@ -71,9 +71,8 @@ txUnit ::
   , Signal core (DataLink frameWidth))
 txUnit (getRegsBe -> RegisterBank preamble) sq frameIn wbIn = (wbOut, frameOut)
  where
-  (stateMachineOn, wbOut)
-    | Dict <- timesDivRU @(nBytes * 8) @1
-    = registerWb WishbonePriority False wbIn (pure Nothing)
+  (stateMachineOn, wbOut) = case timesDivRU @(nBytes * 8) @1 of
+    Dict -> registerWb WishbonePriority False wbIn (pure Nothing)
 
   frameOut = withReset regReset $ mealy stateMachine (scErr, LinkThrough) mealyIn
   mealyIn = bundle (frameIn, sq)
