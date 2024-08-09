@@ -4,15 +4,17 @@
 
 module Clash.Explicit.Reset.Extra where
 
-import Clash.Explicit.Prelude
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
+import Clash.Explicit.Prelude
 
--- | Configuration value to indicate whether resets should be asserted or
--- deasserted. Used throughout this module.
+{- | Configuration value to indicate whether resets should be asserted or
+deasserted. Used throughout this module.
+-}
 data Asserted = Asserted | Deasserted
 
--- | A reset synchronizer based on 'xpmCdcSingle'. I.e., a reset synchronizer that
--- is recognized by Vivado as a safe CDC construct.
+{- | A reset synchronizer based on 'xpmCdcSingle'. I.e., a reset synchronizer that
+is recognized by Vivado as a safe CDC construct.
+-}
 xpmResetSynchronizer ::
   (HasSynchronousReset src, KnownDomain dst) =>
   -- | Initial value of registers in 'xpmCdcSingle'
@@ -23,24 +25,25 @@ xpmResetSynchronizer ::
   Reset dst
 xpmResetSynchronizer asserted clkSrc clkDest =
   case asserted of
-    Asserted ->   unsafeFromActiveLow . go . unsafeToActiveLow
+    Asserted -> unsafeFromActiveLow . go . unsafeToActiveLow
     Deasserted -> unsafeFromActiveHigh . go . unsafeToActiveHigh
  where
   go = xpmCdcSingle clkSrc clkDest
 
--- | Like 'delay', but for 'Reset'. Can be used to filter glitches caused by
--- combinatorial logic.
+{- | Like 'delay', but for 'Reset'. Can be used to filter glitches caused by
+combinatorial logic.
+-}
 delayReset ::
-  HasSynchronousReset dom =>
+  (HasSynchronousReset dom) =>
   -- | Initial and reset value of register
   Asserted ->
   Clock dom ->
   Reset dom ->
   Reset dom
 delayReset asserted clk =
-    unsafeFromActiveHigh
-  . delay clk enableGen assertedBool
-  . unsafeToActiveHigh
+  unsafeFromActiveHigh
+    . delay clk enableGen assertedBool
+    . unsafeToActiveHigh
  where
   assertedBool =
     case asserted of

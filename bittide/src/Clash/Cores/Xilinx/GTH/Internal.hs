@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE QuasiQuotes #-}
 
@@ -9,7 +8,7 @@ module Clash.Cores.Xilinx.GTH.Internal where
 
 import Clash.Prelude
 
-import Clash.Annotations.Primitive (hasBlackBox, Primitive (InlineYamlPrimitive))
+import Clash.Annotations.Primitive (Primitive (InlineYamlPrimitive), hasBlackBox)
 import Data.String.Interpolate (__i)
 
 import Clash.Cores.Xilinx.GTH.BlackBoxes
@@ -25,10 +24,10 @@ type GthCore txUser2 rxUser2 refclk0 freerun txS rxS serializedData =
   , KnownDomain txS
   , KnownDomain rxS
   ) =>
+  -- | channel
   String ->
-  -- ^ channel
+  -- | refClkSpec
   String ->
-  -- ^ refClkSpec
   "gthrxn_in" ::: Signal rxS serializedData ->
   "gthrxp_in" ::: Signal rxS serializedData ->
   "gtwiz_reset_clk_freerun_in" ::: Clock freerun ->
@@ -57,40 +56,57 @@ gthCore
   !_refClkSpec
   !_gthrxn_in
   !_gthrxp_in
-
   !_gtwiz_reset_clk_freerun_in
-
   !_gtwiz_reset_all_in
   !_gtwiz_reset_rx_datapath_in
   !_gtwiz_userdata_tx_in
   !_txctrl2_in
-  !_gtrefclk0_in
- = ( undefined, undefined, undefined, undefined
-   , undefined, undefined, undefined, undefined
-   , undefined, undefined, undefined, undefined
-   )
+  !_gtrefclk0_in =
+    ( undefined
+    , undefined
+    , undefined
+    , undefined
+    , undefined
+    , undefined
+    , undefined
+    , undefined
+    , undefined
+    , undefined
+    , undefined
+    , undefined
+    )
 {-# OPAQUE gthCore #-}
 {-# ANN gthCore hasBlackBox #-}
-{-# ANN gthCore (
-   let primName = 'gthCore
-       tfName = 'gthCoreBBF
-   in InlineYamlPrimitive [minBound..] [__i|
+{-# ANN
+  gthCore
+  ( let primName = 'gthCore
+        tfName = 'gthCoreBBF
+     in InlineYamlPrimitive
+          [minBound ..]
+          [__i|
         BlackBoxHaskell:
             name: #{primName}
             templateFunction: #{tfName}
             workInfo: Always
-        |]) #-}
+        |]
+  )
+  #-}
 
-ibufds_gte3 :: KnownDomain dom => DiffClock dom -> Clock dom
+ibufds_gte3 :: (KnownDomain dom) => DiffClock dom -> Clock dom
 ibufds_gte3 !_clk = clockGen
 {-# OPAQUE ibufds_gte3 #-}
 {-# ANN ibufds_gte3 hasBlackBox #-}
-{-# ANN ibufds_gte3 (
-   let primName = 'ibufds_gte3
-       tfName = 'ibufds_gte3BBF
-   in InlineYamlPrimitive [minBound..] [__i|
+{-# ANN
+  ibufds_gte3
+  ( let primName = 'ibufds_gte3
+        tfName = 'ibufds_gte3BBF
+     in InlineYamlPrimitive
+          [minBound ..]
+          [__i|
         BlackBoxHaskell:
             name: #{primName}
             templateFunction: #{tfName}
             workInfo: Always
-        |]) #-}
+        |]
+  )
+  #-}

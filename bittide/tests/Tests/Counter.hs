@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -18,21 +17,21 @@ import Test.Tasty.TH
 
 import Bittide.Counter (domainDiffCounter)
 
-createDomain vXilinxSystem{vName="D10", vPeriod=hzToPeriod 100e6}
-createDomain vXilinxSystem{vName="D17", vPeriod=hzToPeriod 170e6}
-createDomain vXilinxSystem{vName="D20", vPeriod=hzToPeriod 200e6}
+createDomain vXilinxSystem{vName = "D10", vPeriod = hzToPeriod 100e6}
+createDomain vXilinxSystem{vName = "D17", vPeriod = hzToPeriod 170e6}
+createDomain vXilinxSystem{vName = "D20", vPeriod = hzToPeriod 200e6}
 
-noRst :: KnownDomain dom => Reset dom
+noRst :: (KnownDomain dom) => Reset dom
 noRst = unsafeFromActiveHigh (pure False)
 
-rst :: KnownDomain dom => Reset dom
+rst :: (KnownDomain dom) => Reset dom
 rst = unsafeFromActiveHigh (pure True)
 
-rstN :: KnownDomain dom => Int -> Reset dom
+rstN :: (KnownDomain dom) => Int -> Reset dom
 rstN n = unsafeFromActiveHigh (fromList (P.replicate n True <> P.repeat False))
 
 top ::
-  forall src dst .
+  forall src dst.
   ( KnownDomain src
   , KnownDomain dst
   ) =>
@@ -55,17 +54,18 @@ case_zeroDstRst = sampleN 1000 (top @D10 @D17 noRst rst) @?= P.replicate 1000 0
 
 -- | No matter when we release the destination reset, we should zeros followed by counting
 case_glitchless :: Assertion
-case_glitchless = --
-  forM_ [0..512] $ \n -> do
+case_glitchless =
+  --
+  forM_ [0 .. 512] $ \n -> do
     let
       sampled = sampleN 1000 (dut (rstN n))
-      sampledNonZero = P.dropWhile (==0) sampled
+      sampledNonZero = P.dropWhile (== 0) sampled
       len = P.length sampledNonZero
     assertBool (">1 @ " <> show n) (len > 1)
     assertEqual ("exp @ " <> show n) sampledNonZero (P.take len expected)
  where
   dut = top @D10 @D20 noRst
-  expected = P.concat [[n, n] | n <- [1..]]
+  expected = P.concat [[n, n] | n <- [1 ..]]
 
 tests :: TestTree
 tests = $(testGroupGenerator)

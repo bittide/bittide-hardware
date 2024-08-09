@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -13,13 +12,13 @@ import Clash.Prelude hiding (someNatVal, words)
 import Bittide.SharedTypes (Byte)
 import Clash.Hedgehog.Sized.BitVector (genDefinedBitVector)
 import Clash.Hedgehog.Sized.Index (genIndex)
-import Data.Proxy (Proxy(..))
+import Data.Proxy (Proxy (..))
 import GHC.TypeNats (someNatVal)
 import Hedgehog
 import Numeric (showHex)
 import Test.Tasty
-import Test.Tasty.Hedgehog
 import Test.Tasty.HUnit
+import Test.Tasty.Hedgehog
 
 import qualified Bittide.Transceiver.WordAlign as WordAlign
 import qualified Clash.Explicit.Prelude as E
@@ -135,8 +134,9 @@ prop_wordAlignFromMsbsLsbFirst = prop_wordAlignFromMsbs WordAlign.alignLsbFirst 
 prop_wordAlignFromMsbsMsbFirst :: Property
 prop_wordAlignFromMsbsMsbFirst = prop_wordAlignFromMsbs WordAlign.alignMsbFirst WordAlign.dealignMsbFirst
 
--- | Make sure we can recover "user data" after sending alignment bits and freezing
--- the offset/alignment.
+{- | Make sure we can recover "user data" after sending alignment bits and freezing
+the offset/alignment.
+-}
 prop_wordAlignFromMsbs ::
   (forall n. WordAlign.AlignmentFn n) ->
   (forall n. WordAlign.AlignmentFn n) ->
@@ -146,9 +146,8 @@ prop_wordAlignFromMsbs alignFn dealignFn = property $ do
   nBytesMinusOne <- forAll $ Gen.integral (Range.linear 0 16)
   withSomeSNat nBytesMinusOne (go . succSNat)
  where
-
   -- Worker function that only deals with term level naturals
-  go :: forall nBytes . (1 <= nBytes) => SNat nBytes -> PropertyT IO ()
+  go :: forall nBytes. (1 <= nBytes) => SNat nBytes -> PropertyT IO ()
   go SNat = leToPlus @1 @nBytes $ do
     -- How much offset is "inserted" by the "transceiver"s
     byteOffset <- forAll $ genIndex Range.constantBounded
@@ -164,8 +163,8 @@ prop_wordAlignFromMsbs alignFn dealignFn = property $ do
     -- of the words thereafter.
     nAlignCycles <- forAll $ Gen.integral (Range.linear 2 16)
     alignWords <-
-      fmap (WordAlign.joinMsbs @nBytes @8 WordAlign.alignSymbol) <$>
-        forAll (Gen.list (Range.singleton nAlignCycles) genDefinedBitVector)
+      fmap (WordAlign.joinMsbs @nBytes @8 WordAlign.alignSymbol)
+        <$> forAll (Gen.list (Range.singleton nAlignCycles) genDefinedBitVector)
 
     -- Number of cycles to produce data with (potentially) invalid alignment
     -- bits. We expect to be able to recover these words, because the aligner
@@ -182,46 +181,55 @@ prop_wordAlignFromMsbs alignFn dealignFn = property $ do
         pipelineDepth = 1
 
         freeze =
-             L.replicate nPreAlignCycles False
-          <> L.replicate nAlignCycles False
-          <> L.replicate nPostAlignCycles True
+          L.replicate nPreAlignCycles False
+            <> L.replicate nAlignCycles False
+            <> L.replicate nPostAlignCycles True
 
         sampled =
-            E.sampleN (nCycles + pipelineDepth)
-          $ WordAlign.alignBytesFromMsbs @nBytes alignFn (E.fromList (freeze <> L.repeat True))
-          $ allDealignedWords
+          E.sampleN (nCycles + pipelineDepth)
+            $ WordAlign.alignBytesFromMsbs @nBytes alignFn (E.fromList (freeze <> L.repeat True))
+            $ allDealignedWords
 
         actual =
-            L.take nPostAlignCycles
-          $ L.drop (nPreAlignCycles + nAlignCycles + pipelineDepth)
-          $ sampled
+          L.take nPostAlignCycles
+            $ L.drop (nPreAlignCycles + nAlignCycles + pipelineDepth)
+            $ sampled
 
       footnote $ "preAlignWords: " <> show preAlignWords
       footnote $ "alignWords: " <> show alignWords
       footnote $ "postAlignWords: " <> show postAlignWords
       footnote $ "sampled: " <> show sampled
-      footnote $ "allDealignedWords: " <> show (sampleN (nCycles + pipelineDepth) allDealignedWords)
+      footnote
+        $ "allDealignedWords: "
+        <> show (sampleN (nCycles + pipelineDepth) allDealignedWords)
       footnote $ "freeze: " <> show freeze
 
       postAlignWords === actual
 
 tests :: TestTree
-tests = testGroup "WordAlign"
-  [ testCase "case_dealignLsbFirst" case_dealignLsbFirst
-  , testCase "case_dealignMsbFirst" case_dealignMsbFirst
-  , testCase "case_alignLsbFirst" case_alignLsbFirst
-  , testCase "case_alignMsbFirst" case_alignMsbFirst
-  , testPropertyNamed "prop_alignDealignLsb" "prop_alignDealignLsb" prop_alignDealignLsb
-  , testPropertyNamed "prop_alignDealignMsb" "prop_alignDealignMsb" prop_alignDealignMsb
-  , testPropertyNamed "prop_wordAlignFromMsbsLsbFirst" "prop_wordAlignFromMsbsLsbFirst" prop_wordAlignFromMsbsLsbFirst
-  , testPropertyNamed "prop_wordAlignFromMsbsMsbFirst" "prop_wordAlignFromMsbsMsbFirst" prop_wordAlignFromMsbsMsbFirst
-
-  -- While this works, it also prints the error which is very confusing :-(
-  -- , expectFail $ testPropertyNamed "prop_alignDealignMsbLsb" "prop_alignDealignMsbLsb" prop_alignDealignMsbLsb
-  -- , expectFail $ testPropertyNamed "prop_alignDealignLsbMsb" "prop_alignDealignLsbMsb" prop_alignDealignLsbMsb
-  ]
+tests =
+  testGroup
+    "WordAlign"
+    [ testCase "case_dealignLsbFirst" case_dealignLsbFirst
+    , testCase "case_dealignMsbFirst" case_dealignMsbFirst
+    , testCase "case_alignLsbFirst" case_alignLsbFirst
+    , testCase "case_alignMsbFirst" case_alignMsbFirst
+    , testPropertyNamed "prop_alignDealignLsb" "prop_alignDealignLsb" prop_alignDealignLsb
+    , testPropertyNamed "prop_alignDealignMsb" "prop_alignDealignMsb" prop_alignDealignMsb
+    , testPropertyNamed
+        "prop_wordAlignFromMsbsLsbFirst"
+        "prop_wordAlignFromMsbsLsbFirst"
+        prop_wordAlignFromMsbsLsbFirst
+    , testPropertyNamed
+        "prop_wordAlignFromMsbsMsbFirst"
+        "prop_wordAlignFromMsbsMsbFirst"
+        prop_wordAlignFromMsbsMsbFirst
+        -- While this works, it also prints the error which is very confusing :-(
+        -- , expectFail $ testPropertyNamed "prop_alignDealignMsbLsb" "prop_alignDealignMsbLsb" prop_alignDealignMsbLsb
+        -- , expectFail $ testPropertyNamed "prop_alignDealignLsbMsb" "prop_alignDealignLsbMsb" prop_alignDealignLsbMsb
+    ]
 
 main :: IO ()
 main =
-  defaultMain $
-    adjustOption (const (HedgehogTestLimit (Just 1000))) tests
+  defaultMain
+    $ adjustOption (const (HedgehogTestLimit (Just 1000))) tests

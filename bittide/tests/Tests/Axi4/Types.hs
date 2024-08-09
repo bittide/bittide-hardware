@@ -1,18 +1,17 @@
+{-# LANGUAGE FlexibleContexts #-}
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE FlexibleContexts #-}
 
 module Tests.Axi4.Types where
 
 import Clash.Prelude
 
-import Protocols.Axi4.Stream
-import Data.Maybe
 import Bittide.Extra.Maybe
 import Clash.Sized.Vector (unsafeFromList)
+import Data.Maybe
+import Protocols.Axi4.Stream
 
 import qualified Data.List as L
 
@@ -46,13 +45,14 @@ getByte True False p = Position p
 getByte False False _ = Null
 getByte False True _ = deepErrorX "Reserved byte"
 
--- | Get a list of byte types from an Axi4StreamM2S packet.
--- Input must satisfy `isSinglePacket`
+{- | Get a list of byte types from an Axi4StreamM2S packet.
+Input must satisfy `isSinglePacket`
+-}
 getPacketByteTypes :: [Axi4StreamM2S conf a] -> [AxiByteType]
 getPacketByteTypes = L.concatMap (toList . fmap getByteType . getTransferBytes)
 
 -- | Get the byte type based on a keep and strobe value
-getByteType :: AxiByte-> AxiByteType
+getByteType :: AxiByte -> AxiByteType
 getByteType (Data _) = DataByte
 getByteType (Position _) = PositionByte
 getByteType Null = NullByte
@@ -65,51 +65,55 @@ getKeepStrobe PositionByte = (True, False)
 
 -- | Transform a list of Axi Stream operations into a 'Packet'.
 axiStreamToPackets ::
-  KnownNat nBytes =>
+  (KnownNat nBytes) =>
   [Axi4StreamM2S ('Axi4StreamConfig nBytes 0 0) ()] ->
   [Packet]
 axiStreamToPackets = L.reverse . snd . L.foldl go ([], [])
  where
   go (partialPacket, packets) Axi4StreamM2S{..}
     | _tlast = ([], L.reverse newPartial : packets)
-    | otherwise   = (newPartial, packets)
+    | otherwise = (newPartial, packets)
    where
     newPartial = L.reverse (catMaybes (toList $ orNothing <$> _tkeep <*> _tdata)) <> partialPacket
 
 -- Transform a 'Packet' into a list of Axi Stream operations.
 packetToAxiStream ::
-  forall nBytes .
+  forall nBytes.
   SNat nBytes ->
   Packet ->
   [Maybe (Axi4StreamM2S ('Axi4StreamConfig nBytes 0 0) ())]
 packetToAxiStream w@SNat !bs
   | rest /= [] = Just axis : packetToAxiStream w rest
-  | otherwise  = [Just axis]
-  where
+  | otherwise = [Just axis]
+ where
   busWidth = natToNum @nBytes
   (firstWords, rest) = L.splitAt busWidth bs
   word = L.take busWidth (firstWords <> L.repeat 0)
-  axis = Axi4StreamM2S
-    { _tdata = unsafeFromList word
-    , _tkeep = keeps
-    , _tstrb = repeat True
-    , _tlast = null rest
-    , _tid   = 0
-    , _tdest = 0
-    , _tuser = deepErrorX ""
-    }
-  keeps = unsafeFromList $
-       L.replicate (L.length bs) True <> L.repeat False
+  axis =
+    Axi4StreamM2S
+      { _tdata = unsafeFromList word
+      , _tkeep = keeps
+      , _tstrb = repeat True
+      , _tlast = null rest
+      , _tid = 0
+      , _tdest = 0
+      , _tuser = deepErrorX ""
+      }
+  keeps =
+    unsafeFromList
+      $ L.replicate (L.length bs) True
+      <> L.repeat False
 
 -- | Separate a list of Axi4Stream operations into a list of Axi4Stream packets.
 separatePackets ::
-  forall nBytes .
-  KnownNat nBytes =>
+  forall nBytes.
+  (KnownNat nBytes) =>
   [Axi4StreamM2S ('Axi4StreamConfig nBytes 0 0) ()] ->
   [ Either
-    [Axi4StreamM2S ('Axi4StreamConfig nBytes 0 0) ()]
-    [Axi4StreamM2S ('Axi4StreamConfig nBytes 0 0) ()]]
+      [Axi4StreamM2S ('Axi4StreamConfig nBytes 0 0) ()]
+      [Axi4StreamM2S ('Axi4StreamConfig nBytes 0 0) ()]
+  ]
 separatePackets [] = []
 separatePackets axis = case L.break _tlast axis of
-    (payload, l:rest) -> Right (payload <> [l]) : separatePackets rest
-    (remainder, _) -> [Left remainder]
+  (payload, l : rest) -> Right (payload <> [l]) : separatePackets rest
+  (remainder, _) -> [Left remainder]

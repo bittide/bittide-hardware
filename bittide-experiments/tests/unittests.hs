@@ -4,17 +4,19 @@
 
 module Main where
 
-import Prelude
 import Test.Tasty
+import Prelude
 
 import Tests.Bittide.Simulate qualified
 
 tests :: TestTree
 tests =
-  testGroup "Tests"
-    [ testGroup "Bittide"
-      [ Tests.Bittide.Simulate.tests
-      ]
+  testGroup
+    "Tests"
+    [ testGroup
+        "Bittide"
+        [ Tests.Bittide.Simulate.tests
+        ]
     ]
 
 main :: IO ()

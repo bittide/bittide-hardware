@@ -1,12 +1,11 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE OverloadedStrings #-}
 
-module Bittide.Simulate.TunableClockGen
-  ( tunableClockGen
-  ) where
+module Bittide.Simulate.TunableClockGen (
+  tunableClockGen,
+) where
 
 import Clash.Prelude
 import Clash.Signal.Internal
@@ -42,7 +41,6 @@ tunableClockGen ::
   --
   -- TODO: For the actual boards this needs to be modelled as a pulse. This pulse
   -- should be asserted for at least 100 ns and at a maximum rate of 1 MHz.
-  --
   Signal dom SpeedChange ->
   -- | Clock with a dynamic frequency. At the time of writing, Clash primitives
   -- don't account for this yet, so be careful when using them. Note that dynamic
@@ -53,7 +51,7 @@ tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
     period = clockPeriodFs @dom Proxy
     initPeriod = period `addFs` periodOffset
     clockSignal = initPeriod :- go settlePeriod initPeriod speedChange
-  in
+   in
     Clock SSymbol (Just clockSignal)
  where
   go ::
@@ -64,9 +62,15 @@ tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
   go !settleCounter !period (sc :- scs) =
     let
       vars =
-           "settlePeriod: " <> show settlePeriod <> ", "
-        <> "settleCounter: " <> show settleCounter <> ", "
-        <> "period: " <> show period <> ", "
+        "settlePeriod: "
+          <> show settlePeriod
+          <> ", "
+          <> "settleCounter: "
+          <> show settleCounter
+          <> ", "
+          <> "period: "
+          <> show period
+          <> ", "
 
       (newSettleCounter, newPeriod) = case sc of
         SpeedUp
@@ -77,5 +81,5 @@ tunableClockGen settlePeriod periodOffset stepSize _reset speedChange =
           | otherwise -> error $ "tunableClockGen: frequency change requested too often. " <> vars
         NoChange ->
           (settleCounter `addFs` period, period)
-    in
+     in
       newPeriod :- go newSettleCounter newPeriod scs

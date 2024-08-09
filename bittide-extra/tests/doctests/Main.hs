@@ -11,4 +11,4 @@ main :: IO ()
 main = do
   -- We use Nix to setup tooling, not to provide GHC packages so we need to set --no-nix
   args <- getArgs
-  mainFromCabal "bittide-extra" ("--no-nix":args)
+  mainFromCabal "bittide-extra" ("--no-nix" : args)

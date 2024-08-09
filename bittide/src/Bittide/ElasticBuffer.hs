@@ -5,37 +5,38 @@
 
 module Bittide.ElasticBuffer where
 
-import Clash.Prelude
 import Clash.Cores.Xilinx.DcFifo
+import Clash.Prelude
 import GHC.Stack
 
 import Bittide.ClockControl (RelDataCount, targetDataCount)
 
-import qualified Clash.Explicit.Prelude as E
 import qualified Clash.Cores.Extra as CE
+import qualified Clash.Explicit.Prelude as E
 
 data EbMode
-  -- | Disable write, enable read
-  = Drain
-  -- | Enable write, disable read
-  | Fill
-  -- | Enable write, enable read
-  | Pass
- deriving (Generic, NFDataX, Eq, Show)
+  = -- | Disable write, enable read
+    Drain
+  | -- | Enable write, disable read
+    Fill
+  | -- | Enable write, enable read
+    Pass
+  deriving (Generic, NFDataX, Eq, Show)
 
 type Underflow = Bool
 type Overflow = Bool
 
 ebModeToReadWrite :: EbMode -> (Bool, Bool)
 ebModeToReadWrite = \case
-  Fill  -> (False, True)
+  Fill -> (False, True)
   Drain -> (True, False)
-  Pass  -> (True, True)
+  Pass -> (True, True)
 
 {-# NOINLINE sticky #-}
+
 -- | Create a sticky version of a boolean signal.
 sticky ::
-  KnownDomain dom =>
+  (KnownDomain dom) =>
   Clock dom ->
   Reset dom ->
   Signal dom Bool ->
@@ -45,8 +46,10 @@ sticky clk rst a = stickyA
   stickyA = E.register clk rst enableGen False (stickyA .||. a)
 
 {-# NOINLINE xilinxElasticBuffer #-}
--- | An elastic buffer backed by a Xilinx FIFO. It exposes all its control and
--- monitor signals in its read domain.
+
+{- | An elastic buffer backed by a Xilinx FIFO. It exposes all its control and
+monitor signals in its read domain.
+-}
 xilinxElasticBuffer ::
   forall n readDom writeDom a.
   ( HasCallStack
@@ -54,7 +57,8 @@ xilinxElasticBuffer ::
   , KnownDomain writeDom
   , NFDataX a
   , KnownNat n
-  , 4 <= n, n <= 17
+  , 4 <= n
+  , n <= 17
   ) =>
   Clock readDom ->
   Clock writeDom ->
@@ -64,9 +68,9 @@ xilinxElasticBuffer ::
   Signal readDom EbMode ->
   Signal writeDom a ->
   ( Signal readDom (RelDataCount n)
-  -- Indicates whether the FIFO under or overflowed. This signal is sticky: it
-  -- will only deassert upon reset.
-  , Signal readDom Underflow
+  , -- Indicates whether the FIFO under or overflowed. This signal is sticky: it
+    -- will only deassert upon reset.
+    Signal readDom Underflow
   , Signal writeDom Overflow
   , Signal readDom a
   )
@@ -76,7 +80,9 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
     -- 'Unsigned' with 'targetDataCount' equals 'shiftR maxBound 1 + 1'.
     -- This way, the representation can be easily switched without
     -- introducing major code changes.
-    (+ targetDataCount) . bitCoerce . (+ (-1 - shiftR maxBound 1))
+    (+ targetDataCount)
+      . bitCoerce
+      . (+ (-1 - shiftR maxBound 1))
       <$> readCount
   , isUnderflowSticky
   , isOverflowSticky
@@ -87,10 +93,15 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
   rstWriteBool =
     CE.safeDffSynchronizer clkRead clkWrite False (unsafeToActiveHigh rstRead)
 
-  FifoOut{readCount, isUnderflow, isOverflow, fifoData} = dcFifo
-    (defConfig @n){dcOverflow=True, dcUnderflow=True}
-    clkWrite noResetWrite clkRead noResetRead
-    writeData readEnable
+  FifoOut{readCount, isUnderflow, isOverflow, fifoData} =
+    dcFifo
+      (defConfig @n){dcOverflow = True, dcUnderflow = True}
+      clkWrite
+      noResetWrite
+      clkRead
+      noResetRead
+      writeData
+      readEnable
 
   -- We make sure to "stickify" the signals in their original domain. The
   -- synchronizer might lose samples depending on clock configurations.
@@ -108,7 +119,6 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
 
   writeData = mux writeEnableSynced (Just <$> wdata) (pure Nothing)
 
-
 {-# NOINLINE resettableXilinxElasticBuffer #-}
 resettableXilinxElasticBuffer ::
   forall n readDom writeDom a.
@@ -116,7 +126,9 @@ resettableXilinxElasticBuffer ::
   , KnownDomain readDom
   , NFDataX a
   , KnownNat n
-  , 4 <= n, n <= 17) =>
+  , 4 <= n
+  , n <= 17
+  ) =>
   Clock readDom ->
   Clock writeDom ->
   -- | Resetting resets the 'Underflow' and 'Overflow' signals, but not the 'RelDataCount'
@@ -139,9 +151,10 @@ resettableXilinxElasticBuffer clkRead clkWrite rstRead wdata =
 
   controllerReset = unsafeFromActiveHigh (unsafeToActiveHigh rstRead .||. under .||. over1)
 
-  (ebMode, stable) = unbundle $
-    withClockResetEnable clkRead controllerReset enableGen $
-     mealy goControl Drain dataCount
+  (ebMode, stable) =
+    unbundle
+      $ withClockResetEnable clkRead controllerReset enableGen
+      $ mealy goControl Drain dataCount
 
   goControl :: EbMode -> RelDataCount n -> (EbMode, (EbMode, Bool))
   goControl state0 datacount = (state1, (state0, stable0))

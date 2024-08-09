@@ -1,14 +1,14 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
-module Clash.Cores.UART.Extra
-  ( module Clash.Cores.UART.Extra
-  , System.IO.stdin
-  , System.IO.stdout
-  ) where
+
+module Clash.Cores.UART.Extra (
+  module Clash.Cores.UART.Extra,
+  System.IO.stdin,
+  System.IO.stdout,
+) where
 
 import Clash.Prelude
 
@@ -17,7 +17,7 @@ import Data.Char
 import Data.Maybe
 import GHC.IO
 import Protocols
-import Protocols.Df hiding (catMaybes, sample, pure)
+import Protocols.Df hiding (catMaybes, pure, sample)
 import System.IO
 
 import Bittide.Wishbone
@@ -27,11 +27,12 @@ import qualified Protocols.Df as Df
 -- | The maximum baud rate for a given domain, useful for simulation purposes
 type MaxBaudRate dom = Div (DomainToHz dom) 16
 
--- | A simulation function for circuits that expose a UART connection.
--- This function reads from the provided input handle and feeds that to the UART circuit.
--- Incoming uart data is written the the output handle.
+{- | A simulation function for circuits that expose a UART connection.
+This function reads from the provided input handle and feeds that to the UART circuit.
+Incoming uart data is written the the output handle.
+-}
 uartIO ::
-  forall dom baud .
+  forall dom baud.
   (KnownDomain dom, ValidBaud dom baud) =>
   -- | A handle for the input data stream, use `stdin` for terminal input.
   Handle ->
@@ -48,7 +49,7 @@ uartIO inputHandle outputHandle baud uartCircuit = do
  where
   printList :: [(BitVector 8)] -> IO ()
   printList [] = pure ()
-  printList (x:xs) = do
+  printList (x : xs) = do
     hPutChar outputHandle . chr $ fromIntegral x
     hFlush outputHandle
     printList xs
@@ -61,16 +62,17 @@ uartIO inputHandle outputHandle baud uartCircuit = do
       else pure Nothing
 
   input = fmap (fmap (fromIntegral . ord) . unsafePerformIO) $ ioList inputHandle
-  ioCircuit = circuit $ \ _n -> do
+  ioCircuit = circuit $ \_n -> do
     (receivedByte, txBit) <- uartWithLists baud input -< rxBit
     rxBit <- uartCircuit -< txBit
     unsafeToDf -< receivedByte
 
--- | A simulation function for circuits that expose a UART connection.
--- This function transforms a list into its respective uart driver, it also returns
--- a `CSignal` containing the `BitVector 8`s that are received on the incoming uart signal.
+{- | A simulation function for circuits that expose a UART connection.
+This function transforms a list into its respective uart driver, it also returns
+a `CSignal` containing the `BitVector 8`s that are received on the incoming uart signal.
+-}
 uartWithLists ::
-  forall dom baud .
+  forall dom baud.
   (KnownDomain dom, ValidBaud dom baud) =>
   -- | The baud rate for the UART communication.
   SNat baud ->
@@ -78,8 +80,8 @@ uartWithLists ::
   [Maybe (BitVector 8)] ->
   -- | The circuit to be simulated.
   Circuit (CSignal dom Bit) (CSignal dom (Maybe (BitVector 8)), CSignal dom Bit)
-uartWithLists baud input  =
+uartWithLists baud input =
   withClock clockGen $ withReset resetGen $ circuit $ \txBit -> do
-  dfIn <- drive def{resetCycles = 1} input
-  (receivedByte, rxBit) <- exposeEnable uartDf enableGen baud -< (dfIn, txBit)
-  idC -< (receivedByte, rxBit)
+    dfIn <- drive def{resetCycles = 1} input
+    (receivedByte, rxBit) <- exposeEnable uartDf enableGen baud -< (dfIn, txBit)
+    idC -< (receivedByte, rxBit)

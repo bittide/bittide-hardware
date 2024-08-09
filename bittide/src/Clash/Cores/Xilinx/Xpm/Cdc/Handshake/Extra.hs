@@ -10,17 +10,19 @@ import Data.Maybe
 
 import Bittide.Extra.Maybe
 
--- | Reliable CDC component based on `xpmCdcHandshakeMaybe` without backpressure and
--- with limited throughput. Data will be lost if the `src` domain provides more inputs
--- than the circuit can handle. Useful for low granularity synchronization,
--- in our case: synchronizing datacounts.
+{- | Reliable CDC component based on `xpmCdcHandshakeMaybe` without backpressure and
+with limited throughput. Data will be lost if the `src` domain provides more inputs
+than the circuit can handle. Useful for low granularity synchronization,
+in our case: synchronizing datacounts.
+-}
 xpmCdcMaybeLossy ::
   ( KnownDomain src
   , KnownDomain dst
   , BitPack a
   , NFDataX a
   , 1 <= BitSize a
-  , BitSize a <= 1024) =>
+  , BitSize a <= 1024
+  ) =>
   -- | Source clock
   Clock src ->
   -- | Destination clock
@@ -31,8 +33,14 @@ xpmCdcMaybeLossy ::
   Signal dst (Maybe a)
 xpmCdcMaybeLossy clkSrc clkDst maybeInp = mux (isRising clkDst noReset enableGen False dstAck) dstOut (pure Nothing)
  where
-  srcReg = regEn clkSrc noReset enableGen Nothing
-    (srcRcv .||. srcRegEmpty) $ mux (srcRegEmpty .&&. fmap not srcRcv) maybeInp (pure Nothing)
+  srcReg =
+    regEn
+      clkSrc
+      noReset
+      enableGen
+      Nothing
+      (srcRcv .||. srcRegEmpty)
+      $ mux (srcRegEmpty .&&. fmap not srcRcv) maybeInp (pure Nothing)
 
   srcRegEmpty = isNothing <$> srcReg
   (srcRcv, dstOut) = xpmCdcHandshakeMaybe clkSrc clkDst srcReg (isJust <$> dstOut)
@@ -45,7 +53,8 @@ xpmCdcHandshakeMaybe ::
   , BitPack a
   , NFDataX a
   , 1 <= BitSize a
-  , BitSize a <= 1024) =>
+  , BitSize a <= 1024
+  ) =>
   -- | Source clock
   Clock src ->
   -- | Destination clock
@@ -60,4 +69,5 @@ xpmCdcHandshakeMaybe ::
   (Signal src Bool, Signal dst (Maybe a))
 xpmCdcHandshakeMaybe clkSrc clkDst srcIn dstAck = (srcRcv, orNothing <$> dstReq <*> dstOut)
  where
-  (dstOut, dstReq, srcRcv) = xpmCdcHandshake clkSrc clkDst (fromMaybe (unpack 0) <$> srcIn) (isJust <$> srcIn) dstAck
+  (dstOut, dstReq, srcRcv) =
+    xpmCdcHandshake clkSrc clkDst (fromMaybe (unpack 0) <$> srcIn) (isJust <$> srcIn) dstAck

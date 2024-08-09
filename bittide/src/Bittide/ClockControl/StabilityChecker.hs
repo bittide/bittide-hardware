@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -10,28 +9,29 @@ module Bittide.ClockControl.StabilityChecker where
 
 import Clash.Prelude
 
-import Foreign.Storable (Storable(..))
+import Foreign.Storable (Storable (..))
 
 import Bittide.ClockControl (RelDataCount, targetDataCount)
 import Bittide.ClockControl.Callisto.Util (dataCountToSigned)
 import Bittide.ClockControl.Foreign.Sizes
 
 -- | Stability results to be returned by the 'stabilityChecker'.
-data StabilityIndication =
-  StabilityIndication
-    { stable :: Bool
-      -- ^ Indicates stability of the signal over time.
-    , settled :: Bool
-      -- ^ Indicates whether the signal is stable and close to
-      -- 'targetDataCount'.
-    }
+data StabilityIndication = StabilityIndication
+  { stable :: Bool
+  -- ^ Indicates stability of the signal over time.
+  , settled :: Bool
+  -- ^ Indicates whether the signal is stable and close to
+  -- 'targetDataCount'.
+  }
   deriving (Generic, NFDataX, BitPack)
 
-type instance SizeOf StabilityIndication =
-  SizeOf Int
+type instance
+  SizeOf StabilityIndication =
+    SizeOf Int
 
-type instance Alignment StabilityIndication =
-  Alignment Int
+type instance
+  Alignment StabilityIndication =
+    Alignment Int
 
 instance Storable StabilityIndication where
   sizeOf = const $ natToNum @(SizeOf StabilityIndication)
@@ -44,22 +44,23 @@ instance Storable StabilityIndication where
 
   poke p = pokeByteOff p 0 . toC
    where
-     toC :: StabilityIndication -> Int
-     toC (StabilityIndication x y) =
-       let xBit = if x then (`setBit` 0) else (`clearBit` 0)
-           yBit = if y then (`setBit` 1) else (`clearBit` 1)
-       in  xBit $ yBit zeroBits
+    toC :: StabilityIndication -> Int
+    toC (StabilityIndication x y) =
+      let xBit = if x then (`setBit` 0) else (`clearBit` 0)
+          yBit = if y then (`setBit` 1) else (`clearBit` 1)
+       in xBit $ yBit zeroBits
 
--- | Checks whether the @Signal@ of buffer occupancies from an elastic
--- buffer is stable and settled. The @Signal@ is considered to be
--- stable, if it stays within a @margin@ of the target buffer
--- occupancy for @framesize@ number of cycles. If the current buffer
--- occupancies exceed that margin, then the target is updated to the
--- current buffer occupancy. The @Signal@ is considered to be settled,
--- if it is stable and close (within @margin@) to the global target
--- data count.
+{- | Checks whether the @Signal@ of buffer occupancies from an elastic
+buffer is stable and settled. The @Signal@ is considered to be
+stable, if it stays within a @margin@ of the target buffer
+occupancy for @framesize@ number of cycles. If the current buffer
+occupancies exceed that margin, then the target is updated to the
+current buffer occupancy. The @Signal@ is considered to be settled,
+if it is stable and close (within @margin@) to the global target
+data count.
+-}
 stabilityChecker ::
-  forall dom margin framesize n .
+  forall dom margin framesize n.
   (HiddenClockResetEnable dom, 1 <= framesize, KnownNat n) =>
   -- | Maximum number of elements the incoming buffer occupancy is
   -- allowed to deviate from the current @target@ for it to be
@@ -82,7 +83,7 @@ stabilityChecker SNat SNat = mealy go (0, targetDataCount)
     newState :: (Index (framesize + 1), RelDataCount n)
     newState
       | withinMargin target input = (satSucc SatBound cnt, target)
-      | otherwise                 = (0, input)
+      | otherwise = (0, input)
 
     stable = withinMargin target input && cnt == maxBound
     settled = stable && withinMargin targetDataCount input

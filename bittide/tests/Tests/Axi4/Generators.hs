@@ -1,10 +1,9 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 module Tests.Axi4.Generators where
 
@@ -22,17 +21,19 @@ import Test.Tasty.Hedgehog
 import Tests.Axi4.Properties
 import Tests.Axi4.Types
 
+import qualified Data.List as L
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Range as Range
-import qualified Data.List as L
 import qualified Hedgehog.Internal.Property as H
+import qualified Hedgehog.Range as Range
 
 tests :: TestTree
-tests = testGroup "Axi4Stream Generators"
-  [ testProperty "genAxisM2S" prop_genAxisM2S
-  , testProperty "genRandomAxiPacket" prop_genRandomAxiPacket
-  ]
+tests =
+  testGroup
+    "Axi4Stream Generators"
+    [ testProperty "genAxisM2S" prop_genAxisM2S
+    , testProperty "genRandomAxiPacket" prop_genRandomAxiPacket
+    ]
 
 -- | Generates a directed Axi4StreamM2S transaction.
 genAxisM2S ::
@@ -50,11 +51,11 @@ genAxisM2S ::
   Gen userType ->
   Gen (Axi4StreamM2S ('Axi4StreamConfig dataWidth idWidth destWidth) userType)
 genAxisM2S SNat SNat SNat byteTypes lastValues genUser = do
-  bytes  <- genVec $ Gen.choice $ fmap pure byteTypes
+  bytes <- genVec $ Gen.choice $ fmap pure byteTypes
   let (_tkeep, _tstrb) = unzip $ map getKeepStrobe bytes
   _tdata <- genVec $ genUnsigned Range.constantBounded
   _tlast <- Gen.choice $ fmap pure lastValues
-  _tid   <- genUnsigned Range.constantBounded
+  _tid <- genUnsigned Range.constantBounded
   _tdest <- genUnsigned Range.constantBounded
   _tuser <- genUser
   pure $ Axi4StreamM2S{..}
@@ -73,9 +74,17 @@ prop_genAxisM2S = property $ do
       let axiBytes = getByteType <$> getTransferBytes axi
       cover 40 "tlast" (_tlast axi)
       cover 40 "not tlast" (not $ _tlast axi)
-      mapM_ (\ byte -> cover 25 (H.LabelName $ "One or more " <> show byte) (isJust $ elemIndex byte axiBytes)) byteTypes
-      mapM_ (\ byte -> cover 1 (H.LabelName $ "All " <> show byte) (all (== byte) axiBytes)) byteTypes
-      mapM_ (\ byte -> cover 1 (H.LabelName $ "No " <> show byte) (byte `notElem` axiBytes)) byteTypes
+      mapM_
+        ( \byte ->
+            cover 25 (H.LabelName $ "One or more " <> show byte) (isJust $ elemIndex byte axiBytes)
+        )
+        byteTypes
+      mapM_
+        (\byte -> cover 1 (H.LabelName $ "All " <> show byte) (all (== byte) axiBytes))
+        byteTypes
+      mapM_
+        (\byte -> cover 1 (H.LabelName $ "No " <> show byte) (byte `notElem` axiBytes))
+        byteTypes
       assert (all (`L.elem` byteTypes) $ toList axiBytes)
       assert (_tlast axi `L.elem` lastValues)
 
@@ -84,8 +93,9 @@ data PacketDensity
   | Dense
   deriving (Show, Eq)
 
--- | Generate a list of Axi4StreamM2S transactions that form a single packet, only the last transaction
--- will have _tlast set to True. The packet
+{- | Generate a list of Axi4StreamM2S transactions that form a single packet, only the last transaction
+will have _tlast set to True. The packet
+-}
 genRandomAxiPacket ::
   -- | Data width of the Axi4StreamM2S transaction
   SNat dataWidth ->
@@ -102,7 +112,8 @@ genRandomAxiPacket ::
   -- | Generator for a list of transactions representing a packet
   Gen [Maybe (Axi4StreamM2S ('Axi4StreamConfig dataWidth idWidth destWidth) userType)]
 genRandomAxiPacket SNat SNat SNat byteTypes range genUser = do
-  packetInit <- Gen.list range (Gen.maybe $ genAxisM2S SNat SNat SNat byteTypes [False] genUser)
+  packetInit <-
+    Gen.list range (Gen.maybe $ genAxisM2S SNat SNat SNat byteTypes [False] genUser)
   packetLast <- genAxisM2S SNat SNat SNat byteTypes [True] genUser
   pure (L.tail $ packetInit <> [Just packetLast])
 
@@ -113,7 +124,9 @@ prop_genRandomAxiPacket = property $ do
     (SomeNat (Proxy :: Proxy dataWidth)) -> do
       let
         byteTypes = [NullByte, DataByte, PositionByte]
-      transfers <- forAll $ genRandomAxiPacket (SNat @dataWidth) d0 d0 byteTypes (Range.constant 1 16) (pure ())
+      transfers <-
+        forAll
+          $ genRandomAxiPacket (SNat @dataWidth) d0 d0 byteTypes (Range.constant 1 16) (pure ())
       let
         packet = catMaybes transfers
         axiBytes = getPacketByteTypes packet

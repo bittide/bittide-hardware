@@ -28,41 +28,46 @@ import qualified Tests.Transceiver.WordAlign
 import qualified Tests.Wishbone
 
 tests :: TestTree
-tests = testGroup "Unittests"
-  [ Tests.Axi4.tests
-  , Tests.Calendar.tests
-  , Tests.ClockControl.Si539xSpi.tests
-  , Tests.DoubleBufferedRam.tests
-  , Tests.ElasticBuffer.tests
-  , Tests.Link.tests
-  , Tests.ProcessingElement.ReadElf.tests
-  , Tests.ScatterGather.tests
-  , Tests.StabilityChecker.tests
-  , Tests.Switch.tests
-  , Tests.Transceiver.tests
-  , Tests.Transceiver.Prbs.tests
-  , Tests.Transceiver.WordAlign.tests
-  , Tests.Wishbone.tests
-  , Tests.Axi4.Generators.tests
-  , Tests.Axi4.Properties.tests
-  , Tests.Haxioms.tests
-  ]
+tests =
+  testGroup
+    "Unittests"
+    [ Tests.Axi4.tests
+    , Tests.Calendar.tests
+    , Tests.ClockControl.Si539xSpi.tests
+    , Tests.DoubleBufferedRam.tests
+    , Tests.ElasticBuffer.tests
+    , Tests.Link.tests
+    , Tests.ProcessingElement.ReadElf.tests
+    , Tests.ScatterGather.tests
+    , Tests.StabilityChecker.tests
+    , Tests.Switch.tests
+    , Tests.Transceiver.tests
+    , Tests.Transceiver.Prbs.tests
+    , Tests.Transceiver.WordAlign.tests
+    , Tests.Wishbone.tests
+    , Tests.Axi4.Generators.tests
+    , Tests.Axi4.Properties.tests
+    , Tests.Haxioms.tests
+    ]
 
--- | Default number of tests is 100, which is too low for our (complicated)
--- state machinery.
+{- | Default number of tests is 100, which is too low for our (complicated)
+state machinery.
+-}
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
 setDefaultHedgehogTestLimit (HedgehogTestLimit Nothing) = HedgehogTestLimit (Just 1000)
 setDefaultHedgehogTestLimit opt = opt
 
--- | Hedgehog seemingly gets stuck in an infinite loop when shrinking - probably
--- due to the way our generators depend on each other. We limit the number of
--- shrinks to 100.
+{- | Hedgehog seemingly gets stuck in an infinite loop when shrinking - probably
+due to the way our generators depend on each other. We limit the number of
+shrinks to 100.
+-}
 setDefaultHedgehogShrinkLimit :: HedgehogShrinkLimit -> HedgehogShrinkLimit
 setDefaultHedgehogShrinkLimit (HedgehogShrinkLimit Nothing) = HedgehogShrinkLimit (Just 100)
 setDefaultHedgehogShrinkLimit opt = opt
 
 main :: IO ()
-main = defaultMain
-  $ adjustOption setDefaultHedgehogTestLimit
-  $ adjustOption setDefaultHedgehogShrinkLimit
-  $ tests
+main =
+  defaultMain $
+    adjustOption setDefaultHedgehogTestLimit $
+      adjustOption setDefaultHedgehogShrinkLimit $
+        tests

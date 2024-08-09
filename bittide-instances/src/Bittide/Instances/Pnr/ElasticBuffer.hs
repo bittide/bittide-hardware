@@ -5,18 +5,18 @@
 
 module Bittide.Instances.Pnr.ElasticBuffer where
 
-import Clash.Prelude
 import Clash.Annotations.TH
+import Clash.Prelude
 
-import Bittide.ElasticBuffer
 import Bittide.ClockControl (RelDataCount)
+import Bittide.ElasticBuffer
 
-createDomain vXilinxSystem{vPeriod=hzToPeriod 201e6, vName="Fast"}
-createDomain vXilinxSystem{vPeriod=hzToPeriod 199e6, vName="Slow"}
+createDomain vXilinxSystem{vPeriod = hzToPeriod 201e6, vName = "Fast"}
+createDomain vXilinxSystem{vPeriod = hzToPeriod 199e6, vName = "Slow"}
 
 elasticBuffer5 ::
   "clkReadFast" ::: Clock Fast ->
-  "clkWriteSlow" :::Clock Slow ->
+  "clkWriteSlow" ::: Clock Slow ->
   "resetRead" ::: Reset Fast ->
   "writeData" ::: Signal Slow (Unsigned 8) ->
   ( "dataCount" ::: Signal Fast (RelDataCount 5)

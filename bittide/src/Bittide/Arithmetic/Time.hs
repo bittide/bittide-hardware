@@ -1,29 +1,39 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleInstances,MultiParamTypeClasses,TemplateHaskell #-}
+{-# LANGUAGE FlexibleInstances #-}
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NumericUnderscores #-}
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+
 module Bittide.Arithmetic.Time where
 
+import Clash.Explicit.Prelude hiding (PeriodToCycles, natVal)
 import GHC.Stack (HasCallStack)
-import Clash.Explicit.Prelude hiding (natVal, PeriodToCycles)
 
-import Clash.Class.Counter (countSucc, Counter)
+import Clash.Class.Counter (Counter, countSucc)
 import Clash.Signal.Internal (Femtoseconds (Femtoseconds), mapFemtoseconds)
-import Data.Data (Proxy(..))
+import Data.Data (Proxy (..))
 import Data.Int (Int64)
 import Data.Kind (Type)
 
+import GHC.TypeLits.KnownNat (KnownNat1 (..), SNatKn (..), nameToSymbol)
 import GHC.TypeNats (natVal)
-import GHC.TypeLits.KnownNat (KnownNat1 (..),SNatKn(..), nameToSymbol)
 
--- | XXX: We currently retain this in favor of @clash-prelude@s 'PeriodToCycles'
--- until @1 <= DomainPeriod dom@ is trivially true. Related issue:
--- https://github.com/clash-lang/ghc-typelits-extra/issues/56
---
---Number of clock cycles required at the clock frequency of @dom@ before a minimum @period@ has passed.
--- Is always at least one.
+{- | XXX: We currently retain this in favor of @clash-prelude@s 'PeriodToCycles'
+until @1 <= DomainPeriod dom@ is trivially true. Related issue:
+https://github.com/clash-lang/ghc-typelits-extra/issues/56
+
+Number of clock cycles required at the clock frequency of @dom@ before a minimum @period@ has passed.
+Is always at least one.
+-}
 type PeriodToCycles dom period = Max 1 (DivRU period (Max 1 (DomainPeriod dom)))
 
 -- Make ghc-typelits-knownnat look through time related type aliases.
@@ -48,8 +58,9 @@ instance (KnownNat ps) => KnownNat1 $(nameToSymbol ''Seconds) ps where
   natSing1 = SNatKn (natVal (Proxy @(1_000_000_000_000 * ps)))
   {-# NOINLINE natSing1 #-}
 
--- | 'Index' with its 'maxBound' corresponding to the number of cycles needed to
--- wait for /n/ milliseconds.
+{- | 'Index' with its 'maxBound' corresponding to the number of cycles needed to
+wait for /n/ milliseconds.
+-}
 type IndexMs dom n = Index (PeriodToCycles dom (Milliseconds n))
 
 seconds :: Int64 -> Femtoseconds
@@ -75,56 +86,74 @@ femtoseconds :: Int64 -> Femtoseconds
 femtoseconds = Femtoseconds
 {-# INLINE femtoseconds #-}
 
--- | Rises after the incoming signal has been 'True' for the specified amount of
--- time. Use this function if you know the time to wait for at compile time. If
--- not, use 'trueForSteps'.
+{- | Rises after the incoming signal has been 'True' for the specified amount of
+time. Use this function if you know the time to wait for at compile time. If
+not, use 'trueForSteps'.
+-}
 trueFor ::
-  forall dom t. HasCallStack =>
+  forall dom t.
+  (HasCallStack) =>
   (KnownDomain dom, KnownNat t) =>
-  SNat t ->
-  -- ^ Use the type aliases of 'Bittide.Arithmetic.Time' for time span
+  -- | Use the type aliases of 'Bittide.Arithmetic.Time' for time span
   -- specification.
+  SNat t ->
   Clock dom ->
   Reset dom ->
   Signal dom Bool ->
   Signal dom Bool
 trueFor _ clk rst =
-  moore clk rst enableGen transF (== maxBound)
+  moore
+    clk
+    rst
+    enableGen
+    transF
+    (== maxBound)
     (0 :: Index (PeriodToCycles dom t))
  where
   transF counter = \case
     True -> satSucc SatBound counter
-    _    -> 0
+    _ -> 0
 
--- | Rises after the incoming signal has been 'True' for the specified amount of
--- time given as a configurable number of steps of a given step size (i.e., wait
--- for @stepSize * numberOfSteps@)). Example invocation:
---
--- > trueForSteps @(Milliseconds 1) Proxy someLimit clk rst signal
---
--- which will wait for @someLimit@ milliseconds. Use 'trueFor' if you know the
--- time to wait for at compile time. If not, use 'trueForSteps'.
+{- | Rises after the incoming signal has been 'True' for the specified amount of
+time given as a configurable number of steps of a given step size (i.e., wait
+for @stepSize * numberOfSteps@)). Example invocation:
+
+> trueForSteps @(Milliseconds 1) Proxy someLimit clk rst signal
+
+which will wait for @someLimit@ milliseconds. Use 'trueFor' if you know the
+time to wait for at compile time. If not, use 'trueForSteps'.
+-}
 trueForSteps ::
-  forall (stepSize :: Nat) (dom :: Domain) (counter :: Type) .
+  forall (stepSize :: Nat) (dom :: Domain) (counter :: Type).
   ( HasCallStack
   , KnownDomain dom
   , KnownNat stepSize
-  , NFDataX counter, Bounded counter, Counter counter, Eq counter, Num counter
+  , NFDataX counter
+  , Bounded counter
+  , Counter counter
+  , Eq counter
+  , Num counter
   ) =>
-  Proxy stepSize ->
-  -- ^ Step size. Use the type aliases of 'Bittide.Arithmetic.Time' for time span
+  -- | Step size. Use the type aliases of 'Bittide.Arithmetic.Time' for time span
   -- specification.
+  Proxy stepSize ->
+  -- | Number of steps to wait for
   counter ->
-  -- ^ Number of steps to wait for
   Clock dom ->
   Reset dom ->
   Signal dom Bool ->
   Signal dom Bool
 trueForSteps _ limit clk rst =
-  moore clk rst enableGen transF ((== limit) . fst) (0, 0 :: Index (PeriodToCycles dom stepSize))
+  moore
+    clk
+    rst
+    enableGen
+    transF
+    ((== limit) . fst)
+    (0, 0 :: Index (PeriodToCycles dom stepSize))
  where
   transF cntr@(ms, _) = \case
     True
       | ms == limit -> cntr
-      | otherwise   -> countSucc cntr
-    _    -> minBound
+      | otherwise -> countSucc cntr
+    _ -> minBound

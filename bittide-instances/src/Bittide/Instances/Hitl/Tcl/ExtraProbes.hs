@@ -6,15 +6,17 @@ module Bittide.Instances.Hitl.Tcl.ExtraProbes where
 import Clash.Prelude
 
 import Bittide.Instances.Domains
-import Clash.Annotations.TH ( makeTopEntity )
+import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Extra
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Clash.Cores.Xilinx.VIO
 import Data.Maybe
 
 {-# NOINLINE extraProbesTest #-}
--- | A circuit that verifies the correct behavior of the TCL infrastructure for
--- setting extra probes in Hitl tests.
+
+{- | A circuit that verifies the correct behavior of the TCL infrastructure for
+setting extra probes in Hitl tests.
+-}
 extraProbesTest ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->
   "success" ::: Signal Ext125 Bool
@@ -27,19 +29,20 @@ extraProbesTest diffClk = testSuccess
   rst = unsafeFromActiveLow testStart
   fpgaId = withClockResetEnable clk rst enableGen $ readDnaPortE2I simDna2
   (testStart, testState, extraProbe) =
-    unbundle $
-    setName @"vioHitlt" $
-    vioProbe
-      ("probe_test_done" :> "probe_test_success" :> "fpgaId" :> Nil)
-      ("probe_test_start" :> "testState" :> "extraProbe" :> Nil)
-      (False, SetDefaultProbes, maxBound)
-      clk
-      testDone
-      testSuccess
-      fpgaId
+    unbundle
+      $ setName @"vioHitlt"
+      $ vioProbe
+        ("probe_test_done" :> "probe_test_success" :> "fpgaId" :> Nil)
+        ("probe_test_start" :> "testState" :> "extraProbe" :> Nil)
+        (False, SetDefaultProbes, maxBound)
+        clk
+        testDone
+        testSuccess
+        fpgaId
 
--- | Produce the test result based on the test state and the extra probe value.
--- These values should correspond to the yaml configuration.
+{- | Produce the test result based on the test state and the extra probe value.
+These values should correspond to the yaml configuration.
+-}
 testResult :: TestState -> BitVector 96 -> Maybe (BitVector 96) -> Bool
 testResult s extraProbe fpgaId = case (s, extraProbe) of
   (SetDefaultProbes, 0) -> True

@@ -1,35 +1,38 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
+
 {-# OPTIONS -fplugin=Protocols.Plugin #-}
 
 module Bittide.ProcessingElement where
 
-import Clash.Prelude
 import Clash.Explicit.Prelude (unsafeOrReset)
+import Clash.Prelude
 
 import Protocols
 import Protocols.Wishbone
-import VexRiscv (CpuIn(..), CpuOut(..), Jtag, JtagOut(debugReset), vexRiscv)
+import VexRiscv (CpuIn (..), CpuOut (..), Jtag, JtagOut (debugReset), vexRiscv)
 
 import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
-import Clash.Cores.Xilinx.Ila (Depth(D4096))
+import Clash.Cores.Xilinx.Ila (Depth (D4096))
 
 import qualified Data.ByteString as BS
 
 -- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where
   PeConfig ::
-    ( KnownNat depthI, 1 <= depthI
-    , KnownNat depthD, 1 <= depthD) =>
+    ( KnownNat depthI
+    , 1 <= depthI
+    , KnownNat depthD
+    , 1 <= depthD
+    ) =>
     -- | The 'MemoryMap' for the contained 'singleMasterInterconnect'.
     MemoryMap nBusses ->
     -- | Initial content of the instruction memory, can be smaller than its total depth.
@@ -38,16 +41,20 @@ data PeConfig nBusses where
     InitialContent depthD (Bytes 4) ->
     PeConfig nBusses
 
--- | VexRiscV based RV32IMC core together with instruction memory, data memory and
--- 'singleMasterInterconnect'.
+{- | VexRiscV based RV32IMC core together with instruction memory, data memory and
+'singleMasterInterconnect'.
+-}
 processingElement ::
-  forall dom nBusses .
+  forall dom nBusses.
   ( HiddenClockResetEnable dom
-  , KnownNat nBusses, 2 <= nBusses, CLog 2 nBusses <= 30) =>
+  , KnownNat nBusses
+  , 2 <= nBusses
+  , CLog 2 nBusses <= 30
+  ) =>
   PeConfig nBusses ->
   Circuit
     (Jtag dom)
-    (Vec (nBusses-2) (Wishbone dom 'Standard (MappedBusAddrWidth 32 nBusses) (Bytes 4)))
+    (Vec (nBusses - 2) (Wishbone dom 'Standard (MappedBusAddrWidth 32 nBusses) (Bytes 4)))
 processingElement (PeConfig memMapConfig initI initD) = circuit $ \jtagIn -> do
   (iBus0, dBus0) <- rvCircuit (pure low) (pure low) (pure low) -< jtagIn
   iBus1 <- ilaWb (SSymbol @"instructionBus") 2 D4096 -< iBus0
@@ -60,23 +67,22 @@ processingElement (PeConfig memMapConfig initI initD) = circuit $ \jtagIn -> do
   idC -< extBusses
  where
   removeMsb ::
-    forall aw a .
-    KnownNat aw =>
+    forall aw a.
+    (KnownNat aw) =>
     Circuit
       (Wishbone dom 'Standard (aw + 4) a)
       (Wishbone dom 'Standard aw a)
-  removeMsb = wbMap (mapAddr (truncateB  :: BitVector (aw + 4) -> BitVector aw)) id
+  removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + 4) -> BitVector aw)) id
 
   wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
-
 
 -- | Conceptually the same as 'splitAt', but for 'Circuit's
 splitAtC ::
   SNat left ->
-  Circuit (Vec (left + right) a) (Vec left a , Vec right a)
+  Circuit (Vec (left + right) a) (Vec left a, Vec right a)
 splitAtC SNat = Circuit go
  where
-  go (fwd,(bwdLeft, bwdRight)) = (bwd,(fwdLeft, fwdRight))
+  go (fwd, (bwdLeft, bwdRight)) = (bwd, (fwdLeft, fwdRight))
    where
     (fwdLeft, fwdRight) = splitAtI fwd
     bwd = bwdLeft ++ bwdRight
@@ -89,12 +95,13 @@ rvCircuit ::
   Circuit
     (Jtag dom)
     ( Wishbone dom 'Standard 32 (Bytes 4)
-    , Wishbone dom 'Standard 32 (Bytes 4) )
+    , Wishbone dom 'Standard 32 (Bytes 4)
+    )
 rvCircuit tInterrupt sInterrupt eInterrupt = Circuit go
  where
   go (jtagIn, (iBusIn, dBusIn)) = (jtagOut, (iBusOut, dBusOut))
    where
-    tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) = CpuIn {..}
+    tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) = CpuIn{..}
     rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
     (cpuOut, jtagOut) = vexRiscv hasClock (hasReset `unsafeOrReset` jtagReset) rvIn jtagIn
     jtagReset = unsafeFromActiveHigh (delay False (bitToBool . debugReset <$> jtagOut))
@@ -111,10 +118,11 @@ mapAddr ::
   (BitVector aw1 -> BitVector aw2) ->
   WishboneM2S aw1 selWidth a ->
   WishboneM2S aw2 selWidth a
-mapAddr f wb = wb { addr = f (addr wb) }
+mapAddr f wb = wb{addr = f (addr wb)}
 
--- | Stateless wishbone device that only acknowledges writes to address 0.
--- Successful writes return the 'writeData' and 'busSelect'.
+{- | Stateless wishbone device that only acknowledges writes to address 0.
+Successful writes return the 'writeData' and 'busSelect'.
+-}
 wishboneSink ::
   (KnownNat addressWidth, Paddable dat) =>
   -- | Incoming wishbone bus.
@@ -135,9 +143,10 @@ wishboneSink = fmap go
     output = orNothing acknowledge (busSelect, writeData)
     wbOut = emptyWishboneS2M{acknowledge, err}
 
--- | Provide a vector of filepaths, and a write operations containing a byteSelect and
--- a vector of characters and, for each filepath write the corresponding byte to that file
--- if the corresponding byteSelect is @1@.
+{- | Provide a vector of filepaths, and a write operations containing a byteSelect and
+a vector of characters and, for each filepath write the corresponding byte to that file
+if the corresponding byteSelect is @1@.
+-}
 printCharacters ::
   (KnownNat paths, KnownNat chars, (paths + n) ~ chars) =>
   -- | Destination files for received bytes.
@@ -149,9 +158,9 @@ printCharacters Nil _ = pure ()
 printCharacters paths@(Cons _ _) inps = case inps of
   Just (byteSelect, chars) ->
     sequence_ $ printToFiles <*> take SNat (unpack byteSelect) <*> take SNat chars
-  Nothing   -> pure ()
+  Nothing -> pure ()
  where
   printToFiles = printToFile <$> paths
   printToFile path byteSelect char
     | byteSelect = BS.appendFile path $ BS.singleton $ bitCoerce char
-    | otherwise  = pure ()
+    | otherwise = pure ()

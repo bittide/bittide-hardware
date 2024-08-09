@@ -10,35 +10,35 @@ module Clash.Cores.Extra where
 import Clash.Annotations.Primitive
 import Clash.Explicit.Prelude hiding (Fixed, (:<))
 
-import Clash.Netlist.Types (TemplateFunction(..), BlackBoxContext(..), HWType(..))
+import Clash.Netlist.Types (BlackBoxContext (..), HWType (..), TemplateFunction (..))
 import Clash.Netlist.Util (stripVoid)
-import Data.Fixed (Fixed(..), E3)
-import Data.List.Infinite (Infinite((:<)), (...))
+import Data.Fixed (E3, Fixed (..))
+import Data.List.Infinite (Infinite ((:<)), (...))
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (__i)
 
+{- | A typical dual flipflop synchronizer, prepended with a flipflop operating
+in the source domain. The two flipflops operating in the target domain are
+packed tightly together using Vivado's ASYNC_REG synthesis attribute. For more
+information see:
 
--- | A typical dual flipflop synchronizer, prepended with a flipflop operating
--- in the source domain. The two flipflops operating in the target domain are
--- packed tightly together using Vivado's ASYNC_REG synthesis attribute. For more
--- information see:
---
---     https://docs.xilinx.com/r/en-US/ug901-vivado-synthesis/ASYNC_REG
---
--- HDL generation also generates an @.sdc@ file for Vivado with the correct
--- timing constraints for the synchronizer. The HDL contains unique register
--- names so the SDC can match on just these registers.
---
--- __N.B.__: You cannot synchronize words by combining multiple instantiations
---           of 'safeDffSynchronizer'. If you want to do this, look into
---           'dcFifo'.
---
+    https://docs.xilinx.com/r/en-US/ug901-vivado-synthesis/ASYNC_REG
+
+HDL generation also generates an @.sdc@ file for Vivado with the correct
+timing constraints for the synchronizer. The HDL contains unique register
+names so the SDC can match on just these registers.
+
+__N.B.__: You cannot synchronize words by combining multiple instantiations
+          of 'safeDffSynchronizer'. If you want to do this, look into
+          'dcFifo'.
+-}
 safeDffSynchronizer ::
   forall dom1 dom2 a.
   ( KnownDomain dom1
   , KnownDomain dom2
   , NFDataX a
-  , BitSize a ~ 1 ) =>
+  , BitSize a ~ 1
+  ) =>
   Clock dom1 ->
   Clock dom2 ->
   a ->
@@ -47,14 +47,16 @@ safeDffSynchronizer ::
 safeDffSynchronizer clk1 clk2 initVal i =
   snd $ safeDffSynchronizer0 clk1 clk2 initVal i
 
--- | Like 'safeDffSynchronizer', but the source register is provided on the
--- output for further use in the source domain
+{- | Like 'safeDffSynchronizer', but the source register is provided on the
+output for further use in the source domain
+-}
 safeDffSynchronizer0 ::
   forall dom1 dom2 a.
   ( KnownDomain dom1
   , KnownDomain dom2
   , NFDataX a
-  , BitSize a ~ 1 ) =>
+  , BitSize a ~ 1
+  ) =>
   Clock dom1 ->
   Clock dom2 ->
   a ->
@@ -62,36 +64,40 @@ safeDffSynchronizer0 ::
   (Signal dom1 a, Signal dom2 a)
 safeDffSynchronizer0 clk1 clk2 initVal i = (sOut, dOut)
  where
-  dOut =   flipflop clk2
-         . flipflop clk2
-         $ unsafeSynchronizer clk1 clk2 sOut
+  dOut =
+    flipflop clk2
+      . flipflop clk2
+      $ unsafeSynchronizer clk1 clk2 sOut
   sOut = flipflop clk1 i
-  flipflop :: KnownDomain dom => Clock dom -> Signal dom a -> Signal dom a
+  flipflop :: (KnownDomain dom) => Clock dom -> Signal dom a -> Signal dom a
   flipflop clk = delay clk enableGen initVal
 {-# OPAQUE safeDffSynchronizer0 #-}
 {-# ANN safeDffSynchronizer0 hasBlackBox #-}
-{-# ANN safeDffSynchronizer0 (
-  let
-    (   dom1
-     :< dom2
-     :< _nfdatax
-     :< _bitsize
-     :< clock1
-     :< clock2
-     :< initVal
-     :< inp
-     :< _
-     ) = ((0::Int)...)
+{-# ANN
+  safeDffSynchronizer0
+  ( let
+      ( dom1
+          :< dom2
+          :< _nfdatax
+          :< _bitsize
+          :< clock1
+          :< clock2
+          :< initVal
+          :< inp
+          :< _
+        ) = ((0 :: Int) ...)
 
-    (   regA
-     :< regB
-     :< regC
-     :< _
-     ) = ((0::Int)...)
-    funcName = 'safeDffSynchronizer0
-    tfName = 'safeDffSynchronizerTF
-  in
-    InlineYamlPrimitive [Verilog, SystemVerilog] [__i|
+      ( regA
+          :< regB
+          :< regC
+          :< _
+        ) = ((0 :: Int) ...)
+      funcName = 'safeDffSynchronizer0
+      tfName = 'safeDffSynchronizerTF
+     in
+      InlineYamlPrimitive
+        [Verilog, SystemVerilog]
+        [__i|
       BlackBox:
         kind: Declaration
         name: #{funcName}
@@ -116,30 +122,35 @@ safeDffSynchronizer0 clk1 clk2 initVal i = (sOut, dOut)
             name: dff_sync
             format: Haskell
             templateFunction: #{tfName}
-|]) #-}
-{-# ANN safeDffSynchronizer0 (
-  let
-    (   dom1
-     :< dom2
-     :< _nfdatax
-     :< _bitsize
-     :< clock1
-     :< clock2
-     :< initVal
-     :< inp
-     :< _
-     ) = ((0::Int)...)
+|]
+  )
+  #-}
+{-# ANN
+  safeDffSynchronizer0
+  ( let
+      ( dom1
+          :< dom2
+          :< _nfdatax
+          :< _bitsize
+          :< clock1
+          :< clock2
+          :< initVal
+          :< inp
+          :< _
+        ) = ((0 :: Int) ...)
 
-    (   regA
-     :< regB
-     :< regC
-     :< block
-     :< _
-     ) = ((0::Int)...)
-    funcName = 'safeDffSynchronizer0
-    tfName = 'safeDffSynchronizerTF
-  in
-    InlineYamlPrimitive [VHDL] [__i|
+      ( regA
+          :< regB
+          :< regC
+          :< block
+          :< _
+        ) = ((0 :: Int) ...)
+      funcName = 'safeDffSynchronizer0
+      tfName = 'safeDffSynchronizerTF
+     in
+      InlineYamlPrimitive
+        [VHDL]
+        [__i|
       BlackBox:
         kind: Declaration
         name: #{funcName}
@@ -180,32 +191,37 @@ safeDffSynchronizer0 clk1 clk2 initVal i = (sOut, dOut)
             name: dff_sync
             format: Haskell
             templateFunction: #{tfName}
-|]) #-}
+|]
+  )
+  #-}
 
 safeDffSynchronizerTF :: TemplateFunction
 safeDffSynchronizerTF =
   let
-    (   dom1Used
-     :< dom2Used
-     :< _nfdatax
-     :< _bitsize
-     :< _clock1
-     :< _clock2
-     :< _initVal
-     :< _inp
-     :< _
-     ) = ((0::Int)...)
-  in TemplateFunction [dom1Used, dom2Used] (const True) $ \bbCtx ->
-    pure . fromMaybe (error "Pattern match failure") $ do
+    ( dom1Used
+        :< dom2Used
+        :< _nfdatax
+        :< _bitsize
+        :< _clock1
+        :< _clock2
+        :< _initVal
+        :< _inp
+        :< _
+      ) = ((0 :: Int) ...)
+   in
+    TemplateFunction [dom1Used, dom2Used] (const True) $ \bbCtx ->
+      pure . fromMaybe (error "Pattern match failure") $ do
         [compName] <- pure (bbQsysIncName bbCtx)
         [ (_, stripVoid -> dom1, _)
-         , (_, stripVoid -> dom2, _)
-         , _nfdatax
-         , _bitsize
-         , _clock1
-         , _clock2
-         , _initVal
-         , _inp ] <- pure (bbInputs bbCtx)
+          , (_, stripVoid -> dom2, _)
+          , _nfdatax
+          , _bitsize
+          , _clock1
+          , _clock2
+          , _initVal
+          , _inp
+          ] <-
+          pure (bbInputs bbCtx)
         KnownDomain _ dom1Period _ _ _ _ <- pure dom1
         KnownDomain _ dom2Period _ _ _ _ <- pure dom2
         let minPeriodNs = MkFixed $ min dom1Period dom2Period :: Fixed E3

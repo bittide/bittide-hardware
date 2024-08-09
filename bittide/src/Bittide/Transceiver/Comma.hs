@@ -6,15 +6,16 @@ module Bittide.Transceiver.Comma where
 import Clash.Explicit.Prelude
 
 import Bittide.Arithmetic.Time (IndexMs)
-import Bittide.SharedTypes (Bytes, Byte)
-import Clash.Class.Counter (Counter(countSuccOverflow))
+import Bittide.SharedTypes (Byte, Bytes)
+import Clash.Class.Counter (Counter (countSuccOverflow))
 
 -- | Generate commas (transceiver alignment symbols) for a number of milliseconds
 generator ::
-  forall ms nBytes dom .
+  forall ms nBytes dom.
   ( KnownDomain dom
   , KnownNat nBytes
-  , 1 <= ms ) =>
+  , 1 <= ms
+  ) =>
   SNat ms ->
   Clock dom ->
   Reset dom ->
@@ -22,11 +23,12 @@ generator ::
   ( Signal dom (Maybe (Bytes nBytes))
   , Signal dom (BitVector nBytes)
   )
-generator _nCycles@SNat clk rst = unbundle $
-  mux
-    (counter .==. pure maxBound)
-    (pure (Nothing, 0))
-    (pure (Just commas, maxBound))
+generator _nCycles@SNat clk rst =
+  unbundle
+    $ mux
+      (counter .==. pure maxBound)
+      (pure (Nothing, 0))
+      (pure (Just commas, maxBound))
  where
   comma :: Byte
   comma = 0xbc
@@ -36,7 +38,9 @@ generator _nCycles@SNat clk rst = unbundle $
 
   counter =
     register
-      clk rst enableGen
+      clk
+      rst
+      enableGen
       (0 :: Index ms, 0 :: IndexMs dom 1)
       (next <$> counter)
 

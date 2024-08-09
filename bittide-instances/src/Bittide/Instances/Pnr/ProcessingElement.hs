@@ -9,7 +9,7 @@ module Bittide.Instances.Pnr.ProcessingElement where
 import Clash.Prelude
 
 import Clash.Annotations.TH
-import Clash.Explicit.Prelude(orReset, noReset)
+import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Xilinx.ClockGen
 import Language.Haskell.TH
 import Protocols
@@ -24,23 +24,29 @@ import Bittide.SharedTypes
 import Bittide.Wishbone
 import Project.FilePath
 
--- | A simple instance containing just VexRisc and UART as peripheral.
--- Runs the `hello` binary from `firmware-binaries`.
+{- | A simple instance containing just VexRisc and UART as peripheral.
+Runs the `hello` binary from `firmware-binaries`.
+-}
 vexRiscUartHello ::
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "CPU_RESET" ::: Reset Basic200 ->
-  ( "" ::: ( "USB_UART_TX" ::: Signal Basic200 Bit
-           , "JTAG" ::: Signal Basic200 JtagIn
+  ( ""
+      ::: ( "USB_UART_TX" ::: Signal Basic200 Bit
+          , "JTAG" ::: Signal Basic200 JtagIn
           )
   , Signal Basic200 ()
   ) ->
-  ( "" ::: ( "" ::: Signal Basic200 ()
-           , "JTAG" ::: Signal Basic200 JtagOut )
+  ( ""
+      ::: ( "" ::: Signal Basic200 ()
+          , "JTAG" ::: Signal Basic200 JtagOut
+          )
   , "USB_UART_RX" ::: Signal Basic200 Bit
   )
 vexRiscUartHello diffClk rst_in =
-  toSignals $ withClockResetEnable clk200 rst200 enableGen $
-    circuit $ \(uartRx, jtag) -> do
+  toSignals
+    $ withClockResetEnable clk200 rst200 enableGen
+    $ circuit
+    $ \(uartRx, jtag) -> do
       [uartBus, timeBus] <- processingElement @Basic200 peConfig -< jtag
       (uartTx, _uartStatus) <- uartWb d16 d16 (SNat @921600) -< (uartBus, uartRx)
       timeWb -< timeBus
@@ -48,14 +54,16 @@ vexRiscUartHello diffClk rst_in =
  where
   (clk200, rst200_) = clockWizardDifferential diffClk noReset
   rst200 = rst200_ `orReset` rst_in
-  (iMem, dMem) = $(do
-      root <- runIO $ findParentContaining "cabal.project"
-      let
-        elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Debug
-        elfPath = elfDir </> "hello"
-        iSize = 64 * 1024 -- 64 KB
-        dSize = 64 * 1024 -- 64 KB
-      memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing)
+  (iMem, dMem) =
+    $( do
+        root <- runIO $ findParentContaining "cabal.project"
+        let
+          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Debug
+          elfPath = elfDir </> "hello"
+          iSize = 64 * 1024 -- 64 KB
+          dSize = 64 * 1024 -- 64 KB
+        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
+     )
 
   -- ╭────────┬───────┬───────┬────────────────────╮
   -- │ bin    │ hex   │ bus   │ description        │
@@ -70,10 +78,10 @@ vexRiscUartHello diffClk rst_in =
   -- │ 0b111. │ 0xE   │       │                    │
   -- ╰────────┴───────┴───────┴────────────────────╯
 
-
   peConfig =
-    PeConfig (0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil)
-    (Reloadable $ Blob iMem)
-    (Reloadable $ Blob dMem)
+    PeConfig
+      (0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil)
+      (Reloadable $ Blob iMem)
+      (Reloadable $ Blob dMem)
 
 makeTopEntity 'vexRiscUartHello

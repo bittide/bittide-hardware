@@ -4,11 +4,11 @@
 
 module Main (main) where
 
-import Test.DocTest (mainFromCabal)
 import System.Environment (getArgs)
+import Test.DocTest (mainFromCabal)
 
 main :: IO ()
 main = do
   -- We use Nix to setup tooling, not to provide GHC packages so we need to set --no-nix
   args <- getArgs
-  mainFromCabal "bittide-experiments" ("--no-nix":args)
+  mainFromCabal "bittide-experiments" ("--no-nix" : args)

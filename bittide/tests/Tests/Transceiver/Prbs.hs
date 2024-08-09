@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -23,27 +22,29 @@ import qualified Data.List as L
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
-
 data SomePrbsConfig where
   SomePrbsConfig ::
-    KnownNat nBytes =>
+    (KnownNat nBytes) =>
     Prbs.Config polyLength polyTap (8 * nBytes) ->
     SomePrbsConfig
 
 instance Show SomePrbsConfig where
   show (SomePrbsConfig (Prbs.Config :: Prbs.Config polyLength polyTap (8 * nBytes))) =
     "SomePrbsConfig (Prbs.Config"
-      <> "{polyLength=" <> show (snatToNatural (SNat :: SNat polyLength))
-      <> ", polyTap=" <> show (snatToNatural (SNat :: SNat polyTap))
-      <> ", nBytes=" <> show (snatToNatural (SNat :: SNat nBytes))
+      <> "{polyLength="
+      <> show (snatToNatural (SNat :: SNat polyLength))
+      <> ", polyTap="
+      <> show (snatToNatural (SNat :: SNat polyTap))
+      <> ", nBytes="
+      <> show (snatToNatural (SNat :: SNat nBytes))
       <> "})"
 
--- | Generate a 'SomePrbsConfig' such that:
---
--- * 1 <= nBits <= (n + 1)
--- * 1 <= polyTap <= (n + 1)
--- * (polyTap + 1) <= polyLength <= (polyTap + 1 + n + 1)
---
+{- | Generate a 'SomePrbsConfig' such that:
+
+* 1 <= nBits <= (n + 1)
+* 1 <= polyTap <= (n + 1)
+* (polyTap + 1) <= polyLength <= (polyTap + 1 + n + 1)
+-}
 genSomePrbsConfig :: Natural -> Gen SomePrbsConfig
 genSomePrbsConfig n = do
   n0 <- Gen.integral (Range.linear 0 n)
@@ -56,7 +57,7 @@ genSomePrbsConfig n = do
         nBytes = sn0 `addSNat` d1
         polyTap = sn1 `addSNat` d1
         polyLength = polyTap `addSNat` d1 `addSNat` sn2
-      in
+       in
         case (nBytes, polyTap, polyLength) of
           (SNat :: SNat nBytes, SNat :: SNat polyTap, SNat :: SNat polyLength) ->
             pure $ SomePrbsConfig (Prbs.Config @polyLength @polyTap @(8 * nBytes))
@@ -65,15 +66,15 @@ genSomePrbsConfig n = do
 checkOk :: Int
 checkOk = 8
 
--- | Connect a PRBS generator to a PRBS checker and check that no errors are
--- detected after the expected time it takes for the checker to align with the
--- generator.
+{- | Connect a PRBS generator to a PRBS checker and check that no errors are
+detected after the expected time it takes for the checker to align with the
+generator.
+-}
 prop_happy :: Property
 prop_happy = property $ do
   SomePrbsConfig config@Prbs.Config{} <- forAll (genSomePrbsConfig 100)
   case config of
     (Prbs.Config :: Prbs.Config polyLength polyTap nBits) -> do
-
       offset <- forAll (genIndex Range.constantBounded)
       let
         resetCycle = 1
@@ -93,8 +94,9 @@ prop_happy = property $ do
         noiseCounter = register clk rst ena (0 :: Int) (noiseCounter + 1)
         sendNoise = noiseCounter .<. pure nNoiseCycles
         noiseOrPrbs = mux sendNoise (fromList (noise <> L.repeat 0)) prbs
-        noiseOrPrbsDealigned = withClock clk $
-          WordAlign.aligner WordAlign.dealignLsbFirst (pure False) (pure offset) noiseOrPrbs
+        noiseOrPrbsDealigned =
+          withClock clk
+            $ WordAlign.aligner WordAlign.dealignLsbFirst (pure False) (pure offset) noiseOrPrbs
         errors = Prbs.checker clk rst ena config noiseOrPrbsDealigned
 
         okAfter = fromIntegral (nNoiseCycles + expectAlignmentAfterNCycles)
@@ -108,11 +110,13 @@ prop_happy = property $ do
       L.take checkOk ok === L.replicate checkOk 0
 
       -- Statistics checks
-      cover 20
+      cover
+        20
         "nNoiseCycles > expectAlignmentAfterNCycles"
         (nNoiseCycles > expectAlignmentAfterNCycles)
 
-      cover 20
+      cover
+        20
         "nNoiseCycles <= expectAlignmentAfterNCycles"
         (nNoiseCycles <= expectAlignmentAfterNCycles)
 
@@ -120,9 +124,11 @@ prop_happy = property $ do
       cover 2 "no errors detected after 3 cycles" allOk -- detect "always pass"
 
 tests :: TestTree
-tests = testGroup "Prbs"
-  [ testPropertyNamed "prop_happy" "prop_happy" prop_happy
-  ]
+tests =
+  testGroup
+    "Prbs"
+    [ testPropertyNamed "prop_happy" "prop_happy" prop_happy
+    ]
 
 main :: IO ()
 main = defaultMain tests

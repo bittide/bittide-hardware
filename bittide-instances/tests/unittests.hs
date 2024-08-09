@@ -13,14 +13,15 @@ import qualified Wishbone.Axi as Axi
 import qualified Wishbone.DnaPortE2 as DnaPortE2
 import qualified Wishbone.Time as Time
 
-
 tests :: TestTree
-tests = testGroup "Unittests"
-  [ DnaPortE2.tests
-  , Ord.tests
-  , Time.tests
-  , Axi.tests
-  ]
+tests =
+  testGroup
+    "Unittests"
+    [ DnaPortE2.tests
+    , Ord.tests
+    , Time.tests
+    , Axi.tests
+    ]
 
 main :: IO ()
 main = defaultMain tests

@@ -1,19 +1,19 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PackageImports #-}
 
--- | Program that writes YAML configuration files to '_build/hitl', to be used
--- by the TCL using Vivado to run hardware-in-the-loop tests.
---
--- By default, it writes all known files. If given an identifier, it will only
--- write that one.
+{- | Program that writes YAML configuration files to '_build/hitl', to be used
+by the TCL using Vivado to run hardware-in-the-loop tests.
+
+By default, it writes all known files. If given an identifier, it will only
+write that one.
+-}
 module Main where
 
-import Prelude
 import Clash.Prelude (BitPack)
+import Prelude
 
 import Control.Monad (forM, forM_, when)
 import Data.Aeson (ToJSON)
@@ -26,9 +26,9 @@ import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 
 import Bittide.Hitl (HitlTestsWithPostProcData, packAndEncode)
-import Bittide.Instances.Hitl.Tests (HitlTest(..), hitlTests)
+import Bittide.Instances.Hitl.Tests (HitlTest (..), hitlTests)
 
-import qualified Data.ByteString.Lazy.Char8 as LazyByteString
+import Data.ByteString.Lazy.Char8 qualified as LazyByteString
 
 data Config = Config
   { name :: String
@@ -38,16 +38,16 @@ data Config = Config
 -- | Known configurations that can be written to @_build/hitl@
 configs :: IO [Config]
 configs = forM hitlTests $ \case
-  KnownType nm config    -> pure $ makeConfig nm config
+  KnownType nm config -> pure $ makeConfig nm config
   LoadConfig nm fileName -> loadConfig nm fileName
 
 -- | First argument on command line, as Haskell type
 data Arg
   = Write
-    { -- | Fully qualified name of HITL YAML to render. If 'Nothing', render all
+      { fqn :: Maybe String
+      -- ^ Fully qualified name of HITL YAML to render. If 'Nothing', render all
       -- known identifiers
-      fqn :: Maybe String
-    }
+      }
   | List
 
 -- | Be verbose to stderr?
@@ -64,28 +64,29 @@ argParser = (,) <$> verbose <*> arg
       command
         "write"
         (info writeConfigsParser (progDesc "Write all known configs to _build/hitl"))
-    <> command
-        "list"
-        (info (pure List) (progDesc "List all known configs stdout"))
+        <> command
+          "list"
+          (info (pure List) (progDesc "List all known configs stdout"))
 
 -- | Parser for the write command, now expecting an optional identifier
 writeConfigsParser :: Parser Arg
 writeConfigsParser =
-    fmap Write
-  $ optional
-  $ strArgument
-  $    metavar "FULLY_QUALIFIED_NAME"
-    <> help "For example, 'Bittide.Instances.Hitl.FincFdec.fincFdecTests'"
+  fmap Write $
+    optional $
+      strArgument $
+        metavar "FULLY_QUALIFIED_NAME"
+          <> help "For example, 'Bittide.Instances.Hitl.FincFdec.fincFdecTests'"
 
 -- | Load config from an existing YAML file in 'data/test_configs'
 loadConfig :: String -> FilePath -> IO Config
 loadConfig nm fileName = do
   fullPath <- getDataFileName ("data" </> "test_configs" </> fileName)
   yamlContents <- LazyByteString.readFile fullPath
-  pure $ Config
-    { name = nm
-    , yaml = yamlContents
-    }
+  pure $
+    Config
+      { name = nm
+      , yaml = yamlContents
+      }
 
 -- | Create config from a known HITL test.
 makeConfig ::
@@ -122,21 +123,20 @@ main = do
 
       case matchedConfig of
         [] -> die $ "No config found for '" <> fqn <> "'. Available: \n\n" <> names
-        (_:_:_) -> die $ "Multiple configs matched '" <> fqn <> "'"
+        (_ : _ : _) -> die $ "Multiple configs matched '" <> fqn <> "'"
         [Config{name, yaml}] -> do
           let path = buildDir </> name <> ".yml"
           when verbose $ hPutStrLn stderr $ "Writing " <> path <> ".."
           LazyByteString.writeFile path yaml
-
     (_verbose, List) -> do
       forM_ configs1 $ \Config{name} ->
         putStrLn name
-
  where
-  parserPrefs = prefs $
-       showHelpOnError
-    <> showHelpOnEmpty
-    <> noBacktrack
+  parserPrefs =
+    prefs $
+      showHelpOnError
+        <> showHelpOnEmpty
+        <> noBacktrack
 
   opts =
     info

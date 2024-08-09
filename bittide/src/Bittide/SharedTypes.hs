@@ -1,9 +1,3 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
---
--- SPDX-License-Identifier: Apache-2.0
-
-{-# OPTIONS_GHC -fconstraint-solver-iterations=8 #-}
-
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -12,13 +6,18 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
+-- SPDX-FileCopyrightText: 2022 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+{-# OPTIONS_GHC -fconstraint-solver-iterations=8 #-}
+
 module Bittide.SharedTypes where
 
 import Clash.Prelude
 
 import Data.Constraint
 import Data.Constraint.Nat.Extra
-import Data.Type.Equality ((:~:)(Refl))
+import Data.Type.Equality ((:~:) (Refl))
 import Protocols.Wishbone
 
 -- | To be used when there are two options.
@@ -45,12 +44,16 @@ resizeM2SAddr WishboneM2S{..} = WishboneM2S{addr = resize addr, ..}
 
 -- | A single byte.
 type Byte = BitVector 8
+
 -- | BitVector of _n_ bytes.
-type Bytes n = BitVector (n*8)
+type Bytes n = BitVector (n * 8)
+
 -- | A BitVector that contains one bit per byte in the BitSize of a.
 type ByteEnable a = BitVector (Regs a 8)
+
 -- | Either contains a @Just (BitVector frameWidth)@ or @Nothing@.
 type DataLink frameWidth = Maybe (BitVector frameWidth)
+
 -- | Type synonym that constrains @a@ and @b@ to both be @KnownNat@ and that @a <= b@.
 type LessThan a b = (KnownNat a, KnownNat b, a <= b)
 
@@ -70,105 +73,124 @@ type Paddable a = (BitPack a, NFDataX a)
 
 -- | @writeData@ has a relation with @Index maxIndex@.
 type Located maxIndex writeData = (Index maxIndex, writeData)
+
 -- | @BitVector bits@ has a relation with @Index maxIndex@.
 type LocatedBits maxIndex bits = Located maxIndex (BitVector bits)
+
 -- | 'Byte' has a relation with @Index maxIndex@.
 type LocatedByte maxIndex = Located maxIndex Byte
+
 -- | 'Bytes' has a relation with @Index maxIndex@.
 type LocatedBytes maxIndex nBytes = Located maxIndex (Bytes nBytes)
 
 -- Padding bits added when a is stored in multiples of bw bits.
-type Pad a bw  = (Regs a bw * bw) - BitSize a
+type Pad a bw = (Regs a bw * bw) - BitSize a
+
 -- Amount of bw sized registers required to store a.
 type Regs a bw = DivRU (BitSize a) bw
 
 data ByteOrder = LittleEndian | BigEndian
-  deriving Eq
+  deriving (Eq)
 
 -- | Stores any arbitrary datatype as a vector of registers.
-newtype RegisterBank regSize content (byteOrder :: ByteOrder) =
-  RegisterBank (Vec (Regs content regSize) (BitVector regSize))
-  deriving Generic
+newtype RegisterBank regSize content (byteOrder :: ByteOrder)
+  = RegisterBank (Vec (Regs content regSize) (BitVector regSize))
+  deriving (Generic)
 
-instance (KnownNat regSize, 1 <= regSize, BitPack content) =>
-  BitPack (RegisterBank regSize content byteOrder) where
-  type BitSize (RegisterBank regSize content byteOrder) =
-    Regs content regSize * regSize
+instance
+  (KnownNat regSize, 1 <= regSize, BitPack content) =>
+  BitPack (RegisterBank regSize content byteOrder)
+  where
+  type
+    BitSize (RegisterBank regSize content byteOrder) =
+      Regs content regSize * regSize
   pack (RegisterBank vec) = pack vec
   unpack bv = RegisterBank (unpack bv)
 
 deriving newtype instance
-  (KnownNat regSize, 1 <= regSize, Paddable content, NFDataX (RegisterBank regSize content byteOrder))
-  => NFDataX (RegisterBank regSize content byteOrder)
+  ( KnownNat regSize
+  , 1 <= regSize
+  , Paddable content
+  , NFDataX (RegisterBank regSize content byteOrder)
+  ) =>
+  NFDataX (RegisterBank regSize content byteOrder)
 
-deriving newtype instance (KnownNat regSize, ShowX (RegisterBank regSize content byteOrder)) =>
+deriving newtype instance
+  (KnownNat regSize, ShowX (RegisterBank regSize content byteOrder)) =>
   ShowX (RegisterBank regSize content byteOrder)
 
 convertBe ::
   (Paddable a, KnownNat bw, 1 <= bw) =>
-  (RegisterBank bw a 'BigEndian, a)  ->
+  (RegisterBank bw a 'BigEndian, a) ->
   (a, RegisterBank bw a 'BigEndian)
 convertBe (regBank, a) = (getDataBe regBank, getRegsBe a)
 
 -- | Transforms a to _RegisterBank_.
 getRegsLe ::
-  forall bw a .
-  (Paddable a, KnownNat bw, 1 <= bw)
-  => a
-  -> RegisterBank bw a 'LittleEndian
+  forall bw a.
+  (Paddable a, KnownNat bw, 1 <= bw) =>
+  a ->
+  RegisterBank bw a 'LittleEndian
 getRegsLe a = case timesDivRU @bw @(BitSize a) of
-  Dict -> RegisterBank (reverse $ bitCoerce (0 :: BitVector (Pad a bw),a))
+  Dict -> RegisterBank (reverse $ bitCoerce (0 :: BitVector (Pad a bw), a))
 
 -- | Transforms a to _RegisterBank_.
-getRegsBe :: forall bw a . (Paddable a, KnownNat bw, 1 <= bw) => a -> RegisterBank bw a 'BigEndian
+getRegsBe ::
+  forall bw a. (Paddable a, KnownNat bw, 1 <= bw) => a -> RegisterBank bw a 'BigEndian
 getRegsBe a = case timesDivRU @bw @(BitSize a) of
-  Dict -> RegisterBank (bitCoerce (0 :: BitVector (Pad a bw),a))
+  Dict -> RegisterBank (bitCoerce (0 :: BitVector (Pad a bw), a))
 
 -- | Transforms _RegisterBank_ to a.
-getDataBe :: forall bw a . (Paddable a, KnownNat bw, 1 <= bw) => RegisterBank bw a 'BigEndian -> a
+getDataBe ::
+  forall bw a. (Paddable a, KnownNat bw, 1 <= bw) => RegisterBank bw a 'BigEndian -> a
 getDataBe (RegisterBank vec) =
   case timesDivRU @bw @(BitSize a) of
     Dict -> unpack . snd $ split @_ @(Pad a bw) @(BitSize a) (pack vec)
 
 -- | Transforms _RegisterBank_ to a.
-getDataLe :: forall bw a . (Paddable a, KnownNat bw, 1 <= bw) => RegisterBank bw a 'LittleEndian -> a
+getDataLe ::
+  forall bw a. (Paddable a, KnownNat bw, 1 <= bw) => RegisterBank bw a 'LittleEndian -> a
 getDataLe (RegisterBank (reverse -> vec)) =
   case timesDivRU @bw @(BitSize a) of
     Dict -> unpack . snd $ split @_ @(Pad a bw) @(BitSize a) (pack vec)
 
--- | Coerces a tuple of index n and a boolean to index (n*2) where the LSB of the result
--- is determined by the boolean.
+{- | Coerces a tuple of index n and a boolean to index (n*2) where the LSB of the result
+is determined by the boolean.
+-}
 mul2Index ::
-  forall n b .
+  forall n b.
   (KnownNat n, 1 <= n, BitPack b, BitSize b ~ 1) =>
   Index n ->
   b ->
-  Index (n*2)
-mul2Index n b= case clogProductRule @n of Refl -> bitCoerce (n, b)
+  Index (n * 2)
+mul2Index n b = case clogProductRule @n of Refl -> bitCoerce (n, b)
 
 -- | Coerces an index of size (n*2) to index n with the LSB as separate boolean.
 div2Index ::
-  forall n b .
+  forall n b.
   (KnownNat n, 1 <= n, BitPack b, BitSize b ~ 1) =>
-  Index (n*2) ->
+  Index (n * 2) ->
   (Index n, b)
 div2Index = case clogProductRule @n of Refl -> bitCoerce
 
 -- | Delays the output controls to align them with the actual read / write timing.
 delayControls ::
-  HiddenClockResetEnable dom =>
+  (HiddenClockResetEnable dom) =>
   Signal dom (WishboneS2M bytes) ->
   Signal dom (WishboneS2M bytes)
 delayControls wbIn = wbOut
  where
-   delayedAck = register False (acknowledge <$> wbIn)
-   delayedErr = register False (err <$> wbIn)
-   wbOut = (\wb newAck newErr-> wb{acknowledge = newAck, err = newErr})
-    <$> wbIn <*> delayedAck <*> delayedErr
+  delayedAck = register False (acknowledge <$> wbIn)
+  delayedErr = register False (err <$> wbIn)
+  wbOut =
+    (\wb newAck newErr -> wb{acknowledge = newAck, err = newErr})
+      <$> wbIn
+      <*> delayedAck
+      <*> delayedErr
 
 -- | Takes an implicit reset and a Signal dom Bool that can force a reset when True.
 forceReset ::
-  HiddenReset dom =>
+  (HiddenReset dom) =>
   -- | Forces a reset when True.
   Signal dom Bool ->
   -- | Active when the implicit reset is active or the first argument is True.
@@ -176,5 +198,5 @@ forceReset ::
 forceReset force = unsafeFromActiveHigh (unsafeToActiveHigh hasReset .||. force)
 
 -- | Divide and round up.
-divRU :: Integral a => a -> a -> a
+divRU :: (Integral a) => a -> a -> a
 divRU b a = (b + a - 1) `div` a

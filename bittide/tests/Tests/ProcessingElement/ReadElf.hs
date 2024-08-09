@@ -18,254 +18,278 @@ import qualified Data.ByteString as BS
 import qualified Data.List as L
 
 riscvElfEmpty :: Elf
-riscvElfEmpty = Elf
-  { elfClass = ELFCLASS32
-  , elfData = ELFDATA2LSB
-  , elfVersion = 1
-  , elfOSABI = ELFOSABI_SYSV
-  , elfABIVersion = 1
-  , elfType = ET_EXEC
-  , elfMachine = EM_EXT 0xF3 -- RISC-V
-  , elfEntry = 0x80000000
-  , elfSections = []
-  , elfSegments = []
-  }
+riscvElfEmpty =
+  Elf
+    { elfClass = ELFCLASS32
+    , elfData = ELFDATA2LSB
+    , elfVersion = 1
+    , elfOSABI = ELFOSABI_SYSV
+    , elfABIVersion = 1
+    , elfType = ET_EXEC
+    , elfMachine = EM_EXT 0xF3 -- RISC-V
+    , elfEntry = 0x80000000
+    , elfSections = []
+    , elfSegments = []
+    }
 
 textSection :: ElfSection
-textSection = ElfSection
-  { elfSectionName = ".text"
-  , elfSectionType = SHT_PROGBITS
-  , elfSectionFlags = [SHF_ALLOC, SHF_EXECINSTR]
-  , elfSectionAddr = 0x80000000
-  , elfSectionSize = 0
-  , elfSectionLink = 0
-  , elfSectionInfo = 0
-  , elfSectionAddrAlign = 0x00010000
-  , elfSectionEntSize = 0
-  , elfSectionData = BS.empty
-  }
+textSection =
+  ElfSection
+    { elfSectionName = ".text"
+    , elfSectionType = SHT_PROGBITS
+    , elfSectionFlags = [SHF_ALLOC, SHF_EXECINSTR]
+    , elfSectionAddr = 0x80000000
+    , elfSectionSize = 0
+    , elfSectionLink = 0
+    , elfSectionInfo = 0
+    , elfSectionAddrAlign = 0x00010000
+    , elfSectionEntSize = 0
+    , elfSectionData = BS.empty
+    }
 
 dataSection :: ElfSection
-dataSection = ElfSection
-  { elfSectionName = ".data"
-  , elfSectionType = SHT_PROGBITS
-  , elfSectionFlags = [SHF_ALLOC, SHF_WRITE]
-  , elfSectionAddr = 0x80000000
-  , elfSectionSize = 0
-  , elfSectionLink = 0
-  , elfSectionInfo = 0
-  , elfSectionAddrAlign = 0x00010000
-  , elfSectionEntSize = 0
-  , elfSectionData = BS.empty
-  }
+dataSection =
+  ElfSection
+    { elfSectionName = ".data"
+    , elfSectionType = SHT_PROGBITS
+    , elfSectionFlags = [SHF_ALLOC, SHF_WRITE]
+    , elfSectionAddr = 0x80000000
+    , elfSectionSize = 0
+    , elfSectionLink = 0
+    , elfSectionInfo = 0
+    , elfSectionAddrAlign = 0x00010000
+    , elfSectionEntSize = 0
+    , elfSectionData = BS.empty
+    }
 
 rodataSection :: ElfSection
-rodataSection = dataSection
-  { elfSectionName = ".rodata"
-  , elfSectionFlags = [SHF_ALLOC]
-  }
+rodataSection =
+  dataSection
+    { elfSectionName = ".rodata"
+    , elfSectionFlags = [SHF_ALLOC]
+    }
 
 bssSection :: ElfSection
-bssSection = ElfSection
-  { elfSectionName = ".bss"
-  , elfSectionType = SHT_NOBITS
-  , elfSectionFlags = [SHF_ALLOC, SHF_WRITE]
-  , elfSectionAddr = 0x80000000
-  , elfSectionSize = 0
-  , elfSectionLink = 0
-  , elfSectionInfo = 0
-  , elfSectionAddrAlign = 0x00010000
-  , elfSectionEntSize = 0
-  , elfSectionData = BS.empty
-  }
+bssSection =
+  ElfSection
+    { elfSectionName = ".bss"
+    , elfSectionType = SHT_NOBITS
+    , elfSectionFlags = [SHF_ALLOC, SHF_WRITE]
+    , elfSectionAddr = 0x80000000
+    , elfSectionSize = 0
+    , elfSectionLink = 0
+    , elfSectionInfo = 0
+    , elfSectionAddrAlign = 0x00010000
+    , elfSectionEntSize = 0
+    , elfSectionData = BS.empty
+    }
 
 instrSegment :: ElfSegment
-instrSegment = ElfSegment
-  { elfSegmentType = PT_LOAD
-  , elfSegmentFlags = [PF_R, PF_X]
-  , elfSegmentVirtAddr = 0x80000000
-  , elfSegmentPhysAddr = 0x80000000
-  , elfSegmentAlign = 0x00010000
-  , elfSegmentData = BS.empty
-  , elfSegmentMemSize = 0
-  }
+instrSegment =
+  ElfSegment
+    { elfSegmentType = PT_LOAD
+    , elfSegmentFlags = [PF_R, PF_X]
+    , elfSegmentVirtAddr = 0x80000000
+    , elfSegmentPhysAddr = 0x80000000
+    , elfSegmentAlign = 0x00010000
+    , elfSegmentData = BS.empty
+    , elfSegmentMemSize = 0
+    }
 
 dataSegment :: ElfSegment
-dataSegment = ElfSegment
-  { elfSegmentType = PT_LOAD
-  , elfSegmentFlags = [PF_R, PF_W]
-  , elfSegmentVirtAddr = 0x80000000
-  , elfSegmentPhysAddr = 0x80000000
-  , elfSegmentAlign = 0x00010000
-  , elfSegmentData = BS.empty
-  , elfSegmentMemSize = 0
-  }
+dataSegment =
+  ElfSegment
+    { elfSegmentType = PT_LOAD
+    , elfSegmentFlags = [PF_R, PF_W]
+    , elfSegmentVirtAddr = 0x80000000
+    , elfSegmentPhysAddr = 0x80000000
+    , elfSegmentAlign = 0x00010000
+    , elfSegmentData = BS.empty
+    , elfSegmentMemSize = 0
+    }
 
 tests :: TestTree
-tests = testGroup "Read ELF Tests"
-  [ testCase "ELF file empty" $ do
-    let
-      elf = riscvElfEmpty
-      (entry, iMem, dMem) = readElf elf
+tests =
+  testGroup
+    "Read ELF Tests"
+    [ testCase "ELF file empty" $ do
+        let
+          elf = riscvElfEmpty
+          (entry, iMem, dMem) = readElf elf
 
-    elfEntry elf @?= fromIntegral entry
-    iMem @?= I.fromList []
-    dMem @?= I.fromList []
-
-
-  , testCase "ELF file, only .text" $ do
-    let
-      iData = L.replicate 100 0xAB
-      elf = riscvElfEmpty
-        { elfSections =
-          [ textSection
-            { elfSectionAddr = 0x80000000
-            , elfSectionSize = fromIntegral $ L.length iData
-            , elfSectionData = BS.pack iData
-            }
-          ]
-        , elfSegments =
-          [ instrSegment
-            { elfSegmentVirtAddr = 0x80000000
-            , elfSegmentPhysAddr = 0x80000000
-            , elfSegmentData = BS.pack iData
-            , elfSegmentMemSize = fromIntegral $ L.length iData
-            }
-          ]
-        }
-      (entry, iMem, dMem) = readElf elf
-      iDataMap = I.fromList (L.zip [0x80000000..] (fromIntegral <$> iData))
-
-    elfEntry elf @?= fromIntegral entry
-    assertEqual "instruction memory contains instruction data" iDataMap (I.intersection iMem iDataMap)
-    dMem @?= I.fromList []
-
-  , testCase "ELF file, .data and .rodata" $ do
-    let
-      data' = L.replicate 100 0xAB
-      roData = L.replicate 50 0x0F
-      elf = riscvElfEmpty
-        { elfSections =
-          [ dataSection
-            { elfSectionAddr = 0x80000000
-            , elfSectionSize = fromIntegral $ L.length data'
-            , elfSectionData = BS.pack data'
-            }
-          , rodataSection
-            { elfSectionAddr = 0x80000000 + fromIntegral (L.length data')
-            , elfSectionSize = fromIntegral $ L.length roData
-            , elfSectionData = BS.pack roData
-            }
-          ]
-        , elfSegments =
-          [ dataSegment
-            { elfSegmentVirtAddr = 0x80000000
-            , elfSegmentPhysAddr = 0x80000000
-            , elfSegmentData = BS.pack (data' <> roData)
-            , elfSegmentMemSize = fromIntegral $ L.length data' + L.length roData
-            }
-          ]
-        }
-      (entry, iMem, dMem) = readElf elf
-      dataMap = I.fromList (L.zip [0x80000000..] (fromIntegral <$> (data' <> roData)))
-
-    elfEntry elf @?= fromIntegral entry
-    iMem @?= I.fromList []
-    assertEqual "instruction memory contains instruction data" dataMap (I.intersection dMem dataMap)
-
-  ,  testCase "ELF file, .text and .data" $ do
-    let
-      iData = L.replicate 100 0xAB
-      dData = L.replicate 1000 0xB3
-      elf = riscvElfEmpty
-        { elfSections =
-          [ textSection
-            { elfSectionAddr = 0x80000000
-            , elfSectionSize = fromIntegral $ L.length iData
-            , elfSectionData = BS.pack iData
-            }
-          , dataSection
-            { elfSectionAddr = 0x80000000 + fromIntegral (L.length iData)
-            , elfSectionSize = fromIntegral $ L.length dData
-            , elfSectionData = BS.pack dData
-            }
-          ]
-        , elfSegments =
-          [ instrSegment
-            { elfSegmentVirtAddr = 0x80000000
-            , elfSegmentPhysAddr = 0x80000000
-            , elfSegmentData = BS.pack iData
-            , elfSegmentMemSize = fromIntegral $ L.length iData
-            }
-          , dataSegment
-            { elfSegmentVirtAddr = 0x80000000 + fromIntegral (L.length iData)
-            , elfSegmentPhysAddr = 0x80000000 + fromIntegral (L.length iData)
-            , elfSegmentData = BS.pack dData
-            , elfSegmentMemSize = fromIntegral $ L.length dData
-            }
-          ]
-        }
-      (entry, iMem, dMem) = readElf elf
-      iDataMap = I.fromList (L.zip [0x80000000..] (fromIntegral <$> iData))
-      dDataMap = I.fromList (L.zip [(0x80000000 + fromIntegral (L.length iData))..] (fromIntegral <$> dData))
-
-    elfEntry elf @?= fromIntegral entry
-    assertEqual "instruction memory contains instruction data" iDataMap (I.intersection iMem iDataMap)
-    assertEqual "data memory contains data contents" dDataMap (I.intersection dMem dDataMap)
-
-
-  , testCase "ELF file, .text, .data and .bss" $ do
-    let
-      iData = L.replicate 100 0xAB
-      dData = L.replicate 1000 0xB3
-      bssLen = 500
-
-      iStart = 0x80000000
-      dStart = iStart + L.length iData
-      bssStart = dStart + L.length dData
-      elf = riscvElfEmpty
-        { elfSections =
-          [ textSection
-            { elfSectionAddr = fromIntegral iStart
-            , elfSectionSize = fromIntegral $ L.length iData
-            , elfSectionData = BS.pack iData
-            }
-          , dataSection
-            { elfSectionAddr = fromIntegral dStart
-            , elfSectionSize = fromIntegral $ L.length dData
-            , elfSectionData = BS.pack dData
-            }
-          , bssSection
-            { elfSectionAddr = fromIntegral bssStart
-            , elfSectionSize = bssLen
-            , elfSectionData = BS.empty
-            }
-          ]
-        , elfSegments =
-          [ instrSegment
-            { elfSegmentVirtAddr = fromIntegral iStart
-            , elfSegmentPhysAddr = fromIntegral iStart
-            , elfSegmentData = BS.pack iData
-            , elfSegmentMemSize = fromIntegral $ L.length iData
-            }
-          , dataSegment
-              { elfSegmentVirtAddr = fromIntegral dStart
-              , elfSegmentPhysAddr = fromIntegral dStart
-              , elfSegmentData = BS.pack dData
-              , elfSegmentMemSize = fromIntegral (L.length dData) + fromIntegral bssLen
+        elfEntry elf @?= fromIntegral entry
+        iMem @?= I.fromList []
+        dMem @?= I.fromList []
+    , testCase "ELF file, only .text" $ do
+        let
+          iData = L.replicate 100 0xAB
+          elf =
+            riscvElfEmpty
+              { elfSections =
+                  [ textSection
+                      { elfSectionAddr = 0x80000000
+                      , elfSectionSize = fromIntegral $ L.length iData
+                      , elfSectionData = BS.pack iData
+                      }
+                  ]
+              , elfSegments =
+                  [ instrSegment
+                      { elfSegmentVirtAddr = 0x80000000
+                      , elfSegmentPhysAddr = 0x80000000
+                      , elfSegmentData = BS.pack iData
+                      , elfSegmentMemSize = fromIntegral $ L.length iData
+                      }
+                  ]
               }
-          ]
-        }
-      (entry, iMem, dMem) = readElf elf
-      iDataMap = I.fromList (L.zip [iStart..] (fromIntegral <$> iData))
-      dDataMap = I.unionWithKey (\k _ _ -> error $
-        "Tests.ContranomySim.ReadElf : Overlapping elements in `.data` and `.bss` memory at address 0x"
-        <> showHex k "")
-        (I.fromList (L.zip [dStart..] (fromIntegral <$> dData)))
-        (I.fromList (L.zip [bssStart..] (L.replicate (fromIntegral bssLen) 0)))
+          (entry, iMem, dMem) = readElf elf
+          iDataMap = I.fromList (L.zip [0x80000000 ..] (fromIntegral <$> iData))
 
-    elfEntry elf @?= fromIntegral entry
-    assertEqual "instruction memory contains instruction data" iDataMap (I.intersection iMem iDataMap)
-    assertEqual "data memory contains data contents" dDataMap (I.intersection dMem dDataMap)
+        elfEntry elf @?= fromIntegral entry
+        assertEqual
+          "instruction memory contains instruction data"
+          iDataMap
+          (I.intersection iMem iDataMap)
+        dMem @?= I.fromList []
+    , testCase "ELF file, .data and .rodata" $ do
+        let
+          data' = L.replicate 100 0xAB
+          roData = L.replicate 50 0x0F
+          elf =
+            riscvElfEmpty
+              { elfSections =
+                  [ dataSection
+                      { elfSectionAddr = 0x80000000
+                      , elfSectionSize = fromIntegral $ L.length data'
+                      , elfSectionData = BS.pack data'
+                      }
+                  , rodataSection
+                      { elfSectionAddr = 0x80000000 + fromIntegral (L.length data')
+                      , elfSectionSize = fromIntegral $ L.length roData
+                      , elfSectionData = BS.pack roData
+                      }
+                  ]
+              , elfSegments =
+                  [ dataSegment
+                      { elfSegmentVirtAddr = 0x80000000
+                      , elfSegmentPhysAddr = 0x80000000
+                      , elfSegmentData = BS.pack (data' <> roData)
+                      , elfSegmentMemSize = fromIntegral $ L.length data' + L.length roData
+                      }
+                  ]
+              }
+          (entry, iMem, dMem) = readElf elf
+          dataMap = I.fromList (L.zip [0x80000000 ..] (fromIntegral <$> (data' <> roData)))
 
-  ]
+        elfEntry elf @?= fromIntegral entry
+        iMem @?= I.fromList []
+        assertEqual
+          "instruction memory contains instruction data"
+          dataMap
+          (I.intersection dMem dataMap)
+    , testCase "ELF file, .text and .data" $ do
+        let
+          iData = L.replicate 100 0xAB
+          dData = L.replicate 1000 0xB3
+          elf =
+            riscvElfEmpty
+              { elfSections =
+                  [ textSection
+                      { elfSectionAddr = 0x80000000
+                      , elfSectionSize = fromIntegral $ L.length iData
+                      , elfSectionData = BS.pack iData
+                      }
+                  , dataSection
+                      { elfSectionAddr = 0x80000000 + fromIntegral (L.length iData)
+                      , elfSectionSize = fromIntegral $ L.length dData
+                      , elfSectionData = BS.pack dData
+                      }
+                  ]
+              , elfSegments =
+                  [ instrSegment
+                      { elfSegmentVirtAddr = 0x80000000
+                      , elfSegmentPhysAddr = 0x80000000
+                      , elfSegmentData = BS.pack iData
+                      , elfSegmentMemSize = fromIntegral $ L.length iData
+                      }
+                  , dataSegment
+                      { elfSegmentVirtAddr = 0x80000000 + fromIntegral (L.length iData)
+                      , elfSegmentPhysAddr = 0x80000000 + fromIntegral (L.length iData)
+                      , elfSegmentData = BS.pack dData
+                      , elfSegmentMemSize = fromIntegral $ L.length dData
+                      }
+                  ]
+              }
+          (entry, iMem, dMem) = readElf elf
+          iDataMap = I.fromList (L.zip [0x80000000 ..] (fromIntegral <$> iData))
+          dDataMap =
+            I.fromList
+              (L.zip [(0x80000000 + fromIntegral (L.length iData)) ..] (fromIntegral <$> dData))
+
+        elfEntry elf @?= fromIntegral entry
+        assertEqual
+          "instruction memory contains instruction data"
+          iDataMap
+          (I.intersection iMem iDataMap)
+        assertEqual "data memory contains data contents" dDataMap (I.intersection dMem dDataMap)
+    , testCase "ELF file, .text, .data and .bss" $ do
+        let
+          iData = L.replicate 100 0xAB
+          dData = L.replicate 1000 0xB3
+          bssLen = 500
+
+          iStart = 0x80000000
+          dStart = iStart + L.length iData
+          bssStart = dStart + L.length dData
+          elf =
+            riscvElfEmpty
+              { elfSections =
+                  [ textSection
+                      { elfSectionAddr = fromIntegral iStart
+                      , elfSectionSize = fromIntegral $ L.length iData
+                      , elfSectionData = BS.pack iData
+                      }
+                  , dataSection
+                      { elfSectionAddr = fromIntegral dStart
+                      , elfSectionSize = fromIntegral $ L.length dData
+                      , elfSectionData = BS.pack dData
+                      }
+                  , bssSection
+                      { elfSectionAddr = fromIntegral bssStart
+                      , elfSectionSize = bssLen
+                      , elfSectionData = BS.empty
+                      }
+                  ]
+              , elfSegments =
+                  [ instrSegment
+                      { elfSegmentVirtAddr = fromIntegral iStart
+                      , elfSegmentPhysAddr = fromIntegral iStart
+                      , elfSegmentData = BS.pack iData
+                      , elfSegmentMemSize = fromIntegral $ L.length iData
+                      }
+                  , dataSegment
+                      { elfSegmentVirtAddr = fromIntegral dStart
+                      , elfSegmentPhysAddr = fromIntegral dStart
+                      , elfSegmentData = BS.pack dData
+                      , elfSegmentMemSize = fromIntegral (L.length dData) + fromIntegral bssLen
+                      }
+                  ]
+              }
+          (entry, iMem, dMem) = readElf elf
+          iDataMap = I.fromList (L.zip [iStart ..] (fromIntegral <$> iData))
+          dDataMap =
+            I.unionWithKey
+              ( \k _ _ ->
+                  error $
+                    "Tests.ContranomySim.ReadElf : Overlapping elements in `.data` and `.bss` memory at address 0x"
+                      <> showHex k ""
+              )
+              (I.fromList (L.zip [dStart ..] (fromIntegral <$> dData)))
+              (I.fromList (L.zip [bssStart ..] (L.replicate (fromIntegral bssLen) 0)))
+
+        elfEntry elf @?= fromIntegral entry
+        assertEqual
+          "instruction memory contains instruction data"
+          iDataMap
+          (I.intersection iMem iDataMap)
+        assertEqual "data memory contains data contents" dDataMap (I.intersection dMem dDataMap)
+    ]

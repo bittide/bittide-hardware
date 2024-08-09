@@ -8,13 +8,12 @@ import Clash.Explicit.Prelude
 
 import Bittide.Instances.Domains
 
-import qualified Clash.Cores.Extra as Cores
 import Clash.Annotations.TH (makeTopEntity)
-
+import qualified Clash.Cores.Extra as Cores
 
 safeDffSynchronizer ::
-  "clk1"   ::: Clock Basic200 ->
-  "clk2"   ::: Clock Basic199 ->
+  "clk1" ::: Clock Basic200 ->
+  "clk2" ::: Clock Basic199 ->
   "source" ::: Signal Basic200 Bit ->
   "target" ::: Signal Basic199 Bit
 safeDffSynchronizer clk1 clk2 =
