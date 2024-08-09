@@ -2,20 +2,22 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
+{-# LANGUAGE NumericUnderscores #-}
+
 import Prelude
 
 import Paths_bittide_instances
 
 import Control.Monad (unless)
 import Control.Monad.Extra (forM_)
-import Data.List.Extra (trim, isPrefixOf)
-import Data.Maybe (fromJust)
+import Data.Maybe
 import System.Environment (withArgs)
 import System.IO
 import System.IO.Temp
 import System.Process
 import Test.Tasty.HUnit
 import Test.Tasty.TH
+import Data.List.Extra
 
 data Error = Ok | Error String
 data Filter = Continue | Stop Error
@@ -86,6 +88,40 @@ waitForLine h expected =
     then Stop Ok
     else Continue
 
+-- | Return the beginnig of a string untill you detect a certain substring
+readUntil :: String -> String -> String
+readUntil end inp
+  | isPrefixOf end inp = ""
+  | otherwise          = case uncons inp of
+    Just (h, t) -> h : readUntil end t
+    Nothing -> ""
+
+readRemainingChars :: Handle -> IO String
+readRemainingChars h = do
+  hSetBuffering h NoBuffering
+  rdy <- hReady h
+  if rdy
+    then do
+      c <- hGetChar h
+      (c :) <$> readRemainingChars h
+    else (pure "")
+
+readRemainingLines :: Handle -> IO [String]
+readRemainingLines h = do
+  hSetBuffering h LineBuffering
+  rdy <- hReady h
+  if rdy
+    then do
+      c <- hGetLine h
+      (c:) <$>  readRemainingLines h
+    else pure []
+
+readRemaining :: Handle -> IO String
+readRemaining h = do
+  remLines <- readRemainingLines h
+  remChars <- readRemainingChars h
+  pure $ unlines remLines <> remChars
+
 -- | Test that the GDB program works as expected. This test will start OpenOCD,
 -- Picocom, and GDB, and will wait for the GDB program to execute specific
 -- commands. This test will fail if any of the processes fail, or if the GDB
@@ -126,29 +162,48 @@ case_testGdbProgram = do
       hSetBuffering openOcdStdErr LineBuffering
       expectLine openOcdStdErr waitForHalt
 
-      withCreateProcess picocomProc $ \maybePicocomStdIn maybePicocomStdOut _ _ -> do
+      withCreateProcess picocomProc $ \maybePicocomStdIn maybePicocomStdOut maybePicocomStdErr _ -> do
         let
-          picocomStdIn = fromJust maybePicocomStdIn
-          picocomStdOut = fromJust maybePicocomStdOut
+          picocomStdInHandle = fromJust maybePicocomStdIn
+          picocomStdOutHandle = fromJust maybePicocomStdOut
 
-        hSetBuffering picocomStdIn LineBuffering
-        hSetBuffering picocomStdOut LineBuffering
+        hSetBuffering picocomStdInHandle LineBuffering
+        hSetBuffering picocomStdOutHandle LineBuffering
 
-        waitForLine picocomStdOut "Terminal ready"
+        waitForLine picocomStdOutHandle "Terminal ready"
 
         withCreateProcess gdbProc $ \_ (fromJust -> gdbStdOut) _ _ -> do
           -- Wait for GDB to program the FPGA. If successful, we should see
           -- "going in echo mode" in the picocom output.
           hSetBuffering gdbStdOut LineBuffering
-          waitForLine picocomStdOut "listening"
+          waitForLine picocomStdOutHandle "listening"
 
           -- Test TCP echo server
         withCreateProcess tcpSprayProc $ \_ (fromJust -> tcpStdOut) (fromJust -> tcpStdErr) _ -> do
-          stdOutContents <- hGetContents' tcpStdOut
-          stdErrContents <- hGetContents' tcpStdErr
+          (stdOutContents, stdErrContents) <- do
+            stdOutContents' <- hGetContents' tcpStdOut
+            stdErrContents' <- hGetContents' tcpStdErr
+            pure (stdOutContents', stdErrContents')
+          picocomOut <- hGetContents picocomStdOutHandle
+
+
+          case maybePicocomStdErr of
+            Nothing -> pure ()
+            Just h -> do
+              putStrLn "Picocom StdErr"
+              readRemaining h >>= putStrLn
+
+          putStrLn ""
+          putStrLn "Picocom stdout"
+          putStrLn $ readUntil "listening" picocomOut
+
+          putStrLn ""
+          putStrLn "tcpSpray StdOut"
+          putStrLn stdOutContents
+
           if not (null stdErrContents)
             then assertFailure $ "tcpspray failed with stderr:\n" <> stdErrContents
-            else putStrLn $ "tcpspray succeeded with stdout:\n" <> stdOutContents
+            else pure ()
 
 main :: IO ()
 main = withArgs ["--timeout", "2m"] $(defaultMainGenerator)
