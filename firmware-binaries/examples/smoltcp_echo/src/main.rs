@@ -9,11 +9,11 @@
 
 use bittide_sys::axi::{AxiRx, AxiTx};
 use bittide_sys::dna_port_e2::{dna_to_u128, DnaValue};
+use bittide_sys::mac::MacStatus;
 use bittide_sys::smoltcp::axi::AxiEthernet;
 use bittide_sys::smoltcp::{set_local, set_unicast};
 use bittide_sys::time::{Clock, Duration};
 use bittide_sys::uart::Uart;
-use core::fmt::Write;
 use log::{self, debug};
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -27,7 +27,7 @@ use ufmt::uwriteln;
 
 const CLOCK_ADDR: *const () = (0b0011 << 28) as *const ();
 const DNA_ADDR: *const DnaValue = (0b0111 << 28) as *const DnaValue;
-const _MAC_ADDR: *const () = (0b1001 << 28) as *const ();
+const MAC_ADDR: *const MacStatus = (0b1001 << 28) as *const MacStatus;
 const RX_AXI_ADDR: *const () = (0b0101 << 28) as *const ();
 const TX_AXI_ADDR: *const () = (0b0110 << 28) as *const ();
 const UART_ADDR: *const () = (0b0010 << 28) as *const ();
@@ -81,26 +81,22 @@ fn main() -> ! {
     let mut sockets = SocketSet::new(&mut sockets[..]);
     let server_handle = sockets.add(server_socket);
 
-    let mut last_print = clock.elapsed();
+    let mut mac_status = unsafe { MAC_ADDR.read_volatile() };
     loop {
-        let now = clock.elapsed();
-        if now > last_print + Duration::from_secs(1) {
-            last_print = now;
-            uwriteln!(uart, "time: {}", now).unwrap();
-            let socket = sockets.get::<Socket>(server_handle);
-            writeln!(uart, "socket: {:?}", socket.state()).unwrap();
-        }
         let elapsed = clock.elapsed().into();
         iface.poll(elapsed, &mut eth, &mut sockets);
 
         let mut socket = sockets.get_mut::<Socket>(server_handle);
         if !socket.is_active() && !socket.is_listening() {
+            mac_status = unsafe { MAC_ADDR.read_volatile() };
             uwriteln!(uart, "listening").unwrap();
             socket.listen(7).unwrap();
         }
         if socket.is_open() && socket.may_send() && !socket.may_recv() {
             socket.close();
             uwriteln!(uart, "DNA: {:X}", dna).unwrap();
+            let new_mac_status = unsafe { MAC_ADDR.read_volatile() };
+            uwriteln!(uart, "{:?}", new_mac_status - mac_status).unwrap();
             uwriteln!(uart, "Closing socket").unwrap();
         }
         if socket.can_recv() {
