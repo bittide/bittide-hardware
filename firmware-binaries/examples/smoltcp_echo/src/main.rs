@@ -8,6 +8,7 @@
 #![no_main]
 
 use bittide_sys::axi::{AxiRx, AxiTx};
+use bittide_sys::mac::Mac;
 use bittide_sys::smoltcp::axi::AxiEthernet;
 use bittide_sys::time::{Clock, Duration};
 use bittide_sys::uart::Uart;
@@ -26,7 +27,7 @@ const UART_ADDR: usize = 0b0010 << 28;
 const CLOCK_ADDR: usize = 0b0011 << 28;
 const RX_AXI_ADDR: usize = 0b0101 << 28;
 const TX_AXI_ADDR: usize = 0b0110 << 28;
-const _MAC_ADDR: usize = 0b1001 << 28;
+const MAC_ADDR: usize = 0b1001 << 28;
 const MTU: usize = 1500;
 const RX_BUFFER_SIZE: usize = 2048;
 
@@ -44,7 +45,7 @@ fn main() -> ! {
     let mut config = Config::new(eth_addr.into());
     let axi_tx = AxiTx::new(TX_AXI_ADDR as *mut u8);
     let axi_rx = unsafe { AxiRx::new(RX_AXI_ADDR as *mut usize, RX_BUFFER_SIZE) };
-
+    let mac = Mac::new(MAC_ADDR);
     let mut device: AxiEthernet<MTU> = AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx);
     let now = clock.elapsed().into();
     let mut iface = Interface::new(config, &mut device, now);
@@ -72,9 +73,15 @@ fn main() -> ! {
     let server_handle = sockets.add(server_socket);
 
     let mut last_print = clock.elapsed();
+    let mut mac_status = mac.read();
     loop {
         let now = clock.elapsed();
         if now > last_print + Duration::from_secs(1) {
+            let mac_new = mac.read();
+            if mac_new != mac_status {
+                mac_status = mac_new;
+                uwriteln!(uart, "{:?}", mac_status).unwrap();
+            }
             last_print = now;
             uwriteln!(uart, "time: {}", now).unwrap();
             let socket = sockets.get::<Socket>(server_handle);
@@ -86,7 +93,6 @@ fn main() -> ! {
         let mut socket = sockets.get_mut::<Socket>(server_handle);
         if !socket.is_active() && !socket.is_listening() {
             uwriteln!(uart, "listening").unwrap();
-
             socket.listen(7).unwrap();
         }
         if socket.is_open() && socket.may_send() && !socket.may_recv() {
