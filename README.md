@@ -29,6 +29,7 @@ We follow a standard GitHub development flow. Our development branch is called `
 
   * The full (expensive) test suite only runs nightly on `staging`. If you want to run the full test suite on a PR, add `[force_expensive_checks]` to your commit message.
   * While debugging, we often only want one bittide instance to be tested with our hardware-in-the-loop infrastructure. With the increasing number of bittide instances with are synthesized and tested, these CI runs take a long time. You can add a file `.github/synthesis/debug.json`, with only the instances you want CI to synthesize/test. The CI run will always fail on the 'all' job when this file exists to prevent a premature merge.
+  * You can run `format` in the Nix shell to format all Cabal, Haskell, and Rust files.
 
 # About Bittide
 Bittide is a novel distributed system architecture based on the idea
