@@ -1,7 +1,7 @@
-{-# LANGUAGE RecordWildCards #-}
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ImplicitPrelude #-}
 
 module Bittide.Simulate.Config (

@@ -1,7 +1,7 @@
-{-# LANGUAGE DeriveAnyClass #-}
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 
 -- | Flags used by Shake
