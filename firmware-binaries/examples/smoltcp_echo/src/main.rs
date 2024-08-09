@@ -22,10 +22,12 @@ use smoltcp::socket::tcp::{Socket, SocketBuffer};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use ufmt::uwriteln;
 
-const UART_ADDR: usize = 0b010 << 29;
-const CLOCK_ADDR: usize = 0b011 << 29;
-const RX_AXI_ADDR: usize = 0b101 << 29;
-const TX_AXI_ADDR: usize = 0b110 << 29;
+const UART_ADDR: usize = 0b0010 << 28;
+const CLOCK_ADDR: usize = 0b0011 << 28;
+const RX_AXI_ADDR: usize = 0b0101 << 28;
+const TX_AXI_ADDR: usize = 0b0110 << 28;
+const _MAC_ADDR: usize = 0b1001 << 28;
+const MTU: usize = 1500;
 const RX_BUFFER_SIZE: usize = 2048;
 
 #[cfg_attr(not(test), entry)]
@@ -43,7 +45,7 @@ fn main() -> ! {
     let axi_tx = AxiTx::new(TX_AXI_ADDR as *mut u8);
     let axi_rx = unsafe { AxiRx::new(RX_AXI_ADDR as *mut usize, RX_BUFFER_SIZE) };
 
-    let mut device: AxiEthernet<2048> = AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx);
+    let mut device: AxiEthernet<MTU> = AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx);
     let now = clock.elapsed().into();
     let mut iface = Interface::new(config, &mut device, now);
     iface.update_ip_addrs(|ip_addrs| {
@@ -84,6 +86,7 @@ fn main() -> ! {
         let mut socket = sockets.get_mut::<Socket>(server_handle);
         if !socket.is_active() && !socket.is_listening() {
             uwriteln!(uart, "listening").unwrap();
+
             socket.listen(7).unwrap();
         }
         if socket.is_open() && socket.may_send() && !socket.may_recv() {
@@ -91,7 +94,7 @@ fn main() -> ! {
             socket.close();
         }
         if socket.can_recv() {
-            let mut buf = [0; 2048];
+            let mut buf = [0; RX_BUFFER_SIZE];
             let mut len = 0;
             socket
                 .recv(|buffer| {

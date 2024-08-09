@@ -65,15 +65,15 @@ vexRiscGmii ::
 vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
   (\((_,_,jtagBwd),(uartFwd, gmiiFwd, gpioFwd)) -> (uartFwd, gmiiFwd, jtagBwd, gpioFwd)) $ toSignals (
   circuit $ \(uartTx, gmiiRx, jtag) -> do
-    [uartBus, timeBus, wbAxiRx, wbAxiTx, dnaWb, gpioWb] <- pe -< jtag
+    [uartBus, timeBus, wbAxiRx, wbAxiTx, dnaWb, gpioWb, macWb] <- pe -< jtag
     (uartRx, _uartStatus) <- uart -< (uartBus, uartTx)
     time -< timeBus
     dna -< dnaWb
-    -- macStatIf -< (macWb, macStatus)
+    macStatIf -< (macWb, macStatus)
     gpioDf <- idleSource -< ()
     gpioOut <- gpio -< (gpioWb, gpioDf)
 
-    (axiRx0, gmiiTx, _macStatus) <- mac -< (axiTx1, gmiiRx)
+    (axiRx0, gmiiTx, macStatus) <- mac -< (axiTx1, gmiiRx)
     axiRx1 <- axiRxPipe -< axiRx0
     axiTx0 <- wbToAxiTx' -< wbAxiTx
     axiTx1 <- axiTxPipe -< axiTx0
@@ -86,7 +86,7 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
   time = wcre timeWb
   dna = wcre readDnaPortE2Wb simDna2
   mac = ethMac1GFifoC (SNat @1500) (SNat @1500) sysClk sysRst txClk txRst rxClk rxRst miiSel txClkEna rxClkEna
-  -- macStatIf = wcre $ macStatusInterfaceWb d16
+  macStatIf = wcre $ macStatusInterfaceWb d16
   uart = wcre uartWb d32 d2 baud
   pe = wcre processingElement peConfig
   wbToAxiTx' = wcre wbToAxiTx
@@ -101,7 +101,7 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
   wcre = withClockResetEnable sysClk sysRst enableGen
 
   peConfig =
-    PeConfig (0b100 :> 0b001 :> 0b010 :> 0b011 :> 0b101 :> 0b110 :> 0b111 :> 0b000 :> Nil)
+    PeConfig (0b1000 :> 0b0001 :> 0b0010 :> 0b0011 :> 0b0101 :> 0b0110 :> 0b0111 :> 0b0100 :> 0b1001 :> Nil)
     (Undefined @(256 * 1024))
     (Undefined @(64 * 1024))
 
