@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE ImplicitPrelude #-}
 
 module Bittide.Plot (
@@ -11,13 +12,14 @@ module Bittide.Plot (
   plotElasticBuffersFileName,
 ) where
 
-import Clash.Prelude (Index, KnownNat, Vec)
+import Clash.Prelude (KnownNat, Vec)
 import Clash.Signal.Internal (Femtoseconds (..))
 import Clash.Sized.Vector qualified as Vec
 
 import Control.Monad (void)
 import Data.Graph (edges)
-import Data.List (foldl', transpose, unzip4)
+import Data.Int (Int64)
+import Data.List (foldl', transpose, unzip4, zip4)
 import System.FilePath ((</>))
 
 import Graphics.Matplotlib (
@@ -109,7 +111,7 @@ plot outputDir graph plotData =
   toClockPlot nodeIndex (unzip4 -> (time, relativeOffset, _, _)) =
     withLegend $
       (@@ [o2 "label" $ fromEnum nodeIndex]) $
-        MP.plot time relativeOffset
+        MP.plot (map fsToMs time) relativeOffset
 
   withLegend =
     ( @@
@@ -121,6 +123,12 @@ plot outputDir graph plotData =
 
 data Marking = Waiting | Stable | Settled | None deriving (Eq)
 
+-- | Convert femtoseconds to milliseconds
+fsToMs :: Femtoseconds -> Int64
+fsToMs (Femtoseconds fs) =
+  -- fs -> ps -> ns -> µs -> ms
+  fs `div` 1_000_000_000_000
+
 {- | Plots the datacount of an elastic buffer and marks those parts of
 the plots that are reported to be stable/settled by the stability
 checker as well as the time frames at which the reframing detector
@@ -130,9 +138,12 @@ plotEbData ::
   (KnownNat m) =>
   [(Femtoseconds, ReframingStage, RelDataCount m, SC.StabilityIndication)] ->
   Matplotlib
-plotEbData xs@(unzip4 -> (timestamps, _, dataCounts, _)) =
+plotEbData (unzip4 -> (timestampsFs, reframingStages, dataCounts, stabilities)) =
   foldPlots markedIntervals % ebPlot
  where
+  timestamps = map fsToMs timestampsFs
+  xs = zip4 timestamps reframingStages dataCounts stabilities
+
   mGr = (@@ [o1 "g-", o2 "linewidth" (8 :: Int)]) -- green marking
   mBl = (@@ [o1 "b-", o2 "linewidth" (8 :: Int)]) -- blue marking
   mRe = (@@ [o1 "r-", o2 "linewidth" (8 :: Int)]) -- red marking
@@ -183,14 +194,14 @@ matplotWrite dir clockDats ebDats = do
   void $
     file (dir </> plotClocksFileName) $
       constrained
-        ( xlabel "Time (fs)"
+        ( xlabel "Time (ms)"
             % ylabel "Relative period (fs) [0 = ideal frequency]"
             % foldPlots (reverse $ Vec.toList clockDats)
         )
   void $
     file (dir </> plotElasticBuffersFileName) $
       constrained
-        ( xlabel "Time (fs)"
+        ( xlabel "Time (ms)"
             % foldPlots (Vec.toList ebDats)
         )
  where
