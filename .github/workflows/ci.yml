@@ -352,6 +352,10 @@ jobs:
         run: |
           cabal run bittide-experiments:unittests
 
+      - name: Run doctests
+        run: |
+          cabal run -- bittide-experiments:doctests
+
   bittide-tests:
     name: Bittide tests
     runs-on: [self-hosted, compute]
