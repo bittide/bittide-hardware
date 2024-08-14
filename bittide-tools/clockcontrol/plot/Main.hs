@@ -668,7 +668,7 @@ plotTest testDir mCfg dir globalOutDir = do
               Just (DotFile f) -> readFile f >>= writeTop . Just
               Just tt -> fromTopologyType tt >>= either die (`saveSimConfig` cfg)
             checkIntermediateResults outDir
-              >>= maybe (generateReport "HITLT Report" outDir ids cfg) die
+              >>= maybe (generateReport (Proxy @Basic125) "HITLT Report" outDir ids cfg) die
       _ -> die "Empty topology"
     _ -> die "Topology is larger than expected"
  where
