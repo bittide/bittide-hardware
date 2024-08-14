@@ -368,7 +368,7 @@ postProcess t i links =
             fromIntegral $
               (1000 *) $
                 snatToInteger (clockPeriod @Basic125)
-                  - snatToInteger (clockPeriod @External)
+                  - snatToInteger (clockPeriod @GthTx)
 
         localStamp =
           let ref = "[" <> show sampleInBuffer <> "]"
@@ -382,7 +382,7 @@ postProcess t i links =
           UntilTrigger -> globalTime
           _ ->
             dpLocalTime prevDP
-              + localStamp ~* clockPeriodFs (Proxy @External)
+              + localStamp ~* clockPeriodFs (Proxy @GthTx)
 
         globalTimeDelta =
           globalTime
