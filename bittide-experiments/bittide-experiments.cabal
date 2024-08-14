@@ -92,6 +92,7 @@ library
     containers,
     data-default,
     directory,
+    extra,
     filepath,
     happy-dot,
     http-conduit,

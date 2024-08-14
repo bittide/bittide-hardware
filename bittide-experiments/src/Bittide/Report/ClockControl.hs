@@ -8,10 +8,12 @@ module Bittide.Report.ClockControl (
   generateReport,
   checkDependencies,
   checkIntermediateResults,
+  formatThousands,
 ) where
 
 import Data.Bool (bool)
 import Data.List (intercalate)
+import Data.List.Extra (chunksOf)
 import System.Directory (doesDirectoryExist, doesFileExist, findExecutable)
 import System.Environment (lookupEnv)
 import System.FilePath (takeFileName, (</>))
@@ -29,6 +31,18 @@ import System.Process (callProcess, readProcess)
 
 import Bittide.Plot
 import Bittide.Simulate.Config
+
+{- | Format a number with underscores every three digits.
+
+>>> formatThousands 123456789
+"123,456,789"
+>>> formatThousands 100000000
+"100,000,000"
+>>> formatThousands 1000000
+"1,000,000"
+-}
+formatThousands :: (Num a, Show a) => a -> String
+formatThousands = reverse . intercalate "," . chunksOf 3 . reverse . show
 
 generateReport ::
   -- | Document description header
@@ -229,17 +243,17 @@ toLatex datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
     , "\\begin{large}"
     , "  \\begin{tabular}{rl}"
     , "    duration \\textit{(clock cycles)}:"
-    , "      & " <> show duration <> " \\\\"
+    , "      & " <> formatThousands duration <> " \\\\"
     , "    stability detector - framesize:"
-    , "      & " <> show stabilityFrameSize <> " \\\\"
+    , "      & " <> formatThousands stabilityFrameSize <> " \\\\"
     , "    stability detector - margin:"
-    , "      & \\textpm\\," <> show stabilityMargin <> " elements \\\\"
+    , "      & \\textpm\\," <> formatThousands stabilityMargin <> " elements \\\\"
     , "    when stable, automatically stop after \\textit{(clock cycles)}:"
-    , "      & " <> maybe "not used" show stopAfterStable <> " \\\\"
+    , "      & " <> maybe "not used" formatThousands stopAfterStable <> " \\\\"
     , "    clock offsets \\textit{(fs)}:"
-    , "      & " <> intercalate ", " (show <$> clockOffsets) <> " \\\\"
+    , "      & " <> intercalate "; " (show <$> clockOffsets) <> " \\\\"
     , "    startup delays \\textit{(clock cycles)}:"
-    , "      & " <> intercalate ", " (show <$> startupDelays) <> " \\\\"
+    , "      & " <> intercalate "; " (formatThousands <$> startupDelays) <> " \\\\"
     , "    reframing:"
     , "      & "
         <> "\\textit{"
