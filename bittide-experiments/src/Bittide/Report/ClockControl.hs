@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ImplicitPrelude #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 module Bittide.Report.ClockControl (
   generateReport,
@@ -11,9 +12,14 @@ module Bittide.Report.ClockControl (
   formatThousands,
 ) where
 
+import Clash.Prelude (Domain, KnownDomain, Milliseconds, natToNum)
+
 import Data.Bool (bool)
 import Data.List (intercalate)
 import Data.List.Extra (chunksOf)
+import Data.Proxy (Proxy (..))
+import GHC.Float.RealFracMethods (roundDoubleInteger)
+import Numeric.Extra (floatToDouble)
 import System.Directory (doesDirectoryExist, doesFileExist, findExecutable)
 import System.Environment (lookupEnv)
 import System.FilePath (takeFileName, (</>))
@@ -29,6 +35,7 @@ import System.IO (
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (callProcess, readProcess)
 
+import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.Plot
 import Bittide.Simulate.Config
 
@@ -45,6 +52,9 @@ formatThousands :: (Num a, Show a) => a -> String
 formatThousands = reverse . intercalate "," . chunksOf 3 . reverse . show
 
 generateReport ::
+  (KnownDomain refDom) =>
+  -- | Reference domain
+  Proxy (refDom :: Domain) ->
   -- | Document description header
   String ->
   -- | Directory containing the intermediate plot results
@@ -54,7 +64,7 @@ generateReport ::
   -- | The utilized simulation configuration
   SimConf ->
   IO ()
-generateReport (("Bittide - " <>) -> header) dir ids cfg =
+generateReport refDom (("Bittide - " <>) -> header) dir ids cfg =
   withSystemTempDirectory "generate-report" $ \tmpDir -> do
     Just runref <- lookupEnv "RUNREF"
     -- remove the 'n' prefix from the node names
@@ -101,7 +111,7 @@ generateReport (("Bittide - " <>) -> header) dir ids cfg =
     -- create the latex report
     withFile (tmpDir </> "report.tex") WriteMode $ \h -> do
       hSetBuffering h NoBuffering
-      hPutStr h $ toLatex datetime runref header clocksPdf ebsPdf topTikz ids cfg
+      hPutStr h $ toLatex refDom datetime runref header clocksPdf ebsPdf topTikz ids cfg
       hFlush h
       hClose h
     -- create the report pdf
@@ -159,6 +169,10 @@ checkIntermediateResults dir =
       <$> doesFileExist f
 
 toLatex ::
+  forall refDom.
+  (KnownDomain refDom) =>
+  -- | Reference domain
+  Proxy (refDom :: Domain) ->
   -- | date & time reference
   String ->
   -- | Github run reference
@@ -176,7 +190,7 @@ toLatex ::
   -- | The utilized simulation configuration
   SimConf ->
   String
-toLatex datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
+toLatex refDom datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
   unlines
     [ "\\documentclass[landscape]{article}"
     , ""
@@ -187,8 +201,12 @@ toLatex datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
     , "\\usepackage{pifont}"
     , "\\usepackage{fancyhdr}"
     , "\\usepackage{tikz}"
+    , "\\usepackage{siunitx}"
     , ""
     , "\\usetikzlibrary{shapes, calc, shadows}"
+    , ""
+    , "% Not actually an SI unit"
+    , "\\DeclareSIUnit\\ppm{ppm}"
     , ""
     , "\\pagestyle{fancy}"
     , "\\fancyhf{}"
@@ -242,25 +260,29 @@ toLatex datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
     , ""
     , "\\begin{large}"
     , "  \\begin{tabular}{rl}"
-    , "    duration \\textit{(clock cycles)}:"
-    , "      & " <> formatThousands duration <> " \\\\"
+    , "    timeout after:"
+    , "      & " <> qtyMs durationMs <> " \\\\"
     , "    stability detector - framesize:"
-    , "      & " <> formatThousands stabilityFrameSize <> " \\\\"
+    , "      & " <> qtyMs stabilityFrameSizeMs <> " \\\\"
     , "    stability detector - margin:"
     , "      & \\textpm\\," <> formatThousands stabilityMargin <> " elements \\\\"
-    , "    when stable, automatically stop after \\textit{(clock cycles)}:"
-    , "      & " <> maybe "not used" formatThousands stopAfterStable <> " \\\\"
-    , "    clock offsets \\textit{(fs)}:"
-    , "      & " <> intercalate "; " (show <$> clockOffsets) <> " \\\\"
-    , "    startup delays \\textit{(clock cycles)}:"
-    , "      & " <> intercalate "; " (formatThousands <$> startupDelays) <> " \\\\"
+    , "    when stable, stop after:"
+    , "      & " <> maybe "not used" qtyMs stopAfterStableMs <> " \\\\"
+    , "    clock offsets:"
+    , "      & "
+        <> intercalate
+          "; "
+          (qtyPpm . roundDoubleInteger . fsToPpm refDom . floatToDouble <$> clockOffsets)
+        <> " \\\\"
+    , "    startup delays:"
+    , "      & " <> intercalate "; " (qtyMs <$> startupDelaysMs) <> " \\\\"
     , "    reframing:"
     , "      & "
         <> "\\textit{"
         <> bool "disabled" "enabled" reframe
         <> "} \\\\"
     , if reframe then "    wait time: & " <> show waitTime <> " \\\\" else ""
-    , "    all buffers stable at the end of simulation:"
+    , "    all buffers stable end of run:"
     , "      & "
         <> maybe
           ""
@@ -319,3 +341,12 @@ toLatex datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
     , ""
     , "\\end{document}"
     ]
+ where
+  qtyMs ms = "\\qty{" <> show ms <> "}{\\milli\\second}"
+  qtyPpm ppm = "\\qty{" <> show ppm <> "}{\\ppm}"
+
+  nCyclesOneMs = natToNum @(PeriodToCycles refDom (Milliseconds 1))
+  durationMs = duration `div` nCyclesOneMs
+  stabilityFrameSizeMs = stabilityFrameSize `div` nCyclesOneMs
+  startupDelaysMs = (`div` nCyclesOneMs) <$> startupDelays
+  stopAfterStableMs = (`div` nCyclesOneMs) <$> stopAfterStable

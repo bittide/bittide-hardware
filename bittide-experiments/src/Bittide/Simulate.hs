@@ -210,7 +210,9 @@ simPlot# simSettings ccc t = do
   saveSettings Nothing
 
   case mode of
-    PDF -> plot dir t $ fmap (fmap (\(a, b, c, d) -> (a, b, fromRfState c, d))) simResult
+    PDF ->
+      plot (Proxy @dom) dir t $
+        fmap (fmap (\(a, b, c, d) -> (a, b, fromRfState c, d))) simResult
     CSV -> dumpCsv simResult
 
   let result = allSettled $ V.map last simResult
