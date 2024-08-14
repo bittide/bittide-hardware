@@ -10,16 +10,18 @@ module Bittide.Plot (
   plot,
   plotClocksFileName,
   plotElasticBuffersFileName,
+  fsToPpm,
 ) where
 
-import Clash.Prelude (KnownNat, Vec)
-import Clash.Signal.Internal (Femtoseconds (..))
+import Clash.Prelude (KnownDomain, KnownNat, Vec)
+import Clash.Signal.Internal (Femtoseconds (..), unFemtoseconds)
 import Clash.Sized.Vector qualified as Vec
 
 import Control.Monad (void)
 import Data.Graph (edges)
 import Data.Int (Int64)
 import Data.List (foldl', transpose, unzip4, zip4)
+import Data.Proxy (Proxy)
 import System.FilePath ((</>))
 
 import Graphics.Matplotlib (
@@ -38,7 +40,7 @@ import Graphics.Matplotlib (
  )
 import Graphics.Matplotlib qualified as MP (plot)
 
-import Bittide.ClockControl (RelDataCount)
+import Bittide.ClockControl (RelDataCount, clockPeriodFs)
 import Bittide.ClockControl.Callisto (ReframingState (..))
 import Bittide.ClockControl.StabilityChecker qualified as SC (StabilityIndication (..))
 import Bittide.Topology
@@ -63,8 +65,10 @@ fromRfState = \case
   Done{} -> RSDone
 
 plot ::
-  forall nNodes m.
-  (KnownNat nNodes, KnownNat m) =>
+  forall nNodes m refDom.
+  (KnownNat nNodes, KnownNat m, KnownDomain refDom) =>
+  -- | Reference domain
+  Proxy refDom ->
   -- | output directory for storing the results
   FilePath ->
   -- | topology corresponding to the plot
@@ -79,7 +83,7 @@ plot ::
       )
     ] ->
   IO ()
-plot outputDir graph plotData =
+plot refDom outputDir graph plotData =
   matplotWrite outputDir clockPlots elasticBufferPlots
  where
   clockPlots = Vec.imap toClockPlot plotData
@@ -100,7 +104,7 @@ plot outputDir graph plotData =
             else snd
         )
       $ zip (filter (hasEdge graph nodeIndex) [0, 1 ..])
-      $ fmap plotEbData
+      $ fmap (plotEbData refDom)
       -- Organize data by node instead of by timestamp. I.e., the first item in
       -- 'timedBuffers' is for this node's first neighbor.
       $ transpose
@@ -108,10 +112,12 @@ plot outputDir graph plotData =
         | (t, r, bs) <- zip3 time reframingStage buffersPerNode
         ]
 
-  toClockPlot nodeIndex (unzip4 -> (time, relativeOffset, _, _)) =
+  toClockPlot nodeIndex (unzip4 -> (time, relativeOffsetFs, _, _)) =
     withLegend $
       (@@ [o2 "label" $ fromEnum nodeIndex]) $
-        MP.plot (map fsToMs time) relativeOffset
+        MP.plot
+          (map fsToMs time)
+          (map (fsToPpm refDom . fromIntegral . unFemtoseconds) relativeOffsetFs)
 
   withLegend =
     ( @@
@@ -129,16 +135,27 @@ fsToMs (Femtoseconds fs) =
   -- fs -> ps -> ns -> µs -> ms
   fs `div` 1_000_000_000_000
 
+{- | Convert femtoseconds to parts per million, where femtoseconds represents
+the relative shortening or lengthening of a clock period.
+-}
+fsToPpm :: (KnownDomain dom) => Proxy dom -> Double -> Double
+fsToPpm refDom fs = fs / onePpm
+ where
+  onePpm = case clockPeriodFs refDom of
+    Femtoseconds f -> fromIntegral f / 1_000_000
+
 {- | Plots the datacount of an elastic buffer and marks those parts of
 the plots that are reported to be stable/settled by the stability
 checker as well as the time frames at which the reframing detector
 is in the waiting state.
 -}
 plotEbData ::
-  (KnownNat m) =>
+  (KnownNat m, KnownDomain refDom) =>
+  -- | Reference domain
+  Proxy refDom ->
   [(Femtoseconds, ReframingStage, RelDataCount m, SC.StabilityIndication)] ->
   Matplotlib
-plotEbData (unzip4 -> (timestampsFs, reframingStages, dataCounts, stabilities)) =
+plotEbData _refDom (unzip4 -> (timestampsFs, reframingStages, dataCounts, stabilities)) =
   foldPlots markedIntervals % ebPlot
  where
   timestamps = map fsToMs timestampsFs
@@ -195,7 +212,7 @@ matplotWrite dir clockDats ebDats = do
     file (dir </> plotClocksFileName) $
       constrained
         ( xlabel "Time (ms)"
-            % ylabel "Relative period (fs) [0 = ideal frequency]"
+            % ylabel "Relative frequency (ppm)"
             % foldPlots (reverse $ Vec.toList clockDats)
         )
   void $

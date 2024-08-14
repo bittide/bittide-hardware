@@ -22,6 +22,7 @@ module Main (main, knownTestsWithSimConf) where
 import Clash.Prelude (
   BitPack (..),
   Index,
+  KnownDomain,
   SNat (..),
   Vec,
   checkedTruncateB,
@@ -555,8 +556,15 @@ knownTestsWithSimConf = hasSimConf <$> hitlTests
     KnownType name test ->
       (name, first Text.unpack <$> Map.toList (mGetPPD @_ @SimConf test))
 
-plotTest :: FilePath -> Maybe SimConf -> FilePath -> FilePath -> IO ()
-plotTest testDir mCfg dir globalOutDir = do
+plotTest ::
+  (KnownDomain refDom) =>
+  Proxy refDom ->
+  FilePath ->
+  Maybe SimConf ->
+  FilePath ->
+  FilePath ->
+  IO ()
+plotTest refDom testDir mCfg dir globalOutDir = do
   unless (isNothing mCfg) $ checkDependencies >>= maybe (return ()) die
   putStrLn $ "Creating plots for test case: " <> testName
 
@@ -646,7 +654,7 @@ plotTest testDir mCfg dir globalOutDir = do
                 return (toPlotData <$> rs)
 
         createDirectoryIfMissing True outDir
-        plot outDir t $ Vec.unsafeFromList postProcessData
+        plot refDom outDir t $ Vec.unsafeFromList postProcessData
 
         let allStable =
               all
@@ -762,7 +770,7 @@ main =
                 <> testsDir
 
       forM_ tests $ \(test, cfg) ->
-        plotTest test cfg (testsDir </> test) outDir
+        plotTest (Proxy @Basic125) test cfg (testsDir </> test) outDir
  where
   getTestsWithSimConf name =
     maybe [] snd $ find ((== name) . fst) knownTestsWithSimConf

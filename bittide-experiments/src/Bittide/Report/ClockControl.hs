@@ -18,6 +18,8 @@ import Data.Bool (bool)
 import Data.List (intercalate)
 import Data.List.Extra (chunksOf)
 import Data.Proxy (Proxy (..))
+import GHC.Float.RealFracMethods (roundDoubleInteger)
+import Numeric.Extra (floatToDouble)
 import System.Directory (doesDirectoryExist, doesFileExist, findExecutable)
 import System.Environment (lookupEnv)
 import System.FilePath (takeFileName, (</>))
@@ -188,7 +190,7 @@ toLatex ::
   -- | The utilized simulation configuration
   SimConf ->
   String
-toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
+toLatex refDom datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
   unlines
     [ "\\documentclass[landscape]{article}"
     , ""
@@ -202,6 +204,9 @@ toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} 
     , "\\usepackage{siunitx}"
     , ""
     , "\\usetikzlibrary{shapes, calc, shadows}"
+    , ""
+    , "% Not actually an SI unit"
+    , "\\DeclareSIUnit\\ppm{ppm}"
     , ""
     , "\\pagestyle{fancy}"
     , "\\fancyhf{}"
@@ -263,8 +268,12 @@ toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} 
     , "      & \\textpm\\," <> formatThousands stabilityMargin <> " elements \\\\"
     , "    when stable, stop after:"
     , "      & " <> maybe "not used" qtyMs stopAfterStableMs <> " \\\\"
-    , "    clock offsets \\textit{(fs)}:"
-    , "      & " <> intercalate "; " (show <$> clockOffsets) <> " \\\\"
+    , "    clock offsets:"
+    , "      & "
+        <> intercalate
+          "; "
+          (qtyPpm . roundDoubleInteger . fsToPpm refDom . floatToDouble <$> clockOffsets)
+        <> " \\\\"
     , "    startup delays:"
     , "      & " <> intercalate "; " (qtyMs <$> startupDelaysMs) <> " \\\\"
     , "    reframing:"
@@ -334,6 +343,7 @@ toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} 
     ]
  where
   qtyMs ms = "\\qty{" <> show ms <> "}{\\milli\\second}"
+  qtyPpm ppm = "\\qty{" <> show ppm <> "}{\\ppm}"
 
   nCyclesOneMs = natToNum @(PeriodToCycles refDom (Milliseconds 1))
   durationMs = duration `div` nCyclesOneMs
