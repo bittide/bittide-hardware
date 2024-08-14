@@ -45,6 +45,7 @@ module Bittide.Topology (
   toDot,
   randomTopology,
   topTypeCLIParser,
+  pairwise,
 ) where
 
 import Prelude
