@@ -720,6 +720,7 @@ jobs:
   bittide-instances-hardware-in-the-loop:
     name: HITL
     runs-on: [self-hosted, hardware-access]
+    timeout-minutes: 1000
     defaults:
       run:
         # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
