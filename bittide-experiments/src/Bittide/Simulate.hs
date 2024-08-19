@@ -85,7 +85,7 @@ data SimPlotSettings = SimPlotSettings
   , mode :: OutputMode
   , dir :: FilePath
   , stopStable :: Maybe Int
-  , fixClockOffs :: [Float]
+  , fixClockOffs :: Maybe [Float]
   , fixStartDelays :: [Int]
   , maxStartDelay :: Int
   , sccc :: SomeClockControlConfig
@@ -234,7 +234,7 @@ simPlot# simSettings ccc t = do
   givenClockOffsets =
     V.unsafeFromList $
       take (natToNum @nodes) $
-        (Just <$> fixClockOffs) <> repeat Nothing
+        sequenceA fixClockOffs <> repeat Nothing
 
   givenStartupDelays =
     V.unsafeFromList $

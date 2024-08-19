@@ -96,8 +96,8 @@ import Data.Csv.Conduit (
 import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap (fromList, size)
 import Data.List (find, isPrefixOf, isSuffixOf, uncons)
-import Data.Map qualified as Map (toList)
-import Data.Maybe (catMaybes, fromJust, fromMaybe, isNothing, mapMaybe)
+import Data.Map qualified as Map
+import Data.Maybe (catMaybes, fromJust, fromMaybe, mapMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Set qualified as Set (
   difference,
@@ -110,6 +110,7 @@ import Data.String (fromString)
 import Data.Text qualified as Text (unpack)
 import Data.Vector qualified as Vector (fromList)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
+import GHC.Stack (HasCallStack)
 import System.Directory (
   createDirectoryIfMissing,
   doesDirectoryExist,
@@ -548,24 +549,28 @@ fromCsvDump t i links (csvHandle, csvFile) =
 {- | The HITL tests, whose post proc data offers a simulation config
 for plotting.
 -}
-knownTestsWithSimConf :: [(String, [(String, Maybe SimConf)])]
+knownTestsWithSimConf :: (HasCallStack) => [(String, [(String, SimConf)])]
 knownTestsWithSimConf = hasSimConf <$> hitlTests
  where
   hasSimConf = \case
     LoadConfig name _ -> (name, [])
     KnownType name test ->
-      (name, first Text.unpack <$> Map.toList (mGetPPD @_ @SimConf test))
+      let !simConfMap = Map.mapMaybeWithKey justOrDie (mGetPPD @_ @SimConf test)
+       in (name, first Text.unpack <$> Map.toList simConfMap)
+
+  justOrDie _ (Just x) = Just x
+  justOrDie k Nothing = error $ "No SimConf for " <> show k
 
 plotTest ::
   (KnownDomain refDom) =>
   Proxy refDom ->
   FilePath ->
-  Maybe SimConf ->
+  SimConf ->
   FilePath ->
   FilePath ->
   IO ()
-plotTest refDom testDir mCfg dir globalOutDir = do
-  unless (isNothing mCfg) $ checkDependencies >>= maybe (return ()) die
+plotTest refDom testDir cfg dir globalOutDir = do
+  checkDependencies >>= maybe (return ()) die
   putStrLn $ "Creating plots for test case: " <> testName
 
   let
@@ -581,9 +586,8 @@ plotTest refDom testDir mCfg dir globalOutDir = do
         >>= \case
           SomeNat n -> return $ STop $ complete $ snatProxy n
 
-  STop (t :: Topology topologySize) <- case mCfg of
-    Nothing -> topFromDirs
-    Just cfg -> case SimConf.mTopologyType cfg of
+  STop (t :: Topology topologySize) <-
+    case SimConf.mTopologyType cfg of
       Nothing -> topFromDirs
       Just (Random{}) -> topFromDirs
       Just (DotFile f) -> readFile f >>= either die return . fromDot
@@ -656,27 +660,23 @@ plotTest refDom testDir mCfg dir globalOutDir = do
         createDirectoryIfMissing True outDir
         plot refDom outDir t $ Vec.unsafeFromList postProcessData
 
-        let allStable =
-              all
-                ((\(_, _, _, xs) -> all (stable . snd) xs) . last)
-                postProcessData
+        let
+          allStable =
+            all ((\(_, _, _, xs) -> all (stable . snd) xs) . last) postProcessData
+          cfg1 =
+            cfg
+              { SimConf.outDir = outDir
+              , SimConf.stable = Just allStable
+              }
+          ids = bimap toInteger fst <$> fpgas
 
-        case mCfg of
-          Nothing -> return ()
-          Just cfg' -> do
-            let cfg =
-                  cfg'
-                    { SimConf.outDir = outDir
-                    , SimConf.stable = Just allStable
-                    }
-                ids = bimap toInteger fst <$> fpgas
-            case SimConf.mTopologyType cfg of
-              Nothing -> writeTop Nothing
-              Just (Random{}) -> writeTop Nothing
-              Just (DotFile f) -> readFile f >>= writeTop . Just
-              Just tt -> fromTopologyType tt >>= either die (`saveSimConfig` cfg)
-            checkIntermediateResults outDir
-              >>= maybe (generateReport (Proxy @Basic125) "HITLT Report" outDir ids cfg) die
+        case SimConf.mTopologyType cfg of
+          Nothing -> writeTop Nothing
+          Just (Random{}) -> writeTop Nothing
+          Just (DotFile f) -> readFile f >>= writeTop . Just
+          Just tt -> fromTopologyType tt >>= either die (`saveSimConfig` cfg1)
+        checkIntermediateResults outDir
+          >>= maybe (generateReport (Proxy @Basic125) "HITLT Report" outDir ids cfg1) die
       _ -> die "Empty topology"
     _ -> die "Topology is larger than expected"
  where

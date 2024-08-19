@@ -683,7 +683,7 @@ tests =
           , reframe = cccEnableReframing
           , rusty = cccEnableRustySimulation
           , waitTime = fromEnum cccReframingWaitTime
-          , clockOffsets = toList $ repeat @FpgaCount 0
+          , clockOffsets = Nothing
           , startupDelays = toList $ repeat @FpgaCount 0
           }
       )

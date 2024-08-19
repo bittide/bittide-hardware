@@ -69,7 +69,7 @@ data SimConf = SimConf
   , stopAfterStable :: Maybe Int
   -- ^ Stop simulation after all buffers have been stable for
   -- at least the given number of clock cycles.
-  , clockOffsets :: [Float]
+  , clockOffsets :: Maybe [Float]
   -- ^ The initital clock offsets in Femtoseconds
   -- (randomly generated if missing).
   , startupDelays :: [Int]
@@ -105,7 +105,7 @@ instance Default SimConf where
       , waitTime = 100000
       , stopWhenStable = False
       , stopAfterStable = Nothing
-      , clockOffsets = []
+      , clockOffsets = Nothing
       , startupDelays = []
       , maxStartupDelay = 0
       , createReport = False
