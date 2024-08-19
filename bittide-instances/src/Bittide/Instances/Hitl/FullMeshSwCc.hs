@@ -666,7 +666,7 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 makeTopEntity 'fullMeshSwCcTest
 
 testsToRun :: Int
-testsToRun = 1
+testsToRun = 12
 
 tests :: HitlTestsWithPostProcData () SimConf
 tests =

@@ -22,7 +22,7 @@ import Data.Int (Int64)
 import Data.List (intercalate, sort)
 import Data.Maybe (catMaybes)
 import qualified Data.Vector as Vector
-import System.Directory (doesDirectoryExist, listDirectory)
+import System.Directory (doesDirectoryExist, listDirectory, removeDirectoryRecursive)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -130,3 +130,6 @@ doIt ilaDir = do
         x <- forM rows $ \(_linkNo, ugn, ign) -> do
           pure $ show ugn <> "," <> show ign
         hPutStrLn h $ intercalate "," x
+
+  -- delete raw ILA data, so we don't run into artifact size limitations
+  forM_ dirs (\d -> removeDirectoryRecursive (ilaDir </> d))
