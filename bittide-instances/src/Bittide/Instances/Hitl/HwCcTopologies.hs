@@ -913,7 +913,7 @@ tests =
             PPB_100 -> 10_000
             PPM_1 -> 1_000
 
-          fincFdecToFs = (/ stepSizeDiv) . (* clkPeriodPs) . fromIntegral
+          fincFdecToFs = ((-1) *) . (/ stepSizeDiv) . (* clkPeriodPs) . fromIntegral
          in
           defSimCfg
             { mTopologyType = Just $ topologyType t
