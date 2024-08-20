@@ -313,6 +313,7 @@ jobs:
 
       - name: Upload Reports
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Clock Control Reports
           path: reports
@@ -320,6 +321,7 @@ jobs:
 
       - name: Upload HITLT Plot Sources
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: CC-HITLT Plot Sources
           path: plot-sources
