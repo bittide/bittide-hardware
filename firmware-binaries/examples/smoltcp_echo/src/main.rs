@@ -19,10 +19,11 @@ use log::{self, debug};
 use riscv_rt::entry;
 
 use core::cmp::min;
-use smoltcp::iface::{Config, Interface, SocketSet};
+use smoltcp::iface::{Config, Interface, SocketSet, SocketStorage};
 use smoltcp::phy::Medium;
+use smoltcp::socket::dhcpv4;
 use smoltcp::socket::tcp::{Socket, SocketBuffer};
-use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
+use smoltcp::wire::{EthernetAddress, IpCidr};
 use ufmt::uwriteln;
 
 const CLOCK_ADDR: *const () = (0b0011 << 28) as *const ();
@@ -58,13 +59,9 @@ fn main() -> ! {
     let mut eth: AxiEthernet<ETH_MTU> = AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx, Some(2));
     let now = clock.elapsed().into();
     let mut iface = Interface::new(config, &mut eth, now);
-    iface.update_ip_addrs(|ip_addrs| {
-        ip_addrs
-            .push(IpCidr::new(IpAddress::v4(10, 0, 0, 10), 8))
-            .unwrap();
-    });
 
     // Create sockets
+    let mut dhcp_socket = dhcpv4::Socket::new();
     let server_socket = {
         // It is not strictly necessary to use a `static mut` and unsafe code here, but
         // on embedded systems that smoltcp targets it is far better to allocate the data
@@ -77,14 +74,21 @@ fn main() -> ! {
         Socket::new(tcp_rx_buffer, tcp_tx_buffer)
     };
 
-    let mut sockets: [_; 1] = Default::default();
+    let mut sockets: [SocketStorage; 2] = Default::default();
     let mut sockets = SocketSet::new(&mut sockets[..]);
     let server_handle = sockets.add(server_socket);
+    let dhcp_handle = sockets.add(dhcp_socket);
 
     let mut mac_status = unsafe { MAC_ADDR.read_volatile() };
+
     loop {
         let elapsed = clock.elapsed().into();
         iface.poll(elapsed, &mut eth, &mut sockets);
+        let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(dhcp_handle);
+        update_dhcp(&mut iface, dhcp_socket);
+        if iface.ip_addrs().is_empty() {
+            continue;
+        }
 
         let mut socket = sockets.get_mut::<Socket>(server_handle);
         if !socket.is_active() && !socket.is_listening() {
@@ -143,5 +147,38 @@ fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
     uwriteln!(uart, "Panicked, looping forever now").unwrap();
     loop {
         continue;
+    }
+}
+
+fn update_dhcp(iface: &mut Interface, socket: &mut dhcpv4::Socket) {
+    let event = socket.poll();
+    match event {
+        None => {}
+        Some(dhcpv4::Event::Configured(config)) => {
+            debug!("DHCP config acquired!");
+
+            debug!("IP address:      {}", config.address);
+            iface.update_ip_addrs(|addrs| {
+                addrs.clear();
+                addrs.push(IpCidr::Ipv4(config.address)).unwrap();
+            });
+
+            if let Some(router) = config.router {
+                debug!("Default gateway: {}", router);
+                iface.routes_mut().add_default_ipv4_route(router).unwrap();
+            } else {
+                debug!("Default gateway: None");
+                iface.routes_mut().remove_default_ipv4_route();
+            }
+
+            for (i, s) in config.dns_servers.iter().enumerate() {
+                debug!("DNS server {}:    {}", i, s);
+            }
+        }
+        Some(dhcpv4::Event::Deconfigured) => {
+            debug!("DHCP lost config!");
+            iface.update_ip_addrs(|addrs| addrs.clear());
+            iface.routes_mut().remove_default_ipv4_route();
+        }
     }
 }
