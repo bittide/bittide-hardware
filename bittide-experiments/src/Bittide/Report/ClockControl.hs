@@ -18,8 +18,7 @@ import Data.Bool (bool)
 import Data.List (intercalate)
 import Data.List.Extra (chunksOf)
 import Data.Proxy (Proxy (..))
-import GHC.Float.RealFracMethods (roundDoubleInteger)
-import Numeric.Extra (floatToDouble)
+import GHC.Float.RealFracMethods (roundFloatInteger)
 import System.Directory (doesDirectoryExist, doesFileExist, findExecutable)
 import System.Environment (lookupEnv)
 import System.FilePath (takeFileName, (</>))
@@ -340,7 +339,7 @@ toLatex refDom datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
  where
   formatOffsets =
     intercalate "; "
-      . (fmap (qtyPpm . roundDoubleInteger . fsToPpm refDom . floatToDouble))
+      . (fmap (qtyPpm . roundFloatInteger . fsToPpm refDom))
 
   qtyMs ms = "\\qty{" <> show ms <> "}{\\milli\\second}"
   qtyPpm ppm = "\\qty{" <> show ppm <> "}{\\ppm}"

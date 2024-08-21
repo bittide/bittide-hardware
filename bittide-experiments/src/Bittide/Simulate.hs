@@ -211,7 +211,7 @@ simPlot# simSettings ccc t = do
 
   case mode of
     PDF ->
-      plot (Proxy @dom) dir t $
+      plot (Proxy @dom) Nothing dir t $
         fmap (fmap (\(a, b, c, d) -> (a, b, fromRfState c, d))) simResult
     CSV -> dumpCsv simResult
 

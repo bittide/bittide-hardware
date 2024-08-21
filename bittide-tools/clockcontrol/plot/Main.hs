@@ -696,7 +696,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
 
         -- Calculate offset correction for readability purposes. See:
         -- https://github.com/bittide/bittide-hardware/issues/607
-        (maybeError, _maybeOffsetCorrection) <-
+        (maybeError, maybeOffsetCorrection) <-
           case cfg.clockOffsets of
             Nothing -> pure (Nothing, Nothing)
             Just (Vec.unsafeFromList -> offsets) ->
@@ -705,7 +705,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
                 Right correction -> pure (Nothing, Just correction)
 
         createDirectoryIfMissing True outDir
-        plot refDom outDir t postProcessDataVec
+        plot refDom maybeOffsetCorrection outDir t postProcessDataVec
 
         let
           allStable =

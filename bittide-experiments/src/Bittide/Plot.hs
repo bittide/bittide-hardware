@@ -22,6 +22,7 @@ import Data.Graph (edges)
 import Data.Int (Int64)
 import Data.List (foldl', transpose, unzip4, zip4)
 import Data.Proxy (Proxy)
+import GHC.Float.RealFracMethods (roundFloatInteger)
 import System.FilePath ((</>))
 
 import Graphics.Matplotlib (
@@ -74,6 +75,8 @@ plot ::
   (KnownNat nNodes, KnownNat m, KnownDomain refDom) =>
   -- | Reference domain
   Proxy refDom ->
+  -- | A common correction to apply to all clock plots
+  Maybe Float ->
   -- | output directory for storing the results
   FilePath ->
   -- | topology corresponding to the plot
@@ -88,8 +91,12 @@ plot ::
       )
     ] ->
   IO ()
-plot refDom outputDir graph plotData =
-  matplotWrite outputDir clockPlots elasticBufferPlots
+plot refDom maybeCorrection outputDir graph plotData =
+  matplotWrite
+    outputDir
+    (fsToPpm refDom <$> maybeCorrection)
+    clockPlots
+    elasticBufferPlots
  where
   clockPlots = Vec.imap toClockPlot plotData
   elasticBufferPlots = Vec.imap toElasticBufferPlot plotData
@@ -122,7 +129,10 @@ plot refDom outputDir graph plotData =
       (@@ [o2 "label" $ fromEnum nodeIndex]) $
         MP.plot
           (map fsToMs time)
-          (map (fsToPpm refDom . fromIntegral . unFemtoseconds) relativeOffsetFs)
+          ( map
+              (fsToPpm refDom . correctOffset . fromIntegral . unFemtoseconds)
+              relativeOffsetFs
+          )
 
   withLegend =
     ( @@
@@ -131,6 +141,10 @@ plot refDom outputDir graph plotData =
         ]
     )
       . (% legend)
+
+  correctOffset = case maybeCorrection of
+    Just c -> (+ c)
+    Nothing -> id
 
 data Marking = Waiting | Stable | Settled | None deriving (Eq)
 
@@ -150,7 +164,7 @@ period results in /more/ clock ticks per time span.
 >>> fsToPpm (Proxy @System) (-400)
 40.0
 -}
-fsToPpm :: (KnownDomain dom) => Proxy dom -> Double -> Double
+fsToPpm :: (KnownDomain dom) => Proxy dom -> Float -> Float
 fsToPpm refDom fs = -1 * (fs / onePpm)
  where
   onePpm = case clockPeriodFs refDom of
@@ -214,17 +228,19 @@ matplotWrite ::
   (KnownNat n) =>
   -- | output directory
   FilePath ->
+  -- | Correction to add to Y-axis label
+  Maybe Float ->
   -- | clock plots
   Vec n Matplotlib ->
   -- | elastic buffer plots
   Vec n Matplotlib ->
   IO ()
-matplotWrite dir clockDats ebDats = do
+matplotWrite dir maybeCorrection clockDats ebDats = do
   void $
     file (dir </> plotClocksFileName) $
       constrained
         ( xlabel "Time (ms)"
-            % ylabel "Relative frequency (ppm)"
+            % ylabel ("Relative frequency (ppm)" <> correctionLabel)
             % foldPlots (reverse $ Vec.toList clockDats)
         )
   void $
@@ -234,6 +250,12 @@ matplotWrite dir clockDats ebDats = do
             % foldPlots (Vec.toList ebDats)
         )
  where
+  correctionLabel = case maybeCorrection of
+    Just c
+      | c < 0 -> " [" <> show (roundFloatInteger c) <> "]"
+      | otherwise -> " [+" <> show (roundFloatInteger c) <> "]"
+    _ -> ""
+
   constrained =
     ((figure @@ [o2 "layout" "constrained"] % axes) %)
 
