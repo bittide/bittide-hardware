@@ -118,7 +118,7 @@ fn main() -> ! {
                 debug!("sleeping for {} ms", delay);
                 clock.wait(Duration::from(delay));
             }
-            None => clock.wait(Duration::from_millis(1)),
+            None => {},
         }
     }
 }
