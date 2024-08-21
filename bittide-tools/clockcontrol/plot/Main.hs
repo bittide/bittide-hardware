@@ -6,6 +6,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PackageImports #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -24,7 +25,7 @@ import Clash.Prelude (
   Index,
   KnownDomain,
   SNat (..),
-  Vec,
+  Vec (..),
   checkedTruncateB,
   clockPeriod,
   extend,
@@ -34,20 +35,8 @@ import Clash.Prelude (
   snatToInteger,
  )
 
-import Clash.Signal.Internal (Femtoseconds (..))
-import Clash.Sized.Vector qualified as Vec (
-  imap,
-  indicesI,
-  length,
-  repeat,
-  replace,
-  take,
-  toList,
-  unsafeFromList,
-  zip,
-  zipWith,
-  (!!),
- )
+import Clash.Signal.Internal (Femtoseconds (..), unFemtoseconds)
+import Clash.Sized.Vector qualified as Vec
 
 import Data.Type.Equality ((:~:) (..))
 import GHC.TypeLits
@@ -55,6 +44,7 @@ import GHC.TypeLits.Compare ((:<=?) (..))
 import GHC.TypeLits.Witnesses ((%<=?))
 import GHC.TypeLits.Witnesses qualified as TLW (SNat (..))
 
+import Clash.Prelude qualified as C
 import Conduit (
   ConduitT,
   Void,
@@ -94,22 +84,17 @@ import Data.Csv.Conduit (
   fromNamedCsvStreamError,
  )
 import Data.Functor ((<&>))
-import Data.HashMap.Strict qualified as HashMap (fromList, size)
-import Data.List (find, isPrefixOf, isSuffixOf, uncons)
-import Data.Map qualified as Map (toList)
-import Data.Maybe (catMaybes, fromJust, fromMaybe, isNothing, mapMaybe)
+import Data.HashMap.Strict qualified as HashMap
+import Data.List (find, isPrefixOf, isSuffixOf, uncons, unzip4)
+import Data.Map qualified as Map
+import Data.Maybe (catMaybes, fromJust, fromMaybe, mapMaybe)
 import Data.Proxy (Proxy (..))
-import Data.Set qualified as Set (
-  difference,
-  fromList,
-  isProperSubsetOf,
-  member,
-  toList,
- )
+import Data.Set qualified as Set
 import Data.String (fromString)
-import Data.Text qualified as Text (unpack)
-import Data.Vector qualified as Vector (fromList)
+import Data.Text qualified as Text
+import Data.Vector qualified as Vector
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
+import GHC.Stack (HasCallStack)
 import System.Directory (
   createDirectoryIfMissing,
   doesDirectoryExist,
@@ -150,7 +135,7 @@ import Bittide.Report.ClockControl
 import Bittide.Simulate.Config (SimConf, saveSimConfig, simTopologyFileName)
 import Bittide.Topology
 
-import Bittide.Simulate.Config qualified as SimConf (SimConf (..))
+import Bittide.Simulate.Config qualified as SimConf
 
 -- A newtype wrapper for working with hex encoded types.
 newtype Hex a = Hex {fromHex :: a}
@@ -368,7 +353,7 @@ postProcess t i links =
             fromIntegral $
               (1000 *) $
                 snatToInteger (clockPeriod @Basic125)
-                  - snatToInteger (clockPeriod @External)
+                  - snatToInteger (clockPeriod @GthTx)
 
         localStamp =
           let ref = "[" <> show sampleInBuffer <> "]"
@@ -382,7 +367,7 @@ postProcess t i links =
           UntilTrigger -> globalTime
           _ ->
             dpLocalTime prevDP
-              + localStamp ~* clockPeriodFs (Proxy @External)
+              + localStamp ~* clockPeriodFs (Proxy @GthTx)
 
         globalTimeDelta =
           globalTime
@@ -548,24 +533,79 @@ fromCsvDump t i links (csvHandle, csvFile) =
 {- | The HITL tests, whose post proc data offers a simulation config
 for plotting.
 -}
-knownTestsWithSimConf :: [(String, [(String, Maybe SimConf)])]
+knownTestsWithSimConf :: (HasCallStack) => [(String, [(String, SimConf)])]
 knownTestsWithSimConf = hasSimConf <$> hitlTests
  where
   hasSimConf = \case
     LoadConfig name _ -> (name, [])
     KnownType name test ->
-      (name, first Text.unpack <$> Map.toList (mGetPPD @_ @SimConf test))
+      let !simConfMap = Map.mapMaybeWithKey justOrDie (mGetPPD @_ @SimConf test)
+       in (name, first Text.unpack <$> Map.toList simConfMap)
+
+  justOrDie _ (Just x) = Just x
+  justOrDie k Nothing = error $ "No SimConf for " <> show k
+
+{- | Calculate an offset such that the clocks start at their set offsets. That is
+to say, we consider the reference clock to be at 0 fs by definition. The offsets
+of the other clocks are then measured relative to this reference clock. We don't
+particularly care about the reference clocks in our plots however, it is much more
+useful to shift it in such a way that the other clocks start at their set offsets.
+This concept is explained visiually in: https://github.com/bittide/bittide-hardware/issues/607.
+
+This function will return an error ('Left') if the clocks cannot be shifted in
+such a way that they all start at their set offsets. If this happens, something
+is seriously wrong.
+-}
+getOffsetCorrection ::
+  (KnownNat nNodes) =>
+  -- | Post processed data - one per FPGA
+  --
+  -- TODO: Nicer data structure
+  Vec nNodes [(a, Femtoseconds {- relative offset -}, b, c)] ->
+  -- | The desired offsets for the clocks
+  Vec nNodes Float ->
+  -- | Correction, if a sensible one can be found
+  IO (Either String Float)
+getOffsetCorrection postProcessData desiredOffsets = do
+  -- Gather first sampled offset for each node
+  measuredOffsets <- forM (C.zip C.indicesI postProcessData) $
+    \(nodeNo, unzip4 -> (_, offsets, _, _)) -> do
+      case offsets of
+        [] -> die $ "No offsets for node " <> show nodeNo
+        (offset : _) -> pure (fromInteger @Float (toInteger (unFemtoseconds offset)))
+
+  let zippedOffsets = C.zip measuredOffsets desiredOffsets
+
+  case zippedOffsets of
+    Nil -> die "No offsets, nNodes ~ 0?"
+    (measuredOffset0, desiredOffset0) `Cons` _ -> pure $ do
+      let correction = desiredOffset0 - measuredOffset0
+      forM_ zippedOffsets $ \(measuredOffset, desiredOffset) -> do
+        -- Note that 16 ~ 2 ppm. This will get cleaned up as part of
+        -- https://github.com/bittide/bittide-hardware/issues/609.
+        when (abs (measuredOffset + correction - desiredOffset) > 16) $
+          Left $
+            unlines
+              [ "Clocks did not start at their set offsets."
+              , ""
+              , "Measured offsets:  " <> show measuredOffsets
+              , "Desired offsets:   " <> show desiredOffsets
+              , "Corrected offsets: " <> show (((+) correction) <$> measuredOffsets)
+              , "Correction:        " <> show correction
+              ]
+        pure ()
+      pure correction
 
 plotTest ::
   (KnownDomain refDom) =>
   Proxy refDom ->
   FilePath ->
-  Maybe SimConf ->
+  SimConf ->
   FilePath ->
   FilePath ->
   IO ()
-plotTest refDom testDir mCfg dir globalOutDir = do
-  unless (isNothing mCfg) $ checkDependencies >>= maybe (return ()) die
+plotTest refDom testDir cfg dir globalOutDir = do
+  checkDependencies >>= maybe (return ()) die
   putStrLn $ "Creating plots for test case: " <> testName
 
   let
@@ -581,9 +621,8 @@ plotTest refDom testDir mCfg dir globalOutDir = do
         >>= \case
           SomeNat n -> return $ STop $ complete $ snatProxy n
 
-  STop (t :: Topology topologySize) <- case mCfg of
-    Nothing -> topFromDirs
-    Just cfg -> case SimConf.mTopologyType cfg of
+  STop (t :: Topology topologySize) <-
+    case SimConf.mTopologyType cfg of
       Nothing -> topFromDirs
       Just (Random{}) -> topFromDirs
       Just (DotFile f) -> readFile f >>= either die return . fromDot
@@ -653,30 +692,43 @@ plotTest refDom testDir mCfg dir globalOutDir = do
 
                 return (toPlotData <$> rs)
 
+        let postProcessDataVec = Vec.unsafeFromList postProcessData
+
+        -- Calculate offset correction for readability purposes. See:
+        -- https://github.com/bittide/bittide-hardware/issues/607
+        (maybeError, _maybeOffsetCorrection) <-
+          case cfg.clockOffsets of
+            Nothing -> pure (Nothing, Nothing)
+            Just (Vec.unsafeFromList -> offsets) ->
+              getOffsetCorrection postProcessDataVec offsets >>= \case
+                Left err -> pure (Just err, Nothing)
+                Right correction -> pure (Nothing, Just correction)
+
         createDirectoryIfMissing True outDir
-        plot refDom outDir t $ Vec.unsafeFromList postProcessData
+        plot refDom outDir t postProcessDataVec
 
-        let allStable =
-              all
-                ((\(_, _, _, xs) -> all (stable . snd) xs) . last)
-                postProcessData
+        let
+          allStable =
+            all ((\(_, _, _, xs) -> all (stable . snd) xs) . last) postProcessData
+          cfg1 =
+            cfg
+              { SimConf.outDir = outDir
+              , SimConf.stable = Just allStable
+              }
+          ids = bimap toInteger fst <$> fpgas
 
-        case mCfg of
-          Nothing -> return ()
-          Just cfg' -> do
-            let cfg =
-                  cfg'
-                    { SimConf.outDir = outDir
-                    , SimConf.stable = Just allStable
-                    }
-                ids = bimap toInteger fst <$> fpgas
-            case SimConf.mTopologyType cfg of
-              Nothing -> writeTop Nothing
-              Just (Random{}) -> writeTop Nothing
-              Just (DotFile f) -> readFile f >>= writeTop . Just
-              Just tt -> fromTopologyType tt >>= either die (`saveSimConfig` cfg)
-            checkIntermediateResults outDir
-              >>= maybe (generateReport (Proxy @Basic125) "HITLT Report" outDir ids cfg) die
+        case SimConf.mTopologyType cfg of
+          Nothing -> writeTop Nothing
+          Just (Random{}) -> writeTop Nothing
+          Just (DotFile f) -> readFile f >>= writeTop . Just
+          Just tt -> fromTopologyType tt >>= either die (`saveSimConfig` cfg1)
+        checkIntermediateResults outDir
+          >>= maybe (generateReport (Proxy @Basic125) "HITLT Report" outDir ids cfg1) die
+
+        -- Fail if clocks did not start at their set offsets. We purposely fail
+        -- after generating the report, because the report generation is very
+        -- useful for debugging.
+        maybe (return ()) die maybeError
       _ -> die "Empty topology"
     _ -> die "Topology is larger than expected"
  where

@@ -139,7 +139,7 @@ disabled =
     { fpgaEnabled = False
     , calibrate = NoCCCalibration
     , stepSizeSelect = commonStepSizeSelect
-    , initialClockShift = 0
+    , initialClockShift = Nothing
     , startupDelay = 0
     , mask = 0
     }
@@ -160,10 +160,11 @@ data TestConfig = TestConfig
   -- ^ The selected step size of the test. Note that changing the
   -- step size between tests requires re-calibration of the device
   -- based inital clock shift.
-  , initialClockShift :: InitialClockShift
+  , initialClockShift :: Maybe InitialClockShift
   -- ^ Some artificical clock shift applied prior to the test
   -- start. The shift is given in FINCs (if positive) or FDECs (if
-  -- negative) and, thus, depdends on 'stepSizeSelect'.
+  -- negative) and, thus, depdends on 'stepSizeSelect'. If 'Nothing',
+  -- no shift is applied.
   , startupDelay :: StartupDelay
   -- ^ Some intial startup delay given in the number of clock
   -- cycles of the stable clock.
@@ -542,7 +543,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   adjusting = adjustStart .&&. (not <$> clocksAdjusted)
   adjustRst = unsafeFromActiveLow adjustStart
 
-  initialAdjust = (+) <$> calibratedClockShift <*> (initialClockShift <$> cfg)
+  initialAdjust = (+) <$> calibratedClockShift <*> (fromMaybe 0 . initialClockShift <$> cfg)
 
   adjustCount =
     regEn
@@ -793,13 +794,13 @@ tests =
       -----------
 
       -- initial clock shifts   startup delays            topology
-      tt icsDiamond ((m *) <$> sdDiamond) diamond
-    , tt icsComplete ((m *) <$> sdComplete) $ complete d3
-    , tt icsCyclic ((m *) <$> sdCyclic) $ cyclic d5
-    , tt icsTorus ((m *) <$> sdTorus) $ torus2d d2 d3
-    , tt icsStar ((m *) <$> sdStar) $ star d7
-    , tt icsLine ((m *) <$> sdLine) $ line d4
-    , tt icsHourglass ((m *) <$> sdHourglass) $ hourglass d3
+      tt (Just icsDiamond) ((m *) <$> sdDiamond) diamond
+    , tt (Just icsComplete) ((m *) <$> sdComplete) $ complete d3
+    , tt (Just icsCyclic) ((m *) <$> sdCyclic) $ cyclic d5
+    , tt (Just icsTorus) ((m *) <$> sdTorus) $ torus2d d2 d3
+    , tt (Just icsStar) ((m *) <$> sdStar) $ star d7
+    , tt (Just icsLine) ((m *) <$> sdLine) $ line d4
+    , tt (Just icsHourglass) ((m *) <$> sdHourglass) $ hourglass d3
     , -- CALIBRATION VERIFICATON --
       -----------------------------
       validateClockOffsetCalibration
@@ -860,13 +861,13 @@ tests =
                     then CCCalibrationValidation
                     else CCCalibrate
               , stepSizeSelect = commonStepSizeSelect
-              , initialClockShift = 0
+              , initialClockShift = Nothing
               , startupDelay = 0
               , mask = maxBound
               }
       , defSimCfg
           { mTopologyType = Just $ Complete $ natToInteger @FpgaCount
-          , clockOffsets = toList $ repeat @FpgaCount 0
+          , clockOffsets = Nothing
           , startupDelays = toList $ repeat @FpgaCount 0
           }
       )
@@ -876,7 +877,7 @@ tests =
   tt ::
     forall n.
     (KnownNat n, n <= FpgaCount) =>
-    Vec n InitialClockShift ->
+    Maybe (Vec n InitialClockShift) ->
     Vec n StartupDelay ->
     Topology n ->
     (TestName, (Probes TestConfig, SimConf))
@@ -884,8 +885,12 @@ tests =
     ( fromString $ topologyName t
     ,
       ( toList
-          ( zipWith4 testData indicesI clockShifts startDelays
-              $ linkMasks @n t
+          ( zipWith4
+              testData
+              indicesI
+              (maybeVecToVecMaybe clockShifts)
+              startDelays
+              (linkMasks @n t)
           )
           <> [ (fromInteger i, disabled)
              | let n = natToNum @n
@@ -907,24 +912,27 @@ tests =
             PPB_10 -> 100_000
             PPB_100 -> 10_000
             PPM_1 -> 1_000
+
+          fincFdecToFs = ((-1) *) . (/ stepSizeDiv) . (* clkPeriodPs) . fromIntegral
          in
           defSimCfg
             { mTopologyType = Just $ topologyType t
-            , clockOffsets =
-                (/ stepSizeDiv)
-                  . (* clkPeriodPs)
-                  . fromIntegral
-                  <$> toList clockShifts
+            , clockOffsets = fmap fincFdecToFs . toList <$> clockShifts
             , startupDelays = fromIntegral <$> toList startDelays
             }
       )
     )
 
+  maybeVecToVecMaybe :: forall n a. (KnownNat n) => Maybe (Vec n a) -> Vec n (Maybe a)
+  maybeVecToVecMaybe = \case
+    Just v -> Just <$> v
+    Nothing -> repeat Nothing
+
   testData ::
     forall n.
     (KnownNat n, n <= FpgaCount) =>
     Index n ->
-    InitialClockShift ->
+    Maybe InitialClockShift ->
     StartupDelay ->
     BitVector LinkCount ->
     (Index FpgaCount, TestConfig)

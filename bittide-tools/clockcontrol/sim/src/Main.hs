@@ -78,7 +78,7 @@ main = do
                   let cfg =
                         simCfg
                           { stable = isStable
-                          , clockOffsets = clockOffs
+                          , clockOffsets = Just clockOffs
                           , startupDelays = startDelays
                           }
                   saveSimConfig t cfg

@@ -267,13 +267,9 @@ toLatex refDom datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
     , "    stability detector - margin:"
     , "      & \\textpm\\," <> formatThousands stabilityMargin <> " elements \\\\"
     , "    when stable, stop after:"
-    , "      & " <> maybe "not used" qtyMs stopAfterStableMs <> " \\\\"
+    , "      & " <> maybe "\\textit{not used}" qtyMs stopAfterStableMs <> " \\\\"
     , "    clock offsets:"
-    , "      & "
-        <> intercalate
-          "; "
-          (qtyPpm . roundDoubleInteger . fsToPpm refDom . floatToDouble <$> clockOffsets)
-        <> " \\\\"
+    , "      & " <> maybe "\\textit{not used}" formatOffsets clockOffsets <> " \\\\"
     , "    startup delays:"
     , "      & " <> intercalate "; " (qtyMs <$> startupDelaysMs) <> " \\\\"
     , "    reframing:"
@@ -342,6 +338,10 @@ toLatex refDom datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
     , "\\end{document}"
     ]
  where
+  formatOffsets =
+    intercalate "; "
+      . (fmap (qtyPpm . roundDoubleInteger . fsToPpm refDom . floatToDouble))
+
   qtyMs ms = "\\qty{" <> show ms <> "}{\\milli\\second}"
   qtyPpm ppm = "\\qty{" <> show ppm <> "}{\\ppm}"
 
