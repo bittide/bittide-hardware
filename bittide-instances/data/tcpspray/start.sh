@@ -4,4 +4,4 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Start tcpspray on a target IP address.
-tcpspray 100.100.100.100 -e
+tcpspray 100.100.100.100 -e -n 1000
