@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -6,6 +6,7 @@ module Bittide.Counter (
   Active,
   domainDiffCounter,
   domainDiffCounterExt,
+  synchronizedSuccCounter,
 ) where
 
 import Clash.Explicit.Prelude

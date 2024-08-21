@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | A couple of tests testing clock board programming, and subsequently the
@@ -10,9 +11,17 @@ FINC and FDEC pins.
 module Bittide.Instances.Hitl.FincFdec where
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx.Extra (ibufds)
+import Clash.Cores.Xilinx.GTH (gthCore, ibufds_gte3)
+import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (depth), ila, ilaConfig)
 import Clash.Explicit.Prelude
-import Clash.Prelude (withClockResetEnable)
+import Clash.Explicit.Reset.Extra (Asserted (..), delayReset, xpmResetSynchronizer)
+import Clash.Prelude (
+  HiddenClockResetEnable,
+  hasClock,
+  hasEnable,
+  hasReset,
+  withClockResetEnable,
+ )
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 
 import Bittide.ClockControl (
@@ -20,13 +29,16 @@ import Bittide.ClockControl (
   speedChangeToFincFdec,
  )
 import Bittide.ClockControl.Si539xSpi (ConfigState (Finished), si539xSpi)
-import Bittide.Counter (domainDiffCounter)
-import Bittide.Hitl (HitlTests, hitlVio, singleFpga, testsFromEnum)
+import Bittide.Counter (domainDiffCounter, synchronizedSuccCounter)
+import Bittide.ElasticBuffer (sticky)
+import Bittide.Hitl (HitlTests, allFpgas, hitlVio, testsFromEnum)
 import Bittide.Instances.Domains
 
 import Data.Maybe (isJust)
 
 import qualified Bittide.ClockControl.Si5395J as Si5395J
+import qualified Bittide.Transceiver.Cdc as Cdc
+import qualified Bittide.Transceiver.ResetManager as ResetManager
 
 data TestState = Busy | Fail | Success
 data Test
@@ -38,14 +50,42 @@ data Test
     FDecInc
   | -- | 'FInc' test followed by an 'FDec' one
     FIncDec
-  deriving (Enum, Generic, NFDataX, Bounded, BitPack, ShowX, Show)
+  deriving (Enum, Eq, Generic, NFDataX, Bounded, BitPack, ShowX, Show)
+
+{- | Reset manager for transceivers which ignores the rx domain. Use this
+alternative to `ResetManager.resetManager` when the transceivers are only
+used to extract a clock from a transceiver-only clock input (e.g.
+`SMA_MGT_REFCLK_C`).
+-}
+gthResetManagerWithoutRx ::
+  forall dom.
+  (KnownDomain dom) =>
+  Clock dom ->
+  Reset dom ->
+  "tx_init_done" ::: Signal dom Bool ->
+  ( "reset_all_out" ::: Reset dom
+  , "stats" ::: Signal dom ResetManager.Statistics
+  )
+gthResetManagerWithoutRx clk rst tx_init_done =
+  ( reset_all_out_sig
+  , statistics
+  )
+ where
+  (reset_all_out_sig, _reset_rx_sig, statistics) =
+    ResetManager.resetManager
+      ResetManager.defConfig
+      clk
+      rst
+      tx_init_done
+      (pure True)
+      (pure True)
 
 {- | Counter threshold after which a test is considered passed/failed. In theory
-clocks can diverge at +-20 kHz (at 200 MHz), which gives the tests 500 ms to
-adjust their clocks - which should be plenty.
+clocks can diverge at +-12.5 kHz (at 125 MHz), which gives the tests 500 ms
+to adjust their clocks - which should be plenty.
 -}
 threshold :: Signed 32
-threshold = 20_000
+threshold = 12_500
 
 testStateToDoneSuccess :: TestState -> (Bool, Bool)
 testStateToDoneSuccess = \case
@@ -54,48 +94,48 @@ testStateToDoneSuccess = \case
   Success -> (True, True)
 
 goFincFdecTests ::
-  Clock Basic200 ->
-  Reset Basic200 ->
-  Clock Ext200 ->
-  Signal Basic200 Test ->
-  "MISO" ::: Signal Basic200 Bit -> -- SPI
+  Clock Basic125 ->
+  Reset Basic125 ->
+  Clock GthTx ->
+  Reset Basic125 ->
+  Signal Basic125 Test ->
+  "MISO" ::: Signal Basic125 Bit -> -- SPI
   ""
-    ::: ( Signal Basic200 TestState
+    ::: ( Signal Basic125 TestState
         , -- Freq increase / freq decrease request to clock board
           ""
-            ::: ( "FINC" ::: Signal Basic200 Bool
-                , "FDEC" ::: Signal Basic200 Bool
+            ::: ( "FINC" ::: Signal Basic125 Bool
+                , "FDEC" ::: Signal Basic125 Bool
                 )
         , -- SPI to clock board:
           ""
-            ::: ( "SCLK" ::: Signal Basic200 Bool
-                , "MOSI" ::: Signal Basic200 Bit
-                , "CSB" ::: Signal Basic200 Bool
+            ::: ( "SCLK" ::: Signal Basic125 Bool
+                , "MOSI" ::: Signal Basic125 Bit
+                , "CSB" ::: Signal Basic125 Bool
                 )
         , -- Debug signals:
           ""
-            ::: ( "SPI_BUSY" ::: Signal Basic200 Bool
-                , "SPI_STATE" ::: Signal Basic200 (BitVector 40)
-                , "SI_LOCKED" ::: Signal Basic200 Bool
-                , "COUNTER_ACTIVE" ::: Signal Basic200 Bool
-                , "COUNTER" ::: Signal Basic200 (Signed 32)
+            ::: ( "SPI_BUSY" ::: Signal Basic125 Bool
+                , "SPI_STATE" ::: Signal Basic125 (BitVector 40)
+                , "SI_LOCKED" ::: Signal Basic125 Bool
+                , "COUNTER_ACTIVE" ::: Signal Basic125 Bool
+                , "COUNTER" ::: Signal Basic125 (Signed 32)
                 )
         )
-goFincFdecTests clk rst clkControlled testSelect miso =
+goFincFdecTests clk rst clkControlled resetControlledFree testSelect miso =
   (testResult, fIncDec, spiOut, debugSignals)
  where
-  debugSignals = (spiBusy, pack <$> spiState, siClkLocked, counterActive, counter)
+  debugSignals = (spiBusy, pack <$> spiState, spiDone, counterActive, counter)
 
-  (_, spiBusy, spiState@(fmap (== Finished) -> siClkLocked), spiOut) =
+  (_, spiBusy, spiState@(fmap (== Finished) -> spiDone), spiOut) =
     withClockResetEnable clk rst enableGen
       $ si539xSpi
-        Si5395J.testConfig6_200_on_0a_1ppb_and_0
+        Si5395J.testConfig6_250_on_0a_10ppb
         (SNat @(Microseconds 1))
         (pure Nothing)
         miso
 
-  rstTest = unsafeFromActiveLow siClkLocked
-  rstControlled = convertReset clk clkControlled rst
+  rstControlled = xpmResetSynchronizer Asserted clk clkControlled rst
 
   (counter, counterActive) =
     unbundle
@@ -103,12 +143,12 @@ goFincFdecTests clk rst clkControlled testSelect miso =
       -- Note that in a "real" Bittide system the clocks would be wired up the
       -- other way around: the controlled domain would be the target domain. We
       -- don't do that here because we know 'rstControlled' will come out of
-      -- reset much earlier than 'rstTest'. Doing it the "proper" way would
-      -- therefore introduce extra complexity, without adding to the test's
-      -- coverage.
-      domainDiffCounter clkControlled rstControlled clk rstTest
+      -- reset much earlier than 'resetControlledFree'. Doing it the "proper"
+      -- way would therefore introduce extra complexity, without adding to the
+      -- test's coverage.
+      domainDiffCounter clkControlled rstControlled clk resetControlledFree
 
-  fIncDec = unbundle $ speedChangeToFincFdec clk rstTest fIncDecRequest
+  fIncDec = unbundle $ speedChangeToFincFdec clk resetControlledFree fIncDecRequest
 
   (fIncDecRequest, testResult) =
     unbundle
@@ -118,8 +158,8 @@ goFincFdecTests clk rst clkControlled testSelect miso =
 
   fDecResult = goFdec <$> counter
   fIncResult = goFinc <$> counter
-  fDecIncResult = mealy clk rstTest enableGen goFdecFinc FDec counter
-  fIncDecResult = mealy clk rstTest enableGen goFincFdec FInc counter
+  fDecIncResult = mealy clk resetControlledFree enableGen goFdecFinc FDec counter
+  fIncDecResult = mealy clk resetControlledFree enableGen goFincFdec FInc counter
 
   -- Keep pressing FDEC, expect counter to go below -@threshold@
   goFdec :: Signed 32 -> (SpeedChange, TestState)
@@ -165,50 +205,229 @@ fincFdecTests ::
   -- Pins from internal oscillator:
   "CLK_125MHZ" ::: DiffClock Ext125 ->
   -- Pins from clock board:
-  "USER_SMA_CLOCK" ::: DiffClock Ext200 ->
-  "MISO" ::: Signal Basic200 Bit -> -- SPI
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext250 ->
+  "MISO" ::: Signal Basic125 Bit -> -- SPI
   ""
     ::: ( ""
-            ::: ( "done" ::: Signal Basic200 Bool
-                , "success" ::: Signal Basic200 Bool
+            ::: ( "done" ::: Signal Basic125 Bool
+                , "success" ::: Signal Basic125 Bool
                 )
         , -- Freq increase / freq decrease request to clock board
           ""
-            ::: ( "FINC" ::: Signal Basic200 Bool
-                , "FDEC" ::: Signal Basic200 Bool
+            ::: ( "FINC" ::: Signal Basic125 Bool
+                , "FDEC" ::: Signal Basic125 Bool
                 )
         , -- SPI to clock board:
           ""
-            ::: ( "SCLK" ::: Signal Basic200 Bool
-                , "MOSI" ::: Signal Basic200 Bit
-                , "CSB" ::: Signal Basic200 Bool
+            ::: ( "SCLK" ::: Signal Basic125 Bool
+                , "MOSI" ::: Signal Basic125 Bit
+                , "CSB" ::: Signal Basic125 Bool
                 )
         )
 fincFdecTests diffClk controlledDiffClock spiIn =
-  ((testDone, testSuccess), fIncDec, spiOut)
+  fincFdecIla `hwSeqX` ((testDone, testSuccess), fIncDec, spiOut)
  where
-  clkControlled = ibufds controlledDiffClock
+  (clk, clkStableRst :: Reset Basic125) = clockWizardDifferential diffClk noReset
 
-  (clk, clkStableRst) = clockWizardDifferential diffClk noReset
+  clkControlled = ibufds_gte3 controlledDiffClock :: Clock Ext250
+
+  ( _txn
+    , _txp
+    , txClock
+    , _rxClock
+    , _rx_data
+    , reset_tx_done
+    , _reset_rx_done
+    , txActive
+    , _rxCtrl0
+    , _rxCtrl1
+    , _rxCtrl2
+    , _rxCtrl3
+    ) =
+      gthCore
+        @GthTx
+        @GthRx
+        @Ext250
+        @Basic125
+        @GthTxS
+        @GthRxS
+        "X0Y10"
+        "clk0"
+        "TXPLLREFCLK_DIV1"
+        (pure 0)
+        (pure 0) -- rxN and rxP
+        clk
+        (delayReset Asserted clk reset_all_out_sig) -- reset_all
+        noReset -- gtwiz_reset_rx_datapath_in
+        (pure 0)
+        (pure 0) -- userdata_tx_in and txctrl
+        clkControlled
+
+  (reset_all_out_sig, gthStats) =
+    gthResetManagerWithoutRx
+      clk
+      (unsafeFromActiveLow spiDone)
+      resetTxDoneFree
+
+  resetControlledFree =
+    orReset clkStableRst
+      $ orReset (unsafeFromActiveLow spiDone)
+      $ orReset
+        (unsafeFromActiveLow resetTxDoneFree)
+        (unsafeFromActiveLow txActiveFree)
+
+  resetTxDoneFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clk clkStableRst (pure True)
+  txActiveFree = Cdc.withLock txClock (unpack <$> txActive) clk clkStableRst (pure True)
 
   started = isJust <$> testInput
-  testRst = orReset clkStableRst (unsafeFromActiveLow started)
+  testRst = clkStableRst `orReset` (unsafeFromActiveLow started)
 
-  (testResult, fIncDec, spiOut, _debugSignals) =
-    goFincFdecTests clk testRst clkControlled (fromJustX <$> testInput) spiIn
+  (testResult, fIncDec, spiOut, debugSignals) =
+    goFincFdecTests
+      clk
+      testRst
+      txClock
+      resetControlledFree
+      (fromJustX <$> testInput)
+      spiIn
 
-  (testDone, testSuccess) = unbundle $ testStateToDoneSuccess <$> testResult
+  mapTuple f (a, b) = (f a, f b)
+  (testDone, testSuccess) =
+    (mapTuple stickyResult) . unbundle $ testStateToDoneSuccess <$> testResult
+   where
+    stickyResult = sticky clk testRst
 
-  -- For debugging, add to separate VIO?
-  -- clkStable1 = unsafeToActiveLow clkStableRst
-  -- testRstBool = unsafeToActiveHigh testRst
-  -- (fInc, fDec) = fIncDec
-  -- (spiBusy, spiState, siClkLocked, counterActive, counter) = debugSignals
+  (_spiBusy, spiState, spiDone, diffCounterActive, diffCounter) = debugSignals
 
-  testInput :: Signal Basic200 (Maybe Test)
+  counterSys :: Signal Basic125 (Unsigned 32)
+  counterSys = register clk clkStableRst enableGen 0 $ satSucc SatWrap <$> counterSys
+
+  counterGht :: Signal Basic125 (Unsigned 32)
+  counterGht =
+    synchronizedSuccCounter
+      txClock
+      ( xpmResetSynchronizer
+          Asserted
+          txClock
+          txClock
+          (unsafeFromActiveLow (bitCoerce <$> txActive))
+      )
+      clk
+      resetControlledFree
+
+  nettoFincs :: Signal Basic125 (Signed 40)
+  nettoFincs = mealy clk testRst enableGen go 0 (bundle $ mapTuple onRising fIncDec)
+   where
+    onRising = isRising clk testRst enableGen False
+    go n (finc, fdec) = case (finc, fdec) of
+      (True, False) -> (satSucc SatBound n, n)
+      (False, True) -> (satPred SatBound n, n)
+      _ -> (n, n)
+
+  captureCond :: Signal Basic125 (Vec 4 Bool)
+  captureCond =
+    bundle
+      ( captureGthStats
+          :> captureResets
+          :> captureTestState
+          :> captureDomainDiff
+          :> Nil
+      )
+   where
+    onChange ::
+      (HiddenClockResetEnable dom, Eq a, NFDataX a) => Signal dom a -> Signal dom Bool
+    onChange x = (Just <$> x) ./=. register hasClock hasReset hasEnable Nothing (Just <$> x)
+
+    captureTestState :: Signal Basic125 Bool
+    captureTestState =
+      withClockResetEnable clk clkStableRst enableGen
+        $ onChange (bundle (testInput, testDone, testSuccess))
+
+    captureDomainDiff :: Signal Basic125 Bool
+    captureDomainDiff =
+      spiDone .&&. (abs (diffCounter - lastSample) .>=. 8)
+     where
+      lastSample = regEn clk clkStableRst enableGen 0 captureDomainDiff diffCounter
+
+    captureResets :: Signal Basic125 Bool
+    captureResets =
+      withClockResetEnable clk clkStableRst enableGen
+        $ onChange
+        $ bundle
+          ( spiDone
+          , resetTxDoneFree
+          , txActiveFree
+          , unsafeToActiveHigh reset_all_out_sig
+          )
+
+    captureGthStats :: Signal Basic125 Bool
+    captureGthStats =
+      withClockResetEnable clk clkStableRst enableGen
+        $ onChange
+        $ bundle
+          ( (.txRetries) <$> gthStats
+          , (.rxRetries) <$> gthStats
+          , (.rxFullRetries) <$> gthStats
+          , (.failAfterUps) <$> gthStats
+          )
+
+  fincFdecIla :: Signal Basic125 ()
+  fincFdecIla =
+    setName @"fincFdecIla"
+      $ ila
+        ( ilaConfig
+            $ "trigger"
+            :> "capture"
+            :> "testInput"
+            :> "testDone"
+            :> "testSuccess"
+            :> "reset_all_out_sig"
+            :> "reset_tx_done"
+            :> "txActive"
+            :> "spiDone"
+            :> "spiState"
+            :> "txRetries"
+            :> "rxRetries"
+            :> "rxFullRetries"
+            :> "failAfterUps"
+            :> "nettoFincs"
+            :> "diffCounterActive"
+            :> "diffCounter"
+            :> "counterSys"
+            :> "counterGht"
+            :> "condition"
+            :> Nil
+        )
+          { depth = D8192
+          }
+        clk
+        -- Trigger on when the system clock becomes stable
+        (unsafeToActiveLow clkStableRst)
+        (fmap or captureCond)
+        -- Debug probes
+        testInput
+        testDone
+        testSuccess
+        (unsafeToActiveHigh reset_all_out_sig)
+        resetTxDoneFree
+        txActiveFree
+        spiDone
+        spiState
+        ((.txRetries) <$> gthStats)
+        ((.rxRetries) <$> gthStats)
+        ((.rxFullRetries) <$> gthStats)
+        ((.failAfterUps) <$> gthStats)
+        nettoFincs
+        diffCounterActive
+        diffCounter
+        counterSys
+        counterGht
+        captureCond
+
+  testInput :: Signal Basic125 (Maybe Test)
   testInput = hitlVio FDec clk testDone testSuccess
 {-# NOINLINE fincFdecTests #-}
 makeTopEntity 'fincFdecTests
 
 tests :: HitlTests Test
-tests = testsFromEnum (singleFpga maxBound)
+tests = testsFromEnum allFpgas

@@ -271,7 +271,7 @@ be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
 results to a RiscV core (see 'riscvCopyTest')
 -}
 topologyTest ::
-  "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: Clock Ext250 ->
   "SYSCLK" ::: Clock Basic125 ->
   "SYSRST" ::: Reset Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
@@ -329,10 +329,10 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   (_, _, spiState, spiOut) =
     let
       selectConfig = \case
-        PPB_1 -> testConfig6_200_on_0a_1ppb
-        PPB_10 -> testConfig6_200_on_0a_10ppb
-        PPB_100 -> testConfig6_200_on_0a_100ppb
-        PPM_1 -> testConfig6_200_on_0a_1ppm
+        PPB_1 -> testConfig6_250_on_0a_1ppb
+        PPB_10 -> testConfig6_250_on_0a_10ppb
+        PPB_100 -> testConfig6_250_on_0a_100ppb
+        PPM_1 -> testConfig6_250_on_0a_1ppm
 
       -- TODO: create some generic method for generating this, which
       -- does not rely on template haskell
@@ -365,7 +365,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     transceiverPrbsN
       @GthTx
       @GthRx
-      @Ext200
+      @Ext250
       @Basic125
       @GthTxS
       @GthRxS
@@ -590,7 +590,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
 -- | Top entity for this test. See module documentation for more information.
 hwCcTopologyWithRiscvTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext250 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
@@ -613,7 +613,7 @@ hwCcTopologyWithRiscvTest ::
 hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (txns, txps, (riscvFinc, riscvFdec), syncOut, spiDone, spiOut)
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
+  refClk = ibufds_gte3 refClkDiff :: Clock Ext250
 
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
 
@@ -690,7 +690,7 @@ makeTopEntity 'hwCcTopologyWithRiscvTest
 
 -- | Top entity for this test. See module documentation for more information.
 hwCcTopologyTest ::
-  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext250 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
@@ -713,7 +713,7 @@ hwCcTopologyTest ::
 hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (txns, txps, unbundle hwFincFdecs, syncOut, spiDone, spiOut)
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
+  refClk = ibufds_gte3 refClkDiff :: Clock Ext250
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
   ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
   startTest = isJust <$> testConfig

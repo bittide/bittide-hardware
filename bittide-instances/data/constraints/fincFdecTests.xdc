@@ -19,14 +19,10 @@
 #
 # The data wire of the external reset button is connected to PMOD1_3.
 
-
-# CLK_125MHZ
 set_property BOARD_PART_PIN sysclk_125_p [get_ports {CLK_125MHZ_p}]
 set_property BOARD_PART_PIN sysclk_125_n [get_ports {CLK_125MHZ_n}]
-
-# USER_SMA_CLOCK
-set_property -dict {IOSTANDARD LVDS PACKAGE_PIN D23} [get_ports {USER_SMA_CLOCK_p}]
-set_property -dict {IOSTANDARD LVDS PACKAGE_PIN C23} [get_ports {USER_SMA_CLOCK_n}]
+set_property BOARD_PART_PIN sma_mgt_refclk_n [get_ports {SMA_MGT_REFCLK_C_n}]
+set_property BOARD_PART_PIN sma_mgt_refclk_p [get_ports {SMA_MGT_REFCLK_C_p}]
 
 # Vivado marks all clocks as related by default. Our external clocks are not
 # though, which means that we need to explicitly mark them as unrelated (or
@@ -34,7 +30,7 @@ set_property -dict {IOSTANDARD LVDS PACKAGE_PIN C23} [get_ports {USER_SMA_CLOCK_
 set_clock_groups \
     -asynchronous \
     -group [get_clocks -include_generated_clocks {CLK_125MHZ_p}] \
-    -group [get_clocks -include_generated_clocks {USER_SMA_CLOCK_p}]
+    -group [get_clocks -include_generated_clocks {SMA_MGT_REFCLK_C_p}]
 
 # GPIO_LED_0_LS
 set_property BOARD_PART_PIN GPIO_LED_0_LS [get_ports {done}]

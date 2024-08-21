@@ -506,6 +506,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       gthCore
         args.channelName
         args.clockPath
+        "TXOUTCLKPMA"
         args.rxN
         args.rxP
         clock -- gtwiz_reset_clk_freerun_in

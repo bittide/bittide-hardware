@@ -98,6 +98,7 @@ gthCoreMock
   offset
   _channelName
   _clockPath
+  _txOutClkSource
   rxSerial
   _rxSerial
   freeClk

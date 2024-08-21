@@ -28,6 +28,8 @@ type GthCore txUser2 rxUser2 refclk0 freerun txS rxS serializedData =
   String ->
   -- | refClkSpec
   String ->
+  -- | TX_OUTCLK_SOURCE must be one of [TXOUTCLKPCS, TXOUTCLKPMA, TXPROGDIVCLK, TXPLLREFCLK_DIV1, TXPLLREFCLK_DIV2]
+  String ->
   "gthrxn_in" ::: Signal rxS serializedData ->
   "gthrxp_in" ::: Signal rxS serializedData ->
   "gtwiz_reset_clk_freerun_in" ::: Clock freerun ->
@@ -54,6 +56,7 @@ gthCore :: GthCore txUser2 rxUser2 refclk0 freerun txS rxS (BitVector 1)
 gthCore
   !_channel
   !_refClkSpec
+  !_txOutClkSrc
   !_gthrxn_in
   !_gthrxp_in
   !_gtwiz_reset_clk_freerun_in
