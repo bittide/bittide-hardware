@@ -45,6 +45,11 @@ import Bittide.ClockControl.Callisto (ReframingState (..))
 import Bittide.ClockControl.StabilityChecker qualified as SC (StabilityIndication (..))
 import Bittide.Topology
 
+{- $setup
+>>> import Clash.Prelude
+>>> import Data.Proxy
+-}
+
 {- | 'Bittide.ClockControl.Callisto.ReframingState' reduced to its
 stages.
 -}
@@ -136,10 +141,17 @@ fsToMs (Femtoseconds fs) =
   fs `div` 1_000_000_000_000
 
 {- | Convert femtoseconds to parts per million, where femtoseconds represents
-the relative shortening or lengthening of a clock period.
+the relative shortening or lengthening of a clock period. Note that a positive
+value for the input results in a negative output. This is because a /shorter/
+period results in /more/ clock ticks per time span.
+
+>>> fsToPpm (Proxy @System) 400
+-40.0
+>>> fsToPpm (Proxy @System) (-400)
+40.0
 -}
 fsToPpm :: (KnownDomain dom) => Proxy dom -> Double -> Double
-fsToPpm refDom fs = fs / onePpm
+fsToPpm refDom fs = -1 * (fs / onePpm)
  where
   onePpm = case clockPeriodFs refDom of
     Femtoseconds f -> fromIntegral f / 1_000_000
