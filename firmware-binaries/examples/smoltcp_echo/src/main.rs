@@ -12,7 +12,6 @@ use bittide_sys::mac::Mac;
 use bittide_sys::smoltcp::axi::AxiEthernet;
 use bittide_sys::time::{Clock, Duration};
 use bittide_sys::uart::Uart;
-use core::fmt::Write;
 use log::{self, debug};
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -72,31 +71,23 @@ fn main() -> ! {
     let mut sockets = SocketSet::new(&mut sockets[..]);
     let server_handle = sockets.add(server_socket);
 
-    let mut last_print = clock.elapsed();
     let mut mac_status = mac.read();
     loop {
-        let now = clock.elapsed();
-        if now > last_print + Duration::from_secs(1) {
-            let mac_new = mac.read();
-            if mac_new != mac_status {
-                mac_status = mac_new;
-                uwriteln!(uart, "{:?}", mac_status).unwrap();
-            }
-            last_print = now;
-            uwriteln!(uart, "time: {}", now).unwrap();
-            let socket = sockets.get::<Socket>(server_handle);
-            writeln!(uart, "socket: {:?}", socket.state()).unwrap();
-        }
         let elapsed = clock.elapsed().into();
         iface.poll(elapsed, &mut device, &mut sockets);
 
         let mut socket = sockets.get_mut::<Socket>(server_handle);
         if !socket.is_active() && !socket.is_listening() {
+            mac_status = mac.read();
             uwriteln!(uart, "listening").unwrap();
+            uwriteln!(uart, "{} ", clock.elapsed()).unwrap();
             socket.listen(7).unwrap();
         }
         if socket.is_open() && socket.may_send() && !socket.may_recv() {
+            uwriteln!(uart, "{}", clock.elapsed()).unwrap();
+            uwriteln!(uart, "{:?}", mac.read() - mac_status).unwrap();
             uwriteln!(uart, "Closing socket").unwrap();
+
             socket.close();
         }
         if socket.can_recv() {
@@ -118,7 +109,7 @@ fn main() -> ! {
                 debug!("sleeping for {} ms", delay);
                 clock.wait(Duration::from(delay));
             }
-            None => {},
+            None => {}
         }
     }
 }
