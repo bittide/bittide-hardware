@@ -13,8 +13,12 @@ package bittide-instances
 package bittide-shake
   ghc-options: -Werror
 
+package bittide-experiments
+  ghc-options: -Werror
+
+package bittide-tools
+  ghc-options: -Werror
+
 -- TODO: Fix upstream
 -- package clash-vexriscv
 --   ghc-options: -Werror
-package elastic-buffer-sim
-  ghc-options: -Werror
