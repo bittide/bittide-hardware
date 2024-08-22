@@ -16,9 +16,9 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    ilaDir : [testExitCode] -> do
-      csvPaths <- glob (ilaDir </> "*" </> "*" </> "*.csv")
-      let ilaCsvPaths = toFlattenedIlaCsvPathList ilaDir csvPaths
+    ilaDataDir : [testExitCode] -> do
+      csvPaths <- glob (ilaDataDir </> "*" </> "*" </> "*.csv")
+      let ilaCsvPaths = toFlattenedIlaCsvPathList ilaDataDir csvPaths
       let exitCode = read testExitCode
       postBoardTestExtended exitCode ilaCsvPaths
     [] ->

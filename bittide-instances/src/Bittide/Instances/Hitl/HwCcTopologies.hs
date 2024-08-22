@@ -38,9 +38,9 @@ import qualified Clash.Explicit.Prelude as E
 import Clash.Prelude (withClockResetEnable)
 
 import Data.Bifunctor (bimap)
+import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe, isJust)
 import Data.Proxy
-import Data.String (fromString)
 import GHC.Float.RealFracMethods (roundFloatInteger)
 import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
@@ -70,7 +70,7 @@ import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology
 import Bittide.Transceiver (transceiverPrbsN)
 
-import Bittide.Hitl (HitlTestsWithPostProcData, OutProbes, TestName, hitlVio)
+import Bittide.Hitl
 
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
@@ -774,29 +774,35 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
 makeTopEntity 'hwCcTopologyTest
 
-tests :: HitlTestsWithPostProcData TestConfig CcConf
+tests :: HitlTestGroup
 tests =
-  Map.fromList
-    [ -- CALIBRATION --
-      -----------------
+  HitlTestGroup
+    { topEntity = 'hwCcTopologyTest
+    , extraXdcFiles = []
+    , externalHdl = []
+    , testCases =
+        [ -- CALIBRATION --
+          -----------------
 
-      -- detect the natual clock offsets to be elided from the later tests
-      calibrateClockOffsets
-    , -- TESTS --
-      -----------
+          -- detect the natual clock offsets to be elided from the later tests
+          calibrateClockOffsets
+        , -- TESTS --
+          -----------
 
-      -- initial clock shifts   startup delays            topology
-      tt (Just icsDiamond) ((m *) <$> sdDiamond) diamond
-    , tt (Just icsComplete) ((m *) <$> sdComplete) $ complete d3
-    , tt (Just icsCyclic) ((m *) <$> sdCyclic) $ cyclic d5
-    , tt (Just icsTorus) ((m *) <$> sdTorus) $ torus2d d2 d3
-    , tt (Just icsStar) ((m *) <$> sdStar) $ star d7
-    , tt (Just icsLine) ((m *) <$> sdLine) $ line d4
-    , tt (Just icsHourglass) ((m *) <$> sdHourglass) $ hourglass d3
-    , -- CALIBRATION VERIFICATON --
-      -----------------------------
-      validateClockOffsetCalibration
-    ]
+          -- initial clock shifts   startup delays            topology
+          tt (Just icsDiamond) ((m *) <$> sdDiamond) diamond
+        , tt (Just icsComplete) ((m *) <$> sdComplete) $ complete d3
+        , tt (Just icsCyclic) ((m *) <$> sdCyclic) $ cyclic d5
+        , tt (Just icsTorus) ((m *) <$> sdTorus) $ torus2d d2 d3
+        , tt (Just icsStar) ((m *) <$> sdStar) $ star d7
+        , tt (Just icsLine) ((m *) <$> sdLine) $ line d4
+        , tt (Just icsHourglass) ((m *) <$> sdHourglass) $ hourglass d3
+        , -- CALIBRATION VERIFICATON --
+          -----------------------------
+          validateClockOffsetCalibration
+        ]
+    , mPostProc = Nothing
+    }
  where
   m = 1_000_000
 
@@ -838,30 +844,29 @@ tests =
 
   calibrateClockOffsets = calibrateCC False
   validateClockOffsetCalibration = calibrateCC True
+  calibrateCC :: Bool -> HitlTestCase HwTargetRef TestConfig CcConf
   calibrateCC validate =
-    ( -- the names must be chosen such that the run is executed first/last
-      (if validate then "zzz_validate" else "0_calibrate") <> "_clock_offsets"
-    ,
-      ( toList
-          $ imap (,)
-          $ repeat @FpgaCount
-            TestConfig
-              { fpgaEnabled = True
-              , calibrate =
-                  if validate
-                    then CCCalibrationValidation
-                    else CCCalibrate
-              , initialClockShift = Nothing
-              , startupDelay = 0
-              , mask = maxBound
-              }
-      , defSimCfg
-          { ccTopologyType = Complete $ natToInteger @FpgaCount
-          , clockOffsets = Nothing
-          , startupDelays = toList $ repeat @FpgaCount 0
-          }
-      )
-    )
+    HitlTestCase
+      { name = (if validate then "zzz_validate" else "0_calibrate") <> "_clock_offsets"
+      , parameters =
+          Map.fromList $ allHwTargets
+            <&> (,TestConfig
+                    { fpgaEnabled = True
+                    , calibrate =
+                        if validate
+                          then CCCalibrationValidation
+                          else CCCalibrate
+                    , initialClockShift = Nothing
+                    , startupDelay = 0
+                    , mask = maxBound
+                    })
+      , postProcData =
+          defSimCfg
+            { ccTopologyType = Complete $ natToInteger @FpgaCount
+            , clockOffsets = Nothing
+            , startupDelays = toList $ repeat @FpgaCount 0
+            }
+      }
 
   -- tests the given topology
   tt ::
@@ -870,29 +875,31 @@ tests =
     Maybe (Vec n PartsPer) ->
     Vec n StartupDelay ->
     Topology n ->
-    (TestName, (OutProbes TestConfig, CcConf))
+    HitlTestCase HwTargetRef TestConfig CcConf
   tt clockShifts startDelays t =
-    ( fromString $ topologyName t
-    ,
-      ( toList
-          ( zipWith4
-              testData
-              indicesI
-              (maybeVecToVecMaybe (map partsPerToSteps <$> clockShifts))
-              startDelays
-              (linkMasks @n t)
-          )
-          <> [ (fromInteger i, disabled)
-             | let n = natToNum @n
-             , i <- [n, n + 1 .. natToNum @LinkCount]
-             ]
-      , defSimCfg
-          { ccTopologyType = topologyType t
-          , clockOffsets = toList <$> clockShifts
-          , startupDelays = fromIntegral <$> toList startDelays
-          }
-      )
-    )
+    HitlTestCase
+      { name = topologyName t
+      , parameters =
+          Map.fromList
+            $ toList
+              ( zipWith4
+                  testData
+                  indicesI
+                  (maybeVecToVecMaybe (map partsPerToSteps <$> clockShifts))
+                  startDelays
+                  (linkMasks @n t)
+              )
+            <> [ (HwTargetByIndex (fromInteger i), disabled)
+               | let n = natToNum @n
+               , i <- [n, n + 1 .. natToNum @LinkCount]
+               ]
+      , postProcData =
+          defSimCfg
+            { ccTopologyType = topologyType t
+            , clockOffsets = toList <$> clockShifts
+            , startupDelays = fromIntegral <$> toList startDelays
+            }
+      }
 
   maybeVecToVecMaybe :: forall n a. (KnownNat n) => Maybe (Vec n a) -> Vec n (Maybe a)
   maybeVecToVecMaybe = \case
@@ -906,9 +913,9 @@ tests =
     Maybe FincFdecCount ->
     StartupDelay ->
     BitVector LinkCount ->
-    (Index FpgaCount, TestConfig)
+    (HwTargetRef, TestConfig)
   testData i initialClockShift startupDelay mask =
-    ( zeroExtend @Index @n @(FpgaCount - n) i
+    ( HwTargetByIndex (fromIntegral i)
     , TestConfig
         { fpgaEnabled = True
         , calibrate = NoCCCalibration

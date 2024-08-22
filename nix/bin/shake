@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2022 Google LLC
+# SPDX-FileCopyrightText: 2022-2024 Google LLC
 #
 # SPDX-License-Identifier: Apache-2.0
+
+# TODO: Calling cargo here is a workaround for the Shakefile now importing
+#       Bittide.Instances.Hitl.Tests which requires Bittide.Instances.Hitl.VexRiscv
+#       which uses Template Haskell to read firmware binaries. I.e. Shake can
+#       no longer call cargo to build the binaries before they are required.
+#       The future goal is to not have the firmware in the FPGA bitstream as
+#       described here: https://github.com/bittide/bittide-hardware/issues/502
+echo "Building firmware binaries..."
+$(cd firmware-binaries/; cargo build --release)
+$(cd firmware-binaries/; cargo build)
+
 cabal run shake -- "$@"

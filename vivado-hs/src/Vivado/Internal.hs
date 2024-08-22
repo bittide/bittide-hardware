@@ -24,6 +24,7 @@ import Data.String.Interpolate (__i)
 import Data.Typeable (Typeable)
 import GHC.Stack (HasCallStack)
 import System.Directory.Extra (removeFile)
+import System.Environment (setEnv)
 import System.IO (Handle)
 import System.Process
 
@@ -189,7 +190,7 @@ exec v cmd = do
     inputAvailable <- IO.hReady v.stdout
     return $ if inputAvailable then Continue else Stop
 
-{- | Execute a command in Vivado, ignore its output
+{- | Execute a command in Vivado and ignore the command result.
 
 Careful: do not use this function with unverified user input, as it does not
 attempt to sanitize the input.
@@ -197,12 +198,24 @@ attempt to sanitize the input.
 exec_ :: VivadoHandle -> String -> IO ()
 exec_ v cmd = void (exec v cmd)
 
+{- | Execute a command in Vivado, print the resulting standard output and return
+the command result.
+
+Careful: do not use this function with unverified user input, as it does not
+attempt to sanitize the input.
+-}
 execPrint :: VivadoHandle -> String -> IO String
 execPrint v cmd = do
   (stdout, result) <- exec v cmd
   putStr stdout
   return result
 
+{- | Execute a command in Vivado, print the resulting standard output and ignore
+the command result.
+
+Careful: do not use this function with unverified user input, as it does not
+attempt to sanitize the input.
+-}
 execPrint_ :: VivadoHandle -> String -> IO ()
 execPrint_ v cmd = do
   (stdout, _) <- exec v cmd
@@ -225,12 +238,14 @@ with f = do
   a <-
     finally
       -- do:
-      ( withCreateProcess vivadoProc $
-          \(fromJust -> stdin) (fromJust -> stdout) _stderr process -> do
-            IO.hSetBuffering stdout IO.LineBuffering
-            IO.hSetBuffering stdin IO.LineBuffering
-            let v = VivadoHandle{..}
-            f v
+      ( do
+          setEnv "XILINX_LOCAL_USER_DATA" "no" -- Prevents multiprocessing issues
+          withCreateProcess vivadoProc $
+            \(fromJust -> stdin) (fromJust -> stdout) _stderr process -> do
+              IO.hSetBuffering stdout IO.LineBuffering
+              IO.hSetBuffering stdin IO.LineBuffering
+              let v = VivadoHandle{..}
+              f v
       )
       -- finally:
       ( do

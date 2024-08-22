@@ -24,7 +24,7 @@ Different build levels:
   * If neither is set, instances are synthesized for `SYNTHESIS_PART=xcku035-ffva1156-2-e`, which is the smaller cousin of the FPGA we've bought, but which comes with a free license.
 * Only targets which have the flag `targetHasXdc` can be used to generate a bitstream. This XDC file must have the same name as the instance, and be located in the `data/constraints/` directory.
 * For targets which have the flag `targetHasVio`, a probes file is generated alongside the bitstream.
-* Only targets which have the flag `targetHasTest` can be used to perform hardware tests.
+* Only targets which have a `targetTest` value can be used to perform hardware tests.
 
 
 ## Shake
@@ -81,19 +81,19 @@ shake boardTestExtended:bitstream
 Example:
 
 ```
-shake boardTestExtended:program --hardware-targets=OneAny
+shake boardTestExtended:program
 ```
 
-## Hardware testing
+## Hardware testing and (if available) ILA data post processing
 Example:
 
 ```
-shake boardTestExtended:test --hardware-targets=OneAny
+shake boardTestExtended:test
 ```
 
 ## ILA data post processing
 Example:
 
 ```
-shake boardTestExtended:post-process --hardware-targets=OneAny
+shake boardTestExtended:post-process
 ```

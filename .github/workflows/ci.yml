@@ -171,7 +171,7 @@ jobs:
           ./cargo.sh build --frozen --release
           export BITTIDE_ARTIFACT_ACCESS_TOKEN="${{ secrets.GITHUB_TOKEN }}"
           export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          cabal run -- bittide-tools:cc-plot ${{ github.run_id }}:hwCcTopologyTest _build/plot hitl-topology-plots
+          cabal run -- bittide-tools:cc-plot ${{ github.run_id }}:hwCcTopologyTest hitl-topology-plots
 
       - name: Generate clock control reports
         run: |
@@ -641,7 +641,7 @@ jobs:
       - name: Run tests on hardware
         run: |
           .github/scripts/with_vivado.sh \
-            shake ${{ matrix.target.top }}:test --hardware-targets="${{ matrix.target.targets}}"
+            shake ${{ matrix.target.top }}:test
 
       - name: Archive ILA data
         if: ${{ !cancelled() }}

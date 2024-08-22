@@ -52,6 +52,9 @@ library
   import: common-options
   exposed-modules:
     Vivado
+    Vivado.Tcl
+
+  other-modules:
     Vivado.Internal
 
   build-depends:

@@ -16,18 +16,22 @@ module Main where
 
 import Prelude
 
+import Bittide.Hitl (HitlTestGroup (..), hwTargetRefsFromHitlTestGroup)
+import Bittide.Instances.Hitl.Tests (ClashTargetName, hitlTests)
+import Clash.DataFiles (tclConnector)
 import Clash.Shake.Extra
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
 import Control.Monad (forM_, unless, when)
-import Control.Monad.Extra (ifM, unlessM)
+import Control.Monad.Extra (ifM, unlessM, (&&^))
 import Data.Foldable (for_)
 import Data.Function ((&))
 import Data.List (isPrefixOf, sort, uncons)
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (fromJust, fromMaybe, isJust)
 import Development.Shake
 import Development.Shake.Classes
 import GHC.Stack (HasCallStack)
+import Language.Haskell.TH.Syntax (mkName)
 import System.Console.ANSI (setSGR)
 import System.Directory hiding (doesFileExist)
 import System.Exit (ExitCode (..), exitWith)
@@ -99,9 +103,9 @@ watchFilesPath = buildDir </> "watch_files.txt"
 
 -- | Build and run the executable for post processing of ILA data
 doPostProcessing :: String -> FilePath -> ExitCode -> Assertion
-doPostProcessing postProcessMain ilaDir testExitCode = do
+doPostProcessing postProcessMain ilaDataDir testExitCode = do
   callProcess "cabal" ["build", postProcessMain]
-  callProcess "cabal" ["run", postProcessMain, ilaDir, show testExitCode]
+  callProcess "cabal" ["run", postProcessMain, ilaDataDir, show testExitCode]
 
 {- | Searches for a file called @cabal.project@ It will look for it in the
 current working directory. If it can't find it there, it will traverse up
@@ -124,17 +128,18 @@ findProjectRoot = goUp =<< getCurrentDirectory
 
   projectFilename = "cabal.project"
 
+-- | Shake target
 data Target = Target
-  { targetName :: TargetName
+  { targetName :: ClashTargetName
   -- ^ TemplateHaskell reference to top entity to synthesize
   , targetHasXdc :: Bool
   -- ^ Whether target has an associated XDC file in 'data/constraints'. An XDC
   -- file implies that a bitstream can be generated.
   , targetHasVio :: Bool
   -- ^ Whether target has one or more VIOs
-  , targetHasTest :: Bool
+  , targetTest :: Maybe HitlTestGroup
   -- ^ Whether target has a VIO probe that can be used to run hardware-in-the-
-  -- loop tests. Note that this flag, 'targetHasTest', implies 'targetHasVio'.
+  -- loop tests. Note that this flag, 'targetTest', implies 'targetHasVio'.
   , targetPostProcess :: Maybe String
   -- ^ Name of the executable for post processing of ILA CSV data, or Nothing
   -- if it has none.
@@ -145,86 +150,57 @@ data Target = Target
   -- instance. Generates tck that utilizes https://www.tcl.tk/man/tcl8.6/TclCmd/glob.htm
   }
 
-defTarget :: TargetName -> Target
+defTarget :: ClashTargetName -> Target
 defTarget name =
   Target
     { targetName = name
     , targetHasXdc = False
     , targetHasVio = False
-    , targetHasTest = False
+    , targetTest = Nothing
     , targetPostProcess = Nothing
     , targetExtraXdc = []
     , targetExternalHdl = []
     }
 
-testTarget :: TargetName -> Target
-testTarget name =
+testTarget :: HitlTestGroup -> Target
+testTarget test@(HitlTestGroup{..}) =
   Target
-    { targetName = name
+    { targetName = topEntity
     , targetHasXdc = True
     , targetHasVio = True
-    , targetHasTest = True
-    , targetPostProcess = Nothing
-    , targetExtraXdc = []
-    , targetExternalHdl = []
+    , targetTest = Just test
+    , targetPostProcess = mPostProc
+    , targetExtraXdc = extraXdcFiles
+    , targetExternalHdl = externalHdl
     }
 
 enforceValidTarget :: Target -> Target
 enforceValidTarget target@Target{..}
-  | targetHasTest && not targetHasVio =
+  | isJust targetTest && not targetHasVio =
       error $
         show targetName
-          <> " should have set 'targetHasVio', because "
-          <> "'targetHasTest' was asserted."
+          <> " should have set 'targetHasVio', because"
+          <> " the target has a test ('targetTest')."
   | otherwise = target
 
 -- | All synthesizable targets
 targets :: [Target]
 targets =
-  map
-    enforceValidTarget
-    [ defTarget "Bittide.Instances.Pnr.Calendar.switchCalendar1k"
-    , defTarget "Bittide.Instances.Pnr.Calendar.switchCalendar1kReducedPins"
-    , defTarget "Bittide.Instances.Pnr.ClockControl.callisto3"
-    , defTarget "Bittide.Instances.Pnr.Counter.counterReducedPins"
-    , defTarget "Bittide.Instances.Pnr.ElasticBuffer.elasticBuffer5"
-    , defTarget "Bittide.Instances.Pnr.ScatterGather.gatherUnit1K"
-    , defTarget "Bittide.Instances.Pnr.ScatterGather.gatherUnit1KReducedPins"
-    , defTarget "Bittide.Instances.Pnr.ScatterGather.scatterUnit1K"
-    , defTarget "Bittide.Instances.Pnr.ScatterGather.scatterUnit1KReducedPins"
-    , defTarget "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
-    , defTarget "Bittide.Instances.Pnr.StabilityChecker.stabilityChecker_3_1M"
-    , defTarget "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
-    , (defTarget "Bittide.Instances.Pnr.Ethernet.vexRiscEthernet")
-        { targetHasXdc = True
-        , targetExternalHdl =
-            [ "$env(VERILOG_ETHERNET_SRC)/rtl/*.v"
-            , "$env(VERILOG_ETHERNET_SRC)/lib/axis/rtl/*.v"
-            ]
-        , targetExtraXdc =
-            ["jtag_config.xdc", "jtag_pmod1.xdc", "sgmii.xdc"]
-        }
-    , (testTarget "Bittide.Instances.Hitl.BoardTest.boardTestExtended")
-        { targetPostProcess = Just "post-board-test-extended"
-        }
-    , testTarget "Bittide.Instances.Hitl.BoardTest.boardTestSimple"
-    , testTarget "Bittide.Instances.Hitl.FincFdec.fincFdecTests"
-    , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcTest"
-    , testTarget "Bittide.Instances.Hitl.FullMeshHwCc.fullMeshHwCcWithRiscvTest"
-    , (testTarget "Bittide.Instances.Hitl.FullMeshSwCc.fullMeshSwCcTest")
-        { targetPostProcess = Just "post-fullMeshSwCcTest"
-        }
-    , testTarget "Bittide.Instances.Hitl.HwCcTopologies.hwCcTopologyTest"
-    , testTarget "Bittide.Instances.Hitl.LinkConfiguration.linkConfigurationTest"
-    , testTarget "Bittide.Instances.Hitl.SyncInSyncOut.syncInSyncOut"
-    , testTarget "Bittide.Instances.Hitl.Tcl.ExtraProbes.extraProbesTest"
-    , testTarget "Bittide.Instances.Hitl.TemperatureMonitor.temperatureMonitor"
-    , testTarget "Bittide.Instances.Hitl.Transceivers.transceiversUpTest"
-    , (testTarget "Bittide.Instances.Hitl.VexRiscv.vexRiscvTest")
-        { targetPostProcess = Just "post-vex-riscv-test"
-        , targetExtraXdc = ["jtag_config.xdc", "jtag_pmod1.xdc"]
-        }
+  map enforceValidTarget $
+    [ defTarget $ mkName "Bittide.Instances.Pnr.Calendar.switchCalendar1k"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Calendar.switchCalendar1kReducedPins"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ClockControl.callisto3"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterReducedPins"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.elasticBuffer5"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.gatherUnit1K"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.gatherUnit1KReducedPins"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.scatterUnit1K"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.scatterUnit1KReducedPins"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
+    , defTarget $ mkName "Bittide.Instances.Pnr.StabilityChecker.stabilityChecker_3_1M"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
     ]
+      <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
 
 shakeOpts :: ShakeOptions
 shakeOpts =
@@ -233,22 +209,6 @@ shakeOpts =
     , shakeChange = ChangeDigest
     , shakeVersion = "11"
     }
-
--- | Run Vivado on given TCL script. Can collect the ExitCode.
-vivadoFromTcl :: (CmdResult r) => FilePath -> Action r
-vivadoFromTcl tclPath =
-  command
-    [AddEnv "XILINX_LOCAL_USER_DATA" "no"] -- Prevents multiprocessing issues
-    "vivado"
-    ["-mode", "batch", "-source", tclPath]
-
--- | Run Vivado on given TCL script
-vivadoFromTcl_ :: FilePath -> Action ()
-vivadoFromTcl_ tclPath =
-  command_
-    [AddEnv "XILINX_LOCAL_USER_DATA" "no"] -- Prevents multiprocessing issues
-    "vivado"
-    ["-mode", "batch", "-source", tclPath, "-notrace"]
 
 {- | Constructs a 'BoardPart' based on environment variables @SYNTHESIS_BOARD@
 or @SYNTHESIS_PART@. Errors if both are set, returns a default (free) part
@@ -271,7 +231,7 @@ found.
 meetsDrcOrError :: FilePath -> FilePath -> FilePath -> IO ()
 meetsDrcOrError methodologyPath summaryPath checkpointPath =
   unlessM
-    (liftA2 (&&) (meetsTiming methodologyPath) (meetsTiming summaryPath))
+    (meetsTiming methodologyPath &&^ meetsTiming summaryPath)
     ( error
         [I.i|
       Design did not meet design rule checks (DRC). Check out the timing summary at:
@@ -290,15 +250,10 @@ meetsDrcOrError methodologyPath summaryPath checkpointPath =
     )
 
 -- | Newtype used for adding oracle rules for flags to Shake
-newtype HardwareTargetsFlag = HardwareTargetsFlag ()
-  deriving (Show)
-  deriving newtype (Eq, Typeable, Hashable, Binary, NFData)
-
-type instance RuleResult HardwareTargetsFlag = HardwareTargets
-
 newtype ForceTestRerun = ForceTestRerun ()
   deriving (Show)
   deriving newtype (Eq, Typeable, Hashable, Binary, NFData)
+
 type instance RuleResult ForceTestRerun = Bool
 
 {- | Defines a Shake build executable for calling Vivado. Like Make, in Shake
@@ -326,25 +281,11 @@ main = do
 
       rules = do
         _ <- addOracle $ \(ForceTestRerun _) -> return forceTestRerun
-        _ <- addOracle $ \(HardwareTargetsFlag _) -> return hardwareTargets
 
         -- 'all' builds all targets defined below
         phony "all" $ do
           for_ targets $ \Target{..} -> do
             need [entityName targetName <> ":synth"]
-
-        (hitlBuildDir </> "*.yml") %> \path -> do
-          needWatchFiles
-          let entity = takeFileName (dropExtension path)
-          command_
-            []
-            "cabal"
-            [ "run"
-            , "--"
-            , "bittide-tools:hitl-config-gen"
-            , "write"
-            , entity
-            ]
 
         (dataFilesDir </> "**") %> \_ -> do
           Stdout out <-
@@ -388,18 +329,11 @@ main = do
             -- TODO: Dehardcode these paths. They're currently hardcoded in both the
             --       TCL and here, which smells.
             manifestPath = getManifestLocation clashBuildDir targetName
-            synthesisDir = vivadoBuildDir </> targetName
+            synthesisDir = vivadoBuildDir </> show targetName
             checkpointsDir = synthesisDir </> "checkpoints"
             netlistDir = synthesisDir </> "netlist"
             reportDir = synthesisDir </> "reports"
-            ilaDir = synthesisDir </> "ila-data"
-
-            runSynthTclPath = synthesisDir </> "run_synth.tcl"
-            runPlaceAndRouteTclPath = synthesisDir </> "run_place_and_route.tcl"
-            runBitstreamTclPath = synthesisDir </> "run_bitstream.tcl"
-            runProbesGenTclPath = synthesisDir </> "run_probes_gen.tcl"
-            runBoardProgramTclPath = synthesisDir </> "run_board_program.tcl"
-            runHardwareTestTclPath = synthesisDir </> "run_hardware_test.tcl"
+            ilaDataDir = synthesisDir </> "ila-data"
 
             postSynthCheckpointPath = checkpointsDir </> "post_synth.dcp"
             postPlaceCheckpointPath = checkpointsDir </> "post_place.dcp"
@@ -410,9 +344,8 @@ main = do
               , netlistDir </> "netlist.xdc"
               ]
             bitstreamPath = synthesisDir </> "bitstream.bit"
-            probesPath = synthesisDir </> "probes.ltx"
+            probesFilePath = synthesisDir </> "probes.ltx"
             testExitCodePath = synthesisDir </> "test_exit_code"
-            hitlConfigPath = hitlBuildDir </> targetName <> ".yml"
 
             postRouteMethodologyPath = reportDir </> "post_route_methodology.rpt"
             postRouteTimingSummaryPath = reportDir </> "post_route_timing_summary.rpt"
@@ -442,7 +375,8 @@ main = do
               --      will therefore fail to invalidate caches. While there are
               --      ways to tell Cabal/GHC to depend on these files, they are
               --      known to be broken in our tool versions. This workaround
-              --      removes all build artifacts _except_ for "bittide-shake".
+              --      removes all build artifacts _except_ for "bittide-shake"
+              --      and "vivado-hs".
               --
               --      See: https://github.com/haskell/cabal/issues/4746
               --
@@ -457,8 +391,8 @@ main = do
               when (ci == "false") $ do
                 buildDirs <- liftIO (glob "dist-newstyle/build/*/ghc-*/*")
                 forM_ buildDirs $ \dir -> do
-                  let fileName = takeFileName dir
-                  unless ("bittide-shake" `isPrefixOf` fileName) $
+                  let dirName = takeFileName dir
+                  unless (any (`isPrefixOf` dirName) ["bittide-shake", "vivado-hs"]) $ do
                     command_ [] "rm" ["-rf", dir]
 
               -- Generate RTL
@@ -474,7 +408,14 @@ main = do
               produces [path]
 
             -- Synthesis
-            runSynthTclPath %> \path -> do
+            (postSynthCheckpointPath : synthReportsPaths) |%> \_ -> do
+              -- XXX: Will not re-run if _dependencies_ mentioned in 'manifestPath'
+              --      change. This is only relevant in designs with multiple
+              --      binders with 'Synthesize' pragmas, which we currently do
+              --      not have. Ideally we would parse the manifest file and
+              --      also depend on the dependencies' manifest files, etc.
+              connector <- liftIO tclConnector
+              need [manifestPath, connector]
               let
                 xdcNames = entityName targetName <> ".xdc" : targetExtraXdc
                 xdcPaths = map ((dataFilesDir </> "constraints") </>) xdcNames
@@ -488,47 +429,30 @@ main = do
               synthesisPart <- getBoardPart
               locatedManifest <- decodeLocatedManifest manifestPath
 
-              tcl <-
-                mkSynthesisTcl
+              liftIO $
+                runSynthesis
                   synthesisDir -- Output directory for Vivado
                   False -- Out of context run
                   synthesisPart -- Part we're synthesizing for
                   constraints -- List of filenames with constraints
                   targetExternalHdl -- List of external HDL files to be included in synthesis
                   locatedManifest
-
-              writeFileChanged path tcl
-
-            (postSynthCheckpointPath : synthReportsPaths) |%> \_ -> do
-              -- XXX: Will not re-run if _dependencies_ mentioned in 'manifestPath'
-              --      change. This is only relevant in designs with multiple
-              --      binders with 'Synthesize' pragmas, which we currently do
-              --      not have. Ideally we would parse the manifest file and
-              --      also depend on the dependencies' manifest files, etc.
-              need [runSynthTclPath, manifestPath]
-              vivadoFromTcl_ runSynthTclPath
+                  connector -- Path to tclConnector script
 
             -- Routing + netlist generation
-            runPlaceAndRouteTclPath %> \path -> do
-              writeFileChanged path (mkPlaceAndRouteTcl synthesisDir)
-
             ( postPlaceCheckpointPath
                 : postRouteCheckpointPath
                 : routeReportsPaths
                   <> netlistPaths
               )
               |%> \_ -> do
-                need [runPlaceAndRouteTclPath, postSynthCheckpointPath]
-                vivadoFromTcl_ runPlaceAndRouteTclPath
+                need [postSynthCheckpointPath]
+                liftIO $ runPlaceAndRoute synthesisDir
 
                 -- Design should meet design rule checks (DRC).
                 liftIO $
                   unlessM
-                    ( liftA2
-                        (&&)
-                        (meetsTiming postRouteMethodologyPath)
-                        (meetsTiming postRouteTimingSummaryPath)
-                    )
+                    (meetsTiming postRouteMethodologyPath &&^ meetsTiming postRouteTimingSummaryPath)
                     ( error
                         [I.i|
                   Design did not meet design rule checks (DRC). Check out the timing summary at:
@@ -578,53 +502,29 @@ main = do
                     )
 
             -- Bitstream generation
-            runBitstreamTclPath %> \path -> do
-              writeFileChanged path (mkBitstreamTcl synthesisDir)
-
             bitstreamPath %> \_ -> do
-              need [runBitstreamTclPath, postRouteCheckpointPath]
-              vivadoFromTcl_ runBitstreamTclPath
+              need [postRouteCheckpointPath]
+              liftIO $ runBitstreamGen synthesisDir
 
             -- Probes file generation
-            runProbesGenTclPath %> \path -> do
-              writeFileChanged path (mkProbesGenTcl synthesisDir)
-
-            probesPath %> \_ -> do
-              need [runProbesGenTclPath, bitstreamPath]
-              vivadoFromTcl_ runProbesGenTclPath
-
-            -- Write bitstream to board
-            runBoardProgramTclPath %> \path -> do
-              hwTargets <- askOracle $ HardwareTargetsFlag ()
-              url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
-              boardProgramTcl <-
-                liftIO $ mkBoardProgramTcl synthesisDir hwTargets url targetHasVio
-              writeFileChanged path boardProgramTcl
+            probesFilePath %> \_ -> do
+              need [bitstreamPath]
+              liftIO $ runProbesFileGen synthesisDir
 
             -- Run hardware test
-            runHardwareTestTclPath %> \path -> do
-              hwTargets <- askOracle $ HardwareTargetsFlag ()
-              need [hitlConfigPath]
-              forceRerun <- askOracle $ ForceTestRerun ()
-              when forceRerun alwaysRerun
-              url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
-              hardwareTestTcl <-
-                liftIO $ mkHardwareTestTcl hitlConfigPath synthesisDir hwTargets url ilaDir
-              writeFileChanged path hardwareTestTcl
-
             testExitCodePath %> \path -> do
               forceRerun <- askOracle $ ForceTestRerun ()
               when forceRerun alwaysRerun
               need
-                [ runBoardProgramTclPath
-                , runHardwareTestTclPath
+                [ entityName targetName <> ":program"
                 , bitstreamPath
-                , probesPath
-                , hitlConfigPath
+                , probesFilePath
                 ]
-              vivadoFromTcl_ runBoardProgramTclPath
-              exitCode <- vivadoFromTcl @ExitCode runHardwareTestTclPath
-              writeFileChanged path $ show exitCode
+              url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
+              exitCode <-
+                liftIO $
+                  runHitlTest (fromJust targetTest) url probesFilePath ilaDataDir
+              writeFileChanged path (show exitCode)
 
               shortenNamesPy <-
                 liftIO $
@@ -643,20 +543,33 @@ main = do
 
           when targetHasXdc $ do
             phony (entityName targetName <> ":bitstream") $ do
-              when targetHasVio $ need [probesPath]
+              when targetHasVio $ need [probesFilePath]
               need [bitstreamPath]
 
+            -- Write bitstream to hardware target(s)
             phony (entityName targetName <> ":program") $ do
-              when targetHasVio $ need [probesPath]
-              need [runBoardProgramTclPath, bitstreamPath]
-              vivadoFromTcl_ runBoardProgramTclPath
+              when targetHasVio $ need [probesFilePath]
+              need [bitstreamPath]
+              let hwTRefs =
+                    hwTargetRefsFromHitlTestGroup $
+                      fromMaybe
+                        ( error $
+                            "Asked to program target "
+                              ++ show targetName
+                              ++ " while the "
+                                <> "hardware targets to program could not be found as this target does not "
+                                <> "have a HITL test associated with it."
+                        )
+                        targetTest
+              url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
+              liftIO $ programBitstream synthesisDir hwTRefs url targetHasVio
 
-            when targetHasTest $ do
+            when (isJust targetTest) $ do
               phony (entityName targetName <> ":test") $ do
                 need [testExitCodePath]
                 exitCode <- read <$> readFile' testExitCodePath
                 when (isJust targetPostProcess) $ do
-                  liftIO $ doPostProcessing (fromJust targetPostProcess) ilaDir exitCode
+                  liftIO $ doPostProcessing (fromJust targetPostProcess) ilaDataDir exitCode
                 unless (exitCode == ExitSuccess) $ do
                   liftIO $ exitWith exitCode
 
@@ -664,7 +577,7 @@ main = do
                 phony (entityName targetName <> ":post-process") $ do
                   need [testExitCodePath]
                   exitCode <- read <$> readFile' testExitCodePath
-                  liftIO $ doPostProcessing (fromJust targetPostProcess) ilaDir exitCode
+                  liftIO $ doPostProcessing (fromJust targetPostProcess) ilaDataDir exitCode
 
     if null shakeTargets
       then rules

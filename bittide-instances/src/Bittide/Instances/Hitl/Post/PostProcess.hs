@@ -61,19 +61,19 @@ toFpgaNum fpgaName =
 base directory of ILA data.
 -}
 toNestedIlaCsvPaths :: (HasCallStack) => FilePath -> [FilePath] -> NestedIlaCsvPaths
-toNestedIlaCsvPaths ilaDir = foldl addIlaCsvPath Map.empty . toFlattenedIlaCsvPathList ilaDir
+toNestedIlaCsvPaths ilaDataDir = foldl addIlaCsvPath Map.empty . toFlattenedIlaCsvPathList ilaDataDir
 
 {- | Create a list of FlattenedIlaCsvPath using a list of filepaths of CSV dumps
 and the base directory of ILA data.
 -}
 toFlattenedIlaCsvPathList ::
   (HasCallStack) => FilePath -> [FilePath] -> [FlattenedIlaCsvPath]
-toFlattenedIlaCsvPathList ilaDir = map go
+toFlattenedIlaCsvPathList ilaDataDir = map go
  where
   go :: FilePath -> FlattenedIlaCsvPath
   go csvPath = FlattenedIlaCsvPath{..}
    where
-    relativeCsvPath = makeRelative ilaDir csvPath
+    relativeCsvPath = makeRelative ilaDataDir csvPath
     (testName, toFpgaNum -> fpgaNum, takeBaseName -> ilaName) =
       case splitDirectories relativeCsvPath of
         [a, b, c] -> (a, b, c)

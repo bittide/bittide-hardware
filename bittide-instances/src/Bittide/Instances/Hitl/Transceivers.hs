@@ -5,7 +5,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 {- | Test whether clock boards are configurable and transceiver links come
@@ -30,7 +29,7 @@ import Bittide.Arithmetic.Time
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi
 import Bittide.ElasticBuffer (sticky)
-import Bittide.Hitl (FpgaIndex, HitlTests, NoPostProcData (..), hitlVio)
+import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup
 import Bittide.Transceiver
@@ -45,7 +44,6 @@ import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Clash.Explicit.Prelude as E
 import qualified Data.List as L
 import qualified Data.Map as Map
-import qualified Data.Text as Text
 
 {- | Start value of the counters used in 'counter' and 'expectCounter'. This is
 a non-zero start value, as a regression test for a bug where the transceivers
@@ -83,7 +81,7 @@ expectCounter clk rst = sticky clk rst . mealy clk rst enableGen go counterStart
 information.
 -}
 goTransceiversUpTest ::
-  Signal Basic125 FpgaIndex ->
+  Signal Basic125 (Index FpgaCount) ->
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
@@ -214,7 +212,7 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   startTest = isJust <$> maybeFpgaIndex
   fpgaIndex = fromMaybe 0 <$> maybeFpgaIndex
 
-  maybeFpgaIndex :: Signal Basic125 (Maybe FpgaIndex)
+  maybeFpgaIndex :: Signal Basic125 (Maybe (Index FpgaCount))
   maybeFpgaIndex =
     hitlVio
       0
@@ -228,10 +226,25 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
 makeTopEntity 'transceiversUpTest
 
-tests :: HitlTests FpgaIndex
-tests = Map.fromList testsAsList
+tests :: HitlTestGroup
+tests =
+  HitlTestGroup
+    { topEntity = 'transceiversUpTest
+    , externalHdl = []
+    , extraXdcFiles = []
+    , testCases = iters
+    , mPostProc = Nothing
+    }
  where
-  fpgaIndices = [0 ..]
-  nTests = 1
-  testNames = ["T" <> Text.pack (show n) | n <- [(0 :: Int) .. nTests - 1]]
-  testsAsList = [(nm, (L.zip fpgaIndices fpgaIndices, NoPostProcData)) | nm <- testNames]
+  fpgaIndices = [0 ..] :: [Index FpgaCount]
+  nIters = 1
+  iterNames = ["I" <> show n | n <- [(0 :: Int) .. nIters - 1]]
+  iters =
+    [ HitlTestCase
+      { name = nm
+      , parameters =
+          Map.fromList (L.zip (HwTargetByIndex . fromIntegral <$> fpgaIndices) fpgaIndices)
+      , postProcData = ()
+      }
+    | nm <- iterNames
+    ]

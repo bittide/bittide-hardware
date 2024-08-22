@@ -5,16 +5,21 @@
 module Bittide.Instances.Hitl.Setup (
   FpgaCount,
   LinkCount,
+  FpgaId,
   TransceiverWires,
+  allHwTargets,
   channelNames,
   clockPaths,
   fpgaSetup,
+  knownFpgaIds,
+  knownFpgaIdsVec,
   linkMask,
   linkMasks,
 ) where
 
 import Clash.Prelude
 
+import Bittide.Hitl (FpgaId, HwTargetRef (..))
 import Bittide.Topology
 import Data.Constraint (Dict (..), (:-) (..))
 import Data.Constraint.Nat (leTrans)
@@ -42,7 +47,7 @@ clockPaths =
 neighbors (via the index position in the vector) according to the
 different hardware interfaces on the boards.
 -}
-fpgaSetup :: Vec FpgaCount (String, Vec LinkCount (Index FpgaCount))
+fpgaSetup :: Vec FpgaCount (FpgaId, Vec LinkCount (Index FpgaCount))
 fpgaSetup =
   --   FPGA Id         SFP0    SFP1    J4    J5    J6    J7    SMA
   ("210308B3B272", 3 :> 2 :> 4 :> 5 :> 6 :> 7 :> 1 :> Nil)
@@ -54,6 +59,21 @@ fpgaSetup =
     :> ("210308B3A22D", 5 :> 4 :> 2 :> 1 :> 0 :> 3 :> 7 :> Nil)
     :> ("210308B0B0C2", 4 :> 5 :> 3 :> 2 :> 1 :> 0 :> 6 :> Nil)
     :> Nil
+
+{- | The IDs of the Digilent chips on each of the FPGA boards of the test
+setup. The indices match the position of each FPGA in the mining rig.
+-}
+knownFpgaIdsVec :: Vec FpgaCount FpgaId
+knownFpgaIdsVec = fst <$> fpgaSetup
+
+{- | The IDs of the Digilent chips on each of the FPGA boards of the test
+setup. The indices match the position of each FPGA in the mining rig.
+-}
+knownFpgaIds :: [FpgaId]
+knownFpgaIds = toList knownFpgaIdsVec
+
+allHwTargets :: [HwTargetRef]
+allHwTargets = HwTargetById <$> knownFpgaIds
 
 {- | Determines the link mask of a particular node.
 

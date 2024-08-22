@@ -124,10 +124,10 @@ ilaWb ::
     (Wishbone dom 'Standard addrW a)
 ilaWb SSymbol stages0 depth0 = Circuit $ \(m2s, s2m) ->
   let
-    -- Our TCL infrastructure looks for 'trigger' and 'capture' and uses it to
-    -- trigger the ILA and do selective capture. Though defaults are changable
-    -- using Vivado, we set it to capture only valid Wishbone transactions plus
-    -- a single cycle after it.
+    -- Our HITL test infrastructure looks for 'trigger' and 'capture' and uses
+    -- it to trigger the ILA and do selective capture. Though defaults are
+    -- changable using Vivado, we set it to capture only valid Wishbone
+    -- transactions plus a single cycle after it.
     trigger = Wishbone.strobe <$> m2s .&&. Wishbone.busCycle <$> m2s
     capture = trigger .||. dflipflop trigger
 

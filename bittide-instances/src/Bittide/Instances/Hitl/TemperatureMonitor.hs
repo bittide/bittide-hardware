@@ -17,7 +17,13 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 
 import Bittide.Arithmetic.Time (trueFor)
-import Bittide.Hitl (HitlTests, allFpgas, hitlVioBool, noConfigTest)
+import Bittide.Hitl (
+  HitlTestCase (..),
+  HitlTestGroup (..),
+  hitlVioBool,
+  paramForHwTargets,
+ )
+import Bittide.Instances.Hitl.Setup (allHwTargets)
 
 import Bittide.Instances.Domains
 
@@ -94,5 +100,18 @@ temperatureMonitor diffClk = temperatureIla `hwSeqX` bundle (testDone, testSucce
 
 makeTopEntity 'temperatureMonitor
 
-tests :: HitlTests ()
-tests = noConfigTest "TemperatureMonitor" allFpgas
+tests :: HitlTestGroup
+tests =
+  HitlTestGroup
+    { topEntity = 'temperatureMonitor
+    , extraXdcFiles = []
+    , externalHdl = []
+    , testCases =
+        [ HitlTestCase
+            { name = "TemperatureMonitor"
+            , parameters = paramForHwTargets allHwTargets ()
+            , postProcData = ()
+            }
+        ]
+    , mPostProc = Nothing
+    }

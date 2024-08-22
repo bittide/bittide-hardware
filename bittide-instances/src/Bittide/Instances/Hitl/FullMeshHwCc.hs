@@ -28,7 +28,8 @@ module Bittide.Instances.Hitl.FullMeshHwCc (
   fullMeshHwCcWithRiscvTest,
   fullMeshHwCcTest,
   clockControlConfig,
-  tests,
+  fullMeshHwCcWithRiscvTest',
+  fullMeshHwCcTest',
 ) where
 
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
@@ -55,7 +56,7 @@ import Bittide.DoubleBufferedRam (
   registerWb,
  )
 import Bittide.ElasticBuffer (sticky)
-import Bittide.Hitl (HitlTestsWithPostProcData, allFpgas, hitlVioBool)
+import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
@@ -82,7 +83,6 @@ import VexRiscv
 
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
-import qualified Data.Map as Map (singleton)
 
 clockControlConfig ::
   $(case (instancesClockConfig (Proxy @Basic125)) of (_ :: t) -> liftTypeQ @t)
@@ -497,21 +497,37 @@ fullMeshHwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
 makeTopEntity 'fullMeshHwCcTest
 
-tests :: HitlTestsWithPostProcData () CcConf
-tests =
-  Map.singleton "CC"
-    $ ( allFpgas ()
-      , def
-          { ccTopologyType = Complete (natToInteger @FpgaCount)
-          , samples = 1000
-          , duration = natToNum @(PeriodToCycles Basic125 (Seconds 60))
-          , stabilityMargin = snatToNum cccStabilityCheckerMargin
-          , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
-          , reframe = cccEnableReframing
-          , waitTime = fromEnum cccReframingWaitTime
-          , clockOffsets = Nothing
-          , startupDelays = toList $ repeat @FpgaCount 0
-          }
-      )
+mkTest :: ClashTargetName -> HitlTestGroup
+mkTest topEntity =
+  HitlTestGroup
+    { topEntity = topEntity
+    , extraXdcFiles = []
+    , externalHdl = []
+    , testCases =
+        [ HitlTestCase
+            { name = "CC"
+            , parameters = paramForHwTargets allHwTargets ()
+            , postProcData =
+                def
+                  { ccTopologyType = Complete (natToInteger @FpgaCount)
+                  , samples = 1000
+                  , duration = natToNum @(PeriodToCycles Basic125 (Seconds 60))
+                  , stabilityMargin = snatToNum cccStabilityCheckerMargin
+                  , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
+                  , reframe = cccEnableReframing
+                  , waitTime = fromEnum cccReframingWaitTime
+                  , clockOffsets = Nothing
+                  , startupDelays = toList $ repeat @FpgaCount 0
+                  }
+            }
+        ]
+    , mPostProc = Nothing
+    }
  where
   ClockControlConfig{..} = clockControlConfig
+
+fullMeshHwCcWithRiscvTest' :: HitlTestGroup
+fullMeshHwCcWithRiscvTest' = mkTest 'fullMeshHwCcWithRiscvTest
+
+fullMeshHwCcTest' :: HitlTestGroup
+fullMeshHwCcTest' = mkTest 'fullMeshHwCcTest

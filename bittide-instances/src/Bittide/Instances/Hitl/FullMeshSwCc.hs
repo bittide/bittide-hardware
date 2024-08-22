@@ -34,10 +34,10 @@ module Bittide.Instances.Hitl.FullMeshSwCc (
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import qualified Clash.Explicit.Prelude as E
 import Clash.Prelude (withClockResetEnable)
-import qualified Prelude as P
 
 import Data.Maybe (fromMaybe)
 import Data.Proxy
+import Data.String (fromString)
 import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
 import System.FilePath
@@ -51,7 +51,7 @@ import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
 import Bittide.DoubleBufferedRam (ContentType (Blob), InitialContent (Reloadable))
 import Bittide.ElasticBuffer (Overflow, Underflow, resettableXilinxElasticBuffer, sticky)
-import Bittide.Hitl (HitlTestsWithPostProcData, allFpgas, hitlVioBool)
+import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
@@ -80,8 +80,6 @@ import VexRiscv
 
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
-import qualified Data.Map as Map
-import Data.String (fromString)
 
 type FpgaCount = 8
 type LinkCount = FpgaCount - 1
@@ -668,23 +666,32 @@ makeTopEntity 'fullMeshSwCcTest
 testsToRun :: Int
 testsToRun = 1
 
-tests :: HitlTestsWithPostProcData () CcConf
+tests :: HitlTestGroup
 tests =
-  Map.fromList
-    $ P.zip ["CC" <> fromString (show n) | n <- [0 .. testsToRun - 1]]
-    $ P.repeat
-      ( allFpgas ()
-      , def
-          { ccTopologyType = Complete (natToInteger @FpgaCount)
-          , samples = 1000
-          , duration = natToNum @(PeriodToCycles Basic125 (Seconds 60))
-          , stabilityMargin = snatToNum cccStabilityCheckerMargin
-          , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
-          , reframe = cccEnableReframing
-          , waitTime = fromEnum cccReframingWaitTime
-          , clockOffsets = Nothing
-          , startupDelays = toList $ repeat @FpgaCount 0
+  HitlTestGroup
+    { topEntity = 'fullMeshSwCcTest
+    , extraXdcFiles = []
+    , externalHdl = []
+    , testCases =
+        [ HitlTestCase
+          { name = "CC" <> fromString (show n)
+          , parameters = paramForHwTargets allHwTargets ()
+          , postProcData =
+              def
+                { ccTopologyType = Complete (natToInteger @FpgaCount)
+                , samples = 1000
+                , duration = natToNum @(PeriodToCycles Basic125 (Seconds 60))
+                , stabilityMargin = snatToNum cccStabilityCheckerMargin
+                , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
+                , reframe = cccEnableReframing
+                , waitTime = fromEnum cccReframingWaitTime
+                , clockOffsets = Nothing
+                , startupDelays = toList $ repeat @FpgaCount 0
+                }
           }
-      )
+        | n <- [0 .. testsToRun - 1]
+        ]
+    , mPostProc = Nothing
+    }
  where
   ClockControlConfig{..} = clockControlConfig
