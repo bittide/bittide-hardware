@@ -25,7 +25,7 @@ use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use ufmt::uwriteln;
 
 const CLOCK_ADDR: usize = 0b0011 << 28;
-const DNA_ADDR: usize = 0b0111 << 28;
+const DNA_ADDR: *const DnaValue = (0b0111 << 28) as *const DnaValue;
 const MAC_ADDR: usize = 0b1001 << 28;
 const RX_AXI_ADDR: usize = 0b0101 << 28;
 const TX_AXI_ADDR: usize = 0b0110 << 28;
@@ -45,11 +45,11 @@ fn main() -> ! {
 
     // Create interface
     let dna = unsafe { dna_to_u128(*(DNA_ADDR as *const DnaValue)) };
-    let mut eth_addr = EthernetAddress::from_bytes(&dna.to_be_bytes()[0..6]);
-
+    let mut eth_addr = EthernetAddress::from_bytes(&dna.to_le_bytes()[0..6]);
     set_unicast(&mut eth_addr);
     set_local(&mut eth_addr);
     let mut config = Config::new(eth_addr.into());
+
     let axi_tx = AxiTx::new(TX_AXI_ADDR as *mut u8);
     let axi_rx = unsafe { AxiRx::new(RX_AXI_ADDR as *mut usize, RX_BUFFER_SIZE) };
     let mac = Mac::new(MAC_ADDR);
@@ -87,16 +87,14 @@ fn main() -> ! {
         let mut socket = sockets.get_mut::<Socket>(server_handle);
         if !socket.is_active() && !socket.is_listening() {
             mac_status = mac.read();
-            uwriteln!(uart, "listening").unwrap();
-            uwriteln!(uart, "{} ", clock.elapsed()).unwrap();
             socket.listen(7).unwrap();
+            uwriteln!(uart, "listening").unwrap();
         }
         if socket.is_open() && socket.may_send() && !socket.may_recv() {
-            uwriteln!(uart, "{}", clock.elapsed()).unwrap();
+            socket.close();
+            uwriteln!(uart, "DNA:         {:X}", dna).unwrap();
             uwriteln!(uart, "{:?}", mac.read() - mac_status).unwrap();
             uwriteln!(uart, "Closing socket").unwrap();
-
-            socket.close();
         }
         if socket.can_recv() {
             let mut buf = [0; RX_BUFFER_SIZE];
