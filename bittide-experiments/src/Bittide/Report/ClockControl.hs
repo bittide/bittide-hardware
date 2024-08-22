@@ -36,7 +36,7 @@ import System.Process (callProcess, readProcess)
 
 import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.Plot
-import Bittide.Simulate.Config
+import Bittide.Simulate.Config (CcConf (..), simTopologyFileName)
 
 {- | Format a number with underscores every three digits.
 
@@ -61,7 +61,7 @@ generateReport ::
   -- | Node identifiers
   [(Integer, String)] ->
   -- | The utilized simulation configuration
-  SimConf ->
+  CcConf ->
   IO ()
 generateReport refDom (("Bittide - " <>) -> header) dir ids cfg =
   withSystemTempDirectory "generate-report" $ \tmpDir -> do
@@ -187,9 +187,9 @@ toLatex ::
   -- | Node identifiers
   [(Integer, String)] ->
   -- | The utilized simulation configuration
-  SimConf ->
+  CcConf ->
   String
-toLatex refDom datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
+toLatex refDom datetime runref header clocksPdf ebsPdf topTikz ids CcConf{..} =
   unlines
     [ "\\documentclass[landscape]{article}"
     , ""
@@ -211,7 +211,7 @@ toLatex refDom datetime runref header clocksPdf ebsPdf topTikz ids SimConf{..} =
     , "\\fancyhf{}"
     , "\\fancyhead[L]{\\large \\textbf{" <> header <> "}}"
     , "\\fancyhead[C]{\\large Topology Type: \\texttt{"
-        <> maybe "unknown" show mTopologyType
+        <> show ccTopologyType
         <> "}}"
     , "\\fancyhead[R]{\\large " <> datetime <> "}"
     , "\\renewcommand{\\headrulewidth}{0.4pt}"

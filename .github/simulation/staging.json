@@ -1,3 +1,0 @@
-[
-  {"topology": "complete", "hmem": 16, "steps": 1000000, "args": "--nodes 2 --clock-offsets 'Just [-2,2]' --frame-size 1500"}
-]

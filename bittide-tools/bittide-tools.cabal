@@ -92,24 +92,6 @@ executable program-stream
     bytestring,
     clash-prelude,
 
-executable cc-sim
-  import: common-options
-  hs-source-dirs: clockcontrol/sim/src
-  main-is: Main.hs
-  other-modules: Domain
-  build-depends:
-    aeson,
-    bittide-experiments,
-    bytestring,
-    optparse-applicative,
-
-  -- enable rtsopts so we can setup memory limits
-  ghc-options:
-    -Wall
-    -Wcompat
-    -threaded
-    -rtsopts
-
 executable cc-plot
   import: common-options
   main-is: clockcontrol/plot/Main.hs

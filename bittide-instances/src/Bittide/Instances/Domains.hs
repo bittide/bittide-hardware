@@ -8,7 +8,6 @@ module Bittide.Instances.Domains where
 
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 
-import Bittide.Arithmetic.Ppm
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Data.Proxy
@@ -61,21 +60,15 @@ instancesClockConfig ::
     (CccStabilityCheckerFramesize dom)
 instancesClockConfig Proxy =
   ClockControlConfig
-    { cccPessimisticPeriod = pessimisticPeriod
-    , cccPessimisticSettleCycles = pessimisticSettleCycles self
+    { cccSettleCycles = settleCycles self
     , cccSettlePeriod = microseconds 1
-    , cccStepSize = stepSize
     , cccBufferSize = SNat
-    , cccDeviation = Ppm 100
     , cccStabilityCheckerMargin = SNat
     , cccStabilityCheckerFramesize = SNat
     , cccEnableReframing = False
     , -- changed from defClockConfig, which uses a fixed number of cycles independent
       -- the clock speed of the domain
       cccReframingWaitTime = natToNum @(PeriodToCycles dom (Seconds 1))
-    , cccEnableRustySimulation = False
     }
  where
   self = instancesClockConfig (Proxy @dom)
-  stepSize = diffPeriod (Ppm 1) (clockPeriodFs @dom Proxy)
-  pessimisticPeriod = adjustPeriod (cccDeviation self) (clockPeriodFs @dom Proxy)

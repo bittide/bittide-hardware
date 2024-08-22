@@ -139,96 +139,8 @@ jobs:
       - run: cache push cargo
       - run: cache push build
 
-  cc-sim-topologies-matrix:
-    name: cc-sim-topologies simulation matrix generation
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Generate matrix
-        run: |
-          if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
-            cp .github/simulation/safe.json sim.json
-          else
-            cp .github/simulation/staging.json sim.json
-          fi
-
-      - name: Set simulation matrix
-        id: set-sim-matrix
-        run: |
-          echo "sim_matrix=$(cat sim.json | jq -c)" | tee -a "$GITHUB_OUTPUT"
-          echo "artifact_names=$(cat sim.json | jq -c '["gen-plots-hs-" + .[].topology]')" | tee -a "$GITHUB_OUTPUT"
-
-    outputs:
-      sim_matrix: ${{ steps.set-sim-matrix.outputs.sim_matrix }}
-      artifact_names: ${{ steps.set-sim-matrix.outputs.artifact_names }}
-
-  cc-sim-topologies:
-    name: Simulate network
-    runs-on: [self-hosted, compute]
-    timeout-minutes: 1200
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build, lint, cc-sim-topologies-matrix]
-
-    strategy:
-      matrix:
-        target: ${{ fromJson(needs.cc-sim-topologies-matrix.outputs.sim_matrix) }}
-      fail-fast: false
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cabal
-      - run: cache pull build
-
-      - name: Plot mesh grid
-        run: |
-          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          mkdir -p _build/reports/simulation
-          cabal run -- bittide-tools:cc-sim \
-            +RTS -M${{ matrix.target.hmem }}M -RTS \
-            --output-directory _build/reports/simulation \
-            --output-mode pdf \
-            --get-rusty \
-            --steps ${{ matrix.target.steps }} \
-            --samples 1000 \
-            --max-startup-delay 2000 \
-            --stop-after-stable ${{ matrix.target.steps }} \
-            --create-report \
-            ${{ matrix.target.topology }} ${{ matrix.target.args }}
-
-      - name: Upload plots
-        uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: gen-plots-hs-${{ matrix.target.topology }}
-          path: |
-            _build
-            !_build/cargo
-          retention-days: 14
-
-  generate-full-clock-control-simulation-report:
-    name: Generate clock control simulation report
+  generate-full-clock-control-report:
+    name: Generate clock control report
     runs-on: [self-hosted, compute]
     if: ${{ !cancelled() && needs.bittide-instances-hardware-in-the-loop-test-matrix.outputs.should_generate_report == 'true' }}
     defaults:
@@ -237,8 +149,6 @@ jobs:
     needs: [
       build,
       lint,
-      cc-sim-topologies-matrix,
-      cc-sim-topologies,
       bittide-instances-hardware-in-the-loop,
       bittide-instances-hardware-in-the-loop-test-matrix,
     ]
@@ -259,20 +169,6 @@ jobs:
       - run: cache pull cargo
       - run: cache pull build
 
-      - name: Download simulation artifacts
-        uses: actions/download-artifact@v4
-        with:
-          # Note that all artifacts are downloaded, if no 'name' is specified.
-          # This is still required for the generation of the simulation plots.
-          # Unfortunately, this is the only working solution that github offers
-          # right at the moment. Alternative options exist, like
-          # https://github.com/marketplace/actions/download-multiple-workflow-artifacts,
-          # but this action is currently broken. Once a working solution
-          # is available again, 'artifact_names' from
-          # 'cc-sim-topologies-matrix' can be used to only download
-          # the required artifacts instead.
-          path: artifacts
-
       - name: Generate HITL based plots
         run: |
           ./cargo.sh build --frozen --release
@@ -284,9 +180,6 @@ jobs:
         run: |
           set +f # Enable globbing
           mkdir -p reports
-          pdfunite \
-            artifacts/*/reports/simulation/report.pdf \
-            reports/Simulation-Report.pdf
           pdfunite \
             hitl-topology-plots/*/report.pdf \
             reports/HITLT-Report.pdf
@@ -776,11 +669,9 @@ jobs:
         bittide-tests,
         build,
         bittide-experiments-tests,
-        cc-sim-topologies-matrix,
-        cc-sim-topologies,
         firmware-limit-checks,
         firmware-support-tests,
-        generate-full-clock-control-simulation-report,
+        generate-full-clock-control-report,
         host-tools-tests,
         license-check,
         lint,

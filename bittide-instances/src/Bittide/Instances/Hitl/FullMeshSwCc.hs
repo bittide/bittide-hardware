@@ -57,7 +57,7 @@ import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
 import Bittide.SharedTypes (ByteOrder (BigEndian))
-import Bittide.Simulate.Config (SimConf (..))
+import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology (TopologyType (..))
 import Bittide.Transceiver (transceiverPrbsN)
 
@@ -668,20 +668,19 @@ makeTopEntity 'fullMeshSwCcTest
 testsToRun :: Int
 testsToRun = 1
 
-tests :: HitlTestsWithPostProcData () SimConf
+tests :: HitlTestsWithPostProcData () CcConf
 tests =
   Map.fromList
     $ P.zip ["CC" <> fromString (show n) | n <- [0 .. testsToRun - 1]]
     $ P.repeat
       ( allFpgas ()
       , def
-          { mTopologyType = Just $ Complete (natToInteger @FpgaCount)
+          { ccTopologyType = Complete (natToInteger @FpgaCount)
           , samples = 1000
           , duration = natToNum @(PeriodToCycles Basic125 (Seconds 60))
           , stabilityMargin = snatToNum cccStabilityCheckerMargin
           , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
           , reframe = cccEnableReframing
-          , rusty = cccEnableRustySimulation
           , waitTime = fromEnum cccReframingWaitTime
           , clockOffsets = Nothing
           , startupDelays = toList $ repeat @FpgaCount 0

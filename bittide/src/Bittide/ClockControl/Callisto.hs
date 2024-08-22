@@ -18,7 +18,6 @@ import Data.Constraint.Nat.Extra (euclid3, useLowerLimit)
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Types
 import Bittide.ClockControl.Callisto.Util
-import Bittide.ClockControl.Foreign.Rust.Callisto
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Extra.Maybe
 
@@ -56,22 +55,17 @@ callistoClockControl clk rst ena ClockControlConfig{..} mask allDataCounts =
   withClockResetEnable clk rst ena
     $ let
         dataCounts = filterCounts <$> fmap bv2v mask <*> bundle allDataCounts
-        updateCounter = wrappingCounter cccPessimisticSettleCycles
+        updateCounter = wrappingCounter cccSettleCycles
         shouldUpdate = updateCounter .==. 0
         scs = bundle $ map stabilityCheck $ unbundle dataCounts
         allStable = allAvailable stable <$> mask <*> scs
         allSettled = allAvailable settled <$> mask <*> scs
         state = register initState state'
 
-        clockControl =
-          if cccEnableRustySimulation
-            then rustyCallisto
-            else callisto
-
         state' =
           mux
             shouldUpdate
-            (clockControl controlConfig mask scs dataCounts state)
+            (callisto controlConfig mask scs dataCounts state)
             state
 
         stabilityCheck =

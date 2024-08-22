@@ -10,7 +10,7 @@ module Bittide.Instances.Hitl.Tests (
 ) where
 
 import Bittide.Hitl (HitlTestsWithPostProcData, MayHavePostProcData)
-import Bittide.Simulate.Config (SimConf)
+import Bittide.Simulate.Config (CcConf)
 import Clash.Prelude (BitPack, FilePath, String, show)
 import Data.Aeson (ToJSON)
 
@@ -30,7 +30,7 @@ data HitlTest where
   -- | Tests with known Haskell types.
   KnownType ::
     forall a b.
-    (BitPack a, ToJSON b, MayHavePostProcData b SimConf) =>
+    (BitPack a, ToJSON b, MayHavePostProcData b CcConf) =>
     String ->
     (HitlTestsWithPostProcData a b) ->
     HitlTest

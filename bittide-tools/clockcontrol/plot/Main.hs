@@ -18,7 +18,7 @@
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.Normalise #-}
 
-module Main (main, knownTestsWithSimConf) where
+module Main (main, knownTestsWithCcConf) where
 
 import Clash.Prelude (
   BitPack (..),
@@ -132,10 +132,10 @@ import Bittide.Instances.Hitl.Setup
 import Bittide.Instances.Hitl.Tests
 import Bittide.Plot
 import Bittide.Report.ClockControl
-import Bittide.Simulate.Config (SimConf, saveSimConfig, simTopologyFileName)
+import Bittide.Simulate.Config (CcConf, saveCcConfig, simTopologyFileName)
 import Bittide.Topology
 
-import Bittide.Simulate.Config qualified as SimConf
+import Bittide.Simulate.Config qualified as CcConf
 
 -- A newtype wrapper for working with hex encoded types.
 newtype Hex a = Hex {fromHex :: a}
@@ -533,17 +533,17 @@ fromCsvDump t i links (csvHandle, csvFile) =
 {- | The HITL tests, whose post proc data offers a simulation config
 for plotting.
 -}
-knownTestsWithSimConf :: (HasCallStack) => [(String, [(String, SimConf)])]
-knownTestsWithSimConf = hasSimConf <$> hitlTests
+knownTestsWithCcConf :: (HasCallStack) => [(String, [(String, CcConf)])]
+knownTestsWithCcConf = hasCcConf <$> hitlTests
  where
-  hasSimConf = \case
+  hasCcConf = \case
     LoadConfig name _ -> (name, [])
     KnownType name test ->
-      let !simConfMap = Map.mapMaybeWithKey justOrDie (mGetPPD @_ @SimConf test)
+      let !simConfMap = Map.mapMaybeWithKey justOrDie (mGetPPD @_ @CcConf test)
        in (name, first Text.unpack <$> Map.toList simConfMap)
 
   justOrDie _ (Just x) = Just x
-  justOrDie k Nothing = error $ "No SimConf for " <> show k
+  justOrDie k Nothing = error $ "No CcConf for " <> show k
 
 {- | Calculate an offset such that the clocks start at their set offsets. That is
 to say, we consider the reference clock to be at 0 fs by definition. The offsets
@@ -600,7 +600,7 @@ plotTest ::
   (KnownDomain refDom) =>
   Proxy refDom ->
   FilePath ->
-  SimConf ->
+  CcConf ->
   FilePath ->
   FilePath ->
   IO ()
@@ -622,11 +622,10 @@ plotTest refDom testDir cfg dir globalOutDir = do
           SomeNat n -> return $ STop $ complete $ snatProxy n
 
   STop (t :: Topology topologySize) <-
-    case SimConf.mTopologyType cfg of
-      Nothing -> topFromDirs
-      Just (Random{}) -> topFromDirs
-      Just (DotFile f) -> readFile f >>= either die return . fromDot
-      Just tt -> fromTopologyType tt >>= either die return
+    case CcConf.ccTopologyType cfg of
+      Random{} -> topFromDirs
+      DotFile f -> readFile f >>= either die return . fromDot
+      tt -> froccTopologyType tt >>= either die return
 
   case TLW.SNat @topologySize %<=? TLW.SNat @FpgaCount of
     LE Refl -> case TLW.SNat @1 %<=? TLW.SNat @topologySize of
@@ -712,16 +711,15 @@ plotTest refDom testDir cfg dir globalOutDir = do
             all ((\(_, _, _, xs) -> all (stable . snd) xs) . last) postProcessData
           cfg1 =
             cfg
-              { SimConf.outDir = outDir
-              , SimConf.stable = Just allStable
+              { CcConf.outDir = outDir
+              , CcConf.stable = Just allStable
               }
           ids = bimap toInteger fst <$> fpgas
 
-        case SimConf.mTopologyType cfg of
-          Nothing -> writeTop Nothing
-          Just (Random{}) -> writeTop Nothing
-          Just (DotFile f) -> readFile f >>= writeTop . Just
-          Just tt -> fromTopologyType tt >>= either die (`saveSimConfig` cfg1)
+        case CcConf.ccTopologyType cfg of
+          Random{} -> writeTop Nothing
+          DotFile f -> readFile f >>= writeTop . Just
+          tt -> froccTopologyType tt >>= either die (`saveCcConfig` cfg1)
         checkIntermediateResults outDir
           >>= maybe (generateReport (Proxy @Basic125) "HITLT Report" outDir ids cfg1) die
 
@@ -795,7 +793,7 @@ main =
             ("hitl" `elem` dirs)
         case filter (".yml" `isExtensionOf`) files of
           [] -> die $ "No YAML files in " <> hitlDir
-          [x] -> return $ getTestsWithSimConf $ takeBaseName x
+          [x] -> return $ getTestsWithCcConf $ takeBaseName x
           _ -> die $ "Too many YAML files in " <> hitlDir
 
       (testDirs, testsDir) <- do
@@ -824,8 +822,8 @@ main =
       forM_ tests $ \(test, cfg) ->
         plotTest (Proxy @Basic125) test cfg (testsDir </> test) outDir
  where
-  getTestsWithSimConf name =
-    maybe [] snd $ find ((== name) . fst) knownTestsWithSimConf
+  getTestsWithCcConf name =
+    maybe [] snd $ find ((== name) . fst) knownTestsWithCcConf
 
   diveDownInto epsfix dir =
     listDirectory dir

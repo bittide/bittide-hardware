@@ -63,7 +63,7 @@ import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
 import Bittide.SharedTypes (ByteOrder (BigEndian), Bytes)
-import Bittide.Simulate.Config (SimConf (..))
+import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology
 import Bittide.Transceiver (transceiverPrbsN)
 
@@ -782,7 +782,7 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
 makeTopEntity 'hwCcTopologyTest
 
-tests :: HitlTestsWithPostProcData TestConfig SimConf
+tests :: HitlTestsWithPostProcData TestConfig CcConf
 tests =
   Map.fromList
     [ -- CALIBRATION --
@@ -838,7 +838,6 @@ tests =
       , stabilityMargin = snatToNum cccStabilityCheckerMargin
       , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
       , reframe = cccEnableReframing
-      , rusty = cccEnableRustySimulation
       , waitTime = fromEnum cccReframingWaitTime
       , stopAfterStable =
           Just
@@ -866,7 +865,7 @@ tests =
               , mask = maxBound
               }
       , defSimCfg
-          { mTopologyType = Just $ Complete $ natToInteger @FpgaCount
+          { ccTopologyType = Complete $ natToInteger @FpgaCount
           , clockOffsets = Nothing
           , startupDelays = toList $ repeat @FpgaCount 0
           }
@@ -880,7 +879,7 @@ tests =
     Maybe (Vec n InitialClockShift) ->
     Vec n StartupDelay ->
     Topology n ->
-    (TestName, (Probes TestConfig, SimConf))
+    (TestName, (Probes TestConfig, CcConf))
   tt clockShifts startDelays t =
     ( fromString $ topologyName t
     ,
@@ -916,7 +915,7 @@ tests =
           fincFdecToFs = ((-1) *) . (/ stepSizeDiv) . (* clkPeriodPs) . fromIntegral
          in
           defSimCfg
-            { mTopologyType = Just $ topologyType t
+            { ccTopologyType = topologyType t
             , clockOffsets = fmap fincFdecToFs . toList <$> clockShifts
             , startupDelays = fromIntegral <$> toList startDelays
             }
