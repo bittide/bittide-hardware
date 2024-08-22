@@ -158,10 +158,15 @@ case_testGdbProgram = do
         | "Halting processor" `isPrefixOf` s = Stop Ok
         | otherwise = Continue
 
+    putStrLn "Starting OpenOcd"
     withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
       hSetBuffering openOcdStdErr LineBuffering
-      expectLine openOcdStdErr waitForHalt
 
+      putStr "Waiting for halt"
+      expectLine openOcdStdErr waitForHalt
+      putStrLn " Done"
+
+      putStrLn "Starting Picocom"
       withCreateProcess picocomProc $ \maybePicocomStdIn maybePicocomStdOut maybePicocomStdErr _ -> do
         let
           picocomStdInHandle = fromJust maybePicocomStdIn
@@ -170,15 +175,22 @@ case_testGdbProgram = do
         hSetBuffering picocomStdInHandle LineBuffering
         hSetBuffering picocomStdOutHandle LineBuffering
 
+        putStr "Waiting for terminal ready"
         waitForLine picocomStdOutHandle "Terminal ready"
+        putStrLn " Done"
 
+        putStrLn "Starting Gdb"
         withCreateProcess gdbProc $ \_ (fromJust -> gdbStdOut) _ _ -> do
           -- Wait for GDB to program the FPGA. If successful, we should see
           -- "going in echo mode" in the picocom output.
           hSetBuffering gdbStdOut LineBuffering
+
+          putStr "Waiting for listening"
           waitForLine picocomStdOutHandle "listening"
+          putStrLn " Done"
 
           -- Test TCP echo server
+          putStrLn "Starting TCP Spray"
         withCreateProcess tcpSprayProc $ \_ (fromJust -> tcpStdOut) (fromJust -> tcpStdErr) _ -> do
           (stdOutContents, stdErrContents) <- do
             stdOutContents' <- hGetContents' tcpStdOut
