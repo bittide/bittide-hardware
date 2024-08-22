@@ -37,23 +37,6 @@ concurrency:
  cancel-in-progress: true
 
 jobs:
-  license-year:
-    name: License year check
-    runs-on: [self-hosted, compute]
-    if: ${{ github.event_name != 'schedule' }}
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # Check needs access to all branches
-          fetch-depth: 0
-
   license-check:
     runs-on: [self-hosted, compute]
     container:
@@ -800,7 +783,6 @@ jobs:
         generate-full-clock-control-simulation-report,
         host-tools-tests,
         license-check,
-        license-year,
         lint,
         rust-lints,
       ]
