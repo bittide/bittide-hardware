@@ -76,6 +76,7 @@ common common-options
     ghc-typelits-extra,
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
+    template-haskell,
 
 library
   import: common-options

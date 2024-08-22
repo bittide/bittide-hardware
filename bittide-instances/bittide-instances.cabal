@@ -123,7 +123,6 @@ library
     Bittide.Instances.Hitl.Post.PostProcess
     Bittide.Instances.Hitl.Setup
     Bittide.Instances.Hitl.SyncInSyncOut
-    Bittide.Instances.Hitl.Tcl.ExtraProbes
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests
     Bittide.Instances.Hitl.Transceivers
@@ -203,6 +202,7 @@ executable clash
   build-depends:
     bittide-instances,
     clash-ghc,
+    vivado-hs,
 
 executable post-board-test-extended
   import: common-options

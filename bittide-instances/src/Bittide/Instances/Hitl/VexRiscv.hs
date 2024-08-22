@@ -22,7 +22,7 @@ import Protocols.Wishbone
 import VexRiscv
 
 import Bittide.DoubleBufferedRam
-import Bittide.Hitl (HitlTests, allFpgas, hitlVioBool, noConfigTest)
+import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
 import Bittide.ProcessingElement
 import Bittide.SharedTypes
@@ -149,5 +149,18 @@ vexRiscvTest diffClk jtagIn uartRx = (testDone, testSuccess, jtagOut, uartTx)
 {-# NOINLINE vexRiscvTest #-}
 makeTopEntity 'vexRiscvTest
 
-tests :: HitlTests ()
-tests = noConfigTest "VexRiscV" allFpgas
+tests :: HitlTestGroup
+tests =
+  HitlTestGroup
+    { topEntity = 'vexRiscvTest
+    , extraXdcFiles = ["jtag_config.xdc", "jtag_pmod1.xdc"]
+    , externalHdl = []
+    , testCases =
+        [ HitlTestCase
+            { name = "VexRiscV"
+            , parameters = paramForSingleHwTarget (HwTargetByIndex 7) ()
+            , postProcData = ()
+            }
+        ]
+    , mPostProc = Just "post-vex-riscv-test"
+    }

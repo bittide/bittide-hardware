@@ -15,14 +15,15 @@ import Clash.Cores.Xilinx.Extra (ibufds)
 import Clash.Cores.Xilinx.Ila
 
 import Bittide.Hitl (
-  HitlTests,
-  allFpgas,
+  HitlTestCase (HitlTestCase),
+  HitlTestGroup (..),
   hitlVio,
   hitlVioBool,
-  noConfigTest,
-  testsFromEnum,
+  paramForHwTargets,
+  testCasesFromEnum,
  )
-import Bittide.Instances.Domains
+import Bittide.Instances.Domains (Ext125)
+import Bittide.Instances.Hitl.Setup (allHwTargets)
 
 type TestStart = Bool
 data TestState = Busy | Done TestSuccess
@@ -167,8 +168,22 @@ boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
 
 makeTopEntity 'boardTestExtended
 
-testsSimple :: HitlTests ()
-testsSimple = noConfigTest "Simple" allFpgas
+testSimple :: HitlTestGroup
+testSimple =
+  HitlTestGroup
+    { topEntity = 'boardTestSimple
+    , extraXdcFiles = []
+    , externalHdl = []
+    , testCases = [HitlTestCase "Simple" (paramForHwTargets allHwTargets ()) ()]
+    , mPostProc = Nothing
+    }
 
-testsExtended :: HitlTests Test
-testsExtended = testsFromEnum allFpgas
+testExtended :: HitlTestGroup
+testExtended =
+  HitlTestGroup
+    { topEntity = 'boardTestExtended
+    , extraXdcFiles = []
+    , externalHdl = []
+    , testCases = testCasesFromEnum @Test allHwTargets ()
+    , mPostProc = Just "post-board-test-extended"
+    }

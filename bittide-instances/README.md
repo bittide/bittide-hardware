@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # bittide-instances
 Collection of monomorphic instances of realistic Bittide components. These instances are meant
-to be handled bittide-shake.
+to be handled by bittide-shake.
 
 This collection contains instances with various purposes:
 * CI tests that ensure all components will meet timing.

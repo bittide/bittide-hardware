@@ -1,8 +1,8 @@
 [
-  {"top": "fullMeshHwCcTest",              "stage": "test", "targets": "All"},
-  {"top": "fullMeshSwCcTest",              "stage": "test", "targets": "All"},
-  {"top": "linkConfigurationTest",         "stage": "test", "targets": "All"},
+  {"top": "fullMeshHwCcTest",              "stage": "test"},
+  {"top": "fullMeshSwCcTest",              "stage": "test"},
+  {"top": "linkConfigurationTest",         "stage": "test"},
   {"top": "safeDffSynchronizer",           "stage": "hdl"},
-  {"top": "transceiversUpTest",            "stage": "test", "targets": "All"},
-  {"top": "vexRiscvTest",                  "stage": "test", "targets": "Specific [-1]"}
+  {"top": "transceiversUpTest",            "stage": "test"},
+  {"top": "vexRiscvTest",                  "stage": "test"}
 ]

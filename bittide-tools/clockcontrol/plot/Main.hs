@@ -59,14 +59,12 @@ import Conduit (
 import Control.Arrow (first)
 import Control.Exception (Exception (..), catch, throw)
 import Control.Monad (filterM, forM, forM_, unless, when)
-import Control.Monad.Extra (unlessM)
+import Control.Monad.Extra (ifM, unlessM)
 import Data.Bifunctor (bimap)
-import Data.Bool
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BSC
 import Data.ByteString.Lazy qualified as BSL
 import Data.ByteString.UTF8 qualified as UTF8
-import Data.Char (isDigit)
 import Data.Csv (
   FromField (..),
   FromNamedRecord (..),
@@ -80,19 +78,20 @@ import Data.Csv.Conduit (
   CsvStreamRecordParseError (..),
   fromNamedCsvStreamError,
  )
-import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
-import Data.List (find, isPrefixOf, isSuffixOf, uncons, unzip4)
+import Data.List (isSuffixOf, unzip4)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromJust, fromMaybe, mapMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Set qualified as Set
 import Data.String (fromString)
 import Data.Text qualified as Text
+import Data.Typeable (cast)
 import Data.Vector qualified as Vector
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Stack (HasCallStack)
 import System.Directory (
+  canonicalizePath,
   createDirectoryIfMissing,
   doesDirectoryExist,
   listDirectory,
@@ -100,7 +99,6 @@ import System.Directory (
 import System.Environment (getArgs, getProgName)
 import System.Exit (die)
 import System.FilePath (
-  isExtensionOf,
   takeBaseName,
   takeExtensions,
   takeFileName,
@@ -117,6 +115,7 @@ import System.IO (
   openFile,
   withFile,
  )
+import Text.Read (readMaybe)
 import "bittide-extra" Numeric.Extra (parseHex)
 
 import Bittide.Arithmetic.PartsPer (PartsPer (..), cyclesToPartsPerI, ppm)
@@ -127,12 +126,12 @@ import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
-import Bittide.Instances.Hitl.Tests
 import Bittide.Plot
 import Bittide.Report.ClockControl
 import Bittide.Simulate.Config (CcConf, saveCcConfig, simTopologyFileName)
 import Bittide.Topology
 
+import Bittide.Instances.Hitl.Tests (hitlTests)
 import Bittide.Simulate.Config qualified as CcConf
 
 -- A newtype wrapper for working with hex encoded types.
@@ -482,17 +481,20 @@ fromCsvDump t i links (csvHandle, csvFile) =
 {- | The HITL tests, whose post proc data offers a simulation config
 for plotting.
 -}
-knownTestsWithCcConf :: (HasCallStack) => [(String, [(String, CcConf)])]
-knownTestsWithCcConf = hasCcConf <$> hitlTests
+knownTestsWithCcConf :: (HasCallStack) => Map.Map String [(String, CcConf)]
+knownTestsWithCcConf = Map.fromList (mapMaybe go hitlTests)
  where
-  hasCcConf = \case
-    LoadConfig name _ -> (name, [])
-    KnownType name test ->
-      let !simConfMap = Map.mapMaybeWithKey justOrDie (mGetPPD @_ @CcConf test)
-       in (name, first Text.unpack <$> Map.toList simConfMap)
-
   justOrDie _ (Just x) = Just x
   justOrDie k Nothing = error $ "No CcConf for " <> show k
+
+  go HitlTestGroup{topEntity, testCases = iters :: [HitlTestCase HwTargetRef q r]} =
+    case cast @[HitlTestCase HwTargetRef q r] @[HitlTestCase HwTargetRef q CcConf] iters of
+      Just q ->
+        Just
+          ( show topEntity
+          , Map.toList (Map.mapMaybeWithKey justOrDie (mGetPPD @CcConf @HwTargetRef q))
+          )
+      Nothing -> Nothing
 
 {- | Calculate an offset such that the clocks start at their set offsets. That is
 to say, we consider the reference clock to be at 0 fs by definition. The offsets
@@ -711,103 +713,62 @@ plotTest refDom testDir cfg dir globalOutDir = do
       hFlush h
       hClose h
 
+{- | Try to parse a run artifact reference.
+
+>>> parseArtifactRef "123:build-debug"
+Just (123,"build-debug")
+>>> parseArtifactRef "123_my_dir"
+Nothing
+-}
+parseArtifactRef :: String -> Maybe (Int, String)
+parseArtifactRef arg = case span (/= ':') arg of
+  (readMaybe -> Just jobId, _ : jobName) -> Just (jobId, jobName)
+  _ -> Nothing
+
+{- | Given either a Github artifact reference (see 'parseArtifactRef') or a local
+directory, return the fully qualified test name and the directory containing
+a folder called \"ila-data\".
+-}
+getSourceData :: String -> IO (String, FilePath)
+getSourceData artifactRef | Just (jobId, jobName) <- parseArtifactRef artifactRef = do
+  -- Get artifact from Github
+  let fullArtifactName = "_build-" <> jobName <> "-debug"
+  artifactResult <- retrieveArtifact (show jobId) fullArtifactName ("_build" </> "plot")
+  case artifactResult of
+    Just err -> die (unlines ["Cannot retrieve artifact.", show err])
+    Nothing -> do
+      let vivadoDir = "_build" </> "plot" </> "vivado"
+      dirs <- listDirectory vivadoDir
+      case filter (('.' : jobName) `isSuffixOf`) dirs of
+        [dir] -> getSourceData (vivadoDir </> dir)
+        _ ->
+          die $ "No or multiple directories with name containing " <> jobName <> " in " <> vivadoDir
+getSourceData dir = do
+  -- Get artifact from local directory
+  let ilaDataDir = dir </> "ila-data"
+  fullyQualifiedTestName <- takeFileName <$> canonicalizePath dir
+  ifM
+    (doesDirectoryExist ilaDataDir)
+    (return (fullyQualifiedTestName, ilaDataDir))
+    (die $ "No 'ila-data' directory in " <> dir)
+
 main :: IO ()
 main =
   getArgs >>= \case
-    [] -> wrongNumberOfArguments
-    plotDataSource : xr -> do
-      (plotDataDir, outDir, mArtifactName) <- do
-        isDir <- doesDirectoryExist plotDataSource
-        (plotDataDir, yr, mA) <-
-          if isDir
-            then return (plotDataSource, xr, Nothing)
-            else case isRunArtifactReference plotDataSource of
-              Nothing -> die $ "Invalid argument: " <> plotDataSource
-              Just (runId, artifactName) -> case xr of
-                [] -> wrongNumberOfArguments
-                dir : yr ->
-                  let fullArtifactName = "_build-" <> artifactName <> "-debug"
-                   in retrieveArtifact runId fullArtifactName dir >>= \case
-                        Just err ->
-                          die $
-                            unlines
-                              [ "Cannot retrieve artifact."
-                              , show err
-                              ]
-                        Nothing -> return (dir, yr, Just artifactName)
-        let (outDir, zr) = fromMaybe (".", []) $ uncons yr
-        unless (null zr) wrongNumberOfArguments
-        return (plotDataDir, outDir, mA)
+    [plotDataSource, outputDir] -> do
+      (fullyQualifiedTestName, plotDataDir) <- getSourceData plotDataSource
+      ccConfs <- case Map.lookup fullyQualifiedTestName knownTestsWithCcConf of
+        Nothing -> die $ "Could not find test config: " <> fullyQualifiedTestName
+        Just ccConfs -> pure ccConfs
 
-      tests <- do
-        dirs <- listDirectory plotDataDir
-        let hitlDir = plotDataDir </> "hitl"
-        files <-
-          bool
-            (die $ "No 'hitl' folder in " <> fromMaybe plotDataDir mArtifactName)
-            (listDirectory hitlDir)
-            ("hitl" `elem` dirs)
-        case filter (".yml" `isExtensionOf`) files of
-          [] -> die $ "No YAML files in " <> hitlDir
-          [x] -> return $ getTestsWithCcConf $ takeBaseName x
-          _ -> die $ "Too many YAML files in " <> hitlDir
-
-      (testDirs, testsDir) <- do
-        let epsfix = maybe (Left "Bittide.Instances.Hitl.") Right mArtifactName
-        dir <- diveDownInto epsfix plotDataDir
-        listDirectory dir
-          >>= filterM (doesDirectoryExist . (dir </>))
-          <&> (,dir)
-
-      let sDirs = Set.fromList testDirs
-          sNames = Set.fromList $ fst <$> tests
-      when (sDirs /= sNames) $
-        die $
-          if sDirs `Set.isProperSubsetOf` sNames
-            then
-              "Missing tests "
-                <> show (Set.toList (sNames `Set.difference` sDirs))
-                <> " in "
-                <> testsDir
-            else
-              "Unknown tests "
-                <> show (Set.toList (sDirs `Set.difference` sNames))
-                <> " in "
-                <> testsDir
-
-      forM_ tests $ \(test, cfg) ->
-        plotTest (Proxy @Basic125) test cfg (testsDir </> test) outDir
+      forM_ ccConfs $ \(testName, ccConf) -> do
+        plotTest (Proxy @Basic125) testName ccConf (plotDataDir </> testName) outputDir
+    _ -> wrongNumberOfArguments
  where
-  getTestsWithCcConf name =
-    maybe [] snd $ find ((== name) . fst) knownTestsWithCcConf
-
-  diveDownInto epsfix dir =
-    listDirectory dir
-      >>= filterM doesDirectoryExist . fmap (dir </>)
-      >>= \case
-        [] -> die $ "Empty directory: " <> dir
-        dirs ->
-          let subDirs = takeFileName <$> dirs
-           in if
-                | "vivado" `elem` subDirs ->
-                    diveDownInto epsfix $ dir </> "vivado"
-                | "ila-data" `elem` subDirs ->
-                    diveDownInto epsfix $ dir </> "ila-data"
-                | otherwise ->
-                    case filter (either isPrefixOf isSuffixOf epsfix) subDirs of
-                      subDir : _ -> diveDownInto epsfix $ dir </> subDir
-                      _ -> return dir
-
-  isRunArtifactReference arg = case span (/= ':') arg of
-    (xs, ':' : ys)
-      | all isDigit xs && ':' `notElem` ys -> Just (xs, ys)
-      | otherwise -> Nothing
-    _ -> Nothing
-
   wrongNumberOfArguments = do
     name <- getProgName
     die $
       "Wrong number of arguments. Aborting.\n\n"
         <> "Usage: "
         <> name
-        <> " <ila plot directory> [<output directory>]"
+        <> " <ila plot directory> <output directory>"
