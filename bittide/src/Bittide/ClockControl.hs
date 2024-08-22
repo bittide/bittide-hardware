@@ -12,40 +12,29 @@ module Bittide.ClockControl (
   RelDataCount,
   SettlePeriod,
   SpeedChange (..),
-  defClockConfig,
-  pessimisticSettleCycles,
-  targetDataCount,
   clockPeriodFs,
-  speedChangeToFincFdec,
+  defClockConfig,
+  settleCycles,
   sign,
+  speedChangeToFincFdec,
+  targetDataCount,
 )
 where
 
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import Clash.Signal.Internal (Femtoseconds (..))
 import Data.Aeson (ToJSON (toJSON))
+import Data.Csv
 import Data.Proxy (Proxy (..))
-import Foreign.C.Types (CUInt)
-import Foreign.Ptr (Ptr, castPtr)
-import Foreign.Storable (Storable (..))
 import GHC.Stack (HasCallStack)
 
-import Bittide.Arithmetic.Ppm
 import Bittide.Arithmetic.Time (PeriodToCycles, microseconds)
-import Bittide.ClockControl.Foreign.Sizes
-
-import Data.Csv
 
 type SettlePeriod = Femtoseconds
 
 -- | Configuration passed to 'clockControl'
 data ClockControlConfig dom n m c = ClockControlConfig
-  { cccPessimisticPeriod :: Femtoseconds
-  -- ^ The quickest a clock could possibly run at. Used to (pessimistically)
-  -- estimate when a new command can be issued.
-  --
-  -- TODO: Should be removed, it follows from other fields + domain.
-  , cccPessimisticSettleCycles :: Unsigned 32
+  { cccSettleCycles :: Unsigned 32
   -- ^  Like 'cccPessimisticPeriod', but expressed as number of cycles.
   --
   -- TODO: Should be removed, it follows from other fields + domain.
@@ -55,20 +44,6 @@ data ClockControlConfig dom n m c = ClockControlConfig
   -- this. 'clockControl' should therefore not request changes more often.
   --
   -- This is a PLL property.
-  , cccDeviation :: Ppm
-  -- ^ Maximum deviation from "factory tuning". E.g., a clock tuned to 200 MHz
-  -- and a maximum deviation of +- 100 ppm can produce a signal anywhere
-  -- between 200 MHz +- 20 KHz.
-  --
-  -- This is an oscillator + PLL property.
-  , cccStepSize :: Femtoseconds
-  -- ^ Step size for frequency increments / decrements
-  --
-  -- This is a setting of the PLL. Note that though this is a setting, it is
-  -- programmed over I2C. For the time being, we expect it to be programmed
-  -- once after which only the FDEC/FINC pins will be used.
-  --
-  -- TODO: Should be expressed as PPM.
   , cccBufferSize :: SNat n
   -- ^ Size of elastic buffers. Used to observe bounds and 'targetDataCount'.
   , cccStabilityCheckerMargin :: SNat m
@@ -86,8 +61,6 @@ data ClockControlConfig dom n m c = ClockControlConfig
   -- ^ Number of pessimistic settle cycles to wait until reframing
   -- takes place after stability has been detected, as it is used by
   -- the "detect, store, and wait" reframing approach
-  , cccEnableRustySimulation :: Bool
-  -- ^ If set, then the clock control algorithm is simulated via the Rust FFI.
   }
   deriving (Lift)
 
@@ -116,36 +89,6 @@ data SpeedChange
   | SlowDown
   | SpeedUp
   deriving (Eq, Show, Generic, BitPack, ShowX, NFDataX)
-
-type instance
-  SizeOf SpeedChange =
-    SizeOf CUInt
-
-type instance
-  Alignment SpeedChange =
-    Alignment CUInt
-
-instance
-  (SizeOf SpeedChange ~ 4, Alignment SpeedChange ~ 4) =>
-  Storable SpeedChange
-  where
-  sizeOf = const $ natToNum @(SizeOf SpeedChange)
-  alignment = const $ natToNum @(Alignment SpeedChange)
-
-  peek p = from <$> peek (castPtr p :: Ptr CUInt)
-   where
-    from = \case
-      0 -> NoChange
-      1 -> SlowDown
-      2 -> SpeedUp
-      _ -> error "out of range"
-
-  poke p = poke (castPtr p :: Ptr CUInt) . to
-   where
-    to = \case
-      NoChange -> 0
-      SlowDown -> 1
-      SpeedUp -> 2
 
 {- | Converts speed changes into a normalized scalar, which reflects
 their effect on clock control.
@@ -224,28 +167,21 @@ clockPeriodFs Proxy = Femtoseconds (1000 * snatToNum (clockPeriod @dom))
 defClockConfig :: forall dom. (KnownDomain dom) => ClockControlConfig dom 12 8 1500000
 defClockConfig =
   ClockControlConfig
-    { cccPessimisticPeriod = pessimisticPeriod
-    , cccPessimisticSettleCycles = pessimisticSettleCycles self
+    { cccSettleCycles = settleCycles self
     , cccSettlePeriod = microseconds 1
-    , cccStepSize = stepSize
     , cccBufferSize = d12 -- 2**12 ~ 4096
-    , cccDeviation = Ppm 100
     , cccStabilityCheckerMargin = SNat
     , cccStabilityCheckerFramesize = SNat
     , cccEnableReframing = True
     , cccReframingWaitTime = 160000
-    , cccEnableRustySimulation = False
     }
  where
   self = defClockConfig @dom
-  stepSize = diffPeriod (Ppm 1) (clockPeriodFs @dom Proxy)
-  pessimisticPeriod = adjustPeriod (cccDeviation self) (clockPeriodFs @dom Proxy)
 
 {- | Number of cycles to wait on a given clock frequency and clock settings in
-order for the settle period to pass. /Pessimistic/ means that it calculates
-this for the fastest possible clock.
+order for the settle period to pass.
 -}
-pessimisticSettleCycles ::
+settleCycles ::
   forall dom n m c.
   ( HasCallStack
   , KnownDomain dom
@@ -255,10 +191,9 @@ pessimisticSettleCycles ::
   -- met by an @Unsigned 14@: @2^14 ~ 16384@. To massively overkill it we bump it
   -- up to 32 bits.
   Unsigned 32
-pessimisticSettleCycles ClockControlConfig{cccSettlePeriod, cccDeviation} =
+settleCycles ClockControlConfig{cccSettlePeriod} =
   checkedFromIntegral nCycles
  where
-  nCycles = (settlePeriod `div` pessimisticPeriod) + 1
+  nCycles = (settlePeriod `div` period) + 1
   Femtoseconds settlePeriod = cccSettlePeriod
-  period = clockPeriodFs @dom Proxy
-  Femtoseconds pessimisticPeriod = adjustPeriod cccDeviation period
+  Femtoseconds period = clockPeriodFs @dom Proxy

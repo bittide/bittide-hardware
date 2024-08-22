@@ -149,6 +149,6 @@ callistoSpi clk125 clkRecovered clkControlled rst125 locked miso =
 
   -- Configuration for Callisto
   clockConfig :: ClockControlConfig External 12 8 1500000
-  clockConfig = $(lift ((defClockConfig @External){cccPessimisticSettleCycles = 20000}))
+  clockConfig = $(lift ((defClockConfig @External){cccSettleCycles = 20000}))
 
 makeTopEntity 'callistoSpi

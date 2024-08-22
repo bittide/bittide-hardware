@@ -9,11 +9,8 @@ module Bittide.ClockControl.StabilityChecker where
 
 import Clash.Prelude
 
-import Foreign.Storable (Storable (..))
-
 import Bittide.ClockControl (RelDataCount, targetDataCount)
 import Bittide.ClockControl.Callisto.Util (dataCountToSigned)
-import Bittide.ClockControl.Foreign.Sizes
 
 -- | Stability results to be returned by the 'stabilityChecker'.
 data StabilityIndication = StabilityIndication
@@ -24,31 +21,6 @@ data StabilityIndication = StabilityIndication
   -- 'targetDataCount'.
   }
   deriving (Generic, NFDataX, BitPack)
-
-type instance
-  SizeOf StabilityIndication =
-    SizeOf Int
-
-type instance
-  Alignment StabilityIndication =
-    Alignment Int
-
-instance Storable StabilityIndication where
-  sizeOf = const $ natToNum @(SizeOf StabilityIndication)
-  alignment = const $ natToNum @(Alignment StabilityIndication)
-
-  peek p = fromC <$> peekByteOff p 0
-   where
-    fromC :: Int -> StabilityIndication
-    fromC c = StabilityIndication (testBit c 0) (testBit c 1)
-
-  poke p = pokeByteOff p 0 . toC
-   where
-    toC :: StabilityIndication -> Int
-    toC (StabilityIndication x y) =
-      let xBit = if x then (`setBit` 0) else (`clearBit` 0)
-          yBit = if y then (`setBit` 1) else (`clearBit` 1)
-       in xBit $ yBit zeroBits
 
 {- | Checks whether the @Signal@ of buffer occupancies from an elastic
 buffer is stable and settled. The @Signal@ is considered to be

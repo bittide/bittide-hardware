@@ -111,12 +111,7 @@ library
     Bittide.Hitl
     Bittide.Plot
     Bittide.Report.ClockControl
-    Bittide.Simulate
     Bittide.Simulate.Config
-    Bittide.Simulate.ElasticBuffer
-    Bittide.Simulate.Time
-    Bittide.Simulate.Topology
-    Bittide.Simulate.TunableClockGen
     Bittide.Topology
 
   default-language: Haskell2010
@@ -134,9 +129,6 @@ test-suite unittests
 
   default-language: Haskell2010
   hs-source-dirs: tests
-  other-modules:
-    Tests.Bittide.Simulate
-
   build-depends:
     base,
     bittide,

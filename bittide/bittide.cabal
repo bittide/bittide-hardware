@@ -13,29 +13,6 @@ copyright: Copyright © 2022-2024 Google LLC
 data-files:
   data/clock_configs/*.csv
 
-custom-setup
-  setup-depends:
-    Cabal,
-    base,
-    directory,
-    extra,
-    filepath,
-    process,
-
--- You probably want add a `cabal.project.local` that looks like:
---
---   package bittide
---      flags: -rusty-callisto
---
-flag rusty-callisto
-  description:
-    Enable the Rust FFI for the Callisto clock control. Disable this if you want
-    working HLS for the bittide package. Obviously, any tests using the Callisto
-    Rust implementation will fail.
-
-  default: True
-  manual: True
-
 common common-options
   default-extensions:
     -- TemplateHaskell is used to support convenience functions such as
@@ -141,7 +118,6 @@ library
     text,
 
   exposed-modules:
-    Bittide.Arithmetic.Ppm
     Bittide.Arithmetic.Time
     Bittide.Axi4
     Bittide.Axi4.Internal
@@ -150,8 +126,6 @@ library
     Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Types
     Bittide.ClockControl.Callisto.Util
-    Bittide.ClockControl.Foreign.Rust.Callisto
-    Bittide.ClockControl.Foreign.Sizes
     Bittide.ClockControl.ParseRegisters
     Bittide.ClockControl.Registers
     Bittide.ClockControl.Si5391A
@@ -194,10 +168,6 @@ library
 
   other-modules:
     Paths_bittide
-
-  if flag(rusty-callisto)
-    extra-libraries: callisto_lib
-    cpp-options: -DRUSTY_CALLISTO
 
 test-suite doctests
   type: exitcode-stdio-1.0
