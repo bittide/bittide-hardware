@@ -39,7 +39,7 @@ import Clash.Signal.Internal (Femtoseconds (..), unFemtoseconds)
 import Clash.Sized.Vector qualified as Vec
 
 import Data.Type.Equality ((:~:) (..))
-import GHC.TypeLits
+import GHC.TypeLits hiding (SNat)
 import GHC.TypeLits.Compare ((:<=?) (..))
 import GHC.TypeLits.Witnesses ((%<=?))
 import GHC.TypeLits.Witnesses qualified as TLW (SNat (..))
@@ -58,7 +58,6 @@ import Conduit (
   yield,
   (.|),
  )
-import Control.Applicative (liftA2)
 import Control.Arrow (first)
 import Control.Exception (Exception (..), catch, throw)
 import Control.Monad (filterM, forM, forM_, unless, when)
