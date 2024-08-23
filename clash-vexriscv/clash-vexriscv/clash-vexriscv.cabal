@@ -94,7 +94,7 @@ common common-options
     -fno-worker-wrapper
       -- clash-prelude will set suitable version bounds for the plugins
   build-depends:
-    base >= 4.14 && < 4.18,
+    base >= 4.14 && < 4.19,
     clash-prelude >= 1.6 && < 1.10,
     containers >= 0.6 && < 0.8,
     ghc-typelits-natnormalise,

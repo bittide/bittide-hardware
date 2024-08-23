@@ -17,13 +17,12 @@ elif [[ "$1" != "" ]]; then
 fi
 
 UBUNTU_VERSION=jammy-20240125
-GHC_VERSIONS=(  "9.4.8"  "9.2.8"   "9.0.2")
-CABAL_VERSIONS=("3.10.2.0" "3.10.2.0" "3.10.2.0")
+GHC_VERSIONS=( "9.6.6"  "9.4.8"  "9.2.8"   "9.0.2")
+CABAL_VERSION="3.10.2.0"
 
 for i in "${!GHC_VERSIONS[@]}"
 do
   GHC_VERSION="${GHC_VERSIONS[i]}"
-  CABAL_VERSION="${CABAL_VERSIONS[i]}"
 
   docker buildx build \
     --build-arg UBUNTU_VERSION=${UBUNTU_VERSION} \
