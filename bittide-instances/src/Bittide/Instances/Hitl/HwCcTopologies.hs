@@ -127,6 +127,13 @@ offsets, which is why we fix it to a single and common value here.
 commonStepSizeSelect :: StepSizeSelect
 commonStepSizeSelect = PPB_10
 
+commonSpiConfig :: TestConfig6_200_on_0a_RegisterMap
+commonSpiConfig = case commonStepSizeSelect of
+  PPB_1 -> testConfig6_200_on_0a_1ppb
+  PPB_10 -> testConfig6_200_on_0a_10ppb
+  PPB_100 -> testConfig6_200_on_0a_100ppb
+  PPM_1 -> testConfig6_200_on_0a_1ppm
+
 {- | Accepted noise between the inital clock control calibration run
 and the last calibration verifiction run.
 -}
@@ -138,7 +145,6 @@ disabled =
   TestConfig
     { fpgaEnabled = False
     , calibrate = NoCCCalibration
-    , stepSizeSelect = commonStepSizeSelect
     , initialClockShift = Nothing
     , startupDelay = 0
     , mask = 0
@@ -156,10 +162,6 @@ data TestConfig = TestConfig
   -- synchronization, needs to stay alive.
   , calibrate :: CCCalibrationStage
   -- ^ Indicates the selected calibration stage.
-  , stepSizeSelect :: StepSizeSelect
-  -- ^ The selected step size of the test. Note that changing the
-  -- step size between tests requires re-calibration of the device
-  -- based inital clock shift.
   , initialClockShift :: Maybe InitialClockShift
   -- ^ Some artificical clock shift applied prior to the test
   -- start. The shift is given in FINCs (if positive) or FDECs (if
@@ -319,7 +321,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   syncRst = rst `orReset` unsafeFromActiveHigh spiErr
 
   -- Clock board programming
-
   spiDone = E.dflipflop sysClk $ (== Finished) <$> spiState
   spiErr = E.dflipflop sysClk $ isErr <$> spiState
 
@@ -327,38 +328,10 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   isErr _ = False
 
   (_, _, spiState, spiOut) =
-    let
-      selectConfig = \case
-        PPB_1 -> testConfig6_200_on_0a_1ppb
-        PPB_10 -> testConfig6_200_on_0a_10ppb
-        PPB_100 -> testConfig6_200_on_0a_100ppb
-        PPM_1 -> testConfig6_200_on_0a_1ppm
-
-      -- TODO: create some generic method for generating this, which
-      -- does not rely on template haskell
-      cfgOptions = PPB_1 :> PPB_10 :> PPB_100 :> PPM_1 :> Nil
-
-      -- turn the selected configuration into an vector mask
-      optionMask = fmap . (==) <$> cfgOptions <*> repeat (stepSizeSelect <$> cfg)
-      -- retrieve the corresponding resets from the mask
-      rsts = orReset syncRst . unsafeFromActiveLow <$> optionMask
-      -- only the reset and the selected configuration differ according to
-      -- 'stepSizeSelect'
-      si539xSpi# r c =
-        withClockResetEnable sysClk r enableGen
-          $ si539xSpi c (SNat @(Microseconds 10)) (pure Nothing) miso
-      -- create an SPI interface for each of the supported configurations
-      spis = si539xSpi# <$> rsts <*> (selectConfig <$> cfgOptions)
-     in
-      (\(a, b, c, d) -> (a, b, c, unbundle d))
-        . unbundle
-        $ (!!)
-        <$> bundle ((\(a, b, c, d) -> bundle (a, b, c, bundle d)) <$> spis)
-        -- mux the selected interface according to 'stepSizeSelect'
-        <*> (stepSizeSelect <$> cfg)
+    withClockResetEnable sysClk syncRst enableGen
+      $ si539xSpi commonSpiConfig (SNat @(Microseconds 10)) (pure Nothing) miso
 
   -- Transceiver setup
-
   gthAllReset = unsafeFromActiveLow clocksAdjusted
 
   transceivers =
@@ -393,7 +366,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   milliseconds1 = fst <$> timer
 
   -- Startup delay
-
   startupDelayRst =
     orReset (unsafeFromActiveLow clocksAdjusted)
       $ orReset (unsafeFromActiveLow allReady)
@@ -408,7 +380,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       <*> (startupDelay <$> cfg)
 
   -- Clock control
-
   clockControlReset =
     startupDelayRst
       `orReset` unsafeFromActiveLow ((==) <$> delayCount <*> (startupDelay <$> cfg))
@@ -859,7 +830,6 @@ tests =
                   if validate
                     then CCCalibrationValidation
                     else CCCalibrate
-              , stepSizeSelect = commonStepSizeSelect
               , initialClockShift = Nothing
               , startupDelay = 0
               , mask = maxBound
@@ -940,7 +910,6 @@ tests =
     , TestConfig
         { fpgaEnabled = True
         , calibrate = NoCCCalibration
-        , stepSizeSelect = commonStepSizeSelect
         , ..
         }
     )
