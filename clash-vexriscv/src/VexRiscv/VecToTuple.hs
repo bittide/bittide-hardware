@@ -15,7 +15,9 @@ import Clash.Prelude
 
 import Data.Tagged (Tagged(..))
 
-#if MIN_VERSION_base(4,16,0)
+#if MIN_VERSION_base(4,18,0)
+import Data.Tuple (Solo(MkSolo))
+#elif MIN_VERSION_base(4,16,0)
 import Data.Tuple (Solo(Solo))
 #endif
 
@@ -28,7 +30,11 @@ instance VecToTuple (Vec 0 a) where
   type TupType (Vec 0 a) = Tagged a ()
   vecToTuple Nil = Tagged ()
 
-#if MIN_VERSION_base(4,16,0)
+#if MIN_VERSION_base(4,18,0)
+instance VecToTuple (Vec 1 a) where
+  type TupType (Vec 1 a) = Solo a
+  vecToTuple (a0 :> Nil) = MkSolo a0
+#elif MIN_VERSION_base(4,16,0)
 instance VecToTuple (Vec 1 a) where
   type TupType (Vec 1 a) = Solo a
   vecToTuple (a0 :> Nil) = Solo a0
