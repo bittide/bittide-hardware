@@ -7,7 +7,7 @@
 
 module Tests.Transceiver.WordAlign where
 
-import Clash.Prelude hiding (someNatVal, words)
+import Clash.Prelude hiding (someNatVal, withSomeSNat, words)
 
 import Bittide.SharedTypes (Byte)
 import Clash.Hedgehog.Sized.BitVector (genDefinedBitVector)

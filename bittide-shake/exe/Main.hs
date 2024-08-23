@@ -19,7 +19,6 @@ import Prelude
 import Clash.Shake.Extra
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
-import Control.Applicative (liftA2)
 import Control.Monad (forM_, unless, when)
 import Control.Monad.Extra (ifM, unlessM)
 import Data.Foldable (for_)

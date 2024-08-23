@@ -15,7 +15,7 @@ write-ghc-environment-files: always
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
 index-state: 2024-08-07T03:18:13Z
-with-compiler: ghc-9.4.7
+with-compiler: ghc-9.6.5
 tests: True
 
 package bittide
@@ -23,6 +23,9 @@ package bittide
   -- We specify the default Linuwial theme as an alternate
   -- so we're able to import its css file from the custom theme.
   haddock-options: --theme=linuwial-wrap-types.css --theme=Linuwial
+
+package zlib
+  flags: +pkg-config
 
 package clash-prelude
   flags: -multiple-hidden
