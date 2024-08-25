@@ -111,14 +111,14 @@ data StepSizeSelect
   | PPB_10
   | PPB_100
   | PPM_1
-  deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded)
+  deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded, Show)
 
 -- | Calibration stages
 data CCCalibrationStage
   = NoCCCalibration
   | CCCalibrate
   | CCCalibrationValidation
-  deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded)
+  deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded, Show)
 
 {- | The step size, as it is used by all tests. Note that changing the
 step size for individual tests requires recalibration of the clock
@@ -173,7 +173,7 @@ data TestConfig = TestConfig
   , mask :: BitVector LinkCount
   -- ^ The link mask depending on the selected topology.
   }
-  deriving (Generic, NFDataX, BitPack)
+  deriving (Generic, NFDataX, BitPack, Show)
 
 clockControlConfig ::
   $(case (instancesClockConfig (Proxy @Basic125)) of (_ :: t) -> liftTypeQ @t)
