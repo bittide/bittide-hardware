@@ -8,19 +8,27 @@
 
 module Bittide.ScatterGather (
   scatterUnitWb,
+  scatterUnitM,
   ScatterConfig (..),
   gatherUnitWb,
+  gatherUnitM,
   GatherConfig (..),
 ) where
 
 import Clash.Prelude
 
+
+import Protocols
+import Protocols.MemoryMap
 import Protocols.Wishbone
 
 import Bittide.Calendar
 import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
+
+import Data.Constraint
+import Data.Constraint.Nat.Extra
 
 {- | Existential type to explicitly differentiate between a configuration for
 the 'scatterUnitWb' and 'gatherUnitWb' at type level and hide the memory depth from
@@ -188,6 +196,46 @@ addStalling endOfMetacycle (incomingBus@WishboneS2M{..}, wbAddr, writeOp0) =
     | otherwise = (incomingBus, writeOp0)
   memAddr = bitCoerce $ resize wbAddr
 
+scatterUnitM ::
+  forall dom addrWidthSu nBytesCal addrWidthCal.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrWidthSu
+  , 2 <= addrWidthSu
+  , KnownNat nBytesCal
+  , 1 <= nBytesCal
+  , KnownNat addrWidthCal
+  , 2 <= addrWidthCal
+  ) =>
+  -- | Configuration for the 'calendar'.
+  ScatterConfig nBytesCal addrWidthCal ->
+  Circuit
+    ( MemoryMapped (Wishbone dom 'Standard addrWidthSu (Bytes 4))
+    , Wishbone dom 'Standard addrWidthCal (Bytes nBytesCal)
+    , CSignal dom (DataLink 64))
+    ()
+scatterUnitM config = Circuit go
+ where
+  go :: ((Signal dom (WishboneM2S addrWidthSu 4 (BitVector 32)),
+               Signal
+                 dom
+                 (WishboneM2S
+                    addrWidthCal
+                    (Div ((nBytesCal * 8) + 7) 8)
+                    (BitVector (nBytesCal * 8))),
+               Signal dom (Maybe (BitVector 64))),
+              ())
+             -> (((SimOnly MemoryMap, Signal dom (WishboneS2M (BitVector 32))),
+                  Signal dom (WishboneS2M (BitVector (nBytesCal * 8))),
+                  Signal dom ()),
+                 ())
+  go ((m2s, m2sCal, dataLink), ()) = (((SimOnly undefined, s2m), s2mCal, pure ()), ())
+   where
+    (s2m, s2mCal) = case cancelMulDiv @nBytesCal @8 of
+      Dict ->
+        scatterUnitWb config m2sCal dataLink m2s
+
+
+
 {-# NOINLINE scatterUnitWb #-}
 
 {- | Wishbone addressable 'scatterUnit', the wishbone port can read the data from this
@@ -230,6 +278,39 @@ scatterUnitWb (ScatterConfig calConfig) wbInCal linkIn wbInSu =
   (lower, upper) = unbundle $ split <$> scatterUnitRead
   selected = register (errorX "scatterUnitWb: Initial selection undefined") upperSelected
   scatteredData = mux selected upper lower
+
+
+gatherUnitM ::
+  forall dom addrWidthGu nBytesCal addrWidthCal.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrWidthGu
+  , 2 <= addrWidthGu
+  , KnownNat nBytesCal
+  , 1 <= nBytesCal
+  , KnownNat addrWidthCal
+  , 2 <= addrWidthCal
+  ) =>
+  -- | Configuration for the 'calendar'.
+  GatherConfig nBytesCal addrWidthCal ->
+  Circuit
+    ( MemoryMapped (Wishbone dom 'Standard addrWidthGu (Bytes 4))
+    , Wishbone dom 'Standard addrWidthCal (Bytes nBytesCal))
+    (CSignal dom (DataLink 64))
+gatherUnitM config = Circuit go
+ where
+  go :: (( Signal dom (WishboneM2S addrWidthGu 4 (BitVector 32))
+         , Signal dom (WishboneM2S addrWidthCal (Div ((nBytesCal * 8) + 7) 8) (BitVector (nBytesCal * 8)))
+         )
+        , Signal dom ()
+        ) ->
+        (((SimOnly MemoryMap, Signal dom (WishboneS2M (BitVector 32)))
+         , Signal dom (WishboneS2M (BitVector (nBytesCal * 8))))
+        , Signal dom (Maybe (BitVector 64)))
+  go ((m2s, m2sCal), _) = (((SimOnly undefined, s2m), s2mCal), dataLink)
+   where
+    (dataLink, s2m, s2mCal) = case cancelMulDiv @nBytesCal @8 of
+      Dict ->
+        gatherUnitWb config m2sCal m2s
 
 {-# NOINLINE gatherUnitWb #-}
 

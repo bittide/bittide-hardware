@@ -175,6 +175,34 @@ gppe (GppeConfig linkConfig peConfig, linkIn, splitAtI -> (nmuM2S0, nmuM2S1)) =
   nmuS2Ms = suS2M :> guS2M :> Nil
   sc = sequenceCounter
 
+gppeM ::
+  (KnownNat nmuRemBusWidth, 2 <= nmuRemBusWidth, HiddenClockResetEnable dom) =>
+  -- |
+  -- ( Configures all local parameters
+  -- , Incoming 'Bittide.Link'
+  -- , Incoming @Vector@ of master busses
+  -- )
+  ( GppeConfig nmuRemBusWidth
+  , Signal dom (DataLink 64)
+  , Vec 4 (Signal dom (WishboneM2S nmuRemBusWidth 4 (Bytes 4)))
+  ) ->
+  -- |
+  -- ( Outgoing 'Bittide.Link'
+  -- , Outgoing @Vector@ of slave busses
+  -- )
+  ( Signal dom (DataLink 64)
+  , Vec 4 (Signal dom (WishboneS2M (Bytes 4)))
+  )
+gppeM (GppeConfig linkConfig peConfig, linkIn, splitAtI -> (nmuM2S0, nmuM2S1)) =
+  (linkOut, nmuS2M0 ++ nmuS2M1)
+ where
+  (suS2M, nmuS2M0) = linkToPe linkConfig linkIn sc suM2S nmuM2S0
+  (linkOut, guS2M, nmuS2M1) = peToLink linkConfig sc guM2S nmuM2S1
+  (_, nmuM2Ss) = toSignals (processingElementM peConfig) (pure $ JtagIn low low low, nmuS2Ms)
+  (suM2S, guM2S) = vecToTuple nmuM2Ss
+  nmuS2Ms = suS2M :> guS2M :> Nil
+  sc = sequenceCounter
+
 {-# NOINLINE managementUnit #-}
 
 {- | A special purpose 'processingElement' that manages a Bittide Node. It contains
