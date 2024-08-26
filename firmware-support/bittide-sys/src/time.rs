@@ -386,3 +386,18 @@ impl uDisplay for Instant {
         uwrite!(f, "{}:{}:{}.{}", hours, mins, secs, millis)
     }
 }
+
+impl uDisplay for Duration {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized,
+    {
+        let hours = self.to_hours();
+        let mins = self.to_mins() % 60;
+        let secs = self.to_secs() % 60;
+        let millis = self.to_millis() % 1000;
+        let micros = self.to_micros() % 1000;
+
+        uwrite!(f, "{}:{}:{}.{}.{}", hours, mins, secs, millis, micros)
+    }
+}
