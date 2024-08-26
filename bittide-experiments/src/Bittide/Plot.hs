@@ -219,6 +219,7 @@ matplotWrite dir maybeCorrection clockDats ebDats = do
     file (dir </> plotElasticBuffersFileName) $
       constrained
         ( xlabel "Time (ms)"
+            % ylabel "Occupancy count"
             % foldPlots (Vec.toList ebDats)
         )
  where
