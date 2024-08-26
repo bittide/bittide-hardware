@@ -5,18 +5,28 @@ use crate::axi::{AxiRx, AxiTx};
 use log::debug;
 use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
+
+/// Abstraction over `Axirx` and `AxiTx` to provide a `Device` implementation for smoltcp.
+///
 pub struct AxiEthernet<const MTU: usize> {
     axi_rx: AxiRx<MTU>,
     axi_tx: AxiTx,
+    max_burst: Option<usize>,
     medium: Medium,
 }
 
 #[allow(clippy::new_without_default)]
 impl<const MTU: usize> AxiEthernet<MTU> {
-    pub fn new(medium: Medium, axi_rx: AxiRx<MTU>, axi_tx: AxiTx) -> AxiEthernet<MTU> {
+    pub fn new(
+        medium: Medium,
+        axi_rx: AxiRx<MTU>,
+        axi_tx: AxiTx,
+        max_burst: Option<usize>,
+    ) -> AxiEthernet<MTU> {
         AxiEthernet {
             axi_rx,
             axi_tx,
+            max_burst,
             medium,
         }
     }
@@ -29,6 +39,7 @@ impl<const MTU: usize> Device for AxiEthernet<MTU> {
         let mut cap = DeviceCapabilities::default();
         cap.max_transmission_unit = MTU;
         cap.medium = self.medium;
+        cap.max_burst_size = self.max_burst;
         cap
     }
 

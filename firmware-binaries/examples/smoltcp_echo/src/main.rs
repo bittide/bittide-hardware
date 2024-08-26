@@ -55,7 +55,7 @@ fn main() -> ! {
 
     let axi_tx = unsafe { AxiTx::new(TX_AXI_ADDR) };
     let axi_rx: AxiRx<RX_BUFFER_SIZE> = unsafe { AxiRx::new(RX_AXI_ADDR) };
-    let mut eth: AxiEthernet<ETH_MTU> = AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx);
+    let mut eth: AxiEthernet<ETH_MTU> = AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx, Some(2));
     let now = clock.elapsed().into();
     let mut iface = Interface::new(config, &mut eth, now);
     iface.update_ip_addrs(|ip_addrs| {
