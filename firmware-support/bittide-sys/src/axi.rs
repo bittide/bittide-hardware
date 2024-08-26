@@ -10,30 +10,29 @@ pub struct AxiRxStatus {
 }
 
 #[derive(uDebug, Copy, Clone)]
-pub struct AxiRx {
-    base_addr: *mut u8,
-    buffer_size: usize,
+pub struct AxiRx<const BUF_SIZE: usize> {
+    base_addr: *const u8,
     packet_length: *mut usize,
     status: *mut u8,
 }
 
-impl AxiRx {
+impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
     /// Creates a new instance of `AxiRx`.
     ///
     /// # Safety
     ///
+
     /// - `base_addr` must post to a memory mapped AXI Rx peripheral.
-    /// - `buffer_size` must match the buffer size of the AXI Rx peripheral.
+    /// - `BUF_SIZE` must be a valid buffer size.
     ///
-    pub unsafe fn new(addr: *const (), buffer_size: usize) -> Self {
+    pub unsafe fn new(addr: *const ()) -> Self {
         unsafe {
             let base_addr = addr as *mut usize;
-            let buffer_addrs = buffer_size / 4;
+            let buffer_addrs = BUF_SIZE / 4;
             let packet_length_addr = base_addr.add(buffer_addrs);
             let status_addr = base_addr.add(buffer_addrs + 1);
             AxiRx {
-                base_addr: base_addr as *mut u8,
-                buffer_size,
+                base_addr: base_addr as *const u8,
                 packet_length: packet_length_addr as *mut usize,
                 status: status_addr as *mut u8,
             }
@@ -92,8 +91,10 @@ impl AxiRx {
 
         // Get length of the incoming data
         let len = self.packet_length();
+
         unsafe {
-            core::ptr::copy_nonoverlapping(self.base_addr, buffer.as_mut_ptr(), len);
+            let dst = self.base_addr as *mut u8;
+            core::ptr::copy_nonoverlapping(dst, buffer.as_mut_ptr(), len);
         }
         Some(len)
     }

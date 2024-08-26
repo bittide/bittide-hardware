@@ -20,7 +20,7 @@ fn main() -> ! {
     // Initialize peripherals.
     let uart = unsafe { Uart::new(UART_ADDR) };
     let tx = unsafe { AxiTx::new((3 << 29) as *const ()) };
-    let rx = unsafe { AxiRx::new((5 << 29) as *const (), 128) };
+    let rx: AxiRx<128> = unsafe { AxiRx::new((5 << 29) as *const ()) };
     self_test(uart, tx, rx);
     loop {
         continue;

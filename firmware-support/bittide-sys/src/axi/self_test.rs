@@ -13,43 +13,48 @@ const STRING_SIZE: usize = 1024;
 
 /// Tests for the axi module.
 #[allow(dead_code)]
-pub fn self_test(mut uart: Uart, tx: AxiTx, rx: AxiRx) {
+pub fn self_test<const BUF_SIZE: usize>(mut uart: Uart, tx: AxiTx, rx: AxiRx<{ BUF_SIZE }>) {
     // Construct a list of tests with their names.
     let tests = [
         (
-            read_rx_status as fn(AxiTx, AxiRx, &mut String<STRING_SIZE>) -> bool,
+            read_rx_status as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
             "read_rx_status",
         ),
         (
-            clear_rx_status as fn(AxiTx, AxiRx, &mut String<STRING_SIZE>) -> bool,
+            clear_rx_status as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
             "clear_rx_status",
         ),
         (
-            clear_rx_packet_register as fn(AxiTx, AxiRx, &mut String<STRING_SIZE>) -> bool,
+            clear_rx_packet_register
+                as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
             "clear_rx_packet_register",
         ),
         (
-            send_empty_packet as fn(AxiTx, AxiRx, &mut String<STRING_SIZE>) -> bool,
+            send_empty_packet as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
             "send_empty_packet",
         ),
         (
-            send_static_packet as fn(AxiTx, AxiRx, &mut String<STRING_SIZE>) -> bool,
+            send_static_packet as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
             "send_static_packet",
         ),
         (
-            send_receive_empty_packet as fn(AxiTx, AxiRx, &mut String<STRING_SIZE>) -> bool,
+            send_receive_empty_packet
+                as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
             "send_receive_empty_packet",
         ),
         (
-            read_rx_packet_length as fn(AxiTx, AxiRx, &mut String<STRING_SIZE>) -> bool,
+            read_rx_packet_length
+                as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
             "read_rx_packet_length",
         ),
         (
-            send_receive_random_packet as fn(AxiTx, AxiRx, &mut String<STRING_SIZE>) -> bool,
+            send_receive_random_packet
+                as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
             "send_receive_random_packet",
         ),
         (
-            send_multiple_packets_receive_all as fn(AxiTx, AxiRx, &mut String<STRING_SIZE>) -> bool,
+            send_multiple_packets_receive_all
+                as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
             "send_multiple_packets_receive_all",
         ),
     ];
@@ -71,7 +76,11 @@ pub fn self_test(mut uart: Uart, tx: AxiTx, rx: AxiRx) {
     }
 }
 
-fn send_empty_packet(mut tx: AxiTx, rx: AxiRx, _str: &mut String<STRING_SIZE>) -> bool {
+fn send_empty_packet<const BUF_SIZE: usize>(
+    mut tx: AxiTx,
+    rx: AxiRx<{ BUF_SIZE }>,
+    _str: &mut String<STRING_SIZE>,
+) -> bool {
     let packet = [];
     tx.send(&packet);
     while !rx.read_status().packet_complete {}
@@ -79,7 +88,11 @@ fn send_empty_packet(mut tx: AxiTx, rx: AxiRx, _str: &mut String<STRING_SIZE>) -
     false
 }
 
-fn send_static_packet(mut tx: AxiTx, rx: AxiRx, _str: &mut String<STRING_SIZE>) -> bool {
+fn send_static_packet<const BUF_SIZE: usize>(
+    mut tx: AxiTx,
+    rx: AxiRx<{ BUF_SIZE }>,
+    _str: &mut String<STRING_SIZE>,
+) -> bool {
     let packet = [0x01, 0x02, 0x03, 0x04];
     tx.send(&packet);
     while !rx.read_status().packet_complete {}
@@ -87,7 +100,11 @@ fn send_static_packet(mut tx: AxiTx, rx: AxiRx, _str: &mut String<STRING_SIZE>) 
     false
 }
 
-fn read_rx_status(_tx: AxiTx, rx: AxiRx, str: &mut String<STRING_SIZE>) -> bool {
+fn read_rx_status<const BUF_SIZE: usize>(
+    _tx: AxiTx,
+    rx: AxiRx<{ BUF_SIZE }>,
+    str: &mut String<STRING_SIZE>,
+) -> bool {
     let status = rx.read_status();
     if status.packet_complete || status.buffer_full {
         uwrite!(
@@ -102,15 +119,27 @@ fn read_rx_status(_tx: AxiTx, rx: AxiRx, str: &mut String<STRING_SIZE>) -> bool 
     false
 }
 
-fn clear_rx_status(_tx: AxiTx, rx: AxiRx, _str: &mut String<STRING_SIZE>) -> bool {
+fn clear_rx_status<const BUF_SIZE: usize>(
+    _tx: AxiTx,
+    rx: AxiRx<{ BUF_SIZE }>,
+    _str: &mut String<STRING_SIZE>,
+) -> bool {
     rx.clear_status();
     false
 }
-fn clear_rx_packet_register(_tx: AxiTx, rx: AxiRx, _str: &mut String<STRING_SIZE>) -> bool {
+fn clear_rx_packet_register<const BUF_SIZE: usize>(
+    _tx: AxiTx,
+    rx: AxiRx<{ BUF_SIZE }>,
+    _str: &mut String<STRING_SIZE>,
+) -> bool {
     rx.clear_packet_register();
     false
 }
-fn read_rx_packet_length(_tx: AxiTx, rx: AxiRx, str: &mut String<STRING_SIZE>) -> bool {
+fn read_rx_packet_length<const BUF_SIZE: usize>(
+    _tx: AxiTx,
+    rx: AxiRx<{ BUF_SIZE }>,
+    str: &mut String<STRING_SIZE>,
+) -> bool {
     if rx_clear_and_verify(rx, str) {
         return true;
     }
@@ -122,7 +151,11 @@ fn read_rx_packet_length(_tx: AxiTx, rx: AxiRx, str: &mut String<STRING_SIZE>) -
     false
 }
 
-fn send_receive_empty_packet(mut tx: AxiTx, rx: AxiRx, str: &mut String<STRING_SIZE>) -> bool {
+fn send_receive_empty_packet<const BUF_SIZE: usize>(
+    mut tx: AxiTx,
+    rx: AxiRx<BUF_SIZE>,
+    str: &mut String<STRING_SIZE>,
+) -> bool {
     if rx_clear_and_verify(rx, str) {
         return true;
     }
@@ -146,20 +179,18 @@ fn send_receive_empty_packet(mut tx: AxiTx, rx: AxiRx, str: &mut String<STRING_S
 }
 
 const N_PACKETS: usize = 5;
-//// Generate a random packet with a random length, send it over AxiTx and verify that it is received on AxiRx.
-fn send_receive_random_packet(mut tx: AxiTx, rx: AxiRx, str: &mut String<STRING_SIZE>) -> bool {
+//// Generate a random packet with a random length, send it over AxiTx and verify that it is received on AxiRx<{ BUF_SIZE }>.
+fn send_receive_random_packet<const BUF_SIZE: usize>(
+    mut tx: AxiTx,
+    rx: AxiRx<BUF_SIZE>,
+    str: &mut String<STRING_SIZE>,
+) -> bool {
     let mut rng = SmallRng::seed_from_u64(0x0DDB1A5E5BAD5EED);
     const MAX_LEN: usize = 128;
     let mut tx_buffer = [0; MAX_LEN];
     let mut rx_buffer = [0; MAX_LEN];
-    if rx.buffer_size != MAX_LEN {
-        uwrite!(
-            str,
-            "Buffer size is {}, bust must be {}",
-            rx.buffer_size,
-            MAX_LEN
-        )
-        .unwrap();
+    if BUF_SIZE != MAX_LEN {
+        uwrite!(str, "Buffer size is {}, bust must be {}", BUF_SIZE, MAX_LEN).unwrap();
         return true;
     }
     for _ in 0..N_PACKETS {
@@ -214,21 +245,15 @@ fn send_receive_random_packet(mut tx: AxiTx, rx: AxiRx, str: &mut String<STRING_
     false
 }
 
-fn send_multiple_packets_receive_all(
+fn send_multiple_packets_receive_all<const BUF_SIZE: usize>(
     mut tx: AxiTx,
-    rx: AxiRx,
+    rx: AxiRx<BUF_SIZE>,
     str: &mut String<STRING_SIZE>,
 ) -> bool {
     let mut rng = SmallRng::seed_from_u64(0x0DDB1A5E5BAD5EED);
     const MAX_LEN: usize = 128;
-    if rx.buffer_size != MAX_LEN {
-        uwrite!(
-            str,
-            "Buffer size is {}, but must be {}",
-            rx.buffer_size,
-            MAX_LEN
-        )
-        .unwrap();
+    if BUF_SIZE != MAX_LEN {
+        uwrite!(str, "Buffer size is {}, but must be {}", BUF_SIZE, MAX_LEN).unwrap();
         return true;
     }
 
@@ -281,7 +306,10 @@ fn send_multiple_packets_receive_all(
     }
     false
 }
-fn rx_clear_and_verify(rx: AxiRx, str: &mut String<STRING_SIZE>) -> bool {
+fn rx_clear_and_verify<const BUF_SIZE: usize>(
+    rx: AxiRx<BUF_SIZE>,
+    str: &mut String<STRING_SIZE>,
+) -> bool {
     rx.clear_packet();
     rx.clear_status();
     let status = rx.read_status();

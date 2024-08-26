@@ -6,14 +6,14 @@ use log::debug;
 use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 pub struct AxiEthernet<const MTU: usize> {
-    axi_rx: AxiRx,
+    axi_rx: AxiRx<MTU>,
     axi_tx: AxiTx,
     medium: Medium,
 }
 
 #[allow(clippy::new_without_default)]
 impl<const MTU: usize> AxiEthernet<MTU> {
-    pub fn new(medium: Medium, axi_rx: AxiRx, axi_tx: AxiTx) -> AxiEthernet<MTU> {
+    pub fn new(medium: Medium, axi_rx: AxiRx<MTU>, axi_tx: AxiTx) -> AxiEthernet<MTU> {
         AxiEthernet {
             axi_rx,
             axi_tx,
@@ -23,7 +23,7 @@ impl<const MTU: usize> AxiEthernet<MTU> {
 }
 
 impl<const MTU: usize> Device for AxiEthernet<MTU> {
-    type RxToken<'a> = RxToken<'a>;
+    type RxToken<'a> = RxToken<'a, MTU>;
     type TxToken<'a> = TxToken<'a, MTU>;
     fn capabilities(&self) -> DeviceCapabilities {
         let mut cap = DeviceCapabilities::default();
@@ -64,11 +64,11 @@ impl<const MTU: usize> Device for AxiEthernet<MTU> {
     }
 }
 
-pub struct RxToken<'a> {
-    axi_rx: &'a mut AxiRx,
+pub struct RxToken<'a, const BUFFER_SIZE: usize> {
+    axi_rx: &'a mut AxiRx<{ BUFFER_SIZE }>,
 }
 
-impl phy::RxToken for RxToken<'_> {
+impl<const BUFFER_SIZE: usize> phy::RxToken for RxToken<'_, BUFFER_SIZE> {
     fn consume<R, F>(self, f: F) -> R
     where
         F: FnOnce(&mut [u8]) -> R,
