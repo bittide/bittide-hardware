@@ -34,7 +34,8 @@ impl<const MTU: usize> Device for AxiEthernet<MTU> {
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // If there is data available,
-        if self.axi_rx.has_data() {
+        let status = self.axi_rx.read_status();
+        if status.packet_complete {
             debug!("Data available");
 
             // Produce a receive toking with the data and tx token that can
@@ -47,6 +48,11 @@ impl<const MTU: usize> Device for AxiEthernet<MTU> {
             };
             Some((rx, tx))
         } else {
+            if status.buffer_full {
+                debug!("Clearing full buffer");
+                self.axi_rx.clear_packet();
+                self.axi_rx.clear_status();
+            }
             None
         }
     }
