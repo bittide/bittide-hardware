@@ -18,4 +18,4 @@ riscv = "^0.10"
 heapless = { version = "0.8", default-features = false}
 smoltcp = { version = "0.11", default-features = false, features = ["medium-ethernet", "proto-ipv4", "socket-tcp", "socket-dhcpv4"] }
 ufmt = "0.2.0"
-log = {version = "0.4.21", features = ["release_max_level_trace"]}
+log = {version = "0.4.21", features = ["release_max_level_off"]}

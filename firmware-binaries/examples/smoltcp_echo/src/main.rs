@@ -13,8 +13,10 @@ use bittide_sys::mac::MacStatus;
 use bittide_sys::smoltcp::axi::AxiEthernet;
 use bittide_sys::smoltcp::{set_local, set_unicast};
 use bittide_sys::time::{Clock, Duration};
+use bittide_sys::uart::log::LOGGER;
 use bittide_sys::uart::Uart;
-use log::{self, debug};
+use log::{debug, info, LevelFilter};
+
 #[cfg(not(test))]
 use riscv_rt::entry;
 
@@ -44,6 +46,12 @@ fn main() -> ! {
     let mut uart = unsafe { Uart::new(UART_ADDR) };
 
     uwriteln!(uart, "Starting smoltcp-echo").unwrap();
+    unsafe {
+        LOGGER.set_logger(uart.clone());
+        log::set_logger_racy(&LOGGER).ok();
+        log::set_max_level_racy(log::LevelFilter::Trace);
+    }
+
     // Initialize and test clock
     let mut clock = unsafe { Clock::new(CLOCK_ADDR) };
 
