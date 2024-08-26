@@ -150,9 +150,12 @@ fn exception_handler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
 }
 
 #[panic_handler]
-fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
+fn panic_handler(info: &core::panic::PanicInfo) -> ! {
     let mut uart = unsafe { Uart::new(UART_ADDR) };
-    uwriteln!(uart, "Panicked, looping forever now").unwrap();
+
+    uwriteln!(uart, "Panicked!").unwrap();
+    debug!("{}", info);
+    uwriteln!(uart, "Looping forever now").unwrap();
     loop {
         continue;
     }
