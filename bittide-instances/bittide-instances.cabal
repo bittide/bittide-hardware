@@ -78,6 +78,7 @@ common common-options
   build-depends:
     MissingH,
     aeson,
+    async,
     base,
     base16-bytestring,
     bittide,
@@ -100,10 +101,13 @@ common common-options
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
     lift-type,
+    network-simple,
     pretty-simple,
     process,
     shake,
     split,
+    streaming,
+    streaming-bytestring,
     string-interpolate,
     tasty,
     tasty-hunit,
@@ -111,6 +115,7 @@ common common-options
     template-haskell,
     temporary,
     text,
+    time,
     unix,
     vector,
 
@@ -130,6 +135,7 @@ library
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
+    Bittide.Instances.Hitl.Post.TcpServer
     Bittide.Instances.Hitl.Setup
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor
