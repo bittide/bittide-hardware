@@ -12,7 +12,7 @@ use bittide_sys::dna_port_e2::{dna_to_u128, DnaValue};
 use bittide_sys::mac::MacStatus;
 use bittide_sys::smoltcp::axi::AxiEthernet;
 use bittide_sys::smoltcp::{set_local, set_unicast};
-use bittide_sys::time::{Clock, Duration};
+use bittide_sys::time::{Clock, Duration, Instant};
 use bittide_sys::uart::log::LOGGER;
 use bittide_sys::uart::Uart;
 use log::{debug, info, LevelFilter};
@@ -20,12 +20,11 @@ use log::{debug, info, LevelFilter};
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-use core::cmp::min;
 use smoltcp::iface::{Config, Interface, SocketSet, SocketStorage};
 use smoltcp::phy::Medium;
 use smoltcp::socket::dhcpv4;
 use smoltcp::socket::tcp::{Socket, SocketBuffer};
-use smoltcp::wire::{EthernetAddress, IpCidr};
+use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use ufmt::uwriteln;
 
 const CLOCK_ADDR: *const () = (0b0011 << 28) as *const ();
@@ -37,19 +36,22 @@ const UART_ADDR: *const () = (0b0010 << 28) as *const ();
 
 const RX_BUFFER_SIZE: usize = 2048;
 const ETH_MTU: usize = RX_BUFFER_SIZE;
-const TCP_MTU: usize = ETH_MTU - 40;
 const SOFT_BUFFER_SIZE: usize = 1024 * 8;
+const CHUNK_SIZE: usize = 4096;
+
+const SERVER_IP: IpAddress = IpAddress::v4(10, 0, 0, 1);
+const SERVER_PORT: u16 = 1234;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize and test UART.
     let mut uart = unsafe { Uart::new(UART_ADDR) };
 
-    uwriteln!(uart, "Starting smoltcp-echo").unwrap();
+    uwriteln!(uart, "Starting TCP Client").unwrap();
     unsafe {
         LOGGER.set_logger(uart.clone());
         log::set_logger_racy(&LOGGER).ok();
-        log::set_max_level_racy(log::LevelFilter::Trace);
+        log::set_max_level_racy(LevelFilter::Trace);
     }
 
     // Initialize and test clock
@@ -70,7 +72,7 @@ fn main() -> ! {
 
     // Create sockets
     let mut dhcp_socket = dhcpv4::Socket::new();
-    let server_socket = {
+    let client_socket = {
         // It is not strictly necessary to use a `static mut` and unsafe code here, but
         // on embedded systems that smoltcp targets it is far better to allocate the data
         // statically to verify that it fits into RAM rather than get undefined behavior
@@ -84,11 +86,21 @@ fn main() -> ! {
 
     let mut sockets: [SocketStorage; 2] = Default::default();
     let mut sockets = SocketSet::new(&mut sockets[..]);
-    let server_handle = sockets.add(server_socket);
+    let client_handle = sockets.add(client_socket);
     let dhcp_handle = sockets.add(dhcp_socket);
 
     let mut mac_status = unsafe { MAC_ADDR.read_volatile() };
+    let mut did_connect = false;
+    let mut received_ip = false;
 
+    let stress_test_duration = Duration::from_secs(30);
+    let mut stress_test_end = Instant::end_of_time(clock.get_frequency());
+    info!(
+        "{}, TCP Server send chunks of {} bytes for {}",
+        clock.elapsed(),
+        CHUNK_SIZE,
+        stress_test_duration
+    );
     loop {
         let elapsed = clock.elapsed().into();
         iface.poll(elapsed, &mut eth, &mut sockets);
@@ -98,33 +110,41 @@ fn main() -> ! {
             continue;
         }
 
-        let mut socket = sockets.get_mut::<Socket>(server_handle);
-        if !socket.is_active() && !socket.is_listening() {
-            mac_status = unsafe { MAC_ADDR.read_volatile() };
-            uwriteln!(uart, "listening").unwrap();
-            socket.listen(7).unwrap();
+        if !received_ip {
+            let ip = iface.ipv4_addr().unwrap();
+            info!("{}, IP address: {}", clock.elapsed(), ip);
+            received_ip = true;
+            let now = clock.elapsed();
+            stress_test_end = now + stress_test_duration;
+            info!("{}, Stress test will end at {}", now, stress_test_end);
         }
-        if socket.is_open() && socket.may_send() && !socket.may_recv() {
-            socket.close();
-            uwriteln!(uart, "DNA: {:X}", dna).unwrap();
-            let new_mac_status = unsafe { MAC_ADDR.read_volatile() };
-            uwriteln!(uart, "{:?}", new_mac_status - mac_status).unwrap();
-            uwriteln!(uart, "Closing socket").unwrap();
-        }
-        if socket.can_recv() {
-            let mut buf = [0; TCP_MTU];
-            let mut slice: &[u8] = &[];
-            socket
-                .recv(|buffer| {
-                    let elements = min(TCP_MTU, buffer.len());
-                    buf[..elements].copy_from_slice(&buffer[..elements]);
-                    slice = &buf[0..elements];
-                    (elements, ())
-                })
-                .unwrap();
 
-            debug!("Echoing {} bytes", slice.len());
-            socket.send_slice(slice).unwrap();
+        let mut socket = sockets.get_mut::<Socket>(client_handle);
+        let cx = iface.context();
+        if !socket.is_open() {
+            debug!("{}, Opening socket", clock.elapsed());
+            if !did_connect {
+                mac_status = unsafe { MAC_ADDR.read_volatile() };
+                socket.connect(cx, (SERVER_IP, SERVER_PORT), 1234).unwrap();
+                debug!(
+                    "Connecting from {:?}:{} to {}:{}",
+                    iface.ipv4_addr().unwrap().as_bytes(),
+                    1234,
+                    SERVER_IP,
+                    SERVER_PORT
+                );
+                did_connect = true;
+            }
+        };
+        if socket.can_send() {
+            socket.send_slice(&[0; CHUNK_SIZE]).unwrap();
+            let now = clock.elapsed();
+            if now > stress_test_end {
+                info!("{}, Stress test complete", now);
+                socket.close();
+                let new_mac_status = unsafe { MAC_ADDR.read_volatile() };
+                uwriteln!(uart, "{:?}", new_mac_status - mac_status).unwrap();
+            }
         }
 
         match iface.poll_delay(clock.elapsed().into(), &sockets) {
