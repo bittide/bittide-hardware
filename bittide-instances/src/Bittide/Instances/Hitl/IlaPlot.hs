@@ -26,6 +26,7 @@ module Bittide.Instances.Hitl.IlaPlot (
 
   -- * Interface Types
   CaptureCondition (..),
+  isScheduledCaptureCondition,
   IlaPlotSetup (..),
   IlaControl (..),
   PlotData (..),
@@ -193,6 +194,16 @@ data CaptureCondition
     -- changes.
     DataChange
   deriving (Eq, Generic, NFDataX, BitPack)
+
+{- | Whether the given 'CaptureCondition' is a scheduled capture. I.e., one
+triggered by a sync pulse.
+-}
+isScheduledCaptureCondition :: CaptureCondition -> Bool
+isScheduledCaptureCondition = \case
+  Scheduled -> True
+  Calibrate -> True
+  UntilTrigger -> False
+  DataChange -> False
 
 {- | All signals, as they are required for using clock control with
 ILA plotting capabilities.
@@ -491,7 +502,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
       overflowResistantDiff
         clk
         syncRst
-        (delay clk enableGen False (isJust <$> captureCond))
+        (delay clk enableGen False (maybe False isScheduledCaptureCondition <$> captureCond))
         $ let ccRst = xpmResetSynchronizer Asserted clk dynClk syncRst
               lts :: Signal dyn (Unsigned 8)
               lts =

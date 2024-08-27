@@ -34,6 +34,7 @@ import System.IO (
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (callProcess, readProcess)
 
+import Bittide.Arithmetic.PartsPer (toPpm)
 import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.Plot
 import Bittide.Simulate.Config (CcConf (..), simTopologyFileName)
@@ -189,7 +190,7 @@ toLatex ::
   -- | The utilized simulation configuration
   CcConf ->
   String
-toLatex refDom datetime runref header clocksPdf ebsPdf topTikz ids CcConf{..} =
+toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids CcConf{..} =
   unlines
     [ "\\documentclass[landscape]{article}"
     , ""
@@ -339,7 +340,7 @@ toLatex refDom datetime runref header clocksPdf ebsPdf topTikz ids CcConf{..} =
  where
   formatOffsets =
     intercalate "; "
-      . (fmap (qtyPpm . roundFloatInteger . fsToPpm refDom))
+      . (fmap (qtyPpm . roundFloatInteger . toPpm))
 
   qtyMs ms = "\\qty{" <> show ms <> "}{\\milli\\second}"
   qtyPpm ppm = "\\qty{" <> show ppm <> "}{\\ppm}"

@@ -10,18 +10,17 @@ module Bittide.Plot (
   plot,
   plotClocksFileName,
   plotElasticBuffersFileName,
-  fsToPpm,
 ) where
 
-import Clash.Prelude (KnownDomain, KnownNat, Vec)
-import Clash.Signal.Internal (Femtoseconds (..), unFemtoseconds)
+import Clash.Prelude (KnownNat, Vec)
+import Clash.Signal.Internal (Femtoseconds (..))
 import Clash.Sized.Vector qualified as Vec
 
+import Bittide.Arithmetic.PartsPer (PartsPer, toPpm)
 import Control.Monad (void)
 import Data.Graph (edges)
 import Data.Int (Int64)
 import Data.List (foldl', transpose, unzip4, zip4)
-import Data.Proxy (Proxy)
 import GHC.Float.RealFracMethods (roundFloatInteger)
 import System.FilePath ((</>))
 
@@ -41,7 +40,7 @@ import Graphics.Matplotlib (
  )
 import Graphics.Matplotlib qualified as MP (plot)
 
-import Bittide.ClockControl (RelDataCount, clockPeriodFs)
+import Bittide.ClockControl (RelDataCount)
 import Bittide.ClockControl.Callisto (ReframingState (..))
 import Bittide.ClockControl.StabilityChecker qualified as SC (StabilityIndication (..))
 import Bittide.Topology
@@ -71,12 +70,10 @@ fromRfState = \case
   Done{} -> RSDone
 
 plot ::
-  forall nNodes m refDom.
-  (KnownNat nNodes, KnownNat m, KnownDomain refDom) =>
-  -- | Reference domain
-  Proxy refDom ->
+  forall nNodes m.
+  (KnownNat nNodes, KnownNat m) =>
   -- | A common correction to apply to all clock plots
-  Maybe Float ->
+  Maybe PartsPer ->
   -- | output directory for storing the results
   FilePath ->
   -- | topology corresponding to the plot
@@ -85,18 +82,14 @@ plot ::
   Vec
     nNodes
     [ ( Femtoseconds -- time
-      , Femtoseconds -- relative clock offset
+      , PartsPer -- relative clock offset
       , ReframingStage
       , [(RelDataCount m, SC.StabilityIndication)]
       )
     ] ->
   IO ()
-plot refDom maybeCorrection outputDir graph plotData =
-  matplotWrite
-    outputDir
-    (fsToPpm refDom <$> maybeCorrection)
-    clockPlots
-    elasticBufferPlots
+plot maybeCorrection outputDir graph plotData =
+  matplotWrite outputDir maybeCorrection clockPlots elasticBufferPlots
  where
   clockPlots = Vec.imap toClockPlot plotData
   elasticBufferPlots = Vec.imap toElasticBufferPlot plotData
@@ -116,7 +109,7 @@ plot refDom maybeCorrection outputDir graph plotData =
             else snd
         )
       $ zip (filter (hasEdge graph nodeIndex) [0, 1 ..])
-      $ fmap (plotEbData refDom)
+      $ fmap plotEbData
       -- Organize data by node instead of by timestamp. I.e., the first item in
       -- 'timedBuffers' is for this node's first neighbor.
       $ transpose
@@ -124,15 +117,12 @@ plot refDom maybeCorrection outputDir graph plotData =
         | (t, r, bs) <- zip3 time reframingStage buffersPerNode
         ]
 
-  toClockPlot nodeIndex (unzip4 -> (time, relativeOffsetFs, _, _)) =
+  toClockPlot nodeIndex (unzip4 -> (time, relativeOffsetPartsPer, _, _)) =
     withLegend $
       (@@ [o2 "label" $ fromEnum nodeIndex]) $
         MP.plot
           (map fsToMs time)
-          ( map
-              (fsToPpm refDom . correctOffset . fromIntegral . unFemtoseconds)
-              relativeOffsetFs
-          )
+          (map (toPpm . correctOffset) relativeOffsetPartsPer)
 
   withLegend =
     ( @@
@@ -154,34 +144,16 @@ fsToMs (Femtoseconds fs) =
   -- fs -> ps -> ns -> µs -> ms
   fs `div` 1_000_000_000_000
 
-{- | Convert femtoseconds to parts per million, where femtoseconds represents
-the relative shortening or lengthening of a clock period. Note that a positive
-value for the input results in a negative output. This is because a /shorter/
-period results in /more/ clock ticks per time span.
-
->>> fsToPpm (Proxy @System) 400
--40.0
->>> fsToPpm (Proxy @System) (-400)
-40.0
--}
-fsToPpm :: (KnownDomain dom) => Proxy dom -> Float -> Float
-fsToPpm refDom fs = -1 * (fs / onePpm)
- where
-  onePpm = case clockPeriodFs refDom of
-    Femtoseconds f -> fromIntegral f / 1_000_000
-
 {- | Plots the datacount of an elastic buffer and marks those parts of
 the plots that are reported to be stable/settled by the stability
 checker as well as the time frames at which the reframing detector
 is in the waiting state.
 -}
 plotEbData ::
-  (KnownNat m, KnownDomain refDom) =>
-  -- | Reference domain
-  Proxy refDom ->
+  (KnownNat m) =>
   [(Femtoseconds, ReframingStage, RelDataCount m, SC.StabilityIndication)] ->
   Matplotlib
-plotEbData _refDom (unzip4 -> (timestampsFs, reframingStages, dataCounts, stabilities)) =
+plotEbData (unzip4 -> (timestampsFs, reframingStages, dataCounts, stabilities)) =
   foldPlots markedIntervals % ebPlot
  where
   timestamps = map fsToMs timestampsFs
@@ -229,7 +201,7 @@ matplotWrite ::
   -- | output directory
   FilePath ->
   -- | Correction to add to Y-axis label
-  Maybe Float ->
+  Maybe PartsPer ->
   -- | clock plots
   Vec n Matplotlib ->
   -- | elastic buffer plots
@@ -251,9 +223,9 @@ matplotWrite dir maybeCorrection clockDats ebDats = do
         )
  where
   correctionLabel = case maybeCorrection of
-    Just c
-      | c < 0 -> " [" <> show (roundFloatInteger c) <> "]"
-      | otherwise -> " [+" <> show (roundFloatInteger c) <> "]"
+    Just (roundFloatInteger . toPpm -> c)
+      | c < 0 -> " [" <> show c <> "]"
+      | otherwise -> " [+" <> show c <> "]"
     _ -> ""
 
   constrained =

@@ -118,6 +118,7 @@ library
     text,
 
   exposed-modules:
+    Bittide.Arithmetic.PartsPer
     Bittide.Arithmetic.Time
     Bittide.Axi4
     Bittide.Axi4.Internal

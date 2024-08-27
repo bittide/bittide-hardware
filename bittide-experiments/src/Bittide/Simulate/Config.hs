@@ -11,6 +11,7 @@ module Bittide.Simulate.Config (
   saveCcConfig,
 ) where
 
+import Bittide.Arithmetic.PartsPer (PartsPer)
 import Bittide.Topology (STop (..), TopologyType (..), toDot)
 
 import Data.Aeson (FromJSON (..), ToJSON (..), encode)
@@ -59,7 +60,7 @@ data CcConf = CcConf
   , stopAfterStable :: Maybe Int
   -- ^ Stop simulation after all buffers have been stable for
   -- at least the given number of clock cycles.
-  , clockOffsets :: Maybe [Float]
+  , clockOffsets :: Maybe [PartsPer]
   -- ^ The initital clock offsets in Femtoseconds
   -- (randomly generated if missing).
   , startupDelays :: [Int]

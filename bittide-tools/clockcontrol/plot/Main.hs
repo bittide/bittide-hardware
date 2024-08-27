@@ -6,6 +6,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PackageImports #-}
@@ -27,15 +28,12 @@ import Clash.Prelude (
   SNat (..),
   Vec (..),
   checkedTruncateB,
-  clockPeriod,
   extend,
-  natToInteger,
   natToNum,
   snatProxy,
-  snatToInteger,
  )
 
-import Clash.Signal.Internal (Femtoseconds (..), unFemtoseconds)
+import Clash.Signal.Internal (Femtoseconds (..))
 import Clash.Sized.Vector qualified as Vec
 
 import Data.Type.Equality ((:~:) (..))
@@ -121,6 +119,7 @@ import System.IO (
  )
 import "bittide-extra" Numeric.Extra (parseHex)
 
+import Bittide.Arithmetic.PartsPer (PartsPer (..), cyclesToPartsPerI, ppm)
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Github.Artifacts
@@ -144,14 +143,15 @@ instance (BitPack a) => FromField (Hex a) where
   parseField = either fail pure . parseHex . UTF8.toString
 
 {- | The captured data entries, as they are dumped by the ILA of
-'Bittide.Instances.Hitl.IlaPlot.callistoClockControlWithIla'.
+'Bittide.Instances.Hitl.IlaPlot.callistoClockControlWithIla'. Fields marked with
+an underscore are not used in the post processing.
 -}
 data Capture (nodeCount :: Nat) (compressedElasticBufferBits :: Nat) = Capture
   { sampleInBuffer :: Int
-  , sampleInWindow :: Int
-  , trigger :: Hex Bool
-  , triggerSignal :: Hex Bool
-  , capture :: Hex Bool
+  , _sampleInWindow :: Int
+  , _trigger :: Hex Bool
+  , _triggerSignal :: Hex Bool
+  , _capture :: Hex Bool
   , captureCond :: Hex CaptureCondition
   , globalTimestamp :: Hex (GlobalTimestamp Basic125)
   , localTimestamp :: Hex (DiffResult (LocalTimestamp GthTx))
@@ -191,25 +191,11 @@ data DataPoint (nodeCount :: Nat) (decompressedElasticBufferBits :: Nat) = DataP
   -- ^ the index of the corresponding sample of the dump
   , dpGlobalLast :: GlobalTimestamp Basic125
   -- ^ the global time stamp of the previous scheduled capture
-  , dpCycleDiff :: Femtoseconds
-  -- ^ the number of clock cycles since the last cheduled capture
   , dpGlobalTime :: Femtoseconds
   -- ^ the absolute number of femtoseconds since the start of the
   -- dump according to the global synchronized clock
-  , dpLastScheduledGlobalTime :: Femtoseconds
-  -- ^ the absolute number of femtoseconds since the start of the
-  -- dump according to the global synchronized clock at the time
-  -- of the last scheduled capture
-  , dpLocalTime :: Femtoseconds
-  -- ^ the absolute number of femtoseconds since the start of the
-  -- dump according to the local clock
-  , dpLastScheduledLocalTime :: Femtoseconds
-  -- ^ the absolute number of femtoseconds since the start of the
-  -- dump according to the local clock at the time
-  -- of the last scheduled capture
-  , dpDrift :: Femtoseconds
-  -- ^ the drift between the global an the local clocks in
-  -- femtoseconds per scheduled capture period
+  , dpDrift :: PartsPer
+  -- ^ clock frequency difference in 'PartsPer'
   , dpCCChanges :: Int
   -- ^ the accumulated number FINC/FDECs integrated over time
   , dpRfStage :: ReframingStage
@@ -236,8 +222,7 @@ instance
       fmap (bimap BSC.pack BSC.pack) $
         [ ("Index", show dpIndex)
         , ("Synchronized Time (fs)", show $ toInteger dpGlobalTime)
-        , ("Local Clock time (fs)", show $ toInteger dpLocalTime)
-        , ("Clock Period Drift (fs)", show $ toInteger dpDrift)
+        , ("Clock Period Drift (ppt)", case dpDrift of Ppt ppt -> show ppt)
         , ("Integrated FINC/FDECs", show dpCCChanges)
         , ("Reframing State", rf2bs dpRfStage)
         ]
@@ -333,53 +318,31 @@ postProcess t i links =
       . Vec.toList
       . Vec.zip links
 
-  process prevDP Capture{..} =
-    let PlotData{..} = fromHex plotData
-        captureType = fromHex captureCond
-
-        cycleDiff = case captureType of
-          DataChange -> dpCycleDiff prevDP
-          _ ->
-            let (toInteger -> pL, toInteger -> cL) = dpGlobalLast prevDP
-                (toInteger -> pN, toInteger -> cN) = fromHex globalTimestamp
-             in Femtoseconds $
-                  fromInteger $
-                    (pN - pL) * natToInteger @(SyncPulseCycles Basic125)
-                      + (cN - cL)
-
-        knownClockDifference =
-          Femtoseconds $
-            fromIntegral $
-              (1000 *) $
-                snatToInteger (clockPeriod @Basic125)
-                  - snatToInteger (clockPeriod @GthTx)
-
-        localStamp =
-          let ref = "[" <> show sampleInBuffer <> "]"
-           in case fromHex localTimestamp of
-                NoReference -> error $ "LT: no reference " <> ref
-                TooLarge -> error $ "LT: too large " <> ref
-                Difference x -> x + 1
-
+  process
+    prevDP
+    Capture
+      { globalTimestamp
+      , captureCond = fromHex -> captureType
+      , localTimestamp = fromHex -> localTimestamp
+      , sampleInBuffer
+      , plotData = fromHex -> PlotData{dSpeedChange, dEBData, dRfStageChange}
+      } =
+      let
         globalTime = globalTsToFs $ fromHex globalTimestamp
-        localTime = case captureType of
-          UntilTrigger -> globalTime
-          _ ->
-            dpLocalTime prevDP
-              + localStamp ~* clockPeriodFs (Proxy @GthTx)
 
-        globalTimeDelta =
-          globalTime
-            - dpLastScheduledGlobalTime prevDP
-        localTimeDelta =
-          localTime
-            - dpLastScheduledLocalTime prevDP
-
-        driftPerCycle = case captureType of
-          DataChange -> dpDrift prevDP
-          _ ->
-            (globalTimeDelta - localTimeDelta) `div` cycleDiff
-              - knownClockDifference
+        driftPartsPer :: PartsPer
+        driftPartsPer
+          | isScheduledCaptureCondition captureType =
+              cyclesToPartsPerI
+                (Proxy @GthTx)
+                (Proxy @ScheduledCapturePeriod)
+                ( case localTimestamp of
+                    NoReference -> error $ "process: NoReference:" <> show sampleInBuffer
+                    TooLarge -> error $ "process: TooLarge:" <> show sampleInBuffer
+                    Difference x -> x + 1
+                )
+          | otherwise =
+              dpDrift prevDP
 
         ccChanges =
           dpCCChanges prevDP
@@ -402,24 +365,15 @@ postProcess t i links =
           )
             <$> topologyView dEBData
             <*> dpDataCounts prevDP
-     in DataPoint
+       in
+        DataPoint
           { dpIndex = sampleInBuffer
           , dpGlobalLast =
               case captureType of
                 DataChange -> dpGlobalLast prevDP
                 _ -> fromHex globalTimestamp
-          , dpCycleDiff = cycleDiff
           , dpGlobalTime = globalTime
-          , dpLastScheduledGlobalTime =
-              case captureType of
-                DataChange -> dpLastScheduledGlobalTime prevDP
-                _ -> globalTime
-          , dpLocalTime = localTime
-          , dpLastScheduledLocalTime =
-              case captureType of
-                DataChange -> dpLastScheduledLocalTime prevDP
-                _ -> localTime
-          , dpDrift = driftPerCycle
+          , dpDrift = driftPartsPer
           , dpCCChanges = ccChanges
           , dpRfStage =
               case dRfStageChange of
@@ -446,11 +400,7 @@ postProcess t i links =
     DataPoint
       { dpIndex = -1
       , dpGlobalLast = (0, 0)
-      , dpCycleDiff = 0
       , dpGlobalTime = 0
-      , dpLastScheduledGlobalTime = 0
-      , dpLocalTime = 0
-      , dpLastScheduledLocalTime = 0
       , dpDrift = 0
       , dpCCChanges = 0
       , dpRfStage = RSDetect
@@ -549,7 +499,7 @@ to say, we consider the reference clock to be at 0 fs by definition. The offsets
 of the other clocks are then measured relative to this reference clock. We don't
 particularly care about the reference clocks in our plots however, it is much more
 useful to shift it in such a way that the other clocks start at their set offsets.
-This concept is explained visiually in: https://github.com/bittide/bittide-hardware/issues/607.
+This concept is explained visually in: https://github.com/bittide/bittide-hardware/issues/607.
 
 This function will return an error ('Left') if the clocks cannot be shifted in
 such a way that they all start at their set offsets. If this happens, something
@@ -560,18 +510,18 @@ getOffsetCorrection ::
   -- | Post processed data - one per FPGA
   --
   -- TODO: Nicer data structure
-  Vec nNodes [(a, Femtoseconds {- relative offset -}, b, c)] ->
+  Vec nNodes [(a, PartsPer {- relative offset -}, b, c)] ->
   -- | The desired offsets for the clocks
-  Vec nNodes Float ->
+  Vec nNodes PartsPer ->
   -- | Correction, if a sensible one can be found
-  IO (Either String Float)
+  IO (Either String PartsPer)
 getOffsetCorrection postProcessData desiredOffsets = do
   -- Gather first sampled offset for each node
   measuredOffsets <- forM (C.zip C.indicesI postProcessData) $
     \(nodeNo, unzip4 -> (_, offsets, _, _)) -> do
       case offsets of
         [] -> die $ "No offsets for node " <> show nodeNo
-        (offset : _) -> pure (fromInteger @Float (toInteger (unFemtoseconds offset)))
+        (offset : _) -> pure offset
 
   let zippedOffsets = C.zip measuredOffsets desiredOffsets
 
@@ -580,9 +530,7 @@ getOffsetCorrection postProcessData desiredOffsets = do
     (measuredOffset0, desiredOffset0) `Cons` _ -> pure $ do
       let correction = desiredOffset0 - measuredOffset0
       forM_ zippedOffsets $ \(measuredOffset, desiredOffset) -> do
-        -- Note that 16 ~ 2 ppm. This will get cleaned up as part of
-        -- https://github.com/bittide/bittide-hardware/issues/609.
-        when (abs (measuredOffset + correction - desiredOffset) > 16) $
+        when (abs (measuredOffset + correction - desiredOffset) >= ppm 5) $
           Left $
             unlines
               [ "Clocks did not start at their set offsets."
@@ -674,8 +622,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
                       map BSC.pack $
                         [ "Index"
                         , "Synchronized Time (fs)"
-                        , "Local Clock time (fs)"
-                        , "Clock Period Drift (fs)"
+                        , "Clock Period Drift (ppt)"
                         , "Integrated FINC/FDECs"
                         , "Reframing State"
                         ]
@@ -703,7 +650,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
                 Right correction -> pure (Nothing, Just correction)
 
         createDirectoryIfMissing True outDir
-        plot refDom maybeOffsetCorrection outDir t postProcessDataVec
+        plot maybeOffsetCorrection outDir t postProcessDataVec
 
         let
           allStable =
@@ -720,7 +667,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
           DotFile f -> readFile f >>= writeTop . Just
           tt -> froccTopologyType tt >>= either die (`saveCcConfig` cfg1)
         checkIntermediateResults outDir
-          >>= maybe (generateReport (Proxy @Basic125) "HITLT Report" outDir ids cfg1) die
+          >>= maybe (generateReport refDom "HITLT Report" outDir ids cfg1) die
 
         -- Fail if clocks did not start at their set offsets. We purposely fail
         -- after generating the report, because the report generation is very
@@ -738,6 +685,16 @@ plotTest refDom testDir cfg dir globalOutDir = do
           [] -> error $ d <> " does not contain any *.csv files. Aborting."
           _ -> ys
 
+  toPlotData ::
+    DataPoint n decompressedElasticBufferBits ->
+    ( Femtoseconds
+    , PartsPer
+    , ReframingStage
+    , [ ( RelDataCount decompressedElasticBufferBits
+        , StabilityIndication
+        )
+      ]
+    )
   toPlotData DataPoint{..} =
     ( dpGlobalTime
     , dpDrift

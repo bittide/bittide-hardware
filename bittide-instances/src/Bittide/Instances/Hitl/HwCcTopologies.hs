@@ -40,10 +40,12 @@ import Data.Bifunctor (bimap)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Proxy
 import Data.String (fromString)
+import GHC.Float.RealFracMethods (roundFloatInteger)
 import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
 import System.FilePath
 
+import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
@@ -84,6 +86,7 @@ import Protocols hiding (SimulationConfig)
 import Protocols.Wishbone
 import VexRiscv
 
+import qualified Bittide.Arithmetic.PartsPer as PartsPer
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Data.Map.Strict as Map (fromList)
@@ -93,12 +96,8 @@ type AllStablePeriod = Seconds 5
 {- | The number of FINCs (if positive) or FDECs (if negative) applied
 prior to the test start leading to some desired initial clock
 offset.
-
-Note that the value is limited to fit within 16 bits right now to
-avoid the generation of YAML files with integers that are larger
-than 63 bits.
 -}
-type InitialClockShift = Signed 32
+type FincFdecCount = Signed 32
 
 {- | The number of clock cycles to wait before starting clock control
 according to the local, but stable system clock of a node.
@@ -111,14 +110,20 @@ data StepSizeSelect
   | PPB_10
   | PPB_100
   | PPM_1
-  deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded)
+  deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded, Show)
 
 -- | Calibration stages
 data CCCalibrationStage
-  = NoCCCalibration
-  | CCCalibrate
-  | CCCalibrationValidation
-  deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded)
+  = -- | Apply previously measured clock offsets.
+    NoCCCalibration
+  | -- | Measure \"natural\" clock offsets.
+    CCCalibrate
+  | -- | Verify that the clocks still have similar \"natural\" offsets as when
+    -- they were calibrated. If this is not the case, the clock frequencies
+    -- shifted during the test, invalidating the results. Also see
+    -- 'acceptableNoiseLevel'.
+    CCCalibrationValidation
+  deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded, Show)
 
 {- | The step size, as it is used by all tests. Note that changing the
 step size for individual tests requires recalibration of the clock
@@ -127,10 +132,28 @@ offsets, which is why we fix it to a single and common value here.
 commonStepSizeSelect :: StepSizeSelect
 commonStepSizeSelect = PPB_10
 
+commonStepSizePartsPer :: PartsPer
+commonStepSizePartsPer = case commonStepSizeSelect of
+  PPB_1 -> PartsPer.ppb 1
+  PPB_10 -> PartsPer.ppb 10
+  PPB_100 -> PartsPer.ppb 100
+  PPM_1 -> PartsPer.ppm 1
+
+partsPerToSteps :: PartsPer -> FincFdecCount
+partsPerToSteps =
+  fromIntegral . roundFloatInteger . PartsPer.toSteps commonStepSizePartsPer
+
+commonSpiConfig :: TestConfig6_200_on_0a_RegisterMap
+commonSpiConfig = case commonStepSizeSelect of
+  PPB_1 -> testConfig6_200_on_0a_1ppb
+  PPB_10 -> testConfig6_200_on_0a_10ppb
+  PPB_100 -> testConfig6_200_on_0a_100ppb
+  PPM_1 -> testConfig6_200_on_0a_1ppm
+
 {- | Accepted noise between the inital clock control calibration run
 and the last calibration verifiction run.
 -}
-acceptableNoiseLevel :: InitialClockShift
+acceptableNoiseLevel :: FincFdecCount
 acceptableNoiseLevel = 6
 
 disabled :: TestConfig
@@ -138,7 +161,6 @@ disabled =
   TestConfig
     { fpgaEnabled = False
     , calibrate = NoCCCalibration
-    , stepSizeSelect = commonStepSizeSelect
     , initialClockShift = Nothing
     , startupDelay = 0
     , mask = 0
@@ -156,22 +178,16 @@ data TestConfig = TestConfig
   -- synchronization, needs to stay alive.
   , calibrate :: CCCalibrationStage
   -- ^ Indicates the selected calibration stage.
-  , stepSizeSelect :: StepSizeSelect
-  -- ^ The selected step size of the test. Note that changing the
-  -- step size between tests requires re-calibration of the device
-  -- based inital clock shift.
-  , initialClockShift :: Maybe InitialClockShift
-  -- ^ Some artificical clock shift applied prior to the test
-  -- start. The shift is given in FINCs (if positive) or FDECs (if
-  -- negative) and, thus, depdends on 'stepSizeSelect'. If 'Nothing',
-  -- no shift is applied.
+  , initialClockShift :: Maybe FincFdecCount
+  -- ^ Artificical clock shift applied prior to the test start, expressed as
+  -- number of FINCs (if positive) or FDECs (if negative).
   , startupDelay :: StartupDelay
   -- ^ Some intial startup delay given in the number of clock
   -- cycles of the stable clock.
   , mask :: BitVector LinkCount
   -- ^ The link mask depending on the selected topology.
   }
-  deriving (Generic, NFDataX, BitPack)
+  deriving (Generic, NFDataX, BitPack, Show)
 
 clockControlConfig ::
   $(case (instancesClockConfig (Proxy @Basic125)) of (_ :: t) -> liftTypeQ @t)
@@ -295,8 +311,8 @@ topologyTest ::
   , "transceiversFailedAfterUp" ::: Signal Basic125 Bool
   , "ALL_READY" ::: Signal Basic125 Bool
   , "ALL_STABLE" ::: Signal Basic125 Bool
-  , "CALIB_I" ::: Signal Basic125 InitialClockShift
-  , "CALIB_E" ::: Signal Basic125 InitialClockShift
+  , "CALIB_I" ::: Signal Basic125 FincFdecCount
+  , "CALIB_E" ::: Signal Basic125 FincFdecCount
   )
 topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg =
   fincFdecIla
@@ -319,7 +335,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   syncRst = rst `orReset` unsafeFromActiveHigh spiErr
 
   -- Clock board programming
-
   spiDone = E.dflipflop sysClk $ (== Finished) <$> spiState
   spiErr = E.dflipflop sysClk $ isErr <$> spiState
 
@@ -327,38 +342,10 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   isErr _ = False
 
   (_, _, spiState, spiOut) =
-    let
-      selectConfig = \case
-        PPB_1 -> testConfig6_200_on_0a_1ppb
-        PPB_10 -> testConfig6_200_on_0a_10ppb
-        PPB_100 -> testConfig6_200_on_0a_100ppb
-        PPM_1 -> testConfig6_200_on_0a_1ppm
-
-      -- TODO: create some generic method for generating this, which
-      -- does not rely on template haskell
-      cfgOptions = PPB_1 :> PPB_10 :> PPB_100 :> PPM_1 :> Nil
-
-      -- turn the selected configuration into an vector mask
-      optionMask = fmap . (==) <$> cfgOptions <*> repeat (stepSizeSelect <$> cfg)
-      -- retrieve the corresponding resets from the mask
-      rsts = orReset syncRst . unsafeFromActiveLow <$> optionMask
-      -- only the reset and the selected configuration differ according to
-      -- 'stepSizeSelect'
-      si539xSpi# r c =
-        withClockResetEnable sysClk r enableGen
-          $ si539xSpi c (SNat @(Microseconds 10)) (pure Nothing) miso
-      -- create an SPI interface for each of the supported configurations
-      spis = si539xSpi# <$> rsts <*> (selectConfig <$> cfgOptions)
-     in
-      (\(a, b, c, d) -> (a, b, c, unbundle d))
-        . unbundle
-        $ (!!)
-        <$> bundle ((\(a, b, c, d) -> bundle (a, b, c, bundle d)) <$> spis)
-        -- mux the selected interface according to 'stepSizeSelect'
-        <*> (stepSizeSelect <$> cfg)
+    withClockResetEnable sysClk syncRst enableGen
+      $ si539xSpi commonSpiConfig (SNat @(Microseconds 10)) (pure Nothing) miso
 
   -- Transceiver setup
-
   gthAllReset = unsafeFromActiveLow clocksAdjusted
 
   transceivers =
@@ -393,7 +380,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   milliseconds1 = fst <$> timer
 
   -- Startup delay
-
   startupDelayRst =
     orReset (unsafeFromActiveLow clocksAdjusted)
       $ orReset (unsafeFromActiveLow allReady)
@@ -408,7 +394,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       <*> (startupDelay <$> cfg)
 
   -- Clock control
-
   clockControlReset =
     startupDelayRst
       `orReset` unsafeFromActiveLow ((==) <$> delayCount <*> (startupDelay <$> cfg))
@@ -502,7 +487,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       sysClk
       sysRst
       enableGen
-      (0 :: InitialClockShift)
+      (0 :: FincFdecCount)
       (notInCCReset .&&. (== CCCalibrate) . calibrate <$> cfg)
       (clockShiftUpd <$> clockMod <*> clockShift)
 
@@ -522,7 +507,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       sysClk
       sysRst
       enableGen
-      (0 :: InitialClockShift)
+      (0 :: FincFdecCount)
       (notInCCReset .&&. (== CCCalibrationValidation) . calibrate <$> cfg)
       (clockShiftUpd <$> clockMod <*> validationClockShift)
 
@@ -550,7 +535,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       sysClk
       adjustRst
       enableGen
-      (0 :: InitialClockShift)
+      (0 :: FincFdecCount)
       adjusting
       $ flip upd
       <$> adjustCount
@@ -808,25 +793,25 @@ tests =
  where
   m = 1_000_000
 
-  icsDiamond = -1000 :> -500 :> 2000 :> 3000 :> Nil
+  icsDiamond = map ppm $ -10 :> -5 :> 20 :> 30 :> Nil
   sdDiamond = 0 :> 10 :> 200 :> 3 :> Nil
 
-  icsComplete = -10000 :> 0 :> 10000 :> Nil
+  icsComplete = map ppm $ -100 :> 0 :> 100 :> Nil
   sdComplete = 200 :> 0 :> 200 :> Nil
 
-  icsCyclic = 0 :> 500 :> 1000 :> 1500 :> 2000 :> Nil
+  icsCyclic = map ppm $ 0 :> 5 :> 10 :> 15 :> 20 :> Nil
   sdCyclic = 0 :> 10 :> 0 :> 100 :> 0 :> Nil
 
-  icsTorus = -3000 :> -3500 :> -4000 :> 4000 :> 3500 :> 3000 :> Nil
+  icsTorus = map ppm $ -30 :> -35 :> -40 :> 40 :> 35 :> 30 :> Nil
   sdTorus = 0 :> 0 :> 0 :> 100 :> 100 :> 100 :> Nil
 
-  icsStar = 0 :> 1000 :> -1000 :> 2000 :> -2000 :> 3000 :> -3000 :> 4000 :> Nil
+  icsStar = map ppm $ 0 :> 10 :> -10 :> 20 :> -20 :> 30 :> -30 :> 40 :> Nil
   sdStar = 0 :> 40 :> 80 :> 120 :> 160 :> 200 :> 240 :> 280 :> Nil
 
-  icsLine = 10000 :> 0 :> 0 :> -10000 :> Nil
+  icsLine = map ppm $ 100 :> 0 :> 0 :> -100 :> Nil
   sdLine = 200 :> 0 :> 0 :> 200 :> Nil
 
-  icsHourglass = -10000 :> 10000 :> -10000 :> 10000 :> -10000 :> 10000 :> Nil
+  icsHourglass = map ppm $ -100 :> 100 :> -100 :> 100 :> -100 :> 100 :> Nil
   sdHourglass = 0 :> 200 :> 0 :> 200 :> 0 :> 200 :> Nil
 
   ClockControlConfig{..} = clockControlConfig
@@ -859,7 +844,6 @@ tests =
                   if validate
                     then CCCalibrationValidation
                     else CCCalibrate
-              , stepSizeSelect = commonStepSizeSelect
               , initialClockShift = Nothing
               , startupDelay = 0
               , mask = maxBound
@@ -876,7 +860,7 @@ tests =
   tt ::
     forall n.
     (KnownNat n, n <= FpgaCount) =>
-    Maybe (Vec n InitialClockShift) ->
+    Maybe (Vec n PartsPer) ->
     Vec n StartupDelay ->
     Topology n ->
     (TestName, (Probes TestConfig, CcConf))
@@ -887,7 +871,7 @@ tests =
           ( zipWith4
               testData
               indicesI
-              (maybeVecToVecMaybe clockShifts)
+              (maybeVecToVecMaybe (map partsPerToSteps <$> clockShifts))
               startDelays
               (linkMasks @n t)
           )
@@ -895,30 +879,11 @@ tests =
              | let n = natToNum @n
              , i <- [n, n + 1 .. natToNum @LinkCount]
              ]
-      , let
-          -- clock period in picoseconds
-          clkPeriodPs :: (Num a) => a
-          clkPeriodPs = case clockControlConfig of
-            (_ :: ClockControlConfig dom a b c) ->
-              snatToNum (clockPeriod @dom)
-          -- a 1000 times the factor of the selected parts-per-x scale
-          -- ratio, where the reduction by a factor of 1000 accounts
-          -- to the required conversion of from Picoseconds to
-          -- Femtoseconds for 'clkPeriodPs' already applied at this
-          -- point to reduce the loss-op-presion introduced otherwise.
-          stepSizeDiv = case commonStepSizeSelect of
-            PPB_1 -> 1_000_000
-            PPB_10 -> 100_000
-            PPB_100 -> 10_000
-            PPM_1 -> 1_000
-
-          fincFdecToFs = ((-1) *) . (/ stepSizeDiv) . (* clkPeriodPs) . fromIntegral
-         in
-          defSimCfg
-            { ccTopologyType = topologyType t
-            , clockOffsets = fmap fincFdecToFs . toList <$> clockShifts
-            , startupDelays = fromIntegral <$> toList startDelays
-            }
+      , defSimCfg
+          { ccTopologyType = topologyType t
+          , clockOffsets = toList <$> clockShifts
+          , startupDelays = fromIntegral <$> toList startDelays
+          }
       )
     )
 
@@ -931,7 +896,7 @@ tests =
     forall n.
     (KnownNat n, n <= FpgaCount) =>
     Index n ->
-    Maybe InitialClockShift ->
+    Maybe FincFdecCount ->
     StartupDelay ->
     BitVector LinkCount ->
     (Index FpgaCount, TestConfig)
@@ -940,7 +905,6 @@ tests =
     , TestConfig
         { fpgaEnabled = True
         , calibrate = NoCCCalibration
-        , stepSizeSelect = commonStepSizeSelect
         , ..
         }
     )
