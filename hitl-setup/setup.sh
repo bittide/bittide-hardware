@@ -12,8 +12,8 @@ BRIDGE_NAME="eth-fpga"
 # File containing the list of network interfaces
 INTERFACES_FILE="interfaces"
 
-INTERFACE_IP="100.100.100.1/24"
-DHCP_IP="100.100.100.0"
+INTERFACE_IP="10.0.0.1/24"
+DHCP_IP="10.0.0.0"
 
 # Function to read interfaces from the file
 read_interfaces() {
@@ -37,6 +37,7 @@ create_bridge() {
     fi
 }
 
+# Function to remove the bridge
 remove_bridge() {
     echo "Deleting bridge $BRIDGE_NAME..."
     if ip link show $BRIDGE_NAME &> /dev/null; then
@@ -47,6 +48,8 @@ remove_bridge() {
     fi
 }
 
+
+# Add all ethernet inferfaces specified in $INTERFACES_FILE to the bridge
 add_interfaces() {
     for iface in "${INTERFACES[@]}"; do
         echo "Adding interface $iface to bridge $BRIDGE_NAME and setting it up."
@@ -55,6 +58,7 @@ add_interfaces() {
     done
 }
 
+# Remove all ethernet inferfaces specified in $INTERFACES_FILE from the bridge
 remove_interfaces() {
     for iface in "${INTERFACES[@]}"; do
         echo "Removing interface $iface from bridge $BRIDGE_NAME."
@@ -62,6 +66,9 @@ remove_interfaces() {
     done
 }
 
+# Check if the bridge and interfaces are set up correctly
+# The bridge should exist, be up and have the correct IP address
+# All interfaces should exist, be up and have the bridge as master
 check_eth() {
     # Check if the bridge exists
     if ! ip link show $BRIDGE_NAME &> /dev/null; then
@@ -101,7 +108,10 @@ check_eth() {
     done
 }
 
-#For dhcp we use `isc-dhcp-server` package
+# For dhcp we use `isc-dhcp-server` package
+# We need to make sure that the package is installed
+# We need to make sure that /etc/default/isc-dhcp-server mentions the bridge as an interface
+# We then restart the service and check if it's listening on the correct interface
 setup_dhcp() {
     # Make sure the package is installed
     apt-get install isc-dhcp-server
@@ -124,7 +134,7 @@ setup_dhcp() {
     fi
 
     # When we start the service we should be able to see:
-    # Listening on LPF/$BRIDGE_NAME/<MAC ADDRESS>/$INTERFACE_IP
+    # Listening on LPF/$BRIDGE_NAME/<MAC ADDRESS>/$DHCP_IP
     systemctl restart isc-dhcp-server
 
     # Wait for the service to be started
@@ -136,6 +146,7 @@ setup_dhcp() {
     fi
 }
 
+# Check if the DHCP server is installed and running
 check_dhcp() {
     # Check if the service is installed
     if ! dpkg -l | grep -q "isc-dhcp-server"; then
@@ -152,8 +163,9 @@ check_dhcp() {
     echo "isc-dhcp-server is running."
 
     #Ideally I'd verify if it's listening on the correct interface
-    #But I'm not sure how to do that
+    #But I'm not sure how to do that without restarting the service
 }
+
 # Main script logic
 case "$1" in
     check)
@@ -181,9 +193,12 @@ case "$1" in
         setup_dhcp
         ;;
     *)
-        echo "Usage: $0 {create|add|show|remove|delete}"
+        echo "Usage: $0 {check|dhcp|eth|rm-eth|setup}"
+        echo "  check  - Check if the ethernet bridge $BRIDGE_NAME and DHCP are set up correctly"
+        echo "  dhcp   - Install and set up DHCP on the bridge $BRIDGE_NAME, please manually configure /etc/dhcp/dhcpd.conf"
         echo "  eth    - Create an ethernet bridge $BRIDGE_NAME with all interfaces"
         echo "  rm-eth - Delete the ethernet bridge $BRIDGE_NAME"
+        echo "  setup  - Perform both eth and dhcp setup"
         exit 1
         ;;
 esac
