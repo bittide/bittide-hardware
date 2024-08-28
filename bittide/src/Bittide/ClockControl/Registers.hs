@@ -12,12 +12,12 @@ import Protocols
 import Protocols.Wishbone
 
 import Bittide.ClockControl
-import Bittide.ClockControl.Callisto.Util (speedChangeToPins, stickyBits)
+import Bittide.ClockControl.Callisto.Util (speedChangeToPins, stickyBits, FINC, FDEC)
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Wishbone
 import Clash.Functor.Extra
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 
 type StableBool = Bool
 type SettledBool = Bool
@@ -60,10 +60,10 @@ clockControlWb ::
   -- | Wishbone accessible clock control circuitry
   Circuit
     (Wishbone dom 'Standard addrW (BitVector 32))
-    (CSignal dom ("FINC" ::: Bool, "FDEC" ::: Bool), CSignal dom ("ALL_STABLE" ::: Bool))
+    (CSignal dom (FINC, FDEC), CSignal dom ("ALL_STABLE" ::: Bool), "updatePeriod" ::: CSignal dom Int)
 clockControlWb margin framesize linkMask counters = Circuit go
  where
-  go (wbM2S, _) = (wbS2M, (fIncDec3, all (== True) <$> (fmap stable <$> stabilityIndications)))
+  go (wbM2S, _) = (wbS2M, (fIncDec3, all (== True) <$> (fmap stable <$> stabilityIndications), updatePeriod ))
    where
     stabilityIndications = bundle $ stabilityChecker margin framesize <$> counters
     readVec =
@@ -75,10 +75,23 @@ clockControlWb margin framesize linkMask counters = Circuit go
                 :> (resize . pack . fmap settled <$> stabilityIndications)
                 :> (pack . (extend @_ @_ @(32 - m)) <<$>> counters)
             )
+    fIncDec0 :: Signal dom (Maybe SpeedChange)
     fIncDec0 = (\v -> unpack . resize <$> v !! (2 :: Unsigned 2)) <$> writeVec
+    fIncDec1 :: Signal dom (Maybe SpeedChange)
     fIncDec1 = register Nothing fIncDec0
+
+    fIncDec2 :: Signal dom SpeedChange
     fIncDec2 = fromMaybe NoChange <$> fIncDec1
+    fIncDec3 :: Signal dom (FINC,FDEC)
     fIncDec3 =
       delay minBound {- glitch filter -}
         $ stickyBits d20 (speedChangeToPins <$> fIncDec2)
     (writeVec, wbS2M) = unbundle $ wbToVec <$> bundle readVec <*> wbM2S
+    updated :: Signal dom Bool
+    updated = fmap isJust fIncDec0
+    updatePeriod :: Signal dom Int
+    updatePeriod = moore go2 snd (0,0) updated
+     where
+      go2 (cntr,cntrPrev) update = case update of
+        False -> (cntr+1, cntrPrev)
+        True  -> (0, cntr)

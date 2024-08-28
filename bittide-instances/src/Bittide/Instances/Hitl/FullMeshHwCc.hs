@@ -112,7 +112,7 @@ fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
           [wbA, wbB] <-
             withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
           fIncDecCallisto -< wbA
-          (fIncDec, _allStable) <-
+          (fIncDec, _allStable, _updatePeriod) <-
             withClockResetEnable clk rst enableGen
               $ clockControlWb margin framesize (pure $ complement 0) dataCounts
               -< wbB
