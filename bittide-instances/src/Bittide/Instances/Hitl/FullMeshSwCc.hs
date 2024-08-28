@@ -99,22 +99,24 @@ fullMeshRiscvTest ::
   Reset dom ->
   Vec LinkCount (Signal dom (RelDataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
-  ( "FINC" ::: Signal dom Bool
-  , "FDEC" ::: Signal dom Bool
+  ( ( "FINC" ::: Signal dom Bool
+    , "FDEC" ::: Signal dom Bool
+    )
+  , Signal dom Int
   )
-fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
+fullMeshRiscvTest clk rst dataCounts = (unbundle fIncDec, updatePeriod)
  where
-  (_, fIncDec) =
+  (_, (fIncDec, updatePeriod)) =
     toSignals
       ( circuit $ \jtag -> do
           [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
-          (fIncDec, _allStable) <-
+          (fIncDec, _allStable, updatePeriod) <-
             withClockResetEnable clk rst enableGen
               $ clockControlWb margin framesize (pure $ complement 0) dataCounts
               -< wbB
-          idC -< fIncDec
+          idC -< (fIncDec, updatePeriod)
       )
-      (pure $ JtagIn low low low, pure ())
+      (pure $ JtagIn low low low, (pure (), pure ()))
 
   margin = d2
 
@@ -152,6 +154,7 @@ fullMeshHwTest ::
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
   "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
+  "updatePeriod" ::: Signal Basic125 Int ->
   ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
   , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
@@ -170,7 +173,7 @@ fullMeshHwTest ::
   , "ALL_STABLE" ::: Signal Basic125 Bool
   , "ugnsStable" ::: Vec LinkCount (Signal Basic125 Bool)
   )
-fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
+fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso updatePeriod =
   fincFdecIla
     `hwSeqX` ( transceivers.txNs
              , transceivers.txPs
@@ -202,6 +205,8 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
 
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
+
+  FillStats updatePeriodMin updatePeriodMax = unbundle $ fillStats sysClk syncRst updatePeriod
 
   transceivers =
     transceiverPrbsN
@@ -420,6 +425,9 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
             :> "probe_linkUps"
             :> "fifoUnderflows"
             :> "fifoOverflows"
+            :> "updatePeriod"
+            :> "updatePeriodMin"
+            :> "updatePeriodMax"
             :> Nil
         )
           { depth = D16384
@@ -482,6 +490,9 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
         (bundle transceivers.linkUps)
         ((pack . reverse) <$> bundle fifoUnderflowsFree)
         ((pack . reverse) <$> bundle fifoOverflowsFree)
+        updatePeriod
+        updatePeriodMin
+        updatePeriodMax
 
   captureFlag =
     riseEvery
@@ -636,9 +647,9 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     , allReady
     , allStable
     , ugnsStable
-    ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso
+    ) = fullMeshHwTest refClk sysClk ilaControl rxns rxps miso updatePeriod
 
-  (riscvFinc, riscvFdec) =
+  ((riscvFinc, riscvFdec), updatePeriod) =
     fullMeshRiscvTest sysClk callistoReset dataCounts
 
   allUgnsStable = fmap and $ bundle ugnsStable
