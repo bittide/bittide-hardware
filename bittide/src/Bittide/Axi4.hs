@@ -198,7 +198,6 @@ wbAxisRxBufferCircuit ::
   forall dom wbAddrW wbBytes bufferBytes.
   ( HiddenClockResetEnable dom
   , KnownNat wbAddrW
-  , 2 <= wbAddrW
   , KnownNat wbBytes
   , 1 <= wbBytes
   , 1 <= bufferBytes
@@ -225,7 +224,6 @@ wbAxisRxBuffer ::
   forall dom wbAddrW wbBytes bufferBytes.
   ( HiddenClockResetEnable dom
   , KnownNat wbAddrW
-  , 2 <= wbAddrW
   , KnownNat wbBytes
   , 1 <= wbBytes
   , 1 <= bufferBytes
@@ -271,7 +269,6 @@ wbAxisRxBuffer# ::
   forall dom wbAddrW wbBytes fifoDepth.
   ( HiddenClockResetEnable dom
   , KnownNat wbAddrW
-  , 2 <= wbAddrW
   , KnownNat wbBytes
   , 1 <= wbBytes
   , 1 <= fifoDepth
@@ -332,12 +329,10 @@ wbAxisRxBuffer# fifoDepth@SNat wbM2S axisM2S = (wbS2M, axisS2M, statusReg)
       (newState, output)
      where
       masterActive = busCycle && strobe
-      (alignedAddress, alignment) = split @_ @(wbAddrW - 2) @2 addr
-
       packetLengthAddress = maxBound - 1
       statusAddress = maxBound
-      internalAddress = (bitCoerce $ resize alignedAddress) :: Index (fifoDepth + 2)
-      err = masterActive && (alignment /= 0 || alignedAddress > resize (pack statusAddress))
+      internalAddress = (unpack $ resize addr) :: Index (fifoDepth + 2)
+      err = masterActive && (addr > resize (pack statusAddress))
 
       statusBV = pack (packetComplete, bufferFull)
       wbHandshake = masterActive && not err
@@ -502,11 +497,11 @@ rxReadMaster# SNat = mealyB go (AwaitingData @fifoDepth @wbBytes, Idle)
      where
       -- Driving wishbone signals
       (writeEnable, addr) = case readState of
-        Idle -> (False, natToNum @(4 * (1 + fifoDepth)))
-        ClearingStatus -> (True, natToNum @(4 * (1 + fifoDepth)))
-        ReadingPacketSize -> (False, natToNum @(4 * fifoDepth))
-        ClearingPacketLength -> (True, natToNum @(4 * fifoDepth))
-        ReadingPacket i -> (False, 4 * checkedResize (pack i))
+        Idle -> (False, natToNum @(1 + fifoDepth))
+        ClearingStatus -> (True, natToNum @(1 + fifoDepth))
+        ReadingPacketSize -> (False, natToNum @fifoDepth)
+        ClearingPacketLength -> (True, natToNum @fifoDepth)
+        ReadingPacket i -> (False, checkedResize (pack i))
 
       wbM2S = WishboneM2S{..}
       busCycle = True
@@ -586,10 +581,7 @@ is created that contains no data, but has the _tlast bit set.
 -}
 wbToAxiTx ::
   forall dom addrW nBytes.
-  ( KnownNat addrW
-  , 2 <= addrW
-  , KnownNat nBytes
-  ) =>
+  (KnownNat addrW, KnownNat nBytes) =>
   Circuit
     (Wishbone dom 'Standard addrW (Bytes nBytes))
     (Axi4Stream dom (AxiStreamBytesOnly nBytes) ())
@@ -599,16 +591,15 @@ wbToAxiTx = case cancelMulDiv @nBytes @8 of
     go (WishboneM2S{..}, Axi4StreamS2M{..}) =
       (WishboneS2M{readData, err, acknowledge, retry, stall}, axiM2S)
      where
-      (internalAddress, alignment) = split @_ @(addrW - 2) @2 addr
       masterActive = busCycle && strobe
-      addrValid = shiftR internalAddress 1 == 0 && alignment == 0
+      addrValid = addr <= 1
       err = masterActive && not (addrValid && writeEnable)
       acknowledge = masterActive && not err && _tready
       readData = 0
       retry = False
       stall = False
       (_tkeep, _tlast)
-        | lsb internalAddress == 0 = (reverse $ unpack busSelect, False)
+        | lsb addr == 0 = (reverse $ unpack busSelect, False)
         | otherwise = (repeat False, True)
 
       _tstrb = repeat False

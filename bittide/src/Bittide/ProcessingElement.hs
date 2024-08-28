@@ -32,6 +32,9 @@ data PeConfig nBusses where
     , 1 <= depthI
     , KnownNat depthD
     , 1 <= depthD
+    , KnownNat nBusses
+    , 2 <= nBusses
+    , CLog 2 nBusses <= 30
     ) =>
     -- | The 'MemoryMap' for the contained 'singleMasterInterconnect'.
     MemoryMap nBusses ->
@@ -46,15 +49,11 @@ data PeConfig nBusses where
 -}
 processingElement ::
   forall dom nBusses.
-  ( HiddenClockResetEnable dom
-  , KnownNat nBusses
-  , 2 <= nBusses
-  , CLog 2 nBusses <= 30
-  ) =>
+  (HiddenClockResetEnable dom) =>
   PeConfig nBusses ->
   Circuit
     (Jtag dom)
-    (Vec (nBusses - 2) (Wishbone dom 'Standard (MappedBusAddrWidth 32 nBusses) (Bytes 4)))
+    (Vec (nBusses - 2) (Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4)))
 processingElement (PeConfig memMapConfig initI initD) = circuit $ \jtagIn -> do
   (iBus0, dBus0) <- rvCircuit (pure low) (pure low) (pure low) -< jtagIn
   iBus1 <- ilaWb (SSymbol @"instructionBus") 2 D4096 -< iBus0
@@ -94,24 +93,17 @@ rvCircuit ::
   Signal dom Bit ->
   Circuit
     (Jtag dom)
-    ( Wishbone dom 'Standard 32 (Bytes 4)
-    , Wishbone dom 'Standard 32 (Bytes 4)
+    ( Wishbone dom 'Standard 30 (Bytes 4)
+    , Wishbone dom 'Standard 30 (Bytes 4)
     )
 rvCircuit tInterrupt sInterrupt eInterrupt = Circuit go
  where
-  go (jtagIn, (iBusIn, dBusIn)) = (jtagOut, (iBusOut, dBusOut))
+  go (jtagIn, (iBusIn, dBusIn)) = (jtagOut, (iBusWbM2S <$> cpuOut, dBusWbM2S <$> cpuOut))
    where
     tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) = CpuIn{..}
     rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
     (cpuOut, jtagOut) = vexRiscv hasClock (hasReset `unsafeOrReset` jtagReset) rvIn jtagIn
     jtagReset = unsafeFromActiveHigh (delay False (bitToBool . debugReset <$> jtagOut))
-
-    -- The VexRiscv instruction- and data-busses assume a conceptual [Bytes 4] memory
-    -- while our storages work like [Bytes 1]. This is also why the address width of
-    -- the VexRiscv busses are 30 bit and still cover the whole address space.
-    -- These shifts bring the addresses "back into the byte domain" so to speak.
-    iBusOut = mapAddr ((`shiftL` 2) . extend @_ @_ @2) . iBusWbM2S <$> cpuOut
-    dBusOut = mapAddr ((`shiftL` 2) . extend) . dBusWbM2S <$> cpuOut
 
 -- | Map a function over the address field of 'WishboneM2S'
 mapAddr ::

@@ -484,7 +484,7 @@ registerWbWbToSig = property $ do
         someReg prio wbIn =
           fst
             $ withClockResetEnable clockGen resetGen enableGen
-            $ registerWbSpecVal @System @_ @4 @32 prio initVal wbIn (pure Nothing)
+            $ registerWbSpecVal @System @_ @4 @30 prio initVal wbIn (pure Nothing)
         topEntity wbIn = bundle (someReg CircuitPriority wbIn, someReg WishbonePriority wbIn)
         topEntityInput = L.concatMap wbWrite writes <> L.repeat emptyWishboneM2S
         simOut = simulateN simLength topEntity topEntityInput
@@ -569,7 +569,7 @@ registerWbSigToWb = property $ do
     wbDecoding [] = []
     wbRead i =
       (emptyWishboneM2S @32)
-        { addr = resize (pack i) ++# (0b00 :: BitVector 2)
+        { addr = resize (pack i)
         , busCycle = True
         , busSelect = maxBound
         , strobe = True
@@ -606,7 +606,7 @@ registerWbWriteCollisions = property $ do
         someReg prio sigIn wbIn =
           fst
             $ withClockResetEnable clockGen resetGen enableGen
-            $ registerWbSpecVal @System @_ @4 @32 prio initVal wbIn sigIn
+            $ registerWbSpecVal @System @_ @4 @30 prio initVal wbIn sigIn
         topEntity (unbundle -> (sigIn, wbIn)) =
           bundle
             (someReg CircuitPriority sigIn wbIn, someReg WishbonePriority sigIn wbIn)
@@ -634,10 +634,10 @@ bv2WbWrite ::
   (BitPack a, Enum a) =>
   a ->
   ("DAT_MOSI" ::: BitVector 32) ->
-  WishboneM2S 32 4 (BitVector 32)
+  WishboneM2S 30 4 (BitVector 32)
 bv2WbWrite i v =
-  (emptyWishboneM2S @32 @(BitVector 32))
-    { addr = resize (pack i) ++# (0b00 :: BitVector 2)
+  (emptyWishboneM2S @30 @(BitVector 32))
+    { addr = resize (pack i)
     , writeData = v
     , writeEnable = True
     , busCycle = True
@@ -753,7 +753,6 @@ registerWbSpecVal ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , 2 <= addrW
   , BitPack a
   , ShowX a
   ) =>
@@ -829,8 +828,8 @@ wbStorageSpecCompliance = property $ do
     Gen (WishboneMasterRequest addressWidth a)
   genWishboneTransfer size genA =
     let
-      validAddr = (4 *) . fromIntegral <$> Gen.enum 0 (size - 1)
-      invalidAddr = fromIntegral <$> Gen.enum (size * 4) (size * 8)
+      validAddr = fromIntegral <$> Gen.enum 0 (size - 1)
+      invalidAddr = fromIntegral <$> Gen.enum size (size * 2)
      in
       Gen.choice
         [ Read <$> validAddr <*> pure (succ 0)
@@ -858,7 +857,7 @@ wbStorageBehavior = property $ do
       forAll
         $ Gen.list
           (Range.linear 0 32)
-          (genWishboneTransfer @32 (natToNum @words) (genDefinedBitVector @32))
+          (genWishboneTransfer @30 (natToNum @words) (genDefinedBitVector @32))
 
     let
       master = driveStandard defExpectOptions $ fmap snd wbRequests
@@ -880,12 +879,8 @@ wbStorageBehavior = property $ do
       Gen (Bool, (WishboneMasterRequest addressWidth a, Int))
     genWishboneTransfer size genA =
       let
-        validAddr = (4 *) . fromIntegral <$> Gen.enum 0 (size - 1)
-        invalidAddr =
-          Gen.choice
-            [ fromIntegral <$> Gen.enum (size * 4) (size * 8)
-            , (+) <$> validAddr <*> (Gen.enum 1 3)
-            ]
+        validAddr = fromIntegral <$> Gen.enum 0 (size - 1)
+        invalidAddr = fromIntegral <$> Gen.enum size (size * 2)
         -- Make wbOps that won't be repeated
         mkRead address bs = (Read address bs, 0)
         mkWrite address bs a = (Write address bs a, 0)
@@ -914,7 +909,7 @@ wbStorageBehaviorModel initList initWbOps = case (cancelMulDiv @bytes @8) of
     -- Successful Read
     f storedList (True, op@(Read i _)) = (storedList, ReadSuccess wbM2S wbS2M)
      where
-      dat = storedList L.!! ((fromIntegral i) `div` 4)
+      dat = storedList L.!! (fromIntegral i)
       wbM2S = wbMasterRequestToM2S op
       wbS2M = (emptyWishboneS2M @(Bytes bytes)){acknowledge = True, readData = dat}
 
@@ -923,7 +918,7 @@ wbStorageBehaviorModel initList initWbOps = case (cancelMulDiv @bytes @8) of
      where
       wbM2S = wbMasterRequestToM2S op
       wbS2M = emptyWishboneS2M{acknowledge = True}
-      (preEntry, postEntry) = L.splitAt (fromIntegral (i `div` 4)) storedList
+      (preEntry, postEntry) = L.splitAt (fromIntegral i) storedList
       oldEntry = L.head postEntry
       newList = preEntry <> (pack newEntry : L.tail postEntry)
 
@@ -950,7 +945,7 @@ wbStorageRangeErrors = property $ do
         model
         (wbStorage (Reloadable $ Vec content))
         (genRequests (snatToNum (SNat @v)))
-        (snatToInteger (SNat @v) * 4)
+        (snatToInteger (SNat @v))
 
   genRequests size =
     Gen.list
@@ -965,8 +960,8 @@ wbStorageRangeErrors = property $ do
     Gen (WishboneMasterRequest addressWidth a)
   genWishboneTransfer size genA =
     let
-      validAddr = (4 *) . fromIntegral <$> Gen.enum 0 (size - 1)
-      invalidAddr = fromIntegral <$> Gen.enum (size * 4) (size * 8)
+      validAddr = fromIntegral <$> Gen.enum 0 (size - 1)
+      invalidAddr = fromIntegral <$> Gen.enum size (size * 2)
      in
       Gen.choice
         [ Read <$> validAddr <*> pure maxBound
@@ -1044,7 +1039,7 @@ wbStorageProtocolsModel = property $ do
     Gen (WishboneMasterRequest addressWidth a)
   genWishboneTransfer size genA =
     let
-      validAddr = (4 *) . fromIntegral <$> Gen.enum 0 (size - 1)
+      validAddr = fromIntegral <$> Gen.enum 0 (size - 1)
      in
       -- only generating _valid_ requests here
       Gen.choice
@@ -1073,7 +1068,7 @@ wbStorageProtocolsModel = property $ do
                   <> ", Circuit: "
                   <> showHex readData ""
    where
-    modelAddr = fromIntegral $ addr `div` 4
+    modelAddr = fromIntegral addr
   model (Write addr _ wr) s2m@WishboneS2M{..} st0
     | err || retry =
         Left
@@ -1087,4 +1082,4 @@ wbStorageProtocolsModel = property $ do
     | otherwise =
         Right $ I.insert modelAddr wr st0
    where
-    modelAddr = fromIntegral $ addr `div` 4
+    modelAddr = fromIntegral addr

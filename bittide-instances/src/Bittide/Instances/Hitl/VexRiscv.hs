@@ -68,7 +68,7 @@ vexRiscvInner jtagIn0 uartRx =
     testResult <- statusRegister -< statusRegisterBus
     idC -< (testResult, uartTx)
 
-  statusRegister :: Circuit (Wishbone dom 'Standard 29 (Bytes 4)) (CSignal dom TestStatus)
+  statusRegister :: Circuit (Wishbone dom 'Standard 27 (Bytes 4)) (CSignal dom TestStatus)
   statusRegister = Circuit $ \(fwd, _) ->
     let (unbundle -> (m2s, st)) = mealy go Running fwd
      in (m2s, st)

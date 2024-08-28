@@ -39,7 +39,7 @@ tests =
 
 data SwitchTestConfig nBytes addrW where
   SwitchTestConfig ::
-    (KnownNat links, 1 <= nBytes, 2 <= addrW) =>
+    (KnownNat links, 1 <= nBytes) =>
     CalendarConfig nBytes addrW (CalendarEntry links) ->
     SwitchTestConfig nBytes addrW
 
@@ -58,7 +58,7 @@ calendar depth of the switch.
 -}
 genSwitchCalendar ::
   forall nBytes addrW.
-  (KnownNat nBytes, 1 <= nBytes, KnownNat addrW, 2 <= addrW) =>
+  (KnownNat nBytes, 1 <= nBytes, KnownNat addrW) =>
   Natural ->
   Natural ->
   Gen (SwitchTestConfig nBytes addrW)

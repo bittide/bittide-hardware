@@ -39,7 +39,6 @@ clockControlWb ::
   forall dom addrW nLinks m margin framesize.
   ( HiddenClockResetEnable dom
   , KnownNat addrW
-  , 2 <= addrW
   , 1 <= framesize
   , 1 <= nLinks
   , KnownNat nLinks

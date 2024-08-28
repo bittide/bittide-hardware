@@ -81,13 +81,13 @@ uartMachine = Circuit (second unbundle . mealyB go ReadStatus . second bundle)
       (True, False, (False, _)) -> ReadByte
       (True, False, (True, False)) -> WriteByte
       _ -> ReadStatus
-    wbOut = (emptyWishboneM2S @32){addr = 4, busCycle = True, strobe = True}
+    wbOut = (emptyWishboneM2S @30){addr = 1, busCycle = True, strobe = True}
   go ReadByte (_, ~(WishboneS2M{..}, _)) = (nextState, (Ack False, (wbOut, NoData)))
    where
     nextState = case (acknowledge, err) of
       (True, False) -> OutputByte (resize readData)
       _ -> ReadByte
-    wbOut = (emptyWishboneM2S @32){addr = 0, busCycle = True, strobe = True}
+    wbOut = (emptyWishboneM2S @30){addr = 0, busCycle = True, strobe = True}
   go (OutputByte byte) (_, ~(_, Ack dfAck)) =
     (nextState, (Ack False, (emptyWishboneM2S, Data byte)))
    where
@@ -96,7 +96,7 @@ uartMachine = Circuit (second unbundle . mealyB go ReadStatus . second bundle)
    where
     (nextState, dfAck) = if acknowledge && not err then (ReadStatus, True) else (WriteByte, False)
     wbOut =
-      (emptyWishboneM2S @32 @())
+      (emptyWishboneM2S @30 @())
         { addr = 0
         , busCycle = True
         , strobe = True
@@ -143,15 +143,15 @@ readingSlaves = property $ do
   devices <- forAll $ Gen.enum 2 16
   case TN.someNatVal (devices - 1) of
     SomeNat (succSNat . snatProxy -> devices0@SNat) ->
-      case compareSNat (clogBaseSNat d2 devices0) d32 of
+      case compareSNat (clogBaseSNat d2 devices0) d30 of
         SNatLE -> runTest devices0
-        _ -> errorX "readingSlaves: number of devices can't be represented with 32 bits."
+        _ -> errorX "readingSlaves: number of devices can't be represented with 30 bits."
  where
   runTest devices = do
     config <- forAll $ genConfig @_ devices
     nrOfReads <- forAll $ Gen.enum 1 32
     let nrOfReadsRange = Range.singleton nrOfReads
-    readAddresses <- forAll $ Gen.list nrOfReadsRange (genDefinedBitVector @32)
+    readAddresses <- forAll $ Gen.list nrOfReadsRange (genDefinedBitVector @30)
     ranges <- forAll $ genVec genDefinedBitVector
     let
       topEntityInput = (wbRead <$> readAddresses) <> [emptyWishboneM2S]
@@ -190,12 +190,12 @@ readingSlaves = property $ do
     forall nSlaves.
     ( KnownNat nSlaves
     , 1 <= nSlaves
-    , BitSize (Unsigned (CLog 2 nSlaves)) <= 32
-    , BitSize (Unsigned (CLog 2 nSlaves)) <= 32
+    , BitSize (Unsigned (CLog 2 nSlaves)) <= 30
+    , BitSize (Unsigned (CLog 2 nSlaves)) <= 30
     ) =>
     Vec nSlaves (Unsigned (CLog 2 nSlaves)) ->
-    Vec nSlaves (BitVector (32 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
-    WishboneM2S 32 (Regs (Unsigned (CLog 2 nSlaves)) 8) (Unsigned (CLog 2 nSlaves)) ->
+    Vec nSlaves (BitVector (30 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
+    WishboneM2S 30 (Regs (Unsigned (CLog 2 nSlaves)) 8) (Unsigned (CLog 2 nSlaves)) ->
     WishboneS2M (Unsigned (CLog 2 nSlaves))
   getExpected config ranges WishboneM2S{..}
     | not commAttempt = emptyWishboneS2M
@@ -221,9 +221,9 @@ writingSlaves = property $ do
   devices <- forAll $ Gen.enum 1 16
   case TN.someNatVal (devices - 1) of
     SomeNat (succSNat . snatProxy -> devices0) ->
-      case compareSNat (clogBaseSNat d2 devices0) d32 of
+      case compareSNat (clogBaseSNat d2 devices0) d30 of
         SNatLE -> runTest devices0
-        _ -> errorX "readingSlaves: number of devices can't be represented with 32 bits."
+        _ -> errorX "readingSlaves: number of devices can't be represented with 30 bits."
  where
   runTest devices = do
     config <- forAll $ genConfig @_ devices
@@ -271,16 +271,16 @@ writingSlaves = property $ do
     forall nSlaves.
     ( KnownNat nSlaves
     , 1 <= nSlaves
-    , BitSize (Unsigned (CLog 2 nSlaves)) <= 32
-    , BitSize (Unsigned (CLog 2 nSlaves)) <= 32
+    , BitSize (Unsigned (CLog 2 nSlaves)) <= 30
+    , BitSize (Unsigned (CLog 2 nSlaves)) <= 30
     ) =>
     Vec nSlaves (Unsigned (CLog 2 nSlaves)) ->
-    Vec nSlaves (BitVector (32 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
+    Vec nSlaves (BitVector (30 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
     WishboneM2S
-      32
-      (DivRU (32 - BitSize (Unsigned (CLog 2 nSlaves))) 8)
-      (BitVector (32 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
-    WishboneS2M (BitVector (32 - BitSize (Unsigned (CLog 2 nSlaves))))
+      30
+      (DivRU (30 - BitSize (Unsigned (CLog 2 nSlaves))) 8)
+      (BitVector (30 - BitSize (Unsigned (CLog 2 nSlaves)))) ->
+    WishboneS2M (BitVector (30 - BitSize (Unsigned (CLog 2 nSlaves))))
   getExpected config ranges WishboneM2S{..}
     | not commAttempt = emptyWishboneS2M
     | Nothing <- maybeIndex = emptyWishboneS2M{err = True}

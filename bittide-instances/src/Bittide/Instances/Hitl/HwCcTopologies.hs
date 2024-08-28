@@ -234,7 +234,7 @@ riscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
 
   fIncDecCallisto ::
     forall aw nBytes.
-    (KnownNat aw, 2 <= aw, nBytes ~ 4) =>
+    (KnownNat aw, nBytes ~ 4) =>
     Circuit
       (Wishbone dom 'Standard aw (Bytes nBytes))
       ()

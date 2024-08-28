@@ -322,7 +322,7 @@ prop_wbAxisRxBufferReadStreams = property $ do
       (Axi4Stream System ('Axi4StreamConfig 4 0 0) ())
   tb bufferBytes = circuit $ \axiIn0 -> do
     axiIn1 <- axiUserMapC (const False) -< axiIn0
-    _status <- wbAxisRxBufferCircuit @System @32 bufferBytes -< (wb, axiIn1)
+    _status <- wbAxisRxBufferCircuit @System @30 bufferBytes -< (wb, axiIn1)
     (wb, axiOut) <- rxReadMasterC bufferBytes -< ()
     idC -< axiOut
 

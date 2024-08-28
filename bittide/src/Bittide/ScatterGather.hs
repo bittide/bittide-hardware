@@ -55,7 +55,6 @@ scatterUnit ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , 2 <= addrW
   ) =>
   -- | Configuration for the 'calendar'.
   CalendarConfig nBytes addrW (Index memDepth) ->
@@ -97,7 +96,6 @@ gatherUnit ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , 2 <= addrW
   ) =>
   -- | Configuration for the 'calendar'.
   CalendarConfig nBytes addrW (Index memDepth) ->
@@ -131,7 +129,6 @@ wbInterface ::
   , KnownNat addresses
   , 1 <= addresses
   , KnownNat addrW
-  , 2 <= addrW
   ) =>
   -- | Wishbone (master -> slave) data.
   WishboneM2S addrW nBytes (Bytes nBytes) ->
@@ -146,12 +143,10 @@ wbInterface WishboneM2S{..} readData =
   )
  where
   masterActive = strobe && busCycle
-  (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
-  wordAligned = alignment == 0
-  maxAddress = resize $ pack (maxBound :: Index addresses) :: BitVector (addrW - 2)
-  err = masterActive && ((alignedAddress > maxAddress) || not wordAligned)
+  maxAddress = resize $ pack (maxBound :: Index addresses)
+  err = masterActive && (addr > maxAddress)
   acknowledge = masterActive && not err
-  wbAddr = unpack . resize $ pack alignedAddress
+  wbAddr = unpack . resize $ pack addr
   writeOp = orNothing (strobe && writeEnable && not err) writeData
 
 {- | Adds a stalling address to the 'wbInterface' by demanding an extra address on type level.
@@ -198,11 +193,9 @@ scatterUnitWb ::
   forall dom addrWidthSu nBytesCal addrWidthCal.
   ( HiddenClockResetEnable dom
   , KnownNat addrWidthSu
-  , 2 <= addrWidthSu
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat addrWidthCal
-  , 2 <= addrWidthCal
   ) =>
   -- | Configuration for the 'calendar'.
   ScatterConfig nBytesCal addrWidthCal ->
@@ -241,11 +234,9 @@ gatherUnitWb ::
   forall dom addrWidthGu nBytesCal addrWidthCal.
   ( HiddenClockResetEnable dom
   , KnownNat addrWidthGu
-  , 2 <= addrWidthGu
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat addrWidthCal
-  , 2 <= addrWidthCal
   ) =>
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal addrWidthCal ->

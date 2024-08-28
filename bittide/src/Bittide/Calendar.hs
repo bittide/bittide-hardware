@@ -104,7 +104,6 @@ mkCalendar ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , 2 <= addrW
   ) =>
   -- | Calendar configuration for 'calendar'.
   CalendarConfig nBytes addrW calEntry ->
@@ -178,7 +177,6 @@ calendar ::
   forall dom nBytes addrW maxCalDepth a repetitionBits bootstrapSizeA bootstrapSizeB.
   ( HiddenClockResetEnable dom
   , KnownNat addrW
-  , 2 <= addrW
   , KnownNat bootstrapSizeA
   , 1 <= bootstrapSizeA
   , KnownNat bootstrapSizeB
@@ -374,7 +372,6 @@ wbCalRX ::
   , KnownNat calDepth
   , 2 <= calDepth
   , KnownNat addrW
-  , 2 <= addrW
   , KnownNat nBytes
   , 1 <= nBytes
   ) =>
@@ -401,13 +398,8 @@ wbCalRX = case oneLeCLog2n @calDepth of
      where
       calEntryRegs = natToNum @(Regs calEntry (nBytes * 8))
 
-      (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
-      wbAddrValid =
-        alignedAddress
-          <= resize (pack (maxBound :: WbAddress calEntry nBytes))
-          && alignment
-          == 0
-      wishboneAddress = bitCoerce $ resize alignedAddress
+      wbAddrValid = addr <= (resize $ pack (maxBound :: WbAddress calEntry nBytes))
+      wishboneAddress = unpack $ resize addr
       wishboneActive = busCycle && strobe
       wishboneError = wishboneActive && not wbAddrValid
       wbWriting = wishboneActive && writeEnable && not wishboneError

@@ -276,7 +276,6 @@ uartWb ::
   , ValidBaud dom baudRate
   , 1 <= transmitBufferDepth
   , 1 <= receiveBufferDepth
-  , 2 <= addrW
   , KnownNat addrW
   , KnownNat nBytes
   , 1 <= nBytes
@@ -365,9 +364,8 @@ uartWb txDepth@SNat rxDepth@SNat baud = circuit $ \(wb, uartRx) -> do
           )
       | otherwise = ((emptyWishboneS2M{err = True}, Ack False, ()), (Df.NoData, status))
      where
-      (alignedAddr, alignment) = split @_ @(addrW - 2) @2 addr
-      internalAddr = bitCoerce $ resize alignedAddr :: Index 2
-      addrLegal = alignedAddr <= 1 && alignment == 0
+      internalAddr = bitCoerce $ resize addr :: Index 2
+      addrLegal = addr <= 1
       rxEmpty = isNothing rxData
       status = (rxEmpty, txFull)
       invalidReq =
@@ -476,7 +474,6 @@ wbToVec ::
   ( KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , 2 <= addrW
   , KnownNat nRegisters
   , 1 <= nRegisters
   ) =>
@@ -492,14 +489,11 @@ wbToVec ::
   )
 wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
  where
-  (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
-  addressRange = maxBound :: Index nRegisters
-  invalidAddress = (alignedAddress > resize (pack addressRange)) || alignment /= 0
   masterActive = strobe && busCycle
-  err = masterActive && invalidAddress
+  err = masterActive && (addr > resize (pack (maxBound :: Index nRegisters)))
   acknowledge = masterActive && not err
   wbWriting = writeEnable && acknowledge
-  wbAddr = unpack $ resize alignedAddress :: Index nRegisters
+  wbAddr = unpack $ resize addr :: Index nRegisters
   readData = readableData !! wbAddr
   writtenData
     | wbWriting = replace wbAddr (Just writeData) (repeat Nothing)
@@ -514,7 +508,6 @@ timeWb ::
   forall dom addrW.
   ( HiddenClockResetEnable dom
   , KnownNat addrW
-  , 2 <= addrW
   , 1 <= DomainPeriod dom
   ) =>
   Circuit (Wishbone dom 'Standard addrW (Bytes 4)) ()
@@ -539,7 +532,6 @@ readDnaPortE2Wb ::
   forall dom addrW nBytes.
   ( HiddenClockResetEnable dom
   , KnownNat addrW
-  , 2 <= addrW
   , KnownNat nBytes
   , 1 <= nBytes
   ) =>
