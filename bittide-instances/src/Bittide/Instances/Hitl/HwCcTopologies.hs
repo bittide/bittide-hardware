@@ -781,41 +781,47 @@ tests =
     , -- TESTS --
       -----------
 
-      -- initial clock shifts   startup delays            topology
-      tt (Just icsDiamond) ((m *) <$> sdDiamond) diamond
-    , tt (Just icsComplete) ((m *) <$> sdComplete) $ complete d3
-    , tt (Just icsCyclic) ((m *) <$> sdCyclic) $ cyclic d5
-    , tt (Just icsTorus) ((m *) <$> sdTorus) $ torus2d d2 d3
-    , tt (Just icsStar) ((m *) <$> sdStar) $ star d7
-    , tt (Just icsLine) ((m *) <$> sdLine) $ line d4
-    , tt (Just icsHourglass) ((m *) <$> sdHourglass) $ hourglass d3
+      tt "0_full" (Just icsDistribute) (repeat 0) $ complete d8
+    , tt "0_cube" (Just icsDistribute) (repeat 0) $ hypercube d3
+    , tt "0_star" (Just icsDistribute) (repeat 0) $ star d7
+    , tt "0_line" (Just icsDistribute) (repeat 0) $ line d8
+    , tt "0_hour" (Just icsDistribute) (repeat 0) $ hourglass d4
+    , tt "1_full" (Just icsSplit) (repeat 0) $ complete d8
+    , tt "1_cube" (Just icsSplit) (repeat 0) $ hypercube d3
+    , tt "1_star" (Just icsSplit) (repeat 0) $ star d7
+    , tt "1_line" (Just icsSplit) (repeat 0) $ line d8
+    , tt "1_hour" (Just icsSplit) (repeat 0) $ hourglass d4
+    , tt "2_full" (Just icsOutlier1) (repeat 0) $ complete d8
+    , tt "2_cube" (Just icsOutlier1) (repeat 0) $ hypercube d3
+    , tt "2_star" (Just icsOutlier1) (repeat 0) $ star d7
+    , tt "2_line" (Just icsOutlier1) (repeat 0) $ line d8
+    , tt "2_hour" (Just icsOutlier1) (repeat 0) $ hourglass d4
+    , tt "3_full" (Just icsOutlier2) (repeat 0) $ complete d8
+    , tt "3_cube" (Just icsOutlier2) (repeat 0) $ hypercube d3
+    , tt "3_star" (Just icsOutlier2) (repeat 0) $ star d7
+    , tt "3_line" (Just icsOutlier2) (repeat 0) $ line d8
+    , tt "3_hour" (Just icsOutlier2) (repeat 0) $ hourglass d4
+    , tt "4_full" (Just icsOutlier3) (repeat 0) $ complete d8
+    , tt "4_cube" (Just icsOutlier3) (repeat 0) $ hypercube d3
+    , tt "4_star" (Just icsOutlier3) (repeat 0) $ star d7
+    , tt "4_line" (Just icsOutlier3) (repeat 0) $ line d8
+    , tt "4_hour" (Just icsOutlier3) (repeat 0) $ hourglass d4
+    , tt "5_full" (Just icsOutlier4) (repeat 0) $ complete d8
+    , tt "5_cube" (Just icsOutlier4) (repeat 0) $ hypercube d3
+    , tt "5_star" (Just icsOutlier4) (repeat 0) $ star d7
+    , tt "5_line" (Just icsOutlier4) (repeat 0) $ line d8
+    , tt "5_hour" (Just icsOutlier4) (repeat 0) $ hourglass d4
     , -- CALIBRATION VERIFICATON --
       -----------------------------
       validateClockOffsetCalibration
     ]
  where
-  m = 1_000_000
-
-  icsDiamond = map ppm $ -10 :> -5 :> 20 :> 30 :> Nil
-  sdDiamond = 0 :> 10 :> 200 :> 3 :> Nil
-
-  icsComplete = map ppm $ -100 :> 0 :> 100 :> Nil
-  sdComplete = 200 :> 0 :> 200 :> Nil
-
-  icsCyclic = map ppm $ 0 :> 5 :> 10 :> 15 :> 20 :> Nil
-  sdCyclic = 0 :> 10 :> 0 :> 100 :> 0 :> Nil
-
-  icsTorus = map ppm $ -30 :> -35 :> -40 :> 40 :> 35 :> 30 :> Nil
-  sdTorus = 0 :> 0 :> 0 :> 100 :> 100 :> 100 :> Nil
-
-  icsStar = map ppm $ 0 :> 10 :> -10 :> 20 :> -20 :> 30 :> -30 :> 40 :> Nil
-  sdStar = 0 :> 40 :> 80 :> 120 :> 160 :> 200 :> 240 :> 280 :> Nil
-
-  icsLine = map ppm $ 100 :> 0 :> 0 :> -100 :> Nil
-  sdLine = 200 :> 0 :> 0 :> 200 :> Nil
-
-  icsHourglass = map ppm $ -100 :> 100 :> -100 :> 100 :> -100 :> 100 :> Nil
-  sdHourglass = 0 :> 200 :> 0 :> 200 :> 0 :> 200 :> Nil
+  icsDistribute = map ppm (0 :> 10 :> -10 :> 20 :> -20 :> 30 :> -30 :> 40 :> Nil)
+  icsSplit = map ppm (20 :> 20 :> 20 :> 20 :> -20 :> -20 :> -20 :> -20 :> Nil)
+  icsOutlier1 = map ppm (50 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> Nil)
+  icsOutlier2 = map ppm (0 :> 50 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> Nil)
+  icsOutlier3 = map ppm (0 :> 0 :> 50 :> 0 :> 0 :> 0 :> 0 :> 0 :> Nil)
+  icsOutlier4 = map ppm (0 :> 0 :> 0 :> 50 :> 0 :> 0 :> 0 :> 0 :> Nil)
 
   ClockControlConfig{..} = clockControlConfig
 
@@ -863,12 +869,13 @@ tests =
   tt ::
     forall n.
     (KnownNat n, n <= FpgaCount) =>
+    String ->
     Maybe (Vec n PartsPer) ->
     Vec n StartupDelay ->
     Topology n ->
     (TestName, (Probes TestConfig, CcConf))
-  tt clockShifts startDelays t =
-    ( fromString $ topologyName t
+  tt name clockShifts startDelays t =
+    ( fromString name
     ,
       ( toList
           ( zipWith4
