@@ -33,8 +33,8 @@ createDomain vXilinxSystem{vName="GthTxS", vPeriod= hzToPeriod 10e9}
 {- ORMOLU_ENABLE -}
 
 type CccBufferSize = 25 :: Nat
-type CccStabilityCheckerMargin = 25 :: Nat
-type CccStabilityCheckerFramesize dom = PeriodToCycles dom (Seconds 2)
+type CccStabilityCheckerMargin = 16 :: Nat
+type CccStabilityCheckerFramesize dom = PeriodToCycles dom (Seconds 8)
 type CccReframingWaitTime dom = PeriodToCycles dom (Seconds 5)
 
 {- | Clock configuration used for instances.
@@ -59,10 +59,10 @@ instancesClockConfig Proxy =
     , cccBufferSize = SNat
     , cccStabilityCheckerMargin = SNat
     , cccStabilityCheckerFramesize = SNat
-    , cccEnableReframing = False
+    , cccEnableReframing = True
     , -- changed from defClockConfig, which uses a fixed number of cycles independent
       -- the clock speed of the domain
-      cccReframingWaitTime = natToNum @(PeriodToCycles dom (Seconds 1))
+      cccReframingWaitTime = 30000000
     }
  where
   self = instancesClockConfig (Proxy @dom)
