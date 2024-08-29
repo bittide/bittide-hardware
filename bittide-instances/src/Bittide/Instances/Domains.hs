@@ -13,9 +13,7 @@ import Bittide.ClockControl
 import Data.Proxy
 
 {- ORMOLU_DISABLE -}
-createDomain vXilinxSystem{vName="Basic25", vPeriod= hzToPeriod 25e6}
 createDomain vXilinxSystem{vName="Basic50", vPeriod= hzToPeriod 50e6}
-createDomain vXilinxSystem{vName="Basic100", vPeriod= hzToPeriod 100e6}
 createDomain vXilinxSystem{vName="Basic125", vPeriod= hzToPeriod 125e6}
 createDomain vXilinxSystem{vName="Basic125A", vPeriod= hzToPeriod 125e6}
 createDomain vXilinxSystem{vName="Basic125B", vPeriod= hzToPeriod 125e6}
@@ -26,12 +24,7 @@ createDomain vXilinxSystem{vName="Basic625", vPeriod=hzToPeriod 625e6, vResetKin
 
 createDomain vXilinxSystem{vName="Ext125", vPeriod= hzToPeriod 125e6, vResetKind=Asynchronous}
 createDomain vXilinxSystem{vName="Ext200", vPeriod=hzToPeriod 200e6, vResetKind=Asynchronous}
-createDomain vXilinxSystem{vName="Ext200A", vPeriod=hzToPeriod 200e6}
-createDomain vXilinxSystem{vName="Ext200B", vPeriod=hzToPeriod 200e6}
 createDomain vXilinxSystem{vName="Ext300", vPeriod=hzToPeriod 300e6, vResetKind=Asynchronous}
-
-createDomain vXilinxSystem{vName="External", vPeriod=hzToPeriod 200e6}
-createDomain vXilinxSystem{vName="Internal", vPeriod=hzToPeriod 200e6}
 
 createDomain vXilinxSystem{vName="GthRx", vPeriod=hzToPeriod 125e6}
 createDomain vXilinxSystem{vName="GthTx", vPeriod= hzToPeriod 125e6}
