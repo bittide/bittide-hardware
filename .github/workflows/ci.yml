@@ -611,6 +611,8 @@ jobs:
       volumes:
         - /opt/tools:/opt/tools
         - /dev:/dev
+      ports:
+        - 1234:1234
 
       # XXX: User '1001' corresponds to 'bittide' on Linux installation that has
       #      access to the hardware. We need to set this, lest Docker will write
