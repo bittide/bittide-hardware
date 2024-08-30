@@ -40,7 +40,7 @@ tests =
 data SwitchTestConfig nBytes addrW where
   SwitchTestConfig ::
     (KnownNat links, 1 <= nBytes, 2 <= addrW) =>
-    SwitchConfig links nBytes addrW ->
+    CalendarConfig nBytes addrW (CalendarEntry links) ->
     SwitchTestConfig nBytes addrW
 
 deriving instance Show (SwitchTestConfig nBytes addrW)
@@ -66,13 +66,7 @@ genSwitchCalendar links calDepth = do
   case TN.someNatVal links of
     (SomeNat (snatProxy -> l)) -> do
       testCal <- genCalendarConfig calDepth $ genSwitchEntry l
-      return
-        $ SwitchTestConfig
-          ( SwitchConfig
-              { preamble = errorX "preamble Undefined" :: BitVector 64
-              , calendarConfig = testCal
-              }
-          )
+      return $ SwitchTestConfig testCal
 
 -- | This test checks that for any switch calendar all outputs select the correct frame.
 switchFrameRoutingWorks :: Property
@@ -81,39 +75,31 @@ switchFrameRoutingWorks = property $ do
   calDepth <- forAll $ Gen.enum 2 8
   switchCal <- forAll $ genSwitchCalendar @4 @32 (fromIntegral links) calDepth
   case switchCal of
-    SwitchTestConfig
-      ( SwitchConfig
-          { preamble = preamble
-          , calendarConfig = calConfig@(CalendarConfig _ (toList . fmap (toList . veEntry) -> cal) _)
-          }
-        ) -> do
-        simLength <- forAll $ Gen.enum 1 (2 * fromIntegral calDepth)
-        let
-          genFrame = Just <$> genDefinedBitVector @64
-          allLinks = Gen.list (Range.singleton links) genFrame
-        topEntityInput <- forAll $ Gen.list (Range.singleton simLength) allLinks
-        let
-          topEntity streamsIn =
-            withClockResetEnable clockGen resetGen enableGen
-              $ bundle
-              $ fst
-              $ switch
-                preamble
-                calConfig
-                (pure emptyWishboneM2S)
-                (repeat $ pure emptyWishboneM2S)
-                (repeat $ pure emptyWishboneM2S)
-              $ unbundle streamsIn
-          simOut = simulateN @System simLength topEntity $ fmap unsafeFromList topEntityInput
-        let
-          expectedFrames = P.replicate links Nothing : topEntityInput
-          expectedOutput =
-            P.take simLength $ P.replicate links Nothing
-              : P.zipWith selectAllOutputs expectedFrames (cycle cal)
-        footnote . fromString $ "expected:" <> showX expectedOutput
-        footnote . fromString $ "simOut: " <> showX simOut
-        footnote . fromString $ "input: " <> showX topEntityInput
-        fmap toList simOut === expectedOutput
+    SwitchTestConfig calConfig@(CalendarConfig _ (toList . fmap (toList . veEntry) -> cal) _) -> do
+      simLength <- forAll $ Gen.enum 1 (2 * fromIntegral calDepth)
+      let
+        genFrame = Just <$> genDefinedBitVector @64
+        allLinks = Gen.list (Range.singleton links) genFrame
+      topEntityInput <- forAll $ Gen.list (Range.singleton simLength) allLinks
+      let
+        topEntity streamsIn =
+          withClockResetEnable clockGen resetGen enableGen
+            $ bundle
+            $ fst
+            $ switch
+              calConfig
+              (pure emptyWishboneM2S)
+            $ unbundle streamsIn
+        simOut = simulateN @System simLength topEntity $ fmap unsafeFromList topEntityInput
+      let
+        expectedFrames = P.replicate links Nothing : topEntityInput
+        expectedOutput =
+          P.take simLength $ P.replicate links Nothing
+            : P.zipWith selectAllOutputs expectedFrames (cycle cal)
+      footnote . fromString $ "expected:" <> showX expectedOutput
+      footnote . fromString $ "simOut: " <> showX simOut
+      footnote . fromString $ "input: " <> showX topEntityInput
+      fmap toList simOut === expectedOutput
 
 selectAllOutputs ::
   (KnownNat l) =>

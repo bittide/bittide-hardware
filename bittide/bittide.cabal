@@ -137,7 +137,6 @@ library
     Bittide.DoubleBufferedRam
     Bittide.ElasticBuffer
     Bittide.Ethernet.Mac
-    Bittide.Link
     Bittide.Node
     Bittide.ProcessingElement
     Bittide.ProcessingElement.DeviceTreeCompiler
@@ -209,7 +208,6 @@ test-suite unittests
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer
     Tests.Haxioms
-    Tests.Link
     Tests.ProcessingElement.ReadElf
     Tests.ScatterGather
     Tests.Shared

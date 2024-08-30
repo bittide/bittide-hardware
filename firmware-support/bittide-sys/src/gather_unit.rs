@@ -6,26 +6,8 @@ use fdt::node::FdtNode;
 
 use crate::{utils::matches_fdt_name, ComponentLoadError};
 
-pub struct GatherTimingOracle {
-    sequence_counter: *const u64,
-    send_sequence_counter: *mut u8,
-}
-
-impl GatherTimingOracle {
-    pub fn sequence_counter(&self) -> u64 {
-        unsafe { self.sequence_counter.read_volatile() }
-    }
-
-    pub fn send_sequence_counter(&mut self, enable: bool) {
-        unsafe {
-            self.send_sequence_counter.write_volatile(u8::from(enable));
-        }
-    }
-}
-
 pub struct GatherUnit<const FRAME_SIZE: usize> {
     memory: *mut u8,
-    timing_oracle: GatherTimingOracle,
     metacycle_register: *const u8,
 }
 
@@ -51,8 +33,6 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
         };
 
         let memory_node = get_node("gather-memory")?;
-        let sequence_counter_node = get_node("sequence-counter-reg")?;
-        let send_sequence_counter_node = get_node("send-sequence-counter-reg")?;
         let metacycle_register_node = get_node("metacycle-reg")?;
 
         let memory = get_reg(&memory_node, "memory")?;
@@ -66,34 +46,6 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
                 });
             }
         }
-
-        let sequence_counter = {
-            let reg = get_reg(&sequence_counter_node, "sequence_counter")?;
-            if let Some(size) = reg.size {
-                if size != 8 {
-                    return Err(ComponentLoadError::SizeMismatch {
-                        property: "sequence counter register size",
-                        expected: 8,
-                        found: size,
-                    });
-                }
-            }
-            reg.starting_address as *const u64
-        };
-
-        let send_sequence_counter = {
-            let reg = get_reg(&send_sequence_counter_node, "send_sequence_counter")?;
-            if let Some(size) = reg.size {
-                if size != 1 {
-                    return Err(ComponentLoadError::SizeMismatch {
-                        property: "send sequence counter register size",
-                        expected: 1,
-                        found: size,
-                    });
-                }
-            }
-            reg.starting_address as *mut u8
-        };
 
         let metacycle_register = {
             let reg = get_reg(&metacycle_register_node, "metacycle_register")?;
@@ -111,10 +63,6 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
 
         Ok(GatherUnit {
             memory: memory.starting_address as *mut u8,
-            timing_oracle: GatherTimingOracle {
-                sequence_counter,
-                send_sequence_counter,
-            },
             metacycle_register,
         })
     }
@@ -129,10 +77,6 @@ impl<const FRAME_SIZE: usize> GatherUnit<FRAME_SIZE> {
                 self.memory.add(i).write_volatile(d);
             }
         }
-    }
-
-    pub fn timing_oracle(&self) -> &GatherTimingOracle {
-        &self.timing_oracle
     }
 
     /// Wait for the start of a new metacycle.

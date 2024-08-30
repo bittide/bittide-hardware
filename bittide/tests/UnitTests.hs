@@ -17,7 +17,6 @@ import qualified Tests.ClockControl.Si539xSpi
 import qualified Tests.DoubleBufferedRam
 import qualified Tests.ElasticBuffer
 import qualified Tests.Haxioms
-import qualified Tests.Link
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ScatterGather
 import qualified Tests.StabilityChecker
@@ -36,7 +35,6 @@ tests =
     , Tests.ClockControl.Si539xSpi.tests
     , Tests.DoubleBufferedRam.tests
     , Tests.ElasticBuffer.tests
-    , Tests.Link.tests
     , Tests.ProcessingElement.ReadElf.tests
     , Tests.ScatterGather.tests
     , Tests.StabilityChecker.tests

@@ -16,13 +16,12 @@ import VexRiscv
 
 import Bittide.Calendar
 import Bittide.DoubleBufferedRam
-import Bittide.Link
 import Bittide.ProcessingElement
 import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Bittide.Switch
 
-import Control.Arrow (first, (&&&), (>>>))
+import Control.Arrow ((&&&))
 
 {- | A simple node consisting of one external bidirectional link and two 'gppe's.
 This node's 'switch' has a 'CalendarConfig' of for a 'calendar' with up to @1024@ entries,
@@ -34,50 +33,37 @@ vector of ever increasing base addresses (increments of 0x1000).
 simpleNodeConfig :: NodeConfig 1 2
 simpleNodeConfig =
   NodeConfig
-    (ManagementConfig linkConfig nmuConfig)
-    switchConfig
-    (repeat (GppeConfig linkConfig peConfig))
+    (ManagementConfig (ScatterConfig sgConfig) (GatherConfig sgConfig) nmuConfig)
+    switchCal
+    (repeat (GppeConfig (ScatterConfig sgConfig) (GatherConfig sgConfig) peConfig))
  where
-  switchConfig = SwitchConfig{preamble = preamble', calendarConfig = switchCal}
   switchCal = CalendarConfig (SNat @1024) (switchEntry :> Nil) (switchEntry :> Nil)
-  linkConfig = LinkConfig preamble' (ScatterConfig sgConfig) (GatherConfig sgConfig)
   sgConfig = CalendarConfig (SNat @1024) (sgEntry :> Nil) (sgEntry :> Nil)
   peConfig = PeConfig memMapPe (Undefined @8192) (Undefined @8192)
   nmuConfig = PeConfig memMapNmu (Undefined @8192) (Undefined @8192)
   memMapPe = iterateI (+ 0x1000) 0
   memMapNmu = iterateI (+ 0x1000) 0
-  preamble' = 0xDEADBEEFA5A5A5A5FACADE :: BitVector 96
   switchEntry = ValidEntry{veEntry = repeat 0, veRepeat = 0 :: Unsigned 0}
   sgEntry = ValidEntry{veEntry = 0 :: Index 1024, veRepeat = 0 :: Unsigned 0}
 
-{- | Each 'gppe' results in 4 busses for the 'managementUnit', namely:
+{- | Each 'gppe' results in 2 busses for the 'managementUnit', namely:
 * The 'calendar' for the 'scatterUnitWB'.
 * The 'calendar' for the 'gatherUnitWB'.
-* The interface of the 'rxUnit' on the 'gppe' side.
-* The interface of the 'txUnit' on the 'gppe' side.
 -}
-type BussesPerGppe = 4
-
-{- | Each 'switch' link results in 2 busses for the 'managementUnit', namely:
-* The interface of the 'rxUnit' on the 'switch' side.
-* The interface of the 'txUnit' on the 'switch' side.
--}
-type BussesPerSwitchLink = 2
+type BussesPerGppe = 2
 
 -- | Configuration of a 'node'.
 data NodeConfig externalLinks gppes where
   NodeConfig ::
-    ( KnownNat switchBusses
-    , switchBusses ~ (1 + BussesPerSwitchLink * (externalLinks + (gppes + 1)))
-    , KnownNat nmuBusses
-    , nmuBusses ~ ((BussesPerGppe * gppes) + switchBusses + 8)
+    ( KnownNat nmuBusses
+    , nmuBusses ~ ((BussesPerGppe * gppes) + 1 + NmuInternalBusses)
     , KnownNat nmuRemBusWidth
     , nmuRemBusWidth ~ (32 - CLog 2 nmuBusses)
     ) =>
     -- | Configuration for the 'node's 'managementUnit'.
-    ManagementConfig ((BussesPerGppe * gppes) + switchBusses) ->
+    ManagementConfig ((BussesPerGppe * gppes) + 1) ->
     -- | Configuratoin for the 'node's 'switch'.
-    SwitchConfig (externalLinks + gppes + 1) 4 nmuRemBusWidth ->
+    CalendarConfig 4 nmuRemBusWidth (CalendarEntry (externalLinks + gppes + 1)) ->
     -- | Configuration for all the node's 'gppe's.
     Vec gppes (GppeConfig nmuRemBusWidth) ->
     NodeConfig externalLinks gppes
@@ -91,25 +77,19 @@ node ::
   Vec extLinks (Signal dom (DataLink 64))
 node (NodeConfig nmuConfig switchConfig gppeConfigs) linksIn = linksOut
  where
-  (switchOut, swS2Ms) =
-    mkSwitch switchConfig swCalM2S swRxM2Ss swTxM2Ss switchIn
+  (switchOut, swS2M) = switch switchConfig swM2S switchIn
   switchIn = nmuToSwitch :> pesToSwitch ++ linksIn
   (splitAtI -> ((head &&& tail) -> (switchToNmu, switchToPes), linksOut)) = switchOut
   (nmuToSwitch, nmuM2Ss) = managementUnit nmuConfig switchToNmu nmuS2Ms
-  (swM2Ss, peM2Ss) = splitAtI nmuM2Ss
+  (swM2S, peM2Ss) = (head &&& tail) nmuM2Ss
 
-  ((swCalM2S, swRxM2Ss), swTxM2Ss) = first (head &&& tail) $ splitAtI swM2Ss
-  ((swCalS2M, swRxS2Ms), swTxS2Ms) =
-    first (head &&& tail)
-      $ splitAtI
-        @(1 + (extLinks + (gppes + 1)))
-        @(extLinks + (gppes + 1))
-        swS2Ms
-
-  nmuS2Ms = swCalS2M :> (swRxS2Ms ++ swTxS2Ms ++ peS2Ms)
+  nmuS2Ms = swS2M :> peS2Ms
 
   (pesToSwitch, concat -> peS2Ms) =
     unzip $ gppe <$> zip3 gppeConfigs switchToPes (unconcatI peM2Ss)
+
+type NmuInternalBusses = 6
+type NmuRemBusWidth nodeBusses = 32 - CLog 2 (nodeBusses + NmuInternalBusses)
 
 {- | Configuration for the 'managementUnit' and its 'Bittide.Link'.
 The management unit contains the 4 wishbone busses that each pe has
@@ -119,11 +99,9 @@ Furthermore it also has access to the 'calendar' for the 'switch'.
 data ManagementConfig nodeBusses where
   ManagementConfig ::
     (KnownNat nodeBusses) =>
-    -- | Configuration for the incoming and outgoing 'Bittide.Link'.
-    LinkConfig 4 (32 - CLog 2 (nodeBusses + 8)) ->
-    -- | Configuration for the 'managementUnit's 'processingElement'. Controls 8 local busses
-    -- and all incoming busses from 'calendar's, 'rxUnit's and 'txUnit's.
-    PeConfig (nodeBusses + 8) ->
+    ScatterConfig 4 (NmuRemBusWidth nodeBusses) ->
+    GatherConfig 4 (NmuRemBusWidth nodeBusses) ->
+    PeConfig (nodeBusses + NmuInternalBusses) ->
     ManagementConfig nodeBusses
 
 {- | Configuration for a general purpose processing element together with its link to the
@@ -131,7 +109,8 @@ switch.
 -}
 data GppeConfig nmuRemBusWidth where
   GppeConfig ::
-    LinkConfig 4 nmuRemBusWidth ->
+    ScatterConfig 4 nmuRemBusWidth ->
+    GatherConfig 4 nmuRemBusWidth ->
     -- | Configuration for a 'gppe's 'processingElement', which statically
     -- has four external busses connected to the instruction memory, data memory
     -- , 'scatterUnitWb' and 'gatherUnitWb'.
@@ -142,10 +121,10 @@ data GppeConfig nmuRemBusWidth where
 
 {- | A general purpose 'processingElement' to be part of a Bittide Node. It contains
 a 'processingElement', 'linkToPe' and 'peToLink' which create the interface for the
-Bittide Link. It takes a 'GppeConfig', incoming link and four incoming 'WishboneM2S'
-signals and produces the outgoing link alongside four 'WishhboneS2M' signals.
+Bittide Link. It takes a 'GppeConfig', incoming link and two incoming 'WishboneM2S'
+signals and produces the outgoing link alongside two 'WishhboneS2M' signals.
 The order of Wishbone busses is as follows:
-('rxUnit' :> 'scatterUnitWb' :> 'txUnit' :> 'gatherUnitWb' :> Nil).
+('scatterUnitWb' :> 'gatherUnitWb' :> Nil).
 -}
 gppe ::
   (KnownNat nmuRemBusWidth, 2 <= nmuRemBusWidth, HiddenClockResetEnable dom) =>
@@ -156,24 +135,23 @@ gppe ::
   -- )
   ( GppeConfig nmuRemBusWidth
   , Signal dom (DataLink 64)
-  , Vec 4 (Signal dom (WishboneM2S nmuRemBusWidth 4 (Bytes 4)))
+  , Vec 2 (Signal dom (WishboneM2S nmuRemBusWidth 4 (Bytes 4)))
   ) ->
   -- |
   -- ( Outgoing 'Bittide.Link'
   -- , Outgoing @Vector@ of slave busses
   -- )
   ( Signal dom (DataLink 64)
-  , Vec 4 (Signal dom (WishboneS2M (Bytes 4)))
+  , Vec 2 (Signal dom (WishboneS2M (Bytes 4)))
   )
-gppe (GppeConfig linkConfig peConfig, linkIn, splitAtI -> (nmuM2S0, nmuM2S1)) =
-  (linkOut, nmuS2M0 ++ nmuS2M1)
+gppe (GppeConfig scatterConfig gatherConfig peConfig, linkIn, vecToTuple -> (nmuM2S0, nmuM2S1)) =
+  (linkOut, nmuS2M0 :> nmuS2M1 :> Nil)
  where
-  (suS2M, nmuS2M0) = linkToPe linkConfig linkIn sc suM2S nmuM2S0
-  (linkOut, guS2M, nmuS2M1) = peToLink linkConfig sc guM2S nmuM2S1
-  (_, nmuM2Ss) = toSignals (processingElement peConfig) (pure $ JtagIn low low low, nmuS2Ms)
-  (suM2S, guM2S) = vecToTuple nmuM2Ss
-  nmuS2Ms = suS2M :> guS2M :> Nil
-  sc = sequenceCounter
+  (suS2M, nmuS2M0) = scatterUnitWb scatterConfig nmuM2S0 linkIn suM2S
+  (linkOut, guS2M, nmuS2M1) = gatherUnitWb gatherConfig nmuM2S1 guM2S
+  (_, wbM2Ss) = toSignals (processingElement peConfig) (pure $ JtagIn low low low, wbS2Ms)
+  (suM2S, guM2S) = vecToTuple wbM2Ss
+  wbS2Ms = suS2M :> guS2M :> Nil
 
 {-# NOINLINE managementUnit #-}
 
@@ -185,7 +163,10 @@ Bittide Link. It takes a 'ManagementConfig', incoming link and a vector of incom
 -}
 managementUnit ::
   forall dom nodeBusses.
-  (HiddenClockResetEnable dom, KnownNat nodeBusses, CLog 2 (nodeBusses + 8) <= 30) =>
+  ( HiddenClockResetEnable dom
+  , KnownNat nodeBusses
+  , CLog 2 (nodeBusses + NmuInternalBusses) <= 30
+  ) =>
   -- | Configures all local parameters.
   ManagementConfig nodeBusses ->
   -- | Incoming 'Bittide.Link'.
@@ -196,15 +177,14 @@ managementUnit ::
   -- ( Outgoing 'Bittide.Link'
   -- , Outgoing @Vector@ of master busses)
   ( Signal dom (DataLink 64)
-  , Vec nodeBusses (Signal dom (WishboneM2S (32 - CLog 2 (nodeBusses + 8)) 4 (Bytes 4)))
+  , Vec nodeBusses (Signal dom (WishboneM2S (NmuRemBusWidth nodeBusses) 4 (Bytes 4)))
   )
-managementUnit (ManagementConfig linkConfig peConfig) linkIn nodeS2Ms =
+managementUnit (ManagementConfig scatterConfig gatherConfig peConfig) linkIn nodeS2Ms =
   (linkOut, nodeM2Ss)
  where
-  (suS2M, nmuS2M0) = linkToPe linkConfig linkIn sc suM2S nmuM2S0
-  (linkOut, guS2M, nmuS2M1) = peToLink linkConfig sc guM2S nmuM2S1
-  (suM2S, (guM2S, rest)) = (head &&& (tail >>> (head &&& tail))) nmuM2Ss
-  (splitAtI -> (nmuM2S0, nmuM2S1), nodeM2Ss) = splitAtI rest
+  (suS2M, nmuS2M0) = scatterUnitWb scatterConfig nmuM2S0 linkIn suM2S
+  (linkOut, guS2M, nmuS2M1) = gatherUnitWb gatherConfig nmuM2S1 guM2S
+  (vecToTuple -> (suM2S, guM2S), rest) = splitAtI nmuM2Ss
+  (vecToTuple -> (nmuM2S0, nmuM2S1), nodeM2Ss) = splitAtI rest
   (_, nmuM2Ss) = toSignals (processingElement peConfig) (pure $ JtagIn low low low, nmuS2Ms)
-  nmuS2Ms = suS2M :> guS2M :> nmuS2M0 ++ nmuS2M1 ++ nodeS2Ms
-  sc = sequenceCounter
+  nmuS2Ms = suS2M :> guS2M :> nmuS2M0 :> nmuS2M1 :> nodeS2Ms
