@@ -32,6 +32,10 @@ env:
   S3_PASSWORD: ${{ secrets.S3_PASSWORD }}
   SYNTHESIS_BOARD: xilinx.com:kcu105:part0:1.7
 
+  # Suppress warnings related to locals
+  LC_ALL: C
+  LANG: C
+
 concurrency:
  group: ${{ github.head_ref || github.run_id }}
  cancel-in-progress: true
@@ -62,12 +66,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          .github/scripts/set_de_mirror.sh
-          apt-get update
-          apt-get install -y pcregrep python3-yaml
 
       - name: EOL whitespace
         run: |

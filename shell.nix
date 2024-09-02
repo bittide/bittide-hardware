@@ -47,10 +47,11 @@ pkgs.mkShell {
       # HDL dependencies
       pkgs.verilog-ethernet
 
-      # CI cache scripts
+      # CI scripts
       pkgs.python311Packages.docopt
       pkgs.python311Packages.dateutil
       pkgs.mc
+      pkgs.pcre
 
       # VexRiscv OpenOCD
       pkgs.openocd-vexriscv
