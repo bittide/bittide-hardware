@@ -63,12 +63,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          .github/scripts/set_de_mirror.sh
-          apt-get update
-          apt-get install -y pcregrep python3-yaml
-
       - name: EOL whitespace
         run: |
           .github/scripts/check_eol_whitespace.sh
