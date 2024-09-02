@@ -32,6 +32,10 @@ env:
   S3_PASSWORD: ${{ secrets.S3_PASSWORD }}
   SYNTHESIS_BOARD: xilinx.com:kcu105:part0:1.7
 
+  # Suppress warnings related to locals
+  LC_ALL: C
+  LANG: C
+
 concurrency:
  group: ${{ github.head_ref || github.run_id }}
  cancel-in-progress: true
