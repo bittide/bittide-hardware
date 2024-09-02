@@ -8,11 +8,11 @@ module Bittide.Switch where
 
 import Clash.Prelude
 
-import Protocols.Wishbone
-
 import Bittide.Calendar
-import Bittide.Link
 import Bittide.SharedTypes
+import Data.Constraint.Nat.Extra
+import Protocols
+import Protocols.Wishbone
 
 -- | An index which source is selected by the crossbar, 0 selects Nothing, k selects k - 1.
 type CrossbarIndex links = Index (links + 1)
@@ -22,20 +22,8 @@ memory and a crossbar index to select the outgoing frame.
 -}
 type CalendarEntry links = Vec links (CrossbarIndex links)
 
-data SwitchConfig links nBytes addrW where
-  SwitchConfig ::
-    (KnownNat preambleWidth, 1 <= preambleWidth, 1 <= nBytes, 2 <= addrW) =>
-    { preamble :: BitVector preambleWidth
-    , calendarConfig :: CalendarConfig nBytes addrW (CalendarEntry links)
-    } ->
-    SwitchConfig links nBytes addrW
-
-deriving instance Show (SwitchConfig links nBytes addrW)
-
-{- | Creates a 'switch' from a 'SwitchConfig'. This wrapper functions hides the @preambleWidth@
-type variable from the rest of the implementation. For more documentation see 'switch'.
--}
-mkSwitch ::
+switchC ::
+  forall dom nBytes addrW links frameWidth.
   ( HiddenClockResetEnable dom
   , KnownNat links
   , KnownNat frameWidth
@@ -45,15 +33,18 @@ mkSwitch ::
   , KnownNat addrW
   , 2 <= addrW
   ) =>
-  SwitchConfig links nBytes addrW ->
-  Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
-  Vec links (Signal dom (WishboneM2S addrW nBytes (Bytes nBytes))) ->
-  Vec links (Signal dom (WishboneM2S addrW nBytes (Bytes nBytes))) ->
-  Vec links (Signal dom (DataLink frameWidth)) ->
-  ( Vec links (Signal dom (DataLink frameWidth))
-  , Vec (1 + (links * 2)) (Signal dom (WishboneS2M (Bytes nBytes)))
-  )
-mkSwitch SwitchConfig{..} = switch preamble calendarConfig
+  CalendarConfig nBytes addrW (CalendarEntry links) ->
+  Circuit
+    ( CSignal dom (Vec links (DataLink frameWidth))
+    , Wishbone dom 'Standard addrW (Bytes nBytes)
+    )
+    (CSignal dom (Vec links (DataLink frameWidth)))
+switchC conf = case (cancelMulDiv @nBytes @8) of
+  Dict -> Circuit go
+   where
+    go ((unbundle -> streamsIn, calM2S), _) = ((pure (), calS2M), bundle streamsOut)
+     where
+      (streamsOut, calS2M) = switch conf calM2S streamsIn
 
 {-# NOINLINE switch #-}
 
@@ -69,7 +60,7 @@ one of the receive register's output for each transmit register. Index @0@ selec
 null frame @Nothing@ and @k@ selects receive register @(k - 1)@.
 -}
 switch ::
-  forall dom nBytes addrW links frameWidth preambleWidth.
+  forall dom nBytes addrW links frameWidth.
   ( HiddenClockResetEnable dom
   , KnownNat addrW
   , 2 <= addrW
@@ -78,34 +69,22 @@ switch ::
   , KnownNat links
   , KnownNat nBytes
   , 1 <= nBytes
-  , KnownNat preambleWidth
-  , 1 <= preambleWidth
   ) =>
-  -- | Preamble for Bittide links.
-  BitVector preambleWidth ->
-  -- | The calendar configuration
   CalendarConfig nBytes addrW (CalendarEntry links) ->
   -- | Wishbone interface wired to the calendar.
   Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
-  -- | Vector of wishbone master busses for the 'rxUnit's.
-  Vec links (Signal dom (WishboneM2S addrW nBytes (Bytes nBytes))) ->
-  -- | Vector of wishbone master busses for the 'txUnit's.
-  Vec links (Signal dom (WishboneM2S addrW nBytes (Bytes nBytes))) ->
   -- | All incoming datalinks
   Vec links (Signal dom (DataLink frameWidth)) ->
   -- | All outgoing datalinks
   ( Vec links (Signal dom (DataLink frameWidth))
-  , Vec (1 + (2 * links)) (Signal dom (WishboneS2M (Bytes nBytes)))
+  , Signal dom (WishboneS2M (Bytes nBytes))
   )
-switch preamble calConfig calM2S rxM2Ss txM2Ss streamsIn =
-  (streamsOut, calS2M :> (rxS2Ms ++ txS2Ms))
+switch calConfig calM2S streamsIn = (streamsOut, calS2M)
  where
-  (cal, _, calS2M) = mkCalendar calConfig calM2S
-  rxS2Ms = rxUnit preamble sequenceCounter <$> streamsIn <*> rxM2Ss
+  (cal, _, calS2M) = mkCalendar @dom @nBytes @addrW calConfig calM2S
   scatterFrames = register Nothing <$> streamsIn
-  crossBarOut = unbundle $ crossBar <$> cal <*> bundle scatterFrames
-  gatherFrames = register Nothing <$> crossBarOut
-  (txS2Ms, streamsOut) = unzip $ txUnit preamble sequenceCounter <$> gatherFrames <*> txM2Ss
+  gatherFrames = unbundle $ crossBar <$> cal <*> bundle scatterFrames
+  streamsOut = register Nothing <$> gatherFrames
 
 {-# NOINLINE crossBar #-}
 

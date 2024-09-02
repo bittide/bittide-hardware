@@ -6,32 +6,8 @@ use fdt::node::FdtNode;
 
 use crate::{utils::matches_fdt_name, ComponentLoadError};
 
-pub struct ScatterTimingOracle {
-    local_sequence_counter: *const u64,
-    record_remote_sequence_counter: *mut u8,
-    remote_sequence_counter: *const u64,
-}
-
-impl ScatterTimingOracle {
-    pub fn local_sequence_counter(&self) -> u64 {
-        unsafe { self.local_sequence_counter.read_volatile() }
-    }
-
-    pub fn record_remote_sequence_counter(&mut self, enable: bool) {
-        unsafe {
-            self.record_remote_sequence_counter
-                .write_volatile(u8::from(enable));
-        }
-    }
-
-    pub fn remote_sequence_counter(&self) -> u64 {
-        unsafe { self.remote_sequence_counter.read_volatile() }
-    }
-}
-
 pub struct ScatterUnit<const FRAME_SIZE: usize> {
     memory: *const u8,
-    timing_oracle: ScatterTimingOracle,
     metacycle_register: *const u8,
 }
 
@@ -57,9 +33,6 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
         };
 
         let memory_node = get_node("scatter-memory")?;
-        let local_sequence_counter_node = get_node("local-sequence-counter-reg")?;
-        let record_remote_sequence_counter_node = get_node("record-remote-sequence-counter-reg")?;
-        let remote_sequence_counter_node = get_node("remote-sequence-counter-reg")?;
         let metacycle_register_node = get_node("metacycle-reg")?;
 
         let memory = get_reg(&memory_node, "memory")?;
@@ -73,51 +46,6 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
                 });
             }
         }
-
-        let local_sequence_counter = {
-            let reg = get_reg(&local_sequence_counter_node, "local_sequence_counter")?;
-            if let Some(size) = reg.size {
-                if size != 8 {
-                    return Err(ComponentLoadError::SizeMismatch {
-                        property: "local sequence counter register size",
-                        expected: 8,
-                        found: size,
-                    });
-                }
-            }
-            reg.starting_address as *const u64
-        };
-
-        let record_remote_sequence_counter = {
-            let reg = get_reg(
-                &record_remote_sequence_counter_node,
-                "record_remote_sequence_counter",
-            )?;
-            if let Some(size) = reg.size {
-                if size != 1 {
-                    return Err(ComponentLoadError::SizeMismatch {
-                        property: "record remote sequence counter register size",
-                        expected: 1,
-                        found: size,
-                    });
-                }
-            }
-            reg.starting_address as *mut u8
-        };
-
-        let remote_sequence_counter = {
-            let reg = get_reg(&remote_sequence_counter_node, "remote_sequence_counter")?;
-            if let Some(size) = reg.size {
-                if size != 8 {
-                    return Err(ComponentLoadError::SizeMismatch {
-                        property: "remote sequence counter register size",
-                        expected: 8,
-                        found: size,
-                    });
-                }
-            }
-            reg.starting_address as *const u64
-        };
 
         let metacycle_register = {
             let reg = get_reg(&metacycle_register_node, "metacycle_register")?;
@@ -135,11 +63,6 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
 
         Ok(ScatterUnit {
             memory: memory.starting_address,
-            timing_oracle: ScatterTimingOracle {
-                local_sequence_counter,
-                record_remote_sequence_counter,
-                remote_sequence_counter,
-            },
             metacycle_register,
         })
     }
@@ -154,10 +77,6 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
                 *d = self.memory.add(i).read_volatile();
             }
         }
-    }
-
-    pub fn timing_oracle(&self) -> &ScatterTimingOracle {
-        &self.timing_oracle
     }
 
     /// Wait for the start of a new metacycle.
