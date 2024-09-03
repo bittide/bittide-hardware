@@ -163,12 +163,16 @@ callisto ControlConfig{..} mask scs dataCounts state =
   steadyStateTarget = D.fromSignal (_steadyStateTarget <$> state)
 
   -- see clock control algorithm simulation here:
+  --
   -- https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
   --
-  -- the constants here are chosen to match the above code.
+  -- `k_p` (proportional gain) is copied from the Julia implementation. `fStep` should
+  -- match the step size of the clock boards. For all our HITL tests this is set by
+  -- `HwCcTopologies.commonStepSizeSelect`.
+  --
   k_p, fStep :: forall d. DSignal dom d Float
-  k_p = pure 2e-4
-  fStep = pure 5e-4
+  k_p = pure 2e-8
+  fStep = pure 100e-9
 
   r_k :: DSignal dom F.FromS32DefDelay Float
   r_k =

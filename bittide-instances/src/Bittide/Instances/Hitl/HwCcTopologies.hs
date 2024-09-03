@@ -29,6 +29,7 @@ module Bittide.Instances.Hitl.HwCcTopologies (
   hwCcTopologyWithRiscvTest,
   hwCcTopologyTest,
   clockControlConfig,
+  commonSpiConfig,
   tests,
 ) where
 
@@ -131,7 +132,10 @@ step size for individual tests requires recalibration of the clock
 offsets, which is why we fix it to a single and common value here.
 -}
 commonStepSizeSelect :: StepSizeSelect
-commonStepSizeSelect = PPB_10
+commonStepSizeSelect =
+  -- Don't forget to update the value of f_step this value in "Callisto.hs" and
+  -- "callisto.rs".
+  PPB_100
 
 commonStepSizePartsPer :: PartsPer
 commonStepSizePartsPer = case commonStepSizeSelect of

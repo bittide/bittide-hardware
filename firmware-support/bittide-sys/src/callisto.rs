@@ -111,8 +111,15 @@ pub fn callisto(
     data_counts: impl Iterator<Item = isize>,
     state: &mut ControlSt,
 ) {
-    const K_P: f32 = 2e-4;
-    const FSTEP: f32 = 5e-4;
+    // see clock control algorithm simulation here:
+    //
+    // https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
+    //
+    // `k_p` (proportional gain) is copied from the Julia implementation. `fStep` should
+    // match the step size of the clock boards. For all our HITL tests this is set by
+    // `HwCcTopologies.commonStepSizeSelect`.
+    const K_P: f32 = 2e-8;
+    const FSTEP: f32 = 100e-9;
 
     let n_buffers = availability_mask.count_ones();
     let measured_sum = data_counts.sum::<isize>() as i32;
