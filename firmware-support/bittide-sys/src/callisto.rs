@@ -111,8 +111,8 @@ pub fn callisto(
     data_counts: impl Iterator<Item = isize>,
     state: &mut ControlSt,
 ) {
-    const K_P: f32 = 2e-4;
-    const FSTEP: f32 = 5e-4;
+    const K_P: f32 = 2e-8;
+    const FSTEP: f32 = 100e-9;
 
     let n_buffers = availability_mask.count_ones();
     let measured_sum = data_counts.sum::<isize>() as i32;
