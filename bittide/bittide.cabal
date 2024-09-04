@@ -124,6 +124,7 @@ library
     Bittide.Axi4
     Bittide.Axi4.Internal
     Bittide.Calendar
+    Bittide.CaptureUgn
     Bittide.ClockControl
     Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Types
