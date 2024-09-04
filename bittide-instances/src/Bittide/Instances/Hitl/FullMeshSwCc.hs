@@ -47,7 +47,6 @@ import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
 import Bittide.ClockControl.Registers (clockControlWb)
-import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
 import Bittide.DoubleBufferedRam (ContentType (Blob), InitialContent (Reloadable))
@@ -61,6 +60,7 @@ import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology (TopologyType (..))
 import Bittide.Transceiver (transceiverPrbsN)
 
+import Bittide.Instances.Hitl.HwCcTopologies (commonSpiConfig)
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup hiding (FpgaCount, LinkCount)
 import Project.FilePath
@@ -198,7 +198,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
 
   (_, _, spiState, spiOut) =
     withClockResetEnable sysClk syncRst enableGen
-      $ si539xSpi testConfig6_200_on_0a_10ppb (SNat @(Microseconds 10)) (pure Nothing) miso
+      $ si539xSpi commonSpiConfig (SNat @(Microseconds 10)) (pure Nothing) miso
 
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
