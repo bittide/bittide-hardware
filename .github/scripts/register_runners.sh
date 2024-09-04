@@ -21,29 +21,30 @@
 #
 #    apt install docker.io
 #
-# And allow the user (e.g., bittide) you want to run the GHA software with to use it:
+# And allow the user (e.g., gha-user) you want to run the GHA software with to use it:
 #
-#    adduser bittide docker
+#    adduser gha-user docker
 #
-# Next up, a hack to get docker to write files as the 'bittide' user, instead of
-# 'root'. The latter interferes with clean jobs. Make `/etc/subgid` contain:
+# Next up, a hack to get docker to write files as the 'gha-user' user, instead of
+# 'root'. The latter interferes with clean jobs. Update the UID from 1000 to the UID of
+# the gha-user, and make `/etc/subgid` contain:
 #
-#     bittide:1000:1
-#     bittide:100000:65536
+#     gha-user:1000:1
+#     gha-user:100000:65536
 #
-# Make `/etc/subuid` contain:
+# Make `/etc/subuid` contain (also update the UID from 1000 to the UID of the gha-user):
 #
-#     bittide:1000:1
-#     bittide:100000:65536
+#     gha-user:1000:1
+#     gha-user:100000:65536
 #
 # Make `/etc/docker/daemon.json` contain:
 #
 #     {
-#         "userns-remap": "bittide"
+#         "userns-remap": "gha-user"
 #     }
 #
 # These hacks will probably ruin your normal Docker experience, so only use on
-# servers dedicated for Bittide CI!
+# servers dedicated for CI!
 #
 # Last but not least, reboot. This should apply all the changes and start the GHA
 # runners. If not, good luck debugging.
