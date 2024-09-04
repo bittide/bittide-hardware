@@ -109,6 +109,7 @@ data StepSizeSelect
   = PPB_1
   | PPB_10
   | PPB_100
+  | PPB_500
   | PPM_1
   deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded, Show)
 
@@ -137,6 +138,7 @@ commonStepSizePartsPer = case commonStepSizeSelect of
   PPB_1 -> PartsPer.ppb 1
   PPB_10 -> PartsPer.ppb 10
   PPB_100 -> PartsPer.ppb 100
+  PPB_500 -> PartsPer.ppb 500
   PPM_1 -> PartsPer.ppm 1
 
 partsPerToSteps :: PartsPer -> FincFdecCount
@@ -148,6 +150,7 @@ commonSpiConfig = case commonStepSizeSelect of
   PPB_1 -> testConfig6_200_on_0a_1ppb
   PPB_10 -> testConfig6_200_on_0a_10ppb
   PPB_100 -> testConfig6_200_on_0a_100ppb
+  PPB_500 -> testConfig6_200_on_0a_500ppb
   PPM_1 -> testConfig6_200_on_0a_1ppm
 
 {- | Accepted noise between the inital clock control calibration run

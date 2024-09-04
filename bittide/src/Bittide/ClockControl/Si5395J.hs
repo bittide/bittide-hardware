@@ -33,6 +33,10 @@ testConfig6_200_on_0a_10ppb = $(parseFromFileToRegisterMap "Si5395J-200MHz-10ppb
 testConfig6_200_on_0a_100ppb :: TestConfig6_200_on_0a_RegisterMap
 testConfig6_200_on_0a_100ppb = $(parseFromFileToRegisterMap "Si5395J-200MHz-100ppb-Registers")
 
+-- | Same as 'testConfig6_200_on_0a_1ppb', but with a 500 ppb step size
+testConfig6_200_on_0a_500ppb :: TestConfig6_200_on_0a_RegisterMap
+testConfig6_200_on_0a_500ppb = $(parseFromFileToRegisterMap "Si5395J-200MHz-500ppb-Registers")
+
 -- | Same as 'testConfig6_200_on_0a_1ppb', but with a 1 ppm step size
 testConfig6_200_on_0a_1ppm :: TestConfig6_200_on_0a_RegisterMap
 testConfig6_200_on_0a_1ppm = $(parseFromFileToRegisterMap "Si5395J-200MHz-1ppm-Registers")
