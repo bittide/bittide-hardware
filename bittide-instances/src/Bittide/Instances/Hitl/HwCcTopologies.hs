@@ -70,7 +70,7 @@ import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology
 import Bittide.Transceiver (transceiverPrbsN)
 
-import Bittide.Hitl (HitlTestsWithPostProcData, Probes, TestName, hitlVio)
+import Bittide.Hitl (HitlTestsWithPostProcData, OutProbes, TestName, hitlVio)
 
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
@@ -870,7 +870,7 @@ tests =
     Maybe (Vec n PartsPer) ->
     Vec n StartupDelay ->
     Topology n ->
-    (TestName, (Probes TestConfig, CcConf))
+    (TestName, (OutProbes TestConfig, CcConf))
   tt clockShifts startDelays t =
     ( fromString $ topologyName t
     ,
