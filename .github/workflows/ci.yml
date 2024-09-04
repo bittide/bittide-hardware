@@ -146,10 +146,9 @@ jobs:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
     needs: [
       build,
-      lint,
       bittide-instances-hardware-in-the-loop,
       bittide-instances-hardware-in-the-loop-test-matrix,
-    ]
+     ]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
@@ -207,7 +206,7 @@ jobs:
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build, lint]
+    needs: [build]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
@@ -238,7 +237,7 @@ jobs:
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build, lint]
+    needs: [build]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
@@ -391,7 +390,7 @@ jobs:
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build, lint]
+    needs: [build]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
@@ -418,7 +417,7 @@ jobs:
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build, lint]
+    needs: [build]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
@@ -520,7 +519,7 @@ jobs:
       run:
         # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
         shell: git-nix-shell {0} --option connect-timeout 360
-    needs: [build, lint, bittide-instances-hdl-matrix]
+    needs: [build, bittide-instances-hdl-matrix]
 
     strategy:
       matrix:
