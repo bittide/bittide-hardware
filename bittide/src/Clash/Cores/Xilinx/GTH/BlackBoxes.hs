@@ -93,7 +93,10 @@ gthCoreBBTF bbCtx
             [ ("gthrxn_in", N.BitVector chansUsed)
             , ("gthrxp_in", N.BitVector chansUsed)
             , ("gtwiz_reset_clk_freerun_in", N.Clock "freerun")
-            , ("gtwiz_reset_all_in", N.Reset "freerun")
+
+            -- , ("gtwiz_reset_all_in", N.Reset "freerun")
+            , ("gtwiz_reset_tx_datapath_in", N.Reset "freerun")
+
             , ("gtwiz_reset_rx_datapath_in", N.Reset "freerun")
             , ("gtwiz_userdata_tx_in", N.BitVector (chansUsed * tX_DATA_WIDTH))
             , ("txctrl2_in", N.BitVector (chansUsed * (tX_DATA_WIDTH `div` 8)))
@@ -107,7 +110,9 @@ gthCoreBBTF bbCtx
             , ("txctrl0_in", DSL.bvLit 16 0)
             , ("txctrl1_in", DSL.bvLit 16 0)
             , ("gtwiz_reset_tx_pll_and_datapath_in", DSL.bvLit 1 0)
-            , ("gtwiz_reset_tx_datapath_in", DSL.bvLit 1 0)
+            -- , ("gtwiz_reset_tx_datapath_in", DSL.bvLit 1 0)
+            , ("gtwiz_reset_all_in", DSL.bvLit 1 0)
+
             , ("gtwiz_reset_rx_pll_and_datapath_in", DSL.bvLit 1 0)
             , ("tx8b10ben_in", DSL.bvLit 1 1)
             , ("rx8b10ben_in", DSL.bvLit 1 1)
