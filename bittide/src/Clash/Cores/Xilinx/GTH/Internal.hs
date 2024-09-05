@@ -6,22 +6,34 @@
 
 module Clash.Cores.Xilinx.GTH.Internal where
 
-import Clash.Prelude
+import Clash.Explicit.Prelude
 
 import Clash.Annotations.Primitive (
   HDL (Verilog),
   Primitive (InlineYamlPrimitive),
   hasBlackBox,
  )
+import Clash.Annotations.SynthesisAttributes
 import Data.String.Interpolate (__i)
 
 import Clash.Cores.Xilinx.GTH.BlackBoxes
+import Clash.Cores.Xilinx.Xpm.Cdc.Internal (
+  ClockPort (..),
+  Param (..),
+  Port (..),
+  ResetPort (..),
+  inst,
+  instConfig,
+  unPort,
+ )
 
 type TX_DATA_WIDTH = 64
 type RX_DATA_WIDTH = 64
 
-type GthCore txUser2 rxUser2 refclk0 freerun txS rxS serializedData =
-  ( KnownDomain txUser2
+type GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS serializedData =
+  ( KnownDomain txUser
+  , KnownDomain txUser2
+  , KnownDomain rxUser
   , KnownDomain rxUser2
   , KnownDomain refclk0
   , KnownDomain freerun
@@ -40,21 +52,28 @@ type GthCore txUser2 rxUser2 refclk0 freerun txS rxS serializedData =
   "gtwiz_userdata_tx_in" ::: Signal txUser2 (BitVector TX_DATA_WIDTH) ->
   "txctrl2_in" ::: Signal txUser2 (BitVector (DivRU TX_DATA_WIDTH 8)) ->
   "gtrefclk0_in" ::: Clock refclk0 ->
+  "txusrclk_in" ::: Clock txUser ->
+  "txusrclk2_in" ::: Clock txUser2 ->
+  "gtwiz_userclk_tx_active_in" ::: Signal txUser2 (BitVector 1) ->
+  "rxusrclk_in" ::: Clock rxUser ->
+  "rxusrclk2_in" ::: Clock rxUser2 ->
+  "gtwiz_userclk_rx_active_in" ::: Signal rxUser2 (BitVector 1) ->
   ( "gthtxn_out" ::: Signal txS serializedData
   , "gthtxp_out" ::: Signal txS serializedData
-  , "gtwiz_userclk_tx_usrclk2_out" ::: Clock txUser2
-  , "gtwiz_userclk_rx_usrclk2_out" ::: Clock rxUser2
+  , "txoutclk_out" ::: Clock txUser
+  , "rxoutclk_out" ::: Clock rxUser
   , "gtwiz_userdata_rx_out" ::: Signal rxUser2 (BitVector RX_DATA_WIDTH)
   , "gtwiz_reset_tx_done_out" ::: Signal txUser2 (BitVector 1)
   , "gtwiz_reset_rx_done_out" ::: Signal rxUser2 (BitVector 1)
-  , "gtwiz_userclk_tx_active_out" ::: Signal txUser2 (BitVector 1)
+  , "txpmaresetdone_out" ::: Signal txUser (BitVector 1)
+  , "rxpmaresetdone_out" ::: Signal rxUser (BitVector 1)
   , "rxctrl0_out" ::: Signal rxUser2 (BitVector 16)
   , "rxctrl1_out" ::: Signal rxUser2 (BitVector 16)
   , "rxctrl2_out" ::: Signal rxUser2 (BitVector 8)
   , "rxctrl3_out" ::: Signal rxUser2 (BitVector 8)
   )
 
-gthCore :: GthCore txUser2 rxUser2 refclk0 freerun txS rxS (BitVector 1)
+gthCore :: GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS (BitVector 1)
 gthCore
   !_channel
   !_refClkSpec
@@ -65,8 +84,15 @@ gthCore
   !_gtwiz_reset_rx_datapath_in
   !_gtwiz_userdata_tx_in
   !_txctrl2_in
-  !_gtrefclk0_in =
+  !_gtrefclk0_in
+  !_
+  !_
+  !_
+  !_
+  !_
+  !_ =
     ( undefined
+    , undefined
     , undefined
     , undefined
     , undefined
@@ -95,6 +121,79 @@ gthCore
         |]
   )
   #-}
+
+{- | This mimics what PG182 calls the "[RX,TX] User Clocking Network Helper Block"
+
+It has a hardcoded to do no division for  @usrclk@ and divide by 2 for @usrclk2@.
+So it'll only work when the external RX/TX GTH interfaces uses twice the width of the internal width.
+See: https://docs.amd.com/r/en-US/pg182-gtwizard-ultrascale/Transmitter-User-Clocking-Network-Helper-Block-Ports
+-}
+gthUserClockNetwork ::
+  forall user user2.
+  (KnownDomain user, KnownDomain user2) =>
+  Clock user ->
+  Reset user2 ->
+  (Clock user, Clock user2, Signal user2 (BitVector 1))
+gthUserClockNetwork clkIn rstIn =
+  (clk1, clk2, active)
+ where
+  rstIn1 :: Reset user
+  rstIn1 = unsafeSynchronizerReset clk2 clk1 rstIn
+  clk1 = bufgGt d0 clkIn rstIn1
+  clk2 :: Clock user2
+  clk2 = bufgGt d1 clkIn rstIn1
+  -- TODO: Use XPM syncer. Alternatively, instantiate Xilinx IP for this whole function
+  reg = annotate (StringAttr "ASYNC_REG" "TRUE" :> Nil) . register clk2 rstIn enableGen 0
+  active = reg $ reg (pure 1)
+{-# NOINLINE gthUserClockNetwork #-}
+
+unsafeSynchronizerReset ::
+  (KnownDomain dom1, KnownDomain dom2) =>
+  Clock dom1 ->
+  Clock dom2 ->
+  Reset dom1 ->
+  Reset dom2
+unsafeSynchronizerReset clkIn clkOut rstIn = unsafeFromActiveHigh $ unsafeSynchronizer clkIn clkOut (unsafeToActiveHigh rstIn)
+
+xilinxGthUserClockNetworkTx ::
+  forall user user2.
+  (KnownDomain user, KnownDomain user2) =>
+  Clock user ->
+  Reset user2 ->
+  (Clock user, Clock user2, Signal user2 (BitVector 1))
+xilinxGthUserClockNetworkTx clkIn rstIn = (unPort usrclk_out, unPort usrclk2_out, pack <$> unPort tx_active_out)
+ where
+  (usrclk_out, usrclk2_out, tx_active_out) = go (Param 2) (ClockPort clkIn) (ResetPort rstIn)
+  go ::
+    Param "P_FREQ_RATIO_USRCLK_TO_USRCLK2" Integer ->
+    ClockPort "gtwiz_userclk_tx_srcclk_in" user ->
+    ResetPort "gtwiz_userclk_tx_reset_in" ActiveHigh user2 ->
+    ( ClockPort "gtwiz_userclk_tx_usrclk_out" user
+    , ClockPort "gtwiz_userclk_tx_usrclk2_out" user2
+    , Port "gtwiz_userclk_tx_active_out" user2 Bit
+    )
+  go = inst (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_tx")
+{-# NOINLINE xilinxGthUserClockNetworkTx #-}
+
+xilinxGthUserClockNetworkRx ::
+  forall user user2.
+  (KnownDomain user, KnownDomain user2) =>
+  Clock user ->
+  Reset user2 ->
+  (Clock user, Clock user2, Signal user2 (BitVector 1))
+xilinxGthUserClockNetworkRx clkIn rstIn = (unPort usrclk_out, unPort usrclk2_out, pack <$> unPort rx_active_out)
+ where
+  (usrclk_out, usrclk2_out, rx_active_out) = go (Param 2) (ClockPort clkIn) (ResetPort rstIn)
+  go ::
+    Param "P_FREQ_RATIO_USRCLK_TO_USRCLK2" Integer ->
+    ClockPort "gtwiz_userclk_rx_srcclk_in" user ->
+    ResetPort "gtwiz_userclk_rx_reset_in" ActiveHigh user2 ->
+    ( ClockPort "gtwiz_userclk_rx_usrclk_out" user
+    , ClockPort "gtwiz_userclk_rx_usrclk2_out" user2
+    , Port "gtwiz_userclk_rx_active_out" user2 Bit
+    )
+  go = inst (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_rx")
+{-# NOINLINE xilinxGthUserClockNetworkRx #-}
 
 ibufds_gte3 :: (KnownDomain dom) => DiffClock dom -> Clock dom
 ibufds_gte3 !_clk = clockGen

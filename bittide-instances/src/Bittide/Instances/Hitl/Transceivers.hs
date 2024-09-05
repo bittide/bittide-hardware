@@ -157,7 +157,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
       @Basic125
       @GthTxS
       @GthRxS
-      defConfig{debugIla = True, debugFpgaIndex = bitCoerce <$> fpgaIndex}
+      defConfig{debugFpgaIndex = bitCoerce <$> fpgaIndex}
       Inputs
         { clock = sysClk
         , reset = gthAllReset

@@ -89,7 +89,6 @@ import Clash.Explicit.Prelude
 
 import Bittide.Arithmetic.Time (trueForSteps)
 import Bittide.ElasticBuffer (sticky)
-import Clash.Cores.Xilinx.GTH (GthCore)
 import Clash.Cores.Xilinx.Ila (
   Depth (D1024),
   IlaConfig (advancedTriggers, depth, stages),
@@ -100,7 +99,6 @@ import Clash.Cores.Xilinx.Xpm.Cdc.ArraySingle (xpmCdcArraySingle)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Explicit.Reset.Extra (Asserted (Asserted), delayReset, xpmResetSynchronizer)
 import Clash.Prelude (withClock)
-import Clash.Sized.Vector.Extra (zipWith8)
 import Control.Monad (when)
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Proxy (Proxy (Proxy))
@@ -198,9 +196,9 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.stats'
   }
 
-data Output tx rx txS free serializedData = Output
-  { txClock :: Clock tx
-  -- ^ Transmit clock. See 'txReset'.
+data Output tx rx tx1 rx1 txS free serializedData = Output
+  { txOutClock :: Clock tx1
+  -- ^ TODO
   , txReset :: Reset tx
   -- ^ Reset signal for the transmit side. Clock can be unstable until this reset
   -- is deasserted.
@@ -213,8 +211,8 @@ data Output tx rx txS free serializedData = Output
   -- ^ Transmit data (and implicitly a clock), positive
   , txN :: Signal txS serializedData
   -- ^ Transmit data (and implicitly a clock), negative
-  , rxClock :: Clock rx
-  -- ^ Receive clock, recovered from the incoming data stream. See 'rxReset'.
+  , rxOutClock :: Clock rx1
+  -- ^ TODO
   , rxReset :: Reset rx
   -- ^ Reset signal for the receive side. Clock can be unstable until this reset
   -- is deasserted.
@@ -229,13 +227,19 @@ data Output tx rx txS free serializedData = Output
   -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
   }
 
-data Input tx rx ref free rxS serializedData = Input
+data Input tx rx tx1 rx1 ref free rxS serializedData = Input
   { clock :: Clock free
   -- ^ Any "always on" clock
   , reset :: Reset free
   -- ^ Reset signal for the entire transceiver
   , refClock :: Clock ref
   -- ^ Reference clock. Used to synthesize transmit clock.
+  , clockTx1 :: Clock tx1
+  , clockTx2 :: Clock tx
+  , txActive :: Signal tx (BitVector 1)
+  , clockRx1 :: Clock rx1
+  , clockRx2 :: Clock rx
+  , rxActive :: Signal rx (BitVector 1)
   , transceiverIndex :: Unsigned 3
   -- ^ Index of this transceiver, used for debugging. Can be set to 0 if not used.
   , channelName :: String
@@ -282,9 +286,23 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.rxReady'
   }
 
+{-
+[NOTE: duplicate tx/rx domain]
+'gthCore' and the inside of 'transceiverPrbsN' have two extra domains, tx1 and rx1,
+that aren't visible outside of transceiverPrbsN.
+To do this completely clean/safe transceiverPrbsN should have two extra
+forall arguments, two extra KnownDomain constrainsts.
+And either some Proxy arguments or we would have to enable AllowAmbiguousTypes.
+
+Instead I choose to sidestep that and pretend tx1/rx1 and tx/rx are the same.
+This disables the typechecking safety we'd normally get from clash,
+but vivado should call us out when we make a mistake.
+-}
+
 transceiverPrbsN ::
-  forall tx rx ref free txS rxS n.
+  forall tx rx ref free txS rxS n m.
   ( KnownNat n
+  , n ~ m + 1
   , HasSynchronousReset tx
   , HasDefinedInitialValues tx
   , HasSynchronousReset rx
@@ -302,12 +320,12 @@ transceiverPrbsN ::
 transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   Outputs
     { -- tx
-      txClocks = map (.txClock) outputs
+      txClocks = txClocks
     , txResets = map (.txReset) outputs
     , txReadys = map (.txReady) outputs
     , txSamplings = map (.txSampling) outputs
     , -- rx
-      rxClocks = map (.rxClock) outputs
+      rxClocks = rxClocks
     , rxResets = map (.rxReset) outputs
     , rxDatas = map (.rxData) outputs
     , -- transceiver
@@ -319,27 +337,47 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
     , stats = map (.stats) outputs
     }
  where
-  -- XXX: Replacing 'zipWithN' with '<$>' and '<*>' triggers a combination of:
-  --
+  -- XXX: 'outputs' used to be written with zipWithN, to workaround bugs:
   --       * https://github.com/clash-lang/clash-compiler/issues/2723
   --       * https://github.com/clash-lang/clash-compiler/issues/2722
+  -- That breaks the instantiation of the the debug ILAs inside 'transceiverPrbs'.
   --
-  -- Note that these bugs break the instantiation of multiple ILAs.
+  -- But when the GTHs were changed to use external "user clock networks",
+  -- this zipWithN became unusably slow when using more then ~4 transceivers.
+  -- Unfortunately this means debugIla is broken now, when using more then 1 transceiver.
   outputs =
-    zipWith8
-      go
-      (iterateI (+ 1) 0) -- Note that the target type is only 3 bits, so this will
+    (go txClockNw)
+      <$> (iterateI (+ 1) 0) -- Note that the target type is only 3 bits, so this will
       -- wrap around after 8 transceivers. This is fine, as we
       -- only use this for debugging.
-      inputs.channelNames
-      inputs.clockPaths
-      (unbundle (unpack <$> inputs.rxNs))
-      (unbundle (unpack <$> inputs.rxPs))
-      inputs.txDatas
-      inputs.txReadys
-      inputs.rxReadys
+      <*> inputs.channelNames
+      <*> inputs.clockPaths
+      <*> (unbundle (unpack <$> inputs.rxNs))
+      <*> (unbundle (unpack <$> inputs.rxPs))
+      <*> inputs.txDatas
+      <*> inputs.txReadys
+      <*> inputs.rxReadys
+      <*> rxClockNws
 
-  go transceiverIndex channelName clockPath rxN rxP txData txReady rxReady =
+  -- NOTE: The example project generated by gtwizard_ultrascale suggests tying tx/rxUsrClkRst
+  -- to tx/rxpmaresetdone, but that doesn't seem to work.
+  -- And also it's not what the gtwizard_ultrascale does when configured with internal
+  -- "user clock network".
+  txUsrClkRst = noReset @tx
+  rxUsrClkRst = noReset @rx
+
+  txOutClk = (head outputs).txOutClock
+  -- see [NOTE: duplicate tx/rx domain]
+  txClockNw = Gth.gthUserClockNetwork @tx @tx txOutClk txUsrClkRst
+  (_txClk1s, txClock, _txClkActives) = txClockNw
+  txClocks = repeat txClock
+
+  rxOutClks = map (.rxOutClock) outputs
+  -- see [NOTE: duplicate tx/rx domain]
+  rxClockNws = map (flip (Gth.gthUserClockNetwork @rx @rx) rxUsrClkRst) rxOutClks
+  (_rxClk1s, rxClocks, _rxClkActives) = unzip3 rxClockNws
+
+  go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxN rxP txData txReady rxReady (clockRx1, clockRx2, rxActive) =
     transceiverPrbs
       opts
       Input
@@ -354,43 +392,53 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
         , clock
         , reset
         , refClock
+        , clockTx1
+        , clockTx2
+        , txActive
+        , clockRx1
+        , clockRx2
+        , rxActive
         }
 
 transceiverPrbs ::
-  forall tx rx ref free txS rxS.
+  forall tx rx tx1 rx1 ref free txS rxS.
   ( HasSynchronousReset tx
   , HasDefinedInitialValues tx
   , HasSynchronousReset rx
   , HasDefinedInitialValues rx
   , HasSynchronousReset free
   , HasDefinedInitialValues free
+  , KnownDomain rx1
+  , KnownDomain tx1
   , KnownDomain rxS
   , KnownDomain txS
   , KnownDomain ref
   , KnownDomain free
   ) =>
   Config free ->
-  Input tx rx ref free rxS (BitVector 1) ->
-  Output tx rx txS free (BitVector 1)
+  Input tx rx tx1 rx1 ref free rxS (BitVector 1) ->
+  Output tx rx tx1 rx1 txS free (BitVector 1)
 transceiverPrbs = transceiverPrbsWith Gth.gthCore
 
 transceiverPrbsWith ::
-  forall tx rx ref free txS rxS serializedData.
+  forall tx rx tx1 rx1 ref free txS rxS serializedData.
   ( HasSynchronousReset tx
   , HasDefinedInitialValues tx
   , HasSynchronousReset rx
   , HasDefinedInitialValues rx
   , HasSynchronousReset free
   , HasDefinedInitialValues free
+  , KnownDomain rx1
+  , KnownDomain tx1
   , KnownDomain rxS
   , KnownDomain txS
   , KnownDomain ref
   , KnownDomain free
   ) =>
-  GthCore tx rx ref free txS rxS serializedData ->
+  Gth.GthCore tx1 tx rx1 rx ref free txS rxS serializedData ->
   Config free ->
-  Input tx rx ref free rxS serializedData ->
-  Output tx rx txS free serializedData
+  Input tx rx tx1 rx1 ref free rxS serializedData ->
+  Output tx rx tx1 rx1 txS free serializedData
 transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   when opts.debugIla debugIla `hwSeqX` result
  where
@@ -469,6 +517,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         txLastFree
         (pure True :: Signal free Bool) -- capture
         txLastFree -- trigger
+  tx_active = args.txActive
+
   result =
     Output
       { txSampling = txUserData
@@ -476,9 +526,9 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       , txReady
       , txN
       , txP
-      , txClock
+      , txOutClock
       , txReset
-      , rxClock
+      , rxOutClock
       , rxReset
       , linkUp
       , linkReady
@@ -493,16 +543,17 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
 
   ( txN
     , txP
-    , txClock
-    , rxClock
+    , txOutClock
+    , rxOutClock
     , rx_data0
     , reset_tx_done
     , reset_rx_done
-    , tx_active
-    , rxCtrl0
-    , rxCtrl1
-    , rxCtrl2
-    , rxCtrl3
+    , _txpmaresetdone_out
+    , _rxpmaresetdone_out
+    , (rxCtrl0 :: Signal rx (BitVector 16))
+    , (rxCtrl1 :: Signal rx (BitVector 16))
+    , (rxCtrl2 :: Signal rx (BitVector 8))
+    , (rxCtrl3 :: Signal rx (BitVector 8))
     ) =
       gthCore
         args.channelName
@@ -518,7 +569,17 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
         gtwiz_userdata_tx_in
         txctrl
         args.refClock -- gtrefclk0_in
+        args.clockTx1
+        args.clockTx2
+        args.txActive
+        args.clockRx1
+        args.clockRx2
+        args.rxActive
+
   prbsConfig = Prbs.conf31 @48
+
+  txClock = args.clockTx2
+  rxClock = args.clockRx2
 
   (commas, txctrl) = Comma.generator d1 txClock txReset
   commasDone = isNothing <$> commas
