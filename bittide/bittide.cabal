@@ -159,6 +159,9 @@ library
     Clash.Cores.Xilinx.GTH
     Clash.Cores.Xilinx.GTH.BlackBoxes
     Clash.Cores.Xilinx.GTH.Internal
+    Clash.Cores.Xilinx.GTHnew
+    Clash.Cores.Xilinx.GTHnew.BlackBoxes
+    Clash.Cores.Xilinx.GTHnew.Internal
     Clash.Cores.Xilinx.SystemMonitor
     Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
     Clash.Explicit.Reset.Extra
