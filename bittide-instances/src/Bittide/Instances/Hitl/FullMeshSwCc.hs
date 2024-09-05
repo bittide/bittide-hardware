@@ -201,7 +201,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
 
-  transceivers =
+  transceivers0 =
     transceiverPrbsN
       @GthTx
       @GthRx
@@ -223,6 +223,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
         , txReadys = txAllStables
         , rxReadys = repeat (pure True)
         }
+  transceivers = transceivers0 -- {Transceiver.txClocks = repeat (head transceivers0.txClocks)}
   txAllStables = zipWith (xpmCdcSingle sysClk) transceivers.txClocks (repeat allStable1)
   allStable1 = sticky sysClk syncRst allStable0
   txResets2 =
