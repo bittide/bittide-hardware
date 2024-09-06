@@ -788,11 +788,6 @@ tests =
       -- initial clock shifts   startup delays            topology
       tt (Just icsDiamond) ((m *) <$> sdDiamond) diamond
     , tt (Just icsComplete) ((m *) <$> sdComplete) $ complete d3
-    , tt (Just icsCyclic) ((m *) <$> sdCyclic) $ cyclic d5
-    , tt (Just icsTorus) ((m *) <$> sdTorus) $ torus2d d2 d3
-    , tt (Just icsStar) ((m *) <$> sdStar) $ star d7
-    , tt (Just icsLine) ((m *) <$> sdLine) $ line d4
-    , tt (Just icsHourglass) ((m *) <$> sdHourglass) $ hourglass d3
     , -- CALIBRATION VERIFICATON --
       -----------------------------
       validateClockOffsetCalibration

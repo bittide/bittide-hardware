@@ -283,7 +283,7 @@ ilaPlotSetup IlaPlotSetup{..} = IlaControl{..}
   -- potential glitches
   syncInFiltered =
     unsafeToActiveLow
-      $ resetGlitchFilter (SNat @128) sysClk
+      $ resetGlitchFilter (SNat @8) sysClk
       $ unsafeFromActiveLow
       $ xpmCdcSingle sysClk sysClk syncIn
 
