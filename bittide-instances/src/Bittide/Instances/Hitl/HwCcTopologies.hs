@@ -825,8 +825,7 @@ tests =
 
   defSimCfg =
     def
-      { samples = 1000
-      , duration = natToNum @(PeriodToCycles Basic125 (Seconds 60))
+      { duration = natToNum @(PeriodToCycles Basic125 (Seconds 60))
       , stabilityMargin = snatToNum cccStabilityCheckerMargin
       , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
       , reframe = cccEnableReframing

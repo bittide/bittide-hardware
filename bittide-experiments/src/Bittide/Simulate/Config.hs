@@ -38,10 +38,6 @@ data CcConf = CcConf
   -- topology types and their corresponding topologies.
   , duration :: Int
   -- ^ The number of clock cycles to simulate.
-  , samples :: Int
-  -- ^ The number of samples to be utilized for result
-  -- generation. From the 'duration' many samples available, only
-  -- every @duration `quot` samples@th sample is used.
   , stabilityMargin :: Int
   -- ^ Maximum number of elements a buffer occupancy is allowed to
   -- deviate to be considered stable.
@@ -80,7 +76,6 @@ instance Default CcConf where
     CcConf
       { ccTopologyType = Complete 8
       , duration = 150000
-      , samples = 100
       , stabilityMargin = 8
       , stabilityFrameSize = 1500000
       , reframe = True
