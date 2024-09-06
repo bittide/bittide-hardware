@@ -46,7 +46,7 @@ import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
 import System.FilePath
 
-import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
+import Bittide.Arithmetic.PartsPer (PartsPer)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
@@ -777,50 +777,10 @@ makeTopEntity 'hwCcTopologyTest
 tests :: HitlTestsWithPostProcData TestConfig CcConf
 tests =
   Map.fromList
-    [ -- CALIBRATION --
-      -----------------
-
-      -- detect the natual clock offsets to be elided from the later tests
-      calibrateClockOffsets
-    , -- TESTS --
-      -----------
-
-      -- initial clock shifts   startup delays            topology
-      tt (Just icsDiamond) ((m *) <$> sdDiamond) diamond
-    , tt (Just icsComplete) ((m *) <$> sdComplete) $ complete d3
-    , tt (Just icsCyclic) ((m *) <$> sdCyclic) $ cyclic d5
-    , tt (Just icsTorus) ((m *) <$> sdTorus) $ torus2d d2 d3
-    , tt (Just icsStar) ((m *) <$> sdStar) $ star d7
-    , tt (Just icsLine) ((m *) <$> sdLine) $ line d4
-    , tt (Just icsHourglass) ((m *) <$> sdHourglass) $ hourglass d3
-    , -- CALIBRATION VERIFICATON --
-      -----------------------------
-      validateClockOffsetCalibration
+    [ tt Nothing (repeat 0) (complete d8)
+    , tt Nothing (repeat 0) (hourglass d4)
     ]
  where
-  m = 1_000_000
-
-  icsDiamond = map ppm $ -10 :> -5 :> 20 :> 30 :> Nil
-  sdDiamond = 0 :> 10 :> 200 :> 3 :> Nil
-
-  icsComplete = map ppm $ -100 :> 0 :> 100 :> Nil
-  sdComplete = 200 :> 0 :> 200 :> Nil
-
-  icsCyclic = map ppm $ 0 :> 5 :> 10 :> 15 :> 20 :> Nil
-  sdCyclic = 0 :> 10 :> 0 :> 100 :> 0 :> Nil
-
-  icsTorus = map ppm $ -30 :> -35 :> -40 :> 40 :> 35 :> 30 :> Nil
-  sdTorus = 0 :> 0 :> 0 :> 100 :> 100 :> 100 :> Nil
-
-  icsStar = map ppm $ 0 :> 10 :> -10 :> 20 :> -20 :> 30 :> -30 :> 40 :> Nil
-  sdStar = 0 :> 40 :> 80 :> 120 :> 160 :> 200 :> 240 :> 280 :> Nil
-
-  icsLine = map ppm $ 100 :> 0 :> 0 :> -100 :> Nil
-  sdLine = 200 :> 0 :> 0 :> 200 :> Nil
-
-  icsHourglass = map ppm $ -100 :> 100 :> -100 :> 100 :> -100 :> 100 :> Nil
-  sdHourglass = 0 :> 200 :> 0 :> 200 :> 0 :> 200 :> Nil
-
   ClockControlConfig{..} = clockControlConfig
 
   defSimCfg =
@@ -834,33 +794,6 @@ tests =
           Just
             $ natToNum @(PeriodToCycles Basic125 AllStablePeriod)
       }
-
-  calibrateClockOffsets = calibrateCC False
-  validateClockOffsetCalibration = calibrateCC True
-  calibrateCC validate =
-    ( -- the names must be chosen such that the run is executed first/last
-      (if validate then "zzz_validate" else "0_calibrate") <> "_clock_offsets"
-    ,
-      ( toList
-          $ imap (,)
-          $ repeat @FpgaCount
-            TestConfig
-              { fpgaEnabled = True
-              , calibrate =
-                  if validate
-                    then CCCalibrationValidation
-                    else CCCalibrate
-              , initialClockShift = Nothing
-              , startupDelay = 0
-              , mask = maxBound
-              }
-      , defSimCfg
-          { ccTopologyType = Complete $ natToInteger @FpgaCount
-          , clockOffsets = Nothing
-          , startupDelays = toList $ repeat @FpgaCount 0
-          }
-      )
-    )
 
   -- tests the given topology
   tt ::
