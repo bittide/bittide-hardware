@@ -775,34 +775,7 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 makeTopEntity 'hwCcTopologyTest
 
 tests :: HitlTestGroup
-tests =
-  HitlTestGroup
-    { topEntity = 'hwCcTopologyTest
-    , extraXdcFiles = []
-    , externalHdl = []
-    , testCases =
-        [ -- CALIBRATION --
-          -----------------
-
-          -- detect the natual clock offsets to be elided from the later tests
-          calibrateClockOffsets
-        , -- TESTS --
-          -----------
-
-          -- initial clock shifts   startup delays            topology
-          tt (Just icsDiamond) ((m *) <$> sdDiamond) diamond
-        , tt (Just icsComplete) ((m *) <$> sdComplete) $ complete d3
-        , tt (Just icsCyclic) ((m *) <$> sdCyclic) $ cyclic d5
-        , tt (Just icsTorus) ((m *) <$> sdTorus) $ torus2d d2 d3
-        , tt (Just icsStar) ((m *) <$> sdStar) $ star d7
-        , tt (Just icsLine) ((m *) <$> sdLine) $ line d4
-        , tt (Just icsHourglass) ((m *) <$> sdHourglass) $ hourglass d3
-        , -- CALIBRATION VERIFICATON --
-          -----------------------------
-          validateClockOffsetCalibration
-        ]
-    , mPostProc = Nothing
-    }
+tests = testGroup
  where
   m = 1_000_000
 
@@ -844,6 +817,7 @@ tests =
 
   calibrateClockOffsets = calibrateCC False
   validateClockOffsetCalibration = calibrateCC True
+
   calibrateCC :: Bool -> HitlTestCase HwTargetRef TestConfig CcConf
   calibrateCC validate =
     HitlTestCase
@@ -922,3 +896,29 @@ tests =
         , ..
         }
     )
+
+{- FOURMOLU_DISABLE -} -- fourmolu doesn't do well with tabular structures
+  testGroup =
+    HitlTestGroup
+    { topEntity = 'hwCcTopologyTest
+    , extraXdcFiles = []
+    , externalHdl = []
+    , testCases =
+        [ -- detect the natual clock offsets to be elided from the later tests
+          calibrateClockOffsets
+
+          -- initial clock shifts   startup delays            topology
+        , tt (Just icsDiamond)      ((m *) <$> sdDiamond)     diamond
+        , tt (Just icsComplete)     ((m *) <$> sdComplete)    (complete d3)
+        , tt (Just icsCyclic)       ((m *) <$> sdCyclic)      (cyclic d5)
+        , tt (Just icsTorus)        ((m *) <$> sdTorus)       (torus2d d2 d3)
+        , tt (Just icsStar)         ((m *) <$> sdStar)        (star d7)
+        , tt (Just icsLine)         ((m *) <$> sdLine)        (line d4)
+        , tt (Just icsHourglass)    ((m *) <$> sdHourglass)   (hourglass d3)
+
+          -- make sure the clock offsets detected during calibration is still the same
+        , validateClockOffsetCalibration
+        ]
+    , mPostProc = Nothing
+    }
+{- FOURMOLU_ENABLE -}
