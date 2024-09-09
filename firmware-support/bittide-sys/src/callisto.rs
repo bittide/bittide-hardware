@@ -118,7 +118,7 @@ pub fn callisto(
     // `k_p` (proportional gain) is copied from the Julia implementation. `fStep` should
     // match the step size of the clock boards. For all our HITL tests this is set by
     // `HwCcTopologies.commonStepSizeSelect`.
-    const K_P: f32 = 2e-8;
+    const K_P: f32 = 2e-9;
     const FSTEP: f32 = 10e-9;
 
     let n_buffers = availability_mask.count_ones();
