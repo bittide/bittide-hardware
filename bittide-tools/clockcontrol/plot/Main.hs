@@ -700,8 +700,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
     , dpDrift
     , dpRfStage
     , mapMaybe (uncurry $ liftA2 (,)) $
-        Vec.toList $
-          Vec.zip dpDataCounts dpStability
+        zip (Vec.toList dpDataCounts) (repeat (Just (StabilityIndication False False)))
     )
 
   writeTop (fromMaybe "digraph{}" -> str) =
