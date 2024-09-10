@@ -300,12 +300,14 @@ impl ops::Sub<Duration> for Duration {
 /// let later = clock.elapsed();
 /// let duration = later - now;
 /// assert!(duration > Duration::from_millis(1));
-
+// 
+//   Field name | Type | Byte offset | Notes
+// freeze_count |  u32 |           0 |
+//      counter |  u64 |           4 |
+//    frequency |  u64 |          12 |
 #[derive(uDebug, Clone)]
 pub struct Clock {
-    freeze_count: *mut u32,
-    counter: *const u64,
-    frequency: *const u64,
+    base_addr: *const u32,
 }
 
 impl Clock {
@@ -314,15 +316,8 @@ impl Clock {
     /// # Safety
     ///
     /// `addr` needs to point to a mapped memory address for a timer component.
-    pub unsafe fn new(base_addr: *const ()) -> Clock {
-        unsafe {
-            let addr = base_addr as *mut u32;
-            Clock {
-                freeze_count: addr,
-                counter: addr.add(1).cast::<u64>(),
-                frequency: addr.add(3).cast::<u64>(),
-            }
-        }
+    pub unsafe fn new(addr: *const u32) -> Clock {
+        Clock { base_addr: addr }
     }
 
     /// Wait for a `Duration`.
@@ -354,7 +349,7 @@ impl Clock {
     /// Freezes the time counter.
     fn freeze(&self) {
         unsafe {
-            self.freeze_count.write_volatile(0);
+            self.base_addr.cast_mut().write_volatile(0);
         }
     }
 
@@ -363,7 +358,7 @@ impl Clock {
     /// Returns:
     /// - The current value of the time counter as a `u64`.
     fn get_counter(&self) -> u64 {
-        unsafe { self.counter.read_volatile() }
+        unsafe { self.base_addr.add(1).cast::<u64>().read_volatile() }
     }
 
     /// Retrieves the frequency of the time counter.
@@ -371,7 +366,7 @@ impl Clock {
     /// Returns:
     /// - The frequency of the time counter as a `u64`.
     pub fn get_frequency(&self) -> u64 {
-        unsafe { self.frequency.read_volatile() }
+        unsafe { self.base_addr.add(3).cast::<u64>().read_volatile() }
     }
 }
 
