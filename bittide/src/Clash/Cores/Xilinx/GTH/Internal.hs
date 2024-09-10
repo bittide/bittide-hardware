@@ -8,7 +8,11 @@ module Clash.Cores.Xilinx.GTH.Internal where
 
 import Clash.Prelude
 
-import Clash.Annotations.Primitive (Primitive (InlineYamlPrimitive), hasBlackBox)
+import Clash.Annotations.Primitive (
+  HDL (Verilog),
+  Primitive (InlineYamlPrimitive),
+  hasBlackBox,
+ )
 import Data.String.Interpolate (__i)
 
 import Clash.Cores.Xilinx.GTH.BlackBoxes
@@ -108,5 +112,41 @@ ibufds_gte3 !_clk = clockGen
             templateFunction: #{tfName}
             workInfo: Always
         |]
+  )
+  #-}
+
+{- | Clock Buffer Driven by Gigabit Transceiver. For more information see:
+
+    https://docs.xilinx.com/r/en-US/ug974-vivado-ultrascale-libraries/BUFG_GT
+
+The actual divide value is the value provide in @SNat div@ plus 1.
+So an @SNat 0@ gives you a division of 1
+-}
+bufgGt ::
+  (KnownDomain domIn, KnownDomain domOut, 0 <= div, div <= 7) =>
+  SNat div ->
+  Clock domIn ->
+  Reset domIn ->
+  Clock domOut
+bufgGt = unsafeBufgGt
+
+unsafeBufgGt ::
+  (KnownDomain domOut) => SNat div -> Clock domIn -> Reset domIn -> Clock domOut
+unsafeBufgGt !_ !_ !_ = clockGen
+{-# ANN unsafeBufgGt hasBlackBox #-}
+{-# OPAQUE unsafeBufgGt #-}
+{-# ANN
+  unsafeBufgGt
+  ( let primName = 'unsafeBufgGt
+        tfName = 'unsafeBufgGtTF
+     in InlineYamlPrimitive
+          [Verilog]
+          [__i|
+  BlackBox:
+    name: #{primName}
+    kind: Declaration
+    format: Haskell
+    templateFunction: #{tfName}
+  |]
   )
   #-}
