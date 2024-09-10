@@ -21,7 +21,12 @@ import Bittide.ClockControl (
  )
 import Bittide.ClockControl.Si539xSpi (ConfigState (Finished), si539xSpi)
 import Bittide.Counter (domainDiffCounter)
-import Bittide.Hitl (HitlTests, hitlVio, singleFpga, testsFromEnum)
+import Bittide.Hitl (
+  HitlTestGroup (..),
+  HwTargetRef (HwTargetByIndex),
+  hitlVio,
+  testCasesFromEnum,
+ )
 import Bittide.Instances.Domains
 
 import Data.Maybe (isJust)
@@ -210,5 +215,12 @@ fincFdecTests diffClk controlledDiffClock spiIn =
 {-# NOINLINE fincFdecTests #-}
 makeTopEntity 'fincFdecTests
 
-tests :: HitlTests Test
-tests = testsFromEnum (singleFpga maxBound)
+tests :: HitlTestGroup
+tests =
+  HitlTestGroup
+    { topEntity = 'fincFdecTests
+    , extraXdcFiles = []
+    , externalHdl = []
+    , testCases = testCasesFromEnum @Test [HwTargetByIndex 7] ()
+    , mPostProc = Nothing
+    }

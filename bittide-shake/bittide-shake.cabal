@@ -20,16 +20,23 @@ common common-options
     aeson,
     base,
     base16-bytestring,
+    bittide-experiments,
+    bittide-instances,
     bytestring,
     clash-lib,
     clash-prelude,
+    clock,
+    containers,
     cryptohash-sha256,
+    directory,
     extra,
     filepath,
     shake,
     string-interpolate,
+    template-haskell,
     text,
     vector,
+    vivado-hs,
 
 library
   import: common-options
@@ -75,7 +82,9 @@ executable shake
   build-depends:
     Glob,
     ansi-terminal,
+    bittide-experiments,
     bittide-shake,
     directory,
     process,
     tasty-hunit,
+    vivado-hs,

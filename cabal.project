@@ -9,6 +9,7 @@ packages:
   bittide-tools/
   bittide/
   clash-vexriscv/clash-vexriscv/
+  vivado-hs/
 
 write-ghc-environment-files: always
 -- index state, to go along with the cabal.project.freeze file. update the index
@@ -116,6 +117,15 @@ package clash-vexriscv
     -j8
 
 package clash-vexriscv-sim
+  ghc-options:
+    +RTS
+    -xp
+    -qn8
+    -A64M
+    -RTS
+    -j8
+
+package vivado-hs
   ghc-options:
     +RTS
     -xp

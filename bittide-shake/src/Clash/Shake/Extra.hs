@@ -10,6 +10,7 @@ module Clash.Shake.Extra where
 
 import Prelude
 
+import Bittide.Hitl (ClashTargetName)
 import Clash.Annotations.Primitive (HDL (Verilog))
 import Data.Char (toLower)
 import Development.Shake
@@ -25,9 +26,8 @@ hdlToFlag :: HDL -> String
 hdlToFlag = ("--" <>) . map toLower . show
 
 -- | Calculate a SHA256 hex digest of a given file path
-hexDigestFile :: FilePath -> Action String
+hexDigestFile :: FilePath -> IO String
 hexDigestFile path = do
-  need [path]
   contents <- liftIO (ByteStringLazy.readFile path)
   pure $
     Text.unpack $
@@ -46,10 +46,10 @@ clashCmd ::
   -- | HDL to compile to
   HDL ->
   -- | Entity to compile
-  TargetName ->
+  ClashTargetName ->
   -- | Extra arguments to pass to Clash
   [String] ->
-  -- (command, arguments)
+  -- | (command, arguments)
   (String, [String])
 clashCmd buildDir hdl topName extraArgs =
   ( "cabal"
@@ -73,25 +73,22 @@ clashCmd buildDir hdl topName extraArgs =
   (modName, funcName) = splitName topName
   pkgName = "bittide-instances"
 
--- | Fully qualified name to a function. E.g. @Bittide.Foo.topEntity@.
-type TargetName = String
-
--- | Split a 'TargetName' into the fully qualified module name and the function name.
-splitName :: TargetName -> (String, String)
+-- | Split a 'ClashTargetName' into the fully qualified module name and the function name.
+splitName :: ClashTargetName -> (String, String)
 splitName qualifiedName =
-  let (f, m) = break (== '.') $ reverse qualifiedName
+  let (f, m) = break (== '.') $ reverse $ show qualifiedName
    in (reverse $ tail m, reverse f)
 
-entityName :: TargetName -> String
+entityName :: ClashTargetName -> String
 entityName = snd . splitName
 
-moduleName :: TargetName -> String
+moduleName :: ClashTargetName -> String
 moduleName = fst . splitName
 
-defaultClashCmd :: FilePath -> TargetName -> (String, [String])
+defaultClashCmd :: FilePath -> ClashTargetName -> (String, [String])
 defaultClashCmd buildDir topName = clashCmd buildDir Verilog topName []
 
--- | Given a 'TargetName', return expected location of Clash manifest file.
-getManifestLocation :: FilePath -> TargetName -> String
+-- | Given a 'ClashTargetName', return expected location of Clash manifest file.
+getManifestLocation :: FilePath -> ClashTargetName -> String
 getManifestLocation buildDir topName =
-  buildDir </> topName </> "clash-manifest.json"
+  buildDir </> show topName </> "clash-manifest.json"

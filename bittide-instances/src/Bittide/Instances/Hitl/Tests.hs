@@ -4,15 +4,22 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 
+{- | Full definitions of HITL tests. For every test, this includes:
+
+  1. The fully qualified name of the function that is the top-level Clash
+     circuit. The test controller will compile, synthesize and implement this
+     and program the relevant hardware targets (FPGAs).
+
+  2. The HITL test configuration. See `Bittide.Hitl.HitlTestGroup`.
+-}
 module Bittide.Instances.Hitl.Tests (
-  HitlTest (..),
+  ClashTargetName,
+  HitlTestGroup (..),
+  HitlTestCase (..),
   hitlTests,
 ) where
 
-import Bittide.Hitl (HitlTestsWithPostProcData, MayHavePostProcData)
-import Bittide.Simulate.Config (CcConf)
-import Clash.Prelude (BitPack, FilePath, String, show)
-import Data.Aeson (ToJSON)
+import Bittide.Hitl (ClashTargetName, HitlTestCase (..), HitlTestGroup (..))
 
 import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
@@ -21,45 +28,22 @@ import qualified Bittide.Instances.Hitl.FullMeshSwCc as FullMeshSwCc
 import qualified Bittide.Instances.Hitl.HwCcTopologies as HwCcTopologies
 import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
 import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
-import qualified Bittide.Instances.Hitl.Tcl.ExtraProbes as ExtraProbes
 import qualified Bittide.Instances.Hitl.TemperatureMonitor as TemperatureMonitor
 import qualified Bittide.Instances.Hitl.Transceivers as Transceivers
 import qualified Bittide.Instances.Hitl.VexRiscv as VexRiscv
 
--- | Existential wrapper for tests with known Haskell types.
-data HitlTest where
-  -- | Tests with known Haskell types.
-  KnownType ::
-    forall a b.
-    (BitPack a, ToJSON b, MayHavePostProcData b CcConf) =>
-    String ->
-    (HitlTestsWithPostProcData a b) ->
-    HitlTest
-  -- | Load config from 'bittide-instances/data/test_configs'
-  LoadConfig ::
-    String ->
-    FilePath ->
-    HitlTest
-
--- | Available HITL tests.
-hitlTests :: [HitlTest]
+hitlTests :: [HitlTestGroup]
 hitlTests =
-  [ -- tests with known Haskell types
-    knownType 'BoardTest.boardTestExtended BoardTest.testsExtended
-  , knownType 'BoardTest.boardTestSimple BoardTest.testsSimple
-  , knownType 'FincFdec.fincFdecTests FincFdec.tests
-  , knownType 'FullMeshHwCc.fullMeshHwCcTest FullMeshHwCc.tests
-  , knownType 'FullMeshHwCc.fullMeshHwCcWithRiscvTest FullMeshHwCc.tests
-  , knownType 'FullMeshSwCc.fullMeshSwCcTest FullMeshSwCc.tests
-  , knownType 'HwCcTopologies.hwCcTopologyTest HwCcTopologies.tests
-  , knownType 'LinkConfiguration.linkConfigurationTest LinkConfiguration.tests
-  , knownType 'SyncInSyncOut.syncInSyncOut SyncInSyncOut.tests
-  , knownType 'TemperatureMonitor.temperatureMonitor TemperatureMonitor.tests
-  , knownType 'Transceivers.transceiversUpTest Transceivers.tests
-  , knownType 'VexRiscv.vexRiscvTest VexRiscv.tests
-  , -- tests that are loaded from config files
-    loadConfig 'ExtraProbes.extraProbesTest "extraProbesTest.yml"
+  [ BoardTest.testSimple
+  , BoardTest.testExtended
+  , FincFdec.tests
+  , FullMeshHwCc.fullMeshHwCcTest'
+  , FullMeshHwCc.fullMeshHwCcWithRiscvTest'
+  , FullMeshSwCc.tests
+  , HwCcTopologies.tests
+  , LinkConfiguration.tests
+  , TemperatureMonitor.tests
+  , SyncInSyncOut.tests
+  , Transceivers.tests
+  , VexRiscv.tests
   ]
- where
-  knownType nm = KnownType (show nm)
-  loadConfig nm = LoadConfig (show nm)

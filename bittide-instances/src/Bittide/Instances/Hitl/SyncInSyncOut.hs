@@ -64,8 +64,9 @@ module Bittide.Instances.Hitl.SyncInSyncOut where
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 
 import Bittide.Arithmetic.Time
-import Bittide.Hitl (HitlTests, allFpgas, hitlVioBool, noConfigTest)
+import Bittide.Hitl
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.Setup (allHwTargets)
 
 import Clash.Annotations.TH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
@@ -156,5 +157,18 @@ syncInSyncOut sysClkDiff syncIn0 = syncOut
 
 makeTopEntity 'syncInSyncOut
 
-tests :: HitlTests ()
-tests = noConfigTest "SyncInSyncOut" allFpgas
+tests :: HitlTestGroup
+tests =
+  HitlTestGroup
+    { topEntity = 'syncInSyncOut
+    , extraXdcFiles = []
+    , externalHdl = []
+    , testCases =
+        [ HitlTestCase
+            { name = "SyncInSyncOut"
+            , parameters = paramForHwTargets allHwTargets ()
+            , postProcData = ()
+            }
+        ]
+    , mPostProc = Nothing
+    }

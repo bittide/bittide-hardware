@@ -32,7 +32,7 @@ import Bittide.ElasticBuffer (sticky)
 import Bittide.Instances.Domains
 import Bittide.Transceiver
 
-import Bittide.Hitl (HitlTests, NoPostProcData (..), hitlVio)
+import Bittide.Hitl
 
 import Bittide.Instances.Hitl.Setup
 
@@ -270,8 +270,22 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
 makeTopEntity 'linkConfigurationTest
 
-tests :: HitlTests (Index FpgaCount)
+tests :: HitlTestGroup
 tests =
-  Map.fromList
-    [ ("LinkConfiguration", (toList $ zip indicesI indicesI, NoPostProcData))
-    ]
+  HitlTestGroup
+    { topEntity = 'linkConfigurationTest
+    , extraXdcFiles = []
+    , externalHdl = []
+    , testCases =
+        [ HitlTestCase
+            { name = "LinkConfiguration"
+            , parameters =
+                Map.fromList
+                  [ (HwTargetByIndex (fromIntegral i), i)
+                  | i <- [0 ..] :: [Index FpgaCount]
+                  ]
+            , postProcData = ()
+            }
+        ]
+    , mPostProc = Nothing
+    }
