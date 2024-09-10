@@ -52,7 +52,7 @@ gthCoreBBF _isD _primName _args _resTys = pure $ Right (bbMeta, bb)
   bb = BBFunction (show 'gthCoreTF) 0 gthCoreTF
 
 nConstraints :: Int
-nConstraints = 6
+nConstraints = 8
 
 nNameArgs :: Int
 nNameArgs = 2
@@ -97,8 +97,20 @@ gthCoreBBTF bbCtx
             , ("gtwiz_reset_rx_datapath_in", N.Reset "freerun")
             , ("gtwiz_userdata_tx_in", N.BitVector (chansUsed * tX_DATA_WIDTH))
             , ("txctrl2_in", N.BitVector (chansUsed * (tX_DATA_WIDTH `div` 8)))
-            , -- , ("gtrefclk00_in",  N.Clock "refclk00" )
-              ("gtrefclk0_in", N.Clock "refclk0")
+            -- , ("gtrefclk00_in",  N.Clock "refclk00" )
+            ,  ("gtrefclk0_in", N.Clock "refclk0")
+
+            ,  ("txusrclk_in", N.Clock "txUser")
+            ,  ("txusrclk2_in", N.Clock "txUser2")
+            ,  ("gtwiz_userclk_tx_active_in", N.BitVector 1)
+            ,  ("txusrclk2_in", N.Clock "txUser2")
+
+            ,  ("rxusrclk_in", N.Clock "rxUser")
+            ,  ("rxusrclk2_in", N.Clock "rxUser2")
+            ,  ("gtwiz_userclk_rx_active_in", N.BitVector 1)
+            ,  ("rxusrclk2_in", N.Clock "rxUser2")
+
+
             ]
               <> map (fmap DSL.ety) otherInps
 
@@ -120,12 +132,15 @@ gthCoreBBTF bbCtx
           compOuts =
             [ ("gthtxn_out", N.BitVector chansUsed)
             , ("gthtxp_out", N.BitVector chansUsed)
-            , ("gtwiz_userclk_tx_usrclk2_out", N.Clock "txUser2")
-            , ("gtwiz_userclk_rx_usrclk2_out", N.Clock "rxUser2")
+            -- , ("gtwiz_userclk_tx_usrclk2_out", N.Clock "txUser2")
+            -- , ("gtwiz_userclk_rx_usrclk2_out", N.Clock "rxUser2")
+            , ("txoutclk_out", N.Clock "txUser")
+            , ("rxoutclk_out", N.Clock "rxUser")
+
             , ("gtwiz_userdata_rx_out", N.BitVector (chansUsed * rX_DATA_WIDTH))
             , ("gtwiz_reset_tx_done_out", N.BitVector 1)
             , ("gtwiz_reset_rx_done_out", N.BitVector 1)
-            , ("gtwiz_userclk_tx_active_out", N.BitVector 1)
+            -- , ("gtwiz_userclk_tx_active_out", N.BitVector 1)
             , ("rxctrl0_out", N.BitVector 16)
             , ("rxctrl1_out", N.BitVector 16)
             , ("rxctrl2_out", N.BitVector 8)
