@@ -20,7 +20,6 @@
   {"top": "fullMeshSwCcTest",              "stage": "test"},
   {"top": "hwCcTopologyTest",              "stage": "test"},
   {"top": "linkConfigurationTest",         "stage": "test"},
-  {"top": "safeDffSynchronizer",           "stage": "hdl" },
   {"top": "syncInSyncOut",                 "stage": "test"},
   {"top": "temperatureMonitor",            "stage": "test"},
   {"top": "transceiversUpTest",            "stage": "test"},
