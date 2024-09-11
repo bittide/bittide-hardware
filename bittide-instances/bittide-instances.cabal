@@ -85,6 +85,7 @@ common common-options
     clash-lib,
     clash-prelude,
     clash-protocols,
+    clash-protocols-memmap,
     clash-vexriscv,
     constraints >=0.13.3 && <0.15,
     containers,
@@ -110,6 +111,7 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
+    -- Hardware-in-the-loop tests
     Bittide.Instances.Domains
     Bittide.Instances.Hacks
     Bittide.Instances.Hitl.BoardTest
@@ -127,6 +129,8 @@ library
     Bittide.Instances.Hitl.Tests
     Bittide.Instances.Hitl.Transceivers
     Bittide.Instances.Hitl.VexRiscv
+    Bittide.Instances.MemoryMapLogic
+    Bittide.Instances.MemoryMaps
     Bittide.Instances.Pnr.Calendar
     Bittide.Instances.Pnr.ClockControl
     Bittide.Instances.Pnr.Counter

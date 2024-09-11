@@ -314,8 +314,8 @@ impl Clock {
         unsafe {
             Clock {
                 freeze_count: addr.cast_mut(),
-                counter: addr.add(1).cast::<u64>(),
-                frequency: addr.add(3).cast::<u64>(),
+                counter: addr.add(2).cast::<u64>(),
+                frequency: addr.add(4).cast::<u64>(),
             }
         }
     }
