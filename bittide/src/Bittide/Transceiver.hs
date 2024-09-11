@@ -110,7 +110,8 @@ import qualified Bittide.Transceiver.Comma as Comma
 import qualified Bittide.Transceiver.Prbs as Prbs
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Bittide.Transceiver.WordAlign as WordAlign
-import qualified Clash.Cores.Xilinx.GTH as Gth
+-- import qualified Clash.Cores.Xilinx.GTH as Gth
+import qualified Clash.Cores.Xilinx.GTHnew as Gthnew
 
 {- | Meta information send along with the PRBS and alignment symbols. See module
 documentation for more information.
@@ -372,7 +373,7 @@ transceiverPrbs ::
   Config free ->
   Input tx rx ref free rxS (BitVector 1) ->
   Output tx rx txS free (BitVector 1)
-transceiverPrbs = transceiverPrbsWith Gth.gthCore
+transceiverPrbs = transceiverPrbsWith Gthnew.gthCore
 
 transceiverPrbsWith ::
   forall tx rx ref free txS rxS serializedData.

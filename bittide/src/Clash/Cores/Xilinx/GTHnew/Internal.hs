@@ -62,6 +62,8 @@ type GthCoreNew txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS serialized
   , "gtwiz_reset_rx_done_out" ::: Signal rxUser2 (BitVector 1)
 
   -- , "gtwiz_userclk_tx_active_out" ::: Signal txUser2 (BitVector 1)
+  , "txpmaresetdone_out" ::: Signal txUser (BitVector 1)
+  , "rxpmaresetdone_out" ::: Signal rxUser (BitVector 1)
 
   , "rxctrl0_out" ::: Signal rxUser2 (BitVector 16)
   , "rxctrl1_out" ::: Signal rxUser2 (BitVector 16)
@@ -88,6 +90,8 @@ gthCoreNew
   !_
   !_ =
     ( undefined
+    , undefined
+    , undefined
     , undefined
     , undefined
     , undefined
@@ -175,7 +179,10 @@ gthCore
       , gtwiz_userdata_rx_out
       , gtwiz_reset_tx_done_out
       , gtwiz_reset_rx_done_out
+
       , undefined
+
+
       , rxctrl0_out
       , rxctrl1_out
       , rxctrl2_out
@@ -184,6 +191,8 @@ gthCore
  where
   (txUsrClk,txUsrClk2,txUsrClkActive) = gthUserClockNetwork txoutclk_out txUsrClkRst
   (rxUsrClk,rxUsrClk2,rxUsrClkActive) = gthUserClockNetwork rxoutclk_out rxUsrClkRst
+  txUsrClkRst = unsafeFromActiveLow $ fmap bitCoerce txpmaresetdone
+  rxUsrClkRst = unsafeFromActiveLow $ fmap bitCoerce rxpmaresetdone
   ( gthtxn_out
    , gthtxp_out
    , txoutclk_out
@@ -191,6 +200,8 @@ gthCore
    , gtwiz_userdata_rx_out
    , gtwiz_reset_tx_done_out
    , gtwiz_reset_rx_done_out
+   , txpmaresetdone
+   , rxpmaresetdone
    , rxctrl0_out
    , rxctrl1_out
    , rxctrl2_out
@@ -237,5 +248,5 @@ gthUserClockNetwork clkIn rstIn =
   active = reg (reg (pure 1))
   reg = register usrClk2 rstIn enableGen 0
 
-  unsafeSynchronizerReset :: (KnownDomain dom1, KnownDomain dom2) => Clock dom1 -> Clock dom2 -> Reset dom1 -> Reset dom2
-  unsafeSynchronizerReset clkIn clkOut rstIn = unsafeFromActiveHigh $ unsafeSynchronizer clkIn clkOut (unsafeToActiveHigh rstIn)
+unsafeSynchronizerReset :: (KnownDomain dom1, KnownDomain dom2) => Clock dom1 -> Clock dom2 -> Reset dom1 -> Reset dom2
+unsafeSynchronizerReset clkIn clkOut rstIn = unsafeFromActiveHigh $ unsafeSynchronizer clkIn clkOut (unsafeToActiveHigh rstIn)

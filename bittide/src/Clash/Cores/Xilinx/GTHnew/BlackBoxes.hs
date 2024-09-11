@@ -72,14 +72,21 @@ gthCoreBBTF ::
 gthCoreBBTF bbCtx
   | args@[ _gthrxn_in -- " ::: Signal rxS (BitVector ChansUsed)
           , _gthrxp_in -- " ::: Signal rxS (BitVector ChansUsed)
-          , gtwiz_reset_clk_freerun_in -- " ::: Clock freerun
+          , (gtwiz_reset_clk_freerun_in, _) -- " ::: Clock freerun
           , _gtwiz_reset_all_in -- " ::: Reset freerun
           , _gtwiz_reset_rx_datapath_in -- " ::: Reset freerun
           , _gtwiz_userdata_tx_in -- " ::: Signal txUser2 (BitVector (ChansUsed*TX_DATA_WIDTH))
           , _txctrl2_in -- " ::: Signal txUser2 (BitVector (ChansUsed*TX_DATA_WIDTH/8))
           , _gtrefclk0_in -- " ::: Clock refclk0
+
+          , _txusrclk_in
+          , _txusrclk2_in
+          , _gtwiz_userclk_tx_active_in
+          , _rxusrclk_in
+          , _rxusrclk2_in
+          , _gtwiz_userclk_rx_active_in
           ] <-
-      drop (nConstraints + nNameArgs) $ map fst (DSL.tInputs bbCtx)
+      drop (nConstraints + nNameArgs) (DSL.tInputs bbCtx)
   , [tResult] <- map DSL.ety (DSL.tResults bbCtx)
   , [gthCoreName] <- N.bbQsysIncName bbCtx =
       do
@@ -103,14 +110,10 @@ gthCoreBBTF bbCtx
             ,  ("txusrclk_in", N.Clock "txUser")
             ,  ("txusrclk2_in", N.Clock "txUser2")
             ,  ("gtwiz_userclk_tx_active_in", N.BitVector 1)
-            ,  ("txusrclk2_in", N.Clock "txUser2")
 
             ,  ("rxusrclk_in", N.Clock "rxUser")
             ,  ("rxusrclk2_in", N.Clock "rxUser2")
             ,  ("gtwiz_userclk_rx_active_in", N.BitVector 1)
-            ,  ("rxusrclk2_in", N.Clock "rxUser2")
-
-
             ]
               <> map (fmap DSL.ety) otherInps
 
@@ -123,8 +126,8 @@ gthCoreBBTF bbCtx
             , ("gtwiz_reset_rx_pll_and_datapath_in", DSL.bvLit 1 0)
             , ("tx8b10ben_in", DSL.bvLit 1 1)
             , ("rx8b10ben_in", DSL.bvLit 1 1)
-            , ("gtwiz_userclk_tx_reset_in", DSL.bvLit 1 0)
-            , ("gtwiz_userclk_rx_reset_in", DSL.bvLit 1 0)
+            -- , ("gtwiz_userclk_tx_reset_in", DSL.bvLit 1 0)
+            -- , ("gtwiz_userclk_rx_reset_in", DSL.bvLit 1 0)
             , ("rxcommadeten_in", DSL.bvLit 1 1)
             , ("rxmcommaalignen_in", DSL.bvLit 1 1)
             , ("rxpcommaalignen_in", DSL.bvLit 1 1)
@@ -141,6 +144,11 @@ gthCoreBBTF bbCtx
             , ("gtwiz_reset_tx_done_out", N.BitVector 1)
             , ("gtwiz_reset_rx_done_out", N.BitVector 1)
             -- , ("gtwiz_userclk_tx_active_out", N.BitVector 1)
+
+            , ("txpmaresetdone_out", N.BitVector 1)
+            , ("rxpmaresetdone_out", N.BitVector 1)
+
+
             , ("rxctrl0_out", N.BitVector 16)
             , ("rxctrl1_out", N.BitVector 16)
             , ("rxctrl2_out", N.BitVector 8)
@@ -150,7 +158,18 @@ gthCoreBBTF bbCtx
         DSL.declarationReturn bbCtx "gthCore_inst_block" $ do
           DSL.compInBlock gthCoreName compInps compOuts
 
-          let inps = zip (fst <$> compInps) args <> otherInps
+          -- let inps = zip (fst <$> compInps) args <> otherInps
+          let inps = zipWith go compInps args <> otherInps
+               where
+                go (nm,ty1) (e,ty2) | compareHwTy ty1 ty2 = (nm,e)
+                                    | otherwise = error $ "Port " <> show nm <> " with type " <> show ty1 <> " can't be assigned a expression of type " <> show ty2
+              compareHwTy :: N.HWType -> N.HWType -> Bool
+              compareHwTy x y = case (x,y) of
+                (N.Clock _, N.Clock _) -> True
+                (N.ClockN _, N.ClockN _) -> True
+                (N.Reset _, N.Reset _) -> True
+                (N.Enable _, N.Enable _) -> True
+                (_,_) -> x == y
           outs <- mapM (uncurry DSL.declare) compOuts
           DSL.instDecl
             N.Empty
@@ -193,9 +212,9 @@ gthCoreTclBBTF bbCtx
     , property @Text "LOCATE_IN_SYSTEM_IBERT_CORE" "NONE"
     , property @Text "LOCATE_RESET_CONTROLLER" "CORE"
     , property @Text "LOCATE_RX_BUFFER_BYPASS_CONTROLLER" "CORE"
-    , property @Text "LOCATE_RX_USER_CLOCKING" "CORE"
+    , property @Text "LOCATE_RX_USER_CLOCKING" "EXAMPLE_DESIGN"
     , property @Text "LOCATE_TX_BUFFER_BYPASS_CONTROLLER" "CORE"
-    , property @Text "LOCATE_TX_USER_CLOCKING" "CORE"
+    , property @Text "LOCATE_TX_USER_CLOCKING" "EXAMPLE_DESIGN"
     , property @Text "LOCATE_USER_DATA_WIDTH_SIZING" "CORE"
     , property @Text "FREERUN_FREQUENCY" "125.0"
     , property @Text "RX_REFCLK_FREQUENCY" "200"
