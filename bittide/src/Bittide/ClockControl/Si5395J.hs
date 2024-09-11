@@ -50,3 +50,15 @@ testConfig6_200_on_0a_1ppm = $(parseFromFileToRegisterMap "Si5395J-200MHz-1ppm-R
 -}
 testConfig6_200_on_0a_10ppb_and_1 :: Si5395RegisterMap
 testConfig6_200_on_0a_10ppb_and_1 = $(parseFromFileToRegisterMap "Si5395J-200MHz-10ppb-and-out1")
+
+{- | Configuration for Si5395J with
+  out0a: 200MHz LVDS 1.8V  connected to GTH SMA clk input (clk0 on quad 226)
+  out9:   20MHZ LVDS 1.8V
+  out9a: 200MHz LVDS 1.8V
+  all of them doing 100ppb steps on Finc/Fdec
+And
+  out1:  300MHz LVDS 1.8V  connected to User SMA clk input on node 7 only
+  with no frequency changes on Finc/Fdec
+-}
+testConfig6_200_on_0a_100ppb_and_1 :: Si5395RegisterMap
+testConfig6_200_on_0a_100ppb_and_1 = $(parseFromFileToRegisterMap "Si5395J-200MHz-100ppb-extra-300MHz-on-out1-no-FINCDEC")
