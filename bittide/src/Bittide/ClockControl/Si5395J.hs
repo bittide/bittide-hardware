@@ -48,8 +48,8 @@ testConfig6_200_on_0a_1ppm = $(parseFromFileToRegisterMap "Si5395J-200MHz-1ppm-R
   out9a: 200MHz LVDS 1.8V
   all of them doing 10ppb steps on Finc/Fdec
 -}
-testConfig6_200_on_0a_1ppb_and_0 :: Si5395RegisterMap
-testConfig6_200_on_0a_1ppb_and_0 = Si539xRegisterMap{..}
+testConfig6_200_on_0a_10ppb_and_0 :: Si5395RegisterMap
+testConfig6_200_on_0a_10ppb_and_0 = Si539xRegisterMap{..}
  where
   configPreamble = (0x0B, 0x24, 0xC0) :> (0x0B, 0x25, 0x00) :> (0x05, 0x40, 0x01) :> Nil
   configPostamble =
