@@ -779,6 +779,7 @@ tests =
   Map.fromList
     [ tt Nothing (repeat 0) (complete d8)
     , tt Nothing (repeat 0) (hourglass d4)
+    , tt Nothing (repeat 0) (hypercube d3)
     ]
  where
   ClockControlConfig{..} = clockControlConfig
