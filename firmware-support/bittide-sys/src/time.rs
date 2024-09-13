@@ -300,7 +300,7 @@ impl ops::Sub<Duration> for Duration {
 /// let later = clock.elapsed();
 /// let duration = later - now;
 /// assert!(duration > Duration::from_millis(1));
-// 
+//
 //   Field name | Type | Byte offset | Notes
 // freeze_count |  u32 |           0 |
 //      counter |  u64 |           4 |

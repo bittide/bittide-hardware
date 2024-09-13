@@ -60,7 +60,10 @@ impl ClockControl {
         // SAFETY: This is safe since this function can only be called
         // after construction, which is only valid with valid addresses.
         unsafe {
-            self.base_addr.add(2).cast_mut().write_volatile(speed_change as u32);
+            self.base_addr
+                .add(2)
+                .cast_mut()
+                .write_volatile(speed_change as u32);
         }
     }
 
@@ -90,9 +93,6 @@ impl ClockControl {
         let n = self.num_links();
         // NOTE: Consider fixed length loop version?
         // TODO: Mask out values read whose bit is not set in `link_mask()`.
-        (5..5 + n)
-            .map(|i| unsafe {
-                self.base_addr.add(i as usize).cast::<i32>().read_volatile()
-            })
+        (5..5 + n).map(|i| unsafe { self.base_addr.add(i as usize).cast::<i32>().read_volatile() })
     }
 }
