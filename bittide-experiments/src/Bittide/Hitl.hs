@@ -76,6 +76,8 @@ import Numeric.Natural (Natural)
 import Clash.Prelude qualified as P
 import Data.Map.Strict qualified as Map
 
+import System.Exit (ExitCode)
+
 {- | Fully qualified name to a function that is the target for Clash
 compilation. E.g. @Bittide.Foo.topEntity@.
 -}
@@ -161,6 +163,7 @@ and requires a (hypothetical) 8-bit number indicating the
 >           , postProcData = ()
 >           }
 >       ]
+>   , mPreProc = Nothing
 >   , mPostProc = Nothing
 >   }
 
@@ -174,9 +177,8 @@ data HitlTestGroup where
     , extraXdcFiles :: [String]
     , testCases :: [HitlTestCase HwTargetRef a b]
     -- ^ List of test cases
-    , mPostProc :: Maybe String
-    -- ^ Optional post processing step. If present, the name of the executable
-    -- in the @bittide-instances@ package.
+    , mPostProc :: Maybe (FilePath -> ExitCode -> IO ())
+    -- ^ Optional post processing step.
     , externalHdl :: [String]
     -- ^ List of external HDL files to include in the project
     } ->

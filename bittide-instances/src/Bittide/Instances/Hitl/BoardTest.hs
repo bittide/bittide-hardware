@@ -14,6 +14,13 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Extra (ibufds)
 import Clash.Cores.Xilinx.Ila
 
+import System.Exit (ExitCode)
+import System.FilePath ((</>))
+import System.FilePath.Glob (glob)
+
+import Bittide.Instances.Hitl.Post.BoardTestExtended
+import Bittide.Instances.Hitl.Post.PostProcess
+
 import Bittide.Hitl (
   HitlTestCase (HitlTestCase),
   HitlTestGroup (..),
@@ -185,5 +192,11 @@ testExtended =
     , extraXdcFiles = []
     , externalHdl = []
     , testCases = testCasesFromEnum @Test allHwTargets ()
-    , mPostProc = Just "post-board-test-extended"
+    , mPostProc = Just postBoardTestExtendedFunc
     }
+
+postBoardTestExtendedFunc :: FilePath -> ExitCode -> IO ()
+postBoardTestExtendedFunc ilaDir exitCode = do
+  csvPaths <- glob (ilaDir </> "*" </> "*" </> "*.csv")
+  let ilaCsvPaths = toFlattenedIlaCsvPathList ilaDir csvPaths
+  postBoardTestExtended exitCode ilaCsvPaths

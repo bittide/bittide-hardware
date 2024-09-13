@@ -1,0 +1,14 @@
+[
+  {
+    "top": "boardTestExtended",
+    "stage": "test"
+  },
+  {
+    "top": "boardTestSimple",
+    "stage": "test"
+  },
+  {
+    "top": "vexRiscvTest",
+    "stage": "test"
+  }
+]

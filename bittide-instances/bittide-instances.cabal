@@ -72,6 +72,7 @@ common common-options
 
   default-language: Haskell2010
   build-depends:
+    Glob,
     MissingH,
     aeson,
     base,
@@ -97,11 +98,15 @@ common common-options
     ghc-typelits-natnormalise,
     lift-type,
     pretty-simple,
+    process,
     shake,
     split,
     string-interpolate,
+    tasty,
     tasty-hunit,
+    tasty-th,
     template-haskell,
+    temporary,
     text,
     unix,
     vector,

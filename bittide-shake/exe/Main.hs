@@ -107,6 +107,11 @@ doPostProcessing postProcessMain ilaDataDir testExitCode = do
   callProcess "cabal" ["build", postProcessMain]
   callProcess "cabal" ["run", postProcessMain, ilaDataDir, show testExitCode]
 
+doPreProcessing :: String -> Assertion
+doPreProcessing preProcessMain = do
+  callProcess "cabal" ["build", preProcessMain]
+  callProcess "cabal" ["run", preProcessMain]
+
 {- | Searches for a file called @cabal.project@ It will look for it in the
 current working directory. If it can't find it there, it will traverse up
 until it finds the file.
@@ -140,8 +145,8 @@ data Target = Target
   , targetTest :: Maybe HitlTestGroup
   -- ^ Whether target has a VIO probe that can be used to run hardware-in-the-
   -- loop tests. Note that this flag, 'targetTest', implies 'targetHasVio'.
-  , targetPostProcess :: Maybe String
-  -- ^ Name of the executable for post processing of ILA CSV data, or Nothing
+  , targetPostProcess :: Maybe (FilePath -> ExitCode -> IO ())
+  -- ^ Function to run for post processing of ILA CSV data, or Nothing
   -- if it has none.
   , targetExtraXdc :: [FilePath]
   -- ^ Extra constraints to be sourced. Will be sourced _after_ main XDC.
@@ -569,7 +574,7 @@ main = do
                 need [testExitCodePath]
                 exitCode <- read <$> readFile' testExitCodePath
                 when (isJust targetPostProcess) $ do
-                  liftIO $ doPostProcessing (fromJust targetPostProcess) ilaDataDir exitCode
+                  liftIO $ (fromJust targetPostProcess) ilaDataDir exitCode
                 unless (exitCode == ExitSuccess) $ do
                   liftIO $ exitWith exitCode
 
@@ -577,7 +582,7 @@ main = do
                 phony (entityName targetName <> ":post-process") $ do
                   need [testExitCodePath]
                   exitCode <- read <$> readFile' testExitCodePath
-                  liftIO $ doPostProcessing (fromJust targetPostProcess) ilaDataDir exitCode
+                  liftIO $ (fromJust targetPostProcess) ilaDataDir exitCode
 
     if null shakeTargets
       then rules
