@@ -19,6 +19,7 @@
   {"top": "fullMeshHwCcWithRiscvTest",     "stage": "test"},
   {"top": "fullMeshSwCcTest",              "stage": "test"},
   {"top": "hwCcTopologyTest",              "stage": "test"},
+  {"top": "swCcTopologyTest",              "stage": "test"},
   {"top": "linkConfigurationTest",         "stage": "test"},
   {"top": "syncInSyncOut",                 "stage": "test"},
   {"top": "temperatureMonitor",            "stage": "test"},
