@@ -34,7 +34,6 @@ import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
 import Bittide.ClockControl.Registers (clockControlWb)
-import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
 import Bittide.DoubleBufferedRam (ContentType (Blob), InitialContent (Reloadable))
@@ -65,7 +64,6 @@ import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen
 
 import Protocols hiding (SimulationConfig)
-import Protocols.Wishbone
 import VexRiscv
 
 import qualified Bittide.Arithmetic.PartsPer as PartsPer
@@ -808,12 +806,12 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     , allStable
     , calibI
     , calibE
-    , ugnsStable
+    , _ugnsStable
     ) = fullMeshHwTest refClk sysClk sysRst ilaControl rxns rxps miso cfg updatePeriod
 
   ((riscvFinc, riscvFdec), updatePeriod) = fullMeshRiscvTest sysClk callistoReset dataCounts
 
-  allUgnsStable = and <$> bundle ugnsStable
+  -- allUgnsStable = and <$> bundle ugnsStable
 
   -- checks that tests are not synchronously start before all
   -- transceivers are up
@@ -827,6 +825,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   endSuccess :: Signal Basic125 Bool
   endSuccess =
     trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
+      -- .&&. allUgnsStable
       .&&. ( (/= CCCalibrationValidation)
               . calibrate
               <$> cfg
