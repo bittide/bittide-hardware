@@ -5,36 +5,54 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
-module Main where
+module Bittide.Instances.Hitl.Driver.DnaOverSerial where
 
 import Clash.Prelude
 import Prelude ()
 
+import Bittide.Hitl
+import Bittide.Instances.Hitl.Utils.Vivado
 import Control.Monad.Extra
 import qualified Data.List as L
 import Data.Maybe
 import Numeric
-import System.Environment (withArgs)
+import Project.Handle
+import System.Exit
 import System.IO
 import System.Process
 import System.Timeout
 import Test.Tasty.HUnit
-import Test.Tasty.TH
-
-import Bittide.Instances.Hitl.Setup
-import Project.Handle
+import Vivado
+import Vivado.Tcl
 
 {- | Test that all FPGAs that are programmed with `dnaOverSerial` transmit the
 DNA that we expect based on the DeviceInfo.
 -}
-case_dnaOverSerial :: Assertion
-case_dnaOverSerial = do
+dnaOverSerialDriver ::
+  VivadoHandle ->
+  String ->
+  FilePath ->
+  [(HwTarget, DeviceInfo, ())] ->
+  IO ExitCode
+dnaOverSerialDriver v _name ilaPath targets = do
+  putStrLn "Starting all targets to read DNA values"
+
+  -- start all targets
+  forM_ targets $ \(hwT, _, _) -> do
+    openHwT v hwT
+    execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
+    refresh_hw_device v []
+
+    execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
+    commit_hw_vio v ["[get_hw_vios]"]
+
   putStrLn "Expecting specific DNAs for all serial ports"
   putStrLn "Serial ports:"
-  mapM_ putStrLn [d.serial | d <- demoRigInfo]
-  results <- mapM checkDna demoRigInfo
+  mapM_ putStrLn [d.serial | (_, d, _) <- targets]
+  results <- mapM checkDna [d | (_, d, _) <- targets]
   print results
   assertBool "Not all FPGAs transmitted the expected DNA" (and results)
+  pure $ ExitSuccess
  where
   checkDna :: DeviceInfo -> IO Bool
   checkDna d = do
@@ -66,6 +84,3 @@ case_dnaOverSerial = do
       putStrLn $ "Received DNA: " <> receivedDna
       putStrLn $ "Differences:  " <> differences
       pure match
-
-main :: IO ()
-main = withArgs ["--timeout", "2m"] $defaultMainGenerator

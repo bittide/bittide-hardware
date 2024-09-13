@@ -13,8 +13,35 @@ information.
 module Vivado.Tcl where
 
 import Control.Monad (unless, void, when)
+import Data.Functor ((<&>))
 import Data.Maybe (listToMaybe)
 import Vivado
+
+{- | Open the given hardware target and set the current hardware device to the
+Xilinx FPGA on it.
+-}
+openHwT :: VivadoHandle -> HwTarget -> IO ()
+openHwT v hwT = do
+  currentHwT <- current_hw_target v []
+  currentIsOpened <-
+    execPrint v "get_property IS_OPENED [current_hw_target]" <&> \case
+      "1" -> True
+      "0" -> False
+      o -> error $ "Property IS_OPENED was " <> show o <> " where 0 or 1 was expected."
+  if currentHwT == hwT
+    then do
+      unless currentIsOpened $
+        open_hw_target v []
+    else do
+      when currentIsOpened $
+        close_hw_target v ["-quiet"]
+      _ <- current_hw_target v [show hwT]
+      open_hw_target v []
+  -- Assumes that the open target has the Xilinx device to program at index 0.
+  -- This is also what Xilinx does in its examples in UG908.
+  hwD <- current_hw_device v ["[lindex [get_hw_devices] 0]"]
+  when (null (fromHwDevice hwD)) $
+    error "Setting the current hardware device failed."
 
 -- | Executes a TCL command with an optional list of arguments.
 execCmd :: VivadoHandle -> String -> [String] -> IO String

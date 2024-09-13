@@ -168,7 +168,10 @@ tests =
             { name = "SyncInSyncOut"
             , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
+            , preProc = InheritPreProcess
             }
         ]
+    , mPreProc = noPreProcess
+    , mDriverProc = Nothing
     , mPostProc = Nothing
     }

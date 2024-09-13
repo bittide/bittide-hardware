@@ -7,6 +7,7 @@ module Project.Handle where
 import Prelude
 
 import Data.List.Extra (trimEnd)
+import Debug.Trace
 import System.IO
 
 import Test.Tasty.HUnit
@@ -46,9 +47,10 @@ with sensible time outs (also see 'main').
 waitForLine :: Handle -> String -> IO ()
 waitForLine h expected =
   expectLine h $ \s ->
-    if s == expected
-      then Stop Ok
-      else Continue
+    trace ("Wait for \"" <> expected <> "\", got: " <> s) $
+      if s == expected
+        then Stop Ok
+        else Continue
 
 -- Utility function that returns the remaining characters in a handle.
 readRemainingChars :: Handle -> IO String

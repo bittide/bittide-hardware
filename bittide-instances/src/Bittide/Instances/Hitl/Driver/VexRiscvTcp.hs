@@ -4,39 +4,35 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
-module Main where
+module Bittide.Instances.Hitl.Driver.VexRiscvTcp where
 
 import Prelude
+
+import Bittide.Hitl
+import Bittide.Instances.Hitl.Utils.Gdb
+import Bittide.Instances.Hitl.Utils.Program
+import Bittide.Instances.Hitl.Utils.Vivado
 
 import Control.Concurrent
 import Control.Concurrent.Async
 import Data.List.Extra
-import Data.Maybe
 import Data.Time
 import Data.Time.Clock.POSIX
-import System.Directory
-import System.Environment (withArgs)
-import System.FilePath
-import System.IO
-import System.Posix.Env (getEnvironment)
-import System.Process
-import System.Timeout
-import Test.Tasty.HUnit
-import Test.Tasty.TH
-
-import Bittide.Instances.Hitl.Post.TcpServer
-import Bittide.Instances.Hitl.Setup
-import Paths_bittide_instances
 import Project.FilePath
 import Project.Handle
-import Project.Programs
+import System.Directory
+import System.Exit
+import System.FilePath
+import System.IO
+import System.Timeout
+import Test.Tasty.HUnit
+
+import Vivado
+import Vivado.Tcl
 
 import qualified Data.ByteString.Lazy as BS
 import qualified Network.Simple.TCP as NS
 import qualified Streaming.ByteString as SBS
-
-getGdbScriptPath :: IO FilePath
-getGdbScriptPath = getDataFileName "data/gdb/smoltcp-hitl-prog.gdb"
 
 {- | Return the beginning of a string until you detect a certain substring
 That substring is not included in the result.
@@ -52,6 +48,199 @@ readUntil end inp
 tcpDataDir :: FilePath
 tcpDataDir = buildDir </> "data" </> "tcp"
 
+withServer :: ((NS.Socket, NS.SockAddr) -> IO a) -> IO a
+withServer = NS.listen NS.HostAny "1234"
+
+startServer :: IO (NS.Socket, NS.SockAddr)
+startServer = do
+  (serverSock, serverAddr) <- NS.bindSock (NS.Host "0.0.0.0") "1234"
+  putStrLn $ "Listening for connections on " <> show serverAddr
+  NS.listenSock serverSock 2048
+  pure (serverSock, serverAddr)
+
+waitForClients :: Int -> NS.Socket -> IO [(NS.Socket, NS.SockAddr)]
+waitForClients numberOfClients serverSock = do
+  mapM
+    ( \i ->
+        NS.accept
+          serverSock
+          ( \(clientSock, clientAddr) -> do
+              putStrLn $ show i <> " | Connection established from: " ++ show clientAddr
+              pure (clientSock, clientAddr)
+          )
+    )
+    [1 .. numberOfClients]
+
+preProcessFunc ::
+  VivadoHandle ->
+  String ->
+  FilePath ->
+  HwTarget ->
+  DeviceInfo ->
+  IO
+    ( TestStepResult
+        ( ProcessStdIoHandles
+        , ProcessStdIoHandles
+        , ProcessStdIoHandles
+        , IO ()
+        )
+    )
+preProcessFunc v _name ilaPath hwT deviceInfo = do
+  openHwT v hwT
+  execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
+  refresh_hw_device v []
+
+  execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
+  commit_hw_vio v ["[get_hw_vios]"]
+
+  (ocd, ocdClean) <- startOpenOcd deviceInfo.usbAdapterLocation 3333
+
+  hSetBuffering ocd.stderrHandle LineBuffering
+
+  putStr "Waiting for halt..."
+  expectLine ocd.stderrHandle openOcdWaitForHalt
+  putStrLn " Done"
+
+  -- make sure PicoCom is started properly
+
+  projectDir <- findParentContaining "cabal.project"
+  let
+    hitlDir = projectDir </> "_build" </> "hitl"
+    stdoutLog = hitlDir </> "picocom-stdout.log"
+    stderrLog = hitlDir </> "picocom-stderr.log"
+  putStrLn $ "logging stdout to `" <> stdoutLog <> "`"
+  putStrLn $ "logging stderr to `" <> stderrLog <> "`"
+
+  putStrLn "Starting Picocom..."
+  (pico, picoClean) <- startPicocomWithLogging deviceInfo.serial stdoutLog stderrLog
+
+  hSetBuffering pico.stdinHandle LineBuffering
+  hSetBuffering pico.stdoutHandle LineBuffering
+
+  let
+    -- Create function to log the output of the processes
+    loggingSequence = do
+      threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
+      putStrLn "Picocom stdout"
+      picocomOut <- readRemainingChars pico.stdoutHandle
+      putStrLn picocomOut
+
+      putStrLn "Picocom StdErr"
+      readRemainingChars pico.stderrHandle >>= putStrLn
+
+    tryWithTimeout :: String -> Int -> IO a -> IO a
+    tryWithTimeout actionName dur action = do
+      result <- timeout dur action
+      case result of
+        Nothing -> do
+          loggingSequence
+          assertFailure $ "Timeout while performing action: " <> actionName
+        Just r -> pure r
+
+  putStrLn "Waiting for Picocom to be ready..."
+  tryWithTimeout "Picocom handshake" 10_000_000 $
+    waitForLine pico.stdoutHandle "Terminal ready"
+
+  -- program the FPGA
+  putStrLn "Starting GDB..."
+  (gdb, gdbClean) <- startGdb
+
+  hSetBuffering gdb.stdinHandle LineBuffering
+
+  runGdbCommands
+    gdb.stdinHandle
+    [ "set logging file ./_build/hitl/gdb-out.log"
+    , "set logging overwrite on"
+    , "set logging enabled on"
+    , "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/smoltcp_client\""
+    , "break core::panicking::panic"
+    , "break ExceptionHandler"
+    , "break rust_begin_unwind"
+    , "break smoltcp_client::gdb_panic"
+    , "target extended-remote :3333"
+    , "load"
+    , gdbEcho "load done"
+    , "define hook-stop"
+    , "printf \"!!! program stopped executing !!!\n\""
+    , "i r"
+    , "bt"
+    , "quit 1"
+    , "end"
+    , "continue"
+    ]
+
+  tryWithTimeout "Waiting for program to be loaded" 120_000_000 $
+    waitForLine gdb.stdoutHandle "load done"
+
+  pure $ TestStepSuccess (ocd, pico, gdb, gdbClean >> picoClean >> ocdClean)
+
+driverFunc ::
+  VivadoHandle ->
+  String ->
+  FilePath ->
+  [ ( HwTarget
+    , DeviceInfo
+    , (ProcessStdIoHandles, ProcessStdIoHandles, ProcessStdIoHandles, IO ())
+    )
+  ] ->
+  IO ExitCode
+driverFunc v _name ilaPath [(hwT, _, (_ocd, pico, _gdb, cleanupFn))] = do
+  openHwT v hwT
+  execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
+  refresh_hw_device v []
+
+  execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
+  commit_hw_vio v ["[get_hw_vios]"]
+
+  putStrLn "Starting TCP Server"
+  withServer $ \(serverSock, _) -> do
+    let
+      -- Create function to log the output of the processes
+      loggingSequence = do
+        threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
+        putStrLn "Picocom stdout"
+        picocomOut <- readRemainingChars pico.stdoutHandle
+        putStrLn picocomOut
+
+        putStrLn "Picocom StdErr"
+        readRemainingChars pico.stderrHandle >>= putStrLn
+
+      tryWithTimeout :: String -> Int -> IO a -> IO a
+      tryWithTimeout actionName dur action = do
+        result <- timeout dur action
+        case result of
+          Nothing -> do
+            loggingSequence
+            assertFailure $ "Timeout while performing action: " <> actionName
+          Just r -> pure r
+
+    putStrLn "Waiting for \"Starting TCP Client\""
+
+    tryWithTimeout "Handshake softcore" 10_000_000 $
+      waitForLine pico.stdoutHandle "Starting TCP Client"
+
+    let numberOfClients = 1
+    putStrLn $ "Waiting for " <> show numberOfClients <> " clients to connect to TCP server."
+    clients <-
+      tryWithTimeout "Wait for clients" 60_000_000 $
+        waitForClients numberOfClients serverSock
+
+    putStrLn "Receiving client data"
+    createDirectoryIfMissing True tcpDataDir
+    tryWithTimeout "Receive client data" 60_000_000 $
+      mapConcurrently_ runTcpTest clients
+
+    putStrLn "Closing client connections"
+    tryWithTimeout "Closing connections" 10_000_000 $
+      mapConcurrently_ (NS.closeSock . fst) clients
+    putStrLn "Closing server connection"
+    loggingSequence
+
+  cleanupFn
+
+  pure $ ExitSuccess
+driverFunc _v _name _ilaPath _ = error "Ethernet/VexRiscvTcp driver func should only run with one hardware target"
+
 {- | Test that the `Bittide.Instances.Hitl.Ethernet:vexRiscvTcpTest` design programmed
 with `smoltcp_client` can connect to a TCP server and stress test it for a short duration.
 
@@ -64,6 +253,8 @@ test consumes all data produced by the TCP client and measure the average speed.
 This test will fail if any of the subprocesses fail, or if the client does not manage to
 connect to the server and close the connection within a reasonable time.
 -}
+
+{-
 case_testTcpClient :: Assertion
 case_testTcpClient = do
   let
@@ -173,6 +364,7 @@ case_testTcpClient = do
               mapConcurrently_ (NS.closeSock . fst) clients
             putStrLn "Closing server connection"
             loggingSequence
+-}
 
 runTcpTest :: (NS.Socket, NS.SockAddr) -> Assertion
 runTcpTest (sock, sockAddr) = do
@@ -197,6 +389,3 @@ runTcpTest (sock, sockAddr) = do
     "Expected and actual bytestring are not equal"
     bs
     (BS.replicate (BS.length bs) 0x00)
-
-main :: IO ()
-main = withArgs ["--timeout", "2m"] $defaultMainGenerator

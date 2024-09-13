@@ -4,6 +4,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
@@ -26,7 +27,7 @@ import VexRiscv
 import Bittide.DoubleBufferedRam
 import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
-import Bittide.Instances.Hitl.Setup (allHwTargets)
+import Bittide.Instances.Hitl.Driver.VexRiscv
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (vecsFromElf)
 import Bittide.SharedTypes
@@ -202,9 +203,12 @@ tests =
     , testCases =
         [ HitlTestCase
             { name = "VexRiscV"
-            , parameters = paramForHwTargets allHwTargets ()
+            , parameters = paramForHwTargets [HwTargetByIndex 1, HwTargetByIndex 2] ()
             , postProcData = ()
+            , preProc = InheritPreProcess
             }
         ]
-    , mPostProc = Just "post-vex-riscv-test"
+    , mPreProc = preProcessFunc
+    , mDriverProc = Just driverFunc
+    , mPostProc = Nothing
     }

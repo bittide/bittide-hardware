@@ -233,6 +233,8 @@ tests =
     , externalHdl = []
     , extraXdcFiles = []
     , testCases = iters
+    , mPreProc = noPreProcess
+    , mDriverProc = Nothing
     , mPostProc = Nothing
     }
  where
@@ -245,6 +247,7 @@ tests =
       , parameters =
           Map.fromList (L.zip (HwTargetByIndex . fromIntegral <$> fpgaIndices) fpgaIndices)
       , postProcData = ()
+      , preProc = InheritPreProcess
       }
     | nm <- iterNames
     ]

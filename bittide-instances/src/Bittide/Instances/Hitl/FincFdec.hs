@@ -25,6 +25,7 @@ import Bittide.Hitl (
   HitlTestGroup (..),
   HwTargetRef (HwTargetByIndex),
   hitlVio,
+  noPreProcess,
   testCasesFromEnum,
  )
 import Bittide.Instances.Domains
@@ -222,5 +223,7 @@ tests =
     , extraXdcFiles = []
     , externalHdl = []
     , testCases = testCasesFromEnum @Test [HwTargetByIndex 7] ()
+    , mPreProc = noPreProcess
+    , mDriverProc = Nothing
     , mPostProc = Nothing
     }

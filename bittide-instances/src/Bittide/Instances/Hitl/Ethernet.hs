@@ -7,6 +7,7 @@ module Bittide.Instances.Hitl.Ethernet where
 
 import Bittide.Hitl
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.Driver.VexRiscvTcp
 import Bittide.Instances.Pnr.Ethernet
 import Clash.Cores.Xilinx.Ethernet.Gmii
 import Clash.Explicit.Prelude
@@ -93,7 +94,10 @@ tests =
             { name = "VexRiscvTcp"
             , parameters = paramForSingleHwTarget (HwTargetByIndex 7) ()
             , postProcData = ()
+            , preProc = InheritPreProcess
             }
         ]
-    , mPostProc = Just "post-vex-riscv-tcp-test"
+    , mPreProc = preProcessFunc
+    , mDriverProc = Just driverFunc
+    , mPostProc = Nothing
     }

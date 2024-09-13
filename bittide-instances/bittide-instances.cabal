@@ -81,6 +81,7 @@ common common-options
 
   default-language: Haskell2010
   build-depends:
+    Glob,
     MissingH,
     aeson,
     async,
@@ -99,6 +100,7 @@ common common-options
     constraints >=0.13.3 && <0.15,
     containers,
     cryptohash-sha256,
+    deepseq,
     directory,
     extra,
     filepath,
@@ -123,6 +125,7 @@ common common-options
     time,
     unix,
     vector,
+    vivado-hs,
 
 library
   import: common-options
@@ -132,19 +135,24 @@ library
     Bittide.Instances.Hacks
     Bittide.Instances.Hitl.BoardTest
     Bittide.Instances.Hitl.DnaOverSerial
+    Bittide.Instances.Hitl.Driver.DnaOverSerial
+    Bittide.Instances.Hitl.Driver.VexRiscv
+    Bittide.Instances.Hitl.Driver.VexRiscvTcp
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.IlaPlot
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
-    Bittide.Instances.Hitl.Post.TcpServer
     Bittide.Instances.Hitl.Setup
     Bittide.Instances.Hitl.SwCcTopologies
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests
     Bittide.Instances.Hitl.Transceivers
+    Bittide.Instances.Hitl.Utils.Gdb
+    Bittide.Instances.Hitl.Utils.Program
+    Bittide.Instances.Hitl.Utils.Vivado
     Bittide.Instances.Hitl.VexRiscv
     Bittide.Instances.Pnr.Calendar
     Bittide.Instances.Pnr.ClockControl
@@ -158,7 +166,6 @@ library
     Bittide.Instances.Pnr.Synchronizer
     Paths.Bittide.Instances
     Project.Handle
-    Project.Programs
 
   other-modules:
     Paths_bittide_instances
@@ -228,71 +235,3 @@ executable clash
     bittide-instances,
     clash-ghc,
     vivado-hs,
-
-executable post-board-test-extended
-  import: common-options
-  ghc-options:
-    -Wall
-    -Wcompat
-    -threaded
-
-  main-is: exe/post-board-test-extended/Main.hs
-  build-depends:
-    Glob,
-    bittide-instances,
-    filepath,
-
-executable post-vex-riscv-test
-  import: common-options
-  ghc-options:
-    -Wall
-    -Wcompat
-    -threaded
-
-  main-is: exe/post-vex-riscv-test/Main.hs
-  build-depends:
-    bittide-instances,
-    extra,
-    process,
-    tasty,
-    tasty-hunit,
-    tasty-th,
-    temporary,
-
-  other-modules: Paths_bittide_instances
-
-executable post-vex-riscv-tcp-test
-  import: common-options
-  ghc-options:
-    -Wall
-    -Wcompat
-    -threaded
-
-  main-is: exe/post-vex-riscv-tcp-test/Main.hs
-  build-depends:
-    bittide-instances,
-    extra,
-    process,
-    tasty,
-    tasty-hunit,
-    tasty-th,
-    temporary,
-
-  other-modules: Paths_bittide_instances
-
-executable post-dna-over-serial
-  import: common-options
-  ghc-options:
-    -Wall
-    -Wcompat
-    -threaded
-
-  main-is: exe/post-dna-over-serial/Main.hs
-  build-depends:
-    bittide-instances,
-    process,
-    tasty,
-    tasty-hunit,
-    tasty-th,
-
-  other-modules: Paths_bittide_instances

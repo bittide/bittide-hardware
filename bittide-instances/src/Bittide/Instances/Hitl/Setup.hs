@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module Bittide.Instances.Hitl.Setup (
   -- * Constants
@@ -25,7 +26,7 @@ module Bittide.Instances.Hitl.Setup (
 
 import Clash.Prelude
 
-import Bittide.Hitl (FpgaId, HwTargetRef (..))
+import Bittide.Hitl (DeviceInfo (..), FpgaId, HwTargetRef (..))
 import Bittide.Topology
 import Data.Constraint (Dict (..), (:-) (..))
 import Data.Constraint.Nat (leTrans)
@@ -79,7 +80,7 @@ knownFpgaIds :: [FpgaId]
 knownFpgaIds = toList knownFpgaIdsVec
 
 allHwTargets :: [HwTargetRef]
-allHwTargets = HwTargetById <$> knownFpgaIds
+allHwTargets = (\d -> HwTargetById d.deviceId d) <$> demoRigInfo
 
 {- | Determines the link mask of a particular node.
 
@@ -124,13 +125,6 @@ linkMasks g = smap (const . linkMask') indicesI
   linkMask' i@SNat = case compareSNat (SNat @(i + 1)) (SNat @n) of
     SNatLE -> linkMask g i
     _ -> error "impossible"
-
-data DeviceInfo = DeviceInfo
-  { deviceId :: String
-  , dna :: BitVector 96
-  , serial :: String
-  , usbAdapterLocation :: String
-  }
 
 -- | List of device information of all FPGAs connected to the demo rig
 demoRigInfo :: [DeviceInfo]

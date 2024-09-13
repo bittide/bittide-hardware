@@ -8,6 +8,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
 
 {- | Helper functions to do things like synthesis, place & route, bitstream
 generation, programming and running hardware tests for the Bittide project.
@@ -36,7 +37,8 @@ import Development.Shake (Action)
 import Development.Shake.Extra (decodeFile)
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Setup (knownFpgaIds)
+import Bittide.Instances.Hitl.Setup (demoRigInfo, knownFpgaIds)
+import Bittide.Instances.Hitl.Utils.Vivado
 import Clash.Driver.Manifest
 import Clash.Prelude (BitPack (BitSize), Natural, natToNatural, pack)
 import Clash.Shake.Extra (hexDigestFile)
@@ -46,9 +48,8 @@ import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
 import Control.Exception (try)
 import Control.Monad.Extra (andM, forM, forM_, orM, unless, when)
 import Data.Containers.ListUtils (nubOrd)
-import Data.Either (lefts, rights)
-import Data.Functor ((<&>))
-import Data.List (elemIndex, isInfixOf, isSuffixOf, sort, sortOn, (\\))
+import Data.Either (lefts, partitionEithers, rights)
+import Data.List (isInfixOf, isSuffixOf, sort, sortOn, (\\))
 import Data.List.Extra (anySame, split, (!?))
 import Data.Map.Strict (fromList, keys, mapKeys, toAscList)
 import qualified Data.Map.Strict as Map
@@ -59,10 +60,10 @@ import Data.String.Interpolate (i, __i)
 import Data.Text (unpack)
 import System.Clock (Clock (Monotonic), diffTimeSpec, getTime, toNanoSecs)
 import System.Directory (createDirectoryIfMissing)
-import System.Exit (ExitCode (..))
+import System.Exit (ExitCode (..), exitFailure)
 import System.FilePath (dropFileName, (</>))
 import Text.Read (readMaybe)
-import Vivado (TclException (..), VivadoHandle, execPrint, execPrint_, with)
+import Vivado (TclException (..), VivadoHandle, execPrint_, with)
 import Vivado.Tcl
 
 -- | Satisfied if all actions result in 'False'
@@ -335,29 +336,15 @@ idFromHwTRef (HwTargetByIndex ix) =
   fromMaybe
     ("The given index " <> show ix <> " is out of range for the list of known FPGA IDs")
     (knownFpgaIds !? fromIntegral ix)
-idFromHwTRef (HwTargetById targetId) = targetId
+idFromHwTRef (HwTargetById targetId _) = targetId
 
-{- | Takes the ID part of a Vivado hardware target. This is what Vivado seems to
-call the UID minus the vendor string.
-
-==== __Example__
->>> idFromHwT (HwTarget "localhost:3121/xilinx_tcf/Digilent/210308B0B0C2")
-"210308B0B0C2"
--}
-idFromHwT :: HwTarget -> FpgaId
-idFromHwT = fromMaybe err . (!? 3) . split (== '/') . fromHwTarget
- where
-  err = error "Unexpected format for hw_target Tcl object"
-
-{- | Attempt to determine the hardware target index/position in the HITL
-test setup to prepend it to its prettier name.
--}
-prettyShow :: HwTarget -> String
-prettyShow hwT =
-  let hwTId = idFromHwT hwT
-   in case hwTId `elemIndex` knownFpgaIds of
-        Just index -> show index <> "_" <> hwTId
-        Nothing -> hwTId
+deviceInfoFromHwTRef :: HwTargetRef -> DeviceInfo
+deviceInfoFromHwTRef (HwTargetByIndex ix) =
+  fromMaybe
+    ( error $ "The given index " <> show ix <> " is out of range for the list of known FPGA IDs"
+    )
+    (demoRigInfo !? fromIntegral ix)
+deviceInfoFromHwTRef (HwTargetById _ d) = d
 
 {- | Tries to find the hardware target with a specific FPGA ID in a given list of hardware targets.
 Returns the FPGA ID wrapped in a `Left` on failure to find such a target.
@@ -418,32 +405,6 @@ resolveHwTRefs v requestedHwTRefs = do
           <> show (knownFpgaIds \\ foundFpgaIds)
           <> "\n\tFound but unexpected: "
           <> show (foundFpgaIds \\ knownFpgaIds)
-
-{- | Open the given hardware target and set the current hardware device to the
-Xilinx FPGA on it.
--}
-openHwT :: VivadoHandle -> HwTarget -> IO ()
-openHwT v hwT = do
-  currentHwT <- current_hw_target v []
-  currentIsOpened <-
-    execPrint v "get_property IS_OPENED [current_hw_target]" <&> \case
-      "1" -> True
-      "0" -> False
-      o -> error $ "Property IS_OPENED was " <> show o <> " where 0 or 1 was expected."
-  if currentHwT == hwT
-    then do
-      unless currentIsOpened $
-        open_hw_target v []
-    else do
-      when currentIsOpened $
-        close_hw_target v ["-quiet"]
-      _ <- current_hw_target v [show hwT]
-      open_hw_target v []
-  -- Assumes that the open target has the Xilinx device to program at index 0.
-  -- This is also what Xilinx does in its examples in UG908.
-  hwD <- current_hw_device v ["[lindex [get_hw_devices] 0]"]
-  when (null (fromHwDevice hwD)) $
-    error "Setting the current hardware device failed."
 
 programBitstream ::
   -- | Directory where the bitstream files are located
@@ -555,35 +516,6 @@ verifyHitlVio v paramBitSize = do
     unless (widthProp == probeWidth) $
       error $
         "Probe '" <> probe <> "' must have width " <> probeWidth <> " but it is " <> widthProp
-
-getTestProbeTcl :: String -> String
-getTestProbeTcl probeNm =
-  "[get_hw_probes -of_objects [get_hw_vios] " <> probeNm <> "]"
-
-{- | Tcl code to get the HITL VIO test start output probe.
-Run `verifyHitlVio` beforehand to ensure that the probe is available.
--}
-getProbeTestStartTcl :: String
-getProbeTestStartTcl = getTestProbeTcl "*vioHitlt/probe_test_start"
-
-{- | Tcl code to get the HITL VIO test data output probe.
-Run `verifyHitlVio` beforehand and verify that the HITL test parameter
-`BitSize` isn't zero to ensure that the probe is available.
--}
-getProbeTestDataTcl :: String
-getProbeTestDataTcl = getTestProbeTcl "*vioHitlt/probe_test_data"
-
-{- | Tcl code to get the HITL VIO test done input probe.
-Run `verifyHitlVio` beforehand to ensure that the probe is available.
--}
-getProbeTestDoneTcl :: String
-getProbeTestDoneTcl = getTestProbeTcl "*vioHitlt/probe_test_done"
-
-{- | Tcl code to get the HITL VIO test success input probe.
-Run `verifyHitlVio` beforehand to ensure that the probe is available.
--}
-getProbeTestSuccessTcl :: String
-getProbeTestSuccessTcl = getTestProbeTcl "*vioHitlt/probe_test_success"
 
 {- | Observed instances of property CELL_NAME of an hw_ila object include:
 - "Bittide_Instances_Hitl_FullMeshSwCc_fullMeshSwCcTest_callistoClockControlWithIla_callistoResult/ilaPlot/ilaPlot"
@@ -728,11 +660,12 @@ verifyHwIlas v = do
 {- | Waits (with a timeout) until a HITL test case is finished by probing
 the probe_test_done probe. Returns whether the test case was successful.
 -}
-waitTestCaseEnd :: VivadoHandle -> HitlTestCase HwTarget a b -> FilePath -> IO ExitCode
+waitTestCaseEnd ::
+  VivadoHandle -> HitlTestCase (HwTarget, DeviceInfo) a b c -> FilePath -> IO ExitCode
 waitTestCaseEnd v HitlTestCase{..} probesFilePath = do
   startTime <- getTime Monotonic
   let calcTimeSpentMs = (`div` 1000000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
-  exitCodes <- forM (keys parameters) $ \hwT -> do
+  exitCodes <- forM (keys parameters) $ \(hwT, _) -> do
     openHwT v hwT
     execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
     let
@@ -789,7 +722,7 @@ runHitlTest ::
   -- | Filepath the the ILA data dump directory
   FilePath ->
   IO ExitCode
-runHitlTest test@HitlTestGroup{topEntity, testCases} url probesFilePath ilaDataDir = do
+runHitlTest test@HitlTestGroup{topEntity, testCases, mPreProc, mDriverProc} url probesFilePath ilaDataDir = do
   putStrLn $
     "Starting HITL test for FPGA design '"
       <> show topEntity
@@ -822,13 +755,18 @@ runHitlTest test@HitlTestGroup{topEntity, testCases} url probesFilePath ilaDataD
           "Multiple references to the same hardware target: "
             <> show (requestedIds \\ nubOrd requestedIds)
       -- Resolve the test case definition by replacing the references to
-      -- hardware targets with the actual hardware targets.
-      let resolvedTestCase =
-            HitlTestCase
-              { parameters = mapKeys (fromJust . (`Map.lookup` refToHwTMap)) parameters
-              , ..
-              }
-      exitCode <- runHitlTestCase v resolvedTestCase probesFilePath ilaDataDir
+      -- hardware targets with the actual hardware targets and device info.
+      let
+        resolvedTestCase =
+          HitlTestCase
+            { parameters = mapKeys (\k -> (lookupHwT k, lookupDeviceInfo k)) parameters
+            , ..
+            }
+        lookupHwT key = fromJust $ Map.lookup key refToHwTMap
+        lookupDeviceInfo key = deviceInfoFromHwTRef key
+
+      exitCode <-
+        runHitlTestCase v resolvedTestCase mPreProc mDriverProc probesFilePath ilaDataDir
       pure (name, exitCode)
 
     let failedTestCaseNames = fst <$> filter ((/= ExitSuccess) . snd) testResults
@@ -852,28 +790,32 @@ runHitlTest test@HitlTestGroup{topEntity, testCases} url probesFilePath ilaDataD
 
 -- | Runs one test case of a HITL test group
 runHitlTestCase ::
-  forall a b.
+  forall a b c.
   -- | Handle to a Vivado object that is to execute the Tcl
   VivadoHandle ->
   -- | The HITL test case to run
-  HitlTestCase HwTarget a b ->
+  HitlTestCase (HwTarget, DeviceInfo) a b c ->
+  -- | Pre-process function for the test group
+  (VivadoHandle -> String -> FilePath -> HwTarget -> DeviceInfo -> IO (TestStepResult c)) ->
+  -- | Driver function
+  Maybe (VivadoHandle -> String -> FilePath -> [(HwTarget, DeviceInfo, c)] -> IO ExitCode) ->
   -- | Path to the generated probes file
   FilePath ->
   -- | Filepath the the ILA data dump directory
   FilePath ->
   IO ExitCode
-runHitlTestCase v testCase@HitlTestCase{name, parameters} probesFilePath ilaDataDir = do
+runHitlTestCase v testCase@HitlTestCase{name, parameters, preProc} preProcessFunc driverFunc probesFilePath ilaDataDir = do
   if null parameters
     then do
       putStrLn
         "WARNING: The HITL test case does not reference any hardware targets. Exiting."
       pure ExitSuccess
     else do
-      openHwT v (head (keys parameters))
+      openHwT v (fst $ head (keys parameters))
       verifyHwIlas v
       -- XXX: We should not rely on start probe assertion order.
       --      See https://github.com/bittide/bittide-hardware/issues/638.
-      forM_ (sortOn (prettyShow . fst) (toAscList parameters)) $ \(hwT, param) -> do
+      testData <- forM (sortOn (prettyShow . fst . fst) (toAscList parameters)) $ \((hwT, deviceInfo), param) -> do
         openHwT v hwT
         execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
         refresh_hw_device v []
@@ -904,6 +846,7 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} probesFilePath ilaData
         ilas <- get_hw_ilas v []
         unless (null ilas) $
           putStrLn "Configuring and arming ILAs..."
+
         forM_ ilas $ \ila -> do
           _ <- current_hw_ila v [show ila]
 
@@ -928,16 +871,69 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} probesFilePath ilaData
         execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeTestStartTcl]
         commit_hw_vio v ["[get_hw_vios]"]
 
-        -- Assert HitlVio start probe
-        execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
-        commit_hw_vio v ["[get_hw_vios]"]
-        putStrLn $ "Started test case for hardware target " <> prettyShow hwT <> "."
+        -- run pre-processing
+        testRunData <- case preProc of
+          InheritPreProcess -> do
+            putStrLn $
+              "Running test-group pre-process function for "
+                <> name
+                <> " ('"
+                <> prettyShow hwT
+                <> "')"
+            preProcessFunc v name probesFilePath hwT deviceInfo
+          CustomPreProcess f -> do
+            putStrLn $
+              "Running case pre-process function for "
+                <> name
+                <> " ('"
+                <> prettyShow hwT
+                <> "')"
+            f v probesFilePath hwT deviceInfo
 
-      putStrLn $ "Waiting for test case '" <> name <> "' to end..."
-      testCaseExitCode <- waitTestCaseEnd v testCase probesFilePath
+        case testRunData of
+          TestStepFailure msg -> do
+            putStrLn $
+              "pre-process step failed: " <> msg
+            pure $ Left (hwT, msg)
+          TestStepSuccess val -> do
+            pure $ Right (hwT, deviceInfo, val)
+
+      -- Assert HitlVio start probe
+      -- execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
+      -- commit_hw_vio v ["[get_hw_vios]"]
+      -- putStrLn $ "Started test case for hardware target " <> prettyShow hwT <> "."
+
+      -- pure testRunData
+
+      let (failedTests, validTests) = partitionEithers testData
+
+      testCaseExitCode0 <- case driverFunc of
+        Just fn -> do
+          putStrLn $ "Running custom driver function for test " <> name
+          fn v name probesFilePath validTests
+        Nothing -> do
+          putStrLn $ "Running default driver function for test " <> name
+
+          forM_ validTests $ \(hwT, _deviceInfo, _testData) -> do
+            -- Assert HitlVio start probe
+            openHwT v hwT
+            execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
+            refresh_hw_device v []
+
+            execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
+            commit_hw_vio v ["[get_hw_vios]"]
+            putStrLn $ "Started test case for hardware target " <> prettyShow hwT <> "."
+
+          putStrLn $ "Waiting for test case '" <> name <> "' to end..."
+          waitTestCaseEnd v testCase probesFilePath
+
+      testCaseExitCode <-
+        if null failedTests
+          then pure testCaseExitCode0
+          else exitFailure
 
       putStrLn "Saving captured ILA data (if relevant)..."
-      forM_ (keys parameters) $ \hwT -> do
+      forM_ (keys parameters) $ \(hwT, _) -> do
         openHwT v hwT
         execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
         refresh_hw_device v ["-quiet"]
@@ -956,6 +952,15 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} probesFilePath ilaData
           -- Legacy CSV excludes radix information
           execCmd_ v "write_hw_ila_data" ["-force", "-legacy_csv_file " <> dir </> ilaShortName]
           execCmd_ v "write_hw_ila_data" ["-force", "-vcd_file " <> dir </> ilaShortName]
+
+      -- deassert all START signals
+      forM_ (sortOn (prettyShow . fst . fst) (toAscList parameters)) $ \((hwT, _), _param) -> do
+        openHwT v hwT
+        execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
+        refresh_hw_device v []
+
+        execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeTestStartTcl]
+        commit_hw_vio v ["[get_hw_vios]"]
 
       pure testCaseExitCode
 
