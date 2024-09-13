@@ -12,6 +12,7 @@
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Bittide.Instances.Hitl.SwCcTopologies (
+  swCcTopologyTest,
   tests
 ) where
 
