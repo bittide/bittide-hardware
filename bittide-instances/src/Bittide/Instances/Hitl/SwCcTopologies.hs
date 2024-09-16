@@ -246,7 +246,8 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
 
   allReady =
     trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle transceivers.linkReadys)
-  transceiversFailedAfterUp = sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
+  transceiversFailedAfterUp =
+    sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
 
   timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
   timer = register sysClk syncRst enableGen (0, 0) (timeSucc <$> timer)
@@ -429,107 +430,6 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
         updatePeriodMin
         updatePeriodMax
 
-  txAllStables = zipWith (xpmCdcSingle sysClk) transceivers.txClocks (repeat allStable1)
-  allStable1 = sticky sysClk syncRst allStable0
-  txResets2 =
-    zipWith
-      orReset
-      transceivers.txResets
-      (map unsafeFromActiveLow txAllStables)
-
-  -- availableMask :: Vec LinkCount (Signal Basic125 Bit)
-  -- availableMask = transpose . bv2v . mask <$> cfg
-  availableMask :: Vec LinkCount (Signal Basic125 Bit)
-  availableMask = unbundle (bv2v . mask <$> cfg)
-  txCounters = zipWith3 txCounter transceivers.txClocks txResets2 availableMask
-  txCounter ::
-    Clock GthTx -> Reset GthTx -> Signal Basic125 Bit -> Signal GthTx (BitVector 64)
-  txCounter txClk txRst txMask = result
-   where
-    txMask' :: Signal GthTx Bit
-    txMask' = unsafeSynchronizer sysClk txClk txMask
-    next :: Bit -> (BitVector 64 -> BitVector 64)
-    next txMaskBit = case txMaskBit of
-      1 -> (+ 1)
-      _ -> id
-    result =
-      register txClk txRst enableGen (0xaabb_ccdd_eeff_1234 :: BitVector 64)
-        $ liftA2 next txMask' result
-  -- see NOTE [magic start values]
-
-  rxFifos =
-    zipWith4
-      go
-      transceivers.txClocks
-      transceivers.rxClocks
-      txResets2
-      transceivers.rxDatas
-   where
-    go = resettableXilinxElasticBuffer @FifoSize @_ @_ @(Maybe (BitVector 64))
-
-  (fillLvls, fifoUnderflowsTx, fifoOverflowsTx, _ebMode, rxCntrs) = unzip5 rxFifos
-
-  fifoOverflowsFree :: Vec LinkCount (Signal Basic125 Overflow)
-  fifoOverflowsFree = zipWith (`xpmCdcSingle` sysClk) transceivers.txClocks fifoOverflowsTx
-  fifoUnderflowsFree :: Vec LinkCount (Signal Basic125 Underflow)
-  fifoUnderflowsFree = zipWith (`xpmCdcSingle` sysClk) transceivers.txClocks fifoUnderflowsTx
-
-  ugns :: Vec LinkCount (Signal GthTx (BitVector 64))
-  ugns =
-    zipWith
-      (-)
-      txCounters
-      (map (fmap (fromMaybe 0x1122_3344_1122_3344)) rxCntrs)
-  -- see NOTE [magic start values]
-
-  -- NOTE [magic start values]
-  -- These values could be anything, but are chosen to be recognisable and help debugging.
-  --   0xaabbccddeeff1234 - 0x1122334411223344 = 0x99999999dddcdef0
-  -- If you ever see the ugn being a constant 0x99999999dddcdef0
-  -- then you know the your counter isn't running and you're receiving 'Nothing',
-  -- If you see 0x99999999.......... and it's counting up, then you're receiving Nothing,
-  -- but your counter is running.
-
-  ugnStable1sec = zipWith3 (stableForMs (SNat @1000)) transceivers.txClocks transceivers.txResets ugns
-
-  freeUgnDatas = zipWith5 go transceivers.txClocks (repeat sysClk) ugns fillLvls ugnStable1sec
-   where
-    go clkIn clkOut ugn fillLvl stable =
-      regMaybe
-        clkOut
-        noReset
-        enableGen
-        (0, 0, False, unpack 0)
-        (xpmCdcMaybeLossy clkIn clkOut inp)
-     where
-      fillStat = fillStats clkIn noReset fillLvl
-      inp = Just <$> bundle (ugn, fillLvl, stable, fillStat)
-
-  ( ugnD0
-    , ugnD1
-    , ugnD2
-    , ugnD3
-    , ugnD4
-    , ugnD5
-    , ugnD6
-    ) = vecToTuple freeUgnDatas
-
-  (ugn0, fill0, ugnStable0, fillStats0) = unbundle ugnD0
-  (ugn1, fill1, ugnStable1, fillStats1) = unbundle ugnD1
-  (ugn2, fill2, ugnStable2, fillStats2) = unbundle ugnD2
-  (ugn3, fill3, ugnStable3, fillStats3) = unbundle ugnD3
-  (ugn4, fill4, ugnStable4, fillStats4) = unbundle ugnD4
-  (ugn5, fill5, ugnStable5, fillStats5) = unbundle ugnD5
-  (ugn6, fill6, ugnStable6, fillStats6) = unbundle ugnD6
-
-  FillStats fillMin0 fillMax0 = unbundle fillStats0
-  FillStats fillMin1 fillMax1 = unbundle fillStats1
-  FillStats fillMin2 fillMax2 = unbundle fillStats2
-  FillStats fillMin3 fillMax3 = unbundle fillStats3
-  FillStats fillMin4 fillMax4 = unbundle fillStats4
-  FillStats fillMin5 fillMax5 = unbundle fillStats5
-  FillStats fillMin6 fillMax6 = unbundle fillStats6
-
   captureFlag =
     riseEvery
       sysClk
@@ -655,6 +555,105 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
       <$> transceivers.rxClocks
       <*> transceivers.txClocks
 
+  txAllStables = zipWith (xpmCdcSingle sysClk) transceivers.txClocks (repeat allStable1)
+  allStable1 = sticky sysClk syncRst allStable0
+  txResets2 =
+    zipWith
+      orReset
+      transceivers.txResets
+      (map unsafeFromActiveLow txAllStables)
+
+  -- availableMask :: Vec LinkCount (Signal Basic125 Bit)
+  -- availableMask = transpose . bv2v . mask <$> cfg
+  availableMask :: Vec LinkCount (Signal Basic125 Bit)
+  availableMask = unbundle (bv2v . mask <$> cfg)
+  txCounters = zipWith3 txCounter transceivers.txClocks txResets2 availableMask
+  txCounter ::
+    Clock GthTx -> Reset GthTx -> Signal Basic125 Bit -> Signal GthTx (BitVector 64)
+  txCounter txClk txRst txMask = result
+   where
+    txMask' = unsafeSynchronizer sysClk txClk txMask
+    next txMaskBit = case txMaskBit of
+      1 -> countSucc
+      _ -> id
+    result =
+      register txClk txRst enableGen (0xaabb_ccdd_eeff_1234 :: BitVector 64)
+        $ liftA2 next txMask' result
+  -- see NOTE [magic start values]
+
+  rxFifos =
+    zipWith4
+      go
+      transceivers.txClocks
+      transceivers.rxClocks
+      txResets2
+      transceivers.rxDatas
+   where
+    go = resettableXilinxElasticBuffer @FifoSize @_ @_ @(Maybe (BitVector 64))
+
+  (fillLvls, fifoUnderflowsTx, fifoOverflowsTx, _ebMode, rxCntrs) = unzip5 rxFifos
+
+  fifoOverflowsFree :: Vec LinkCount (Signal Basic125 Overflow)
+  fifoOverflowsFree = zipWith (`xpmCdcSingle` sysClk) transceivers.txClocks fifoOverflowsTx
+  fifoUnderflowsFree :: Vec LinkCount (Signal Basic125 Underflow)
+  fifoUnderflowsFree = zipWith (`xpmCdcSingle` sysClk) transceivers.txClocks fifoUnderflowsTx
+
+  ugns :: Vec LinkCount (Signal GthTx (BitVector 64))
+  ugns =
+    zipWith
+      (-)
+      txCounters
+      (map (fmap (fromMaybe 0x1122_3344_1122_3344)) rxCntrs)
+  -- see NOTE [magic start values]
+
+  -- NOTE [magic start values]
+  -- These values could be anything, but are chosen to be recognisable and help debugging.
+  --   0xaabbccddeeff1234 - 0x1122334411223344 = 0x99999999dddcdef0
+  -- If you ever see the ugn being a constant 0x99999999dddcdef0
+  -- then you know the your counter isn't running and you're receiving 'Nothing',
+  -- If you see 0x99999999.......... and it's counting up, then you're receiving Nothing,
+  -- but your counter is running.
+
+  ugnStable1sec = zipWith3 (stableForMs (SNat @1000)) transceivers.txClocks transceivers.txResets ugns
+
+  freeUgnDatas = zipWith5 go transceivers.txClocks (repeat sysClk) ugns fillLvls ugnStable1sec
+   where
+    go clkIn clkOut ugn fillLvl stable =
+      regMaybe
+        clkOut
+        noReset
+        enableGen
+        (0, 0, False, unpack 0)
+        (xpmCdcMaybeLossy clkIn clkOut inp)
+     where
+      fillStat = fillStats clkIn noReset fillLvl
+      inp = Just <$> bundle (ugn, fillLvl, stable, fillStat)
+
+  ( ugnD0
+    , ugnD1
+    , ugnD2
+    , ugnD3
+    , ugnD4
+    , ugnD5
+    , ugnD6
+    ) = vecToTuple freeUgnDatas
+
+  (ugn0, fill0, ugnStable0, fillStats0) = unbundle ugnD0
+  (ugn1, fill1, ugnStable1, fillStats1) = unbundle ugnD1
+  (ugn2, fill2, ugnStable2, fillStats2) = unbundle ugnD2
+  (ugn3, fill3, ugnStable3, fillStats3) = unbundle ugnD3
+  (ugn4, fill4, ugnStable4, fillStats4) = unbundle ugnD4
+  (ugn5, fill5, ugnStable5, fillStats5) = unbundle ugnD5
+  (ugn6, fill6, ugnStable6, fillStats6) = unbundle ugnD6
+
+  FillStats fillMin0 fillMax0 = unbundle fillStats0
+  FillStats fillMin1 fillMax1 = unbundle fillStats1
+  FillStats fillMin2 fillMax2 = unbundle fillStats2
+  FillStats fillMin3 fillMax3 = unbundle fillStats3
+  FillStats fillMin4 fillMax4 = unbundle fillStats4
+  FillStats fillMin5 fillMax5 = unbundle fillStats5
+  FillStats fillMin6 fillMax6 = unbundle fillStats6
+
 fillStats ::
   forall dom a.
   (KnownDomain dom, Ord a, Num a, Bounded a, NFDataX a) =>
@@ -726,6 +725,54 @@ stableForMs SNat clk rst inp =
  where
   stable = stableFor @(CLog 2 (PeriodToCycles dom (Milliseconds ms))) clk rst inp
 
+-- timingStall ::
+--   forall dom addrW .
+--   (HiddenClockResetEnable dom, KnownNat addrW) =>
+--   Circuit (CSignal dom Int, Wishbone dom 'Standard addrW (Bytes 4)) ()
+-- timingStall = Circuit go
+--  where
+--   go :: ((Signal dom Int,
+--           Signal dom (WishboneM2S addrW 4 (BitVector 32))),
+--         ())
+--         -> ((Signal dom (), Signal dom (WishboneS2M (BitVector 32))), ())
+--   go ((updatePeriod, m2s), ()) = ((pure (), wishboneProcess <$> m2s), ())
+--    where
+--     updatePeriodMax = register 0 $ max <$> updatePeriod <*> updatePeriodMax
+
+--     updateCounter :: Int
+--     hasReceivedUpdate :: Bool
+
+--     -- circ :: Int -> Circuit a b
+--     -- bSide <- circ 12 -< aSide
+
+--     -- nonCirc :: a -> b
+--     -- bSide = nonCirc aSide
+
+--     -- circA, circB
+--     --
+--     -- bus <- circA
+--     -- circB -< bus
+
+--     -- -< this is coming from the left (think: argument to circuit)
+--     -- <- this is going to the right
+--     wishboneProcess
+--       :: (UpdateCounter, WaitingForNCycless) -> WishboneM2S addrW 4 (BitVector 32)
+--       -> (WishboneS2M (BitVector 32), (UpdateCounter, WaitingForNCycless))
+--     wishboneProcess req
+--       | not (req.busCycle && req.strobe) = emptyWishboneS2M
+--       | req.writeEnable = undefined
+--       | not req.writeEnable = emptyWishboneS2M
+--                                 { readData = 14
+--                                 , acknowledge = sendAck updateCounter hasReceivedUpdate
+--                                 }
+
+-- dupC :: Circuit (CSignal dom a) (CSignal dom a, CSignal dom a)
+-- dupC = Circuit go
+--  where
+-- go :: (Signal dom a, (Signal dom (), Signal dom ()))
+-- -> (Signal dom (), (Signal dom a, Signal dom a))
+-- go (a, _) = (pure (), (a, a))
+
 fullMeshRiscvTest ::
   forall dom.
   (KnownDomain dom) =>
@@ -743,11 +790,19 @@ fullMeshRiscvTest clk rst dataCounts = (unbundle fIncDec, updatePeriod)
   (_, (fIncDec, updatePeriod)) =
     toSignals
       ( circuit $ \jtag -> do
+          -- [wbB, wbT]
+          --   <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig
+          --   -< jtag
           [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
           (fIncDec, _allStable, updatePeriod) <-
             withClockResetEnable clk rst enableGen
               $ clockControlWb margin framesize (pure $ complement 0) dataCounts
               -< wbB
+          -- Look here for adding in hardware fencing. You should be using the `fIncDec`
+          -- signal from above to make that work.
+          -- (upPA, upPB) <- dupC -< updatePeriod
+          -- withClockResetEnable clk rst enableGen timingStall -< (upPA, wbT)
+          -- idC -< (fIncDec, upPB)
           idC -< (fIncDec, updatePeriod)
       )
       (pure $ JtagIn low low low, (pure (), pure ()))
@@ -771,10 +826,12 @@ fullMeshRiscvTest clk rst dataCounts = (unbundle fIncDec, updatePeriod)
     0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
     0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
     0b11xxxxx_xxxxxxxx 0b11 0xCx memory mapped hardware clock control
+    0b00xxxxx_xxxxxxxx 0b00 0x00 timing stalling unit whatever?
   -}
   peConfig =
     PeConfig
       (0b10 :> 0b01 :> 0b11 :> Nil)
+      -- (0b10 :> 0b01 :> 0b11 :> 0b00 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
 
@@ -824,11 +881,12 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     , calibI
     , calibE
     , ugnsStable
-    ) = fullMeshHwTest refClk sysClk sysRst ilaControl rxns rxps miso cfg updatePeriod
+    ) = fullMeshHwTest refClk sysClk sysRst ilaControl{skipTest = skip} rxns rxps miso cfg updatePeriod
 
   ((riscvFinc, riscvFdec), updatePeriod) = fullMeshRiscvTest sysClk callistoReset dataCounts
 
   allUgnsStable = and <$> bundle ugnsStable
+  allStable' = allStable .&&. allUgnsStable
 
   -- checks that tests are not synchronously start before all
   -- transceivers are up
@@ -841,8 +899,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   endSuccess :: Signal Basic125 Bool
   endSuccess =
-    trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
-      .&&. allUgnsStable
+    trueFor (SNat @(Seconds 5)) sysClk syncRst allStable'
       .&&. ( (/= CCCalibrationValidation)
               . calibrate
               <$> cfg
@@ -864,7 +921,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       )
       -- success
       ( skip
-          .||. (allStable .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady)))
+          .||. (allStable' .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady)))
       )
 
 makeTopEntity 'swCcTopologyTest
