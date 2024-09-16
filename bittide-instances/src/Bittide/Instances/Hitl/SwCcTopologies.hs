@@ -345,7 +345,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       ( ilaConfig
           $ "trigger_0"
           :> "capture_0"
-          :> "probe_milliseconds"
+          :> "probe_milliseconds_AAAAA"
           :> "probe_allStable0"
           :> "probe_transceiversFailedAfterUp"
           :> "probe_nFincs"
