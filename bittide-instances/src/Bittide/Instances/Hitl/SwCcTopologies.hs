@@ -343,9 +343,9 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     setName @"fincFdecIla"
       ila
       ( ilaConfig
-          $ "trigger_0"
-          :> "capture_0"
-          :> "probe_milliseconds_AAAAA"
+          $ "trigger_fdi_0"
+          :> "capture_fdi_0"
+          :> "probe_fdi_milliseconds"
           :> "probe_allStable0"
           :> "probe_transceiversFailedAfterUp"
           :> "probe_nFincs"
@@ -817,9 +817,9 @@ fullMeshRiscvTest clk rst dataCounts = updatePeriodIla `hwSeqX` unbundle fIncDec
     setName @"updatePeriodIla"
       $ ila
         ( ilaConfig
-            $ "trigger_0"
-            :> "capture_0"
-            :> "probe_milliseconds"
+            $ "trigger_up_0"
+            :> "capture_up_0"
+            :> "probe_up_milliseconds"
             :> "updatePeriod"
             :> "updatePeriodMin"
             :> "updatePeriodMax"
