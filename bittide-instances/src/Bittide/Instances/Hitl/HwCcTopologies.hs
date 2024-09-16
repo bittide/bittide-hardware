@@ -80,6 +80,7 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
+import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Xilinx.ClockGen
 
@@ -141,7 +142,7 @@ partsPerToSteps :: PartsPer -> FincFdecCount
 partsPerToSteps =
   fromIntegral . roundFloatInteger . PartsPer.toSteps commonStepSizePartsPer
 
-commonSpiConfig :: TestConfig6_200_on_0a_RegisterMap
+commonSpiConfig :: Si5395RegisterMap
 commonSpiConfig = case commonStepSizeSelect of
   PPB_100 -> testConfig6_200_on_0a_100ppb_and_1
 
@@ -667,11 +668,14 @@ hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   testConfig = hitlVio disabled sysClk done success
 
 makeTopEntity 'hwCcTopologyWithRiscvTest
+unsafeResetSynch :: (KnownDomain domIn, KnownDomain domOut) => Reset domIn -> Reset domOut
+unsafeResetSynch = unsafeFromActiveHigh . unsafeSynchronizer clockGen clockGen . unsafeToActiveHigh
 
 -- | Top entity for this test. See module documentation for more information.
 hwCcTopologyTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
+  "USER_SMA_CLOCK" ::: DiffClock Ext300A ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
   "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
@@ -682,7 +686,7 @@ hwCcTopologyTest ::
       ::: ( "FINC" ::: Signal Basic125 Bool
           , "FDEC" ::: Signal Basic125 Bool
           )
-  , "SYNC_OUT" ::: Signal Basic125 Bool
+  , "SYNC_OUT" ::: Signal Basic125A Bool
   , "spiDone" ::: Signal Basic125 Bool
   , ""
       ::: ( "SCLK" ::: Signal Basic125 Bool
@@ -690,13 +694,21 @@ hwCcTopologyTest ::
           , "CSB" ::: Signal Basic125 Bool
           )
   )
-hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
+hwCcTopologyTest refClkDiff sysClkDiff userSmaClkDiff syncIn rxns rxps miso =
   (txns, txps, unbundle hwFincFdecs, syncOut, spiDone, spiOut)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
-  ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
+  (smaClk :: Clock Basic125A, smaRst :: Reset Basic125A) = clockWizardDifferential userSmaClkDiff (unsafeResetSynch $ unsafeFromActiveLow spiDone)
+  ilaControl@IlaControl{syncRst, syncStart} = ilaPlotSetup IlaPlotSetup{..}
   startTest = isJust <$> testConfig
+  syncOut :: Signal Basic125A Bool
+  syncOut =
+    dflipflop smaClk
+      $ syncOutGenerator smaClk (sync sysClk smaClk startTest)
+      $ trueFor (SNat @(Seconds 5)) smaClk smaRst (sync sysClk smaClk allReady)
+
+  sync = xpmCdcSingle
 
   cfg = fromMaybe disabled <$> testConfig
 

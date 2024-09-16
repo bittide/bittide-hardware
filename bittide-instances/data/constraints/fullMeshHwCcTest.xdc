@@ -12,6 +12,7 @@ set_property BOARD_PART_PIN GPIO_LED_0_LS [get_ports spiDone]
 set_clock_groups \
   -asynchronous \
   -group [get_clocks -include_generated_clocks {SYSCLK_300_p}] \
+  -group [get_clocks -include_generated_clocks {USER_SMA_CLOCK_p}] \
   -group [get_clocks -include_generated_clocks {SMA_MGT_REFCLK_C_p}]
 
 # Color   | FPGA pin      | LVLSHFT       | Connection
@@ -42,3 +43,7 @@ set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AM17} [get_ports {MISO}]
 set_property -dict {IOSTANDARD LVCMOS18 PACKAGE_PIN H27} [get_ports {SYNC_IN}]
 # USER_SMA_GPIO_N (connected on node 0 to SYNC_IN of all nodes)
 set_property -dict {IOSTANDARD LVCMOS18 PACKAGE_PIN G27} [get_ports {SYNC_OUT}]
+
+# USER_SMA_CLOCK
+set_property -dict {IOSTANDARD LVDS PACKAGE_PIN D23} [get_ports {USER_SMA_CLOCK_p}]
+set_property -dict {IOSTANDARD LVDS PACKAGE_PIN C23} [get_ports {USER_SMA_CLOCK_n}]
