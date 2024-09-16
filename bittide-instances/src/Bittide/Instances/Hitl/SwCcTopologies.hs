@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
@@ -11,6 +10,21 @@
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
+{- | Test whether clock boards are configurable and transceiver links come
+online. If they do, run clock control and wait for the clocks to stabilize.
+Also see  'Bittide.Instances.Hitl.Setup'. It has two tricks up its
+sleeve:
+
+  1. It uses @SYNC_IN@/@SYNC_OUT@ to make sure each board starts programming
+     its clock boards at the same time.
+
+  2. It keeps track of how many times the GTH's reset manager had to reset
+     the connection and how often it lost connections after establishing
+     them.
+
+This test will succeed if all clocks have been stable for 5 seconds. Note:
+this doesn't test reframing yet.
+-}
 module Bittide.Instances.Hitl.SwCcTopologies (
   swCcTopologyTest,
   tests,
@@ -35,21 +49,21 @@ import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
 import Bittide.ClockControl.Registers (clockControlWb)
+import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
-import Bittide.DoubleBufferedRam (ContentType (Blob), InitialContent (Reloadable))
-import Bittide.ElasticBuffer (Overflow, Underflow, resettableXilinxElasticBuffer, sticky)
+import Bittide.DoubleBufferedRam
+import Bittide.ElasticBuffer
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
-import Bittide.SharedTypes (ByteOrder (..))
+import Bittide.SharedTypes (ByteOrder (BigEndian))
 import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology
 import Bittide.Transceiver (transceiverPrbsN)
 
 import Bittide.Hitl
 
-import Bittide.Instances.Hitl.HwCcTopologies (commonSpiConfig)
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
 import Project.FilePath
@@ -65,6 +79,8 @@ import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen
 
 import Protocols hiding (SimulationConfig)
+
+-- import Protocols.Wishbone
 import VexRiscv
 
 import qualified Bittide.Arithmetic.PartsPer as PartsPer
@@ -72,19 +88,20 @@ import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Data.Map.Strict as Map (fromList)
 
--- Much of this file is derived from HwCcToplogies.hs and FullMeshSwCc.hs.
-
--- type FpgaCount = 8
--- type LinkCount = FpgaCount - 1
-
-type FifoSize = 5 -- = 2^5 = 32
-
 type AllStablePeriod = Seconds 5
 
-type FincFdecCount = Unsigned 32
+{- | The number of FINCs (if positive) or FDECs (if negative) applied
+prior to the test start leading to some desired initial clock
+offset.
+-}
+type FincFdecCount = Signed 32
 
+{- | The number of clock cycles to wait before starting clock control
+according to the local, but stable system clock of a node.
+-}
 type StartupDelay = Unsigned 32
 
+-- | Availabe step size configurations.
 data StepSizeSelect
   = PPB_1
   | PPB_10
@@ -93,14 +110,28 @@ data StepSizeSelect
   | PPM_1
   deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded, Show)
 
+-- | Calibration stages
 data CCCalibrationStage
-  = NoCCCalibration
-  | CCCalibrate
-  | CCCalibrationValidation
+  = -- | Apply previously measured clock offsets.
+    NoCCCalibration
+  | -- | Measure \"natural\" clock offsets.
+    CCCalibrate
+  | -- | Verify that the clocks still have similar \"natural\" offsets as when
+    -- they were calibrated. If this is not the case, the clock frequencies
+    -- shifted during the test, invalidating the results. Also see
+    -- 'acceptableNoiseLevel'.
+    CCCalibrationValidation
   deriving (Generic, NFDataX, BitPack, Eq, Enum, Bounded, Show)
 
+{- | The step size, as it is used by all tests. Note that changing the
+step size for individual tests requires recalibration of the clock
+offsets, which is why we fix it to a single and common value here.
+-}
 commonStepSizeSelect :: StepSizeSelect
-commonStepSizeSelect = PPB_100
+commonStepSizeSelect =
+  -- Don't forget to update the value of f_step this value in "Callisto.hs" and
+  -- "callisto.rs".
+  PPB_100
 
 commonStepSizePartsPer :: PartsPer
 commonStepSizePartsPer = case commonStepSizeSelect of
@@ -114,6 +145,17 @@ partsPerToSteps :: PartsPer -> FincFdecCount
 partsPerToSteps =
   fromIntegral . roundFloatInteger . PartsPer.toSteps commonStepSizePartsPer
 
+commonSpiConfig :: TestConfig6_200_on_0a_RegisterMap
+commonSpiConfig = case commonStepSizeSelect of
+  PPB_1 -> testConfig6_200_on_0a_1ppb
+  PPB_10 -> testConfig6_200_on_0a_10ppb
+  PPB_100 -> testConfig6_200_on_0a_100ppb
+  PPB_500 -> testConfig6_200_on_0a_500ppb
+  PPM_1 -> testConfig6_200_on_0a_1ppm
+
+{- | Accepted noise between the inital clock control calibration run
+and the last calibration verifiction run.
+-}
 acceptableNoiseLevel :: FincFdecCount
 acceptableNoiseLevel = 6
 
@@ -155,7 +197,13 @@ clockControlConfig ::
 clockControlConfig =
   $(lift (instancesClockConfig (Proxy @Basic125)))
 
-fullMeshHwTest ::
+type FifoSize = 5 -- = 2^5 = 32
+
+{- | Instantiates a hardware implementation of Callisto and exports its results. Can
+be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
+results to a RiscV core (see 'riscvCopyTest')
+-}
+topologyTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "SYSRST" ::: Reset Basic125 ->
@@ -164,7 +212,6 @@ fullMeshHwTest ::
   "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
   "TEST_CFG" ::: Signal Basic125 TestConfig ->
-  "updatePeriod" ::: Signal Basic125 Int ->
   ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
   , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
@@ -179,13 +226,13 @@ fullMeshHwTest ::
           , "CSB" ::: Signal Basic125 Bool
           )
   , "transceiversFailedAfterUp" ::: Signal Basic125 Bool
-  , "ALL_UP" ::: Signal Basic125 Bool
+  , "ALL_READY" ::: Signal Basic125 Bool
   , "ALL_STABLE" ::: Signal Basic125 Bool
   , "CALIB_I" ::: Signal Basic125 FincFdecCount
   , "CALIB_E" ::: Signal Basic125 FincFdecCount
   , "ugnsStable" ::: Vec LinkCount (Signal Basic125 Bool)
   )
-fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg updatePeriod =
+topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg =
   fincFdecIla
     `hwSeqX` ( transceivers.txNs
              , transceivers.txPs
@@ -198,10 +245,10 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
              , spiOut
              , transceiversFailedAfterUp
              , allReady
-             , allStable1
+             , allStable0
              , calibratedClockShift
              , validationClockShift
-             , map (fmap (\(_, _, x, _) -> x)) freeUgnDatas
+             , ugnsStable
              )
  where
   syncRst = rst `orReset` unsafeFromActiveHigh spiErr
@@ -218,9 +265,7 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
       $ si539xSpi commonSpiConfig (SNat @(Microseconds 10)) (pure Nothing) miso
 
   -- Transceiver setup
-  gthAllReset = unsafeFromActiveLow spiDone
-
-  FillStats updatePeriodMin updatePeriodMax = unbundle $ fillStats sysClk syncRst updatePeriod
+  gthAllReset = unsafeFromActiveLow clocksAdjusted
 
   transceivers =
     transceiverPrbsN
@@ -239,8 +284,8 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
         , clockPaths
         , rxNs
         , rxPs
-        , txDatas = txCounters
-        , txReadys = txAllStables
+        , txDatas = repeat (pure 0)
+        , txReadys = repeat (pure False)
         , rxReadys = repeat (pure True)
         }
 
@@ -277,14 +322,6 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
       $ fmap
         (\CallistoResult{..} -> (maybeSpeedChange, stability, allStable, allSettled))
         callistoResult
-  ( stability0
-    , stability1
-    , stability2
-    , stability3
-    , stability4
-    , stability5
-    , stability6
-    ) = vecToTuple $ unbundle stabilities
 
   callistoResult =
     callistoClockControlWithIla @LinkCount @CccBufferSize
@@ -304,131 +341,123 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
   fincFdecIla :: Signal Basic125 ()
   fincFdecIla =
     setName @"fincFdecIla"
-      $ ila
-        ( ilaConfig
-            $ "trigger_0"
-            :> "capture_0"
-            :> "probe_milliseconds"
-            :> "probe_allStable0"
-            :> "probe_allStable1"
-            :> "probe_transceiversFailedAfterUp"
-            :> "probe_nFincs"
-            :> "probe_nFdecs"
-            :> "probe_net_nFincs"
-            :> "probe_ugn0"
-            :> "probe_ugn1"
-            :> "probe_ugn2"
-            :> "probe_ugn3"
-            :> "probe_ugn4"
-            :> "probe_ugn5"
-            :> "probe_ugn6"
-            :> "probe_fill0"
-            :> "probe_fill2"
-            :> "probe_fill1"
-            :> "probe_fill3"
-            :> "probe_fill4"
-            :> "probe_fill5"
-            :> "probe_fill6"
-            :> "probe_fillMin0"
-            :> "probe_fillMin2"
-            :> "probe_fillMin1"
-            :> "probe_fillMin3"
-            :> "probe_fillMin4"
-            :> "probe_fillMin5"
-            :> "probe_fillMin6"
-            :> "probe_fillMax0"
-            :> "probe_fillMax2"
-            :> "probe_fillMax1"
-            :> "probe_fillMax3"
-            :> "probe_fillMax4"
-            :> "probe_fillMax5"
-            :> "probe_fillMax6"
-            :> "stability0"
-            :> "stability2"
-            :> "stability1"
-            :> "stability3"
-            :> "stability4"
-            :> "stability5"
-            :> "stability6"
-            :> "ugnStable0"
-            :> "ugnStable1"
-            :> "ugnStable2"
-            :> "ugnStable3"
-            :> "ugnStable4"
-            :> "ugnStable5"
-            :> "ugnStable6"
-            :> "probe_linkReadys"
-            :> "probe_linkUps"
-            :> "fifoUnderflows"
-            :> "fifoOverflows"
-            :> "updatePeriod"
-            :> "updatePeriodMin"
-            :> "updatePeriodMax"
-            :> Nil
-        )
-          { depth = D16384
-          }
-        sysClk
-        -- Trigger as soon as we come out of reset
-        (unsafeToActiveLow syncRst)
-        capture
-        -- Debug probes
-        milliseconds1
-        allStable0
-        allStable1
-        transceiversFailedAfterUp
-        nFincs
-        nFdecs
-        (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
-        ugn0
-        ugn1
-        ugn2
-        ugn3
-        ugn4
-        ugn5
-        ugn6
-        fill0
-        fill1
-        fill2
-        fill3
-        fill4
-        fill5
-        fill6
-        fillMin0
-        fillMin1
-        fillMin2
-        fillMin3
-        fillMin4
-        fillMin5
-        fillMin6
-        fillMax0
-        fillMax1
-        fillMax2
-        fillMax3
-        fillMax4
-        fillMax5
-        fillMax6
-        stability0
-        stability1
-        stability2
-        stability3
-        stability4
-        stability5
-        stability6
-        ugnStable0
-        ugnStable1
-        ugnStable2
-        ugnStable3
-        ugnStable4
-        ugnStable5
-        ugnStable6
-        (bundle transceivers.linkReadys)
-        (bundle transceivers.linkUps)
-        (pack . reverse <$> bundle fifoUnderflowsFree)
-        (pack . reverse <$> bundle fifoOverflowsFree)
-        updatePeriod
-        updatePeriodMin
-        updatePeriodMax
+      ila
+      ( ilaConfig
+          $ "trigger_0"
+          :> "capture_0"
+          :> "probe_milliseconds"
+          :> "probe_allStable0"
+          :> "probe_transceiversFailedAfterUp"
+          :> "probe_nFincs"
+          :> "probe_nFdecs"
+          :> "probe_net_nFincs"
+          :> "probe_ugn0"
+          :> "probe_ugn1"
+          :> "probe_ugn2"
+          :> "probe_ugn3"
+          :> "probe_ugn4"
+          :> "probe_ugn5"
+          :> "probe_ugn6"
+          :> "probe_fill0"
+          :> "probe_fill2"
+          :> "probe_fill1"
+          :> "probe_fill3"
+          :> "probe_fill4"
+          :> "probe_fill5"
+          :> "probe_fill6"
+          :> "probe_fillMin0"
+          :> "probe_fillMin2"
+          :> "probe_fillMin1"
+          :> "probe_fillMin3"
+          :> "probe_fillMin4"
+          :> "probe_fillMin5"
+          :> "probe_fillMin6"
+          :> "probe_fillMax0"
+          :> "probe_fillMax2"
+          :> "probe_fillMax1"
+          :> "probe_fillMax3"
+          :> "probe_fillMax4"
+          :> "probe_fillMax5"
+          :> "probe_fillMax6"
+          :> "stability0"
+          :> "stability1"
+          :> "stability2"
+          :> "stability3"
+          :> "stability4"
+          :> "stability5"
+          :> "stability6"
+          :> "ugnStable0"
+          :> "ugnStable1"
+          :> "ugnStable2"
+          :> "ugnStable3"
+          :> "ugnStable4"
+          :> "ugnStable5"
+          :> "ugnStable6"
+          :> "probe_linkReadys"
+          :> "probe_linkUps"
+          :> "fifoUnderflows"
+          :> "fifoOverflows"
+          :> Nil
+      )
+        { depth = D16384
+        }
+      sysClk
+      -- Trigger as soon as we come out of reset
+      (unsafeToActiveLow syncRst)
+      capture
+      -- Debug probes
+      milliseconds1
+      allStable0
+      transceiversFailedAfterUp
+      nFincs
+      nFdecs
+      (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
+      ugn0
+      ugn1
+      ugn2
+      ugn3
+      ugn4
+      ugn5
+      ugn6
+      fill0
+      fill1
+      fill2
+      fill3
+      fill4
+      fill5
+      fill6
+      fillMin0
+      fillMin1
+      fillMin2
+      fillMin3
+      fillMin4
+      fillMin5
+      fillMin6
+      fillMax0
+      fillMax1
+      fillMax2
+      fillMax3
+      fillMax4
+      fillMax5
+      fillMax6
+      stability0
+      stability1
+      stability2
+      stability3
+      stability4
+      stability5
+      stability6
+      ugnStable0
+      ugnStable1
+      ugnStable2
+      ugnStable3
+      ugnStable4
+      ugnStable5
+      ugnStable6
+      (bundle transceivers.linkReadys)
+      (bundle transceivers.linkUps)
+      (pack . reverse <$> bundle fifoUnderflowsFree)
+      (pack . reverse <$> bundle fifoOverflowsFree)
 
   captureFlag =
     riseEvery
@@ -493,10 +522,10 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
       (notInCCReset .&&. (== CCCalibrationValidation) . calibrate <$> cfg)
       (clockShiftUpd <$> clockMod <*> validationClockShift)
 
-  -- Initial clock adjustment
+  -- Initial Clock adjustment
 
   -- without the additional delay of 1 second here, some of the
-  -- initial FINC/DFECS prior to test start will be lost.
+  -- initial FINC/FDECs prior to test start will be lost.
   adjustStart = trueFor (SNat @(Seconds 1)) sysClk syncRst spiDone
   clocksAdjusted =
     spiDone
@@ -555,7 +584,7 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
       <$> transceivers.rxClocks
       <*> transceivers.txClocks
 
-  txAllStables = zipWith (xpmCdcSingle sysClk) transceivers.txClocks (repeat allStable1)
+  txAllStables = map (xpmCdcSingle sysClk allStable1) transceivers.txClocks
   allStable1 = sticky sysClk syncRst allStable0
   txResets2 =
     zipWith
@@ -563,8 +592,6 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
       transceivers.txResets
       (map unsafeFromActiveLow txAllStables)
 
-  -- availableMask :: Vec LinkCount (Signal Basic125 Bit)
-  -- availableMask = transpose . bv2v . mask <$> cfg
   availableMask :: Vec LinkCount (Signal Basic125 Bit)
   availableMask = unbundle (bv2v . mask <$> cfg)
   txCounters = zipWith3 txCounter transceivers.txClocks txResets2 availableMask
@@ -627,7 +654,9 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
         (xpmCdcMaybeLossy clkIn clkOut inp)
      where
       fillStat = fillStats clkIn noReset fillLvl
-      inp = Just <$> bundle (ugn, fillLvl, stable, fillStat)
+      inp = (fmap Just $ bundle (ugn, fillLvl, stable, fillStat))
+
+  ugnsStable = map (fmap (\(_, _, x, _) -> x)) freeUgnDatas
 
   ( ugnD0
     , ugnD1
@@ -637,7 +666,6 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
     , ugnD5
     , ugnD6
     ) = vecToTuple freeUgnDatas
-
   (ugn0, fill0, ugnStable0, fillStats0) = unbundle ugnD0
   (ugn1, fill1, ugnStable1, fillStats1) = unbundle ugnD1
   (ugn2, fill2, ugnStable2, fillStats2) = unbundle ugnD2
@@ -654,6 +682,19 @@ fullMeshHwTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso
   FillStats fillMin5 fillMax5 = unbundle fillStats5
   FillStats fillMin6 fillMax6 = unbundle fillStats6
 
+  ( stability0
+    , stability1
+    , stability2
+    , stability3
+    , stability4
+    , stability5
+    , stability6
+    ) = vecToTuple $ unbundle stabilities
+
+{- | Tracks the min/max values of the input during the last milliseconds
+
+Updates once per millisecond.
+-}
 fillStats ::
   forall dom a.
   (KnownDomain dom, Ord a, Num a, Bounded a, NFDataX a) =>
@@ -725,54 +766,7 @@ stableForMs SNat clk rst inp =
  where
   stable = stableFor @(CLog 2 (PeriodToCycles dom (Milliseconds ms))) clk rst inp
 
--- timingStall ::
---   forall dom addrW .
---   (HiddenClockResetEnable dom, KnownNat addrW) =>
---   Circuit (CSignal dom Int, Wishbone dom 'Standard addrW (Bytes 4)) ()
--- timingStall = Circuit go
---  where
---   go :: ((Signal dom Int,
---           Signal dom (WishboneM2S addrW 4 (BitVector 32))),
---         ())
---         -> ((Signal dom (), Signal dom (WishboneS2M (BitVector 32))), ())
---   go ((updatePeriod, m2s), ()) = ((pure (), wishboneProcess <$> m2s), ())
---    where
---     updatePeriodMax = register 0 $ max <$> updatePeriod <*> updatePeriodMax
-
---     updateCounter :: Int
---     hasReceivedUpdate :: Bool
-
---     -- circ :: Int -> Circuit a b
---     -- bSide <- circ 12 -< aSide
-
---     -- nonCirc :: a -> b
---     -- bSide = nonCirc aSide
-
---     -- circA, circB
---     --
---     -- bus <- circA
---     -- circB -< bus
-
---     -- -< this is coming from the left (think: argument to circuit)
---     -- <- this is going to the right
---     wishboneProcess
---       :: (UpdateCounter, WaitingForNCycless) -> WishboneM2S addrW 4 (BitVector 32)
---       -> (WishboneS2M (BitVector 32), (UpdateCounter, WaitingForNCycless))
---     wishboneProcess req
---       | not (req.busCycle && req.strobe) = emptyWishboneS2M
---       | req.writeEnable = undefined
---       | not req.writeEnable = emptyWishboneS2M
---                                 { readData = 14
---                                 , acknowledge = sendAck updateCounter hasReceivedUpdate
---                                 }
-
--- dupC :: Circuit (CSignal dom a) (CSignal dom a, CSignal dom a)
--- dupC = Circuit go
---  where
--- go :: (Signal dom a, (Signal dom (), Signal dom ()))
--- -> (Signal dom (), (Signal dom a, Signal dom a))
--- go (a, _) = (pure (), (a, a))
-
+-- | Instantiates a RiscV core
 fullMeshRiscvTest ::
   forall dom.
   (KnownDomain dom) =>
@@ -780,32 +774,66 @@ fullMeshRiscvTest ::
   Reset dom ->
   Vec LinkCount (Signal dom (RelDataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
-  ( ( "FINC" ::: Signal dom Bool
-    , "FDEC" ::: Signal dom Bool
-    )
-  , Signal dom Int
+  ( "FINC" ::: Signal dom Bool
+  , "FDEC" ::: Signal dom Bool
   )
-fullMeshRiscvTest clk rst dataCounts = (unbundle fIncDec, updatePeriod)
+fullMeshRiscvTest clk rst dataCounts = updatePeriodIla `hwSeqX` unbundle fIncDec
  where
   (_, (fIncDec, updatePeriod)) =
     toSignals
       ( circuit $ \jtag -> do
-          -- [wbB, wbT]
-          --   <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig
-          --   -< jtag
           [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
           (fIncDec, _allStable, updatePeriod) <-
             withClockResetEnable clk rst enableGen
               $ clockControlWb margin framesize (pure $ complement 0) dataCounts
               -< wbB
-          -- Look here for adding in hardware fencing. You should be using the `fIncDec`
-          -- signal from above to make that work.
-          -- (upPA, upPB) <- dupC -< updatePeriod
-          -- withClockResetEnable clk rst enableGen timingStall -< (upPA, wbT)
-          -- idC -< (fIncDec, upPB)
           idC -< (fIncDec, updatePeriod)
       )
       (pure $ JtagIn low low low, (pure (), pure ()))
+
+  -- Need to include something in the `circuit` section above to catch when a write comes
+  -- in on the WishBone bus and then use that to capture a counter.
+  updatePeriodMin = register clk rst enableGen (complement 0) $ min <$> updatePeriodMin <*> updatePeriod
+  updatePeriodMax = register clk rst enableGen 0 $ max <$> updatePeriodMax <*> updatePeriod
+
+  timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles dom (Milliseconds 1)))
+  timer = register clk rst enableGen (0, 0) (timeSucc <$> timer)
+  milliseconds1 = fst <$> timer
+
+  -- Capture every 100 microseconds - this should give us a window of about 5
+  -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
+  -- very confusing.
+  capture = captureFlag .||. unsafeToActiveHigh rst
+
+  captureFlag =
+    riseEvery
+      clk
+      rst
+      enableGen
+      (SNat @(PeriodToCycles dom (Milliseconds 1)))
+
+  updatePeriodIla :: Signal dom ()
+  updatePeriodIla =
+    setName @"updatePeriodIla"
+      $ ila
+        ( ilaConfig
+            $ "trigger_0"
+            :> "capture_0"
+            :> "probe_milliseconds"
+            :> "updatePeriod"
+            :> "updatePeriodMin"
+            :> "updatePeriodMax"
+            :> Nil
+        )
+          { depth = D16384
+          }
+        clk
+        (unsafeToActiveLow rst)
+        capture
+        milliseconds1
+        updatePeriod
+        updatePeriodMin
+        updatePeriodMax
 
   margin = d2
 
@@ -826,15 +854,14 @@ fullMeshRiscvTest clk rst dataCounts = (unbundle fIncDec, updatePeriod)
     0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
     0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
     0b11xxxxx_xxxxxxxx 0b11 0xCx memory mapped hardware clock control
-    0b00xxxxx_xxxxxxxx 0b00 0x00 timing stalling unit whatever?
   -}
   peConfig =
     PeConfig
       (0b10 :> 0b01 :> 0b11 :> Nil)
-      -- (0b10 :> 0b01 :> 0b11 :> 0b00 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
 
+-- | Top entity for this test. See module documentation for more information.
 swCcTopologyTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_300" ::: DiffClock Ext300 ->
@@ -857,7 +884,7 @@ swCcTopologyTest ::
           )
   )
 swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, (riscvFinc, riscvFdec), syncOut, spiDone, spiOut)
+  (txns, txps, swFincFdecs, syncOut, spiDone, spiOut)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
@@ -880,17 +907,24 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     , allStable
     , calibI
     , calibE
-    , ugnsStable
-    ) = fullMeshHwTest refClk sysClk sysRst ilaControl{skipTest = skip} rxns rxps miso cfg updatePeriod
+    , _ugnsStable
+    ) =
+      topologyTest
+        refClk
+        sysClk
+        sysRst
+        ilaControl{skipTest = skip}
+        rxns
+        rxps
+        miso
+        cfg
 
-  ((riscvFinc, riscvFdec), updatePeriod) = fullMeshRiscvTest sysClk callistoReset dataCounts
+  swFincFdecs = fullMeshRiscvTest sysClk callistoReset dataCounts
+  -- allUgnsStable = and <$> bundle ugnsStable
+  -- allStable' = allStable .&&. allUgnsStable
 
-  allUgnsStable = and <$> bundle ugnsStable
-  allStable' = allStable .&&. allUgnsStable
-
-  -- checks that tests are not synchronously start before all
+  -- check that tests are not synchronously start before all
   -- transceivers are up
-
   startBeforeAllReady =
     sticky
       sysClk
@@ -899,7 +933,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   endSuccess :: Signal Basic125 Bool
   endSuccess =
-    trueFor (SNat @(Seconds 5)) sysClk syncRst allStable'
+    trueFor (SNat @(Seconds 5)) sysClk syncRst allStable
       .&&. ( (/= CCCalibrationValidation)
               . calibrate
               <$> cfg
@@ -921,7 +955,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       )
       -- success
       ( skip
-          .||. (allStable' .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady)))
+          .||. (allStable .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady)))
       )
 
 makeTopEntity 'swCcTopologyTest
@@ -1049,24 +1083,28 @@ tests = testGroup
         }
     )
 
+{- FOURMOLU_DISABLE -} -- fourmolu doesn't do well with tabular structures
   testGroup =
     HitlTestGroup
-      { topEntity = 'swCcTopologyTest
-      , extraXdcFiles = []
-      , externalHdl = []
-      , testCases =
-          [ -- detect the natural clock offsets to be elided from the later tests
-            calibrateClockOffsets
-          , -- initial clock shifts   startup delays            topology
-            tt (Just icsDiamond) ((m *) <$> sdDiamond) diamond
-          , tt (Just icsComplete) ((m *) <$> sdComplete) (complete d3)
-          , tt (Just icsCyclic) ((m *) <$> sdCyclic) (cyclic d5)
-          , tt (Just icsTorus) ((m *) <$> sdTorus) (torus2d d2 d3)
-          , tt (Just icsStar) ((m *) <$> sdStar) (star d7)
-          , tt (Just icsLine) ((m *) <$> sdLine) (line d4)
-          , tt (Just icsHourglass) ((m *) <$> sdHourglass) (hourglass d3)
-          , -- make sure the clock offsets detected during calibration is still the same
-            validateClockOffsetCalibration
-          ]
-      , mPostProc = Nothing
-      }
+    { topEntity = 'swCcTopologyTest
+    , extraXdcFiles = []
+    , externalHdl = []
+    , testCases =
+        [ -- detect the natual clock offsets to be elided from the later tests
+          calibrateClockOffsets
+
+          -- initial clock shifts   startup delays            topology
+        , tt (Just icsDiamond)      ((m *) <$> sdDiamond)     diamond
+        , tt (Just icsComplete)     ((m *) <$> sdComplete)    (complete d3)
+        , tt (Just icsCyclic)       ((m *) <$> sdCyclic)      (cyclic d5)
+        , tt (Just icsTorus)        ((m *) <$> sdTorus)       (torus2d d2 d3)
+        , tt (Just icsStar)         ((m *) <$> sdStar)        (star d7)
+        , tt (Just icsLine)         ((m *) <$> sdLine)        (line d4)
+        , tt (Just icsHourglass)    ((m *) <$> sdHourglass)   (hourglass d3)
+
+          -- make sure the clock offsets detected during calibration is still the same
+        , validateClockOffsetCalibration
+        ]
+    , mPostProc = Nothing
+    }
+{- FOURMOLU_ENABLE -}
