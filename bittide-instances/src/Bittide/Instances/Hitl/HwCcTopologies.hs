@@ -6,9 +6,11 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
+{-# OPTIONS_GHC -Wno-unused-local-binds -Wno-partial-type-signatures #-}
 
 {- | Test whether clock boards are configurable and transceiver links come
 online. If they do, run clock control and wait for the clocks to stabilize.
@@ -686,7 +688,7 @@ hwCcTopologyTest ::
       ::: ( "FINC" ::: Signal Basic125 Bool
           , "FDEC" ::: Signal Basic125 Bool
           )
-  , "SYNC_OUT" ::: Signal Basic125A Bool
+  , "SYNC_OUT" ::: Signal _ Bool
   , "spiDone" ::: Signal Basic125 Bool
   , ""
       ::: ( "SCLK" ::: Signal Basic125 Bool
@@ -695,7 +697,7 @@ hwCcTopologyTest ::
           )
   )
 hwCcTopologyTest refClkDiff sysClkDiff userSmaClkDiff syncIn rxns rxps miso =
-  (txns, txps, unbundle hwFincFdecs, syncOut, spiDone, spiOut)
+  (txns, txps, unbundle hwFincFdecs, syncOutOld, spiDone, spiOut)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
@@ -707,6 +709,13 @@ hwCcTopologyTest refClkDiff sysClkDiff userSmaClkDiff syncIn rxns rxps miso =
     dflipflop smaClk
       $ syncOutGenerator smaClk (sync sysClk smaClk startTest)
       $ trueFor (SNat @(Seconds 5)) smaClk smaRst (sync sysClk smaClk allReady)
+
+  syncOutOld :: Signal Basic125 Bool
+  syncOutOld =
+    dflipflop sysClk
+      $ syncOutGenerator sysClk startTest
+      $ trueFor (SNat @(Seconds 5)) sysClk sysRst allReady
+
 
   sync = xpmCdcSingle
 
