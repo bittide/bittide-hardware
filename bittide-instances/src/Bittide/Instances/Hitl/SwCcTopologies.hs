@@ -584,7 +584,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       <$> transceivers.rxClocks
       <*> transceivers.txClocks
 
-  txAllStables = map (xpmCdcSingle sysClk allStable1) transceivers.txClocks
+  txAllStables = zipWith (xpmCdcSingle sysClk) transceivers.txClocks (repeat allStable1)
   allStable1 = sticky sysClk syncRst allStable0
   txResets2 =
     zipWith
@@ -654,7 +654,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
         (xpmCdcMaybeLossy clkIn clkOut inp)
      where
       fillStat = fillStats clkIn noReset fillLvl
-      inp = (fmap Just $ bundle (ugn, fillLvl, stable, fillStat))
+      inp = Just <$> bundle (ugn, fillLvl, stable, fillStat)
 
   ugnsStable = map (fmap (\(_, _, x, _) -> x)) freeUgnDatas
 
