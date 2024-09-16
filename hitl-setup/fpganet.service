@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: CC0-1.0
 
 [Unit]
-Description=Set up bridge network with FPGAs
+Description=Set up bridge network to combine multiple NICs into one interface
 DefaultDependencies=no
 Wants=network.target systemd-udev-settle.service
 After=local-fs.target network-pre.target systemd-sysctl.service systemd-modules-load.service systemd-udev-settle.service
