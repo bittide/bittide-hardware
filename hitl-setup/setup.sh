@@ -5,7 +5,7 @@
 
 FORCE="$1"
 set -xuo pipefail
-HERE=$(realpath $(dirname "$0"))
+HERE=$(realpath "$(dirname "$0")")
 source "$HERE/fpganet" || exit $?
 
 echo Checking that all INTERFACES exist
