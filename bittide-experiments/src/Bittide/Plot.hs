@@ -24,6 +24,8 @@ import Data.List (foldl', transpose, unzip4, zip4)
 import GHC.Float.RealFracMethods (roundFloatInteger)
 import System.FilePath ((</>))
 
+import Debug.Trace
+
 import Graphics.Matplotlib (
   Matplotlib,
   axes,
@@ -105,7 +107,7 @@ plot maybeCorrection outputDir graph plotData =
           if edgeCount <= 20
             then \(j, p) ->
               withLegend $
-                p @@ [o2 "label" $ show nodeIndex <> " ← " <> show j]
+                p @@ [o2 "label" $ traceId (show nodeIndex <> " ← " <> show j)]
             else snd
         )
       $ zip (filter (hasEdge graph nodeIndex) [0, 1 ..])
@@ -212,14 +214,14 @@ matplotWrite dir maybeCorrection clockDats ebDats = do
     file (dir </> plotClocksFileName) $
       constrained
         ( xlabel "Time (ms)"
-            % ylabel ("Relative frequency (ppm)" <> correctionLabel)
+            % ylabel ("ω (ppm)" <> correctionLabel)
             % foldPlots (reverse $ Vec.toList clockDats)
         )
   void $
     file (dir </> plotElasticBuffersFileName) $
       constrained
         ( xlabel "Time (ms)"
-            % ylabel "Occupancy count"
+            % ylabel "β (elements)"
             % foldPlots (Vec.toList ebDats)
         )
  where
