@@ -7,6 +7,7 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PackageImports #-}
@@ -97,7 +98,7 @@ import System.Directory (
   doesDirectoryExist,
   listDirectory,
  )
-import System.Environment (getArgs, getProgName)
+import System.Environment (getArgs, getProgName, lookupEnv)
 import System.Exit (die)
 import System.FilePath (
   isExtensionOf,
@@ -117,6 +118,7 @@ import System.IO (
   openFile,
   withFile,
  )
+import System.IO.Unsafe (unsafePerformIO)
 import "bittide-extra" Numeric.Extra (parseHex)
 
 import Bittide.Arithmetic.PartsPer (PartsPer (..), cyclesToPartsPerI, ppm)
@@ -635,7 +637,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
                   BSL.writeFile (outDir </> (takeFileName d <> ".csv")) $
                     encodeByName header rs
 
-                return (toPlotData <$> rs)
+                return (catMaybes $ toPlotData <$> rs)
 
         let postProcessDataVec = Vec.unsafeFromList postProcessData
 
@@ -687,7 +689,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
 
   toPlotData ::
     DataPoint n decompressedElasticBufferBits ->
-    ( Femtoseconds
+    Maybe ( Femtoseconds
     , PartsPer
     , ReframingStage
     , [ ( RelDataCount decompressedElasticBufferBits
@@ -696,12 +698,20 @@ plotTest refDom testDir cfg dir globalOutDir = do
       ]
     )
   toPlotData DataPoint{..} =
-    ( dpGlobalTime
-    , dpDrift
-    , dpRfStage
-    , mapMaybe (uncurry $ liftA2 (,)) $
-        zip (Vec.toList dpDataCounts) (repeat (Just (StabilityIndication False False)))
-    )
+    case wait_fs of
+      Just wfs | dpGlobalTime > wfs -> Nothing
+      _ -> Just res
+   where
+    wait_ms = unsafePerformIO $ lookupEnv "CUTOFF_MS"
+    wait_fs = Femtoseconds . (1_000_000_000_000 *) . read <$> wait_ms
+
+    res =
+      ( dpGlobalTime
+      , dpDrift
+      , dpRfStage
+      , mapMaybe (uncurry $ liftA2 (,)) $
+          zip (Vec.toList dpDataCounts) (repeat (Just (StabilityIndication False False)))
+      )
 
   writeTop (fromMaybe "digraph{}" -> str) =
     withFile (outDir </> simTopologyFileName) WriteMode $ \h -> do
