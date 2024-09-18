@@ -519,8 +519,10 @@ mkTest topEntity =
                   , clockOffsets = Nothing
                   , startupDelays = toList $ repeat @FpgaCount 0
                   }
+            , preProc = InheritPreProcess
             }
         ]
+    , mPreProc = Nothing
     , mPostProc = Nothing
     }
  where

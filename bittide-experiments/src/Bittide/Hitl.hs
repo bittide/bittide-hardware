@@ -46,6 +46,7 @@ module Bittide.Hitl (
   -- * Test definition
   HitlTestGroup (..),
   HitlTestCase (..),
+  CasePreProcessing (..),
   MayHavePostProcData (..),
   Done,
   Success,
@@ -77,6 +78,9 @@ import Clash.Prelude qualified as P
 import Data.Map.Strict qualified as Map
 
 import System.Exit (ExitCode)
+
+import Vivado (VivadoHandle)
+import Vivado.Tcl (HwTarget)
 
 {- | Fully qualified name to a function that is the target for Clash
 compilation. E.g. @Bittide.Foo.topEntity@.
@@ -177,10 +181,12 @@ data HitlTestGroup where
     , extraXdcFiles :: [String]
     , testCases :: [HitlTestCase HwTargetRef a b]
     -- ^ List of test cases
+    , mPreProc :: Maybe (VivadoHandle -> String -> HwTarget -> IO ())
+    -- ^ Optional pre-processing step. First argument is the name of the test
     , mPostProc :: Maybe (FilePath -> ExitCode -> IO ())
     -- ^ Optional post processing step.
     , externalHdl :: [String]
-    -- ^ List of external HDL files to include in the project
+    -- ^ List of external HDL files to include in he project
     } ->
     HitlTestGroup
 
@@ -192,11 +198,22 @@ data HitlTestCase h a b where
     (Show h, Show a, BitPack a, Show b, Typeable h) =>
     { name :: String
     , parameters :: Map h a
+    , preProc :: CasePreProcessing
     , postProcData :: b
     } ->
     HitlTestCase h a b
 
 deriving instance Show (HitlTestCase h a b)
+
+data CasePreProcessing
+  = NoPreProcess
+  | InheritPreProcess
+  | CustomPreProcess (VivadoHandle -> HwTarget -> IO ())
+
+instance Show CasePreProcessing where
+  show NoPreProcess = "NoPreProcess"
+  show InheritPreProcess = "InheritPreProcess"
+  show (CustomPreProcess _) = "CustomPreProcess <func>"
 
 -- | A class for extracting optional post processing data from a test.
 class MayHavePostProcData b where
@@ -252,6 +269,7 @@ testCasesFromEnum hwTs ppd =
     { name = show constr
     , parameters = Map.fromList ((,constr) <$> hwTs)
     , postProcData = ppd
+    , preProc = InheritPreProcess
     }
   | (constr :: a) <- [minBound ..]
   ]

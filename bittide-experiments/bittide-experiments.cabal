@@ -106,6 +106,7 @@ library
     text,
     typelits-witnesses,
     vector,
+    vivado-hs,
 
   exposed-modules:
     Bittide.Github.Artifacts

@@ -110,6 +110,7 @@ common common-options
     text,
     unix,
     vector,
+    vivado-hs,
 
 library
   import: common-options
@@ -126,6 +127,7 @@ library
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
+    Bittide.Instances.Hitl.Pre.Program
     Bittide.Instances.Hitl.Setup
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor

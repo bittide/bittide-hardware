@@ -222,5 +222,6 @@ tests =
     , extraXdcFiles = []
     , externalHdl = []
     , testCases = testCasesFromEnum @Test [HwTargetByIndex 7] ()
+    , mPreProc = Nothing
     , mPostProc = Nothing
     }

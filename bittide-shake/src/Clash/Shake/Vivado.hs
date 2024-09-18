@@ -786,7 +786,7 @@ runHitlTest ::
   -- | Filepath the the ILA data dump directory
   FilePath ->
   IO ExitCode
-runHitlTest test@HitlTestGroup{topEntity, testCases} url probesFilePath ilaDataDir = do
+runHitlTest test@HitlTestGroup{topEntity, testCases, mPreProc} url probesFilePath ilaDataDir = do
   putStrLn $
     "Starting HITL test for FPGA design '"
       <> show topEntity
@@ -803,6 +803,8 @@ runHitlTest test@HitlTestGroup{topEntity, testCases} url probesFilePath ilaDataD
     execCmd_ v "open_hw_manager" []
     execCmd_ v "connect_hw_server" ["-url " <> url]
     refToHwTMap <- resolveHwTRefs v (hwTargetRefsFromHitlTestGroup test)
+
+
 
     testResults <- forM (zip [1 :: Int ..] testCases) $ \(nr, HitlTestCase{..}) -> do
       putStrLn $
@@ -825,7 +827,7 @@ runHitlTest test@HitlTestGroup{topEntity, testCases} url probesFilePath ilaDataD
               { parameters = mapKeys (fromJust . (`Map.lookup` refToHwTMap)) parameters
               , ..
               }
-      exitCode <- runHitlTestCase v resolvedTestCase probesFilePath ilaDataDir
+      exitCode <- runHitlTestCase v resolvedTestCase mPreProc probesFilePath ilaDataDir
       pure (name, exitCode)
 
     let failedTestCaseNames = fst <$> filter ((/= ExitSuccess) . snd) testResults
@@ -854,12 +856,14 @@ runHitlTestCase ::
   VivadoHandle ->
   -- | The HITL test case to run
   HitlTestCase HwTarget a b ->
+  -- | Pre-process function for the test group
+  Maybe (VivadoHandle -> String -> HwTarget -> IO ()) ->
   -- | Path to the generated probes file
   FilePath ->
   -- | Filepath the the ILA data dump directory
   FilePath ->
   IO ExitCode
-runHitlTestCase v testCase@HitlTestCase{..} probesFilePath ilaDataDir = do
+runHitlTestCase v testCase@HitlTestCase{..} preProcessFunc probesFilePath ilaDataDir = do
   if null parameters
     then do
       putStrLn
@@ -901,6 +905,7 @@ runHitlTestCase v testCase@HitlTestCase{..} probesFilePath ilaDataDir = do
         ilas <- get_hw_ilas v []
         unless (null ilas) $
           putStrLn "Configuring and arming ILAs..."
+
         forM_ ilas $ \ila -> do
           _ <- current_hw_ila v [show ila]
 
@@ -924,6 +929,23 @@ runHitlTestCase v testCase@HitlTestCase{..} probesFilePath ilaDataDir = do
         --      test ends. See https://github.com/bittide/bittide-hardware/issues/639.
         execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeTestStartTcl]
         commit_hw_vio v ["[get_hw_vios]"]
+
+        -- run pre-processing
+        case preProc of
+          NoPreProcess -> pure ()
+          InheritPreProcess -> case preProcessFunc of
+            Just f -> do
+              putStrLn $
+                "Running test-group pre-process function for "
+                  <> name <> " ('" <> prettyShow hwT <> "')"
+              f v name hwT
+            Nothing -> pure ()
+          CustomPreProcess f -> do
+            putStrLn $
+              "Running case pre-process function for "
+                <> name <> " ('" <> prettyShow hwT <> "')"
+            f v hwT
+
 
         -- Assert HitlVio start probe
         execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
@@ -951,5 +973,14 @@ runHitlTestCase v testCase@HitlTestCase{..} probesFilePath ilaDataDir = do
           -- Legacy CSV excludes radix information
           execCmd_ v "write_hw_ila_data" ["-force", "-legacy_csv_file " <> dir </> ilaShortName]
           execCmd_ v "write_hw_ila_data" ["-force", "-vcd_file " <> dir </> ilaShortName]
+
+      -- deassert all START signals
+      forM_ (sortOn (prettyShow . fst) (toAscList parameters)) $ \(hwT, _param) -> do
+        openHwT v hwT
+        execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
+        refresh_hw_device v []
+
+        execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeTestStartTcl]
+        commit_hw_vio v ["[get_hw_vios]"]
 
       pure testCaseExitCode

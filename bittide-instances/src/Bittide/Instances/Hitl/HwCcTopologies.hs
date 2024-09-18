@@ -840,6 +840,7 @@ tests = testGroup
             , clockOffsets = Nothing
             , startupDelays = toList $ repeat @FpgaCount 0
             }
+      , preProc = InheritPreProcess
       }
 
   -- tests the given topology
@@ -873,6 +874,7 @@ tests = testGroup
             , clockOffsets = toList <$> clockShifts
             , startupDelays = fromIntegral <$> toList startDelays
             }
+      , preProc = InheritPreProcess
       }
 
   maybeVecToVecMaybe :: forall n a. (KnownNat n) => Maybe (Vec n a) -> Vec n (Maybe a)
@@ -919,6 +921,7 @@ tests = testGroup
           -- make sure the clock offsets detected during calibration is still the same
         , validateClockOffsetCalibration
         ]
+    , mPreProc = Nothing
     , mPostProc = Nothing
     }
 {- FOURMOLU_ENABLE -}

@@ -688,9 +688,11 @@ tests =
                 , clockOffsets = Nothing
                 , startupDelays = toList $ repeat @FpgaCount 0
                 }
+          , preProc = InheritPreProcess
           }
         | n <- [0 .. testsToRun - 1]
         ]
+    , mPreProc = Nothing
     , mPostProc = Nothing
     }
  where

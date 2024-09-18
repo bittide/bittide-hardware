@@ -285,7 +285,9 @@ tests =
                   | i <- [0 ..] :: [Index FpgaCount]
                   ]
             , postProcData = ()
+            , preProc = InheritPreProcess
             }
         ]
+    , mPreProc = Nothing
     , mPostProc = Nothing
     }

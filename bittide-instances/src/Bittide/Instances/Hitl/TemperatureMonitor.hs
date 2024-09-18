@@ -22,6 +22,7 @@ import Bittide.Hitl (
   HitlTestGroup (..),
   hitlVioBool,
   paramForHwTargets,
+  CasePreProcessing (..),
  )
 import Bittide.Instances.Hitl.Setup (allHwTargets)
 
@@ -111,7 +112,9 @@ tests =
             { name = "TemperatureMonitor"
             , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
+            , preProc = InheritPreProcess
             }
         ]
+    , mPreProc = Nothing
     , mPostProc = Nothing
     }
