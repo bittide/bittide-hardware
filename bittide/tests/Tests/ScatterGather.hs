@@ -81,7 +81,6 @@ genCalendarConfig ::
   , KnownNat maxDepth
   , 2 <= maxDepth
   , KnownNat addrW
-  , 2 <= addrW
   , calEntry ~ Index maxDepth
   ) =>
   SNat maxDepth ->
@@ -232,7 +231,7 @@ gatherUnitNoFrameLoss = property $ do
             clockGen
             resetGen
             enableGen
-            (gatherUnitWb @System @32)
+            (gatherUnitWb @System @30)
             (GatherConfig calConfig)
             (pure emptyWishboneM2S)
             wbIn
@@ -306,8 +305,8 @@ metacycleStalling = property $ do
         wbStall =
           pure
             $ (emptyWishboneM2S @32)
-              { -- 4 for word alignment, 2 because addressing is 64 bit aligned.
-                addr = 4 * (2 * (natToNum @maxSize @(BitVector 32)))
+              { -- 2 because addressing is 64 bit aligned.
+                addr = (2 * (natToNum @maxSize @(BitVector 32)))
               , busCycle = True
               , strobe = True
               }
@@ -349,13 +348,13 @@ wbRead ::
   [WishboneM2S addrW nBytes (Bytes nBytes)]
 wbRead readAddr (Just _) =
   [ (emptyWishboneM2S @addrW @(Bytes nBytes))
-      { addr = (`shiftL` 3) . resize $ pack readAddr
+      { addr = (`shiftL` 1) . resize $ pack readAddr
       , busCycle = True
       , strobe = True
       , busSelect = maxBound
       }
   , (emptyWishboneM2S @addrW @(Bytes nBytes))
-      { addr = 4 .|. ((`shiftL` 3) . resize $ pack readAddr)
+      { addr = 1 .|. ((`shiftL` 1) . resize $ pack readAddr)
       , busCycle = True
       , strobe = True
       , busSelect = maxBound
@@ -378,7 +377,7 @@ wbWrite ::
   [WishboneM2S addrW nBytes (Bytes nBytes)]
 wbWrite writeAddr (Just frame) =
   [ (emptyWishboneM2S @addrW @(Bytes nBytes))
-      { addr = (`shiftL` 3) . resize $ pack writeAddr
+      { addr = (`shiftL` 1) . resize $ pack writeAddr
       , busSelect = maxBound
       , busCycle = True
       , strobe = True
@@ -386,7 +385,7 @@ wbWrite writeAddr (Just frame) =
       , writeData = lower
       }
   , (emptyWishboneM2S @addrW @(Bytes nBytes))
-      { addr = 4 .|. ((`shiftL` 3) . resize $ pack writeAddr)
+      { addr = 1 .|. ((`shiftL` 1) . resize $ pack writeAddr)
       , busSelect = maxBound
       , busCycle = True
       , strobe = True

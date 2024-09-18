@@ -31,7 +31,6 @@ switchC ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , 2 <= addrW
   ) =>
   CalendarConfig nBytes addrW (CalendarEntry links) ->
   Circuit
@@ -63,7 +62,6 @@ switch ::
   forall dom nBytes addrW links frameWidth.
   ( HiddenClockResetEnable dom
   , KnownNat addrW
-  , 2 <= addrW
   , KnownNat frameWidth
   , 1 <= frameWidth
   , KnownNat links

@@ -58,7 +58,8 @@ data NodeConfig externalLinks gppes where
     ( KnownNat nmuBusses
     , nmuBusses ~ ((BussesPerGppe * gppes) + 1 + NmuInternalBusses)
     , KnownNat nmuRemBusWidth
-    , nmuRemBusWidth ~ (32 - CLog 2 nmuBusses)
+    , nmuRemBusWidth ~ (30 - CLog 2 nmuBusses)
+    , CLog 2 nmuBusses <= 30
     ) =>
     -- | Configuration for the 'node's 'managementUnit'.
     ManagementConfig ((BussesPerGppe * gppes) + 1) ->
@@ -89,7 +90,7 @@ node (NodeConfig nmuConfig switchConfig gppeConfigs) linksIn = linksOut
     unzip $ gppe <$> zip3 gppeConfigs switchToPes (unconcatI peM2Ss)
 
 type NmuInternalBusses = 6
-type NmuRemBusWidth nodeBusses = 32 - CLog 2 (nodeBusses + NmuInternalBusses)
+type NmuRemBusWidth nodeBusses = 30 - CLog 2 (nodeBusses + NmuInternalBusses)
 
 {- | Configuration for the 'managementUnit' and its 'Bittide.Link'.
 The management unit contains the 4 wishbone busses that each pe has
@@ -127,7 +128,9 @@ The order of Wishbone busses is as follows:
 ('scatterUnitWb' :> 'gatherUnitWb' :> Nil).
 -}
 gppe ::
-  (KnownNat nmuRemBusWidth, 2 <= nmuRemBusWidth, HiddenClockResetEnable dom) =>
+  ( HiddenClockResetEnable dom
+  , KnownNat nmuRemBusWidth
+  ) =>
   -- |
   -- ( Configures all local parameters
   -- , Incoming 'Bittide.Link'

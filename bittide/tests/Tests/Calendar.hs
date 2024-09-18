@@ -86,7 +86,6 @@ genCalendarConfig ::
   ( KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , 2 <= addrW
   , KnownNat (BitSize a)
   , KnownNat validityBits
   , BitPack a
@@ -292,7 +291,7 @@ readShadowCalendar = property $ do
             entryRegs = snatToInteger $ requiredRegs (bwS `addSNat` valS) d32
             readAddresses = fmap fromIntegral [0 .. indexOf snatS]
             simLength = P.length wbReads + 1
-            wbReads = P.concatMap (\i -> wbReadEntry @4 @32 i entryRegs) readAddresses
+            wbReads = P.concatMap (\i -> wbReadEntry @4 @30 i entryRegs) readAddresses
             topEntity writePort =
               (\(_, _, wb) -> wb)
                 $ withClockResetEnable
@@ -477,7 +476,7 @@ wbReadEntry i dataRegs = addrWrite : wbNothingM2S : dataReads
  where
   addrWrite =
     (emptyWishboneM2S @addrW @(Bytes nBytes))
-      { addr = 4 * fromIntegral (dataRegs + 1)
+      { addr = fromIntegral (dataRegs + 1)
       , writeData = fromIntegral i
       , busSelect = maxBound
       , busCycle = True
@@ -487,7 +486,7 @@ wbReadEntry i dataRegs = addrWrite : wbNothingM2S : dataReads
   dataReads = readReg <$> P.reverse [0 .. (dataRegs - 1)]
   readReg n =
     (emptyWishboneM2S @addrW @(Bytes nBytes))
-      { addr = 4 * fromIntegral n
+      { addr = fromIntegral n
       , writeData = 0
       , busSelect = maxBound
       , busCycle = True
@@ -505,7 +504,7 @@ wbWriteOp ::
   WishboneM2S addrW nBytes (Bytes nBytes)
 wbWriteOp (i, bv) =
   (emptyWishboneM2S @addrW @(Bytes nBytes))
-    { addr = 4 * fromIntegral i
+    { addr = fromIntegral i
     , writeData = bv
     , busSelect = maxBound
     , busCycle = True
@@ -518,7 +517,6 @@ calendarWbSpecVal ::
   forall dom nBytes addrW maxCalDepth a validityBits bootstrapSizeA bootstrapSizeB.
   ( HiddenClockResetEnable dom
   , KnownNat addrW
-  , 2 <= addrW
   , KnownNat bootstrapSizeA
   , 1 <= bootstrapSizeA
   , KnownNat bootstrapSizeB

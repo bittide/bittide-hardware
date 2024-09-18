@@ -107,9 +107,7 @@ wbStorageDPC ::
   forall dom depth awA awB.
   ( HiddenClockResetEnable dom
   , KnownNat awA
-  , 2 <= awA
   , KnownNat awB
-  , 2 <= awB
   , KnownNat depth
   , 1 <= depth
   ) =>
@@ -142,9 +140,7 @@ wbStorageDP ::
   forall dom depth awA awB.
   ( HiddenClockResetEnable dom
   , KnownNat awA
-  , 2 <= awA
   , KnownNat awB
-  , 2 <= awB
   , KnownNat depth
   , 1 <= depth
   ) =>
@@ -154,8 +150,7 @@ wbStorageDP ::
   (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes 4)))
 wbStorageDP initial aM2S bM2S = (aS2M, bS2M)
  where
-  storageOut = case lessThanMax @awA @awB @2 of
-    Dict -> wbStorage' @_ @depth @(Max awA awB) initial storageIn
+  storageOut = wbStorage' @_ @depth @(Max awA awB) initial storageIn
 
   storageIn :: Signal dom (WishboneM2S (Max awA awB) 4 (Bytes 4))
   storageIn = mux (nowActive .==. pure A) (resizeM2SAddr <$> aM2S) (resizeM2SAddr <$> bM2S)
@@ -189,7 +184,6 @@ wbStorage ::
   forall dom depth aw.
   ( HiddenClockResetEnable dom
   , KnownNat aw
-  , 2 <= aw
   , KnownNat depth
   , 1 <= depth
   ) =>
@@ -204,7 +198,6 @@ wbStorage' ::
   forall dom depth aw.
   ( HiddenClockResetEnable dom
   , KnownNat aw
-  , 2 <= aw
   , KnownNat depth
   , 1 <= depth
   ) =>
@@ -237,8 +230,8 @@ wbStorage' initContent wbIn = delayControls wbIn wbOut
     , (emptyWishboneS2M @(Bytes 4)){acknowledge, readData = readDataGo, err}
     )
    where
-    (bitCoerce . resize -> wbAddr :: Index depth, alignment) = split @_ @(aw - 2) @2 addr
-    addrLegal = addr < (natToNum @(4 * depth)) && alignment == 0
+    wbAddr = unpack $ resize addr :: Index depth
+    addrLegal = addr < (natToNum @depth)
 
     masterActive = strobe && busCycle
     err = masterActive && not addrLegal
@@ -445,7 +438,6 @@ registerWbC ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat aw
-  , 2 <= aw
   ) =>
   -- | Determines the write priority on write collisions
   RegisterWritePriority ->
@@ -476,7 +468,6 @@ registerWb ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , 2 <= addrW
   ) =>
   -- | Determines the write priority on write collisions
   RegisterWritePriority ->
@@ -510,7 +501,6 @@ registerWbE ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
-  , 2 <= addrW
   ) =>
   -- | Determines the write priority on write collisions
   RegisterWritePriority ->
@@ -542,14 +532,12 @@ registerWbE writePriority initVal wbIn sigIn sigByteEnables = (regOut, wbOut)
     , regIn0
     )
    where
-    (alignedAddress, alignment) = split @_ @(addrW - 2) @2 addr
-    addressRange = maxBound :: Index (Max 1 (Regs a (nBytes * 8)))
-    invalidAddress = (alignedAddress > resize (pack addressRange)) || alignment /= 0
+    invalidAddress = addr > resize (pack (maxBound :: Index (Max 1 (Regs a (nBytes * 8)))))
     masterActive = strobe && busCycle
     err = masterActive && invalidAddress
     acknowledge = masterActive && not err
     wbWriting = writeEnable && acknowledge
-    wbAddr = unpack . resize $ pack alignedAddress :: Index (Max 1 (Regs a (nBytes * 8)))
+    wbAddr = unpack (resize addr) :: Index (Max 1 (Regs a (nBytes * 8)))
     readData = case getRegsLe regOut0 of
       RegisterBank vec -> vec !! wbAddr
 
