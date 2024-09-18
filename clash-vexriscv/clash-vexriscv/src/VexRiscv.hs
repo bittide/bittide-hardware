@@ -27,6 +27,7 @@ import GHC.IO (unsafePerformIO, unsafeInterleaveIO)
 import GHC.Stack (HasCallStack)
 import Language.Haskell.TH.Syntax
 import Protocols
+import Protocols.Idle
 import Protocols.Wishbone
 
 import VexRiscv.ClockTicks
@@ -71,6 +72,10 @@ data Jtag (dom :: Domain)
 instance Protocol (Jtag dom) where
   type Fwd (Jtag dom) = Signal dom JtagIn
   type Bwd (Jtag dom) = Signal dom JtagOut
+
+instance IdleCircuit (Jtag dom) where
+  idleFwd _ = pure $ JtagIn 0 0 0
+  idleBwd _ = pure $ JtagOut 0 0
 
 vexRiscv ::
   forall dom .
