@@ -400,6 +400,13 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "swUpdatePeriod"
           :> "swUpdatePeriodMin"
           :> "swUpdatePeriodMax"
+          :> "probe_syncRst"
+          :> "probe_gthAllReset"
+          :> "probe_startupDelayRst"
+          :> "probe_clockControlReset"
+          :> "probe_notInCCReset"
+          :> "probe_txResets2"
+          :> "probe_swCcRst"
           :> Nil
       )
         { depth = D16384
@@ -464,6 +471,13 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       swUpdatePeriod
       swUpdatePeriodMin
       swUpdatePeriodMax
+      syncRst
+      gthAllReset
+      startupDelayRst
+      clockControlReset
+      notInCCReset
+      txResets2
+      swCcRst
 
   captureFlag =
     riseEvery
