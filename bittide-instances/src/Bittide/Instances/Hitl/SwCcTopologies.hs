@@ -471,13 +471,17 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       swUpdatePeriod
       swUpdatePeriodMin
       swUpdatePeriodMax
-      syncRst
-      gthAllReset
-      startupDelayRst
-      clockControlReset
+      (unsafeFromReset syncRst)
+      (unsafeFromReset gthAllReset)
+      (unsafeFromReset startupDelayRst)
+      (unsafeFromReset clockControlReset)
       notInCCReset
-      txResets2
-      swCcRst
+      txResetsThing
+      (unsafeFromReset swCcRst)
+
+  txResetsThing = bundle $ zipWith oofOwOuchie transceivers.txClocks txResets2
+   where
+    oofOwOuchie txClock txReset = unsafeSynchronizer txClock sysClk $ unsafeFromReset txReset
 
   captureFlag =
     riseEvery
