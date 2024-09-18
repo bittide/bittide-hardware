@@ -236,7 +236,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   fincFdecIla
     `hwSeqX` ( transceivers.txNs
              , transceivers.txPs
-             , frequencyAdjustments
+             , swFincFdecs
              , callistoResult
              , clockControlReset
              , domainDiffs
@@ -397,6 +397,9 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_linkUps"
           :> "fifoUnderflows"
           :> "fifoOverflows"
+          :> "swUpdatePeriod"
+          :> "swUpdatePeriodMin"
+          :> "swUpdatePeriodMax"
           :> Nil
       )
         { depth = D16384
@@ -458,6 +461,9 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       (bundle transceivers.linkUps)
       (pack . reverse <$> bundle fifoUnderflowsFree)
       (pack . reverse <$> bundle fifoOverflowsFree)
+      swUpdatePeriod
+      swUpdatePeriodMin
+      swUpdatePeriodMax
 
   captureFlag =
     riseEvery
@@ -691,6 +697,41 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     , stability6
     ) = vecToTuple $ unbundle stabilities
 
+  -- Create the VexRiscV instance
+
+  margin = d2
+  framesize = SNat @(PeriodToCycles Basic125 (Seconds 1))
+
+  swCcRst = orReset clockControlReset adjustRst
+  (_, (swFincFdecs, swUpdatePeriod)) =
+    toSignals
+      ( circuit $ \jtag -> do
+          [wbB] <-
+            withClockResetEnable sysClk swCcRst enableGen $ processingElement peConfig -< jtag
+          (swFincFdecs, _rvAllStable, swUpdatePeriod) <-
+            withClockResetEnable sysClk swCcRst enableGen
+              $ clockControlWb margin framesize (pure $ complement 0) domainDiffs
+              -< wbB
+          idC -< (swFincFdecs, swUpdatePeriod)
+      )
+      (pure $ JtagIn low low low, (pure (), pure ()))
+  FillStats swUpdatePeriodMin swUpdatePeriodMax = unbundle $ fillStats sysClk swCcRst swUpdatePeriod
+  (iMem, dMem) =
+    $( do
+        root <- runIO $ findParentContaining "cabal.project"
+        let
+          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
+          elfPath = elfDir </> "clock-control"
+          iSize = 64 * 1024 -- 64 KB
+          dSize = 64 * 1024 -- 64 KB
+        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
+     )
+  peConfig =
+    PeConfig
+      (0b10 :> 0b01 :> 0b11 :> Nil)
+      (Reloadable $ Blob iMem)
+      (Reloadable $ Blob dMem)
+
 {- | Tracks the min/max values of the input during the last milliseconds
 
 Updates once per millisecond.
@@ -766,101 +807,6 @@ stableForMs SNat clk rst inp =
  where
   stable = stableFor @(CLog 2 (PeriodToCycles dom (Milliseconds ms))) clk rst inp
 
--- | Instantiates a RiscV core
-fullMeshRiscvTest ::
-  forall dom.
-  (KnownDomain dom) =>
-  Clock dom ->
-  Reset dom ->
-  Vec LinkCount (Signal dom (RelDataCount 32)) ->
-  -- Freq increase / freq decrease request to clock board
-  ( "FINC" ::: Signal dom Bool
-  , "FDEC" ::: Signal dom Bool
-  )
-fullMeshRiscvTest clk rst dataCounts = updatePeriodIla `hwSeqX` unbundle fIncDec
- where
-  (_, (fIncDec, updatePeriod)) =
-    toSignals
-      ( circuit $ \jtag -> do
-          [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
-          (fIncDec, _allStable, updatePeriod) <-
-            withClockResetEnable clk rst enableGen
-              $ clockControlWb margin framesize (pure $ complement 0) dataCounts
-              -< wbB
-          idC -< (fIncDec, updatePeriod)
-      )
-      (pure $ JtagIn low low low, (pure (), pure ()))
-
-  -- Need to include something in the `circuit` section above to catch when a write comes
-  -- in on the WishBone bus and then use that to capture a counter.
-  updatePeriodMin = register clk rst enableGen (complement 0) $ min <$> updatePeriodMin <*> updatePeriod
-  updatePeriodMax = register clk rst enableGen 0 $ max <$> updatePeriodMax <*> updatePeriod
-
-  timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles dom (Milliseconds 1)))
-  timer = register clk rst enableGen (0, 0) (timeSucc <$> timer)
-  milliseconds1 = fst <$> timer
-
-  -- Capture every 100 microseconds - this should give us a window of about 5
-  -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
-  -- very confusing.
-  capture = captureFlag .||. unsafeToActiveHigh rst
-
-  captureFlag =
-    riseEvery
-      clk
-      rst
-      enableGen
-      (SNat @(PeriodToCycles dom (Milliseconds 1)))
-
-  updatePeriodIla :: Signal dom ()
-  updatePeriodIla =
-    setName @"updatePeriodIla"
-      $ ila
-        ( ilaConfig
-            $ "trigger_up_0"
-            :> "capture_up_0"
-            :> "probe_up_milliseconds"
-            :> "updatePeriod"
-            :> "updatePeriodMin"
-            :> "updatePeriodMax"
-            :> Nil
-        )
-          { depth = D16384
-          }
-        clk
-        (unsafeToActiveLow rst)
-        capture
-        milliseconds1
-        updatePeriod
-        updatePeriodMin
-        updatePeriodMax
-
-  margin = d2
-
-  framesize = SNat @(PeriodToCycles dom (Seconds 1))
-
-  (iMem, dMem) =
-    $( do
-        root <- runIO $ findParentContaining "cabal.project"
-        let
-          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-          elfPath = elfDir </> "clock-control"
-          iSize = 64 * 1024 -- 64 KB
-          dSize = 64 * 1024 -- 64 KB
-        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
-     )
-
-  {-
-    0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
-    0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
-    0b11xxxxx_xxxxxxxx 0b11 0xCx memory mapped hardware clock control
-  -}
-  peConfig =
-    PeConfig
-      (0b10 :> 0b01 :> 0b11 :> Nil)
-      (Reloadable $ Blob iMem)
-      (Reloadable $ Blob dMem)
-
 -- | Top entity for this test. See module documentation for more information.
 swCcTopologyTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
@@ -884,7 +830,7 @@ swCcTopologyTest ::
           )
   )
 swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, swFincFdecs, syncOut, spiDone, spiOut)
+  (txns, txps, unbundle swFincFdecs, syncOut, spiDone, spiOut)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
@@ -895,10 +841,10 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   ( txns
     , txps
-    , _hwFincFdecs
+    , swFincFdecs
     , _callistoResult
-    , callistoReset
-    , dataCounts
+    , _callistoReset
+    , _dataCounts
     , _stats
     , spiDone
     , spiOut
@@ -919,7 +865,6 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
         miso
         cfg
 
-  swFincFdecs = fullMeshRiscvTest sysClk callistoReset dataCounts
   -- allUgnsStable = and <$> bundle ugnsStable
   -- allStable' = allStable .&&. allUgnsStable
 

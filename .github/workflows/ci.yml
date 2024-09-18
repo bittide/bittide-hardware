@@ -505,7 +505,7 @@ jobs:
 
           echo "check_matrix=$(cat checks.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
 
-          should_generate_report=$(jq 'map(select(.top == "hwCcTopologyTest")) | length > 0' checks.json)
+          should_generate_report=$(jq 'map(select(.top == "hwCcTopologyTest" or .top == "swCcTopologyTest")) | length > 0' checks.json)
           echo "should_generate_report=${should_generate_report}" | tee -a "$GITHUB_OUTPUT"
 
     outputs:
