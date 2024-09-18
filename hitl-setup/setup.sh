@@ -15,14 +15,15 @@ done
 echo All INTERFACES exist
 
 FILES="/etc/systemd/system/fpganet.service /etc/fpganet /etc/dhcp/dhcpd.conf /etc/default/isc-dhcp-server"
-EXISTS=""
-for FILE in FILES; do
-  if [ -e "$FILE" ]; then
+EXISTS=
+for FILE in $FILES; do
+  if [ -e $FILE ]; then
     EXISTS="$EXISTS $FILE"
   fi
 done
-if [ -n "$EXISTS"  -a  "$FORCE" = "-f" ]; then
-  echo 'Running this script with -f will overwrite:'
+if [ -n "$EXISTS"  -a "$FORCE" != -f ]; then
+  set +x
+  echo "Running this script with -f will overwrite:"
   echo "$EXISTS"
   echo "But now it will stop, because -f wasn't supplied"
   exit 1
@@ -34,14 +35,13 @@ apt-get install -y isc-dhcp-server iproute2
 cp "$HERE/fpganet.service" /etc/systemd/system
 cp "$HERE/fpganet" /etc
 
-systemctl daemon-reload
-
-systemctl restart fpganet.service
-systemctl enable fpganet.service
-
 cp "$HERE/dhcpd.conf" /etc/dhcp/
 echo "INTERFACESv4=\"$BRIDGE_NAME\"" > /etc/default/isc-dhcp-server
 
-systemctl add-wants isc-dhcp-server.service fpganet.service
-systemctl restart isc-dhcp-server.service
+systemctl daemon-reload
+
+systemctl enable fpganet.service
+systemctl restart fpganet.service
+
 systemctl enable isc-dhcp-server.service
+systemctl restart isc-dhcp-server.service
