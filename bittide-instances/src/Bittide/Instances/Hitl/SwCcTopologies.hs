@@ -284,8 +284,8 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
         , clockPaths
         , rxNs
         , rxPs
-        , txDatas = repeat (pure 0)
-        , txReadys = repeat (pure False)
+        , txDatas = txCounters
+        , txReadys = txAllStables
         , rxReadys = repeat (pure True)
         }
 
