@@ -44,6 +44,9 @@
   "rust-analyzer.check.allTargets": false,
   "cSpell.words": [
     "bitstream",
+    "Bittide",
+    "deasserted",
+    "Hitl",
     "Vivado"
   ]
 }
