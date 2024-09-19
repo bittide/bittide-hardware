@@ -16,7 +16,6 @@ module Bittide.Instances.Hitl.IlaPlot (
   -- * Parameters
   SyncPulsePeriod,
   ScheduledCapturePeriod,
-  AccWindowHeight,
   CompressedBufferSize,
   MaxPulseCount,
 
@@ -42,7 +41,7 @@ module Bittide.Instances.Hitl.IlaPlot (
   ScheduledCaptureCycles,
   DDiv,
   DDivCheck,
-  accWindow,
+  accumulateSpeedChanges,
   overflowResistantDiff,
   DiffResult (..),
   syncOutGenerator,
@@ -56,7 +55,7 @@ import Clash.Explicit.Signal.Extra
 import Clash.Sized.Extra (concatUnsigneds)
 
 import Bittide.Arithmetic.Time (PeriodToCycles, trueFor)
-import Bittide.ClockControl (ClockControlConfig, RelDataCount, SpeedChange (..))
+import Bittide.ClockControl (ClockControlConfig, RelDataCount, SpeedChange (..), sign)
 import Bittide.ClockControl.Callisto (
   CallistoResult (..),
   ReframingState (..),
@@ -93,11 +92,6 @@ type family DDiv (a :: Nat) (b :: Nat) :: Nat where
 -}
 type family DDivCheck (a :: Nat) (b :: Nat) (c :: Nat) :: Nat where
   DDivCheck 0 a b = Div a b
-
-{- | The window high of 'accWindow' for reducing the number of
-reported clock modifications.
--}
-type AccWindowHeight = 5 :: Nat
 
 {- | The period of the sync pulse used to share a synchronized time
 stamp between the nodes.
@@ -328,45 +322,23 @@ to be included into a capture.
 -}
 data PlotData (n :: Nat) (m :: Nat) = PlotData
   { dEBData :: Vec n (RelDataCount m, Maybe Bool, Maybe Bool)
-  , dSpeedChange :: SpeedChange
+  , dAccumulatedSpeedChanges :: Signed 21
   , dRfStageChange :: RfStageChange
   }
   deriving (Generic, NFDataX, BitPack)
 
-{- | Accumulates over multiple @FINC@/@FDEC@s to reduce the number of
-captures recorded by the ILA (which are mostly jitter otherwise).
-
-The compression technique works as follows: if both @FINC@ and
-@FDEC@ are requested after each other, then they cancel each other
-out and are not reported. Hence, only @FINC@/@FDEC@s are reported
-that haven't canceled out before they exceed the @n@
-boundary. Thus, for example @FINC@, @FINC@, @FDEC@, @FDEC@, ... is
-not reported for @n > 2@ as the first two @FINC@s don't exceed the
-boundary @n@.
+{- | Accumulates over multiple @FINC@/@FDEC@s to a single number
 -}
-accWindow ::
-  forall height dom.
-  (HasCallStack) =>
-  (KnownNat height, KnownDomain dom) =>
-  -- | The height of the accumulation window.
-  SNat height ->
+accumulateSpeedChanges ::
+  forall dom.
+  (HasCallStack, KnownDomain dom) =>
   Clock dom ->
   Reset dom ->
-  Enable dom ->
   Signal dom SpeedChange ->
-  Signal dom SpeedChange
-accWindow _ clk rst ena =
-  mealy clk rst ena transF (True, minBound :: Index height)
+  Signal dom (Signed 21)
+accumulateSpeedChanges clk rst speedChange = counter
  where
-  transF (d, s) = \case
-    NoChange -> ((d, s), NoChange)
-    x ->
-      let d' = if x == SpeedUp then d else not d
-       in if
-            | d' && s == maxBound -> ((not d, minBound), x)
-            | not d' && s == minBound -> ((not d, minBound), NoChange)
-            | d' -> ((d, s + 1), NoChange)
-            | otherwise -> ((d, s - 1), NoChange)
+  counter = register clk rst enableGen 0 (counter + fmap sign speedChange)
 
 {- | Calculates the difference of a wrapping counter between two
 points in time taking potential overflows into account. The
@@ -522,7 +494,6 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
           Wait{} -> ToWait
           Done{} -> ToDone
 
-        height = SNat @AccWindowHeight
         idcs =
           unbundle
             (filterIndicators <$> fmap bv2v mask <*> (stability <$> result))
@@ -541,7 +512,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
         noChange = fromMaybe NoChange . maybeSpeedChange
      in PlotData
           <$> bundle (zipWith4 combine ebsC stableUpdates settledUpdates idcs)
-          <*> accWindow height clk rst enableGen (noChange <$> result)
+          <*> accumulateSpeedChanges clk rst (noChange <$> result)
           <*> mux modeUpdate (rfStageChange <$> result) (pure Stable)
 
   -- compress the elastic buffer data via only reporting the
@@ -613,11 +584,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
           | otherwise = Nothing
 
         dataChange PlotData{..} =
-          any (\(_, x, y) -> isJust x || isJust y) dEBData
-            || dSpeedChange
-            /= NoChange
-            || dRfStageChange
-            /= Stable
+          any (\(_, x, y) -> isJust x || isJust y) dEBData || dRfStageChange /= Stable
      in captureType
           <$> calibrating
           <*> scheduledCapture
@@ -647,7 +614,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
   dummy =
     PlotData
       { dEBData = repeat (0, Nothing, Nothing)
-      , dSpeedChange = NoChange
+      , dAccumulatedSpeedChanges = 0
       , dRfStageChange = Stable
       }
 
