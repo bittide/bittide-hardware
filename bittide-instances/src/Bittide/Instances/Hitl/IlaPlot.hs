@@ -327,8 +327,7 @@ data PlotData (n :: Nat) (m :: Nat) = PlotData
   }
   deriving (Generic, NFDataX, BitPack)
 
-{- | Accumulates over multiple @FINC@/@FDEC@s to a single number
--}
+-- | Accumulates over multiple @FINC@/@FDEC@s to a single number
 accumulateSpeedChanges ::
   forall dom.
   (HasCallStack, KnownDomain dom) =>

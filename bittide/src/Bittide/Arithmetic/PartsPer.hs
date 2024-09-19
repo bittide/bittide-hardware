@@ -27,7 +27,7 @@ _parts per trillion_.
 -}
 newtype PartsPer = Ppt (Signed 64)
   deriving (Show, Eq, Ord)
-  deriving newtype (Num)
+  deriving newtype (Num, Enum, Real, Integral)
 
 instance ToJSON PartsPer where
   toJSON (Ppt x) = toJSON (toInteger x)
@@ -69,6 +69,21 @@ toSteps ::
   -- | Number of steps to get to the value
   Float
 toSteps (Ppt stepSize) (Ppt value) = fromIntegral value / fromIntegral stepSize
+
+{- | Given a number of steps and a step size, calculate the value in 'PartsPer'.
+
+>>> fromSteps (ppm 1) 3
+Ppt 3000000
+-}
+fromSteps ::
+  (Integral a) =>
+  -- | Step size
+  PartsPer ->
+  -- | Number of steps
+  a ->
+  -- | Value in 'PartsPer'
+  PartsPer
+fromSteps (Ppt stepSize) steps = Ppt (fromIntegral steps * stepSize)
 
 {- | Given an ideal number of clock cycles - passed indirectly using a combination
 of a domain and a measurement period - and an observed number of clock cycles,

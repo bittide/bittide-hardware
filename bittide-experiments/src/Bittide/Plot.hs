@@ -16,13 +16,14 @@ import Clash.Prelude (KnownNat, Vec)
 import Clash.Signal.Internal (Femtoseconds (..))
 import Clash.Sized.Vector qualified as Vec
 
-import Bittide.Arithmetic.PartsPer (PartsPer, toPpm)
+import Bittide.Arithmetic.PartsPer (PartsPer, fromSteps, ppb, toPpm)
 import Control.Monad (void)
 import Data.Graph (edges)
 import Data.Int (Int64)
-import Data.List (foldl', transpose, unzip4, zip4)
+import Data.List (foldl', transpose, unzip4, unzip5, zip4)
 import GHC.Float.RealFracMethods (roundFloatInteger)
 import System.FilePath ((</>))
+import System.Environment (lookupEnv)
 
 import Debug.Trace
 
@@ -71,6 +72,19 @@ fromRfState = \case
   Wait{} -> RSWait
   Done{} -> RSDone
 
+type FincFdecs = Int
+
+normalizeFincFdecs :: PartsPer -> [PartsPer] -> [FincFdecs] -> [PartsPer]
+normalizeFincFdecs stepSize measuredOffsets (fmap (fromSteps stepSize) -> offsets) =
+  (+correction) <$> offsets
+ where
+  correction = target - last offsets
+
+  -- target: what the last value should normalize to
+  target = arithmeticMean (drop (length measuredOffsets - 10) measuredOffsets)
+  arithmeticMean xs = sum xs `div` fromIntegral (length xs)
+
+
 plot ::
   forall nNodes m.
   (KnownNat nNodes, KnownNat m) =>
@@ -85,20 +99,26 @@ plot ::
     nNodes
     [ ( Femtoseconds -- time
       , PartsPer -- relative clock offset
+      , FincFdecs
       , ReframingStage
       , [(RelDataCount m, SC.StabilityIndication)]
       )
     ] ->
   IO ()
 plot maybeCorrection outputDir graph plotData =
-  matplotWrite outputDir maybeCorrection clockPlots elasticBufferPlots
+  matplotWrite
+    outputDir
+    maybeCorrection
+    clockPlotsGuessed
+    clockPlotsMeasured
+    elasticBufferPlots
  where
-  clockPlots = Vec.imap toClockPlot plotData
+  (clockPlotsGuessed, clockPlotsMeasured) = Vec.unzip $ Vec.imap toClockPlot plotData
   elasticBufferPlots = Vec.imap toElasticBufferPlot plotData
 
   edgeCount = length $ edges $ topologyGraph graph
 
-  toElasticBufferPlot nodeIndex (unzip4 -> (time, _, reframingStage, buffersPerNode)) =
+  toElasticBufferPlot nodeIndex (unzip5 -> (time, _, _, reframingStage, buffersPerNode)) =
     foldPlots
       $ fmap
         ( -- Too many legend entries don't fit. We picked 20 by
@@ -119,12 +139,25 @@ plot maybeCorrection outputDir graph plotData =
         | (t, r, bs) <- zip3 time reframingStage buffersPerNode
         ]
 
-  toClockPlot nodeIndex (unzip4 -> (time, relativeOffsetPartsPer, _, _)) =
-    withLegend $
-      (@@ [o2 "label" $ fromEnum nodeIndex]) $
-        MP.plot
-          (map fsToMs time)
-          (map (toPpm . correctOffset) relativeOffsetPartsPer)
+  toClockPlot nodeIndex (unzip5 -> (time, relativeOffsetPartsPer, fincFdecs, _, _)) =
+    ( offsetGuessed @@ [o2 "color" "black", o2 "linestyle" "--", o2 "linewidth" (0.5 :: Double)]
+    , offsetMeasured
+    )
+   where
+    correctedRelativeOffsetPartsPer = correctOffset <$> relativeOffsetPartsPer
+
+    offsetGuessed =
+      MP.plot
+        (map fsToMs time)
+        (map toPpm (normalizeFincFdecs (ppb 10) correctedRelativeOffsetPartsPer fincFdecs))
+
+    offsetMeasured =
+      withLegend $
+        (@@ [o2 "label" $ fromEnum nodeIndex]) $
+          MP.plot
+            (map fsToMs time)
+            (map toPpm correctedRelativeOffsetPartsPer)
+
 
   withLegend =
     ( @@
@@ -204,18 +237,22 @@ matplotWrite ::
   FilePath ->
   -- | Correction to add to Y-axis label
   Maybe PartsPer ->
-  -- | clock plots
+  -- | clock plots (guessed)
+  Vec n Matplotlib ->
+  -- | clock plots (measured)
   Vec n Matplotlib ->
   -- | elastic buffer plots
   Vec n Matplotlib ->
   IO ()
-matplotWrite dir maybeCorrection clockDats ebDats = do
+matplotWrite dir maybeCorrection clockDatsG clockDatsM ebDats = do
+  plotFincFdecs <- (==Just "yes") <$> lookupEnv "PLOT_FINCFDECS"
+
   void $
     file (dir </> plotClocksFileName) $
       constrained
         ( xlabel "Time (ms)"
             % ylabel ("ω (ppm)" <> correctionLabel)
-            % foldPlots (reverse $ Vec.toList clockDats)
+            % foldPlots (reverse $ (if plotFincFdecs then Vec.toList clockDatsG else []) <> Vec.toList clockDatsM)
         )
   void $
     file (dir </> plotElasticBuffersFileName) $
