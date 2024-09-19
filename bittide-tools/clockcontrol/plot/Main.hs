@@ -327,7 +327,7 @@ postProcess t i links =
       , captureCond = fromHex -> captureType
       , localTimestamp = fromHex -> localTimestamp
       , sampleInBuffer
-      , plotData = fromHex -> PlotData{dSpeedChange, dEBData, dRfStageChange}
+      , plotData = fromHex -> PlotData{dAccumulatedSpeedChanges, dEBData, dRfStageChange}
       } =
       let
         globalTime = globalTsToFs $ fromHex globalTimestamp
@@ -345,10 +345,6 @@ postProcess t i links =
                 )
           | otherwise =
               dpDrift prevDP
-
-        ccChanges =
-          dpCCChanges prevDP
-            + natToNum @AccWindowHeight * sign dSpeedChange
 
         dataCounts =
           ( \a b ->
@@ -376,7 +372,7 @@ postProcess t i links =
                 _ -> fromHex globalTimestamp
           , dpGlobalTime = globalTime
           , dpDrift = driftPartsPer
-          , dpCCChanges = ccChanges
+          , dpCCChanges = fromIntegral dAccumulatedSpeedChanges
           , dpRfStage =
               case dRfStageChange of
                 Stable -> dpRfStage prevDP
