@@ -105,7 +105,7 @@ according to the local, but stable system clock of a node.
 -}
 type StartupDelay = Unsigned 32
 
--- | Availabe step size configurations.
+-- | Available step size configurations.
 data StepSizeSelect
   = PPB_1
   | PPB_10
@@ -157,8 +157,8 @@ commonSpiConfig = case commonStepSizeSelect of
   PPB_500 -> testConfig6_200_on_0a_500ppb
   PPM_1 -> testConfig6_200_on_0a_1ppm
 
-{- | Accepted noise between the inital clock control calibration run
-and the last calibration verifiction run.
+{- | Accepted noise between the initial clock control calibration run
+and the last calibration verification run.
 -}
 acceptableNoiseLevel :: FincFdecCount
 acceptableNoiseLevel = 6
@@ -177,7 +177,7 @@ disabled =
 data TestConfig = TestConfig
   { fpgaEnabled :: Bool
   -- ^ Enables or disables an FPGA depending on the selected
-  -- topology. Disabled FPGAs immediediatly succeed after the test
+  -- topology. Disabled FPGAs immediately succeed after the test
   -- start.
   --
   -- Also note that the flag only disables clock control, while
@@ -186,10 +186,10 @@ data TestConfig = TestConfig
   , calibrate :: CCCalibrationStage
   -- ^ Indicates the selected calibration stage.
   , initialClockShift :: Maybe FincFdecCount
-  -- ^ Artificical clock shift applied prior to the test start, expressed as
+  -- ^ Artificial clock shift applied prior to the test start, expressed as
   -- number of FINCs (if positive) or FDECs (if negative).
   , startupDelay :: StartupDelay
-  -- ^ Some intial startup delay given in the number of clock
+  -- ^ Some initial startup delay given in the number of clock
   -- cycles of the stable clock.
   , mask :: BitVector LinkCount
   -- ^ The link mask depending on the selected topology.
