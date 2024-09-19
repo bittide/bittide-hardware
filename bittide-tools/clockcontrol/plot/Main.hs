@@ -83,7 +83,7 @@ import Data.Csv.Conduit (
  )
 import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
-import Data.List (find, isPrefixOf, isSuffixOf, uncons, unzip4)
+import Data.List (find, isPrefixOf, isSuffixOf, uncons, unzip5)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromJust, fromMaybe, mapMaybe)
 import Data.Proxy (Proxy (..))
@@ -508,7 +508,7 @@ getOffsetCorrection ::
   -- | Post processed data - one per FPGA
   --
   -- TODO: Nicer data structure
-  Vec nNodes [(a, PartsPer {- relative offset -}, b, c)] ->
+  Vec nNodes [(a, PartsPer {- relative offset -}, b, c, d)] ->
   -- | The desired offsets for the clocks
   Vec nNodes PartsPer ->
   -- | Correction, if a sensible one can be found
@@ -516,7 +516,7 @@ getOffsetCorrection ::
 getOffsetCorrection postProcessData desiredOffsets = do
   -- Gather first sampled offset for each node
   measuredOffsets <- forM (C.zip C.indicesI postProcessData) $
-    \(nodeNo, unzip4 -> (_, offsets, _, _)) -> do
+    \(nodeNo, unzip5 -> (_, offsets, _, _, _)) -> do
       case offsets of
         [] -> die $ "No offsets for node " <> show nodeNo
         (offset : _) -> pure offset
@@ -540,6 +540,8 @@ getOffsetCorrection postProcessData desiredOffsets = do
               ]
         pure ()
       pure correction
+
+type FincFdecs = Int
 
 plotTest ::
   (KnownDomain refDom) =>
@@ -652,7 +654,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
 
         let
           allStable =
-            all ((\(_, _, _, xs) -> all (stable . snd) xs) . last) postProcessData
+            all ((\(_, _, _, _, xs) -> all (stable . snd) xs) . last) postProcessData
           cfg1 =
             cfg
               { CcConf.outDir = outDir
@@ -685,14 +687,16 @@ plotTest refDom testDir cfg dir globalOutDir = do
 
   toPlotData ::
     DataPoint n decompressedElasticBufferBits ->
-    Maybe ( Femtoseconds
-    , PartsPer
-    , ReframingStage
-    , [ ( RelDataCount decompressedElasticBufferBits
-        , StabilityIndication
-        )
-      ]
-    )
+    Maybe
+      ( Femtoseconds
+      , PartsPer
+      , FincFdecs
+      , ReframingStage
+      , [ ( RelDataCount decompressedElasticBufferBits
+          , StabilityIndication
+          )
+        ]
+      )
   toPlotData DataPoint{..} =
     case wait_fs of
       Just wfs | dpGlobalTime > wfs -> Nothing
@@ -704,6 +708,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
     res =
       ( dpGlobalTime
       , dpDrift
+      , dpCCChanges
       , dpRfStage
       , mapMaybe (uncurry $ liftA2 (,)) $
           zip (Vec.toList dpDataCounts) (repeat (Just (StabilityIndication False False)))
