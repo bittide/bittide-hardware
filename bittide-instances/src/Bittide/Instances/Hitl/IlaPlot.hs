@@ -36,6 +36,7 @@ module Bittide.Instances.Hitl.IlaPlot (
   ilaProbeNames,
   ilaPlotSetup,
   callistoClockControlWithIla,
+  callistoSwClockControlWithIla,
 
   -- * Helpers
   SyncPulseCycles,
@@ -62,6 +63,7 @@ import Bittide.ClockControl.Callisto (
   ReframingState (..),
   callistoClockControl,
  )
+import qualified Bittide.ClockControl.CallistoSw as Sw
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Extra.Maybe (orNothing)
 
@@ -585,6 +587,179 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
   muteDuringCalibration active ccResult =
     ccResult
       { maybeSpeedChange = bool (maybeSpeedChange ccResult) Nothing active
+      }
+
+  -- Note that we always need to capture everything before the trigger
+  -- fires, because the data that the ILA captures is undefined
+  -- otherwise. Moreover, @syncStart@ does not hold at the trigger,
+  -- but only after it. Hence, if the trigger position is at 0, then
+  -- we store exactly one capture that is marked with the
+  -- @UntilTrigger@ flag this way.
+  captureCond :: Signal sys (Maybe CaptureCondition)
+  captureCond =
+    mux
+      (not <$> syncStart)
+      (pure $ Just UntilTrigger)
+      (fmap fst <$> plotData)
+
+  plotData =
+    let captureType calibrate scheduled dc dat
+          | scheduled && calibrate = Just (Calibrate, dat)
+          | scheduled = Just (Scheduled, dat)
+          | dc || dataChange dat && not calibrate = Just (DataChange, dat)
+          | otherwise = Nothing
+
+        dataChange PlotData{..} =
+          any (\(_, x, y) -> isJust x || isJust y) dEBData
+            || dSpeedChange
+            /= NoChange
+            || dRfStageChange
+            /= Stable
+     in captureType
+          <$> calibrating
+          <*> scheduledCapture
+          <*> ebDataChange
+          <*> localData
+
+  ilaInstance :: Signal sys ()
+  ilaInstance =
+    setName @"ilaPlot"
+      $ ila
+        (ilaConfig ilaProbeNames){depth = D16384, stages = 2}
+        -- the ILA must run on a stable clock
+        clk
+        -- trigger as soon as we start
+        (syncStart .&&. (not <$> skipTest))
+        -- capture on relevant data changes
+        (syncStart .&&. (isJust <$> captureCond) .&&. (not <$> skipTest))
+        -- capture the capture condition
+        (fromMaybe UntilTrigger <$> captureCond)
+        -- capture the globally synchronized timestamp
+        globalTimestamp
+        -- capture the local timestamp
+        localTs
+        -- capture all relevant plot data
+        (maybe dummy snd <$> plotData)
+
+  dummy =
+    PlotData
+      { dEBData = repeat (0, Nothing, Nothing)
+      , dSpeedChange = NoChange
+      , dRfStageChange = Stable
+      }
+
+callistoSwClockControlWithIla ::
+  forall n m sys dyn.
+  (HasCallStack) =>
+  (KnownDomain dyn, KnownDomain sys, HasSynchronousReset sys) =>
+  (KnownNat n, KnownNat m) =>
+  (1 <= n, 1 <= m, n + m <= 32, 6 + n * (m + 4) <= 1024) =>
+  (CompressedBufferSize <= m) =>
+  Clock dyn ->
+  Clock sys ->
+  Reset sys ->
+  Signal sys Bool ->
+  IlaControl sys ->
+  Signal sys (BitVector n) ->
+  Vec n (Signal sys (RelDataCount m)) ->
+  Signal sys (Sw.CallistoSwResult n)
+callistoSwClockControlWithIla dynClk clk rst reframe IlaControl{..} mask ebs =
+  hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> result)
+ where
+  result = Sw.callistoSwClockControl clk rst enableGen reframe mask ebs
+
+  filterCounts vMask vCounts = flip map (zip vMask vCounts)
+    $ \(isActive, count) -> if isActive == high then count else 0
+
+  filterIndicators vMask vCounts = flip map (zip vMask vCounts)
+    $ \(isActive, ind) -> if isActive == high then ind else StabilityIndication False False
+
+  maxGeqPlusApp =
+    maxGeqPlus @1
+      @(DivRU ScheduledCapturePeriod (Max 1 (DomainPeriod dyn)))
+      @(Div (ScheduledCaptureCycles dyn) 10)
+
+  localTs :: Signal sys (DiffResult (LocalTimestamp dyn))
+  localTs = case maxGeqPlusApp of
+    Dict ->
+      overflowResistantDiff
+        clk
+        syncRst
+        (delay clk enableGen False (maybe False isScheduledCaptureCondition <$> captureCond))
+        $ let ccRst = xpmResetSynchronizer Asserted clk dynClk syncRst
+              lts :: Signal dyn (Unsigned 8)
+              lts =
+                register dynClk ccRst enableGen minBound
+                  $ satSucc SatWrap
+                  <$> lts
+           in xpmCdcGray dynClk clk lts
+
+  -- collect all plot data
+  localData =
+    let height = SNat @AccWindowHeight
+        idcs =
+          unbundle
+            (filterIndicators <$> fmap bv2v mask <*> (Sw.stability <$> result))
+
+        -- get the points in time where the monitored values change
+        stableUpdates = changepoints clk rst enableGen <$> (fmap stable <$> idcs)
+        settledUpdates = changepoints clk rst enableGen <$> (fmap settled <$> idcs)
+
+        combine eb stU seU ind =
+          (,,)
+            <$> eb
+            <*> (orNothing <$> stU <*> (stable <$> ind))
+            <*> (orNothing <$> seU <*> (settled <$> ind))
+
+        noChange = fromMaybe NoChange . Sw.maybeSpeedChange
+     in PlotData
+          <$> bundle (zipWith4 combine ebsC stableUpdates settledUpdates idcs)
+          <*> accWindow height clk rst enableGen (noChange <$> result)
+          <*> pure Stable
+
+  (ebDataChange, ebsC) =
+    second unbundle
+      $ let transF storedDataCounts (trigger, curDataCounts) =
+              let diffs = zipWith (-) curDataCounts storedDataCounts
+                  half =
+                    extend @_
+                      @(CompressedBufferSize - 1)
+                      @(m - CompressedBufferSize + 1)
+                      maxBound
+                  truncDiffs =
+                    truncateB @_
+                      @CompressedBufferSize
+                      @(m - CompressedBufferSize)
+                      <$> diffs
+               in if trigger || any ((> half) . abs) diffs
+                    then (curDataCounts, (True, truncDiffs))
+                    else (storedDataCounts, (False, repeat 0))
+         in mealyB
+              clk
+              rst
+              enableGen
+              transF
+              (repeat 0)
+              ( scheduledCapture
+              , filterCounts <$> fmap bv2v mask <*> bundle ebs
+              )
+
+  -- produce at least two calibration captures
+  calibrating =
+    unsafeToActiveLow syncRst
+      .&&. moore
+        clk
+        syncRst
+        enableGen
+        (\s -> bool s $ satSucc SatBound s)
+        (/= maxBound)
+        (minBound :: Index 3)
+        scheduledCapture
+
+  -- do not forward clock modifications during calibration
+  muteDuringCalibration active ccResult =
+    ccResult
+      { Sw.maybeSpeedChange = bool (Sw.maybeSpeedChange ccResult) Nothing active
       }
 
   -- Note that we always need to capture everything before the trigger

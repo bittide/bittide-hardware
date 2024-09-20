@@ -26,10 +26,11 @@ impl SpeedChange {
 //          Field name |     Type | Byte offset | Notes
 //           num_links |       u8 |           0 |
 //           link_mask |      u32 |           4 |
-//           finc_fdec |      u32 |           8 | write `SpeedChange` values
-//        links_stable |      u32 |          12 |
-//       links_settled |      u32 |          16 |
-//   data_counts_start | [i32; N] |          20 | masked by `link_mask`
+//   reframing_enabled |      u32 |           8 |
+//           finc_fdec |      u32 |          12 | write `SpeedChange` values
+//        links_stable |      u32 |          16 |
+//       links_settled |      u32 |          20 |
+//   data_counts_start | [i32; N] |          24 | masked by `link_mask`
 pub struct ClockControl {
     base_addr: *const u32,
 }
@@ -56,12 +57,16 @@ impl ClockControl {
         unsafe { self.base_addr.add(1).read_volatile() }
     }
 
+    pub fn reframing_enabled(&self) -> bool {
+        unsafe { self.base_addr.add(2).read_volatile() != 0 }
+    }
+
     pub fn change_speed(&mut self, speed_change: SpeedChange) {
         // SAFETY: This is safe since this function can only be called
         // after construction, which is only valid with valid addresses.
         unsafe {
             self.base_addr
-                .add(2)
+                .add(3)
                 .cast_mut()
                 .write_volatile(speed_change as u32);
         }
@@ -75,7 +80,7 @@ impl ClockControl {
     pub fn links_stable(&self) -> u32 {
         // SAFETY: This is safe since this function can only be called
         // after construction, which is only valid with valid addresses.
-        unsafe { self.base_addr.add(3).read_volatile() }
+        unsafe { self.base_addr.add(4).read_volatile() }
     }
 
     pub fn link_settled(&self, link: u8) -> bool {
@@ -93,6 +98,6 @@ impl ClockControl {
         let n = self.num_links();
         // NOTE: Consider fixed length loop version?
         // TODO: Mask out values read whose bit is not set in `link_mask()`.
-        (5..5 + n).map(|i| unsafe { self.base_addr.add(i as usize).cast::<i32>().read_volatile() })
+        (6..6 + n).map(|i| unsafe { self.base_addr.add(i as usize).cast::<i32>().read_volatile() })
     }
 }
