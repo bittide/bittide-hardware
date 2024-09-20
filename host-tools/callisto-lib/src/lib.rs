@@ -275,7 +275,7 @@ fn control_state_to_ffi(st: &callisto::ControlSt, rs: &mut ControlSt) {
 
 fn control_config_from_ffi(cfg: &ControlConfig) -> callisto::ControlConfig {
     callisto::ControlConfig {
-        reframing_enabled: cfg.reframing_enabled,
+        reframing_enabled: cfg.reframing_enabled != 0,
         wait_time: cfg.wait_time,
         target_count: cfg.target_count,
     }

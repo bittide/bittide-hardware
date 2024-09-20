@@ -31,7 +31,7 @@ pub struct ControlConfig {
     /// Enable reframing. Reframing allows a system to resettle buffers around
     /// their midpoints, without dropping any frames. For more information, see
     /// [arXiv:2303.11467](https://arxiv.org/abs/2303.11467).
-    pub reframing_enabled: usize,
+    pub reframing_enabled: bool,
     /// Number of cycles to wait until reframing takes place after
     /// stability has been detected.
     pub wait_time: usize,
@@ -140,7 +140,7 @@ pub fn callisto(
 
     state.rf_state_update(
         config.wait_time,
-        config.reframing_enabled != 0,
+        config.reframing_enabled,
         links_stable.count_ones() == n_buffers,
         c_des,
     );

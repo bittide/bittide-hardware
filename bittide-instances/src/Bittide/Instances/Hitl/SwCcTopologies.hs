@@ -39,34 +39,30 @@ import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe, isJust)
 import Data.Proxy
 import GHC.Float.RealFracMethods (roundFloatInteger)
-import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
-import System.FilePath
 
 import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
-import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
-import Bittide.ClockControl.Registers (clockControlWb)
+import Bittide.ClockControl.CallistoSw
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
-import Bittide.DoubleBufferedRam
 import Bittide.ElasticBuffer
 import Bittide.Instances.Domains
-import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.ProcessingElement.Util (memBlobsFromElf)
-import Bittide.SharedTypes (ByteOrder (BigEndian))
 import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology
 import Bittide.Transceiver (transceiverPrbsN)
 
 import Bittide.Hitl
-
-import Bittide.Instances.Hitl.IlaPlot
+import Bittide.Instances.Hitl.IlaPlot (
+  IlaControl (..),
+  IlaPlotSetup (..),
+  callistoSwClockControlWithIla,
+  ilaPlotSetup,
+ )
 import Bittide.Instances.Hitl.Setup
-import Project.FilePath
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.Counter
@@ -77,11 +73,6 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra (xpmCdcMaybeLossy)
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen
-
-import Protocols hiding (SimulationConfig)
-
--- import Protocols.Wishbone
-import VexRiscv
 
 import qualified Bittide.Arithmetic.PartsPer as PartsPer
 import qualified Bittide.Transceiver as Transceiver
@@ -167,6 +158,7 @@ disabled =
     , initialClockShift = Nothing
     , startupDelay = 0
     , mask = 0
+    , reframingEnabled = False
     }
 
 -- | The test configuration.
@@ -189,6 +181,8 @@ data TestConfig = TestConfig
   -- cycles of the stable clock.
   , mask :: BitVector LinkCount
   -- ^ The link mask depending on the selected topology.
+  , reframingEnabled :: Bool
+  -- ^ Whether or not to run this test with reframing enabled.
   }
   deriving (Generic, NFDataX, BitPack, Show)
 
@@ -215,7 +209,7 @@ topologyTest ::
   ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
   , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
-  , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult LinkCount)
+  , "CALLISTO_SW_RESULT" ::: Signal Basic125 (CallistoSwResult LinkCount)
   , "CALLISTO_RESET" ::: Reset Basic125
   , "DATA_COUNTERS" ::: Vec LinkCount (Signal Basic125 (RelDataCount 32))
   , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
@@ -236,7 +230,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   fincFdecIla
     `hwSeqX` ( transceivers.txNs
              , transceivers.txPs
-             , swFincFdecs
+             , fincFdecs
              , callistoResult
              , clockControlReset
              , domainDiffs
@@ -317,18 +311,36 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     startupDelayRst
       `orReset` unsafeFromActiveLow ((==) <$> delayCount <*> (startupDelay <$> cfg))
 
-  (clockMod, stabilities, allStable0, _allCentered) =
-    unbundle
-      $ fmap
-        (\CallistoResult{..} -> (maybeSpeedChange, stability, allStable, allSettled))
-        callistoResult
+  ( clockMod
+    , stabilities
+    , allStable0
+    , _allCentered
+    , swUpdatePeriod
+    , swUpdatePeriodMin
+    , swUpdatePeriodMax
+    ) =
+      unbundle
+        $ fmap
+          ( \CallistoSwResult{..} ->
+              ( maybeSpeedChange
+              , stability
+              , allStable
+              , allSettled
+              , updatePeriod
+              , updatePeriodMin
+              , updatePeriodMax
+              )
+          )
+          callistoResult
+
+  fincFdecs = speedChangeToPins . fromMaybe NoChange <$> clockMod
 
   callistoResult =
-    callistoClockControlWithIla @LinkCount @CccBufferSize
+    callistoSwClockControlWithIla @LinkCount @CccBufferSize
       (head transceivers.txClocks)
       sysClk
       clockControlReset
-      clockControlConfig
+      (reframingEnabled <$> cfg)
       IlaControl{..}
       (mask <$> cfg)
       (fmap (fmap resize) domainDiffs)
@@ -400,13 +412,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "swUpdatePeriod"
           :> "swUpdatePeriodMin"
           :> "swUpdatePeriodMax"
-          :> "probe_syncRst"
-          :> "probe_gthAllReset"
-          :> "probe_startupDelayRst"
-          :> "probe_clockControlReset"
-          :> "probe_notInCCReset"
-          :> "probe_txResets2"
-          :> "probe_swCcRst"
           :> Nil
       )
         { depth = D16384
@@ -471,17 +476,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       swUpdatePeriod
       swUpdatePeriodMin
       swUpdatePeriodMax
-      (unsafeFromReset syncRst)
-      (unsafeFromReset gthAllReset)
-      (unsafeFromReset startupDelayRst)
-      (unsafeFromReset clockControlReset)
-      notInCCReset
-      txResetsThing
-      (unsafeFromReset swCcRst)
-
-  txResetsThing = bundle $ zipWith oofOwOuchie transceivers.txClocks txResets2
-   where
-    oofOwOuchie txClock txReset = unsafeSynchronizer txClock sysClk $ unsafeFromReset txReset
 
   captureFlag =
     riseEvery
@@ -715,41 +709,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     , stability6
     ) = vecToTuple $ unbundle stabilities
 
-  -- Create the VexRiscV instance
-
-  margin = d2
-  framesize = SNat @(PeriodToCycles Basic125 (Seconds 1))
-
-  swCcRst = orReset clockControlReset adjustRst
-  (_, (swFincFdecs, swUpdatePeriod)) =
-    toSignals
-      ( circuit $ \jtag -> do
-          [wbB] <-
-            withClockResetEnable sysClk swCcRst enableGen $ processingElement peConfig -< jtag
-          (swFincFdecs, _rvAllStable, swUpdatePeriod) <-
-            withClockResetEnable sysClk swCcRst enableGen
-              $ clockControlWb margin framesize (pure $ complement 0) domainDiffs
-              -< wbB
-          idC -< (swFincFdecs, swUpdatePeriod)
-      )
-      (pure $ JtagIn low low low, (pure (), pure ()))
-  FillStats swUpdatePeriodMin swUpdatePeriodMax = unbundle $ fillStats sysClk swCcRst swUpdatePeriod
-  (iMem, dMem) =
-    $( do
-        root <- runIO $ findParentContaining "cabal.project"
-        let
-          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-          elfPath = elfDir </> "clock-control"
-          iSize = 64 * 1024 -- 64 KB
-          dSize = 64 * 1024 -- 64 KB
-        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
-     )
-  peConfig =
-    PeConfig
-      (0b10 :> 0b01 :> 0b11 :> Nil)
-      (Reloadable $ Blob iMem)
-      (Reloadable $ Blob dMem)
-
 {- | Tracks the min/max values of the input during the last milliseconds
 
 Updates once per millisecond.
@@ -982,6 +941,7 @@ tests = testGroup
                     , initialClockShift = Nothing
                     , startupDelay = 0
                     , mask = maxBound
+                    , reframingEnabled = False
                     })
       , postProcData =
           defSimCfg
@@ -998,19 +958,21 @@ tests = testGroup
     Maybe (Vec n PartsPer) ->
     Vec n StartupDelay ->
     Topology n ->
+    Bool ->
     HitlTestCase HwTargetRef TestConfig CcConf
-  tt clockShifts startDelays t =
+  tt clockShifts startDelays t r =
     HitlTestCase
       { name = topologyName t
       , parameters =
           Map.fromList
             $ toList
-              ( zipWith4
+              ( zipWith5
                   testData
                   indicesI
                   (maybeVecToVecMaybe (map partsPerToSteps <$> clockShifts))
                   startDelays
                   (linkMasks @n t)
+                  (repeat r)
               )
             <> [ (HwTargetByIndex (fromInteger i), disabled)
                | let n = natToNum @n
@@ -1021,6 +983,7 @@ tests = testGroup
             { ccTopologyType = topologyType t
             , clockOffsets = toList <$> clockShifts
             , startupDelays = fromIntegral <$> toList startDelays
+            , reframe = r
             }
       }
 
@@ -1036,8 +999,9 @@ tests = testGroup
     Maybe FincFdecCount ->
     StartupDelay ->
     BitVector LinkCount ->
+    Bool ->
     (HwTargetRef, TestConfig)
-  testData i initialClockShift startupDelay mask =
+  testData i initialClockShift startupDelay mask reframingEnabled =
     ( HwTargetByIndex (fromIntegral i)
     , TestConfig
         { fpgaEnabled = True
@@ -1056,14 +1020,14 @@ tests = testGroup
         [ -- detect the natual clock offsets to be elided from the later tests
           calibrateClockOffsets
 
-          -- initial clock shifts   startup delays            topology
-        , tt (Just icsDiamond)      ((m *) <$> sdDiamond)     diamond
-        , tt (Just icsComplete)     ((m *) <$> sdComplete)    (complete d3)
-        , tt (Just icsCyclic)       ((m *) <$> sdCyclic)      (cyclic d5)
-        , tt (Just icsTorus)        ((m *) <$> sdTorus)       (torus2d d2 d3)
-        , tt (Just icsStar)         ((m *) <$> sdStar)        (star d7)
-        , tt (Just icsLine)         ((m *) <$> sdLine)        (line d4)
-        , tt (Just icsHourglass)    ((m *) <$> sdHourglass)   (hourglass d3)
+          -- initial clock shifts   startup delays            topology          enable reframing?
+        , tt (Just icsDiamond)      ((m *) <$> sdDiamond)     diamond           False
+        , tt (Just icsComplete)     ((m *) <$> sdComplete)    (complete d3)     False
+        , tt (Just icsCyclic)       ((m *) <$> sdCyclic)      (cyclic d5)       False
+        , tt (Just icsTorus)        ((m *) <$> sdTorus)       (torus2d d2 d3)   False
+        , tt (Just icsStar)         ((m *) <$> sdStar)        (star d7)         False
+        , tt (Just icsLine)         ((m *) <$> sdLine)        (line d4)         False
+        , tt (Just icsHourglass)    ((m *) <$> sdHourglass)   (hourglass d3)    False
 
           -- make sure the clock offsets detected during calibration is still the same
         , validateClockOffsetCalibration

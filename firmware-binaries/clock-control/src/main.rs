@@ -22,7 +22,7 @@ fn main() -> ! {
     let config = ControlConfig {
         target_count: 0,
         wait_time: 0,
-        reframing_enabled: 0,
+        reframing_enabled: cc.reframing_enabled(),
     };
     let mut state = ControlSt {
         z_k: 0,
