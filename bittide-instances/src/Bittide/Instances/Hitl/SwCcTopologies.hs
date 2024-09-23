@@ -418,7 +418,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_clockControlReset"
           :> "probe_notInCCReset"
           :> "probe_txResets2"
-          :> "probe_swCcRst"
           :> Nil
       )
         { depth = D16384
@@ -489,7 +488,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       (unsafeFromReset clockControlReset)
       notInCCReset
       txResetsThing
-      (unsafeFromReset swCcRst)
 
   txResetsThing = bundle $ zipWith oofOwOuchie transceivers.txClocks txResets2
    where
