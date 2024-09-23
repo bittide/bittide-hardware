@@ -43,5 +43,6 @@ systemctl daemon-reload
 systemctl enable fpganet.service
 systemctl restart fpganet.service
 
+systemctl disable isc-dhcp-server6.service
 systemctl enable isc-dhcp-server.service
 systemctl restart isc-dhcp-server.service
