@@ -526,8 +526,8 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
             (filterIndicators <$> fmap bv2v mask <*> (stability <$> result))
 
         -- get the points in time where the monitored values change
-        stableUpdates = changepoints clk rst enableGen <$> (fmap stable <$> idcs)
-        settledUpdates = changepoints clk rst enableGen <$> (fmap settled <$> idcs)
+        stableUpdates = (changepoints clk rst enableGen . fmap stable <$> idcs)
+        settledUpdates = (changepoints clk rst enableGen . fmap settled <$> idcs)
         modeUpdate = changepoints clk rst enableGen (rfStageChange <$> result)
 
         combine eb stU seU ind =
@@ -658,9 +658,13 @@ callistoSwClockControlWithIla ::
   Clock dyn ->
   Clock sys ->
   Reset sys ->
+  -- | Enable reframing?
   Signal sys Bool ->
+  -- | Ila trigger and capture conditions
   IlaControl sys ->
+  -- | Link availability mask
   Signal sys (BitVector n) ->
+  -- | Statistics provided by elastic buffers.
   Vec n (Signal sys (RelDataCount m)) ->
   Signal sys (Sw.CallistoSwResult n)
 callistoSwClockControlWithIla dynClk clk rst reframe IlaControl{..} mask ebs =
@@ -679,6 +683,7 @@ callistoSwClockControlWithIla dynClk clk rst reframe IlaControl{..} mask ebs =
       @(DivRU ScheduledCapturePeriod (Max 1 (DomainPeriod dyn)))
       @(Div (ScheduledCaptureCycles dyn) 10)
 
+  -- local timestamp on the stable clock
   localTs :: Signal sys (DiffResult (LocalTimestamp dyn))
   localTs = case maxGeqPlusApp of
     Dict ->
@@ -702,8 +707,8 @@ callistoSwClockControlWithIla dynClk clk rst reframe IlaControl{..} mask ebs =
             (filterIndicators <$> fmap bv2v mask <*> (Sw.stability <$> result))
 
         -- get the points in time where the monitored values change
-        stableUpdates = changepoints clk rst enableGen <$> (fmap stable <$> idcs)
-        settledUpdates = changepoints clk rst enableGen <$> (fmap settled <$> idcs)
+        stableUpdates = (changepoints clk rst enableGen . fmap stable <$> idcs)
+        settledUpdates = (changepoints clk rst enableGen . fmap settled <$> idcs)
 
         combine eb stU seU ind =
           (,,)
@@ -717,6 +722,8 @@ callistoSwClockControlWithIla dynClk clk rst reframe IlaControl{..} mask ebs =
           <*> accWindow height clk rst enableGen (noChange <$> result)
           <*> pure Stable
 
+  -- compress the elastic buffer data via only reporting the
+  -- differences since the last capture
   (ebDataChange, ebsC) =
     second unbundle
       $ let transF storedDataCounts (trigger, curDataCounts) =

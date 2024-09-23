@@ -40,6 +40,7 @@ data CallistoSwResult (n :: Nat) = CallistoSwResult
   , updatePeriodMin :: Int
   , updatePeriodMax :: Int
   }
+  deriving (Generic, NFDataX)
 
 callistoSwClockControl ::
   forall nLinks eBufBits dom.
@@ -78,13 +79,12 @@ callistoSwClockControl clk rst ena reframe mask ebs = callistoSwResult
           [wbB] <-
             withClockResetEnable clk rst ena $ processingElement peConfig -< jtag
           (fincFdec, stabilities, allStable, allSettled, updatePeriod) <-
-            withClockResetEnable clk rst enableGen
+            withClockResetEnable clk rst ena
               $ clockControlWb2 margin' framesize' mask reframe ebs
               -< wbB
           idC -< (fincFdec, stabilities, allStable, allSettled, updatePeriod)
       )
       (pure $ JtagIn low low low, (pure (), pure (), pure (), pure (), pure ()))
-  -- _
   ccUpdatePeriodMin = register clk rst ena (complement 0) (min <$> ccUpdatePeriodMin <*> ccUpdatePeriod)
   ccUpdatePeriodMax = register clk rst ena 0 (max <$> ccUpdatePeriodMax <*> ccUpdatePeriod)
   (iMem, dMem) =
