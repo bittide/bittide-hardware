@@ -91,7 +91,7 @@ impl ClockControl {
     pub fn links_settled(&self) -> u32 {
         // SAFETY: This is safe since this function can only be called
         // after construction, which is only valid with valid addresses.
-        unsafe { self.base_addr.add(4).read_volatile() }
+        unsafe { self.base_addr.add(5).read_volatile() }
     }
 
     pub fn data_counts(&self) -> impl Iterator<Item = i32> + '_ {
