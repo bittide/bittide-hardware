@@ -2,8 +2,12 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-set_property BOARD_PART_PIN sysclk_300_n [get_ports SYSCLK_300_n]
-set_property BOARD_PART_PIN sysclk_300_p [get_ports SYSCLK_300_p]
+# CLK_125MHZ_P
+set_property PACKAGE_PIN G10 [get_ports "CLK_125MHZ_p"]
+set_property IOSTANDARD LVDS [get_ports "CLK_125MHZ_p"]
+# CLK_125MHZ_P
+set_property PACKAGE_PIN F10 [get_ports "CLK_125MHZ_n"]
+set_property IOSTANDARD LVDS [get_ports "CLK_125MHZ_n"]
 set_property BOARD_PART_PIN sma_mgt_refclk_n [get_ports SMA_MGT_REFCLK_C_n]
 set_property BOARD_PART_PIN sma_mgt_refclk_p [get_ports SMA_MGT_REFCLK_C_p]
 
@@ -11,7 +15,7 @@ set_property BOARD_PART_PIN GPIO_LED_0_LS [get_ports spiDone]
 
 set_clock_groups \
   -asynchronous \
-  -group [get_clocks -include_generated_clocks {SYSCLK_300_p}] \
+  -group [get_clocks -include_generated_clocks {CLK_125MHZ_p}] \
   -group [get_clocks -include_generated_clocks {USER_SMA_CLOCK_p}] \
   -group [get_clocks -include_generated_clocks {SMA_MGT_REFCLK_C_p}]
 
