@@ -649,12 +649,14 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
       }
 
 callistoSwClockControlWithIla ::
-  forall n m sys dyn.
+  forall n m sys dyn margin framesize.
   (HasCallStack) =>
   (KnownDomain dyn, KnownDomain sys, HasSynchronousReset sys) =>
   (KnownNat n, KnownNat m) =>
-  (1 <= n, 1 <= m, n + m <= 32, 6 + n * (m + 4) <= 1024) =>
+  (1 <= n, 1 <= m, n + m <= 32, 6 + n * (m + 4) <= 1024, 1 <= framesize) =>
   (CompressedBufferSize <= m) =>
+  SNat margin ->
+  SNat framesize ->
   Clock dyn ->
   Clock sys ->
   Reset sys ->
@@ -667,10 +669,10 @@ callistoSwClockControlWithIla ::
   -- | Statistics provided by elastic buffers.
   Vec n (Signal sys (RelDataCount m)) ->
   Signal sys (Sw.CallistoSwResult n)
-callistoSwClockControlWithIla dynClk clk rst reframe IlaControl{..} mask ebs =
+callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask ebs =
   hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> result)
  where
-  result = Sw.callistoSwClockControl clk rst enableGen reframe mask ebs
+  result = Sw.callistoSwClockControl mgn fsz clk rst enableGen reframe mask ebs
 
   filterCounts vMask vCounts = flip map (zip vMask vCounts)
     $ \(isActive, count) -> if isActive == high then count else 0

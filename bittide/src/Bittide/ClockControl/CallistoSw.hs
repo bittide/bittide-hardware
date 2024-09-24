@@ -43,14 +43,17 @@ data CallistoSwResult (n :: Nat) = CallistoSwResult
   deriving (Generic, NFDataX)
 
 callistoSwClockControl ::
-  forall nLinks eBufBits dom.
+  forall nLinks eBufBits dom margin framesize.
   ( KnownDomain dom
   , KnownNat nLinks
   , KnownNat eBufBits
   , 1 <= nLinks
   , 1 <= eBufBits
   , nLinks + eBufBits <= 32
+  , 1 <= framesize
   ) =>
+  SNat margin ->
+  SNat framesize ->
   Clock dom ->
   Reset dom ->
   Enable dom ->
@@ -58,7 +61,7 @@ callistoSwClockControl ::
   Signal dom (BitVector nLinks) ->
   Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
   Signal dom (CallistoSwResult nLinks)
-callistoSwClockControl clk rst ena reframe mask ebs = callistoSwResult
+callistoSwClockControl mgn fsz clk rst ena reframe mask ebs = callistoSwResult
  where
   callistoSwResult =
     CallistoSwResult
@@ -70,9 +73,6 @@ callistoSwClockControl clk rst ena reframe mask ebs = callistoSwResult
       <*> ccUpdatePeriodMin
       <*> ccUpdatePeriodMax
 
-  margin' = d2
-  framesize' = SNat @(PeriodToCycles dom (Seconds 1))
-
   (_, (fincFdec, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod)) =
     toSignals
       ( circuit $ \jtag -> do
@@ -80,7 +80,7 @@ callistoSwClockControl clk rst ena reframe mask ebs = callistoSwResult
             withClockResetEnable clk rst ena $ processingElement peConfig -< jtag
           (fincFdec, stabilities, allStable, allSettled, updatePeriod) <-
             withClockResetEnable clk rst ena
-              $ clockControlWb2 margin' framesize' mask reframe ebs
+              $ clockControlWb2 mgn fsz mask reframe ebs
               -< wbB
           idC -< (fincFdec, stabilities, allStable, allSettled, updatePeriod)
       )
