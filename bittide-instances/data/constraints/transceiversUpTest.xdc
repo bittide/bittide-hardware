@@ -2,8 +2,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-set_property BOARD_PART_PIN sysclk_300_n [get_ports SYSCLK_300_n]
-set_property BOARD_PART_PIN sysclk_300_p [get_ports SYSCLK_300_p]
+set_property BOARD_PART_PIN sysclk_125_n [get_ports SYSCLK_125_n]
+set_property BOARD_PART_PIN sysclk_125_p [get_ports SYSCLK_125_p]
 set_property BOARD_PART_PIN sma_mgt_refclk_n [get_ports SMA_MGT_REFCLK_C_n]
 set_property BOARD_PART_PIN sma_mgt_refclk_p [get_ports SMA_MGT_REFCLK_C_p]
 
@@ -11,7 +11,7 @@ set_property BOARD_PART_PIN GPIO_LED_0_LS [get_ports spiDone]
 
 set_clock_groups \
   -asynchronous \
-  -group [get_clocks -include_generated_clocks {SYSCLK_300_p}] \
+  -group [get_clocks -include_generated_clocks {SYSCLK_125_p}] \
   -group [get_clocks -include_generated_clocks {SMA_MGT_REFCLK_C_p}]
 
 # Color   | FPGA pin      | LVLSHFT       | Connection
