@@ -659,21 +659,13 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     , ugnD5
     , ugnD6
     ) = vecToTuple freeUgnDatas
-  (ugn0, fill0, ugnStable0, fillStats0) = unbundle ugnD0
-  (ugn1, fill1, ugnStable1, fillStats1) = unbundle ugnD1
-  (ugn2, fill2, ugnStable2, fillStats2) = unbundle ugnD2
-  (ugn3, fill3, ugnStable3, fillStats3) = unbundle ugnD3
-  (ugn4, fill4, ugnStable4, fillStats4) = unbundle ugnD4
-  (ugn5, fill5, ugnStable5, fillStats5) = unbundle ugnD5
-  (ugn6, fill6, ugnStable6, fillStats6) = unbundle ugnD6
-
-  FillStats fillMin0 fillMax0 = unbundle fillStats0
-  FillStats fillMin1 fillMax1 = unbundle fillStats1
-  FillStats fillMin2 fillMax2 = unbundle fillStats2
-  FillStats fillMin3 fillMax3 = unbundle fillStats3
-  FillStats fillMin4 fillMax4 = unbundle fillStats4
-  FillStats fillMin5 fillMax5 = unbundle fillStats5
-  FillStats fillMin6 fillMax6 = unbundle fillStats6
+  (ugn0, _fill0, ugnStable0, _fillStats0) = unbundle ugnD0
+  (ugn1, _fill1, ugnStable1, _fillStats1) = unbundle ugnD1
+  (ugn2, _fill2, ugnStable2, _fillStats2) = unbundle ugnD2
+  (ugn3, _fill3, ugnStable3, _fillStats3) = unbundle ugnD3
+  (ugn4, _fill4, ugnStable4, _fillStats4) = unbundle ugnD4
+  (ugn5, _fill5, ugnStable5, _fillStats5) = unbundle ugnD5
+  (ugn6, _fill6, ugnStable6, _fillStats6) = unbundle ugnD6
 
   ( stability0
     , stability1
