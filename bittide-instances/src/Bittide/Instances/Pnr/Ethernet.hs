@@ -153,8 +153,8 @@ vexRiscEthernet sysClk sysRst sgmiiPhyClk (jtagin, uartIn, sgmiiIn) =
   (uartOut, gmiiOut, jtagOut, gpioOut) = vexRiscGmii SNat sysClk sysRst rxClk rxRst rxClk rxRst (uartIn, bridgeGmiiRx, jtagin)
 
 vexRiscEthernetTop ::
-  "CLK_300MHZ" ::: DiffClock Ext300 ->
-  "CPU_RESET" ::: Reset Ext300 ->
+  "CLK_125MHZ" ::: DiffClock Ext125 ->
+  "CPU_RESET" ::: Reset Ext125 ->
   "sgmii_phyclk" ::: DiffClock Basic625 ->
   ( "JTAG" ::: Signal Basic125B JtagIn
   , "USB_UART_TXD" ::: Signal Basic125B Bit

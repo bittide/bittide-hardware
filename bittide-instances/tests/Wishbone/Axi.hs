@@ -69,7 +69,7 @@ dut ::
   forall dom baud.
   (KnownDomain dom, ValidBaud dom baud) =>
   SNat baud ->
-  "SYSCLK_300" ::: DiffClock Ext300 ->
+  "SYSCLK_125" ::: DiffClock Ext125 ->
   "CPU_RESET" ::: Reset dom ->
   ("USB_UART_TX" ::: Signal dom Bit, Signal dom ()) ->
   (Signal dom (), "USB_UART_RX" ::: Signal dom Bit)
