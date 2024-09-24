@@ -150,11 +150,14 @@ clockControlWb2 ::
     , CSignal dom ("ALL_SETTLED" ::: Bool)
     , "updatePeriod" ::: CSignal dom Int
     )
-clockControlWb2 margin framesize linkMask reframing counters = Circuit go
+clockControlWb2 mgn fsz linkMask reframing counters = Circuit go
  where
   go (wbM2S, _) = (wbS2M, (fIncDec2, stabilityIndications, allStable, allSettled, updatePeriod))
    where
-    stabilityIndications = bundle $ stabilityChecker margin framesize <$> counters
+    filterCounters vMask vCounts = flip map (zip vMask vCounts)
+      $ \(isActive, count) -> if isActive == high then count else 0
+    filteredCounters = filterCounters <$> fmap bv2v linkMask <*> bundle counters
+    stabilityIndications = bundle $ stabilityChecker mgn fsz <$> unbundle filteredCounters
     readVec =
       dflipflop
         <$> ( pure (natToNum @nLinks)
