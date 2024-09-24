@@ -71,8 +71,8 @@ import Clash.Annotations.TH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
 
--- | An 'Index' counting to /n/ seconds on 'Basic300'
-type IndexSeconds n = Index (PeriodToCycles Basic300 (Seconds n))
+-- | An 'Index' counting to /n/ seconds on 'Basic125'
+type IndexSeconds n = Index (PeriodToCycles Basic125 (Seconds n))
 
 -- | Status of test. Used to communicate test success/failure to host computer.
 data TestStatus
@@ -132,9 +132,9 @@ testStatusToDoneSuccess = \case
 
 -- | Entry point for test. See module documentation for more information.
 syncInSyncOut ::
-  "SYSCLK_300" ::: DiffClock Ext300 ->
-  "SYNC_IN" ::: Signal Basic300 Bool ->
-  "SYNC_OUT" ::: Signal Basic300 Bool
+  "SYSCLK_125" ::: DiffClock Ext125 ->
+  "SYNC_IN" ::: Signal Basic125 Bool ->
+  "SYNC_OUT" ::: Signal Basic125 Bool
 syncInSyncOut sysClkDiff syncIn0 = syncOut
  where
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
@@ -151,7 +151,7 @@ syncInSyncOut sysClkDiff syncIn0 = syncOut
   syncOut =
     delay sysClk enableGen False
       $ mealy sysClk testRst enableGen genFsm GInReset (pure ()) -- << filter glitches in output
-  startTest :: Signal Basic300 Bool
+  startTest :: Signal Basic125 Bool
   startTest = hitlVioBool sysClk testDone testSuccess
 
 makeTopEntity 'syncInSyncOut

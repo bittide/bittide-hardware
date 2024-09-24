@@ -209,7 +209,7 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxNs rxPs miso =
 -- | Top entity for this test. See module documentation for more information.
 linkConfigurationTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
-  "SYSCLK_300" ::: DiffClock Ext300 ->
+  "SYSCLK_125" ::: DiffClock Ext125 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
   "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->

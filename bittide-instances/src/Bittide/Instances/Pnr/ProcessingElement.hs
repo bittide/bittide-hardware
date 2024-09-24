@@ -28,7 +28,7 @@ import Project.FilePath
 Runs the `hello` binary from `firmware-binaries`.
 -}
 vexRiscUartHello ::
-  "SYSCLK_300" ::: DiffClock Ext300 ->
+  "SYSCLK_125" ::: DiffClock Ext125 ->
   "CPU_RESET" ::: Reset Basic200 ->
   ( ""
       ::: ( "USB_UART_TX" ::: Signal Basic200 Bit

@@ -583,7 +583,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 -- | Top entity for this test. See module documentation for more information.
 hwCcTopologyWithRiscvTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
-  "SYSCLK_300" ::: DiffClock Ext300 ->
+  "SYSCLK_125" ::: DiffClock Ext125 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
   "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
@@ -683,7 +683,7 @@ makeTopEntity 'hwCcTopologyWithRiscvTest
 -- | Top entity for this test. See module documentation for more information.
 hwCcTopologyTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
-  "SYSCLK_300" ::: DiffClock Ext300 ->
+  "SYSCLK_125" ::: DiffClock Ext125 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
   "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
