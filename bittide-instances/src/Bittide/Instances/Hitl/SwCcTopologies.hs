@@ -337,6 +337,8 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
   callistoResult =
     callistoSwClockControlWithIla @LinkCount @CccBufferSize
+      E.d25
+      (SNat @(PeriodToCycles Basic125 (Seconds 1)))
       (head transceivers.txClocks)
       sysClk
       clockControlReset
