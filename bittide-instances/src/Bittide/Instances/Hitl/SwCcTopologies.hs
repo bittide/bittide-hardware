@@ -372,27 +372,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_ugn4"
           :> "probe_ugn5"
           :> "probe_ugn6"
-          :> "probe_fill0"
-          :> "probe_fill2"
-          :> "probe_fill1"
-          :> "probe_fill3"
-          :> "probe_fill4"
-          :> "probe_fill5"
-          :> "probe_fill6"
-          :> "probe_fillMin0"
-          :> "probe_fillMin2"
-          :> "probe_fillMin1"
-          :> "probe_fillMin3"
-          :> "probe_fillMin4"
-          :> "probe_fillMin5"
-          :> "probe_fillMin6"
-          :> "probe_fillMax0"
-          :> "probe_fillMax2"
-          :> "probe_fillMax1"
-          :> "probe_fillMax3"
-          :> "probe_fillMax4"
-          :> "probe_fillMax5"
-          :> "probe_fillMax6"
           :> "stability0"
           :> "stability1"
           :> "stability2"
@@ -414,12 +393,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "swUpdatePeriod"
           :> "swUpdatePeriodMin"
           :> "swUpdatePeriodMax"
-          :> "probe_syncRst"
-          :> "probe_gthAllReset"
-          :> "probe_startupDelayRst"
-          :> "probe_clockControlReset"
-          :> "probe_notInCCReset"
-          :> "probe_txResets2"
           :> "probe_dDiff0"
           :> "probe_dDiff1"
           :> "probe_dDiff2"
@@ -449,27 +422,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       ugn4
       ugn5
       ugn6
-      fill0
-      fill1
-      fill2
-      fill3
-      fill4
-      fill5
-      fill6
-      fillMin0
-      fillMin1
-      fillMin2
-      fillMin3
-      fillMin4
-      fillMin5
-      fillMin6
-      fillMax0
-      fillMax1
-      fillMax2
-      fillMax3
-      fillMax4
-      fillMax5
-      fillMax6
       stability0
       stability1
       stability2
@@ -491,12 +443,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       swUpdatePeriod
       swUpdatePeriodMin
       swUpdatePeriodMax
-      (unsafeFromReset syncRst)
-      (unsafeFromReset gthAllReset)
-      (unsafeFromReset startupDelayRst)
-      (unsafeFromReset clockControlReset)
-      notInCCReset
-      txResetsThing
       dDiff0
       dDiff1
       dDiff2
@@ -504,10 +450,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       dDiff4
       dDiff5
       dDiff6
-
-  txResetsThing = bundle $ zipWith oofOwOuchie transceivers.txClocks txResets2
-   where
-    oofOwOuchie txClock txReset = unsafeSynchronizer txClock sysClk $ unsafeFromReset txReset
 
   captureFlag =
     riseEvery
