@@ -420,6 +420,13 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_clockControlReset"
           :> "probe_notInCCReset"
           :> "probe_txResets2"
+          :> "probe_dDiff0"
+          :> "probe_dDiff1"
+          :> "probe_dDiff2"
+          :> "probe_dDiff3"
+          :> "probe_dDiff4"
+          :> "probe_dDiff5"
+          :> "probe_dDiff6"
           :> Nil
       )
         { depth = D16384
@@ -490,6 +497,13 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       (unsafeFromReset clockControlReset)
       notInCCReset
       txResetsThing
+      dDiff0
+      dDiff1
+      dDiff2
+      dDiff3
+      dDiff4
+      dDiff5
+      dDiff6
 
   txResetsThing = bundle $ zipWith oofOwOuchie transceivers.txClocks txResets2
    where
@@ -615,6 +629,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       EQ -> NoChange
       GT -> SpeedUp
 
+  domainDiffs :: Vec LinkCount (Signal Basic125 FincFdecCount)
   domainDiffs =
     domainDiffCounterExt sysClk clockControlReset
       <$> transceivers.rxClocks
@@ -726,6 +741,14 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     , stability5
     , stability6
     ) = vecToTuple $ unbundle stabilities
+  ( dDiff0
+    , dDiff1
+    , dDiff2
+    , dDiff3
+    , dDiff4
+    , dDiff5
+    , dDiff6
+    ) = vecToTuple domainDiffs
 
 {- | Tracks the min/max values of the input during the last milliseconds
 
