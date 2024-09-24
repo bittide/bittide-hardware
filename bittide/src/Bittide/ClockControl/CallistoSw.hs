@@ -16,7 +16,6 @@ import Clash.Prelude (withClockResetEnable)
 import Language.Haskell.TH (runIO)
 import System.FilePath
 
-import Bittide.Arithmetic.Time
 import Bittide.ClockControl (RelDataCount, SpeedChange)
 import Bittide.ClockControl.Registers (clockControlWb2)
 import Bittide.ClockControl.StabilityChecker (StabilityIndication)
