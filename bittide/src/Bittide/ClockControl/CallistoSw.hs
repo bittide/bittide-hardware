@@ -77,11 +77,11 @@ callistoSwClockControl mgn fsz clk rst ena reframe mask ebs = callistoSwResult
       ( circuit $ \jtag -> do
           [wbB] <-
             withClockResetEnable clk rst ena $ processingElement peConfig -< jtag
-          (fincFdec, stabilities, allStable, allSettled, updatePeriod) <-
+          (fincFdec, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod) <-
             withClockResetEnable clk rst ena
               $ clockControlWb2 mgn fsz mask reframe ebs
               -< wbB
-          idC -< (fincFdec, stabilities, allStable, allSettled, updatePeriod)
+          idC -< (fincFdec, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod)
       )
       (pure $ JtagIn low low low, (pure (), pure (), pure (), pure (), pure ()))
   ccUpdatePeriodMin = register clk rst ena (complement 0) (min <$> ccUpdatePeriodMin <*> ccUpdatePeriod)
