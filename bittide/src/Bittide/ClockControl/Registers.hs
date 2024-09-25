@@ -166,8 +166,8 @@ clockControlWb2 mgn fsz linkMask reframing counters = Circuit go
    where
     filterCounters vMask vCounts = flip map (zip vMask vCounts)
       $ \(isActive, count) -> if isActive == high then count else 0
-    filteredCounters = filterCounters <$> fmap bv2v linkMask <*> bundle counters
-    stabilityIndications = bundle $ stabilityChecker mgn fsz <$> unbundle filteredCounters
+    filteredCounters = unbundle $ filterCounters <$> fmap bv2v linkMask <*> bundle counters
+    stabilityIndications = bundle $ stabilityChecker mgn fsz <$> filteredCounters
     readVec =
       dflipflop
         <$> ( (resize . pack <$> rfsKind1)
@@ -177,12 +177,19 @@ clockControlWb2 mgn fsz linkMask reframing counters = Circuit go
                 :> (zeroExtend @_ @_ @(32 - nLinks) <$> linkMask)
                 :> (zeroExtend @_ @_ @31 <$> (boolToBV <$> reframing))
                 :> (resize . pack <$> fIncDec1)
-                :> (resize . pack . fmap stable <$> stabilityIndications)
-                :> (resize . pack . fmap settled <$> stabilityIndications)
-                :> (pack . (extend @_ @_ @(32 - m)) <<$>> counters)
+                :> (resize . pack . fmap boolToBit <$> linksStable)
+                :> (resize . pack . fmap boolToBit <$> linksSettled)
+                :> (pack . (extend @_ @_ @(32 - m)) <<$>> filteredCounters)
             )
     allStable = allAvailable stable <$> linkMask <*> stabilityIndications
     allSettled = allAvailable settled <$> linkMask <*> stabilityIndications
+
+    linksStable = mapAvailable stable False <$> linkMask <*> stabilityIndications
+    linksSettled = mapAvailable settled False <$> linkMask <*> stabilityIndications
+
+    mapAvailable fn itemDefault mask = zipWith go1 (bitToBool <$> bv2v mask)
+     where
+      go1 avail item = if avail then fn item else itemDefault
 
     allAvailable f x y =
       and $ zipWith ((||) . not) (bitToBool <$> bv2v x) (f <$> y)
