@@ -27,6 +27,8 @@ import Bittide.SharedTypes (ByteOrder (BigEndian))
 
 import Project.FilePath
 
+import Data.Maybe (isJust)
+
 import Protocols
 
 import VexRiscv
@@ -88,8 +90,16 @@ callistoSwClockControl mgn fsz clk rst ena reframe mask ebs = callistoSwResult
             -< (fincFdec, ccReframingState, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod)
       )
       (pure $ JtagIn low low low, (pure (), pure (), pure (), pure (), pure (), pure ()))
-  ccUpdatePeriodMin = register clk rst ena (complement 0) (min <$> ccUpdatePeriodMin <*> ccUpdatePeriod)
-  ccUpdatePeriodMax = register clk rst ena 0 (max <$> ccUpdatePeriodMax <*> ccUpdatePeriod)
+  updated :: Signal dom Bool
+  updated = isJust <$> fincFdec
+  ccUpdatePeriodMin :: Signal dom Int
+  ccUpdatePeriodMin = register clk rst ena maxBound $ liftA3 go updated ccUpdatePeriodMin ccUpdatePeriod
+   where
+    go update prevMin new = if update then min prevMin new else prevMin
+  ccUpdatePeriodMax :: Signal dom Int
+  ccUpdatePeriodMax = register clk rst ena minBound $ liftA3 go updated ccUpdatePeriodMax ccUpdatePeriod
+   where
+    go update prevMax new = if update then max prevMax new else prevMax
   (iMem, dMem) =
     $( do
         root <- runIO $ findParentContaining "cabal.project"

@@ -16,6 +16,7 @@ import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, sticky
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Wishbone
 import Clash.Functor.Extra
+import Clash.Sized.Vector.ToTuple (vecToTuple)
 
 import Data.Maybe (fromMaybe, isJust)
 
@@ -180,32 +181,38 @@ clockControlWb2 mgn fsz linkMask reframing counters = Circuit go
                 :> (resize . pack . fmap settled <$> stabilityIndications)
                 :> (pack . (extend @_ @_ @(32 - m)) <<$>> counters)
             )
-    allStable = all stable <$> stabilityIndications
-    allSettled = all settled <$> stabilityIndications
+    allStable = allAvailable stable <$> linkMask <*> stabilityIndications
+    allSettled = allAvailable settled <$> linkMask <*> stabilityIndications
+
+    allAvailable f x y =
+      and $ zipWith ((||) . not) (bitToBool <$> bv2v x) (f <$> y)
+
+    -- Pull out the write-able fields
+    (f0, f1, f2, _, _, _, f6, _, _) = unbundle $ vecToTuple . take (SNat :: SNat 9) <$> writeVec
 
     fIncDec0 :: Signal dom (Maybe SpeedChange)
-    fIncDec0 = (\v -> unpack . resize <$> v !! (6 :: Index (nLinks + 9))) <$> writeVec
+    fIncDec0 = unpack . resize <<$>> f6
     fIncDec1 :: Signal dom (Maybe SpeedChange)
     fIncDec1 = register Nothing fIncDec0
     fIncDec2 :: Signal dom (Maybe SpeedChange)
     fIncDec2 = delay Nothing $ stickyBits d20 fIncDec1
 
     rfsKind0 :: Signal dom (Maybe ReframingStateKind)
-    rfsKind0 = (\v -> unpack . resize <$> v !! (0 :: Index (nLinks + 9))) <$> writeVec
+    rfsKind0 = unpack . resize <<$>> f0
     rfsKind1 :: Signal dom (Maybe ReframingStateKind)
     rfsKind1 = register Nothing rfsKind0
     rfsKind2 :: Signal dom (Maybe ReframingStateKind)
     rfsKind2 = delay Nothing $ stickyBits d20 rfsKind1
 
     targetCorrection0 :: Signal dom (Maybe Float)
-    targetCorrection0 = (\v -> unpack . resize <$> v !! (1 :: Index (nLinks + 9))) <$> writeVec
+    targetCorrection0 = unpack . resize <<$>> f1
     targetCorrection1 :: Signal dom Float
     targetCorrection1 = register 0.0 (fromMaybe 0.0 <$> targetCorrection0)
     targetCorrection2 :: Signal dom Float
     targetCorrection2 = delay 0.0 $ stickyBits d20 targetCorrection1
 
     targetCount0 :: Signal dom (Maybe (Unsigned 32))
-    targetCount0 = (\v -> unpack . resize <$> v !! (2 :: Index (nLinks + 9))) <$> writeVec
+    targetCount0 = unpack . resize <<$>> f2
     targetCount1 :: Signal dom (Unsigned 32)
     targetCount1 = register 0 (fromMaybe 0 <$> targetCount0)
     targetCount2 :: Signal dom (Unsigned 32)
@@ -224,7 +231,7 @@ clockControlWb2 mgn fsz linkMask reframing counters = Circuit go
     (writeVec, wbS2M) = unbundle $ wbToVec <$> bundle readVec <*> wbM2S
 
     updated :: Signal dom Bool
-    updated = fmap isJust fIncDec0
+    updated = isJust <$> fIncDec0
     updatePeriod :: Signal dom Int
     updatePeriod = moore go2 snd (0, 0) updated
      where
