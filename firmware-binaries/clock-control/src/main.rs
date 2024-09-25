@@ -33,11 +33,7 @@ fn main() -> ! {
     );
 
     loop {
-        let data_counts = cc.data_counts().map(|x| x as isize);
-        let links_stable = cc.links_stable();
-
-        callisto::callisto(&config, 0b0111_1111, links_stable, data_counts, &mut state);
-
+        callisto::callisto(&cc, &config, &mut state);
         cc.change_speed(state.b_k);
     }
 }

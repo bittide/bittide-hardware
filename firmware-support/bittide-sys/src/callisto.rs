@@ -4,7 +4,7 @@
 
 use ufmt::derive::uDebug;
 
-use crate::clock_control::SpeedChange;
+use crate::clock_control::{ClockControl, SpeedChange};
 
 /// Rust sibling of
 /// `Bittide.ClockControl.StabilityChecker.StabilityIndication`.
@@ -161,13 +161,7 @@ impl ControlSt {
 
 /// Clock correction strategy based on:
 /// [https://github.com/bittide/Callisto.jl](https://github.com/bittide/Callisto.jl)
-pub fn callisto(
-    config: &ControlConfig,
-    availability_mask: u32,
-    links_stable: u32,
-    data_counts: impl Iterator<Item = isize>,
-    state: &mut ControlSt,
-) {
+pub fn callisto(cc: &ClockControl, config: &ControlConfig, state: &mut ControlSt) {
     // see clock control algorithm simulation here:
     //
     // https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
@@ -178,8 +172,8 @@ pub fn callisto(
     const K_P: f32 = 2e-8;
     const FSTEP: f32 = 100e-9;
 
-    let n_buffers = availability_mask.count_ones();
-    let measured_sum = data_counts.sum::<isize>() as i32;
+    let n_buffers = cc.link_mask().count_ones();
+    let measured_sum = cc.data_counts().sum::<i32>();
     let r_k = (measured_sum - n_buffers as i32 * config.target_count as i32) as f32;
     let c_des = K_P * r_k + state.steady_state_target;
 
@@ -198,7 +192,7 @@ pub fn callisto(
     if config.reframing_enabled {
         state.rf_state_update(
             config.wait_time,
-            links_stable.count_ones() == n_buffers,
+            cc.links_stable() ^ cc.link_mask() == 0,
             c_des,
         );
     }
