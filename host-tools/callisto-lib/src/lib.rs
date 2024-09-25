@@ -229,21 +229,16 @@ fn speed_change_to_ffi(val: &clock_control::SpeedChange) -> SpeedChange {
     }
 }
 
-fn reframing_state_from_ffi(val: &ReframingState) -> callisto::ReframingState {
-    match val {
-        ReframingState::Detect => callisto::ReframingState::Detect,
-        ReframingState::Done => callisto::ReframingState::Done,
-        ReframingState::Wait {
-            target_correction,
-            cur_wait_time,
-        } => callisto::ReframingState::Wait {
-            target_correction: *target_correction,
-            cur_wait_time: *cur_wait_time,
-        },
+fn control_state_from_ffi(st: &ControlSt) -> callisto::ControlSt {
+    callisto::ControlSt {
+        z_k: st.z_k,
+        b_k: speed_change_from_ffi(&st.b_k),
+        steady_state_target: st.steady_state_target,
+        rf_state: 0xC000_0000 as *mut callisto::ReframingState,
     }
 }
 
-fn reframing_state_to_ffi(val: &callisto::ReframingState) -> ReframingState {
+fn reframing_state_to_ffi(val: callisto::ReframingState) -> ReframingState {
     match val {
         callisto::ReframingState::Detect => ReframingState::Detect,
         callisto::ReframingState::Done => ReframingState::Done,
@@ -251,18 +246,9 @@ fn reframing_state_to_ffi(val: &callisto::ReframingState) -> ReframingState {
             target_correction,
             cur_wait_time,
         } => ReframingState::Wait {
-            target_correction: *target_correction,
-            cur_wait_time: *cur_wait_time,
+            target_correction,
+            cur_wait_time,
         },
-    }
-}
-
-fn control_state_from_ffi(st: &ControlSt) -> callisto::ControlSt {
-    callisto::ControlSt {
-        z_k: st.z_k,
-        b_k: speed_change_from_ffi(&st.b_k),
-        steady_state_target: st.steady_state_target,
-        rf_state: reframing_state_from_ffi(&st.rf_state),
     }
 }
 
@@ -270,7 +256,7 @@ fn control_state_to_ffi(st: &callisto::ControlSt, rs: &mut ControlSt) {
     rs.z_k = st.z_k;
     rs.b_k = speed_change_to_ffi(&st.b_k);
     rs.steady_state_target = st.steady_state_target;
-    rs.rf_state = reframing_state_to_ffi(&st.rf_state);
+    rs.rf_state = reframing_state_to_ffi(st.get_rf_state());
 }
 
 fn control_config_from_ffi(cfg: &ControlConfig) -> callisto::ControlConfig {

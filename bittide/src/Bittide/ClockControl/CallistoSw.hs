@@ -17,6 +17,7 @@ import Language.Haskell.TH (runIO)
 import System.FilePath
 
 import Bittide.ClockControl (RelDataCount, SpeedChange)
+import Bittide.ClockControl.Callisto.Types (ReframingState)
 import Bittide.ClockControl.Registers (clockControlWb2)
 import Bittide.ClockControl.StabilityChecker (StabilityIndication)
 import Bittide.DoubleBufferedRam (ContentType (Blob), InitialContent (Reloadable))
@@ -32,6 +33,7 @@ import VexRiscv
 
 data CallistoSwResult (n :: Nat) = CallistoSwResult
   { maybeSpeedChange :: Maybe SpeedChange
+  , reframingState :: ReframingState
   , stability :: Vec n StabilityIndication
   , allStable :: Bool
   , allSettled :: Bool
@@ -65,6 +67,7 @@ callistoSwClockControl mgn fsz clk rst ena reframe mask ebs = callistoSwResult
   callistoSwResult =
     CallistoSwResult
       <$> fincFdec
+      <*> ccReframingState
       <*> stabilities
       <*> ccAllStable
       <*> ccAllSettled
@@ -72,18 +75,19 @@ callistoSwClockControl mgn fsz clk rst ena reframe mask ebs = callistoSwResult
       <*> ccUpdatePeriodMin
       <*> ccUpdatePeriodMax
 
-  (_, (fincFdec, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod)) =
+  (_, (fincFdec, ccReframingState, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod)) =
     toSignals
       ( circuit $ \jtag -> do
           [wbB] <-
             withClockResetEnable clk rst ena $ processingElement peConfig -< jtag
-          (fincFdec, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod) <-
+          (fincFdec, ccReframingState, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod) <-
             withClockResetEnable clk rst ena
               $ clockControlWb2 mgn fsz mask reframe ebs
               -< wbB
-          idC -< (fincFdec, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod)
+          idC
+            -< (fincFdec, ccReframingState, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod)
       )
-      (pure $ JtagIn low low low, (pure (), pure (), pure (), pure (), pure ()))
+      (pure $ JtagIn low low low, (pure (), pure (), pure (), pure (), pure (), pure ()))
   ccUpdatePeriodMin = register clk rst ena (complement 0) (min <$> ccUpdatePeriodMin <*> ccUpdatePeriod)
   ccUpdatePeriodMax = register clk rst ena 0 (max <$> ccUpdatePeriodMax <*> ccUpdatePeriod)
   (iMem, dMem) =
