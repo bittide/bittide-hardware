@@ -17,19 +17,20 @@ use riscv_rt::entry;
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     #[allow(clippy::zero_ptr)] // we might want to change the address!
-    let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32) };
+    let mut cc = unsafe { ClockControl::from_base_addr(0xC000_000C as *const u32) };
 
     let config = ControlConfig {
         target_count: 0,
         wait_time: 0,
         reframing_enabled: cc.reframing_enabled(),
     };
-    let mut state = ControlSt {
-        z_k: 0,
-        b_k: SpeedChange::NoChange,
-        steady_state_target: 0.0f32,
-        rf_state: ReframingState::Detect,
-    };
+    let mut state = ControlSt::new(
+        0,
+        SpeedChange::NoChange,
+        0.0f32,
+        0xC000_0000 as *mut ReframingState,
+        ReframingState::Detect,
+    );
 
     loop {
         let data_counts = cc.data_counts().map(|x| x as isize);

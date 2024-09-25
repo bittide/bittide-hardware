@@ -42,6 +42,7 @@ pub struct ControlConfig {
 /// Rust version of
 /// `Bittide.ClockControl.Callisto.Types.ReframingState`.
 #[derive(Clone)]
+#[repr(C)]
 pub enum ReframingState {
     /// The controller remains in this state until stability has been
     /// detected.
@@ -59,6 +60,35 @@ pub enum ReframingState {
     },
 }
 
+// Asserts to make sure that things are packaged as they should be.
+const _: () = {
+    use core::mem;
+
+    assert!(12 == mem::size_of::<ReframingState>());
+    assert!(4 == mem::align_of::<ReframingState>());
+
+    assert!(unsafe {
+        let tmp = ReframingState::Detect;
+        0u32 == *(&tmp as *const _ as *const u32)
+    });
+
+    assert!(unsafe {
+        let tmp = ReframingState::Done;
+        1u32 == *(&tmp as *const _ as *const u32)
+    });
+
+    unsafe {
+        let tmp = ReframingState::Wait {
+            target_correction: 3.321,
+            cur_wait_time: 12345,
+        };
+        let (x, y, z) = *(&tmp as *const _ as *const (u32, f32, u32));
+        assert!(2 == x);
+        assert!(3.321 == y);
+        assert!(12345 == z);
+    }
+};
+
 /// Rust version of `Bittide.ClockControl.Callisto.Types.ControlSt`.
 #[derive(Clone)]
 pub struct ControlSt {
@@ -73,18 +103,45 @@ pub struct ControlSt {
     /// the first time).
     pub steady_state_target: f32,
     /// finite state machine for reframing detection
-    pub rf_state: ReframingState,
+    pub rf_state: *mut ReframingState,
 }
 
 impl ControlSt {
-    fn rf_state_update(&mut self, wait_time: usize, enabled: bool, stable: bool, target: f32) {
-        if enabled {
-            match self.rf_state {
+    pub fn new(
+        z_k: i32,
+        b_k: SpeedChange,
+        steady_state_target: f32,
+        rf_state_reg: *mut ReframingState,
+        rf_state: ReframingState,
+    ) -> Self {
+        let mut new = ControlSt {
+            z_k,
+            b_k,
+            steady_state_target,
+            rf_state: rf_state_reg,
+        };
+        new.set_rf_state(rf_state);
+        new
+    }
+
+    pub fn get_rf_state(&self) -> ReframingState {
+        unsafe { self.rf_state.read_volatile() }
+    }
+
+    fn set_rf_state(&mut self, rf_state: ReframingState) {
+        unsafe {
+            self.rf_state.write_volatile(rf_state);
+        }
+    }
+
+    fn rf_state_update(&mut self, wait_time: usize, stable: bool, target: f32) {
+        unsafe {
+            match *self.rf_state {
                 ReframingState::Detect if stable => {
-                    self.rf_state = ReframingState::Wait {
+                    self.rf_state.write_volatile(ReframingState::Wait {
                         target_correction: target,
                         cur_wait_time: wait_time as u32,
-                    }
+                    });
                 }
                 ReframingState::Wait {
                     ref mut cur_wait_time,
@@ -93,7 +150,7 @@ impl ControlSt {
                 ReframingState::Wait {
                     target_correction, ..
                 } => {
-                    self.rf_state = ReframingState::Done;
+                    self.rf_state.write_volatile(ReframingState::Done);
                     self.steady_state_target = target_correction;
                 }
                 _ => (),
@@ -138,10 +195,11 @@ pub fn callisto(
         SpeedChange::NoChange
     };
 
-    state.rf_state_update(
-        config.wait_time,
-        config.reframing_enabled,
-        links_stable.count_ones() == n_buffers,
-        c_des,
-    );
+    if config.reframing_enabled {
+        state.rf_state_update(
+            config.wait_time,
+            links_stable.count_ones() == n_buffers,
+            c_des,
+        );
+    }
 }

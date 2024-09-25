@@ -703,7 +703,12 @@ callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask
 
   -- collect all plot data
   localData =
-    let height = SNat @AccWindowHeight
+    let rfStageChange Sw.CallistoSwResult{..} = case reframingState of
+          Detect{} -> ToDetect
+          Wait{} -> ToWait
+          Done{} -> ToDone
+
+        height = SNat @AccWindowHeight
         idcs =
           unbundle
             (filterIndicators <$> fmap bv2v mask <*> (Sw.stability <$> result))
@@ -711,6 +716,7 @@ callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask
         -- get the points in time where the monitored values change
         stableUpdates = (changepoints clk rst enableGen . fmap stable <$> idcs)
         settledUpdates = (changepoints clk rst enableGen . fmap settled <$> idcs)
+        modeUpdate = changepoints clk rst enableGen (rfStageChange <$> result)
 
         combine eb stU seU ind =
           (,,)
@@ -722,7 +728,7 @@ callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask
      in PlotData
           <$> bundle (zipWith4 combine ebsC stableUpdates settledUpdates idcs)
           <*> accWindow height clk rst enableGen (noChange <$> result)
-          <*> pure Stable
+          <*> mux modeUpdate (rfStageChange <$> result) (pure Stable)
 
   -- compress the elastic buffer data via only reporting the
   -- differences since the last capture
