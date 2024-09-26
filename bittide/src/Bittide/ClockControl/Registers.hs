@@ -111,16 +111,16 @@ Furthermore it produces FINC/FDEC pulses for the clock control boards.
 
 The word-aligned address layout of the Wishbone interface is as follows:
 
-- Address 0: Reframing kind                 -- Reframing register
+- Address 0: Reframing kind                 -- Reframing register     | 0x00
 - Address 1: Wait target correction         |
 - Address 2: Wait target count              |
-- Address 3: Number of links                -- Clock control register
-- Address 4: Link mask                      |
-- Address 5: Reframing enabled?             |
-- Address 6: FINC/FDEC                      |
-- Address 7: Link stables                   |
-- Address 8: Link settles                   |
-- Addresses 9 to (9 + nLinks): Data counts  --
+- Address 3: Number of links                -- Clock control register | 0x0C
+- Address 4: Link mask                      |                         | 0x10
+- Address 5: Reframing enabled?             |                         | 0x14
+- Address 6: FINC/FDEC                      |                         | 0x18
+- Address 7: Link stables                   |                         | 0x1C
+- Address 8: Link settles                   |                         | 0x20
+- Addresses 9 to (9 + nLinks): Data counts  --                        | 0x24
 -}
 clockControlWb2 ::
   forall dom addrW nLinks m margin framesize.
@@ -155,7 +155,7 @@ clockControlWb2 ::
     , CSignal dom (Vec nLinks StabilityIndication)
     , CSignal dom ("ALL_STABLE" ::: Bool)
     , CSignal dom ("ALL_SETTLED" ::: Bool)
-    , "updatePeriod" ::: CSignal dom Int
+    , "updatePeriod" ::: CSignal dom (Unsigned 32)
     )
 clockControlWb2 mgn fsz linkMask reframing counters = Circuit go
  where
@@ -239,7 +239,7 @@ clockControlWb2 mgn fsz linkMask reframing counters = Circuit go
 
     updated :: Signal dom Bool
     updated = isJust <$> fIncDec0
-    updatePeriod :: Signal dom Int
+    updatePeriod :: Signal dom (Unsigned 32)
     updatePeriod = moore go2 snd (0, 0) updated
      where
       go2 (cntr, cntrPrev) update = if update then (0, cntr) else (cntr + 1, cntrPrev)
