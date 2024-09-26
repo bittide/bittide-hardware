@@ -316,8 +316,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     , allStable0
     , _allCentered
     , swUpdatePeriod
-    , swUpdatePeriodMin
-    , swUpdatePeriodMax
     ) =
       unbundle
         $ fmap
@@ -327,13 +325,13 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
               , allStable
               , allSettled
               , updatePeriod
-              , updatePeriodMin
-              , updatePeriodMax
               )
           )
           callistoResult
 
   fincFdecs = speedChangeToPins . fromMaybe NoChange <$> clockMod
+
+  FillStats swUpdatePeriodMin swUpdatePeriodMax = unbundle $ fillStats sysClk syncRst swUpdatePeriod
 
   callistoResult =
     callistoSwClockControlWithIla @LinkCount @CccBufferSize

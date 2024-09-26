@@ -27,8 +27,6 @@ import Bittide.SharedTypes (ByteOrder (BigEndian))
 
 import Project.FilePath
 
-import Data.Maybe (isJust)
-
 import Protocols
 
 import VexRiscv
@@ -39,9 +37,7 @@ data CallistoSwResult (n :: Nat) = CallistoSwResult
   , stability :: Vec n StabilityIndication
   , allStable :: Bool
   , allSettled :: Bool
-  , updatePeriod :: Int
-  , updatePeriodMin :: Int
-  , updatePeriodMax :: Int
+  , updatePeriod :: Unsigned 32
   }
   deriving (Generic, NFDataX)
 
@@ -74,8 +70,6 @@ callistoSwClockControl mgn fsz clk rst ena reframe mask ebs = callistoSwResult
       <*> ccAllStable
       <*> ccAllSettled
       <*> ccUpdatePeriod
-      <*> ccUpdatePeriodMin
-      <*> ccUpdatePeriodMax
 
   (_, (fincFdec, ccReframingState, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod)) =
     toSignals
@@ -90,16 +84,6 @@ callistoSwClockControl mgn fsz clk rst ena reframe mask ebs = callistoSwResult
             -< (fincFdec, ccReframingState, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod)
       )
       (pure $ JtagIn low low low, (pure (), pure (), pure (), pure (), pure (), pure ()))
-  updated :: Signal dom Bool
-  updated = isJust <$> fincFdec
-  ccUpdatePeriodMin :: Signal dom Int
-  ccUpdatePeriodMin = register clk rst ena maxBound $ liftA3 go updated ccUpdatePeriodMin ccUpdatePeriod
-   where
-    go update prevMin new = if update then min prevMin new else prevMin
-  ccUpdatePeriodMax :: Signal dom Int
-  ccUpdatePeriodMax = register clk rst ena minBound $ liftA3 go updated ccUpdatePeriodMax ccUpdatePeriod
-   where
-    go update prevMax new = if update then max prevMax new else prevMax
   (iMem, dMem) =
     $( do
         root <- runIO $ findParentContaining "cabal.project"
