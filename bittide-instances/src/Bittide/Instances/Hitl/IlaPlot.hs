@@ -277,7 +277,7 @@ ilaPlotSetup ::
   IlaControl dom
 ilaPlotSetup IlaPlotSetup{..} = IlaControl{..}
  where
-  onlyScheduledCaptures = False
+  onlyScheduledCaptures = True
 
   -- 'syncOutGenerator' is used to drive 'SYNC_OUT'.
   syncOut =
@@ -653,6 +653,12 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
       , dRfStageChange = Stable
       }
 
+{-# NOINLINE callistoSwClockControlWithIla #-}
+
+{- | Wrapper on 'Bittide.ClockControl.CallistoSw.callistoSwClockControl'
+additionally dumping all the data that is required for producing
+plots of the clock control behavior.
+-}
 callistoSwClockControlWithIla ::
   forall n m sys dyn margin framesize.
   (HasCallStack) =>
@@ -799,6 +805,7 @@ callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask
     let captureType calibrate scheduled dc dat
           | scheduled && calibrate = Just (Calibrate, dat)
           | scheduled = Just (Scheduled, dat)
+          | onlyScheduledCaptures = Nothing
           | dc || dataChange dat && not calibrate = Just (DataChange, dat)
           | otherwise = Nothing
 
