@@ -97,7 +97,7 @@ callistoSwClockControl mgn fsz clk rst ena reframe mask ebs = callistoSwResult
    where
     go update prevMin new = if update then min prevMin new else prevMin
   ccUpdatePeriodMax :: Signal dom Int
-  ccUpdatePeriodMax = register clk rst ena maxBound $ liftA3 go updated ccUpdatePeriodMax ccUpdatePeriod
+  ccUpdatePeriodMax = register clk rst ena minBound $ liftA3 go updated ccUpdatePeriodMax ccUpdatePeriod
    where
     go update prevMax new = if update then max prevMax new else prevMax
   (iMem, dMem) =
