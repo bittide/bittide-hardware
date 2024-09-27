@@ -72,6 +72,7 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Gray (xpmCdcGray)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Explicit.Reset.Extra
 
+import Bittide.ElasticBuffer (sticky)
 import Control.Arrow (second, (***))
 import Data.Bool (bool)
 import Data.Constraint.Nat.Extra (
@@ -82,7 +83,6 @@ import Data.Constraint.Nat.Extra (
   satSubZeroMin,
  )
 import Data.Maybe (fromMaybe, isJust)
-import Bittide.ElasticBuffer (sticky)
 
 {- | Divisible division operation, which ensures that the dividend is
 always a multiple of the divisor. Type family resolution will get
