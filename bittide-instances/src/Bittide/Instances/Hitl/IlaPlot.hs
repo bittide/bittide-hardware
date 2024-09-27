@@ -82,6 +82,7 @@ import Data.Constraint.Nat.Extra (
   satSubZeroMin,
  )
 import Data.Maybe (fromMaybe, isJust)
+import Bittide.ElasticBuffer (sticky)
 
 {- | Divisible division operation, which ensures that the dividend is
 always a multiple of the divisor. Type family resolution will get
@@ -681,7 +682,7 @@ callistoSwClockControlWithIla ::
   Vec n (Signal sys (RelDataCount m)) ->
   Signal sys (Sw.CallistoSwResult n)
 callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask ebs =
-  hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> result)
+  hwSeqX ilaInstance (muteDuringCalibration <$> hasCalibrated <*> result)
  where
   result = Sw.callistoSwClockControl mgn fsz clk rst enableGen reframe mask ebs
 
@@ -770,6 +771,8 @@ callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask
               , filterCounts <$> fmap bv2v mask <*> bundle ebs
               )
 
+  hasCalibrated = sticky clk rst calibrating
+
   -- produce at least two calibration captures
   calibrating =
     unsafeToActiveLow syncRst
@@ -816,7 +819,7 @@ callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask
             || dRfStageChange
             /= Stable
      in captureType
-          <$> calibrating
+          <$> hasCalibrated
           <*> scheduledCapture
           <*> ebDataChange
           <*> localData
