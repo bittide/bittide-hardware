@@ -172,7 +172,7 @@ pub fn callisto(cc: &ClockControl, config: &ControlConfig, state: &mut ControlSt
     const K_P: f32 = 2e-8;
     const FSTEP: f32 = 100e-9;
 
-    let n_buffers = cc.link_mask().count_ones();
+    let n_buffers = cc.up_links();
     let measured_sum = cc.data_counts().sum::<i32>();
     let r_k = (measured_sum - n_buffers as i32 * config.target_count as i32) as f32;
     let c_des = K_P * r_k + state.steady_state_target;
