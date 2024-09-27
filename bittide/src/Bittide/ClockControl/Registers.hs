@@ -116,11 +116,12 @@ The word-aligned address layout of the Wishbone interface is as follows:
 - Address 2: Wait target count              |
 - Address 3: Number of links                -- Clock control register | 0x0C
 - Address 4: Link mask                      |                         | 0x10
-- Address 5: Reframing enabled?             |                         | 0x14
-- Address 6: FINC/FDEC                      |                         | 0x18
-- Address 7: Link stables                   |                         | 0x1C
-- Address 8: Link settles                   |                         | 0x20
-- Addresses 9 to (9 + nLinks): Data counts  --                        | 0x24
+- Address 5: Link mask popcnt               |                         | 0x14
+- Address 6: Reframing enabled?             |                         | 0x18
+- Address 7: FINC/FDEC                      |                         | 0x1C
+- Address 8: Link stables                   |                         | 0x20
+- Address 9: Link settles                   |                         | 0x24
+- Addresses 10 to (10 + nLinks): Data counts  --                      | 0x28
 -}
 clockControlWb2 ::
   forall dom addrW nLinks m margin framesize.
@@ -168,6 +169,16 @@ clockControlWb2 mgn fsz linkMask reframing counters = Circuit go
       $ \(isActive, count) -> if isActive == high then count else 0
     filteredCounters = unbundle $ filterCounters <$> fmap bv2v linkMask <*> bundle counters
     stabilityIndications = bundle $ stabilityChecker mgn fsz <$> filteredCounters
+
+    -- ▗▖ ▗▖▗▖ ▗▖▗▄▄▄▖▗▖  ▗▖    ▗▖  ▗▖▗▄▖ ▗▖ ▗▖     ▗▄▄▖▗▖ ▗▖ ▗▄▖ ▗▖  ▗▖ ▗▄▄▖▗▄▄▄▖    ▗▄▄▄▖▗▖ ▗▖▗▄▄▄▖ ▗▄▄▖
+    -- ▐▌ ▐▌▐▌ ▐▌▐▌   ▐▛▚▖▐▌     ▝▚▞▘▐▌ ▐▌▐▌ ▐▌    ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▛▚▖▐▌▐▌   ▐▌         █  ▐▌ ▐▌  █  ▐▌
+    -- ▐▌ ▐▌▐▛▀▜▌▐▛▀▀▘▐▌ ▝▜▌      ▐▌ ▐▌ ▐▌▐▌ ▐▌    ▐▌   ▐▛▀▜▌▐▛▀▜▌▐▌ ▝▜▌▐▌▝▜▌▐▛▀▀▘      █  ▐▛▀▜▌  █   ▝▀▚▖
+    -- ▐▙█▟▌▐▌ ▐▌▐▙▄▄▖▐▌  ▐▌      ▐▌ ▝▚▄▞▘▝▚▄▞▘    ▝▚▄▄▖▐▌ ▐▌▐▌ ▐▌▐▌  ▐▌▝▚▄▞▘▐▙▄▄▖      █  ▐▌ ▐▌▗▄█▄▖▗▄▄▞▘
+    --
+    -- ▗▖ ▗▖▗▄▄▖ ▗▄▄▄  ▗▄▖▗▄▄▄▖▗▄▄▄▖    ▗▄▄▄▖▗▖ ▗▖▗▄▄▄▖    ▗▄▄▖ ▗▖ ▗▖ ▗▄▄▖
+    -- ▐▌ ▐▌▐▌ ▐▌▐▌  █▐▌ ▐▌ █  ▐▌         █  ▐▌ ▐▌▐▌       ▐▌ ▐▌▐▌ ▐▌▐▌
+    -- ▐▌ ▐▌▐▛▀▘ ▐▌  █▐▛▀▜▌ █  ▐▛▀▀▘      █  ▐▛▀▜▌▐▛▀▀▘    ▐▛▀▚▖▐▌ ▐▌ ▝▀▚▖
+    -- ▝▚▄▞▘▐▌   ▐▙▄▄▀▐▌ ▐▌ █  ▐▙▄▄▖      █  ▐▌ ▐▌▐▙▄▄▖    ▐▙▄▞▘▝▚▄▞▘▗▄▄▞▘
     readVec =
       dflipflop
         <$> ( (resize . pack <$> rfsKind1)
@@ -175,6 +186,7 @@ clockControlWb2 mgn fsz linkMask reframing counters = Circuit go
                 :> (pack <$> targetCount1)
                 :> pure (natToNum @nLinks)
                 :> (zeroExtend @_ @_ @(32 - nLinks) <$> linkMask)
+                :> (resize . pack . popCount <$> linkMask)
                 :> (zeroExtend @_ @_ @31 <$> (boolToBV <$> reframing))
                 :> (resize . pack <$> fIncDec1)
                 :> (resize . pack . fmap boolToBit <$> linksStable)
@@ -194,11 +206,21 @@ clockControlWb2 mgn fsz linkMask reframing counters = Circuit go
     allAvailable f x y =
       and $ zipWith ((||) . not) (bitToBool <$> bv2v x) (f <$> y)
 
+    -- ▗▖ ▗▖▗▄▄▖ ▗▄▄▄  ▗▄▖▗▄▄▄▖▗▄▄▄▖    ▗▄▄▄▖▗▖ ▗▖▗▄▄▄▖ ▗▄▄▖    ▗▖ ▗▖▗▖ ▗▖▗▄▄▄▖▗▖  ▗▖
+    -- ▐▌ ▐▌▐▌ ▐▌▐▌  █▐▌ ▐▌ █  ▐▌         █  ▐▌ ▐▌  █  ▐▌       ▐▌ ▐▌▐▌ ▐▌▐▌   ▐▛▚▖▐▌
+    -- ▐▌ ▐▌▐▛▀▘ ▐▌  █▐▛▀▜▌ █  ▐▛▀▀▘      █  ▐▛▀▜▌  █   ▝▀▚▖    ▐▌ ▐▌▐▛▀▜▌▐▛▀▀▘▐▌ ▝▜▌
+    -- ▝▚▄▞▘▐▌   ▐▙▄▄▀▐▌ ▐▌ █  ▐▙▄▄▖      █  ▐▌ ▐▌▗▄█▄▖▗▄▄▞▘    ▐▙█▟▌▐▌ ▐▌▐▙▄▄▖▐▌  ▐▌
+    --
+    -- ▗▖  ▗▖▗▄▖ ▗▖ ▗▖     ▗▄▄▖▗▖ ▗▖ ▗▄▖ ▗▖  ▗▖ ▗▄▄▖▗▄▄▄▖    ▗▄▄▄▖▗▖ ▗▖▗▄▄▄▖    ▗▄▄▖ ▗▖ ▗▖ ▗▄▄▖
+    --  ▝▚▞▘▐▌ ▐▌▐▌ ▐▌    ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▛▚▖▐▌▐▌   ▐▌         █  ▐▌ ▐▌▐▌       ▐▌ ▐▌▐▌ ▐▌▐▌
+    --   ▐▌ ▐▌ ▐▌▐▌ ▐▌    ▐▌   ▐▛▀▜▌▐▛▀▜▌▐▌ ▝▜▌▐▌▝▜▌▐▛▀▀▘      █  ▐▛▀▜▌▐▛▀▀▘    ▐▛▀▚▖▐▌ ▐▌ ▝▀▚▖
+    --   ▐▌ ▝▚▄▞▘▝▚▄▞▘    ▝▚▄▄▖▐▌ ▐▌▐▌ ▐▌▐▌  ▐▌▝▚▄▞▘▐▙▄▄▖      █  ▐▌ ▐▌▐▙▄▄▖    ▐▙▄▞▘▝▚▄▞▘▗▄▄▞▘
+    --
     -- Pull out the write-able fields
-    (f0, f1, f2, _, _, _, f6, _, _) = unbundle $ vecToTuple . take (SNat :: SNat 9) <$> writeVec
+    (f0, f1, f2, _, _, _, _, f7, _, _) = unbundle $ vecToTuple . take (SNat :: SNat 10) <$> writeVec
 
     fIncDec0 :: Signal dom (Maybe SpeedChange)
-    fIncDec0 = unpack . resize <<$>> f6
+    fIncDec0 = unpack . resize <<$>> f7
     fIncDec1 :: Signal dom (Maybe SpeedChange)
     fIncDec1 = register Nothing fIncDec0
     fIncDec2 :: Signal dom (Maybe SpeedChange)
