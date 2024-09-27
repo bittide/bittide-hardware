@@ -111,17 +111,17 @@ Furthermore it produces FINC/FDEC pulses for the clock control boards.
 
 The word-aligned address layout of the Wishbone interface is as follows:
 
-- Address 0: Reframing kind                 -- Reframing register     | 0x00
-- Address 1: Wait target correction         |
-- Address 2: Wait target count              |
-- Address 3: Number of links                -- Clock control register | 0x0C
-- Address 4: Link mask                      |                         | 0x10
-- Address 5: Link mask popcnt               |                         | 0x14
-- Address 6: Reframing enabled?             |                         | 0x18
-- Address 7: FINC/FDEC                      |                         | 0x1C
-- Address 8: Link stables                   |                         | 0x20
-- Address 9: Link settles                   |                         | 0x24
-- Addresses 10 to (10 + nLinks): Data counts  --                      | 0x28
+- Address 0: Reframing kind                   -- Reframing register     | 0x00
+- Address 1: Wait target correction           |                         | 0x04
+- Address 2: Wait target count                |                         | 0x08
+- Address 3: Number of links                  -- Clock control register | 0x0C | 0x00
+- Address 4: Link mask                        |                         | 0x10 | 0x04
+- Address 5: Link mask popcnt                 |                         | 0x14 | 0x08
+- Address 6: Reframing enabled?               |                         | 0x18 | 0x0C
+- Address 7: FINC/FDEC                        |                         | 0x1C | 0x10
+- Address 8: Link stables                     |                         | 0x20 | 0x14
+- Address 9: Link settles                     |                         | 0x24 | 0x18
+- Addresses 10 to (10 + nLinks): Data counts  --                        | 0x28 | 0x1C
 -}
 clockControlWb2 ::
   forall dom addrW nLinks m margin framesize.

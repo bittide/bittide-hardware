@@ -45,7 +45,7 @@ import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
-import Bittide.ClockControl.CallistoSw
+import Bittide.ClockControl.CallistoSw (CallistoSwResult (..), callistoSwClockControl)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
@@ -59,7 +59,7 @@ import Bittide.Hitl
 import Bittide.Instances.Hitl.IlaPlot (
   IlaControl (..),
   IlaPlotSetup (..),
-  callistoSwClockControlWithIla,
+  -- callistoSwClockControlWithIla,
   ilaPlotSetup,
  )
 import Bittide.Instances.Hitl.Setup
@@ -70,6 +70,7 @@ import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcSingle)
 import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra (xpmCdcMaybeLossy)
+import Clash.Functor.Extra
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen
@@ -333,17 +334,27 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
   FillStats swUpdatePeriodMin swUpdatePeriodMax = unbundle $ fillStats sysClk syncRst swUpdatePeriod
 
+  -- callistoResult =
+  -- callistoSwClockControlWithIla @LinkCount @CccBufferSize
+  -- (SNat @CccStabilityCheckerMargin)
+  -- (SNat @(CccStabilityCheckerFramesize Basic125))
+  -- (head transceivers.txClocks)
+  -- sysClk
+  -- clockControlReset
+  -- (reframingEnabled <$> cfg)
+  -- IlaControl{..}
+  -- (mask <$> cfg)
+  -- (fmap (fmap resize) domainDiffs)
   callistoResult =
-    callistoSwClockControlWithIla @LinkCount @CccBufferSize
+    callistoSwClockControl @LinkCount @CccBufferSize
       (SNat @CccStabilityCheckerMargin)
       (SNat @(CccStabilityCheckerFramesize Basic125))
-      (head transceivers.txClocks)
       sysClk
       clockControlReset
+      enableGen
       (reframingEnabled <$> cfg)
-      IlaControl{..}
       (mask <$> cfg)
-      (fmap (fmap resize) domainDiffs)
+      (resize <<$>> domainDiffs)
 
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
