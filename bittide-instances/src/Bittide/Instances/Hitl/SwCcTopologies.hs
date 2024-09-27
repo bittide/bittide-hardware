@@ -409,6 +409,12 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_dDiff4"
           :> "probe_dDiff5"
           :> "probe_dDiff6"
+          :> "probe_syncRst"
+          :> "probe_gthAllReset"
+          :> "probe_startupDelayRst"
+          :> "probe_clockControlReset"
+          :> "probe_notInCCReset"
+          :> "probe_txResets2"
           :> Nil
       )
         { depth = D16384
@@ -459,6 +465,16 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       dDiff4
       dDiff5
       dDiff6
+      (unsafeFromReset syncRst)
+      (unsafeFromReset gthAllReset)
+      (unsafeFromReset startupDelayRst)
+      (unsafeFromReset clockControlReset)
+      notInCCReset
+      txResetsThing
+
+  txResetsThing = bundle $ zipWith oofOwOuchie transceivers.txClocks txResets2
+   where
+    oofOwOuchie txClock txReset = unsafeSynchronizer txClock sysClk $ unsafeFromReset txReset
 
   captureFlag =
     riseEvery
