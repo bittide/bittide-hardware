@@ -422,13 +422,22 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_initialAdjust"
           :> "probe_adjustRst"
           :> "probe_calibratedClockShift"
+          :> "probe_clockShift"
+          :> "probe_initialClockShift"
+          :> "probe_calibrate"
+          :> "probe_spiDone"
+          :> "probe_frequencyAdjustments"
+          :> "probe_allReady"
+          :> "probe_syncStart"
+          :> "probe_delayCount"
+          :> "probe_startupDelay"
           :> Nil
       )
         { depth = D16384
         }
       sysClk
       -- Trigger as soon as we come out of reset
-      (unsafeToActiveLow syncRst)
+      (unsafeToActiveLow rst)
       capture
       -- Debug probes
       milliseconds1
@@ -485,7 +494,28 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       initialAdjust
       (unsafeFromReset adjustRst)
       calibratedClockShift
+      clockShift
+      (fromMaybe 0 . initialClockShift <$> cfg)
+      (pack . calibrate <$> cfg)
+      spiDone
+      (pack <$> frequencyAdjustments)
+      allReady
+      syncStart
+      delayCount
+      (startupDelay <$> cfg)
 
+  {-
+    clockMod
+    clockShift
+    initialClockShift
+    calibrate
+    spiDone
+    frequencyAdjustments
+    allReady
+    syncStart
+    delayCount
+    startupDelay
+  -}
 
   txResetsThing = bundle $ zipWith oofOwOuchie transceivers.txClocks txResets2
    where
