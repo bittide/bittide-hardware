@@ -289,10 +289,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
 
-  timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
-  timer = register sysClk syncRst enableGen (0, 0) (timeSucc <$> timer)
-  milliseconds1 = fst <$> timer
-
   -- Startup delay
   startupDelayRst =
     orReset (unsafeFromActiveLow clocksAdjusted)
@@ -359,7 +355,18 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
   -- very confusing.
-  capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
+  -- capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
+
+  captureFlag =
+    riseEvery
+      sysClk
+      sysRst
+      enableGen
+      (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
+
+  timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
+  timer = register sysClk sysRst enableGen (0, 0) (timeSucc <$> timer)
+  milliseconds1 = fst <$> timer
 
   fincFdecIla :: Signal Basic125 ()
   fincFdecIla =
@@ -422,14 +429,23 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_initialAdjust"
           :> "probe_adjustRst"
           :> "probe_calibratedClockShift"
+          :> "probe_clockShift"
+          :> "probe_initialClockShift"
+          :> "probe_calibrate"
+          :> "probe_spiDone"
+          :> "probe_frequencyAdjustments"
+          :> "probe_allReady"
+          :> "probe_syncStart"
+          :> "probe_delayCount"
+          :> "probe_startupDelay"
           :> Nil
       )
         { depth = D16384
         }
       sysClk
       -- Trigger as soon as we come out of reset
-      (unsafeToActiveLow syncRst)
-      capture
+      (unsafeToActiveLow sysRst)
+      captureFlag
       -- Debug probes
       milliseconds1
       allStable0
@@ -485,18 +501,32 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       initialAdjust
       (unsafeFromReset adjustRst)
       calibratedClockShift
+      clockShift
+      (fromMaybe 0 . initialClockShift <$> cfg)
+      (pack . calibrate <$> cfg)
+      spiDone
+      (pack <$> frequencyAdjustments)
+      allReady
+      syncStart
+      delayCount
+      (startupDelay <$> cfg)
 
+  {-
+    clockMod
+    clockShift
+    initialClockShift
+    calibrate
+    spiDone
+    frequencyAdjustments
+    allReady
+    syncStart
+    delayCount
+    startupDelay
+  -}
 
   txResetsThing = bundle $ zipWith oofOwOuchie transceivers.txClocks txResets2
    where
     oofOwOuchie txClock txReset = unsafeSynchronizer txClock sysClk $ unsafeFromReset txReset
-
-  captureFlag =
-    riseEvery
-      sysClk
-      syncRst
-      enableGen
-      (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
 
   nFincs =
     regEn
