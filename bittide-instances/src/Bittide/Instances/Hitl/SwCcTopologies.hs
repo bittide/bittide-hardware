@@ -436,6 +436,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_syncStart"
           :> "probe_delayCount"
           :> "probe_startupDelay"
+          :> "probe_spiErr"
           :> Nil
       )
         { depth = D16384
@@ -508,6 +509,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       syncStart
       delayCount
       (startupDelay <$> cfg)
+      spiErr
 
   {-
     clockMod
