@@ -771,7 +771,7 @@ callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask
               , filterCounts <$> fmap bv2v mask <*> bundle ebs
               )
 
-  hasCalibrated = sticky clk rst calibrating
+  hasCalibrated = sticky clk rst (not <$> calibrating)
 
   -- produce at least two calibration captures
   calibrating =
