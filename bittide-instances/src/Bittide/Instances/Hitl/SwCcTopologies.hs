@@ -290,12 +290,14 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
 
   -- Startup delay
-  startupDelayRst =
-    orReset (unsafeFromActiveLow clocksAdjusted)
-      $ orReset (unsafeFromActiveLow allReady)
-      $ orReset
-        (unsafeFromActiveHigh transceiversFailedAfterUp)
-        (unsafeFromActiveLow syncStart)
+  startupDelayRst = unsafeFromActiveLow $
+    register sysClk sysRst enableGen False
+      $ unsafeToActiveLow
+        $ orReset (unsafeFromActiveLow clocksAdjusted)
+        $ orReset (unsafeFromActiveLow allReady)
+        $ orReset
+          (unsafeFromActiveHigh transceiversFailedAfterUp)
+          (unsafeFromActiveLow syncStart)
 
   delayCount =
     register sysClk startupDelayRst enableGen (0 :: StartupDelay)
@@ -355,17 +357,17 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
   -- very confusing.
-  -- capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
+  capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
 
   captureFlag =
     riseEvery
       sysClk
-      sysRst
+      syncRst
       enableGen
       (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
 
   timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
-  timer = register sysClk sysRst enableGen (0, 0) (timeSucc <$> timer)
+  timer = register sysClk syncRst enableGen (0, 0) (timeSucc <$> timer)
   milliseconds1 = fst <$> timer
 
   fincFdecIla :: Signal Basic125 ()
@@ -444,8 +446,8 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
         }
       sysClk
       -- Trigger as soon as we come out of reset
-      (unsafeToActiveLow sysRst)
-      captureFlag
+      (unsafeToActiveLow syncRst)
+      capture
       -- Debug probes
       milliseconds1
       allStable0
