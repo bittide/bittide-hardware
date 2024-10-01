@@ -419,7 +419,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_startupDelayRst"
           :> "probe_clockControlReset"
           :> "probe_notInCCReset"
-          :> "probe_txResets2"
+          -- :> "probe_txResets2"
           :> "probe_adjustStart"
           :> "probe_clocksAdjusted"
           :> "probe_adjusting"
