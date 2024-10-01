@@ -437,7 +437,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
         }
       sysClk
       -- Trigger as soon as we come out of reset
-      (unsafeToActiveLow rst)
+      (unsafeToActiveLow sysRst)
       capture
       -- Debug probes
       milliseconds1
