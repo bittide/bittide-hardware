@@ -290,14 +290,15 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
 
   -- Startup delay
-  startupDelayRst = unsafeFromActiveLow $
-    register sysClk sysRst enableGen False
+  startupDelayRst =
+    unsafeFromActiveLow
+      $ register sysClk sysRst enableGen False
       $ unsafeToActiveLow
-        $ orReset (unsafeFromActiveLow clocksAdjusted)
-        $ orReset (unsafeFromActiveLow allReady)
-        $ orReset
-          (unsafeFromActiveHigh transceiversFailedAfterUp)
-          (unsafeFromActiveLow syncStart)
+      $ orReset (unsafeFromActiveLow clocksAdjusted)
+      $ orReset (unsafeFromActiveLow allReady)
+      $ orReset
+        (unsafeFromActiveHigh transceiversFailedAfterUp)
+        (unsafeFromActiveLow syncStart)
 
   delayCount =
     register sysClk startupDelayRst enableGen (0 :: StartupDelay)
@@ -332,27 +333,17 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
   FillStats swUpdatePeriodMin swUpdatePeriodMax = unbundle $ fillStats sysClk syncRst swUpdatePeriod
 
-  -- callistoResult =
-  -- callistoSwClockControlWithIla @LinkCount @CccBufferSize
-  -- (SNat @CccStabilityCheckerMargin)
-  -- (SNat @(CccStabilityCheckerFramesize Basic125))
-  -- (head transceivers.txClocks)
-  -- sysClk
-  -- clockControlReset
-  -- (reframingEnabled <$> cfg)
-  -- IlaControl{..}
-  -- (mask <$> cfg)
-  -- (fmap (fmap resize) domainDiffs)
   callistoResult =
-    callistoSwClockControl @LinkCount @CccBufferSize
-      (SNat @CccStabilityCheckerMargin)
-      (SNat @(CccStabilityCheckerFramesize Basic125))
-      sysClk
-      clockControlReset
-      enableGen
-      (reframingEnabled <$> cfg)
-      (mask <$> cfg)
-      (resize <<$>> domainDiffs)
+    callistoSwClockControlWithIla @LinkCount @CccBufferSize
+    (SNat @CccStabilityCheckerMargin)
+    (SNat @(CccStabilityCheckerFramesize Basic125))
+    (head transceivers.txClocks)
+    sysClk
+    clockControlReset
+    (reframingEnabled <$> cfg)
+    IlaControl{..}
+    (mask <$> cfg)
+    (resize <<$>> domainDiffs)
 
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
