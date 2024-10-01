@@ -45,7 +45,8 @@ import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
-import Bittide.ClockControl.CallistoSw (CallistoSwResult (..), callistoSwClockControl)
+-- import Bittide.ClockControl.CallistoSw (CallistoSwResult (..), callistoSwClockControl)
+import Bittide.ClockControl.CallistoSw (CallistoSwResult (..))
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
@@ -59,7 +60,7 @@ import Bittide.Hitl
 import Bittide.Instances.Hitl.IlaPlot (
   IlaControl (..),
   IlaPlotSetup (..),
-  -- callistoSwClockControlWithIla,
+  callistoSwClockControlWithIla,
   ilaPlotSetup,
  )
 import Bittide.Instances.Hitl.Setup
@@ -68,8 +69,8 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
-import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcSingle)
-import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra (xpmCdcMaybeLossy)
+-- import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcSingle)
+-- import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra (xpmCdcMaybeLossy)
 import Clash.Functor.Extra
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Sized.Vector.ToTuple (vecToTuple)
@@ -192,7 +193,7 @@ clockControlConfig ::
 clockControlConfig =
   $(lift (instancesClockConfig (Proxy @Basic125)))
 
-type FifoSize = 5 -- = 2^5 = 32
+-- type FifoSize = 5 -- = 2^5 = 32
 
 {- | Instantiates a hardware implementation of Callisto and exports its results. Can
 be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
@@ -243,7 +244,8 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
              , allStable0
              , calibratedClockShift
              , validationClockShift
-             , ugnsStable
+            --  , ugnsStable
+             , repeat $ pure True
              )
  where
   syncRst = rst `orReset` unsafeFromActiveHigh spiErr
@@ -279,8 +281,11 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
         , clockPaths
         , rxNs
         , rxPs
-        , txDatas = txCounters
-        , txReadys = txAllStables
+        -- , txDatas = txCounters
+        -- , txReadys = txAllStables
+        -- , rxReadys = repeat (pure True)
+        , txDatas = repeat (pure 0)
+        , txReadys = repeat (pure False)
         , rxReadys = repeat (pure True)
         }
 
@@ -374,13 +379,13 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_nFincs"
           :> "probe_nFdecs"
           :> "probe_net_nFincs"
-          :> "probe_ugn0"
-          :> "probe_ugn1"
-          :> "probe_ugn2"
-          :> "probe_ugn3"
-          :> "probe_ugn4"
-          :> "probe_ugn5"
-          :> "probe_ugn6"
+          -- :> "probe_ugn0"
+          -- :> "probe_ugn1"
+          -- :> "probe_ugn2"
+          -- :> "probe_ugn3"
+          -- :> "probe_ugn4"
+          -- :> "probe_ugn5"
+          -- :> "probe_ugn6"
           :> "stability0"
           :> "stability1"
           :> "stability2"
@@ -388,17 +393,17 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "stability4"
           :> "stability5"
           :> "stability6"
-          :> "ugnStable0"
-          :> "ugnStable1"
-          :> "ugnStable2"
-          :> "ugnStable3"
-          :> "ugnStable4"
-          :> "ugnStable5"
-          :> "ugnStable6"
+          -- :> "ugnStable0"
+          -- :> "ugnStable1"
+          -- :> "ugnStable2"
+          -- :> "ugnStable3"
+          -- :> "ugnStable4"
+          -- :> "ugnStable5"
+          -- :> "ugnStable6"
           :> "probe_linkReadys"
           :> "probe_linkUps"
-          :> "fifoUnderflows"
-          :> "fifoOverflows"
+          -- :> "fifoUnderflows"
+          -- :> "fifoOverflows"
           :> "swUpdatePeriod"
           :> "swUpdatePeriodMin"
           :> "swUpdatePeriodMax"
@@ -414,7 +419,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_startupDelayRst"
           :> "probe_clockControlReset"
           :> "probe_notInCCReset"
-          :> "probe_txResets2"
+          -- :> "probe_txResets2"
           :> "probe_adjustStart"
           :> "probe_clocksAdjusted"
           :> "probe_adjusting"
@@ -446,13 +451,13 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       nFincs
       nFdecs
       (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
-      ugn0
-      ugn1
-      ugn2
-      ugn3
-      ugn4
-      ugn5
-      ugn6
+      -- ugn0
+      -- ugn1
+      -- ugn2
+      -- ugn3
+      -- ugn4
+      -- ugn5
+      -- ugn6
       stability0
       stability1
       stability2
@@ -460,17 +465,17 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       stability4
       stability5
       stability6
-      ugnStable0
-      ugnStable1
-      ugnStable2
-      ugnStable3
-      ugnStable4
-      ugnStable5
-      ugnStable6
+      -- ugnStable0
+      -- ugnStable1
+      -- ugnStable2
+      -- ugnStable3
+      -- ugnStable4
+      -- ugnStable5
+      -- ugnStable6
       (bundle transceivers.linkReadys)
       (bundle transceivers.linkUps)
-      (pack . reverse <$> bundle fifoUnderflowsFree)
-      (pack . reverse <$> bundle fifoOverflowsFree)
+      -- (pack . reverse <$> bundle fifoUnderflowsFree)
+      -- (pack . reverse <$> bundle fifoOverflowsFree)
       swUpdatePeriod
       swUpdatePeriodMin
       swUpdatePeriodMax
@@ -486,7 +491,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       (unsafeFromReset startupDelayRst)
       (unsafeFromReset clockControlReset)
       notInCCReset
-      txResetsThing
+      -- txResetsThing
       adjustStart
       clocksAdjusted
       adjusting
@@ -517,9 +522,9 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     startupDelay
   -}
 
-  txResetsThing = bundle $ zipWith oofOwOuchie transceivers.txClocks txResets2
-   where
-    oofOwOuchie txClock txReset = unsafeSynchronizer txClock sysClk $ unsafeFromReset txReset
+  -- txResetsThing = bundle $ zipWith oofOwOuchie transceivers.txClocks txResets2
+  --  where
+  --   oofOwOuchie txClock txReset = unsafeSynchronizer txClock sysClk $ unsafeFromReset txReset
 
   nFincs =
     regEn
@@ -640,53 +645,53 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       <$> transceivers.rxClocks
       <*> transceivers.txClocks
 
-  txAllStables = zipWith (xpmCdcSingle sysClk) transceivers.txClocks (repeat allStable1)
-  allStable1 = sticky sysClk syncRst allStable0
-  txResets2 =
-    zipWith
-      orReset
-      transceivers.txResets
-      (map unsafeFromActiveLow txAllStables)
+  -- txAllStables = zipWith (xpmCdcSingle sysClk) transceivers.txClocks (repeat allStable1)
+  -- allStable1 = sticky sysClk syncRst allStable0
+  -- txResets2 =
+  --   zipWith
+  --     orReset
+  --     transceivers.txResets
+  --     (map unsafeFromActiveLow txAllStables)
 
-  availableMask :: Vec LinkCount (Signal Basic125 Bit)
-  availableMask = unbundle (bv2v . mask <$> cfg)
-  txCounters = zipWith3 txCounter transceivers.txClocks txResets2 availableMask
-  txCounter ::
-    Clock GthTx -> Reset GthTx -> Signal Basic125 Bit -> Signal GthTx (BitVector 64)
-  txCounter txClk txRst txMask = result
-   where
-    txMask' = unsafeSynchronizer sysClk txClk txMask
-    next txMaskBit = case txMaskBit of
-      1 -> countSucc
-      _ -> id
-    result =
-      register txClk txRst enableGen (0xaabb_ccdd_eeff_1234 :: BitVector 64)
-        $ liftA2 next txMask' result
+  -- availableMask :: Vec LinkCount (Signal Basic125 Bit)
+  -- availableMask = unbundle (bv2v . mask <$> cfg)
+  -- txCounters = zipWith3 txCounter transceivers.txClocks txResets2 availableMask
+  -- txCounter ::
+  --   Clock GthTx -> Reset GthTx -> Signal Basic125 Bit -> Signal GthTx (BitVector 64)
+  -- txCounter txClk txRst txMask = result
+  --  where
+  --   txMask' = unsafeSynchronizer sysClk txClk txMask
+  --   next txMaskBit = case txMaskBit of
+  --     1 -> countSucc
+  --     _ -> id
+  --   result =
+  --     register txClk txRst enableGen (0xaabb_ccdd_eeff_1234 :: BitVector 64)
+  --       $ liftA2 next txMask' result
   -- see NOTE [magic start values]
 
-  rxFifos =
-    zipWith4
-      go
-      transceivers.txClocks
-      transceivers.rxClocks
-      txResets2
-      transceivers.rxDatas
-   where
-    go = resettableXilinxElasticBuffer @FifoSize @_ @_ @(Maybe (BitVector 64))
+  -- rxFifos =
+  --   zipWith4
+  --     go
+  --     transceivers.txClocks
+  --     transceivers.rxClocks
+  --     txResets2
+  --     transceivers.rxDatas
+  --  where
+  --   go = resettableXilinxElasticBuffer @FifoSize @_ @_ @(Maybe (BitVector 64))
 
-  (fillLvls, fifoUnderflowsTx, fifoOverflowsTx, _ebMode, rxCntrs) = unzip5 rxFifos
+  -- (fillLvls, fifoUnderflowsTx, fifoOverflowsTx, _ebMode, rxCntrs) = unzip5 rxFifos
 
-  fifoOverflowsFree :: Vec LinkCount (Signal Basic125 Overflow)
-  fifoOverflowsFree = zipWith (`xpmCdcSingle` sysClk) transceivers.txClocks fifoOverflowsTx
-  fifoUnderflowsFree :: Vec LinkCount (Signal Basic125 Underflow)
-  fifoUnderflowsFree = zipWith (`xpmCdcSingle` sysClk) transceivers.txClocks fifoUnderflowsTx
+  -- fifoOverflowsFree :: Vec LinkCount (Signal Basic125 Overflow)
+  -- fifoOverflowsFree = zipWith (`xpmCdcSingle` sysClk) transceivers.txClocks fifoOverflowsTx
+  -- fifoUnderflowsFree :: Vec LinkCount (Signal Basic125 Underflow)
+  -- fifoUnderflowsFree = zipWith (`xpmCdcSingle` sysClk) transceivers.txClocks fifoUnderflowsTx
 
-  ugns :: Vec LinkCount (Signal GthTx (BitVector 64))
-  ugns =
-    zipWith
-      (-)
-      txCounters
-      (map (fmap (fromMaybe 0x1122_3344_1122_3344)) rxCntrs)
+  -- ugns :: Vec LinkCount (Signal GthTx (BitVector 64))
+  -- ugns =
+  --   zipWith
+  --     (-)
+  --     txCounters
+  --     (map (fmap (fromMaybe 0x1122_3344_1122_3344)) rxCntrs)
   -- see NOTE [magic start values]
 
   -- NOTE [magic start values]
@@ -697,38 +702,38 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   -- If you see 0x99999999.......... and it's counting up, then you're receiving Nothing,
   -- but your counter is running.
 
-  ugnStable1sec = zipWith3 (stableForMs (SNat @1000)) transceivers.txClocks transceivers.txResets ugns
+  -- ugnStable1sec = zipWith3 (stableForMs (SNat @1000)) transceivers.txClocks transceivers.txResets ugns
 
-  freeUgnDatas = zipWith5 go transceivers.txClocks (repeat sysClk) ugns fillLvls ugnStable1sec
-   where
-    go clkIn clkOut ugn fillLvl stable =
-      regMaybe
-        clkOut
-        noReset
-        enableGen
-        (0, 0, False, unpack 0)
-        (xpmCdcMaybeLossy clkIn clkOut inp)
-     where
-      fillStat = fillStats clkIn noReset fillLvl
-      inp = Just <$> bundle (ugn, fillLvl, stable, fillStat)
+  -- freeUgnDatas = zipWith5 go transceivers.txClocks (repeat sysClk) ugns fillLvls ugnStable1sec
+  --  where
+  --   go clkIn clkOut ugn fillLvl stable =
+  --     regMaybe
+  --       clkOut
+  --       noReset
+  --       enableGen
+  --       (0, 0, False, unpack 0)
+  --       (xpmCdcMaybeLossy clkIn clkOut inp)
+  --    where
+  --     fillStat = fillStats clkIn noReset fillLvl
+  --     inp = Just <$> bundle (ugn, fillLvl, stable, fillStat)
 
-  ugnsStable = map (fmap (\(_, _, x, _) -> x)) freeUgnDatas
+  -- ugnsStable = map (fmap (\(_, _, x, _) -> x)) freeUgnDatas
 
-  ( ugnD0
-    , ugnD1
-    , ugnD2
-    , ugnD3
-    , ugnD4
-    , ugnD5
-    , ugnD6
-    ) = vecToTuple freeUgnDatas
-  (ugn0, _fill0, ugnStable0, _fillStats0) = unbundle ugnD0
-  (ugn1, _fill1, ugnStable1, _fillStats1) = unbundle ugnD1
-  (ugn2, _fill2, ugnStable2, _fillStats2) = unbundle ugnD2
-  (ugn3, _fill3, ugnStable3, _fillStats3) = unbundle ugnD3
-  (ugn4, _fill4, ugnStable4, _fillStats4) = unbundle ugnD4
-  (ugn5, _fill5, ugnStable5, _fillStats5) = unbundle ugnD5
-  (ugn6, _fill6, ugnStable6, _fillStats6) = unbundle ugnD6
+  -- ( ugnD0
+  --   , ugnD1
+  --   , ugnD2
+  --   , ugnD3
+  --   , ugnD4
+  --   , ugnD5
+  --   , ugnD6
+  --   ) = vecToTuple freeUgnDatas
+  -- (ugn0, _fill0, ugnStable0, _fillStats0) = unbundle ugnD0
+  -- (ugn1, _fill1, ugnStable1, _fillStats1) = unbundle ugnD1
+  -- (ugn2, _fill2, ugnStable2, _fillStats2) = unbundle ugnD2
+  -- (ugn3, _fill3, ugnStable3, _fillStats3) = unbundle ugnD3
+  -- (ugn4, _fill4, ugnStable4, _fillStats4) = unbundle ugnD4
+  -- (ugn5, _fill5, ugnStable5, _fillStats5) = unbundle ugnD5
+  -- (ugn6, _fill6, ugnStable6, _fillStats6) = unbundle ugnD6
 
   ( stability0
     , stability1
@@ -794,33 +799,33 @@ Stable means equal to its previous value according to the 'Eq' instance.
 The 'BitPack' instance is only used as a convenient way of intialization,
 it resets to a previous value of @unpack 0@.
 -}
-stableFor ::
-  forall n dom a.
-  (KnownNat n, KnownDomain dom, Eq a, BitPack a, NFDataX a) =>
-  Clock dom ->
-  Reset dom ->
-  Signal dom a ->
-  Signal dom (Unsigned n)
-stableFor clk rst = moore clk rst enableGen go snd (unpack 0, 0)
- where
-  go :: (a, Unsigned n) -> a -> (a, Unsigned n)
-  go (prev, cntr) inp
-    | inp == prev = (prev, satSucc SatBound cntr)
-    | otherwise = (inp, 0)
+-- stableFor ::
+--   forall n dom a.
+--   (KnownNat n, KnownDomain dom, Eq a, BitPack a, NFDataX a) =>
+--   Clock dom ->
+--   Reset dom ->
+--   Signal dom a ->
+--   Signal dom (Unsigned n)
+-- stableFor clk rst = moore clk rst enableGen go snd (unpack 0, 0)
+--  where
+--   go :: (a, Unsigned n) -> a -> (a, Unsigned n)
+--   go (prev, cntr) inp
+--     | inp == prev = (prev, satSucc SatBound cntr)
+--     | otherwise = (inp, 0)
 
 -- | Wrapper around 'stableFor' that checks the input has been stable for atleast @ms@ milliseconds
-stableForMs ::
-  forall ms dom a.
-  (KnownNat ms, KnownDomain dom, Eq a, BitPack a, NFDataX a) =>
-  SNat ms ->
-  Clock dom ->
-  Reset dom ->
-  Signal dom a ->
-  Signal dom Bool
-stableForMs SNat clk rst inp =
-  liftA2 (>=) stable (snatToNum (SNat @(PeriodToCycles dom (Milliseconds ms))))
- where
-  stable = stableFor @(CLog 2 (PeriodToCycles dom (Milliseconds ms))) clk rst inp
+-- stableForMs ::
+--   forall ms dom a.
+--   (KnownNat ms, KnownDomain dom, Eq a, BitPack a, NFDataX a) =>
+--   SNat ms ->
+--   Clock dom ->
+--   Reset dom ->
+--   Signal dom a ->
+--   Signal dom Bool
+-- stableForMs SNat clk rst inp =
+--   liftA2 (>=) stable (snatToNum (SNat @(PeriodToCycles dom (Milliseconds ms))))
+--  where
+--   stable = stableFor @(CLog 2 (PeriodToCycles dom (Milliseconds ms))) clk rst inp
 
 -- | Top entity for this test. See module documentation for more information.
 swCcTopologyTest ::
