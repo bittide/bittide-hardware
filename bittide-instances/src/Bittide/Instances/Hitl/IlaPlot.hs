@@ -252,7 +252,7 @@ data IlaControl dom = IlaControl
   -- ^ Synchronized pulse counter
   , skipTest :: Signal dom Bool
   -- ^ Skip this test
-  -- , onlyScheduledCaptures :: Bool
+  , onlyScheduledCaptures :: Bool
   -- -- ^ Only capture measurements on scheduled intervals, not on data changes
   }
 
@@ -277,7 +277,7 @@ ilaPlotSetup ::
   IlaControl dom
 ilaPlotSetup IlaPlotSetup{..} = IlaControl{..}
  where
-  -- onlyScheduledCaptures = True
+  onlyScheduledCaptures = True
 
   -- 'syncOutGenerator' is used to drive 'SYNC_OUT'.
   syncOut =
@@ -610,7 +610,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
     let captureType calibrate scheduled dc dat
           | scheduled && calibrate = Just (Calibrate, dat)
           | scheduled = Just (Scheduled, dat)
-          -- | onlyScheduledCaptures = Nothing
+          | onlyScheduledCaptures = Nothing
           | dc || dataChange dat && not calibrate = Just (DataChange, dat)
           | otherwise = Nothing
 
@@ -805,7 +805,7 @@ callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask
     let captureType calibrate scheduled dc dat
           | scheduled && calibrate = Just (Calibrate, dat)
           | scheduled = Just (Scheduled, dat)
-          -- | onlyScheduledCaptures = Nothing
+          | onlyScheduledCaptures = Nothing
           | dc || dataChange dat && not calibrate = Just (DataChange, dat)
           | otherwise = Nothing
 
