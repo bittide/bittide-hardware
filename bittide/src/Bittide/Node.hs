@@ -235,6 +235,10 @@ managementUnitC (ManagementConfig scatterConfig gatherConfig peConfig) = circuit
   scatterUnitWbC scatterConfig -< (linkIn, wbScat, wbScatCal)
   idC -< (linkOut, nmuWbs)
 
+-- These functions should be added to `clash-protocols`, there is a PR for this:
+-- https://github.com/clash-lang/clash-protocols/pull/116
+-- And a bittide-hardware issue:
+-- https://github.com/bittide/bittide-hardware/issues/645
 -- Append two separate vectors of the same circuits into one vector of circuits
 appendC ::
   (KnownNat n0) =>
