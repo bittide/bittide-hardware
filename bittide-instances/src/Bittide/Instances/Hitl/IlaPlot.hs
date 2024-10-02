@@ -72,7 +72,6 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Gray (xpmCdcGray)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Explicit.Reset.Extra
 
-import Bittide.ElasticBuffer (sticky)
 import Control.Arrow (second, (***))
 import Data.Bool (bool)
 import Data.Constraint.Nat.Extra (
@@ -682,7 +681,7 @@ callistoSwClockControlWithIla ::
   Vec n (Signal sys (RelDataCount m)) ->
   Signal sys (Sw.CallistoSwResult n)
 callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask ebs =
-  hwSeqX ilaInstance (muteDuringCalibration <$> hasCalibrated <*> result)
+  hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> result)
  where
   result = Sw.callistoSwClockControl mgn fsz clk rst enableGen reframe mask ebs
 
@@ -771,8 +770,6 @@ callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask
               , filterCounts <$> fmap bv2v mask <*> bundle ebs
               )
 
-  hasCalibrated = sticky clk rst (not <$> calibrating)
-
   -- produce at least two calibration captures
   calibrating =
     unsafeToActiveLow syncRst
@@ -819,7 +816,7 @@ callistoSwClockControlWithIla mgn fsz dynClk clk rst reframe IlaControl{..} mask
             || dRfStageChange
             /= Stable
      in captureType
-          <$> hasCalibrated
+          <$> calibrating
           <*> scheduledCapture
           <*> ebDataChange
           <*> localData
