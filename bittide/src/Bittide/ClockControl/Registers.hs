@@ -5,17 +5,19 @@
 
 module Bittide.ClockControl.Registers where
 
-import Clash.Prelude
+import Clash.Prelude hiding (PeriodToCycles)
 
 import Protocols
 import Protocols.Wishbone
 
+import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.ClockControl
 import qualified Bittide.ClockControl.Callisto.Types as T
 import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Wishbone
 import Clash.Functor.Extra
+import Clash.Signal.Internal (DomainConfigurationPeriod)
 import Clash.Sized.Vector.ToTuple (vecToTuple)
 
 import Data.Maybe (fromMaybe, isJust)
@@ -134,6 +136,8 @@ clockControlWb2 ::
   , KnownNat m
   , m <= 32
   , nLinks <= 32
+  , 1 <= PeriodToCycles dom (Nanoseconds 150)
+  , 1 <= DomainConfigurationPeriod (KnownConf dom)
   ) =>
   -- | Maximum number of elements the incoming buffer occupancy is
   -- allowed to deviate from the current @target@ for it to be
@@ -224,30 +228,24 @@ clockControlWb2 mgn fsz linkMask reframing counters = Circuit go
     fIncDec1 :: Signal dom (Maybe SpeedChange)
     fIncDec1 = register Nothing fIncDec0
     fIncDec2 :: Signal dom (Maybe SpeedChange)
-    fIncDec2 = delay Nothing $ stickyBits d20 fIncDec1
+    fIncDec2 = delay Nothing $ stickyBits (SNat @(PeriodToCycles dom (Nanoseconds 150))) fIncDec1
 
     rfsKind0 :: Signal dom (Maybe ReframingStateKind)
     rfsKind0 = unpack . resize <<$>> f0
     rfsKind1 :: Signal dom (Maybe ReframingStateKind)
     rfsKind1 = register Nothing rfsKind0
-    rfsKind2 :: Signal dom (Maybe ReframingStateKind)
-    rfsKind2 = delay Nothing $ stickyBits d20 rfsKind1
 
     targetCorrection0 :: Signal dom (Maybe Float)
     targetCorrection0 = unpack . resize <<$>> f1
     targetCorrection1 :: Signal dom Float
     targetCorrection1 = register 0.0 (fromMaybe 0.0 <$> targetCorrection0)
-    targetCorrection2 :: Signal dom Float
-    targetCorrection2 = delay 0.0 $ stickyBits d20 targetCorrection1
 
     targetCount0 :: Signal dom (Maybe (Unsigned 32))
     targetCount0 = unpack . resize <<$>> f2
     targetCount1 :: Signal dom (Unsigned 32)
     targetCount1 = register 0 (fromMaybe 0 <$> targetCount0)
-    targetCount2 :: Signal dom (Unsigned 32)
-    targetCount2 = delay 0 $ stickyBits d20 targetCount1
 
-    reframingState = liftA3 go1 rfsKind2 targetCorrection2 targetCount2
+    reframingState = liftA3 go1 rfsKind1 targetCorrection1 targetCount1
      where
       go1 rfsk1 tCor tCou = go2 rfsk1
        where
