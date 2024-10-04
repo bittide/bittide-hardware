@@ -16,6 +16,7 @@ import Clash.Prelude (withClockResetEnable)
 import Language.Haskell.TH (runIO)
 import System.FilePath
 
+import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.ClockControl (RelDataCount, SpeedChange)
 import Bittide.ClockControl.Callisto.Types (ReframingState)
 import Bittide.ClockControl.Registers (clockControlWb2)
@@ -24,6 +25,8 @@ import Bittide.DoubleBufferedRam (ContentType (Blob), InitialContent (Reloadable
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
 import Bittide.SharedTypes (ByteOrder (BigEndian))
+
+import Clash.Signal.Internal (DomainConfigurationPeriod)
 
 import Project.FilePath
 
@@ -50,6 +53,8 @@ callistoSwClockControl ::
   , 1 <= eBufBits
   , nLinks + eBufBits <= 32
   , 1 <= framesize
+  , 1 <= PeriodToCycles dom (Nanoseconds 150)
+  , 1 <= DomainConfigurationPeriod (KnownConf dom)
   ) =>
   SNat margin ->
   SNat framesize ->
