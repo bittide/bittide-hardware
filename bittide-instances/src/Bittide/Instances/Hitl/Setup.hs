@@ -3,10 +3,13 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 module Bittide.Instances.Hitl.Setup (
+  -- * Constants
   FpgaCount,
   LinkCount,
   FpgaId,
   TransceiverWires,
+
+  -- * Topology
   allHwTargets,
   channelNames,
   clockPaths,
@@ -15,6 +18,8 @@ module Bittide.Instances.Hitl.Setup (
   knownFpgaIdsVec,
   linkMask,
   linkMasks,
+  deviceIdDnaPairs,
+  deviceIdSerialPairs,
 ) where
 
 import Clash.Prelude
@@ -119,18 +124,6 @@ linkMasks g = smap (const . linkMask') indicesI
     SNatLE -> linkMask g i
     _ -> error "impossible"
 
-dnaSerialPairs :: [(String, BitVector 96)]
-dnaSerialPairs =
-  [ ("pci-0000:00:14.0-usb-0:5.1:1.1-port0", 0x40020001015664862d20e405)
-  , ("pci-0000:00:14.0-usb-0:5.2:1.1-port0", 0x400200010169c04004308185)
-  , ("pci-0000:00:14.0-usb-0:5.3:1.1-port0", 0x400200010157f4862d01c345)
-  , ("pci-0000:00:14.0-usb-0:5.4:1.1-port0", 0x40020001016ba8e52581a285)
-  , ("pci-0000:00:14.0-usb-0:5.4.2:1.1-port0", 0x4002000101695ce72c702305)
-  , ("pci-0000:00:14.0-usb-0:5.4.3:1.1-port0", 0x4002000101695ce72c808445)
-  , ("pci-0000:00:14.0-usb-0:5.4.4.1:1.1-port0", 0x40020001815160e805108285)
-  , ("pci-0000:00:14.0-usb-0:5.4.4.2:1.1-port0", 0x400200010169c040044164c5)
-  ]
-
 deviceIdDnaPairs :: [(String, BitVector 96)]
 deviceIdDnaPairs =
   [ ("210308B3B272", 0x400200010169c040044164c5)
@@ -141,4 +134,16 @@ deviceIdDnaPairs =
   , ("210308B0AE65", 0x400200010157f4862d01c345)
   , ("210308B3A22D", 0x400200010169c04004308185)
   , ("210308B0B0C2", 0x40020001015664862d20e405)
+  ]
+
+deviceIdSerialPairs :: [(String, String)]
+deviceIdSerialPairs =
+  [ ("210308B3B272", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.2:1.1-port0")
+  , ("210308B0992E", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.1:1.1-port0")
+  , ("210308B0AE73", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.3:1.1-port0")
+  , ("210308B0AE6D", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.2:1.1-port0")
+  , ("210308B0AFD4", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4:1.1-port0")
+  , ("210308B0AE65", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.3:1.1-port0")
+  , ("210308B3A22D", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.2:1.1-port0")
+  , ("210308B0B0C2", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.1:1.1-port0")
   ]
