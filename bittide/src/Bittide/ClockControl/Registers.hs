@@ -17,7 +17,6 @@ import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, sticky
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Wishbone
 import Clash.Functor.Extra
-import Clash.Signal.Internal (DomainConfigurationPeriod)
 import Clash.Sized.Vector.ToTuple (vecToTuple)
 
 import Data.Maybe (fromMaybe, isJust)
@@ -105,6 +104,9 @@ clockControlWb margin framesize linkMask counters = Circuit go
         False -> (cntr + 1, cntrPrev)
         True -> (0, cntr)
 
+type FadjHoldTime = Nanoseconds 150
+type FadjHoldCycles dom = PeriodToCycles dom FadjHoldTime
+
 data ReframingStateKind = Detect | Wait | Done deriving (Generic, NFDataX, BitPack)
 
 {- | A wishbone accessible clock control interface.
@@ -136,8 +138,8 @@ clockControlWb2 ::
   , KnownNat m
   , m <= 32
   , nLinks <= 32
-  , 1 <= PeriodToCycles dom (Nanoseconds 150)
-  , 1 <= DomainConfigurationPeriod (KnownConf dom)
+  , 1 <= FadjHoldCycles dom
+  , 1 <= DomainPeriod dom
   ) =>
   -- | Maximum number of elements the incoming buffer occupancy is
   -- allowed to deviate from the current @target@ for it to be
@@ -228,7 +230,7 @@ clockControlWb2 mgn fsz linkMask reframing counters = Circuit go
     fIncDec1 :: Signal dom (Maybe SpeedChange)
     fIncDec1 = register Nothing fIncDec0
     fIncDec2 :: Signal dom (Maybe SpeedChange)
-    fIncDec2 = delay Nothing $ stickyBits (SNat @(PeriodToCycles dom (Nanoseconds 150))) fIncDec1
+    fIncDec2 = delay Nothing $ stickyBits (SNat @(FadjHoldCycles dom)) fIncDec1
 
     rfsKind0 :: Signal dom (Maybe ReframingStateKind)
     rfsKind0 = unpack . resize <<$>> f0

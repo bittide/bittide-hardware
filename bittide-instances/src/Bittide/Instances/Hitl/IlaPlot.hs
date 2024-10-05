@@ -64,6 +64,7 @@ import Bittide.ClockControl.Callisto (
   callistoClockControl,
  )
 import qualified Bittide.ClockControl.CallistoSw as Sw
+import Bittide.ClockControl.Registers (FadjHoldCycles)
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Extra.Maybe (orNothing)
 
@@ -71,7 +72,6 @@ import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Xpm.Cdc.Gray (xpmCdcGray)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Explicit.Reset.Extra
-import Clash.Signal.Internal (DomainConfigurationPeriod)
 
 import Control.Arrow (second, (***))
 import Data.Bool (bool)
@@ -667,8 +667,8 @@ callistoSwClockControlWithIla ::
   (KnownNat n, KnownNat m) =>
   (1 <= n, 1 <= m, n + m <= 32, 6 + n * (m + 4) <= 1024, 1 <= framesize) =>
   (CompressedBufferSize <= m) =>
-  ( 1 <= PeriodToCycles sys (Nanoseconds 150)
-  , 1 <= DomainConfigurationPeriod (KnownConf sys)
+  ( 1 <= FadjHoldCycles sys
+  , 1 <= DomainPeriod sys
   ) =>
   SNat margin ->
   SNat framesize ->

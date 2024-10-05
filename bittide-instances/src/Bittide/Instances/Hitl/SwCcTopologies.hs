@@ -45,8 +45,8 @@ import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
--- import Bittide.ClockControl.CallistoSw (CallistoSwResult (..), callistoSwClockControl)
 import Bittide.ClockControl.CallistoSw (CallistoSwResult (..))
+import Bittide.ClockControl.Registers (FadjHoldCycles)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
@@ -232,7 +232,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   fincFdecIla
     `hwSeqX` ( transceivers.txNs
              , transceivers.txPs
-             , fincFdecs
+             , frequencyAdjustments
              , callistoResult
              , clockControlReset
              , domainDiffs
@@ -289,17 +289,21 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
         , rxReadys = repeat (pure True)
         }
 
-  allReady =
-    trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle transceivers.linkReadys)
+  allReady = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> masked)
+   where
+    masked = liftA2 go1 (mask <$> cfg) (bundle transceivers.linkReadys)
+    go1 m v = unpack m .&&. v
+
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
 
+  timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
+  timer = register sysClk syncRst enableGen (0, 0) (timeSucc <$> timer)
+  milliseconds1 = fst <$> timer
+
   -- Startup delay
   startupDelayRst =
-    unsafeFromActiveLow
-      $ register sysClk sysRst enableGen False
-      $ unsafeToActiveLow
-      $ orReset (unsafeFromActiveLow clocksAdjusted)
+    orReset (unsafeFromActiveLow clocksAdjusted)
       $ orReset (unsafeFromActiveLow allReady)
       $ orReset
         (unsafeFromActiveHigh transceiversFailedAfterUp)
@@ -334,37 +338,24 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           )
           callistoResult
 
-  fincFdecs = speedChangeToPins . fromMaybe NoChange <$> clockMod
-
   FillStats swUpdatePeriodMin swUpdatePeriodMax = unbundle $ fillStats sysClk syncRst swUpdatePeriod
 
   callistoResult =
     callistoSwClockControlWithIla @LinkCount @CccBufferSize
-    (SNat @CccStabilityCheckerMargin)
-    (SNat @(CccStabilityCheckerFramesize Basic125))
-    (head transceivers.txClocks)
-    sysClk
-    clockControlReset
-    (reframingEnabled <$> cfg)
-    IlaControl{..}
-    (mask <$> cfg)
-    (resize <<$>> domainDiffs)
+      (SNat @CccStabilityCheckerMargin)
+      (SNat @(CccStabilityCheckerFramesize Basic125))
+      (head transceivers.txClocks)
+      sysClk
+      clockControlReset
+      (reframingEnabled <$> cfg)
+      IlaControl{..}
+      (mask <$> cfg)
+      (resize <<$>> domainDiffs)
 
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
   -- very confusing.
   capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
-
-  captureFlag =
-    riseEvery
-      sysClk
-      syncRst
-      enableGen
-      (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
-
-  timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
-  timer = register sysClk syncRst enableGen (0, 0) (timeSucc <$> timer)
-  milliseconds1 = fst <$> timer
 
   fincFdecIla :: Signal Basic125 ()
   fincFdecIla =
@@ -528,13 +519,20 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   --  where
   --   oofOwOuchie txClock txReset = unsafeSynchronizer txClock sysClk $ unsafeFromReset txReset
 
+  captureFlag =
+    riseEvery
+      sysClk
+      syncRst
+      enableGen
+      (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
+
   nFincs =
     regEn
       sysClk
       clockControlReset
       enableGen
       (0 :: Unsigned 32)
-      ((== Just SpeedUp) <$> clockMod)
+      (isFalling sysClk syncRst enableGen False ((== Just SpeedUp) <$> clockMod))
       (satSucc SatBound <$> nFincs)
 
   nFdecs =
@@ -543,7 +541,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       clockControlReset
       enableGen
       (0 :: Unsigned 32)
-      ((== Just SlowDown) <$> clockMod)
+      (isFalling sysClk syncRst enableGen False ((== Just SlowDown) <$> clockMod))
       (satSucc SatBound <$> nFdecs)
 
   -- Clock calibration
@@ -561,7 +559,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       sysRst
       enableGen
       (0 :: FincFdecCount)
-      (notInCCReset .&&. (== CCCalibrate) . calibrate <$> cfg)
+      (setupAdjustmentMade .&&. notInCCReset .&&. (== CCCalibrate) . calibrate <$> cfg)
       (clockShiftUpd <$> clockMod <*> clockShift)
 
   calibratedClockShift =
@@ -581,7 +579,12 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       sysRst
       enableGen
       (0 :: FincFdecCount)
-      (notInCCReset .&&. (== CCCalibrationValidation) . calibrate <$> cfg)
+      ( setupAdjustmentMade
+          .&&. notInCCReset
+          .&&. (== CCCalibrationValidation)
+          . calibrate
+          <$> cfg
+      )
       (clockShiftUpd <$> clockMod <*> validationClockShift)
 
   -- Initial Clock adjustment
@@ -603,13 +606,20 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
   initialAdjust = (+) <$> calibratedClockShift <*> (fromMaybe 0 . initialClockShift <$> cfg)
 
+  ccUpdated = or <$> bundle fallingVec
+   where
+    eqFns = repeat (==) <*> (Just <$> (NoChange :> SpeedUp :> SlowDown :> Nil))
+    eqVec = map (go1 clockMod) eqFns
+    go1 cm fn = fn <$> cm
+    fallingVec = isFalling sysClk syncRst enableGen False <$> eqVec
+
   adjustCount =
     regEn
       sysClk
       adjustRst
       enableGen
       (0 :: FincFdecCount)
-      adjusting
+      (adjusting .&&. (setupAdjustmentMade .||. ccUpdated))
       $ flip upd
       <$> adjustCount
       <*> let f = isFalling sysClk adjustRst enableGen False
@@ -619,27 +629,47 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     upd (_, True) = satPred SatBound
     upd _ = id
 
-  frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
-  frequencyAdjustments =
-    E.delay sysClk enableGen minBound {- glitch filter -}
-      $ mux
-        adjusting
-        ( speedChangeToFincFdec sysClk adjustRst
-            $ opSelect
-            <$> initialAdjust
-            <*> adjustCount
-        )
-        ( withClockResetEnable sysClk clockControlReset enableGen
-            $ stickyBits @Basic125 d20
-            $ speedChangeToPins
-            . fromMaybe NoChange
-            <$> clockMod
-        )
+  adjustPulse =
+    riseEvery
+      sysClk
+      adjustRst
+      enableGen
+      (SNat @(PeriodToCycles Basic125 (Microseconds 1)))
+
+  setupAdjust =
+    regEn
+      sysClk
+      adjustRst
+      enableGen
+      NoChange
+      adjustPulse
+      (opSelect <$> initialAdjust <*> adjustCount)
    where
     opSelect calib adjust = case compare calib adjust of
       LT -> SlowDown
       EQ -> NoChange
       GT -> SpeedUp
+
+  setupAdjustSticky =
+    withClockResetEnable
+      sysClk
+      adjustRst
+      enableGen
+      $ stickyBits (SNat @(FadjHoldCycles Basic125)) setupAdjust
+
+  setupAdjustmentMade = fallingFst .||. fallingSnd
+   where
+    fallingFinder = isFalling sysClk adjustRst enableGen False
+    fallingFst = fallingFinder $ fst <$> frequencyAdjustments
+    fallingSnd = fallingFinder $ snd <$> frequencyAdjustments
+
+  frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
+  frequencyAdjustments =
+    E.delay sysClk enableGen minBound {- glitch filter -}
+      $ speedChangeToPins <$> mux
+        adjusting
+        setupAdjustSticky
+        (fromMaybe NoChange <$> clockMod)
 
   domainDiffs :: Vec LinkCount (Signal Basic125 FincFdecCount)
   domainDiffs =
