@@ -14,6 +14,7 @@
 
   {"top": "boardTestExtended",             "stage": "test"},
   {"top": "boardTestSimple",               "stage": "test"},
+  {"top": "dnaOverSerial",                 "stage": "test"},
   {"top": "fincFdecTests",                 "stage": "test"},
   {"top": "fullMeshHwCcTest",              "stage": "test"},
   {"top": "fullMeshHwCcWithRiscvTest",     "stage": "test"},

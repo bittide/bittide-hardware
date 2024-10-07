@@ -142,7 +142,7 @@ deviceIdSerialPairs =
   , ("210308B0992E", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.1:1.1-port0")
   , ("210308B0AE73", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.3:1.1-port0")
   , ("210308B0AE6D", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.2:1.1-port0")
-  , ("210308B0AFD4", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4:1.1-port0")
+  , ("210308B0AFD4", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.1:1.1-port0")
   , ("210308B0AE65", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.3:1.1-port0")
   , ("210308B3A22D", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.2:1.1-port0")
   , ("210308B0B0C2", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.1:1.1-port0")

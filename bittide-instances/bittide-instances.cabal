@@ -126,6 +126,7 @@ library
     Bittide.Instances.Domains
     Bittide.Instances.Hacks
     Bittide.Instances.Hitl.BoardTest
+    Bittide.Instances.Hitl.DnaOverSerial
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.FullMeshHwCc
@@ -288,3 +289,20 @@ executable post-fullMeshSwCcTest
     deepseq,
     filepath,
     vector,
+
+executable post-dna-over-serial
+  import: common-options
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
+  main-is: exe/post-dna-over-serial/Main.hs
+  build-depends:
+    bittide-instances,
+    process,
+    tasty,
+    tasty-hunit,
+    tasty-th,
+
+  other-modules: Paths_bittide_instances

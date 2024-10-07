@@ -1,9 +1,11 @@
 [
+  {"top": "safeDffSynchronizer",           "stage": "hdl" },
+
+  {"top": "dnaOverSerial",                 "stage": "test"},
   {"top": "fullMeshHwCcTest",              "stage": "test"},
   {"top": "fullMeshSwCcTest",              "stage": "test"},
   {"top": "linkConfigurationTest",         "stage": "test"},
-  {"top": "safeDffSynchronizer",           "stage": "hdl"},
   {"top": "transceiversUpTest",            "stage": "test"},
-  {"top": "vexRiscvTest",                  "stage": "test"},
-  {"top": "vexRiscvTcpTest",               "stage": "test"}
+  {"top": "vexRiscvTcpTest",               "stage": "test"},
+  {"top": "vexRiscvTest",                  "stage": "test"}
 ]
