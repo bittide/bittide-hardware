@@ -144,6 +144,14 @@ impl Instant {
     pub fn get_frequency(&self) -> u64 {
         self.frequency
     }
+
+    // Maximum time that we can represent
+    pub fn end_of_time(frequency: u64) -> Instant {
+        Instant {
+            clock_cycles: u64::MAX,
+            frequency,
+        }
+    }
 }
 
 impl ops::Add<Duration> for Instant {
