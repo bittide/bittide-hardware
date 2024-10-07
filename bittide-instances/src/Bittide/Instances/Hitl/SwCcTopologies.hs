@@ -478,7 +478,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       dDiff4
       dDiff5
       dDiff6
-      (unsafeFromReset syncRst)
+      (unsafeFromReset rst)
       (unsafeFromReset gthAllReset)
       (unsafeFromReset startupDelayRst)
       (unsafeFromReset clockControlReset)
