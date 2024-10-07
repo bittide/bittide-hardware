@@ -12,11 +12,12 @@ pub struct AxiRxStatus {
 #[derive(uDebug, Copy, Clone)]
 pub struct AxiRx<const BUF_SIZE: usize> {
     base_addr: *const u8,
-    packet_length: *mut usize,
-    status: *mut u8,
 }
 
 impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
+    const PACKET_LENGTH_OFFSET: usize = BUF_SIZE;
+    const STATUS_OFFSET: usize = BUF_SIZE + 4;
+
     /// Creates a new instance of `AxiRx`.
     ///
     /// # Safety
@@ -25,45 +26,59 @@ impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
     /// - `base_addr` must post to a memory mapped AXI Rx peripheral.
     /// - `BUF_SIZE` must be a valid buffer size.
     ///
+    ///
     pub unsafe fn new(addr: *const ()) -> Self {
-        unsafe {
-            let base_addr = addr as *mut usize;
-            let buffer_addrs = BUF_SIZE / 4;
-            let packet_length_addr = base_addr.add(buffer_addrs);
-            let status_addr = base_addr.add(buffer_addrs + 1);
-            AxiRx {
-                base_addr: base_addr as *const u8,
-                packet_length: packet_length_addr as *mut usize,
-                status: status_addr as *mut u8,
-            }
+        AxiRx {
+            base_addr: addr as *const u8,
         }
     }
 
+    // Returns true if there is a packet in the buffer or the buffer is full.
     pub fn has_data(&self) -> bool {
-        unsafe { self.status.read_volatile() != 0 }
+        self.read_status_raw() != 0
     }
 
+    // Reads the raw bits of the status register.
+    pub fn read_status_raw(&self) -> u8 {
+        // If the instantiation of the AxiRx struct is correct,
+        // the status register should be located at the base address + (4 * (BUF_SIZE + 1))
+        unsafe { self.base_addr.add(Self::STATUS_OFFSET).read_volatile() }
+    }
+
+    // Returns a struct with the status of the buffer.
     pub fn read_status(&self) -> AxiRxStatus {
-        let bits = unsafe { self.status.read_volatile() };
+        let bits = self.read_status_raw();
         AxiRxStatus {
             buffer_full: bits & 0b1 == 0b1,
             packet_complete: bits & 0b10 == 0b10,
         }
     }
 
+    // Clears the bits in the status register.
     pub fn clear_status(&self) {
         unsafe {
-            self.status.write_volatile(0);
+            self.base_addr
+                .add(Self::STATUS_OFFSET)
+                .cast_mut()
+                .write_volatile(0);
         }
     }
 
     pub fn packet_length(&self) -> usize {
-        unsafe { self.packet_length.read_volatile() }
+        unsafe {
+            self.base_addr
+                .add(Self::PACKET_LENGTH_OFFSET)
+                .cast::<usize>()
+                .read_volatile()
+        }
     }
 
     pub fn clear_packet_register(&self) {
         unsafe {
-            self.packet_length.write_volatile(0);
+            self.base_addr
+                .add(Self::PACKET_LENGTH_OFFSET)
+                .cast_mut()
+                .write_volatile(0);
         }
     }
     pub fn receive_with_timeout(&self, buffer: &mut [u8], attempts: usize) -> Option<usize> {
@@ -85,25 +100,24 @@ impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
     pub fn try_receive(&self, buffer: &mut [u8]) -> Option<usize> {
         // Check if there is data to receive, this means either the buffer is full or a packet is complete
         // We can check by using the utility function read_status
-        if unsafe { self.status.read_volatile() == 0 } {
+        if self.read_status_raw() == 0 {
             return None;
         }
 
         // Get length of the incoming data
         let len = self.packet_length();
 
+        debug_assert!(len <= buffer.len(), "Buffer too small to receive packet");
+
         unsafe {
-            let dst = self.base_addr as *mut u8;
-            core::ptr::copy_nonoverlapping(dst, buffer.as_mut_ptr(), len);
+            core::ptr::copy_nonoverlapping(self.base_addr, buffer.as_mut_ptr(), len);
         }
         Some(len)
     }
 
     pub fn clear_packet(&self) {
-        unsafe {
-            self.packet_length.write_volatile(0);
-            self.status.write_volatile(0);
-        }
+        self.clear_packet_register();
+        self.clear_status();
     }
 
     pub fn get_slice(&self) -> &[u8] {
