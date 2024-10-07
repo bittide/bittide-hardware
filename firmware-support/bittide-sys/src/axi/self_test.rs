@@ -13,48 +13,22 @@ const STRING_SIZE: usize = 1024;
 
 /// Tests for the axi module.
 #[allow(dead_code)]
-pub fn self_test<const BUF_SIZE: usize>(mut uart: Uart, tx: AxiTx, rx: AxiRx<{ BUF_SIZE }>) {
+pub fn self_test<const BUF_SIZE: usize>(mut uart: Uart, tx: AxiTx, rx: AxiRx<BUF_SIZE>) {
+    type TestFn<const BUF_SIZE: usize> =
+        fn(AxiTx, AxiRx<BUF_SIZE>, &mut String<STRING_SIZE>) -> bool;
+
     // Construct a list of tests with their names.
-    let tests = [
+    let tests: &[(TestFn<BUF_SIZE>, &str)] = &[
+        (read_rx_status, "read_rx_status"),
+        (clear_rx_status, "clear_rx_status"),
+        (clear_rx_packet_register, "clear_rx_packet_register"),
+        (send_empty_packet, "send_empty_packet"),
+        (send_static_packet, "send_static_packet"),
+        (send_receive_empty_packet, "send_receive_empty_packet"),
+        (read_rx_packet_length, "read_rx_packet_length"),
+        (send_receive_random_packet, "send_receive_random_packet"),
         (
-            read_rx_status as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
-            "read_rx_status",
-        ),
-        (
-            clear_rx_status as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
-            "clear_rx_status",
-        ),
-        (
-            clear_rx_packet_register
-                as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
-            "clear_rx_packet_register",
-        ),
-        (
-            send_empty_packet as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
-            "send_empty_packet",
-        ),
-        (
-            send_static_packet as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
-            "send_static_packet",
-        ),
-        (
-            send_receive_empty_packet
-                as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
-            "send_receive_empty_packet",
-        ),
-        (
-            read_rx_packet_length
-                as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
-            "read_rx_packet_length",
-        ),
-        (
-            send_receive_random_packet
-                as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
-            "send_receive_random_packet",
-        ),
-        (
-            send_multiple_packets_receive_all
-                as fn(AxiTx, AxiRx<{ BUF_SIZE }>, &mut String<STRING_SIZE>) -> bool,
+            send_multiple_packets_receive_all,
             "send_multiple_packets_receive_all",
         ),
     ];
