@@ -58,6 +58,7 @@ dependencies = [
  "object",
  "proptest",
  "rand",
+ "smoltcp",
  "tempfile",
  "test-strategy",
  "ufmt",
@@ -255,6 +256,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 
 [[package]]
+name = "managed"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
+
+[[package]]
 name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -426,6 +433,20 @@ dependencies = [
  "quick-error",
  "tempfile",
  "wait-timeout",
+]
+
+[[package]]
+name = "smoltcp"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a1a996951e50b5971a2c8c0fa05a381480d70a933064245c4a223ddc87ccc97"
+dependencies = [
+ "bitflags",
+ "byteorder",
+ "cfg-if",
+ "heapless",
+ "log",
+ "managed",
 ]
 
 [[package]]

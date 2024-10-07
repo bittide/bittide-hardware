@@ -13,14 +13,14 @@ use bittide_sys::uart::Uart;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-const UART_ADDR: *mut u8 = (2 << 29) as *mut u8;
+const UART_ADDR: *const () = (2 << 29) as *const ();
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals.
     let uart = unsafe { Uart::new(UART_ADDR) };
-    let tx = AxiTx::new((3 << 29) as *mut u8);
-    let rx = unsafe { AxiRx::new((5 << 29) as *mut usize, 128) };
+    let tx = unsafe { AxiTx::new((3 << 29) as *const ()) };
+    let rx: AxiRx<128> = unsafe { AxiRx::new((5 << 29) as *const ()) };
     self_test(uart, tx, rx);
     loop {
         continue;
@@ -29,7 +29,7 @@ fn main() -> ! {
 
 #[panic_handler]
 fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
-    let mut uart = unsafe { Uart::new((2 << 29) as *mut u8) };
+    let mut uart = unsafe { Uart::new(UART_ADDR) };
     uwriteln!(uart, "Woops, I panicked!").unwrap();
     loop {
         continue;

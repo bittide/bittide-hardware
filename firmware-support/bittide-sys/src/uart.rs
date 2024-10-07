@@ -26,12 +26,12 @@ impl Uart {
     /// # Safety
     ///
     /// The `base_addr` pointer MUST BE a valid pointer that is backed
-    /// by either a memory mapped UART instance or at valid read-writable memory
-    /// (which will likely cause incorrect behaviour, but not break memory safety)
-    pub const unsafe fn new(base_addr: *mut u8) -> Uart {
+    /// by a memory mapped UART instance.
+    pub const unsafe fn new(base_addr: *const ()) -> Uart {
+        let addr = base_addr as *const u8;
         Uart {
-            payload_addr: base_addr.cast(),
-            flags_addr: base_addr.cast::<u8>().cast_const().add(4),
+            payload_addr: addr.cast_mut(),
+            flags_addr: addr.add(4),
         }
     }
 

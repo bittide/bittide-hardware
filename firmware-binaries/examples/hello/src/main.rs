@@ -13,7 +13,7 @@ use bittide_sys::uart::Uart;
 use riscv_rt::entry;
 
 const STATUS_REG_ADDR: *mut u32 = 0xE000_0000 as *mut u32;
-const UART_ADDR: *mut u8 = 0xC000_0000 as *mut u8;
+const UART_ADDR: *const () = 0xC000_0000 as *const ();
 
 fn test_success() {
     unsafe {

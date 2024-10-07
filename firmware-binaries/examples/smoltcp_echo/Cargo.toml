@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2024 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "smoltcp_echo"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Google LLC"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bittide-sys = { path = "../../../firmware-support/bittide-sys" }
+riscv-rt = "0.11.0"
+riscv = "^0.10"
+heapless = { version = "0.8", default-features = false}
+smoltcp = { version = "0.11", default-features = false, features = ["medium-ethernet", "proto-ipv4", "socket-tcp"] }
+ufmt = "0.2.0"
+log = {version = "0.4.21", features = ["release_max_level_trace"]}

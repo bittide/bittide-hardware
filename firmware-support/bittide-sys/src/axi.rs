@@ -10,60 +10,75 @@ pub struct AxiRxStatus {
 }
 
 #[derive(uDebug, Copy, Clone)]
-pub struct AxiRx {
-    base_addr: *mut u8,
-    buffer_size: usize,
-    packet_length: *mut usize,
-    status: *mut u8,
+pub struct AxiRx<const BUF_SIZE: usize> {
+    base_addr: *const u8,
 }
 
-impl AxiRx {
+impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
+    const PACKET_LENGTH_OFFSET: usize = BUF_SIZE;
+    const STATUS_OFFSET: usize = BUF_SIZE + 4;
+
     /// Creates a new instance of `AxiRx`.
     ///
     /// # Safety
     ///
-    /// - `base_addr` must be a valid mutable pointer to `usize`.
-    /// - `buffer_size` must be a valid buffer size.
+
+    /// - `base_addr` must post to a memory mapped AXI Rx peripheral.
+    /// - `BUF_SIZE` must be a valid buffer size.
     ///
-    pub unsafe fn new(base_addr: *mut usize, buffer_size: usize) -> Self {
-        unsafe {
-            let buffer_addrs = buffer_size / 4;
-            let packet_length_addr = base_addr.add(buffer_addrs);
-            let status_addr = base_addr.add(buffer_addrs + 1);
-            AxiRx {
-                base_addr: base_addr as *mut u8,
-                buffer_size,
-                packet_length: packet_length_addr as *mut usize,
-                status: status_addr as *mut u8,
-            }
+    ///
+    pub unsafe fn new(addr: *const ()) -> Self {
+        AxiRx {
+            base_addr: addr as *const u8,
         }
     }
 
+    // Returns true if there is a packet in the buffer or the buffer is full.
     pub fn has_data(&self) -> bool {
-        unsafe { self.status.read_volatile() != 0 }
+        self.read_status_raw() != 0
     }
 
+    // Reads the raw bits of the status register.
+    pub fn read_status_raw(&self) -> u8 {
+        // If the instantiation of the AxiRx struct is correct,
+        // the status register should be located at the base address + (4 * (BUF_SIZE + 1))
+        unsafe { self.base_addr.add(Self::STATUS_OFFSET).read_volatile() }
+    }
+
+    // Returns a struct with the status of the buffer.
     pub fn read_status(&self) -> AxiRxStatus {
-        let bits = unsafe { self.status.read_volatile() };
+        let bits = self.read_status_raw();
         AxiRxStatus {
             buffer_full: bits & 0b1 == 0b1,
             packet_complete: bits & 0b10 == 0b10,
         }
     }
 
+    // Clears the bits in the status register.
     pub fn clear_status(&self) {
         unsafe {
-            self.status.write_volatile(0);
+            self.base_addr
+                .add(Self::STATUS_OFFSET)
+                .cast_mut()
+                .write_volatile(0);
         }
     }
 
     pub fn packet_length(&self) -> usize {
-        unsafe { self.packet_length.read_volatile() }
+        unsafe {
+            self.base_addr
+                .add(Self::PACKET_LENGTH_OFFSET)
+                .cast::<usize>()
+                .read_volatile()
+        }
     }
 
     pub fn clear_packet_register(&self) {
         unsafe {
-            self.packet_length.write_volatile(0);
+            self.base_addr
+                .add(Self::PACKET_LENGTH_OFFSET)
+                .cast_mut()
+                .write_volatile(0);
         }
     }
     pub fn receive_with_timeout(&self, buffer: &mut [u8], attempts: usize) -> Option<usize> {
@@ -85,12 +100,15 @@ impl AxiRx {
     pub fn try_receive(&self, buffer: &mut [u8]) -> Option<usize> {
         // Check if there is data to receive, this means either the buffer is full or a packet is complete
         // We can check by using the utility function read_status
-        if unsafe { self.status.read_volatile() == 0 } {
+        if self.read_status_raw() == 0 {
             return None;
         }
 
         // Get length of the incoming data
         let len = self.packet_length();
+
+        debug_assert!(len <= buffer.len(), "Buffer too small to receive packet");
+
         unsafe {
             core::ptr::copy_nonoverlapping(self.base_addr, buffer.as_mut_ptr(), len);
         }
@@ -98,10 +116,8 @@ impl AxiRx {
     }
 
     pub fn clear_packet(&self) {
-        unsafe {
-            self.packet_length.write_volatile(0);
-            self.status.write_volatile(0);
-        }
+        self.clear_packet_register();
+        self.clear_status();
     }
 
     pub fn get_slice(&self) -> &[u8] {
@@ -116,42 +132,45 @@ impl AxiRx {
 
 #[derive(uDebug, Copy, Clone)]
 pub struct AxiTx {
-    payload_addr: *mut u8,
+    base_addr: *mut u8,
 }
 
 impl AxiTx {
-    pub fn new(payload_addr: *mut u8) -> Self {
-        AxiTx { payload_addr }
+    /// Creates a new instance of `AxiTx`.
+    /// # Safety
+    /// - `base_addr` Must be the base address of the Axi Tx peripheral.
+    pub unsafe fn new(base_addr: *const ()) -> Self {
+        AxiTx {
+            base_addr: base_addr as *mut u8,
+        }
     }
 
     pub fn send(&mut self, packet: &[u8]) {
-        // Split packet into a slice of words and a slice of bytes
-        let len = packet.len();
-        let words = len / 4;
-        let (words_slice, bytes_slice) = packet.split_at(words * 4);
+        // Deal with unaligned packets by splitting them into 3 parts
+        // The use of align_to is safe because the binary representation of 4 bytes is the same as 1 word
+        let (bytes_slice_prefix, words_slice, bytes_slice_suffix) = unsafe { packet.align_to() };
 
-        // Coerce the payload address to a u32 pointer
-        let dst = self.payload_addr as *mut u32;
-
-        // Separately write each 4-byte chunk to the payload address.
-        for chunk in words_slice.chunks_exact(4) {
-            // Convert each 4-byte chunk to a u32 word considering endianness
-            let word = u32::from_ne_bytes(chunk.try_into().unwrap());
-            // Perform the volatile write
+        for byte in bytes_slice_prefix {
             unsafe {
-                dst.write_volatile(word);
+                self.base_addr.write_volatile(*byte);
             }
         }
-
-        for byte in bytes_slice {
+        // Coerce the payload address to a u32 pointer
+        let dst = self.base_addr as *mut u32;
+        for word in words_slice {
             unsafe {
-                self.payload_addr.write_volatile(*byte);
+                dst.write_volatile(*word);
+            }
+        }
+        for byte in bytes_slice_suffix {
+            unsafe {
+                self.base_addr.write_volatile(*byte);
             }
         }
 
         // Initiate transmission by writing the packet size in words to the send_bytes register
         unsafe {
-            self.payload_addr.add(4).write_volatile(0);
+            self.base_addr.add(4).write_volatile(0);
         }
     }
 }

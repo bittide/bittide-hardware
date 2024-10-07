@@ -20,6 +20,7 @@ fdt = "0.1.0"
 heapless = { version = "0.8", features = ["ufmt"]}
 log = "0.4.21"
 rand = {version = "0.8.3", features = ["small_rng"], default-features = false }
+smoltcp = { version = "0.11", default-features = false, features = ["log", "medium-ethernet", "proto-ipv4", "socket-tcp"] }
 ufmt = "0.2.0"
 
 [dev-dependencies]

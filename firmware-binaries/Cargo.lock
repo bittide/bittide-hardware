@@ -42,6 +42,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc827186963e592360843fb5ba4b973e145841266c1357f7180c43526f2e5b61"
 
 [[package]]
+name = "bitflags"
+version = "1.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
+
+[[package]]
 name = "bittide-sys"
 version = "0.1.0"
 dependencies = [
@@ -49,6 +55,7 @@ dependencies = [
  "heapless 0.8.0",
  "log",
  "rand",
+ "smoltcp",
  "ufmt",
 ]
 
@@ -57,6 +64,12 @@ name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
+
+[[package]]
+name = "cfg-if"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clock-control"
@@ -179,6 +192,12 @@ name = "log"
 version = "0.4.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
+
+[[package]]
+name = "managed"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
 name = "memchr"
@@ -330,6 +349,33 @@ name = "semver"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "836fa6a3e1e547f9a2c4040802ec865b5d85f4014efe00555d7090a3dcaa1090"
+
+[[package]]
+name = "smoltcp"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a1a996951e50b5971a2c8c0fa05a381480d70a933064245c4a223ddc87ccc97"
+dependencies = [
+ "bitflags",
+ "byteorder",
+ "cfg-if",
+ "heapless 0.8.0",
+ "log",
+ "managed",
+]
+
+[[package]]
+name = "smoltcp_echo"
+version = "0.1.0"
+dependencies = [
+ "bittide-sys",
+ "heapless 0.8.0",
+ "log",
+ "riscv",
+ "riscv-rt",
+ "smoltcp",
+ "ufmt",
+]
 
 [[package]]
 name = "spin"
