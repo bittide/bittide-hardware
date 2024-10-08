@@ -44,9 +44,8 @@ import LiftType (liftTypeQ)
 import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
-import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
+import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins)
 import Bittide.ClockControl.CallistoSw (CallistoSwResult (..))
-import Bittide.ClockControl.Registers (FadjHoldCycles)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
@@ -559,7 +558,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       sysRst
       enableGen
       (0 :: FincFdecCount)
-      (setupAdjustmentMade .&&. notInCCReset .&&. (== CCCalibrate) . calibrate <$> cfg)
+      (notInCCReset .&&. (== CCCalibrate) . calibrate <$> cfg)
       (clockShiftUpd <$> clockMod <*> clockShift)
 
   calibratedClockShift =
@@ -579,12 +578,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       sysRst
       enableGen
       (0 :: FincFdecCount)
-      ( setupAdjustmentMade
-          .&&. notInCCReset
-          .&&. (== CCCalibrationValidation)
-          . calibrate
-          <$> cfg
-      )
+      (notInCCReset .&&. (== CCCalibrationValidation) . calibrate <$> cfg)
       (clockShiftUpd <$> clockMod <*> validationClockShift)
 
   -- Initial Clock adjustment
@@ -606,20 +600,13 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
   initialAdjust = (+) <$> calibratedClockShift <*> (fromMaybe 0 . initialClockShift <$> cfg)
 
-  ccUpdated = or <$> bundle fallingVec
-   where
-    eqFns = repeat (==) <*> (Just <$> (NoChange :> SpeedUp :> SlowDown :> Nil))
-    eqVec = map (go1 clockMod) eqFns
-    go1 cm fn = fn <$> cm
-    fallingVec = isFalling sysClk syncRst enableGen False <$> eqVec
-
   adjustCount =
     regEn
       sysClk
       adjustRst
       enableGen
       (0 :: FincFdecCount)
-      (adjusting .&&. (setupAdjustmentMade .||. ccUpdated))
+      (adjusting .&&. setupLeavingPulse)
       $ flip upd
       <$> adjustCount
       <*> let f = isFalling sysClk adjustRst enableGen False
@@ -629,47 +616,26 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     upd (_, True) = satPred SatBound
     upd _ = id
 
-  adjustPulse =
-    riseEvery
-      sysClk
-      adjustRst
-      enableGen
-      (SNat @(PeriodToCycles Basic125 (Microseconds 1)))
-
-  setupAdjust =
-    regEn
-      sysClk
-      adjustRst
-      enableGen
-      NoChange
-      adjustPulse
-      (opSelect <$> initialAdjust <*> adjustCount)
+  setupAdjust = opSelect <$> initialAdjust <*> adjustCount
    where
     opSelect calib adjust = case compare calib adjust of
       LT -> SlowDown
       EQ -> NoChange
       GT -> SpeedUp
 
-  setupAdjustSticky =
-    withClockResetEnable
-      sysClk
-      adjustRst
-      enableGen
-      $ stickyBits (SNat @(FadjHoldCycles Basic125)) setupAdjust
-
-  setupAdjustmentMade = fallingFst .||. fallingSnd
+  (setupState, setupAdjustments) = unbundle $ speedChangeToFincFdec' sysClk adjustRst setupAdjust
+  setupLeavingPulse = isFalling sysClk adjustRst enableGen False (inPulse <$> setupState)
    where
-    fallingFinder = isFalling sysClk adjustRst enableGen False
-    fallingFst = fallingFinder $ fst <$> frequencyAdjustments
-    fallingSnd = fallingFinder $ snd <$> frequencyAdjustments
+    inPulse = \case
+      Pulse _ _ -> True
+      _ -> False
 
   frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
-  frequencyAdjustments =
-    E.delay sysClk enableGen minBound {- glitch filter -}
-      $ speedChangeToPins <$> mux
-        adjusting
-        setupAdjustSticky
-        (fromMaybe NoChange <$> clockMod)
+  frequencyAdjustments = E.delay sysClk enableGen minBound
+    $ mux
+      adjusting
+        (speedChangeToPins <$> setupAdjustments)
+        (speedChangeToPins . fromMaybe NoChange <$> clockMod)
 
   domainDiffs :: Vec LinkCount (Signal Basic125 FincFdecCount)
   domainDiffs =
@@ -783,6 +749,35 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     , dDiff5
     , dDiff6
     ) = vecToTuple domainDiffs
+
+type AdjCycles dom = PeriodToCycles dom (Nanoseconds 150)
+type WaitCycles dom = PeriodToCycles dom (Microseconds 1 - Nanoseconds 150)
+
+data ToFincFdecState' dom
+  = Wait (Index (AdjCycles dom))
+  | Pulse (Index (WaitCycles dom)) SpeedChange
+  | Idle
+  deriving (Generic, NFDataX, Eq)
+
+speedChangeToFincFdec' ::
+  forall dom.
+  (KnownDomain dom) =>
+  Clock dom ->
+  Reset dom ->
+  Signal dom SpeedChange ->
+  Signal dom (ToFincFdecState' dom, SpeedChange)
+speedChangeToFincFdec' clk rst =
+  dflipflop clk . mealy clk rst enableGen go1 (Wait maxBound)
+ where
+  go1 :: ToFincFdecState' dom -> SpeedChange -> (ToFincFdecState' dom, (ToFincFdecState' dom, SpeedChange))
+  go1 state@(Wait n) _s
+    | n == 0 = (Idle, (state, NoChange))
+    | otherwise = (Wait (n - 1), (state, NoChange))
+  go1 state@(Pulse n s) _s
+    | n == 0 = (Wait maxBound, (state, s))
+    | otherwise = (Pulse (n - 1) s, (state, s))
+  go1 Idle NoChange = (Idle, (Idle, NoChange))
+  go1 Idle s = (Pulse maxBound s, (Idle, NoChange))
 
 {- | Tracks the min/max values of the input during the last milliseconds
 
