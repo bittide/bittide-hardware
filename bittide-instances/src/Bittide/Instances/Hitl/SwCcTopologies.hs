@@ -618,7 +618,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       adjustRst
       enableGen
       (0 :: FincFdecCount)
-      (adjusting .&&. setupLeavingPulse)
+      (adjusting .&&. setupEnteredPulse)
       $ flip upd
       <$> adjustCount
       <*> let f = isFalling sysClk adjustRst enableGen False
@@ -636,7 +636,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       GT -> SpeedUp
 
   (setupState, setupAdjustments) = unbundle $ speedChangeToFincFdec' sysClk adjustRst setupAdjust
-  setupLeavingPulse = isFalling sysClk adjustRst enableGen False (inPulse <$> setupState)
+  setupEnteredPulse = isRising sysClk adjustRst enableGen False (inPulse <$> setupState)
    where
     inPulse = \case
       Pulse _ _ -> True
