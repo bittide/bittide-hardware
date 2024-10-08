@@ -50,6 +50,7 @@ fn main() -> ! {
     uwriteln!(uart, "Starting TCP Client").unwrap();
     unsafe {
         LOGGER.set_logger(uart.clone());
+        LOGGER.display_source = LevelFilter::Warn;
         log::set_logger_racy(&LOGGER).ok();
         log::set_max_level_racy(LevelFilter::Trace);
     }
