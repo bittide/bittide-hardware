@@ -552,7 +552,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
   notInCCReset = unsafeToActiveLow clockControlReset
 
-  callistoLeavingPulse = isFalling sysClk clockControlReset enableGen False (isJust <$> clockMod)
+  callistoEnteredPulse = isRising sysClk clockControlReset enableGen False (isJust <$> clockMod)
 
   clockShift =
     regEn
@@ -560,7 +560,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       sysRst
       enableGen
       (0 :: FincFdecCount)
-      ( callistoLeavingPulse
+      ( callistoEnteredPulse
           .&&. notInCCReset
           .&&. (== CCCalibrate)
           . calibrate
@@ -585,7 +585,12 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       sysRst
       enableGen
       (0 :: FincFdecCount)
-      (notInCCReset .&&. (== CCCalibrationValidation) . calibrate <$> cfg)
+      ( callistoEnteredPulse
+          .&&. notInCCReset
+          .&&. (== CCCalibrationValidation)
+          . calibrate
+          <$> cfg
+      )
       (clockShiftUpd <$> clockMod <*> validationClockShift)
 
   -- Initial Clock adjustment
