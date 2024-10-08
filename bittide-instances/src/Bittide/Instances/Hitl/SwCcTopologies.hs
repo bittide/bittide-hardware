@@ -552,13 +552,20 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
   notInCCReset = unsafeToActiveLow clockControlReset
 
+  callistoEnteredPulse = isRising sysClk clockControlReset enableGen False (isJust <$> clockMod)
+
   clockShift =
     regEn
       sysClk
       sysRst
       enableGen
       (0 :: FincFdecCount)
-      (notInCCReset .&&. (== CCCalibrate) . calibrate <$> cfg)
+      ( callistoEnteredPulse
+          .&&. notInCCReset
+          .&&. (== CCCalibrate)
+          . calibrate
+          <$> cfg
+      )
       (clockShiftUpd <$> clockMod <*> clockShift)
 
   calibratedClockShift =
@@ -578,7 +585,12 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       sysRst
       enableGen
       (0 :: FincFdecCount)
-      (notInCCReset .&&. (== CCCalibrationValidation) . calibrate <$> cfg)
+      ( callistoEnteredPulse
+          .&&. notInCCReset
+          .&&. (== CCCalibrationValidation)
+          . calibrate
+          <$> cfg
+      )
       (clockShiftUpd <$> clockMod <*> validationClockShift)
 
   -- Initial Clock adjustment
@@ -606,7 +618,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       adjustRst
       enableGen
       (0 :: FincFdecCount)
-      (adjusting .&&. setupLeavingPulse)
+      (adjusting .&&. setupEnteredPulse)
       $ flip upd
       <$> adjustCount
       <*> let f = isFalling sysClk adjustRst enableGen False
@@ -624,16 +636,17 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       GT -> SpeedUp
 
   (setupState, setupAdjustments) = unbundle $ speedChangeToFincFdec' sysClk adjustRst setupAdjust
-  setupLeavingPulse = isFalling sysClk adjustRst enableGen False (inPulse <$> setupState)
+  setupEnteredPulse = isRising sysClk adjustRst enableGen False (inPulse <$> setupState)
    where
     inPulse = \case
       Pulse _ _ -> True
       _ -> False
 
   frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
-  frequencyAdjustments = E.delay sysClk enableGen minBound
-    $ mux
-      adjusting
+  frequencyAdjustments =
+    E.delay sysClk enableGen minBound
+      $ mux
+        adjusting
         (speedChangeToPins <$> setupAdjustments)
         (speedChangeToPins . fromMaybe NoChange <$> clockMod)
 
@@ -769,7 +782,10 @@ speedChangeToFincFdec' ::
 speedChangeToFincFdec' clk rst =
   dflipflop clk . mealy clk rst enableGen go1 (Wait maxBound)
  where
-  go1 :: ToFincFdecState' dom -> SpeedChange -> (ToFincFdecState' dom, (ToFincFdecState' dom, SpeedChange))
+  go1 ::
+    ToFincFdecState' dom ->
+    SpeedChange ->
+    (ToFincFdecState' dom, (ToFincFdecState' dom, SpeedChange))
   go1 state@(Wait n) _s
     | n == 0 = (Idle, (state, NoChange))
     | otherwise = (Wait (n - 1), (state, NoChange))
