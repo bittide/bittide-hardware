@@ -552,13 +552,20 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
   notInCCReset = unsafeToActiveLow clockControlReset
 
+  callistoLeavingPulse = isFalling sysClk clockControlReset enableGen False (isJust <$> clockMod)
+
   clockShift =
     regEn
       sysClk
       sysRst
       enableGen
       (0 :: FincFdecCount)
-      (notInCCReset .&&. (== CCCalibrate) . calibrate <$> cfg)
+      ( callistoLeavingPulse
+          .&&. notInCCReset
+          .&&. (== CCCalibrate)
+          . calibrate
+          <$> cfg
+      )
       (clockShiftUpd <$> clockMod <*> clockShift)
 
   calibratedClockShift =
@@ -631,9 +638,10 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       _ -> False
 
   frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
-  frequencyAdjustments = E.delay sysClk enableGen minBound
-    $ mux
-      adjusting
+  frequencyAdjustments =
+    E.delay sysClk enableGen minBound
+      $ mux
+        adjusting
         (speedChangeToPins <$> setupAdjustments)
         (speedChangeToPins . fromMaybe NoChange <$> clockMod)
 
@@ -769,7 +777,10 @@ speedChangeToFincFdec' ::
 speedChangeToFincFdec' clk rst =
   dflipflop clk . mealy clk rst enableGen go1 (Wait maxBound)
  where
-  go1 :: ToFincFdecState' dom -> SpeedChange -> (ToFincFdecState' dom, (ToFincFdecState' dom, SpeedChange))
+  go1 ::
+    ToFincFdecState' dom ->
+    SpeedChange ->
+    (ToFincFdecState' dom, (ToFincFdecState' dom, SpeedChange))
   go1 state@(Wait n) _s
     | n == 0 = (Idle, (state, NoChange))
     | otherwise = (Wait (n - 1), (state, NoChange))
