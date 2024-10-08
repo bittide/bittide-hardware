@@ -433,7 +433,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
         }
       sysClk
       -- Trigger as soon as we come out of reset
-      (unsafeToActiveLow syncRst)
+      (unsafeToActiveLow rst)
       captureFlag
       -- Debug probes
       milliseconds1
@@ -477,7 +477,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       dDiff4
       dDiff5
       dDiff6
-      (unsafeFromReset rst)
+      (unsafeFromReset syncRst)
       (unsafeFromReset gthAllReset)
       (unsafeFromReset startupDelayRst)
       (unsafeFromReset clockControlReset)
