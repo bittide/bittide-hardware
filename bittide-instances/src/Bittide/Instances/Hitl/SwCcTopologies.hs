@@ -34,7 +34,6 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import qualified Clash.Explicit.Prelude as E
 import Clash.Prelude (withClockResetEnable)
 
-import Data.Bifunctor (bimap)
 import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe, isJust)
 import Data.Proxy
@@ -612,20 +611,19 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
 
   initialAdjust = (+) <$> calibratedClockShift <*> (fromMaybe 0 . initialClockShift <$> cfg)
 
+  adjustCountEnable = mux ((== minBound) <$> adjustCount) (pure True) setupEnteredPulse
+
   adjustCount =
     regEn
       sysClk
       adjustRst
       enableGen
       (0 :: FincFdecCount)
-      (adjusting .&&. setupEnteredPulse)
-      $ flip upd
-      <$> adjustCount
-      <*> let f = isFalling sysClk adjustRst enableGen False
-           in bundle $ bimap f f $ unbundle frequencyAdjustments
+      (adjusting .&&. adjustCountEnable)
+      $ upd <$> setupAdjustments <*> adjustCount
    where
-    upd (True, _) = satSucc SatBound
-    upd (_, True) = satPred SatBound
+    upd SpeedUp = satSucc SatBound
+    upd SlowDown = satPred SatBound
     upd _ = id
 
   setupAdjust = opSelect <$> initialAdjust <*> adjustCount
