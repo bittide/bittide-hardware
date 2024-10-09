@@ -23,6 +23,7 @@ import Bittide.Hitl (
   hitlVioBool,
   paramForHwTargets,
   CasePreProcessing (..),
+  noPreProcess,
  )
 import Bittide.Instances.Hitl.Setup (allHwTargets)
 
@@ -115,6 +116,7 @@ tests =
             , preProc = InheritPreProcess
             }
         ]
-    , mPreProc = Nothing
+    , mPreProc = noPreProcess
+    , mMonitorProc = Nothing
     , mPostProc = Nothing
     }

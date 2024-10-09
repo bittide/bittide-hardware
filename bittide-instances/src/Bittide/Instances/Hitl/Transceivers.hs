@@ -233,7 +233,8 @@ tests =
     , externalHdl = []
     , extraXdcFiles = []
     , testCases = iters
-    , mPreProc = Nothing
+    , mPreProc = noPreProcess
+    , mMonitorProc = Nothing
     , mPostProc = Nothing
     }
  where

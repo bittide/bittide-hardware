@@ -692,7 +692,8 @@ tests =
           }
         | n <- [0 .. testsToRun - 1]
         ]
-    , mPreProc = Nothing
+    , mPreProc = noPreProcess
+    , mMonitorProc = Nothing
     , mPostProc = Nothing
     }
  where

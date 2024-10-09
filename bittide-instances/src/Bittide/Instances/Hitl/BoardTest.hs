@@ -25,10 +25,12 @@ import Bittide.Hitl (
   HitlTestCase (..),
   HitlTestGroup (..),
   CasePreProcessing (..),
+  TestStepResult (..),
   hitlVio,
   hitlVioBool,
   paramForHwTargets,
   testCasesFromEnum,
+  noPreProcess,
  )
 import Bittide.Instances.Domains (Ext125)
 import Bittide.Instances.Hitl.Setup (allHwTargets)
@@ -188,7 +190,8 @@ testSimple =
       , postProcData = ()
       , preProc = InheritPreProcess
       }]
-    , mPreProc = Nothing
+    , mPreProc = noPreProcess
+    , mMonitorProc = Nothing
     , mPostProc = Nothing
     }
 
@@ -199,12 +202,14 @@ testExtended =
     , extraXdcFiles = []
     , externalHdl = []
     , testCases = testCasesFromEnum @Test allHwTargets ()
-    , mPreProc = Nothing
+    , mPreProc = noPreProcess
+    , mMonitorProc = Nothing
     , mPostProc = Just postBoardTestExtendedFunc
     }
 
-postBoardTestExtendedFunc :: FilePath -> ExitCode -> IO ()
+postBoardTestExtendedFunc :: FilePath -> ExitCode -> IO (TestStepResult ())
 postBoardTestExtendedFunc ilaDir exitCode = do
   csvPaths <- glob (ilaDir </> "*" </> "*" </> "*.csv")
   let ilaCsvPaths = toFlattenedIlaCsvPathList ilaDir csvPaths
   postBoardTestExtended exitCode ilaCsvPaths
+  pure $ TestStepSuccess ()
