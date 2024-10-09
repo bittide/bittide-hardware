@@ -894,7 +894,8 @@ swCcTopologyTest ::
           )
   )
 swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, unbundle swFincFdecs, syncOut, spiDone, spiOut)
+  tleDebugIla
+    `hwSeqX` (txns, txps, unbundle swFincFdecs, syncOut, spiDone, spiOut)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
@@ -928,6 +929,73 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
         rxps
         miso
         cfg
+
+  captureFlag =
+    riseEvery
+        sysClk
+        syncRst
+        enableGen
+        (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
+
+  milliseconds1 =
+    regEn
+      sysClk
+      (unsafeFromActiveHigh endSuccess)
+      enableGen
+      (0 :: Unsigned 16)
+      captureFlag
+      (satSucc SatBound <$> milliseconds1)
+
+  (gTS0, gTS1) = unbundle globalTimestamp
+
+  tleDebugIla :: Signal Basic125 ()
+  tleDebugIla =
+    setName @"tleDebugIla"
+      ila
+      ( ilaConfig
+        $ "trigger_tle_0"
+        :> "capture_tle_0"
+        :> "probe_tle_milliseconds"
+        :> "probe_ilacfg_allReady"
+        :> "probe_ilacfg_startTest"
+        :> "probe_ilacfg_syncIn"
+        :> "probe_ilactl_syncRst"
+        :> "probe_ilactl_syncOut"
+        :> "probe_ilactl_syncStart"
+        :> "probe_ilactl_scheduledCapture"
+        :> "probe_ilactl_globalTimestamp0"
+        :> "probe_ilactl_globalTimestamp1"
+        :> "probe_ilactl_skipTest"
+        :> "probe_ilactl_onlyScheduledCaptures"
+        :> "probe_startTest"
+        :> "probe_skip"
+        :> "probe_allStable"
+        :> "probe_calibI"
+        :> "probe_calibE"
+        :> Nil
+      )
+        { depth = D16384
+        }
+      sysClk
+      (not <$> endSuccess)
+      captureFlag
+      milliseconds1
+      allReady
+      startTest
+      syncIn
+      (unsafeToActiveHigh syncRst)
+      syncOut
+      syncStart
+      scheduledCapture
+      gTS0
+      gTS1
+      skipTest
+      (pure onlyScheduledCaptures :: Signal Basic125 Bool)
+      startTest
+      skip
+      allStable
+      calibI
+      calibE
 
   -- allUgnsStable = and <$> bundle ugnsStable
   -- allStable' = allStable .&&. allUgnsStable
