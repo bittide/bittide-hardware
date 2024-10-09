@@ -8,6 +8,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
 
 {- | Helper functions to do things like synthesis, place & route, bitstream
 generation, programming and running hardware tests for the Bittide project.
@@ -45,8 +46,7 @@ import Control.Concurrent (threadDelay)
 import Control.Exception (try)
 import Control.Monad.Extra (andM, forM, forM_, orM, unless, when)
 import Data.Containers.ListUtils (nubOrd)
-import Data.Either (lefts, rights)
-import Data.Functor ((<&>))
+import Data.Either (lefts, rights, partitionEithers)
 import Data.List (elemIndex, isInfixOf, isSuffixOf, sort, sortOn, (\\))
 import Data.List.Extra (anySame, split, (!?))
 import Data.Map.Strict (fromList, keys, mapKeys, toAscList)
@@ -56,10 +56,10 @@ import Data.String.Interpolate (__i)
 import Data.Text (unpack)
 import System.Clock (Clock (Monotonic), diffTimeSpec, getTime, toNanoSecs)
 import System.Directory (createDirectoryIfMissing)
-import System.Exit (ExitCode (..))
+import System.Exit (ExitCode (..), exitFailure)
 import System.FilePath (dropFileName, (</>))
 import Text.Read (readMaybe)
-import Vivado (TclException (..), VivadoHandle, execPrint, execPrint_, with)
+import Vivado (TclException (..), VivadoHandle, execPrint_, with)
 import Vivado.Tcl
 
 -- | Satisfied if all actions result in 'False'
@@ -416,32 +416,6 @@ resolveHwTRefs v requestedHwTRefs = do
           <> "\n\tFound but unexpected: "
           <> show (foundFpgaIds \\ knownFpgaIds)
 
-{- | Open the given hardware target and set the current hardware device to the
-Xilinx FPGA on it.
--}
-openHwT :: VivadoHandle -> HwTarget -> IO ()
-openHwT v hwT = do
-  currentHwT <- current_hw_target v []
-  currentIsOpened <-
-    execPrint v "get_property IS_OPENED [current_hw_target]" <&> \case
-      "1" -> True
-      "0" -> False
-      o -> error $ "Property IS_OPENED was " <> show o <> " where 0 or 1 was expected."
-  if currentHwT == hwT
-    then do
-      unless currentIsOpened $
-        open_hw_target v []
-    else do
-      when currentIsOpened $
-        close_hw_target v ["-quiet"]
-      _ <- current_hw_target v [show hwT]
-      open_hw_target v []
-  -- Assumes that the open target has the Xilinx device to program at index 0.
-  -- This is also what Xilinx does in its examples in UG908.
-  hwD <- current_hw_device v ["[lindex [get_hw_devices] 0]"]
-  when (null (fromHwDevice hwD)) $
-    error "Setting the current hardware device failed."
-
 programBitstream ::
   -- | Directory where the bitstream files are located
   FilePath ->
@@ -725,7 +699,7 @@ verifyHwIlas v = do
 {- | Waits (with a timeout) until a HITL test case is finished by probing
 the probe_test_done probe. Returns whether the test case was successful.
 -}
-waitTestCaseEnd :: VivadoHandle -> HitlTestCase HwTarget a b -> FilePath -> IO ExitCode
+waitTestCaseEnd :: VivadoHandle -> HitlTestCase HwTarget a b c -> FilePath -> IO ExitCode
 waitTestCaseEnd v HitlTestCase{..} probesFilePath = do
   startTime <- getTime Monotonic
   let calcTimeSpentMs = (`div` 1000000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
@@ -786,7 +760,7 @@ runHitlTest ::
   -- | Filepath the the ILA data dump directory
   FilePath ->
   IO ExitCode
-runHitlTest test@HitlTestGroup{topEntity, testCases, mPreProc} url probesFilePath ilaDataDir = do
+runHitlTest test@HitlTestGroup{topEntity, testCases, mPreProc, mMonitorProc} url probesFilePath ilaDataDir = do
   putStrLn $
     "Starting HITL test for FPGA design '"
       <> show topEntity
@@ -827,7 +801,7 @@ runHitlTest test@HitlTestGroup{topEntity, testCases, mPreProc} url probesFilePat
               { parameters = mapKeys (fromJust . (`Map.lookup` refToHwTMap)) parameters
               , ..
               }
-      exitCode <- runHitlTestCase v resolvedTestCase mPreProc probesFilePath ilaDataDir
+      exitCode <- runHitlTestCase v resolvedTestCase mPreProc mMonitorProc probesFilePath ilaDataDir
       pure (name, exitCode)
 
     let failedTestCaseNames = fst <$> filter ((/= ExitSuccess) . snd) testResults
@@ -851,19 +825,21 @@ runHitlTest test@HitlTestGroup{topEntity, testCases, mPreProc} url probesFilePat
 
 -- | Runs one test case of a HITL test group
 runHitlTestCase ::
-  forall a b.
+  forall a b c.
   -- | Handle to a Vivado object that is to execute the Tcl
   VivadoHandle ->
   -- | The HITL test case to run
-  HitlTestCase HwTarget a b ->
+  HitlTestCase HwTarget a b c ->
   -- | Pre-process function for the test group
-  Maybe (VivadoHandle -> String -> HwTarget -> IO ()) ->
+  (VivadoHandle -> String -> HwTarget -> IO (TestStepResult c)) ->
+  -- | Monitor function
+  Maybe (VivadoHandle -> String -> FilePath -> [(HwTarget, c)] -> IO ExitCode) ->
   -- | Path to the generated probes file
   FilePath ->
   -- | Filepath the the ILA data dump directory
   FilePath ->
   IO ExitCode
-runHitlTestCase v testCase@HitlTestCase{..} preProcessFunc probesFilePath ilaDataDir = do
+runHitlTestCase v testCase@HitlTestCase{..} preProcessFunc monitorFunc probesFilePath ilaDataDir = do
   if null parameters
     then do
       putStrLn
@@ -874,7 +850,7 @@ runHitlTestCase v testCase@HitlTestCase{..} preProcessFunc probesFilePath ilaDat
       verifyHwIlas v
       -- XXX: We should not rely on start probe assertion order.
       --      See https://github.com/bittide/bittide-hardware/issues/638.
-      forM_ (sortOn (prettyShow . fst) (toAscList parameters)) $ \(hwT, param) -> do
+      testData <- forM (sortOn (prettyShow . fst) (toAscList parameters)) $ \(hwT, param) -> do
         openHwT v hwT
         execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
         refresh_hw_device v []
@@ -931,15 +907,12 @@ runHitlTestCase v testCase@HitlTestCase{..} preProcessFunc probesFilePath ilaDat
         commit_hw_vio v ["[get_hw_vios]"]
 
         -- run pre-processing
-        case preProc of
-          NoPreProcess -> pure ()
-          InheritPreProcess -> case preProcessFunc of
-            Just f -> do
-              putStrLn $
-                "Running test-group pre-process function for "
-                  <> name <> " ('" <> prettyShow hwT <> "')"
-              f v name hwT
-            Nothing -> pure ()
+        testRunData <- case preProc of
+          InheritPreProcess -> do
+            putStrLn $
+              "Running test-group pre-process function for "
+                <> name <> " ('" <> prettyShow hwT <> "')"
+            preProcessFunc v name hwT
           CustomPreProcess f -> do
             putStrLn $
               "Running case pre-process function for "
@@ -947,13 +920,45 @@ runHitlTestCase v testCase@HitlTestCase{..} preProcessFunc probesFilePath ilaDat
             f v hwT
 
 
-        -- Assert HitlVio start probe
-        execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
-        commit_hw_vio v ["[get_hw_vios]"]
-        putStrLn $ "Started test case for hardware target " <> prettyShow hwT <> "."
+        case testRunData of
+          TestStepFailure msg -> do
+            putStrLn $
+              "pre-process step failed: " <> msg
+            pure $ Left (hwT, msg)
 
-      putStrLn $ "Waiting for test case '" <> name <> "' to end..."
-      testCaseExitCode <- waitTestCaseEnd v testCase probesFilePath
+          TestStepSuccess val -> do
+            pure $ Right (hwT, val)
+
+        -- Assert HitlVio start probe
+        -- execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
+        -- commit_hw_vio v ["[get_hw_vios]"]
+        -- putStrLn $ "Started test case for hardware target " <> prettyShow hwT <> "."
+
+        -- pure testRunData
+
+      let (failedTests, validTests) = partitionEithers testData
+
+      testCaseExitCode0 <- case monitorFunc of
+        Just fn -> do
+          fn v name probesFilePath validTests
+        Nothing -> do
+          forM_ validTests $ \(hwT, _testData) -> do
+            -- Assert HitlVio start probe
+            openHwT v hwT
+            execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
+            refresh_hw_device v []
+
+            execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
+            commit_hw_vio v ["[get_hw_vios]"]
+            putStrLn $ "Started test case for hardware target " <> prettyShow hwT <> "."
+
+          putStrLn $ "Waiting for test case '" <> name <> "' to end..."
+          waitTestCaseEnd v testCase probesFilePath
+
+      testCaseExitCode <-
+            if null failedTests
+              then pure testCaseExitCode0
+              else exitFailure
 
       putStrLn "Saving captured ILA data (if relevant)..."
       forM_ (keys parameters) $ \hwT -> do

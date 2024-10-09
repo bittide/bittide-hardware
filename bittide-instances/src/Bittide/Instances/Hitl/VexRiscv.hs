@@ -21,8 +21,8 @@ import Protocols
 import Protocols.Wishbone
 import VexRiscv
 
-import Vivado (VivadoHandle)
-import Vivado.Tcl (HwTarget)
+import Vivado
+import Vivado.Tcl
 
 import Bittide.DoubleBufferedRam
 import Bittide.Hitl
@@ -35,6 +35,7 @@ import Bittide.Wishbone
 import Paths_bittide_instances
 
 import System.IO
+import System.Exit
 
 data TestStatus = Running | Success | Fail
   deriving (Enum, Eq, Generic, NFDataX, BitPack)
@@ -171,14 +172,31 @@ tests =
             , preProc = InheritPreProcess
             }
         ]
-    , mPreProc = Just preProcessFunc
+    , mPreProc = preProcessFunc
+    , mMonitorProc = Just monitorFunc
     , mPostProc = Nothing
     }
 
+getTestProbeTcl :: String -> String
+getTestProbeTcl probeNm =
+  "[get_hw_probes -of_objects [get_hw_vios] " <> probeNm <> "]"
 
-preProcessFunc :: VivadoHandle -> String -> HwTarget -> IO ()
-preProcessFunc _v _name _hwT = do
+{- | Tcl code to get the HITL VIO test start output probe.
+Run `verifyHitlVio` beforehand to ensure that the probe is available.
+-}
+getProbeTestStartTcl :: String
+getProbeTestStartTcl = getTestProbeTcl "*vioHitlt/probe_test_start"
+
+monitorFunc :: VivadoHandle -> String -> FilePath -> [(HwTarget, c)] -> IO ExitCode
+monitorFunc v _name ilaPath [(hwT, _preData)] = do
+  openHwT v hwT
+  execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
+  refresh_hw_device v []
+
   gdbScript <- getDataFileName "data/gdb/test-gdb-prog"
+
+  execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
+  commit_hw_vio v ["[get_hw_vios]"]
 
   runGdbPicocomOpenOcd gdbScript $ \gdbOut (picocomIn, picocomOut) -> do
     -- This is the first thing that will print when the FPGA has been programmed
@@ -191,4 +209,29 @@ preProcessFunc _v _name _hwT = do
     -- Test UART echo
     hPutStrLn picocomIn "Hello, UART!"
     waitForLine picocomOut "Hello, UART!"
-  pure ()
+
+  execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeTestStartTcl]
+  commit_hw_vio v ["[get_hw_vios]"]
+
+
+  pure $ ExitSuccess
+monitorFunc _v _name _ilaPath _ = error "VexRiscv monitor func should only run with one hardware target"
+
+preProcessFunc :: VivadoHandle -> String -> HwTarget -> IO (TestStepResult ())
+preProcessFunc _v _name _hwT = do
+  pure $ TestStepSuccess ()
+
+  -- gdbScript <- getDataFileName "data/gdb/test-gdb-prog"
+
+  -- runGdbPicocomOpenOcd gdbScript $ \gdbOut (picocomIn, picocomOut) -> do
+  --   -- This is the first thing that will print when the FPGA has been programmed
+  --   -- and starts executing the new program.
+  --   waitForLine picocomOut "Going in echo mode!"
+
+  --   -- Wait for GDB to reach its last command - where it will wait indefinitely
+  --   waitForLine gdbOut "> continue"
+
+  --   -- Test UART echo
+  --   hPutStrLn picocomIn "Hello, UART!"
+  --   waitForLine picocomOut "Hello, UART!"
+  -- pure ()

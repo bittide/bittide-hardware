@@ -818,7 +818,7 @@ tests = testGroup
   calibrateClockOffsets = calibrateCC False
   validateClockOffsetCalibration = calibrateCC True
 
-  calibrateCC :: Bool -> HitlTestCase HwTargetRef TestConfig CcConf
+  calibrateCC :: Bool -> HitlTestCase HwTargetRef TestConfig CcConf ()
   calibrateCC validate =
     HitlTestCase
       { name = (if validate then "zzz_validate" else "0_calibrate") <> "_clock_offsets"
@@ -850,7 +850,7 @@ tests = testGroup
     Maybe (Vec n PartsPer) ->
     Vec n StartupDelay ->
     Topology n ->
-    HitlTestCase HwTargetRef TestConfig CcConf
+    HitlTestCase HwTargetRef TestConfig CcConf ()
   tt clockShifts startDelays t =
     HitlTestCase
       { name = topologyName t
@@ -921,7 +921,8 @@ tests = testGroup
           -- make sure the clock offsets detected during calibration is still the same
         , validateClockOffsetCalibration
         ]
-    , mPreProc = Nothing
+    , mPreProc = noPreProcess
+    , mMonitorProc = Nothing
     , mPostProc = Nothing
     }
 {- FOURMOLU_ENABLE -}

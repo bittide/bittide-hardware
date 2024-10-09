@@ -288,6 +288,7 @@ tests =
             , preProc = InheritPreProcess
             }
         ]
-    , mPreProc = Nothing
+    , mPreProc = noPreProcess
+    , mMonitorProc = Nothing
     , mPostProc = Nothing
     }
