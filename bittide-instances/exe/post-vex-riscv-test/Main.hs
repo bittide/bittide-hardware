@@ -17,7 +17,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.TH
 
 getGdbScriptPath :: IO FilePath
-getGdbScriptPath = getDataFileName "data/gdb/test-gdb-prog"
+getGdbScriptPath = getDataFileName "data/gdb/test-gdb-prog.gdb"
 
 {- | Test that the GDB program works as expected. This test will start OpenOCD,
 Picocom, and GDB, and will wait for the GDB program to execute specific

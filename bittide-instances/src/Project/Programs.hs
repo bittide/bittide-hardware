@@ -38,7 +38,7 @@ After the action returns the generated file gets deleted automatically.
 -}
 withAnnotatedGdbScriptPath :: FilePath -> (FilePath -> IO ()) -> IO ()
 withAnnotatedGdbScriptPath srcPath action = do
-  withSystemTempFile "test-gdb-prog" $ \dstPath dstHandle -> do
+  withSystemTempFile "gdb-script" $ \dstPath dstHandle -> do
     withFile srcPath ReadMode $ \srcHandle -> do
       srcLines <- lines <$> hGetContents srcHandle
       forM_ srcLines $ \line -> do

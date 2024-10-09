@@ -17,7 +17,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.TH
 
 getGdbScriptPath :: IO FilePath
-getGdbScriptPath = getDataFileName "data/gdb/smoltcp-hitl-prog"
+getGdbScriptPath = getDataFileName "data/gdb/smoltcp-hitl-prog.gdb"
 
 {- | Return the beginning of a string until you detect a certain substring
 That substring is not included in the result.
