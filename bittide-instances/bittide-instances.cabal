@@ -186,6 +186,7 @@ test-suite unittests
   other-modules:
     Tests.OverflowResistantDiff
     Wishbone.Axi
+    Wishbone.CaptureUgn
     Wishbone.DnaPortE2
     Wishbone.Time
 
