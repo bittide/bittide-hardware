@@ -171,24 +171,27 @@ tests =
             , preProc = InheritPreProcess
             }
         ]
-    , mPreProc = Just preProcessFunc
+    , mPreProc = preProcessFunc
+    , mMonitorProc = Nothing
     , mPostProc = Nothing
     }
 
 
-preProcessFunc :: VivadoHandle -> String -> HwTarget -> IO ()
+preProcessFunc :: VivadoHandle -> String -> HwTarget -> IO (TestStepResult ())
 preProcessFunc _v _name _hwT = do
-  gdbScript <- getDataFileName "data/gdb/test-gdb-prog"
+  error "implement this!"
 
-  runGdbPicocomOpenOcd gdbScript $ \gdbOut (picocomIn, picocomOut) -> do
-    -- This is the first thing that will print when the FPGA has been programmed
-    -- and starts executing the new program.
-    waitForLine picocomOut "Going in echo mode!"
+  -- gdbScript <- getDataFileName "data/gdb/test-gdb-prog"
 
-    -- Wait for GDB to reach its last command - where it will wait indefinitely
-    waitForLine gdbOut "> continue"
+  -- runGdbPicocomOpenOcd gdbScript $ \gdbOut (picocomIn, picocomOut) -> do
+  --   -- This is the first thing that will print when the FPGA has been programmed
+  --   -- and starts executing the new program.
+  --   waitForLine picocomOut "Going in echo mode!"
 
-    -- Test UART echo
-    hPutStrLn picocomIn "Hello, UART!"
-    waitForLine picocomOut "Hello, UART!"
-  pure ()
+  --   -- Wait for GDB to reach its last command - where it will wait indefinitely
+  --   waitForLine gdbOut "> continue"
+
+  --   -- Test UART echo
+  --   hPutStrLn picocomIn "Hello, UART!"
+  --   waitForLine picocomOut "Hello, UART!"
+  -- pure ()

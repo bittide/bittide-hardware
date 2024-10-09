@@ -145,9 +145,6 @@ data Target = Target
   , targetTest :: Maybe HitlTestGroup
   -- ^ Whether target has a VIO probe that can be used to run hardware-in-the-
   -- loop tests. Note that this flag, 'targetTest', implies 'targetHasVio'.
-  , targetPostProcess :: Maybe (FilePath -> ExitCode -> IO ())
-  -- ^ Function to run for post processing of ILA CSV data, or Nothing
-  -- if it has none.
   , targetExtraXdc :: [FilePath]
   -- ^ Extra constraints to be sourced. Will be sourced _after_ main XDC.
   , targetExternalHdl :: [TclGlobPattern]
@@ -162,7 +159,6 @@ defTarget name =
     , targetHasXdc = False
     , targetHasVio = False
     , targetTest = Nothing
-    , targetPostProcess = Nothing
     , targetExtraXdc = []
     , targetExternalHdl = []
     }
@@ -174,7 +170,6 @@ testTarget test@(HitlTestGroup{..}) =
     , targetHasXdc = True
     , targetHasVio = True
     , targetTest = Just test
-    , targetPostProcess = mPostProc
     , targetExtraXdc = extraXdcFiles
     , targetExternalHdl = externalHdl
     }
@@ -573,16 +568,18 @@ main = do
               phony (entityName targetName <> ":test") $ do
                 need [testExitCodePath]
                 exitCode <- read <$> readFile' testExitCodePath
-                when (isJust targetPostProcess) $ do
-                  liftIO $ (fromJust targetPostProcess) ilaDataDir exitCode
+                when (isJust (mPostProc =<< targetTest)) $ do
+                  liftIO $ (fromJust $ mPostProc =<< targetTest) ilaDataDir exitCode
+                  pure ()
                 unless (exitCode == ExitSuccess) $ do
                   liftIO $ exitWith exitCode
 
-              when (isJust targetPostProcess) $ do
+              when (isJust (mPostProc =<< targetTest)) $ do
                 phony (entityName targetName <> ":post-process") $ do
                   need [testExitCodePath]
                   exitCode <- read <$> readFile' testExitCodePath
-                  liftIO $ (fromJust targetPostProcess) ilaDataDir exitCode
+                  liftIO $ (fromJust (mPostProc =<< targetTest)) ilaDataDir exitCode
+                  pure ()
 
     if null shakeTargets
       then rules

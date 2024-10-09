@@ -487,8 +487,8 @@ knownTestsWithCcConf = Map.fromList (mapMaybe go hitlTests)
   justOrDie _ (Just x) = Just x
   justOrDie k Nothing = error $ "No CcConf for " <> show k
 
-  go HitlTestGroup{topEntity, testCases = iters :: [HitlTestCase HwTargetRef q r]} =
-    case cast @[HitlTestCase HwTargetRef q r] @[HitlTestCase HwTargetRef q CcConf] iters of
+  go HitlTestGroup{topEntity, testCases = iters :: [HitlTestCase HwTargetRef q r c]} =
+    case cast @[HitlTestCase HwTargetRef q r c] @[HitlTestCase HwTargetRef q CcConf c] iters of
       Just q ->
         Just
           ( show topEntity

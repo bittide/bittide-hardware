@@ -47,11 +47,14 @@ module Bittide.Hitl (
   HitlTestGroup (..),
   HitlTestCase (..),
   CasePreProcessing (..),
+  CaseMonitorFunc (..),
+  TestStepResult (..),
   MayHavePostProcData (..),
   Done,
   Success,
   hitlVio,
   hitlVioBool,
+  noPreProcess,
 
   -- * Test construction convenience functions
   paramForHwTargets,
@@ -101,6 +104,11 @@ in the Bittide demo rig or by ID.
 data HwTargetRef
   = HwTargetByIndex Natural
   | HwTargetById FpgaId
+  deriving (Eq, Ord, Show)
+
+data TestStepResult a
+  = TestStepSuccess a
+  | TestStepFailure String
   deriving (Eq, Ord, Show)
 
 {- | A definition of a test that should be performed with hardware in the loop.
@@ -175,15 +183,18 @@ This must be accompanied by a @hitlVio \@NumberOfStages@ in the design.
 -}
 data HitlTestGroup where
   HitlTestGroup ::
-    (Typeable a, Typeable b) =>
+    (Typeable a, Typeable b, Typeable c) =>
     { topEntity :: ClashTargetName
     -- ^ Reference to the Design Under Test
     , extraXdcFiles :: [String]
-    , testCases :: [HitlTestCase HwTargetRef a b]
+    , testCases :: [HitlTestCase HwTargetRef a b c]
     -- ^ List of test cases
-    , mPreProc :: Maybe (VivadoHandle -> String -> HwTarget -> IO ())
+    , mPreProc :: (VivadoHandle -> String -> HwTarget -> IO (TestStepResult c))
     -- ^ Optional pre-processing step. First argument is the name of the test
-    , mPostProc :: Maybe (FilePath -> ExitCode -> IO ())
+    , mMonitorProc :: Maybe (VivadoHandle -> String -> HwTarget -> c -> IO (TestStepResult c))
+    -- ^ Optional monitoring process.
+    -- TODO should this return some kind of Test Result code?
+    , mPostProc :: Maybe (FilePath -> ExitCode -> IO (TestStepResult ()))
     -- ^ Optional post processing step.
     , externalHdl :: [String]
     -- ^ List of external HDL files to include in he project
@@ -193,35 +204,42 @@ data HitlTestGroup where
 {- | A HITL test case. One HITL test group can have multiple test cases
 associated with it.
 -}
-data HitlTestCase h a b where
+data HitlTestCase h a b c where
   HitlTestCase ::
-    (Show h, Show a, BitPack a, Show b, Typeable h) =>
+    (Show h, Show a, BitPack a, Show b, Typeable h, Typeable c) =>
     { name :: String
     , parameters :: Map h a
-    , preProc :: CasePreProcessing
+    , preProc :: CasePreProcessing c
     , postProcData :: b
+    , monitorProc :: CaseMonitorFunc c
     } ->
-    HitlTestCase h a b
+    HitlTestCase h a b c
 
-deriving instance Show (HitlTestCase h a b)
+deriving instance Show (HitlTestCase h a b c)
 
-data CasePreProcessing
-  = NoPreProcess
-  | InheritPreProcess
-  | CustomPreProcess (VivadoHandle -> HwTarget -> IO ())
+data CasePreProcessing c
+  = InheritPreProcess
+  | CustomPreProcess (VivadoHandle -> HwTarget -> IO (TestStepResult c))
 
-instance Show CasePreProcessing where
-  show NoPreProcess = "NoPreProcess"
+instance Show (CasePreProcessing a) where
   show InheritPreProcess = "InheritPreProcess"
   show (CustomPreProcess _) = "CustomPreProcess <func>"
+
+data CaseMonitorFunc c
+  = InheritMonitorFunc
+  | CustomMonitorFunc (VivadoHandle -> String -> HwTarget -> c -> IO (TestStepResult c))
+
+instance Show (CaseMonitorFunc a) where
+  show InheritMonitorFunc = "InheritMonitorFunc"
+  show (CustomMonitorFunc _) = "CustomMonitorFunc <func>"
 
 -- | A class for extracting optional post processing data from a test.
 class MayHavePostProcData b where
   -- | Returns the test names with some post processing data of type @c@,
   -- if that data exists.
   mGetPPD ::
-    forall h a.
-    [HitlTestCase h a b] ->
+    forall h a c.
+    [HitlTestCase h a b c] ->
     Map String (Maybe b)
 
 instance MayHavePostProcData a where
@@ -231,6 +249,9 @@ instance MayHavePostProcData a where
 
 instance MayHavePostProcData () where
   mGetPPD = Map.fromList . map ((,Nothing) . name)
+
+noPreProcess :: VivadoHandle -> String -> HwTarget -> IO (TestStepResult ())
+noPreProcess _ _ _ = pure (TestStepSuccess ())
 
 -- | Obtain a list of the hardware targets that are relevant for a given HITL test.
 hwTargetRefsFromHitlTestGroup :: HitlTestGroup -> [HwTargetRef]
@@ -259,11 +280,13 @@ to it and receives that constructur as test parameter.
 > testCases = testCasesFromEnum @ABC allHwTargets ()
 -}
 testCasesFromEnum ::
-  forall a b.
-  (Show a, Bounded a, Enum a, BitPack a, Show b, Typeable a, Typeable b) =>
+  forall a b c.
+  ( Show a, Bounded a, Enum a, BitPack a
+  , Show b, Show c
+  , Typeable a, Typeable b, Typeable c) =>
   [HwTargetRef] ->
   b ->
-  [HitlTestCase HwTargetRef a b]
+  [HitlTestCase HwTargetRef a b c]
 testCasesFromEnum hwTs ppd =
   [ HitlTestCase
     { name = show constr
