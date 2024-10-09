@@ -287,10 +287,11 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
         , rxReadys = repeat (pure True)
         }
 
-  allReady = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> masked)
+  allReady = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> go1)
    where
-    masked = liftA2 go1 (mask <$> cfg) (bundle transceivers.linkReadys)
-    go1 m v = unpack m .&&. v
+    go1 = liftA2 go2 (mask <$> cfg) (bundle transceivers.linkReadys)
+    go2 m = zipWith go3 (bitCoerce m)
+    go3 m v = not m || v -- if m then v else True
 
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
@@ -426,6 +427,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_delayCount"
           :> "probe_startupDelay"
           :> "probe_spiErr"
+          :> "probe_mask"
           :> Nil
       )
         { depth = D16384
@@ -499,6 +501,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       delayCount
       (startupDelay <$> cfg)
       spiErr
+      (mask <$> cfg)
 
   {-
     clockMod
