@@ -81,6 +81,7 @@ import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Clash.Sized.Extra (unsignedToSigned)
+import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen
 
 import Protocols hiding (SimulationConfig)
@@ -405,7 +406,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     startupDelayRst
       `orReset` unsafeFromActiveLow ((==) <$> delayCount <*> (startupDelay <$> cfg))
 
-  (clockMod, _stabilities, allStable0, _allCentered) =
+  (clockMod, stabilities, allStable0, _allCentered) =
     unbundle
       $ fmap
         (\CallistoResult{..} -> (maybeSpeedChange, stability, allStable, allSettled))
@@ -424,29 +425,68 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   -- Capture every 100 microseconds - this should give us a window of about 5
   -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
   -- very confusing.
-  capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
+  -- capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
 
   fincFdecIla :: Signal Basic125 ()
   fincFdecIla =
     setName @"fincFdecIla"
       ila
       ( ilaConfig
-          $ "trigger_0"
-          :> "capture_0"
-          :> "probe_milliseconds"
+          $ "trigger_fdi_0"
+          :> "capture_fdi_0"
+          :> "probe_fdi_milliseconds"
           :> "probe_allStable0"
           :> "probe_transceiversFailedAfterUp"
           :> "probe_nFincs"
           :> "probe_nFdecs"
           :> "probe_net_nFincs"
+          :> "stability0"
+          :> "stability1"
+          :> "stability2"
+          :> "stability3"
+          :> "stability4"
+          :> "stability5"
+          :> "stability6"
+          :> "probe_linkReadys"
+          :> "probe_linkUps"
+          :> "probe_dDiff0"
+          :> "probe_dDiff1"
+          :> "probe_dDiff2"
+          :> "probe_dDiff3"
+          :> "probe_dDiff4"
+          :> "probe_dDiff5"
+          :> "probe_dDiff6"
+          :> "probe_syncRst"
+          :> "probe_gthAllReset"
+          :> "probe_startupDelayRst"
+          :> "probe_clockControlReset"
+          :> "probe_notInCCReset"
+          :> "probe_adjustStart"
+          :> "probe_clocksAdjusted"
+          :> "probe_adjusting"
+          :> "probe_adjustCount"
+          :> "probe_initialAdjust"
+          :> "probe_adjustRst"
+          :> "probe_calibratedClockShift"
+          :> "probe_clockShift"
+          :> "probe_initialClockShift"
+          :> "probe_calibrate"
+          :> "probe_spiDone"
+          :> "probe_frequencyAdjustments"
+          :> "probe_allReady"
+          :> "probe_syncStart"
+          :> "probe_delayCount"
+          :> "probe_startupDelay"
+          :> "probe_spiErr"
+          :> "probe_mask"
           :> Nil
       )
         { depth = D16384
         }
       sysClk
       -- Trigger as soon as we come out of reset
-      (unsafeToActiveLow syncRst)
-      capture
+      (unsafeToActiveLow rst)
+      captureFlag
       -- Debug probes
       milliseconds1
       allStable0
@@ -454,6 +494,45 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       nFincs
       nFdecs
       (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
+      stability0
+      stability1
+      stability2
+      stability3
+      stability4
+      stability5
+      stability6
+      (bundle transceivers.linkReadys)
+      (bundle transceivers.linkUps)
+      dDiff0
+      dDiff1
+      dDiff2
+      dDiff3
+      dDiff4
+      dDiff5
+      dDiff6
+      (unsafeFromReset syncRst)
+      (unsafeFromReset gthAllReset)
+      (unsafeFromReset startupDelayRst)
+      (unsafeFromReset clockControlReset)
+      notInCCReset
+      adjustStart
+      clocksAdjusted
+      adjusting
+      adjustCount
+      initialAdjust
+      (unsafeFromReset adjustRst)
+      calibratedClockShift
+      clockShift
+      (fromMaybe 0 . initialClockShift <$> cfg)
+      (pack . calibrate <$> cfg)
+      spiDone
+      (pack <$> frequencyAdjustments)
+      allReady
+      syncStart
+      delayCount
+      (startupDelay <$> cfg)
+      spiErr
+      (mask <$> cfg)
 
   captureFlag =
     riseEvery
@@ -580,6 +659,23 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       <$> transceivers.rxClocks
       <*> transceivers.txClocks
 
+  ( stability0
+    , stability1
+    , stability2
+    , stability3
+    , stability4
+    , stability5
+    , stability6
+    ) = vecToTuple $ unbundle stabilities
+  ( dDiff0
+    , dDiff1
+    , dDiff2
+    , dDiff3
+    , dDiff4
+    , dDiff5
+    , dDiff6
+    ) = vecToTuple domainDiffs
+
 -- | Top entity for this test. See module documentation for more information.
 hwCcTopologyWithRiscvTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
@@ -703,7 +799,8 @@ hwCcTopologyTest ::
           )
   )
 hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, unbundle hwFincFdecs, syncOut, spiDone, spiOut)
+  tleDebugIla
+    `hwSeqX` (txns, txps, unbundle hwFincFdecs, syncOut, spiDone, spiOut)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
@@ -736,6 +833,73 @@ hwCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
         rxps
         miso
         cfg
+
+  captureFlag =
+    riseEvery
+        sysClk
+        syncRst
+        enableGen
+        (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
+
+  milliseconds1 =
+    regEn
+      sysClk
+      (unsafeFromActiveHigh endSuccess)
+      enableGen
+      (0 :: Unsigned 16)
+      captureFlag
+      (satSucc SatBound <$> milliseconds1)
+
+  (gTS0, gTS1) = unbundle globalTimestamp
+
+  tleDebugIla :: Signal Basic125 ()
+  tleDebugIla =
+    setName @"tleDebugIla"
+      ila
+      ( ilaConfig
+        $ "trigger_tle_0"
+        :> "capture_tle_0"
+        :> "probe_tle_milliseconds"
+        :> "probe_ilacfg_allReady"
+        :> "probe_ilacfg_startTest"
+        :> "probe_ilacfg_syncIn"
+        :> "probe_ilactl_syncRst"
+        :> "probe_ilactl_syncOut"
+        :> "probe_ilactl_syncStart"
+        :> "probe_ilactl_scheduledCapture"
+        :> "probe_ilactl_globalTimestamp0"
+        :> "probe_ilactl_globalTimestamp1"
+        :> "probe_ilactl_skipTest"
+        :> "probe_ilactl_onlyScheduledCaptures"
+        :> "probe_startTest"
+        :> "probe_skip"
+        :> "probe_allStable"
+        :> "probe_calibI"
+        :> "probe_calibE"
+        :> Nil
+      )
+        { depth = D16384
+        }
+      sysClk
+      (not <$> endSuccess)
+      captureFlag
+      milliseconds1
+      allReady
+      startTest
+      syncIn
+      (unsafeToActiveHigh syncRst)
+      syncOut
+      syncStart
+      scheduledCapture
+      gTS0
+      gTS1
+      skipTest
+      (pure onlyScheduledCaptures :: Signal Basic125 Bool)
+      startTest
+      skip
+      allStable
+      calibI
+      calibE
 
   -- check that tests are not synchronously start before all
   -- transceivers are up
