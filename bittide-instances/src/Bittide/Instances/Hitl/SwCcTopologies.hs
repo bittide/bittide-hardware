@@ -623,7 +623,9 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       enableGen
       (0 :: FincFdecCount)
       (adjusting .&&. adjustCountEnable)
-      $ upd <$> setupAdjustments <*> adjustCount
+      $ upd
+      <$> setupAdjustments
+      <*> adjustCount
    where
     upd SpeedUp = satSucc SatBound
     upd SlowDown = satPred SatBound
@@ -932,10 +934,10 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   captureFlag =
     riseEvery
-        sysClk
-        syncRst
-        enableGen
-        (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
+      sysClk
+      syncRst
+      enableGen
+      (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
 
   milliseconds1 =
     regEn
@@ -953,26 +955,31 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     setName @"tleDebugIla"
       ila
       ( ilaConfig
-        $ "trigger_tle_0"
-        :> "capture_tle_0"
-        :> "probe_tle_milliseconds"
-        :> "probe_ilacfg_allReady"
-        :> "probe_ilacfg_startTest"
-        :> "probe_ilacfg_syncIn"
-        :> "probe_ilactl_syncRst"
-        :> "probe_ilactl_syncOut"
-        :> "probe_ilactl_syncStart"
-        :> "probe_ilactl_scheduledCapture"
-        :> "probe_ilactl_globalTimestamp0"
-        :> "probe_ilactl_globalTimestamp1"
-        :> "probe_ilactl_skipTest"
-        :> "probe_ilactl_onlyScheduledCaptures"
-        :> "probe_startTest"
-        :> "probe_skip"
-        :> "probe_allStable"
-        :> "probe_calibI"
-        :> "probe_calibE"
-        :> Nil
+          $ "trigger_tle_0"
+          :> "capture_tle_0"
+          :> "probe_tle_milliseconds"
+          :> "probe_ilacfg_allReady"
+          :> "probe_ilacfg_startTest"
+          :> "probe_ilacfg_syncIn"
+          :> "probe_ilactl_syncRst"
+          :> "probe_ilactl_syncOut"
+          :> "probe_ilactl_syncStart"
+          :> "probe_ilactl_scheduledCapture"
+          :> "probe_ilactl_globalTimestamp0"
+          :> "probe_ilactl_globalTimestamp1"
+          :> "probe_ilactl_skipTest"
+          :> "probe_ilactl_onlyScheduledCaptures"
+          :> "probe_startTest"
+          :> "probe_skip"
+          :> "probe_allStable"
+          :> "probe_calibI"
+          :> "probe_calibE"
+          :> "probe_endSuccess"
+          :> "probe_startBeforeAllReady"
+          :> "probe_tle_transceiversFailedAfterUp"
+          :> "probe_testDone"
+          :> "probe_testSuccess"
+          :> Nil
       )
         { depth = D16384
         }
@@ -996,6 +1003,11 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       allStable
       calibI
       calibE
+      endSuccess
+      startBeforeAllReady
+      transceiversFailedAfterUp
+      testDone
+      testSuccess
 
   -- allUgnsStable = and <$> bundle ugnsStable
   -- allStable' = allStable .&&. allUgnsStable
@@ -1021,19 +1033,22 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
 
   skip = maybe False (not . fpgaEnabled) <$> testConfig
 
+  testDone =
+    startTest
+      .&&. ( skip
+              .||. endSuccess
+              .||. transceiversFailedAfterUp
+              .||. startBeforeAllReady
+           )
+
+  testSuccess =
+    skip
+      .||. ( allStable
+              .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady))
+           )
+
   testConfig :: Signal Basic125 (Maybe TestConfig)
-  testConfig =
-    hitlVio
-      disabled
-      sysClk
-      -- done
-      ( startTest
-          .&&. (skip .||. endSuccess .||. transceiversFailedAfterUp .||. startBeforeAllReady)
-      )
-      -- success
-      ( skip
-          .||. (allStable .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady)))
-      )
+  testConfig = hitlVio disabled sysClk testDone testSuccess
 
 makeTopEntity 'swCcTopologyTest
 
