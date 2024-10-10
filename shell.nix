@@ -32,6 +32,7 @@ pkgs.mkShell {
       pkgs.which
       pkgs.jq
       pkgs.unzip
+      pkgs.ndisc6
 
       # Simulation report generation
       pkgs.dot2tex

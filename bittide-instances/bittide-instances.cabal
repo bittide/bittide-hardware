@@ -12,8 +12,12 @@ author: QBayLogic B.V.
 maintainer: devops@qbaylogic.com
 copyright: Copyright © 2022-2024 Google LLC
 data-files:
-  data/constraints/*.xdc
-  data/test_configs/*.yml
+  -- Cabal is very picky about wildcards in `data-files`:
+  -- https://cabal.readthedocs.io/en/3.6/cabal-package.html#pkg-field-data-files
+  data/**/*.gdb
+  data/**/*.sh
+  data/**/*.xdc
+  data/**/*.yml
 
 common common-options
   default-extensions:
@@ -97,11 +101,15 @@ common common-options
     ghc-typelits-natnormalise,
     lift-type,
     pretty-simple,
+    process,
     shake,
     split,
     string-interpolate,
+    tasty,
     tasty-hunit,
+    tasty-th,
     template-haskell,
+    temporary,
     text,
     unix,
     vector,
@@ -113,6 +121,7 @@ library
     Bittide.Instances.Domains
     Bittide.Instances.Hacks
     Bittide.Instances.Hitl.BoardTest
+    Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.FullMeshHwCc
     Bittide.Instances.Hitl.FullMeshSwCc
@@ -139,6 +148,8 @@ library
     Bittide.Instances.Pnr.Synchronizer
     Paths.Bittide.Instances
     Project.FilePath
+    Project.Handle
+    Project.Programs
 
   other-modules:
     Paths_bittide_instances
@@ -225,6 +236,25 @@ executable post-vex-riscv-test
     -threaded
 
   main-is: exe/post-vex-riscv-test/Main.hs
+  build-depends:
+    bittide-instances,
+    extra,
+    process,
+    tasty,
+    tasty-hunit,
+    tasty-th,
+    temporary,
+
+  other-modules: Paths_bittide_instances
+
+executable post-vex-riscv-tcp-test
+  import: common-options
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
+  main-is: exe/post-vex-riscv-tcp-test/Main.hs
   build-depends:
     bittide-instances,
     extra,

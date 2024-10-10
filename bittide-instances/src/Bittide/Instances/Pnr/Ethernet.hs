@@ -15,7 +15,6 @@ import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import Clash.Cores.UART (ValidBaud)
 import Clash.Cores.Xilinx.Ethernet.Gmii
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
-import Clash.Xilinx.ClockGen
 import Protocols
 import VexRiscv
 
@@ -163,62 +162,6 @@ vexRiscEthernet sysClk sysRst sgmiiPhyClk (jtagin, uartIn, sgmiiIn) =
   rxRst = bridgeRst125
   bridgeRst = unsafeResetDesynchronizer sysClk sysRst
   (uartOut, gmiiOut, jtagOut, gpioOut) = vexRiscGmii SNat sysClk sysRst rxClk rxRst rxClk rxRst (uartIn, bridgeGmiiRx, jtagin)
-
-vexRiscEthernetTop ::
-  DiffClock Ext125 ->
-  Reset Ext125 ->
-  DiffClock Basic625 ->
-  ( Signal Basic125B JtagIn
-  , Signal Basic125B Bit
-  , Signal Basic625 Lvds
-  ) ->
-  ( Signal Basic125B JtagOut
-  , Signal Basic125B Bit
-  , Signal Basic625 Lvds
-  )
-vexRiscEthernetTop diffClk cpuReset sgmiiClk inp = (j, u, s)
- where
-  (sysClk, sysRst) = clockWizardDifferential diffClk cpuReset
-  (j, u, s, _) = vexRiscEthernet sysClk sysRst sgmiiClk inp
-{-# ANN
-  vexRiscEthernetTop
-  ( Synthesize
-      { t_name = "vexRiscEthernet"
-      , t_inputs =
-          [ PortProduct
-              "CLK_125MHZ"
-              [PortName "P", PortName "N"]
-          , PortName "CPU_RESET"
-          , PortProduct
-              "SGMIICLK"
-              [PortName "P", PortName "N"]
-          , PortProduct
-              ""
-              [ PortProduct
-                  "JTAG"
-                  [PortName "TCK", PortName "TMS", PortName "TDI"]
-              , PortName "USB_UART_TXD"
-              , PortProduct
-                  "SGMII"
-                  [PortName "RX_P", PortName "RX_N"]
-              ]
-          ]
-      , t_output =
-          PortProduct
-            ""
-            [ PortProduct
-                "JTAG"
-                [ PortName "TDO"
-                , PortName "RST"
-                ]
-            , PortName "USB_UART_RXD"
-            , PortProduct
-                "SGMII"
-                [PortName "TX_P", PortName "TX_N"]
-            ]
-      }
-  )
-  #-}
 
 {- | Take a synchronous reset from one domain and convert it to an asynchronous reset.
 This inserts a register in the source domain to prevent glitching and then converts the domain.

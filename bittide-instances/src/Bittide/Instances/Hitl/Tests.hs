@@ -22,6 +22,7 @@ module Bittide.Instances.Hitl.Tests (
 import Bittide.Hitl (ClashTargetName, HitlTestCase (..), HitlTestGroup (..))
 
 import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
+import qualified Bittide.Instances.Hitl.Ethernet as Ethernet
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
 import qualified Bittide.Instances.Hitl.FullMeshHwCc as FullMeshHwCc
 import qualified Bittide.Instances.Hitl.FullMeshSwCc as FullMeshSwCc
@@ -46,4 +47,5 @@ hitlTests =
   , SyncInSyncOut.tests
   , Transceivers.tests
   , VexRiscv.tests
+  , Ethernet.tests
   ]
