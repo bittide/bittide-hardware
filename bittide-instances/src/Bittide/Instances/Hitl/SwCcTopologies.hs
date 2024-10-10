@@ -901,8 +901,19 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
-  ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
+  ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{syncIn = syncIn', ..}
   startTest = isJust <$> testConfig
+
+  -- Workaround for tests not resetting properly???
+  syncNodeEnteredReset =
+    trueFor
+      (SNat @(Milliseconds 25))
+      sysClk (unsafeFromActiveHigh endSuccess)
+      (not <$> syncIn)
+  syncNodePrevEnteredReset =
+    sticky sysClk (unsafeFromActiveHigh endSuccess) syncNodeEnteredReset
+
+  syncIn' = mux syncNodePrevEnteredReset syncIn (pure True :: Signal Basic125 Bool)
 
   cfg = fromMaybe disabled <$> testConfig
 
@@ -942,7 +953,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   milliseconds1 =
     regEn
       sysClk
-      (unsafeFromActiveHigh endSuccess)
+      syncRst
       enableGen
       (0 :: Unsigned 16)
       captureFlag
