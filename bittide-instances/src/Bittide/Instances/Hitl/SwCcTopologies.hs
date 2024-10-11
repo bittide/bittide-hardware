@@ -904,12 +904,21 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{syncIn = syncIn', ..}
   startTest = isJust <$> testConfig
 
-  stickyStartTest =
+  testStarting = isRising sysClk sysRst enableGen False startTest
+  testEnding = isFalling sysClk sysRst enableGen False startTest
+
+  testStartingSticky =
     withClockResetEnable
       sysClk
-      (unsafeFromActiveHigh endSuccess)
+      sysRst
       enableGen
-      $ stickyBits (SNat @(PeriodToCycles Basic125 (Milliseconds 500))) startTest
+      $ stickyBits (SNat @(PeriodToCycles Basic125 (Seconds 2))) testStarting
+  testEndingSticky =
+    withClockResetEnable
+      sysClk
+      sysRst
+      enableGen
+      $ stickyBits (SNat @(PeriodToCycles Basic125 (Seconds 2))) testEnding
 
   -- Workaround for tests not resetting properly???
   syncNodeEnteredReset =
@@ -1005,8 +1014,11 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
           :> "probe_tle_transceiversFailedAfterUp"
           :> "probe_testDone"
           :> "probe_testSuccess"
-          :> "probe_stickyStartTest500ms"
           :> "probe_testCounter"
+          :> "probe_testStartingSticky2s"
+          :> "probe_testEndingSticky2s"
+          :> "probe_syncNodeEnteredReset"
+          :> "probe_syncNodePrevEnteredReset"
           :> Nil
       )
         { depth = D16384
@@ -1036,8 +1048,11 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       transceiversFailedAfterUp
       testDone
       testSuccess
-      stickyStartTest
       testCounter
+      testStartingSticky
+      testEndingSticky
+      syncNodeEnteredReset
+      syncNodePrevEnteredReset
 
   -- allUgnsStable = and <$> bundle ugnsStable
   -- allStable' = allStable .&&. allUgnsStable
