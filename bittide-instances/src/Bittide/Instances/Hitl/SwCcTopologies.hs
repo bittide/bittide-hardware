@@ -921,6 +921,14 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     sticky sysClk (unsafeFromActiveHigh endSuccess) syncNodeEnteredReset
 
   syncIn' = mux syncNodePrevEnteredReset syncIn (pure True :: Signal Basic125 Bool)
+  testCounter =
+    regEn
+      sysClk
+      sysRst
+      enableGen
+      (0 :: Unsigned 4)
+      (isFalling sysClk sysRst enableGen False startTest)
+      (satSucc SatBound <$> testCounter)
 
   cfg = fromMaybe disabled <$> testConfig
 
@@ -998,6 +1006,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
           :> "probe_testDone"
           :> "probe_testSuccess"
           :> "probe_stickyStartTest500ms"
+          :> "probe_testCounter"
           :> Nil
       )
         { depth = D16384
@@ -1028,6 +1037,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       testDone
       testSuccess
       stickyStartTest
+      testCounter
 
   -- allUgnsStable = and <$> bundle ugnsStable
   -- allStable' = allStable .&&. allUgnsStable
