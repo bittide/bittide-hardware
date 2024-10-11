@@ -18,6 +18,7 @@ pub mod scatter_unit;
 pub mod smoltcp;
 pub mod time;
 pub mod uart;
+pub mod ugn;
 
 pub(crate) mod utils;
 
