@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE NumericUnderscores #-}
 
 import Prelude
 
@@ -13,6 +14,10 @@ import System.Environment (withArgs)
 import System.IO
 import System.Process
 
+import Bittide.Instances.Hitl.Setup (deviceIdSerialPairs)
+import Control.Concurrent
+import Control.Concurrent.Async (mapConcurrently)
+import qualified Data.List as L
 import Test.Tasty.HUnit
 import Test.Tasty.TH
 
@@ -37,14 +42,11 @@ GDB: GNU Debugger. This program will connect to the OpenOCD server and is able
 case_testGdbProgram :: Assertion
 case_testGdbProgram = do
   startOpenOcdPath <- getOpenOcdStartPath
-  startPicocomPath <- getPicocomStartPath
-  uartDev <- getUartDev
   gdbScriptPath <- getGdbScriptPath
 
   withAnnotatedGdbScriptPath gdbScriptPath $ \gdbProgPath -> do
     let
       openOcdProc = (proc startOpenOcdPath []){std_err = CreatePipe}
-      picocomProc = (proc startPicocomPath [uartDev]){std_out = CreatePipe, std_in = CreatePipe}
       gdbProc = (proc "gdb" ["--command", gdbProgPath]){std_out = CreatePipe, std_err = CreatePipe}
 
       -- Wait until we see "Halting processor", fail if we see an error
@@ -53,36 +55,69 @@ case_testGdbProgram = do
         | "Halting processor" `isPrefixOf` s = Stop Ok
         | otherwise = Continue
 
+    putStrLn "Starting OpenOCD"
     withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
       hSetBuffering openOcdStdErr LineBuffering
+      putStrLn "Waiting for OpenOCD to halt the processor..."
       expectLine openOcdStdErr waitForHalt
 
-      -- XXX: Picocom doesn't immediately clean up after closing, because it
-      --      spawns as a child of the shell (start.sh). We could use 'exec' to
-      --      make sure the intermediate shell doesn't exist, but this causes
-      --      the whole test program to exit with signal 15 (??????).
-      withCreateProcess picocomProc $ \maybePicocomStdIn maybePicocomStdOut _ _ -> do
+      uartProcesses <- mapM (startUart . snd) deviceIdSerialPairs
+      putStrLn "Starting gdb"
+      withCreateProcess gdbProc $ \_ (fromJust -> gdbStdOut) _ _ -> do
+        putStrLn "Waiting for GDB to finish the script"
+        waitForLine gdbStdOut "> continue"
+
+        putStrLn "Wait a second to receive uart data"
+        threadDelay 1_000_000
+
+        putStrLn "Collecting UART data"
+        results <- mapConcurrently checkUart uartProcesses
+
+        putStrLn "Results:"
+        print $ zipWith (\(deviceId, _) result -> (deviceId, result)) deviceIdSerialPairs results
         let
-          picocomStdIn = fromJust maybePicocomStdIn
-          picocomStdOut = fromJust maybePicocomStdOut
+          result = head $ L.filter (not . L.isInfixOf "read zero bytes from stdin") results
+        assertBool "We expect one response" (length result == 1)
 
-        hSetBuffering picocomStdIn LineBuffering
-        hSetBuffering picocomStdOut LineBuffering
+checkUart :: (Maybe Handle, Maybe Handle, Maybe Handle, ProcessHandle) -> IO String
+checkUart (fromJust -> picoIn, fromJust -> picoOut, _, _) = do
+  putStrLn "Writing data"
+  hPutStrLn picoIn "Hello FPGA"
+  putStrLn "Writing successful"
+  threadDelay 1_000_000
 
-        waitForLine picocomStdOut "Terminal ready"
+  handleOpen <- hIsOpen picoOut
+  putStrLn $ "Handle open: " <> show handleOpen
+  isEof <- hIsEOF picoOut
+  putStrLn $ "Is EOF: " <> show isEof
+  if isEof
+    then do
+      putStrLn "End of file reached"
+      pure ""
+    else do
+      putStrLn "Reading data"
+      readRemainingChars picoOut
 
-        withCreateProcess gdbProc $ \_ (fromJust -> gdbStdOut) _ _ -> do
-          -- Wait for GDB to program the FPGA. If successful, we should see
-          -- "going in echo mode" in the picocom output.
-          hSetBuffering gdbStdOut LineBuffering
-          waitForLine picocomStdOut "Going in echo mode!"
-
-          -- Wait for GDB to reach its last command - where it will wait indefinitely
-          waitForLine gdbStdOut "> continue"
-
-          -- Test UART echo
-          hPutStrLn picocomStdIn "Hello, UART!"
-          waitForLine picocomStdOut "Hello, UART!"
+startUart :: FilePath -> IO (Maybe Handle, Maybe Handle, Maybe Handle, ProcessHandle)
+startUart uartPath = do
+  let picocomProc =
+        (proc "picocom" ["--baud", "921600", "--imap", "lfcrlf", "--omap", "lfcrlf", uartPath])
+          { std_out = CreatePipe
+          , std_in = CreatePipe
+          , std_err = CreatePipe
+          , new_session = True -- Seems to be required for picocom to work
+          }
+  putStrLn $ "Starting Picocom on " <> uartPath
+  process@(maybePicoIn, maybePicoOut, maybePicoErr, _) <- createProcess picocomProc
+  let
+    picoIn = fromJust maybePicoIn
+    picoOut = fromJust maybePicoOut
+    picoErr = fromJust maybePicoErr
+  hSetBuffering picoIn LineBuffering
+  hSetBuffering picoOut LineBuffering
+  hSetBuffering picoErr LineBuffering
+  waitForLine picoOut "Terminal ready"
+  pure process
 
 main :: IO ()
 main = withArgs ["--timeout", "2m"] $(defaultMainGenerator)
