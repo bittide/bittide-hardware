@@ -907,6 +907,15 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   testStarting = isRising sysClk sysRst enableGen False startTest
   testEnding = isFalling sysClk sysRst enableGen False startTest
 
+  testResetBool = register sysClk sysRst enableGen True
+      $ liftA3 go1 testResetBool testStarting testEnding
+   where
+    go1 cur st ed = case (st, ed) of
+      (True, _) -> False -- starting test deasserts rst
+      (_, True) -> True  -- ending test asserts rst
+      _ -> cur
+  testReset = unsafeFromActiveHigh testResetBool
+
   testStartingSticky =
     withClockResetEnable
       sysClk
@@ -924,10 +933,11 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   syncNodeEnteredReset =
     trueFor
       (SNat @(Milliseconds 25))
-      sysClk (unsafeFromActiveHigh endSuccess)
+      sysClk
+      testReset
       (not <$> syncIn)
   syncNodePrevEnteredReset =
-    sticky sysClk (unsafeFromActiveHigh endSuccess) syncNodeEnteredReset
+    sticky sysClk testReset syncNodeEnteredReset
 
   syncIn' = mux syncNodePrevEnteredReset syncIn (pure True :: Signal Basic125 Bool)
   testCounter =
@@ -1024,7 +1034,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
         { depth = D16384
         }
       sysClk
-      (not <$> endSuccess)
+      syncNodePrevEnteredReset
       captureFlag
       milliseconds1
       allReady
