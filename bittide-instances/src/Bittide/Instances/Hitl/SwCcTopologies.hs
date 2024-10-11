@@ -43,7 +43,7 @@ import LiftType (liftTypeQ)
 import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
-import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins)
+import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
 import Bittide.ClockControl.CallistoSw (CallistoSwResult (..))
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
@@ -904,6 +904,13 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{syncIn = syncIn', ..}
   startTest = isJust <$> testConfig
 
+  stickyStartTest =
+    withClockResetEnable
+      sysClk
+      (unsafeFromActiveHigh endSuccess)
+      enableGen
+      $ stickyBits (SNat @(PeriodToCycles Basic125 (Milliseconds 500))) startTest
+
   -- Workaround for tests not resetting properly???
   syncNodeEnteredReset =
     trueFor
@@ -990,6 +997,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
           :> "probe_tle_transceiversFailedAfterUp"
           :> "probe_testDone"
           :> "probe_testSuccess"
+          :> "probe_stickyStartTest500ms"
           :> Nil
       )
         { depth = D16384
@@ -1019,6 +1027,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       transceiversFailedAfterUp
       testDone
       testSuccess
+      stickyStartTest
 
   -- allUgnsStable = and <$> bundle ugnsStable
   -- allStable' = allStable .&&. allUgnsStable
