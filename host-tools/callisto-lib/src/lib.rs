@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use bittide_sys::{callisto, clock_control};
+use bittide_sys::{
+    callisto,
+    clock_control::{self, ClockControl},
+};
 use std::mem::{align_of, size_of};
 
 /// Rust sibling of `Bittide.ClockControl.SpeedChange`.
@@ -229,21 +232,16 @@ fn speed_change_to_ffi(val: &clock_control::SpeedChange) -> SpeedChange {
     }
 }
 
-fn reframing_state_from_ffi(val: &ReframingState) -> callisto::ReframingState {
-    match val {
-        ReframingState::Detect => callisto::ReframingState::Detect,
-        ReframingState::Done => callisto::ReframingState::Done,
-        ReframingState::Wait {
-            target_correction,
-            cur_wait_time,
-        } => callisto::ReframingState::Wait {
-            target_correction: *target_correction,
-            cur_wait_time: *cur_wait_time,
-        },
+fn control_state_from_ffi(st: &ControlSt) -> callisto::ControlSt {
+    callisto::ControlSt {
+        z_k: st.z_k,
+        b_k: speed_change_from_ffi(&st.b_k),
+        steady_state_target: st.steady_state_target,
+        rf_state: 0xC000_0000 as *mut callisto::ReframingState,
     }
 }
 
-fn reframing_state_to_ffi(val: &callisto::ReframingState) -> ReframingState {
+fn reframing_state_to_ffi(val: callisto::ReframingState) -> ReframingState {
     match val {
         callisto::ReframingState::Detect => ReframingState::Detect,
         callisto::ReframingState::Done => ReframingState::Done,
@@ -251,18 +249,9 @@ fn reframing_state_to_ffi(val: &callisto::ReframingState) -> ReframingState {
             target_correction,
             cur_wait_time,
         } => ReframingState::Wait {
-            target_correction: *target_correction,
-            cur_wait_time: *cur_wait_time,
+            target_correction,
+            cur_wait_time,
         },
-    }
-}
-
-fn control_state_from_ffi(st: &ControlSt) -> callisto::ControlSt {
-    callisto::ControlSt {
-        z_k: st.z_k,
-        b_k: speed_change_from_ffi(&st.b_k),
-        steady_state_target: st.steady_state_target,
-        rf_state: reframing_state_from_ffi(&st.rf_state),
     }
 }
 
@@ -270,27 +259,15 @@ fn control_state_to_ffi(st: &callisto::ControlSt, rs: &mut ControlSt) {
     rs.z_k = st.z_k;
     rs.b_k = speed_change_to_ffi(&st.b_k);
     rs.steady_state_target = st.steady_state_target;
-    rs.rf_state = reframing_state_to_ffi(&st.rf_state);
+    rs.rf_state = reframing_state_to_ffi(st.get_rf_state());
 }
 
 fn control_config_from_ffi(cfg: &ControlConfig) -> callisto::ControlConfig {
     callisto::ControlConfig {
-        reframing_enabled: cfg.reframing_enabled,
+        reframing_enabled: cfg.reframing_enabled != 0,
         wait_time: cfg.wait_time,
         target_count: cfg.target_count,
     }
-}
-
-unsafe fn vsi_from_ptr<'a>(ptr: *const ()) -> &'a [callisto::StabilityIndication] {
-    let usize_ptr = ptr as *const usize;
-    let data_ptr = usize_ptr.offset(1) as *const callisto::StabilityIndication;
-    return std::slice::from_raw_parts(data_ptr, *usize_ptr);
-}
-
-unsafe fn data_counts_from_ptr<'a>(ptr: *const ()) -> &'a [isize] {
-    let usize_ptr = ptr as *const usize;
-    let data_ptr = usize_ptr.offset(1) as *const isize;
-    return std::slice::from_raw_parts(data_ptr, *usize_ptr);
 }
 
 /// Runs the callisto algorithm
@@ -307,32 +284,16 @@ unsafe fn data_counts_from_ptr<'a>(ptr: *const ()) -> &'a [isize] {
 ///   a `ControlSt`
 #[no_mangle]
 pub unsafe extern "C" fn __c_callisto_rust(
+    control_ptr: *const ClockControl,
     config_ptr: *const ControlConfig,
-    availability_mask: u32,
-    stability_checks_ptr: *const (),
-    data_counts_ptr: *const (),
     control_state_ptr: *mut ControlSt,
 ) {
+    let control = unsafe { &*control_ptr };
     let mut state = control_state_from_ffi(&*control_state_ptr);
 
-    let vsi = vsi_from_ptr(stability_checks_ptr);
-    let data_counts = data_counts_from_ptr(data_counts_ptr);
-
-    let links_stable = {
-        let mut mask = 0u32;
-        for (i, indication) in vsi.iter().enumerate() {
-            if indication.stable() {
-                mask |= 1 << i;
-            }
-        }
-        mask & availability_mask
-    };
-
     callisto::callisto(
+        control,
         &control_config_from_ffi(&*(config_ptr as *const ControlConfig)),
-        availability_mask,
-        links_stable,
-        data_counts.iter().copied(),
         &mut state,
     );
 
