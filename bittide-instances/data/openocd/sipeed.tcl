@@ -7,7 +7,7 @@ interface ftdi
 
 # Find the device based on the USB vendor/product ID
 ftdi_vid_pid 0x0403 0x6010
-adapter usb location 1-5.4.2:1
+adapter usb location 1-5.4.4.2:1
 
 # FT2232C IO bits per schematic:
 # 0: TCK, Output
