@@ -92,7 +92,7 @@ clockControlConfig =
 -- | Instantiates a RiscV core
 fullMeshRiscvTest ::
   forall dom.
-  (KnownDomain dom) =>
+  (KnownDomain dom, 1 <= DomainPeriod dom) =>
   Clock dom ->
   Reset dom ->
   Vec LinkCount (Signal dom (RelDataCount 32)) ->
@@ -102,17 +102,19 @@ fullMeshRiscvTest ::
   )
 fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
  where
-  (_, fIncDec) =
+  msc :: Signal dom (Maybe SpeedChange)
+  (_, msc) =
     toSignals
       ( circuit $ \jtag -> do
           [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
-          (fIncDec, _allStable) <-
+          (msc, _reframingState, _stabilities, _allStable, _allSettled, _updatePeriod) <-
             withClockResetEnable clk rst enableGen
-              $ clockControlWb margin framesize (pure $ complement 0) dataCounts
+              $ clockControlWb margin framesize (pure $ complement 0) (pure False) dataCounts
               -< wbB
-          idC -< fIncDec
+          idC -< msc
       )
       (pure $ JtagIn low low low, pure ())
+  fIncDec = speedChangeToPins . fromMaybe NoChange <$> msc
 
   margin = d2
 
