@@ -2,11 +2,15 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 -- {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
-module Bittide.ClockControl.CallistoSw where
+module Bittide.ClockControl.CallistoSw (
+  callistoSwClockControl,
+  SwControlConfig (..),
+) where
 
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 
@@ -33,6 +37,18 @@ import Clash.Cores.Xilinx.Ila (IlaConfig(..), ila, ilaConfig, Depth (..))
 import Data.Maybe (isJust)
 import Bittide.ElasticBuffer (sticky)
 
+data SwControlConfig dom mgn fsz where
+  SwControlConfig ::
+    ( KnownNat mgn
+    , KnownNat fsz
+    , 1 <= fsz
+    , KnownDomain dom
+    ) =>
+    Signal dom Bool ->
+    SNat mgn ->
+    SNat fsz ->
+    SwControlConfig dom mgn fsz
+
 callistoSwClockControl ::
   forall nLinks eBufBits dom margin framesize.
   ( KnownDomain dom
@@ -45,16 +61,14 @@ callistoSwClockControl ::
   , 1 <= FadjHoldCycles dom
   , 1 <= DomainPeriod dom
   ) =>
-  SNat margin ->
-  SNat framesize ->
   Clock dom ->
   Reset dom ->
   Enable dom ->
-  Signal dom Bool ->
+  SwControlConfig dom margin framesize ->
   Signal dom (BitVector nLinks) ->
   Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
   Signal dom (CallistoResult nLinks)
-callistoSwClockControl mgn fsz clk rst ena reframe mask ebs =
+callistoSwClockControl clk rst ena (SwControlConfig (reframe :: Signal dom Bool) mgn fsz) mask ebs =
   hwSeqX callistoSwIla callistoResult
  where
   callistoResult =
