@@ -207,30 +207,33 @@ tied to FINC/FDEC.
 -}
 riscvCopyTest ::
   forall dom.
-  (KnownDomain dom) =>
+  (KnownDomain dom, 1 <= DomainPeriod dom) =>
   Clock dom ->
   Reset dom ->
+  Signal dom (BitVector LinkCount) ->
   Signal dom (CallistoResult LinkCount) ->
   Vec LinkCount (Signal dom (RelDataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
   ( "FINC" ::: Signal dom Bool
   , "FDEC" ::: Signal dom Bool
   )
-riscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
+riscvCopyTest clk rst mask callistoResult dataCounts = unbundle fIncDec
  where
-  (_, fIncDec) =
+  msc :: Signal dom (Maybe SpeedChange)
+  (_, msc) =
     toSignals
       ( circuit $ \jtag -> do
           [wbA, wbB] <-
             withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
           fIncDecCallisto -< wbA
-          (fIncDec, _allStable) <-
+          (msc, _reframingState, _stabilities, _allStable, _allSettled, _updatePeriod) <-
             withClockResetEnable clk rst enableGen
-              $ clockControlWb margin framesize (pure $ complement 0) dataCounts
+              $ clockControlWb margin framesize mask (pure False) dataCounts
               -< wbB
-          idC -< fIncDec
+          idC -< msc
       )
       (pure $ JtagIn low low low, pure ())
+  fIncDec = speedChangeToPins . fromMaybe NoChange <$> msc
 
   fIncDecCallisto ::
     forall aw nBytes.
@@ -643,7 +646,7 @@ hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     unbundle
       $ mux (unsafeToActiveHigh callistoReset) hwFincFdecs
       $ bundle
-      $ riscvCopyTest sysClk callistoReset callistoResult dataCounts
+      $ riscvCopyTest sysClk callistoReset (mask <$> cfg) callistoResult dataCounts
 
   -- check that tests are not synchronously start before all
   -- transceivers are up
