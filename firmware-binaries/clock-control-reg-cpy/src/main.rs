@@ -21,7 +21,8 @@ fn main() -> ! {
         let change = match callisto_val {
             0 => SpeedChange::NoChange,
             1 => SpeedChange::SlowDown,
-            _ => SpeedChange::SpeedUp,
+            2 => SpeedChange::SpeedUp,
+            _ => continue,
         };
 
         cc.change_speed(change);
