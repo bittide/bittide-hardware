@@ -17,6 +17,7 @@ import Clash.Prelude
 
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker (StabilityIndication)
+import Clash.Signal.TH.Extra (deriveSignalHasFields)
 
 -- | Result of the clock control algorithm.
 data CallistoResult (n :: Nat) = CallistoResult
@@ -83,3 +84,7 @@ data ControlSt = ControlSt
   -- ^ finite state machine for reframing detection
   }
   deriving (Generic, NFDataX)
+
+deriveSignalHasFields ''CallistoResult
+deriveSignalHasFields ''ControlConfig
+deriveSignalHasFields ''ControlSt

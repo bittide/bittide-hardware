@@ -31,8 +31,6 @@ module Bittide.Instances.Hitl.HwCcTopologies (
   hwCcTopologyTest,
   clockControlConfig,
   commonSpiConfig,
-  csDupe,
-  cSigMap,
   tests,
 ) where
 
@@ -51,6 +49,7 @@ import System.FilePath
 
 import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
+import Bittide.CircuitUtils
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
@@ -210,19 +209,6 @@ debugRegisterConfig =
     { reframingEnabled = False
     }
 
-csDupe ::
-  forall dom a n.
-  (KnownDomain dom, KnownNat n) =>
-  Circuit (CSignal dom a) (Vec n (CSignal dom a))
-csDupe = Circuit $ \(m, _) -> (pure (), repeat m)
-
-cSigMap ::
-  forall dom a b.
-  (KnownDomain dom) =>
-  (a -> b) ->
-  Circuit (CSignal dom a) (CSignal dom b)
-cSigMap fn = Circuit $ \(m, _) -> (pure (), fn <$> m)
-
 {- | Instantiates a RiscV core that copies instructions coming from a hardware
 implementation of Callisto (see 'topologyTest') and copies it to a register
 tied to FINC/FDEC.
@@ -248,14 +234,14 @@ riscvCopyTest clk rst mask callistoResult dataCounts = unbundle fIncDec
             withClockResetEnable clk rst enableGen $ processingElement @dom NoDumpVcd peConfig -< jtag
           fIncDecCallisto -< wbFincFdec
           [ccd0, ccd1] <-
-            csDupe
+            cSignalDupe
               <| withClockResetEnable
                 clk
                 rst
                 enableGen
                 (clockControlWb margin framesize mask dataCounts)
               -< wbClockControl
-          cm <- cSigMap clockMod -< ccd0
+          cm <- cSignalMap clockMod -< ccd0
           _debugData <-
             withClockResetEnable clk rst enableGen
               $ debugRegisterWb (pure debugRegisterConfig)

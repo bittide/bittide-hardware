@@ -42,6 +42,7 @@ import LiftType (liftTypeQ)
 import System.FilePath
 
 import Bittide.Arithmetic.Time
+import Bittide.CircuitUtils
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
@@ -64,7 +65,7 @@ import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology (TopologyType (..))
 import Bittide.Transceiver (transceiverPrbsN)
 
-import Bittide.Instances.Hitl.HwCcTopologies (cSigMap, commonSpiConfig, csDupe)
+import Bittide.Instances.Hitl.HwCcTopologies (commonSpiConfig)
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
 import Project.FilePath
@@ -118,14 +119,14 @@ fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
             withClockResetEnable clk rst enableGen $ processingElement @dom NoDumpVcd peConfig -< jtag
           fIncDecCallisto -< wbFincFdec
           [ccd0, ccd1] <-
-            csDupe
+            cSignalDupe
               <| withClockResetEnable
                 clk
                 rst
                 enableGen
                 (clockControlWb margin framesize (pure $ complement 0) dataCounts)
               -< wbClockControl
-          cm <- cSigMap clockMod -< ccd0
+          cm <- cSignalMap clockMod -< ccd0
           _debugData <-
             withClockResetEnable clk rst enableGen
               $ debugRegisterWb (pure debugRegisterConfig)
