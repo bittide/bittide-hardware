@@ -114,6 +114,7 @@ library
     process,
     random,
     string-interpolate ^>=0.3,
+    tasty-hunit,
     template-haskell,
     text,
 
@@ -165,6 +166,8 @@ library
     Clash.Functor.Extra
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
+    Project.FilePath
+    Project.Handle
     System.IO.Temp.Extra
 
   other-modules:
