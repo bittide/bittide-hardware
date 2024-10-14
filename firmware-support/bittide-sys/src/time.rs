@@ -316,8 +316,8 @@ impl Clock {
     /// # Safety
     ///
     /// `addr` needs to point to a mapped memory address for a timer component.
-    pub unsafe fn new(addr: *const u32) -> Clock {
-        Clock { base_addr: addr }
+    pub unsafe fn new(addr: *const ()) -> Clock {
+        Clock { base_addr: addr.cast() }
     }
 
     /// Wait for a `Duration`.
