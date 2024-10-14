@@ -420,6 +420,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       sysClk
       clockControlReset
       clockControlConfig
+      callistoClockControl
       IlaControl{..}
       (mask <$> cfg)
       (fmap (fmap resize) domainDiffs)

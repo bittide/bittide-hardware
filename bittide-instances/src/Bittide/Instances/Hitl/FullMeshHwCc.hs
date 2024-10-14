@@ -293,6 +293,7 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
       sysClk
       clockControlReset
       clockControlConfig
+      callistoClockControl
       IlaControl{..}
       availableLinkMask
       (fmap (fmap resize) domainDiffs)
