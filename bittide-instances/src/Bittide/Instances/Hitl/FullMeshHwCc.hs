@@ -45,7 +45,6 @@ import System.FilePath
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
-import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
 import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
@@ -95,7 +94,7 @@ tied to FINC/FDEC.
 -}
 fullMeshRiscvCopyTest ::
   forall dom.
-  (KnownDomain dom) =>
+  (KnownDomain dom, 1 <= DomainPeriod dom) =>
   Clock dom ->
   Reset dom ->
   Signal dom (CallistoResult LinkCount) ->
@@ -106,19 +105,20 @@ fullMeshRiscvCopyTest ::
   )
 fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
  where
-  (_, fIncDec) =
+  (_, ccData) =
     toSignals
       ( circuit $ \jtag -> do
           [wbA, wbB] <-
             withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
           fIncDecCallisto -< wbA
-          (fIncDec, _allStable) <-
+          ccData <-
             withClockResetEnable clk rst enableGen
-              $ clockControlWb margin framesize (pure $ complement 0) dataCounts
+              $ clockControlWb margin framesize (pure $ complement 0) (pure False) dataCounts
               -< wbB
-          idC -< fIncDec
+          idC -< ccData
       )
       (pure $ JtagIn low low low, pure ())
+  fIncDec = speedChangeToPins . fromMaybe NoChange <$> ccData.clockMod
 
   fIncDecCallisto ::
     forall aw nBytes.
@@ -357,8 +357,12 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
   frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
   frequencyAdjustments =
     E.delay sysClk enableGen minBound {- glitch filter -}
-      $ withClockResetEnable sysClk clockControlReset enableGen
-      $ stickyBits @Basic125 d20 (speedChangeToPins . fromMaybe NoChange <$> clockMod)
+      $ speedChangeToStickyPins
+        sysClk
+        clockControlReset
+        enableGen
+        (SNat @Si539xHoldTime)
+        clockMod
 
   domainDiffs =
     domainDiffCounterExt sysClk clockControlReset

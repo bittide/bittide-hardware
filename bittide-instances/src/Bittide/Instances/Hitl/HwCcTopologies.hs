@@ -50,7 +50,6 @@ import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
-import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
 import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
@@ -207,30 +206,32 @@ tied to FINC/FDEC.
 -}
 riscvCopyTest ::
   forall dom.
-  (KnownDomain dom) =>
+  (KnownDomain dom, 1 <= DomainPeriod dom) =>
   Clock dom ->
   Reset dom ->
+  Signal dom (BitVector LinkCount) ->
   Signal dom (CallistoResult LinkCount) ->
   Vec LinkCount (Signal dom (RelDataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
   ( "FINC" ::: Signal dom Bool
   , "FDEC" ::: Signal dom Bool
   )
-riscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
+riscvCopyTest clk rst mask callistoResult dataCounts = unbundle fIncDec
  where
-  (_, fIncDec) =
+  (_, ccData) =
     toSignals
       ( circuit $ \jtag -> do
           [wbA, wbB] <-
             withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
           fIncDecCallisto -< wbA
-          (fIncDec, _allStable) <-
+          ccData <-
             withClockResetEnable clk rst enableGen
-              $ clockControlWb margin framesize (pure $ complement 0) dataCounts
+              $ clockControlWb margin framesize mask (pure False) dataCounts
               -< wbB
-          idC -< fIncDec
+          idC -< ccData
       )
       (pure $ JtagIn low low low, pure ())
+  fIncDec = speedChangeToPins . fromMaybe NoChange <$> ccData.clockMod
 
   fIncDecCallisto ::
     forall aw nBytes.
@@ -563,11 +564,12 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
             <$> initialAdjust
             <*> adjustCount
         )
-        ( withClockResetEnable sysClk clockControlReset enableGen
-            $ stickyBits @Basic125 d20
-            $ speedChangeToPins
-            . fromMaybe NoChange
-            <$> clockMod
+        ( speedChangeToStickyPins
+            sysClk
+            clockControlReset
+            enableGen
+            (SNat @Si539xHoldTime)
+            clockMod
         )
    where
     opSelect calib adjust = case compare calib adjust of
@@ -643,7 +645,7 @@ hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     unbundle
       $ mux (unsafeToActiveHigh callistoReset) hwFincFdecs
       $ bundle
-      $ riscvCopyTest sysClk callistoReset callistoResult dataCounts
+      $ riscvCopyTest sysClk callistoReset (mask <$> cfg) callistoResult dataCounts
 
   -- check that tests are not synchronously start before all
   -- transceivers are up
