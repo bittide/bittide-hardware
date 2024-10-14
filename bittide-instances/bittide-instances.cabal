@@ -154,7 +154,6 @@ library
     Bittide.Instances.Pnr.StabilityChecker
     Bittide.Instances.Pnr.Synchronizer
     Paths.Bittide.Instances
-    Project.FilePath
     Project.Handle
     Project.Programs
 
