@@ -42,6 +42,7 @@ import LiftType (liftTypeQ)
 import System.FilePath
 
 import Bittide.Arithmetic.Time
+import Bittide.CircuitUtils
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
@@ -64,7 +65,7 @@ import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology (TopologyType (..))
 import Bittide.Transceiver (transceiverPrbsN)
 
-import Bittide.Instances.Hitl.HwCcTopologies (cSigMap, commonSpiConfig, csDupe)
+import Bittide.Instances.Hitl.HwCcTopologies (commonSpiConfig)
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
 import Project.FilePath

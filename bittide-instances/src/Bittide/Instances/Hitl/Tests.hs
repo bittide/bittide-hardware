@@ -29,6 +29,7 @@ import qualified Bittide.Instances.Hitl.FullMeshHwCc as FullMeshHwCc
 import qualified Bittide.Instances.Hitl.FullMeshSwCc as FullMeshSwCc
 import qualified Bittide.Instances.Hitl.HwCcTopologies as HwCcTopologies
 import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
+import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
 import qualified Bittide.Instances.Hitl.TemperatureMonitor as TemperatureMonitor
 import qualified Bittide.Instances.Hitl.Transceivers as Transceivers
@@ -48,6 +49,8 @@ hitlTests =
   , LinkConfiguration.tests
   , SyncInSyncOut.tests
   , TemperatureMonitor.tests
+  , SwCcTopologies.tests
+  , SyncInSyncOut.tests
   , Transceivers.tests
   , VexRiscv.tests
   ]
