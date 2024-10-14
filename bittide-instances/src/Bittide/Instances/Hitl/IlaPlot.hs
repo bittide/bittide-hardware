@@ -56,11 +56,10 @@ import Clash.Explicit.Signal.Extra
 import Clash.Sized.Extra (concatUnsigneds)
 
 import Bittide.Arithmetic.Time (PeriodToCycles, trueFor)
-import Bittide.ClockControl (ClockControlConfig, RelDataCount, SpeedChange (..))
+import Bittide.ClockControl (RelDataCount, SpeedChange (..))
 import Bittide.ClockControl.Callisto (
   CallistoResult (..),
   ReframingState (..),
-  callistoClockControl,
  )
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Extra.Maybe (orNothing)
@@ -455,6 +454,16 @@ data DiffResult a
     TooLarge
   deriving (Generic, BitPack, NFDataX, Functor, Eq, Ord, Show)
 
+type CallistoCc n m sys cfg =
+  (KnownDomain sys, HasSynchronousReset sys) =>
+  Clock sys ->
+  Reset sys ->
+  Enable sys ->
+  cfg ->
+  Signal sys (BitVector n) ->
+  Vec n (Signal sys (RelDataCount m)) ->
+  Signal sys (CallistoResult n)
+
 {-# NOINLINE callistoClockControlWithIla #-}
 
 {- | Wrapper on 'Bittide.ClockControl.Callisto.callistoClockControl'
@@ -462,16 +471,17 @@ additionally dumping all the data that is required for producing
 plots of the clock control behavior.
 -}
 callistoClockControlWithIla ::
-  forall n m sys dyn margin framesize.
+  forall n m cfg sys dyn.
   (HasCallStack) =>
   (KnownDomain dyn, KnownDomain sys, HasSynchronousReset sys) =>
-  (KnownNat n, KnownNat m, KnownNat margin, KnownNat framesize) =>
-  (1 <= n, 1 <= m, n + m <= 32, 1 <= framesize, 6 + n * (m + 4) <= 1024) =>
+  (KnownNat n, KnownNat m) =>
+  (1 <= n, 1 <= m, n + m <= 32, 6 + n * (m + 4) <= 1024) =>
   (CompressedBufferSize <= m) =>
   Clock dyn ->
   Clock sys ->
   Reset sys ->
-  ClockControlConfig sys m margin framesize ->
+  cfg ->
+  CallistoCc n m sys cfg ->
   -- | Ila trigger and capture conditions
   IlaControl sys ->
   -- | Link availability mask
@@ -479,10 +489,10 @@ callistoClockControlWithIla ::
   -- | Statistics provided by elastic buffers.
   Vec n (Signal sys (RelDataCount m)) ->
   Signal sys (CallistoResult n)
-callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
+callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..} mask ebs =
   hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> result)
  where
-  result = callistoClockControl clk rst enableGen ccc mask ebs
+  result = callistoCc clk rst enableGen callistoCfg mask ebs
 
   filterCounts vMask vCounts = flip map (zip vMask vCounts)
     $ \(isActive, count) -> if isActive == high then count else 0
