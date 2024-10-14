@@ -1,26 +1,33 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=6 #-}
 
 module Bittide.ClockControl.Registers where
 
-import Clash.Prelude
+import Clash.Prelude hiding (PeriodToCycles)
 
 import Protocols
 import Protocols.Wishbone
 
+import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.ClockControl
-import Bittide.ClockControl.Callisto.Util (speedChangeToPins, stickyBits)
+import qualified Bittide.ClockControl.Callisto.Types as T
+import Bittide.ClockControl.Callisto.Util (stickyBits)
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Wishbone
 import Clash.Functor.Extra
+import Clash.Sized.Vector.ToTuple (vecToTuple)
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 
 type StableBool = Bool
 type SettledBool = Bool
+
+type FadjHoldTime = Nanoseconds 150
+type FadjHoldCycles dom = PeriodToCycles dom FadjHoldTime
+
+data ReframingStateKind = Detect | Wait | Done deriving (Generic, NFDataX, BitPack)
 
 {- | A wishbone accessible clock control interface.
 This interface receives the link mask and 'RelDataCount's from all links.
@@ -28,12 +35,21 @@ Furthermore it produces FINC/FDEC pulses for the clock control boards.
 
 The word-aligned address layout of the Wishbone interface is as follows:
 
-- Address 0: Number of links
-- Address 1: Link mask
-- Address 2: FINC/FDEC
-- Address 3: Link stables
-- Address 4: Link settles
-- Addresses 5 to (5 + nLinks): Data counts
+- Address 0: Reframing kind                   -- Reframing register     | 0x00
+- Address 1: Wait target correction           |                         | 0x04
+- Address 2: Wait target count                |                         | 0x08
+- Address 3: Number of links                  -- Clock control register | 0x0C | 0x00
+- Address 4: Link mask                        |                         | 0x10 | 0x04
+- Address 5: Link mask popcnt                 |                         | 0x14 | 0x08
+- Address 6: Reframing enabled?               |                         | 0x18 | 0x0C
+- Address 7: FINC/FDEC                        |                         | 0x1C | 0x10
+- Address 8: Link stables                     |                         | 0x20 | 0x14
+- Address 9: Link settles                     |                         | 0x24 | 0x18
+- Addresses 10 to (10 + nLinks): Data counts  --                        | 0x28 | 0x1C
+
+Additionally, the `CSignal dom (Maybe SpeedChange)` output is already stickied for
+the period of time described by `FadjHoldTime` (150ns at time of writing), so it should
+only be necessary to convert the `SpeedChange` to `FINC`/`FDEC` pins.
 -}
 clockControlWb ::
   forall dom addrW nLinks m margin framesize.
@@ -45,6 +61,8 @@ clockControlWb ::
   , KnownNat m
   , m <= 32
   , nLinks <= 32
+  , 1 <= FadjHoldCycles dom
+  , 1 <= DomainPeriod dom
   ) =>
   -- | Maximum number of elements the incoming buffer occupancy is
   -- allowed to deviate from the current @target@ for it to be
@@ -55,30 +73,118 @@ clockControlWb ::
   SNat framesize ->
   -- | Link mask
   Signal dom (BitVector nLinks) ->
+  -- | Reframing enabled?
+  Signal dom Bool ->
   -- | Counters
   Vec nLinks (Signal dom (RelDataCount m)) ->
   -- | Wishbone accessible clock control circuitry
   Circuit
     (Wishbone dom 'Standard addrW (BitVector 32))
-    (CSignal dom ("FINC" ::: Bool, "FDEC" ::: Bool), CSignal dom ("ALL_STABLE" ::: Bool))
-clockControlWb margin framesize linkMask counters = Circuit go
+    ( CSignal dom (Maybe SpeedChange)
+    , CSignal dom T.ReframingState
+    , CSignal dom (Vec nLinks StabilityIndication)
+    , CSignal dom ("ALL_STABLE" ::: Bool)
+    , CSignal dom ("ALL_SETTLED" ::: Bool)
+    , "updatePeriod" ::: CSignal dom (Unsigned 32)
+    )
+clockControlWb mgn fsz linkMask reframing counters = Circuit go
  where
-  go (wbM2S, _) = (wbS2M, (fIncDec3, all (== True) <$> (fmap stable <$> stabilityIndications)))
+  go (wbM2S, _) =
+    ( wbS2M
+    , (fIncDec2, reframingState, stabilityIndications, allStable, allSettled, updatePeriod)
+    )
    where
-    stabilityIndications = bundle $ stabilityChecker margin framesize <$> counters
+    filterCounters vMask vCounts = flip map (zip vMask vCounts)
+      $ \(isActive, count) -> if isActive == high then count else 0
+    filteredCounters = unbundle $ filterCounters <$> fmap bv2v linkMask <*> bundle counters
+    stabilityIndications = bundle $ stabilityChecker mgn fsz <$> filteredCounters
+
+    -- ▗▖ ▗▖▗▖ ▗▖▗▄▄▄▖▗▖  ▗▖    ▗▖  ▗▖▗▄▖ ▗▖ ▗▖     ▗▄▄▖▗▖ ▗▖ ▗▄▖ ▗▖  ▗▖ ▗▄▄▖▗▄▄▄▖    ▗▄▄▄▖▗▖ ▗▖▗▄▄▄▖ ▗▄▄▖
+    -- ▐▌ ▐▌▐▌ ▐▌▐▌   ▐▛▚▖▐▌     ▝▚▞▘▐▌ ▐▌▐▌ ▐▌    ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▛▚▖▐▌▐▌   ▐▌         █  ▐▌ ▐▌  █  ▐▌
+    -- ▐▌ ▐▌▐▛▀▜▌▐▛▀▀▘▐▌ ▝▜▌      ▐▌ ▐▌ ▐▌▐▌ ▐▌    ▐▌   ▐▛▀▜▌▐▛▀▜▌▐▌ ▝▜▌▐▌▝▜▌▐▛▀▀▘      █  ▐▛▀▜▌  █   ▝▀▚▖
+    -- ▐▙█▟▌▐▌ ▐▌▐▙▄▄▖▐▌  ▐▌      ▐▌ ▝▚▄▞▘▝▚▄▞▘    ▝▚▄▄▖▐▌ ▐▌▐▌ ▐▌▐▌  ▐▌▝▚▄▞▘▐▙▄▄▖      █  ▐▌ ▐▌▗▄█▄▖▗▄▄▞▘
+    --
+    -- ▗▖ ▗▖▗▄▄▖ ▗▄▄▄  ▗▄▖▗▄▄▄▖▗▄▄▄▖    ▗▄▄▄▖▗▖ ▗▖▗▄▄▄▖    ▗▄▄▖ ▗▖ ▗▖ ▗▄▄▖
+    -- ▐▌ ▐▌▐▌ ▐▌▐▌  █▐▌ ▐▌ █  ▐▌         █  ▐▌ ▐▌▐▌       ▐▌ ▐▌▐▌ ▐▌▐▌
+    -- ▐▌ ▐▌▐▛▀▘ ▐▌  █▐▛▀▜▌ █  ▐▛▀▀▘      █  ▐▛▀▜▌▐▛▀▀▘    ▐▛▀▚▖▐▌ ▐▌ ▝▀▚▖
+    -- ▝▚▄▞▘▐▌   ▐▙▄▄▀▐▌ ▐▌ █  ▐▙▄▄▖      █  ▐▌ ▐▌▐▙▄▄▖    ▐▙▄▞▘▝▚▄▞▘▗▄▄▞▘
     readVec =
       dflipflop
-        <$> ( pure (natToNum @nLinks)
+        <$> ( (resize . pack <$> rfsKind1)
+                :> (pack <$> targetCorrection1)
+                :> (pack <$> targetCount1)
+                :> pure (natToNum @nLinks)
                 :> (zeroExtend @_ @_ @(32 - nLinks) <$> linkMask)
+                :> (resize . pack . popCount <$> linkMask)
+                :> (zeroExtend @_ @_ @31 <$> (boolToBV <$> reframing))
                 :> (resize . pack <$> fIncDec1)
-                :> (resize . pack . fmap stable <$> stabilityIndications)
-                :> (resize . pack . fmap settled <$> stabilityIndications)
-                :> (pack . (extend @_ @_ @(32 - m)) <<$>> counters)
+                :> (resize . pack . fmap boolToBit <$> linksStable)
+                :> (resize . pack . fmap boolToBit <$> linksSettled)
+                :> (pack . (extend @_ @_ @(32 - m)) <<$>> filteredCounters)
             )
-    fIncDec0 = (\v -> unpack . resize <$> v !! (2 :: Unsigned 2)) <$> writeVec
+    allStable = allAvailable stable <$> linkMask <*> stabilityIndications
+    allSettled = allAvailable settled <$> linkMask <*> stabilityIndications
+
+    linksStable = mapAvailable stable False <$> linkMask <*> stabilityIndications
+    linksSettled = mapAvailable settled False <$> linkMask <*> stabilityIndications
+
+    mapAvailable fn itemDefault mask = zipWith go1 (bitToBool <$> bv2v mask)
+     where
+      go1 avail item = if avail then fn item else itemDefault
+
+    allAvailable f x y =
+      and $ zipWith ((||) . not) (bitToBool <$> bv2v x) (f <$> y)
+
+    -- ▗▖ ▗▖▗▄▄▖ ▗▄▄▄  ▗▄▖▗▄▄▄▖▗▄▄▄▖    ▗▄▄▄▖▗▖ ▗▖▗▄▄▄▖ ▗▄▄▖    ▗▖ ▗▖▗▖ ▗▖▗▄▄▄▖▗▖  ▗▖
+    -- ▐▌ ▐▌▐▌ ▐▌▐▌  █▐▌ ▐▌ █  ▐▌         █  ▐▌ ▐▌  █  ▐▌       ▐▌ ▐▌▐▌ ▐▌▐▌   ▐▛▚▖▐▌
+    -- ▐▌ ▐▌▐▛▀▘ ▐▌  █▐▛▀▜▌ █  ▐▛▀▀▘      █  ▐▛▀▜▌  █   ▝▀▚▖    ▐▌ ▐▌▐▛▀▜▌▐▛▀▀▘▐▌ ▝▜▌
+    -- ▝▚▄▞▘▐▌   ▐▙▄▄▀▐▌ ▐▌ █  ▐▙▄▄▖      █  ▐▌ ▐▌▗▄█▄▖▗▄▄▞▘    ▐▙█▟▌▐▌ ▐▌▐▙▄▄▖▐▌  ▐▌
+    --
+    -- ▗▖  ▗▖▗▄▖ ▗▖ ▗▖     ▗▄▄▖▗▖ ▗▖ ▗▄▖ ▗▖  ▗▖ ▗▄▄▖▗▄▄▄▖    ▗▄▄▄▖▗▖ ▗▖▗▄▄▄▖    ▗▄▄▖ ▗▖ ▗▖ ▗▄▄▖
+    --  ▝▚▞▘▐▌ ▐▌▐▌ ▐▌    ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▛▚▖▐▌▐▌   ▐▌         █  ▐▌ ▐▌▐▌       ▐▌ ▐▌▐▌ ▐▌▐▌
+    --   ▐▌ ▐▌ ▐▌▐▌ ▐▌    ▐▌   ▐▛▀▜▌▐▛▀▜▌▐▌ ▝▜▌▐▌▝▜▌▐▛▀▀▘      █  ▐▛▀▜▌▐▛▀▀▘    ▐▛▀▚▖▐▌ ▐▌ ▝▀▚▖
+    --   ▐▌ ▝▚▄▞▘▝▚▄▞▘    ▝▚▄▄▖▐▌ ▐▌▐▌ ▐▌▐▌  ▐▌▝▚▄▞▘▐▙▄▄▖      █  ▐▌ ▐▌▐▙▄▄▖    ▐▙▄▞▘▝▚▄▞▘▗▄▄▞▘
+    --
+    -- Pull out the write-able fields
+    (f0, f1, f2, _, _, _, _, f7, _, _) = unbundle $ vecToTuple . take (SNat :: SNat 10) <$> writeVec
+
+    fIncDec0 :: Signal dom (Maybe SpeedChange)
+    fIncDec0 = unpack . resize <<$>> f7
+    fIncDec1 :: Signal dom (Maybe SpeedChange)
     fIncDec1 = register Nothing fIncDec0
-    fIncDec2 = fromMaybe NoChange <$> fIncDec1
-    fIncDec3 =
-      delay minBound {- glitch filter -}
-        $ stickyBits d20 (speedChangeToPins <$> fIncDec2)
+    fIncDec2 :: Signal dom (Maybe SpeedChange)
+    fIncDec2 = delay Nothing $ stickyBits (SNat @(FadjHoldCycles dom)) fIncDec1
+
+    rfsKind0 :: Signal dom (Maybe ReframingStateKind)
+    rfsKind0 = unpack . resize <<$>> f0
+    rfsKind1 :: Signal dom (Maybe ReframingStateKind)
+    rfsKind1 = register Nothing rfsKind0
+
+    targetCorrection0 :: Signal dom (Maybe Float)
+    targetCorrection0 = unpack . resize <<$>> f1
+    targetCorrection1 :: Signal dom Float
+    targetCorrection1 = register 0.0 (fromMaybe 0.0 <$> targetCorrection0)
+
+    targetCount0 :: Signal dom (Maybe (Unsigned 32))
+    targetCount0 = unpack . resize <<$>> f2
+    targetCount1 :: Signal dom (Unsigned 32)
+    targetCount1 = register 0 (fromMaybe 0 <$> targetCount0)
+
+    reframingState = liftA3 go1 rfsKind1 targetCorrection1 targetCount1
+     where
+      go1 rfsk1 tCor tCou = go2 rfsk1
+       where
+        go2 (Just rfsk2) = case rfsk2 of
+          Detect -> T.Detect
+          Wait -> T.Wait tCor tCou
+          Done -> T.Done
+        go2 _ = T.Done
+
     (writeVec, wbS2M) = unbundle $ wbToVec <$> bundle readVec <*> wbM2S
+
+    updated :: Signal dom Bool
+    updated = isJust <$> fIncDec0
+    updatePeriod :: Signal dom (Unsigned 32)
+    updatePeriod = moore go2 snd (0, 0) updated
+     where
+      go2 (cntr, cntrPrev) update = if update then (0, cntr) else (cntr + 1, cntrPrev)
