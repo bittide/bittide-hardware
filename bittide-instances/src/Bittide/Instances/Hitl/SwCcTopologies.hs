@@ -31,6 +31,7 @@ module Bittide.Instances.Hitl.SwCcTopologies (
 ) where
 
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
+import Clash.Explicit.Signal.Extra (changepoints)
 import qualified Clash.Explicit.Prelude as E
 import Clash.Prelude (withClockResetEnable)
 
@@ -933,12 +934,13 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   --     $ stickyBits (SNat @(PeriodToCycles Basic125 (Seconds 2))) testEnding
 
   -- Workaround for tests not resetting properly???
+  syncNodeProbablyWorking = changepoints sysClk testReset enableGen syncIn
   syncNodeEnteredReset =
     trueFor
       (SNat @(Milliseconds 25))
       sysClk
       testReset
-      (not <$> syncIn)
+      (not <$> syncNodeProbablyWorking)
   syncNodePrevEnteredReset =
     sticky sysClk testReset syncNodeEnteredReset
 
