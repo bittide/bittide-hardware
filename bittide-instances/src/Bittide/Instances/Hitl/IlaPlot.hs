@@ -490,9 +490,14 @@ callistoClockControlWithIla ::
   Vec n (Signal sys (RelDataCount m)) ->
   Signal sys (CallistoResult n)
 callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..} mask ebs =
-  hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> result)
+  hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> output)
  where
-  result = callistoCc clk rst enableGen callistoCfg mask ebs
+  output = callistoCc clk rst enableGen callistoCfg mask ebs
+
+  -- Condense multicycle speedchange outputs into a single cycle for the ILA
+  mscChanging = isRising clk rst enableGen False (isJust . maybeSpeedChange <$> output)
+  newMsc = mux mscChanging (maybeSpeedChange <$> output) (pure Nothing)
+  callistoOutputIla = (\record field -> record{maybeSpeedChange = field}) <$> output <*> newMsc
 
   filterCounts vMask vCounts = flip map (zip vMask vCounts)
     $ \(isActive, count) -> if isActive == high then count else 0
@@ -531,12 +536,12 @@ callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..}
         height = SNat @AccWindowHeight
         idcs =
           unbundle
-            (filterIndicators <$> fmap bv2v mask <*> (stability <$> result))
+            (filterIndicators <$> fmap bv2v mask <*> (stability <$> callistoOutputIla))
 
         -- get the points in time where the monitored values change
         stableUpdates = changepoints clk rst enableGen <$> (fmap stable <$> idcs)
         settledUpdates = changepoints clk rst enableGen <$> (fmap settled <$> idcs)
-        modeUpdate = changepoints clk rst enableGen (rfStageChange <$> result)
+        modeUpdate = changepoints clk rst enableGen (rfStageChange <$> callistoOutputIla)
 
         combine eb stU seU ind =
           (,,)
@@ -547,8 +552,8 @@ callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..}
         noChange = fromMaybe NoChange . maybeSpeedChange
      in PlotData
           <$> bundle (zipWith4 combine ebsC stableUpdates settledUpdates idcs)
-          <*> accWindow height clk rst enableGen (noChange <$> result)
-          <*> mux modeUpdate (rfStageChange <$> result) (pure Stable)
+          <*> accWindow height clk rst enableGen (noChange <$> callistoOutputIla)
+          <*> mux modeUpdate (rfStageChange <$> callistoOutputIla) (pure Stable)
 
   -- compress the elastic buffer data via only reporting the
   -- differences since the last capture
