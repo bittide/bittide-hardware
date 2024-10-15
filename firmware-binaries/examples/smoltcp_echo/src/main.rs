@@ -92,7 +92,7 @@ fn main() -> ! {
     let mut my_ip = None;
 
     let stress_test_duration = Duration::from_secs(30);
-    let mut stress_test_end = Instant::end_of_time(clock.get_frequency());
+    let mut stress_test_end = Instant::end_of_time();
     info!(
         "{}, TCP Server send chunks of {} bytes for {}",
         clock.elapsed(),

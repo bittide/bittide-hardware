@@ -29,13 +29,12 @@ pub mod self_test;
 ///
 #[derive(uDebug, Copy, Clone)]
 pub struct Instant {
-    clock_cycles: u64,
-    frequency: u64,
+    micros: u64,
 }
 
 impl core::cmp::PartialEq for Instant {
     fn eq(&self, other: &Self) -> bool {
-        self.clock_cycles == other.clock_cycles && self.frequency == other.frequency
+        self.micros == other.micros
     }
 }
 
@@ -52,106 +51,75 @@ impl Instant {
             panic!("Tried to create an Instant with a frequency of 0 hertz.")
         }
         Instant {
-            clock_cycles: cycles,
-            frequency,
+            micros: cycles / (frequency / 1e6 as u64),
         }
     }
     /// Create a new `Instant` from a number of microseconds and the frequency of the timing peripheral.
-    pub fn from_micros(micros: u64, frequency: u64) -> Instant {
-        if frequency == 0 {
-            panic!("Tried to create an Instant with a frequency of 0 hertz.")
-        }
-        Instant {
-            clock_cycles: (micros * frequency / 1e6 as u64),
-            frequency,
-        }
+    pub fn from_micros(micros: u64) -> Instant {
+        Instant { micros }
     }
 
     /// Create a new `Instant` from a number of milliseconds and the frequency of the timing peripheral.
-    pub fn from_millis(millis: u64, frequency: u64) -> Instant {
-        if frequency == 0 {
-            panic!("Tried to create an Instant with a frequency of 0 hertz.")
-        }
+    pub fn from_millis(millis: u64) -> Instant {
         Instant {
-            clock_cycles: (millis * frequency / 1e3 as u64),
-            frequency,
+            micros: millis * 1e3 as u64,
         }
     }
 
     /// Create a new `Instant` from a number of seconds and the frequency of the timing peripheral.
-    pub fn from_secs(secs: u64, frequency: u64) -> Instant {
-        if frequency == 0 {
-            panic!("Tried to create an Instant with a frequency of 0 hertz.")
-        }
+    pub fn from_secs(secs: u64) -> Instant {
         Instant {
-            clock_cycles: secs * frequency,
-            frequency,
+            micros: secs * 1e6 as u64,
         }
     }
 
     /// Create a new `Instant` from a number of minutes and the frequency of the timing peripheral.
-    pub fn from_mins(mins: u64, frequency: u64) -> Instant {
-        if frequency == 0 {
-            panic!("Tried to create an Instant with a frequency of 0 hertz.")
-        }
+    pub fn from_mins(mins: u64) -> Instant {
         Instant {
-            clock_cycles: mins * (60 * frequency),
-            frequency,
+            micros: mins * (60 * 1e6 as u64),
         }
     }
 
     /// Create a new `Instant` from a number of hours and the frequency of the timing peripheral.
-    pub fn from_hours(hours: u64, frequency: u64) -> Instant {
-        if frequency == 0 {
-            panic!("Tried to create an Instant with a frequency of 0 hertz.")
-        }
+    pub fn from_hours(hours: u64) -> Instant {
         Instant {
-            clock_cycles: hours * (60 * 60 * frequency),
-            frequency,
+            micros: hours * (60 * 60 * 1e6 as u64),
         }
     }
 
     /// The number of whole hours represented by this `Instant`.
     pub fn to_hours(&self) -> u64 {
-        self.clock_cycles / (60 * 60 * self.frequency)
+        self.micros / ((1e6 as u64) * 60 * 60)
     }
 
     /// The number of whole minutes represented by this `Instant`.
     pub fn to_mins(&self) -> u64 {
-        self.clock_cycles / (60 * self.frequency)
+        self.micros / ((1e6 as u64) * 60)
     }
 
     /// The number of whole seconds represented by this `Instant`.
     pub fn to_secs(&self) -> u64 {
-        self.clock_cycles / self.frequency
+        self.micros / (1e6 as u64)
     }
 
     /// The number of whole milliseconds represented by this `Instant`.
     pub fn to_millis(&self) -> u64 {
-        (self.clock_cycles * 1e3 as u64) / self.frequency
+        self.micros / (1e3 as u64)
     }
 
     /// The number of whole microseconds represented by this `Instant`.
     pub fn to_micros(&self) -> u64 {
-        (self.clock_cycles * 1e6 as u64) / self.frequency
+        self.micros
     }
 
     /// The number of cycles stored by this `Instant`.
-    pub fn get_cycles(&self) -> u64 {
-        self.clock_cycles
-    }
-
-    /// The frequency corresponding to this `Instant`s clock cycles.
-    pub fn get_frequency(&self) -> u64 {
-        self.frequency
+    pub fn get_cycles(&self, frequency: u64) -> u64 {
+        self.micros * (frequency / 1e6 as u64)
     }
 
     // Maximum time that we can represent
-    pub fn end_of_time(frequency: u64) -> Instant {
-        Instant {
-            clock_cycles: u64::MAX,
-            frequency,
-        }
+    pub fn end_of_time() -> Instant {
+        Instant { micros: u64::MAX }
     }
 }
 
@@ -160,15 +128,14 @@ impl ops::Add<Duration> for Instant {
 
     fn add(self, rhs: Duration) -> Instant {
         Instant {
-            clock_cycles: self.clock_cycles + rhs.to_cycles(self.frequency),
-            frequency: self.frequency,
+            micros: self.micros + rhs.to_micros(),
         }
     }
 }
 
 impl ops::AddAssign<Duration> for Instant {
     fn add_assign(&mut self, rhs: Duration) {
-        self.clock_cycles += rhs.to_cycles(self.frequency)
+        self.micros += rhs.to_micros();
     }
 }
 
@@ -177,15 +144,14 @@ impl ops::Sub<Duration> for Instant {
 
     fn sub(self, rhs: Duration) -> Instant {
         Instant {
-            clock_cycles: self.clock_cycles - rhs.to_cycles(self.frequency),
-            frequency: self.frequency,
+            micros: self.micros - rhs.to_micros(),
         }
     }
 }
 
 impl ops::SubAssign<Duration> for Instant {
     fn sub_assign(&mut self, rhs: Duration) {
-        self.clock_cycles -= rhs.to_cycles(self.frequency)
+        self.micros -= rhs.to_micros();
     }
 }
 
@@ -354,10 +320,9 @@ impl Clock {
     /// Update the clock and return the current Instant.
     pub fn elapsed(&self) -> Instant {
         self.freeze();
-        Instant {
-            clock_cycles: self.get_counter(),
-            frequency: self.get_frequency(),
-        }
+        let cycles = self.get_counter();
+        let frequency = self.get_frequency();
+        Instant::from_cycles(cycles, frequency)
     }
 
     /// Freezes the time counter.
