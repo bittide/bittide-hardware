@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use crate::uart;
+use crate::{time, uart};
 
 // The logger utilizes core::fmt to format the log messages because ufmt formatting is not
 // compatible with (dependencies of) the log crate.
@@ -16,6 +16,8 @@ use log::LevelFilter;
 /// Even though `UartLogger` is `Send` and `Sync`, The underlying `Uart` is not `Send` or `Sync`.
 pub static mut LOGGER: UartLogger = UartLogger {
     uart: None,
+    clock: None,
+    print_time: true,
     display_level: LevelFilter::Trace,
     display_source: LevelFilter::Trace,
 };
@@ -27,6 +29,8 @@ pub static mut LOGGER: UartLogger = UartLogger {
 /// Even though `UartLogger` is `Send` and `Sync`, The underlying `Uart` is not `Send` or `Sync`.
 pub struct UartLogger {
     uart: Option<uart::Uart>,
+    clock: Option<time::Clock>,
+    pub print_time: bool,
     pub display_level: LevelFilter,
     pub display_source: LevelFilter,
 }
@@ -38,6 +42,9 @@ impl UartLogger {
     /// This function is used to assign the `Uart` instance to a global (`static mut`), but `Uart` is not `Send` or `Sync`.
     pub unsafe fn set_logger(&mut self, uart: uart::Uart) {
         self.uart = Some(uart);
+    }
+    pub fn set_clock(&mut self, clock: time::Clock) {
+        self.clock = Some(clock);
     }
 }
 
@@ -53,6 +60,10 @@ impl log::Log for UartLogger {
                     Some(l) => {
                         if record.level() <= self.display_level {
                             write!(l, "{} | ", record.level()).unwrap()
+                        }
+                        if let (true, Some(clock)) = (&self.print_time, &self.clock) {
+                            let time = clock.elapsed();
+                            write!(l, "{time} | ").unwrap();
                         }
                         if record.level() <= self.display_source {
                             write!(
