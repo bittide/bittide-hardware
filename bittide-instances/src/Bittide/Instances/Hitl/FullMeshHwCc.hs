@@ -359,11 +359,11 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
   frequencyAdjustments =
     E.delay sysClk enableGen minBound {- glitch filter -}
       $ speedChangeToStickyPins
-          sysClk
-          clockControlReset
-          enableGen
-          (SNat @Si539xHoldTime)
-          clockMod
+        sysClk
+        clockControlReset
+        enableGen
+        (SNat @Si539xHoldTime)
+        clockMod
 
   domainDiffs =
     domainDiffCounterExt sysClk clockControlReset
