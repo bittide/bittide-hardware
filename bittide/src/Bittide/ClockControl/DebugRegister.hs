@@ -7,6 +7,8 @@ module Bittide.ClockControl.DebugRegister (
   debugRegisterWb,
 ) where
 
+import GHC.Records (HasField (..))
+
 import Clash.Prelude hiding (PeriodToCycles)
 
 import Protocols
@@ -27,6 +29,38 @@ data DebugRegisterData = DebugRegisterData
   , updatePeriodMin :: Unsigned 32
   , updatePeriodMax :: Unsigned 32
   }
+
+instance
+  HasField
+    "reframingState"
+    (Signal dom DebugRegisterData)
+    (Signal dom T.ReframingState)
+  where
+  getField = fmap reframingState
+
+instance
+  HasField
+    "updatePeriod"
+    (Signal dom DebugRegisterData)
+    (Signal dom (Unsigned 32))
+  where
+  getField = fmap updatePeriod
+
+instance
+  HasField
+    "updatePeriodMin"
+    (Signal dom DebugRegisterData)
+    (Signal dom (Unsigned 32))
+  where
+  getField = fmap updatePeriodMin
+
+instance
+  HasField
+    "updatePeriodMax"
+    (Signal dom DebugRegisterData)
+    (Signal dom (Unsigned 32))
+  where
+  getField = fmap updatePeriodMax
 
 data ReframingStateKind = Detect | Wait | Done deriving (Generic, NFDataX, BitPack)
 
