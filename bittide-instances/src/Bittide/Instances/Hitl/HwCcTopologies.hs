@@ -218,21 +218,20 @@ riscvCopyTest ::
   )
 riscvCopyTest clk rst mask callistoResult dataCounts = unbundle fIncDec
  where
-  msc :: Signal dom (Maybe SpeedChange)
-  (_, msc) =
+  (_, ccData) =
     toSignals
       ( circuit $ \jtag -> do
           [wbA, wbB] <-
             withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
           fIncDecCallisto -< wbA
-          (msc, _reframingState, _stabilities, _allStable, _allSettled, _updatePeriod) <-
+          ccData <-
             withClockResetEnable clk rst enableGen
               $ clockControlWb margin framesize mask (pure False) dataCounts
               -< wbB
-          idC -< msc
+          idC -< ccData
       )
       (pure $ JtagIn low low low, pure ())
-  fIncDec = speedChangeToPins . fromMaybe NoChange <$> msc
+  fIncDec = speedChangeToPins . fromMaybe NoChange <$> ccData.clockMod
 
   fIncDecCallisto ::
     forall aw nBytes.
