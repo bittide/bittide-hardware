@@ -101,19 +101,18 @@ fullMeshRiscvTest ::
   )
 fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
  where
-  msc :: Signal dom (Maybe SpeedChange)
-  (_, msc) =
+  (_, ccData) =
     toSignals
       ( circuit $ \jtag -> do
           [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
-          (msc, _stabilities, _allStable, _allSettled) <-
+          ccData <-
             withClockResetEnable clk rst enableGen
               $ clockControlWb margin framesize (pure $ complement 0) (pure False) dataCounts
               -< wbB
-          idC -< msc
+          idC -< ccData
       )
       (pure $ JtagIn low low low, pure ())
-  fIncDec = speedChangeToPins . fromMaybe NoChange <$> msc
+  fIncDec = speedChangeToPins . fromMaybe NoChange <$> ccData.clockMod
 
   margin = d2
 

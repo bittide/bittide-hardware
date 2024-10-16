@@ -42,11 +42,12 @@ debugRegisterWb = Circuit go
  where
   go ((wbM2S, clockMod), _) = ((wbS2M, pure ()), debugData)
    where
-    debugData = DebugRegisterData
-      <$> rfs
-      <*> up
-      <*> upMin
-      <*> upMax
+    debugData =
+      DebugRegisterData
+        <$> rfs
+        <*> up
+        <*> upMin
+        <*> upMax
 
     readVec :: Vec 3 (Signal dom (BitVector 32))
     readVec =
