@@ -16,8 +16,12 @@ import Bittide.Wishbone
 import Clash.Functor.Extra
 import Clash.Sized.Vector.ToTuple (vecToTuple)
 
-type StableBool = Bool
-type SettledBool = Bool
+data ClockControlData (nLinks :: Nat) = ClockControlData
+  { clockMod :: Maybe SpeedChange
+  , stabilityIndications :: Vec nLinks StabilityIndication
+  , allStable :: Bool
+  , allSettled :: Bool
+  }
 
 {- | A wishbone accessible clock control interface.
 This interface receives the link mask and 'RelDataCount's from all links.
@@ -25,14 +29,18 @@ Furthermore it produces FINC/FDEC pulses for the clock control boards.
 
 The word-aligned address layout of the Wishbone interface is as follows:
 
-- Address 0: Number of links                | 0x00
-- Address 1: Link mask                      | 0x04
-- Address 2: Link mask popcnt               | 0x08
-- Address 3: Reframing enabled?             | 0x0C
-- Address 4: FINC/FDEC                      | 0x10
-- Address 5: Link stables                   | 0x14
-- Address 6: Link settles                   | 0x18
-- Addresses 7 to (7 + nLinks): Data counts  | 0x1C
++----------------+--------------------+----------------------+----------------------+
+| Field number   |  Field description | Field name           | Offset (in bytes)    |
++================+====================+======================+======================+
+| 0              | Number of links    | 'num_links'          | 0x00                 |
+| 1              | Link mask          | 'link_mask'          | 0x04                 |
+| 2              | Link mask popcount | 'up_links'           | 0x08                 |
+| 3              | Reframing enabled? | 'reframing_enabled'  | 0x0C                 |
+| 4              | Speed change       | 'change_speed'       | 0x10                 |
+| 5              | All links stable?  | 'links_stable'       | 0x14                 |
+| 6              | All links settled? | 'links_settled'      | 0x18                 |
+| 7              | Data counts        | 'data_counts'        | 0x1C -> 0x1C + links |
++----------------+--------------------+----------------------+----------------------+
 
 __NB__: the `Maybe SpeedChange` part of the output is only asserted for a single cycle.
 This must be stickied or otherwise held for the minimum pulse width specified by the
@@ -66,22 +74,22 @@ clockControlWb ::
   -- | Wishbone accessible clock control circuitry
   Circuit
     (Wishbone dom 'Standard addrW (BitVector 32))
-    ( CSignal dom (Maybe SpeedChange)
-    , CSignal dom (Vec nLinks StabilityIndication)
-    , CSignal dom ("ALL_STABLE" ::: Bool)
-    , CSignal dom ("ALL_SETTLED" ::: Bool)
-    )
+    (CSignal dom (ClockControlData nLinks))
 clockControlWb mgn fsz linkMask reframing counters = Circuit go
  where
-  go (wbM2S, _) =
-    ( wbS2M
-    , (fIncDec1, stabilityIndications, allStable, allSettled)
-    )
+  go (wbM2S, _) = (wbS2M, ccd)
    where
+    ccd =
+      ClockControlData
+        <$> fIncDec1
+        <*> stabInds
+        <*> ccAllStable
+        <*> ccAllSettled
+
     filterCounters vMask vCounts = flip map (zip vMask vCounts)
       $ \(isActive, count) -> if isActive == high then count else 0
     filteredCounters = unbundle $ filterCounters <$> fmap bv2v linkMask <*> bundle counters
-    stabilityIndications = bundle $ stabilityChecker mgn fsz <$> filteredCounters
+    stabInds = bundle $ stabilityChecker mgn fsz <$> filteredCounters
 
     -- ▗▖ ▗▖▗▖ ▗▖▗▄▄▄▖▗▖  ▗▖    ▗▖  ▗▖▗▄▖ ▗▖ ▗▖     ▗▄▄▖▗▖ ▗▖ ▗▄▖ ▗▖  ▗▖ ▗▄▄▖▗▄▄▄▖    ▗▄▄▄▖▗▖ ▗▖▗▄▄▄▖ ▗▄▄▖
     -- ▐▌ ▐▌▐▌ ▐▌▐▌   ▐▛▚▖▐▌     ▝▚▞▘▐▌ ▐▌▐▌ ▐▌    ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▛▚▖▐▌▐▌   ▐▌         █  ▐▌ ▐▌  █  ▐▌
@@ -103,11 +111,11 @@ clockControlWb mgn fsz linkMask reframing counters = Circuit go
                 :> (resize . pack . fmap boolToBit <$> linksSettled)
                 :> (pack . (extend @_ @_ @(32 - m)) <<$>> filteredCounters)
             )
-    allStable = allAvailable stable <$> linkMask <*> stabilityIndications
-    allSettled = allAvailable settled <$> linkMask <*> stabilityIndications
+    ccAllStable = allAvailable stable <$> linkMask <*> stabInds
+    ccAllSettled = allAvailable settled <$> linkMask <*> stabInds
 
-    linksStable = mapAvailable stable False <$> linkMask <*> stabilityIndications
-    linksSettled = mapAvailable settled False <$> linkMask <*> stabilityIndications
+    linksStable = mapAvailable stable False <$> linkMask <*> stabInds
+    linksSettled = mapAvailable settled False <$> linkMask <*> stabInds
 
     mapAvailable fn itemDefault mask = zipWith go1 (bitToBool <$> bv2v mask)
      where
