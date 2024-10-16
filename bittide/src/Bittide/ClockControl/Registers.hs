@@ -5,6 +5,8 @@
 
 module Bittide.ClockControl.Registers where
 
+import GHC.Records (HasField (..))
+
 import Clash.Prelude hiding (PeriodToCycles)
 
 import Protocols
@@ -22,6 +24,38 @@ data ClockControlData (nLinks :: Nat) = ClockControlData
   , allStable :: Bool
   , allSettled :: Bool
   }
+
+instance
+  HasField
+    "clockMod"
+    (Signal dom (ClockControlData nLinks))
+    (Signal dom (Maybe SpeedChange))
+  where
+  getField = fmap clockMod
+
+instance
+  HasField
+    "stabilityIndications"
+    (Signal dom (ClockControlData nLinks))
+    (Signal dom (Vec nLinks StabilityIndication))
+  where
+  getField = fmap stabilityIndications
+
+instance
+  HasField
+    "allStable"
+    (Signal dom (ClockControlData nLinks))
+    (Signal dom Bool)
+  where
+  getField = fmap allStable
+
+instance
+  HasField
+    "allSettled"
+    (Signal dom (ClockControlData nLinks))
+    (Signal dom Bool)
+  where
+  getField = fmap allSettled
 
 {- | A wishbone accessible clock control interface.
 This interface receives the link mask and 'RelDataCount's from all links.
