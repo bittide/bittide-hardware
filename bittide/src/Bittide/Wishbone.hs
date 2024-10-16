@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=100 #-}
@@ -100,6 +101,28 @@ dupWb = Circuit go
   go (m2s0, (s2m0, _)) =
     (s2m0, (m2s0, (m2s0, s2m0)))
 
+type WbToBool dom mode addrW a =
+  Fwd (Wishbone dom mode addrW a) ->
+  Bwd (Wishbone dom mode addrW a) ->
+  Signal dom Bool
+
+-- | busCycle && strobe
+onRequestWb :: WbToBool dom mode addrW a
+onRequestWb = liftA2 $ \m _ -> m.busCycle && m.strobe
+
+-- | busCycle && strobe && (acknowledge || err || stall || retry)
+onTransactionWb :: forall dom mode addrW a. WbToBool dom mode addrW a
+onTransactionWb = liftA2 $ \m s -> m.busCycle && m.strobe && (s.acknowledge || s.err || s.stall || s.retry)
+
+-- | busCycle && strobe && addr >= lower && addr < upper
+inAddrRangeWb ::
+  forall dom mode addrW a.
+  (KnownNat addrW) =>
+  BitVector addrW ->
+  BitVector addrW ->
+  WbToBool dom mode addrW a
+inAddrRangeWb lower upper = liftA2 (\m _ -> m.busCycle && m.strobe && m.addr >= lower && m.addr < upper)
+
 {- | An ILA monitoring all M2S and S2M signals on a Wishbone bus. Installs two
 extra signals 'capture' and 'trigger' that can be used as defaults for triggering
 the ILA and conditional capturing. Trigger will be active for every valid
@@ -119,17 +142,17 @@ ilaWb ::
   -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
   -- by 'ilaConfig' equals 'D4096'.
   Depth ->
+  WbToBool dom 'Standard addrW a ->
+  WbToBool dom 'Standard addrW a ->
   Circuit
     (Wishbone dom 'Standard addrW a)
     (Wishbone dom 'Standard addrW a)
-ilaWb SSymbol stages0 depth0 = Circuit $ \(m2s, s2m) ->
+ilaWb SSymbol stages0 depth0 trigger capture = Circuit $ \(m2s, s2m) ->
   let
     -- Our HITL test infrastructure looks for 'trigger' and 'capture' and uses
     -- it to trigger the ILA and do selective capture. Though defaults are
     -- changable using Vivado, we set it to capture only valid Wishbone
     -- transactions plus a single cycle after it.
-    trigger = Wishbone.strobe <$> m2s .&&. Wishbone.busCycle <$> m2s
-    capture = trigger .||. dflipflop trigger
 
     ilaInst :: Signal dom ()
     ilaInst =
@@ -168,8 +191,8 @@ ilaWb SSymbol stages0 depth0 = Circuit $ \(m2s, s2m) ->
           (Wishbone.err <$> s2m)
           (Wishbone.stall <$> s2m)
           (Wishbone.retry <$> s2m)
-          capture
-          trigger
+          (capture m2s s2m)
+          (trigger m2s s2m)
    in
     ilaInst `hwSeqX` (s2m, m2s)
 
