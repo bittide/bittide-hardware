@@ -106,7 +106,7 @@ fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
     toSignals
       ( circuit $ \jtag -> do
           [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
-          (msc, _reframingState, _stabilities, _allStable, _allSettled, _updatePeriod) <-
+          (msc, _stabilities, _allStable, _allSettled) <-
             withClockResetEnable clk rst enableGen
               $ clockControlWb margin framesize (pure $ complement 0) (pure False) dataCounts
               -< wbB
