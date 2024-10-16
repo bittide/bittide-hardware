@@ -100,6 +100,7 @@ library
     clash-lib >=1.6.3 && <1.10,
     clash-prelude >=1.6.3 && <1.10,
     clash-protocols,
+    clash-protocols-base,
     clash-vexriscv,
     constraints >=0.13.3 && <0.15,
     containers >=0.4.0 && <0.7,
@@ -123,6 +124,7 @@ library
     Bittide.Axi4
     Bittide.Axi4.Internal
     Bittide.Calendar
+    Bittide.CaptureUgn
     Bittide.ClockControl
     Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Types

@@ -10,6 +10,7 @@ import Test.Tasty
 
 import qualified Tests.OverflowResistantDiff as Ord
 import qualified Wishbone.Axi as Axi
+import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
 import qualified Wishbone.Time as Time
 
@@ -17,7 +18,8 @@ tests :: TestTree
 tests =
   testGroup
     "Unittests"
-    [ DnaPortE2.tests
+    [ CaptureUgn.tests
+    , DnaPortE2.tests
     , Ord.tests
     , Time.tests
     , Axi.tests
