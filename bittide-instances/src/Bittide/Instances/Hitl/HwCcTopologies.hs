@@ -50,7 +50,6 @@ import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
-import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
 import Bittide.ClockControl.Registers (clockControlWb)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
@@ -566,11 +565,12 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
             <$> initialAdjust
             <*> adjustCount
         )
-        ( withClockResetEnable sysClk clockControlReset enableGen
-            $ stickyBits @Basic125 d20
-            $ speedChangeToPins
-            . fromMaybe NoChange
-            <$> clockMod
+        ( speedChangeToStickyPins
+            sysClk
+            clockControlReset
+            enableGen
+            (SNat @Si539xHoldTime)
+            clockMod
         )
    where
     opSelect calib adjust = case compare calib adjust of

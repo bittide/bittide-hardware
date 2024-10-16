@@ -9,14 +9,20 @@
 -- | Clock controller types and some constants/defaults.
 module Bittide.ClockControl (
   ClockControlConfig (..),
+  FINC,
+  FDEC,
   RelDataCount,
   SettlePeriod,
   SpeedChange (..),
+  Si539xHoldTime,
   clockPeriodFs,
   defClockConfig,
   settleCycles,
   sign,
   speedChangeToFincFdec,
+  speedChangeToPins,
+  speedChangeToStickyPins,
+  stickyBits,
   targetDataCount,
 )
 where
@@ -25,6 +31,7 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import Clash.Signal.Internal (Femtoseconds (..))
 import Data.Aeson (ToJSON (toJSON))
 import Data.Csv
+import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
 import GHC.Stack (HasCallStack)
 
@@ -138,6 +145,15 @@ speedChangeToFincFdec clk rst =
   conv SpeedUp = (True, False)
   conv SlowDown = (False, True)
 
+type FINC = Bool
+type FDEC = Bool
+
+speedChangeToPins :: SpeedChange -> (FINC, FDEC)
+speedChangeToPins = \case
+  SpeedUp -> (True, False)
+  SlowDown -> (False, True)
+  NoChange -> (False, False)
+
 instance ToField SpeedChange where
   toField SpeedUp = "speedUp"
   toField SlowDown = "slowDown"
@@ -197,3 +213,58 @@ settleCycles ClockControlConfig{cccSettlePeriod} =
   nCycles = (settlePeriod `div` period) + 1
   Femtoseconds settlePeriod = cccSettlePeriod
   Femtoseconds period = clockPeriodFs @dom Proxy
+
+{- | Holds any @a@ which has any bits set for @stickyCycles@ clock cycles.
+On receiving a new @a@ with non-zero bits, it sets the new incoming value as it output
+and holds it for @stickyCycles@ clock cycles.
+-}
+stickyBits ::
+  forall dom stickyCycles a.
+  ( KnownDomain dom
+  , NFDataX a
+  , BitPack a
+  , 1 <= stickyCycles
+  ) =>
+  Clock dom ->
+  Reset dom ->
+  Enable dom ->
+  SNat stickyCycles ->
+  Signal dom a ->
+  Signal dom a
+stickyBits clk rst ena SNat = mealy clk rst ena go (0, unpack 0)
+ where
+  go :: (Index stickyCycles, a) -> a -> ((Index stickyCycles, a), a)
+  go (count, storedBits) incomingBits = ((nextCount, nextStored), storedBits)
+   where
+    newIncoming = pack incomingBits /= 0
+    predCount = satPred SatZero count
+    holdingBits = count /= 0
+    (nextStored, nextCount)
+      | newIncoming = (incomingBits, maxBound)
+      | holdingBits = (storedBits, predCount)
+      | otherwise = (unpack 0, predCount)
+
+{- | The minimum hold time for FINC/FDEC pulses for the Si539* boards Bittide works
+with is specified as 100ns. An additional 50ns is included for margin of error.
+-}
+type Si539xHoldTime = Nanoseconds 150
+
+{- | Takes the clock modification from a Callisto clock control implementation and
+converts it into clock control pin signals stickied for a specified hold time.
+-}
+speedChangeToStickyPins ::
+  forall dom prd.
+  ( KnownDomain dom
+  , KnownNat prd
+  , 1 <= PeriodToCycles dom prd
+  ) =>
+  Clock dom ->
+  Reset dom ->
+  Enable dom ->
+  SNat prd ->
+  Signal dom (Maybe SpeedChange) ->
+  Signal dom (Bool, Bool)
+speedChangeToStickyPins clk rst ena SNat msc = speedChangeToPins <$> stickySC
+ where
+  sc = fromMaybe NoChange <$> msc
+  stickySC = stickyBits clk rst ena (SNat @(PeriodToCycles dom prd)) sc

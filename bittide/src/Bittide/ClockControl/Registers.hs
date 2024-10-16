@@ -10,10 +10,8 @@ import Clash.Prelude hiding (PeriodToCycles)
 import Protocols
 import Protocols.Wishbone
 
-import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.ClockControl
 import qualified Bittide.ClockControl.Callisto.Types as T
-import Bittide.ClockControl.Callisto.Util (stickyBits)
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Wishbone
 import Clash.Functor.Extra
@@ -23,9 +21,6 @@ import Data.Maybe (fromMaybe, isJust)
 
 type StableBool = Bool
 type SettledBool = Bool
-
-type FadjHoldTime = Nanoseconds 150
-type FadjHoldCycles dom = PeriodToCycles dom FadjHoldTime
 
 data ReframingStateKind = Detect | Wait | Done deriving (Generic, NFDataX, BitPack)
 
@@ -47,9 +42,9 @@ The word-aligned address layout of the Wishbone interface is as follows:
 - Address 9: Link settles                     |                         | 0x24 | 0x18
 - Addresses 10 to (10 + nLinks): Data counts  --                        | 0x28 | 0x1C
 
-Additionally, the `CSignal dom (Maybe SpeedChange)` output is already stickied for
-the period of time described by `FadjHoldTime` (150ns at time of writing), so it should
-only be necessary to convert the `SpeedChange` to `FINC`/`FDEC` pins.
+__NB__: the `Maybe SpeedChange` part of the output is only asserted for a single cycle.
+This must be stickied or otherwise held for the minimum pulse width specified by the
+clock board this register is controlling.
 -}
 clockControlWb ::
   forall dom addrW nLinks m margin framesize.
@@ -62,7 +57,6 @@ clockControlWb ::
   , KnownNat m
   , m <= 32
   , nLinks <= 32
-  , 1 <= FadjHoldCycles dom
   , 1 <= DomainPeriod dom
   ) =>
   -- | Maximum number of elements the incoming buffer occupancy is
@@ -92,7 +86,7 @@ clockControlWb mgn fsz linkMask reframing counters = Circuit go
  where
   go (wbM2S, _) =
     ( wbS2M
-    , (fIncDec2, reframingState, stabilityIndications, allStable, allSettled, updatePeriod)
+    , (fIncDec1, reframingState, stabilityIndications, allStable, allSettled, updatePeriod)
     )
    where
     filterCounters vMask vCounts = flip map (zip vMask vCounts)
@@ -153,8 +147,6 @@ clockControlWb mgn fsz linkMask reframing counters = Circuit go
     fIncDec0 = unpack . resize <<$>> f7
     fIncDec1 :: Signal dom (Maybe SpeedChange)
     fIncDec1 = register Nothing fIncDec0
-    fIncDec2 :: Signal dom (Maybe SpeedChange)
-    fIncDec2 = delay Nothing $ stickyBits (SNat @(FadjHoldCycles dom)) fIncDec1
 
     rfsKind0 :: Signal dom (Maybe ReframingStateKind)
     rfsKind0 = unpack . resize <<$>> f0
