@@ -52,7 +52,7 @@ pub fn self_test<const BUF_SIZE: usize>(mut uart: Uart, tx: AxiTx, rx: AxiRx<BUF
 
 fn send_empty_packet<const BUF_SIZE: usize>(
     mut tx: AxiTx,
-    rx: AxiRx<{ BUF_SIZE }>,
+    rx: AxiRx<BUF_SIZE>,
     _str: &mut String<STRING_SIZE>,
 ) -> bool {
     let packet = [];
@@ -64,7 +64,7 @@ fn send_empty_packet<const BUF_SIZE: usize>(
 
 fn send_static_packet<const BUF_SIZE: usize>(
     mut tx: AxiTx,
-    rx: AxiRx<{ BUF_SIZE }>,
+    rx: AxiRx<BUF_SIZE>,
     _str: &mut String<STRING_SIZE>,
 ) -> bool {
     let packet = [0x01, 0x02, 0x03, 0x04];
@@ -76,7 +76,7 @@ fn send_static_packet<const BUF_SIZE: usize>(
 
 fn read_rx_status<const BUF_SIZE: usize>(
     _tx: AxiTx,
-    rx: AxiRx<{ BUF_SIZE }>,
+    rx: AxiRx<BUF_SIZE>,
     str: &mut String<STRING_SIZE>,
 ) -> bool {
     let status = rx.read_status();
@@ -95,7 +95,7 @@ fn read_rx_status<const BUF_SIZE: usize>(
 
 fn clear_rx_status<const BUF_SIZE: usize>(
     _tx: AxiTx,
-    rx: AxiRx<{ BUF_SIZE }>,
+    rx: AxiRx<BUF_SIZE>,
     _str: &mut String<STRING_SIZE>,
 ) -> bool {
     rx.clear_status();
@@ -103,7 +103,7 @@ fn clear_rx_status<const BUF_SIZE: usize>(
 }
 fn clear_rx_packet_register<const BUF_SIZE: usize>(
     _tx: AxiTx,
-    rx: AxiRx<{ BUF_SIZE }>,
+    rx: AxiRx<BUF_SIZE>,
     _str: &mut String<STRING_SIZE>,
 ) -> bool {
     rx.clear_packet_register();
@@ -111,7 +111,7 @@ fn clear_rx_packet_register<const BUF_SIZE: usize>(
 }
 fn read_rx_packet_length<const BUF_SIZE: usize>(
     _tx: AxiTx,
-    rx: AxiRx<{ BUF_SIZE }>,
+    rx: AxiRx<BUF_SIZE>,
     str: &mut String<STRING_SIZE>,
 ) -> bool {
     if rx_clear_and_verify(rx, str) {
@@ -153,7 +153,7 @@ fn send_receive_empty_packet<const BUF_SIZE: usize>(
 }
 
 const N_PACKETS: usize = 5;
-//// Generate a random packet with a random length, send it over AxiTx and verify that it is received on AxiRx<{ BUF_SIZE }>.
+//// Generate a random packet with a random length, send it over AxiTx and verify that it is received on AxiRx<BUF_SIZE>.
 fn send_receive_random_packet<const BUF_SIZE: usize>(
     mut tx: AxiTx,
     rx: AxiRx<BUF_SIZE>,

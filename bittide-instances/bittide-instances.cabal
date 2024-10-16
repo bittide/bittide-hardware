@@ -78,6 +78,7 @@ common common-options
   build-depends:
     MissingH,
     aeson,
+    async,
     base,
     base16-bytestring,
     bittide,
@@ -100,10 +101,13 @@ common common-options
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
     lift-type,
+    network-simple,
     pretty-simple,
     process,
     shake,
     split,
+    streaming,
+    streaming-bytestring,
     string-interpolate,
     tasty,
     tasty-hunit,
@@ -111,6 +115,7 @@ common common-options
     template-haskell,
     temporary,
     text,
+    time,
     unix,
     vector,
 
@@ -121,6 +126,7 @@ library
     Bittide.Instances.Domains
     Bittide.Instances.Hacks
     Bittide.Instances.Hitl.BoardTest
+    Bittide.Instances.Hitl.DnaOverSerial
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.FullMeshHwCc
@@ -130,6 +136,8 @@ library
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
+    Bittide.Instances.Hitl.Post.TcpServer
+    Bittide.Instances.Hitl.Serial
     Bittide.Instances.Hitl.Setup
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor
@@ -283,3 +291,20 @@ executable post-fullMeshSwCcTest
     deepseq,
     filepath,
     vector,
+
+executable post-dna-over-serial
+  import: common-options
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
+  main-is: exe/post-dna-over-serial/Main.hs
+  build-depends:
+    bittide-instances,
+    process,
+    tasty,
+    tasty-hunit,
+    tasty-th,
+
+  other-modules: Paths_bittide_instances

@@ -46,9 +46,11 @@ waitForLine h expected =
 -- Utility function that returns the remaining characters in a handle.
 readRemainingChars :: Handle -> IO String
 readRemainingChars h = do
-  rdy <- hReady h
-  if rdy
-    then do
-      c <- hGetChar h
-      (c :) <$> readRemainingChars h
-    else (pure "")
+  eof <- hIsEOF h
+  if eof then pure "" else do
+    rdy <- hReady h
+    if rdy
+      then do
+        c <- hGetChar h
+        (c :) <$> readRemainingChars h
+      else pure ""

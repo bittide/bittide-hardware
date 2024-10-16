@@ -14,6 +14,7 @@ insignificant for timing purposes.
 */
 
 use core::cmp;
+use core::fmt;
 use core::ops;
 use ufmt::derive::uDebug;
 use ufmt::uDisplay;
@@ -143,6 +144,14 @@ impl Instant {
     /// The frequency corresponding to this `Instant`s clock cycles.
     pub fn get_frequency(&self) -> u64 {
         self.frequency
+    }
+
+    // Maximum time that we can represent
+    pub fn end_of_time(frequency: u64) -> Instant {
+        Instant {
+            clock_cycles: u64::MAX,
+            frequency,
+        }
     }
 }
 
@@ -413,5 +422,28 @@ impl uDisplay for Duration {
         let micros = self.to_micros() % 1000;
 
         uwrite!(f, "{}:{}:{}.{}.{}", hours, mins, secs, millis, micros)
+    }
+}
+
+impl fmt::Display for Duration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let hours = self.to_hours();
+        let mins = self.to_mins() % 60;
+        let secs = self.to_secs() % 60;
+        let millis = self.to_millis() % 1000;
+        let micros = self.to_micros() % 1000;
+
+        write!(f, "{hours}:{mins}:{secs}.{millis}.{micros}")
+    }
+}
+
+impl fmt::Display for Instant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let hours = self.to_hours();
+        let mins = self.to_mins() % 60;
+        let secs = self.to_secs() % 60;
+        let millis = self.to_millis() % 1000;
+
+        write!(f, "{hours}:{mins}:{secs}.{millis}")
     }
 }

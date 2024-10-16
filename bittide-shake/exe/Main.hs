@@ -199,6 +199,7 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
     , defTarget $ mkName "Bittide.Instances.Pnr.StabilityChecker.stabilityChecker_3_1M"
     , defTarget $ mkName "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
+    , (defTarget $ mkName "Bittide.Instances.Hitl.Serial.sendSerial"){targetHasXdc = True}
     ]
       <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
 

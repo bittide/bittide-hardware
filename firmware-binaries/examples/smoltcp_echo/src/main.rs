@@ -12,15 +12,17 @@ use bittide_sys::dna_port_e2::{dna_to_u128, DnaValue};
 use bittide_sys::mac::MacStatus;
 use bittide_sys::smoltcp::axi::AxiEthernet;
 use bittide_sys::smoltcp::{set_local, set_unicast};
-use bittide_sys::time::{Clock, Duration};
+use bittide_sys::time::{Clock, Duration, Instant};
+use bittide_sys::uart::log::LOGGER;
 use bittide_sys::uart::Uart;
-use log::{self, debug};
+use log::{debug, info, LevelFilter};
+
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-use core::cmp::min;
-use smoltcp::iface::{Config, Interface, SocketSet};
+use smoltcp::iface::{Config, Interface, SocketSet, SocketStorage};
 use smoltcp::phy::Medium;
+use smoltcp::socket::dhcpv4;
 use smoltcp::socket::tcp::{Socket, SocketBuffer};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use ufmt::uwriteln;
@@ -34,15 +36,25 @@ const UART_ADDR: *const () = (0b0010 << 28) as *const ();
 
 const RX_BUFFER_SIZE: usize = 2048;
 const ETH_MTU: usize = RX_BUFFER_SIZE;
-const TCP_MTU: usize = ETH_MTU - 40;
 const SOFT_BUFFER_SIZE: usize = 1024 * 8;
+const CHUNK_SIZE: usize = 4096;
+
+const SERVER_IP: IpAddress = IpAddress::v4(10, 0, 0, 1);
+const SERVER_PORT: u16 = 1234;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize and test UART.
     let mut uart = unsafe { Uart::new(UART_ADDR) };
 
-    uwriteln!(uart, "Starting smoltcp-echo").unwrap();
+    uwriteln!(uart, "Starting TCP Client").unwrap();
+    unsafe {
+        LOGGER.set_logger(uart.clone());
+        LOGGER.display_source = LevelFilter::Warn;
+        log::set_logger_racy(&LOGGER).ok();
+        log::set_max_level_racy(LevelFilter::Trace);
+    }
+
     // Initialize and test clock
     let mut clock = unsafe { Clock::new(CLOCK_ADDR) };
 
@@ -55,17 +67,13 @@ fn main() -> ! {
 
     let axi_tx = unsafe { AxiTx::new(TX_AXI_ADDR) };
     let axi_rx: AxiRx<RX_BUFFER_SIZE> = unsafe { AxiRx::new(RX_AXI_ADDR) };
-    let mut eth: AxiEthernet<ETH_MTU> = AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx, Some(2));
+    let mut eth: AxiEthernet<ETH_MTU> = AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx, None);
     let now = clock.elapsed().into();
     let mut iface = Interface::new(config, &mut eth, now);
-    iface.update_ip_addrs(|ip_addrs| {
-        ip_addrs
-            .push(IpCidr::new(IpAddress::v4(10, 0, 0, 10), 8))
-            .unwrap();
-    });
 
     // Create sockets
-    let server_socket = {
+    let mut dhcp_socket = dhcpv4::Socket::new();
+    let client_socket = {
         // It is not strictly necessary to use a `static mut` and unsafe code here, but
         // on embedded systems that smoltcp targets it is far better to allocate the data
         // statically to verify that it fits into RAM rather than get undefined behavior
@@ -77,42 +85,67 @@ fn main() -> ! {
         Socket::new(tcp_rx_buffer, tcp_tx_buffer)
     };
 
-    let mut sockets: [_; 1] = Default::default();
+    let mut sockets: [SocketStorage; 2] = Default::default();
     let mut sockets = SocketSet::new(&mut sockets[..]);
-    let server_handle = sockets.add(server_socket);
+    let client_handle = sockets.add(client_socket);
+    let dhcp_handle = sockets.add(dhcp_socket);
 
     let mut mac_status = unsafe { MAC_ADDR.read_volatile() };
+    let mut did_connect = false;
+    let mut received_ip = false;
+
+    let stress_test_duration = Duration::from_secs(30);
+    let mut stress_test_end = Instant::end_of_time(clock.get_frequency());
+    info!(
+        "{}, TCP Server send chunks of {} bytes for {}",
+        clock.elapsed(),
+        CHUNK_SIZE,
+        stress_test_duration
+    );
     loop {
         let elapsed = clock.elapsed().into();
         iface.poll(elapsed, &mut eth, &mut sockets);
-
-        let mut socket = sockets.get_mut::<Socket>(server_handle);
-        if !socket.is_active() && !socket.is_listening() {
-            mac_status = unsafe { MAC_ADDR.read_volatile() };
-            uwriteln!(uart, "listening").unwrap();
-            socket.listen(7).unwrap();
+        let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(dhcp_handle);
+        update_dhcp(&mut iface, dhcp_socket);
+        if iface.ip_addrs().is_empty() {
+            continue;
         }
-        if socket.is_open() && socket.may_send() && !socket.may_recv() {
-            socket.close();
-            uwriteln!(uart, "DNA: {:X}", dna).unwrap();
-            let new_mac_status = unsafe { MAC_ADDR.read_volatile() };
-            uwriteln!(uart, "{:?}", new_mac_status - mac_status).unwrap();
-            uwriteln!(uart, "Closing socket").unwrap();
-        }
-        if socket.can_recv() {
-            let mut buf = [0; TCP_MTU];
-            let mut slice: &[u8] = &[];
-            socket
-                .recv(|buffer| {
-                    let elements = min(TCP_MTU, buffer.len());
-                    buf[..elements].copy_from_slice(&buffer[..elements]);
-                    slice = &buf[0..elements];
-                    (elements, ())
-                })
-                .unwrap();
 
-            debug!("Echoing {} bytes", slice.len());
-            socket.send_slice(slice).unwrap();
+        if !received_ip {
+            let ip = iface.ipv4_addr().unwrap();
+            info!("{}, IP address: {}", clock.elapsed(), ip);
+            received_ip = true;
+            let now = clock.elapsed();
+            stress_test_end = now + stress_test_duration;
+            info!("{}, Stress test will end at {}", now, stress_test_end);
+        }
+
+        let mut socket = sockets.get_mut::<Socket>(client_handle);
+        let cx = iface.context();
+        if !socket.is_open() {
+            debug!("{}, Opening socket", clock.elapsed());
+            if !did_connect {
+                mac_status = unsafe { MAC_ADDR.read_volatile() };
+                socket.connect(cx, (SERVER_IP, SERVER_PORT), 1234).unwrap();
+                debug!(
+                    "Connecting from {:?}:{} to {}:{}",
+                    iface.ipv4_addr().unwrap().as_bytes(),
+                    1234,
+                    SERVER_IP,
+                    SERVER_PORT
+                );
+                did_connect = true;
+            }
+        };
+        if socket.can_send() {
+            socket.send_slice(&[0; CHUNK_SIZE]).unwrap();
+            let now = clock.elapsed();
+            if now > stress_test_end {
+                info!("{}, Stress test complete", now);
+                socket.close();
+                let new_mac_status = unsafe { MAC_ADDR.read_volatile() };
+                uwriteln!(uart, "{:?}", new_mac_status - mac_status).unwrap();
+            }
         }
 
         match iface.poll_delay(clock.elapsed().into(), &sockets) {
@@ -138,10 +171,46 @@ fn exception_handler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
 }
 
 #[panic_handler]
-fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
+fn panic_handler(info: &core::panic::PanicInfo) -> ! {
     let mut uart = unsafe { Uart::new(UART_ADDR) };
-    uwriteln!(uart, "Panicked, looping forever now").unwrap();
+
+    uwriteln!(uart, "Panicked!").unwrap();
+    debug!("{}", info);
+    uwriteln!(uart, "Looping forever now").unwrap();
     loop {
         continue;
+    }
+}
+
+fn update_dhcp(iface: &mut Interface, socket: &mut dhcpv4::Socket) {
+    let event = socket.poll();
+    match event {
+        None => {}
+        Some(dhcpv4::Event::Configured(config)) => {
+            debug!("DHCP config acquired!");
+
+            debug!("IP address:      {}", config.address);
+            iface.update_ip_addrs(|addrs| {
+                addrs.clear();
+                addrs.push(IpCidr::Ipv4(config.address)).unwrap();
+            });
+
+            if let Some(router) = config.router {
+                debug!("Default gateway: {}", router);
+                iface.routes_mut().add_default_ipv4_route(router).unwrap();
+            } else {
+                debug!("Default gateway: None");
+                iface.routes_mut().remove_default_ipv4_route();
+            }
+
+            for (i, s) in config.dns_servers.iter().enumerate() {
+                debug!("DNS server {}:    {}", i, s);
+            }
+        }
+        Some(dhcpv4::Event::Deconfigured) => {
+            debug!("DHCP lost config!");
+            iface.update_ip_addrs(|addrs| addrs.clear());
+            iface.routes_mut().remove_default_ipv4_route();
+        }
     }
 }

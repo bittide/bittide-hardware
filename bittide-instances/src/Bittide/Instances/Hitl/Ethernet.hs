@@ -14,16 +14,16 @@ import Clash.Xilinx.ClockGen
 import VexRiscv
 
 vexRiscvTcpTest ::
-  DiffClock Ext125 ->
-  Reset Ext125 ->
-  DiffClock Basic625 ->
-  ( Signal Basic125B JtagIn
-  , Signal Basic125B Bit
-  , Signal Basic625 Lvds
+  "CLK_125MHZ" ::: DiffClock Ext125 ->
+  "CPU_RESET" ::: Reset Ext125 ->
+  "SGMIICLK" ::: DiffClock Basic625 ->
+  ( "JTAG" ::: Signal Basic125B JtagIn
+  , "USB_UART_TXD" ::: Signal Basic125B Bit
+  , "sgmii_rx" ::: Signal Basic625 Lvds
   ) ->
-  ( Signal Basic125B JtagOut
-  , Signal Basic125B Bit
-  , Signal Basic625 Lvds
+  ( "JTAG" ::: Signal Basic125B JtagOut
+  , "USB_UART_RXD" ::: Signal Basic125B Bit
+  , "sgmii_tx" ::: Signal Basic625 Lvds
   )
 vexRiscvTcpTest diffClk cpuReset sgmiiClk inp = testStarted `hwSeqX` (j, u, s)
  where
@@ -92,3 +92,5 @@ tests =
         ]
     , mPostProc = Just "post-vex-riscv-tcp-test"
     }
+
+-- makeTopEntity 'vexRiscvTcpTest
