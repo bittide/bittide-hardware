@@ -36,7 +36,6 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import qualified Clash.Explicit.Prelude as E
 import Clash.Prelude (withClockResetEnable)
 
-import Data.Maybe (fromMaybe)
 import Data.Proxy
 import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
@@ -128,7 +127,7 @@ fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
           idC -< ccd1
       )
       (pure $ JtagIn low low low, pure ())
-  fIncDec = speedChangeToPins . fromMaybe NoChange <$> ccData.clockMod
+  fIncDec = speedChangeToStickyPins clk rst enableGen (SNat @Si539xHoldTime) ccData.clockMod
 
   fIncDecCallisto ::
     forall aw nBytes.

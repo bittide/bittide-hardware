@@ -257,7 +257,7 @@ riscvCopyTest clk rst mask callistoResult dataCounts = unbundle fIncDec
           idC -< ccd1
       )
       (pure $ JtagIn low low low, pure ())
-  fIncDec = speedChangeToPins . fromMaybe NoChange <$> ccData.clockMod
+  fIncDec = speedChangeToStickyPins clk rst enableGen (SNat @Si539xHoldTime) ccData.clockMod
 
   fIncDecCallisto ::
     forall aw nBytes.
