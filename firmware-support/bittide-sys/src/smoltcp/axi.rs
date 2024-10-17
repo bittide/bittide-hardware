@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 use crate::axi::{AxiRx, AxiTx};
-use log::debug;
+use log::{debug, trace};
 use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 
@@ -10,6 +10,7 @@ use smoltcp::time::Instant;
 ///
 pub struct AxiEthernet<const MTU: usize> {
     axi_rx: AxiRx<MTU>,
+    rx_token_exists: bool,
     axi_tx: AxiTx,
     max_burst: Option<usize>,
     medium: Medium,
@@ -25,6 +26,7 @@ impl<const MTU: usize> AxiEthernet<MTU> {
     ) -> AxiEthernet<MTU> {
         AxiEthernet {
             axi_rx,
+            rx_token_exists: false,
             axi_tx,
             max_burst,
             medium,
@@ -46,13 +48,19 @@ impl<const MTU: usize> Device for AxiEthernet<MTU> {
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // If there is data available,
         let status = self.axi_rx.read_status();
+        if self.rx_token_exists {
+            debug!("Rx token already exists");
+            return None;
+        }
         if status.packet_complete {
-            debug!("Data available");
+            trace!("Data available");
+            self.rx_token_exists = true;
 
             // Produce a receive toking with the data and tx token that can
             // be used to respond to the received data.
             let rx = RxToken {
                 axi_rx: &mut self.axi_rx,
+                rx_token_exists: &mut self.rx_token_exists,
             };
             let tx = TxToken {
                 axi_tx: &mut self.axi_tx,
@@ -77,6 +85,7 @@ impl<const MTU: usize> Device for AxiEthernet<MTU> {
 
 pub struct RxToken<'a, const BUFFER_SIZE: usize> {
     axi_rx: &'a mut AxiRx<{ BUFFER_SIZE }>,
+    rx_token_exists: &'a mut bool,
 }
 
 impl<const BUFFER_SIZE: usize> phy::RxToken for RxToken<'_, BUFFER_SIZE> {
@@ -100,7 +109,8 @@ impl<const BUFFER_SIZE: usize> phy::RxToken for RxToken<'_, BUFFER_SIZE> {
         // Clear the packet and status registers
         self.axi_rx.clear_packet();
         self.axi_rx.clear_status();
-        debug!("Consumed {} bytes", buf.len());
+        *self.rx_token_exists = false;
+        trace!("Consumed {} bytes", buf.len());
 
         r
     }

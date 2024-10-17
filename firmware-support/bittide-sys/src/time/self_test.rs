@@ -78,8 +78,8 @@ pub fn now_not_null(clock: Clock) -> Option<&'static str> {
 
 //// Read the frequency value, check if it's not 0.
 pub fn freq_not_null(clock: Clock) -> Option<&'static str> {
-    let freq = clock.get_frequency();
-    if freq == 0 {
+    let frequency: u64 = clock.get_frequency();
+    if frequency == 0 {
         Some("freq_not_null test failed: frequency is null")
     } else {
         None
@@ -105,9 +105,8 @@ pub fn wait_1ms(clock: Clock) -> Option<&'static str> {
 /// Wait until we reach the target and obtain the new time. The time should differ no more than
 /// 100 ms from the target.
 pub fn skip_next_ms(clock: Clock) -> Option<&'static str> {
-    let frequency = clock.get_frequency();
     let time0 = clock.elapsed();
-    let target = Instant::from_millis(time0.to_millis() + 2, frequency);
+    let target = Instant::from_millis(time0.to_millis() + 2);
     clock.wait_until(target);
     let time1 = clock.elapsed();
     if time1 - target >= Duration::from_micros(100) {
@@ -186,10 +185,9 @@ pub fn duration_millisecond_microsecond(_: Clock) -> Option<&'static str> {
 }
 
 /// Create an Instant of 1 hour and 60 minutes, convert between them and check if they are equal.
-pub fn instant_hour_minute(clock: Clock) -> Option<&'static str> {
-    let frequency = clock.get_frequency();
-    let instant_hour = Instant::from_hours(1, frequency);
-    let instant_minute = Instant::from_mins(60, frequency);
+pub fn instant_hour_minute(_clock: Clock) -> Option<&'static str> {
+    let instant_hour = Instant::from_hours(1);
+    let instant_minute = Instant::from_mins(60);
     let hour_to_minute = instant_hour.to_mins();
     let minute_to_hour = instant_minute.to_hours();
     if instant_hour != instant_minute {
@@ -204,10 +202,9 @@ pub fn instant_hour_minute(clock: Clock) -> Option<&'static str> {
 }
 
 /// Create an Instant of 1 minute and 60 seconds, convert between them and check if they are equal.
-pub fn instant_minute_second(clock: Clock) -> Option<&'static str> {
-    let frequency = clock.get_frequency();
-    let instant_minute = Instant::from_mins(1, frequency);
-    let instant_second = Instant::from_secs(60, frequency);
+pub fn instant_minute_second(_clock: Clock) -> Option<&'static str> {
+    let instant_minute = Instant::from_mins(1);
+    let instant_second = Instant::from_secs(60);
     let minute_to_second = instant_minute.to_secs();
     let second_to_minute = instant_second.to_mins();
     if instant_minute != instant_second {
@@ -222,10 +219,9 @@ pub fn instant_minute_second(clock: Clock) -> Option<&'static str> {
 }
 
 /// Create an Instant of 1 second and 1000 milliseconds, convert between them and check if they are equal.
-pub fn instant_second_millisecond(clock: Clock) -> Option<&'static str> {
-    let frequency = clock.get_frequency();
-    let instant_second = Instant::from_secs(1, frequency);
-    let instant_millisecond = Instant::from_millis(1000, frequency);
+pub fn instant_second_millisecond(_clock: Clock) -> Option<&'static str> {
+    let instant_second = Instant::from_secs(1);
+    let instant_millisecond = Instant::from_millis(1000);
     let second_to_millisecond = instant_second.to_millis();
     let millisecond_to_second = instant_millisecond.to_secs();
     if instant_second != instant_millisecond {
@@ -240,10 +236,9 @@ pub fn instant_second_millisecond(clock: Clock) -> Option<&'static str> {
 }
 
 /// Create an Instant of 1 millisecond and 1000 microseconds, convert between them and check if they are equal.
-pub fn instant_millisecond_microsecond(clock: Clock) -> Option<&'static str> {
-    let frequency = clock.get_frequency();
-    let instant_millisecond = Instant::from_millis(1, frequency);
-    let instant_microsecond = Instant::from_micros(1000, frequency);
+pub fn instant_millisecond_microsecond(_clock: Clock) -> Option<&'static str> {
+    let instant_millisecond = Instant::from_millis(1);
+    let instant_microsecond = Instant::from_micros(1000);
     let millisecond_to_microsecond = instant_millisecond.to_micros();
     let microsecond_to_millisecond = instant_microsecond.to_millis();
     if instant_millisecond != instant_microsecond {

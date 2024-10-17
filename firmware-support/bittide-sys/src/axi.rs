@@ -123,8 +123,7 @@ impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
     pub fn get_slice(&self) -> &[u8] {
         let l = self.packet_length();
         unsafe {
-            let ptr = self.base_addr as *const u8;
-            let slice = core::slice::from_raw_parts_mut(ptr as *mut u8, l);
+            let slice = core::slice::from_raw_parts_mut(self.base_addr as *mut u8, l);
             slice
         }
     }

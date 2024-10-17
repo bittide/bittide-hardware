@@ -14,7 +14,7 @@ codegen-units = 1
 [workspace]
 members = [
   "examples/hello",
-  "examples/smoltcp_echo",
+  "examples/smoltcp_client",
 
   "test-cases/capture_ugn_test",
   "test-cases/dna_port_e2_test",

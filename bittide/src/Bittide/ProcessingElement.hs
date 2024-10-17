@@ -56,8 +56,9 @@ processingElement ::
     (Vec (nBusses - 2) (Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4)))
 processingElement (PeConfig memMapConfig initI initD) = circuit $ \jtagIn -> do
   (iBus0, dBus0) <- rvCircuit (pure low) (pure low) (pure low) -< jtagIn
-  iBus1 <- ilaWb (SSymbol @"instructionBus") 2 D4096 -< iBus0
-  dBus1 <- ilaWb (SSymbol @"dataBus") 2 D4096 -< dBus0
+  iBus1 <-
+    ilaWb (SSymbol @"instructionBus") 2 D4096 onTransactionWb onTransactionWb -< iBus0
+  dBus1 <- ilaWb (SSymbol @"dataBus") 2 D4096 onTransactionWb onTransactionWb -< dBus0
   ([iMemBus, dMemBus], extBusses) <-
     (splitAtC d2 <| singleMasterInterconnect memMapConfig) -< dBus1
   wbStorage initD -< dMemBus

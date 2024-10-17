@@ -374,7 +374,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "smoltcp_echo"
+name = "smoltcp_client"
 version = "0.1.0"
 dependencies = [
  "bittide-sys",
