@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![no_std]
+#![feature(const_ptr_read)]
 
 use fdt::Fdt;
 use utils::matches_fdt_name;
@@ -10,6 +11,7 @@ use utils::matches_fdt_name;
 pub mod axi;
 pub mod callisto;
 pub mod clock_control;
+pub mod debug_register;
 pub mod dna_port_e2;
 pub mod gather_unit;
 pub mod mac;

@@ -4,6 +4,7 @@
 use bittide_sys::{
     callisto,
     clock_control::{self, ClockControl},
+    debug_register::DebugRegister,
 };
 use std::mem::{align_of, size_of};
 
@@ -233,11 +234,12 @@ fn speed_change_to_ffi(val: &clock_control::SpeedChange) -> SpeedChange {
 }
 
 fn control_state_from_ffi(st: &ControlSt) -> callisto::ControlSt {
+    let dbgreg = unsafe { DebugRegister::from_base_addr(0xE000_0000 as *const u32) };
     callisto::ControlSt {
         z_k: st.z_k,
         b_k: speed_change_from_ffi(&st.b_k),
         steady_state_target: st.steady_state_target,
-        rf_state: 0xC000_0000 as *mut callisto::ReframingState,
+        debug_register: dbgreg,
     }
 }
 
@@ -259,7 +261,7 @@ fn control_state_to_ffi(st: &callisto::ControlSt, rs: &mut ControlSt) {
     rs.z_k = st.z_k;
     rs.b_k = speed_change_to_ffi(&st.b_k);
     rs.steady_state_target = st.steady_state_target;
-    rs.rf_state = reframing_state_to_ffi(st.get_rf_state());
+    rs.rf_state = reframing_state_to_ffi(st.debug_register.get_rf_state());
 }
 
 fn control_config_from_ffi(cfg: &ControlConfig) -> callisto::ControlConfig {

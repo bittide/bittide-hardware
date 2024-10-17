@@ -54,6 +54,23 @@ deriveSignalHasFields ''DebugRegisterData
 -- | Used just to match the discriminants of the 'ReframingState' type.
 data ReframingStateKind = Detect | Wait | Done deriving (Generic, NFDataX, BitPack)
 
+{- | A Wishbone accessible debug register
+This interface holds values that the CPU should be reporting to the FPGA for debugging
+purposes. It also reports the update period coming from the CPU, as well as the
+minimum and maximum of the update period.
+
+The word-aligned address layout of the Wishbone interface is as follows:
++--------------+----------------------+------+-------------------+
+| Field number | Field description    | Type | Offset (in bytes) |
++==============+======================+======+===================+
+| 0            | Reframing state kind | u32  | 0x00              |
+| 1            | Target correction    | f32  | 0x04              |
+| 2            | Target count         | u32  | 0x08              |
++--------------+----------------------+------+-------------------+
+
+Fields 0-2 are combined into a single 'ReframingState', which is included in the
+output of this component.
+-}
 debugRegisterWb ::
   forall dom addrW.
   ( HiddenClockResetEnable dom

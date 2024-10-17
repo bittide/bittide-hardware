@@ -36,7 +36,6 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import qualified Clash.Explicit.Prelude as E
 import Clash.Prelude (withClockResetEnable)
 
-import Data.Maybe (fromMaybe)
 import Data.Proxy
 import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
@@ -45,7 +44,8 @@ import System.FilePath
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
-import Bittide.ClockControl.Registers (clockControlWb)
+import Bittide.ClockControl.DebugRegister (debugRegisterWb)
+import Bittide.ClockControl.Registers (ClockControlData (clockMod), clockControlWb)
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
 import Bittide.DoubleBufferedRam (
@@ -64,7 +64,7 @@ import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology (TopologyType (..))
 import Bittide.Transceiver (transceiverPrbsN)
 
-import Bittide.Instances.Hitl.HwCcTopologies (commonSpiConfig)
+import Bittide.Instances.Hitl.HwCcTopologies (cSigMap, commonSpiConfig, csDupe)
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
 import Project.FilePath
@@ -108,17 +108,26 @@ fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
   (_, ccData) =
     toSignals
       ( circuit $ \jtag -> do
-          [wbA, wbB] <-
+          [wbA, wbB, wbC] <-
             withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
           fIncDecCallisto -< wbA
-          ccData <-
-            withClockResetEnable clk rst enableGen
-              $ clockControlWb margin framesize (pure $ complement 0) (pure False) dataCounts
+          [ccd0, ccd1] <-
+            csDupe
+              <| withClockResetEnable
+                clk
+                rst
+                enableGen
+                (clockControlWb margin framesize (pure $ complement 0) (pure False) dataCounts)
               -< wbB
-          idC -< ccData
+          cm <- cSigMap clockMod -< ccd0
+          _debugData <-
+            withClockResetEnable clk rst enableGen
+              $ debugRegisterWb
+              -< (wbC, cm)
+          idC -< ccd1
       )
       (pure $ JtagIn low low low, pure ())
-  fIncDec = speedChangeToPins . fromMaybe NoChange <$> ccData.clockMod
+  fIncDec = speedChangeToStickyPins clk rst enableGen (SNat @Si539xHoldTime) ccData.clockMod
 
   fIncDecCallisto ::
     forall aw nBytes.
@@ -168,14 +177,15 @@ fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
      )
 
   {-
-    0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
-    0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
-    0b00xxxxx_xxxxxxxx 0b00 0x0x FINC/FDEC register
-    0b11xxxxx_xxxxxxxx 0b11 0xCx memory mapped hardware clock control
+    0b100xxxxx_xxxxxxxx 0b100 0x8x instruction memory
+    0b010xxxxx_xxxxxxxx 0b010 0x4x data memory
+    0b000xxxxx_xxxxxxxx 0b000 0x0x FINC/FDEC register
+    0b110xxxxx_xxxxxxxx 0b110 0xCx memory mapped hardware clock control
+    0b111xxxxx_xxxxxxxx 0b111 0xEx memory mapped debugging register
   -}
   peConfig =
     PeConfig
-      (0b10 :> 0b01 :> 0b00 :> 0b11 :> Nil)
+      (0b100 :> 0b010 :> 0b000 :> 0b110 :> 0b111 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
 
