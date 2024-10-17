@@ -4,7 +4,10 @@
 
 use ufmt::derive::uDebug;
 
-use crate::clock_control::{ClockControl, SpeedChange};
+use crate::{
+    clock_control::{ClockControl, SpeedChange},
+    debug_register::DebugRegister,
+};
 
 /// Rust sibling of
 /// `Bittide.ClockControl.StabilityChecker.StabilityIndication`.
@@ -67,25 +70,32 @@ const _: () = {
     assert!(12 == mem::size_of::<ReframingState>());
     assert!(4 == mem::align_of::<ReframingState>());
 
+    // Assert that a `Detect` looks like a 0 in the discriminant part.
     assert!(unsafe {
         let tmp = ReframingState::Detect;
         0u32 == *(&tmp as *const _ as *const u32)
     });
 
+    // Assert that a `Detect` looks like a 0 in the discriminant part.
     assert!(unsafe {
         let tmp = ReframingState::Done;
         1u32 == *(&tmp as *const _ as *const u32)
     });
 
+    // Ensure that the memory layout of a `Wait` is what the Wishbone bus expects:
+    // 0x00: discriminant (u32)
+    // 0x04: target correction (f32)
+    // 0x08: target count (u32)
     unsafe {
         let tmp = ReframingState::Wait {
             target_correction: 3.321,
             cur_wait_time: 12345,
         };
-        let (x, y, z) = *(&tmp as *const _ as *const (u32, f32, u32));
-        assert!(2 == x);
-        assert!(3.321 == y);
-        assert!(12345 == z);
+        let ptr = &tmp as *const ReframingState;
+        let ptr = ptr.cast::<u32>();
+        assert!(2 == ptr.read());
+        assert!(3.321 == ptr.add(1).cast::<f32>().read());
+        assert!(12345 == ptr.add(2).read());
     }
 };
 
@@ -102,8 +112,8 @@ pub struct ControlSt {
     /// Steady-state value (determined when stability is detected for
     /// the first time).
     pub steady_state_target: f32,
-    /// finite state machine for reframing detection
-    pub rf_state: *mut ReframingState,
+    /// Debug register
+    pub debug_register: DebugRegister,
 }
 
 impl ControlSt {
@@ -111,50 +121,38 @@ impl ControlSt {
         z_k: i32,
         b_k: SpeedChange,
         steady_state_target: f32,
-        rf_state_reg: *mut ReframingState,
-        rf_state: ReframingState,
+        debug_register: DebugRegister,
+        init_rf_state: ReframingState,
     ) -> Self {
         let mut new = ControlSt {
             z_k,
             b_k,
             steady_state_target,
-            rf_state: rf_state_reg,
+            debug_register,
         };
-        new.set_rf_state(rf_state);
+        new.debug_register.set_rf_state(init_rf_state);
         new
     }
 
-    pub fn get_rf_state(&self) -> ReframingState {
-        unsafe { self.rf_state.read_volatile() }
-    }
-
-    fn set_rf_state(&mut self, rf_state: ReframingState) {
-        unsafe {
-            self.rf_state.write_volatile(rf_state);
-        }
-    }
-
     fn rf_state_update(&mut self, wait_time: usize, stable: bool, target: f32) {
-        unsafe {
-            match *self.rf_state {
-                ReframingState::Detect if stable => {
-                    self.rf_state.write_volatile(ReframingState::Wait {
-                        target_correction: target,
-                        cur_wait_time: wait_time as u32,
-                    });
-                }
-                ReframingState::Wait {
-                    ref mut cur_wait_time,
-                    ..
-                } if *cur_wait_time > 0 => *cur_wait_time -= 1,
-                ReframingState::Wait {
-                    target_correction, ..
-                } => {
-                    self.rf_state.write_volatile(ReframingState::Done);
-                    self.steady_state_target = target_correction;
-                }
-                _ => (),
+        match self.debug_register.get_rf_state() {
+            ReframingState::Detect if stable => {
+                self.debug_register.set_rf_state(ReframingState::Wait {
+                    target_correction: target,
+                    cur_wait_time: wait_time as u32,
+                });
             }
+            ReframingState::Wait {
+                ref mut cur_wait_time,
+                ..
+            } if *cur_wait_time > 0 => *cur_wait_time -= 1,
+            ReframingState::Wait {
+                target_correction, ..
+            } => {
+                self.debug_register.set_rf_state(ReframingState::Done);
+                self.steady_state_target = target_correction;
+            }
+            _ => (),
         }
     }
 }
