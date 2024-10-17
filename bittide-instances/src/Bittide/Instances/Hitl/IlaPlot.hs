@@ -475,7 +475,17 @@ callistoClockControlWithIla ::
   (HasCallStack) =>
   (KnownDomain dyn, KnownDomain sys, HasSynchronousReset sys) =>
   (KnownNat n, KnownNat m) =>
-  (1 <= n, 1 <= m, n + m <= 32, 6 + n * (m + 4) <= 1024) =>
+  {- Reasoning for the '6 + n * (m + 4) <= 1024' bound:
+
+  In short, it's the upper bound on the data stored in 'PlotData n m'.
+
+  The details:
+    - 6 bits for 'dSpeedChange' plus 'dRfStateChange'
+    - 4 bits for the two 'Maybe Bool's
+    - 'm' bits for the 'RelDataCount m'
+    - 'n * (4 + m)' bits for 'dEBData'
+  -}
+  (1 <= n, 1 <= m, 6 + n * (m + 4) <= 1024) =>
   (CompressedBufferSize <= m) =>
   Clock dyn ->
   Clock sys ->
