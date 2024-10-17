@@ -15,6 +15,7 @@ module Bittide.ClockControl (
   SettlePeriod,
   SpeedChange (..),
   Si539xHoldTime,
+  Si539xMinUpdatePeriod,
   clockPeriodFs,
   defClockConfig,
   settleCycles,
@@ -248,6 +249,9 @@ stickyBits clk rst ena SNat = mealy clk rst ena go (0, unpack 0)
 with is specified as 100ns. An additional 50ns is included for margin of error.
 -}
 type Si539xHoldTime = Nanoseconds 150
+
+-- | The minimum update period for FINC/FDEC pulses as specified in the Si539* manual is 1μs.
+type Si539xMinUpdatePeriod = Microseconds 1
 
 {- | Takes the clock modification from a Callisto clock control implementation and
 converts it into clock control pin signals stickied for a specified hold time.
