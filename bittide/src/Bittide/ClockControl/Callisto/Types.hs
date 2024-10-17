@@ -17,6 +17,7 @@ import Clash.Prelude
 
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker (StabilityIndication)
+import GHC.Records (HasField (..))
 
 -- | Result of the clock control algorithm.
 data CallistoResult (n :: Nat) = CallistoResult
@@ -35,6 +36,46 @@ data CallistoResult (n :: Nat) = CallistoResult
   -- ^ State of the Reframing detector
   }
   deriving (Generic, NFDataX)
+
+instance
+  HasField
+    "maybeSpeedChange"
+    (Signal dom (CallistoResult n))
+    (Signal dom (Maybe SpeedChange))
+  where
+  getField = fmap maybeSpeedChange
+
+instance
+  HasField
+    "stability"
+    (Signal dom (CallistoResult n))
+    (Signal dom (Vec n StabilityIndication))
+  where
+  getField = fmap stability
+
+instance
+  HasField
+    "allStable"
+    (Signal dom (CallistoResult n))
+    (Signal dom Bool)
+  where
+  getField = fmap allStable
+
+instance
+  HasField
+    "allSettled"
+    (Signal dom (CallistoResult n))
+    (Signal dom Bool)
+  where
+  getField = fmap allSettled
+
+instance
+  HasField
+    "reframingState"
+    (Signal dom (CallistoResult n))
+    (Signal dom ReframingState)
+  where
+  getField = fmap reframingState
 
 -- | Callisto specific control configuration options.
 data ControlConfig (m :: Nat) = ControlConfig
