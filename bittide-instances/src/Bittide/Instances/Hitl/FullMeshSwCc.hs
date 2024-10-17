@@ -76,6 +76,7 @@ import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen
 
 import Protocols
+import Protocols.Idle
 import VexRiscv
 
 import qualified Bittide.Transceiver as Transceiver
@@ -105,8 +106,9 @@ fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
   (_, ccData) =
     toSignals
       ( circuit $ \jtag -> do
-          [wbB, wbC] <-
+          [wbA, wbB, wbC] <-
             withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
+          idleSink -< wbC
           [ccd0, ccd1] <-
             csDupe
               <| withClockResetEnable
@@ -114,12 +116,12 @@ fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
                 rst
                 enableGen
                 (clockControlWb margin framesize (pure $ complement 0) (pure False) dataCounts)
-              -< wbB
+              -< wbA
           cm <- cSigMap clockMod -< ccd0
           _debugData <-
             withClockResetEnable clk rst enableGen
               $ debugRegisterWb
-              -< (wbC, cm)
+              -< (wbB, cm)
           idC -< ccd1
       )
       (pure $ JtagIn low low low, pure ())
@@ -145,10 +147,11 @@ fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
     0b010xxxxx_xxxxxxxx 0b010 0x4x data memory
     0b110xxxxx_xxxxxxxx 0b110 0xCx memory mapped hardware clock control
     0b111xxxxx_xxxxxxxx 0b111 0xEx memory mapped debug register
+    0b001xxxxx_xxxxxxxx 0b001 0x20 dummy to widen the memory map
   -}
   peConfig =
     PeConfig
-      (0b100 :> 0b010 :> 0b110 :> 0b111 :> Nil)
+      (0b100 :> 0b010 :> 0b110 :> 0b111 :> 0b001 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
 
