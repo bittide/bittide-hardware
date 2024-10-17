@@ -120,6 +120,6 @@ impl ClockControl {
         // NOTE: Consider fixed length loop version?
         // TODO: Mask out values read whose bit is not set in `link_mask()`.
         (Self::DATA_COUNTS..Self::DATA_COUNTS + n as usize)
-            .map(|i| unsafe { self.base_addr.add(i as usize).cast::<i32>().read_volatile() })
+            .map(|i| unsafe { self.base_addr.add(i).cast::<i32>().read_volatile() })
     }
 }

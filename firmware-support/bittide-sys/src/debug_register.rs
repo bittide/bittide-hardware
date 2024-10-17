@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2023 Google LLC
+//
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::callisto::ReframingState;
 
 /// This is a wrapper type around the `debugRegisterWb` component. The fields are as
@@ -12,6 +16,11 @@ pub struct DebugRegister {
 }
 
 impl DebugRegister {
+    /// Instantiate a debug register from a base address.
+    ///
+    /// # Safety
+    ///
+    /// `base_addr` must be a valid memory address to a debug register.
     pub unsafe fn from_base_addr(base_addr: *const u32) -> Self {
         DebugRegister { base_addr }
     }
