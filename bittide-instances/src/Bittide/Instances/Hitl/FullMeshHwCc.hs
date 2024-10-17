@@ -36,7 +36,6 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import qualified Clash.Explicit.Prelude as E
 import Clash.Prelude (withClockResetEnable)
 
-import Data.Maybe (fromMaybe)
 import Data.Proxy
 import Language.Haskell.TH (runIO)
 import LiftType (liftTypeQ)
