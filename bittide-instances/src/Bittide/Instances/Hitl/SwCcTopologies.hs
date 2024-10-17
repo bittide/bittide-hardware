@@ -45,7 +45,7 @@ import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 -- import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
-import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
+import Bittide.ClockControl.Callisto.Types (CallistoResult)
 -- import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins)
 import Bittide.ClockControl.CallistoSw (SwControlConfig (..), callistoSwClockControl)
 import Bittide.ClockControl.Si5395J
@@ -320,23 +320,8 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     startupDelayRst
       `orReset` unsafeFromActiveLow ((==) <$> delayCount <*> (startupDelay <$> cfg))
 
-  ( clockMod
-    , _stabilities
-    , allStable0
-    , _allCentered
-    ) =
-      unbundle
-        $ fmap
-          ( \CallistoResult{..} ->
-              ( maybeSpeedChange
-              , stability
-              , allStable
-              , allSettled
-              )
-          )
-          callistoResult
-
-  -- FillStats swUpdatePeriodMin swUpdatePeriodMax = unbundle $ fillStats sysClk syncRst swUpdatePeriod
+  clockMod = callistoResult.maybeSpeedChange
+  allStable0 = callistoResult.allStable
 
   ccConfig =
     SwControlConfig
@@ -657,7 +642,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       $ mux
         adjusting
         (speedChangeToPins <$> setupAdjustments)
-        (speedChangeToPins . fromMaybe NoChange <$> clockMod)
+        (speedChangeToStickyPins sysClk clockControlReset enableGen (SNat @Si539xHoldTime) clockMod)
 
   domainDiffs :: Vec LinkCount (Signal Basic125 FincFdecCount)
   domainDiffs =
