@@ -51,6 +51,7 @@ import System.FilePath
 
 import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
+import Bittide.CircuitUtils
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
 import Bittide.ClockControl.DebugRegister (debugRegisterWb)
@@ -203,19 +204,6 @@ clockControlConfig ::
   $(case (instancesClockConfig (Proxy @Basic125)) of (_ :: t) -> liftTypeQ @t)
 clockControlConfig =
   $(lift (instancesClockConfig (Proxy @Basic125)))
-
-csDupe ::
-  forall dom a n.
-  (KnownDomain dom, KnownNat n) =>
-  Circuit (CSignal dom a) (Vec n (CSignal dom a))
-csDupe = Circuit $ \(m, _) -> (pure (), repeat m)
-
-cSigMap ::
-  forall dom a b.
-  (KnownDomain dom) =>
-  (a -> b) ->
-  Circuit (CSignal dom a) (CSignal dom b)
-cSigMap fn = Circuit $ \(m, _) -> (pure (), fn <$> m)
 
 {- | Instantiates a RiscV core that copies instructions coming from a hardware
 implementation of Callisto (see 'topologyTest') and copies it to a register

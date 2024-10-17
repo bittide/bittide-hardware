@@ -123,10 +123,12 @@ library
     Bittide.Axi4
     Bittide.Axi4.Internal
     Bittide.Calendar
+    Bittide.CircuitUtils
     Bittide.ClockControl
     Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Types
     Bittide.ClockControl.Callisto.Util
+    Bittide.ClockControl.CallistoSw
     Bittide.ClockControl.DebugRegister
     Bittide.ClockControl.ParseRegisters
     Bittide.ClockControl.Registers
@@ -166,6 +168,7 @@ library
     Clash.Functor.Extra
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
+    Project.FilePath
     System.IO.Temp.Extra
 
   other-modules:
