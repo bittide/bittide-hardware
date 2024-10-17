@@ -31,8 +31,8 @@ module Bittide.Instances.Hitl.SwCcTopologies (
 ) where
 
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
-import Clash.Explicit.Signal.Extra (changepoints)
 import qualified Clash.Explicit.Prelude as E
+import Clash.Explicit.Signal.Extra (changepoints)
 import Clash.Prelude (withClockResetEnable)
 
 import Data.Functor ((<&>))
@@ -46,8 +46,8 @@ import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 -- import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
-import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins)
-import Bittide.ClockControl.CallistoSw (callistoSwClockControl, SwControlConfig (..))
+-- import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins)
+import Bittide.ClockControl.CallistoSw (SwControlConfig (..), callistoSwClockControl)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
@@ -294,7 +294,6 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     go1 = liftA2 go2 (mask <$> cfg) (bundle transceivers.linkReadys)
     go2 m = zipWith go3 (bitCoerce m)
     go3 m v = not m || v -- if m then v else True
-
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
 
@@ -643,7 +642,9 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       EQ -> NoChange
       GT -> SpeedUp
 
-  (setupState, setupAdjustments) = unbundle $ speedChangeToFincFdec' sysClk adjustRst setupAdjust
+  (setupState, setupAdjustments) =
+    unbundle
+      $ speedChangeToFincFdec' @Si539xHoldTime @Si539xMinUpdatePeriod sysClk adjustRst setupAdjust
   setupEnteredPulse = isRising sysClk adjustRst enableGen False (inPulse <$> setupState)
    where
     inPulse = \case
@@ -771,29 +772,29 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   --   , dDiff6
   --   ) = vecToTuple domainDiffs
 
-type AdjCycles dom = PeriodToCycles dom (Nanoseconds 150)
-type WaitCycles dom = PeriodToCycles dom (Microseconds 1 - Nanoseconds 150)
+type WaitCycles dom hold prd = PeriodToCycles dom (prd - hold)
 
-data ToFincFdecState' dom
-  = Wait (Index (AdjCycles dom))
-  | Pulse (Index (WaitCycles dom)) SpeedChange
+data ToFincFdecState' dom hold min
+  = Wait (Index (WaitCycles dom hold min))
+  | Pulse (Index (PeriodToCycles dom hold)) SpeedChange
   | Idle
   deriving (Generic, NFDataX, Eq)
 
 speedChangeToFincFdec' ::
-  forall dom.
-  (KnownDomain dom) =>
+  forall hold prd dom.
+  (KnownDomain dom, KnownNat hold, KnownNat prd) =>
+  (hold + 1 <= prd) => -- 'hold < prd' becomes 'hold + 1 <= prd'
   Clock dom ->
   Reset dom ->
   Signal dom SpeedChange ->
-  Signal dom (ToFincFdecState' dom, SpeedChange)
+  Signal dom (ToFincFdecState' dom hold prd, SpeedChange)
 speedChangeToFincFdec' clk rst =
   dflipflop clk . mealy clk rst enableGen go1 (Wait maxBound)
  where
   go1 ::
-    ToFincFdecState' dom ->
+    ToFincFdecState' dom hold prd ->
     SpeedChange ->
-    (ToFincFdecState' dom, (ToFincFdecState' dom, SpeedChange))
+    (ToFincFdecState' dom hold prd, (ToFincFdecState' dom hold prd, SpeedChange))
   go1 state@(Wait n) _s
     | n == 0 = (Idle, (state, NoChange))
     | otherwise = (Wait (n - 1), (state, NoChange))
@@ -911,12 +912,13 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   testStarting = isRising sysClk sysRst enableGen False startTest
   testEnding = isFalling sysClk sysRst enableGen False startTest
 
-  testResetBool = register sysClk sysRst enableGen True
+  testResetBool =
+    register sysClk sysRst enableGen True
       $ liftA3 go1 testResetBool testStarting testEnding
    where
     go1 cur st ed = case (st, ed) of
       (True, _) -> False -- starting test deasserts rst
-      (_, True) -> True  -- ending test asserts rst
+      (_, True) -> True -- ending test asserts rst
       _ -> cur
   testReset = unsafeFromActiveHigh testResetBool
 

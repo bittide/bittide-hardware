@@ -1,9 +1,9 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
--- {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
@@ -20,9 +20,11 @@ import Clash.Prelude (withClockResetEnable)
 import Language.Haskell.TH (runIO)
 import System.FilePath
 
+import Bittide.CircuitUtils
 import Bittide.ClockControl (RelDataCount)
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
-import Bittide.ClockControl.Registers (clockControlWb, FadjHoldCycles)
+import Bittide.ClockControl.DebugRegister (debugRegisterWb)
+import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.DoubleBufferedRam (ContentType (Blob), InitialContent (Reloadable))
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (memBlobsFromElf)
@@ -31,11 +33,11 @@ import Bittide.SharedTypes (ByteOrder (BigEndian))
 import Project.FilePath
 
 import Protocols
+import Protocols.Idle
 
-import VexRiscv
-import Clash.Cores.Xilinx.Ila (IlaConfig(..), ila, ilaConfig, Depth (..))
+import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Data.Maybe (isJust)
-import Bittide.ElasticBuffer (sticky)
+import VexRiscv
 
 -- data SwControlConfig dom (mgn :: Nat) (fsz :: Nat) = SwControlConfig
 --   { enableSwReframe :: Signal dom Bool
@@ -64,7 +66,6 @@ callistoSwClockControl ::
   , 1 <= eBufBits
   , nLinks + eBufBits <= 32
   , 1 <= framesize
-  , 1 <= FadjHoldCycles dom
   , 1 <= DomainPeriod dom
   ) =>
   Clock dom ->
@@ -79,11 +80,11 @@ callistoSwClockControl clk rst ena (SwControlConfig (reframe :: Signal dom Bool)
  where
   callistoResult =
     CallistoResult
-      <$> fincFdec
-      <*> stabilities
-      <*> ccAllStable
-      <*> ccAllSettled
-      <*> ccReframingState
+      <$> ccData.clockMod
+      <*> ccData.stabilityIndications
+      <*> ccData.allStable
+      <*> ccData.allSettled
+      <*> debugData.reframingState
 
   callistoSwIla :: Signal dom ()
   callistoSwIla =
@@ -102,43 +103,34 @@ callistoSwClockControl clk rst ena (SwControlConfig (reframe :: Signal dom Bool)
         clk
         (unsafeToActiveLow rst)
         capture
-        ccUpdatePeriod
-        updatePeriodMin
-        updatePeriodMax
+        debugData.updatePeriod
+        debugData.updatePeriodMin
+        debugData.updatePeriodMax
 
-  capture = isRising clk rst ena False (isJust <$> fincFdec)
-  skippedFirst = sticky clk rst $ delay clk ena False capture
+  capture = isRising clk rst ena False (isJust <$> ccData.clockMod)
 
-  updatePeriodMin =
-    regEn
-      clk
-      rst
-      ena
-      maxBound
-      (capture .&&. skippedFirst)
-      (liftA2 min updatePeriodMin ccUpdatePeriod)
-  updatePeriodMax =
-    regEn
-      clk
-      rst
-      ena
-      minBound
-      (capture .&&. skippedFirst)
-      (liftA2 max updatePeriodMax ccUpdatePeriod)
-
-  (_, (fincFdec, ccReframingState, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod)) =
+  (_, (ccData, debugData)) =
     toSignals
       ( circuit $ \jtag -> do
-          [wbB] <-
+          [wbA, wbB, wbC] <-
             withClockResetEnable clk rst ena $ processingElement peConfig -< jtag
-          (fincFdec, ccReframingState, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod) <-
-            withClockResetEnable clk rst ena
-              $ clockControlWb mgn fsz mask reframe ebs
-              -< wbB
-          idC
-            -< (fincFdec, ccReframingState, stabilities, ccAllStable, ccAllSettled, ccUpdatePeriod)
+          idleSink -< wbC
+          [ccd0, ccd1] <-
+            csDupe
+              <| withClockResetEnable
+                clk
+                rst
+                ena
+                (clockControlWb mgn fsz mask reframe ebs)
+              -< wbA
+          cm <- cSigMap clockMod -< ccd0
+          dbg <-
+            withClockResetEnable clk rst enableGen
+              $ debugRegisterWb
+              -< (wbB, cm)
+          idC -< (ccd1, dbg)
       )
-      (pure $ JtagIn low low low, (pure (), pure (), pure (), pure (), pure (), pure ()))
+      (pure $ JtagIn low low low, (pure (), pure ()))
   (iMem, dMem) =
     $( do
         root <- runIO $ findParentContaining "cabal.project"
@@ -151,6 +143,6 @@ callistoSwClockControl clk rst ena (SwControlConfig (reframe :: Signal dom Bool)
      )
   peConfig =
     PeConfig
-      (0b10 :> 0b01 :> 0b11 :> Nil)
+      (0b100 :> 0b010 :> 0b110 :> 0b111 :> 0b001 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
