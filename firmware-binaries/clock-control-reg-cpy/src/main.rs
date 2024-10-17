@@ -12,7 +12,7 @@ use riscv_rt::entry;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32) };
+    let mut cc = unsafe { ClockControl::from_base_addr(0xC000_000C as *const u32) };
 
     let callisto_reg_addr = 0x0000_0004 as *const u32;
 
@@ -21,7 +21,8 @@ fn main() -> ! {
         let change = match callisto_val {
             0 => SpeedChange::NoChange,
             1 => SpeedChange::SlowDown,
-            _ => SpeedChange::SpeedUp,
+            2 => SpeedChange::SpeedUp,
+            _ => continue,
         };
 
         cc.change_speed(change);
