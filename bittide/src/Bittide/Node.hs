@@ -4,14 +4,17 @@
 {-# LANGUAGE GADTs #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=6 #-}
 
+{-# OPTIONS -fplugin=Protocols.Plugin #-}
+
 module Bittide.Node where
 
 import Clash.Prelude
 import Clash.Sized.Vector.ToTuple (vecToTuple)
 
 import Protocols
+import Protocols.Idle
+import Protocols.Internal (vecCircuits)
 import Protocols.Wishbone
-
 import VexRiscv
 
 import Bittide.Calendar
@@ -20,8 +23,6 @@ import Bittide.ProcessingElement
 import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Bittide.Switch
-
-import Control.Arrow ((&&&))
 
 {- | A simple node consisting of one external bidirectional link and two 'gppe's.
 This node's 'switch' has a 'CalendarConfig' of for a 'calendar' with up to @1024@ entries,
@@ -74,20 +75,19 @@ node ::
   forall dom extLinks gppes.
   (HiddenClockResetEnable dom, KnownNat extLinks, KnownNat gppes) =>
   NodeConfig extLinks gppes ->
-  Vec extLinks (Signal dom (DataLink 64)) ->
-  Vec extLinks (Signal dom (DataLink 64))
-node (NodeConfig nmuConfig switchConfig gppeConfigs) linksIn = linksOut
- where
-  (switchOut, swS2M) = switch switchConfig swM2S switchIn
-  switchIn = nmuToSwitch :> pesToSwitch ++ linksIn
-  (splitAtI -> ((head &&& tail) -> (switchToNmu, switchToPes), linksOut)) = switchOut
-  (nmuToSwitch, nmuM2Ss) = managementUnit nmuConfig switchToNmu nmuS2Ms
-  (swM2S, peM2Ss) = (head &&& tail) nmuM2Ss
+  Circuit
+    (Vec extLinks (CSignal dom (DataLink 64)))
+    (Vec extLinks (CSignal dom (DataLink 64)))
+node (NodeConfig nmuConfig switchConfig gppeConfigs) = circuit $ \linksIn -> do
+  switchOut <- (switchC @_ @_ @_ @_ @64 switchConfig) -< (switchIn, swWb)
+  switchIn <- appendC3 -< ([nmuLinkOut], pesToSwitch, linksIn)
+  ([nmuLinkIn], switchToPes, linksOut) <- splitC3 -< switchOut
+  (nmuLinkOut, nmuWbs0) <- managementUnitC nmuConfig -< nmuLinkIn
+  ([swWb], nmuWbs1) <- splitAtC d1 -< nmuWbs0
+  peWbs <- unconcatC d2 -< nmuWbs1
 
-  nmuS2Ms = swS2M :> peS2Ms
-
-  (pesToSwitch, concat -> peS2Ms) =
-    unzip $ gppe <$> zip3 gppeConfigs switchToPes (unconcatI peM2Ss)
+  pesToSwitch <- vecCircuits (map gppeC gppeConfigs) <| zipC -< (switchToPes, peWbs)
+  idC -< linksOut
 
 type NmuInternalBusses = 6
 type NmuRemBusWidth nodeBusses = 30 - CLog 2 (nodeBusses + NmuInternalBusses)
@@ -158,11 +158,30 @@ gppe (GppeConfig scatterConfig gatherConfig peConfig, linkIn, vecToTuple -> (nmu
 
 {-# NOINLINE managementUnit #-}
 
+gppeC ::
+  (KnownNat nmuRemBusWidth, HiddenClockResetEnable dom) =>
+  -- | Configures all local parameters
+  GppeConfig nmuRemBusWidth ->
+  -- |
+  -- ( Incoming 'Bittide.Link'
+  -- , Incoming @Vector@ of master busses
+  -- )
+  Circuit
+    (CSignal dom (DataLink 64), Vec 2 (Wishbone dom 'Standard nmuRemBusWidth (Bytes 4)))
+    (CSignal dom (DataLink 64))
+gppeC (GppeConfig scatterConfig gatherConfig peConfig) = circuit $ \(linkIn, nmuWbs) -> do
+  [wbScatCal, wbGathCal] <- idC -< nmuWbs
+  jtag <- idleSource -< ()
+  [wbScat, wbGu] <- processingElement peConfig -< jtag
+  linkOut <- gatherUnitWbC gatherConfig -< (wbGu, wbGathCal)
+  scatterUnitWbC scatterConfig -< (linkIn, wbScat, wbScatCal)
+  idC -< linkOut
+
 {- | A special purpose 'processingElement' that manages a Bittide Node. It contains
 a 'processingElement', 'linkToPe' and 'peToLink' which create the interface for the
 Bittide Link. It takes a 'ManagementConfig', incoming link and a vector of incoming
 'WishboneS2M' signals and produces the outgoing link alongside a vector of
-'WishhboneM2S' signals.
+'WishboneM2S' signals.
 -}
 managementUnit ::
   forall dom nodeBusses.
@@ -191,3 +210,112 @@ managementUnit (ManagementConfig scatterConfig gatherConfig peConfig) linkIn nod
   (vecToTuple -> (nmuM2S0, nmuM2S1), nodeM2Ss) = splitAtI rest
   (_, nmuM2Ss) = toSignals (processingElement peConfig) (pure $ JtagIn low low low, nmuS2Ms)
   nmuS2Ms = suS2M :> guS2M :> nmuS2M0 :> nmuS2M1 :> nodeS2Ms
+
+managementUnitC ::
+  forall dom nodeBusses.
+  ( HiddenClockResetEnable dom
+  , CLog 2 (nodeBusses + NmuInternalBusses) <= 30
+  ) =>
+  -- |
+  -- ( Configures all local parameters
+  -- , Incoming 'Bittide.Link'
+  -- , Incoming @Vector@ of master busses
+  -- )
+  ManagementConfig nodeBusses ->
+  Circuit
+    (CSignal dom (DataLink 64))
+    ( CSignal dom (DataLink 64)
+    , Vec nodeBusses (Wishbone dom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4))
+    )
+managementUnitC (ManagementConfig scatterConfig gatherConfig peConfig) = circuit $ \linkIn -> do
+  jtag <- idleSource -< ()
+  peWbs <- processingElement peConfig -< jtag
+  ([wbScatCal, wbScat, wbGathCal, wbGu], nmuWbs) <- splitAtC d4 -< peWbs
+  linkOut <- gatherUnitWbC gatherConfig -< (wbGu, wbGathCal)
+  scatterUnitWbC scatterConfig -< (linkIn, wbScat, wbScatCal)
+  idC -< (linkOut, nmuWbs)
+
+-- These functions should be added to `clash-protocols`, there is a PR for this:
+-- https://github.com/clash-lang/clash-protocols/pull/116
+-- And a bittide-hardware issue:
+-- https://github.com/bittide/bittide-hardware/issues/645
+-- Append two separate vectors of the same circuits into one vector of circuits
+appendC ::
+  (KnownNat n0) =>
+  Circuit (Vec n0 circuit, Vec n1 circuit) (Vec (n0 + n1) circuit)
+appendC = Circuit go
+ where
+  go ((fwd0, fwd1), splitAtI -> (bwd0, bwd1)) = ((bwd0, bwd1), (fwd0 ++ fwd1))
+
+-- Append three separate vectors of the same circuits into one vector of circuits
+appendC3 ::
+  (KnownNat n0, KnownNat n1) =>
+  Circuit (Vec n0 circuit, Vec n1 circuit, Vec n2 circuit) (Vec (n0 + n1 + n2) circuit)
+appendC3 = Circuit go
+ where
+  go ((fwd0, fwd1, fwd2), splitAtI -> (bwd0, splitAtI -> (bwd1, bwd2))) = ((bwd0, bwd1, bwd2), (fwd0 ++ fwd1 ++ fwd2))
+
+-- Transforms two vectors of circuits into a vector of tuples of circuits.
+-- Only works if the two vectors have the same length.
+zipC ::
+  (KnownNat n) =>
+  Circuit (Vec n a, Vec n b) (Vec n (a, b))
+zipC = Circuit go
+ where
+  go ((fwd0, fwd1), bwd) = (unzip bwd, zip fwd0 fwd1)
+
+-- Transforms three vectors of circuits into a vector of tuples of circuits.
+-- Only works if the three vectors have the same length.
+zipC3 ::
+  (KnownNat n) =>
+  Circuit (Vec n a, Vec n b, Vec n c) (Vec n (a, b, c))
+zipC3 = Circuit go
+ where
+  go ((fwd0, fwd1, fwd2), bwd) = (unzip3 bwd, zip3 fwd0 fwd1 fwd2)
+
+-- Split a vector of circuits into two vectors of circuits.
+splitC ::
+  (KnownNat n0) =>
+  Circuit (Vec (n0 + n1) circuit) (Vec n0 circuit, Vec n1 circuit)
+splitC = Circuit go
+ where
+  go (splitAtI -> (fwd0, fwd1), (bwd0, bwd1)) = (bwd0 ++ bwd1, (fwd0, fwd1))
+
+-- Split a vector of circuits into three vectors of circuits.
+splitC3 ::
+  (KnownNat n0, KnownNat n1) =>
+  Circuit (Vec (n0 + n1 + n2) circuit) (Vec n0 circuit, Vec n1 circuit, Vec n2 circuit)
+splitC3 = Circuit go
+ where
+  go (splitAtI -> (fwd0, splitAtI -> (fwd1, fwd2)), (bwd0, bwd1, bwd2)) = (bwd0 ++ bwd1 ++ bwd2, (fwd0, fwd1, fwd2))
+
+-- Unzip a vector of tuples of circuits into a tuple of vectors of circuits.
+unzipC ::
+  (KnownNat n) =>
+  Circuit (Vec n (a, b)) (Vec n a, Vec n b)
+unzipC = Circuit go
+ where
+  go (fwd, (bwd0, bwd1)) = (zip bwd0 bwd1, unzip fwd)
+
+-- Unzip a vector of 3-tuples of circuits into a 3-tuple of vectors of circuits.
+unzipC3 ::
+  (KnownNat n) =>
+  Circuit (Vec n (a, b, c)) (Vec n a, Vec n b, Vec n c)
+unzipC3 = Circuit go
+ where
+  go (fwd, (bwd0, bwd1, bwd2)) = (zip3 bwd0 bwd1 bwd2, unzip3 fwd)
+
+concatC ::
+  (KnownNat n0, KnownNat n1) =>
+  Circuit (Vec n0 (Vec n1 circuit)) (Vec (n0 * n1) circuit)
+concatC = Circuit go
+ where
+  go (fwd, bwd) = (unconcat SNat bwd, concat fwd)
+
+unconcatC ::
+  (KnownNat n, KnownNat m) =>
+  SNat m ->
+  Circuit (Vec (n * m) circuit) (Vec n (Vec m circuit))
+unconcatC SNat = Circuit go
+ where
+  go (fwd, bwd) = (concat bwd, unconcat SNat fwd)

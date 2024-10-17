@@ -34,14 +34,14 @@ switchC ::
   ) =>
   CalendarConfig nBytes addrW (CalendarEntry links) ->
   Circuit
-    ( CSignal dom (Vec links (DataLink frameWidth))
-    , Wishbone dom 'Standard addrW (Bytes nBytes)
+    ( Vec links (CSignal dom (DataLink frameWidth))
+    , Wishbone dom 'Standard addrW (Bytes nBytes) -- calendar interface
     )
-    (CSignal dom (Vec links (DataLink frameWidth)))
+    (Vec links (CSignal dom (DataLink frameWidth)))
 switchC conf = case (cancelMulDiv @nBytes @8) of
   Dict -> Circuit go
    where
-    go ((unbundle -> streamsIn, calM2S), _) = ((pure (), calS2M), bundle streamsOut)
+    go ((streamsIn, calM2S), _) = ((repeat $ pure (), calS2M), streamsOut)
      where
       (streamsOut, calS2M) = switch conf calM2S streamsIn
 

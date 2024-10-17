@@ -8,19 +8,24 @@
 
 module Bittide.ScatterGather (
   scatterUnitWb,
+  scatterUnitWbC,
   ScatterConfig (..),
   gatherUnitWb,
+  gatherUnitWbC,
   GatherConfig (..),
 ) where
 
 import Clash.Prelude
 
-import Protocols.Wishbone
-
 import Bittide.Calendar
 import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
+
+import Protocols
+import Protocols.Wishbone
+
+import Data.Constraint.Nat.Extra
 
 {- | Existential type to explicitly differentiate between a configuration for
 the 'scatterUnitWb' and 'gatherUnitWb' at type level and hide the memory depth from
@@ -185,26 +190,49 @@ addStalling endOfMetacycle (incomingBus@WishboneS2M{..}, wbAddr, writeOp0) =
 
 {-# NOINLINE scatterUnitWb #-}
 
+scatterUnitWbC ::
+  forall dom awSu nBytesCal awCal.
+  ( HiddenClockResetEnable dom
+  , KnownNat awSu
+  , KnownNat nBytesCal
+  , 1 <= nBytesCal
+  , KnownNat awCal
+  ) =>
+  -- | Configuration for the 'calendar'.
+  ScatterConfig nBytesCal awCal ->
+  Circuit
+    ( CSignal dom (DataLink 64)
+    , Wishbone dom 'Standard awSu (Bytes 4)
+    , Wishbone dom 'Standard awCal (Bytes nBytesCal)
+    )
+    ()
+scatterUnitWbC conf = case cancelMulDiv @nBytesCal @8 of
+  Dict -> Circuit go
+   where
+    go ((linkIn, wbM2SSu, wbM2SCal), _) = ((pure (), wbS2MSu, wbS2MCal), ())
+     where
+      (wbS2MSu, wbS2MCal) = scatterUnitWb conf wbM2SCal linkIn wbM2SSu
+
 {- | Wishbone addressable 'scatterUnit', the wishbone port can read the data from this
 memory element as if it has a 32 bit port by selecting the upper 32 or lower 32 bits
 of the read data.
 -}
 scatterUnitWb ::
-  forall dom addrWidthSu nBytesCal addrWidthCal.
+  forall dom awSu nBytesCal awCal.
   ( HiddenClockResetEnable dom
-  , KnownNat addrWidthSu
+  , KnownNat awSu
   , KnownNat nBytesCal
   , 1 <= nBytesCal
-  , KnownNat addrWidthCal
+  , KnownNat awCal
   ) =>
   -- | Configuration for the 'calendar'.
-  ScatterConfig nBytesCal addrWidthCal ->
+  ScatterConfig nBytesCal awCal ->
   -- | Wishbone (master -> slave) port 'calendar'.
-  Signal dom (WishboneM2S addrWidthCal nBytesCal (Bytes nBytesCal)) ->
+  Signal dom (WishboneM2S awCal nBytesCal (Bytes nBytesCal)) ->
   -- | Incoming frame from Bittide link.
   Signal dom (DataLink 64) ->
   -- | Wishbone (master -> slave) port scatter memory.
-  Signal dom (WishboneM2S addrWidthSu 4 (Bytes 4)) ->
+  Signal dom (WishboneM2S awSu 4 (Bytes 4)) ->
   -- |
   -- 1. Wishbone (slave -> master) port scatter memory
   -- 2. Wishbone (slave -> master) port 'calendar'
@@ -226,24 +254,46 @@ scatterUnitWb (ScatterConfig calConfig) wbInCal linkIn wbInSu =
 
 {-# NOINLINE gatherUnitWb #-}
 
+gatherUnitWbC ::
+  forall dom awGu nBytesCal awCal.
+  ( HiddenClockResetEnable dom
+  , KnownNat awGu
+  , KnownNat nBytesCal
+  , 1 <= nBytesCal
+  , KnownNat awCal
+  ) =>
+  -- | Configuration for the 'calendar'.
+  GatherConfig nBytesCal awCal ->
+  Circuit
+    ( Wishbone dom 'Standard awGu (Bytes 4)
+    , Wishbone dom 'Standard awCal (Bytes nBytesCal)
+    )
+    (CSignal dom (DataLink 64))
+gatherUnitWbC conf = case (cancelMulDiv @nBytesCal @8) of
+  Dict -> Circuit go
+   where
+    go ((wbInGu, wbInCal), _) = ((wbOutGu, wbOutCal), linkOut)
+     where
+      (linkOut, wbOutGu, wbOutCal) = gatherUnitWb conf wbInCal wbInGu
+
 {- | Wishbone addressable 'gatherUnit', the wishbone port can write data to this
 memory element as if it has a 32 bit port by controlling the byte enables of the
 'gatherUnit' based on the third bit.
 -}
 gatherUnitWb ::
-  forall dom addrWidthGu nBytesCal addrWidthCal.
+  forall dom awGu nBytesCal awCal.
   ( HiddenClockResetEnable dom
-  , KnownNat addrWidthGu
+  , KnownNat awGu
   , KnownNat nBytesCal
   , 1 <= nBytesCal
-  , KnownNat addrWidthCal
+  , KnownNat awCal
   ) =>
   -- | Configuration for the 'calendar'.
-  GatherConfig nBytesCal addrWidthCal ->
+  GatherConfig nBytesCal awCal ->
   -- | Wishbone (master -> slave) data 'calendar'.
-  Signal dom (WishboneM2S addrWidthCal nBytesCal (Bytes nBytesCal)) ->
+  Signal dom (WishboneM2S awCal nBytesCal (Bytes nBytesCal)) ->
   -- | Wishbone (master -> slave) port gather memory.
-  Signal dom (WishboneM2S addrWidthGu 4 (Bytes 4)) ->
+  Signal dom (WishboneM2S awGu 4 (Bytes 4)) ->
   -- |
   -- 1. Wishbone (slave -> master) port gather memory
   -- 2. Wishbone (slave -> master) port 'calendar'

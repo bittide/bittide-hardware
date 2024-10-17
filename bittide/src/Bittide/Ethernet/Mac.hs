@@ -46,7 +46,6 @@ macStatusInterfaceWb ::
   ( CP.HiddenClockResetEnable dom
   , KnownNat nBytes
   , KnownNat aw
-  , 2 <= aw
   , 1 <= nBytes
   , counterWidth <= nBytes * 8
   ) =>
