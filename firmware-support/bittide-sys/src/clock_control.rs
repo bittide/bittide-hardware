@@ -37,6 +37,15 @@ pub struct ClockControl {
 }
 
 impl ClockControl {
+    // Offsets for the fields from the base address.
+    const LINK_MASK: usize = 1;
+    const UP_LINKS: usize = 2;
+    const REFRAMING_ENABLED: usize = 3;
+    const CHANGE_SPEED: usize = 4;
+    const LINKS_STABLE: usize = 5;
+    const LINKS_SETTLED: usize = 6;
+    const DATA_COUNTS: usize = 7;
+
     /// Load the clock-control registers from a flattened-devicetree.
     ///
     /// # Safety
@@ -55,17 +64,22 @@ impl ClockControl {
     pub fn link_mask(&self) -> u32 {
         // SAFETY: This is safe since this function can only be called
         // after construction, which is only valid with valid addresses.
-        unsafe { self.base_addr.add(1).read_volatile() }
+        unsafe { self.base_addr.add(Self::LINK_MASK).read_volatile() }
     }
 
     pub fn up_links(&self) -> u8 {
         // SAFETY: This is safe since this function can only be called
         // after construction, which is only valid with valid addresses.
-        unsafe { self.base_addr.add(2).cast::<u8>().read_volatile() }
+        unsafe {
+            self.base_addr
+                .add(Self::UP_LINKS)
+                .cast::<u8>()
+                .read_volatile()
+        }
     }
 
     pub fn reframing_enabled(&self) -> bool {
-        unsafe { self.base_addr.add(3).read_volatile() != 0 }
+        unsafe { self.base_addr.add(Self::REFRAMING_ENABLED).read_volatile() != 0 }
     }
 
     pub fn change_speed(&mut self, speed_change: SpeedChange) {
@@ -73,7 +87,7 @@ impl ClockControl {
         // after construction, which is only valid with valid addresses.
         unsafe {
             self.base_addr
-                .add(4)
+                .add(Self::CHANGE_SPEED)
                 .cast_mut()
                 .write_volatile(speed_change as u32);
         }
@@ -87,7 +101,7 @@ impl ClockControl {
     pub fn links_stable(&self) -> u32 {
         // SAFETY: This is safe since this function can only be called
         // after construction, which is only valid with valid addresses.
-        unsafe { self.base_addr.add(5).read_volatile() }
+        unsafe { self.base_addr.add(Self::LINKS_STABLE).read_volatile() }
     }
 
     pub fn link_settled(&self, link: u8) -> bool {
@@ -98,13 +112,14 @@ impl ClockControl {
     pub fn links_settled(&self) -> u32 {
         // SAFETY: This is safe since this function can only be called
         // after construction, which is only valid with valid addresses.
-        unsafe { self.base_addr.add(6).read_volatile() }
+        unsafe { self.base_addr.add(Self::LINKS_SETTLED).read_volatile() }
     }
 
     pub fn data_counts(&self) -> impl Iterator<Item = i32> + '_ {
         let n = self.num_links();
         // NOTE: Consider fixed length loop version?
         // TODO: Mask out values read whose bit is not set in `link_mask()`.
-        (7..7 + n).map(|i| unsafe { self.base_addr.add(i as usize).cast::<i32>().read_volatile() })
+        (Self::DATA_COUNTS..Self::DATA_COUNTS + n as usize)
+            .map(|i| unsafe { self.base_addr.add(i as usize).cast::<i32>().read_volatile() })
     }
 }
