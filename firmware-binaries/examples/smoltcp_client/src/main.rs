@@ -178,18 +178,6 @@ fn exception_handler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
     }
 }
 
-#[panic_handler]
-fn panic_handler(info: &core::panic::PanicInfo) -> ! {
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
-
-    uwriteln!(uart, "Panicked!").unwrap();
-    info!("error: {}\n", info);
-    uwriteln!(uart, "Looping forever now").unwrap();
-    loop {
-        continue;
-    }
-}
-
 fn update_dhcp(iface: &mut Interface, socket: &mut dhcpv4::Socket) {
     let event = socket.poll();
     match event {

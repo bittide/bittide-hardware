@@ -23,10 +23,3 @@ fn main() -> ! {
         continue;
     }
 }
-
-#[panic_handler]
-fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
-    loop {
-        continue;
-    }
-}
