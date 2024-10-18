@@ -5,6 +5,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use core::panic::PanicInfo;
+
 #[cfg(not(test))]
 use riscv_rt::entry;
 
@@ -41,6 +43,14 @@ fn main() -> ! {
 
     test_success();
 
+    loop {
+        continue;
+    }
+}
+
+#[panic_handler]
+fn panic_handler(_info: &PanicInfo) -> ! {
+    test_failure();
     loop {
         continue;
     }
