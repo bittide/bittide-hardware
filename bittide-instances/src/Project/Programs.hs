@@ -9,9 +9,13 @@ import Prelude
 import Control.Monad (unless)
 import Control.Monad.Extra (forM_)
 import Data.List.Extra (isPrefixOf, trim)
+import Data.Maybe (fromJust)
 import Paths.Bittide.Instances
 import System.IO
 import System.IO.Temp
+import System.Process
+
+import Project.Handle
 
 getOpenOcdStartPath :: IO FilePath
 getOpenOcdStartPath = getDataFileName "data/openocd/start.sh"
@@ -53,3 +57,50 @@ withAnnotatedGdbScriptPath srcPath action = do
 
     hClose dstHandle
     action dstPath
+
+-- | Wait until we see "Halting processor", fail if we see an error.
+waitForHalt :: String -> Filter
+waitForHalt s
+  | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
+  | "Halting processor" `isPrefixOf` s = Stop Ok
+  | otherwise = Continue
+
+{- | Open the configurations for OpenOCD. Replace the adapter usb location with
+the given location.
+-}
+concatOpenOcdConfigs :: String -> IO String
+concatOpenOcdConfigs usbLoc = do
+  ports <- getDataFileName "data/openocd/ports.tcl"
+  sipeed <- getDataFileName "data/openocd/sipeed.tcl"
+  vexriscv <- getDataFileName "data/openocd/vexriscv_init.tcl"
+
+  portsLines <- lines <$> readFile ports
+  sipeedLines <- lines <$> readFile sipeed
+  vexriscvLines <- lines <$> readFile vexriscv
+  let adapterLine = ["adapter usb location " <> usbLoc]
+
+  let allLines = portsLines <> adapterLine <> drop 6 sipeedLines <> vexriscvLines
+  return (unlines allLines)
+
+-- | Start OpenOCD with a connection to a specific USB adapter location.
+withOpenOcdProc :: String -> (FilePath -> IO ()) -> IO ()
+withOpenOcdProc usbLoc action = do
+  withSystemTempFile "openocd-script.tcl" $ \dstPath dstHandle -> do
+    openOcdScript <- concatOpenOcdConfigs usbLoc
+    hPutStrLn dstHandle openOcdScript
+    hClose dstHandle
+
+    let openOcdProc = (proc "openocd-vexriscv" ["-f", dstPath]){std_err = CreatePipe}
+    withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
+      hSetBuffering openOcdStdErr LineBuffering
+      putStrLn "Waiting on processor to halt..."
+      expectLine openOcdStdErr waitForHalt
+      putStrLn "Processor halted, continuing"
+
+      action dstPath
+
+testConcatOpenOcdConfigs :: IO ()
+testConcatOpenOcdConfigs = do
+  withFile "concatOcdConfig.tcl" WriteMode $ \dstHandle -> do
+    s2 <- concatOpenOcdConfigs "1-5-2:1"
+    hPutStr dstHandle s2
