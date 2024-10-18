@@ -8,6 +8,10 @@ use crate::{time, uart};
 use core::fmt::Write;
 use log::LevelFilter;
 
+use core::panic::PanicInfo;
+use log::error;
+use ufmt::uwriteln;
+
 /// A global logger instance to be used with the `log` crate.
 ///
 /// Use `set_logger` to set the `Uart` instance to be used for logging.
@@ -76,7 +80,7 @@ impl log::Log for UartLogger {
                         }
                         writeln!(l, "{}", record.args()).unwrap();
                     }
-                    None => panic!("Logger not set"),
+                    None => loop {}, // The panic handler uses the same logger, so we can't panic here.
                 }
             }
         }
@@ -87,3 +91,20 @@ impl log::Log for UartLogger {
 
 unsafe impl core::marker::Send for UartLogger {}
 unsafe impl core::marker::Sync for UartLogger {}
+
+#[cfg_attr(feature = "panic_handler_log", panic_handler)]
+pub fn panic_handler(info: &PanicInfo) -> ! {
+    unsafe {
+        match LOGGER.uart {
+            Some(ref mut uart) => {
+                uwriteln!(uart, "Panicked!").ok();
+                error!("{}", info);
+                uwriteln!(uart, "Looping forever now").ok();
+            }
+            None => panic!("Logger not set"),
+        }
+    }
+    loop {
+        continue;
+    }
+}

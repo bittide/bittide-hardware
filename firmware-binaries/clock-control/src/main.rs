@@ -5,8 +5,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use core::panic::PanicInfo;
-
 use bittide_sys::{
     callisto::{self, ControlConfig, ControlSt, ReframingState},
     clock_control::{ClockControl, SpeedChange},
@@ -38,12 +36,5 @@ fn main() -> ! {
         callisto::callisto(&config, 0b0111_1111, links_stable, data_counts, &mut state);
 
         cc.change_speed(state.b_k);
-    }
-}
-
-#[panic_handler]
-fn panic_handler(_info: &PanicInfo) -> ! {
-    loop {
-        continue;
     }
 }

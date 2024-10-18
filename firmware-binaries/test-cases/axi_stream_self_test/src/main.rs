@@ -5,8 +5,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use ufmt::uwriteln;
-
 use bittide_sys::axi::self_test::self_test;
 use bittide_sys::axi::{AxiRx, AxiTx};
 use bittide_sys::uart::Uart;
@@ -22,15 +20,6 @@ fn main() -> ! {
     let tx = unsafe { AxiTx::new((3 << 29) as *const ()) };
     let rx: AxiRx<128> = unsafe { AxiRx::new((5 << 29) as *const ()) };
     self_test(uart, tx, rx);
-    loop {
-        continue;
-    }
-}
-
-#[panic_handler]
-fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
-    uwriteln!(uart, "Woops, I panicked!").unwrap();
     loop {
         continue;
     }
