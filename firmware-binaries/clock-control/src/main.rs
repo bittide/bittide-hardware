@@ -40,10 +40,3 @@ fn main() -> ! {
         cc.change_speed(state.b_k);
     }
 }
-
-#[panic_handler]
-fn panic_handler(_info: &PanicInfo) -> ! {
-    loop {
-        continue;
-    }
-}

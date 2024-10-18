@@ -26,12 +26,3 @@ fn main() -> ! {
         continue;
     }
 }
-
-#[panic_handler]
-fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
-    uwriteln!(uart, "Woops, I panicked!").unwrap();
-    loop {
-        continue;
-    }
-}
