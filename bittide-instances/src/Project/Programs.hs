@@ -13,6 +13,8 @@ import Paths.Bittide.Instances
 import System.IO
 import System.IO.Temp
 
+import Project.Handle
+
 getOpenOcdStartPath :: IO FilePath
 getOpenOcdStartPath = getDataFileName "data/openocd/start.sh"
 
@@ -47,3 +49,10 @@ withAnnotatedGdbScriptPath srcPath action = do
 
     hClose dstHandle
     action dstPath
+
+-- | Wait until we see "Halting processor", fail if we see an error.
+waitForHalt :: String -> Filter
+waitForHalt s
+  | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
+  | "Halting processor" `isPrefixOf` s = Stop Ok
+  | otherwise = Continue

@@ -1,15 +1,18 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
 import Prelude
 
-import Data.List.Extra (isPrefixOf)
+import Control.Concurrent (threadDelay)
 import Data.Maybe (fromJust)
 import System.Environment (withArgs)
 import System.IO
+import System.Posix.Env (getEnvironment)
 import System.Process
+import System.Timeout
 
 import Test.Tasty.HUnit
 import Test.Tasty.TH
@@ -39,22 +42,25 @@ GDB: GNU Debugger. This program will connect to the OpenOCD server and is able
 -}
 case_testGdbProgram :: Assertion
 case_testGdbProgram = do
-  let uartDev = (last demoRigInfo).serial
+  let
+    -- For now we use a hardcoded device. This should be updated with the pre-processing
+    -- infrastructure.
+    uartDev = (last demoRigInfo).serial
+    adapterLoc = (last demoRigInfo).usbAdapterLocation
   startOpenOcdPath <- getOpenOcdStartPath
   startPicocomPath <- getPicocomStartPath
   gdbScriptPath <- getGdbScriptPath
 
   withAnnotatedGdbScriptPath gdbScriptPath $ \gdbProgPath -> do
+    currentEnv <- getEnvironment
     let
-      openOcdProc = (proc startOpenOcdPath []){std_err = CreatePipe}
+      openOcdProc =
+        (proc startOpenOcdPath [])
+          { env = Just (currentEnv <> [("USB_DEVICE", adapterLoc)])
+          , std_err = CreatePipe
+          }
       picocomProc = (proc startPicocomPath [uartDev]){std_out = CreatePipe, std_in = CreatePipe}
       gdbProc = (proc "gdb" ["--command", gdbProgPath]){std_out = CreatePipe, std_err = CreatePipe}
-
-      -- Wait until we see "Halting processor", fail if we see an error
-      waitForHalt s
-        | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
-        | "Halting processor" `isPrefixOf` s = Stop Ok
-        | otherwise = Continue
 
     withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
       hSetBuffering openOcdStdErr LineBuffering
@@ -64,28 +70,53 @@ case_testGdbProgram = do
       --      spawns as a child of the shell (start.sh). We could use 'exec' to
       --      make sure the intermediate shell doesn't exist, but this causes
       --      the whole test program to exit with signal 15 (??????).
-      withCreateProcess picocomProc $ \maybePicocomStdIn maybePicocomStdOut _ _ -> do
+      withCreateProcess picocomProc $ \maybePicocomStdIn maybePicocomStdOut maybePicocomStdErr _ -> do
         let
           picocomStdIn = fromJust maybePicocomStdIn
           picocomStdOut = fromJust maybePicocomStdOut
 
+          -- Create function to log the output of the processes
+          loggingSequence = do
+            threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
+            putStrLn "Picocom stdout"
+            picocomOut <- readRemainingChars picocomStdOut
+            putStrLn picocomOut
+            case maybePicocomStdErr of
+              Nothing -> pure ()
+              Just h -> do
+                putStrLn "Picocom StdErr"
+                readRemainingChars h >>= putStrLn
+
+          tryWithTimeout :: String -> Int -> IO a -> IO a
+          tryWithTimeout actionName dur action = do
+            result <- timeout dur action
+            case result of
+              Nothing -> do
+                loggingSequence
+                assertFailure $ "Timeout while performing action: " <> actionName
+              Just r -> pure r
+
         hSetBuffering picocomStdIn LineBuffering
         hSetBuffering picocomStdOut LineBuffering
 
-        waitForLine picocomStdOut "Terminal ready"
+        tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000 $
+          waitForLine picocomStdOut "Terminal ready"
 
         withCreateProcess gdbProc $ \_ (fromJust -> gdbStdOut) _ _ -> do
           -- Wait for GDB to program the FPGA. If successful, we should see
           -- "going in echo mode" in the picocom output.
           hSetBuffering gdbStdOut LineBuffering
-          waitForLine picocomStdOut "Going in echo mode!"
+          tryWithTimeout "Waiting for \"Going in echo mode!\"" 10_000_000 $
+            waitForLine picocomStdOut "Going in echo mode!"
 
           -- Wait for GDB to reach its last command - where it will wait indefinitely
-          waitForLine gdbStdOut "> continue"
+          tryWithTimeout "Waiting for \"> continue\"" 10_000_000 $
+            waitForLine gdbStdOut "> continue"
 
           -- Test UART echo
           hPutStrLn picocomStdIn "Hello, UART!"
-          waitForLine picocomStdOut "Hello, UART!"
+          tryWithTimeout "Waiting for \"Hello, UART!\"" 10_000_000 $
+            waitForLine picocomStdOut "Hello, UART!"
 
 main :: IO ()
 main = withArgs ["--timeout", "2m"] $(defaultMainGenerator)
