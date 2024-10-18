@@ -15,7 +15,7 @@ use bittide_sys::smoltcp::{set_local, set_unicast};
 use bittide_sys::time::{Clock, Duration, Instant};
 use bittide_sys::uart::log::LOGGER;
 use bittide_sys::uart::Uart;
-use log::{debug, info, LevelFilter};
+use log::{debug, error, info, LevelFilter};
 
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -181,7 +181,7 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
     let mut uart = unsafe { Uart::new(UART_ADDR) };
 
     uwriteln!(uart, "Panicked!").unwrap();
-    debug!("{}", info);
+    error!("{}", info);
     uwriteln!(uart, "Looping forever now").unwrap();
     loop {
         continue;
