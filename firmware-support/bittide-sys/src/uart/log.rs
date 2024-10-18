@@ -8,7 +8,7 @@ use crate::{time, uart};
 use core::fmt::Write;
 use log::LevelFilter;
 use core::panic::PanicInfo;
-use log::warn;
+use log::error;
 use ufmt::uwriteln;
 
 
@@ -98,7 +98,7 @@ fn panic_handler(info: &PanicInfo) -> ! {
         match LOGGER.uart {
             Some(ref mut uart) => {
                 uwriteln!(uart, "Panicked!").ok();
-                warn!("{}", info);
+                error!("{}", info);
                 uwriteln!(uart, "Looping forever now").ok();
             }
             None => panic!("Logger not set"),
