@@ -80,7 +80,7 @@ impl log::Log for UartLogger {
                         }
                         writeln!(l, "{}", record.args()).unwrap();
                     }
-                    None => panic!("Logger not set"),
+                    None => loop {}, // The panic handler uses the same logger, so we can't panic here.
                 }
             }
         }
