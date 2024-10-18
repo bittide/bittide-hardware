@@ -5,8 +5,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use ufmt::uwriteln;
-
 use bittide_sys::axi::self_test::self_test;
 use bittide_sys::axi::{AxiRx, AxiTx};
 use bittide_sys::uart::Uart;

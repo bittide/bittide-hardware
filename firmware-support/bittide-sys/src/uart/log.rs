@@ -7,10 +7,10 @@ use crate::{time, uart};
 // compatible with (dependencies of) the log crate.
 use core::fmt::Write;
 use log::LevelFilter;
+
 use core::panic::PanicInfo;
 use log::error;
 use ufmt::uwriteln;
-
 
 /// A global logger instance to be used with the `log` crate.
 ///
@@ -92,8 +92,8 @@ impl log::Log for UartLogger {
 unsafe impl core::marker::Send for UartLogger {}
 unsafe impl core::marker::Sync for UartLogger {}
 
-#[panic_handler]
-fn panic_handler(info: &PanicInfo) -> ! {
+#[cfg_attr(feature = "panic_handler_log", panic_handler)]
+pub fn panic_handler(info: &PanicInfo) -> ! {
     unsafe {
         match LOGGER.uart {
             Some(ref mut uart) => {
