@@ -5,8 +5,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use core::panic::PanicInfo;
-
 use bittide_sys::{
     callisto::{self, ControlConfig, ControlSt, ReframingState},
     clock_control::{ClockControl, SpeedChange},

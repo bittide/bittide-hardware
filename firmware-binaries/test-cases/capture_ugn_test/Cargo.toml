@@ -13,5 +13,5 @@ authors = ["Google LLC"]
 
 [dependencies]
 riscv-rt = "0.11.0"
-bittide-sys = { path = "../../../firmware-support/bittide-sys" }
+bittide-sys = { path = "../../../firmware-support/bittide-sys", features = ["panic_handler_log"]}
 ufmt = "0.2.0"
