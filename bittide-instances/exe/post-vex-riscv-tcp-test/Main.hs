@@ -164,9 +164,9 @@ runTcpTest (sock, sockAddr) = do
       <> " sent "
       <> show size
       <> " bytes in "
-      <> show diff
+      <> show (round diff :: Integer)
       <> " seconds ("
-      <> show speed
+      <> show (round speed :: Integer)
       <> " bytes/s)"
   assertEqual
     "Expected and actual bytestring are not equal"
