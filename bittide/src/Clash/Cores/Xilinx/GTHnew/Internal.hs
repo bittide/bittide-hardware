@@ -15,6 +15,7 @@ import Clash.Cores.Xilinx.GTHnew.BlackBoxes
 -- import Clash.Cores.Xilinx.GTH.Internal qualified as Old
 import Clash.Cores.Xilinx.Extra (bufgGt)
 
+import Clash.Annotations.SynthesisAttributes
 type TX_DATA_WIDTH = 64
 type RX_DATA_WIDTH = 64
 
@@ -245,8 +246,9 @@ gthUserClockNetwork clkIn rstIn =
   usrClk  = bufgGt d0 clkIn rstIn1
   usrClk2 :: Clock user2
   usrClk2 = bufgGt d1 clkIn rstIn1
-  active = reg (reg (pure 1))
   reg = register usrClk2 rstIn enableGen 0
+  active = annotate (StringAttr "ASYNC_REG" "TRUE" :> Nil) $ reg (annotate (StringAttr "ASYNC_REG" "TRUE" :> Nil) $ reg (pure 1))
+{-# NOINLINE gthUserClockNetwork #-}
 
 unsafeSynchronizerReset :: (KnownDomain dom1, KnownDomain dom2) => Clock dom1 -> Clock dom2 -> Reset dom1 -> Reset dom2
 unsafeSynchronizerReset clkIn clkOut rstIn = unsafeFromActiveHigh $ unsafeSynchronizer clkIn clkOut (unsafeToActiveHigh rstIn)
