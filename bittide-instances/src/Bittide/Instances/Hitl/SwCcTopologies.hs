@@ -261,10 +261,12 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
     withClockResetEnable sysClk syncRst enableGen
       $ si539xSpi commonSpiConfig (SNat @(Microseconds 10)) (pure Nothing) miso
 
-  -- Transceiver setup
-  gthAllReset = unsafeFromActiveLow clocksAdjusted
-
-  txReady = unsafeSynchronizer sysClk (head transceivers.txClocks) notInCCReset
+  txReady0 :: Vec LinkCount (Signal Basic125 Bool)
+  txReady0 = fmap go transceivers.linkReadys
+   where
+    go lR = lR .&&. notInCCReset -- if lR then notInCCReset else False
+  txReady1 :: Vec LinkCount (Signal GthTx Bool)
+  txReady1 = zipWith (unsafeSynchronizer sysClk) transceivers.txClocks txReady0
 
   transceivers =
     transceiverPrbsN
@@ -277,7 +279,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       Transceiver.defConfig
       Transceiver.Inputs
         { clock = sysClk
-        , reset = gthAllReset
+        , reset = syncRst
         , refClock = refClk
         , channelNames
         , clockPaths
@@ -287,7 +289,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
         -- , txReadys = txAllStables
         -- , rxReadys = repeat (pure True)
         , txDatas = repeat (pure 0)
-        , txReadys = repeat txReady
+        , txReadys = txReady1
         , rxReadys = repeat (pure True)
         }
 
@@ -307,8 +309,8 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   startupDelayRst =
     orReset (unsafeFromActiveLow clocksAdjusted)
       $ orReset (unsafeFromActiveLow allReady)
-      $ orReset
-        (unsafeFromActiveHigh transceiversFailedAfterUp)
+      -- $ orReset
+        -- (unsafeFromActiveHigh transceiversFailedAfterUp)
         (unsafeFromActiveLow syncStart)
 
   delayCount =
@@ -393,7 +395,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
           :> "probe_dDiff5"
           :> "probe_dDiff6"
           :> "probe_syncRst"
-          :> "probe_gthAllReset"
+          -- :> "probe_gthAllReset"
           :> "probe_startupDelayRst"
           :> "probe_clockControlReset"
           :> "probe_notInCCReset"
@@ -464,7 +466,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       dDiff5
       dDiff6
       (unsafeFromReset syncRst)
-      (unsafeFromReset gthAllReset)
+      -- (unsafeFromReset gthAllReset)
       (unsafeFromReset startupDelayRst)
       (unsafeFromReset clockControlReset)
       notInCCReset
@@ -952,7 +954,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     , _stats
     , spiDone
     , spiOut
-    , transceiversFailedAfterUp
+    , _transceiversFailedAfterUp
     , allReady
     , allStable
     , calibI
@@ -1065,7 +1067,8 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     sticky
       sysClk
       syncRst
-      (syncStart .&&. ((not <$> allReady) .||. transceiversFailedAfterUp))
+      -- (syncStart .&&. ((not <$> allReady) .||. transceiversFailedAfterUp))
+      (syncStart .&&. (not <$> allReady))
 
   endSuccess :: Signal Basic125 Bool
   endSuccess =
@@ -1084,14 +1087,15 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     startTest
       .&&. ( skip
               .||. endSuccess
-              .||. transceiversFailedAfterUp
+              -- .||. transceiversFailedAfterUp
               .||. startBeforeAllReady
            )
 
   testSuccess =
     skip
       .||. ( allStable
-              .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady))
+              -- .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady))
+              .&&. (not <$> startBeforeAllReady)
            )
 
   testConfig :: Signal Basic125 (Maybe TestConfig)
