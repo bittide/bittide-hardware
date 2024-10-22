@@ -44,9 +44,7 @@ import LiftType (liftTypeQ)
 import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
--- import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
 import Bittide.ClockControl.Callisto.Types (CallistoResult)
--- import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins)
 import Bittide.ClockControl.CallistoSw (SwControlConfig (..), callistoSwClockControl)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
@@ -67,14 +65,14 @@ import Bittide.Instances.Hitl.IlaPlot (
 import Bittide.Instances.Hitl.Setup
 
 import Clash.Annotations.TH (makeTopEntity)
--- import Clash.Class.Counter
+import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
--- import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
+import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 -- import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcSingle)
 -- import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra (xpmCdcMaybeLossy)
 import Clash.Functor.Extra
--- import Clash.Sized.Extra (unsignedToSigned)
--- import Clash.Sized.Vector.ToTuple (vecToTuple)
+import Clash.Sized.Extra (unsignedToSigned)
+import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen
 
 import qualified Bittide.Arithmetic.PartsPer as PartsPer
@@ -230,23 +228,25 @@ topologyTest ::
   , "ugnsStable" ::: Vec LinkCount (Signal Basic125 Bool)
   )
 topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg =
-  ( transceivers.txNs
-  , transceivers.txPs
-  , frequencyAdjustments
-  , callistoResult
-  , clockControlReset
-  , domainDiffs
-  , transceivers.stats
-  , spiDone
-  , spiOut
-  , transceiversFailedAfterUp
-  , allReady
-  , allStable0
-  , calibratedClockShift
-  , validationClockShift
+  hwSeqX
+    fincFdecIla
+    ( transceivers.txNs
+    , transceivers.txPs
+    , frequencyAdjustments
+    , callistoResult
+    , clockControlReset
+    , domainDiffs
+    , transceivers.stats
+    , spiDone
+    , spiOut
+    , transceiversFailedAfterUp
+    , allReady
+    , allStable0
+    , calibratedClockShift
+    , validationClockShift
 --  , ugnsStable
-  , repeat $ pure True
-  )
+    , repeat $ pure True
+    )
  where
   syncRst = rst `orReset` unsafeFromActiveHigh spiErr
 
@@ -297,9 +297,9 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
 
-  -- timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
-  -- timer = register sysClk syncRst enableGen (0, 0) (timeSucc <$> timer)
-  -- milliseconds1 = fst <$> timer
+  timeSucc = countSucc @(Unsigned 16, Index (PeriodToCycles Basic125 (Milliseconds 1)))
+  timer = register sysClk syncRst enableGen (0, 0) (timeSucc <$> timer)
+  milliseconds1 = fst <$> timer
 
   -- Startup delay
   startupDelayRst =
@@ -345,152 +345,146 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   -- very confusing.
   -- capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
 
-  -- fincFdecIla :: Signal Basic125 ()
-  -- fincFdecIla =
-  --   setName @"fincFdecIla"
-  --     ila
-  --     ( ilaConfig
-  --         $ "trigger_fdi_0"
-  --         :> "capture_fdi_0"
-  --         :> "probe_fdi_milliseconds"
-  --         :> "probe_allStable0"
-  --         :> "probe_transceiversFailedAfterUp"
-  --         :> "probe_nFincs"
-  --         :> "probe_nFdecs"
-  --         :> "probe_net_nFincs"
-  --         -- :> "probe_ugn0"
-  --         -- :> "probe_ugn1"
-  --         -- :> "probe_ugn2"
-  --         -- :> "probe_ugn3"
-  --         -- :> "probe_ugn4"
-  --         -- :> "probe_ugn5"
-  --         -- :> "probe_ugn6"
-  --         :> "stability0"
-  --         :> "stability1"
-  --         :> "stability2"
-  --         :> "stability3"
-  --         :> "stability4"
-  --         :> "stability5"
-  --         :> "stability6"
-  --         -- :> "ugnStable0"
-  --         -- :> "ugnStable1"
-  --         -- :> "ugnStable2"
-  --         -- :> "ugnStable3"
-  --         -- :> "ugnStable4"
-  --         -- :> "ugnStable5"
-  --         -- :> "ugnStable6"
-  --         :> "probe_linkReadys"
-  --         :> "probe_linkUps"
-  --         -- :> "fifoUnderflows"
-  --         -- :> "fifoOverflows"
-  --         :> "swUpdatePeriod"
-  --         :> "swUpdatePeriodMin"
-  --         :> "swUpdatePeriodMax"
-  --         :> "probe_dDiff0"
-  --         :> "probe_dDiff1"
-  --         :> "probe_dDiff2"
-  --         :> "probe_dDiff3"
-  --         :> "probe_dDiff4"
-  --         :> "probe_dDiff5"
-  --         :> "probe_dDiff6"
-  --         :> "probe_syncRst"
-  --         :> "probe_gthAllReset"
-  --         :> "probe_startupDelayRst"
-  --         :> "probe_clockControlReset"
-  --         :> "probe_notInCCReset"
-  --         -- :> "probe_txResets2"
-  --         :> "probe_adjustStart"
-  --         :> "probe_clocksAdjusted"
-  --         :> "probe_adjusting"
-  --         :> "probe_adjustCount"
-  --         :> "probe_initialAdjust"
-  --         :> "probe_adjustRst"
-  --         :> "probe_calibratedClockShift"
-  --         :> "probe_clockShift"
-  --         :> "probe_initialClockShift"
-  --         :> "probe_calibrate"
-  --         :> "probe_spiDone"
-  --         :> "probe_frequencyAdjustments"
-  --         :> "probe_allReady"
-  --         :> "probe_syncStart"
-  --         :> "probe_delayCount"
-  --         :> "probe_startupDelay"
-  --         :> "probe_spiErr"
-  --         :> "probe_mask"
-  --         :> Nil
-  --     )
-  --       { depth = D16384
-  --       }
-  --     sysClk
-  --     -- Trigger as soon as we come out of reset
-  --     (unsafeToActiveLow rst)
-  --     captureFlag
-  --     -- Debug probes
-  --     milliseconds1
-  --     allStable0
-  --     transceiversFailedAfterUp
-  --     nFincs
-  --     nFdecs
-  --     (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
-  --     -- ugn0
-  --     -- ugn1
-  --     -- ugn2
-  --     -- ugn3
-  --     -- ugn4
-  --     -- ugn5
-  --     -- ugn6
-  --     stability0
-  --     stability1
-  --     stability2
-  --     stability3
-  --     stability4
-  --     stability5
-  --     stability6
-  --     -- ugnStable0
-  --     -- ugnStable1
-  --     -- ugnStable2
-  --     -- ugnStable3
-  --     -- ugnStable4
-  --     -- ugnStable5
-  --     -- ugnStable6
-  --     (bundle transceivers.linkReadys)
-  --     (bundle transceivers.linkUps)
-  --     -- (pack . reverse <$> bundle fifoUnderflowsFree)
-  --     -- (pack . reverse <$> bundle fifoOverflowsFree)
-  --     swUpdatePeriod
-  --     swUpdatePeriodMin
-  --     swUpdatePeriodMax
-  --     dDiff0
-  --     dDiff1
-  --     dDiff2
-  --     dDiff3
-  --     dDiff4
-  --     dDiff5
-  --     dDiff6
-  --     (unsafeFromReset syncRst)
-  --     (unsafeFromReset gthAllReset)
-  --     (unsafeFromReset startupDelayRst)
-  --     (unsafeFromReset clockControlReset)
-  --     notInCCReset
-  --     -- txResetsThing
-  --     adjustStart
-  --     clocksAdjusted
-  --     adjusting
-  --     adjustCount
-  --     initialAdjust
-  --     (unsafeFromReset adjustRst)
-  --     calibratedClockShift
-  --     clockShift
-  --     (fromMaybe 0 . initialClockShift <$> cfg)
-  --     (pack . calibrate <$> cfg)
-  --     spiDone
-  --     (pack <$> frequencyAdjustments)
-  --     allReady
-  --     syncStart
-  --     delayCount
-  --     (startupDelay <$> cfg)
-  --     spiErr
-  --     (mask <$> cfg)
+  fincFdecIla :: Signal Basic125 ()
+  fincFdecIla =
+    setName @"fincFdecIla"
+      ila
+      ( ilaConfig
+          $ "trigger_fdi_0"
+          :> "capture_fdi_0"
+          :> "probe_fdi_milliseconds"
+          :> "probe_allStable0"
+          :> "probe_transceiversFailedAfterUp"
+          :> "probe_nFincs"
+          :> "probe_nFdecs"
+          :> "probe_net_nFincs"
+          -- :> "probe_ugn0"
+          -- :> "probe_ugn1"
+          -- :> "probe_ugn2"
+          -- :> "probe_ugn3"
+          -- :> "probe_ugn4"
+          -- :> "probe_ugn5"
+          -- :> "probe_ugn6"
+          :> "stability0"
+          :> "stability1"
+          :> "stability2"
+          :> "stability3"
+          :> "stability4"
+          :> "stability5"
+          :> "stability6"
+          -- :> "ugnStable0"
+          -- :> "ugnStable1"
+          -- :> "ugnStable2"
+          -- :> "ugnStable3"
+          -- :> "ugnStable4"
+          -- :> "ugnStable5"
+          -- :> "ugnStable6"
+          :> "probe_linkReadys"
+          :> "probe_linkUps"
+          -- :> "fifoUnderflows"
+          -- :> "fifoOverflows"
+          :> "probe_dDiff0"
+          :> "probe_dDiff1"
+          :> "probe_dDiff2"
+          :> "probe_dDiff3"
+          :> "probe_dDiff4"
+          :> "probe_dDiff5"
+          :> "probe_dDiff6"
+          :> "probe_syncRst"
+          :> "probe_gthAllReset"
+          :> "probe_startupDelayRst"
+          :> "probe_clockControlReset"
+          :> "probe_notInCCReset"
+          -- :> "probe_txResets2"
+          :> "probe_adjustStart"
+          :> "probe_clocksAdjusted"
+          :> "probe_adjusting"
+          :> "probe_adjustCount"
+          :> "probe_initialAdjust"
+          :> "probe_adjustRst"
+          :> "probe_calibratedClockShift"
+          :> "probe_clockShift"
+          :> "probe_initialClockShift"
+          :> "probe_calibrate"
+          :> "probe_spiDone"
+          :> "probe_frequencyAdjustments"
+          :> "probe_allReady"
+          :> "probe_syncStart"
+          :> "probe_delayCount"
+          :> "probe_startupDelay"
+          :> "probe_spiErr"
+          :> "probe_mask"
+          :> Nil
+      )
+        { depth = D16384
+        }
+      sysClk
+      -- Trigger as soon as we come out of reset
+      (unsafeToActiveLow rst)
+      captureFlag
+      -- Debug probes
+      milliseconds1
+      allStable0
+      transceiversFailedAfterUp
+      nFincs
+      nFdecs
+      (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
+      -- ugn0
+      -- ugn1
+      -- ugn2
+      -- ugn3
+      -- ugn4
+      -- ugn5
+      -- ugn6
+      stability0
+      stability1
+      stability2
+      stability3
+      stability4
+      stability5
+      stability6
+      -- ugnStable0
+      -- ugnStable1
+      -- ugnStable2
+      -- ugnStable3
+      -- ugnStable4
+      -- ugnStable5
+      -- ugnStable6
+      (bundle transceivers.linkReadys)
+      (bundle transceivers.linkUps)
+      -- (pack . reverse <$> bundle fifoUnderflowsFree)
+      -- (pack . reverse <$> bundle fifoOverflowsFree)
+      dDiff0
+      dDiff1
+      dDiff2
+      dDiff3
+      dDiff4
+      dDiff5
+      dDiff6
+      (unsafeFromReset syncRst)
+      (unsafeFromReset gthAllReset)
+      (unsafeFromReset startupDelayRst)
+      (unsafeFromReset clockControlReset)
+      notInCCReset
+      -- txResetsThing
+      adjustStart
+      clocksAdjusted
+      adjusting
+      adjustCount
+      initialAdjust
+      (unsafeFromReset adjustRst)
+      calibratedClockShift
+      clockShift
+      (fromMaybe 0 . initialClockShift <$> cfg)
+      (pack . calibrate <$> cfg)
+      spiDone
+      (pack <$> frequencyAdjustments)
+      allReady
+      syncStart
+      delayCount
+      (startupDelay <$> cfg)
+      spiErr
+      (mask <$> cfg)
 
   {-
     clockMod
@@ -509,30 +503,30 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   --  where
   --   oofOwOuchie txClock txReset = unsafeSynchronizer txClock sysClk $ unsafeFromReset txReset
 
-  -- captureFlag =
-  --   riseEvery
-  --     sysClk
-  --     syncRst
-  --     enableGen
-  --     (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
+  captureFlag =
+    riseEvery
+      sysClk
+      syncRst
+      enableGen
+      (SNat @(PeriodToCycles Basic125 (Milliseconds 1)))
 
-  -- nFincs =
-  --   regEn
-  --     sysClk
-  --     clockControlReset
-  --     enableGen
-  --     (0 :: Unsigned 32)
-  --     (isFalling sysClk syncRst enableGen False ((== Just SpeedUp) <$> clockMod))
-  --     (satSucc SatBound <$> nFincs)
+  nFincs =
+    regEn
+      sysClk
+      clockControlReset
+      enableGen
+      (0 :: Unsigned 32)
+      (isFalling sysClk syncRst enableGen False ((== Just SpeedUp) <$> clockMod))
+      (satSucc SatBound <$> nFincs)
 
-  -- nFdecs =
-  --   regEn
-  --     sysClk
-  --     clockControlReset
-  --     enableGen
-  --     (0 :: Unsigned 32)
-  --     (isFalling sysClk syncRst enableGen False ((== Just SlowDown) <$> clockMod))
-  --     (satSucc SatBound <$> nFdecs)
+  nFdecs =
+    regEn
+      sysClk
+      clockControlReset
+      enableGen
+      (0 :: Unsigned 32)
+      (isFalling sysClk syncRst enableGen False ((== Just SlowDown) <$> clockMod))
+      (satSucc SatBound <$> nFdecs)
 
   -- Clock calibration
 
@@ -740,22 +734,22 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   -- (ugn5, _fill5, ugnStable5, _fillStats5) = unbundle ugnD5
   -- (ugn6, _fill6, ugnStable6, _fillStats6) = unbundle ugnD6
 
-  -- ( stability0
-  --   , stability1
-  --   , stability2
-  --   , stability3
-  --   , stability4
-  --   , stability5
-  --   , stability6
-  --   ) = vecToTuple $ unbundle stabilities
-  -- ( dDiff0
-  --   , dDiff1
-  --   , dDiff2
-  --   , dDiff3
-  --   , dDiff4
-  --   , dDiff5
-  --   , dDiff6
-  --   ) = vecToTuple domainDiffs
+  ( stability0
+    , stability1
+    , stability2
+    , stability3
+    , stability4
+    , stability5
+    , stability6
+    ) = vecToTuple $ unbundle callistoResult.stability
+  ( dDiff0
+    , dDiff1
+    , dDiff2
+    , dDiff3
+    , dDiff4
+    , dDiff5
+    , dDiff6
+    ) = vecToTuple domainDiffs
 
 type WaitCycles dom hold prd = PeriodToCycles dom (prd - hold)
 
@@ -811,22 +805,22 @@ Updates once per millisecond.
 --     | otherwise = (cntr - 1, new, out)
 --    where
 --     new = mappend prevStats (FillStats inp inp)
-
+--
 -- data FillStats a = FillStats {fillMin :: a, fillMax :: a}
 --   deriving (Generic, NFDataX, BitPack)
-
+--
 -- instance Bundle (FillStats a) where
 --   type Unbundled dom (FillStats a) = FillStats (Signal dom a)
 --   bundle (FillStats sigMin sigMax) = liftA2 FillStats sigMin sigMax
 --   unbundle x = FillStats{fillMin = fmap fillMin x, fillMax = fmap fillMax x}
-
+--
 -- instance (Ord a) => Semigroup (FillStats a) where
 --   a <> b =
 --     FillStats
 --       { fillMin = min (fillMin a) (fillMin b)
 --       , fillMax = max (fillMax a) (fillMax b)
 --       }
-
+--
 -- instance (Bounded a, Ord a) => Monoid (FillStats a) where
 --   mempty = FillStats{fillMin = maxBound, fillMax = minBound}
 
