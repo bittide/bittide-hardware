@@ -4,17 +4,16 @@
 
 import Prelude
 
-import Data.List.Extra (isPrefixOf)
 import Data.Maybe (fromJust)
-import Paths_bittide_instances
-import Project.Handle
-import Project.Programs
 import System.Environment (withArgs)
 import System.IO
 import System.Process
-
 import Test.Tasty.HUnit
 import Test.Tasty.TH
+
+import Paths_bittide_instances
+import Project.Handle
+import Project.Programs
 
 getGdbScriptPath :: IO FilePath
 getGdbScriptPath = getDataFileName "data/gdb/test-gdb-prog.gdb"
@@ -36,27 +35,16 @@ GDB: GNU Debugger. This program will connect to the OpenOCD server and is able
 -}
 case_testGdbProgram :: Assertion
 case_testGdbProgram = do
-  startOpenOcdPath <- getOpenOcdStartPath
   startPicocomPath <- getPicocomStartPath
   uartDev <- getUartDev
   gdbScriptPath <- getGdbScriptPath
 
   withAnnotatedGdbScriptPath gdbScriptPath $ \gdbProgPath -> do
     let
-      openOcdProc = (proc startOpenOcdPath []){std_err = CreatePipe}
       picocomProc = (proc startPicocomPath [uartDev]){std_out = CreatePipe, std_in = CreatePipe}
       gdbProc = (proc "gdb" ["--command", gdbProgPath]){std_out = CreatePipe, std_err = CreatePipe}
 
-      -- Wait until we see "Halting processor", fail if we see an error
-      waitForHalt s
-        | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
-        | "Halting processor" `isPrefixOf` s = Stop Ok
-        | otherwise = Continue
-
-    withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
-      hSetBuffering openOcdStdErr LineBuffering
-      expectLine openOcdStdErr waitForHalt
-
+    withOpenOcdProc "1-5.1:1" $ \_ -> do
       -- XXX: Picocom doesn't immediately clean up after closing, because it
       --      spawns as a child of the shell (start.sh). We could use 'exec' to
       --      make sure the intermediate shell doesn't exist, but this causes

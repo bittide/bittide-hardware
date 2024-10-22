@@ -75,12 +75,6 @@ case_testTcpClient = do
       gdbProc = (proc "gdb" ["--command", gdbProgPath]){std_out = CreatePipe, std_err = CreatePipe}
       picocomProc = (proc startPicocomPath [uartDev]){std_out = CreatePipe, std_in = CreatePipe}
 
-      -- Wait until we see "Halting processor", fail if we see an error
-      waitForHalt s
-        | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
-        | "Halting processor" `isPrefixOf` s = Stop Ok
-        | otherwise = Continue
-
     putStrLn "Starting OpenOcd..."
     withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
       hSetBuffering openOcdStdErr LineBuffering
