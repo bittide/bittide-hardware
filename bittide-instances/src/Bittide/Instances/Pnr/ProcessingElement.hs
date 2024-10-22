@@ -48,7 +48,8 @@ vexRiscUartHello diffClk rst_in =
     $ circuit
     $ \(uartRx, jtag) -> do
       [uartBus, timeBus] <- processingElement @Basic200 peConfig -< jtag
-      (uartTx, _uartStatus) <- uartWb d16 d16 (SNat @921600) -< (uartBus, uartRx)
+      (uartTx, _uartStatus) <-
+        uartInterfaceWb d16 d16 (uartDf $ SNat @921600) -< (uartBus, uartRx)
       timeWb -< timeBus
       idC -< uartTx
  where

@@ -8,9 +8,9 @@
 module Wishbone.CaptureUgn where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (withClockResetEnable)
+import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import qualified Prelude as P
 
-import Clash.Cores.UART (ValidBaud, uart)
 import Clash.Signal.Internal
 import Data.Char
 import Data.Maybe
@@ -26,14 +26,12 @@ import Test.Tasty.TH
 
 import Bittide.CaptureUgn
 import Bittide.DoubleBufferedRam
-import Bittide.Instances.Domains
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes
 import Bittide.Wishbone
-import Clash.Cores.UART.Extra (MaxBaudRate)
 
-import qualified Prelude as P
+import qualified Protocols.Df as Df
 
 {- | Test whether we can read the local and remote sequence counters from the captureUgn
 peripheral.
@@ -59,13 +57,15 @@ case_capture_ugn_self_test =
       <> showHex expectedRemoteCounter ""
   (expectedLocalCounter, unpack -> expectedRemoteCounter) = getSequenceCounters $ bundle (localCounter, eb)
   (actualLocalCounter, actualRemoteCounter) = parseResult simResult
-  baud = SNat @(MaxBaudRate Basic50)
   clk = clockGen
   rst = resetGen
   ena = enableGen
-  simResult = fmap (chr . fromIntegral) $ catMaybes $ sampleN 100_000 uartStream
-  (uartStream, _, _) = withClockResetEnable (clockGen @Basic50) rst ena $ uart baud uartTx (pure Nothing)
-  uartTx = dut baud clk rst eb localCounter (pure 0)
+  simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+  uartStream =
+    sampleC def
+      $ withClockResetEnable clk rst enableGen
+      $ dut @System eb localCounter
+      <| idleSource
 
   {- The local counter starts counting up from 0x1122334411223344. The elastic buffer
   outputs Nothing for 1000 cycles, after which it will  start outputting a decreasing
@@ -82,36 +82,21 @@ case_capture_ugn_self_test =
 peripheral which runs the `capture_ugn_test` binary from `firmware-binaries`.
 -}
 dut ::
-  forall dom baud.
-  (KnownDomain dom, ValidBaud dom baud) =>
-  SNat baud ->
-  Clock dom ->
-  -- | CPU reset
-  Reset dom ->
+  forall dom.
+  (HiddenClockResetEnable dom) =>
   -- | Elastic buffer
   Signal dom (Maybe (BitVector 64)) ->
   -- | Local sequence counter
   Signal dom (Unsigned 64) ->
-  -- | USB_UART_TX
-  Signal dom Bit ->
-  -- | USB_UART_RX
-  Signal dom Bit
-dut baud clk rst eb localCounter usbUartTx = usbUartRx
+  Circuit (Df dom (BitVector 8)) (Df dom (BitVector 8))
+dut eb localCounter = circuit $ \uartRx -> do
+  eb <- ebCircuit -< ()
+  jtagIdle <- idleSource -< ()
+  [uartBus, ugnBus] <- processingElement @dom peConfig -< jtagIdle
+  (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
+  _bittideData <- captureUgn localCounter -< (ugnBus, eb)
+  idC -< uartTx
  where
-  (_, usbUartRx) = go (usbUartTx, pure ())
-
-  go =
-    toSignals
-      $ withClockResetEnable clk rst enableGen
-      $ circuit
-      $ \uartRx -> do
-        eb <- ebCircuit -< ()
-        jtagIdle <- idleSource -< ()
-        [uartBus, ugnBus] <- processingElement @dom peConfig -< jtagIdle
-        (uartTx, _uartStatus) <- uartWb d256 d16 baud -< (uartBus, uartRx)
-        _bittideData <- captureUgn localCounter -< (ugnBus, eb)
-        idC -< uartTx
-
   ebCircuit :: Circuit () (CSignal dom (Maybe (BitVector 64)))
   ebCircuit = Circuit $ const ((), eb)
 

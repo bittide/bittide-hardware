@@ -63,7 +63,8 @@ vexRiscvInner jtagIn0 uartRx =
 
   Circuit circuitFn = circuit $ \(uartRx, jtag) -> do
     [timeBus, uartBus, statusRegisterBus] <- processingElement peConfig -< jtag
-    (uartTx, _uartStatus) <- uartWb @dom d16 d16 (SNat @921600) -< (uartBus, uartRx)
+    (uartTx, _uartStatus) <-
+      uartInterfaceWb @dom d16 d16 (uartDf $ SNat @921600) -< (uartBus, uartRx)
     timeWb -< timeBus
     testResult <- statusRegister -< statusRegisterBus
     idC -< (testResult, uartTx)

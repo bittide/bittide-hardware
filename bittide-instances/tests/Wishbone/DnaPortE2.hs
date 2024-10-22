@@ -8,33 +8,29 @@
 module Wishbone.DnaPortE2 where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (withClockResetEnable)
+import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import qualified Prelude as P
 
-import Clash.Cores.UART (ValidBaud, uart)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
-import Clash.Explicit.Testbench
-import Clash.Xilinx.ClockGen
 import Data.Char
 import Data.Maybe
 import Language.Haskell.TH
 import Numeric
 import Project.FilePath
 import Protocols
+import Protocols.Idle
 import System.FilePath
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
-import VexRiscv
 
 import Bittide.DoubleBufferedRam
-import Bittide.Instances.Domains
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes
 import Bittide.Wishbone
-import Clash.Cores.UART.Extra (MaxBaudRate)
 
-import qualified Prelude as P
+import qualified Protocols.Df as Df
 
 -- | Test whether we can read the DNA from the DNA port peripheral.
 case_dna_port_self_test :: Assertion
@@ -46,42 +42,25 @@ case_dna_port_self_test = assertBool msg (receivedDna == simDna2)
       <> " not equal to expected dna "
       <> showHex simDna2 ""
   receivedDna = parseResult simResult
-  baud = SNat @(MaxBaudRate Basic50)
   clk = clockGen
   rst = resetGen
-  ena = enableGen
-  simResult = fmap (chr . fromIntegral) $ catMaybes $ sampleN 100_000 uartStream
-  (uartStream, _, _) = withClockResetEnable (clockGen @Basic50) rst ena $ uart baud uartTx (pure Nothing)
-  uartTx = dut baud (clockToDiffClock clk) rst (pure 0)
+  simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+  uartStream = sampleC def $ withClockResetEnable clk rst enableGen $ dut @System <| idleSource
 
 {- | A simple instance containing just VexRisc with UART and the DNA peripheral which
 runs the `dna_port_e2_test` binary from `firmware-binaries`.
 -}
 dut ::
-  forall dom baud.
-  (KnownDomain dom, ValidBaud dom baud) =>
-  SNat baud ->
-  "SYSCLK_125" ::: DiffClock Ext125 ->
-  "CPU_RESET" ::: Reset dom ->
-  "USB_UART_TX" ::: Signal dom Bit ->
-  "USB_UART_RX" ::: Signal dom Bit
-dut baud diffClk rst_in usbUartTx = usbUartRx
+  forall dom.
+  (HiddenClockResetEnable dom) =>
+  Circuit (Df dom (BitVector 8)) (Df dom (BitVector 8))
+dut = circuit $ \uartRx -> do
+  jtag <- idleSource -< ()
+  [uartBus, dnaWb] <- processingElement @dom peConfig -< jtag
+  (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
+  readDnaPortE2Wb simDna2 -< dnaWb
+  idC -< uartTx
  where
-  (_, usbUartRx) = go ((usbUartTx, pure $ JtagIn low low low), pure ())
-
-  go =
-    toSignals
-      $ withClockResetEnable clk200 rst200 enableGen
-      $ circuit
-      $ \(uartRx, jtag) -> do
-        [uartBus, dnaWb] <- processingElement @dom peConfig -< jtag
-        (uartTx, _uartStatus) <- uartWb d256 d16 baud -< (uartBus, uartRx)
-        readDnaPortE2Wb simDna2 -< dnaWb
-        idC -< uartTx
-
-  (clk200 :: Clock dom, pllLock :: Reset dom) = clockWizardDifferential diffClk noReset
-  rst200 = resetSynchronizer clk200 (unsafeOrReset rst_in pllLock)
-
   (iMem, dMem) =
     $( do
         root <- runIO $ findParentContaining "cabal.project"

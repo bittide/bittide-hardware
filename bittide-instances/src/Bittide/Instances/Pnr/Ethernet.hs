@@ -100,7 +100,7 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
       txClkEna
       rxClkEna
   macStatIf = wcre $ macStatusInterfaceWb d16
-  uart = wcre uartWb d32 d2 baud
+  uart = wcre $ uartInterfaceWb d32 d2 (uartDf baud)
   pe = wcre processingElement peConfig
   wbToAxiTx' = wcre wbToAxiTx
   wbAxiRxBuffer = wcre wbAxisRxBufferCircuit (SNat @2048)

@@ -280,11 +280,29 @@ uartDf baud = Circuit go
    where
     (received, txBit, ack) = uart baud rxBit (Df.dataToMaybe <$> request)
 
+-- | Component compatible with `uartInterfaceWb` for simulation purposes.
+uartSim ::
+  (HiddenClockResetEnable dom) =>
+  -- | Left side of circuit: word to send, receive interface
+  -- Right side of circuit: received word, transmit interface
+  Circuit
+    ( Df dom (BitVector 8)
+    , Df dom (BitVector 8)
+    )
+    ( CSignal dom (Maybe (BitVector 8))
+    , Df dom (BitVector 8)
+    )
+uartSim = Circuit go
+ where
+  go ((txByte, rxByte), (_, ack)) =
+    ((ack, pure $ Ack True), (Df.dataToMaybe <$> rxByte, txByte))
+
 {- | Wishbone accessible UART interface with configurable FIFO buffers.
-  It takes the depths of the transmit and receive buffers and the baud rate as parameters.
-  The function returns a 'Circuit' with a 'Wishbone' interface and a 'CSignal' for the UART
-  receive bit as inputs, and outputs a 'CSignal' for the UART transmit bit and a 'CSignal'
-  tuple indicating the status of the UART.
+  It takes the depths of the transmit and receive buffers and the uart implementation
+  as parameters. By explicitly passing the uart implementation, the user can choose
+  to either use a 'uartDf' circuit for actual serial communication or use `uartSim`
+  for simulation purposes. Alongside the uart interface, the component produces
+  a 'CSignal' tuple indicating the status of the transmit and receive buffers.
 
   The register layout is as follows:
   - Address 0 (BitVector 8): UART data register (read/write)
@@ -293,10 +311,9 @@ uartDf baud = Circuit go
     - 0b01: Transmit buffer full
     - 0b10: Receive buffer empty
 -}
-uartWb ::
-  forall dom addrW nBytes baudRate transmitBufferDepth receiveBufferDepth.
+uartInterfaceWb ::
+  forall dom addrW nBytes transmitBufferDepth receiveBufferDepth uartIn uartOut.
   ( HiddenClockResetEnable dom
-  , ValidBaud dom baudRate
   , 1 <= transmitBufferDepth
   , 1 <= receiveBufferDepth
   , KnownNat addrW
@@ -310,14 +327,14 @@ uartWb ::
   -- usage and usability.
   SNat receiveBufferDepth ->
   -- | Valid baud rates are constrained by @clash-cores@'s 'ValidBaud' constraint.
-  SNat baudRate ->
+  Circuit (Df dom (BitVector 8), uartIn) (CSignal dom (Maybe (BitVector 8)), uartOut) ->
   Circuit
-    (Wishbone dom 'Standard addrW (Bytes nBytes), CSignal dom Bit)
-    (CSignal dom Bit, CSignal dom (Bool, Bool))
-uartWb txDepth@SNat rxDepth@SNat baud = circuit $ \(wb, uartRx) -> do
+    (Wishbone dom 'Standard addrW (Bytes nBytes), uartIn)
+    (uartOut, CSignal dom (Bool, Bool))
+uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \(wb, uartRx) -> do
   (txFifoIn, uartStatus) <- wbToDf -< (wb, rxFifoOut, txFifoMeta)
   (txFifoOut, txFifoMeta) <- fifoWithMeta txDepth -< txFifoIn
-  (rxFifoIn, uartTx) <- uartDf baud -< (txFifoOut, uartRx)
+  (rxFifoIn, uartTx) <- uartImpl -< (txFifoOut, uartRx)
   (rxFifoOut, _rx') <- fifoWithMeta rxDepth <| unsafeToDf -< rxFifoIn
   idC -< (uartTx, uartStatus)
  where
@@ -393,7 +410,7 @@ uartWb txDepth@SNat rxDepth@SNat baud = circuit $ \(wb, uartRx) -> do
       status = (rxEmpty, txFull)
       invalidReq =
         deepErrorX
-          [i|uartWb: Invalid request.
+          [i|uartInterfaceWb: Invalid request.
           BUS: {busCycle}
           STR: {strobe}
           ADDR: {addr}
