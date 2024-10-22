@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 -- {-# OPTIONS -fplugin-opt=Protocols.Plugin:debug #-}
@@ -32,7 +33,8 @@ import Bittide.ProcessingElement
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
-import Paths_bittide_instances
+import Data.List (isPrefixOf)
+import Control.Monad (forM_)
 
 import System.IO
 import System.Exit
@@ -187,51 +189,109 @@ Run `verifyHitlVio` beforehand to ensure that the probe is available.
 getProbeTestStartTcl :: String
 getProbeTestStartTcl = getTestProbeTcl "*vioHitlt/probe_test_start"
 
-monitorFunc :: VivadoHandle -> String -> FilePath -> [(HwTarget, c)] -> IO ExitCode
-monitorFunc v _name ilaPath [(hwT, _preData)] = do
+runGdbCommands :: Handle -> [String] -> IO ()
+runGdbCommands h commands =
+  forM_ commands $ \command -> do
+    putStrLn $ "gdb-in: " <> command
+    hPutStrLn h command
+
+gdbEcho :: String -> String
+gdbEcho s = "echo \\n" <> s <> "\\n"
+
+monitorFunc :: VivadoHandle -> String -> FilePath -> [(HwTarget, (ProcessStdIoHandles, ProcessStdIoHandles, ProcessStdIoHandles, IO ()))] -> IO ExitCode
+monitorFunc v _name ilaPath [(hwT, (_ocd, pico, gdb, cleanup))] = do
   openHwT v hwT
   execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
   refresh_hw_device v []
 
-  gdbScript <- getDataFileName "data/gdb/test-gdb-prog"
-
   execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
   commit_hw_vio v ["[get_hw_vios]"]
 
-  runGdbPicocomOpenOcd gdbScript $ \gdbOut (picocomIn, picocomOut) -> do
-    -- This is the first thing that will print when the FPGA has been programmed
-    -- and starts executing the new program.
-    waitForLine picocomOut "Going in echo mode!"
+  -- break test
+  do
+    putStrLn "Testing whether breakpoints work"
 
-    -- Wait for GDB to reach its last command - where it will wait indefinitely
-    waitForLine gdbOut "> continue"
+    let breakCommands =
+          [ "break hello::test_success"
+          , "jump _start"
+          , gdbEcho "breakpoint reached"
+          ]
 
-    -- Test UART echo
-    hPutStrLn picocomIn "Hello, UART!"
-    waitForLine picocomOut "Hello, UART!"
+    runGdbCommands gdb.stdinHandle breakCommands
+    waitForLine gdb.stdoutHandle "breakpoint reached"
+
+    let continueCommands = [ "disable 1", gdbEcho "continuing", "continue" ]
+    runGdbCommands gdb.stdinHandle continueCommands
+    waitForLine gdb.stdoutHandle "continuing"
+
+
+
+  -- This is the first thing that will print when the FPGA has been programmed
+  -- and starts executing the new program.
+  waitForLine pico.stdoutHandle "Going in echo mode!"
+
+  -- Test UART echo
+  hPutStrLn pico.stdinHandle "Hello, UART!"
+  waitForLine pico.stdoutHandle "Hello, UART!"
+
 
   execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeTestStartTcl]
   commit_hw_vio v ["[get_hw_vios]"]
 
+  cleanup
 
   pure $ ExitSuccess
 monitorFunc _v _name _ilaPath _ = error "VexRiscv monitor func should only run with one hardware target"
 
-preProcessFunc :: VivadoHandle -> String -> HwTarget -> IO (TestStepResult ())
-preProcessFunc _v _name _hwT = do
-  pure $ TestStepSuccess ()
+preProcessFunc ::
+  VivadoHandle ->
+  String ->
+  FilePath ->
+  HwTarget ->
+  IO (TestStepResult (ProcessStdIoHandles, ProcessStdIoHandles, ProcessStdIoHandles, IO ()))
+preProcessFunc v _name ilaPath hwT = do
+  openHwT v hwT
+  execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
+  refresh_hw_device v []
 
-  -- gdbScript <- getDataFileName "data/gdb/test-gdb-prog"
+  execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
+  commit_hw_vio v ["[get_hw_vios]"]
 
-  -- runGdbPicocomOpenOcd gdbScript $ \gdbOut (picocomIn, picocomOut) -> do
-  --   -- This is the first thing that will print when the FPGA has been programmed
-  --   -- and starts executing the new program.
-  --   waitForLine picocomOut "Going in echo mode!"
+  (ocd, ocdClean) <- startOpenOcd
 
-  --   -- Wait for GDB to reach its last command - where it will wait indefinitely
-  --   waitForLine gdbOut "> continue"
+  -- make sure OpenOCD is started properly
+  let
+    -- Wait until we see "Halting processor", fail if we see an error
+    waitForHalt s
+      | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
+      | "Halting processor" `isPrefixOf` s = Stop Ok
+      | otherwise = Continue
 
-  --   -- Test UART echo
-  --   hPutStrLn picocomIn "Hello, UART!"
-  --   waitForLine picocomOut "Hello, UART!"
-  -- pure ()
+  hSetBuffering ocd.stderrHandle LineBuffering
+  expectLine ocd.stderrHandle waitForHalt
+
+  -- make sure PicoCom is started properly
+  (pico, picoClean) <- startPicocom
+
+  hSetBuffering pico.stdinHandle LineBuffering
+  hSetBuffering pico.stdoutHandle LineBuffering
+
+  waitForLine pico.stdoutHandle "Terminal ready"
+
+  -- program the FPGA
+  (gdb, gdbClean) <- startGdb
+
+  hSetBuffering gdb.stdinHandle LineBuffering
+
+  let loadCommands =
+        [ "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/debug/hello\""
+        , "target extended-remote :3333"
+        , "load"
+        , gdbEcho "load done"
+        ]
+
+  runGdbCommands gdb.stdinHandle loadCommands
+
+  waitForLine gdb.stdoutHandle "load done"
+
+  pure $ TestStepSuccess (ocd, pico, gdb, ocdClean >> picoClean >> gdbClean)

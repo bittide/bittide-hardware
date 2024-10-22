@@ -831,7 +831,7 @@ runHitlTestCase ::
   -- | The HITL test case to run
   HitlTestCase HwTarget a b c ->
   -- | Pre-process function for the test group
-  (VivadoHandle -> String -> HwTarget -> IO (TestStepResult c)) ->
+  (VivadoHandle -> String -> FilePath -> HwTarget -> IO (TestStepResult c)) ->
   -- | Monitor function
   Maybe (VivadoHandle -> String -> FilePath -> [(HwTarget, c)] -> IO ExitCode) ->
   -- | Path to the generated probes file
@@ -912,12 +912,12 @@ runHitlTestCase v testCase@HitlTestCase{..} preProcessFunc monitorFunc probesFil
             putStrLn $
               "Running test-group pre-process function for "
                 <> name <> " ('" <> prettyShow hwT <> "')"
-            preProcessFunc v name hwT
+            preProcessFunc v name probesFilePath hwT
           CustomPreProcess f -> do
             putStrLn $
               "Running case pre-process function for "
                 <> name <> " ('" <> prettyShow hwT <> "')"
-            f v hwT
+            f v probesFilePath hwT
 
 
         case testRunData of
@@ -940,8 +940,11 @@ runHitlTestCase v testCase@HitlTestCase{..} preProcessFunc monitorFunc probesFil
 
       testCaseExitCode0 <- case monitorFunc of
         Just fn -> do
+          putStrLn $ "Running custom monitor function for test " <> name
           fn v name probesFilePath validTests
         Nothing -> do
+          putStrLn $ "Running default monitor function for test " <> name
+
           forM_ validTests $ \(hwT, _testData) -> do
             -- Assert HitlVio start probe
             openHwT v hwT

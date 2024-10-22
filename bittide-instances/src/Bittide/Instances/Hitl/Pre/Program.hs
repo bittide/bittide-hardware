@@ -100,58 +100,74 @@ waitForLine h expected =
 --        through code.
 --
 
-{-
-case_testGdbProgram :: Assertion
-case_testGdbProgram = do
+data ProcessStdIoHandles = ProcessStdIoHandles
+  { stdinHandle :: Handle
+  , stdoutHandle :: Handle
+  , stderrHandle :: Handle
+  }
+
+data RemoteConnectionData = RemoteConnectionData
+  { openOcd :: ProcessStdIoHandles
+  , gdb :: ProcessStdIoHandles
+  , picocom :: ProcessStdIoHandles
+  , cleanup :: IO ()
+  }
+
+startOpenOcd :: IO (ProcessStdIoHandles, IO ())
+startOpenOcd = do
   startOpenOcdPath <- getOpenOcdStartPath
+  let
+    openOcdProc = (proc startOpenOcdPath []){std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe}
+
+  ocdHandles@(openOcdStdin, openOcdStdout, openOcdStderr, _openOcdPh) <-
+    createProcess openOcdProc
+
+  let
+    ocdHandles' = ProcessStdIoHandles
+      { stdinHandle = fromJust openOcdStdin
+      , stdoutHandle = fromJust openOcdStdout
+      , stderrHandle = fromJust openOcdStderr
+      }
+
+  pure (ocdHandles', cleanupProcess ocdHandles)
+
+startGdb :: IO (ProcessStdIoHandles, IO ())
+startGdb = do
+  let
+    gdbProc = (proc "gdb" []){std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe}
+
+  gdbHandles@(gdbStdin, gdbStdout, gdbStderr, _gdbPh) <-
+    createProcess gdbProc
+
+  let
+    gdbHandles' = ProcessStdIoHandles
+      { stdinHandle = fromJust gdbStdin
+      , stdoutHandle = fromJust gdbStdout
+      , stderrHandle = fromJust gdbStderr
+      }
+
+  pure (gdbHandles', cleanupProcess gdbHandles)
+
+startPicocom :: IO (ProcessStdIoHandles, IO ())
+startPicocom = do
   startPicocomPath <- getPicocomStartPath
   uartDev <- getUartDev
 
-  gdbProc <- getGdbProgPath
+  let
+    picocomProc = (proc startPicocomPath [uartDev]){std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe}
 
-  withAnnotatedGdbProgPath gdbProc $ \gdbProgPath -> do
-    let
-      openOcdProc = (proc startOpenOcdPath []){std_err = CreatePipe}
-      picocomProc = (proc startPicocomPath [uartDev]){std_out = CreatePipe, std_in = CreatePipe}
-      gdbProc = (proc "gdb" ["--command", gdbProgPath]){std_out = CreatePipe, std_err = CreatePipe}
+  picoHandles@(picoStdin, picoStdout, picoStderr, _picoPh) <-
+    createProcess picocomProc
 
-      -- Wait until we see "Halting processor", fail if we see an error
-      waitForHalt s
-        | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
-        | "Halting processor" `isPrefixOf` s = Stop Ok
-        | otherwise = Continue
+  let
+    picoHandles' = ProcessStdIoHandles
+      { stdinHandle = fromJust picoStdin
+      , stdoutHandle = fromJust picoStdout
+      , stderrHandle = fromJust picoStderr
+      }
 
-    withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
-      hSetBuffering openOcdStdErr LineBuffering
-      expectLine openOcdStdErr waitForHalt
+  pure (picoHandles', cleanupProcess picoHandles)
 
-      -- XXX: Picocom doesn't immediately clean up after closing, because it
-      --      spawns as a child of the shell (start.sh). We could use 'exec' to
-      --      make sure the intermediate shell doesn't exist, but this causes
-      --      the whole test program to exit with signal 15 (??????).
-      withCreateProcess picocomProc $ \maybePicocomStdIn maybePicocomStdOut _ _ -> do
-        let
-          picocomStdIn = fromJust maybePicocomStdIn
-          picocomStdOut = fromJust maybePicocomStdOut
-
-        hSetBuffering picocomStdIn LineBuffering
-        hSetBuffering picocomStdOut LineBuffering
-
-        waitForLine picocomStdOut "Terminal ready"
-
-        withCreateProcess gdbProc $ \_ (fromJust -> gdbStdOut) _ _ -> do
-          -- Wait for GDB to program the FPGA. If successful, we should see
-          -- "going in echo mode" in the picocom output.
-          hSetBuffering gdbStdOut LineBuffering
-          waitForLine picocomStdOut "Going in echo mode!"
-
-          -- Wait for GDB to reach its last command - where it will wait indefinitely
-          waitForLine gdbStdOut "> continue"
-
-          -- Test UART echo
-          hPutStrLn picocomStdIn "Hello, UART!"
-          waitForLine picocomStdOut "Hello, UART!"
--}
 
 runGdbPicocomOpenOcd ::
   -- | Path to the GDB script to run

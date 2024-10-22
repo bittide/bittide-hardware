@@ -188,7 +188,7 @@ data HitlTestGroup where
     , extraXdcFiles :: [String]
     , testCases :: [HitlTestCase HwTargetRef a b c]
     -- ^ List of test cases
-    , mPreProc :: (VivadoHandle -> String -> HwTarget -> IO (TestStepResult c))
+    , mPreProc :: (VivadoHandle -> String -> FilePath -> HwTarget -> IO (TestStepResult c))
     -- ^ Pre-processing step. First argument is the name of the test
     , mMonitorProc :: Maybe (VivadoHandle -> String -> FilePath -> [(HwTarget, c)] -> IO ExitCode)
     -- ^ Optional monitoring process.
@@ -216,7 +216,7 @@ deriving instance Show (HitlTestCase h a b c)
 
 data CasePreProcessing c
   = InheritPreProcess
-  | CustomPreProcess (VivadoHandle -> HwTarget -> IO (TestStepResult c))
+  | CustomPreProcess (VivadoHandle -> FilePath -> HwTarget -> IO (TestStepResult c))
 
 instance Show (CasePreProcessing a) where
   show InheritPreProcess = "InheritPreProcess"
@@ -239,8 +239,8 @@ instance MayHavePostProcData a where
 instance MayHavePostProcData () where
   mGetPPD = Map.fromList . map ((,Nothing) . name)
 
-noPreProcess :: VivadoHandle -> String -> HwTarget -> IO (TestStepResult ())
-noPreProcess _ _ _ = pure (TestStepSuccess ())
+noPreProcess :: VivadoHandle -> String -> FilePath -> HwTarget -> IO (TestStepResult ())
+noPreProcess _ _ _ _ = pure (TestStepSuccess ())
 
 -- | Obtain a list of the hardware targets that are relevant for a given HITL test.
 hwTargetRefsFromHitlTestGroup :: HitlTestGroup -> [HwTargetRef]
