@@ -264,6 +264,8 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow clocksAdjusted
 
+  txReady = unsafeSynchronizer sysClk (head transceivers.txClocks) notInCCReset
+
   transceivers =
     transceiverPrbsN
       @GthTx
@@ -285,7 +287,7 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
         -- , txReadys = txAllStables
         -- , rxReadys = repeat (pure True)
         , txDatas = repeat (pure 0)
-        , txReadys = repeat (pure False)
+        , txReadys = repeat txReady
         , rxReadys = repeat (pure True)
         }
 
@@ -636,7 +638,8 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
       $ mux
         adjusting
         (speedChangeToPins <$> setupAdjustments)
-        (speedChangeToStickyPins sysClk clockControlReset enableGen (SNat @Si539xHoldTime) clockMod)
+        ( speedChangeToStickyPins sysClk clockControlReset enableGen (SNat @Si539xHoldTime) clockMod
+        )
 
   domainDiffs :: Vec LinkCount (Signal Basic125 FincFdecCount)
   domainDiffs =
@@ -787,6 +790,7 @@ speedChangeToFincFdec' clk rst =
 
 Updates once per millisecond.
 -}
+
 -- fillStats ::
 --   forall dom a.
 --   (KnownDomain dom, Ord a, Num a, Bounded a, NFDataX a) =>
@@ -830,6 +834,7 @@ Stable means equal to its previous value according to the 'Eq' instance.
 The 'BitPack' instance is only used as a convenient way of intialization,
 it resets to a previous value of @unpack 0@.
 -}
+
 -- stableFor ::
 --   forall n dom a.
 --   (KnownNat n, KnownDomain dom, Eq a, BitPack a, NFDataX a) =>
@@ -844,19 +849,20 @@ it resets to a previous value of @unpack 0@.
 --     | inp == prev = (prev, satSucc SatBound cntr)
 --     | otherwise = (inp, 0)
 
--- | Wrapper around 'stableFor' that checks the input has been stable for atleast @ms@ milliseconds
--- stableForMs ::
---   forall ms dom a.
---   (KnownNat ms, KnownDomain dom, Eq a, BitPack a, NFDataX a) =>
---   SNat ms ->
---   Clock dom ->
---   Reset dom ->
---   Signal dom a ->
---   Signal dom Bool
--- stableForMs SNat clk rst inp =
---   liftA2 (>=) stable (snatToNum (SNat @(PeriodToCycles dom (Milliseconds ms))))
---  where
---   stable = stableFor @(CLog 2 (PeriodToCycles dom (Milliseconds ms))) clk rst inp
+{- | Wrapper around 'stableFor' that checks the input has been stable for atleast @ms@ milliseconds
+stableForMs ::
+  forall ms dom a.
+  (KnownNat ms, KnownDomain dom, Eq a, BitPack a, NFDataX a) =>
+  SNat ms ->
+  Clock dom ->
+  Reset dom ->
+  Signal dom a ->
+  Signal dom Bool
+stableForMs SNat clk rst inp =
+  liftA2 (>=) stable (snatToNum (SNat @(PeriodToCycles dom (Milliseconds ms))))
+ where
+  stable = stableFor @(CLog 2 (PeriodToCycles dom (Milliseconds ms))) clk rst inp
+-}
 
 -- | Top entity for this test. See module documentation for more information.
 swCcTopologyTest ::
