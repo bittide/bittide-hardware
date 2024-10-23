@@ -44,9 +44,9 @@ tests =
     [ testPropertyNamed "Reading readData from slaves." "readingSlaves" readingSlaves
     , testPropertyNamed "Writing and reading from slaves." "writingSlaves" writingSlaves
     , testPropertyNamed
-        "Send and receive bytes via uartWb"
-        "uartWbCircuitTest"
-        uartWbCircuitTest
+        "Send and receive bytes via uartInterfaceWb"
+        "uartInterfaceWbCircuitTest"
+        uartInterfaceWbCircuitTest
     ]
 
 data UartMachineState = ReadStatus | ReadByte | WriteByte | OutputByte (BitVector 8)
@@ -106,15 +106,15 @@ uartMachine = Circuit (second unbundle . mealyB go ReadStatus . second bundle)
         }
   go WriteByte (NoData, _) = (ReadStatus, (Ack False, (emptyWishboneM2S, NoData)))
 
--- | Check if we can combine `uartWb` in loopback mode and `uartMachine` to create `id`.
-uartWbCircuitTest :: Property
-uartWbCircuitTest = do
+-- | Check if we can combine `uartInterfaceWb` in loopback mode and `uartMachine` to create `id`.
+uartInterfaceWbCircuitTest :: Property
+uartInterfaceWbCircuitTest = do
   let
     dataGen = Gen.list (Range.linear 0 32) $ genDefinedBitVector @8
     dut :: (HiddenClockResetEnable System) => Circuit (Df System Byte) (Df System Byte)
     dut = circuit $ \dfIn -> do
       (wb, dfOut) <- uartMachine -< dfIn
-      (uartTx, _status) <- uartWb @System @32 d2 d2 (SNat @6250000) -< (wb, uartTx)
+      (uartTx, _status) <- uartInterfaceWb @System @32 d2 d2 uartSim -< (wb, uartTx)
       idC -< dfOut
     expectOptions =
       defExpectOptions

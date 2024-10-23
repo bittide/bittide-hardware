@@ -8,28 +8,28 @@
 
 module Wishbone.Axi where
 
+-- Preludes
 import Clash.Explicit.Prelude
+import Clash.Prelude (withClockResetEnable)
 
+-- Local
 import Bittide.Axi4
 import Bittide.DoubleBufferedRam
-import Bittide.Instances.Domains
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes
 import Bittide.Wishbone
-import Clash.Cores.UART (ValidBaud, uart)
-import Clash.Cores.UART.Extra (MaxBaudRate)
-import Clash.Explicit.Testbench
-import Clash.Prelude (withClockResetEnable)
-import Clash.Xilinx.ClockGen
+import Project.FilePath
+
+-- Other
 import Control.Monad (forM_)
 import Data.Char
 import Data.Maybe
 import Data.Proxy
 import Language.Haskell.TH
-import Project.FilePath
 import Protocols
 import Protocols.Axi4.Stream
+import Protocols.Idle
 import Protocols.Wishbone
 import System.FilePath
 import Test.Tasty
@@ -37,8 +37,9 @@ import Test.Tasty.HUnit
 import Test.Tasty.TH
 import Text.Parsec
 import Text.Parsec.String
-import VexRiscv
 
+-- Qualified
+import qualified Protocols.Df as Df
 import qualified Protocols.DfConv as DfConv
 
 {- | Run the axi module self test with processingElement and inspect it's uart output.
@@ -54,33 +55,21 @@ case_axi_stream_rust_self_test =
  where
   assertResult (TestResult name (Just errMsg)) = assertFailure ("Test " <> name <> " failed with error \"" <> errMsg <> "\"")
   assertResult (TestResult _ Nothing) = return ()
-  baud = SNat @(MaxBaudRate Basic50)
-  clk = clockGen
-  rst = resetGen
-  ena = enableGen
-  simResult = fmap (chr . fromIntegral) $ catMaybes $ sampleN 500_000 uartStream
-  (uartStream, _, _) = withClockResetEnable (clockGen @Basic50) rst ena $ uart baud uartTx (pure Nothing)
-  (_, uartTx) = dut baud (clockToDiffClock clk) rst (pure 0, pure ())
+  simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+  uartStream = sampleC def dut
 
 {- | A simple instance containing just VexRisc and UART as peripheral.
 Runs the `hello` binary from `firmware-binaries`.
 -}
-dut ::
-  forall dom baud.
-  (KnownDomain dom, ValidBaud dom baud) =>
-  SNat baud ->
-  "SYSCLK_125" ::: DiffClock Ext125 ->
-  "CPU_RESET" ::: Reset dom ->
-  ("USB_UART_TX" ::: Signal dom Bit, Signal dom ()) ->
-  (Signal dom (), "USB_UART_RX" ::: Signal dom Bit)
-dut baud diffClk rst_in =
-  toSignals
-    $ withClockResetEnable clk200 rst200 enableGen
+dut :: Circuit () (Df System (BitVector 8))
+dut =
+  withClockResetEnable clockGen resetGen enableGen
     $ circuit
-    $ \uartTx -> do
-      [uartBus, axiTxBus, wbNull, axiRxBus] <- processingElement @dom peConfig <| jtagIdle -< ()
+    $ \_unit -> do
+      (uartTx, jtag) <- idleSource -< ()
+      [uartBus, axiTxBus, wbNull, axiRxBus] <- processingElement peConfig -< jtag
       wbAlwaysAck -< wbNull
-      (uartRx, _uartStatus) <- uartWb d128 d2 baud -< (uartBus, uartTx)
+      (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartTx)
       _interrupts <- wbAxisRxBufferCircuit (SNat @128) -< (axiRxBus, axiStream)
       axiStream <-
         axiUserMapC (const False)
@@ -90,10 +79,7 @@ dut baud diffClk rst_in =
           -< axiTxBus
       idC -< uartRx
  where
-  axiProxy = Proxy @(Axi4Stream dom ('Axi4StreamConfig 4 0 0) ())
-  (clk200 :: Clock dom, pllLock :: Reset dom) = clockWizardDifferential diffClk noReset
-  rst200 = resetSynchronizer clk200 (unsafeOrReset rst_in pllLock)
-
+  axiProxy = Proxy @(Axi4Stream System ('Axi4StreamConfig 4 0 0) ())
   (iMem, dMem) =
     $( do
         root <- runIO $ findParentContaining "cabal.project"
@@ -103,7 +89,6 @@ dut baud diffClk rst_in =
         memBlobsFromElf BigEndian (Nothing, Nothing) elfPath Nothing
      )
 
-  jtagIdle = Circuit $ const ((), pure $ JtagIn low low low)
   peConfig =
     PeConfig
       (0b000 :> 0b001 :> 0b010 :> 0b011 :> 0b100 :> 0b101 :> Nil)
