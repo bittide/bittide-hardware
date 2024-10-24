@@ -24,7 +24,7 @@ data ClockControlData (nLinks :: Nat) = ClockControlData
   , allStable :: Bool
   , allSettled :: Bool
   }
-  deriving (Generic, NFDataX)
+  deriving (Generic, NFDataX, ShowX, Show)
 
 instance
   HasField
