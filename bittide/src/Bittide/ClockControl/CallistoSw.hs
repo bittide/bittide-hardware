@@ -108,9 +108,9 @@ callistoSwClockControl clk rst ena (SwControlConfig (reframe :: Signal dom Bool)
   (_, (ccData, debugData)) =
     toSignals
       ( circuit $ \jtag -> do
-          [wbA, wbB, wbC] <-
+          [wbClockControl, wbDebug, wbDummy] <-
             withClockResetEnable clk rst ena $ processingElement peConfig -< jtag
-          idleSink -< wbC
+          idleSink -< wbDummy
           [ccd0, ccd1] <-
             csDupe
               <| withClockResetEnable
@@ -118,12 +118,12 @@ callistoSwClockControl clk rst ena (SwControlConfig (reframe :: Signal dom Bool)
                 rst
                 ena
                 (clockControlWb mgn fsz mask ebs)
-              -< wbA
+              -< wbClockControl
           cm <- cSigMap clockMod -< ccd0
           dbg <-
             withClockResetEnable clk rst enableGen
               $ debugRegisterWb debugRegisterCfg
-              -< (wbB, cm)
+              -< (wbDebug, cm)
           idC -< (ccd1, dbg)
       )
       (pure $ JtagIn low low low, (pure (), pure ()))
