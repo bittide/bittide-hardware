@@ -11,6 +11,7 @@ import Clash.Prelude
 
 import Bittide.ClockControl (RelDataCount, targetDataCount)
 import Bittide.ClockControl.Callisto.Util (dataCountToSigned)
+import Clash.Signal.TH.Extra
 
 -- | Stability results to be returned by the 'stabilityChecker'.
 data StabilityIndication = StabilityIndication
@@ -21,6 +22,8 @@ data StabilityIndication = StabilityIndication
   -- 'targetDataCount'.
   }
   deriving (Generic, NFDataX, BitPack)
+
+deriveSignalHasFields ''StabilityIndication
 
 {- | Checks whether the @Signal@ of buffer occupancies from an elastic
 buffer is stable and settled. The @Signal@ is considered to be
