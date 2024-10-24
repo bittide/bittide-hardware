@@ -45,8 +45,8 @@ import System.FilePath
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
-import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
-import Bittide.ClockControl.Registers (clockControlWb)
+import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
+import Bittide.ClockControl.Registers (ClockControlData (clockMod), clockControlWb)
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
 import Bittide.DoubleBufferedRam (ContentType (Blob), InitialContent (Reloadable))
@@ -60,7 +60,7 @@ import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology (TopologyType (..))
 import Bittide.Transceiver (transceiverPrbsN)
 
-import Bittide.Instances.Hitl.HwCcTopologies (commonSpiConfig)
+import Bittide.Instances.Hitl.HwCcTopologies (cSigMap, commonSpiConfig, csDupe)
 import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup hiding (FpgaCount, LinkCount)
 import Project.FilePath
@@ -76,6 +76,7 @@ import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen
 
 import Protocols
+import Protocols.Idle
 import VexRiscv
 
 import qualified Bittide.Transceiver as Transceiver
@@ -89,10 +90,16 @@ clockControlConfig ::
 clockControlConfig =
   $(lift (instancesClockConfig (Proxy @Basic125)))
 
+debugRegisterConfig :: DebugRegisterCfg
+debugRegisterConfig =
+  DebugRegisterCfg
+    { reframingEnabled = False
+    }
+
 -- | Instantiates a RiscV core
 fullMeshRiscvTest ::
   forall dom.
-  (KnownDomain dom) =>
+  (KnownDomain dom, 1 <= DomainPeriod dom) =>
   Clock dom ->
   Reset dom ->
   Vec LinkCount (Signal dom (RelDataCount 32)) ->
@@ -102,17 +109,29 @@ fullMeshRiscvTest ::
   )
 fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
  where
-  (_, fIncDec) =
+  (_, ccData) =
     toSignals
       ( circuit $ \jtag -> do
-          [wbB] <- withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
-          (fIncDec, _allStable) <-
+          [wbClockControl, wbDebug, wbDummy] <-
+            withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
+          idleSink -< wbDummy
+          [ccd0, ccd1] <-
+            csDupe
+              <| withClockResetEnable
+                clk
+                rst
+                enableGen
+                (clockControlWb margin framesize (pure $ complement 0) dataCounts)
+              -< wbClockControl
+          cm <- cSigMap clockMod -< ccd0
+          _debugData <-
             withClockResetEnable clk rst enableGen
-              $ clockControlWb margin framesize (pure $ complement 0) dataCounts
-              -< wbB
-          idC -< fIncDec
+              $ debugRegisterWb (pure debugRegisterConfig)
+              -< (wbDebug, cm)
+          idC -< ccd1
       )
       (pure $ JtagIn low low low, pure ())
+  fIncDec = speedChangeToStickyPins clk rst enableGen (SNat @Si539xHoldTime) ccData.clockMod
 
   margin = d2
 
@@ -130,13 +149,15 @@ fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
      )
 
   {-
-    0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
-    0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
-    0b11xxxxx_xxxxxxxx 0b11 0xCx memory mapped hardware clock control
+    0b100xxxxx_xxxxxxxx 0b100 0x8x instruction memory
+    0b010xxxxx_xxxxxxxx 0b010 0x4x data memory
+    0b110xxxxx_xxxxxxxx 0b110 0xCx memory mapped hardware clock control
+    0b111xxxxx_xxxxxxxx 0b111 0xEx memory mapped debug register
+    0b001xxxxx_xxxxxxxx 0b001 0x20 dummy to widen the memory map
   -}
   peConfig =
     PeConfig
-      (0b10 :> 0b01 :> 0b11 :> Nil)
+      (0b100 :> 0b010 :> 0b110 :> 0b111 :> 0b001 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
 
@@ -509,8 +530,12 @@ fullMeshHwTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso =
   frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
   frequencyAdjustments =
     E.delay sysClk enableGen minBound {- glitch filter -}
-      $ withClockResetEnable sysClk clockControlReset enableGen
-      $ stickyBits @Basic125 d20 (speedChangeToPins . fromMaybe NoChange <$> clockMod)
+      $ speedChangeToStickyPins
+        sysClk
+        clockControlReset
+        enableGen
+        (SNat @Si539xHoldTime)
+        clockMod
 
   domainDiffs =
     domainDiffCounterExt sysClk clockControlReset

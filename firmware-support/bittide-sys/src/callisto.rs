@@ -4,7 +4,10 @@
 
 use ufmt::derive::uDebug;
 
-use crate::clock_control::SpeedChange;
+use crate::{
+    clock_control::{ClockControl, SpeedChange},
+    debug_register::DebugRegister,
+};
 
 /// Rust sibling of
 /// `Bittide.ClockControl.StabilityChecker.StabilityIndication`.
@@ -31,7 +34,7 @@ pub struct ControlConfig {
     /// Enable reframing. Reframing allows a system to resettle buffers around
     /// their midpoints, without dropping any frames. For more information, see
     /// [arXiv:2303.11467](https://arxiv.org/abs/2303.11467).
-    pub reframing_enabled: usize,
+    pub reframing_enabled: bool,
     /// Number of cycles to wait until reframing takes place after
     /// stability has been detected.
     pub wait_time: usize,
@@ -42,6 +45,7 @@ pub struct ControlConfig {
 /// Rust version of
 /// `Bittide.ClockControl.Callisto.Types.ReframingState`.
 #[derive(Clone)]
+#[repr(C)]
 pub enum ReframingState {
     /// The controller remains in this state until stability has been
     /// detected.
@@ -59,6 +63,42 @@ pub enum ReframingState {
     },
 }
 
+// Asserts to make sure that things are packaged as they should be.
+const _: () = {
+    use core::mem;
+
+    assert!(12 == mem::size_of::<ReframingState>());
+    assert!(4 == mem::align_of::<ReframingState>());
+
+    // Assert that a `Detect` looks like a 0 in the discriminant part.
+    assert!(unsafe {
+        let tmp = ReframingState::Detect;
+        0u32 == *(&tmp as *const _ as *const u32)
+    });
+
+    // Assert that a `Detect` looks like a 0 in the discriminant part.
+    assert!(unsafe {
+        let tmp = ReframingState::Done;
+        1u32 == *(&tmp as *const _ as *const u32)
+    });
+
+    // Ensure that the memory layout of a `Wait` is what the Wishbone bus expects:
+    // 0x00: discriminant (u32)
+    // 0x04: target correction (f32)
+    // 0x08: target count (u32)
+    unsafe {
+        let tmp = ReframingState::Wait {
+            target_correction: 3.321,
+            cur_wait_time: 12345,
+        };
+        let ptr = &tmp as *const ReframingState;
+        let ptr = ptr.cast::<u32>();
+        assert!(2 == ptr.read());
+        assert!(3.321 == ptr.add(1).cast::<f32>().read());
+        assert!(12345 == ptr.add(2).read());
+    }
+};
+
 /// Rust version of `Bittide.ClockControl.Callisto.Types.ControlSt`.
 #[derive(Clone)]
 pub struct ControlSt {
@@ -72,45 +112,54 @@ pub struct ControlSt {
     /// Steady-state value (determined when stability is detected for
     /// the first time).
     pub steady_state_target: f32,
-    /// finite state machine for reframing detection
-    pub rf_state: ReframingState,
+    /// Debug register
+    pub debug_register: DebugRegister,
 }
 
 impl ControlSt {
-    fn rf_state_update(&mut self, wait_time: usize, enabled: bool, stable: bool, target: f32) {
-        if enabled {
-            match self.rf_state {
-                ReframingState::Detect if stable => {
-                    self.rf_state = ReframingState::Wait {
-                        target_correction: target,
-                        cur_wait_time: wait_time as u32,
-                    }
-                }
-                ReframingState::Wait {
-                    ref mut cur_wait_time,
-                    ..
-                } if *cur_wait_time > 0 => *cur_wait_time -= 1,
-                ReframingState::Wait {
-                    target_correction, ..
-                } => {
-                    self.rf_state = ReframingState::Done;
-                    self.steady_state_target = target_correction;
-                }
-                _ => (),
+    pub fn new(
+        z_k: i32,
+        b_k: SpeedChange,
+        steady_state_target: f32,
+        debug_register: DebugRegister,
+        init_rf_state: ReframingState,
+    ) -> Self {
+        let mut new = ControlSt {
+            z_k,
+            b_k,
+            steady_state_target,
+            debug_register,
+        };
+        new.debug_register.set_rf_state(init_rf_state);
+        new
+    }
+
+    fn rf_state_update(&mut self, wait_time: usize, stable: bool, target: f32) {
+        match self.debug_register.get_rf_state() {
+            ReframingState::Detect if stable => {
+                self.debug_register.set_rf_state(ReframingState::Wait {
+                    target_correction: target,
+                    cur_wait_time: wait_time as u32,
+                });
             }
+            ReframingState::Wait {
+                ref mut cur_wait_time,
+                ..
+            } if *cur_wait_time > 0 => *cur_wait_time -= 1,
+            ReframingState::Wait {
+                target_correction, ..
+            } => {
+                self.debug_register.set_rf_state(ReframingState::Done);
+                self.steady_state_target = target_correction;
+            }
+            _ => (),
         }
     }
 }
 
 /// Clock correction strategy based on:
 /// [https://github.com/bittide/Callisto.jl](https://github.com/bittide/Callisto.jl)
-pub fn callisto(
-    config: &ControlConfig,
-    availability_mask: u32,
-    links_stable: u32,
-    data_counts: impl Iterator<Item = isize>,
-    state: &mut ControlSt,
-) {
+pub fn callisto(cc: &ClockControl, config: &ControlConfig, state: &mut ControlSt) {
     // see clock control algorithm simulation here:
     //
     // https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
@@ -121,8 +170,8 @@ pub fn callisto(
     const K_P: f32 = 2e-8;
     const FSTEP: f32 = 100e-9;
 
-    let n_buffers = availability_mask.count_ones();
-    let measured_sum = data_counts.sum::<isize>() as i32;
+    let n_buffers = cc.up_links();
+    let measured_sum = cc.data_counts().sum::<i32>();
     let r_k = (measured_sum - n_buffers as i32 * config.target_count as i32) as f32;
     let c_des = K_P * r_k + state.steady_state_target;
 
@@ -138,10 +187,11 @@ pub fn callisto(
         SpeedChange::NoChange
     };
 
-    state.rf_state_update(
-        config.wait_time,
-        config.reframing_enabled != 0,
-        links_stable.count_ones() == n_buffers,
-        c_des,
-    );
+    if config.reframing_enabled {
+        state.rf_state_update(
+            config.wait_time,
+            cc.links_stable() ^ cc.link_mask() == 0,
+            c_des,
+        );
+    }
 }

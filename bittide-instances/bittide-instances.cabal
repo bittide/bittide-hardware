@@ -191,6 +191,7 @@ test-suite unittests
     -threaded
 
   other-modules:
+    Tests.ClockControlWb
     Tests.OverflowResistantDiff
     Wishbone.Axi
     Wishbone.CaptureUgn
