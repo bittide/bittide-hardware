@@ -8,6 +8,7 @@ import Prelude
 
 import Test.Tasty
 
+import qualified Tests.ClockControlWb as ClockControlWb
 import qualified Tests.OverflowResistantDiff as Ord
 import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
@@ -19,6 +20,7 @@ tests =
   testGroup
     "Unittests"
     [ CaptureUgn.tests
+    , ClockControlWb.tests
     , DnaPortE2.tests
     , Ord.tests
     , Time.tests
