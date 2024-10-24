@@ -56,11 +56,10 @@ import Clash.Explicit.Signal.Extra
 import Clash.Sized.Extra (concatUnsigneds)
 
 import Bittide.Arithmetic.Time (PeriodToCycles, trueFor)
-import Bittide.ClockControl (ClockControlConfig, RelDataCount, SpeedChange (..))
+import Bittide.ClockControl (RelDataCount, SpeedChange (..))
 import Bittide.ClockControl.Callisto (
   CallistoResult (..),
   ReframingState (..),
-  callistoClockControl,
  )
 import Bittide.ClockControl.StabilityChecker
 import Bittide.Extra.Maybe (orNothing)
@@ -455,6 +454,16 @@ data DiffResult a
     TooLarge
   deriving (Generic, BitPack, NFDataX, Functor, Eq, Ord, Show)
 
+type CallistoCc n m sys cfg =
+  (KnownDomain sys, HasSynchronousReset sys) =>
+  Clock sys ->
+  Reset sys ->
+  Enable sys ->
+  cfg ->
+  Signal sys (BitVector n) ->
+  Vec n (Signal sys (RelDataCount m)) ->
+  Signal sys (CallistoResult n)
+
 {-# NOINLINE callistoClockControlWithIla #-}
 
 {- | Wrapper on 'Bittide.ClockControl.Callisto.callistoClockControl'
@@ -462,16 +471,27 @@ additionally dumping all the data that is required for producing
 plots of the clock control behavior.
 -}
 callistoClockControlWithIla ::
-  forall n m sys dyn margin framesize.
+  forall n m cfg sys dyn.
   (HasCallStack) =>
   (KnownDomain dyn, KnownDomain sys, HasSynchronousReset sys) =>
-  (KnownNat n, KnownNat m, KnownNat margin, KnownNat framesize) =>
-  (1 <= n, 1 <= m, n + m <= 32, 1 <= framesize, 6 + n * (m + 4) <= 1024) =>
+  (KnownNat n, KnownNat m) =>
+  {- Reasoning for the '6 + n * (m + 4) <= 1024' bound:
+
+  In short, it's the upper bound on the data stored in 'PlotData n m'.
+
+  The details:
+    - 6 bits for 'dSpeedChange' plus 'dRfStateChange'
+    - 4 bits for the two 'Maybe Bool's
+    - 'm' bits for the 'RelDataCount m'
+    - 'n * (4 + m)' bits for 'dEBData'
+  -}
+  (1 <= n, 1 <= m, 6 + n * (m + 4) <= 1024) =>
   (CompressedBufferSize <= m) =>
   Clock dyn ->
   Clock sys ->
   Reset sys ->
-  ClockControlConfig sys m margin framesize ->
+  cfg ->
+  CallistoCc n m sys cfg ->
   -- | Ila trigger and capture conditions
   IlaControl sys ->
   -- | Link availability mask
@@ -479,10 +499,15 @@ callistoClockControlWithIla ::
   -- | Statistics provided by elastic buffers.
   Vec n (Signal sys (RelDataCount m)) ->
   Signal sys (CallistoResult n)
-callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
-  hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> result)
+callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..} mask ebs =
+  hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> output)
  where
-  result = callistoClockControl clk rst enableGen ccc mask ebs
+  output = callistoCc clk rst enableGen callistoCfg mask ebs
+
+  -- Condense multicycle speedchange outputs into a single cycle for the ILA
+  mscChanging = isRising clk rst enableGen False (isJust . maybeSpeedChange <$> output)
+  newMsc = mux mscChanging (maybeSpeedChange <$> output) (pure Nothing)
+  callistoOutputIla = (\record field -> record{maybeSpeedChange = field}) <$> output <*> newMsc
 
   filterCounts vMask vCounts = flip map (zip vMask vCounts)
     $ \(isActive, count) -> if isActive == high then count else 0
@@ -521,12 +546,12 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
         height = SNat @AccWindowHeight
         idcs =
           unbundle
-            (filterIndicators <$> fmap bv2v mask <*> (stability <$> result))
+            (filterIndicators <$> fmap bv2v mask <*> (stability <$> callistoOutputIla))
 
         -- get the points in time where the monitored values change
         stableUpdates = changepoints clk rst enableGen <$> (fmap stable <$> idcs)
         settledUpdates = changepoints clk rst enableGen <$> (fmap settled <$> idcs)
-        modeUpdate = changepoints clk rst enableGen (rfStageChange <$> result)
+        modeUpdate = changepoints clk rst enableGen (rfStageChange <$> callistoOutputIla)
 
         combine eb stU seU ind =
           (,,)
@@ -537,8 +562,8 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
         noChange = fromMaybe NoChange . maybeSpeedChange
      in PlotData
           <$> bundle (zipWith4 combine ebsC stableUpdates settledUpdates idcs)
-          <*> accWindow height clk rst enableGen (noChange <$> result)
-          <*> mux modeUpdate (rfStageChange <$> result) (pure Stable)
+          <*> accWindow height clk rst enableGen (noChange <$> callistoOutputIla)
+          <*> mux modeUpdate (rfStageChange <$> callistoOutputIla) (pure Stable)
 
   -- compress the elastic buffer data via only reporting the
   -- differences since the last capture
