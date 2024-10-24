@@ -53,7 +53,7 @@ import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
-import Bittide.ClockControl.DebugRegister (debugRegisterWb)
+import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
 import Bittide.ClockControl.Registers (ClockControlData (clockMod), clockControlWb)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
@@ -204,6 +204,12 @@ clockControlConfig ::
 clockControlConfig =
   $(lift (instancesClockConfig (Proxy @Basic125)))
 
+debugRegisterConfig :: DebugRegisterCfg
+debugRegisterConfig =
+  DebugRegisterCfg
+    { reframingEnabled = False
+    }
+
 csDupe ::
   forall dom a n.
   (KnownDomain dom, KnownNat n) =>
@@ -238,22 +244,22 @@ riscvCopyTest clk rst mask callistoResult dataCounts = unbundle fIncDec
   (_, ccData) =
     toSignals
       ( circuit $ \jtag -> do
-          [wbA, wbB, wbC] <-
+          [wbFincFdec, wbClockControl, wbDebug] <-
             withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
-          fIncDecCallisto -< wbA
+          fIncDecCallisto -< wbFincFdec
           [ccd0, ccd1] <-
             csDupe
               <| withClockResetEnable
                 clk
                 rst
                 enableGen
-                (clockControlWb margin framesize mask (pure False) dataCounts)
-              -< wbB
+                (clockControlWb margin framesize mask dataCounts)
+              -< wbClockControl
           cm <- cSigMap clockMod -< ccd0
           _debugData <-
             withClockResetEnable clk rst enableGen
-              $ debugRegisterWb
-              -< (wbC, cm)
+              $ debugRegisterWb (pure debugRegisterConfig)
+              -< (wbDebug, cm)
           idC -< ccd1
       )
       (pure $ JtagIn low low low, pure ())

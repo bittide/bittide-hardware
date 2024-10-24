@@ -27,11 +27,10 @@ impl SpeedChange {
 //           num_links |       u8 |           0 |
 //           link_mask |      u32 |           4 |
 //    link_mask_popcnt |      u32 |           8 |
-//   reframing_enabled |      u32 |          12 |
-//           finc_fdec |      u32 |          16 | write `SpeedChange` values
-//        links_stable |      u32 |          20 |
-//       links_settled |      u32 |          24 |
-//   data_counts_start | [i32; N] |          28 | masked by `link_mask`
+//           finc_fdec |      u32 |          12 | write `SpeedChange` values
+//        links_stable |      u32 |          16 |
+//       links_settled |      u32 |          20 |
+//   data_counts_start | [i32; N] |          24 | masked by `link_mask`
 pub struct ClockControl {
     base_addr: *const u32,
 }
@@ -40,11 +39,10 @@ impl ClockControl {
     // Offsets for the fields from the base address.
     const LINK_MASK: usize = 1;
     const UP_LINKS: usize = 2;
-    const REFRAMING_ENABLED: usize = 3;
-    const CHANGE_SPEED: usize = 4;
-    const LINKS_STABLE: usize = 5;
-    const LINKS_SETTLED: usize = 6;
-    const DATA_COUNTS: usize = 7;
+    const CHANGE_SPEED: usize = 3;
+    const LINKS_STABLE: usize = 4;
+    const LINKS_SETTLED: usize = 5;
+    const DATA_COUNTS: usize = 6;
 
     /// Load the clock-control registers from a flattened-devicetree.
     ///
@@ -76,10 +74,6 @@ impl ClockControl {
                 .cast::<u8>()
                 .read_volatile()
         }
-    }
-
-    pub fn reframing_enabled(&self) -> bool {
-        unsafe { self.base_addr.add(Self::REFRAMING_ENABLED).read_volatile() != 0 }
     }
 
     pub fn change_speed(&mut self, speed_change: SpeedChange) {

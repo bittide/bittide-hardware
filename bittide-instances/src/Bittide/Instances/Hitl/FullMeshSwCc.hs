@@ -45,7 +45,7 @@ import System.FilePath
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
-import Bittide.ClockControl.DebugRegister (debugRegisterWb)
+import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
 import Bittide.ClockControl.Registers (ClockControlData (clockMod), clockControlWb)
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
@@ -90,6 +90,12 @@ clockControlConfig ::
 clockControlConfig =
   $(lift (instancesClockConfig (Proxy @Basic125)))
 
+debugRegisterConfig :: DebugRegisterCfg
+debugRegisterConfig =
+  DebugRegisterCfg
+    { reframingEnabled = False
+    }
+
 -- | Instantiates a RiscV core
 fullMeshRiscvTest ::
   forall dom.
@@ -106,22 +112,22 @@ fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
   (_, ccData) =
     toSignals
       ( circuit $ \jtag -> do
-          [wbA, wbB, wbC] <-
+          [wbClockControl, wbDebug, wbDummy] <-
             withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
-          idleSink -< wbC
+          idleSink -< wbDummy
           [ccd0, ccd1] <-
             csDupe
               <| withClockResetEnable
                 clk
                 rst
                 enableGen
-                (clockControlWb margin framesize (pure $ complement 0) (pure False) dataCounts)
-              -< wbA
+                (clockControlWb margin framesize (pure $ complement 0) dataCounts)
+              -< wbClockControl
           cm <- cSigMap clockMod -< ccd0
           _debugData <-
             withClockResetEnable clk rst enableGen
-              $ debugRegisterWb
-              -< (wbB, cm)
+              $ debugRegisterWb (pure debugRegisterConfig)
+              -< (wbDebug, cm)
           idC -< ccd1
       )
       (pure $ JtagIn low low low, pure ())

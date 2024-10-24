@@ -44,7 +44,7 @@ import System.FilePath
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
-import Bittide.ClockControl.DebugRegister (debugRegisterWb)
+import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
 import Bittide.ClockControl.Registers (ClockControlData (clockMod), clockControlWb)
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
@@ -88,6 +88,12 @@ clockControlConfig ::
 clockControlConfig =
   $(lift (instancesClockConfig (Proxy @Basic125)))
 
+debugRegisterConfig :: DebugRegisterCfg
+debugRegisterConfig =
+  DebugRegisterCfg
+    { reframingEnabled = False
+    }
+
 {- | Instantiates a RiscV core that copies instructions coming from a hardware
 implementation of Callisto (see 'fullMeshHwTest') and copies it to a register
 tied to FINC/FDEC.
@@ -108,22 +114,22 @@ fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
   (_, ccData) =
     toSignals
       ( circuit $ \jtag -> do
-          [wbA, wbB, wbC] <-
+          [wbFincFdec, wbClockControl, wbDebug] <-
             withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
-          fIncDecCallisto -< wbA
+          fIncDecCallisto -< wbFincFdec
           [ccd0, ccd1] <-
             csDupe
               <| withClockResetEnable
                 clk
                 rst
                 enableGen
-                (clockControlWb margin framesize (pure $ complement 0) (pure False) dataCounts)
-              -< wbB
+                (clockControlWb margin framesize (pure $ complement 0) dataCounts)
+              -< wbClockControl
           cm <- cSigMap clockMod -< ccd0
           _debugData <-
             withClockResetEnable clk rst enableGen
-              $ debugRegisterWb
-              -< (wbC, cm)
+              $ debugRegisterWb (pure debugRegisterConfig)
+              -< (wbDebug, cm)
           idC -< ccd1
       )
       (pure $ JtagIn low low low, pure ())

@@ -6,6 +6,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Bittide.ClockControl.DebugRegister (
+  DebugRegisterCfg (..),
   DebugRegisterData (..),
   debugRegisterWb,
 ) where
@@ -66,6 +67,7 @@ The word-aligned address layout of the Wishbone interface is as follows:
 | 0            | Reframing state kind | u32  | 0x00              |
 | 1            | Target correction    | f32  | 0x04              |
 | 2            | Target count         | u32  | 0x08              |
+| 3            | Reframing enabled?   | u32  | 0x0C              |
 +--------------+----------------------+------+-------------------+
 
 Fields 0-2 are combined into a single 'ReframingState', which is included in the
@@ -76,10 +78,11 @@ debugRegisterWb ::
   ( HiddenClockResetEnable dom
   , KnownNat addrW
   ) =>
+  Signal dom DebugRegisterCfg ->
   Circuit
     (Wishbone dom 'Standard addrW (BitVector 32), CSignal dom (Maybe SpeedChange))
     (CSignal dom DebugRegisterData)
-debugRegisterWb = Circuit go
+debugRegisterWb cfg = Circuit go
  where
   go ((wbM2S, clockMod), _) = ((wbS2M, pure ()), debugData)
    where
@@ -90,16 +93,17 @@ debugRegisterWb = Circuit go
         <*> upMin
         <*> upMax
 
-    readVec :: Vec 3 (Signal dom (BitVector 32))
+    readVec :: Vec 4 (Signal dom (BitVector 32))
     readVec =
       dflipflop
-        <$> ( (resize . pack <$> rfsKind1)
+        <$> ( (resize . pack <$> rfsKind)
                 :> (pack <$> targetCorrection)
                 :> (pack <$> targetCount)
+                :> (resize . pack <$> cfg.reframingEnabled)
                 :> Nil
             )
 
-    (f0, f1, f2) = unbundle $ vecToTuple <$> writeVec
+    (f0, f1, f2, _) = vecToTuple (regMaybe 0 <$> unbundle writeVec)
 
     -- Read in the parts of a 'ReframingState' and assemble them into an instance.
     rfsKind :: Signal dom (Maybe ReframingStateKind)
@@ -112,12 +116,12 @@ debugRegisterWb = Circuit go
       readState _ = Nothing
 
     targetCorrection :: Signal dom Float
-    targetCorrection = unpack <$> regMaybe 0 f1
+    targetCorrection = unpack <$> f1
 
     targetCount :: Signal dom (Unsigned 32)
-    targetCount = unpack <$> regMaybe 0 f2
+    targetCount = unpack <$> f2
 
-    rfs = liftA3 go1 rfsKind1 targetCorrection targetCount
+    rfs = liftA3 go1 targetCorrection targetCount rfsKind
      where
       go1 tCor tCou = fmap go2
        where

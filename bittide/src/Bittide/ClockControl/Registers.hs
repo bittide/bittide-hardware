@@ -24,6 +24,7 @@ data ClockControlData (nLinks :: Nat) = ClockControlData
   , allStable :: Bool
   , allSettled :: Bool
   }
+  deriving (Generic, NFDataX)
 
 deriveSignalHasFields ''ClockControlData
 
@@ -39,11 +40,10 @@ The word-aligned address layout of the Wishbone interface is as follows:
 | 0              | Number of links    | 'num_links'          | 0x00                 |
 | 1              | Link mask          | 'link_mask'          | 0x04                 |
 | 2              | Link mask popcount | 'up_links'           | 0x08                 |
-| 3              | Reframing enabled? | 'reframing_enabled'  | 0x0C                 |
-| 4              | Speed change       | 'change_speed'       | 0x10                 |
-| 5              | All links stable?  | 'links_stable'       | 0x14                 |
-| 6              | All links settled? | 'links_settled'      | 0x18                 |
-| 7              | Data counts        | 'data_counts'        | 0x1C -> 0x1C + links |
+| 3              | Speed change       | 'change_speed'       | 0x0C                 |
+| 4              | All links stable?  | 'links_stable'       | 0x10                 |
+| 5              | All links settled? | 'links_settled'      | 0x14                 |
+| 6              | Data counts        | 'data_counts'        | 0x18 -> 0x18 + links |
 +----------------+--------------------+----------------------+----------------------+
 
 __NB__: the `Maybe SpeedChange` part of the output is only asserted for a single cycle.
@@ -70,15 +70,13 @@ clockControlWb ::
   SNat framesize ->
   -- | Link mask
   Signal dom (BitVector nLinks) ->
-  -- | Reframing enabled?
-  Signal dom Bool ->
   -- | Counters
   Vec nLinks (Signal dom (RelDataCount m)) ->
   -- | Wishbone accessible clock control circuitry
   Circuit
     (Wishbone dom 'Standard addrW (BitVector 32))
     (CSignal dom (ClockControlData nLinks))
-clockControlWb mgn fsz linkMask reframing counters = Circuit go
+clockControlWb mgn fsz linkMask counters = Circuit go
  where
   go (wbM2S, _) = (wbS2M, ccd)
    where
@@ -108,7 +106,6 @@ clockControlWb mgn fsz linkMask reframing counters = Circuit go
         <$> ( pure (natToNum @nLinks)
                 :> (zeroExtend @_ @_ @(32 - nLinks) <$> linkMask)
                 :> (resize . pack . popCount <$> linkMask)
-                :> (zeroExtend @_ @_ @31 <$> (boolToBV <$> reframing))
                 :> (resize . pack <$> fIncDec1)
                 :> (resize . pack . fmap boolToBit <$> linksStable)
                 :> (resize . pack . fmap boolToBit <$> linksSettled)
@@ -138,10 +135,10 @@ clockControlWb mgn fsz linkMask reframing counters = Circuit go
     --   ▐▌ ▝▚▄▞▘▝▚▄▞▘    ▝▚▄▄▖▐▌ ▐▌▐▌ ▐▌▐▌  ▐▌▝▚▄▞▘▐▙▄▄▖      █  ▐▌ ▐▌▐▙▄▄▖    ▐▙▄▞▘▝▚▄▞▘▗▄▄▞▘
     --
     -- Pull out the write-able fields
-    (_, _, _, _, f4, _, _) = unbundle $ vecToTuple . take (SNat :: SNat 7) <$> writeVec
+    (_, _, _, f3, _, _) = unbundle $ vecToTuple . take (SNat :: SNat 6) <$> writeVec
 
     fIncDec0 :: Signal dom (Maybe SpeedChange)
-    fIncDec0 = unpack . resize <<$>> f4
+    fIncDec0 = unpack . resize <<$>> f3
     fIncDec1 :: Signal dom (Maybe SpeedChange)
     fIncDec1 = register Nothing fIncDec0
 
