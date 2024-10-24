@@ -22,8 +22,8 @@ import System.FilePath
 
 import Bittide.CircuitUtils
 import Bittide.ClockControl (RelDataCount)
-import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
-import Bittide.ClockControl.DebugRegister (debugRegisterWb)
+import Bittide.ClockControl.Callisto.Types (CallistoResult (..), ReframingState (Done))
+import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.DoubleBufferedRam (ContentType (Blob), InitialContent (Reloadable))
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
@@ -36,14 +36,8 @@ import Protocols
 import Protocols.Idle
 
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, fromMaybe)
 import VexRiscv
-
--- data SwControlConfig dom (mgn :: Nat) (fsz :: Nat) = SwControlConfig
---   { enableSwReframe :: Signal dom Bool
---   , margin :: SNat mgn
---   , framesize :: SNat fsz
---   }
 
 data SwControlConfig dom mgn fsz where
   SwControlConfig ::
@@ -84,7 +78,9 @@ callistoSwClockControl clk rst ena (SwControlConfig (reframe :: Signal dom Bool)
       <*> ccData.stabilityIndications
       <*> ccData.allStable
       <*> ccData.allSettled
-      <*> debugData.reframingState
+      <*> (fromMaybe Done <$> debugData.reframingState)
+
+  debugRegisterCfg = DebugRegisterCfg <$> reframe
 
   callistoSwIla :: Signal dom ()
   callistoSwIla =
@@ -121,12 +117,12 @@ callistoSwClockControl clk rst ena (SwControlConfig (reframe :: Signal dom Bool)
                 clk
                 rst
                 ena
-                (clockControlWb mgn fsz mask reframe ebs)
+                (clockControlWb mgn fsz mask ebs)
               -< wbA
           cm <- cSigMap clockMod -< ccd0
           dbg <-
             withClockResetEnable clk rst enableGen
-              $ debugRegisterWb
+              $ debugRegisterWb debugRegisterCfg
               -< (wbB, cm)
           idC -< (ccd1, dbg)
       )
