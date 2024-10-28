@@ -15,22 +15,6 @@ import Language.Haskell.TH
 Example:
 
 @
-data MyRecord = MyRecord { field1 :: Int, field2 :: Bool }
-deriveSignalHasFields ''MyRecord
-@
-
-This will generate the following instances:
-
-@
-instance HasField "field1" (Signal dom MyRecord) (Signal dom Int) where
-  getField = fmap field1
-instance HasField "field2" (Signal dom MyRecord) (Signal dom Bool) where
-  getField = fmap field2
-@
-
-The record type may also take type arguments. For instance, this type:
-
-@
 data MyRecord n = MyRecord { field1 :: BitVector n, field2 :: BitVector n (Unsigned 8) }
 @
 
@@ -50,21 +34,16 @@ deriveSignalHasFields recordName = do
   case info of
     -- If the name refers to a record type, generate instances for each field
     TyConI (DataD _ _ tvb _ [RecC _ fields] _) -> do
-      runIO $ mapM_ print tvb
       let
-        recordType = conT recordName
+        recordType = foldl appT (conT recordName) recordTyInputs
         recordTyInputs = varT . go <$> tvb
          where
           go (PlainTV n _) = n
           go (KindedTV n _ _) = n
-        recordAppT = go recordType recordTyInputs
-         where
-          go ty [] = ty
-          go ty (h : t) = go (appT ty h) t
         mkInstance :: (Name, Bang, Type) -> Q [Dec]
         mkInstance (fieldName, _fieldBang, fieldType) =
           [d|
-            instance HasField $fieldStr (Signal dom $recordAppT) (Signal dom $(pure fieldType)) where
+            instance HasField $fieldStr (Signal dom $recordType) (Signal dom $(pure fieldType)) where
               getField = fmap $(varE fieldName)
             |]
          where
