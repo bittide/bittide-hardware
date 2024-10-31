@@ -44,9 +44,7 @@ import LiftType (liftTypeQ)
 import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
--- import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
 import Bittide.ClockControl.Callisto.Types (CallistoResult)
--- import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins)
 import Bittide.ClockControl.CallistoSw (SwControlConfig (..), callistoSwClockControl)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
@@ -78,10 +76,10 @@ import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen
 
 import qualified Bittide.Arithmetic.PartsPer as PartsPer
+import qualified Bittide.ClockControl.StabilityChecker as SI
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Data.Map.Strict as Map (fromList)
-import qualified Bittide.ClockControl.StabilityChecker as SI
 
 type AllStablePeriod = Seconds 5
 
@@ -291,17 +289,12 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
         , rxNs
         , rxPs
         , txDatas = txCounters
-        -- , txDatas = repeat $ pure 0
         , txReadys = repeat (pure True)
         , rxReadys = repeat (pure True)
         }
 
-  allReady = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle transceivers.linkReadys)
-  -- allReady = trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> go1)
-  --  where
-  --   go1 = liftA2 go2 (mask <$> cfg) (bundle transceivers.linkReadys)
-  --   go2 m = zipWith go3 (bitCoerce m)
-  --   go3 m v = not m || v -- if m then v else True
+  allReady =
+    trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle transceivers.linkReadys)
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
 
@@ -358,11 +351,6 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
       (mask <$> cfg)
       (resize <<$>> domainDiffs)
 
-  -- Capture every 100 microseconds - this should give us a window of about 5
-  -- seconds. Or: when we're in reset. If we don't do the latter, the VCDs get
-  -- very confusing.
-  -- capture = (captureFlag .&&. allReady) .||. unsafeToActiveHigh syncRst
-
   fincFdecIla :: Signal Basic125 ()
   fincFdecIla =
     setName @"fincFdecIla"
@@ -372,9 +360,6 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
           :> "capture_fdi_0"
           :> "probe_fdi_milliseconds"
           :> "probe_allStable0"
-          -- :> "probe_transceiversFailedAfterUp"
-          -- :> "probe_nFincs"
-          -- :> "probe_nFdecs"
           :> "probe_net_nFincs"
           :> "probe_ugn0"
           :> "probe_ugn1"
@@ -383,26 +368,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
           :> "probe_ugn4"
           :> "probe_ugn5"
           :> "probe_ugn6"
-          -- :> "stability0"
-          -- :> "stability1"
-          -- :> "stability2"
-          -- :> "stability3"
-          -- :> "stability4"
-          -- :> "stability5"
-          -- :> "stability6"
-          -- :> "ugnStable0"
-          -- :> "ugnStable1"
-          -- :> "ugnStable2"
-          -- :> "ugnStable3"
-          -- :> "ugnStable4"
-          -- :> "ugnStable5"
-          -- :> "ugnStable6"
-          -- :> "probe_linkReadys"
-          -- :> "probe_linkUps"
-          -- :> "probe_txReadys"
           :> "probe_othersNotInCCReset"
-          -- :> "fifoUnderflows"
-          -- :> "fifoOverflows"
           :> "probe_dDiff0"
           :> "probe_dDiff1"
           :> "probe_dDiff2"
@@ -410,30 +376,6 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
           :> "probe_dDiff4"
           :> "probe_dDiff5"
           :> "probe_dDiff6"
-          -- :> "probe_syncRst"
-          -- :> "probe_gthAllReset"
-          -- :> "probe_startupDelayRst"
-          -- :> "probe_clockControlReset"
-          -- :> "probe_notInCCReset"
-          -- :> "probe_txResets2"
-          -- :> "probe_adjustStart"
-          -- :> "probe_clocksAdjusted"
-          -- :> "probe_adjusting"
-          -- :> "probe_adjustCount"
-          -- :> "probe_calibratedClockShift"
-          -- :> "probe_initialAdjust"
-          -- :> "probe_adjustRst"
-          -- :> "probe_clockShift"
-          -- :> "probe_initialClockShift"
-          -- :> "probe_calibrate"
-          -- :> "probe_spiDone"
-          -- :> "probe_frequencyAdjustments"
-          -- :> "probe_allReady"
-          -- :> "probe_syncStart"
-          -- :> "probe_delayCount"
-          -- :> "probe_startupDelay"
-          -- :> "probe_spiErr"
-          -- :> "probe_mask"
           :> "probe_ugnsStable"
           :> "probe_fifoOverflows"
           :> "probe_fifoUnderflows"
@@ -448,9 +390,6 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
       -- Debug probes
       milliseconds1
       allStable0
-      -- transceiversFailedAfterUp
-      -- nFincs
-      -- nFdecs
       (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
       ugn0
       ugn1
@@ -459,26 +398,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
       ugn4
       ugn5
       ugn6
-      -- stability0
-      -- stability1
-      -- stability2
-      -- stability3
-      -- stability4
-      -- stability5
-      -- stability6
-      -- ugnStable0
-      -- ugnStable1
-      -- ugnStable2
-      -- ugnStable3
-      -- ugnStable4
-      -- ugnStable5
-      -- ugnStable6
-      -- (bundle transceivers.linkReadys)
-      -- (bundle transceivers.linkUps)
-      -- (bundle $ zipWith (`unsafeSynchronizer` sysClk) transceivers.txClocks transceivers.txReadys)
       (bundle othersNotInCCResetSync)
-      -- (pack . reverse <$> bundle fifoUnderflowsFree)
-      -- (pack . reverse <$> bundle fifoOverflowsFree)
       dDiff0
       dDiff1
       dDiff2
@@ -486,50 +406,9 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
       dDiff4
       dDiff5
       dDiff6
-      -- (unsafeFromReset syncRst)
-      -- (unsafeFromReset gthAllReset)
-      -- (unsafeFromReset startupDelayRst)
-      -- (unsafeFromReset clockControlReset)
-      -- notInCCReset
-      -- txResetsThing
-      -- adjustStart
-      -- clocksAdjusted
-      -- adjusting
-      -- adjustCount
-      -- ccs
-      -- initialAdjust
-      -- (unsafeFromReset adjustRst)
-      -- clockShift
-      -- (fromMaybe 0 . initialClockShift <$> cfg)
-      -- (pack . calibrate <$> cfg)
-      -- spiDone
-      -- (pack <$> frequencyAdjustments)
-      -- allReady
-      -- syncStart
-      -- delayCount
-      -- (startupDelay <$> cfg)
-      -- spiErr
-      -- (mask <$> cfg)
       (bundle ugnsStable)
       (bundle fifoOverflowsFree)
       (bundle fifoUnderflowsFree)
-
-  {-
-    clockMod
-    clockShift
-    initialClockShift
-    calibrate
-    spiDone
-    frequencyAdjustments
-    allReady
-    syncStart
-    delayCount
-    startupDelay
-  -}
-
-  -- txResetsThing = bundle $ zipWith oofOwOuchie transceivers.txClocks txResets2
-  --  where
-  --   oofOwOuchie txClock txReset = unsafeSynchronizer txClock sysClk $ unsafeFromReset txReset
 
   captureFlag =
     riseEvery
@@ -639,7 +518,8 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
       $ mux
         adjusting
         (speedChangeToPins <$> setupAdjustments)
-        (speedChangeToStickyPins sysClk clockControlReset enableGen (SNat @Si539xHoldTime) clockMod)
+        ( speedChangeToStickyPins sysClk clockControlReset enableGen (SNat @Si539xHoldTime) clockMod
+        )
 
   domainDiffs :: Vec LinkCount (Signal Basic125 FincFdecCount)
   domainDiffs =
@@ -733,8 +613,10 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
     go1 m = zipWith go2 (bitCoerce m)
     go2 m val = if m then val else dflt
 
-  allUgnsStable = trueFor (SNat @(Seconds 2)) sysClk clockControlReset
-    $ and <$> maskWithCfg True ugnsStable
+  allUgnsStable =
+    trueFor (SNat @(Seconds 2)) sysClk clockControlReset
+      $ and
+      <$> maskWithCfg True ugnsStable
 
   findFifoError bits = result
    where
@@ -754,38 +636,6 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
   -- If you see 0x19999999.......... and it's counting up, then you're receiving Nothing,
   -- but your counter is running.
 
-  -- ugnStable1sec = zipWith3 (stableForMs (SNat @1000)) transceivers.txClocks transceivers.txResets ugns
-
-  -- freeUgnDatas = zipWith5 go transceivers.txClocks (repeat sysClk) ugns fillLvls ugnStable1sec
-  --  where
-  --   go clkIn clkOut ugn fillLvl stable =
-  --     regMaybe
-  --       clkOut
-  --       noReset
-  --       enableGen
-  --       (0, 0, False, unpack 0)
-  --       (xpmCdcMaybeLossy clkIn clkOut inp)
-  --    where
-  --     fillStat = fillStats clkIn noReset fillLvl
-  --     inp = Just <$> bundle (ugn, fillLvl, stable, fillStat)
-
-  -- ugnsStable = map (fmap (\(_, _, x, _) -> x)) freeUgnDatas
-
-  -- ( ugnD0
-  --   , ugnD1
-  --   , ugnD2
-  --   , ugnD3
-  --   , ugnD4
-  --   , ugnD5
-  --   , ugnD6
-  --   ) = vecToTuple freeUgnDatas
-  -- (ugn0, _fill0, _ugnStable0, _fillStats0) = unbundle ugnD0
-  -- (ugn1, _fill1, _ugnStable1, _fillStats1) = unbundle ugnD1
-  -- (ugn2, _fill2, _ugnStable2, _fillStats2) = unbundle ugnD2
-  -- (ugn3, _fill3, _ugnStable3, _fillStats3) = unbundle ugnD3
-  -- (ugn4, _fill4, _ugnStable4, _fillStats4) = unbundle ugnD4
-  -- (ugn5, _fill5, _ugnStable5, _fillStats5) = unbundle ugnD5
-  -- (ugn6, _fill6, _ugnStable6, _fillStats6) = unbundle ugnD6
   ( ugn0
     , ugn1
     , ugn2
@@ -795,14 +645,6 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
     , ugn6
     ) = vecToTuple ugns'
 
-  -- ( stability0
-  --   , stability1
-  --   , stability2
-  --   , stability3
-  --   , stability4
-  --   , stability5
-  --   , stability6
-  --   ) = vecToTuple $ unbundle callistoResult.stability
   ( dDiff0
     , dDiff1
     , dDiff2
@@ -843,81 +685,6 @@ speedChangeToFincFdec' clk rst =
     | otherwise = (Pulse (n - 1) s, (state, s))
   go1 Idle NoChange = (Idle, (Idle, NoChange))
   go1 Idle s = (Pulse maxBound s, (Idle, NoChange))
-
-{- | Tracks the min/max values of the input during the last milliseconds
-
-Updates once per millisecond.
--}
--- fillStats ::
---   forall dom a.
---   (KnownDomain dom, Ord a, Num a, Bounded a, NFDataX a) =>
---   Clock dom ->
---   Reset dom ->
---   Signal dom a ->
---   Signal dom (FillStats a)
--- fillStats clk rst = moore clk rst enableGen go (\(_, _, x) -> x) (maxBound, mempty, mempty)
---  where
---   go ::
---     (IndexMs dom 1, FillStats a, FillStats a) ->
---     a ->
---     (IndexMs dom 1, FillStats a, FillStats a)
---   go (cntr, prevStats, out) inp
---     | cntr == 0 = (maxBound, mempty, new)
---     | otherwise = (cntr - 1, new, out)
---    where
---     new = mappend prevStats (FillStats inp inp)
-
--- data FillStats a = FillStats {fillMin :: a, fillMax :: a}
---   deriving (Generic, NFDataX, BitPack)
-
--- instance Bundle (FillStats a) where
---   type Unbundled dom (FillStats a) = FillStats (Signal dom a)
---   bundle (FillStats sigMin sigMax) = liftA2 FillStats sigMin sigMax
---   unbundle x = FillStats{fillMin = fmap fillMin x, fillMax = fmap fillMax x}
-
--- instance (Ord a) => Semigroup (FillStats a) where
---   a <> b =
---     FillStats
---       { fillMin = min (fillMin a) (fillMin b)
---       , fillMax = max (fillMax a) (fillMax b)
---       }
-
--- instance (Bounded a, Ord a) => Monoid (FillStats a) where
---   mempty = FillStats{fillMin = maxBound, fillMax = minBound}
-
-{- | Counts how many cycles the input signal has been stable
-
-Stable means equal to its previous value according to the 'Eq' instance.
-The 'BitPack' instance is only used as a convenient way of intialization,
-it resets to a previous value of @unpack 0@.
--}
--- stableFor ::
---   forall n dom a.
---   (KnownNat n, KnownDomain dom, Eq a, BitPack a, NFDataX a) =>
---   Clock dom ->
---   Reset dom ->
---   Signal dom a ->
---   Signal dom (Unsigned n)
--- stableFor clk rst = moore clk rst enableGen go snd (unpack 0, 0)
---  where
---   go :: (a, Unsigned n) -> a -> (a, Unsigned n)
---   go (prev, cntr) inp
---     | inp == prev = (prev, satSucc SatBound cntr)
---     | otherwise = (inp, 0)
-
--- | Wrapper around 'stableFor' that checks the input has been stable for atleast @ms@ milliseconds
--- stableForMs ::
---   forall ms dom a.
---   (KnownNat ms, KnownDomain dom, Eq a, BitPack a, NFDataX a) =>
---   SNat ms ->
---   Clock dom ->
---   Reset dom ->
---   Signal dom a ->
---   Signal dom Bool
--- stableForMs SNat clk rst inp =
---   liftA2 (>=) stable (snatToNum (SNat @(PeriodToCycles dom (Milliseconds ms))))
---  where
---   stable = stableFor @(CLog 2 (PeriodToCycles dom (Milliseconds ms))) clk rst inp
 
 -- | Top entity for this test. See module documentation for more information.
 swCcTopologyTest ::
@@ -961,21 +728,6 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       (_, True) -> True -- ending test asserts rst
       _ -> cur
   testReset = unsafeFromActiveHigh testResetBool
-
-  -- testStartingSticky =
-  --   stickyBits
-  --     sysClk
-  --     sysRst
-  --     enableGen
-  --     (SNat @(PeriodToCycles Basic125 (Seconds 2)))
-  --     testStarting
-  -- testEndingSticky =
-  --   stickyBits
-  --     sysClk
-  --     sysRst
-  --     enableGen
-  --     (SNat @(PeriodToCycles Basic125 (Seconds 2)))
-  --     testEnding
 
   -- Workaround for tests not resetting properly???
   syncNodeProbablyWorking = changepoints sysClk testReset enableGen syncIn
@@ -1053,32 +805,17 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
           :> "probe_tle_milliseconds"
           :> "probe_ilacfg_allReady"
           :> "probe_ilacfg_startTest"
-          -- :> "probe_ilacfg_syncIn"
-          -- :> "probe_ilactl_syncRst"
-          -- :> "probe_ilactl_syncOut"
           :> "probe_ilactl_syncStart"
-          -- :> "probe_ilactl_scheduledCapture"
-          -- :> "probe_ilactl_globalTimestamp0"
-          -- :> "probe_ilactl_globalTimestamp1"
-          -- :> "probe_ilactl_skipTest"
           :> "probe_startTest"
-          -- :> "probe_skip"
           :> "probe_allStable"
           :> "probe_tle_allUgnsStable"
           :> "probe_tle_noFifoOverflows"
           :> "probe_tle_noFifoUnderflows"
-          -- :> "probe_tle_clockShift"
-          -- :> "probe_tle_calibratedClockShift"
           :> "probe_endSuccess"
           :> "probe_startBeforeAllReady"
           :> "probe_tle_transceiversFailedAfterUp"
           :> "probe_testDone"
           :> "probe_testSuccess"
-          -- :> "probe_testCounter"
-          -- :> "probe_testStartingSticky2s"
-          -- :> "probe_testEndingSticky2s"
-          -- :> "probe_syncNodeEnteredReset"
-          -- :> "probe_syncNodePrevEnteredReset"
           :> Nil
       )
         { depth = D16384
@@ -1089,35 +826,19 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       milliseconds1
       allReady
       startTest
-      -- syncIn
-      -- (unsafeToActiveHigh syncRst)
-      -- syncOut
       syncStart
-      -- scheduledCapture
-      -- gTS0
-      -- gTS1
-      -- skipTest
       startTest
-      -- skip
       allStable
       allUgnsStable
       noFifoUnderflows
       noFifoOverflows
-      -- clockShift
-      -- calibratedClockShift
       endSuccess
       startBeforeAllReady
       transceiversFailedAfterUp
       testDone
       testSuccess
-      -- testCounter
-      -- testStartingSticky
-      -- testEndingSticky
-      -- syncNodeEnteredReset
-      -- syncNodePrevEnteredReset
 
-  -- check that tests are not synchronously start before all
-  -- transceivers are up
+  -- Check that tests are not synchronously started before all transceivers are up
   startBeforeAllReady =
     sticky
       sysClk

@@ -23,7 +23,10 @@ import System.FilePath
 import Bittide.CircuitUtils
 import Bittide.ClockControl (RelDataCount)
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..), ReframingState (Done))
-import Bittide.ClockControl.DebugRegister (debugRegisterWb, DebugRegisterCfg (DebugRegisterCfg))
+import Bittide.ClockControl.DebugRegister (
+  DebugRegisterCfg (DebugRegisterCfg),
+  debugRegisterWb,
+ )
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.DoubleBufferedRam (ContentType (Blob), InitialContent (Reloadable))
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
@@ -36,7 +39,7 @@ import Protocols
 import Protocols.Idle
 
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
-import Data.Maybe (isJust, fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import VexRiscv
 
 -- data SwControlConfig dom (mgn :: Nat) (fsz :: Nat) = SwControlConfig
