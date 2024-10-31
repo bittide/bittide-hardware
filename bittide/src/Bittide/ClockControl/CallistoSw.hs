@@ -27,7 +27,10 @@ import VexRiscv
 import Bittide.CircuitUtils
 import Bittide.ClockControl (RelDataCount)
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..), ReframingState (Done))
-import Bittide.ClockControl.DebugRegister (debugRegisterWb, DebugRegisterCfg (DebugRegisterCfg))
+import Bittide.ClockControl.DebugRegister (
+  DebugRegisterCfg (DebugRegisterCfg),
+  debugRegisterWb,
+ )
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.DoubleBufferedRam (ContentType (Blob), InitialContent (Reloadable))
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
