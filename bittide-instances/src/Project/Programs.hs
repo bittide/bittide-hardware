@@ -22,12 +22,6 @@ getPicocomStartPath = getDataFileName "data/picocom/start.sh"
 getTcpSprayPath :: IO FilePath
 getTcpSprayPath = getDataFileName "data/tcpspray/start.sh"
 
-{- | XXX: Currently hardcoded to a very specific position. Maybe we could probe
-       using JTAG to see what device we're connected to?
--}
-getUartDev :: IO String
-getUartDev = pure "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.1:1.1-port0"
-
 {- | Take a GDB script, create copy that echoes everything it's doing, and give its path to action
 
 This works by creating a temporary copy with @echo > {line}\n@ prepended to each non-comment, non-empty line.

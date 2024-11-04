@@ -2,22 +2,18 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module Main where
 
 import Prelude
 
-import Bittide.Instances.Hitl.Post.TcpServer
 import Control.Concurrent
 import Control.Concurrent.Async
 import Data.List.Extra
 import Data.Maybe
 import Data.Time
 import Data.Time.Clock.POSIX
-import Paths_bittide_instances
-import Project.FilePath
-import Project.Handle
-import Project.Programs
 import System.Directory
 import System.Environment (withArgs)
 import System.FilePath
@@ -26,6 +22,13 @@ import System.Process
 import System.Timeout
 import Test.Tasty.HUnit
 import Test.Tasty.TH
+
+import Bittide.Instances.Hitl.Post.TcpServer
+import Bittide.Instances.Hitl.Setup
+import Paths_bittide_instances
+import Project.FilePath
+import Project.Handle
+import Project.Programs
 
 import qualified Data.ByteString.Lazy as BS
 import qualified Network.Simple.TCP as NS
@@ -62,9 +65,9 @@ connect to the server and close the connection within a reasonable time.
 -}
 case_testTcpClient :: Assertion
 case_testTcpClient = do
+  let uartDev = (last demoRigInfo).serial
   startOpenOcdPath <- getOpenOcdStartPath
   startPicocomPath <- getPicocomStartPath
-  uartDev <- getUartDev
   gdbScriptPath <- getGdbScriptPath
 
   putStrLn "Starting TCP Server"

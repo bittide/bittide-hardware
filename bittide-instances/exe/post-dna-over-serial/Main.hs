@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
 module Main where
@@ -9,12 +10,10 @@ module Main where
 import Clash.Prelude
 import Prelude ()
 
-import Bittide.Instances.Hitl.Setup
 import Control.Monad.Extra
 import qualified Data.List as L
 import Data.Maybe
 import Numeric
-import Project.Handle
 import System.Environment (withArgs)
 import System.IO
 import System.Process
@@ -22,25 +21,26 @@ import System.Timeout
 import Test.Tasty.HUnit
 import Test.Tasty.TH
 
+import Bittide.Instances.Hitl.Setup
+import Project.Handle
+
 {- | Test that all FPGAs that are programmed with `dnaOverSerial` transmit the
-DNA that we expect based on `deviceIdDnaPairs` and `deviceIdSerialPairs`.
+DNA that we expect based on the DeviceInfo.
 -}
 case_dnaOverSerial :: Assertion
 case_dnaOverSerial = do
   putStrLn "Expecting specific DNAs for all serial ports"
   putStrLn "Serial ports:"
-  mapM_ (putStrLn . snd) deviceIdSerialPairs
-  results <-
-    mapM (uncurry checkDna)
-      $ L.zipWith (\(_, p) (_, d) -> (p, d)) deviceIdSerialPairs deviceIdDnaPairs
+  mapM_ putStrLn [d.serial | d <- demoRigInfo]
+  results <- mapM checkDna demoRigInfo
   print results
   assertBool "Not all FPGAs transmitted the expected DNA" (and results)
  where
-  checkDna :: FilePath -> BitVector 96 -> IO Bool
-  checkDna uartPath dna = do
+  checkDna :: DeviceInfo -> IO Bool
+  checkDna d = do
     let
       picocomProc =
-        (proc "picocom" ["--baud", "9600", "--imap", "lfcrlf", "--omap", "lfcrlf", uartPath])
+        (proc "picocom" ["--baud", "9600", "--imap", "lfcrlf", "--omap", "lfcrlf", d.serial])
           { std_out = CreatePipe
           , std_in = CreatePipe
           , std_err = CreatePipe
@@ -58,10 +58,10 @@ case_dnaOverSerial = do
       _ <- hGetLine picocomStdOutHandle -- Discard a potentially incomplete line
       receivedDna <- hGetLine picocomStdOutHandle
       let
-        expected = showHex dna ""
+        expected = showHex d.dna ""
         differences = L.zipWith (\e a -> if e == a then ' ' else '^') expected receivedDna
         match = read ("0x" <> receivedDna) == (read ("0x" <> expected) :: Int)
-      putStrLn $ "Serial path: " <> uartPath
+      putStrLn $ "Serial path: " <> d.serial
       putStrLn $ "Expected DNA: " <> expected
       putStrLn $ "Received DNA: " <> receivedDna
       putStrLn $ "Differences:  " <> differences

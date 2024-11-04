@@ -1,20 +1,23 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE OverloadedRecordDot #-}
 
 import Prelude
 
 import Data.List.Extra (isPrefixOf)
 import Data.Maybe (fromJust)
-import Paths_bittide_instances
-import Project.Handle
-import Project.Programs
 import System.Environment (withArgs)
 import System.IO
 import System.Process
 
 import Test.Tasty.HUnit
 import Test.Tasty.TH
+
+import Bittide.Instances.Hitl.Setup
+import Paths_bittide_instances
+import Project.Handle
+import Project.Programs
 
 getGdbScriptPath :: IO FilePath
 getGdbScriptPath = getDataFileName "data/gdb/test-gdb-prog.gdb"
@@ -36,9 +39,9 @@ GDB: GNU Debugger. This program will connect to the OpenOCD server and is able
 -}
 case_testGdbProgram :: Assertion
 case_testGdbProgram = do
+  let uartDev = (last demoRigInfo).serial
   startOpenOcdPath <- getOpenOcdStartPath
   startPicocomPath <- getPicocomStartPath
-  uartDev <- getUartDev
   gdbScriptPath <- getGdbScriptPath
 
   withAnnotatedGdbScriptPath gdbScriptPath $ \gdbProgPath -> do
