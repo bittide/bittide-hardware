@@ -10,17 +10,21 @@ import Data.String.Interpolate
 import GHC.Records (HasField (..))
 import Language.Haskell.TH
 
-{- | Derive instances of 'HasField' for a Signals of Records:
+{- | Derive instances of 'HasField' for a Signals of Records
+
+Calling this function requires the `UndecidableInstances` language pragma to be enabled,
+as can be seen from the example below.
 
 Example:
 
-> data MyRecord n = MyRecord { field1 :: BitVector n, field2 :: BitVector n (Unsigned 8) }
+> data MyRecord n = MyRecord { field1 :: BitVector n, field2 :: Vec n (Unsigned 8) }
+> deriveSignalHasFields ''MyRecord
 
 Will generate the following instances:
 
-> instance HasField "field1" (Signal dom (MyRecord n)) (Signal dom (BitVector n)) where
+> instance (t ~ (BitVector n)) HasField "field1" (Signal dom (MyRecord n)) (Signal dom t) where
 >   getField = fmap field1
-> instance HasField "field2" (Signal dom (MyRecord n)) (Signal dom (Vec n (Unsigned 8))) where
+> instance (t ~ (Vec n (Unsigned 8))) HasField "field2" (Signal dom (MyRecord n)) (Signal dom t) where
 >   getField = fmap field2
 -}
 deriveSignalHasFields :: Name -> Q [Dec]
@@ -39,7 +43,7 @@ deriveSignalHasFields recordName = do
         mkInstance :: (Name, Bang, Type) -> Q [Dec]
         mkInstance (fieldName, _fieldBang, fieldType) =
           [d|
-            instance HasField $fieldStr (Signal dom $recordType) (Signal dom $(pure fieldType)) where
+            instance (t ~ $(pure fieldType)) => HasField $fieldStr (Signal dom $recordType) (Signal dom t) where
               getField = fmap $(varE fieldName)
             |]
          where
