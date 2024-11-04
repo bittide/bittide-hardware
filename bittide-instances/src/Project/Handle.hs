@@ -18,18 +18,25 @@ data Filter = Continue | Stop Error
 each line. If the filter returns 'Continue', the function will continue
 reading lines. If the filter returns @Stop Ok@, the function will return
 successfully. If the filter returns @Stop (Error msg)@, the function will
-fail with the given message.
+fail with the given message, along with a log of all processed lines.
 -}
 expectLine :: (HasCallStack) => Handle -> (String -> Filter) -> Assertion
-expectLine h f = do
-  line <- trim <$> hGetLine h
-  let cont = expectLine h f
-  if null line
-    then cont
-    else case f line of
-      Continue -> cont
-      Stop Ok -> pure ()
-      Stop (Error msg) -> assertFailure msg
+expectLine = expectLine' ""
+ where
+  expectLine' s0 h f = do
+    line <- hGetLine h
+    let
+      trimmed = trim line
+      s1 = s0 <> "\n" <> line
+      cont = expectLine' s1 h f
+    if null trimmed
+      then cont
+      else case f trimmed of
+        Continue -> cont
+        Stop Ok -> pure ()
+        Stop (Error msg) -> do
+          putStrLn s1
+          assertFailure msg
 
 {- | Utility function that reads lines from a handle, and waits for a specific
 line to appear. Though this function does not fail in the traditional sense,
