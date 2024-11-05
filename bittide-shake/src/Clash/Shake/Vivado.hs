@@ -42,6 +42,7 @@ import Clash.Prelude (BitPack (BitSize), Natural, natToNatural, pack)
 import Clash.Shake.Extra (hexDigestFile)
 import qualified Clash.Sized.Internal.BitVector as BitVector
 import Control.Concurrent (threadDelay)
+import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
 import Control.Exception (try)
 import Control.Monad.Extra (andM, forM, forM_, orM, unless, when)
 import Data.Containers.ListUtils (nubOrd)
@@ -52,7 +53,9 @@ import Data.List.Extra (anySame, split, (!?))
 import Data.Map.Strict (fromList, keys, mapKeys, toAscList)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromJust, fromMaybe)
-import Data.String.Interpolate (__i)
+import Data.Set (Set)
+import qualified Data.Set as Set
+import Data.String.Interpolate (i, __i)
 import Data.Text (unpack)
 import System.Clock (Clock (Monotonic), diffTimeSpec, getTime, toNanoSecs)
 import System.Directory (createDirectoryIfMissing)
@@ -328,10 +331,10 @@ runProbesFileGen outputDir = with $ \v -> do
 `HwTargetRef`. This is what Vivado seems to call the UID minus the vendor string.
 -}
 idFromHwTRef :: HwTargetRef -> FpgaId
-idFromHwTRef (HwTargetByIndex i) =
+idFromHwTRef (HwTargetByIndex ix) =
   fromMaybe
-    ("The given index " <> show i <> " is out of range for the list of known FPGA IDs")
-    (knownFpgaIds !? fromIntegral i)
+    ("The given index " <> show ix <> " is out of range for the list of known FPGA IDs")
+    (knownFpgaIds !? fromIntegral ix)
 idFromHwTRef (HwTargetById targetId) = targetId
 
 {- | Takes the ID part of a Vivado hardware target. This is what Vivado seems to
@@ -859,7 +862,7 @@ runHitlTestCase ::
   -- | Filepath the the ILA data dump directory
   FilePath ->
   IO ExitCode
-runHitlTestCase v testCase@HitlTestCase{..} probesFilePath ilaDataDir = do
+runHitlTestCase v testCase@HitlTestCase{name, parameters} probesFilePath ilaDataDir = do
   if null parameters
     then do
       putStrLn
@@ -940,16 +943,31 @@ runHitlTestCase v testCase@HitlTestCase{..} probesFilePath ilaDataDir = do
         refresh_hw_device v ["-quiet"]
         ilas <- get_hw_ilas v []
         let dir = ilaDataDir </> name </> prettyShow hwT
-        unless (null ilas) $
+        unless (null ilas) $ do
           putStrLn $
             "Saving captured ILA data to: " <> dir
+          createDirectoryIfMissing True dir
+        usedShortNamesVar <- newMVar mempty
         forM_ ilas $ \ila -> do
           _ <- current_hw_ila v [show ila]
-          ilaShortName <- getCurrentIlaShortName v
-          createDirectoryIfMissing True dir
+          ilaShortName0 <- getCurrentIlaShortName v
+          ilaShortName <- mkUniqShortName usedShortNamesVar ilaShortName0 (fromHwIla ila)
           execCmd_ v "current_hw_ila_data" ["[upload_hw_ila_data [current_hw_ila]]"]
           -- Legacy CSV excludes radix information
           execCmd_ v "write_hw_ila_data" ["-force", "-legacy_csv_file " <> dir </> ilaShortName]
           execCmd_ v "write_hw_ila_data" ["-force", "-vcd_file " <> dir </> ilaShortName]
 
       pure testCaseExitCode
+
+mkUniqShortName :: MVar (Set String) -> String -> String -> IO String
+mkUniqShortName refUsedNames shortName name =
+  modifyMVar refUsedNames $ \usedNames -> do
+    let
+      nm0 = shortName
+      nm1 = nm0 <> "_" <> name
+      nm
+        | Set.notMember nm0 usedNames = nm0
+        | Set.notMember nm1 usedNames = nm1
+        | otherwise =
+            error [i|Failed to create unique shortname for #{name}, original shortname #{shortName}|]
+    return (Set.insert nm usedNames, nm)
