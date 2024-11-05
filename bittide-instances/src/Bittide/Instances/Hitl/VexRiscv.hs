@@ -24,6 +24,7 @@ import VexRiscv
 import Bittide.DoubleBufferedRam
 import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
+import Bittide.Instances.Hitl.Setup (allHwTargets)
 import Bittide.ProcessingElement
 import Bittide.SharedTypes
 import Bittide.Wishbone
@@ -159,7 +160,7 @@ tests =
     , testCases =
         [ HitlTestCase
             { name = "VexRiscV"
-            , parameters = paramForSingleHwTarget (HwTargetByIndex 7) ()
+            , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
             }
         ]

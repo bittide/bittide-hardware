@@ -32,7 +32,7 @@ And can be used to wait for specific commands to be executed, or simply for debu
 
 After the action returns the generated file gets deleted automatically.
 -}
-withAnnotatedGdbScriptPath :: FilePath -> (FilePath -> IO ()) -> IO ()
+withAnnotatedGdbScriptPath :: FilePath -> (FilePath -> IO a) -> IO a
 withAnnotatedGdbScriptPath srcPath action = do
   withSystemTempFile "gdb-script" $ \dstPath dstHandle -> do
     withFile srcPath ReadMode $ \srcHandle -> do
