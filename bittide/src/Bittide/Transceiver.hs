@@ -427,8 +427,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
             :> "ila_probe_metaTx"
             :> "ila_probe_linkUp"
             :> "ila_probe_txLastFree"
-            :> "capture"
-            :> "trigger"
+            :> "capture_ila"
+            :> "trigger_ila"
             :> Nil
         )
           { advancedTriggers = True
