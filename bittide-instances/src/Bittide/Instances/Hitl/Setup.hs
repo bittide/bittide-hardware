@@ -4,6 +4,7 @@
 
 module Bittide.Instances.Hitl.Setup (
   -- * Constants
+  DeviceInfo (..),
   FpgaCount,
   LinkCount,
   FpgaId,
@@ -18,8 +19,8 @@ module Bittide.Instances.Hitl.Setup (
   knownFpgaIdsVec,
   linkMask,
   linkMasks,
-  deviceIdDnaPairs,
-  deviceIdSerialPairs,
+  demoRigInfo,
+  debugDeviceInfo,
 ) where
 
 import Clash.Prelude
@@ -124,26 +125,72 @@ linkMasks g = smap (const . linkMask') indicesI
     SNatLE -> linkMask g i
     _ -> error "impossible"
 
-deviceIdDnaPairs :: [(String, BitVector 96)]
-deviceIdDnaPairs =
-  [ ("210308B3B272", 0x400200010169c040044164c5)
-  , ("210308B0992E", 0x40020001815160e805108285)
-  , ("210308B0AE73", 0x4002000101695ce72c808445)
-  , ("210308B0AE6D", 0x4002000101695ce72c702305)
-  , ("210308B0AFD4", 0x40020001016ba8e52581a285)
-  , ("210308B0AE65", 0x400200010157f4862d01c345)
-  , ("210308B3A22D", 0x400200010169c04004308185)
-  , ("210308B0B0C2", 0x40020001015664862d20e405)
+data DeviceInfo = DeviceInfo
+  { deviceId :: String
+  , dna :: BitVector 96
+  , serial :: String
+  , usbAdapterLocation :: String
+  }
+
+-- | List of device information of all FPGAs connected to the demo rig
+demoRigInfo :: [DeviceInfo]
+demoRigInfo =
+  [ DeviceInfo
+      { deviceId = "210308B3B272"
+      , dna = 0x400200010169c040044164c5
+      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.2:1.1-port0"
+      , usbAdapterLocation = "1-5.4.4.2:1"
+      }
+  , DeviceInfo
+      { deviceId = "210308B0992E"
+      , dna = 0x40020001815160e805108285
+      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.1:1.1-port0"
+      , usbAdapterLocation = "1-5.4.4.1:1"
+      }
+  , DeviceInfo
+      { deviceId = "210308B0AE73"
+      , dna = 0x4002000101695ce72c808445
+      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.3:1.1-port0"
+      , usbAdapterLocation = "1-5.4.3:1"
+      }
+  , DeviceInfo
+      { deviceId = "210308B0AE6D"
+      , dna = 0x4002000101695ce72c702305
+      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.2:1.1-port0"
+      , usbAdapterLocation = "1-5.4.2:1"
+      }
+  , DeviceInfo
+      { deviceId = "210308B0AFD4"
+      , dna = 0x40020001016ba8e52581a285
+      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.1:1.1-port0"
+      , usbAdapterLocation = "1-5.4.1:1"
+      }
+  , DeviceInfo
+      { deviceId = "210308B0AE65"
+      , dna = 0x400200010157f4862d01c345
+      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.3:1.1-port0"
+      , usbAdapterLocation = "1-5.3:1"
+      }
+  , DeviceInfo
+      { deviceId = "210308B3A22D"
+      , dna = 0x400200010169c04004308185
+      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.2:1.1-port0"
+      , usbAdapterLocation = "1-5.2:1"
+      }
+  , DeviceInfo
+      { deviceId = "210308B0B0C2"
+      , dna = 0x40020001015664862d20e405
+      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.1:1.1-port0"
+      , usbAdapterLocation = "1-5.1:1"
+      }
   ]
 
-deviceIdSerialPairs :: [(String, String)]
-deviceIdSerialPairs =
-  [ ("210308B3B272", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.2:1.1-port0")
-  , ("210308B0992E", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.1:1.1-port0")
-  , ("210308B0AE73", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.3:1.1-port0")
-  , ("210308B0AE6D", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.2:1.1-port0")
-  , ("210308B0AFD4", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.1:1.1-port0")
-  , ("210308B0AE65", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.3:1.1-port0")
-  , ("210308B3A22D", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.2:1.1-port0")
-  , ("210308B0B0C2", "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.1:1.1-port0")
-  ]
+-- | Device information of the FPGA connected to our debug setup. Do not use this on CI.
+debugDeviceInfo :: DeviceInfo
+debugDeviceInfo =
+  DeviceInfo
+    { deviceId = "210308B3B018"
+    , dna = 0x4002000101604ee70cc0e085
+    , serial = "/dev/serial/by-path/pci-0000:02:00.0-usb-0:2:1.1-port0"
+    , usbAdapterLocation = "1-2:1"
+    }

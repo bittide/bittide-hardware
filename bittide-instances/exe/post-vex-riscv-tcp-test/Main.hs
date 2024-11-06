@@ -2,30 +2,34 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module Main where
 
 import Prelude
 
-import Bittide.Instances.Hitl.Post.TcpServer
 import Control.Concurrent
 import Control.Concurrent.Async
 import Data.List.Extra
 import Data.Maybe
 import Data.Time
 import Data.Time.Clock.POSIX
-import Paths_bittide_instances
-import Project.FilePath
-import Project.Handle
-import Project.Programs
 import System.Directory
 import System.Environment (withArgs)
 import System.FilePath
 import System.IO
+import System.Posix.Env (getEnvironment)
 import System.Process
 import System.Timeout
 import Test.Tasty.HUnit
 import Test.Tasty.TH
+
+import Bittide.Instances.Hitl.Post.TcpServer
+import Bittide.Instances.Hitl.Setup
+import Paths_bittide_instances
+import Project.FilePath
+import Project.Handle
+import Project.Programs
 
 import qualified Data.ByteString.Lazy as BS
 import qualified Network.Simple.TCP as NS
@@ -62,24 +66,27 @@ connect to the server and close the connection within a reasonable time.
 -}
 case_testTcpClient :: Assertion
 case_testTcpClient = do
+  let
+    -- For now we use a hardcoded device. This should be updated with the pre-processing
+    -- infrastructure.
+    uartDev = (last demoRigInfo).serial
+    adapterLoc = (last demoRigInfo).usbAdapterLocation
   startOpenOcdPath <- getOpenOcdStartPath
   startPicocomPath <- getPicocomStartPath
-  uartDev <- getUartDev
   gdbScriptPath <- getGdbScriptPath
 
   putStrLn "Starting TCP Server"
   (serverSock, _) <- startServer
   withAnnotatedGdbScriptPath gdbScriptPath $ \gdbProgPath -> do
+    currentEnv <- getEnvironment
     let
-      openOcdProc = (proc startOpenOcdPath []){std_err = CreatePipe}
+      openOcdProc =
+        (proc startOpenOcdPath [])
+          { env = Just (currentEnv <> [("USB_DEVICE", adapterLoc)])
+          , std_err = CreatePipe
+          }
       gdbProc = (proc "gdb" ["--command", gdbProgPath]){std_out = CreatePipe, std_err = CreatePipe}
       picocomProc = (proc startPicocomPath [uartDev]){std_out = CreatePipe, std_in = CreatePipe}
-
-      -- Wait until we see "Halting processor", fail if we see an error
-      waitForHalt s
-        | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
-        | "Halting processor" `isPrefixOf` s = Stop Ok
-        | otherwise = Continue
 
     putStrLn "Starting OpenOcd..."
     withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do

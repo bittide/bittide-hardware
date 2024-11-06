@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use head" #-}
@@ -10,7 +9,7 @@ module Bittide.Instances.Hitl.DnaOverSerial where
 
 import Bittide.Hitl
 import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.Setup
+import Bittide.Instances.Hitl.Setup (allHwTargets)
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.UART
 import Clash.Cores.Xilinx.Extra (ibufds)

@@ -7,7 +7,13 @@ interface ftdi
 
 # Find the device based on the USB vendor/product ID
 ftdi_vid_pid 0x0403 0x6010
-adapter usb location 1-5.1:1
+
+set usb_device_loc [env USB_DEVICE]
+
+if { $usb_device_loc == "" } {
+  error "Required environment variable 'USB_DEVICE' is not set."
+}
+adapter usb location $usb_device_loc
 
 # FT2232C IO bits per schematic:
 # 0: TCK, Output
