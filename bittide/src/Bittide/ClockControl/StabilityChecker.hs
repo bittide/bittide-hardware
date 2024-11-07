@@ -21,7 +21,7 @@ data StabilityIndication = StabilityIndication
   -- ^ Indicates whether the signal is stable and close to
   -- 'targetDataCount'.
   }
-  deriving (Generic, NFDataX, BitPack)
+  deriving (Generic, NFDataX, BitPack, ShowX, Show)
 
 deriveSignalHasFields ''StabilityIndication
 

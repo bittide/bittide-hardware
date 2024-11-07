@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
@@ -30,6 +31,8 @@ module Bittide.Instances.Hitl.HwCcTopologies (
   hwCcTopologyTest,
   clockControlConfig,
   commonSpiConfig,
+  csDupe,
+  cSigMap,
   tests,
 ) where
 
@@ -50,8 +53,8 @@ import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto
-import Bittide.ClockControl.Callisto.Util (FDEC, FINC, speedChangeToPins, stickyBits)
-import Bittide.ClockControl.Registers (clockControlWb)
+import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
+import Bittide.ClockControl.Registers (ClockControlData (clockMod), clockControlWb)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
@@ -201,36 +204,66 @@ clockControlConfig ::
 clockControlConfig =
   $(lift (instancesClockConfig (Proxy @Basic125)))
 
+debugRegisterConfig :: DebugRegisterCfg
+debugRegisterConfig =
+  DebugRegisterCfg
+    { reframingEnabled = False
+    }
+
+csDupe ::
+  forall dom a n.
+  (KnownDomain dom, KnownNat n) =>
+  Circuit (CSignal dom a) (Vec n (CSignal dom a))
+csDupe = Circuit $ \(m, _) -> (pure (), repeat m)
+
+cSigMap ::
+  forall dom a b.
+  (KnownDomain dom) =>
+  (a -> b) ->
+  Circuit (CSignal dom a) (CSignal dom b)
+cSigMap fn = Circuit $ \(m, _) -> (pure (), fn <$> m)
+
 {- | Instantiates a RiscV core that copies instructions coming from a hardware
 implementation of Callisto (see 'topologyTest') and copies it to a register
 tied to FINC/FDEC.
 -}
 riscvCopyTest ::
   forall dom.
-  (KnownDomain dom) =>
+  (KnownDomain dom, 1 <= DomainPeriod dom) =>
   Clock dom ->
   Reset dom ->
+  Signal dom (BitVector LinkCount) ->
   Signal dom (CallistoResult LinkCount) ->
   Vec LinkCount (Signal dom (RelDataCount 32)) ->
   -- Freq increase / freq decrease request to clock board
   ( "FINC" ::: Signal dom Bool
   , "FDEC" ::: Signal dom Bool
   )
-riscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
+riscvCopyTest clk rst mask callistoResult dataCounts = unbundle fIncDec
  where
-  (_, fIncDec) =
+  (_, ccData) =
     toSignals
       ( circuit $ \jtag -> do
-          [wbA, wbB] <-
+          [wbFincFdec, wbClockControl, wbDebug] <-
             withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
-          fIncDecCallisto -< wbA
-          (fIncDec, _allStable) <-
+          fIncDecCallisto -< wbFincFdec
+          [ccd0, ccd1] <-
+            csDupe
+              <| withClockResetEnable
+                clk
+                rst
+                enableGen
+                (clockControlWb margin framesize mask dataCounts)
+              -< wbClockControl
+          cm <- cSigMap clockMod -< ccd0
+          _debugData <-
             withClockResetEnable clk rst enableGen
-              $ clockControlWb margin framesize (pure $ complement 0) dataCounts
-              -< wbB
-          idC -< fIncDec
+              $ debugRegisterWb (pure debugRegisterConfig)
+              -< (wbDebug, cm)
+          idC -< ccd1
       )
       (pure $ JtagIn low low low, pure ())
+  fIncDec = speedChangeToStickyPins clk rst enableGen (SNat @Si539xHoldTime) ccData.clockMod
 
   fIncDecCallisto ::
     forall aw nBytes.
@@ -278,14 +311,15 @@ riscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
      )
 
   {-
-    0b10xxxxx_xxxxxxxx 0b10 0x8x instruction memory
-    0b01xxxxx_xxxxxxxx 0b01 0x4x data memory
-    0b00xxxxx_xxxxxxxx 0b00 0x0x FINC/FDEC register
-    0b11xxxxx_xxxxxxxx 0b11 0xCx memory mapped hardware clock control
+    0b100xxxxx_xxxxxxxx 0b100 0x8x instruction memory
+    0b010xxxxx_xxxxxxxx 0b010 0x4x data memory
+    0b000xxxxx_xxxxxxxx 0b000 0x0x FINC/FDEC register
+    0b110xxxxx_xxxxxxxx 0b110 0xCx memory mapped hardware clock control
+    0b111xxxxx_xxxxxxxx 0b111 0xEx memory mapped debugging register
   -}
   peConfig =
     PeConfig
-      (0b10 :> 0b01 :> 0b00 :> 0b11 :> Nil)
+      (0b100 :> 0b010 :> 0b000 :> 0b110 :> 0b111 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
 
@@ -563,11 +597,12 @@ topologyTest refClk sysClk sysRst IlaControl{syncRst = rst, ..} rxNs rxPs miso c
             <$> initialAdjust
             <*> adjustCount
         )
-        ( withClockResetEnable sysClk clockControlReset enableGen
-            $ stickyBits @Basic125 d20
-            $ speedChangeToPins
-            . fromMaybe NoChange
-            <$> clockMod
+        ( speedChangeToStickyPins
+            sysClk
+            clockControlReset
+            enableGen
+            (SNat @Si539xHoldTime)
+            clockMod
         )
    where
     opSelect calib adjust = case compare calib adjust of
@@ -643,7 +678,7 @@ hwCcTopologyWithRiscvTest refClkDiff sysClkDiff syncIn rxns rxps miso =
     unbundle
       $ mux (unsafeToActiveHigh callistoReset) hwFincFdecs
       $ bundle
-      $ riscvCopyTest sysClk callistoReset callistoResult dataCounts
+      $ riscvCopyTest sysClk callistoReset (mask <$> cfg) callistoResult dataCounts
 
   -- check that tests are not synchronously start before all
   -- transceivers are up

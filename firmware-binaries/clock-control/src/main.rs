@@ -10,6 +10,7 @@ use core::panic::PanicInfo;
 use bittide_sys::{
     callisto::{self, ControlConfig, ControlSt, ReframingState},
     clock_control::{ClockControl, SpeedChange},
+    debug_register::DebugRegister,
 };
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -18,25 +19,23 @@ use riscv_rt::entry;
 fn main() -> ! {
     #[allow(clippy::zero_ptr)] // we might want to change the address!
     let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32) };
+    let dbgreg = unsafe { DebugRegister::from_base_addr(0xE000_0000 as *const u32) };
 
     let config = ControlConfig {
         target_count: 0,
         wait_time: 0,
-        reframing_enabled: 0,
+        reframing_enabled: dbgreg.reframing_enabled(),
     };
-    let mut state = ControlSt {
-        z_k: 0,
-        b_k: SpeedChange::NoChange,
-        steady_state_target: 0.0f32,
-        rf_state: ReframingState::Detect,
-    };
+    let mut state = ControlSt::new(
+        0,
+        SpeedChange::NoChange,
+        0.0f32,
+        dbgreg,
+        ReframingState::Detect,
+    );
 
     loop {
-        let data_counts = cc.data_counts().map(|x| x as isize);
-        let links_stable = cc.links_stable();
-
-        callisto::callisto(&config, 0b0111_1111, links_stable, data_counts, &mut state);
-
+        callisto::callisto(&cc, &config, &mut state);
         cc.change_speed(state.b_k);
     }
 }
