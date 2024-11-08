@@ -396,78 +396,79 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
  where
   debugIla :: Signal free ()
   debugIla =
-    ila
-      ( ( ilaConfig
-            $ "ila_probe_fpgaIndex"
-            :> "ila_probe_transIndex"
-            :> "ila_probe_txRetries"
-            :> "ila_probe_rxRetries"
-            :> "ila_probe_rxFullRetries"
-            :> "ila_probe_failAfterUps"
-            :> "ila_probe_rx_data0"
-            :> "ila_probe_alignedRxData0"
-            :> "ila_probe_gtwiz_userdata_tx_in"
-            :> "ila_probe_reset_rx_done"
-            :> "ila_probe_reset_tx_done"
-            :> "ila_probe_reset"
-            :> "ila_probe_alignError"
-            :> "ila_probe_prbsErrors"
-            :> "ila_probe_alignedAlignBits"
-            :> "ila_probe_alignedMetaBits"
-            :> "ila_probe_rxCtrl0"
-            :> "ila_probe_rxCtrl1"
-            :> "ila_probe_rxCtrl2"
-            :> "ila_probe_rxCtrl3"
-            :> "ila_probe_prbsOk"
-            :> "ila_probe_prbsOkDelayed"
-            :> "ila_probe_rst_all"
-            :> "ila_probe_rst_rx"
-            :> "ila_probe_rxReset"
-            :> "ila_probe_txReset"
-            :> "ila_probe_metaTx"
-            :> "ila_probe_linkUp"
-            :> "ila_probe_txLastFree"
-            :> "capture_ila"
-            :> "trigger_ila"
-            :> Nil
+    setName @"transceiverDebugIla"
+      $ ila
+        ( ( ilaConfig
+              $ "ila_probe_fpgaIndex"
+              :> "ila_probe_transIndex"
+              :> "ila_probe_txRetries"
+              :> "ila_probe_rxRetries"
+              :> "ila_probe_rxFullRetries"
+              :> "ila_probe_failAfterUps"
+              :> "ila_probe_rx_data0"
+              :> "ila_probe_alignedRxData0"
+              :> "ila_probe_gtwiz_userdata_tx_in"
+              :> "ila_probe_reset_rx_done"
+              :> "ila_probe_reset_tx_done"
+              :> "ila_probe_reset"
+              :> "ila_probe_alignError"
+              :> "ila_probe_prbsErrors"
+              :> "ila_probe_alignedAlignBits"
+              :> "ila_probe_alignedMetaBits"
+              :> "ila_probe_rxCtrl0"
+              :> "ila_probe_rxCtrl1"
+              :> "ila_probe_rxCtrl2"
+              :> "ila_probe_rxCtrl3"
+              :> "ila_probe_prbsOk"
+              :> "ila_probe_prbsOkDelayed"
+              :> "ila_probe_rst_all"
+              :> "ila_probe_rst_rx"
+              :> "ila_probe_rxReset"
+              :> "ila_probe_txReset"
+              :> "ila_probe_metaTx"
+              :> "ila_probe_linkUp"
+              :> "ila_probe_txLastFree"
+              :> "capture_ila"
+              :> "trigger_ila"
+              :> Nil
+          )
+            { advancedTriggers = True
+            , stages = 1
+            , depth = D1024
+            }
         )
-          { advancedTriggers = True
-          , stages = 1
-          , depth = D1024
-          }
-      )
-      clock
-      opts.debugFpgaIndex
-      (pure args.transceiverIndex :: Signal free (Unsigned 3))
-      ((.txRetries) <$> stats)
-      ((.rxRetries) <$> stats)
-      ((.rxFullRetries) <$> stats)
-      ((.failAfterUps) <$> stats)
-      (xpmCdcArraySingle rxClock clock rx_data0)
-      (xpmCdcArraySingle rxClock clock alignedRxData0)
-      (xpmCdcArraySingle txClock clock gtwiz_userdata_tx_in)
-      (xpmCdcArraySingle rxClock clock reset_rx_done)
-      (xpmCdcArraySingle txClock clock reset_tx_done)
-      (unsafeToActiveHigh reset)
-      (xpmCdcArraySingle rxClock clock alignError)
-      (xpmCdcArraySingle rxClock clock prbsErrors)
-      (xpmCdcArraySingle rxClock clock alignedAlignBits)
-      (xpmCdcArraySingle rxClock clock (prettifyMetaBits <$> alignedMetaBits))
-      (xpmCdcArraySingle rxClock clock rxCtrl0)
-      (xpmCdcArraySingle rxClock clock rxCtrl1)
-      (xpmCdcArraySingle rxClock clock rxCtrl2)
-      (xpmCdcArraySingle rxClock clock rxCtrl3)
-      (xpmCdcSingle rxClock clock prbsOk)
-      (xpmCdcSingle rxClock clock prbsOkDelayed)
-      (unsafeToActiveHigh rst_all)
-      (unsafeToActiveHigh rst_rx)
-      (xpmCdcSingle rxClock clock $ unsafeToActiveHigh rxReset)
-      (xpmCdcSingle txClock clock $ unsafeToActiveHigh txReset)
-      (xpmCdcArraySingle txClock clock (prettifyMetaBits . pack <$> metaTx))
-      linkUp
-      txLastFree
-      (pure True :: Signal free Bool) -- capture
-      txLastFree -- trigger
+        clock
+        opts.debugFpgaIndex
+        (pure args.transceiverIndex :: Signal free (Unsigned 3))
+        ((.txRetries) <$> stats)
+        ((.rxRetries) <$> stats)
+        ((.rxFullRetries) <$> stats)
+        ((.failAfterUps) <$> stats)
+        (xpmCdcArraySingle rxClock clock rx_data0)
+        (xpmCdcArraySingle rxClock clock alignedRxData0)
+        (xpmCdcArraySingle txClock clock gtwiz_userdata_tx_in)
+        (xpmCdcArraySingle rxClock clock reset_rx_done)
+        (xpmCdcArraySingle txClock clock reset_tx_done)
+        (unsafeToActiveHigh reset)
+        (xpmCdcArraySingle rxClock clock alignError)
+        (xpmCdcArraySingle rxClock clock prbsErrors)
+        (xpmCdcArraySingle rxClock clock alignedAlignBits)
+        (xpmCdcArraySingle rxClock clock (prettifyMetaBits <$> alignedMetaBits))
+        (xpmCdcArraySingle rxClock clock rxCtrl0)
+        (xpmCdcArraySingle rxClock clock rxCtrl1)
+        (xpmCdcArraySingle rxClock clock rxCtrl2)
+        (xpmCdcArraySingle rxClock clock rxCtrl3)
+        (xpmCdcSingle rxClock clock prbsOk)
+        (xpmCdcSingle rxClock clock prbsOkDelayed)
+        (unsafeToActiveHigh rst_all)
+        (unsafeToActiveHigh rst_rx)
+        (xpmCdcSingle rxClock clock $ unsafeToActiveHigh rxReset)
+        (xpmCdcSingle txClock clock $ unsafeToActiveHigh txReset)
+        (xpmCdcArraySingle txClock clock (prettifyMetaBits . pack <$> metaTx))
+        linkUp
+        txLastFree
+        (pure True :: Signal free Bool) -- capture
+        txLastFree -- trigger
   result =
     Output
       { txSampling = txUserData
