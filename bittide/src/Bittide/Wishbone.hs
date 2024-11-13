@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE PartialTypeSignatures #-}
@@ -29,6 +30,7 @@ import Data.Maybe
 import Protocols
 import Protocols.Wishbone
 
+import Clash.Sized.Vector.ToTuple (VecToTuple (vecToTuple))
 import qualified Protocols.Df as Df
 import qualified Protocols.Wishbone as Wishbone
 
@@ -540,9 +542,38 @@ wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
     | otherwise = repeat Nothing
   wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}
 
-{- | Wishbone accessible circuit that contains a free running 64 bit counter. We can
-observe this counter to get a sense of time, overflows should be accounted for by
-the master.
+data TimeCmd = Capture | WaitForCmp deriving (Eq, Generic, NFDataX, BitPack)
+data TimeCmp = TimeEq | TimeNeq | TimeLt | TimeGt | TimeLte | TimeGte
+  deriving (Generic, NFDataX, BitPack)
+
+{- | Wishbone accessible circuit that contains a free running 64 bit counter with stalling
+capabilities.
+
+The word-aligned address layout of the Wishbone interface is as follows:
+
++--------------+-------------------+--------------+-------------------+
+| Field number | Field description | Field name   | Offset (in bytes) |
++==============+===================+==============+===================+
+| 0            | Timer command     | 'timer_cmd'  | 0x00              |
+| 1            | Timer comparison  | 'timer_cmp'  | 0x04              |
+| 2            | Scratchpad LSBs   | n/a          | 0x08              |
+| 3            | Scratchpad MSBs   | n/a          | 0x0C              |
+| 4            | Frequency LSBs    | n/a          | 0x10              |
+| 5            | Frequency MSBs    | n/a          | 0x14              |
+| 6            | Comparison result | 'cmp_result' | 0x18              |
++--------------+-------------------+--------------+-------------------+
+
+The register-level layout of the Wishbone interface is as follows:
+
++--------------+-------------------+--------------+---------------+-----------------+-------------------+----+
+| Field number | Field description | Field name   | Field type    | Size (in bytes) | Offset (in bytes) | RW |
++==============+===================+==============+===============+=================+===================+====+
+| 0            | Timer command     | 'time_cmd'   | 'TimeCmd'     | 1               | 0x00              | W  |
+| 1            | Timer comparison  | 'time_cmp'   | 'TimeCmp'     | 1               | 0x04              | RW |
+| 2            | Scratchpad        | 'scratchpad' | 'Unsigned 64' | 8               | 0x08              | R  |
+| 4            | Frequency         | 'frequency'  | 'Unsigned 64' | 8               | 0x10              | R  |
+| 6            | Comparison result | 'cmp_result' | 'Bool'        | 1               | 0x18              | R  |
++--------------+-------------------+--------------+---------------+-----------------+-------------------+----+
 -}
 timeWb ::
   forall dom addrW.
@@ -551,18 +582,51 @@ timeWb ::
   , 1 <= DomainPeriod dom
   ) =>
   Circuit (Wishbone dom 'Standard addrW (Bytes 4)) ()
-timeWb = Circuit $ \(wbM2S, _) -> (mealy goMealy (0, 0) wbM2S, ())
+timeWb = Circuit $ \(wbM2S, _) -> (mealy goMealy (TimeGte, False, 0, 0) wbM2S, ())
  where
-  goMealy (frozen, count :: Unsigned 64) wbM2S = ((nextFrozen, succ count), wbS2M)
+  goMealy (cmp0, reqCmp0, scratch0 :: Unsigned 64, count :: Unsigned 64) wbM2S =
+    ((cmp1, reqCmp1, scratch1, succ count), wbS2M1)
    where
     freq = natToNum @(DomainToHz dom) :: Unsigned 64
-    nextFrozen = if isJust (head writes) then count else frozen
-    RegisterBank (splitAtI -> (frozenMsbs, frozenLsbs)) = getRegsBe @8 frozen
+
+    readVec :: Vec 7 (BitVector 32)
+    readVec =
+      0 -- Timer command is write-only, provide default 0 on read
+        :> (resize . pack $ cmp0)
+        :> pack scratchLsbs0
+        :> pack scratchMsbs0
+        :> pack freqLsbs
+        :> pack freqMsbs
+        :> (resize . pack $ runCmp)
+        :> Nil
+    (writes, wbS2M0) = wbToVec @4 @_ readVec wbM2S
+    (f0, f1, f2, f3, _f4, _f5, _f6) = vecToTuple writes
+
+    command :: Maybe TimeCmd
+    command = unpack . resize <$> f0
+    cmp1 = maybe cmp0 (unpack . resize) f1
+    cmdWaitForCmp = Just WaitForCmp == command
+    reqCmp1 = if reqCmp0 then not runCmp else cmdWaitForCmp
+
+    RegisterBank (splitAtI -> (scratchMsbs0, scratchLsbs0)) = getRegsBe @8 scratch0
+    scratch1 = case (bitCoerce f2, bitCoerce f3, command) of
+      (Just newLsbs, _, _) -> getDataBe $ RegisterBank (scratchMsbs0 ++ newLsbs)
+      (_, Just newMsbs, _) -> getDataBe $ RegisterBank (newMsbs ++ scratchLsbs0)
+      (_, _, Nothing) -> scratch0
+      (_, _, Just Capture) -> count
+      (_, _, Just WaitForCmp) -> scratch0
+
     RegisterBank (splitAtI -> (freqMsbs, freqLsbs)) = getRegsBe @8 freq
-    (writes, wbS2M) =
-      wbToVec
-        (0 :> fmap pack (frozenLsbs :> frozenMsbs :> freqLsbs :> freqMsbs :> Nil))
-        wbM2S
+
+    runCmp = case cmp0 of
+      TimeEq -> scratch0 == count
+      TimeNeq -> scratch0 /= count
+      TimeLt -> scratch0 > count
+      TimeGt -> scratch0 < count
+      TimeLte -> scratch0 >= count
+      TimeGte -> scratch0 <= count
+    cmpResult = not reqCmp0 || runCmp -- if reqCmp0 then runCmp else True
+    wbS2M1 = wbS2M0{acknowledge = wbS2M0.acknowledge && cmpResult}
 
 {- | Wishbone wrapper for DnaPortE2, adds extra register with wishbone interface
 to access the DNA device identifier. The DNA device identifier is a 96-bit
