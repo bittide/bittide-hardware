@@ -167,9 +167,9 @@ fn exception_handler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
     let mut uart = unsafe { Uart::new(UART_ADDR) };
     riscv::interrupt::free(|| {
         uwriteln!(uart, "... caught an exception. Looping forever now.\n").unwrap();
-        debug!("mcause: {:?}\n", mcause::read());
-        debug!("mepc: {:?}\n", mepc::read());
-        debug!("mtval: {:?}\n", mtval::read());
+        info!("mcause: {:?}\n", mcause::read());
+        info!("mepc: {:?}\n", mepc::read());
+        info!("mtval: {:?}\n", mtval::read());
     });
     loop {
         continue;
