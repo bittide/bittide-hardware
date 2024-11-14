@@ -1,0 +1,10 @@
+[
+  {"top": "safeDffSynchronizer",           "stage": "hdl" },
+
+  {"top": "fullMeshHwCcTest",              "stage": "bitstream"},
+  {"top": "fullMeshSwCcTest",              "stage": "bitstream"},
+  {"top": "linkConfigurationTest",         "stage": "bitstream"},
+  {"top": "transceiversUpTest",            "stage": "bitstream"},
+  {"top": "vexRiscvTcpTest",               "stage": "bitstream"},
+  {"top": "vexRiscvTest",                  "stage": "bitstream"}
+]
