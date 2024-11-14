@@ -263,6 +263,15 @@ impl ops::Sub<Duration> for Duration {
     }
 }
 
+#[repr(u8)]
+/// Command sent to the time component. A `Freeze` tells the timer to save the current
+/// counter value into its scratchpad, and a `WaitForCmp` tells the timer to stall the CPU
+/// until the comparison set by `TimeCmp` is `true`.
+pub enum TimerCommand {
+    Freeze = 0,
+    WaitForCmp = 1,
+}
+
 /// The Clock struct is a hardware abstraction for the timekeeping peripheral.
 /// It provides methods for waiting and updating time.
 /// Typical usage:
@@ -278,74 +287,139 @@ impl ops::Sub<Duration> for Duration {
 
 #[derive(uDebug, Clone)]
 pub struct Clock {
-    freeze_count: *mut u32,
-    counter: *const u64,
-    frequency: *const u64,
+    base_addr: *mut u32,
 }
 
 impl Clock {
+    const CMD_OFFSET: usize = 0;
+    const CRS_OFFSET: usize = 1;
+    const SCP_OFFSET: usize = 2;
+    const FRQ_OFFSET: usize = 4;
+
     /// Create a new Clock instance.
     ///
     /// # Safety
     ///
     /// `addr` needs to point to a mapped memory address for a timer component.
     pub unsafe fn new(base_addr: *const ()) -> Clock {
-        unsafe {
-            let addr = base_addr as *mut u32;
-            Clock {
-                freeze_count: addr,
-                counter: addr.add(1).cast::<u64>(),
-                frequency: addr.add(3).cast::<u64>(),
-            }
-        }
+        let addr = base_addr as *mut u32;
+        Clock { base_addr: addr }
     }
 
-    /// Wait for a `Duration`.
-    pub fn wait(&self, duration: Duration) {
-        let mut now = self.elapsed();
-        let target = now + duration;
-        while target > now {
-            now = self.elapsed();
-        }
-    }
-
-    /// Wait until we have passed an `Instant`.
-    pub fn wait_until(&self, target: Instant) {
-        let mut now = self.elapsed();
-        while target > now {
-            now = self.elapsed();
-        }
-    }
-
-    /// Update the clock and return the current Instant.
-    pub fn elapsed(&self) -> Instant {
-        self.freeze();
-        let cycles = self.get_counter();
-        let frequency = self.get_frequency();
-        Instant::from_cycles(cycles, frequency)
+    /// Returns the base address contained by a given instance of `Clock`.
+    ///
+    /// # Safety
+    ///
+    /// This can be used to construct a new `Clock`, which breaks the rules of
+    /// ownership pretty easily. Use carefully.
+    pub unsafe fn as_ptr(&self) -> *const () {
+        self.base_addr.cast_const().cast()
     }
 
     /// Freezes the time counter.
-    fn freeze(&self) {
+    pub fn freeze(&mut self) {
         unsafe {
-            self.freeze_count.write_volatile(0);
+            self.base_addr
+                .add(Self::CMD_OFFSET)
+                .write_volatile(TimerCommand::Freeze as u32);
         }
     }
 
-    /// Retrieves the current value of the time counter.
-    ///
-    /// Returns:
-    /// - The current value of the time counter as a `u64`.
-    fn get_counter(&self) -> u64 {
-        unsafe { self.counter.read_volatile() }
+    pub fn wait_for_cmp(&mut self) {
+        unsafe {
+            self.base_addr
+                .add(Self::CMD_OFFSET)
+                .write_volatile(TimerCommand::WaitForCmp as u32);
+        }
+    }
+
+    pub fn read_scratchpad(&self) -> u64 {
+        unsafe {
+            self.base_addr
+                .add(Self::SCP_OFFSET)
+                .cast::<u64>()
+                .read_volatile()
+        }
+    }
+
+    pub fn write_scratchpad(&mut self, val: u64) {
+        unsafe {
+            self.base_addr
+                .add(Self::SCP_OFFSET)
+                .cast::<u64>()
+                .write_volatile(val)
+        }
     }
 
     /// Retrieves the frequency of the time counter.
     ///
     /// Returns:
     /// - The frequency of the time counter as a `u64`.
-    pub fn get_frequency(&self) -> u64 {
-        unsafe { self.frequency.read_volatile() }
+    pub fn frequency(&self) -> u64 {
+        unsafe {
+            self.base_addr
+                .add(Self::FRQ_OFFSET)
+                .cast::<u64>()
+                .read_volatile()
+        }
+    }
+
+    /// Retrieves the result of the currently configured clock comparison without blocking.
+    pub fn get_cmp_result(&self) -> bool {
+        unsafe { self.base_addr.add(Self::CRS_OFFSET).read_volatile() != 0 }
+    }
+
+    /// Retrieves the current value of the time counter by requesting the time component
+    /// write the current counter to its internal scratchpad and then reading that out.
+    /// This discards whatever value may already be present there.
+    ///
+    /// Returns:
+    /// - The current value of the time counter as a `u64`.
+    fn get_counter(&mut self) -> u64 {
+        self.freeze();
+        self.read_scratchpad()
+    }
+
+    /// Update the clock and return the current Instant.
+    pub fn now(&mut self) -> Instant {
+        let cycles = self.get_counter();
+        let frequency = self.frequency();
+        Instant::from_cycles(cycles, frequency)
+    }
+
+    /// Wait for a `Duration` without stalling.
+    pub fn wait(&mut self, duration: Duration) {
+        let now = self.get_counter();
+        let cycles = duration.to_cycles(self.frequency());
+        self.wait_until_raw(now + cycles);
+    }
+
+    /// Wait until we have passed an `Instant`.
+    pub fn wait_until(&mut self, target: Instant) {
+        let target = target.get_cycles(self.frequency());
+        self.wait_until_raw(target);
+    }
+
+    pub fn wait_until_raw(&mut self, target: u64) {
+        self.write_scratchpad(target);
+        while !self.get_cmp_result() {}
+    }
+
+    /// Stall the CPU until the comparison set by `timer_cmp` is `True`.
+    pub fn wait_stall(&mut self, duration: Duration) {
+        let now = self.get_counter();
+        let duration = duration.to_cycles(self.frequency());
+        self.wait_until_stall_raw(now + duration);
+    }
+
+    pub fn wait_until_stall(&mut self, target: Instant) {
+        let target = target.get_cycles(self.frequency());
+        self.wait_until_stall_raw(target);
+    }
+
+    pub fn wait_until_stall_raw(&mut self, target: u64) {
+        self.write_scratchpad(target);
+        self.wait_for_cmp();
     }
 }
 
