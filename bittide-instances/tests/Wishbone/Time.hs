@@ -36,6 +36,12 @@ import Text.Parsec.String
 -- Qualified
 import qualified Protocols.Df as Df
 
+sim :: IO ()
+sim = putStrLn simResult
+ where
+  simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+  uartStream = sampleC def dut
+
 {- | Run the timing module self test with processingElement and inspect it's uart output.
 The test returns names of tests and a boolean indicating if the test passed.
 -}

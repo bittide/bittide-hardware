@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use crate::{time, uart};
+use crate::{
+    time::{self, Clock},
+    uart,
+};
 
 // The logger utilizes core::fmt to format the log messages because ufmt formatting is not
 // compatible with (dependencies of) the log crate.
-use core::fmt::Write;
+use core::{cell::UnsafeCell, fmt::Write};
 use log::LevelFilter;
 
 /// A global logger instance to be used with the `log` crate.
@@ -62,7 +65,15 @@ impl log::Log for UartLogger {
                             write!(l, "{} | ", record.level()).unwrap()
                         }
                         if let (true, Some(clock)) = (&self.print_time, &self.clock) {
-                            let time = clock.elapsed();
+                            // This is Not Good™. Fix as part of
+                            // https://github.com/bittide/bittide-hardware/issues/681.
+                            let clock: &mut Clock = {
+                                let tmp = clock as *const Clock;
+                                let tmp = tmp as *const UnsafeCell<Clock>;
+                                let tmp = tmp as *mut UnsafeCell<Clock>;
+                                (*tmp).get_mut()
+                            };
+                            let time = clock.now();
                             write!(l, "{time} | ").unwrap();
                         }
                         if record.level() <= self.display_source {
