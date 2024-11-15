@@ -11,7 +11,8 @@
 #
 #    register_runners 8 compute jbg2PSMoQLfqvj0ZeBUW
 #
-# Currently we're labelling runners with either "compute" or "hardware-access".
+# Currently we're labelling runners with either "compute" or "hardware-access". Each
+# runner also has its hostname and a unique name ("hostname-i") as a label.
 # Note that a label "self-hosted" gets applied automatically.
 #
 # With a privileged enough account the token can be found at:
@@ -89,7 +90,7 @@ do
       --replace \
       --url "${URL}" \
       --token "${TOKEN}" \
-      --labels "${LABELS}" \
+      --labels "${LABELS},$(hostname),$(hostname)-$i" \
       --name "${runner_name}"
 
     # TODO:
