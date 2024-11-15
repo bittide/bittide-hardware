@@ -42,7 +42,7 @@ concurrency:
 
 jobs:
   license-check:
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     container:
       image: ubuntu:22.04
       options: --memory=11g
@@ -53,7 +53,7 @@ jobs:
 
   lint:
     name: Basic linting
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
 
     defaults:
       run:
@@ -99,7 +99,7 @@ jobs:
 
   build:
     name: Build dependencies
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
@@ -139,7 +139,7 @@ jobs:
 
   generate-full-clock-control-report:
     name: Generate clock control report
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     if: ${{ !cancelled() && needs.bittide-instances-hardware-in-the-loop-test-matrix.outputs.should_generate_report == 'true' }}
     defaults:
       run:
@@ -202,7 +202,7 @@ jobs:
 
   bittide-experiments-tests:
     name: bittide-experiments unittests
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
@@ -233,7 +233,7 @@ jobs:
 
   bittide-tests:
     name: Bittide tests
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
@@ -276,7 +276,7 @@ jobs:
 
   rust-lints:
     name: Rust Lints
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
@@ -301,7 +301,7 @@ jobs:
 
   firmware-support-tests:
     name: Firmware Support Unit Tests
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
@@ -329,7 +329,7 @@ jobs:
 
   host-tools-tests:
     name: Host Tools Unit Tests
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
@@ -355,7 +355,7 @@ jobs:
 
   firmware-limit-checks:
     name: Firmware Limit Checks
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
@@ -386,7 +386,7 @@ jobs:
 
   bittide-instances-doctests:
     name: bittide-instances doctests
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
@@ -413,7 +413,7 @@ jobs:
 
   bittide-instances-unittests:
     name: bittide-instances unittests
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
@@ -440,7 +440,7 @@ jobs:
 
   bittide-instances-hdl-matrix:
     name: bittide-instances synthesis matrix generation
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
@@ -473,7 +473,7 @@ jobs:
 
   bittide-instances-hardware-in-the-loop-test-matrix:
     name: bittide-instances hardware-in-the-loop test matrix generation
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     defaults:
       run:
         shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
@@ -514,7 +514,7 @@ jobs:
 
   bittide-instances-hdl:
     name: synth
-    runs-on: [self-hosted, compute]
+    runs-on: [self-hosted, compute, hexel]
     defaults:
       run:
         # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
