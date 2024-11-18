@@ -31,10 +31,10 @@ import Text.Parsec.String
 
 -- internal imports
 import Bittide.Arithmetic.Time (PeriodToCycles)
+import Bittide.CircuitUtils
 import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
 import Bittide.ClockControl.Registers (ClockControlData, clockControlWb, clockMod)
 import Bittide.DoubleBufferedRam
-import Bittide.Instances.Hitl.HwCcTopologies (cSigMap, csDupe)
 import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util

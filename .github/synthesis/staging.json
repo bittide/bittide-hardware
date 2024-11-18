@@ -1,8 +1,6 @@
 [
   {"top": "safeDffSynchronizer",           "stage": "hdl" },
-
-  {"top": "fullMeshHwCcTest",              "stage": "test"},
-  {"top": "fullMeshSwCcTest",              "stage": "test"},
+  {"top": "swCcTopologyTest",              "stage": "test"},
   {"top": "linkConfigurationTest",         "stage": "test"},
   {"top": "transceiversUpTest",            "stage": "test"},
   {"top": "vexRiscvTcpTest",               "stage": "test"},
