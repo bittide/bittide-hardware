@@ -1041,13 +1041,13 @@ tests = testGroup
           calibrateClockOffsets
 
           -- initial clock shifts   startup delays            topology          enable reframing?
-        , tt (Just icsDiamond)      ((m *) <$> sdDiamond)     diamond           False
-        , tt (Just icsComplete)     ((m *) <$> sdComplete)    (complete d3)     False
-        , tt (Just icsCyclic)       ((m *) <$> sdCyclic)      (cyclic d5)       False
-        , tt (Just icsTorus)        ((m *) <$> sdTorus)       (torus2d d2 d3)   False
-        , tt (Just icsStar)         ((m *) <$> sdStar)        (star d7)         False
-        , tt (Just icsLine)         ((m *) <$> sdLine)        (line d4)         False
-        , tt (Just icsHourglass)    ((m *) <$> sdHourglass)   (hourglass d3)    False
+        , tt (Just icsDiamond)      ((m *) <$> sdDiamond)     diamond           True
+        , tt (Just icsComplete)     ((m *) <$> sdComplete)    (complete d3)     True
+        , tt (Just icsCyclic)       ((m *) <$> sdCyclic)      (cyclic d5)       True
+        , tt (Just icsTorus)        ((m *) <$> sdTorus)       (torus2d d2 d3)   True
+        , tt (Just icsStar)         ((m *) <$> sdStar)        (star d7)         True
+        , tt (Just icsLine)         ((m *) <$> sdLine)        (line d4)         True
+        , tt (Just icsHourglass)    ((m *) <$> sdHourglass)   (hourglass d3)    True
 
           -- make sure the clock offsets detected during calibration is still the same
         , validateClockOffsetCalibration
