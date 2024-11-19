@@ -21,10 +21,10 @@ fn main() -> ! {
     let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32) };
     let dbgreg = unsafe { DebugRegister::from_base_addr(0xE000_0000 as *const u32) };
 
-    let config = ControlConfig {
+    let mut config = ControlConfig {
         target_count: 0,
         wait_time: 0,
-        reframing_enabled: dbgreg.reframing_enabled(),
+        reframing_enabled: false,
     };
     let mut state = ControlSt::new(
         0,
@@ -37,6 +37,7 @@ fn main() -> ! {
     loop {
         callisto::callisto(&cc, &config, &mut state);
         cc.change_speed(state.b_k);
+        config.reframing_enabled = state.debug_register.reframing_enabled();
     }
 }
 

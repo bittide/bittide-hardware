@@ -199,6 +199,8 @@ txCounterStartUgn = 0x2abb_ccdd_eeff_1234
 rxCounterStartUgn :: BitVector 64
 rxCounterStartUgn = 0x9122_3344_1122_3344
 
+type ReframeWaitTime = Seconds 15
+
 type FifoSize = 5 -- = 2^5 = 32
 
 {- | Instantiates a hardware implementation of Callisto and exports its results. Can
@@ -249,7 +251,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
     , spiOut
     , transceiversFailedAfterUp
     , allReady
-    , allStable0
+    , allStable0 .&&. (not . reframingEnabled <$> cfg .||. allSettled0)
     , clockShift
     , allUgnsStable
     , noFifoOverflows
@@ -332,11 +334,22 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
 
   clockMod = callistoResult.maybeSpeedChange
   allStable0 = callistoResult.allStable
+  allSettled0 = callistoResult.allSettled
   allStable1 = sticky sysClk syncRst allStable0
+
+  reframeWaitCounter :: Signal Basic125 (Index (PeriodToCycles Basic125 ReframeWaitTime))
+  reframeWaitCounter = regEn
+    sysClk
+    syncRst
+    enableGen
+    minBound
+    (syncStart .&&. reframingEnabled <$> cfg)
+    (satSucc SatBound <$> reframeWaitCounter)
+  reframeWaitDone = (== maxBound) <$> reframeWaitCounter
 
   ccConfig =
     SwControlConfig
-      (reframingEnabled <$> cfg)
+      (reframeWaitDone .&&. reframingEnabled <$> cfg)
       (SNat @CccStabilityCheckerMargin)
       (SNat @(CccStabilityCheckerFramesize Basic125))
 
@@ -379,6 +392,9 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
           :> "probe_ugnsStable"
           :> "probe_fifoOverflows"
           :> "probe_fifoUnderflows"
+          :> "probe_reframeWaitCounter"
+          :> "probe_reframeWaitDone"
+          :> "probe_reframingEnabled"
           :> Nil
       )
         { depth = D16384
@@ -409,6 +425,9 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
       (bundle ugnsStable)
       (bundle fifoOverflowsFree)
       (bundle fifoUnderflowsFree)
+      reframeWaitCounter
+      reframeWaitDone
+      (reframeWaitDone .&&. reframingEnabled <$> cfg)
 
   captureFlag =
     riseEvery
