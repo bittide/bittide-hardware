@@ -85,8 +85,17 @@ case_testTcpClient = do
           { env = Just (currentEnv <> [("USB_DEVICE", adapterLoc)])
           , std_err = CreatePipe
           }
-      gdbProc = (proc "gdb" ["--command", gdbProgPath]){std_out = CreatePipe, std_err = CreatePipe}
-      picocomProc = (proc startPicocomPath [uartDev]){std_out = CreatePipe, std_in = CreatePipe}
+      gdbProc =
+        (proc "gdb" ["--command", gdbProgPath])
+          { std_out = CreatePipe
+          , std_err = CreatePipe
+          }
+      picocomProc =
+        (proc startPicocomPath [uartDev])
+          { std_out = CreatePipe
+          , std_in = CreatePipe
+          , new_session = True
+          }
 
     putStrLn "Starting OpenOcd..."
     withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
