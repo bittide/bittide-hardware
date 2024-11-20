@@ -11,6 +11,7 @@ module Bittide.Node where
 import Clash.Prelude
 import Clash.Sized.Vector.ToTuple (vecToTuple)
 
+import Data.Maybe
 import Protocols
 import Protocols.Idle
 import Protocols.Internal (vecCircuits)
@@ -79,9 +80,9 @@ node ::
     (Vec extLinks (CSignal dom (DataLink 64)))
     (Vec extLinks (CSignal dom (DataLink 64)))
 node (NodeConfig nmuConfig switchConfig gppeConfigs) = circuit $ \linksIn -> do
-  switchOut <- (switchC @_ @_ @_ @_ @64 switchConfig) -< (switchIn, swWb)
-  switchIn <- appendC3 -< ([nmuLinkOut], pesToSwitch, linksIn)
-  ([nmuLinkIn], switchToPes, linksOut) <- splitC3 -< switchOut
+  switchOut <- switchC @_ @_ @_ @_ @64 switchConfig -< (switchIn, swWb)
+  switchIn <- vecMap (cSigMap fromJust) <| appendC3 -< ([nmuLinkOut], pesToSwitch, linksIn)
+  ([nmuLinkIn], switchToPes, linksOut) <- splitC3 <| vecMap (cSigMap Just) -< switchOut
   (nmuLinkOut, nmuWbs0) <- managementUnitC nmuConfig -< nmuLinkIn
   ([swWb], nmuWbs1) <- splitAtC d1 -< nmuWbs0
   peWbs <- unconcatC d2 -< nmuWbs1
@@ -319,3 +320,17 @@ unconcatC ::
 unconcatC SNat = Circuit go
  where
   go (fwd, bwd) = (concat bwd, unconcat SNat fwd)
+
+-- | Map a circuit over a vector of circuits
+vecMap :: forall n a b. Circuit a b -> Circuit (Vec n a) (Vec n b)
+vecMap (Circuit f) = Circuit go
+ where
+  go (fwds, bwds) = unzip $ zipWith (curry f) fwds bwds
+
+-- | Map a function over a Circuit of CSignals
+cSigMap ::
+  forall dom a b.
+  (KnownDomain dom) =>
+  (a -> b) ->
+  Circuit (CSignal dom a) (CSignal dom b)
+cSigMap fn = Circuit $ \(m, _) -> (pure (), fn <$> m)
