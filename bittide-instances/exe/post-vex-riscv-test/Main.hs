@@ -19,6 +19,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.TH
 
 import Bittide.Instances.Hitl.Setup
+import Control.Monad (forM)
 import Paths_bittide_instances
 import Project.Handle
 import Project.Programs
@@ -43,7 +44,13 @@ GDB: GNU Debugger. This program will connect to the OpenOCD server and is able
 -}
 case_testGdbProgram :: Assertion
 case_testGdbProgram = do
-  mapM_ (\d -> catch (testGdb d) (catchHUnitFailure d)) demoRigInfo
+  successes <- forM demoRigInfo $ \d ->
+    catch
+      (testGdb d >> pure True)
+      (\e -> catchHUnitFailure d e >> pure False)
+
+  print successes
+  assertBool "Not all tests succeeded. See logs for more information." (and successes)
  where
   -- We use this solution so the test stops when it encounters a problem
   catchHUnitFailure :: DeviceInfo -> HUnitFailure -> IO ()
