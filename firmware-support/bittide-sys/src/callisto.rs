@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use core::cmp::Ordering;
+
 use ufmt::derive::uDebug;
 
 use crate::{
@@ -174,17 +176,14 @@ pub fn callisto(cc: &ClockControl, config: &ControlConfig, state: &mut ControlSt
     let measured_sum = cc.data_counts().sum::<i32>();
     let r_k = (measured_sum - n_buffers as i32 * config.target_count as i32) as f32;
     let c_des = K_P * r_k + state.steady_state_target;
+    let c_est = FSTEP * state.z_k as f32;
 
     state.z_k += state.b_k.sign();
 
-    let c_est = FSTEP * state.z_k as f32;
-
-    state.b_k = if c_des < c_est {
-        SpeedChange::SlowDown
-    } else if c_des > c_est {
-        SpeedChange::SpeedUp
-    } else {
-        SpeedChange::NoChange
+    state.b_k = match c_des.partial_cmp(&c_est) {
+        Some(Ordering::Less) => SpeedChange::SlowDown,
+        Some(Ordering::Greater) => SpeedChange::SpeedUp,
+        _ => SpeedChange::NoChange,
     };
 
     if config.reframing_enabled {
