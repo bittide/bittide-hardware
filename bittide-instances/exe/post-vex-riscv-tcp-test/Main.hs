@@ -79,6 +79,13 @@ case_testTcpClient = do
   (serverSock, _) <- startServer
   withAnnotatedGdbScriptPath gdbScriptPath $ \gdbProgPath -> do
     currentEnv <- getEnvironment
+    projectDir <- findParentContaining "cabal.project"
+    let
+      hitlDir = projectDir </> "_build" </> "hitl"
+      stdoutLog = hitlDir </> "picocom-stdout.log"
+      stderrLog = hitlDir </> "picocom-stderr.log"
+    putStrLn $ "logging stdout to `" <> stdoutLog <> "`"
+    putStrLn $ "logging stderr to `" <> stderrLog <> "`"
     let
       openOcdProc =
         (proc startOpenOcdPath [])
@@ -95,6 +102,9 @@ case_testTcpClient = do
           { std_out = CreatePipe
           , std_in = CreatePipe
           , new_session = True
+          , env =
+              Just
+                (currentEnv <> [("PICOCOM_STDOUT_LOG", stdoutLog), ("PICOCOM_STDERR_LOG", stderrLog)])
           }
 
     putStrLn "Starting OpenOcd..."
