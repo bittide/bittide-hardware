@@ -293,11 +293,7 @@ pub unsafe extern "C" fn __c_callisto_rust(
     let control = unsafe { &*control_ptr };
     let mut state = control_state_from_ffi(&*control_state_ptr);
 
-    callisto::callisto(
-        control,
-        &control_config_from_ffi(&*(config_ptr as *const ControlConfig)),
-        &mut state,
-    );
+    callisto::callisto(control, &control_config_from_ffi(&*config_ptr), &mut state);
 
     control_state_to_ffi(&state, &mut *control_state_ptr)
 }

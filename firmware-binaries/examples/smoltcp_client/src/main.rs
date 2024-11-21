@@ -42,6 +42,8 @@ const CHUNK_SIZE: usize = 4096;
 const SERVER_IP: IpAddress = IpAddress::v4(10, 0, 0, 1);
 const SERVER_PORT: u16 = 1234;
 
+// See https://github.com/bittide/bittide-hardware/issues/681
+#[allow(static_mut_refs)]
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals

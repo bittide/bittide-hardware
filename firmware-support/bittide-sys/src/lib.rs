@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![no_std]
-#![feature(const_ptr_read)]
 
 use fdt::Fdt;
 use utils::matches_fdt_name;
