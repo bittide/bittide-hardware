@@ -16,6 +16,6 @@ bittide-sys = { path = "../../../firmware-support/bittide-sys" }
 riscv-rt = "0.11.0"
 riscv = "^0.10"
 heapless = { version = "0.8", default-features = false}
-smoltcp = { version = "0.11", default-features = false, features = ["medium-ethernet", "proto-ipv4", "socket-tcp", "socket-dhcpv4"] }
+smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp.git", rev = "dc08e0b42e668c331bb2b6f8d80016301d0efe03", default-features = false, features = ["medium-ethernet", "proto-ipv4", "socket-tcp", "socket-dhcpv4"] }
 ufmt = "0.2.0"
 log = {version = "0.4.21", features = ["max_level_off", "release_max_level_info"]}

@@ -91,20 +91,13 @@ pub struct RxToken<'a, const BUFFER_SIZE: usize> {
 impl<const BUFFER_SIZE: usize> phy::RxToken for RxToken<'_, BUFFER_SIZE> {
     fn consume<R, F>(self, f: F) -> R
     where
-        F: FnOnce(&mut [u8]) -> R,
+        F: FnOnce(&[u8]) -> R,
     {
         // Get a slice containing the received data
         let buf = self.axi_rx.get_slice();
 
-        // TODO: This is a hack to get around the fact that the buffer is not mutable,
-        // but the smoltcp API requires it to be. This Should be fixed by
-        // https://github.com/smoltcp-rs/smoltcp/pull/924
-        #[allow(clippy::cast_ref_to_mut)]
-        let mutable_buf =
-            unsafe { core::slice::from_raw_parts_mut(buf.as_ptr().cast_mut(), buf.len()) };
-
         // Process the received data
-        let r = f(mutable_buf);
+        let r = f(buf);
 
         // Clear the packet and status registers
         self.axi_rx.clear_packet();
