@@ -10,12 +10,8 @@ import Prelude
 
 import qualified Network.Simple.TCP as NS
 
-startServer :: IO (NS.Socket, NS.SockAddr)
-startServer = do
-  (serverSock, serverAddr) <- NS.bindSock (NS.Host "0.0.0.0") "1234"
-  putStrLn $ "Listening for connections on " <> show serverAddr
-  NS.listenSock serverSock 2048
-  pure (serverSock, serverAddr)
+withServer :: ((NS.Socket, NS.SockAddr) -> IO a) -> IO a
+withServer = NS.listen NS.HostAny "1234"
 
 waitForClients :: Int -> NS.Socket -> IO [(NS.Socket, NS.SockAddr)]
 waitForClients numberOfClients serverSock = do

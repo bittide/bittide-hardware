@@ -56,9 +56,9 @@ tcpDataDir = buildDir </> "data" </> "tcp"
 with `smoltcp_client` can connect to a TCP server and stress test it for a short duration.
 
 This test will start run a TCP server to which the client can connect. Furthermore it uses
-OpenOCD, Picocom, and GDB, and will wait for the GDB program to programm the soft core.
+OpenOCD, Picocom, and GDB, and will wait for the GDB program to program the soft core.
 
-Then it will wait untill the softcore responds and connects to the TCP server. This
+Then it will wait until the softcore responds and connects to the TCP server. This
 test consumes all data produced by the TCP client and measure the average speed.
 
 This test will fail if any of the subprocesses fail, or if the client does not manage to
@@ -76,104 +76,103 @@ case_testTcpClient = do
   gdbScriptPath <- getGdbScriptPath
 
   putStrLn "Starting TCP Server"
-  (serverSock, _) <- startServer
-  withAnnotatedGdbScriptPath gdbScriptPath $ \gdbProgPath -> do
-    currentEnv <- getEnvironment
-    projectDir <- findParentContaining "cabal.project"
-    let
-      hitlDir = projectDir </> "_build" </> "hitl"
-      stdoutLog = hitlDir </> "picocom-stdout.log"
-      stderrLog = hitlDir </> "picocom-stderr.log"
-    putStrLn $ "logging stdout to `" <> stdoutLog <> "`"
-    putStrLn $ "logging stderr to `" <> stderrLog <> "`"
-    let
-      openOcdProc =
-        (proc startOpenOcdPath [])
-          { env = Just (currentEnv <> [("USB_DEVICE", adapterLoc)])
-          , std_err = CreatePipe
-          }
-      gdbProc =
-        (proc "gdb" ["--command", gdbProgPath])
-          { std_out = CreatePipe
-          , std_err = CreatePipe
-          }
-      picocomProc =
-        (proc startPicocomPath [uartDev])
-          { std_out = CreatePipe
-          , std_in = CreatePipe
-          , new_session = True
-          , env =
-              Just
-                (currentEnv <> [("PICOCOM_STDOUT_LOG", stdoutLog), ("PICOCOM_STDERR_LOG", stderrLog)])
-          }
+  withServer $ \(serverSock, _) -> do
+    withAnnotatedGdbScriptPath gdbScriptPath $ \gdbProgPath -> do
+      currentEnv <- getEnvironment
+      projectDir <- findParentContaining "cabal.project"
+      let
+        hitlDir = projectDir </> "_build" </> "hitl"
+        stdoutLog = hitlDir </> "picocom-stdout.log"
+        stderrLog = hitlDir </> "picocom-stderr.log"
+      putStrLn $ "logging stdout to `" <> stdoutLog <> "`"
+      putStrLn $ "logging stderr to `" <> stderrLog <> "`"
+      let
+        openOcdProc =
+          (proc startOpenOcdPath [])
+            { env = Just (currentEnv <> [("USB_DEVICE", adapterLoc)])
+            , std_err = CreatePipe
+            }
+        gdbProc =
+          (proc "gdb" ["--command", gdbProgPath])
+            { std_out = CreatePipe
+            , std_err = CreatePipe
+            }
+        picocomProc =
+          (proc startPicocomPath [uartDev])
+            { std_out = CreatePipe
+            , std_in = CreatePipe
+            , new_session = True
+            , env =
+                Just
+                  (currentEnv <> [("PICOCOM_STDOUT_LOG", stdoutLog), ("PICOCOM_STDERR_LOG", stderrLog)])
+            }
 
-    putStrLn "Starting OpenOcd..."
-    withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
-      hSetBuffering openOcdStdErr LineBuffering
+      putStrLn "Starting OpenOcd..."
+      withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
+        hSetBuffering openOcdStdErr LineBuffering
 
-      putStr "Waiting for halt..."
-      expectLine openOcdStdErr waitForHalt
-      putStrLn " Done"
+        putStr "Waiting for halt..."
+        expectLine openOcdStdErr waitForHalt
+        putStrLn " Done"
 
-      putStrLn "Starting Picocom..."
-      withCreateProcess picocomProc $ \maybePicocomStdIn maybePicocomStdOut maybePicocomStdErr _ -> do
-        let
-          picocomStdInHandle = fromJust maybePicocomStdIn
-          picocomStdOutHandle = fromJust maybePicocomStdOut
+        putStrLn "Starting Picocom..."
+        withCreateProcess picocomProc $ \maybePicocomStdIn maybePicocomStdOut maybePicocomStdErr _ -> do
+          let
+            picocomStdInHandle = fromJust maybePicocomStdIn
+            picocomStdOutHandle = fromJust maybePicocomStdOut
 
-          -- Create function to log the output of the processes
-          loggingSequence = do
-            threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
-            putStrLn "Picocom stdout"
-            picocomOut <- readRemainingChars picocomStdOutHandle
-            putStrLn picocomOut
-            case maybePicocomStdErr of
-              Nothing -> pure ()
-              Just h -> do
-                putStrLn "Picocom StdErr"
-                readRemainingChars h >>= putStrLn
+            -- Create function to log the output of the processes
+            loggingSequence = do
+              threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
+              putStrLn "Picocom stdout"
+              picocomOut <- readRemainingChars picocomStdOutHandle
+              putStrLn picocomOut
+              case maybePicocomStdErr of
+                Nothing -> pure ()
+                Just h -> do
+                  putStrLn "Picocom StdErr"
+                  readRemainingChars h >>= putStrLn
 
-          tryWithTimeout :: String -> Int -> IO a -> IO a
-          tryWithTimeout actionName dur action = do
-            result <- timeout dur action
-            case result of
-              Nothing -> do
-                loggingSequence
-                assertFailure $ "Timeout while performing action: " <> actionName
-              Just r -> pure r
+            tryWithTimeout :: String -> Int -> IO a -> IO a
+            tryWithTimeout actionName dur action = do
+              result <- timeout dur action
+              case result of
+                Nothing -> do
+                  loggingSequence
+                  assertFailure $ "Timeout while performing action: " <> actionName
+                Just r -> pure r
 
-        hSetBuffering picocomStdInHandle LineBuffering
-        hSetBuffering picocomStdOutHandle LineBuffering
+          hSetBuffering picocomStdInHandle LineBuffering
+          hSetBuffering picocomStdOutHandle LineBuffering
 
-        putStrLn "Waiting for Picocom to be ready..."
-        tryWithTimeout "Picocom handshake" 10_000_000 $
-          waitForLine picocomStdOutHandle "Terminal ready"
+          putStrLn "Waiting for Picocom to be ready..."
+          tryWithTimeout "Picocom handshake" 10_000_000 $
+            waitForLine picocomStdOutHandle "Terminal ready"
 
-        putStrLn "Starting GDB..."
-        withCreateProcess gdbProc $ \_ (fromJust -> gdbStdOut) _ _ -> do
-          hSetBuffering gdbStdOut LineBuffering
+          putStrLn "Starting GDB..."
+          withCreateProcess gdbProc $ \_ (fromJust -> gdbStdOut) _ _ -> do
+            hSetBuffering gdbStdOut LineBuffering
 
-          putStrLn "Waiting for \"Starting TCP Client\""
-          tryWithTimeout "Handshake softcore" 10_000_000 $
-            waitForLine picocomStdOutHandle "Starting TCP Client"
+            putStrLn "Waiting for \"Starting TCP Client\""
+            tryWithTimeout "Handshake softcore" 10_000_000 $
+              waitForLine picocomStdOutHandle "Starting TCP Client"
 
-          let numberOfClients = 1
-          putStrLn $ "Waiting for " <> show numberOfClients <> " clients to connect to TCP server."
-          clients <-
-            tryWithTimeout "Wait for clients" 60_000_000 $
-              waitForClients numberOfClients serverSock
+            let numberOfClients = 1
+            putStrLn $ "Waiting for " <> show numberOfClients <> " clients to connect to TCP server."
+            clients <-
+              tryWithTimeout "Wait for clients" 60_000_000 $
+                waitForClients numberOfClients serverSock
 
-          putStrLn "Receiving client data"
-          createDirectoryIfMissing True tcpDataDir
-          tryWithTimeout "Receive client data" 60_000_000 $
-            mapConcurrently_ runTcpTest clients
+            putStrLn "Receiving client data"
+            createDirectoryIfMissing True tcpDataDir
+            tryWithTimeout "Receive client data" 60_000_000 $
+              mapConcurrently_ runTcpTest clients
 
-          putStrLn "Closing client connections"
-          tryWithTimeout "Closing connections" 10_000_000 $
-            mapConcurrently_ (NS.closeSock . fst) clients
-          putStrLn "Closing server connection"
-          NS.closeSock serverSock
-          loggingSequence
+            putStrLn "Closing client connections"
+            tryWithTimeout "Closing connections" 10_000_000 $
+              mapConcurrently_ (NS.closeSock . fst) clients
+            putStrLn "Closing server connection"
+            loggingSequence
 
 runTcpTest :: (NS.Socket, NS.SockAddr) -> Assertion
 runTcpTest (sock, sockAddr) = do
