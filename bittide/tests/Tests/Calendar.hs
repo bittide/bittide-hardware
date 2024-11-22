@@ -4,13 +4,14 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
-module Tests.Calendar (tests, genCalendarConfig, genValidEntry) where
+module Tests.Calendar (tests, genCalendarConfig, genValidEntry, unrollCalendar) where
 
 import Clash.Prelude
 
@@ -34,6 +35,7 @@ import Tests.Shared
 
 import qualified Clash.Sized.Vector as V
 import qualified Clash.Util.Interpolate as I
+import qualified Data.List as L
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Prelude as P
@@ -195,12 +197,12 @@ genBVCalendar calSize bitWidth validityBits = do
 -- | This test checks if we can read the initialized calendars.
 readCalendar :: Property
 readCalendar = property $ do
-  calSize <- forAll $ Gen.int $ Range.constant 2 31
-  bitWidth <- forAll $ Gen.enum 1 100
-  validityBits <- forAll $ Gen.enum 0 2
-  bvCal <- forAll $ genBVCalendar (fromIntegral calSize) bitWidth validityBits
+  calDepth <- forAll $ Gen.int $ Range.constant 2 31
+  bvWidth <- forAll $ Gen.enum 1 100
+  rleBits <- forAll $ Gen.enum 0 2
+  bvCal <- forAll $ genBVCalendar (fromIntegral calDepth) bvWidth rleBits
   case bvCal of
-    BVCalendar calSize' SNat SNat cal -> do
+    BVCalendar calDepth' SNat SNat cal -> do
       let
         -- 1 to compensate for reset, length for 1 cycle per element, sum of snds for
         -- additional validity delays.
@@ -212,16 +214,15 @@ readCalendar = property $ do
               resetGen
               enableGen
               calendarWbSpecVal
-              calSize'
+              calDepth'
               cal
               cal
             $ pure (emptyWishboneM2S @32 @(BitVector 32))
-        simOut = sampleN @System (fromIntegral simLength) topEntity
-        expected = toList $ fmap veEntry cal
-      footnote . fromString $ "simOut: " <> show simOut
+        actual = P.tail $ sampleN @System (fromIntegral simLength) topEntity
+        expected = P.take (simLength - 1) $ unrollCalendar $ toList cal
+      footnote . fromString $ "actual  : " <> show actual
       footnote . fromString $ "expected: " <> show expected
-
-      Set.fromList simOut === Set.fromList expected
+      actual === expected
 
 {- | This test checks if we can write to the shadowbuffer and read back the written
 elements later.
@@ -551,3 +552,9 @@ calendarWbSpecVal mDepth bootstrapActive bootstrapShadow m2s0 =
       bootstrapShadow
       m2s1
   (m2s1, s2m1) = validateWb m2s0 s2m0
+
+{- | Unrolls a list of 'ValidEntry's into a list of entries.
+This repeats each entry (1 + veRepeat) times.
+-}
+unrollCalendar :: (KnownNat repetitionBits) => [ValidEntry a repetitionBits] -> [a]
+unrollCalendar = L.concatMap (\entry -> L.replicate (fromIntegral entry.veRepeat + 1) entry.veEntry)

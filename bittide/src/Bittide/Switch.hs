@@ -34,10 +34,10 @@ switchC ::
   ) =>
   CalendarConfig nBytes addrW (CalendarEntry links) ->
   Circuit
-    ( Vec links (CSignal dom (DataLink frameWidth))
+    ( Vec links (CSignal dom (BitVector frameWidth))
     , Wishbone dom 'Standard addrW (Bytes nBytes) -- calendar interface
     )
-    (Vec links (CSignal dom (DataLink frameWidth)))
+    (Vec links (CSignal dom (BitVector frameWidth)))
 switchC conf = case (cancelMulDiv @nBytes @8) of
   Dict -> Circuit go
    where
@@ -71,18 +71,18 @@ switch ::
   CalendarConfig nBytes addrW (CalendarEntry links) ->
   -- | Wishbone interface wired to the calendar.
   Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
-  -- | All incoming datalinks
-  Vec links (Signal dom (DataLink frameWidth)) ->
-  -- | All outgoing datalinks
-  ( Vec links (Signal dom (DataLink frameWidth))
+  -- | All incoming data links
+  Vec links (Signal dom (BitVector frameWidth)) ->
+  -- | All outgoing data links
+  ( Vec links (Signal dom (BitVector frameWidth))
   , Signal dom (WishboneS2M (Bytes nBytes))
   )
 switch calConfig calM2S streamsIn = (streamsOut, calS2M)
  where
   (cal, _, calS2M) = mkCalendar @dom @nBytes @addrW calConfig calM2S
-  scatterFrames = register Nothing <$> streamsIn
-  gatherFrames = unbundle $ crossBar <$> cal <*> bundle scatterFrames
-  streamsOut = register Nothing <$> gatherFrames
+  scatterFrames = register 0 <$> streamsIn
+  gatherFrames = unbundle $ crossBar 0 <$> cal <*> bundle scatterFrames
+  streamsOut = register 0 <$> gatherFrames
 
 {-# NOINLINE crossBar #-}
 
@@ -93,11 +93,12 @@ Source: bittide hardware, switch logic.
 -}
 crossBar ::
   (KnownNat links) =>
-  Vec links (CrossbarIndex links) ->
+  -- | Index 0 entry
+  a ->
   -- | Source selection for each outgoing link, 0 is a null frame, links start at index 1.
-  Vec links (Maybe a) ->
+  Vec links (CrossbarIndex links) ->
   -- | Vector of incoming links.
-  Vec links (Maybe a)
-crossBar calendarEntry inputStreams = fmap selectChannel calendarEntry
- where
-  selectChannel i = (Nothing :> inputStreams) !! i
+  Vec links a ->
+  -- | Vector of outgoing links.
+  Vec links a
+crossBar a calendarEntry inputStreams = (\i -> (a :> inputStreams) !! i) <$> calendarEntry
