@@ -6,7 +6,7 @@ module Project.Handle where
 
 import Prelude
 
-import Data.List.Extra (trim)
+import Data.List.Extra (trimEnd)
 import System.IO
 
 import Test.Tasty.HUnit
@@ -26,7 +26,7 @@ expectLine = expectLine' ""
   expectLine' s0 h f = do
     line <- hGetLine h
     let
-      trimmed = trim line
+      trimmed = filter (/= '\NUL') (trimEnd line)
       s1 = s0 <> "\n" <> line
       cont = expectLine' s1 h f
     if null trimmed
