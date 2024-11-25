@@ -65,7 +65,7 @@ pub fn self_test(
     results
 }
 
-//// Obtain the value of the counter, check if it's not 0.
+/// Obtain the value of the counter, check if it's not 0.
 pub fn now_not_null(clock: Clock) -> Option<&'static str> {
     let frequency = clock.get_frequency();
     let now = clock.elapsed();
@@ -76,7 +76,7 @@ pub fn now_not_null(clock: Clock) -> Option<&'static str> {
     }
 }
 
-//// Read the frequency value, check if it's not 0.
+/// Read the frequency value, check if it's not 0.
 pub fn freq_not_null(clock: Clock) -> Option<&'static str> {
     let frequency: u64 = clock.get_frequency();
     if frequency == 0 {

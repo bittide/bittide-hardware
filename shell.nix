@@ -80,6 +80,10 @@ pkgs.mkShell {
     export VERILOG_ETHERNET_SRC="${pkgs.verilog-ethernet}"
     export OPENOCD_DIST="${pkgs.openocd-vexriscv}"
 
+    # We use unstable features (floating point), we don't want to hear about it
+    # every time we build.
+    export RUSTFLAGS="-Aunstable-features"
+
     # Mixing Nix Cabal and non-Nix Cabal yields some weird linking errors.
     export CABAL_DIR="$HOME/.cabal-nix";
 

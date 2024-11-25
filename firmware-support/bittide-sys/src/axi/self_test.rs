@@ -153,7 +153,7 @@ fn send_receive_empty_packet<const BUF_SIZE: usize>(
 }
 
 const N_PACKETS: usize = 5;
-//// Generate a random packet with a random length, send it over AxiTx and verify that it is received on AxiRx<BUF_SIZE>.
+/// Generate a random packet with a random length, send it over AxiTx and verify that it is received on AxiRx<BUF_SIZE>.
 fn send_receive_random_packet<const BUF_SIZE: usize>(
     mut tx: AxiTx,
     rx: AxiRx<BUF_SIZE>,

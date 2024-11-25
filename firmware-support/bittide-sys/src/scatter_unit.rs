@@ -58,7 +58,7 @@ impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
                     });
                 }
             }
-            reg.starting_address as *const u8
+            reg.starting_address
         };
 
         Ok(ScatterUnit {
