@@ -11,7 +11,6 @@ module Bittide.Node where
 import Clash.Prelude
 import Clash.Sized.Vector.ToTuple (vecToTuple)
 
-import Data.Maybe
 import Protocols
 import Protocols.Idle
 import Protocols.Internal (vecCircuits)
@@ -77,12 +76,12 @@ node ::
   (HiddenClockResetEnable dom, KnownNat extLinks, KnownNat gppes) =>
   NodeConfig extLinks gppes ->
   Circuit
-    (Vec extLinks (CSignal dom (DataLink 64)))
-    (Vec extLinks (CSignal dom (DataLink 64)))
+    (Vec extLinks (CSignal dom (BitVector 64)))
+    (Vec extLinks (CSignal dom (BitVector 64)))
 node (NodeConfig nmuConfig switchConfig gppeConfigs) = circuit $ \linksIn -> do
   switchOut <- switchC @_ @_ @_ @_ @64 switchConfig -< (switchIn, swWb)
-  switchIn <- vecMap (cSigMap fromJust) <| appendC3 -< ([nmuLinkOut], pesToSwitch, linksIn)
-  ([nmuLinkIn], switchToPes, linksOut) <- splitC3 <| vecMap (cSigMap Just) -< switchOut
+  switchIn <- appendC3 -< ([nmuLinkOut], pesToSwitch, linksIn)
+  ([nmuLinkIn], switchToPes, linksOut) <- splitC3 -< switchOut
   (nmuLinkOut, nmuWbs0) <- managementUnitC nmuConfig -< nmuLinkIn
   ([swWb], nmuWbs1) <- splitAtC d1 -< nmuWbs0
   peWbs <- unconcatC d2 -< nmuWbs1
@@ -140,14 +139,14 @@ gppe ::
   -- , Incoming @Vector@ of master busses
   -- )
   ( GppeConfig nmuRemBusWidth
-  , Signal dom (DataLink 64)
+  , Signal dom (BitVector 64)
   , Vec 2 (Signal dom (WishboneM2S nmuRemBusWidth 4 (Bytes 4)))
   ) ->
   -- |
   -- ( Outgoing 'Bittide.Link'
   -- , Outgoing @Vector@ of slave busses
   -- )
-  ( Signal dom (DataLink 64)
+  ( Signal dom (BitVector 64)
   , Vec 2 (Signal dom (WishboneS2M (Bytes 4)))
   )
 gppe
@@ -174,16 +173,15 @@ gppeC ::
   -- , Incoming @Vector@ of master busses
   -- )
   Circuit
-    (CSignal dom (DataLink 64), Vec 2 (Wishbone dom 'Standard nmuRemBusWidth (Bytes 4)))
-    (CSignal dom (DataLink 64))
-gppeC (GppeConfig scatterConfig gatherConfig peConfig dumpVcd) =
-  circuit $ \(linkIn, nmuWbs) -> do
-    [wbScatCal, wbGathCal] <- idC -< nmuWbs
-    jtag <- idleSource -< ()
-    [wbScat, wbGu] <- processingElement dumpVcd peConfig -< jtag
-    linkOut <- gatherUnitWbC gatherConfig -< (wbGu, wbGathCal)
-    scatterUnitWbC scatterConfig -< (linkIn, wbScat, wbScatCal)
-    idC -< linkOut
+    (CSignal dom (BitVector 64), Vec 2 (Wishbone dom 'Standard nmuRemBusWidth (Bytes 4)))
+    (CSignal dom (BitVector 64))
+gppeC (GppeConfig scatterConfig gatherConfig peConfig dumpVcd) = circuit $ \(linkIn, nmuWbs) -> do
+  [wbScatCal, wbGathCal] <- idC -< nmuWbs
+  jtag <- idleSource -< ()
+  [wbScat, wbGu] <- processingElement dumpVcd peConfig -< jtag
+  linkOut <- gatherUnitWbC gatherConfig -< (wbGu, wbGathCal)
+  scatterUnitWbC scatterConfig -< (linkIn, wbScat, wbScatCal)
+  idC -< linkOut
 
 {- | A special purpose 'processingElement' that manages a Bittide Node. It contains
 a 'processingElement', 'linkToPe' and 'peToLink' which create the interface for the
@@ -200,13 +198,13 @@ managementUnit ::
   -- | Configures all local parameters.
   ManagementConfig nodeBusses ->
   -- | Incoming 'Bittide.Link'.
-  Signal dom (DataLink 64) ->
+  Signal dom (BitVector 64) ->
   -- | Incoming @Vector@ of slave busses.
   Vec nodeBusses (Signal dom (WishboneS2M (Bytes 4))) ->
   -- |
   -- ( Outgoing 'Bittide.Link'
   -- , Outgoing @Vector@ of master busses)
-  ( Signal dom (DataLink 64)
+  ( Signal dom (BitVector 64)
   , Vec nodeBusses (Signal dom (WishboneM2S (NmuRemBusWidth nodeBusses) 4 (Bytes 4)))
   )
 managementUnit (ManagementConfig scatterConfig gatherConfig peConfig dumpVcd) linkIn nodeS2Ms =
@@ -231,8 +229,8 @@ managementUnitC ::
   -- )
   ManagementConfig nodeBusses ->
   Circuit
-    (CSignal dom (DataLink 64))
-    ( CSignal dom (DataLink 64)
+    (CSignal dom (BitVector 64))
+    ( CSignal dom (BitVector 64)
     , Vec nodeBusses (Wishbone dom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4))
     )
 managementUnitC (ManagementConfig scatterConfig gatherConfig peConfig dumpVcd) = circuit $ \linkIn -> do

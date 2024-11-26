@@ -66,7 +66,7 @@ scatterUnit ::
   -- | Wishbone (master -> slave) port for the 'calendar'.
   Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | Incoming frame from Bittide link.
-  Signal dom (DataLink frameWidth) ->
+  Signal dom (BitVector frameWidth) ->
   -- | Read address.
   Signal dom (Index memDepth) ->
   -- | 1. Data at read address delayed 1 cycle
@@ -79,10 +79,9 @@ scatterUnit ::
 scatterUnit calConfig wbIn linkIn readAddr = (readOut, wbOut, endOfMetacycle)
  where
   (writeAddr, endOfMetacycle, wbOut) = mkCalendar calConfig wbIn
-  writeOp = (\a b -> (a,) <$> b) <$> writeAddr <*> linkIn
-  readOut = doubleBufferedRamU bufSelect0 readAddr writeOp
-  bufSelect0 = register A bufSelect1
-  bufSelect1 = mux endOfMetacycle (swapAorB <$> bufSelect0) bufSelect0
+  writeOp = curry Just <$> writeAddr <*> linkIn
+  readOut = doubleBufferedRamU bufSelect readAddr writeOp
+  bufSelect = regEn A endOfMetacycle (swapAorB <$> bufSelect)
 
 {- | Double buffered memory component that can be written to by a generic write operation. The
 write address of the incoming frame is determined by the incorporated 'calendar'. The
@@ -97,7 +96,7 @@ gatherUnit ::
   , KnownNat frameWidth
   , 1 <= frameWidth
   , KnownNat (DivRU frameWidth 8)
-  , 1 <= (DivRU frameWidth 8)
+  , 1 <= DivRU frameWidth 8
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
@@ -113,17 +112,15 @@ gatherUnit ::
   -- | 1. Frame to Bittide Link.
   --   2. Wishbone (slave -> master) from 'calendar')
   --   3. End of metacycle.
-  ( Signal dom (DataLink frameWidth)
+  ( Signal dom (BitVector frameWidth)
   , Signal dom (WishboneS2M (Bytes nBytes))
   , Signal dom Bool
   )
-gatherUnit calConfig wbIn writeOp byteEnables = (linkOut, wbOut, endOfMetacycle)
+gatherUnit calConfig wbIn writeOp byteEnables = (bramOut, wbOut, endOfMetacycle)
  where
   (readAddr, endOfMetacycle, wbOut) = mkCalendar calConfig wbIn
-  linkOut = mux (register True ((== 0) <$> readAddr)) (pure Nothing) (Just <$> bramOut)
-  bramOut = doubleBufferedRamByteAddressableU bufSelect0 readAddr writeOp byteEnables
-  bufSelect0 = register A bufSelect1
-  bufSelect1 = mux endOfMetacycle (swapAorB <$> bufSelect0) bufSelect0
+  bramOut = doubleBufferedRamByteAddressableU bufSelect readAddr writeOp byteEnables
+  bufSelect = regEn A endOfMetacycle (swapAorB <$> bufSelect)
 
 {- | Wishbone interface for the 'scatterUnit' and 'gatherUnit'. It makes the scatter and gather
 unit, which operate on 64 bit frames, addressable via a 32 bit wishbone bus.
@@ -201,7 +198,7 @@ scatterUnitWbC ::
   -- | Configuration for the 'calendar'.
   ScatterConfig nBytesCal awCal ->
   Circuit
-    ( CSignal dom (DataLink 64)
+    ( CSignal dom (BitVector 64)
     , Wishbone dom 'Standard awSu (Bytes 4)
     , Wishbone dom 'Standard awCal (Bytes nBytesCal)
     )
@@ -230,7 +227,7 @@ scatterUnitWb ::
   -- | Wishbone (master -> slave) port 'calendar'.
   Signal dom (WishboneM2S awCal nBytesCal (Bytes nBytesCal)) ->
   -- | Incoming frame from Bittide link.
-  Signal dom (DataLink 64) ->
+  Signal dom (BitVector 64) ->
   -- | Wishbone (master -> slave) port scatter memory.
   Signal dom (WishboneM2S awSu 4 (Bytes 4)) ->
   -- |
@@ -268,7 +265,7 @@ gatherUnitWbC ::
     ( Wishbone dom 'Standard awGu (Bytes 4)
     , Wishbone dom 'Standard awCal (Bytes nBytesCal)
     )
-    (CSignal dom (DataLink 64))
+    (CSignal dom (BitVector 64))
 gatherUnitWbC conf = case (cancelMulDiv @nBytesCal @8) of
   Dict -> Circuit go
    where
@@ -297,7 +294,7 @@ gatherUnitWb ::
   -- |
   -- 1. Wishbone (slave -> master) port gather memory
   -- 2. Wishbone (slave -> master) port 'calendar'
-  ( Signal dom (DataLink 64)
+  ( Signal dom (BitVector 64)
   , Signal dom (WishboneS2M (Bytes 4))
   , Signal dom (WishboneS2M (Bytes nBytesCal))
   )
