@@ -327,32 +327,6 @@ jobs:
           cargo test --all
         working-directory: firmware-support/
 
-  host-tools-tests:
-    name: Host Tools Unit Tests
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
-      options: --memory=11g
-    needs: [build]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cargo
-
-      - name: Running Tests
-        run: |
-          cargo test --all
-        working-directory: host-tools/
-
   firmware-limit-checks:
     name: Firmware Limit Checks
     runs-on: [self-hosted, compute]
@@ -671,7 +645,6 @@ jobs:
         firmware-limit-checks,
         firmware-support-tests,
         generate-full-clock-control-report,
-        host-tools-tests,
         license-check,
         lint,
         rust-lints,

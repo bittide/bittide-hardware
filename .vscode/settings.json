@@ -38,8 +38,7 @@
   },
   "rust-analyzer.linkedProjects": [
     "firmware-support/Cargo.toml",
-    "firmware-binaries/Cargo.toml",
-    "host-tools/Cargo.toml"
+    "firmware-binaries/Cargo.toml"
   ],
   "rust-analyzer.check.allTargets": false,
   "cSpell.words": [
