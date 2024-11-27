@@ -10,7 +10,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bittide-sys = { path = "../../firmware-support/bittide-sys" }
+bittide-sys = { path = "../../firmware-support/bittide-sys", default-features = false, features = []}
 
 [lib]
 crate-type = ["staticlib"]
