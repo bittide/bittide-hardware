@@ -4,6 +4,6 @@
 
 [workspace]
 members = [
-  "bittide-sys",
+  "bittide-sys", "gdb-trace",
 ]
 resolver = "2"

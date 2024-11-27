@@ -42,6 +42,10 @@ const CHUNK_SIZE: usize = 4096;
 const SERVER_IP: IpAddress = IpAddress::v4(10, 0, 0, 1);
 const SERVER_PORT: u16 = 1234;
 
+gdb_trace::gdb_panic! {
+    unsafe { Uart::new(UART_ADDR) }
+}
+
 // See https://github.com/bittide/bittide-hardware/issues/681
 #[allow(static_mut_refs)]
 #[cfg_attr(not(test), entry)]
@@ -173,18 +177,6 @@ fn exception_handler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
         info!("mepc: {:?}\n", mepc::read());
         info!("mtval: {:?}\n", mtval::read());
     });
-    loop {
-        continue;
-    }
-}
-
-#[panic_handler]
-fn panic_handler(info: &core::panic::PanicInfo) -> ! {
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
-
-    uwriteln!(uart, "Panicked!").unwrap();
-    info!("error: {}\n", info);
-    uwriteln!(uart, "Looping forever now").unwrap();
     loop {
         continue;
     }
