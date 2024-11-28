@@ -100,11 +100,15 @@ fn main() -> ! {
         CHUNK_SIZE, stress_test_duration
     );
     loop {
-        let elapsed = clock.now().into();
+        let elapsed = clock.elapsed().into();
+        debug!("Polling interface");
         iface.poll(elapsed, &mut eth, &mut sockets);
+
         let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(dhcp_handle);
+        debug!("Updating DHCP");
         update_dhcp(&mut iface, dhcp_socket);
         if iface.ip_addrs().is_empty() {
+            debug!("No IP address");
             continue;
         }
 
@@ -189,6 +193,7 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
 }
 
 fn update_dhcp(iface: &mut Interface, socket: &mut dhcpv4::Socket) {
+    debug!("Polling DHCP");
     let event = socket.poll();
     match event {
         None => {}
