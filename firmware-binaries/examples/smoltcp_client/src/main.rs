@@ -96,10 +96,8 @@ fn main() -> ! {
     let stress_test_duration = Duration::from_secs(30);
     let mut stress_test_end = Instant::end_of_time();
     info!(
-        "{}, TCP Server send chunks of {} bytes for {}",
-        clock.now(),
-        CHUNK_SIZE,
-        stress_test_duration
+        "TCP Server send chunks of {} bytes for {}",
+        CHUNK_SIZE, stress_test_duration
     );
     loop {
         let elapsed = clock.now().into();
@@ -112,16 +110,16 @@ fn main() -> ! {
 
         if my_ip.is_none() {
             my_ip = iface.ipv4_addr();
-            info!("{}, IP address: {}", clock.now(), my_ip.unwrap());
-            let now = clock.now();
+            info!("IP address: {}", my_ip.unwrap());
+            let now = clock.elapsed();
             stress_test_end = now + stress_test_duration;
-            info!("{}, Stress test will end at {}", now, stress_test_end);
+            info!("Stress test will end at {}", stress_test_end);
         }
 
         let mut socket = sockets.get_mut::<Socket>(client_handle);
         let cx = iface.context();
         if !socket.is_open() {
-            debug!("{}, Opening socket", clock.now());
+            debug!("Opening socket");
             if !socket.is_active() {
                 mac_status = unsafe { MAC_ADDR.read_volatile() };
                 debug!(
@@ -145,7 +143,7 @@ fn main() -> ! {
             }
             let now = clock.now();
             if now > stress_test_end {
-                info!("{}, Stress test complete", now);
+                info!("Stress test complete");
                 socket.close();
                 let new_mac_status = unsafe { MAC_ADDR.read_volatile() };
                 uwriteln!(uart, "{:?}", new_mac_status - mac_status).unwrap();
