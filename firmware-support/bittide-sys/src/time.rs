@@ -204,27 +204,27 @@ impl Duration {
     }
 
     /// The number of whole hours represented by this Duration.
-    pub const fn to_hours(&self) -> u64 {
+    pub fn to_hours(&self) -> u64 {
         self.micros / ((1e6 as u64) * 60 * 60)
     }
 
     /// The number of whole minutes represented by this Duration.
-    pub const fn to_mins(&self) -> u64 {
+    pub fn to_mins(&self) -> u64 {
         self.micros / ((1e6 as u64) * 60)
     }
 
     /// The number of whole seconds represented by this Duration.
-    pub const fn to_secs(&self) -> u64 {
+    pub fn to_secs(&self) -> u64 {
         self.micros / (1e6 as u64)
     }
 
     /// The number of whole milliseconds represented by this Duration.
-    pub const fn to_millis(&self) -> u64 {
+    pub fn to_millis(&self) -> u64 {
         self.micros / (1e3 as u64)
     }
 
     /// The number of whole microseconds represented by this Duration.
-    pub const fn to_micros(&self) -> u64 {
+    pub fn to_micros(&self) -> u64 {
         self.micros
     }
 
