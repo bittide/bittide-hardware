@@ -94,7 +94,7 @@ fn main() -> ! {
     )
     .unwrap();
     loop {
-        let elapsed = clock.elapsed().into();
+        let elapsed = clock.now().into();
         iface.poll(elapsed, &mut eth, &mut sockets);
 
         let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(dhcp_handle);
@@ -106,7 +106,7 @@ fn main() -> ! {
         if my_ip.is_none() {
             my_ip = iface.ipv4_addr();
             writeln!(uart, "IP address: {}", my_ip.unwrap()).unwrap();
-            let now = clock.elapsed();
+            let now = clock.now();
             stress_test_end = now + stress_test_duration;
             uwriteln!(uart, "Stress test will end at {}", stress_test_end).unwrap();
         }
@@ -131,7 +131,7 @@ fn main() -> ! {
             }
         }
         if socket.can_send() {
-            let now = clock.elapsed();
+            let now = clock.now();
             if now > stress_test_end {
                 uwriteln!(uart, "Stress test complete").unwrap();
                 socket.close();
