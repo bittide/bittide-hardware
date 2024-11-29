@@ -27,6 +27,8 @@ import Bittide.Wishbone
 import Protocols.Idle
 
 type Baud = 921_600
+type Kilo n = n * 1024
+type BytesToWords bytes = DivRU bytes 4
 
 baud :: SNat Baud
 baud = SNat
@@ -126,8 +128,8 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
           :> 0b1001
           :> Nil
       )
-      (Undefined @(256 * 1024))
-      (Undefined @(64 * 1024))
+      (Undefined @(BytesToWords (Kilo 256)))
+      (Undefined @(BytesToWords (Kilo 64)))
 
 vexRiscEthernet ::
   Clock Basic125B ->
