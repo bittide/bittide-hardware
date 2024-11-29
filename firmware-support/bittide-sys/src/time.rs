@@ -128,14 +128,14 @@ impl ops::Add<Duration> for Instant {
 
     fn add(self, rhs: Duration) -> Instant {
         Instant {
-            micros: self.micros + rhs.to_micros(),
+            micros: self.micros + rhs.micros,
         }
     }
 }
 
 impl ops::AddAssign<Duration> for Instant {
     fn add_assign(&mut self, rhs: Duration) {
-        self.micros += rhs.to_micros();
+        self.micros += rhs.micros;
     }
 }
 
@@ -143,15 +143,17 @@ impl ops::Sub<Duration> for Instant {
     type Output = Instant;
 
     fn sub(self, rhs: Duration) -> Instant {
+        assert!(self.micros >= rhs.micros);
         Instant {
-            micros: self.micros - rhs.to_micros(),
+            micros: self.micros - rhs.micros,
         }
     }
 }
 
 impl ops::SubAssign<Duration> for Instant {
     fn sub_assign(&mut self, rhs: Duration) {
-        self.micros -= rhs.to_micros();
+        assert!(self.micros >= rhs.micros);
+        self.micros -= rhs.micros;
     }
 }
 
@@ -159,7 +161,8 @@ impl ops::Sub<Instant> for Instant {
     type Output = Duration;
 
     fn sub(self, rhs: Instant) -> Duration {
-        Duration::from_micros(self.to_micros() - rhs.to_micros())
+        assert!(self.micros >= rhs.micros);
+        Duration::from_micros(self.micros - rhs.micros)
     }
 }
 
@@ -254,11 +257,9 @@ impl ops::Sub<Duration> for Duration {
     type Output = Duration;
 
     fn sub(self, rhs: Duration) -> Duration {
+        assert!(self.micros >= rhs.micros);
         Duration {
-            micros: self
-                .micros
-                .checked_sub(rhs.micros)
-                .expect("overflow when subtracting durations"),
+            micros: self.micros - rhs.micros,
         }
     }
 }
@@ -438,6 +439,7 @@ impl Clock {
 
 impl From<Instant> for smoltcp::time::Instant {
     fn from(val: Instant) -> Self {
+        assert!(val.to_micros() < i64::MAX as u64);
         smoltcp::time::Instant::from_micros(val.to_micros() as i64)
     }
 }
