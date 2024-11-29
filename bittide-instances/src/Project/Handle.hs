@@ -11,6 +11,11 @@ import System.IO
 
 import Test.Tasty.HUnit
 
+import qualified Data.ByteString.Char8 as ByteString
+import qualified Data.Char as Char
+import qualified Data.Text as Text
+import qualified Data.Text.Encoding as Text
+
 data Error = Ok | Error String
 data Filter = Continue | Stop Error
 
@@ -24,14 +29,16 @@ expectLine :: (HasCallStack) => Handle -> (String -> Filter) -> Assertion
 expectLine = expectLine' ""
  where
   expectLine' s0 h f = do
-    line <- hGetLine h
+    line <-
+      fmap
+        (trimEnd . filter Char.isPrint . Text.unpack . Text.decodeUtf8Lenient)
+        (ByteString.hGetLine h)
     let
-      trimmed = filter (/= '\NUL') (trimEnd line)
       s1 = s0 <> "\n" <> line
       cont = expectLine' s1 h f
-    if null trimmed
+    if null line
       then cont
-      else case f trimmed of
+      else case f line of
         Continue -> cont
         Stop Ok -> pure ()
         Stop (Error msg) -> do
