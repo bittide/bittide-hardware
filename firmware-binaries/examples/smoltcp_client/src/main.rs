@@ -13,9 +13,8 @@ use bittide_sys::mac::MacStatus;
 use bittide_sys::smoltcp::axi::AxiEthernet;
 use bittide_sys::smoltcp::{set_local, set_unicast};
 use bittide_sys::time::{Clock, Duration, Instant};
-use bittide_sys::uart::log::LOGGER;
 use bittide_sys::uart::Uart;
-use log::{debug, info, warn, LevelFilter};
+use core::fmt::Write;
 
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -54,14 +53,6 @@ fn main() -> ! {
     let dna = unsafe { dna_to_u128(*DNA_ADDR) };
 
     uwriteln!(uart, "Starting TCP Client").unwrap();
-    unsafe {
-        LOGGER.set_logger(uart.clone());
-        LOGGER.set_clock(clock.clone());
-        LOGGER.display_source = LevelFilter::Warn;
-        log::set_logger_racy(&LOGGER).ok();
-        log::set_max_level_racy(LevelFilter::Trace);
-    }
-
     // Configure interface
     let mut eth_addr = EthernetAddress::from_bytes(&dna.to_le_bytes()[0..6]);
     set_unicast(&mut eth_addr);
@@ -95,38 +86,38 @@ fn main() -> ! {
 
     let stress_test_duration = Duration::from_secs(30);
     let mut stress_test_end = Instant::end_of_time();
-    info!(
+    uwriteln!(
+        uart,
         "TCP Server send chunks of {} bytes for {}",
-        CHUNK_SIZE, stress_test_duration
-    );
+        CHUNK_SIZE,
+        stress_test_duration
+    )
+    .unwrap();
     loop {
         let elapsed = clock.elapsed().into();
-        debug!("Polling interface");
         iface.poll(elapsed, &mut eth, &mut sockets);
 
         let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(dhcp_handle);
-        debug!("Updating DHCP");
         update_dhcp(&mut iface, dhcp_socket);
         if iface.ip_addrs().is_empty() {
-            debug!("No IP address");
             continue;
         }
 
         if my_ip.is_none() {
             my_ip = iface.ipv4_addr();
-            info!("IP address: {}", my_ip.unwrap());
+            writeln!(uart, "IP address: {}", my_ip.unwrap()).unwrap();
             let now = clock.elapsed();
             stress_test_end = now + stress_test_duration;
-            info!("Stress test will end at {}", stress_test_end);
+            uwriteln!(uart, "Stress test will end at {}", stress_test_end).unwrap();
         }
 
         let mut socket = sockets.get_mut::<Socket>(client_handle);
         let cx = iface.context();
         if !socket.is_open() {
-            debug!("Opening socket");
             if !socket.is_active() {
                 mac_status = unsafe { MAC_ADDR.read_volatile() };
-                debug!(
+                writeln!(
+                    uart,
                     "Connecting from {:?}:{} to {}:{}",
                     my_ip.unwrap().as_bytes(),
                     1234,
@@ -134,20 +125,15 @@ fn main() -> ! {
                     SERVER_PORT
                 );
                 match socket.connect(cx, (SERVER_IP, SERVER_PORT), 1234) {
-                    Ok(_) => debug!("Connected to {SERVER_IP}:{SERVER_PORT}"),
-                    Err(e) => debug!("Error connecting: {:?}", e),
+                    Ok(_) => writeln!(uart, "Connected to {SERVER_IP}:{SERVER_PORT}").unwrap(),
+                    Err(e) => writeln!(uart, "Error connecting: {:?}", e).unwrap(),
                 }
             }
         }
         if socket.can_send() {
-            debug!("Sending data");
-            match socket.send_slice(&[0; CHUNK_SIZE]) {
-                Ok(n) => debug!("Sent {n} bytes"),
-                Err(e) => debug!("Error sending data: {:?}", e),
-            }
-            let now = clock.now();
+            let now = clock.elapsed();
             if now > stress_test_end {
-                info!("Stress test complete");
+                uwriteln!(uart, "Stress test complete").unwrap();
                 socket.close();
                 let new_mac_status = unsafe { MAC_ADDR.read_volatile() };
                 uwriteln!(uart, "{:?}", new_mac_status - mac_status).unwrap();
@@ -157,9 +143,9 @@ fn main() -> ! {
             Some(smoltcp::time::Duration::ZERO) => {}
             Some(delay) => {
                 let smoltcp_delay = Duration::from(delay);
-                debug!("sleeping for {} ms", smoltcp_delay);
+                uwriteln!(uart, "sleeping for {} ms", smoltcp_delay).unwrap();
                 clock.wait(smoltcp_delay);
-                debug!("done sleeping");
+                uwriteln!(uart, "done sleeping").unwrap();
             }
             None => {}
         }
@@ -171,9 +157,9 @@ fn exception_handler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
     let mut uart = unsafe { Uart::new(UART_ADDR) };
     riscv::interrupt::free(|| {
         uwriteln!(uart, "... caught an exception. Looping forever now.\n").unwrap();
-        info!("mcause: {:?}\n", mcause::read());
-        info!("mepc: {:?}\n", mepc::read());
-        info!("mtval: {:?}\n", mtval::read());
+        writeln!(uart, "mcause: {:?}\n", mcause::read()).unwrap();
+        writeln!(uart, "mepc: {:?}\n", mepc::read()).unwrap();
+        writeln!(uart, "mtval: {:?}\n", mtval::read()).unwrap();
     });
     loop {
         continue;
@@ -185,7 +171,7 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
     let mut uart = unsafe { Uart::new(UART_ADDR) };
 
     uwriteln!(uart, "Panicked!").unwrap();
-    warn!("{}\n", info);
+    writeln!(uart, "{}\n", info);
     uwriteln!(uart, "Looping forever now").unwrap();
     loop {
         continue;
@@ -193,33 +179,24 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
 }
 
 fn update_dhcp(iface: &mut Interface, socket: &mut dhcpv4::Socket) {
-    debug!("Polling DHCP");
     let event = socket.poll();
     match event {
         None => {}
         Some(dhcpv4::Event::Configured(config)) => {
-            debug!("DHCP config acquired!");
-
-            debug!("IP address:      {}", config.address);
             iface.update_ip_addrs(|addrs| {
                 addrs.clear();
                 addrs.push(IpCidr::Ipv4(config.address)).unwrap();
             });
 
             if let Some(router) = config.router {
-                debug!("Default gateway: {}", router);
                 iface.routes_mut().add_default_ipv4_route(router).unwrap();
             } else {
-                debug!("Default gateway: None");
                 iface.routes_mut().remove_default_ipv4_route();
             }
 
-            for (i, s) in config.dns_servers.iter().enumerate() {
-                debug!("DNS server {}:    {}", i, s);
-            }
+            for (i, s) in config.dns_servers.iter().enumerate() {}
         }
         Some(dhcpv4::Event::Deconfigured) => {
-            debug!("DHCP lost config!");
             iface.update_ip_addrs(|addrs| addrs.clear());
             iface.routes_mut().remove_default_ipv4_route();
         }
