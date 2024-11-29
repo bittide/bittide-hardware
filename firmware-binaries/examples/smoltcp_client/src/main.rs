@@ -123,7 +123,8 @@ fn main() -> ! {
                     1234,
                     SERVER_IP,
                     SERVER_PORT
-                );
+                )
+                .unwrap();
                 match socket.connect(cx, (SERVER_IP, SERVER_PORT), 1234) {
                     Ok(_) => writeln!(uart, "Connected to {SERVER_IP}:{SERVER_PORT}").unwrap(),
                     Err(e) => writeln!(uart, "Error connecting: {:?}", e).unwrap(),
@@ -171,7 +172,7 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
     let mut uart = unsafe { Uart::new(UART_ADDR) };
 
     uwriteln!(uart, "Panicked!").unwrap();
-    writeln!(uart, "{}\n", info);
+    writeln!(uart, "{}\n", info).unwrap();
     uwriteln!(uart, "Looping forever now").unwrap();
     loop {
         continue;
@@ -193,8 +194,6 @@ fn update_dhcp(iface: &mut Interface, socket: &mut dhcpv4::Socket) {
             } else {
                 iface.routes_mut().remove_default_ipv4_route();
             }
-
-            for (i, s) in config.dns_servers.iter().enumerate() {}
         }
         Some(dhcpv4::Event::Deconfigured) => {
             iface.update_ip_addrs(|addrs| addrs.clear());
