@@ -116,6 +116,9 @@ onRequestWb = liftA2 $ \m _ -> m.busCycle && m.strobe
 onTransactionWb :: forall dom mode addrW a. WbToBool dom mode addrW a
 onTransactionWb = liftA2 $ \m s -> m.busCycle && m.strobe && (s.acknowledge || s.err || s.stall || s.retry)
 
+onErrorWb :: WbToBool dom mode addrW a
+onErrorWb = liftA2 $ \m s -> m.busCycle && m.strobe && s.err
+
 -- | busCycle && strobe && addr >= lower && addr < upper
 inAddrRangeWb ::
   forall dom mode addrW a.
