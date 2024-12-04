@@ -21,7 +21,8 @@ fn main() -> ! {
     uwriteln!(uart, "Start time self test").unwrap();
     for (name, result) in test_results {
         match result {
-            Some(s) => uwriteln!(uart, "{}: Some({})", name, s).unwrap(),
+            Some((s, None)) => uwriteln!(uart, "{}: Some({})", name, s).unwrap(),
+            Some((s, Some(fail))) => uwriteln!(uart, "{}: Some({}. {:?})", name, s, fail).unwrap(),
             None => uwriteln!(uart, "{}: None", name).unwrap(),
         };
     }

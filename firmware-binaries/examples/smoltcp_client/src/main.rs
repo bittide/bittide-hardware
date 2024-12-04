@@ -72,7 +72,7 @@ fn main() -> ! {
     set_local(&mut eth_addr);
     let mut config = Config::new(eth_addr.into());
     let mut eth: AxiEthernet<ETH_MTU> = AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx, None);
-    let now = clock.elapsed().into();
+    let now = clock.now().into();
     let mut iface = Interface::new(config, &mut eth, now);
 
     // Create sockets
@@ -101,12 +101,12 @@ fn main() -> ! {
     let mut stress_test_end = Instant::end_of_time();
     info!(
         "{}, TCP Server send chunks of {} bytes for {}",
-        clock.elapsed(),
+        clock.now(),
         CHUNK_SIZE,
         stress_test_duration
     );
     loop {
-        let elapsed = clock.elapsed().into();
+        let elapsed = clock.now().into();
         iface.poll(elapsed, &mut eth, &mut sockets);
         let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(dhcp_handle);
         update_dhcp(&mut iface, dhcp_socket);
@@ -116,8 +116,8 @@ fn main() -> ! {
 
         if my_ip.is_none() {
             my_ip = iface.ipv4_addr();
-            info!("{}, IP address: {}", clock.elapsed(), my_ip.unwrap());
-            let now = clock.elapsed();
+            info!("{}, IP address: {}", clock.now(), my_ip.unwrap());
+            let now = clock.now();
             stress_test_end = now + stress_test_duration;
             info!("{}, Stress test will end at {}", now, stress_test_end);
         }
@@ -125,7 +125,7 @@ fn main() -> ! {
         let mut socket = sockets.get_mut::<Socket>(client_handle);
         let cx = iface.context();
         if !socket.is_open() {
-            debug!("{}, Opening socket", clock.elapsed());
+            debug!("{}, Opening socket", clock.now());
             if !socket.is_active() {
                 mac_status = unsafe { MAC_ADDR.read_volatile() };
                 debug!(
@@ -147,7 +147,7 @@ fn main() -> ! {
                 Ok(n) => debug!("Sent {n} bytes"),
                 Err(e) => debug!("Error sending data: {:?}", e),
             }
-            let now = clock.elapsed();
+            let now = clock.now();
             if now > stress_test_end {
                 info!("{}, Stress test complete", now);
                 socket.close();
@@ -155,7 +155,7 @@ fn main() -> ! {
                 uwriteln!(uart, "{:?}", new_mac_status - mac_status).unwrap();
             }
         }
-        match iface.poll_delay(clock.elapsed().into(), &sockets) {
+        match iface.poll_delay(clock.now().into(), &sockets) {
             Some(smoltcp::time::Duration::ZERO) => {}
             Some(delay) => {
                 let smoltcp_delay = Duration::from(delay);

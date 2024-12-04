@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use crate::{time, uart};
+use crate::{
+    time::{self, Clock},
+    uart,
+};
 
 // The logger utilizes core::fmt to format the log messages because ufmt formatting is not
 // compatible with (dependencies of) the log crate.
@@ -62,7 +65,8 @@ impl log::Log for UartLogger {
                             write!(l, "{} | ", record.level()).unwrap()
                         }
                         if let (true, Some(clock)) = (&self.print_time, &self.clock) {
-                            let time = clock.elapsed();
+                            let mut clock = Clock::new(clock.as_ptr());
+                            let time = clock.now();
                             write!(l, "{time} | ").unwrap();
                         }
                         if record.level() <= self.display_source {
