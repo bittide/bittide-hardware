@@ -28,6 +28,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.TH
 import Text.Parsec
 import Text.Parsec.String
+import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- internal imports
 import Bittide.Arithmetic.Time (PeriodToCycles)
@@ -135,7 +136,7 @@ dut =
     $ circuit
     $ \_unit -> do
       (uartRx, jtag) <- idleSource -< ()
-      [uartBus, ccWb, dbgWb] <- processingElement peConfig -< jtag
+      [uartBus, ccWb, dbgWb] <- processingElement NoDumpVcd peConfig -< jtag
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
       [ccd0, ccd1] <-
         csDupe

@@ -115,7 +115,7 @@ fullMeshRiscvCopyTest clk rst callistoResult dataCounts = unbundle fIncDec
     toSignals
       ( circuit $ \jtag -> do
           [wbFincFdec, wbClockControl, wbDebug] <-
-            withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
+            withClockResetEnable clk rst enableGen $ processingElement @dom NoDumpVcd peConfig -< jtag
           fIncDecCallisto -< wbFincFdec
           [ccd0, ccd1] <-
             csDupe

@@ -14,7 +14,7 @@ import Clash.Prelude
 
 import Protocols
 import Protocols.Wishbone
-import VexRiscv (CpuIn (..), CpuOut (..), Jtag, JtagOut (debugReset), vexRiscv)
+import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, JtagOut (debugReset), vexRiscv)
 
 import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
@@ -50,12 +50,13 @@ data PeConfig nBusses where
 processingElement ::
   forall dom nBusses.
   (HiddenClockResetEnable dom) =>
+  DumpVcd ->
   PeConfig nBusses ->
   Circuit
     (Jtag dom)
     (Vec (nBusses - 2) (Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4)))
-processingElement (PeConfig memMapConfig initI initD) = circuit $ \jtagIn -> do
-  (iBus0, dBus0) <- rvCircuit (pure low) (pure low) (pure low) -< jtagIn
+processingElement dumpVcd (PeConfig memMapConfig initI initD) = circuit $ \jtagIn -> do
+  (iBus0, dBus0) <- rvCircuit dumpVcd (pure low) (pure low) (pure low) -< jtagIn
   iBus1 <-
     ilaWb (SSymbol @"instructionBus") 2 D4096 onTransactionWb onTransactionWb -< iBus0
   dBus1 <- ilaWb (SSymbol @"dataBus") 2 D4096 onTransactionWb onTransactionWb -< dBus0
@@ -89,6 +90,7 @@ splitAtC SNat = Circuit go
 
 rvCircuit ::
   (HiddenClockResetEnable dom) =>
+  DumpVcd ->
   Signal dom Bit ->
   Signal dom Bit ->
   Signal dom Bit ->
@@ -97,13 +99,13 @@ rvCircuit ::
     ( Wishbone dom 'Standard 30 (Bytes 4)
     , Wishbone dom 'Standard 30 (Bytes 4)
     )
-rvCircuit tInterrupt sInterrupt eInterrupt = Circuit go
+rvCircuit dumpVcd tInterrupt sInterrupt eInterrupt = Circuit go
  where
   go (jtagIn, (iBusIn, dBusIn)) = (jtagOut, (iBusWbM2S <$> cpuOut, dBusWbM2S <$> cpuOut))
    where
     tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) = CpuIn{..}
     rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
-    (cpuOut, jtagOut) = vexRiscv hasClock (hasReset `unsafeOrReset` jtagReset) rvIn jtagIn
+    (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock (hasReset `unsafeOrReset` jtagReset) rvIn jtagIn
     jtagReset = unsafeFromActiveHigh (delay False (bitToBool . debugReset <$> jtagOut))
 
 -- | Map a function over the address field of 'WishboneM2S'

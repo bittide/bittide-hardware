@@ -35,9 +35,9 @@ vector of ever increasing base addresses (increments of 0x1000).
 simpleNodeConfig :: NodeConfig 1 2
 simpleNodeConfig =
   NodeConfig
-    (ManagementConfig (ScatterConfig sgConfig) (GatherConfig sgConfig) nmuConfig)
+    (ManagementConfig (ScatterConfig sgConfig) (GatherConfig sgConfig) nmuConfig NoDumpVcd)
     switchCal
-    (repeat (GppeConfig (ScatterConfig sgConfig) (GatherConfig sgConfig) peConfig))
+    (repeat (GppeConfig (ScatterConfig sgConfig) (GatherConfig sgConfig) peConfig NoDumpVcd))
  where
   switchCal = CalendarConfig (SNat @1024) (switchEntry :> Nil) (switchEntry :> Nil)
   sgConfig = CalendarConfig (SNat @1024) (sgEntry :> Nil) (sgEntry :> Nil)
@@ -104,6 +104,7 @@ data ManagementConfig nodeBusses where
     ScatterConfig 4 (NmuRemBusWidth nodeBusses) ->
     GatherConfig 4 (NmuRemBusWidth nodeBusses) ->
     PeConfig (nodeBusses + NmuInternalBusses) ->
+    DumpVcd ->
     ManagementConfig nodeBusses
 
 {- | Configuration for a general purpose processing element together with its link to the
@@ -117,6 +118,7 @@ data GppeConfig nmuRemBusWidth where
     -- has four external busses connected to the instruction memory, data memory
     -- , 'scatterUnitWb' and 'gatherUnitWb'.
     PeConfig 4 ->
+    DumpVcd ->
     GppeConfig nmuRemBusWidth
 
 {-# NOINLINE gppe #-}
@@ -148,14 +150,18 @@ gppe ::
   ( Signal dom (DataLink 64)
   , Vec 2 (Signal dom (WishboneS2M (Bytes 4)))
   )
-gppe (GppeConfig scatterConfig gatherConfig peConfig, linkIn, vecToTuple -> (nmuM2S0, nmuM2S1)) =
-  (linkOut, nmuS2M0 :> nmuS2M1 :> Nil)
- where
-  (suS2M, nmuS2M0) = scatterUnitWb scatterConfig nmuM2S0 linkIn suM2S
-  (linkOut, guS2M, nmuS2M1) = gatherUnitWb gatherConfig nmuM2S1 guM2S
-  (_, wbM2Ss) = toSignals (processingElement peConfig) (pure $ JtagIn low low low, wbS2Ms)
-  (suM2S, guM2S) = vecToTuple wbM2Ss
-  wbS2Ms = suS2M :> guS2M :> Nil
+gppe
+  ( GppeConfig scatterConfig gatherConfig peConfig dumpVcd
+    , linkIn
+    , vecToTuple -> (nmuM2S0, nmuM2S1)
+    ) =
+    (linkOut, nmuS2M0 :> nmuS2M1 :> Nil)
+   where
+    (suS2M, nmuS2M0) = scatterUnitWb scatterConfig nmuM2S0 linkIn suM2S
+    (linkOut, guS2M, nmuS2M1) = gatherUnitWb gatherConfig nmuM2S1 guM2S
+    (_, wbM2Ss) = toSignals (processingElement dumpVcd peConfig) (pure $ JtagIn low low low, wbS2Ms)
+    (suM2S, guM2S) = vecToTuple wbM2Ss
+    wbS2Ms = suS2M :> guS2M :> Nil
 
 {-# NOINLINE managementUnit #-}
 
@@ -170,13 +176,14 @@ gppeC ::
   Circuit
     (CSignal dom (DataLink 64), Vec 2 (Wishbone dom 'Standard nmuRemBusWidth (Bytes 4)))
     (CSignal dom (DataLink 64))
-gppeC (GppeConfig scatterConfig gatherConfig peConfig) = circuit $ \(linkIn, nmuWbs) -> do
-  [wbScatCal, wbGathCal] <- idC -< nmuWbs
-  jtag <- idleSource -< ()
-  [wbScat, wbGu] <- processingElement peConfig -< jtag
-  linkOut <- gatherUnitWbC gatherConfig -< (wbGu, wbGathCal)
-  scatterUnitWbC scatterConfig -< (linkIn, wbScat, wbScatCal)
-  idC -< linkOut
+gppeC (GppeConfig scatterConfig gatherConfig peConfig dumpVcd) =
+  circuit $ \(linkIn, nmuWbs) -> do
+    [wbScatCal, wbGathCal] <- idC -< nmuWbs
+    jtag <- idleSource -< ()
+    [wbScat, wbGu] <- processingElement dumpVcd peConfig -< jtag
+    linkOut <- gatherUnitWbC gatherConfig -< (wbGu, wbGathCal)
+    scatterUnitWbC scatterConfig -< (linkIn, wbScat, wbScatCal)
+    idC -< linkOut
 
 {- | A special purpose 'processingElement' that manages a Bittide Node. It contains
 a 'processingElement', 'linkToPe' and 'peToLink' which create the interface for the
@@ -202,14 +209,14 @@ managementUnit ::
   ( Signal dom (DataLink 64)
   , Vec nodeBusses (Signal dom (WishboneM2S (NmuRemBusWidth nodeBusses) 4 (Bytes 4)))
   )
-managementUnit (ManagementConfig scatterConfig gatherConfig peConfig) linkIn nodeS2Ms =
+managementUnit (ManagementConfig scatterConfig gatherConfig peConfig dumpVcd) linkIn nodeS2Ms =
   (linkOut, nodeM2Ss)
  where
   (suS2M, nmuS2M0) = scatterUnitWb scatterConfig nmuM2S0 linkIn suM2S
   (linkOut, guS2M, nmuS2M1) = gatherUnitWb gatherConfig nmuM2S1 guM2S
   (vecToTuple -> (suM2S, guM2S), rest) = splitAtI nmuM2Ss
   (vecToTuple -> (nmuM2S0, nmuM2S1), nodeM2Ss) = splitAtI rest
-  (_, nmuM2Ss) = toSignals (processingElement peConfig) (pure $ JtagIn low low low, nmuS2Ms)
+  (_, nmuM2Ss) = toSignals (processingElement dumpVcd peConfig) (pure $ JtagIn low low low, nmuS2Ms)
   nmuS2Ms = suS2M :> guS2M :> nmuS2M0 :> nmuS2M1 :> nodeS2Ms
 
 managementUnitC ::
@@ -228,9 +235,9 @@ managementUnitC ::
     ( CSignal dom (DataLink 64)
     , Vec nodeBusses (Wishbone dom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4))
     )
-managementUnitC (ManagementConfig scatterConfig gatherConfig peConfig) = circuit $ \linkIn -> do
+managementUnitC (ManagementConfig scatterConfig gatherConfig peConfig dumpVcd) = circuit $ \linkIn -> do
   jtag <- idleSource -< ()
-  peWbs <- processingElement peConfig -< jtag
+  peWbs <- processingElement dumpVcd peConfig -< jtag
   ([wbScatCal, wbScat, wbGathCal, wbGu], nmuWbs) <- splitAtC d4 -< peWbs
   linkOut <- gatherUnitWbC gatherConfig -< (wbGu, wbGathCal)
   scatterUnitWbC scatterConfig -< (linkIn, wbScat, wbScatCal)

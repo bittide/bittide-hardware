@@ -47,7 +47,7 @@ vexRiscUartHello diffClk rst_in =
     $ withClockResetEnable clk200 rst200 enableGen
     $ circuit
     $ \(uartRx, jtag) -> do
-      [uartBus, timeBus] <- processingElement @Basic200 peConfig -< jtag
+      [uartBus, timeBus] <- processingElement @Basic200 NoDumpVcd peConfig -< jtag
       (uartTx, _uartStatus) <-
         uartInterfaceWb d16 d16 (uartDf $ SNat @921600) -< (uartBus, uartRx)
       timeWb -< timeBus

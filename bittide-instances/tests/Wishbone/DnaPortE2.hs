@@ -23,6 +23,7 @@ import System.FilePath
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
+import VexRiscv (DumpVcd (NoDumpVcd))
 
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
@@ -56,7 +57,7 @@ dut ::
   Circuit (Df dom (BitVector 8)) (Df dom (BitVector 8))
 dut = circuit $ \uartRx -> do
   jtag <- idleSource -< ()
-  [uartBus, dnaWb] <- processingElement @dom peConfig -< jtag
+  [uartBus, dnaWb] <- processingElement @dom NoDumpVcd peConfig -< jtag
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
   readDnaPortE2Wb simDna2 -< dnaWb
   idC -< uartTx
