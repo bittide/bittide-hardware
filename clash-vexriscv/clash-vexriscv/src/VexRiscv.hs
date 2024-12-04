@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -20,9 +20,10 @@ import Clash.Signal.Internal
 import Data.Bifunctor (first)
 import Data.String.Interpolate (__i)
 import Data.Word (Word64)
-import Foreign (Ptr)
+import Foreign (Ptr, nullPtr)
 import Foreign.Marshal (alloca)
 import Foreign.Storable
+import Foreign.C.String (newCString)
 import GHC.IO (unsafePerformIO, unsafeInterleaveIO)
 import GHC.Stack (HasCallStack)
 import Language.Haskell.TH.Syntax
@@ -66,6 +67,8 @@ data CpuOut = CpuOut
   }
   deriving (Generic, NFDataX, ShowX, Eq, BitPack)
 
+data DumpVcd = DumpVcd FilePath | NoDumpVcd
+
 
 data Jtag (dom :: Domain)
 
@@ -81,6 +84,7 @@ vexRiscv ::
   forall dom .
   ( HasCallStack
   , KnownDomain dom) =>
+  DumpVcd ->
   Clock dom ->
   Reset dom ->
   Signal dom CpuIn ->
@@ -88,7 +92,7 @@ vexRiscv ::
   ( Signal dom CpuOut
   , Signal dom JtagOut
   )
-vexRiscv clk rst cpuInput jtagInput =
+vexRiscv dumpVcd clk rst cpuInput jtagInput =
   ( CpuOut <$>
     (WishboneM2S
       <$> iBus_ADR
@@ -161,7 +165,7 @@ vexRiscv clk rst cpuInput jtagInput =
       , dBus_BTE
       , debug_resetOut
       , jtag_TDO
-      ) = vexRiscv# sourcePath clk rst
+      ) = vexRiscv# dumpVcd sourcePath clk rst
           timerInterrupt
           externalInterrupt
           softwareInterrupt
@@ -181,7 +185,8 @@ vexRiscv clk rst cpuInput jtagInput =
 
 vexRiscv#
   :: KnownDomain dom
-  => String
+  => DumpVcd
+  -> String
   -> Clock dom
   -> Reset dom
   -- input signals
@@ -228,7 +233,7 @@ vexRiscv#
     , Signal dom Bit -- ^ debug_resetOut
     , Signal dom Bit -- ^ jtag_TDO
     )
-vexRiscv# !_sourcePath clk rst0
+vexRiscv# dumpVcd !_sourcePath clk rst0
   timerInterrupt0
   externalInterrupt0
   softwareInterrupt0
@@ -243,7 +248,7 @@ vexRiscv# !_sourcePath clk rst0
   jtag_TCK0
   jtag_TMS0
   jtag_TDI0 = unsafePerformIO $ do
-    (v, initStage1, initStage2, stepRising, stepFalling, _shutDown) <- vexCPU
+    (v, initStage1, initStage2, stepRising, stepFalling, _shutDown) <- vexCPU dumpVcd
 
     -- Make sure all the inputs are defined
     let
@@ -366,7 +371,8 @@ vexRiscv# !_sourcePath clk rst0
 
       (
        -- ARGs
-       _
+       _knownDomain
+       , _vcdPath
        , srcPath
        , clk
        , rst
@@ -404,7 +410,7 @@ vexRiscv# !_sourcePath clk rst0
        , jtag_TDO
 
        , cpu
-       ) = vecToTuple $ indicesI @35
+       ) = vecToTuple $ indicesI @36
     in
       InlineYamlPrimitive [Verilog] [__i|
   BlackBox:
@@ -505,23 +511,30 @@ vexRiscv# !_sourcePath clk rst0
 
 -- | Return a function that performs an execution step and a function to free
 -- the internal CPU state
-vexCPU :: IO
-  ( Ptr VexRiscv
-  , Ptr VexRiscv -> NON_COMB_INPUT -> IO OUTPUT           -- initStage1
-  , Ptr VexRiscv -> COMB_INPUT -> IO ()                   -- initStage2
-  , Ptr VexRiscv -> Word64 -> NON_COMB_INPUT -> IO OUTPUT -- rising
-  , Ptr VexRiscv -> Word64 -> COMB_INPUT -> IO ()         -- falling
-  , Ptr VexRiscv -> IO ()
-  )
-vexCPU = do
+vexCPU ::
+  DumpVcd ->
+  IO
+    ( Ptr VexRiscv
+    , Ptr VexRiscv -> NON_COMB_INPUT -> IO OUTPUT           -- initStage1
+    , Ptr VexRiscv -> COMB_INPUT -> IO ()                   -- initStage2
+    , Ptr VexRiscv -> Word64 -> NON_COMB_INPUT -> IO OUTPUT -- rising
+    , Ptr VexRiscv -> Word64 -> COMB_INPUT -> IO ()         -- falling
+    , Ptr VexRiscv -> IO ()
+    )
+vexCPU dumpVcd = do
   v <- vexrInit
+  vcd <- case dumpVcd of
+    NoDumpVcd -> pure nullPtr
+    DumpVcd path -> do
+      vcdPath <- newCString path
+      vexrInitVcd v vcdPath
 
   let
     {-# NOINLINE initStage1 #-}
     initStage1 vPtr nonCombInput =
       alloca $ \nonCombInputFFI -> alloca $ \outputFFI -> do
         poke nonCombInputFFI nonCombInput
-        vexrInitStage1 vPtr nonCombInputFFI outputFFI
+        vexrInitStage1 vcd vPtr nonCombInputFFI outputFFI
         peek outputFFI
 
     {-# NOINLINE initStage2 #-}
@@ -534,14 +547,14 @@ vexCPU = do
     stepRising vPtr fsSinceLastEvent nonCombInput =
       alloca $ \nonCombInputFFI -> alloca $ \outputFFI -> do
         poke nonCombInputFFI nonCombInput
-        vexrStepRisingEdge vPtr fsSinceLastEvent nonCombInputFFI outputFFI
+        vexrStepRisingEdge vcd vPtr fsSinceLastEvent nonCombInputFFI outputFFI
         peek outputFFI
 
     {-# NOINLINE stepFalling #-}
     stepFalling vPtr fsSinceLastEvent combInput =
       alloca $ \combInputFFI -> do
         poke combInputFFI combInput
-        vexrStepFallingEdge vPtr fsSinceLastEvent combInputFFI
+        vexrStepFallingEdge vcd vPtr fsSinceLastEvent combInputFFI
 
     shutDown = vexrShutdown
 

@@ -5712,11 +5712,11 @@ module VexRiscv (
   assign IBusSimplePlugin_rspJoin_rspBuffer_c_io_flush = 1'b0;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
-      IBusSimplePlugin_fetchPc_pcReg <= 32'h80000000;
+      IBusSimplePlugin_fetchPc_pcReg <= 32'h20000000;
       IBusSimplePlugin_fetchPc_correctionReg <= 1'b0;
       IBusSimplePlugin_fetchPc_booted <= 1'b0;
       IBusSimplePlugin_fetchPc_inc <= 1'b0;
-      IBusSimplePlugin_decodePc_pcReg <= 32'h80000000;
+      IBusSimplePlugin_decodePc_pcReg <= 32'h20000000;
       _zz_IBusSimplePlugin_iBusRsp_stages_1_input_valid_1 <= 1'b0;
       IBusSimplePlugin_decompressor_bufferValid <= 1'b0;
       IBusSimplePlugin_decompressor_throw2BytesReg <= 1'b0;

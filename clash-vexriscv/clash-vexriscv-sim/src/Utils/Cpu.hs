@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -22,6 +22,7 @@ import GHC.Stack (HasCallStack)
 import Utils.ProgramLoad (Memory, DMemory)
 import Utils.Interconnect (interconnectTwo)
 import Clash.Explicit.Prelude (unsafeOrReset)
+import Data.Maybe (fromMaybe)
 
 createDomain vXilinxSystem{vName="Basic50", vPeriod= hzToPeriod 50_000_000}
 
@@ -39,33 +40,34 @@ cpu ::
   --      convenient it is to use this within a design with synchronous resets.
   -- , HasAsynchronousReset dom
   ) =>
-  Maybe Integer ->
+  DumpVcd ->
+  Maybe (Signal dom JtagIn) ->
   DMemory dom ->
   DMemory dom ->
-  ( Signal dom CpuOut,
-    -- writes
-    Signal dom (Maybe (BitVector 32, BitVector 32)),
-    -- iBus responses
-    Signal dom (WishboneS2M (BitVector 32)),
-    -- dBus responses
+  ( Signal dom CpuOut
+  , Signal dom JtagOut
+  , -- writes
+    Signal dom (Maybe (BitVector 32, BitVector 32))
+  , -- iBus responses
+    Signal dom (WishboneS2M (BitVector 32))
+  , -- dBus responses
     Signal dom (WishboneS2M (BitVector 32))
   )
-cpu jtagPort bootIMem bootDMem =
-  ( output
+cpu dumpVcd jtagIn0 bootIMem bootDMem =
+  ( cpuOut
+  , jtagOut
   , writes
   , iS2M
   , dS2M
   )
   where
-    (output, jtagOut) = vexRiscv hasClock (hasReset `unsafeOrReset` jtagReset) input jtagIn
+    (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock (hasReset `unsafeOrReset` jtagReset) input jtagIn1
 
     jtagReset =
       unsafeFromActiveHigh $ register False $
         bitToBool . debugReset <$> jtagOut
 
-    jtagIn = case jtagPort of
-      Just port -> vexrJtagBridge (fromInteger port) jtagOut
-      Nothing -> pure JTag.defaultIn
+    jtagIn1 = fromMaybe (pure JTag.defaultIn) jtagIn0
 
     {-
     00000000 - dummy area
@@ -75,7 +77,7 @@ cpu jtagPort bootIMem bootDMem =
 
     -- The I-bus is only split once, for the D-mem and everything below.
     (iS2M, vecToTuple . unbundle -> (iMemIM2S, dMemIM2S)) = interconnectTwo
-      (unBusAddr . iBusWbM2S <$> output)
+      (unBusAddr . iBusWbM2S <$> cpuOut)
       ((0x0000_0000, iMemIS2M) :> (0x4000_0000, dMemIS2M) :> Nil)
 
     -- Because the dummy region should never be accessed by the instruction bus
@@ -83,7 +85,7 @@ cpu jtagPort bootIMem bootDMem =
     (iMemIS2M, iMemDS2M) = bootIMem (mapAddr (\x -> complement 0x2000_0000 .&. x) <$> iMemIM2S) iMemDM2S
 
     -- needed for 'writes' below
-    dM2S = dBusWbM2S <$> output
+    dM2S = dBusWbM2S <$> cpuOut
 
     -- because of the memory map having the dummy at 0x0.., then instructions
     -- and then data memory, the D-bus is split in an "upper" and "lower" region,

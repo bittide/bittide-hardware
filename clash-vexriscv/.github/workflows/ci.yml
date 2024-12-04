@@ -173,7 +173,8 @@ jobs:
 
       - name: Run `clash-vexriscv-sim` unittests
         run: |
-          cabal run clash-vexriscv-sim:unittests -- -j2
+          # Can't run the unit tests with multiple threads because of the common use of port 7894.
+          cabal run clash-vexriscv-sim:unittests -- -j1
 
       - name: Run `clash-vexriscv-sim` HDL test
         run: |

@@ -20,6 +20,6 @@ circuit ::
     ( "CPU_OUTPUT" ::: Signal System CpuOut
     , "JTAG_OUT" ::: Signal System JtagOut )
 circuit clk rst input jtagIn =
-  vexRiscv clk rst input jtagIn
+  vexRiscv NoDumpVcd clk rst input jtagIn
 {-# CLASH_OPAQUE circuit #-}
 makeTopEntity 'circuit
