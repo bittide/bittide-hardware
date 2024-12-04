@@ -13,6 +13,11 @@ import Clash.Explicit.Prelude
 import Clash.Xilinx.ClockGen
 import VexRiscv
 
+import qualified Bittide.Instances.Pnr.Ethernet as Pnr
+
+sim :: IO ()
+sim = Pnr.sim
+
 vexRiscvTcpTest ::
   DiffClock Ext125 ->
   Reset Ext125 ->

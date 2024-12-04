@@ -1,10 +1,12 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# OPTIONS -fplugin=Protocols.Plugin #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
+
+{-# OPTIONS -fplugin=Protocols.Plugin #-}
 
 module Bittide.Instances.Pnr.Ethernet where
 
@@ -13,8 +15,10 @@ import Clash.Explicit.Reset.Extra
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
 import Clash.Cores.UART (ValidBaud)
+import Clash.Cores.UART.Extra
 import Clash.Cores.Xilinx.Ethernet.Gmii
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
+import Clash.Explicit.Testbench
 import Protocols
 import VexRiscv
 
@@ -26,10 +30,35 @@ import Bittide.ProcessingElement
 import Bittide.Wishbone
 import Protocols.Idle
 
+#ifdef CPU_INCLUDE_BINARIES
+import Bittide.ProcessingElement.Util
+import Bittide.SharedTypes
+import Language.Haskell.TH
+import Project.FilePath
+import System.FilePath
+#endif
+
+#ifdef SIM_BAUD_RATE
+type Baud = MaxBaudRate Basic125
+#else
 type Baud = 921_600
+#endif
 
 baud :: SNat Baud
 baud = SNat
+
+sim :: IO ()
+sim =
+  uartIO @Basic125B stdin stdout baud $ Circuit go
+ where
+  go (uartRx, _) = (pure (), uartTx)
+   where
+    (_, uartTx, _, _) =
+      vexRiscEthernet
+        clockGen
+        resetGen
+        (clockToDiffClock clockGen)
+        (pure $ unpack 0, uartRx, pure $ unpack 0)
 
 {- | Instance containing:
 * VexRiscv CPU
@@ -45,7 +74,7 @@ vexRiscGmii ::
   , KnownDomain tx
   , KnownNat (DomainPeriod logic)
   , 1 <= DomainPeriod logic
-  , ValidBaud logic 921600
+  , ValidBaud logic Baud
   ) =>
   SNat gpioWidth ->
   Clock logic ->
@@ -113,21 +142,40 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
   wcre :: (((HiddenClockResetEnable logic) => a) -> a)
   wcre = withClockResetEnable sysClk sysRst enableGen
 
+  memMap =
+    0b1000
+      :> 0b0001
+      :> 0b0010
+      :> 0b0011
+      :> 0b0101
+      :> 0b0110
+      :> 0b0111
+      :> 0b0100
+      :> 0b1001
+      :> Nil
+
+#ifdef CPU_INCLUDE_BINARIES
   peConfig =
-    PeConfig
-      ( 0b1000
-          :> 0b0001
-          :> 0b0010
-          :> 0b0011
-          :> 0b0101
-          :> 0b0110
-          :> 0b0111
-          :> 0b0100
-          :> 0b1001
-          :> Nil
-      )
+    PeConfig memMap
+      (Reloadable $ Blob iMem)
+      (Reloadable $ Blob dMem)
+
+  (iMem, dMem) =
+    $( do
+        root <- runIO $ findParentContaining "cabal.project"
+        let
+          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
+          elfPath = elfDir </> "smoltcp_client"
+          iSize = 256 * 1024 -- 256 KB
+          dSize = 64 * 1024 -- 64 KB
+        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
+     )
+#else
+  peConfig =
+    PeConfig memMap
       (Undefined @(DivRU (256 * 1024) 4))
       (Undefined @(DivRU (64 * 1024) 4))
+#endif
 
 vexRiscEthernet ::
   Clock Basic125B ->

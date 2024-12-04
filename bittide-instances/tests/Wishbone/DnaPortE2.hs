@@ -33,6 +33,14 @@ import Bittide.Wishbone
 
 import qualified Protocols.Df as Df
 
+sim :: IO ()
+sim = putStr simResult
+
+simResult :: String
+simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+ where
+  uartStream = sampleC def $ withClockResetEnable clockGen resetGen enableGen $ dut @System
+
 -- | Test whether we can read the DNA from the DNA port peripheral.
 case_dna_port_self_test :: Assertion
 case_dna_port_self_test = assertBool msg (receivedDna == simDna2)
@@ -43,10 +51,6 @@ case_dna_port_self_test = assertBool msg (receivedDna == simDna2)
       <> " not equal to expected dna "
       <> showHex simDna2 ""
   receivedDna = parseResult simResult
-  clk = clockGen
-  rst = resetGen
-  simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
-  uartStream = sampleC def $ withClockResetEnable clk rst enableGen $ dut @System <| idleSource
 
 {- | A simple instance containing just VexRisc with UART and the DNA peripheral which
 runs the `dna_port_e2_test` binary from `firmware-binaries`.
@@ -54,9 +58,9 @@ runs the `dna_port_e2_test` binary from `firmware-binaries`.
 dut ::
   forall dom.
   (HiddenClockResetEnable dom) =>
-  Circuit (Df dom (BitVector 8)) (Df dom (BitVector 8))
-dut = circuit $ \uartRx -> do
-  jtag <- idleSource -< ()
+  Circuit () (Df dom (BitVector 8))
+dut = circuit $ \_unit -> do
+  (uartRx, jtag) <- idleSource -< ()
   [uartBus, dnaWb] <- processingElement @dom NoDumpVcd peConfig -< jtag
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
   readDnaPortE2Wb simDna2 -< dnaWb

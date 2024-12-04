@@ -1,7 +1,9 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
@@ -28,6 +30,14 @@ import Bittide.Instances.Hitl.Setup (allHwTargets)
 import Bittide.ProcessingElement
 import Bittide.SharedTypes
 import Bittide.Wishbone
+import Clash.Cores.UART.Extra
+
+#ifdef CPU_INCLUDE_BINARIES
+import Bittide.ProcessingElement.Util
+import Language.Haskell.TH
+import Project.FilePath
+import System.FilePath
+#endif
 
 data TestStatus = Running | Success | Fail
   deriving (Enum, Eq, Generic, NFDataX, BitPack)
@@ -37,11 +47,29 @@ type TestSuccess = Bool
 type UartRx = Bit
 type UartTx = Bit
 
+#ifdef SIM_BAUD_RATE
+type Baud = MaxBaudRate Basic125
+#else
+type Baud = 921_600
+#endif
+
+baud :: SNat Baud
+baud = SNat
+
+-- | To use this function, change the initial contents of the iMem and dMem
+sim :: IO ()
+sim =
+  uartIO stdin stdout baud $ withClockResetEnable clockGen resetGen enableGen $ Circuit go
+ where
+  go (uartRx, _) = (pure (), uartTx)
+   where
+    (_, _, uartTx) = vexRiscvInner @Basic125 (pure $ unpack 0) uartRx
+
 vexRiscvInner ::
   forall dom.
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
-  , ValidBaud dom 921600
+  , ValidBaud dom Baud
   ) =>
   Signal dom JtagIn ->
   Signal dom UartRx ->
@@ -65,7 +93,7 @@ vexRiscvInner jtagIn0 uartRx =
   Circuit circuitFn = circuit $ \(uartRx, jtag) -> do
     [timeBus, uartBus, statusRegisterBus] <- processingElement NoDumpVcd peConfig -< jtag
     (uartTx, _uartStatus) <-
-      uartInterfaceWb @dom d16 d16 (uartDf $ SNat @921600) -< (uartBus, uartRx)
+      uartInterfaceWb @dom d16 d16 (uartDf baud) -< (uartBus, uartRx)
     timeWb -< timeBus
     testResult <- statusRegister -< statusRegisterBus
     idC -< (testResult, uartTx)
@@ -110,14 +138,33 @@ vexRiscvInner jtagIn0 uartRx =
   -- │ 0b110. │ 0xC   │ 3     │ UART                               │
   -- │ 0b111. │ 0xE   │ 4     │ Test status register               │
   -- ╰────────┴───────┴───────┴────────────────────────────────────╯
-  --
-  -- peConfig :: PeConfig 5
+
+  memMap = 0b100 :> 0b010 :> 0b101 :> 0b110 :> 0b111 :> Nil
+
+#ifdef CPU_INCLUDE_BINARIES
   peConfig =
     PeConfig
-      (0b100 :> 0b010 :> 0b101 :> 0b110 :> 0b111 :> Nil)
+      memMap
+      (Reloadable $ Blob iMem)
+      (Reloadable $ Blob dMem)
+  (iMem, dMem) =
+    $( do
+        root <- runIO $ findParentContaining "cabal.project"
+        let
+          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
+          elfPath = elfDir </> "hello"
+          iSize = 8 * 1024 -- 16 KB
+          dSize = 64 * 1024 -- 256 KB
+        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
+    )
+{- FOURMOLU_ENABLE -}
+#else
+  peConfig =
+    PeConfig
+      memMap
       (Undefined @(Div (64 * 1024) 4)) -- 64 KiB
       (Undefined @(Div (64 * 1024) 4)) -- 64 KiB
-
+#endif
 vexRiscvTest ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->
   "JTAG" ::: Signal Basic125 JtagIn ->
