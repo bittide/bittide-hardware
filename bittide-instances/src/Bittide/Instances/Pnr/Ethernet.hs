@@ -126,8 +126,8 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
           :> 0b1001
           :> Nil
       )
-      (Undefined @(256 * 1024))
-      (Undefined @(64 * 1024))
+      (Undefined @(DivRU (256 * 1024) 4))
+      (Undefined @(DivRU (64 * 1024) 4))
 
 vexRiscEthernet ::
   Clock Basic125B ->
