@@ -47,11 +47,6 @@ cabal.config
 /.idea
 *.iml
 
-# HDL directories often created during development cycle
-vhdl/
-verilog/
-systemverilog/
-
 # Nix output
 result*
 
@@ -71,11 +66,8 @@ vivado_*
 tight_setup_hold_pins.txt
 .Xil
 
-# Docker builds
-.github/docker/rust-toolchain.toml
-.github/docker/*.nix
-.github/docker/nix
+# Verilator debug output
+simulation_dump.vcd
 
-# Python temporary files
-*.pyc
-__pycache__
+# Clash output
+verilog

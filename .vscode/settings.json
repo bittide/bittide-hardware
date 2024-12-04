@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Google LLC
+
+// SPDX-License-Identifier: CC0-1.0
 {
   "files.exclude": {
     "**/*.dyn_hi": true,
@@ -13,37 +16,11 @@
   "files.insertFinalNewline": true,
   "files.trimFinalNewlines": true,
   "files.trimTrailingWhitespace": true,
-  "editor.rulers": [
-    80,
-    90
-  ],
   "editor.tabSize": 2,
   "[rust]": {
     "editor.tabSize": 4
   },
-  "haskell.toolchain": {
-    "hls": "2.8.0.0",
-    "ghc": null,
-    "cabal": null,
-    "stack": null
-  },
   "[haskell]": {
     "editor.formatOnSave": false
   },
-  "yaml.schemas": {
-    ".vscode/schemas/hitl-test-schema.json": [
-      "_build/hitl/*.yml",
-      "bittide-instances/data/test_configs/*.yml"
-    ]
-  },
-  "rust-analyzer.linkedProjects": [
-    "firmware-support/Cargo.toml",
-    "firmware-binaries/Cargo.toml",
-    "host-tools/Cargo.toml"
-  ],
-  "rust-analyzer.check.allTargets": false,
-  "cSpell.words": [
-    "bitstream",
-    "Vivado"
-  ]
 }

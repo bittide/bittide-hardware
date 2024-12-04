@@ -4,702 +4,178 @@
 
 name: CI
 
-# XXX: What we'd really like is run on every pull request / pull request change,
-#      which allows GitHub to cancel runs after (force) pushes. Triggering on
-#      these seems to be broken since January 19th 2023 however. Note that not
-#      everyone likes auto-cancellation so we should probably recognize [no-skip]
-#      commits.
-on:
-  schedule:
-    # Works out to be approx midnight (CET/CEST) accounting for UTC offset and
-    # GitHub scheduling. See the comment at 'branches-ignore' for more
-    # information on our development flow. This job will run in context of the
-    # branch 'staging'.
-    - cron:  '0 19 * * *'
+on: [push]
 
-  push:
-      branches-ignore:
-        # Developers request to merge their changes into 'staging'. In order to
-        # do so, relatively cheap tests should pass CI. Every night, CI runs our
-        # full test suite on 'staging'. If these pass, a pull request may be
-        # created to get 'main' up to date with 'staging'. Note that this should
-        # be automated in the future, but this will require some engineering.
-        - 'staging'
-        - 'main'
-
-env:
-  HW_SERVER_URL: hoeve.local:3121
-  S3_PASSWORD: ${{ secrets.S3_PASSWORD }}
-  SYNTHESIS_BOARD: xilinx.com:kcu105:part0:1.7
-
-  # Suppress warnings related to locals
-  LC_ALL: C
-  LANG: C
-
-concurrency:
- group: ${{ github.head_ref || github.run_id }}
- cancel-in-progress: true
+# Updating Rust versions:
+#
+# When updating to a newer (or older) version of Rust for the main build process
+# then the version should be updated in the /rust-toolchain.toml file too.
+# That file determines which version gets used locally on developer machines.
 
 jobs:
   license-check:
-    runs-on: [self-hosted, compute]
+    runs-on: ubuntu-22.04
     container:
       image: ubuntu:22.04
-      options: --memory=11g
     steps:
     - uses: actions/checkout@v4
     - name: REUSE Compliance Check
-      uses: fsfe/reuse-action@v1
+      uses: fsfe/reuse-action@v2
 
-  lint:
-    name: Basic linting
-    runs-on: [self-hosted, compute]
 
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360
-
+  rust-checks:
+    name: Rust checks
+    runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
+      image: ubuntu:22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: EOL whitespace
+      - name: Install dependencies
         run: |
-          .github/scripts/check_eol_whitespace.sh
+          apt-get update
+          apt-get install -y curl build-essential
 
-      - name: Enforce EOF newline
-        run: |
-          .github/scripts/check_missing_eof_newline.sh
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.67 # See Note [Updating Rust versions]
+          profile: minimal
+          target: riscv32imc-unknown-none-elf
+          components: clippy, rustfmt
 
-      - name: Check that all self-hosted jobs run in a docker container
-        run: |
-          .github/scripts/self_hosted_docker_check.py
+      - name: Rust formatting
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
 
-      - name: Check that the 'all' job depends on all other jobs
-        run: |
-          .github/scripts/all_check.py
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --target riscv32imc-unknown-none-elf --all-features
 
-      - name: Check that all cabal files are formatted correctly
-        run: |
-          .github/scripts/cabal-gild.sh
-          git diff --exit-code
-
-      - name: Check that all Haskell files are formatted correctly
-        run: |
-          .github/scripts/fourmolu.sh
-          git diff --exit-code
-
-      - name: Check that we don't introduce accidental infinite loops in type checkers
-        run: |
-          ! grep --include=*.hs -E -r '\-fconstraint-solver-iterations *= *0'
-
-  build:
-    name: Build dependencies
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-
+  rust-build-programs:
+    name: Build Programs
+    runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
+      image: ubuntu:22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set CI flags
+      - name: Install dependencies
         run: |
-          cp .github/cabal.project cabal.project.local
+          apt-get update
+          apt-get install -y curl build-essential
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.67.1 # See Note [Updating Rust versions]
+          profile: minimal
+          target: riscv32imc-unknown-none-elf
+          components: clippy, rustfmt
 
-      - run: cache clean
-      - run: cache pull cabal --missing-ok --write-cache-found
-      - run: cache pull cargo --missing-ok
+      - name: Caching
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binaries
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+
+      - name: Build debug binaries
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+
+      - name: Archive Integration Test Binaries
+        run: |
+          cd clash-vexriscv-sim; sh bundle_test_binaries.sh
+
+      - name: Upload Integration Test Binaries
+        uses: actions/upload-artifact@v3
+        with:
+          name: vexriscv-test-binaries
+          path: clash-vexriscv-sim/vexriscv-test-binaries.tar
+
+
+  vex-riscv:
+    name: VexRiscv integration
+    runs-on: ubuntu-22.04
+    needs: [rust-build-programs]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        ghc:
+          - "9.0.2"
+          - "9.2.8"
+          - "9.4.8"
+          - "9.6.6"
+
+    container:
+      image: ghcr.io/clash-lang/clash-vexriscv-ci:${{ matrix.ghc }}-20240823
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Update Cabal index info
         run: |
-          if [[ $(cat cache_found) == 0 ]]; then
-            cabal update
-          else
-            echo "Restored cache, no need to update cabal package list"
-          fi
-
-      - run: ./cargo.sh fetch
-      - run: ./cargo.sh build --frozen --release
-      - run: ./cargo.sh build --frozen
-      - run: cabal build all
-
-      - run: cache push cabal
-      - run: cache push cargo
-      - run: cache push build
-
-  generate-full-clock-control-report:
-    name: Generate clock control report
-    runs-on: [self-hosted, compute]
-    if: ${{ !cancelled() && needs.bittide-instances-hardware-in-the-loop-test-matrix.outputs.should_generate_report == 'true' }}
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [
-      build,
-      bittide-instances-hardware-in-the-loop,
-      bittide-instances-hardware-in-the-loop-test-matrix,
-     ]
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
           cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cabal
-      - run: cache pull cargo
-      - run: cache pull build
-
-      - name: Generate HITL based plots
-        run: |
-          ./cargo.sh build --frozen --release
-          export BITTIDE_ARTIFACT_ACCESS_TOKEN="${{ secrets.GITHUB_TOKEN }}"
-          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          cabal run -- bittide-tools:cc-plot ${{ github.run_id }}:hwCcTopologyTest hitl-topology-plots
-
-      - name: Generate clock control reports
-        run: |
-          set +f # Enable globbing
-          mkdir -p reports
-          pdfunite \
-            hitl-topology-plots/*/report.pdf \
-            reports/HITLT-Report.pdf
-          rm hitl-topology-plots/*/report.pdf
-          mkdir -p plot-sources
-          mv hitl-topology-plots plot-sources/hwCcTopologyTest
-
-      - name: Upload Reports
-        uses: actions/upload-artifact@v4
-        if: always()
+          cabal update
+          cabal freeze
+      - name: Cache
+        uses: actions/cache@v3
         with:
-          name: Clock Control Reports
-          path: reports
-          retention-days: 14
-
-      - name: Upload HITLT Plot Sources
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: CC-HITLT Plot Sources
-          path: plot-sources
-          retention-days: 14
-
-  bittide-experiments-tests:
-    name: bittide-experiments unittests
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build]
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cabal
-      - run: cache pull build
-
-      - name: Run unittests
-        run: |
-          cabal run bittide-experiments:unittests
-
-      - name: Run doctests
-        run: |
-          cabal run -- bittide-experiments:doctests
-
-  bittide-tests:
-    name: Bittide tests
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build]
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cabal
-      - run: cache pull build
-
-      - name: Unittests
-        run: |
-          # While Hedgehog can fill many cores with "work", it doesn't actually
-          # speed up the tests that much (<5% runtime benefits).
-          cabal run -- bittide:unittests -j 2 +RTS -N4
-
-      - name: Bittide Doctests
-        run: |
-          cabal run -- bittide:doctests
-
-      - name: Bittide.Extra Doctests
-        run: |
-          cabal run -- bittide-extra:doctests
-
-      - name: Bittide.Extra Unittests
-        run: |
-          # While Hedgehog can fill many cores with "work", it doesn't actually
-          # speed up the tests that much (<5% runtime benefits).
-          cabal run -- bittide-extra:unittests -j 2 +RTS -N4
-
-  rust-lints:
-    name: Rust Lints
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-    needs: [build]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - run: cache pull cargo
-
-      - name: Rust formatting
-        run: |
-          ./cargo.sh fmt --all -- --check
-
-      - name: Clippy check
-        run: |
-          ./cargo.sh clippy --all-features -- -Dwarnings
-
-  firmware-support-tests:
-    name: Firmware Support Unit Tests
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-    needs: [build]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cabal
-      - run: cache pull cargo
-      - run: cache pull build
-
-      - name: Running Tests
-        run: |
-          cargo test --all
-        working-directory: firmware-support/
-
-  host-tools-tests:
-    name: Host Tools Unit Tests
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-    needs: [build]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cargo
-
-      - name: Running Tests
-        run: |
-          cargo test --all
-        working-directory: host-tools/
-
-  firmware-limit-checks:
-    name: Firmware Limit Checks
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-    needs: [build]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - run: cache pull cargo
-      - run: cache pull build
-
-      - name: Install `elf-limits`
-        run: cargo install --locked --git https://github.com/cuddlefishie/elf-limits
-
-      - name: Checking firmware binary limits
-        run: |
-          ~/.cargo/bin/elf-limits \
-            --instruction-mem-limit 64K \
-            --data-mem-limit 64K \
-            clock-control \
-            hello \
-            processing-element-test
-        working-directory: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/
-
-  bittide-instances-doctests:
-    name: bittide-instances doctests
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build]
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cabal
-      - run: cache pull build
-
-      - name: Doctests
-        run : |
-          cabal run -- bittide-instances:doctests
-
-  bittide-instances-unittests:
-    name: bittide-instances unittests
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
-    needs: [build]
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cabal
-      - run: cache pull build
-
-      - name: Unit tests
-        run : |
-          cabal run -- bittide-instances:unittests
-
-  bittide-instances-hdl-matrix:
-    name: bittide-instances synthesis matrix generation
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Generate matrix
-        run: |
-          if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
-            cp .github/synthesis/all.json checks.json
-          elif [[ -f .github/synthesis/debug.json ]]; then
-            cp .github/synthesis/debug.json checks.json
-          else
-            cp .github/synthesis/staging.json checks.json
-          fi
-
-      - name: Set test matrix
-        id: set-matrix
-        run: |
-          echo "check_matrix=$(cat checks.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
-
-    outputs:
-      check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
-
-  bittide-instances-hardware-in-the-loop-test-matrix:
-    name: bittide-instances hardware-in-the-loop test matrix generation
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Generate matrix
-        run: |
-          if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
-            cp .github/synthesis/all.json checks.json
-          elif [[ -f .github/synthesis/debug.json ]]; then
-            cp .github/synthesis/debug.json checks.json
-          else
-            cp .github/synthesis/staging.json checks.json
-          fi
-
-          jq '[.[] | select(.stage=="test")]' checks.json > checks.json.filtered
-          cp checks.json.filtered checks.json
-
-      - name: Set test matrix
-        id: set-matrix
-        run: |
-
-          echo "check_matrix=$(cat checks.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
-
-          should_generate_report=$(jq 'map(select(.top == "hwCcTopologyTest")) | length > 0' checks.json)
-          echo "should_generate_report=${should_generate_report}" | tee -a "$GITHUB_OUTPUT"
-
-    outputs:
-      check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
-      should_generate_report: ${{ steps.set-matrix.outputs.should_generate_report }}
-
-  bittide-instances-hdl:
-    name: synth
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
-        shell: git-nix-shell {0} --option connect-timeout 360
-    needs: [build, bittide-instances-hdl-matrix]
-
-    strategy:
-      matrix:
-        target: ${{ fromJson(needs.bittide-instances-hdl-matrix.outputs.check_matrix) }}
-      fail-fast: false
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      volumes:
-        - /opt/tools:/opt/tools
-      options: --init --mac-address="6c:5a:b0:6c:13:0b" --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          # We use the same flags as the 'build' step to reuse caches. This
-          # "simulation" config only sets altopts on the Risc core, which we
-          # don't synthesize yet.
-          #
-          # TODO: Either switch to VexRisc or update cache strategy.
-          #
-          cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cabal
-      - run: cache pull cargo
-      - run: cache pull build
-
-      - name: HDL generation and synthesis
-        run : |
-          target="${{ matrix.target.stage }}"
-
-          if [[ "${target}" == "program" ]]; then
-            echo "Illegal Shake target on CI: program"
-            exit 1
-          fi
-
-          # Only the local runner connected to the bittide demonstrator (hoeve)
-          # should perform the jobs which need hardware access. And that runner
-          # should do only that, so we let other 'compute' runners do the
-          # bitstream generation.
-          if [[ "${target}" == "test" ]]; then
-            target="bitstream"
-          fi
-
-          .github/scripts/with_vivado.sh \
-            shake ${{ matrix.target.top }}:"${target}"
-
-          # Workaround for https://github.com/bittide/bittide-hardware/issues/523
-          mkdir -p _build/vivado
-          touch _build/vivado/workaround-issue-523
-
-      - name: cache push build-post-synth
-        run: cache push build-post-synth --prefix="${{ matrix.target.top }}"
-
-      - name: Archive build artifacts
-        uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: _build-${{ matrix.target.top }}
-          # We don't pack `ip`, as it is generally useless for debugging while
-          # also taking up a lot of space.
           path: |
-            _build/clash
-            _build/vivado
-            _build/.shake.database
-            _build/.shake.lock
-            !_build/vivado/*/ip
-          retention-days: 14
+            ~/.local/state/cabal/store/
+          key: packages-cachebust-3-${{ matrix.ghc }}-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
+          restore-keys: packages-cachebust-3-${{ matrix.ghc }}
 
-  bittide-instances-hardware-in-the-loop:
-    name: HITL
-    runs-on: [self-hosted, hardware-access]
-    defaults:
-      run:
-        # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
-        shell: git-nix-shell {0} --option connect-timeout 360
-    needs: [bittide-instances-hdl, bittide-instances-hardware-in-the-loop-test-matrix]
-
-    strategy:
-      matrix:
-        target: ${{ fromJson(needs.bittide-instances-hardware-in-the-loop-test-matrix.outputs.check_matrix) }}
-      fail-fast: false
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-08-07
-      volumes:
-        - /opt/tools:/opt/tools
-        - /dev:/dev
-
-      # XXX: User '1001' corresponds to 'bittide' on Linux installation that has
-      #      access to the hardware. We need to set this, lest Docker will write
-      #      files as 'root' and the runner software will be unable to run
-      #      cleaning jobs.
-      options: >-
-        --memory=11g
-        --userns host
-        --privileged
-        --user 1001:1001
-        --group-add plugdev
-        --group-add dialout
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
+      - name: Stash existing VexRiscv.v
         run: |
-          cp .github/cabal.project cabal.project.local
-
-      - run: cache pull cabal
-      - run: cache pull cargo
-      - run: cache pull build
-      - name: cache pull build-post-synth
-        run: cache pull build-post-synth --prefix="${{ matrix.target.top }}"
-
-      - name: Run tests on hardware
+          cp clash-vexriscv/example-cpu/VexRiscv.v clash-vexriscv/example-cpu/VexRiscv.v.comitted
+      - name: Build clash-vexriscv
         run: |
-          .github/scripts/with_vivado.sh \
-            shake ${{ matrix.target.top }}:test
+          export PKG_CONFIG_PATH=/opt/share/pkgconfig/:${PKG_CONFIG_PATH}
+          cabal build clash-vexriscv
+      - name: Check whether committed VexRiscv.v corresponds to generated one
+        run: |
+          diff -u clash-vexriscv/example-cpu/VexRiscv.v clash-vexriscv/example-cpu/VexRiscv.v.comitted
+      - name: Build clash-vexriscv-sim
+        run: |
+          cabal build clash-vexriscv-sim
 
-      - name: Archive ILA data
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+      - name: Download VexRiscv Integration Tests
+        uses: actions/download-artifact@v3
         with:
-          name: _build-${{ matrix.target.top }}-debug
-          path: |
-            _build/vivado/*/ila-data
-            _build/hitl/*
-          retention-days: 14
+          name: vexriscv-test-binaries
 
-  all:
-    name: All jobs finished
-    if: ${{ !cancelled() }}
-    needs: [
-        bittide-instances-doctests,
-        bittide-instances-hardware-in-the-loop-test-matrix,
-        bittide-instances-hardware-in-the-loop,
-        bittide-instances-hdl-matrix,
-        bittide-instances-hdl,
-        bittide-instances-unittests,
-        bittide-tests,
-        build,
-        bittide-experiments-tests,
-        firmware-limit-checks,
-        firmware-support-tests,
-        generate-full-clock-control-report,
-        host-tools-tests,
-        license-check,
-        lint,
-        rust-lints,
-      ]
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Check dependencies for failures
+      - name: Work around dubious owner error
         run: |
-          # Test all dependencies for success/failure
-          set -x
-          success="${{ contains(needs.*.result, 'success') }}"
-          fail="${{ contains(needs.*.result, 'failure') }}"
-          set +x
+          git config --global --add safe.directory "$(pwd)"
 
-          # Test whether success/fail variables contain sane values
-          if [[ "${success}" != "true" && "${success}" != "false" ]]; then exit 1; fi
-          if [[ "${fail}"    != "true" && "${fail}"    != "false" ]]; then exit 1; fi
+      - name: Extract VexRiscv Integration Tests
+        run: |
+          tar -x -f vexriscv-test-binaries.tar
 
-          # If this is a debug run, fail even when all dependencies succeeded.
-          if [[ -f .github/synthesis/debug.json ]]; then
-            echo "This is a debug run, which may never succeed. Remove '.github/synthesis/debug.json' before trying to merge."
-            exit 1
-          fi
+      - name: OpenOCD bin symlink
+        run: |
+          ln -s /opt/bin/openocd /opt/bin/openocd-vexriscv
 
-          # We want to fail if one or more dependencies fail. For safety, we introduce
-          # a second check: if no dependencies succeeded something weird is going on.
-          if [[ "${fail}" == "true" || "${success}" == "false" ]]; then
-            echo "One or more dependency failed, or no dependency succeeded."
-            exit 1
-          fi
+      - name: Run `clash-vexriscv` unittests
+        run: |
+          cabal run clash-vexriscv:unittests
+
+      - name: Run `clash-vexriscv-sim` unittests
+        run: |
+          # Can't run the unit tests with multiple threads because of the common use of port 7894.
+          cabal run clash-vexriscv-sim:unittests -- -j1
+
+      - name: Run `clash-vexriscv-sim` HDL test
+        run: |
+          cabal run clash-vexriscv-sim:hdl-test

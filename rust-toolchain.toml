@@ -1,9 +1,18 @@
-# SPDX-FileCopyrightText: 2022 Google LLC
+# SPDX-FileCopyrightText: 2022-2023 Google LLC
 #
 # SPDX-License-Identifier: CC0-1.0
 
 [toolchain]
-channel = "nightly-2023-05-03"
-# date = "2023-05-03"
-components = ["rustfmt", "clippy", "rust-src"]
-targets = ["riscv32imc-unknown-none-elf", "x86_64-unknown-linux-gnu"]
+
+# !!!!!
+#
+# When the Rust version here gets updated, also update it in
+# .github/workflows/ci.yml. The version is written out for multiple jobs, so
+# please make sure that all jobs are updated.
+#
+# !!!!!
+
+channel = "1.67.1"
+targets = [ "riscv32imc-unknown-none-elf", "x86_64-unknown-linux-gnu" ]
+profile = "minimal"
+components = [ "clippy", "rustfmt" ]

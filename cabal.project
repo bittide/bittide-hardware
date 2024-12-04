@@ -1,175 +1,53 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: CC0-1.0
+
 packages:
-  bittide-experiments/
-  bittide-extra/
-  bittide-instances/
-  bittide-shake/
-  bittide-tools/
-  bittide/
-  clash-vexriscv/clash-vexriscv/
-  vivado-hs/
+  clash-vexriscv/
+  clash-vexriscv-sim/
 
 write-ghc-environment-files: always
--- index state, to go along with the cabal.project.freeze file. update the index
--- state by running `cabal update` twice and looking at the index state it
--- displays to you (as the second update will be a no-op)
-index-state: 2024-08-07T03:18:13Z
-with-compiler: ghc-9.6.5
 tests: True
 
-package bittide
-  -- Tweak haddock stylesheet to enable word wrapping of types.
-  -- We specify the default Linuwial theme as an alternate
-  -- so we're able to import its css file from the custom theme.
-  haddock-options: --theme=linuwial-wrap-types.css --theme=Linuwial
-
-package zlib
-  flags: +pkg-config
 
 package clash-prelude
   flags: -multiple-hidden
-  ghc-options:
-    +RTS
-    -qn8
-    -A64M
-    -RTS
-    -j8
-
-package clash-lib
-  ghc-options:
-    +RTS
-    -qn8
-    -A64M
-    -RTS
-    -j8
-
-package clash-ghc
-  ghc-options:
-    +RTS
-    -qn8
-    -A64M
-    -RTS
-    -j8
-
-package bittide
-  ghc-options:
-    +RTS
-    -xp
-    -qn8
-    -A64M
-    -RTS
-    -j8
-
-package bittide-experiments
-  ghc-options:
-    +RTS
-    -xp
-    -qn8
-    -A64M
-    -RTS
-    -j8
-
-package bittide-extra
-  ghc-options:
-    +RTS
-    -xp
-    -qn8
-    -A64M
-    -RTS
-    -j8
-
-package bittide-instances
-  ghc-options:
-    +RTS
-    -xp
-    -qn8
-    -A64M
-    -RTS
-    -j8
-
-package bittide-shake
-  ghc-options:
-    +RTS
-    -xp
-    -qn8
-    -A64M
-    -RTS
-    -j8
-
-package bittide-tools
-  ghc-options:
-    +RTS
-    -xp
-    -qn8
-    -A64M
-    -RTS
-    -j8
-
-package clash-vexriscv
-  ghc-options:
-    +RTS
-    -xp
-    -qn8
-    -A64M
-    -RTS
-    -j8
-
-package clash-vexriscv-sim
-  ghc-options:
-    +RTS
-    -xp
-    -qn8
-    -A64M
-    -RTS
-    -j8
-
-package vivado-hs
-  ghc-options:
-    +RTS
-    -xp
-    -qn8
-    -A64M
-    -RTS
-    -j8
 
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
-index-state: 2023-12-05T05:33:28Z
+index-state: 2023-09-28T08:48:26Z
 
--- We need an up-to-date Clash and libraries. Among other features, this adds
--- support for dynamic clocks and Xilinx primitive support.
+-- Needed to simulate dynamic clocks.
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 20c17495e821faa2b8969db5cb3b3ebdc322b7f7
+  tag: a26bb9ef3cb57f24daec3da30db9fb54af91297a
   subdir: clash-prelude
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 20c17495e821faa2b8969db5cb3b3ebdc322b7f7
+  tag: a26bb9ef3cb57f24daec3da30db9fb54af91297a
   subdir: clash-ghc
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 20c17495e821faa2b8969db5cb3b3ebdc322b7f7
+  tag: a26bb9ef3cb57f24daec3da30db9fb54af91297a
   subdir: clash-lib
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 20c17495e821faa2b8969db5cb3b3ebdc322b7f7
-  subdir: clash-prelude-hedgehog
+  tag: a26bb9ef3cb57f24daec3da30db9fb54af91297a
+  subdir: clash-cores
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: 20c17495e821faa2b8969db5cb3b3ebdc322b7f7
-  subdir: clash-cores
+  tag: a26bb9ef3cb57f24daec3da30db9fb54af91297a
+  subdir: clash-prelude-hedgehog
 
 source-repository-package
   type: git
@@ -187,20 +65,3 @@ source-repository-package
   type: git
   location: https://github.com/cchalmers/circuit-notation.git
   tag: 19b386c4aa3ff690758ae089c7754303f3500cc9
-
-source-repository-package
-  type: git
-  location: https://github.com/martijnbastiaan/haskell-hedgehog.git
-  tag: ddfa34501d16b12fb621efa72bed892910cb5475
-  subdir: hedgehog
-
--- TODO: remove once the fixed version has been released on hackage
-source-repository-package
-  type: git
-  location: https://github.com/clash-lang/ghc-typelits-knownnat
-  tag: 30b72d5bd01b497ef4465ff51205e1ebe068e4f9
-
-source-repository-package
-  type: git
-  location: https://github.com/clash-lang/ghc-typelits-extra
-  tag: 1eed8d3de637a115dad12e2cb722cb0a3bc761ea

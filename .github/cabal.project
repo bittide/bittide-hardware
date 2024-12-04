@@ -1,24 +1,8 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: CC0-1.0
-package bittide
+package clash-vexriscv
   ghc-options: -Werror
 
-package bittide-extra
+package clash-vexriscv-sim
   ghc-options: -Werror
-
-package bittide-instances
-  ghc-options: -Werror
-
-package bittide-shake
-  ghc-options: -Werror
-
-package bittide-experiments
-  ghc-options: -Werror
-
-package bittide-tools
-  ghc-options: -Werror
-
--- TODO: Fix upstream
--- package clash-vexriscv
---   ghc-options: -Werror

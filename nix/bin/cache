@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-cd "$(git rev-parse --show-toplevel)"
-.github/scripts/cache.py "$@"

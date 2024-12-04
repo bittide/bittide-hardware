@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2022 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
 { sources ? import ./sources.nix }:
 
 let
@@ -5,9 +8,6 @@ let
   overlay = _: nixpkgs: {
     # Nix tooling
     gitignore = import sources.gitignore { inherit (nixpkgs) lib; };
-
-    verilog-ethernet = import ./verilog-ethernet.nix { inherit (nixpkgs) pkgs; };
-    mc = import ./mc.nix { inherit (nixpkgs) pkgs; };
     openocd-vexriscv = import ./openocd-vexriscv.nix { inherit (nixpkgs) pkgs; };
 
     # Haskell overrides

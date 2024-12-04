@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2023 Google LLC
+
+# SPDX-License-Identifier: CC0-1.0
 { pkgs ? import ./nixpkgs.nix {} }:
 
 pkgs.stdenv.mkDerivation rec {
