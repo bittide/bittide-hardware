@@ -118,6 +118,7 @@ impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
     pub fn clear_packet(&self) {
         self.clear_packet_register();
         self.clear_status();
+        panic!("hehe (:");
     }
 
     pub fn get_slice(&self) -> &[u8] {
