@@ -32,6 +32,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.TH
 import Text.Parsec
 import Text.Parsec.String
+import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- Qualified
 import qualified Protocols.Df as Df
@@ -67,7 +68,7 @@ dut = withClockResetEnable clockGen resetGen enableGen
   $ circuit
   $ \_unit -> do
     (uartRx, jtag) <- idleSource -< ()
-    [uartBus, timeBus] <- processingElement peConfig -< jtag
+    [uartBus, timeBus] <- processingElement NoDumpVcd peConfig -< jtag
     (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
     timeWb -< timeBus
     idC -< uartTx

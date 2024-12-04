@@ -113,7 +113,7 @@ fullMeshRiscvTest clk rst dataCounts = unbundle fIncDec
     toSignals
       ( circuit $ \jtag -> do
           [wbClockControl, wbDebug, wbDummy] <-
-            withClockResetEnable clk rst enableGen $ processingElement @dom peConfig -< jtag
+            withClockResetEnable clk rst enableGen $ processingElement @dom NoDumpVcd peConfig -< jtag
           idleSink -< wbDummy
           [ccd0, ccd1] <-
             csDupe

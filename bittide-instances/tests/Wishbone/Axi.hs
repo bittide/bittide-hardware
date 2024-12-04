@@ -37,6 +37,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.TH
 import Text.Parsec
 import Text.Parsec.String
+import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- Qualified
 import qualified Protocols.Df as Df
@@ -67,7 +68,7 @@ dut =
     $ circuit
     $ \_unit -> do
       (uartTx, jtag) <- idleSource -< ()
-      [uartBus, axiTxBus, wbNull, axiRxBus] <- processingElement peConfig -< jtag
+      [uartBus, axiTxBus, wbNull, axiRxBus] <- processingElement NoDumpVcd peConfig -< jtag
       wbAlwaysAck -< wbNull
       (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartTx)
       _interrupts <- wbAxisRxBufferCircuit (SNat @128) -< (axiRxBus, axiStream)

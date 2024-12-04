@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 
@@ -10,6 +10,7 @@ module VexRiscv.FFI where
 
 import Foreign.Storable
 import Foreign.Ptr
+import Foreign.C (CString)
 import Prelude
 import Clash.Prelude
 import Data.Word
@@ -18,15 +19,18 @@ import Data.Word
 
 data VexRiscv
 
+data VerilatedVcdC
+
 data VexRiscvJtagBridge
 
 foreign import ccall unsafe "vexr_init" vexrInit :: IO (Ptr VexRiscv)
+foreign import ccall unsafe "vexr_init_vcd" vexrInitVcd :: Ptr VexRiscv -> CString -> IO (Ptr VerilatedVcdC)
 foreign import ccall unsafe "vexr_shutdown" vexrShutdown :: Ptr VexRiscv -> IO ()
 
-foreign import ccall unsafe "vexr_init_stage1" vexrInitStage1 :: Ptr VexRiscv -> Ptr NON_COMB_INPUT -> Ptr OUTPUT -> IO ()
+foreign import ccall unsafe "vexr_init_stage1" vexrInitStage1 :: Ptr VerilatedVcdC -> Ptr VexRiscv -> Ptr NON_COMB_INPUT -> Ptr OUTPUT -> IO ()
 foreign import ccall unsafe "vexr_init_stage2" vexrInitStage2 :: Ptr VexRiscv -> Ptr COMB_INPUT -> IO ()
-foreign import ccall unsafe "vexr_step_rising_edge" vexrStepRisingEdge :: Ptr VexRiscv -> Word64 -> Ptr NON_COMB_INPUT -> Ptr OUTPUT -> IO ()
-foreign import ccall unsafe "vexr_step_falling_edge" vexrStepFallingEdge :: Ptr VexRiscv -> Word64 -> Ptr COMB_INPUT -> IO ()
+foreign import ccall unsafe "vexr_step_rising_edge" vexrStepRisingEdge :: Ptr VerilatedVcdC -> Ptr VexRiscv -> Word64 -> Ptr NON_COMB_INPUT -> Ptr OUTPUT -> IO ()
+foreign import ccall unsafe "vexr_step_falling_edge" vexrStepFallingEdge :: Ptr VerilatedVcdC -> Ptr VexRiscv -> Word64 -> Ptr COMB_INPUT -> IO ()
 
 foreign import ccall unsafe "vexr_jtag_bridge_init" vexrJtagBridgeInit :: Word16 -> IO (Ptr VexRiscvJtagBridge)
 foreign import ccall unsafe "vexr_jtag_bridge_step" vexrJtagBridgeStep :: Ptr VexRiscvJtagBridge -> Ptr JTAG_OUTPUT -> Ptr JTAG_INPUT -> IO ()

@@ -1,16 +1,15 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE GADTs #-}
 
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 import Clash.Prelude
 
 import Protocols.Wishbone
-import VexRiscv (CpuOut(iBusWbM2S, dBusWbM2S))
+import VexRiscv (CpuOut(iBusWbM2S, dBusWbM2S), DumpVcd(NoDumpVcd))
 
 import qualified Data.List as L
 
@@ -21,36 +20,11 @@ import System.Environment (getArgs)
 import System.IO (putChar, hFlush, stdout)
 import Text.Printf (printf)
 
-
-import Utils.ProgramLoad (loadProgramDmem)
+import Utils.DebugConfig (DebugConfiguration (..))
 import Utils.Cpu (cpu)
+import Utils.ProgramLoad (loadProgramDmem)
 import System.Exit (exitFailure)
-
---------------------------------------
---
--- Debugging configuration
---
---------------------------------------
-
-data DebugConfiguration where
-  -- | Run a program and only output what the program writes to the
-  --   character-device
-  RunCharacterDevice :: DebugConfiguration
-  -- | Run a program and print detailed information of CPU bus interactions
-  InspectBusses ::
-    -- | # of cycles the program takes to initialise the instruction memory
-    Int ->
-    -- | # of "uninteresting" cycles to skip, such as runtime setup code
-    Int ->
-    -- | # of "interesting" cycles to inspect
-    Maybe Int ->
-    -- | inspect instruct-bus interactions
-    Bool ->
-    -- | inspect data-bus interactions
-    Bool ->
-    DebugConfiguration
-  -- | Run a program and output all the write operations
-  InspectWrites :: DebugConfiguration
+import VexRiscv.JtagTcpBridge (vexrJtagBridge)
 
 -- change this variable to the configuration you want to use
 
@@ -80,16 +54,18 @@ main = do
     withClockResetEnable @System clockGen resetGen enableGen $
       loadProgramDmem @System elfFile
 
-  let cpuOut@(unbundle -> (_circuit, writes, _iBus, _dBus)) =
-        withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $
-          let (circ, writes1, iBus, dBus) = cpu (Just 7894) iMem dMem
-              dBus' = register emptyWishboneS2M dBus
-          in bundle (circ, writes1, iBus, dBus')
+  let
+    jtagPort = vexrJtagBridge 7894 jtagOut
+    cpuOut@(unbundle -> (_circuit, jtagOut, writes, _iBus, _dBus)) =
+      withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $
+        let (circ, jto, writes1, iBus, dBus) = cpu NoDumpVcd (Just jtagPort) iMem dMem
+            dBus' = register emptyWishboneS2M dBus
+        in bundle (circ, jto, writes1, iBus, dBus')
 
   case debugConfig of
     RunCharacterDevice ->
       forM_ (sample_lazy @System (bundle (register @System (unpack 0) cpuOut, cpuOut))) $
-        \((_out, write, dS2M, iS2M), (out1, _write, _dS2M, _iS2M)) -> do
+        \((_out, _, write, dS2M, iS2M), (out1, _, _write, _dS2M, _iS2M)) -> do
 
         when (err dS2M) $ do
           let dBusM2S = dBusWbM2S out1
@@ -122,7 +98,7 @@ main = do
               let total = initCycles + uninteresting + nInteresting in
               L.zip [0 ..] $ L.take total $ sample_lazy @System cpuOut
 
-      forM_ sampled $ \(i, (out, _, iBusS2M, dBusS2M)) -> do
+      forM_ sampled $ \(i, (out, _, _, iBusS2M, dBusS2M)) -> do
         let
           doPrint = i >= skipTotal
 

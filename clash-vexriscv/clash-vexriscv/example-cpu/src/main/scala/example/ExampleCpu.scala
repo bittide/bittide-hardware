@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Google LLC
+// SPDX-FileCopyrightText: 2022-2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -17,7 +17,7 @@ object ExampleCpu extends App {
     val config = VexRiscvConfig(
       plugins = List(
         new IBusSimplePlugin(
-          resetVector = 0x80000000l,
+          resetVector = 0x20000000l,
           cmdForkOnSecondStage = false,
           cmdForkPersistence = false,
           prediction = NONE,

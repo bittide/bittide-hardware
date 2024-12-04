@@ -1,4 +1,4 @@
--- SPDX-FileCopyrightText: 2022 Google LLC
+-- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
@@ -25,8 +25,10 @@ import Test.Tasty.Options
 
 import Utils.ProgramLoad (loadProgramDmem)
 import Utils.Cpu (cpu)
+import VexRiscv (DumpVcd(NoDumpVcd))
 
 import qualified Tests.Jtag
+import qualified Tests.JtagChain
 
 runProgramExpect ::
   -- | action to copy ELF file
@@ -41,9 +43,9 @@ runProgramExpect act n expected = withSystemTempFile "ELF" $ \fp _ -> do
   (iMem, dMem) <- withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $
     loadProgramDmem fp
 
-  let _all@(unbundle -> (_circuit, writes, _iBus, _dBus)) =
+  let _all@(unbundle -> (_circuit, _, writes, _iBus, _dBus)) =
         withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $
-          bundle (cpu Nothing iMem dMem)
+          bundle (cpu NoDumpVcd Nothing iMem dMem)
 
   let output = L.take (BS.length expected) $
         flip mapMaybe (sampleN_lazy n writes) $ \case
@@ -60,6 +62,7 @@ findTests ::
   IO [(String, FilePath, FilePath)]
 -- test name  bin path  expected-path
 findTests srcDir binDir = do
+
   srcFiles <- listDirectory srcDir
 
   let expectFiles = L.filter (\p -> takeExtension p == ".expected") srcFiles
@@ -102,7 +105,7 @@ runTest ::
   FilePath ->
   TestTree
 runTest name mode n elfPath expectPath =
-  testCase ("Integration test `" <> name <> "` (" <> mode <> ")") $ do
+  testCase ("Integration test " <> name <> " (" <> mode <> ")") $ do
     expected <- BS.readFile expectPath
     let act = copyFile elfPath
 
@@ -134,6 +137,7 @@ main = do
           [ testGroup "Debug builds" debugTestCases
           , testGroup "Release builds" releaseTestCases
           , Tests.Jtag.tests
+          , Tests.JtagChain.tests
           ]
 
   defaultMainWithIngredients

@@ -4,6 +4,7 @@
 
 #include "VVexRiscv.h"
 #include "verilated.h"
+#include <verilated_vcd_c.h>
 #include "interface.h"
 
 #include <sys/socket.h>
@@ -31,12 +32,13 @@ typedef struct {
 
 extern "C" {
 	VVexRiscv* vexr_init();
+	VerilatedVcdC* vexr_init_vcd(VVexRiscv *top, const char* path);
 	void vexr_shutdown(VVexRiscv *top);
 
-	void vexr_init_stage1(VVexRiscv *top, const NON_COMB_INPUT *input, OUTPUT *output);
+	void vexr_init_stage1(VerilatedVcdC *vcd, VVexRiscv *top, const NON_COMB_INPUT *input, OUTPUT *output);
 	void vexr_init_stage2(VVexRiscv *top, const COMB_INPUT *input);
-	void vexr_step_rising_edge(VVexRiscv *top, uint64_t time_add, const NON_COMB_INPUT *input, OUTPUT *output);
-	void vexr_step_falling_edge(VVexRiscv *top, uint64_t time_add, const COMB_INPUT *input);
+	void vexr_step_rising_edge(VerilatedVcdC *vcd, VVexRiscv *top, uint64_t time_add, const NON_COMB_INPUT *input, OUTPUT *output);
+	void vexr_step_falling_edge(VerilatedVcdC *vcd, VVexRiscv *top, uint64_t time_add, const COMB_INPUT *input);
 
 	vexr_jtag_bridge_data *vexr_jtag_bridge_init(uint16_t port);
 	void vexr_jtag_bridge_step(vexr_jtag_bridge_data *d, const JTAG_OUTPUT *output, JTAG_INPUT *input);
@@ -51,9 +53,19 @@ VVexRiscv* vexr_init()
 {
 	contextp = new VerilatedContext;
 	VVexRiscv *v = new VVexRiscv(contextp);
-	Verilated::traceEverOn(true);
 	v->clk = false;
 	return v;
+}
+
+VerilatedVcdC* vexr_init_vcd(VVexRiscv *top, const char* path)
+{
+	VerilatedVcdC* vcd = new VerilatedVcdC;
+	Verilated::traceEverOn(true);
+	// Trace 99 levels of the hierarchy. We only have one level AFAIK, so this
+	// should be enough :-).
+	top->trace(vcd, 99);
+	vcd->open(path);
+	return vcd;
 }
 
 // Set all inputs that cannot combinationaly depend on outputs. I.e., all inputs
@@ -106,7 +118,7 @@ void set_ouputs(VVexRiscv *top, OUTPUT *output)
 	output->jtag_TDO = top->jtag_tdo;
 }
 
-void vexr_init_stage1(VVexRiscv *top, const NON_COMB_INPUT *input, OUTPUT *output)
+void vexr_init_stage1(VerilatedVcdC *vcd, VVexRiscv *top, const NON_COMB_INPUT *input, OUTPUT *output)
 {
 	// Set all inputs that cannot combinationaly depend on outputs. I.e., all inputs
 	// except the Wishbone buses.
@@ -114,6 +126,9 @@ void vexr_init_stage1(VVexRiscv *top, const NON_COMB_INPUT *input, OUTPUT *outpu
 
 	// Combinatorially respond to the inputs
 	top->eval();
+	if (vcd != NULL) {
+		vcd->dump(contextp->time());
+	}
 	set_ouputs(top, output);
 
 	// Advance time by 50 nanoseconds. This is an arbitrary value. Ideally, we would
@@ -134,7 +149,7 @@ void vexr_shutdown(VVexRiscv *top)
 }
 
 
-void vexr_step_rising_edge(VVexRiscv *top, uint64_t time_add, const NON_COMB_INPUT *input, OUTPUT *output)
+void vexr_step_rising_edge(VerilatedVcdC *vcd, VVexRiscv *top, uint64_t time_add, const NON_COMB_INPUT *input, OUTPUT *output)
 {
 	// Advance time since last event. Note that this is 0 for the first call to
 	// this function. To get a sensisble waveform, vexr_init has already advanced
@@ -146,12 +161,15 @@ void vexr_step_rising_edge(VVexRiscv *top, uint64_t time_add, const NON_COMB_INP
 
 	top->clk = true;
 	top->eval();
+	if (vcd != NULL) {
+		vcd->dump(contextp->time());
+	}
 
 	// Set all outputs
 	set_ouputs(top, output);
 }
 
-void vexr_step_falling_edge(VVexRiscv *top, uint64_t time_add, const COMB_INPUT *input)
+void vexr_step_falling_edge(VerilatedVcdC *vcd, VVexRiscv *top, uint64_t time_add, const COMB_INPUT *input)
 {
 	// advance time since last event
 	contextp->timeInc(time_add); // time_add is in femtoseconds, timeinc expects picoseconds
@@ -162,6 +180,9 @@ void vexr_step_falling_edge(VVexRiscv *top, uint64_t time_add, const COMB_INPUT 
 
 	// Evaluate the simulation
 	top->eval();
+	if (vcd != NULL) {
+		vcd->dump(contextp->time());
+	}
 }
 
 vexr_jtag_bridge_data *vexr_jtag_bridge_init(uint16_t port)

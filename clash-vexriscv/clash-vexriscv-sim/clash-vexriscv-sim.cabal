@@ -83,6 +83,8 @@ library
   default-language: Haskell2010
   exposed-modules:
     Utils.Cpu
+    Utils.DebugConfig
+    Utils.FilePath
     Utils.Instance
     Utils.Interconnect
     Utils.ProgramLoad
@@ -94,7 +96,10 @@ library
     clash-prelude,
     clash-protocols,
     clash-vexriscv,
+    directory,
     elf >= 0.31 && < 0.32,
+    filepath,
+    template-haskell,
 
 -- XXX: Doesn't really belong in clash-vexriscv-SIM
 executable hdl-test
@@ -121,6 +126,24 @@ executable clash-vexriscv-bin
     containers,
     directory,
 
+executable clash-vexriscv-chain-bin
+  import: common-options
+  main-is: VexRiscvChainSimulation.hs
+  hs-source-dirs: app
+  default-language: Haskell2010
+  ghc-options: -threaded -rtsopts "-with-rtsopts=-M400M"
+  build-depends:
+    base,
+    clash-prelude,
+    clash-protocols,
+    clash-vexriscv,
+    clash-vexriscv-sim,
+    bytestring,
+    containers,
+    directory,
+    filepath,
+    optparse-applicative,
+
 test-suite unittests
   import: common-options
   default-language: Haskell2010
@@ -128,7 +151,8 @@ test-suite unittests
   type: exitcode-stdio-1.0
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-tool-depends:
-    clash-vexriscv-sim:clash-vexriscv-bin
+    clash-vexriscv-sim:clash-vexriscv-bin,
+    clash-vexriscv-sim:clash-vexriscv-chain-bin
   autogen-modules:
     Paths_clash_vexriscv_sim
   ghc-options: -threaded
@@ -136,6 +160,7 @@ test-suite unittests
   other-modules:
     Paths_clash_vexriscv_sim
     Tests.Jtag
+    Tests.JtagChain
   build-depends:
     async,
     base,
@@ -149,6 +174,7 @@ test-suite unittests
     extra,
     filepath,
     process,
+    streaming,
     tasty >= 1.2 && < 1.6,
     tasty-hunit >= 0.10 && < 0.11,
     temporary >=1.1 && <1.4,

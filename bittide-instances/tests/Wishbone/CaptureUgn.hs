@@ -23,6 +23,7 @@ import System.FilePath
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
+import VexRiscv (DumpVcd (NoDumpVcd))
 
 import Bittide.CaptureUgn
 import Bittide.DoubleBufferedRam
@@ -92,7 +93,7 @@ dut ::
 dut eb localCounter = circuit $ \uartRx -> do
   eb <- ebCircuit -< ()
   jtagIdle <- idleSource -< ()
-  [uartBus, ugnBus] <- processingElement @dom peConfig -< jtagIdle
+  [uartBus, ugnBus] <- processingElement @dom NoDumpVcd peConfig -< jtagIdle
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
   _bittideData <- captureUgn localCounter -< (ugnBus, eb)
   idC -< uartTx
