@@ -368,13 +368,13 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
 
   txOutClk = (head outputs).txOutClock
   -- see [NOTE: duplicate tx/rx domain]
-  txClockNw = Gth.gthUserClockNetwork @tx @tx txOutClk txUsrClkRst
+  txClockNw = Gth.xilinxGthUserClockNetworkTx @tx @tx txOutClk txUsrClkRst
   (_txClk1s, txClock, _txClkActives) = txClockNw
   txClocks = repeat txClock
 
   rxOutClks = map (.rxOutClock) outputs
   -- see [NOTE: duplicate tx/rx domain]
-  rxClockNws = map (flip (Gth.gthUserClockNetwork @rx @rx) rxUsrClkRst) rxOutClks
+  rxClockNws = map (flip (Gth.xilinxGthUserClockNetworkRx @rx @rx) rxUsrClkRst) rxOutClks
   (_rxClk1s, rxClocks, _rxClkActives) = unzip3 rxClockNws
 
   go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxN rxP txData txReady rxReady (clockRx1, clockRx2, rxActive) =

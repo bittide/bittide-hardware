@@ -9,11 +9,9 @@ module Clash.Cores.Xilinx.GTH.Internal where
 import Clash.Explicit.Prelude
 
 import Clash.Annotations.Primitive (
-  HDL (Verilog),
   Primitive (InlineYamlPrimitive),
   hasBlackBox,
  )
-import Clash.Annotations.SynthesisAttributes
 import Data.String.Interpolate (__i)
 
 import Clash.Cores.Xilinx.GTH.BlackBoxes
@@ -122,39 +120,6 @@ gthCore
   )
   #-}
 
-{- | This mimics what PG182 calls the "[RX,TX] User Clocking Network Helper Block"
-
-It has a hardcoded to do no division for  @usrclk@ and divide by 2 for @usrclk2@.
-So it'll only work when the external RX/TX GTH interfaces uses twice the width of the internal width.
-See: https://docs.amd.com/r/en-US/pg182-gtwizard-ultrascale/Transmitter-User-Clocking-Network-Helper-Block-Ports
--}
-gthUserClockNetwork ::
-  forall user user2.
-  (KnownDomain user, KnownDomain user2) =>
-  Clock user ->
-  Reset user2 ->
-  (Clock user, Clock user2, Signal user2 (BitVector 1))
-gthUserClockNetwork clkIn rstIn =
-  (clk1, clk2, active)
- where
-  rstIn1 :: Reset user
-  rstIn1 = unsafeSynchronizerReset clk2 clk1 rstIn
-  clk1 = bufgGt d0 clkIn rstIn1
-  clk2 :: Clock user2
-  clk2 = bufgGt d1 clkIn rstIn1
-  -- TODO: Use XPM syncer. Alternatively, instantiate Xilinx IP for this whole function
-  reg = annotate (StringAttr "ASYNC_REG" "TRUE" :> Nil) . register clk2 rstIn enableGen 0
-  active = reg $ reg (pure 1)
-{-# NOINLINE gthUserClockNetwork #-}
-
-unsafeSynchronizerReset ::
-  (KnownDomain dom1, KnownDomain dom2) =>
-  Clock dom1 ->
-  Clock dom2 ->
-  Reset dom1 ->
-  Reset dom2
-unsafeSynchronizerReset clkIn clkOut rstIn = unsafeFromActiveHigh $ unsafeSynchronizer clkIn clkOut (unsafeToActiveHigh rstIn)
-
 xilinxGthUserClockNetworkTx ::
   forall user user2.
   (KnownDomain user, KnownDomain user2) =>
@@ -211,41 +176,5 @@ ibufds_gte3 !_clk = clockGen
             templateFunction: #{tfName}
             workInfo: Always
         |]
-  )
-  #-}
-
-{- | Clock Buffer Driven by Gigabit Transceiver. For more information see:
-
-    https://docs.xilinx.com/r/en-US/ug974-vivado-ultrascale-libraries/BUFG_GT
-
-The actual divide value is the value provide in @SNat div@ plus 1.
-So an @SNat 0@ gives you a division of 1
--}
-bufgGt ::
-  (KnownDomain domIn, KnownDomain domOut, 0 <= div, div <= 7) =>
-  SNat div ->
-  Clock domIn ->
-  Reset domIn ->
-  Clock domOut
-bufgGt = unsafeBufgGt
-
-unsafeBufgGt ::
-  (KnownDomain domOut) => SNat div -> Clock domIn -> Reset domIn -> Clock domOut
-unsafeBufgGt !_ !_ !_ = clockGen
-{-# ANN unsafeBufgGt hasBlackBox #-}
-{-# OPAQUE unsafeBufgGt #-}
-{-# ANN
-  unsafeBufgGt
-  ( let primName = 'unsafeBufgGt
-        tfName = 'unsafeBufgGtTF
-     in InlineYamlPrimitive
-          [Verilog]
-          [__i|
-  BlackBox:
-    name: #{primName}
-    kind: Declaration
-    format: Haskell
-    templateFunction: #{tfName}
-  |]
   )
   #-}
