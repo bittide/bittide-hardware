@@ -26,6 +26,8 @@ createDomain vXilinxSystem{vName="Ext200", vPeriod=hzToPeriod 200e6, vResetKind=
 
 createDomain vXilinxSystem{vName="GthRx", vPeriod=hzToPeriod 125e6}
 createDomain vXilinxSystem{vName="GthTx", vPeriod= hzToPeriod 125e6}
+createDomain vXilinxSystem{vName="GthRx1", vPeriod= hzToPeriod 250e6}
+createDomain vXilinxSystem{vName="GthTx1", vPeriod= hzToPeriod 250e6}
 createDomain vXilinxSystem{vName="GthRxS", vPeriod=hzToPeriod 10e9}
 createDomain vXilinxSystem{vName="GthTxS", vPeriod= hzToPeriod 10e9}
 {- ORMOLU_ENABLE -}

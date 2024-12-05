@@ -645,7 +645,7 @@ fullMeshSwCcTest refClkDiff sysClkDiff syncIn rxns rxps miso =
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
-  ilaControl@IlaControl{syncRst, syncOut, syncStart} = ilaPlotSetup IlaPlotSetup{..}
+  ilaControl@IlaControl{syncRst, syncOut, syncStart} = ilaPlotSetup IlaPlotSetup{sysClk, sysRst, allReady, startTest, syncIn}
 
   ( txns
     , txps

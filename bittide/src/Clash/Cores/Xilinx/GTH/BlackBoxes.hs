@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Clash.Cores.Xilinx.GTH.BlackBoxes where
@@ -10,6 +11,7 @@ import Prelude
 
 import Control.Monad.State (State)
 import Data.String (fromString)
+import Data.String.Interpolate (i)
 import Data.Text (Text)
 import Data.Text.Prettyprint.Doc.Extra (Doc)
 import GHC.Stack (HasCallStack)
@@ -52,10 +54,24 @@ gthCoreBBF _isD _primName _args _resTys = pure $ Right (bbMeta, bb)
   bb = BBFunction (show 'gthCoreTF) 0 gthCoreTF
 
 nConstraints :: Int
-nConstraints = 6
+nConstraints = 8
 
 nNameArgs :: Int
 nNameArgs = 2
+
+checkHwTy :: (Show a) => (a, HWType) -> (b, HWType) -> (a, b)
+checkHwTy (nm, ty1) (e, ty2)
+  | eqHwTyModuloDomain ty1 ty2 = (nm, e)
+  | otherwise =
+      error [i|Port #{show nm} with type #{ty1} can't be assigned a expression of type #{ty2}|]
+
+eqHwTyModuloDomain :: N.HWType -> N.HWType -> Bool
+eqHwTyModuloDomain x y = case (x, y) of
+  (N.Clock _, N.Clock _) -> True
+  (N.ClockN _, N.ClockN _) -> True
+  (N.Reset _, N.Reset _) -> True
+  (N.Enable _, N.Enable _) -> True
+  _ -> x == y
 
 -- | Instantiate IP generated with 'gthCoreTclTF'
 gthCoreTF :: (HasCallStack) => TemplateFunction
@@ -72,14 +88,20 @@ gthCoreBBTF ::
 gthCoreBBTF bbCtx
   | args@[ _gthrxn_in -- " ::: Signal rxS (BitVector ChansUsed)
           , _gthrxp_in -- " ::: Signal rxS (BitVector ChansUsed)
-          , gtwiz_reset_clk_freerun_in -- " ::: Clock freerun
+          , (gtwiz_reset_clk_freerun_in, _) -- " ::: Clock freerun
           , _gtwiz_reset_all_in -- " ::: Reset freerun
           , _gtwiz_reset_rx_datapath_in -- " ::: Reset freerun
           , _gtwiz_userdata_tx_in -- " ::: Signal txUser2 (BitVector (ChansUsed*TX_DATA_WIDTH))
           , _txctrl2_in -- " ::: Signal txUser2 (BitVector (ChansUsed*TX_DATA_WIDTH/8))
           , _gtrefclk0_in -- " ::: Clock refclk0
+          , _txusrclk_in
+          , _txusrclk2_in
+          , _gtwiz_userclk_tx_active_in
+          , _rxusrclk_in
+          , _rxusrclk2_in
+          , _gtwiz_userclk_rx_active_in
           ] <-
-      drop (nConstraints + nNameArgs) $ map fst (DSL.tInputs bbCtx)
+      drop (nConstraints + nNameArgs) (DSL.tInputs bbCtx)
   , [tResult] <- map DSL.ety (DSL.tResults bbCtx)
   , [gthCoreName] <- N.bbQsysIncName bbCtx =
       do
@@ -99,6 +121,12 @@ gthCoreBBTF bbCtx
             , ("txctrl2_in", N.BitVector (chansUsed * (tX_DATA_WIDTH `div` 8)))
             , -- , ("gtrefclk00_in",  N.Clock "refclk00" )
               ("gtrefclk0_in", N.Clock "refclk0")
+            , ("txusrclk_in", N.Clock "txUser")
+            , ("txusrclk2_in", N.Clock "txUser2")
+            , ("gtwiz_userclk_tx_active_in", N.BitVector 1)
+            , ("rxusrclk_in", N.Clock "rxUser")
+            , ("rxusrclk2_in", N.Clock "rxUser2")
+            , ("gtwiz_userclk_rx_active_in", N.BitVector 1)
             ]
               <> map (fmap DSL.ety) otherInps
 
@@ -111,8 +139,6 @@ gthCoreBBTF bbCtx
             , ("gtwiz_reset_rx_pll_and_datapath_in", DSL.bvLit 1 0)
             , ("tx8b10ben_in", DSL.bvLit 1 1)
             , ("rx8b10ben_in", DSL.bvLit 1 1)
-            , ("gtwiz_userclk_tx_reset_in", DSL.bvLit 1 0)
-            , ("gtwiz_userclk_rx_reset_in", DSL.bvLit 1 0)
             , ("rxcommadeten_in", DSL.bvLit 1 1)
             , ("rxmcommaalignen_in", DSL.bvLit 1 1)
             , ("rxpcommaalignen_in", DSL.bvLit 1 1)
@@ -120,12 +146,13 @@ gthCoreBBTF bbCtx
           compOuts =
             [ ("gthtxn_out", N.BitVector chansUsed)
             , ("gthtxp_out", N.BitVector chansUsed)
-            , ("gtwiz_userclk_tx_usrclk2_out", N.Clock "txUser2")
-            , ("gtwiz_userclk_rx_usrclk2_out", N.Clock "rxUser2")
+            , ("txoutclk_out", N.Clock "txUser")
+            , ("rxoutclk_out", N.Clock "rxUser")
             , ("gtwiz_userdata_rx_out", N.BitVector (chansUsed * rX_DATA_WIDTH))
             , ("gtwiz_reset_tx_done_out", N.BitVector 1)
             , ("gtwiz_reset_rx_done_out", N.BitVector 1)
-            , ("gtwiz_userclk_tx_active_out", N.BitVector 1)
+            , ("txpmaresetdone_out", N.BitVector 1)
+            , ("rxpmaresetdone_out", N.BitVector 1)
             , ("rxctrl0_out", N.BitVector 16)
             , ("rxctrl1_out", N.BitVector 16)
             , ("rxctrl2_out", N.BitVector 8)
@@ -135,7 +162,8 @@ gthCoreBBTF bbCtx
         DSL.declarationReturn bbCtx "gthCore_inst_block" $ do
           DSL.compInBlock gthCoreName compInps compOuts
 
-          let inps = zip (fst <$> compInps) args <> otherInps
+          let inps = zipWith checkHwTy compInps args <> otherInps
+
           outs <- mapM (uncurry DSL.declare) compOuts
           DSL.instDecl
             N.Empty
@@ -178,9 +206,9 @@ gthCoreTclBBTF bbCtx
     , property @Text "LOCATE_IN_SYSTEM_IBERT_CORE" "NONE"
     , property @Text "LOCATE_RESET_CONTROLLER" "CORE"
     , property @Text "LOCATE_RX_BUFFER_BYPASS_CONTROLLER" "CORE"
-    , property @Text "LOCATE_RX_USER_CLOCKING" "CORE"
+    , property @Text "LOCATE_RX_USER_CLOCKING" "EXAMPLE_DESIGN"
     , property @Text "LOCATE_TX_BUFFER_BYPASS_CONTROLLER" "CORE"
-    , property @Text "LOCATE_TX_USER_CLOCKING" "CORE"
+    , property @Text "LOCATE_TX_USER_CLOCKING" "EXAMPLE_DESIGN"
     , property @Text "LOCATE_USER_DATA_WIDTH_SIZING" "CORE"
     , property @Text "FREERUN_FREQUENCY" "125.0"
     , property @Text "RX_REFCLK_FREQUENCY" "200"

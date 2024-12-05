@@ -89,7 +89,7 @@ gthCoreMock ::
   Natural ->
   -- Offset
   Index 8 ->
-  GthCore tx rx ref free tx rx (Maybe (BitVector 64))
+  GthCore tx tx rx rx ref free tx rx (Maybe (BitVector 64))
 gthCoreMock
   _name
   nRxResetCycles
@@ -105,15 +105,22 @@ gthCoreMock
   rstRx
   txWord
   _txCtrl
-  _refClk =
+  _refClk
+  _tx1Clk
+  tx2Clk
+  _txActive
+  _rx1Clk
+  rx2Clk
+  _rxActive =
     ( txSerial
     , txSerial
-    , txClk
-    , rxClk
+    , txOutClk
+    , rxOutClk
     , rxWord
     , pack <$> txDone
     , pack <$> rxDone
-    , pack <$> txActive
+    , error "txpmaresetdone_out unused in test"
+    , error "rxpmaresetdone_out unused in test"
     , 0
     , 0
     , 0
@@ -133,15 +140,16 @@ gthCoreMock
     registerTx = register txClk txRstAll enableGen
 
     rxResetCounter = registerRx nRxResetCycles (predSatZeroNatural <$> rxResetCounter)
-    txResetCounter = registerTx nTxResetCycles (predSatZeroNatural <$> txResetCounter)
     txDoneCounter = registerTx (nTxResetCycles + nTxDoneCycles) (predSatZeroNatural <$> txDoneCounter)
 
     rxDone = rxResetCounter .==. 0
-    txActive = txResetCounter .==. 0
     txDone = txDoneCounter .==. 0
 
-    txClk = clockGen
-    rxClk = clockGen
+    txOutClk = clockGen
+    rxOutClk = clockGen
+
+    txClk = tx2Clk
+    rxClk = rx2Clk
 
     txRstAll = unsafeFromActiveHigh (unsafeSynchronizer freeClk txClk (unsafeToActiveHigh rstAll))
     rxRstAll = unsafeFromActiveHigh (unsafeSynchronizer freeClk rxClk (unsafeToActiveHigh rstAll))
@@ -177,16 +185,16 @@ dut ::
   -- | Number of word clock cycles delay from B -> A
   Natural ->
   ResetManager.Config ->
-  GthCore txA txB ref freeA txA txB (Maybe (Bytes n)) ->
-  GthCore txB txA ref freeB txB txA (Maybe (Bytes n)) ->
+  GthCore txA txA txB txB ref freeA txA txB (Maybe (Bytes n)) ->
+  GthCore txB txB txA txA ref freeB txB txA (Maybe (Bytes n)) ->
   Clock freeA ->
   Reset freeA ->
   Clock freeB ->
   Reset freeB ->
   Input txA txB ->
   Input txB txA ->
-  ( Transceiver.Output txA txB txA freeA (Maybe (Bytes n))
-  , Transceiver.Output txB txA txB freeB (Maybe (Bytes n))
+  ( Transceiver.Output txA txB txA txB txA freeA (Maybe (Bytes n))
+  , Transceiver.Output txB txA txB txA txB freeB (Maybe (Bytes n))
   )
 dut
   abDelay
@@ -209,6 +217,12 @@ dut
           { clock = freeClkA
           , reset = freeRstA
           , refClock = error "A: refClock not used in simulation"
+          , clockTx1 = clockGen
+          , clockTx2 = clockGen
+          , txActive = pure 1 -- TODO: a better simulation of this
+          , clockRx1 = clockGen
+          , clockRx2 = clockGen
+          , rxActive = pure 1 -- TODO: a better simulation of this
           , transceiverIndex = 0
           , channelName = "A"
           , clockPath = "clkA"
@@ -227,6 +241,12 @@ dut
           { clock = freeClkB
           , reset = freeRstB
           , refClock = error "B: refClock not used in simulation"
+          , clockTx1 = clockGen
+          , clockTx2 = clockGen
+          , txActive = pure 1
+          , clockRx1 = clockGen
+          , clockRx2 = clockGen
+          , rxActive = pure 1
           , transceiverIndex = 1
           , channelName = "B"
           , clockPath = "clkB"
@@ -238,12 +258,12 @@ dut
           }
 
 type DutTestFunc txA txB free =
-  Transceiver.Output txA txB txA free (Maybe (BitVector 64)) ->
-  Transceiver.Output txB txA txB free (Maybe (BitVector 64)) ->
+  Transceiver.Output txA txB txA txB txA free (Maybe (BitVector 64)) ->
+  Transceiver.Output txB txA txB txA txB free (Maybe (BitVector 64)) ->
   PropertyT IO ()
 
 type InputFunc txA txB free =
-  Transceiver.Output txA txB txA free (Maybe (BitVector 64)) ->
+  Transceiver.Output txA txB txA txB txA free (Maybe (BitVector 64)) ->
   Input txA txB
 
 dutRandomized ::
