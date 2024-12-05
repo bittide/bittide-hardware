@@ -6,9 +6,7 @@ set logging overwrite on
 set logging enabled on
 file "./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/smoltcp_client"
 
-break core::panicking::panic
 break ExceptionHandler
-break rust_begin_unwind
 break smoltcp_client::gdb_panic
 
 target extended-remote :3333
