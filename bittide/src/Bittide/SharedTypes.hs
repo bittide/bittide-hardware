@@ -51,9 +51,6 @@ type Bytes n = BitVector (n * 8)
 -- | A BitVector that contains one bit per byte in the BitSize of a.
 type ByteEnable a = BitVector (Regs a 8)
 
--- | Either contains a @Just (BitVector frameWidth)@ or @Nothing@.
-type DataLink frameWidth = Maybe (BitVector frameWidth)
-
 -- | Type synonym that constrains @a@ and @b@ to both be @KnownNat@ and that @a <= b@.
 type LessThan a b = (KnownNat a, KnownNat b, a <= b)
 

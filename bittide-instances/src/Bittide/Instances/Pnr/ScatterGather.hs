@@ -63,7 +63,7 @@ scatterUnit1K ::
   Clock Basic200 ->
   Reset Basic200 ->
   Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth (Bytes WishboneWidth)) ->
-  Signal Basic200 (DataLink 64) ->
+  Signal Basic200 (BitVector 64) ->
   Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth (Bytes WishboneWidth)) ->
   ( Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
   , Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
@@ -103,7 +103,7 @@ gatherUnit1K ::
   Reset Basic200 ->
   Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth (Bytes WishboneWidth)) ->
   Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth (Bytes WishboneWidth)) ->
-  ( Signal Basic200 (DataLink 64)
+  ( Signal Basic200 (BitVector 64)
   , Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
   , Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
   )
