@@ -130,9 +130,8 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
 
   -- Send counters
   counters =
-    zipWith3
-      counter
-      transceivers.txClocks
+    zipWith
+      (counter transceivers.txClock)
       transceivers.txResets
       transceivers.txSamplings
 

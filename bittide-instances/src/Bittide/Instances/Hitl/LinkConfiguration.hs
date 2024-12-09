@@ -186,9 +186,8 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxNs rxPs miso =
   -- domains of the transceivers
   myIndexTxN =
     fmap (zeroExtend . pack . fromMaybe 0)
-      <$> zipWith
-        (xpmCdcStable sysClk myIndex)
-        transceivers.txClocks
+      <$> map
+        (xpmCdcStable sysClk myIndex transceivers.txClock)
         transceivers.txResets
 
   -- check that all the received data matches with our expectations

@@ -166,12 +166,12 @@ defConfig =
     , resetManagerConfig = ResetManager.defConfig
     }
 
-{- | Careful: the domains for each transceiver are different, even if their
+{- | Careful: the domains for the rx side of each transceiver are different, even if their
 types say otherwise.
 -}
 data Outputs n tx rx txS free = Outputs
-  { txClocks :: Vec n (Clock tx)
-  -- ^ See 'Output.txClock'
+  { txClock :: Clock tx
+  -- ^ Single transmit clock, shared by all links
   , txResets :: Vec n (Reset tx)
   -- ^ See 'Output.txReset'
   , txReadys :: Vec n (Signal tx Bool)
@@ -198,7 +198,7 @@ data Outputs n tx rx txS free = Outputs
 
 data Output tx rx tx1 rx1 txS free serializedData = Output
   { txOutClock :: Clock tx1
-  -- ^ TODO
+  -- ^ Must be routed through xilinxGthUserClockNetworkTx or equivalent to get usable clocks
   , txReset :: Reset tx
   -- ^ Reset signal for the transmit side. Clock can be unstable until this reset
   -- is deasserted.
@@ -212,7 +212,7 @@ data Output tx rx tx1 rx1 txS free serializedData = Output
   , txN :: Signal txS serializedData
   -- ^ Transmit data (and implicitly a clock), negative
   , rxOutClock :: Clock rx1
-  -- ^ TODO
+  -- ^ Must be routed through xilinxGthUserClockNetworkRx or equivalent to get usable clocks
   , rxReset :: Reset rx
   -- ^ Reset signal for the receive side. Clock can be unstable until this reset
   -- is deasserted.
@@ -294,7 +294,8 @@ To do this completely clean/safe transceiverPrbsN should have two extra
 forall arguments, two extra KnownDomain constrainsts.
 And either some Proxy arguments or we would have to enable AllowAmbiguousTypes.
 
-Instead I choose to sidestep that and pretend tx1/rx1 and tx/rx are the same.
+Because the tx1/rx1 domains aren't visible outside 'transceiverPrbsN',
+I choose to sidestep the extra complication and pretend tx1/rx1 and tx/rx are the same.
 This disables the typechecking safety we'd normally get from clash,
 but vivado should call us out when we make a mistake.
 -}
@@ -320,7 +321,7 @@ transceiverPrbsN ::
 transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   Outputs
     { -- tx
-      txClocks = txClocks
+      txClock = txClock
     , txResets = map (.txReset) outputs
     , txReadys = map (.txReady) outputs
     , txSamplings = map (.txSampling) outputs
@@ -370,7 +371,6 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   -- see [NOTE: duplicate tx/rx domain]
   txClockNw = Gth.xilinxGthUserClockNetworkTx @tx @tx txOutClk txUsrClkRst
   (_txClk1s, txClock, _txClkActives) = txClockNw
-  txClocks = repeat txClock
 
   rxOutClks = map (.rxOutClock) outputs
   -- see [NOTE: duplicate tx/rx domain]

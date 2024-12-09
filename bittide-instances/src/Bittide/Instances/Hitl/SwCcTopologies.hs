@@ -373,7 +373,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
 
   callistoResult =
     callistoClockControlWithIla @LinkCount @CccBufferSize
-      (head transceivers.txClocks)
+      transceivers.txClock
       sysClk
       clockControlReset
       ccConfig
@@ -560,21 +560,21 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
       (domainDiffCounterExt sysClk)
       (orReset clockControlReset . unsafeFromActiveLow <$> othersNotInCCResetSync)
       transceivers.rxClocks
-      transceivers.txClocks
+      (repeat transceivers.txClock)
 
-  txAllStables = zipWith (xpmCdcSingle sysClk) transceivers.txClocks (repeat allStable1)
+  txAllStable = xpmCdcSingle sysClk transceivers.txClock allStable1
   txResets2 =
     zipWith
       orReset
       transceivers.txResets
-      (map unsafeFromActiveLow txAllStables)
+      (repeat $ unsafeFromActiveLow txAllStable)
 
   txNotInCCResets :: Vec LinkCount (Signal GthTx Bool)
-  txNotInCCResets = go <$> transceivers.txClocks
+  txNotInCCResets = go <$> (repeat transceivers.txClock)
    where
     go txClk = unsafeSynchronizer sysClk txClk notInCCReset
 
-  txCounters = zipWith3 txCounter transceivers.txClocks txResets2 txNotInCCResets
+  txCounters = zipWith3 txCounter (repeat transceivers.txClock) txResets2 txNotInCCResets
   txCounter txClk txRst notInCCReset' = result
    where
     notInCCReset'' :: Signal GthTx (BitVector 1)
@@ -587,7 +587,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
   rxFifos =
     zipWith4
       go
-      transceivers.txClocks
+      (repeat transceivers.txClock)
       transceivers.rxClocks
       txResets2
       transceivers.rxDatas
@@ -595,30 +595,30 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
     go = resettableXilinxElasticBuffer @FifoSize @_ @_ @(Maybe (BitVector 64))
 
   (_fillLvls, fifoUnderflowsTx, fifoOverflowsTx, _ebMode, mRxCntrs) = unzip5 rxFifos
-  rxCntrs = zipWith3 go transceivers.txClocks txNotInCCResets mRxCntrs
+  rxCntrs = zipWith go txNotInCCResets mRxCntrs
    where
-    go txClk txRst = regMaybe txClk (unsafeFromActiveLow txRst) enableGen rxCounterStartUgn
+    go txRst = regMaybe transceivers.txClock (unsafeFromActiveLow txRst) enableGen rxCounterStartUgn
 
   fifoOverflowsFree :: Vec LinkCount (Signal Basic125 Overflow)
-  fifoOverflowsFree = zipWith (`xpmCdcSingle` sysClk) transceivers.txClocks fifoOverflowsTx
+  fifoOverflowsFree = map (xpmCdcSingle transceivers.txClock sysClk) fifoOverflowsTx
   fifoUnderflowsFree :: Vec LinkCount (Signal Basic125 Underflow)
-  fifoUnderflowsFree = zipWith (`xpmCdcSingle` sysClk) transceivers.txClocks fifoUnderflowsTx
+  fifoUnderflowsFree = map (xpmCdcSingle transceivers.txClock sysClk) fifoUnderflowsTx
 
   ugns1 :: Vec LinkCount (Signal GthTx (BitVector 64))
   ugns1 = zipWith (-) txCounters rxCntrs
   -- see NOTE [magic start values]
 
   ugns2 :: Vec LinkCount (Signal Basic125 (BitVector 64))
-  ugns2 = zipWith3 go transceivers.txClocks othersNotInCCResetSync ugns1
+  ugns2 = zipWith go othersNotInCCResetSync ugns1
    where
-    go txClk enaSig =
+    go enaSig =
       regEn
         sysClk
         clockControlReset
         enableGen
         rxCounterStartUgn
         enaSig
-        . xpmCdcArraySingle txClk sysClk
+        . xpmCdcArraySingle transceivers.txClock sysClk
 
   ugnsStable :: Vec LinkCount (Signal Basic125 Bool)
   ugnsStable = go <$> ugns2
