@@ -13,6 +13,7 @@ import qualified Tests.OverflowResistantDiff as Ord
 import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
+import qualified Wishbone.ScatterGather as ScatterGather
 import qualified Wishbone.Time as Time
 import qualified Wishbone.Watchdog as Watchdog
 
@@ -22,6 +23,7 @@ tests =
     "Unittests"
     [ CaptureUgn.tests
     , ClockControlWb.tests
+    , ScatterGather.tests
     , DnaPortE2.tests
     , Ord.tests
     , Time.tests
