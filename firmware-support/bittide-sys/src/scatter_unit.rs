@@ -1,82 +1,35 @@
 // SPDX-FileCopyrightText: 2022 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-
-use fdt::node::FdtNode;
-
-use crate::{utils::matches_fdt_name, ComponentLoadError};
-
-pub struct ScatterUnit<const FRAME_SIZE: usize> {
-    memory: *const u8,
-    metacycle_register: *const u8,
+pub struct ScatterUnit<const MEM_SIZE: usize> {
+    memory: *const u32,
+    metacycle_register: *const u32,
 }
 
-impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
-    /// Load the Scatter-Unit information from a flattened-devicetree.
+impl<const MEM_SIZE: usize> ScatterUnit<MEM_SIZE> {
+    /// Create a new [`ScatterUnit`] instance given a base address. The
+    /// `MEM_SIZE` is the number of 64-bit words.
     ///
     /// # Safety
     ///
-    /// The FDT must be a valid description of the hardware components that this
-    /// code is running on.
-    pub unsafe fn from_fdt_node(node: &FdtNode) -> Result<Self, ComponentLoadError> {
-        let get_node = |path| {
-            node.children()
-                .find(|child| matches_fdt_name(child, path))
-                .ok_or(ComponentLoadError::FdtNodeNotFound(path))
-        };
-
-        let get_reg = |node: &fdt::node::FdtNode, component| {
-            node.reg()
-                .ok_or(ComponentLoadError::RegNotFound { component })?
-                .next()
-                .ok_or(ComponentLoadError::RegNotFound { component })
-        };
-
-        let memory_node = get_node("scatter-memory")?;
-        let metacycle_register_node = get_node("metacycle-reg")?;
-
-        let memory = get_reg(&memory_node, "memory")?;
-
-        if let Some(size) = memory.size {
-            if size != FRAME_SIZE {
-                return Err(ComponentLoadError::SizeMismatch {
-                    property: "memory frame size",
-                    expected: FRAME_SIZE,
-                    found: size,
-                });
-            }
+    /// The `base_addr` pointer MUST be a valid pointer that is backed
+    /// by a memory mapped scatter unit instance.
+    pub unsafe fn new(base_addr: *const ()) -> ScatterUnit<MEM_SIZE> {
+        let addr = base_addr as *const u32;
+        ScatterUnit {
+            memory: addr,
+            metacycle_register: addr.add(MEM_SIZE * 2),
         }
-
-        let metacycle_register = {
-            let reg = get_reg(&metacycle_register_node, "metacycle_register")?;
-            if let Some(size) = reg.size {
-                if size != 1 {
-                    return Err(ComponentLoadError::SizeMismatch {
-                        property: "metacycle register size",
-                        expected: 1,
-                        found: size,
-                    });
-                }
-            }
-            reg.starting_address
-        };
-
-        Ok(ScatterUnit {
-            memory: memory.starting_address,
-            metacycle_register,
-        })
     }
 
-    pub const fn frame_size(&self) -> usize {
-        FRAME_SIZE
-    }
-
-    pub fn read_frame_memory(&self, data: &mut [u8; FRAME_SIZE]) {
-        for (i, d) in data.iter_mut().enumerate() {
-            unsafe {
-                *d = self.memory.add(i).read_volatile();
-            }
-        }
+    /// # Safety
+    ///
+    /// The destination memory size must be smaller or equal to the size of the
+    /// `ScatterUnit`.
+    pub unsafe fn copy_to_slice(&self, dst: &mut [u32], offset: usize) {
+        let src = self.memory.add(offset);
+        assert!(dst.len() + offset <= MEM_SIZE * 2);
+        core::ptr::copy_nonoverlapping(src, dst.as_mut_ptr(), dst.len());
     }
 
     /// Wait for the start of a new metacycle.
