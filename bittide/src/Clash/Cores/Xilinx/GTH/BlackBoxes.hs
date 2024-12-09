@@ -59,6 +59,16 @@ nConstraints = 8
 nNameArgs :: Int
 nNameArgs = 2
 
+{-
+NOTE [ignoring HWType domains]
+
+The ty1 bascially contains type variables in place of the domains.
+While the ty2 contains concrete types for the domains.
+To properly check this we'd have to do unification over all ports together.
+Instead this function decides to do a quick simple check and just ignore the domains.
+
+Note that signals don't exist in HWType, so their domains can't be checked anyways.
+-}
 checkHwTy :: (Show a) => (a, HWType) -> (b, HWType) -> (a, b)
 checkHwTy (nm, ty1) (e, ty2)
   | eqHwTyModuloDomain ty1 ty2 = (nm, e)
@@ -67,6 +77,7 @@ checkHwTy (nm, ty1) (e, ty2)
 
 eqHwTyModuloDomain :: N.HWType -> N.HWType -> Bool
 eqHwTyModuloDomain x y = case (x, y) of
+  -- see NOTE [ignoring HWType domains]
   (N.Clock _, N.Clock _) -> True
   (N.ClockN _, N.ClockN _) -> True
   (N.Reset _, N.Reset _) -> True
