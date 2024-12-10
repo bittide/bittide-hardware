@@ -603,14 +603,10 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       $ WordAlign.alignBytesFromMsbs @8 WordAlign.alignLsbFirst (rxUserData .||. rxLast) rx_data0
 
   (alignedAlignBits, alignedRxData1) =
-    unbundle
-      $ WordAlign.splitMsbs @8 @8
-      <$> alignedRxData0
+    unbundle (WordAlign.splitMsbs @8 @8 <$> alignedRxData0)
 
   (alignedMetaBits, alignedRxData2) =
-    unbundle
-      $ WordAlign.splitMsbs @8 @7
-      <$> alignedRxData1
+    unbundle (WordAlign.splitMsbs @8 @7 <$> alignedRxData1)
 
   prbsErrors = Prbs.checker rxClock rxReset enableGen prbsConfig alignedRxData2
   anyPrbsErrors = prbsErrors ./=. pure 0
@@ -622,14 +618,10 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   --
   -- TODO: Truncate rxCtrl0 and rxCtrl1 in GTH primitive.
   rxCtrlOrError =
-    fmap (truncateB @_ @8) rxCtrl0
-      ./=. pure 0
-      .||. fmap (truncateB @_ @8) rxCtrl1
-      ./=. pure 0
-      .||. rxCtrl2
-      ./=. pure 0
-      .||. rxCtrl3
-      ./=. pure 0
+    (fmap (truncateB @_ @8) rxCtrl0 ./=. pure 0)
+      .||. (fmap (truncateB @_ @8) rxCtrl1 ./=. pure 0)
+      .||. (rxCtrl2 ./=. pure 0)
+      .||. (rxCtrl3 ./=. pure 0)
 
   prbsOk =
     rxUserData
