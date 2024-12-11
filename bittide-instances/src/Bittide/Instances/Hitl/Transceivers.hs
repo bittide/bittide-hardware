@@ -57,9 +57,8 @@ counter ::
   (KnownDomain dom) =>
   Clock dom ->
   Reset dom ->
-  Signal dom Bool ->
   Signal dom (BitVector 64)
-counter clk rst ena = let c = register clk rst (toEnable ena) counterStart (c + 1) in c
+counter clk rst = let c = register clk rst enableGen counterStart (c + 1) in c
 
 {- | Expect a counter starting at 'counterStart' and incrementing by one on each
 cycle.
@@ -128,12 +127,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
 
-  -- Send counters
-  counters =
-    zipWith
-      (counter transceivers.txClock)
-      transceivers.txResets
-      transceivers.txSamplings
+  txCounter = counter transceivers.txClock transceivers.txReset
 
   expectCounterError =
     zipWith3
@@ -165,7 +159,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
         , clockPaths
         , rxNs
         , rxPs
-        , txDatas = counters
+        , txDatas = repeat txCounter
         , txReadys = repeat (pure True)
         , rxReadys = repeat (pure True)
         }

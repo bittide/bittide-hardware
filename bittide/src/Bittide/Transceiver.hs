@@ -172,7 +172,7 @@ types say otherwise.
 data Outputs n tx rx txS free = Outputs
   { txClock :: Clock tx
   -- ^ Single transmit clock, shared by all links
-  , txResets :: Vec n (Reset tx)
+  , txReset :: Reset tx
   -- ^ See 'Output.txReset'
   , txReadys :: Vec n (Signal tx Bool)
   -- ^ See 'Output.txReady'
@@ -322,7 +322,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   Outputs
     { -- tx
       txClock = txClock
-    , txResets = map (.txReset) outputs
+    , txReset = fold orReset $ map (.txReset) outputs
     , txReadys = map (.txReady) outputs
     , txSamplings = map (.txSampling) outputs
     , -- rx

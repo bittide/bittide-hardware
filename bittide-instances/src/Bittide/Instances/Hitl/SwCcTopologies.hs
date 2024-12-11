@@ -563,18 +563,17 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
       (repeat transceivers.txClock)
 
   txAllStable = xpmCdcSingle sysClk transceivers.txClock allStable1
-  txResets2 =
-    zipWith
-      orReset
-      transceivers.txResets
-      (repeat $ unsafeFromActiveLow txAllStable)
+  txReset2 =
+    orReset
+      transceivers.txReset
+      (unsafeFromActiveLow txAllStable)
 
   txNotInCCResets :: Vec LinkCount (Signal GthTx Bool)
   txNotInCCResets = go <$> (repeat transceivers.txClock)
    where
     go txClk = unsafeSynchronizer sysClk txClk notInCCReset
 
-  txCounters = zipWith3 txCounter (repeat transceivers.txClock) txResets2 txNotInCCResets
+  txCounters = zipWith3 txCounter (repeat transceivers.txClock) (repeat txReset2) txNotInCCResets
   txCounter txClk txRst notInCCReset' = result
    where
     notInCCReset'' :: Signal GthTx (BitVector 1)
@@ -589,7 +588,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
       go
       (repeat transceivers.txClock)
       transceivers.rxClocks
-      txResets2
+      (repeat txReset2)
       transceivers.rxDatas
    where
     go = resettableXilinxElasticBuffer @FifoSize @_ @_ @(Maybe (BitVector 64))
