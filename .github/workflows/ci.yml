@@ -15,16 +15,7 @@ on:
     # GitHub scheduling. See the comment at 'branches-ignore' for more
     # information on our development flow. This job will run in context of the
     # branch 'staging'.
-    - cron:  '0  19 * * *'
-    - cron:  '30 19 * * *'
-    - cron:  '0  20 * * *'
-    - cron:  '30 20 * * *'
-    - cron:  '0  21 * * *'
-    - cron:  '30 21 * * *'
-    - cron:  '0  22 * * *'
-    - cron:  '30 22 * * *'
-    - cron:  '0  23 * * *'
-    - cron:  '30 23 * * *'
+    - cron:  '0 19 * * *'
 
   push:
       branches-ignore:
