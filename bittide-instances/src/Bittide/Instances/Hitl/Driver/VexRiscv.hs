@@ -30,7 +30,7 @@ import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, catch, displayException)
 import Control.Monad (forM)
 import qualified Data.List as L
-import Data.Maybe (fromMaybe, fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import System.Exit
 import System.FilePath
 import System.IO
@@ -80,7 +80,10 @@ preProcessFunc v _name ilaPath hwT deviceInfo = do
 
   (pico, picoClean) <- do
     let picoProc =
-          (proc "picocom" ["--baud", "9600", "--imap", "lfcrlf", "--omap", "lfcrlf", deviceInfo.serial])
+          ( proc
+              "picocom"
+              ["--baud", "9600", "--imap", "lfcrlf", "--omap", "lfcrlf", deviceInfo.serial]
+          )
             { std_out = CreatePipe
             , std_in = CreatePipe
             , std_err = CreatePipe
@@ -92,10 +95,10 @@ preProcessFunc v _name ilaPath hwT deviceInfo = do
     let
       picoHandles' =
         ProcessStdIoHandles
-        { stdinHandle = fromJust picoStdin
-        , stdoutHandle = fromJust picoStdout
-        , stderrHandle = fromJust picoStderr
-        }
+          { stdinHandle = fromJust picoStdin
+          , stdoutHandle = fromJust picoStdout
+          , stderrHandle = fromJust picoStderr
+          }
 
     pure (picoHandles', cleanupProcess picoHandles)
 

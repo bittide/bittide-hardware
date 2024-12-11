@@ -100,7 +100,7 @@ tests =
             , preProc = InheritPreProcess
             }
         ]
-    , mPreProc = noPreProcess
+    , mPreProc = dnaOverSerialPreProcess
     , mDriverProc = Just dnaOverSerialDriver
     , mPostProc = Nothing
     }
