@@ -30,10 +30,11 @@ import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, catch, displayException)
 import Control.Monad (forM)
 import qualified Data.List as L
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, fromJust)
 import System.Exit
 import System.FilePath
 import System.IO
+import System.Process
 import System.Timeout (timeout)
 
 preProcessFunc ::
@@ -75,7 +76,28 @@ preProcessFunc v _name ilaPath hwT deviceInfo = do
   putStrLn $ "logging stderr to `" <> stderrLog <> "`"
 
   putStrLn "Starting Picocom..."
-  (pico, picoClean) <- startPicocomWithLogging deviceInfo.serial stdoutLog stderrLog
+  -- (pico, picoClean) <- startPicocomWithLogging deviceInfo.serial stdoutLog stderrLog
+
+  (pico, picoClean) <- do
+    let picoProc =
+          (proc "picocom" ["--baud", "9600", "--imap", "lfcrlf", "--omap", "lfcrlf", deviceInfo.serial])
+            { std_out = CreatePipe
+            , std_in = CreatePipe
+            , std_err = CreatePipe
+            , new_session = True -- Seems to be required for picocom to work
+            }
+    picoHandles@(picoStdin, picoStdout, picoStderr, _picoPh) <-
+      createProcess picoProc
+
+    let
+      picoHandles' =
+        ProcessStdIoHandles
+        { stdinHandle = fromJust picoStdin
+        , stdoutHandle = fromJust picoStdout
+        , stderrHandle = fromJust picoStderr
+        }
+
+    pure (picoHandles', cleanupProcess picoHandles)
 
   hSetBuffering pico.stdinHandle LineBuffering
   hSetBuffering pico.stdoutHandle LineBuffering
@@ -133,6 +155,10 @@ driverFunc ::
   ] ->
   IO ExitCode
 driverFunc v _name ilaPath targets = do
+  putStrLn
+    $ "Running Driver function for targets "
+    <> show ((\(_, info, _) -> info.deviceId) <$> targets)
+
   let
     catchError :: DeviceInfo -> SomeException -> IO ExitCode
     catchError d ex = do
@@ -140,6 +166,8 @@ driverFunc v _name ilaPath targets = do
       pure $ ExitFailure 2
 
   exitCodes <- forM targets $ \(hwT, deviceInfo, (_ocd, pico, gdb, cleanup)) -> flip catch (catchError deviceInfo) $ do
+    putStrLn $ "Running driver for " <> deviceInfo.deviceId
+
     openHwT v hwT
     execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
     refresh_hw_device v []

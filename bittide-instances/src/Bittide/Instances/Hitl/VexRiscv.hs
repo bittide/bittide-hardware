@@ -203,7 +203,8 @@ tests =
     , testCases =
         [ HitlTestCase
             { name = "VexRiscV"
-            , parameters = paramForHwTargets [HwTargetByIndex 1, HwTargetByIndex 2] ()
+            , parameters =
+                paramForHwTargets [HwTargetByIndex 1, HwTargetByIndex 2] ()
             , postProcData = ()
             , preProc = InheritPreProcess
             }
