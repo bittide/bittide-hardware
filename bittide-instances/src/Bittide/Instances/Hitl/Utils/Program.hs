@@ -11,6 +11,7 @@ import Project.Handle
 
 import Paths_bittide_instances
 
+import Control.Exception
 import Data.List (isPrefixOf)
 import Data.Maybe (fromJust)
 import System.IO
@@ -31,6 +32,11 @@ data ProcessStdIoHandles = ProcessStdIoHandles
   , stdoutHandle :: Handle
   , stderrHandle :: Handle
   }
+
+withOpenOcd :: String -> Int -> (ProcessStdIoHandles -> IO a) -> IO a
+withOpenOcd usbLoc gdbPort action = do
+  (ocd, clean) <- startOpenOcd usbLoc gdbPort
+  finally (action ocd) clean
 
 startOpenOcd :: String -> Int -> IO (ProcessStdIoHandles, IO ())
 startOpenOcd usbLoc gdbPort = do
@@ -57,6 +63,11 @@ startOpenOcd usbLoc gdbPort = do
         }
 
   pure (ocdHandles', cleanupProcess ocdHandles)
+
+withGdb :: (ProcessStdIoHandles -> IO a) -> IO a
+withGdb action = do
+  (gdb, clean) <- startGdb
+  finally (action gdb) clean
 
 startGdb :: IO (ProcessStdIoHandles, IO ())
 startGdb = do
@@ -101,6 +112,17 @@ startPicocom devPath = do
         }
 
   pure (picoHandles', cleanupProcess picoHandles)
+
+
+withPicocomWithLogging ::
+  FilePath ->
+  FilePath ->
+  FilePath ->
+  (ProcessStdIoHandles -> IO a) ->
+  IO a
+withPicocomWithLogging devPath stdoutPath stderrPath action = do
+  (pico, clean) <- startPicocomWithLogging devPath stdoutPath stderrPath
+  finally (action pico) clean
 
 startPicocomWithLogging ::
   FilePath -> FilePath -> FilePath -> IO (ProcessStdIoHandles, IO ())

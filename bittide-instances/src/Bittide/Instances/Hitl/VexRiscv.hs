@@ -209,7 +209,7 @@ tests =
             , preProc = InheritPreProcess
             }
         ]
-    , mPreProc = preProcessFunc
+    , mPreProc = noPreProcess -- preProcessFunc
     , mDriverProc = Just driverFunc
     , mPostProc = Nothing
     }
