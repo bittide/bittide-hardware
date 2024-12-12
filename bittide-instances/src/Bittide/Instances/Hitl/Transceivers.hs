@@ -144,7 +144,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
       transceivers.rxDatas
 
   expectCounterErrorSys =
-    fmap and
+    fmap or
       $ bundle
       $ zipWith (.&&.) transceivers.linkUps
       $ zipWith (`xpmCdcSingle` sysClk) transceivers.rxClocks expectCounterError
