@@ -68,4 +68,4 @@ case_dnaOverSerial = do
       pure match
 
 main :: IO ()
-main = withArgs [] $defaultMainGenerator
+main = withArgs ["--timeout", "2m"] $defaultMainGenerator

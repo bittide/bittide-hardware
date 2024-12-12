@@ -199,4 +199,4 @@ runTcpTest (sock, sockAddr) = do
     (BS.replicate (BS.length bs) 0x00)
 
 main :: IO ()
-main = withArgs [] $defaultMainGenerator
+main = withArgs ["--timeout", "2m"] $defaultMainGenerator
