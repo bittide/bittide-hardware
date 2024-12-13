@@ -18,11 +18,9 @@ import Clash.Xilinx.ClockGen (clockWizardDifferential)
 
 import Bittide.Arithmetic.Time (trueFor)
 import Bittide.Hitl (
-  CasePreProcessing (..),
   HitlTestCase (..),
   HitlTestGroup (..),
   hitlVioBool,
-  noPreProcess,
   paramForHwTargets,
  )
 import Bittide.Instances.Hitl.Setup (allHwTargets)
@@ -113,10 +111,8 @@ tests =
             { name = "TemperatureMonitor"
             , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
-            , preProc = InheritPreProcess
             }
         ]
-    , mPreProc = noPreProcess
     , mDriverProc = Nothing
     , mPostProc = Nothing
     }

@@ -113,7 +113,6 @@ startPicocom devPath = do
 
   pure (picoHandles', cleanupProcess picoHandles)
 
-
 withPicocomWithLogging ::
   FilePath ->
   FilePath ->
@@ -124,9 +123,29 @@ withPicocomWithLogging devPath stdoutPath stderrPath action = do
   (pico, clean) <- startPicocomWithLogging devPath stdoutPath stderrPath
   finally (action pico) clean
 
+withPicocomWithLoggingAndEnv ::
+  FilePath ->
+  FilePath ->
+  FilePath ->
+  [(String, String)] ->
+  (ProcessStdIoHandles -> IO a) ->
+  IO a
+withPicocomWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv action = do
+  (pico, clean) <- startPicocomWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv
+  finally (action pico) clean
+
 startPicocomWithLogging ::
   FilePath -> FilePath -> FilePath -> IO (ProcessStdIoHandles, IO ())
-startPicocomWithLogging devPath stdoutPath stderrPath = do
+startPicocomWithLogging devPath stdoutPath stderrPath =
+  startPicocomWithLoggingAndEnv devPath stdoutPath stderrPath []
+
+startPicocomWithLoggingAndEnv ::
+  FilePath ->
+  FilePath ->
+  FilePath ->
+  [(String, String)] ->
+  IO (ProcessStdIoHandles, IO ())
+startPicocomWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv = do
   startPicocomPath <- getPicocomStartPath
   currentEnv <- getEnvironment
 
@@ -139,7 +158,10 @@ startPicocomWithLogging devPath stdoutPath stderrPath = do
         , new_session = True
         , env =
             Just
-              (currentEnv <> [("PICOCOM_STDOUT_LOG", stdoutPath), ("PICOCOM_STDERR_LOG", stderrPath)])
+              ( currentEnv
+                  <> extraEnv
+                  <> [("PICOCOM_STDOUT_LOG", stdoutPath), ("PICOCOM_STDERR_LOG", stderrPath)]
+              )
         }
 
   picoHandles@(picoStdin, picoStdout, picoStderr, _picoPh) <-
@@ -160,4 +182,11 @@ openOcdWaitForHalt :: String -> Filter
 openOcdWaitForHalt s
   | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
   | "Halting processor" `isPrefixOf` s = Stop Ok
+  | otherwise = Continue
+
+gdbWaitForLoad :: String -> Filter
+gdbWaitForLoad s
+  | "Remote communication error." `isPrefixOf` s =
+      Stop (Error ("GDB remote communication error: " <> s))
+  | "Start address 0x80000000" `isPrefixOf` s = Stop Ok
   | otherwise = Continue

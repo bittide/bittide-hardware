@@ -47,7 +47,6 @@ module Bittide.Hitl (
   -- * Test definition
   HitlTestGroup (..),
   HitlTestCase (..),
-  CasePreProcessing (..),
   TestStepResult (..),
   MayHavePostProcData (..),
   Done,
@@ -196,7 +195,6 @@ and requires a (hypothetical) 8-bit number indicating the
 >           , postProcData = ()
 >           }
 >       ]
->   , mPreProc = Nothing
 >   , mPostProc = Nothing
 >   }
 
@@ -204,21 +202,26 @@ This must be accompanied by a @hitlVio \@NumberOfStages@ in the design.
 -}
 data HitlTestGroup where
   HitlTestGroup ::
-    (Typeable a, Typeable b, Typeable c) =>
+    (Typeable a, Typeable b) =>
     { topEntity :: ClashTargetName
     -- ^ Reference to the Design Under Test
     , extraXdcFiles :: [String]
-    , testCases :: [HitlTestCase HwTargetRef a b c]
+    , testCases :: [HitlTestCase HwTargetRef a b]
     -- ^ List of test cases
-    , mPreProc ::
-        ( VivadoHandle -> String -> FilePath -> HwTarget -> DeviceInfo -> IO (TestStepResult c)
-        )
-    -- ^ Pre-processing step. First argument is the name of the test
     , mDriverProc ::
-        Maybe (VivadoHandle -> String -> FilePath -> [(HwTarget, DeviceInfo, c)] -> IO ExitCode)
-    -- ^ Optional function driving the test after pre-processing.
+        Maybe (VivadoHandle -> String -> FilePath -> [(HwTarget, DeviceInfo)] -> IO ExitCode)
+    -- ^ Optional function driving the test. If provided, this function must:
+    --   - Handle any pre-processing necessary to begin the test
+    --   - Assert the start probe(s)
+    --   - Wait for results on the test done and success probes
+    --
+    -- The HITL testing infrastructure deasserts the start probe(s) after running this function
+    -- and collecting ILA data, so this function is not required to but is allowed to deassert
+    -- that probe(s).
     , mPostProc :: Maybe (FilePath -> ExitCode -> IO (TestStepResult ()))
-    -- ^ Optional post processing step.
+    -- ^ Optional post processing step. If provided, this function is run after the test case
+    -- completely finishes execution, including collection of ILA data and deassertion of the
+    -- start probe(s).
     , externalHdl :: [String]
     -- ^ List of external HDL files to include in the project
     } ->
@@ -227,36 +230,24 @@ data HitlTestGroup where
 {- | A HITL test case. One HITL test group can have multiple test cases
 associated with it.
 -}
-data HitlTestCase h a b c where
+data HitlTestCase h a b where
   HitlTestCase ::
-    (Show h, Show a, BitPack a, Show b, Typeable h, Typeable c) =>
+    (Show h, Show a, BitPack a, Show b, Typeable h) =>
     { name :: String
     , parameters :: Map h a
-    , preProc :: CasePreProcessing c
     , postProcData :: b
     } ->
-    HitlTestCase h a b c
+    HitlTestCase h a b
 
-deriving instance Show (HitlTestCase h a b c)
-
-data CasePreProcessing c
-  = InheritPreProcess
-  | -- | Instead of using the test-group pre-process function, use an override for
-    -- this specific test case.
-    CustomPreProcess
-      (VivadoHandle -> FilePath -> HwTarget -> DeviceInfo -> IO (TestStepResult c))
-
-instance Show (CasePreProcessing a) where
-  show InheritPreProcess = "InheritPreProcess"
-  show (CustomPreProcess _) = "CustomPreProcess <func>"
+deriving instance Show (HitlTestCase h a b)
 
 -- | A class for extracting optional post processing data from a test.
 class MayHavePostProcData b where
   -- | Returns the test names with some post processing data of type @c@,
   -- if that data exists.
   mGetPPD ::
-    forall h a c.
-    [HitlTestCase h a b c] ->
+    forall h a.
+    [HitlTestCase h a b] ->
     Map String (Maybe b)
 
 instance MayHavePostProcData a where
@@ -299,26 +290,24 @@ to it and receives that constructur as test parameter.
 > testCases = testCasesFromEnum @ABC allHwTargets ()
 -}
 testCasesFromEnum ::
-  forall a b c.
+  -- forall a b c.
+  forall a b.
   ( Show a
   , Bounded a
   , Enum a
   , BitPack a
   , Show b
-  , Show c
   , Typeable a
   , Typeable b
-  , Typeable c
   ) =>
   [HwTargetRef] ->
   b ->
-  [HitlTestCase HwTargetRef a b c]
+  [HitlTestCase HwTargetRef a b]
 testCasesFromEnum hwTs ppd =
   [ HitlTestCase
     { name = show constr
     , parameters = Map.fromList ((,constr) <$> hwTs)
     , postProcData = ppd
-    , preProc = InheritPreProcess
     }
   | (constr :: a) <- [minBound ..]
   ]

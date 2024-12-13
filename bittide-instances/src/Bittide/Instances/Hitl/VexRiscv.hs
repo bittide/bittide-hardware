@@ -206,10 +206,8 @@ tests =
             , parameters =
                 paramForHwTargets [HwTargetByIndex 1, HwTargetByIndex 2] ()
             , postProcData = ()
-            , preProc = InheritPreProcess
             }
         ]
-    , mPreProc = noPreProcess -- preProcessFunc
     , mDriverProc = Just driverFunc
     , mPostProc = Nothing
     }

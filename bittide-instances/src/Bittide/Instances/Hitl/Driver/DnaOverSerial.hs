@@ -16,14 +16,18 @@ import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Vivado
 import Control.Exception
 import Control.Monad.Extra
+import qualified Data.ByteString as BS
+import Data.ByteString.Internal (w2c)
+import Data.Either (partitionEithers)
 import qualified Data.List as L
 import Data.Maybe
+import Data.Word8 (isHexDigit)
 import Numeric
 import Project.FilePath
 import Project.Handle
 import System.Exit
 import System.FilePath
-import System.IO
+import System.IO (BufferMode (..), hSetBuffering)
 import System.Timeout
 import Test.Tasty.HUnit
 import Vivado
@@ -49,7 +53,12 @@ dnaOverSerialPreProcess _v _name _ilaPath hwT deviceInfo = do
     stderrLog = hitlDir </> "picocom-stderr." <> show targetIndex <> ".log"
   putStrLn $ "logging stdout to `" <> stdoutLog <> "`"
   putStrLn $ "logging stderr to `" <> stderrLog <> "`"
-  (pico, picoClean) <- startPicocomWithLogging deviceInfo.serial stdoutLog stderrLog
+  (pico, picoClean) <-
+    startPicocomWithLoggingAndEnv
+      deviceInfo.serial
+      stdoutLog
+      stderrLog
+      [("PICOCOM_BAUD", "9600")]
 
   hSetBuffering pico.stdinHandle LineBuffering
   hSetBuffering pico.stdoutHandle LineBuffering
@@ -63,14 +72,30 @@ dnaOverSerialDriver ::
   VivadoHandle ->
   String ->
   FilePath ->
-  [(HwTarget, DeviceInfo, (ProcessStdIoHandles, IO ()))] ->
+  [(HwTarget, DeviceInfo)] ->
   IO ExitCode
 dnaOverSerialDriver v _name ilaPath targets = do
-  flip finally (forM targets $ \(_, _, (_, cleanup)) -> cleanup) $ do
+  preProcessResults <- forM targets $ \(hwT, dI) -> do
+    dnaOverSerialPreProcess v _name ilaPath hwT dI >>= \case
+      TestStepSuccess out -> pure $ Right out
+      TestStepFailure reason -> pure $ Left reason
+
+  putStrLn "Attempted to open Picocom for all target devices"
+
+  let (preProcessFails, preProcessPasses) = partitionEithers preProcessResults
+
+  unless (null preProcessFails) $ do
+    let failReason = "Some preprocess steps failed. reasons:\n - " <> L.intercalate "\n - " preProcessFails
+    forM_ preProcessPasses snd
+    assertFailure failReason
+
+  putStrLn "No failures for Picocom opening"
+
+  flip finally (forM preProcessPasses snd) $ do
     putStrLn "Starting all targets to read DNA values"
 
     -- start all targets
-    forM_ targets $ \(hwT, _, _) -> do
+    forM_ targets $ \(hwT, _) -> do
       openHwT v hwT
       execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
       refresh_hw_device v []
@@ -80,16 +105,17 @@ dnaOverSerialDriver v _name ilaPath targets = do
 
     putStrLn "Expecting specific DNAs for all serial ports"
     putStrLn "Serial ports:"
-    mapM_ putStrLn [d.serial | (_, d, _) <- targets]
+    mapM_ putStrLn [d.serial | (_, d) <- targets]
 
-    results <- forM targets $ \(_, d, (picoCom, picoClean)) -> do
+    results <- forM (L.zip targets preProcessPasses) $ \((_, d), (picoCom, picoClean)) -> do
+      putStrLn $ "Waiting for output on port: " <> d.serial
       res <- checkDna d picoCom
       picoClean
-      pure $ res
+      pure res
 
     print results
-    if (and results)
-      then pure $ ExitSuccess
+    if and results
+      then pure ExitSuccess
       else do
         assertFailure "Not all FPGAs transmitted the expected DNA"
         pure $ ExitFailure 2
@@ -101,8 +127,12 @@ dnaOverSerialDriver v _name ilaPath targets = do
     when (isNothing terminalReadyResult) $ do
       assertFailure "Timeout waiting for \"Terminal ready\""
 
-    _ <- hGetLine pico.stdoutHandle -- Discard a potentially incomplete line
-    receivedDna <- hGetLine pico.stdoutHandle
+    putStrLn "Terminal is ready!"
+
+    receivedDna0 <- timeout 10_000_000 $ findDna pico ""
+    receivedDna <- case receivedDna0 of
+      Just rDna -> return rDna
+      Nothing -> assertFailure "Timeout waiting for DNA"
     let
       expected = showHex d.dna ""
       differences = L.zipWith (\e a -> if e == a then ' ' else '^') expected receivedDna
@@ -112,3 +142,13 @@ dnaOverSerialDriver v _name ilaPath targets = do
     putStrLn $ "Received DNA: " <> receivedDna
     putStrLn $ "Differences:  " <> differences
     pure match
+  findDna :: ProcessStdIoHandles -> String -> IO String
+  findDna pico prev = do
+    get <- BS.hGet pico.stdoutHandle 1
+    let nC = L.head $ BS.unpack get
+    if isHexDigit nC
+      then findDna pico (prev <> [w2c nC])
+      else
+        if null prev
+          then findDna pico prev
+          else return prev

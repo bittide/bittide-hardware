@@ -154,5 +154,6 @@ test-suite doctests
     base,
     bittide-experiments,
     doctest-parallel >=0.3.0.1 && <0.4,
+    word8,
 
   default-language: Haskell2010

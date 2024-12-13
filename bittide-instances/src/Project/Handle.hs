@@ -4,11 +4,15 @@
 
 module Project.Handle where
 
-import Prelude
+import Prelude hiding (filter)
 
+import Data.ByteString (filter, unpack)
+import Data.ByteString.Char8 (hGetLine)
+import Data.ByteString.Internal (w2c)
 import Data.List.Extra (trimEnd)
+import Data.Word8 (isAscii, isControl)
 import Debug.Trace
-import System.IO
+import System.IO (Handle, hGetChar, hReady)
 
 import Test.Tasty.HUnit
 
@@ -25,9 +29,11 @@ expectLine :: (HasCallStack) => Handle -> (String -> Filter) -> Assertion
 expectLine = expectLine' ""
  where
   expectLine' s0 h f = do
-    line <- hGetLine h
+    byteLine0 <- hGetLine h
     let
-      trimmed = filter (/= '\NUL') (trimEnd line)
+      byteLine1 = filter (\c -> isAscii c && not (isControl c)) byteLine0
+      line = w2c <$> unpack byteLine1
+      trimmed = trimEnd line
       s1 = s0 <> "\n" <> line
       cont = expectLine' s1 h f
     if null trimmed
@@ -60,4 +66,4 @@ readRemainingChars h = do
     then do
       c <- hGetChar h
       (c :) <$> readRemainingChars h
-    else (pure "")
+    else pure ""

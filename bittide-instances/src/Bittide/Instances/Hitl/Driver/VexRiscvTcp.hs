@@ -112,7 +112,12 @@ preProcessFunc v _name ilaPath hwT deviceInfo = do
   putStrLn $ "logging stderr to `" <> stderrLog <> "`"
 
   putStrLn "Starting Picocom..."
-  (pico, picoClean) <- startPicocomWithLogging deviceInfo.serial stdoutLog stderrLog
+  (pico, picoClean) <-
+    startPicocomWithLoggingAndEnv
+      deviceInfo.serial
+      stdoutLog
+      stderrLog
+      [("PICOCOM_BAUD", "9600")]
 
   hSetBuffering pico.stdinHandle LineBuffering
   hSetBuffering pico.stdoutHandle LineBuffering
@@ -178,13 +183,15 @@ driverFunc ::
   VivadoHandle ->
   String ->
   FilePath ->
-  [ ( HwTarget
-    , DeviceInfo
-    , (ProcessStdIoHandles, ProcessStdIoHandles, ProcessStdIoHandles, IO ())
-    )
-  ] ->
+  [(HwTarget, DeviceInfo)] ->
   IO ExitCode
-driverFunc v _name ilaPath [(hwT, _, (_ocd, pico, _gdb, cleanupFn))] = do
+driverFunc v _name ilaPath [(hwT, dI)] = do
+  preProcessResult <- preProcessFunc v _name ilaPath hwT dI
+
+  (_ocd, pico, _gdb, cleanupFn) <- case preProcessResult of
+    TestStepSuccess out -> pure out
+    TestStepFailure reason -> assertFailure $ "test failed. reason: " <> reason
+
   openHwT v hwT
   execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
   refresh_hw_device v []
@@ -238,7 +245,7 @@ driverFunc v _name ilaPath [(hwT, _, (_ocd, pico, _gdb, cleanupFn))] = do
 
   cleanupFn
 
-  pure $ ExitSuccess
+  pure ExitSuccess
 driverFunc _v _name _ilaPath _ = error "Ethernet/VexRiscvTcp driver func should only run with one hardware target"
 
 {- | Test that the `Bittide.Instances.Hitl.Ethernet:vexRiscvTcpTest` design programmed

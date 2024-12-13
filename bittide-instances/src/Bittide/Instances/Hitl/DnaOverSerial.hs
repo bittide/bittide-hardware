@@ -97,10 +97,8 @@ tests =
             { name = "DnaOverSerial"
             , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
-            , preProc = InheritPreProcess
             }
         ]
-    , mPreProc = dnaOverSerialPreProcess
     , mDriverProc = Just dnaOverSerialDriver
     , mPostProc = Nothing
     }

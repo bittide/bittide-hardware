@@ -25,6 +25,7 @@ module Clash.Shake.Vivado (
   runPlaceAndRoute,
   runBitstreamGen,
   runProbesFileGen,
+  pollTestDone,
   programBitstream,
   runHitlTest,
   meetsTiming,
@@ -48,7 +49,7 @@ import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
 import Control.Exception (try)
 import Control.Monad.Extra (andM, forM, forM_, orM, unless, when)
 import Data.Containers.ListUtils (nubOrd)
-import Data.Either (lefts, partitionEithers, rights)
+import Data.Either (lefts, rights)
 import Data.List (isInfixOf, isSuffixOf, sort, sortOn, (\\))
 import Data.List.Extra (anySame, split, (!?))
 import Data.Map.Strict (fromList, keys, mapKeys, toAscList)
@@ -58,9 +59,9 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.String.Interpolate (i, __i)
 import Data.Text (unpack)
-import System.Clock (Clock (Monotonic), diffTimeSpec, getTime, toNanoSecs)
+import System.Clock (Clock (Monotonic), TimeSpec, diffTimeSpec, getTime, toNanoSecs)
 import System.Directory (createDirectoryIfMissing)
-import System.Exit (ExitCode (..), exitFailure)
+import System.Exit (ExitCode (..))
 import System.FilePath (dropFileName, (</>))
 import Text.Read (readMaybe)
 import Vivado (TclException (..), VivadoHandle, execPrint_, with)
@@ -661,37 +662,14 @@ verifyHwIlas v = do
 the probe_test_done probe. Returns whether the test case was successful.
 -}
 waitTestCaseEnd ::
-  VivadoHandle -> HitlTestCase (HwTarget, DeviceInfo) a b c -> FilePath -> IO ExitCode
+  VivadoHandle -> HitlTestCase (HwTarget, DeviceInfo) a b -> FilePath -> IO ExitCode
 waitTestCaseEnd v HitlTestCase{..} probesFilePath = do
   startTime <- getTime Monotonic
   let calcTimeSpentMs = (`div` 1000000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
   exitCodes <- forM (keys parameters) $ \(hwT, _) -> do
     openHwT v hwT
     execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
-    let
-      pollTestDone :: IO ExitCode
-      pollTestDone = do
-        refresh_hw_device v ["-quiet"]
-        timeSpentMs <- calcTimeSpentMs
-        done <- execCmd v "get_property" ["INPUT_VALUE", getProbeTestDoneTcl]
-        success <- execCmd v "get_property" ["INPUT_VALUE", getProbeTestSuccessTcl]
-        case (done, success, timeSpentMs >= testTimeoutMs) of
-          ("1", "1", _) -> do
-            pure ExitSuccess
-          ("1", _, _) -> do
-            putStrLn $ "HITL test case failure for hardware target " <> prettyShow hwT
-            pure (ExitFailure 2)
-          (_, _, True) -> do
-            putStrLn $
-              "HITL test case timeout (≥"
-                <> show testTimeoutMs
-                <> "ms) for hardware target "
-                <> prettyShow hwT
-            pure (ExitFailure 3)
-          _ -> do
-            threadDelay 1000 -- In μs
-            pollTestDone
-    pollTestDone
+    pollTestDone startTime testTimeoutMs v hwT
 
   -- Print summary of test case
   timeSpentMs <- calcTimeSpentMs
@@ -712,6 +690,31 @@ waitTestCaseEnd v HitlTestCase{..} probesFilePath = do
   -- TODO: Allow the user to specify the timeout for a test.
   testTimeoutMs = 60000 :: Integer
 
+pollTestDone :: TimeSpec -> Integer -> VivadoHandle -> HwTarget -> IO ExitCode
+pollTestDone startTime testTimeoutMs v hwT = do
+  refresh_hw_device v ["-quiet"]
+  timeSpentMs <- calcTimeSpentMs
+  done <- execCmd v "get_property" ["INPUT_VALUE", getProbeTestDoneTcl]
+  success <- execCmd v "get_property" ["INPUT_VALUE", getProbeTestSuccessTcl]
+  case (done, success, timeSpentMs >= testTimeoutMs) of
+    ("1", "1", _) -> do
+      pure ExitSuccess
+    ("1", _, _) -> do
+      putStrLn $ "HITL test case failure for hardware target " <> prettyShow hwT
+      pure (ExitFailure 2)
+    (_, _, True) -> do
+      putStrLn $
+        "HITL test case timeout (≥"
+          <> show testTimeoutMs
+          <> "ms) for hardware target "
+          <> prettyShow hwT
+      pure (ExitFailure 3)
+    _ -> do
+      threadDelay 1000 -- In μs
+      pollTestDone startTime testTimeoutMs v hwT
+ where
+  calcTimeSpentMs = (`div` 1000000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
+
 runHitlTest ::
   -- | The HITL test group to execute
   HitlTestGroup ->
@@ -722,7 +725,7 @@ runHitlTest ::
   -- | Filepath the the ILA data dump directory
   FilePath ->
   IO ExitCode
-runHitlTest test@HitlTestGroup{topEntity, testCases, mPreProc, mDriverProc} url probesFilePath ilaDataDir = do
+runHitlTest test@HitlTestGroup{topEntity, testCases, mDriverProc} url probesFilePath ilaDataDir = do
   putStrLn $
     "Starting HITL test for FPGA design '"
       <> show topEntity
@@ -766,7 +769,7 @@ runHitlTest test@HitlTestGroup{topEntity, testCases, mPreProc, mDriverProc} url 
         lookupDeviceInfo key = deviceInfoFromHwTRef key
 
       exitCode <-
-        runHitlTestCase v resolvedTestCase mPreProc mDriverProc probesFilePath ilaDataDir
+        runHitlTestCase v resolvedTestCase mDriverProc probesFilePath ilaDataDir
       pure (name, exitCode)
 
     let failedTestCaseNames = fst <$> filter ((/= ExitSuccess) . snd) testResults
@@ -790,21 +793,19 @@ runHitlTest test@HitlTestGroup{topEntity, testCases, mPreProc, mDriverProc} url 
 
 -- | Runs one test case of a HITL test group
 runHitlTestCase ::
-  forall a b c.
+  forall a b.
   -- | Handle to a Vivado object that is to execute the Tcl
   VivadoHandle ->
   -- | The HITL test case to run
-  HitlTestCase (HwTarget, DeviceInfo) a b c ->
-  -- | Pre-process function for the test group
-  (VivadoHandle -> String -> FilePath -> HwTarget -> DeviceInfo -> IO (TestStepResult c)) ->
+  HitlTestCase (HwTarget, DeviceInfo) a b ->
   -- | Driver function
-  Maybe (VivadoHandle -> String -> FilePath -> [(HwTarget, DeviceInfo, c)] -> IO ExitCode) ->
+  Maybe (VivadoHandle -> String -> FilePath -> [(HwTarget, DeviceInfo)] -> IO ExitCode) ->
   -- | Path to the generated probes file
   FilePath ->
   -- | Filepath the the ILA data dump directory
   FilePath ->
   IO ExitCode
-runHitlTestCase v testCase@HitlTestCase{name, parameters, preProc} preProcessFunc driverFunc probesFilePath ilaDataDir = do
+runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFilePath ilaDataDir = do
   if null parameters
     then do
       putStrLn
@@ -871,32 +872,7 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters, preProc} preProcessFun
         execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeTestStartTcl]
         commit_hw_vio v ["[get_hw_vios]"]
 
-        -- run pre-processing
-        testRunData <- case preProc of
-          InheritPreProcess -> do
-            putStrLn $
-              "Running test-group pre-process function for "
-                <> name
-                <> " ('"
-                <> prettyShow hwT
-                <> "')"
-            preProcessFunc v name probesFilePath hwT deviceInfo
-          CustomPreProcess f -> do
-            putStrLn $
-              "Running case pre-process function for "
-                <> name
-                <> " ('"
-                <> prettyShow hwT
-                <> "')"
-            f v probesFilePath hwT deviceInfo
-
-        case testRunData of
-          TestStepFailure msg -> do
-            putStrLn $
-              "pre-process step failed: " <> msg
-            pure $ Left (hwT, msg)
-          TestStepSuccess val -> do
-            pure $ Right (hwT, deviceInfo, val)
+        return (hwT, deviceInfo)
 
       -- Assert HitlVio start probe
       -- execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
@@ -905,16 +881,14 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters, preProc} preProcessFun
 
       -- pure testRunData
 
-      let (failedTests, validTests) = partitionEithers testData
-
-      testCaseExitCode0 <- case driverFunc of
+      testCaseExitCode <- case driverFunc of
         Just fn -> do
           putStrLn $ "Running custom driver function for test " <> name
-          fn v name probesFilePath validTests
+          fn v name probesFilePath testData
         Nothing -> do
           putStrLn $ "Running default driver function for test " <> name
 
-          forM_ validTests $ \(hwT, _deviceInfo, _testData) -> do
+          forM_ testData $ \(hwT, _deviceInfo) -> do
             -- Assert HitlVio start probe
             openHwT v hwT
             execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
@@ -926,11 +900,6 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters, preProc} preProcessFun
 
           putStrLn $ "Waiting for test case '" <> name <> "' to end..."
           waitTestCaseEnd v testCase probesFilePath
-
-      testCaseExitCode <-
-        if null failedTests
-          then pure testCaseExitCode0
-          else exitFailure
 
       putStrLn "Saving captured ILA data (if relevant)..."
       forM_ (keys parameters) $ \(hwT, _) -> do

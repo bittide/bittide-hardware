@@ -22,13 +22,11 @@ import Bittide.Instances.Hitl.Post.BoardTestExtended
 import Bittide.Instances.Hitl.Post.PostProcess
 
 import Bittide.Hitl (
-  CasePreProcessing (..),
   HitlTestCase (..),
   HitlTestGroup (..),
   TestStepResult (..),
   hitlVio,
   hitlVioBool,
-  noPreProcess,
   paramForHwTargets,
   testCasesFromEnum,
  )
@@ -189,10 +187,8 @@ testSimple =
             { name = "Simple"
             , parameters = (paramForHwTargets allHwTargets ())
             , postProcData = ()
-            , preProc = InheritPreProcess
             }
         ]
-    , mPreProc = noPreProcess
     , mDriverProc = Nothing
     , mPostProc = Nothing
     }
@@ -204,7 +200,6 @@ testExtended =
     , extraXdcFiles = []
     , externalHdl = []
     , testCases = testCasesFromEnum @Test allHwTargets ()
-    , mPreProc = noPreProcess
     , mDriverProc = Nothing
     , mPostProc = Just postBoardTestExtendedFunc
     }

@@ -126,6 +126,7 @@ common common-options
     unix,
     vector,
     vivado-hs,
+    word8,
 
 library
   import: common-options

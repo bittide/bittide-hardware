@@ -94,10 +94,8 @@ tests =
             { name = "VexRiscvTcp"
             , parameters = paramForSingleHwTarget (HwTargetByIndex 7) ()
             , postProcData = ()
-            , preProc = InheritPreProcess
             }
         ]
-    , mPreProc = preProcessFunc
     , mDriverProc = Just driverFunc
     , mPostProc = Nothing
     }
