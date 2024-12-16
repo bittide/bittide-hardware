@@ -32,10 +32,10 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- internal imports
 import Bittide.Arithmetic.Time (PeriodToCycles)
+import Bittide.CircuitUtils
 import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
 import Bittide.ClockControl.Registers (ClockControlData, clockControlWb, clockMod)
 import Bittide.DoubleBufferedRam
-import Bittide.Instances.Hitl.HwCcTopologies (cSigMap, csDupe)
 import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
@@ -139,14 +139,14 @@ dut =
       [uartBus, ccWb, dbgWb] <- processingElement NoDumpVcd peConfig -< jtag
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
       [ccd0, ccd1] <-
-        csDupe
+        cSignalDupe
           <| clockControlWb
             margin
             framesize
             (pure linkMask)
             (pure <$> dataCounts)
           -< ccWb
-      cm <- cSigMap clockMod -< ccd0
+      cm <- cSignalMap clockMod -< ccd0
       _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (dbgWb, cm)
       idC -< (uartTx, ccd1)
  where

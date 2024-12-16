@@ -129,15 +129,13 @@ library
     Bittide.Instances.Hitl.DnaOverSerial
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
-    Bittide.Instances.Hitl.FullMeshHwCc
-    Bittide.Instances.Hitl.FullMeshSwCc
-    Bittide.Instances.Hitl.HwCcTopologies
     Bittide.Instances.Hitl.IlaPlot
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
     Bittide.Instances.Hitl.Post.TcpServer
     Bittide.Instances.Hitl.Setup
+    Bittide.Instances.Hitl.SwCcTopologies
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests
@@ -154,7 +152,6 @@ library
     Bittide.Instances.Pnr.StabilityChecker
     Bittide.Instances.Pnr.Synchronizer
     Paths.Bittide.Instances
-    Project.FilePath
     Project.Handle
     Project.Programs
 
@@ -274,23 +271,6 @@ executable post-vex-riscv-tcp-test
     temporary,
 
   other-modules: Paths_bittide_instances
-
-executable post-fullMeshSwCcTest
-  import: common-options
-  ghc-options:
-    -Wall
-    -Wcompat
-    -threaded
-
-  main-is: exe/post-fullMeshSwCcTest/Main.hs
-  build-depends:
-    base,
-    bittide-instances,
-    bytestring,
-    cassava,
-    deepseq,
-    filepath,
-    vector,
 
 executable post-dna-over-serial
   import: common-options

@@ -69,6 +69,7 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Gray (xpmCdcGray)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Explicit.Reset.Extra
 
+import Clash.Signal (HiddenClockResetEnable, withClockResetEnable)
 import Control.Arrow (second, (***))
 import Data.Bool (bool)
 import Data.Constraint.Nat.Extra (
@@ -455,10 +456,7 @@ data DiffResult a
   deriving (Generic, BitPack, NFDataX, Functor, Eq, Ord, Show)
 
 type CallistoCc n m sys cfg =
-  (KnownDomain sys, HasSynchronousReset sys) =>
-  Clock sys ->
-  Reset sys ->
-  Enable sys ->
+  (HiddenClockResetEnable sys, HasSynchronousReset sys) =>
   cfg ->
   Signal sys (BitVector n) ->
   Vec n (Signal sys (RelDataCount m)) ->
@@ -502,7 +500,7 @@ callistoClockControlWithIla ::
 callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..} mask ebs =
   hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> output)
  where
-  output = callistoCc clk rst enableGen callistoCfg mask ebs
+  output = withClockResetEnable clk rst enableGen $ callistoCc callistoCfg mask ebs
 
   -- Condense multicycle speedchange outputs into a single cycle for the ILA
   mscChanging = isRising clk rst enableGen False (isJust . maybeSpeedChange <$> output)
