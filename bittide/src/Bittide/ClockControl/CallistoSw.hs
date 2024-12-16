@@ -12,8 +12,7 @@ module Bittide.ClockControl.CallistoSw (
   SwControlConfig (..),
 ) where
 
-import Clash.Explicit.Prelude hiding (PeriodToCycles)
-import Clash.Prelude (withClockResetEnable)
+import Clash.Prelude hiding (PeriodToCycles)
 
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Data.Maybe (fromMaybe, isJust)
@@ -22,7 +21,7 @@ import Project.FilePath
 import Protocols
 import Protocols.Idle
 import System.FilePath
-import VexRiscv
+import VexRiscv (DumpVcd (NoDumpVcd))
 
 import Bittide.CircuitUtils
 import Bittide.ClockControl (RelDataCount)
@@ -64,7 +63,7 @@ The CPU is instantiated with 64KB of IMEM containing the 'clock-control' binary 
 -}
 callistoSwClockControl ::
   forall nLinks eBufBits dom margin framesize.
-  ( KnownDomain dom
+  ( HiddenClockResetEnable dom
   , KnownNat nLinks
   , KnownNat eBufBits
   , 1 <= nLinks
@@ -73,12 +72,6 @@ callistoSwClockControl ::
   , 1 <= framesize
   , 1 <= DomainPeriod dom
   ) =>
-  -- | CPU clock
-  Clock dom ->
-  -- | CPU reset
-  Reset dom ->
-  -- | CPU enable
-  Enable dom ->
   -- | Clock control config
   SwControlConfig dom margin framesize ->
   -- | Availability mask
@@ -86,7 +79,7 @@ callistoSwClockControl ::
   -- | Diff counters
   Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
   Signal dom (CallistoResult nLinks)
-callistoSwClockControl clk rst ena (SwControlConfig (reframe :: Signal dom Bool) mgn fsz) mask ebs =
+callistoSwClockControl (SwControlConfig (reframe :: Signal dom Bool) mgn fsz) mask ebs =
   hwSeqX callistoSwIla callistoResult
  where
   callistoResult =
@@ -113,8 +106,8 @@ callistoSwClockControl clk rst ena (SwControlConfig (reframe :: Signal dom Bool)
         )
           { depth = D16384
           }
-        clk
-        (unsafeToActiveLow rst)
+        hasClock
+        (unsafeToActiveLow hasReset)
         capture
         debugData.updatePeriod
         debugData.updatePeriodMin
@@ -122,30 +115,20 @@ callistoSwClockControl clk rst ena (SwControlConfig (reframe :: Signal dom Bool)
 
   debugRegisterCfg = DebugRegisterCfg <$> reframe
 
-  capture = isRising clk rst ena False (isJust <$> ccData.clockMod)
+  capture = isRising False (isJust <$> ccData.clockMod)
 
   (_, (ccData, debugData)) =
-    toSignals
-      ( circuit $ \jtag -> do
-          [wbClockControl, wbDebug, wbDummy] <-
-            withClockResetEnable clk rst ena $ processingElement peConfig -< jtag
+    toSignals @()
+      ( circuit $ \_unit -> do
+          jtag <- idleSource -< ()
+          [wbClockControl, wbDebug, wbDummy] <- processingElement NoDumpVcd peConfig -< jtag
           idleSink -< wbDummy
-          [ccd0, ccd1] <-
-            cSignalDupe
-              <| withClockResetEnable
-                clk
-                rst
-                ena
-                (clockControlWb mgn fsz mask ebs)
-              -< wbClockControl
+          [ccd0, ccd1] <- cSignalDupe <| clockControlWb mgn fsz mask ebs -< wbClockControl
           cm <- cSignalMap clockMod -< ccd0
-          dbg <-
-            withClockResetEnable clk rst enableGen
-              $ debugRegisterWb debugRegisterCfg
-              -< (wbDebug, cm)
+          dbg <- debugRegisterWb debugRegisterCfg -< (wbDebug, cm)
           idC -< (ccd1, dbg)
       )
-      (pure $ JtagIn low low low, (pure (), pure ()))
+      ((), (pure (), pure ()))
   (iMem, dMem) =
     $( do
         root <- runIO $ findParentContaining "cabal.project"
