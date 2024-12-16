@@ -19,6 +19,16 @@ data-files:
   data/**/*.xdc
   data/**/*.yml
 
+flag cpu-include-binaries
+  description: Include riscv binaries in the instantiated RISCV cores.
+  default: False
+  manual: True
+
+flag sim-baud-rate
+  description: Use the maximum domain allowed baud rate for simulating uart circuits.
+  default: False
+  manual: True
+
 common common-options
   default-extensions:
     -- TemplateHaskell is used to support convenience functions such as
@@ -163,6 +173,12 @@ library
 
   autogen-modules:
     Paths_bittide_instances
+
+  if flag(cpu-include-binaries)
+    cpp-options: -DCPU_INCLUDE_BINARIES
+
+  if flag(sim-baud-rate)
+    cpp-options: -DSIM_BAUD_RATE
 
 test-suite doctests
   type: exitcode-stdio-1.0
