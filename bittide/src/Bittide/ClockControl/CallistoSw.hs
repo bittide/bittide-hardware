@@ -16,12 +16,9 @@ import Clash.Prelude hiding (PeriodToCycles)
 
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Data.Maybe (fromMaybe, isJust)
-import Language.Haskell.TH (runIO)
-import Project.FilePath
 import Protocols
 import Protocols.Idle
-import System.FilePath
-import VexRiscv (DumpVcd (NoDumpVcd))
+import VexRiscv (DumpVcd (NoDumpVcd), JtagIn)
 
 import Bittide.CircuitUtils
 import Bittide.ClockControl (RelDataCount)
@@ -31,10 +28,8 @@ import Bittide.ClockControl.DebugRegister (
   debugRegisterWb,
  )
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
-import Bittide.DoubleBufferedRam (ContentType (Blob), InitialContent (Reloadable))
+import Bittide.DoubleBufferedRam (InitialContent (Undefined))
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.ProcessingElement.Util (memBlobsFromElf)
-import Bittide.SharedTypes (ByteOrder (BigEndian))
 
 -- | Configuration type for software clock control.
 data SwControlConfig dom mgn fsz where
@@ -44,6 +39,8 @@ data SwControlConfig dom mgn fsz where
     , 1 <= fsz
     , KnownDomain dom
     ) =>
+    -- | JTAG input to the CPU
+    Signal dom JtagIn ->
     -- | Enable reframing?
     --
     -- N.B.: FOR TESTING USE ONLY. Reframing should eventually be handled solely within
@@ -79,7 +76,7 @@ callistoSwClockControl ::
   -- | Diff counters
   Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
   Signal dom (CallistoResult nLinks)
-callistoSwClockControl (SwControlConfig (reframe :: Signal dom Bool) mgn fsz) mask ebs =
+callistoSwClockControl (SwControlConfig jtagIn reframe mgn fsz) mask ebs =
   hwSeqX callistoSwIla callistoResult
  where
   callistoResult =
@@ -89,6 +86,7 @@ callistoSwClockControl (SwControlConfig (reframe :: Signal dom Bool) mgn fsz) ma
       <*> ccData.allStable
       <*> ccData.allSettled
       <*> resultRfs
+      <*> jtag
 
   resultRfs = fromMaybe Done <$> debugData.reframingState
 
@@ -117,30 +115,19 @@ callistoSwClockControl (SwControlConfig (reframe :: Signal dom Bool) mgn fsz) ma
 
   capture = isRising False (isJust <$> ccData.clockMod)
 
-  (_, (ccData, debugData)) =
-    toSignals @()
-      ( circuit $ \_unit -> do
-          jtag <- idleSource -< ()
-          [wbClockControl, wbDebug, wbDummy] <- processingElement NoDumpVcd peConfig -< jtag
-          idleSink -< wbDummy
-          [ccd0, ccd1] <- cSignalDupe <| clockControlWb mgn fsz mask ebs -< wbClockControl
-          cm <- cSignalMap clockMod -< ccd0
-          dbg <- debugRegisterWb debugRegisterCfg -< (wbDebug, cm)
-          idC -< (ccd1, dbg)
-      )
-      ((), (pure (), pure ()))
-  (iMem, dMem) =
-    $( do
-        root <- runIO $ findParentContaining "cabal.project"
-        let
-          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-          elfPath = elfDir </> "clock-control"
-          iSize = 64 * 1024 -- 64 KB
-          dSize = 64 * 1024 -- 64 KB
-        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
-     )
+  (jtag, (ccData, debugData)) =
+    circuitFn (jtagIn, (pure (), pure ()))
+
+  Circuit circuitFn = circuit $ \jtag -> do
+    [wbClockControl, wbDebug, wbDummy] <- processingElement NoDumpVcd peConfig -< jtag
+    idleSink -< wbDummy
+    [ccd0, ccd1] <- cSignalDupe <| clockControlWb mgn fsz mask ebs -< wbClockControl
+    cm <- cSignalMap clockMod -< ccd0
+    dbg <- debugRegisterWb debugRegisterCfg -< (wbDebug, cm)
+    idC -< (ccd1, dbg)
+
   peConfig =
     PeConfig
       (0b100 :> 0b010 :> 0b110 :> 0b111 :> 0b001 :> Nil)
-      (Reloadable $ Blob iMem)
-      (Reloadable $ Blob dMem)
+      (Undefined @(Div (64 * 1024) 4))
+      (Undefined @(Div (64 * 1024) 4))

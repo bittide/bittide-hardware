@@ -7,7 +7,17 @@ if { $user_gdb_port == "" } {
   error "Required environment variable 'GDB_PORT' is not set."
 }
 
+set user_tcl_port [env TCL_PORT]
+if { $user_tcl_port == "" } {
+  error "Required environment variable 'TCL_PORT' is not set."
+}
+
+set user_telnet_port [env TELNET_PORT]
+if { $user_telnet_port == "" } {
+  error "Required environment variable 'TELNET_PORT' is not set."
+}
+
 bindto 0.0.0.0
 gdb_port $user_gdb_port
-tcl_port 6666
-telnet_port 4444
+tcl_port $user_tcl_port
+telnet_port $user_telnet_port

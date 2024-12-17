@@ -18,6 +18,7 @@ import Clash.Prelude
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker (StabilityIndication)
 import Clash.Signal.TH.Extra (deriveSignalHasFields)
+import VexRiscv (JtagOut)
 
 -- | Result of the clock control algorithm.
 data CallistoResult (n :: Nat) = CallistoResult
@@ -34,6 +35,8 @@ data CallistoResult (n :: Nat) = CallistoResult
   -- buffers have been settled.
   , reframingState :: ReframingState
   -- ^ State of the Reframing detector
+  , jtagOut :: JtagOut
+  -- ^ JTAG output from the CPU
   }
   deriving (Generic, NFDataX)
 

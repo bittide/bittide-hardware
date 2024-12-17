@@ -93,7 +93,7 @@ preProcessFunc v _name ilaPath hwT deviceInfo = do
   execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
   commit_hw_vio v ["[get_hw_vios]"]
 
-  (ocd, ocdClean) <- startOpenOcd deviceInfo.usbAdapterLocation 3333
+  (ocd, ocdClean) <- startOpenOcd deviceInfo.usbAdapterLocation 3333 6666 4444
 
   hSetBuffering ocd.stderrHandle LineBuffering
 
@@ -113,11 +113,10 @@ preProcessFunc v _name ilaPath hwT deviceInfo = do
 
   putStrLn "Starting Picocom..."
   (pico, picoClean) <-
-    startPicocomWithLoggingAndEnv
+    startPicocomWithLogging
       deviceInfo.serial
       stdoutLog
       stderrLog
-      [("PICOCOM_BAUD", "9600")]
 
   hSetBuffering pico.stdinHandle LineBuffering
   hSetBuffering pico.stdoutHandle LineBuffering
@@ -158,15 +157,15 @@ preProcessFunc v _name ilaPath hwT deviceInfo = do
     , "set logging overwrite on"
     , "set logging enabled on"
     , "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/smoltcp_client\""
+    , "target extended-remote :3333"
+    , "load"
+    , gdbEcho "load done"
     , "break core::panicking::panic"
     , "break ExceptionHandler"
     , "break rust_begin_unwind"
     , "break smoltcp_client::gdb_panic"
-    , "target extended-remote :3333"
-    , "load"
-    , gdbEcho "load done"
     , "define hook-stop"
-    , "printf \"!!! program stopped executing !!!\n\""
+    , "printf '!!! program stopped executing !!!\\n'"
     , "i r"
     , "bt"
     , "quit 1"

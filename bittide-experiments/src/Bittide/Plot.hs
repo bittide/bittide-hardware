@@ -41,7 +41,7 @@ import Graphics.Matplotlib (
 import Graphics.Matplotlib qualified as MP (plot)
 
 import Bittide.ClockControl (RelDataCount)
-import Bittide.ClockControl.Callisto (ReframingState (..))
+import Bittide.ClockControl.Callisto.Types (ReframingState (..))
 import Bittide.ClockControl.StabilityChecker qualified as SC (StabilityIndication (..))
 import Bittide.Topology
 

@@ -97,6 +97,7 @@ common common-options
     clash-prelude,
     clash-protocols,
     clash-vexriscv,
+    clock,
     constraints >=0.13.3 && <0.15,
     containers,
     cryptohash-sha256,
@@ -137,6 +138,7 @@ library
     Bittide.Instances.Hitl.BoardTest
     Bittide.Instances.Hitl.DnaOverSerial
     Bittide.Instances.Hitl.Driver.DnaOverSerial
+    Bittide.Instances.Hitl.Driver.SwCcTopologies
     Bittide.Instances.Hitl.Driver.VexRiscv
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
     Bittide.Instances.Hitl.Ethernet
@@ -156,7 +158,6 @@ library
     Bittide.Instances.Hitl.Utils.Vivado
     Bittide.Instances.Hitl.VexRiscv
     Bittide.Instances.Pnr.Calendar
-    Bittide.Instances.Pnr.ClockControl
     Bittide.Instances.Pnr.Counter
     Bittide.Instances.Pnr.ElasticBuffer
     Bittide.Instances.Pnr.Ethernet

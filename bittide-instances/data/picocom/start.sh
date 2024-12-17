@@ -22,6 +22,6 @@ mkdir -p "${stderr_dir}"
 
 PICOCOM_BAUD="${PICOCOM_BAUD:-921600}"
 
-picocom --baud "${PICOCOM_BAUD}" --imap lfcrlf --omap lfcrlf $@ \
+exec picocom --baud "${PICOCOM_BAUD}" --imap lfcrlf --omap lfcrlf $@ \
   > >(tee "${PICOCOM_STDOUT_LOG}") \
   2> >(tee "${PICOCOM_STDERR_LOG}" >&2)

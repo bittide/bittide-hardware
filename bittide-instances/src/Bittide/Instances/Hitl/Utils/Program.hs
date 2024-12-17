@@ -17,6 +17,7 @@ import Data.Maybe (fromJust)
 import System.IO
 import System.Posix.Env (getEnvironment)
 import System.Process
+import System.Timeout (timeout)
 
 getOpenOcdStartPath :: IO FilePath
 getOpenOcdStartPath = getDataFileName "data/openocd/start.sh"
@@ -33,13 +34,25 @@ data ProcessStdIoHandles = ProcessStdIoHandles
   , stderrHandle :: Handle
   }
 
-withOpenOcd :: String -> Int -> (ProcessStdIoHandles -> IO a) -> IO a
-withOpenOcd usbLoc gdbPort action = do
-  (ocd, clean) <- startOpenOcd usbLoc gdbPort
+awaitProcessTermination :: String -> ProcessHandle -> Maybe Int -> IO ()
+awaitProcessTermination name h Nothing = do
+  putStrLn $ "Waiting for process " <> name <> " to terminate"
+  _ <- waitForProcess h
+  return ()
+awaitProcessTermination name h (Just t) = do
+  putStrLn $ "Waiting for process " <> name <> " to terminate"
+  result <- timeout t $ waitForProcess h
+  case result of
+    Just _ -> return ()
+    Nothing -> error "Waiting for pocess termination timed out."
+
+withOpenOcd :: String -> Int -> Int -> Int -> (ProcessStdIoHandles -> IO a) -> IO a
+withOpenOcd usbLoc gdbPort tclPort telnetPort action = do
+  (ocd, clean) <- startOpenOcd usbLoc gdbPort tclPort telnetPort
   finally (action ocd) clean
 
-startOpenOcd :: String -> Int -> IO (ProcessStdIoHandles, IO ())
-startOpenOcd usbLoc gdbPort = do
+startOpenOcd :: String -> Int -> Int -> Int -> IO (ProcessStdIoHandles, IO ())
+startOpenOcd usbLoc gdbPort tclPort telnetPort = do
   startOpenOcdPath <- getOpenOcdStartPath
   currentEnv <- getEnvironment
   let
@@ -48,7 +61,15 @@ startOpenOcd usbLoc gdbPort = do
         { std_in = CreatePipe
         , std_out = CreatePipe
         , std_err = CreatePipe
-        , env = Just (currentEnv <> [("USB_DEVICE", usbLoc), ("GDB_PORT", show gdbPort)])
+        , env =
+            Just
+              ( currentEnv
+                  <> [ ("USB_DEVICE", usbLoc)
+                     , ("GDB_PORT", show gdbPort)
+                     , ("TCL_PORT", show tclPort)
+                     , ("TELNET_PORT", show telnetPort)
+                     ]
+              )
         }
 
   ocdHandles@(openOcdStdin, openOcdStdout, openOcdStderr, _openOcdPh) <-
@@ -63,6 +84,47 @@ startOpenOcd usbLoc gdbPort = do
         }
 
   pure (ocdHandles', cleanupProcess ocdHandles)
+
+startOpenOcdWithEnv ::
+  [(String, String)] ->
+  String ->
+  Int ->
+  Int ->
+  Int ->
+  IO (ProcessStdIoHandles, ProcessHandle, IO ())
+startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort = do
+  startOpenOcdPath <- getOpenOcdStartPath
+  currentEnv <- getEnvironment
+  let
+    openOcdProc =
+      (proc startOpenOcdPath [])
+        { std_in = CreatePipe
+        , std_out = CreatePipe
+        , std_err = CreatePipe
+        , env =
+            Just
+              ( currentEnv
+                  <> extraEnv
+                  <> [ ("USB_DEVICE", usbLoc)
+                     , ("GDB_PORT", show gdbPort)
+                     , ("TCL_PORT", show tclPort)
+                     , ("TELNET_PORT", show telnetPort)
+                     ]
+              )
+        }
+
+  ocdHandles@(openOcdStdin, openOcdStdout, openOcdStderr, openOcdPh) <-
+    createProcess openOcdProc
+
+  let
+    ocdHandles' =
+      ProcessStdIoHandles
+        { stdinHandle = fromJust openOcdStdin
+        , stdoutHandle = fromJust openOcdStdout
+        , stderrHandle = fromJust openOcdStderr
+        }
+
+  pure (ocdHandles', openOcdPh, cleanupProcess ocdHandles)
 
 withGdb :: (ProcessStdIoHandles -> IO a) -> IO a
 withGdb action = do
@@ -86,6 +148,24 @@ startGdb = do
         }
 
   pure (gdbHandles', cleanupProcess gdbHandles)
+
+startGdbH :: IO (ProcessStdIoHandles, ProcessHandle, IO ())
+startGdbH = do
+  let
+    gdbProc = (proc "gdb" []){std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe}
+
+  gdbHandles@(gdbStdin, gdbStdout, gdbStderr, gdbPh) <-
+    createProcess gdbProc
+
+  let
+    gdbHandles' =
+      ProcessStdIoHandles
+        { stdinHandle = fromJust gdbStdin
+        , stdoutHandle = fromJust gdbStdout
+        , stderrHandle = fromJust gdbStderr
+        }
+
+  pure (gdbHandles', gdbPh, cleanupProcess gdbHandles)
 
 startPicocom :: FilePath -> IO (ProcessStdIoHandles, IO ())
 startPicocom devPath = do

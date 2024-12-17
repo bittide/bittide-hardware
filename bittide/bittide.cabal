@@ -127,7 +127,6 @@ library
     Bittide.CaptureUgn
     Bittide.CircuitUtils
     Bittide.ClockControl
-    Bittide.ClockControl.Callisto
     Bittide.ClockControl.Callisto.Types
     Bittide.ClockControl.Callisto.Util
     Bittide.ClockControl.CallistoSw

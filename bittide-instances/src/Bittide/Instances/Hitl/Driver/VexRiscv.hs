@@ -71,7 +71,7 @@ driverFunc v _name ilaPath targets = do
     let targetIndex = fromMaybe 9 $ L.findIndex (\di -> di.deviceId == targetId) demoRigInfo
     -- since we're running one test after another we don't need a different port
     let gdbPort = 3333 -- + targetIndex
-    withOpenOcd d.usbAdapterLocation gdbPort $ \ocd -> do
+    withOpenOcd d.usbAdapterLocation gdbPort 6666 4444 $ \ocd -> do
       -- make sure OpenOCD is started properly
 
       hSetBuffering ocd.stderrHandle LineBuffering
@@ -130,7 +130,7 @@ driverFunc v _name ilaPath targets = do
             , "load"
             ]
 
-          tryWithTimeout "Waiting for \"load dome\"" 120_000_000
+          tryWithTimeout "Waiting for \"load done\"" 120_000_000
             $ expectLine gdb.stdoutHandle gdbWaitForLoad
 
           -- break test

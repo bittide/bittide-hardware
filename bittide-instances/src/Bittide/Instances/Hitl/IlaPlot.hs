@@ -57,7 +57,7 @@ import Clash.Sized.Extra (concatUnsigneds)
 
 import Bittide.Arithmetic.Time (PeriodToCycles, trueFor)
 import Bittide.ClockControl (RelDataCount, SpeedChange (..))
-import Bittide.ClockControl.Callisto (
+import Bittide.ClockControl.Callisto.Types (
   CallistoResult (..),
   ReframingState (..),
  )
