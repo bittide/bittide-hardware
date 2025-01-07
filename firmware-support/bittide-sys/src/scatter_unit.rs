@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 pub struct ScatterUnit<const MEM_SIZE: usize> {
-    base_addr: *const u32,
+    base_addr: *const u64,
 }
 
 impl<const MEM_SIZE: usize> ScatterUnit<MEM_SIZE> {
-    const METACYCLE_OFFSET: usize = MEM_SIZE * 2;
+    const METACYCLE_OFFSET: usize = MEM_SIZE;
 
     /// Create a new [`ScatterUnit`] instance given a base address. The
     /// `MEM_SIZE` is the number of 64-bit words.
@@ -16,7 +16,7 @@ impl<const MEM_SIZE: usize> ScatterUnit<MEM_SIZE> {
     /// The `base_addr` pointer MUST be a valid pointer that is backed
     /// by a memory mapped scatter unit instance.
     pub unsafe fn new(base_addr: *const ()) -> ScatterUnit<MEM_SIZE> {
-        let addr = base_addr as *const u32;
+        let addr = base_addr as *const u64;
         ScatterUnit { base_addr: addr }
     }
 
@@ -26,7 +26,7 @@ impl<const MEM_SIZE: usize> ScatterUnit<MEM_SIZE> {
     ///
     /// The destination memory size must be smaller or equal to the memory size
     ///  of the `ScatterUnit`.
-    pub fn read_slice(&self, dst: &mut [u32], offset: usize) {
+    pub fn read_slice(&self, dst: &mut [u64], offset: usize) {
         assert!(dst.len() + offset <= Self::METACYCLE_OFFSET);
         let mut off = offset;
         for d in dst {
@@ -47,6 +47,7 @@ impl<const MEM_SIZE: usize> ScatterUnit<MEM_SIZE> {
             let _val = self
                 .base_addr
                 .add(Self::METACYCLE_OFFSET)
+                .cast::<usize>()
                 .read_volatile();
         }
     }

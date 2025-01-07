@@ -37,8 +37,8 @@ fn main() -> ! {
     //   2: Gather memory is written over the link to the scatter memory
     //   3: Read from scatter memory
 
-    let source: [u32; MEM_SIZE] = core::array::from_fn(|i| i as u32);
-    let mut destination: [u32; MEM_SIZE] = [0; MEM_SIZE];
+    let source: [u64; MEM_SIZE] = core::array::from_fn(|i| i as u64);
+    let mut destination: [u64; MEM_SIZE] = [0; MEM_SIZE];
 
     // First metacycle
     gather_unit.wait_for_new_metacycle();
