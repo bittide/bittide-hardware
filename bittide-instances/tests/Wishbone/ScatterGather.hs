@@ -41,7 +41,7 @@ simResult = chr . fromIntegral <$> catMaybes uartStream
  where
   uartStream =
     sampleC def{timeoutAfter = 100_000}
-      $ withClockResetEnable clockGen resetGen enableGen
+      $ withClockResetEnable clockGen (resetGenN d2) enableGen
       $ dut @System @4 @32 scatterConfig gatherConfig
 
   scatterConfig = ScatterConfig SNat $ CalendarConfig d32 SNat scatterCal scatterCal

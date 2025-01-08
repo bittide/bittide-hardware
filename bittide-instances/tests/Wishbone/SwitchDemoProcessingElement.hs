@@ -46,7 +46,7 @@ simResult = unlines . takeWhileInclusive (/= "Finished") . lines $ uartString
       $ dut @System dnaA dnaB
 
   clk = clockGen
-  reset = resetGen
+  reset = resetGenN d2
   enable = enableGen
   dnaA = pure 0xAAAA_0123_4567_89AB_CDEF_0001
   dnaB = pure 0xBBBB_0123_4567_89AB_CDEF_0001

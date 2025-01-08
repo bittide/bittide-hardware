@@ -32,7 +32,7 @@ jtagChain =
     (Signal dom JtagOut, Vec 0 (Signal dom JtagIn))
   go0 (fwd, _) = (toBwd <$> fwd, Nil)
    where
-    toBwd (JtagIn{testDataIn}) = JtagOut{testDataOut = testDataIn, debugReset = 0}
+    toBwd (JtagIn{testDataIn}) = JtagOut{testDataOut = testDataIn}
 
   go ::
     forall m.
@@ -45,7 +45,7 @@ jtagChain =
     tmss = repeat $ (.testModeSelect) <$> fwd
     tdis = ((.testDataIn) <$> fwd) :> ((.testDataOut) <<$>> init bwds)
     fwds = zipWith3 (liftA3 JtagIn) tcks tmss tdis
-    bwd = (\jtagOut -> jtagOut{debugReset = 0}) <$> last bwds
+    bwd = last bwds
 
 {- | 'unsafeSynchronizer', but for JTAG signals. Does not insert any synchronization
 elements.

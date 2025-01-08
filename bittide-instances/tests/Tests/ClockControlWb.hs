@@ -132,7 +132,7 @@ debugRegisterConfig =
 dut :: Circuit () (Df System (BitVector 8), CSignal System (ClockControlData LinkCount))
 dut =
   withBittideByteOrder
-    $ withClockResetEnable clockGen resetGen enableGen
+    $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
     $ \_unit -> do
       (uartRx, jtag) <- idleSource

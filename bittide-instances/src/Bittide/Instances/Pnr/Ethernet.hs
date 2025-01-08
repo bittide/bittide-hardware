@@ -58,7 +58,7 @@ sim =
     (_, uartTx, _, _) =
       vexRiscEthernet
         clockGen
-        resetGen
+        (resetGenN d2)
         (clockToDiffClock clockGen)
         (pure $ unpack 0, uartRx, pure $ unpack 0)
 

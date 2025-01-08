@@ -18,7 +18,7 @@
         verilog-ethernet = import ./nix/verilog-ethernet.nix {
           inherit pkgs;
         };
-        openocd-vexriscv = import ./nix/openocd-vexriscv.nix {
+        openocd-riscv = import ./nix/openocd-riscv.nix {
           inherit pkgs;
         };
         mc = import ./nix/mc.nix {
@@ -80,7 +80,7 @@
             pkgs.gh
 
             # VexRiscv OpenOCD
-            openocd-vexriscv
+            openocd-riscv
             pkgs.gdb
 
             # UART communication
@@ -91,7 +91,7 @@
             # Prevents Perl warnings
             export LC_ALL="C.UTF-8";
             export VERILOG_ETHERNET_SRC="${verilog-ethernet}"
-            export OPENOCD_DIST="${openocd-vexriscv}"
+            export OPENOCD_DIST="${openocd-riscv}"
 
             # We use unstable features (floating point), we don't want to hear about it
             # every time we build.

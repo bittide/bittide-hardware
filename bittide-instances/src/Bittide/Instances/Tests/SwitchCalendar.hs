@@ -55,7 +55,7 @@ simResult = chr . fromIntegral <$> catMaybes uartStream
 dut :: Circuit (ConstBwd MM) (Df Basic200 (BitVector 8))
 dut =
   withBittideByteOrder
-    $ withClockResetEnable clockGen resetGen enableGen
+    $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
     $ \mm -> do
       (uartRx, jtag) <- idleSource
@@ -64,7 +64,7 @@ dut =
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
       constBwd 0b00 -< prefixUart
       _switchResult <-
-        switchExample clockGen resetGen -< (switchMm, (Fwd (repeat $ pure 0), switchCalWb))
+        switchExample clockGen (resetGenN d2) -< (switchMm, (Fwd (repeat $ pure 0), switchCalWb))
       constBwd 0b11 -< prefixSwitchCal
       idC -< uartTx
  where
