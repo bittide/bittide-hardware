@@ -19,6 +19,12 @@ import System.Posix.Env (getEnvironment)
 import System.Process
 import System.Timeout (timeout)
 
+brackets :: [IO a] -> (a -> IO b) -> ([a] -> IO c) -> IO c
+brackets acqs rel act = go [] acqs
+ where
+  go resL [] = act (reverse resL)
+  go resL (acq : acqs1) = bracket acq rel $ \res -> go (res : resL) acqs1
+
 getOpenOcdStartPath :: IO FilePath
 getOpenOcdStartPath = getDataFileName "data/openocd/start.sh"
 

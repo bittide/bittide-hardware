@@ -14,11 +14,9 @@ import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Vivado
-import Control.Exception
 import Control.Monad.Extra
 import qualified Data.ByteString as BS
 import Data.ByteString.Internal (w2c)
-import Data.Either (partitionEithers)
 import qualified Data.List as L
 import Data.Maybe
 import Data.Word8 (isHexDigit)
@@ -33,38 +31,6 @@ import Test.Tasty.HUnit
 import Vivado
 import Vivado.Tcl
 
-dnaOverSerialPreProcess ::
-  VivadoHandle ->
-  String ->
-  FilePath ->
-  HwTarget ->
-  DeviceInfo ->
-  IO (TestStepResult (ProcessStdIoHandles, IO ()))
-dnaOverSerialPreProcess _v _name _ilaPath hwT deviceInfo = do
-  let targetId = idFromHwT hwT
-  let targetIndex = fromMaybe 9 $ L.findIndex (\d -> d.deviceId == targetId) demoRigInfo
-
-  -- make sure PicoCom is started properly
-
-  projectDir <- findParentContaining "cabal.project"
-  let
-    hitlDir = projectDir </> "_build" </> "hitl"
-    stdoutLog = hitlDir </> "picocom-stdout." <> show targetIndex <> ".log"
-    stderrLog = hitlDir </> "picocom-stderr." <> show targetIndex <> ".log"
-  putStrLn $ "logging stdout to `" <> stdoutLog <> "`"
-  putStrLn $ "logging stderr to `" <> stderrLog <> "`"
-  (pico, picoClean) <-
-    startPicocomWithLoggingAndEnv
-      deviceInfo.serial
-      stdoutLog
-      stderrLog
-      [("PICOCOM_BAUD", "9600")]
-
-  hSetBuffering pico.stdinHandle LineBuffering
-  hSetBuffering pico.stdoutHandle LineBuffering
-
-  pure $ TestStepSuccess (pico, picoClean)
-
 {- | Test that all FPGAs that are programmed with `dnaOverSerial` transmit the
 DNA that we expect based on the DeviceInfo.
 -}
@@ -75,25 +41,10 @@ dnaOverSerialDriver ::
   [(HwTarget, DeviceInfo)] ->
   IO ExitCode
 dnaOverSerialDriver v _name ilaPath targets = do
-  preProcessResults <- forM targets $ \(hwT, dI) -> do
-    dnaOverSerialPreProcess v _name ilaPath hwT dI >>= \case
-      TestStepSuccess out -> pure $ Right out
-      TestStepFailure reason -> pure $ Left reason
+  results <- brackets initPicocoms snd $ \initPicocomsData -> do
+    let targetPicocoms = fst <$> initPicocomsData
 
-  putStrLn "Attempted to open Picocom for all target devices"
-
-  let (preProcessFails, preProcessPasses) = partitionEithers preProcessResults
-
-  unless (null preProcessFails) $ do
-    let failReason = "Some preprocess steps failed. reasons:\n - " <> L.intercalate "\n - " preProcessFails
-    forM_ preProcessPasses snd
-    assertFailure failReason
-
-  putStrLn "No failures for Picocom opening"
-
-  flip finally (forM preProcessPasses snd) $ do
     putStrLn "Starting all targets to read DNA values"
-
     -- start all targets
     forM_ targets $ \(hwT, _) -> do
       openHwTarget v hwT
@@ -107,19 +58,43 @@ dnaOverSerialDriver v _name ilaPath targets = do
     putStrLn "Serial ports:"
     mapM_ putStrLn [d.serial | (_, d) <- targets]
 
-    results <- forM (L.zip targets preProcessPasses) $ \((_, d), (picoCom, picoClean)) -> do
+    forM (L.zip targets targetPicocoms) $ \((_, d), picoCom) -> do
       putStrLn $ "Waiting for output on port: " <> d.serial
       res <- checkDna d picoCom
-      picoClean
       pure res
 
-    print results
-    if and results
-      then pure ExitSuccess
-      else do
-        assertFailure "Not all FPGAs transmitted the expected DNA"
-        pure $ ExitFailure 2
+  print results
+  if and results
+    then pure ExitSuccess
+    else do
+      assertFailure "Not all FPGAs transmitted the expected DNA"
+      pure $ ExitFailure 2
  where
+  initPicocoms :: [IO (ProcessStdIoHandles, IO ())]
+  initPicocoms = flip L.map targets $ \(hwT, dI) -> do
+    let targetId = idFromHwT hwT
+    let targetIndex = fromMaybe 9 $ L.findIndex (\d -> d.deviceId == targetId) demoRigInfo
+
+    projectDir <- findParentContaining "cabal.project"
+    let
+      hitlDir = projectDir </> "_build" </> "hitl"
+      stdoutLog = hitlDir </> "picocom-stdout." <> show targetIndex <> ".log"
+      stderrLog = hitlDir </> "picocom-stderr." <> show targetIndex <> ".log"
+    putStrLn $ "logging stdout to `" <> stdoutLog <> "`"
+    putStrLn $ "logging stderr to `" <> stderrLog <> "`"
+
+    (pico, picoClean) <-
+      startPicocomWithLoggingAndEnv
+        dI.serial
+        stdoutLog
+        stderrLog
+        [("PICOCOM_BAUD", "9600")]
+
+    hSetBuffering pico.stdinHandle LineBuffering
+    hSetBuffering pico.stdoutHandle LineBuffering
+
+    pure (pico, picoClean)
+
   checkDna :: DeviceInfo -> ProcessStdIoHandles -> IO Bool
   checkDna d pico = do
     terminalReadyResult <-
@@ -142,6 +117,7 @@ dnaOverSerialDriver v _name ilaPath targets = do
     putStrLn $ "Received DNA: " <> receivedDna
     putStrLn $ "Differences:  " <> differences
     pure match
+
   findDna :: ProcessStdIoHandles -> String -> IO String
   findDna pico prev = do
     get <- BS.hGet pico.stdoutHandle 1

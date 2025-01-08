@@ -71,113 +71,6 @@ waitForClients numberOfClients serverSock = do
     )
     [1 .. numberOfClients]
 
-preProcessFunc ::
-  VivadoHandle ->
-  String ->
-  FilePath ->
-  HwTarget ->
-  DeviceInfo ->
-  IO
-    ( TestStepResult
-        ( ProcessStdIoHandles
-        , ProcessStdIoHandles
-        , ProcessStdIoHandles
-        , IO ()
-        )
-    )
-preProcessFunc v _name ilaPath hwT deviceInfo = do
-  openHwTarget v hwT
-  execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
-  refresh_hw_device v []
-
-  execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
-  commit_hw_vio v ["[get_hw_vios]"]
-
-  (ocd, ocdClean) <- startOpenOcd deviceInfo.usbAdapterLocation 3333 6666 4444
-
-  hSetBuffering ocd.stderrHandle LineBuffering
-
-  putStr "Waiting for halt..."
-  expectLine ocd.stderrHandle openOcdWaitForHalt
-  putStrLn " Done"
-
-  -- make sure PicoCom is started properly
-
-  projectDir <- findParentContaining "cabal.project"
-  let
-    hitlDir = projectDir </> "_build" </> "hitl"
-    stdoutLog = hitlDir </> "picocom-stdout.log"
-    stderrLog = hitlDir </> "picocom-stderr.log"
-  putStrLn $ "logging stdout to `" <> stdoutLog <> "`"
-  putStrLn $ "logging stderr to `" <> stderrLog <> "`"
-
-  putStrLn "Starting Picocom..."
-  (pico, picoClean) <-
-    startPicocomWithLogging
-      deviceInfo.serial
-      stdoutLog
-      stderrLog
-
-  hSetBuffering pico.stdinHandle LineBuffering
-  hSetBuffering pico.stdoutHandle LineBuffering
-
-  let
-    -- Create function to log the output of the processes
-    loggingSequence = do
-      threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
-      putStrLn "Picocom stdout"
-      picocomOut <- readRemainingChars pico.stdoutHandle
-      putStrLn picocomOut
-
-      putStrLn "Picocom StdErr"
-      readRemainingChars pico.stderrHandle >>= putStrLn
-
-    tryWithTimeout :: String -> Int -> IO a -> IO a
-    tryWithTimeout actionName dur action = do
-      result <- timeout dur action
-      case result of
-        Nothing -> do
-          loggingSequence
-          assertFailure $ "Timeout while performing action: " <> actionName
-        Just r -> pure r
-
-  putStrLn "Waiting for Picocom to be ready..."
-  tryWithTimeout "Picocom handshake" 10_000_000 $
-    waitForLine pico.stdoutHandle "Terminal ready"
-
-  -- program the FPGA
-  putStrLn "Starting GDB..."
-  (gdb, gdbClean) <- startGdb
-
-  hSetBuffering gdb.stdinHandle LineBuffering
-
-  runGdbCommands
-    gdb.stdinHandle
-    [ "set logging file ./_build/hitl/gdb-out.log"
-    , "set logging overwrite on"
-    , "set logging enabled on"
-    , "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/smoltcp_client\""
-    , "target extended-remote :3333"
-    , "load"
-    , gdbEcho "load done"
-    , "break core::panicking::panic"
-    , "break ExceptionHandler"
-    , "break rust_begin_unwind"
-    , "break smoltcp_client::gdb_panic"
-    , "define hook-stop"
-    , "printf '!!! program stopped executing !!!\\n'"
-    , "i r"
-    , "bt"
-    , "quit 1"
-    , "end"
-    , "continue"
-    ]
-
-  tryWithTimeout "Waiting for program to be loaded" 120_000_000 $
-    waitForLine gdb.stdoutHandle "load done"
-
-  pure $ TestStepSuccess (ocd, pico, gdb, gdbClean >> picoClean >> ocdClean)
-
 driverFunc ::
   VivadoHandle ->
   String ->
@@ -185,66 +78,138 @@ driverFunc ::
   [(HwTarget, DeviceInfo)] ->
   IO ExitCode
 driverFunc v _name ilaPath [(hwT, dI)] = do
-  preProcessResult <- preProcessFunc v _name ilaPath hwT dI
+  projectDir <- findParentContaining "cabal.project"
 
-  (_ocd, pico, _gdb, cleanupFn) <- case preProcessResult of
-    TestStepSuccess out -> pure out
-    TestStepFailure reason -> assertFailure $ "test failed. reason: " <> reason
+  let
+    hitlDir = projectDir </> "_build" </> "hitl"
+    stdoutLog = hitlDir </> "picocom-stdout.log"
+    stderrLog = hitlDir </> "picocom-stderr.log"
 
-  openHwTarget v hwT
-  execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
-  refresh_hw_device v []
+    initHwDevice = do
+      openHwTarget v hwT
+      execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
+      refresh_hw_device v []
 
-  execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
-  commit_hw_vio v ["[get_hw_vios]"]
+      execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
+      commit_hw_vio v ["[get_hw_vios]"]
 
-  putStrLn "Starting TCP Server"
-  withServer $ \(serverSock, _) -> do
-    let
-      -- Create function to log the output of the processes
-      loggingSequence = do
-        threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
-        putStrLn "Picocom stdout"
-        picocomOut <- readRemainingChars pico.stdoutHandle
-        putStrLn picocomOut
+    doWithTimeout :: Int -> IO a -> IO a
+    doWithTimeout time action = do
+      result <- timeout time action
+      case result of
+        Nothing -> error "Action failed with timeout."
+        Just value -> pure value
 
-        putStrLn "Picocom StdErr"
-        readRemainingChars pico.stderrHandle >>= putStrLn
+    initOpenOcd :: ProcessStdIoHandles -> IO ()
+    initOpenOcd ocd = do
+      hSetBuffering ocd.stderrHandle LineBuffering
+      putStr "Waiting for OpenOCD to halt..."
+      expectLine ocd.stderrHandle openOcdWaitForHalt
+      putStrLn "  Done"
 
-      tryWithTimeout :: String -> Int -> IO a -> IO a
-      tryWithTimeout actionName dur action = do
-        result <- timeout dur action
-        case result of
-          Nothing -> do
-            loggingSequence
-            assertFailure $ "Timeout while performing action: " <> actionName
-          Just r -> pure r
+    initPicocom :: ProcessStdIoHandles -> IO ()
+    initPicocom pico = do
+      hSetBuffering pico.stdinHandle LineBuffering
+      hSetBuffering pico.stdinHandle LineBuffering
 
-    putStrLn "Waiting for \"Starting TCP Client\""
+      putStrLn "Waiting for Picocom to be ready..."
+      doWithTimeout 10_000_000 $ waitForLine pico.stdoutHandle "Terminal ready"
 
-    tryWithTimeout "Handshake softcore" 10_000_000 $
-      waitForLine pico.stdoutHandle "Starting TCP Client"
+    initGdb :: ProcessStdIoHandles -> IO ()
+    initGdb gdb = do
+      hSetBuffering gdb.stdinHandle LineBuffering
 
-    let numberOfClients = 1
-    putStrLn $ "Waiting for " <> show numberOfClients <> " clients to connect to TCP server."
-    clients <-
-      tryWithTimeout "Wait for clients" 60_000_000 $
-        waitForClients numberOfClients serverSock
+      runGdbCommands
+        gdb.stdinHandle
+        [ "set logging file ./_build/hitl/gdb-out.log"
+        , "set logging overwrite on"
+        , "set logging enabled on"
+        , "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/smoltcp_client\""
+        , "target extended-remote :3333"
+        , "load"
+        , gdbEcho "load done"
+        , "break core::panicking::panic"
+        , "break ExceptionHandler"
+        , "break rust_begin_unwind"
+        , "break smoltcp_client::gdb_panic"
+        , "define hook-stop"
+        , "printf '!!! program stopped executing !!!\\n'"
+        , "i r"
+        , "bt"
+        , "quit 1"
+        , "end"
+        , "continue"
+        ]
+      doWithTimeout 120_000_000 $ waitForLine gdb.stdoutHandle "load done"
 
-    putStrLn "Receiving client data"
-    createDirectoryIfMissing True tcpDataDir
-    tryWithTimeout "Receive client data" 60_000_000 $
-      mapConcurrently_ runTcpTest clients
+    startTest = do
+      openHwTarget v hwT
+      execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
+      refresh_hw_device v []
 
-    putStrLn "Closing client connections"
-    tryWithTimeout "Closing connections" 10_000_000 $
-      mapConcurrently_ (NS.closeSock . fst) clients
-    putStrLn "Closing server connection"
-    loggingSequence
+      execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
+      commit_hw_vio v ["[get_hw_vios]"]
 
-  cleanupFn
+  initHwDevice
 
-  pure ExitSuccess
+  withOpenOcd dI.usbAdapterLocation 3333 6666 4444 $ \ocd -> do
+    initOpenOcd ocd
+
+    putStrLn "Starting Picocom..."
+    withPicocomWithLogging dI.serial stdoutLog stderrLog $ \pico -> do
+      initPicocom pico
+
+      putStrLn "Starting GDB..."
+      withGdb $ \gdb -> do
+        initGdb gdb
+
+        startTest
+
+        putStrLn "Starting TCP server"
+        withServer $ \(serverSock, _) -> do
+          let
+            -- Create function to log the output of the processes
+            loggingSequence = do
+              threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
+              putStrLn "Picocom stdout"
+              picocomOut <- readRemainingChars pico.stdoutHandle
+              putStrLn picocomOut
+
+              putStrLn "Picocom StdErr"
+              readRemainingChars pico.stderrHandle >>= putStrLn
+
+            tryWithTimeout :: String -> Int -> IO a -> IO a
+            tryWithTimeout actionName dur action = do
+              result <- timeout dur action
+              case result of
+                Nothing -> do
+                  loggingSequence
+                  assertFailure $ "Timeout while performing action: " <> actionName
+                Just r -> pure r
+
+          putStrLn "Waiting for \"Starting TCP Client\""
+
+          tryWithTimeout "Handshake softcore" 10_000_000 $
+            waitForLine pico.stdoutHandle "Starting TCP Client"
+
+          let numberOfClients = 1
+          putStrLn $ "Waiting for " <> show numberOfClients <> " clients to connect to TCP server."
+          clients <-
+            tryWithTimeout "Wait for clients" 60_000_000 $
+              waitForClients numberOfClients serverSock
+
+          putStrLn "Receiving client data"
+          createDirectoryIfMissing True tcpDataDir
+          tryWithTimeout "Receive client data" 60_000_000 $
+            mapConcurrently_ runTcpTest clients
+
+          putStrLn "Closing client connections"
+          tryWithTimeout "Closing connections" 10_000_000 $
+            mapConcurrently_ (NS.closeSock . fst) clients
+          putStrLn "Closing server connection"
+          loggingSequence
+
+          return ExitSuccess
 driverFunc _v _name _ilaPath _ = error "Ethernet/VexRiscvTcp driver func should only run with one hardware target"
 
 {- | Test that the `Bittide.Instances.Hitl.Ethernet:vexRiscvTcpTest` design programmed
