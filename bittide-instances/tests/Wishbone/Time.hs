@@ -64,7 +64,7 @@ Runs the `hello` binary from `firmware-binaries`.
 -}
 dut ::
   Circuit () (Df Basic50 (BitVector 8))
-dut = withClockResetEnable clockGen resetGen enableGen
+dut = withClockResetEnable clockGen (resetGenN d2) enableGen
   $ circuit
   $ \_unit -> do
     (uartRx, jtag) <- idleSource -< ()
