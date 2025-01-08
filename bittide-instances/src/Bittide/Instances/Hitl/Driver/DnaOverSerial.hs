@@ -96,7 +96,7 @@ dnaOverSerialDriver v _name ilaPath targets = do
 
     -- start all targets
     forM_ targets $ \(hwT, _) -> do
-      openHwT v hwT
+      openHwTarget v hwT
       execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
       refresh_hw_device v []
 

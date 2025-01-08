@@ -429,7 +429,7 @@ programBitstream outputDir hwTRefs url hasProbesFile = with $ \v -> do
       refToHwTMap <- resolveHwTRefs v hwTRefs
       let hwTs = nubOrd $ Map.elems refToHwTMap
       forM_ hwTs $ \hwT -> do
-        openHwT v hwT
+        openHwTarget v hwT
         execCmd_
           v
           "set_property"
@@ -667,7 +667,7 @@ waitTestCaseEnd v HitlTestCase{..} probesFilePath = do
   startTime <- getTime Monotonic
   let calcTimeSpentMs = (`div` 1000000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
   exitCodes <- forM (keys parameters) $ \(hwT, _) -> do
-    openHwT v hwT
+    openHwTarget v hwT
     execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
     pollTestDone startTime testTimeoutMs v hwT
 
@@ -812,12 +812,12 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFileP
         "WARNING: The HITL test case does not reference any hardware targets. Exiting."
       pure ExitSuccess
     else do
-      openHwT v (fst $ head (keys parameters))
+      openHwTarget v (fst $ head (keys parameters))
       verifyHwIlas v
       -- XXX: We should not rely on start probe assertion order.
       --      See https://github.com/bittide/bittide-hardware/issues/638.
       testData <- forM (sortOn (prettyShow . fst . fst) (toAscList parameters)) $ \((hwT, deviceInfo), param) -> do
-        openHwT v hwT
+        openHwTarget v hwT
         execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
         refresh_hw_device v []
         let paramBitSize = natToNatural @(BitSize a)
@@ -890,7 +890,7 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFileP
 
           forM_ testData $ \(hwT, _deviceInfo) -> do
             -- Assert HitlVio start probe
-            openHwT v hwT
+            openHwTarget v hwT
             execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
             refresh_hw_device v []
 
@@ -903,7 +903,7 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFileP
 
       putStrLn "Saving captured ILA data (if relevant)..."
       forM_ (keys parameters) $ \(hwT, _) -> do
-        openHwT v hwT
+        openHwTarget v hwT
         execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
         refresh_hw_device v ["-quiet"]
         ilas <- get_hw_ilas v []
@@ -924,7 +924,7 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFileP
 
       -- deassert all START signals
       forM_ (sortOn (prettyShow . fst . fst) (toAscList parameters)) $ \((hwT, _), _param) -> do
-        openHwT v hwT
+        openHwTarget v hwT
         execCmd_ v "set_property" ["PROBES.FILE", embrace probesFilePath, "[current_hw_device]"]
         refresh_hw_device v []
 

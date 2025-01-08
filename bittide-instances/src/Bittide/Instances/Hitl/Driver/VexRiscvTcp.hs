@@ -86,7 +86,7 @@ preProcessFunc ::
         )
     )
 preProcessFunc v _name ilaPath hwT deviceInfo = do
-  openHwT v hwT
+  openHwTarget v hwT
   execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
   refresh_hw_device v []
 
@@ -191,7 +191,7 @@ driverFunc v _name ilaPath [(hwT, dI)] = do
     TestStepSuccess out -> pure out
     TestStepFailure reason -> assertFailure $ "test failed. reason: " <> reason
 
-  openHwT v hwT
+  openHwTarget v hwT
   execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
   refresh_hw_device v []
 

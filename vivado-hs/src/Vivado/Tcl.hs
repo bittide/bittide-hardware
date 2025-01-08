@@ -20,8 +20,8 @@ import Vivado
 {- | Open the given hardware target and set the current hardware device to the
 Xilinx FPGA on it.
 -}
-openHwT :: VivadoHandle -> HwTarget -> IO ()
-openHwT v hwT = do
+openHwTarget :: VivadoHandle -> HwTarget -> IO ()
+openHwTarget v hwT = do
   currentHwT <- current_hw_target v []
   currentIsOpened <-
     execPrint v "get_property IS_OPENED [current_hw_target]" <&> \case

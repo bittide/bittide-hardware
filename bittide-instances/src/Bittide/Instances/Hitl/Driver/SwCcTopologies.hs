@@ -72,7 +72,7 @@ driverFunc v testName ilaPath targets = do
     startPrograms (hwT, d) = do
       putStrLn $ "Starting OpenOCD and GDB for target " <> show d.deviceId
 
-      openHwT v hwT
+      openHwTarget v hwT
       execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
       refresh_hw_device v []
       execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeProgEnTcl]
@@ -148,7 +148,7 @@ driverFunc v testName ilaPath targets = do
         runGdbCommands gdb.stdinHandle ["load"]
         tryWithTimeout "Waiting for program load to finish" 120_000_000
           $ expectLine gdb.stdoutHandle gdbWaitForLoad
-        openHwT v hwT
+        openHwTarget v hwT
         execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
         refresh_hw_device v []
         execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeProgEnTcl]
@@ -161,7 +161,7 @@ driverFunc v testName ilaPath targets = do
     startBinary (hwT, d) (_, gdb, cleanup) =
       handle (\e -> catchError d e >> cleanup >> throw e) $ do
         putStrLn $ "Starting binary on target " <> show d.deviceId
-        openHwT v hwT
+        openHwTarget v hwT
         execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
         refresh_hw_device v []
         execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeProgEnTcl]
@@ -184,7 +184,7 @@ driverFunc v testName ilaPath targets = do
           rest <- getTestsStatus hwtdRest hdlsRest statusRest
           if timeSpent < testTimeoutMs
             then do
-              openHwT v hwT
+              openHwTarget v hwT
               execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
               refresh_hw_device v []
               testDone <- execCmd v "get_property" ["INPUT_VALUE", getProbeTestDoneTcl]
@@ -248,7 +248,7 @@ driverFunc v testName ilaPath targets = do
       IO ()
     deassertStartTest (hwT, d) (_, _, cleanup) =
       handle (\e -> catchError d e >> cleanup >> throw e) $ do
-        openHwT v hwT
+        openHwTarget v hwT
         execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
         refresh_hw_device v []
         execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]

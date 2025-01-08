@@ -58,7 +58,7 @@ driverFunc v _name ilaPath targets = do
   exitCodes <- forM targets $ \(hwT, d) -> handle (catchError d) $ do
     putStrLn $ "Running driver for " <> d.deviceId
 
-    openHwT v hwT
+    openHwTarget v hwT
     execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
     refresh_hw_device v []
 
