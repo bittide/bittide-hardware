@@ -1,7 +1,7 @@
 { pkgs ? import ./nixpkgs.nix {} }:
 
 pkgs.stdenv.mkDerivation rec {
-  name = "openocd-vexriscv";
+  name = "openocd-riscv";
 
   buildInputs = [
     pkgs.autoconf
@@ -17,14 +17,14 @@ pkgs.stdenv.mkDerivation rec {
   ];
 
   src = pkgs.fetchgit {
-    url = "https://github.com/SpinalHDL/openocd_riscv.git";
-    rev = "058dfa50d625893bee9fecf8d604141911fac125";
-    sha256 = "sha256-UuX4Zfr9DiJx60nvBAv+9xCbWXExrk5KNSC5V5e4rsw=";
+    url = "https://github.com/riscv-collab/riscv-openocd";
+    rev = "ea8f9d51954b979ff6b4d90afa70352763199b63";
+    sha256 = "sha256-0Hv01wKkQma667kjE8KW5BgaK2U0fd6YVyUzV0VhAcw=";
     fetchSubmodules = true;
     deepClone = true;
     postFetch = ''
       # See: https://github.com/NixOS/nixpkgs/issues/8567#issuecomment-1846499599
-      find "$out/" -type d -name '.git' | xargs rm -rf
+      find "$out/" -type d -name '.git' -exec rm -rf {} ';'
     '';
   };
 
@@ -33,6 +33,6 @@ pkgs.stdenv.mkDerivation rec {
     ./configure --enable-ftdi --enable-dummy --prefix=$out
     make -j $(nproc)
     make install
-    mv $out/bin/openocd $out/bin/openocd-vexriscv
+    mv $out/bin/openocd $out/bin/openocd-riscv
   '';
 }
