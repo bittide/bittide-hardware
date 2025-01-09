@@ -14,5 +14,9 @@ authors = ["Google LLC"]
 [dependencies]
 bittide-sys = { path = "../../../firmware-support/bittide-sys" }
 rand = {version = "0.8.3", features = ["small_rng"], default-features = false }
-riscv-rt = "0.11.0"
 ufmt = "0.2.0"
+
+[dependencies.riscv-rt]
+git = "https://github.com/rslawson/riscv"
+branch = "rs/lto-fixes"
+package = "riscv-rt"

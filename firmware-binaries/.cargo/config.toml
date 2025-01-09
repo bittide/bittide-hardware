@@ -13,4 +13,4 @@ rustflags = [
 target-dir = "../_build/cargo/firmware-binaries"
 
 [unstable]
-build-std = ["core,panic_abort"]
+build-std = ["core", "panic_abort"]
