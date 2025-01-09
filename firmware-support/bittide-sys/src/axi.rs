@@ -21,31 +21,27 @@ impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
     /// Creates a new instance of `AxiRx`.
     ///
     /// # Safety
-    ///
-
     /// - `base_addr` must post to a memory mapped AXI Rx peripheral.
     /// - `BUF_SIZE` must be a valid buffer size.
-    ///
-    ///
     pub unsafe fn new(addr: *const ()) -> Self {
         AxiRx {
             base_addr: addr as *const u8,
         }
     }
 
-    // Returns true if there is a packet in the buffer or the buffer is full.
+    /// Returns true if there is a packet in the buffer or the buffer is full.
     pub fn has_data(&self) -> bool {
         self.read_status_raw() != 0
     }
 
-    // Reads the raw bits of the status register.
+    /// Reads the raw bits of the status register.
     pub fn read_status_raw(&self) -> u8 {
         // If the instantiation of the AxiRx struct is correct,
         // the status register should be located at the base address + (4 * (BUF_SIZE + 1))
         unsafe { self.base_addr.add(Self::STATUS_OFFSET).read_volatile() }
     }
 
-    // Returns a struct with the status of the buffer.
+    /// Returns a struct with the status of the buffer.
     pub fn read_status(&self) -> AxiRxStatus {
         let bits = self.read_status_raw();
         AxiRxStatus {
@@ -54,7 +50,7 @@ impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
         }
     }
 
-    // Clears the bits in the status register.
+    /// Clears the bits in the status register.
     pub fn clear_status(&self) {
         unsafe {
             self.base_addr
@@ -81,6 +77,7 @@ impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
                 .write_volatile(0);
         }
     }
+
     pub fn receive_with_timeout(&self, buffer: &mut [u8], attempts: usize) -> Option<usize> {
         for _ in 0..attempts {
             if let Some(s) = self.try_receive(buffer) {
@@ -89,6 +86,7 @@ impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
         }
         None
     }
+
     pub fn receive(&self, buffer: &mut [u8]) -> usize {
         loop {
             if let Some(s) = self.try_receive(buffer) {
@@ -118,7 +116,6 @@ impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
     pub fn clear_packet(&self) {
         self.clear_packet_register();
         self.clear_status();
-        panic!("hehe (:");
     }
 
     pub fn get_slice(&self) -> &[u8] {

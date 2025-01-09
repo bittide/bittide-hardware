@@ -48,9 +48,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.6.0"
+version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
+checksum = "1be3f42a67d6d345ecd59f675f3f012d6974981560836e938c22b424b85ce1be"
 
 [[package]]
 name = "bittide-sys"
@@ -294,9 +294,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.92"
+version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37d3544b3f2748c54e147655edb5025752e2303145b5aefb3c3ea2c78b973bb0"
+checksum = "60946a68e5f9d28b0dc1c21bb8a97ee7d018a8b322fa57838ba31cc878e22d99"
 dependencies = [
  "unicode-ident",
 ]
@@ -309,7 +309,7 @@ checksum = "14cae93065090804185d3b75f0bf93b8eeda30c7a9b4a33d3bdb3988d6229e50"
 dependencies = [
  "bit-set",
  "bit-vec",
- "bitflags 2.6.0",
+ "bitflags 2.7.0",
  "lazy_static",
  "num-traits",
  "rand",
@@ -384,7 +384,7 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 [[package]]
 name = "riscv"
 version = "0.12.1"
-source = "git+https://github.com/rslawson/riscv?branch=rs%2Flto-fixes#afb8517a515b8ee0b6735e823c4913f9d7fadfa3"
+source = "git+https://github.com/rslawson/riscv?branch=rs%2Flto-fixes#aa8cff9538e1f1bfcbae56eb1304357ad94077f7"
 dependencies = [
  "critical-section",
  "embedded-hal",
@@ -396,17 +396,17 @@ dependencies = [
 [[package]]
 name = "riscv-macros"
 version = "0.1.0"
-source = "git+https://github.com/rslawson/riscv?branch=rs%2Flto-fixes#afb8517a515b8ee0b6735e823c4913f9d7fadfa3"
+source = "git+https://github.com/rslawson/riscv?branch=rs%2Flto-fixes#aa8cff9538e1f1bfcbae56eb1304357ad94077f7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.95",
+ "syn 2.0.96",
 ]
 
 [[package]]
 name = "riscv-pac"
 version = "0.2.0"
-source = "git+https://github.com/rslawson/riscv?branch=rs%2Flto-fixes#afb8517a515b8ee0b6735e823c4913f9d7fadfa3"
+source = "git+https://github.com/rslawson/riscv?branch=rs%2Flto-fixes#aa8cff9538e1f1bfcbae56eb1304357ad94077f7"
 
 [[package]]
 name = "rustix"
@@ -414,7 +414,7 @@ version = "0.38.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a78891ee6bf2340288408954ac787aa063d8e8817e9f53abb37c695c6d834ef6"
 dependencies = [
- "bitflags 2.6.0",
+ "bitflags 2.7.0",
  "errno",
  "libc",
  "linux-raw-sys",
@@ -488,9 +488,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.95"
+version = "2.0.96"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46f71c0377baf4ef1cc3e3402ded576dccc315800fbc62dfc7fe04b009773b4a"
+checksum = "d5d0adab1ae378d7f53bdebc67a39f1f151407ef230f0ce2883572f5d8985c80"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -674,5 +674,5 @@ checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.95",
+ "syn 2.0.96",
 ]

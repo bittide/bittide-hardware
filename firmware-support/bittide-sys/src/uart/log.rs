@@ -59,8 +59,8 @@ impl log::Log for UartLogger {
     fn log(&self, record: &log::Record) {
         if self.enabled(record.metadata()) {
             unsafe {
-                match &mut LOGGER.uart {
-                    Some(l) => {
+                match (&raw mut LOGGER.uart).read() {
+                    Some(mut l) => {
                         if record.level() <= self.display_level {
                             write!(l, "{} | ", record.level()).unwrap()
                         }

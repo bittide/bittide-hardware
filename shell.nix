@@ -40,6 +40,7 @@ pkgs.mkShell {
       pkgs.poppler_utils
 
       (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
+      # pkgs.rust-bin.nightly."2024-11-18".default
 
       # For Cabal to clone git repos
       pkgs.git

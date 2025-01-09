@@ -119,7 +119,7 @@ impl<'a, const BUFFER_SIZE: usize> TxToken<'a, BUFFER_SIZE> {
     }
 }
 
-impl<'a, const BUFFER_SIZE: usize> phy::TxToken for TxToken<'a, BUFFER_SIZE> {
+impl<const BUFFER_SIZE: usize> phy::TxToken for TxToken<'_, BUFFER_SIZE> {
     fn consume<R, F>(self, len: usize, f: F) -> R
     where
         F: FnOnce(&mut [u8]) -> R,

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 #![allow(unused_mut)]
 #![allow(clippy::collapsible_if)]
 #![no_main]
