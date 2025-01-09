@@ -133,7 +133,7 @@ driverFunc _name targets = do
             runGdbCommands
               gdb.stdinHandle
               [ "break hello::test_success"
-              , "jump _start"
+              , "continue"
               , gdbEcho "breakpoint reached"
               ]
 

@@ -362,7 +362,7 @@ jobs:
       - run: cache pull build
 
       - name: Install `elf-limits`
-        run: cargo install --locked --git https://github.com/cuddlefishie/elf-limits --rev 5f2488eac17ea7c203975e1efe1686b1682ce0b4
+        run: cargo install --locked --git https://github.com/cuddlefishie/elf-limits --rev 5b7bd41b0167ea6e506b5f856f0252362a54721a
 
       - name: Checking firmware binary limits
         run: |

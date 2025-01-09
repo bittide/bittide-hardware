@@ -5,6 +5,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use core::fmt::Write;
 use ufmt::uwriteln;
 
 use bittide_sys::axi::self_test::self_test;
@@ -28,9 +29,10 @@ fn main() -> ! {
 }
 
 #[panic_handler]
-fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
+fn panic_handler(info: &core::panic::PanicInfo) -> ! {
     let mut uart = unsafe { Uart::new(UART_ADDR) };
     uwriteln!(uart, "Woops, I panicked!").unwrap();
+    writeln!(uart, "Info: {:?}", info).unwrap();
     loop {
         continue;
     }

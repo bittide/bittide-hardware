@@ -1,7 +1,7 @@
 { sources ? import ./sources.nix }:
 
 let
-  rust_overlay = import (builtins.fetchTarball "https://github.com/oxalica/rust-overlay/archive/8509a51241c407d583b1963d5079585a992506e8.tar.gz");
+  rust_overlay = import (builtins.fetchTarball "https://github.com/oxalica/rust-overlay/archive/master.tar.gz");
   overlay = _: nixpkgs: {
     # Nix tooling
     gitignore = import sources.gitignore { inherit (nixpkgs) lib; };
