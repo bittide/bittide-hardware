@@ -39,8 +39,10 @@ import qualified Protocols.Df as Df
 
 sim :: IO ()
 sim = putStrLn simResult
+
+simResult :: String
+simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
  where
-  simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
   uartStream = sampleC def dut
 
 {- | Run the timing module self test with processingElement and inspect it's uart output.
@@ -56,8 +58,6 @@ case_time_rust_self_test =
  where
   assertResult (TestResult name (Just err)) = assertFailure ("Test " <> name <> " failed with error" <> err)
   assertResult (TestResult _ Nothing) = return ()
-  simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
-  uartStream = sampleC def dut
 
 {- | A simple instance containing just VexRisc and UART as peripheral.
 Runs the `hello` binary from `firmware-binaries`.

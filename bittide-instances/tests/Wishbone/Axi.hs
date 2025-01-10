@@ -43,6 +43,13 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 import qualified Protocols.Df as Df
 import qualified Protocols.DfConv as DfConv
 
+sim :: IO ()
+sim =
+  putStr
+    $ fmap (chr . fromIntegral)
+    . mapMaybe Df.dataToMaybe
+    $ (sampleC def dut)
+
 {- | Run the axi module self test with processingElement and inspect it's uart output.
 The test returns names of tests and a boolean indicating if the test passed.
 -}
