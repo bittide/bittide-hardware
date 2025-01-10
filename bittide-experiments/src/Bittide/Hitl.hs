@@ -41,16 +41,19 @@ Tests are collected in @Bittide.Instances.Hitl.Tests@.
 module Bittide.Hitl (
   ClashTargetName,
   FpgaId,
+  DeviceInfo (..),
   HwTargetRef (..),
 
   -- * Test definition
   HitlTestGroup (..),
   HitlTestCase (..),
+  TestStepResult (..),
   MayHavePostProcData (..),
   Done,
   Success,
   hitlVio,
   hitlVioBool,
+  noPreProcess,
 
   -- * Test construction convenience functions
   paramForHwTargets,
@@ -62,7 +65,13 @@ where
 
 import Prelude
 
-import Clash.Prelude (BitPack (BitSize), KnownDomain, Vec (Nil, (:>)), natToInteger)
+import Clash.Prelude (
+  BitPack (BitSize),
+  BitVector,
+  KnownDomain,
+  Vec (Nil, (:>)),
+  natToInteger,
+ )
 
 import Clash.Cores.Xilinx.VIO (vioProbe)
 
@@ -75,6 +84,11 @@ import Numeric.Natural (Natural)
 
 import Clash.Prelude qualified as P
 import Data.Map.Strict qualified as Map
+
+import System.Exit (ExitCode)
+
+import Vivado (VivadoHandle)
+import Vivado.Tcl (HwTarget)
 
 {- | Fully qualified name to a function that is the target for Clash
 compilation. E.g. @Bittide.Foo.topEntity@.
@@ -89,12 +103,32 @@ For example, the ID of hardware target
 -}
 type FpgaId = String
 
+-- | Provides information for a hardware device able to be targeted in a test.
+data DeviceInfo = DeviceInfo
+  { deviceId :: String
+  -- ^ Can be found in the Vivado GUI or through its TCL interface.
+  , dna :: BitVector 96
+  -- ^ Can be found in the Vivado GUI or through its TCL interface.
+  , serial :: String
+  -- ^ Path to the serial device file. For example,
+  -- @"/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.2:1.1-port0"@
+  , usbAdapterLocation :: String
+  -- ^ The USB adapter location for the hardware target, for example @"1-2:1"@.
+  -- Currently primarily used for the JTAG target location with OpenOCD.
+  }
+  deriving (Eq, Ord, Show)
+
 {- | A reference to an FPGA hardware target, either by index/relative position
 in the Bittide demo rig or by ID.
 -}
 data HwTargetRef
   = HwTargetByIndex Natural
-  | HwTargetById FpgaId
+  | HwTargetById FpgaId DeviceInfo
+  deriving (Eq, Ord, Show)
+
+data TestStepResult a
+  = TestStepSuccess a
+  | TestStepFailure String
   deriving (Eq, Ord, Show)
 
 {- | A definition of a test that should be performed with hardware in the loop.
@@ -174,9 +208,20 @@ data HitlTestGroup where
     , extraXdcFiles :: [String]
     , testCases :: [HitlTestCase HwTargetRef a b]
     -- ^ List of test cases
-    , mPostProc :: Maybe String
-    -- ^ Optional post processing step. If present, the name of the executable
-    -- in the @bittide-instances@ package.
+    , mDriverProc ::
+        Maybe (VivadoHandle -> String -> FilePath -> [(HwTarget, DeviceInfo)] -> IO ExitCode)
+    -- ^ Optional function driving the test. If provided, this function must:
+    --   - Handle any pre-processing necessary to begin the test
+    --   - Assert the start probe(s)
+    --   - Wait for results on the test done and success probes
+    --
+    -- The HITL testing infrastructure deasserts the start probe(s) after running this function
+    -- and collecting ILA data, so this function is not required to but is allowed to deassert
+    -- that probe(s).
+    , mPostProc :: Maybe (FilePath -> ExitCode -> IO (TestStepResult ()))
+    -- ^ Optional post processing step. If provided, this function is run after the test case
+    -- completely finishes execution, including collection of ILA data and deassertion of the
+    -- start probe(s).
     , externalHdl :: [String]
     -- ^ List of external HDL files to include in the project
     } ->
@@ -213,6 +258,11 @@ instance MayHavePostProcData a where
 instance MayHavePostProcData () where
   mGetPPD = Map.fromList . map ((,Nothing) . name)
 
+-- | Pre-process function that always succeeds and uses '()' as user-data.
+noPreProcess ::
+  VivadoHandle -> String -> FilePath -> HwTarget -> DeviceInfo -> IO (TestStepResult ())
+noPreProcess _ _ _ _ _ = pure (TestStepSuccess ())
+
 -- | Obtain a list of the hardware targets that are relevant for a given HITL test.
 hwTargetRefsFromHitlTestGroup :: HitlTestGroup -> [HwTargetRef]
 hwTargetRefsFromHitlTestGroup HitlTestGroup{testCases} =
@@ -240,8 +290,16 @@ to it and receives that constructur as test parameter.
 > testCases = testCasesFromEnum @ABC allHwTargets ()
 -}
 testCasesFromEnum ::
+  -- forall a b c.
   forall a b.
-  (Show a, Bounded a, Enum a, BitPack a, Show b, Typeable a, Typeable b) =>
+  ( Show a
+  , Bounded a
+  , Enum a
+  , BitPack a
+  , Show b
+  , Typeable a
+  , Typeable b
+  ) =>
   [HwTargetRef] ->
   b ->
   [HitlTestCase HwTargetRef a b]

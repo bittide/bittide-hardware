@@ -14,9 +14,17 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Extra (ibufds)
 import Clash.Cores.Xilinx.Ila
 
+import System.Exit (ExitCode)
+import System.FilePath ((</>))
+import System.FilePath.Glob (glob)
+
+import Bittide.Instances.Hitl.Post.BoardTestExtended
+import Bittide.Instances.Hitl.Post.PostProcess
+
 import Bittide.Hitl (
-  HitlTestCase (HitlTestCase),
+  HitlTestCase (..),
   HitlTestGroup (..),
+  TestStepResult (..),
   hitlVio,
   hitlVioBool,
   paramForHwTargets,
@@ -174,7 +182,14 @@ testSimple =
     { topEntity = 'boardTestSimple
     , extraXdcFiles = []
     , externalHdl = []
-    , testCases = [HitlTestCase "Simple" (paramForHwTargets allHwTargets ()) ()]
+    , testCases =
+        [ HitlTestCase
+            { name = "Simple"
+            , parameters = (paramForHwTargets allHwTargets ())
+            , postProcData = ()
+            }
+        ]
+    , mDriverProc = Nothing
     , mPostProc = Nothing
     }
 
@@ -185,5 +200,13 @@ testExtended =
     , extraXdcFiles = []
     , externalHdl = []
     , testCases = testCasesFromEnum @Test allHwTargets ()
-    , mPostProc = Just "post-board-test-extended"
+    , mDriverProc = Nothing
+    , mPostProc = Just postBoardTestExtendedFunc
     }
+
+postBoardTestExtendedFunc :: FilePath -> ExitCode -> IO (TestStepResult ())
+postBoardTestExtendedFunc ilaDir exitCode = do
+  csvPaths <- glob (ilaDir </> "*" </> "*" </> "*.csv")
+  let ilaCsvPaths = toFlattenedIlaCsvPathList ilaDir csvPaths
+  postBoardTestExtended exitCode ilaCsvPaths
+  pure $ TestStepSuccess ()

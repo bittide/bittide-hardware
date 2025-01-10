@@ -1,5 +1,4 @@
 [
-  {"top": "callisto3",                     "stage": "pnr"},
   {"top": "counterReducedPins",            "stage": "pnr"},
   {"top": "elasticBuffer5",                "stage": "pnr"},
   {"top": "gatherUnit1K",                  "stage": "hdl"},

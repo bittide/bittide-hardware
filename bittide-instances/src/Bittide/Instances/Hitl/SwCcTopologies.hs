@@ -32,14 +32,14 @@ module Bittide.Instances.Hitl.SwCcTopologies (
 
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import qualified Clash.Explicit.Prelude as E
-import Clash.Explicit.Signal.Extra (changepoints)
-import Clash.Prelude (withClockResetEnable)
+import Clash.Prelude (HiddenClockResetEnable, exposeReset, hasReset, withClockResetEnable)
 
 import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Proxy
 import GHC.Float.RealFracMethods (roundFloatInteger)
 import LiftType (liftTypeQ)
+import VexRiscv (JtagIn, JtagOut)
 
 import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
@@ -69,6 +69,7 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.Counter
 import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
+import Clash.Cores.Xilinx.VIO
 import Clash.Cores.Xilinx.Xpm (xpmCdcArraySingle)
 import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcSingle)
 import Clash.Functor.Extra
@@ -78,6 +79,7 @@ import Clash.Xilinx.ClockGen
 
 import qualified Bittide.Arithmetic.PartsPer as PartsPer
 import qualified Bittide.ClockControl.StabilityChecker as SI
+import qualified Bittide.Instances.Hitl.Driver.SwCcTopologies as D
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Data.Map.Strict as Map (fromList)
@@ -214,7 +216,9 @@ topologyTest ::
   "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
   "TEST_CFG" ::: Signal Basic125 TestConfig ->
+  "PROG_EN" ::: Reset Basic125 ->
   "CALIBRATED_SHIFT" ::: Signal Basic125 FincFdecCount ->
+  "JTAG" ::: Signal Basic125 JtagIn ->
   ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
   , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
@@ -235,8 +239,9 @@ topologyTest ::
   , "allUgnsStable" ::: Signal Basic125 Bool
   , "noFifoOverflows" ::: Signal Basic125 Bool
   , "noFifoUnderflows" ::: Signal Basic125 Bool
+  , "JTAG" ::: Signal Basic125 JtagOut
   )
-topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs =
+topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg progEn ccs jtagIn =
   hwSeqX
     fincFdecIla
     ( transceivers.txNs
@@ -255,6 +260,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
     , allUgnsStable
     , noFifoOverflows
     , noFifoUnderflows
+    , callistoResult.jtagOut
     )
  where
   syncRst = rst `orReset` unsafeFromActiveHigh spiErr
@@ -332,11 +338,35 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
   allStable0 = callistoResult.allStable
   allStable1 = sticky sysClk syncRst allStable0
 
-  ccConfig =
+  ccConfig ::
     SwControlConfig
-      (reframingEnabled <$> cfg)
-      (SNat @CccStabilityCheckerMargin)
-      (SNat @(CccStabilityCheckerFramesize Basic125))
+      Basic125
+      CccStabilityCheckerMargin
+      (CccStabilityCheckerFramesize Basic125)
+  ccConfig = SwControlConfig jtagIn (reframingEnabled <$> cfg) SNat SNat
+
+  callistoSwClockControlInner ::
+    forall nLinks eBufBits dom margin framesize.
+    ( HiddenClockResetEnable dom
+    , KnownNat nLinks
+    , KnownNat eBufBits
+    , 1 <= nLinks
+    , 1 <= eBufBits
+    , nLinks + eBufBits <= 32
+    , 1 <= framesize
+    , 1 <= DomainPeriod dom
+    ) =>
+    Reset dom ->
+    SwControlConfig dom margin framesize ->
+    Signal dom (BitVector nLinks) ->
+    Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
+    Signal dom (CallistoResult nLinks)
+  callistoSwClockControlInner extraRst a b c =
+    exposeReset (callistoSwClockControl a b c) newReset
+   where
+    oldReset = unsafeToActiveHigh hasReset
+    extraRst1 = unsafeToActiveHigh extraRst
+    newReset = unsafeFromActiveHigh $ oldReset .&&. extraRst1
 
   callistoResult =
     callistoClockControlWithIla @LinkCount @CccBufferSize
@@ -344,7 +374,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs 
       sysClk
       clockControlReset
       ccConfig
-      callistoSwClockControl
+      (callistoSwClockControlInner progEn)
       IlaControl{..}
       (mask <$> cfg)
       (resize <<$>> domainDiffs)
@@ -714,6 +744,7 @@ swCcTopologyTest ::
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
   "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
+  "JTAG" ::: Signal Basic125 JtagIn ->
   ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
   , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
   , ""
@@ -727,40 +758,16 @@ swCcTopologyTest ::
           , "MOSI" ::: Signal Basic125 Bit
           , "CSB" ::: Signal Basic125 Bool
           )
+  , "JTAG" ::: Signal Basic125 JtagOut
   )
-swCcTopologyTest refClkDiff sysClkDiff syncIn1 rxns rxps miso =
-  hwSeqX tleDebugIla (txns, txps, unbundle swFincFdecs, syncOut, spiDone, spiOut)
+swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso jtagIn =
+  hwSeqX tleDebugIla (txns, txps, unbundle swFincFdecs, syncOut, spiDone, spiOut, jtagOut)
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
-  ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{syncIn = syncIn2, ..}
+  ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
   startTest = isJust <$> testConfig
 
-  testStarting = isRising sysClk sysRst enableGen False startTest
-  testEnding = isFalling sysClk sysRst enableGen False startTest
-
-  testResetBool =
-    register sysClk sysRst enableGen True
-      $ liftA3 go1 testResetBool testStarting testEnding
-   where
-    go1 cur st ed = case (st, ed) of
-      (True, _) -> False -- starting test deasserts rst
-      (_, True) -> True -- ending test asserts rst
-      _ -> cur
-  testReset = unsafeFromActiveHigh testResetBool
-
-  -- Workaround for tests not resetting properly???
-  syncNodeProbablyWorking = changepoints sysClk testReset enableGen syncIn1
-  syncNodeEnteredReset =
-    trueFor
-      (SNat @(Milliseconds 25))
-      sysClk
-      testReset
-      (not <$> syncNodeProbablyWorking)
-  syncNodePrevEnteredReset =
-    sticky sysClk testReset syncNodeEnteredReset
-
-  syncIn2 = mux syncNodePrevEnteredReset syncIn1 (pure True :: Signal Basic125 Bool)
   testCounter =
     regEn
       sysClk
@@ -788,6 +795,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn1 rxns rxps miso =
     , allUgnsStable
     , noFifoOverflows
     , noFifoUnderflows
+    , jtagOut
     ) =
       topologyTest
         refClk
@@ -797,7 +805,9 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn1 rxns rxps miso =
         rxps
         miso
         cfg
+        progEnRst
         calibratedClockShift
+        jtagIn
 
   captureFlag =
     riseEvery
@@ -842,7 +852,8 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn1 rxns rxps miso =
         { depth = D16384
         }
       sysClk
-      syncNodePrevEnteredReset
+      -- syncNodePrevEnteredReset
+      (unsafeToActiveHigh syncRst)
       captureFlag
       milliseconds1
       allReady
@@ -908,8 +919,18 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn1 rxns rxps miso =
               .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady))
            )
 
-  testConfig :: Signal Basic125 (Maybe TestConfig)
-  testConfig = hitlVio disabled sysClk testDone testSuccess
+  (unbundle -> (testStart, testConfig0, progEn)) =
+    setName @"vioHitlt"
+      $ vioProbe
+        ("probe_test_done" :> "probe_test_success" :> Nil)
+        ("probe_test_start" :> "probe_test_data" :> "probe_prog_en" :> Nil)
+        (False, disabled, False)
+        sysClk
+        testDone
+        testSuccess
+
+  testConfig = mux testStart (Just <$> testConfig0) (pure Nothing)
+  progEnRst = unsafeFromActiveLow progEn
 
 makeTopEntity 'swCcTopologyTest
 
@@ -1045,7 +1066,7 @@ tests = testGroup
   testGroup =
     HitlTestGroup
     { topEntity = 'swCcTopologyTest
-    , extraXdcFiles = []
+    , extraXdcFiles = ["jtag_config.xdc", "jtag_pmod1-alt.xdc"]
     , externalHdl = []
     , testCases =
         [ -- detect the natual clock offsets to be elided from the later tests
@@ -1063,6 +1084,7 @@ tests = testGroup
           -- make sure the clock offsets detected during calibration is still the same
         , validateClockOffsetCalibration
         ]
+    , mDriverProc = Just D.driverFunc
     , mPostProc = Nothing
     }
 {- FOURMOLU_ENABLE -}

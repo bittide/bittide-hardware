@@ -170,5 +170,6 @@ tests =
             , postProcData = ()
             }
         ]
+    , mDriverProc = Nothing
     , mPostProc = Nothing
     }

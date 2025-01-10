@@ -233,6 +233,7 @@ tests =
     , externalHdl = []
     , extraXdcFiles = []
     , testCases = iters
+    , mDriverProc = Nothing
     , mPostProc = Nothing
     }
  where

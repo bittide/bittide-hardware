@@ -20,6 +20,8 @@ PICOCOM_STDERR_LOG="${PICOCOM_STDERR_LOG:-/dev/null}"
 stderr_dir=$(dirname "${PICOCOM_STDERR_LOG}")
 mkdir -p "${stderr_dir}"
 
-picocom  --baud 921600 --imap lfcrlf --omap lfcrlf $@ \
+PICOCOM_BAUD="${PICOCOM_BAUD:-921600}"
+
+exec picocom --baud "${PICOCOM_BAUD}" --imap lfcrlf --omap lfcrlf $@ \
   > >(tee "${PICOCOM_STDOUT_LOG}") \
   2> >(tee "${PICOCOM_STDERR_LOG}" >&2)

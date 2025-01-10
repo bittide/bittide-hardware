@@ -9,7 +9,8 @@ module Bittide.Instances.Hitl.DnaOverSerial where
 
 import Bittide.Hitl
 import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.Setup (allHwTargets)
+import Bittide.Instances.Hitl.Driver.DnaOverSerial
+import Bittide.Instances.Hitl.Setup
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.UART
 import Clash.Cores.Xilinx.Extra (ibufds)
@@ -31,8 +32,8 @@ dnaOverSerial diffClk serialIn = serialOut
   (_rxData, serialOut, ack) = withClockResetEnable clk testRst enableGen $ uart baud serialIn txData
   baud = SNat @9600
 
-  dna = readDnaPortE2 clk testRst enableGen simDna2
-  txData = withClockResetEnable clk testRst enableGen shiftRegister (dnaToAscii <<$>> dna) ack
+  dnaVal = readDnaPortE2 clk testRst enableGen simDna2
+  txData = withClockResetEnable clk testRst enableGen shiftRegister (dnaToAscii <<$>> dnaVal) ack
   testStart = hitlVioBool clk testDone testSuccess
   testDone = testStart
   testSuccess = testStart
@@ -98,5 +99,6 @@ tests =
             , postProcData = ()
             }
         ]
-    , mPostProc = Just "post-dna-over-serial"
+    , mDriverProc = Just dnaOverSerialDriver
+    , mPostProc = Nothing
     }

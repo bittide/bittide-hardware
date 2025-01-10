@@ -36,9 +36,10 @@ fn main() -> ! {
         uwriteln!(uart, "Hello from {}!", name).unwrap();
     }
     uwriteln!(uart, "This can also do {} {:#x}", "debug prints", 42).unwrap();
-    uwriteln!(uart, "Going in echo mode!").unwrap();
 
     test_success();
+
+    uwriteln!(uart, "Going in echo mode!").unwrap();
 
     loop {
         let c = uart.receive();

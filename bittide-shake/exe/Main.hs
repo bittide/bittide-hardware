@@ -37,8 +37,7 @@ import System.Directory hiding (doesFileExist)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath
 import System.FilePath.Glob (glob)
-import System.Process (callProcess, readProcess)
-import Test.Tasty.HUnit (Assertion)
+import System.Process (readProcess)
 
 import qualified Clash.Util.Interpolate as I
 import qualified Paths.Bittide.Shake as Shake (getDataFileName)
@@ -101,12 +100,6 @@ dataFilesDir = buildDir </> "data"
 watchFilesPath :: FilePath
 watchFilesPath = buildDir </> "watch_files.txt"
 
--- | Build and run the executable for post processing of ILA data
-doPostProcessing :: String -> FilePath -> ExitCode -> Assertion
-doPostProcessing postProcessMain ilaDataDir testExitCode = do
-  callProcess "cabal" ["build", postProcessMain]
-  callProcess "cabal" ["run", postProcessMain, ilaDataDir, show testExitCode]
-
 {- | Searches for a file called @cabal.project@ It will look for it in the
 current working directory. If it can't find it there, it will traverse up
 until it finds the file.
@@ -140,9 +133,6 @@ data Target = Target
   , targetTest :: Maybe HitlTestGroup
   -- ^ Whether target has a VIO probe that can be used to run hardware-in-the-
   -- loop tests. Note that this flag, 'targetTest', implies 'targetHasVio'.
-  , targetPostProcess :: Maybe String
-  -- ^ Name of the executable for post processing of ILA CSV data, or Nothing
-  -- if it has none.
   , targetExtraXdc :: [FilePath]
   -- ^ Extra constraints to be sourced. Will be sourced _after_ main XDC.
   , targetExternalHdl :: [TclGlobPattern]
@@ -157,7 +147,6 @@ defTarget name =
     , targetHasXdc = False
     , targetHasVio = False
     , targetTest = Nothing
-    , targetPostProcess = Nothing
     , targetExtraXdc = []
     , targetExternalHdl = []
     }
@@ -169,7 +158,6 @@ testTarget test@(HitlTestGroup{..}) =
     , targetHasXdc = True
     , targetHasVio = True
     , targetTest = Just test
-    , targetPostProcess = mPostProc
     , targetExtraXdc = extraXdcFiles
     , targetExternalHdl = externalHdl
     }
@@ -189,7 +177,6 @@ targets =
   map enforceValidTarget $
     [ defTarget $ mkName "Bittide.Instances.Pnr.Calendar.switchCalendar1k"
     , defTarget $ mkName "Bittide.Instances.Pnr.Calendar.switchCalendar1kReducedPins"
-    , defTarget $ mkName "Bittide.Instances.Pnr.ClockControl.callisto3"
     , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.elasticBuffer5"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.gatherUnit1K"
@@ -568,16 +555,18 @@ main = do
               phony (entityName targetName <> ":test") $ do
                 need [testExitCodePath]
                 exitCode <- read <$> readFile' testExitCodePath
-                when (isJust targetPostProcess) $ do
-                  liftIO $ doPostProcessing (fromJust targetPostProcess) ilaDataDir exitCode
+                when (isJust (mPostProc =<< targetTest)) $ do
+                  _ <- liftIO $ (fromJust $ mPostProc =<< targetTest) ilaDataDir exitCode
+                  pure ()
                 unless (exitCode == ExitSuccess) $ do
                   liftIO $ exitWith exitCode
 
-              when (isJust targetPostProcess) $ do
+              when (isJust (mPostProc =<< targetTest)) $ do
                 phony (entityName targetName <> ":post-process") $ do
                   need [testExitCodePath]
                   exitCode <- read <$> readFile' testExitCodePath
-                  liftIO $ doPostProcessing (fromJust targetPostProcess) ilaDataDir exitCode
+                  _ <- liftIO $ (fromJust (mPostProc =<< targetTest)) ilaDataDir exitCode
+                  pure ()
 
     if null shakeTargets
       then rules
