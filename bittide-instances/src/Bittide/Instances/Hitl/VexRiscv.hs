@@ -27,17 +27,19 @@ import Bittide.DoubleBufferedRam
 import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
 import Bittide.Instances.Hitl.Setup (allHwTargets)
-import Bittide.ProcessingElement
+import Bittide.ProcessingElement (PeConfig (..), processingElement)
+import Bittide.ProcessingElement.Util (vecsFromElf)
 import Bittide.SharedTypes
 import Bittide.Wishbone
 import Clash.Cores.UART.Extra
 
-#ifdef CPU_INCLUDE_BINARIES
-import Bittide.ProcessingElement.Util
-import Language.Haskell.TH
-import Project.FilePath
-import System.FilePath
-#endif
+import Project.FilePath (
+  CargoBuildType (Release),
+  findParentContaining,
+  firmwareBinariesDir,
+ )
+import System.FilePath ((</>))
+import System.IO.Unsafe (unsafePerformIO)
 
 data TestStatus = Running | Success | Fail
   deriving (Enum, Eq, Generic, NFDataX, BitPack)
@@ -141,30 +143,23 @@ vexRiscvInner jtagIn0 uartRx =
 
   memMap = 0b100 :> 0b010 :> 0b101 :> 0b110 :> 0b111 :> Nil
 
-#ifdef CPU_INCLUDE_BINARIES
-  peConfig =
-    PeConfig
-      memMap
-      (Reloadable $ Blob iMem)
-      (Reloadable $ Blob dMem)
-  (iMem, dMem) =
-    $( do
-        root <- runIO $ findParentContaining "cabal.project"
-        let
-          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-          elfPath = elfDir </> "hello"
-          iSize = 8 * 1024 -- 16 KB
-          dSize = 64 * 1024 -- 256 KB
-        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
-    )
-{- FOURMOLU_ENABLE -}
-#else
-  peConfig =
-    PeConfig
-      memMap
-      (Undefined @(Div (64 * 1024) 4)) -- 64 KiB
-      (Undefined @(Div (64 * 1024) 4)) -- 64 KiB
-#endif
+  peConfig
+    | clashSimulation = peConfigSim
+    | otherwise = peConfigRtl
+
+  peConfigSim = unsafePerformIO $ do
+    root <- findParentContaining "cabal.project"
+    let
+      elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
+      elfPath = elfDir </> "hello"
+    (iMem, dMem) <- vecsFromElf @DMemWords @IMemWords BigEndian elfPath Nothing
+    pure $ PeConfig memMap (Reloadable (Vec iMem)) (Reloadable (Vec dMem))
+
+  peConfigRtl = PeConfig memMap (Undefined @DMemWords) (Undefined @IMemWords)
+
+type DMemWords = DivRU (64 * 1024) 4
+type IMemWords = DivRU (64 * 1024) 4
+
 vexRiscvTest ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->
   "JTAG" ::: Signal Basic125 JtagIn ->

@@ -6,6 +6,7 @@
 module Bittide.ProcessingElement.Util where
 
 import Clash.Prelude hiding (Exp)
+import Clash.Sized.Vector (unsafeFromList)
 
 import Bittide.ProcessingElement.DeviceTreeCompiler
 import Bittide.ProcessingElement.ReadElf
@@ -41,6 +42,31 @@ padToSize name (Just s) a xs
         <> show s
  where
   l = L.length xs
+
+-- | Given the path to an elf file, return a tuple containing @(instruction memory, data memory)@.
+vecsFromElf ::
+  forall nInstrWords nDataWords.
+  (HasCallStack, KnownNat nDataWords, KnownNat nInstrWords) =>
+  -- | How the words should be ordered
+  ByteOrder ->
+  -- | Source file, assumed to be Little Endian.
+  FilePath ->
+  -- | Optional tuple of starting address and filepath to a device tree.
+  Maybe (I.Key, FilePath) ->
+  -- | (instruction memBlob, data memBlob)
+  IO
+    ( Vec nInstrWords (BitVector 32)
+    , Vec nDataWords (BitVector 32)
+    )
+vecsFromElf byteOrder elfPath maybeDeviceTree = do
+  (iMemIntMap, dMemIntMap) <- getBytesMems elfPath maybeDeviceTree
+  let
+    (_iStartAddr, _, iList) = extractIntMapData byteOrder iMemIntMap
+    (_dStartAddr, _, dList) = extractIntMapData byteOrder dMemIntMap
+    iListPadded = padToSize "Instruction memory" (Just (natToNum @nInstrWords)) 0 iList
+    dListPadded = padToSize "Data memory" (Just (natToNum @nInstrWords)) 0 dList
+
+  pure (unsafeFromList iListPadded, unsafeFromList dListPadded)
 
 {- | Given the path to an elf file, the path to a device tree and a starting address
  for the device tree. Return a 3 tuple containing:

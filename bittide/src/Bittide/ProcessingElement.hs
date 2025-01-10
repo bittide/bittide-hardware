@@ -28,6 +28,7 @@ import qualified Data.ByteString as BS
 -- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where
   PeConfig ::
+    forall depthI depthD nBusses.
     ( KnownNat depthI
     , 1 <= depthI
     , KnownNat depthD

@@ -26,17 +26,19 @@ import Bittide.Axi4
 import Bittide.DoubleBufferedRam
 import Bittide.Ethernet.Mac
 import Bittide.Instances.Domains
-import Bittide.ProcessingElement
+import Bittide.ProcessingElement (PeConfig (..), processingElement)
+import Bittide.ProcessingElement.Util (vecsFromElf)
+import Bittide.SharedTypes (ByteOrder (BigEndian))
 import Bittide.Wishbone
 import Protocols.Idle
 
-#ifdef CPU_INCLUDE_BINARIES
-import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes
-import Language.Haskell.TH
-import Project.FilePath
-import System.FilePath
-#endif
+import Project.FilePath (
+  CargoBuildType (Release),
+  findParentContaining,
+  firmwareBinariesDir,
+ )
+import System.FilePath ((</>))
+import System.IO.Unsafe (unsafePerformIO)
 
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
@@ -154,28 +156,22 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
       :> 0b1001
       :> Nil
 
-#ifdef CPU_INCLUDE_BINARIES
-  peConfig =
-    PeConfig memMap
-      (Reloadable $ Blob iMem)
-      (Reloadable $ Blob dMem)
+  peConfig
+    | clashSimulation = peConfigSim
+    | otherwise = peConfigRtl
 
-  (iMem, dMem) =
-    $( do
-        root <- runIO $ findParentContaining "cabal.project"
-        let
-          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-          elfPath = elfDir </> "smoltcp_client"
-          iSize = 256 * 1024 -- 256 KB
-          dSize = 64 * 1024 -- 64 KB
-        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
-     )
-#else
-  peConfig =
-    PeConfig memMap
-      (Undefined @(DivRU (256 * 1024) 4))
-      (Undefined @(DivRU (64 * 1024) 4))
-#endif
+  peConfigSim = unsafePerformIO $ do
+    root <- findParentContaining "cabal.project"
+    let
+      elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
+      elfPath = elfDir </> "smoltcp_client"
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    pure $ PeConfig memMap (Reloadable (Vec iMem)) (Reloadable (Vec dMem))
+
+  peConfigRtl = PeConfig memMap (Undefined @IMemWords) (Undefined @DMemWords)
+
+type DMemWords = DivRU (256 * 1024) 4
+type IMemWords = DivRU (64 * 1024) 4
 
 vexRiscEthernet ::
   Clock Basic125B ->
