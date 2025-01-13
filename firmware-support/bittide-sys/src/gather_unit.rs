@@ -26,10 +26,15 @@ impl<const MEM_SIZE: usize> GatherUnit<MEM_SIZE> {
     ///
     /// The source memory size must be smaller or equal to the memory size of
     /// the `GatherUnit` memory.
-    pub unsafe fn write_slice(&self, src: &[u32], offset: usize) {
-        let dst = self.base_addr.add(offset);
+    pub fn write_slice(&self, src: &[u32], offset: usize) {
         assert!(src.len() + offset <= Self::METACYCLE_OFFSET);
-        core::ptr::copy_nonoverlapping(src.as_ptr(), dst, src.len());
+        let mut off = offset;
+        for &byte in src {
+            unsafe {
+                self.base_addr.add(off).write_volatile(byte);
+            }
+            off += 1;
+        }
     }
 
     /// Wait for the start of a new metacycle.

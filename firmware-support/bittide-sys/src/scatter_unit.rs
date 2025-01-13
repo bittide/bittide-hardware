@@ -26,10 +26,15 @@ impl<const MEM_SIZE: usize> ScatterUnit<MEM_SIZE> {
     ///
     /// The destination memory size must be smaller or equal to the memory size
     ///  of the `ScatterUnit`.
-    pub unsafe fn read_slice(&self, dst: &mut [u32], offset: usize) {
-        let src = self.base_addr.add(offset);
+    pub fn read_slice(&self, dst: &mut [u32], offset: usize) {
         assert!(dst.len() + offset <= Self::METACYCLE_OFFSET);
-        core::ptr::copy_nonoverlapping(src, dst.as_mut_ptr(), dst.len());
+        let mut off = offset;
+        for d in dst {
+            unsafe {
+                *d = self.base_addr.add(off).read_volatile();
+            }
+            off += 1;
+        }
     }
 
     /// Wait for the start of a new metacycle.
