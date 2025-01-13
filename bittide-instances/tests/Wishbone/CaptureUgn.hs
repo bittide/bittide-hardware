@@ -66,7 +66,6 @@ case_capture_ugn_self_test =
     sampleC def
       $ withClockResetEnable clk rst enableGen
       $ dut @System eb localCounter
-      <| idleSource
 
   {- The local counter starts counting up from 0x1122334411223344. The elastic buffer
   outputs Nothing for 1000 cycles, after which it will  start outputting a decreasing
@@ -89,10 +88,10 @@ dut ::
   Signal dom (Maybe (BitVector 64)) ->
   -- | Local sequence counter
   Signal dom (Unsigned 64) ->
-  Circuit (Df dom (BitVector 8)) (Df dom (BitVector 8))
-dut eb localCounter = circuit $ \uartRx -> do
+  Circuit () (Df dom (BitVector 8))
+dut eb localCounter = circuit $ do
   eb <- ebCircuit -< ()
-  jtagIdle <- idleSource -< ()
+  (uartRx, jtagIdle) <- idleSource -< ()
   [uartBus, ugnBus] <- processingElement @dom NoDumpVcd peConfig -< jtagIdle
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
   _bittideData <- captureUgn localCounter -< (ugnBus, eb)
