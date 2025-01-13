@@ -48,6 +48,7 @@ import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
 import Control.Exception (try)
 import Control.Monad.Extra (andM, forM, forM_, orM, unless, when)
+import Control.Monad.Reader (runReaderT)
 import Data.Containers.ListUtils (nubOrd)
 import Data.Either (lefts, rights)
 import Data.List (isInfixOf, isSuffixOf, sort, sortOn, (\\))
@@ -66,6 +67,7 @@ import System.FilePath (dropFileName, (</>))
 import Text.Read (readMaybe)
 import Vivado (TclException (..), VivadoHandle, execPrint_, with)
 import Vivado.Tcl
+import Vivado.VivadoM
 
 -- | Satisfied if all actions result in 'False'
 noneM :: (Monad m) => [m Bool] -> m Bool
@@ -799,7 +801,7 @@ runHitlTestCase ::
   -- | The HITL test case to run
   HitlTestCase (HwTarget, DeviceInfo) a b ->
   -- | Driver function
-  Maybe (VivadoHandle -> String -> FilePath -> [(HwTarget, DeviceInfo)] -> IO ExitCode) ->
+  Maybe (String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCode) ->
   -- | Path to the generated probes file
   FilePath ->
   -- | Filepath the the ILA data dump directory
@@ -884,7 +886,7 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFileP
       testCaseExitCode <- case driverFunc of
         Just fn -> do
           putStrLn $ "Running custom driver function for test " <> name
-          fn v name probesFilePath testData
+          runReaderT (fn name testData) v
         Nothing -> do
           putStrLn $ "Running default driver function for test " <> name
 

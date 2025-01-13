@@ -11,10 +11,10 @@ import Prelude
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Utils.Gdb
 import Bittide.Instances.Hitl.Utils.Program
-import Bittide.Instances.Hitl.Utils.Vivado
 
 import Control.Concurrent
 import Control.Concurrent.Async
+import Control.Monad.IO.Class
 import Data.List.Extra
 import Data.Time
 import Data.Time.Clock.POSIX
@@ -27,8 +27,8 @@ import System.IO
 import System.Timeout
 import Test.Tasty.HUnit
 
-import Vivado
 import Vivado.Tcl
+import Vivado.VivadoM
 
 import qualified Data.ByteString.Lazy as BS
 import qualified Network.Simple.TCP as NS
@@ -72,13 +72,11 @@ waitForClients numberOfClients serverSock = do
     [1 .. numberOfClients]
 
 driverFunc ::
-  VivadoHandle ->
   String ->
-  FilePath ->
   [(HwTarget, DeviceInfo)] ->
-  IO ExitCode
-driverFunc v _name ilaPath [(hwT, dI)] = do
-  projectDir <- findParentContaining "cabal.project"
+  VivadoM ExitCode
+driverFunc _name [(hwT, dI)] = do
+  projectDir <- liftIO $ findParentContaining "cabal.project"
 
   let
     hitlDir = projectDir </> "_build" </> "hitl"
@@ -86,12 +84,8 @@ driverFunc v _name ilaPath [(hwT, dI)] = do
     stderrLog = hitlDir </> "picocom-stderr.log"
 
     initHwDevice = do
-      openHwTarget v hwT
-      execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
-      refresh_hw_device v []
-
-      execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
-      commit_hw_vio v ["[get_hw_vios]"]
+      openHardwareTarget hwT
+      updateVio "vioHitlt" [("probe_test_start", "1")]
 
     doWithTimeout :: Int -> IO a -> IO a
     doWithTimeout time action = do
@@ -143,30 +137,26 @@ driverFunc v _name ilaPath [(hwT, dI)] = do
       doWithTimeout 120_000_000 $ waitForLine gdb.stdoutHandle "load done"
 
     startTest = do
-      openHwTarget v hwT
-      execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
-      refresh_hw_device v []
-
-      execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
-      commit_hw_vio v ["[get_hw_vios]"]
+      openHardwareTarget hwT
+      updateVio "vioHitlt" [("probe_test_start", "1")]
 
   initHwDevice
 
   withOpenOcd dI.usbAdapterLocation 3333 6666 4444 $ \ocd -> do
-    initOpenOcd ocd
+    liftIO $ initOpenOcd ocd
 
-    putStrLn "Starting Picocom..."
+    liftIO $ putStrLn "Starting Picocom..."
     withPicocomWithLogging dI.serial stdoutLog stderrLog $ \pico -> do
-      initPicocom pico
+      liftIO $ initPicocom pico
 
-      putStrLn "Starting GDB..."
+      liftIO $ putStrLn "Starting GDB..."
       withGdb $ \gdb -> do
-        initGdb gdb
+        liftIO $ initGdb gdb
 
         startTest
 
-        putStrLn "Starting TCP server"
-        withServer $ \(serverSock, _) -> do
+        liftIO $ putStrLn "Starting TCP server"
+        liftIO $ withServer $ \(serverSock, _) -> do
           let
             -- Create function to log the output of the processes
             loggingSequence = do
@@ -210,7 +200,7 @@ driverFunc v _name ilaPath [(hwT, dI)] = do
           loggingSequence
 
           return ExitSuccess
-driverFunc _v _name _ilaPath _ = error "Ethernet/VexRiscvTcp driver func should only run with one hardware target"
+driverFunc _name _ = error "Ethernet/VexRiscvTcp driver func should only run with one hardware target"
 
 {- | Test that the `Bittide.Instances.Hitl.Ethernet:vexRiscvTcpTest` design programmed
 with `smoltcp_client` can connect to a TCP server and stress test it for a short duration.

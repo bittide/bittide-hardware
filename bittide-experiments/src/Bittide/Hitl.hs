@@ -89,6 +89,7 @@ import System.Exit (ExitCode)
 
 import Vivado (VivadoHandle)
 import Vivado.Tcl (HwTarget)
+import Vivado.VivadoM
 
 {- | Fully qualified name to a function that is the target for Clash
 compilation. E.g. @Bittide.Foo.topEntity@.
@@ -209,7 +210,7 @@ data HitlTestGroup where
     , testCases :: [HitlTestCase HwTargetRef a b]
     -- ^ List of test cases
     , mDriverProc ::
-        Maybe (VivadoHandle -> String -> FilePath -> [(HwTarget, DeviceInfo)] -> IO ExitCode)
+        Maybe (String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCode)
     -- ^ Optional function driving the test. If provided, this function must:
     --   - Handle any pre-processing necessary to begin the test
     --   - Assert the start probe(s)

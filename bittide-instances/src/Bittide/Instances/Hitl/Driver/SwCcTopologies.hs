@@ -12,8 +12,8 @@ import Clash.Prelude
 import Project.FilePath
 import Project.Handle
 
-import Vivado
-import Vivado.Tcl
+import Vivado.Tcl (HwTarget)
+import Vivado.VivadoM
 
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup (demoRigInfo)
@@ -22,6 +22,7 @@ import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Vivado
 
 import Control.Monad (forM_, zipWithM, zipWithM_)
+import Control.Monad.IO.Class
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
 import System.Clock (Clock (Monotonic), diffTimeSpec, getTime, toNanoSecs)
@@ -38,17 +39,16 @@ getProbeProgEnTcl = getTestProbeTcl "*vioHitlt/probe_prog_en"
 data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
 
 driverFunc ::
-  VivadoHandle ->
   String ->
-  FilePath ->
   [(HwTarget, DeviceInfo)] ->
-  IO ExitCode
-driverFunc v testName ilaPath targets = do
-  putStrLn
+  VivadoM ExitCode
+driverFunc testName targets = do
+  liftIO
+    . putStrLn
     $ "Running Driver function for targets "
     <> show ((\(_, info) -> info.deviceId) <$> targets)
 
-  startTime <- getTime Monotonic
+  startTime <- liftIO $ getTime Monotonic
 
   let
     calcTimeSpentMs = (`div` 1000000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
@@ -64,22 +64,17 @@ driverFunc v testName ilaPath targets = do
           error $ "Timeout while performing action: " <> actionName
         Just r -> pure r
 
-    initHwTargets :: IO ()
+    initHwTargets :: VivadoM ()
     initHwTargets = forM_ targets $ \(hwT, d) -> do
-      putStrLn $ "Preparing hardware target " <> show d.deviceId
+      liftIO $ putStrLn $ "Preparing hardware target " <> show d.deviceId
 
-      openHwTarget v hwT
-      execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
-      refresh_hw_device v []
-      execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeProgEnTcl]
-      commit_hw_vio v ["[get_hw_vios]"]
+      openHardwareTarget hwT
+      updateVio "vioHitlt" [("probe_prog_en", "1")]
 
     initOpenOcds :: [IO ((Int, ProcessStdIoHandles), IO ())]
-    initOpenOcds = flip L.map targets $ \(hwT, d) -> do
+    initOpenOcds = flip L.map (L.zip [0 ..] targets) $ \(targetIndex, (_, d)) -> do
       putStrLn $ "Starting OpenOCD for target " <> show d.deviceId
 
-      let targetId = idFromHwT hwT
-      let targetIndex = fromMaybe 9 $ L.findIndex (\di -> di.deviceId == targetId) demoRigInfo
       let gdbPort = 3333 + targetIndex
       let tclPort = 6666 + targetIndex
       let telnetPort = 4444 + targetIndex
@@ -148,52 +143,53 @@ driverFunc v testName ilaPath targets = do
 
         return (gdb, gdbClean2)
 
-    loadBinary :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> IO ()
+    loadBinary :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ()
     loadBinary (hwT, d) gdb = do
-      putStrLn $ "Loading binary onto target " <> show d.deviceId
-      runGdbCommands gdb.stdinHandle ["load"]
-      tryWithTimeout "Waiting for program load to finish" 120_000_000
-        $ expectLine gdb.stdoutHandle gdbWaitForLoad
-      openHwTarget v hwT
-      execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
-      refresh_hw_device v []
-      execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeProgEnTcl]
-      commit_hw_vio v ["[get_hw_vios]"]
+      liftIO $ do
+        putStrLn $ "Loading binary onto target " <> show d.deviceId
+        runGdbCommands gdb.stdinHandle ["load"]
+        tryWithTimeout "Waiting for program load to finish" 120_000_000
+          $ expectLine gdb.stdoutHandle gdbWaitForLoad
 
-    startBinary :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> IO ()
+      openHardwareTarget hwT
+      updateVio "vioHitlt" [("probe_prog_en", "0")]
+
+    startBinary :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ()
     startBinary (hwT, d) gdb = do
-      putStrLn $ "Starting binary on target " <> show d.deviceId
-      openHwTarget v hwT
-      execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
-      refresh_hw_device v []
-      execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeProgEnTcl]
-      execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
-      commit_hw_vio v ["[get_hw_vios]"]
-      runGdbCommands gdb.stdinHandle ["continue"]
+      liftIO $ putStrLn $ "Starting binary on target " <> show d.deviceId
 
-    getTestsStatus :: [(HwTarget, DeviceInfo)] -> [TestStatus] -> IO [TestStatus]
+      openHardwareTarget hwT
+      updateVio
+        "vioHitlt"
+        [ ("probe_prog_en", "0")
+        , ("probe_test_start", "1")
+        ]
+
+      liftIO $ runGdbCommands gdb.stdinHandle ["continue"]
+
+    getTestsStatus :: [(HwTarget, DeviceInfo)] -> [TestStatus] -> VivadoM [TestStatus]
     getTestsStatus [] _ = return []
     getTestsStatus _ [] = return []
     getTestsStatus ((hwT, _) : hwtdRest) (status : statusRest) = do
       case status of
         TestRunning -> do
-          timeSpent <- calcTimeSpentMs
+          timeSpent <- liftIO $ calcTimeSpentMs
           rest <- getTestsStatus hwtdRest statusRest
           if timeSpent < testTimeoutMs
             then do
-              openHwTarget v hwT
-              execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
-              refresh_hw_device v []
-              testDone <- execCmd v "get_property" ["INPUT_VALUE", getProbeTestDoneTcl]
-              testSuccess <- execCmd v "get_property" ["INPUT_VALUE", getProbeTestSuccessTcl]
-              let newStatus = if testDone == "1" then TestDone (testSuccess == "1") else TestRunning
-              pure $ newStatus : rest
+              openHardwareTarget hwT
+
+              vals <- readVio "vioHitlt" ["probe_test_done", "probe_test_success"]
+              case vals of
+                [("probe_test_done", "1"), ("probe_test_success", success)] ->
+                  pure $ TestDone (success == "1") : rest
+                _ -> pure $ TestRunning : rest
             else pure $ TestTimeout : rest
         other -> do
           rest <- getTestsStatus hwtdRest statusRest
           pure $ other : rest
 
-    getTestResults :: [(HwTarget, DeviceInfo)] -> [TestStatus] -> IO [ExitCode]
+    getTestResults :: [(HwTarget, DeviceInfo)] -> [TestStatus] -> VivadoM [ExitCode]
     getTestResults tgts prevStatuses = do
       newStatuses <- getTestsStatus tgts prevStatuses
       if not (TestRunning `L.elem` newStatuses)
@@ -210,11 +206,11 @@ driverFunc v testName ilaPath targets = do
               _ -> do
                 putStrLn $ "Test timed out on target " <> show d.deviceId
                 return $ ExitFailure 2
-          zipWithM go tgts newStatuses
+          liftIO $ zipWithM go tgts newStatuses
         else getTestResults tgts newStatuses
 
     foldExitCodes ::
-      IO (Int, ExitCode) -> ExitCode -> IO (Int, ExitCode)
+      VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
     foldExitCodes prev code = do
       (count, acc) <- prev
       return
@@ -222,19 +218,17 @@ driverFunc v testName ilaPath targets = do
           then (count + 1, acc)
           else (count, code)
 
-    deassertStartTest :: (HwTarget, DeviceInfo) -> IO ()
+    deassertStartTest :: (HwTarget, DeviceInfo) -> VivadoM ()
     deassertStartTest (hwT, d) = do
-      openHwTarget v hwT
-      execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
-      refresh_hw_device v []
-      execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeTestStartTcl]
-      commit_hw_vio v ["[get_hw_vios]"]
-      putStrLn $ "Running cleanup for target " <> d.deviceId
+      openHardwareTarget hwT
+      updateVio "vioHitlt" [("probe_test_start", "0")]
+
+      liftIO $ putStrLn $ "Running cleanup for target " <> d.deviceId
 
   initHwTargets
-  brackets initOpenOcds snd $ \initOcdsData -> do
+  brackets (liftIO <$> initOpenOcds) (liftIO . snd) $ \initOcdsData -> do
     let gdbPorts = fmap (fst . fst) initOcdsData
-    brackets (initGdbs gdbPorts) snd $ \initGdbsData -> do
+    brackets (liftIO <$> initGdbs gdbPorts) (liftIO . snd) $ \initGdbsData -> do
       let gdbs = fmap fst initGdbsData
       zipWithM_ loadBinary targets gdbs
       zipWithM_ startBinary targets gdbs
@@ -242,7 +236,8 @@ driverFunc v testName ilaPath targets = do
       testResults <- getTestResults targets (L.replicate (L.length targets) TestRunning)
       (count, exitCode) <-
         L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
-      putStrLn [i|Test case #{testName} passed on #{count} of #{L.length targets} targets|]
+      liftIO
+        $ putStrLn [i|Test case #{testName} passed on #{count} of #{L.length targets} targets|]
 
       forM_ targets deassertStartTest
 
