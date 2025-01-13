@@ -39,6 +39,7 @@ import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Proxy
 import GHC.Float.RealFracMethods (roundFloatInteger)
 import LiftType (liftTypeQ)
+import System.FilePath ((</>))
 import VexRiscv (JtagIn, JtagOut)
 
 import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
@@ -1066,7 +1067,7 @@ tests = testGroup
   testGroup =
     HitlTestGroup
     { topEntity = 'swCcTopologyTest
-    , extraXdcFiles = ["jtag_config.xdc", "jtag_pmod1-alt.xdc"]
+    , extraXdcFiles = ["jtag" </> "config.xdc", "jtag" </> "pmod1.xdc"]
     , externalHdl = []
     , testCases =
         [ -- detect the natual clock offsets to be elided from the later tests
