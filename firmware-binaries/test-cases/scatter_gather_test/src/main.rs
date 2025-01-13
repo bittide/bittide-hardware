@@ -42,14 +42,14 @@ fn main() -> ! {
 
     // First metacycle
     gather_unit.wait_for_new_metacycle();
-    unsafe { gather_unit.copy_from_slice(&source, 0) };
+    unsafe { gather_unit.write_slice(&source, 0) };
 
     // Second metacycle
     gather_unit.wait_for_new_metacycle();
 
     // Third metacycle
     gather_unit.wait_for_new_metacycle();
-    unsafe { scatter_unit.copy_to_slice(destination.as_mut(), 0) };
+    unsafe { scatter_unit.read_slice(destination.as_mut(), 0) };
 
     // Check if slices are equal
     if source == destination {

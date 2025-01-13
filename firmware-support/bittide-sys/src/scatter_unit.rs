@@ -2,11 +2,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 pub struct ScatterUnit<const MEM_SIZE: usize> {
-    memory: *const u32,
-    metacycle_register: *const u32,
+    base_addr: *const u32,
 }
 
 impl<const MEM_SIZE: usize> ScatterUnit<MEM_SIZE> {
+    const METACYCLE_OFFSET: usize = MEM_SIZE * 2;
+
     /// Create a new [`ScatterUnit`] instance given a base address. The
     /// `MEM_SIZE` is the number of 64-bit words.
     ///
@@ -16,31 +17,32 @@ impl<const MEM_SIZE: usize> ScatterUnit<MEM_SIZE> {
     /// by a memory mapped scatter unit instance.
     pub unsafe fn new(base_addr: *const ()) -> ScatterUnit<MEM_SIZE> {
         let addr = base_addr as *const u32;
-        ScatterUnit {
-            memory: addr,
-            metacycle_register: addr.add(MEM_SIZE * 2),
-        }
+        ScatterUnit { base_addr: addr }
     }
 
-    /// # Safety
+    /// Read a slice from the scatter memory.
     ///
-    /// The destination memory size must be smaller or equal to the size of the
-    /// `ScatterUnit`.
-    pub unsafe fn copy_to_slice(&self, dst: &mut [u32], offset: usize) {
-        let src = self.memory.add(offset);
-        assert!(dst.len() + offset <= MEM_SIZE * 2);
+    /// # Panics
+    ///
+    /// The destination memory size must be smaller or equal to the memory size
+    ///  of the `ScatterUnit`.
+    pub unsafe fn read_slice(&self, dst: &mut [u32], offset: usize) {
+        let src = self.base_addr.add(offset);
+        assert!(dst.len() + offset <= Self::METACYCLE_OFFSET);
         core::ptr::copy_nonoverlapping(src, dst.as_mut_ptr(), dst.len());
     }
 
     /// Wait for the start of a new metacycle.
     ///
-    /// Execution will stall until the start of a new metacycle.
+    /// Reading from the register will cause a stall until the end of the
+    /// metacycle. The read value is not actually relevant, so it's safe
+    /// to discard.
     pub fn wait_for_new_metacycle(&self) {
         unsafe {
-            // reading from the register will cause a stall until the end of the
-            // metacycle, the read value is not actually relevant, so it's safe
-            // to discard.
-            let _val = self.metacycle_register.read_volatile();
+            let _val = self
+                .base_addr
+                .add(Self::METACYCLE_OFFSET)
+                .read_volatile();
         }
     }
 }
