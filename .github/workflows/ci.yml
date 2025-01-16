@@ -97,6 +97,20 @@ jobs:
         run: |
           ! grep --include=*.hs -E -r '\-fconstraint-solver-iterations *= *0'
 
+      - run: cache clean
+      - run: cache pull cabal --missing-ok --write-cache-found
+      - name: Update Cabal index info
+        run: |
+          if [[ $(cat cache_found) == 0 ]]; then
+            cabal update
+          else
+            echo "Restored cache, no need to update cabal package list"
+          fi
+      - name: Check that cabal.project.freeze is up to date with the cabal.project file
+        run: |
+          cabal freeze
+          git diff --exit-code cabal.project.freeze
+
   build:
     name: Build dependencies
     runs-on: [self-hosted, compute]
