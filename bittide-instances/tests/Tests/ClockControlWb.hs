@@ -166,6 +166,8 @@ dut =
       (0b100 :> 0b010 :> 0b001 :> 0b110 :> 0b111 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
+      d0 -- No timeouts on the instruction bus
+      d0 -- No timeouts on the data bus
 
 -- | Parse the output of the UART
 resultParser :: Parser SerialResult

@@ -28,7 +28,7 @@ import qualified Data.ByteString as BS
 -- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where
   PeConfig ::
-    forall depthI depthD nBusses.
+    forall depthI depthD nBusses iBusTimeout dBusTimeout.
     ( KnownNat depthI
     , 1 <= depthI
     , KnownNat depthD
@@ -43,6 +43,12 @@ data PeConfig nBusses where
     InitialContent depthI (Bytes 4) ->
     -- | Initial content of the data memory, can be smaller than its total depth.
     InitialContent depthD (Bytes 4) ->
+    -- | Number of clock cycles after which the a transaction on the instruction bus times out.
+    -- Set to 0 to disable timeouts on the instruction bus.
+    SNat iBusTimeout ->
+    -- | Number of clock cycles after which the a transaction on the data bus times out.
+    -- Set to 0 to disable timeouts on the data bus.
+    SNat dBusTimeout ->
     PeConfig nBusses
 
 {- | VexRiscV based RV32IMC core together with instruction memory, data memory and
@@ -56,15 +62,18 @@ processingElement ::
   Circuit
     (Jtag dom)
     (Vec (nBusses - 2) (Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4)))
-processingElement dumpVcd (PeConfig memMapConfig initI initD) = circuit $ \jtagIn -> do
+processingElement dumpVcd (PeConfig memMapConfig initI initD iBusTimeout dBusTimeout) = circuit $ \jtagIn -> do
   (iBus0, dBus0) <- rvCircuit dumpVcd (pure low) (pure low) (pure low) -< jtagIn
   iBus1 <-
     ilaWb (SSymbol @"instructionBus") 2 D4096 onTransactionWb onTransactionWb -< iBus0
-  dBus1 <- ilaWb (SSymbol @"dataBus") 2 D4096 onTransactionWb onTransactionWb -< dBus0
+  dBus1 <-
+    watchDogWb "dBus" iBusTimeout
+      <| ilaWb (SSymbol @"dataBus") 2 D4096 onTransactionWb onTransactionWb
+      -< dBus0
   ([iMemBus, dMemBus], extBusses) <-
     (splitAtC d2 <| singleMasterInterconnect memMapConfig) -< dBus1
   wbStorage initD -< dMemBus
-  iBus2 <- removeMsb -< iBus1 -- XXX: <= This should be handled by an interconnect
+  iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
   wbStorageDPC initI -< (iBus2, iMemBus)
   idC -< extBusses
  where

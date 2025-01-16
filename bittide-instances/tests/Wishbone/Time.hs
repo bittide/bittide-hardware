@@ -90,6 +90,8 @@ dut = withClockResetEnable clockGen resetGen enableGen
       (0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
+      d0 -- No timeouts on the instruction bus
+      d0 -- No timeouts on the data bus
 
 data TestResult = TestResult String (Maybe String) deriving (Show)
 

@@ -166,9 +166,9 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
       elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
       elfPath = elfDir </> "smoltcp_client"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
-    pure $ PeConfig memMap (Reloadable (Vec iMem)) (Reloadable (Vec dMem))
+    pure $ PeConfig memMap (Reloadable (Vec iMem)) (Reloadable (Vec dMem)) d0 d0
 
-  peConfigRtl = PeConfig memMap (Undefined @IMemWords) (Undefined @DMemWords)
+  peConfigRtl = PeConfig memMap (Undefined @IMemWords) (Undefined @DMemWords) d0 d0
 
 type DMemWords = DivRU (256 * 1024) 4
 type IMemWords = DivRU (64 * 1024) 4

@@ -116,6 +116,8 @@ dut eb localCounter = circuit $ \uartRx -> do
       (0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
+      d0 -- No timeouts on the instruction bus
+      d0 -- No timeouts on the data bus
 
 {- | Simulation function which matches the remote counter to the correct sample
 of the local counter.

@@ -131,3 +131,5 @@ callistoSwClockControl (SwControlConfig jtagIn reframe mgn fsz) mask ebs =
       (0b100 :> 0b010 :> 0b110 :> 0b111 :> 0b001 :> Nil)
       (Undefined @(Div (64 * 1024) 4))
       (Undefined @(Div (64 * 1024) 4))
+      d0 -- No timeouts on the instruction bus
+      d0 -- No timeouts on the data bus

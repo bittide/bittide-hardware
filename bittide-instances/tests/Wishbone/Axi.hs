@@ -102,6 +102,8 @@ dut =
       (0b000 :> 0b001 :> 0b010 :> 0b011 :> 0b100 :> 0b101 :> Nil)
       (Reloadable $ Blob iMem)
       (Reloadable $ Blob dMem)
+      d0 -- No timeouts on the instruction bus
+      d0 -- No timeouts on the data bus
 
 data TestResult = TestResult String (Maybe String) deriving (Show, Eq)
 

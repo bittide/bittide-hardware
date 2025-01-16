@@ -154,9 +154,14 @@ vexRiscvInner jtagIn0 uartRx =
       elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
       elfPath = elfDir </> "hello"
     (iMem, dMem) <- vecsFromElf @DMemWords @IMemWords BigEndian elfPath Nothing
-    pure $ PeConfig memMap (Reloadable (Vec iMem)) (Reloadable (Vec dMem))
-
-  peConfigRtl = PeConfig memMap (Undefined @DMemWords) (Undefined @IMemWords)
+    pure
+      $ PeConfig
+        memMap
+        (Reloadable (Vec iMem))
+        (Reloadable (Vec dMem))
+        d0 -- No timeouts on the instruction bus
+        d0 -- No timeouts on the data bus
+  peConfigRtl = PeConfig memMap (Undefined @DMemWords) (Undefined @IMemWords) d0 d0
 
 type DMemWords = DivRU (64 * 1024) 4
 type IMemWords = DivRU (64 * 1024) 4

@@ -20,6 +20,7 @@ import Bittide.SharedTypes
 import Clash.Cores.UART (ValidBaud, uart)
 import Clash.Cores.Xilinx.Ila (Depth, IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
+import Clash.Debug
 import Clash.Util.Interpolate
 
 import Data.Bifunctor
@@ -643,3 +644,40 @@ readDnaPortE2Wb simDna = circuit $ \wb -> do
   reg = withReset regRst $ registerWbC @dom @_ @nBytes @addrW WishbonePriority 0
   dnaCircuit :: Circuit () (Df dom (BitVector 96))
   dnaCircuit = Circuit $ const ((), Df.maybeToData <$> maybeDna)
+
+{- | Circuit that monitors the 'Wishbone' bus and terminates the transaction after a timeout.
+Controls the 'err' signal of the 'WishboneS2M' signal and sets the outgoing 'WishboneM2S'
+to an empty transaction for one cycle.
+-}
+watchDogWb ::
+  forall dom addrW nBytes timeout.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , KnownNat nBytes
+  , 1 <= nBytes
+  ) =>
+  String ->
+  SNat timeout ->
+  Circuit
+    (Wishbone dom 'Standard addrW (Bytes nBytes))
+    (Wishbone dom 'Standard addrW (Bytes nBytes))
+watchDogWb name timeout@SNat
+  | snatToNatural timeout == 0 = idC
+  | otherwise = Circuit $ unbundle . mealy go (0 :: Index (timeout + 1)) . bundle
+ where
+  go cnt0 ~(wbM2S0, wbS2M0) = (cnt1, (wbS2M1, wbM2S1))
+   where
+    wdTimeout = cnt0 == maxBound
+
+    (wbS2M1, wbM2S1)
+      | wdTimeout =
+          ( wbS2M0{err = True, acknowledge = False, stall = False, retry = False}
+          , wbM2S0{strobe = False}
+          )
+      | otherwise = (wbS2M0, wbM2S0)
+
+    cnt1
+      | wbS2M0.acknowledge || wbS2M0.err || wbS2M0.stall || wbS2M0.retry = 0
+      | wdTimeout = trace ("watchDogWb - " <> name <> ": " <> show wbM2S0) 0
+      | wbM2S0.busCycle && wbM2S0.strobe = succ cnt0
+      | otherwise = 0
