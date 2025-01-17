@@ -15,7 +15,7 @@ write-ghc-environment-files: always
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
-index-state: 2024-08-07T03:18:13Z
+index-state: 2025-01-16T11:17:49Z
 with-compiler: ghc-9.6.5
 tests: True
 
@@ -133,11 +133,6 @@ package vivado-hs
     -A64M
     -RTS
     -j8
-
--- index state, to go along with the cabal.project.freeze file. update the index
--- state by running `cabal update` twice and looking at the index state it
--- displays to you (as the second update will be a no-op)
-index-state: 2023-12-05T05:33:28Z
 
 -- We need an up-to-date Clash and libraries. Among other features, this adds
 -- support for dynamic clocks and Xilinx primitive support.
