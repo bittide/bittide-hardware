@@ -178,13 +178,6 @@ driverFunc testName targets = do
           then (count + 1, acc)
           else (count, code)
 
-    deassertStartTest :: (HwTarget, DeviceInfo) -> VivadoM ()
-    deassertStartTest (hwT, d) = do
-      openHardwareTarget hwT
-      updateVio "vioHitlt" [("probe_test_start", "0")]
-
-      liftIO $ putStrLn $ "Running cleanup for target " <> d.deviceId
-
   initHwTargets
   let gdbPorts = L.take (L.length targets) [3333 ..]
   brackets (liftIO <$> L.zipWith initOpenOcd targets [0 ..]) (liftIO . snd) $ \_initOcdsData -> do
@@ -205,8 +198,6 @@ driverFunc testName targets = do
         L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
       liftIO
         $ putStrLn [i|Test case #{testName} passed on #{count} of #{L.length targets} targets|]
-
-      forM_ targets deassertStartTest
 
       return exitCode
  where
