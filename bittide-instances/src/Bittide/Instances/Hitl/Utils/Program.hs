@@ -11,7 +11,8 @@ import Project.Handle
 
 import Paths_bittide_instances
 
-import Control.Exception
+import Control.Monad.Catch
+import Control.Monad.IO.Class
 import Data.List (isPrefixOf)
 import Data.Maybe (fromJust)
 import System.IO
@@ -19,7 +20,7 @@ import System.Posix.Env (getEnvironment)
 import System.Process
 import System.Timeout (timeout)
 
-brackets :: [IO a] -> (a -> IO b) -> ([a] -> IO c) -> IO c
+brackets :: (MonadMask m) => [m a] -> (a -> m b) -> ([a] -> m c) -> m c
 brackets acqs rel act = go [] acqs
  where
   go resL [] = act (reverse resL)
@@ -52,10 +53,17 @@ awaitProcessTermination name h (Just t) = do
     Just _ -> return ()
     Nothing -> error "Waiting for pocess termination timed out."
 
-withOpenOcd :: String -> Int -> Int -> Int -> (ProcessStdIoHandles -> IO a) -> IO a
+withOpenOcd ::
+  (MonadMask m, MonadIO m) =>
+  String ->
+  Int ->
+  Int ->
+  Int ->
+  (ProcessStdIoHandles -> m a) ->
+  m a
 withOpenOcd usbLoc gdbPort tclPort telnetPort action = do
-  (ocd, clean) <- startOpenOcd usbLoc gdbPort tclPort telnetPort
-  finally (action ocd) clean
+  (ocd, clean) <- liftIO $ startOpenOcd usbLoc gdbPort tclPort telnetPort
+  finally (action ocd) (liftIO clean)
 
 startOpenOcd :: String -> Int -> Int -> Int -> IO (ProcessStdIoHandles, IO ())
 startOpenOcd usbLoc gdbPort tclPort telnetPort = do
@@ -132,10 +140,10 @@ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort = do
 
   pure (ocdHandles', openOcdPh, cleanupProcess ocdHandles)
 
-withGdb :: (ProcessStdIoHandles -> IO a) -> IO a
+withGdb :: (MonadIO m, MonadMask m) => (ProcessStdIoHandles -> m a) -> m a
 withGdb action = do
-  (gdb, clean) <- startGdb
-  finally (action gdb) clean
+  (gdb, clean) <- liftIO startGdb
+  finally (action gdb) (liftIO clean)
 
 startGdb :: IO (ProcessStdIoHandles, IO ())
 startGdb = do
@@ -200,14 +208,15 @@ startPicocom devPath = do
   pure (picoHandles', cleanupProcess picoHandles)
 
 withPicocomWithLogging ::
+  (MonadIO m, MonadMask m) =>
   FilePath ->
   FilePath ->
   FilePath ->
-  (ProcessStdIoHandles -> IO a) ->
-  IO a
+  (ProcessStdIoHandles -> m a) ->
+  m a
 withPicocomWithLogging devPath stdoutPath stderrPath action = do
-  (pico, clean) <- startPicocomWithLogging devPath stdoutPath stderrPath
-  finally (action pico) clean
+  (pico, clean) <- liftIO $ startPicocomWithLogging devPath stdoutPath stderrPath
+  finally (action pico) (liftIO clean)
 
 withPicocomWithLoggingAndEnv ::
   FilePath ->

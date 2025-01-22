@@ -53,6 +53,7 @@ library
   exposed-modules:
     Vivado
     Vivado.Tcl
+    Vivado.VivadoM
 
   other-modules:
     Vivado.Internal
@@ -61,7 +62,9 @@ library
     base,
     containers,
     deepseq,
+    exceptions,
     extra,
+    mtl,
     process,
     string-interpolate,
     temporary,

@@ -16,36 +16,33 @@ import Clash.Prelude
 import Project.FilePath
 import Project.Handle
 
-import Vivado
-import Vivado.Tcl
+import Vivado.Tcl (HwTarget)
+import Vivado.VivadoM
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Setup (demoRigInfo)
 import Bittide.Instances.Hitl.Utils.Gdb
 import Bittide.Instances.Hitl.Utils.Program
-import Bittide.Instances.Hitl.Utils.Vivado
 
 import Control.Concurrent (threadDelay)
-import Control.Exception (SomeException, displayException, handle)
 import Control.Monad (forM)
+import Control.Monad.Catch
+import Control.Monad.IO.Class
 import qualified Data.List as L
-import Data.Maybe (fromMaybe)
 import System.Exit
 import System.FilePath
 import System.IO
 import System.Timeout (timeout)
 
 driverFunc ::
-  VivadoHandle ->
   String ->
-  FilePath ->
   [ ( HwTarget
     , DeviceInfo
     )
   ] ->
-  IO ExitCode
-driverFunc v _name ilaPath targets = do
-  putStrLn
+  VivadoM ExitCode
+driverFunc _name targets = do
+  liftIO
+    $ putStrLn
     $ "Running Driver function for targets "
     <> show ((\(_, info) -> info.deviceId) <$> targets)
 
@@ -55,23 +52,17 @@ driverFunc v _name ilaPath targets = do
       putStrLn $ "Test Failed on device " <> d.deviceId <> " with: " <> displayException ex
       pure $ ExitFailure 2
 
-  exitCodes <- forM targets $ \(hwT, d) -> handle (catchError d) $ do
-    putStrLn $ "Running driver for " <> d.deviceId
+  exitCodes <- forM (L.zip [0 ..] targets) $ \(targetIndex, (hwT, d)) -> handle (liftIO . catchError d) $ do
+    liftIO $ putStrLn $ "Running driver for " <> d.deviceId
 
-    openHwTarget v hwT
-    execCmd_ v "set_property" ["PROBES.FILE", embrace ilaPath, "[current_hw_device]"]
-    refresh_hw_device v []
+    openHardwareTarget hwT
 
     -- even though this is just pre-process step, the CPU is reset until
     -- the test_start signal is asserted and cannot be accessed via GDB otherwise
-    execCmd_ v "set_property" ["OUTPUT_VALUE", "1", getProbeTestStartTcl]
-    commit_hw_vio v ["[get_hw_vios]"]
+    updateVio "vioHitlt" [("probe_test_start", "1")]
 
-    let targetId = idFromHwT hwT
-    let targetIndex = fromMaybe 9 $ L.findIndex (\di -> di.deviceId == targetId) demoRigInfo
-    -- since we're running one test after another we don't need a different port
-    let gdbPort = 3333 -- + targetIndex
-    withOpenOcd d.usbAdapterLocation gdbPort 6666 4444 $ \ocd -> do
+    let gdbPort = 3333 + targetIndex
+    liftIO $ withOpenOcd d.usbAdapterLocation gdbPort 6666 4444 $ \ocd -> do
       -- make sure OpenOCD is started properly
 
       hSetBuffering ocd.stderrHandle LineBuffering
@@ -167,8 +158,7 @@ driverFunc v _name ilaPath targets = do
           tryWithTimeout "Waiting for \"Hello, UART!!\"" 10_000_000
             $ waitForLine pico.stdoutHandle "Hello, UART!"
 
-          execCmd_ v "set_property" ["OUTPUT_VALUE", "0", getProbeTestStartTcl]
-          commit_hw_vio v ["[get_hw_vios]"]
+    updateVio "vioHitlt" [("probe_test_start", "0")]
 
     pure ExitSuccess
 

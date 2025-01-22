@@ -103,6 +103,7 @@ common common-options
     cryptohash-sha256,
     deepseq,
     directory,
+    exceptions,
     extra,
     filepath,
     ghc-typelits-extra,
