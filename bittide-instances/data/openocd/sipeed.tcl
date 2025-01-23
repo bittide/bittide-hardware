@@ -36,6 +36,8 @@ ftdi layout_signal nTRST -data 0x0 -oe 0x0
 # we don't have an output-enable pin -> set the same mask
 ftdi layout_signal nSRST -data 0x0020 -oe 0x0020
 
-# JTAG mode
-adapter speed 6000
+# The FT2232C supports sustained data rates up to 5.6 Mbit/s
+# https://ftdichip.com/wp-content/uploads/2020/08/DS_FT2232C.pdf
+# Just to be safe we set it to 1000 kHz
+adapter speed 1000
 transport select jtag
