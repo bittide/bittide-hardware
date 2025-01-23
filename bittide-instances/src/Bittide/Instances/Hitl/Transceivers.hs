@@ -161,7 +161,11 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
         , rxNs
         , rxPs
         , txDatas = repeat txCounter
-        , txReadys = repeat (fold (.&&.) transceivers.txReadys)
+        , txReadys =
+            repeat
+              ( register transceivers.txClock noReset enableGen False
+                  $ fold (.&&.) transceivers.txReadys -- TODO figure out proper reset
+              )
         , rxReadys = repeat (pure True)
         }
 
