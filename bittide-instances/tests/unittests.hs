@@ -14,6 +14,7 @@ import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
 import qualified Wishbone.Time as Time
+import qualified Wishbone.Watchdog as Watchdog
 
 tests :: TestTree
 tests =
@@ -25,6 +26,7 @@ tests =
     , Ord.tests
     , Time.tests
     , Axi.tests
+    , Watchdog.tests
     ]
 
 main :: IO ()
