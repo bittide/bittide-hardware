@@ -81,7 +81,8 @@ times if we don't see sensible data coming in. See the individual constructors
 and 'resetManager' for more information.
 -}
 data State dom
-  = -- | Reset everything - transmit and receive side
+  = InReset
+  | -- | Reset everything - transmit and receive side
     StartTx
   | -- | Reset just the receive side
     StartRx
@@ -145,11 +146,12 @@ resetManager config clk rst tx_init_done rx_init_done rx_data_good =
       }
 
   initState :: State dom
-  initState = StartTx
+  initState = InReset
 
   update :: (State dom, Statistics) -> (Bool, Bool, Bool) -> (State dom, Statistics)
   update st (tx_done, rx_done, rx_good) =
     case st of
+      (InReset, stats) -> (StartTx, stats)
       -- Reset everything:
       (StartTx, stats) -> (TxWait minBound, stats)
       -- Wait for transceiver to indicate it is done
