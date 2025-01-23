@@ -146,22 +146,7 @@ withGdb action = do
   finally (action gdb) (liftIO clean)
 
 startGdb :: IO (ProcessStdIoHandles, IO ())
-startGdb = do
-  let
-    gdbProc = (proc "gdb" []){std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe}
-
-  gdbHandles@(gdbStdin, gdbStdout, gdbStderr, _gdbPh) <-
-    createProcess gdbProc
-
-  let
-    gdbHandles' =
-      ProcessStdIoHandles
-        { stdinHandle = fromJust gdbStdin
-        , stdoutHandle = fromJust gdbStdout
-        , stderrHandle = fromJust gdbStderr
-        }
-
-  pure (gdbHandles', cleanupProcess gdbHandles)
+startGdb = (\(a, b, c) -> (a, c)) <$> startGdbH
 
 startGdbH :: IO (ProcessStdIoHandles, ProcessHandle, IO ())
 startGdbH = do
