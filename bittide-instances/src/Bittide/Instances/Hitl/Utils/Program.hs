@@ -55,55 +55,49 @@ awaitProcessTermination name h (Just t) = do
 
 withOpenOcd ::
   (MonadMask m, MonadIO m) =>
+  -- | USB device location
   String ->
+  -- | GDB port
   Int ->
+  -- | TCL port
   Int ->
+  -- | Telnet port
   Int ->
+  -- | Action to run with OpenOCD
   (ProcessStdIoHandles -> m a) ->
   m a
-withOpenOcd usbLoc gdbPort tclPort telnetPort action = do
-  (ocd, clean) <- liftIO $ startOpenOcd usbLoc gdbPort tclPort telnetPort
+withOpenOcd = withOpenOcdWithEnv []
+
+withOpenOcdWithEnv ::
+  (MonadMask m, MonadIO m) =>
+  -- | Extra environment variables to pass to OpenOCD in form (name, value)
+  [(String, String)] ->
+  -- | USB device location
+  String ->
+  -- | GDB port
+  Int ->
+  -- | TCL port
+  Int ->
+  -- | Telnet port
+  Int ->
+  -- | Action to run with OpenOCD
+  (ProcessStdIoHandles -> m a) ->
+  m a
+withOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort action = do
+  (ocd, _handle, clean) <-
+    liftIO $ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort
   finally (action ocd) (liftIO clean)
 
-startOpenOcd :: String -> Int -> Int -> Int -> IO (ProcessStdIoHandles, IO ())
-startOpenOcd usbLoc gdbPort tclPort telnetPort = do
-  startOpenOcdPath <- getOpenOcdStartPath
-  currentEnv <- getEnvironment
-  let
-    openOcdProc =
-      (proc startOpenOcdPath [])
-        { std_in = CreatePipe
-        , std_out = CreatePipe
-        , std_err = CreatePipe
-        , env =
-            Just
-              ( currentEnv
-                  <> [ ("USB_DEVICE", usbLoc)
-                     , ("GDB_PORT", show gdbPort)
-                     , ("TCL_PORT", show tclPort)
-                     , ("TELNET_PORT", show telnetPort)
-                     ]
-              )
-        }
-
-  ocdHandles@(openOcdStdin, openOcdStdout, openOcdStderr, _openOcdPh) <-
-    createProcess openOcdProc
-
-  let
-    ocdHandles' =
-      ProcessStdIoHandles
-        { stdinHandle = fromJust openOcdStdin
-        , stdoutHandle = fromJust openOcdStdout
-        , stderrHandle = fromJust openOcdStderr
-        }
-
-  pure (ocdHandles', cleanupProcess ocdHandles)
-
 startOpenOcdWithEnv ::
+  -- | Extra environment variables to pass to OpenOCD in form (name, value)
   [(String, String)] ->
+  -- | USB device location
   String ->
+  -- | GDB port
   Int ->
+  -- | TCL port
   Int ->
+  -- | Telnet port
   Int ->
   IO (ProcessStdIoHandles, ProcessHandle, IO ())
 startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort = do
@@ -146,7 +140,7 @@ withGdb action = do
   finally (action gdb) (liftIO clean)
 
 startGdb :: IO (ProcessStdIoHandles, IO ())
-startGdb = (\(a, b, c) -> (a, c)) <$> startGdbH
+startGdb = (\(a, _, c) -> (a, c)) <$> startGdbH
 
 startGdbH :: IO (ProcessStdIoHandles, ProcessHandle, IO ())
 startGdbH = do
