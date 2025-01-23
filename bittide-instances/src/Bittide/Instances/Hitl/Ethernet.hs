@@ -12,6 +12,7 @@ import Bittide.Instances.Pnr.Ethernet
 import Clash.Cores.Xilinx.Ethernet.Gmii
 import Clash.Explicit.Prelude
 import Clash.Xilinx.ClockGen
+import System.FilePath ((</>))
 import VexRiscv
 
 import qualified Bittide.Instances.Pnr.Ethernet as Pnr
@@ -84,7 +85,7 @@ tests =
   HitlTestGroup
     { topEntity = 'vexRiscvTcpTest
     , extraXdcFiles =
-        ["jtag_config.xdc", "jtag_pmod1.xdc", "sgmii.xdc"]
+        ["jtag" </> "config.xdc", "jtag" </> "pmod1.xdc", "uart" </> "pmod1.xdc", "sgmii.xdc"]
     , externalHdl =
         [ "$env(VERILOG_ETHERNET_SRC)/rtl/*.v"
         , "$env(VERILOG_ETHERNET_SRC)/lib/axis/rtl/*.v"
