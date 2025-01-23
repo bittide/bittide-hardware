@@ -48,38 +48,42 @@ driverFunc _name targets = do
 
   let
     catchError :: DeviceInfo -> SomeException -> IO ExitCode
-    catchError d ex = do
-      putStrLn $ "Test Failed on device " <> d.deviceId <> " with: " <> displayException ex
+    catchError deviceInfo ex = do
+      putStrLn
+        $ "Test Failed on device "
+        <> deviceInfo.deviceId
+        <> " with: "
+        <> displayException ex
       pure $ ExitFailure 2
 
-  exitCodes <- forM (L.zip [0 ..] targets) $ \(targetIndex, (hwT, d)) -> handle (liftIO . catchError d) $ do
-    liftIO $ putStrLn $ "Running driver for " <> d.deviceId
+  projectDir <- liftIO $ findParentContaining "cabal.project"
+
+  exitCodes <- forM (L.zip [0 ..] targets) $ \(targetIndex, (hwT, deviceInfo)) -> handle (liftIO . catchError deviceInfo) $ do
+    liftIO $ putStrLn $ "Running driver for " <> deviceInfo.deviceId
+
+    let
+      hitlDir = projectDir </> "_build" </> "hitl"
+      mkLogPath str = (hitlDir </> str <> show targetIndex <> ".log")
+      picoOutLog = mkLogPath "picocom-stdout"
+      picoErrLog = mkLogPath "picocom-stderr"
+      ocdOutLog = mkLogPath "openocd-stdout"
+      ocdErrLog = mkLogPath "openocd-stderr"
+      openocdEnv = [("OPENOCD_STDOUT_LOG", ocdOutLog), ("OPENOCD_STDERR_LOG", ocdErrLog)]
+      gdbPort = 3333 + targetIndex
 
     openHardwareTarget hwT
 
     -- even though this is just pre-process step, the CPU is reset until
     -- the test_start signal is asserted and cannot be accessed via GDB otherwise
     updateVio "vioHitlt" [("probe_test_start", "1")]
-
-    let gdbPort = 3333 + targetIndex
-    liftIO $ withOpenOcd d.usbAdapterLocation gdbPort 6666 4444 $ \ocd -> do
+    liftIO $ withOpenOcdWithEnv openocdEnv deviceInfo.usbAdapterLocation gdbPort 6666 4444 $ \ocd -> do
       -- make sure OpenOCD is started properly
-
       hSetBuffering ocd.stderrHandle LineBuffering
       expectLine ocd.stderrHandle openOcdWaitForHalt
 
-      -- make sure PicoCom is started properly
-
-      projectDir <- findParentContaining "cabal.project"
-      let
-        hitlDir = projectDir </> "_build" </> "hitl"
-        stdoutLog = hitlDir </> "picocom-stdout." <> show targetIndex <> ".log"
-        stderrLog = hitlDir </> "picocom-stderr." <> show targetIndex <> ".log"
-      putStrLn $ "logging stdout to `" <> stdoutLog <> "`"
-      putStrLn $ "logging stderr to `" <> stderrLog <> "`"
-
       putStrLn "Starting Picocom..."
-      withPicocomWithLogging d.serial stdoutLog stderrLog $ \pico -> do
+      putStrLn $ "Logging output to '" <> hitlDir
+      withPicocomWithLogging deviceInfo.serial picoOutLog picoErrLog $ \pico -> do
         hSetBuffering pico.stdinHandle LineBuffering
         hSetBuffering pico.stdoutHandle LineBuffering
 
@@ -89,9 +93,7 @@ driverFunc _name targets = do
             threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
             putStrLn "Picocom stdout"
             picocomOut <- readRemainingChars pico.stdoutHandle
-
             putStrLn picocomOut
-
             putStrLn "Picocom StdErr"
             readRemainingChars pico.stderrHandle >>= putStrLn
 
