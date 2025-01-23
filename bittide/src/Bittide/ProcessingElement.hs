@@ -17,7 +17,6 @@ import Protocols.Wishbone
 import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, JtagOut (debugReset), vexRiscv)
 
 import Bittide.DoubleBufferedRam
-import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
@@ -124,29 +123,6 @@ mapAddr ::
   WishboneM2S aw1 selWidth a ->
   WishboneM2S aw2 selWidth a
 mapAddr f wb = wb{addr = f (addr wb)}
-
-{- | Stateless wishbone device that only acknowledges writes to address 0.
-Successful writes return the 'writeData' and 'busSelect'.
--}
-wishboneSink ::
-  (KnownNat addressWidth, Paddable dat) =>
-  -- | Incoming wishbone bus.
-  Signal dom (WishboneM2S addressWidth bs dat) ->
-  -- |
-  -- 1. Outgoing wishbone bus.
-  -- 2. Result of successful write attempt.
-  Signal dom (WishboneS2M dat, Maybe (BitVector bs, dat))
-wishboneSink = fmap go
- where
-  go WishboneM2S{..} = (wbOut, output)
-   where
-    masterActive = busCycle && strobe
-    addrLegal = addr == 0
-    acknowledge = masterActive && writeEnable && addrLegal
-    err = masterActive && (not writeEnable || not addrLegal)
-
-    output = orNothing acknowledge (busSelect, writeData)
-    wbOut = emptyWishboneS2M{acknowledge, err}
 
 {- | Provide a vector of filepaths, and a write operations containing a byteSelect and
 a vector of characters and, for each filepath write the corresponding byte to that file
