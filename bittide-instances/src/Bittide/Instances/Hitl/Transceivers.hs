@@ -127,7 +127,8 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
 
-  txCounter = counter transceivers.txClock transceivers.txReset
+  txCounter =
+    counter transceivers.txClock (unsafeFromActiveLow (fold (.||.) transceivers.txSamplings))
 
   expectCounterError =
     zipWith3
