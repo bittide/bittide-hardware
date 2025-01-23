@@ -155,13 +155,21 @@ vexRiscvInner jtagIn0 uartRx =
       elfPath = elfDir </> "hello"
     (iMem, dMem) <- vecsFromElf @DMemWords @IMemWords BigEndian elfPath Nothing
     pure
-      $ PeConfig
-        memMap
-        (Reloadable (Vec iMem))
-        (Reloadable (Vec dMem))
-        d0 -- No timeouts on the instruction bus
-        d0 -- No timeouts on the data bus
-  peConfigRtl = PeConfig memMap (Undefined @DMemWords) (Undefined @IMemWords) d0 d0
+      PeConfig
+        { memMapConfig = memMap
+        , initI = Reloadable (Vec iMem)
+        , initD = Reloadable (Vec dMem)
+        , iBusTimeout = d0 -- No timeouts on the instruction bus
+        , dBusTimeout = d0 -- No timeouts on the data bus
+        }
+  peConfigRtl =
+    PeConfig
+      { memMapConfig = memMap
+      , initI = Undefined @DMemWords
+      , initD = Undefined @IMemWords
+      , iBusTimeout = d0
+      , dBusTimeout = d0
+      }
 
 type DMemWords = DivRU (64 * 1024) 4
 type IMemWords = DivRU (64 * 1024) 4

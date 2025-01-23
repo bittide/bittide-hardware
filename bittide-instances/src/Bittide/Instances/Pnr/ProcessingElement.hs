@@ -81,10 +81,11 @@ vexRiscUartHello diffClk rst_in =
 
   peConfig =
     PeConfig
-      (0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil)
-      (Reloadable $ Blob iMem)
-      (Reloadable $ Blob dMem)
-      d0 -- No timeouts on the instruction bus
-      d0 -- No timeouts on the data bus
+      { memMapConfig = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
+      , initI = Reloadable $ Blob iMem
+      , initD = Reloadable $ Blob dMem
+      , iBusTimeout = d0 -- No timeouts on the instruction bus
+      , dBusTimeout = d0 -- No timeouts on the data bus
+      }
 
 makeTopEntity 'vexRiscUartHello

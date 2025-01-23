@@ -3,7 +3,6 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS -fplugin=Protocols.Plugin #-}
 
@@ -36,18 +35,19 @@ data PeConfig nBusses where
     , 2 <= nBusses
     , CLog 2 nBusses <= 30
     ) =>
-    -- | The 'MemoryMap' for the contained 'singleMasterInterconnect'.
-    MemoryMap nBusses ->
-    -- | Initial content of the instruction memory, can be smaller than its total depth.
-    InitialContent depthI (Bytes 4) ->
-    -- | Initial content of the data memory, can be smaller than its total depth.
-    InitialContent depthD (Bytes 4) ->
-    -- | Number of clock cycles after which the a transaction on the instruction bus times out.
+    { memMapConfig :: MemoryMap nBusses
+    -- ^ The 'MemoryMap' for the contained 'singleMasterInterconnect'.
+    , initI :: InitialContent depthI (Bytes 4)
+    -- ^ Initial content of the instruction memory, can be smaller than its total depth.
+    , initD :: InitialContent depthD (Bytes 4)
+    -- ^ Initial content of the data memory, can be smaller than its total depth.
+    , iBusTimeout :: SNat iBusTimeout
+    -- ^ Number of clock cycles after which the a transaction on the instruction bus times out.
     -- Set to 0 to disable timeouts on the instruction bus.
-    SNat iBusTimeout ->
-    -- | Number of clock cycles after which the a transaction on the data bus times out.
+    , dBusTimeout :: SNat dBusTimeout
+    -- ^ Number of clock cycles after which the a transaction on the data bus times out.
     -- Set to 0 to disable timeouts on the data bus.
-    SNat dBusTimeout ->
+    } ->
     PeConfig nBusses
 
 {- | VexRiscV based RV32IMC core together with instruction memory, data memory and
@@ -61,7 +61,7 @@ processingElement ::
   Circuit
     (Jtag dom)
     (Vec (nBusses - 2) (Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4)))
-processingElement dumpVcd (PeConfig memMapConfig initI initD iBusTimeout dBusTimeout) = circuit $ \jtagIn -> do
+processingElement dumpVcd PeConfig{memMapConfig, initI, initD, iBusTimeout, dBusTimeout} = circuit $ \jtagIn -> do
   (iBus0, dBus0) <- rvCircuit dumpVcd (pure low) (pure low) (pure low) -< jtagIn
   iBus1 <-
     ilaWb (SSymbol @"instructionBus") 2 D4096 onTransactionWb onTransactionWb -< iBus0
@@ -112,7 +112,8 @@ rvCircuit dumpVcd tInterrupt sInterrupt eInterrupt = Circuit go
  where
   go (jtagIn, (iBusIn, dBusIn)) = (jtagOut, (iBusWbM2S <$> cpuOut, dBusWbM2S <$> cpuOut))
    where
-    tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) = CpuIn{..}
+    tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) =
+      CpuIn{timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M}
     rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
     (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock (hasReset `unsafeOrReset` jtagReset) rvIn jtagIn
     jtagReset = unsafeFromActiveHigh (delay False (bitToBool . debugReset <$> jtagOut))
