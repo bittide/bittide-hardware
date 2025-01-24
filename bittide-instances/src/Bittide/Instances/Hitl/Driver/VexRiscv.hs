@@ -40,7 +40,7 @@ driverFunc ::
     )
   ] ->
   VivadoM ExitCode
-driverFunc _name targets = do
+driverFunc testName targets = do
   liftIO
     $ putStrLn
     $ "Running Driver function for targets "
@@ -62,12 +62,13 @@ driverFunc _name targets = do
     liftIO $ putStrLn $ "Running driver for " <> deviceInfo.deviceId
 
     let
-      hitlDir = projectDir </> "_build" </> "hitl"
+      hitlDir = projectDir </> "_build" </> "hitl" </> testName
       mkLogPath str = (hitlDir </> str <> show targetIndex <> ".log")
       picoOutLog = mkLogPath "picocom-stdout"
       picoErrLog = mkLogPath "picocom-stderr"
       ocdOutLog = mkLogPath "openocd-stdout"
       ocdErrLog = mkLogPath "openocd-stderr"
+      gdbOutLog = mkLogPath "gdb-out.log"
       openocdEnv = [("OPENOCD_STDOUT_LOG", ocdOutLog), ("OPENOCD_STDERR_LOG", ocdErrLog)]
       gdbPort = 3333 + targetIndex
 
@@ -115,7 +116,7 @@ driverFunc _name targets = do
 
           runGdbCommands
             gdb.stdinHandle
-            [ "set logging file ./_build/hitl/gdb-out-" <> show targetIndex <> ".log"
+            [ "set logging file " <> gdbOutLog
             , "set logging overwrite on"
             , "set logging enabled on"
             , "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/debug/hello\""

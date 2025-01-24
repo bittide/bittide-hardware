@@ -75,16 +75,17 @@ driverFunc ::
   String ->
   [(HwTarget, DeviceInfo)] ->
   VivadoM ExitCode
-driverFunc _name [(hwT, dI)] = do
+driverFunc testName [(hwT, dI)] = do
   projectDir <- liftIO $ findParentContaining "cabal.project"
 
   let
-    hitlDir = projectDir </> "_build" </> "hitl"
+    hitlDir = projectDir </> "_build" </> "hitl" </> testName
     mkLogPath str = (hitlDir </> str <> ".log")
     picoOutLog = mkLogPath "picocom-stdout"
     picoErrLog = mkLogPath "picocom-stderr"
     ocdOutLog = mkLogPath "openocd-stdout"
     ocdErrLog = mkLogPath "openocd-stderr"
+    gdbOutLog = mkLogPath "gdb-out.log"
     openocdEnv = [("OPENOCD_STDOUT_LOG", ocdOutLog), ("OPENOCD_STDERR_LOG", ocdErrLog)]
 
     initHwDevice = do
@@ -119,7 +120,7 @@ driverFunc _name [(hwT, dI)] = do
 
       runGdbCommands
         gdb.stdinHandle
-        [ "set logging file ./_build/hitl/gdb-out.log"
+        [ "set logging file " <> gdbOutLog
         , "set logging overwrite on"
         , "set logging enabled on"
         , "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/smoltcp_client\""
