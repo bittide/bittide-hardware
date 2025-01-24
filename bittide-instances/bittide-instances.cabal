@@ -212,6 +212,7 @@ test-suite unittests
     Wishbone.CaptureUgn
     Wishbone.DnaPortE2
     Wishbone.Time
+    Wishbone.Watchdog
 
   build-depends:
     HUnit,

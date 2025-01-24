@@ -3,7 +3,6 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS -fplugin=Protocols.Plugin #-}
 
@@ -17,7 +16,6 @@ import Protocols.Wishbone
 import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, JtagOut (debugReset), vexRiscv)
 
 import Bittide.DoubleBufferedRam
-import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
@@ -28,7 +26,7 @@ import qualified Data.ByteString as BS
 -- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where
   PeConfig ::
-    forall depthI depthD nBusses.
+    forall depthI depthD nBusses iBusTimeout dBusTimeout.
     ( KnownNat depthI
     , 1 <= depthI
     , KnownNat depthD
@@ -37,12 +35,19 @@ data PeConfig nBusses where
     , 2 <= nBusses
     , CLog 2 nBusses <= 30
     ) =>
-    -- | The 'MemoryMap' for the contained 'singleMasterInterconnect'.
-    MemoryMap nBusses ->
-    -- | Initial content of the instruction memory, can be smaller than its total depth.
-    InitialContent depthI (Bytes 4) ->
-    -- | Initial content of the data memory, can be smaller than its total depth.
-    InitialContent depthD (Bytes 4) ->
+    { memMapConfig :: MemoryMap nBusses
+    -- ^ The 'MemoryMap' for the contained 'singleMasterInterconnect'.
+    , initI :: InitialContent depthI (Bytes 4)
+    -- ^ Initial content of the instruction memory, can be smaller than its total depth.
+    , initD :: InitialContent depthD (Bytes 4)
+    -- ^ Initial content of the data memory, can be smaller than its total depth.
+    , iBusTimeout :: SNat iBusTimeout
+    -- ^ Number of clock cycles after which the a transaction on the instruction bus times out.
+    -- Set to 0 to disable timeouts on the instruction bus.
+    , dBusTimeout :: SNat dBusTimeout
+    -- ^ Number of clock cycles after which the a transaction on the data bus times out.
+    -- Set to 0 to disable timeouts on the data bus.
+    } ->
     PeConfig nBusses
 
 {- | VexRiscV based RV32IMC core together with instruction memory, data memory and
@@ -56,15 +61,18 @@ processingElement ::
   Circuit
     (Jtag dom)
     (Vec (nBusses - 2) (Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4)))
-processingElement dumpVcd (PeConfig memMapConfig initI initD) = circuit $ \jtagIn -> do
+processingElement dumpVcd PeConfig{memMapConfig, initI, initD, iBusTimeout, dBusTimeout} = circuit $ \jtagIn -> do
   (iBus0, dBus0) <- rvCircuit dumpVcd (pure low) (pure low) (pure low) -< jtagIn
   iBus1 <-
     ilaWb (SSymbol @"instructionBus") 2 D4096 onTransactionWb onTransactionWb -< iBus0
-  dBus1 <- ilaWb (SSymbol @"dataBus") 2 D4096 onTransactionWb onTransactionWb -< dBus0
+  dBus1 <-
+    watchDogWb "dBus" iBusTimeout
+      <| ilaWb (SSymbol @"dataBus") 2 D4096 onTransactionWb onTransactionWb
+      -< dBus0
   ([iMemBus, dMemBus], extBusses) <-
     (splitAtC d2 <| singleMasterInterconnect memMapConfig) -< dBus1
   wbStorage initD -< dMemBus
-  iBus2 <- removeMsb -< iBus1 -- XXX: <= This should be handled by an interconnect
+  iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
   wbStorageDPC initI -< (iBus2, iMemBus)
   idC -< extBusses
  where
@@ -104,7 +112,8 @@ rvCircuit dumpVcd tInterrupt sInterrupt eInterrupt = Circuit go
  where
   go (jtagIn, (iBusIn, dBusIn)) = (jtagOut, (iBusWbM2S <$> cpuOut, dBusWbM2S <$> cpuOut))
    where
-    tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) = CpuIn{..}
+    tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) =
+      CpuIn{timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M}
     rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
     (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock (hasReset `unsafeOrReset` jtagReset) rvIn jtagIn
     jtagReset = unsafeFromActiveHigh (delay False (bitToBool . debugReset <$> jtagOut))
@@ -115,29 +124,6 @@ mapAddr ::
   WishboneM2S aw1 selWidth a ->
   WishboneM2S aw2 selWidth a
 mapAddr f wb = wb{addr = f (addr wb)}
-
-{- | Stateless wishbone device that only acknowledges writes to address 0.
-Successful writes return the 'writeData' and 'busSelect'.
--}
-wishboneSink ::
-  (KnownNat addressWidth, Paddable dat) =>
-  -- | Incoming wishbone bus.
-  Signal dom (WishboneM2S addressWidth bs dat) ->
-  -- |
-  -- 1. Outgoing wishbone bus.
-  -- 2. Result of successful write attempt.
-  Signal dom (WishboneS2M dat, Maybe (BitVector bs, dat))
-wishboneSink = fmap go
- where
-  go WishboneM2S{..} = (wbOut, output)
-   where
-    masterActive = busCycle && strobe
-    addrLegal = addr == 0
-    acknowledge = masterActive && writeEnable && addrLegal
-    err = masterActive && (not writeEnable || not addrLegal)
-
-    output = orNothing acknowledge (busSelect, writeData)
-    wbOut = emptyWishboneS2M{acknowledge, err}
 
 {- | Provide a vector of filepaths, and a write operations containing a byteSelect and
 a vector of characters and, for each filepath write the corresponding byte to that file

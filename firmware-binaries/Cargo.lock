@@ -541,3 +541,12 @@ name = "void"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
+
+[[package]]
+name = "watchdog_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-sys",
+ "riscv-rt",
+ "ufmt",
+]

@@ -78,9 +78,12 @@ dut = circuit $ \_unit -> do
 
   peConfig =
     PeConfig
-      (0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil)
-      (Reloadable $ Blob iMem)
-      (Reloadable $ Blob dMem)
+      { memMapConfig = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
+      , initI = Reloadable $ Blob iMem
+      , initD = Reloadable $ Blob dMem
+      , iBusTimeout = d0 -- No timeouts on the instruction bus
+      , dBusTimeout = d0 -- No timeouts on the data bus
+      }
 
 parseResult :: String -> BitVector 96
 parseResult = pack . (read :: String -> Unsigned 96) . P.head . lines
