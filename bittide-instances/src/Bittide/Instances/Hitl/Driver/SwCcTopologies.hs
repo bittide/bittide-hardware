@@ -154,6 +154,12 @@ driverFunc testName targets = do
       openHardwareTarget hwT
       updateVio "vioHitlt" [("probe_prog_en", "0")]
 
+    verifyBinary :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ()
+    verifyBinary (_, d) gdb = do
+      liftIO $ do
+        putStrLn $ "Verifying binary on target " <> show d.deviceId
+        runGdbCommands gdb.stdinHandle [gdbEcho "Compare sections", "compare-sections"]
+
     startBinary :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ()
     startBinary (hwT, d) gdb = do
       liftIO $ putStrLn $ "Starting binary on target " <> show d.deviceId
@@ -231,6 +237,7 @@ driverFunc testName targets = do
     brackets (liftIO <$> initGdbs gdbPorts) (liftIO . snd) $ \initGdbsData -> do
       let gdbs = fmap fst initGdbsData
       zipWithM_ loadBinary targets gdbs
+      zipWithM_ verifyBinary targets gdbs
       zipWithM_ startBinary targets gdbs
 
       testResults <- getTestResults targets (L.replicate (L.length targets) TestRunning)

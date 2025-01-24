@@ -127,6 +127,8 @@ driverFunc testName [(hwT, dI)] = do
         , "target extended-remote :3333"
         , "load"
         , gdbEcho "load done"
+        , gdbEcho "Compare sections"
+        , "compare-sections"
         , "break core::panicking::panic"
         , "break ExceptionHandler"
         , "break rust_begin_unwind"

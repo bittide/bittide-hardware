@@ -122,6 +122,8 @@ driverFunc testName targets = do
             , "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/debug/hello\""
             , "target extended-remote :" <> show gdbPort
             , "load"
+            , gdbEcho "Compare sections"
+            , "compare-sections"
             ]
 
           tryWithTimeout "Waiting for \"load done\"" 120_000_000
