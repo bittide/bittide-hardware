@@ -62,19 +62,19 @@ test debug = do
       , cwd = Just projectRoot
       }
 
-    openOcdProc = (proc "openocd-vexriscv" ["-f", openocdCfgPath])
+    openOcdProc = (proc "openocd-riscv" ["-f", openocdCfgPath])
       { std_err = CreatePipe
       , cwd = Just projectRoot
       }
 
     gdbProcA = (proc gdb ["--command", gdbCmdPathA])
-      { std_out = CreatePipe
-      , cwd = Just projectRoot
+      { cwd = Just projectRoot
+      , std_out = CreatePipe
       }
 
     gdbProcB = (proc gdb ["--command", gdbCmdPathB])
-      { std_out = CreatePipe
-      , cwd = Just projectRoot
+      { cwd = Just projectRoot
+      , std_out = CreatePipe
       }
 
   withCreateProcess vexRiscvProc $ \_ _ _ _ -> do

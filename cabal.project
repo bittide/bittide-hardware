@@ -17,36 +17,37 @@ package clash-prelude
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
 index-state: 2023-09-28T08:48:26Z
+-- index-state: 2025-01-10T11:37:42Z
 
 -- Needed to simulate dynamic clocks.
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: a26bb9ef3cb57f24daec3da30db9fb54af91297a
+  tag: 6f9b7300da535bae01da67eeac99dd82f2cac965
   subdir: clash-prelude
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: a26bb9ef3cb57f24daec3da30db9fb54af91297a
+  tag: 6f9b7300da535bae01da67eeac99dd82f2cac965
   subdir: clash-ghc
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: a26bb9ef3cb57f24daec3da30db9fb54af91297a
+  tag: 6f9b7300da535bae01da67eeac99dd82f2cac965
   subdir: clash-lib
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: a26bb9ef3cb57f24daec3da30db9fb54af91297a
+  tag: 6f9b7300da535bae01da67eeac99dd82f2cac965
   subdir: clash-cores
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
-  tag: a26bb9ef3cb57f24daec3da30db9fb54af91297a
+  tag: 6f9b7300da535bae01da67eeac99dd82f2cac965
   subdir: clash-prelude-hedgehog
 
 source-repository-package

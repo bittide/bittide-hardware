@@ -105,7 +105,7 @@ test debug = do
       , cwd = Just projectRoot
     }
 
-    openOcdProc = (proc "openocd-vexriscv" ["-f", openocdCfgPath]){
+    openOcdProc = (proc "openocd-riscv" ["-f", openocdCfgPath]){
         std_err = CreatePipe
       , cwd = Just projectRoot
     }
@@ -117,18 +117,23 @@ test debug = do
 
   withCreateProcess vexRiscvProc $ \_ (fromJust -> vexRiscvStdOut) _ _ -> do
     hSetBuffering vexRiscvStdOut LineBuffering
+    putStrLn "Expecting \"[CPU] a\" on vexRiscvStdOut"
     expectLine debug vexRiscvStdOut "[CPU] a"
 
     -- CPU has started, so we can start OpenOCD
     withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
       hSetBuffering openOcdStdErr LineBuffering
+      putStrLn "Waiting for \"Halting processor\" on openOcdStdErr"
       waitForLine debug openOcdStdErr "Halting processor"
 
       -- OpenOCD has started, so we can start GDB
       withCreateProcess gdbProc $ \_ _ _ gdbProcHandle -> do
+        putStrLn "Expecting \"[CPU] a\" on vexRiscvStdOut"
         expectLine debug vexRiscvStdOut "[CPU] a"
+        putStrLn "Expecting \"[CPU] b\" on vexRiscvStdOut"
         expectLine debug vexRiscvStdOut "[CPU] b"
 
+        putStrLn "Waiting for gdb to exit"
         gdbExitCode <- waitForProcess gdbProcHandle
         ExitSuccess @?= gdbExitCode
 

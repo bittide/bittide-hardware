@@ -17,13 +17,15 @@ elif [[ "$1" != "" ]]; then
 fi
 
 UBUNTU_VERSION=jammy-20240125
-GHC_VERSIONS=( "9.6.6"  "9.4.8"  "9.2.8"   "9.0.2")
-CABAL_VERSION="3.10.2.0"
+GHC_VERSIONS=( "9.10.1"  "9.8.4"  "9.6.6"  "9.4.7"  "9.0.2")
+CABAL_VERSION="3.12.1.0"
 
 for i in "${!GHC_VERSIONS[@]}"
 do
   GHC_VERSION="${GHC_VERSIONS[i]}"
 
+  # If you get an error like "unrecognized argument buildx", consider installing
+  # the buildx plugin for Docker. E.g., for Ubuntu: `apt install docker-buildx`.
   docker buildx build \
     --build-arg UBUNTU_VERSION=${UBUNTU_VERSION} \
     --build-arg cabal_version=${CABAL_VERSION} \
