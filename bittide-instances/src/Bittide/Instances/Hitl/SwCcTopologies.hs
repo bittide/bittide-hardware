@@ -27,12 +27,14 @@ this doesn't test reframing yet.
 -}
 module Bittide.Instances.Hitl.SwCcTopologies (
   swCcTopologyTest,
+  swCcOneTopologyTest,
   tests,
 ) where
 
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import qualified Clash.Explicit.Prelude as E
 import Clash.Prelude (HiddenClockResetEnable, exposeReset, hasReset, withClockResetEnable)
+import qualified Prelude as P
 
 import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe, isJust, isNothing)
@@ -932,11 +934,39 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso jtagIn =
 
   testConfig = mux testStart (Just <$> testConfig0) (pure Nothing)
   progEnRst = unsafeFromActiveLow progEn
+{-# OPAQUE swCcTopologyTest #-}
 
 makeTopEntity 'swCcTopologyTest
 
-tests :: HitlTestGroup
-tests = testGroup
+swCcOneTopologyTest ::
+  "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
+  "SYSCLK_125" ::: DiffClock Ext125 ->
+  "SYNC_IN" ::: Signal Basic125 Bool ->
+  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
+  "MISO" ::: Signal Basic125 Bit ->
+  "JTAG" ::: Signal Basic125 JtagIn ->
+  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
+  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
+  , ""
+      ::: ( "FINC" ::: Signal Basic125 Bool
+          , "FDEC" ::: Signal Basic125 Bool
+          )
+  , "SYNC_OUT" ::: Signal Basic125 Bool
+  , "spiDone" ::: Signal Basic125 Bool
+  , ""
+      ::: ( "SCLK" ::: Signal Basic125 Bool
+          , "MOSI" ::: Signal Basic125 Bit
+          , "CSB" ::: Signal Basic125 Bool
+          )
+  , "JTAG" ::: Signal Basic125 JtagOut
+  )
+swCcOneTopologyTest = swCcTopologyTest
+{-# OPAQUE swCcOneTopologyTest #-}
+makeTopEntity 'swCcOneTopologyTest
+
+tests :: [HitlTestGroup]
+tests = [testGroup True, testGroup False]
  where
   m = 1_000_000
 
@@ -976,7 +1006,10 @@ tests = testGroup
             $ natToNum @(PeriodToCycles Basic125 AllStablePeriod)
       }
 
+  -- Measure clock offsets. Used to get clocks to a common start point at start of test
   calibrateClockOffsets = calibrateCC False
+
+  -- Measure clock offsets again. Verify that they haven't changed since start of test
   validateClockOffsetCalibration = calibrateCC True
 
   calibrateCC :: Bool -> HitlTestCase HwTargetRef TestConfig CcConf
@@ -1063,29 +1096,29 @@ tests = testGroup
         }
     )
 
-{- FOURMOLU_DISABLE -} -- fourmolu doesn't do well with tabular structures
-  testGroup =
+  testGroup justOneTest =
     HitlTestGroup
-    { topEntity = 'swCcTopologyTest
-    , extraXdcFiles = ["jtag" </> "config.xdc", "jtag" </> "pmod1.xdc"]
-    , externalHdl = []
-    , testCases =
-        [ -- detect the natual clock offsets to be elided from the later tests
-          calibrateClockOffsets
+      { topEntity = if justOneTest then 'swCcOneTopologyTest else 'swCcTopologyTest
+      , extraXdcFiles = ["jtag" </> "config.xdc", "jtag" </> "pmod1.xdc"]
+      , externalHdl = []
+      , testCases = calibrateClockOffsets : cases <> [validateClockOffsetCalibration]
+      , mDriverProc = Just D.driverFunc
+      , mPostProc = Nothing
+      }
+   where
+    cases
+      | justOneTest = P.take 1 allCases
+      | otherwise = allCases
 
-          -- initial clock shifts   startup delays            topology          enable reframing?
-        , tt (Just icsDiamond)      ((m *) <$> sdDiamond)     diamond           False
-        , tt (Just icsComplete)     ((m *) <$> sdComplete)    (complete d3)     False
-        , tt (Just icsCyclic)       ((m *) <$> sdCyclic)      (cyclic d5)       False
-        , tt (Just icsTorus)        ((m *) <$> sdTorus)       (torus2d d2 d3)   False
-        , tt (Just icsStar)         ((m *) <$> sdStar)        (star d7)         False
-        , tt (Just icsLine)         ((m *) <$> sdLine)        (line d4)         False
-        , tt (Just icsHourglass)    ((m *) <$> sdHourglass)   (hourglass d3)    False
-
-          -- make sure the clock offsets detected during calibration is still the same
-        , validateClockOffsetCalibration
-        ]
-    , mDriverProc = Just D.driverFunc
-    , mPostProc = Nothing
-    }
+{- FOURMOLU_DISABLE -} -- fourmolu doesn't do well with tabular structures
+  allCases = [
+      -- initial clock shifts   startup delays            topology          enable reframing?
+      tt (Just icsDiamond)      ((m *) <$> sdDiamond)     diamond           False
+    , tt (Just icsComplete)     ((m *) <$> sdComplete)    (complete d3)     False
+    , tt (Just icsCyclic)       ((m *) <$> sdCyclic)      (cyclic d5)       False
+    , tt (Just icsTorus)        ((m *) <$> sdTorus)       (torus2d d2 d3)   False
+    , tt (Just icsStar)         ((m *) <$> sdStar)        (star d7)         False
+    , tt (Just icsLine)         ((m *) <$> sdLine)        (line d4)         False
+    , tt (Just icsHourglass)    ((m *) <$> sdHourglass)   (hourglass d3)    False
+    ]
 {- FOURMOLU_ENABLE -}
