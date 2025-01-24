@@ -48,7 +48,6 @@ data JtagIn = JtagIn
 
 data JtagOut = JtagOut
   { testDataOut :: "TDO" ::: Bit
-  , debugReset :: "RST" ::: Bit
   }
   deriving (Generic, NFDataX, ShowX, Eq, BitPack)
 
@@ -64,6 +63,10 @@ data CpuIn = CpuIn
 data CpuOut = CpuOut
   { iBusWbM2S :: "IBUS_OUT_" ::: WishboneM2S 30 4 (BitVector 32)
   , dBusWbM2S :: "DBUS_OUT_" ::: WishboneM2S 30 4 (BitVector 32)
+  -- | Peripheral reset produced by `EmbeddedRiscvJtag` plugin.
+  , ndmreset :: "RST" ::: Bit
+  -- | Seems to be some kind of debug signal produced by the `CsrPlugin`.
+  , stoptime :: "STOPTIME" ::: Bit
   }
   deriving (Generic, NFDataX, ShowX, Eq, BitPack)
 
@@ -78,7 +81,7 @@ instance Protocol (Jtag dom) where
 
 instance IdleCircuit (Jtag dom) where
   idleFwd _ = pure $ JtagIn 0 0 0
-  idleBwd _ = pure $ JtagOut 0 0
+  idleBwd _ = pure $ JtagOut 0
 
 vexRiscv ::
   forall dom .
@@ -117,17 +120,14 @@ vexRiscv dumpVcd clk rst cpuInput jtagInput =
       <*> (unpack <$> dBus_CTI)
       <*> (unpack <$> dBus_BTE)
     )
-  , JtagOut <$> jtag_TDO1 <*> debug_resetOut1
+    <*>
+    ndmreset
+    <*>
+    stoptime
+  , JtagOut <$> jtag_TDO
   )
 
   where
-
-    jtag_TDO1 =
-          jtag_TDO
-
-    debug_resetOut1 =
-          debug_resetOut
-
     (unbundle -> (timerInterrupt, externalInterrupt, softwareInterrupt, iBusS2M, dBusS2M))
       = (\(CpuIn a b c d e) -> (a, b, c, d, e)) <$> cpuInput
 
@@ -163,7 +163,8 @@ vexRiscv dumpVcd clk rst cpuInput jtagInput =
       , dBus_SEL
       , dBus_CTI
       , dBus_BTE
-      , debug_resetOut
+      , ndmreset
+      , stoptime
       , jtag_TDO
       ) = vexRiscv# dumpVcd sourcePath clk rst
           timerInterrupt
@@ -184,7 +185,8 @@ vexRiscv dumpVcd clk rst cpuInput jtagInput =
 
 
 vexRiscv#
-  :: KnownDomain dom
+  :: forall dom .
+  KnownDomain dom
   => DumpVcd
   -> String
   -> Clock dom
@@ -230,7 +232,8 @@ vexRiscv#
     , Signal dom (BitVector 3)  -- ^ dBus_CTI
     , Signal dom (BitVector 2)  -- ^ dBus_BTE
 
-    , Signal dom Bit -- ^ debug_resetOut
+    , Signal dom Bit -- ^ ndmreset
+    , Signal dom Bit -- ^ stoptime
     , Signal dom Bit -- ^ jtag_TDO
     )
 vexRiscv# dumpVcd !_sourcePath clk rst0
@@ -248,7 +251,10 @@ vexRiscv# dumpVcd !_sourcePath clk rst0
   jtag_TCK0
   jtag_TMS0
   jtag_TDI0 = unsafePerformIO $ do
-    (v, initStage1, initStage2, stepRising, stepFalling, _shutDown) <- vexCPU dumpVcd
+    -- PeriodToHz imposes a minimum period of 1 Hz, but the KnownDomain constraint does
+    -- not supply this information.
+    let domPeriodFs = hzToFs (natToNum @(PeriodToHz (Max 1 (DomainPeriod dom))))
+    (v, initStage1, initStage2, stepRising, stepFalling, _shutDown) <- vexCPU dumpVcd domPeriodFs
 
     -- Make sure all the inputs are defined
     let
@@ -360,7 +366,8 @@ vexRiscv# dumpVcd !_sourcePath clk rst0
       , truncateB . pack <$> dBus_BTE
 
       -- JTAG
-      , FFI.jtag_debug_resetOut <$> output
+      , FFI.ndmreset <$> output
+      , FFI.stoptime <$> output
       , FFI.jtag_TDO <$> output
       )
 {-# CLASH_OPAQUE vexRiscv# #-}
@@ -406,11 +413,12 @@ vexRiscv# dumpVcd !_sourcePath clk rst0
        , dBus_SEL
        , dBus_CTI
        , dBus_BTE
-       , debug_resetOut
+       , ndmreset
+       , stoptime
        , jtag_TDO
 
        , cpu
-       ) = vecToTuple $ indicesI @36
+       ) = vecToTuple $ indicesI @37
     in
       InlineYamlPrimitive [Verilog] [__i|
   BlackBox:
@@ -439,7 +447,8 @@ vexRiscv# dumpVcd !_sourcePath clk rst0
       wire [2:0] ~GENSYM[dBus_CTI][#{dBus_CTI}];
       wire [1:0] ~GENSYM[dBus_BTE][#{dBus_BTE}];
 
-      wire ~GENSYM[debug_resetOut][#{debug_resetOut}];
+      wire ~GENSYM[ndmreset][#{ndmreset}];
+      wire ~GENSYM[stoptime][#{stoptime}];
       wire ~GENSYM[jtag_TDO][#{jtag_TDO}];
 
       VexRiscv ~GENSYM[cpu][#{cpu}] (
@@ -476,7 +485,8 @@ vexRiscv# dumpVcd !_sourcePath clk rst0
         .jtag_tck       ( ~ARG[#{jtag_TCK}]),
         .jtag_tdo       ( ~SYM[#{jtag_TDO}] ),
 
-        .debug_resetOut ( ~SYM[#{debug_resetOut}] ),
+        .ndmreset ( ~SYM[#{ndmreset}] ),
+        .stoptime ( ~SYM[#{stoptime}] ),
 
         .clk   ( ~ARG[#{clk}] ),
         .reset ( ~ARG[#{rst}] )
@@ -499,7 +509,8 @@ vexRiscv# dumpVcd !_sourcePath clk rst0
         ~SYM[#{dBus_SEL}],
         ~SYM[#{dBus_CTI}],
         ~SYM[#{dBus_BTE}],
-        ~SYM[#{debug_resetOut}],
+        ~SYM[#{ndmreset}],
+        ~SYM[#{stoptime}],
         ~SYM[#{jtag_TDO}]
       };
 
@@ -513,6 +524,7 @@ vexRiscv# dumpVcd !_sourcePath clk rst0
 -- the internal CPU state
 vexCPU ::
   DumpVcd ->
+  Femtoseconds ->
   IO
     ( Ptr VexRiscv
     , Ptr VexRiscv -> NON_COMB_INPUT -> IO OUTPUT           -- initStage1
@@ -521,7 +533,7 @@ vexCPU ::
     , Ptr VexRiscv -> Word64 -> COMB_INPUT -> IO ()         -- falling
     , Ptr VexRiscv -> IO ()
     )
-vexCPU dumpVcd = do
+vexCPU dumpVcd (fromIntegral . unFemtoseconds -> domPeriodFs :: Word64)  = do
   v <- vexrInit
   vcd <- case dumpVcd of
     NoDumpVcd -> pure nullPtr
@@ -534,7 +546,7 @@ vexCPU dumpVcd = do
     initStage1 vPtr nonCombInput =
       alloca $ \nonCombInputFFI -> alloca $ \outputFFI -> do
         poke nonCombInputFFI nonCombInput
-        vexrInitStage1 vcd vPtr nonCombInputFFI outputFFI
+        vexrInitStage1 vcd domPeriodFs vPtr nonCombInputFFI outputFFI
         peek outputFFI
 
     {-# NOINLINE initStage2 #-}

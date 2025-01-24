@@ -61,11 +61,11 @@ cpu dumpVcd jtagIn0 bootIMem bootDMem =
   , dS2M
   )
   where
-    (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock (hasReset `unsafeOrReset` jtagReset) input jtagIn1
+    (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock (hasReset `unsafeOrReset` ndmReset) input jtagIn1
 
-    jtagReset =
+    ndmReset =
       unsafeFromActiveHigh $ register False $
-        bitToBool . debugReset <$> jtagOut
+        bitToBool . ndmreset <$> cpuOut
 
     jtagIn1 = fromMaybe (pure JTag.defaultIn) jtagIn0
 

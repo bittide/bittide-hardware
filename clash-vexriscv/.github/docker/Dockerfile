@@ -18,7 +18,7 @@ RUN apt-get update \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
-FROM builder AS build-openocd-vexriscv
+FROM builder AS build-openocd-riscv
 
 ARG DEPS_OPENOCD_VEXRISCV="autoconf automake libtool pkg-config libusb-1.0-0-dev libftdi-dev libhidapi-dev libusb-dev libyaml-dev"
 
@@ -78,5 +78,5 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build-verilator /opt /opt
-COPY --from=build-openocd-vexriscv /opt /opt
+COPY --from=build-openocd-riscv /opt /opt
 COPY --from=build-ghc /root/.ghcup /root/.ghcup

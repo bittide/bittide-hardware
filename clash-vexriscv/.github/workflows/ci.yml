@@ -20,7 +20,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: REUSE Compliance Check
-      uses: fsfe/reuse-action@v2
+      uses: fsfe/reuse-action@v4
 
 
   rust-checks:
@@ -96,11 +96,23 @@ jobs:
           cd clash-vexriscv-sim; sh bundle_test_binaries.sh
 
       - name: Upload Integration Test Binaries
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: vexriscv-test-binaries
           path: clash-vexriscv-sim/vexriscv-test-binaries.tar
 
+  c-checks:
+    name: C checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: clang-format check
+        uses: jidicula/clang-format-action@v4.14.0
+        with:
+          clang-format-version: 16
+          check-path: '.'
 
   vex-riscv:
     name: VexRiscv integration
@@ -112,12 +124,11 @@ jobs:
       matrix:
         ghc:
           - "9.0.2"
-          - "9.2.8"
-          - "9.4.8"
+          - "9.4.7"
           - "9.6.6"
 
     container:
-      image: ghcr.io/clash-lang/clash-vexriscv-ci:${{ matrix.ghc }}-20240823
+      image: ghcr.io/clash-lang/clash-vexriscv-ci:${{ matrix.ghc }}-20250110
 
     steps:
       - name: Checkout
@@ -129,7 +140,7 @@ jobs:
           cabal update
           cabal freeze
       - name: Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.local/state/cabal/store/
@@ -151,7 +162,7 @@ jobs:
           cabal build clash-vexriscv-sim
 
       - name: Download VexRiscv Integration Tests
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: vexriscv-test-binaries
 
@@ -165,7 +176,7 @@ jobs:
 
       - name: OpenOCD bin symlink
         run: |
-          ln -s /opt/bin/openocd /opt/bin/openocd-vexriscv
+          ln -s /opt/bin/openocd /opt/bin/openocd-riscv
 
       - name: Run `clash-vexriscv` unittests
         run: |
@@ -179,3 +190,36 @@ jobs:
       - name: Run `clash-vexriscv-sim` HDL test
         run: |
           cabal run clash-vexriscv-sim:hdl-test
+
+  all:
+    name: All jobs finished
+    if: ${{ !cancelled() }}
+    needs: [
+        'license-check',
+        'rust-checks',
+        'vex-riscv',
+        'rust-build-programs'
+      ]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check dependencies for failures
+        run: |
+          # Test all dependencies for success/failure
+          set -x
+          success="${{ contains(needs.*.result, 'success') }}"
+          fail="${{ contains(needs.*.result, 'failure') }}"
+          set +x
+
+          # Test whether success/fail variables contain sane values
+          if [[ "${success}" != "true" && "${success}" != "false" ]]; then exit 1; fi
+          if [[ "${fail}"    != "true" && "${fail}"    != "false" ]]; then exit 1; fi
+
+          # We want to fail if one or more dependencies fail. For safety, we introduce
+          # a second check: if no dependencies succeeded something weird is going on.
+          if [[ "${fail}" == "true" || "${success}" == "false" ]]; then
+            echo "One or more dependency failed, or no dependency succeeded."
+            exit 1
+          fi
