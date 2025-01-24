@@ -1,1 +1,1 @@
-./bittide-instances/data/constraints/swCcTopologyTest.xdc
+swCcTopologyTest.xdc
