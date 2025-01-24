@@ -539,12 +539,6 @@ jobs:
 
       - name: Set CI flags
         run: |
-          # We use the same flags as the 'build' step to reuse caches. This
-          # "simulation" config only sets altopts on the Risc core, which we
-          # don't synthesize yet.
-          #
-          # TODO: Either switch to VexRisc or update cache strategy.
-          #
           cp .github/cabal.project cabal.project.local
 
       - run: cache pull cabal
