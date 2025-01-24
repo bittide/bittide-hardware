@@ -27,6 +27,7 @@ this doesn't test reframing yet.
 -}
 module Bittide.Instances.Hitl.SwCcTopologies (
   swCcTopologyTest,
+  swCcOneTopologyTest,
   tests,
 ) where
 
