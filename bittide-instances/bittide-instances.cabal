@@ -14,7 +14,6 @@ copyright: Copyright © 2022-2024 Google LLC
 data-files:
   -- Cabal is very picky about wildcards in `data-files`:
   -- https://cabal.readthedocs.io/en/3.6/cabal-package.html#pkg-field-data-files
-  data/**/*.gdb
   data/**/*.sh
   data/**/*.xdc
   data/**/*.yml
