@@ -12,5 +12,5 @@ if [ -f "${FILE}" ]; then
   echo "${FILE} exists, not copying cabal.project.local.."
 else
   echo "${FILE} does not exist, copying cabal.project.local.."
-  cp .github/cabal.project cabal.project.local
+  cp .github/cabal.project.local cabal.project.local
 fi
