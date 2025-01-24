@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
 
 {- | Full definitions of HITL tests. For every test, this includes:
 
@@ -20,6 +18,7 @@ module Bittide.Instances.Hitl.Tests (
 ) where
 
 import Bittide.Hitl (ClashTargetName, HitlTestCase (..), HitlTestGroup (..))
+import Prelude
 
 import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
 import qualified Bittide.Instances.Hitl.DnaOverSerial as DnaOverSerial
@@ -34,15 +33,15 @@ import qualified Bittide.Instances.Hitl.VexRiscv as VexRiscv
 
 hitlTests :: [HitlTestGroup]
 hitlTests =
-  [ BoardTest.testSimple
-  , BoardTest.testExtended
-  , DnaOverSerial.tests
-  , Ethernet.tests
-  , FincFdec.tests
-  , LinkConfiguration.tests
-  , SyncInSyncOut.tests
-  , TemperatureMonitor.tests
-  , SwCcTopologies.tests
-  , Transceivers.tests
-  , VexRiscv.tests
-  ]
+  []
+    <> [BoardTest.testSimple]
+    <> [BoardTest.testExtended]
+    <> [DnaOverSerial.tests]
+    <> [Ethernet.tests]
+    <> [FincFdec.tests]
+    <> [LinkConfiguration.tests]
+    <> [SyncInSyncOut.tests]
+    <> [TemperatureMonitor.tests]
+    <> SwCcTopologies.tests
+    <> [Transceivers.tests]
+    <> [VexRiscv.tests]
