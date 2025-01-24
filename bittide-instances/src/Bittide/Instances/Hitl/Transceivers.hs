@@ -50,7 +50,7 @@ a non-zero start value, as a regression test for a bug where the transceivers
 would not come up if the counters started at zero.
 -}
 counterStart :: BitVector 64
-counterStart = 0xDEAD_BEEF_CA55_E77E
+counterStart = 0xDEAD_BEEF_0000_0000
 
 -- | A counter starting at 'counterStart'
 counter ::
