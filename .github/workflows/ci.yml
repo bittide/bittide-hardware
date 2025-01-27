@@ -128,7 +128,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          .github/scripts/set_ci_flags.sh
 
       - run: cache clean
       - run: cache pull cabal --missing-ok --write-cache-found
@@ -174,7 +174,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          .github/scripts/set_ci_flags.sh
 
       - run: cache pull cabal
       - run: cache pull cargo
@@ -234,7 +234,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          .github/scripts/set_ci_flags.sh
 
       - run: cache pull cabal
       - run: cache pull build
@@ -265,7 +265,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          .github/scripts/set_ci_flags.sh
 
       - run: cache pull cabal
       - run: cache pull build
@@ -332,7 +332,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          .github/scripts/set_ci_flags.sh
 
       - run: cache pull cabal
       - run: cache pull cargo
@@ -392,7 +392,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          .github/scripts/set_ci_flags.sh
 
       - run: cache pull cabal
       - run: cache pull build
@@ -419,7 +419,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          .github/scripts/set_ci_flags.sh
 
       - run: cache pull cabal
       - run: cache pull build
@@ -539,13 +539,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          # We use the same flags as the 'build' step to reuse caches. This
-          # "simulation" config only sets altopts on the Risc core, which we
-          # don't synthesize yet.
-          #
-          # TODO: Either switch to VexRisc or update cache strategy.
-          #
-          cp .github/cabal.project cabal.project.local
+          .github/scripts/set_ci_flags.sh
 
       - run: cache pull cabal
       - run: cache pull cargo
@@ -633,7 +627,7 @@ jobs:
 
       - name: Set CI flags
         run: |
-          cp .github/cabal.project cabal.project.local
+          .github/scripts/set_ci_flags.sh
 
       - run: cache pull cabal
       - run: cache pull cargo
