@@ -110,7 +110,7 @@ driverFunc testName targets = do
 
       let
         ocdProcName = "OpenOCD (" <> show d.deviceId <> ")"
-        ocdClean2 = ocdClean1 >> awaitProcessTermination ocdProcName ocdPh (Just 5_000_000)
+        ocdClean2 = ocdClean1 >> awaitProcessTermination ocdProcName ocdPh (Just 15_000_000)
 
       return ((gdbPort, ocd), ocdClean2)
 
