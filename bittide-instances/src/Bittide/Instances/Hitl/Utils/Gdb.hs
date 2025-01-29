@@ -45,6 +45,14 @@ startGdbH = do
 
   pure (gdbHandles', gdbPh, cleanupProcess gdbHandles)
 
+waitForGdb :: ProcessStdIoHandles -> Int -> IO Error
+waitForGdb gdb time = do
+  echo (stdinHandle gdb) "Waiting for gdb to catch up"
+  result <- timeout time $ readUntil (stdoutHandle gdb) "Waiting for gdb to catch up"
+  case result of
+    Just _ -> pure Ok
+    Nothing -> pure $ Error "Waiting for gdb timed out"
+
 runCommands :: Handle -> [String] -> IO ()
 runCommands h commands =
   forM_ commands $ \command -> do

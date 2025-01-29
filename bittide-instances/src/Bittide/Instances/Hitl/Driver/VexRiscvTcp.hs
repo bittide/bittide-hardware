@@ -100,7 +100,7 @@ driverFunc testName [(hwT, dI)] = do
       putStr "Waiting for OpenOCD to halt..."
       expectLine ocd.stderrHandle openOcdWaitForHalt
       putStrLn "  Done"
-      
+
       putStrLn "Starting Picocom..."
     withPicocomWithLogging dI.serial picoOutLog picoErrLog $ \pico -> do
       liftIO $ do
@@ -154,8 +154,10 @@ driverFunc testName [(hwT, dI)] = do
 
           putStrLn "Waiting for \"Starting TCP Client\""
 
-          tryWithTimeout "Handshake softcore" 10_000_000 $
-            waitForLine pico.stdoutHandle "Starting TCP Client"
+          errorToException
+            =<< ( tryWithTimeout "Handshake softcore" 10_000_000 $
+                    waitForLine pico.stdoutHandle "Starting TCP Client"
+                )
 
           let numberOfClients = 1
           putStrLn $ "Waiting for " <> show numberOfClients <> " clients to connect to TCP server."

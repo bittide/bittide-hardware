@@ -20,7 +20,7 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Utils.Gdb
+import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import Bittide.Instances.Hitl.Utils.Program
 
 import Control.Concurrent (threadDelay)
@@ -77,11 +77,7 @@ driverFunc testName targets = do
     -- even though this is just pre-process step, the CPU is reset until
     -- the test_start signal is asserted and cannot be accessed via GDB otherwise
     updateVio "vioHitlt" [("probe_test_start", "1")]
-    liftIO $ withOpenOcdWithEnv openocdEnv deviceInfo.usbAdapterLocation gdbPort 6666 4444 $ \ocd -> do
-      -- make sure OpenOCD is started properly
-      hSetBuffering ocd.stderrHandle LineBuffering
-      expectLine ocd.stderrHandle openOcdWaitForHalt
-
+    liftIO $ withOpenOcdWithEnv openocdEnv deviceInfo.usbAdapterLocation gdbPort 6666 4444 $ \_ocd -> do
       putStrLn "Starting Picocom..."
       putStrLn $ "Logging output to '" <> hitlDir
       withPicocomWithLogging deviceInfo.serial picoOutLog picoErrLog $ \pico -> do
@@ -108,7 +104,8 @@ driverFunc testName targets = do
               Just r -> pure r
 
         tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
-          $ waitForLine pico.stdoutHandle "Terminal ready"
+          $ errorToException
+          =<< waitForLine pico.stdoutHandle "Terminal ready"
 
         -- program the FPGA
         Gdb.withGdb $ \gdb -> do
@@ -126,7 +123,8 @@ driverFunc testName targets = do
             Gdb.continue gdb
             Gdb.echo gdb.stdinHandle "breakpoint reached"
             tryWithTimeout "Waiting for \"breakpoint reached\"" 10_000_000
-              $ waitForLine gdb.stdoutHandle "breakpoint reached"
+              $ errorToException
+              =<< waitForLine gdb.stdoutHandle "breakpoint reached"
 
             Gdb.runCommands gdb.stdinHandle ["disable 1"]
             Gdb.continue gdb
@@ -137,12 +135,14 @@ driverFunc testName targets = do
           -- This is the last thing that will print when the FPGA has been programmed
           -- and starts entereing UART-echo mode.
           tryWithTimeout "Waiting for \"Going in echo mode!\"" 10_000_000
-            $ waitForLine pico.stdoutHandle "Going in echo mode!"
+            $ errorToException
+            =<< waitForLine pico.stdoutHandle "Going in echo mode!"
 
           -- Test UART echo
           hPutStrLn pico.stdinHandle "Hello, UART!"
           tryWithTimeout "Waiting for \"Hello, UART!!\"" 10_000_000
-            $ waitForLine pico.stdoutHandle "Hello, UART!"
+            $ errorToException
+            =<< waitForLine pico.stdoutHandle "Hello, UART!"
 
     updateVio "vioHitlt" [("probe_test_start", "0")]
 

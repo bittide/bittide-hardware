@@ -87,6 +87,17 @@ withOpenOcdWithEnv ::
 withOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort action = do
   (ocd, _handle, clean) <-
     liftIO $ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort
+
+  -- Initialization
+  liftIO $ do
+    hSetBuffering ocd.stdinHandle LineBuffering
+    hSetBuffering ocd.stdoutHandle LineBuffering
+    hSetBuffering ocd.stderrHandle LineBuffering
+
+    putStr "Waiting for OpenOCD to start..."
+    errorToException =<< openOcdWaitForHalt ocd
+    putStrLn "  Done"
+
   finally (action ocd) (liftIO clean)
 
 startOpenOcdWithEnv ::
@@ -134,7 +145,6 @@ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort = do
         }
 
   pure (ocdHandles', openOcdPh, cleanupProcess ocdHandles)
-
 
 startPicocom :: FilePath -> IO (ProcessStdIoHandles, IO ())
 startPicocom devPath = do
@@ -228,11 +238,13 @@ startPicocomWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv = do
   pure (picoHandles', cleanupProcess picoHandles)
 
 -- | Wait until we see "Halting processor", fail if we see an error.
-openOcdWaitForHalt :: String -> Filter
-openOcdWaitForHalt s
-  | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
-  | "Halting processor" `isPrefixOf` s = Stop Ok
-  | otherwise = Continue
+openOcdWaitForHalt :: ProcessStdIoHandles -> IO Error
+openOcdWaitForHalt ocd = expectLine ocd.stderrHandle go
+ where
+  go s
+    | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
+    | "Halting processor" `isPrefixOf` s = Stop Ok
+    | otherwise = Continue
 
 gdbWaitForLoad :: String -> Filter
 gdbWaitForLoad s

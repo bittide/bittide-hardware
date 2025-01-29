@@ -64,13 +64,6 @@ driverFunc testName targets = do
           error $ "Timeout while performing action: " <> actionName
         Just r -> pure r
 
-    initHwTargets :: VivadoM ()
-    initHwTargets = forM_ targets $ \(hwT, d) -> do
-      liftIO $ putStrLn $ "Preparing hardware target " <> show d.deviceId
-
-      openHardwareTarget hwT
-      updateVio "vioHitlt" [("probe_prog_en", "1")]
-
     initOpenOcds :: [IO ((Int, ProcessStdIoHandles), IO ())]
     initOpenOcds = flip L.map (L.zip [0 ..] targets) $ \(targetIndex, (_, d)) -> do
       putStrLn $ "Starting OpenOCD for target " <> show d.deviceId
@@ -106,7 +99,8 @@ driverFunc testName targets = do
           telnetPort
       hSetBuffering ocd.stderrHandle LineBuffering
       tryWithTimeout "Waiting for OpenOCD to start" 15_000_000
-        $ expectLine ocd.stderrHandle openOcdWaitForHalt
+        $ errorToException
+        =<< openOcdWaitForHalt ocd
 
       let
         ocdProcName = "OpenOCD (" <> show d.deviceId <> ")"
@@ -125,10 +119,10 @@ driverFunc testName targets = do
         hSetBuffering gdb.stdinHandle LineBuffering
         Gdb.setLogging gdb
           $ "./_build/hitl/"
-              <> testName
-              <> "/gdb-out-"
-              <> show (getTargetIndex hwT)
-              <> ".log"
+          <> testName
+          <> "/gdb-out-"
+          <> show (getTargetIndex hwT)
+          <> ".log"
         Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "clock-control"
         Gdb.setTarget gdb gdbPort
         let
@@ -144,8 +138,7 @@ driverFunc testName targets = do
       openHardwareTarget hwT
       updateVio
         "vioHitlt"
-        [ ("probe_prog_en", "0")
-        , ("probe_test_start", "1")
+        [ ("probe_test_start", "1")
         ]
 
     getTestsStatus :: [(HwTarget, DeviceInfo)] -> [TestStatus] -> VivadoM [TestStatus]
@@ -206,7 +199,10 @@ driverFunc testName targets = do
 
       liftIO $ putStrLn $ "Running cleanup for target " <> d.deviceId
 
-  initHwTargets
+  forM_ targets $ \(hwT, d) -> do
+    liftIO $ putStrLn $ "Preparing hardware target " <> show d.deviceId
+    openHardwareTarget hwT
+    updateVio "vioHitlt" [("probe_prog_en", "1")]
   brackets (liftIO <$> initOpenOcds) (liftIO . snd) $ \initOcdsData -> do
     let gdbPorts = fmap (fst . fst) initOcdsData
     brackets (liftIO <$> initGdbs gdbPorts) (liftIO . snd) $ \initGdbsData -> do
