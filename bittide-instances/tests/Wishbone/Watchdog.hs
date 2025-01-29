@@ -56,7 +56,7 @@ Runs the `hello` binary from `firmware-binaries`.
 -}
 dut ::
   Circuit () (Df Basic200 (BitVector 8))
-dut = withClockResetEnable clockGen resetGen enableGen
+dut = withClockResetEnable clockGen (resetGenN d2) enableGen
   $ circuit
   $ \_unit -> do
     (uartRx, jtag) <- idleSource -< ()
@@ -73,9 +73,7 @@ dut = withClockResetEnable clockGen resetGen enableGen
  where
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let
-      elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-      elfPath = elfDir </> "watchdog_test"
+    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "watchdog_test"
 
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure

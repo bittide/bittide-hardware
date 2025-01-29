@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
 module Bittide.Instances.Hitl.Utils.Program where
@@ -86,6 +87,17 @@ withOpenOcdWithEnv ::
 withOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort action = do
   (ocd, _handle, clean) <-
     liftIO $ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort
+
+  -- Initialization
+  liftIO $ do
+    hSetBuffering ocd.stdinHandle LineBuffering
+    hSetBuffering ocd.stdoutHandle LineBuffering
+    hSetBuffering ocd.stderrHandle LineBuffering
+
+    putStr "Waiting for OpenOCD to start..."
+    errorToException =<< openOcdWaitForHalt ocd
+    putStrLn "  Done"
+
   finally (action ocd) (liftIO clean)
 
 startOpenOcdWithEnv ::
@@ -133,32 +145,6 @@ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort = do
         }
 
   pure (ocdHandles', openOcdPh, cleanupProcess ocdHandles)
-
-withGdb :: (MonadIO m, MonadMask m) => (ProcessStdIoHandles -> m a) -> m a
-withGdb action = do
-  (gdb, clean) <- liftIO startGdb
-  finally (action gdb) (liftIO clean)
-
-startGdb :: IO (ProcessStdIoHandles, IO ())
-startGdb = (\(a, _, c) -> (a, c)) <$> startGdbH
-
-startGdbH :: IO (ProcessStdIoHandles, ProcessHandle, IO ())
-startGdbH = do
-  let
-    gdbProc = (proc "gdb" []){std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe}
-
-  gdbHandles@(gdbStdin, gdbStdout, gdbStderr, gdbPh) <-
-    createProcess gdbProc
-
-  let
-    gdbHandles' =
-      ProcessStdIoHandles
-        { stdinHandle = fromJust gdbStdin
-        , stdoutHandle = fromJust gdbStdout
-        , stderrHandle = fromJust gdbStderr
-        }
-
-  pure (gdbHandles', gdbPh, cleanupProcess gdbHandles)
 
 startPicocom :: FilePath -> IO (ProcessStdIoHandles, IO ())
 startPicocom devPath = do
@@ -252,11 +238,13 @@ startPicocomWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv = do
   pure (picoHandles', cleanupProcess picoHandles)
 
 -- | Wait until we see "Halting processor", fail if we see an error.
-openOcdWaitForHalt :: String -> Filter
-openOcdWaitForHalt s
-  | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
-  | "Halting processor" `isPrefixOf` s = Stop Ok
-  | otherwise = Continue
+openOcdWaitForHalt :: ProcessStdIoHandles -> IO Error
+openOcdWaitForHalt ocd = expectLine ocd.stderrHandle go
+ where
+  go s
+    | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
+    | "Halting processor" `isPrefixOf` s = Stop Ok
+    | otherwise = Continue
 
 gdbWaitForLoad :: String -> Filter
 gdbWaitForLoad s

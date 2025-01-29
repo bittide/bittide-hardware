@@ -71,7 +71,7 @@ Runs the `hello` binary from `firmware-binaries`.
 -}
 dut :: Circuit () (Df System (BitVector 8))
 dut =
-  withClockResetEnable clockGen resetGen enableGen
+  withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
     $ \_unit -> do
       (uartTx, jtag) <- idleSource -< ()
@@ -91,9 +91,7 @@ dut =
   (iMem, dMem) =
     $( do
         root <- runIO $ findParentContaining "cabal.project"
-        let
-          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-          elfPath = elfDir </> "axi_stream_self_test"
+        let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "axi_stream_self_test"
         memBlobsFromElf BigEndian (Nothing, Nothing) elfPath Nothing
      )
 

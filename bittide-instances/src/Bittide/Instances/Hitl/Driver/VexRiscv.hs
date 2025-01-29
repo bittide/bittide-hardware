@@ -20,7 +20,7 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Utils.Gdb
+import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import Bittide.Instances.Hitl.Utils.Program
 
 import Control.Concurrent (threadDelay)
@@ -40,7 +40,7 @@ driverFunc ::
     )
   ] ->
   VivadoM ExitCode
-driverFunc _name targets = do
+driverFunc testName targets = do
   liftIO
     $ putStrLn
     $ "Running Driver function for targets "
@@ -62,12 +62,13 @@ driverFunc _name targets = do
     liftIO $ putStrLn $ "Running driver for " <> deviceInfo.deviceId
 
     let
-      hitlDir = projectDir </> "_build" </> "hitl"
+      hitlDir = projectDir </> "_build" </> "hitl" </> testName
       mkLogPath str = (hitlDir </> str <> show targetIndex <> ".log")
       picoOutLog = mkLogPath "picocom-stdout"
       picoErrLog = mkLogPath "picocom-stderr"
       ocdOutLog = mkLogPath "openocd-stdout"
       ocdErrLog = mkLogPath "openocd-stderr"
+      gdbOutLog = mkLogPath "gdb-out.log"
       openocdEnv = [("OPENOCD_STDOUT_LOG", ocdOutLog), ("OPENOCD_STDERR_LOG", ocdErrLog)]
       gdbPort = 3333 + targetIndex
 
@@ -76,11 +77,7 @@ driverFunc _name targets = do
     -- even though this is just pre-process step, the CPU is reset until
     -- the test_start signal is asserted and cannot be accessed via GDB otherwise
     updateVio "vioHitlt" [("probe_test_start", "1")]
-    liftIO $ withOpenOcdWithEnv openocdEnv deviceInfo.usbAdapterLocation gdbPort 6666 4444 $ \ocd -> do
-      -- make sure OpenOCD is started properly
-      hSetBuffering ocd.stderrHandle LineBuffering
-      expectLine ocd.stderrHandle openOcdWaitForHalt
-
+    liftIO $ withOpenOcdWithEnv openocdEnv deviceInfo.usbAdapterLocation gdbPort 6666 4444 $ \_ocd -> do
       putStrLn "Starting Picocom..."
       putStrLn $ "Logging output to '" <> hitlDir
       withPicocomWithLogging deviceInfo.serial picoOutLog picoErrLog $ \pico -> do
@@ -107,58 +104,45 @@ driverFunc _name targets = do
               Just r -> pure r
 
         tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
-          $ waitForLine pico.stdoutHandle "Terminal ready"
+          $ errorToException
+          =<< waitForLine pico.stdoutHandle "Terminal ready"
 
         -- program the FPGA
-        withGdb $ \gdb -> do
+        Gdb.withGdb $ \gdb -> do
           hSetBuffering gdb.stdinHandle LineBuffering
-
-          runGdbCommands
-            gdb.stdinHandle
-            [ "set logging file ./_build/hitl/gdb-out-" <> show targetIndex <> ".log"
-            , "set logging overwrite on"
-            , "set logging enabled on"
-            , "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/debug/hello\""
-            , "target extended-remote :" <> show gdbPort
-            , "load"
-            ]
-
-          tryWithTimeout "Waiting for \"load done\"" 120_000_000
-            $ expectLine gdb.stdoutHandle gdbWaitForLoad
+          Gdb.setLogging gdb gdbOutLog
+          Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "hello"
+          Gdb.setTarget gdb gdbPort
+          errorToException =<< Gdb.loadBinary gdb
+          errorToException =<< Gdb.compareSections gdb
 
           -- break test
           do
             putStrLn "Testing whether breakpoints work"
-
-            runGdbCommands
-              gdb.stdinHandle
-              [ "break hello::test_success"
-              , "jump _start"
-              , gdbEcho "breakpoint reached"
-              ]
-
+            Gdb.setBreakpoints gdb ["hello::test_success"]
+            Gdb.continue gdb
+            Gdb.echo gdb.stdinHandle "breakpoint reached"
             tryWithTimeout "Waiting for \"breakpoint reached\"" 10_000_000
-              $ waitForLine gdb.stdoutHandle "breakpoint reached"
+              $ errorToException
+              =<< waitForLine gdb.stdoutHandle "breakpoint reached"
 
-            runGdbCommands
-              gdb.stdinHandle
-              [ "disable 1"
-              , gdbEcho "continuing"
-              , "continue"
-              ]
-
+            Gdb.runCommands gdb.stdinHandle ["disable 1"]
+            Gdb.continue gdb
             tryWithTimeout "Waiting for \"continuing\"" 10_000_000
-              $ waitForLine gdb.stdoutHandle "continuing"
+              $ errorToException
+              =<< waitForLine gdb.stdoutHandle "continuing"
 
           -- This is the last thing that will print when the FPGA has been programmed
           -- and starts entereing UART-echo mode.
           tryWithTimeout "Waiting for \"Going in echo mode!\"" 10_000_000
-            $ waitForLine pico.stdoutHandle "Going in echo mode!"
+            $ errorToException
+            =<< waitForLine pico.stdoutHandle "Going in echo mode!"
 
           -- Test UART echo
           hPutStrLn pico.stdinHandle "Hello, UART!"
           tryWithTimeout "Waiting for \"Hello, UART!!\"" 10_000_000
-            $ waitForLine pico.stdoutHandle "Hello, UART!"
+            $ errorToException
+            =<< waitForLine pico.stdoutHandle "Hello, UART!"
 
     updateVio "vioHitlt" [("probe_test_start", "0")]
 

@@ -59,7 +59,7 @@ case_capture_ugn_self_test =
   (expectedLocalCounter, unpack -> expectedRemoteCounter) = getSequenceCounters $ bundle (localCounter, eb)
   (actualLocalCounter, actualRemoteCounter) = parseResult simResult
   clk = clockGen
-  rst = resetGen
+  rst = resetGenN d2
   ena = enableGen
   simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
   uartStream =
@@ -104,10 +104,7 @@ dut eb localCounter = circuit $ \uartRx -> do
   (iMem, dMem) =
     $( do
         root <- runIO $ findParentContaining "cabal.project"
-        let
-          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-          elfPath = elfDir </> "capture_ugn_test"
-
+        let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "capture_ugn_test"
         memBlobsFromElf BigEndian (Nothing, Nothing) elfPath Nothing
      )
 

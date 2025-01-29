@@ -163,8 +163,7 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
   peConfigSim = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-      elfPath = elfDir </> "smoltcp_client"
+      elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       $ PeConfig

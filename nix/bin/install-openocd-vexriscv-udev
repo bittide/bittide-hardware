@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# Setup plugdev group, group membership, and udev rules to get openocd-vexriscv
+# Setup plugdev group, group membership, and udev rules to get openocd-riscv
 # to work nicely with our JTAG debugger:
 #
 #   https://www.digikey.nl/en/products/detail/seeed-technology-co.,-ltd/114991786/10060366

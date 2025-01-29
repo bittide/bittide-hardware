@@ -42,7 +42,7 @@ vexrJtagBridge' port = do
         shutDown = vexrJtagBridgeShutdown bridge
 
         step JtagOut{..} = alloca $ \outFFI -> alloca $ \inFFI -> do
-            poke outFFI (JTAG_OUTPUT debugReset testDataOut)
+            poke outFFI (JTAG_OUTPUT testDataOut)
             vexrJtagBridgeStep bridge outFFI inFFI
             JTAG_INPUT{..} <- peek inFFI
             let input = JtagIn { testClock = tck, testModeSelect = tms, testDataIn = tdi }

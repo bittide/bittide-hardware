@@ -76,7 +76,7 @@ getRunOpts = RunOpts
     )
 
 jtagDaisyChain :: JtagIn -> JtagOut -> JtagIn
-jtagDaisyChain (JtagIn tc ms _) (JtagOut to _) = JtagIn tc ms to
+jtagDaisyChain (JtagIn tc ms _) (JtagOut to) = JtagIn tc ms to
 
 type CpuSignals =
   ( CpuOut
@@ -117,11 +117,6 @@ main = do
           (circ, jto, writes1, iBus, dBus) = cpu NoDumpVcd (Just jtagInB) iMemB dMemB
           dBus' = register emptyWishboneS2M dBus
         in bundle (circ, jto, writes1, iBus, dBus')
-
-    _jtagReset = L.foldl (liftA2 go1) (pure False) [jtagOutA, jtagOutB]
-     where
-      go1 acc (JtagOut _ tr) = acc || bitToBool tr
-
     cpuOut = bundle (cpuOutA, cpuOutB)
 
   runSampling

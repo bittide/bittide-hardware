@@ -71,7 +71,7 @@ common common-options
       -- clash-prelude will set suitable version bounds for the plugins
   build-depends:
     base >= 4.14 && < 4.19,
-    clash-prelude >= 1.6 && < 1.10,
+    clash-prelude >= 1.9.0,
     containers >= 0.6 && < 0.8,
     ghc-typelits-natnormalise,
     ghc-typelits-extra,

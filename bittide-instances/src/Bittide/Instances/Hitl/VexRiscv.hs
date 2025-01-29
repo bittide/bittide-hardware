@@ -150,9 +150,7 @@ vexRiscvInner jtagIn0 uartRx =
 
   peConfigSim = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let
-      elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-      elfPath = elfDir </> "hello"
+    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "hello"
     (iMem, dMem) <- vecsFromElf @DMemWords @IMemWords BigEndian elfPath Nothing
     pure
       PeConfig

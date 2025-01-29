@@ -39,7 +39,7 @@ dnaOverSerialDriver ::
   String ->
   [(HwTarget, DeviceInfo)] ->
   VivadoM ExitCode
-dnaOverSerialDriver _name targets = do
+dnaOverSerialDriver testName targets = do
   results <- brackets (liftIO <$> initPicocoms) (liftIO . snd) $ \initPicocomsData -> do
     let targetPicocoms = fst <$> initPicocomsData
 
@@ -72,7 +72,7 @@ dnaOverSerialDriver _name targets = do
 
     projectDir <- findParentContaining "cabal.project"
     let
-      hitlDir = projectDir </> "_build" </> "hitl"
+      hitlDir = projectDir </> "_build" </> "hitl" </> testName
       stdoutLog = hitlDir </> "picocom-stdout." <> show targetIndex <> ".log"
       stderrLog = hitlDir </> "picocom-stderr." <> show targetIndex <> ".log"
     putStrLn $ "logging stdout to `" <> stdoutLog <> "`"

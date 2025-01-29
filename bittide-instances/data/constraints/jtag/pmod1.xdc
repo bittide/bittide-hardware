@@ -6,7 +6,6 @@
 # Note that there are no clock capable pins in this list
 set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AP16} [get_ports {JTAG_TCK}]
 set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AP15} [get_ports {JTAG_TDI}]
-set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AM16} [get_ports {JTAG_RST}]
 set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AM15} [get_ports {JTAG_TMS}]
 set_property -dict {IOSTANDARD LVCMOS12 PACKAGE_PIN AN18} [get_ports {JTAG_TDO}]
 

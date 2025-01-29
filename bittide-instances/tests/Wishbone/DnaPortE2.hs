@@ -39,7 +39,7 @@ sim = putStr simResult
 simResult :: String
 simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
  where
-  uartStream = sampleC def $ withClockResetEnable clockGen resetGen enableGen $ dut @System
+  uartStream = sampleC def $ withClockResetEnable clockGen (resetGenN d2) enableGen $ dut @System
 
 -- | Test whether we can read the DNA from the DNA port peripheral.
 case_dna_port_self_test :: Assertion
@@ -69,10 +69,7 @@ dut = circuit $ \_unit -> do
   (iMem, dMem) =
     $( do
         root <- runIO $ findParentContaining "cabal.project"
-        let
-          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-          elfPath = elfDir </> "dna_port_e2_test"
-
+        let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "dna_port_e2_test"
         memBlobsFromElf BigEndian (Nothing, Nothing) elfPath Nothing
      )
 

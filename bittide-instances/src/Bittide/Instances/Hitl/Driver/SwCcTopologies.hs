@@ -17,11 +17,11 @@ import Vivado.VivadoM
 
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup (demoRigInfo)
-import Bittide.Instances.Hitl.Utils.Gdb
+import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Vivado
 
-import Control.Monad (forM_, zipWithM, zipWithM_)
+import Control.Monad (forM_, zipWithM)
 import Control.Monad.IO.Class
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
@@ -64,13 +64,6 @@ driverFunc testName targets = do
           error $ "Timeout while performing action: " <> actionName
         Just r -> pure r
 
-    initHwTargets :: VivadoM ()
-    initHwTargets = forM_ targets $ \(hwT, d) -> do
-      liftIO $ putStrLn $ "Preparing hardware target " <> show d.deviceId
-
-      openHardwareTarget hwT
-      updateVio "vioHitlt" [("probe_prog_en", "1")]
-
     initOpenOcds :: [IO ((Int, ProcessStdIoHandles), IO ())]
     initOpenOcds = flip L.map (L.zip [0 ..] targets) $ \(targetIndex, (_, d)) -> do
       putStrLn $ "Starting OpenOCD for target " <> show d.deviceId
@@ -106,11 +99,12 @@ driverFunc testName targets = do
           telnetPort
       hSetBuffering ocd.stderrHandle LineBuffering
       tryWithTimeout "Waiting for OpenOCD to start" 15_000_000
-        $ expectLine ocd.stderrHandle openOcdWaitForHalt
+        $ errorToException
+        =<< openOcdWaitForHalt ocd
 
       let
         ocdProcName = "OpenOCD (" <> show d.deviceId <> ")"
-        ocdClean2 = ocdClean1 >> awaitProcessTermination ocdProcName ocdPh (Just 5_000_000)
+        ocdClean2 = ocdClean1 >> awaitProcessTermination ocdProcName ocdPh (Just 15_000_000)
 
       return ((gdbPort, ocd), ocdClean2)
 
@@ -121,51 +115,31 @@ driverFunc testName targets = do
       go gdbPort (hwT, d) = do
         putStrLn $ "Starting GDB for target " <> show d.deviceId
 
-        (gdb, gdbPh, gdbClean1) <- startGdbH
+        (gdb, gdbPh, gdbClean1) <- Gdb.startGdbH
         hSetBuffering gdb.stdinHandle LineBuffering
-
-        runGdbCommands
-          gdb.stdinHandle
-          [ "set logging file ./_build/hitl/"
-              <> testName
-              <> "/gdb-out-"
-              <> show (getTargetIndex hwT)
-              <> ".log"
-          , "set logging overwrite on"
-          , "set logging enabled on"
-          , "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/clock-control\""
-          , "target extended-remote :" <> show gdbPort
-          ]
-
+        Gdb.setLogging gdb
+          $ "./_build/hitl/"
+          <> testName
+          <> "/gdb-out-"
+          <> show (getTargetIndex hwT)
+          <> ".log"
+        Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "clock-control"
+        Gdb.setTarget gdb gdbPort
         let
           gdbProcName = "GDB (" <> show d.deviceId <> ")"
           gdbClean2 = gdbClean1 >> awaitProcessTermination gdbProcName gdbPh (Just 5_000_000)
 
         return (gdb, gdbClean2)
 
-    loadBinary :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ()
-    loadBinary (hwT, d) gdb = do
-      liftIO $ do
-        putStrLn $ "Loading binary onto target " <> show d.deviceId
-        runGdbCommands gdb.stdinHandle ["load"]
-        tryWithTimeout "Waiting for program load to finish" 120_000_000
-          $ expectLine gdb.stdoutHandle gdbWaitForLoad
-
-      openHardwareTarget hwT
-      updateVio "vioHitlt" [("probe_prog_en", "0")]
-
-    startBinary :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ()
-    startBinary (hwT, d) gdb = do
-      liftIO $ putStrLn $ "Starting binary on target " <> show d.deviceId
+    startTest :: (HwTarget, DeviceInfo) -> VivadoM ()
+    startTest (hwT, d) = do
+      liftIO $ putStrLn $ "Asserting test probe on " <> show d.deviceId
 
       openHardwareTarget hwT
       updateVio
         "vioHitlt"
-        [ ("probe_prog_en", "0")
-        , ("probe_test_start", "1")
+        [ ("probe_test_start", "1")
         ]
-
-      liftIO $ runGdbCommands gdb.stdinHandle ["continue"]
 
     getTestsStatus :: [(HwTarget, DeviceInfo)] -> [TestStatus] -> VivadoM [TestStatus]
     getTestsStatus [] _ = return []
@@ -225,13 +199,18 @@ driverFunc testName targets = do
 
       liftIO $ putStrLn $ "Running cleanup for target " <> d.deviceId
 
-  initHwTargets
+  forM_ targets $ \(hwT, d) -> do
+    liftIO $ putStrLn $ "Preparing hardware target " <> show d.deviceId
+    openHardwareTarget hwT
+    updateVio "vioHitlt" [("probe_prog_en", "1")]
   brackets (liftIO <$> initOpenOcds) (liftIO . snd) $ \initOcdsData -> do
     let gdbPorts = fmap (fst . fst) initOcdsData
     brackets (liftIO <$> initGdbs gdbPorts) (liftIO . snd) $ \initGdbsData -> do
       let gdbs = fmap fst initGdbsData
-      zipWithM_ loadBinary targets gdbs
-      zipWithM_ startBinary targets gdbs
+      liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) gdbs
+      liftIO $ mapM_ ((errorToException =<<) . Gdb.compareSections) gdbs
+      liftIO $ mapM_ Gdb.continue gdbs
+      mapM_ startTest targets
 
       testResults <- getTestResults targets (L.replicate (L.length targets) TestRunning)
       (count, exitCode) <-

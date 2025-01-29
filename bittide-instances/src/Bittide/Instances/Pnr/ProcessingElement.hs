@@ -59,8 +59,7 @@ vexRiscUartHello diffClk rst_in =
     $( do
         root <- runIO $ findParentContaining "cabal.project"
         let
-          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Debug
-          elfPath = elfDir </> "hello"
+          elfPath = root </> firmwareBinariesDir "riscv32imc" Debug </> "hello"
           iSize = 64 * 1024 -- 64 KB
           dSize = 64 * 1024 -- 64 KB
         memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
