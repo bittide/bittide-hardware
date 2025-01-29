@@ -10,6 +10,7 @@ import Test.Tasty
 
 import qualified Tests.ClockControlWb as ClockControlWb
 import qualified Tests.OverflowResistantDiff as Ord
+import qualified Tests.PanicBacktraces as Pb
 import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
@@ -27,6 +28,7 @@ tests =
     , Time.tests
     , Axi.tests
     , Watchdog.tests
+    , Pb.tests
     ]
 
 main :: IO ()

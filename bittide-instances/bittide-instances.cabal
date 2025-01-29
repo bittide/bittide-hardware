@@ -208,6 +208,7 @@ test-suite unittests
   other-modules:
     Tests.ClockControlWb
     Tests.OverflowResistantDiff
+    Tests.PanicBacktraces
     Wishbone.Axi
     Wishbone.CaptureUgn
     Wishbone.DnaPortE2
@@ -220,6 +221,7 @@ test-suite unittests
     clash-prelude-hedgehog >=1.6 && <1.10,
     filepath,
     hedgehog >=1.0 && <1.5,
+    network,
     parsec,
     pretty-simple,
     tasty,

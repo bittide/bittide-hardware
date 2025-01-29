@@ -264,3 +264,10 @@ gdbWaitForLoad s
       Stop (Error ("GDB remote communication error: " <> s))
   | "Start address 0x80000000" `isPrefixOf` s = Stop Ok
   | otherwise = Continue
+
+gdbWaitForQuit :: String -> Filter
+gdbWaitForQuit s
+  | "Backtrace stopped: frame did not save the PC" `isPrefixOf` s =
+      Stop (Error "Backtrace stopped in GDB")
+  | "[Inferior 1 (Remote target) detached]" `isPrefixOf` s = Stop Ok
+  | otherwise = Continue

@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2025 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "panic-checks"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Google LLC"]
+
+[dependencies.bittide-sys]
+path = "../../../firmware-support/bittide-sys"
+
+[dependencies.gdb-trace]
+path = "../../../firmware-support/gdb-trace"
+
+[dependencies.riscv-rt]
+git = "https://github.com/rslawson/riscv"
+branch = "rs/lto-fixes"
+package = "riscv-rt"
+
+[[bin]]
+name = "simple"
+path = "src/simple.rs"
+
+[[bin]]
+name = "intermediate"
+path = "src/intermediate.rs"
+
+[[bin]]
+name = "complex"
+path = "src/complex.rs"

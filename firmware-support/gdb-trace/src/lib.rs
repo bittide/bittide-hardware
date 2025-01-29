@@ -14,6 +14,7 @@ use core::{fmt::Write, panic::PanicInfo};
 pub fn gdb_panic_internal<W: Write>(writer: &mut W, info: &PanicInfo) -> ! {
     riscv::interrupt::machine::disable();
     writeln!(writer, "{:?}", info).unwrap();
+    write!(writer, "\x04").unwrap();
     loop {}
 }
 

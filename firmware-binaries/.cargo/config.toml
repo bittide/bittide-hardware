@@ -6,11 +6,10 @@
 target = "riscv32imc-unknown-none-elf"
 rustflags = [
   "-C", "target-feature=+f",
-  # XXX: These two seem to be ignored
   "-C", "force-frame-pointers=yes",
-  "-C", "force-unwind-tables=yes"
 ]
 target-dir = "../_build/cargo/firmware-binaries"
 
 [unstable]
 build-std = ["core", "panic_abort"]
+build-std-features = []
