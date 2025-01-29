@@ -40,7 +40,7 @@ data CargoBuildType = Release | Debug
 
 Example:
 
->>> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
+>>> firmwareBinariesDir "riscv32imc" Release
 "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release"
 -}
 firmwareBinariesDir :: String -> CargoBuildType -> FilePath
@@ -58,7 +58,7 @@ Example:
 -}
 rustBinSubDir :: String -> CargoBuildType -> FilePath
 rustBinSubDir rustTargetArchitecture buildType =
-  rustTargetArchitecture
+  rustTargetArchitecture <> "-unknown-none-elf"
     </> case buildType of
       Release -> "release"
       Debug -> "debug"

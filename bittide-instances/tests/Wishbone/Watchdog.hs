@@ -73,9 +73,7 @@ dut = withClockResetEnable clockGen (resetGenN d2) enableGen
  where
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let
-      elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-      elfPath = elfDir </> "watchdog_test"
+    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "watchdog_test"
 
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
