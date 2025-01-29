@@ -111,47 +111,28 @@ driverFunc testName targets = do
           $ waitForLine pico.stdoutHandle "Terminal ready"
 
         -- program the FPGA
-        withGdb $ \gdb -> do
+        Gdb.withGdb $ \gdb -> do
           hSetBuffering gdb.stdinHandle LineBuffering
-
-          runGdbCommands
-            gdb.stdinHandle
-            [ "set logging file " <> gdbOutLog
-            , "set logging overwrite on"
-            , "set logging enabled on"
-            , "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/debug/hello\""
-            , "target extended-remote :" <> show gdbPort
-            , "load"
-            , gdbEcho "Compare sections"
-            , "compare-sections"
-            ]
-
-          tryWithTimeout "Waiting for \"load done\"" 120_000_000
-            $ expectLine gdb.stdoutHandle gdbWaitForLoad
+          Gdb.setLogging gdb gdbOutLog
+          Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "hello"
+          Gdb.setTarget gdb gdbPort
+          errorToException =<< Gdb.loadBinary gdb
+          errorToException =<< Gdb.compareSections gdb
 
           -- break test
           do
             putStrLn "Testing whether breakpoints work"
-
-            runGdbCommands
-              gdb.stdinHandle
-              [ "break hello::test_success"
-              , "jump _start"
-              , gdbEcho "breakpoint reached"
-              ]
-
+            Gdb.setBreakpoints gdb ["hello::test_success"]
+            Gdb.continue gdb
+            Gdb.echo gdb.stdinHandle "breakpoint reached"
             tryWithTimeout "Waiting for \"breakpoint reached\"" 10_000_000
               $ waitForLine gdb.stdoutHandle "breakpoint reached"
 
-            runGdbCommands
-              gdb.stdinHandle
-              [ "disable 1"
-              , gdbEcho "continuing"
-              , "continue"
-              ]
-
+            Gdb.runCommands gdb.stdinHandle ["disable 1"]
+            Gdb.continue gdb
             tryWithTimeout "Waiting for \"continuing\"" 10_000_000
-              $ waitForLine gdb.stdoutHandle "continuing"
+              $ errorToException
+              =<< waitForLine gdb.stdoutHandle "continuing"
 
           -- This is the last thing that will print when the FPGA has been programmed
           -- and starts entereing UART-echo mode.

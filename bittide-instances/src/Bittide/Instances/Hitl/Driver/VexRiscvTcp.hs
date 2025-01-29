@@ -9,13 +9,11 @@ module Bittide.Instances.Hitl.Driver.VexRiscvTcp where
 import Prelude
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Utils.Gdb
 import Bittide.Instances.Hitl.Utils.Program
 
 import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Monad.IO.Class
-import Data.List.Extra
 import Data.Time
 import Data.Time.Clock.POSIX
 import Project.FilePath
@@ -30,6 +28,7 @@ import Test.Tasty.HUnit
 import Vivado.Tcl
 import Vivado.VivadoM
 
+import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Data.ByteString.Lazy as BS
 import qualified Network.Simple.TCP as NS
 import qualified Streaming.ByteString as SBS
@@ -89,50 +88,6 @@ driverFunc testName [(hwT, dI)] = do
         Nothing -> error "Action failed with timeout."
         Just value -> pure value
 
-    initOpenOcd :: ProcessStdIoHandles -> IO ()
-    initOpenOcd ocd = do
-      hSetBuffering ocd.stderrHandle LineBuffering
-      putStr "Waiting for OpenOCD to halt..."
-      expectLine ocd.stderrHandle openOcdWaitForHalt
-      putStrLn "  Done"
-
-    initPicocom :: ProcessStdIoHandles -> IO ()
-    initPicocom pico = do
-      hSetBuffering pico.stdinHandle LineBuffering
-      hSetBuffering pico.stdinHandle LineBuffering
-
-      putStrLn "Waiting for Picocom to be ready..."
-      doWithTimeout 10_000_000 $ waitForLine pico.stdoutHandle "Terminal ready"
-
-    initGdb :: ProcessStdIoHandles -> IO ()
-    initGdb gdb = do
-      hSetBuffering gdb.stdinHandle LineBuffering
-
-      runGdbCommands
-        gdb.stdinHandle
-        [ "set logging file " <> gdbOutLog
-        , "set logging overwrite on"
-        , "set logging enabled on"
-        , "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/smoltcp_client\""
-        , "target extended-remote :3333"
-        , "load"
-        , gdbEcho "load done"
-        , gdbEcho "Compare sections"
-        , "compare-sections"
-        , "break core::panicking::panic"
-        , "break ExceptionHandler"
-        , "break rust_begin_unwind"
-        , "break smoltcp_client::gdb_panic"
-        , "define hook-stop"
-        , "printf '!!! program stopped executing !!!\\n'"
-        , "i r"
-        , "bt"
-        , "quit 1"
-        , "end"
-        , "continue"
-        ]
-      doWithTimeout 120_000_000 $ waitForLine gdb.stdoutHandle "load done"
-
     startTest = do
       openHardwareTarget hwT
       updateVio "vioHitlt" [("probe_test_start", "1")]
@@ -140,16 +95,39 @@ driverFunc testName [(hwT, dI)] = do
   initHwDevice
 
   withOpenOcdWithEnv openocdEnv dI.usbAdapterLocation 3333 6666 4444 $ \ocd -> do
-    liftIO $ initOpenOcd ocd
-
-    liftIO $ putStrLn "Starting Picocom..."
+    liftIO $ do
+      hSetBuffering ocd.stderrHandle LineBuffering
+      putStr "Waiting for OpenOCD to halt..."
+      expectLine ocd.stderrHandle openOcdWaitForHalt
+      putStrLn "  Done"
+      
+      putStrLn "Starting Picocom..."
     withPicocomWithLogging dI.serial picoOutLog picoErrLog $ \pico -> do
-      liftIO $ initPicocom pico
+      liftIO $ do
+        hSetBuffering pico.stdinHandle LineBuffering
+        hSetBuffering pico.stdinHandle LineBuffering
+        putStrLn "Waiting for Picocom to be ready..."
+        doWithTimeout 10_000_000 $
+          errorToException =<< waitForLine pico.stdoutHandle "Terminal ready"
 
       liftIO $ putStrLn "Starting GDB..."
-      withGdb $ \gdb -> do
-        liftIO $ initGdb gdb
-
+      Gdb.withGdb $ \gdb -> do
+        liftIO $ do
+          hSetBuffering gdb.stdinHandle LineBuffering
+          Gdb.setLogging gdb gdbOutLog
+          Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
+          Gdb.setTarget gdb 3333
+          errorToException =<< Gdb.loadBinary gdb
+          errorToException =<< Gdb.compareSections gdb
+          Gdb.setBreakpoints
+            gdb
+            [ "break core::panicking::panic"
+            , "break ExceptionHandler"
+            , "break rust_begin_unwind"
+            , "break smoltcp_client::gdb_panic"
+            ]
+          Gdb.setBreakpointHook gdb
+          Gdb.runCommands gdb.stdinHandle ["continue"]
         startTest
 
         liftIO $ putStrLn "Starting TCP server"
