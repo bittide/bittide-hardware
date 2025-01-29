@@ -103,10 +103,7 @@ dut eb localCounter = circuit $ do
   (iMem, dMem) =
     $( do
         root <- runIO $ findParentContaining "cabal.project"
-        let
-          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-          elfPath = elfDir </> "capture_ugn_test"
-
+        let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "capture_ugn_test"
         memBlobsFromElf BigEndian (Nothing, Nothing) elfPath Nothing
      )
 

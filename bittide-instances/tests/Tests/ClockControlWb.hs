@@ -154,8 +154,7 @@ dut =
     $( do
         root <- runIO $ findParentContaining "cabal.project"
         let
-          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-          elfPath = elfDir </> "clock-control-wb"
+          elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "clock-control-wb"
           iSize = 8 * 1024 -- 16 KB
           dSize = 64 * 1024 -- 256 KB
         memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing

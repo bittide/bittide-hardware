@@ -95,7 +95,7 @@ dut scatterConfig gatherConfig = circuit $ do
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
+      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
       elfPath = elfDir </> "scatter_gather_test"
     (iMem, dMem) <- vecsFromElf @DMemWords @IMemWords BigEndian elfPath Nothing
     pure
