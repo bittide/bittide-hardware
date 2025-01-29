@@ -16,6 +16,8 @@ import System.IO (Handle, hGetChar, hReady)
 
 import Test.Tasty.HUnit
 
+import qualified System.IO as IO
+
 data Error = Ok | Error String
 data Filter = Continue | Stop Error
 
@@ -72,3 +74,39 @@ readRemainingChars h = do
       c <- hGetChar h
       (c :) <$> readRemainingChars h
     else pure ""
+
+{- | Read characters from a handle until a specific string is encountered.
+Do not use on Handles that might return non-ASCII characters.
+-}
+readUntil :: Handle -> String -> IO String
+readUntil handle ending = do
+  initBuf <- hGetNChar handle (length ending)
+  go "" initBuf
+ where
+  go _ "" = error $ "readUntil: Never saw expected: " <> ending
+  go acc buf@(bufHead : bufTail)
+    | buf == ending = pure acc
+    | otherwise = do
+        c <- hGetChar handle
+        go (acc <> [bufHead]) (bufTail <> [c])
+
+{- | Read lines from a handle until a specific line is encountered.
+Do not use on Handles that might return non-ASCII characters.
+-}
+readUntilLine :: Handle -> String -> IO [String]
+readUntilLine h expected = do
+  line <- IO.hGetLine h
+  if line == expected
+    then pure []
+    else (line :) <$> readUntilLine h expected
+
+{- | Read n characters from a handle.
+Do not use on Handles that might return non-ASCII characters.
+-}
+hGetNChar :: Handle -> Int -> IO String
+hGetNChar h n = go n []
+ where
+  go 0 acc = pure $ reverse acc
+  go i acc = do
+    c <- hGetChar h
+    go (pred i) (c : acc)
