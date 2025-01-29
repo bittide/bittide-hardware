@@ -19,6 +19,11 @@ import Test.Tasty.HUnit
 data Error = Ok | Error String
 data Filter = Continue | Stop Error
 
+-- | Convert an 'Error' to an 'Assertion'.
+errorToException :: Error -> Assertion
+errorToException Ok = pure ()
+errorToException (Error msg) = assertFailure msg
+
 {- | Utility function that reads lines from a handle, and applies a filter to
 each line. If the filter returns 'Continue', the function will continue
 reading lines. If the filter returns @Stop Ok@, the function will return
