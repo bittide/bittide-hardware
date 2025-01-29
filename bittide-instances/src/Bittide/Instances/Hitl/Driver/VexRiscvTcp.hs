@@ -34,16 +34,6 @@ import qualified Data.ByteString.Lazy as BS
 import qualified Network.Simple.TCP as NS
 import qualified Streaming.ByteString as SBS
 
-{- | Return the beginning of a string until you detect a certain substring
-That substring is not included in the result.
--}
-readUntil :: String -> String -> String
-readUntil end inp
-  | isPrefixOf end inp = ""
-  | otherwise = case uncons inp of
-      Just (h, t) -> h : readUntil end t
-      Nothing -> ""
-
 -- | Directory to dump TCP data sent by clients
 tcpDataDir :: FilePath
 tcpDataDir = buildDir </> "data" </> "tcp"
