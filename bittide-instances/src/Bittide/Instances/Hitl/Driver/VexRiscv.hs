@@ -20,7 +20,6 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Utils.Gdb
 import Bittide.Instances.Hitl.Utils.Program
 
 import Control.Concurrent (threadDelay)
@@ -32,6 +31,8 @@ import System.Exit
 import System.FilePath
 import System.IO
 import System.Timeout (timeout)
+
+import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 
 driverFunc ::
   String ->
@@ -68,6 +69,7 @@ driverFunc _name targets = do
       picoErrLog = mkLogPath "picocom-stderr"
       ocdOutLog = mkLogPath "openocd-stdout"
       ocdErrLog = mkLogPath "openocd-stderr"
+      gdbOutLog = mkLogPath "gdb-stdout"
       openocdEnv = [("OPENOCD_STDOUT_LOG", ocdOutLog), ("OPENOCD_STDERR_LOG", ocdErrLog)]
       gdbPort = 3333 + targetIndex
 
@@ -110,45 +112,25 @@ driverFunc _name targets = do
           $ waitForLine pico.stdoutHandle "Terminal ready"
 
         -- program the FPGA
-        withGdb $ \gdb -> do
+        Gdb.withGdb $ \gdb -> do
           hSetBuffering gdb.stdinHandle LineBuffering
-
-          runGdbCommands
-            gdb.stdinHandle
-            [ "set logging file ./_build/hitl/gdb-out-" <> show targetIndex <> ".log"
-            , "set logging overwrite on"
-            , "set logging enabled on"
-            , "file \"./_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/debug/hello\""
-            , "target extended-remote :" <> show gdbPort
-            , "load"
-            ]
-
-          tryWithTimeout "Waiting for \"load done\"" 120_000_000
-            $ expectLine gdb.stdoutHandle gdbWaitForLoad
+          Gdb.setLogging gdb gdbOutLog
+          Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "hello"
+          Gdb.setTarget gdb gdbPort
+          errorToException =<< Gdb.loadBinary gdb
+          -- errorToException =<< Gdb.compareSections gdb
 
           -- break test
           do
             putStrLn "Testing whether breakpoints work"
-
-            runGdbCommands
-              gdb.stdinHandle
-              [ "break hello::test_success"
-              , "jump _start"
-              , gdbEcho "breakpoint reached"
-              ]
-
+            Gdb.setBreakpoints gdb ["hello::test_success"]
+            Gdb.continue gdb
+            Gdb.echo gdb.stdinHandle "breakpoint reached"
             tryWithTimeout "Waiting for \"breakpoint reached\"" 10_000_000
               $ waitForLine gdb.stdoutHandle "breakpoint reached"
 
-            runGdbCommands
-              gdb.stdinHandle
-              [ "disable 1"
-              , gdbEcho "continuing"
-              , "continue"
-              ]
-
-            tryWithTimeout "Waiting for \"continuing\"" 10_000_000
-              $ waitForLine gdb.stdoutHandle "continuing"
+            Gdb.runCommands gdb.stdinHandle ["disable 1"]
+            Gdb.continue gdb
 
           -- This is the last thing that will print when the FPGA has been programmed
           -- and starts entereing UART-echo mode.
