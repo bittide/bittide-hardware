@@ -27,6 +27,7 @@ import System.FilePath
 import System.IO
 
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
+import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Data.List as L
 
 getProbeProgEnTcl :: String
@@ -66,7 +67,7 @@ driverFunc testName targets = do
 
       putStrLn "Starting OpenOCD..."
       (ocd, ocdPh, ocdClean1) <-
-        startOpenOcdWithEnv
+        Ocd.startOpenOcdWithEnv
           [("OPENOCD_STDOUT_LOG", ocdStdout), ("OPENOCD_STDERR_LOG", ocdStderr)]
           d.usbAdapterLocation
           gdbPort
@@ -74,7 +75,7 @@ driverFunc testName targets = do
           telnetPort
       hSetBuffering ocd.stderrHandle LineBuffering
       tryWithTimeout "Waiting for OpenOCD to start" 15_000_000
-        $ expectLine ocd.stderrHandle openOcdWaitForHalt
+        $ expectLine ocd.stderrHandle Ocd.waitForHalt
 
       let
         ocdProcName = "OpenOCD (" <> show d.deviceId <> ")"
@@ -104,8 +105,7 @@ driverFunc testName targets = do
       openHardwareTarget hwT
       updateVio
         "vioHitlt"
-        [ ("probe_prog_en", "0")
-        , ("probe_test_start", "1")
+        [ ("probe_test_start", "1")
         ]
 
     getTestsStatus :: [(HwTarget, DeviceInfo)] -> [TestStatus] -> VivadoM [TestStatus]

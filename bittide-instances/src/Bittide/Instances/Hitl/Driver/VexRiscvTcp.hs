@@ -30,6 +30,7 @@ import Vivado.VivadoM
 
 import qualified Bittide.Instances.Hitl.Utils.Driver as D
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
+import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Data.ByteString.Lazy as BS
 import qualified Network.Simple.TCP as NS
 import qualified Streaming.ByteString as SBS
@@ -80,11 +81,11 @@ driverFunc _name [d@(_, dI)] = do
 
   D.assertProbe "probe_test_start" d
 
-  withOpenOcdWithEnv openocdEnv dI.usbAdapterLocation 3333 6666 4444 $ \ocd -> do
+  Ocd.withOpenOcdWithEnv openocdEnv dI.usbAdapterLocation 3333 6666 4444 $ \ocd -> do
     liftIO $ do
       hSetBuffering ocd.stderrHandle LineBuffering
       putStr "Waiting for OpenOCD to halt..."
-      expectLine ocd.stderrHandle openOcdWaitForHalt
+      expectLine ocd.stderrHandle Ocd.waitForHalt
       putStrLn "  Done"
 
       putStrLn "Starting Picocom..."

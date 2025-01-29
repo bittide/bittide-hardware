@@ -38,6 +38,7 @@ import Vivado.VivadoM
 import "extra" Data.List.Extra (trim)
 
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
+import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.SwitchDemoProcessingElement.Calculator as Calc
 import qualified Clash.Sized.Vector as V (fromList)
 import qualified Data.List as L
@@ -94,7 +95,7 @@ driver testName targets = do
 
       putStrLn "Starting OpenOCD..."
       (ocd, ocdPh, ocdClean0) <-
-        startOpenOcdWithEnvAndArgs
+        Ocd.startOpenOcdWithEnvAndArgs
           ["-f", "sipeed.tcl", "-f", "vexriscv-2chain.tcl"]
           [ ("OPENOCD_STDOUT_LOG", ocdStdout)
           , ("OPENOCD_STDERR_LOG", ocdStderr)
@@ -108,7 +109,7 @@ driver testName targets = do
           ]
       hSetBuffering ocd.stderrHandle LineBuffering
       tryWithTimeout "Waiting for OpenOCD to start" 15_000_000
-        $ expectLine ocd.stderrHandle openOcdWaitForHalt
+        $ expectLine ocd.stderrHandle Ocd.waitForHalt
 
       let
         ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
