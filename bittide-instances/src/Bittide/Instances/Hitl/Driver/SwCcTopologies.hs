@@ -48,8 +48,9 @@ driverFunc testName targets = do
     $ "Running Driver function for targets "
     <> show ((\(_, info) -> info.deviceId) <$> targets)
 
+  projectDir <- liftIO $ findParentContaining "cabal.project"
+  let hitlDir = projectDir </> "_build/hitl/" <> testName
   startTime <- liftIO $ getTime Monotonic
-
   let
     calcTimeSpentMs = (`div` 1000000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
 
@@ -71,30 +72,16 @@ driverFunc testName targets = do
       openHardwareTarget hwT
       updateVio "vioHitlt" [("probe_prog_en", "1")]
 
-    initOpenOcds :: [IO ((Int, ProcessStdIoHandles), IO ())]
-    initOpenOcds = flip L.map (L.zip [0 ..] targets) $ \(targetIndex, (_, d)) -> do
+    initOpenOcd :: (a, DeviceInfo) -> Int -> IO ((Int, ProcessStdIoHandles), IO ())
+    initOpenOcd (_, d) targetIndex = do
       putStrLn $ "Starting OpenOCD for target " <> show d.deviceId
-
-      let gdbPort = 3333 + targetIndex
-      let tclPort = 6666 + targetIndex
-      let telnetPort = 4444 + targetIndex
-
-      projectDir <- findParentContaining "cabal.project"
+      putStrLn $ "Logs will be saved in the hitl directory: " <> hitlDir
       let
-        ocdStdout =
-          projectDir
-            </> "_build"
-            </> "hitl"
-            </> testName
-            </> "openocd-" <> show targetIndex <> "-stdout.log"
-        ocdStderr =
-          projectDir
-            </> "_build"
-            </> "hitl"
-            </> testName
-            </> "openocd-" <> show targetIndex <> "-stderr.log"
-      putStrLn $ "logging OpenOCD stdout to `" <> ocdStdout <> "`"
-      putStrLn $ "logging OpenOCD stderr to `" <> ocdStderr <> "`"
+        gdbPort = 3333 + targetIndex
+        tclPort = 6666 + targetIndex
+        telnetPort = 4444 + targetIndex
+        ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
+        ocdStderr = hitlDir </> "openocd-" <> show targetIndex <> "-stderr.log"
 
       putStrLn "Starting OpenOCD..."
       (ocd, ocdPh, ocdClean1) <-
@@ -114,28 +101,20 @@ driverFunc testName targets = do
 
       return ((gdbPort, ocd), ocdClean2)
 
-    initGdbs :: [Int] -> [IO (ProcessStdIoHandles, IO ())]
-    initGdbs gdbPorts = L.zipWith go gdbPorts targets
-     where
-      go :: Int -> (HwTarget, DeviceInfo) -> IO (ProcessStdIoHandles, IO ())
-      go gdbPort (hwT, d) = do
-        putStrLn $ "Starting GDB for target " <> show d.deviceId
+    initGdb :: Int -> (HwTarget, DeviceInfo) -> IO (ProcessStdIoHandles, IO ())
+    initGdb gdbPort (hwT, d) = do
+      putStrLn $ "Starting GDB for target " <> show d.deviceId
 
-        (gdb, gdbPh, gdbClean1) <- Gdb.startGdbH
-        hSetBuffering gdb.stdinHandle LineBuffering
-        Gdb.setLogging gdb
-          $ "./_build/hitl/"
-          <> testName
-          <> "/gdb-out-"
-          <> show (getTargetIndex hwT)
-          <> ".log"
-        Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "clock-control"
-        Gdb.setTarget gdb gdbPort
-        let
-          gdbProcName = "GDB (" <> show d.deviceId <> ")"
-          gdbClean2 = gdbClean1 >> awaitProcessTermination gdbProcName gdbPh (Just 5_000_000)
+      (gdb, gdbPh, gdbClean1) <- Gdb.startGdbH
+      hSetBuffering gdb.stdinHandle LineBuffering
+      Gdb.setLogging gdb $ hitlDir </> "gdb-" <> show (getTargetIndex hwT) <> "-stdout.log"
+      Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "clock-control"
+      Gdb.setTarget gdb gdbPort
+      let
+        gdbProcName = "GDB (" <> show d.deviceId <> ")"
+        gdbClean2 = gdbClean1 >> awaitProcessTermination gdbProcName gdbPh (Just 5_000_000)
 
-        return (gdb, gdbClean2)
+      return (gdb, gdbClean2)
 
     startTest :: (HwTarget, DeviceInfo) -> VivadoM ()
     startTest (hwT, d) = do
@@ -207,9 +186,9 @@ driverFunc testName targets = do
       liftIO $ putStrLn $ "Running cleanup for target " <> d.deviceId
 
   initHwTargets
-  brackets (liftIO <$> initOpenOcds) (liftIO . snd) $ \initOcdsData -> do
-    let gdbPorts = fmap (fst . fst) initOcdsData
-    brackets (liftIO <$> initGdbs gdbPorts) (liftIO . snd) $ \initGdbsData -> do
+  let gdbPorts = L.take (L.length targets) [3333 ..]
+  brackets (liftIO <$> L.zipWith initOpenOcd targets [0 ..]) (liftIO . snd) $ \_initOcdsData -> do
+    brackets (liftIO <$> L.zipWith initGdb gdbPorts targets) (liftIO . snd) $ \initGdbsData -> do
       let gdbs = fmap fst initGdbsData
       liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) gdbs
 
