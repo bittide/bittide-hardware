@@ -419,6 +419,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "scatter_gather_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-sys",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
 name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

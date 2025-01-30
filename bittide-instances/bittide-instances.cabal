@@ -211,6 +211,7 @@ test-suite unittests
     Wishbone.Axi
     Wishbone.CaptureUgn
     Wishbone.DnaPortE2
+    Wishbone.ScatterGather
     Wishbone.Time
     Wishbone.Watchdog
 

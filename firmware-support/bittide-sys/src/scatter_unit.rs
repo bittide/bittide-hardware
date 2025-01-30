@@ -1,93 +1,54 @@
 // SPDX-FileCopyrightText: 2022 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-
-use fdt::node::FdtNode;
-
-use crate::{utils::matches_fdt_name, ComponentLoadError};
-
-pub struct ScatterUnit<const FRAME_SIZE: usize> {
-    memory: *const u8,
-    metacycle_register: *const u8,
+pub struct ScatterUnit<const MEM_SIZE: usize> {
+    base_addr: *const u64,
 }
 
-impl<const FRAME_SIZE: usize> ScatterUnit<FRAME_SIZE> {
-    /// Load the Scatter-Unit information from a flattened-devicetree.
+impl<const MEM_SIZE: usize> ScatterUnit<MEM_SIZE> {
+    const METACYCLE_OFFSET: usize = MEM_SIZE;
+
+    /// Create a new [`ScatterUnit`] instance given a base address. The
+    /// `MEM_SIZE` is the number of 64-bit words.
     ///
     /// # Safety
     ///
-    /// The FDT must be a valid description of the hardware components that this
-    /// code is running on.
-    pub unsafe fn from_fdt_node(node: &FdtNode) -> Result<Self, ComponentLoadError> {
-        let get_node = |path| {
-            node.children()
-                .find(|child| matches_fdt_name(child, path))
-                .ok_or(ComponentLoadError::FdtNodeNotFound(path))
-        };
-
-        let get_reg = |node: &fdt::node::FdtNode, component| {
-            node.reg()
-                .ok_or(ComponentLoadError::RegNotFound { component })?
-                .next()
-                .ok_or(ComponentLoadError::RegNotFound { component })
-        };
-
-        let memory_node = get_node("scatter-memory")?;
-        let metacycle_register_node = get_node("metacycle-reg")?;
-
-        let memory = get_reg(&memory_node, "memory")?;
-
-        if let Some(size) = memory.size {
-            if size != FRAME_SIZE {
-                return Err(ComponentLoadError::SizeMismatch {
-                    property: "memory frame size",
-                    expected: FRAME_SIZE,
-                    found: size,
-                });
-            }
-        }
-
-        let metacycle_register = {
-            let reg = get_reg(&metacycle_register_node, "metacycle_register")?;
-            if let Some(size) = reg.size {
-                if size != 1 {
-                    return Err(ComponentLoadError::SizeMismatch {
-                        property: "metacycle register size",
-                        expected: 1,
-                        found: size,
-                    });
-                }
-            }
-            reg.starting_address
-        };
-
-        Ok(ScatterUnit {
-            memory: memory.starting_address,
-            metacycle_register,
-        })
+    /// The `base_addr` pointer MUST be a valid pointer that is backed
+    /// by a memory mapped scatter unit instance.
+    pub unsafe fn new(base_addr: *const ()) -> ScatterUnit<MEM_SIZE> {
+        let addr = base_addr as *const u64;
+        ScatterUnit { base_addr: addr }
     }
 
-    pub const fn frame_size(&self) -> usize {
-        FRAME_SIZE
-    }
-
-    pub fn read_frame_memory(&self, data: &mut [u8; FRAME_SIZE]) {
-        for (i, d) in data.iter_mut().enumerate() {
+    /// Read a slice from the scatter memory.
+    ///
+    /// # Panics
+    ///
+    /// The destination memory size must be smaller or equal to the memory size
+    ///  of the `ScatterUnit`.
+    pub fn read_slice(&self, dst: &mut [u64], offset: usize) {
+        assert!(dst.len() + offset <= Self::METACYCLE_OFFSET);
+        let mut off = offset;
+        for d in dst {
             unsafe {
-                *d = self.memory.add(i).read_volatile();
+                *d = self.base_addr.add(off).read_volatile();
             }
+            off += 1;
         }
     }
 
     /// Wait for the start of a new metacycle.
     ///
-    /// Execution will stall until the start of a new metacycle.
+    /// Reading from the register will cause a stall until the end of the
+    /// metacycle. The read value is not actually relevant, so it's safe
+    /// to discard.
     pub fn wait_for_new_metacycle(&self) {
         unsafe {
-            // reading from the register will cause a stall until the end of the
-            // metacycle, the read value is not actually relevant, so it's safe
-            // to discard.
-            let _val = self.metacycle_register.read_volatile();
+            let _val = self
+                .base_addr
+                .add(Self::METACYCLE_OFFSET)
+                .cast::<usize>()
+                .read_volatile();
         }
     }
 }
