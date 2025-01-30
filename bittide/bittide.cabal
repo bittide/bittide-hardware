@@ -150,6 +150,7 @@ library
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Switch
+    Bittide.SwitchDemoProcessingElement
     Bittide.Transceiver
     Bittide.Transceiver.Cdc
     Bittide.Transceiver.Comma

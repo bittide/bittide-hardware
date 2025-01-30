@@ -1,0 +1,143 @@
+-- SPDX-FileCopyrightText: 2025 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE NumericUnderscores #-}
+
+module Bittide.SwitchDemoProcessingElement where
+
+import Clash.Prelude
+
+import Data.Maybe (fromMaybe)
+import Data.Tuple (swap)
+import GHC.Stack (HasCallStack)
+
+import Protocols
+import Protocols.Wishbone
+
+import Bittide.SharedTypes (Bytes)
+import Bittide.Wishbone (wbToVec)
+import Clash.Sized.Vector.ToTuple (vecToTuple)
+
+{- | Multiplying by 3 should always fit, though if n~1, the output type is `Index 3`
+which doesn't fit the 3 we're multiplying by hence yielding an undefined. This
+function works around that.
+-}
+zeroExtendTimesThree :: forall n. (1 <= n, KnownNat n) => Index n -> Index (n * 3)
+zeroExtendTimesThree = truncateB . mul (3 :: Index 4)
+
+-- | Simple processing element used for the Bittide switch demo.
+switchDemoPe ::
+  forall bufferSize dom.
+  ( HasCallStack
+  , HiddenClockResetEnable dom
+  , 1 <= bufferSize
+  ) =>
+  -- | Size of buffer in number of "tri-cycles". That is, we always store 3 64-bit words:
+  -- DNA (32 msbs), DNA (64 lsbs), local clock cycle counter.
+  SNat bufferSize ->
+  -- | Local clock cycle counter
+  Signal dom (Unsigned 64) ->
+  -- | Incoming crossbar link
+  Signal dom (BitVector 64) ->
+  -- | Device DNA
+  Signal dom (Maybe (BitVector 96)) ->
+  -- | When to read from the crossbar link
+  Signal dom (Unsigned 64) ->
+  -- | How many tri-cycles to read from the crossbar link
+  Signal dom (Index bufferSize) ->
+  -- | When to write to the crossbar link
+  Signal dom (Unsigned 64) ->
+  -- | How many tri-cycles to write to the crossbar link. Includes writing \"own\" data.
+  Signal dom (Index (bufferSize + 1)) ->
+  ( -- \| Outgoing crossbar link
+    Signal dom (BitVector 64)
+  , -- \| Buffer output
+    Signal dom (Vec (bufferSize * 3) (BitVector 64))
+  )
+switchDemoPe SNat localCounter linkIn maybeDna readStart readCycles writeStart writeCycles =
+  (linkOut, buffer)
+ where
+  readCyclesExtended = zeroExtendTimesThree <$> readCycles
+  writeCyclesExtended = zeroExtendTimesThree <$> writeCycles
+
+  localData :: Signal dom (Vec 3 (BitVector 64))
+  localData = bundle ((pack <$> localCounter) :> unbundle dnaVec)
+   where
+    dnaVec :: Signal dom (Vec 2 (BitVector 64))
+    dnaVec = bitCoerce . zeroExtend <$> dnaLocked
+    dnaLocked = fromMaybe 0xBAAB_BAAB_BAAB_BAAB_BAAB_BAAB <$> maybeDna
+
+  linkOut = stateToLinkOutput <$> peState <*> buffer <*> localData
+
+  stateToLinkOutput ::
+    SimplePeState bufferSize ->
+    Vec (bufferSize * 3) (BitVector 64) ->
+    Vec 3 (BitVector 64) ->
+    BitVector 64
+  stateToLinkOutput state buf locData =
+    case state of
+      Write i
+        | i <= 2 -> locData !! i
+        | otherwise -> buf !! (i - 3)
+      _ -> 0xAAAA_BBBB_AAAA_BBBB
+
+  -- \| The buffer stores all the incoming bittide data. For the Bittide Switch demo,
+  -- each FPGA sends its DNA and local clock cycle counter, along with all received data.
+  -- The last FPGA will therefore receive all DNAs and local clock cycle counters.
+  buffer :: (HasCallStack) => Signal dom (Vec (bufferSize * 3) (BitVector 64))
+  buffer = bundle $ regEn <$> initVec <*> enableVec <*> linkInVec
+   where
+    initVec = iterateI (+ 1) 0xABBA_ABBA_ABBA_0000
+    linkInVec = repeat linkIn
+
+    enableVec :: (HasCallStack) => Vec (bufferSize * 3) (Signal dom Bool)
+    enableVec = unbundle $ go <$> peState
+     where
+      go :: (HasCallStack) => SimplePeState bufferSize -> Vec (bufferSize * 3) Bool
+      go (Read x) = (== x) <$> indicesI
+      go _ = repeat False
+
+  prevPeState = register Idle peState
+
+  peState =
+    update
+      <$> localCounter
+      <*> readStart
+      <*> readCyclesExtended
+      <*> writeStart
+      <*> writeCyclesExtended
+      <*> prevPeState
+   where
+    update ::
+      -- \| Local clock cycle counter
+      Unsigned 64 ->
+      -- \| When to read from the crossbar link
+      Unsigned 64 ->
+      -- \| How many cycles to read from the crossbar link
+      Index (bufferSize * 3) ->
+      -- \| When to write to the crossbar link
+      Unsigned 64 ->
+      -- \| How many cycles to write to the crossbar link
+      Index ((bufferSize + 1) * 3) ->
+      SimplePeState bufferSize ->
+      SimplePeState bufferSize
+    update cntr rs rc ws wc state =
+      case state of
+        Idle -> nextState
+        Read x
+          | x >= rc - 1 -> nextState
+          | otherwise -> Read (satSucc SatBound x)
+        Write x
+          | x >= wc - 1 -> nextState
+          | otherwise -> Write (satSucc SatBound x)
+     where
+      nextState
+        | cntr == ws && wc > 0 = Write 0
+        | cntr == rs && rc > 0 = Read 0
+        | otherwise = Idle
+
+data SimplePeState bufferSize
+  = Idle
+  | Read (Index (bufferSize * 3))
+  | Write (Index ((bufferSize + 1) * 3))
+  deriving (Generic, NFDataX, Eq, Show)
