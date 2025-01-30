@@ -32,15 +32,12 @@ import Bittide.Wishbone
 import qualified Protocols.Df as Df
 import qualified Prelude as P
 
-case_scatter_gather_echo_test :: Assertion
-case_scatter_gather_echo_test = do
-  assertBool
-    msg
-    (P.head (lines simResult) == "Written data was read back correctly")
- where
-  msg = "Received the following from the CPU over UART:\n" <> simResult
-  simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+sim :: IO ()
+sim = putStr simResult
 
+simResult :: String
+simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+ where
   uartStream =
     sampleC def{timeoutAfter = 100_000}
       $ withClockResetEnable clockGen resetGen enableGen
@@ -56,6 +53,14 @@ case_scatter_gather_echo_test = do
   incrementingCal = genIncrementingCalendar @16
   gatherCal = incrementingCal :< ValidEntry maxBound (padding - 1 :: Unsigned 16)
   scatterCal = (ValidEntry 0 0 :> incrementingCal) :< ValidEntry maxBound (padding - 2)
+
+case_scatter_gather_echo_test :: Assertion
+case_scatter_gather_echo_test = do
+  assertBool
+    msg
+    (P.head (lines simResult) == "Written data was read back correctly")
+ where
+  msg = "Received the following from the CPU over UART:\n" <> simResult
 
 genIncrementingCalendar ::
   forall size repititionBits.
