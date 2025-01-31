@@ -35,7 +35,7 @@ module Bittide.Instances.Hitl.SwCcTopologies (
 
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import qualified Clash.Explicit.Prelude as E
-import Clash.Prelude (HiddenClockResetEnable, exposeReset, hasReset, withClockResetEnable)
+import Clash.Prelude (withClockResetEnable)
 import qualified Prelude as P
 
 import Data.Functor ((<&>))
@@ -49,7 +49,7 @@ import VexRiscv (JtagIn, JtagOut)
 import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl hiding (speedChangeToFincFdec)
-import Bittide.ClockControl.Callisto.Types (CallistoResult)
+import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
 import Bittide.ClockControl.CallistoSw (SwControlConfig (..), callistoSwClockControl)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
@@ -65,7 +65,7 @@ import Bittide.Hitl
 import Bittide.Instances.Hitl.IlaPlot (
   IlaControl (..),
   IlaPlotSetup (..),
-  callistoClockControlWithIla,
+  clockControlIla,
   ilaPlotSetup,
  )
 import Bittide.Instances.Hitl.Setup
@@ -263,7 +263,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
     ( transceivers.txNs
     , transceivers.txPs
     , frequencyAdjustments
-    , callistoResult
+    , callistoResult1
     , clockControlReset
     , domainDiffs
     , transceivers.stats
@@ -276,7 +276,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
     , allUgnsStable
     , noFifoOverflows
     , noFifoUnderflows
-    , callistoResult.jtagOut
+    , callistoResult1.jtagOut
     )
  where
   syncRst = rst `orReset` unsafeFromActiveHigh spiErr
@@ -318,6 +318,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
 
   allReady =
     trueFor (SNat @(Milliseconds 500)) sysClk syncRst (and <$> bundle transceivers.linkReadys)
+
   transceiversFailedAfterUp =
     sticky sysClk syncRst (isFalling sysClk syncRst enableGen False allReady)
 
@@ -350,8 +351,8 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
     startupDelayRst
       `orReset` unsafeFromActiveLow ((==) <$> delayCount <*> (startupDelay <$> cfg))
 
-  clockMod = callistoResult.maybeSpeedChange
-  allStable0 = callistoResult.allStable
+  clockMod = callistoResult1.maybeSpeedChange
+  allStable0 = callistoResult1.allStable
   allStable1 = sticky sysClk syncRst allStable0
 
   ccConfig ::
@@ -361,39 +362,30 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
       (CccStabilityCheckerFramesize Basic125)
   ccConfig = SwControlConfig jtagIn (reframingEnabled <$> cfg) SNat SNat
 
-  callistoSwClockControlInner ::
-    forall nLinks eBufBits dom margin framesize.
-    ( HiddenClockResetEnable dom
-    , KnownNat nLinks
-    , KnownNat eBufBits
-    , 1 <= nLinks
-    , 1 <= eBufBits
-    , nLinks + eBufBits <= 32
-    , 1 <= framesize
-    , 1 <= DomainPeriod dom
-    ) =>
-    Reset dom ->
-    SwControlConfig dom margin framesize ->
-    Signal dom (BitVector nLinks) ->
-    Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
-    Signal dom (CallistoResult nLinks)
-  callistoSwClockControlInner extraRst a b c =
-    exposeReset (callistoSwClockControl a b c) newReset
-   where
-    oldReset = unsafeToActiveHigh hasReset
-    extraRst1 = unsafeToActiveHigh extraRst
-    newReset = unsafeFromActiveHigh $ oldReset .&&. extraRst1
+  callistoResult0 =
+    withClockResetEnable
+      sysClk
+      ( unsafeFromActiveHigh $ unsafeToActiveHigh clockControlReset .&&. unsafeToActiveHigh progEn
+      )
+      enableGen
+      $ callistoSwClockControl ccConfig (mask <$> cfg) domainDiffs
 
-  callistoResult =
-    callistoClockControlWithIla @LinkCount @CccBufferSize
+  -- do not forward clock modifications during calibration
+  callistoResult1 =
+    mux
+      calibrating
+      ((\cr -> cr{maybeSpeedChange = Nothing}) <$> callistoResult0)
+      callistoResult0
+
+  calibrating =
+    clockControlIla @LinkCount
       transceivers.txClock
       sysClk
       clockControlReset
-      ccConfig
-      (callistoSwClockControlInner progEn)
+      callistoResult0
       IlaControl{..}
       (mask <$> cfg)
-      (resize <<$>> domainDiffs)
+      domainDiffs
 
   fincFdecIla :: Signal Basic125 ()
   fincFdecIla =

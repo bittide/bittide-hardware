@@ -35,7 +35,7 @@ module Bittide.Instances.Hitl.IlaPlot (
   -- * ILA Plot
   ilaProbeNames,
   ilaPlotSetup,
-  callistoClockControlWithIla,
+  clockControlIla,
 
   -- * Helpers
   SyncPulseCycles,
@@ -69,7 +69,6 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Gray (xpmCdcGray)
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Explicit.Reset.Extra
 
-import Clash.Signal (HiddenClockResetEnable, withClockResetEnable)
 import Control.Arrow (second, (***))
 import Data.Bool (bool)
 import Data.Constraint.Nat.Extra (
@@ -455,21 +454,14 @@ data DiffResult a
     TooLarge
   deriving (Generic, BitPack, NFDataX, Functor, Eq, Ord, Show)
 
-type CallistoCc n m sys cfg =
-  (HiddenClockResetEnable sys, HasSynchronousReset sys) =>
-  cfg ->
-  Signal sys (BitVector n) ->
-  Vec n (Signal sys (RelDataCount m)) ->
-  Signal sys (CallistoResult n)
-
-{-# NOINLINE callistoClockControlWithIla #-}
+{-# NOINLINE clockControlIla #-}
 
 {- | Wrapper on 'Bittide.ClockControl.Callisto.callistoClockControl'
 additionally dumping all the data that is required for producing
 plots of the clock control behavior.
 -}
-callistoClockControlWithIla ::
-  forall n m cfg sys dyn.
+clockControlIla ::
+  forall n m sys dyn.
   (HasCallStack) =>
   (KnownDomain dyn, KnownDomain sys, HasSynchronousReset sys) =>
   (KnownNat n, KnownNat m) =>
@@ -488,24 +480,21 @@ callistoClockControlWithIla ::
   Clock dyn ->
   Clock sys ->
   Reset sys ->
-  cfg ->
-  CallistoCc n m sys cfg ->
+  Signal sys (CallistoResult n) ->
   -- | Ila trigger and capture conditions
   IlaControl sys ->
   -- | Link availability mask
   Signal sys (BitVector n) ->
   -- | Statistics provided by elastic buffers.
   Vec n (Signal sys (RelDataCount m)) ->
-  Signal sys (CallistoResult n)
-callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..} mask ebs =
-  hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> output)
+  Signal sys Bool
+clockControlIla dynClk clk rst callistoResult IlaControl{..} mask ebs =
+  hwSeqX ilaInstance calibrating
  where
-  output = withClockResetEnable clk rst enableGen $ callistoCc callistoCfg mask ebs
-
   -- Condense multicycle speedchange outputs into a single cycle for the ILA
-  mscChanging = isRising clk rst enableGen False (isJust . maybeSpeedChange <$> output)
-  newMsc = mux mscChanging (maybeSpeedChange <$> output) (pure Nothing)
-  callistoOutputIla = (\record field -> record{maybeSpeedChange = field}) <$> output <*> newMsc
+  mscChanging = isRising clk rst enableGen False (isJust . maybeSpeedChange <$> callistoResult)
+  newMsc = mux mscChanging (maybeSpeedChange <$> callistoResult) (pure Nothing)
+  callistoOutputIla = (\record field -> record{maybeSpeedChange = field}) <$> callistoResult <*> newMsc
 
   filterCounts vMask vCounts = flip map (zip vMask vCounts)
     $ \(isActive, count) -> if isActive == high then count else 0
@@ -603,12 +592,6 @@ callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..}
         (/= maxBound)
         (minBound :: Index 3)
         scheduledCapture
-
-  -- do not forward clock modifications during calibration
-  muteDuringCalibration active ccResult =
-    ccResult
-      { maybeSpeedChange = bool (maybeSpeedChange ccResult) Nothing active
-      }
 
   -- Note that we always need to capture everything before the trigger
   -- fires, because the data that the ILA captures is undefined

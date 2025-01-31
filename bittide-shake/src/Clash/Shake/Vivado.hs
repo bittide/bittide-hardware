@@ -521,7 +521,7 @@ verifyHitlVio v paramBitSize = do
         "Probe '" <> probe <> "' must have width " <> probeWidth <> " but it is " <> widthProp
 
 {- | Observed instances of property CELL_NAME of an hw_ila object include:
-- "Bittide_Instances_Hitl_FullMeshSwCc_fullMeshSwCcTest_callistoClockControlWithIla_callistoResult/ilaPlot/ilaPlot"
+- "Bittide_Instances_Hitl_FullMeshSwCc_fullMeshSwCcTest_clockControlIla_callistoResult/ilaPlot/ilaPlot"
 - "instructionBus/dataBus"
 
 This short name should return "ilaPlot" and "instructionBus" for
