@@ -230,7 +230,6 @@ topologyTest ::
   "ILA_CTRL" ::: IlaControl Basic125 ->
   "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
   "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
-  "CPU_RESET" ::: Reset Basic125 ->
   "MISO" ::: Signal Basic125 Bit ->
   "TEST_CFG" ::: Signal Basic125 TestConfig ->
   "CALIBRATED_SHIFT" ::: Signal Basic125 FincFdecCount ->
@@ -257,7 +256,7 @@ topologyTest ::
   , "noFifoUnderflows" ::: Signal Basic125 Bool
   , "JTAG" ::: Signal Basic125 JtagOut
   )
-topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs cpuReset miso cfg ccs jtagIn =
+topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg ccs jtagIn =
   hwSeqX
     fincFdecIla
     ( transceivers.txNs
@@ -363,7 +362,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs cpuReset miso
   ccConfig = SwControlConfig jtagIn (reframingEnabled <$> cfg) SNat SNat
 
   callistoResult0 =
-    withClockResetEnable sysClk cpuReset enableGen
+    withClockResetEnable sysClk (unsafeFromActiveLow spiDone) enableGen
       $ callistoSwClockControl ccConfig (mask <$> cfg) domainDiffs
 
   -- do not forward clock modifications during calibration
@@ -806,7 +805,6 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso jtagIn =
         ilaControl{skipTest = skip}
         rxns
         rxps
-        cpuReset
         miso
         cfg
         calibratedClockShift
@@ -921,13 +919,12 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso jtagIn =
               .&&. fifoSuccess
               .&&. (not <$> (transceiversFailedAfterUp .||. startBeforeAllReady))
            )
-
-  (unbundle -> (testStart, testConfig0, unsafeFromActiveHigh -> cpuReset)) =
+  (unbundle -> (testStart, testConfig0)) =
     setName @"vioHitlt"
       $ vioProbe
         ("probe_test_done" :> "probe_test_success" :> Nil)
-        ("probe_test_start" :> "probe_test_data" :> "probe_cpu_reset" :> Nil)
-        (False, disabled, False)
+        ("probe_test_start" :> "probe_test_data" :> Nil)
+        (False, disabled)
         sysClk
         testDone
         testSuccess

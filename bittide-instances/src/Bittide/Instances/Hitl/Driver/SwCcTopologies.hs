@@ -21,7 +21,7 @@ import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Vivado
 
-import Control.Monad (forM_, zipWithM)
+import Control.Monad (zipWithM)
 import Control.Monad.IO.Class
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
@@ -32,9 +32,6 @@ import System.IO
 import System.Timeout (timeout)
 
 import qualified Data.List as L
-
-getProbeProgEnTcl :: String
-getProbeProgEnTcl = getTestProbeTcl "*vioHitlt/probe_prog_en"
 
 data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
 
@@ -64,13 +61,6 @@ driverFunc testName targets = do
         Nothing -> do
           error $ "Timeout while performing action: " <> actionName
         Just r -> pure r
-
-    initHwTargets :: VivadoM ()
-    initHwTargets = forM_ targets $ \(hwT, d) -> do
-      liftIO $ putStrLn $ "Preparing hardware target " <> show d.deviceId
-
-      openHardwareTarget hwT
-      updateVio "vioHitlt" [("probe_prog_en", "1")]
 
     initOpenOcd :: (a, DeviceInfo) -> Int -> IO ((Int, ProcessStdIoHandles), IO ())
     initOpenOcd (_, d) targetIndex = do
@@ -121,11 +111,7 @@ driverFunc testName targets = do
       liftIO $ putStrLn $ "Asserting test probe on " <> show d.deviceId
 
       openHardwareTarget hwT
-      updateVio
-        "vioHitlt"
-        [ ("probe_prog_en", "0")
-        , ("probe_test_start", "1")
-        ]
+      updateVio "vioHitlt" [("probe_test_start", "1")]
 
     getTestsStatus :: [(HwTarget, DeviceInfo)] -> [TestStatus] -> VivadoM [TestStatus]
     getTestsStatus [] _ = return []
@@ -178,17 +164,12 @@ driverFunc testName targets = do
           then (count + 1, acc)
           else (count, code)
 
-  initHwTargets
   let gdbPorts = L.take (L.length targets) [3333 ..]
   brackets (liftIO <$> L.zipWith initOpenOcd targets [0 ..]) (liftIO . snd) $ \_initOcdsData -> do
     brackets (liftIO <$> L.zipWith initGdb gdbPorts targets) (liftIO . snd) $ \initGdbsData -> do
       let gdbs = fmap fst initGdbsData
       liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) gdbs
 
-      -- TODO: Replace `prog_en` vio with `enable_sync_gen` vio
-      mapM_
-        (\(hwT, _) -> openHardwareTarget hwT >> updateVio "vioHitlt" [("probe_prog_en", "0")])
-        targets
       -- liftIO $ mapM_ ((errorToException =<<) . Gdb.compareSections) gdbs
       liftIO $ mapM_ Gdb.continue gdbs
       mapM_ startTest targets
