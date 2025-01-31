@@ -77,9 +77,7 @@ dut = withClockResetEnable clockGen resetGen enableGen
     $( do
         root <- runIO $ findParentContaining "cabal.project"
         let
-          elfDir = root </> firmwareBinariesDir "riscv32imc-unknown-none-elf" Release
-          elfPath = elfDir </> "time_self_test"
-
+          elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "time_self_test"
           iSize = 64 * 1024 -- 64 KB
           dSize = 64 * 1024 -- 64 KB
         memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing

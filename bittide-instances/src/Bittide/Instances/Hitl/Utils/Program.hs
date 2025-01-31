@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
 module Bittide.Instances.Hitl.Utils.Program where
@@ -133,32 +134,6 @@ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort = do
         }
 
   pure (ocdHandles', openOcdPh, cleanupProcess ocdHandles)
-
-withGdb :: (MonadIO m, MonadMask m) => (ProcessStdIoHandles -> m a) -> m a
-withGdb action = do
-  (gdb, clean) <- liftIO startGdb
-  finally (action gdb) (liftIO clean)
-
-startGdb :: IO (ProcessStdIoHandles, IO ())
-startGdb = (\(a, _, c) -> (a, c)) <$> startGdbH
-
-startGdbH :: IO (ProcessStdIoHandles, ProcessHandle, IO ())
-startGdbH = do
-  let
-    gdbProc = (proc "gdb" []){std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe}
-
-  gdbHandles@(gdbStdin, gdbStdout, gdbStderr, gdbPh) <-
-    createProcess gdbProc
-
-  let
-    gdbHandles' =
-      ProcessStdIoHandles
-        { stdinHandle = fromJust gdbStdin
-        , stdoutHandle = fromJust gdbStdout
-        , stderrHandle = fromJust gdbStderr
-        }
-
-  pure (gdbHandles', gdbPh, cleanupProcess gdbHandles)
 
 startPicocom :: FilePath -> IO (ProcessStdIoHandles, IO ())
 startPicocom devPath = do
