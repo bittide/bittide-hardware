@@ -65,7 +65,8 @@ callistoSwClockControl ::
   , KnownNat eBufBits
   , 1 <= nLinks
   , 1 <= eBufBits
-  , nLinks + eBufBits <= 32
+  , nLinks <= 32
+  , eBufBits <= 32
   , 1 <= framesize
   , 1 <= DomainPeriod dom
   ) =>
