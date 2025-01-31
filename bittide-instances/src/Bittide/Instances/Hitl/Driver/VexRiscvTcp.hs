@@ -122,7 +122,6 @@ driverFunc _name [(hwT, dI)] = do
             gdb
             [ "core::panicking::panic"
             , "ExceptionHandler"
-            , "rust_begin_unwind"
             , "smoltcp_client::gdb_panic"
             ]
           Gdb.setBreakpointHook gdb
