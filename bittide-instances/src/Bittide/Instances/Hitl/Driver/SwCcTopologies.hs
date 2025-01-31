@@ -21,7 +21,7 @@ import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Vivado
 
-import Control.Monad (zipWithM)
+import Control.Monad (forM_, zipWithM)
 import Control.Monad.IO.Class
 import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
@@ -32,6 +32,9 @@ import System.IO
 import System.Timeout (timeout)
 
 import qualified Data.List as L
+
+getProbeTestbenchResetTcl :: String
+getProbeTestbenchResetTcl = getTestProbeTcl "*vioHitlt/probe_tb_reset"
 
 data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
 
@@ -61,6 +64,13 @@ driverFunc testName targets = do
         Nothing -> do
           error $ "Timeout while performing action: " <> actionName
         Just r -> pure r
+
+    deassertTbReset :: (HwTarget, DeviceInfo) -> VivadoM ()
+    deassertTbReset (hwT, d) = do
+      liftIO $ putStrLn $ "Deasserting testbench reset for " <> show d.deviceId
+
+      openHardwareTarget hwT
+      updateVio "vioHitlt" [("probe_tb_reset", "0")]
 
     initOpenOcd :: (a, DeviceInfo) -> Int -> IO ((Int, ProcessStdIoHandles), IO ())
     initOpenOcd (_, d) targetIndex = do
@@ -164,8 +174,19 @@ driverFunc testName targets = do
           then (count + 1, acc)
           else (count, code)
 
+  forM_ targets deassertTbReset
+  -- Brings ilasetup out of reset
+  -- Ilasetup ensures that the SYN pulses are generated
+  -- Ilasetup brings SPI out of reset
+  -- Clock board is programmed
+  -- Domain starts running
+  -- Internal logic is brought out of reset
+  waitForSpiDone
+  -- Asserting start test starts captures
+  -- Delay counter prevents clock modifications
+  -- Once delay counter reaches maxbound clock control is running
   let gdbPorts = L.take (L.length targets) [3333 ..]
-  brackets (liftIO <$> L.zipWith initOpenOcd targets [0 ..]) (liftIO . snd) $ \_initOcdsData -> do
+  exitCodes <- brackets (liftIO <$> L.zipWith initOpenOcd targets [0 ..]) (liftIO . snd) $ \_initOcdsData -> do
     brackets (liftIO <$> L.zipWith initGdb gdbPorts targets) (liftIO . snd) $ \initGdbsData -> do
       let gdbs = fmap fst initGdbsData
       liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) gdbs
@@ -181,5 +202,15 @@ driverFunc testName targets = do
         $ putStrLn [i|Test case #{testName} passed on #{count} of #{L.length targets} targets|]
 
       return exitCode
+  pure exitCodes
  where
   testTimeoutMs = 60_000 :: Integer
+
+-- | Polls the `probe_spi_done` probe of `vioHitlt` untill it becomes "1"
+waitForSpiDone :: VivadoM ()
+waitForSpiDone = do
+  [(probeName, spiDone)] <- readVio "vioHitlt" ["probe_spi_done"]
+  liftIO $ putStrLn $ "Read from probe " <> probeName <> ": " <> spiDone
+  if spiDone == "1"
+    then pure ()
+    else waitForSpiDone
