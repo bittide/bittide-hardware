@@ -299,7 +299,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
         , rxNs
         , rxPs
         , txDatas = txCounters
-        , txReadys = repeat (pure True)
+        , txStarts = repeat (pure True)
         , rxReadys = repeat (pure True)
         }
 

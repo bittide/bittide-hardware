@@ -179,7 +179,7 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxNs rxPs miso =
         , rxPs
         , txDatas = repeat myIndexTx
         , rxReadys = repeat $ pure True
-        , txReadys = repeat $ pure True
+        , txStarts = repeat $ pure True
         }
 
   -- synchronizes the FPGA's stable index to the individual TX clock

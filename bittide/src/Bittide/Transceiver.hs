@@ -68,7 +68,7 @@ Transmit:
  2. Send PRBS data with meta data
  3. Wait for receiver to signal it has successfully decoded PRBS data for a long time
  4. Send meta data with 'ready' set to 'True'
- 5. Wait for 'Input.txReady'
+ 5. Wait for 'Input.txStart'
  6. Send meta data with 'lastPrbsWord' set to 'True'
  7. Send user data
 
@@ -204,7 +204,7 @@ data Output tx rx tx1 rx1 txS free serializedData = Output
   -- is deasserted.
   , txReady :: Signal tx Bool
   -- ^ Ready to signal to neigbor that next word will be user data. Waiting for
-  -- 'Input.txReady' to be asserted before starting to send 'txData'.
+  -- 'Input.txStart' to be asserted before starting to send 'txData'.
   , txSampling :: Signal tx Bool
   -- ^ Data is sampled from 'Input.txSampling'
   , txP :: Signal txS serializedData
@@ -252,7 +252,7 @@ data Input tx rx tx1 rx1 ref free rxS serializedData = Input
   -- ^ Data to transmit to the neighbor. Is sampled on sample after
   -- 'Output.txSamplingOnNext' is asserted. Is sampled when
   -- 'Output.txData' is asserted.
-  , txReady :: Signal tx Bool
+  , txStart :: Signal tx Bool
   -- ^ When asserted, signal to neighbor that next word will be user data. This
   -- signal is ignored until 'Output.txReady' is asserted. Can be tied
   -- to 'True'.
@@ -280,8 +280,8 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.rxP'
   , txDatas :: Vec n (Signal tx (BitVector 64))
   -- ^ See 'Input.txData'
-  , txReadys :: Vec n (Signal tx Bool)
-  -- ^ See 'Input.txReady'
+  , txStarts :: Vec n (Signal tx Bool)
+  -- ^ See 'Input.txStart'
   , rxReadys :: Vec n (Signal rx Bool)
   -- ^ See 'Input.rxReady'
   }
@@ -356,7 +356,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
       <*> (unbundle (unpack <$> inputs.rxNs))
       <*> (unbundle (unpack <$> inputs.rxPs))
       <*> inputs.txDatas
-      <*> inputs.txReadys
+      <*> inputs.txStarts
       <*> inputs.rxReadys
       <*> rxClockNws
 
@@ -377,7 +377,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   rxClockNws = map (flip (Gth.xilinxGthUserClockNetworkRx @rx @rx) rxUsrClkRst) rxOutClks
   (_rxClk1s, rxClocks, _rxClkActives) = unzip3 rxClockNws
 
-  go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxN rxP txData txReady rxReady (clockRx1, clockRx2, rxActive) =
+  go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxN rxP txData txStart rxReady (clockRx1, clockRx2, rxActive) =
     transceiverPrbs
       opts
       Input
@@ -386,7 +386,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
         , rxN
         , rxP
         , txData
-        , txReady
+        , txStart
         , rxReady
         , transceiverIndex
         , clock
@@ -644,16 +644,16 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   rxUserData = sticky rxClock rxReset rxLast
   txUserData = sticky txClock txReset txLast
 
-  txReady = txLast .||. withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
+  indicateRxReady = txLast .||. withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
 
   rxReadySticky = sticky rxClock rxReset rxReady
-  txLast = args.txReady .&&. withLockRxTx rxReadySticky
+  txLast = args.txStart .&&. withLockRxTx rxReadySticky
   txLastFree = xpmCdcSingle txClock clock txLast
 
   metaTx :: Signal tx Meta
   metaTx =
     Meta
-      <$> txReady
+      <$> indicateRxReady
       <*> txLast
       -- We shouldn't sync with 'xpmCdcArraySingle' here, as the individual bits in
       -- 'fpgaIndex' are related to each other. Still, we know fpgaIndex is basically

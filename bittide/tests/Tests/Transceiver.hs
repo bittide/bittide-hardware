@@ -164,7 +164,7 @@ gthCoreMock
 
 data Input tx rx = Input
   { dat :: Signal tx (BitVector 64)
-  , txReady :: Signal tx Bool
+  , txStart :: Signal tx Bool
   , rxReady :: Signal rx Bool
   }
 
@@ -229,7 +229,7 @@ dut
           , rxN = delaySeqN baDelay Nothing outputB.txN
           , rxP = error "A: rxP not used in simulation"
           , txData = inputA.dat
-          , txReady = inputA.txReady
+          , txStart = inputA.txStart
           , rxReady = inputA.rxReady
           }
 
@@ -253,7 +253,7 @@ dut
           , rxN = delaySeqN abDelay Nothing outputA.txN
           , rxP = error "B: rxP not used in simulation"
           , txData = inputB.dat
-          , txReady = inputB.txReady
+          , txStart = inputB.txStart
           , rxReady = inputB.rxReady
           }
 
@@ -370,11 +370,11 @@ testNotBothUp500ms outputA outputB =
 
 -- Input that applies no (back)pressure on the link
 noPressureInput :: InputFunc txA txB free
-noPressureInput _ = Input{dat = complement <$> 0, txReady = pure True, rxReady = pure True}
+noPressureInput _ = Input{dat = complement <$> 0, txStart = pure True, rxReady = pure True}
 
--- Input that never sets 'txReady' to 'True'
-noTxReadyInput :: InputFunc txA txB free
-noTxReadyInput i = (noPressureInput i){txReady = pure False}
+-- Input that never sets 'txStart' to 'True'
+noTxStartInput :: InputFunc txA txB free
+noTxStartInput i = (noPressureInput i){txStart = pure False}
 
 -- Input that never sets 'rxReady' to 'True'
 noRxReadyInput :: InputFunc txA txB free
@@ -420,12 +420,12 @@ indicates it's ready to the other.
 -}
 prop_noTxReady :: Property
 prop_noTxReady =
-  dutRandomized @A @A @Free testNeitherUp500ms noPressureInput noTxReadyInput Proxy
+  dutRandomized @A @A @Free testNeitherUp500ms noPressureInput noTxStartInput Proxy
 
 -- | Same as 'prop_noTxReady', but with the transceivers flipped
 prop_noTxReadyFlipped :: Property
 prop_noTxReadyFlipped =
-  dutRandomized @A @A @Free testNeitherUp500ms noTxReadyInput noPressureInput Proxy
+  dutRandomized @A @A @Free testNeitherUp500ms noTxStartInput noPressureInput Proxy
 
 {- | Check whether neither node indicates it's up, when it never transitions to
 sending user data.
