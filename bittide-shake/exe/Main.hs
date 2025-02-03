@@ -16,7 +16,11 @@ module Main where
 
 import Prelude
 
-import Bittide.Hitl (HitlTestGroup (..), hwTargetRefsFromHitlTestGroup)
+import Bittide.Hitl (
+  HitlTestGroup (..),
+  TestStepResult (..),
+  hwTargetRefsFromHitlTestGroup,
+ )
 import Bittide.Instances.Hitl.Tests (ClashTargetName, hitlTests)
 import Clash.DataFiles (tclConnector)
 import Clash.Shake.Extra
@@ -556,8 +560,8 @@ main = do
                 need [testExitCodePath]
                 exitCode <- read <$> readFile' testExitCodePath
                 when (isJust (mPostProc =<< targetTest)) $ do
-                  _ <- liftIO $ (fromJust $ mPostProc =<< targetTest) ilaDataDir exitCode
-                  pure ()
+                  res <- liftIO $ (fromJust $ mPostProc =<< targetTest) ilaDataDir exitCode
+                  checkTestStep res
                 unless (exitCode == ExitSuccess) $ do
                   liftIO $ exitWith exitCode
 
@@ -565,9 +569,14 @@ main = do
                 phony (entityName targetName <> ":post-process") $ do
                   need [testExitCodePath]
                   exitCode <- read <$> readFile' testExitCodePath
-                  _ <- liftIO $ (fromJust (mPostProc =<< targetTest)) ilaDataDir exitCode
-                  pure ()
+                  res <- liftIO $ (fromJust (mPostProc =<< targetTest)) ilaDataDir exitCode
+                  checkTestStep res
 
     if null shakeTargets
       then rules
       else want shakeTargets >> withoutActions rules
+
+checkTestStep :: (MonadFail m, HasCallStack) => TestStepResult a -> m a
+checkTestStep res = case res of
+  TestStepFailure err -> error err
+  TestStepSuccess x -> return x
