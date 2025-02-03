@@ -523,7 +523,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
     Output
       { txSampling = txUserData
       , rxData = mux rxUserData (Just <$> alignedRxData0) (pure Nothing)
-      , txReady
+      , txReady = withLockRxTx rxReadyNeighborSticky
       , txN
       , txP
       , txOutClock
@@ -539,7 +539,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
     withLockTxFree txUserData
       .&&. withLockRxFree rxUserData
 
-  linkReady = linkUp .||. withLockRxFree rxReadySticky
+  linkReady = linkUp .||. withLockRxFree rxReadyNeighborSticky
 
   ( txN
     , txP
@@ -639,15 +639,16 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
 
   rxMeta = mux validMeta (Just . unpack @Meta <$> alignedMetaBits) (pure Nothing)
   rxLast = maybe False (.lastPrbsWord) <$> rxMeta
-  rxReady = maybe False (.ready) <$> rxMeta
+  rxReadyNeighbor = maybe False (.ready) <$> rxMeta
 
   rxUserData = sticky rxClock rxReset rxLast
   txUserData = sticky txClock txReset txLast
 
+  -- Investigate: should `txLast` be mentioned here?
   indicateRxReady = txLast .||. withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
 
-  rxReadySticky = sticky rxClock rxReset rxReady
-  txLast = args.txStart .&&. withLockRxTx rxReadySticky
+  rxReadyNeighborSticky = sticky rxClock rxReset rxReadyNeighbor
+  txLast = args.txStart .&&. withLockRxTx rxReadyNeighborSticky
   txLastFree = xpmCdcSingle txClock clock txLast
 
   metaTx :: Signal tx Meta
