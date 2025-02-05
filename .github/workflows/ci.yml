@@ -495,17 +495,25 @@ jobs:
 
           echo "check_matrix=$(cat checks.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
 
-          should_generate_report=$(jq 'map(select(.top == "hwCcTopologyTest" or .top == "swCcTopologyTest")) | length > 0' checks.json)
+          swCcTopologyTest=$(jq 'map(select(.top == "swCcTopologyTest")) | length > 0' checks.json)
+          swCcOneTopologyTest=$(jq 'map(select(.top == "swCcOneTopologyTest")) | length > 0' checks.json)
+
+          should_generate_report='false';
+          if [ "${swCcTopologyTest}" == 'true' ] && [ "${swCcOneTopologyTest}" == 'true' ]; then
+            echo "Cannot handle two topology tests at the same time for plotting"
+            exit 1
+          elif [ "${swCcTopologyTest}" == 'true' ]; then
+            should_generate_report='true';
+            report_kind="swCcTopologyTest"
+          elif [ "${swCcOneTopologyTest}" == 'true' ]; then
+            should_generate_report='true';
+            report_kind="swCcOneTopologyTest"
+          fi
+
           if [ "${should_generate_report}" == 'true' ]; then
-            is_hwcc=$(jq 'map(select(.top == "hwCcTopologyTest")) | length > 0' checks.json)
-            report_kind=""
-            if [ "${is_hwcc}" == 'true' ]; then
-              report_kind="hwCcTopologyTest"
-            else
-              report_kind="swCcTopologyTest"
-            fi
             echo "report_kind=${report_kind}" | tee -a "$GITHUB_OUTPUT"
           fi
+
           echo "should_generate_report=${should_generate_report}" | tee -a "$GITHUB_OUTPUT"
 
     outputs:

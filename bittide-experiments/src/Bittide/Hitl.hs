@@ -217,8 +217,11 @@ data HitlTestGroup where
     --   - Wait for results on the test done and success probes
     --
     -- The HITL testing infrastructure deasserts the start probe(s) after running this function
-    -- and collecting ILA data, so this function is not required to but is allowed to deassert
-    -- that probe(s).
+    -- and collecting ILA data, so unless there is a good reason to this function should not also
+    -- deassert it. Because the deassertions are not done simultaneously, unpredictable behaviour
+    -- caused by the shutdown of only parts of a multi-FPGA system may end up recorded in the test
+    -- data ILAs. Thus it's more desirable to allow the HITL testing infrastructure to handle this
+    -- process after it has collected the ILA data.
     , mPostProc :: Maybe (FilePath -> ExitCode -> IO (TestStepResult ()))
     -- ^ Optional post processing step. If provided, this function is run after the test case
     -- completely finishes execution, including collection of ILA data and deassertion of the
