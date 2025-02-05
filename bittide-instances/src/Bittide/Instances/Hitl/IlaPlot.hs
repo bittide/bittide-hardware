@@ -629,7 +629,7 @@ clockControlIla dynClk clk rst callistoResult IlaControl{..} mask ebs =
   ilaInstance =
     setName @"ilaPlot"
       $ ila
-        (ilaConfig ilaProbeNames){depth = D16384, stages = 2}
+        (ilaConfig ilaProbeNames){depth = D16384, stages = 3}
         -- the ILA must run on a stable clock
         clk
         -- trigger as soon as we start
