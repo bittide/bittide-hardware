@@ -27,7 +27,6 @@ module Bittide.Instances.Hitl.IlaPlot (
   -- * Interface Types
   CaptureCondition (..),
   isScheduledCaptureCondition,
-  IlaPlotSetup (..),
   IlaControl (..),
   PlotData (..),
   RfStageChange (..),
@@ -204,23 +203,6 @@ isScheduledCaptureCondition = \case
   UntilTrigger -> False
   DataChange -> False
 
-{- | All signals, as they are required for using clock control with
-ILA plotting capabilities.
--}
-data IlaPlotSetup dom = IlaPlotSetup
-  { sysClk :: Clock dom
-  -- ^ The stable system clock.
-  , sysRst :: Reset dom
-  -- ^ The system's reset line.
-  , allReady :: Signal dom Bool
-  -- ^ A boolean signal indicating that all transceivers are ready. See
-  -- 'Bittide.Transceiver.Output.linkReady'.
-  , startTest :: Signal dom Bool
-  -- ^ The test start signal coming from the HITLT VIO interface.
-  , syncIn :: Signal dom Bool
-  -- ^ The signal connected to @SYNC_IN@.
-  }
-
 {- | All signals, as they are required by the ILA trigger and capture
 conditions. You must use 'ilaPlotSetup' for generating them.
 -}
@@ -267,10 +249,19 @@ ilaPlotSetup ::
   forall dom.
   (HasCallStack) =>
   (HasDefinedInitialValues dom, HasSynchronousReset dom) =>
-  -- | required input signals
-  IlaPlotSetup dom ->
+  -- | The stable system clock.
+  Clock dom ->
+  -- | The system's reset line.
+  Reset dom ->
+  -- | A boolean signal indicating that all transceivers are ready. See
+  -- 'Bittide.Transceiver.Output.linkReady'.
+  Signal dom Bool ->
+  -- | The test start signal coming from the HITLT VIO interface.
+  Signal dom Bool ->
+  -- | The signal connected to @SYNC_IN@.
+  Signal dom Bool ->
   IlaControl dom
-ilaPlotSetup IlaPlotSetup{..} = IlaControl{..}
+ilaPlotSetup sysClk sysRst allReady startTest syncIn = IlaControl{..}
  where
   -- 'syncOutGenerator' is used to drive 'SYNC_OUT'.
   syncOut =
