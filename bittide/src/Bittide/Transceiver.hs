@@ -68,7 +68,7 @@ Transmit:
  2. Send PRBS data with meta data
  3. Wait for receiver to signal it has successfully decoded PRBS data for a long time
  4. Send meta data with 'ready' set to 'True'
- 5. Wait for 'Input.txReady'
+ 5. Wait for 'Input.txStart'
  6. Send meta data with 'lastPrbsWord' set to 'True'
  7. Send user data
 
@@ -166,13 +166,13 @@ defConfig =
     , resetManagerConfig = ResetManager.defConfig
     }
 
-{- | Careful: the domains for each transceiver are different, even if their
+{- | Careful: the domains for the rx side of each transceiver are different, even if their
 types say otherwise.
 -}
 data Outputs n tx rx txS free = Outputs
-  { txClocks :: Vec n (Clock tx)
-  -- ^ See 'Output.txClock'
-  , txResets :: Vec n (Reset tx)
+  { txClock :: Clock tx
+  -- ^ Single transmit clock, shared by all links
+  , txReset :: Reset tx
   -- ^ See 'Output.txReset'
   , txReadys :: Vec n (Signal tx Bool)
   -- ^ See 'Output.txReady'
@@ -198,21 +198,21 @@ data Outputs n tx rx txS free = Outputs
 
 data Output tx rx tx1 rx1 txS free serializedData = Output
   { txOutClock :: Clock tx1
-  -- ^ TODO
+  -- ^ Must be routed through xilinxGthUserClockNetworkTx or equivalent to get usable clocks
   , txReset :: Reset tx
   -- ^ Reset signal for the transmit side. Clock can be unstable until this reset
   -- is deasserted.
   , txReady :: Signal tx Bool
   -- ^ Ready to signal to neigbor that next word will be user data. Waiting for
-  -- 'Input.txReady' to be asserted before starting to send 'txData'.
+  -- 'Input.txStart' to be asserted before starting to send 'txData'.
   , txSampling :: Signal tx Bool
-  -- ^ Data is sampled from 'Input.txSampling'
+  -- ^ Data is sampled from 'Input.txData'
   , txP :: Signal txS serializedData
   -- ^ Transmit data (and implicitly a clock), positive
   , txN :: Signal txS serializedData
   -- ^ Transmit data (and implicitly a clock), negative
   , rxOutClock :: Clock rx1
-  -- ^ TODO
+  -- ^ Must be routed through xilinxGthUserClockNetworkRx or equivalent to get usable clocks
   , rxReset :: Reset rx
   -- ^ Reset signal for the receive side. Clock can be unstable until this reset
   -- is deasserted.
@@ -249,10 +249,10 @@ data Input tx rx tx1 rx1 ref free rxS serializedData = Input
   , rxN :: Signal rxS serializedData
   , rxP :: Signal rxS serializedData
   , txData :: Signal tx (BitVector 64)
-  -- ^ Data to transmit to the neighbor. Is sampled on sample after
-  -- 'Output.txSamplingOnNext' is asserted. Is sampled when
-  -- 'Output.txData' is asserted.
-  , txReady :: Signal tx Bool
+  -- ^ Data to transmit to the neighbor. Is first sampled one cycle after both
+  -- 'Input.txStart' and 'Output.txReady' are asserted. Is continuously sampled
+  -- afterwards.
+  , txStart :: Signal tx Bool
   -- ^ When asserted, signal to neighbor that next word will be user data. This
   -- signal is ignored until 'Output.txReady' is asserted. Can be tied
   -- to 'True'.
@@ -271,7 +271,7 @@ data Inputs tx rx ref free rxS n = Inputs
   , refClock :: Clock ref
   -- ^ See 'Input.refClock'
   , channelNames :: Vec n String
-  -- ^ See 'Input.channel'
+  -- ^ See 'Input.channelName'
   , clockPaths :: Vec n String
   -- ^ See 'Input.clockPath'
   , rxNs :: Signal rxS (BitVector n)
@@ -280,8 +280,8 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.rxP'
   , txDatas :: Vec n (Signal tx (BitVector 64))
   -- ^ See 'Input.txData'
-  , txReadys :: Vec n (Signal tx Bool)
-  -- ^ See 'Input.txReady'
+  , txStarts :: Vec n (Signal tx Bool)
+  -- ^ See 'Input.txStart'
   , rxReadys :: Vec n (Signal rx Bool)
   -- ^ See 'Input.rxReady'
   }
@@ -294,7 +294,8 @@ To do this completely clean/safe transceiverPrbsN should have two extra
 forall arguments, two extra KnownDomain constrainsts.
 And either some Proxy arguments or we would have to enable AllowAmbiguousTypes.
 
-Instead I choose to sidestep that and pretend tx1/rx1 and tx/rx are the same.
+Because the tx1/rx1 domains aren't visible outside 'transceiverPrbsN',
+I choose to sidestep the extra complication and pretend tx1/rx1 and tx/rx are the same.
 This disables the typechecking safety we'd normally get from clash,
 but vivado should call us out when we make a mistake.
 -}
@@ -320,8 +321,8 @@ transceiverPrbsN ::
 transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   Outputs
     { -- tx
-      txClocks = txClocks
-    , txResets = map (.txReset) outputs
+      txClock = txClock
+    , txReset = fold orReset $ map (.txReset) outputs
     , txReadys = map (.txReady) outputs
     , txSamplings = map (.txSampling) outputs
     , -- rx
@@ -355,7 +356,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
       <*> (unbundle (unpack <$> inputs.rxNs))
       <*> (unbundle (unpack <$> inputs.rxPs))
       <*> inputs.txDatas
-      <*> inputs.txReadys
+      <*> inputs.txStarts
       <*> inputs.rxReadys
       <*> rxClockNws
 
@@ -370,14 +371,13 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   -- see [NOTE: duplicate tx/rx domain]
   txClockNw = Gth.xilinxGthUserClockNetworkTx @tx @tx txOutClk txUsrClkRst
   (_txClk1s, txClock, _txClkActives) = txClockNw
-  txClocks = repeat txClock
 
   rxOutClks = map (.rxOutClock) outputs
   -- see [NOTE: duplicate tx/rx domain]
   rxClockNws = map (flip (Gth.xilinxGthUserClockNetworkRx @rx @rx) rxUsrClkRst) rxOutClks
   (_rxClk1s, rxClocks, _rxClkActives) = unzip3 rxClockNws
 
-  go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxN rxP txData txReady rxReady (clockRx1, clockRx2, rxActive) =
+  go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxN rxP txData txStart rxReady (clockRx1, clockRx2, rxActive) =
     transceiverPrbs
       opts
       Input
@@ -386,7 +386,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
         , rxN
         , rxP
         , txData
-        , txReady
+        , txStart
         , rxReady
         , transceiverIndex
         , clock
@@ -523,7 +523,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
     Output
       { txSampling = txUserData
       , rxData = mux rxUserData (Just <$> alignedRxData0) (pure Nothing)
-      , txReady
+      , txReady = withLockRxTx rxReadyNeighborSticky
       , txN
       , txP
       , txOutClock
@@ -539,7 +539,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
     withLockTxFree txUserData
       .&&. withLockRxFree rxUserData
 
-  linkReady = linkUp .||. withLockRxFree rxReadySticky
+  linkReady = linkUp .||. withLockRxFree rxReadyNeighborSticky
 
   ( txN
     , txP
@@ -603,14 +603,10 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       $ WordAlign.alignBytesFromMsbs @8 WordAlign.alignLsbFirst (rxUserData .||. rxLast) rx_data0
 
   (alignedAlignBits, alignedRxData1) =
-    unbundle
-      $ WordAlign.splitMsbs @8 @8
-      <$> alignedRxData0
+    unbundle (WordAlign.splitMsbs @8 @8 <$> alignedRxData0)
 
   (alignedMetaBits, alignedRxData2) =
-    unbundle
-      $ WordAlign.splitMsbs @8 @7
-      <$> alignedRxData1
+    unbundle (WordAlign.splitMsbs @8 @7 <$> alignedRxData1)
 
   prbsErrors = Prbs.checker rxClock rxReset enableGen prbsConfig alignedRxData2
   anyPrbsErrors = prbsErrors ./=. pure 0
@@ -622,14 +618,10 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   --
   -- TODO: Truncate rxCtrl0 and rxCtrl1 in GTH primitive.
   rxCtrlOrError =
-    fmap (truncateB @_ @8) rxCtrl0
-      ./=. pure 0
-      .||. fmap (truncateB @_ @8) rxCtrl1
-      ./=. pure 0
-      .||. rxCtrl2
-      ./=. pure 0
-      .||. rxCtrl3
-      ./=. pure 0
+    (fmap (truncateB @_ @8) rxCtrl0 ./=. pure 0)
+      .||. (fmap (truncateB @_ @8) rxCtrl1 ./=. pure 0)
+      .||. (rxCtrl2 ./=. pure 0)
+      .||. (rxCtrl3 ./=. pure 0)
 
   prbsOk =
     rxUserData
@@ -647,21 +639,22 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
 
   rxMeta = mux validMeta (Just . unpack @Meta <$> alignedMetaBits) (pure Nothing)
   rxLast = maybe False (.lastPrbsWord) <$> rxMeta
-  rxReady = maybe False (.ready) <$> rxMeta
+  rxReadyNeighbor = maybe False (.ready) <$> rxMeta
 
   rxUserData = sticky rxClock rxReset rxLast
   txUserData = sticky txClock txReset txLast
 
-  txReady = txLast .||. withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
+  -- Investigate: should `txLast` be mentioned here?
+  indicateRxReady = txLast .||. withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
 
-  rxReadySticky = sticky rxClock rxReset rxReady
-  txLast = args.txReady .&&. withLockRxTx rxReadySticky
+  rxReadyNeighborSticky = sticky rxClock rxReset rxReadyNeighbor
+  txLast = args.txStart .&&. withLockRxTx rxReadyNeighborSticky
   txLastFree = xpmCdcSingle txClock clock txLast
 
   metaTx :: Signal tx Meta
   metaTx =
     Meta
-      <$> txReady
+      <$> indicateRxReady
       <*> txLast
       -- We shouldn't sync with 'xpmCdcArraySingle' here, as the individual bits in
       -- 'fpgaIndex' are related to each other. Still, we know fpgaIndex is basically

@@ -50,16 +50,15 @@ a non-zero start value, as a regression test for a bug where the transceivers
 would not come up if the counters started at zero.
 -}
 counterStart :: BitVector 64
-counterStart = 0xDEAD_BEEF_CA55_E77E
+counterStart = 0xDEAD_BEEF_0000_0000
 
 -- | A counter starting at 'counterStart'
 counter ::
   (KnownDomain dom) =>
   Clock dom ->
   Reset dom ->
-  Signal dom Bool ->
   Signal dom (BitVector 64)
-counter clk rst ena = let c = register clk rst (toEnable ena) counterStart (c + 1) in c
+counter clk rst = let c = register clk rst enableGen counterStart (c + 1) in c
 
 {- | Expect a counter starting at 'counterStart' and incrementing by one on each
 cycle.
@@ -128,13 +127,18 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
   -- Transceiver setup
   gthAllReset = unsafeFromActiveLow spiDone
 
-  -- Send counters
-  counters =
-    zipWith3
-      counter
-      transceivers.txClocks
-      transceivers.txResets
-      transceivers.txSamplings
+  txCounter =
+    counter
+      transceivers.txClock
+      -- We use a single counter for all transmit channels and we start them all
+      -- at the same time. This way, the other side will always receive 'counterStart'
+      -- as the first value and can verify all samples after that by incrementing
+      -- by one each cycle. Note that it doesn't really matter whether we pick
+      -- (.||.) or (.&&.) here, as all links should start transmitting at the
+      -- same time. I.e., txSamplings should all flip at the same time. Still, we
+      -- picked (.||.) to catch situations where some links start transmitting
+      -- earlier than others.
+      (unsafeFromActiveLow (fold (.||.) transceivers.txSamplings))
 
   expectCounterError =
     zipWith3
@@ -144,10 +148,12 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
       transceivers.rxDatas
 
   expectCounterErrorSys =
-    fmap and
+    fmap or
       $ bundle
       $ zipWith (.&&.) transceivers.linkUps
       $ zipWith (`xpmCdcSingle` sysClk) transceivers.rxClocks expectCounterError
+
+  txStart = fold (.&&.) transceivers.txReadys
 
   transceivers =
     transceiverPrbsN
@@ -166,8 +172,8 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
         , clockPaths
         , rxNs
         , rxPs
-        , txDatas = counters
-        , txReadys = repeat (pure True)
+        , txDatas = repeat txCounter
+        , txStarts = repeat txStart
         , rxReadys = repeat (pure True)
         }
 

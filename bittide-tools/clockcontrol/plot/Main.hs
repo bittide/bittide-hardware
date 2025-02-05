@@ -113,6 +113,8 @@ import System.IO (
   hPutStr,
   hSetBuffering,
   openFile,
+  stderr,
+  stdout,
   withFile,
  )
 import Text.Read (readMaybe)
@@ -674,6 +676,8 @@ plotTest refDom testDir cfg dir globalOutDir = do
         -- Fail if clocks did not start at their set offsets. We purposely fail
         -- after generating the report, because the report generation is very
         -- useful for debugging.
+        hFlush stdout
+        hFlush stderr
         maybe (return ()) die maybeError
       _ -> die "Empty topology"
     _ -> die "Topology is larger than expected"

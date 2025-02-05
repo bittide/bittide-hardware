@@ -177,19 +177,17 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxNs rxPs miso =
         , clockPaths
         , rxNs
         , rxPs
-        , txDatas = myIndexTxN
+        , txDatas = repeat myIndexTx
         , rxReadys = repeat $ pure True
-        , txReadys = repeat $ pure True
+        , txStarts = repeat $ pure True
         }
 
   -- synchronizes the FPGA's stable index to the individual TX clock
   -- domains of the transceivers
-  myIndexTxN =
-    fmap (zeroExtend . pack . fromMaybe 0)
-      <$> zipWith
-        (xpmCdcStable sysClk myIndex)
-        transceivers.txClocks
-        transceivers.txResets
+  myIndexTx =
+    fmap
+      (zeroExtend . pack . fromMaybe 0)
+      (xpmCdcStable sysClk myIndex transceivers.txClock transceivers.txReset)
 
   -- check that all the received data matches with our expectations
   success =
