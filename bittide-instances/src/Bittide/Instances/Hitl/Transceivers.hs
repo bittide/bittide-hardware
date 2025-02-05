@@ -128,7 +128,17 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
   gthAllReset = unsafeFromActiveLow spiDone
 
   txCounter =
-    counter transceivers.txClock (unsafeFromActiveLow (fold (.||.) transceivers.txSamplings))
+    counter
+      transceivers.txClock
+      -- We use a single counter for all transmit channels and we start them all
+      -- at the same time. This way, the other side will always receive 'counterStart'
+      -- as the first value and can verify all samples after that by incrementing
+      -- by one each cycle. Note that it doesn't really matter whether we pick
+      -- (.||.) or (.&&.) here, as all links should start transmitting at the
+      -- same time. I.e., txSamplings should all flip at the same time. Still, we
+      -- picked (.||.) to catch situations where some links start transmitting
+      -- earlier than others.
+      (unsafeFromActiveLow (fold (.||.) transceivers.txSamplings))
 
   expectCounterError =
     zipWith3
