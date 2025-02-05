@@ -206,7 +206,7 @@ data Output tx rx tx1 rx1 txS free serializedData = Output
   -- ^ Ready to signal to neigbor that next word will be user data. Waiting for
   -- 'Input.txStart' to be asserted before starting to send 'txData'.
   , txSampling :: Signal tx Bool
-  -- ^ Data is sampled from 'Input.txSampling'
+  -- ^ Data is sampled from 'Input.txData'
   , txP :: Signal txS serializedData
   -- ^ Transmit data (and implicitly a clock), positive
   , txN :: Signal txS serializedData
@@ -249,9 +249,9 @@ data Input tx rx tx1 rx1 ref free rxS serializedData = Input
   , rxN :: Signal rxS serializedData
   , rxP :: Signal rxS serializedData
   , txData :: Signal tx (BitVector 64)
-  -- ^ Data to transmit to the neighbor. Is sampled on sample after
-  -- 'Output.txSamplingOnNext' is asserted. Is sampled when
-  -- 'Output.txData' is asserted.
+  -- ^ Data to transmit to the neighbor. Is first sampled one cycle after both
+  -- 'Input.txStart' and 'Output.txReady' are asserted. Is continuously sampled
+  -- afterwards.
   , txStart :: Signal tx Bool
   -- ^ When asserted, signal to neighbor that next word will be user data. This
   -- signal is ignored until 'Output.txReady' is asserted. Can be tied
@@ -271,7 +271,7 @@ data Inputs tx rx ref free rxS n = Inputs
   , refClock :: Clock ref
   -- ^ See 'Input.refClock'
   , channelNames :: Vec n String
-  -- ^ See 'Input.channel'
+  -- ^ See 'Input.channelName'
   , clockPaths :: Vec n String
   -- ^ See 'Input.clockPath'
   , rxNs :: Signal rxS (BitVector n)
