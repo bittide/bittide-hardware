@@ -143,6 +143,8 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
       $ zipWith (.&&.) transceivers.linkUps
       $ zipWith (`xpmCdcSingle` sysClk) transceivers.rxClocks expectCounterError
 
+  txStart = fold (.&&.) transceivers.txReadys
+
   transceivers =
     transceiverPrbsN
       @GthTx
@@ -161,11 +163,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
         , rxNs
         , rxPs
         , txDatas = repeat txCounter
-        , txStarts =
-            repeat
-              ( register transceivers.txClock noReset enableGen False
-                  $ fold (.&&.) transceivers.txReadys -- TODO figure out proper reset
-              )
+        , txStarts = repeat txStart
         , rxReadys = repeat (pure True)
         }
 
