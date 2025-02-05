@@ -372,6 +372,10 @@ testNotBothUp500ms outputA outputB =
 noPressureInput :: InputFunc txA txB free
 noPressureInput _ = Input{dat = complement <$> 0, txStart = pure True, rxReady = pure True}
 
+-- | Input that ties 'txStart' to 'txReady'
+txStartEqTxReady :: InputFunc txA txB free
+txStartEqTxReady i = (noPressureInput i){txStart = i.txReady}
+
 -- Input that never sets 'txStart' to 'True'
 noTxStartInput :: InputFunc txA txB free
 noTxStartInput i = (noPressureInput i){txStart = pure False}
@@ -414,6 +418,21 @@ specialized to 'B', 'A', 'Free'.
 prop_noPressure_B_A_Free :: Property
 prop_noPressure_B_A_Free =
   dutRandomized @B @A @Free testUp500ms noPressureInput noPressureInput Proxy
+
+-- | Check whether handshake works when 'txStart' is tied to 'txReady'
+prop_txStartEqTxReady :: Property
+prop_txStartEqTxReady =
+  dutRandomized @B @A @Free testUp500ms txStartEqTxReady noPressureInput Proxy
+
+-- | Check whether handshake works when 'txStart' is tied to 'txReady'
+prop_txStartEqTxReadyFlipped :: Property
+prop_txStartEqTxReadyFlipped =
+  dutRandomized @B @A @Free testUp500ms noPressureInput txStartEqTxReady Proxy
+
+-- | Check whether handshake works when 'txStart' is tied to 'txReady'
+prop_txStartEqTxReadyBoth :: Property
+prop_txStartEqTxReadyBoth =
+  dutRandomized @B @A @Free testUp500ms txStartEqTxReady txStartEqTxReady Proxy
 
 {- | Check whether neither handshake works when one of the transceivers never
 indicates it's ready to the other.
@@ -467,6 +486,18 @@ tests =
               "prop_noPressure_B_A_Free"
               "prop_noPressure_B_A_Free"
               prop_noPressure_B_A_Free
+          , testPropertyNamed
+              "prop_txStartEqTxReady"
+              "prop_txStartEqTxReady"
+              prop_txStartEqTxReady
+          , testPropertyNamed
+              "prop_txStartEqTxReadyFlipped"
+              "prop_txStartEqTxReadyFlipped"
+              prop_txStartEqTxReadyFlipped
+          , testPropertyNamed
+              "prop_txStartEqTxReadyBoth"
+              "prop_txStartEqTxReadyBoth"
+              prop_txStartEqTxReadyBoth
           ]
     , adjustOption (\_ -> HedgehogTestLimit (Just 10))
         $ testGroup
