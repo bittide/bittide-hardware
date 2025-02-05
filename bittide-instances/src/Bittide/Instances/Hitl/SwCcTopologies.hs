@@ -64,7 +64,6 @@ import Bittide.Transceiver (transceiverPrbsN)
 import Bittide.Hitl
 import Bittide.Instances.Hitl.IlaPlot (
   IlaControl (..),
-  IlaPlotSetup (..),
   clockControlIla,
   ilaPlotSetup,
  )
@@ -772,7 +771,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso jtagIn =
  where
   refClk = ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
-  ilaControl@IlaControl{..} = ilaPlotSetup IlaPlotSetup{..}
+  ilaControl@IlaControl{..} = ilaPlotSetup sysClk sysRst allReady startTest syncIn
   startTest = isJust <$> testConfig
 
   testCounter =
