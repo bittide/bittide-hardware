@@ -114,6 +114,7 @@ dut eb localCounter = circuit $ do
       , initD = Reloadable $ Blob dMem
       , iBusTimeout = d0 -- No timeouts on the instruction bus
       , dBusTimeout = d0 -- No timeouts on the data bus
+      , includeIlaWb = True
       }
 
 {- | Simulation function which matches the remote counter to the correct sample

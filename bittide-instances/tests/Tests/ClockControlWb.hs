@@ -167,6 +167,7 @@ dut =
       , initD = Reloadable $ Blob dMem
       , iBusTimeout = d0 -- No timeouts on the instruction bus
       , dBusTimeout = d0 -- No timeouts on the data bus
+      , includeIlaWb = True
       }
 
 -- | Parse the output of the UART

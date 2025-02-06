@@ -83,6 +83,7 @@ dut = withClockResetEnable clockGen resetGen enableGen
         , initD = Reloadable (Vec dMem)
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
+        , includeIlaWb = True
         }
 
 type DMemWords = DivRU (32 * 1024) 4

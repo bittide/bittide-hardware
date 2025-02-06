@@ -47,6 +47,8 @@ data PeConfig nBusses where
     , dBusTimeout :: SNat dBusTimeout
     -- ^ Number of clock cycles after which the a transaction on the data bus times out.
     -- Set to 0 to disable timeouts on the data bus.
+    , includeIlaWb :: Bool
+    -- ^ Prefix for the Wishbone ILA component probes.
     } ->
     PeConfig nBusses
 
@@ -61,13 +63,26 @@ processingElement ::
   Circuit
     (Jtag dom)
     (Vec (nBusses - 2) (Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4)))
-processingElement dumpVcd PeConfig{memMapConfig, initI, initD, iBusTimeout, dBusTimeout} = circuit $ \jtagIn -> do
+processingElement dumpVcd PeConfig{memMapConfig, initI, initD, iBusTimeout, dBusTimeout, includeIlaWb} = circuit $ \jtagIn -> do
   (iBus0, dBus0) <- rvCircuit dumpVcd (pure low) (pure low) (pure low) -< jtagIn
   iBus1 <-
-    ilaWb (SSymbol @"instructionBus") 2 D4096 onTransactionWb onTransactionWb -< iBus0
+    maybeIlaWb
+      includeIlaWb
+      (SSymbol @"instructionBus")
+      2
+      D4096
+      onTransactionWb
+      onTransactionWb
+      -< iBus0
   dBus1 <-
     watchDogWb "dBus" iBusTimeout
-      <| ilaWb (SSymbol @"dataBus") 2 D4096 onTransactionWb onTransactionWb
+      <| maybeIlaWb
+        includeIlaWb
+        (SSymbol @"dataBus")
+        2
+        D4096
+        onTransactionWb
+        onTransactionWb
       -< dBus0
   ([iMemBus, dMemBus], extBusses) <-
     (splitAtC d2 <| singleMasterInterconnect memMapConfig) -< dBus1

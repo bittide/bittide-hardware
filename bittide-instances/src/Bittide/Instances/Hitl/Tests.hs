@@ -21,6 +21,7 @@ import Bittide.Hitl (ClashTargetName, HitlTestCase (..), HitlTestGroup (..))
 import Prelude
 
 import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
+import qualified Bittide.Instances.Hitl.Demo as Demo
 import qualified Bittide.Instances.Hitl.DnaOverSerial as DnaOverSerial
 import qualified Bittide.Instances.Hitl.Ethernet as Ethernet
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
@@ -36,12 +37,13 @@ hitlTests =
   []
     <> [BoardTest.testSimple]
     <> [BoardTest.testExtended]
+    <> Demo.tests
     <> [DnaOverSerial.tests]
     <> [Ethernet.tests]
     <> [FincFdec.tests]
     <> [LinkConfiguration.tests]
+    <> SwCcTopologies.tests
     <> [SyncInSyncOut.tests]
     <> [TemperatureMonitor.tests]
-    <> SwCcTopologies.tests
     <> [Transceivers.tests]
     <> [VexRiscv.tests]
