@@ -40,7 +40,7 @@ expectLine = expectLine' ""
     let
       byteLine1 = filter (\c -> isAscii c && not (isControl c)) byteLine0
       line = w2c <$> unpack byteLine1
-      trimmed = trimEnd line
+      trimmed = (\l -> trace ("expectLine: " <> l) l) $ trimEnd line
       s1 = s0 <> "\n" <> line
       cont = expectLine' s1 h f
     if null trimmed

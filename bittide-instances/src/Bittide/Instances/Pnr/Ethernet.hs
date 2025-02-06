@@ -172,6 +172,7 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
         , initD = Reloadable (Vec dMem)
         , iBusTimeout = d0
         , dBusTimeout = d0
+        , includeIlaWb = True
         }
 
   peConfigRtl =
@@ -181,6 +182,7 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
       , initD = Undefined @DMemWords
       , iBusTimeout = d0
       , dBusTimeout = d0
+      , includeIlaWb = True
       }
 
 type DMemWords = DivRU (256 * 1024) 4

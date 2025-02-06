@@ -110,6 +110,9 @@ common common-options
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
     lift-type,
+    lifted-base,
+    monad-control,
+    mtl,
     network-simple,
     pretty-simple,
     process,
@@ -137,7 +140,9 @@ library
     Bittide.Instances.Domains
     Bittide.Instances.Hacks
     Bittide.Instances.Hitl.BoardTest
+    Bittide.Instances.Hitl.Demo
     Bittide.Instances.Hitl.DnaOverSerial
+    Bittide.Instances.Hitl.Driver.Demo
     Bittide.Instances.Hitl.Driver.DnaOverSerial
     Bittide.Instances.Hitl.Driver.SwCcTopologies
     Bittide.Instances.Hitl.Driver.VexRiscv

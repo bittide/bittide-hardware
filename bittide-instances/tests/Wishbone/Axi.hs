@@ -102,6 +102,7 @@ dut =
       , initD = Reloadable $ Blob dMem
       , iBusTimeout = d0 -- No timeouts on the instruction bus
       , dBusTimeout = d0 -- No timeouts on the data bus
+      , includeIlaWb = True
       }
 
 data TestResult = TestResult String (Maybe String) deriving (Show, Eq)
