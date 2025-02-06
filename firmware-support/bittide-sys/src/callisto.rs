@@ -168,7 +168,7 @@ pub fn callisto(cc: &ClockControl, config: &ControlConfig, state: &mut ControlSt
     // match the step size of the clock boards. For all our HITL tests this is set by
     // `HwCcTopologies.commonStepSizeSelect`.
     const K_P: f32 = 2e-8;
-    const FSTEP: f32 = 100e-9;
+    const FSTEP: f32 = 10e-9;
 
     let n_buffers = cc.up_links();
     let measured_sum = cc.data_counts().sum::<i32>();

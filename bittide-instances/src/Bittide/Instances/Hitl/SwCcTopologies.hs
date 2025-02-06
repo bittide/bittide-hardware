@@ -29,6 +29,8 @@ module Bittide.Instances.Hitl.SwCcTopologies (
   swCcTopologyTest,
   swCcOneTopologyTest,
   tests,
+  partsPerToSteps,
+  acceptableNoiseLevel,
 ) where
 
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
@@ -87,6 +89,11 @@ import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Data.Map.Strict as Map (fromList)
 
+{- $setup
+>>> import Clash.Explicit.Prelude
+>>> import qualified Bittide.Arithmetic.PartsPer as PartsPer
+-}
+
 type AllStablePeriod = Seconds 5
 
 {- | The number of FINCs (if positive) or FDECs (if negative) applied
@@ -128,9 +135,8 @@ offsets, which is why we fix it to a single and common value here.
 -}
 commonStepSizeSelect :: StepSizeSelect
 commonStepSizeSelect =
-  -- Don't forget to update the value of f_step this value in "Callisto.hs" and
-  -- "callisto.rs".
-  PPB_100
+  -- Don't forget to update the value of f_step this value in "callisto.rs".
+  PPB_10
 
 commonStepSizePartsPer :: PartsPer
 commonStepSizePartsPer = case commonStepSizeSelect of
@@ -154,9 +160,16 @@ commonSpiConfig = case commonStepSizeSelect of
 
 {- | Accepted noise between the inital clock control calibration run
 and the last calibration verifiction run.
+
+>>> acceptableNoiseLevel == partsPerToSteps (PartsPer.ppb 1500)
+True
 -}
 acceptableNoiseLevel :: FincFdecCount
-acceptableNoiseLevel = 6
+acceptableNoiseLevel =
+  -- This value corresponds to 1.5ppm. We can't calculate it directly, because
+  -- we need it as a constant and we cannot use TemplateHaskell due to staging
+  -- restrictions. The doctest above ensures that the value remains up to date.
+  150
 
 disabled :: TestConfig
 disabled =
