@@ -222,6 +222,7 @@ test-suite unittests
     Tests.Shared
     Tests.StabilityChecker
     Tests.Switch
+    Tests.SwitchDemoProcessingElement
     Tests.Transceiver
     Tests.Transceiver.Prbs
     Tests.Transceiver.WordAlign
