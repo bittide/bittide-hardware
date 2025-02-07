@@ -68,9 +68,14 @@ driverFunc testName targets = do
     deassertTbReset :: (HwTarget, DeviceInfo) -> VivadoM ()
     deassertTbReset (hwT, d) = do
       liftIO $ putStrLn $ "Deasserting testbench reset for " <> show d.deviceId
-
       openHardwareTarget hwT
       updateVio "vioHitlt" [("probe_tb_reset", "0")]
+
+    assertTbReset :: (HwTarget, DeviceInfo) -> VivadoM ()
+    assertTbReset (hwT, d) = do
+      liftIO $ putStrLn $ "Asserting testbench reset for " <> show d.deviceId
+      openHardwareTarget hwT
+      updateVio "vioHitlt" [("probe_tb_reset", "1")]
 
     initOpenOcd :: (a, DeviceInfo) -> Int -> IO ((Int, ProcessStdIoHandles), IO ())
     initOpenOcd (_, d) targetIndex = do
@@ -173,7 +178,7 @@ driverFunc testName targets = do
         $ if code == ExitSuccess
           then (count + 1, acc)
           else (count, code)
-
+  forM_ targets assertTbReset
   forM_ targets deassertTbReset
   -- Brings ilasetup out of reset
   -- Ilasetup ensures that the SYN pulses are generated
