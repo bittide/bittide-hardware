@@ -181,7 +181,8 @@ driverFunc testName targets = do
   -- Clock board is programmed
   -- Domain starts running
   -- Internal logic is brought out of reset
-  waitForSpiDone
+  forM_ targets waitForSpiDone
+
   -- Asserting start test starts captures
   -- Delay counter prevents clock modifications
   -- Once delay counter reaches maxbound clock control is running
@@ -207,10 +208,18 @@ driverFunc testName targets = do
   testTimeoutMs = 60_000 :: Integer
 
 -- | Polls the `probe_spi_done` probe of `vioHitlt` untill it becomes "1"
-waitForSpiDone :: VivadoM ()
-waitForSpiDone = do
+waitForSpiDone :: (HwTarget, DeviceInfo) -> VivadoM ()
+waitForSpiDone target@(hwT, d) = do
+  openHardwareTarget hwT
   [(probeName, spiDone)] <- readVio "vioHitlt" ["probe_spi_done"]
-  liftIO $ putStrLn $ "Read from probe " <> probeName <> ": " <> spiDone
+  liftIO
+    $ putStrLn
+    $ "On target "
+    <> show d.deviceId
+    <> " Read probe "
+    <> probeName
+    <> ": "
+    <> spiDone
   if spiDone == "1"
     then pure ()
-    else waitForSpiDone
+    else waitForSpiDone target
