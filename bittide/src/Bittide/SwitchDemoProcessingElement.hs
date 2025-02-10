@@ -141,3 +141,73 @@ data SimplePeState bufferSize
   | Read (Index (bufferSize * 3))
   | Write (Index ((bufferSize + 1) * 3))
   deriving (Generic, NFDataX, Eq, Show)
+
+{- | Wishbone circuit wrapper for `switchDemoPe`.
+
+Buffer uses 64-bit words internally, but WB interface is 32-bit.
+
+The register layout is as follows (lsbs in first 32-bit word, msbs in second):
+- Address 0-1: read start
+- Address 2-3: read cycles
+- Address 4-5: write start
+- Address 6-7: write cycles
+- Address 8-.: buffer (bufferSize*3*2)
+-}
+switchDemoPeWb ::
+  forall bufferSize dom addrW.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , 1 <= bufferSize
+  ) =>
+  SNat bufferSize ->
+  -- | Local clock cycle counter
+  Signal dom (Unsigned 64) ->
+  -- | Device DNA
+  Signal dom (Maybe (BitVector 96)) ->
+  Circuit
+    ( Wishbone dom 'Standard addrW (Bytes 4)
+    , CSignal dom (BitVector 64)
+    )
+    (CSignal dom (BitVector 64))
+switchDemoPeWb SNat localCounter maybeDna = Circuit go
+ where
+  go ((wbM2S, linkIn), _) = ((wbS2M, pure ()), linkOut)
+   where
+    readVec :: Vec (8 + bufferSize * 3 * 2) (Signal dom (BitVector 32))
+    readVec =
+      dflipflop
+        <$> ( unbundle (bitCoerce . map swapWords <$> writableRegs)
+                ++ unbundle (bitCoerce . map swapWords <$> buffer)
+            )
+
+    (linkOut, buffer) =
+      switchDemoPe
+        (SNat @bufferSize)
+        localCounter
+        linkIn
+        maybeDna
+        readStart
+        readCycles
+        writeStart
+        writeCycles
+
+    readStart = unpack <$> rs
+    readCycles = bitCoerce . resize <$> rc
+    writeStart = unpack <$> ws
+    writeCycles = bitCoerce . resize <$> wc
+
+    -- Swap the two words of a 64-bit Bitvector to match the word order of
+    -- the Vexriscv. This allows the CPU to read the two words as one 64-bit value.
+    swapWords :: BitVector 64 -> BitVector 64
+    swapWords = bitCoerce . (swap @(BitVector 32) @(BitVector 32)) . bitCoerce
+
+    rs, rc, ws, wc :: Signal dom (BitVector 64)
+    (rs, rc, ws, wc) = unbundle $ vecToTuple <$> writableRegs
+
+    writableRegs :: Signal dom (Vec 4 (BitVector 64))
+    writableRegs =
+      (fmap (map swapWords . bitCoerce) . bundle . map (regMaybe maxBound) . unbundle)
+        $ take d8
+        <$> writeVec
+
+    (writeVec, wbS2M) = unbundle $ wbToVec <$> bundle readVec <*> wbM2S
