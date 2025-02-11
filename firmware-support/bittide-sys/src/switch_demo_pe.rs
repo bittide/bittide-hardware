@@ -66,11 +66,38 @@ impl<const BUFFER_SIZE: usize> SwitchDemoProcessingElement<BUFFER_SIZE> {
         }
     }
 
+    pub fn get_read(&self) -> (u64, u64) {
+        // SAFETY: This is safe since this function can only be called
+        // after construction, which is only valid with valid addresses.
+        unsafe {
+            let read_start = self.base_addr.add(Self::READ_START).read_volatile();
+            let read_cycles = self.base_addr.add(Self::READ_CYCLES).read_volatile();
+            (read_start, read_cycles)
+        }
+    }
+
+    pub fn get_write(&self) -> (u64, u64) {
+        // SAFETY: This is safe since this function can only be called
+        // after construction, which is only valid with valid addresses.
+        unsafe {
+            let write_start = self.base_addr.add(Self::WRITE_START).read_volatile();
+            let write_cycles = self.base_addr.add(Self::WRITE_CYCLES).read_volatile();
+            (write_start, write_cycles)
+        }
+    }
+
     pub fn buffer(&self) -> impl Iterator<Item = NodeData> + '_ {
         // SAFETY: This is safe since this function can only be called
         // after construction, which is only valid with valid addresses.
         (Self::BUFFER..Self::BUFFER + BUFFER_SIZE * 3)
             .step_by(3)
             .map(|i| unsafe { self.base_addr.add(i).cast::<NodeData>().read_volatile() })
+    }
+
+    pub fn buffer_u64(&self) -> impl Iterator<Item = u64> + '_ {
+        // SAFETY: This is safe since this function can only be called
+        // after construction, which is only valid with valid addresses.
+        (Self::BUFFER..Self::BUFFER + (BUFFER_SIZE * 3))
+            .map(|i| unsafe { self.base_addr.add(i).read_volatile() })
     }
 }

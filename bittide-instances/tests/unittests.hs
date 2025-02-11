@@ -14,6 +14,7 @@ import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
 import qualified Wishbone.ScatterGather as ScatterGather
+import qualified Wishbone.SwitchDemoProcessingElement as SwitchDemoProcessingElement
 import qualified Wishbone.Time as Time
 import qualified Wishbone.Watchdog as Watchdog
 
@@ -24,6 +25,7 @@ tests =
     [ CaptureUgn.tests
     , ClockControlWb.tests
     , ScatterGather.tests
+    , SwitchDemoProcessingElement.tests
     , DnaPortE2.tests
     , Ord.tests
     , Time.tests

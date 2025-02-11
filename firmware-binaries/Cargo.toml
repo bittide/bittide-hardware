@@ -21,6 +21,7 @@ members = [
   "test-cases/clock-control-wb",
   "test-cases/dna_port_e2_test",
   "test-cases/scatter_gather_test",
+  "test-cases/switch_demo_pe_test",
   "test-cases/time_self_test",
   "test-cases/watchdog_test",
 

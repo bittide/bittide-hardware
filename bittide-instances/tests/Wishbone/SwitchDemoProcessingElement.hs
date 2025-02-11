@@ -1,0 +1,107 @@
+-- SPDX-FileCopyrightText: 2025 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE NumericUnderscores #-}
+{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
+
+module Wishbone.SwitchDemoProcessingElement where
+
+import Clash.Explicit.Prelude
+import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import qualified Prelude as P
+
+import Data.Char (chr)
+import Data.Maybe (mapMaybe)
+import Project.FilePath
+import Protocols
+import Protocols.Idle
+import System.FilePath ((</>))
+import System.IO.Unsafe (unsafePerformIO)
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.TH
+import VexRiscv (DumpVcd (NoDumpVcd))
+
+import Bittide.DoubleBufferedRam
+import Bittide.ProcessingElement
+import Bittide.ProcessingElement.Util
+import Bittide.SharedTypes
+import Bittide.SwitchDemoProcessingElement
+import Bittide.Wishbone
+
+import qualified Protocols.Df as Df
+
+sim :: IO ()
+sim = putStr simResult
+
+simResult :: String
+simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+ where
+  uartStream =
+    sampleC def{timeoutAfter = 100_000}
+      $ withClockResetEnable clk reset enable
+      $ dut @System localCounter dnaA dnaB
+
+  clk = clockGen
+  reset = resetGen
+  enable = enableGen
+  localCounter = register clk reset enable 0 (localCounter + 1)
+  dnaA = pure 0xAAAA_0123_4567_89AB_CDEF_0001
+  dnaB = pure 0xBBBB_0123_4567_89AB_CDEF_0001
+
+case_switch_demo_pe_test :: Assertion
+case_switch_demo_pe_test = assertBool msg (receivedString == expectedString)
+ where
+  msg =
+    "Received string "
+      <> receivedString
+      <> " not equal to expected string "
+      <> expectedString
+  expectedString = "Hello world!"
+  receivedString = (P.head . lines) simResult
+
+{- | A simulation-only design containing two `switchDemoPeWb`s connected to a single
+VexRiscV. The VexRiscV runs the `switch_demo_pe_test` binary from `firmware-binaries`.
+-}
+dut ::
+  forall dom.
+  ( HiddenClockResetEnable dom
+  , 1 <= DomainPeriod dom
+  ) =>
+  -- | Local clock cycle counter
+  Signal dom (Unsigned 64) ->
+  -- | Fake DNA (used to identify the different PEs)
+  Signal dom (BitVector 96) ->
+  -- | Fake DNA (used to identify the different PEs)
+  Signal dom (BitVector 96) ->
+  Circuit () (Df dom (BitVector 8))
+dut localCounter dnaA dnaB = circuit $ do
+  (uartRx, jtagIdle) <- idleSource -< ()
+  [uartBus, timeBus, peBusA, peBusB] <- processingElement NoDumpVcd peConfig -< jtagIdle
+  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (uartBus, uartRx)
+  timeWb -< timeBus
+  linkAB <- switchDemoPeWb d2 localCounter (Just <$> dnaA) -< (peBusA, linkBA)
+  linkBA <- switchDemoPeWb d2 localCounter (Just <$> dnaB) -< (peBusB, linkAB)
+  idC -< uartTx
+ where
+  memMap = 0b000 :> 0b001 :> 0b010 :> 0b011 :> 0b100 :> 0b101 :> Nil
+  peConfig = unsafePerformIO $ do
+    root <- findParentContaining "cabal.project"
+    let
+      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
+      elfPath = elfDir </> "switch_demo_pe_test"
+    (iMem, dMem) <- vecsFromElf @DMemWords @IMemWords BigEndian elfPath Nothing
+    pure
+      PeConfig
+        { memMapConfig = memMap
+        , initI = Reloadable (Vec iMem)
+        , initD = Reloadable (Vec dMem)
+        , iBusTimeout = d0 -- No timeouts on the instruction bus
+        , dBusTimeout = d0 -- No timeouts on the data bus
+        }
+
+type DMemWords = DivRU (32 * 1024) 4
+type IMemWords = DivRU (32 * 1024) 4
+
+tests :: TestTree
+tests = $(testGroupGenerator)
