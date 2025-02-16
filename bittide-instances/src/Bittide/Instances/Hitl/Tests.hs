@@ -37,7 +37,7 @@ hitlTests =
   []
     <> [BoardTest.testSimple]
     <> [BoardTest.testExtended]
-    <> Demo.tests
+    <> [Demo.tests]
     <> [DnaOverSerial.tests]
     <> [Ethernet.tests]
     <> [FincFdec.tests]
