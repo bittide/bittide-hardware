@@ -14,6 +14,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
 import Bittide.Arithmetic.Time (trueFor)
+import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl hiding (speedChangeToFincFdec)
 import Bittide.ClockControl.Callisto.Types (CallistoCResult)
 import Bittide.ClockControl.CallistoSw (
@@ -220,7 +221,6 @@ dut refClk refRst skyClk rxNs rxPs allProgrammed miso jtagIn =
 
   switchDataOut :: Vec 7 (Signal GthTx (BitVector 64))
   switchDataOut = repeat (pure 0) -- TBD: connect switch
-
   txStarts :: Vec 7 (Signal GthTx Bool)
   txStarts = repeat handshakesCompleteTx
 
@@ -267,11 +267,11 @@ dut refClk refRst skyClk rxNs rxPs allProgrammed miso jtagIn =
   transceiversFailedAfterUp =
     sticky refClk refRst (isFalling refClk spiRst enableGen False handshakesCompleteFree)
 
-  muConfig :: SimpleManagementConfig 1
+  muConfig :: SimpleManagementConfig 8
   muConfig =
     SimpleManagementConfig
       PeConfig
-        { memMapConfig = 0b100 :> 0b010 :> 0b110 :> 0b101 :> Nil
+        { memMapConfig = 0b100 :> 0b010 :> 0b110 :> 0b101 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> Nil
         , initI = Undefined @(Div (64 * 1024) 4)
         , initD = Undefined @(Div (64 * 1024) 4)
         , iBusTimeout = d0
@@ -301,28 +301,49 @@ dut refClk refRst skyClk rxNs rxPs allProgrammed miso jtagIn =
       , Signal Basic125 Bool
       , Signal Basic125 (BitVector LinkCount)
       , Vec LinkCount (Signal Basic125 (RelDataCount CccBufferSize))
+      , Vec LinkCount (Signal GthTx (Maybe (BitVector 64)))
       )
-    , Signal Basic125 ()
+    , ( Signal Basic125 ()
+      , Vec LinkCount (Signal GthTx ())
+      )
     ) ->
     ( ( Signal Basic125 JtagOut
       , Signal GthTx ()
       , Signal Basic125 ()
       , Signal Basic125 ()
       , Vec LinkCount (Signal Basic125 ())
+      , Vec LinkCount (Signal GthTx ())
       )
-    , Signal Basic125 (CallistoCResult LinkCount)
+    , ( Signal Basic125 (CallistoCResult LinkCount)
+      , Vec LinkCount (Signal GthTx (BitVector 64))
+      )
     )
-  Circuit circuitFn = circuit $ \(jtag, linkIn, reframe, mask, dc) -> do
+  Circuit circuitFn = circuit $ \(jtag, linkIn, reframe, mask, dc, [in0, in1, in2, in3, in4, in5, in6]) -> do
     [muJtagFree, ccJtag] <- jtagChain -< jtag
     muJtagTx <- unsafeJtagSynchronizer refClk bittideClk -< muJtagFree
 
-    [muTimeWb] <-
+    [muTimeWb, ugn0, ugn1, ugn2, ugn3, ugn4, ugn5, ugn6] <-
       withClockResetEnable
         bittideClk
         handshakeRstTx
         enableGen
         (simpleManagementUnitC muConfig)
         -< (muJtagTx, linkIn)
+
+    outs <-
+      withClockResetEnable
+        bittideClk
+        handshakeRstTx
+        enableGen
+        (repeatC (captureUgn (unpack <$> localCounter)))
+        -< [ (ugn0, in0)
+           , (ugn1, in1)
+           , (ugn2, in2)
+           , (ugn3, in3)
+           , (ugn4, in4)
+           , (ugn5, in5)
+           , (ugn6, in6)
+           ]
 
     withClockResetEnable
       bittideClk
@@ -341,9 +362,9 @@ dut refClk refRst skyClk rxNs rxPs allProgrammed miso jtagIn =
 
     idleSink -< ccM2S
 
-    idC -< swCcOut
+    idC -< (swCcOut, outs)
 
-  ((jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _diffsBwd), callistoResult) =
+  ((jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _diffsBwd, _insBwd), (callistoResult, _)) =
     circuitFn
       (
         ( jtagIn
@@ -351,8 +372,12 @@ dut refClk refRst skyClk rxNs rxPs allProgrammed miso jtagIn =
         , pure False -- enable reframing
         , pure maxBound -- enable mask
         , resize <<$>> domainDiffs
+        , rxDatasEbs
         )
-      , pure ()
+      ,
+        ( pure ()
+        , repeat (pure ())
+        )
       )
 
   frequencyAdjustments :: Signal Basic125 (FINC, FDEC)
@@ -388,9 +413,9 @@ dut refClk refRst skyClk rxNs rxPs allProgrammed miso jtagIn =
 
   fifoUnderflowsTx :: Vec LinkCount (Signal GthTx Underflow)
   fifoOverflowsTx :: Vec LinkCount (Signal GthTx Overflow)
-  _mRxCntrs :: Vec LinkCount (Signal GthTx (Maybe (BitVector 64)))
+  rxDatasEbs :: Vec LinkCount (Signal GthTx (Maybe (BitVector 64)))
   ebModes :: Vec 7 (Signal GthTx EbMode)
-  (_, fifoUnderflowsTx, fifoOverflowsTx, ebModes, _mRxCntrs) = unzip5 rxFifos
+  (_, fifoUnderflowsTx, fifoOverflowsTx, ebModes, rxDatasEbs) = unzip5 rxFifos
 
   fifoOverflowsFree :: Signal Basic125 Overflow
   fifoOverflowsFree = and <$> xpmCdcArraySingle bittideClk refClk (bundle fifoOverflowsTx)
