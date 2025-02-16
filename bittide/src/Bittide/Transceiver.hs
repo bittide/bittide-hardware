@@ -209,7 +209,7 @@ data Output tx rx tx1 rx1 txS free serializedData = Output
   -- ^ Reset signal for the transmit side. Clock can be unstable until this reset
   -- is deasserted.
   , txReady :: Signal tx Bool
-  -- ^ Ready to signal to neigbor that next word will be user data. Waiting for
+  -- ^ Ready to signal to neighbor that next word will be user data. Waiting for
   -- 'Input.txStart' to be asserted before starting to send 'txData'.
   , txSampling :: Signal tx Bool
   -- ^ Data is sampled from 'Input.txData'
