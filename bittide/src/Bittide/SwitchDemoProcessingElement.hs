@@ -44,7 +44,7 @@ switchDemoPe ::
   -- | When to read from the crossbar link
   Signal dom (Unsigned 64) ->
   -- | How many tri-cycles to read from the crossbar link
-  Signal dom (Index bufferSize) ->
+  Signal dom (Index (bufferSize + 1)) ->
   -- | When to write to the crossbar link
   Signal dom (Unsigned 64) ->
   -- | How many tri-cycles to write to the crossbar link. Includes writing \"own\" data.
@@ -57,7 +57,7 @@ switchDemoPe ::
 switchDemoPe SNat localCounter linkIn maybeDna readStart readCycles writeStart writeCycles =
   (linkOut, buffer)
  where
-  readCyclesExtended = zeroExtendTimesThree <$> readCycles
+  readCyclesExtended = checkedResize . zeroExtendTimesThree <$> readCycles
   writeCyclesExtended = zeroExtendTimesThree <$> writeCycles
 
   localData :: Signal dom (Vec 3 (BitVector 64))
@@ -94,7 +94,7 @@ switchDemoPe SNat localCounter linkIn maybeDna readStart readCycles writeStart w
     enableVec = unbundle $ go <$> peState
      where
       go :: (HasCallStack) => SimplePeState bufferSize -> Vec (bufferSize * 3) Bool
-      go (Read x) = (== x) <$> indicesI
+      go (Read x) = (== checkedResize x) <$> indicesI
       go _ = repeat False
 
   prevPeState = register Idle peState
@@ -114,7 +114,7 @@ switchDemoPe SNat localCounter linkIn maybeDna readStart readCycles writeStart w
       -- \| When to read from the crossbar link
       Unsigned 64 ->
       -- \| How many cycles to read from the crossbar link
-      Index (bufferSize * 3) ->
+      Index (bufferSize * 3 + 1) ->
       -- \| When to write to the crossbar link
       Unsigned 64 ->
       -- \| How many cycles to write to the crossbar link
@@ -138,7 +138,7 @@ switchDemoPe SNat localCounter linkIn maybeDna readStart readCycles writeStart w
 
 data SimplePeState bufferSize
   = Idle
-  | Read (Index (bufferSize * 3))
+  | Read (Index (bufferSize * 3 + 1))
   | Write (Index ((bufferSize + 1) * 3))
   deriving (Generic, NFDataX, Eq, Show)
 
@@ -192,9 +192,13 @@ switchDemoPeWb SNat localCounter maybeDna = Circuit go
         writeCycles
 
     readStart = unpack <$> rs
-    readCycles = bitCoerce . resize <$> rc
+    readCycles = checkedResize . bvToIndex <$> rc
     writeStart = unpack <$> ws
-    writeCycles = bitCoerce . resize <$> wc
+    writeCycles = checkedResize . bvToIndex <$> wc
+
+    -- \| Unpack a BitVector to an Index of the same size
+    bvToIndex :: (KnownNat n) => BitVector n -> Index (2 ^ n)
+    bvToIndex = unpack
 
     -- Swap the two words of a 64-bit Bitvector to match the word order of
     -- the Vexriscv. This allows the CPU to read the two words as one 64-bit value.
