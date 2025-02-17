@@ -4,11 +4,13 @@
 
 use ufmt::derive::uDebug;
 
+use crate::dna_port_e2::DnaValue;
+
 #[repr(C)]
 #[derive(uDebug, PartialEq, Eq, Copy, Clone)]
 pub struct NodeData {
     pub local_counter: u64,
-    pub dna: u128,
+    pub dna: DnaValue,
 }
 
 pub struct SwitchDemoProcessingElement<const BUFFER_SIZE: usize> {
@@ -92,12 +94,5 @@ impl<const BUFFER_SIZE: usize> SwitchDemoProcessingElement<BUFFER_SIZE> {
         (Self::BUFFER..Self::BUFFER + BUFFER_SIZE * 3)
             .step_by(3)
             .map(|i| unsafe { self.base_addr.add(i).cast::<NodeData>().read_volatile() })
-    }
-
-    pub fn buffer_u64(&self) -> impl Iterator<Item = u64> + '_ {
-        // SAFETY: This is safe since this function can only be called
-        // after construction, which is only valid with valid addresses.
-        (Self::BUFFER..Self::BUFFER + (BUFFER_SIZE * 3))
-            .map(|i| unsafe { self.base_addr.add(i).read_volatile() })
     }
 }

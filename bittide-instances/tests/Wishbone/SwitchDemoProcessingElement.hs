@@ -8,7 +8,6 @@ module Wishbone.SwitchDemoProcessingElement where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
-import qualified Prelude as P
 
 import Data.Char (chr)
 import Data.Maybe (mapMaybe)
@@ -31,12 +30,17 @@ import Bittide.Wishbone
 
 import qualified Protocols.Df as Df
 
+takeWhileInclusive :: (a -> Bool) -> [a] -> [a]
+takeWhileInclusive _ [] = []
+takeWhileInclusive p (x : xs) = x : if p x then takeWhileInclusive p xs else []
+
 sim :: IO ()
 sim = putStr simResult
 
 simResult :: String
-simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+simResult = unlines . takeWhileInclusive (/= "Finished") . lines $ uartString
  where
+  uartString = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
   uartStream =
     sampleC def{timeoutAfter = 100_000}
       $ withClockResetEnable clk reset enable
@@ -57,8 +61,13 @@ case_switch_demo_pe_test = assertBool msg (receivedString == expectedString)
       <> receivedString
       <> " not equal to expected string "
       <> expectedString
-  expectedString = "Hello world!"
-  receivedString = (P.head . lines) simResult
+  receivedString = simResult
+  expectedString =
+    unlines
+      [ "Buffer A: [(0x4100, 0xBBBB0123456789ABCDEF0001), (0x4000, 0xAAAA0123456789ABCDEF0001)]"
+      , "Buffer B: [(0x4000, 0xAAAA0123456789ABCDEF0001), (0xABBAABBAABBA0003, 0xABBA0005ABBAABBAABBA0004)]"
+      , "Finished"
+      ]
 
 {- | A simulation-only design containing two `switchDemoPeWb`s connected to a single
 VexRiscV. The VexRiscV runs the `switch_demo_pe_test` binary from `firmware-binaries`.

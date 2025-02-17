@@ -4,6 +4,7 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 
+use bittide_sys::dna_port_e2::dna_to_u128;
 use bittide_sys::switch_demo_pe::SwitchDemoProcessingElement;
 use bittide_sys::time::{Clock, Duration};
 use bittide_sys::uart::Uart;
@@ -47,25 +48,15 @@ fn main() -> ! {
 
     // Write the buffer of A over UART
     write!(uart, "Buffer A: [").unwrap();
-    switch_pe_a.buffer_u64().enumerate().for_each(|(i, nd)| {
-        let sep = if i + 1 < BUFFER_SIZE * 3 { ", " } else { "" };
-        write!(uart, "0x{:X}{sep}", nd).unwrap();
-    });
-    writeln!(uart, "]").unwrap();
-
-    // Write the buffer of B over UART
-    write!(uart, "Buffer B: [").unwrap();
-    switch_pe_b.buffer_u64().enumerate().for_each(|(i, nd)| {
-        let sep = if i + 1 < BUFFER_SIZE * 3 { ", " } else { "" };
-        write!(uart, "0x{:X}{sep}", nd).unwrap();
-    });
-    writeln!(uart, "]").unwrap();
-
-    // Write the buffer of A over UART
-    write!(uart, "Buffer A: [").unwrap();
     switch_pe_a.buffer().enumerate().for_each(|(i, nd)| {
         let sep = if i + 1 < BUFFER_SIZE { ", " } else { "" };
-        write!(uart, "(0x{:X}, 0x{:X}){sep}", nd.local_counter, nd.dna).unwrap();
+        write!(
+            uart,
+            "(0x{:X}, 0x{:X}){sep}",
+            nd.local_counter,
+            dna_to_u128(nd.dna)
+        )
+        .unwrap();
     });
     writeln!(uart, "]").unwrap();
 
@@ -73,9 +64,17 @@ fn main() -> ! {
     write!(uart, "Buffer B: [").unwrap();
     switch_pe_b.buffer().enumerate().for_each(|(i, nd)| {
         let sep = if i + 1 < BUFFER_SIZE { ", " } else { "" };
-        write!(uart, "(0x{:X}, 0x{:X}){sep}", nd.local_counter, nd.dna).unwrap();
+        write!(
+            uart,
+            "(0x{:X}, 0x{:X}){sep}",
+            nd.local_counter,
+            dna_to_u128(nd.dna)
+        )
+        .unwrap();
     });
     writeln!(uart, "]").unwrap();
+
+    writeln!(uart, "Finished").unwrap();
 
     loop {
         continue;

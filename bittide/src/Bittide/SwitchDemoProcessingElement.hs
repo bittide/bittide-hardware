@@ -33,7 +33,7 @@ switchDemoPe ::
   , 1 <= bufferSize
   ) =>
   -- | Size of buffer in number of "tri-cycles". That is, we always store 3 64-bit words:
-  -- DNA (32 msbs), DNA (64 lsbs), local clock cycle counter.
+  -- local clock cycle counter, DNA (64 lsbs), DNA (32 msbs, zero-extended).
   SNat bufferSize ->
   -- | Local clock cycle counter
   Signal dom (Unsigned 64) ->
@@ -64,7 +64,7 @@ switchDemoPe SNat localCounter linkIn maybeDna readStart readCycles writeStart w
   localData = bundle ((pack <$> localCounter) :> unbundle dnaVec)
    where
     dnaVec :: Signal dom (Vec 2 (BitVector 64))
-    dnaVec = bitCoerce . zeroExtend <$> dnaLocked
+    dnaVec = reverse . bitCoerce . zeroExtend <$> dnaLocked
     dnaLocked = fromMaybe 0xBAAB_BAAB_BAAB_BAAB_BAAB_BAAB <$> maybeDna
 
   linkOut = stateToLinkOutput <$> peState <*> buffer <*> localData
@@ -200,7 +200,7 @@ switchDemoPeWb SNat localCounter maybeDna = Circuit go
     bvToIndex :: (KnownNat n) => BitVector n -> Index (2 ^ n)
     bvToIndex = unpack
 
-    -- Swap the two words of a 64-bit Bitvector to match the word order of
+    -- \| Swap the two words of a 64-bit Bitvector to match the word order of
     -- the Vexriscv. This allows the CPU to read the two words as one 64-bit value.
     swapWords :: BitVector 64 -> BitVector 64
     swapWords = bitCoerce . (swap @(BitVector 32) @(BitVector 32)) . bitCoerce

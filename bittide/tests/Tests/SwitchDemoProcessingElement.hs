@@ -179,6 +179,6 @@ prop_readThenWrite = H.property $ do
       -- Note we can always write one tri-cycle more than we read, since internal
       -- data comes first.
       relevantOutCycles = fromIntegral (min nWriteCycles (nReadCycles + cyclesPerReadWrite))
-      deviceDnaVec = bitCoerce @_ @(Vec 2 (BitVector 64)) (zeroExtend deviceDna)
+      deviceDnaVec = reverse $ bitCoerce @_ @(Vec 2 (BitVector 64)) (zeroExtend deviceDna)
       expectedOutData = toList (pack writeStart :> deviceDnaVec) <> readData
     L.take relevantOutCycles writeOuts === L.take relevantOutCycles expectedOutData
