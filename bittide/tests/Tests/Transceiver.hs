@@ -19,8 +19,10 @@ import Clash.Annotations.Primitive (dontTranslate)
 import Clash.Cores.Xilinx.GTH (GthCore)
 import Clash.Hedgehog.Sized.Index (genIndex)
 import Clash.Signal.Internal (Signal ((:-)))
+import Data.List.Extra (splitOn)
 import Data.Proxy (Proxy (Proxy))
 import Data.Sequence (Seq ((:<|), (:|>)))
+import Data.String (IsString (fromString))
 import Test.Tasty (TestTree, adjustOption, testGroup)
 import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit), testPropertyNamed)
 
@@ -32,6 +34,7 @@ import qualified Data.List as List
 import qualified Data.Sequence as Seq
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
+import qualified Language.Haskell.TH as TH
 
 createDomain vSystem{vName = "RefIsUnused"}
 
@@ -455,6 +458,18 @@ prop_noRxReady =
 --       hardware, as we currently don't have the infrastructure to memory-efficiently
 --       test multi-domain systems in Clash..
 
+testPropertyThName :: TH.Name -> Property -> TestTree
+testPropertyThName thName = testPropertyNamed funcName (fromString funcName)
+ where
+  lastMaybe :: [a] -> Maybe a
+  lastMaybe [] = Nothing
+  lastMaybe [x] = Just x
+  lastMaybe (_ : xs) = lastMaybe xs
+
+  funcName = case lastMaybe (splitOn "." (show thName)) of
+    Just x -> x
+    Nothing -> show thName
+
 tests :: TestTree
 tests =
   -- XXX: The number of tests we run is very low, due to the time it takes to
@@ -464,38 +479,14 @@ tests =
     [ adjustOption (\_ -> HedgehogTestLimit (Just 100))
         $ testGroup
           "Slow tests"
-          [ testPropertyNamed
-              "prop_noPressure_A_A_FreeSlow"
-              "prop_noPressure_A_A_FreeSlow"
-              prop_noPressure_A_A_FreeSlow
-          , testPropertyNamed
-              "prop_noPressure_A_A_Free"
-              "prop_noPressure_A_A_Free"
-              prop_noPressure_A_A_Free
-          , testPropertyNamed
-              "prop_noPressure_A_A_FreeFast"
-              "prop_noPressure_A_A_FreeFast"
-              prop_noPressure_A_A_FreeFast
-          , testPropertyNamed
-              "prop_noPressure_A_B_Free"
-              "prop_noPressure_A_B_Free"
-              prop_noPressure_A_B_Free
-          , testPropertyNamed
-              "prop_noPressure_B_A_Free"
-              "prop_noPressure_B_A_Free"
-              prop_noPressure_B_A_Free
-          , testPropertyNamed
-              "prop_txStartEqTxReady"
-              "prop_txStartEqTxReady"
-              prop_txStartEqTxReady
-          , testPropertyNamed
-              "prop_txStartEqTxReadyFlipped"
-              "prop_txStartEqTxReadyFlipped"
-              prop_txStartEqTxReadyFlipped
-          , testPropertyNamed
-              "prop_txStartEqTxReadyBoth"
-              "prop_txStartEqTxReadyBoth"
-              prop_txStartEqTxReadyBoth
+          [ testPropertyThName 'prop_noPressure_A_A_FreeSlow prop_noPressure_A_A_FreeSlow
+          , testPropertyThName 'prop_noPressure_A_A_Free prop_noPressure_A_A_Free
+          , testPropertyThName 'prop_noPressure_A_A_FreeFast prop_noPressure_A_A_FreeFast
+          , testPropertyThName 'prop_noPressure_A_B_Free prop_noPressure_A_B_Free
+          , testPropertyThName 'prop_noPressure_B_A_Free prop_noPressure_B_A_Free
+          , testPropertyThName 'prop_txStartEqTxReady prop_txStartEqTxReady
+          , testPropertyThName 'prop_txStartEqTxReadyFlipped prop_txStartEqTxReadyFlipped
+          , testPropertyThName 'prop_txStartEqTxReadyBoth prop_txStartEqTxReadyBoth
           ]
     , adjustOption (\_ -> HedgehogTestLimit (Just 10))
         $ testGroup
