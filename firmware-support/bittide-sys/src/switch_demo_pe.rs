@@ -22,7 +22,8 @@ impl<const BUFFER_SIZE: usize> SwitchDemoProcessingElement<BUFFER_SIZE> {
     const READ_CYCLES: usize = 1;
     const WRITE_START: usize = 2;
     const WRITE_CYCLES: usize = 3;
-    const BUFFER: usize = 4;
+    const COUNTER: usize = 4;
+    const BUFFER: usize = 5;
 
     /// Create a new [`SwitchDemoProcessingElement`] instance given a base
     /// address. The `BUFFER_SIZE` is the number of [`NodeData`] elements in its
@@ -86,6 +87,12 @@ impl<const BUFFER_SIZE: usize> SwitchDemoProcessingElement<BUFFER_SIZE> {
             let write_cycles = self.base_addr.add(Self::WRITE_CYCLES).read_volatile();
             (write_start, write_cycles)
         }
+    }
+
+    pub fn get_counter(&self) -> u64 {
+        // SAFETY: This is safe since this function can only be called
+        // after construction, which is only valid with valid addresses.
+        unsafe { self.base_addr.add(Self::COUNTER).read_volatile() }
     }
 
     pub fn buffer(&self) -> impl Iterator<Item = NodeData> + '_ {

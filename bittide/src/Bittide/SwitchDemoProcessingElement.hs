@@ -147,11 +147,12 @@ data SimplePeState bufferSize
 Buffer uses 64-bit words internally, but WB interface is 32-bit.
 
 The register layout is as follows (lsbs in first 32-bit word, msbs in second):
-- Address 0-1: read start
-- Address 2-3: read cycles
-- Address 4-5: write start
-- Address 6-7: write cycles
-- Address 8-.: buffer (bufferSize*3*2)
+- Address  0 - 1: read start
+- Address  2 - 3: read cycles
+- Address  4 - 5: write start
+- Address  6 - 7: write cycles
+- Address  8 - 9: local clock cycle counter
+- Address 10 - .: buffer (bufferSize*3*2)
 -}
 switchDemoPeWb ::
   forall bufferSize dom addrW.
@@ -173,10 +174,11 @@ switchDemoPeWb SNat localCounter maybeDna = Circuit go
  where
   go ((wbM2S, linkIn), _) = ((wbS2M, pure ()), linkOut)
    where
-    readVec :: Vec (8 + bufferSize * 3 * 2) (Signal dom (BitVector 32))
+    readVec :: Vec (8 + bufferSize * 3 * 2 + 2) (Signal dom (BitVector 32))
     readVec =
       dflipflop
         <$> ( unbundle (bitCoerce . map swapWords <$> writableRegs)
+                ++ unbundle (bitCoerce . map swapWords . bitCoerce <$> localCounter)
                 ++ unbundle (bitCoerce . map swapWords <$> buffer)
             )
 

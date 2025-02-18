@@ -8,7 +8,10 @@ use bittide_sys::dna_port_e2::dna_to_u128;
 use bittide_sys::switch_demo_pe::SwitchDemoProcessingElement;
 use bittide_sys::time::{Clock, Duration};
 use bittide_sys::uart::Uart;
+
 use core::fmt::Write;
+use ufmt::uwriteln;
+
 #[cfg(not(test))]
 use riscv_rt::entry;
 
@@ -21,6 +24,7 @@ const SWITCH_PE_B: *const () = (0b101 << 29) as *const ();
 // local clock cycle counter, DNA (64 lsbs), DNA (32 msbs, zero-extended).
 // Should match `bufferSize` of the associated `switchDemoPeWb` device.
 const BUFFER_SIZE: usize = 2;
+const DEBUG_MODE: bool = false;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
@@ -31,6 +35,10 @@ fn main() -> ! {
         unsafe { SwitchDemoProcessingElement::new(SWITCH_PE_A) };
     let switch_pe_b: SwitchDemoProcessingElement<BUFFER_SIZE> =
         unsafe { SwitchDemoProcessingElement::new(SWITCH_PE_B) };
+
+    if DEBUG_MODE {
+        uwriteln!(uart, "Local counter: 0x{:X}", switch_pe_a.get_counter()).unwrap();
+    }
 
     let first_transfer_start = 0x4000;
     let second_transfer_start = 0x4100;
@@ -46,6 +54,14 @@ fn main() -> ! {
 
     clock.wait(Duration::from_micros(200));
 
+    if DEBUG_MODE {
+        let (rs_a, rc_a) = switch_pe_a.get_read();
+        let (rs_b, rc_b) = switch_pe_b.get_read();
+        uwriteln!(uart, "A: readStart: 0x{:X}, readCycles: 0x{:X}", rs_a, rc_a).unwrap();
+        uwriteln!(uart, "B: readStart: 0x{:X}, readCycles: 0x{:X}", rs_b, rc_b).unwrap();
+        uwriteln!(uart, "Local counter: 0x{:X}", switch_pe_a.get_counter()).unwrap();
+    }
+
     // Write the buffer of A over UART
     write!(uart, "Buffer A: [").unwrap();
     switch_pe_a.buffer().enumerate().for_each(|(i, nd)| {
@@ -60,6 +76,10 @@ fn main() -> ! {
     });
     writeln!(uart, "]").unwrap();
 
+    if DEBUG_MODE {
+        uwriteln!(uart, "Local counter: 0x{:X}", switch_pe_a.get_counter()).unwrap();
+    }
+
     // Write the buffer of B over UART
     write!(uart, "Buffer B: [").unwrap();
     switch_pe_b.buffer().enumerate().for_each(|(i, nd)| {
@@ -73,6 +93,10 @@ fn main() -> ! {
         .unwrap();
     });
     writeln!(uart, "]").unwrap();
+
+    if DEBUG_MODE {
+        uwriteln!(uart, "Local counter: 0x{:X}", switch_pe_a.get_counter()).unwrap();
+    }
 
     writeln!(uart, "Finished").unwrap();
 
