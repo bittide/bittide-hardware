@@ -339,7 +339,9 @@ dutRandomized f inputA inputB Proxy = property $ do
 
   f outputA outputB
 
--- | Tests whether the link is up within 500 milliseconds
+{- | Tests whether the link is up within 500 milliseconds. This also asserts that
+the handshake is done
+-}
 testUp500ms :: DutTestFunc txA txB free
 testUp500ms outputA outputB =
   case sampledAfterStable of
@@ -348,7 +350,22 @@ testUp500ms outputA outputB =
       let n = 100
       List.take n ups === List.replicate n True
  where
+  handshakeDone = outputA.handshakeDoneFree .&&. outputB.handshakeDoneFree
   linksUp = outputA.linkUp .&&. outputB.linkUp
+  nCycles = fromIntegral (maxBound :: Index (PeriodToCycles Free (Milliseconds 500)))
+  sampledLinksUp = sampleN nCycles (linksUp .&&. handshakeDone)
+  sampledAfterStable = List.dropWhile (not . snd) (List.zip [(0 :: Int) ..] sampledLinksUp)
+
+-- | Tests whether the link is up within 500 milliseconds
+testHandshakeDone500ms :: DutTestFunc txA txB free
+testHandshakeDone500ms outputA outputB =
+  case sampledAfterStable of
+    [] -> failure
+    (List.map snd -> ups) -> do
+      let n = 100
+      List.take n ups === List.replicate n True
+ where
+  linksUp = outputA.handshakeDoneFree .&&. outputB.handshakeDoneFree
   nCycles = fromIntegral (maxBound :: Index (PeriodToCycles Free (Milliseconds 500)))
   sampledLinksUp = sampleN nCycles linksUp
   sampledAfterStable = List.dropWhile (not . snd) (List.zip [(0 :: Int) ..] sampledLinksUp)
@@ -384,6 +401,10 @@ noTxStartInput i = (noPressureInput i){txStart = pure False}
 -- Input that never sets 'rxReady' to 'True'
 noRxReadyInput :: InputFunc txA txB free
 noRxReadyInput i = (noPressureInput i){rxReady = pure False}
+
+-- Input that never sets 'txStart' to 'True'
+noTxStartNoRxReadyInput :: InputFunc txA txB free
+noTxStartNoRxReadyInput i = (noPressureInput i){txStart = pure False, rxReady = pure False}
 
 {- | Check whether handshake works when there is no pressure on the link,
 specialized to 'A', 'A', 'FreeSlow'.
@@ -454,6 +475,31 @@ prop_noRxReady :: Property
 prop_noRxReady =
   dutRandomized @A @A @Free testNeitherUp500ms noRxReadyInput noRxReadyInput Proxy
 
+{- | Check that nodes complete their handshake, even when the users never indicate
+that they're ready to receive data.
+-}
+prop_handshakeNoRxReady :: Property
+prop_handshakeNoRxReady =
+  dutRandomized @A @A @Free testHandshakeDone500ms noRxReadyInput noRxReadyInput Proxy
+
+{- | Check that nodes complete their handshake, even when the users never indicate
+that they're ready to send data.
+-}
+prop_handshakeNoTxStart :: Property
+prop_handshakeNoTxStart =
+  dutRandomized @A @A @Free testHandshakeDone500ms noTxStartInput noTxStartInput Proxy
+
+{- | Check that nodes complete their handshake, even when the users never indicate
+that they're ready to receive or send data.
+-}
+prop_handshakeNoTxStartNoRxReady :: Property
+prop_handshakeNoTxStartNoRxReady =
+  dutRandomized @A @A @Free
+    testHandshakeDone500ms
+    noTxStartNoRxReadyInput
+    noTxStartNoRxReadyInput
+    Proxy
+
 -- TODO: Add tests for actual data transmission. This currently only happens in
 --       hardware, as we currently don't have the infrastructure to memory-efficiently
 --       test multi-domain systems in Clash..
@@ -487,6 +533,9 @@ tests =
           , testPropertyThName 'prop_txStartEqTxReady prop_txStartEqTxReady
           , testPropertyThName 'prop_txStartEqTxReadyFlipped prop_txStartEqTxReadyFlipped
           , testPropertyThName 'prop_txStartEqTxReadyBoth prop_txStartEqTxReadyBoth
+          , testPropertyThName 'prop_handshakeNoRxReady prop_handshakeNoRxReady
+          , testPropertyThName 'prop_handshakeNoTxStart prop_handshakeNoTxStart
+          , testPropertyThName 'prop_handshakeNoTxStartNoRxReady prop_handshakeNoTxStartNoRxReady
           ]
     , adjustOption (\_ -> HedgehogTestLimit (Just 10))
         $ testGroup
