@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2024 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+build_out_dir
+vexriscv-test-binaries.tar
