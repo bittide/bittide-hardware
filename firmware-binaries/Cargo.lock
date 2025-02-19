@@ -486,6 +486,7 @@ name = "switch_demo_pe_test"
 version = "0.1.0"
 dependencies = [
  "bittide-sys",
+ "log",
  "riscv-rt",
  "ufmt",
 ]

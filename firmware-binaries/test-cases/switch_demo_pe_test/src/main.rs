@@ -7,10 +7,11 @@
 use bittide_sys::dna_port_e2::dna_to_u128;
 use bittide_sys::switch_demo_pe::SwitchDemoProcessingElement;
 use bittide_sys::time::{Clock, Duration};
+use bittide_sys::uart::log::LOGGER;
 use bittide_sys::uart::Uart;
 
 use core::fmt::Write;
-use ufmt::uwriteln;
+use log::{info, LevelFilter};
 
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -24,8 +25,9 @@ const SWITCH_PE_B: *const () = (0b101 << 29) as *const ();
 // local clock cycle counter, DNA (64 lsbs), DNA (32 msbs, zero-extended).
 // Should match `bufferSize` of the associated `switchDemoPeWb` device.
 const BUFFER_SIZE: usize = 2;
-const DEBUG_MODE: bool = false;
 
+// See https://github.com/bittide/bittide-hardware/issues/681
+#[allow(static_mut_refs)]
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals.
@@ -36,12 +38,21 @@ fn main() -> ! {
     let switch_pe_b: SwitchDemoProcessingElement<BUFFER_SIZE> =
         unsafe { SwitchDemoProcessingElement::new(SWITCH_PE_B) };
 
-    if DEBUG_MODE {
-        uwriteln!(uart, "Local counter: 0x{:X}", switch_pe_a.get_counter()).unwrap();
+    unsafe {
+        LOGGER.set_logger(uart.clone());
+        LOGGER.set_clock(clock.clone());
+        LOGGER.display_source = LevelFilter::Info;
+        log::set_logger_racy(&LOGGER).ok();
+        // The 'max_level' is actually the current debug level. Note that the
+        // unittest uses a release build, which has 'max_level_info', which sets
+        // the actual maximum level.
+        log::set_max_level_racy(LevelFilter::Info);
     }
 
-    let first_transfer_start = 0x4000;
-    let second_transfer_start = 0x4100;
+    info!("Local counter: 0x{:X}", switch_pe_a.get_counter());
+
+    let first_transfer_start = 0x10000;
+    let second_transfer_start = 0x10100;
 
     // A only writes its own data
     switch_pe_a.set_write(first_transfer_start, 1);
@@ -52,15 +63,13 @@ fn main() -> ! {
     // A reads all data from B
     switch_pe_a.set_read(second_transfer_start, 2);
 
-    clock.wait(Duration::from_micros(200));
+    clock.wait(Duration::from_micros(600));
 
-    if DEBUG_MODE {
-        let (rs_a, rc_a) = switch_pe_a.get_read();
-        let (rs_b, rc_b) = switch_pe_b.get_read();
-        uwriteln!(uart, "A: readStart: 0x{:X}, readCycles: 0x{:X}", rs_a, rc_a).unwrap();
-        uwriteln!(uart, "B: readStart: 0x{:X}, readCycles: 0x{:X}", rs_b, rc_b).unwrap();
-        uwriteln!(uart, "Local counter: 0x{:X}", switch_pe_a.get_counter()).unwrap();
-    }
+    let (rs_a, rc_a) = switch_pe_a.get_read();
+    let (rs_b, rc_b) = switch_pe_b.get_read();
+    info!("A: readStart: 0x{:X}, readCycles: 0x{:X}", rs_a, rc_a);
+    info!("B: readStart: 0x{:X}, readCycles: 0x{:X}", rs_b, rc_b);
+    info!("Local counter: 0x{:X}", switch_pe_a.get_counter());
 
     // Write the buffer of A over UART
     write!(uart, "Buffer A: [").unwrap();
@@ -76,9 +85,7 @@ fn main() -> ! {
     });
     writeln!(uart, "]").unwrap();
 
-    if DEBUG_MODE {
-        uwriteln!(uart, "Local counter: 0x{:X}", switch_pe_a.get_counter()).unwrap();
-    }
+    info!("Local counter: 0x{:X}", switch_pe_a.get_counter());
 
     // Write the buffer of B over UART
     write!(uart, "Buffer B: [").unwrap();
@@ -94,9 +101,7 @@ fn main() -> ! {
     });
     writeln!(uart, "]").unwrap();
 
-    if DEBUG_MODE {
-        uwriteln!(uart, "Local counter: 0x{:X}", switch_pe_a.get_counter()).unwrap();
-    }
+    info!("Local counter: 0x{:X}", switch_pe_a.get_counter());
 
     writeln!(uart, "Finished").unwrap();
 

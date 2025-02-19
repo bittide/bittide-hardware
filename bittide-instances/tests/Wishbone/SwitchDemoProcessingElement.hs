@@ -10,6 +10,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
 import Data.Char (chr)
+import Data.List (isPrefixOf)
 import Data.Maybe (mapMaybe)
 import Project.FilePath
 import Protocols
@@ -42,7 +43,7 @@ simResult = unlines . takeWhileInclusive (/= "Finished") . lines $ uartString
  where
   uartString = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
   uartStream =
-    sampleC def{timeoutAfter = 100_000}
+    sampleC def{timeoutAfter = 200_000}
       $ withClockResetEnable clk reset enable
       $ dut @System localCounter dnaA dnaB
 
@@ -61,11 +62,12 @@ case_switch_demo_pe_test = assertBool msg (receivedString == expectedString)
       <> receivedString
       <> " not equal to expected string "
       <> expectedString
-  receivedString = simResult
+  -- Filter the 'debugging' prints, which are prefixed with 'INFO'
+  receivedString = unlines . filter (not . isPrefixOf "INFO") . lines $ simResult
   expectedString =
     unlines
-      [ "Buffer A: [(0x4100, 0xBBBB0123456789ABCDEF0001), (0x4000, 0xAAAA0123456789ABCDEF0001)]"
-      , "Buffer B: [(0x4000, 0xAAAA0123456789ABCDEF0001), (0xABBAABBAABBA0003, 0xABBA0005ABBAABBAABBA0004)]"
+      [ "Buffer A: [(0x10100, 0xBBBB0123456789ABCDEF0001), (0x10000, 0xAAAA0123456789ABCDEF0001)]"
+      , "Buffer B: [(0x10000, 0xAAAA0123456789ABCDEF0001), (0xABBAABBAABBA0003, 0xABBA0005ABBAABBAABBA0004)]"
       , "Finished"
       ]
 
