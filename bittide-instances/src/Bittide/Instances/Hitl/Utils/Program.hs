@@ -14,7 +14,7 @@ import Paths_bittide_instances
 
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, isSubsequenceOf)
 import Data.Maybe (fromJust)
 import System.IO
 import System.Posix.Env (getEnvironment)
@@ -226,9 +226,16 @@ startPicocomWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv = do
 
   pure (picoHandles', cleanupProcess picoHandles)
 
+-- | List of detectors that match on error messages that can be safely ignored.
+ignoredErrors :: [String -> Bool]
+ignoredErrors =
+  [ isSubsequenceOf "DMI operation didn't complete in"
+  ]
+
 -- | Wait until we see "Halting processor", fail if we see an error.
 openOcdWaitForHalt :: String -> Filter
 openOcdWaitForHalt s
+  | any ($ s) ignoredErrors = Continue
   | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
   | "Halting processor" `isPrefixOf` s = Stop Ok
   | otherwise = Continue
