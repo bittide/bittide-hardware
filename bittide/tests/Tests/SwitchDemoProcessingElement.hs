@@ -127,7 +127,7 @@ prop_readThenWrite = H.property $ do
             bufferSizeSNat
             (fromList [clockStart ..])
             crossBarIn
-            (pure (Just deviceDna))
+            (pure deviceDna)
             (pure readStart)
             (pure nReadTriCycles)
             (pure writeStart)

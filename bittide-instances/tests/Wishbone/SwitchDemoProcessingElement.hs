@@ -91,10 +91,15 @@ dut localCounter dnaA dnaB = circuit $ do
   [uartBus, timeBus, peBusA, peBusB] <- processingElement NoDumpVcd peConfig -< jtagIdle
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (uartBus, uartRx)
   timeWb -< timeBus
-  linkAB <- switchDemoPeWb d2 localCounter (Just <$> dnaA) -< (peBusA, linkBA)
-  linkBA <- switchDemoPeWb d2 localCounter (Just <$> dnaB) -< (peBusB, linkAB)
+  linkAB <- switchDemoPeWb d2 localCounter -< (peBusA, dnaAC, linkBA)
+  linkBA <- switchDemoPeWb d2 localCounter -< (peBusB, dnaBC, linkAB)
+  dnaAC <- signalToCSignal dnaA -< ()
+  dnaBC <- signalToCSignal dnaB -< ()
   idC -< uartTx
  where
+  signalToCSignal :: Signal dom a -> Circuit () (CSignal dom a)
+  signalToCSignal = Circuit . const . ((),)
+
   memMap = 0b000 :> 0b001 :> 0b010 :> 0b011 :> 0b100 :> 0b101 :> Nil
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"

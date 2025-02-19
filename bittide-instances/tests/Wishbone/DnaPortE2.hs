@@ -63,7 +63,7 @@ dut = circuit $ \_unit -> do
   (uartRx, jtag) <- idleSource -< ()
   [uartBus, dnaWb] <- processingElement @dom NoDumpVcd peConfig -< jtag
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
-  readDnaPortE2Wb simDna2 -< dnaWb
+  _dna <- readDnaPortE2Wb simDna2 -< dnaWb
   idC -< uartTx
  where
   (iMem, dMem) =

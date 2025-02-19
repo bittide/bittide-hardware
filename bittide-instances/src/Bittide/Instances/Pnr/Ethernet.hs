@@ -101,7 +101,7 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
           [uartBus, timeBus, wbAxiRx, wbAxiTx, dnaWb, gpioWb, macWb] <- pe -< jtag
           (uartRx, _uartStatus) <- uart -< (uartBus, uartTx)
           time -< timeBus
-          dna -< dnaWb
+          _dna <- dnaC -< dnaWb
           macStatIf -< (macWb, macStatus)
           gpioDf <- idleSource -< ()
           gpioOut <- gpio -< (gpioWb, gpioDf)
@@ -116,7 +116,7 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
       (fwd, (pure (), pure (), pure ()))
  where
   time = wcre timeWb
-  dna = wcre readDnaPortE2Wb simDna2
+  dnaC = wcre readDnaPortE2Wb simDna2
   mac =
     ethMac1GFifoC
       (SNat @1500)

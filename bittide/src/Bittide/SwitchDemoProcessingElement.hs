@@ -7,7 +7,6 @@ module Bittide.SwitchDemoProcessingElement where
 
 import Clash.Prelude
 
-import Data.Maybe (fromMaybe)
 import Data.Tuple (swap)
 import GHC.Stack (HasCallStack)
 
@@ -40,7 +39,7 @@ switchDemoPe ::
   -- | Incoming crossbar link
   Signal dom (BitVector 64) ->
   -- | Device DNA
-  Signal dom (Maybe (BitVector 96)) ->
+  Signal dom (BitVector 96) ->
   -- | When to read from the crossbar link
   Signal dom (Unsigned 64) ->
   -- | How many tri-cycles to read from the crossbar link
@@ -54,7 +53,7 @@ switchDemoPe ::
   , -- \| Buffer output
     Signal dom (Vec (bufferSize * 3) (BitVector 64))
   )
-switchDemoPe SNat localCounter linkIn maybeDna readStart readCycles writeStart writeCycles =
+switchDemoPe SNat localCounter linkIn dna readStart readCycles writeStart writeCycles =
   (linkOut, buffer)
  where
   readCyclesExtended = checkedResize . zeroExtendTimesThree <$> readCycles
@@ -64,8 +63,7 @@ switchDemoPe SNat localCounter linkIn maybeDna readStart readCycles writeStart w
   localData = bundle ((pack <$> localCounter) :> unbundle dnaVec)
    where
     dnaVec :: Signal dom (Vec 2 (BitVector 64))
-    dnaVec = reverse . bitCoerce . zeroExtend <$> dnaLocked
-    dnaLocked = fromMaybe 0xBAAB_BAAB_BAAB_BAAB_BAAB_BAAB <$> maybeDna
+    dnaVec = reverse . bitCoerce . zeroExtend <$> dna
 
   linkOut = stateToLinkOutput <$> peState <*> buffer <*> localData
 
@@ -163,16 +161,18 @@ switchDemoPeWb ::
   SNat bufferSize ->
   -- | Local clock cycle counter
   Signal dom (Unsigned 64) ->
-  -- | Device DNA
-  Signal dom (Maybe (BitVector 96)) ->
   Circuit
     ( Wishbone dom 'Standard addrW (Bytes 4)
-    , CSignal dom (BitVector 64)
+    , -- \| Device DNA
+      CSignal dom (BitVector 96)
+    , -- \| Incoming crossbar link
+      CSignal dom (BitVector 64)
     )
+    -- \| Outgoing crossbar link
     (CSignal dom (BitVector 64))
-switchDemoPeWb SNat localCounter maybeDna = Circuit go
+switchDemoPeWb SNat localCounter = Circuit go
  where
-  go ((wbM2S, linkIn), _) = ((wbS2M, pure ()), linkOut)
+  go ((wbM2S, dna, linkIn), _) = ((wbS2M, pure (), pure ()), linkOut)
    where
     readVec :: Vec (8 + bufferSize * 3 * 2 + 2) (Signal dom (BitVector 32))
     readVec =
@@ -187,7 +187,7 @@ switchDemoPeWb SNat localCounter maybeDna = Circuit go
         (SNat @bufferSize)
         localCounter
         linkIn
-        maybeDna
+        dna
         readStart
         readCycles
         writeStart

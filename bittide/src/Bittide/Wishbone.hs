@@ -629,11 +629,11 @@ readDnaPortE2Wb ::
   ) =>
   -- | Simulation DNA value
   BitVector 96 ->
-  Circuit (Wishbone dom 'Standard addrW (Bytes nBytes)) ()
+  Circuit (Wishbone dom 'Standard addrW (Bytes nBytes)) (CSignal dom (BitVector 96))
 readDnaPortE2Wb simDna = circuit $ \wb -> do
   dnaDf <- dnaCircuit -< ()
-  _dna <- reg -< (wb, dnaDf)
-  idC -< ()
+  dna <- reg -< (wb, dnaDf)
+  idC -< dna
  where
   maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna
   regRst =
