@@ -17,6 +17,6 @@ mkdir -p "${stderr_dir}"
 OPENOCD_STDERR_LOG="$(realpath ${OPENOCD_STDERR_LOG})"
 
 cd $(dirname $0)
-exec openocd-riscv -f ports.tcl -f sipeed.tcl -f vexriscv_init.tcl $@ \
+exec "${OPENOCD_BIN}" -f ports.tcl -f sipeed.tcl -f "${VEXRISCV_TCL_INIT}" $@ \
   > >(tee "${OPENOCD_STDOUT_LOG}") \
   2> >(tee "${OPENOCD_STDERR_LOG}" >&2)

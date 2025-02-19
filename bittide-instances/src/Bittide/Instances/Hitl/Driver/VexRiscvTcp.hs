@@ -94,7 +94,7 @@ driverFunc _name [(hwT, dI)] = do
 
   initHwDevice
 
-  withOpenOcdWithEnv openocdEnv dI.usbAdapterLocation 3333 6666 4444 $ \ocd -> do
+  withOpenOcdWithEnv OpenOcdRiscv openocdEnv dI.usbAdapterLocation 3333 6666 4444 $ \ocd -> do
     liftIO $ do
       hSetBuffering ocd.stderrHandle LineBuffering
       putStr "Waiting for OpenOCD to halt..."

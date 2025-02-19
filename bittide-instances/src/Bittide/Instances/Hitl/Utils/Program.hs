@@ -56,6 +56,8 @@ awaitProcessTermination name h (Just t) = do
 
 withOpenOcd ::
   (MonadMask m, MonadIO m) =>
+  -- | Which OpenOcd to use
+  OpenOcdVersion ->
   -- | USB device location
   String ->
   -- | GDB port
@@ -67,10 +69,12 @@ withOpenOcd ::
   -- | Action to run with OpenOCD
   (ProcessStdIoHandles -> m a) ->
   m a
-withOpenOcd = withOpenOcdWithEnv []
+withOpenOcd ocdVersion = withOpenOcdWithEnv ocdVersion []
 
 withOpenOcdWithEnv ::
   (MonadMask m, MonadIO m) =>
+  -- | Which OpenOcd to use
+  OpenOcdVersion ->
   -- | Extra environment variables to pass to OpenOCD in form (name, value)
   [(String, String)] ->
   -- | USB device location
@@ -84,12 +88,15 @@ withOpenOcdWithEnv ::
   -- | Action to run with OpenOCD
   (ProcessStdIoHandles -> m a) ->
   m a
-withOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort action = do
+withOpenOcdWithEnv ocdVersion extraEnv usbLoc gdbPort tclPort telnetPort action = do
   (ocd, _handle, clean) <-
-    liftIO $ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort
+    liftIO $ startOpenOcdWithEnv ocdVersion extraEnv usbLoc gdbPort tclPort telnetPort
   finally (action ocd) (liftIO clean)
 
+data OpenOcdVersion = OpenOcdRiscv | OpenOcdVexRiscv
 startOpenOcdWithEnv ::
+  -- | Which OpenOcd to use
+  OpenOcdVersion ->
   -- | Extra environment variables to pass to OpenOCD in form (name, value)
   [(String, String)] ->
   -- | USB device location
@@ -101,7 +108,10 @@ startOpenOcdWithEnv ::
   -- | Telnet port
   Int ->
   IO (ProcessStdIoHandles, ProcessHandle, IO ())
-startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort = do
+startOpenOcdWithEnv ocdVersion extraEnv usbLoc gdbPort tclPort telnetPort = do
+  let (openocdBin, vexriscvInit) = case ocdVersion of
+        OpenOcdRiscv -> ("openocd-riscv", "vexriscv_init.tcl")
+        OpenOcdVexRiscv -> ("openocd-vexriscv", "vexriscv_init_custom.tcl")
   startOpenOcdPath <- getOpenOcdStartPath
   currentEnv <- getEnvironment
   let
@@ -118,6 +128,8 @@ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort = do
                      , ("GDB_PORT", show gdbPort)
                      , ("TCL_PORT", show tclPort)
                      , ("TELNET_PORT", show telnetPort)
+                     , ("OPENOCD_BIN", openocdBin)
+                     , ("VEXRISCV_TCL_INIT", vexriscvInit)
                      ]
               )
         }

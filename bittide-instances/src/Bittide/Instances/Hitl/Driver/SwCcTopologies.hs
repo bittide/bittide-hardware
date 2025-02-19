@@ -86,7 +86,10 @@ driverFunc testName targets = do
       putStrLn "Starting OpenOCD..."
       (ocd, ocdPh, ocdClean1) <-
         startOpenOcdWithEnv
-          [("OPENOCD_STDOUT_LOG", ocdStdout), ("OPENOCD_STDERR_LOG", ocdStderr)]
+          OpenOcdVexRiscv
+          [ ("OPENOCD_STDOUT_LOG", ocdStdout)
+          , ("OPENOCD_STDERR_LOG", ocdStderr)
+          ]
           d.usbAdapterLocation
           gdbPort
           tclPort
