@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
@@ -14,6 +15,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
 import Bittide.Arithmetic.Time (trueFor)
+import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl hiding (speedChangeToFincFdec)
 import Bittide.ClockControl.Callisto.Types (CallistoCResult)
@@ -48,6 +50,8 @@ import Bittide.Instances.Hitl.SwCcTopologies (FifoSize, FincFdecCount, commonSpi
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
 import Bittide.ProcessingElement (PeConfig (..), processingElement, splitAtC)
 import Bittide.SharedTypes (Bytes)
+import Bittide.Switch (switchC)
+import Bittide.SwitchDemoProcessingElement (switchDemoPeWb)
 import Bittide.Transceiver (transceiverPrbsN)
 import Bittide.Wishbone (readDnaPortE2Wb, timeWb)
 
@@ -100,6 +104,59 @@ simpleManagementUnitC (SimpleManagementConfig peConfig dumpVcd) =
     ([timeWbBus], nmuWbs) <- splitAtC d1 -< peWbs
     timeWb -< timeWbBus
     idC -< nmuWbs
+
+{- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
+calendarConfig :: CalendarConfig 4 26 (Vec 8 (Index 9))
+calendarConfig =
+  CalendarConfig
+    (SNat @LinkCount)
+
+    -- Active calendar. It will broadcast the PE (node 1) data to all links. Other
+    -- than that we cycle through the other nodes.
+    (      ValidEntry (2 :> repeat 1) repetitions
+        :> ValidEntry (3 :> repeat 1) repetitions
+        :> ValidEntry (4 :> repeat 1) repetitions
+        :> ValidEntry (5 :> repeat 1) repetitions
+        :> ValidEntry (6 :> repeat 1) repetitions
+        :> ValidEntry (7 :> repeat 1) repetitions
+        :> ValidEntry (8 :> repeat 1) repetitions
+        :> Nil
+    )
+
+    -- Don't care about inactive calendar:
+    (ValidEntry (repeat 0) 1 :> Nil)
+  where
+  -- We want enough time to read _number of FPGAs_ triplets
+  repetitions = natToNum @((LinkCount + 1) * 3) @(Unsigned 8)
+{- FOURMOLU_ENABLE -}
+
+muConfig :: SimpleManagementConfig 10
+muConfig =
+  SimpleManagementConfig
+    PeConfig
+      { memMapConfig = 0b100 :> 0b010 :> 0b110 :> 0b101 :> repeat 0
+      , initI = Undefined @(Div (64 * 1024) 4)
+      , initD = Undefined @(Div (64 * 1024) 4)
+      , iBusTimeout = d0
+      , dBusTimeout = d0
+      , includeIlaWb = False
+      }
+    NoDumpVcd
+
+ccConfig ::
+  SwControlCConfig CccStabilityCheckerMargin (CccStabilityCheckerFramesize Basic125) 0
+ccConfig =
+  SwControlCConfig
+    SNat
+    SNat
+    PeConfig
+      { memMapConfig = 0b100 :> 0b010 :> 0b110 :> 0b101 :> Nil
+      , initI = Undefined @(Div (64 * 1024) 4)
+      , initD = Undefined @(Div (64 * 1024) 4)
+      , iBusTimeout = d0
+      , dBusTimeout = d0
+      , includeIlaWb = True
+      }
 
 {- | Reset logic:
 
@@ -267,34 +324,6 @@ dut refClk refRst skyClk rxNs rxPs allProgrammed miso jtagIn =
   transceiversFailedAfterUp =
     sticky refClk refRst (isFalling refClk spiRst enableGen False handshakesCompleteFree)
 
-  muConfig :: SimpleManagementConfig 8
-  muConfig =
-    SimpleManagementConfig
-      PeConfig
-        { memMapConfig = 0b100 :> 0b010 :> 0b110 :> 0b101 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> 0 :> Nil
-        , initI = Undefined @(Div (64 * 1024) 4)
-        , initD = Undefined @(Div (64 * 1024) 4)
-        , iBusTimeout = d0
-        , dBusTimeout = d0
-        , includeIlaWb = False
-        }
-      NoDumpVcd
-
-  ccConfig ::
-    SwControlCConfig CccStabilityCheckerMargin (CccStabilityCheckerFramesize Basic125) 0
-  ccConfig =
-    SwControlCConfig
-      SNat
-      SNat
-      PeConfig
-        { memMapConfig = 0b100 :> 0b010 :> 0b110 :> 0b101 :> Nil
-        , initI = Undefined @(Div (64 * 1024) 4)
-        , initD = Undefined @(Div (64 * 1024) 4)
-        , iBusTimeout = d0
-        , dBusTimeout = d0
-        , includeIlaWb = True
-        }
-
   circuitFn ::
     ( ( Signal Basic125 JtagIn
       , Signal GthTx (BitVector 64)
@@ -318,11 +347,11 @@ dut refClk refRst skyClk rxNs rxPs allProgrammed miso jtagIn =
       , Vec LinkCount (Signal GthTx (BitVector 64))
       )
     )
-  Circuit circuitFn = circuit $ \(jtag, linkIn, reframe, mask, dc, [in0, in1, in2, in3, in4, in5, in6]) -> do
+  Circuit circuitFn = circuit $ \(jtag, linkIn, reframe, mask, dc, [rx0, rx1, rx2, rx3, rx4, rx5, rx6]) -> do
     [muJtagFree, ccJtag] <- jtagChain -< jtag
     muJtagTx <- unsafeJtagSynchronizer refClk bittideClk -< muJtagFree
 
-    [muTimeWb, ugn0, ugn1, ugn2, ugn3, ugn4, ugn5, ugn6] <-
+    [peWb, switchWb, dnaWb, ugn0, ugn1, ugn2, ugn3, ugn4, ugn5, ugn6] <-
       withClockResetEnable
         bittideClk
         handshakeRstTx
@@ -330,27 +359,45 @@ dut refClk refRst skyClk rxNs rxPs allProgrammed miso jtagIn =
         (simpleManagementUnitC muConfig)
         -< (muJtagTx, linkIn)
 
-    outs <-
+    [urx0, urx1, urx2, urx3, urx4, urx5, urx6] <-
       withClockResetEnable
         bittideClk
         handshakeRstTx
         enableGen
         (repeatC (captureUgn (unpack <$> localCounter)))
-        -< [ (ugn0, in0)
-           , (ugn1, in1)
-           , (ugn2, in2)
-           , (ugn3, in3)
-           , (ugn4, in4)
-           , (ugn5, in5)
-           , (ugn6, in6)
+        -< [ (ugn0, rx0)
+           , (ugn1, rx1)
+           , (ugn2, rx2)
+           , (ugn3, rx3)
+           , (ugn4, rx4)
+           , (ugn5, rx5)
+           , (ugn6, rx6)
            ]
 
-    withClockResetEnable
-      bittideClk
-      handshakeRstTx
-      enableGen
-      (readDnaPortE2Wb simDna2)
-      -< muTimeWb
+    [peIn, tx0, tx1, tx2, tx3, tx4, tx5, tx6] <-
+      withClockResetEnable
+        bittideClk
+        handshakeRstTx
+        enableGen
+        switchC
+        calendarConfig
+        -< ([peOut, urx0, urx1, urx2, urx3, urx4, urx5, urx6], switchWb)
+
+    peOut <-
+      withClockResetEnable
+        bittideClk
+        handshakeRstTx
+        enableGen
+        (switchDemoPeWb (SNat @LinkCount) (unpack <$> localCounter))
+        -< (peWb, dna, peIn)
+
+    dna <-
+      withClockResetEnable
+        bittideClk
+        handshakeRstTx
+        enableGen
+        (readDnaPortE2Wb simDna2)
+        -< dnaWb
 
     (swCcOut, ccM2S) <-
       withClockResetEnable
@@ -362,7 +409,7 @@ dut refClk refRst skyClk rxNs rxPs allProgrammed miso jtagIn =
 
     idleSink -< ccM2S
 
-    idC -< (swCcOut, outs)
+    idC -< (swCcOut, [tx0, tx1, tx2, tx3, tx4, tx5, tx6])
 
   ((jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _diffsBwd, _insBwd), (callistoResult, _)) =
     circuitFn
