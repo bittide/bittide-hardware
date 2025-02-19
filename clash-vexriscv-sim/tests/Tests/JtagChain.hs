@@ -1,28 +1,30 @@
 -- SPDX-FileCopyrightText: 2022-2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE NumericUnderscores #-}
 
 module Tests.JtagChain where
 
+import Clash.Prelude (KnownNat, Vec (Nil, (:>)), toList)
+import Clash.Sized.Vector (unsafeFromList)
+import Clash.Sized.Vector.ToTuple (vecToTuple)
+
+import Control.Monad.Extra (unlessM)
+import Data.Data (Proxy (Proxy))
+import Data.Maybe (fromJust)
+import GHC.Stack (HasCallStack)
+import System.Directory (doesPathExist)
+import System.Exit (ExitCode (ExitSuccess))
+import System.FilePath ((</>))
+import System.IO (Handle, IOMode (WriteMode), withFile)
+import System.Process
+import Test.Tasty (TestTree, askOption, defaultIngredients, defaultMainWithIngredients, includingOptions, testGroup)
+import Test.Tasty.HUnit (Assertion, testCase, (@=?))
+import Test.Tasty.Options (OptionDescription (Option))
 import Prelude
 
-import Test.Tasty.HUnit (Assertion, testCase, (@=?))
-import Tests.Jtag (cabalListBin, getGdb, JtagDebug (JtagDebug))
-import Utils.FilePath (findParentContaining, cabalProject, rustBinsDir, BuildType (Debug))
-import System.FilePath ((</>))
-import System.Process
-import Test.Tasty (TestTree, askOption, testGroup, defaultMainWithIngredients, includingOptions, defaultIngredients)
-import Data.Data (Proxy (Proxy))
-import Test.Tasty.Options (OptionDescription(Option))
-import Control.Exception (ErrorCall (ErrorCallWithLocation))
-
-import qualified Streaming.Prelude as SP
-import System.IO (openFile, IOMode (ReadMode, WriteMode), hClose)
-import GHC.Exception (throw, Exception (toException))
-import Data.Maybe (fromJust)
-import System.Directory (doesPathExist, doesDirectoryExist)
-import System.Exit (ExitCode(ExitSuccess))
-import Control.Monad (when)
+import Tests.Jtag (JtagDebug (JtagDebug), cabalListBin, expectLineOrTimeout, getGdb, waitForLineOrTimeout)
+import Utils.FilePath (BuildType (Debug), cabalProject, findParentContaining, rustBinsDir)
 
 getSimulateExecPath :: IO FilePath
 getSimulateExecPath = cabalListBin "clash-vexriscv-sim:clash-vexriscv-chain-bin"
@@ -31,6 +33,7 @@ getProjectRoot :: IO FilePath
 getProjectRoot = findParentContaining cabalProject
 
 test ::
+  (HasCallStack) =>
   -- | Print debug output of subprocesses
   Bool ->
   Assertion
@@ -49,117 +52,81 @@ test debug = do
     gdbCmdPathB = simDataDir </> "vexriscv_chain_gdbb.cfg"
   gdb <- getGdb
 
-  ensureExists logAPath 46
-  ensureExists logBPath 47
+  ensureExists logAPath
+  ensureExists logBPath
 
   let
+    -- Timeout after 120 seconds
+    expectLine = expectLineOrTimeout 120_000_000
+    waitForLine = waitForLineOrTimeout 120_000_000
+
     vexRiscvProc =
       ( proc
           simulateExecPath
           ["-a", printAElfPath, "-b", printBElfPath, "-A", logAPath, "-B", logBPath]
       )
-      { std_out = CreatePipe
-      , cwd = Just projectRoot
-      }
+        { std_out = CreatePipe
+        , cwd = Just projectRoot
+        }
 
-    openOcdProc = (proc "openocd-vexriscv" ["-f", openocdCfgPath])
-      { std_err = CreatePipe
-      , cwd = Just projectRoot
-      }
+    openOcdProc =
+      (proc "openocd-riscv" ["-f", openocdCfgPath])
+        { std_err = CreatePipe
+        , cwd = Just projectRoot
+        }
 
-    gdbProcA = (proc gdb ["--command", gdbCmdPathA])
-      { std_out = CreatePipe
-      , cwd = Just projectRoot
-      }
+    gdbProcA =
+      (proc gdb ["--command", gdbCmdPathA])
+        { cwd = Just projectRoot
+        , std_out = CreatePipe
+        }
 
-    gdbProcB = (proc gdb ["--command", gdbCmdPathB])
-      { std_out = CreatePipe
-      , cwd = Just projectRoot
-      }
+    gdbProcB =
+      (proc gdb ["--command", gdbCmdPathB])
+        { cwd = Just projectRoot
+        , std_out = CreatePipe
+        }
 
-  withCreateProcess vexRiscvProc $ \_ _ _ _ -> do
-    logAHandle <- openFile logAPath ReadMode
-    logBHandle <- openFile logBPath ReadMode
-    let
-      logA0 = SP.fromHandle logAHandle
-      logB0 = SP.fromHandle logBHandle
+  withStreamingFiles (logAPath :> logBPath :> Nil) $ \(vecToTuple -> (logA, logB)) -> do
+    withCreateProcess vexRiscvProc $ \_ (fromJust -> simStdOut) _ _ -> do
+      waitForLine debug simStdOut "JTAG bridge ready at port 7894"
 
-    logA1 <- expectLineFromStream debug logA0 "[CPU] a" 83
-    logB1 <- expectLineFromStream debug logB0 "[CPU] b" 84
+      expectLine debug logA "[CPU] a"
+      expectLine debug logB "[CPU] b"
 
-    withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
-      let openOcdStream = SP.fromHandle openOcdStdErr
-      _ <- waitForLineInStream debug openOcdStream "Halting processor" 88
+      withCreateProcess openOcdProc $ \_ _ (fromJust -> openOcdStdErr) _ -> do
+        waitForLine debug openOcdStdErr "Halting processor"
 
-      withCreateProcess gdbProcA $ \_ _ _ gdbProcHandleA -> do
-        withCreateProcess gdbProcB $ \_ _ _ gdbProcHandleB -> do
-          _ <- expectLineFromStream debug logA1 "[CPU] a" 92
-          _ <- expectLineFromStream debug logB1 "[CPU] b" 93
-          _ <- expectLineFromStream debug logA1 "[CPU] b" 94
-          _ <- expectLineFromStream debug logB1 "[CPU] a" 95
+        withCreateProcess gdbProcA $ \_ _ _ gdbProcHandleA -> do
+          withCreateProcess gdbProcB $ \_ _ _ gdbProcHandleB -> do
+            expectLine debug logA "[CPU] a"
+            expectLine debug logB "[CPU] b"
+            expectLine debug logA "[CPU] b"
+            expectLine debug logB "[CPU] a"
 
-          gdbAExitCode <- waitForProcess gdbProcHandleA
-          gdbBExitCode <- waitForProcess gdbProcHandleB
-          ExitSuccess @=? gdbAExitCode
-          ExitSuccess @=? gdbBExitCode
+            gdbAExitCode <- waitForProcess gdbProcHandleA
+            gdbBExitCode <- waitForProcess gdbProcHandleB
+            ExitSuccess @=? gdbAExitCode
+            ExitSuccess @=? gdbBExitCode
 
-ensureExists :: FilePath -> Int -> IO ()
-ensureExists file line = do
-  pathExists <- doesPathExist file
-  if not pathExists
-    then touchFile
-    else do
-      pathIsDir <- doesDirectoryExist file
-      if pathIsDir
-        then throw . toException
-          $ ErrorCallWithLocation
-            ("log file path `" <> file <> "` points to existing directory")
-            ("at line " <> show line)
-        else touchFile
+withStreamingFile :: FilePath -> (Handle -> IO a) -> IO a
+withStreamingFile path f =
+  let tailProc = (proc "tail" ["-n", "0", "-f", path]){std_out = CreatePipe}
+   in withCreateProcess tailProc (\_ (fromJust -> h) _ _ -> f h)
+
+withStreamingFiles :: (KnownNat n) => Vec n FilePath -> (Vec n Handle -> IO a) -> IO a
+withStreamingFiles paths f = go (toList paths) []
  where
-  touchFile = do
-    file' <- openFile file WriteMode
-    hClose file'
+  go [] hs = f (unsafeFromList (reverse hs))
+  go (p : ps) hs = withStreamingFile p (\h -> go ps (h : hs))
 
-expectLineFromStream
-  :: Bool
-  -> SP.Stream (SP.Of String) IO ()
-  -> String
-  -> Int
-  -> IO (SP.Stream (SP.Of String) IO ())
-expectLineFromStream debug stream lookFor line = do
-  result <- SP.next stream
-  case result of
-    Right (out, next) -> do
-      when debug $ putStrLn $ "DBG(E): " <> out
-      if out == lookFor
-        then return next
-        else throw . toException $ errorHelper lookFor out line
-    Left _ -> expectLineFromStream debug stream lookFor line
+ensureExists :: (HasCallStack) => FilePath -> IO ()
+ensureExists path = unlessM (doesPathExist path) (withFile path WriteMode (\_ -> pure ()))
 
-waitForLineInStream
-  :: Bool
-  -> SP.Stream (SP.Of String) IO ()
-  -> String
-  -> Int
-  -> IO (SP.Stream (SP.Of String) IO ())
-waitForLineInStream debug stream lookFor line = do
-  result <- SP.next stream
-  case result of
-    Right (out, next) -> do
-      when debug $ putStrLn $ "DBG(W): " <> out
-      if out == lookFor
-        then return next
-        else waitForLineInStream debug next lookFor line
-    Left _ -> expectLineFromStream debug stream lookFor line
+errorHelper :: (HasCallStack) => String -> String -> m a
+errorHelper expected found = error ("expected `" <> expected <> "`, found `" <> found <> "`")
 
-errorHelper :: String -> String -> Int -> ErrorCall
-errorHelper expected found loc =
-  ErrorCallWithLocation
-    ("expected `" <> expected <> "`, found `" <> found <> "`")
-    ("at line " <> show loc)
-
-tests :: TestTree
+tests :: (HasCallStack) => TestTree
 tests = askOption $ \(JtagDebug debug) ->
   testGroup
     "JTAG chaining"
