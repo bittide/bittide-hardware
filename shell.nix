@@ -55,6 +55,7 @@ pkgs.mkShell {
       pkgs.pcre
 
       # VexRiscv OpenOCD
+      pkgs.openocd-vexriscv
       pkgs.openocd-riscv
       pkgs.gdb
 
@@ -78,7 +79,10 @@ pkgs.mkShell {
     # Prevents Perl warnings
     export LC_ALL="C.UTF-8";
     export VERILOG_ETHERNET_SRC="${pkgs.verilog-ethernet}"
+
+    # TODO: Get rid of custom OpenOCD build for sWCcTopologyTest
     export OPENOCD_DIST="${pkgs.openocd-riscv}"
+    export VEXOPENOCD_DIST="${pkgs.openocd-vexriscv}"
 
     # We use unstable features (floating point), we don't want to hear about it
     # every time we build.

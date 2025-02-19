@@ -42,5 +42,6 @@ if [ -f "${UDEV_RULES_D}/${UDEV_RULES_BASENAME}" ]; then
   echo "'${UDEV_RULES_D}/${UDEV_RULES_BASENAME}' already exists, doing nothing"
 else
   exec_print sudo cp "$OPENOCD_DIST/share/openocd/contrib/${UDEV_RULES_BASENAME}" "${UDEV_RULES_D}"
+  exec_print sudo cp "$VEXOPENOCD_DIST/share/openocd/contrib/${UDEV_RULES_BASENAME}" "${UDEV_RULES_D}"
   exec_print sudo udevadm control --reload-rules
 fi

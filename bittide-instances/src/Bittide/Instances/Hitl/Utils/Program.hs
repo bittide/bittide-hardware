@@ -101,7 +101,13 @@ startOpenOcdWithEnv ::
   -- | Telnet port
   Int ->
   IO (ProcessStdIoHandles, ProcessHandle, IO ())
-startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort = do
+startOpenOcdWithEnv extraEnv0 usbLoc gdbPort tclPort telnetPort = do
+  -- Check if OPENOCD_BIN is set. If not, append ("OPENOCD_BIN", "openocd") to the environment.
+  -- This is necessary because swCcTopologiesTest relies on the custom OpenOCD binary.
+  let extraEnv1
+        | any ((== "OPENOCD_BIN") . fst) extraEnv0 = extraEnv0
+        | otherwise = ("OPENOCD_BIN", "openocd") : extraEnv0
+
   startOpenOcdPath <- getOpenOcdStartPath
   currentEnv <- getEnvironment
   let
@@ -113,7 +119,7 @@ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort = do
         , env =
             Just
               ( currentEnv
-                  <> extraEnv
+                  <> extraEnv1
                   <> [ ("USB_DEVICE", usbLoc)
                      , ("GDB_PORT", show gdbPort)
                      , ("TCL_PORT", show tclPort)
