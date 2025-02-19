@@ -1,30 +1,26 @@
 -- SPDX-FileCopyrightText: 2022-2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
-
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Utils.Cpu where
 
+import Clash.Explicit.Prelude (unsafeOrReset)
 import Clash.Prelude
-
+import Data.Maybe (fromMaybe)
+import GHC.Stack (HasCallStack)
 import Protocols.Wishbone
 import VexRiscv
 import VexRiscv.JtagTcpBridge as JTag
 import VexRiscv.VecToTuple (vecToTuple)
 
-import GHC.Stack (HasCallStack)
-
-import Utils.ProgramLoad (Memory, DMemory)
 import Utils.Interconnect (interconnectTwo)
-import Clash.Explicit.Prelude (unsafeOrReset)
-import Data.Maybe (fromMaybe)
+import Utils.ProgramLoad (DMemory, Memory)
 
-createDomain vXilinxSystem{vName="Basic50", vPeriod= hzToPeriod 50_000_000}
+createDomain vXilinxSystem{vName = "Basic50", vPeriod = hzToPeriod 50_000_000}
 
 {-
 Address space
@@ -35,7 +31,8 @@ Address space
 -}
 cpu ::
   ( HasCallStack
-  , HiddenClockResetEnable dom
+  , HiddenClock dom
+  , HiddenReset dom
   -- XXX: VexRiscv responds asynchronously to the reset signal. Figure out how
   --      convenient it is to use this within a design with synchronous resets.
   -- , HasAsynchronousReset dom
@@ -60,111 +57,118 @@ cpu dumpVcd jtagIn0 bootIMem bootDMem =
   , iS2M
   , dS2M
   )
-  where
-    (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock (hasReset `unsafeOrReset` jtagReset) input jtagIn1
+ where
+  (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock (hasReset `unsafeOrReset` ndmReset) input jtagIn1
 
-    jtagReset =
-      unsafeFromActiveHigh $ register False $
-        bitToBool . debugReset <$> jtagOut
+  ndmReset =
+    unsafeFromActiveHigh
+      $ withEnable enableGen
+      $ register False
+      $ bitToBool
+      . ndmreset
+      <$> cpuOut
 
-    jtagIn1 = fromMaybe (pure JTag.defaultIn) jtagIn0
+  jtagIn1 = fromMaybe (pure JTag.defaultIn) jtagIn0
 
-    {-
-    00000000 - dummy area
-    20000000 - instruction memory
-    40000000 - data memory
-    -}
+  {-
+  00000000 - dummy area
+  20000000 - instruction memory
+  40000000 - data memory
+  -}
 
-    -- The I-bus is only split once, for the D-mem and everything below.
-    (iS2M, vecToTuple . unbundle -> (iMemIM2S, dMemIM2S)) = interconnectTwo
+  -- The I-bus is only split once, for the D-mem and everything below.
+  (iS2M, vecToTuple . unbundle -> (iMemIM2S, dMemIM2S)) =
+    interconnectTwo
       (unBusAddr . iBusWbM2S <$> cpuOut)
       ((0x0000_0000, iMemIS2M) :> (0x4000_0000, dMemIS2M) :> Nil)
 
-    -- Because the dummy region should never be accessed by the instruction bus
-    -- it's just "ignored"
-    (iMemIS2M, iMemDS2M) = bootIMem (mapAddr (\x -> complement 0x2000_0000 .&. x) <$> iMemIM2S) iMemDM2S
+  -- Because the dummy region should never be accessed by the instruction bus
+  -- it's just "ignored"
+  (iMemIS2M, iMemDS2M) = bootIMem (mapAddr (\x -> complement 0x2000_0000 .&. x) <$> iMemIM2S) iMemDM2S
 
-    -- needed for 'writes' below
-    dM2S = dBusWbM2S <$> cpuOut
+  -- needed for 'writes' below
+  dM2S = dBusWbM2S <$> cpuOut
 
-    -- because of the memory map having the dummy at 0x0.., then instructions
-    -- and then data memory, the D-bus is split in an "upper" and "lower" region,
-    -- where the "upper" region is just the D-mem, the "lower" region gets split
-    -- again for the instruction memory and the dummy
-    (dS2M, vecToTuple . unbundle -> (dLowerRegionM2S, dUpperRegionM2S)) = interconnectTwo
+  -- because of the memory map having the dummy at 0x0.., then instructions
+  -- and then data memory, the D-bus is split in an "upper" and "lower" region,
+  -- where the "upper" region is just the D-mem, the "lower" region gets split
+  -- again for the instruction memory and the dummy
+  (dS2M, vecToTuple . unbundle -> (dLowerRegionM2S, dUpperRegionM2S)) =
+    interconnectTwo
       (unBusAddr <$> dM2S)
       ((0x0000_0000, dLowerRegionS2M) :> (0x4000_0000, dUpperRegionS2M) :> Nil)
 
-    (dLowerRegionS2M, vecToTuple . unbundle -> (dDummyM2S, iMemDM2S)) = interconnectTwo
+  (dLowerRegionS2M, vecToTuple . unbundle -> (dDummyM2S, iMemDM2S)) =
+    interconnectTwo
       dLowerRegionM2S
       ((0x0000_0000, dDummyS2M) :> (0x2000_0000, iMemDS2M) :> Nil)
 
-    (dUpperRegionS2M, dMemIS2M) = bootDMem dUpperRegionM2S dMemIM2S
-    dDummyS2M = dummyWb dDummyM2S
+  (dUpperRegionS2M, dMemIS2M) = bootDMem dUpperRegionM2S dMemIM2S
+  dDummyS2M = dummyWb dDummyM2S
 
-    input =
-      ( \iBus dBus ->
-          CpuIn
-            { timerInterrupt = low,
-              externalInterrupt = low,
-              softwareInterrupt = low,
-              iBusWbS2M = iBus,
-              dBusWbS2M = dBus
-            }
+  input =
+    ( \iBus dBus ->
+        CpuIn
+          { timerInterrupt = low
+          , externalInterrupt = low
+          , softwareInterrupt = low
+          , iBusWbS2M = iBus
+          , dBusWbS2M = dBus
+          }
+    )
+      <$> iS2M
+      <*> dS2M
+
+  unBusAddr = mapAddr ((`shiftL` 2) . extend @_ @_ @2)
+
+  writes =
+    mux
+      ( (busCycle <$> dM2S)
+          .&&. (strobe <$> dM2S)
+          .&&. (writeEnable <$> dM2S)
+          .&&. (acknowledge <$> dS2M)
       )
-        <$> iS2M
-        <*> dS2M
-
-    unBusAddr = mapAddr ((`shiftL` 2) . extend @_ @_ @2)
-
-    writes =
-      mux
-        ( (busCycle <$> dM2S)
-            .&&. (strobe <$> dM2S)
-            .&&. (writeEnable <$> dM2S)
-            .&&. (acknowledge <$> dS2M)
-        )
-        ( do
-            dM2S' <- dM2S
-            pure $ Just (extend $ addr dM2S' `shiftL` 2, writeData dM2S')
-        )
-        (pure Nothing)
+      ( do
+          dM2S' <- dM2S
+          pure $ Just (extend $ addr dM2S' `shiftL` 2, writeData dM2S')
+      )
+      (pure Nothing)
 
 mapAddr :: (BitVector aw1 -> BitVector aw2) -> WishboneM2S aw1 selWidth a -> WishboneM2S aw2 selWidth a
-mapAddr f wb = wb {addr = f (addr wb)}
+mapAddr f wb = wb{addr = f (addr wb)}
 
+{- | Wishbone circuit that always acknowledges every request
 
--- | Wishbone circuit that always acknowledges every request
---
--- Used for the character device. The character device address gets mapped to this
--- component because if it were to be routed to the data memory (where this address is
--- not in the valid space) it would return ERR and would halt execution.
-dummyWb :: (HiddenClockResetEnable dom) => Memory dom
+Used for the character device. The character device address gets mapped to this
+component because if it were to be routed to the data memory (where this address is
+not in the valid space) it would return ERR and would halt execution.
+-}
+dummyWb :: (HiddenClock dom, HiddenReset dom) => Memory dom
 dummyWb m2s' = delayControls m2s' (reply <$> m2s')
-  where
-    reply WishboneM2S {..} =
-      (emptyWishboneS2M @(BitVector 32)) {acknowledge = acknowledge, readData = 0}
-      where
-        acknowledge = busCycle && strobe
+ where
+  reply WishboneM2S{..} =
+    (emptyWishboneS2M @(BitVector 32)){acknowledge = acknowledge, readData = 0}
+   where
+    acknowledge = busCycle && strobe
 
-    -- \| Delays the output controls to align them with the actual read / write timing.
-    delayControls ::
-      (HiddenClockResetEnable dom, NFDataX a) =>
-      Signal dom (WishboneM2S addressWidth selWidth a) -> -- current M2S signal
-      Signal dom (WishboneS2M a) ->
-      Signal dom (WishboneS2M a)
-    delayControls m2s s2m0 = mux inCycle s2m1 (pure emptyWishboneS2M)
-      where
-        inCycle = (busCycle <$> m2s) .&&. (strobe <$> m2s)
+  -- \| Delays the output controls to align them with the actual read / write timing.
+  delayControls ::
+    (HiddenClock dom, HiddenReset dom, NFDataX a) =>
+    Signal dom (WishboneM2S addressWidth selWidth a) -> -- current M2S signal
+    Signal dom (WishboneS2M a) ->
+    Signal dom (WishboneS2M a)
+  delayControls m2s s2m0 = mux inCycle s2m1 (pure emptyWishboneS2M)
+   where
+    inCycle = (busCycle <$> m2s) .&&. (strobe <$> m2s)
 
-        -- It takes a single cycle to lookup elements in a block ram. We can therefore
-        -- only process a request every other clock cycle.
-        ack = (acknowledge <$> s2m0) .&&. (not <$> delayedAck) .&&. inCycle
-        err1 = (err <$> s2m0) .&&. inCycle
-        delayedAck = register False ack
-        delayedErr1 = register False err1
-        s2m1 =
-          (\wb newAck newErr -> wb {acknowledge = newAck, err = newErr})
-            <$> s2m0
-            <*> delayedAck
-            <*> delayedErr1
+    -- It takes a single cycle to lookup elements in a block ram. We can therefore
+    -- only process a request every other clock cycle.
+    ack = (acknowledge <$> s2m0) .&&. (not <$> delayedAck) .&&. inCycle
+    err1 = (err <$> s2m0) .&&. inCycle
+    delayedAck = withEnable enableGen $ register False ack
+    delayedErr1 = withEnable enableGen $ register False err1
+    s2m1 =
+      (\wb newAck newErr -> wb{acknowledge = newAck, err = newErr})
+        <$> s2m0
+        <*> delayedAck
+        <*> delayedErr1
