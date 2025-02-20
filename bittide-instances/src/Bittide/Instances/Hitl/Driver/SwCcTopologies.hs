@@ -189,9 +189,9 @@ driverFunc testName targets = do
       liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) gdbs
 
       -- TODO: Replace `prog_en` vio with `enable_sync_gen` vio
-      mapM_
-        (\(hwT, _) -> openHardwareTarget hwT >> updateVio "vioHitlt" [("probe_prog_en", "0")])
-        targets
+      -- mapM_
+      --   (\(hwT, _) -> openHardwareTarget hwT >> updateVio "vioHitlt" [("probe_prog_en", "0")])
+      --   targets
       -- liftIO $ mapM_ ((errorToException =<<) . Gdb.compareSections) gdbs
       liftIO $ mapM_ Gdb.continue gdbs
       mapM_ startTest targets
