@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 ROOT=$(git rev-parse --show-toplevel)
+cd "${ROOT}" || exit 1
 
 echo "Formatting Cabal files.."
 "${ROOT}"/.github/scripts/cabal-gild.sh

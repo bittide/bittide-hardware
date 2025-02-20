@@ -212,6 +212,7 @@ test-suite unittests
     Wishbone.CaptureUgn
     Wishbone.DnaPortE2
     Wishbone.ScatterGather
+    Wishbone.SwitchDemoProcessingElement
     Wishbone.Time
     Wishbone.Watchdog
 

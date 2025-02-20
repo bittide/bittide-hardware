@@ -150,6 +150,7 @@ library
     Bittide.ScatterGather
     Bittide.SharedTypes
     Bittide.Switch
+    Bittide.SwitchDemoProcessingElement
     Bittide.Transceiver
     Bittide.Transceiver.Cdc
     Bittide.Transceiver.Comma
@@ -221,6 +222,7 @@ test-suite unittests
     Tests.Shared
     Tests.StabilityChecker
     Tests.Switch
+    Tests.SwitchDemoProcessingElement
     Tests.Transceiver
     Tests.Transceiver.Prbs
     Tests.Transceiver.WordAlign

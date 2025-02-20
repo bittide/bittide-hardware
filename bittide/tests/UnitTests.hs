@@ -21,6 +21,7 @@ import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ScatterGather
 import qualified Tests.StabilityChecker
 import qualified Tests.Switch
+import qualified Tests.SwitchDemoProcessingElement
 import qualified Tests.Transceiver
 import qualified Tests.Transceiver.Prbs
 import qualified Tests.Transceiver.WordAlign
@@ -36,6 +37,7 @@ tests =
     , Tests.DoubleBufferedRam.tests
     , Tests.ElasticBuffer.tests
     , Tests.ProcessingElement.ReadElf.tests
+    , Tests.SwitchDemoProcessingElement.tests
     , Tests.ScatterGather.tests
     , Tests.StabilityChecker.tests
     , Tests.Switch.tests

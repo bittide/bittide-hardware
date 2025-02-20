@@ -28,7 +28,7 @@ default-features = false
 
 [dependencies.log]
 version = "0.4.21"
-features = ["max_level_off", "release_max_level_info"]
+features = ["max_level_trace", "release_max_level_info"]
 
 [dependencies.smoltcp]
 git = "https://github.com/smoltcp-rs/smoltcp.git"
