@@ -88,6 +88,7 @@ generateTypeDef ft = case ft of
     genField :: FT.Named FT.FieldType -> Value
     genField (name, field) = object ["name" .= name, "type" .= generateTypeDef field]
   FT.UnsignedFieldType n -> toJSON ["unsigned", toJSON n]
+  FT.IndexFieldType n -> toJSON ["index", toJSON n]
   FT.VecFieldType n ty -> toJSON ["vector", toJSON n, generateTypeDef ty]
   FT.TypeReference (FT.SumOfProductFieldType tyName _def) args ->
     toJSON ["reference", toJSON (FT.name tyName), toJSON (generateTypeDef <$> args)]

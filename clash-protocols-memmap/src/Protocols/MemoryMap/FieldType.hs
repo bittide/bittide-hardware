@@ -29,8 +29,9 @@ data FieldType
   = BoolFieldType
   | BitVectorFieldType Word
   | SignedFieldType Word
-  | SumOfProductFieldType TypeName [Named [Named FieldType]]
   | UnsignedFieldType Word
+  | IndexFieldType Word
+  | SumOfProductFieldType TypeName [Named [Named FieldType]]
   | VecFieldType Word FieldType
   | TypeReference FieldType [FieldType]
   | TypeVariable Integer
@@ -120,6 +121,9 @@ instance forall n. (KnownNat n) => ToFieldType (Signed n) where
 
 instance forall n. (KnownNat n) => ToFieldType (Unsigned n) where
   toFieldType = SignedFieldType (fromIntegral $ snatToInteger $ SNat @n)
+
+instance forall n. (KnownNat n) => ToFieldType (Index n) where
+  toFieldType = IndexFieldType (fromIntegral $ snatToInteger $ SNat @n)
 
 instance forall n a. (KnownNat n, ToFieldType a) => ToFieldType (Vec n a) where
   toFieldType = VecFieldType (fromIntegral $ snatToInteger $ SNat @n) (toFieldType @a)
