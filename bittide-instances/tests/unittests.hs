@@ -22,14 +22,14 @@ tests :: TestTree
 tests =
   testGroup
     "Unittests"
-    [ CaptureUgn.tests
+    [ Axi.tests
+    , CaptureUgn.tests
     , ClockControlWb.tests
-    , ScatterGather.tests
-    , SwitchDemoProcessingElement.tests
     , DnaPortE2.tests
     , Ord.tests
+    , ScatterGather.tests
+    , SwitchDemoProcessingElement.tests
     , Time.tests
-    , Axi.tests
     , Watchdog.tests
     ]
 
