@@ -46,7 +46,7 @@ import Clash.Shake.Extra (hexDigestFile)
 import qualified Clash.Sized.Internal.BitVector as BitVector
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
-import Control.Exception (try)
+import Control.Exception (Exception (displayException), SomeException, catch, try)
 import Control.Monad.Extra (andM, forM, forM_, orM, unless, when)
 import Control.Monad.Reader (runReaderT)
 import Data.Containers.ListUtils (nubOrd)
@@ -886,7 +886,13 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFileP
       testCaseExitCode <- case driverFunc of
         Just fn -> do
           putStrLn $ "Running custom driver function for test " <> name
-          runReaderT (fn name testData) v
+          let
+            catchException :: SomeException -> IO ExitCode
+            catchException e = do
+              putStrLn $ "Caught exception while running driver function: " <> displayException e
+              putStrLn "Carrying on to save ILA data."
+              return $ ExitFailure 3
+          catch (runReaderT (fn name testData) v) catchException
         Nothing -> do
           putStrLn $ "Running default driver function for test " <> name
 
