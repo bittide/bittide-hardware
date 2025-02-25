@@ -570,6 +570,10 @@ jobs:
             target="bitstream"
           fi
 
+          export VIVADO_HS_LOG_DIR="$(git rev-parse --show-toplevel)/_build/hitl/vivado-gensynth/"
+          if [[ ! -d "${VIVADO_HS_LOG_DIR} " ]]; then
+            mkdir -p "${VIVADO_HS_LOG_DIR}"
+          fi
           .github/scripts/with_vivado.sh \
             shake ${{ matrix.target.top }}:"${target}"
 
@@ -645,6 +649,10 @@ jobs:
 
       - name: Run tests on hardware
         run: |
+          export VIVADO_HS_LOG_DIR="$(git rev-parse --show-toplevel)/_build/hitl/vivado-run/"
+          if [[ ! -d "${VIVADO_HS_LOG_DIR} " ]]; then
+            mkdir -p "${VIVADO_HS_LOG_DIR}"
+          fi
           .github/scripts/with_vivado.sh \
             shake ${{ matrix.target.top }}:test
 
