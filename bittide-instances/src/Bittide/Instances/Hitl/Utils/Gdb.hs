@@ -115,6 +115,12 @@ setFile :: ProcessStdIoHandles -> FilePath -> IO ()
 setFile gdb filePath = do
   runCommands gdb.stdinHandle ["file " <> filePath]
 
+setTimeout :: ProcessStdIoHandles -> Maybe Int -> IO ()
+setTimeout gdb Nothing = do
+  runCommands gdb.stdinHandle ["set remotetimeout unlimited"]
+setTimeout gdb (Just (show -> time)) = do
+  runCommands gdb.stdinHandle ["set remotetimeout " <> time]
+
 -- | Sets breakpoints on functions in gdb.
 setBreakpoints :: ProcessStdIoHandles -> [String] -> IO ()
 setBreakpoints gdb breakpoints = do
