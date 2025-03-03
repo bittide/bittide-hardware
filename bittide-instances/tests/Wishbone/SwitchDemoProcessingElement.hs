@@ -90,7 +90,7 @@ dut localCounter dnaA dnaB = circuit $ do
   (uartRx, jtagIdle) <- idleSource -< ()
   [uartBus, timeBus, peBusA, peBusB] <- processingElement NoDumpVcd peConfig -< jtagIdle
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (uartBus, uartRx)
-  timeWb -< timeBus
+  _localCounter <- timeWb -< timeBus
   linkAB <- switchDemoPeWb d2 localCounter -< (peBusA, dnaAC, linkBA)
   linkBA <- switchDemoPeWb d2 localCounter -< (peBusB, dnaBC, linkAB)
   dnaAC <- signalToCSignal dnaA -< ()

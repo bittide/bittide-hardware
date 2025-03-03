@@ -67,7 +67,7 @@ dut = withClockResetEnable clockGen resetGen enableGen
       <| (watchDogWb @_ @_ @4 "50 us" (SNat @(PeriodToCycles Basic200 (Microseconds 50))))
       -< idleBusB
 
-    timeWb <| (watchDogWb @_ @_ @4 "" d0) -< timeBus
+    _localCounter <- timeWb <| (watchDogWb @_ @_ @4 "" d0) -< timeBus
     (uartTx, _uartStatus) <- (uartInterfaceWb @_ @_ @4) d2 d2 uartSim -< (uartBus, uartRx)
     idC -< uartTx
  where

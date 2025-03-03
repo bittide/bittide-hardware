@@ -578,11 +578,11 @@ timeWb ::
   , KnownNat addrW
   , 1 <= DomainPeriod dom
   ) =>
-  Circuit (Wishbone dom 'Standard addrW (Bytes 4)) ()
-timeWb = Circuit $ \(wbM2S, _) -> (mealy goMealy (False, 0, 0) wbM2S, ())
+  Circuit (Wishbone dom 'Standard addrW (Bytes 4)) (CSignal dom (Unsigned 64))
+timeWb = Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy (False, 0, 0) wbM2S
  where
   goMealy (reqCmp0, scratch0 :: Unsigned 64, count :: Unsigned 64) wbM2S =
-    ((reqCmp1, scratch1, succ count), wbS2M1)
+    ((reqCmp1, scratch1, succ count), (wbS2M1, count))
    where
     freq = natToNum @(DomainToHz dom) :: Unsigned 64
     RegisterBank (splitAtI -> (freqMsbs, freqLsbs)) = getRegsBe @8 freq

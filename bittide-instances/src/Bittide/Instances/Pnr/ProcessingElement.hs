@@ -50,7 +50,7 @@ vexRiscUartHello diffClk rst_in =
       [uartBus, timeBus] <- processingElement @Basic200 NoDumpVcd peConfig -< jtag
       (uartTx, _uartStatus) <-
         uartInterfaceWb d16 d16 (uartDf $ SNat @921600) -< (uartBus, uartRx)
-      timeWb -< timeBus
+      _localCounter <- timeWb -< timeBus
       idC -< uartTx
  where
   (clk200, rst200_) = clockWizardDifferential diffClk noReset
