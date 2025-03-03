@@ -70,7 +70,7 @@ dut = withClockResetEnable clockGen resetGen enableGen
     (uartRx, jtag) <- idleSource -< ()
     [uartBus, timeBus] <- processingElement NoDumpVcd peConfig -< jtag
     (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
-    timeWb -< timeBus
+    _localCounter <- timeWb -< timeBus
     idC -< uartTx
  where
   (iMem, dMem) =

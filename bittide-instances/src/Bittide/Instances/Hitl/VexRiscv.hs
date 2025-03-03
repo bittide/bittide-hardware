@@ -97,7 +97,7 @@ vexRiscvInner jtagIn0 uartRx =
     [timeBus, uartBus, statusRegisterBus] <- processingElement NoDumpVcd peConfig -< jtag
     (uartTx, _uartStatus) <-
       uartInterfaceWb @dom d16 d16 (uartDf baud) -< (uartBus, uartRx)
-    timeWb -< timeBus
+    _localCounter <- timeWb -< timeBus
     testResult <- statusRegister -< statusRegisterBus
     idC -< (testResult, uartTx)
 

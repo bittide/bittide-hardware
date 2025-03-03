@@ -100,7 +100,7 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
       ( circuit $ \(uartTx, gmiiRx, jtag) -> do
           [uartBus, timeBus, wbAxiRx, wbAxiTx, dnaWb, gpioWb, macWb] <- pe -< jtag
           (uartRx, _uartStatus) <- uart -< (uartBus, uartTx)
-          time -< timeBus
+          _localCounter <- time -< timeBus
           _dna <- dnaC -< dnaWb
           macStatIf -< (macWb, macStatus)
           gpioDf <- idleSource -< ()
