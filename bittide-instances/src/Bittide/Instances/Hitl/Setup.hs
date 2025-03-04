@@ -9,7 +9,6 @@ module Bittide.Instances.Hitl.Setup (
   FpgaCount,
   LinkCount,
   FpgaId,
-  TransceiverWires,
 
   -- * Topology
   allHwTargets,
@@ -35,12 +34,6 @@ import Data.Constraint.Nat (leTrans)
 type FpgaCount = 8 :: Nat
 
 type LinkCount = FpgaCount - 1
-
-{- | Data wires from/to transceivers. No logic should be inserted on these
-wires. Should be considered asynchronous to one another - even though their
-domain encodes them as related.
--}
-type TransceiverWires dom n = Signal dom (BitVector n)
 
 channelNames :: Vec LinkCount String
 channelNames =

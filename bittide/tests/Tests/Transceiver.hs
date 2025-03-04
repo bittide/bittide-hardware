@@ -15,12 +15,10 @@ import Clash.Prelude (withClock)
 import Hedgehog
 
 import Bittide.Arithmetic.Time (PeriodToCycles)
-import Bittide.SharedTypes (Bytes)
 import Clash.Annotations.Primitive (dontTranslate)
 import Clash.Cores.Xilinx.GTH (GthCore)
 import Clash.Hedgehog.Sized.Index (genIndex)
 import Clash.Signal.Internal (Signal ((:-)))
-import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (Proxy))
 import Data.Sequence (Seq ((:<|), (:|>)))
 import Test.Tasty (TestTree, adjustOption, testGroup)
@@ -29,6 +27,7 @@ import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit), testPropertyN
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Bittide.Transceiver.WordAlign as WordAlign
+import qualified Clash.Cores.Xilinx.GTH as Gth
 import qualified Data.List as List
 import qualified Data.Sequence as Seq
 import qualified Hedgehog.Gen as Gen
@@ -89,7 +88,7 @@ gthCoreMock ::
   Natural ->
   -- Offset
   Index 8 ->
-  GthCore tx tx rx rx ref free tx rx (Maybe (BitVector 64))
+  GthCore tx tx rx rx ref free tx rx
 gthCoreMock
   _name
   nRxResetCycles
@@ -112,8 +111,8 @@ gthCoreMock
   _rx1Clk
   rx2Clk
   _rxActive =
-    ( txSerial
-    , txSerial
+    ( Gth.Wire (pure 0) (SimOnly txWord)
+    , Gth.Wire (pure 0) (SimOnly txWord)
     , txOutClk
     , rxOutClk
     , rxWord
@@ -130,11 +129,8 @@ gthCoreMock
     rxWord =
       withClock rxClk
         $ WordAlign.aligner WordAlign.dealignLsbFirst (pure False) (pure offset)
-        $ fromMaybe
-        <$> noise rxClk
-        <*> rxSerial
-
-    txSerial = Just <$> txWord
+        $ Gth.unSimOnly
+        $ rxSerial.datSimulation
 
     registerRx = register rxClk rxRstRx enableGen
     registerTx = register txClk txRstAll enableGen
@@ -169,7 +165,7 @@ data Input tx rx = Input
   }
 
 dut ::
-  forall freeA freeB txA txB ref n.
+  forall freeA freeB txA txB ref.
   ( KnownDomain ref
   , HasSynchronousReset txA
   , HasDefinedInitialValues txA
@@ -185,16 +181,16 @@ dut ::
   -- | Number of word clock cycles delay from B -> A
   Natural ->
   ResetManager.Config ->
-  GthCore txA txA txB txB ref freeA txA txB (Maybe (Bytes n)) ->
-  GthCore txB txB txA txA ref freeB txB txA (Maybe (Bytes n)) ->
+  GthCore txA txA txB txB ref freeA txA txB ->
+  GthCore txB txB txA txA ref freeB txB txA ->
   Clock freeA ->
   Reset freeA ->
   Clock freeB ->
   Reset freeB ->
   Input txA txB ->
   Input txB txA ->
-  ( Transceiver.Output txA txB txA txB txA freeA (Maybe (Bytes n))
-  , Transceiver.Output txB txA txB txA txB freeB (Maybe (Bytes n))
+  ( Transceiver.Output txA txB txA txB txA freeA
+  , Transceiver.Output txB txA txB txA txB freeB
   )
 dut
   abDelay
@@ -226,7 +222,7 @@ dut
           , transceiverIndex = 0
           , channelName = "A"
           , clockPath = "clkA"
-          , rxN = delaySeqN baDelay Nothing outputB.txN
+          , rxN = Gth.mapDatSimulation (delaySeqN baDelay 0) outputB.txN
           , rxP = error "A: rxP not used in simulation"
           , txData = inputA.dat
           , txStart = inputA.txStart
@@ -250,7 +246,7 @@ dut
           , transceiverIndex = 1
           , channelName = "B"
           , clockPath = "clkB"
-          , rxN = delaySeqN abDelay Nothing outputA.txN
+          , rxN = Gth.mapDatSimulation (delaySeqN abDelay 0) outputA.txN
           , rxP = error "B: rxP not used in simulation"
           , txData = inputB.dat
           , txStart = inputB.txStart
@@ -258,12 +254,12 @@ dut
           }
 
 type DutTestFunc txA txB free =
-  Transceiver.Output txA txB txA txB txA free (Maybe (BitVector 64)) ->
-  Transceiver.Output txB txA txB txA txB free (Maybe (BitVector 64)) ->
+  Transceiver.Output txA txB txA txB txA free ->
+  Transceiver.Output txB txA txB txA txB free ->
   PropertyT IO ()
 
 type InputFunc txA txB free =
-  Transceiver.Output txA txB txA txB txA free (Maybe (BitVector 64)) ->
+  Transceiver.Output txA txB txA txB txA free ->
   Input txA txB
 
 dutRandomized ::
@@ -323,7 +319,6 @@ dutRandomized f inputA inputB Proxy = property $ do
         @txA
         @txB
         @RefIsUnused
-        @8
         abDelay
         baDelay
         resetManagerConfig

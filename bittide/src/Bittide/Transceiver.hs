@@ -178,9 +178,9 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.txReady'
   , txSamplings :: Vec n (Signal tx Bool)
   -- ^ See 'Output.txSampling'
-  , txPs :: Signal txS (BitVector n)
+  , txPs :: Gth.Wires txS tx n
   -- ^ See 'Output.txP'
-  , txNs :: Signal txS (BitVector n)
+  , txNs :: Gth.Wires txS tx n
   -- ^ See 'Output.txN'
   , rxClocks :: Vec n (Clock rx)
   -- ^ See 'Output.rxClock'
@@ -196,7 +196,7 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.stats'
   }
 
-data Output tx rx tx1 rx1 txS free serializedData = Output
+data Output tx rx tx1 rx1 txS free = Output
   { txOutClock :: Clock tx1
   -- ^ Must be routed through xilinxGthUserClockNetworkTx or equivalent to get usable clocks
   , txReset :: Reset tx
@@ -207,9 +207,9 @@ data Output tx rx tx1 rx1 txS free serializedData = Output
   -- 'Input.txStart' to be asserted before starting to send 'txData'.
   , txSampling :: Signal tx Bool
   -- ^ Data is sampled from 'Input.txData'
-  , txP :: Signal txS serializedData
+  , txP :: Gth.Wire txS tx
   -- ^ Transmit data (and implicitly a clock), positive
-  , txN :: Signal txS serializedData
+  , txN :: Gth.Wire txS tx
   -- ^ Transmit data (and implicitly a clock), negative
   , rxOutClock :: Clock rx1
   -- ^ Must be routed through xilinxGthUserClockNetworkRx or equivalent to get usable clocks
@@ -227,7 +227,7 @@ data Output tx rx tx1 rx1 txS free serializedData = Output
   -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
   }
 
-data Input tx rx tx1 rx1 ref free rxS serializedData = Input
+data Input tx rx tx1 rx1 ref free rxS = Input
   { clock :: Clock free
   -- ^ Any "always on" clock
   , reset :: Reset free
@@ -246,8 +246,8 @@ data Input tx rx tx1 rx1 ref free rxS serializedData = Input
   -- ^ Channel name, example \"X0Y18\"
   , clockPath :: String
   -- ^ Clock path, example \"clk0-2\"
-  , rxN :: Signal rxS serializedData
-  , rxP :: Signal rxS serializedData
+  , rxN :: Gth.Wire rxS rx
+  , rxP :: Gth.Wire rxS rx
   , txData :: Signal tx (BitVector 64)
   -- ^ Data to transmit to the neighbor. Is first sampled one cycle after both
   -- 'Input.txStart' and 'Output.txReady' are asserted. Is continuously sampled
@@ -274,9 +274,9 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.channelName'
   , clockPaths :: Vec n String
   -- ^ See 'Input.clockPath'
-  , rxNs :: Signal rxS (BitVector n)
+  , rxNs :: Gth.Wires rxS rx n
   -- ^ See 'Input.rxN'
-  , rxPs :: Signal rxS (BitVector n)
+  , rxPs :: Gth.Wires rxS rx n
   -- ^ See 'Input.rxP'
   , txDatas :: Vec n (Signal tx (BitVector 64))
   -- ^ See 'Input.txData'
@@ -330,8 +330,8 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
     , rxResets = map (.rxReset) outputs
     , rxDatas = map (.rxData) outputs
     , -- transceiver
-      txPs = pack <$> bundle (map (.txP) outputs)
-    , txNs = pack <$> bundle (map (.txN) outputs)
+      txPs = Gth.packWires (map (.txP) outputs)
+    , txNs = Gth.packWires (map (.txN) outputs)
     , -- free
       linkUps = map (.linkUp) outputs
     , linkReadys = map (.linkReady) outputs
@@ -347,14 +347,14 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   -- this zipWithN became unusably slow when using more then ~4 transceivers.
   -- Unfortunately this means debugIla is broken now, when using more then 1 transceiver.
   outputs =
-    (go txClockNw)
-      <$> (iterateI (+ 1) 0) -- Note that the target type is only 3 bits, so this will
+    go txClockNw
+      <$> iterateI (+ 1) 0 -- Note that the target type is only 3 bits, so this will
       -- wrap around after 8 transceivers. This is fine, as we
       -- only use this for debugging.
       <*> inputs.channelNames
       <*> inputs.clockPaths
-      <*> (unbundle (unpack <$> inputs.rxNs))
-      <*> (unbundle (unpack <$> inputs.rxPs))
+      <*> Gth.unpackWires inputs.rxNs
+      <*> Gth.unpackWires inputs.rxPs
       <*> inputs.txDatas
       <*> inputs.txStarts
       <*> inputs.rxReadys
@@ -416,12 +416,12 @@ transceiverPrbs ::
   , KnownDomain free
   ) =>
   Config free ->
-  Input tx rx tx1 rx1 ref free rxS (BitVector 1) ->
-  Output tx rx tx1 rx1 txS free (BitVector 1)
+  Input tx rx tx1 rx1 ref free rxS ->
+  Output tx rx tx1 rx1 txS free
 transceiverPrbs = transceiverPrbsWith Gth.gthCore
 
 transceiverPrbsWith ::
-  forall tx rx tx1 rx1 ref free txS rxS serializedData.
+  forall tx rx tx1 rx1 ref free txS rxS.
   ( HasSynchronousReset tx
   , HasDefinedInitialValues tx
   , HasSynchronousReset rx
@@ -435,10 +435,10 @@ transceiverPrbsWith ::
   , KnownDomain ref
   , KnownDomain free
   ) =>
-  Gth.GthCore tx1 tx rx1 rx ref free txS rxS serializedData ->
+  Gth.GthCore tx1 tx rx1 rx ref free txS rxS ->
   Config free ->
-  Input tx rx tx1 rx1 ref free rxS serializedData ->
-  Output tx rx tx1 rx1 txS free serializedData
+  Input tx rx tx1 rx1 ref free rxS ->
+  Output tx rx tx1 rx1 txS free
 transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   when opts.debugIla debugIla `hwSeqX` result
  where
@@ -524,8 +524,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       { txSampling = txUserData
       , rxData = mux rxUserData (Just <$> alignedRxData0) (pure Nothing)
       , txReady = withLockRxTx rxReadyNeighborSticky
-      , txN
-      , txP
+      , txN = txN
+      , txP = txP
       , txOutClock
       , txReset
       , rxOutClock
@@ -550,10 +550,10 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
     , reset_rx_done
     , _txpmaresetdone_out
     , _rxpmaresetdone_out
-    , (rxCtrl0 :: Signal rx (BitVector 16))
-    , (rxCtrl1 :: Signal rx (BitVector 16))
-    , (rxCtrl2 :: Signal rx (BitVector 8))
-    , (rxCtrl3 :: Signal rx (BitVector 8))
+    , rxCtrl0 :: Signal rx (BitVector 16)
+    , rxCtrl1 :: Signal rx (BitVector 16)
+    , rxCtrl2 :: Signal rx (BitVector 8)
+    , rxCtrl3 :: Signal rx (BitVector 8)
     ) =
       gthCore
         args.channelName

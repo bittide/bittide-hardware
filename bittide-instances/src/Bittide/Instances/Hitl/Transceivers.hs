@@ -35,12 +35,12 @@ import Bittide.Instances.Hitl.Setup
 import Bittide.Transceiver
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Xilinx.ClockGen
 import Data.Maybe (fromMaybe, isJust)
 
 import qualified Bittide.Transceiver.ResetManager as ResetManager
+import qualified Clash.Cores.Xilinx.GTH as Gth
 import qualified Clash.Explicit.Prelude as E
 import qualified Data.List as L
 import qualified Data.Map as Map
@@ -84,11 +84,11 @@ goTransceiversUpTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
-  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
-  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_NS" ::: Gth.Wires GthRxS GthRx LinkCount ->
+  "GTH_RX_PS" ::: Gth.Wires GthRxS GthRx LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
-  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
+  ( "GTH_TX_NS" ::: Gth.Wires GthTxS GthTx LinkCount
+  , "GTH_TX_PS" ::: Gth.Wires GthTxS GthTx LinkCount
   , "allUp" ::: Signal Basic125 Bool
   , "anyErrors" ::: Signal Basic125 Bool
   , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
@@ -182,11 +182,11 @@ transceiversUpTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_125" ::: DiffClock Ext125 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
-  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_NS" ::: Gth.Wires GthRxS GthRx LinkCount ->
+  "GTH_RX_PS" ::: Gth.Wires GthRxS GthRx LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
-  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
+  ( "GTH_TX_NS" ::: Gth.Wires GthTxS GthTx LinkCount
+  , "GTH_TX_PS" ::: Gth.Wires GthTxS GthTx LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "spiDone" ::: Signal Basic125 Bool
   , ""
@@ -198,7 +198,7 @@ transceiversUpTest ::
 transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (txns, txps, syncOut, spiDone, spiOut)
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
+  refClk = Gth.ibufds_gte3 refClkDiff :: Clock Ext200
 
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
 

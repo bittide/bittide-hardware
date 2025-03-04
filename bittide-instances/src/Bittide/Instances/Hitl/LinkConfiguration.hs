@@ -37,7 +37,6 @@ import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
 import Clash.Cores.Xilinx.Xpm.Cdc.Single
 import Clash.Xilinx.ClockGen
@@ -45,6 +44,7 @@ import Data.Maybe (fromMaybe, isJust)
 
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
+import qualified Clash.Cores.Xilinx.GTH as Gth
 
 {- | Checks whether the received index matches with the corresponding
 entry in 'Bittide.Instances.Hitl.Setup.fpgaSetup' and sychronizes
@@ -115,11 +115,11 @@ transceiversStartAndObserve ::
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
   "MY_INDEX" ::: Signal Basic125 (Index FpgaCount) ->
-  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
-  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_NS" ::: Gth.Wires GthRxS GthRx LinkCount ->
+  "GTH_RX_PS" ::: Gth.Wires GthRxS GthRx LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
-  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
+  ( "GTH_TX_NS" ::: Gth.Wires GthTxS GthTx LinkCount
+  , "GTH_TX_PS" ::: Gth.Wires GthTxS GthTx LinkCount
   , "allReady" ::: Signal Basic125 Bool
   , "success" ::: Signal Basic125 Bool
   , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
@@ -209,11 +209,11 @@ linkConfigurationTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_125" ::: DiffClock Ext125 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
-  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_NS" ::: Gth.Wires GthRxS GthRx LinkCount ->
+  "GTH_RX_PS" ::: Gth.Wires GthRxS GthRx LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
-  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
+  ( "GTH_TX_NS" ::: Gth.Wires GthTxS GthTx LinkCount
+  , "GTH_TX_PS" ::: Gth.Wires GthTxS GthTx LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "spiDone" ::: Signal Basic125 Bool
   , ""
@@ -225,7 +225,7 @@ linkConfigurationTest ::
 linkConfigurationTest refClkDiff sysClkDiff syncIn rxns rxps miso =
   (txns, txps, syncOut, spiDone, spiOut)
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
+  refClk = Gth.ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
 
   -- the test starts with a valid configuration coming in
