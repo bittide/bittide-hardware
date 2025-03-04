@@ -30,7 +30,7 @@ prop_genNatural = property $ do
 
 prop_makeDefinedRandomBitVector :: Property
 prop_makeDefinedRandomBitVector = property $ do
-  someBv <- forAll $ (genSomeBitVector @_ @0) (Range.linear 0 1024) genBitVector
+  someBv <- forAll $ (genSomeBitVector @0) (Range.linear 0 1024) genBitVector
   case someBv of
     SomeBitVector SNat bv -> do
       definedBv <- evalIO $ makeDefinedRandom bv

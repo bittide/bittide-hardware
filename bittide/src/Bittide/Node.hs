@@ -13,7 +13,7 @@ import Clash.Sized.Vector.ToTuple (vecToTuple)
 
 import Protocols
 import Protocols.Idle
-import Protocols.Internal (vecCircuits)
+import Protocols.Vec (vecCircuits)
 import Protocols.Wishbone
 import VexRiscv
 

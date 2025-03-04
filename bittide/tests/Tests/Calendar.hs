@@ -146,8 +146,8 @@ genCalendarConfig ms elemGen = do
     SNat depthB ->
     Gen (CalendarConfig nBytes addrW a)
   go dMax SNat SNat = do
-    calActive <- genVec @_ @depthA elemGen
-    calShadow <- genVec @_ @depthB elemGen
+    calActive <- genVec @depthA elemGen
+    calShadow <- genVec @depthB elemGen
     return $ CalendarConfig dMax calActive calShadow
 
 genValidEntry :: SNat repetitionBits -> Gen a -> Gen (ValidEntry a repetitionBits)
@@ -325,7 +325,7 @@ metaCycleIndication = property $ do
       let
         genDepth =
           fromIntegral
-            <$> genIndex @_ @calDepth
+            <$> genIndex @calDepth
               (Range.constant 2 (fromIntegral $ pred calSize))
       newDepths <- forAll $ Gen.list (Range.singleton (metaCycles - 1)) genDepth
       let

@@ -123,7 +123,7 @@ readDoubleBufferedRam = property $ do
   ramContents <-
     forAll
       $ genRamContents ramDepth
-      $ genUnsigned @_ @64 Range.constantBounded
+      $ genUnsigned @64 Range.constantBounded
   case ramContents of
     SomeVec SNat (contentsSingle :: Vec (n + 1) (Unsigned 64)) -> do
       simLength <- forAll $ Gen.int (Range.constant 1 100)
@@ -155,7 +155,7 @@ readWriteDoubleBufferedRam = property $ do
   ramContents <-
     forAll
       $ genRamContents ramDepth
-      $ genUnsigned @_ @64 Range.constantBounded
+      $ genUnsigned @64 Range.constantBounded
   let minSimLength = 2 * ramDepth
   simLength <- forAll $ Gen.int (Range.constant minSimLength 100)
   case ramContents of
@@ -406,7 +406,7 @@ readWriteRegisterByteAddressable = property $ do
       Just Refl -> do
         simLength <- forAll $ Gen.enum 1 100
         let
-          writeGen = genNonEmptyVec @_ @nBytes $ genDefinedBitVector @8
+          writeGen = genNonEmptyVec @nBytes $ genDefinedBitVector @8
         initVal <- forAll writeGen
         writes <- forAll $ Gen.list (Range.singleton simLength) writeGen
         byteEnables <-
@@ -783,7 +783,7 @@ testContentGen = property $ do
     SomeNat n -> go n
  where
   go (Proxy :: Proxy v) = do
-    content <- forAll $ genVec @_ @v (genUnsigned @_ @32 Range.constantBounded)
+    content <- forAll $ genVec @v (genUnsigned @32 Range.constantBounded)
     let
       l = length content
       simLength = 2 + l * 2
@@ -806,7 +806,7 @@ wbStorageSpecCompliance = property $ do
  where
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
   go SNat = do
-    content <- forAll $ genNonEmptyVec @_ @v (genDefinedBitVector @32)
+    content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
     wcre
       $ wishbonePropWithModel @System
         defExpectOptions
@@ -852,7 +852,7 @@ wbStorageBehavior = property $ do
   go ::
     forall words m. (KnownNat words, 2 <= words, Monad m) => SNat words -> PropertyT m ()
   go SNat = do
-    content <- forAll $ genVec @_ @words genDefinedBitVector
+    content <- forAll $ genVec @words genDefinedBitVector
     wbRequests <-
       forAll
         $ Gen.list
@@ -938,7 +938,7 @@ wbStorageRangeErrors = property $ do
  where
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
   go SNat = do
-    content <- forAll $ genNonEmptyVec @_ @v (genDefinedBitVector @32)
+    content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
     wcre
       $ wishbonePropWithModel @System
         defExpectOptions
@@ -1017,7 +1017,7 @@ wbStorageProtocolsModel = property $ do
  where
   go :: forall v m. (KnownNat v, 1 <= v, Monad m) => SNat v -> PropertyT m ()
   go SNat = do
-    content <- forAll $ genNonEmptyVec @_ @v (genDefinedBitVector @32)
+    content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
     wcre
       $ wishbonePropWithModel @System
         defExpectOptions

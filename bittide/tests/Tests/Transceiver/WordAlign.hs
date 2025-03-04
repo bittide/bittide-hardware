@@ -92,9 +92,9 @@ prop_alignDealign ::
 prop_alignDealign alignFn dealignFn = property $ do
   nMinusOne <- forAll $ Gen.integral (Range.linear 0 16)
   withSomeSNat nMinusOne $ \(succSNat -> SNat :: SNat n) -> do
-    offset <- forAll $ genIndex @_ @n Range.constantBounded
+    offset <- forAll $ genIndex @n Range.constantBounded
     nCycles <- forAll $ Gen.integral (Range.linear 0 64)
-    input <- forAll $ Gen.list (Range.singleton nCycles) (genDefinedBitVector @_ @(8 * n))
+    input <- forAll $ Gen.list (Range.singleton nCycles) (genDefinedBitVector @(8 * n))
 
     withClock @XilinxSystem clockGen $ do
       let
