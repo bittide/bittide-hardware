@@ -66,11 +66,7 @@ vexRiscvTcpTest diffClk cpuReset sgmiiClk inp = testStarted `hwSeqX` (j, u, s)
       , t_output =
           PortProduct
             ""
-            [ PortProduct
-                "JTAG"
-                [ PortName "TDO"
-                , PortName "RST"
-                ]
+            [ PortName "JTAG_TDO"
             , PortName "USB_UART_RXD"
             , PortProduct
                 "SGMII"

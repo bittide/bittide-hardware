@@ -8,12 +8,12 @@
 
 module Bittide.ProcessingElement where
 
-import Clash.Explicit.Prelude (unsafeOrReset)
+import Clash.Explicit.Prelude hiding (delay)
 import Clash.Prelude
 
 import Protocols
 import Protocols.Wishbone
-import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, JtagOut (debugReset), vexRiscv)
+import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, vexRiscv)
 
 import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
@@ -116,7 +116,7 @@ rvCircuit dumpVcd tInterrupt sInterrupt eInterrupt = Circuit go
       CpuIn{timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M}
     rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
     (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock (hasReset `unsafeOrReset` jtagReset) rvIn jtagIn
-    jtagReset = unsafeFromActiveHigh (delay False (bitToBool . debugReset <$> jtagOut))
+    jtagReset = unsafeFromActiveHigh (delay False (bitToBool . ndmreset <$> cpuOut))
 
 -- | Map a function over the address field of 'WishboneM2S'
 mapAddr ::

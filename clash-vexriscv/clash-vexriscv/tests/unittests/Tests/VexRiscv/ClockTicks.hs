@@ -1,62 +1,61 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TemplateHaskell #-}
-
+-- Clock definitions aren't much more readable with top level signatures..
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
 -- Suppress Clash domain warnings
 {-# OPTIONS_GHC -Wno-orphans #-}
 
--- Clock definitions aren't much more readable with top level signatures..
-{-# OPTIONS_GHC -Wno-missing-signatures #-}
-
 module Tests.VexRiscv.ClockTicks where
 
-import qualified Prelude as P
-import Clash.Explicit.Prelude hiding (d122, d107, d61)
-
-import VexRiscv.ClockTicks
-  ( ClockEdgeAB(..), clockTicksAbsolute, clockTicksRelative
-  , clockEdgesAbsolute, clockEdgesRelative
-  )
-import Clash.Signal.Internal (ClockAB(..), Femtoseconds(..), clockTicks, dynamicClockGen)
-
+import Clash.Explicit.Prelude hiding (d107, d122, d61)
+import Clash.Signal.Internal (ClockAB (..), Femtoseconds (..), clockTicks, dynamicClockGen)
 import Data.Bifunctor (second)
-import qualified Data.List as L
-import Data.Maybe (catMaybes)
 import Data.Int (Int64)
-
+import Data.Maybe (catMaybes)
 import Test.Tasty
-import Test.Tasty.TH
 import Test.Tasty.HUnit
+import Test.Tasty.TH
+
+import qualified Data.List as L
+import qualified Prelude as P
 
 import Tests.Extra (carthesianProductTests)
+import VexRiscv.ClockTicks (
+  ClockEdgeAB (..),
+  clockEdgesAbsolute,
+  clockEdgesRelative,
+  clockTicksAbsolute,
+  clockTicksRelative,
+ )
 
-createDomain vSystem{vName="R61", vPeriod=61}
-createDomain vSystem{vName="R107", vPeriod=107}
-createDomain vSystem{vName="R122", vPeriod=122}
+createDomain vSystem{vName = "R61", vPeriod = 61}
+createDomain vSystem{vName = "R107", vPeriod = 107}
+createDomain vSystem{vName = "R122", vPeriod = 122}
 
-createDomain vSystem{vName="F61", vPeriod=61, vActiveEdge=Falling}
-createDomain vSystem{vName="F107", vPeriod=107, vActiveEdge=Falling}
-createDomain vSystem{vName="F122", vPeriod=122, vActiveEdge=Falling}
+createDomain vSystem{vName = "F61", vPeriod = 61, vActiveEdge = Falling}
+createDomain vSystem{vName = "F107", vPeriod = 107, vActiveEdge = Falling}
+createDomain vSystem{vName = "F122", vPeriod = 122, vActiveEdge = Falling}
 
-createDomain vSystem{vName="D61", vPeriod=61}
-createDomain vSystem{vName="D107", vPeriod=107}
-createDomain vSystem{vName="D122", vPeriod=122}
+createDomain vSystem{vName = "D61", vPeriod = 61}
+createDomain vSystem{vName = "D107", vPeriod = 107}
+createDomain vSystem{vName = "D122", vPeriod = 122}
 
-r61  = clockGen @R61
+r61 = clockGen @R61
 r107 = clockGen @R107
 r122 = clockGen @R122
 
-f61  = clockGen @F61
+f61 = clockGen @F61
 f107 = clockGen @F107
 f122 = clockGen @F122
 
--- | Used in production code. We're seeing strange things there, so we add some
--- tests here making sure that it's not this module messing up.
-createDomain vXilinxSystem{vName="CPU"}
-createDomain vXilinxSystem{vName="JTAG", vPeriod=hzToPeriod 50_000}
+{- | Used in production code. We're seeing strange things there, so we add some
+tests here making sure that it's not this module messing up.
+-}
+createDomain vXilinxSystem{vName = "CPU"}
+createDomain vXilinxSystem{vName = "JTAG", vPeriod = hzToPeriod 50_000}
 
 -- | Clock whose clock period differs slightly from 61 ps every tick
 d61 :: Clock D61
@@ -65,25 +64,26 @@ d61 = dynamicClockGen (fromList periods)
   -- Note that the random values are subtracted as femtoseconds. This makes sure
   -- we end up with periods that are not divisable by 2, triggering an interesting
   -- test case.
-  periods = P.cycle $ (\r -> Femtoseconds (1000*61 + r)) <$> rands
-  rands  = [2, 3, 5, 8,-1, 7, -8, -2, -5, -7, -10, -9, 1, -3, 10, 0, 6,-6, 9, -4, 4]
+  periods = P.cycle $ (\r -> Femtoseconds (1000 * 61 + r)) <$> rands
+  rands = [2, 3, 5, 8, -1, 7, -8, -2, -5, -7, -10, -9, 1, -3, 10, 0, 6, -6, 9, -4, 4]
 
 -- | Clock whose clock period differs slightly from 107 ps every tick
 d107 :: Clock D107
 d107 = dynamicClockGen (fromList periods)
  where
-  periods = P.cycle $ (\r -> Femtoseconds (1000*107 + r)) <$> rands
+  periods = P.cycle $ (\r -> Femtoseconds (1000 * 107 + r)) <$> rands
   rands = [-1, -5, -3, 2, -8, -4, 8, -9, 9, 5, -6, 1, 6, 4, 0, 3, 7, -2, -7, 10, -10]
 
 -- | Clock whose clock period differs slightly from 122 ps every tick
 d122 :: Clock D122
 d122 = dynamicClockGen (fromList periods)
  where
-  periods = P.cycle $ (\r -> Femtoseconds (1000*122 + r)) <$> rands
+  periods = P.cycle $ (\r -> Femtoseconds (1000 * 122 + r)) <$> rands
   rands = [0, 3, -8, -6, 10, -9, -4, -3, 5, 1, -10, 8, -1, 4, 6, -5, 2, -7, -2, 9, 7]
 
--- | Compare to "infinite" lists, by comparing the first /N/ samples. See
--- implemenation for the value of /N/.
+{- | Compare to "infinite" lists, by comparing the first /N/ samples. See
+implemenation for the value of /N/.
+-}
 infEq :: (Eq a, Show a) => [a] -> [a] -> Assertion
 infEq as bs = let n = 10000 in P.take n as @=? P.take n bs
 
@@ -99,7 +99,7 @@ toClockAB filterA filterB = go
     | edgeB == filterB = Just ClockB
   go _ = Nothing
 
-clockToActiveEdge :: forall dom. KnownDomain dom => Clock dom -> ActiveEdge
+clockToActiveEdge :: forall dom. (KnownDomain dom) => Clock dom -> ActiveEdge
 clockToActiveEdge _clk = case activeEdge @dom of
   SRising -> Rising
   SFalling -> Falling
@@ -126,24 +126,27 @@ unzipFirst f (P.unzip -> (as, cs)) = P.zip (f as) cs
 unzipSecond :: ([a] -> [b]) -> [(c, a)] -> [(c, b)]
 unzipSecond f (P.unzip -> (cs, as)) = P.zip cs (f as)
 
--- | Check that 'clockTicksAbsolute' produces the same ratio of clock ticks as
--- @clash-prelude@'s 'clockTicks'
+{- | Check that 'clockTicksAbsolute' produces the same ratio of clock ticks as
+@clash-prelude@'s 'clockTicks'
+-}
 case_eqClockTicksAbsolute :: Assertion
 case_eqClockTicksAbsolute =
   $(carthesianProductTests ["r61", "r107", "r122", "d61", "d107", "d122", "f61", "f107", "f122"])
  where
   test a b = fmap snd (clockTicksAbsolute a b) `infEq` clockTicks a b
 
--- | Check that 'clockTicksRelative' produces the same ratio of clock ticks as
--- @clash-prelude@'s 'clockTicks'
+{- | Check that 'clockTicksRelative' produces the same ratio of clock ticks as
+@clash-prelude@'s 'clockTicks'
+-}
 case_eqClockTicksRelative :: Assertion
 case_eqClockTicksRelative =
   $(carthesianProductTests ["r61", "r107", "r122", "d61", "d107", "d122", "f61", "f107", "f122"])
  where
   test a b = fmap snd (clockTicksRelative a b) `infEq` clockTicks a b
 
--- | Check that 'clockEdgesAbsolute' produces the same ratio of clock ticks as
--- @clash-prelude@'s 'clockTicks'
+{- | Check that 'clockEdgesAbsolute' produces the same ratio of clock ticks as
+@clash-prelude@'s 'clockTicks'
+-}
 case_eqClockEdgesAbsolute :: Assertion
 case_eqClockEdgesAbsolute =
   $(carthesianProductTests ["r61", "r107", "r122", "d61", "d107", "d122", "f61", "f107", "f122"])
@@ -151,8 +154,9 @@ case_eqClockEdgesAbsolute =
   test a b = go a b (clockEdgesAbsolute a b) `infEq` clockTicks a b
   go a b = toClockABs (clockToActiveEdge a) (clockToActiveEdge b) . fmap snd
 
--- | Check that 'clockEdgesRelative' produces the same ratio of clock ticks as
--- @clash-prelude@'s 'clockTicks'
+{- | Check that 'clockEdgesRelative' produces the same ratio of clock ticks as
+@clash-prelude@'s 'clockTicks'
+-}
 case_eqClockEdgesRelative :: Assertion
 case_eqClockEdgesRelative =
   $(carthesianProductTests ["r61", "r107", "r122", "d61", "d107", "d122", "f61", "f107", "f122"])
@@ -160,8 +164,9 @@ case_eqClockEdgesRelative =
   test a b = go a b (clockEdgesRelative a b) `infEq` clockTicks a b
   go a b = toClockABs (clockToActiveEdge a) (clockToActiveEdge b) . fmap snd
 
--- | Check that 'clockEdgesAbsolute' produces the same ratio of clock ticks and
--- same timestamps as 'clockTicksAbsolute'.
+{- | Check that 'clockEdgesAbsolute' produces the same ratio of clock ticks and
+same timestamps as 'clockTicksAbsolute'.
+-}
 case_eqClockEdgesTicksAbsolute :: Assertion
 case_eqClockEdgesTicksAbsolute =
   $(carthesianProductTests ["r61", "r107", "r122", "d61", "d107", "d122", "f61", "f107", "f122"])
@@ -174,8 +179,9 @@ case_eqClockEdgesTicksAbsolute =
     maybeTimes = Just <$> times
     maybeEdges = toClockAB (clockToActiveEdge a) (clockToActiveEdge b) <$> edges
 
--- | Check that 'clockEdgesRelative' produces the same ratio of clock ticks and
--- same timestamps as 'clockTicksRelative'.
+{- | Check that 'clockEdgesRelative' produces the same ratio of clock ticks and
+same timestamps as 'clockTicksRelative'.
+-}
 case_eqClockEdgesTicksRelative :: Assertion
 case_eqClockEdgesTicksRelative =
   $(carthesianProductTests ["r61", "r107", "r122", "d61", "d107", "d122", "f61", "f107", "f122"])
@@ -196,8 +202,9 @@ case_eqClockEdgesTicksRelative =
     maybeEdges :: [Maybe ClockAB]
     maybeEdges = toClockAB (clockToActiveEdge a) (clockToActiveEdge b) <$> edges
 
--- | Check that `clockTicksRelative` has a sane time in between events when it
--- gets passed two of the same clocks.
+{- | Check that `clockTicksRelative` has a sane time in between events when it
+gets passed two of the same clocks.
+-}
 case_sanityClockTicksRelativeSame :: Assertion
 case_sanityClockTicksRelativeSame = do
   test r61
@@ -210,9 +217,10 @@ case_sanityClockTicksRelativeSame = do
   test c = clockTicksRelative c c `infEq` expected c
   expected c = P.zip (0 : P.repeat (1000 * clockToPeriod c)) (P.repeat ClockAB)
 
--- | Check that `clockTicksRelative` has a sane time in between events when it
--- gets passed one fast clock and one slow clock, where the fast clock is exactly
--- twice as fast as the slow clock.
+{- | Check that `clockTicksRelative` has a sane time in between events when it
+gets passed one fast clock and one slow clock, where the fast clock is exactly
+twice as fast as the slow clock.
+-}
 case_sanityClockTicksRelativeDouble :: Assertion
 case_sanityClockTicksRelativeDouble = do
   test r61 r122
@@ -220,8 +228,9 @@ case_sanityClockTicksRelativeDouble = do
   test c0 c1 = clockTicksRelative c0 c1 `infEq` expected c0 c1
   expected c0 _c1 = P.zip (0 : P.repeat (1000 * clockToPeriod c0)) (P.cycle [ClockAB, ClockA])
 
--- | Check that `clockTicksRelative` has a sane time in between events when it
--- gets passed two of the same clocks.
+{- | Check that `clockTicksRelative` has a sane time in between events when it
+gets passed two of the same clocks.
+-}
 case_sanityClockEdgesRelativeSame :: Assertion
 case_sanityClockEdgesRelativeSame = do
   test r61
@@ -234,9 +243,10 @@ case_sanityClockEdgesRelativeSame = do
   test c = clockTicksRelative c c `infEq` expected c
   expected c = P.zip (0 : P.repeat (1000 * clockToPeriod c)) (P.repeat ClockAB)
 
--- | Check that `clockTicksRelative` has a sane time in between events when it
--- gets passed one fast clock and one slow clock, where the fast clock is exactly
--- twice as fast as the slow clock.
+{- | Check that `clockTicksRelative` has a sane time in between events when it
+gets passed one fast clock and one slow clock, where the fast clock is exactly
+twice as fast as the slow clock.
+-}
 case_sanityClockEdgesRelativeDouble :: Assertion
 case_sanityClockEdgesRelativeDouble = do
   test r61 r122
@@ -245,11 +255,13 @@ case_sanityClockEdgesRelativeDouble = do
   expected c0 _c1 =
     P.zip
       (0 : P.repeat ((1000 * clockToPeriod c0) `div` 2))
-      (P.cycle [ ClockEdgeAB Rising Rising
-               , ClockEdgeA  Falling
-               , ClockEdgeAB Rising Falling
-               , ClockEdgeA  Falling
-               ])
+      ( P.cycle
+          [ ClockEdgeAB Rising Rising
+          , ClockEdgeA Falling
+          , ClockEdgeAB Rising Falling
+          , ClockEdgeA Falling
+          ]
+      )
 
 -- | Make sure that swapping the arguments makes no difference for timing calculations
 case_flipped :: Assertion
@@ -259,8 +271,8 @@ case_flipped =
   test a b = do
     clockEdgesAbsolute a b `infEq` P.map (second flipClockEdge) (clockEdgesAbsolute b a)
     clockEdgesRelative a b `infEq` P.map (second flipClockEdge) (clockEdgesRelative b a)
-    clockTicksAbsolute a b `infEq` P.map (second flipClock)     (clockTicksAbsolute b a)
-    clockTicksRelative a b `infEq` P.map (second flipClock)     (clockTicksRelative b a)
+    clockTicksAbsolute a b `infEq` P.map (second flipClock) (clockTicksAbsolute b a)
+    clockTicksRelative a b `infEq` P.map (second flipClock) (clockTicksRelative b a)
 
   flipClockEdge :: ClockEdgeAB -> ClockEdgeAB
   flipClockEdge (ClockEdgeA edge) = ClockEdgeB edge
@@ -272,9 +284,10 @@ case_flipped =
   flipClock ClockB = ClockA
   flipClock ClockAB = ClockAB
 
--- | Check results produced by 'clockTicksAbsolute' and 'clockEdgesAbsolute' manually
--- to rule out functions in "ClockTicks" causing the strange behavior we're seeing
--- in production.
+{- | Check results produced by 'clockTicksAbsolute' and 'clockEdgesAbsolute' manually
+to rule out functions in "ClockTicks" causing the strange behavior we're seeing
+in production.
+-}
 case_sanityJtagCpu :: Assertion
 case_sanityJtagCpu = do
   expectedAbsJtagEdges `infEq` P.map fst absJtagEdges

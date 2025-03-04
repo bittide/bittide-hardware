@@ -3,23 +3,25 @@
 -- SPDX-License-Identifier: Apache-2.0
 module Tests.VexRiscv.Random where
 
-import Clash.Prelude
-
 import Clash.Hedgehog.Sized.BitVector
+import Clash.Prelude
 import Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
-import VexRiscv.Random
 
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
+import VexRiscv.Random
+
 tests :: TestTree
-tests = testGroup "VexRiscv.Random"
-  [ testProperty "genNatural" prop_genNatural
-  , testProperty "makeDefinedRandomBitVector" prop_makeDefinedRandomBitVector
-  , testProperty "makeDefinedRandomBit" prop_makeDefinedRandomBit
-  ]
+tests =
+  testGroup
+    "VexRiscv.Random"
+    [ testProperty "genNatural" prop_genNatural
+    , testProperty "makeDefinedRandomBitVector" prop_makeDefinedRandomBitVector
+    , testProperty "makeDefinedRandomBit" prop_makeDefinedRandomBit
+    ]
 
 prop_genNatural :: Property
 prop_genNatural = property $ do

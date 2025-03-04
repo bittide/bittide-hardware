@@ -131,7 +131,7 @@ dut ::
 dut =
   withClockResetEnable
     clockGen
-    resetGen
+    (resetGenN d2)
     enableGen
     $ circuit
     $ \_unit -> do

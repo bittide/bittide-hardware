@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2025 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+indentation: 2
+
+# For newer versions not yet on Nix:
+# import-grouping: by-scope-then-qualified

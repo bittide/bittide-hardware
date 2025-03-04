@@ -39,7 +39,7 @@ sim = putStr simResult
 simResult :: String
 simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
  where
-  uartStream = sampleC def $ withClockResetEnable clockGen resetGen enableGen $ dut @System
+  uartStream = sampleC def $ withClockResetEnable clockGen (resetGenN d2) enableGen $ dut @System
 
 -- | Test whether we can read the DNA from the DNA port peripheral.
 case_dna_port_self_test :: Assertion
