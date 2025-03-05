@@ -23,10 +23,10 @@ import Project.FilePath
 import Control.Monad (forM_)
 import Data.Char
 import Data.Maybe
-import Language.Haskell.TH
 import Protocols
 import Protocols.Idle
 import System.FilePath
+import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
@@ -62,8 +62,7 @@ case_time_rust_self_test =
 {- | A simple instance containing just VexRisc and UART as peripheral.
 Runs the `hello` binary from `firmware-binaries`.
 -}
-dut ::
-  Circuit () (Df Basic50 (BitVector 8))
+dut :: Circuit () (Df Basic50 (BitVector 8))
 dut = withClockResetEnable clockGen resetGen enableGen
   $ circuit
   $ \_unit -> do
@@ -73,24 +72,23 @@ dut = withClockResetEnable clockGen resetGen enableGen
     _localCounter <- timeWb -< timeBus
     idC -< uartTx
  where
-  (iMem, dMem) =
-    $( do
-        root <- runIO $ findParentContaining "cabal.project"
-        let
-          elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "time_self_test"
-          iSize = 64 * 1024 -- 64 KB
-          dSize = 64 * 1024 -- 64 KB
-        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
-     )
+  memMap = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
+  peConfig = unsafePerformIO $ do
+    root <- findParentContaining "cabal.project"
+    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "time_self_test"
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    pure
+      PeConfig
+        { memMapConfig = memMap
+        , initI = Reloadable (Vec iMem)
+        , initD = Reloadable (Vec dMem)
+        , iBusTimeout = d0 -- No timeouts on the instruction bus
+        , dBusTimeout = d0 -- No timeouts on the data bus
+        }
+{-# NOINLINE dut #-}
 
-  peConfig =
-    PeConfig
-      { memMapConfig = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
-      , initI = Reloadable $ Blob iMem
-      , initD = Reloadable $ Blob dMem
-      , iBusTimeout = d0 -- No timeouts on the instruction bus
-      , dBusTimeout = d0 -- No timeouts on the data bus
-      }
+type IMemWords = DivRU (64 * 1024) 4
+type DMemWords = DivRU (32 * 1024) 4
 
 data TestResult = TestResult String (Maybe String) deriving (Show)
 

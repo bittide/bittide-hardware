@@ -18,11 +18,11 @@ import Clash.Signal (withClockResetEnable)
 import Data.Char (chr)
 import Data.Maybe (mapMaybe)
 import Data.String.Interpolate
-import Language.Haskell.TH
 import Project.FilePath
 import Protocols
 import Protocols.Idle
 import System.FilePath
+import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
@@ -150,24 +150,25 @@ dut =
       _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (dbgWb, cm)
       idC -< (uartTx, ccd1)
  where
-  (iMem, dMem) =
-    $( do
-        root <- runIO $ findParentContaining "cabal.project"
-        let
-          elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "clock-control-wb"
-          iSize = 8 * 1024 -- 16 KB
-          dSize = 64 * 1024 -- 256 KB
-        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
-     )
+  memMap = 0b100 :> 0b010 :> 0b001 :> 0b110 :> 0b111 :> Nil
+  peConfig = unsafePerformIO $ do
+    root <- findParentContaining "cabal.project"
+    let
+      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
+      elfPath = elfDir </> "clock-control-wb"
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    pure
+      PeConfig
+        { memMapConfig = memMap
+        , initI = Reloadable (Vec iMem)
+        , initD = Reloadable (Vec dMem)
+        , iBusTimeout = d0
+        , dBusTimeout = d0
+        }
+{-# NOINLINE dut #-}
 
-  peConfig =
-    PeConfig
-      { memMapConfig = 0b100 :> 0b010 :> 0b001 :> 0b110 :> 0b111 :> Nil
-      , initI = Reloadable $ Blob iMem
-      , initD = Reloadable $ Blob dMem
-      , iBusTimeout = d0 -- No timeouts on the instruction bus
-      , dBusTimeout = d0 -- No timeouts on the data bus
-      }
+type IMemWords = DivRU (64 * 1024) 4
+type DMemWords = DivRU (32 * 1024) 4
 
 -- | Parse the output of the UART
 resultParser :: Parser SerialResult

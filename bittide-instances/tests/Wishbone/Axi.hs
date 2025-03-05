@@ -26,12 +26,12 @@ import Control.Monad (forM_)
 import Data.Char
 import Data.Maybe
 import Data.Proxy
-import Language.Haskell.TH
 import Protocols
 import Protocols.Axi4.Stream
 import Protocols.Idle
 import Protocols.Wishbone
 import System.FilePath
+import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
@@ -42,6 +42,8 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 -- Qualified
 import qualified Protocols.Df as Df
 import qualified Protocols.DfConv as DfConv
+
+-- {-# ANN module "HLint: Missing NOINLINE pragma" #-}
 
 sim :: IO ()
 sim =
@@ -88,21 +90,23 @@ dut =
       idC -< uartRx
  where
   axiProxy = Proxy @(Axi4Stream System ('Axi4StreamConfig 4 0 0) ())
-  (iMem, dMem) =
-    $( do
-        root <- runIO $ findParentContaining "cabal.project"
-        let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "axi_stream_self_test"
-        memBlobsFromElf BigEndian (Nothing, Nothing) elfPath Nothing
-     )
+  memMap = 0b000 :> 0b001 :> 0b010 :> 0b011 :> 0b100 :> 0b101 :> Nil
+  peConfig = unsafePerformIO $ do
+    root <- findParentContaining "cabal.project"
+    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "axi_stream_self_test"
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    pure
+      PeConfig
+        { memMapConfig = memMap
+        , initI = Reloadable (Vec iMem)
+        , initD = Reloadable (Vec dMem)
+        , iBusTimeout = d0 -- No timeouts on the instruction bus
+        , dBusTimeout = d0 -- No timeouts on the data bus
+        }
+{-# NOINLINE dut #-}
 
-  peConfig =
-    PeConfig
-      { memMapConfig = 0b000 :> 0b001 :> 0b010 :> 0b011 :> 0b100 :> 0b101 :> Nil
-      , initI = Reloadable $ Blob iMem
-      , initD = Reloadable $ Blob dMem
-      , iBusTimeout = d0 -- No timeouts on the instruction bus
-      , dBusTimeout = d0 -- No timeouts on the data bus
-      }
+type IMemWords = DivRU (64 * 1024) 4
+type DMemWords = DivRU (32 * 1024) 4
 
 data TestResult = TestResult String (Maybe String) deriving (Show, Eq)
 
