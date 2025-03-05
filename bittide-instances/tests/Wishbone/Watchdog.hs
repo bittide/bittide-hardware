@@ -84,9 +84,10 @@ dut = withClockResetEnable clockGen resetGen enableGen
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         }
+{-# NOINLINE dut #-}
 
-type DMemWords = DivRU (32 * 1024) 4
 type IMemWords = DivRU (32 * 1024) 4
+type DMemWords = DivRU (32 * 1024) 4
 
 tests :: TestTree
 tests = $(testGroupGenerator)

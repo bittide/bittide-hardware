@@ -97,7 +97,7 @@ dut scatterConfig gatherConfig = circuit $ do
     let
       elfDir = root </> firmwareBinariesDir "riscv32imc" Release
       elfPath = elfDir </> "scatter_gather_test"
-    (iMem, dMem) <- vecsFromElf @DMemWords @IMemWords BigEndian elfPath Nothing
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
         { memMapConfig = memMap
@@ -107,8 +107,8 @@ dut scatterConfig gatherConfig = circuit $ do
         , dBusTimeout = d0 -- No timeouts on the data bus
         }
 
-type DMemWords = DivRU (64 * 1024) 4
-type IMemWords = DivRU (32 * 1024) 4
+type IMemWords = DivRU (64 * 1024) 4
+type DMemWords = DivRU (32 * 1024) 4
 
 tests :: TestTree
 tests = $(testGroupGenerator)

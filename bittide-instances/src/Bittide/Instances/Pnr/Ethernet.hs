@@ -183,8 +183,8 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
       , dBusTimeout = d0
       }
 
-type DMemWords = DivRU (256 * 1024) 4
-type IMemWords = DivRU (64 * 1024) 4
+type IMemWords = DivRU (256 * 1024) 4
+type DMemWords = DivRU (64 * 1024) 4
 
 vexRiscEthernet ::
   Clock Basic125B ->

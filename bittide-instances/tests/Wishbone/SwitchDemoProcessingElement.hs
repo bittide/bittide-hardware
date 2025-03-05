@@ -106,7 +106,7 @@ dut localCounter dnaA dnaB = circuit $ do
     let
       elfDir = root </> firmwareBinariesDir "riscv32imc" Release
       elfPath = elfDir </> "switch_demo_pe_test"
-    (iMem, dMem) <- vecsFromElf @DMemWords @IMemWords BigEndian elfPath Nothing
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
         { memMapConfig = memMap
@@ -116,8 +116,8 @@ dut localCounter dnaA dnaB = circuit $ do
         , dBusTimeout = d0 -- No timeouts on the data bus
         }
 
-type DMemWords = DivRU (32 * 1024) 4
 type IMemWords = DivRU (32 * 1024) 4
+type DMemWords = DivRU (32 * 1024) 4
 
 tests :: TestTree
 tests = $(testGroupGenerator)
