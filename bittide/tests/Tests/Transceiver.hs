@@ -97,8 +97,9 @@ gthCoreMock
   offset
   _channelName
   _clockPath
-  rxSerial
-  _rxSerial
+  rx
+  _rxSerialN
+  _rxSerialP
   freeClk
   rstAll
   rstRx
@@ -111,8 +112,9 @@ gthCoreMock
   _rx1Clk
   rx2Clk
   _rxActive =
-    ( Gth.Wire (pure 0) (SimOnly txWord)
-    , Gth.Wire (pure 0) (SimOnly txWord)
+    ( SimOnly txWord
+    , pure 0
+    , pure 0
     , txOutClk
     , rxOutClk
     , rxWord
@@ -129,8 +131,7 @@ gthCoreMock
     rxWord =
       withClock rxClk
         $ WordAlign.aligner WordAlign.dealignLsbFirst (pure False) (pure offset)
-        $ Gth.unSimOnly
-        $ rxSerial.datSimulation
+        $ Gth.unSimOnly rx
 
     registerRx = register rxClk rxRstRx enableGen
     registerTx = register txClk txRstAll enableGen
@@ -222,7 +223,8 @@ dut
           , transceiverIndex = 0
           , channelName = "A"
           , clockPath = "clkA"
-          , rxN = Gth.mapDatSimulation (delaySeqN baDelay 0) outputB.txN
+          , rxSim = delaySeqN baDelay 0 <$> outputB.txSim
+          , rxN = error "A: rxN not used in simulation"
           , rxP = error "A: rxP not used in simulation"
           , txData = inputA.dat
           , txStart = inputA.txStart
@@ -246,7 +248,8 @@ dut
           , transceiverIndex = 1
           , channelName = "B"
           , clockPath = "clkB"
-          , rxN = Gth.mapDatSimulation (delaySeqN abDelay 0) outputA.txN
+          , rxSim = delaySeqN abDelay 0 <$> outputA.txSim
+          , rxN = error "B: rxN not used in simulation"
           , rxP = error "B: rxP not used in simulation"
           , txData = inputB.dat
           , txStart = inputB.txStart

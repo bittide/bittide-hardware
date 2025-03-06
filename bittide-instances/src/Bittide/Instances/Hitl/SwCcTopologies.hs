@@ -228,15 +228,17 @@ topologyTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "ILA_CTRL" ::: IlaControl Basic125 ->
-  "GTH_RX_NS" ::: Gth.Wires GthRxS GthRx LinkCount ->
-  "GTH_RX_PS" ::: Gth.Wires GthRxS GthRx LinkCount ->
+  "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
+  "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
   "TEST_CFG" ::: Signal Basic125 TestConfig ->
   "PROG_EN" ::: Reset Basic125 ->
   "CALIBRATED_SHIFT" ::: Signal Basic125 FincFdecCount ->
   "JTAG" ::: Signal Basic125 JtagIn ->
-  ( "GTH_TX_NS" ::: Gth.Wires GthTxS GthTx LinkCount
-  , "GTH_TX_PS" ::: Gth.Wires GthTxS GthTx LinkCount
+  ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
+  , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
+  , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
   , "CALLISTO_RESULT" ::: Signal Basic125 (CallistoResult LinkCount)
   , "CALLISTO_RESET" ::: Reset Basic125
@@ -257,10 +259,11 @@ topologyTest ::
   , "noFifoUnderflows" ::: Signal Basic125 Bool
   , "JTAG" ::: Signal Basic125 JtagOut
   )
-topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg progEn ccs jtagIn =
+topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg progEn ccs jtagIn =
   hwSeqX
     fincFdecIla
-    ( transceivers.txNs
+    ( transceivers.txSims
+    , transceivers.txNs
     , transceivers.txPs
     , frequencyAdjustments
     , callistoResult
@@ -309,6 +312,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxNs rxPs miso cfg prog
         , refClock = refClk
         , channelNames
         , clockPaths
+        , rxSims = rxs
         , rxNs
         , rxPs
         , txDatas = txCounters
@@ -756,12 +760,14 @@ swCcTopologyTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_125" ::: DiffClock Ext125 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: Gth.Wires GthRxS GthRx LinkCount ->
-  "GTH_RX_PS" ::: Gth.Wires GthRxS GthRx LinkCount ->
+  "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
+  "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
   "JTAG" ::: Signal Basic125 JtagIn ->
-  ( "GTH_TX_NS" ::: Gth.Wires GthTxS GthTx LinkCount
-  , "GTH_TX_PS" ::: Gth.Wires GthTxS GthTx LinkCount
+  ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
+  , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
+  , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , ""
       ::: ( "FINC" ::: Signal Basic125 Bool
           , "FDEC" ::: Signal Basic125 Bool
@@ -775,8 +781,10 @@ swCcTopologyTest ::
           )
   , "JTAG" ::: Signal Basic125 JtagOut
   )
-swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso jtagIn =
-  hwSeqX tleDebugIla (txns, txps, unbundle swFincFdecs, syncOut, spiDone, spiOut, jtagOut)
+swCcTopologyTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso jtagIn =
+  hwSeqX
+    tleDebugIla
+    (txs, txns, txps, unbundle swFincFdecs, syncOut, spiDone, spiOut, jtagOut)
  where
   refClk = Gth.ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
@@ -794,7 +802,8 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso jtagIn =
 
   cfg = fromMaybe disabled <$> testConfig
 
-  ( txns
+  ( txs
+    , txns
     , txps
     , swFincFdecs
     , _callistoResult
@@ -816,6 +825,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxns rxps miso jtagIn =
         refClk
         sysClk
         ilaControl{skipTest = skip}
+        rxs
         rxns
         rxps
         miso
@@ -954,12 +964,14 @@ swCcOneTopologyTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_125" ::: DiffClock Ext125 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: Gth.Wires GthRxS GthRx LinkCount ->
-  "GTH_RX_PS" ::: Gth.Wires GthRxS GthRx LinkCount ->
+  "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
+  "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
   "JTAG" ::: Signal Basic125 JtagIn ->
-  ( "GTH_TX_NS" ::: Gth.Wires GthTxS GthTx LinkCount
-  , "GTH_TX_PS" ::: Gth.Wires GthTxS GthTx LinkCount
+  ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
+  , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
+  , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , ""
       ::: ( "FINC" ::: Signal Basic125 Bool
           , "FDEC" ::: Signal Basic125 Bool

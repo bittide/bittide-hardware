@@ -115,11 +115,13 @@ transceiversStartAndObserve ::
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
   "MY_INDEX" ::: Signal Basic125 (Index FpgaCount) ->
-  "GTH_RX_NS" ::: Gth.Wires GthRxS GthRx LinkCount ->
-  "GTH_RX_PS" ::: Gth.Wires GthRxS GthRx LinkCount ->
+  "GTH_RX" ::: Gth.SimWires GthRx LinkCount ->
+  "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: Gth.Wires GthTxS GthTx LinkCount
-  , "GTH_TX_PS" ::: Gth.Wires GthTxS GthTx LinkCount
+  ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
+  , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
+  , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "allReady" ::: Signal Basic125 Bool
   , "success" ::: Signal Basic125 Bool
   , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
@@ -130,8 +132,9 @@ transceiversStartAndObserve ::
           , "CSB" ::: Signal Basic125 Bool
           )
   )
-transceiversStartAndObserve refClk sysClk rst myIndex rxNs rxPs miso =
-  ( transceivers.txNs
+transceiversStartAndObserve refClk sysClk rst myIndex rxs rxNs rxPs miso =
+  ( transceivers.txSims
+  , transceivers.txNs
   , transceivers.txPs
   , allReady
   , success
@@ -175,6 +178,7 @@ transceiversStartAndObserve refClk sysClk rst myIndex rxNs rxPs miso =
         , refClock = refClk
         , channelNames
         , clockPaths
+        , rxSims = rxs
         , rxNs
         , rxPs
         , txDatas = repeat myIndexTx
@@ -209,11 +213,13 @@ linkConfigurationTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_125" ::: DiffClock Ext125 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: Gth.Wires GthRxS GthRx LinkCount ->
-  "GTH_RX_PS" ::: Gth.Wires GthRxS GthRx LinkCount ->
+  "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
+  "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: Gth.Wires GthTxS GthTx LinkCount
-  , "GTH_TX_PS" ::: Gth.Wires GthTxS GthTx LinkCount
+  ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
+  , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
+  , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "spiDone" ::: Signal Basic125 Bool
   , ""
@@ -222,8 +228,8 @@ linkConfigurationTest ::
           , "CSB" ::: Signal Basic125 Bool
           )
   )
-linkConfigurationTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, syncOut, spiDone, spiOut)
+linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso =
+  (txSims, txns, txps, syncOut, spiDone, spiOut)
  where
   refClk = Gth.ibufds_gte3 refClkDiff :: Clock Ext200
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
@@ -246,8 +252,8 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       `orReset` syncInRst
       `orReset` unsafeFromActiveLow startTest
 
-  (txns, txps, allReady, success, _stats, spiDone, spiOut) =
-    transceiversStartAndObserve refClk sysClk testRst myIndex rxns rxps miso
+  (txSims, txns, txps, allReady, success, _stats, spiDone, spiOut) =
+    transceiversStartAndObserve refClk sysClk testRst myIndex rxs rxns rxps miso
 
   failAfterUp = isFalling sysClk testRst enableGen False allReady
   failAfterUpSticky = sticky sysClk testRst failAfterUp

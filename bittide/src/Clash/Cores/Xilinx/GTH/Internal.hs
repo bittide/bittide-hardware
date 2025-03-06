@@ -36,53 +36,16 @@ type RX_DATA_WIDTH = 64
 wires. Should be considered asynchronous to one another - even though their
 domain encodes them as related.
 -}
-data Wires (line :: Domain) (logic :: Domain) n = Wires
-  { dats :: "" ::: Signal line (BitVector n)
-  -- ^ Wires routed to the transceivers
-  , datsSimulation :: "" ::: SimOnly (Signal logic (Vec n (BitVector 64)))
-  -- ^ Simulation only construct holding sent data in the domain of the user
-  -- transmit domain.
-  }
+type Wires (line :: Domain) n = Signal line (BitVector n)
+
+-- | Equivalent to 'Wires', but as a simulation only construct
+type SimWires (logic :: Domain) n = SimOnly (Vec n (Signal logic (BitVector 64)))
 
 -- | Data wire from/to transceivers
-data Wire (line :: Domain) (logic :: Domain) = Wire
-  { dat :: "" ::: Signal line (BitVector 1)
-  -- ^ Wires routed to the transceivers
-  , datSimulation :: "" ::: SimOnly (Signal logic (BitVector 64))
-  -- ^ Simulation only construct holding sent data in the domain of the user
-  -- transmit domain.
-  }
+type Wire (line :: Domain) = Signal line (BitVector 1)
 
--- | Map over the 'datSimulation' field of a 'Wire'
-mapDatSimulation ::
-  (Signal logic (BitVector 64) -> Signal logic (BitVector 64)) ->
-  Wire line logic ->
-  Wire line logic
-mapDatSimulation f (Wire{dat, datSimulation}) =
-  Wire{dat = dat, datSimulation = f <$> datSimulation}
-
--- | Pack multiple 'Wire's into a 'Wires'
-packWires ::
-  forall line logic n.
-  (KnownNat n) =>
-  Vec n (Wire line logic) ->
-  Wires line logic n
-packWires ins = Wires{dats, datsSimulation}
- where
-  dats = fmap pack $ bundle $ map (.dat) ins
-  datsSimulation = bundle <$> mapM (.datSimulation) ins
-
--- | Unpack a 'Wires' into multiple 'Wire's
-unpackWires ::
-  forall line logic n.
-  (KnownNat n) =>
-  Wires line logic n ->
-  Vec n (Wire line logic)
-unpackWires Wires{dats, datsSimulation} =
-  zipWith
-    Wire
-    (unbundle (fmap unpack dats))
-    (map SimOnly (unbundle (unSimOnly datsSimulation)))
+-- | Equivalent to 'Wire', but as a simulation only construct
+type SimWire (logic :: Domain) = SimOnly (Signal logic (BitVector 64))
 
 -- | Strip "SimOnly" constructor
 unSimOnly :: SimOnly a -> a
@@ -102,8 +65,9 @@ type GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS =
   String ->
   -- | refClkSpec
   String ->
-  "gthrxn_in" ::: Wire rxS rxUser2 ->
-  "gthrxp_in" ::: Wire rxS rxUser2 ->
+  "gthrx_in" ::: SimWire rxUser2 ->
+  "gthrxn_in" ::: Wire rxS ->
+  "gthrxp_in" ::: Wire rxS ->
   "gtwiz_reset_clk_freerun_in" ::: Clock freerun ->
   "gtwiz_reset_all_in" ::: Reset freerun ->
   "gtwiz_reset_rx_datapath_in" ::: Reset freerun ->
@@ -116,8 +80,9 @@ type GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS =
   "rxusrclk_in" ::: Clock rxUser ->
   "rxusrclk2_in" ::: Clock rxUser2 ->
   "gtwiz_userclk_rx_active_in" ::: Signal rxUser2 (BitVector 1) ->
-  ( "gthtxn_out" ::: Wire txS txUser2
-  , "gthtxp_out" ::: Wire txS txUser2
+  ( "gthtx_out" ::: SimWire txUser2
+  , "gthtxn_out" ::: Wire txS
+  , "gthtxp_out" ::: Wire txS
   , "txoutclk_out" ::: Clock txUser
   , "rxoutclk_out" ::: Clock rxUser
   , "gtwiz_userdata_rx_out" ::: Signal rxUser2 (BitVector RX_DATA_WIDTH)
@@ -135,7 +100,8 @@ gthCore :: GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS
 gthCore
   !_channel
   !_refClkSpec
-  gthrxn_in
+  gthrx_in
+  !_gthrxn_in
   !_gthrxp_in
   !_gtwiz_reset_clk_freerun_in
   !_gtwiz_reset_all_in
@@ -149,11 +115,12 @@ gthCore
   !_
   !_
   !_ =
-    ( Wire (pure 0) (SimOnly gtwiz_userdata_tx_in)
-    , Wire (pure 0) (SimOnly gtwiz_userdata_tx_in)
+    ( SimOnly gtwiz_userdata_tx_in
+    , pure 0
+    , pure 0
     , clockGen
     , clockGen
-    , unSimOnly gthrxn_in.datSimulation
+    , unSimOnly gthrx_in
     , pure 1
     , pure 1
     , pure 1

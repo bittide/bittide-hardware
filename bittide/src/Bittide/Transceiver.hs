@@ -102,6 +102,7 @@ import Clash.Prelude (withClock)
 import Control.Monad (when)
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Proxy (Proxy (Proxy))
+import GHC.Stack (HasCallStack)
 
 import qualified Bittide.Transceiver.Cdc as Cdc
 import qualified Bittide.Transceiver.Comma as Comma
@@ -178,10 +179,12 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.txReady'
   , txSamplings :: Vec n (Signal tx Bool)
   -- ^ See 'Output.txSampling'
-  , txPs :: Gth.Wires txS tx n
+  , txPs :: Gth.Wires txS n
   -- ^ See 'Output.txP'
-  , txNs :: Gth.Wires txS tx n
+  , txNs :: Gth.Wires txS n
   -- ^ See 'Output.txN'
+  , txSims :: Gth.SimWires tx n
+  -- ^ See 'Output.txSim'
   , rxClocks :: Vec n (Clock rx)
   -- ^ See 'Output.rxClock'
   , rxResets :: Vec n (Reset rx)
@@ -207,10 +210,12 @@ data Output tx rx tx1 rx1 txS free = Output
   -- 'Input.txStart' to be asserted before starting to send 'txData'.
   , txSampling :: Signal tx Bool
   -- ^ Data is sampled from 'Input.txData'
-  , txP :: Gth.Wire txS tx
+  , txP :: Gth.Wire txS
   -- ^ Transmit data (and implicitly a clock), positive
-  , txN :: Gth.Wire txS tx
+  , txN :: Gth.Wire txS
   -- ^ Transmit data (and implicitly a clock), negative
+  , txSim :: Gth.SimWire tx
+  -- ^ Simulation only construct. Data for the transmit side. Used for testing.
   , rxOutClock :: Clock rx1
   -- ^ Must be routed through xilinxGthUserClockNetworkRx or equivalent to get usable clocks
   , rxReset :: Reset rx
@@ -246,8 +251,10 @@ data Input tx rx tx1 rx1 ref free rxS = Input
   -- ^ Channel name, example \"X0Y18\"
   , clockPath :: String
   -- ^ Clock path, example \"clk0-2\"
-  , rxN :: Gth.Wire rxS rx
-  , rxP :: Gth.Wire rxS rx
+  , rxSim :: Gth.SimWire rx
+  -- ^ Simulation only construct. Data for the receive side. Used for testing.
+  , rxN :: Gth.Wire rxS
+  , rxP :: Gth.Wire rxS
   , txData :: Signal tx (BitVector 64)
   -- ^ Data to transmit to the neighbor. Is first sampled one cycle after both
   -- 'Input.txStart' and 'Output.txReady' are asserted. Is continuously sampled
@@ -274,10 +281,12 @@ data Inputs tx rx ref free rxS n = Inputs
   -- ^ See 'Input.channelName'
   , clockPaths :: Vec n String
   -- ^ See 'Input.clockPath'
-  , rxNs :: Gth.Wires rxS rx n
+  , rxNs :: Gth.Wires rxS n
   -- ^ See 'Input.rxN'
-  , rxPs :: Gth.Wires rxS rx n
+  , rxPs :: Gth.Wires rxS n
   -- ^ See 'Input.rxP'
+  , rxSims :: Gth.SimWires rx n
+  -- ^ See 'Input.rxSim'
   , txDatas :: Vec n (Signal tx (BitVector 64))
   -- ^ See 'Input.txData'
   , txStarts :: Vec n (Signal tx Bool)
@@ -299,6 +308,16 @@ I choose to sidestep the extra complication and pretend tx1/rx1 and tx/rx are th
 This disables the typechecking safety we'd normally get from clash,
 but vivado should call us out when we make a mistake.
 -}
+
+{- | Clash has a very hard time translating maps with 'SimOnly' constructs,
+making compilation take ~10 times longer. The reasons are not clear to me,
+but replacing entire structures with 'deepErrorX' seems to work around the
+issue.
+-}
+simOnlyHdlWorkaround :: (HasCallStack, NFDataX a) => a -> a
+simOnlyHdlWorkaround a
+  | clashSimulation = a
+  | otherwise = deepErrorX "simOnlyHdlWorkaround: not in simulation"
 
 transceiverPrbsN ::
   forall tx rx ref free txS rxS n m.
@@ -325,13 +344,14 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
     , txReset = fold orReset $ map (.txReset) outputs
     , txReadys = map (.txReady) outputs
     , txSamplings = map (.txSampling) outputs
+    , txSims = simOnlyHdlWorkaround (SimOnly (map (Gth.unSimOnly . (.txSim)) outputs))
     , -- rx
       rxClocks = rxClocks
     , rxResets = map (.rxReset) outputs
     , rxDatas = map (.rxData) outputs
     , -- transceiver
-      txPs = Gth.packWires (map (.txP) outputs)
-    , txNs = Gth.packWires (map (.txN) outputs)
+      txPs = pack <$> bundle (map (.txP) outputs)
+    , txNs = pack <$> bundle (map (.txN) outputs)
     , -- free
       linkUps = map (.linkUp) outputs
     , linkReadys = map (.linkReady) outputs
@@ -353,8 +373,9 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
       -- only use this for debugging.
       <*> inputs.channelNames
       <*> inputs.clockPaths
-      <*> Gth.unpackWires inputs.rxNs
-      <*> Gth.unpackWires inputs.rxPs
+      <*> simOnlyHdlWorkaround (map SimOnly (Gth.unSimOnly inputs.rxSims))
+      <*> unbundle (unpack <$> inputs.rxNs)
+      <*> unbundle (unpack <$> inputs.rxPs)
       <*> inputs.txDatas
       <*> inputs.txStarts
       <*> inputs.rxReadys
@@ -377,12 +398,13 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   rxClockNws = map (flip (Gth.xilinxGthUserClockNetworkRx @rx @rx) rxUsrClkRst) rxOutClks
   (_rxClk1s, rxClocks, _rxClkActives) = unzip3 rxClockNws
 
-  go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxN rxP txData txStart rxReady (clockRx1, clockRx2, rxActive) =
+  go (clockTx1, clockTx2, txActive) transceiverIndex channelName clockPath rxSim rxN rxP txData txStart rxReady (clockRx1, clockRx2, rxActive) =
     transceiverPrbs
       opts
       Input
         { channelName
         , clockPath
+        , rxSim
         , rxN
         , rxP
         , txData
@@ -524,6 +546,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       { txSampling = txUserData
       , rxData = mux rxUserData (Just <$> alignedRxData0) (pure Nothing)
       , txReady = withLockRxTx rxReadyNeighborSticky
+      , txSim
       , txN = txN
       , txP = txP
       , txOutClock
@@ -541,7 +564,8 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
 
   linkReady = linkUp .||. withLockRxFree rxReadyNeighborSticky
 
-  ( txN
+  ( txSim
+    , txN
     , txP
     , txOutClock
     , rxOutClock
@@ -558,6 +582,7 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       gthCore
         args.channelName
         args.clockPath
+        args.rxSim
         args.rxN
         args.rxP
         clock -- gtwiz_reset_clk_freerun_in
