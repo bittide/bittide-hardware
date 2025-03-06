@@ -15,7 +15,6 @@ import Bittide.SharedTypes
 import Control.Monad (when)
 import Data.Maybe
 import GHC.Stack
-import Language.Haskell.TH
 import Numeric (showHex)
 import System.Exit
 import System.IO (hPutStrLn, stderr)
@@ -67,35 +66,6 @@ vecsFromElf byteOrder elfPath maybeDeviceTree = do
     dListPadded = padToSize "Data memory" (Just (natToNum @nInstrWords)) 0 dList
 
   pure (unsafeFromList iListPadded, unsafeFromList dListPadded)
-
-{- | Given the path to an elf file, the path to a device tree and a starting address
- for the device tree. Return a 3 tuple containing:
- (initial program counter, instruction memory blob, data memory blob)
--}
-memBlobsFromElf ::
-  (HasCallStack) =>
-  -- | How the words should be ordered in the memBlob
-  ByteOrder ->
-  -- | Optional size in bytes to which we should pad the instruction memBlob and data memBlob.
-  -- Rounds up to the nearest word size.
-  (Maybe Int, Maybe Int) ->
-  -- | Source file, assumed to be Little Endian.
-  FilePath ->
-  -- | Optional tuple of starting address and filepath to a device tree.
-  Maybe (I.Key, FilePath) ->
-  -- | (instruction memBlob, data memBlob)
-  Q Exp
-memBlobsFromElf byteOrder (iSize, dSize) elfPath maybeDeviceTree = do
-  (iMemIntMap, dMemIntMap) <- runIO (getBytesMems elfPath maybeDeviceTree)
-  let
-    (_iStartAddr, _, iList) = extractIntMapData byteOrder iMemIntMap
-    (_dStartAddr, _, dList) = extractIntMapData byteOrder dMemIntMap
-    iListPadded = padToSize "Instruction memory" (fmap ((`div` 4) . (+ 3)) iSize) 0 iList
-    dListPadded = padToSize "Data memory" (fmap ((`div` 4) . (+ 3)) dSize) 0 dList
-    iBlob = memBlobTH Nothing iListPadded
-    dBlob = memBlobTH Nothing dListPadded
-
-  [|($iBlob, $dBlob)|]
 
 {- | Given the path to an elf file, the path to a device tree and a starting address
  for the device tree. Return a 3 tuple containing:

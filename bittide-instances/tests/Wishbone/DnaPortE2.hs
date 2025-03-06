@@ -14,12 +14,12 @@ import qualified Prelude as P
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Data.Char
 import Data.Maybe
-import Language.Haskell.TH
 import Numeric
 import Project.FilePath
 import Protocols
 import Protocols.Idle
 import System.FilePath
+import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
@@ -66,21 +66,23 @@ dut = circuit $ \_unit -> do
   _dna <- readDnaPortE2Wb simDna2 -< dnaWb
   idC -< uartTx
  where
-  (iMem, dMem) =
-    $( do
-        root <- runIO $ findParentContaining "cabal.project"
-        let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "dna_port_e2_test"
-        memBlobsFromElf BigEndian (Nothing, Nothing) elfPath Nothing
-     )
+  memMap = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
+  peConfig = unsafePerformIO $ do
+    root <- findParentContaining "cabal.project"
+    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "dna_port_e2_test"
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    pure
+      PeConfig
+        { memMapConfig = memMap
+        , initI = Reloadable (Vec iMem)
+        , initD = Reloadable (Vec dMem)
+        , iBusTimeout = d0 -- No timeouts on the instruction bus
+        , dBusTimeout = d0 -- No timeouts on the data bus
+        }
+{-# NOINLINE dut #-}
 
-  peConfig =
-    PeConfig
-      { memMapConfig = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
-      , initI = Reloadable $ Blob iMem
-      , initD = Reloadable $ Blob dMem
-      , iBusTimeout = d0 -- No timeouts on the instruction bus
-      , dBusTimeout = d0 -- No timeouts on the data bus
-      }
+type IMemWords = DivRU (64 * 1024) 4
+type DMemWords = DivRU (32 * 1024) 4
 
 parseResult :: String -> BitVector 96
 parseResult = pack . (read :: String -> Unsigned 96) . P.head . lines

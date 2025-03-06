@@ -11,9 +11,9 @@ import Clash.Prelude
 import Clash.Annotations.TH
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Xilinx.ClockGen
-import Language.Haskell.TH
 import Protocols
 import System.FilePath
+import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv
 
 import Bittide.DoubleBufferedRam
@@ -55,15 +55,6 @@ vexRiscUartHello diffClk rst_in =
  where
   (clk200, rst200_) = clockWizardDifferential diffClk noReset
   rst200 = rst200_ `orReset` rst_in
-  (iMem, dMem) =
-    $( do
-        root <- runIO $ findParentContaining "cabal.project"
-        let
-          elfPath = root </> firmwareBinariesDir "riscv32imc" Debug </> "hello"
-          iSize = 64 * 1024 -- 64 KB
-          dSize = 64 * 1024 -- 64 KB
-        memBlobsFromElf BigEndian (Just iSize, Just dSize) elfPath Nothing
-     )
 
   -- ╭────────┬───────┬───────┬────────────────────╮
   -- │ bin    │ hex   │ bus   │ description        │
@@ -77,14 +68,37 @@ vexRiscUartHello diffClk rst_in =
   -- │ 0b110. │ 0xC   │       │ TIME               │
   -- │ 0b111. │ 0xE   │       │                    │
   -- ╰────────┴───────┴───────┴────────────────────╯
+  memMap = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
 
-  peConfig =
+  peConfig
+    | clashSimulation = peConfigSim
+    | otherwise = peConfigRtl
+
+  peConfigSim = unsafePerformIO $ do
+    root <- findParentContaining "cabal.project"
+    let
+      elfDir = root </> firmwareBinariesDir "riscv32imc" Debug
+      elfPath = elfDir </> "hello"
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    pure
+      PeConfig
+        { memMapConfig = memMap
+        , initI = Reloadable (Vec iMem)
+        , initD = Reloadable (Vec dMem)
+        , iBusTimeout = d0
+        , dBusTimeout = d0
+        }
+
+  peConfigRtl =
     PeConfig
-      { memMapConfig = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
-      , initI = Reloadable $ Blob iMem
-      , initD = Reloadable $ Blob dMem
-      , iBusTimeout = d0 -- No timeouts on the instruction bus
-      , dBusTimeout = d0 -- No timeouts on the data bus
+      { memMapConfig = memMap
+      , initI = Undefined @IMemWords
+      , initD = Undefined @DMemWords
+      , iBusTimeout = d0
+      , dBusTimeout = d0
       }
+
+type IMemWords = DivRU (64 * 1024) 4
+type DMemWords = DivRU (64 * 1024) 4
 
 makeTopEntity 'vexRiscUartHello

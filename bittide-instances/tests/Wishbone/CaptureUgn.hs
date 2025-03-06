@@ -14,12 +14,12 @@ import qualified Prelude as P
 import Clash.Signal.Internal
 import Data.Char
 import Data.Maybe
-import Language.Haskell.TH
 import Numeric
 import Project.FilePath
 import Protocols
 import Protocols.Idle
 import System.FilePath
+import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
@@ -100,21 +100,22 @@ dut eb localCounter = circuit $ do
   ebCircuit :: Circuit () (CSignal dom (Maybe (BitVector 64)))
   ebCircuit = Circuit $ const ((), eb)
 
-  (iMem, dMem) =
-    $( do
-        root <- runIO $ findParentContaining "cabal.project"
-        let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "capture_ugn_test"
-        memBlobsFromElf BigEndian (Nothing, Nothing) elfPath Nothing
-     )
+  memMap = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
+  peConfig = unsafePerformIO $ do
+    root <- findParentContaining "cabal.project"
+    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "capture_ugn_test"
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
+    pure
+      PeConfig
+        { memMapConfig = memMap
+        , initI = Reloadable (Vec iMem)
+        , initD = Reloadable (Vec dMem)
+        , iBusTimeout = d0 -- No timeouts on the instruction bus
+        , dBusTimeout = d0 -- No timeouts on the data bus
+        }
 
-  peConfig =
-    PeConfig
-      { memMapConfig = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
-      , initI = Reloadable $ Blob iMem
-      , initD = Reloadable $ Blob dMem
-      , iBusTimeout = d0 -- No timeouts on the instruction bus
-      , dBusTimeout = d0 -- No timeouts on the data bus
-      }
+type IMemWords = DivRU (64 * 1024) 4
+type DMemWords = DivRU (32 * 1024) 4
 
 {- | Simulation function which matches the remote counter to the correct sample
 of the local counter.

@@ -151,7 +151,7 @@ vexRiscvInner jtagIn0 uartRx =
   peConfigSim = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "hello"
-    (iMem, dMem) <- vecsFromElf @DMemWords @IMemWords BigEndian elfPath Nothing
+    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
         { memMapConfig = memMap
@@ -169,8 +169,8 @@ vexRiscvInner jtagIn0 uartRx =
       , dBusTimeout = d0
       }
 
-type DMemWords = DivRU (64 * 1024) 4
 type IMemWords = DivRU (64 * 1024) 4
+type DMemWords = DivRU (64 * 1024) 4
 
 vexRiscvTest ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->
