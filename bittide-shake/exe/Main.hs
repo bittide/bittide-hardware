@@ -26,11 +26,11 @@ import Clash.DataFiles (tclConnector)
 import Clash.Shake.Extra
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
-import Control.Monad (forM_, unless, when)
+import Control.Monad (unless, when)
 import Control.Monad.Extra (ifM, unlessM, (&&^))
 import Data.Foldable (for_)
 import Data.Function ((&))
-import Data.List (isPrefixOf, sort, uncons)
+import Data.List (sort, uncons)
 import Data.Maybe (fromJust, fromMaybe, isJust)
 import Development.Shake
 import Development.Shake.Classes
@@ -40,7 +40,6 @@ import System.Console.ANSI (setSGR)
 import System.Directory hiding (doesFileExist)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath
-import System.FilePath.Glob (glob)
 import System.Process (readProcess)
 
 import qualified Clash.Util.Interpolate as I
@@ -358,35 +357,6 @@ main = do
             manifestPath %> \path -> do
               needWatchFiles
 
-              -- We build all rust binaries in "firmware-binaries". They are required to
-              -- build bittide-instance because we have instances that includes a binaries.
-              command_ [Cwd "firmware-binaries"] "cargo" ["build", "--release"]
-              command_ [Cwd "firmware-binaries"] "cargo" ["build"]
-
-              -- XXX: Cabal/GHC doesn't know about files produced by cargo, and
-              --      will therefore fail to invalidate caches. While there are
-              --      ways to tell Cabal/GHC to depend on these files, they are
-              --      known to be broken in our tool versions. This workaround
-              --      removes all build artifacts _except_ for "bittide-shake"
-              --      and "vivado-hs".
-              --
-              --      See: https://github.com/haskell/cabal/issues/4746
-              --
-              --      We need to manually remove build artifacts, because Cabal
-              --      does not support per package/component cleans:
-              --
-              --      See: https://github.com/haskell/cabal/issues/7506
-              --
-              ci <- getEnvWithDefault "false" "CI"
-              unless (ci == "true" || ci == "false") $ do
-                error $ "Environment variable 'CI' must be either 'true' or 'false', but it is: " <> ci
-              when (ci == "false") $ do
-                buildDirs <- liftIO (glob "dist-newstyle/build/*/ghc-*/*")
-                forM_ buildDirs $ \dir -> do
-                  let dirName = takeFileName dir
-                  unless (any (`isPrefixOf` dirName) ["bittide-shake", "vivado-hs"]) $ do
-                    command_ [] "rm" ["-rf", dir]
-
               -- Generate RTL
               let
                 (buildTool, buildToolArgs) =
@@ -507,6 +477,8 @@ main = do
             testExitCodePath %> \path -> do
               forceRerun <- askOracle $ ForceTestRerun ()
               when forceRerun alwaysRerun
+              command_ [Cwd "firmware-binaries"] "cargo" ["build", "--release"]
+              command_ [Cwd "firmware-binaries"] "cargo" ["build"]
               need
                 [ entityName targetName <> ":program"
                 , bitstreamPath
