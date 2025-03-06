@@ -295,7 +295,6 @@ wbAxisRxBuffer# fifoDepth@SNat wbM2S axisM2S = (wbS2M, axisS2M, statusReg)
     blockRamU
       NoClearOnReset
       fifoDepth
-      (const $ errorX "wbAxisRxBuffer: reset function undefined")
       bramAddr
       bramWrite
   (wbS2M, axisS2M, bramAddr, bramWrite, statusReg) =

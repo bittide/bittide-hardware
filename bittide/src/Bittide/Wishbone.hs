@@ -455,7 +455,7 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
     circuitActive = unsafeToActiveLow hasReset .&&. fromEnable hasEnable
     bramOut =
       readNew
-        (blockRamU NoClearOnReset depth (errorX "No reset function"))
+        (blockRamU NoClearOnReset depth)
         readAddr
         writeOp
     (readAddr, writeOp, fifoOut, readyOut, fifoMeta) =

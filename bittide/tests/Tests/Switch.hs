@@ -212,9 +212,9 @@ zipUnzipIdentity = property $ do
   case (TN.someNatVal vecLen, TN.someNatVal fw) of
     (SomeNat (_ :: Proxy l), SomeNat (_ :: Proxy fw)) -> do
       list <-
-        forAll $ Gen.list (Range.singleton listLen) $ genVec @_ @l (genDefinedBitVector @fw)
+        forAll $ Gen.list (Range.singleton listLen) $ genVec @l (genDefinedBitVector @fw)
       vec <-
-        forAll $ genVec @_ @l (Gen.list (Range.singleton listLen) (genDefinedBitVector @fw))
+        forAll $ genVec @l (Gen.list (Range.singleton listLen) (genDefinedBitVector @fw))
       zipList (unzipList list) === list
       unzipList (zipList vec) === vec
 

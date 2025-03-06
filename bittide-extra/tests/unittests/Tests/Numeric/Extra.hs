@@ -40,7 +40,7 @@ parseHexInRangeUnsigned = property $ do
   n <- forAll $ Gen.integral (Range.linear 0 128)
   case someNatVal n of
     SomeNat (Proxy :: Proxy n) ->
-      parseHexInRange (genUnsigned @_ @n Range.constantBounded)
+      parseHexInRange (genUnsigned @n Range.constantBounded)
 
 {- | Generate an in range value, add @maxBound + 1@ to it, convert it to hex, and
 parse it back. The result should yield a parse error.
@@ -71,7 +71,7 @@ parseHexOutOfRangeUnsigned = property $ do
   n <- forAll $ Gen.integral (Range.linear 0 128)
   case someNatVal n of
     SomeNat (Proxy :: Proxy n) ->
-      parseHexOutOfRange (genUnsigned @_ @n Range.constantBounded)
+      parseHexOutOfRange (genUnsigned @n Range.constantBounded)
 
 tests :: TestTree
 tests =

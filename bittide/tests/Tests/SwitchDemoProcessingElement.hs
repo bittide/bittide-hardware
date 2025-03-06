@@ -88,19 +88,19 @@ prop_readThenWrite = H.property $ do
     -- Notice that the PE needs a single clock cycle in its idle state to function
     -- correctly. Hence, we always start reading a minimum at clockStart+1.
     readData <- H.forAll $ Gen.list (singletonInt nReadCycles) genDefinedBitVector
-    clockStart <- H.forAll $ genUnsigned @_ @64 (Range.linear 0 100)
+    clockStart <- H.forAll $ genUnsigned @64 (Range.linear 0 100)
     readStart <-
       H.forAll
         $ Gen.frequency
           [ (30, Gen.constant clockStart)
-          , (70, genUnsigned @_ @64 (linearLength clockStart maxIdle1))
+          , (70, genUnsigned @64 (linearLength clockStart maxIdle1))
           ]
     let readEnd = readStart + fromIntegral nReadCycles
     writeStart <-
       H.forAll
         $ Gen.frequency
           [ (30, Gen.constant readEnd)
-          , (70, genUnsigned @_ @64 (linearLength readEnd maxIdle2))
+          , (70, genUnsigned @64 (linearLength readEnd maxIdle2))
           ]
     deviceDna <- H.forAll genDefinedBitVector
 

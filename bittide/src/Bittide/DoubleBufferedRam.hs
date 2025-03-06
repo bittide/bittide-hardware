@@ -308,11 +308,10 @@ doubleBufferedRamU ::
   -- | Outgoing data
   Signal dom a
 doubleBufferedRamU outputSelect readAddr0 writeFrame0 =
-  blockRamU NoClearOnReset (SNat @(2 * memDepth)) rstFunc readAddr1 writeFrame1
+  blockRamU NoClearOnReset (SNat @(2 * memDepth)) readAddr1 writeFrame1
  where
   (readAddr1, writeFrame1) =
     unbundle $ updateAddrs <$> readAddr0 <*> writeFrame0 <*> outputSelect
-  rstFunc = clashCompileError "doubleBufferedRamU: reset function undefined"
 
 {- | The byte addressable double buffered Ram component is a memory component that
 consists of two buffers and internally stores its elements as a multiple of 8 bits.
@@ -420,8 +419,7 @@ blockRamByteAddressableU readAddr newEntry byteSelect =
  where
   writeBytes = unbundle $ splitWriteInBytes <$> newEntry <*> byteSelect
   readBytes = bundle $ ram readAddr <$> writeBytes
-  ram = blockRamU NoClearOnReset (SNat @memDepth) rstFunc
-  rstFunc = clashCompileError "blockRamByteAddressableU: reset function undefined"
+  ram = blockRamU NoClearOnReset (SNat @memDepth)
 
 data RegisterWritePriority = CircuitPriority | WishbonePriority
   deriving (Eq)
