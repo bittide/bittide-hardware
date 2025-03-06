@@ -35,12 +35,12 @@ import Bittide.Instances.Hitl.Setup
 import Bittide.Transceiver
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx.GTH
 import Clash.Cores.Xilinx.Xpm.Cdc.Single (xpmCdcSingle)
 import Clash.Xilinx.ClockGen
 import Data.Maybe (fromMaybe, isJust)
 
 import qualified Bittide.Transceiver.ResetManager as ResetManager
+import qualified Clash.Cores.Xilinx.GTH as Gth
 import qualified Clash.Explicit.Prelude as E
 import qualified Data.List as L
 import qualified Data.Map as Map
@@ -84,11 +84,13 @@ goTransceiversUpTest ::
   "SMA_MGT_REFCLK_C" ::: Clock Ext200 ->
   "SYSCLK" ::: Clock Basic125 ->
   "RST_LOCAL" ::: Reset Basic125 ->
-  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
-  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_N" ::: Gth.SimWires GthRx LinkCount ->
+  "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
-  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
+  ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
+  , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
+  , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "allUp" ::: Signal Basic125 Bool
   , "anyErrors" ::: Signal Basic125 Bool
   , "stats" ::: Vec LinkCount (Signal Basic125 ResetManager.Statistics)
@@ -99,8 +101,9 @@ goTransceiversUpTest ::
           , "CSB" ::: Signal Basic125 Bool
           )
   )
-goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
-  ( transceivers.txNs
+goTransceiversUpTest fpgaIndex refClk sysClk rst rxs rxNs rxPs miso =
+  ( transceivers.txSims
+  , transceivers.txNs
   , transceivers.txPs
   , allUp
   , expectCounterErrorSys
@@ -170,6 +173,7 @@ goTransceiversUpTest fpgaIndex refClk sysClk rst rxNs rxPs miso =
         , refClock = refClk
         , channelNames
         , clockPaths
+        , rxSims = rxs
         , rxNs
         , rxPs
         , txDatas = repeat txCounter
@@ -182,11 +186,13 @@ transceiversUpTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_125" ::: DiffClock Ext125 ->
   "SYNC_IN" ::: Signal Basic125 Bool ->
-  "GTH_RX_NS" ::: TransceiverWires GthRxS LinkCount ->
-  "GTH_RX_PS" ::: TransceiverWires GthRxS LinkCount ->
+  "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
+  "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
+  "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_NS" ::: TransceiverWires GthTxS LinkCount
-  , "GTH_TX_PS" ::: TransceiverWires GthTxS LinkCount
+  ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
+  , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
+  , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "SYNC_OUT" ::: Signal Basic125 Bool
   , "spiDone" ::: Signal Basic125 Bool
   , ""
@@ -195,10 +201,10 @@ transceiversUpTest ::
           , "CSB" ::: Signal Basic125 Bool
           )
   )
-transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
-  (txns, txps, syncOut, spiDone, spiOut)
+transceiversUpTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso =
+  (txs, txns, txps, syncOut, spiDone, spiOut)
  where
-  refClk = ibufds_gte3 refClkDiff :: Clock Ext200
+  refClk = Gth.ibufds_gte3 refClkDiff :: Clock Ext200
 
   (sysClk, sysRst) = clockWizardDifferential sysClkDiff noReset
 
@@ -209,8 +215,8 @@ transceiversUpTest refClkDiff sysClkDiff syncIn rxns rxps miso =
       $ unsafeFromActiveLow
       $ xpmCdcSingle sysClk sysClk syncIn
 
-  (txns, txps, allUp, anyErrors, _stats, spiDone, spiOut) =
-    goTransceiversUpTest fpgaIndex refClk sysClk testRst rxns rxps miso
+  (txs, txns, txps, allUp, anyErrors, _stats, spiDone, spiOut) =
+    goTransceiversUpTest fpgaIndex refClk sysClk testRst rxs rxns rxps miso
 
   failAfterUp = isFalling sysClk testRst enableGen False allUp
   failAfterUpSticky = sticky sysClk testRst failAfterUp

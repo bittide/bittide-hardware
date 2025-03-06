@@ -59,6 +59,9 @@ nConstraints = 8
 nNameArgs :: Int
 nNameArgs = 2
 
+simOnlyArgs :: Int
+simOnlyArgs = 1
+
 {-
 NOTE [ignoring HWType domains]
 
@@ -112,7 +115,7 @@ gthCoreBBTF bbCtx
           , _rxusrclk2_in
           , _gtwiz_userclk_rx_active_in
           ] <-
-      drop (nConstraints + nNameArgs) (DSL.tInputs bbCtx)
+      drop (nConstraints + nNameArgs + simOnlyArgs) (DSL.tInputs bbCtx)
   , [tResult] <- map DSL.ety (DSL.tResults bbCtx)
   , [gthCoreName] <- N.bbQsysIncName bbCtx =
       do

@@ -2,7 +2,11 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Clash.Cores.Xilinx.GTH.Internal where
 
@@ -28,7 +32,26 @@ import Clash.Cores.Xilinx.Xpm.Cdc.Internal (
 type TX_DATA_WIDTH = 64
 type RX_DATA_WIDTH = 64
 
-type GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS serializedData =
+{- | Data wires from/to transceivers. No logic should be inserted on these
+wires. Should be considered asynchronous to one another - even though their
+domain encodes them as related.
+-}
+type Wires (line :: Domain) n = Signal line (BitVector n)
+
+-- | Equivalent to 'Wires', but as a simulation only construct
+type SimWires (logic :: Domain) n = SimOnly (Vec n (Signal logic (BitVector 64)))
+
+-- | Data wire from/to transceivers
+type Wire (line :: Domain) = Signal line (BitVector 1)
+
+-- | Equivalent to 'Wire', but as a simulation only construct
+type SimWire (logic :: Domain) = SimOnly (Signal logic (BitVector 64))
+
+-- | Strip "SimOnly" constructor
+unSimOnly :: SimOnly a -> a
+unSimOnly (SimOnly x) = x
+
+type GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS =
   ( KnownDomain txUser
   , KnownDomain txUser2
   , KnownDomain rxUser
@@ -42,8 +65,9 @@ type GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS serializedDat
   String ->
   -- | refClkSpec
   String ->
-  "gthrxn_in" ::: Signal rxS serializedData ->
-  "gthrxp_in" ::: Signal rxS serializedData ->
+  "gthrx_in" ::: SimWire rxUser2 ->
+  "gthrxn_in" ::: Wire rxS ->
+  "gthrxp_in" ::: Wire rxS ->
   "gtwiz_reset_clk_freerun_in" ::: Clock freerun ->
   "gtwiz_reset_all_in" ::: Reset freerun ->
   "gtwiz_reset_rx_datapath_in" ::: Reset freerun ->
@@ -56,8 +80,9 @@ type GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS serializedDat
   "rxusrclk_in" ::: Clock rxUser ->
   "rxusrclk2_in" ::: Clock rxUser2 ->
   "gtwiz_userclk_rx_active_in" ::: Signal rxUser2 (BitVector 1) ->
-  ( "gthtxn_out" ::: Signal txS serializedData
-  , "gthtxp_out" ::: Signal txS serializedData
+  ( "gthtx_out" ::: SimWire txUser2
+  , "gthtxn_out" ::: Wire txS
+  , "gthtxp_out" ::: Wire txS
   , "txoutclk_out" ::: Clock txUser
   , "rxoutclk_out" ::: Clock rxUser
   , "gtwiz_userdata_rx_out" ::: Signal rxUser2 (BitVector RX_DATA_WIDTH)
@@ -71,16 +96,17 @@ type GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS serializedDat
   , "rxctrl3_out" ::: Signal rxUser2 (BitVector 8)
   )
 
-gthCore :: GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS (BitVector 1)
+gthCore :: GthCore txUser txUser2 rxUser rxUser2 refclk0 freerun txS rxS
 gthCore
   !_channel
   !_refClkSpec
+  gthrx_in
   !_gthrxn_in
   !_gthrxp_in
   !_gtwiz_reset_clk_freerun_in
   !_gtwiz_reset_all_in
   !_gtwiz_reset_rx_datapath_in
-  !_gtwiz_userdata_tx_in
+  !gtwiz_userdata_tx_in
   !_txctrl2_in
   !_gtrefclk0_in
   !_
@@ -89,19 +115,20 @@ gthCore
   !_
   !_
   !_ =
-    ( undefined
-    , undefined
-    , undefined
-    , undefined
-    , undefined
-    , undefined
-    , undefined
-    , undefined
-    , undefined
-    , undefined
-    , undefined
-    , undefined
-    , undefined
+    ( SimOnly gtwiz_userdata_tx_in
+    , pure 0
+    , pure 0
+    , clockGen
+    , clockGen
+    , unSimOnly gthrx_in
+    , pure 1
+    , pure 1
+    , pure 1
+    , pure 1
+    , pure 0
+    , pure 0
+    , pure 0
+    , pure 0
     )
 {-# OPAQUE gthCore #-}
 {-# ANN gthCore hasBlackBox #-}
