@@ -183,6 +183,7 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.Calendar.switchCalendar1kReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.elasticBuffer5"
+    , defTarget $ mkName "Bittide.Instances.Pnr.ProcessingElement.vexRiscUartHello"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.gatherUnit1K"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.gatherUnit1KReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.ScatterGather.scatterUnit1K"
