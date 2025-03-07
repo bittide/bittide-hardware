@@ -4,9 +4,9 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
-{-# LANGUAGE ImpredicativeTypes #-}
 
 module Protocols.MemoryMap (
   module Protocols.MemoryMap.Check.Normalised,
@@ -21,27 +21,45 @@ module Protocols.MemoryMap (
   withAbsAddr,
   withMemoryMap,
   withPrefix,
-  Access(..),
+  unMemmap,
+  Access (..),
   DeviceDefinitions,
-  DeviceDefinition(..),
-  Name(..),
+  DeviceDefinition (..),
+  Name (..),
   NamedLoc,
-  Register(..),
-  MemoryMap(..),
+  Register (..),
+  MemoryMap (..),
   mergeDeviceDefs,
   deviceSize,
+  deviceSingleton,
 ) where
 
-import Clash.Prelude
+import Clash.Prelude (
+  Eq,
+  Integer,
+  Maybe,
+  Natural,
+  Num ((+)),
+  Ord (max),
+  Show,
+  SimOnly (..),
+  String,
+  Type,
+  error,
+  errorX,
+  fst,
+  ($),
+ )
 
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
-import GHC.Stack (HasCallStack, SrcLoc, getCallStack, callStack)
+import GHC.Stack (HasCallStack, SrcLoc, callStack, getCallStack)
 import Protocols
 
+import Data.Data (Proxy (Proxy))
+import Protocols.Idle
 import Protocols.MemoryMap.Check.Normalised
 import Protocols.MemoryMap.FieldType (FieldType)
-
 
 -- | Size in bytes
 type Size = Integer
@@ -67,7 +85,6 @@ The current implementation has a few objectives:
      a designer instantiates a memory mapped register on type @a@, it should
      be possible to generate an equivalent data structure in Rust or C.
 -}
-
 type MM = SimOnly MemoryMap
 
 data ConstF (a :: Type)
@@ -82,6 +99,12 @@ instance Protocol (ConstB a) where
   type Fwd (ConstB a) = ()
   type Bwd (ConstB a) = a
 
+instance IdleCircuit (ConstB a) where
+  -- idleFwd :: Data.Proxy.Proxy (ConstB a) -> Fwd (ConstB a)
+  idleFwd Proxy = ()
+
+  -- idleBwd :: Data.Proxy.Proxy (ConstB a) -> Bwd (ConstB a)
+  idleBwd Proxy = error ""
 
 constF :: a -> Circuit () (ConstF a)
 constF val = Circuit $ \((), ()) -> ((), val)
@@ -107,6 +130,7 @@ data Name = Name
 {- | Wrapper for \"things\" that have a name and a description. These are used
 to generate documentation and data structures for target languages.
 -}
+
 -- type Named a = (Name, a)
 
 type NamedLoc a = (Name, SrcLoc, a)
@@ -119,7 +143,6 @@ data MemoryMap = MemoryMap
   }
   deriving (Show)
 
-
 data DeviceDefinition = DeviceDefinition
   { deviceName :: Name
   , registers :: [NamedLoc Register]
@@ -128,8 +151,7 @@ data DeviceDefinition = DeviceDefinition
   deriving (Show)
 
 deviceSize :: DeviceDefinition -> Integer
-deviceSize def = List.foldr (\(_, _, reg) acc -> max acc (reg.address + reg.fieldSize)) 0 def.registers
-
+deviceSize def' = List.foldr (\(_, _, reg) acc -> max acc (reg.address + reg.fieldSize)) 0 def'.registers
 
 data Access
   = -- | Managers should only read from this register
@@ -154,8 +176,7 @@ data Register = Register
   }
   deriving (Show)
 
-
-withName :: HasCallStack => String -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
+withName :: (HasCallStack) => String -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
 withName name' (Circuit f) = Circuit go
  where
   callLoc = case getCallStack callStack of
@@ -164,10 +185,10 @@ withName name' (Circuit f) = Circuit go
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
    where
     ((SimOnly mm, bwdA), fwdB) = f (((), fwdA), bwdB)
-    mm' = mm { tree = WithName callLoc name' mm.tree }
+    mm' = mm{tree = WithName callLoc name' mm.tree}
 
-
-withAbsAddr :: HasCallStack => Address -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
+withAbsAddr ::
+  (HasCallStack) => Address -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
 withAbsAddr addr (Circuit f) = Circuit go
  where
   callLoc = case getCallStack callStack of
@@ -176,8 +197,7 @@ withAbsAddr addr (Circuit f) = Circuit go
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
    where
     ((SimOnly mm, bwdA), fwdB) = f (((), fwdA), bwdB)
-    mm' = mm { tree = WithAbsAddr callLoc addr mm.tree }
-
+    mm' = mm{tree = WithAbsAddr callLoc addr mm.tree}
 
 withMemoryMap :: MemoryMap -> Circuit a b -> Circuit (ConstB MM, a) b
 withMemoryMap mm = withConstB (SimOnly mm)
@@ -185,14 +205,13 @@ withMemoryMap mm = withConstB (SimOnly mm)
 withPrefix :: v -> Circuit a b -> Circuit (ConstB v, a) b
 withPrefix = withConstB
 
-withConstB :: forall v a b . v -> Circuit a b -> Circuit (ConstB v, a) b
+withConstB :: forall v a b. v -> Circuit a b -> Circuit (ConstB v, a) b
 withConstB val (Circuit f) = Circuit go
  where
   go :: (((), Fwd a), Bwd b) -> ((v, Bwd a), Fwd b)
   go (((), fwdA), bwdB) = ((val, bwdA), fwdB)
    where
     (bwdA, fwdB) = f (fwdA, bwdB)
-
 
 mergeDeviceDefs :: [Map.Map String DeviceDefinition] -> Map.Map String DeviceDefinition
 mergeDeviceDefs = List.foldl Map.union Map.empty
@@ -201,3 +220,13 @@ getConstBAny :: Circuit (ConstB v, a) b -> v
 getConstBAny (Circuit f) = val
  where
   ((val, _), _) = f (((), errorX ""), errorX "")
+
+deviceSingleton :: DeviceDefinition -> DeviceDefinitions
+deviceSingleton def' = Map.singleton def'.deviceName.name def'
+
+unMemmap :: Circuit (ConstB MM, a) b -> Circuit a b
+unMemmap (Circuit f) = Circuit go
+ where
+  go (fwdA, bwdB) = (bwdA, fwdB)
+   where
+    ((_, bwdA), fwdB) = f (((), fwdA), bwdB)

@@ -150,7 +150,7 @@ metacycleStalling = property $ do
           wcre
             $ fst
             $ scatterUnitWb @System
-              (ScatterConfig calConfig)
+              (ScatterConfig SNat calConfig)
               (pure emptyWishboneM2S)
               linkIn
               wbStall
@@ -158,7 +158,7 @@ metacycleStalling = property $ do
           wcre
             $ (\(_, x, _) -> x)
             $ gatherUnitWb @System
-              (GatherConfig calConfig)
+              (GatherConfig SNat calConfig)
               (pure emptyWishboneM2S)
               wbStall
         wbStall =

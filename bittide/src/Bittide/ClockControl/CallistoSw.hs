@@ -30,6 +30,7 @@ import Bittide.ClockControl.DebugRegister (
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.DoubleBufferedRam (InitialContent (Undefined))
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
+import Protocols.MemoryMap (constB)
 
 -- | Configuration type for software clock control.
 data SwControlConfig dom mgn fsz where
@@ -115,22 +116,34 @@ callistoSwClockControl (SwControlConfig jtagIn reframe mgn fsz) mask ebs =
 
   capture = isRising False (isJust <$> ccData.clockMod)
 
-  (jtag, (ccData, debugData)) =
-    circuitFn (jtagIn, (pure (), pure ()))
+  ((_mm, jtag), (ccData, debugData)) =
+    circuitFn (((), jtagIn), (pure (), pure ()))
 
-  Circuit circuitFn = circuit $ \jtag -> do
-    [wbClockControl, wbDebug, wbDummy] <- processingElement NoDumpVcd peConfig -< jtag
+  Circuit circuitFn = circuit $ \(mm, jtag) -> do
+    [ (preCc, (mmCc, wbClockControl))
+      , (preDebug, (mmDebug, wbDebug))
+      , (preDummy, (mmDummy, wbDummy))
+      ] <-
+      processingElement NoDumpVcd peConfig -< (mm, jtag)
     idleSink -< wbDummy
+    constB 0b001 -< preDummy
+    constB undefined -< mmDummy
     [ccd0, ccd1] <- cSignalDupe <| clockControlWb mgn fsz mask ebs -< wbClockControl
+    constB 0b110 -< preCc
+    constB undefined -< mmCc
     cm <- cSignalMap clockMod -< ccd0
     dbg <- debugRegisterWb debugRegisterCfg -< (wbDebug, cm)
+    constB 0b111 -< preDebug
+    constB undefined -< mmDebug
     idC -< (ccd1, dbg)
 
   peConfig =
     PeConfig
-      { memMapConfig = 0b100 :> 0b010 :> 0b110 :> 0b111 :> 0b001 :> Nil
-      , initI = Undefined @(Div (64 * 1024) 4)
+      { -- memMapConfig = 0b100 :> 0b010 :> 0b110 :> 0b111 :> 0b001 :> Nil
+        initI = Undefined @(Div (64 * 1024) 4)
+      , prefixI = 0b100
       , initD = Undefined @(Div (64 * 1024) 4)
+      , prefixD = 0b010
       , iBusTimeout = d0 -- No timeouts on the instruction bus
       , dBusTimeout = d0 -- No timeouts on the data bus
       }

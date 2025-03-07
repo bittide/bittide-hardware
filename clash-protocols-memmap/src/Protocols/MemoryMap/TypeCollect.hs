@@ -11,9 +11,8 @@ import Clash.Prelude hiding (def)
 import qualified Data.List as L
 
 import qualified Data.Map.Strict as Map
-import Protocols.MemoryMap (DeviceDefinition (..), MemoryMap (..), Register (..), DeviceDefinitions)
+import Protocols.MemoryMap (DeviceDefinition (..), DeviceDefinitions, Register (..))
 import Protocols.MemoryMap.FieldType (FieldType (..), TypeName)
-import Protocols.MemoryMap.Check.AbsAddress (MemoryMapTreeAbs)
 
 data TypeDescription = TypeDescription
   { name :: TypeName

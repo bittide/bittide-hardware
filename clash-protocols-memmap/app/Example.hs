@@ -5,27 +5,27 @@
 -- {-# OPTIONS -fplugin-opt=Protocols.Plugin:debug #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
 import Clash.Prelude
 
 import Control.Monad (forM_)
-import Internal.HdlTest.UartMock ( someOtherCircuit)
-import Protocols.MemoryMap
-import Text.Printf (printf)
-import Protocols.MemoryMap.Check.AbsAddress (makeAbsolute)
-import Protocols.MemoryMap.Json (memoryMapJson)
 import qualified Data.Aeson as Ae
 import qualified Data.ByteString.Lazy as BS
-
+import Internal.HdlTest.UartMock (someOtherCircuit)
+import Protocols.MemoryMap
+import Protocols.MemoryMap.Check.AbsAddress (makeAbsolute)
+import Protocols.MemoryMap.Json (memoryMapJson)
+import Text.Printf (printf)
 
 main :: IO ()
 main = do
   putStrLn "hello"
-  let SimOnly memoryMap = getConstBAny (withClockResetEnable @System clockGen resetGen enableGen someOtherCircuit)
+  let SimOnly memoryMap =
+        getConstBAny (withClockResetEnable @System clockGen resetGen enableGen someOtherCircuit)
   print memoryMap
   let tree = convert memoryMap.tree
   let tree' = fillPathsAndAddrs tree
@@ -37,8 +37,6 @@ main = do
   let json = memoryMapJson memoryMap.deviceDefs absTree
   BS.putStr (Ae.encode json)
   pure ()
-
-
 
 {-
 import qualified Data.Aeson as Ae
@@ -61,7 +59,6 @@ checkConfig = CheckConfiguration{startAddr = 0x0000_0000, endAddr = 0xFFFF_FFFF}
 checkCircuitTH @System
   (CheckConfiguration{startAddr = 0x0000_0000, endAddr = 0xFFFF_FFFF})
   someCircuit
-
 
 main :: IO ()
 main = do

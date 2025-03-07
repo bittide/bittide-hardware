@@ -28,11 +28,15 @@ import Data.Bool (bool)
 import Data.Constraint.Nat.Extra
 import Data.Maybe
 
+import qualified Data.List as L
+
 import Protocols
 import Protocols.Wishbone
 
 import Clash.Sized.Vector.ToTuple (VecToTuple (vecToTuple))
+import GHC.Stack (HasCallStack, callStack, getCallStack)
 import qualified Protocols.Df as Df
+import qualified Protocols.MemoryMap as MM
 import qualified Protocols.Wishbone as Wishbone
 
 {- $setup
@@ -47,6 +51,58 @@ type MemoryMap nSlaves = Vec nSlaves (Unsigned (CLog 2 nSlaves))
 
 -- | Size of a bus that results from a `singleMasterInterconnect` with `nSlaves` slaves.
 type MappedBusAddrWidth addr nSlaves = addr - CLog 2 nSlaves
+
+singleMasterInterconnectC ::
+  forall dom nSlaves addrW a.
+  ( HiddenClockResetEnable dom
+  , HasCallStack
+  , KnownNat nSlaves
+  , 1 <= nSlaves
+  , KnownNat addrW
+  , (CLog 2 nSlaves <= addrW)
+  , BitPack a
+  , NFDataX a
+  ) =>
+  Circuit
+    (MM.ConstB MM.MM, Wishbone dom 'Standard addrW a)
+    ( Vec
+        nSlaves
+        ( MM.ConstB (Unsigned (CLog 2 nSlaves))
+        , (MM.ConstB MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth addrW nSlaves) a)
+        )
+    )
+singleMasterInterconnectC = Circuit go
+ where
+  srcLoc = case getCallStack callStack of
+    ((_, callLoc) : _) -> callLoc
+    _ -> error "singleMasterInterconnectC must be invoked with a `HasCallStack` environment"
+
+  go ::
+    ( ((), Signal dom (WishboneM2S addrW (Div (BitSize a + 7) 8) a))
+    , Vec
+        nSlaves
+        (Unsigned (CLog 2 nSlaves), (SimOnly MM.MemoryMap, Signal dom (WishboneS2M a)))
+    ) ->
+    ( (SimOnly MM.MemoryMap, Signal dom (WishboneS2M a))
+    , Vec
+        nSlaves
+        ((), ((), Signal dom (WishboneM2S (addrW - CLog 2 nSlaves) (Div (BitSize a + 7) 8) a)))
+    )
+  go (((), m2s), unzip -> (prefixes, unzip -> (slaveMms, s2ms))) = ((SimOnly memMap, s2m), (\x -> ((), ((), x))) <$> m2ss)
+   where
+    prefixToAddr prefix = toInteger prefix `shiftL` fromInteger shift'
+     where
+      shift' = snatToInteger $ SNat @(addrW - CLog 2 nSlaves)
+    relAddrs = L.map prefixToAddr (toList prefixes)
+    comps = L.zip relAddrs (MM.tree . unSimOnly <$> toList slaveMms)
+    unSimOnly (SimOnly n) = n
+    deviceDefs = MM.mergeDeviceDefs (MM.deviceDefs . unSimOnly <$> toList slaveMms)
+    memMap =
+      MM.MemoryMap
+        { tree = MM.Interconnect srcLoc comps
+        , deviceDefs = deviceDefs
+        }
+    (s2m, m2ss) = toSignals (singleMasterInterconnect prefixes) (m2s, s2ms)
 
 {-# NOINLINE singleMasterInterconnect #-}
 

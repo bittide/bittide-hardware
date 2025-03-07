@@ -9,15 +9,16 @@ module Protocols.MemoryMap.Json where
 
 import Clash.Prelude
 
-
 import Data.Aeson
 import Protocols.MemoryMap (
   Access (ReadOnly, ReadWrite, WriteOnly),
   DeviceDefinition (..),
-  MemoryMap (..),
-  MemoryMapTree (..),
+  DeviceDefinitions,
+  MemoryMapTreeAnn (AnnDeviceInstance, AnnInterconnect),
   Name (..),
-  Register (..), DeviceDefinitions, MemoryMapTreeAnn (AnnInterconnect, AnnDeviceInstance), Path, PathComp (..),
+  Path,
+  PathComp (..),
+  Register (..),
  )
 
 import qualified Protocols.MemoryMap.FieldType as FT

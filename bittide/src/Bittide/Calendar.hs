@@ -7,7 +7,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=8 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=16 #-}
 
 {- |
 Contains the Bittide Calendar, which is a double buffered memory element that stores
@@ -20,6 +20,7 @@ For documentation see 'Bittide.Calendar.calendar'.
 module Bittide.Calendar (
   calendar,
   mkCalendar,
+  calendarMemoryMap,
   CalendarConfig (..),
   ValidEntry (..),
   ExtraRegs,
@@ -32,8 +33,12 @@ import Data.Constraint.Nat.Extra
 import Data.Maybe
 import Protocols.Wishbone
 
+import BitPackC
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
+import GHC.Stack (HasCallStack, callStack, getCallStack)
+import Protocols.MemoryMap
+import Protocols.MemoryMap.FieldType
 
 {-
 NOTE [component calendar types]
@@ -116,6 +121,96 @@ mkCalendar ::
   (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)))
 mkCalendar (CalendarConfig maxCalDepth bsActive bsShadow) =
   calendar maxCalDepth bsActive bsShadow
+
+calendarMemoryMap ::
+  forall nBytes addrW calEntry.
+  ( HasCallStack
+  , KnownNat nBytes
+  , 1 <= nBytes
+  , KnownNat addrW
+  ) =>
+  String ->
+  -- | Calendar configuration for 'calendar'.
+  CalendarConfig nBytes addrW calEntry ->
+  MemoryMap
+calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
+  MemoryMap
+    { tree = DeviceInstance srcLoc name
+    , deviceDefs = deviceSingleton (deviceDef maxCalDepth)
+    }
+ where
+  sizeEntries :: forall maxCalDepth n. (Num n) => SNat maxCalDepth -> n
+  sizeEntries SNat =
+    -- natToNum @(BitSize calEntry `DivRU` 8)
+    natToNum @(maxCalDepth * nBytes)
+
+  deviceDef :: forall maxCalDepth. SNat maxCalDepth -> DeviceDefinition
+  deviceDef depth@SNat =
+    DeviceDefinition
+      { registers =
+          [
+            ( Name "calendarEntries" ""
+            , srcLoc
+            , Register
+                { fieldType = toFieldType @(Vec maxCalDepth (Bytes nBytes))
+                , fieldSize = sizeEntries depth
+                , address = 0
+                , access = ReadWrite
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "shadowWrite" ""
+            , srcLoc
+            , Register
+                { fieldType = toFieldType @(Bytes nBytes)
+                , fieldSize = natToNum @(ByteSizeC (Bytes nBytes))
+                , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 0)
+                , access = WriteOnly
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "shadowRead" ""
+            , srcLoc
+            , Register
+                { fieldType = toFieldType @(Bytes nBytes)
+                , fieldSize = natToNum @(ByteSizeC (Bytes nBytes))
+                , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 1)
+                , access = WriteOnly
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "shadowDepth" ""
+            , srcLoc
+            , Register
+                { fieldType = toFieldType @(Bytes nBytes)
+                , fieldSize = natToNum @(ByteSizeC (Bytes nBytes))
+                , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 2)
+                , access = ReadWrite -- TODO is this correct??
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "calendarSwap" ""
+            , srcLoc
+            , Register
+                { fieldType = toFieldType @Bool
+                , fieldSize = natToNum @(ByteSizeC Bool)
+                , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 3)
+                , access = WriteOnly
+                , reset = Nothing
+                }
+            )
+          ]
+      , deviceName = Name name ""
+      , defLocation = srcLoc
+      }
+
+  srcLoc = case getCallStack callStack of
+    (_, callLoc) : _ -> callLoc
+    _ -> error "`calendarMemoryMap` needs to be called in a `HasCallStack` context"
 
 {- | State of the calendar excluding the buffers. It stores the depths of the active and
 shadow calendar, the read pointer, buffer selector and a register for first cycle behavior.

@@ -12,6 +12,7 @@ import Bittide.Calendar
 import Bittide.SharedTypes
 import Data.Constraint.Nat.Extra
 import Protocols
+import Protocols.MemoryMap (ConstB, MM)
 import Protocols.Wishbone
 
 -- | An index which source is selected by the crossbar, 0 selects Nothing, k selects k - 1.
@@ -34,15 +35,18 @@ switchC ::
   ) =>
   CalendarConfig nBytes addrW (CalendarEntry links) ->
   Circuit
-    ( Vec links (CSignal dom (BitVector frameWidth))
-    , Wishbone dom 'Standard addrW (Bytes nBytes) -- calendar interface
+    ( ConstB MM
+    , ( Vec links (CSignal dom (BitVector frameWidth))
+      , Wishbone dom 'Standard addrW (Bytes nBytes) -- calendar interface
+      )
     )
     (Vec links (CSignal dom (BitVector frameWidth)))
 switchC conf = case (cancelMulDiv @nBytes @8) of
   Dict -> Circuit go
    where
-    go ((streamsIn, calM2S), _) = ((repeat $ pure (), calS2M), streamsOut)
+    go (((), (streamsIn, calM2S)), _) = ((SimOnly memMap, (repeat $ pure (), calS2M)), streamsOut)
      where
+      memMap = calendarMemoryMap @nBytes @addrW "Switch" conf
       (streamsOut, calS2M) = switch conf calM2S streamsIn
 
 {-# NOINLINE switch #-}

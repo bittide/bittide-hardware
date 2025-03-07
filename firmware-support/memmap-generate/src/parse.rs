@@ -107,7 +107,9 @@ impl TryFrom<Value> for Type {
         match value.clone() {
             Value::String(x) if x == "bool" => Ok(Self::Bool),
             Value::Array(a) if a.len() == 2 => {
-                let Ok([a, b]) = <[Value; 2]>::try_from(a) else { panic!() };
+                let Ok([a, b]) = <[Value; 2]>::try_from(a) else {
+                    panic!()
+                };
                 match (a.as_str(), b.as_u64()) {
                     (Some("bitvector"), Some(n)) => Ok(Self::BitVector(n)),
                     (Some("signed"), Some(n)) => Ok(Self::Signed(n)),
@@ -117,18 +119,20 @@ impl TryFrom<Value> for Type {
                 }
             }
             Value::Array(a) if a.len() == 3 => {
-                let Ok([a, b, c]) = <[Value; 3]>::try_from(a) else { panic!() };
+                let Ok([a, b, c]) = <[Value; 3]>::try_from(a) else {
+                    panic!()
+                };
                 match a.as_str() {
                     Some("vector") => {
                         let Some(n) = b.as_u64() else {
-                            return Err(format!("Invalid type, expected [\"vector\", <integer>, <another type>], found {value:?}"))
+                            return Err(format!("Invalid type, expected [\"vector\", <integer>, <another type>], found {value:?}"));
                         };
                         let inner = c.try_into()?;
                         Ok(Self::Vec(n, Box::new(inner)))
                     }
                     Some("reference") => {
                         let Some(name) = b.as_str() else {
-                            return Err(format!("Invalid type, expected [\"reference\", <name>, <array of type>], found {value:?}"))
+                            return Err(format!("Invalid type, expected [\"reference\", <name>, <array of type>], found {value:?}"));
                         };
                         let args = match serde_json::from_value(c) {
                             Ok(val) => val,
