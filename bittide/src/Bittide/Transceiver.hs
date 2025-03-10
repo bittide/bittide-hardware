@@ -179,6 +179,8 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.txReady'
   , txSamplings :: Vec n (Signal tx Bool)
   -- ^ See 'Output.txSampling'
+  , handshakesDoneTx :: Vec n (Signal tx Bool)
+  -- ^ See 'Output.handshakeDoneTx'
   , txPs :: Gth.Wires txS n
   -- ^ See 'Output.txP'
   , txNs :: Gth.Wires txS n
@@ -191,10 +193,14 @@ data Outputs n tx rx txS free = Outputs
   -- ^ See 'Output.rxReset'
   , rxDatas :: Vec n (Signal rx (Maybe (BitVector 64)))
   -- ^ See 'Output.rxData'
+  , handshakesDone :: Vec n (Signal rx Bool)
+  -- ^ See 'Output.handshakeDone'
   , linkUps :: Vec n (Signal free Bool)
   -- ^ See 'Output.linkUp'
   , linkReadys :: Vec n (Signal free Bool)
   -- ^ See 'Output.linkReady'
+  , handshakesDoneFree :: Vec n (Signal free Bool)
+  -- ^ See 'Output.handshakeDoneFree'
   , stats :: Vec n (Signal free ResetManager.Statistics)
   -- ^ See 'Output.stats'
   }
@@ -210,6 +216,9 @@ data Output tx rx tx1 rx1 txS free = Output
   -- 'Input.txStart' to be asserted before starting to send 'txData'.
   , txSampling :: Signal tx Bool
   -- ^ Data is sampled from 'Input.txData'
+  , handshakeDoneTx :: Signal tx Bool
+  -- ^ Asserted when link has been established, but not necessarily handling user data.
+  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
   , txP :: Gth.Wire txS
   -- ^ Transmit data (and implicitly a clock), positive
   , txN :: Gth.Wire txS
@@ -223,11 +232,16 @@ data Output tx rx tx1 rx1 txS free = Output
   -- is deasserted.
   , rxData :: Signal rx (Maybe (BitVector 64))
   -- ^ User data received from the neighbor
+  , handshakeDone :: Signal rx Bool
+  -- ^ Asserted when link has been established, but not necessarily handling user data.
   , linkUp :: Signal free Bool
   -- ^ True if both the transmit and receive side are either handling user data
   , linkReady :: Signal free Bool
   -- ^ True if both the transmit and receive side ready to handle user data or
   -- doing so. I.e., 'linkUp' implies 'linkReady'. Note that this
+  , handshakeDoneFree :: Signal free Bool
+  -- ^ Asserted when link has been established, but not necessarily handling user data.
+  -- This signal is native to the 'rx' domain. If you need that, use 'handshakeDone'.
   , stats :: Signal free ResetManager.Statistics
   -- ^ Statistics exported by 'ResetManager.resetManager'. Useful for debugging.
   }
@@ -344,17 +358,20 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
     , txReset = fold orReset $ map (.txReset) outputs
     , txReadys = map (.txReady) outputs
     , txSamplings = map (.txSampling) outputs
+    , handshakesDoneTx = map (.handshakeDoneTx) outputs
     , txSims = simOnlyHdlWorkaround (SimOnly (map (Gth.unSimOnly . (.txSim)) outputs))
     , -- rx
       rxClocks = rxClocks
     , rxResets = map (.rxReset) outputs
     , rxDatas = map (.rxData) outputs
+    , handshakesDone = map (.handshakeDone) outputs
     , -- transceiver
       txPs = pack <$> bundle (map (.txP) outputs)
     , txNs = pack <$> bundle (map (.txN) outputs)
     , -- free
       linkUps = map (.linkUp) outputs
     , linkReadys = map (.linkReady) outputs
+    , handshakesDoneFree = map (.handshakeDoneFree) outputs
     , stats = map (.stats) outputs
     }
  where
@@ -546,6 +563,9 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
       { txSampling = txUserData
       , rxData = mux rxUserData (Just <$> alignedRxData0) (pure Nothing)
       , txReady = withLockRxTx rxReadyNeighborSticky
+      , handshakeDoneTx = withLockRxTx prbsOkDelayed
+      , handshakeDone = prbsOkDelayed
+      , handshakeDoneFree = withLockRxFree prbsOkDelayed
       , txSim
       , txN = txN
       , txP = txP

@@ -252,3 +252,4 @@ test-suite unittests
     tasty-hedgehog >=1.2 && <1.5,
     tasty-hunit,
     tasty-th,
+    template-haskell,
