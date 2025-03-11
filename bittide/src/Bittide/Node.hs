@@ -40,8 +40,8 @@ simpleNodeConfig =
  where
   switchCal = CalendarConfig (SNat @1024) (switchEntry :> Nil) (switchEntry :> Nil)
   sgConfig = CalendarConfig (SNat @1024) (sgEntry :> Nil) (sgEntry :> Nil)
-  peConfig = PeConfig memMapPe (Undefined @8192) (Undefined @8192) d0 d0
-  nmuConfig = PeConfig memMapNmu (Undefined @8192) (Undefined @8192) d0 d0
+  peConfig = PeConfig memMapPe (Undefined @8192) (Undefined @8192) d0 d0 True
+  nmuConfig = PeConfig memMapNmu (Undefined @8192) (Undefined @8192) d0 d0 False
   memMapPe = iterateI (+ 0x1000) 0
   memMapNmu = iterateI (+ 0x1000) 0
   switchEntry = ValidEntry{veEntry = repeat 0, veRepeat = 0 :: Unsigned 0}
@@ -79,7 +79,7 @@ node ::
     (Vec extLinks (CSignal dom (BitVector 64)))
     (Vec extLinks (CSignal dom (BitVector 64)))
 node (NodeConfig nmuConfig switchConfig gppeConfigs) = circuit $ \linksIn -> do
-  switchOut <- switchC @_ @_ @_ @_ @64 switchConfig -< (switchIn, swWb)
+  (switchOut, _cal) <- switchC @_ @_ @_ @_ @64 switchConfig -< (switchIn, swWb)
   switchIn <- appendC3 -< ([nmuLinkOut], pesToSwitch, linksIn)
   ([nmuLinkIn], switchToPes, linksOut) <- splitC3 -< switchOut
   (nmuLinkOut, nmuWbs0) <- managementUnitC nmuConfig -< nmuLinkIn

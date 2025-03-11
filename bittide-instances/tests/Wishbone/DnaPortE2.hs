@@ -78,6 +78,7 @@ dut = circuit $ \_unit -> do
         , initD = Reloadable (Vec dMem)
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
+        , includeIlaWb = False
         }
 {-# NOINLINE dut #-}
 

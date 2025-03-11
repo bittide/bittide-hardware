@@ -87,6 +87,7 @@ vexRiscUartHello diffClk rst_in =
         , initD = Reloadable (Vec dMem)
         , iBusTimeout = d0
         , dBusTimeout = d0
+        , includeIlaWb = False
         }
 
   peConfigRtl =
@@ -96,6 +97,7 @@ vexRiscUartHello diffClk rst_in =
       , initD = Undefined @DMemWords
       , iBusTimeout = d0
       , dBusTimeout = d0
+      , includeIlaWb = True
       }
 
 type IMemWords = DivRU (64 * 1024) 4

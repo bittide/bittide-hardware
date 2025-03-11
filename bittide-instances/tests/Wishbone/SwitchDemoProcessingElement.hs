@@ -14,6 +14,7 @@ import Data.List (isPrefixOf)
 import Data.Maybe (mapMaybe)
 import Project.FilePath
 import Protocols
+import Protocols.Extra (fanoutC)
 import Protocols.Idle
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
@@ -45,12 +46,11 @@ simResult = unlines . takeWhileInclusive (/= "Finished") . lines $ uartString
   uartStream =
     sampleC def{timeoutAfter = 200_000}
       $ withClockResetEnable clk reset enable
-      $ dut @System localCounter dnaA dnaB
+      $ dut @System dnaA dnaB
 
   clk = clockGen
   reset = resetGen
   enable = enableGen
-  localCounter = register clk reset enable 0 (localCounter + 1)
   dnaA = pure 0xAAAA_0123_4567_89AB_CDEF_0001
   dnaB = pure 0xBBBB_0123_4567_89AB_CDEF_0001
 
@@ -79,20 +79,19 @@ dut ::
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
   ) =>
-  -- | Local clock cycle counter
-  Signal dom (Unsigned 64) ->
   -- | Fake DNA (used to identify the different PEs)
   Signal dom (BitVector 96) ->
   -- | Fake DNA (used to identify the different PEs)
   Signal dom (BitVector 96) ->
   Circuit () (Df dom (BitVector 8))
-dut localCounter dnaA dnaB = circuit $ do
+dut dnaA dnaB = circuit $ do
   (uartRx, jtagIdle) <- idleSource -< ()
   [uartBus, timeBus, peBusA, peBusB] <- processingElement NoDumpVcd peConfig -< jtagIdle
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (uartBus, uartRx)
-  _localCounter <- timeWb -< timeBus
-  linkAB <- switchDemoPeWb d2 localCounter -< (peBusA, dnaAC, linkBA)
-  linkBA <- switchDemoPeWb d2 localCounter -< (peBusB, dnaBC, linkAB)
+  localCounter <- timeWb -< timeBus
+  [localCounterAB, localCounterBA] <- fanoutC -< localCounter
+  (linkAB, _stateAB) <- switchDemoPeWb d2 -< (localCounterAB, peBusA, dnaAC, linkBA)
+  (linkBA, _stateBA) <- switchDemoPeWb d2 -< (localCounterBA, peBusB, dnaBC, linkAB)
   dnaAC <- signalToCSignal dnaA -< ()
   dnaBC <- signalToCSignal dnaB -< ()
   idC -< uartTx
@@ -114,6 +113,7 @@ dut localCounter dnaA dnaB = circuit $ do
         , initD = Reloadable (Vec dMem)
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
+        , includeIlaWb = False
         }
 
 type IMemWords = DivRU (32 * 1024) 4

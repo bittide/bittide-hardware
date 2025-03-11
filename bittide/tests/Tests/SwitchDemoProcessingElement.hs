@@ -123,6 +123,7 @@ prop_readThenWrite = H.property $ do
         E.sample
           $ bundle
           $ withClockResetEnable @System clockGen noReset enableGen
+          $ (\(a, b, _) -> (a, b))
           $ switchDemoPe
             bufferSizeSNat
             (fromList [clockStart ..])
@@ -168,7 +169,7 @@ prop_readThenWrite = H.property $ do
         L.take (fromIntegral nReadCycles) (toList buffer) === readData
 
     -- Check that idle value is written at correct times
-    let idleValue = 0xAAAA_BBBB_AAAA_BBBB
+    let idleValue = resize $ complement deviceDna
     idle1outs === L.replicate (L.length idle1outs) idleValue
     readOuts === L.replicate (L.length readOuts) idleValue
     idle2outs === L.replicate (L.length idle2outs) idleValue

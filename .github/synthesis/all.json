@@ -13,6 +13,7 @@
 
   {"top": "boardTestExtended",             "stage": "test"},
   {"top": "boardTestSimple",               "stage": "test"},
+  {"top": "switchDemoTest",                "stage": "test"},
   {"top": "dnaOverSerial",                 "stage": "test"},
   {"top": "fincFdecTests",                 "stage": "test"},
   {"top": "swCcTopologyTest",              "stage": "test"},

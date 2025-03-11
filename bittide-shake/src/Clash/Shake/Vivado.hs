@@ -927,8 +927,11 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFileP
           ilaShortName <- mkUniqShortName usedShortNamesVar ilaShortName0 (fromHwIla ila)
           execCmd_ v "current_hw_ila_data" ["[upload_hw_ila_data [current_hw_ila]]"]
           -- Legacy CSV excludes radix information
-          execCmd_ v "write_hw_ila_data" ["-force", "-legacy_csv_file " <> dir </> ilaShortName]
-          execCmd_ v "write_hw_ila_data" ["-force", "-vcd_file " <> dir </> ilaShortName]
+          execCmd_
+            v
+            "write_hw_ila_data"
+            ["-force", "-legacy_csv_file " <> embrace (dir </> ilaShortName)]
+          execCmd_ v "write_hw_ila_data" ["-force", "-vcd_file " <> embrace (dir </> ilaShortName)]
 
       -- deassert all START signals
       forM_ (sortOn (prettyShow . fst . fst) (toAscList parameters)) $ \((hwT, _), _param) -> do

@@ -94,7 +94,7 @@ dut eb localCounter = circuit $ do
   (uartRx, jtagIdle) <- idleSource -< ()
   [uartBus, ugnBus] <- processingElement @dom NoDumpVcd peConfig -< jtagIdle
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
-  _bittideData <- captureUgn localCounter -< (ugnBus, eb)
+  _bittideData <- captureUgn -< (Fwd localCounter, ugnBus, eb)
   idC -< uartTx
  where
   ebCircuit :: Circuit () (CSignal dom (Maybe (BitVector 64)))
@@ -112,6 +112,7 @@ dut eb localCounter = circuit $ do
         , initD = Reloadable (Vec dMem)
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
+        , includeIlaWb = False
         }
 
 type IMemWords = DivRU (64 * 1024) 4

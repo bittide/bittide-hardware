@@ -164,6 +164,7 @@ dut =
         , initD = Reloadable (Vec dMem)
         , iBusTimeout = d0
         , dBusTimeout = d0
+        , includeIlaWb = False
         }
 {-# NOINLINE dut #-}
 

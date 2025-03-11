@@ -37,13 +37,15 @@ switchC ::
     ( Vec links (CSignal dom (BitVector frameWidth))
     , Wishbone dom 'Standard addrW (Bytes nBytes) -- calendar interface
     )
-    (Vec links (CSignal dom (BitVector frameWidth)))
+    ( Vec links (CSignal dom (BitVector frameWidth))
+    , CSignal dom (Vec links (Index (links + 1)))
+    )
 switchC conf = case (cancelMulDiv @nBytes @8) of
   Dict -> Circuit go
    where
-    go ((streamsIn, calM2S), _) = ((repeat $ pure (), calS2M), streamsOut)
+    go ((streamsIn, calM2S), _) = ((repeat $ pure (), calS2M), (streamsOut, cal))
      where
-      (streamsOut, calS2M) = switch conf calM2S streamsIn
+      (streamsOut, calS2M, cal) = switch conf calM2S streamsIn
 
 {-# NOINLINE switch #-}
 
@@ -76,8 +78,9 @@ switch ::
   -- | All outgoing data links
   ( Vec links (Signal dom (BitVector frameWidth))
   , Signal dom (WishboneS2M (Bytes nBytes))
+  , Signal dom (Vec links (Index (links + 1)))
   )
-switch calConfig calM2S streamsIn = (streamsOut, calS2M)
+switch calConfig calM2S streamsIn = (streamsOut, calS2M, cal)
  where
   (cal, _, calS2M) = mkCalendar @dom @nBytes @addrW calConfig calM2S
   scatterFrames = register 0 <$> streamsIn

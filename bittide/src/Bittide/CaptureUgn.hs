@@ -38,17 +38,21 @@ captureUgn ::
   ( C.HiddenClockResetEnable dom
   , KnownNat addrW
   ) =>
-  Signal dom (Unsigned 64) ->
   Circuit
-    ( Wishbone dom 'Standard addrW (Bytes 4)
+    ( CSignal dom (Unsigned 64)
+    , Wishbone dom 'Standard addrW (Bytes 4)
     , CSignal dom (Maybe (BitVector 64))
     )
     (CSignal dom (BitVector 64))
-captureUgn localCounter = Circuit go
+captureUgn = Circuit go
  where
-  go ((wbM2S, linkIn), _) = ((wbS2M, pure ()), bittideData)
+  go ((localCounter, wbM2S, linkIn), _) = ((pure (), wbS2M, pure ()), bittideData)
    where
-    state = C.regEn (0, 0) trigger (bundle (pack <$> localCounter, fromMaybe 0 <$> linkIn))
+    state =
+      C.regEn
+        (0x1111111111111111, 0x2222222222222222)
+        trigger
+        (bundle (pack <$> localCounter, fromMaybe 0 <$> linkIn))
     stateVec = concatMap swapWords . bitCoerce <$> state
 
     -- Swap the two words of a 64-bit Bitvector to match the word order of

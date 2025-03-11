@@ -199,6 +199,31 @@ ilaWb SSymbol stages0 depth0 trigger capture = Circuit $ \(m2s, s2m) ->
    in
     ilaInst `hwSeqX` (s2m, m2s)
 
+maybeIlaWb ::
+  forall name dom addrW a.
+  (HiddenClock dom) =>
+  -- | Whether or not this ILA instance should be real or not. 'True' actually creates
+  -- the ILA, 'False' makes this circuit element a no-op.
+  Bool ->
+  -- | Name of the module of the `ila` wrapper. Naming the internal ILA is
+  -- unreliable when more than one ILA is used with the same arguments, but the
+  -- module name can be set reliably.
+  SSymbol name ->
+  -- | Number of registers to insert at each probe. Supported values: 0-6.
+  -- Corresponds to @C_INPUT_PIPE_STAGES@. Default is @0@.
+  Index 7 ->
+  -- | Number of samples to store. Corresponds to @C_DATA_DEPTH@. Default set
+  -- by 'ilaConfig' equals 'D4096'.
+  Depth ->
+  WbToBool dom 'Standard addrW a ->
+  WbToBool dom 'Standard addrW a ->
+  Circuit
+    (Wishbone dom 'Standard addrW a)
+    (Wishbone dom 'Standard addrW a)
+maybeIlaWb True a b c d e = ilaWb a b c d e
+maybeIlaWb False _ _ _ _ _ = circuit $ \left -> do
+  idC -< left
+
 {- | Given a vector with elements and a mask, promote all values with a corresponding
 'True' to 'Just', others to 'Nothing'.
 
@@ -681,3 +706,29 @@ watchDogWb name timeout@SNat
       | wdTimeout = trace ("watchDogWb - " <> name <> ": " <> show wbM2S0) 0
       | wbM2S0.busCycle && wbM2S0.strobe = succ cnt0
       | otherwise = 0
+
+wbAlwaysAckWith ::
+  forall nBytes addrW.
+  ( KnownNat nBytes
+  , 1 <= nBytes
+  , KnownNat addrW
+  ) =>
+  Bytes nBytes ->
+  WishboneM2S addrW nBytes (Bytes nBytes) ->
+  WishboneS2M (Bytes nBytes)
+wbAlwaysAckWith dat _ = (emptyWishboneS2M @(Bytes nBytes)){acknowledge = True, readData = dat}
+
+whoAmIC ::
+  forall dom addrW.
+  ( KnownDomain dom
+  , HiddenClockResetEnable dom
+  , KnownNat addrW
+  ) =>
+  BitVector 32 ->
+  Circuit (Wishbone dom 'Standard addrW (Bytes 4)) ()
+whoAmIC whoAmI = Circuit go
+ where
+  go ::
+    (Fwd (Wishbone dom 'Standard addrW (Bytes 4)), ()) ->
+    (Bwd (Wishbone dom 'Standard addrW (Bytes 4)), ())
+  go (m2s, ()) = (wbAlwaysAckWith whoAmI <$> m2s, ())

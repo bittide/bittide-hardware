@@ -159,6 +159,7 @@ vexRiscvInner jtagIn0 uartRx =
         , initD = Reloadable (Vec dMem)
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
+        , includeIlaWb = False
         }
   peConfigRtl =
     PeConfig
@@ -167,6 +168,7 @@ vexRiscvInner jtagIn0 uartRx =
       , initD = Undefined @IMemWords
       , iBusTimeout = d0
       , dBusTimeout = d0
+      , includeIlaWb = True
       }
 
 type IMemWords = DivRU (64 * 1024) 4

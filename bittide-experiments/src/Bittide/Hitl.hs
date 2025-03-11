@@ -286,9 +286,9 @@ data type looking like:
 > data ABC = A | B | C
 >   deriving (BitPack, Bounded, Enum, Generic, Show)
 
-You can use the following to generate a test case for each contructor
+You can use the following to generate a test case for each constructor
 of @ABC@. Every such case is named after the constructor that gave rise
-to it and receives that constructur as test parameter.
+to it and receives that constructor as test parameter.
 
 > testCases :: [HitlTestCase HwTargetRef ABC ()]
 > testCases = testCasesFromEnum @ABC allHwTargets ()

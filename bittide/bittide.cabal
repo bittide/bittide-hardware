@@ -141,6 +141,7 @@ library
     Bittide.DoubleBufferedRam
     Bittide.ElasticBuffer
     Bittide.Ethernet.Mac
+    Bittide.Jtag
     Bittide.Node
     Bittide.ProcessingElement
     Bittide.ProcessingElement.DeviceTreeCompiler
