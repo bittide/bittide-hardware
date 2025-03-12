@@ -4,8 +4,8 @@ Strict caching script, that uploads to a hardcoded S3 server. Users should set
 an environment variable 'S3_PASSWORD'.
 
 Usage:
-  cache push (cabal|cargo|build|build-post-synth) [--prefix=<prefix>] [--empty-pattern-ok] [--write-cache-found] [--overwrite-ok]
-  cache pull (cabal|cargo|build|build-post-synth) [--prefix=<prefix>] [--missing-ok] [--overwrite-ok] [--write-cache-found]
+  cache push (cabal|cargo|build|synth|build-post-synth) [--prefix=<prefix>] [--empty-pattern-ok] [--write-cache-found] [--overwrite-ok]
+  cache pull (cabal|cargo|build|synth|build-post-synth) [--prefix=<prefix>] [--missing-ok] [--overwrite-ok] [--write-cache-found]
   cache clean
   cache -h | --help
   cache --version
@@ -72,6 +72,23 @@ BUILD_CACHE_PATTERNS = (
     f"{PWD}/dist-newstyle/",
 )
 
+SYNTH_CACHE_BUST = 1
+SYNTH_KEY_PREFIX = f"synth-g{GLOBAL_CACHE_BUST}-l{SYNTH_CACHE_BUST}-"
+SYNTH_KEY_PATTERNS = (
+    f"**/bittide-instances/data/constraints/**/*.xdc",
+    f"**/bittide-shake/**/*",
+)
+SYNTH_KEY_PATTERNS_UNTRACKED = (
+    f"**/_build/clash/*/*.sdc",
+    f"**/_build/clash/*/*.tcl",
+    f"**/_build/clash/*/*.v",
+)
+SYNTH_CACHE_PATTERNS = (
+    f"{PWD}/_build/vivado",
+    f"{PWD}/_build/.shake.database",
+    f"{PWD}/_build/.shake.lock",
+)
+
 BUILD_POST_SYNTH_CACHE_BUST = 1
 BUILD_POST_SYNTH_KEY_PREFIX = f"build-products-post-synth-g{GLOBAL_CACHE_BUST}-l{BUILD_POST_SYNTH_CACHE_BUST}-"
 BUILD_POST_SYNTH_CACHE_PATTERNS = (
@@ -129,6 +146,18 @@ def get_cabal_key():
 
 def get_build_key():
     return BUILD_KEY_PREFIX + os.environ["GITHUB_SHA"]
+
+
+def get_synth_key():
+    """
+    Files in the _build directory are not tracked by git. Therefore we have
+    to get the list of files in separate steps.
+    """
+    tracked_files = get_git_files_from_patterns(SYNTH_KEY_PATTERNS)
+    untracked_files = itertools.chain.from_iterable(
+        glob.glob(pattern, recursive=True) for pattern in SYNTH_KEY_PATTERNS_UNTRACKED
+    )
+    return SYNTH_KEY_PREFIX + sha256sum_files(itertools.chain(tracked_files, untracked_files))
 
 
 def get_build_post_synth_key():
@@ -332,6 +361,9 @@ def main(opts):
     elif opts["build"]:
         key = get_build_key()
         patterns = BUILD_CACHE_PATTERNS
+    elif opts["synth"]:
+        key = get_synth_key()
+        patterns = SYNTH_CACHE_PATTERNS
     elif opts["build-post-synth"]:
         key = get_build_post_synth_key()
         patterns = BUILD_POST_SYNTH_CACHE_PATTERNS
