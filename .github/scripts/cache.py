@@ -73,7 +73,7 @@ BUILD_CACHE_PATTERNS = (
 )
 
 BUILD_POST_SYNTH_CACHE_BUST = 1
-BUILD_POST_SYNTH_KEY_PREFIX = f"build-products-post-synth-g{GLOBAL_CACHE_BUST}-l{BUILD_CACHE_BUST}-"
+BUILD_POST_SYNTH_KEY_PREFIX = f"build-products-post-synth-g{GLOBAL_CACHE_BUST}-l{BUILD_POST_SYNTH_CACHE_BUST}-"
 BUILD_POST_SYNTH_CACHE_PATTERNS = (
     f"{PWD}/_build/clash",
     f"{PWD}/_build/vivado",
@@ -121,12 +121,10 @@ def get_key_from_patterns(patterns):
 
 def get_cargo_key():
     return CARGO_KEY_PREFIX + get_key_from_patterns(CARGO_KEY_PATTERNS)
-    # return CARGO_KEY_PREFIX + os.environ["GITHUB_SHA"]
 
 
 def get_cabal_key():
     return CABAL_KEY_PREFIX + get_key_from_patterns(CABAL_KEY_PATTERNS)
-    # return CABAL_KEY_PREFIX + os.environ["GITHUB_SHA"]
 
 
 def get_build_key():
