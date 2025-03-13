@@ -24,7 +24,7 @@ import Data.String.Interpolate (__i)
 import Data.Typeable (Typeable)
 import GHC.Stack (HasCallStack)
 import System.Directory.Extra (removeFile)
-import System.Environment (getEnv, setEnv)
+import System.Environment (lookupEnv, setEnv)
 import System.IO (Handle)
 import System.Process
 
@@ -231,11 +231,8 @@ execPrint_ v cmd = do
 -}
 with :: (VivadoHandle -> IO a) -> IO a
 with f = do
-  systemTmpDirEnv <- getEnv "VIVADO_HS_LOG_DIR"
-  systemTmpDir <-
-    if systemTmpDirEnv == ""
-      then Temp.getCanonicalTemporaryDirectory
-      else pure systemTmpDirEnv
+  systemTmpDirEnv <- lookupEnv "VIVADO_HS_LOG_DIR"
+  systemTmpDir <- maybe Temp.getCanonicalTemporaryDirectory pure systemTmpDirEnv
   putStrLn $ "Using tmpdir: " <> systemTmpDir
   (logPath, logHandle) <- Temp.openTempFile systemTmpDir "vivado-hs.log"
   putStrLn $ "Using log path: " <> logPath
