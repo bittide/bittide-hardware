@@ -557,10 +557,6 @@ jobs:
         run: |
           shake ${{ matrix.target.top }}:hdl
 
-          # Workaround for https://github.com/bittide/bittide-hardware/issues/523
-          mkdir -p _build/vivado
-          touch _build/vivado/workaround-issue-523
-
       - name: Synthesis
         if: ${{ matrix.target.stage != 'hdl' }}
         run: |
@@ -593,6 +589,13 @@ jobs:
           else
             echo "Restored cache, no need to synthesize again"
           fi
+
+      - name: Create non-empty vivado directory
+        if: ${{ matrix.target.stage == 'hdl' }}
+        run: |
+          # Workaround for https://github.com/bittide/bittide-hardware/issues/523
+          mkdir -p _build/vivado
+          touch _build/vivado/workaround-issue-523
 
       - name: cache push build-post-synth
         run: cache push build-post-synth --prefix="${{ matrix.target.top }}"
