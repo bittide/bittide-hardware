@@ -72,7 +72,7 @@ BUILD_CACHE_PATTERNS = (
     f"{PWD}/dist-newstyle/",
 )
 
-SYNTH_CACHE_BUST = 1
+SYNTH_CACHE_BUST = 2
 SYNTH_KEY_PREFIX = f"synth-g{GLOBAL_CACHE_BUST}-l{SYNTH_CACHE_BUST}-"
 SYNTH_KEY_PATTERNS = (
     f"**/bittide-instances/data/constraints/**/*.xdc",
@@ -85,17 +85,13 @@ SYNTH_KEY_PATTERNS_UNTRACKED = (
 )
 SYNTH_CACHE_PATTERNS = (
     f"{PWD}/_build/vivado",
-    f"{PWD}/_build/.shake.database",
-    f"{PWD}/_build/.shake.lock",
 )
 
-BUILD_POST_SYNTH_CACHE_BUST = 1
+BUILD_POST_SYNTH_CACHE_BUST = 2
 BUILD_POST_SYNTH_KEY_PREFIX = f"build-products-post-synth-g{GLOBAL_CACHE_BUST}-l{BUILD_POST_SYNTH_CACHE_BUST}-"
 BUILD_POST_SYNTH_CACHE_PATTERNS = (
     f"{PWD}/_build/clash",
     f"{PWD}/_build/vivado",
-    f"{PWD}/_build/.shake.database",
-    f"{PWD}/_build/.shake.lock",
 )
 
 def log(msg):

@@ -479,11 +479,7 @@ main = do
               when forceRerun alwaysRerun
               command_ [Cwd "firmware-binaries"] "cargo" ["build", "--release"]
               command_ [Cwd "firmware-binaries"] "cargo" ["build"]
-              need
-                [ entityName targetName <> ":program"
-                , bitstreamPath
-                , probesFilePath
-                ]
+              need [entityName targetName <> ":program"]
               url <- getEnvWithDefault "localhost:3121" "HW_SERVER_URL"
               exitCode <-
                 liftIO $
@@ -512,8 +508,18 @@ main = do
 
             -- Write bitstream to hardware target(s)
             phony (entityName targetName <> ":program") $ do
-              when targetHasVio $ need [probesFilePath]
-              need [bitstreamPath]
+              -- The Shake target ':program' does not depend on a respective bitstream and
+              -- probes file being build. The programming itself does, so error if either
+              -- doesn't exist.
+              liftIO $
+                unlessM
+                  (Directory.doesFileExist bitstreamPath)
+                  (error $ "Could not program device, missing bitstream file: " <> bitstreamPath)
+              when targetHasVio $
+                liftIO $
+                  unlessM
+                    ((Directory.doesFileExist probesFilePath))
+                    (error $ "Could not program device, missing probes file: " <> probesFilePath)
               let hwTRefs =
                     hwTargetRefsFromHitlTestGroup $
                       fromMaybe

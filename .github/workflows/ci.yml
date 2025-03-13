@@ -560,7 +560,7 @@ jobs:
       - name: Synthesis
         if: ${{ matrix.target.stage != 'hdl' }}
         run: |
-          cache pull synth --prefix="${{ matrix.target.top }}" --overwrite-ok --missing-ok --write-cache-found
+          cache pull synth --prefix="${{ matrix.target.top }}" --missing-ok --write-cache-found
           if [[ $(cat cache_found) == 0 ]]; then
             target="${{ matrix.target.stage }}"
 
@@ -610,8 +610,6 @@ jobs:
           path: |
             _build/clash
             _build/vivado
-            _build/.shake.database
-            _build/.shake.lock
             !_build/vivado/*/ip
           retention-days: 14
 
