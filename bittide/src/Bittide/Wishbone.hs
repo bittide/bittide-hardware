@@ -732,3 +732,47 @@ whoAmIC whoAmI = Circuit go
     (Fwd (Wishbone dom 'Standard addrW (Bytes 4)), ()) ->
     (Bwd (Wishbone dom 'Standard addrW (Bytes 4)), ())
   go (m2s, ()) = (wbAlwaysAckWith whoAmI <$> m2s, ())
+
+wbStallUntil ::
+  forall dom addrW.
+  ( KnownDomain dom
+  , HiddenClockResetEnable dom
+  , KnownNat addrW
+  ) =>
+  Circuit (Wishbone dom 'Standard addrW (Bytes 4), CSignal dom Bool) ()
+wbStallUntil = Circuit go
+ where
+  go ::
+    (Fwd (Wishbone dom 'Standard addrW (Bytes 4), CSignal dom Bool), ()) ->
+    (Bwd (Wishbone dom 'Standard addrW (Bytes 4), CSignal dom Bool), ())
+  go ((m2s, unblock), ()) = ((s2m1, pure ()), ())
+   where
+    unblockRegister = register False (updateUR <$> unblockRegister <*> unblock <*> m2s)
+    readVec = (boolToBV <$> unblockRegister) :> Nil
+
+    s2m0 :: Signal dom (WishboneS2M (Bytes 4))
+    (_, s2m0) = unbundle $ wbToVec @4 @_ <$> bundle readVec <*> m2s
+
+    m2sWriting :: Signal dom Bool
+    m2sWriting = (writeEnable <$> m2s) .&&. (acknowledge <$> s2m0)
+
+    sendAck :: Signal dom Bool
+    sendAck = mealy unblockGo (False, False) $ bundle (unblock, m2sWriting, acknowledge <$> s2m0)
+    {-
+      We should:
+        - pass through on read
+        - on write, enter a state where we wait for the incoming unblock signal to be true
+    -}
+    unblockGo (waitingForUnblock, shouldUnblock) (unblk, write, ack0) =
+      case (waitingForUnblock, shouldUnblock, write, unblk) of
+        (False, _, False, _) -> ((False, False), ack0)
+        (_, _, True, _) -> ((True, unblk), False)
+        (True, True, _, _) -> ((False, False), True)
+        (True, _, _, True) -> ((True, True), False)
+        _ -> ((True, False), False)
+
+    s2m1 = liftA2 (\s2m ack -> s2m{acknowledge = ack}) s2m0 sendAck
+
+    updateUR cur curSig m2sI
+      | cur && m2sI.addr == minBound = True
+      | otherwise = curSig

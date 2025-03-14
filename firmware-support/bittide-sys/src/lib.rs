@@ -18,3 +18,4 @@ pub mod switch_demo_pe;
 pub mod time;
 pub mod uart;
 pub mod ugn;
+pub mod wishbone_stall;

@@ -53,7 +53,7 @@ import Bittide.SharedTypes (Bytes)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle), switchDemoPeWb)
 import Bittide.Transceiver (transceiverPrbsN)
-import Bittide.Wishbone (readDnaPortE2Wb, timeWb, whoAmIC)
+import Bittide.Wishbone (readDnaPortE2Wb, timeWb, wbStallUntil, whoAmIC)
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
@@ -164,13 +164,13 @@ muConfig =
     NoDumpVcd
 
 ccConfig ::
-  SwControlCConfig CccStabilityCheckerMargin (CccStabilityCheckerFramesize Basic125) 1
+  SwControlCConfig CccStabilityCheckerMargin (CccStabilityCheckerFramesize Basic125) 2
 ccConfig =
   SwControlCConfig
     SNat
     SNat
     PeConfig
-      { memMapConfig = 0b100 :> 0b010 :> 0b110 :> 0b101 :> 0b111 :> Nil
+      { memMapConfig = 0b100 :> 0b010 :> 0b110 :> 0b101 :> 0b111 :> 0b011 :> Nil
       , initI = Undefined @(Div (64 * 1024) 4)
       , initD = Undefined @(Div (64 * 1024) 4)
       , iBusTimeout = d0
@@ -547,7 +547,7 @@ dut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
       (whoAmIC 0x746d_676d)
       -< muWhoAmI
 
-    (swCcOut, [ccWhoAmI]) <-
+    (swCcOut, [ccWhoAmI, wbStall]) <-
       withClockResetEnable
         refClk
         handshakeRstFree
@@ -561,6 +561,13 @@ dut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
       enableGen
       (whoAmIC 0x6363_7773)
       -< ccWhoAmI
+
+    withClockResetEnable
+      refClk
+      handshakeRstFree
+      enableGen
+      wbStallUntil
+      -< (wbStall, Fwd (pure True))
 
     idC -< (swCcOut, [tx0, tx1, tx2, tx3, tx4, tx5, tx6], lc8, ps, peIn1, peOut1, ce)
 

@@ -11,6 +11,7 @@ use bittide_sys::{
     callisto::{self, ControlConfig, ControlSt, ReframingState},
     clock_control::{ClockControl, SpeedChange},
     debug_register::DebugRegister,
+    wishbone_stall::WishboneStall,
 };
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -20,6 +21,10 @@ fn main() -> ! {
     #[allow(clippy::zero_ptr)] // we might want to change the address!
     let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32) };
     let dbgreg = unsafe { DebugRegister::from_base_addr(0xE000_0000 as *const u32) };
+    let stallreg = unsafe { WishboneStall::from_base_addr(0x6000_0000 as *const u32) };
+
+    // Stall until we are released by clock control setup
+    stallreg.stall_poll();
 
     let config = ControlConfig {
         target_count: 0,
