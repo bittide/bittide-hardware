@@ -21,6 +21,7 @@ import Clash.Prelude
 import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols
+import Protocols.MemoryMap
 import Protocols.Wishbone
 import VexRiscv
 
@@ -90,14 +91,25 @@ vexRiscvInner jtagIn0 uartRx =
   stateToDoneSuccess Success = (True, True)
   stateToDoneSuccess Fail = (True, False)
 
-  ((_, jtagOut), (status, uartTx)) =
-    circuitFn ((uartRx, jtagIn0), (pure (), pure ()))
+  ((_, (_, jtagOut)), (status, uartTx)) =
+    circuitFn (((), (uartRx, jtagIn0)), (pure (), pure ()))
 
-  Circuit circuitFn = circuit $ \(uartRx, jtag) -> do
-    [timeBus, uartBus, statusRegisterBus] <- processingElement NoDumpVcd peConfig -< jtag
+  Circuit circuitFn = circuit $ \(mm, (uartRx, jtag)) -> do
+    [ (preTime, (mmTime, timeBus))
+      , (preUart, (mmUart, uartBus))
+      , (preStatus, (mmStatus, statusRegisterBus))
+      ] <-
+      processingElement NoDumpVcd peConfig -< (mm, jtag)
+
+    constB 0b110 -< preUart
     (uartTx, _uartStatus) <-
-      uartInterfaceWb @dom d16 d16 (uartDf baud) -< (uartBus, uartRx)
+      uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
+    constB 0b101 -< preTime
+    constB undefined -< mmTime
     _localCounter <- timeWb -< timeBus
+
+    constB 0b111 -< preStatus
+    constB undefined -< mmStatus
     testResult <- statusRegister -< statusRegisterBus
     idC -< (testResult, uartTx)
 
@@ -142,8 +154,6 @@ vexRiscvInner jtagIn0 uartRx =
   -- │ 0b111. │ 0xE   │ 4     │ Test status register               │
   -- ╰────────┴───────┴───────┴────────────────────────────────────╯
 
-  memMap = 0b100 :> 0b010 :> 0b101 :> 0b110 :> 0b111 :> Nil
-
   peConfig
     | clashSimulation = peConfigSim
     | otherwise = peConfigRtl
@@ -154,17 +164,19 @@ vexRiscvInner jtagIn0 uartRx =
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { memMapConfig = memMap
-        , initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec iMem)
+        , prefixI = 0b100
         , initD = Reloadable (Vec dMem)
+        , prefixD = 0b010
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         }
   peConfigRtl =
     PeConfig
-      { memMapConfig = memMap
-      , initI = Undefined @DMemWords
+      { initI = Undefined @DMemWords
+      , prefixI = 0b100
       , initD = Undefined @IMemWords
+      , prefixD = 0b010
       , iBusTimeout = d0
       , dBusTimeout = d0
       }

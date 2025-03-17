@@ -33,10 +33,13 @@ import qualified Data.List as L
 import Protocols
 import Protocols.Wishbone
 
+import BitPackC
 import Clash.Sized.Vector.ToTuple (VecToTuple (vecToTuple))
 import GHC.Stack (HasCallStack, callStack, getCallStack)
 import qualified Protocols.Df as Df
 import qualified Protocols.MemoryMap as MM
+import Protocols.MemoryMap.FieldType (ToFieldType (toFieldType))
+import qualified Protocols.MemoryMap.FieldType as MM
 import qualified Protocols.Wishbone as Wishbone
 
 {- $setup
@@ -373,6 +376,7 @@ uartSim = Circuit go
 uartInterfaceWb ::
   forall dom addrW nBytes transmitBufferDepth receiveBufferDepth uartIn uartOut.
   ( HiddenClockResetEnable dom
+  , HasCallStack
   , 1 <= transmitBufferDepth
   , 1 <= receiveBufferDepth
   , KnownNat addrW
@@ -388,15 +392,52 @@ uartInterfaceWb ::
   -- | Valid baud rates are constrained by @clash-cores@'s 'ValidBaud' constraint.
   Circuit (Df dom (BitVector 8), uartIn) (CSignal dom (Maybe (BitVector 8)), uartOut) ->
   Circuit
-    (Wishbone dom 'Standard addrW (Bytes nBytes), uartIn)
+    (MM.ConstB MM.MM, (Wishbone dom 'Standard addrW (Bytes nBytes), uartIn))
     (uartOut, CSignal dom (Bool, Bool))
-uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \(wb, uartRx) -> do
+uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ circuit $ \(wb, uartRx) -> do
   (txFifoIn, uartStatus) <- wbToDf -< (wb, rxFifoOut, txFifoMeta)
   (txFifoOut, txFifoMeta) <- fifoWithMeta txDepth -< txFifoIn
   (rxFifoIn, uartTx) <- uartImpl -< (txFifoOut, uartRx)
   (rxFifoOut, _rx') <- fifoWithMeta rxDepth <| unsafeToDf -< rxFifoIn
   idC -< (uartTx, uartStatus)
  where
+  memMap =
+    MM.MemoryMap
+      { tree = MM.DeviceInstance MM.locCaller "UART"
+      , deviceDefs = MM.deviceSingleton deviceDef
+      }
+
+  deviceDef =
+    MM.DeviceDefinition
+      { registers =
+          [
+            ( MM.Name "data" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = toFieldType @(Bytes 1)
+                , fieldSize = 1
+                , address = 0
+                , access = MM.ReadWrite
+                }
+            )
+          ,
+            ( MM.Name "status" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = toFieldType @(Bytes 1)
+                , fieldSize = 1
+                , address = 4
+                , access = MM.ReadOnly
+                }
+            )
+          ]
+      , deviceName =
+          MM.Name "UART" "Wishbone accessible UART interface with configurable FIFO buffers."
+      , defLocation = MM.locHere
+      }
+
   wbToDf ::
     Circuit
       ( Wishbone dom 'Standard addrW (Bytes nBytes)
@@ -679,18 +720,44 @@ value, stored in big-endian format.
 readDnaPortE2Wb ::
   forall dom addrW nBytes.
   ( HiddenClockResetEnable dom
+  , HasCallStack
   , KnownNat addrW
   , KnownNat nBytes
   , 1 <= nBytes
   ) =>
   -- | Simulation DNA value
   BitVector 96 ->
-  Circuit (Wishbone dom 'Standard addrW (Bytes nBytes)) (CSignal dom (BitVector 96))
-readDnaPortE2Wb simDna = circuit $ \wb -> do
+  Circuit
+    (MM.ConstB MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (CSignal dom (BitVector 96))
+readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
   dnaDf <- dnaCircuit -< ()
   dna <- reg -< (wb, dnaDf)
   idC -< dna
  where
+  mm =
+    MM.MemoryMap
+      { tree = MM.DeviceInstance MM.locCaller "DNA"
+      , deviceDefs = MM.deviceSingleton deviceDef
+      }
+  deviceDef =
+    MM.DeviceDefinition
+      { registers =
+          [
+            ( MM.Name "dna" ""
+            , MM.locHere
+            , MM.Register
+                { fieldType = MM.toFieldType @(BitVector 96)
+                , fieldSize = natToNum @(ByteSizeC (BitVector 96))
+                , address = 0
+                , access = MM.ReadOnly
+                , reset = Nothing
+                }
+            )
+          ]
+      , deviceName = MM.Name "DNA" ""
+      , defLocation = MM.locHere
+      }
   maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna
   regRst =
     unsafeFromActiveHigh

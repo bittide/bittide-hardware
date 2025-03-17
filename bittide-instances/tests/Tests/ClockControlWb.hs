@@ -21,6 +21,7 @@ import Data.String.Interpolate
 import Project.FilePath
 import Protocols
 import Protocols.Idle
+import Protocols.MemoryMap
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
@@ -135,9 +136,15 @@ dut =
     enableGen
     $ circuit
     $ \_unit -> do
-      (uartRx, jtag) <- idleSource -< ()
-      [uartBus, ccWb, dbgWb] <- processingElement NoDumpVcd peConfig -< jtag
-      (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
+      (uartRx, jtag, mm) <- idleSource -< ()
+      [ (preUart, (mmUart, uartBus))
+        , (preCC, (mmCC, ccWb))
+        , (preDbg, (mmDbg, dbgWb))
+        ] <-
+        processingElement NoDumpVcd peConfig -< (mm, jtag)
+      (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
+      constB 0b001 -< preUart
+
       [ccd0, ccd1] <-
         cSignalDupe
           <| clockControlWb
@@ -146,11 +153,16 @@ dut =
             (pure linkMask)
             (pure <$> dataCounts)
           -< ccWb
+
+      constB 0b110 -< preCC
+      constB undefined -< mmCC
+
       cm <- cSignalMap clockMod -< ccd0
       _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (dbgWb, cm)
+      constB 0b111 -< preDbg
+      constB undefined -< mmDbg
       idC -< (uartTx, ccd1)
  where
-  memMap = 0b100 :> 0b010 :> 0b001 :> 0b110 :> 0b111 :> Nil
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
@@ -159,9 +171,10 @@ dut =
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { memMapConfig = memMap
-        , initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec iMem)
+        , prefixI = 0b100
         , initD = Reloadable (Vec dMem)
+        , prefixD = 0b010
         , iBusTimeout = d0
         , dBusTimeout = d0
         }

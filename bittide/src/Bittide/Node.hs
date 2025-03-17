@@ -307,33 +307,34 @@ managementUnitC ::
         , (ConstB MM, Wishbone dom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4))
         )
     )
-managementUnitC ( ManagementConfig
-                    scatterConfig
-                    prefixSCal
-                    prefixS
-                    gatherConfig
-                    prefixGCal
-                    prefixG
-                    peConfig
-                    dumpVcd
-                  ) = circuit $ \(mm, linkIn) -> do
-  jtag <- idleSource -< ()
-  peWbs <- processingElement dumpVcd peConfig -< (mm, jtag)
-  ( [ (preSCal, wbScatCal)
-      , (preS, (mmScat, wbScat))
-      , (preGCal, wbGathCal)
-      , (preG, wbGu)
-      ]
-    , nmuWbs
-    ) <-
-    splitAtC d4 -< peWbs
-  constB prefixSCal -< preSCal
-  constB prefixS -< preS
-  constB prefixGCal -< preGCal
-  constB prefixG -< preG
-  linkOut <- gatherUnitWbC gatherConfig -< (wbGu, wbGathCal)
-  scatterUnitWbC scatterConfig -< ((mmScat, (linkIn, wbScat)), wbScatCal)
-  idC -< (linkOut, nmuWbs)
+managementUnitC
+  ( ManagementConfig
+      scatterConfig
+      prefixSCal
+      prefixS
+      gatherConfig
+      prefixGCal
+      prefixG
+      peConfig
+      dumpVcd
+    ) = circuit $ \(mm, linkIn) -> do
+    jtag <- idleSource -< ()
+    peWbs <- processingElement dumpVcd peConfig -< (mm, jtag)
+    ( [ (preSCal, wbScatCal)
+        , (preS, (mmScat, wbScat))
+        , (preGCal, wbGathCal)
+        , (preG, wbGu)
+        ]
+      , nmuWbs
+      ) <-
+      splitAtC d4 -< peWbs
+    constB prefixSCal -< preSCal
+    constB prefixS -< preS
+    constB prefixGCal -< preGCal
+    constB prefixG -< preG
+    linkOut <- gatherUnitWbC gatherConfig -< (wbGu, wbGathCal)
+    scatterUnitWbC scatterConfig -< ((mmScat, (linkIn, wbScat)), wbScatCal)
+    idC -< (linkOut, nmuWbs)
 
 -- managementUnitC ::
 --   forall dom nodeBusses.

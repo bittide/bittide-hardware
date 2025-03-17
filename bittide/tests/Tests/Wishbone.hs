@@ -36,6 +36,7 @@ import Tests.Shared
 import qualified Data.List as L
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
+import Protocols.Idle (idleSource)
 
 tests :: TestTree
 tests =
@@ -114,7 +115,8 @@ uartInterfaceWbCircuitTest = do
     dut :: (HiddenClockResetEnable System) => Circuit (Df System Byte) (Df System Byte)
     dut = circuit $ \dfIn -> do
       (wb, dfOut) <- uartMachine -< dfIn
-      (uartTx, _status) <- uartInterfaceWb @System @32 d2 d2 uartSim -< (wb, uartTx)
+      mm <- idleSource -< ()
+      (uartTx, _status) <- uartInterfaceWb @System @32 d2 d2 uartSim -< (mm, (wb, uartTx))
       idC -< dfOut
     expectOptions =
       defExpectOptions

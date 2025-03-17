@@ -3,23 +3,19 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
 -- {-# OPTIONS -fplugin-opt=Protocols.Plugin:debug #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
 import Clash.Prelude
 
-import Control.Monad (forM_)
 import qualified Data.Aeson as Ae
 import qualified Data.ByteString.Lazy as BS
 import Internal.HdlTest.UartMock (someOtherCircuit)
 import Protocols.MemoryMap
 import Protocols.MemoryMap.Check.AbsAddress (makeAbsolute)
 import Protocols.MemoryMap.Json (memoryMapJson)
-import Text.Printf (printf)
 
 main :: IO ()
 main = do
@@ -27,11 +23,11 @@ main = do
   let SimOnly memoryMap =
         getConstBAny (withClockResetEnable @System clockGen resetGen enableGen someOtherCircuit)
   print memoryMap
-  let tree = convert memoryMap.tree
-  let tree' = fillPathsAndAddrs tree
-  print tree'
+  let tree0 = convert memoryMap.tree
+  let tree1 = fillPathsAndAddrs tree0
+  print tree1
   -- let abs = absAddresses tree'
-  let (absTree, errs) = makeAbsolute memoryMap.deviceDefs (0x0000_0000, 0xFFFF_FFFF) tree'
+  let (absTree, _errs) = makeAbsolute memoryMap.deviceDefs (0x0000_0000, 0xFFFF_FFFF) tree1
   print absTree
 
   let json = memoryMapJson memoryMap.deviceDefs absTree

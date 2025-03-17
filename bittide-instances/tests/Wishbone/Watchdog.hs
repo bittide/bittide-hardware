@@ -24,6 +24,7 @@ import Data.Char
 import Data.Maybe
 import Protocols
 import Protocols.Idle
+import Protocols.MemoryMap
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
@@ -59,16 +60,30 @@ dut ::
 dut = withClockResetEnable clockGen resetGen enableGen
   $ circuit
   $ \_unit -> do
-    (uartRx, jtag) <- idleSource -< ()
-    [uartBus, timeBus, idleBusA, idleBusB] <- processingElement NoDumpVcd peConfig -< jtag
+    (uartRx, jtag, mm) <- idleSource -< ()
+    [ (preUart, (mmUart, uartBus))
+      , (preTime, (mmTime, timeBus))
+      , (preIdleA, (mmIdleA, idleBusA))
+      , (preIdleB, (mmIdleB, idleBusB))
+      ] <-
+      processingElement NoDumpVcd peConfig -< (mm, jtag)
 
     idleSink <| (watchDogWb @_ @_ @4 "1 cycle" d1) -< idleBusA
     idleSink
       <| (watchDogWb @_ @_ @4 "50 us" (SNat @(PeriodToCycles Basic200 (Microseconds 50))))
       -< idleBusB
+    constB 0b100 -< preIdleA
+    constB undefined -< mmIdleA
+
+    constB 0b101 -< preIdleB
+    constB undefined -< mmIdleB
 
     _localCounter <- timeWb <| (watchDogWb @_ @_ @4 "" d0) -< timeBus
-    (uartTx, _uartStatus) <- (uartInterfaceWb @_ @_ @4) d2 d2 uartSim -< (uartBus, uartRx)
+    constB 0b011 -< preTime
+    constB undefined -< mmTime
+    (uartTx, _uartStatus) <-
+      (uartInterfaceWb @_ @_ @4) d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
+    constB 0b010 -< preUart
     idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
@@ -78,9 +93,10 @@ dut = withClockResetEnable clockGen resetGen enableGen
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       $ PeConfig
-        { memMapConfig = 0b000 :> 0b001 :> 0b010 :> 0b011 :> 0b100 :> 0b101 :> Nil
-        , initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec iMem)
+        , prefixI = 0b000
         , initD = Reloadable (Vec dMem)
+        , prefixD = 0b001
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         }

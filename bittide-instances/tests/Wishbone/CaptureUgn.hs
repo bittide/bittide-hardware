@@ -18,6 +18,7 @@ import Numeric
 import Project.FilePath
 import Protocols
 import Protocols.Idle
+import Protocols.MemoryMap
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
@@ -91,25 +92,29 @@ dut ::
   Circuit () (Df dom (BitVector 8))
 dut eb localCounter = circuit $ do
   eb <- ebCircuit -< ()
-  (uartRx, jtagIdle) <- idleSource -< ()
-  [uartBus, ugnBus] <- processingElement @dom NoDumpVcd peConfig -< jtagIdle
-  (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
+  (uartRx, jtagIdle, mm) <- idleSource -< ()
+  [(preUart, (mmUart, uartBus)), (preUgn, (mmUgn, ugnBus))] <-
+    processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
+  (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
+  constB 0b10 -< preUart
   _bittideData <- captureUgn localCounter -< (ugnBus, eb)
+  constB 0b11 -< preUgn
+  constB undefined -< mmUgn
   idC -< uartTx
  where
   ebCircuit :: Circuit () (CSignal dom (Maybe (BitVector 64)))
   ebCircuit = Circuit $ const ((), eb)
 
-  memMap = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "capture_ugn_test"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { memMapConfig = memMap
-        , initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec iMem)
+        , prefixI = 0b00
         , initD = Reloadable (Vec dMem)
+        , prefixD = 0b01
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         }

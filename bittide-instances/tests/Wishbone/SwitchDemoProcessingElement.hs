@@ -15,6 +15,7 @@ import Data.Maybe (mapMaybe)
 import Project.FilePath
 import Protocols
 import Protocols.Idle
+import Protocols.MemoryMap hiding (reset)
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
@@ -87,11 +88,26 @@ dut ::
   Signal dom (BitVector 96) ->
   Circuit () (Df dom (BitVector 8))
 dut localCounter dnaA dnaB = circuit $ do
-  (uartRx, jtagIdle) <- idleSource -< ()
-  [uartBus, timeBus, peBusA, peBusB] <- processingElement NoDumpVcd peConfig -< jtagIdle
-  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (uartBus, uartRx)
+  (uartRx, jtagIdle, mm) <- idleSource -< ()
+  [ (preUart, (mmUart, uartBus))
+    , (preTime, (mmTime, timeBus))
+    , (preA, (mmA, peBusA))
+    , (preB, (mmB, peBusB))
+    ] <-
+    processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
+  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
+  constB 0b010 -< preUart
+
   _localCounter <- timeWb -< timeBus
+  constB 0b011 -< preTime
+  constB undefined -< mmTime
+
   linkAB <- switchDemoPeWb d2 localCounter -< (peBusA, dnaAC, linkBA)
+  constB 0b100 -< preA
+  constB undefined -< mmA
+  constB 0b101 -< preB
+  constB undefined -< mmB
+
   linkBA <- switchDemoPeWb d2 localCounter -< (peBusB, dnaBC, linkAB)
   dnaAC <- signalToCSignal dnaA -< ()
   dnaBC <- signalToCSignal dnaB -< ()
@@ -100,7 +116,6 @@ dut localCounter dnaA dnaB = circuit $ do
   signalToCSignal :: Signal dom a -> Circuit () (CSignal dom a)
   signalToCSignal = Circuit . const . ((),)
 
-  memMap = 0b000 :> 0b001 :> 0b010 :> 0b011 :> 0b100 :> 0b101 :> Nil
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
@@ -109,9 +124,10 @@ dut localCounter dnaA dnaB = circuit $ do
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { memMapConfig = memMap
-        , initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec iMem)
+        , prefixI = 0b000
         , initD = Reloadable (Vec dMem)
+        , prefixD = 0b001
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         }

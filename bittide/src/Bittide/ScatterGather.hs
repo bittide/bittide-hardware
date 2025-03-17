@@ -259,7 +259,7 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @
                   { name = "ScatterUnit"
                   , description = ""
                   }
-            , defLocation = srcLoc
+            , defLocation = locHere
             }
        in
         MemoryMap
@@ -400,7 +400,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
               { name = "ScatterUnit"
               , description = ""
               }
-        , defLocation = srcLoc
+        , defLocation = locHere
         }
 
 {- | Wishbone addressable 'gatherUnit', the wishbone port can write data to this

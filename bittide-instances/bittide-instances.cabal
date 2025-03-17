@@ -96,6 +96,7 @@ common common-options
     clash-lib,
     clash-prelude,
     clash-protocols,
+    clash-protocols-memmap,
     clash-vexriscv,
     clock,
     constraints >=0.13.3 && <0.15,

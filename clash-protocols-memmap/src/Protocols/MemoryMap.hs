@@ -32,6 +32,8 @@ module Protocols.MemoryMap (
   mergeDeviceDefs,
   deviceSize,
   deviceSingleton,
+  locHere,
+  locCaller,
 ) where
 
 import Clash.Prelude (
@@ -176,7 +178,8 @@ data Register = Register
   }
   deriving (Show)
 
-withName :: (HasCallStack) => String -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
+withName ::
+  (HasCallStack) => String -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
 withName name' (Circuit f) = Circuit go
  where
   callLoc = case getCallStack callStack of
@@ -230,3 +233,15 @@ unMemmap (Circuit f) = Circuit go
   go (fwdA, bwdB) = (bwdA, fwdB)
    where
     ((_, bwdA), fwdB) = f (((), fwdA), bwdB)
+
+locHere :: (HasCallStack) => SrcLoc
+locHere = case getCallStack callStack of
+  (_, callLoc) : _ -> callLoc
+  _ -> error "`locHere` needs to be called in a `HasCallStack` context"
+
+locCaller :: (HasCallStack) => SrcLoc
+locCaller = case getCallStack callStack of
+  (_, _) : (_, callerLoc) : _ -> callerLoc
+  (fn, _) : _ -> error $ "`" List.++ fn List.++ "` needs to be called in a `HasCallStack` context"
+  _ ->
+    error "`locCaller` needs to be called with at least two levels of `HasCallStack` context"

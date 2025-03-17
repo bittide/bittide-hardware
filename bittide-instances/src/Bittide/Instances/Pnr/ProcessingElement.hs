@@ -12,6 +12,7 @@ import Clash.Annotations.TH
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Xilinx.ClockGen
 import Protocols
+import Protocols.MemoryMap
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv
@@ -42,16 +43,22 @@ vexRiscUartHello ::
           )
   , "USB_UART_RX" ::: Signal Basic200 Bit
   )
-vexRiscUartHello diffClk rst_in =
-  toSignals
-    $ withClockResetEnable clk200 rst200 enableGen
-    $ circuit
-    $ \(uartRx, jtag) -> do
-      [uartBus, timeBus] <- processingElement @Basic200 NoDumpVcd peConfig -< jtag
-      (uartTx, _uartStatus) <-
-        uartInterfaceWb d16 d16 (uartDf $ SNat @921600) -< (uartBus, uartRx)
-      _localCounter <- timeWb -< timeBus
-      idC -< uartTx
+vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
+  let circuitFn = toSignals
+        $ withClockResetEnable clk200 rst200 enableGen
+        $ circuit
+        $ \(mm, (uartRx, jtag)) -> do
+          [(preUart, (mmUart, uartBus)), (preTime, (mmTime, timeBus))] <-
+            processingElement @Basic200 NoDumpVcd peConfig -< (mm, jtag)
+          (uartTx, _uartStatus) <-
+            uartInterfaceWb d16 d16 (uartDf $ SNat @921600) -< (mmUart, (uartBus, uartRx))
+          constB 0b10 -< preUart
+          _localCounter <- timeWb -< timeBus
+          constB 0b11 -< preTime
+          constB undefined -< mmTime
+          idC -< uartTx
+   in case circuitFn (((), (uartTx, jtagIn)), pure ()) of
+        ((_mm, a), b) -> (a, b)
  where
   (clk200, rst200_) = clockWizardDifferential diffClk noReset
   rst200 = rst200_ `orReset` rst_in
@@ -68,7 +75,6 @@ vexRiscUartHello diffClk rst_in =
   -- │ 0b110. │ 0xC   │       │ TIME               │
   -- │ 0b111. │ 0xE   │       │                    │
   -- ╰────────┴───────┴───────┴────────────────────╯
-  memMap = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
 
   peConfig
     | clashSimulation = peConfigSim
@@ -82,18 +88,20 @@ vexRiscUartHello diffClk rst_in =
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { memMapConfig = memMap
-        , initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec iMem)
+        , prefixI = 0b00
         , initD = Reloadable (Vec dMem)
+        , prefixD = 0b01
         , iBusTimeout = d0
         , dBusTimeout = d0
         }
 
   peConfigRtl =
     PeConfig
-      { memMapConfig = memMap
-      , initI = Undefined @IMemWords
+      { initI = Undefined @IMemWords
+      , prefixI = 0b00
       , initD = Undefined @DMemWords
+      , prefixD = 0b01
       , iBusTimeout = d0
       , dBusTimeout = d0
       }

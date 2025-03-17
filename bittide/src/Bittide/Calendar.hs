@@ -205,7 +205,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
             )
           ]
       , deviceName = Name name ""
-      , defLocation = srcLoc
+      , defLocation = locHere
       }
 
   srcLoc = case getCallStack callStack of

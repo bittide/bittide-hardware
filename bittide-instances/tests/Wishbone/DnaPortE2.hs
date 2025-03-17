@@ -18,6 +18,7 @@ import Numeric
 import Project.FilePath
 import Protocols
 import Protocols.Idle
+import Protocols.MemoryMap
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
@@ -60,22 +61,25 @@ dut ::
   (HiddenClockResetEnable dom) =>
   Circuit () (Df dom (BitVector 8))
 dut = circuit $ \_unit -> do
-  (uartRx, jtag) <- idleSource -< ()
-  [uartBus, dnaWb] <- processingElement @dom NoDumpVcd peConfig -< jtag
-  (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartRx)
-  _dna <- readDnaPortE2Wb simDna2 -< dnaWb
+  (uartRx, jtag, mm) <- idleSource -< ()
+  [(preUart, (mmUart, uartBus)), (preDna, dnaBus)] <-
+    processingElement @dom NoDumpVcd peConfig -< (mm, jtag)
+  (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
+  constB 0b10 -< preUart
+  _dna <- readDnaPortE2Wb simDna2 -< dnaBus
+  constB 0b11 -< preDna
   idC -< uartTx
  where
-  memMap = 0b00 :> 0b01 :> 0b10 :> 0b11 :> Nil
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "dna_port_e2_test"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { memMapConfig = memMap
-        , initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec iMem)
+        , prefixI = 0b00
         , initD = Reloadable (Vec dMem)
+        , prefixD = 0b01
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         }
