@@ -99,7 +99,7 @@ dut eb localCounter = circuit $ do
   constB 0b10 -< preUart
   _bittideData <- captureUgn localCounter -< (ugnBus, eb)
   constB 0b11 -< preUgn
-  constB undefined -< mmUgn
+  constB todoMM -< mmUgn
   idC -< uartTx
  where
   ebCircuit :: Circuit () (CSignal dom (Maybe (BitVector 64)))

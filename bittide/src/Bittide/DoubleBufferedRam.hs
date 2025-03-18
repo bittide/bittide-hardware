@@ -22,7 +22,7 @@ import Bittide.Extra.Maybe
 import Bittide.SharedTypes hiding (delayControls)
 import Data.Constraint.Nat.Extra
 import Data.Typeable
-import GHC.Stack (HasCallStack, callStack, getCallStack)
+import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (
   Access (ReadWrite),
   ConstB,
@@ -33,6 +33,8 @@ import Protocols.MemoryMap (
   Name (..),
   Register (..),
   deviceSingleton,
+  locCaller,
+  locHere,
  )
 import Protocols.MemoryMap.FieldType (ToFieldType (toFieldType))
 
@@ -153,12 +155,9 @@ wbStorageDPC memoryName content = Circuit go
    where
     (s2mA, s2mB) = wbStorageDP content m2sA m2sB
 
-    srcLoc = case getCallStack callStack of
-      ((_, callLoc) : _) -> callLoc
-      _ -> error "wbStorageDPC needs `HasCallStack` context"
     memMap =
       MemoryMap
-        { tree = DeviceInstance srcLoc memoryName
+        { tree = DeviceInstance locCaller memoryName
         , deviceDefs = deviceSingleton deviceDef
         }
     deviceDef =
@@ -166,7 +165,7 @@ wbStorageDPC memoryName content = Circuit go
         { registers =
             [
               ( Name "data" ""
-              , srcLoc
+              , locHere
               , Register
                   { fieldType = toFieldType @(Vec depth (Bytes 4))
                   , fieldSize = snatToInteger (SNat @(ByteSizeC (Vec depth (Bytes 4))))
@@ -177,7 +176,7 @@ wbStorageDPC memoryName content = Circuit go
               )
             ]
         , deviceName = Name{name = memoryName, description = ""}
-        , defLocation = srcLoc
+        , defLocation = locHere
         }
 
 {- | Dual-ported Wishbone storage element, essentially a wrapper for the single-ported version
@@ -242,12 +241,9 @@ wbStorage ::
 wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
   ((SimOnly memMap, wbStorage' initContent m2s), ())
  where
-  srcLoc = case getCallStack callStack of
-    ((_, callLoc) : _) -> callLoc
-    _ -> error "wbStorage needs `HasCallStack` context"
   memMap =
     MemoryMap
-      { tree = DeviceInstance srcLoc memoryName
+      { tree = DeviceInstance locCaller memoryName
       , deviceDefs = deviceSingleton deviceDef
       }
   deviceDef =
@@ -255,7 +251,7 @@ wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
       { registers =
           [
             ( Name "data" ""
-            , srcLoc
+            , locHere
             , Register
                 { fieldType = toFieldType @(Vec depth (Bytes 4))
                 , fieldSize = snatToInteger (SNat @(ByteSizeC (Vec depth (Bytes 4))))
@@ -266,7 +262,7 @@ wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
             )
           ]
       , deviceName = Name{name = memoryName, description = ""}
-      , defLocation = srcLoc
+      , defLocation = locHere
       }
 {-# NOINLINE wbStorage #-}
 

@@ -22,6 +22,7 @@ module Protocols.MemoryMap (
   withMemoryMap,
   withPrefix,
   unMemmap,
+  todoMM,
   Access (..),
   DeviceDefinitions,
   DeviceDefinition (..),
@@ -182,25 +183,19 @@ withName ::
   (HasCallStack) => String -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
 withName name' (Circuit f) = Circuit go
  where
-  callLoc = case getCallStack callStack of
-    ((_, loc) : _) -> loc
-    _ -> error "The caller of `withName` needs `HasCallStack`"
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
    where
     ((SimOnly mm, bwdA), fwdB) = f (((), fwdA), bwdB)
-    mm' = mm{tree = WithName callLoc name' mm.tree}
+    mm' = mm{tree = WithName locCaller name' mm.tree}
 
 withAbsAddr ::
   (HasCallStack) => Address -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
 withAbsAddr addr (Circuit f) = Circuit go
  where
-  callLoc = case getCallStack callStack of
-    ((_, loc) : _) -> loc
-    _ -> error "The caller of `withAbsAddr` needs `HasCallStack`"
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
    where
     ((SimOnly mm, bwdA), fwdB) = f (((), fwdA), bwdB)
-    mm' = mm{tree = WithAbsAddr callLoc addr mm.tree}
+    mm' = mm{tree = WithAbsAddr locCaller addr mm.tree}
 
 withMemoryMap :: MemoryMap -> Circuit a b -> Circuit (ConstB MM, a) b
 withMemoryMap mm = withConstB (SimOnly mm)
@@ -245,3 +240,18 @@ locCaller = case getCallStack callStack of
   (fn, _) : _ -> error $ "`" List.++ fn List.++ "` needs to be called in a `HasCallStack` context"
   _ ->
     error "`locCaller` needs to be called with at least two levels of `HasCallStack` context"
+
+todoMM :: (HasCallStack) => SimOnly MemoryMap
+todoMM =
+  SimOnly
+    $ MemoryMap
+      { deviceDefs = deviceSingleton deviceDef
+      , tree = DeviceInstance locCaller "TODO"
+      }
+ where
+  deviceDef =
+    DeviceDefinition
+      { deviceName = Name "TODO" "This component has not been memory mapped yet."
+      , registers = []
+      , defLocation = locHere
+      }

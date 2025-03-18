@@ -105,11 +105,10 @@ vexRiscvInner jtagIn0 uartRx =
     (uartTx, _uartStatus) <-
       uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
     constB 0b101 -< preTime
-    constB undefined -< mmTime
-    _localCounter <- timeWb -< timeBus
+    _localCounter <- timeWb -< (mmTime, timeBus)
 
     constB 0b111 -< preStatus
-    constB undefined -< mmStatus
+    constB todoMM -< mmStatus
     testResult <- statusRegister -< statusRegisterBus
     idC -< (testResult, uartTx)
 

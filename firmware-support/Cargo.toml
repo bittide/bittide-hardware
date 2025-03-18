@@ -3,5 +3,10 @@
 # SPDX-License-Identifier: CC0-1.0
 
 [workspace]
-members = ["bittide-sys", "gdb-trace", "memmap-generate"]
+members = [
+  "bittide-sys",
+  "gdb-trace",
+  # "memmap-generate"
+]
+
 resolver = "2"

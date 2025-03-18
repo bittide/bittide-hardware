@@ -53,9 +53,8 @@ vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
           (uartTx, _uartStatus) <-
             uartInterfaceWb d16 d16 (uartDf $ SNat @921600) -< (mmUart, (uartBus, uartRx))
           constB 0b10 -< preUart
-          _localCounter <- timeWb -< timeBus
+          _localCounter <- timeWb -< (mmTime, timeBus)
           constB 0b11 -< preTime
-          constB undefined -< mmTime
           idC -< uartTx
    in case circuitFn (((), (uartTx, jtagIn)), pure ()) of
         ((_mm, a), b) -> (a, b)

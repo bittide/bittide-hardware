@@ -98,15 +98,14 @@ dut localCounter dnaA dnaB = circuit $ do
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
   constB 0b010 -< preUart
 
-  _localCounter <- timeWb -< timeBus
+  _localCounter <- timeWb -< (mmTime, timeBus)
   constB 0b011 -< preTime
-  constB undefined -< mmTime
 
   linkAB <- switchDemoPeWb d2 localCounter -< (peBusA, dnaAC, linkBA)
   constB 0b100 -< preA
-  constB undefined -< mmA
+  constB todoMM -< mmA
   constB 0b101 -< preB
-  constB undefined -< mmB
+  constB todoMM -< mmB
 
   linkBA <- switchDemoPeWb d2 localCounter -< (peBusB, dnaBC, linkAB)
   dnaAC <- signalToCSignal dnaA -< ()

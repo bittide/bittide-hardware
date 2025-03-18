@@ -35,7 +35,7 @@ import Protocols.Wishbone
 
 import BitPackC
 import Clash.Sized.Vector.ToTuple (VecToTuple (vecToTuple))
-import GHC.Stack (HasCallStack, callStack, getCallStack)
+import GHC.Stack (HasCallStack)
 import qualified Protocols.Df as Df
 import qualified Protocols.MemoryMap as MM
 import Protocols.MemoryMap.FieldType (ToFieldType (toFieldType))
@@ -76,10 +76,6 @@ singleMasterInterconnectC ::
     )
 singleMasterInterconnectC = Circuit go
  where
-  srcLoc = case getCallStack callStack of
-    ((_, callLoc) : _) -> callLoc
-    _ -> error "singleMasterInterconnectC must be invoked with a `HasCallStack` environment"
-
   go ::
     ( ((), Signal dom (WishboneM2S addrW (Div (BitSize a + 7) 8) a))
     , Vec
@@ -102,7 +98,7 @@ singleMasterInterconnectC = Circuit go
     deviceDefs = MM.mergeDeviceDefs (MM.deviceDefs . unSimOnly <$> toList slaveMms)
     memMap =
       MM.MemoryMap
-        { tree = MM.Interconnect srcLoc comps
+        { tree = MM.Interconnect MM.locCaller comps
         , deviceDefs = deviceDefs
         }
     (s2m, m2ss) = toSignals (singleMasterInterconnect prefixes) (m2s, s2ms)
@@ -640,7 +636,8 @@ wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
     | otherwise = repeat Nothing
   wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}
 
-data TimeCmd = Capture | WaitForCmp deriving (Eq, Generic, NFDataX, BitPack)
+data TimeCmd = Capture | WaitForCmp
+  deriving (Eq, Generic, NFDataX, BitPack, ToFieldType, BitPackC)
 
 {- | Wishbone accessible circuit that contains a free running 64 bit counter with stalling
 capabilities.
@@ -672,12 +669,71 @@ The register-level layout of the Wishbone interface is as follows:
 timeWb ::
   forall dom addrW.
   ( HiddenClockResetEnable dom
+  , HasCallStack
   , KnownNat addrW
   , 1 <= DomainPeriod dom
   ) =>
-  Circuit (Wishbone dom 'Standard addrW (Bytes 4)) (CSignal dom (Unsigned 64))
-timeWb = Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy (False, 0, 0) wbM2S
+  Circuit
+    (MM.ConstB MM.MM, Wishbone dom 'Standard addrW (Bytes 4))
+    (CSignal dom (Unsigned 64))
+timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy (False, 0, 0) wbM2S
  where
+  mm =
+    MM.MemoryMap
+      { tree = MM.DeviceInstance MM.locCaller "Timer"
+      , deviceDefs = MM.deviceSingleton deviceDef
+      }
+  deviceDef =
+    MM.DeviceDefinition
+      { registers =
+          [
+            ( MM.Name "command" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = toFieldType @TimeCmd
+                , fieldSize = 1
+                , address = 0x00
+                , access = MM.WriteOnly
+                }
+            )
+          ,
+            ( MM.Name "cmp_result" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = toFieldType @Bool
+                , fieldSize = 1
+                , address = 0x04
+                , access = MM.ReadOnly
+                }
+            )
+          ,
+            ( MM.Name "scratchpad" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = toFieldType @(BitVector 64)
+                , fieldSize = natToNum @(ByteSizeC (BitVector 64))
+                , address = 0x08
+                , access = MM.ReadOnly
+                }
+            )
+          ,
+            ( MM.Name "frequency" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = toFieldType @(BitVector 64)
+                , fieldSize = natToNum @(ByteSizeC (BitVector 64))
+                , address = 0x10
+                , access = MM.ReadOnly
+                }
+            )
+          ]
+      , deviceName = MM.Name "Timer" ""
+      , defLocation = MM.locHere
+      }
   goMealy (reqCmp0, scratch0 :: Unsigned 64, count :: Unsigned 64) wbM2S =
     ((reqCmp1, scratch1, succ count), (wbS2M1, count))
    where

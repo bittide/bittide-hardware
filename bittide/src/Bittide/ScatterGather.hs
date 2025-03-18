@@ -27,7 +27,7 @@ import Protocols
 import Protocols.Wishbone
 
 import Data.Constraint.Nat.Extra
-import GHC.Stack (HasCallStack, callStack, getCallStack)
+import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap
 import Protocols.MemoryMap.FieldType (ToFieldType (toFieldType))
 
@@ -222,9 +222,6 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @
      where
       (wbS2MSu, wbS2MCal) = scatterUnitWb conf wbM2SCal linkIn wbM2SSu
 
-    srcLoc = case getCallStack callStack of
-      ((_, callLoc) : _) -> callLoc
-      _ -> error "`scatterUniWbC` needs `HasCallStack` context"
     memoryMapScatterMem =
       let
         deviceDef :: forall memDepth. SNat memDepth -> DeviceDefinition
@@ -233,7 +230,7 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @
             { registers =
                 [
                   ( Name "scatterMemory" ""
-                  , srcLoc
+                  , locHere
                   , Register
                       { fieldType = toFieldType @(Vec memDepth (Bytes 8))
                       , fieldSize = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
@@ -244,7 +241,7 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @
                   )
                 ,
                   ( Name "metacycleRegister" ""
-                  , srcLoc
+                  , locHere
                   , Register
                       { fieldType = toFieldType @(Bytes 4)
                       , fieldSize = 4
@@ -263,7 +260,7 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @
             }
        in
         MemoryMap
-          { tree = DeviceInstance srcLoc "ScatterUnit"
+          { tree = DeviceInstance locCaller "ScatterUnit"
           , deviceDefs = deviceSingleton (deviceDef memDepthSnat)
           }
 
@@ -357,12 +354,9 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
 
       (linkOut, wbOutGu, wbOutCal) = gatherUnitWb conf wbInCal wbInGu
 
-    srcLoc = case getCallStack callStack of
-      ((_, callLoc) : _) -> callLoc
-      _ -> error "`gatherUnitWbC` needs `HasCallStack` context"
     memMapGu =
       MemoryMap
-        { tree = DeviceInstance srcLoc "GatherUnit"
+        { tree = DeviceInstance locCaller "GatherUnit"
         , deviceDefs = deviceSingleton (deviceDef memDepthSnat)
         }
 
@@ -374,7 +368,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
         { registers =
             [
               ( Name "gatherMemory" ""
-              , srcLoc
+              , locHere
               , Register
                   { fieldType = toFieldType @(Vec memDepth (Bytes 8))
                   , fieldSize = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
@@ -385,7 +379,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
               )
             ,
               ( Name "metacycleRegister" ""
-              , srcLoc
+              , locHere
               , Register
                   { fieldType = toFieldType @(Bytes 4)
                   , fieldSize = 4

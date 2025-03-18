@@ -30,7 +30,7 @@ import Bittide.ClockControl.DebugRegister (
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.DoubleBufferedRam (InitialContent (Undefined))
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Protocols.MemoryMap (constB)
+import Protocols.MemoryMap (constB, todoMM)
 
 -- | Configuration type for software clock control.
 data SwControlConfig dom mgn fsz where
@@ -127,14 +127,14 @@ callistoSwClockControl (SwControlConfig jtagIn reframe mgn fsz) mask ebs =
       processingElement NoDumpVcd peConfig -< (mm, jtag)
     idleSink -< wbDummy
     constB 0b001 -< preDummy
-    constB undefined -< mmDummy
+    constB todoMM -< mmDummy
     [ccd0, ccd1] <- cSignalDupe <| clockControlWb mgn fsz mask ebs -< wbClockControl
     constB 0b110 -< preCc
-    constB undefined -< mmCc
+    constB todoMM -< mmCc
     cm <- cSignalMap clockMod -< ccd0
     dbg <- debugRegisterWb debugRegisterCfg -< (wbDebug, cm)
     constB 0b111 -< preDebug
-    constB undefined -< mmDebug
+    constB todoMM -< mmDebug
     idC -< (ccd1, dbg)
 
   peConfig =

@@ -155,12 +155,12 @@ dut =
           -< ccWb
 
       constB 0b110 -< preCC
-      constB undefined -< mmCC
+      constB todoMM -< mmCC
 
       cm <- cSignalMap clockMod -< ccd0
       _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (dbgWb, cm)
       constB 0b111 -< preDbg
-      constB undefined -< mmDbg
+      constB todoMM -< mmDbg
       idC -< (uartTx, ccd1)
  where
   peConfig = unsafePerformIO $ do

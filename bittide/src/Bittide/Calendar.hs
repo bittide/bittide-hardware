@@ -36,7 +36,7 @@ import Protocols.Wishbone
 import BitPackC
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
-import GHC.Stack (HasCallStack, callStack, getCallStack)
+import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap
 import Protocols.MemoryMap.FieldType
 
@@ -135,7 +135,7 @@ calendarMemoryMap ::
   MemoryMap
 calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
   MemoryMap
-    { tree = DeviceInstance srcLoc name
+    { tree = DeviceInstance locCaller name
     , deviceDefs = deviceSingleton (deviceDef maxCalDepth)
     }
  where
@@ -150,7 +150,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
       { registers =
           [
             ( Name "calendarEntries" ""
-            , srcLoc
+            , locHere
             , Register
                 { fieldType = toFieldType @(Vec maxCalDepth (Bytes nBytes))
                 , fieldSize = sizeEntries depth
@@ -161,7 +161,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
             )
           ,
             ( Name "shadowWrite" ""
-            , srcLoc
+            , locHere
             , Register
                 { fieldType = toFieldType @(Bytes nBytes)
                 , fieldSize = natToNum @(ByteSizeC (Bytes nBytes))
@@ -172,7 +172,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
             )
           ,
             ( Name "shadowRead" ""
-            , srcLoc
+            , locHere
             , Register
                 { fieldType = toFieldType @(Bytes nBytes)
                 , fieldSize = natToNum @(ByteSizeC (Bytes nBytes))
@@ -183,7 +183,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
             )
           ,
             ( Name "shadowDepth" ""
-            , srcLoc
+            , locHere
             , Register
                 { fieldType = toFieldType @(Bytes nBytes)
                 , fieldSize = natToNum @(ByteSizeC (Bytes nBytes))
@@ -194,7 +194,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
             )
           ,
             ( Name "calendarSwap" ""
-            , srcLoc
+            , locHere
             , Register
                 { fieldType = toFieldType @Bool
                 , fieldSize = natToNum @(ByteSizeC Bool)
@@ -207,10 +207,6 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
       , deviceName = Name name ""
       , defLocation = locHere
       }
-
-  srcLoc = case getCallStack callStack of
-    (_, callLoc) : _ -> callLoc
-    _ -> error "`calendarMemoryMap` needs to be called in a `HasCallStack` context"
 
 {- | State of the calendar excluding the buffers. It stores the depths of the active and
 shadow calendar, the read pointer, buffer selector and a register for first cycle behavior.
