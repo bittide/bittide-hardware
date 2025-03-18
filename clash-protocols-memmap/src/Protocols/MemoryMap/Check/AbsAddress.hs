@@ -37,14 +37,15 @@ data AddressError
       }
   deriving (Show)
 
-type MemoryMapTreeAbs = MemoryMapTreeAnn (Path, Address) 'Normalised
+type MemoryMapTreeAbsNorm =
+  MemoryMapTreeAnn ([(SrcLoc, String)], Path, Address) 'Normalised
 
 makeAbsolute ::
   DeviceDefinitions ->
   AddressRange ->
-  MemoryMapTreePathAbsAddr ->
-  (MemoryMapTreeAbs, [AddressError])
-makeAbsolute ctx (start, end) (AnnDeviceInstance ((_, path), assertedAddr) srcLoc deviceName) =
+  MemoryMapTreeRelNorm ->
+  (MemoryMapTreeAbsNorm, [AddressError])
+makeAbsolute ctx (start, end) (AnnDeviceInstance (tags, path, assertedAddr) srcLoc deviceName) =
   checkAssertedAddr start assertedAddr path $
     case Map.lookup deviceName ctx of
       Nothing -> error $ "DeviceDefinition " <> show deviceName <> " not found (" <> show srcLoc <> ")"
@@ -52,7 +53,7 @@ makeAbsolute ctx (start, end) (AnnDeviceInstance ((_, path), assertedAddr) srcLo
         let
           availableSize = end - start
           devSize = deviceSize def
-          newDevInstance = AnnDeviceInstance (path, start) srcLoc deviceName
+          newDevInstance = AnnDeviceInstance (tags, path, start) srcLoc deviceName
          in
           if devSize > availableSize
             then
@@ -66,12 +67,12 @@ makeAbsolute ctx (start, end) (AnnDeviceInstance ((_, path), assertedAddr) srcLo
                       }
                in (newDevInstance, [err])
             else (newDevInstance, [])
-makeAbsolute ctx (start, end) (AnnInterconnect ((_, path), assertedAddr) srcLoc comps) =
+makeAbsolute ctx (start, end) (AnnInterconnect (tags, path, assertedAddr) srcLoc comps) =
   checkAssertedAddr start assertedAddr path $
     let (unzip -> (comps1, concat -> errs)) = flip map (zip ranges comps) $ \((start', end'), (relStart, comp)) -> do
           let (comp1, errs1) = makeAbsolute ctx (start', end') comp
           ((relStart, comp1), errs1)
-     in (AnnInterconnect (path, start) srcLoc comps1, errs)
+     in (AnnInterconnect (tags, path, start) srcLoc comps1, errs)
  where
   ranges
     | [] <- comps = []

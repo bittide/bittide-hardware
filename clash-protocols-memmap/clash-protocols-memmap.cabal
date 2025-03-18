@@ -97,6 +97,7 @@ library
     clash-protocols,
     constraints,
     containers,
+    mtl,
     template-haskell,
 
 -- XXX: Doesn't really belong in clash-vexriscv-SIM
@@ -105,6 +106,7 @@ executable hdl-test
   main-is: app/HdlTest.hs
   build-depends:
     aeson,
+    aeson-pretty,
     base,
     bytestring,
     clash-ghc,
@@ -126,6 +128,7 @@ executable example
 
   build-depends:
     aeson,
+    aeson-pretty,
     base,
     bytestring,
     clash-prelude,

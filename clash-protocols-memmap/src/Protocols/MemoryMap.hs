@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImpredicativeTypes #-}
@@ -19,6 +20,8 @@ module Protocols.MemoryMap (
   getConstBAny,
   withName,
   withAbsAddr,
+  withTag,
+  withTags,
   withMemoryMap,
   withPrefix,
   unMemmap,
@@ -50,6 +53,7 @@ import Clash.Prelude (
   Type,
   error,
   errorX,
+  flip,
   fst,
   ($),
  )
@@ -60,6 +64,7 @@ import GHC.Stack (HasCallStack, SrcLoc, callStack, getCallStack)
 import Protocols
 
 import Data.Data (Proxy (Proxy))
+import qualified Data.List as L
 import Protocols.Idle
 import Protocols.MemoryMap.Check.Normalised
 import Protocols.MemoryMap.FieldType (FieldType)
@@ -150,6 +155,7 @@ data DeviceDefinition = DeviceDefinition
   { deviceName :: Name
   , registers :: [NamedLoc Register]
   , defLocation :: SrcLoc
+  , tags :: [String]
   }
   deriving (Show)
 
@@ -176,6 +182,7 @@ data Register = Register
   -- ^ Size of the register in bytes
   , reset :: Maybe Natural
   -- ^ Reset value (if any) of register
+  , tags :: [String]
   }
   deriving (Show)
 
@@ -187,6 +194,25 @@ withName name' (Circuit f) = Circuit go
    where
     ((SimOnly mm, bwdA), fwdB) = f (((), fwdA), bwdB)
     mm' = mm{tree = WithName locCaller name' mm.tree}
+
+withTag ::
+  (HasCallStack) => String -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
+withTag tag (Circuit f) = Circuit go
+ where
+  go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
+   where
+    ((SimOnly mm, bwdA), fwdB) = f (((), fwdA), bwdB)
+    mm' = mm{tree = WithTag locCaller tag mm.tree}
+
+withTags ::
+  (HasCallStack) => [String] -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
+withTags tags' (Circuit f) = Circuit go
+ where
+  go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
+   where
+    ((SimOnly mm, bwdA), fwdB) = f (((), fwdA), bwdB)
+    mm' = mm{tree = tree'}
+    tree' = L.foldl (flip (WithTag locCaller)) mm.tree tags'
 
 withAbsAddr ::
   (HasCallStack) => Address -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
@@ -246,7 +272,9 @@ todoMM =
   SimOnly
     $ MemoryMap
       { deviceDefs = deviceSingleton deviceDef
-      , tree = DeviceInstance locCaller "TODO"
+      , tree =
+          WithTag locCaller "no-generate"
+            $ DeviceInstance locCaller "TODO"
       }
  where
   deviceDef =
@@ -254,4 +282,5 @@ todoMM =
       { deviceName = Name "TODO" "This component has not been memory mapped yet."
       , registers = []
       , defLocation = locHere
+      , tags = ["no-generate"]
       }

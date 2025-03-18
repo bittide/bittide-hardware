@@ -237,6 +237,7 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @
                       , address = 0
                       , access = ReadOnly
                       , reset = Nothing
+                      , tags = []
                       }
                   )
                 ,
@@ -248,6 +249,7 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @
                       , address = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
                       , access = ReadOnly
                       , reset = Nothing
+                      , tags = []
                       }
                   )
                 ]
@@ -257,6 +259,7 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @
                   , description = ""
                   }
             , defLocation = locHere
+            , tags = []
             }
        in
         MemoryMap
@@ -375,6 +378,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
                   , address = 0
                   , access = WriteOnly
                   , reset = Nothing
+                  , tags = []
                   }
               )
             ,
@@ -386,6 +390,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
                   , address = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
                   , access = ReadOnly
                   , reset = Nothing
+                  , tags = []
                   }
               )
             ]
@@ -395,6 +400,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
               , description = ""
               }
         , defLocation = locHere
+        , tags = []
         }
 
 {- | Wishbone addressable 'gatherUnit', the wishbone port can write data to this

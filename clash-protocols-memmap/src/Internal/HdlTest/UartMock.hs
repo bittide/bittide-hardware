@@ -56,7 +56,7 @@ magicUart = Circuit go
         , tree = DeviceInstance callLoc deviceName
         }
     s2m = emptyWishboneS2M
-    deviceDef = DeviceDefinition (Name deviceName "") [] callLoc
+    deviceDef = DeviceDefinition (Name deviceName "") [] callLoc []
 
 someCircuit ::
   (HasCallStack, HiddenClockResetEnable dom, HasCallStack) =>
@@ -88,6 +88,7 @@ someOtherCircuit = withName "MyCircuit" $ circuit $ \(mm, (master, rx)) -> do
 
   withPrefix 0b00
     $ withName "fakeUART"
+    $ withTag "no-generate"
     $ withAbsAddr
       0x0000_0000
       magicUart
@@ -128,7 +129,7 @@ moreRealUart' tD rD = withMemoryMap mm (moreRealUart tD rD)
       { deviceDefs = Map.singleton deviceName deviceDef
       , tree = DeviceInstance callLoc deviceName
       }
-  deviceDef = DeviceDefinition (Name deviceName "") [] callLoc
+  deviceDef = DeviceDefinition (Name deviceName "") [] callLoc []
 
 moreRealUart ::
   forall dom addrW nBytes transmitBufferDepth receiveBufferDepth.

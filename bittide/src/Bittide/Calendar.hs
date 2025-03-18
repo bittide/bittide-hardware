@@ -157,6 +157,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
                 , address = 0
                 , access = ReadWrite
                 , reset = Nothing
+                , tags = []
                 }
             )
           ,
@@ -168,6 +169,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
                 , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 0)
                 , access = WriteOnly
                 , reset = Nothing
+                , tags = []
                 }
             )
           ,
@@ -179,6 +181,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
                 , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 1)
                 , access = WriteOnly
                 , reset = Nothing
+                , tags = []
                 }
             )
           ,
@@ -190,6 +193,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
                 , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 2)
                 , access = ReadWrite -- TODO is this correct??
                 , reset = Nothing
+                , tags = []
                 }
             )
           ,
@@ -201,11 +205,13 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
                 , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 3)
                 , access = WriteOnly
                 , reset = Nothing
+                , tags = []
                 }
             )
           ]
       , deviceName = Name name ""
       , defLocation = locHere
+      , tags = []
       }
 
 {- | State of the calendar excluding the buffers. It stores the depths of the active and

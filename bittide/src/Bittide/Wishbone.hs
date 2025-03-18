@@ -415,6 +415,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ c
                 , fieldSize = 1
                 , address = 0
                 , access = MM.ReadWrite
+                , tags = []
                 }
             )
           ,
@@ -426,12 +427,14 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ c
                 , fieldSize = 1
                 , address = 4
                 , access = MM.ReadOnly
+                , tags = []
                 }
             )
           ]
       , deviceName =
           MM.Name "UART" "Wishbone accessible UART interface with configurable FIFO buffers."
       , defLocation = MM.locHere
+      , tags = []
       }
 
   wbToDf ::
@@ -695,6 +698,7 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
                 , fieldSize = 1
                 , address = 0x00
                 , access = MM.WriteOnly
+                , tags = []
                 }
             )
           ,
@@ -706,6 +710,7 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
                 , fieldSize = 1
                 , address = 0x04
                 , access = MM.ReadOnly
+                , tags = []
                 }
             )
           ,
@@ -717,6 +722,7 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
                 , fieldSize = natToNum @(ByteSizeC (BitVector 64))
                 , address = 0x08
                 , access = MM.ReadOnly
+                , tags = []
                 }
             )
           ,
@@ -728,11 +734,13 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
                 , fieldSize = natToNum @(ByteSizeC (BitVector 64))
                 , address = 0x10
                 , access = MM.ReadOnly
+                , tags = []
                 }
             )
           ]
       , deviceName = MM.Name "Timer" ""
       , defLocation = MM.locHere
+      , tags = []
       }
   goMealy (reqCmp0, scratch0 :: Unsigned 64, count :: Unsigned 64) wbM2S =
     ((reqCmp1, scratch1, succ count), (wbS2M1, count))
@@ -808,11 +816,13 @@ readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
                 , address = 0
                 , access = MM.ReadOnly
                 , reset = Nothing
+                , tags = []
                 }
             )
           ]
       , deviceName = MM.Name "DNA" ""
       , defLocation = MM.locHere
+      , tags = []
       }
   maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna
   regRst =

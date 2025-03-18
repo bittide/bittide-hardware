@@ -172,11 +172,13 @@ wbStorageDPC memoryName content = Circuit go
                   , address = 0
                   , access = ReadWrite
                   , reset = Nothing
+                  , tags = []
                   }
               )
             ]
         , deviceName = Name{name = memoryName, description = ""}
         , defLocation = locHere
+        , tags = []
         }
 
 {- | Dual-ported Wishbone storage element, essentially a wrapper for the single-ported version
@@ -258,11 +260,13 @@ wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
                 , address = 0
                 , access = ReadWrite
                 , reset = Nothing
+                , tags = []
                 }
             )
           ]
       , deviceName = Name{name = memoryName, description = ""}
       , defLocation = locHere
+      , tags = []
       }
 {-# NOINLINE wbStorage #-}
 
