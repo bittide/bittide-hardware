@@ -9,7 +9,20 @@
 -- | Generate a JSON representation of a 'MemoryMapValid'
 module Protocols.MemoryMap.Json where
 
-import Clash.Prelude
+import Clash.Prelude (
+  Applicative (pure),
+  Integer,
+  Num ((+)),
+  Semigroup ((<>)),
+  Show (show),
+  String,
+  Traversable (mapM),
+  error,
+  flip,
+  maybe,
+  ($),
+  (<$>),
+ )
 
 import Data.Aeson
 import Protocols.MemoryMap (
@@ -21,6 +34,8 @@ import Protocols.MemoryMap (
   Path,
   PathComp (..),
   Register (..),
+  regByteSizeC,
+  regFieldType,
  )
 
 import qualified Protocols.MemoryMap.FieldType as FT
@@ -192,8 +207,8 @@ generateDeviceDef dev = do
             ReadOnly -> "read_only" :: String
             WriteOnly -> "write_only"
             ReadWrite -> "read_write"
-        , "type" .= generateTypeDef reg.fieldType
-        , "size" .= reg.fieldSize
+        , "type" .= generateTypeDef (regFieldType reg.fieldType)
+        , "size" .= (regByteSizeC reg.fieldType :: Integer)
         , "reset" .= maybe Null toJSON reg.reset
         , "tags" .= reg.tags
         ]

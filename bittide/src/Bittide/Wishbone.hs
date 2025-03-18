@@ -38,8 +38,7 @@ import Clash.Sized.Vector.ToTuple (VecToTuple (vecToTuple))
 import GHC.Stack (HasCallStack)
 import qualified Protocols.Df as Df
 import qualified Protocols.MemoryMap as MM
-import Protocols.MemoryMap.FieldType (ToFieldType (toFieldType))
-import qualified Protocols.MemoryMap.FieldType as MM
+import Protocols.MemoryMap.FieldType (ToFieldType)
 import qualified Protocols.Wishbone as Wishbone
 
 {- $setup
@@ -411,8 +410,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ c
             , MM.locHere
             , MM.Register
                 { reset = Nothing
-                , fieldType = toFieldType @(Bytes 1)
-                , fieldSize = 1
+                , fieldType = MM.regType @(Bytes 1)
                 , address = 0
                 , access = MM.ReadWrite
                 , tags = []
@@ -423,8 +421,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ c
             , MM.locHere
             , MM.Register
                 { reset = Nothing
-                , fieldType = toFieldType @(Bytes 1)
-                , fieldSize = 1
+                , fieldType = MM.regType @(Bytes 1)
                 , address = 4
                 , access = MM.ReadOnly
                 , tags = []
@@ -694,8 +691,7 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
             , MM.locHere
             , MM.Register
                 { reset = Nothing
-                , fieldType = toFieldType @TimeCmd
-                , fieldSize = 1
+                , fieldType = MM.regType @TimeCmd
                 , address = 0x00
                 , access = MM.WriteOnly
                 , tags = []
@@ -706,8 +702,7 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
             , MM.locHere
             , MM.Register
                 { reset = Nothing
-                , fieldType = toFieldType @Bool
-                , fieldSize = 1
+                , fieldType = MM.regType @Bool
                 , address = 0x04
                 , access = MM.ReadOnly
                 , tags = []
@@ -718,8 +713,7 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
             , MM.locHere
             , MM.Register
                 { reset = Nothing
-                , fieldType = toFieldType @(BitVector 64)
-                , fieldSize = natToNum @(ByteSizeC (BitVector 64))
+                , fieldType = MM.regType @(BitVector 64)
                 , address = 0x08
                 , access = MM.ReadOnly
                 , tags = []
@@ -730,8 +724,7 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
             , MM.locHere
             , MM.Register
                 { reset = Nothing
-                , fieldType = toFieldType @(BitVector 64)
-                , fieldSize = natToNum @(ByteSizeC (BitVector 64))
+                , fieldType = MM.regType @(BitVector 64)
                 , address = 0x10
                 , access = MM.ReadOnly
                 , tags = []
@@ -811,8 +804,7 @@ readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
             ( MM.Name "dna" ""
             , MM.locHere
             , MM.Register
-                { fieldType = MM.toFieldType @(BitVector 96)
-                , fieldSize = natToNum @(ByteSizeC (BitVector 96))
+                { fieldType = MM.regType @(BitVector 96)
                 , address = 0
                 , access = MM.ReadOnly
                 , reset = Nothing

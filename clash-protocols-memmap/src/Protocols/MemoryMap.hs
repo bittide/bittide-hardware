@@ -5,6 +5,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
@@ -31,6 +32,10 @@ module Protocols.MemoryMap (
   DeviceDefinition (..),
   Name (..),
   NamedLoc,
+  regType,
+  regTypeSplit,
+  regFieldType,
+  regByteSizeC,
   Register (..),
   MemoryMap (..),
   mergeDeviceDefs,
@@ -47,7 +52,7 @@ import Clash.Prelude (
   Natural,
   Num ((+)),
   Ord (max),
-  Show,
+  Show (show),
   SimOnly (..),
   String,
   Type,
@@ -55,7 +60,9 @@ import Clash.Prelude (
   errorX,
   flip,
   fst,
+  natToNum,
   ($),
+  type (<=),
  )
 
 import qualified Data.List as List
@@ -63,14 +70,12 @@ import qualified Data.Map.Strict as Map
 import GHC.Stack (HasCallStack, SrcLoc, callStack, getCallStack)
 import Protocols
 
+import BitPackC
 import Data.Data (Proxy (Proxy))
 import qualified Data.List as L
 import Protocols.Idle
 import Protocols.MemoryMap.Check.Normalised
-import Protocols.MemoryMap.FieldType (FieldType)
-
--- | Size in bytes
-type Size = Integer
+import Protocols.MemoryMap.FieldType
 
 {- | A protocol agnostic wrapper for memory mapped protocols. It provides a way
 for memory mapped subordinates to propagate their memory map to the top level,
@@ -160,7 +165,13 @@ data DeviceDefinition = DeviceDefinition
   deriving (Show)
 
 deviceSize :: DeviceDefinition -> Integer
-deviceSize def' = List.foldr (\(_, _, reg) acc -> max acc (reg.address + reg.fieldSize)) 0 def'.registers
+deviceSize def' =
+  List.foldr
+    ( \(_, _, reg) acc ->
+        max acc (reg.address + regByteSizeC reg.fieldType)
+    )
+    0
+    def'.registers
 
 data Access
   = -- | Managers should only read from this register
@@ -171,14 +182,57 @@ data Access
     ReadWrite
   deriving (Show)
 
+regTypeSplit ::
+  forall a b.
+  (ToFieldType b, BitPackC a) =>
+  (1 <= AlignmentC a) =>
+  RegisterType
+regTypeSplit = RegisterType (Proxy @(RegTypeSplit a b))
+
+data RegTypeSplit a b
+
+instance (ToFieldType b) => ToFieldType (RegTypeSplit a b) where
+  type Generics (RegTypeSplit a b) = Generics b
+  type WithVars (RegTypeSplit a b) = WithVars b
+
+  generics = generics @b
+
+  toFieldType = toFieldType @b
+
+  args = args @b
+
+instance (BitPackC a) => BitPackC (RegTypeSplit a b) where
+  type ByteSizeC (RegTypeSplit a b) = ByteSizeC a
+  type AlignmentC (RegTypeSplit a b) = AlignmentC a
+  packC = error "`BitPackC` instance used from `RegTypeSplit`, this should not happen"
+  unpackC = error "`BitPackC` instance used from `RegTypeSplit`, this should not happen"
+
+data RegisterType where
+  RegisterType :: (ToFieldType a, BitPackC a) => Proxy a -> RegisterType
+
+regFieldType :: RegisterType -> FieldType
+regFieldType (RegisterType proxy) = inner proxy
+ where
+  inner :: forall x. (ToFieldType x) => Proxy x -> FieldType
+  inner Proxy = toFieldType @x
+
+regByteSizeC :: (Num a) => RegisterType -> a
+regByteSizeC (RegisterType proxy) = inner proxy
+ where
+  inner :: forall x a. (BitPackC x, Num a) => Proxy x -> a
+  inner Proxy = natToNum @(ByteSizeC x)
+
+regType :: forall a. (ToFieldType a, BitPackC a) => RegisterType
+regType = RegisterType (Proxy @a)
+
+instance Show RegisterType where
+  show regType' = show $ regFieldType regType'
+
 data Register = Register
   { access :: Access
   , address :: Address
   -- ^ Address / offset of the register
-  , fieldType :: FieldType
-  -- ^ Type of the register. This is used to generate data structures for
-  -- target languages.
-  , fieldSize :: Size
+  , fieldType :: RegisterType
   -- ^ Size of the register in bytes
   , reset :: Maybe Natural
   -- ^ Reset value (if any) of register

@@ -38,7 +38,6 @@ import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap
-import Protocols.MemoryMap.FieldType
 
 {-
 NOTE [component calendar types]
@@ -152,8 +151,13 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
             ( Name "calendarEntries" ""
             , locHere
             , Register
-                { fieldType = toFieldType @(Vec maxCalDepth (Bytes nBytes))
-                , fieldSize = sizeEntries depth
+                { fieldType =
+                    -- ghc-typelits-extra isn't smart enough to figure out
+                    -- the BitPackC constraints for the vector type
+                    -- so we use a simpler, separate, BitPackC instance
+                    regTypeSplit
+                      @(Bytes (maxCalDepth * nBytes))
+                      @(Vec maxCalDepth (Bytes nBytes))
                 , address = 0
                 , access = ReadWrite
                 , reset = Nothing
@@ -164,8 +168,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
             ( Name "shadowWrite" ""
             , locHere
             , Register
-                { fieldType = toFieldType @(Bytes nBytes)
-                , fieldSize = natToNum @(ByteSizeC (Bytes nBytes))
+                { fieldType = regType @(Bytes nBytes)
                 , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 0)
                 , access = WriteOnly
                 , reset = Nothing
@@ -176,8 +179,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
             ( Name "shadowRead" ""
             , locHere
             , Register
-                { fieldType = toFieldType @(Bytes nBytes)
-                , fieldSize = natToNum @(ByteSizeC (Bytes nBytes))
+                { fieldType = regType @(Bytes nBytes)
                 , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 1)
                 , access = WriteOnly
                 , reset = Nothing
@@ -188,8 +190,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
             ( Name "shadowDepth" ""
             , locHere
             , Register
-                { fieldType = toFieldType @(Bytes nBytes)
-                , fieldSize = natToNum @(ByteSizeC (Bytes nBytes))
+                { fieldType = regType @(Bytes nBytes)
                 , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 2)
                 , access = ReadWrite -- TODO is this correct??
                 , reset = Nothing
@@ -200,8 +201,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
             ( Name "calendarSwap" ""
             , locHere
             , Register
-                { fieldType = toFieldType @Bool
-                , fieldSize = natToNum @(ByteSizeC Bool)
+                { fieldType = regType @Bool
                 , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 3)
                 , access = WriteOnly
                 , reset = Nothing

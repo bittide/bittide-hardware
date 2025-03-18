@@ -29,7 +29,6 @@ import Protocols.Wishbone
 import Data.Constraint.Nat.Extra
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap
-import Protocols.MemoryMap.FieldType (ToFieldType (toFieldType))
 
 {- | Existential type to explicitly differentiate between a configuration for
 the 'scatterUnitWb' and 'gatherUnitWb' at type level and hide the memory depth from
@@ -232,8 +231,7 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @
                   ( Name "scatterMemory" ""
                   , locHere
                   , Register
-                      { fieldType = toFieldType @(Vec memDepth (Bytes 8))
-                      , fieldSize = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
+                      { fieldType = regType @(Vec memDepth (Bytes 8))
                       , address = 0
                       , access = ReadOnly
                       , reset = Nothing
@@ -244,8 +242,7 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @
                   ( Name "metacycleRegister" ""
                   , locHere
                   , Register
-                      { fieldType = toFieldType @(Bytes 4)
-                      , fieldSize = 4
+                      { fieldType = regType @(Bytes 4)
                       , address = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
                       , access = ReadOnly
                       , reset = Nothing
@@ -373,8 +370,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
               ( Name "gatherMemory" ""
               , locHere
               , Register
-                  { fieldType = toFieldType @(Vec memDepth (Bytes 8))
-                  , fieldSize = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
+                  { fieldType = regType @(Vec memDepth (Bytes 8))
                   , address = 0
                   , access = WriteOnly
                   , reset = Nothing
@@ -385,8 +381,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
               ( Name "metacycleRegister" ""
               , locHere
               , Register
-                  { fieldType = toFieldType @(Bytes 4)
-                  , fieldSize = 4
+                  { fieldType = regType @(Bytes 4)
                   , address = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
                   , access = ReadOnly
                   , reset = Nothing

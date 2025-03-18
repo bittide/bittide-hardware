@@ -34,8 +34,50 @@ import Protocols.Wishbone (
   emptyWishboneS2M,
  )
 
+import BitPackC
 import GHC.Stack (HasCallStack, callStack, getCallStack)
-import Protocols.MemoryMap
+import Protocols.MemoryMap (
+  Access (ReadWrite),
+  Address,
+  ConstB,
+  DeviceDefinition (DeviceDefinition),
+  MM,
+  MemoryMap (..),
+  MemoryMapTree (DeviceInstance, Interconnect),
+  Name (Name),
+  Register (Register, access, address, fieldType, reset, tags),
+  locHere,
+  mergeDeviceDefs,
+  regType,
+  withAbsAddr,
+  withMemoryMap,
+  withName,
+  withPrefix,
+  withTag,
+ )
+import Protocols.MemoryMap.FieldType
+
+data FakeType a b
+  = FakeA a
+  | FakeB b
+  deriving (Generic)
+
+instance
+  ( BitPackC a
+  , BitPackC b
+  , 1 <= Max (AlignmentC a) (AlignmentC b)
+  , Mod (ByteSizeC a) (AlignmentC b) <= AlignmentC b
+  , Mod (ByteSizeC a) (AlignmentC b) <= ByteSizeC a
+  , Mod 1 (Max (AlignmentC a) (AlignmentC b))
+      <= Max (AlignmentC a) (AlignmentC b)
+  , Mod 1 (Max (AlignmentC a) (AlignmentC b)) <= 1
+  ) =>
+  BitPackC (FakeType a b)
+
+instance (ToFieldType a, ToFieldType b) => ToFieldType (FakeType a b) where
+  type Generics (FakeType a b) = 2
+  type WithVars (FakeType a b) = FakeType (Var 0) (Var 1)
+  args = toFieldType @a :> toFieldType @b :> Nil
 
 magicUart ::
   (HasCallStack, HiddenClockResetEnable dom, KnownNat addrWidth) =>
@@ -56,7 +98,34 @@ magicUart = Circuit go
         , tree = DeviceInstance callLoc deviceName
         }
     s2m = emptyWishboneS2M
-    deviceDef = DeviceDefinition (Name deviceName "") [] callLoc []
+    deviceDef =
+      DeviceDefinition
+        (Name deviceName "")
+        [
+          ( Name "test" ""
+          , locHere
+          , Register
+              { tags = []
+              , reset = Nothing
+              , fieldType = regType @(FakeType Bool (BitVector 32))
+              , address = 0
+              , access = ReadWrite
+              }
+          )
+        ,
+          ( Name "another_test" ""
+          , locHere
+          , Register
+              { tags = []
+              , reset = Nothing
+              , fieldType = regType @(Either Bool (BitVector 32))
+              , address = 0
+              , access = ReadWrite
+              }
+          )
+        ]
+        callLoc
+        []
 
 someCircuit ::
   (HasCallStack, HiddenClockResetEnable dom, HasCallStack) =>

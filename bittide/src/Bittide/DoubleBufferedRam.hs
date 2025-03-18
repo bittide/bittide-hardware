@@ -35,10 +35,8 @@ import Protocols.MemoryMap (
   deviceSingleton,
   locCaller,
   locHere,
+  regType,
  )
-import Protocols.MemoryMap.FieldType (ToFieldType (toFieldType))
-
-import BitPackC
 
 data ContentType n a
   = Vec (Vec n a)
@@ -167,8 +165,7 @@ wbStorageDPC memoryName content = Circuit go
               ( Name "data" ""
               , locHere
               , Register
-                  { fieldType = toFieldType @(Vec depth (Bytes 4))
-                  , fieldSize = snatToInteger (SNat @(ByteSizeC (Vec depth (Bytes 4))))
+                  { fieldType = regType @(Vec depth (Bytes 4))
                   , address = 0
                   , access = ReadWrite
                   , reset = Nothing
@@ -255,8 +252,7 @@ wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
             ( Name "data" ""
             , locHere
             , Register
-                { fieldType = toFieldType @(Vec depth (Bytes 4))
-                , fieldSize = snatToInteger (SNat @(ByteSizeC (Vec depth (Bytes 4))))
+                { fieldType = regType @(Vec depth (Bytes 4))
                 , address = 0
                 , access = ReadWrite
                 , reset = Nothing

@@ -11,7 +11,12 @@ import Clash.Prelude hiding (def)
 import qualified Data.List as L
 
 import qualified Data.Map.Strict as Map
-import Protocols.MemoryMap (DeviceDefinition (..), DeviceDefinitions, Register (..))
+import Protocols.MemoryMap (
+  DeviceDefinition (..),
+  DeviceDefinitions,
+  Register (..),
+  regFieldType,
+ )
 import Protocols.MemoryMap.FieldType (FieldType (..), TypeName)
 
 data TypeDescription = TypeDescription
@@ -37,7 +42,7 @@ collectTypeDefsFromMM deviceDefs = go $ snd <$> Map.toList deviceDefs
   go (deviceDef : devs) = goRegisters (registers deviceDef) <> go devs
 
   goRegisters [] = []
-  goRegisters ((_, _, Register{..}) : regs) = collectDefs fieldType <> goRegisters regs
+  goRegisters ((_, _, Register{..}) : regs) = collectDefs (regFieldType fieldType) <> goRegisters regs
 
 collectDefs :: FieldType -> [(TypeName, TypeDescription)]
 collectDefs fieldType = case fieldType of
