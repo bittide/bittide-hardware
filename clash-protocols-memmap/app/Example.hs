@@ -10,7 +10,7 @@
 
 import Clash.Prelude
 
-import qualified Data.Aeson as Ae
+import qualified Data.Aeson.Encode.Pretty as Ae
 import qualified Data.ByteString.Lazy as BS
 import Internal.HdlTest.UartMock (someOtherCircuit)
 import Protocols.MemoryMap
@@ -33,5 +33,5 @@ main = do
   putStrLn "\n\n\n"
 
   let json = memoryMapJson memoryMap.deviceDefs absTree
-  BS.putStr (Ae.encode json)
+  BS.putStr (Ae.encodePretty json)
   pure ()
