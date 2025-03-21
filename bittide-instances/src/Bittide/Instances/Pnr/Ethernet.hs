@@ -115,14 +115,13 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
           constB 0b0011 -< preTime
           _dna <- dnaC -< (mmDna, dnaWb)
           constB 0b0111 -< preDna
-          macStatIf -< (macWb, macStatus)
+          macStatIf -< (mmMac, (macWb, macStatus))
           gpioDf <- idleSource -< ()
           gpioOut <- gpio -< (gpioWb, gpioDf)
           constB 0b0100 -< preGpio
           constB todoMM -< mmGpio
           (axiRx0, gmiiTx, macStatus) <- mac -< (axiTx1, gmiiRx)
           constB 0b1001 -< preMac
-          constB todoMM -< mmMac
           axiRx1 <- axiRxPipe -< axiRx0
           axiTx0 <- wbToAxiTx' -< wbAxiTx
           axiTx1 <- axiTxPipe -< axiTx0

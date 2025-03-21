@@ -152,15 +152,13 @@ dut =
             framesize
             (pure linkMask)
             (pure <$> dataCounts)
-          -< ccWb
+          -< (mmCC, ccWb)
 
       constB 0b110 -< preCC
-      constB todoMM -< mmCC
 
       cm <- cSignalMap clockMod -< ccd0
-      _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (dbgWb, cm)
+      _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (mmDbg, (dbgWb, cm))
       constB 0b111 -< preDbg
-      constB todoMM -< mmDbg
       idC -< (uartTx, ccd1)
  where
   peConfig = unsafePerformIO $ do

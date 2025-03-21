@@ -101,13 +101,11 @@ dut localCounter dnaA dnaB = circuit $ do
   _localCounter <- timeWb -< (mmTime, timeBus)
   constB 0b011 -< preTime
 
-  linkAB <- switchDemoPeWb d2 localCounter -< (peBusA, dnaAC, linkBA)
+  linkAB <- switchDemoPeWb d2 localCounter -< (mmA, (peBusA, dnaAC, linkBA))
   constB 0b100 -< preA
-  constB todoMM -< mmA
   constB 0b101 -< preB
-  constB todoMM -< mmB
 
-  linkBA <- switchDemoPeWb d2 localCounter -< (peBusB, dnaBC, linkAB)
+  linkBA <- switchDemoPeWb d2 localCounter -< (mmB, (peBusB, dnaBC, linkAB))
   dnaAC <- signalToCSignal dnaA -< ()
   dnaBC <- signalToCSignal dnaB -< ()
   idC -< uartTx

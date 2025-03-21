@@ -18,10 +18,12 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Prelude
 
+import BitPackC
 import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols
 import Protocols.MemoryMap
+import Protocols.MemoryMap.FieldType
 import Protocols.Wishbone
 import VexRiscv
 
@@ -44,7 +46,7 @@ import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 
 data TestStatus = Running | Success | Fail
-  deriving (Enum, Eq, Generic, NFDataX, BitPack)
+  deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, ToFieldType)
 
 type TestDone = Bool
 type TestSuccess = Bool
@@ -108,15 +110,39 @@ vexRiscvInner jtagIn0 uartRx =
     _localCounter <- timeWb -< (mmTime, timeBus)
 
     constB 0b111 -< preStatus
-    constB todoMM -< mmStatus
-    testResult <- statusRegister -< statusRegisterBus
+    testResult <- statusRegister -< (mmStatus, statusRegisterBus)
     idC -< (testResult, uartTx)
 
-  statusRegister :: Circuit (Wishbone dom 'Standard 27 (Bytes 4)) (CSignal dom TestStatus)
-  statusRegister = Circuit $ \(fwd, _) ->
+  statusRegister ::
+    Circuit (ConstB MM, Wishbone dom 'Standard 27 (Bytes 4)) (CSignal dom TestStatus)
+  statusRegister = withMemoryMap mm $ Circuit $ \(fwd, _) ->
     let (unbundle -> (m2s, st)) = mealy go Running fwd
      in (m2s, st)
    where
+    mm =
+      MemoryMap
+        { tree = DeviceInstance locCaller "StatusRegister"
+        , deviceDefs = deviceSingleton deviceDef
+        }
+    deviceDef =
+      DeviceDefinition
+        { tags = []
+        , registers =
+            [
+              ( Name "status" ""
+              , locHere
+              , Register
+                  { fieldType = regType @TestStatus
+                  , address = 0x00
+                  , access = WriteOnly
+                  , tags = []
+                  , reset = Nothing
+                  }
+              )
+            ]
+        , deviceName = Name "StatusRegister" ""
+        , defLocation = locHere
+        }
     go st WishboneM2S{..}
       -- out of cycle, no response, same state
       | not (busCycle && strobe) = (st, (emptyWishboneS2M, st))

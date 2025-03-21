@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -14,16 +15,19 @@ module Bittide.ClockControl.DebugRegister (
 import Clash.Prelude hiding (PeriodToCycles)
 
 import Protocols
+import Protocols.MemoryMap
 import Protocols.Wishbone
 
 import Data.Maybe (isJust)
 
+import BitPackC
 import Bittide.ClockControl (SpeedChange)
 import qualified Bittide.ClockControl.Callisto.Types as T
 import Bittide.Wishbone
 import Clash.Explicit.Signal.Extra (changepoints)
 import Clash.Signal.TH.Extra (deriveSignalHasFields)
 import Clash.Sized.Vector.ToTuple (vecToTuple)
+import Protocols.MemoryMap.FieldType
 
 data DebugRegisterCfg = DebugRegisterCfg
   { reframingEnabled :: Bool
@@ -53,7 +57,8 @@ data DebugRegisterData = DebugRegisterData
 deriveSignalHasFields ''DebugRegisterData
 
 -- | Used just to match the discriminants of the 'ReframingState' type.
-data ReframingStateKind = Detect | Wait | Done deriving (Generic, NFDataX, BitPack)
+data ReframingStateKind = Detect | Wait | Done
+  deriving (Generic, NFDataX, BitPack, BitPackC, ToFieldType)
 
 {- | A Wishbone accessible debug register
 This interface holds values that the CPU should be reporting to the FPGA for debugging
@@ -80,10 +85,70 @@ debugRegisterWb ::
   ) =>
   Signal dom DebugRegisterCfg ->
   Circuit
-    (Wishbone dom 'Standard addrW (BitVector 32), CSignal dom (Maybe SpeedChange))
+    ( ConstB MM
+    , (Wishbone dom 'Standard addrW (BitVector 32), CSignal dom (Maybe SpeedChange))
+    )
     (CSignal dom DebugRegisterData)
-debugRegisterWb cfg = Circuit go
+debugRegisterWb cfg = withMemoryMap mm $ Circuit go
  where
+  mm =
+    MemoryMap
+      { tree = DeviceInstance locCaller "ClockControlDebug"
+      , deviceDefs = deviceSingleton deviceDef
+      }
+  deviceDef =
+    DeviceDefinition
+      { tags = []
+      , registers =
+          [
+            ( Name "reframing_state_kind" ""
+            , locHere
+            , Register
+                { fieldType = regType @ReframingStateKind
+                , address = 0x0
+                , access = ReadWrite
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "target_correction" ""
+            , locHere
+            , Register
+                { fieldType = regType @Float
+                , address = 0x4
+                , access = ReadWrite
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "target_count" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 32)
+                , address = 0x8
+                , access = ReadWrite
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "reframing_enabled" ""
+            , locHere
+            , Register
+                { fieldType = regType @Bool
+                , address = 0xC
+                , access = ReadOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ]
+      , deviceName = Name "ClockControlDebug" ""
+      , defLocation = locHere
+      }
+
   go ((wbM2S, clockMod), _) = ((wbS2M, pure ()), debugData)
    where
     debugData =

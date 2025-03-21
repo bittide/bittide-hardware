@@ -36,7 +36,9 @@ import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
 import GHC.Stack (HasCallStack)
 
+import BitPackC (BitPackC)
 import Bittide.Arithmetic.Time (PeriodToCycles, microseconds)
+import Protocols.MemoryMap.FieldType (ToFieldType)
 
 type SettlePeriod = Femtoseconds
 
@@ -96,7 +98,7 @@ data SpeedChange
   = NoChange
   | SlowDown
   | SpeedUp
-  deriving (Eq, Show, Generic, BitPack, ShowX, NFDataX)
+  deriving (Eq, Show, Generic, BitPack, ShowX, NFDataX, ToFieldType, BitPackC)
 
 {- | Converts speed changes into a normalized scalar, which reflects
 their effect on clock control.

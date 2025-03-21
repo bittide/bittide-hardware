@@ -31,6 +31,8 @@ data FieldType
   | SignedFieldType Word
   | UnsignedFieldType Word
   | IndexFieldType Word
+  | FloatSingleType
+  | FloatDoubleType
   | SumOfProductFieldType TypeName [Named [Named FieldType]]
   | VecFieldType Word FieldType
   | TypeReference FieldType [FieldType]
@@ -138,6 +140,9 @@ instance ToFieldType Int32 where toFieldType = SignedFieldType 32
 instance ToFieldType Int64 where toFieldType = SignedFieldType 64
 
 instance ToFieldType Int where toFieldType = SignedFieldType 32
+
+instance ToFieldType Float where toFieldType = FloatSingleType
+instance ToFieldType Double where toFieldType = FloatDoubleType
 
 class GToFieldType f where
   gToFieldType :: FieldType

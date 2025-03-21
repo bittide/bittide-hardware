@@ -103,6 +103,27 @@ instance (KnownNat n) => BitPackC (Signed n) where
       leToPlus @n @(ByteSizeC (Signed n) * 8) $ bitCoerce (truncateB $ fromLittleEndian bits)
     SNatGT -> deepErrorX "shouldn't happen"
 
+instance (KnownNat n, 1 <= n) => BitPackC (Index n) where
+  type ByteSizeC (Index n) = ByteSizeC (BitVector (CLog 2 n))
+  type AlignmentC (Index n) = AlignmentC (BitVector (CLog 2 n))
+
+  packC val = packC (pack val)
+  unpackC bits = unpack (unpackC bits :: BitVector (CLog 2 n))
+
+instance BitPackC Float where
+  type ByteSizeC Float = 4
+  type AlignmentC Float = 4
+
+  packC = pack
+  unpackC = unpack
+
+instance BitPackC Double where
+  type ByteSizeC Double = 8
+  type AlignmentC Double = 8
+
+  packC = pack
+  unpackC = unpack
+
 instance BitPackC Bool where
   type ByteSizeC Bool = 1
   type AlignmentC Bool = 1

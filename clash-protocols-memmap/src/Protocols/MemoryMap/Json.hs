@@ -110,6 +110,8 @@ generateTypeDesc TypeDescription{name = tyName, ..} =
 generateTypeDef :: FT.FieldType -> Value
 generateTypeDef ft = case ft of
   FT.BoolFieldType -> "bool"
+  FT.FloatSingleType -> "float"
+  FT.FloatDoubleType -> "double"
   FT.BitVectorFieldType n -> toJSON ["bitvector", toJSON n]
   FT.SignedFieldType n -> toJSON ["signed", toJSON n]
   FT.SumOfProductFieldType tyName def' ->

@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=6 #-}
 
@@ -17,6 +18,8 @@ import Bittide.Wishbone
 import Clash.Functor.Extra
 import Clash.Signal.TH.Extra (deriveSignalHasFields)
 import Clash.Sized.Vector.ToTuple (vecToTuple)
+import GHC.Stack (HasCallStack)
+import Protocols.MemoryMap
 
 data ClockControlData (nLinks :: Nat) = ClockControlData
   { clockMod :: Maybe SpeedChange
@@ -53,6 +56,7 @@ clock board this register is controlling.
 clockControlWb ::
   forall dom addrW nLinks m margin framesize.
   ( HiddenClockResetEnable dom
+  , HasCallStack
   , KnownNat addrW
   , 1 <= framesize
   , 1 <= nLinks
@@ -74,10 +78,104 @@ clockControlWb ::
   Vec nLinks (Signal dom (RelDataCount m)) ->
   -- | Wishbone accessible clock control circuitry
   Circuit
-    (Wishbone dom 'Standard addrW (BitVector 32))
+    (ConstB MM, Wishbone dom 'Standard addrW (BitVector 32))
     (CSignal dom (ClockControlData nLinks))
-clockControlWb mgn fsz linkMask counters = Circuit go
+clockControlWb mgn fsz linkMask counters = withMemoryMap mm $ Circuit go
  where
+  mm =
+    MemoryMap
+      { tree = DeviceInstance locCaller "ClockControl"
+      , deviceDefs = deviceSingleton deviceDef
+      }
+  deviceDef =
+    DeviceDefinition
+      { tags = []
+      , registers =
+          [
+            ( Name "num_links" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 32)
+                , address = 0x00
+                , access = ReadOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "link_mask" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 32)
+                , address = 0x04
+                , access = ReadOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "up_links" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 32)
+                , address = 0x08
+                , access = ReadOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "change_speed" ""
+            , locHere
+            , Register
+                { fieldType = regType @SpeedChange
+                , address = 0x0C
+                , access = ReadWrite
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "links_stable" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 32)
+                , address = 0x10
+                , access = ReadOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "links_settled" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 32)
+                , address = 0x14
+                , access = ReadOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "data_counts" ""
+            , locHere
+            , Register
+                { fieldType = regType @(Vec nLinks (BitVector 32))
+                , address = 0x18
+                , access = ReadOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ]
+      , deviceName =
+          Name
+            "ClockControl"
+            "This interface receives the link mask and 'RelDataCount's from all links.\nFurthermore it produces FINC/FDEC pulses for the clock control boards."
+      , defLocation = locHere
+      }
+
   go (wbM2S, _) = (wbS2M, ccd)
    where
     ccd =

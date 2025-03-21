@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
 
 module Bittide.CaptureUgn (captureUgn) where
 
@@ -10,6 +11,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Tuple (swap)
 
 import Protocols
+import Protocols.MemoryMap
 import Protocols.Wishbone
 
 import Bittide.SharedTypes (Bytes)
@@ -40,11 +42,13 @@ captureUgn ::
   ) =>
   Signal dom (Unsigned 64) ->
   Circuit
-    ( Wishbone dom 'Standard addrW (Bytes 4)
-    , CSignal dom (Maybe (BitVector 64))
+    ( ConstB MM
+    , ( Wishbone dom 'Standard addrW (Bytes 4)
+      , CSignal dom (Maybe (BitVector 64))
+      )
     )
     (CSignal dom (BitVector 64))
-captureUgn localCounter = Circuit go
+captureUgn localCounter = withMemoryMap mm $ Circuit go
  where
   go ((wbM2S, linkIn), _) = ((wbS2M, pure ()), bittideData)
    where
@@ -59,3 +63,39 @@ captureUgn localCounter = Circuit go
     trigger = C.isRising False (isJust <$> linkIn)
     bittideData = fromMaybe 0 <$> mux trigger (pure Nothing) linkIn
     (_, wbS2M) = unbundle $ wbToVec <$> stateVec <*> wbM2S
+
+  mm =
+    MemoryMap
+      { tree = DeviceInstance locCaller "CaptureUGN"
+      , deviceDefs = deviceSingleton deviceDef
+      }
+  deviceDef =
+    DeviceDefinition
+      { tags = []
+      , registers =
+          [
+            ( Name "local_counter" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 64)
+                , address = 0x0
+                , access = ReadOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "remote_counter" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 64)
+                , address = 0x8
+                , access = ReadOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ]
+      , deviceName = Name "CaptureUGN" ""
+      , defLocation = locHere
+      }
