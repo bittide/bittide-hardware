@@ -560,22 +560,23 @@ jobs:
       - name: Synthesis
         if: ${{ matrix.target.stage != 'hdl' }}
         run: |
-          cache pull synth --prefix="${{ matrix.target.top }}" --missing-ok --write-cache-found
+          target="${{ matrix.target.stage }}"
+
+          if [[ "${target}" == "program" ]]; then
+            echo "Illegal Shake target on CI: program"
+            exit 1
+          fi
+
+          # Only the local runner connected to the bittide demonstrator (hoeve)
+          # should perform the jobs which need hardware access. And that runner
+          # should do only that, so we let other 'compute' runners do the
+          # bitstream generation.
+          if [[ "${target}" == "test" ]]; then
+            target="bitstream"
+          fi
+
+          cache pull synth --prefix="${{ matrix.target.top }}-${target}" --missing-ok --write-cache-found
           if [[ $(cat cache_found) == 0 ]]; then
-            target="${{ matrix.target.stage }}"
-
-            if [[ "${target}" == "program" ]]; then
-              echo "Illegal Shake target on CI: program"
-              exit 1
-            fi
-
-            # Only the local runner connected to the bittide demonstrator (hoeve)
-            # should perform the jobs which need hardware access. And that runner
-            # should do only that, so we let other 'compute' runners do the
-            # bitstream generation.
-            if [[ "${target}" == "test" ]]; then
-              target="bitstream"
-            fi
 
             export VIVADO_HS_LOG_DIR="$(git rev-parse --show-toplevel)/_build/hitl/vivado-gensynth/"
             if [[ ! -d "${VIVADO_HS_LOG_DIR} " ]]; then
@@ -585,7 +586,7 @@ jobs:
               shake ${{ matrix.target.top }}:"${target}"
 
             # Pushing synthesis results to cache
-            cache push synth --prefix="${{ matrix.target.top }}"
+            cache push synth --prefix="${{ matrix.target.top }}-${target}"
           else
             echo "Restored cache, no need to synthesize again"
           fi
