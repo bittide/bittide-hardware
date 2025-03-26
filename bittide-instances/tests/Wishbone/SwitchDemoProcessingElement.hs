@@ -96,14 +96,14 @@ dut localCounter dnaA dnaB = circuit $ do
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
-  constB 0b010 -< preUart
+  constBwd 0b010 -< preUart
 
   _localCounter <- timeWb -< (mmTime, timeBus)
-  constB 0b011 -< preTime
+  constBwd 0b011 -< preTime
 
   linkAB <- switchDemoPeWb d2 localCounter -< (mmA, (peBusA, dnaAC, linkBA))
-  constB 0b100 -< preA
-  constB 0b101 -< preB
+  constBwd 0b100 -< preA
+  constBwd 0b101 -< preB
 
   linkBA <- switchDemoPeWb d2 localCounter -< (mmB, (peBusB, dnaBC, linkAB))
   dnaAC <- signalToCSignal dnaA -< ()

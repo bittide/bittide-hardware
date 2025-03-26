@@ -85,15 +85,15 @@ dut =
         ] <-
         processingElement NoDumpVcd peConfig -< (mm, jtag)
       wbAlwaysAck -< wbNull
-      constB 0b100 -< preNull
-      constB todoMM -< mmNull
+      constBwd 0b100 -< preNull
+      constBwd todoMM -< mmNull
 
       (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartTx))
-      constB 0b010 -< preUart
+      constBwd 0b010 -< preUart
 
       _interrupts <- wbAxisRxBufferCircuit (SNat @128) -< (axiRxBus, axiStream)
-      constB 0b101 -< preAxiRx
-      constB todoMM -< mmAxiRx
+      constBwd 0b101 -< preAxiRx
+      constBwd todoMM -< mmAxiRx
 
       axiStream <-
         axiUserMapC (const False)
@@ -101,8 +101,8 @@ dut =
           <| axiPacking
           <| wbToAxiTx
           -< axiTxBus
-      constB 0b011 -< preAxiTx
-      constB todoMM -< mmAxiTx
+      constBwd 0b011 -< preAxiTx
+      constBwd todoMM -< mmAxiTx
       idC -< uartRx
  where
   axiProxy = Proxy @(Axi4Stream System ('Axi4StreamConfig 4 0 0) ())

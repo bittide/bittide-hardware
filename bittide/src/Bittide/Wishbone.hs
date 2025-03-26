@@ -66,11 +66,11 @@ singleMasterInterconnectC ::
   , NFDataX a
   ) =>
   Circuit
-    (MM.ConstB MM.MM, Wishbone dom 'Standard addrW a)
+    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW a)
     ( Vec
         nSlaves
-        ( MM.ConstB (Unsigned (CLog 2 nSlaves))
-        , (MM.ConstB MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth addrW nSlaves) a)
+        ( MM.ConstBwd (Unsigned (CLog 2 nSlaves))
+        , (MM.ConstBwd MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth addrW nSlaves) a)
         )
     )
 singleMasterInterconnectC = Circuit go
@@ -387,7 +387,7 @@ uartInterfaceWb ::
   -- | Valid baud rates are constrained by @clash-cores@'s 'ValidBaud' constraint.
   Circuit (Df dom (BitVector 8), uartIn) (CSignal dom (Maybe (BitVector 8)), uartOut) ->
   Circuit
-    (MM.ConstB MM.MM, (Wishbone dom 'Standard addrW (Bytes nBytes), uartIn))
+    (MM.ConstBwd MM.MM, (Wishbone dom 'Standard addrW (Bytes nBytes), uartIn))
     (uartOut, CSignal dom (Bool, Bool))
 uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ circuit $ \(wb, uartRx) -> do
   (txFifoIn, uartStatus) <- wbToDf -< (wb, rxFifoOut, txFifoMeta)
@@ -430,7 +430,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ c
           ]
       , deviceName =
           MM.Name "UART" "Wishbone accessible UART interface with configurable FIFO buffers."
-      , defLocation = MM.locHere
+      , definitionLoc = MM.locHere
       , tags = []
       }
 
@@ -674,7 +674,7 @@ timeWb ::
   , 1 <= DomainPeriod dom
   ) =>
   Circuit
-    (MM.ConstB MM.MM, Wishbone dom 'Standard addrW (Bytes 4))
+    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes 4))
     (CSignal dom (Unsigned 64))
 timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy (False, 0, 0) wbM2S
  where
@@ -732,7 +732,7 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
             )
           ]
       , deviceName = MM.Name "Timer" ""
-      , defLocation = MM.locHere
+      , definitionLoc = MM.locHere
       , tags = []
       }
   goMealy (reqCmp0, scratch0 :: Unsigned 64, count :: Unsigned 64) wbM2S =
@@ -785,7 +785,7 @@ readDnaPortE2Wb ::
   -- | Simulation DNA value
   BitVector 96 ->
   Circuit
-    (MM.ConstB MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes))
     (CSignal dom (BitVector 96))
 readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
   dnaDf <- dnaCircuit -< ()
@@ -813,7 +813,7 @@ readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
             )
           ]
       , deviceName = MM.Name "DNA" ""
-      , defLocation = MM.locHere
+      , definitionLoc = MM.locHere
       , tags = []
       }
   maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna

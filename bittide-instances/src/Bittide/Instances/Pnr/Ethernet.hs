@@ -110,26 +110,26 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
             ] <-
             pe -< (mm, jtag)
           (uartRx, _uartStatus) <- uart -< (mmUart, (uartBus, uartTx))
-          constB 0b0010 -< preUart
+          constBwd 0b0010 -< preUart
           _localCounter <- time -< (mmTime, timeBus)
-          constB 0b0011 -< preTime
+          constBwd 0b0011 -< preTime
           _dna <- dnaC -< (mmDna, dnaWb)
-          constB 0b0111 -< preDna
+          constBwd 0b0111 -< preDna
           macStatIf -< (mmMac, (macWb, macStatus))
           gpioDf <- idleSource -< ()
           gpioOut <- gpio -< (gpioWb, gpioDf)
-          constB 0b0100 -< preGpio
-          constB todoMM -< mmGpio
+          constBwd 0b0100 -< preGpio
+          constBwd todoMM -< mmGpio
           (axiRx0, gmiiTx, macStatus) <- mac -< (axiTx1, gmiiRx)
-          constB 0b1001 -< preMac
+          constBwd 0b1001 -< preMac
           axiRx1 <- axiRxPipe -< axiRx0
           axiTx0 <- wbToAxiTx' -< wbAxiTx
           axiTx1 <- axiTxPipe -< axiTx0
           _rxBufStatus <- wbAxiRxBuffer -< (wbAxiRx, axiRx1)
-          constB 0b0101 -< preAxiRx
-          constB todoMM -< mmAxiRx
-          constB 0b0110 -< preAxiTx
-          constB todoMM -< mmAxiTx
+          constBwd 0b0101 -< preAxiRx
+          constBwd todoMM -< mmAxiRx
+          constBwd 0b0110 -< preAxiTx
+          constBwd todoMM -< mmAxiTx
 
           idC -< (uartRx, gmiiTx, gpioOut)
       )

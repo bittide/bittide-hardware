@@ -21,7 +21,7 @@ main :: IO ()
 main = do
   putStrLn "hello"
   let SimOnly memoryMap =
-        getConstBAny (withClockResetEnable @System clockGen resetGen enableGen someOtherCircuit)
+        getConstBwdAny (withClockResetEnable @System clockGen resetGen enableGen someOtherCircuit)
   print memoryMap
   let tree0 = convert memoryMap.tree
   let tree1 = normaliseRelTree tree0

@@ -22,7 +22,7 @@ import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Bittide.Switch
 import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (ConstB, MM, MemoryMap, constB)
+import Protocols.MemoryMap (ConstBwd, MM, MemoryMap, constBwd)
 
 {- | A simple node consisting of one external bidirectional link and two 'gppe's.
 This node's 'switch' has a 'CalendarConfig' of for a 'calendar' with up to @1024@ entries,
@@ -79,7 +79,7 @@ node ::
   (HiddenClockResetEnable dom, KnownNat extLinks, KnownNat gppes) =>
   NodeConfig extLinks gppes ->
   Circuit
-    (ConstB MM, Vec gppes (ConstB MM), Vec extLinks (CSignal dom (BitVector 64)))
+    (ConstBwd MM, Vec gppes (ConstBwd MM), Vec extLinks (CSignal dom (BitVector 64)))
     (Vec extLinks (CSignal dom (BitVector 64)))
 node (NodeConfig nmuConfig switchConfig gppeConfigs prefixes) = circuit $ \(mmNmu, mms, linksIn) -> do
   switchOut <- switchC @_ @_ @_ @_ @64 switchConfig -< (mmSwWb, (switchIn, swWb))
@@ -89,7 +89,7 @@ node (NodeConfig nmuConfig switchConfig gppeConfigs prefixes) = circuit $ \(mmNm
   ([(preSw, (mmSwWb, swWb))], nmuWbs1) <- splitAtC d1 -< nmuWbs0
   peWbs <- unconcatC d2 -< nmuWbs1
 
-  constB 0b0 -< preSw
+  constBwd 0b0 -< preSw
 
   pesToSwitch <- nodeGppes gppeConfigs prefixes -< (mms, switchToPes, peWbs)
   idC -< linksOut
@@ -100,14 +100,14 @@ nodeGppes ::
   Vec gppes (GppeConfig nmuRemBusWidth) ->
   Vec gppes (Vec 2 (Unsigned (CLog 2 nmuBusses))) ->
   Circuit
-    ( Vec gppes (ConstB MM)
+    ( Vec gppes (ConstBwd MM)
     , Vec gppes (CSignal dom (BitVector 64))
     , Vec
         gppes
         ( Vec
             2
-            ( ConstB (Unsigned (CLog 2 nmuBusses))
-            , ( ConstB MM
+            ( ConstBwd (Unsigned (CLog 2 nmuBusses))
+            , ( ConstBwd MM
               , Wishbone dom Standard nmuRemBusWidth (BitVector 32)
               )
             )
@@ -158,22 +158,6 @@ nodeGppes configs prefixes = Circuit go
   singleGppe config linkIn prefixes' m2ss = (mm, zip prefixes' interfacesOut, linkOut)
    where
     ((mm, (_, interfacesOut)), linkOut) = toSignals (gppeC config) (((), (linkIn, ((),) <$> m2ss)), pure ())
-
--- node ::
---   forall dom extLinks gppes.
---   (HiddenClockResetEnable dom, KnownNat extLinks, KnownNat gppes) =>
---   NodeConfig extLinks gppes ->
---   Circuit
---     (ConstB MM, Vec gppes (ConstB MM), Vec extLinks (CSignal dom (BitVector 64)))
---     (Vec extLinks (CSignal dom (BitVector 64)))
--- node (NodeConfig nmuConfig switchConfig gppeConfigs) = Circuit go
---  where
---   go :: (((), Vec gppes (), Vec extLinks (Signal dom (BitVector 64))), Vec extLinks (Signal dom ())) -> ((SimOnly MemoryMap, Vec gppes (SimOnly MemoryMap), Vec extLinks (Signal dom ())), Vec extLinks (Signal dom (BitVector 64)))
---   go (((), _, linksIn), _) = ((mmNmu, mmPes, repeat (pure ())), linksOut)
---    where
---     (_, _) = toSignals (switchC @_ @_ @_ @_ @64 switchConfig) (((), (_, _)), repeat (pure ()))
---
---     (_, _) = toSignals (managementUnitC nmuConfig) (((), _), (pure (), _))
 
 type NmuInternalBusses = 6
 type NmuRemBusWidth nodeBusses = 30 - CLog 2 (nodeBusses + NmuInternalBusses)
@@ -232,9 +216,9 @@ gppeC ::
   -- , Incoming @Vector@ of master busses
   -- )
   Circuit
-    ( ConstB MM
+    ( ConstBwd MM
     , ( CSignal dom (BitVector 64)
-      , Vec 2 (ConstB MM, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
+      , Vec 2 (ConstBwd MM, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
       )
     )
     (CSignal dom (BitVector 64))
@@ -243,43 +227,11 @@ gppeC (GppeConfig scatterConfig prefixS gatherConfig prefixG peConfig dumpVcd) =
   jtag <- idleSource -< ()
   [(preS, (mmS, wbScat)), (preG, (mmG, wbGu))] <-
     processingElement dumpVcd peConfig -< (mm, jtag)
-  constB prefixS -< preS
-  constB prefixG -< preG
+  constBwd prefixS -< preS
+  constBwd prefixG -< preG
   scatterUnitWbC scatterConfig -< ((mmS, (linkIn, wbScat)), (mmSCal, wbScatCal))
   linkOut <- gatherUnitWbC gatherConfig -< ((mmG, wbGu), (mmGCal, wbGathCal))
   idC -< linkOut
-
--- gppeC ::
---   forall dom nmuRemBusWidth .
---   (HasCallStack, KnownNat nmuRemBusWidth, HiddenClockResetEnable dom) =>
---   -- | Configures all local parameters
---   GppeConfig nmuRemBusWidth ->
---   -- |
---   -- ( Incoming 'Bittide.Link'
---   -- , Incoming @Vector@ of master busses
---   -- )
---   Circuit
---     (ConstB MM, (CSignal dom (BitVector 64), Vec 2 (ConstB MM, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))))
---     (CSignal dom (BitVector 64))
--- gppeC (GppeConfig scatterConfig prefixS gatherConfig prefixG peConfig dumpVcd) = Circuit go
---  where
---   go (((), (linkIn, nmuWbs)), _) = ((mmPe, (pure (), calOut)), linkOut)
---    where
---     ((), jtagIn) = toSignals (idleSource @(Jtag dom)) ((), jtagOut)
---     peC = processingElement dumpVcd peConfig
---     ((mmPe, jtagOut), unzip -> (_, unzip -> (_, vecToTuple -> (scatM2S, gathM2S)))) = toSignals peC (((), jtagIn), s2mss)
---
---     (((), scatCalM2S), ((), gatCalM2S)) = vecToTuple nmuWbs
---
---     calOut = (mmScatCal, scatCalS2M) :> (mmGathCal, gathCalS2M) :> Nil
---
---     (((mmScat, (_, scatS2M)), (mmScatCal, scatCalS2M)), ()) =
---       toSignals (scatterUnitWbC scatterConfig) ((((), (linkIn, scatM2S)), ((), scatCalM2S)), ())
---
---     (((mmGath, gathS2M), (mmGathCal, gathCalS2M)), linkOut) =
---       toSignals (gatherUnitWbC gatherConfig) ((((), gathM2S), ((), gatCalM2S)), pure ())
---
---     s2mss = (prefixS, (mmScat, scatS2M)) :> (prefixG, (mmGath, gathS2M)) :> Nil
 
 {- | A special purpose 'processingElement' that manages a Bittide Node. It contains
 a 'processingElement', 'linkToPe' and 'peToLink' which create the interface for the
@@ -299,12 +251,12 @@ managementUnitC ::
   -- )
   ManagementConfig nodeBusses ->
   Circuit
-    (ConstB MM, CSignal dom (BitVector 64))
+    (ConstBwd MM, CSignal dom (BitVector 64))
     ( CSignal dom (BitVector 64)
     , Vec
         nodeBusses
-        ( ConstB (Unsigned (CLog 2 (nodeBusses + NmuInternalBusses)))
-        , (ConstB MM, Wishbone dom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4))
+        ( ConstBwd (Unsigned (CLog 2 (nodeBusses + NmuInternalBusses)))
+        , (ConstBwd MM, Wishbone dom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4))
         )
     )
 managementUnitC
@@ -328,53 +280,13 @@ managementUnitC
       , nmuWbs
       ) <-
       splitAtC d4 -< peWbs
-    constB prefixSCal -< preSCal
-    constB prefixS -< preS
-    constB prefixGCal -< preGCal
-    constB prefixG -< preG
+    constBwd prefixSCal -< preSCal
+    constBwd prefixS -< preS
+    constBwd prefixGCal -< preGCal
+    constBwd prefixG -< preG
     linkOut <- gatherUnitWbC gatherConfig -< (wbGu, wbGathCal)
     scatterUnitWbC scatterConfig -< ((mmScat, (linkIn, wbScat)), wbScatCal)
     idC -< (linkOut, nmuWbs)
-
--- managementUnitC ::
---   forall dom nodeBusses.
---   ( HiddenClockResetEnable dom
---   , CLog 2 (nodeBusses + NmuInternalBusses) <= 30
---   ) =>
---   -- |
---   -- ( Configures all local parameters
---   -- , Incoming 'Bittide.Link'
---   -- , Incoming @Vector@ of master busses
---   -- )
---   ManagementConfig nodeBusses ->
---   Circuit
---     (ConstB MM, CSignal dom (BitVector 64))
---     ( CSignal dom (BitVector 64)
---     , Vec nodeBusses (ConstB (Unsigned (CLog 2 (nodeBusses + NmuInternalBusses))), (ConstB MM, Wishbone dom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4))
---     ))
--- managementUnitC (ManagementConfig scatterConfig prefixSCal prefixS gatherConfig prefixGCal prefixG peConfig dumpVcd) = Circuit go
---  where
---   go :: (((), Signal dom (BitVector 64)), (Signal dom (), Vec nodeBusses (Unsigned (CLog 2 (nodeBusses + NmuInternalBusses)), (SimOnly MemoryMap, Signal dom (WishboneS2M (BitVector 32)))))) -> ((SimOnly MemoryMap, Signal dom ()), (Signal dom (BitVector 64), Vec nodeBusses ((), ((), Signal dom (WishboneM2S (30 - CLog 2 (nodeBusses + NmuInternalBusses)) 4 (BitVector 32))))))
---   go (((), linkIn), (_, nmuWbsS2M)) = ((mmPe, pure ()), (linkOut, nmuWbsM2S))
---    where
---     ((), jtagIn) = toSignals (idleSource @(Jtag dom)) ((), jtagOut)
---     peC = processingElement dumpVcd peConfig
---     ((mmPe, jtagOut), peWbsM2S) = toSignals peC (((), jtagIn), peWbsS2M)
---
---     (vecToTuple . (snd . snd <$>) -> (scatCalM2S, scatM2S, gathCalM2S, gathM2S), nmuWbsM2S) = splitAtI @4 peWbsM2S
---
---
---     (((mmScat, (_, scatS2M)), (mmScatCal, scatCalS2M)), ()) =
---       toSignals (scatterUnitWbC scatterConfig) ((((), (linkIn, scatM2S)), ((), scatCalM2S)), ())
---
---     (((mmGath, gathS2M), (mmGathCal, gathCalS2M)), linkOut) =
---       toSignals (gatherUnitWbC gatherConfig) ((((), gathM2S), ((), gathCalM2S)), pure ())
---
---     peWbsS2M =
---       (prefixSCal, (mmScatCal, scatCalS2M)) :>
---       (prefixS, (mmScat, scatS2M)) :>
---       (prefixGCal, (mmGathCal, gathCalS2M)) :>
---       (prefixG, (mmGath, gathS2M)) :> nmuWbsS2M
 
 -- These functions should be added to `clash-protocols`, there is a PR for this:
 -- https://github.com/clash-lang/clash-protocols/pull/116

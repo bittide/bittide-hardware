@@ -96,9 +96,9 @@ dut eb localCounter = circuit $ do
   [(preUart, (mmUart, uartBus)), (preUgn, (mmUgn, ugnBus))] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-  constB 0b10 -< preUart
+  constBwd 0b10 -< preUart
   _bittideData <- captureUgn localCounter -< (mmUgn, (ugnBus, eb))
-  constB 0b11 -< preUgn
+  constBwd 0b11 -< preUgn
   idC -< uartTx
  where
   ebCircuit :: Circuit () (CSignal dom (Maybe (BitVector 64)))

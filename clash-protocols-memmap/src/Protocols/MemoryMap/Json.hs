@@ -187,7 +187,7 @@ generateTree (AnnDeviceInstance (tags, path, absAddr) srcLoc deviceName) = do
 generateDeviceDef :: DeviceDefinition -> JsonGenerator Value
 generateDeviceDef dev = do
   regs <- mapM generateRegister dev.registers
-  loc <- location dev.defLocation
+  loc <- location dev.definitionLoc
   pure
     $ object
       [ "name" .= Protocols.MemoryMap.name dev.deviceName

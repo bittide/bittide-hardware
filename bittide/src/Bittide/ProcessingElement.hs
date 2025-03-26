@@ -12,7 +12,7 @@ import Clash.Explicit.Prelude (unsafeOrReset)
 import Clash.Prelude
 
 import Protocols
-import qualified Protocols.MemoryMap as MM (ConstB, MM, constB)
+import qualified Protocols.MemoryMap as MM (ConstBwd, MM, constBwd)
 import Protocols.Wishbone
 import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, JtagOut (debugReset), vexRiscv)
 
@@ -62,11 +62,11 @@ processingElement ::
   DumpVcd ->
   PeConfig nBusses ->
   Circuit
-    (MM.ConstB MM.MM, Jtag dom)
+    (MM.ConstBwd MM.MM, Jtag dom)
     ( Vec
         (nBusses - 2)
-        ( MM.ConstB (Unsigned (CLog 2 nBusses))
-        , (MM.ConstB MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4))
+        ( MM.ConstBwd (Unsigned (CLog 2 nBusses))
+        , (MM.ConstBwd MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4))
         )
     )
 processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, dBusTimeout} = circuit $ \(mm, jtagIn) -> do
@@ -80,8 +80,8 @@ processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, 
       -< dBus0
   ([(iPre, (mmI, iMemBus)), (dPre, (mmD, dMemBus))], extBusses) <-
     (splitAtC d2 <| singleMasterInterconnectC) -< (mmDbus, dBus1)
-  MM.constB prefixD -< dPre
-  MM.constB prefixI -< iPre
+  MM.constBwd prefixD -< dPre
+  MM.constBwd prefixI -< iPre
   wbStorage "DataMemory" initD -< (mmD, dMemBus)
   iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
   wbStorageDPC "InstructionMemory" initI -< (mmI, (iBus2, iMemBus))
@@ -115,9 +115,9 @@ rvCircuit ::
   Signal dom Bit ->
   Signal dom Bit ->
   Circuit
-    (MM.ConstB MM.MM, Jtag dom)
+    (MM.ConstBwd MM.MM, Jtag dom)
     ( Wishbone dom 'Standard 30 (Bytes 4)
-    , (MM.ConstB MM.MM, Wishbone dom 'Standard 30 (Bytes 4))
+    , (MM.ConstBwd MM.MM, Wishbone dom 'Standard 30 (Bytes 4))
     )
 rvCircuit dumpVcd tInterrupt sInterrupt eInterrupt = Circuit go
  where

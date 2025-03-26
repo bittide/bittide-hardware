@@ -65,9 +65,9 @@ dut = circuit $ \_unit -> do
   [(preUart, (mmUart, uartBus)), (preDna, dnaBus)] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtag)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-  constB 0b10 -< preUart
+  constBwd 0b10 -< preUart
   _dna <- readDnaPortE2Wb simDna2 -< dnaBus
-  constB 0b11 -< preDna
+  constBwd 0b11 -< preDna
   idC -< uartTx
  where
   peConfig = unsafePerformIO $ do

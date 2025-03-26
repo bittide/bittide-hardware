@@ -42,7 +42,7 @@ captureUgn ::
   ) =>
   Signal dom (Unsigned 64) ->
   Circuit
-    ( ConstB MM
+    ( ConstBwd MM
     , ( Wishbone dom 'Standard addrW (Bytes 4)
       , CSignal dom (Maybe (BitVector 64))
       )
@@ -97,5 +97,5 @@ captureUgn localCounter = withMemoryMap mm $ Circuit go
             )
           ]
       , deviceName = Name "CaptureUGN" ""
-      , defLocation = locHere
+      , definitionLoc = locHere
       }

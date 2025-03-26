@@ -204,8 +204,8 @@ scatterUnitWbC ::
   -- | Configuration for the 'calendar'.
   ScatterConfig nBytesCal awCal ->
   Circuit
-    ( (ConstB MM, (CSignal dom (BitVector 64), Wishbone dom 'Standard awSu (Bytes 4)))
-    , (ConstB MM, Wishbone dom 'Standard awCal (Bytes nBytesCal))
+    ( (ConstBwd MM, (CSignal dom (BitVector 64), Wishbone dom 'Standard awSu (Bytes 4)))
+    , (ConstBwd MM, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     ()
 scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @nBytesCal @8 of
@@ -255,7 +255,7 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @
                   { name = "ScatterUnit"
                   , description = ""
                   }
-            , defLocation = locHere
+            , definitionLoc = locHere
             , tags = []
             }
        in
@@ -318,8 +318,8 @@ gatherUnitWbC ::
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal awCal ->
   Circuit
-    ( (ConstB MM, Wishbone dom 'Standard awGu (Bytes 4))
-    , (ConstB MM, Wishbone dom 'Standard awCal (Bytes nBytesCal))
+    ( (ConstBwd MM, Wishbone dom 'Standard awGu (Bytes 4))
+    , (ConstBwd MM, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     (CSignal dom (BitVector 64))
 gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @nBytesCal @8) of
@@ -394,7 +394,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
               { name = "ScatterUnit"
               , description = ""
               }
-        , defLocation = locHere
+        , definitionLoc = locHere
         , tags = []
         }
 

@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE GADTs #-}
 
-module Protocols.MemoryMap.Check.Normalised where
+module Protocols.MemoryMap.Check.Normalized where
 
 import qualified Data.Bifunctor
 import GHC.Stack (SrcLoc)
@@ -39,35 +39,35 @@ data MemoryMapTree
   deriving (Show)
 
 type MemoryMapTreeRelNorm =
-  MemoryMapTreeAnn ([(SrcLoc, String)], Path, Maybe (SrcLoc, Address)) 'Normalised
+  MemoryMapTreeAnn ([(SrcLoc, String)], Path, Maybe (SrcLoc, Address)) 'Normalized
 
 type AbsAddressList = [(Path, Address)]
 
-data Normalised = Normalised | NotNormalised
+data Normalized = Normalized | NotNormalized
 
-data MemoryMapTreeAnn ann (norm :: Normalised) where
+data MemoryMapTreeAnn ann (norm :: Normalized) where
   AnnInterconnect ::
     ann -> SrcLoc -> [(RelAddress, MemoryMapTreeAnn ann norm)] -> MemoryMapTreeAnn ann norm
-  AnnDeviceInstance :: ann -> SrcLoc -> DeviceName -> MemoryMapTreeAnn ann 'Normalised
+  AnnDeviceInstance :: ann -> SrcLoc -> DeviceName -> MemoryMapTreeAnn ann 'Normalized
   AnnWithName ::
     ann ->
     SrcLoc ->
     String ->
     MemoryMapTreeAnn ann norm ->
-    MemoryMapTreeAnn ann 'NotNormalised
+    MemoryMapTreeAnn ann 'NotNormalized
   AnnWithTag ::
     ann ->
     SrcLoc ->
     String ->
     MemoryMapTreeAnn ann norm ->
-    MemoryMapTreeAnn ann 'NotNormalised
+    MemoryMapTreeAnn ann 'NotNormalized
   AnnAbsAddr ::
     ann ->
     SrcLoc ->
     Address ->
     MemoryMapTreeAnn ann norm ->
-    MemoryMapTreeAnn ann 'NotNormalised
-  AnnNormWrapper :: MemoryMapTreeAnn ann 'Normalised -> MemoryMapTreeAnn ann 'NotNormalised
+    MemoryMapTreeAnn ann 'NotNormalized
+  AnnNormWrapper :: MemoryMapTreeAnn ann 'Normalized -> MemoryMapTreeAnn ann 'NotNormalized
 
 instance (Show ann) => Show (MemoryMapTreeAnn ann norm) where
   show (AnnInterconnect ann _srcLoc comps) = "Interconnect(" <> show ann <> ", " <> show comps <> ")"
@@ -77,7 +77,7 @@ instance (Show ann) => Show (MemoryMapTreeAnn ann norm) where
   show (AnnAbsAddr ann _srcLoc addr tree) = "AbsAddr(" <> show ann <> ", " <> show addr <> ", " <> show tree <> ")"
   show (AnnNormWrapper tree) = show tree
 
-convert :: MemoryMapTree -> MemoryMapTreeAnn () 'NotNormalised
+convert :: MemoryMapTree -> MemoryMapTreeAnn () 'NotNormalized
 convert (WithName srcLoc name tree) = AnnWithName () srcLoc name (convert tree)
 convert (WithAbsAddr srcLoc addr tree) = AnnAbsAddr () srcLoc addr (convert tree)
 convert (WithTag srcLoc tag tree) = AnnWithTag () srcLoc tag (convert tree)

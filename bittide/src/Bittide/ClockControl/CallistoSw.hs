@@ -126,13 +126,13 @@ callistoSwClockControl (SwControlConfig jtagIn reframe mgn fsz) mask ebs =
       ] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
     idleSink -< wbDummy
-    constB 0b001 -< preDummy
-    constB todoMM -< mmDummy
+    constBwd 0b001 -< preDummy
+    constBwd todoMM -< mmDummy
     [ccd0, ccd1] <- cSignalDupe <| clockControlWb mgn fsz mask ebs -< (mmCc, wbClockControl)
-    constB 0b110 -< preCc
+    constBwd 0b110 -< preCc
     cm <- cSignalMap clockMod -< ccd0
     dbg <- debugRegisterWb debugRegisterCfg -< (mmDebug, (wbDebug, cm))
-    constB 0b111 -< preDebug
+    constBwd 0b111 -< preDebug
     idC -< (ccd1, dbg)
 
   peConfig =

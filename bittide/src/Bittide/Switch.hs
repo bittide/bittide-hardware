@@ -12,7 +12,7 @@ import Bittide.Calendar
 import Bittide.SharedTypes
 import Data.Constraint.Nat.Extra
 import Protocols
-import Protocols.MemoryMap (ConstB, MM)
+import Protocols.MemoryMap (ConstBwd, MM)
 import Protocols.Wishbone
 
 -- | An index which source is selected by the crossbar, 0 selects Nothing, k selects k - 1.
@@ -35,7 +35,7 @@ switchC ::
   ) =>
   CalendarConfig nBytes addrW (CalendarEntry links) ->
   Circuit
-    ( ConstB MM
+    ( ConstBwd MM
     , ( Vec links (CSignal dom (BitVector frameWidth))
       , Wishbone dom 'Standard addrW (Bytes nBytes) -- calendar interface
       )

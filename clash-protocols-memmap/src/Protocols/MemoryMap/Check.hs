@@ -5,8 +5,8 @@
 -- | Validity checks performed on memory maps
 module Protocols.MemoryMap.Check (
   module Protocols.MemoryMap.Check.AbsAddress,
-  module Protocols.MemoryMap.Check.Normalised,
+  module Protocols.MemoryMap.Check.Normalized,
 ) where
 
 import Protocols.MemoryMap.Check.AbsAddress
-import Protocols.MemoryMap.Check.Normalised
+import Protocols.MemoryMap.Check.Normalized

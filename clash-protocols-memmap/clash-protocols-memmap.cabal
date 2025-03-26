@@ -84,7 +84,7 @@ library
     Protocols.MemoryMap
     Protocols.MemoryMap.Check
     Protocols.MemoryMap.Check.AbsAddress
-    Protocols.MemoryMap.Check.Normalised
+    Protocols.MemoryMap.Check.Normalized
     Protocols.MemoryMap.FieldType
     Protocols.MemoryMap.Json
     Protocols.MemoryMap.TypeCollect

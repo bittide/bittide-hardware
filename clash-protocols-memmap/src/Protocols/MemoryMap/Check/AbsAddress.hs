@@ -38,7 +38,7 @@ data AddressError
   deriving (Show)
 
 type MemoryMapTreeAbsNorm =
-  MemoryMapTreeAnn ([(SrcLoc, String)], Path, Address) 'Normalised
+  MemoryMapTreeAnn ([(SrcLoc, String)], Path, Address) 'Normalized
 
 makeAbsolute ::
   DeviceDefinitions ->

@@ -10,15 +10,36 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
+{- | Memory Maps for circuits. Provides a way for memory mapped subordinates to
+propagate their memory map to the top level, possibly with interconnects merging
+multiple memory maps.
+
+The current implementation has a few objectives:
+
+  1. Provide a way for memory mapped peripherals to define their memory layout
+
+  2. Make it possible for designers to define hardware designs without specifying
+     exact memory addresses if they can be mapped to arbitrary addresses, while
+     not giving up the ability to.
+
+  3. Provide a way to check whether memory maps are valid, i.e. whether
+     perhipherals do not overlap or exceed their allocated space.
+
+  4. Provide a way to generate human readable documentation
+
+  5. Provide a way to generate data structures for target languages. I.e., if
+     a designer instantiates a memory mapped register on type @a@, it should
+     be possible to generate an equivalent data structure in Rust or C.
+-}
 module Protocols.MemoryMap (
-  module Protocols.MemoryMap.Check.Normalised,
+  module Protocols.MemoryMap.Check.Normalized,
   MM,
-  ConstB,
-  ConstF,
-  constB,
-  constF,
-  getConstB,
-  getConstBAny,
+  ConstBwd,
+  ConstFwd,
+  constBwd,
+  constFwd,
+  getConstBwd,
+  getConstBwdAny,
   withName,
   withAbsAddr,
   withTag,
@@ -74,59 +95,41 @@ import BitPackC
 import Data.Data (Proxy (Proxy))
 import qualified Data.List as L
 import Protocols.Idle
-import Protocols.MemoryMap.Check.Normalised
+import Protocols.MemoryMap.Check.Normalized
 import Protocols.MemoryMap.FieldType
 
-{- | A protocol agnostic wrapper for memory mapped protocols. It provides a way
-for memory mapped subordinates to propagate their memory map to the top level,
-possibly with interconnects merging multiple memory maps.
-
-The current implementation has a few objectives:
-
-  1. Provide a way for memory mapped peripherals to define their memory layout
-
-  2. Make it possible for designers to define hardware designs without specifying
-     exact memory addresses if they can be mapped to arbitrary addresses, while
-     not giving up the ability to.
-
-  3. Provide a way to check whether memory maps are valid, i.e. whether
-     perhipherals do not overlap or exceed their allocated space.
-
-  4. Provide a way to generate human readable documentation
-
-  5. Provide a way to generate data structures for target languages. I.e., if
-     a designer instantiates a memory mapped register on type @a@, it should
-     be possible to generate an equivalent data structure in Rust or C.
--}
+-- | Abbreviation for a simulation-only 'MemoryMap'
 type MM = SimOnly MemoryMap
 
-data ConstF (a :: Type)
+-- | Protocol carrying a single value on its 'Fwd'
+data ConstFwd (a :: Type)
 
-data ConstB (a :: Type)
+-- | Protocol carrying a single value on its 'Bwd'
+data ConstBwd (a :: Type)
 
-instance Protocol (ConstF a) where
-  type Fwd (ConstF a) = a
-  type Bwd (ConstF a) = ()
+instance Protocol (ConstFwd a) where
+  type Fwd (ConstFwd a) = a
+  type Bwd (ConstFwd a) = ()
 
-instance Protocol (ConstB a) where
-  type Fwd (ConstB a) = ()
-  type Bwd (ConstB a) = a
+instance Protocol (ConstBwd a) where
+  type Fwd (ConstBwd a) = ()
+  type Bwd (ConstBwd a) = a
 
-instance IdleCircuit (ConstB a) where
-  -- idleFwd :: Data.Proxy.Proxy (ConstB a) -> Fwd (ConstB a)
+instance IdleCircuit (ConstBwd a) where
+  -- idleFwd :: Data.Proxy.Proxy (ConstBwd a) -> Fwd (ConstBwd a)
   idleFwd Proxy = ()
 
-  -- idleBwd :: Data.Proxy.Proxy (ConstB a) -> Bwd (ConstB a)
+  -- idleBwd :: Data.Proxy.Proxy (ConstBwd a) -> Bwd (ConstBwd a)
   idleBwd Proxy = error ""
 
-constF :: a -> Circuit () (ConstF a)
-constF val = Circuit $ \((), ()) -> ((), val)
+constFwd :: a -> Circuit () (ConstFwd a)
+constFwd val = Circuit $ \((), ()) -> ((), val)
 
-constB :: a -> Circuit (ConstB a) ()
-constB val = Circuit $ \((), ()) -> (val, ())
+constBwd :: a -> Circuit (ConstBwd a) ()
+constBwd val = Circuit $ \((), ()) -> (val, ())
 
-getConstB :: Circuit (ConstB a) () -> a
-getConstB (Circuit f) = fst $ f ((), ())
+getConstBwd :: Circuit (ConstBwd a) () -> a
+getConstBwd (Circuit f) = fst $ f ((), ())
 
 data Name = Name
   { name :: String
@@ -159,20 +162,25 @@ data MemoryMap = MemoryMap
 data DeviceDefinition = DeviceDefinition
   { deviceName :: Name
   , registers :: [NamedLoc Register]
-  , defLocation :: SrcLoc
+  , definitionLoc :: SrcLoc
   , tags :: [String]
   }
   deriving (Show)
 
 deviceSize :: DeviceDefinition -> Integer
-deviceSize def' =
+deviceSize dev =
   List.foldr
     ( \(_, _, reg) acc ->
         max acc (reg.address + regByteSizeC reg.fieldType)
     )
     0
-    def'.registers
+    dev.registers
 
+{- | Access modifiers for a register
+
+Later we want to support more modes, see
+https://corsair.readthedocs.io/en/latest/regmap.html#bit-field
+-}
 data Access
   = -- | Managers should only read from this register
     ReadOnly
@@ -182,31 +190,10 @@ data Access
     ReadWrite
   deriving (Show)
 
-regTypeSplit ::
-  forall a b.
-  (ToFieldType b, BitPackC a) =>
-  (1 <= AlignmentC a) =>
-  RegisterType
-regTypeSplit = RegisterType (Proxy @(RegTypeSplit a b))
+{- | Value carrying the type of a register
 
-data RegTypeSplit a b
-
-instance (ToFieldType b) => ToFieldType (RegTypeSplit a b) where
-  type Generics (RegTypeSplit a b) = Generics b
-  type WithVars (RegTypeSplit a b) = WithVars b
-
-  generics = generics @b
-
-  toFieldType = toFieldType @b
-
-  args = args @b
-
-instance (BitPackC a) => BitPackC (RegTypeSplit a b) where
-  type ByteSizeC (RegTypeSplit a b) = ByteSizeC a
-  type AlignmentC (RegTypeSplit a b) = AlignmentC a
-  packC = error "`BitPackC` instance used from `RegTypeSplit`, this should not happen"
-  unpackC = error "`BitPackC` instance used from `RegTypeSplit`, this should not happen"
-
+See 'regType' and 'regTypeSplit' to construct values of this type.
+-}
 data RegisterType where
   RegisterType :: (ToFieldType a, BitPackC a) => Proxy a -> RegisterType
 
@@ -228,6 +215,41 @@ regType = RegisterType (Proxy @a)
 instance Show RegisterType where
   show regType' = show $ regFieldType regType'
 
+{- | This is pretty much a hack needed because 'BitPackC' constraints can get
+really annoying/impossible to solve.
+This function splits the type information into one type for 'ToFieldType' and
+a separate, ideally equivalent but simpler, type for 'BitPackC'.
+-}
+regTypeSplit ::
+  forall a b.
+  (ToFieldType b, BitPackC a) =>
+  (1 <= AlignmentC a) =>
+  RegisterType
+regTypeSplit = RegisterType (Proxy @(RegTypeSplit a b))
+
+{- | See the documentation for 'regTypeSplit'
+
+This type is only there so we can use different types for the
+'ToFieldType' and 'BitPackC' instances.
+-}
+data RegTypeSplit a b
+
+instance (ToFieldType b) => ToFieldType (RegTypeSplit a b) where
+  type Generics (RegTypeSplit a b) = Generics b
+  type WithVars (RegTypeSplit a b) = WithVars b
+
+  generics = generics @b
+
+  toFieldType = toFieldType @b
+
+  args = args @b
+
+instance (BitPackC a) => BitPackC (RegTypeSplit a b) where
+  type ByteSizeC (RegTypeSplit a b) = ByteSizeC a
+  type AlignmentC (RegTypeSplit a b) = AlignmentC a
+  packC = error "`BitPackC` instance used from `RegTypeSplit`, this should not happen"
+  unpackC = error "`BitPackC` instance used from `RegTypeSplit`, this should not happen"
+
 data Register = Register
   { access :: Access
   , address :: Address
@@ -241,7 +263,7 @@ data Register = Register
   deriving (Show)
 
 withName ::
-  (HasCallStack) => String -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
+  (HasCallStack) => String -> Circuit (ConstBwd MM, a) b -> Circuit (ConstBwd MM, a) b
 withName name' (Circuit f) = Circuit go
  where
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
@@ -250,7 +272,7 @@ withName name' (Circuit f) = Circuit go
     mm' = mm{tree = WithName locCaller name' mm.tree}
 
 withTag ::
-  (HasCallStack) => String -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
+  (HasCallStack) => String -> Circuit (ConstBwd MM, a) b -> Circuit (ConstBwd MM, a) b
 withTag tag (Circuit f) = Circuit go
  where
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
@@ -259,7 +281,7 @@ withTag tag (Circuit f) = Circuit go
     mm' = mm{tree = WithTag locCaller tag mm.tree}
 
 withTags ::
-  (HasCallStack) => [String] -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
+  (HasCallStack) => [String] -> Circuit (ConstBwd MM, a) b -> Circuit (ConstBwd MM, a) b
 withTags tags' (Circuit f) = Circuit go
  where
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
@@ -269,7 +291,7 @@ withTags tags' (Circuit f) = Circuit go
     tree' = L.foldl (flip (WithTag locCaller)) mm.tree tags'
 
 withAbsAddr ::
-  (HasCallStack) => Address -> Circuit (ConstB MM, a) b -> Circuit (ConstB MM, a) b
+  (HasCallStack) => Address -> Circuit (ConstBwd MM, a) b -> Circuit (ConstBwd MM, a) b
 withAbsAddr addr (Circuit f) = Circuit go
  where
   go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
@@ -277,14 +299,14 @@ withAbsAddr addr (Circuit f) = Circuit go
     ((SimOnly mm, bwdA), fwdB) = f (((), fwdA), bwdB)
     mm' = mm{tree = WithAbsAddr locCaller addr mm.tree}
 
-withMemoryMap :: MemoryMap -> Circuit a b -> Circuit (ConstB MM, a) b
-withMemoryMap mm = withConstB (SimOnly mm)
+withMemoryMap :: MemoryMap -> Circuit a b -> Circuit (ConstBwd MM, a) b
+withMemoryMap mm = withConstBwd (SimOnly mm)
 
-withPrefix :: v -> Circuit a b -> Circuit (ConstB v, a) b
-withPrefix = withConstB
+withPrefix :: v -> Circuit a b -> Circuit (ConstBwd v, a) b
+withPrefix = withConstBwd
 
-withConstB :: forall v a b. v -> Circuit a b -> Circuit (ConstB v, a) b
-withConstB val (Circuit f) = Circuit go
+withConstBwd :: forall v a b. v -> Circuit a b -> Circuit (ConstBwd v, a) b
+withConstBwd val (Circuit f) = Circuit go
  where
   go :: (((), Fwd a), Bwd b) -> ((v, Bwd a), Fwd b)
   go (((), fwdA), bwdB) = ((val, bwdA), fwdB)
@@ -294,15 +316,15 @@ withConstB val (Circuit f) = Circuit go
 mergeDeviceDefs :: [Map.Map String DeviceDefinition] -> Map.Map String DeviceDefinition
 mergeDeviceDefs = List.foldl Map.union Map.empty
 
-getConstBAny :: Circuit (ConstB v, a) b -> v
-getConstBAny (Circuit f) = val
+getConstBwdAny :: Circuit (ConstBwd v, a) b -> v
+getConstBwdAny (Circuit f) = val
  where
   ((val, _), _) = f (((), errorX ""), errorX "")
 
 deviceSingleton :: DeviceDefinition -> DeviceDefinitions
 deviceSingleton def' = Map.singleton def'.deviceName.name def'
 
-unMemmap :: Circuit (ConstB MM, a) b -> Circuit a b
+unMemmap :: Circuit (ConstBwd MM, a) b -> Circuit a b
 unMemmap (Circuit f) = Circuit go
  where
   go (fwdA, bwdB) = (bwdA, fwdB)
@@ -335,6 +357,6 @@ todoMM =
     DeviceDefinition
       { deviceName = Name "TODO" "This component has not been memory mapped yet."
       , registers = []
-      , defLocation = locHere
+      , definitionLoc = locHere
       , tags = ["no-generate"]
       }

@@ -78,7 +78,7 @@ clockControlWb ::
   Vec nLinks (Signal dom (RelDataCount m)) ->
   -- | Wishbone accessible clock control circuitry
   Circuit
-    (ConstB MM, Wishbone dom 'Standard addrW (BitVector 32))
+    (ConstBwd MM, Wishbone dom 'Standard addrW (BitVector 32))
     (CSignal dom (ClockControlData nLinks))
 clockControlWb mgn fsz linkMask counters = withMemoryMap mm $ Circuit go
  where
@@ -173,7 +173,7 @@ clockControlWb mgn fsz linkMask counters = withMemoryMap mm $ Circuit go
           Name
             "ClockControl"
             "This interface receives the link mask and 'RelDataCount's from all links.\nFurthermore it produces FINC/FDEC pulses for the clock control boards."
-      , defLocation = locHere
+      , definitionLoc = locHere
       }
 
   go (wbM2S, _) = (wbS2M, ccd)

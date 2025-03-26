@@ -103,18 +103,18 @@ vexRiscvInner jtagIn0 uartRx =
       ] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
 
-    constB 0b110 -< preUart
+    constBwd 0b110 -< preUart
     (uartTx, _uartStatus) <-
       uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
-    constB 0b101 -< preTime
+    constBwd 0b101 -< preTime
     _localCounter <- timeWb -< (mmTime, timeBus)
 
-    constB 0b111 -< preStatus
+    constBwd 0b111 -< preStatus
     testResult <- statusRegister -< (mmStatus, statusRegisterBus)
     idC -< (testResult, uartTx)
 
   statusRegister ::
-    Circuit (ConstB MM, Wishbone dom 'Standard 27 (Bytes 4)) (CSignal dom TestStatus)
+    Circuit (ConstBwd MM, Wishbone dom 'Standard 27 (Bytes 4)) (CSignal dom TestStatus)
   statusRegister = withMemoryMap mm $ Circuit $ \(fwd, _) ->
     let (unbundle -> (m2s, st)) = mealy go Running fwd
      in (m2s, st)
@@ -141,7 +141,7 @@ vexRiscvInner jtagIn0 uartRx =
               )
             ]
         , deviceName = Name "StatusRegister" ""
-        , defLocation = locHere
+        , definitionLoc = locHere
         }
     go st WishboneM2S{..}
       -- out of cycle, no response, same state

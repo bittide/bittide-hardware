@@ -52,9 +52,9 @@ vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
             processingElement @Basic200 NoDumpVcd peConfig -< (mm, jtag)
           (uartTx, _uartStatus) <-
             uartInterfaceWb d16 d16 (uartDf $ SNat @921600) -< (mmUart, (uartBus, uartRx))
-          constB 0b10 -< preUart
+          constBwd 0b10 -< preUart
           _localCounter <- timeWb -< (mmTime, timeBus)
-          constB 0b11 -< preTime
+          constBwd 0b11 -< preTime
           idC -< uartTx
    in case circuitFn (((), (uartTx, jtagIn)), pure ()) of
         ((_mm, a), b) -> (a, b)

@@ -143,7 +143,7 @@ dut =
         ] <-
         processingElement NoDumpVcd peConfig -< (mm, jtag)
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-      constB 0b001 -< preUart
+      constBwd 0b001 -< preUart
 
       [ccd0, ccd1] <-
         cSignalDupe
@@ -154,11 +154,11 @@ dut =
             (pure <$> dataCounts)
           -< (mmCC, ccWb)
 
-      constB 0b110 -< preCC
+      constBwd 0b110 -< preCC
 
       cm <- cSignalMap clockMod -< ccd0
       _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (mmDbg, (dbgWb, cm))
-      constB 0b111 -< preDbg
+      constBwd 0b111 -< preDbg
       idC -< (uartTx, ccd1)
  where
   peConfig = unsafePerformIO $ do

@@ -92,12 +92,12 @@ dut scatterConfig gatherConfig = circuit $ do
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
-  constB 0b010 -< preUart
+  constBwd 0b010 -< preUart
   (mmSuCal, mmGuCal) <- idleSource -< ()
   link <- gatherUnitWbC gatherConfig -< ((mmGu, wbGu), (mmGuCal, wbGuCal))
-  constB 0b100 -< preGu
+  constBwd 0b100 -< preGu
   scatterUnitWbC scatterConfig -< ((mmSu, (link, wbSu)), (mmSuCal, wbSuCal))
-  constB 0b011 -< preSu
+  constBwd 0b011 -< preSu
   idC -< uartTx
  where
   peConfig = unsafePerformIO $ do

@@ -85,7 +85,7 @@ debugRegisterWb ::
   ) =>
   Signal dom DebugRegisterCfg ->
   Circuit
-    ( ConstB MM
+    ( ConstBwd MM
     , (Wishbone dom 'Standard addrW (BitVector 32), CSignal dom (Maybe SpeedChange))
     )
     (CSignal dom DebugRegisterData)
@@ -146,7 +146,7 @@ debugRegisterWb cfg = withMemoryMap mm $ Circuit go
             )
           ]
       , deviceName = Name "ClockControlDebug" ""
-      , defLocation = locHere
+      , definitionLoc = locHere
       }
 
   go ((wbM2S, clockMod), _) = ((wbS2M, pure ()), debugData)

@@ -164,7 +164,7 @@ switchDemoPeWb ::
   -- | Local clock cycle counter
   Signal dom (Unsigned 64) ->
   Circuit
-    ( ConstB MM
+    ( ConstBwd MM
     , ( Wishbone dom 'Standard addrW (Bytes 4)
       , -- \| Device DNA
         CSignal dom (BitVector 96)
@@ -299,5 +299,5 @@ switchDemoPeWb SNat localCounter = withMemoryMap mm $ Circuit go
             )
           ]
       , deviceName = Name "SwitchDemoPE" ""
-      , defLocation = locHere
+      , definitionLoc = locHere
       }

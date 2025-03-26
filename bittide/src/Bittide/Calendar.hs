@@ -210,7 +210,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
             )
           ]
       , deviceName = Name name ""
-      , defLocation = locHere
+      , definitionLoc = locHere
       , tags = []
       }
 

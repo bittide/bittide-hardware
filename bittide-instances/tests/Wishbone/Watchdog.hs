@@ -72,18 +72,18 @@ dut = withClockResetEnable clockGen resetGen enableGen
     idleSink
       <| (watchDogWb @_ @_ @4 "50 us" (SNat @(PeriodToCycles Basic200 (Microseconds 50))))
       -< idleBusB
-    constB 0b100 -< preIdleA
-    constB todoMM -< mmIdleA
+    constBwd 0b100 -< preIdleA
+    constBwd todoMM -< mmIdleA
 
-    constB 0b101 -< preIdleB
-    constB todoMM -< mmIdleB
+    constBwd 0b101 -< preIdleB
+    constBwd todoMM -< mmIdleB
 
     timeBus1 <- watchDogWb @_ @_ @4 "" d0 -< timeBus
     _localCounter <- timeWb -< (mmTime, timeBus1)
-    constB 0b011 -< preTime
+    constBwd 0b011 -< preTime
     (uartTx, _uartStatus) <-
       (uartInterfaceWb @_ @_ @4) d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-    constB 0b010 -< preUart
+    constBwd 0b010 -< preUart
     idC -< uartTx
  where
   peConfig = unsafePerformIO $ do

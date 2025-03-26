@@ -71,9 +71,9 @@ dut = withClockResetEnable clockGen resetGen enableGen
     [(preUart, (mmUart, uartBus)), (preTime, (mmTime, timeBus))] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
     (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-    constB 0b10 -< preUart
+    constBwd 0b10 -< preUart
     _localCounter <- timeWb -< (mmTime, timeBus)
-    constB 0b11 -< preTime
+    constBwd 0b11 -< preTime
     idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
