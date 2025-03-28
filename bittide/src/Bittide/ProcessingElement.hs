@@ -12,7 +12,6 @@ import Clash.Explicit.Prelude (unsafeOrReset)
 import Clash.Prelude
 
 import Protocols
-import qualified Protocols.MemoryMap as MM (ConstBwd, MM, constBwd)
 import Protocols.Wishbone
 import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, JtagOut (debugReset), vexRiscv)
 
@@ -23,6 +22,7 @@ import Bittide.Wishbone
 import Clash.Cores.Xilinx.Ila (Depth (D4096))
 
 import qualified Data.ByteString as BS
+import qualified Protocols.MemoryMap as MM (ConstBwd, MM, constBwd)
 
 -- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where

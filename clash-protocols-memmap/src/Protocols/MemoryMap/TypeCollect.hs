@@ -8,9 +8,6 @@ module Protocols.MemoryMap.TypeCollect where
 
 import Clash.Prelude hiding (def)
 
-import qualified Data.List as L
-
-import qualified Data.Map.Strict as Map
 import Protocols.MemoryMap (
   DeviceDefinition (..),
   DeviceDefinitions,
@@ -18,6 +15,9 @@ import Protocols.MemoryMap (
   regFieldType,
  )
 import Protocols.MemoryMap.FieldType (FieldType (..), TypeName)
+
+import qualified Data.List as L
+import qualified Data.Map.Strict as Map
 
 data TypeDescription = TypeDescription
   { name :: TypeName

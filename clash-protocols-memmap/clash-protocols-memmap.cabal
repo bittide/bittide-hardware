@@ -100,7 +100,6 @@ library
     mtl,
     template-haskell,
 
--- XXX: Doesn't really belong in clash-vexriscv-SIM
 executable hdl-test
   import: common-options
   main-is: app/HdlTest.hs

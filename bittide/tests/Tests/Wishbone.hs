@@ -24,6 +24,7 @@ import Hedgehog.Range as Range
 import Protocols
 import Protocols.Df (Data (..))
 import Protocols.Hedgehog
+import Protocols.Idle (idleSource)
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
 import Test.Tasty
@@ -36,7 +37,6 @@ import Tests.Shared
 import qualified Data.List as L
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
-import Protocols.Idle (idleSource)
 
 tests :: TestTree
 tests =

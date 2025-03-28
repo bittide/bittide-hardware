@@ -24,7 +24,6 @@ import Clash.Prelude (
   (<$>),
  )
 
-import Data.Aeson
 import Protocols.MemoryMap (
   Access (ReadOnly, ReadWrite, WriteOnly),
   DeviceDefinition (..),
@@ -37,17 +36,18 @@ import Protocols.MemoryMap (
   regByteSizeC,
   regFieldType,
  )
-
-import qualified Protocols.MemoryMap.FieldType as FT
+import Protocols.MemoryMap.Check.AbsAddress (MemoryMapTreeAbsNorm)
 import Protocols.MemoryMap.TypeCollect
 
 import Control.Monad (forM)
 import Control.Monad.State
+import Data.Aeson
 import Data.Aeson.Key (fromString)
+import GHC.Stack (SrcLoc (..))
+
 import qualified Data.List as L
 import qualified Data.Map.Strict as Map
-import GHC.Stack (SrcLoc (..))
-import Protocols.MemoryMap.Check.AbsAddress (MemoryMapTreeAbsNorm)
+import qualified Protocols.MemoryMap.FieldType as FT
 
 type JsonGenerator a = State (Integer, [SrcLoc]) a
 

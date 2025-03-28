@@ -9,9 +9,11 @@
 module Protocols.MemoryMap.FieldType where
 
 import Clash.Prelude
+
 import Data.Int
 import Data.Word
 import GHC.Generics hiding (moduleName, packageName)
+
 import qualified GHC.Generics
 
 data TypeName = TypeName

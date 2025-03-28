@@ -9,7 +9,6 @@
 --
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 {-# OPTIONS_GHC -Wno-unused-matches #-}
--- {-# OPTIONS -fplugin-opt=Protocols.Plugin:debug #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
@@ -22,20 +21,9 @@ module Internal.HdlTest.UartMock where
 
 import Clash.Prelude
 
-import qualified Data.Map.Strict as Map
-
-import Protocols (CSignal, Circuit (..))
-import Protocols.Wishbone (
-  Wishbone,
-  WishboneM2S (..),
-  WishboneMode (Standard),
-  WishboneS2M (..),
-  emptyWishboneM2S,
-  emptyWishboneS2M,
- )
-
 import BitPackC
 import GHC.Stack (HasCallStack, callStack, getCallStack)
+import Protocols (CSignal, Circuit (..))
 import Protocols.MemoryMap (
   Access (ReadWrite),
   Address,
@@ -56,6 +44,16 @@ import Protocols.MemoryMap (
   withTag,
  )
 import Protocols.MemoryMap.FieldType
+import Protocols.Wishbone (
+  Wishbone,
+  WishboneM2S (..),
+  WishboneMode (Standard),
+  WishboneS2M (..),
+  emptyWishboneM2S,
+  emptyWishboneS2M,
+ )
+
+import qualified Data.Map.Strict as Map
 
 data FakeType a b
   = FakeA a

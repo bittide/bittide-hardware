@@ -5,9 +5,11 @@
 
 module Protocols.MemoryMap.Check.Normalized where
 
-import qualified Data.Bifunctor
-import GHC.Stack (SrcLoc)
 import Prelude
+
+import GHC.Stack (SrcLoc)
+
+import qualified Data.Bifunctor
 
 data PathComp
   = PathName SrcLoc String

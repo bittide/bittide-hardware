@@ -350,8 +350,6 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
       , linkOut
       )
      where
-      -- go (((), (wbInGu, wbInCal)), _) = ((SimOnly memMap, (wbOutGu, wbOutCal)), linkOut)
-
       (linkOut, wbOutGu, wbOutCal) = gatherUnitWb conf wbInCal wbInGu
 
     memMapGu =

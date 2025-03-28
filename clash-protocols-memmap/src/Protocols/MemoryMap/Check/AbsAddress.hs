@@ -12,12 +12,12 @@ module Protocols.MemoryMap.Check.AbsAddress where
 
 import Prelude
 
+import Protocols.MemoryMap
+
 import GHC.Stack (SrcLoc)
 
-import qualified Data.Map.Strict as Map
-
 import qualified Data.Bifunctor
-import Protocols.MemoryMap
+import qualified Data.Map.Strict as Map
 
 type AddressRange = (Address, Address)
 

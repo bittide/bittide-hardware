@@ -11,8 +11,10 @@ module Bittide.Node where
 
 import Clash.Prelude
 
+import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.Idle
+import Protocols.MemoryMap (ConstBwd, MM, MemoryMap, constBwd)
 import Protocols.Wishbone
 import VexRiscv
 
@@ -21,32 +23,6 @@ import Bittide.ProcessingElement
 import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Bittide.Switch
-import GHC.Stack (HasCallStack)
-import Protocols.MemoryMap (ConstBwd, MM, MemoryMap, constBwd)
-
-{- | A simple node consisting of one external bidirectional link and two 'gppe's.
-This node's 'switch' has a 'CalendarConfig' of for a 'calendar' with up to @1024@ entries,
-however, the 'calendar' is initialized with a single entry of repeated zeroes.
-The 'scatterUnitWb's and 'gatherUnitWb's are initialized with 'CalendarConfig's of all
-zeroes. The 'gppe's initial memories are both undefined and the 'MemoryMap' is a
-vector of ever increasing base addresses (increments of 0x1000).
--}
-
--- simpleNodeConfig :: NodeConfig 1 2
--- simpleNodeConfig =
---   NodeConfig
---     (ManagementConfig (ScatterConfig sgConfig) (GatherConfig sgConfig) nmuConfig NoDumpVcd)
---     switchCal
---     (repeat (GppeConfig (ScatterConfig sgConfig) (GatherConfig sgConfig) peConfig NoDumpVcd))
---  where
---   switchCal = CalendarConfig (SNat @1024) (switchEntry :> Nil) (switchEntry :> Nil)
---   sgConfig = CalendarConfig (SNat @1024) (sgEntry :> Nil) (sgEntry :> Nil)
---   peConfig = PeConfig memMapPe (Undefined @8192) (Undefined @8192) d0 d0
---   nmuConfig = PeConfig memMapNmu (Undefined @8192) (Undefined @8192) d0 d0
---   memMapPe = iterateI (+ 0x1000) 0
---   memMapNmu = iterateI (+ 0x1000) 0
---   switchEntry = ValidEntry{veEntry = repeat 0, veRepeat = 0 :: Unsigned 0}
---   sgEntry = ValidEntry{veEntry = 0 :: Index 1024, veRepeat = 0 :: Unsigned 0}
 
 {- | Each 'gppe' results in 2 busses for the 'managementUnit', namely:
 * The 'calendar' for the 'scatterUnitWB'.
@@ -141,8 +117,6 @@ nodeGppes configs prefixes = Circuit go
     (unzip3 -> (mms, interfaces, linksOut)) = singleGppe <$> configs <*> linksIn <*> prefixes <*> m2ss
 
   singleGppe ::
-    -- forall nmuRemBusWidth dom nmuBusses.
-    -- (KnownNat nmuRemBusWidth, HiddenClockResetEnable dom) =>
     GppeConfig nmuRemBusWidth ->
     Signal dom (BitVector 64) ->
     Vec 2 (Unsigned (CLog 2 nmuBusses)) ->

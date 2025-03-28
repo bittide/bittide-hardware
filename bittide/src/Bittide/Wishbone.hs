@@ -12,33 +12,35 @@
 
 module Bittide.Wishbone where
 
+-- prelude imports
 import Clash.Prelude
 
-import Bittide.DoubleBufferedRam
-import Bittide.SharedTypes
-
+-- external imports
+import BitPackC
 import Clash.Cores.UART (ValidBaud, uart)
 import Clash.Cores.Xilinx.Ila (Depth, IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Clash.Debug
+import Clash.Sized.Vector.ToTuple (VecToTuple (vecToTuple))
 import Clash.Util.Interpolate
-
 import Data.Bifunctor
 import Data.Bool (bool)
 import Data.Constraint.Nat.Extra
 import Data.Maybe
-
-import qualified Data.List as L
-
+import GHC.Stack (HasCallStack)
 import Protocols
+import Protocols.MemoryMap.FieldType (ToFieldType)
 import Protocols.Wishbone
 
-import BitPackC
-import Clash.Sized.Vector.ToTuple (VecToTuple (vecToTuple))
-import GHC.Stack (HasCallStack)
+-- internal imports
+import Bittide.DoubleBufferedRam
+import Bittide.SharedTypes
+
+-- qualified imports
+
+import qualified Data.List as L
 import qualified Protocols.Df as Df
 import qualified Protocols.MemoryMap as MM
-import Protocols.MemoryMap.FieldType (ToFieldType)
 import qualified Protocols.Wishbone as Wishbone
 
 {- $setup

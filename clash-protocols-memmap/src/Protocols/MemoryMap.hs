@@ -86,17 +86,17 @@ import Clash.Prelude (
   type (<=),
  )
 
-import qualified Data.List as List
-import qualified Data.Map.Strict as Map
-import GHC.Stack (HasCallStack, SrcLoc, callStack, getCallStack)
-import Protocols
+import Protocols.MemoryMap.Check.Normalized
+import Protocols.MemoryMap.FieldType
 
 import BitPackC
 import Data.Data (Proxy (Proxy))
-import qualified Data.List as L
+import GHC.Stack (HasCallStack, SrcLoc, callStack, getCallStack)
+import Protocols
 import Protocols.Idle
-import Protocols.MemoryMap.Check.Normalized
-import Protocols.MemoryMap.FieldType
+
+import qualified Data.List as L
+import qualified Data.Map.Strict as Map
 
 -- | Abbreviation for a simulation-only 'MemoryMap'
 type MM = SimOnly MemoryMap
@@ -116,10 +116,8 @@ instance Protocol (ConstBwd a) where
   type Bwd (ConstBwd a) = a
 
 instance IdleCircuit (ConstBwd a) where
-  -- idleFwd :: Data.Proxy.Proxy (ConstBwd a) -> Fwd (ConstBwd a)
   idleFwd Proxy = ()
 
-  -- idleBwd :: Data.Proxy.Proxy (ConstBwd a) -> Bwd (ConstBwd a)
   idleBwd Proxy = error ""
 
 constFwd :: a -> Circuit () (ConstFwd a)
@@ -146,9 +144,6 @@ data Name = Name
 {- | Wrapper for \"things\" that have a name and a description. These are used
 to generate documentation and data structures for target languages.
 -}
-
--- type Named a = (Name, a)
-
 type NamedLoc a = (Name, SrcLoc, a)
 
 type DeviceDefinitions = Map.Map DeviceName DeviceDefinition
@@ -169,7 +164,7 @@ data DeviceDefinition = DeviceDefinition
 
 deviceSize :: DeviceDefinition -> Integer
 deviceSize dev =
-  List.foldr
+  L.foldr
     ( \(_, _, reg) acc ->
         max acc (reg.address + regByteSizeC reg.fieldType)
     )
@@ -314,7 +309,7 @@ withConstBwd val (Circuit f) = Circuit go
     (bwdA, fwdB) = f (fwdA, bwdB)
 
 mergeDeviceDefs :: [Map.Map String DeviceDefinition] -> Map.Map String DeviceDefinition
-mergeDeviceDefs = List.foldl Map.union Map.empty
+mergeDeviceDefs = L.foldl Map.union Map.empty
 
 getConstBwdAny :: Circuit (ConstBwd v, a) b -> v
 getConstBwdAny (Circuit f) = val
@@ -339,7 +334,7 @@ locHere = case getCallStack callStack of
 locCaller :: (HasCallStack) => SrcLoc
 locCaller = case getCallStack callStack of
   (_, _) : (_, callerLoc) : _ -> callerLoc
-  (fn, _) : _ -> error $ "`" List.++ fn List.++ "` needs to be called in a `HasCallStack` context"
+  (fn, _) : _ -> error $ "`" L.++ fn L.++ "` needs to be called in a `HasCallStack` context"
   _ ->
     error "`locCaller` needs to be called with at least two levels of `HasCallStack` context"
 
