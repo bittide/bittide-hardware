@@ -4,6 +4,9 @@
 
 [workspace]
 members = [
-  "bittide-sys", "gdb-trace",
+  "bittide-sys",
+  "gdb-trace",
+  # "memmap-generate"
 ]
+
 resolver = "2"

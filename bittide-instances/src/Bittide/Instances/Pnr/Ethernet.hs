@@ -20,6 +20,7 @@ import Clash.Cores.Xilinx.Ethernet.Gmii
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Clash.Explicit.Testbench
 import Protocols
+import Protocols.MemoryMap
 import VexRiscv
 
 import Bittide.Axi4
@@ -98,18 +99,37 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
   (\((_, _, jtagBwd), (uartFwd, gmiiFwd, gpioFwd)) -> (uartFwd, gmiiFwd, jtagBwd, gpioFwd))
     $ toSignals
       ( circuit $ \(uartTx, gmiiRx, jtag) -> do
-          [uartBus, timeBus, wbAxiRx, wbAxiTx, dnaWb, gpioWb, macWb] <- pe -< jtag
-          (uartRx, _uartStatus) <- uart -< (uartBus, uartTx)
-          _localCounter <- time -< timeBus
-          _dna <- dnaC -< dnaWb
-          macStatIf -< (macWb, macStatus)
+          mm <- idleSource -< ()
+          [ (prefixUart, (mmUart, uartBus))
+            , (prefixTime, (mmTime, timeBus))
+            , (prefixAxiRx, (mmAxiRx, wbAxiRx))
+            , (prefixAxiTx, (mmAxiTx, wbAxiTx))
+            , (prefixDna, (mmDna, dnaWb))
+            , (prefixGpio, (mmGpio, gpioWb))
+            , (prefixMac, (mmMac, macWb))
+            ] <-
+            pe -< (mm, jtag)
+          (uartRx, _uartStatus) <- uart -< (mmUart, (uartBus, uartTx))
+          constBwd 0b0010 -< prefixUart
+          _localCounter <- time -< (mmTime, timeBus)
+          constBwd 0b0011 -< prefixTime
+          _dna <- dnaC -< (mmDna, dnaWb)
+          constBwd 0b0111 -< prefixDna
+          macStatIf -< (mmMac, (macWb, macStatus))
           gpioDf <- idleSource -< ()
           gpioOut <- gpio -< (gpioWb, gpioDf)
+          constBwd 0b0100 -< prefixGpio
+          constBwd todoMM -< mmGpio
           (axiRx0, gmiiTx, macStatus) <- mac -< (axiTx1, gmiiRx)
+          constBwd 0b1001 -< prefixMac
           axiRx1 <- axiRxPipe -< axiRx0
           axiTx0 <- wbToAxiTx' -< wbAxiTx
           axiTx1 <- axiTxPipe -< axiTx0
           _rxBufStatus <- wbAxiRxBuffer -< (wbAxiRx, axiRx1)
+          constBwd 0b0101 -< prefixAxiRx
+          constBwd todoMM -< mmAxiRx
+          constBwd 0b0110 -< prefixAxiTx
+          constBwd todoMM -< mmAxiTx
 
           idC -< (uartRx, gmiiTx, gpioOut)
       )
@@ -144,18 +164,6 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
   wcre :: (((HiddenClockResetEnable logic) => a) -> a)
   wcre = withClockResetEnable sysClk sysRst enableGen
 
-  memMap =
-    0b1000
-      :> 0b0001
-      :> 0b0010
-      :> 0b0011
-      :> 0b0101
-      :> 0b0110
-      :> 0b0111
-      :> 0b0100
-      :> 0b1001
-      :> Nil
-
   peConfig
     | clashSimulation = peConfigSim
     | otherwise = peConfigRtl
@@ -167,18 +175,20 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       $ PeConfig
-        { memMapConfig = memMap
-        , initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec iMem)
+        , prefixI = 0b1000
         , initD = Reloadable (Vec dMem)
+        , prefixD = 0b0001
         , iBusTimeout = d0
         , dBusTimeout = d0
         }
 
   peConfigRtl =
     PeConfig
-      { memMapConfig = memMap
-      , initI = Undefined @IMemWords
+      { initI = Undefined @IMemWords
+      , prefixI = 0b1000
       , initD = Undefined @DMemWords
+      , prefixD = 0b0001
       , iBusTimeout = d0
       , dBusTimeout = d0
       }

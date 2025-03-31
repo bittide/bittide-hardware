@@ -14,6 +14,7 @@ import Data.Maybe (mapMaybe)
 import Project.FilePath
 import Protocols
 import Protocols.Idle
+import Protocols.MemoryMap
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
@@ -43,8 +44,8 @@ simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
       $ withClockResetEnable clockGen resetGen enableGen
       $ dut @System @4 @32 scatterConfig gatherConfig
 
-  scatterConfig = ScatterConfig $ CalendarConfig d32 scatterCal scatterCal
-  gatherConfig = GatherConfig $ CalendarConfig d32 gatherCal gatherCal
+  scatterConfig = ScatterConfig SNat $ CalendarConfig d32 scatterCal scatterCal
+  gatherConfig = GatherConfig SNat $ CalendarConfig d32 gatherCal gatherCal
 
   -- Padding is required to increase the duration of a metacycle, giving the CPU
   -- enough time to write to the gather memory and read from the scatter memory.
@@ -84,14 +85,21 @@ dut ::
   GatherConfig nBytes addrW ->
   Circuit () (Df dom (BitVector 8))
 dut scatterConfig gatherConfig = circuit $ do
-  (uartRx, jtagIdle, wbGuCal, wbSuCal) <- idleSource -< ()
-  [uartBus, wbSu, wbGu] <- processingElement NoDumpVcd peConfig -< jtagIdle
-  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (uartBus, uartRx)
-  link <- gatherUnitWbC gatherConfig -< (wbGu, wbGuCal)
-  scatterUnitWbC scatterConfig -< (link, wbSu, wbSuCal)
+  (uartRx, jtagIdle, wbGuCal, wbSuCal, mm) <- idleSource -< ()
+  [ (prefixUart, (mmUart, uartBus))
+    , (prefixSu, (mmSu, wbSu))
+    , (prefixGu, (mmGu, wbGu))
+    ] <-
+    processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
+  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
+  constBwd 0b010 -< prefixUart
+  (mmSuCal, mmGuCal) <- idleSource -< ()
+  link <- gatherUnitWbC gatherConfig -< ((mmGu, wbGu), (mmGuCal, wbGuCal))
+  constBwd 0b100 -< prefixGu
+  scatterUnitWbC scatterConfig -< ((mmSu, (link, wbSu)), (mmSuCal, wbSuCal))
+  constBwd 0b011 -< prefixSu
   idC -< uartTx
  where
-  memMap = 0b000 :> 0b001 :> 0b010 :> 0b011 :> 0b100 :> Nil
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
@@ -100,9 +108,10 @@ dut scatterConfig gatherConfig = circuit $ do
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { memMapConfig = memMap
-        , initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec iMem)
+        , prefixI = 0b000
         , initD = Reloadable (Vec dMem)
+        , prefixD = 0b001
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         }

@@ -22,6 +22,7 @@ import Bittide.Wishbone
 import Clash.Cores.Xilinx.Ila (Depth (D4096))
 
 import qualified Data.ByteString as BS
+import qualified Protocols.MemoryMap as MM (ConstBwd, MM, constBwd)
 
 -- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where
@@ -35,8 +36,10 @@ data PeConfig nBusses where
     , 2 <= nBusses
     , CLog 2 nBusses <= 30
     ) =>
-    { memMapConfig :: MemoryMap nBusses
-    -- ^ The 'MemoryMap' for the contained 'singleMasterInterconnect'.
+    { prefixI :: Unsigned (CLog 2 nBusses)
+    -- ^ The prefix of the address of the instruction bus
+    , prefixD :: Unsigned (CLog 2 nBusses)
+    -- ^ The prefix of the address of the data bus
     , initI :: InitialContent depthI (Bytes 4)
     -- ^ Initial content of the instruction memory, can be smaller than its total depth.
     , initD :: InitialContent depthD (Bytes 4)
@@ -55,25 +58,33 @@ data PeConfig nBusses where
 -}
 processingElement ::
   forall dom nBusses.
-  (HiddenClockResetEnable dom) =>
+  (HiddenClockResetEnable dom, KnownNat nBusses, 2 <= nBusses) =>
   DumpVcd ->
   PeConfig nBusses ->
   Circuit
-    (Jtag dom)
-    (Vec (nBusses - 2) (Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4)))
-processingElement dumpVcd PeConfig{memMapConfig, initI, initD, iBusTimeout, dBusTimeout} = circuit $ \jtagIn -> do
-  (iBus0, dBus0) <- rvCircuit dumpVcd (pure low) (pure low) (pure low) -< jtagIn
+    (MM.ConstBwd MM.MM, Jtag dom)
+    ( Vec
+        (nBusses - 2)
+        ( MM.ConstBwd (Unsigned (CLog 2 nBusses))
+        , (MM.ConstBwd MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4))
+        )
+    )
+processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, dBusTimeout} = circuit $ \(mm, jtagIn) -> do
+  (iBus0, (mmDbus, dBus0)) <-
+    rvCircuit dumpVcd (pure low) (pure low) (pure low) -< (mm, jtagIn)
   iBus1 <-
     ilaWb (SSymbol @"instructionBus") 2 D4096 onTransactionWb onTransactionWb -< iBus0
   dBus1 <-
     watchDogWb "dBus" iBusTimeout
       <| ilaWb (SSymbol @"dataBus") 2 D4096 onTransactionWb onTransactionWb
       -< dBus0
-  ([iMemBus, dMemBus], extBusses) <-
-    (splitAtC d2 <| singleMasterInterconnect memMapConfig) -< dBus1
-  wbStorage initD -< dMemBus
+  ([(iPre, (mmI, iMemBus)), (dPre, (mmD, dMemBus))], extBusses) <-
+    (splitAtC d2 <| singleMasterInterconnectC) -< (mmDbus, dBus1)
+  MM.constBwd prefixD -< dPre
+  MM.constBwd prefixI -< iPre
+  wbStorage "DataMemory" initD -< (mmD, dMemBus)
   iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
-  wbStorageDPC initI -< (iBus2, iMemBus)
+  wbStorageDPC "InstructionMemory" initI -< (mmI, (iBus2, iMemBus))
   idC -< extBusses
  where
   removeMsb ::
@@ -104,13 +115,13 @@ rvCircuit ::
   Signal dom Bit ->
   Signal dom Bit ->
   Circuit
-    (Jtag dom)
+    (MM.ConstBwd MM.MM, Jtag dom)
     ( Wishbone dom 'Standard 30 (Bytes 4)
-    , Wishbone dom 'Standard 30 (Bytes 4)
+    , (MM.ConstBwd MM.MM, Wishbone dom 'Standard 30 (Bytes 4))
     )
 rvCircuit dumpVcd tInterrupt sInterrupt eInterrupt = Circuit go
  where
-  go (jtagIn, (iBusIn, dBusIn)) = (jtagOut, (iBusWbM2S <$> cpuOut, dBusWbM2S <$> cpuOut))
+  go (((), jtagIn), (iBusIn, (mm, dBusIn))) = ((mm, jtagOut), (iBusWbM2S <$> cpuOut, ((), dBusWbM2S <$> cpuOut)))
    where
     tupToCoreIn (timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M) =
       CpuIn{timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M}

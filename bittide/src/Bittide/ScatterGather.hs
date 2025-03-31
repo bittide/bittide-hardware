@@ -22,10 +22,13 @@ import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 
+import BitPackC
 import Protocols
 import Protocols.Wishbone
 
 import Data.Constraint.Nat.Extra
+import GHC.Stack (HasCallStack)
+import Protocols.MemoryMap
 
 {- | Existential type to explicitly differentiate between a configuration for
 the 'scatterUnitWb' and 'gatherUnitWb' at type level and hide the memory depth from
@@ -34,6 +37,7 @@ higher level APIs.
 data ScatterConfig nBytes addrW where
   ScatterConfig ::
     (KnownNat memDepth, 1 <= memDepth) =>
+    SNat memDepth ->
     (CalendarConfig nBytes addrW (Index memDepth)) ->
     ScatterConfig nBytes addrW
 
@@ -44,6 +48,7 @@ higher level APIs.
 data GatherConfig nBytes addrW where
   GatherConfig ::
     (KnownNat memDepth, 1 <= memDepth) =>
+    SNat memDepth ->
     (CalendarConfig nBytes addrW (Index memDepth)) ->
     GatherConfig nBytes addrW
 
@@ -189,7 +194,8 @@ addStalling endOfMetacycle (incomingBus@WishboneS2M{..}, wbAddr, writeOp0) =
 
 scatterUnitWbC ::
   forall dom awSu nBytesCal awCal.
-  ( HiddenClockResetEnable dom
+  ( HasCallStack
+  , HiddenClockResetEnable dom
   , KnownNat awSu
   , KnownNat nBytesCal
   , 1 <= nBytesCal
@@ -198,17 +204,67 @@ scatterUnitWbC ::
   -- | Configuration for the 'calendar'.
   ScatterConfig nBytesCal awCal ->
   Circuit
-    ( CSignal dom (BitVector 64)
-    , Wishbone dom 'Standard awSu (Bytes 4)
-    , Wishbone dom 'Standard awCal (Bytes nBytesCal)
+    ( (ConstBwd MM, (CSignal dom (BitVector 64), Wishbone dom 'Standard awSu (Bytes 4)))
+    , (ConstBwd MM, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     ()
-scatterUnitWbC conf = case cancelMulDiv @nBytesCal @8 of
+scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @nBytesCal @8 of
   Dict -> Circuit go
    where
-    go ((linkIn, wbM2SSu, wbM2SCal), _) = ((pure (), wbS2MSu, wbS2MCal), ())
+    go ((((), (linkIn, wbM2SSu)), ((), wbM2SCal)), ()) =
+      (
+        ( (SimOnly memoryMapScatterMem, (pure (), wbS2MSu))
+        , (SimOnly memoryMapCal, wbS2MCal)
+        )
+      , ()
+      )
      where
       (wbS2MSu, wbS2MCal) = scatterUnitWb conf wbM2SCal linkIn wbM2SSu
+
+    memoryMapScatterMem =
+      let
+        deviceDef :: forall memDepth. SNat memDepth -> DeviceDefinition
+        deviceDef SNat =
+          DeviceDefinition
+            { registers =
+                [
+                  ( Name "scatterMemory" ""
+                  , locHere
+                  , Register
+                      { fieldType = regType @(Vec memDepth (Bytes 8))
+                      , address = 0
+                      , access = ReadOnly
+                      , reset = Nothing
+                      , tags = []
+                      }
+                  )
+                ,
+                  ( Name "metacycleRegister" ""
+                  , locHere
+                  , Register
+                      { fieldType = regType @(Bytes 4)
+                      , address = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
+                      , access = ReadOnly
+                      , reset = Nothing
+                      , tags = []
+                      }
+                  )
+                ]
+            , deviceName =
+                Name
+                  { name = "ScatterUnit"
+                  , description = ""
+                  }
+            , definitionLoc = locHere
+            , tags = []
+            }
+       in
+        MemoryMap
+          { tree = DeviceInstance locCaller "ScatterUnit"
+          , deviceDefs = deviceSingleton (deviceDef memDepthSnat)
+          }
+
+    memoryMapCal = calendarMemoryMap "ScatterUnitCalendar" calConfig
 
 {- | Wishbone addressable 'scatterUnit', the wishbone port can read the data from this
 memory element as if it has a 32 bit port by selecting the upper 32 or lower 32 bits
@@ -234,7 +290,7 @@ scatterUnitWb ::
   -- 1. Wishbone (slave -> master) port scatter memory
   -- 2. Wishbone (slave -> master) port 'calendar'
   (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes nBytesCal)))
-scatterUnitWb (ScatterConfig calConfig) wbInCal linkIn wbInSu =
+scatterUnitWb (ScatterConfig _memDepth calConfig) wbInCal linkIn wbInSu =
   (delayControls wbOutSu, wbOutCal)
  where
   (wbOutSu, memAddr, _) =
@@ -262,16 +318,83 @@ gatherUnitWbC ::
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal awCal ->
   Circuit
-    ( Wishbone dom 'Standard awGu (Bytes 4)
-    , Wishbone dom 'Standard awCal (Bytes nBytesCal)
+    ( (ConstBwd MM, Wishbone dom 'Standard awGu (Bytes 4))
+    , (ConstBwd MM, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     (CSignal dom (BitVector 64))
-gatherUnitWbC conf = case (cancelMulDiv @nBytesCal @8) of
+gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @nBytesCal @8) of
   Dict -> Circuit go
    where
-    go ((wbInGu, wbInCal), _) = ((wbOutGu, wbOutCal), linkOut)
+    go ::
+      ( ( ((), Signal dom (WishboneM2S awGu 4 (BitVector 32)))
+        , ( ()
+          , Signal
+              dom
+              (WishboneM2S awCal nBytesCal (BitVector (nBytesCal * 8)))
+          )
+        )
+      , Signal dom ()
+      ) ->
+      ( ( (SimOnly MemoryMap, Signal dom (WishboneS2M (BitVector 32)))
+        , ( SimOnly MemoryMap
+          , Signal dom (WishboneS2M (BitVector (nBytesCal * 8)))
+          )
+        )
+      , Signal dom (BitVector 64)
+      )
+    go ((((), wbInGu), ((), wbInCal)), _) =
+      (
+        ( (SimOnly memMapGu, wbOutGu)
+        , (SimOnly memMapCal, wbOutCal)
+        )
+      , linkOut
+      )
      where
       (linkOut, wbOutGu, wbOutCal) = gatherUnitWb conf wbInCal wbInGu
+
+    memMapGu =
+      MemoryMap
+        { tree = DeviceInstance locCaller "GatherUnit"
+        , deviceDefs = deviceSingleton (deviceDef memDepthSnat)
+        }
+
+    memMapCal = calendarMemoryMap "GatherUniCalendar" calConfig
+
+    deviceDef :: forall memDepth. SNat memDepth -> DeviceDefinition
+    deviceDef SNat =
+      DeviceDefinition
+        { registers =
+            [
+              ( Name "gatherMemory" ""
+              , locHere
+              , Register
+                  { fieldType = regType @(Vec memDepth (Bytes 8))
+                  , address = 0
+                  , access = WriteOnly
+                  , reset = Nothing
+                  , tags = []
+                  }
+              )
+            ,
+              ( Name "metacycleRegister" ""
+              , locHere
+              , Register
+                  { fieldType = regType @(Bytes 4)
+                  , address = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
+                  , access = ReadOnly
+                  , reset = Nothing
+                  , tags = []
+                  }
+              )
+            ]
+        , deviceName =
+            Name
+              { name = "ScatterUnit"
+              , description = ""
+              }
+        , definitionLoc = locHere
+        , tags = []
+        }
 
 {- | Wishbone addressable 'gatherUnit', the wishbone port can write data to this
 memory element as if it has a 32 bit port by controlling the byte enables of the
@@ -298,7 +421,7 @@ gatherUnitWb ::
   , Signal dom (WishboneS2M (Bytes 4))
   , Signal dom (WishboneS2M (Bytes nBytesCal))
   )
-gatherUnitWb (GatherConfig calConfig) wbInCal wbInGu =
+gatherUnitWb (GatherConfig _memDepth calConfig) wbInCal wbInGu =
   (linkOut, delayControls wbOutGu, wbOutCal)
  where
   (wbOutGu, memAddr, writeOp) =

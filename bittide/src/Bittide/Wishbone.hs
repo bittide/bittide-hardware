@@ -12,27 +12,35 @@
 
 module Bittide.Wishbone where
 
+-- prelude imports
 import Clash.Prelude
 
-import Bittide.DoubleBufferedRam
-import Bittide.SharedTypes
-
+-- external imports
+import BitPackC
 import Clash.Cores.UART (ValidBaud, uart)
 import Clash.Cores.Xilinx.Ila (Depth, IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Clash.Debug
+import Clash.Sized.Vector.ToTuple (VecToTuple (vecToTuple))
 import Clash.Util.Interpolate
-
 import Data.Bifunctor
 import Data.Bool (bool)
 import Data.Constraint.Nat.Extra
 import Data.Maybe
-
+import GHC.Stack (HasCallStack)
 import Protocols
+import Protocols.MemoryMap.FieldType (ToFieldType)
 import Protocols.Wishbone
 
-import Clash.Sized.Vector.ToTuple (VecToTuple (vecToTuple))
+-- internal imports
+import Bittide.DoubleBufferedRam
+import Bittide.SharedTypes
+
+-- qualified imports
+
+import qualified Data.List as L
 import qualified Protocols.Df as Df
+import qualified Protocols.MemoryMap as MM
 import qualified Protocols.Wishbone as Wishbone
 
 {- $setup
@@ -47,6 +55,54 @@ type MemoryMap nSlaves = Vec nSlaves (Unsigned (CLog 2 nSlaves))
 
 -- | Size of a bus that results from a `singleMasterInterconnect` with `nSlaves` slaves.
 type MappedBusAddrWidth addr nSlaves = addr - CLog 2 nSlaves
+
+singleMasterInterconnectC ::
+  forall dom nSlaves addrW a.
+  ( HiddenClockResetEnable dom
+  , HasCallStack
+  , KnownNat nSlaves
+  , 1 <= nSlaves
+  , KnownNat addrW
+  , (CLog 2 nSlaves <= addrW)
+  , BitPack a
+  , NFDataX a
+  ) =>
+  Circuit
+    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW a)
+    ( Vec
+        nSlaves
+        ( MM.ConstBwd (Unsigned (CLog 2 nSlaves))
+        , (MM.ConstBwd MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth addrW nSlaves) a)
+        )
+    )
+singleMasterInterconnectC = Circuit go
+ where
+  go ::
+    ( ((), Signal dom (WishboneM2S addrW (Div (BitSize a + 7) 8) a))
+    , Vec
+        nSlaves
+        (Unsigned (CLog 2 nSlaves), (SimOnly MM.MemoryMap, Signal dom (WishboneS2M a)))
+    ) ->
+    ( (SimOnly MM.MemoryMap, Signal dom (WishboneS2M a))
+    , Vec
+        nSlaves
+        ((), ((), Signal dom (WishboneM2S (addrW - CLog 2 nSlaves) (Div (BitSize a + 7) 8) a)))
+    )
+  go (((), m2s), unzip -> (prefixes, unzip -> (slaveMms, s2ms))) = ((SimOnly memMap, s2m), (\x -> ((), ((), x))) <$> m2ss)
+   where
+    prefixToAddr prefix = toInteger prefix `shiftL` fromInteger shift'
+     where
+      shift' = snatToInteger $ SNat @(addrW - CLog 2 nSlaves)
+    relAddrs = L.map prefixToAddr (toList prefixes)
+    comps = L.zip relAddrs (MM.tree . unSimOnly <$> toList slaveMms)
+    unSimOnly (SimOnly n) = n
+    deviceDefs = MM.mergeDeviceDefs (MM.deviceDefs . unSimOnly <$> toList slaveMms)
+    memMap =
+      MM.MemoryMap
+        { tree = MM.Interconnect MM.locCaller comps
+        , deviceDefs = deviceDefs
+        }
+    (s2m, m2ss) = toSignals (singleMasterInterconnect prefixes) (m2s, s2ms)
 
 {-# NOINLINE singleMasterInterconnect #-}
 
@@ -317,6 +373,7 @@ uartSim = Circuit go
 uartInterfaceWb ::
   forall dom addrW nBytes transmitBufferDepth receiveBufferDepth uartIn uartOut.
   ( HiddenClockResetEnable dom
+  , HasCallStack
   , 1 <= transmitBufferDepth
   , 1 <= receiveBufferDepth
   , KnownNat addrW
@@ -332,15 +389,53 @@ uartInterfaceWb ::
   -- | Valid baud rates are constrained by @clash-cores@'s 'ValidBaud' constraint.
   Circuit (Df dom (BitVector 8), uartIn) (CSignal dom (Maybe (BitVector 8)), uartOut) ->
   Circuit
-    (Wishbone dom 'Standard addrW (Bytes nBytes), uartIn)
+    (MM.ConstBwd MM.MM, (Wishbone dom 'Standard addrW (Bytes nBytes), uartIn))
     (uartOut, CSignal dom (Bool, Bool))
-uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \(wb, uartRx) -> do
+uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ circuit $ \(wb, uartRx) -> do
   (txFifoIn, uartStatus) <- wbToDf -< (wb, rxFifoOut, txFifoMeta)
   (txFifoOut, txFifoMeta) <- fifoWithMeta txDepth -< txFifoIn
   (rxFifoIn, uartTx) <- uartImpl -< (txFifoOut, uartRx)
   (rxFifoOut, _rx') <- fifoWithMeta rxDepth <| unsafeToDf -< rxFifoIn
   idC -< (uartTx, uartStatus)
  where
+  memMap =
+    MM.MemoryMap
+      { tree = MM.DeviceInstance MM.locCaller "UART"
+      , deviceDefs = MM.deviceSingleton deviceDef
+      }
+
+  deviceDef =
+    MM.DeviceDefinition
+      { registers =
+          [
+            ( MM.Name "data" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = MM.regType @(Bytes 1)
+                , address = 0
+                , access = MM.ReadWrite
+                , tags = []
+                }
+            )
+          ,
+            ( MM.Name "status" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = MM.regType @(Bytes 1)
+                , address = 4
+                , access = MM.ReadOnly
+                , tags = []
+                }
+            )
+          ]
+      , deviceName =
+          MM.Name "UART" "Wishbone accessible UART interface with configurable FIFO buffers."
+      , definitionLoc = MM.locHere
+      , tags = []
+      }
+
   wbToDf ::
     Circuit
       ( Wishbone dom 'Standard addrW (Bytes nBytes)
@@ -543,7 +638,8 @@ wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
     | otherwise = repeat Nothing
   wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}
 
-data TimeCmd = Capture | WaitForCmp deriving (Eq, Generic, NFDataX, BitPack)
+data TimeCmd = Capture | WaitForCmp
+  deriving (Eq, Generic, NFDataX, BitPack, ToFieldType, BitPackC)
 
 {- | Wishbone accessible circuit that contains a free running 64 bit counter with stalling
 capabilities.
@@ -575,12 +671,72 @@ The register-level layout of the Wishbone interface is as follows:
 timeWb ::
   forall dom addrW.
   ( HiddenClockResetEnable dom
+  , HasCallStack
   , KnownNat addrW
   , 1 <= DomainPeriod dom
   ) =>
-  Circuit (Wishbone dom 'Standard addrW (Bytes 4)) (CSignal dom (Unsigned 64))
-timeWb = Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy (False, 0, 0) wbM2S
+  Circuit
+    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes 4))
+    (CSignal dom (Unsigned 64))
+timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy (False, 0, 0) wbM2S
  where
+  mm =
+    MM.MemoryMap
+      { tree = MM.DeviceInstance MM.locCaller "Timer"
+      , deviceDefs = MM.deviceSingleton deviceDef
+      }
+  deviceDef =
+    MM.DeviceDefinition
+      { registers =
+          [
+            ( MM.Name "command" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = MM.regType @TimeCmd
+                , address = 0x00
+                , access = MM.WriteOnly
+                , tags = []
+                }
+            )
+          ,
+            ( MM.Name "cmp_result" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = MM.regType @Bool
+                , address = 0x04
+                , access = MM.ReadOnly
+                , tags = []
+                }
+            )
+          ,
+            ( MM.Name "scratchpad" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = MM.regType @(BitVector 64)
+                , address = 0x08
+                , access = MM.ReadOnly
+                , tags = []
+                }
+            )
+          ,
+            ( MM.Name "frequency" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = MM.regType @(BitVector 64)
+                , address = 0x10
+                , access = MM.ReadOnly
+                , tags = []
+                }
+            )
+          ]
+      , deviceName = MM.Name "Timer" ""
+      , definitionLoc = MM.locHere
+      , tags = []
+      }
   goMealy (reqCmp0, scratch0 :: Unsigned 64, count :: Unsigned 64) wbM2S =
     ((reqCmp1, scratch1, succ count), (wbS2M1, count))
    where
@@ -623,18 +779,45 @@ value, stored in big-endian format.
 readDnaPortE2Wb ::
   forall dom addrW nBytes.
   ( HiddenClockResetEnable dom
+  , HasCallStack
   , KnownNat addrW
   , KnownNat nBytes
   , 1 <= nBytes
   ) =>
   -- | Simulation DNA value
   BitVector 96 ->
-  Circuit (Wishbone dom 'Standard addrW (Bytes nBytes)) (CSignal dom (BitVector 96))
-readDnaPortE2Wb simDna = circuit $ \wb -> do
+  Circuit
+    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (CSignal dom (BitVector 96))
+readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
   dnaDf <- dnaCircuit -< ()
   dna <- reg -< (wb, dnaDf)
   idC -< dna
  where
+  mm =
+    MM.MemoryMap
+      { tree = MM.DeviceInstance MM.locCaller "DNA"
+      , deviceDefs = MM.deviceSingleton deviceDef
+      }
+  deviceDef =
+    MM.DeviceDefinition
+      { registers =
+          [
+            ( MM.Name "dna" ""
+            , MM.locHere
+            , MM.Register
+                { fieldType = MM.regType @(BitVector 96)
+                , address = 0
+                , access = MM.ReadOnly
+                , reset = Nothing
+                , tags = []
+                }
+            )
+          ]
+      , deviceName = MM.Name "DNA" ""
+      , definitionLoc = MM.locHere
+      , tags = []
+      }
   maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna
   regRst =
     unsafeFromActiveHigh

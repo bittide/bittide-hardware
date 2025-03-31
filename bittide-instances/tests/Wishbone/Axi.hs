@@ -29,6 +29,7 @@ import Data.Proxy
 import Protocols
 import Protocols.Axi4.Stream
 import Protocols.Idle
+import Protocols.MemoryMap hiding (name)
 import Protocols.Wishbone
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
@@ -76,30 +77,45 @@ dut =
   withClockResetEnable clockGen resetGen enableGen
     $ circuit
     $ \_unit -> do
-      (uartTx, jtag) <- idleSource -< ()
-      [uartBus, axiTxBus, wbNull, axiRxBus] <- processingElement NoDumpVcd peConfig -< jtag
+      (uartTx, jtag, mm) <- idleSource -< ()
+      [ (prefixUart, (mmUart, uartBus))
+        , (prefixAxiTx, (mmAxiTx, axiTxBus))
+        , (prefixNull, (mmNull, wbNull))
+        , (prefixAxiRx, (mmAxiRx, axiRxBus))
+        ] <-
+        processingElement NoDumpVcd peConfig -< (mm, jtag)
       wbAlwaysAck -< wbNull
-      (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (uartBus, uartTx)
+      constBwd 0b100 -< prefixNull
+      constBwd todoMM -< mmNull
+
+      (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartTx))
+      constBwd 0b010 -< prefixUart
+
       _interrupts <- wbAxisRxBufferCircuit (SNat @128) -< (axiRxBus, axiStream)
+      constBwd 0b101 -< prefixAxiRx
+      constBwd todoMM -< mmAxiRx
+
       axiStream <-
         axiUserMapC (const False)
           <| DfConv.fifo axiProxy axiProxy (SNat @1024)
           <| axiPacking
           <| wbToAxiTx
           -< axiTxBus
+      constBwd 0b011 -< prefixAxiTx
+      constBwd todoMM -< mmAxiTx
       idC -< uartRx
  where
   axiProxy = Proxy @(Axi4Stream System ('Axi4StreamConfig 4 0 0) ())
-  memMap = 0b000 :> 0b001 :> 0b010 :> 0b011 :> 0b100 :> 0b101 :> Nil
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "axi_stream_self_test"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { memMapConfig = memMap
-        , initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec iMem)
+        , prefixI = 0b000
         , initD = Reloadable (Vec dMem)
+        , prefixD = 0b001
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         }

@@ -9,6 +9,7 @@ module Bittide.Ethernet.Mac where
 
 import Clash.Explicit.Prelude hiding ((:<))
 
+import BitPackC
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 import Bittide.Wishbone
@@ -20,6 +21,8 @@ import Data.Maybe
 import Data.String.Interpolate (__i)
 import Protocols.Axi4.Stream
 import Protocols.Internal
+import Protocols.MemoryMap
+import Protocols.MemoryMap.FieldType
 import Protocols.Wishbone
 
 import qualified Clash.Prelude as CP
@@ -35,7 +38,7 @@ data EthMacStatus = EthMacStatus
   , rxFifoBadFrame :: "rxFifoBadFrame" ::: Bool
   , rxFifoGoodFrame :: "rxFifoGoodFrame" ::: Bool
   }
-  deriving (Generic, NFDataX, BitPack)
+  deriving (Generic, NFDataX, BitPack, BitPackC, ToFieldType)
 
 {- | Wishbone peripheral that keeps track of the status flags of the Ethernet MAC.
 Every cycle that a flag is set, will be counted with a counter. The width of the counters
@@ -52,10 +55,10 @@ macStatusInterfaceWb ::
   -- | Number of bits of the counters
   SNat counterWidth ->
   Circuit
-    (Wishbone dom 'Standard aw (Bytes nBytes), CSignal dom EthMacStatus)
+    (ConstBwd MM, (Wishbone dom 'Standard aw (Bytes nBytes), CSignal dom EthMacStatus))
     ()
 macStatusInterfaceWb SNat = case (cancelMulDiv @nBytes @8) of
-  Dict -> Circuit circuitGo
+  Dict -> withMemoryMap mm $ Circuit circuitGo
    where
     circuitGo ((wbM2S, macStatus), _) = ((wbS2M, pure ()), ())
      where
@@ -67,6 +70,31 @@ macStatusInterfaceWb SNat = case (cancelMulDiv @nBytes @8) of
       pulseCount pulse = cnt
        where
         cnt = CP.regEn 0 (CP.isRising True pulse) (succ <$> cnt)
+
+    mm =
+      MemoryMap
+        { tree = DeviceInstance locCaller "MacStatus"
+        , deviceDefs = deviceSingleton deviceDef
+        }
+    deviceDef =
+      DeviceDefinition
+        { tags = []
+        , registers =
+            [
+              ( Name "status" ""
+              , locHere
+              , Register
+                  { fieldType = regType @EthMacStatus
+                  , address = 0x0
+                  , access = ReadOnly
+                  , tags = []
+                  , reset = Nothing
+                  }
+              )
+            ]
+        , deviceName = Name "MacStatus" ""
+        , definitionLoc = locHere
+        }
 
 ethMac1GFifoC ::
   ( KnownDomain sys

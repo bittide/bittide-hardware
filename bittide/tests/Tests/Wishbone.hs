@@ -24,6 +24,7 @@ import Hedgehog.Range as Range
 import Protocols
 import Protocols.Df (Data (..))
 import Protocols.Hedgehog
+import Protocols.Idle (idleSource)
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
 import Test.Tasty
@@ -114,7 +115,8 @@ uartInterfaceWbCircuitTest = do
     dut :: (HiddenClockResetEnable System) => Circuit (Df System Byte) (Df System Byte)
     dut = circuit $ \dfIn -> do
       (wb, dfOut) <- uartMachine -< dfIn
-      (uartTx, _status) <- uartInterfaceWb @System @32 d2 d2 uartSim -< (wb, uartTx)
+      mm <- idleSource -< ()
+      (uartTx, _status) <- uartInterfaceWb @System @32 d2 d2 uartSim -< (mm, (wb, uartTx))
       idC -< dfOut
     expectOptions =
       defExpectOptions

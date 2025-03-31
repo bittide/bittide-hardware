@@ -1,0 +1,137 @@
+cabal-version: 2.4
+name: clash-protocols-memmap
+version: 0.1
+license: Apache-2.0
+license-file: LICENSE
+author: QBayLogic B.V.
+maintainer: devops@qbaylogic.com
+copyright: Copyright © 2024 Google LLC
+
+common common-options
+  default-extensions:
+    -- TemplateHaskell is used to support convenience functions such as
+    -- 'listToVecTH' and 'bLit'.
+    -- Prelude isn't imported by default as Clash offers Clash.Prelude
+    BangPatterns
+    BinaryLiterals
+    ConstraintKinds
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    NoImplicitPrelude
+    NoStarIsType
+    PolyKinds
+    QuasiQuotes
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneDeriving
+    TemplateHaskell
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    ViewPatterns
+
+  -- See https://github.com/clash-lang/clash-compiler/pull/2511
+  if impl(ghc >= 9.4)
+    cpp-options: -DCLASH_OPAQUE=OPAQUE
+  else
+    cpp-options: -DCLASH_OPAQUE=NOINLINE
+
+  ghc-options:
+    -- Plugins to support type-level constraint solving on naturals
+    -- Clash needs access to the source code in compiled modules
+    -- Worker wrappers introduce unstable names for functions that might have
+    -- blackboxes attached for them. You can disable this, but be sure to add
+    -- a no-specialize pragma to every function with a blackbox.
+    -Wall
+    -Wcompat
+    -fplugin
+    GHC.TypeLits.Extra.Solver
+    -fplugin
+    GHC.TypeLits.Normalise
+    -fplugin
+    GHC.TypeLits.KnownNat.Solver
+    -fexpose-all-unfoldings
+    -fno-worker-wrapper
+
+  -- clash-prelude will set suitable version bounds for the plugins
+  build-depends:
+    base >=4.14 && <4.19,
+    clash-prelude >=1.6 && <1.10,
+    containers >=0.6 && <0.8,
+    ghc-typelits-extra,
+    ghc-typelits-knownnat,
+    ghc-typelits-natnormalise,
+
+library
+  import: common-options
+  hs-source-dirs: src
+  default-language: Haskell2010
+  exposed-modules:
+    BitPackC
+    Internal.HdlTest.UartMock
+    Protocols.MemoryMap
+    Protocols.MemoryMap.Check
+    Protocols.MemoryMap.Check.AbsAddress
+    Protocols.MemoryMap.Check.Normalized
+    Protocols.MemoryMap.FieldType
+    Protocols.MemoryMap.Json
+    Protocols.MemoryMap.TypeCollect
+
+  build-depends:
+    aeson,
+    base,
+    bytestring >=0.10 && <0.13,
+    clash-prelude,
+    clash-protocols,
+    constraints,
+    containers,
+    mtl,
+    template-haskell,
+
+executable hdl-test
+  import: common-options
+  main-is: app/HdlTest.hs
+  build-depends:
+    aeson,
+    aeson-pretty,
+    base,
+    bytestring,
+    clash-ghc,
+    clash-prelude,
+    clash-protocols,
+    clash-protocols-memmap,
+    containers,
+    directory,
+
+executable example
+  import: common-options
+  main-is: Example.hs
+  hs-source-dirs: app
+  default-language: Haskell2010
+  ghc-options:
+    -threaded
+    -rtsopts
+    -with-rtsopts=-M100M
+
+  build-depends:
+    aeson,
+    aeson-pretty,
+    base,
+    bytestring,
+    clash-prelude,
+    clash-protocols,
+    clash-protocols-memmap,
+    containers,
+    directory,

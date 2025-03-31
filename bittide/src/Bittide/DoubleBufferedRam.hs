@@ -22,6 +22,21 @@ import Bittide.Extra.Maybe
 import Bittide.SharedTypes hiding (delayControls)
 import Data.Constraint.Nat.Extra
 import Data.Typeable
+import GHC.Stack (HasCallStack)
+import Protocols.MemoryMap (
+  Access (ReadWrite),
+  ConstBwd,
+  DeviceDefinition (..),
+  MM,
+  MemoryMap (..),
+  MemoryMapTree (DeviceInstance),
+  Name (..),
+  Register (..),
+  deviceSingleton,
+  locCaller,
+  locHere,
+  regType,
+ )
 
 data ContentType n a
   = Vec (Vec n a)
@@ -106,31 +121,64 @@ contentGenerator content = case compareSNat d1 (SNat @romSize) of
 wbStorageDPC ::
   forall dom depth awA awB.
   ( HiddenClockResetEnable dom
+  , HasCallStack
   , KnownNat awA
   , KnownNat awB
   , KnownNat depth
   , 1 <= depth
   ) =>
+  String ->
   InitialContent depth (Bytes 4) ->
   Circuit
-    (Wishbone dom 'Standard awA (Bytes 4), Wishbone dom 'Standard awB (Bytes 4))
+    ( ConstBwd MM
+    , (Wishbone dom 'Standard awA (Bytes 4), Wishbone dom 'Standard awB (Bytes 4))
+    )
     ()
-wbStorageDPC content = Circuit go
+wbStorageDPC memoryName content = Circuit go
  where
   go ::
-    ( ( Signal dom (WishboneM2S awA 4 (BitVector 32))
-      , Signal dom (WishboneM2S awB 4 (BitVector 32))
+    ( ( ()
+      , ( Signal dom (WishboneM2S awA 4 (BitVector 32))
+        , Signal dom (WishboneM2S awB 4 (BitVector 32))
+        )
       )
     , ()
     ) ->
-    ( ( Signal dom (WishboneS2M (BitVector 32))
-      , Signal dom (WishboneS2M (BitVector 32))
+    ( ( SimOnly MemoryMap
+      , ( Signal dom (WishboneS2M (BitVector 32))
+        , Signal dom (WishboneS2M (BitVector 32))
+        )
       )
     , ()
     )
-  go ((m2sA, m2sB), ()) = ((s2mA, s2mB), ())
+  go (((), (m2sA, m2sB)), ()) = ((SimOnly memMap, (s2mA, s2mB)), ())
    where
     (s2mA, s2mB) = wbStorageDP content m2sA m2sB
+
+    memMap =
+      MemoryMap
+        { tree = DeviceInstance locCaller memoryName
+        , deviceDefs = deviceSingleton deviceDef
+        }
+    deviceDef =
+      DeviceDefinition
+        { registers =
+            [
+              ( Name "data" ""
+              , locHere
+              , Register
+                  { fieldType = regType @(Vec depth (Bytes 4))
+                  , address = 0
+                  , access = ReadWrite
+                  , reset = Nothing
+                  , tags = []
+                  }
+              )
+            ]
+        , deviceName = Name{name = memoryName, description = ""}
+        , definitionLoc = locHere
+        , tags = []
+        }
 
 {- | Dual-ported Wishbone storage element, essentially a wrapper for the single-ported version
 which priorities port A over port B. Transactions are not aborted, but when two transactions
@@ -182,15 +230,42 @@ allows for word aligned reads and writes.
 -}
 wbStorage ::
   forall dom depth aw.
-  ( HiddenClockResetEnable dom
+  ( HasCallStack
+  , HiddenClockResetEnable dom
   , KnownNat aw
   , KnownNat depth
   , 1 <= depth
   ) =>
+  String ->
   InitialContent depth (Bytes 4) ->
-  Circuit (Wishbone dom 'Standard aw (Bytes 4)) ()
-wbStorage initContent = Circuit $ \(m2s, ()) ->
-  (wbStorage' initContent m2s, ())
+  Circuit (ConstBwd MM, Wishbone dom 'Standard aw (Bytes 4)) ()
+wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
+  ((SimOnly memMap, wbStorage' initContent m2s), ())
+ where
+  memMap =
+    MemoryMap
+      { tree = DeviceInstance locCaller memoryName
+      , deviceDefs = deviceSingleton deviceDef
+      }
+  deviceDef =
+    DeviceDefinition
+      { registers =
+          [
+            ( Name "data" ""
+            , locHere
+            , Register
+                { fieldType = regType @(Vec depth (Bytes 4))
+                , address = 0
+                , access = ReadWrite
+                , reset = Nothing
+                , tags = []
+                }
+            )
+          ]
+      , deviceName = Name{name = memoryName, description = ""}
+      , definitionLoc = locHere
+      , tags = []
+      }
 {-# NOINLINE wbStorage #-}
 
 -- | Storage element with a single wishbone port. Allows for word-aligned addresses.

@@ -20,7 +20,7 @@ type WishboneAddrWidth = 32
 type WishboneWidth = 4
 
 scatterCal1K :: ScatterConfig WishboneWidth WishboneAddrWidth
-scatterCal1K = ScatterConfig cal
+scatterCal1K = ScatterConfig SNat cal
  where
   cal :: CalendarConfig WishboneWidth WishboneAddrWidth (Index 1024)
   cal =
@@ -30,7 +30,7 @@ scatterCal1K = ScatterConfig cal
       (ValidEntry{veEntry = 0, veRepeat = 0 :: Unsigned 8} :> Nil)
 
 gatherCal1K :: GatherConfig WishboneWidth WishboneAddrWidth
-gatherCal1K = GatherConfig cal
+gatherCal1K = GatherConfig SNat cal
  where
   cal :: CalendarConfig WishboneWidth WishboneAddrWidth (Index 1024)
   cal =

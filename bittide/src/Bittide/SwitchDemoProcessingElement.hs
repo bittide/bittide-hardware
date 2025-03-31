@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NumericUnderscores #-}
 
 module Bittide.SwitchDemoProcessingElement where
@@ -16,6 +17,7 @@ import Protocols.Wishbone
 import Bittide.SharedTypes (Bytes)
 import Bittide.Wishbone (wbToVec)
 import Clash.Sized.Vector.ToTuple (vecToTuple)
+import Protocols.MemoryMap
 
 {- | Multiplying by 3 should always fit, though if n~1, the output type is `Index 3`
 which doesn't fit the 3 we're multiplying by hence yielding an undefined. This
@@ -162,15 +164,17 @@ switchDemoPeWb ::
   -- | Local clock cycle counter
   Signal dom (Unsigned 64) ->
   Circuit
-    ( Wishbone dom 'Standard addrW (Bytes 4)
-    , -- \| Device DNA
-      CSignal dom (BitVector 96)
-    , -- \| Incoming crossbar link
-      CSignal dom (BitVector 64)
+    ( ConstBwd MM
+    , ( Wishbone dom 'Standard addrW (Bytes 4)
+      , -- \| Device DNA
+        CSignal dom (BitVector 96)
+      , -- \| Incoming crossbar link
+        CSignal dom (BitVector 64)
+      )
     )
     -- \| Outgoing crossbar link
     (CSignal dom (BitVector 64))
-switchDemoPeWb SNat localCounter = Circuit go
+switchDemoPeWb SNat localCounter = withMemoryMap mm $ Circuit go
  where
   go ((wbM2S, dna, linkIn), _) = ((wbS2M, pure (), pure ()), linkOut)
    where
@@ -217,3 +221,83 @@ switchDemoPeWb SNat localCounter = Circuit go
         <$> writeVec
 
     (writeVec, wbS2M) = unbundle $ wbToVec <$> bundle readVec <*> wbM2S
+
+  mm =
+    MemoryMap
+      { tree = DeviceInstance locCaller "SwitchDemoPE"
+      , deviceDefs = deviceSingleton deviceDef
+      }
+  deviceDef =
+    DeviceDefinition
+      { tags = []
+      , registers =
+          [
+            ( Name "read_start" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 64)
+                , address = 0x00
+                , access = WriteOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "read_cycles" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 64)
+                , address = 0x08
+                , access = WriteOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "write_start" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 64)
+                , address = 0x10
+                , access = WriteOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "write_cycles" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 64)
+                , address = 0x14
+                , access = WriteOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "local_clock_cycle_counter" ""
+            , locHere
+            , Register
+                { fieldType = regType @(BitVector 64)
+                , address = 0x18
+                , access = ReadOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ,
+            ( Name "buffer" ""
+            , locHere
+            , Register
+                { fieldType = regType @(Vec (bufferSize * 3) (BitVector 64))
+                , address = 0x20
+                , access = ReadOnly
+                , tags = []
+                , reset = Nothing
+                }
+            )
+          ]
+      , deviceName = Name "SwitchDemoPE" ""
+      , definitionLoc = locHere
+      }

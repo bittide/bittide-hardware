@@ -26,6 +26,7 @@ import Hedgehog
 import Hedgehog.Range as Range
 import Numeric (showHex)
 import Protocols.Hedgehog.Internal
+import Protocols.MemoryMap (unMemmap)
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog
 import Test.Tasty
@@ -811,7 +812,7 @@ wbStorageSpecCompliance = property $ do
       $ wishbonePropWithModel @System
         defExpectOptions
         (\_ _ () -> Right ())
-        (wbStorage (Reloadable $ Vec content))
+        (unMemmap $ wbStorage "" (Reloadable $ Vec content))
         (genRequests (snatToNum (SNat @v) - 1))
         ()
 
@@ -861,7 +862,7 @@ wbStorageBehavior = property $ do
 
     let
       master = driveStandard defExpectOptions $ fmap snd wbRequests
-      slave = wcre $ wbStorage @System (NonReloadable $ Vec content)
+      slave = wcre $ unMemmap (wbStorage @System "" (NonReloadable $ Vec content))
       simTransactions = exposeWbTransactions (Just 1000) master slave
       goldenTransactions = wbStorageBehaviorModel (toList content) $ fmap (fmap fst) wbRequests
 
@@ -943,7 +944,7 @@ wbStorageRangeErrors = property $ do
       $ wishbonePropWithModel @System
         defExpectOptions
         model
-        (wbStorage (Reloadable $ Vec content))
+        (unMemmap $ wbStorage "" (Reloadable $ Vec content))
         (genRequests (snatToNum (SNat @v)))
         (snatToInteger (SNat @v))
 
@@ -1022,7 +1023,7 @@ wbStorageProtocolsModel = property $ do
       $ wishbonePropWithModel @System
         defExpectOptions
         model
-        (wbStorage (Reloadable $ Vec content))
+        (unMemmap $ wbStorage "" (Reloadable $ Vec content))
         (genRequests (snatToNum (SNat @v)))
         (I.fromAscList $ L.zip [0 ..] (toList content))
 

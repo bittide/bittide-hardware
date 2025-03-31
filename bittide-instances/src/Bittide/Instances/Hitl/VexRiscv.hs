@@ -18,9 +18,12 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Prelude
 
+import BitPackC
 import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols
+import Protocols.MemoryMap
+import Protocols.MemoryMap.FieldType
 import Protocols.Wishbone
 import VexRiscv
 
@@ -43,7 +46,7 @@ import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 
 data TestStatus = Running | Success | Fail
-  deriving (Enum, Eq, Generic, NFDataX, BitPack)
+  deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, ToFieldType)
 
 type TestDone = Bool
 type TestSuccess = Bool
@@ -90,22 +93,56 @@ vexRiscvInner jtagIn0 uartRx =
   stateToDoneSuccess Success = (True, True)
   stateToDoneSuccess Fail = (True, False)
 
-  ((_, jtagOut), (status, uartTx)) =
-    circuitFn ((uartRx, jtagIn0), (pure (), pure ()))
+  ((_, (_, jtagOut)), (status, uartTx)) =
+    circuitFn (((), (uartRx, jtagIn0)), (pure (), pure ()))
 
-  Circuit circuitFn = circuit $ \(uartRx, jtag) -> do
-    [timeBus, uartBus, statusRegisterBus] <- processingElement NoDumpVcd peConfig -< jtag
+  Circuit circuitFn = circuit $ \(mm, (uartRx, jtag)) -> do
+    [ (preTime, (mmTime, timeBus))
+      , (preUart, (mmUart, uartBus))
+      , (preStatus, (mmStatus, statusRegisterBus))
+      ] <-
+      processingElement NoDumpVcd peConfig -< (mm, jtag)
+
+    constBwd 0b110 -< preUart
     (uartTx, _uartStatus) <-
-      uartInterfaceWb @dom d16 d16 (uartDf baud) -< (uartBus, uartRx)
-    _localCounter <- timeWb -< timeBus
-    testResult <- statusRegister -< statusRegisterBus
+      uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
+    constBwd 0b101 -< preTime
+    _localCounter <- timeWb -< (mmTime, timeBus)
+
+    constBwd 0b111 -< preStatus
+    testResult <- statusRegister -< (mmStatus, statusRegisterBus)
     idC -< (testResult, uartTx)
 
-  statusRegister :: Circuit (Wishbone dom 'Standard 27 (Bytes 4)) (CSignal dom TestStatus)
-  statusRegister = Circuit $ \(fwd, _) ->
+  statusRegister ::
+    Circuit (ConstBwd MM, Wishbone dom 'Standard 27 (Bytes 4)) (CSignal dom TestStatus)
+  statusRegister = withMemoryMap mm $ Circuit $ \(fwd, _) ->
     let (unbundle -> (m2s, st)) = mealy go Running fwd
      in (m2s, st)
    where
+    mm =
+      MemoryMap
+        { tree = DeviceInstance locCaller "StatusRegister"
+        , deviceDefs = deviceSingleton deviceDef
+        }
+    deviceDef =
+      DeviceDefinition
+        { tags = []
+        , registers =
+            [
+              ( Name "status" ""
+              , locHere
+              , Register
+                  { fieldType = regType @TestStatus
+                  , address = 0x00
+                  , access = WriteOnly
+                  , tags = []
+                  , reset = Nothing
+                  }
+              )
+            ]
+        , deviceName = Name "StatusRegister" ""
+        , definitionLoc = locHere
+        }
     go st WishboneM2S{..}
       -- out of cycle, no response, same state
       | not (busCycle && strobe) = (st, (emptyWishboneS2M, st))
@@ -142,8 +179,6 @@ vexRiscvInner jtagIn0 uartRx =
   -- │ 0b111. │ 0xE   │ 4     │ Test status register               │
   -- ╰────────┴───────┴───────┴────────────────────────────────────╯
 
-  memMap = 0b100 :> 0b010 :> 0b101 :> 0b110 :> 0b111 :> Nil
-
   peConfig
     | clashSimulation = peConfigSim
     | otherwise = peConfigRtl
@@ -154,17 +189,19 @@ vexRiscvInner jtagIn0 uartRx =
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { memMapConfig = memMap
-        , initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec iMem)
+        , prefixI = 0b100
         , initD = Reloadable (Vec dMem)
+        , prefixD = 0b010
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         }
   peConfigRtl =
     PeConfig
-      { memMapConfig = memMap
-      , initI = Undefined @DMemWords
+      { initI = Undefined @DMemWords
+      , prefixI = 0b100
       , initD = Undefined @IMemWords
+      , prefixD = 0b010
       , iBusTimeout = d0
       , dBusTimeout = d0
       }

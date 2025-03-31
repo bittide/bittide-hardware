@@ -7,7 +7,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=8 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=16 #-}
 
 {- |
 Contains the Bittide Calendar, which is a double buffered memory element that stores
@@ -20,6 +20,7 @@ For documentation see 'Bittide.Calendar.calendar'.
 module Bittide.Calendar (
   calendar,
   mkCalendar,
+  calendarMemoryMap,
   CalendarConfig (..),
   ValidEntry (..),
   ExtraRegs,
@@ -32,8 +33,11 @@ import Data.Constraint.Nat.Extra
 import Data.Maybe
 import Protocols.Wishbone
 
+import BitPackC
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
+import GHC.Stack (HasCallStack)
+import Protocols.MemoryMap
 
 {-
 NOTE [component calendar types]
@@ -116,6 +120,99 @@ mkCalendar ::
   (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)))
 mkCalendar (CalendarConfig maxCalDepth bsActive bsShadow) =
   calendar maxCalDepth bsActive bsShadow
+
+calendarMemoryMap ::
+  forall nBytes addrW calEntry.
+  ( HasCallStack
+  , KnownNat nBytes
+  , 1 <= nBytes
+  , KnownNat addrW
+  ) =>
+  String ->
+  -- | Calendar configuration for 'calendar'.
+  CalendarConfig nBytes addrW calEntry ->
+  MemoryMap
+calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
+  MemoryMap
+    { tree = DeviceInstance locCaller name
+    , deviceDefs = deviceSingleton (deviceDef maxCalDepth)
+    }
+ where
+  sizeEntries :: forall maxCalDepth n. (Num n) => SNat maxCalDepth -> n
+  sizeEntries SNat =
+    -- natToNum @(BitSize calEntry `DivRU` 8)
+    natToNum @(maxCalDepth * nBytes)
+
+  deviceDef :: forall maxCalDepth. SNat maxCalDepth -> DeviceDefinition
+  deviceDef depth@SNat =
+    DeviceDefinition
+      { registers =
+          [
+            ( Name "calendarEntries" ""
+            , locHere
+            , Register
+                { fieldType =
+                    -- ghc-typelits-extra isn't smart enough to figure out
+                    -- the BitPackC constraints for the vector type
+                    -- so we use a simpler, separate, BitPackC instance
+                    regTypeSplit
+                      @(Bytes (maxCalDepth * nBytes))
+                      @(Vec maxCalDepth (Bytes nBytes))
+                , address = 0
+                , access = ReadWrite
+                , reset = Nothing
+                , tags = []
+                }
+            )
+          ,
+            ( Name "shadowWrite" ""
+            , locHere
+            , Register
+                { fieldType = regType @(Bytes nBytes)
+                , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 0)
+                , access = WriteOnly
+                , reset = Nothing
+                , tags = []
+                }
+            )
+          ,
+            ( Name "shadowRead" ""
+            , locHere
+            , Register
+                { fieldType = regType @(Bytes nBytes)
+                , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 1)
+                , access = WriteOnly
+                , reset = Nothing
+                , tags = []
+                }
+            )
+          ,
+            ( Name "shadowDepth" ""
+            , locHere
+            , Register
+                { fieldType = regType @(Bytes nBytes)
+                , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 2)
+                , access = ReadWrite -- TODO is this correct??
+                , reset = Nothing
+                , tags = []
+                }
+            )
+          ,
+            ( Name "calendarSwap" ""
+            , locHere
+            , Register
+                { fieldType = regType @Bool
+                , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 3)
+                , access = WriteOnly
+                , reset = Nothing
+                , tags = []
+                }
+            )
+          ]
+      , deviceName = Name name ""
+      , definitionLoc = locHere
+      , tags = []
+      }
 
 {- | State of the calendar excluding the buffers. It stores the depths of the active and
 shadow calendar, the read pointer, buffer selector and a register for first cycle behavior.
