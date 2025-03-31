@@ -48,13 +48,13 @@ vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
         $ withClockResetEnable clk200 rst200 enableGen
         $ circuit
         $ \(mm, (uartRx, jtag)) -> do
-          [(preUart, (mmUart, uartBus)), (preTime, (mmTime, timeBus))] <-
+          [(prefixUart, (mmUart, uartBus)), (prefixTime, (mmTime, timeBus))] <-
             processingElement @Basic200 NoDumpVcd peConfig -< (mm, jtag)
           (uartTx, _uartStatus) <-
             uartInterfaceWb d16 d16 (uartDf $ SNat @921600) -< (mmUart, (uartBus, uartRx))
-          constBwd 0b10 -< preUart
+          constBwd 0b10 -< prefixUart
           _localCounter <- timeWb -< (mmTime, timeBus)
-          constBwd 0b11 -< preTime
+          constBwd 0b11 -< prefixTime
           idC -< uartTx
    in case circuitFn (((), (uartTx, jtagIn)), pure ()) of
         ((_mm, a), b) -> (a, b)

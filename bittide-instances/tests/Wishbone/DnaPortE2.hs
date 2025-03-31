@@ -62,12 +62,12 @@ dut ::
   Circuit () (Df dom (BitVector 8))
 dut = circuit $ \_unit -> do
   (uartRx, jtag, mm) <- idleSource -< ()
-  [(preUart, (mmUart, uartBus)), (preDna, dnaBus)] <-
+  [(prefixUart, (mmUart, uartBus)), (prefixDna, dnaBus)] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtag)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-  constBwd 0b10 -< preUart
+  constBwd 0b10 -< prefixUart
   _dna <- readDnaPortE2Wb simDna2 -< dnaBus
-  constBwd 0b11 -< preDna
+  constBwd 0b11 -< prefixDna
   idC -< uartTx
  where
   peConfig = unsafePerformIO $ do

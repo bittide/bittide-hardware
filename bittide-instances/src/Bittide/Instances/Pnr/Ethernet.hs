@@ -100,35 +100,35 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
     $ toSignals
       ( circuit $ \(uartTx, gmiiRx, jtag) -> do
           mm <- idleSource -< ()
-          [ (preUart, (mmUart, uartBus))
-            , (preTime, (mmTime, timeBus))
-            , (preAxiRx, (mmAxiRx, wbAxiRx))
-            , (preAxiTx, (mmAxiTx, wbAxiTx))
-            , (preDna, (mmDna, dnaWb))
-            , (preGpio, (mmGpio, gpioWb))
-            , (preMac, (mmMac, macWb))
+          [ (prefixUart, (mmUart, uartBus))
+            , (prefixTime, (mmTime, timeBus))
+            , (prefixAxiRx, (mmAxiRx, wbAxiRx))
+            , (prefixAxiTx, (mmAxiTx, wbAxiTx))
+            , (prefixDna, (mmDna, dnaWb))
+            , (prefixGpio, (mmGpio, gpioWb))
+            , (prefixMac, (mmMac, macWb))
             ] <-
             pe -< (mm, jtag)
           (uartRx, _uartStatus) <- uart -< (mmUart, (uartBus, uartTx))
-          constBwd 0b0010 -< preUart
+          constBwd 0b0010 -< prefixUart
           _localCounter <- time -< (mmTime, timeBus)
-          constBwd 0b0011 -< preTime
+          constBwd 0b0011 -< prefixTime
           _dna <- dnaC -< (mmDna, dnaWb)
-          constBwd 0b0111 -< preDna
+          constBwd 0b0111 -< prefixDna
           macStatIf -< (mmMac, (macWb, macStatus))
           gpioDf <- idleSource -< ()
           gpioOut <- gpio -< (gpioWb, gpioDf)
-          constBwd 0b0100 -< preGpio
+          constBwd 0b0100 -< prefixGpio
           constBwd todoMM -< mmGpio
           (axiRx0, gmiiTx, macStatus) <- mac -< (axiTx1, gmiiRx)
-          constBwd 0b1001 -< preMac
+          constBwd 0b1001 -< prefixMac
           axiRx1 <- axiRxPipe -< axiRx0
           axiTx0 <- wbToAxiTx' -< wbAxiTx
           axiTx1 <- axiTxPipe -< axiTx0
           _rxBufStatus <- wbAxiRxBuffer -< (wbAxiRx, axiRx1)
-          constBwd 0b0101 -< preAxiRx
+          constBwd 0b0101 -< prefixAxiRx
           constBwd todoMM -< mmAxiRx
-          constBwd 0b0110 -< preAxiTx
+          constBwd 0b0110 -< prefixAxiTx
           constBwd todoMM -< mmAxiTx
 
           idC -< (uartRx, gmiiTx, gpioOut)

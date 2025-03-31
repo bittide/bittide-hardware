@@ -89,21 +89,21 @@ dut ::
   Circuit () (Df dom (BitVector 8))
 dut localCounter dnaA dnaB = circuit $ do
   (uartRx, jtagIdle, mm) <- idleSource -< ()
-  [ (preUart, (mmUart, uartBus))
-    , (preTime, (mmTime, timeBus))
-    , (preA, (mmA, peBusA))
-    , (preB, (mmB, peBusB))
+  [ (prefixUart, (mmUart, uartBus))
+    , (prefixTime, (mmTime, timeBus))
+    , (prefixA, (mmA, peBusA))
+    , (prefixB, (mmB, peBusB))
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
-  constBwd 0b010 -< preUart
+  constBwd 0b010 -< prefixUart
 
   _localCounter <- timeWb -< (mmTime, timeBus)
-  constBwd 0b011 -< preTime
+  constBwd 0b011 -< prefixTime
 
   linkAB <- switchDemoPeWb d2 localCounter -< (mmA, (peBusA, dnaAC, linkBA))
-  constBwd 0b100 -< preA
-  constBwd 0b101 -< preB
+  constBwd 0b100 -< prefixA
+  constBwd 0b101 -< prefixB
 
   linkBA <- switchDemoPeWb d2 localCounter -< (mmB, (peBusB, dnaBC, linkAB))
   dnaAC <- signalToCSignal dnaA -< ()

@@ -120,19 +120,19 @@ callistoSwClockControl (SwControlConfig jtagIn reframe mgn fsz) mask ebs =
     circuitFn (((), jtagIn), (pure (), pure ()))
 
   Circuit circuitFn = circuit $ \(mm, jtag) -> do
-    [ (preCc, (mmCc, wbClockControl))
-      , (preDebug, (mmDebug, wbDebug))
-      , (preDummy, (mmDummy, wbDummy))
+    [ (prefixCc, (mmCc, wbClockControl))
+      , (prefixDebug, (mmDebug, wbDebug))
+      , (prefixDummy, (mmDummy, wbDummy))
       ] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
     idleSink -< wbDummy
-    constBwd 0b001 -< preDummy
+    constBwd 0b001 -< prefixDummy
     constBwd todoMM -< mmDummy
     [ccd0, ccd1] <- cSignalDupe <| clockControlWb mgn fsz mask ebs -< (mmCc, wbClockControl)
-    constBwd 0b110 -< preCc
+    constBwd 0b110 -< prefixCc
     cm <- cSignalMap clockMod -< ccd0
     dbg <- debugRegisterWb debugRegisterCfg -< (mmDebug, (wbDebug, cm))
-    constBwd 0b111 -< preDebug
+    constBwd 0b111 -< prefixDebug
     idC -< (ccd1, dbg)
 
   peConfig =

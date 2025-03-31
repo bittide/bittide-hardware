@@ -137,13 +137,13 @@ dut =
     $ circuit
     $ \_unit -> do
       (uartRx, jtag, mm) <- idleSource -< ()
-      [ (preUart, (mmUart, uartBus))
-        , (preCC, (mmCC, ccWb))
-        , (preDbg, (mmDbg, dbgWb))
+      [ (prefixUart, (mmUart, uartBus))
+        , (prefixCC, (mmCC, ccWb))
+        , (prefixDbg, (mmDbg, dbgWb))
         ] <-
         processingElement NoDumpVcd peConfig -< (mm, jtag)
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-      constBwd 0b001 -< preUart
+      constBwd 0b001 -< prefixUart
 
       [ccd0, ccd1] <-
         cSignalDupe
@@ -154,11 +154,11 @@ dut =
             (pure <$> dataCounts)
           -< (mmCC, ccWb)
 
-      constBwd 0b110 -< preCC
+      constBwd 0b110 -< prefixCC
 
       cm <- cSignalMap clockMod -< ccd0
       _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (mmDbg, (dbgWb, cm))
-      constBwd 0b111 -< preDbg
+      constBwd 0b111 -< prefixDbg
       idC -< (uartTx, ccd1)
  where
   peConfig = unsafePerformIO $ do

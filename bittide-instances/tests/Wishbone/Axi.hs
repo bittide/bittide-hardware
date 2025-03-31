@@ -78,21 +78,21 @@ dut =
     $ circuit
     $ \_unit -> do
       (uartTx, jtag, mm) <- idleSource -< ()
-      [ (preUart, (mmUart, uartBus))
-        , (preAxiTx, (mmAxiTx, axiTxBus))
-        , (preNull, (mmNull, wbNull))
-        , (preAxiRx, (mmAxiRx, axiRxBus))
+      [ (prefixUart, (mmUart, uartBus))
+        , (prefixAxiTx, (mmAxiTx, axiTxBus))
+        , (prefixNull, (mmNull, wbNull))
+        , (prefixAxiRx, (mmAxiRx, axiRxBus))
         ] <-
         processingElement NoDumpVcd peConfig -< (mm, jtag)
       wbAlwaysAck -< wbNull
-      constBwd 0b100 -< preNull
+      constBwd 0b100 -< prefixNull
       constBwd todoMM -< mmNull
 
       (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartTx))
-      constBwd 0b010 -< preUart
+      constBwd 0b010 -< prefixUart
 
       _interrupts <- wbAxisRxBufferCircuit (SNat @128) -< (axiRxBus, axiStream)
-      constBwd 0b101 -< preAxiRx
+      constBwd 0b101 -< prefixAxiRx
       constBwd todoMM -< mmAxiRx
 
       axiStream <-
@@ -101,7 +101,7 @@ dut =
           <| axiPacking
           <| wbToAxiTx
           -< axiTxBus
-      constBwd 0b011 -< preAxiTx
+      constBwd 0b011 -< prefixAxiTx
       constBwd todoMM -< mmAxiTx
       idC -< uartRx
  where

@@ -93,12 +93,12 @@ dut ::
 dut eb localCounter = circuit $ do
   eb <- ebCircuit -< ()
   (uartRx, jtagIdle, mm) <- idleSource -< ()
-  [(preUart, (mmUart, uartBus)), (preUgn, (mmUgn, ugnBus))] <-
+  [(prefixUart, (mmUart, uartBus)), (prefixUgn, (mmUgn, ugnBus))] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-  constBwd 0b10 -< preUart
+  constBwd 0b10 -< prefixUart
   _bittideData <- captureUgn localCounter -< (mmUgn, (ugnBus, eb))
-  constBwd 0b11 -< preUgn
+  constBwd 0b11 -< prefixUgn
   idC -< uartTx
  where
   ebCircuit :: Circuit () (CSignal dom (Maybe (BitVector 64)))

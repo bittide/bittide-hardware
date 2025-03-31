@@ -61,10 +61,10 @@ dut = withClockResetEnable clockGen resetGen enableGen
   $ circuit
   $ \_unit -> do
     (uartRx, jtag, mm) <- idleSource -< ()
-    [ (preUart, (mmUart, uartBus))
-      , (preTime, (mmTime, timeBus))
-      , (preIdleA, (mmIdleA, idleBusA))
-      , (preIdleB, (mmIdleB, idleBusB))
+    [ (prefixUart, (mmUart, uartBus))
+      , (prefixTime, (mmTime, timeBus))
+      , (prefixIdleA, (mmIdleA, idleBusA))
+      , (prefixIdleB, (mmIdleB, idleBusB))
       ] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
 
@@ -72,18 +72,18 @@ dut = withClockResetEnable clockGen resetGen enableGen
     idleSink
       <| (watchDogWb @_ @_ @4 "50 us" (SNat @(PeriodToCycles Basic200 (Microseconds 50))))
       -< idleBusB
-    constBwd 0b100 -< preIdleA
+    constBwd 0b100 -< prefixIdleA
     constBwd todoMM -< mmIdleA
 
-    constBwd 0b101 -< preIdleB
+    constBwd 0b101 -< prefixIdleB
     constBwd todoMM -< mmIdleB
 
     timeBus1 <- watchDogWb @_ @_ @4 "" d0 -< timeBus
     _localCounter <- timeWb -< (mmTime, timeBus1)
-    constBwd 0b011 -< preTime
+    constBwd 0b011 -< prefixTime
     (uartTx, _uartStatus) <-
       (uartInterfaceWb @_ @_ @4) d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-    constBwd 0b010 -< preUart
+    constBwd 0b010 -< prefixUart
     idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
