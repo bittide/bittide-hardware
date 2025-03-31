@@ -41,6 +41,7 @@ module Protocols.MemoryMap (
   constFwd,
   getConstBwd,
   getConstBwdAny,
+  getMMAny,
   withName,
   withAbsAddr,
   withTag,
@@ -324,6 +325,9 @@ getConstBwdAny :: Circuit (ConstBwd v, a) b -> v
 getConstBwdAny (Circuit f) = val
  where
   ((val, _), _) = f (((), errorX ""), errorX "")
+
+getMMAny :: Circuit (ConstBwd MM, a) b -> MemoryMap
+getMMAny circ = let SimOnly memoryMap = getConstBwdAny circ in memoryMap
 
 deviceSingleton :: DeviceDefinition -> DeviceDefinitions
 deviceSingleton def' = Map.singleton def'.deviceName.name def'
