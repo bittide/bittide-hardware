@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
@@ -9,10 +10,11 @@ module Bittide.Instances.Pnr.ProcessingElement where
 import Clash.Prelude
 
 import Clash.Annotations.TH
+import Clash.Cores.UART (ValidBaud)
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Xilinx.ClockGen
 import Protocols
-import Protocols.MemoryMap
+import Protocols.MemoryMap as MM
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv
@@ -25,43 +27,35 @@ import Bittide.SharedTypes
 import Bittide.Wishbone
 import Project.FilePath
 
-{- | A simple instance containing just VexRisc and UART as peripheral.
-Runs the `hello` binary from `firmware-binaries`.
--}
-vexRiscUartHello ::
-  "SYSCLK_125" ::: DiffClock Ext125 ->
-  "CPU_RESET" ::: Reset Basic200 ->
-  ( ""
-      ::: ( "USB_UART_TX" ::: Signal Basic200 Bit
-          , "JTAG" ::: Signal Basic200 JtagIn
-          )
-  , Signal Basic200 ()
-  ) ->
-  ( ""
-      ::: ( "" ::: Signal Basic200 ()
-          , "JTAG" ::: Signal Basic200 JtagOut
-          )
-  , "USB_UART_RX" ::: Signal Basic200 Bit
-  )
-vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
-  let circuitFn = toSignals
-        $ withClockResetEnable clk200 rst200 enableGen
-        $ circuit
-        $ \(mm, (uartRx, jtag)) -> do
-          [(prefixUart, (mmUart, uartBus)), (prefixTime, (mmTime, timeBus))] <-
-            processingElement @Basic200 NoDumpVcd peConfig -< (mm, jtag)
-          (uartTx, _uartStatus) <-
-            uartInterfaceWb d16 d16 (uartDf $ SNat @921600) -< (mmUart, (uartBus, uartRx))
-          constBwd 0b10 -< prefixUart
-          _localCounter <- timeWb -< (mmTime, timeBus)
-          constBwd 0b11 -< prefixTime
-          idC -< uartTx
-   in case circuitFn (((), (uartTx, jtagIn)), pure ()) of
-        ((_mm, a), b) -> (a, b)
- where
-  (clk200, rst200_) = clockWizardDifferential diffClk noReset
-  rst200 = rst200_ `orReset` rst_in
+baudRate :: SNat 921600
+baudRate = SNat
 
+vexRiscvUartHelloMM :: MM.MemoryMap
+vexRiscvUartHelloMM =
+  getMMAny
+    $ withClockResetEnable clockGen resetGen enableGen
+    $ vexRiscvUartHelloC @Basic200 baudRate
+
+vexRiscvUartHelloC ::
+  forall dom baud.
+  ( HiddenClockResetEnable dom
+  , KnownNat baud
+  , ValidBaud dom baud
+  ) =>
+  SNat baud ->
+  Circuit
+    (ConstBwd MM, (CSignal dom Bit, Jtag dom))
+    (CSignal dom Bit)
+vexRiscvUartHelloC baudSnat = circuit $ \(mm, (uartRx, jtag)) -> do
+  [(prefixUart, (mmUart, uartBus)), (prefixTime, (mmTime, timeBus))] <-
+    processingElement @dom NoDumpVcd peConfig -< (mm, jtag)
+  (uartTx, _uartStatus) <-
+    uartInterfaceWb d16 d16 (uartDf baudSnat) -< (mmUart, (uartBus, uartRx))
+  constBwd 0b10 -< prefixUart
+  _localCounter <- timeWb -< (mmTime, timeBus)
+  constBwd 0b11 -< prefixTime
+  idC -< uartTx
+ where
   -- ╭────────┬───────┬───────┬────────────────────╮
   -- │ bin    │ hex   │ bus   │ description        │
   -- ├────────┼───────┼───────┼────────────────────┤
@@ -106,6 +100,35 @@ vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
       , dBusTimeout = d0
       , includeIlaWb = True
       }
+
+{- | A simple instance containing just VexRisc and UART as peripheral.
+Runs the `hello` binary from `firmware-binaries`.
+-}
+vexRiscUartHello ::
+  "SYSCLK_125" ::: DiffClock Ext125 ->
+  "CPU_RESET" ::: Reset Basic200 ->
+  ( ""
+      ::: ( "USB_UART_TX" ::: Signal Basic200 Bit
+          , "JTAG" ::: Signal Basic200 JtagIn
+          )
+  , Signal Basic200 ()
+  ) ->
+  ( ""
+      ::: ( "" ::: Signal Basic200 ()
+          , "JTAG" ::: Signal Basic200 JtagOut
+          )
+  , "USB_UART_RX" ::: Signal Basic200 Bit
+  )
+vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
+  let circuitFn =
+        toSignals
+          $ withClockResetEnable clk200 rst200 enableGen
+          $ vexRiscvUartHelloC baudRate
+   in case circuitFn (((), (uartTx, jtagIn)), pure ()) of
+        ((_mm, a), b) -> (a, b)
+ where
+  (clk200, rst200_) = clockWizardDifferential diffClk noReset
+  rst200 = rst200_ `orReset` rst_in
 
 type IMemWords = DivRU (64 * 1024) 4
 type DMemWords = DivRU (64 * 1024) 4
