@@ -111,6 +111,8 @@ common common-options
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,
     lift-type,
+    lifted-base,
+    monad-control,
     network-simple,
     pretty-simple,
     process,
@@ -155,6 +157,7 @@ library
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests
     Bittide.Instances.Hitl.Transceivers
+    Bittide.Instances.Hitl.Utils.Driver
     Bittide.Instances.Hitl.Utils.Gdb
     Bittide.Instances.Hitl.Utils.Program
     Bittide.Instances.Hitl.Utils.Vivado

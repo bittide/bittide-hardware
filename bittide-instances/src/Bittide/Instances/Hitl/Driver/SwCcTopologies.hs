@@ -16,21 +16,19 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
 import Bittide.Hitl
-import Bittide.Instances.Hitl.Setup (demoRigInfo)
-import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
+import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Vivado
 
 import Control.Monad (forM_, zipWithM)
 import Control.Monad.IO.Class
-import Data.Maybe (fromMaybe)
 import Data.String.Interpolate (i)
 import System.Clock (Clock (Monotonic), diffTimeSpec, getTime, toNanoSecs)
 import System.Exit
 import System.FilePath
 import System.IO
-import System.Timeout (timeout)
 
+import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Data.List as L
 
 getProbeProgEnTcl :: String
@@ -54,23 +52,8 @@ driverFunc testName targets = do
   let
     calcTimeSpentMs = (`div` 1000000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
 
-    getTargetIndex :: HwTarget -> Int
-    getTargetIndex hwT = fromMaybe 9 $ L.findIndex (\di -> di.deviceId == idFromHwT hwT) demoRigInfo
-
-    tryWithTimeout :: String -> Int -> IO a -> IO a
-    tryWithTimeout actionName dur action = do
-      result <- timeout dur action
-      case result of
-        Nothing -> do
-          error $ "Timeout while performing action: " <> actionName
-        Just r -> pure r
-
     initHwTargets :: VivadoM ()
-    initHwTargets = forM_ targets $ \(hwT, d) -> do
-      liftIO $ putStrLn $ "Preparing hardware target " <> show d.deviceId
-
-      openHardwareTarget hwT
-      updateVio "vioHitlt" [("probe_prog_en", "1")]
+    initHwTargets = forM_ targets (assertProbe "probe_prog_en")
 
     initOpenOcd :: (a, DeviceInfo) -> Int -> IO ((Int, ProcessStdIoHandles), IO ())
     initOpenOcd (_, d) targetIndex = do
@@ -186,12 +169,10 @@ driverFunc testName targets = do
       liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) gdbs
 
       -- TODO: Replace `prog_en` vio with `enable_sync_gen` vio
-      mapM_
-        (\(hwT, _) -> openHardwareTarget hwT >> updateVio "vioHitlt" [("probe_prog_en", "0")])
-        targets
+      forM_ targets (deassertProbe "probe_prog_en")
       -- liftIO $ mapM_ ((errorToException =<<) . Gdb.compareSections) gdbs
       liftIO $ mapM_ Gdb.continue gdbs
-      mapM_ startTest targets
+      forM_ targets startTest
 
       testResults <- getTestResults targets (L.replicate (L.length targets) TestRunning)
       (count, exitCode) <-
