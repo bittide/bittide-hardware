@@ -118,6 +118,7 @@ dut =
         , prefixD = 0b001
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
+        , includeIlaWb = False
         }
 {-# NOINLINE dut #-}
 

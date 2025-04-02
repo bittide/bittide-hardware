@@ -93,6 +93,7 @@ vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
         , prefixD = 0b01
         , iBusTimeout = d0
         , dBusTimeout = d0
+        , includeIlaWb = False
         }
 
   peConfigRtl =
@@ -103,6 +104,7 @@ vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
       , prefixD = 0b01
       , iBusTimeout = d0
       , dBusTimeout = d0
+      , includeIlaWb = True
       }
 
 type IMemWords = DivRU (64 * 1024) 4

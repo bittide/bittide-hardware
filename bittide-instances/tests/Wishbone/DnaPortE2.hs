@@ -82,6 +82,7 @@ dut = circuit $ \_unit -> do
         , prefixD = 0b01
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
+        , includeIlaWb = False
         }
 {-# NOINLINE dut #-}
 
