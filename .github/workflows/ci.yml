@@ -57,10 +57,10 @@ jobs:
 
     defaults:
       run:
-        shell: git-nix-shell {0} --option connect-timeout 360
+        shell: git-nix-shell {0}
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       options: --memory=11g
 
     steps:
@@ -116,10 +116,10 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --ignore-environment
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       options: --memory=11g
 
     steps:
@@ -157,7 +157,7 @@ jobs:
     if: ${{ !cancelled() && needs.bittide-instances-hardware-in-the-loop-test-matrix.outputs.should_generate_report == 'true' }}
     defaults:
       run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --ignore-environment
     needs: [
       build,
       bittide-instances-hardware-in-the-loop,
@@ -165,7 +165,7 @@ jobs:
      ]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       options: --memory=11g
 
     steps:
@@ -221,11 +221,11 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --ignore-environment
     needs: [build]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       options: --memory=11g
 
     steps:
@@ -252,11 +252,11 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --ignore-environment
     needs: [build]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       options: --memory=11g
 
     steps:
@@ -295,9 +295,9 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       options: --memory=11g
     needs: [build]
 
@@ -320,9 +320,9 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       options: --memory=11g
     needs: [build]
 
@@ -348,9 +348,9 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       options: --memory=11g
     needs: [build]
 
@@ -379,11 +379,11 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --ignore-environment
     needs: [build]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       options: --memory=11g
 
     steps:
@@ -406,11 +406,11 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_SHA" --keep "S3_PASSWORD"
+        shell: git-nix-shell {0} --ignore-environment
     needs: [build]
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       options: --memory=11g
 
     steps:
@@ -433,10 +433,10 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
+        shell: git-nix-shell {0} --ignore-environment
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       options: --memory=11g
 
     steps:
@@ -466,10 +466,10 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --option connect-timeout 360 --pure --keep "GITHUB_OUTPUT"
+        shell: git-nix-shell {0} --ignore-environment
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       options: --memory=11g
 
     steps:
@@ -526,8 +526,8 @@ jobs:
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
-        shell: git-nix-shell {0} --option connect-timeout 360
+        # We leave out '--ignore-environment', as 'with_vivado.sh' relies on basic Ubuntu
+        shell: git-nix-shell {0}
     needs: [build, bittide-instances-hdl-matrix]
 
     strategy:
@@ -536,7 +536,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       volumes:
         - /opt/tools:/opt/tools
       options: --init --mac-address="6c:5a:b0:6c:13:0b" --memory=11g
@@ -619,8 +619,8 @@ jobs:
     runs-on: [self-hosted, hardware-access]
     defaults:
       run:
-        # We leave out '--pure', as 'with_vivado.sh' relies on basic Ubuntu
-        shell: git-nix-shell {0} --option connect-timeout 360
+        # We leave out '--ignore-environment', as 'with_vivado.sh' relies on basic Ubuntu
+        shell: git-nix-shell {0}
     needs: [bittide-instances-hdl, bittide-instances-hardware-in-the-loop-test-matrix]
 
     strategy:
@@ -629,7 +629,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2024-11-20
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-03
       volumes:
         - /opt/tools:/opt/tools
         - /dev:/dev
