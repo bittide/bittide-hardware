@@ -51,6 +51,9 @@
             pkgs.unzip
             pkgs.ndisc6
 
+            # https://discourse.nixos.org/t/non-interactive-bash-errors-from-flake-nix-mkshell/33310
+            pkgs.bashInteractive
+
             # Simulation report generation
             pkgs.dot2tex
             pkgs.texlive.combined.scheme-medium
