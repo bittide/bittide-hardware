@@ -892,3 +892,62 @@ watchDogWb name timeout@SNat
       | wdTimeout = trace ("watchDogWb - " <> name <> ": " <> show wbM2S0) 0
       | wbM2S0.busCycle && wbM2S0.strobe = succ cnt0
       | otherwise = 0
+
+{- | Simple Wishbone component with a hardcoded @True@ on acknowledge which always returns
+a fixed value.
+-}
+wbAlwaysAckWith ::
+  forall nBytes addrW.
+  ( KnownNat nBytes
+  , 1 <= nBytes
+  , KnownNat addrW
+  ) =>
+  Bytes nBytes ->
+  WishboneM2S addrW nBytes (Bytes nBytes) ->
+  WishboneS2M (Bytes nBytes)
+wbAlwaysAckWith dat _ = (emptyWishboneS2M @(Bytes nBytes)){acknowledge = True, readData = dat}
+
+{- | Identifier component with a 32 bit identifier.
+
+So far used to form four character long
+device IDs for each CPU in a multi-CPU system, which can be used to confirm that the correct
+device is programmed.
+-}
+whoAmIC ::
+  forall dom addrW.
+  ( KnownDomain dom
+  , HiddenClockResetEnable dom
+  , KnownNat addrW
+  ) =>
+  BitVector 32 ->
+  Circuit (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes 4)) ()
+whoAmIC whoAmI = MM.withMemoryMap mm $ Circuit go
+ where
+  mm =
+    MM.MemoryMap
+      { tree = MM.DeviceInstance MM.locCaller "WhoAmI"
+      , deviceDefs = MM.deviceSingleton deviceDef
+      }
+  deviceDef =
+    MM.DeviceDefinition
+      { registers =
+          [
+            ( MM.Name "identifier" ""
+            , MM.locHere
+            , MM.Register
+                { reset = Nothing
+                , fieldType = MM.regType @(Unsigned 32)
+                , address = 0x00
+                , access = MM.ReadOnly
+                , tags = []
+                }
+            )
+          ]
+      , deviceName = MM.Name "WhoAmI" ""
+      , definitionLoc = MM.locHere
+      , tags = []
+      }
+  go ::
+    (Fwd (Wishbone dom 'Standard addrW (Bytes 4)), ()) ->
+    (Bwd (Wishbone dom 'Standard addrW (Bytes 4)), ())
+  go (m2s, ()) = (wbAlwaysAckWith whoAmI <$> m2s, ())

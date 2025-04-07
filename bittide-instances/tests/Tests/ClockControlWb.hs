@@ -20,6 +20,7 @@ import Data.Maybe (mapMaybe)
 import Data.String.Interpolate
 import Project.FilePath
 import Protocols
+import Protocols.Extra (cSignalMap, replicateCSignalI)
 import Protocols.Idle
 import Protocols.MemoryMap
 import System.FilePath
@@ -33,7 +34,6 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- internal imports
 import Bittide.Arithmetic.Time (PeriodToCycles)
-import Bittide.CircuitUtils
 import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
 import Bittide.ClockControl.Registers (ClockControlData, clockControlWb, clockMod)
 import Bittide.DoubleBufferedRam
@@ -146,7 +146,7 @@ dut =
       constBwd 0b001 -< prefixUart
 
       [ccd0, ccd1] <-
-        cSignalDupe
+        replicateCSignalI
           <| clockControlWb
             margin
             framesize
@@ -158,7 +158,7 @@ dut =
 
       cm <- cSignalMap clockMod -< ccd0
       _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (mmDbg, (dbgWb, cm))
-      constBwd 0b111 -< prefixDbg
+      constBwd 0b101 -< prefixDbg
       idC -< (uartTx, ccd1)
  where
   peConfig = unsafePerformIO $ do

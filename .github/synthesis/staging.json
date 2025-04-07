@@ -1,7 +1,9 @@
 [
   {"top": "safeDffSynchronizer",           "stage": "hdl" },
-  {"top": "swCcOneTopologyTest",           "stage": "test"},
+
   {"top": "linkConfigurationTest",         "stage": "test"},
+  {"top": "swCcOneTopologyTest",           "stage": "test"},
+  {"top": "switchDemoTest",                "stage": "test"},
   {"top": "transceiversUpTest",            "stage": "test"},
   {"top": "vexRiscvTcpTest",               "stage": "test"},
   {"top": "vexRiscvTest",                  "stage": "test"}

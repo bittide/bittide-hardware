@@ -12,6 +12,7 @@ import Clash.Explicit.Prelude (unsafeOrReset)
 import Clash.Prelude
 
 import Protocols
+import Protocols.Extra
 import Protocols.Wishbone
 import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, JtagOut (debugReset), vexRiscv)
 
@@ -96,7 +97,7 @@ processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, 
         onTransactionWb
       -< dBus0
   ([(iPre, (mmI, iMemBus)), (dPre, (mmD, dMemBus))], extBusses) <-
-    (splitAtC d2 <| singleMasterInterconnectC) -< (mmDbus, dBus1)
+    (splitAtCI <| singleMasterInterconnectC) -< (mmDbus, dBus1)
   MM.constBwd prefixD -< dPre
   MM.constBwd prefixI -< iPre
   wbStorage "DataMemory" initD -< (mmD, dMemBus)
@@ -113,17 +114,6 @@ processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, 
   removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + 4) -> BitVector aw)) id
 
   wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
-
--- | Conceptually the same as 'splitAt', but for 'Circuit's
-splitAtC ::
-  SNat left ->
-  Circuit (Vec (left + right) a) (Vec left a, Vec right a)
-splitAtC SNat = Circuit go
- where
-  go (fwd, (bwdLeft, bwdRight)) = (bwd, (fwdLeft, fwdRight))
-   where
-    (fwdLeft, fwdRight) = splitAtI fwd
-    bwd = bwdLeft ++ bwdRight
 
 rvCircuit ::
   (HiddenClockResetEnable dom) =>

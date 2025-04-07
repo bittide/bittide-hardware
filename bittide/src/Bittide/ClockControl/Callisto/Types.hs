@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -8,6 +9,7 @@
 
 module Bittide.ClockControl.Callisto.Types (
   CallistoResult (..),
+  CallistoCResult (..),
   ReframingState (..),
   ControlConfig (..),
   ControlSt (..),
@@ -37,6 +39,28 @@ data CallistoResult (n :: Nat) = CallistoResult
   -- ^ State of the Reframing detector
   , jtagOut :: JtagOut
   -- ^ JTAG output from the CPU
+  }
+  deriving (Generic, NFDataX)
+
+{- | Result of the clock control algorithm.
+
+TODO: Make this the primary Callisto result type once the reset logic is fixed and Callisto
+is detached from the ILA plotting mechanisms.
+-}
+data CallistoCResult (n :: Nat) = CallistoCResult
+  { maybeSpeedChangeC :: Maybe SpeedChange
+  -- ^ Speed change requested for clock multiplier. This is 'Just' for a single
+  -- cycle.
+  , stabilityC :: Vec n StabilityIndication
+  -- ^ All stability indicators for all of the elastic buffers.
+  , allStableC :: Bool
+  -- ^ Joint stability indicator signaling that all elastic buffers
+  -- are stable.
+  , allSettledC :: Bool
+  -- ^ Joint "being-settled" indicator signaling that all elastic
+  -- buffers have been settled.
+  , reframingStateC :: ReframingState
+  -- ^ State of the Reframing detector
   }
   deriving (Generic, NFDataX)
 
@@ -89,5 +113,6 @@ data ControlSt = ControlSt
   deriving (Generic, NFDataX)
 
 deriveSignalHasFields ''CallistoResult
+deriveSignalHasFields ''CallistoCResult
 deriveSignalHasFields ''ControlConfig
 deriveSignalHasFields ''ControlSt

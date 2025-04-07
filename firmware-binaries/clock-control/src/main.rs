@@ -19,7 +19,7 @@ use riscv_rt::entry;
 fn main() -> ! {
     #[allow(clippy::zero_ptr)] // we might want to change the address!
     let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32) };
-    let dbgreg = unsafe { DebugRegister::from_base_addr(0xE000_0000 as *const u32) };
+    let dbgreg = unsafe { DebugRegister::from_base_addr(0xA000_0000 as *const u32) };
 
     let config = ControlConfig {
         target_count: 0,

@@ -26,7 +26,7 @@ type FpgaId = String
 iNTERNAL_SWITCH_DELAY :: (Num a) => a
 iNTERNAL_SWITCH_DELAY = 4
 
--- TODO: find out why this is necessary
+-- TODO: find out why this is necessary (issue #753)
 dELAY_FROM_EB_TO_CROSSBAR :: (Num a) => a
 dELAY_FROM_EB_TO_CROSSBAR = 1
 

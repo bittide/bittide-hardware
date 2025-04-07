@@ -27,7 +27,7 @@ members = [
 
   "clock-control-reg-cpy",
   "clock-control",
-  "clock-control",
+  "management-unit",
   "processing-element-test",
 ]
 resolver = "2"
