@@ -22,7 +22,7 @@ import BitPackC
 import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols
-import Protocols.MemoryMap
+import Protocols.MemoryMap as MM
 import Protocols.MemoryMap.FieldType
 import Protocols.Wishbone
 import VexRiscv
@@ -69,50 +69,41 @@ sim =
  where
   go (uartRx, _) = (pure (), uartTx)
    where
-    (_, _, uartTx) = vexRiscvInner @Basic125 (pure $ unpack 0) uartRx
+    (_, (_, uartTx)) =
+      toSignals (vexRiscvTestC @Basic125) (((), (pure $ unpack 0, uartRx)), (pure (), pure ()))
 
-vexRiscvInner ::
+vexRiscvTestMM :: MM.MemoryMap
+vexRiscvTestMM =
+  getMMAny
+    $ withClockResetEnable clockGen resetGen enableGen
+    $ vexRiscvTestC @Basic125
+
+vexRiscvTestC ::
   forall dom.
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
   , ValidBaud dom Baud
   ) =>
-  Signal dom JtagIn ->
-  Signal dom UartRx ->
-  ( Signal dom (TestDone, TestSuccess)
-  , Signal dom JtagOut
-  , Signal dom UartTx
-  )
-vexRiscvInner jtagIn0 uartRx =
-  ( stateToDoneSuccess <$> status
-  , jtagOut
-  , uartTx
-  )
+  Circuit
+    (ConstBwd MM, (Jtag dom, CSignal dom UartRx))
+    (CSignal dom TestStatus, CSignal dom UartTx)
+vexRiscvTestC = circuit $ \(mm, (jtag, uartRx)) -> do
+  [ (preTime, (mmTime, timeBus))
+    , (preUart, (mmUart, uartBus))
+    , (preStatus, (mmStatus, statusRegisterBus))
+    ] <-
+    processingElement NoDumpVcd peConfig -< (mm, jtag)
+
+  constBwd 0b110 -< preUart
+  (uartTx, _uartStatus) <-
+    uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
+  constBwd 0b101 -< preTime
+  _localCounter <- timeWb -< (mmTime, timeBus)
+
+  constBwd 0b111 -< preStatus
+  testResult <- statusRegister -< (mmStatus, statusRegisterBus)
+  idC -< (testResult, uartTx)
  where
-  stateToDoneSuccess Running = (False, False)
-  stateToDoneSuccess Success = (True, True)
-  stateToDoneSuccess Fail = (True, False)
-
-  ((_, (_, jtagOut)), (status, uartTx)) =
-    circuitFn (((), (uartRx, jtagIn0)), (pure (), pure ()))
-
-  Circuit circuitFn = circuit $ \(mm, (uartRx, jtag)) -> do
-    [ (preTime, (mmTime, timeBus))
-      , (preUart, (mmUart, uartBus))
-      , (preStatus, (mmStatus, statusRegisterBus))
-      ] <-
-      processingElement NoDumpVcd peConfig -< (mm, jtag)
-
-    constBwd 0b110 -< preUart
-    (uartTx, _uartStatus) <-
-      uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
-    constBwd 0b101 -< preTime
-    _localCounter <- timeWb -< (mmTime, timeBus)
-
-    constBwd 0b111 -< preStatus
-    testResult <- statusRegister -< (mmStatus, statusRegisterBus)
-    idC -< (testResult, uartTx)
-
   statusRegister ::
     Circuit (ConstBwd MM, Wishbone dom 'Standard 27 (Bytes 4)) (CSignal dom TestStatus)
   statusRegister = withMemoryMap mm $ Circuit $ \(fwd, _) ->
@@ -224,10 +215,17 @@ vexRiscvTest ::
         )
 vexRiscvTest diffClk jtagIn uartRx = (testDone, testSuccess, jtagOut, uartTx)
  where
+  -- stateToDoneSuccess Running = (False, False)
+  -- stateToDoneSuccess Success = (True, True)
+  -- stateToDoneSuccess Fail = (True, False)
+
   (clk, clkStableRst) = clockWizardDifferential diffClk noReset
 
-  (_, jtagOut, uartTx) =
-    withClockResetEnable clk reset enableGen (vexRiscvInner @Basic125 jtagIn uartRx)
+  ((_mm, (jtagOut, _)), (_testStatus, uartTx)) =
+    withClockResetEnable clk reset enableGen
+      $ toSignals
+        (vexRiscvTestC @Basic125)
+        (((), (jtagIn, uartRx)), (pure (), pure ()))
 
   reset = orReset clkStableRst (unsafeFromActiveLow testStarted)
 
