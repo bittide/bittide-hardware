@@ -84,6 +84,7 @@ common common-options
     Glob,
     MissingH,
     aeson,
+    aeson-pretty,
     async,
     base,
     base16-bytestring,
@@ -165,6 +166,7 @@ library
     Bittide.Instances.Hitl.Utils.Program
     Bittide.Instances.Hitl.Utils.Vivado
     Bittide.Instances.Hitl.VexRiscv
+    Bittide.Instances.MemoryMaps
     Bittide.Instances.Pnr.Calendar
     Bittide.Instances.Pnr.Counter
     Bittide.Instances.Pnr.DeviceWithMemMap

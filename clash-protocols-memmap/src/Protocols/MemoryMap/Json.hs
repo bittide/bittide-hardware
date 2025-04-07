@@ -115,16 +115,9 @@ generateTypeDef ft = case ft of
   FT.FloatDoubleType -> "double"
   FT.BitVectorFieldType n -> toJSON ["bitvector", toJSON n]
   FT.SignedFieldType n -> toJSON ["signed", toJSON n]
-  FT.SumOfProductFieldType tyName def' ->
+  FT.SumOfProductFieldType _tyName def' ->
     object
-      [ "name" .= FT.name tyName
-      , "meta"
-          .= object
-            [ "module" .= FT.moduleName tyName
-            , "package" .= FT.packageName tyName
-            , "is_newtype" .= FT.isNewType tyName
-            ]
-      , "variants" .= (genVariant <$> def')
+      [ "variants" .= (genVariant <$> def')
       ]
    where
     genVariant :: FT.Named [FT.Named FT.FieldType] -> Value

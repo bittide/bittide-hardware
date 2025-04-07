@@ -37,6 +37,7 @@ import Bittide.SharedTypes
 import Bittide.Wishbone
 import Clash.Cores.UART.Extra
 
+import GHC.Stack (HasCallStack)
 import Project.FilePath (
   CargoBuildType (Release),
   findParentContaining,
@@ -81,6 +82,7 @@ vexRiscvTestMM =
 vexRiscvTestC ::
   forall dom.
   ( HiddenClockResetEnable dom
+  , HasCallStack
   , 1 <= DomainPeriod dom
   , ValidBaud dom Baud
   ) =>
