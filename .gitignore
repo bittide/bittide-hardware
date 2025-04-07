@@ -75,7 +75,11 @@ tight_setup_hold_pins.txt
 .github/docker/rust-toolchain.toml
 .github/docker/*.nix
 .github/docker/nix
+.github/docker/flake.lock
 
 # Python temporary files
 *.pyc
 __pycache__
+
+# DirEnv nix pointers
+.direnv

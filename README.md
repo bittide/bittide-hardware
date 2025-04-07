@@ -15,7 +15,7 @@ to manage this. To get a development shell [install nix](https://nixos.org/downl
 and run the following command in the root of this repository:
 
 ```
-nix-shell
+nix develop
 ```
 
 The started shell contains everything needed to develop Bittide components.

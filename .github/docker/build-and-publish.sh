@@ -13,8 +13,8 @@ TODAY="$(date +%F)"
 
 cd "${HERE}"
 
-cp "${ROOT}/default.nix" .
-cp "${ROOT}/shell.nix" .
+cp "${ROOT}/flake.nix" .
+cp "${ROOT}/flake.lock" .
 cp "${ROOT}/rust-toolchain.toml" .
 cp -ap "${ROOT}/nix" .
 

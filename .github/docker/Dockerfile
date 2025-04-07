@@ -30,12 +30,12 @@ ENV \
 
 WORKDIR /build
 COPY rust-toolchain.toml rust-toolchain.toml
-COPY default.nix default.nix
-COPY shell.nix shell.nix
+COPY flake.nix flake.nix
+COPY flake.lock flake.lock
 COPY nix /build/nix
 
 RUN \
-  nix-shell -j32 --run "echo OK"
+  nix develop --extra-experimental-features "nix-command flakes" --command bash -c "echo OK"
 
 # Vivado hacks / dependencies:
 RUN \
@@ -45,14 +45,10 @@ RUN \
   update-locale && \
   apt-get install libtinfo5 libncurses5 libx11-6 -y
 
-# Convenience wrapper for CI
-RUN \
-  echo '#!/usr/bin/env bash'                                                                 >> /usr/bin/git-nix-shell && \
-  echo 'nix-shell "${GITHUB_WORKSPACE}/shell.nix" "${@:2}" --run "bash -euf -o pipefail $1"' >> /usr/bin/git-nix-shell && \
-  chmod +x /usr/bin/git-nix-shell
-
 # For HITL purposes we need to run as a normal user. 1001 is the user with plugdev
 # access on the runner.
 RUN \
   addgroup --gid 1001 bittide && \
   adduser --uid 1001 bittide --ingroup bittide
+
+COPY git-nix-shell /usr/bin/git-nix-shell

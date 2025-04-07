@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2025 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+# cd "${GITHUB_WORKSPACE}"
+
+KEEPS=""
+
+for arg in "${@:2}"; do
+  if [[ "$arg" == "-i" || "$arg" == "--ignore-environment" ]]; then
+    KEEPS="\
+      --keep GITHUB_SHA \
+      --keep HOME \
+      --keep S3_PASSWORD \
+      --keep GITHUB_OUTPUT"
+    break
+  fi
+done
+
+nix develop \
+  --extra-experimental-features "nix-command flakes" \
+  --option connect-timeout 360 \
+  ${KEEPS} \
+  "${@:2}" --command bash -euf -o pipefail $1

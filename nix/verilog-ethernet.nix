@@ -1,4 +1,4 @@
-{ pkgs ? import ./nixpkgs.nix {} }:
+{ pkgs }:
 
 pkgs.stdenv.mkDerivation rec {
   name = "verilog-ethernet";

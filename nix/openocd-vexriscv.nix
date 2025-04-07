@@ -1,4 +1,4 @@
-{ pkgs ? import ./nixpkgs.nix {} }:
+{ pkgs }:
 
 pkgs.stdenv.mkDerivation rec {
   name = "openocd-vexriscv";
@@ -16,8 +16,9 @@ pkgs.stdenv.mkDerivation rec {
     pkgs.which
   ];
 
-  src = pkgs.fetchgit {
-    url = "https://github.com/SpinalHDL/openocd_riscv.git";
+  src = pkgs.fetchFromGitHub {
+    owner = "SpinalHDL";
+    repo = "openocd_riscv";
     rev = "058dfa50d625893bee9fecf8d604141911fac125";
     sha256 = "sha256-UuX4Zfr9DiJx60nvBAv+9xCbWXExrk5KNSC5V5e4rsw=";
     fetchSubmodules = true;
@@ -29,10 +30,12 @@ pkgs.stdenv.mkDerivation rec {
   };
 
   installPhase = ''
+    runHook preInstall
     SKIP_SUBMODULE=1 ./bootstrap
     ./configure --enable-ftdi --enable-dummy --prefix=$out
     make -j $(nproc)
     make install
     mv $out/bin/openocd $out/bin/openocd-vexriscv
+    runHook postInstall
   '';
 }
