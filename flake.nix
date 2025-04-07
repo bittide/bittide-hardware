@@ -36,6 +36,7 @@
             pkgs.dtc
             pkgs.gcc
 
+            pkgs.haskell-language-server
             pkgs.ghc
             pkgs.pkg-config
             pkgs.python311Full
