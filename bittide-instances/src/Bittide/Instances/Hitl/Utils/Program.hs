@@ -101,25 +101,31 @@ startOpenOcdWithEnv ::
   -- | Telnet port
   Int ->
   IO (ProcessStdIoHandles, ProcessHandle, IO ())
-startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort = do
+startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort =
+  startOpenOcdWithEnvAndArgs
+    ["-f", "ports.tcl", "-f", "sipeed.tcl", "-f", "vexriscv_init.tcl"]
+    ( [ ("USB_DEVICE", usbLoc)
+      , ("GDB_PORT", show gdbPort)
+      , ("TCL_PORT", show tclPort)
+      , ("TELNET_PORT", show telnetPort)
+      ]
+        <> extraEnv
+    )
+
+startOpenOcdWithEnvAndArgs ::
+  [String] ->
+  [(String, String)] ->
+  IO (ProcessStdIoHandles, ProcessHandle, IO ())
+startOpenOcdWithEnvAndArgs args extraEnv = do
   startOpenOcdPath <- getOpenOcdStartPath
   currentEnv <- getEnvironment
   let
     openOcdProc =
-      (proc startOpenOcdPath [])
+      (proc startOpenOcdPath args)
         { std_in = CreatePipe
         , std_out = CreatePipe
         , std_err = CreatePipe
-        , env =
-            Just
-              ( currentEnv
-                  <> extraEnv
-                  <> [ ("USB_DEVICE", usbLoc)
-                     , ("GDB_PORT", show gdbPort)
-                     , ("TCL_PORT", show tclPort)
-                     , ("TELNET_PORT", show telnetPort)
-                     ]
-              )
+        , env = Just (currentEnv <> extraEnv)
         }
 
   ocdHandles@(openOcdStdin, openOcdStdout, openOcdStderr, openOcdPh) <-
