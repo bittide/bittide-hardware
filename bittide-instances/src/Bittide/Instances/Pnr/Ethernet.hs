@@ -181,6 +181,7 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
         , prefixD = 0b0001
         , iBusTimeout = d0
         , dBusTimeout = d0
+        , includeIlaWb = False
         }
 
   peConfigRtl =
@@ -191,6 +192,7 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
       , prefixD = 0b0001
       , iBusTimeout = d0
       , dBusTimeout = d0
+      , includeIlaWb = True
       }
 
 type IMemWords = DivRU (256 * 1024) 4

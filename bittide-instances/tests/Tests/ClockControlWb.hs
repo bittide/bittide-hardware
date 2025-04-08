@@ -175,6 +175,7 @@ dut =
         , prefixD = 0b010
         , iBusTimeout = d0
         , dBusTimeout = d0
+        , includeIlaWb = False
         }
 {-# NOINLINE dut #-}
 

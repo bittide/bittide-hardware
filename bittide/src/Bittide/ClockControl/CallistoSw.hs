@@ -144,4 +144,5 @@ callistoSwClockControl (SwControlConfig jtagIn reframe mgn fsz) mask ebs =
       , prefixD = 0b010
       , iBusTimeout = d0 -- No timeouts on the instruction bus
       , dBusTimeout = d0 -- No timeouts on the data bus
+      , includeIlaWb = True
       }

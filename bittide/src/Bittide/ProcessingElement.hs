@@ -50,6 +50,10 @@ data PeConfig nBusses where
     , dBusTimeout :: SNat dBusTimeout
     -- ^ Number of clock cycles after which the a transaction on the data bus times out.
     -- Set to 0 to disable timeouts on the data bus.
+    , includeIlaWb :: Bool
+    -- ^ Indicates whether or not to include the Wishbone ILA component probes. Should be set
+    -- to 'False' if this CPU is not in an always-on domain. Additionally, only one CPU in any
+    -- given system should have this set to 'True' in order to avoid probe name conflicts.
     } ->
     PeConfig nBusses
 
@@ -69,14 +73,27 @@ processingElement ::
         , (MM.ConstBwd MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4))
         )
     )
-processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, dBusTimeout} = circuit $ \(mm, jtagIn) -> do
+processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, dBusTimeout, includeIlaWb} = circuit $ \(mm, jtagIn) -> do
   (iBus0, (mmDbus, dBus0)) <-
     rvCircuit dumpVcd (pure low) (pure low) (pure low) -< (mm, jtagIn)
   iBus1 <-
-    ilaWb (SSymbol @"instructionBus") 2 D4096 onTransactionWb onTransactionWb -< iBus0
+    maybeIlaWb
+      includeIlaWb
+      (SSymbol @"instructionBus")
+      2
+      D4096
+      onTransactionWb
+      onTransactionWb
+      -< iBus0
   dBus1 <-
     watchDogWb "dBus" iBusTimeout
-      <| ilaWb (SSymbol @"dataBus") 2 D4096 onTransactionWb onTransactionWb
+      <| maybeIlaWb
+        includeIlaWb
+        (SSymbol @"dataBus")
+        2
+        D4096
+        onTransactionWb
+        onTransactionWb
       -< dBus0
   ([(iPre, (mmI, iMemBus)), (dPre, (mmD, dMemBus))], extBusses) <-
     (splitAtC d2 <| singleMasterInterconnectC) -< (mmDbus, dBus1)
