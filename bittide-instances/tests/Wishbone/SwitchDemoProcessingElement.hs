@@ -46,12 +46,11 @@ simResult = unlines . takeWhileInclusive (/= "Finished") . lines $ uartString
   uartStream =
     sampleC def{timeoutAfter = 200_000}
       $ withClockResetEnable clk reset enable
-      $ dut @System localCounter dnaA dnaB
+      $ dut @System dnaA dnaB
 
   clk = clockGen
   reset = resetGen
   enable = enableGen
-  localCounter = register clk reset enable 0 (localCounter + 1)
   dnaA = pure 0xAAAA_0123_4567_89AB_CDEF_0001
   dnaB = pure 0xBBBB_0123_4567_89AB_CDEF_0001
 
@@ -80,14 +79,12 @@ dut ::
   ( HiddenClockResetEnable dom
   , 1 <= DomainPeriod dom
   ) =>
-  -- | Local clock cycle counter
-  Signal dom (Unsigned 64) ->
   -- | Fake DNA (used to identify the different PEs)
   Signal dom (BitVector 96) ->
   -- | Fake DNA (used to identify the different PEs)
   Signal dom (BitVector 96) ->
   Circuit () (Df dom (BitVector 8))
-dut localCounter dnaA dnaB = circuit $ do
+dut dnaA dnaB = circuit $ do
   (uartRx, jtagIdle, mm) <- idleSource -< ()
   [ (prefixUart, (mmUart, uartBus))
     , (prefixTime, (mmTime, timeBus))
@@ -98,14 +95,14 @@ dut localCounter dnaA dnaB = circuit $ do
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
   constBwd 0b010 -< prefixUart
 
-  _localCounter <- timeWb -< (mmTime, timeBus)
+  Fwd localCounter <- timeWb -< (mmTime, timeBus)
   constBwd 0b011 -< prefixTime
 
-  linkAB <- switchDemoPeWb d2 localCounter -< (mmA, (peBusA, dnaAC, linkBA))
+  linkAB <- switchDemoPeWb d2 -< (mmA, (Fwd localCounter, peBusA, dnaAC, linkBA))
   constBwd 0b100 -< prefixA
   constBwd 0b101 -< prefixB
 
-  linkBA <- switchDemoPeWb d2 localCounter -< (mmB, (peBusB, dnaBC, linkAB))
+  linkBA <- switchDemoPeWb d2 -< (mmB, (Fwd localCounter, peBusB, dnaBC, linkAB))
   dnaAC <- signalToCSignal dnaA -< ()
   dnaBC <- signalToCSignal dnaB -< ()
   idC -< uartTx

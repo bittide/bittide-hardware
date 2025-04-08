@@ -162,21 +162,22 @@ switchDemoPeWb ::
   ) =>
   SNat bufferSize ->
   -- | Local clock cycle counter
-  Signal dom (Unsigned 64) ->
   Circuit
     ( ConstBwd MM
-    , ( Wishbone dom 'Standard addrW (Bytes 4)
+    , ( CSignal dom (Unsigned 64)
+      , Wishbone dom 'Standard addrW (Bytes 4)
       , -- \| Device DNA
         CSignal dom (BitVector 96)
       , -- \| Incoming crossbar link
         CSignal dom (BitVector 64)
       )
     )
-    -- \| Outgoing crossbar link
-    (CSignal dom (BitVector 64))
-switchDemoPeWb SNat localCounter = withMemoryMap mm $ Circuit go
+    ( -- \| Outgoing crossbar link
+      CSignal dom (BitVector 64)
+    )
+switchDemoPeWb SNat = withMemoryMap mm $ Circuit go
  where
-  go ((wbM2S, dna, linkIn), _) = ((wbS2M, pure (), pure ()), linkOut)
+  go ((localCounter, wbM2S, dna, linkIn), _) = ((pure (), wbS2M, pure (), pure ()), linkOut)
    where
     readVec :: Vec (8 + bufferSize * 3 * 2 + 2) (Signal dom (BitVector 32))
     readVec =
