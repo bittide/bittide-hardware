@@ -26,13 +26,13 @@ import Control.Concurrent (threadDelay)
 import Control.Monad (forM)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import qualified Data.List as L
 import System.Exit
 import System.FilePath
 import System.IO
-import System.Timeout (timeout)
 
+import qualified Bittide.Instances.Hitl.Utils.Driver as D
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
+import qualified Data.List as L
 
 driverFunc ::
   String ->
@@ -91,6 +91,7 @@ driverFunc _name targets = do
 
         let
           -- Create function to log the output of the processes
+          loggingSequence :: IO ()
           loggingSequence = do
             threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
             putStrLn "Picocom stdout"
@@ -100,13 +101,9 @@ driverFunc _name targets = do
             readRemainingChars pico.stderrHandle >>= putStrLn
 
           tryWithTimeout :: String -> Int -> IO a -> IO a
-          tryWithTimeout actionName dur action = do
-            result <- timeout dur action
-            case result of
-              Nothing -> do
-                loggingSequence
-                error $ "Timeout while performing action: " <> actionName
-              Just r -> pure r
+          tryWithTimeout n t io =
+            catch (D.tryWithTimeout n t io)
+              $ \(err :: SomeException) -> loggingSequence >> throwM err
 
         tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
           $ waitForLine pico.stdoutHandle "Terminal ready"

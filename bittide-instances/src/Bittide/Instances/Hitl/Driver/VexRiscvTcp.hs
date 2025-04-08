@@ -13,6 +13,8 @@ import Bittide.Instances.Hitl.Utils.Program
 
 import Control.Concurrent
 import Control.Concurrent.Async
+import Control.Exception (SomeException (..), catch)
+import Control.Monad.Catch (throwM)
 import Control.Monad.IO.Class
 import Data.Time
 import Data.Time.Clock.POSIX
@@ -22,12 +24,12 @@ import System.Directory
 import System.Exit
 import System.FilePath
 import System.IO
-import System.Timeout
 import Test.Tasty.HUnit
 
 import Vivado.Tcl
 import Vivado.VivadoM
 
+import qualified Bittide.Instances.Hitl.Utils.Driver as D
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Data.ByteString.Lazy as BS
 import qualified Network.Simple.TCP as NS
@@ -64,7 +66,7 @@ driverFunc ::
   String ->
   [(HwTarget, DeviceInfo)] ->
   VivadoM ExitCode
-driverFunc _name [(hwT, dI)] = do
+driverFunc _name [d@(_, dI)] = do
   projectDir <- liftIO $ findParentContaining "cabal.project"
 
   let
@@ -77,22 +79,7 @@ driverFunc _name [(hwT, dI)] = do
     gdbOutLog = mkLogPath "gdb-out.log"
     openocdEnv = [("OPENOCD_STDOUT_LOG", ocdOutLog), ("OPENOCD_STDERR_LOG", ocdErrLog)]
 
-    initHwDevice = do
-      openHardwareTarget hwT
-      updateVio "vioHitlt" [("probe_test_start", "1")]
-
-    doWithTimeout :: Int -> IO a -> IO a
-    doWithTimeout time action = do
-      result <- timeout time action
-      case result of
-        Nothing -> error "Action failed with timeout."
-        Just value -> pure value
-
-    startTest = do
-      openHardwareTarget hwT
-      updateVio "vioHitlt" [("probe_test_start", "1")]
-
-  initHwDevice
+  D.assertProbe "probe_test_start" d
 
   withOpenOcdWithEnv openocdEnv dI.usbAdapterLocation 3333 6666 4444 $ \ocd -> do
     liftIO $ do
@@ -107,7 +94,8 @@ driverFunc _name [(hwT, dI)] = do
         hSetBuffering pico.stdinHandle LineBuffering
         hSetBuffering pico.stdinHandle LineBuffering
         putStrLn "Waiting for Picocom to be ready..."
-        doWithTimeout 10_000_000 $ waitForLine pico.stdoutHandle "Terminal ready"
+        D.tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000 $
+          waitForLine pico.stdoutHandle "Terminal ready"
 
       liftIO $ putStrLn "Starting GDB..."
       Gdb.withGdb $ \gdb -> do
@@ -126,7 +114,7 @@ driverFunc _name [(hwT, dI)] = do
             ]
           Gdb.setBreakpointHook gdb
           Gdb.runCommands gdb.stdinHandle ["continue"]
-        startTest
+        D.assertProbe "probe_test_start" d
 
         liftIO $ putStrLn "Starting TCP server"
         liftIO $ withServer $ \(serverSock, _) -> do
@@ -142,13 +130,9 @@ driverFunc _name [(hwT, dI)] = do
               readRemainingChars pico.stderrHandle >>= putStrLn
 
             tryWithTimeout :: String -> Int -> IO a -> IO a
-            tryWithTimeout actionName dur action = do
-              result <- timeout dur action
-              case result of
-                Nothing -> do
-                  loggingSequence
-                  assertFailure $ "Timeout while performing action: " <> actionName
-                Just r -> pure r
+            tryWithTimeout n t io =
+              catch (D.tryWithTimeout n t io) $
+                \(err :: SomeException) -> loggingSequence >> throwM err
 
           putStrLn "Waiting for \"Starting TCP Client\""
 
