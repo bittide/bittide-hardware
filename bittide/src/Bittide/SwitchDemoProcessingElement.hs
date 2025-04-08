@@ -54,9 +54,11 @@ switchDemoPe ::
     Signal dom (BitVector 64)
   , -- \| Buffer output
     Signal dom (Vec (bufferSize * 3) (BitVector 64))
+  , -- \| Current state
+    Signal dom (SimplePeState bufferSize)
   )
 switchDemoPe SNat localCounter linkIn dna readStart readCycles writeStart writeCycles =
-  (linkOut, buffer)
+  (linkOut, buffer, peState)
  where
   readCyclesExtended = checkedResize . zeroExtendTimesThree <$> readCycles
   writeCyclesExtended = zeroExtendTimesThree <$> writeCycles
@@ -67,19 +69,20 @@ switchDemoPe SNat localCounter linkIn dna readStart readCycles writeStart writeC
     dnaVec :: Signal dom (Vec 2 (BitVector 64))
     dnaVec = reverse . bitCoerce . zeroExtend <$> dna
 
-  linkOut = stateToLinkOutput <$> peState <*> buffer <*> localData
+  linkOut = stateToLinkOutput <$> peState <*> buffer <*> localData <*> dna
 
   stateToLinkOutput ::
     SimplePeState bufferSize ->
     Vec (bufferSize * 3) (BitVector 64) ->
     Vec 3 (BitVector 64) ->
+    BitVector 96 ->
     BitVector 64
-  stateToLinkOutput state buf locData =
+  stateToLinkOutput state buf locData dna0 =
     case state of
       Write i
         | i <= 2 -> locData !! i
         | otherwise -> buf !! (i - 3)
-      _ -> 0xAAAA_BBBB_AAAA_BBBB
+      _ -> resize $ complement dna0
 
   -- \| The buffer stores all the incoming bittide data. For the Bittide Switch demo,
   -- each FPGA sends its DNA and local clock cycle counter, along with all received data.
@@ -140,7 +143,7 @@ data SimplePeState bufferSize
   = Idle
   | Read (Index (bufferSize * 3 + 1))
   | Write (Index ((bufferSize + 1) * 3))
-  deriving (Generic, NFDataX, Eq, Show)
+  deriving (Generic, NFDataX, Eq, Show, BitPack)
 
 {- | Wishbone circuit wrapper for `switchDemoPe`.
 
@@ -174,10 +177,12 @@ switchDemoPeWb ::
     )
     ( -- \| Outgoing crossbar link
       CSignal dom (BitVector 64)
+    , -- \| Current state
+      CSignal dom (SimplePeState bufferSize)
     )
 switchDemoPeWb SNat = withMemoryMap mm $ Circuit go
  where
-  go ((localCounter, wbM2S, dna, linkIn), _) = ((pure (), wbS2M, pure (), pure ()), linkOut)
+  go ((localCounter, wbM2S, dna, linkIn), _) = ((pure (), wbS2M, pure (), pure ()), (linkOut, state))
    where
     readVec :: Vec (8 + bufferSize * 3 * 2 + 2) (Signal dom (BitVector 32))
     readVec =
@@ -187,7 +192,7 @@ switchDemoPeWb SNat = withMemoryMap mm $ Circuit go
                 ++ unbundle (bitCoerce . map swapWords <$> buffer)
             )
 
-    (linkOut, buffer) =
+    (linkOut, buffer, state) =
       switchDemoPe
         (SNat @bufferSize)
         localCounter
