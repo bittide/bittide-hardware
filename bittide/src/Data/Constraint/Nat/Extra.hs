@@ -144,3 +144,7 @@ result in a number that is greater than 1.
 -}
 leMult :: forall a b. (1 <= a, 1 <= b) => Dict (1 <= a * b)
 leMult = unsafeCoerce (Dict :: Dict (0 <= 0))
+
+-- | if (n <= 0) then n ~ 0
+nLe0Eq0 :: forall n. (n <= 0) => Dict (n ~ 0)
+nLe0Eq0 = unsafeCoerce (Dict :: Dict (0 ~ 0))
