@@ -472,48 +472,31 @@ switchDemoDut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
   defaultRefClkRstEn :: forall r. ((HiddenClockResetEnable Basic125) => r) -> r
   defaultRefClkRstEn = withClockResetEnable refClk handshakeRstFree enableGen
 
-  circuitFn ::
-    ( ( Signal Basic125 JtagIn
-      , Signal GthTx (BitVector 64)
-      , Signal Basic125 Bool
-      , Signal Basic125 (BitVector LinkCount)
-      , Vec LinkCount (Signal Basic125 (RelDataCount CccBufferSize))
-      , Vec LinkCount (Signal GthTx (Maybe (BitVector 64)))
+  _circuitFnC ::
+    Circuit
+      ( Jtag Basic125
+      , CSignal GthTx (BitVector 64)
+      , CSignal Basic125 Bool
+      , CSignal Basic125 (BitVector LinkCount)
+      , Vec LinkCount (CSignal Basic125 (RelDataCount CccBufferSize))
+      , Vec LinkCount (CSignal GthTx (Maybe (BitVector 64)))
       )
-    , ( Signal Basic125 ()
-      , Vec LinkCount (Signal GthTx ())
-      , Signal GthTx ()
-      , Signal GthTx ()
-      , Signal GthTx ()
-      , Signal GthTx ()
-      , Signal GthTx ()
+      ( CSignal Basic125 (CallistoCResult LinkCount)
+      , Vec LinkCount (CSignal GthTx (BitVector 64))
+      , CSignal GthTx (Unsigned 64)
+      , CSignal GthTx (SimplePeState FpgaCount)
+      , CSignal GthTx (BitVector 64)
+      , CSignal GthTx (BitVector 64)
+      , CSignal GthTx (Vec (LinkCount + 1) (Index (LinkCount + 2)))
       )
-    ) ->
-    ( ( Signal Basic125 JtagOut
-      , Signal GthTx ()
-      , Signal Basic125 ()
-      , Signal Basic125 ()
-      , Vec LinkCount (Signal Basic125 ())
-      , Vec LinkCount (Signal GthTx ())
-      )
-    , ( Signal Basic125 (CallistoCResult LinkCount)
-      , Vec LinkCount (Signal GthTx (BitVector 64))
-      , Signal GthTx (Unsigned 64)
-      , Signal GthTx (SimplePeState FpgaCount)
-      , Signal GthTx (BitVector 64)
-      , Signal GthTx (BitVector 64)
-      , Signal GthTx (Vec (LinkCount + 1) (Index (LinkCount + 2)))
-      )
-    )
-  Circuit circuitFn = circuit $ \(jtag, linkIn, reframe, mask, dc, rxs) -> do
+  _circuitFnC@(Circuit circuitFn) = circuit $ \(jtag, linkIn, reframe, mask, dc, rxs) -> do
     [muJtagFree, ccJtag] <- jtagChain -< jtag
     muJtagTx <- unsafeJtagSynchronizer refClk bittideClk -< muJtagFree
 
     (muMM, ccMM) <- idleSource -< ()
 
-    (lc, muWbAll) <-
+    (Fwd lc, muWbAll) <-
       defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMM, (muJtagTx, linkIn))
-    [Fwd lc0, lc1] <- replicateCSignalI -< lc
     ( [ (muWhoAmIPfx, (muWhoAmIMM, muWhoAmI))
         , (peWbPfx, (peWbMM, peWb))
         , (switchWbPfx, (switchWbMM, switchWb))
@@ -538,21 +521,18 @@ switchDemoDut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
     MM.constBwd 0b0110 -< ugn5Pfx
     MM.constBwd 0b0111 -< ugn6Pfx
 
-    tmp0 <- replicateCSignalI -< Fwd lc0
-    tmp1 <- zipC3 -< (tmp0, ugnWbs, rxs)
-    tmp2 <- zipC -< (ugnMMs, tmp1)
-    ugnRxs <- defaultBittideClkRstEn $ mapCircuit captureUgn -< tmp2
+    capUgnInputNoMM <- zipC3 -< (Fwd (repeat lc), ugnWbs, rxs)
+    ugnRxs <-
+      defaultBittideClkRstEn $ mapCircuit captureUgn <| zipC -< (ugnMMs, capUgnInputNoMM)
 
-    tmp3 <- appendC -< ([peOut0], ugnRxs)
+    rxLinks <- appendC -< ([Fwd peOut], ugnRxs)
     (switchOut, ce) <-
-      defaultBittideClkRstEn $ switchC calendarConfig -< (switchWbMM, (tmp3, switchWb))
-    ([peIn], txs) <- splitAtC SNat -< switchOut
-    [peIn0, peIn1] <- replicateCSignalI -< peIn
+      defaultBittideClkRstEn $ switchC calendarConfig -< (switchWbMM, (rxLinks, switchWb))
+    ([Fwd peIn], txs) <- splitAtC SNat -< switchOut
 
-    (peOut, ps) <-
+    (Fwd peOut, ps) <-
       defaultBittideClkRstEn (switchDemoPeWb (SNat @FpgaCount))
-        -< (peWbMM, (Fwd lc0, peWb, dna, peIn0))
-    [peOut0, peOut1] <- replicateCSignalI -< peOut
+        -< (peWbMM, (Fwd lc, peWb, dna, Fwd peIn))
 
     dna <- defaultBittideClkRstEn (readDnaPortE2Wb simDna2) -< (dnaWbMM, dnaWb)
 
@@ -566,7 +546,7 @@ switchDemoDut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
 
     defaultRefClkRstEn (whoAmIC 0x6363_7773) -< (ccWhoAmIMM, ccWhoAmI)
 
-    idC -< (swCcOut, txs, lc1, ps, peIn1, peOut1, ce)
+    idC -< (swCcOut, txs, Fwd lc, ps, Fwd peIn, Fwd peOut, ce)
 
   ( (jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _diffsBwd, _insBwd)
     , (callistoResult, switchDataOut, localCounter, peState, peInput, peOutput, calEntry)
