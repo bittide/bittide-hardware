@@ -25,13 +25,7 @@ sleeve:
 This test will succeed if all clocks have been stable for 5 seconds. Note:
 this doesn't test reframing yet.
 -}
-module Bittide.Instances.Hitl.SwCcTopologies (
-  swCcTopologyTest,
-  swCcOneTopologyTest,
-  tests,
-  partsPerToSteps,
-  acceptableNoiseLevel,
-) where
+module Bittide.Instances.Hitl.SwCcTopologies where
 
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import qualified Clash.Explicit.Prelude as E

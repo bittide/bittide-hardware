@@ -43,6 +43,11 @@
   "rust-analyzer.check.allTargets": false,
   "cSpell.words": [
     "bitstream",
+    "bittide",
+    "deassert",
+    "dflipflop",
+    "jtag",
+    "Underflows",
     "Vivado"
   ]
 }

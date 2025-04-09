@@ -44,7 +44,7 @@ fn main() -> ! {
     #[allow(clippy::zero_ptr)] // we might want to change the address!
     let mut uart = unsafe { Uart::new(0x2000_0000 as *const ()) };
     let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32) };
-    let dbg = unsafe { DebugRegister::from_base_addr(0xE000_0000 as *const u32) };
+    let dbg = unsafe { DebugRegister::from_base_addr(0xA000_0000 as *const u32) };
 
     writeln!(uart, "nLinks: {}", cc.num_links()).unwrap();
     writeln!(uart, "linkMask: {}", cc.link_mask()).unwrap();
