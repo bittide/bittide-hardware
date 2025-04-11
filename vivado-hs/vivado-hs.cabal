@@ -94,3 +94,20 @@ test-suite unittests
 
   hs-source-dirs: tests
   default-language: GHC2021
+
+test-suite doctests
+  type: exitcode-stdio-1.0
+  default-language: Haskell2010
+  main-is: doctests.hs
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
+  hs-source-dirs: tests
+  build-depends:
+    base,
+    doctest-parallel >=0.3.0.1 && <0.4,
+    filepath,
+    vivado-hs,
+    word8,
