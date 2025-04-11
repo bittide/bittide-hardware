@@ -44,6 +44,7 @@
             pkgs.python311Packages.scipy
             pkgs.python311Packages.GitPython
             pkgs.python311Packages.pyaml
+            pkgs.libz
             pkgs.sbt
             pkgs.scala
             pkgs.verilator
