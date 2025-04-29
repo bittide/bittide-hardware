@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -37,7 +37,7 @@
             pkgs.gcc
 
             pkgs.haskell-language-server
-            pkgs.ghc
+            pkgs.haskell.compiler.ghc965
             pkgs.pkg-config
             pkgs.python311Full
             pkgs.python311Packages.matplotlib
