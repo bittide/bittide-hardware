@@ -216,17 +216,53 @@ jobs:
           path: plot-sources
           retention-days: 14
 
-  bittide-experiments-tests:
-    name: bittide-experiments unittests
+  haskell-tests:
+    name: HT # Short name because the GitHub UI truncates "long" names..
     runs-on: [self-hosted, compute]
     defaults:
       run:
-        shell: git-nix-shell {0} --ignore-environment
+        shell: git-nix-shell {0} ${{ matrix.shell_args }}
     needs: [build]
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-07
       options: --memory=11g
+      volumes:
+        - /opt/tools:/opt/tools
+
+    strategy:
+      matrix:
+        test_suite:
+          - unittests
+          - doctests
+
+        package:
+          - bittide-extra
+          - bittide
+          - bittide-experiments
+          - bittide-instances
+
+        shell_args:
+          - --ignore-environment
+
+        with_vivado:
+          - false
+
+        # No tests:
+        # - bittide-shake
+        # - bittide-tools
+
+        # `vivado-hs` unit tests need to run with Vivado
+        include:
+          - package: vivado-hs
+            test_suite: doctests
+            shell_args: --ignore-environment
+
+          - package: vivado-hs
+            test_suite: unittests
+            with_vivado: true
+
+      fail-fast: false
 
     steps:
       - name: Checkout
@@ -239,56 +275,18 @@ jobs:
       - run: cache pull cabal
       - run: cache pull build
 
-      - name: Run unittests
+      - name: Run ${{ matrix.test_suite }} (with Vivado)
+        if: ${{ matrix.with_vivado }}
         run: |
-          cabal run bittide-experiments:unittests
+          # We need to run with '-j2', because Vivado takes up a lot of memory
+          .github/scripts/with_vivado.sh \
+            cabal run ${{ matrix.package }}:${{ matrix.test_suite }} -- -j2
 
-      - name: Run doctests
+      - name: Run ${{ matrix.test_suite }}
+        if: ${{ ! matrix.with_vivado }}
         run: |
-          cabal run -- bittide-experiments:doctests
+          cabal run ${{ matrix.package }}:${{ matrix.test_suite }}
 
-  bittide-tests:
-    name: Bittide tests
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --ignore-environment
-    needs: [build]
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-07
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          .github/scripts/set_ci_flags.sh
-
-      - run: cache pull cabal
-      - run: cache pull build
-
-      - name: Unittests
-        run: |
-          # While Hedgehog can fill many cores with "work", it doesn't actually
-          # speed up the tests that much (<5% runtime benefits).
-          cabal run -- bittide:unittests -j 2 +RTS -N4
-
-      - name: Bittide Doctests
-        run: |
-          cabal run -- bittide:doctests
-
-      - name: Bittide.Extra Doctests
-        run: |
-          cabal run -- bittide-extra:doctests
-
-      - name: Bittide.Extra Unittests
-        run: |
-          # While Hedgehog can fill many cores with "work", it doesn't actually
-          # speed up the tests that much (<5% runtime benefits).
-          cabal run -- bittide-extra:unittests -j 2 +RTS -N4
 
   rust-lints:
     name: Rust Lints
@@ -373,60 +371,6 @@ jobs:
             hello \
             processing-element-test
         working-directory: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/
-
-  bittide-instances-doctests:
-    name: bittide-instances doctests
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --ignore-environment
-    needs: [build]
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-07
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          .github/scripts/set_ci_flags.sh
-
-      - run: cache pull cabal
-      - run: cache pull build
-
-      - name: Doctests
-        run : |
-          cabal run -- bittide-instances:doctests
-
-  bittide-instances-unittests:
-    name: bittide-instances unittests
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --ignore-environment
-    needs: [build]
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-04-07
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set CI flags
-        run: |
-          .github/scripts/set_ci_flags.sh
-
-      - run: cache pull cabal
-      - run: cache pull build
-
-      - name: Unit tests
-        run : |
-          cabal run -- bittide-instances:unittests
 
   bittide-instances-hdl-matrix:
     name: bittide-instances synthesis matrix generation
@@ -685,18 +629,15 @@ jobs:
     name: All jobs finished
     if: ${{ !cancelled() }}
     needs: [
-        bittide-instances-doctests,
         bittide-instances-hardware-in-the-loop-test-matrix,
         bittide-instances-hardware-in-the-loop,
         bittide-instances-hdl-matrix,
         bittide-instances-hdl,
-        bittide-instances-unittests,
-        bittide-tests,
         build,
-        bittide-experiments-tests,
         firmware-limit-checks,
         firmware-support-tests,
         generate-full-clock-control-report,
+        haskell-tests,
         license-check,
         lint,
         rust-lints,
