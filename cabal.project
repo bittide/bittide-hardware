@@ -156,7 +156,11 @@ source-repository-package
     clash-ghc
     clash-lib
     clash-prelude-hedgehog
-    clash-cores
+
+source-repository-package
+  type: git
+  location: https://github.com/clash-lang/clash-cores.git
+  tag: 25b83a8bc91ebc05c15142f821f8c4de3fb65fdb
 
 source-repository-package
   type: git

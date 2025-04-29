@@ -10,7 +10,7 @@ FINC and FDEC pins.
 module Bittide.Instances.Hitl.FincFdec where
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx.Extra (ibufds)
+import Clash.Cores.Xilinx.Ibufds (ibufdsClock)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
@@ -192,7 +192,7 @@ fincFdecTests ::
 fincFdecTests diffClk controlledDiffClock spiIn =
   ((testDone, testSuccess), fIncDec, spiOut)
  where
-  clkControlled = ibufds controlledDiffClock
+  clkControlled = ibufdsClock controlledDiffClock
 
   (clk, clkStableRst) = clockWizardDifferential diffClk noReset
 
