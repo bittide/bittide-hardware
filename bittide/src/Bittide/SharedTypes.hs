@@ -16,7 +16,7 @@ module Bittide.SharedTypes where
 import Clash.Prelude
 
 import Data.Constraint
-import Data.Constraint.Nat.Extra
+import Data.Constraint.Nat.Lemmas
 import Data.Type.Equality ((:~:) (Refl))
 import Protocols.Wishbone
 

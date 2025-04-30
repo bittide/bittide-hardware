@@ -10,6 +10,7 @@ packages:
   bittide/
   clash-protocols-memmap/
   clash-vexriscv/clash-vexriscv/
+  ghc-typelits-extra-lemmas/
   vivado-hs/
 
 write-ghc-environment-files: always
@@ -118,6 +119,15 @@ package clash-vexriscv
     -j8
 
 package clash-vexriscv-sim
+  ghc-options:
+    +RTS
+    -xp
+    -qn8
+    -A64M
+    -RTS
+    -j8
+
+package ghc-typelits-extra-lemmas
   ghc-options:
     +RTS
     -xp

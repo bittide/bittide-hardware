@@ -30,6 +30,7 @@ module Bittide.Calendar (
 import Clash.Prelude
 
 import Data.Constraint.Nat.Extra
+import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import Protocols.Wishbone
 

@@ -16,7 +16,6 @@ import qualified Tests.Calendar
 import qualified Tests.ClockControl.Si539xSpi
 import qualified Tests.DoubleBufferedRam
 import qualified Tests.ElasticBuffer
-import qualified Tests.Haxioms
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ScatterGather
 import qualified Tests.StabilityChecker
@@ -49,7 +48,6 @@ tests =
     , Tests.Wishbone.tests
     , Tests.Axi4.Generators.tests
     , Tests.Axi4.Properties.tests
-    , Tests.Haxioms.tests
     ]
 
 {- | Default number of tests is 100, which is too low for our (complicated)

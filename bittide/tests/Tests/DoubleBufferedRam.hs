@@ -18,6 +18,7 @@ import Clash.Hedgehog.Sized.Index
 import Clash.Hedgehog.Sized.Unsigned
 import Clash.Hedgehog.Sized.Vector
 import Data.Constraint.Nat.Extra
+import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import Data.Proxy
 import Data.String

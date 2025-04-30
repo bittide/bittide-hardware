@@ -10,7 +10,8 @@ import Clash.Explicit.Prelude
 import Protocols
 
 import Clash.Functor.Extra ((<<$>>))
-import Data.Constraint.Nat.Extra (Dict (..), nLe0Eq0)
+import Data.Constraint.Nat.Extra (Dict (..))
+import Data.Constraint.Nat.Lemmas (nLe0Eq0)
 import VexRiscv (Jtag, JtagIn (..), JtagOut (..))
 
 {- | Form a chain of JTAG devices. The first device in the chain is the one with

@@ -110,6 +110,7 @@ library
     exceptions,
     extra,
     filepath,
+    ghc-typelits-extra-lemmas,
     infinite-list,
     mtl,
     pretty-show,
@@ -218,7 +219,6 @@ test-suite unittests
     Tests.Counter
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer
-    Tests.Haxioms
     Tests.ProcessingElement.ReadElf
     Tests.ScatterGather
     Tests.Shared
@@ -247,6 +247,7 @@ test-suite unittests
     containers,
     elf,
     extra,
+    ghc-typelits-extra-lemmas,
     hedgehog >=1.0 && <1.5,
     lifted-async,
     tasty >=1.5 && <1.7,

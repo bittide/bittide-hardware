@@ -72,13 +72,8 @@ import Clash.Explicit.Reset.Extra
 import Clash.Signal (HiddenClockResetEnable, withClockResetEnable)
 import Control.Arrow (second, (***))
 import Data.Bool (bool)
-import Data.Constraint.Nat.Extra (
-  Dict (..),
-  SatSubZero,
-  maxGeqPlus,
-  minLeq,
-  satSubZeroMin,
- )
+import Data.Constraint.Nat.Extra (Dict (..), SatSubZero, satSubZeroMin)
+import Data.Constraint.Nat.Lemmas (maxGeqPlus, minLeq)
 import Data.Maybe (fromMaybe, isJust)
 
 {- | Divisible division operation, which ensures that the dividend is

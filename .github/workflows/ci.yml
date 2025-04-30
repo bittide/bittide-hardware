@@ -241,6 +241,7 @@ jobs:
           - bittide
           - bittide-experiments
           - bittide-instances
+          - ghc-typelits-extra-lemmas
 
         shell_args:
           - --ignore-environment

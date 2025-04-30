@@ -45,7 +45,7 @@ import Bittide.SharedTypes
 import Clash.Cores.Xilinx.Ila hiding (Data)
 import Clash.Sized.Internal.BitVector (popCountBV)
 import Data.Constraint
-import Data.Constraint.Nat.Extra
+import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import Data.Proxy
 import Protocols
