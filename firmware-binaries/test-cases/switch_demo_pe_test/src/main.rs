@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #![no_std]
 #![cfg_attr(not(test), no_main)]
+#![feature(sync_unsafe_cell)]
 
 use bittide_sys::dna_port_e2::dna_to_u128;
 use bittide_sys::switch_demo_pe::SwitchDemoProcessingElement;
@@ -39,10 +40,11 @@ fn main() -> ! {
         unsafe { SwitchDemoProcessingElement::new(SWITCH_PE_B) };
 
     unsafe {
-        LOGGER.set_logger(uart.clone());
-        LOGGER.set_clock(clock.clone());
-        LOGGER.display_source = LevelFilter::Info;
-        log::set_logger_racy(&LOGGER).ok();
+        let logger = &mut (*LOGGER.get());
+        logger.set_logger(uart.clone());
+        logger.set_clock(clock.clone());
+        logger.display_source = LevelFilter::Info;
+        log::set_logger_racy(logger).ok();
         // The 'max_level' is actually the current debug level. Note that the
         // unittest uses a release build, which has 'max_level_info', which sets
         // the actual maximum level.

@@ -140,7 +140,7 @@ setBreakpointHook gdb = do
   runCommands
     gdb.stdinHandle
     [ "define hook-stop"
-    , "printf '!!! program stopped executing !!!\\n'"
+    , "printf \"!!! program stopped executing !!!\\n\""
     , "i r"
     , "bt"
     , "quit 1"

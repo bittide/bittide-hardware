@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![no_std]
+#![feature(sync_unsafe_cell)]
 
 pub mod axi;
 pub mod callisto;
