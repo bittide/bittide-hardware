@@ -25,6 +25,12 @@ package bittide-tools
 package ghc-typelits-extra-proofs
   ghc-options: -Werror
 
+package clash-protocols-memmap
+  ghc-options: -Werror
+
+package vivado-hs
+  ghc-options: -Werror
+
 -- TODO: Fix upstream
 -- package clash-vexriscv
 --   ghc-options: -Werror
