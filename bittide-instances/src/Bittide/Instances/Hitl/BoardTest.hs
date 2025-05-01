@@ -11,7 +11,7 @@ module Bittide.Instances.Hitl.BoardTest where
 import Clash.Explicit.Prelude
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Cores.Xilinx.Extra (ibufds)
+import Clash.Cores.Xilinx.Ibufds (ibufdsClock)
 import Clash.Cores.Xilinx.Ila
 
 import System.Exit (ExitCode)
@@ -86,7 +86,7 @@ boardTestSimple ::
           )
 boardTestSimple diffClk = bundle (testDone, testSuccess)
  where
-  clk = ibufds diffClk
+  clk = ibufdsClock diffClk
   rst = unsafeFromActiveLow testStart
 
   testState = check clk rst (+) stimuli
@@ -118,7 +118,7 @@ boardTestExtended ::
           )
 boardTestExtended diffClk = hwSeqX boardTestIla $ bundle (testDone, testSuccess)
  where
-  clk = ibufds diffClk
+  clk = ibufdsClock diffClk
   rstA = unsafeFromActiveLow testStartA
   rstB = unsafeFromActiveLow testStartB
 

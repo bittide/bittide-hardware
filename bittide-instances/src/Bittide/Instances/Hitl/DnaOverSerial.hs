@@ -13,7 +13,7 @@ import Bittide.Instances.Hitl.Driver.DnaOverSerial
 import Bittide.Instances.Hitl.Setup
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.UART
-import Clash.Cores.Xilinx.Extra (ibufds)
+import Clash.Cores.Xilinx.Ibufds (ibufdsClock)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Clash.Explicit.Reset
 import Clash.Functor.Extra
@@ -28,7 +28,7 @@ dnaOverSerial ::
   "USB_UART_RXD" ::: Signal Ext125 Bit
 dnaOverSerial diffClk serialIn = serialOut
  where
-  clk = ibufds diffClk
+  clk = ibufdsClock diffClk
   (_rxData, serialOut, ack) = withClockResetEnable clk testRst enableGen $ uart baud serialIn txData
   baud = SNat @9600
 
