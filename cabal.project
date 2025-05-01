@@ -17,7 +17,7 @@ write-ghc-environment-files: always
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
-index-state: 2025-03-04T15:14:39Z
+index-state: 2025-05-01T06:53:58Z
 with-compiler: ghc-9.6.5
 tests: True
 
@@ -151,43 +151,20 @@ source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-compiler.git
   tag: 773ae8d3bc5e0b1241d238d39b651f63c737e16a
-  subdir: clash-prelude
-
-source-repository-package
-  type: git
-  location: https://github.com/clash-lang/clash-compiler.git
-  tag: 773ae8d3bc5e0b1241d238d39b651f63c737e16a
-  subdir: clash-ghc
-
-source-repository-package
-  type: git
-  location: https://github.com/clash-lang/clash-compiler.git
-  tag: 773ae8d3bc5e0b1241d238d39b651f63c737e16a
-  subdir: clash-lib
-
-source-repository-package
-  type: git
-  location: https://github.com/clash-lang/clash-compiler.git
-  tag: 773ae8d3bc5e0b1241d238d39b651f63c737e16a
-  subdir: clash-prelude-hedgehog
-
-source-repository-package
-  type: git
-  location: https://github.com/clash-lang/clash-compiler.git
-  tag: 773ae8d3bc5e0b1241d238d39b651f63c737e16a
-  subdir: clash-cores
+  subdir:
+    clash-prelude
+    clash-ghc
+    clash-lib
+    clash-prelude-hedgehog
+    clash-cores
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/clash-protocols.git
   tag: febb041c32fa678e7ddb7d0e976516a5c56b03fc
-  subdir: clash-protocols
-
-source-repository-package
-  type: git
-  location: https://github.com/clash-lang/clash-protocols.git
-  tag: febb041c32fa678e7ddb7d0e976516a5c56b03fc
-  subdir: clash-protocols-base
+  subdir:
+    clash-protocols
+    clash-protocols-base
 
 source-repository-package
   type: git
@@ -199,17 +176,6 @@ source-repository-package
   location: https://github.com/martijnbastiaan/haskell-hedgehog.git
   tag: ddfa34501d16b12fb621efa72bed892910cb5475
   subdir: hedgehog
-
--- TODO: remove once the fixed version has been released on hackage
-source-repository-package
-  type: git
-  location: https://github.com/clash-lang/ghc-typelits-knownnat
-  tag: 30b72d5bd01b497ef4465ff51205e1ebe068e4f9
-
-source-repository-package
-  type: git
-  location: https://github.com/clash-lang/ghc-typelits-extra
-  tag: 1eed8d3de637a115dad12e2cb722cb0a3bc761ea
 
 allow-newer:
   clash-protocols:tasty
