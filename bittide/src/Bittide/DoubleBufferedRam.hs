@@ -20,7 +20,7 @@ import Protocols.Wishbone
 
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes hiding (delayControls)
-import Data.Constraint.Nat.Extra
+import Data.Constraint.Nat.Lemmas
 import Data.Typeable
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (

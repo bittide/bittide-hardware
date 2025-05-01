@@ -12,7 +12,7 @@ import Clash.Prelude
 import Clash.Hedgehog.Sized.Unsigned
 
 import Data.Constraint (Dict (Dict))
-import Data.Constraint.Nat.Extra (divWithRemainder)
+import Data.Constraint.Nat.Lemmas (divWithRemainder)
 import GHC.Stack (HasCallStack)
 import Hedgehog
 import Protocols (Circuit (..), toSignals)

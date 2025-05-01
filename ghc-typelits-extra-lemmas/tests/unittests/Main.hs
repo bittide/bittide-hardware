@@ -3,9 +3,8 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE NumericUnderscores #-}
 
-module Tests.Haxioms where
+module Main where
 
-import Clash.Prelude
 import Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
@@ -22,6 +21,9 @@ prop_leMult = property $ do
 tests :: TestTree
 tests =
   testGroup
-    "Haxioms"
+    "Tests"
     [ testProperty "prop_leMult" prop_leMult
     ]
+
+main :: IO ()
+main = defaultMain tests

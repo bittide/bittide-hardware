@@ -1,0 +1,56 @@
+cabal-version: 3.4
+name: ghc-typelits-extra-lemmas
+version: 0.1.0.0
+license: Apache-2.0
+license-file: LICENSE
+author: Team Clash
+maintainer: devops@qbaylogic.com
+category: Development
+build-type: Simple
+extra-doc-files: README.md
+data-files: data/proofs/*.agda
+
+common warnings
+  ghc-options: -Wall
+
+library
+  import: warnings
+  exposed-modules: Data.Constraint.Nat.Lemmas
+  build-depends:
+    base ^>=4.18.2.1,
+    constraints,
+    ghc-typelits-extra,
+    ghc-typelits-knownnat,
+
+  hs-source-dirs: src
+  default-language: Haskell2010
+
+test-suite doctests
+  type: exitcode-stdio-1.0
+  hs-source-dirs: tests/doctests
+  main-is: Main.hs
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
+  build-depends:
+    base,
+    doctest-parallel >=0.3.0.1,
+    ghc-typelits-extra-lemmas,
+
+test-suite unittests
+  hs-source-dirs: tests/unittests
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
+  build-depends:
+    base,
+    ghc-typelits-extra-lemmas,
+    hedgehog >=1.0 && <1.5,
+    tasty,
+    tasty-hedgehog >=1.2 && <1.6,

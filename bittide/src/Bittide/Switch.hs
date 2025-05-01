@@ -11,6 +11,7 @@ import Clash.Prelude
 import Bittide.Calendar
 import Bittide.SharedTypes
 import Data.Constraint.Nat.Extra
+import Data.Constraint.Nat.Lemmas
 import Protocols
 import Protocols.MemoryMap (ConstBwd, MM)
 import Protocols.Wishbone

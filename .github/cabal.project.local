@@ -22,6 +22,9 @@ package bittide-experiments
 package bittide-tools
   ghc-options: -Werror
 
+package ghc-typelits-extra-proofs
+  ghc-options: -Werror
+
 -- TODO: Fix upstream
 -- package clash-vexriscv
 --   ghc-options: -Werror

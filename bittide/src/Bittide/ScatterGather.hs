@@ -27,6 +27,7 @@ import Protocols
 import Protocols.Wishbone
 
 import Data.Constraint.Nat.Extra
+import Data.Constraint.Nat.Lemmas
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap
 

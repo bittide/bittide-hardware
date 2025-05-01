@@ -26,6 +26,7 @@ import Clash.Util.Interpolate
 import Data.Bifunctor
 import Data.Bool (bool)
 import Data.Constraint.Nat.Extra
+import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import GHC.Stack (HasCallStack)
 import Protocols

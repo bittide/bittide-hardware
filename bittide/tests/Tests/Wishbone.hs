@@ -17,7 +17,7 @@ import Clash.Hedgehog.Sized.Vector
 import Clash.Sized.Vector (unsafeFromList)
 import Data.Bifunctor
 import Data.Constraint (Dict (Dict))
-import Data.Constraint.Nat.Extra (cancelMulDiv, divWithRemainder)
+import Data.Constraint.Nat.Lemmas (cancelMulDiv, divWithRemainder)
 import Data.String
 import Hedgehog
 import Hedgehog.Range as Range

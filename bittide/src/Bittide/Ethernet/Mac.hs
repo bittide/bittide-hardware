@@ -16,6 +16,7 @@ import Bittide.Wishbone
 import Clash.Annotations.Primitive
 import Clash.Cores.Xilinx.Ethernet.Gmii.Internal
 import Data.Constraint.Nat.Extra
+import Data.Constraint.Nat.Lemmas
 import Data.List.Infinite (Infinite ((:<)), (...))
 import Data.Maybe
 import Data.String.Interpolate (__i)
