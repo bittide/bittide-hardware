@@ -17,11 +17,22 @@ default = []
 
 [dependencies]
 fdt = "0.1.0"
-heapless = { version = "0.8", features = ["ufmt"]}
 log = "0.4.21"
-rand = {version = "0.8.3", features = ["small_rng"], default-features = false }
-smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp.git", rev = "dc08e0b42e668c331bb2b6f8d80016301d0efe03", default-features = false, features = ["log", "medium-ethernet", "proto-ipv4", "socket-tcp"] }
 ufmt = "0.2.0"
+
+[dependencies.heapless]
+version = "0.8"
+features = ["ufmt"]
+
+[dependencies.rand]
+version = "0.8.3"
+features = ["small_rng"]
+default-features = false
+
+[dependencies.smoltcp]
+version = "0.12.0"
+default-features = false
+features = ["log", "medium-ethernet", "proto-ipv4", "socket-tcp"]
 
 [dev-dependencies]
 proptest = "1.0"

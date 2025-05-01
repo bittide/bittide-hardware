@@ -2,10 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
+#![no_main]
 #![allow(unused_mut)]
 #![allow(clippy::collapsible_if)]
-#![no_main]
+#![feature(sync_unsafe_cell)]
 
 use bittide_sys::axi::{AxiRx, AxiTx};
 use bittide_sys::dna_port_e2::{dna_to_u128, DnaValue};
@@ -59,10 +60,11 @@ fn main() -> ! {
 
     uwriteln!(uart, "Starting TCP Client").unwrap();
     unsafe {
-        LOGGER.set_logger(uart.clone());
-        LOGGER.set_clock(clock.clone());
-        LOGGER.display_source = LevelFilter::Warn;
-        log::set_logger_racy(&LOGGER).ok();
+        let logger = &mut (*LOGGER.get());
+        logger.set_logger(uart.clone());
+        logger.set_clock(clock.clone());
+        logger.display_source = LevelFilter::Warn;
+        log::set_logger_racy(logger).ok();
         log::set_max_level_racy(LevelFilter::Trace);
     }
 
@@ -130,7 +132,7 @@ fn main() -> ! {
                 mac_status = unsafe { MAC_ADDR.read_volatile() };
                 debug!(
                     "Connecting from {:?}:{} to {}:{}",
-                    my_ip.unwrap().as_bytes(),
+                    my_ip.unwrap().octets(),
                     1234,
                     SERVER_IP,
                     SERVER_PORT

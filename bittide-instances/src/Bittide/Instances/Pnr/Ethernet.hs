@@ -195,8 +195,8 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
       , includeIlaWb = True
       }
 
-type IMemWords = DivRU (256 * 1024) 4
-type DMemWords = DivRU (64 * 1024) 4
+type IMemWords = DivRU (280 * 1024) 4
+type DMemWords = DivRU (88 * 1024) 4
 
 vexRiscEthernet ::
   Clock Basic125B ->

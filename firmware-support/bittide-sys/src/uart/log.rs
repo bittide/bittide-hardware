@@ -8,7 +8,7 @@ use crate::{
 
 // The logger utilizes core::fmt to format the log messages because ufmt formatting is not
 // compatible with (dependencies of) the log crate.
-use core::fmt::Write;
+use core::{cell::SyncUnsafeCell, fmt::Write};
 use log::LevelFilter;
 
 /// A global logger instance to be used with the `log` crate.
@@ -17,13 +17,13 @@ use log::LevelFilter;
 /// # Safety
 /// Using this logger is only safe if there is only one thread of execution.
 /// Even though `UartLogger` is `Send` and `Sync`, The underlying `Uart` is not `Send` or `Sync`.
-pub static mut LOGGER: UartLogger = UartLogger {
+pub static LOGGER: SyncUnsafeCell<UartLogger> = SyncUnsafeCell::new(UartLogger {
     uart: None,
     clock: None,
     print_time: true,
     display_level: LevelFilter::Trace,
     display_source: LevelFilter::Trace,
-};
+});
 
 /// Wrapper for `Uart` to be used as a logger with the `log` crate
 /// Instead of making a new logger, use the `set_logger` method of the `LOGGER` instance.
@@ -59,7 +59,7 @@ impl log::Log for UartLogger {
     fn log(&self, record: &log::Record) {
         if self.enabled(record.metadata()) {
             unsafe {
-                match &mut LOGGER.uart {
+                match &mut (*LOGGER.get()).uart {
                     Some(l) => {
                         if record.level() <= self.display_level {
                             write!(l, "{} | ", record.level()).unwrap()

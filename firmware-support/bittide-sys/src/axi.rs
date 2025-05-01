@@ -22,11 +22,8 @@ impl<const BUF_SIZE: usize> AxiRx<BUF_SIZE> {
     ///
     /// # Safety
     ///
-
     /// - `base_addr` must post to a memory mapped AXI Rx peripheral.
     /// - `BUF_SIZE` must be a valid buffer size.
-    ///
-    ///
     pub unsafe fn new(addr: *const ()) -> Self {
         AxiRx {
             base_addr: addr as *const u8,
