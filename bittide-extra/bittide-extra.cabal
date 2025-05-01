@@ -70,7 +70,7 @@ common common-options
     base,
     clash-prelude >=1.6.3 && <1.10,
     clash-protocols,
-    containers >=0.4.0 && <0.7,
+    containers >=0.4.0 && <0.9,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
     ghc-typelits-natnormalise,

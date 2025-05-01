@@ -36,8 +36,8 @@
             pkgs.dtc
             pkgs.gcc
 
-            pkgs.haskell-language-server
-            pkgs.haskell.compiler.ghc965
+            (pkgs.haskell-language-server.override { supportedGhcVersions = [ "910" ]; })
+            pkgs.haskell.compiler.ghc910
             pkgs.pkg-config
             pkgs.python311Full
             pkgs.python311Packages.matplotlib

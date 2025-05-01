@@ -17,8 +17,7 @@ write-ghc-environment-files: always
 -- index state, to go along with the cabal.project.freeze file. update the index
 -- state by running `cabal update` twice and looking at the index state it
 -- displays to you (as the second update will be a no-op)
-index-state: 2025-03-04T15:14:39Z
-with-compiler: ghc-9.6.5
+index-state: 2025-05-01T06:53:58Z
 tests: True
 
 package bittide
@@ -127,15 +126,6 @@ package clash-vexriscv-sim
     -RTS
     -j8
 
-package ghc-typelits-extra-lemmas
-  ghc-options:
-    +RTS
-    -xp
-    -qn8
-    -A64M
-    -RTS
-    -j8
-
 package vivado-hs
   ghc-options:
     +RTS
@@ -192,12 +182,12 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/cchalmers/circuit-notation.git
-  tag: 19b386c4aa3ff690758ae089c7754303f3500cc9
+  tag: 564769c52aa05b90f81bbc898b7af7087d96613d
 
 source-repository-package
   type: git
   location: https://github.com/martijnbastiaan/haskell-hedgehog.git
-  tag: ddfa34501d16b12fb621efa72bed892910cb5475
+  tag: 70330b435b4ff00d83049bf29356632a7fb2b623
   subdir: hedgehog
 
 -- TODO: remove once the fixed version has been released on hackage
@@ -212,4 +202,6 @@ source-repository-package
   tag: 1eed8d3de637a115dad12e2cb722cb0a3bc761ea
 
 allow-newer:
-  clash-protocols:tasty
+  clash-protocols:tasty,
+  clash-prelude-hedgehog:hedgehog,
+  tasty-hedgehog:hedgehog

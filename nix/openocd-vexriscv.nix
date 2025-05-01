@@ -17,16 +17,13 @@ pkgs.stdenv.mkDerivation rec {
   ];
 
   src = pkgs.fetchFromGitHub {
-    owner = "SpinalHDL";
-    repo = "openocd_riscv";
-    rev = "058dfa50d625893bee9fecf8d604141911fac125";
-    sha256 = "sha256-UuX4Zfr9DiJx60nvBAv+9xCbWXExrk5KNSC5V5e4rsw=";
-    fetchSubmodules = true;
-    deepClone = true;
-    postFetch = ''
-      # See: https://github.com/NixOS/nixpkgs/issues/8567#issuecomment-1846499599
-      find "$out/" -type d -name '.git' | xargs rm -rf
-    '';
+    # Cloning submodules is very unreliable, so we clone from a repository that
+    # has squashed all the submodules into a single commit. The hash in the "rev"
+    # indicates the commit from the original repository.
+    owner = "martijnbastiaan";
+    repo = "riscv-openocd";
+    rev = "no-submodules-058dfa50d625893bee9fecf8d604141911fac125";
+    sha256 = "sha256-fFcajCI5Xk+AXmR8s5yTFBnj1AmlRzNU/C5/L4z5QMQ=";
   };
 
   installPhase = ''
