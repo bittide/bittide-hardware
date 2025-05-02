@@ -144,7 +144,7 @@ instance (BitPack a) => FromField (Hex a) where
   parseField = either fail pure . parseHex . UTF8.toString
 
 {- | The captured data entries, as they are dumped by the ILA of
-'Bittide.Instances.Hitl.IlaPlot.callistoClockControlWithIla'. Fields marked with
+'Bittide.Instances.Hitl.IlaPlot.clockControlIla'. Fields marked with
 an underscore are not used in the post processing.
 -}
 data Capture (nodeCount :: Nat) (compressedElasticBufferBits :: Nat) = Capture
