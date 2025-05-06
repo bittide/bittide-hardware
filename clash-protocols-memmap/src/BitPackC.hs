@@ -114,15 +114,15 @@ instance BitPackC Float where
   type ByteSizeC Float = 4
   type AlignmentC Float = 4
 
-  packC = pack
-  unpackC = unpack
+  packC = packC . pack
+  unpackC = unpack . unpackC
 
 instance BitPackC Double where
   type ByteSizeC Double = 8
   type AlignmentC Double = 8
 
-  packC = pack
-  unpackC = unpack
+  packC = packC . pack
+  unpackC = unpack . unpackC
 
 instance BitPackC Bool where
   type ByteSizeC Bool = 1
