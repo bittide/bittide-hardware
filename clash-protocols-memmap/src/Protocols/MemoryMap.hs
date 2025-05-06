@@ -64,6 +64,7 @@ module Protocols.MemoryMap (
   deviceSingleton,
   locHere,
   locCaller,
+  locN,
 ) where
 
 import Clash.Prelude (
@@ -71,7 +72,7 @@ import Clash.Prelude (
   Integer,
   Maybe,
   Natural,
-  Num ((+)),
+  Num ((+), (-)),
   Ord (max),
   Show (show),
   SimOnly (..),
@@ -83,6 +84,7 @@ import Clash.Prelude (
   fst,
   natToNum,
   ($),
+  (<>),
   type (<=),
  )
 
@@ -91,6 +93,7 @@ import Protocols.MemoryMap.FieldType
 
 import BitPackC
 import Data.Data (Proxy (Proxy))
+import Data.Word (Word)
 import GHC.Stack (HasCallStack, SrcLoc, callStack, getCallStack)
 import Protocols
 import Protocols.Idle
@@ -183,7 +186,7 @@ data Access
     WriteOnly
   | -- | Managers can read from and write to this register
     ReadWrite
-  deriving (Show)
+  deriving (Show, Eq)
 
 {- | Value carrying the type of a register
 
@@ -337,6 +340,23 @@ locCaller = case getCallStack callStack of
   (fn, _) : _ -> error $ "`" L.++ fn L.++ "` needs to be called in a `HasCallStack` context"
   _ ->
     error "`locCaller` needs to be called with at least two levels of `HasCallStack` context"
+
+{- | Return the Nth caller in the call stack. @locN 0@ returns the location of
+the call site of @locN@, i.e., @locHere@.
+-}
+locN :: (HasCallStack) => Word -> SrcLoc
+locN n = go (getCallStack callStack) n
+ where
+  go [] _ = error "locN: internal error: not enough call stack"
+  go ((_, loc) : _) 0 = loc
+  go [_] _ =
+    error
+      $ "locN "
+      <> show n
+      <> ": should be called with at least "
+      <> show n
+      <> " levels of `HasCallStack` context."
+  go (_ : rest) m = go rest (m - 1)
 
 todoMM :: (HasCallStack) => SimOnly MemoryMap
 todoMM =
