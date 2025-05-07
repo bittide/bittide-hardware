@@ -27,7 +27,7 @@ foreign import ccall unsafe "vexr_init" vexrInit :: IO (Ptr VexRiscv)
 foreign import ccall unsafe "vexr_init_vcd" vexrInitVcd :: Ptr VexRiscv -> CString -> IO (Ptr VerilatedVcdC)
 foreign import ccall unsafe "vexr_shutdown" vexrShutdown :: Ptr VexRiscv -> IO ()
 
-foreign import ccall unsafe "vexr_init_stage1" vexrInitStage1 :: Ptr VerilatedVcdC -> Ptr VexRiscv -> Ptr NON_COMB_INPUT -> Ptr OUTPUT -> IO ()
+foreign import ccall unsafe "vexr_init_stage1" vexrInitStage1 :: Ptr VerilatedVcdC -> Word64 -> Ptr VexRiscv -> Ptr NON_COMB_INPUT -> Ptr OUTPUT -> IO ()
 foreign import ccall unsafe "vexr_init_stage2" vexrInitStage2 :: Ptr VexRiscv -> Ptr COMB_INPUT -> IO ()
 foreign import ccall unsafe "vexr_step_rising_edge" vexrStepRisingEdge :: Ptr VerilatedVcdC -> Ptr VexRiscv -> Word64 -> Ptr NON_COMB_INPUT -> Ptr OUTPUT -> IO ()
 foreign import ccall unsafe "vexr_step_falling_edge" vexrStepFallingEdge :: Ptr VerilatedVcdC -> Ptr VexRiscv -> Word64 -> Ptr COMB_INPUT -> IO ()
@@ -79,7 +79,9 @@ data OUTPUT = OUTPUT
   , dBusWishbone_CTI :: Word8
   , dBusWishbone_BTE :: Word8
 
-  , jtag_debug_resetOut :: Bit
+  , ndmreset :: Bit
+  , stoptime :: Bit
+
   , jtag_TDO :: Bit
   }
   deriving (Show)
@@ -92,8 +94,7 @@ data JTAG_INPUT = JTAG_INPUT
   deriving (Show)
 
 data JTAG_OUTPUT = JTAG_OUTPUT
-  { debug_resetOut :: Bit
-  , tdo :: Bit
+  { tdo :: Bit
   }
   deriving (Show)
 
@@ -174,7 +175,9 @@ instance Storable OUTPUT where
       <*> (#peek OUTPUT, dBusWishbone_CTI) ptr
       <*> (#peek OUTPUT, dBusWishbone_BTE) ptr
 
-      <*> (#peek OUTPUT, jtag_debug_resetOut) ptr
+      <*> (#peek OUTPUT, ndmreset) ptr
+      <*> (#peek OUTPUT, stoptime) ptr
+
       <*> (#peek OUTPUT, jtag_TDO) ptr
 
     {-# INLINE poke #-}
@@ -197,7 +200,9 @@ instance Storable OUTPUT where
       (#poke OUTPUT, dBusWishbone_CTI) ptr (dBusWishbone_CTI this)
       (#poke OUTPUT, dBusWishbone_BTE) ptr (dBusWishbone_BTE this)
 
-      (#poke OUTPUT, jtag_debug_resetOut) ptr (jtag_debug_resetOut this)
+      (#poke OUTPUT, ndmreset) ptr (ndmreset this)
+      (#poke OUTPUT, stoptime) ptr (stoptime this)
+
       (#poke OUTPUT, jtag_TDO) ptr (jtag_TDO this)
       return ()
 
@@ -206,12 +211,10 @@ instance Storable JTAG_OUTPUT where
     sizeOf _ = #size JTAG_OUTPUT
     {-# INLINE peek #-}
     peek ptr = const JTAG_OUTPUT <$> pure ()
-      <*> (#peek JTAG_OUTPUT, debug_resetOut) ptr
       <*> (#peek JTAG_OUTPUT, tdo) ptr
 
     {-# INLINE poke #-}
     poke ptr this = do
-      (#poke JTAG_OUTPUT, debug_resetOut) ptr (debug_resetOut this)
       (#poke JTAG_OUTPUT, tdo) ptr (tdo this)
 
 instance Storable JTAG_INPUT where
