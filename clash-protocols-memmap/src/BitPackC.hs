@@ -79,10 +79,10 @@ instance (KnownNat n) => BitPackC (BitVector n) where
 
   packC val = toLittleEndian $ case compareSNat (SNat @n) (SNat @(ByteSizeC (BitVector n) * 8)) of
     SNatLE -> zeroExtend @_ @n @(ByteSizeC (BitVector n) * 8 - n) val
-    SNatGT -> deepErrorX "shouldn't happen"
+    SNatGT -> clashCompileError "BitPackC (BitVector n): packC: shouldn't happen"
   unpackC bits = case compareSNat (SNat @n) (SNat @(ByteSizeC (BitVector n) * 8)) of
     SNatLE -> leToPlus @n @(ByteSizeC (BitVector n) * 8) truncateB (fromLittleEndian bits)
-    SNatGT -> deepErrorX "shouldn't happen"
+    SNatGT -> clashCompileError "BitPackC (BitVector n): unpackC: shouldn't happen"
 
 instance (KnownNat n) => BitPackC (Unsigned n) where
   type ByteSizeC (Unsigned n) = NextPowerOfTwo (SizeInBytes n)
@@ -97,11 +97,11 @@ instance (KnownNat n) => BitPackC (Signed n) where
 
   packC val = toLittleEndian $ case compareSNat (SNat @n) (SNat @(ByteSizeC (Signed n) * 8)) of
     SNatLE -> bitCoerce $ signExtend @_ @n @(ByteSizeC (Signed n) * 8 - n) val
-    SNatGT -> deepErrorX "shouldn't happen"
+    SNatGT -> clashCompileError "BitPackC (Signed n): packC: shouldn't happen"
   unpackC bits = case compareSNat (SNat @n) (SNat @(ByteSizeC (Signed n) * 8)) of
     SNatLE ->
       leToPlus @n @(ByteSizeC (Signed n) * 8) $ bitCoerce (truncateB $ fromLittleEndian bits)
-    SNatGT -> deepErrorX "shouldn't happen"
+    SNatGT -> clashCompileError "BitPackC (Signed n): unpackC: shouldn't happen"
 
 instance (KnownNat n, 1 <= n) => BitPackC (Index n) where
   type ByteSizeC (Index n) = ByteSizeC (BitVector (CLog 2 n))
