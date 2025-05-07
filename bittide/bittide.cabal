@@ -154,6 +154,7 @@ library
     Bittide.Switch
     Bittide.SwitchDemoProcessingElement
     Bittide.SwitchDemoProcessingElement.Calculator
+    Bittide.Sync
     Bittide.Transceiver
     Bittide.Transceiver.Cdc
     Bittide.Transceiver.Comma
