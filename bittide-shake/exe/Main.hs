@@ -180,6 +180,7 @@ targets =
   map enforceValidTarget $
     [ defTarget $ mkName "Bittide.Instances.Pnr.Calendar.switchCalendar1k"
     , defTarget $ mkName "Bittide.Instances.Pnr.Calendar.switchCalendar1kReducedPins"
+    , defTarget $ mkName "Bittide.Instances.Pnr.DeviceWithMemMap.deviceWithMemMap"
     , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.elasticBuffer5"
     , defTarget $ mkName "Bittide.Instances.Pnr.ProcessingElement.vexRiscUartHello"
