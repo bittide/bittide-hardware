@@ -131,8 +131,7 @@ instance BitPackC Bool where
   packC False = 0
   packC True = 1
 
-  unpackC 0 = False
-  unpackC _ = True
+  unpackC b = 1 == b .&. 1
 
 packCwithAlignPadding ::
   forall align a.
