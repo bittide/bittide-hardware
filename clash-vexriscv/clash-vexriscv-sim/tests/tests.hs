@@ -4,10 +4,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 
 import Clash.Prelude
-
-import qualified Data.ByteString as BS
-import qualified Data.List as L
-
 import Control.Monad (forM)
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.Proxy
@@ -22,10 +18,13 @@ import System.IO.Temp (withSystemTempFile)
 import Test.Tasty
 import Test.Tasty.HUnit (Assertion, testCase, (@?=))
 import Test.Tasty.Options
+import VexRiscv (DumpVcd (NoDumpVcd))
 
-import Utils.ProgramLoad (loadProgramDmem)
+import qualified Data.ByteString as BS
+import qualified Data.List as L
+
 import Utils.Cpu (cpu)
-import VexRiscv (DumpVcd(NoDumpVcd))
+import Utils.ProgramLoad (loadProgramDmem)
 
 import qualified Tests.Jtag
 import qualified Tests.JtagChain
@@ -40,19 +39,22 @@ runProgramExpect ::
   Assertion
 runProgramExpect act n expected = withSystemTempFile "ELF" $ \fp _ -> do
   act fp
-  (iMem, dMem) <- withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $
-    loadProgramDmem fp
+  (iMem, dMem) <-
+    withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen
+      $ loadProgramDmem fp
 
   let _all@(unbundle -> (_circuit, _, writes, _iBus, _dBus)) =
-        withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen $
-          bundle (cpu NoDumpVcd Nothing iMem dMem)
+        withClockResetEnable @System clockGen (resetGenN (SNat @2)) enableGen
+          $ bundle (cpu NoDumpVcd Nothing iMem dMem)
 
-  let output = L.take (BS.length expected) $
-        flip mapMaybe (sampleN_lazy n writes) $ \case
-            Just (addr, value) | addr == 0x0000_1000 ->
-              let (_ :: BitVector 24, b :: Word8) = unpack value
-              in Just b
-            _ -> Nothing
+  let output = L.take (BS.length expected)
+        $ flip mapMaybe (sampleN_lazy n writes)
+        $ \case
+          Just (addr, value)
+            | addr == 0x0000_1000 ->
+                let (_ :: BitVector 24, b :: Word8) = unpack value
+                 in Just b
+          _ -> Nothing
 
   BS.pack output @?= expected
 
@@ -62,7 +64,6 @@ findTests ::
   IO [(String, FilePath, FilePath)]
 -- test name  bin path  expected-path
 findTests srcDir binDir = do
-
   srcFiles <- listDirectory srcDir
 
   let expectFiles = L.filter (\p -> takeExtension p == ".expected") srcFiles
@@ -73,12 +74,12 @@ findTests srcDir binDir = do
     if exists
       then pure $ Just (takeBaseName binPath, binPath, srcDir </> expectPath)
       else do
-        hPutStrLn stderr $
-          "No binary file found for test program "
-            <> takeBaseName binPath
-            <> " (expected path "
-            <> binPath
-            <> ")"
+        hPutStrLn stderr
+          $ "No binary file found for test program "
+          <> takeBaseName binPath
+          <> " (expected path "
+          <> binPath
+          <> ")"
         pure Nothing
 
   pure $ catMaybes paths
