@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
@@ -52,9 +53,9 @@ vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
             processingElement @Basic200 NoDumpVcd peConfig -< (mm, jtag)
           (uartTx, _uartStatus) <-
             uartInterfaceWb d16 d16 (uartDf $ SNat @921600) -< (mmUart, (uartBus, uartRx))
-          constBwd 0b10 -< prefixUart
+          constBwd 0b100 -< prefixUart
           _localCounter <- timeWb -< (mmTime, timeBus)
-          constBwd 0b11 -< prefixTime
+          constBwd 0b110 -< prefixTime
           idC -< uartTx
    in case circuitFn (((), (uartTx, jtagIn)), pure ()) of
         ((_mm, a), b) -> (a, b)
@@ -82,29 +83,33 @@ vexRiscUartHello diffClk rst_in ((uartTx, jtagIn), _) =
   peConfigSim = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Debug
+      elfDir = root </> firmwareBinariesDir RiscV Debug
       elfPath = elfDir </> "hello"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
         { initI = Reloadable (Vec iMem)
-        , prefixI = 0b00
+        , prefixI = 0b000
         , initD = Reloadable (Vec dMem)
-        , prefixD = 0b01
+        , prefixD = 0b010
         , iBusTimeout = d0
         , dBusTimeout = d0
         , includeIlaWb = False
+        , whoAmID = 0x3075_7063
+        , whoAmIPfx = 0b111
         }
 
   peConfigRtl =
     PeConfig
       { initI = Undefined @IMemWords
-      , prefixI = 0b00
+      , prefixI = 0b000
       , initD = Undefined @DMemWords
-      , prefixD = 0b01
+      , prefixD = 0b010
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True
+      , whoAmID = 0x3075_7063
+      , whoAmIPfx = 0b111
       }
 
 type IMemWords = DivRU (64 * 1024) 4

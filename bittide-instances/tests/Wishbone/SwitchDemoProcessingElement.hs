@@ -49,7 +49,7 @@ simResult = unlines . takeWhileInclusive (/= "Finished") . lines $ uartString
       $ dut @System dnaA dnaB
 
   clk = clockGen
-  reset = resetGen
+  reset = resetGenN d2
   enable = enableGen
   dnaA = pure 0xAAAA_0123_4567_89AB_CDEF_0001
   dnaB = pure 0xBBBB_0123_4567_89AB_CDEF_0001
@@ -115,7 +115,7 @@ dut dnaA dnaB = circuit $ do
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
+      elfDir = root </> firmwareBinariesDir RiscV Release
       elfPath = elfDir </> "switch_demo_pe_test"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
@@ -127,6 +127,8 @@ dut dnaA dnaB = circuit $ do
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
+        , whoAmID = 0x3075_7063
+        , whoAmIPfx = 0b111
         }
 
 type IMemWords = DivRU (72 * 1024) 4

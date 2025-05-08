@@ -30,7 +30,7 @@ import VexRiscv
 import Bittide.DoubleBufferedRam
 import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
-import Bittide.Instances.Hitl.Driver.VexRiscv
+import Bittide.Instances.Hitl.Setup
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (vecsFromElf)
 import Bittide.SharedTypes
@@ -39,11 +39,14 @@ import Clash.Cores.UART.Extra
 
 import Project.FilePath (
   CargoBuildType (Release),
+  TargetArch (RiscV),
   findParentContaining,
   firmwareBinariesDir,
  )
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
+
+import qualified Bittide.Instances.Hitl.Driver.VexRiscv as D
 
 data TestStatus = Running | Success | Fail
   deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, ToFieldType)
@@ -185,7 +188,7 @@ vexRiscvInner jtagIn0 uartRx =
 
   peConfigSim = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "hello"
+    let elfPath = root </> firmwareBinariesDir RiscV Release </> "hello"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
@@ -196,6 +199,8 @@ vexRiscvInner jtagIn0 uartRx =
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
+        , whoAmID = D.whoAmID
+        , whoAmIPfx = D.whoAmIPfx
         }
   peConfigRtl =
     PeConfig
@@ -206,6 +211,8 @@ vexRiscvInner jtagIn0 uartRx =
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True
+      , whoAmID = D.whoAmID
+      , whoAmIPfx = D.whoAmIPfx
       }
 
 type IMemWords = DivRU (64 * 1024) 4
@@ -254,10 +261,11 @@ tests =
         [ HitlTestCase
             { name = "VexRiscV"
             , parameters =
-                paramForHwTargets [HwTargetByIndex 1, HwTargetByIndex 2] ()
+                -- paramForHwTargets [HwTargetByIndex 1, HwTargetByIndex 2] ()
+                paramForSingleHwTarget (HwTargetById "210308B3B018" debugDeviceInfo) ()
             , postProcData = ()
             }
         ]
-    , mDriverProc = Just driverFunc
+    , mDriverProc = Just D.driverFunc
     , mPostProc = Nothing
     }

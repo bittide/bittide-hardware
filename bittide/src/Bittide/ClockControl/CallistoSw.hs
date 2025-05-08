@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
@@ -40,7 +41,7 @@ import Bittide.ClockControl.DebugRegister (
  )
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.DoubleBufferedRam (InitialContent (Undefined))
-import Bittide.ProcessingElement (PeConfig (..), processingElement)
+import Bittide.ProcessingElement (PeConfig (..), PeInternalBusses, processingElement)
 import Bittide.SharedTypes
 import Protocols.MemoryMap
 
@@ -158,9 +159,11 @@ callistoSwClockControl (SwControlConfig{jtagIn, enableReframing, margin = mgn, f
       , iBusTimeout = d0 -- No timeouts on the instruction bus
       , dBusTimeout = d0 -- No timeouts on the data bus
       , includeIlaWb = True
+      , whoAmID = 0x3075_7063
+      , whoAmIPfx = 0b111
       }
 
-type SwcccInternalBusses = 4
+type SwcccInternalBusses = PeInternalBusses + 2
 type SwcccRemBusWidth n = 30 - CLog 2 (n + SwcccInternalBusses)
 
 -- The additional 'otherWb' type parameter is necessary since this type helps expose

@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
 module Bittide.Instances.Hitl.Utils.Program where
@@ -12,10 +12,15 @@ import Project.Handle
 
 import Paths_bittide_instances
 
+import Clash.Prelude (BitVector, Unsigned, Vec, bitCoerce, toList)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Data.List (isPrefixOf)
+import Data.List (intercalate, isPrefixOf)
 import Data.Maybe (fromJust)
+import Debug.Trace (traceId)
+import Project.FilePath
+import System.Directory (canonicalizePath)
+import System.FilePath ((</>))
 import System.IO
 import System.Posix.Env (getEnvironment)
 import System.Process
@@ -27,14 +32,8 @@ brackets acqs rel act = go [] acqs
   go resL [] = act (reverse resL)
   go resL (acq : acqs1) = bracket acq rel $ \res -> go (res : resL) acqs1
 
-getOpenOcdStartPath :: IO FilePath
-getOpenOcdStartPath = getDataFileName "data/openocd/start.sh"
-
-getPicocomStartPath :: IO FilePath
-getPicocomStartPath = getDataFileName "data/picocom/start.sh"
-
-getTcpSprayPath :: IO FilePath
-getTcpSprayPath = getDataFileName "data/tcpspray/start.sh"
+getStartScriptPath :: IO FilePath
+getStartScriptPath = getDataFileName "data/start.sh"
 
 data ProcessStdIoHandles = ProcessStdIoHandles
   { stdinHandle :: Handle
@@ -54,189 +53,167 @@ awaitProcessTermination name h (Just t) = do
     Just _ -> return ()
     Nothing -> error "Waiting for pocess termination timed out."
 
-withOpenOcd ::
-  (MonadMask m, MonadIO m) =>
-  -- | USB device location
+startProgram ::
+  -- | Program name
   String ->
-  -- | GDB port
-  Int ->
-  -- | TCL port
-  Int ->
-  -- | Telnet port
-  Int ->
-  -- | Action to run with OpenOCD
-  (ProcessStdIoHandles -> m a) ->
-  m a
-withOpenOcd = withOpenOcdWithEnv []
-
-withOpenOcdWithEnv ::
-  (MonadMask m, MonadIO m) =>
-  -- | Extra environment variables to pass to OpenOCD in form (name, value)
-  [(String, String)] ->
-  -- | USB device location
-  String ->
-  -- | GDB port
-  Int ->
-  -- | TCL port
-  Int ->
-  -- | Telnet port
-  Int ->
-  -- | Action to run with OpenOCD
-  (ProcessStdIoHandles -> m a) ->
-  m a
-withOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort action = do
-  (ocd, _handle, clean) <-
-    liftIO $ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort
-  finally (action ocd) (liftIO clean)
-
-startOpenOcdWithEnv ::
-  -- | Extra environment variables to pass to OpenOCD in form (name, value)
-  [(String, String)] ->
-  -- | USB device location
-  String ->
-  -- | GDB port
-  Int ->
-  -- | TCL port
-  Int ->
-  -- | Telnet port
-  Int ->
-  IO (ProcessStdIoHandles, ProcessHandle, IO ())
-startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort =
-  startOpenOcdWithEnvAndArgs
-    ["-f", "ports.tcl", "-f", "sipeed.tcl", "-f", "vexriscv_init.tcl"]
-    ( [ ("USB_DEVICE", usbLoc)
-      , ("GDB_PORT", show gdbPort)
-      , ("TCL_PORT", show tclPort)
-      , ("TELNET_PORT", show telnetPort)
-      ]
-        <> extraEnv
-    )
-
-startOpenOcdWithEnvAndArgs ::
+  -- | Program args
   [String] ->
+  -- | Environment variables
   [(String, String)] ->
   IO (ProcessStdIoHandles, ProcessHandle, IO ())
-startOpenOcdWithEnvAndArgs args extraEnv = do
-  startOpenOcdPath <- getOpenOcdStartPath
+startProgram name args extraEnv = do
+  startPath <- getStartScriptPath
   currentEnv <- getEnvironment
+
   let
-    openOcdProc =
-      (proc startOpenOcdPath args)
+    progProc =
+      (proc startPath args)
         { std_in = CreatePipe
         , std_out = CreatePipe
         , std_err = CreatePipe
-        , env = Just (currentEnv <> extraEnv)
-        }
-
-  ocdHandles@(openOcdStdin, openOcdStdout, openOcdStderr, openOcdPh) <-
-    createProcess openOcdProc
-
-  let
-    ocdHandles' =
-      ProcessStdIoHandles
-        { stdinHandle = fromJust openOcdStdin
-        , stdoutHandle = fromJust openOcdStdout
-        , stderrHandle = fromJust openOcdStderr
-        }
-
-  pure (ocdHandles', openOcdPh, cleanupProcess ocdHandles)
-
-startPicocom :: FilePath -> IO (ProcessStdIoHandles, IO ())
-startPicocom devPath = do
-  startPicocomPath <- getPicocomStartPath
-
-  let
-    picocomProc =
-      (proc startPicocomPath [devPath])
-        { std_in = CreatePipe
-        , std_out = CreatePipe
-        , std_err = CreatePipe
+        , env = Just (currentEnv <> [("EXEC_PATH", name)] <> extraEnv)
         , new_session = True
         }
 
-  picoHandles@(picoStdin, picoStdout, picoStderr, _picoPh) <-
-    createProcess picocomProc
+  progHandles@(progStdin, progStdout, progStderr, progPh) <- createProcess progProc
 
   let
-    picoHandles' =
+    progHandles' =
       ProcessStdIoHandles
-        { stdinHandle = fromJust picoStdin
-        , stdoutHandle = fromJust picoStdout
-        , stderrHandle = fromJust picoStderr
+        { stdinHandle = fromJust progStdin
+        , stdoutHandle = fromJust progStdout
+        , stderrHandle = fromJust progStderr
         }
 
-  pure (picoHandles', cleanupProcess picoHandles)
+  pure (progHandles', progPh, cleanupProcess progHandles)
 
-withPicocomWithLogging ::
+type CpuMap = (BitVector 32, Int)
+
+cpuMapToJson :: CpuMap -> String
+cpuMapToJson (identifier, port) =
+  "{\"whoami\":{\"String\":\""
+    <> whoAmI
+    <> "\"},\"gdb_port\":"
+    <> show port
+    <> "}"
+ where
+  bytes :: Vec 4 (BitVector 8)
+  bytes = bitCoerce identifier
+  bytesList :: [BitVector 8]
+  bytesList = toList bytes
+  beBytesList :: [BitVector 8]
+  beBytesList = reverse bytesList
+  whoAmI :: String
+  whoAmI = toEnum . fromIntegral <$> beBytesList
+
+data CpuMapJson
+  = Literal String
+  | FilePath FilePath
+  | Build [CpuMap]
+
+mapToArgs :: CpuMapJson -> [String]
+mapToArgs (Literal string) = ["--json", string]
+mapToArgs (FilePath path) = ["--json-path", path]
+mapToArgs (Build maps) = ["--json='" <> mapsJson <> "'"]
+ where
+  mapsJson = "[" <> intercalate "," (cpuMapToJson <$> maps) <> "]"
+
+data GdbAdaptersConfig = GdbAdaptersConfig
+  { usbDev :: String
+  , memMapAddress :: Unsigned 32
+  , cpuMap :: CpuMapJson
+  , stdoutPath :: Maybe FilePath
+  , stderrPath :: Maybe FilePath
+  }
+
+startGdbAdapters ::
+  GdbAdaptersConfig ->
+  IO (ProcessStdIoHandles, ProcessHandle, IO ())
+startGdbAdapters adaptersConfig = do
+  root <- findParentContaining "cabal.project"
+  let
+    adapterArgs =
+      [ "--usb-port"
+      , adaptersConfig.usbDev
+      , "--scan-address"
+      , show adaptersConfig.memMapAddress
+      ]
+    jsonArgs =
+      case adaptersConfig.cpuMap of
+        Literal s -> do
+          jsonFilePath <- jsonFile
+          writeFile jsonFilePath s
+          return ["--json-path", jsonFilePath]
+        Build maps -> do
+          let s = "[" <> intercalate "," (cpuMapToJson <$> maps) <> "]"
+          jsonFilePath <- jsonFile
+          writeFile jsonFilePath s
+          return ["--json-path", jsonFilePath]
+        FilePath s -> return ["--json-path", s]
+     where
+      jsonFile = do
+        projectDir0 <- findParentContaining "cabal.project"
+        projectDir1 <- canonicalizePath projectDir0
+        let escapedUsbDev = fmap (\c -> if c == ':' then '!' else c) adaptersConfig.usbDev
+        return $
+          projectDir1 </> "_build" </> "hitl" </> ("cpu-map-" <> escapedUsbDev <> ".json")
+    singleEnvVar varName varVal = [(varName, varVal)]
+    out = maybe [] (singleEnvVar "STDOUT_LOG") adaptersConfig.stdoutPath
+    err = maybe [] (singleEnvVar "STDERR_LOG") adaptersConfig.stderrPath
+    logging = [("RUST_LOG", "TRACE")]
+    adapterEnv = out <> err <> logging
+    programName = root </> gdbAdaptersPath Release
+  progJsonArgs <- jsonArgs
+  startProgram programName (adapterArgs <> (traceId <$> progJsonArgs)) adapterEnv
+
+withGdbAdapters ::
   (MonadIO m, MonadMask m) =>
-  FilePath ->
-  FilePath ->
-  FilePath ->
+  GdbAdaptersConfig ->
   (ProcessStdIoHandles -> m a) ->
   m a
-withPicocomWithLogging devPath stdoutPath stderrPath action = do
-  (pico, clean) <- liftIO $ startPicocomWithLogging devPath stdoutPath stderrPath
+withGdbAdapters config action = do
+  (adapters, _, clean) <- liftIO $ startGdbAdapters config
+  finally (action adapters) (liftIO clean)
+
+data PicocomConfig = PicocomConfig
+  { devPath :: FilePath
+  , baudRate :: Maybe Integer
+  , stdoutPath :: Maybe FilePath
+  , stderrPath :: Maybe FilePath
+  }
+
+startPicocom :: PicocomConfig -> IO (ProcessStdIoHandles, IO ())
+startPicocom picocomConfig = do
+  let
+    picocomArgs =
+      [ "--baud"
+      , maybe "921600" show picocomConfig.baudRate
+      , "--imap"
+      , "lfcrlf"
+      , "--omap"
+      , "lfcrlf"
+      , picocomConfig.devPath
+      ]
+    singleEnvVar varName varVal = [(varName, varVal)]
+    out = maybe [] (singleEnvVar "STDOUT_LOG") picocomConfig.stdoutPath
+    err = maybe [] (singleEnvVar "STDERR_LOG") picocomConfig.stderrPath
+  (handles, _, cleanup) <- startProgram "picocom" picocomArgs (out <> err)
+  pure (handles, cleanup)
+
+withPicocom ::
+  (MonadIO m, MonadMask m) =>
+  PicocomConfig ->
+  (ProcessStdIoHandles -> m a) ->
+  m a
+withPicocom picocomConfig action = do
+  (pico, clean) <- liftIO $ startPicocom picocomConfig
   finally (action pico) (liftIO clean)
 
-withPicocomWithLoggingAndEnv ::
-  FilePath ->
-  FilePath ->
-  FilePath ->
-  [(String, String)] ->
-  (ProcessStdIoHandles -> IO a) ->
-  IO a
-withPicocomWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv action = do
-  (pico, clean) <- startPicocomWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv
-  finally (action pico) clean
-
-startPicocomWithLogging ::
-  FilePath -> FilePath -> FilePath -> IO (ProcessStdIoHandles, IO ())
-startPicocomWithLogging devPath stdoutPath stderrPath =
-  startPicocomWithLoggingAndEnv devPath stdoutPath stderrPath []
-
-startPicocomWithLoggingAndEnv ::
-  FilePath ->
-  FilePath ->
-  FilePath ->
-  [(String, String)] ->
-  IO (ProcessStdIoHandles, IO ())
-startPicocomWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv = do
-  startPicocomPath <- getPicocomStartPath
-  currentEnv <- getEnvironment
-
-  let
-    picocomProc =
-      (proc startPicocomPath [devPath])
-        { std_in = CreatePipe
-        , std_out = CreatePipe
-        , std_err = CreatePipe
-        , new_session = True
-        , env =
-            Just
-              ( currentEnv
-                  <> extraEnv
-                  <> [("PICOCOM_STDOUT_LOG", stdoutPath), ("PICOCOM_STDERR_LOG", stderrPath)]
-              )
-        }
-
-  picoHandles@(picoStdin, picoStdout, picoStderr, _picoPh) <-
-    createProcess picocomProc
-
-  let
-    picoHandles' =
-      ProcessStdIoHandles
-        { stdinHandle = fromJust picoStdin
-        , stdoutHandle = fromJust picoStdout
-        , stderrHandle = fromJust picoStderr
-        }
-
-  pure (picoHandles', cleanupProcess picoHandles)
-
--- | Wait until we see "Halting processor", fail if we see an error.
-openOcdWaitForHalt :: String -> Filter
-openOcdWaitForHalt s
-  | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
-  | "Halting processor" `isPrefixOf` s = Stop Ok
+-- | Wait until we see "All sessions halted", fail if we see an error.
+adaptersWaitForHalt :: String -> Filter
+adaptersWaitForHalt s
+  | "Error:" `isPrefixOf` s = Stop (Error ("Found error in gdb-adapters output: " <> s))
+  | "All sessions halted" `isPrefixOf` s = Stop Ok
   | otherwise = Continue
 
 gdbWaitForLoad :: String -> Filter

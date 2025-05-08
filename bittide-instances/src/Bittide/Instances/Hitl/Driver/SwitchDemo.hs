@@ -1,14 +1,18 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 module Bittide.Instances.Hitl.Driver.SwitchDemo (
-  OcdInitData (..),
+  AdaptersInitData (..),
+  ccWhoAmI,
   driver,
+  muWhoAmI,
+  whoAmIPfx,
 ) where
 
 import Clash.Prelude
@@ -19,8 +23,9 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 
+import Clash.Sized.Extra (extendLsb0s)
 import Control.Concurrent (threadDelay)
-import Control.Monad (forM, forM_, when, zipWithM)
+import Control.Monad (forM, forM_, unless, zipWithM, (<=<))
 import Control.Monad.IO.Class
 import Data.Bifunctor (Bifunctor (bimap))
 import Data.List.Extra (trim)
@@ -40,15 +45,25 @@ import Vivado.VivadoM
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Bittide.SwitchDemoProcessingElement.Calculator as Calc
 import qualified Clash.Sized.Vector as V (fromList)
+import Data.Foldable (sequenceA_)
 import qualified Data.List as L
 
-data OcdInitData = OcdInitData
+whoAmIPfx :: forall n. (KnownNat n) => Unsigned (n + 3)
+whoAmIPfx = extendLsb0s @3 @n (0b111 :: Unsigned 3)
+
+muWhoAmI :: BitVector 32
+muWhoAmI = 0x746d_676d
+
+ccWhoAmI :: BitVector 32
+ccWhoAmI = 0x6363_7773
+
+data AdaptersInitData = AdaptersInitData
   { muPort :: Int
   -- ^ Management unit GDB port
   , ccPort :: Int
   -- ^ Clock control GDB port
   , handles :: ProcessStdIoHandles
-  -- ^ OpenOCD stdio handles
+  -- ^ gdb-adapters stdio handles
   , cleanup :: IO ()
   -- ^ Cleanup function
   }
@@ -68,53 +83,45 @@ driver testName targets = do
     $ "Running driver function for targets "
     <> show ((\(_, info) -> info.deviceId) <$> targets)
 
-  startTime <- liftIO $ getTime Monotonic
   projectDir <- liftIO $ findParentContaining "cabal.project"
+  startTime <- liftIO $ getTime Monotonic
 
   let
     hitlDir = projectDir </> "_build/hitl" </> testName
 
     calcTimeSpentMs = (`div` 1_000_000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
 
-    initOpenOcds :: (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
-    initOpenOcds (_, d) targetIndex = do
-      putStrLn $ "Starting OpenOCD for target " <> d.deviceId
+    initGdbAdapters :: (HwTarget, DeviceInfo) -> Int -> IO AdaptersInitData
+    initGdbAdapters (_, d) targetIndex = do
+      putStrLn $ "Starting gdb-adapters for target " <> d.deviceId
 
       let
         gdbPortMU = 3333 + targetIndex * 2
         gdbPortCC = gdbPortMU + 1
-        tclPortMU = 6666 + targetIndex * 2
-        tclPortCC = tclPortMU + 1
-        telnetPortMU = 4444 + targetIndex * 2
-        telnetPortCC = telnetPortMU + 1
-        ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
-        ocdStderr = hitlDir </> "openocd-" <> show targetIndex <> "-stderr.log"
-      putStrLn $ "logging OpenOCD stdout to `" <> ocdStdout <> "`"
-      putStrLn $ "logging OpenOCD stderr to `" <> ocdStderr <> "`"
+        adapterStdout = hitlDir </> "gdb-adapters-" <> show targetIndex <> "-stdout.log"
+        adapterStderr = hitlDir </> "gdb-adapters-" <> show targetIndex <> "-stderr.log"
+        adapterConfig =
+          GdbAdaptersConfig
+            { usbDev = d.usbAdapterLocation
+            , memMapAddress = whoAmIPfx
+            , cpuMap = Build [(muWhoAmI, gdbPortMU), (ccWhoAmI, gdbPortCC)]
+            , stdoutPath = Just adapterStdout
+            , stderrPath = Just adapterStderr
+            }
+      putStrLn $ "logging gdb-adapters stdout to `" <> adapterStdout <> "`"
+      putStrLn $ "logging gdb-adapters stderr to `" <> adapterStderr <> "`"
 
-      putStrLn "Starting OpenOCD..."
-      (ocd, ocdPh, ocdClean0) <-
-        startOpenOcdWithEnvAndArgs
-          ["-f", "sipeed.tcl", "-f", "vexriscv-2chain.tcl"]
-          [ ("OPENOCD_STDOUT_LOG", ocdStdout)
-          , ("OPENOCD_STDERR_LOG", ocdStderr)
-          , ("USB_DEVICE", d.usbAdapterLocation)
-          , ("DEV_A_GDB", show gdbPortMU)
-          , ("DEV_B_GDB", show gdbPortCC)
-          , ("DEV_A_TCL", show tclPortMU)
-          , ("DEV_B_TCL", show tclPortCC)
-          , ("DEV_A_TEL", show telnetPortMU)
-          , ("DEV_B_TEL", show telnetPortCC)
-          ]
-      hSetBuffering ocd.stderrHandle LineBuffering
-      tryWithTimeout "Waiting for OpenOCD to start" 15_000_000
-        $ expectLine ocd.stderrHandle openOcdWaitForHalt
+      putStrLn "Starting gdb-adapters..."
+      (adapter, adapterPh, adapterClean0) <- startGdbAdapters adapterConfig
+      hSetBuffering adapter.stderrHandle LineBuffering
+      tryWithTimeout "Waiting for gdb-adapters to start" 15_000_000
+        $ expectLine adapter.stderrHandle adaptersWaitForHalt
 
       let
-        ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
-        ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
+        adapterProcName = "gdb-adapters (" <> d.deviceId <> ")"
+        adapterClean1 = adapterClean0 >> awaitProcessTermination adapterProcName adapterPh (Just 10_000_000)
 
-      return $ OcdInitData gdbPortMU gdbPortCC ocd ocdClean1
+      return $ AdaptersInitData gdbPortMU gdbPortCC adapter adapterClean1
 
     initGdbs :: String -> Int -> (HwTarget, DeviceInfo) -> IO (ProcessStdIoHandles, IO ())
     initGdbs binName gdbPort (hwT, d) = do
@@ -126,7 +133,7 @@ driver testName targets = do
 
       Gdb.setLogging gdb $ hitlDir
         </> "gdb-" <> binName <> "-" <> show (getTargetIndex hwT) <> ".log"
-      Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> binName
+      Gdb.setFile gdb $ firmwareBinariesDir RiscV Release </> binName
       Gdb.setTarget gdb gdbPort
       Gdb.setTimeout gdb Nothing
       Gdb.runCommands gdb.stdinHandle ["echo connected to target device"]
@@ -136,26 +143,6 @@ driver testName targets = do
         gdbClean1 = gdbClean0 >> awaitProcessTermination gdbProcName gdbPh (Just 10_000_000)
 
       return (gdb, gdbClean1)
-
-    ccGdbCheck :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ExitCode
-    ccGdbCheck (_, _) gdb = do
-      liftIO
-        $ Gdb.runCommands
-          gdb.stdinHandle
-          ["echo START OF WHOAMI\\n", "x/4cb 0xE0000000", "echo END OF WHOAMI\\n"]
-      _ <-
-        liftIO
-          $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
-          $ readUntil gdb.stdoutHandle "START OF WHOAMI"
-      gdbRead <-
-        liftIO
-          $ tryWithTimeout "Reading CC whoami over GDB" 15_000_000
-          $ readUntil gdb.stdoutHandle "END OF WHOAMI"
-      let
-        idLine = trim . L.head . lines $ trim gdbRead
-        success = idLine == "(gdb) 0xe0000000:\t115 's'\t119 'w'\t99 'c'\t99 'c'"
-      liftIO $ putStrLn [i|Output from CC whoami probe:\n#{idLine}|]
-      return $ if success then ExitSuccess else ExitFailure 1
 
     foldExitCodes :: VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
     foldExitCodes prev code = do
@@ -171,26 +158,6 @@ driver testName targets = do
       openHardwareTarget hwT
       updateVio "vioHitlt" [("probe_all_programmed", "1")]
 
-    muGdbCheck :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ExitCode
-    muGdbCheck (_, _) gdb = do
-      liftIO
-        $ Gdb.runCommands
-          gdb.stdinHandle
-          ["echo START OF WHOAMI\\n", "x/4cb 0xE0000000", "echo END OF WHOAMI\\n"]
-      _ <-
-        liftIO
-          $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
-          $ readUntil gdb.stdoutHandle "START OF WHOAMI"
-      gdbRead <-
-        liftIO
-          $ tryWithTimeout "Reading MU whoami over GDB" 15_000_000
-          $ readUntil gdb.stdoutHandle "END OF WHOAMI"
-      let
-        idLine = trim . L.head . lines $ trim gdbRead
-        success = idLine == "(gdb) 0xe0000000:\t109 'm'\t103 'g'\t109 'm'\t116 't'"
-      liftIO $ putStrLn [i|Output from MU whoami probe:\n#{idLine}|]
-      return $ if success then ExitSuccess else ExitFailure 1
-
     getTestsStatus ::
       [(HwTarget, DeviceInfo)] -> [TestStatus] -> Integer -> VivadoM [TestStatus]
     getTestsStatus [] _ _ = return []
@@ -199,7 +166,7 @@ driver testName targets = do
       let getRestStatus = getTestsStatus hwtdRest statusRest dur
       case status of
         TestRunning -> do
-          timeSpent <- liftIO $ calcTimeSpentMs
+          timeSpent <- liftIO calcTimeSpentMs
           if timeSpent < dur
             then do
               openHardwareTarget hwT
@@ -222,7 +189,7 @@ driver testName targets = do
         innerInit = L.repeat TestRunning
         inner prev = do
           new <- getTestsStatus targets prev dur
-          if not (TestRunning `L.elem` new)
+          if TestRunning `notElem` new
             then do
               let
                 go :: (HwTarget, DeviceInfo) -> TestStatus -> IO ExitCode
@@ -273,7 +240,7 @@ driver testName targets = do
             tryWithTimeout "Reading UGN over GDB" 15_000_000 $ readUntil gdb.stdoutHandle endString
           let
             outputLine = L.head $ L.lines $ trim gdbRead
-            outputDataWords = L.words $ trim $ outputLine
+            outputDataWords = L.words $ trim outputLine
           putStrLn $ "GDB output: {{\n" <> gdbRead <> "}}"
           case L.drop (L.length outputDataWords - 2) outputDataWords of
             [read -> txIJ, read -> rxIJ] -> return (txIJ, rxIJ)
@@ -289,7 +256,7 @@ driver testName targets = do
         startString = "START OF PEBUF (" <> d.deviceId <> ")"
         endString = "END OF PEBUF (" <> d.deviceId <> ")"
         bufferSize :: Integer
-        bufferSize = (snatToNum (SNat @FpgaCount)) * 3
+        bufferSize = snatToNum (SNat @FpgaCount) * 3
       Gdb.runCommands
         gdb.stdinHandle
         [ "printf \"" <> startString <> "\\n\""
@@ -368,7 +335,7 @@ driver testName targets = do
       VivadoM ()
     muWriteCfg target@(_, d) gdb (bimap pack fromIntegral -> cfg) = do
       let
-        start = 0x90000000
+        start = 0x9000_0000
 
         write64 :: Unsigned 32 -> BitVector 64 -> [String]
         write64 address value =
@@ -401,7 +368,7 @@ driver testName targets = do
       [Calc.PeConfig (Unsigned 64) (Index 9)] ->
       VivadoM ExitCode
     finalCheck [] _ = fail "Should pass in two or more GDBs for the final check!"
-    finalCheck (_ : []) _ = fail "Should pass in two or more GDBs for the final check!"
+    finalCheck [_] _ = fail "Should pass in two or more GDBs for the final check!"
     finalCheck gdbs@(headGdb : _) configs = do
       let
         hexEq :: String -> String -> Bool
@@ -420,7 +387,7 @@ driver testName targets = do
         perDeviceCheck :: ProcessStdIoHandles -> Int -> IO Bool
         perDeviceCheck myGdb num = do
           let
-            headBaseAddr = 0x90000028
+            headBaseAddr = 0x9000_0028
             myBaseAddr = headBaseAddr + 24 * (L.length gdbs - num - 1)
           myCounter <-
             readSingleGdbValue headGdb ("COUNTER-" <> show num) ("x/1gx 0x" <> showHex myBaseAddr "")
@@ -449,16 +416,16 @@ driver testName targets = do
             dna0Eq = hexEq myDeviceDna0 headDeviceDna0
             dna1Eq = hexEq myDeviceDna1 headDeviceDna1
             dna2Eq = hexEq myDeviceDna2 headDeviceDna2
-          when (not counterEq)
+          unless counterEq
             $ putStrLn
               [i|Counter #{num} did not match. Found #{myCounter}, expected #{expectedCounter}|]
-          when (not dna0Eq)
+          unless dna0Eq
             $ putStrLn
               [i|DNA0 #{num} did not match. Found #{headDeviceDna0}, expected #{myDeviceDna0}|]
-          when (not dna1Eq)
+          unless dna1Eq
             $ putStrLn
               [i|DNA1 #{num} did not match. Found #{headDeviceDna1}, expected #{myDeviceDna1}|]
-          when (not dna2Eq)
+          unless dna2Eq
             $ putStrLn
               [i|DNA2 #{num} did not match. Found #{headDeviceDna2}, expected #{myDeviceDna2}|]
           return $ counterEq && dna0Eq && dna1Eq && dna2Eq
@@ -474,82 +441,71 @@ driver testName targets = do
   forM_ targets (assertProbe "probe_test_start")
   tryWithTimeout "Wait for handshakes successes from all boards" 30_000_000
     $ awaitHandshakes targets
-  brackets (liftIO <$> L.zipWith initOpenOcds targets [0 ..]) (liftIO . (.cleanup)) $ \initOcdsData -> do
-    let
-      muPorts = (.muPort) <$> initOcdsData
-      ccPorts = (.ccPort) <$> initOcdsData
-    brackets
-      (liftIO <$> L.zipWith (initGdbs "clock-control") ccPorts targets)
-      (liftIO . snd)
-      $ \initCCGdbsData -> do
-        let ccGdbs = fst <$> initCCGdbsData
-        liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
-        gdbExitCodes0 <- zipWithM ccGdbCheck targets ccGdbs
-        (gdbCount0, gdbExitCode0) <-
-          L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes0
-        liftIO
-          $ putStrLn
-            [i|CC GDB testing passed on #{gdbCount0} of #{L.length targets} targets|]
-        liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
+  brackets
+    (liftIO <$> L.zipWith initGdbAdapters targets [0 ..])
+    (liftIO . (.cleanup))
+    $ \initAdaptersData ->
+      do
+        let
+          muPorts = (.muPort) <$> initAdaptersData
+          ccPorts = (.ccPort) <$> initAdaptersData
         brackets
-          (liftIO <$> L.zipWith (initGdbs "management-unit") muPorts targets)
+          (liftIO <$> L.zipWith (initGdbs "clock-control") ccPorts targets)
           (liftIO . snd)
-          $ \initMUGdbsData -> do
-            let muGdbs = fst <$> initMUGdbsData
-            liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
-            gdbExitCodes1 <- zipWithM muGdbCheck targets muGdbs
-            (gdbCount1, gdbExitCode1) <-
-              L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes1
-            liftIO
-              $ putStrLn
-                [i|MU GDB testing passed on #{gdbCount1} of #{L.length targets} targets|]
-            liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+          $ \initCCGdbsData -> do
+            let ccGdbs = fst <$> initCCGdbsData
+            liftIO $ mapM_ (errorToException <=< Gdb.loadBinary) ccGdbs
+            brackets
+              (liftIO <$> L.zipWith (initGdbs "management-unit") muPorts targets)
+              (liftIO . snd)
+              $ \initMUGdbsData -> do
+                let muGdbs = fst <$> initMUGdbsData
+                liftIO $ mapM_ (errorToException <=< Gdb.loadBinary) muGdbs
 
-            liftIO $ mapM_ Gdb.continue ccGdbs
-            forM_ targets assertAllProgrammed
-            testResults <- awaitTestCompletions 60_000
-            (sCount, stabilityExitCode) <-
-              L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
-            liftIO
-              $ putStrLn
-                [i|Test case #{testName} stabilised on #{sCount} of #{L.length targets} targets|]
+                liftIO $ mapM_ Gdb.continue ccGdbs
+                forM_ targets assertAllProgrammed
+                testResults <- awaitTestCompletions 60_000
+                (sCount, stabilityExitCode) <-
+                  L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
+                liftIO
+                  $ putStrLn
+                    [i|Test case #{testName} stabilised on #{sCount} of #{L.length targets} targets|]
 
-            liftIO $ putStrLn "Getting UGNs for all targets"
-            ugnPairsTable <- zipWithM muGetUgns targets muGdbs
-            let
-              ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
-            liftIO $ do
-              putStrLn "Calculating IGNs for all targets"
-              Calc.printAllIgns ugnPairsTableV fpgaSetup
-              mapM_ print ugnPairsTableV
-            currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
-            let
-              startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
-              chainConfig :: Vec FpgaCount (Calc.PeConfig (Unsigned 64) (Index 9))
-              chainConfig =
-                Calc.fullChainConfiguration
-                  (SNat @3)
-                  fpgaSetup
-                  ugnPairsTableV
-                  startOffset
-            liftIO $ do
-              putStrLn [i|Current clock cycle: #{currentTime}|]
-              putStrLn "Calculated the following configs for the switch processing elements:"
-              forM_ chainConfig print
-            _ <- sequenceA $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
-            liftIO $ do
-              let delayMicros = natToNum @StartDelay * 1_250_000
-              threadDelay delayMicros
-              putStrLn [i|Slept for: #{delayMicros}μs|]
-              newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
-              putStrLn [i|Clock is now: #{newCurrentTime}|]
+                liftIO $ putStrLn "Getting UGNs for all targets"
+                ugnPairsTable <- zipWithM muGetUgns targets muGdbs
+                let
+                  ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
+                liftIO $ do
+                  putStrLn "Calculating IGNs for all targets"
+                  Calc.printAllIgns ugnPairsTableV fpgaSetup
+                  mapM_ print ugnPairsTableV
+                currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
+                let
+                  startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
+                  chainConfig :: Vec FpgaCount (Calc.PeConfig (Unsigned 64) (Index 9))
+                  chainConfig =
+                    Calc.fullChainConfiguration
+                      (SNat @3)
+                      fpgaSetup
+                      ugnPairsTableV
+                      startOffset
+                liftIO $ do
+                  putStrLn [i|Current clock cycle: #{currentTime}|]
+                  putStrLn "Calculated the following configs for the switch processing elements:"
+                  forM_ chainConfig print
+                sequenceA_ $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
+                liftIO $ do
+                  let delayMicros = natToNum @StartDelay * 1_250_000
+                  threadDelay delayMicros
+                  putStrLn [i|Slept for: #{delayMicros}μs|]
+                  newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
+                  putStrLn [i|Clock is now: #{newCurrentTime}|]
 
-            _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
+                _ <- liftIO $ zipWithM muReadPeBuffer targets muGdbs
 
-            bufferExit <- finalCheck muGdbs (toList chainConfig)
+                bufferExit <- finalCheck muGdbs (toList chainConfig)
 
-            let
-              finalExit =
-                fromMaybe ExitSuccess
-                  $ L.find (/= ExitSuccess) [stabilityExitCode, gdbExitCode0, gdbExitCode1, bufferExit]
-            return finalExit
+                let
+                  finalExit =
+                    fromMaybe ExitSuccess $ L.find (/= ExitSuccess) [stabilityExitCode, bufferExit]
+                return finalExit

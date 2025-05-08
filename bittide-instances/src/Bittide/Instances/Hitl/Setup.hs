@@ -124,55 +124,56 @@ linkMasks g = smap (const . linkMask') indicesI
 -- | List of device information of all FPGAs connected to the demo rig
 demoRigInfo :: [DeviceInfo]
 demoRigInfo =
-  [ DeviceInfo
-      { deviceId = "210308B3B272"
-      , dna = 0x400200010169c040044164c5
-      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.2:1.1-port0"
-      , usbAdapterLocation = "1-5.4.4.2:1"
-      }
-  , DeviceInfo
-      { deviceId = "210308B0992E"
-      , dna = 0x40020001815160e805108285
-      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.1:1.1-port0"
-      , usbAdapterLocation = "1-5.4.4.1:1"
-      }
-  , DeviceInfo
-      { deviceId = "210308B0AE73"
-      , dna = 0x4002000101695ce72c808445
-      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.3:1.1-port0"
-      , usbAdapterLocation = "1-5.4.3:1"
-      }
-  , DeviceInfo
-      { deviceId = "210308B0AE6D"
-      , dna = 0x4002000101695ce72c702305
-      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.2:1.1-port0"
-      , usbAdapterLocation = "1-5.4.2:1"
-      }
-  , DeviceInfo
-      { deviceId = "210308B0AFD4"
-      , dna = 0x40020001016ba8e52581a285
-      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.1:1.1-port0"
-      , usbAdapterLocation = "1-5.4.1:1"
-      }
-  , DeviceInfo
-      { deviceId = "210308B0AE65"
-      , dna = 0x400200010157f4862d01c345
-      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.3:1.1-port0"
-      , usbAdapterLocation = "1-5.3:1"
-      }
-  , DeviceInfo
-      { deviceId = "210308B3A22D"
-      , dna = 0x400200010169c04004308185
-      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.2:1.1-port0"
-      , usbAdapterLocation = "1-5.2:1"
-      }
-  , DeviceInfo
-      { deviceId = "210308B0B0C2"
-      , dna = 0x40020001015664862d20e405
-      , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.1:1.1-port0"
-      , usbAdapterLocation = "1-5.1:1"
-      }
-  ]
+  -- [ DeviceInfo
+  --     { deviceId = "210308B3B272"
+  --     , dna = 0x400200010169c040044164c5
+  --     , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.2:1.1-port0"
+  --     , usbAdapterLocation = "1-5.4.4.2:1"
+  --     }
+  -- , DeviceInfo
+  --     { deviceId = "210308B0992E"
+  --     , dna = 0x40020001815160e805108285
+  --     , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.1:1.1-port0"
+  --     , usbAdapterLocation = "1-5.4.4.1:1"
+  --     }
+  -- , DeviceInfo
+  --     { deviceId = "210308B0AE73"
+  --     , dna = 0x4002000101695ce72c808445
+  --     , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.3:1.1-port0"
+  --     , usbAdapterLocation = "1-5.4.3:1"
+  --     }
+  -- , DeviceInfo
+  --     { deviceId = "210308B0AE6D"
+  --     , dna = 0x4002000101695ce72c702305
+  --     , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.2:1.1-port0"
+  --     , usbAdapterLocation = "1-5.4.2:1"
+  --     }
+  -- , DeviceInfo
+  --     { deviceId = "210308B0AFD4"
+  --     , dna = 0x40020001016ba8e52581a285
+  --     , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.1:1.1-port0"
+  --     , usbAdapterLocation = "1-5.4.1:1"
+  --     }
+  -- , DeviceInfo
+  --     { deviceId = "210308B0AE65"
+  --     , dna = 0x400200010157f4862d01c345
+  --     , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.3:1.1-port0"
+  --     , usbAdapterLocation = "1-5.3:1"
+  --     }
+  -- , DeviceInfo
+  --     { deviceId = "210308B3A22D"
+  --     , dna = 0x400200010169c04004308185
+  --     , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.2:1.1-port0"
+  --     , usbAdapterLocation = "1-5.2:1"
+  --     }
+  -- , DeviceInfo
+  --     { deviceId = "210308B0B0C2"
+  --     , dna = 0x40020001015664862d20e405
+  --     , serial = "/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.1:1.1-port0"
+  --     , usbAdapterLocation = "1-5.1:1"
+  --     }
+  -- ]
+  [debugDeviceInfo]
 
 -- | Device information of the FPGA connected to our debug setup. Do not use this on CI.
 debugDeviceInfo :: DeviceInfo
@@ -181,5 +182,5 @@ debugDeviceInfo =
     { deviceId = "210308B3B018"
     , dna = 0x4002000101604ee70cc0e085
     , serial = "/dev/serial/by-path/pci-0000:02:00.0-usb-0:2:1.1-port0"
-    , usbAdapterLocation = "1-2:1"
+    , usbAdapterLocation = "1-6:1"
     }

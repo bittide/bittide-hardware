@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
@@ -75,15 +76,17 @@ dnaOverSerialDriver _name targets = do
       hitlDir = projectDir </> "_build" </> "hitl"
       stdoutLog = hitlDir </> "picocom-stdout." <> show targetIndex <> ".log"
       stderrLog = hitlDir </> "picocom-stderr." <> show targetIndex <> ".log"
+      picocomConfig =
+        PicocomConfig
+          { devPath = dI.serial
+          , baudRate = Just 9600
+          , stdoutPath = Just stdoutLog
+          , stderrPath = Just stderrLog
+          }
     putStrLn $ "logging stdout to `" <> stdoutLog <> "`"
     putStrLn $ "logging stderr to `" <> stderrLog <> "`"
 
-    (pico, picoClean) <-
-      startPicocomWithLoggingAndEnv
-        dI.serial
-        stdoutLog
-        stderrLog
-        [("PICOCOM_BAUD", "9600")]
+    (pico, picoClean) <- startPicocom picocomConfig
 
     hSetBuffering pico.stdinHandle LineBuffering
     hSetBuffering pico.stdoutHandle LineBuffering
