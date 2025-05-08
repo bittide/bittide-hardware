@@ -24,7 +24,9 @@ import Bittide.ProcessingElement (
     initD,
     initI,
     prefixD,
-    prefixI
+    prefixI,
+    whoAmID,
+    whoAmIPfx
   ),
   processingElement,
  )
@@ -36,6 +38,7 @@ import Bittide.SharedTypes (Bytes)
 import Bittide.Wishbone (uartInterfaceWb, uartSim)
 import Project.FilePath (
   CargoBuildType (Release),
+  TargetArch (RiscV),
   findParentContaining,
   firmwareBinariesDir,
  )
@@ -363,9 +366,9 @@ dut =
         [(prefixUart, (mmUart, uartBus)), (prefixManyTypes, manyTypes)] <-
           processingElement dumpVcd peConfig -< (mm, jtag)
         (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-        constBwd 0b00 -< prefixUart
+        constBwd 0b000 -< prefixUart
         manyTypesWb -< manyTypes
-        constBwd 0b11 -< prefixManyTypes
+        constBwd 0b110 -< prefixManyTypes
         idC -< uartTx
  where
   dumpVcd =
@@ -377,7 +380,7 @@ dut =
 
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "registerwbc_test"
+    let elfPath = root </> firmwareBinariesDir RiscV Release </> "registerwbc_test"
     pure
       PeConfig
         { initI =
@@ -385,16 +388,18 @@ dut =
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr BigEndian elfPath
-        , prefixI = 0b10
+        , prefixI = 0b100
         , initD =
             Reloadable @DMemWords
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData BigEndian elfPath
-        , prefixD = 0b01
+        , prefixD = 0b010
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
+        , whoAmID = 0x3075_7063
+        , whoAmIPfx = 0b001
         }
 {-# NOINLINE dut #-}
 

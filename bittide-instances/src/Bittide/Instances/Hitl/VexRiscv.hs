@@ -39,7 +39,7 @@ import Bittide.DoubleBufferedRam (
  )
 import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
-import Bittide.Instances.Hitl.Driver.VexRiscv
+import Bittide.Instances.Hitl.Setup
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
 import Bittide.Wishbone
@@ -48,12 +48,14 @@ import Clash.Cores.UART.Extra
 import GHC.Stack (HasCallStack)
 import Project.FilePath (
   CargoBuildType (Release),
+  TargetArch (RiscV),
   findParentContaining,
   firmwareBinariesDir,
  )
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 
+import qualified Bittide.Instances.Hitl.Driver.VexRiscv as D
 import qualified Protocols.MemoryMap as MM
 
 data TestStatus = Running | Success | Fail
@@ -160,7 +162,7 @@ vexRiscvTestC =
     root <- findParentContaining "cabal.project"
     maybeBinaryName <- lookupEnv "TEST_BINARY_NAME"
     let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
+      elfDir = root </> firmwareBinariesDir RiscV Release
       elfPath = elfDir </> fromMaybe "hello" maybeBinaryName
     pure
       peConfigRtl
@@ -175,6 +177,8 @@ vexRiscvTestC =
               $ unsafePerformIO
               $ vecFromElfData @DMemWords BigEndian elfPath
         , includeIlaWb = False
+        , whoAmID = D.whoAmID
+        , whoAmIPfx = D.whoAmIPfx
         }
   peConfigRtl =
     PeConfig
@@ -185,6 +189,8 @@ vexRiscvTestC =
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True
+      , whoAmID = D.whoAmID
+      , whoAmIPfx = D.whoAmIPfx
       }
 
 type IMemWords = DivRU (64 * 1024) 4
@@ -242,10 +248,11 @@ tests =
         [ HitlTestCase
             { name = "VexRiscV"
             , parameters =
-                paramForHwTargets [HwTargetByIndex 1, HwTargetByIndex 2] ()
+                -- paramForHwTargets [HwTargetByIndex 1, HwTargetByIndex 2] ()
+                paramForSingleHwTarget (HwTargetById "210308B3B018" debugDeviceInfo) ()
             , postProcData = ()
             }
         ]
-    , mDriverProc = Just driverFunc
+    , mDriverProc = Just D.driverFunc
     , mPostProc = Nothing
     }

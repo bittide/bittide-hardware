@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
 module Bittide.Instances.Hitl.Driver.SwCcTopologies where
@@ -18,7 +19,8 @@ import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Vivado
 
-import Control.Monad (forM_, zipWithM)
+import Clash.Sized.Extra (extendLsb0s)
+import Control.Monad (forM_, zipWithM, (<=<))
 import Control.Monad.IO.Class
 import Data.String.Interpolate (i)
 import System.Clock (Clock (Monotonic), diffTimeSpec, getTime, toNanoSecs)
@@ -27,8 +29,13 @@ import System.FilePath
 import System.IO
 
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
-import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Data.List as L
+
+whoAmID :: BitVector 32
+whoAmID = 0x3075_7063
+
+whoAmIPfx :: Unsigned 3
+whoAmIPfx = 0b111
 
 getProbeProgEnTcl :: String
 getProbeProgEnTcl = getTestProbeTcl "*vioHitlt/probe_prog_en"
@@ -49,39 +56,39 @@ driverFunc testName targets = do
   let hitlDir = projectDir </> "_build/hitl/" <> testName
   startTime <- liftIO $ getTime Monotonic
   let
-    calcTimeSpentMs = (`div` 1000000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
+    calcTimeSpentMs = (`div` 1_000_000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
 
     initHwTargets :: VivadoM ()
     initHwTargets = forM_ targets (assertProbe "probe_prog_en")
 
-    initOpenOcd :: (a, DeviceInfo) -> Int -> IO ((Int, ProcessStdIoHandles), IO ())
-    initOpenOcd (_, d) targetIndex = do
-      putStrLn $ "Starting OpenOCD for target " <> show d.deviceId
+    initGdbAdapters :: (a, DeviceInfo) -> Int -> IO ((Int, ProcessStdIoHandles), IO ())
+    initGdbAdapters (_, d) targetIndex = do
+      putStrLn $ "Starting gdb-adapters for target " <> show d.deviceId
       putStrLn $ "Logs will be saved in the hitl directory: " <> hitlDir
       let
         gdbPort = 3333 + targetIndex
-        tclPort = 6666 + targetIndex
-        telnetPort = 4444 + targetIndex
-        ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
-        ocdStderr = hitlDir </> "openocd-" <> show targetIndex <> "-stderr.log"
+        adaptersStdout = hitlDir </> "gdb-adapters-" <> show targetIndex <> "-stdout.log"
+        adaptersStderr = hitlDir </> "gdb-adapters-" <> show targetIndex <> "-stderr.log"
+        adaptersConfig =
+          GdbAdaptersConfig
+            { usbDev = d.usbAdapterLocation
+            , memMapAddress = extendLsb0s whoAmIPfx
+            , cpuMap = Build [(whoAmID, gdbPort)]
+            , stdoutPath = Just adaptersStdout
+            , stderrPath = Just adaptersStderr
+            }
 
-      putStrLn "Starting OpenOCD..."
-      (ocd, ocdPh, ocdClean1) <-
-        Ocd.startOpenOcdWithEnv
-          [("OPENOCD_STDOUT_LOG", ocdStdout), ("OPENOCD_STDERR_LOG", ocdStderr)]
-          d.usbAdapterLocation
-          gdbPort
-          tclPort
-          telnetPort
-      hSetBuffering ocd.stderrHandle LineBuffering
-      tryWithTimeout "Waiting for OpenOCD to start" 15_000_000
-        $ expectLine ocd.stderrHandle Ocd.waitForHalt
+      putStrLn "Starting gdb-adapters..."
+      (adapters, adaptersPh, adaptersClean1) <- startGdbAdapters adaptersConfig
+      hSetBuffering adapters.stderrHandle LineBuffering
+      tryWithTimeout "Waiting for gdb-adapters to start" 15_000_000
+        $ expectLine adapters.stderrHandle adaptersWaitForHalt
 
       let
-        ocdProcName = "OpenOCD (" <> show d.deviceId <> ")"
-        ocdClean2 = ocdClean1 >> awaitProcessTermination ocdProcName ocdPh (Just 5_000_000)
+        adaptersProcName = "gdb-adapters (" <> show d.deviceId <> ")"
+        adaptersClean2 = adaptersClean1 >> awaitProcessTermination adaptersProcName adaptersPh (Just 5_000_000)
 
-      return ((gdbPort, ocd), ocdClean2)
+      return ((gdbPort, adapters), adaptersClean2)
 
     initGdb :: Int -> (HwTarget, DeviceInfo) -> IO (ProcessStdIoHandles, IO ())
     initGdb gdbPort (hwT, d) = do
@@ -90,7 +97,7 @@ driverFunc testName targets = do
       (gdb, gdbPh, gdbClean1) <- Gdb.startGdbH
       hSetBuffering gdb.stdinHandle LineBuffering
       Gdb.setLogging gdb $ hitlDir </> "gdb-" <> show (getTargetIndex hwT) <> "-stdout.log"
-      Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "clock-control"
+      Gdb.setFile gdb $ firmwareBinariesDir RiscV Release </> "clock-control"
       Gdb.setTarget gdb gdbPort
       let
         gdbProcName = "GDB (" <> show d.deviceId <> ")"
@@ -114,7 +121,7 @@ driverFunc testName targets = do
     getTestsStatus ((hwT, _) : hwtdRest) (status : statusRest) = do
       case status of
         TestRunning -> do
-          timeSpent <- liftIO $ calcTimeSpentMs
+          timeSpent <- liftIO calcTimeSpentMs
           rest <- getTestsStatus hwtdRest statusRest
           if timeSpent < testTimeoutMs
             then do
@@ -133,7 +140,7 @@ driverFunc testName targets = do
     getTestResults :: [(HwTarget, DeviceInfo)] -> [TestStatus] -> VivadoM [ExitCode]
     getTestResults tgts prevStatuses = do
       newStatuses <- getTestsStatus tgts prevStatuses
-      if not (TestRunning `L.elem` newStatuses)
+      if TestRunning `notElem` newStatuses
         then do
           let
             go :: (HwTarget, DeviceInfo) -> TestStatus -> IO ExitCode
@@ -161,10 +168,10 @@ driverFunc testName targets = do
 
   initHwTargets
   let gdbPorts = L.take (L.length targets) [3333 ..]
-  brackets (liftIO <$> L.zipWith initOpenOcd targets [0 ..]) (liftIO . snd) $ \_initOcdsData -> do
+  brackets (liftIO <$> L.zipWith initGdbAdapters targets [0 ..]) (liftIO . snd) $ \_initAdaptersData -> do
     brackets (liftIO <$> L.zipWith initGdb gdbPorts targets) (liftIO . snd) $ \initGdbsData -> do
       let gdbs = fmap fst initGdbsData
-      liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) gdbs
+      liftIO $ mapM_ (errorToException <=< Gdb.loadBinary) gdbs
 
       -- TODO: Replace `prog_en` vio with `enable_sync_gen` vio
       forM_ targets (deassertProbe "probe_prog_en")

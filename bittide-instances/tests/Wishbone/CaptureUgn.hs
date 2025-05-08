@@ -58,7 +58,7 @@ case_capture_ugn_self_test =
   (expectedLocalCounter, unpack -> expectedRemoteCounter) = getSequenceCounters $ bundle (localCounter, eb)
   (actualLocalCounter, actualRemoteCounter) = parseResult simResult
   clk = clockGen
-  rst = resetGen
+  rst = resetGenN d2
   ena = enableGen
   simResult = chr . fromIntegral <$> catMaybes uartStream
   uartStream =
@@ -94,24 +94,26 @@ dut eb localCounter = circuit $ do
     processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
   mm <- ignoreMM
-  constBwd 0b10 -< prefixUart
+  constBwd 0b100 -< prefixUart
   _bittideData <- captureUgn localCounter eb -< (mmUgn, ugnBus)
-  constBwd 0b11 -< prefixUgn
+  constBwd 0b110 -< prefixUgn
   idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "capture_ugn_test"
+    let elfPath = root </> firmwareBinariesDir RiscV Release </> "capture_ugn_test"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
         { initI = Reloadable (Vec iMem)
-        , prefixI = 0b00
+        , prefixI = 0b000
         , initD = Reloadable (Vec dMem)
-        , prefixD = 0b01
+        , prefixD = 0b010
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
+        , whoAmID = 0x3075_7063
+        , whoAmIPfx = 0b111
         }
 
 type IMemWords = DivRU (64 * 1024) 4

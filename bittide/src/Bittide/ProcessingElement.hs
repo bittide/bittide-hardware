@@ -12,7 +12,7 @@ import Clash.Prelude
 import Protocols
 import Protocols.Extra
 import Protocols.Wishbone
-import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, JtagOut (debugReset), vexRiscv)
+import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, vexRiscv)
 
 import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
@@ -29,6 +29,8 @@ import qualified Protocols.MemoryMap as MM (
   withTag,
  )
 
+type PeInternalBusses = 3
+
 -- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where
   PeConfig ::
@@ -38,7 +40,7 @@ data PeConfig nBusses where
     , KnownNat depthD
     , 1 <= depthD
     , KnownNat nBusses
-    , 2 <= nBusses
+    , PeInternalBusses <= nBusses
     , CLog 2 nBusses <= 30
     ) =>
     { prefixI :: Unsigned (CLog 2 nBusses)
@@ -59,6 +61,10 @@ data PeConfig nBusses where
     -- ^ Indicates whether or not to include the Wishbone ILA component probes. Should be set
     -- to 'False' if this CPU is not in an always-on domain. Additionally, only one CPU in any
     -- given system should have this set to 'True' in order to avoid probe name conflicts.
+    , whoAmID :: BitVector 32
+    -- ^ Component identifier
+    , whoAmIPfx :: Unsigned (CLog 2 nBusses)
+    -- ^ The prefix of the address of the identifier component
     } ->
     PeConfig nBusses
 
@@ -67,69 +73,85 @@ data PeConfig nBusses where
 -}
 processingElement ::
   forall dom nBusses.
-  (HiddenClockResetEnable dom, KnownNat nBusses, 2 <= nBusses) =>
+  (HiddenClockResetEnable dom, KnownNat nBusses, PeInternalBusses <= nBusses) =>
   DumpVcd ->
   PeConfig nBusses ->
   Circuit
     (MM.ConstBwd MM.MM, Jtag dom)
     ( Vec
-        (nBusses - 2)
+        (nBusses - PeInternalBusses)
         ( MM.ConstBwd (Unsigned (CLog 2 nBusses))
         , (MM.ConstBwd MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4))
         )
     )
-processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, dBusTimeout, includeIlaWb} = circuit $ \(mm, jtagIn) -> do
-  (iBus0, (mmDbus, dBus0)) <-
-    rvCircuit dumpVcd (pure low) (pure low) (pure low) -< (mm, jtagIn)
-  iBus1 <-
-    maybeIlaWb
-      includeIlaWb
-      (SSymbol @"instructionBus")
-      2
-      D4096
-      onTransactionWb
-      onTransactionWb
-      -< iBus0
-  dBus1 <-
-    watchDogWb "dBus" iBusTimeout
-      <| maybeIlaWb
-        includeIlaWb
-        (SSymbol @"dataBus")
-        2
-        D4096
-        onTransactionWb
-        onTransactionWb
-      -< dBus0
-  ([(iPre, (mmI, iMemBus)), (dPre, (mmD, dMemBus))], extBusses) <-
-    (splitAtCI <| singleMasterInterconnectC) -< (mmDbus, dBus1)
-  MM.constBwd prefixD -< dPre
-  MM.constBwd prefixI -< iPre
+processingElement
+  dumpVcd
+  PeConfig
+    { prefixI
+    , prefixD
+    , initI
+    , initD
+    , iBusTimeout
+    , dBusTimeout
+    , includeIlaWb
+    , whoAmID
+    , whoAmIPfx
+    } =
+    circuit $ \(mm, jtagIn) -> do
+      (iBus0, (mmDbus, dBus0)) <-
+        rvCircuit dumpVcd (pure low) (pure low) (pure low) -< (mm, jtagIn)
+      iBus1 <-
+        maybeIlaWb
+          includeIlaWb
+          (SSymbol @"instructionBus")
+          2
+          D4096
+          onTransactionWb
+          onTransactionWb
+          -< iBus0
+      dBus1 <-
+        watchDogWb "dBus" iBusTimeout
+          <| maybeIlaWb
+            includeIlaWb
+            (SSymbol @"dataBus")
+            2
+            D4096
+            onTransactionWb
+            onTransactionWb
+          -< dBus0
+      whoAmIC whoAmID -< (mmW, waiBus)
+      ([(iPre, (mmI, iMemBus)), (dPre, (mmD, dMemBus))], extBusses0) <-
+        (splitAtCI <| singleMasterInterconnectC) -< (mmDbus, dBus1)
+      ([(wPre, (mmW, waiBus))], extBusses1) <- splitAtCI -< extBusses0
+      MM.constBwd prefixD -< dPre
+      MM.constBwd prefixI -< iPre
+      MM.constBwd whoAmIPfx -< wPre
 
-  -- Instruction and data memory are never accessed explicitly by developers,
-  -- only implicitly by the CPU itself. We therefore don't need to generate HAL
-  -- code. We instruct the generator to skip them by adding a "no-generate" tag.
-  MM.withTag "no-generate"
-    $ MM.withDeviceTag "no-generate"
-    $ wbStorage "DataMemory" initD
-    -< (mmD, dMemBus)
+      -- Instruction and data memory are never accessed explicitly by developers,
+      -- only implicitly by the CPU itself. We therefore don't need to generate HAL
+      -- code. We instruct the generator to skip them by adding a "no-generate" tag.
+      MM.withTag "no-generate"
+        $ MM.withDeviceTag "no-generate"
+        $ wbStorage "DataMemory" initD
+        -< (mmD, dMemBus)
 
-  iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
-  MM.withTag "no-generate"
-    $ MM.withDeviceTag "no-generate"
-    $ wbStorageDPC "InstructionMemory" initI
-    -< (mmI, (iBus2, iMemBus))
+      iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
+      MM.withTag "no-generate"
+        $ MM.withDeviceTag "no-generate"
+        $ wbStorageDPC "InstructionMemory" initI
+        -< (mmI, (iBus2, iMemBus))
 
-  idC -< extBusses
- where
-  removeMsb ::
-    forall aw a.
-    (KnownNat aw) =>
-    Circuit
-      (Wishbone dom 'Standard (aw + 4) a)
-      (Wishbone dom 'Standard aw a)
-  removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + 4) -> BitVector aw)) id
+      idC -< extBusses1
+   where
+    removeMsb ::
+      forall aw a.
+      (KnownNat aw) =>
+      Circuit
+        (Wishbone dom 'Standard (aw + 4) a)
+        (Wishbone dom 'Standard aw a)
+    removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + 4) -> BitVector aw)) id
 
-  wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
+    wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
 
 rvCircuit ::
   (HiddenClockResetEnable dom) =>
@@ -150,7 +172,7 @@ rvCircuit dumpVcd tInterrupt sInterrupt eInterrupt = Circuit go
       CpuIn{timerInterrupt, softwareInterrupt, externalInterrupt, iBusWbS2M, dBusWbS2M}
     rvIn = tupToCoreIn <$> bundle (tInterrupt, sInterrupt, eInterrupt, iBusIn, dBusIn)
     (cpuOut, jtagOut) = vexRiscv dumpVcd hasClock (hasReset `unsafeOrReset` jtagReset) rvIn jtagIn
-    jtagReset = unsafeFromActiveHigh (delay False (bitToBool . debugReset <$> jtagOut))
+    jtagReset = unsafeFromActiveHigh (delay False (bitToBool . ndmreset <$> cpuOut))
 
 -- | Map a function over the address field of 'WishboneM2S'
 mapAddr ::

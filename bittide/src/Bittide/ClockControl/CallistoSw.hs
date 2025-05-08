@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
 module Bittide.ClockControl.CallistoSw (
@@ -34,7 +35,7 @@ import Bittide.ClockControl.DebugRegister (
  )
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.DoubleBufferedRam (InitialContent (Undefined))
-import Bittide.ProcessingElement (PeConfig (..), processingElement)
+import Bittide.ProcessingElement (PeConfig (..), PeInternalBusses, processingElement)
 import Bittide.SharedTypes
 import Bittide.Wishbone (timeWb)
 import Protocols.MemoryMap
@@ -156,9 +157,11 @@ callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
       , iBusTimeout = d0 -- No timeouts on the instruction bus
       , dBusTimeout = d0 -- No timeouts on the data bus
       , includeIlaWb = True
+      , whoAmID = 0x3075_7063
+      , whoAmIPfx = 0b111
       }
 
-type SwcccInternalBusses = 5
+type SwcccInternalBusses = PeInternalBusses + 3
 type SwcccRemBusWidth n = 30 - CLog 2 (n + SwcccInternalBusses)
 
 -- The additional 'otherWb' type parameter is necessary since this type helps expose

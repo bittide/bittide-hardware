@@ -132,7 +132,7 @@ nodeGppes configs prefixes = Circuit go
    where
     ((mm, interfacesOut), linkOut) = toSignals (gppeC config linkIn) (((), ((),) <$> m2ss), pure ())
 
-type NmuInternalBusses = 6
+type NmuInternalBusses = 7
 type NmuRemBusWidth nodeBusses = 30 - CLog 2 (nodeBusses + NmuInternalBusses)
 
 {- | Configuration for the 'managementUnit' and its 'Bittide.Link'.
@@ -160,14 +160,14 @@ data GppeConfig nmuRemBusWidth where
   GppeConfig ::
     ScatterConfig 4 nmuRemBusWidth ->
     -- | Interconnect prefix for the scatter engine
-    Unsigned 2 ->
+    Unsigned 3 ->
     GatherConfig 4 nmuRemBusWidth ->
     -- | Interconnect prefix for the gather engine
-    Unsigned 2 ->
+    Unsigned 3 ->
     -- | Configuration for a 'gppe's 'processingElement', which statically
     -- has four external busses connected to the instruction memory, data memory
     -- , 'scatterUnitWb' and 'gatherUnitWb'.
-    PeConfig 4 ->
+    PeConfig 5 ->
     DumpVcd ->
     GppeConfig nmuRemBusWidth
 

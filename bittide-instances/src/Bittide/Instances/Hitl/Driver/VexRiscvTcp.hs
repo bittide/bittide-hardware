@@ -1,15 +1,18 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
 module Bittide.Instances.Hitl.Driver.VexRiscvTcp where
 
+import Clash.Prelude (BitVector, Unsigned)
 import Prelude
 
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Utils.Program
 
+import Clash.Sized.Extra (extendLsb0s)
 import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Exception (SomeException (..), catch)
@@ -30,11 +33,16 @@ import Vivado.VivadoM
 
 import qualified Bittide.Instances.Hitl.Utils.Driver as D
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
-import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Data.ByteString.Lazy as BS
 import qualified Network.Simple.TCP as NS
 import qualified Streaming.ByteString as SBS
+
+whoAmID :: BitVector 32
+whoAmID = 0x3075_7063
+
+whoAmIPfx :: Unsigned 4
+whoAmIPfx = 0b1110
 
 -- | Directory to dump TCP data sent by clients
 tcpDataDir :: FilePath
@@ -72,25 +80,39 @@ driverFunc _name [d@(_, dI)] = do
 
   let
     hitlDir = projectDir </> "_build" </> "hitl"
-    mkLogPath str = (hitlDir </> str <> ".log")
+    mkLogPath str = hitlDir </> str <> ".log"
     picoOutLog = mkLogPath "picocom-stdout"
     picoErrLog = mkLogPath "picocom-stderr"
-    ocdOutLog = mkLogPath "openocd-stdout"
-    ocdErrLog = mkLogPath "openocd-stderr"
+    adapterOutLog = mkLogPath "gdb-adapters-stdout"
+    adapterErrLog = mkLogPath "gdb-adapters-stderr"
     gdbOutLog = mkLogPath "gdb-out.log"
-    openocdEnv = [("OPENOCD_STDOUT_LOG", ocdOutLog), ("OPENOCD_STDERR_LOG", ocdErrLog)]
+    adaptersConfig =
+      GdbAdaptersConfig
+        { usbDev = dI.usbAdapterLocation
+        , memMapAddress = extendLsb0s whoAmIPfx
+        , cpuMap = Build [(whoAmID, 3333)]
+        , stdoutPath = Just adapterOutLog
+        , stderrPath = Just adapterErrLog
+        }
+    picocomConfig =
+      Picocom.PicocomConfig
+        { devPath = dI.serial
+        , baudRate = Nothing
+        , stdoutPath = Just picoOutLog
+        , stderrPath = Just picoErrLog
+        }
 
   D.assertProbe "probe_test_start" d
 
-  Ocd.withOpenOcdWithEnv openocdEnv dI.usbAdapterLocation 3333 6666 4444 $ \ocd -> do
+  withGdbAdapters adaptersConfig $ \adapters -> do
     liftIO $ do
-      hSetBuffering ocd.stderrHandle LineBuffering
-      putStr "Waiting for OpenOCD to halt..."
-      expectLine ocd.stderrHandle Ocd.waitForHalt
+      hSetBuffering adapters.stderrHandle LineBuffering
+      putStr "Waiting for gdb-adapters to halt..."
+      expectLine adapters.stderrHandle adaptersWaitForHalt
       putStrLn "  Done"
 
       putStrLn "Starting Picocom..."
-    Picocom.withPicocomWithLogging dI.serial picoOutLog picoErrLog $ \pico -> do
+    Picocom.withPicocom picocomConfig $ \pico -> do
       liftIO $ do
         hSetBuffering pico.stdinHandle LineBuffering
         hSetBuffering pico.stdinHandle LineBuffering
@@ -103,7 +125,7 @@ driverFunc _name [d@(_, dI)] = do
         liftIO $ do
           hSetBuffering gdb.stdinHandle LineBuffering
           Gdb.setLogging gdb gdbOutLog
-          Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
+          Gdb.setFile gdb $ firmwareBinariesDir RiscV Release </> "smoltcp_client"
           Gdb.setTarget gdb 3333
           errorToException =<< Gdb.loadBinary gdb
           -- errorToException =<< Gdb.compareSections gdb

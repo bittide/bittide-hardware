@@ -33,11 +33,14 @@ import Clash.Class.BitPackC (ByteOrder (BigEndian))
 
 import Project.FilePath (
   CargoBuildType (Release),
+  TargetArch (RiscV),
   findParentContaining,
   firmwareBinariesDir,
  )
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
+
+import qualified Bittide.Instances.Hitl.Driver.VexRiscvTcp as D
 
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
@@ -166,7 +169,7 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
   peConfigSim = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
+      elfPath = root </> firmwareBinariesDir RiscV Release </> "smoltcp_client"
     pure
       $ PeConfig
         { initI =
@@ -186,6 +189,8 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
         , iBusTimeout = d0
         , dBusTimeout = d0
         , includeIlaWb = False
+        , whoAmID = D.whoAmID
+        , whoAmIPfx = D.whoAmIPfx
         }
 
   peConfigRtl =
@@ -197,6 +202,8 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True
+      , whoAmID = D.whoAmID
+      , whoAmIPfx = D.whoAmIPfx
       }
 
 type IMemWords = DivRU (280 * 1024) 4
