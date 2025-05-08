@@ -34,12 +34,22 @@ cd firmware-binaries;
   fb_res="$?"
 cd ..
 
+cd gdb-adapters;
+  printf "gdb-adapters " >&2;
+  run cargo "$@";
+  fb_res="$?"
+cd ..
+
 if [[ fs_res -ne 0 ]]; then
   echo "firmware-support failure!"
 fi
 
 if [[ fb_res -ne 0 ]]; then
   echo "firmware-binaries failure!"
+fi
+
+if [[ fb_res -ne 0 ]]; then
+  echo "gdb-adapters failure!"
 fi
 
 

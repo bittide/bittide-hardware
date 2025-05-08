@@ -64,31 +64,33 @@ case_time_rust_self_test =
 Runs the `hello` binary from `firmware-binaries`.
 -}
 dut :: Circuit () (Df Basic50 (BitVector 8))
-dut = withClockResetEnable clockGen resetGen enableGen
+dut = withClockResetEnable clockGen (resetGenN d2) enableGen
   $ circuit
   $ \_unit -> do
     (uartRx, jtag, mm) <- idleSource -< ()
     [(prefixUart, (mmUart, uartBus)), (prefixTime, (mmTime, timeBus))] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
     (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-    constBwd 0b10 -< prefixUart
+    constBwd 0b100 -< prefixUart
     _localCounter <- timeWb -< (mmTime, timeBus)
-    constBwd 0b11 -< prefixTime
+    constBwd 0b110 -< prefixTime
     idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "time_self_test"
+    let elfPath = root </> firmwareBinariesDir RiscV Release </> "time_self_test"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
         { initI = Reloadable (Vec iMem)
-        , prefixI = 0b00
+        , prefixI = 0b000
         , initD = Reloadable (Vec dMem)
-        , prefixD = 0b01
+        , prefixD = 0b010
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
+        , whoAmID = 0x3075_7063
+        , whoAmIPfx = 0b111
         }
 {-# NOINLINE dut #-}
 

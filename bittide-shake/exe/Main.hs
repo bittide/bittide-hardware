@@ -74,9 +74,8 @@ ignorePatterns =
   , ".vscode"
   , -- Used for synthesis, but not for generating Clash output:
     dataFilesDir </> "**" </> "*.xdc"
-  , dataFilesDir </> "**" </> "*.tcl"
   , -- Used for HITL tests
-    "bittide-instances/data/openocd/*"
+    "bittide-instances/data/cpu-maps/*"
   , "bittide-instances/data/picocom/*"
   , "bittide-instances/data/gdb/*"
   ]

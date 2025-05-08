@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE NoFieldSelectors #-}
@@ -132,7 +133,7 @@ dut ::
 dut =
   withClockResetEnable
     clockGen
-    resetGen
+    (resetGenN d2)
     enableGen
     $ circuit
     $ \_unit -> do
@@ -164,7 +165,7 @@ dut =
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
+      elfDir = root </> firmwareBinariesDir RiscV Release
       elfPath = elfDir </> "clock-control-wb"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
@@ -176,6 +177,8 @@ dut =
         , iBusTimeout = d0
         , dBusTimeout = d0
         , includeIlaWb = False
+        , whoAmID = 0x3075_7063
+        , whoAmIPfx = 0b111
         }
 {-# NOINLINE dut #-}
 

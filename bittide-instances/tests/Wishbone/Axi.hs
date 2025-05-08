@@ -74,7 +74,7 @@ Runs the `hello` binary from `firmware-binaries`.
 -}
 dut :: Circuit () (Df System (BitVector 8))
 dut =
-  withClockResetEnable clockGen resetGen enableGen
+  withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
     $ \_unit -> do
       (uartTx, jtag, mm) <- idleSource -< ()
@@ -108,7 +108,7 @@ dut =
   axiProxy = Proxy @(Axi4Stream System ('Axi4StreamConfig 4 0 0) ())
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "axi_stream_self_test"
+    let elfPath = root </> firmwareBinariesDir RiscV Release </> "axi_stream_self_test"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
@@ -119,6 +119,8 @@ dut =
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
+        , whoAmID = 0x3075_7063
+        , whoAmIPfx = 0b111
         }
 {-# NOINLINE dut #-}
 

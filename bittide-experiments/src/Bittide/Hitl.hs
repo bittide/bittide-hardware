@@ -115,7 +115,7 @@ data DeviceInfo = DeviceInfo
   -- @"/dev/serial/by-path/pci-0000:00:14.0-usb-0:5.4.4.2:1.1-port0"@
   , usbAdapterLocation :: String
   -- ^ The USB adapter location for the hardware target, for example @"1-2:1"@.
-  -- Currently primarily used for the JTAG target location with OpenOCD.
+  -- Currently primarily used for the JTAG target location with gdb-adapters.
   }
   deriving (Eq, Ord, Show)
 

@@ -41,7 +41,7 @@ simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
  where
   uartStream =
     sampleC def{timeoutAfter = 100_000}
-      $ withClockResetEnable clockGen resetGen enableGen
+      $ withClockResetEnable clockGen (resetGenN d2) enableGen
       $ dut @System @4 @32 scatterConfig gatherConfig
 
   scatterConfig = ScatterConfig SNat $ CalendarConfig d32 scatterCal scatterCal
@@ -103,7 +103,7 @@ dut scatterConfig gatherConfig = circuit $ do
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
+      elfDir = root </> firmwareBinariesDir RiscV Release
       elfPath = elfDir </> "scatter_gather_test"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
@@ -115,6 +115,8 @@ dut scatterConfig gatherConfig = circuit $ do
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
+        , whoAmID = 0x3075_7063
+        , whoAmIPfx = 0b111
         }
 
 type IMemWords = DivRU (64 * 1024) 4

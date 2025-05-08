@@ -35,11 +35,14 @@ import Protocols.Idle
 
 import Project.FilePath (
   CargoBuildType (Release),
+  TargetArch (RiscV),
   findParentContaining,
   firmwareBinariesDir,
  )
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
+
+import qualified Bittide.Instances.Hitl.Driver.VexRiscvTcp as D
 
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
@@ -171,7 +174,7 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
   peConfigSim = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let
-      elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
+      elfPath = root </> firmwareBinariesDir RiscV Release </> "smoltcp_client"
     (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       $ PeConfig
@@ -182,6 +185,8 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
         , iBusTimeout = d0
         , dBusTimeout = d0
         , includeIlaWb = False
+        , whoAmID = D.whoAmID
+        , whoAmIPfx = D.whoAmIPfx
         }
 
   peConfigRtl =
@@ -193,6 +198,8 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True
+      , whoAmID = D.whoAmID
+      , whoAmIPfx = D.whoAmIPfx
       }
 
 type IMemWords = DivRU (280 * 1024) 4
