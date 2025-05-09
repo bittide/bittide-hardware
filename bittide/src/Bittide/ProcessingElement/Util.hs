@@ -22,6 +22,7 @@ import System.IO (hPutStrLn, stderr)
 import qualified Data.ByteString as BS
 import qualified Data.IntMap as I
 import qualified Data.List as L
+import System.IO.Unsafe (unsafePerformIO)
 
 {- | Given a `Maybe Int` and a list, if the `Maybe Int` is `Just s`, pad the list to
 size `s` with the given element. If the length of the list is greater than `s`,
@@ -66,6 +67,31 @@ vecsFromElf byteOrder elfPath maybeDeviceTree = do
     dListPadded = padToSize "Data memory" (Just (natToNum @nInstrWords)) 0 dList
 
   pure (unsafeFromList iListPadded, unsafeFromList dListPadded)
+
+unsafeVecFromElfData
+  , unsafeVecFromElfInstr ::
+    forall nWords.
+    (HasCallStack, KnownNat nWords) =>
+    -- | How the words should be ordered
+    ByteOrder ->
+    -- | Source file, assumed to be Little Endian.
+    FilePath ->
+    -- | (instruction memBlob, data memBlob)
+    Vec nWords (BitVector 32)
+unsafeVecFromElfData byteOrder elfPath = unsafePerformIO $ do
+  (_iMemIntMap, dMemIntMap) <- getBytesMems elfPath Nothing
+  let
+    (_dStartAddr, _, dList) = extractIntMapData byteOrder dMemIntMap
+    dListPadded = padToSize "Data memory" (Just (natToNum @nWords)) 0 dList
+
+  pure (unsafeFromList dListPadded)
+unsafeVecFromElfInstr byteOrder elfPath = unsafePerformIO $ do
+  (iMemIntMap, _dMemIntMap) <- getBytesMems elfPath Nothing
+  let
+    (_iStartAddr, _, iList) = extractIntMapData byteOrder iMemIntMap
+    iListPadded = padToSize "Instruction memory" (Just (natToNum @nWords)) 0 iList
+
+  pure (unsafeFromList iListPadded)
 
 {- | Given the path to an elf file, the path to a device tree and a starting address
  for the device tree. Return a 3 tuple containing:

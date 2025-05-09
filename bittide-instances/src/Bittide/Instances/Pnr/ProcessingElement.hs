@@ -78,12 +78,11 @@ vexRiscvUartHelloC baudSnat = circuit $ \(mm, (uartRx, jtag)) -> do
     let
       elfDir = root </> firmwareBinariesDir "riscv32imc" Debug
       elfPath = elfDir </> "hello"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec $ unsafeVecFromElfInstr @IMemWords BigEndian elfPath)
         , prefixI = 0b00
-        , initD = Reloadable (Vec dMem)
+        , initD = Reloadable (Vec $ unsafeVecFromElfData @DMemWords BigEndian elfPath)
         , prefixD = 0b01
         , iBusTimeout = d0
         , dBusTimeout = d0

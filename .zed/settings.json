@@ -1,0 +1,19 @@
+// Folder-specific settings
+//
+// For a full list of overridable settings, and general information on folder-specific settings,
+// see the documentation: https://zed.dev/docs/configuring-zed#settings-files
+{
+    "lsp": {
+        "rust-analyzer": {
+            "binary": {
+                "path": "/home/lara/.cargo/bin/rust-analyzer"
+            },
+            "initialization_options": {
+                "linkedProjects": [
+                    "/home/lara/Projects/bittide-hardware/firmware-support/Cargo.toml",
+                    "/home/lara/Projects/bittide-hardware/firmware-binaries/Cargo.toml"
+                ]
+            }
+        }
+    }
+}

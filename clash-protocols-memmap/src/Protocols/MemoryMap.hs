@@ -46,6 +46,8 @@ module Protocols.MemoryMap (
   withAbsAddr,
   withTag,
   withTags,
+  withDeviceTag,
+  withDeviceTags,
   withMemoryMap,
   withPrefix,
   unMemmap,
@@ -275,6 +277,54 @@ withName name' (Circuit f) = Circuit go
    where
     ((SimOnly mm, bwdA), fwdB) = f (((), fwdA), bwdB)
     mm' = mm{tree = WithName locCaller name' mm.tree}
+
+withDeviceTag ::
+  (HasCallStack) => String -> Circuit (ConstBwd MM, a) b -> Circuit (ConstBwd MM, a) b
+withDeviceTag tag (Circuit f) = Circuit go
+ where
+  go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
+   where
+    ((SimOnly mm, bwdA), fwdB) = f (((), fwdA), bwdB)
+    mm' = mm{deviceDefs = newDefs}
+    newDefs = case Map.toAscList mm.deviceDefs of
+      [(key, def')] ->
+        Map.fromAscList
+          [
+            ( key
+            , DeviceDefinition
+                { tags = tag : def'.tags
+                , deviceName = def'.deviceName
+                , registers = def'.registers
+                , definitionLoc = def'.definitionLoc
+                }
+            )
+          ]
+      [] -> error "`withDeviceTag` called on a tree with no device definitions"
+      _ -> error "`withDeviceTag` called on a tree with more than one device definition"
+
+withDeviceTags ::
+  (HasCallStack) => [String] -> Circuit (ConstBwd MM, a) b -> Circuit (ConstBwd MM, a) b
+withDeviceTags tags' (Circuit f) = Circuit go
+ where
+  go (((), fwdA), bwdB) = ((SimOnly mm', bwdA), fwdB)
+   where
+    ((SimOnly mm, bwdA), fwdB) = f (((), fwdA), bwdB)
+    mm' = mm{deviceDefs = newDefs}
+    newDefs = case Map.toAscList mm.deviceDefs of
+      [(key, def')] ->
+        Map.fromAscList
+          [
+            ( key
+            , DeviceDefinition
+                { tags = tags' <> def'.tags
+                , deviceName = def'.deviceName
+                , registers = def'.registers
+                , definitionLoc = def'.definitionLoc
+                }
+            )
+          ]
+      [] -> error "`withDeviceTags` called on a tree with no device definitions"
+      _ -> error "`withDeviceTags` called on a tree with more than one device definition"
 
 withTag ::
   (HasCallStack) => String -> Circuit (ConstBwd MM, a) b -> Circuit (ConstBwd MM, a) b

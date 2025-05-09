@@ -90,7 +90,9 @@ singleMasterInterconnectC = Circuit go
     )
   go (((), m2s), unzip -> (prefixes, unzip -> (slaveMms, s2ms))) = ((SimOnly memMap, s2m), (\x -> ((), ((), x))) <$> m2ss)
    where
-    prefixToAddr prefix = toInteger prefix `shiftL` fromInteger shift'
+    -- the 4 * is needed because the addrW etc relies on a word-aligned bus,
+    -- not a byte aligned bus.
+    prefixToAddr prefix = 4 * (toInteger prefix `shiftL` fromInteger shift')
      where
       shift' = snatToInteger $ SNat @(addrW - CLog 2 nSlaves)
     relAddrs = L.map prefixToAddr (toList prefixes)

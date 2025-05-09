@@ -23,7 +23,13 @@ import Bittide.Wishbone
 import Clash.Cores.Xilinx.Ila (Depth (D4096))
 
 import qualified Data.ByteString as BS
-import qualified Protocols.MemoryMap as MM (ConstBwd, MM, constBwd, withTag)
+import qualified Protocols.MemoryMap as MM (
+  ConstBwd,
+  MM,
+  constBwd,
+  withDeviceTag,
+  withTag,
+ )
 
 -- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where
@@ -100,9 +106,14 @@ processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, 
     (splitAtCI <| singleMasterInterconnectC) -< (mmDbus, dBus1)
   MM.constBwd prefixD -< dPre
   MM.constBwd prefixI -< iPre
-  MM.withTag "no-generate" $ wbStorage "DataMemory" initD -< (mmD, dMemBus)
+  MM.withTag "no-generate"
+    $ MM.withDeviceTag "no-generate"
+    $ wbStorage "DataMemory" initD
+    -< (mmD, dMemBus)
+
   iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
   MM.withTag "no-generate"
+    $ MM.withDeviceTag "no-generate"
     $ wbStorageDPC "InstructionMemory" initI
     -< (mmI, (iBus2, iMemBus))
   idC -< extBusses

@@ -1,35 +1,22 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
-
+#![allow(const_item_mutation)]
 // SPDX-FileCopyrightText: 2022 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 
 use ufmt::uwriteln;
 
-use bittide_sys::uart::Uart;
+use bittide_hal::hals::vexriscv as hal;
 
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-const STATUS_REG_ADDR: *mut u32 = 0xE000_0000 as *mut u32;
-const UART_ADDR: *const () = 0xC000_0000 as *const ();
-
-fn test_success() {
-    unsafe {
-        STATUS_REG_ADDR.write_volatile(1);
-    }
-}
-
-fn test_failure() {
-    unsafe {
-        STATUS_REG_ADDR.write_volatile(2);
-    }
-}
+const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
+    let uart = &mut INSTANCES.uart;
 
     let names = ["Rust", "RISC-V", "Haskell"];
     for name in names {
@@ -37,19 +24,21 @@ fn main() -> ! {
     }
     uwriteln!(uart, "This can also do {} {:#x}", "debug prints", 42).unwrap();
 
-    test_success();
+    INSTANCES
+        .statusregister
+        .set_status(hal::TestStatus::Success);
 
     uwriteln!(uart, "Going in echo mode!").unwrap();
 
     loop {
-        let c = uart.receive();
-        uart.send(c);
+        let c = uart.data();
+        uart.set_data(c);
     }
 }
 
 #[panic_handler]
 fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
-    test_failure();
+    INSTANCES.statusregister.set_status(hal::TestStatus::Fail);
     loop {
         continue;
     }

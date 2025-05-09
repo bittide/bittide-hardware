@@ -29,7 +29,7 @@ import Bittide.DoubleBufferedRam
 import Bittide.Ethernet.Mac
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.ProcessingElement.Util (vecsFromElf)
+import Bittide.ProcessingElement.Util (unsafeVecFromElfData, unsafeVecFromElfInstr)
 import Bittide.SharedTypes (ByteOrder (BigEndian))
 import Bittide.Wishbone
 
@@ -169,12 +169,11 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
     root <- findParentContaining "cabal.project"
     let
       elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       $ PeConfig
-        { initI = Reloadable (Vec iMem)
+        { initI = Reloadable (Vec $ unsafeVecFromElfInstr @IMemWords BigEndian elfPath)
         , prefixI = 0b1000
-        , initD = Reloadable (Vec dMem)
+        , initD = Reloadable (Vec $ unsafeVecFromElfData @DMemWords BigEndian elfPath)
         , prefixD = 0b0001
         , iBusTimeout = d0
         , dBusTimeout = d0
