@@ -34,6 +34,7 @@ import Protocols.MemoryMap (
   MemoryMap (..),
   MemoryMapTree (DeviceInstance, Interconnect),
   Name (Name),
+  NamedLoc (..),
   Register (Register, access, address, fieldType, reset, tags),
   locHere,
   mergeDeviceDefs,
@@ -100,28 +101,42 @@ magicUart = Circuit go
     deviceDef =
       DeviceDefinition
         (Name deviceName "")
-        [
-          ( Name "test" ""
-          , locHere
-          , Register
-              { tags = []
-              , reset = Nothing
-              , fieldType = regType @(FakeType Bool (BitVector 32))
-              , address = 0
-              , access = ReadWrite
-              }
-          )
-        ,
-          ( Name "another_test" ""
-          , locHere
-          , Register
-              { tags = []
-              , reset = Nothing
-              , fieldType = regType @(Either Bool (BitVector 32))
-              , address = 0
-              , access = ReadWrite
-              }
-          )
+        [ NamedLoc
+            { name = Name "test" ""
+            , loc = locHere
+            , value =
+                Register
+                  { tags = []
+                  , reset = Nothing
+                  , fieldType = regType @(FakeType Bool (BitVector 32))
+                  , address = 0
+                  , access = ReadWrite
+                  }
+            }
+        , NamedLoc
+            { name = Name "test" ""
+            , loc = locHere
+            , value =
+                Register
+                  { tags = []
+                  , reset = Nothing
+                  , fieldType = regType @(FakeType Bool (BitVector 32))
+                  , address = 0
+                  , access = ReadWrite
+                  }
+            }
+        , NamedLoc
+            { name = Name "another_test" ""
+            , loc = locHere
+            , value =
+                Register
+                  { tags = []
+                  , reset = Nothing
+                  , fieldType = regType @(Either Bool (BitVector 32))
+                  , address = 0
+                  , access = ReadWrite
+                  }
+            }
         ]
         callLoc
         []

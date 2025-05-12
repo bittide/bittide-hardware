@@ -237,72 +237,78 @@ switchDemoPeWb SNat = withMemoryMap mm $ Circuit go
     DeviceDefinition
       { tags = []
       , registers =
-          [
-            ( Name "read_start" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 64)
-                , address = 0x00
-                , access = WriteOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "read_cycles" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 64)
-                , address = 0x08
-                , access = WriteOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "write_start" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 64)
-                , address = 0x10
-                , access = WriteOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "write_cycles" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 64)
-                , address = 0x14
-                , access = WriteOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "local_clock_cycle_counter" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 64)
-                , address = 0x18
-                , access = ReadOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "buffer" ""
-            , locHere
-            , Register
-                { fieldType = regType @(Vec (bufferSize * 3) (BitVector 64))
-                , address = 0x20
-                , access = ReadOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
+          [ NamedLoc
+              { name = Name "read_start" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 64)
+                    , address = 0x00
+                    , access = WriteOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "read_cycles" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 64)
+                    , address = 0x08
+                    , access = WriteOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "write_start" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 64)
+                    , address = 0x10
+                    , access = WriteOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "write_cycles" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 64)
+                    , address = 0x14
+                    , access = WriteOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "local_clock_cycle_counter" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 64)
+                    , address = 0x18
+                    , access = ReadOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "buffer" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(Vec (bufferSize * 3) (BitVector 64))
+                    , address = 0x20
+                    , access = ReadOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
           ]
       , deviceName = Name "SwitchDemoPE" ""
       , definitionLoc = locHere

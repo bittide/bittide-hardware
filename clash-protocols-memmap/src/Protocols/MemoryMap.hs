@@ -53,7 +53,7 @@ module Protocols.MemoryMap (
   DeviceDefinitions,
   DeviceDefinition (..),
   Name (..),
-  NamedLoc,
+  NamedLoc (..),
   regType,
   regTypeSplit,
   regFieldType,
@@ -148,7 +148,12 @@ data Name = Name
 {- | Wrapper for \"things\" that have a name and a description. These are used
 to generate documentation and data structures for target languages.
 -}
-type NamedLoc a = (Name, SrcLoc, a)
+data NamedLoc a = NamedLoc
+  { name :: Name
+  , loc :: SrcLoc
+  , value :: a
+  }
+  deriving (Show, Eq)
 
 type DeviceDefinitions = Map.Map DeviceName DeviceDefinition
 
@@ -169,8 +174,8 @@ data DeviceDefinition = DeviceDefinition
 deviceSize :: DeviceDefinition -> Integer
 deviceSize dev =
   L.foldr
-    ( \(_, _, reg) acc ->
-        max acc (reg.address + regByteSizeC reg.fieldType)
+    ( \reg acc ->
+        max acc (reg.value.address + regByteSizeC reg.value.fieldType)
     )
     0
     dev.registers

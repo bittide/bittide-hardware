@@ -228,28 +228,30 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @
         deviceDef SNat =
           DeviceDefinition
             { registers =
-                [
-                  ( Name "scatterMemory" ""
-                  , locHere
-                  , Register
-                      { fieldType = regType @(Vec memDepth (Bytes 8))
-                      , address = 0
-                      , access = ReadOnly
-                      , reset = Nothing
-                      , tags = []
-                      }
-                  )
-                ,
-                  ( Name "metacycleRegister" ""
-                  , locHere
-                  , Register
-                      { fieldType = regType @(Bytes 4)
-                      , address = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
-                      , access = ReadOnly
-                      , reset = Nothing
-                      , tags = []
-                      }
-                  )
+                [ NamedLoc
+                    { name = Name "scatterMemory" ""
+                    , loc = locHere
+                    , value =
+                        Register
+                          { fieldType = regType @(Vec memDepth (Bytes 8))
+                          , address = 0
+                          , access = ReadOnly
+                          , reset = Nothing
+                          , tags = []
+                          }
+                    }
+                , NamedLoc
+                    { name = Name "metacycleRegister" ""
+                    , loc = locHere
+                    , value =
+                        Register
+                          { fieldType = regType @(Bytes 4)
+                          , address = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
+                          , access = ReadOnly
+                          , reset = Nothing
+                          , tags = []
+                          }
+                    }
                 ]
             , deviceName =
                 Name
@@ -365,28 +367,30 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
     deviceDef SNat =
       DeviceDefinition
         { registers =
-            [
-              ( Name "gatherMemory" ""
-              , locHere
-              , Register
-                  { fieldType = regType @(Vec memDepth (Bytes 8))
-                  , address = 0
-                  , access = WriteOnly
-                  , reset = Nothing
-                  , tags = []
-                  }
-              )
-            ,
-              ( Name "metacycleRegister" ""
-              , locHere
-              , Register
-                  { fieldType = regType @(Bytes 4)
-                  , address = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
-                  , access = ReadOnly
-                  , reset = Nothing
-                  , tags = []
-                  }
-              )
+            [ NamedLoc
+                { name = Name "gatherMemory" ""
+                , loc = locHere
+                , value =
+                    Register
+                      { fieldType = regType @(Vec memDepth (Bytes 8))
+                      , address = 0
+                      , access = WriteOnly
+                      , reset = Nothing
+                      , tags = []
+                      }
+                }
+            , NamedLoc
+                { name = Name "metacycleRegister" ""
+                , loc = locHere
+                , value =
+                    Register
+                      { fieldType = regType @(Bytes 4)
+                      , address = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
+                      , access = ReadOnly
+                      , reset = Nothing
+                      , tags = []
+                      }
+                }
             ]
         , deviceName =
             Name

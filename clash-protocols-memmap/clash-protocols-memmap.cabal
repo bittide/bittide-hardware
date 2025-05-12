@@ -178,7 +178,6 @@ test-suite unittests
     clash-protocols-memmap,
     constraints,
     deepseq,
-    extra,
     ghc-typelits-extra-lemmas,
     hedgehog >=1.0 && <1.5,
     lifted-async,

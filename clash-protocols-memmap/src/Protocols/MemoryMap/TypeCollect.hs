@@ -10,8 +10,9 @@ module Protocols.MemoryMap.TypeCollect where
 import Clash.Prelude hiding (def)
 
 import Protocols.MemoryMap (
-  DeviceDefinition (..),
+  DeviceDefinition (registers),
   DeviceDefinitions,
+  NamedLoc (..),
   Register (..),
   regFieldType,
  )
@@ -41,10 +42,11 @@ collectTypeDefsFromMM deviceDefs = go $ snd <$> Map.toList deviceDefs
  where
   go :: [DeviceDefinition] -> [(TypeName, TypeDescription)]
   go [] = []
-  go (deviceDef : devs) = goRegisters (deviceDef.registers) <> go devs
+  go (deviceDef : devs) = goRegisters deviceDef.registers <> go devs
 
+  goRegisters :: [NamedLoc Register] -> [(TypeName, TypeDescription)]
   goRegisters [] = []
-  goRegisters ((_, _, Register{..}) : regs) = collectDefs (regFieldType fieldType) <> goRegisters regs
+  goRegisters (reg : regs) = collectDefs (regFieldType reg.value.fieldType) <> goRegisters regs
 
 collectDefs :: FieldType -> [(TypeName, TypeDescription)]
 collectDefs fieldType = case fieldType of

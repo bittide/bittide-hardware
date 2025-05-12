@@ -50,7 +50,7 @@ import Protocols.MemoryMap (
   MemoryMap (MemoryMap, deviceDefs, tree),
   MemoryMapTree (DeviceInstance),
   Name (..),
-  NamedLoc,
+  NamedLoc (..),
   Register (..),
   locCaller,
   locHere,
@@ -240,10 +240,11 @@ deviceWithOffsetsWbC deviceName =
       | m.nWords == 0 = Nothing
       | otherwise =
           Just
-            ( unSimOnly m.name
-            , unSimOnly m.srcLoc
-            , (unSimOnly m.register){address = fromIntegral o}
-            )
+            $ NamedLoc
+              { name = unSimOnly m.name
+              , loc = unSimOnly m.srcLoc
+              , value = (unSimOnly m.register){address = fromIntegral o}
+              }
 
     mm =
       MemoryMap

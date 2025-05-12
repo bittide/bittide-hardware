@@ -148,67 +148,72 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
   deviceDef depth@SNat =
     DeviceDefinition
       { registers =
-          [
-            ( Name "calendarEntries" ""
-            , locHere
-            , Register
-                { fieldType =
-                    -- ghc-typelits-extra isn't smart enough to figure out
-                    -- the BitPackC constraints for the vector type
-                    -- so we use a simpler, separate, BitPackC instance
-                    regTypeSplit
-                      @(Bytes (maxCalDepth * nBytes))
-                      @(Vec maxCalDepth (Bytes nBytes))
-                , address = 0
-                , access = ReadWrite
-                , reset = Nothing
-                , tags = []
-                }
-            )
-          ,
-            ( Name "shadowWrite" ""
-            , locHere
-            , Register
-                { fieldType = regType @(Bytes nBytes)
-                , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 0)
-                , access = WriteOnly
-                , reset = Nothing
-                , tags = []
-                }
-            )
-          ,
-            ( Name "shadowRead" ""
-            , locHere
-            , Register
-                { fieldType = regType @(Bytes nBytes)
-                , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 1)
-                , access = WriteOnly
-                , reset = Nothing
-                , tags = []
-                }
-            )
-          ,
-            ( Name "shadowDepth" ""
-            , locHere
-            , Register
-                { fieldType = regType @(Bytes nBytes)
-                , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 2)
-                , access = ReadWrite -- TODO is this correct??
-                , reset = Nothing
-                , tags = []
-                }
-            )
-          ,
-            ( Name "calendarSwap" ""
-            , locHere
-            , Register
-                { fieldType = regType @Bool
-                , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 3)
-                , access = WriteOnly
-                , reset = Nothing
-                , tags = []
-                }
-            )
+          [ NamedLoc
+              { name = Name "calendarEntries" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType =
+                        -- ghc-typelits-extra isn't smart enough to figure out
+                        -- the BitPackC constraints for the vector type
+                        -- so we use a simpler, separate, BitPackC instance
+                        regTypeSplit
+                          @(Bytes (maxCalDepth * nBytes))
+                          @(Vec maxCalDepth (Bytes nBytes))
+                    , address = 0
+                    , access = ReadWrite
+                    , reset = Nothing
+                    , tags = []
+                    }
+              }
+          , NamedLoc
+              { name = Name "shadowWrite" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(Bytes nBytes)
+                    , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 0)
+                    , access = WriteOnly
+                    , reset = Nothing
+                    , tags = []
+                    }
+              }
+          , NamedLoc
+              { name = Name "shadowRead" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(Bytes nBytes)
+                    , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 1)
+                    , access = WriteOnly
+                    , reset = Nothing
+                    , tags = []
+                    }
+              }
+          , NamedLoc
+              { name = Name "shadowDepth" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(Bytes nBytes)
+                    , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 2)
+                    , access = ReadWrite -- TODO is this correct??
+                    , reset = Nothing
+                    , tags = []
+                    }
+              }
+          , NamedLoc
+              { name = Name "calendarSwap" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @Bool
+                    , address = sizeEntries depth + (natToNum @(ByteSizeC (Bytes nBytes)) * 3)
+                    , access = WriteOnly
+                    , reset = Nothing
+                    , tags = []
+                    }
+              }
           ]
       , deviceName = Name name ""
       , definitionLoc = locHere

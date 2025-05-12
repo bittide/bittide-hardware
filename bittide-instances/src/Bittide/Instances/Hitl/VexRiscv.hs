@@ -128,17 +128,18 @@ vexRiscvInner jtagIn0 uartRx =
       DeviceDefinition
         { tags = []
         , registers =
-            [
-              ( Name "status" ""
-              , locHere
-              , Register
-                  { fieldType = regType @TestStatus
-                  , address = 0x00
-                  , access = WriteOnly
-                  , tags = []
-                  , reset = Nothing
-                  }
-              )
+            [ NamedLoc
+                { name = Name "status" ""
+                , loc = locHere
+                , value =
+                    Register
+                      { fieldType = regType @TestStatus
+                      , address = 0x00
+                      , access = WriteOnly
+                      , tags = []
+                      , reset = Nothing
+                      }
+                }
             ]
         , deviceName = Name "StatusRegister" ""
         , definitionLoc = locHere

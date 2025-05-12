@@ -100,50 +100,54 @@ debugRegisterWb cfg = withMemoryMap mm $ Circuit go
     DeviceDefinition
       { tags = []
       , registers =
-          [
-            ( Name "reframing_state_kind" ""
-            , locHere
-            , Register
-                { fieldType = regType @ReframingStateKind
-                , address = 0x0
-                , access = ReadWrite
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "target_correction" ""
-            , locHere
-            , Register
-                { fieldType = regType @Float
-                , address = 0x4
-                , access = ReadWrite
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "target_count" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 32)
-                , address = 0x8
-                , access = ReadWrite
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "reframing_enabled" ""
-            , locHere
-            , Register
-                { fieldType = regType @Bool
-                , address = 0xC
-                , access = ReadOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
+          [ NamedLoc
+              { name = Name "reframing_state_kind" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @ReframingStateKind
+                    , address = 0x0
+                    , access = ReadWrite
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "target_correction" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @Float
+                    , address = 0x4
+                    , access = ReadWrite
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "target_count" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 32)
+                    , address = 0x8
+                    , access = ReadWrite
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "reframing_enabled" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @Bool
+                    , address = 0xC
+                    , access = ReadOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
           ]
       , deviceName = Name "ClockControlDebug" ""
       , definitionLoc = locHere

@@ -19,7 +19,6 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Control.DeepSeq (force)
 import Data.Bifunctor (second)
-import Data.Tuple.Extra (fst3, thd3)
 import GHC.Stack (HasCallStack)
 import Hedgehog (Gen, Property)
 import Hedgehog.Internal.Property (property)
@@ -287,25 +286,25 @@ case_memoryMap = do
 
   let [regF, regD, regU, regB, regE, regS, regRO, regWO, regPrio] = example.registers
 
-  (fst3 regF).name @?= "f"
-  (fst3 regD).name @?= "d"
-  (fst3 regU).name @?= "u"
-  (fst3 regB).name @?= "b"
-  (fst3 regE).name @?= "e"
-  (fst3 regS).name @?= "s"
-  (fst3 regRO).name @?= "ro"
-  (fst3 regWO).name @?= "wo"
-  (fst3 regPrio).name @?= "prio"
+  regF.name.name @?= "f"
+  regD.name.name @?= "d"
+  regU.name.name @?= "u"
+  regB.name.name @?= "b"
+  regE.name.name @?= "e"
+  regS.name.name @?= "s"
+  regRO.name.name @?= "ro"
+  regWO.name.name @?= "wo"
+  regPrio.name.name @?= "prio"
 
-  (thd3 regF).address @?= 0
-  (thd3 regD).address @?= 1
-  (thd3 regU).address @?= 3
-  (thd3 regB).address @?= 4
-  (thd3 regE).address @?= 5
-  (thd3 regS).address @?= 6
-  (thd3 regRO).address @?= 7
-  (thd3 regWO).address @?= 8
-  (thd3 regPrio).address @?= 9
+  regF.value.address @?= 0
+  regD.value.address @?= 1
+  regU.value.address @?= 3
+  regB.value.address @?= 4
+  regE.value.address @?= 5
+  regS.value.address @?= 6
+  regRO.value.address @?= 7
+  regWO.value.address @?= 8
+  regPrio.value.address @?= 9
 
 tests :: TestTree
 tests =

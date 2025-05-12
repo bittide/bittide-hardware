@@ -435,28 +435,30 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ c
   deviceDef =
     MM.DeviceDefinition
       { registers =
-          [
-            ( MM.Name "data" ""
-            , MM.locHere
-            , MM.Register
-                { reset = Nothing
-                , fieldType = MM.regType @(Bytes 1)
-                , address = 0
-                , access = MM.ReadWrite
-                , tags = []
-                }
-            )
-          ,
-            ( MM.Name "status" ""
-            , MM.locHere
-            , MM.Register
-                { reset = Nothing
-                , fieldType = MM.regType @(Bytes 1)
-                , address = 4
-                , access = MM.ReadOnly
-                , tags = []
-                }
-            )
+          [ MM.NamedLoc
+              { name = MM.Name "data" ""
+              , loc = MM.locHere
+              , value =
+                  MM.Register
+                    { reset = Nothing
+                    , fieldType = MM.regType @(Bytes 1)
+                    , address = 0
+                    , access = MM.ReadWrite
+                    , tags = []
+                    }
+              }
+          , MM.NamedLoc
+              { name = MM.Name "status" ""
+              , loc = MM.locHere
+              , value =
+                  MM.Register
+                    { reset = Nothing
+                    , fieldType = MM.regType @(Bytes 1)
+                    , address = 4
+                    , access = MM.ReadOnly
+                    , tags = []
+                    }
+              }
           ]
       , deviceName =
           MM.Name "UART" "Wishbone accessible UART interface with configurable FIFO buffers."
@@ -716,50 +718,54 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
   deviceDef =
     MM.DeviceDefinition
       { registers =
-          [
-            ( MM.Name "command" ""
-            , MM.locHere
-            , MM.Register
-                { reset = Nothing
-                , fieldType = MM.regType @TimeCmd
-                , address = 0x00
-                , access = MM.WriteOnly
-                , tags = []
-                }
-            )
-          ,
-            ( MM.Name "cmp_result" ""
-            , MM.locHere
-            , MM.Register
-                { reset = Nothing
-                , fieldType = MM.regType @Bool
-                , address = 0x04
-                , access = MM.ReadOnly
-                , tags = []
-                }
-            )
-          ,
-            ( MM.Name "scratchpad" ""
-            , MM.locHere
-            , MM.Register
-                { reset = Nothing
-                , fieldType = MM.regType @(BitVector 64)
-                , address = 0x08
-                , access = MM.ReadOnly
-                , tags = []
-                }
-            )
-          ,
-            ( MM.Name "frequency" ""
-            , MM.locHere
-            , MM.Register
-                { reset = Nothing
-                , fieldType = MM.regType @(BitVector 64)
-                , address = 0x10
-                , access = MM.ReadOnly
-                , tags = []
-                }
-            )
+          [ MM.NamedLoc
+              { name = MM.Name "command" ""
+              , loc = MM.locHere
+              , value =
+                  MM.Register
+                    { reset = Nothing
+                    , fieldType = MM.regType @TimeCmd
+                    , address = 0x00
+                    , access = MM.WriteOnly
+                    , tags = []
+                    }
+              }
+          , MM.NamedLoc
+              { name = MM.Name "cmp_result" ""
+              , loc = MM.locHere
+              , value =
+                  MM.Register
+                    { reset = Nothing
+                    , fieldType = MM.regType @Bool
+                    , address = 0x04
+                    , access = MM.ReadOnly
+                    , tags = []
+                    }
+              }
+          , MM.NamedLoc
+              { name = MM.Name "scratchpad" ""
+              , loc = MM.locHere
+              , value =
+                  MM.Register
+                    { reset = Nothing
+                    , fieldType = MM.regType @(BitVector 64)
+                    , address = 0x08
+                    , access = MM.ReadOnly
+                    , tags = []
+                    }
+              }
+          , MM.NamedLoc
+              { name = MM.Name "frequency" ""
+              , loc = MM.locHere
+              , value =
+                  MM.Register
+                    { reset = Nothing
+                    , fieldType = MM.regType @(BitVector 64)
+                    , address = 0x10
+                    , access = MM.ReadOnly
+                    , tags = []
+                    }
+              }
           ]
       , deviceName = MM.Name "Timer" ""
       , definitionLoc = MM.locHere
@@ -830,17 +836,18 @@ readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
   deviceDef =
     MM.DeviceDefinition
       { registers =
-          [
-            ( MM.Name "dna" ""
-            , MM.locHere
-            , MM.Register
-                { fieldType = MM.regType @(BitVector 96)
-                , address = 0
-                , access = MM.ReadOnly
-                , reset = Nothing
-                , tags = []
-                }
-            )
+          [ MM.NamedLoc
+              { name = MM.Name "dna" ""
+              , loc = MM.locHere
+              , value =
+                  MM.Register
+                    { fieldType = MM.regType @(BitVector 96)
+                    , address = 0
+                    , access = MM.ReadOnly
+                    , reset = Nothing
+                    , tags = []
+                    }
+              }
           ]
       , deviceName = MM.Name "DNA" ""
       , definitionLoc = MM.locHere
@@ -931,17 +938,18 @@ whoAmIC whoAmI = MM.withMemoryMap mm $ Circuit go
   deviceDef =
     MM.DeviceDefinition
       { registers =
-          [
-            ( MM.Name "identifier" ""
-            , MM.locHere
-            , MM.Register
-                { reset = Nothing
-                , fieldType = MM.regType @(Unsigned 32)
-                , address = 0x00
-                , access = MM.ReadOnly
-                , tags = []
-                }
-            )
+          [ MM.NamedLoc
+              { name = MM.Name "identifier" ""
+              , loc = MM.locHere
+              , value =
+                  MM.Register
+                    { reset = Nothing
+                    , fieldType = MM.regType @(Unsigned 32)
+                    , address = 0x00
+                    , access = MM.ReadOnly
+                    , tags = []
+                    }
+              }
           ]
       , deviceName = MM.Name "WhoAmI" ""
       , definitionLoc = MM.locHere
