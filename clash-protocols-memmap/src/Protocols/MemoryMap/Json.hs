@@ -190,8 +190,8 @@ generateDeviceDef dev = do
   loc <- location dev.definitionLoc
   pure
     $ object
-      [ "name" .= Protocols.MemoryMap.name dev.deviceName
-      , "description" .= description dev.deviceName
+      [ "name" .= dev.deviceName.name
+      , "description" .= dev.deviceName.description
       , "src_location" .= loc
       , "registers" .= regs
       , "tags" .= dev.tags
@@ -201,8 +201,8 @@ generateDeviceDef dev = do
     loc <- location srcLoc
     pure
       $ object
-        [ "name" .= Protocols.MemoryMap.name regName
-        , "description" .= description regName
+        [ "name" .= regName.name
+        , "description" .= regName.description
         , "src_location" .= loc
         , "address" .= reg.address
         , "access" .= case reg.access of

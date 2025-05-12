@@ -4,6 +4,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
 --
@@ -298,10 +299,10 @@ interconnect = Circuit go
    where
     memoryMap =
       MemoryMap
-        { deviceDefs = mergeDeviceDefs (deviceDefs . unSim <$> toList mms)
+        { deviceDefs = mergeDeviceDefs ((.deviceDefs) . unSim <$> toList mms)
         , tree = Interconnect loc (toList descs)
         }
-    descs = zip relAddrs (tree . unSim <$> mms)
+    descs = zip relAddrs ((.tree) . unSim <$> mms)
     relAddrs = prefixToAddr <$> prefs
     unSim (SimOnly x) = x
 

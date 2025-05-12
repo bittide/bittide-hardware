@@ -94,9 +94,9 @@ singleMasterInterconnectC = Circuit go
      where
       shift' = snatToInteger $ SNat @(addrW - CLog 2 nSlaves)
     relAddrs = L.map prefixToAddr (toList prefixes)
-    comps = L.zip relAddrs (MM.tree . unSimOnly <$> toList slaveMms)
+    comps = L.zip relAddrs ((.tree) . unSimOnly <$> toList slaveMms)
     unSimOnly (SimOnly n) = n
-    deviceDefs = MM.mergeDeviceDefs (MM.deviceDefs . unSimOnly <$> toList slaveMms)
+    deviceDefs = MM.mergeDeviceDefs ((.deviceDefs) . unSimOnly <$> toList slaveMms)
     memMap =
       MM.MemoryMap
         { tree = MM.Interconnect MM.locCaller comps

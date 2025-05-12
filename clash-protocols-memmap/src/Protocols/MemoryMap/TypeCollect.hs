@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 
 -- | Collect all types referenced in a 'MemoryMap' and create a type-map.
@@ -38,8 +39,9 @@ typeMap = L.foldl go Map.empty
 collectTypeDefsFromMM :: DeviceDefinitions -> [(TypeName, TypeDescription)]
 collectTypeDefsFromMM deviceDefs = go $ snd <$> Map.toList deviceDefs
  where
+  go :: [DeviceDefinition] -> [(TypeName, TypeDescription)]
   go [] = []
-  go (deviceDef : devs) = goRegisters (registers deviceDef) <> go devs
+  go (deviceDef : devs) = goRegisters (deviceDef.registers) <> go devs
 
   goRegisters [] = []
   goRegisters ((_, _, Register{..}) : regs) = collectDefs (regFieldType fieldType) <> goRegisters regs
