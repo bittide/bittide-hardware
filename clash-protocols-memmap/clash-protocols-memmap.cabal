@@ -87,6 +87,7 @@ library
     Protocols.MemoryMap.Check.Normalized
     Protocols.MemoryMap.FieldType
     Protocols.MemoryMap.Json
+    Protocols.MemoryMap.Registers.WishboneStandard
     Protocols.MemoryMap.TypeCollect
 
   build-depends:
@@ -97,6 +98,8 @@ library
     clash-protocols,
     constraints,
     containers,
+    extra,
+    ghc-typelits-extra-lemmas,
     mtl,
     template-haskell,
 
@@ -135,3 +138,52 @@ executable example
     clash-protocols-memmap,
     containers,
     directory,
+
+test-suite doctests
+  type: exitcode-stdio-1.0
+  default-language: Haskell2010
+  main-is: doctests.hs
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
+  hs-source-dirs: tests
+  build-depends:
+    base,
+    clash-protocols-memmap,
+    doctest-parallel >=0.3.0.1 && <0.4,
+    filepath,
+    word8,
+
+test-suite unittests
+  import: common-options
+  hs-source-dirs: tests
+  type: exitcode-stdio-1.0
+  main-is: UnitTests.hs
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N12
+
+  other-modules:
+    Tests.Protocols.MemoryMap.Registers.WishboneStandard
+
+  build-depends:
+    base,
+    clash-prelude-hedgehog,
+    clash-protocols,
+    clash-protocols-memmap,
+    constraints,
+    deepseq,
+    extra,
+    ghc-typelits-extra-lemmas,
+    hedgehog >=1.0 && <1.5,
+    lifted-async,
+    pretty-show,
+    tasty >=1.5 && <1.7,
+    tasty-hedgehog >=1.2 && <1.5,
+    tasty-hunit,
+    tasty-th,

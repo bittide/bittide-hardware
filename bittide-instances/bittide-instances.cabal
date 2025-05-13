@@ -167,6 +167,7 @@ library
     Bittide.Instances.Hitl.VexRiscv
     Bittide.Instances.Pnr.Calendar
     Bittide.Instances.Pnr.Counter
+    Bittide.Instances.Pnr.DeviceWithMemMap
     Bittide.Instances.Pnr.ElasticBuffer
     Bittide.Instances.Pnr.Ethernet
     Bittide.Instances.Pnr.ProcessingElement

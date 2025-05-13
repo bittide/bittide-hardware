@@ -28,7 +28,7 @@ type DeviceName = String
 
 {- | A tree structure that describes the memory map of a device. Its definitions
 are using non-translatable constructs on purpose: Clash is currently pretty
-bad at propagating contants properly, so designers should only /produce/
+bad at propagating constants properly, so designers should only /produce/
 memory maps, not rely on constant folding to be able to extract addresses
 from them to use in their designs.
 -}

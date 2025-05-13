@@ -237,10 +237,11 @@ jobs:
           - doctests
 
         package:
-          - bittide-extra
           - bittide
           - bittide-experiments
+          - bittide-extra
           - bittide-instances
+          - clash-protocols-memmap
           - ghc-typelits-extra-lemmas
 
         shell_args:
