@@ -22,7 +22,6 @@ import Data.String
 import Hedgehog
 import Hedgehog.Range as Range
 import Protocols
-import Protocols.Df (Data (..))
 import Protocols.Hedgehog
 import Protocols.Idle (idleSource)
 import Protocols.Wishbone
@@ -75,7 +74,7 @@ uartMachine ::
     (Wishbone dom 'Standard addrW Byte, Df dom (BitVector 8))
 uartMachine = Circuit (second unbundle . mealyB go ReadStatus . second bundle)
  where
-  go ReadStatus (_, ~(WishboneS2M{..}, _)) = (nextState, (Ack False, (wbOut, NoData)))
+  go ReadStatus (_, ~(WishboneS2M{..}, _)) = (nextState, (Ack False, (wbOut, Nothing)))
    where
     (rxEmpty, txFull) = unpack (resize readData)
     nextState = case (acknowledge, err, (rxEmpty, txFull)) of
@@ -83,17 +82,17 @@ uartMachine = Circuit (second unbundle . mealyB go ReadStatus . second bundle)
       (True, False, (True, False)) -> WriteByte
       _ -> ReadStatus
     wbOut = (emptyWishboneM2S @30){addr = 1, busCycle = True, strobe = True}
-  go ReadByte (_, ~(WishboneS2M{..}, _)) = (nextState, (Ack False, (wbOut, NoData)))
+  go ReadByte (_, ~(WishboneS2M{..}, _)) = (nextState, (Ack False, (wbOut, Nothing)))
    where
     nextState = case (acknowledge, err) of
       (True, False) -> OutputByte (resize readData)
       _ -> ReadByte
     wbOut = (emptyWishboneM2S @30){addr = 0, busCycle = True, strobe = True}
   go (OutputByte byte) (_, ~(_, Ack dfAck)) =
-    (nextState, (Ack False, (emptyWishboneM2S, Data byte)))
+    (nextState, (Ack False, (emptyWishboneM2S, Just byte)))
    where
     nextState = if dfAck then ReadStatus else (OutputByte byte)
-  go (WriteByte) (Data dfData, ~(WishboneS2M{..}, _)) = (nextState, (Ack dfAck, (wbOut, NoData)))
+  go (WriteByte) (Just dfData, ~(WishboneS2M{..}, _)) = (nextState, (Ack dfAck, (wbOut, Nothing)))
    where
     (nextState, dfAck) = if acknowledge && not err then (ReadStatus, True) else (WriteByte, False)
     wbOut =
@@ -105,7 +104,7 @@ uartMachine = Circuit (second unbundle . mealyB go ReadStatus . second bundle)
         , busSelect = 1
         , writeData = resize dfData
         }
-  go WriteByte (NoData, _) = (ReadStatus, (Ack False, (emptyWishboneM2S, NoData)))
+  go WriteByte (Nothing, _) = (ReadStatus, (Ack False, (emptyWishboneM2S, Nothing)))
 
 -- | Check if we can combine `uartInterfaceWb` in loopback mode and `uartMachine` to create `id`.
 uartInterfaceWbCircuitTest :: Property

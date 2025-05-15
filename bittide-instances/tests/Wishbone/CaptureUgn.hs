@@ -33,8 +33,6 @@ import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
-import qualified Protocols.Df as Df
-
 {- | Test whether we can read the local and remote sequence counters from the captureUgn
 peripheral.
 -}
@@ -62,7 +60,7 @@ case_capture_ugn_self_test =
   clk = clockGen
   rst = resetGen
   ena = enableGen
-  simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+  simResult = chr . fromIntegral <$> catMaybes uartStream
   uartStream =
     sampleC def
       $ withClockResetEnable clk rst enableGen

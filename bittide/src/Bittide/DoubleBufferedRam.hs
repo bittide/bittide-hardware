@@ -15,7 +15,6 @@ import Clash.Prelude
 import Data.Constraint
 import Data.Maybe
 import Protocols (Ack (Ack), CSignal, Circuit (Circuit), Df)
-import Protocols.Df (dataToMaybe)
 import Protocols.Wishbone
 
 import Bittide.Extra.Maybe
@@ -520,7 +519,7 @@ registerWbC ::
 registerWbC prio initVal = case cancelMulDiv @nBytes @8 of
   Dict -> Circuit go
    where
-    go ((wbM2S, fmap dataToMaybe -> dfM2S), _) = ((wbS2M, fmap Ack dfS2M), aOut)
+    go ((wbM2S, dfM2S), _) = ((wbS2M, fmap Ack dfS2M), aOut)
      where
       (aOut, wbS2M) = registerWb prio initVal wbM2S dfM2S
       dfS2M

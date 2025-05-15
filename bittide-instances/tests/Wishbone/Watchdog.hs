@@ -34,13 +34,12 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- Qualified
 import qualified Data.List as L
-import qualified Protocols.Df as Df
 
 sim :: IO ()
 sim = putStrLn simResult
 
 simResult :: String
-simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+simResult = chr . fromIntegral <$> catMaybes uartStream
  where
   uartStream = sampleC def dut
 

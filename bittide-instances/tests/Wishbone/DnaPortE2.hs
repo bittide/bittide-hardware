@@ -32,13 +32,11 @@ import Bittide.ProcessingElement.Util
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
-import qualified Protocols.Df as Df
-
 sim :: IO ()
 sim = putStr simResult
 
 simResult :: String
-simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+simResult = chr . fromIntegral <$> catMaybes uartStream
  where
   uartStream = sampleC def $ withClockResetEnable clockGen resetGen enableGen $ dut @System
 
