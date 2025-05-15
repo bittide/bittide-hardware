@@ -41,7 +41,6 @@ import Text.Parsec.String
 import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- Qualified
-import qualified Protocols.Df as Df
 import qualified Protocols.DfConv as DfConv
 
 -- {-# ANN module "HLint: Missing NOINLINE pragma" #-}
@@ -50,8 +49,7 @@ sim :: IO ()
 sim =
   putStr
     $ fmap (chr . fromIntegral)
-    . mapMaybe Df.dataToMaybe
-    $ (sampleC def dut)
+    $ catMaybes (sampleC def dut)
 
 {- | Run the axi module self test with processingElement and inspect it's uart output.
 The test returns names of tests and a boolean indicating if the test passed.
@@ -66,7 +64,7 @@ case_axi_stream_rust_self_test =
  where
   assertResult (TestResult name (Just errMsg)) = assertFailure ("Test " <> name <> " failed with error \"" <> errMsg <> "\"")
   assertResult (TestResult _ Nothing) = return ()
-  simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+  simResult = chr . fromIntegral <$> catMaybes uartStream
   uartStream = sampleC def dut
 
 {- | A simple instance containing just VexRisc and UART as peripheral.

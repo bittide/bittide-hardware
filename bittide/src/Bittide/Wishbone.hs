@@ -40,7 +40,6 @@ import Bittide.SharedTypes
 -- qualified imports
 
 import qualified Data.List as L
-import qualified Protocols.Df as Df
 import qualified Protocols.MemoryMap as MM
 import qualified Protocols.Wishbone as Wishbone
 
@@ -344,7 +343,7 @@ This function is unsafe because data can be lost when the input is @Just _@ and
 the receiving circuit tries to apply back pressure.
 -}
 unsafeToDf :: Circuit (CSignal dom (Maybe a)) (Df dom a)
-unsafeToDf = Circuit $ \(cSig, _) -> (pure (), Df.maybeToData <$> cSig)
+unsafeToDf = Circuit $ \(cSig, _) -> (pure (), cSig)
 
 -- | 'Df' version of 'uart'.
 uartDf ::
@@ -366,7 +365,7 @@ uartDf baud = Circuit go
     , (received, txBit)
     )
    where
-    (received, txBit, ack) = uart baud rxBit (Df.dataToMaybe <$> request)
+    (received, txBit, ack) = uart baud rxBit request
 
 -- | Component compatible with `uartInterfaceWb` for simulation purposes.
 uartSim ::
@@ -383,7 +382,7 @@ uartSim ::
 uartSim = Circuit go
  where
   go ((txByte, rxByte), (_, ack)) =
-    ((ack, pure $ Ack True), (Df.dataToMaybe <$> rxByte, txByte))
+    ((ack, pure $ Ack True), (rxByte, txByte))
 
 {- | Wishbone accessible UART interface with configurable FIFO buffers.
   It takes the depths of the transmit and receive buffers and the uart implementation
@@ -482,16 +481,16 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ c
       . bundle
       . bimap bundle bundle
    where
-    go ((WishboneM2S{..}, Df.dataToMaybe -> rxData, fifoFull -> txFull), (Ack txAck, _))
+    go ((WishboneM2S{..}, rxData, fifoFull -> txFull), (Ack txAck, _))
       -- not in cycle
       | not (busCycle && strobe) =
           ( ((emptyWishboneS2M @()){readData = invalidReq}, Ack False, ())
-          , (Df.NoData, status)
+          , (Nothing, status)
           )
       -- illegal addr
       | not addrLegal =
           ( ((emptyWishboneS2M @()){err = True, readData = invalidReq}, Ack False, ())
-          , (Df.NoData, status)
+          , (Nothing, status)
           )
       -- read at 0
       | not writeEnable && internalAddr == 0 =
@@ -503,7 +502,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ c
             , Ack True
             , ()
             )
-          , (Df.NoData, status)
+          , (Nothing, status)
           )
       -- write at 0
       | writeEnable && internalAddr == 0 =
@@ -515,7 +514,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ c
             , Ack False
             , ()
             )
-          , (Df.Data $ resize writeData, status)
+          , (Just $ resize writeData, status)
           )
       -- read at 1
       | not writeEnable && internalAddr == 1 =
@@ -527,9 +526,9 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ c
             , Ack False
             , ()
             )
-          , (Df.NoData, status)
+          , (Nothing, status)
           )
-      | otherwise = ((emptyWishboneS2M{err = True}, Ack False, ()), (Df.NoData, status))
+      | otherwise = ((emptyWishboneS2M{err = True}, Ack False, ()), (Nothing, status))
      where
       internalAddr = bitCoerce $ resize addr :: Index 2
       addrLegal = addr <= 1
@@ -593,16 +592,16 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
       }
   go ::
     FifoState depth ->
-    (Bool, Df.Data a, Ack, a) ->
+    (Bool, Maybe a, Ack, a) ->
     ( FifoState depth
-    , (Index depth, Maybe (Index depth, a), Df.Data a, Bool, FifoMeta depth)
+    , (Index depth, Maybe (Index depth, a), Maybe a, Bool, FifoMeta depth)
     )
-  go state@FifoState{..} (False, _, _, _) = (state, (readPointer, Nothing, Df.NoData, False, fifoMeta))
+  go state@FifoState{..} (False, _, _, _) = (state, (readPointer, Nothing, Nothing, False, fifoMeta))
    where
     fifoEmpty = dataCount == 0
     fifoFull = dataCount == maxBound
     fifoMeta = FifoMeta{fifoEmpty, fifoFull, fifoDataCount = dataCount}
-  go FifoState{..} (True, Df.dataToMaybe -> fifoIn, Ack readyIn, bramOut) = (nextState, output)
+  go FifoState{..} (True, fifoIn, Ack readyIn, bramOut) = (nextState, output)
    where
     fifoEmpty = dataCount == 0
     fifoFull = dataCount == maxBound
@@ -613,7 +612,7 @@ fifoWithMeta depth@SNat = Circuit circuitFunction
 
     readPointerNext = if readSuccess then satSucc SatWrap readPointer else readPointer
     writeOpGo = if writeSuccess then (writePointer,) <$> fifoIn else Nothing
-    fifoOutGo = if fifoEmpty then Df.NoData else Df.Data bramOut
+    fifoOutGo = if fifoEmpty then Nothing else Just bramOut
 
     dataCountNext = dataCountDx dataCount
     dataCountDx = case (writeSuccess, readSuccess) of
@@ -855,7 +854,7 @@ readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
       .||. unsafeToActiveHigh hasReset
   reg = withReset regRst $ registerWbC @dom @_ @nBytes @addrW WishbonePriority 0
   dnaCircuit :: Circuit () (Df dom (BitVector 96))
-  dnaCircuit = Circuit $ const ((), Df.maybeToData <$> maybeDna)
+  dnaCircuit = Circuit $ const ((), maybeDna)
 
 {- | Circuit that monitors the 'Wishbone' bus and terminates the transaction after a timeout.
 Controls the 'err' signal of the 'WishboneS2M' signal and sets the outgoing 'WishboneM2S'

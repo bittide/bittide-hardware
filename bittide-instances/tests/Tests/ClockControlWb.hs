@@ -16,7 +16,7 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles, many)
 -- external imports
 import Clash.Signal (withClockResetEnable)
 import Data.Char (chr)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (catMaybes, mapMaybe)
 import Data.String.Interpolate
 import Project.FilePath
 import Protocols
@@ -45,7 +45,6 @@ import Bittide.Wishbone
 
 -- qualified imports
 import qualified Data.List as L
-import qualified Protocols.Df as Df
 
 -- | The expected output of the UART
 data SerialResult = SerialResult
@@ -65,7 +64,7 @@ sim :: IO ()
 sim =
   putStr
     $ fmap (chr . fromIntegral)
-    . mapMaybe Df.dataToMaybe
+    $ catMaybes
     $ fst (sampleC def dut)
 
 case_clock_control_wb_self_test :: Assertion
@@ -95,7 +94,7 @@ case_clock_control_wb_self_test = do
       putStrLn "Expected ^"
       assertBool "Expected and actual differ" $ actual == expected
  where
-  uartString = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+  uartString = chr . fromIntegral <$> catMaybes uartStream
   (uartStream, ccData) = sampleC def dut
 
 type Margin = SNat 2

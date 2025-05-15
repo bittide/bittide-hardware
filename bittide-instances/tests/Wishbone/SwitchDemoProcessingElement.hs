@@ -11,7 +11,7 @@ import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
 import Data.Char (chr)
 import Data.List (isPrefixOf)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (catMaybes)
 import Project.FilePath
 import Protocols
 import Protocols.Idle
@@ -30,8 +30,6 @@ import Bittide.SharedTypes
 import Bittide.SwitchDemoProcessingElement
 import Bittide.Wishbone
 
-import qualified Protocols.Df as Df
-
 takeWhileInclusive :: (a -> Bool) -> [a] -> [a]
 takeWhileInclusive _ [] = []
 takeWhileInclusive p (x : xs) = x : if p x then takeWhileInclusive p xs else []
@@ -42,7 +40,7 @@ sim = putStr simResult
 simResult :: String
 simResult = unlines . takeWhileInclusive (/= "Finished") . lines $ uartString
  where
-  uartString = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+  uartString = chr . fromIntegral <$> catMaybes uartStream
   uartStream =
     sampleC def{timeoutAfter = 200_000}
       $ withClockResetEnable clk reset enable

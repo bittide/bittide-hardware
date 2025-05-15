@@ -10,7 +10,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
 import Data.Char (chr)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (catMaybes)
 import Project.FilePath
 import Protocols
 import Protocols.Idle
@@ -30,14 +30,13 @@ import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
-import qualified Protocols.Df as Df
 import qualified Prelude as P
 
 sim :: IO ()
 sim = putStr simResult
 
 simResult :: String
-simResult = chr . fromIntegral <$> mapMaybe Df.dataToMaybe uartStream
+simResult = chr . fromIntegral <$> catMaybes uartStream
  where
   uartStream =
     sampleC def{timeoutAfter = 100_000}
