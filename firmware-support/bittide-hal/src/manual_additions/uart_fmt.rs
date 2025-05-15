@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2024 Google LLC
+//
+// SPDX-License-Identifier: Apache-2.0
+
 use core::result::Result::{self, *};
 
 use crate::shared::devices::uart::*;

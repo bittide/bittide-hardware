@@ -6,11 +6,26 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
+use memmap_generate::memory_x_from_memmap;
+
+fn memmap_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../")
+        .join("_build")
+        .join("memory_maps")
+}
+
 /// Put the linker script somewhere the linker can find it.
 fn main() {
+    let memory_x = memory_x_from_memmap(
+        memmap_dir().join("Ethernet.json"),
+        "DataMemory",
+        "InstructionMemory",
+    );
+
     let out_dir = env::var("OUT_DIR").expect("No out dir");
     let dest_path = Path::new(&out_dir).join("memory.x");
-    fs::write(dest_path, include_bytes!("memory.x")).expect("Could not write file");
+    fs::write(dest_path, memory_x).expect("Could not write file");
 
     if env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "riscv32" {
         println!("cargo:rustc-link-arg=-Tmemory.x");

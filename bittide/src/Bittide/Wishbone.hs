@@ -696,7 +696,7 @@ The register-level layout of the Wishbone interface is as follows:
 +==============+===================+==============+===============+=============================+====+
 | 0            | Timer command     | 'time_cmd'   | 'TimeCmd'     | 1           | 0x00          | W  |
 | 1            | Comparison result | 'cmp_result' | 'Bool'        | 1           | 0x04          | R  |
-| 2            | Scratchpad        | 'scratchpad' | 'Unsigned 64' | 8           | 0x08          | R  |
+| 2            | Scratchpad        | 'scratchpad' | 'Unsigned 64' | 8           | 0x08          | RW |
 | 4            | Frequency         | 'frequency'  | 'Unsigned 64' | 8           | 0x10          | R  |
 +--------------+-------------------+--------------+---------------+-------------+---------------+----+
 -}
@@ -752,7 +752,7 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
                     { reset = Nothing
                     , fieldType = MM.regType @(BitVector 64)
                     , address = 0x08
-                    , access = MM.ReadOnly
+                    , access = MM.ReadWrite
                     , tags = []
                     }
               }

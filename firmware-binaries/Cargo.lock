@@ -55,7 +55,7 @@ dependencies = [
  "memmap-generate",
  "proc-macro2",
  "quote",
- "smoltcp",
+ "smoltcp 0.11.0",
  "ufmt",
 ]
 
@@ -67,7 +67,7 @@ dependencies = [
  "heapless 0.8.0",
  "log",
  "rand",
- "smoltcp",
+ "smoltcp 0.12.0",
  "ufmt",
 ]
 
@@ -512,7 +512,7 @@ checksum = "5b0276cf7f2c73365f7157c8123c21cd9a50fbbd844757af28ca1f5925fc2a00"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.89",
+ "syn 2.0.101",
 ]
 
 [[package]]
@@ -525,6 +525,19 @@ dependencies = [
  "memchr",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "smoltcp"
+version = "0.11.0"
+source = "git+https://github.com/smoltcp-rs/smoltcp.git?rev=dc08e0b42e668c331bb2b6f8d80016301d0efe03#dc08e0b42e668c331bb2b6f8d80016301d0efe03"
+dependencies = [
+ "bitflags",
+ "byteorder",
+ "cfg-if",
+ "heapless 0.8.0",
+ "log",
+ "managed",
 ]
 
 [[package]]
@@ -549,9 +562,10 @@ dependencies = [
  "gdb-trace",
  "heapless 0.8.0",
  "log",
+ "memmap-generate",
  "riscv 0.10.1",
  "riscv-rt",
- "smoltcp",
+ "smoltcp 0.12.0",
  "ufmt",
 ]
 

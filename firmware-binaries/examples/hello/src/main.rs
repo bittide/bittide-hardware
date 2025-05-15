@@ -14,6 +14,13 @@ use riscv_rt::entry;
 
 const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
 
+// this is only a function so that we can breakpoint on it
+fn test_success() {
+    INSTANCES
+        .statusregister
+        .set_status(hal::TestStatus::Success);
+}
+
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let uart = &mut INSTANCES.uart;
@@ -24,9 +31,7 @@ fn main() -> ! {
     }
     uwriteln!(uart, "This can also do {} {:#x}", "debug prints", 42).unwrap();
 
-    INSTANCES
-        .statusregister
-        .set_status(hal::TestStatus::Success);
+    test_success();
 
     uwriteln!(uart, "Going in echo mode!").unwrap();
 

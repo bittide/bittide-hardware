@@ -82,7 +82,7 @@ pub fn memory_x_from_memmap(
     let imem = device_singleton_instr_addr_and_size(&memmap, instr_device_name).unwrap();
     let dmem = device_singleton_instr_addr_and_size(&memmap, data_device_name).unwrap();
 
-    memory_x_file(imem, dmem)
+    memory_x_file(dmem, imem)
 }
 
 fn memory_x_file(

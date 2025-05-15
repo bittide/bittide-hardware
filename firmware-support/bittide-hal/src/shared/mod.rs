@@ -2,5 +2,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-pub mod timer;
-pub mod uart_fmt;
+pub mod devices;
+pub mod types;

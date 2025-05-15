@@ -142,10 +142,12 @@ jobs:
             echo "Restored cache, no need to update cabal package list"
           fi
 
+      - run: cabal build all
+      - run: ls _build/memory_maps/
+
       - run: ./cargo.sh fetch
       - run: ./cargo.sh build --frozen --release
       - run: ./cargo.sh build --frozen
-      - run: cabal build all
 
       - run: cache push cabal
       - run: cache push cargo
@@ -306,6 +308,7 @@ jobs:
         uses: actions/checkout@v4
 
       - run: cache pull cargo
+      - run: cache pull build
 
       - name: Rust formatting
         run: |

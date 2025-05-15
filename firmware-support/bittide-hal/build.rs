@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2024 Google LLC
+//
+// SPDX-License-Identifier: Apache-2.0
+
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::{fs::File, path::PathBuf};
@@ -10,6 +14,16 @@ fn memmap_dir() -> PathBuf {
         .join("../../")
         .join("_build")
         .join("memory_maps")
+}
+
+fn lint_disables_generated_code() -> &'static str {
+    r#"
+#![allow(unused_imports)]
+#![allow(clippy::missing_safety_doc)]
+#![allow(clippy::empty_docs)]
+#![allow(clippy::unused_unit)]
+#![allow(non_snake_case)]
+    "#
 }
 
 fn main() {
@@ -77,6 +91,8 @@ fn main() {
 
     // types
     {
+        std::fs::create_dir_all(shared_path.join("types"))
+            .expect("Create (gitignored) `src/shared/types` directory");
         let mut mod_file = File::create(shared_path.join("types").join("mod.rs")).unwrap();
 
         for ty_name in shared_wrapper.type_defs.keys() {
@@ -91,8 +107,8 @@ fn main() {
                     .join(format!("{}.rs", ty_name.to_lowercase())),
             )
             .unwrap();
-            writeln!(file, "#![allow(unused_imports)]").unwrap();
-            writeln!(file, "#![allow(non_snake_case)]").unwrap();
+            writeln!(file, "{}", lint_disables_generated_code()).unwrap();
+
             writeln!(file, "pub use crate::shared::types::*;").unwrap();
             writeln!(file, "{}", def).unwrap();
         }
@@ -100,6 +116,8 @@ fn main() {
 
     // devices
     {
+        std::fs::create_dir_all(shared_path.join("devices"))
+            .expect("Create (gitignored) `src/devices` directory");
         let mut mod_file = File::create(shared_path.join("devices").join("mod.rs")).unwrap();
 
         for device_name in shared_wrapper.device_defs.keys() {
@@ -114,14 +132,20 @@ fn main() {
                     .join(format!("{}.rs", device_name.to_lowercase())),
             )
             .unwrap();
-            writeln!(file, "#![allow(unused_imports)]").unwrap();
-            writeln!(file, "#![allow(non_snake_case)]").unwrap();
+            writeln!(file, "{}", lint_disables_generated_code()).unwrap();
             writeln!(file, "pub use crate::shared::types::*;").unwrap();
             writeln!(file, "{}", def).unwrap();
         }
     }
 
     // now for the different hals...
+
+    std::fs::create_dir_all(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("hals"),
+    )
+    .expect("Create (gitignored) `src/hals` directory");
 
     let mut all_hals_mod_file = File::create(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -139,10 +163,11 @@ fn main() {
             .join("hals")
             .join(&hal_mod_name);
 
+        std::fs::create_dir_all(&hal_path)
+            .unwrap_or_else(|_| panic!("Create `src/hals/{}` directory", hal_path.display()));
         let mut hal_mod_file = File::create(hal_path.join("mod.rs")).unwrap();
 
-        writeln!(hal_mod_file, "#![allow(unused_imports)]").unwrap();
-        writeln!(hal_mod_file, "#![allow(non_snake_case)]").unwrap();
+        writeln!(hal_mod_file, "{}", lint_disables_generated_code()).unwrap();
         writeln!(hal_mod_file, "pub mod types;").unwrap();
         writeln!(hal_mod_file, "pub mod devices;").unwrap();
         writeln!(hal_mod_file, "pub use types::*;").unwrap();
@@ -171,8 +196,7 @@ fn main() {
                         .join(format!("{}.rs", ty_name.to_lowercase())),
                 )
                 .unwrap();
-                writeln!(file, "#![allow(unused_imports)]").unwrap();
-                writeln!(file, "#![allow(non_snake_case)]").unwrap();
+                writeln!(file, "{}", lint_disables_generated_code()).unwrap();
                 writeln!(file, "pub use crate::shared::types::*;").unwrap();
                 writeln!(file, "pub use crate::hals::{hal_mod_name}::types::*;").unwrap();
                 writeln!(file, "{}", def).unwrap();
@@ -196,8 +220,7 @@ fn main() {
                         .join(format!("{}.rs", dev_name.to_lowercase())),
                 )
                 .unwrap();
-                writeln!(file, "#![allow(unused_imports)]").unwrap();
-                writeln!(file, "#![allow(non_snake_case)]").unwrap();
+                writeln!(file, "{}", lint_disables_generated_code()).unwrap();
                 writeln!(file, "pub use crate::shared::types::*;").unwrap();
                 writeln!(file, "pub use crate::hals::{hal_mod_name}::types::*;").unwrap();
                 writeln!(file, "{}", def).unwrap();

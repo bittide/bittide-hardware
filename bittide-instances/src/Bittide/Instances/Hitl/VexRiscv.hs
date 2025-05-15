@@ -214,15 +214,17 @@ vexRiscvTest ::
         , "JTAG" ::: Signal Basic125 JtagOut
         , "USB_UART_RXD" ::: Signal Basic125 UartTx
         )
-vexRiscvTest diffClk jtagIn uartRx = (testDone, testSuccess, jtagOut, uartTx)
+vexRiscvTest diffClk jtagIn uartRx = (testStatusDone, testStatusSuccess, jtagOut, uartTx)
  where
-  -- stateToDoneSuccess Running = (False, False)
-  -- stateToDoneSuccess Success = (True, True)
-  -- stateToDoneSuccess Fail = (True, False)
+  (unbundle -> (testStatusDone, testStatusSuccess)) = stateToDoneSuccess <$> testStatus
+
+  stateToDoneSuccess Running = (False, False)
+  stateToDoneSuccess Success = (True, True)
+  stateToDoneSuccess Fail = (True, False)
 
   (clk, clkStableRst) = clockWizardDifferential diffClk noReset
 
-  ((_mm, (jtagOut, _)), (_testStatus, uartTx)) =
+  ((_mm, (jtagOut, _)), (testStatus, uartTx)) =
     withClockResetEnable clk reset enableGen
       $ toSignals
         (vexRiscvTestC @Basic125)

@@ -133,31 +133,15 @@ instance BitPackC Bool where
 
   unpackC b = 1 == b .&. 1
 
-packCwithAlignPadding ::
-  forall align a.
-  (KnownNat align, BitPackC a, 1 <= align, Mod (ByteSizeC a) align <= align) =>
-  a ->
-  BitVector (ByteSizeCPaddedTo align a * 8)
-packCwithAlignPadding val = packC val ++# 0
-
-unpackCwithAlignPadding ::
-  forall align a.
-  (KnownNat align, BitPackC a, 1 <= align, Mod (ByteSizeC a) align <= align) =>
-  BitVector (ByteSizeCPaddedTo align a * 8) ->
-  a
-unpackCwithAlignPadding bits = unpackC trimmed
- where
-  (trimmed, _rest) = split bits
-
 instance
   (KnownNat n, BitPackC a, Mod (ByteSizeC a) (AlignmentC a) <= AlignmentC a) =>
   BitPackC (Vec n a)
   where
-  type ByteSizeC (Vec n a) = (ByteSizeCPaddedTo (AlignmentC a) a) * n
+  type ByteSizeC (Vec n a) = (ByteSizeC a) * n
   type AlignmentC (Vec n a) = AlignmentC a
 
-  packC val = pack $ packCwithAlignPadding @(AlignmentC a) <$> val
-  unpackC bits = unpackCwithAlignPadding @(AlignmentC a) <$> unpack bits
+  packC val = pack $ packC <$> val
+  unpackC bits = unpackC <$> (unpack bits :: Vec n (BitVector (ByteSizeC a * 8)))
 
 instance
   ( BitPackC a
@@ -183,6 +167,12 @@ instance
   , 1 <= Max (AlignmentC a) (AlignmentC b)
   , Mod (ByteSizeC a) (AlignmentC b) <= AlignmentC b
   , Mod (ByteSizeC a) (AlignmentC b) <= ByteSizeC a
+  , Mod
+      ( (ByteSizeC a + Mod (AlignmentC b - Mod (ByteSizeC a) (AlignmentC b)) (AlignmentC b))
+          + ByteSizeC b
+      )
+      (Max (AlignmentC a) (AlignmentC b))
+      <= Max (AlignmentC a) (AlignmentC b)
   ) =>
   BitPackC (a, b)
 
@@ -201,6 +191,19 @@ instance
       <= Max (AlignmentC b) (AlignmentC c)
   , Mod (ByteSizeC a) (Max (AlignmentC b) (AlignmentC c))
       <= ByteSizeC a
+  , Mod
+      ( ( ByteSizeC a
+            + Mod
+                ( Max (AlignmentC b) (AlignmentC c) - Mod (ByteSizeC a) (Max (AlignmentC b) (AlignmentC c))
+                )
+                (Max (AlignmentC b) (AlignmentC c))
+        )
+          + ( (ByteSizeC b + Mod (AlignmentC c - Mod (ByteSizeC b) (AlignmentC c)) (AlignmentC c))
+                + ByteSizeC c
+            )
+      )
+      (Max (AlignmentC a) (Max (AlignmentC b) (AlignmentC c)))
+      <= Max (AlignmentC a) (Max (AlignmentC b) (AlignmentC c))
   ) =>
   BitPackC (a, b, c)
 
@@ -242,12 +245,19 @@ instance GBitPackCTop V1 where
   gpackCTop _ = 0
   gunpackCTop _bits = error "can't construct a value of type V1"
 
-instance (GBitPackCFields inner) => GBitPackCTop (C1 m inner) where
-  type GByteSizeC (C1 m inner) = GFieldSize inner
+instance
+  ( GBitPackCFields inner
+  , Mod (GFieldSize inner) (GFieldAlignment inner) <= GFieldAlignment inner
+  ) =>
+  GBitPackCTop (C1 m inner)
+  where
+  type
+    GByteSizeC (C1 m inner) =
+      GFieldSize inner + AlignmentPadding (GFieldSize inner) (GFieldAlignment inner)
   type GAlignmentC (C1 m inner) = GFieldAlignment inner
 
-  gpackCTop (M1 x) = gpackCfields x
-  gunpackCTop bits = M1 $ gunpackCfields bits
+  gpackCTop (M1 x) = gpackCfields x ++# 0
+  gunpackCTop bits = M1 $ gunpackCfields (fst $ split bits)
 
 instance
   ( GBitPackCSums a
