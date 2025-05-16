@@ -132,6 +132,7 @@ library
     Bittide.ClockControl.Callisto.Util
     Bittide.ClockControl.CallistoSw
     Bittide.ClockControl.DebugRegister
+    Bittide.ClockControl.Freeze
     Bittide.ClockControl.ParseRegisters
     Bittide.ClockControl.Registers
     Bittide.ClockControl.Si5391A
@@ -154,6 +155,7 @@ library
     Bittide.Switch
     Bittide.SwitchDemoProcessingElement
     Bittide.SwitchDemoProcessingElement.Calculator
+    Bittide.Sync
     Bittide.Transceiver
     Bittide.Transceiver.Cdc
     Bittide.Transceiver.Comma
@@ -215,6 +217,7 @@ test-suite unittests
     Tests.Axi4.Properties
     Tests.Axi4.Types
     Tests.Calendar
+    Tests.ClockControl.Freeze
     Tests.ClockControl.Si539xSpi
     Tests.Counter
     Tests.DoubleBufferedRam
@@ -245,11 +248,13 @@ test-suite unittests
     clash-protocols-memmap,
     constraints >=0.13.3 && <0.15,
     containers,
+    deepseq,
     elf,
     extra,
     ghc-typelits-extra-lemmas,
     hedgehog >=1.0 && <1.5,
     lifted-async,
+    pretty-show,
     tasty >=1.5 && <1.7,
     tasty-expected-failure,
     tasty-hedgehog >=1.2 && <1.5,

@@ -30,6 +30,7 @@ import Protocols.MemoryMap (
   DeviceDefinitions,
   MemoryMapTreeAnn (AnnDeviceInstance, AnnInterconnect),
   Name (..),
+  NamedLoc (..),
   Path,
   PathComp (..),
   Register (..),
@@ -190,19 +191,21 @@ generateDeviceDef dev = do
   loc <- location dev.definitionLoc
   pure
     $ object
-      [ "name" .= Protocols.MemoryMap.name dev.deviceName
-      , "description" .= description dev.deviceName
+      [ "name" .= dev.deviceName.name
+      , "description" .= dev.deviceName.description
       , "src_location" .= loc
       , "registers" .= regs
       , "tags" .= dev.tags
       ]
  where
-  generateRegister (regName, srcLoc, reg) = do
-    loc <- location srcLoc
+  generateRegister :: NamedLoc Register -> JsonGenerator Value
+  generateRegister namedReg = do
+    let reg = namedReg.value
+    loc <- location namedReg.loc
     pure
       $ object
-        [ "name" .= Protocols.MemoryMap.name regName
-        , "description" .= description regName
+        [ "name" .= namedReg.name.name
+        , "description" .= namedReg.name.description
         , "src_location" .= loc
         , "address" .= reg.address
         , "access" .= case reg.access of

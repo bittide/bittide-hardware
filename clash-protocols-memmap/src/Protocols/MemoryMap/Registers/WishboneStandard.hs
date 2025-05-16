@@ -16,6 +16,7 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
   deviceWbC,
   deviceWithOffsetsWbC,
   registerWbC,
+  registerWbC_,
   registerWithOffsetWbC,
   registerConfig,
 
@@ -50,7 +51,7 @@ import Protocols.MemoryMap (
   MemoryMap (MemoryMap, deviceDefs, tree),
   MemoryMapTree (DeviceInstance),
   Name (..),
-  NamedLoc,
+  NamedLoc (..),
   Register (..),
   locCaller,
   locHere,
@@ -240,10 +241,11 @@ deviceWithOffsetsWbC deviceName =
       | m.nWords == 0 = Nothing
       | otherwise =
           Just
-            ( unSimOnly m.name
-            , unSimOnly m.srcLoc
-            , (unSimOnly m.register){address = fromIntegral o}
-            )
+            $ NamedLoc
+              { name = unSimOnly m.name
+              , loc = unSimOnly m.srcLoc
+              , value = (unSimOnly m.register){address = fromIntegral o}
+              }
 
     mm =
       MemoryMap
@@ -474,6 +476,38 @@ registerWbC clk rst regConfig resetValue =
       , acknowledge =
           Just (unpackC (resize maskedWriteData))
       | otherwise = Nothing
+
+-- | Like 'registerWbC', but does not return the register value.
+registerWbC_ ::
+  forall a dom wordSize aw.
+  ( HasCallStack
+  , ToFieldType a
+  , BitPackC a
+  , BitPack a
+  , NFDataX a
+  , KnownDomain dom
+  , KnownNat wordSize
+  , KnownNat aw
+  , Show a
+  , 1 <= wordSize
+  ) =>
+  Clock dom ->
+  Reset dom ->
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( ( ConstFwd (Offset aw)
+      , ConstBwd (RegisterMeta aw)
+      , Wishbone dom 'Standard aw (Bytes wordSize)
+      )
+    , CSignal dom (Maybe a)
+    )
+    ()
+registerWbC_ clk rst regConfig resetValue = circuit $ \i -> do
+  _ignored <- registerWbC clk rst regConfig resetValue -< i
+  idC
 
 {- | Same as 'registerWbC', but also takes an offset. You can tie registers
 created using this function together with 'deviceWithOffsetsWbC'.

@@ -4,6 +4,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
 --
@@ -33,6 +34,7 @@ import Protocols.MemoryMap (
   MemoryMap (..),
   MemoryMapTree (DeviceInstance, Interconnect),
   Name (Name),
+  NamedLoc (..),
   Register (Register, access, address, fieldType, reset, tags),
   locHere,
   mergeDeviceDefs,
@@ -99,28 +101,42 @@ magicUart = Circuit go
     deviceDef =
       DeviceDefinition
         (Name deviceName "")
-        [
-          ( Name "test" ""
-          , locHere
-          , Register
-              { tags = []
-              , reset = Nothing
-              , fieldType = regType @(FakeType Bool (BitVector 32))
-              , address = 0
-              , access = ReadWrite
-              }
-          )
-        ,
-          ( Name "another_test" ""
-          , locHere
-          , Register
-              { tags = []
-              , reset = Nothing
-              , fieldType = regType @(Either Bool (BitVector 32))
-              , address = 0
-              , access = ReadWrite
-              }
-          )
+        [ NamedLoc
+            { name = Name "test" ""
+            , loc = locHere
+            , value =
+                Register
+                  { tags = []
+                  , reset = Nothing
+                  , fieldType = regType @(FakeType Bool (BitVector 32))
+                  , address = 0
+                  , access = ReadWrite
+                  }
+            }
+        , NamedLoc
+            { name = Name "test" ""
+            , loc = locHere
+            , value =
+                Register
+                  { tags = []
+                  , reset = Nothing
+                  , fieldType = regType @(FakeType Bool (BitVector 32))
+                  , address = 0
+                  , access = ReadWrite
+                  }
+            }
+        , NamedLoc
+            { name = Name "another_test" ""
+            , loc = locHere
+            , value =
+                Register
+                  { tags = []
+                  , reset = Nothing
+                  , fieldType = regType @(Either Bool (BitVector 32))
+                  , address = 0
+                  , access = ReadWrite
+                  }
+            }
         ]
         callLoc
         []
@@ -298,10 +314,10 @@ interconnect = Circuit go
    where
     memoryMap =
       MemoryMap
-        { deviceDefs = mergeDeviceDefs (deviceDefs . unSim <$> toList mms)
+        { deviceDefs = mergeDeviceDefs ((.deviceDefs) . unSim <$> toList mms)
         , tree = Interconnect loc (toList descs)
         }
-    descs = zip relAddrs (tree . unSim <$> mms)
+    descs = zip relAddrs ((.tree) . unSim <$> mms)
     relAddrs = prefixToAddr <$> prefs
     unSim (SimOnly x) = x
 

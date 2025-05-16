@@ -91,83 +91,90 @@ clockControlWb mgn fsz linkMask counters = withMemoryMap mm $ Circuit go
     DeviceDefinition
       { tags = []
       , registers =
-          [
-            ( Name "num_links" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 32)
-                , address = 0x00
-                , access = ReadOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "link_mask" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 32)
-                , address = 0x04
-                , access = ReadOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "up_links" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 32)
-                , address = 0x08
-                , access = ReadOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "change_speed" ""
-            , locHere
-            , Register
-                { fieldType = regType @SpeedChange
-                , address = 0x0C
-                , access = ReadWrite
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "links_stable" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 32)
-                , address = 0x10
-                , access = ReadOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "links_settled" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 32)
-                , address = 0x14
-                , access = ReadOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "data_counts" ""
-            , locHere
-            , Register
-                { fieldType = regType @(Vec nLinks (BitVector 32))
-                , address = 0x18
-                , access = ReadOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
+          [ NamedLoc
+              { name = Name "num_links" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 32)
+                    , address = 0x00
+                    , access = ReadOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "link_mask" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 32)
+                    , address = 0x04
+                    , access = ReadOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "up_links" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 32)
+                    , address = 0x08
+                    , access = ReadOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "change_speed" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @SpeedChange
+                    , address = 0x0C
+                    , access = ReadWrite
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "links_stable" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 32)
+                    , address = 0x10
+                    , access = ReadOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "links_settled" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 32)
+                    , address = 0x14
+                    , access = ReadOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "data_counts" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(Vec nLinks (BitVector 32))
+                    , address = 0x18
+                    , access = ReadOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
           ]
       , deviceName =
           Name

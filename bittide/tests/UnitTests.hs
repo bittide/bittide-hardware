@@ -13,6 +13,7 @@ import qualified Tests.Axi4
 import qualified Tests.Axi4.Generators
 import qualified Tests.Axi4.Properties
 import qualified Tests.Calendar
+import qualified Tests.ClockControl.Freeze
 import qualified Tests.ClockControl.Si539xSpi
 import qualified Tests.DoubleBufferedRam
 import qualified Tests.ElasticBuffer
@@ -33,6 +34,7 @@ tests =
     "Unittests"
     [ Tests.Axi4.tests
     , Tests.Calendar.tests
+    , Tests.ClockControl.Freeze.tests
     , Tests.ClockControl.Si539xSpi.tests
     , Tests.DoubleBufferedRam.tests
     , Tests.ElasticBuffer.tests

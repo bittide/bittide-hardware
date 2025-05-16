@@ -81,17 +81,18 @@ macStatusInterfaceWb SNat = case (cancelMulDiv @nBytes @8) of
       DeviceDefinition
         { tags = []
         , registers =
-            [
-              ( Name "status" ""
-              , locHere
-              , Register
-                  { fieldType = regType @EthMacStatus
-                  , address = 0x0
-                  , access = ReadOnly
-                  , tags = []
-                  , reset = Nothing
-                  }
-              )
+            [ NamedLoc
+                { name = Name "status" ""
+                , loc = locHere
+                , value =
+                    Register
+                      { fieldType = regType @EthMacStatus
+                      , address = 0x0
+                      , access = ReadOnly
+                      , tags = []
+                      , reset = Nothing
+                      }
+                }
             ]
         , deviceName = Name "MacStatus" ""
         , definitionLoc = locHere

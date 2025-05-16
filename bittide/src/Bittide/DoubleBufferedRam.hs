@@ -30,6 +30,7 @@ import Protocols.MemoryMap (
   MemoryMap (..),
   MemoryMapTree (DeviceInstance),
   Name (..),
+  NamedLoc (..),
   Register (..),
   deviceSingleton,
   locCaller,
@@ -162,17 +163,18 @@ wbStorageDPC memoryName content = Circuit go
     deviceDef =
       DeviceDefinition
         { registers =
-            [
-              ( Name "data" ""
-              , locHere
-              , Register
-                  { fieldType = regType @(Vec depth (Bytes 4))
-                  , address = 0
-                  , access = ReadWrite
-                  , reset = Nothing
-                  , tags = []
-                  }
-              )
+            [ NamedLoc
+                { name = Name "data" ""
+                , loc = locHere
+                , value =
+                    Register
+                      { fieldType = regType @(Vec depth (Bytes 4))
+                      , address = 0
+                      , access = ReadWrite
+                      , reset = Nothing
+                      , tags = []
+                      }
+                }
             ]
         , deviceName = Name{name = memoryName, description = ""}
         , definitionLoc = locHere
@@ -249,17 +251,18 @@ wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
   deviceDef =
     DeviceDefinition
       { registers =
-          [
-            ( Name "data" ""
-            , locHere
-            , Register
-                { fieldType = regType @(Vec depth (Bytes 4))
-                , address = 0
-                , access = ReadWrite
-                , reset = Nothing
-                , tags = []
-                }
-            )
+          [ NamedLoc
+              { name = Name "data" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(Vec depth (Bytes 4))
+                    , address = 0
+                    , access = ReadWrite
+                    , reset = Nothing
+                    , tags = []
+                    }
+              }
           ]
       , deviceName = Name{name = memoryName, description = ""}
       , definitionLoc = locHere

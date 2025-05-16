@@ -77,28 +77,30 @@ captureUgn = withMemoryMap mm $ Circuit go
     DeviceDefinition
       { tags = []
       , registers =
-          [
-            ( Name "local_counter" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 64)
-                , address = 0x0
-                , access = ReadOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
-          ,
-            ( Name "remote_counter" ""
-            , locHere
-            , Register
-                { fieldType = regType @(BitVector 64)
-                , address = 0x8
-                , access = ReadOnly
-                , tags = []
-                , reset = Nothing
-                }
-            )
+          [ NamedLoc
+              { name = Name "local_counter" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 64)
+                    , address = 0x0
+                    , access = ReadOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
+          , NamedLoc
+              { name = Name "remote_counter" ""
+              , loc = locHere
+              , value =
+                  Register
+                    { fieldType = regType @(BitVector 64)
+                    , address = 0x8
+                    , access = ReadOnly
+                    , tags = []
+                    , reset = Nothing
+                    }
+              }
           ]
       , deviceName = Name "CaptureUGN" ""
       , definitionLoc = locHere
