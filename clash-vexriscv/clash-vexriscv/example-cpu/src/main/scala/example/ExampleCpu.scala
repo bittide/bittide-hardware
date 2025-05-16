@@ -7,6 +7,7 @@ package example
 import spinal.core._
 import spinal.lib._
 import spinal.lib.com.jtag.Jtag
+import spinal.lib.cpu.riscv.debug._
 import vexriscv.plugin._
 import vexriscv.{VexRiscv, VexRiscvConfig, plugin}
 import vexriscv.ip.{DataCacheConfig}
@@ -62,7 +63,11 @@ object ExampleCpu extends App {
         ),
 
         new CsrPlugin(
-          CsrPluginConfig.smallest.copy(ebreakGen = true, mtvecAccess = CsrAccess.READ_WRITE)
+            CsrPluginConfig.smallest.copy(
+              ebreakGen = true,
+              mtvecAccess = CsrAccess.READ_WRITE,
+              withPrivilegedDebug = true
+              )
         ),
         new DecoderSimplePlugin(
           catchIllegalInstruction = true
@@ -102,11 +107,14 @@ object ExampleCpu extends App {
           earlyBranch = false,
           catchAddressMisaligned = true
         ),
-        new DebugPlugin(
-          debugClockDomain = ClockDomain.current,
-          hardwareBreakpointCount = 5
-        ),
-        new YamlPlugin("ExampleCpu.yaml")
+        new EmbeddedRiscvJtag(
+          p = DebugTransportModuleParameter(
+            addressWidth = 7,
+            version      = 1,
+            idle         = 7
+          ),
+          debugCd = ClockDomain.current
+        )
       )
     )
 
@@ -126,12 +134,6 @@ object ExampleCpu extends App {
         case plugin: DBusCachedPlugin => {
           plugin.dBus.setAsDirectionLess()
           master(plugin.dBus.toWishbone()).setName("dBusWishbone")
-        }
-
-        case plugin: DebugPlugin => plugin.debugClockDomain {
-          plugin.io.bus.setAsDirectionLess()
-          val jtag = slave(new Jtag()).setName("jtag")
-          jtag <> plugin.io.bus.fromJtag()
         }
 
         case _ =>

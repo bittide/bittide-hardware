@@ -56,7 +56,7 @@ import Bittide.Instances.Hitl.Setup (
  )
 import Bittide.Instances.Hitl.SwCcTopologies (FifoSize, FincFdecCount, commonSpiConfig)
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
-import Bittide.ProcessingElement (PeConfig (..), processingElement)
+import Bittide.ProcessingElement (PeConfig (..), PeInternalBusses, processingElement)
 import Bittide.SharedTypes (Bytes)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle), switchDemoPeWb)
@@ -85,11 +85,9 @@ import qualified Clash.Cores.Xilinx.GTH as Gth
 import qualified Protocols.MemoryMap as MM
 
 {- Internal busses:
-    - Instruction memory
-    - Data memory
     - `timeWb`
 -}
-type NmuInternalBusses = 3
+type NmuInternalBusses = PeInternalBusses + 1
 type NmuRemBusWidth nodeBusses = 30 - CLog 2 (nodeBusses + NmuInternalBusses)
 
 data SimpleManagementConfig nodeBusses where
@@ -159,7 +157,7 @@ calendarConfig =
   nRepetitions = bitCoerce (maxBound :: Index (FpgaCount * 3))
 {- FOURMOLU_ENABLE -}
 
-muConfig :: SimpleManagementConfig 11
+muConfig :: SimpleManagementConfig 10
 muConfig =
   SimpleManagementConfig
     { peConfig =
@@ -171,6 +169,8 @@ muConfig =
           , iBusTimeout = d0
           , dBusTimeout = d0
           , includeIlaWb = False
+          , whoAmID = D.muWhoAmI
+          , whoAmIPfx = D.whoAmIPfx
           }
     , timeRegPrefix = 0b1101
     , dumpVcd = NoDumpVcd
@@ -191,6 +191,8 @@ ccConfig =
           , iBusTimeout = d0
           , dBusTimeout = d0
           , includeIlaWb = True
+          , whoAmID = D.ccWhoAmI
+          , whoAmIPfx = D.whoAmIPfx
           }
     , ccRegPrefix = 0b110
     , dbgRegPrefix = 0b101
@@ -497,8 +499,7 @@ switchDemoDut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
 
     (Fwd lc, muWbAll) <-
       defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMM, (muJtagTx, linkIn))
-    ( [ (muWhoAmIPfx, (muWhoAmIMM, muWhoAmI))
-        , (peWbPfx, (peWbMM, peWb))
+    ( [ (peWbPfx, (peWbMM, peWb))
         , (switchWbPfx, (switchWbMM, switchWb))
         , (dnaWbPfx, (dnaWbMM, dnaWb))
         ]
@@ -509,7 +510,6 @@ switchDemoDut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
       unzipC -< muWbRest
     (ugnMMs, ugnWbs) <- unzipC -< ugnData
 
-    MM.constBwd 0b1110 -< muWhoAmIPfx
     MM.constBwd 0b1001 -< peWbPfx
     MM.constBwd 0b1010 -< switchWbPfx
     MM.constBwd 0b1011 -< dnaWbPfx
@@ -536,15 +536,13 @@ switchDemoDut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
 
     dna <- defaultBittideClkRstEn (readDnaPortE2Wb simDna2) -< (dnaWbMM, dnaWb)
 
-    defaultBittideClkRstEn (whoAmIC 0x746d_676d) -< (muWhoAmIMM, muWhoAmI)
-
     (swCcOut, [(ccWhoAmIPfx, (ccWhoAmIMM, ccWhoAmI))]) <-
       defaultRefClkRstEn (callistoSwClockControlC @LinkCount @CccBufferSize NoDumpVcd ccConfig)
         -< (ccMM, (ccJtag, reframe, mask, dc))
 
     MM.constBwd 0b111 -< ccWhoAmIPfx
 
-    defaultRefClkRstEn (whoAmIC 0x6363_7773) -< (ccWhoAmIMM, ccWhoAmI)
+    defaultRefClkRstEn (whoAmIC D.ccWhoAmI) -< (ccWhoAmIMM, ccWhoAmI)
 
     idC -< (swCcOut, txs, Fwd lc, ps, Fwd peIn, Fwd peOut, ce)
 

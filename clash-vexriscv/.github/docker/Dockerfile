@@ -18,15 +18,19 @@ RUN apt-get update \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
-FROM builder AS build-openocd-vexriscv
+FROM builder AS build-openocd-riscv
 
-ARG DEPS_OPENOCD_VEXRISCV="autoconf automake libtool pkg-config libusb-1.0-0-dev libftdi-dev libhidapi-dev libusb-dev libyaml-dev"
+ARG DEPS_RISCV_OPENOCD="autoconf automake libtool pkg-config libusb-1.0-0-dev libftdi-dev libhidapi-dev libusb-dev libyaml-dev libjim-dev"
 
+# See note in 'nix/openocd-riscv.nix' on forked riscv-openocd. Though it is a
+# Nix workaround, we clone the same repo here to make sure Docker and Nix do
+# the same thing.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends $DEPS_OPENOCD_VEXRISCV \
-  && git clone --recursive https://github.com/SpinalHDL/openocd_riscv.git \
-  && cd openocd_riscv \
-  && ./bootstrap \
+  && apt-get install -y --no-install-recommends $DEPS_RISCV_OPENOCD \
+  && git clone --recursive https://github.com/martijnbastiaan/riscv-openocd.git \
+  && cd riscv-openocd \
+  && git checkout no-submodules-ea8f9d51954b979ff6b4d90afa70352763199b63 \
+  && SKIP_SUBMODULE=1 ./bootstrap \
   && ./configure --enable-ftdi --enable-dummy --prefix=/opt \
   && make -j$(nproc) \
   && make install
@@ -78,5 +82,5 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build-verilator /opt /opt
-COPY --from=build-openocd-vexriscv /opt /opt
+COPY --from=build-openocd-riscv /opt /opt
 COPY --from=build-ghc /root/.ghcup /root/.ghcup

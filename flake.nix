@@ -77,12 +77,14 @@
             pkgs.pcre
             pkgs.getent
 
-            # VexRiscv OpenOCD
-            openocd-vexriscv
+            # GDB
             pkgs.gdb
 
             # UART communication
             pkgs.picocom
+
+            # For probe-rs
+            pkgs.udev.dev
           ];
 
           shellHook = ''

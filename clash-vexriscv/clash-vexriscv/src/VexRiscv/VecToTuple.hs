@@ -1,19 +1,16 @@
 -- SPDX-FileCopyrightText: 2022-2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
-
 -- Purpose of this module
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
-module VexRiscv.VecToTuple (VecToTuple(..)) where
+module VexRiscv.VecToTuple (VecToTuple (..)) where
 
 import Clash.Prelude
-
-import Data.Tagged (Tagged(..))
+import Data.Tagged (Tagged (..))
 
 #if MIN_VERSION_base(4,18,0)
 import Data.Tuple (Solo(MkSolo))
@@ -23,7 +20,7 @@ import Data.Tuple (Solo(Solo))
 
 class VecToTuple a where
   type TupType a = r | r -> a
-  vecToTuple ::  a -> TupType a
+  vecToTuple :: a -> TupType a
 
 -- | Silly instance
 instance VecToTuple (Vec 0 a) where

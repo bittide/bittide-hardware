@@ -13,6 +13,52 @@ on: [push]
 # That file determines which version gets used locally on developer machines.
 
 jobs:
+  nix-shell:
+    name: VexRiscv integration (Nix shell)
+    needs: [rust-build-programs]
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v30
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Enter Nix shell
+        run: |
+          nix-shell --run "echo 'Nix shell entered'"
+
+      - name: Update Cabal index info
+        run: |
+          cp .github/cabal.project cabal.project.local
+          nix-shell --run "cabal update"
+          nix-shell --run "cabal freeze"
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cabal-nix/store
+          key: packages-cachebust-4-nix-${{ hashFiles('cabal.project.freeze', 'cabal.project', 'shell.nix', 'nix/**/*.nix', 'nix/**/*.json') }}
+          restore-keys: packages-cachebust-4-nix
+
+      - name: Download VexRiscv Integration Tests
+        uses: actions/download-artifact@v4
+        with:
+          name: vexriscv-test-binaries
+
+      - name: Extract VexRiscv Integration Tests
+        run: |
+          tar -x -f vexriscv-test-binaries.tar
+
+      - run: nix-shell --run "cabal build all"
+      - run: nix-shell --run "cabal run clash-vexriscv:unittests"
+      - run: nix-shell --run "cabal run clash-vexriscv-sim:unittests -- -j1 --jtag-debug"
+      - run: nix-shell --run "cabal run clash-vexriscv-sim:hdl-test"
+
   license-check:
     runs-on: ubuntu-22.04
     container:
@@ -20,8 +66,43 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: REUSE Compliance Check
-      uses: fsfe/reuse-action@v2
+      uses: fsfe/reuse-action@v4
 
+  haskell-checks:
+    name: Haskell checks
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04
+
+    steps:
+      - name: Install wget, git, python3
+        run: |
+          apt-get update
+          apt-get install python3 wget git -y
+
+      - name: Workaround GHA permission issues
+        run: |
+          git config --global --add safe.directory '*'
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install fourmolu
+        run: |
+          version="0.14.1.0"
+          wget -O fourmolu "https://github.com/fourmolu/fourmolu/releases/download/v${version}/fourmolu-${version}-linux-x86_64"
+          chmod +x fourmolu
+          mv fourmolu /usr/bin/fourmolu
+
+      - name: Run formatting..
+        run: |
+          git status
+          .github/scripts/fourmolu.sh
+          .github/scripts/fix_spdx_header.py
+
+      - name: Check for differences
+        run: |
+          git diff --exit-code
 
   rust-checks:
     name: Rust checks
@@ -96,11 +177,23 @@ jobs:
           cd clash-vexriscv-sim; sh bundle_test_binaries.sh
 
       - name: Upload Integration Test Binaries
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: vexriscv-test-binaries
           path: clash-vexriscv-sim/vexriscv-test-binaries.tar
 
+  c-checks:
+    name: C checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: clang-format check
+        uses: jidicula/clang-format-action@v4.14.0
+        with:
+          clang-format-version: 16
+          check-path: '.'
 
   vex-riscv:
     name: VexRiscv integration
@@ -111,13 +204,12 @@ jobs:
       fail-fast: false
       matrix:
         ghc:
-          - "9.0.2"
-          - "9.2.8"
-          - "9.4.8"
           - "9.6.6"
+          - "9.8.4"
+          - "9.10.1"
 
     container:
-      image: ghcr.io/clash-lang/clash-vexriscv-ci:${{ matrix.ghc }}-20240823
+      image: ghcr.io/clash-lang/clash-vexriscv-ci:${{ matrix.ghc }}-20250211
 
     steps:
       - name: Checkout
@@ -129,12 +221,12 @@ jobs:
           cabal update
           cabal freeze
       - name: Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.local/state/cabal/store/
-          key: packages-cachebust-3-${{ matrix.ghc }}-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
-          restore-keys: packages-cachebust-3-${{ matrix.ghc }}
+          key: packages-cachebust-4-${{ matrix.ghc }}-${{ hashFiles('cabal.project.freeze', 'cabal.project') }}
+          restore-keys: packages-cachebust-4-${{ matrix.ghc }}
 
       - name: Stash existing VexRiscv.v
         run: |
@@ -151,7 +243,7 @@ jobs:
           cabal build clash-vexriscv-sim
 
       - name: Download VexRiscv Integration Tests
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: vexriscv-test-binaries
 
@@ -165,7 +257,7 @@ jobs:
 
       - name: OpenOCD bin symlink
         run: |
-          ln -s /opt/bin/openocd /opt/bin/openocd-vexriscv
+          ln -s /opt/bin/openocd /opt/bin/openocd-riscv
 
       - name: Run `clash-vexriscv` unittests
         run: |
@@ -174,8 +266,42 @@ jobs:
       - name: Run `clash-vexriscv-sim` unittests
         run: |
           # Can't run the unit tests with multiple threads because of the common use of port 7894.
-          cabal run clash-vexriscv-sim:unittests -- -j1
+          cabal run clash-vexriscv-sim:unittests -- -j1 --jtag-debug
 
       - name: Run `clash-vexriscv-sim` HDL test
         run: |
           cabal run clash-vexriscv-sim:hdl-test
+
+  all:
+    name: All jobs finished
+    if: ${{ !cancelled() }}
+    needs: [
+        'license-check',
+        'rust-checks',
+        'vex-riscv',
+        'rust-build-programs',
+        'nix-shell'
+      ]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check dependencies for failures
+        run: |
+          # Test all dependencies for success/failure
+          set -x
+          success="${{ contains(needs.*.result, 'success') }}"
+          fail="${{ contains(needs.*.result, 'failure') }}"
+          set +x
+
+          # Test whether success/fail variables contain sane values
+          if [[ "${success}" != "true" && "${success}" != "false" ]]; then exit 1; fi
+          if [[ "${fail}"    != "true" && "${fail}"    != "false" ]]; then exit 1; fi
+
+          # We want to fail if one or more dependencies fail. For safety, we introduce
+          # a second check: if no dependencies succeeded something weird is going on.
+          if [[ "${fail}" == "true" || "${success}" == "false" ]]; then
+            echo "One or more dependency failed, or no dependency succeeded."
+            exit 1
+          fi

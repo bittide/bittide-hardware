@@ -36,14 +36,27 @@ cargoDir = buildDir </> "cargo"
 data CargoBuildType = Release | Debug
   deriving (Eq)
 
+data TargetArch = X64 | RiscV
+
+instance Show TargetArch where
+  show X64 = "x86_64-unknown-linux-gnu"
+  show RiscV = "riscv32imc-unknown-none-elf"
+
+gdbAdaptersPath :: CargoBuildType -> FilePath
+gdbAdaptersPath buildType =
+  cargoDir
+    </> "gdb-adapters"
+    </> rustBinSubDir X64 buildType
+    </> "gdb-adapters"
+
 {- | Relative path to the firmware binaries directory.
 
 Example:
 
->>> firmwareBinariesDir "riscv32imc" Release
+>>> firmwareBinariesDir RiscV Release
 "_build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release"
 -}
-firmwareBinariesDir :: String -> CargoBuildType -> FilePath
+firmwareBinariesDir :: TargetArch -> CargoBuildType -> FilePath
 firmwareBinariesDir rustTargetArchitecture buildType =
   cargoDir
     </> "firmware-binaries"
@@ -53,12 +66,12 @@ firmwareBinariesDir rustTargetArchitecture buildType =
 
 Example:
 
->>> rustBinSubDir "riscv32imc" Release
+>>> rustBinSubDir RiscV Release
 "riscv32imc-unknown-none-elf/release"
 -}
-rustBinSubDir :: String -> CargoBuildType -> FilePath
+rustBinSubDir :: TargetArch -> CargoBuildType -> FilePath
 rustBinSubDir rustTargetArchitecture buildType =
-  rustTargetArchitecture <> "-unknown-none-elf"
+  show rustTargetArchitecture
     </> case buildType of
       Release -> "release"
       Debug -> "debug"
