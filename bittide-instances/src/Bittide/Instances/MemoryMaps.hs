@@ -11,6 +11,7 @@ import Prelude
 
 import Bittide.Instances.Hitl.VexRiscv (vexRiscvTestMM)
 import Bittide.Instances.Pnr.Ethernet (vexRiscvEthernetMM)
+import Bittide.Instances.Pnr.Freeze (freezeMM)
 import Bittide.Instances.Pnr.ProcessingElement (vexRiscvUartHelloMM)
 
 import Protocols.MemoryMap
@@ -39,6 +40,7 @@ $( do
           [ ("Ethernet", vexRiscvEthernetMM)
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("VexRiscv", vexRiscvTestMM)
+          , ("Freeze", freezeMM)
           ]
 
     memMapDir <- runIO $ do

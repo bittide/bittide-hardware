@@ -26,7 +26,7 @@ control measurements. This makes sure the clock control algorithm works on
 measurements that are taken at the same clock cycle.
 -}
 freeze ::
-  forall dom aw n.
+  forall aw n dom.
   ( KnownDomain dom
   , KnownNat aw
   , KnownNat n
@@ -49,7 +49,7 @@ freeze clk rst =
     -- Create a bunch of register wishbone interfaces. We don't really care about
     -- ordering, so we just append a number to the end of a generic name.
     [wb0, wb1, wb2, wb3, wb4, ewb0, ewb1, ewb2, ewb3, ewb4, ewb5, ewb6] <-
-      deviceWbC (show 'freeze) -< (mm, wb)
+      deviceWbC "Freeze" -< (mm, wb)
 
     -- Only writeable register in this device: can be used by the wishbone manager
     -- to freeze all the incoming signals.

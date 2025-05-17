@@ -169,9 +169,9 @@ library
     Bittide.Instances.MemoryMaps
     Bittide.Instances.Pnr.Calendar
     Bittide.Instances.Pnr.Counter
-    Bittide.Instances.Pnr.DeviceWithMemMap
     Bittide.Instances.Pnr.ElasticBuffer
     Bittide.Instances.Pnr.Ethernet
+    Bittide.Instances.Pnr.Freeze
     Bittide.Instances.Pnr.ProcessingElement
     Bittide.Instances.Pnr.ScatterGather
     Bittide.Instances.Pnr.Si539xSpi

@@ -147,7 +147,7 @@ prop_wb = property $ do
   dutMm ::
     Circuit (ConstBwd MM, Wishbone XilinxSystem Standard AddressWidth (BitVector 32)) ()
   dutMm = circuit $ \(mm, wb) -> do
-    freeze @_ @_ @32 clk rst
+    freeze @4 @32 clk rst
       -< ( mm
          , wb
          , Fwd ebCounters

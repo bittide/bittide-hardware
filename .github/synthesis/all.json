@@ -1,6 +1,6 @@
 [
   {"top": "counterReducedPins",            "stage": "pnr"},
-  {"top": "deviceWithMemMap",              "stage": "pnr"},
+  {"top": "freeze",                        "stage": "pnr"},
   {"top": "elasticBuffer5",                "stage": "pnr"},
   {"top": "gatherUnit1KReducedPins",       "stage": "pnr"},
   {"top": "safeDffSynchronizer",           "stage": "pnr"},
