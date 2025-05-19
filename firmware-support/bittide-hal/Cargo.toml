@@ -23,3 +23,4 @@ log = "0.4.21"
 memmap-generate = { path = "../memmap-generate" }
 quote = "1.0"
 proc-macro2 = "1.0"
+heck = "0.5.0"

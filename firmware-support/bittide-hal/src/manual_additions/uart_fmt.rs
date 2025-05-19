@@ -6,7 +6,7 @@ use core::result::Result::{self, *};
 
 use crate::shared::devices::uart::*;
 
-impl core::fmt::Write for UART {
+impl core::fmt::Write for Uart {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for b in s.as_bytes() {
             self.set_data(*b);
@@ -15,7 +15,7 @@ impl core::fmt::Write for UART {
     }
 }
 
-impl ufmt::uWrite for UART {
+impl ufmt::uWrite for Uart {
     type Error = ();
 
     fn write_str(&mut self, s: &str) -> Result<(), Self::Error> {

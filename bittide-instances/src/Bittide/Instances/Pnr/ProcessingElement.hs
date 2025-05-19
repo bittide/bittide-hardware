@@ -80,9 +80,19 @@ vexRiscvUartHelloC baudSnat = circuit $ \(mm, (uartRx, jtag)) -> do
       elfPath = elfDir </> "hello"
     pure
       PeConfig
-        { initI = Reloadable (Vec $ unsafeVecFromElfInstr @IMemWords BigEndian elfPath)
+        { initI =
+            Reloadable
+              ( Vec
+                  $ unsafePerformIO
+                  $ vecFromElfInstr @IMemWords BigEndian elfPath
+              )
         , prefixI = 0b00
-        , initD = Reloadable (Vec $ unsafeVecFromElfData @DMemWords BigEndian elfPath)
+        , initD =
+            Reloadable
+              ( Vec
+                  $ unsafePerformIO
+                  $ vecFromElfData @DMemWords BigEndian elfPath
+              )
         , prefixD = 0b01
         , iBusTimeout = d0
         , dBusTimeout = d0

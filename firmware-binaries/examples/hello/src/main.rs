@@ -7,7 +7,7 @@
 
 use ufmt::uwriteln;
 
-use bittide_hal::hals::vexriscv as hal;
+use bittide_hal::hals::vex_riscv as hal;
 
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -17,7 +17,7 @@ const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
 // this is only a function so that we can breakpoint on it
 fn test_success() {
     INSTANCES
-        .statusregister
+        .status_register
         .set_status(hal::TestStatus::Success);
 }
 
@@ -43,7 +43,7 @@ fn main() -> ! {
 
 #[panic_handler]
 fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
-    INSTANCES.statusregister.set_status(hal::TestStatus::Fail);
+    INSTANCES.status_register.set_status(hal::TestStatus::Fail);
     loop {
         continue;
     }

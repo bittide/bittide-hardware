@@ -106,6 +106,10 @@ processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, 
     (splitAtCI <| singleMasterInterconnectC) -< (mmDbus, dBus1)
   MM.constBwd prefixD -< dPre
   MM.constBwd prefixI -< iPre
+
+  -- Instruction and data memory are never accessed explicitly by developers,
+  -- only implicitly by the CPU itself. We therefore don't need to generate HAL
+  -- code. We instruct the generator to skip them by adding a "no-generate" tag.
   MM.withTag "no-generate"
     $ MM.withDeviceTag "no-generate"
     $ wbStorage "DataMemory" initD
@@ -116,6 +120,7 @@ processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, 
     $ MM.withDeviceTag "no-generate"
     $ wbStorageDPC "InstructionMemory" initI
     -< (mmI, (iBus2, iMemBus))
+
   idC -< extBusses
  where
   removeMsb ::

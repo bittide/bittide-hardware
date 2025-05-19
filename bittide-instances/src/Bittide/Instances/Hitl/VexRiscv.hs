@@ -32,7 +32,7 @@ import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
 import Bittide.Instances.Hitl.Driver.VexRiscv
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.ProcessingElement.Util (unsafeVecFromElfData, unsafeVecFromElfInstr)
+import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
 import Bittide.SharedTypes
 import Bittide.Wishbone
 import Clash.Cores.UART.Extra
@@ -182,9 +182,19 @@ vexRiscvTestC = circuit $ \(mm, (jtag, uartRx)) -> do
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "hello"
     pure
       PeConfig
-        { initI = Reloadable (Vec $ unsafeVecFromElfInstr @IMemWords BigEndian elfPath)
+        { initI =
+            Reloadable
+              ( Vec
+                  $ unsafePerformIO
+                  $ vecFromElfInstr @IMemWords BigEndian elfPath
+              )
         , prefixI = 0b100
-        , initD = Reloadable (Vec $ unsafeVecFromElfData @DMemWords BigEndian elfPath)
+        , initD =
+            Reloadable
+              ( Vec
+                  $ unsafePerformIO
+                  $ vecFromElfData @DMemWords BigEndian elfPath
+              )
         , prefixD = 0b010
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus

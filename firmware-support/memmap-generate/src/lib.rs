@@ -7,6 +7,8 @@ pub mod parse;
 
 pub mod hal_set;
 
+pub mod format;
+
 use std::io::Write;
 
 use parse::{MemoryMapTree, PathComp};

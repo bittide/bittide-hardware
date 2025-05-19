@@ -51,6 +51,7 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 name = "bittide-hal"
 version = "0.1.0"
 dependencies = [
+ "heck",
  "log",
  "memmap-generate",
  "proc-macro2",
@@ -218,6 +219,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "heck"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
 name = "hello"
 version = "0.1.0"
 dependencies = [
@@ -281,6 +288,7 @@ name = "memmap-generate"
 version = "0.1.0"
 dependencies = [
  "derivative",
+ "heck",
  "proc-macro2",
  "quote",
  "serde",

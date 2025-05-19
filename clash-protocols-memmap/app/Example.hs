@@ -37,7 +37,7 @@ main = do
         getConstBwdAny (withClockResetEnable @System clockGen resetGen enableGen someOtherCircuit)
   print memoryMap
   let tree0 = convert memoryMap.tree
-  let tree1 = normaliseRelTree tree0
+  let tree1 = normalizeRelTree tree0
   print tree1
   let (absTree, _errs) = makeAbsolute memoryMap.deviceDefs (0x0000_0000, 0xFFFF_FFFF) tree1
   print absTree
