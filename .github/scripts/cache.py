@@ -37,7 +37,7 @@ import string
 import subprocess
 import sys
 
-from typing import List, Sequence
+from typing import List, Iterable
 
 PWD = os.getcwd()
 
@@ -116,7 +116,7 @@ def sha256sum_file(path : str) -> str:
     log(f"{digest} {path}")
     return digest
 
-def sha256sum_files(file_paths : Sequence[str]) -> str:
+def sha256sum_files(file_paths : Iterable[str]) -> str:
     hash = hashlib.sha256()
     for path in sorted(set(file_paths)):
         hash.update(sha256sum_file(path).encode())
