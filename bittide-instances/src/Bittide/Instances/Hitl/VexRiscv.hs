@@ -23,13 +23,23 @@ import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Data.Maybe (fromMaybe)
 import Protocols
-import Protocols.MemoryMap as MM
+import Protocols.MemoryMap (Access (WriteOnly), ConstBwd, MM, constBwd, getMMAny)
 import Protocols.MemoryMap.FieldType
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (description),
+  access,
+  deviceWbC,
+  registerConfig,
+  registerWbC,
+ )
 import Protocols.Wishbone
 import System.Environment (lookupEnv)
 import VexRiscv
 
-import Bittide.DoubleBufferedRam
+import Bittide.DoubleBufferedRam (
+  ContentType (Vec),
+  InitialContent (Reloadable, Undefined),
+ )
 import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
 import Bittide.Instances.Hitl.Driver.VexRiscv
@@ -48,8 +58,10 @@ import Project.FilePath (
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 
+import qualified Protocols.MemoryMap as MM
+
 data TestStatus = Running | Success | Fail
-  deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, ToFieldType)
+  deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, ToFieldType, Show)
 
 type TestDone = Bool
 type TestSuccess = Bool
@@ -109,58 +121,20 @@ vexRiscvTestC = circuit $ \(mm, (jtag, uartRx)) -> do
   idC -< (testResult, uartTx)
  where
   statusRegister ::
-    Circuit (ConstBwd MM, Wishbone dom 'Standard 27 (Bytes 4)) (CSignal dom TestStatus)
-  statusRegister = withMemoryMap mm $ Circuit $ \(fwd, _) ->
-    let (unbundle -> (m2s, st)) = mealy go Running fwd
-     in (m2s, st)
+    Circuit
+      (ConstBwd MM, Wishbone dom 'Standard 27 (Bytes 4))
+      (CSignal dom TestStatus)
+  statusRegister = circuit $ \(mm, wb) -> do
+    [statusWb] <- deviceWbC "StatusRegister" -< (mm, wb)
+    (statusOut, _a) <-
+      registerWbC hasClock hasReset statusConf Running -< (statusWb, Fwd (pure Nothing))
+    idC -< statusOut
    where
-    mm =
-      MemoryMap
-        { tree = DeviceInstance locCaller "StatusRegister"
-        , deviceDefs = deviceSingleton deviceDef
+    statusConf =
+      (registerConfig "status")
+        { access = WriteOnly
+        , description = "Set test status"
         }
-    deviceDef =
-      DeviceDefinition
-        { tags = []
-        , registers =
-            [ NamedLoc
-                { name = Name "status" ""
-                , loc = locHere
-                , value =
-                    Register
-                      { fieldType = regType @TestStatus
-                      , address = 0x00
-                      , access = WriteOnly
-                      , tags = []
-                      , reset = Nothing
-                      }
-                }
-            ]
-        , deviceName = Name "StatusRegister" ""
-        , definitionLoc = locHere
-        }
-    go st WishboneM2S{..}
-      -- out of cycle, no response, same state
-      | not (busCycle && strobe) = (st, (emptyWishboneS2M, st))
-      -- already done, ACK and same state
-      | st /= Running = (st, (emptyWishboneS2M{acknowledge = True}, st))
-      -- read, this is write-only, so error, same state
-      | not writeEnable =
-          ( st
-          ,
-            ( (emptyWishboneS2M @(Bytes 4))
-                { err = True
-                , readData = errorX "status register is write-only"
-                }
-            , st
-            )
-          )
-      -- write! change state, ACK
-      | otherwise =
-          let state = case writeData of
-                1 -> Success
-                _ -> Fail
-           in (state, (emptyWishboneS2M{acknowledge = True}, state))
 
   peConfig
     | clashSimulation = peConfigSim
