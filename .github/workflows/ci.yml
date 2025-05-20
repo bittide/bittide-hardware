@@ -184,6 +184,7 @@ jobs:
 
       - name: Generate HITL based plots
         run: |
+          ./cargo.sh clean
           ./cargo.sh build --frozen --release
           export BITTIDE_ARTIFACT_ACCESS_TOKEN="${{ secrets.GITHUB_TOKEN }}"
           export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
