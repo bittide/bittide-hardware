@@ -57,20 +57,23 @@ GLOBAL_CACHE_BUST = 6
 CARGO_CACHE_BUST = 2
 CARGO_KEY_PREFIX = f"cargo-g{GLOBAL_CACHE_BUST}-l{CARGO_CACHE_BUST}-"
 CARGO_KEY_PATTERNS = ("**/Cargo.lock", "**/Cargo.toml", "**/rust-toolchain.toml")
-CARGO_CACHE_PATTERNS = ("~/.cargo",)
+CARGO_CACHE_INCLUDE_PATTERNS = ("~/.cargo",)
+CARGO_CACHE_EXCLUDE_PATTERNS = ()
 
 CABAL_CACHE_BUST = 2
 CABAL_KEY_PREFIX = f"cabal-g{GLOBAL_CACHE_BUST}-l{CABAL_CACHE_BUST}-"
 CABAL_KEY_PATTERNS = ("**/cabal.project", "**/cabal.project.freeze")
-CABAL_CACHE_PATTERNS = ("~/.cabal-nix",)
+CABAL_CACHE_INCLUDE_PATTERNS = ("~/.cabal-nix",)
+CABAL_CACHE_EXCLUDE_PATTERNS = ()
 
 BUILD_CACHE_BUST = 2
 BUILD_KEY_PREFIX = f"build-products-g{GLOBAL_CACHE_BUST}-l{BUILD_CACHE_BUST}-"
-BUILD_CACHE_PATTERNS = (
+BUILD_CACHE_INCLUDE_PATTERNS = (
     f"{PWD}/_build/",
     f"{PWD}/clash-vexriscv/clash-vexriscv/build_out_dir/",
     f"{PWD}/dist-newstyle/",
 )
+BUILD_CACHE_EXCLUDE_PATTERNS = ()
 
 SYNTH_CACHE_BUST = 2
 SYNTH_KEY_PREFIX = f"synth-g{GLOBAL_CACHE_BUST}-l{SYNTH_CACHE_BUST}-"
@@ -89,10 +92,11 @@ SYNTH_CACHE_PATTERNS = (
 
 BUILD_POST_SYNTH_CACHE_BUST = 2
 BUILD_POST_SYNTH_KEY_PREFIX = f"build-products-post-synth-g{GLOBAL_CACHE_BUST}-l{BUILD_POST_SYNTH_CACHE_BUST}-"
-BUILD_POST_SYNTH_CACHE_PATTERNS = (
+BUILD_POST_SYNTH_CACHE_INCLUDE_PATTERNS = (
     f"{PWD}/_build/clash",
     f"{PWD}/_build/vivado",
 )
+BUILD_POST_SYNTH_CACHE_EXCLUDE_PATTERNS = ()
 
 def log(msg):
     """A poor man's logging function"""
@@ -254,7 +258,20 @@ class Mc:
             ]
         )
 
-    def push(self, patterns, empty_pattern_ok=False, replace=False) -> bool:
+    def _get_from_patterns(self, name, patterns, empty_pattern_ok=False):
+        """
+        Get a list of paths from the filesystem matching the given patterns.
+        For every pattern, if no paths are found, raise an error unless
+        `empty_pattern_ok` is set.
+        """
+        for pattern in patterns:
+            pattern = os.path.expanduser(pattern)
+            found = glob.glob(pattern, recursive=True)
+            if not found and not empty_pattern_ok:
+                raise ValueError(f"{name.title()} pattern '{pattern}' did not match any files")
+            yield from found
+
+    def push(self, include_patterns, exclude_patterns, empty_pattern_ok=False, replace=False) -> bool:
         """
         Upload files in `patterns`. Will error if none of the patterns yielded
         any files. Will also error if _any_ pattern came up empty, unless
@@ -266,19 +283,15 @@ class Mc:
         if not replace and self.stat() is not None:
             return False
 
-        files = []
-        for pattern in patterns:
-            pattern = os.path.expanduser(pattern)
-            found_files = glob.glob(pattern, recursive=True)
-            if not found_files and not empty_pattern_ok:
-                raise ValueError(f"Pattern '{pattern}' did not match any files")
-            files.extend(found_files)
+        includes = list(self._get_from_patterns("include", include_patterns, empty_pattern_ok))
+        if not includes:
+            raise ValueError("No include patterns matched: unable to create cache")
 
-        if not files:
-            raise ValueError("No patterns matched: unable to create cache")
+        excludes = list(self._get_from_patterns("exclude", exclude_patterns, empty_pattern_ok))
+        exclude_args = [f"--exclude={e}" for e in excludes]
 
         self._pipe(
-            ["tar", "--zstd", "-C", "/", "-cf", "-"] + sorted(files),
+            ["tar"] + exclude_args + ["--zstd", "-C", "/", "-cf", "-"] + sorted(includes),
             ["mc", "pipe", self._get_path()]
         )
 
@@ -350,22 +363,28 @@ def main(opts):
 
     if opts["cabal"]:
         key = get_cabal_key()
-        patterns = CABAL_CACHE_PATTERNS
+        include_patterns = CABAL_CACHE_INCLUDE_PATTERNS
+        exclude_patterns = CABAL_CACHE_EXCLUDE_PATTERNS
     elif opts["cargo"]:
         key = get_cargo_key()
-        patterns = CARGO_CACHE_PATTERNS
+        include_patterns = CARGO_CACHE_INCLUDE_PATTERNS
+        exclude_patterns = CARGO_CACHE_EXCLUDE_PATTERNS
     elif opts["build"]:
         key = get_build_key()
-        patterns = BUILD_CACHE_PATTERNS
+        include_patterns = BUILD_CACHE_INCLUDE_PATTERNS
+        exclude_patterns = BUILD_CACHE_EXCLUDE_PATTERNS
     elif opts["synth"]:
         key = get_synth_key()
-        patterns = SYNTH_CACHE_PATTERNS
+        include_patterns = SYNTH_CACHE_PATTERNS
+        exclude_patterns = SYNTH_CACHE_PATTERNS
     elif opts["build-post-synth"]:
         key = get_build_post_synth_key()
-        patterns = BUILD_POST_SYNTH_CACHE_PATTERNS
+        include_patterns = BUILD_POST_SYNTH_CACHE_INCLUDE_PATTERNS
+        exclude_patterns = BUILD_POST_SYNTH_CACHE_EXCLUDE_PATTERNS
     elif opts["clean"]:
         key = None
-        patterns = ()
+        include_patterns = ()
+        exclude_patterns = ()
     else:
         raise ValueError("Unrecognized name")
 
@@ -385,7 +404,12 @@ def main(opts):
             write_cache_result(cache_result)
 
     elif opts["push"]:
-        cache_result = mc.push(patterns, opts["--empty-pattern-ok"], opts["--overwrite-ok"])
+        cache_result = mc.push(
+            include_patterns,
+            exclude_patterns,
+            opts["--empty-pattern-ok"],
+            opts["--overwrite-ok"]
+        )
         if not cache_result:
             print(f"Cache hit occured on the key {mc._get_filename()}, not saving cache")
         else:
