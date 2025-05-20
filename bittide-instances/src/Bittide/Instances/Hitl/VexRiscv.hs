@@ -21,10 +21,12 @@ import Clash.Prelude
 import BitPackC
 import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
+import Data.Maybe (fromMaybe)
 import Protocols
 import Protocols.MemoryMap as MM
 import Protocols.MemoryMap.FieldType
 import Protocols.Wishbone
+import System.Environment (lookupEnv)
 import VexRiscv
 
 import Bittide.DoubleBufferedRam
@@ -160,44 +162,28 @@ vexRiscvTestC = circuit $ \(mm, (jtag, uartRx)) -> do
                 _ -> Fail
            in (state, (emptyWishboneS2M{acknowledge = True}, state))
 
-  -- ╭────────┬───────┬───────┬────────────────────────────────────╮
-  -- │ bin    │ hex   │ bus   │ description                        │
-  -- ├────────┼───────┼───────┼────────────────────────────────────┤
-  -- │ 0b000. │ 0x0   │       │                                    │
-  -- │ 0b001. │ 0x2   │       │                                    │
-  -- │ 0b010. │ 0x4   │ 1     │ Data memory                        │
-  -- │ 0b011. │ 0x6   │       │                                    │
-  -- │ 0b100. │ 0x8   │ 0     │ Instruction memory                 │
-  -- │ 0b101. │ 0xA   │ 2     │ Time                               │
-  -- │ 0b110. │ 0xC   │ 3     │ UART                               │
-  -- │ 0b111. │ 0xE   │ 4     │ Test status register               │
-  -- ╰────────┴───────┴───────┴────────────────────────────────────╯
-
   peConfig
     | clashSimulation = peConfigSim
     | otherwise = peConfigRtl
 
   peConfigSim = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "hello"
+    maybeBinaryName <- lookupEnv "TEST_BINARY_NAME"
+    let
+      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
+      elfPath = elfDir </> fromMaybe "hello" maybeBinaryName
     pure
-      PeConfig
+      peConfigRtl
         { initI =
             Reloadable
-              ( Vec
-                  $ unsafePerformIO
-                  $ vecFromElfInstr @IMemWords BigEndian elfPath
-              )
-        , prefixI = 0b100
+              $ Vec
+              $ unsafePerformIO
+              $ vecFromElfInstr @IMemWords BigEndian elfPath
         , initD =
             Reloadable
-              ( Vec
-                  $ unsafePerformIO
-                  $ vecFromElfData @DMemWords BigEndian elfPath
-              )
-        , prefixD = 0b010
-        , iBusTimeout = d0 -- No timeouts on the instruction bus
-        , dBusTimeout = d0 -- No timeouts on the data bus
+              $ Vec
+              $ unsafePerformIO
+              $ vecFromElfData @DMemWords BigEndian elfPath
         , includeIlaWb = False
         }
   peConfigRtl =

@@ -13,8 +13,10 @@ import Clash.Annotations.TH
 import Clash.Cores.UART (ValidBaud)
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Xilinx.ClockGen
+import Data.Maybe (fromMaybe)
 import Protocols
 import Protocols.MemoryMap as MM
+import System.Environment (lookupEnv)
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv
@@ -56,46 +58,28 @@ vexRiscvUartHelloC baudSnat = circuit $ \(mm, (uartRx, jtag)) -> do
   constBwd 0b11 -< prefixTime
   idC -< uartTx
  where
-  -- ╭────────┬───────┬───────┬────────────────────╮
-  -- │ bin    │ hex   │ bus   │ description        │
-  -- ├────────┼───────┼───────┼────────────────────┤
-  -- │ 0b000. │ 0x0   │       │ INSTR              │
-  -- │ 0b001. │ 0x2   │       │                    │
-  -- │ 0b010. │ 0x4   │       │ DATA               │
-  -- │ 0b011. │ 0x6   │       │                    │
-  -- │ 0b100. │ 0x8   │       │ UART               │
-  -- │ 0b101. │ 0xA   │       │                    │
-  -- │ 0b110. │ 0xC   │       │ TIME               │
-  -- │ 0b111. │ 0xE   │       │                    │
-  -- ╰────────┴───────┴───────┴────────────────────╯
-
   peConfig
     | clashSimulation = peConfigSim
     | otherwise = peConfigRtl
 
   peConfigSim = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
+    maybeBinaryName <- lookupEnv "TEST_BINARY_NAME"
     let
       elfDir = root </> firmwareBinariesDir "riscv32imc" Debug
-      elfPath = elfDir </> "hello"
+      elfPath = elfDir </> fromMaybe "hello" maybeBinaryName
     pure
-      PeConfig
+      peConfigRtl
         { initI =
             Reloadable
-              ( Vec
-                  $ unsafePerformIO
-                  $ vecFromElfInstr @IMemWords BigEndian elfPath
-              )
-        , prefixI = 0b00
+              $ Vec
+              $ unsafePerformIO
+              $ vecFromElfInstr @IMemWords BigEndian elfPath
         , initD =
             Reloadable
-              ( Vec
-                  $ unsafePerformIO
-                  $ vecFromElfData @DMemWords BigEndian elfPath
-              )
-        , prefixD = 0b01
-        , iBusTimeout = d0
-        , dBusTimeout = d0
+              $ Vec
+              $ unsafePerformIO
+              $ vecFromElfData @DMemWords BigEndian elfPath
         , includeIlaWb = False
         }
 
