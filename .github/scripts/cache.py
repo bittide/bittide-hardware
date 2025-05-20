@@ -72,8 +72,12 @@ BUILD_CACHE_INCLUDE_PATTERNS = (
     f"{PWD}/_build/",
     f"{PWD}/clash-vexriscv/clash-vexriscv/build_out_dir/",
     f"{PWD}/dist-newstyle/",
+    f"{PWD}/firmware-support/bittide-hal/src/shared/",
+    f"{PWD}/firmware-support/bittide-hal/src/hals/",
 )
-BUILD_CACHE_EXCLUDE_PATTERNS = ()
+BUILD_CACHE_EXCLUDE_PATTERNS = (
+    f"{PWD}/firmware-support/bittide-hal/src/shared/mod.rs",
+)
 
 SYNTH_CACHE_BUST = 2
 SYNTH_KEY_PREFIX = f"synth-g{GLOBAL_CACHE_BUST}-l{SYNTH_CACHE_BUST}-"
