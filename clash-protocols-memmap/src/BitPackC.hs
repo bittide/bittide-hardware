@@ -353,6 +353,19 @@ instance
       , _padding :: BitVector ((Max (GSumSize a) (GSumSize b) - GSumSize b) * 8)
       ) = split bits
 
+{- | XXX: Though the number of constructors a unit constructor is zero (I think?)
+we have to set it to at least 1 due to the @1 <=@ constraint on the class. See
+https://github.com/bittide/bittide-hardware/issues/779.
+-}
+instance GBitPackCSums U1 where
+  type GNumConstructors U1 = 1
+  type GSumSize U1 = 1
+  type GSumAlignment U1 = 1
+
+  gConstructorTag n _ = n
+  gpackCsum U1 = 0
+  gunpackCsum _ _ = U1
+
 instance (GBitPackCFields inner) => GBitPackCSums (C1 m inner) where
   type GNumConstructors (C1 m inner) = 1
   type GSumSize (C1 m inner) = GFieldSize inner
