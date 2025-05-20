@@ -20,6 +20,7 @@ import Data.Constraint.Nat.Lemmas
 import Data.List.Infinite (Infinite ((:<)), (...))
 import Data.Maybe
 import Data.String.Interpolate (__i)
+import GHC.Stack (HasCallStack)
 import Protocols.Axi4.Stream
 import Protocols.Internal
 import Protocols.MemoryMap
@@ -48,6 +49,7 @@ is configurable using the first `SNat counterWidth` argument.
 macStatusInterfaceWb ::
   forall dom aw nBytes counterWidth.
   ( CP.HiddenClockResetEnable dom
+  , HasCallStack
   , KnownNat nBytes
   , KnownNat aw
   , 1 <= nBytes

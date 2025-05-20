@@ -90,7 +90,9 @@ singleMasterInterconnectC = Circuit go
     )
   go (((), m2s), unzip -> (prefixes, unzip -> (slaveMms, s2ms))) = ((SimOnly memMap, s2m), (\x -> ((), ((), x))) <$> m2ss)
    where
-    prefixToAddr prefix = toInteger prefix `shiftL` fromInteger shift'
+    -- the 4 * is needed because the addrW etc relies on a word-aligned bus,
+    -- not a byte aligned bus.
+    prefixToAddr prefix = 4 * (toInteger prefix `shiftL` fromInteger shift')
      where
       shift' = snatToInteger $ SNat @(addrW - CLog 2 nSlaves)
     relAddrs = L.map prefixToAddr (toList prefixes)
@@ -694,7 +696,7 @@ The register-level layout of the Wishbone interface is as follows:
 +==============+===================+==============+===============+=============================+====+
 | 0            | Timer command     | 'time_cmd'   | 'TimeCmd'     | 1           | 0x00          | W  |
 | 1            | Comparison result | 'cmp_result' | 'Bool'        | 1           | 0x04          | R  |
-| 2            | Scratchpad        | 'scratchpad' | 'Unsigned 64' | 8           | 0x08          | R  |
+| 2            | Scratchpad        | 'scratchpad' | 'Unsigned 64' | 8           | 0x08          | RW |
 | 4            | Frequency         | 'frequency'  | 'Unsigned 64' | 8           | 0x10          | R  |
 +--------------+-------------------+--------------+---------------+-------------+---------------+----+
 -}
@@ -750,7 +752,7 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
                     { reset = Nothing
                     , fieldType = MM.regType @(BitVector 64)
                     , address = 0x08
-                    , access = MM.ReadOnly
+                    , access = MM.ReadWrite
                     , tags = []
                     }
               }

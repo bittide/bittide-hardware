@@ -20,7 +20,8 @@ import Clash.Cores.Xilinx.Ethernet.Gmii
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Clash.Explicit.Testbench
 import Protocols
-import Protocols.MemoryMap
+import Protocols.Idle
+import Protocols.MemoryMap as MM
 import VexRiscv
 
 import Bittide.Axi4
@@ -28,10 +29,9 @@ import Bittide.DoubleBufferedRam
 import Bittide.Ethernet.Mac
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.ProcessingElement.Util (vecsFromElf)
+import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
 import Bittide.SharedTypes (ByteOrder (BigEndian))
 import Bittide.Wishbone
-import Protocols.Idle
 
 import Project.FilePath (
   CargoBuildType (Release),
@@ -70,7 +70,7 @@ sim =
 * GPIO
 * Ethernet MAC
 -}
-vexRiscGmii ::
+vexRiscGmiiC ::
   forall logic rx tx gpioWidth.
   ( KnownDomain logic
   , KnownDomain rx
@@ -86,54 +86,51 @@ vexRiscGmii ::
   Reset rx ->
   Clock tx ->
   Reset tx ->
-  ( Signal logic Bit
-  , Signal rx Gmii
-  , Signal logic JtagIn
-  ) ->
-  ( Signal logic Bit
-  , Signal tx Gmii
-  , Signal logic JtagOut
-  , Signal logic (BitVector gpioWidth)
-  )
-vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
-  (\((_, _, jtagBwd), (uartFwd, gmiiFwd, gpioFwd)) -> (uartFwd, gmiiFwd, jtagBwd, gpioFwd))
-    $ toSignals
-      ( circuit $ \(uartTx, gmiiRx, jtag) -> do
-          mm <- idleSource -< ()
-          [ (prefixUart, (mmUart, uartBus))
-            , (prefixTime, (mmTime, timeBus))
-            , (prefixAxiRx, (mmAxiRx, wbAxiRx))
-            , (prefixAxiTx, (mmAxiTx, wbAxiTx))
-            , (prefixDna, (mmDna, dnaWb))
-            , (prefixGpio, (mmGpio, gpioWb))
-            , (prefixMac, (mmMac, macWb))
-            ] <-
-            pe -< (mm, jtag)
-          (uartRx, _uartStatus) <- uart -< (mmUart, (uartBus, uartTx))
-          constBwd 0b0010 -< prefixUart
-          _localCounter <- time -< (mmTime, timeBus)
-          constBwd 0b0011 -< prefixTime
-          _dna <- dnaC -< (mmDna, dnaWb)
-          constBwd 0b0111 -< prefixDna
-          macStatIf -< (mmMac, (macWb, macStatus))
-          gpioDf <- idleSource -< ()
-          gpioOut <- gpio -< (gpioWb, gpioDf)
-          constBwd 0b0100 -< prefixGpio
-          constBwd todoMM -< mmGpio
-          (axiRx0, gmiiTx, macStatus) <- mac -< (axiTx1, gmiiRx)
-          constBwd 0b1001 -< prefixMac
-          axiRx1 <- axiRxPipe -< axiRx0
-          axiTx0 <- wbToAxiTx' -< wbAxiTx
-          axiTx1 <- axiTxPipe -< axiTx0
-          _rxBufStatus <- wbAxiRxBuffer -< (wbAxiRx, axiRx1)
-          constBwd 0b0101 -< prefixAxiRx
-          constBwd todoMM -< mmAxiRx
-          constBwd 0b0110 -< prefixAxiTx
-          constBwd todoMM -< mmAxiTx
-
-          idC -< (uartRx, gmiiTx, gpioOut)
+  Circuit
+    ( ConstBwd MM
+    , ( CSignal logic Bit
+      , CSignal rx Gmii
+      , Jtag logic
       )
-      (fwd, (pure (), pure (), pure ()))
+    )
+    ( CSignal logic Bit
+    , CSignal tx Gmii
+    , CSignal logic (BitVector gpioWidth)
+    )
+vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
+  circuit $ \(mm, (uartTx, gmiiRx, jtag)) -> do
+    [ (prefixUart, (mmUart, uartBus))
+      , (prefixTime, (mmTime, timeBus))
+      , (prefixAxiRx, (mmAxiRx, wbAxiRx))
+      , (prefixAxiTx, (mmAxiTx, wbAxiTx))
+      , (prefixDna, (mmDna, dnaWb))
+      , (prefixGpio, (mmGpio, gpioWb))
+      , (prefixMac, (mmMac, macWb))
+      ] <-
+      pe -< (mm, jtag)
+    (uartRx, _uartStatus) <- uart -< (mmUart, (uartBus, uartTx))
+    constBwd 0b0010 -< prefixUart
+    _localCounter <- time -< (mmTime, timeBus)
+    constBwd 0b0011 -< prefixTime
+    _dna <- dnaC -< (mmDna, dnaWb)
+    constBwd 0b0111 -< prefixDna
+    macStatIf -< (mmMac, (macWb, macStatus))
+    gpioDf <- idleSource -< ()
+    gpioOut <- gpio -< (gpioWb, gpioDf)
+    constBwd 0b0100 -< prefixGpio
+    constBwd todoMM -< mmGpio
+    (axiRx0, gmiiTx, macStatus) <- mac -< (axiTx1, gmiiRx)
+    constBwd 0b1001 -< prefixMac
+    axiRx1 <- axiRxPipe -< axiRx0
+    axiTx0 <- wbToAxiTx' -< wbAxiTx
+    axiTx1 <- axiTxPipe -< axiTx0
+    _rxBufStatus <- wbAxiRxBuffer -< (wbAxiRx, axiRx1)
+    constBwd 0b0101 -< prefixAxiRx
+    constBwd todoMM -< mmAxiRx
+    constBwd 0b0110 -< prefixAxiTx
+    constBwd todoMM -< mmAxiTx
+
+    idC -< (uartRx, gmiiTx, gpioOut)
  where
   time = wcre timeWb
   dnaC = wcre readDnaPortE2Wb simDna2
@@ -172,12 +169,21 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
     root <- findParentContaining "cabal.project"
     let
       elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       $ PeConfig
-        { initI = Reloadable (Vec iMem)
+        { initI =
+            Reloadable
+              ( Vec
+                  $ unsafePerformIO
+                  $ vecFromElfInstr @IMemWords BigEndian elfPath
+              )
         , prefixI = 0b1000
-        , initD = Reloadable (Vec dMem)
+        , initD =
+            Reloadable
+              ( Vec
+                  $ unsafePerformIO
+                  $ vecFromElfData @DMemWords BigEndian elfPath
+              )
         , prefixD = 0b0001
         , iBusTimeout = d0
         , dBusTimeout = d0
@@ -197,6 +203,18 @@ vexRiscGmii SNat sysClk sysRst rxClk rxRst txClk txRst fwd =
 
 type IMemWords = DivRU (280 * 1024) 4
 type DMemWords = DivRU (88 * 1024) 4
+
+vexRiscvEthernetMM :: MM.MemoryMap
+vexRiscvEthernetMM =
+  getMMAny
+    $ vexRiscGmiiC @Basic125B @Basic125A @Basic125A @32
+      SNat
+      clockGen
+      resetGen
+      clockGen
+      resetGen
+      clockGen
+      resetGen
 
 vexRiscEthernet ::
   Clock Basic125B ->
@@ -230,7 +248,11 @@ vexRiscEthernet sysClk sysRst sgmiiPhyClk (jtagin, uartIn, sgmiiIn) =
   rxClk = bridgeClk125 :: Clock Basic125A
   rxRst = bridgeRst125
   bridgeRst = unsafeResetDesynchronizer sysClk sysRst
-  (uartOut, gmiiOut, jtagOut, gpioOut) = vexRiscGmii SNat sysClk sysRst rxClk rxRst rxClk rxRst (uartIn, bridgeGmiiRx, jtagin)
+  circFn = toSignals $ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst rxClk rxRst
+
+  ( ((SimOnly _mm, (_, _, jtagOut)))
+    , (uartOut, gmiiOut, gpioOut)
+    ) = circFn (((), (uartIn, bridgeGmiiRx, jtagin)), (pure (), pure (), pure ()))
 
 {- | Take a synchronous reset from one domain and convert it to an asynchronous reset.
 This inserts a register in the source domain to prevent glitching and then converts the domain.

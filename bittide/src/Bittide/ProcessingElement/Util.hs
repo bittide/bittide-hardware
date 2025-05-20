@@ -67,6 +67,42 @@ vecsFromElf byteOrder elfPath maybeDeviceTree = do
 
   pure (unsafeFromList iListPadded, unsafeFromList dListPadded)
 
+-- | Read data memory from an ELF file.
+vecFromElfData ::
+  forall nWords.
+  (HasCallStack, KnownNat nWords) =>
+  -- | How the words should be ordered
+  ByteOrder ->
+  -- | Source file, assumed to be Little Endian.
+  FilePath ->
+  -- | Data memory
+  IO (Vec nWords (BitVector 32))
+vecFromElfData byteOrder elfPath = do
+  (_iMemIntMap, dMemIntMap) <- getBytesMems elfPath Nothing
+  let
+    (_dStartAddr, _, dList) = extractIntMapData byteOrder dMemIntMap
+    dListPadded = padToSize "Data memory" (Just (natToNum @nWords)) 0 dList
+
+  pure (unsafeFromList dListPadded)
+
+-- | Read instruction memory from an ELF file.
+vecFromElfInstr ::
+  forall nWords.
+  (HasCallStack, KnownNat nWords) =>
+  -- | How the words should be ordered
+  ByteOrder ->
+  -- | Source file, assumed to be Little Endian.
+  FilePath ->
+  -- | Instruction memory
+  IO (Vec nWords (BitVector 32))
+vecFromElfInstr byteOrder elfPath = do
+  (iMemIntMap, _dMemIntMap) <- getBytesMems elfPath Nothing
+  let
+    (_iStartAddr, _, iList) = extractIntMapData byteOrder iMemIntMap
+    iListPadded = padToSize "Instruction memory" (Just (natToNum @nWords)) 0 iList
+
+  pure (unsafeFromList iListPadded)
+
 {- | Given the path to an elf file, the path to a device tree and a starting address
  for the device tree. Return a 3 tuple containing:
 Return a 3 tuple containing (initial program counter, instruction memory blob, data memory blob)

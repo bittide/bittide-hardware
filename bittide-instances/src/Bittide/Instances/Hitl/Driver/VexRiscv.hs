@@ -122,6 +122,7 @@ driverFunc _name targets = do
             putStrLn "Testing whether breakpoints work"
             Gdb.setBreakpoints gdb ["hello::test_success"]
             Gdb.continue gdb
+
             Gdb.echo gdb.stdinHandle "breakpoint reached"
             tryWithTimeout "Waiting for \"breakpoint reached\"" 10_000_000
               $ waitForLine gdb.stdoutHandle "breakpoint reached"

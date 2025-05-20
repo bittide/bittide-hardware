@@ -88,8 +88,8 @@ convert (Interconnect srcLoc comps) = AnnInterconnect () srcLoc comps'
   comps' = Data.Bifunctor.second convert <$> comps
 convert (DeviceInstance srcLoc deviceName) = AnnNormWrapper (AnnDeviceInstance () srcLoc deviceName)
 
-normaliseRelTree :: MemoryMapTreeAnn () norm -> MemoryMapTreeRelNorm
-normaliseRelTree = go [] 0 [] Nothing Nothing
+normalizeRelTree :: MemoryMapTreeAnn () norm -> MemoryMapTreeRelNorm
+normalizeRelTree = go [] 0 [] Nothing Nothing
  where
   nextName :: [PathComp] -> Integer -> Maybe (SrcLoc, String) -> Path
   nextName path n Nothing = PathUnnamed n : path

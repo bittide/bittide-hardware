@@ -22,7 +22,7 @@ import BitPackC
 import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols
-import Protocols.MemoryMap
+import Protocols.MemoryMap as MM
 import Protocols.MemoryMap.FieldType
 import Protocols.Wishbone
 import VexRiscv
@@ -32,11 +32,12 @@ import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
 import Bittide.Instances.Hitl.Driver.VexRiscv
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.ProcessingElement.Util (vecsFromElf)
+import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
 import Bittide.SharedTypes
 import Bittide.Wishbone
 import Clash.Cores.UART.Extra
 
+import GHC.Stack (HasCallStack)
 import Project.FilePath (
   CargoBuildType (Release),
   findParentContaining,
@@ -69,50 +70,42 @@ sim =
  where
   go (uartRx, _) = (pure (), uartTx)
    where
-    (_, _, uartTx) = vexRiscvInner @Basic125 (pure $ unpack 0) uartRx
+    (_, (_, uartTx)) =
+      toSignals (vexRiscvTestC @Basic125) (((), (pure $ unpack 0, uartRx)), (pure (), pure ()))
 
-vexRiscvInner ::
+vexRiscvTestMM :: MM.MemoryMap
+vexRiscvTestMM =
+  getMMAny
+    $ withClockResetEnable clockGen resetGen enableGen
+    $ vexRiscvTestC @Basic125
+
+vexRiscvTestC ::
   forall dom.
   ( HiddenClockResetEnable dom
+  , HasCallStack
   , 1 <= DomainPeriod dom
   , ValidBaud dom Baud
   ) =>
-  Signal dom JtagIn ->
-  Signal dom UartRx ->
-  ( Signal dom (TestDone, TestSuccess)
-  , Signal dom JtagOut
-  , Signal dom UartTx
-  )
-vexRiscvInner jtagIn0 uartRx =
-  ( stateToDoneSuccess <$> status
-  , jtagOut
-  , uartTx
-  )
+  Circuit
+    (ConstBwd MM, (Jtag dom, CSignal dom UartRx))
+    (CSignal dom TestStatus, CSignal dom UartTx)
+vexRiscvTestC = circuit $ \(mm, (jtag, uartRx)) -> do
+  [ (preTime, (mmTime, timeBus))
+    , (preUart, (mmUart, uartBus))
+    , (preStatus, (mmStatus, statusRegisterBus))
+    ] <-
+    processingElement NoDumpVcd peConfig -< (mm, jtag)
+
+  constBwd 0b110 -< preUart
+  (uartTx, _uartStatus) <-
+    uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
+  constBwd 0b101 -< preTime
+  _localCounter <- timeWb -< (mmTime, timeBus)
+
+  constBwd 0b111 -< preStatus
+  testResult <- statusRegister -< (mmStatus, statusRegisterBus)
+  idC -< (testResult, uartTx)
  where
-  stateToDoneSuccess Running = (False, False)
-  stateToDoneSuccess Success = (True, True)
-  stateToDoneSuccess Fail = (True, False)
-
-  ((_, (_, jtagOut)), (status, uartTx)) =
-    circuitFn (((), (uartRx, jtagIn0)), (pure (), pure ()))
-
-  Circuit circuitFn = circuit $ \(mm, (uartRx, jtag)) -> do
-    [ (preTime, (mmTime, timeBus))
-      , (preUart, (mmUart, uartBus))
-      , (preStatus, (mmStatus, statusRegisterBus))
-      ] <-
-      processingElement NoDumpVcd peConfig -< (mm, jtag)
-
-    constBwd 0b110 -< preUart
-    (uartTx, _uartStatus) <-
-      uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
-    constBwd 0b101 -< preTime
-    _localCounter <- timeWb -< (mmTime, timeBus)
-
-    constBwd 0b111 -< preStatus
-    testResult <- statusRegister -< (mmStatus, statusRegisterBus)
-    idC -< (testResult, uartTx)
-
   statusRegister ::
     Circuit (ConstBwd MM, Wishbone dom 'Standard 27 (Bytes 4)) (CSignal dom TestStatus)
   statusRegister = withMemoryMap mm $ Circuit $ \(fwd, _) ->
@@ -187,12 +180,21 @@ vexRiscvInner jtagIn0 uartRx =
   peConfigSim = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "hello"
-    (iMem, dMem) <- vecsFromElf @IMemWords @DMemWords BigEndian elfPath Nothing
     pure
       PeConfig
-        { initI = Reloadable (Vec iMem)
+        { initI =
+            Reloadable
+              ( Vec
+                  $ unsafePerformIO
+                  $ vecFromElfInstr @IMemWords BigEndian elfPath
+              )
         , prefixI = 0b100
-        , initD = Reloadable (Vec dMem)
+        , initD =
+            Reloadable
+              ( Vec
+                  $ unsafePerformIO
+                  $ vecFromElfData @DMemWords BigEndian elfPath
+              )
         , prefixD = 0b010
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
@@ -222,12 +224,21 @@ vexRiscvTest ::
         , "JTAG" ::: Signal Basic125 JtagOut
         , "USB_UART_RXD" ::: Signal Basic125 UartTx
         )
-vexRiscvTest diffClk jtagIn uartRx = (testDone, testSuccess, jtagOut, uartTx)
+vexRiscvTest diffClk jtagIn uartRx = (testStatusDone, testStatusSuccess, jtagOut, uartTx)
  where
+  (unbundle -> (testStatusDone, testStatusSuccess)) = stateToDoneSuccess <$> testStatus
+
+  stateToDoneSuccess Running = (False, False)
+  stateToDoneSuccess Success = (True, True)
+  stateToDoneSuccess Fail = (True, False)
+
   (clk, clkStableRst) = clockWizardDifferential diffClk noReset
 
-  (_, jtagOut, uartTx) =
-    withClockResetEnable clk reset enableGen (vexRiscvInner @Basic125 jtagIn uartRx)
+  ((_mm, (jtagOut, _)), (testStatus, uartTx)) =
+    withClockResetEnable clk reset enableGen
+      $ toSignals
+        (vexRiscvTestC @Basic125)
+        (((), (jtagIn, uartRx)), (pure (), pure ()))
 
   reset = orReset clkStableRst (unsafeFromActiveLow testStarted)
 

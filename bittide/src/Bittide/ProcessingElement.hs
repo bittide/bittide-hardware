@@ -23,7 +23,13 @@ import Bittide.Wishbone
 import Clash.Cores.Xilinx.Ila (Depth (D4096))
 
 import qualified Data.ByteString as BS
-import qualified Protocols.MemoryMap as MM (ConstBwd, MM, constBwd)
+import qualified Protocols.MemoryMap as MM (
+  ConstBwd,
+  MM,
+  constBwd,
+  withDeviceTag,
+  withTag,
+ )
 
 -- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where
@@ -100,9 +106,21 @@ processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, 
     (splitAtCI <| singleMasterInterconnectC) -< (mmDbus, dBus1)
   MM.constBwd prefixD -< dPre
   MM.constBwd prefixI -< iPre
-  wbStorage "DataMemory" initD -< (mmD, dMemBus)
+
+  -- Instruction and data memory are never accessed explicitly by developers,
+  -- only implicitly by the CPU itself. We therefore don't need to generate HAL
+  -- code. We instruct the generator to skip them by adding a "no-generate" tag.
+  MM.withTag "no-generate"
+    $ MM.withDeviceTag "no-generate"
+    $ wbStorage "DataMemory" initD
+    -< (mmD, dMemBus)
+
   iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
-  wbStorageDPC "InstructionMemory" initI -< (mmI, (iBus2, iMemBus))
+  MM.withTag "no-generate"
+    $ MM.withDeviceTag "no-generate"
+    $ wbStorageDPC "InstructionMemory" initI
+    -< (mmI, (iBus2, iMemBus))
+
   idC -< extBusses
  where
   removeMsb ::
