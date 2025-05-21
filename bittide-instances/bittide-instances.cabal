@@ -83,8 +83,6 @@ common common-options
   build-depends:
     Glob,
     MissingH,
-    aeson,
-    aeson-pretty,
     async,
     base,
     base16-bytestring,

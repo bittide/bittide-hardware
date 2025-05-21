@@ -11,6 +11,8 @@ module Protocols.MemoryMap.Json where
 
 import Clash.Prelude (
   Applicative (pure),
+  Double,
+  Either (Left, Right),
   Integer,
   Num ((+)),
   Semigroup ((<>)),
@@ -44,13 +46,32 @@ import Control.Monad (forM)
 import Control.Monad.State
 import Data.Aeson
 import Data.Aeson.Key (fromString)
+import Data.Scientific (floatingOrInteger)
 import GHC.Stack (SrcLoc (..))
 
+import qualified Data.Aeson.Encode.Pretty as Ae
+import qualified Data.Aeson.Text as Aeson
+import qualified Data.ByteString.Lazy as BS
 import qualified Data.List as L
 import qualified Data.Map.Strict as Map
+import qualified Data.Text.Lazy.Builder as Builder
 import qualified Protocols.MemoryMap.FieldType as FT
 
 type JsonGenerator a = State (Integer, [SrcLoc]) a
+
+{- | Custom number format for JSON encoding. Will not use scientific/float
+notation if a number becomes \"too large\". This is currently a workaround
+for the Rust side not accepting scientific notation when parsing.
+-}
+mmNumFormat :: Ae.NumberFormat
+mmNumFormat = Ae.Custom $ \s ->
+  case floatingOrInteger s of
+    Left (_ :: Double) -> Aeson.encodeToTextBuilder $ Number s
+    Right (i :: Integer) -> Builder.fromString (show i)
+
+-- | Encode a 'Value' to JSON with a number formatter suitable for Rust parsing.
+encode :: Value -> BS.ByteString
+encode = Ae.encodePretty' Ae.defConfig{Ae.confNumFormat = mmNumFormat}
 
 -- | Generate a JSON representation of a 'MemoryMapValid'
 memoryMapJson :: DeviceDefinitions -> MemoryMapTreeAbsNorm -> Value

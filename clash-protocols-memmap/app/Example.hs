@@ -26,10 +26,9 @@ import Internal.HdlTest.UartMock (someOtherCircuit)
 
 import Protocols.MemoryMap
 import Protocols.MemoryMap.Check.AbsAddress (makeAbsolute)
-import Protocols.MemoryMap.Json (memoryMapJson)
 
-import qualified Data.Aeson.Encode.Pretty as Ae
 import qualified Data.ByteString.Lazy as BS
+import qualified Protocols.MemoryMap.Json as Json
 
 main :: IO ()
 main = do
@@ -44,6 +43,6 @@ main = do
 
   putStrLn "\n\n\n"
 
-  let json = memoryMapJson memoryMap.deviceDefs absTree
-  BS.putStr (Ae.encodePretty json)
+  let json = Json.memoryMapJson memoryMap.deviceDefs absTree
+  BS.putStr (Json.encode json)
   pure ()
