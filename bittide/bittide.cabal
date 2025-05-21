@@ -215,6 +215,7 @@ library
     Bittide.Wishbone
     Clash.Cores.Extra
     Clash.Cores.UART.Extra
+    Clash.Cores.Xilinx.Ddr4
     Clash.Cores.Xilinx.Extra
     Clash.Cores.Xilinx.GTH
     Clash.Cores.Xilinx.GTH.BlackBoxes
