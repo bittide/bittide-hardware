@@ -161,10 +161,10 @@ ddr4Axi
       , s2m_ra
       , s2m_rd
       , ddr4_sigs
-      , c0_ddr4_dm_dbi_n_o
-      , c0_ddr4_dq_o
-      , c0_ddr4_dqs_t_o
-      , c0_ddr4_dqs_c_o
+      , errorX "No simulation: c0_ddr4_dm_dbi_n_o"
+      , errorX "No simulation: c0_ddr4_dq_o"
+      , errorX "No simulation: c0_ddr4_dqs_t_o"
+      , errorX "No simulation: c0_ddr4_dqs_c_o"
       )
      where
       s2m_wa = S2M_WriteAddress <$> s_axi_awready
@@ -211,11 +211,6 @@ ddr4Axi
         , unPort -> c0_ddr4_ck_c
         , unPort -> c0_ddr4_act_n
         , unPort -> c0_ddr4_reset_n
-        , -- DDR4 BiSignal parts
-          unPort -> c0_ddr4_dm_dbi_n_o
-        , unPort -> c0_ddr4_dq_o
-        , unPort -> c0_ddr4_dqs_t_o
-        , unPort -> c0_ddr4_dqs_c_o
         , -- General ports
           unPort -> ui_clk
         , unPort -> ui_clk_sync_rst
@@ -250,11 +245,14 @@ ddr4Axi
       , Port "c0_ddr4_act_n"   sysDom Bit
       , Port "c0_ddr4_reset_n" sysDom Bit
 
-        -- DDR4 BiSignal parts
-      , BiSignalOutPort "c0_ddr4_dm_dbi_n_o" 'Floating sysDom 1
-      , BiSignalOutPort "c0_ddr4_dq_o"       'Floating sysDom 8
-      , BiSignalOutPort "c0_ddr4_dqs_t_o"    'Floating sysDom 1
-      , BiSignalOutPort "c0_ddr4_dqs_c_o"    'Floating sysDom 1
+        -- DDR4 BiSignal parts.
+        -- These are currently not used since BiSignalOutPort causes a mismatch
+        -- in number of output ports. See:
+        -- https://github.com/clash-lang/clash-cores/issues/35
+        -- , BiSignalOutPort "c0_ddr4_dm_dbi_n_o" 'Floating sysDom 1
+        -- , BiSignalOutPort "c0_ddr4_dq_o"       'Floating sysDom 8
+        -- , BiSignalOutPort "c0_ddr4_dqs_t_o"    'Floating sysDom 1
+        -- , BiSignalOutPort "c0_ddr4_dqs_c_o"    'Floating sysDom 1
 
         -- General ports
       , ClockPort "c0_ddr4_ui_clk"    uiDom
