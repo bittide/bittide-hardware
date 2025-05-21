@@ -87,6 +87,27 @@ sim =
     (_, (_, uartTx)) =
       toSignals (vexRiscvTestC @Basic125) (((), (pure $ unpack 0, uartRx)), (pure (), pure ()))
 
+{- | Wishbone accessible status register. Used to communicate the test status
+from the CPU to the outside world through VIOs.
+-}
+statusRegister ::
+  forall aw dom.
+  (HasCallStack, HiddenClock dom, HiddenReset dom, KnownNat aw, 1 <= aw) =>
+  Circuit
+    (ConstBwd MM, Wishbone dom 'Standard aw (Bytes 4))
+    (CSignal dom TestStatus)
+statusRegister = circuit $ \(mm, wb) -> do
+  [statusWb] <- deviceWbC "StatusRegister" -< (mm, wb)
+  (statusOut, _a) <-
+    registerWbC hasClock hasReset statusConf Running -< (statusWb, Fwd (pure Nothing))
+  idC -< statusOut
+ where
+  statusConf =
+    (registerConfig "status")
+      { access = WriteOnly
+      , description = "Set test status"
+      }
+
 vexRiscvTestMM :: MM.MemoryMap
 vexRiscvTestMM =
   getMMAny
@@ -110,32 +131,19 @@ vexRiscvTestC = circuit $ \(mm, (jtag, uartRx)) -> do
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtag)
 
+  --       0b010 Data memory
+  --       0b100 Instruction memory
+  constBwd 0b101 -< preTime
   constBwd 0b110 -< preUart
+  constBwd 0b111 -< preStatus
+
   (uartTx, _uartStatus) <-
     uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
-  constBwd 0b101 -< preTime
   _localCounter <- timeWb -< (mmTime, timeBus)
 
-  constBwd 0b111 -< preStatus
   testResult <- statusRegister -< (mmStatus, statusRegisterBus)
   idC -< (testResult, uartTx)
  where
-  statusRegister ::
-    Circuit
-      (ConstBwd MM, Wishbone dom 'Standard 27 (Bytes 4))
-      (CSignal dom TestStatus)
-  statusRegister = circuit $ \(mm, wb) -> do
-    [statusWb] <- deviceWbC "StatusRegister" -< (mm, wb)
-    (statusOut, _a) <-
-      registerWbC hasClock hasReset statusConf Running -< (statusWb, Fwd (pure Nothing))
-    idC -< statusOut
-   where
-    statusConf =
-      (registerConfig "status")
-        { access = WriteOnly
-        , description = "Set test status"
-        }
-
   peConfig
     | clashSimulation = peConfigSim
     | otherwise = peConfigRtl
