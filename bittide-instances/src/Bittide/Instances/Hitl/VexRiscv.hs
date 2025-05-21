@@ -21,13 +21,25 @@ import Clash.Prelude
 import BitPackC
 import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
+import Data.Maybe (fromMaybe)
 import Protocols
-import Protocols.MemoryMap as MM
+import Protocols.MemoryMap (Access (WriteOnly), ConstBwd, MM, constBwd, getMMAny)
 import Protocols.MemoryMap.FieldType
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (description),
+  access,
+  deviceWbC,
+  registerConfig,
+  registerWbC,
+ )
 import Protocols.Wishbone
+import System.Environment (lookupEnv)
 import VexRiscv
 
-import Bittide.DoubleBufferedRam
+import Bittide.DoubleBufferedRam (
+  ContentType (Vec),
+  InitialContent (Reloadable, Undefined),
+ )
 import Bittide.Hitl
 import Bittide.Instances.Domains (Basic125, Ext125)
 import Bittide.Instances.Hitl.Driver.VexRiscv
@@ -46,8 +58,10 @@ import Project.FilePath (
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 
+import qualified Protocols.MemoryMap as MM
+
 data TestStatus = Running | Success | Fail
-  deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, ToFieldType)
+  deriving (Enum, Eq, Generic, NFDataX, BitPack, BitPackC, ToFieldType, Show)
 
 type TestDone = Bool
 type TestSuccess = Bool
@@ -73,6 +87,27 @@ sim =
     (_, (_, uartTx)) =
       toSignals (vexRiscvTestC @Basic125) (((), (pure $ unpack 0, uartRx)), (pure (), pure ()))
 
+{- | Wishbone accessible status register. Used to communicate the test status
+from the CPU to the outside world through VIOs.
+-}
+statusRegister ::
+  forall aw dom.
+  (HasCallStack, HiddenClock dom, HiddenReset dom, KnownNat aw, 1 <= aw) =>
+  Circuit
+    (ConstBwd MM, Wishbone dom 'Standard aw (Bytes 4))
+    (CSignal dom TestStatus)
+statusRegister = circuit $ \(mm, wb) -> do
+  [statusWb] <- deviceWbC "StatusRegister" -< (mm, wb)
+  (statusOut, _a) <-
+    registerWbC hasClock hasReset statusConf Running -< (statusWb, Fwd (pure Nothing))
+  idC -< statusOut
+ where
+  statusConf =
+    (registerConfig "status")
+      { access = WriteOnly
+      , description = "Set test status"
+      }
+
 vexRiscvTestMM :: MM.MemoryMap
 vexRiscvTestMM =
   getMMAny
@@ -96,108 +131,41 @@ vexRiscvTestC = circuit $ \(mm, (jtag, uartRx)) -> do
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtag)
 
+  --       0b010 Data memory
+  --       0b100 Instruction memory
+  constBwd 0b101 -< preTime
   constBwd 0b110 -< preUart
+  constBwd 0b111 -< preStatus
+
   (uartTx, _uartStatus) <-
     uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
-  constBwd 0b101 -< preTime
   _localCounter <- timeWb -< (mmTime, timeBus)
 
-  constBwd 0b111 -< preStatus
   testResult <- statusRegister -< (mmStatus, statusRegisterBus)
   idC -< (testResult, uartTx)
  where
-  statusRegister ::
-    Circuit (ConstBwd MM, Wishbone dom 'Standard 27 (Bytes 4)) (CSignal dom TestStatus)
-  statusRegister = withMemoryMap mm $ Circuit $ \(fwd, _) ->
-    let (unbundle -> (m2s, st)) = mealy go Running fwd
-     in (m2s, st)
-   where
-    mm =
-      MemoryMap
-        { tree = DeviceInstance locCaller "StatusRegister"
-        , deviceDefs = deviceSingleton deviceDef
-        }
-    deviceDef =
-      DeviceDefinition
-        { tags = []
-        , registers =
-            [ NamedLoc
-                { name = Name "status" ""
-                , loc = locHere
-                , value =
-                    Register
-                      { fieldType = regType @TestStatus
-                      , address = 0x00
-                      , access = WriteOnly
-                      , tags = []
-                      , reset = Nothing
-                      }
-                }
-            ]
-        , deviceName = Name "StatusRegister" ""
-        , definitionLoc = locHere
-        }
-    go st WishboneM2S{..}
-      -- out of cycle, no response, same state
-      | not (busCycle && strobe) = (st, (emptyWishboneS2M, st))
-      -- already done, ACK and same state
-      | st /= Running = (st, (emptyWishboneS2M{acknowledge = True}, st))
-      -- read, this is write-only, so error, same state
-      | not writeEnable =
-          ( st
-          ,
-            ( (emptyWishboneS2M @(Bytes 4))
-                { err = True
-                , readData = errorX "status register is write-only"
-                }
-            , st
-            )
-          )
-      -- write! change state, ACK
-      | otherwise =
-          let state = case writeData of
-                1 -> Success
-                _ -> Fail
-           in (state, (emptyWishboneS2M{acknowledge = True}, state))
-
-  -- ╭────────┬───────┬───────┬────────────────────────────────────╮
-  -- │ bin    │ hex   │ bus   │ description                        │
-  -- ├────────┼───────┼───────┼────────────────────────────────────┤
-  -- │ 0b000. │ 0x0   │       │                                    │
-  -- │ 0b001. │ 0x2   │       │                                    │
-  -- │ 0b010. │ 0x4   │ 1     │ Data memory                        │
-  -- │ 0b011. │ 0x6   │       │                                    │
-  -- │ 0b100. │ 0x8   │ 0     │ Instruction memory                 │
-  -- │ 0b101. │ 0xA   │ 2     │ Time                               │
-  -- │ 0b110. │ 0xC   │ 3     │ UART                               │
-  -- │ 0b111. │ 0xE   │ 4     │ Test status register               │
-  -- ╰────────┴───────┴───────┴────────────────────────────────────╯
-
   peConfig
     | clashSimulation = peConfigSim
     | otherwise = peConfigRtl
 
   peConfigSim = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "hello"
+    maybeBinaryName <- lookupEnv "TEST_BINARY_NAME"
+    let
+      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
+      elfPath = elfDir </> fromMaybe "hello" maybeBinaryName
     pure
-      PeConfig
+      peConfigRtl
         { initI =
             Reloadable
-              ( Vec
-                  $ unsafePerformIO
-                  $ vecFromElfInstr @IMemWords BigEndian elfPath
-              )
-        , prefixI = 0b100
+              $ Vec
+              $ unsafePerformIO
+              $ vecFromElfInstr @IMemWords BigEndian elfPath
         , initD =
             Reloadable
-              ( Vec
-                  $ unsafePerformIO
-                  $ vecFromElfData @DMemWords BigEndian elfPath
-              )
-        , prefixD = 0b010
-        , iBusTimeout = d0 -- No timeouts on the instruction bus
-        , dBusTimeout = d0 -- No timeouts on the data bus
+              $ Vec
+              $ unsafePerformIO
+              $ vecFromElfData @DMemWords BigEndian elfPath
         , includeIlaWb = False
         }
   peConfigRtl =

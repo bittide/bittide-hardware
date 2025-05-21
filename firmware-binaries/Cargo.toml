@@ -25,7 +25,6 @@ members = [
   "test-cases/time_self_test",
   "test-cases/watchdog_test",
 
-  "clock-control-reg-cpy",
   "clock-control",
   "management-unit",
   "processing-element-test",
