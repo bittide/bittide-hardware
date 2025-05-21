@@ -773,7 +773,7 @@ timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy
       , definitionLoc = MM.locHere
       , tags = []
       }
-  goMealy (reqCmp0, scratch0 :: Unsigned 64, count :: Unsigned 64) wbM2S =
+  goMealy (!reqCmp0, !scratch0 :: Unsigned 64, !count :: Unsigned 64) wbM2S =
     ((reqCmp1, scratch1, succ count), (wbS2M1, count))
    where
     freq = natToNum @(DomainToHz dom) :: Unsigned 64
