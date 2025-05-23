@@ -77,7 +77,7 @@ manyTypesWb ::
     (ConstBwd MM, Wishbone dom 'Standard aw (Bytes wordSize))
     ()
 manyTypesWb = circuit $ \(mm, wb) -> do
-  [wbS0, wbS1, wbS2, wbS3, wbU0, wbU1, wbU2] <-
+  [wbS0, wbS1, wbS2, wbS3, wbU0, wbU1, wbU2, wbBv0, wbBv1, wbBv2] <-
     deviceWbC "ManyTypes" -< (mm, wb)
 
   registerWbC_ hasClock hasReset (registerConfig "s0") initWbS0 -< (wbS0, Fwd noWrite)
@@ -88,6 +88,10 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   registerWbC_ hasClock hasReset (registerConfig "u0") initWbU0 -< (wbU0, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "u1") initWbU1 -< (wbU1, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "u2") initWbU2 -< (wbU2, Fwd noWrite)
+
+  registerWbC_ hasClock hasReset (registerConfig "bv0") initWbBv0 -< (wbBv0, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "bv1") initWbBv1 -< (wbBv1, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "bv2") initWbBv2 -< (wbBv2, Fwd noWrite)
 
   idC
  where
@@ -111,6 +115,15 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initWbU2 :: Unsigned 64
   initWbU2 = 3721049880298531338
+
+  initWbBv0 :: BitVector 8
+  initWbBv0 = 8
+
+  initWbBv1 :: BitVector 16
+  initWbBv1 = 16
+
+  initWbBv2 :: BitVector 64
+  initWbBv2 = 3721049880298531338
 
   noWrite :: forall a. Signal dom (Maybe a)
   noWrite = pure Nothing

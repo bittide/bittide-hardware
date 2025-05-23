@@ -53,6 +53,10 @@ fn main() -> ! {
     expect("u1", 16, many_types.u1());
     expect("u2", 3721049880298531338, many_types.u2());
 
+    expect("bv0", 8, many_types.bv0());
+    expect("bv1", 16, many_types.bv1());
+    expect("bv2", 3721049880298531338, many_types.bv2());
+
     test_ok();
 }
 

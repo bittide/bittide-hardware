@@ -77,11 +77,11 @@ instance (KnownNat n) => BitPackC (BitVector n) where
   type ByteSizeC (BitVector n) = NextPowerOfTwo (SizeInBytes n)
   type AlignmentC (BitVector n) = ByteSizeC (BitVector n)
 
-  packC val = toLittleEndian $ case compareSNat (SNat @n) (SNat @(ByteSizeC (BitVector n) * 8)) of
+  packC val = case compareSNat (SNat @n) (SNat @(ByteSizeC (BitVector n) * 8)) of
     SNatLE -> zeroExtend @_ @n @(ByteSizeC (BitVector n) * 8 - n) val
     SNatGT -> clashCompileError "BitPackC (BitVector n): packC: shouldn't happen"
   unpackC bits = case compareSNat (SNat @n) (SNat @(ByteSizeC (BitVector n) * 8)) of
-    SNatLE -> leToPlus @n @(ByteSizeC (BitVector n) * 8) truncateB (fromLittleEndian bits)
+    SNatLE -> leToPlus @n @(ByteSizeC (BitVector n) * 8) truncateB bits
     SNatGT -> clashCompileError "BitPackC (BitVector n): unpackC: shouldn't happen"
 
 instance (KnownNat n) => BitPackC (Unsigned n) where
