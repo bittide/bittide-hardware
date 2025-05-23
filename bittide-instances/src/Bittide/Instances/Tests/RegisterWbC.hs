@@ -77,11 +77,13 @@ manyTypesWb ::
     (ConstBwd MM, Wishbone dom 'Standard aw (Bytes wordSize))
     ()
 manyTypesWb = circuit $ \(mm, wb) -> do
-  [wbS0, wbS1] <-
+  [wbS0, wbS1, wbS2, wbS3] <-
     deviceWbC "ManyTypes" -< (mm, wb)
 
   registerWbC_ hasClock hasReset (registerConfig "s0") initWbS0 -< (wbS0, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "s1") initWbS1 -< (wbS1, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "s2") initWbS2 -< (wbS2, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "s3") initWbS3 -< (wbS3, Fwd noWrite)
 
   idC
  where
@@ -90,6 +92,12 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initWbS1 :: Signed 8
   initWbS1 = 8
+
+  initWbS2 :: Signed 16
+  initWbS2 = 16
+
+  initWbS3 :: Signed 64
+  initWbS3 = 3721049880298531338
 
   noWrite :: forall a. Signal dom (Maybe a)
   noWrite = pure Nothing

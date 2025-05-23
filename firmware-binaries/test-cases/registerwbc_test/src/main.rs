@@ -46,6 +46,8 @@ fn main() -> ! {
 
     expect("s0", -8, many_types.s0());
     expect("s1", 8, many_types.s1());
+    expect("s2", 16, many_types.s2());
+    expect("s3", 3721049880298531338, many_types.s3());
 
     test_ok();
 }
