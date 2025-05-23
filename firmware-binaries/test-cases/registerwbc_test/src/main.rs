@@ -53,6 +53,7 @@ fn main() -> ! {
     expect("u0", 8, many_types.u0());
     expect("u1", 16, many_types.u1());
     expect("u2", 3721049880298531338, many_types.u2());
+    expect("u3", 0xBADC_0FEE, many_types.u3());
 
     expect("bv0", 8, many_types.bv0());
     expect("bv1", 16, many_types.bv1());
@@ -72,6 +73,7 @@ fn main() -> ! {
     many_types.set_u0(16);
     many_types.set_u1(32);
     many_types.set_u2(7442099760597062676);
+    many_types.set_u3(24);
     many_types.set_bv0(16);
     many_types.set_bv1(32);
     many_types.set_bv2(7442099760597062676);
@@ -88,6 +90,7 @@ fn main() -> ! {
     expect("u0", 16, many_types.u0());
     expect("u1", 32, many_types.u1());
     expect("u2", 7442099760597062676, many_types.u2());
+    expect("u3", 24, many_types.u3());
     expect("bv0", 16, many_types.bv0());
     expect("bv1", 32, many_types.bv1());
     expect("bv2", 7442099760597062676, many_types.bv2());
