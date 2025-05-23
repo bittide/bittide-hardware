@@ -83,8 +83,6 @@ common common-options
   build-depends:
     Glob,
     MissingH,
-    aeson,
-    aeson-pretty,
     async,
     base,
     base16-bytestring,
@@ -177,6 +175,7 @@ library
     Bittide.Instances.Pnr.Si539xSpi
     Bittide.Instances.Pnr.StabilityChecker
     Bittide.Instances.Pnr.Synchronizer
+    Bittide.Instances.Tests.RegisterWbC
     Paths.Bittide.Instances
     Project.Handle
 
@@ -221,6 +220,7 @@ test-suite unittests
     Wishbone.Axi
     Wishbone.CaptureUgn
     Wishbone.DnaPortE2
+    Wishbone.RegisterWbC
     Wishbone.ScatterGather
     Wishbone.SwitchDemoProcessingElement
     Wishbone.Time

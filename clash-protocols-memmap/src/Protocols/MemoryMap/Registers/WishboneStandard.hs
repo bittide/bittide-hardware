@@ -74,7 +74,7 @@ import qualified Protocols.Vec as V
 type Bytes n = BitVector (n * 8)
 
 data BusActivity a = BusIdle | BusRead a | BusWrite a
-  deriving (Show, Eq, Functor)
+  deriving (Show, Eq, Functor, Generic, NFDataX)
 
 data DeviceConfig = DeviceConfig
   { name :: String
@@ -244,7 +244,10 @@ deviceWithOffsetsWbC deviceName =
             $ NamedLoc
               { name = unSimOnly m.name
               , loc = unSimOnly m.srcLoc
-              , value = (unSimOnly m.register){address = fromIntegral o}
+              , value =
+                  (unSimOnly m.register)
+                    { address = fromIntegral o * natToNum @wordSize
+                    }
               }
 
     mm =
@@ -305,12 +308,12 @@ deviceWithOffsetsWbC deviceName =
           case index of
             Nothing ->
               -- Unmapped address requested
-              ( emptyWishboneS2M{err = True}
+              ( strictV s2ms `seqX` emptyWishboneS2M{err = True}
               , repeat m2s{busCycle = False}
               )
             Just i ->
               -- Mapped address requested
-              ( s2ms !! i
+              ( strictV s2ms !! i
               , replaceWith
                   i
                   (\m -> m{busCycle = True})
@@ -318,7 +321,12 @@ deviceWithOffsetsWbC deviceName =
               )
       | otherwise =
           -- Bus inactive
-          (emptyWishboneS2M, repeat m2s)
+          (strictV s2ms `seqX` emptyWishboneS2M, repeat m2s)
+
+    strictV :: Vec n a -> Vec n a
+    strictV v
+      | clashSimulation = foldl (\b a -> a `seqX` b) () v `seqX` v
+      | otherwise = v
 
 {- | Circuit writes always take priority over bus writes. Bus writes rejected with
 an error if access rights are set to 'ReadOnly'. Similarly, bus reads are rejected
@@ -439,15 +447,23 @@ registerWbC clk rst regConfig resetValue =
     a ->
     (WishboneS2M (Bytes wordSize), Maybe a)
   goReg busAccess offset wbM2S aFromReg =
-    ( WishboneS2M
-        { readData
-        , acknowledge
-        , err
-        , retry = False
-        , stall = False
-        }
-    , wbWrite
-    )
+    ()
+      `seqX` offset
+      `seqX` wbM2S
+      `seqX` aFromReg
+      `seqX` readData
+      `seqX` acknowledge
+      `seqX` err
+      `seqX` wbWrite
+      `seqX` ( WishboneS2M
+                { readData
+                , acknowledge
+                , err
+                , retry = False
+                , stall = False
+                }
+             , wbWrite
+             )
    where
     managerActive = wbM2S.strobe && wbM2S.busCycle
     err = managerActive && accessFault
@@ -474,7 +490,10 @@ registerWbC clk rst regConfig resetValue =
     wbWrite
       | wbM2S.writeEnable
       , acknowledge =
-          Just (unpackC (resize maskedWriteData))
+          let
+            !unpacked = unpackC (resize maskedWriteData)
+           in
+            Just unpacked
       | otherwise = Nothing
 
 -- | Like 'registerWbC', but does not return the register value.

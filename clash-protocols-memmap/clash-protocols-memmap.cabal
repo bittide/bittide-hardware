@@ -92,6 +92,7 @@ library
 
   build-depends:
     aeson,
+    aeson-pretty,
     base,
     bytestring >=0.10 && <0.13,
     clash-prelude,
@@ -101,7 +102,9 @@ library
     extra,
     ghc-typelits-extra-lemmas,
     mtl,
+    scientific,
     template-haskell,
+    text,
 
 executable hdl-test
   import: common-options

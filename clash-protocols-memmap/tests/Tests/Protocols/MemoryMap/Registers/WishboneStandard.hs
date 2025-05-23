@@ -297,14 +297,14 @@ case_memoryMap = do
   regPrio.name.name @?= "prio"
 
   regF.value.address @?= 0
-  regD.value.address @?= 1
-  regU.value.address @?= 3
-  regB.value.address @?= 4
-  regE.value.address @?= 5
-  regS.value.address @?= 6
-  regRO.value.address @?= 7
-  regWO.value.address @?= 8
-  regPrio.value.address @?= 9
+  regD.value.address @?= 4
+  regU.value.address @?= 12
+  regB.value.address @?= 16
+  regE.value.address @?= 20
+  regS.value.address @?= 24
+  regRO.value.address @?= 28
+  regWO.value.address @?= 32
+  regPrio.value.address @?= 36
 
 tests :: TestTree
 tests =

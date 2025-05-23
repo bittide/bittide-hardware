@@ -132,7 +132,14 @@ pub struct InterconnectComponent {
 pub struct RegisterDesc {
     pub name: String,
     pub description: String,
-    pub reset: Option<u64>,
+    // TODO: There is a field called reset in the JSON, but we don't use it yet.
+    //       It is commented out for now, because:
+    //
+    //         1. Its type is wrong: registers can be much larger than u64
+    //         2. The JSON parser interprets "large" numbers (correctly) as
+    //            floating point numbers, which is not what we want.
+    //
+    // pub reset: Option<u64>,
     pub access: RegisterAccess,
     pub address: u64,
     pub size: u64,

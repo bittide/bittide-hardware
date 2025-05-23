@@ -16,7 +16,6 @@ import Bittide.Instances.Pnr.ProcessingElement (vexRiscvUartHelloMM)
 
 import Protocols.MemoryMap
 import Protocols.MemoryMap.Check
-import Protocols.MemoryMap.Json (memoryMapJson)
 
 import Project.FilePath (buildDir, findParentContaining)
 
@@ -25,8 +24,9 @@ import Language.Haskell.TH (reportError, runIO)
 import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
-import qualified Data.Aeson.Encode.Pretty as Ae
+import qualified Bittide.Instances.Tests.RegisterWbC as RegisterWbC
 import qualified Data.ByteString.Lazy as BS
+import qualified Protocols.MemoryMap.Json as Json
 
 $( do
     -------------------------------
@@ -39,6 +39,7 @@ $( do
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("VexRiscv", vexRiscvTestMM)
           , ("Freeze", freezeMM)
+          , ("RegisterWbC", RegisterWbC.memoryMap)
           ]
 
     memMapDir <- runIO $ do
@@ -68,9 +69,9 @@ $( do
         else do
           -- output JSON
 
-          let json = memoryMapJson mm.deviceDefs absTree
+          let json = Json.memoryMapJson mm.deviceDefs absTree
           let jsonPath = memMapDir </> mmName <.> "json"
-          runIO $ BS.writeFile jsonPath (Ae.encodePretty json)
+          runIO $ BS.writeFile jsonPath $ Json.encode json
 
     pure []
  )

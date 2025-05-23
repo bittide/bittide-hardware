@@ -124,7 +124,7 @@ instance forall n. (KnownNat n) => ToFieldType (Signed n) where
   toFieldType = SignedFieldType (fromIntegral $ snatToInteger $ SNat @n)
 
 instance forall n. (KnownNat n) => ToFieldType (Unsigned n) where
-  toFieldType = SignedFieldType (fromIntegral $ snatToInteger $ SNat @n)
+  toFieldType = UnsignedFieldType (fromIntegral $ snatToInteger $ SNat @n)
 
 instance forall n. (KnownNat n) => ToFieldType (Index n) where
   toFieldType = IndexFieldType (fromIntegral $ snatToInteger $ SNat @n)

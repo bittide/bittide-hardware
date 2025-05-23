@@ -131,7 +131,7 @@ driverFunc _name targets = do
             Gdb.continue gdb
 
           -- This is the last thing that will print when the FPGA has been programmed
-          -- and starts entereing UART-echo mode.
+          -- and starts entering UART-echo mode.
           tryWithTimeout "Waiting for \"Going in echo mode!\"" 10_000_000
             $ waitForLine pico.stdoutHandle "Going in echo mode!"
 

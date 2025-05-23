@@ -77,30 +77,30 @@ instance (KnownNat n) => BitPackC (BitVector n) where
   type ByteSizeC (BitVector n) = NextPowerOfTwo (SizeInBytes n)
   type AlignmentC (BitVector n) = ByteSizeC (BitVector n)
 
-  packC val = toLittleEndian $ case compareSNat (SNat @n) (SNat @(ByteSizeC (BitVector n) * 8)) of
+  packC val = case compareSNat (SNat @n) (SNat @(ByteSizeC (BitVector n) * 8)) of
     SNatLE -> zeroExtend @_ @n @(ByteSizeC (BitVector n) * 8 - n) val
     SNatGT -> clashCompileError "BitPackC (BitVector n): packC: shouldn't happen"
   unpackC bits = case compareSNat (SNat @n) (SNat @(ByteSizeC (BitVector n) * 8)) of
-    SNatLE -> leToPlus @n @(ByteSizeC (BitVector n) * 8) truncateB (fromLittleEndian bits)
+    SNatLE -> leToPlus @n @(ByteSizeC (BitVector n) * 8) truncateB bits
     SNatGT -> clashCompileError "BitPackC (BitVector n): unpackC: shouldn't happen"
 
 instance (KnownNat n) => BitPackC (Unsigned n) where
   type ByteSizeC (Unsigned n) = NextPowerOfTwo (SizeInBytes n)
   type AlignmentC (Unsigned n) = ByteSizeC (Unsigned n)
 
-  packC val = packC (bitCoerce val :: BitVector n)
-  unpackC bits = bitCoerce (unpackC bits :: BitVector n)
+  packC val = resize (pack val :: BitVector n)
+  unpackC bits = unpack (resize bits :: BitVector n)
 
 instance (KnownNat n) => BitPackC (Signed n) where
   type ByteSizeC (Signed n) = NextPowerOfTwo (SizeInBytes n)
   type AlignmentC (Signed n) = ByteSizeC (Signed n)
 
-  packC val = toLittleEndian $ case compareSNat (SNat @n) (SNat @(ByteSizeC (Signed n) * 8)) of
+  packC val = case compareSNat (SNat @n) (SNat @(ByteSizeC (Signed n) * 8)) of
     SNatLE -> bitCoerce $ signExtend @_ @n @(ByteSizeC (Signed n) * 8 - n) val
     SNatGT -> clashCompileError "BitPackC (Signed n): packC: shouldn't happen"
   unpackC bits = case compareSNat (SNat @n) (SNat @(ByteSizeC (Signed n) * 8)) of
     SNatLE ->
-      leToPlus @n @(ByteSizeC (Signed n) * 8) $ bitCoerce (truncateB $ fromLittleEndian bits)
+      leToPlus @n @(ByteSizeC (Signed n) * 8) $ bitCoerce (truncateB bits)
     SNatGT -> clashCompileError "BitPackC (Signed n): unpackC: shouldn't happen"
 
 instance (KnownNat n, 1 <= n) => BitPackC (Index n) where
