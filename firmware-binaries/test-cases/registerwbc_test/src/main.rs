@@ -64,6 +64,8 @@ fn main() -> ! {
     expect("d0", true, many_types.d0() == -8.0);
     expect("d1", true, many_types.d1() == 8.0);
 
+    expect("b0", true, many_types.b0());
+
     // Test writing values:
     many_types.set_s0(-16);
     many_types.set_s1(16);
@@ -80,6 +82,7 @@ fn main() -> ! {
     many_types.set_f1(16.0);
     many_types.set_d0(-16.0);
     many_types.set_d1(16.0);
+    many_types.set_b0(false);
 
     // Test read back values:
     expect("s0", -16, many_types.s0());
@@ -97,6 +100,7 @@ fn main() -> ! {
     expect("f1", true, many_types.f1() == 16.0);
     expect("d0", true, many_types.d0() == -16.0);
     expect("d1", true, many_types.d1() == 16.0);
+    expect("b0", false, many_types.b0());
 
     test_ok();
 }

@@ -92,6 +92,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbF1
     , wbD0
     , wbD1
+    , wbB0
     ] <-
     deviceWbC "ManyTypes" -< (mm, wb)
 
@@ -114,6 +115,8 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   registerWbC_ hasClock hasReset (registerConfig "d0") initWbD0 -< (wbD0, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "d1") initWbD1 -< (wbD1, Fwd noWrite)
+
+  registerWbC_ hasClock hasReset (registerConfig "b0") initWbB0 -< (wbB0, Fwd noWrite)
 
   idC
  where
@@ -161,6 +164,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initWbD1 :: Double
   initWbD1 = 8
+
+  initWbB0 :: Bool
+  initWbB0 = True
 
   noWrite :: forall a. Signal dom (Maybe a)
   noWrite = pure Nothing
