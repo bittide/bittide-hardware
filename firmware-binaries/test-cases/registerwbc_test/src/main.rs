@@ -44,6 +44,7 @@ fn expect<T: core::fmt::Debug + PartialEq>(msg: &str, expected: T, actual: T) {
 fn main() -> ! {
     let many_types = &mut INSTANCES.many_types;
 
+    // Test initial values:
     expect("s0", -8, many_types.s0());
     expect("s1", 8, many_types.s1());
     expect("s2", 16, many_types.s2());
@@ -62,6 +63,38 @@ fn main() -> ! {
     expect("f1", true, many_types.f1() == 8.0);
     expect("d0", true, many_types.d0() == -8.0);
     expect("d1", true, many_types.d1() == 8.0);
+
+    // Test writing values:
+    many_types.set_s0(-16);
+    many_types.set_s1(16);
+    many_types.set_s2(32);
+    many_types.set_s3(7442099760597062676);
+    many_types.set_u0(16);
+    many_types.set_u1(32);
+    many_types.set_u2(7442099760597062676);
+    many_types.set_bv0(16);
+    many_types.set_bv1(32);
+    many_types.set_bv2(7442099760597062676);
+    many_types.set_f0(-16.0);
+    many_types.set_f1(16.0);
+    many_types.set_d0(-16.0);
+    many_types.set_d1(16.0);
+
+    // Test read back values:
+    expect("s0", -16, many_types.s0());
+    expect("s1", 16, many_types.s1());
+    expect("s2", 32, many_types.s2());
+    expect("s3", 7442099760597062676, many_types.s3());
+    expect("u0", 16, many_types.u0());
+    expect("u1", 32, many_types.u1());
+    expect("u2", 7442099760597062676, many_types.u2());
+    expect("bv0", 16, many_types.bv0());
+    expect("bv1", 32, many_types.bv1());
+    expect("bv2", 7442099760597062676, many_types.bv2());
+    expect("f0", true, many_types.f0() == -16.0);
+    expect("f1", true, many_types.f1() == 16.0);
+    expect("d0", true, many_types.d0() == -16.0);
+    expect("d1", true, many_types.d1() == 16.0);
 
     test_ok();
 }
