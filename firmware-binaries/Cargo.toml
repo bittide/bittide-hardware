@@ -17,6 +17,7 @@ members = [
   "examples/smoltcp_client",
 
   "test-cases/axi_stream_self_test",
+  "test-cases/registerwbc_test",
   "test-cases/capture_ugn_test",
   "test-cases/clock-control-wb",
   "test-cases/dna_port_e2_test",

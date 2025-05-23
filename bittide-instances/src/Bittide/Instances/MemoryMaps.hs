@@ -24,6 +24,7 @@ import Language.Haskell.TH (reportError, runIO)
 import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
+import qualified Bittide.Instances.Tests.RegisterWbC as RegisterWbC
 import qualified Data.ByteString.Lazy as BS
 import qualified Protocols.MemoryMap.Json as Json
 
@@ -38,6 +39,7 @@ $( do
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("VexRiscv", vexRiscvTestMM)
           , ("Freeze", freezeMM)
+          , ("RegisterWbC", RegisterWbC.memoryMap)
           ]
 
     memMapDir <- runIO $ do

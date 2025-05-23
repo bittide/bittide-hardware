@@ -244,7 +244,10 @@ deviceWithOffsetsWbC deviceName =
             $ NamedLoc
               { name = unSimOnly m.name
               , loc = unSimOnly m.srcLoc
-              , value = (unSimOnly m.register){address = fromIntegral o}
+              , value =
+                  (unSimOnly m.register)
+                    { address = fromIntegral o * natToNum @wordSize
+                    }
               }
 
     mm =

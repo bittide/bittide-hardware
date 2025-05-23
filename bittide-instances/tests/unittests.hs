@@ -13,6 +13,7 @@ import qualified Tests.OverflowResistantDiff as Ord
 import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
+import qualified Wishbone.RegisterWbC as RegisterWbC
 import qualified Wishbone.ScatterGather as ScatterGather
 import qualified Wishbone.SwitchDemoProcessingElement as SwitchDemoProcessingElement
 import qualified Wishbone.Time as Time
@@ -30,6 +31,7 @@ tests =
     , ScatterGather.tests
     , SwitchDemoProcessingElement.tests
     , Time.tests
+    , RegisterWbC.tests
     , Watchdog.tests
     ]
 
