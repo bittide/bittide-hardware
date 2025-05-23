@@ -31,9 +31,7 @@ fn main() {
 
     let dir = memmap_dir();
 
-    // TODO when this is added it seems to interact weirdly with CI caching
-    //
-    // println!("cargo::rerun-if-changed={}", dir.display());
+    println!("cargo::rerun-if-changed={}", dir.display());
 
     for dir in dir.read_dir().unwrap() {
         let dir = dir.unwrap();
