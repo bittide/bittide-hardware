@@ -88,8 +88,8 @@ instance (KnownNat n) => BitPackC (Unsigned n) where
   type ByteSizeC (Unsigned n) = NextPowerOfTwo (SizeInBytes n)
   type AlignmentC (Unsigned n) = ByteSizeC (Unsigned n)
 
-  packC val = packC (bitCoerce val :: BitVector n)
-  unpackC bits = bitCoerce (unpackC bits :: BitVector n)
+  packC val = resize (pack val :: BitVector n)
+  unpackC bits = unpack (resize bits :: BitVector n)
 
 instance (KnownNat n) => BitPackC (Signed n) where
   type ByteSizeC (Signed n) = NextPowerOfTwo (SizeInBytes n)

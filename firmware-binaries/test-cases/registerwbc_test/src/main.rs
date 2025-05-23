@@ -49,6 +49,10 @@ fn main() -> ! {
     expect("s2", 16, many_types.s2());
     expect("s3", 3721049880298531338, many_types.s3());
 
+    expect("u0", 8, many_types.u0());
+    expect("u1", 16, many_types.u1());
+    expect("u2", 3721049880298531338, many_types.u2());
+
     test_ok();
 }
 
