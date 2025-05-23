@@ -57,6 +57,12 @@ fn main() -> ! {
     expect("bv1", 16, many_types.bv1());
     expect("bv2", 3721049880298531338, many_types.bv2());
 
+    // Passing floats/doubles to 'expect' yields linker errors..
+    expect("f0", true, many_types.f0() == -8.0);
+    expect("f1", true, many_types.f1() == 8.0);
+    expect("d0", true, many_types.d0() == -8.0);
+    expect("d1", true, many_types.d1() == 8.0);
+
     test_ok();
 }
 
