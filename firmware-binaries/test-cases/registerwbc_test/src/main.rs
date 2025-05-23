@@ -5,8 +5,7 @@
 // SPDX-FileCopyrightText: 2025 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-
-use ufmt::uwriteln;
+use ufmt::{uwrite, uwriteln};
 
 use bittide_hal::hals::register_wb_c as hal;
 
@@ -32,10 +31,10 @@ fn test_fail(msg: &str) -> ! {
     test_result(&full_msg)
 }
 
-fn expect<T: core::fmt::Debug + PartialEq>(msg: &str, expected: T, actual: T) {
+fn expect<T: ufmt::uDebug + PartialEq>(msg: &str, expected: T, actual: T) {
     if expected != actual {
         let mut err = heapless::String::<64>::new();
-        let _ = write!(err, "{}: expected {:?}, got {:?}", msg, expected, actual);
+        let _ = uwrite!(err, "{}: expected {:?}, got {:?}", msg, expected, actual);
         test_fail(&err);
     }
 }
