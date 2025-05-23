@@ -132,7 +132,10 @@ singleMasterInterconnect (fmap pack -> config) =
   go (masterS, slavesS) =
     fmap unbundle . unbundle $ route <$> masterS <*> bundle slavesS
 
-  route master@(WishboneM2S{..}) slaves = (toMaster, toSlaves)
+  route master@(WishboneM2S{..}) slaves =
+    ( strictV slaves `seqX` strictV toSlaves `seqX` toMaster
+    , toSlaves
+    )
    where
     oneHotOrZeroSelected = fmap (== addrIndex) config
     (addrIndex, newAddr) =
@@ -146,6 +149,11 @@ singleMasterInterconnect (fmap pack -> config) =
             emptyWishboneS2M{err = True} -- master tries to access unmapped memory
             (maskToMaybes slaves oneHotOrZeroSelected)
       | otherwise = emptyWishboneS2M
+
+  strictV :: Vec m b -> Vec m b
+  strictV v
+    | clashSimulation = foldl (\b a -> a `seqX` b) () v `seqX` v
+    | otherwise = v
 
 dupWb ::
   forall dom aw.
