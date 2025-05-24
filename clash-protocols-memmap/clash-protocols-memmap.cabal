@@ -172,6 +172,7 @@ test-suite unittests
     -with-rtsopts=-N12
 
   other-modules:
+    Tests.BitPackC
     Tests.Protocols.MemoryMap.Registers.WishboneStandard
 
   build-depends:
