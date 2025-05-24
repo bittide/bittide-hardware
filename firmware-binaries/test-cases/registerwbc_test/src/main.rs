@@ -44,27 +44,27 @@ fn main() -> ! {
     let many_types = &mut INSTANCES.many_types;
 
     // Test initial values:
-    expect("s0", -8, many_types.s0());
-    expect("s1", 8, many_types.s1());
-    expect("s2", 16, many_types.s2());
-    expect("s3", 3721049880298531338, many_types.s3());
+    expect("init.s0", -8, many_types.s0());
+    expect("init.s1", 8, many_types.s1());
+    expect("init.s2", 16, many_types.s2());
+    expect("init.s3", 3721049880298531338, many_types.s3());
 
-    expect("u0", 8, many_types.u0());
-    expect("u1", 16, many_types.u1());
-    expect("u2", 3721049880298531338, many_types.u2());
-    expect("u3", 0xBADC_0FEE, many_types.u3());
+    expect("init.u0", 8, many_types.u0());
+    expect("init.u1", 16, many_types.u1());
+    expect("init.u2", 3721049880298531338, many_types.u2());
+    expect("init.u3", 0xBADC_0FEE, many_types.u3());
 
-    expect("bv0", 8, many_types.bv0());
-    expect("bv1", 16, many_types.bv1());
-    expect("bv2", 3721049880298531338, many_types.bv2());
+    expect("init.bv0", 8, many_types.bv0());
+    expect("init.bv1", 16, many_types.bv1());
+    expect("init.bv2", 3721049880298531338, many_types.bv2());
 
     // Passing floats/doubles to 'expect' yields linker errors..
-    expect("f0", true, many_types.f0() == -8.0);
-    expect("f1", true, many_types.f1() == 8.0);
-    expect("d0", true, many_types.d0() == -8.0);
-    expect("d1", true, many_types.d1() == 8.0);
+    expect("init.f0", true, many_types.f0() == -8.0);
+    expect("init.f1", true, many_types.f1() == 8.0);
+    expect("init.d0", true, many_types.d0() == -8.0);
+    expect("init.d1", true, many_types.d1() == 8.0);
 
-    expect("b0", true, many_types.b0());
+    expect("init.b0", true, many_types.b0());
 
     // Test writing values:
     many_types.set_s0(-16);
@@ -85,22 +85,22 @@ fn main() -> ! {
     many_types.set_b0(false);
 
     // Test read back values:
-    expect("s0", -16, many_types.s0());
-    expect("s1", 16, many_types.s1());
-    expect("s2", 32, many_types.s2());
-    expect("s3", 7442099760597062676, many_types.s3());
-    expect("u0", 16, many_types.u0());
-    expect("u1", 32, many_types.u1());
-    expect("u2", 7442099760597062676, many_types.u2());
-    expect("u3", 24, many_types.u3());
-    expect("bv0", 16, many_types.bv0());
-    expect("bv1", 32, many_types.bv1());
-    expect("bv2", 7442099760597062676, many_types.bv2());
-    expect("f0", true, many_types.f0() == -16.0);
-    expect("f1", true, many_types.f1() == 16.0);
-    expect("d0", true, many_types.d0() == -16.0);
-    expect("d1", true, many_types.d1() == 16.0);
-    expect("b0", false, many_types.b0());
+    expect("rt.s0", -16, many_types.s0());
+    expect("rt.s1", 16, many_types.s1());
+    expect("rt.s2", 32, many_types.s2());
+    expect("rt.s3", 7442099760597062676, many_types.s3());
+    expect("rt.u0", 16, many_types.u0());
+    expect("rt.u1", 32, many_types.u1());
+    expect("rt.u2", 7442099760597062676, many_types.u2());
+    expect("rt.u3", 24, many_types.u3());
+    expect("rt.bv0", 16, many_types.bv0());
+    expect("rt.bv1", 32, many_types.bv1());
+    expect("rt.bv2", 7442099760597062676, many_types.bv2());
+    expect("rt.f0", true, many_types.f0() == -16.0);
+    expect("rt.f1", true, many_types.f1() == 16.0);
+    expect("rt.d0", true, many_types.d0() == -16.0);
+    expect("rt.d1", true, many_types.d1() == 16.0);
+    expect("rt.b0", false, many_types.b0());
 
     test_ok();
 }
