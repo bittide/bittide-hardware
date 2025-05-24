@@ -332,8 +332,8 @@ instance
   type GSumSize (a :+: b) = Max (GSumSize a) (GSumSize b)
   type GSumAlignment (a :+: b) = Max (GSumAlignment a) (GSumAlignment b)
 
-  gConstructorTag n (L1 _a) = n
-  gConstructorTag n (R1 b) = gConstructorTag (n + 1) b
+  gConstructorTag n (L1 a_val) = gConstructorTag n a_val
+  gConstructorTag n (R1 b_val) = gConstructorTag (n + natToNum @(GNumConstructors a)) b_val
 
   gpackCsum (L1 a) = gpackCsum a ++# padding
    where
@@ -342,16 +342,21 @@ instance
    where
     padding = 0 :: BitVector ((Max (GSumSize a) (GSumSize b) - GSumSize b) * 8)
 
-  gunpackCsum 0 bits = L1 $ gunpackCsum 0 bits'
-   where
-    ( bits'
-      , _padding :: BitVector ((Max (GSumSize a) (GSumSize b) - GSumSize a) * 8)
-      ) = split bits
-  gunpackCsum n bits = R1 $ gunpackCsum (n - 1) bits'
-   where
-    ( bits'
-      , _padding :: BitVector ((Max (GSumSize a) (GSumSize b) - GSumSize b) * 8)
-      ) = split bits
+  gunpackCsum current_tag bits
+    | current_tag < natToNum @(GNumConstructors a) =
+        let
+          (payload_for_a, _padding) =
+            split bits ::
+              (BitVector (GSumSize a * 8), BitVector ((Max (GSumSize a) (GSumSize b) - GSumSize a) * 8))
+         in
+          L1 $ gunpackCsum current_tag payload_for_a
+    | otherwise =
+        let
+          (payload_for_b, _padding) =
+            split bits ::
+              (BitVector (GSumSize b * 8), BitVector ((Max (GSumSize a) (GSumSize b) - GSumSize b) * 8))
+         in
+          R1 $ gunpackCsum (current_tag - natToNum @(GNumConstructors a)) payload_for_b
 
 {- | XXX: Though the number of constructors a unit constructor is zero (I think?)
 we have to set it to at least 1 due to the @1 <=@ constraint on the class. See

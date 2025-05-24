@@ -78,7 +78,11 @@ fn main() -> ! {
     expect("init.v1[1]", Some(0x16), many_types.v1(1));
     expect("init.v1[2]", Some(3721049880298531338), many_types.v1(2));
 
-    // Test writing values:
+    // // XXX: No uDebug trait for enums, so we can't use expect() here.
+    expect("init.sum0", true, hal::Abc::C == many_types.sum0());
+    expect("init.sum1", true, hal::Xyz::S == many_types.sum1());
+
+    // // Test writing values:
     many_types.set_s0(-16);
     many_types.set_s1(16);
     many_types.set_s2(32);
@@ -106,6 +110,8 @@ fn main() -> ! {
     many_types.set_v1(0, 1600).unwrap();
     many_types.set_v1(1, 3200).unwrap();
     many_types.set_v1(2, 7442099760597062676).unwrap();
+    many_types.set_sum0(hal::Abc::A);
+    many_types.set_sum1(hal::Xyz::Z);
 
     // Test read back values:
     expect("rt.s0", -16, many_types.s0());
@@ -135,6 +141,8 @@ fn main() -> ! {
     expect("rt.v1[0]", Some(1600), many_types.v1(0));
     expect("rt.v1[1]", Some(3200), many_types.v1(1));
     expect("rt.v1[2]", Some(7442099760597062676), many_types.v1(2));
+    expect("rt.sum0", true, hal::Abc::A == many_types.sum0());
+    expect("rt.sum1", true, hal::Xyz::Z == many_types.sum1());
 
     test_ok();
 }
