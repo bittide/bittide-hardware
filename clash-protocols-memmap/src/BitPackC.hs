@@ -140,8 +140,8 @@ instance
   type ByteSizeC (Vec n a) = (ByteSizeC a) * n
   type AlignmentC (Vec n a) = AlignmentC a
 
-  packC val = pack $ packC <$> val
-  unpackC bits = unpackC <$> (unpack bits :: Vec n (BitVector (ByteSizeC a * 8)))
+  packC val = pack $ reverse $ packC <$> val
+  unpackC bits = reverse $ unpackC <$> (unpack bits :: Vec n (BitVector (ByteSizeC a * 8)))
 
 instance
   ( BitPackC a

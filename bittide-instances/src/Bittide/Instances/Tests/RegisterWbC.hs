@@ -44,8 +44,6 @@ import Project.FilePath (
   firmwareBinariesDir,
  )
 
--- Other
-
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Protocols (Circuit (Circuit), Df, Drivable (sampleC), idC, toSignals)
@@ -93,6 +91,8 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbD0
     , wbD1
     , wbB0
+    , wbV0
+    , wbV1
     ] <-
     deviceWbC "ManyTypes" -< (mm, wb)
 
@@ -117,6 +117,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   registerWbC_ hasClock hasReset (registerConfig "d1") initWbD1 -< (wbD1, Fwd noWrite)
 
   registerWbC_ hasClock hasReset (registerConfig "b0") initWbB0 -< (wbB0, Fwd noWrite)
+
+  registerWbC_ hasClock hasReset (registerConfig "v0") initWbV0 -< (wbV0, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "v1") initWbV1 -< (wbV1, Fwd noWrite)
 
   idC
  where
@@ -167,6 +170,12 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initWbB0 :: Bool
   initWbB0 = True
+
+  initWbV0 :: Vec 8 (BitVector 8)
+  initWbV0 = 0x8 :> 0x16 :> 0x24 :> 0x32 :> 0x40 :> 0x4E :> 0x5C :> 0x6A :> Nil
+
+  initWbV1 :: Vec 3 (BitVector 64)
+  initWbV1 = 0x8 :> 0x16 :> 3721049880298531338 :> Nil
 
   noWrite :: forall a. Signal dom (Maybe a)
   noWrite = pure Nothing

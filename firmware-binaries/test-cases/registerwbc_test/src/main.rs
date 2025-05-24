@@ -66,6 +66,18 @@ fn main() -> ! {
 
     expect("init.b0", true, many_types.b0());
 
+    expect("init.v0[0]", Some(0x8), many_types.v0(0));
+    expect("init.v0[1]", Some(0x16), many_types.v0(1));
+    expect("init.v0[2]", Some(0x24), many_types.v0(2));
+    expect("init.v0[3]", Some(0x32), many_types.v0(3));
+    expect("init.v0[4]", Some(0x40), many_types.v0(4));
+    expect("init.v0[5]", Some(0x4E), many_types.v0(5));
+    expect("init.v0[6]", Some(0x5C), many_types.v0(6));
+    expect("init.v0[7]", Some(0x6A), many_types.v0(7));
+    expect("init.v1[0]", Some(0x8), many_types.v1(0));
+    expect("init.v1[1]", Some(0x16), many_types.v1(1));
+    expect("init.v1[2]", Some(3721049880298531338), many_types.v1(2));
+
     // Test writing values:
     many_types.set_s0(-16);
     many_types.set_s1(16);
@@ -83,6 +95,17 @@ fn main() -> ! {
     many_types.set_d0(-16.0);
     many_types.set_d1(16.0);
     many_types.set_b0(false);
+    many_types.set_v0(0, 16).unwrap();
+    many_types.set_v0(1, 32).unwrap();
+    many_types.set_v0(2, 64).unwrap();
+    many_types.set_v0(3, 128).unwrap();
+    many_types.set_v0(4, 3).unwrap();
+    many_types.set_v0(5, 9).unwrap();
+    many_types.set_v0(6, 27).unwrap();
+    many_types.set_v0(7, 81).unwrap();
+    many_types.set_v1(0, 1600).unwrap();
+    many_types.set_v1(1, 3200).unwrap();
+    many_types.set_v1(2, 7442099760597062676).unwrap();
 
     // Test read back values:
     expect("rt.s0", -16, many_types.s0());
@@ -101,6 +124,17 @@ fn main() -> ! {
     expect("rt.d0", true, many_types.d0() == -16.0);
     expect("rt.d1", true, many_types.d1() == 16.0);
     expect("rt.b0", false, many_types.b0());
+    expect("rt.v0[0]", Some(16), many_types.v0(0));
+    expect("rt.v0[1]", Some(32), many_types.v0(1));
+    expect("rt.v0[2]", Some(64), many_types.v0(2));
+    expect("rt.v0[3]", Some(128), many_types.v0(3));
+    expect("rt.v0[4]", Some(3), many_types.v0(4));
+    expect("rt.v0[5]", Some(9), many_types.v0(5));
+    expect("rt.v0[6]", Some(27), many_types.v0(6));
+    expect("rt.v0[7]", Some(81), many_types.v0(7));
+    expect("rt.v1[0]", Some(1600), many_types.v1(0));
+    expect("rt.v1[1]", Some(3200), many_types.v1(1));
+    expect("rt.v1[2]", Some(7442099760597062676), many_types.v1(2));
 
     test_ok();
 }
