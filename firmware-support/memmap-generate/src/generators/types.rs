@@ -90,13 +90,13 @@ impl TypeGenerator {
         let repr = self.generate_repr(ty);
         let derives = match debug {
             DebugDerive::None => quote! {
-                #[derive(Copy, Clone, PartialEq, Eq)]
+                #[derive(Copy, Clone, PartialEq)]
             },
             DebugDerive::Std => quote! {
-                #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+                #[derive(Debug, Copy, Clone, PartialEq)]
             },
             DebugDerive::Ufmt => quote! {
-                #[derive(uDebug, Copy, Clone, PartialEq, Eq)]
+                #[derive(uDebug, Copy, Clone, PartialEq)]
             },
         };
 
