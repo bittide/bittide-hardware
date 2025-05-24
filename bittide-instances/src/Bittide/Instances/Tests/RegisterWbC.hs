@@ -1,7 +1,10 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE NoFieldSelectors #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=15 #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Bittide.Instances.Tests.RegisterWbC (
@@ -70,6 +73,15 @@ data Abc = A | B | C
 data Xyz = H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | Y | Z
   deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
 
+data F = F {f :: Float}
+  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
+
+data SoP
+  = SoP0
+  | SoP1 {u :: Unsigned 32}
+  | SoP2
+  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
+
 -- | Example that exports a bunch of different types.
 manyTypesWb ::
   forall wordSize aw dom.
@@ -105,6 +117,8 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbV1
     , wbSum0
     , wbSum1
+    , wbSop0
+    , wbSop1
     ] <-
     deviceWbC "ManyTypes" -< (mm, wb)
 
@@ -135,6 +149,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   registerWbC_ hasClock hasReset (registerConfig "sum0") initSum0 -< (wbSum0, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "sum1") initSum1 -< (wbSum1, Fwd noWrite)
+
+  registerWbC_ hasClock hasReset (registerConfig "sop0") initSop0 -< (wbSop0, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "sop1") initSop1 -< (wbSop1, Fwd noWrite)
 
   idC
  where
@@ -200,6 +217,12 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initSum1 :: Xyz
   initSum1 = S
+
+  initSop0 :: F
+  initSop0 = F 3.14
+
+  initSop1 :: SoP
+  initSop1 = SoP1 0xBADC_0FEE
 
 sim :: IO ()
 sim = putStrLn simResult

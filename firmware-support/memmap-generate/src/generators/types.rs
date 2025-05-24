@@ -111,10 +111,13 @@ impl TypeGenerator {
 
         if let Type::SumOfProducts { variants } = &ty.definition {
             match variants.as_slice() {
+                // Empty type (unit)
                 [] => quote! {
                     #attrs
                     pub struct #name #generics;
                 },
+
+                // Single constructor
                 [var @ VariantDesc {
                     name: var_name,
                     fields,
@@ -175,6 +178,8 @@ impl TypeGenerator {
                         }
                     }
                 },
+
+                // Multiple constructors
                 vars => {
                     let variants = vars
                         .iter()
@@ -254,7 +259,7 @@ impl TypeGenerator {
             quote! {
                 #name {
                     #(#fields)*
-                }
+                },
             }
         }
     }

@@ -2,6 +2,7 @@
 #![cfg_attr(not(test), no_main)]
 #![allow(const_item_mutation)]
 #![allow(clippy::empty_loop)]
+#![allow(clippy::approx_constant)]
 // SPDX-FileCopyrightText: 2025 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
@@ -82,6 +83,8 @@ fn main() -> ! {
     expect("init.sum0", true, hal::Abc::C == many_types.sum0());
     expect("init.sum1", true, hal::Xyz::S == many_types.sum1());
 
+    expect("init.sop0.f", true, many_types.sop0().f == 3.14);
+
     // // Test writing values:
     many_types.set_s0(-16);
     many_types.set_s1(16);
@@ -112,6 +115,7 @@ fn main() -> ! {
     many_types.set_v1(2, 7442099760597062676).unwrap();
     many_types.set_sum0(hal::Abc::A);
     many_types.set_sum1(hal::Xyz::Z);
+    many_types.set_sop0(hal::F { f: 6.28 });
 
     // Test read back values:
     expect("rt.s0", -16, many_types.s0());
@@ -143,6 +147,7 @@ fn main() -> ! {
     expect("rt.v1[2]", Some(7442099760597062676), many_types.v1(2));
     expect("rt.sum0", true, hal::Abc::A == many_types.sum0());
     expect("rt.sum1", true, hal::Xyz::Z == many_types.sum1());
+    expect("rt.sop0.f", true, many_types.sop0().f == 6.28);
 
     test_ok();
 }
