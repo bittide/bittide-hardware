@@ -52,7 +52,7 @@ CLEAR_AFTER_DAYS=7
 CLEAR_AFTER=f"{CLEAR_AFTER_DAYS}d00h00m00s"
 TOUCH_AFTER=datetime.timedelta(days=1)
 
-GLOBAL_CACHE_BUST = 7
+GLOBAL_CACHE_BUST = 8
 
 CARGO_CACHE_BUST = 2
 CARGO_KEY_PREFIX = f"cargo-g{GLOBAL_CACHE_BUST}-l{CARGO_CACHE_BUST}-"
@@ -90,9 +90,10 @@ SYNTH_KEY_PATTERNS_UNTRACKED = (
     f"**/_build/clash/*/*.tcl",
     f"**/_build/clash/*/*.v",
 )
-SYNTH_CACHE_PATTERNS = (
+SYNTH_CACHE_INCLUDE_PATTERNS = (
     f"{PWD}/_build/vivado",
 )
+SYNTH_CACHE_EXCLUDE_PATTERNS = ()
 
 BUILD_POST_SYNTH_CACHE_BUST = 2
 BUILD_POST_SYNTH_KEY_PREFIX = f"build-products-post-synth-g{GLOBAL_CACHE_BUST}-l{BUILD_POST_SYNTH_CACHE_BUST}-"
@@ -379,8 +380,8 @@ def main(opts):
         exclude_patterns = BUILD_CACHE_EXCLUDE_PATTERNS
     elif opts["synth"]:
         key = get_synth_key()
-        include_patterns = SYNTH_CACHE_PATTERNS
-        exclude_patterns = SYNTH_CACHE_PATTERNS
+        include_patterns = SYNTH_CACHE_INCLUDE_PATTERNS
+        exclude_patterns = SYNTH_CACHE_EXCLUDE_PATTERNS
     elif opts["build-post-synth"]:
         key = get_build_post_synth_key()
         include_patterns = BUILD_POST_SYNTH_CACHE_INCLUDE_PATTERNS
