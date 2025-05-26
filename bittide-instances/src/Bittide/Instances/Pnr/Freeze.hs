@@ -40,7 +40,8 @@ feezeExample clk rst = circuit $ \(mm, wb) -> do
   -- Clash refuses to compile more clever constructs than this, as it doesn't
   -- propagate a constant to the register's reset value.
   ebCounters =
-    Freeze.counter @(Signed 32) clk rst enableGen 3
+    bundle
+      $ Freeze.counter @(Signed 32) clk rst enableGen 3
       :> Freeze.counter @(Signed 32) clk rst enableGen 4
       :> Freeze.counter @(Signed 32) clk rst enableGen 5
       :> Freeze.counter @(Signed 32) clk rst enableGen 6

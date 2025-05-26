@@ -38,7 +38,7 @@ freeze ::
   Circuit
     ( ConstBwd MM
     , Wishbone dom 'Standard aw (Bytes 4)
-    , "elastic_buffer_counters" ::: Vec 7 (CSignal dom (Signed 32))
+    , "elastic_buffer_counters" ::: CSignal dom (Vec 7 (Signed 32))
     , "local_clock_counter" ::: CSignal dom (Unsigned n)
     , "sync_in_counter" ::: CSignal dom (Unsigned 32)
     , "cycles_since_sync_in" ::: CSignal dom (Unsigned 32)
@@ -48,7 +48,7 @@ freeze clk rst =
   circuit $ \(mm, wb, ebCounters, localCounter, syncPulseCounter, lastPulseCounter) -> do
     -- Create a bunch of register wishbone interfaces. We don't really care about
     -- ordering, so we just append a number to the end of a generic name.
-    [wb0, wb1, wb2, wb3, wb4, ewb0, ewb1, ewb2, ewb3, ewb4, ewb5, ewb6] <-
+    [wb0, wb1, wb2, wb3, wb4, wb5] <-
       deviceWbC "Freeze" -< (mm, wb)
 
     -- Only writeable register in this device: can be used by the wishbone manager
@@ -76,27 +76,8 @@ freeze clk rst =
     lastPulseWrite <- shutter shut -< lastPulseCounter
     registerWbC_ clk rst lastSyncPulseConfig 0 -< (wb4, lastPulseWrite)
 
-    -- XXX: BitPackC (Vec ...) produces unexpected byte sizes, which makes this
-    --      component harder to test. As a workaround, we hardcode the number of
-    --      elastic buffer counters to 7 and manually instantiate a bunch of
-    --      registers.
-    [ebc0, ebc1, ebc2, ebc3, ebc4, ebc5, ebc6] <- idC -< ebCounters
-
-    ebcWrite0 <- shutter shut -< ebc0
-    ebcWrite1 <- shutter shut -< ebc1
-    ebcWrite2 <- shutter shut -< ebc2
-    ebcWrite3 <- shutter shut -< ebc3
-    ebcWrite4 <- shutter shut -< ebc4
-    ebcWrite5 <- shutter shut -< ebc5
-    ebcWrite6 <- shutter shut -< ebc6
-
-    registerWbC_ clk rst (ebCounterConfig "eb_counter_0") 0 -< (ewb0, ebcWrite0)
-    registerWbC_ clk rst (ebCounterConfig "eb_counter_1") 0 -< (ewb1, ebcWrite1)
-    registerWbC_ clk rst (ebCounterConfig "eb_counter_2") 0 -< (ewb2, ebcWrite2)
-    registerWbC_ clk rst (ebCounterConfig "eb_counter_3") 0 -< (ewb3, ebcWrite3)
-    registerWbC_ clk rst (ebCounterConfig "eb_counter_4") 0 -< (ewb4, ebcWrite4)
-    registerWbC_ clk rst (ebCounterConfig "eb_counter_5") 0 -< (ewb5, ebcWrite5)
-    registerWbC_ clk rst (ebCounterConfig "eb_counter_6") 0 -< (ewb6, ebcWrite6)
+    ebcWrite <- shutter shut -< ebCounters
+    registerWbC_ clk rst ebCountersConfig (repeat 0) -< (wb5, ebcWrite)
 
     idC
  where
@@ -106,11 +87,11 @@ freeze clk rst =
       , description = "Freeze all counters"
       }
 
-  ebCounterConfig nm =
-    (registerConfig nm)
+  ebCountersConfig =
+    (registerConfig "eb_counters")
       { access = ReadOnly
       , description =
-          "Elastic buffer counter (at last freeze). Note that this is coming from domain difference counters, not actual elastic buffers."
+          "Elastic buffer counters (at last freeze). Note that this is coming from domain difference counters, not actual elastic buffers."
       }
 
   lastSyncPulseConfig =

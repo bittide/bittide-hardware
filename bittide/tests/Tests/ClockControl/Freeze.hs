@@ -163,7 +163,7 @@ prop_wb = property $ do
   localCounter = counter clk rst ena 0
   syncPulseCounter = counter clk rst ena 1
   lastPulseCounter = counter clk rst ena 2
-  ebCounters = counter clk rst ena <$> iterateI (+ 1) 3
+  ebCounters = bundle $ counter clk rst ena <$> iterateI (+ 1) 3
 
   dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth (BitVector 32)) ()
   dut = unMemmap dutMm
