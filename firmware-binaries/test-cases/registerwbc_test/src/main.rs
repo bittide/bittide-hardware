@@ -79,11 +79,16 @@ fn main() -> ! {
     expect("init.v1[1]", Some(0x16), many_types.v1(1));
     expect("init.v1[2]", Some(3721049880298531338), many_types.v1(2));
 
+    expect("init.v2[0]", Some([0x8, 0x16]), many_types.v2(0));
+    expect("init.v2[1]", Some([0x24, 0x32]), many_types.v2(1));
+
     // // XXX: No uDebug trait for enums, so we can't use expect() here.
     expect("init.sum0", true, hal::Abc::C == many_types.sum0());
     expect("init.sum1", true, hal::Xyz::S == many_types.sum1());
 
     expect("init.sop0.f", true, many_types.sop0().f == 3.14);
+
+    expect("init.e0", true, hal::Either::Left(8) == many_types.e0());
 
     // // Test writing values:
     many_types.set_s0(-16);
@@ -113,9 +118,14 @@ fn main() -> ! {
     many_types.set_v1(0, 1600).unwrap();
     many_types.set_v1(1, 3200).unwrap();
     many_types.set_v1(2, 7442099760597062676).unwrap();
+    many_types.set_v2(0, [0xAB, 0xCD]).unwrap();
+    many_types.set_v2(1, [0x12, 0x34]).unwrap();
     many_types.set_sum0(hal::Abc::A);
     many_types.set_sum1(hal::Xyz::Z);
     many_types.set_sop0(hal::F { f: 6.28 });
+
+    // TODO writing a Right() value doesn't work yet.
+    many_types.set_e0(hal::Either::Left(0x12));
 
     // Test read back values:
     expect("rt.s0", -16, many_types.s0());
@@ -145,9 +155,14 @@ fn main() -> ! {
     expect("rt.v1[0]", Some(1600), many_types.v1(0));
     expect("rt.v1[1]", Some(3200), many_types.v1(1));
     expect("rt.v1[2]", Some(7442099760597062676), many_types.v1(2));
+    expect("rt.v2[0]", Some([0xAB, 0xCD]), many_types.v2(0));
+    expect("rt.v2[1]", Some([0x12, 0x34]), many_types.v2(1));
     expect("rt.sum0", true, hal::Abc::A == many_types.sum0());
     expect("rt.sum1", true, hal::Xyz::Z == many_types.sum1());
     expect("rt.sop0.f", true, many_types.sop0().f == 6.28);
+
+    // TODO writing/reading a Right value doesn't work yet
+    expect("rt.e0", true, hal::Either::Left(0x12) == many_types.e0());
 
     test_ok();
 }
