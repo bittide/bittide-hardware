@@ -90,13 +90,13 @@ impl TypeGenerator {
         let repr = self.generate_repr(ty);
         let derives = match debug {
             DebugDerive::None => quote! {
-                #[derive(Copy, Clone, PartialEq, Eq)]
+                #[derive(Copy, Clone, PartialEq)]
             },
             DebugDerive::Std => quote! {
-                #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+                #[derive(Debug, Copy, Clone, PartialEq)]
             },
             DebugDerive::Ufmt => quote! {
-                #[derive(uDebug, Copy, Clone, PartialEq, Eq)]
+                #[derive(uDebug, Copy, Clone, PartialEq)]
             },
         };
 
@@ -111,10 +111,13 @@ impl TypeGenerator {
 
         if let Type::SumOfProducts { variants } = &ty.definition {
             match variants.as_slice() {
+                // Empty type (unit)
                 [] => quote! {
                     #attrs
                     pub struct #name #generics;
                 },
+
+                // Single constructor
                 [var @ VariantDesc {
                     name: var_name,
                     fields,
@@ -175,6 +178,8 @@ impl TypeGenerator {
                         }
                     }
                 },
+
+                // Multiple constructors
                 vars => {
                     let variants = vars
                         .iter()
@@ -254,7 +259,7 @@ impl TypeGenerator {
             quote! {
                 #name {
                     #(#fields)*
-                }
+                },
             }
         }
     }
