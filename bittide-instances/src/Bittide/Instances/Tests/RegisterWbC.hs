@@ -115,6 +115,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbB0
     , wbV0
     , wbV1
+    , wbV2
     , wbSum0
     , wbSum1
     , wbSop0
@@ -147,6 +148,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   registerWbC_ hasClock hasReset (registerConfig "v0") initWbV0 -< (wbV0, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "v1") initWbV1 -< (wbV1, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "v2") initWbV2 -< (wbV2, Fwd noWrite)
 
   registerWbC_ hasClock hasReset (registerConfig "sum0") initSum0 -< (wbSum0, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "sum1") initSum1 -< (wbSum1, Fwd noWrite)
@@ -211,6 +213,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initWbV1 :: Vec 3 (BitVector 64)
   initWbV1 = 0x8 :> 0x16 :> 3721049880298531338 :> Nil
+
+  initWbV2 :: Vec 2 (Vec 2 (BitVector 8))
+  initWbV2 = (0x8 :> 0x16 :> Nil) :> (0x24 :> 0x32 :> Nil) :> Nil
 
   noWrite :: forall a. Signal dom (Maybe a)
   noWrite = pure Nothing

@@ -2,13 +2,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use std::str::FromStr;
+
 use crate::{
     generators::{generic_name, ident, DebugDerive},
     parse::{Type, TypeDefinition, VariantDesc},
 };
 
 use heck::{ToPascalCase, ToSnakeCase};
-use proc_macro2::{Ident, Span};
+use proc_macro2::{Ident, Literal, Span};
 use quote::{quote, ToTokens};
 
 fn clog2(n: &u64) -> u64 {
@@ -47,6 +49,7 @@ impl TypeGenerator {
             }
             Type::Index(n) => {
                 let n = *n;
+
                 let underlying_type = if n <= u8::MAX as u64 {
                     quote! { u8 }
                 } else if n <= u16::MAX as u64 {
@@ -57,10 +60,14 @@ impl TypeGenerator {
                     quote! { u64 }
                 };
 
-                quote! { Index<#n, #underlying_type> }
+                let n_lit = Literal::from_str(&n.to_string()).unwrap();
+
+                quote! { Index<#n_lit, #underlying_type> }
             }
             Type::Vec(n, ty) => {
                 let inner = self.generate_type_ref(ty);
+                let n = Literal::from_str(&n.to_string()).unwrap();
+
                 quote! { [#inner; #n] }
             }
             Type::Reference(name, args) => {
