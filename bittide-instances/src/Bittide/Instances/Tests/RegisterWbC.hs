@@ -119,6 +119,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbSum1
     , wbSop0
     , wbSop1
+    , wbE0
     ] <-
     deviceWbC "ManyTypes" -< (mm, wb)
 
@@ -152,6 +153,8 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   registerWbC_ hasClock hasReset (registerConfig "sop0") initSop0 -< (wbSop0, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "sop1") initSop1 -< (wbSop1, Fwd noWrite)
+
+  registerWbC_ hasClock hasReset (registerConfig "e0") initWbE0 -< (wbE0, Fwd noWrite)
 
   idC
  where
@@ -223,6 +226,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initSop1 :: SoP
   initSop1 = SoP1 0xBADC_0FEE
+
+  initWbE0 :: Either (BitVector 8) (BitVector 16)
+  initWbE0 = Left 8
 
 sim :: IO ()
 sim = putStrLn simResult
