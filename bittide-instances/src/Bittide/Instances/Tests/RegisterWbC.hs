@@ -62,10 +62,11 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbC_,
  )
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
+import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty.HUnit (HasCallStack)
-import VexRiscv (DumpVcd (NoDumpVcd))
+import VexRiscv (DumpVcd (DumpVcd, NoDumpVcd))
 
 data Abc = A | B | C
   deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
@@ -269,13 +270,20 @@ dut = withClockResetEnable clockGen resetGen enableGen
   $ \mm -> do
     (uartRx, jtag) <- idleSource -< ()
     [(prefixUart, (mmUart, uartBus)), (prefixManyTypes, manyTypes)] <-
-      processingElement NoDumpVcd peConfig -< (mm, jtag)
+      processingElement dumpVcd peConfig -< (mm, jtag)
     (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
     constBwd 0b00 -< prefixUart
     manyTypesWb -< manyTypes
     constBwd 0b11 -< prefixManyTypes
     idC -< uartTx
  where
+  dumpVcd =
+    unsafePerformIO $ do
+      mVal <- lookupEnv "REGISTERWBC_DUMP_VCD"
+      case mVal of
+        Just s -> pure (DumpVcd s)
+        _ -> pure NoDumpVcd
+
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "registerwbc_test"
