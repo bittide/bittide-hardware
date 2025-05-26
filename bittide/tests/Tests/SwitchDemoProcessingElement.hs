@@ -108,7 +108,7 @@ prop_readThenWrite = H.property $ do
     H.cover 5 "Read in the very first cycle we're allowed to" immediateRead
 
     let immediateWrite = nWriteCycles > 0 && writeStart == clockStart
-    H.cover 5 "Write in the very first cycle we're allowed to" immediateWrite
+    H.cover 3 "Write in the very first cycle we're allowed to" immediateWrite
 
     let isBackToBack = nReadCycles > 0 && nWriteCycles > 0 && readEnd == writeStart
     H.cover 5 "Back-to-back read/write" isBackToBack

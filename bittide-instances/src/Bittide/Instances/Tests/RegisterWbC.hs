@@ -9,6 +9,8 @@ module Bittide.Instances.Tests.RegisterWbC (
   memoryMap,
   sim,
   simResult,
+  Abc (..),
+  Xyz (..),
 ) where
 
 import Clash.Prelude
@@ -44,11 +46,13 @@ import Project.FilePath (
   firmwareBinariesDir,
  )
 
+import BitPackC (BitPackC)
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Protocols (Circuit (Circuit), Df, Drivable (sampleC), idC, toSignals)
 import Protocols.Idle (idleSource)
 import Protocols.MemoryMap (ConstBwd, MM, MemoryMap, constBwd, getMMAny)
+import Protocols.MemoryMap.FieldType (ToFieldType)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   deviceWbC,
   registerConfig,
@@ -59,6 +63,12 @@ import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty.HUnit (HasCallStack)
 import VexRiscv (DumpVcd (NoDumpVcd))
+
+data Abc = A | B | C
+  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
+
+data Xyz = H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | Y | Z
+  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
 
 -- | Example that exports a bunch of different types.
 manyTypesWb ::
@@ -93,6 +103,8 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbB0
     , wbV0
     , wbV1
+    , wbSum0
+    , wbSum1
     ] <-
     deviceWbC "ManyTypes" -< (mm, wb)
 
@@ -120,6 +132,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   registerWbC_ hasClock hasReset (registerConfig "v0") initWbV0 -< (wbV0, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "v1") initWbV1 -< (wbV1, Fwd noWrite)
+
+  registerWbC_ hasClock hasReset (registerConfig "sum0") initSum0 -< (wbSum0, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "sum1") initSum1 -< (wbSum1, Fwd noWrite)
 
   idC
  where
@@ -179,6 +194,12 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   noWrite :: forall a. Signal dom (Maybe a)
   noWrite = pure Nothing
+
+  initSum0 :: Abc
+  initSum0 = C
+
+  initSum1 :: Xyz
+  initSum1 = S
 
 sim :: IO ()
 sim = putStrLn simResult
