@@ -15,6 +15,7 @@
 
   {"top": "boardTestExtended",             "stage": "test"},
   {"top": "boardTestSimple",               "stage": "test"},
+  {"top": "ddr4Test",                      "stage": "test"},
   {"top": "dnaOverSerial",                 "stage": "test"},
   {"top": "fincFdecTests",                 "stage": "test"},
   {"top": "linkConfigurationTest",         "stage": "test"},
