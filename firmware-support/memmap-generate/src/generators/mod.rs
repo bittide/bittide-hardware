@@ -29,7 +29,10 @@ pub(crate) fn ident(n: impl AsRef<str>) -> Ident {
 }
 
 pub(crate) fn generic_name(idx: u64) -> Ident {
-    ident(format!("{}", 'A' as u64 + idx))
+    ident(format!(
+        "{}",
+        char::from_u32('A' as u32 + idx as u32).unwrap()
+    ))
 }
 
 pub struct RustWrappers {

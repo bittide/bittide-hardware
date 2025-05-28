@@ -119,6 +119,14 @@ fn main() {
 
             writeln!(file, "{}", lint_disables_generated_code()).unwrap();
 
+            match gen_config.debug_derive_mode {
+                memmap_generate::DebugDerive::Ufmt => {
+                    writeln!(file, "use ufmt::derive::uDebug;").unwrap();
+                }
+                memmap_generate::DebugDerive::None => {}
+                memmap_generate::DebugDerive::Std => {}
+            }
+
             writeln!(file, "pub use crate::shared::types::*;").unwrap();
             writeln!(file, "{}", def).unwrap();
         }
@@ -215,6 +223,15 @@ fn main() {
                 .unwrap();
                 generated_files.push(file_path);
                 writeln!(file, "{}", lint_disables_generated_code()).unwrap();
+
+                match gen_config.debug_derive_mode {
+                    memmap_generate::DebugDerive::Ufmt => {
+                        writeln!(file, "use ufmt::derive::uDebug;").unwrap();
+                    }
+                    memmap_generate::DebugDerive::None => {}
+                    memmap_generate::DebugDerive::Std => {}
+                }
+
                 writeln!(file, "pub use crate::shared::types::*;").unwrap();
                 writeln!(file, "pub use crate::hals::{hal_mod_name}::types::*;").unwrap();
                 writeln!(file, "{}", def).unwrap();
