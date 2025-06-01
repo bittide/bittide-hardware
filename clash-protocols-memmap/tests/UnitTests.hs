@@ -10,6 +10,7 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import qualified Tests.BitPackC
+import qualified Tests.Padding
 import qualified Tests.Protocols.MemoryMap.Registers.WishboneStandard
 
 tests :: TestTree
@@ -17,6 +18,7 @@ tests =
   testGroup
     "Unittests"
     [ Tests.BitPackC.tests
+    , Tests.Padding.tests
     , Tests.Protocols.MemoryMap.Registers.WishboneStandard.tests
     ]
 

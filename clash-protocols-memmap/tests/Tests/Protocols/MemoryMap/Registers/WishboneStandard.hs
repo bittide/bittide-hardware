@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -10,15 +11,17 @@
 {-# OPTIONS_GHC -Wno-ambiguous-fields #-}
 -- It's a test, we'll see it :-)
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Tests.Protocols.MemoryMap.Registers.WishboneStandard where
 
-import BitPackC (BitPackC (packC, unpackC))
+import BitPackC (BitPackC, ByteOrder (BigEndian))
+import BitPackC.Padding (SizeInWordsC, maybeUnpackWordC, packWordC)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Control.DeepSeq (force)
-import Data.Bifunctor (second)
+import Data.Maybe (fromMaybe)
 import GHC.Stack (HasCallStack)
 import Hedgehog (Gen, Property)
 import Hedgehog.Internal.Property (property)
@@ -49,45 +52,47 @@ initFloat = 3.0
 initDouble :: Double
 initDouble = 6.0
 
-initU16 :: Unsigned 16
-initU16 = 12
-
-initBool :: Bool
-initBool = True
-
-initS16 :: Signed 16
-initS16 = 500
-
-initEmpty :: Signed 0
-initEmpty = 0
-
 initU32 :: Unsigned 32
 initU32 = 122222
 
 type AddressWidth = 4
 
+wordSize :: SNat 4
+wordSize = SNat
+
+-- For these tests we use @BigEndian@ to make the (somewhat grimy..) logic in
+-- these tests work.
+regByteOrder :: ByteOrder
+regByteOrder = BigEndian
+
+busByteOrder :: ByteOrder
+busByteOrder = BigEndian
+
+myPaddedPackC :: (BitPackC a) => a -> Vec (SizeInWordsC 4 a) (Bytes 4)
+myPaddedPackC = packWordC regByteOrder
+
+myPaddedUnpackC :: (BitPackC a) => Vec (SizeInWordsC 4 a) (Bytes 4) -> a
+myPaddedUnpackC =
+  fromMaybe (errorX "myPaddedUnpackC: fail to unpack")
+    . maybeUnpackWordC regByteOrder
+
 {- | Initial state of 'deviceExample', represented as a map from address to bit
 size and value.
 -}
-initState :: Map.Map (BitVector AddressWidth) (Int, BitVector 32)
+initState :: Map.Map (BitVector AddressWidth) (BitVector 32)
 initState =
   Map.fromList @(BitVector AddressWidth)
-    [ (0, (32, packC initFloat))
-    , (1, (32, truncateB $ packC initDouble))
-    , (2, (32, truncateB $ shiftR (packC initDouble) 32))
-    , (3, (16, extend $ packC initU16))
-    , (4, (1, extend $ packC initBool))
-    , -- Zero width registers take a single address due to BitPackC claiming
-      -- they take a single byte to represent.
-      (5, (0, 0))
-    , -- XXX: Using an "odd" size here (e.g., 21) would require the model to
-      --      account for endianness. Either that, or I'm not really understanding
-      --      why it fails.
-      (6, (16, extend $ packC initS16))
-    , (7, (32, packC initFloat))
-    , (8, (32, packC initFloat))
-    , (9, (32, packC initU32))
+    -- TODO: zero-width registers
+    [ (0, myPaddedPackC initFloat !! nil)
+    , (1, myPaddedPackC initDouble !! nil)
+    , (2, myPaddedPackC initDouble !! succ nil)
+    , (3, myPaddedPackC initU32 !! nil)
+    , (4, myPaddedPackC initFloat !! nil)
+    , (5, myPaddedPackC initFloat !! nil)
+    , (6, myPaddedPackC initU32 !! nil)
     ]
+ where
+  nil = 0 :: Int
 
 {- | A simple device example that uses the Wishbone protocol to read and write
 registers. The device has a number of registers with different access rights, widths
@@ -100,6 +105,8 @@ deviceExample ::
   , KnownNat wordSize
   , KnownNat aw
   , 1 <= wordSize
+  , ?regByteOrder :: ByteOrder
+  , ?busByteOrder :: ByteOrder
   ) =>
   Clock dom ->
   Reset dom ->
@@ -107,22 +114,17 @@ deviceExample ::
     (ConstBwd MM, Wishbone dom 'Standard aw (Bytes wordSize))
     ()
 deviceExample clk rst = circuit $ \(mm, wb) -> do
-  [float, double, u16, bool, empty, s16, readOnly, writeOnly, prio] <-
+  [float, double, u32, readOnly, writeOnly, prio] <-
     deviceWbC "example" -< (mm, wb)
 
-  _f <- registerWbC clk rst (registerConfig "f") initFloat -< (float, Fwd noWrite)
-  _d <- registerWbC clk rst (registerConfig "d") initDouble -< (double, Fwd noWrite)
-  _u <- registerWbC clk rst (registerConfig "u") initU16 -< (u16, Fwd noWrite)
-  _b <- registerWbC clk rst (registerConfig "b") initBool -< (bool, Fwd noWrite)
-  _e <- registerWbC clk rst (registerConfig "e") initEmpty -< (empty, Fwd noWrite)
-  _s <- registerWbC clk rst (registerConfig "s") initS16 -< (s16, Fwd noWrite)
+  registerWbC_ clk rst (registerConfig "f") initFloat -< (float, Fwd noWrite)
+  registerWbC_ clk rst (registerConfig "d") initDouble -< (double, Fwd noWrite)
+  registerWbC_ clk rst (registerConfig "u") initU32 -< (u32, Fwd noWrite)
 
-  _ro <-
-    registerWbC clk rst (registerConfig "ro"){access = ReadOnly} initFloat
-      -< (readOnly, Fwd noWrite)
-  _wo <-
-    registerWbC clk rst (registerConfig "wo"){access = WriteOnly} initFloat
-      -< (writeOnly, Fwd noWrite)
+  registerWbC_ clk rst (registerConfig "ro"){access = ReadOnly} initFloat
+    -< (readOnly, Fwd noWrite)
+  registerWbC_ clk rst (registerConfig "wo"){access = WriteOnly} initFloat
+    -< (writeOnly, Fwd noWrite)
 
   (_a, Fwd prioOut) <-
     registerWbC clk rst (registerConfig "prio") initU32
@@ -161,6 +163,7 @@ It currently tests:
 
   * Read/write transactions on both mapped and unmapped addresses
   * Read/write transactions with varying byte enable masks
+  * Read/write transactions to RO/WO registers
 
 It currently does NOT test:
 
@@ -181,8 +184,8 @@ prop_wb =
   model ::
     WishboneMasterRequest AddressWidth (BitVector 32) ->
     WishboneS2M (BitVector 32) ->
-    Map.Map (BitVector AddressWidth) (Int, BitVector 32) ->
-    Either String (Map.Map (BitVector AddressWidth) (Int, BitVector 32))
+    Map.Map (BitVector AddressWidth) (BitVector 32) ->
+    Either String (Map.Map (BitVector AddressWidth) (BitVector 32))
   model instr WishboneS2M{err = True} s =
     -- Errors should only happen when we use an unmapped address (in the future
     -- we may want to to test other errors too).
@@ -201,12 +204,12 @@ prop_wb =
         Nothing ->
           -- Whenever an error occurs, the state should be unchanged.
           Right s
-        Just (_, v)
-          | isRead instr && errorAddress == 8 ->
-              -- Expect an error when trying to read from the WriteOnly register on address 8.
+        Just v
+          | isRead instr && errorAddress == woAddress ->
+              -- Expect an error when trying to read from the WriteOnly register
               Right s
-          | isWrite instr && errorAddress == 7 ->
-              -- Expect an error when trying to write to the ReadOnly register on address 7.
+          | isWrite instr && errorAddress == roAddress ->
+              -- Expect an error when trying to write to the ReadOnly register
               Right s
           | otherwise ->
               Left $ "Error on address: " <> show errorAddress <> ", value: " <> show v
@@ -217,27 +220,25 @@ prop_wb =
     --      does too.
     case Map.lookup a s of
       Nothing -> Left $ "Read from unmapped address: " <> show a
-      Just (_, v)
-        | v == readData && a == 9 -> Right $ Map.insert 9 (32, packC initU32) s
+      Just v
+        | v == readData && a == prioAddress ->
+            Right $ Map.insert prioAddress (head $ myPaddedPackC initU32) s
         | v == readData ->
             Right s
         | otherwise ->
             Left $ "a: " <> show a <> ", v: " <> show v <> ", readData: " <> show readData
   model (Write a m newDat) _ s
-    | a == 9 =
+    | a == prioAddress =
         let
           inc :: BitVector 32 -> BitVector 32
-          inc = packC . (+ (1 :: (Unsigned 32))) . unpackC
+          inc = head . myPaddedPackC . (+ (1 :: (Unsigned 32))) . myPaddedUnpackC . pure
          in
-          Right (Map.adjust (second inc . update) a s)
+          Right (Map.adjust (inc . update) a s)
     | otherwise =
         Right (Map.adjust update a s)
    where
-    update :: (Int, BitVector 32) -> (Int, BitVector 32)
-    update (size, oldDat) = (size, truncatedMergedDat)
-     where
-      truncatedMergedDat = mergedDat .&. (2 P.^ size - 1)
-      mergedDat = maskWriteData @4 @1 0 m newDat oldDat
+    update :: BitVector 32 -> BitVector 32
+    update oldDat = head $ maskWriteData @4 @1 0 m newDat (oldDat :> Nil)
 
   genInputs :: Gen [WishboneMasterRequest AddressWidth (Bytes 4)]
   genInputs = Gen.list (Range.linear 0 300) (genWishboneTransfer genAddr genMask genData)
@@ -254,44 +255,59 @@ prop_wb =
     Gen.integral (Range.constant 0 (1 + P.maximum (Map.keys initState)))
 
   dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth (BitVector 32)) ()
-  dut = unMemmap $ deviceExample @4 @AddressWidth @XilinxSystem clk rst
+  dut =
+    let
+      ?regByteOrder = regByteOrder
+      ?busByteOrder = busByteOrder
+     in
+      unMemmap $ deviceExample @4 @AddressWidth @XilinxSystem clk rst
+
+  example = memoryMap.deviceDefs Map.! "example"
+  [_regF, _regD, _regU, regRO, regWO, regPrio] = example.registers
+  woAddress = fromIntegral $ regWO.value.address `div` 4
+  roAddress = fromIntegral $ regRO.value.address `div` 4
+  prioAddress = fromIntegral $ regPrio.value.address `div` 4
 
 {- FOURMOLU_DISABLE -}
 case_maskWriteData :: Assertion
 case_maskWriteData = do
   let
-    stored   = 0x01234567_89abcdef_fedcba98_76543210 :: BitVector 128
-    bus      = 0x_________13579bdf                   :: BitVector 32
-    mask     = 0b_________1_1_0_1                    :: BitVector 4
-    expected = 0x01234567_1357cddf_fedcba98_76543210 :: BitVector 128
+    stored   = (0x01234567 :> 0x89abcdef :> 0xfedcba98 :> 0x76543210 :> Nil)
+    bus      = 0x_______________13579bdf
+    mask     = 0b_______________1_1_0_1
+    expected = (0x01234567 :> 0x1357cddf :> 0xfedcba98 :> 0x76543210 :> Nil)
 
-  maskWriteData 2 mask bus stored @?= expected
+  maskWriteData @4 @4 1 mask bus stored @?= expected
 {- FOURMOLU_ENABLE -}
+
+unSimOnly :: SimOnly a -> a
+unSimOnly (SimOnly x) = x
+
+memoryMap :: MemoryMap
+memoryMap =
+  unSimOnly
+    $ getConstBwdAny
+    $ let
+        ?regByteOrder = regByteOrder
+        ?busByteOrder = busByteOrder
+       in
+        deviceExample @4 @AddressWidth @XilinxSystem clockGen noReset
 
 {- | Test that the memory map can be generated without errors. Test for sensible
 values in the memory map.
 -}
 case_memoryMap :: Assertion
 case_memoryMap = do
-  let
-    unSimOnly (SimOnly x) = x
-    device = deviceExample @4 @AddressWidth @XilinxSystem clockGen noReset
-    memoryMap = unSimOnly (getConstBwdAny device)
-    example = memoryMap.deviceDefs Map.! "example"
+  let !_tree = force (ppShow memoryMap)
 
-    -- Make sure the whole tree renders without errors
-    !_tree = force (ppShow memoryMap)
-
+  let example = memoryMap.deviceDefs Map.! "example"
   example.deviceName.name @?= "example"
 
-  let [regF, regD, regU, regB, regE, regS, regRO, regWO, regPrio] = example.registers
+  let [regF, regD, regU, regRO, regWO, regPrio] = example.registers
 
   regF.name.name @?= "f"
   regD.name.name @?= "d"
   regU.name.name @?= "u"
-  regB.name.name @?= "b"
-  regE.name.name @?= "e"
-  regS.name.name @?= "s"
   regRO.name.name @?= "ro"
   regWO.name.name @?= "wo"
   regPrio.name.name @?= "prio"
@@ -299,12 +315,9 @@ case_memoryMap = do
   regF.value.address @?= 0
   regD.value.address @?= 4
   regU.value.address @?= 12
-  regB.value.address @?= 16
-  regE.value.address @?= 20
-  regS.value.address @?= 24
-  regRO.value.address @?= 28
-  regWO.value.address @?= 32
-  regPrio.value.address @?= 36
+  regRO.value.address @?= 16
+  regWO.value.address @?= 20
+  regPrio.value.address @?= 24
 
 tests :: TestTree
 tests =

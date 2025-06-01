@@ -144,7 +144,8 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
     -- natToNum @(BitSize calEntry `DivRU` 8)
     natToNum @(maxCalDepth * nBytes)
 
-  deviceDef :: forall maxCalDepth. SNat maxCalDepth -> DeviceDefinition
+  deviceDef ::
+    forall maxCalDepth. (1 <= maxCalDepth) => SNat maxCalDepth -> DeviceDefinition
   deviceDef depth@SNat =
     DeviceDefinition
       { registers =
@@ -153,13 +154,7 @@ calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
               , loc = locHere
               , value =
                   Register
-                    { fieldType =
-                        -- ghc-typelits-extra isn't smart enough to figure out
-                        -- the BitPackC constraints for the vector type
-                        -- so we use a simpler, separate, BitPackC instance
-                        regTypeSplit
-                          @(Bytes (maxCalDepth * nBytes))
-                          @(Vec maxCalDepth (Bytes nBytes))
+                    { fieldType = regType @(Vec maxCalDepth (Bytes nBytes))
                     , address = 0
                     , access = ReadWrite
                     , reset = Nothing

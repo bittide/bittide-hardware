@@ -24,13 +24,13 @@ import Protocols.Idle
 import Protocols.MemoryMap as MM
 import VexRiscv
 
+import BitPackC (ByteOrder (BigEndian))
 import Bittide.Axi4
 import Bittide.DoubleBufferedRam
 import Bittide.Ethernet.Mac
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
-import Bittide.SharedTypes (ByteOrder (BigEndian))
 import Bittide.Wishbone
 
 import Project.FilePath (

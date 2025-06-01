@@ -9,6 +9,7 @@ module Wishbone.ScatterGather where
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
+import BitPackC (ByteOrder (BigEndian))
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Project.FilePath
@@ -27,7 +28,6 @@ import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.ScatterGather
-import Bittide.SharedTypes
 import Bittide.Wishbone
 
 import qualified Prelude as P

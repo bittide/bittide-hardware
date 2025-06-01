@@ -11,7 +11,6 @@ import Clash.Explicit.Prelude hiding ((:<))
 
 import BitPackC
 import Bittide.Extra.Maybe
-import Bittide.SharedTypes
 import Bittide.Wishbone
 import Clash.Annotations.Primitive
 import Clash.Cores.Xilinx.Ethernet.Gmii.Internal

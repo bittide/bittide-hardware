@@ -2,19 +2,13 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=15 #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
-module Bittide.Instances.Tests.RegisterWbC (
-  dut,
-  memoryMap,
-  sim,
-  simResult,
-  Abc (..),
-  Xyz (..),
-) where
+module Bittide.Instances.Tests.RegisterWbC where
 
 import Clash.Prelude
 
@@ -41,7 +35,7 @@ import Bittide.ProcessingElement.Util (
   vecFromElfData,
   vecFromElfInstr,
  )
-import Bittide.SharedTypes (ByteOrder (BigEndian), Bytes)
+import Bittide.SharedTypes (Bytes)
 import Bittide.Wishbone (uartInterfaceWb, uartSim)
 import Project.FilePath (
   CargoBuildType (Release),
@@ -49,7 +43,7 @@ import Project.FilePath (
   firmwareBinariesDir,
  )
 
-import BitPackC (BitPackC)
+import BitPackC (BitPackC, ByteOrder (BigEndian, LittleEndian))
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Protocols (Circuit (Circuit), Df, Drivable (sampleC), idC, toSignals)
@@ -68,14 +62,47 @@ import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty.HUnit (HasCallStack)
 import VexRiscv (DumpVcd (DumpVcd, NoDumpVcd))
 
+type U8 = Unsigned 8
+type U16 = Unsigned 16
+type U32 = Unsigned 32
+type U64 = Unsigned 64
+
+type B8 = BitVector 8
+type B16 = BitVector 16
+type B32 = BitVector 32
+type B64 = BitVector 64
+
+type S8 = Signed 8
+type S16 = Signed 16
+type S32 = Signed 32
+type S64 = Signed 64
+
 data Abc = A | B | C
   deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
 
 data Xyz = H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | Y | Z
-  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
 
-data F = F {f :: Float}
-  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
+data F = F {f :: Float, u :: Double}
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+
+data X3 = X3 B16 B8 B8
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+
+data X2 = X2 B8 X3
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+
+data P0 = P0 U16 U8 U8
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+
+data P1 = P1 U16 U8 U16
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+
+data P2 = P2 U16 U8
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+
+data P3 = P3 P2 U8
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
 
 data SoP
   = SoP0
@@ -99,6 +126,8 @@ manyTypesWb ::
   , KnownNat aw
   , 1 <= wordSize
   , 4 <= aw
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   Circuit
     (ConstBwd MM, Wishbone dom 'Standard aw (Bytes wordSize))
@@ -108,6 +137,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbS1
     , wbS2
     , wbS3
+    , wbS4
     , wbU0
     , wbU1
     , wbU2
@@ -129,6 +159,13 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbSop1
     , wbE0
     , wbOI0
+    , wbX2
+    , wbMe0
+    , wbMe1
+    , wbP0
+    , wbP1
+    , wbP2
+    , wbP3
     ] <-
     deviceWbC "ManyTypes" -< (mm, wb)
 
@@ -136,6 +173,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   registerWbC_ hasClock hasReset (registerConfig "s1") initWbS1 -< (wbS1, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "s2") initWbS2 -< (wbS2, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "s3") initWbS3 -< (wbS3, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "s4") initWbS4 -< (wbS4, Fwd noWrite)
 
   registerWbC_ hasClock hasReset (registerConfig "u0") initWbU0 -< (wbU0, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "u1") initWbU1 -< (wbU1, Fwd noWrite)
@@ -168,6 +206,16 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   registerWbC_ hasClock hasReset (registerConfig "oi") initOI0 -< (wbOI0, Fwd noWrite)
 
+  registerWbC_ hasClock hasReset (registerConfig "x2") initWbX2 -< (wbX2, Fwd noWrite)
+
+  registerWbC_ hasClock hasReset (registerConfig "me0") initWbMe0 -< (wbMe0, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "me1") initWbMe1 -< (wbMe1, Fwd noWrite)
+
+  registerWbC_ hasClock hasReset (registerConfig "p0") initP0 -< (wbP0, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "p1") initP1 -< (wbP1, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "p2") initP2 -< (wbP2, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "p3") initP3 -< (wbP3, Fwd noWrite)
+
   idC
  where
   initWbS0 :: Signed 8
@@ -181,6 +229,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initWbS3 :: Signed 64
   initWbS3 = 3721049880298531338
+
+  initWbS4 :: Signed 7
+  initWbS4 = -12
 
   initWbU0 :: Unsigned 8
   initWbU0 = 8
@@ -237,7 +288,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   initSum1 = S
 
   initSop0 :: F
-  initSop0 = F 3.14
+  initSop0 = F 3.14 6.28
 
   initSop1 :: SoP
   initSop1 = SoP1 0xBADC_0FEE
@@ -249,6 +300,27 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   -- https://github.com/bittide/bittide-hardware/issues/815.
   initOI0 :: Maybe Inner
   initOI0 = Just (Inner 0x16 0x24)
+
+  initWbX2 :: X2
+  initWbX2 = X2 8 (X3 16 32 64)
+
+  initWbMe0 :: Maybe (Either (BitVector 8) (BitVector 16))
+  initWbMe0 = Just (Left 8)
+
+  initWbMe1 :: Maybe (Either (BitVector 16) (BitVector 8))
+  initWbMe1 = Just (Left 8)
+
+  initP0 :: P0
+  initP0 = P0 0xBADC 0x0F 0xEE
+
+  initP1 :: P1
+  initP1 = P1 0xBADC 0x0F 0xBEAD
+
+  initP2 :: P2
+  initP2 = P2 0xBADC 0x0F
+
+  initP3 :: P3
+  initP3 = P3 (P2 0xBADC 0x0F) 0xEE
 
 sim :: IO ()
 sim = putStrLn simResult
@@ -265,17 +337,22 @@ simResult = chr . fromIntegral <$> catMaybes uartStream
 has many (read/write) registers.
 -}
 dut :: Circuit (ConstBwd MM) (Df Basic50 (BitVector 8))
-dut = withClockResetEnable clockGen resetGen enableGen
-  $ circuit
-  $ \mm -> do
-    (uartRx, jtag) <- idleSource -< ()
-    [(prefixUart, (mmUart, uartBus)), (prefixManyTypes, manyTypes)] <-
-      processingElement dumpVcd peConfig -< (mm, jtag)
-    (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-    constBwd 0b00 -< prefixUart
-    manyTypesWb -< manyTypes
-    constBwd 0b11 -< prefixManyTypes
-    idC -< uartTx
+dut =
+  let
+    ?busByteOrder = BigEndian
+    ?regByteOrder = LittleEndian
+   in
+    withClockResetEnable clockGen resetGen enableGen
+      $ circuit
+      $ \mm -> do
+        (uartRx, jtag) <- idleSource -< ()
+        [(prefixUart, (mmUart, uartBus)), (prefixManyTypes, manyTypes)] <-
+          processingElement dumpVcd peConfig -< (mm, jtag)
+        (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
+        constBwd 0b00 -< prefixUart
+        manyTypesWb -< manyTypes
+        constBwd 0b11 -< prefixManyTypes
+        idC -< uartTx
  where
   dumpVcd =
     unsafePerformIO $ do

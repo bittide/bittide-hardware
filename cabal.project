@@ -109,6 +109,15 @@ package bittide-tools
     -RTS
     -j8
 
+package clash-protocols-memmap
+  ghc-options:
+    +RTS
+    -xp
+    -qn8
+    -A64M
+    -RTS
+    -j8
+
 package clash-vexriscv
   ghc-options:
     +RTS

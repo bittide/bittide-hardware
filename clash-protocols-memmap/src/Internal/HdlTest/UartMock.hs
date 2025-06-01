@@ -57,22 +57,13 @@ import Protocols.Wishbone (
 
 import qualified Data.Map.Strict as Map
 
+data FakeyTypy a b = FakeyTypy a b
+  deriving (Generic, BitPackC)
+
 data FakeType a b
   = FakeA a
   | FakeB b
-  deriving (Generic)
-
-instance
-  ( BitPackC a
-  , BitPackC b
-  , 1 <= Max (AlignmentC a) (AlignmentC b)
-  , Mod (ByteSizeC a) (AlignmentC b) <= AlignmentC b
-  , Mod (ByteSizeC a) (AlignmentC b) <= ByteSizeC a
-  , Mod 1 (Max (AlignmentC a) (AlignmentC b))
-      <= Max (AlignmentC a) (AlignmentC b)
-  , Mod 1 (Max (AlignmentC a) (AlignmentC b)) <= 1
-  ) =>
-  BitPackC (FakeType a b)
+  deriving (Generic, BitPackC)
 
 instance (ToFieldType a, ToFieldType b) => ToFieldType (FakeType a b) where
   type Generics (FakeType a b) = 2

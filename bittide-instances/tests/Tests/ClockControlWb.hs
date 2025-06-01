@@ -14,6 +14,7 @@ module Tests.ClockControlWb where
 import Clash.Explicit.Prelude hiding (PeriodToCycles, many)
 
 -- external imports
+import BitPackC (ByteOrder (BigEndian))
 import Clash.Signal (withClockResetEnable)
 import Data.Char (chr)
 import Data.Maybe (catMaybes, mapMaybe)
@@ -40,7 +41,6 @@ import Bittide.DoubleBufferedRam
 import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes
 import Bittide.Wishbone
 
 -- qualified imports

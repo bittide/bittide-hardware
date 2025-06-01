@@ -5,6 +5,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=16 #-}
 
 module Bittide.ScatterGather (
   scatterUnitWb,

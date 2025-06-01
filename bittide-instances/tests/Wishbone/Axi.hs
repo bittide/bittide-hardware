@@ -17,11 +17,11 @@ import Bittide.Axi4
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes
 import Bittide.Wishbone
 import Project.FilePath
 
 -- Other
+import BitPackC (ByteOrder (BigEndian))
 import Control.Monad (forM_)
 import Data.Char
 import Data.Maybe
