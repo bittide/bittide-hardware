@@ -221,9 +221,14 @@ impl TypeGenerator {
                     }
                 }
                 vars => {
+                    let fieldless = vars.iter().all(|desc| desc.fields.is_empty());
                     let n = clog2(&(vars.len() as u64));
                     let repr = ident(format!("u{}", n));
-                    quote! { #[repr(#repr)] }
+                    if fieldless {
+                        quote! { #[repr(#repr)] }
+                    } else {
+                        quote! { #[repr(C, #repr)] }
+                    }
                 }
             }
         } else {
