@@ -205,8 +205,8 @@ shakeOpts =
     }
 
 {- | Constructs a 'BoardPart' based on environment variables @SYNTHESIS_BOARD@
-or @SYNTHESIS_PART@. Errors if both are set, returns a default (free) part
-if neither is set.
+or @SYNTHESIS_PART@. Errors if both are set, returns a default (paid-license) part
+if neither is set. For the free alternative use @Part "xcku035-ffva1156-2-e"@ instead.
 -}
 getBoardPart :: Action BoardPart
 getBoardPart = do
@@ -215,7 +215,7 @@ getBoardPart = do
   case (boardName, partName) of
     (Just b, Nothing) -> pure $ Board b
     (Nothing, Just p) -> pure $ Part p
-    (Nothing, Nothing) -> pure $ Part "xcku035-ffva1156-2-e"
+    (Nothing, Nothing) -> pure $ Board "xilinx.com:kcu105:part0:1.7"
     (Just _b, Just _p) ->
       error "Both 'SYNTHESIS_BOARD' and 'SYNTHESIS_PART' are set, unset either and retry"
 
