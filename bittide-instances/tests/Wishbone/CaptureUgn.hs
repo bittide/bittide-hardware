@@ -89,19 +89,15 @@ dut ::
   Signal dom (Unsigned 64) ->
   Circuit () (Df dom (BitVector 8))
 dut eb localCounter = circuit $ do
-  eb <- ebCircuit -< ()
   (uartRx, jtagIdle, mm) <- idleSource -< ()
   [(prefixUart, (mmUart, uartBus)), (prefixUgn, (mmUgn, ugnBus))] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
   constBwd 0b10 -< prefixUart
-  _bittideData <- captureUgn -< (mmUgn, (Fwd localCounter, ugnBus, eb))
+  _bittideData <- captureUgn localCounter eb -< (mmUgn, ugnBus)
   constBwd 0b11 -< prefixUgn
   idC -< uartTx
  where
-  ebCircuit :: Circuit () (CSignal dom (Maybe (BitVector 64)))
-  ebCircuit = Circuit $ const ((), eb)
-
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
     let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "capture_ugn_test"
