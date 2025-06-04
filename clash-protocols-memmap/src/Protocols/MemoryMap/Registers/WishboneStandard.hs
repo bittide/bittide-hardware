@@ -14,15 +14,21 @@
 a memory map.
 -}
 module Protocols.MemoryMap.Registers.WishboneStandard (
-  -- * Main functions
+  -- * Device creation
   deviceWbC,
   deviceWithOffsetsWbC,
+  -- Register creation (explicit clocks and resets)
   registerWbC,
   registerWbC_,
   registerWithOffsetWbC,
-  registerConfig,
 
-  -- * Supporting types
+  -- * Register creation (implicit clocks and resets)
+  registerWbCI,
+  registerWbCI_,
+  registerWithOffsetWbCI,
+
+  -- * Supporting types and functions
+  registerConfig,
   BusActivity (..),
   DeviceConfig (..),
   RegisterConfig (..),
@@ -42,6 +48,7 @@ import Protocols
 
 import BitPackC (BitPackC (..), ByteOrder, Bytes)
 import BitPackC.Padding (SizeInWordsC, maybeUnpackWordC, packWordC)
+import Clash.Prelude (HiddenClock, HiddenReset, hasClock, hasReset)
 import Clash.Sized.Internal.BitVector (BitVector (unsafeToNatural))
 import Data.Constraint (Dict (Dict))
 import Data.Constraint.Nat.Lemmas (divWithRemainder)
@@ -654,3 +661,103 @@ getBusActivity s2m regValue maybeUpdatedRegValue
   | not s2m.acknowledge = BusIdle
   | Just v <- maybeUpdatedRegValue = BusWrite v
   | otherwise = BusRead regValue
+
+-- | 'registerWbC' with a hidden clock and reset
+registerWbCI ::
+  forall a dom wordSize aw.
+  ( HasCallStack
+  , HiddenClock dom
+  , HiddenReset dom
+  , ToFieldType a
+  , BitPackC a
+  , BitPack a
+  , NFDataX a
+  , KnownNat wordSize
+  , KnownNat aw
+  , Show a
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( ( ConstFwd (Offset aw)
+      , ConstBwd (RegisterMeta aw)
+      , Wishbone dom 'Standard aw (Bytes wordSize)
+      )
+    , CSignal dom (Maybe a)
+    )
+    ( CSignal dom a
+    , CSignal dom (BusActivity a)
+    )
+registerWbCI = withFrozenCallStack $ registerWbC hasClock hasReset
+
+-- | 'registerWbC_' with a hidden clock and reset
+registerWbCI_ ::
+  forall a dom wordSize aw.
+  ( HasCallStack
+  , HiddenClock dom
+  , HiddenReset dom
+  , ToFieldType a
+  , BitPackC a
+  , BitPack a
+  , NFDataX a
+  , KnownNat wordSize
+  , KnownNat aw
+  , Show a
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( ( ConstFwd (Offset aw)
+      , ConstBwd (RegisterMeta aw)
+      , Wishbone dom 'Standard aw (Bytes wordSize)
+      )
+    , CSignal dom (Maybe a)
+    )
+    ()
+registerWbCI_ = withFrozenCallStack $ registerWbC_ hasClock hasReset
+
+-- | 'registerWithOffsetWbC' with a hidden clock and reset
+registerWithOffsetWbCI ::
+  forall a dom wordSize aw.
+  ( HasCallStack
+  , HiddenClock dom
+  , HiddenReset dom
+  , ToFieldType a
+  , BitPackC a
+  , BitPack a
+  , NFDataX a
+  , KnownNat wordSize
+  , KnownNat aw
+  , Show a
+  , BitSize a <= 8 * wordSize
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Offset
+  BitVector aw ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( ( ConstBwd (BitVector aw)
+      , ConstBwd (RegisterMeta aw)
+      , Wishbone dom 'Standard aw (Bytes wordSize)
+      )
+    , CSignal dom (Maybe a)
+    )
+    ( CSignal dom a
+    , CSignal dom (BusActivity a)
+    )
+registerWithOffsetWbCI = withFrozenCallStack $ registerWithOffsetWbC hasClock hasReset
