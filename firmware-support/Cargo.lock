@@ -69,6 +69,7 @@ dependencies = [
 name = "bittide-sys"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal",
  "fdt",
  "heapless",
  "lazy_static",

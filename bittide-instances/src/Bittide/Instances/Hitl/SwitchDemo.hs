@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -63,6 +64,7 @@ import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle), switchDemoPeWb
 import Bittide.Transceiver (transceiverPrbsN)
 import Bittide.Wishbone (readDnaPortE2Wb, timeWb, whoAmIC)
 
+import BitPackC (ByteOrder (BigEndian, LittleEndian))
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
@@ -473,8 +475,10 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
   defaultRefClkRstEn :: forall r. ((HiddenClockResetEnable Basic125) => r) -> r
   defaultRefClkRstEn = withClockResetEnable refClk handshakeRstFree enableGen
 
-  -- This definition is only here for the Circuit level type definition
-  _circuitFnC ::
+  circuitFnC ::
+    ( ?busByteOrder :: ByteOrder
+    , ?regByteOrder :: ByteOrder
+    ) =>
     Circuit
       ( Jtag Basic125
       , CSignal GthTx (BitVector 64)
@@ -491,7 +495,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
       , CSignal GthTx (BitVector 64)
       , CSignal GthTx (Vec (LinkCount + 1) (Index (LinkCount + 2)))
       )
-  _circuitFnC@(Circuit circuitFn) = circuit $ \(jtag, linkIn, reframe, mask, dc, Fwd rxs) -> do
+  circuitFnC = circuit $ \(jtag, linkIn, reframe, mask, dc, Fwd rxs) -> do
     [muJtagFree, ccJtag] <- jtagChain -< jtag
     muJtagTx <- unsafeJtagSynchronizer refClk bittideClk -< muJtagFree
 
@@ -551,25 +555,30 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
   ( (jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _diffsBwd, _insBwd)
     , (callistoResult, switchDataOut, localCounter, peState, peInput, peOutput, calEntry)
     ) =
-      circuitFn
-        (
-          ( jtagIn
-          , pure 0 -- link in
-          , pure False -- enable reframing
-          , pure maxBound -- enable mask
-          , resize <<$>> domainDiffs
-          , rxDatasEbs
+      let
+        ?busByteOrder = BigEndian
+        ?regByteOrder = LittleEndian
+       in
+        toSignals
+          circuitFnC
+          (
+            ( jtagIn
+            , pure 0 -- link in
+            , pure False -- enable reframing
+            , pure maxBound -- enable mask
+            , resize <<$>> domainDiffs
+            , rxDatasEbs
+            )
+          ,
+            ( pure ()
+            , repeat (pure ())
+            , pure ()
+            , pure ()
+            , pure ()
+            , pure ()
+            , pure ()
+            )
           )
-        ,
-          ( pure ()
-          , repeat (pure ())
-          , pure ()
-          , pure ()
-          , pure ()
-          , pure ()
-          , pure ()
-          )
-        )
 
   peNotIdle :: Signal GthTx Bool
   peNotIdle = (/= Idle) <$> peState

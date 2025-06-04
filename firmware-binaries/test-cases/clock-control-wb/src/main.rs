@@ -7,11 +7,9 @@
 
 use core::panic::PanicInfo;
 
-use bittide_sys::{
-    clock_control::{ClockControl, SpeedChange},
-    debug_register::DebugRegister,
-    uart::Uart,
-};
+use bittide_hal::shared::devices::clock_control::{ClockControl, SpeedChange};
+use bittide_hal::shared::devices::debug_register::DebugRegister;
+use bittide_sys::uart::Uart;
 use core::fmt::Write;
 use rand::{distributions::Uniform, rngs::SmallRng, Rng, SeedableRng};
 
@@ -43,8 +41,8 @@ const RNG_SEED: [u8; 16] = {
 fn main() -> ! {
     #[allow(clippy::zero_ptr)] // we might want to change the address!
     let mut uart = unsafe { Uart::new(0x2000_0000 as *const ()) };
-    let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32) };
-    let dbg = unsafe { DebugRegister::from_base_addr(0xA000_0000 as *const u32) };
+    let cc = unsafe { ClockControl::new(0xC000_0000 as *mut u8) };
+    let dbg = unsafe { DebugRegister::new(0xA000_0000 as *mut u8) };
 
     writeln!(uart, "nLinks: {}", cc.num_links()).unwrap();
     writeln!(uart, "linkMask: {}", cc.link_mask()).unwrap();
@@ -63,14 +61,16 @@ fn main() -> ! {
     writeln!(uart, "linksSettled: {}", cc.links_settled()).unwrap();
 
     write!(uart, "dataCounts: [").unwrap();
-    cc.data_counts().enumerate().for_each(|(i, dc)| {
-        let sep = if i + 1 < cc.num_links() as usize {
-            ", "
-        } else {
-            ""
-        };
-        write!(uart, "({i}, {dc}){sep}").unwrap();
-    });
+    let mut idx = 0;
+    let mut first = true;
+    while let Some(dc) = cc.data_counts(idx) {
+        if !first {
+            write!(uart, ", ").unwrap();
+        }
+        write!(uart, "({idx}, {dc})").unwrap();
+        idx += 1;
+        first = false;
+    }
     writeln!(uart, "]").unwrap();
 
     let mut rng = SmallRng::from_seed(RNG_SEED);
@@ -82,14 +82,14 @@ fn main() -> ! {
         .enumerate()
         .for_each(|(i, sc)| {
             let sep = if i + 1 < amt { ", " } else { "" };
-            cc.change_speed(sc);
+            cc.set_change_speed(sc);
             write!(uart, "{}{sep}", sc as u8).unwrap();
         });
     writeln!(uart, "]").unwrap();
 
     // Mark end of transmission - should hopefully be unique enough?
     for _ in 0..cc.up_links() {
-        cc.change_speed(SpeedChange::NoChange);
+        cc.set_change_speed(SpeedChange::NoChange);
     }
 
     loop {}

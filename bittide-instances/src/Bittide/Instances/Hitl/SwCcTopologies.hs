@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
@@ -32,13 +33,15 @@ import qualified Clash.Explicit.Prelude as E
 import Clash.Prelude (HiddenClockResetEnable, exposeReset, hasReset, withClockResetEnable)
 import qualified Prelude as P
 
+import BitPackC (ByteOrder (BigEndian, LittleEndian))
 import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Proxy
 import GHC.Float.RealFracMethods (roundFloatInteger)
 import LiftType (liftTypeQ)
+import Protocols.MemoryMap (MM, MemoryMap)
 import System.FilePath ((</>))
-import VexRiscv (JtagIn, JtagOut)
+import VexRiscv (JtagIn (..), JtagOut)
 
 import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
@@ -214,6 +217,31 @@ rxCounterStartUgn = 0x9122_3344_1122_3344
 
 type FifoSize = 5 -- = 2^5 = 32
 
+memoryMap :: MemoryMap
+memoryMap = mm
+ where
+  (SimOnly mm, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =
+    topologyTest
+      clockGen
+      clockGen
+      ( IlaControl
+          { syncRst = resetGen
+          , syncOut = pure False
+          , syncStart = pure False
+          , scheduledCapture = pure False
+          , globalTimestamp = pure (0, 0)
+          , skipTest = pure False
+          }
+      )
+      (SimOnly (repeat 0))
+      0
+      0
+      0
+      (pure disabled)
+      resetGen
+      0
+      (pure (JtagIn 0 0 0))
+
 {- | Instantiates a hardware implementation of Callisto and exports its results. Can
 be used to drive FINC/FDEC directly (see @FINC_FDEC@ result) or to tie the
 results to a RiscV core (see 'riscvCopyTest')
@@ -230,7 +258,8 @@ topologyTest ::
   "PROG_EN" ::: Reset Basic125 ->
   "CALIBRATED_SHIFT" ::: Signal Basic125 FincFdecCount ->
   "JTAG" ::: Signal Basic125 JtagIn ->
-  ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
+  ( "MEMORY_MAP" ::: MM
+  , "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "FINC_FDEC" ::: Signal Basic125 (FINC, FDEC)
@@ -256,7 +285,8 @@ topologyTest ::
 topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg progEn ccs jtagIn =
   hwSeqX
     fincFdecIla
-    ( transceivers.txSims
+    ( mm
+    , transceivers.txSims
     , transceivers.txNs
     , transceivers.txPs
     , frequencyAdjustments
@@ -374,15 +404,19 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
     SwControlConfig dom margin framesize ->
     Signal dom (BitVector nLinks) ->
     Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
-    Signal dom (CallistoResult nLinks)
+    (MM, Signal dom (CallistoResult nLinks))
   callistoSwClockControlInner extraRst a b c =
-    exposeReset (callistoSwClockControl a b c) newReset
+    let
+      ?busByteOrder = BigEndian
+      ?regByteOrder = LittleEndian
+     in
+      exposeReset (callistoSwClockControl a b c) newReset
    where
     oldReset = unsafeToActiveHigh hasReset
     extraRst1 = unsafeToActiveHigh extraRst
     newReset = unsafeFromActiveHigh $ oldReset .&&. extraRst1
 
-  callistoResult =
+  (mm, callistoResult) =
     callistoClockControlWithIla @LinkCount @CccBufferSize
       transceivers.txClock
       sysClk
@@ -796,7 +830,8 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso jtagIn =
 
   cfg = fromMaybe disabled <$> testConfig
 
-  ( txs
+  ( _mm
+    , txs
     , txns
     , txps
     , swFincFdecs

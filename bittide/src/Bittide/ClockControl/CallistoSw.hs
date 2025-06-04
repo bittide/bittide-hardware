@@ -4,6 +4,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
@@ -19,8 +20,9 @@ module Bittide.ClockControl.CallistoSw (
 
 import Clash.Prelude hiding (PeriodToCycles)
 
+import BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (isJust)
 import Protocols
 import Protocols.Extra (cSignalMap, replicateCSignalI, splitAtCI)
 import Protocols.Idle
@@ -31,7 +33,6 @@ import Bittide.ClockControl (RelDataCount)
 import Bittide.ClockControl.Callisto.Types (
   CallistoCResult (CallistoCResult),
   CallistoResult (CallistoResult),
-  ReframingState (Done),
  )
 import Bittide.ClockControl.DebugRegister (
   DebugRegisterCfg (DebugRegisterCfg),
@@ -82,6 +83,8 @@ callistoSwClockControl ::
   , nLinks + eBufBits <= 32
   , 1 <= framesize
   , 1 <= DomainPeriod dom
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   -- | Clock control config
   SwControlConfig dom margin framesize ->
@@ -89,9 +92,9 @@ callistoSwClockControl ::
   Signal dom (BitVector nLinks) ->
   -- | Diff counters
   Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
-  Signal dom (CallistoResult nLinks)
-callistoSwClockControl (SwControlConfig{jtagIn, enableReframing, margin = mgn, framesize = fsz}) mask ebs =
-  hwSeqX callistoSwIla callistoResult
+  (MM, Signal dom (CallistoResult nLinks))
+callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
+  hwSeqX callistoSwIla (mm, callistoResult)
  where
   callistoResult =
     CallistoResult
@@ -102,7 +105,7 @@ callistoSwClockControl (SwControlConfig{jtagIn, enableReframing, margin = mgn, f
       <*> resultRfs
       <*> jtag
 
-  resultRfs = fromMaybe Done <$> debugData.reframingState
+  resultRfs = debugData.reframingState
 
   callistoSwIla :: Signal dom ()
   callistoSwIla =
@@ -125,12 +128,12 @@ callistoSwClockControl (SwControlConfig{jtagIn, enableReframing, margin = mgn, f
         debugData.updatePeriodMin
         debugData.updatePeriodMax
 
-  debugRegisterCfg = DebugRegisterCfg <$> enableReframing
+  debugRegisterCfg = DebugRegisterCfg <$> ccConfig.enableReframing
 
   capture = isRising False (isJust <$> ccData.clockMod)
 
-  ((_mm, jtag), (ccData, debugData)) =
-    circuitFn (((), jtagIn), (pure (), pure ()))
+  ((mm, jtag), (ccData, debugData)) =
+    circuitFn (((), ccConfig.jtagIn), (pure (), pure ()))
 
   Circuit circuitFn = circuit $ \(mm, jtag) -> do
     [ (prefixCc, (mmCc, wbClockControl))
@@ -142,7 +145,9 @@ callistoSwClockControl (SwControlConfig{jtagIn, enableReframing, margin = mgn, f
     constBwd 0b001 -< prefixDummy
     constBwd todoMM -< mmDummy
     [ccd0, ccd1] <-
-      replicateCSignalI <| clockControlWb mgn fsz mask ebs -< (mmCc, wbClockControl)
+      replicateCSignalI
+        <| clockControlWb ccConfig.margin framesize mask ebs
+        -< (mmCc, wbClockControl)
     constBwd 0b110 -< prefixCc
     cm <- cSignalMap clockMod -< ccd0
     dbg <- debugRegisterWb debugRegisterCfg -< (mmDebug, (wbDebug, cm))
@@ -201,6 +206,8 @@ callistoSwClockControlC ::
   , 1 <= framesize
   , CLog 2 (otherWb + SwcccInternalBusses) <= 30
   , 1 <= DomainPeriod dom
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   DumpVcd ->
   SwControlCConfig margin framesize otherWb ->
@@ -221,7 +228,7 @@ callistoSwClockControlC ::
           )
         )
     )
-callistoSwClockControlC dumpVcd (SwControlCConfig mgn fsz peConfig ccPfx dbgPfx) = Circuit go
+callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} = Circuit go
  where
   go ::
     ( Fwd
@@ -298,24 +305,25 @@ callistoSwClockControlC dumpVcd (SwControlCConfig mgn fsz peConfig ccPfx dbgPfx)
           )
       )
     Circuit peFn = circuit $ \(mm, jtag) -> do
-      allWishbone <- processingElement dumpVcd peConfig -< (mm, jtag)
+      allWishbone <- processingElement dumpVcd ccConfig.peConfig -< (mm, jtag)
       ([(clockControlPfx, (mmCC, wbClockControl)), (debugPfx, (mmDebug, wbDebug))], wbRest) <-
         splitAtCI -< allWishbone
       [ccd0, ccd1] <-
         replicateCSignalI
-          <| clockControlWb mgn fsz linkMask diffCounters
+          <| clockControlWb ccConfig.margin framesize linkMask diffCounters
           -< (mmCC, wbClockControl)
       cm <- cSignalMap clockMod -< ccd0
       dbg <- debugRegisterWb debugRegisterCfg -< (mmDebug, (wbDebug, cm))
 
-      constBwd ccPfx -< clockControlPfx
-      constBwd dbgPfx -< debugPfx
+      constBwd ccConfig.ccRegPrefix -< clockControlPfx
+      constBwd ccConfig.dbgRegPrefix -< debugPfx
 
       idC -< (ccd1, dbg, wbRest)
 
-    ((mmOut, jtagOut), (clockControlData, debugData, otherM2S)) = peFn ((mmIn, jtagIn), (pure (), pure (), otherS2M))
+    ((mmOut, jtagOut), (clockControlData, debugData, otherM2S)) =
+      peFn ((mmIn, jtagIn), (pure (), pure (), otherS2M))
 
-    resultRfs = fromMaybe Done <$> debugData.reframingState
+    resultRfs = debugData.reframingState
 
     callistoCResult :: Signal dom (CallistoCResult nLinks)
     callistoCResult =

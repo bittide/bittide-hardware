@@ -7,8 +7,6 @@
 
 pub mod axi;
 pub mod callisto;
-pub mod clock_control;
-pub mod debug_register;
 pub mod dna_port_e2;
 pub mod gather_unit;
 pub mod mac;

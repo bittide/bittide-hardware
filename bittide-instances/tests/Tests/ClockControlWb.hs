@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE NoFieldSelectors #-}
@@ -14,7 +15,7 @@ module Tests.ClockControlWb where
 import Clash.Explicit.Prelude hiding (PeriodToCycles, many)
 
 -- external imports
-import BitPackC (ByteOrder (BigEndian))
+import BitPackC (ByteOrder (BigEndian, LittleEndian))
 import Clash.Signal (withClockResetEnable)
 import Data.Char (chr)
 import Data.Maybe (catMaybes, mapMaybe)
@@ -129,36 +130,40 @@ debugRegisterConfig =
 dut ::
   Circuit () (Df System (BitVector 8), CSignal System (ClockControlData LinkCount))
 dut =
-  withClockResetEnable
-    clockGen
-    resetGen
-    enableGen
-    $ circuit
-    $ \_unit -> do
-      (uartRx, jtag, mm) <- idleSource -< ()
-      [ (prefixUart, (mmUart, uartBus))
-        , (prefixCC, (mmCC, ccWb))
-        , (prefixDbg, (mmDbg, dbgWb))
-        ] <-
-        processingElement NoDumpVcd peConfig -< (mm, jtag)
-      (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
-      constBwd 0b001 -< prefixUart
+  let
+    ?busByteOrder = BigEndian
+    ?regByteOrder = LittleEndian
+   in
+    withClockResetEnable
+      clockGen
+      resetGen
+      enableGen
+      $ circuit
+      $ \_unit -> do
+        (uartRx, jtag, mm) <- idleSource -< ()
+        [ (prefixUart, (mmUart, uartBus))
+          , (prefixCC, (mmCC, ccWb))
+          , (prefixDbg, (mmDbg, dbgWb))
+          ] <-
+          processingElement NoDumpVcd peConfig -< (mm, jtag)
+        (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
+        constBwd 0b001 -< prefixUart
 
-      [ccd0, ccd1] <-
-        replicateCSignalI
-          <| clockControlWb
-            margin
-            framesize
-            (pure linkMask)
-            (pure <$> dataCounts)
-          -< (mmCC, ccWb)
+        [ccd0, ccd1] <-
+          replicateCSignalI
+            <| clockControlWb
+              margin
+              framesize
+              (pure linkMask)
+              (pure <$> dataCounts)
+            -< (mmCC, ccWb)
 
-      constBwd 0b110 -< prefixCC
+        constBwd 0b110 -< prefixCC
 
-      cm <- cSignalMap clockMod -< ccd0
-      _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (mmDbg, (dbgWb, cm))
-      constBwd 0b101 -< prefixDbg
-      idC -< (uartTx, ccd1)
+        cm <- cSignalMap clockMod -< ccd0
+        _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (mmDbg, (dbgWb, cm))
+        constBwd 0b101 -< prefixDbg
+        idC -< (uartTx, ccd1)
  where
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"

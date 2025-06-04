@@ -24,6 +24,7 @@ import Language.Haskell.TH (reportError, runIO)
 import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
+import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Tests.RegisterWbC as RegisterWbC
 import qualified Data.ByteString.Lazy as BS
 import qualified Protocols.MemoryMap.Json as Json
@@ -36,10 +37,11 @@ $( do
     -------------------------------
     let memoryMaps =
           [ ("Ethernet", vexRiscvEthernetMM)
-          , ("ProcessingElement", vexRiscvUartHelloMM)
-          , ("VexRiscv", vexRiscvTestMM)
           , ("Freeze", freezeMM)
+          , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWbC", RegisterWbC.memoryMap)
+          , ("SwCcTopologies", SwCcTopologies.memoryMap)
+          , ("VexRiscv", vexRiscvTestMM)
           ]
 
     memMapDir <- runIO $ do

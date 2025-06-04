@@ -7,19 +7,24 @@
 
 use core::panic::PanicInfo;
 
-use bittide_sys::{
-    callisto::{self, ControlConfig, ControlSt, ReframingState},
-    clock_control::{ClockControl, SpeedChange},
-    debug_register::DebugRegister,
-};
+use bittide_hal::shared::types::reframing_state::ReframingState;
+use bittide_hal::shared::types::speed_change::SpeedChange;
+use bittide_hal::sw_cc_topologies::DeviceInstances as SwCcToplogiesDeviceInstances;
+
+use bittide_sys::callisto::{self, ControlConfig, ControlSt};
 #[cfg(not(test))]
 use riscv_rt::entry;
 
+// TODO: This binary is reused for both the switch demo and the topology instances. This
+//       should be merged into a single instance, such that we can also just use one
+//       binary (safely). It now _happens_ to work, because both instances are careful
+//       to put the same devices in the same places.
+const INSTANCES: SwCcToplogiesDeviceInstances = unsafe { SwCcToplogiesDeviceInstances::new() };
+
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    #[allow(clippy::zero_ptr)] // we might want to change the address!
-    let mut cc = unsafe { ClockControl::from_base_addr(0xC000_0000 as *const u32) };
-    let dbgreg = unsafe { DebugRegister::from_base_addr(0xA000_0000 as *const u32) };
+    let cc = INSTANCES.clock_control;
+    let dbgreg = INSTANCES.debug_register;
 
     let config = ControlConfig {
         target_count: 0,
@@ -36,7 +41,7 @@ fn main() -> ! {
 
     loop {
         callisto::callisto(&cc, &config, &mut state);
-        cc.change_speed(state.b_k);
+        cc.set_change_speed(state.b_k);
     }
 }
 
