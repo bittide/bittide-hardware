@@ -82,6 +82,12 @@ data SoP
   | SoP2
   deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
 
+data Inner = Inner
+  { innerA :: BitVector 8
+  , innerB :: BitVector 16
+  }
+  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
+
 -- | Example that exports a bunch of different types.
 manyTypesWb ::
   forall wordSize aw dom.
@@ -121,6 +127,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbSop0
     , wbSop1
     , wbE0
+    , wbOI0
     ] <-
     deviceWbC "ManyTypes" -< (mm, wb)
 
@@ -157,6 +164,8 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   registerWbC_ hasClock hasReset (registerConfig "sop1") initSop1 -< (wbSop1, Fwd noWrite)
 
   registerWbC_ hasClock hasReset (registerConfig "e0") initWbE0 -< (wbE0, Fwd noWrite)
+
+  registerWbC_ hasClock hasReset (registerConfig "oi") initOI0 -< (wbOI0, Fwd noWrite)
 
   idC
  where
@@ -234,6 +243,11 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initWbE0 :: Either (BitVector 8) (BitVector 16)
   initWbE0 = Left 8
+
+  -- We purposely do not have a register for the `Inner` type, see issue
+  -- https://github.com/bittide/bittide-hardware/issues/815.
+  initOI0 :: Maybe Inner
+  initOI0 = Just (Inner 0x16 0x24)
 
 sim :: IO ()
 sim = putStrLn simResult

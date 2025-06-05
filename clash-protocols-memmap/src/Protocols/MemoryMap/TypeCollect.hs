@@ -62,7 +62,8 @@ collectDefs fieldType = case fieldType of
       def = TypeDescription tyName (L.length args') inner
       variantInner =
         L.concat $ L.concatMap (\(_name, fields) -> L.map collectDefs $ snd <$> fields) variants
+      argDefs = L.concatMap collectDefs args'
      in
-      (tyName, def) : variantInner
+      (tyName, def) : variantInner <> argDefs
   TypeReference ty args' -> collectDefs ty <> L.concatMap collectDefs args'
   _ -> []
