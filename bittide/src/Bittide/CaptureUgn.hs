@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Bittide.CaptureUgn (captureUgn) where
 
@@ -40,17 +41,14 @@ captureUgn ::
   ( C.HiddenClockResetEnable dom
   , KnownNat addrW
   ) =>
+  Signal dom (Unsigned 64) ->
+  Signal dom (Maybe (BitVector 64)) ->
   Circuit
-    ( ConstBwd MM
-    , ( CSignal dom (Unsigned 64)
-      , Wishbone dom 'Standard addrW (Bytes 4)
-      , CSignal dom (Maybe (BitVector 64))
-      )
-    )
+    (ConstBwd MM, Wishbone dom 'Standard addrW (Bytes 4))
     (CSignal dom (BitVector 64))
-captureUgn = withMemoryMap mm $ Circuit go
+captureUgn localCounter linkIn = Circuit go
  where
-  go ((localCounter, wbM2S, linkIn), _) = ((pure (), wbS2M, pure ()), bittideData)
+  go ((_, wbM2S), _) = ((SimOnly mm, wbS2M), bittideData)
    where
     state =
       C.regEn

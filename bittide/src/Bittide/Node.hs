@@ -59,10 +59,10 @@ node ::
     (ConstBwd MM, Vec gppes (ConstBwd MM), Vec extLinks (CSignal dom (BitVector 64)))
     (Vec extLinks (CSignal dom (BitVector 64)))
 node (NodeConfig nmuConfig switchConfig gppeConfigs prefixes) = circuit $ \(mmNmu, mms, linksIn) -> do
-  (switchOut, _cal) <- switchC @_ @_ @_ @_ @64 switchConfig -< (mmSwWb, (switchIn, swWb))
+  (switchOut, _cal) <- switchC switchConfig -< (mmSwWb, (switchIn, swWb))
   switchIn <- appendC3 -< ([nmuLinkOut], pesToSwitch, linksIn)
-  ([nmuLinkIn], switchToPes, linksOut) <- split3CI -< switchOut
-  (nmuLinkOut, nmuWbs0) <- managementUnitC nmuConfig -< (mmNmu, nmuLinkIn)
+  ([Fwd nmuLinkIn], switchToPes, linksOut) <- split3CI -< switchOut
+  (nmuLinkOut, nmuWbs0) <- managementUnitC nmuConfig nmuLinkIn -< mmNmu
   ([(preSw, (mmSwWb, swWb))], nmuWbs1) <- splitAtCI -< nmuWbs0
   peWbs <- unconcatC d2 -< nmuWbs1
 
@@ -132,7 +132,7 @@ nodeGppes configs prefixes = Circuit go
     )
   singleGppe config linkIn prefixes' m2ss = (mm, zip prefixes' interfacesOut, linkOut)
    where
-    ((mm, (_, interfacesOut)), linkOut) = toSignals (gppeC config) (((), (linkIn, ((),) <$> m2ss)), pure ())
+    ((mm, interfacesOut), linkOut) = toSignals (gppeC config linkIn) (((), ((),) <$> m2ss), pure ())
 
 type NmuInternalBusses = 6
 type NmuRemBusWidth nodeBusses = 30 - CLog 2 (nodeBusses + NmuInternalBusses)
@@ -190,21 +190,20 @@ gppeC ::
   -- ( Incoming 'Bittide.Link'
   -- , Incoming @Vector@ of master busses
   -- )
+  Signal dom (BitVector 64) ->
   Circuit
     ( ConstBwd MM
-    , ( CSignal dom (BitVector 64)
-      , Vec 2 (ConstBwd MM, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
-      )
+    , Vec 2 (ConstBwd MM, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
     )
     (CSignal dom (BitVector 64))
-gppeC (GppeConfig scatterConfig prefixS gatherConfig prefixG peConfig dumpVcd) = circuit $ \(mm, (linkIn, nmuWbs)) -> do
+gppeC (GppeConfig scatterConfig prefixS gatherConfig prefixG peConfig dumpVcd) linkIn = circuit $ \(mm, nmuWbs) -> do
   [(mmSCal, wbScatCal), (mmGCal, wbGathCal)] <- idC -< nmuWbs
   jtag <- idleSource -< ()
   [(preS, (mmS, wbScat)), (preG, (mmG, wbGu))] <-
     processingElement dumpVcd peConfig -< (mm, jtag)
   constBwd prefixS -< preS
   constBwd prefixG -< preG
-  scatterUnitWbC scatterConfig -< ((mmS, (linkIn, wbScat)), (mmSCal, wbScatCal))
+  scatterUnitWbC scatterConfig linkIn -< ((mmS, wbScat), (mmSCal, wbScatCal))
   linkOut <- gatherUnitWbC gatherConfig -< ((mmG, wbGu), (mmGCal, wbGathCal))
   idC -< linkOut
 
@@ -225,8 +224,9 @@ managementUnitC ::
   -- , Incoming @Vector@ of master busses
   -- )
   ManagementConfig nodeBusses ->
+  Signal dom (BitVector 64) ->
   Circuit
-    (ConstBwd MM, CSignal dom (BitVector 64))
+    (ConstBwd MM)
     ( CSignal dom (BitVector 64)
     , Vec
         nodeBusses
@@ -244,7 +244,8 @@ managementUnitC
       prefixG
       peConfig
       dumpVcd
-    ) = circuit $ \(mm, linkIn) -> do
+    )
+  linkIn = circuit $ \mm -> do
     jtag <- idleSource -< ()
     peWbs <- processingElement dumpVcd peConfig -< (mm, jtag)
     ( [ (preSCal, wbScatCal)
@@ -260,5 +261,5 @@ managementUnitC
     constBwd prefixGCal -< preGCal
     constBwd prefixG -< preG
     linkOut <- gatherUnitWbC gatherConfig -< (wbGu, wbGathCal)
-    scatterUnitWbC scatterConfig -< ((mmScat, (linkIn, wbScat)), wbScatCal)
+    scatterUnitWbC scatterConfig linkIn -< ((mmScat, wbScat), wbScatCal)
     idC -< (linkOut, nmuWbs)

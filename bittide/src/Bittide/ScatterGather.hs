@@ -204,17 +204,18 @@ scatterUnitWbC ::
   ) =>
   -- | Configuration for the 'calendar'.
   ScatterConfig nBytesCal awCal ->
+  Signal dom (BitVector 64) ->
   Circuit
-    ( (ConstBwd MM, (CSignal dom (BitVector 64), Wishbone dom 'Standard awSu (Bytes 4)))
+    ( (ConstBwd MM, Wishbone dom 'Standard awSu (Bytes 4))
     , (ConstBwd MM, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     ()
-scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) = case cancelMulDiv @nBytesCal @8 of
+scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) linkIn = case cancelMulDiv @nBytesCal @8 of
   Dict -> Circuit go
    where
-    go ((((), (linkIn, wbM2SSu)), ((), wbM2SCal)), ()) =
+    go ((((), wbM2SSu), ((), wbM2SCal)), _) =
       (
-        ( (SimOnly memoryMapScatterMem, (pure (), wbS2MSu))
+        ( (SimOnly memoryMapScatterMem, wbS2MSu)
         , (SimOnly memoryMapCal, wbS2MCal)
         )
       , ()

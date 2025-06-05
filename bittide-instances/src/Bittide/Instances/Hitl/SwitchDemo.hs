@@ -83,6 +83,7 @@ import qualified Bittide.Instances.Hitl.Driver.SwitchDemo as D
 import qualified Bittide.Transceiver as Transceiver
 import qualified Clash.Cores.Xilinx.GTH as Gth
 import qualified Protocols.MemoryMap as MM
+import qualified Protocols.Vec as Vec
 
 {- Internal busses:
     - Instruction memory
@@ -241,7 +242,7 @@ switchDemoDut ::
   , "fifoOverflowsSticky" ::: Signal Basic125 Bool
   , "fifoUnderflowsSticky" ::: Signal Basic125 Bool
   )
-switchDemoDut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
+switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
   hwSeqX
     (bundle (debugIla, bittidePeIla))
     ( transceivers.txSims
@@ -399,7 +400,7 @@ switchDemoDut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
         , refClock = skyClk
         , channelNames
         , clockPaths
-        , rxSims = rxs
+        , rxSims
         , rxNs
         , rxPs
         , txDatas = txDatas
@@ -472,6 +473,7 @@ switchDemoDut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
   defaultRefClkRstEn :: forall r. ((HiddenClockResetEnable Basic125) => r) -> r
   defaultRefClkRstEn = withClockResetEnable refClk handshakeRstFree enableGen
 
+  -- This definition is only here for the Circuit level type definition
   _circuitFnC ::
     Circuit
       ( Jtag Basic125
@@ -489,7 +491,7 @@ switchDemoDut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
       , CSignal GthTx (BitVector 64)
       , CSignal GthTx (Vec (LinkCount + 1) (Index (LinkCount + 2)))
       )
-  _circuitFnC@(Circuit circuitFn) = circuit $ \(jtag, linkIn, reframe, mask, dc, rxs) -> do
+  _circuitFnC@(Circuit circuitFn) = circuit $ \(jtag, linkIn, reframe, mask, dc, Fwd rxs) -> do
     [muJtagFree, ccJtag] <- jtagChain -< jtag
     muJtagTx <- unsafeJtagSynchronizer refClk bittideClk -< muJtagFree
 
@@ -507,7 +509,6 @@ switchDemoDut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
       splitAtC SNat -< muWbAll
     ([ugn0Pfx, ugn1Pfx, ugn2Pfx, ugn3Pfx, ugn4Pfx, ugn5Pfx, ugn6Pfx], ugnData) <-
       unzipC -< muWbRest
-    (ugnMMs, ugnWbs) <- unzipC -< ugnData
 
     MM.constBwd 0b1110 -< muWhoAmIPfx
     MM.constBwd 0b1001 -< peWbPfx
@@ -521,9 +522,8 @@ switchDemoDut refClk refRst skyClk rxs rxNs rxPs allProgrammed miso jtagIn =
     MM.constBwd 0b0110 -< ugn5Pfx
     MM.constBwd 0b0111 -< ugn6Pfx
 
-    capUgnInputNoMM <- zipC3 -< (Fwd (repeat lc), ugnWbs, rxs)
     ugnRxs <-
-      defaultBittideClkRstEn $ mapCircuit captureUgn <| zipC -< (ugnMMs, capUgnInputNoMM)
+      defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs) -< ugnData
 
     rxLinks <- appendC -< ([Fwd peOut], ugnRxs)
     (switchOut, ce) <-
