@@ -93,9 +93,9 @@ dut scatterConfig gatherConfig = circuit $ do
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
   constBwd 0b010 -< prefixUart
   (mmSuCal, mmGuCal) <- idleSource -< ()
-  link <- gatherUnitWbC gatherConfig -< ((mmGu, wbGu), (mmGuCal, wbGuCal))
+  Fwd link <- gatherUnitWbC gatherConfig -< ((mmGu, wbGu), (mmGuCal, wbGuCal))
   constBwd 0b100 -< prefixGu
-  scatterUnitWbC scatterConfig -< ((mmSu, (link, wbSu)), (mmSuCal, wbSuCal))
+  scatterUnitWbC scatterConfig link -< ((mmSu, wbSu), (mmSuCal, wbSuCal))
   constBwd 0b011 -< prefixSu
   idC -< uartTx
  where
