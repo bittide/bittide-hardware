@@ -1,4 +1,4 @@
-cabal-version: 2.4
+cabal-version: 3.8
 name: bittide-instances
 synopsis:
   Top-entities for synthesis fixing target specific
