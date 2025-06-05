@@ -94,8 +94,7 @@ jobs:
           git diff --exit-code
 
       - name: Check that we don't introduce accidental infinite loops in type checkers
-        run: |
-          ! grep --include=*.hs -E -r '\-fconstraint-solver-iterations *= *0'
+        run: .github/scripts/check_fconstraint_solver_iterations.sh
 
       - run: cache clean
       - run: cache pull cabal --missing-ok --write-cache-found
@@ -142,8 +141,9 @@ jobs:
             echo "Restored cache, no need to update cabal package list"
           fi
 
-      - run: cabal build all
-      - run: ls _build/memory_maps/
+      - run: cabal build all |& tee cabal_build_log
+
+      - run: .github/scripts/check_cabal_log.sh cabal_build_log
 
       - run: ./cargo.sh fetch
       - run: ./cargo.sh build --frozen --release
