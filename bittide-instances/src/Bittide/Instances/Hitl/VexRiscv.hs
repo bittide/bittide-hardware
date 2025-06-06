@@ -3,10 +3,12 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 -- {-# OPTIONS -fplugin-opt=Protocols.Plugin:debug #-}
@@ -45,7 +47,6 @@ import Bittide.Instances.Domains (Basic125, Ext125)
 import Bittide.Instances.Hitl.Driver.VexRiscv
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
-import Bittide.SharedTypes
 import Bittide.Wishbone
 import Clash.Cores.UART.Extra
 
@@ -92,7 +93,14 @@ from the CPU to the outside world through VIOs.
 -}
 statusRegister ::
   forall aw dom.
-  (HasCallStack, HiddenClock dom, HiddenReset dom, KnownNat aw, 1 <= aw) =>
+  ( HasCallStack
+  , HiddenClock dom
+  , HiddenReset dom
+  , KnownNat aw
+  , 1 <= aw
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
   Circuit
     (ConstBwd MM, Wishbone dom 'Standard aw (Bytes 4))
     (CSignal dom TestStatus)
@@ -124,25 +132,30 @@ vexRiscvTestC ::
   Circuit
     (ConstBwd MM, (Jtag dom, CSignal dom UartRx))
     (CSignal dom TestStatus, CSignal dom UartTx)
-vexRiscvTestC = circuit $ \(mm, (jtag, uartRx)) -> do
-  [ (preTime, (mmTime, timeBus))
-    , (preUart, (mmUart, uartBus))
-    , (preStatus, (mmStatus, statusRegisterBus))
-    ] <-
-    processingElement NoDumpVcd peConfig -< (mm, jtag)
+vexRiscvTestC =
+  let
+    ?busByteOrder = BigEndian
+    ?regByteOrder = LittleEndian
+   in
+    circuit $ \(mm, (jtag, uartRx)) -> do
+      [ (preTime, (mmTime, timeBus))
+        , (preUart, (mmUart, uartBus))
+        , (preStatus, (mmStatus, statusRegisterBus))
+        ] <-
+        processingElement NoDumpVcd peConfig -< (mm, jtag)
 
-  --       0b010 Data memory
-  --       0b100 Instruction memory
-  constBwd 0b101 -< preTime
-  constBwd 0b110 -< preUart
-  constBwd 0b111 -< preStatus
+      --       0b010 Data memory
+      --       0b100 Instruction memory
+      constBwd 0b101 -< preTime
+      constBwd 0b110 -< preUart
+      constBwd 0b111 -< preStatus
 
-  (uartTx, _uartStatus) <-
-    uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
-  _localCounter <- timeWb -< (mmTime, timeBus)
+      (uartTx, _uartStatus) <-
+        uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
+      _localCounter <- timeWb -< (mmTime, timeBus)
 
-  testResult <- statusRegister -< (mmStatus, statusRegisterBus)
-  idC -< (testResult, uartTx)
+      testResult <- statusRegister -< (mmStatus, statusRegisterBus)
+      idC -< (testResult, uartTx)
  where
   peConfig
     | clashSimulation = peConfigSim

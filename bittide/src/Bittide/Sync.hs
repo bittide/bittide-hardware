@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE ImplicitParams #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 {- | Circuits for wall-clock synchronizing Bittide boards.
@@ -40,6 +41,7 @@ module Bittide.Sync where
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import Protocols
 
+import BitPackC (ByteOrder)
 import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.SharedTypes (Bytes)
 import Clash.Class.Counter (Counter (countSuccOverflow))
@@ -117,6 +119,8 @@ syncOutGenerateWbC ::
   ( KnownDomain dom
   , HasSynchronousReset dom
   , KnownNat aw
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   Clock dom ->
   Reset dom ->

@@ -11,6 +11,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import qualified Prelude as P
 
+import BitPackC (ByteOrder (BigEndian))
 import Clash.Signal.Internal
 import Data.Char
 import Data.Maybe
@@ -30,7 +31,6 @@ import Bittide.CaptureUgn
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes
 import Bittide.Wishbone
 
 {- | Test whether we can read the local and remote sequence counters from the captureUgn

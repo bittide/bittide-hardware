@@ -2,11 +2,13 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Bittide.Instances.Pnr.Freeze where
 
+import BitPackC (ByteOrder (BigEndian))
 import Bittide.SharedTypes (Bytes)
 import Clash.Explicit.Prelude
 import GHC.Stack (HasCallStack)
@@ -17,7 +19,7 @@ import Protocols.Wishbone
 import qualified Bittide.ClockControl.Freeze as Freeze
 
 -- | Instance of 'Freeze.freeze'. Mostly here to show off a "real" memory map.
-feezeExample ::
+freezeExample ::
   forall dom.
   ( HasCallStack
   , KnownDomain dom
@@ -27,11 +29,16 @@ feezeExample ::
   Circuit
     (ConstBwd MM, Wishbone dom 'Standard 4 (Bytes 4))
     ()
-feezeExample clk rst = circuit $ \(mm, wb) -> do
-  Freeze.freeze clk rst
-    -< (mm, wb, Fwd ebCounters, Fwd counter0, Fwd counter1, Fwd counter2)
+freezeExample clk rst =
+  let
+    ?busByteOrder = BigEndian
+    ?regByteOrder = BigEndian
+   in
+    circuit $ \(mm, wb) -> do
+      Freeze.freeze clk rst
+        -< (mm, wb, Fwd ebCounters, Fwd counter0, Fwd counter1, Fwd counter2)
 
-  idC
+      idC
  where
   counter0 = Freeze.counter @(Unsigned 32) clk rst enableGen 0
   counter1 = Freeze.counter @(Unsigned 32) clk rst enableGen 1
@@ -51,7 +58,7 @@ feezeExample clk rst = circuit $ \(mm, wb) -> do
       :> Nil
 
 freezeMM :: MemoryMap
-freezeMM = getMMAny $ feezeExample @XilinxSystem clk rst
+freezeMM = getMMAny $ freezeExample @XilinxSystem clk rst
  where
   clk = clockGen
   rst = resetGen
@@ -62,4 +69,4 @@ freeze ::
   Signal XilinxSystem (WishboneM2S 4 4 (BitVector 32)) ->
   Signal XilinxSystem (WishboneS2M (BitVector 32))
 freeze clk rst m2s =
-  snd $ fst $ toSignals (feezeExample @XilinxSystem clk rst) (((), m2s), ())
+  snd $ fst $ toSignals (freezeExample @XilinxSystem clk rst) (((), m2s), ())

@@ -58,7 +58,6 @@ module Protocols.MemoryMap (
   Name (..),
   NamedLoc (..),
   regType,
-  regTypeSplit,
   regFieldType,
   regByteSizeC,
   Register (..),
@@ -89,7 +88,6 @@ import Clash.Prelude (
   natToNum,
   ($),
   (<>),
-  type (<=),
  )
 
 import Protocols.MemoryMap.Check.Normalized
@@ -97,7 +95,6 @@ import Protocols.MemoryMap.FieldType
 
 import BitPackC
 import Data.Data (Proxy (Proxy))
-import Data.Word (Word)
 import GHC.Stack (HasCallStack, SrcLoc, callStack, getCallStack)
 import Protocols
 import Protocols.Idle
@@ -221,41 +218,6 @@ regType = RegisterType (Proxy @a)
 
 instance Show RegisterType where
   show regType' = show $ regFieldType regType'
-
-{- | This is pretty much a hack needed because 'BitPackC' constraints can get
-really annoying/impossible to solve.
-This function splits the type information into one type for 'ToFieldType' and
-a separate, ideally equivalent but simpler, type for 'BitPackC'.
--}
-regTypeSplit ::
-  forall a b.
-  (ToFieldType b, BitPackC a) =>
-  (1 <= AlignmentC a) =>
-  RegisterType
-regTypeSplit = RegisterType (Proxy @(RegTypeSplit a b))
-
-{- | See the documentation for 'regTypeSplit'
-
-This type is only there so we can use different types for the
-'ToFieldType' and 'BitPackC' instances.
--}
-data RegTypeSplit a b
-
-instance (ToFieldType b) => ToFieldType (RegTypeSplit a b) where
-  type Generics (RegTypeSplit a b) = Generics b
-  type WithVars (RegTypeSplit a b) = WithVars b
-
-  generics = generics @b
-
-  toFieldType = toFieldType @b
-
-  args = args @b
-
-instance (BitPackC a) => BitPackC (RegTypeSplit a b) where
-  type ByteSizeC (RegTypeSplit a b) = ByteSizeC a
-  type AlignmentC (RegTypeSplit a b) = AlignmentC a
-  packC = error "`BitPackC` instance used from `RegTypeSplit`, this should not happen"
-  unpackC = error "`BitPackC` instance used from `RegTypeSplit`, this should not happen"
 
 data Register = Register
   { access :: Access
@@ -404,7 +366,7 @@ locCaller = case getCallStack callStack of
 {- | Return the Nth caller in the call stack. @locN 0@ returns the location of
 the call site of @locN@, i.e., @locHere@.
 -}
-locN :: (HasCallStack) => Word -> SrcLoc
+locN :: (HasCallStack) => Integer -> SrcLoc
 locN n = go (getCallStack callStack) n
  where
   go [] _ = error "locN: internal error: not enough call stack"

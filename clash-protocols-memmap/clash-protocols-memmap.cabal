@@ -80,6 +80,8 @@ library
   default-language: Haskell2010
   exposed-modules:
     BitPackC
+    BitPackC.Align
+    BitPackC.Padding
     Internal.HdlTest.UartMock
     Protocols.MemoryMap
     Protocols.MemoryMap.Check
@@ -173,6 +175,7 @@ test-suite unittests
 
   other-modules:
     Tests.BitPackC
+    Tests.Padding
     Tests.Protocols.MemoryMap.Registers.WishboneStandard
 
   build-depends:
@@ -182,6 +185,7 @@ test-suite unittests
     clash-protocols-memmap,
     constraints,
     deepseq,
+    extra,
     ghc-typelits-extra-lemmas,
     hedgehog >=1.0 && <1.5,
     lifted-async,

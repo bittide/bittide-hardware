@@ -6,7 +6,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=7 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 
 module Bittide.DoubleBufferedRam where
 

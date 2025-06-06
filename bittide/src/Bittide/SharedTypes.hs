@@ -11,10 +11,14 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=8 #-}
 
-module Bittide.SharedTypes where
+module Bittide.SharedTypes (
+  module Bittide.SharedTypes,
+  Bytes,
+) where
 
 import Clash.Prelude
 
+import BitPackC (ByteOrder (..), Bytes)
 import Data.Constraint
 import Data.Constraint.Nat.Lemmas
 import Data.Type.Equality ((:~:) (Refl))
@@ -44,9 +48,6 @@ resizeM2SAddr WishboneM2S{..} = WishboneM2S{addr = resize addr, ..}
 
 -- | A single byte.
 type Byte = BitVector 8
-
--- | BitVector of _n_ bytes.
-type Bytes n = BitVector (n * 8)
 
 -- | A BitVector that contains one bit per byte in the BitSize of a.
 type ByteEnable a = BitVector (Regs a 8)
@@ -85,9 +86,6 @@ type Pad a bw = (Regs a bw * bw) - BitSize a
 
 -- Amount of bw sized registers required to store a.
 type Regs a bw = DivRU (BitSize a) bw
-
-data ByteOrder = LittleEndian | BigEndian
-  deriving (Eq)
 
 -- | Stores any arbitrary datatype as a vector of registers.
 newtype RegisterBank regSize content (byteOrder :: ByteOrder)

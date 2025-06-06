@@ -12,6 +12,7 @@ import Bittide.ProcessingElement.DeviceTreeCompiler
 import Bittide.ProcessingElement.ReadElf
 import Bittide.SharedTypes
 
+import BitPackC (ByteOrder (..))
 import Control.Monad (when)
 import Data.Maybe
 import GHC.Stack

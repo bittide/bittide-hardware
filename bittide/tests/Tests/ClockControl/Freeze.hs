@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -11,7 +12,7 @@
 
 module Tests.ClockControl.Freeze where
 
-import BitPackC (unpackC)
+import BitPackC (ByteOrder (BigEndian), unpackOrErrorC)
 import Bittide.ClockControl.Freeze (counter, freeze)
 import Bittide.SharedTypes (Bytes)
 import Clash.Explicit.Prelude
@@ -87,6 +88,8 @@ prop_wb = property $ do
   rst = noReset
   ena = enableGen
 
+  endian = BigEndian
+
   model ::
     WishboneMasterRequest AddressWidth (BitVector 32) ->
     WishboneS2M (BitVector 32) ->
@@ -108,23 +111,25 @@ prop_wb = property $ do
     | otherwise =
         Left $ "Freeze counter mismatch: expected " <> show n <> ", got " <> show readDataU
    where
-    readDataU = unpackC readData
+    readDataU = unpackOrErrorC endian (unpack readData)
   model (Read a _) WishboneS2M{readData} s@ModelState{lastSeen = Nothing}
     | a < 2 = Right s
     | otherwise =
         -- Record the value of the register that is being read. This can predict the
         -- value of all other registers (until a freeze is requested).
-        Right s{lastSeen = Just (unpackC readData - fromIntegral a)}
+        Right s{lastSeen = Just (unpackOrErrorC endian (unpack readData) - fromIntegral a)}
   model (Read a _) WishboneS2M{readData} s@ModelState{lastSeen = Just l}
     | a < 2 = Right s
     | readDataU - fromIntegral a == l = Right s
     | otherwise =
         Left $ "Read value mismatch: expected " <> show l <> ", got " <> show readDataU
    where
-    readDataU = unpackC readData
-  model (Write _ _ (unpackC . resize -> doFreeze)) _ s
+    readDataU = unpackOrErrorC endian (unpack readData)
+  model (Write _ _ ((`testBit` (32 - 8)) -> doFreeze)) _ s
     -- Only one writeable register in this device: freeze. We can therefore safely
-    -- ignore the address and assume that register is written to.
+    -- ignore the address and assume that register is written to. We know the bool
+    -- is packed into the first byte. The relevant bit is in the LSB of the first
+    -- byte, hence 32-8.
     | doFreeze =
         Right
           $ s
@@ -146,15 +151,20 @@ prop_wb = property $ do
 
   dutMm ::
     Circuit (ConstBwd MM, Wishbone XilinxSystem Standard AddressWidth (BitVector 32)) ()
-  dutMm = circuit $ \(mm, wb) -> do
-    freeze @4 @32 clk rst
-      -< ( mm
-         , wb
-         , Fwd ebCounters
-         , Fwd localCounter
-         , Fwd syncPulseCounter
-         , Fwd lastPulseCounter
-         )
+  dutMm =
+    let
+      ?regByteOrder = endian
+      ?busByteOrder = endian
+     in
+      circuit $ \(mm, wb) -> do
+        freeze @4 @32 clk rst
+          -< ( mm
+             , wb
+             , Fwd ebCounters
+             , Fwd localCounter
+             , Fwd syncPulseCounter
+             , Fwd lastPulseCounter
+             )
 
   -- Input registers that are spaced one apart. This allows us to predict the
   -- value of all counters, by just reading one. Note that this only works if

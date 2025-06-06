@@ -15,11 +15,11 @@ import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
-import Bittide.SharedTypes
 import Bittide.Wishbone
 import Project.FilePath
 
 -- Other
+import BitPackC (ByteOrder (BigEndian))
 import Data.Char
 import Data.Maybe
 import Protocols

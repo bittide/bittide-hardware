@@ -2,6 +2,8 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE NoFieldSelectors #-}
@@ -31,12 +33,15 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
   maskWriteData,
   getBusActivity,
   replaceWith,
+  reverseBytes,
+  reverseBits,
 ) where
 
 import Clash.Explicit.Prelude
 import Protocols
 
-import BitPackC (BitPackC (..))
+import BitPackC (BitPackC (..), ByteOrder, Bytes)
+import BitPackC.Padding (SizeInWordsC, maybeUnpackWordC, packWordC)
 import Clash.Sized.Internal.BitVector (BitVector (unsafeToNatural))
 import Data.Constraint (Dict (Dict))
 import Data.Constraint.Nat.Lemmas (divWithRemainder)
@@ -70,8 +75,6 @@ import Protocols.Wishbone (
 import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Protocols.Vec as V
-
-type Bytes n = BitVector (n * 8)
 
 data BusActivity a = BusIdle | BusRead a | BusWrite a
   deriving (Show, Eq, Functor, Generic, NFDataX)
@@ -335,6 +338,12 @@ if access rights are set to 'WriteOnly'.
 You can tie registers created using this function together with 'deviceWbC'. If
 you're looking to create a device with arbitrary offsets, use
 'registerWithOffsetWbC' instead.
+
+The register is configurable in its byte order, both on the bus and internally
+using '?busByteOrder' and '?regByteOrder' respectively. For VexRiscV, you'd want
+to configure @?busByteOrder = BigEndian@ and @?regByteOrder = LittleEndian@. Note
+that the bus byte order is a hack more than anything else and only affects the
+data and byte enable fields.
 -}
 registerWbC ::
   forall a dom wordSize aw.
@@ -348,6 +357,8 @@ registerWbC ::
   , KnownNat aw
   , Show a
   , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   Clock dom ->
   Reset dom ->
@@ -366,13 +377,13 @@ registerWbC ::
     , CSignal dom (BusActivity a)
     )
 registerWbC clk rst regConfig resetValue =
-  case SNat @(DivRU (ByteSizeC a) wordSize) of
+  case SNat @(SizeInWordsC wordSize a) of
     (nWords@SNat :: SNat nWords) ->
       case d1 `compareSNat` nWords of
         SNatLE ->
           case divWithRemainder @wordSize @8 @7 of
             Dict ->
-              Circuit (go nWords)
+              Circuit go
         SNatGT ->
           Circuit $ \_ ->
             ( (((), zeroWidthRegisterMeta, pure emptyWishboneS2M), pure ())
@@ -383,8 +394,10 @@ registerWbC clk rst regConfig resetValue =
   -- too general, confusing the type checker.
   go ::
     forall nWords.
-    (1 <= nWords) =>
-    SNat nWords ->
+    ( nWords ~ SizeInWordsC wordSize a
+    , KnownNat nWords
+    , 1 <= nWords
+    ) =>
     ( ( (Offset aw, (), Signal dom (WishboneM2S aw wordSize (Bytes wordSize)))
       , Signal dom (Maybe a)
       )
@@ -395,7 +408,7 @@ registerWbC clk rst regConfig resetValue =
       )
     , (Signal dom a, Signal dom (BusActivity a))
     )
-  go SNat (((offset, _, wbM2S), aIn), (_, _)) =
+  go (((offset, _, wbM2S), aIn), (_, _)) =
     ((((), reg, wbS2M), pure ()), (aOut, busActivity))
    where
     relativeOffset = goRelativeOffset . addr <$> wbM2S
@@ -439,6 +452,7 @@ registerWbC clk rst regConfig resetValue =
   goReg ::
     forall nWords.
     ( 1 <= nWords
+    , nWords ~ SizeInWordsC wordSize a
     , KnownNat nWords
     ) =>
     Access ->
@@ -474,27 +488,55 @@ registerWbC clk rst regConfig resetValue =
     writeOnlyFault = busAccess == WriteOnly && not wbM2S.writeEnable
     accessFault = readOnlyFault || writeOnlyFault
 
+    wordSize = SNat @wordSize
+
     readData
       | not wbM2S.writeEnable
       , acknowledge =
-          resize (packC aFromReg `shiftR` (fromIntegral offset * natToNum @wordSize * 8))
+          (if needReverse then reverseBytes else id)
+            $ packWordC ?regByteOrder aFromReg
+            !! offset
       | otherwise = 0
+
+    needReverse = ?busByteOrder /= ?regByteOrder
 
     maskedWriteData =
       maskWriteData
         offset
-        wbM2S.busSelect
-        wbM2S.writeData
-        (resize (packC aFromReg) :: Bytes (nWords * wordSize))
+        (if needReverse then reverseBits wbM2S.busSelect else wbM2S.busSelect)
+        (if needReverse then reverseBytes wbM2S.writeData else wbM2S.writeData)
+        (packWordC ?regByteOrder aFromReg)
 
     wbWrite
       | wbM2S.writeEnable
       , acknowledge =
-          let
-            !unpacked = unpackC (resize maskedWriteData)
-           in
-            Just unpacked
+          Just
+            -- TODO: Handle unpack failures
+            $ fromMaybe
+              ( deepErrorX
+                  $ "Unpack failed in registerWbC: wordSize="
+                  <> show wordSize
+                  <> ", regByteOrder="
+                  <> show ?regByteOrder
+                  <> ", maskedWriteData="
+                  <> show maskedWriteData
+              )
+            $ maybeUnpackWordC ?regByteOrder maskedWriteData
       | otherwise = Nothing
+
+reverseBytes ::
+  forall wordSize.
+  (KnownNat wordSize) =>
+  BitVector (wordSize * 8) ->
+  BitVector (wordSize * 8)
+reverseBytes = pack . reverse . unpack @(Vec wordSize (Bytes 1))
+
+reverseBits ::
+  forall n.
+  (KnownNat n) =>
+  BitVector n ->
+  BitVector n
+reverseBits = pack . reverse . unpack @(Vec n Bit)
 
 -- | Like 'registerWbC', but does not return the register value.
 registerWbC_ ::
@@ -509,6 +551,8 @@ registerWbC_ ::
   , KnownNat aw
   , Show a
   , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   Clock dom ->
   Reset dom ->
@@ -544,6 +588,8 @@ registerWithOffsetWbC ::
   , Show a
   , BitSize a <= 8 * wordSize
   , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   Clock dom ->
   Reset dom ->
@@ -574,33 +620,31 @@ registerWithOffsetWbC clk rst regConfig offset resetValue =
 maskWriteData ::
   forall wordSize nWords.
   (KnownNat wordSize, KnownNat nWords, 1 <= nWords) =>
-  -- | Offset
+  -- | Offset from base address of register
   Index nWords ->
   -- | Mask for data on bus
   BitVector wordSize ->
   -- | Data from bus
   Bytes wordSize ->
   -- | Data from register
-  Bytes (nWords * wordSize) ->
+  Vec nWords (Bytes wordSize) ->
   -- | Combined data
-  Bytes (nWords * wordSize)
-maskWriteData offset wordMask busData regData = pack newRegDataBytes
+  Vec nWords (Bytes wordSize)
+maskWriteData offset mask busData regData = adjust offset regData $ \regWord ->
+  pack
+    $ mux
+      (unpack mask :: Vec wordSize Bool)
+      (unpack busData :: Vec wordSize (BitVector 8))
+      (unpack regWord :: Vec wordSize (BitVector 8))
  where
-  shiftBy :: Int -> Int
-  shiftBy n = fromIntegral offset * natToNum @wordSize * n
-  -- shiftBy n = fromIntegral (maxBound - offset) * natToNum @wordSize * n
-
-  regDataBytes :: Vec (nWords * wordSize) (BitVector 8)
-  regDataBytes = unpack regData
-
-  busDataBytes :: Vec (nWords * wordSize) (BitVector 8)
-  busDataBytes = unpack (resize busData `shiftL` shiftBy 8)
-
-  shiftedMask :: Vec (nWords * wordSize) Bool
-  shiftedMask = unpack (resize wordMask `shiftL` shiftBy 1)
-
-  newRegDataBytes :: Vec (nWords * wordSize) (BitVector 8)
-  newRegDataBytes = mux shiftedMask busDataBytes regDataBytes
+  adjust ::
+    forall n a.
+    (KnownNat n) =>
+    Index n ->
+    Vec nWords a ->
+    (a -> a) ->
+    Vec nWords a
+  adjust i xs f = replace i (f (xs !! i)) xs
 
 {- | 'registerWbC' already checks for illegal write or read operations and does not
 acknowledge them. So there is no need to check for 'ReadOnly' or 'WriteOnly'.

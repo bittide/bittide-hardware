@@ -1,433 +1,508 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MagicHash #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=15 #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 
-module BitPackC where
+-- | Tooling to pack and unpack Haskell types to and from C-FFI.
+module BitPackC (
+  packC,
+  maybeUnpackC,
+  unpackOrErrorC,
+  BitPackC (..),
+  ByteOrder (..),
+  Bytes,
 
+  -- * Internal
+  msbResize,
+) where
+
+import BitPackC.Align (MultipleOf, Padding)
 import Clash.Prelude
+import Data.Data (Typeable, typeRep)
+import Data.Proxy (Proxy (Proxy))
 import GHC.Generics
 
-type SizeInBytes a = DivRU a 8
+{- | Pack a type @a@ to a vector of bytes according to C packing conventions
+(see 'BitPackC'), where each index corresponds to a byte address. If you want
+to pack to words instead, consider using 'BitPackC.Padding.wordPackC'.
+-}
+packC :: (BitPackC a) => ByteOrder -> a -> Vec (ByteSizeC a) (BitVector 8)
+packC byteOrder = unpack . packC# byteOrder
+
+{- | Unpack a vector of bytes packed according to C packing conversions to a type
+@a@. Returns a 'Nothing' if decoding fails. This can happen if the bytes mention
+a constructor that does not exist, or if the bytes represent a value that does
+not fit in the type @a@. Use 'unpackOrErrorC' to replace failed decodes with an
+@errorX@ call. If you want to unpack from words instead, consider using
+'BitPackC.Padding.wordUnpackC'.
+-}
+maybeUnpackC :: (BitPackC a) => ByteOrder -> Vec (ByteSizeC a) (BitVector 8) -> Maybe a
+maybeUnpackC byteOrder = maybeUnpackC# byteOrder . pack
+
+{- | Unpack a value of type @a@ from a vector of bytes, or throw an error
+(@deepErrorX@) if the given bytes cannot be interpreted as a well-formed value.
+After synthesis, all error handling will be optimized away.
+-}
+unpackOrErrorC ::
+  forall a.
+  (BitPackC a, Typeable a, NFDataX a) =>
+  ByteOrder ->
+  Vec (ByteSizeC a) (BitVector 8) ->
+  a
+unpackOrErrorC byteOrder bytes =
+  -- TODO: Ideally, only fields that fail to decode should be replaced by calls
+  --       to 'deepErrorX'.
+  case maybeUnpackC byteOrder bytes of
+    Just val -> val
+    Nothing ->
+      deepErrorX
+        $ "Failed to unpack "
+        <> show bytes
+        <> " as "
+        <> show (typeRep (Proxy @a))
+
+data ByteOrder = LittleEndian | BigEndian deriving (Eq, Show)
+
+type BitSizeInBytes a = DivRU (BitSize a) 8
 type NextPowerOfTwo a = 2 ^ CLog 2 (Max 1 a)
+type Bytes n = BitVector (n * 8)
 
-type ByteSizeCPaddedTo n a = ByteSizeC a + (n - Mod (ByteSizeC a) n)
+{- | Calculate the size of a constructor in bytes, given the number of
+constructors.
+-}
+type family ConstructorSize (nConstructors :: Nat) :: Nat where
+  ConstructorSize 0 = 0
+  ConstructorSize 1 = 0
+  ConstructorSize n = DivRU (CLog 2 n) 8
 
-type AlignmentPadding at needToGoTo = (needToGoTo - at `Mod` needToGoTo) `Mod` needToGoTo
+{- | Given a @BitVector@ ordered as @BigEndian@ (Clash's native ordering), return a
+@BitVector@ ordered as the given byte order.
+-}
+toEndianBV ::
+  forall n. (KnownNat n) => ByteOrder -> BitVector (n * 8) -> BitVector (n * 8)
+toEndianBV = fromEndianBV
 
-type TagType nTags = SizeInBytes (CLog 2 nTags)
+{- | Given a @BitVector@ ordered as the given byte order, return a @BitVector@
+ordered as @BigEndian@ (Clash's native ordering).
+-}
+fromEndianBV ::
+  forall n. (KnownNat n) => ByteOrder -> BitVector (n * 8) -> BitVector (n * 8)
+fromEndianBV BigEndian = id
+fromEndianBV LittleEndian = pack . reverse . unpack @(Vec n (BitVector 8))
 
-toLittleEndian :: forall n. (KnownNat n) => BitVector (n * 8) -> BitVector (n * 8)
-toLittleEndian bits = pack bytes'
- where
-  bytes = unpack bits :: Vec n (BitVector 8)
-  bytes' = reverse bytes
+{- | Type class that can be implemented (or derived) to enable C-FFI safe
+representation of Haskell types. It can be derived automatically as long as
+'Generic' is implemented for the type.
 
-fromLittleEndian :: forall n. (KnownNat n) => BitVector (n * 8) -> BitVector (n * 8)
-fromLittleEndian = toLittleEndian @n -- hehe
+= How this class works
+This class follows \"how C does things\". This is slightly complicated by the
+fact that C itself only supports product types (C\/Rust: /structs/). We'll get to
+that later though, let's first look at how C packs product types:
 
-{- | Typeclass that can be implemented (or derived) to enable C-FFI safe
-representation of Haskell types.
+1. Fields are laid out in the order they are declared.
+2. Each field must be aligned according to its C alignment requirements.
+3. Padding bytes are inserted between fields if necessary to meet alignment
+   requirements.
+4. The total size of the struct will be a multiple of the alignment of its most
+   strictly aligned member (which is also the struct's overall alignment
+   requirement).
 
-This can be derived automatically as long as 'Generic' is implemented for the
-type.
-Currently there is a high likelihood that more complex types need an unusual
-amount of constraints on the instance. Ideally this won't be necessary when
-@ghc-typelits-extra@ gets extended to automatically discharge those
-constraints.
+The alignment requirements of atomic types (long, int, float, double, ...) follow
+from their size. On some platforms, the alignment of an atomic type is influenced
+by the platform's word size, but that is out of scope for this class.
+
+As alluded to before, C does not support sum types (Rust: /field-less enums/)
+or sum-of-product types (Rust: /enums/). We follow Rust's definition (see
+[repr(C)](https://doc.rust-lang.org/nomicon/other-reprs.html)) of packing them.
+Consider all possible sum-of-product types:
+
+> data T
+>   = C0 F0_0 F0_1 .. F0_n
+>   | C1 F1_0 F1_1 .. F1_m
+>   | ..
+>   | Ck Fk_0 Fk_1 .. Fk_p
+
+According to @repr(C)@, this is the same as packing all of the following types
+in the same memory region (C: /union/, in Rust this is also called a union though
+it is barely used within the language):
+
+> type T0 = (C0, padding, (F0_0, F0_1, .., F0_n))
+> type T1 = (C1, padding, (F1_0, F1_1, .., F1_m))
+> ..
+> type Tk = (Ck, padding, (Fk_0, Fk_1, .., Fk_p))
+
+The padding between the constructor tag and the fields is equal to the padding
+needed to align the fields to the most strictly aligned fields. Padding is the
+same for every @T0@, @T1@, .., @Tk@.
+
+Note that sum-of-product types are structs of structs and each struct must still
+follow all the same rules as regular structs. Note that pure sum types are a
+special case of sum-of-product types, where @n@, @m@, .., @p@ are all 0.
 -}
 class
-  (KnownNat (ByteSizeC a), KnownNat (AlignmentC a), 1 <= AlignmentC a) =>
-  BitPackC a
+  ( KnownNat (AlignmentBoundaryC a)
+  , KnownNat (ByteSizeC a)
+  , KnownNat (ConstructorSizeC a)
+  ) =>
+  BitPackC (a :: Type)
   where
-  type ByteSizeC a :: Nat
-  type AlignmentC a :: Nat
+  -- | Number of bytes the constructor takes up
+  type ConstructorSizeC a :: Nat
 
-  type ByteSizeC a = GByteSizeC (Rep a)
-  type AlignmentC a = GAlignmentC (Rep a)
+  type ConstructorSizeC a = ConstructorSize (GConstructorCount (Rep a))
 
-  packC :: a -> BitVector (ByteSizeC a * 8)
-  unpackC :: BitVector (ByteSizeC a * 8) -> a
+  -- | Alignment boundary for this type. This needs to be a power of two.
+  type AlignmentBoundaryC a :: Nat
 
-  default packC ::
-    (Generic a, GBitPackCTop (Rep a), GByteSizeC (Rep a) ~ ByteSizeC a) =>
+  type AlignmentBoundaryC a = Max (ConstructorSizeC a) (GAlignmentBoundaryC (Rep a))
+
+  -- | Size of this type in bytes
+  type ByteSizeC (a :: Type) :: Nat
+
+  type
+    ByteSizeC a =
+      MultipleOf
+        ( -- Add the constructor tag
+          ConstructorSizeC a
+            -- Plus padding to align the fields
+            + Padding (ConstructorSizeC a) (GAlignmentBoundaryC (Rep a))
+            -- Plus all the fields
+            + MultipleOf (GByteSizeC 0 (Rep a)) (GAlignmentBoundaryC (Rep a))
+        )
+        ( AlignmentBoundaryC a
+        )
+
+  packC# :: ByteOrder -> a -> Bytes (ByteSizeC a)
+  default packC# ::
+    ( Generic a
+    , GBitPackC 0 (Rep a)
+    , KnownNat (GByteSizeC 0 (Rep a))
+    , KnownNat (GAlignmentBoundaryC (Rep a))
+    ) =>
+    ByteOrder ->
     a ->
-    BitVector (ByteSizeC a * 8)
-  packC val = bits
+    Bytes (ByteSizeC a)
+  packC# byteOrder val = msbResize $ constructorBits ++# padding ++# alignedFields
    where
-    repr = from val
-    bits = gpackCTop repr
+    alignedFields :: Bytes (MultipleOf (GByteSizeC 0 (Rep a)) (GAlignmentBoundaryC (Rep a)))
+    alignedFields = msbResize fields
 
-  default unpackC ::
-    (Generic a, GBitPackCTop (Rep a), GByteSizeC (Rep a) ~ ByteSizeC a) =>
-    BitVector (ByteSizeC a * 8) ->
-    a
-  unpackC bits = val
+    constructor :: Int
+    fields :: Bytes (GByteSizeC 0 (Rep a))
+    (constructor, fields) = gPackFieldsC byteOrder d0 0 (from val)
+
+    constructorBits :: Bytes (ConstructorSizeC a)
+    constructorBits = resize (pack constructor)
+
+    padding :: Bytes (Padding (ConstructorSizeC a) (GAlignmentBoundaryC (Rep a)))
+    padding = 0
+
+  maybeUnpackC# ::
+    ByteOrder ->
+    Bytes (ByteSizeC a) ->
+    Maybe a
+  default maybeUnpackC# ::
+    ( Generic a
+    , KnownNat (GConstructorCount (Rep a))
+    , KnownNat (GByteSizeC 0 (Rep a))
+    , KnownNat (GAlignmentBoundaryC (Rep a))
+    , GBitPackC 0 (Rep a)
+    ) =>
+    ByteOrder ->
+    Bytes (ByteSizeC a) ->
+    Maybe a
+  maybeUnpackC# byteOrder val
+    | selectedConstructor >= natToNum @(GConstructorCount (Rep a)) = Nothing
+    | otherwise = fmap to $ gUnpackFieldsC byteOrder d0 selectedConstructor 0 fields1
    where
-    val = to repr
-    repr = gunpackCTop bits
+    -- XXX: Number of constructors could in theory be larger than what fits in
+    --      an 'Int'. In practice this won't happen (I hope?!).
+    selectedConstructor :: Int
+    selectedConstructor = unpack (resize selectedConstructorBits)
+
+    -- Strip padding introduced by 'MultipleOf' size requirements
+    fields1 :: Bytes (GByteSizeC 0 (Rep a))
+    fields1 = msbResize fields0
+
+    selectedConstructorBits :: Bytes (ConstructorSizeC a)
+    _padding :: Bytes (Padding (ConstructorSizeC a) (GAlignmentBoundaryC (Rep a)))
+    fields0 :: Bytes (MultipleOf (GByteSizeC 0 (Rep a)) (GAlignmentBoundaryC (Rep a)))
+    (selectedConstructorBits, _padding, fields0) =
+      unpack
+        $
+        -- Strip padding introduced by 'MultipleOf' size requirements
+        msbResize val
+
+{- | 'resize', but biased towards the most significant bit (MSB). That is, if
+the bit size of the source type is larger than the destination type, it will
+discard the least significant bits (LSBs) instead of the MSBs. If the bit size
+of the source type is smaller than the destination type, it will pad with
+zeroes on the LSB side.
+-}
+msbResize ::
+  forall a b f.
+  ( Resize f
+  , Bits (f a)
+  , Bits (f b)
+  , BitPack (f a)
+  , BitPack (f b)
+  , KnownNat a
+  , KnownNat b
+  ) =>
+  f a ->
+  f b
+msbResize val =
+  case SNat @(BitSize (f a)) `cmpNat` SNat @(BitSize (f b)) of
+    LTI -> shiftL (resize val) (bitSizeB - bitSizeA)
+    EQI -> resize val
+    GTI -> resize (shiftR val (bitSizeA - bitSizeB))
+ where
+  bitSizeA = natToNum @(BitSize (f a)) :: Int
+  bitSizeB = natToNum @(BitSize (f b)) :: Int
 
 instance (KnownNat n) => BitPackC (BitVector n) where
-  type ByteSizeC (BitVector n) = NextPowerOfTwo (SizeInBytes n)
-  type AlignmentC (BitVector n) = ByteSizeC (BitVector n)
+  type ConstructorSizeC (BitVector n) = 0
+  type AlignmentBoundaryC (BitVector n) = NextPowerOfTwo (BitSizeInBytes (BitVector n))
+  type ByteSizeC (BitVector n) = AlignmentBoundaryC (BitVector n)
 
-  packC val = case compareSNat (SNat @n) (SNat @(ByteSizeC (BitVector n) * 8)) of
-    SNatLE -> zeroExtend @_ @n @(ByteSizeC (BitVector n) * 8 - n) val
-    SNatGT -> clashCompileError "BitPackC (BitVector n): packC: shouldn't happen"
-  unpackC bits = case compareSNat (SNat @n) (SNat @(ByteSizeC (BitVector n) * 8)) of
-    SNatLE -> leToPlus @n @(ByteSizeC (BitVector n) * 8) truncateB bits
-    SNatGT -> clashCompileError "BitPackC (BitVector n): unpackC: shouldn't happen"
+  packC# byteOrder = toEndianBV byteOrder . resize
+  maybeUnpackC# byteOrder = checkFits . fromEndianBV byteOrder
 
 instance (KnownNat n) => BitPackC (Unsigned n) where
-  type ByteSizeC (Unsigned n) = NextPowerOfTwo (SizeInBytes n)
-  type AlignmentC (Unsigned n) = ByteSizeC (Unsigned n)
+  type ConstructorSizeC (Unsigned n) = 0
+  type AlignmentBoundaryC (Unsigned n) = AlignmentBoundaryC (BitVector n)
+  type ByteSizeC (Unsigned n) = ByteSizeC (BitVector n)
 
-  packC val = resize (pack val :: BitVector n)
-  unpackC bits = unpack (resize bits :: BitVector n)
+  packC# byteOrder = packC# byteOrder . pack
+  maybeUnpackC# byteOrder = fmap unpack . maybeUnpackC# byteOrder
 
 instance (KnownNat n) => BitPackC (Signed n) where
-  type ByteSizeC (Signed n) = NextPowerOfTwo (SizeInBytes n)
-  type AlignmentC (Signed n) = ByteSizeC (Signed n)
+  type ConstructorSizeC (Signed n) = 0
+  type AlignmentBoundaryC (Signed n) = AlignmentBoundaryC (BitVector n)
+  type ByteSizeC (Signed n) = ByteSizeC (BitVector n)
 
-  packC val = case compareSNat (SNat @n) (SNat @(ByteSizeC (Signed n) * 8)) of
-    SNatLE -> bitCoerce $ signExtend @_ @n @(ByteSizeC (Signed n) * 8 - n) val
-    SNatGT -> clashCompileError "BitPackC (Signed n): packC: shouldn't happen"
-  unpackC bits = case compareSNat (SNat @n) (SNat @(ByteSizeC (Signed n) * 8)) of
-    SNatLE ->
-      leToPlus @n @(ByteSizeC (Signed n) * 8) $ bitCoerce (truncateB bits)
-    SNatGT -> clashCompileError "BitPackC (Signed n): unpackC: shouldn't happen"
+  packC# byteOrder = unpack . toEndianBV byteOrder . pack . resize
+  maybeUnpackC# byteOrder = checkFits . unpack . fromEndianBV byteOrder
+
+{- | Checks whether the argument fits within the bounds of the result type. Only
+works when @BitSize (f a) <= @BitSize (f b)@.
+-}
+checkFits ::
+  forall f a b.
+  ( Ord (f a)
+  , Bounded (f b)
+  , Resize f
+  , KnownNat a
+  , KnownNat b
+  ) =>
+  f a ->
+  Maybe (f b)
+checkFits val
+  | val > resize (maxBound :: f b) || val < resize (minBound :: f b) = Nothing
+  | otherwise = Just (resize val)
 
 instance (KnownNat n, 1 <= n) => BitPackC (Index n) where
-  type ByteSizeC (Index n) = ByteSizeC (BitVector (CLog 2 n))
-  type AlignmentC (Index n) = AlignmentC (BitVector (CLog 2 n))
+  type ConstructorSizeC (Index n) = 0
+  type AlignmentBoundaryC (Index n) = NextPowerOfTwo (BitSizeInBytes (Index n))
+  type ByteSizeC (Index n) = AlignmentBoundaryC (Index n)
 
-  packC val = packC (pack val)
-  unpackC bits = unpack (unpackC bits :: BitVector (CLog 2 n))
+  packC# byteOrder = toEndianBV byteOrder . resize . pack
+  maybeUnpackC# byteOrder val0 = do
+    val1 <- maybeUnpackC# @(BitVector (BitSize (Index n))) byteOrder val0
+    if val1 > pack (maxBound :: Index n)
+      then Nothing
+      else Just (unpack val1)
 
 instance BitPackC Float where
+  type ConstructorSizeC Float = 0
+  type AlignmentBoundaryC Float = 4
   type ByteSizeC Float = 4
-  type AlignmentC Float = 4
 
-  packC = packC . pack
-  unpackC = unpack . unpackC
+  packC# byteOrder = toEndianBV byteOrder . pack
+  maybeUnpackC# byteOrder = Just . unpack . toEndianBV byteOrder
 
 instance BitPackC Double where
+  type ConstructorSizeC Double = 0
+  type AlignmentBoundaryC Double = 8
   type ByteSizeC Double = 8
-  type AlignmentC Double = 8
 
-  packC = packC . pack
-  unpackC = unpack . unpackC
+  packC# byteOrder = toEndianBV byteOrder . pack
+  maybeUnpackC# byteOrder = Just . unpack . toEndianBV byteOrder
 
 instance BitPackC Bool where
+  type ConstructorSizeC Bool = 0
+  type AlignmentBoundaryC Bool = 1
   type ByteSizeC Bool = 1
-  type AlignmentC Bool = 1
 
-  packC False = 0
-  packC True = 1
+  packC# _byteOrder = \case
+    True -> 1
+    False -> 0
+  maybeUnpackC# _byteOrder v = Just (testBit v 0)
 
-  unpackC b = 1 == b .&. 1
+instance BitPackC Bit where
+  type ConstructorSizeC Bit = 0
+  type AlignmentBoundaryC Bit = 1
+  type ByteSizeC Bit = 1
 
-instance
-  (KnownNat n, BitPackC a, Mod (ByteSizeC a) (AlignmentC a) <= AlignmentC a) =>
-  BitPackC (Vec n a)
-  where
-  type ByteSizeC (Vec n a) = (ByteSizeC a) * n
-  type AlignmentC (Vec n a) = AlignmentC a
+  packC# _byteOrder = resize . pack
+  maybeUnpackC# _byteOrder v = Just (boolToBit (testBit v 0))
 
-  packC val = pack $ reverse $ packC <$> val
-  unpackC bits = reverse $ unpackC <$> (unpack bits :: Vec n (BitVector (ByteSizeC a * 8)))
+instance BitPackC () where
+  type ConstructorSizeC () = 0
+  type AlignmentBoundaryC () = 1
+  type ByteSizeC () = 0
 
-instance
-  ( BitPackC a
-  , Mod 1 (Max 1 (AlignmentC a)) <= 1
-  , Mod 1 (Max 1 (AlignmentC a)) <= Max 1 (AlignmentC a)
-  ) =>
-  BitPackC (Maybe a)
-instance
-  ( BitPackC a
-  , BitPackC b
-  , 1 <= Max (AlignmentC a) (AlignmentC b)
-  , Mod (ByteSizeC a) (AlignmentC b) <= AlignmentC b
-  , Mod (ByteSizeC a) (AlignmentC b) <= ByteSizeC a
-  , Mod 1 (Max (AlignmentC a) (AlignmentC b))
-      <= Max (AlignmentC a) (AlignmentC b)
-  , Mod 1 (Max (AlignmentC a) (AlignmentC b)) <= 1
-  ) =>
-  BitPackC (Either a b)
+  packC# _byteOrder _val = 0
+  maybeUnpackC# _byteOrder _val = Just ()
 
-instance
-  ( BitPackC a
-  , BitPackC b
-  , 1 <= Max (AlignmentC a) (AlignmentC b)
-  , Mod (ByteSizeC a) (AlignmentC b) <= AlignmentC b
-  , Mod (ByteSizeC a) (AlignmentC b) <= ByteSizeC a
-  , Mod
-      ( (ByteSizeC a + Mod (AlignmentC b - Mod (ByteSizeC a) (AlignmentC b)) (AlignmentC b))
-          + ByteSizeC b
-      )
-      (Max (AlignmentC a) (AlignmentC b))
-      <= Max (AlignmentC a) (AlignmentC b)
-  ) =>
-  BitPackC (a, b)
+instance (BitPackC a, KnownNat n) => BitPackC (Vec n a) where
+  type ConstructorSizeC (Vec n a) = 0
+  type AlignmentBoundaryC (Vec n a) = AlignmentBoundaryC a
+  type ByteSizeC (Vec n a) = n * ByteSizeC a
 
-instance
-  ( BitPackC a
-  , BitPackC b
-  , BitPackC c
-  , 1 <= Max (AlignmentC a) (AlignmentC b)
-  , 1 <= Max (AlignmentC b) (AlignmentC c)
-  , 1 <= Max (AlignmentC a) (Max (AlignmentC b) (AlignmentC c))
-  , Mod (ByteSizeC a) (AlignmentC b) <= AlignmentC b
-  , Mod (ByteSizeC a) (AlignmentC b) <= ByteSizeC a
-  , Mod (ByteSizeC b) (AlignmentC c) <= AlignmentC c
-  , Mod (ByteSizeC b) (AlignmentC c) <= ByteSizeC b
-  , Mod (ByteSizeC a) (Max (AlignmentC b) (AlignmentC c))
-      <= Max (AlignmentC b) (AlignmentC c)
-  , Mod (ByteSizeC a) (Max (AlignmentC b) (AlignmentC c))
-      <= ByteSizeC a
-  , Mod
-      ( ( ByteSizeC a
-            + Mod
-                ( Max (AlignmentC b) (AlignmentC c) - Mod (ByteSizeC a) (Max (AlignmentC b) (AlignmentC c))
-                )
-                (Max (AlignmentC b) (AlignmentC c))
-        )
-          + ( (ByteSizeC b + Mod (AlignmentC c - Mod (ByteSizeC b) (AlignmentC c)) (AlignmentC c))
-                + ByteSizeC c
-            )
-      )
-      (Max (AlignmentC a) (Max (AlignmentC b) (AlignmentC c)))
-      <= Max (AlignmentC a) (Max (AlignmentC b) (AlignmentC c))
-  ) =>
-  BitPackC (a, b, c)
+  packC# byteOrder = pack . map (packC# byteOrder)
+  maybeUnpackC# byteOrder = sequence . map (maybeUnpackC# byteOrder) . unpack
 
-class (KnownNat (GByteSizeC f), KnownNat (GAlignmentC f), 1 <= GAlignmentC f) => GBitPackCTop f where
-  type GByteSizeC f :: Nat
-  type GAlignmentC f :: Nat
+instance (BitPackC a) => BitPackC (Maybe a)
+instance (BitPackC a, BitPackC b) => BitPackC (Either a b)
+instance (BitPackC a, BitPackC b) => BitPackC (a, b)
+instance (BitPackC a, BitPackC b, BitPackC c) => BitPackC (a, b, c)
+instance (BitPackC a, BitPackC b, BitPackC c, BitPackC d) => BitPackC (a, b, c, d)
 
-  gpackCTop :: f a -> BitVector (GByteSizeC f * 8)
-  gunpackCTop :: BitVector (GByteSizeC f * 8) -> f a
+class GBitPackC start f where
+  type GConstructorCount f :: Nat
+  type GByteSizeC (start :: Nat) f :: Nat
+  type GAlignmentBoundaryC f :: Nat
 
-instance (GBitPackCTop inner) => GBitPackCTop (D1 m inner) where
-  type GByteSizeC (D1 m inner) = GByteSizeC inner
-  type GAlignmentC (D1 m inner) = GAlignmentC inner
-
-  gpackCTop (M1 x) = gpackCTop x
-  gunpackCTop bits = M1 $ gunpackCTop bits
-
-instance
-  (BitPackC inner) =>
-  GBitPackCTop (Rec0 inner)
-  where
-  type GByteSizeC (Rec0 inner) = ByteSizeC inner
-  type GAlignmentC (Rec0 inner) = AlignmentC inner
-
-  gpackCTop (K1 x) = packC x
-  gunpackCTop bits = K1 $ unpackC bits
-
-instance GBitPackCTop U1 where
-  type GByteSizeC U1 = 0
-  type GAlignmentC U1 = 1
-
-  gpackCTop U1 = 0
-  gunpackCTop _bits = U1
-
-instance GBitPackCTop V1 where
-  type GByteSizeC V1 = 0
-  type GAlignmentC V1 = 1
-
-  gpackCTop _ = 0
-  gunpackCTop _bits = error "can't construct a value of type V1"
-
-instance
-  ( GBitPackCFields inner
-  , Mod (GFieldSize inner) (GFieldAlignment inner) <= GFieldAlignment inner
-  ) =>
-  GBitPackCTop (C1 m inner)
-  where
-  type
-    GByteSizeC (C1 m inner) =
-      GFieldSize inner + AlignmentPadding (GFieldSize inner) (GFieldAlignment inner)
-  type GAlignmentC (C1 m inner) = GFieldAlignment inner
-
-  gpackCTop (M1 x) = gpackCfields x ++# 0
-  gunpackCTop bits = M1 $ gunpackCfields (fst $ split bits)
-
-instance
-  ( GBitPackCSums a
-  , GBitPackCSums b
-  , 1 <= Max (GSumAlignment a) (GSumAlignment b)
-  , ( Mod
-        ( Div
-            (CLog 2 (GNumConstructors a + GNumConstructors b) + 7)
-            8
-        )
-        (Max (GSumAlignment a) (GSumAlignment b))
-        <= Div
-            (CLog 2 (GNumConstructors a + GNumConstructors b) + 7)
-            8
+  gPackFieldsC ::
+    forall a.
+    -- | Endianness
+    ByteOrder ->
+    -- | Offset we're packing at
+    SNat start ->
+    -- | Current constructor
+    Int ->
+    f a ->
+    ( -- Selected constructor
+      Int
+    , -- Packed fields
+      Bytes (GByteSizeC start f)
     )
-  , ( Mod
-        (Div (CLog 2 (GNumConstructors a + GNumConstructors b) + 7) 8)
-        (Max (GSumAlignment a) (GSumAlignment b))
-        <= Max (GSumAlignment a) (GSumAlignment b)
-    )
-  ) =>
-  GBitPackCTop (a :+: b)
-  where
-  type
-    GByteSizeC (a :+: b) =
-      TagType (GNumConstructors (a :+: b))
-        + AlignmentPadding
-            (TagType (GNumConstructors (a :+: b)))
-            (GSumAlignment (a :+: b))
-        + GSumSize (a :+: b)
-  type GAlignmentC (a :+: b) = GSumAlignment (a :+: b)
 
-  gpackCTop x = tag ++# padding ++# payload
-   where
-    tag' = gConstructorTag 0 x
-    tag :: BitVector (TagType (GNumConstructors (a :+: b)) * 8) = fromIntegral tag'
-    padding = 0
-    payload = gpackCsum x
-  gunpackCTop bits = gunpackCsum (fromIntegral tag) payload
-   where
-    ( tag :: BitVector (TagType (GNumConstructors (a :+: b)) * 8)
-      , rest
-      ) = split bits
-    ( _padding
-      , payload :: BitVector (GSumSize (a :+: b) * 8)
-      ) = split rest
+  gUnpackFieldsC ::
+    forall a.
+    -- | Endianness
+    ByteOrder ->
+    -- | Offset we're unpacking at
+    SNat start ->
+    -- | Selected constructor
+    Int ->
+    -- | Current constructor
+    Int ->
+    Bytes (GByteSizeC start f) ->
+    Maybe (f a)
 
-class
-  ( KnownNat (GNumConstructors f)
-  , KnownNat (GSumSize f)
-  , KnownNat (GSumAlignment f)
-  , 1 <= GSumAlignment f
-  , 1 <= GNumConstructors f
-  ) =>
-  GBitPackCSums f
-  where
-  type GNumConstructors f :: Nat
-  type GSumSize f :: Nat
-  type GSumAlignment f :: Nat
+instance (GBitPackC start a) => GBitPackC start (M1 m d a) where
+  type GByteSizeC start (M1 m d a) = GByteSizeC start a
+  type GConstructorCount (M1 m d a) = GConstructorCount a
+  type GAlignmentBoundaryC (M1 m d a) = GAlignmentBoundaryC a
 
-  gConstructorTag :: Int -> f a -> Int
+  gPackFieldsC byteOrder start cc (M1 m1) = gPackFieldsC byteOrder start cc m1
+  gUnpackFieldsC byteOrder start selectedConstr cc packed =
+    fmap M1 $ gUnpackFieldsC byteOrder start selectedConstr cc packed
 
-  gpackCsum :: f a -> BitVector (GSumSize f * 8)
-
-  gunpackCsum :: Int -> BitVector (GSumSize f * 8) -> f a
-
+-- | Sum types
 instance
-  (GBitPackCSums a, GBitPackCSums b, 1 <= Max (GSumAlignment a) (GSumAlignment b)) =>
-  GBitPackCSums (a :+: b)
+  ( GBitPackC start f
+  , GBitPackC start g
+  , KnownNat (GByteSizeC start f)
+  , KnownNat (GByteSizeC start g)
+  , KnownNat (GConstructorCount f)
+  ) =>
+  GBitPackC start (f :+: g)
   where
-  type GNumConstructors (a :+: b) = GNumConstructors a + GNumConstructors b
-  type GSumSize (a :+: b) = Max (GSumSize a) (GSumSize b)
-  type GSumAlignment (a :+: b) = Max (GSumAlignment a) (GSumAlignment b)
+  type GByteSizeC start (f :+: g) = Max (GByteSizeC start f) (GByteSizeC start g)
+  type GConstructorCount (f :+: g) = GConstructorCount f + GConstructorCount g
+  type GAlignmentBoundaryC (f :+: g) = Max (GAlignmentBoundaryC f) (GAlignmentBoundaryC g)
 
-  gConstructorTag n (L1 a_val) = gConstructorTag n a_val
-  gConstructorTag n (R1 b_val) = gConstructorTag (n + natToNum @(GNumConstructors a)) b_val
-
-  gpackCsum (L1 a) = gpackCsum a ++# padding
+  gPackFieldsC byteOrder start cc (L1 l) =
+    (sc, msbResize packed)
    where
-    padding = 0 :: BitVector ((Max (GSumSize a) (GSumSize b) - GSumSize a) * 8)
-  gpackCsum (R1 b) = gpackCsum b ++# padding
+    (sc, packed) = gPackFieldsC byteOrder start cc l
+  gPackFieldsC byteOrder start cc (R1 r) =
+    (sc, msbResize packed)
    where
-    padding = 0 :: BitVector ((Max (GSumSize a) (GSumSize b) - GSumSize b) * 8)
+    ccLeft = natToNum @(GConstructorCount f)
+    (sc, packed) = gPackFieldsC byteOrder start (cc + ccLeft) r
 
-  gunpackCsum current_tag bits
-    | current_tag < natToNum @(GNumConstructors a) =
-        let
-          (payload_for_a, _padding) =
-            split bits ::
-              (BitVector (GSumSize a * 8), BitVector ((Max (GSumSize a) (GSumSize b) - GSumSize a) * 8))
-         in
-          L1 $ gunpackCsum current_tag payload_for_a
-    | otherwise =
-        let
-          (payload_for_b, _padding) =
-            split bits ::
-              (BitVector (GSumSize b * 8), BitVector ((Max (GSumSize a) (GSumSize b) - GSumSize b) * 8))
-         in
-          R1 $ gunpackCsum (current_tag - natToNum @(GNumConstructors a)) payload_for_b
+  gUnpackFieldsC byteOrder start selectedConstr cc packed =
+    if selectedConstr < cc + cLeft
+      then fmap L1 $ gUnpackFieldsC byteOrder start selectedConstr cc packedF
+      else fmap R1 $ gUnpackFieldsC byteOrder start selectedConstr (cc + cLeft) packedG
+   where
+    cLeft = natToNum @(GConstructorCount f)
 
-{- | XXX: Though the number of constructors a unit constructor is zero (I think?)
-we have to set it to at least 1 due to the @1 <=@ constraint on the class. See
-https://github.com/bittide/bittide-hardware/issues/779.
+    packedF :: Bytes (GByteSizeC start f)
+    packedF = msbResize packed
+
+    packedG :: Bytes (GByteSizeC start g)
+    packedG = msbResize packed
+
+{- | Product types: chain them together, with both the left and right part being
+responsible for their own alignment.
 -}
-instance GBitPackCSums U1 where
-  type GNumConstructors U1 = 1
-  type GSumSize U1 = 1
-  type GSumAlignment U1 = 1
-
-  gConstructorTag n _ = n
-  gpackCsum U1 = 0
-  gunpackCsum _ _ = U1
-
-instance (GBitPackCFields inner) => GBitPackCSums (C1 m inner) where
-  type GNumConstructors (C1 m inner) = 1
-  type GSumSize (C1 m inner) = GFieldSize inner
-  type GSumAlignment (C1 m inner) = GFieldAlignment inner
-
-  gConstructorTag n _ = n
-
-  gpackCsum (M1 n) = gpackCfields n
-  gunpackCsum _ bits = M1 $ gunpackCfields bits
-
-class
-  (KnownNat (GFieldSize f), KnownNat (GFieldAlignment f), 1 <= GFieldAlignment f) =>
-  GBitPackCFields f
-  where
-  type GFieldSize f :: Nat
-  type GFieldAlignment f :: Nat
-
-  gpackCfields :: f a -> BitVector (GFieldSize f * 8)
-  gunpackCfields :: BitVector (GFieldSize f * 8) -> f a
-
-instance GBitPackCFields U1 where
-  type GFieldSize U1 = 0
-  type GFieldAlignment U1 = 1
-
-  gpackCfields U1 = 0
-  gunpackCfields _ = U1
-
-instance (GBitPackCTop inner) => GBitPackCFields (S1 m inner) where
-  type GFieldSize (S1 m inner) = GByteSizeC inner
-  type GFieldAlignment (S1 m inner) = GAlignmentC inner
-
-  gpackCfields (M1 x) = gpackCTop x
-  gunpackCfields bits = M1 $ gunpackCTop bits
-
 instance
-  ( GBitPackCFields a
-  , GBitPackCFields b
-  , 1 <= Max (GFieldAlignment a) (GFieldAlignment b)
-  , Mod (GFieldSize a) (GFieldAlignment b) <= GFieldAlignment b
-  , ( Mod (GFieldSize a) (GFieldAlignment b)
-        <= GFieldSize a
-    )
+  ( GBitPackC start f
+  , GBitPackC (GByteSizeC start f + start) g
+  , KnownNat (GByteSizeC start f)
+  , KnownNat (GByteSizeC (start + GByteSizeC start f) g)
   ) =>
-  GBitPackCFields (a :*: b)
+  GBitPackC start (f :*: g)
   where
   type
-    GFieldSize (a :*: b) =
-      GFieldSize a + AlignmentPadding (GFieldSize a) (GFieldAlignment b) + GFieldSize b
-  type GFieldAlignment (a :*: b) = Max (GFieldAlignment a) (GFieldAlignment b)
+    GByteSizeC start (f :*: g) =
+      GByteSizeC start f + GByteSizeC (start + GByteSizeC start f) g
+  type GConstructorCount (f :*: g) = 1
+  type GAlignmentBoundaryC (f :*: g) = Max (GAlignmentBoundaryC f) (GAlignmentBoundaryC g)
 
-  gpackCfields (a :*: b) = gpackCfields a ++# 0 ++# gpackCfields b
-
-  gunpackCfields bits = gunpackCfields a' :*: gunpackCfields b'
+  gPackFieldsC byteOrder start0 cc (l0 :*: r0) = (cc, l1 ++# r1)
    where
-    ( a' :: BitVector (GFieldSize a * 8)
-      , rest
-      ) = split bits
-    ( _padding
-      , b' :: BitVector (GFieldSize b * 8)
-      ) = split rest
+    start1 = start0 `addSNat` SNat @(GByteSizeC start f)
+    (_, l1) = gPackFieldsC byteOrder start0 cc l0
+    (_, r1) = gPackFieldsC byteOrder start1 cc r0
+
+  gUnpackFieldsC byteOrder start0 selectedConstr cc packed = do
+    l0 <- gUnpackFieldsC byteOrder start0 selectedConstr cc l0packed
+    r0 <- gUnpackFieldsC byteOrder start1 selectedConstr cc l1packed
+    Just (l0 :*: r0)
+   where
+    start1 = start0 `addSNat` SNat @(GByteSizeC start f)
+    (l0packed, l1packed) = unpack packed
+
+instance (BitPackC c) => GBitPackC start (K1 i c) where
+  type GByteSizeC start (K1 i c) = Padding start (AlignmentBoundaryC c) + ByteSizeC c
+  type GConstructorCount (K1 i c) = 1
+  type GAlignmentBoundaryC (K1 i c) = AlignmentBoundaryC c
+
+  gPackFieldsC byteOrder SNat cc (K1 i) =
+    (cc, padding ++# packC# byteOrder i)
+   where
+    padding :: Bytes (Padding start (AlignmentBoundaryC c))
+    padding = 0
+
+  gUnpackFieldsC byteOrder SNat _selectedConstr _currentConstr packed =
+    K1 <$> maybeUnpackC# byteOrder (resize packed)
+
+instance GBitPackC boundary U1 where
+  type GByteSizeC boundary U1 = 0
+  type GConstructorCount U1 = 1
+  type GAlignmentBoundaryC U1 = 1
+
+  gPackFieldsC _byteOrder _start cc _u = (cc, 0)
+  gUnpackFieldsC _byteOrder _start _selectedConstr _currentConstr _packed = Just U1

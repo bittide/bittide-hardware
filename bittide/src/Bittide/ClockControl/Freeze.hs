@@ -1,10 +1,13 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE ImplicitParams #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Bittide.ClockControl.Freeze where
 
+import BitPackC (ByteOrder)
 import Bittide.SharedTypes (Bytes)
 import Clash.Explicit.Prelude
 import GHC.Stack (HasCallStack)
@@ -32,6 +35,8 @@ freeze ::
   , KnownNat n
   , HasCallStack
   , 4 <= aw
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   Clock dom ->
   Reset dom ->
