@@ -96,6 +96,10 @@ fn main() {
         .join("src")
         .join("shared");
 
+    // clear out generated shared code first
+    _ = std::fs::remove_dir_all(shared_path.join("devices"));
+    _ = std::fs::remove_dir_all(shared_path.join("types"));
+
     // types
     {
         std::fs::create_dir_all(shared_path.join("types"))
@@ -159,6 +163,13 @@ fn main() {
     }
 
     // now for the different hals...
+
+    // first clear all hals, then recreate the directory
+    _ = std::fs::remove_dir_all(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("hals"),
+    );
 
     std::fs::create_dir_all(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
