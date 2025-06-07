@@ -19,13 +19,13 @@ pub fn generate_device_instances_struct(
     let field_defs = instances
         .iter()
         .flat_map(|(device_name, instances)| {
-            let dev_name_ident = ident(IdentType::Device, &device_name);
+            let dev_name_ident = ident(IdentType::Device, device_name);
 
             let mut name_idx = None::<u64>;
 
             instances.iter().map(move |instance| {
                 if let Some((_loc_idx, name)) = path_name(&instance.path) {
-                    let instance_name_ident = ident(IdentType::Instance, &name);
+                    let instance_name_ident = ident(IdentType::Instance, name);
                     quote! {
                         pub #instance_name_ident: #dev_name_ident,
                     }
@@ -53,7 +53,7 @@ pub fn generate_device_instances_struct(
     let field_inits = instances
         .iter()
         .flat_map(|(device_name, instances)| {
-            let dev_name_ident = ident(IdentType::Device, &device_name);
+            let dev_name_ident = ident(IdentType::Device, device_name);
             let mut name_idx = None::<u64>;
 
             instances.iter().map(move |instance| {

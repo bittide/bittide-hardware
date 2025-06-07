@@ -76,6 +76,26 @@ fn main() -> ! {
     expect("init.v0[5]", Some(0x4E), many_types.v0(5));
     expect("init.v0[6]", Some(0x5C), many_types.v0(6));
     expect("init.v0[7]", Some(0x6A), many_types.v0(7));
+    expect(
+        "init.v0_iter.count",
+        8,
+        many_types.v0_volatile_iter().count(),
+    );
+
+    // also check with iterator interface
+    {
+        let v0_ref = [0x8, 0x16, 0x24, 0x32, 0x40, 0x4E, 0x5C, 0x6A];
+        for (i, (got, expected)) in many_types
+            .v0_volatile_iter()
+            .zip(v0_ref.into_iter())
+            .enumerate()
+        {
+            let mut msg = heapless::String::<64>::new();
+            _ = uwrite!(msg, "init.v0[{:?}]", i);
+            expect(&msg, expected, got);
+        }
+    }
+
     expect("init.v1[0]", Some(0x8), many_types.v1(0));
     expect("init.v1[1]", Some(0x16), many_types.v1(1));
     expect("init.v1[2]", Some(3721049880298531338), many_types.v1(2));

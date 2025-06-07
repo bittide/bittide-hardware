@@ -43,6 +43,8 @@ impl DeviceGenerator {
                 if let Type::Vec(len, inner) = &reg.reg_type {
                     let unchecked_name =
                         ident(IdentType::Method, format!("{}_unchecked", &reg.name));
+                    let iter_name =
+                        ident(IdentType::Method, format!("{}_volatile_iter", &reg.name));
                     let scalar_ty = ty_gen.generate_type_ref(inner);
                     let size = *len as usize;
 
@@ -61,6 +63,13 @@ impl DeviceGenerator {
                             let ptr = self.0.add(#offset).cast::<#scalar_ty>();
 
                             ptr.add(idx).read_volatile()
+                        }
+
+                        #[doc = #reg_description]
+                        pub fn #iter_name(&self) -> impl Iterator<Item = #scalar_ty> + '_ {
+                            (0..#size).map(|i| unsafe {
+                                self.#unchecked_name(i)
+                            })
                         }
                     }
                 } else {
