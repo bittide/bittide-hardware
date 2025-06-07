@@ -5,12 +5,10 @@
 use std::str::FromStr;
 
 use crate::{
-    generators::{generic_name, ident, DebugDerive},
+    generators::{generic_name, ident, DebugDerive, IdentType},
     parse::{Type, TypeDefinition, VariantDesc},
 };
-
-use heck::{ToPascalCase, ToSnakeCase};
-use proc_macro2::{Ident, Literal, Span};
+use proc_macro2::Literal;
 use quote::{quote, ToTokens};
 
 fn clog2(n: &u64) -> u64 {
@@ -28,23 +26,18 @@ impl TypeGenerator {
         TypeGenerator
     }
 
-    /// Resolve a type by name, keeping track of external modules
-    /// to import in case of external types.
-    fn resolve_type<'a>(&mut self, name: &'a str) -> &'a str {
-        name
-    }
-
+    #[allow(clippy::only_used_in_recursion)]
     pub fn generate_type_ref(&mut self, ty: &Type) -> proc_macro2::TokenStream {
         match ty {
             Type::Bool => quote! { bool },
             Type::Float => quote! { f32 },
             Type::Double => quote! { f64 },
             Type::BitVector(n) | Type::Unsigned(n) => {
-                let ty_name = ident(format!("u{}", next_pow2(n)));
+                let ty_name = ident(IdentType::Raw, format!("u{}", next_pow2(n)));
                 quote! { #ty_name }
             }
             Type::Signed(n) => {
-                let ty_name = ident(format!("i{}", next_pow2(n)));
+                let ty_name = ident(IdentType::Raw, format!("i{}", next_pow2(n)));
                 quote! { #ty_name }
             }
             Type::Index(n) => {
@@ -71,7 +64,7 @@ impl TypeGenerator {
                 quote! { [#inner; #n] }
             }
             Type::Reference(name, args) => {
-                let ty_name = ident(self.resolve_type(name).to_pascal_case());
+                let ty_name = ident(IdentType::Type, name);
                 let args = args
                     .iter()
                     .map(|x| self.generate_type_ref(x))
@@ -92,7 +85,7 @@ impl TypeGenerator {
         ty: &TypeDefinition,
         debug: DebugDerive,
     ) -> proc_macro2::TokenStream {
-        let name = ident(ty.name.to_pascal_case());
+        let name = ident(IdentType::Type, &ty.name);
 
         let repr = self.generate_repr(ty);
         let derives = match debug {
@@ -161,8 +154,7 @@ impl TypeGenerator {
                                 let fields = xs
                                     .iter()
                                     .map(|f| {
-                                        let name =
-                                            Ident::new(&f.name.to_snake_case(), Span::call_site());
+                                        let name = ident(IdentType::Variable, &f.name);
                                         let ty = self.generate_type_ref(&f.type_);
                                         quote! { pub #name: #ty, }
                                     })
@@ -223,7 +215,7 @@ impl TypeGenerator {
                 vars => {
                     let fieldless = vars.iter().all(|desc| desc.fields.is_empty());
                     let n = clog2(&(vars.len() as u64));
-                    let repr = ident(format!("u{}", n));
+                    let repr = ident(IdentType::Raw, format!("u{}", n));
                     if fieldless {
                         quote! { #[repr(#repr)] }
                     } else {
@@ -237,7 +229,7 @@ impl TypeGenerator {
     }
 
     fn generate_variant(&mut self, v: &VariantDesc) -> proc_macro2::TokenStream {
-        let name = ident(v.name.to_pascal_case());
+        let name = ident(IdentType::Type, &v.name);
 
         let no_names = v.fields.iter().all(|f| f.name.is_empty());
         let all_names = v.fields.iter().all(|f| !f.name.is_empty());
@@ -263,7 +255,7 @@ impl TypeGenerator {
                 .fields
                 .iter()
                 .map(|f| {
-                    let name = ident(f.name.to_snake_case());
+                    let name = ident(IdentType::Variable, &f.name);
                     let ty = self.generate_type_ref(&f.type_);
                     quote! { #name: #ty, }
                 })

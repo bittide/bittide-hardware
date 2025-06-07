@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::{fs::File, path::PathBuf};
 
-use heck::ToSnakeCase;
+use memmap_generate::generators::{ident, IdentType};
 use memmap_generate::hal_set::MemoryMapSet;
 use memmap_generate::{self as mm, generate_rust_wrappers};
 
@@ -56,9 +56,10 @@ fn main() {
         let src = std::fs::read_to_string(&path).unwrap();
 
         let desc = mm::parse(&src).unwrap();
-        let hal_name = name.to_str().unwrap().to_snake_case();
 
-        memory_maps.insert(hal_name, desc);
+        let hal_name = ident(IdentType::Module, name.to_str().unwrap());
+
+        memory_maps.insert(hal_name.to_string(), desc);
     }
 
     let mut set = MemoryMapSet::new(memory_maps);
@@ -109,14 +110,14 @@ fn main() {
         generated_files.push(mod_file_path);
 
         for ty_name in shared_wrapper.type_defs.keys() {
-            writeln!(mod_file, "pub mod {};", ty_name.to_snake_case()).unwrap();
-            writeln!(mod_file, "pub use {}::*;", ty_name.to_snake_case()).unwrap();
+            let name = ident(IdentType::Module, ty_name);
+            writeln!(mod_file, "pub mod {name};").unwrap();
+            writeln!(mod_file, "pub use {name}::*;").unwrap();
         }
 
         for (ty_name, def) in &shared_wrapper.type_defs {
-            let file_path = shared_path
-                .join("types")
-                .join(format!("{}.rs", ty_name.to_snake_case()));
+            let ty_name = ident(IdentType::Module, ty_name);
+            let file_path = shared_path.join("types").join(format!("{ty_name}.rs"));
             let mut file = File::create(&file_path).unwrap();
 
             generated_files.push(file_path);
@@ -145,14 +146,16 @@ fn main() {
         generated_files.push(mod_file_path);
 
         for device_name in shared_wrapper.device_defs.keys() {
-            writeln!(mod_file, "pub mod {};", device_name.to_snake_case()).unwrap();
-            writeln!(mod_file, "pub use {}::*;", device_name.to_snake_case()).unwrap();
+            let name = ident(IdentType::Module, device_name);
+            writeln!(mod_file, "pub mod {name};").unwrap();
+            writeln!(mod_file, "pub use {name}::*;").unwrap();
         }
 
         for (device_name, def) in &shared_wrapper.device_defs {
+            let device_name = ident(IdentType::Module, device_name);
             let file_path = shared_path
                 .join("devices")
-                .join(format!("{}.rs", device_name.to_snake_case()));
+                .join(format!("{device_name}.rs"));
             let mut file = File::create(&file_path).unwrap();
             generated_files.push(file_path);
 
@@ -187,11 +190,11 @@ fn main() {
 
     for (hal_name, hal_data) in set.non_shared() {
         let wrapper = generate_rust_wrappers(hal_data, &gen_config);
-        let hal_mod_name = hal_name.to_snake_case();
+        let hal_mod_name = ident(IdentType::Module, hal_name);
         let hal_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join("hals")
-            .join(&hal_mod_name);
+            .join(hal_mod_name.to_string());
 
         std::fs::create_dir_all(&hal_path)
             .unwrap_or_else(|_| panic!("Create `src/hals/{}` directory", hal_path.display()));
@@ -218,20 +221,16 @@ fn main() {
             generated_files.push(mod_file_path);
 
             for ty_name in wrapper.type_defs.keys() {
-                writeln!(mod_file, "pub mod {};", ty_name.to_snake_case()).unwrap();
-                writeln!(mod_file, "pub use {}::*;", ty_name.to_snake_case()).unwrap();
+                let name = ident(IdentType::Module, ty_name);
+                writeln!(mod_file, "pub mod {name};",).unwrap();
+                writeln!(mod_file, "pub use {name}::*;").unwrap();
             }
 
             for (ty_name, def) in &wrapper.type_defs {
-                let file_path = hal_path
-                    .join("types")
-                    .join(format!("{}.rs", ty_name.to_snake_case()));
-                let mut file = File::create(
-                    hal_path
-                        .join("types")
-                        .join(format!("{}.rs", ty_name.to_snake_case())),
-                )
-                .unwrap();
+                let ty_name = ident(IdentType::Type, ty_name);
+                let file_path = hal_path.join("types").join(format!("{}.rs", ty_name));
+                let mut file =
+                    File::create(hal_path.join("types").join(format!("{}.rs", ty_name))).unwrap();
                 generated_files.push(file_path);
                 writeln!(file, "{}", lint_disables_generated_code()).unwrap();
 
@@ -256,14 +255,15 @@ fn main() {
             generated_files.push(hal_path.join("devices").join("mod.rs"));
 
             for dev_name in wrapper.device_defs.keys() {
-                writeln!(mod_file, "pub mod {};", dev_name.to_snake_case()).unwrap();
-                writeln!(mod_file, "pub use {}::*;", dev_name.to_snake_case()).unwrap();
+                let name = ident(IdentType::Module, dev_name);
+                writeln!(mod_file, "pub mod {name};").unwrap();
+                writeln!(mod_file, "pub use {name}::*;").unwrap();
             }
 
             for (dev_name, def) in &wrapper.device_defs {
-                let file_path = hal_path
-                    .join("devices")
-                    .join(format!("{}.rs", dev_name.to_snake_case()));
+                let dev_mod_name = ident(IdentType::Module, dev_name);
+
+                let file_path = hal_path.join("devices").join(format!("{dev_mod_name}.rs"));
                 let mut file = File::create(&file_path).unwrap();
                 generated_files.push(file_path);
 

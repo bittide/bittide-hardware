@@ -114,6 +114,9 @@ fn main() -> ! {
         hal::Maybe::Just(hal::Either::Left(8)) == many_types.me1(),
     );
 
+    expect("init.t0.0", 12, many_types.t0().0);
+    expect("init.t0.1", 584, many_types.t0().1);
+
     // Test writing values:
     many_types.set_s0(-16);
     many_types.set_s1(16);
@@ -152,6 +155,7 @@ fn main() -> ! {
     many_types.set_e0(hal::Either::Left(0x12));
     many_types.set_me0(hal::Maybe::Just(hal::Either::Right(0x12)));
     many_types.set_me1(hal::Maybe::Just(hal::Either::Right(0x12)));
+    many_types.set_t0(hal::Pair(24, -948));
 
     // Test read back values:
     expect("rt.s0", -16, many_types.s0());
@@ -206,6 +210,9 @@ fn main() -> ! {
         true,
         hal::Maybe::Just(hal::Either::Right(0x12)) == many_types.me1(),
     );
+
+    expect("rt.t0.0", 24, many_types.t0().0);
+    expect("rt.t0.1", -948, many_types.t0().1);
 
     many_types.set_e0(hal::Either::Right(0x12));
     expect("rt.e0", true, hal::Either::Right(0x12) == many_types.e0());
