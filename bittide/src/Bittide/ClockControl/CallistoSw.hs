@@ -4,7 +4,6 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Bittide.ClockControl.CallistoSw (
   callistoSwClockControl,

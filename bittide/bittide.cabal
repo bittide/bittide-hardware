@@ -110,6 +110,7 @@ common clash
     -fplugin=GHC.TypeLits.Extra.Solver
     -fplugin=GHC.TypeLits.Normalise
     -fplugin=GHC.TypeLits.KnownNat.Solver
+    -fplugin=Protocols.Plugin
     -fconstraint-solver-iterations=20
     -fexpose-all-unfoldings
     -fno-worker-wrapper
@@ -117,6 +118,7 @@ common clash
     -fno-unbox-strict-fields
 
   build-depends:
+    clash-protocols,
     ghc-typelits-extra >=0.4.4,
     ghc-typelits-knownnat >=0.7.7,
     ghc-typelits-natnormalise >=0.7.7,
@@ -147,7 +149,6 @@ library
     clash-lib >=1.6.3 && <1.10,
     clash-prelude >=1.6.3 && <1.10,
     clash-protocols,
-    clash-protocols-base,
     clash-protocols-memmap,
     clash-vexriscv,
     constraints >=0.13.3 && <0.15,

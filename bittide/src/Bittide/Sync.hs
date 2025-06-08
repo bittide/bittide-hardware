@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE ImplicitParams #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 {- | Circuits for wall-clock synchronizing Bittide boards.
 

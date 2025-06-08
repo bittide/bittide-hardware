@@ -5,7 +5,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NoFieldSelectors #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Tests.ClockControl.Freeze where
 

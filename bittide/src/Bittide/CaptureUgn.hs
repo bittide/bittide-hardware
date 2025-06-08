@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Bittide.CaptureUgn (captureUgn) where
 
