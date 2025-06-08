@@ -46,8 +46,9 @@ instance FromNamedRecord Row where
       <*> (toEnum <$> m .: "ilaTestSuccess")
 
 assertTriggerAtStart :: [Row] -> Assertion
-assertTriggerAtStart rows =
-  assertBool "Trigger should be True in the first sample" $ (trigger . head) rows
+assertTriggerAtStart [] = assertFailure "No rows given"
+assertTriggerAtStart (row : _) =
+  assertBool "Trigger should be True in the first sample" (trigger row)
 
 -- | Decode the CSV file and run all post processing checks
 processCsv :: FilePath -> Assertion

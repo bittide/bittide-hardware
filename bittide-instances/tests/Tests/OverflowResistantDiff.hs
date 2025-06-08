@@ -94,7 +94,7 @@ ordTest stepwise = property $ do
                   )
 
             expectedOutputs =
-              List.tail
+              List.drop 1
                 $ List.reverse
                 $ snd
                 $ List.foldl golden (Nothing, [])

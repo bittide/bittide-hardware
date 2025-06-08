@@ -3,6 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Tests.Transceiver.WordAlign where
@@ -24,9 +25,9 @@ import qualified Bittide.Transceiver.WordAlign as WordAlign
 import qualified Clash.Explicit.Prelude as E
 import qualified Data.Char as Char
 import qualified Data.List as L
-import qualified Data.List.Extra as L
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
+import qualified "extra" Data.List.Extra as L
 
 newtype HexByte = HexByte Byte
   deriving (Eq, Ord, Generic)

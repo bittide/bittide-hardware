@@ -21,6 +21,7 @@ import Clash.Prelude
 import Data.Char
 import qualified Data.List as L
 import Data.Maybe
+import Data.Proxy
 
 dnaOverSerial ::
   "CLK_125MHZ" ::: DiffClock Ext125 ->
@@ -33,7 +34,15 @@ dnaOverSerial diffClk serialIn = serialOut
   baud = SNat @9600
 
   dnaVal = readDnaPortE2 clk testRst enableGen simDna2
-  txData = withClockResetEnable clk testRst enableGen shiftRegister (dnaToAscii <<$>> dnaVal) ack
+  txData =
+    withClockResetEnable
+      clk
+      testRst
+      enableGen
+      shiftRegister
+      Proxy
+      (dnaToAscii <<$>> dnaVal)
+      ack
   testStart = hitlVioBool clk testDone testSuccess
   testDone = testStart
   testSuccess = testStart
@@ -55,7 +64,7 @@ simShiftRegister :: [Maybe (BitVector 8)]
 simShiftRegister = sampleN 50 dut
  where
   dut =
-    withClockResetEnable clockGen resetGen enableGen $ shiftRegister dataIn ack
+    withClockResetEnable clockGen resetGen enableGen $ shiftRegister Proxy dataIn ack
   dataIn :: Signal System (Maybe (BitVector 64))
   dataIn = fromList $ L.replicate 5 Nothing L.++ [Just 1243786952] L.++ L.repeat Nothing
   ack = fromList $ cycle [True, False, False, True, True]
@@ -63,10 +72,11 @@ simShiftRegister = sampleN 50 dut
 shiftRegister ::
   forall dom n m a.
   (HiddenClockResetEnable dom, KnownNat n, KnownNat m, 1 <= n, BitPack a, BitSize a ~ n * m) =>
+  Proxy n ->
   Signal dom (Maybe a) ->
   Signal dom Bool ->
   Signal dom (Maybe (BitVector m))
-shiftRegister dataInS ackS =
+shiftRegister _ dataInS ackS =
   mealy go (repeat 0 :: Vec n (BitVector m), 0 :: Index (n + 1)) $ bundle (dataInS, ackS)
  where
   go ::

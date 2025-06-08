@@ -77,7 +77,7 @@ clashCmd buildDir hdl topName extraArgs =
 splitName :: ClashTargetName -> (String, String)
 splitName qualifiedName =
   let (f, m) = break (== '.') $ reverse $ show qualifiedName
-   in (reverse $ tail m, reverse f)
+   in (reverse $ drop 1 m, reverse f)
 
 entityName :: ClashTargetName -> String
 entityName = snd . splitName

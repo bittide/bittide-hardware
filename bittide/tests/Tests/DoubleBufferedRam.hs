@@ -8,6 +8,8 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+-- Don't warn about partial functions: this is a test, so we'll see it fail.
+{-# OPTIONS_GHC -Wno-x-partial #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 module Tests.DoubleBufferedRam (tests) where
@@ -146,7 +148,7 @@ readDoubleBufferedRam = property $ do
               readAddr
               (pure Nothing)
         topEntityInput = P.zip switchSignal readAddresses
-        simOut = P.tail $ simulateN simLength topEntity topEntityInput
+        simOut = P.drop 1 $ simulateN simLength topEntity topEntityInput
         expectedOut = fmap (contentsSingle !!) readAddresses
       simOut === P.init expectedOut
 
@@ -257,12 +259,12 @@ readWriteByteAddressableBlockram = property $ do
           L.mapAccumL
             byteAddressableRamBehavior
             (L.head topEntityInput, contents)
-            $ L.tail topEntityInput
+            $ L.drop 1 topEntityInput
       -- TODO: Due to some unexpected mismatch between the expected behavior of either
       -- blockRam or the behavioral model, the boot behavior is inconsistent. We drop the first
       -- expectedOutput cycle too, we expect this is due to the resets supplied b simulateN.
       -- An issue has been made regarding this.
-      L.drop 2 simOut === L.tail expectedOut
+      L.drop 2 simOut === L.drop 1 expectedOut
 
 {- | This test checks if 'blockRamByteAddressable' behaves the same as 'blockRam' when the
 byteEnables are always high.
@@ -336,12 +338,12 @@ doubleBufferedRamByteAddressable0 = property $ do
           L.mapAccumL
             byteAddressableDoubleBufferedRamBehavior
             (L.head topEntityInput, contentsSingle, contentsSingle)
-            $ L.tail topEntityInput
+            $ L.drop 1 topEntityInput
       -- TODO: Due to some unexpected mismatch between the expected behavior of either
       -- blockRam or the behavioral model, the boot behavior is inconsistent. We drop the first
       -- expectedOutput cycle too, we expect this is due to the resets supplied b simulateN.
       -- An issue has been made regarding this.
-      L.drop 2 simOut === L.tail expectedOut
+      L.drop 2 simOut === L.drop 1 expectedOut
 
 {- | This test checks if 'doubleBufferedRamByteAddressable' behaves the same as
 'doubleBufferedRam' when the byteEnables are always high.
@@ -459,7 +461,7 @@ registerWbSigToSig = property $ do
       footnote . fromString $ "input:" <> showX topEntityInput
       footnote . fromString $ "expected" <> showX writes
       fstOut === sndOut
-      writes === L.tail fstOut
+      writes === L.drop 1 fstOut
     _ -> error "registerWbSigToSig: Registers required to store bitvector == 0."
 
 {- | This test checks that 'registerWb' can be written to with the wishbone bus and read from
@@ -491,7 +493,7 @@ registerWbWbToSig = property $ do
         topEntityInput = L.concatMap wbWrite writes <> L.repeat emptyWishboneM2S
         simOut = simulateN simLength topEntity topEntityInput
         (fstOut, sndOut) = L.unzip simOut
-        filteredOut = everyNth regs $ L.tail fstOut
+        filteredOut = everyNth regs $ L.drop 1 fstOut
 
       footnote . fromString $ "simOut: " <> showX simOut
       footnote . fromString $ "filteredOut:" <> showX filteredOut
@@ -505,7 +507,7 @@ registerWbWbToSig = property $ do
      where
       RegisterBank (toList -> l) = getRegsLe v
   everyNth n l
-    | L.length l >= n = L.head xs : everyNth n (L.tail xs)
+    | L.length l >= n = L.head xs : everyNth n (L.drop 1 xs)
     | otherwise = []
    where
     xs = L.drop (n - 1) l
@@ -549,7 +551,7 @@ registerWbSigToWb = property $ do
       footnote . fromString $ "input:" <> showX topEntityInput
       footnote . fromString $ "expected" <> showX writes
       postProcWb fstOut === postProcWb sndOut
-      writes === wbDecoding (L.tail fstOut)
+      writes === wbDecoding (L.drop 1 fstOut)
     _ -> error "registerWbSigToWb: Registers required to store bitvector == 0."
    where
     wbDecoding :: ([WishboneS2M (BitVector 32)] -> [BitVector bits])
@@ -624,8 +626,8 @@ registerWbWriteCollisions = property $ do
       footnote . fromString $ "input:" <> showX (L.take simLength topEntityInput)
       footnote . fromString $ "wbIn" <> showX wbWrites
       footnote . fromString $ "sigIn" <> showX sigWrites
-      sigWrites === L.tail fstOut
-      wbWrites === L.tail sndOut
+      sigWrites === L.drop 1 fstOut
+      wbWrites === L.drop 1 sndOut
     _ -> error "registerWbWriteCollisions: Registers required to store bitvector == 0."
    where
     wbWrite v = L.zipWith bv2WbWrite (L.reverse [0 .. L.length l - 1]) l
@@ -922,7 +924,7 @@ wbStorageBehaviorModel initList initWbOps = case (cancelMulDiv @bytes @8) of
       wbS2M = emptyWishboneS2M{acknowledge = True}
       (preEntry, postEntry) = L.splitAt (fromIntegral i) storedList
       oldEntry = L.head postEntry
-      newList = preEntry <> (pack newEntry : L.tail postEntry)
+      newList = preEntry <> (pack newEntry : L.drop 1 postEntry)
 
       newEntry :: Vec bytes Byte
       newEntry =

@@ -25,7 +25,7 @@ import Data.Char
 import Data.Maybe
 import Protocols
 import Protocols.Idle
-import Protocols.MemoryMap hiding (name)
+import Protocols.MemoryMap
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty

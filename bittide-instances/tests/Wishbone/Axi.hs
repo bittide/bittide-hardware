@@ -29,7 +29,7 @@ import Data.Proxy
 import Protocols
 import Protocols.Axi4.Stream
 import Protocols.Idle
-import Protocols.MemoryMap hiding (name)
+import Protocols.MemoryMap
 import Protocols.Wishbone
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)

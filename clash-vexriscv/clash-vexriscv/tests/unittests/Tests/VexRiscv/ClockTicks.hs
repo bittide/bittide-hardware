@@ -118,7 +118,7 @@ relativeToAbsolute = snd . L.mapAccumL (\acc t -> let new = acc + t in (new, new
 -- | Convert a list of absolute event timestamps to a list of relative timestamps
 absoluteToRelative :: [Int64] -> [Int64]
 absoluteToRelative absoluteTimestamps =
-  0 : P.zipWith (-) (P.tail absoluteTimestamps) absoluteTimestamps
+  0 : P.zipWith (-) (P.drop 1 absoluteTimestamps) absoluteTimestamps
 
 unzipFirst :: ([a] -> [b]) -> [(a, c)] -> [(b, c)]
 unzipFirst f (P.unzip -> (as, cs)) = P.zip (f as) cs

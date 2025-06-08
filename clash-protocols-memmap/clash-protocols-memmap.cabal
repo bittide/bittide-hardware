@@ -43,7 +43,7 @@ common common-options
     ViewPatterns
 
   -- See https://github.com/clash-lang/clash-compiler/pull/2511
-  if impl(ghc >= 9.4)
+  if impl(ghc >=9.4)
     cpp-options: -DCLASH_OPAQUE=OPAQUE
   else
     cpp-options: -DCLASH_OPAQUE=NOINLINE
@@ -67,7 +67,7 @@ common common-options
 
   -- clash-prelude will set suitable version bounds for the plugins
   build-depends:
-    base >=4.14 && <4.19,
+    base >=4.19.0.0,
     clash-prelude >=1.6 && <1.10,
     containers >=0.6 && <0.8,
     ghc-typelits-extra,

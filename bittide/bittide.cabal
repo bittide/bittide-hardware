@@ -89,7 +89,7 @@ library
   import: common-options
   hs-source-dirs: src
   build-depends:
-    Cabal,
+    Cabal >=3.12.1.0,
     aeson,
     array,
     base,

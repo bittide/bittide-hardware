@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE PackageImports #-}
 
 module Project.Handle where
 
@@ -9,10 +10,10 @@ import Prelude hiding (filter)
 import Data.ByteString (filter, unpack)
 import Data.ByteString.Char8 (hGetLine)
 import Data.ByteString.Internal (w2c)
-import Data.List.Extra (trimEnd)
 import Data.Word8 (isAscii, isControl)
 import Debug.Trace
 import System.IO (Handle, hGetChar, hReady)
+import "extra" Data.List.Extra (trimEnd)
 
 import Test.Tasty.HUnit
 

@@ -141,7 +141,7 @@ wbToTransaction ::
   [WishboneM2S addressWidth selWidth a] ->
   [WishboneS2M a] ->
   [Transaction addressWidth selWidth a]
-wbToTransaction (m@WishboneM2S{..} : restM) (s@WishboneS2M{..} : restS)
+wbToTransaction (m@WishboneM2S{..} : restM@(nextM : _)) (s@WishboneS2M{..} : restS)
   | not strobe || not busCycle = nextTransaction
   | hasMultipleTrues [acknowledge, err, retry, stall] = Illegal m s : nextTransaction
   | acknowledge && writeEnable = WriteSuccess m s : nextTransaction
@@ -152,7 +152,6 @@ wbToTransaction (m@WishboneM2S{..} : restM) (s@WishboneS2M{..} : restS)
   | Wb.busCycle nextM && Wb.strobe nextM = nextTransaction
   | otherwise = Ignored m : nextTransaction
  where
-  nextM = L.head restM
   nextTransaction = wbToTransaction restM restS
   hasMultipleTrues :: [Bool] -> Bool
   hasMultipleTrues [] = False

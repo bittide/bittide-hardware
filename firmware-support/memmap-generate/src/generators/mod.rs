@@ -30,14 +30,7 @@ pub enum IdentType {
 
 /// Generate a contextual identifier from a string.
 pub fn ident(ident_type: IdentType, n: impl AsRef<str>) -> Ident {
-    let s = match n.as_ref() {
-        "(,)" => "Pair",
-        "(,,)" => "Triple",
-        "(,,,)" => "FourTuple",
-        "(,,,,)" => "FiveTuple",
-        s => s,
-    };
-
+    let s = n.as_ref();
     let s = match ident_type {
         IdentType::Type => s.to_pascal_case(),
         IdentType::Device => s.to_pascal_case(),

@@ -11,9 +11,9 @@ import Bittide.ClockControl.Si539xSpi (RegisterEntry)
 import Clash.Sized.Vector (listToVecTH)
 import Control.Monad.IO.Class (liftIO)
 import Data.List (isPrefixOf)
-import Data.List.Extra (trim)
 import Language.Haskell.TH
 import System.FilePath ((</>))
+import "extra" Data.List.Extra (trim)
 
 import "bittide-extra" Numeric.Extra (parseHex)
 

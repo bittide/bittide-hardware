@@ -4,6 +4,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | Generate a description of a type for use in a memory map.
 module Protocols.MemoryMap.FieldType where
@@ -91,20 +92,46 @@ instance (ToFieldType a) => ToFieldType (Maybe a) where
   type WithVars (Maybe a) = Maybe (Var 0)
   args = toFieldType @a :> Nil
 
+{- | XXX: We lie about the constructor name here, as the generator needs the
+       type name to be the same as the constructor name. From GHC 9.6 up though
+       the _type_ name of a tuple is @Tuple2@, but the constructor name is
+       @(,)@.
+-}
+tupType :: Int -> FieldType
+tupType n =
+  SumOfProductFieldType
+    TypeName
+      { name = "Tuple" <> show n
+      , moduleName = "GHC.Tuple.Prim"
+      , packageName = "ghc-prim"
+      , isNewType = False
+      }
+    [
+      ( "Tuple" <> show n
+      , [("", TypeVariable nRef) | nRef <- [0 .. fromIntegral (n - 1)]]
+      )
+    ]
+
 instance (ToFieldType a, ToFieldType b) => ToFieldType (a, b) where
   type Generics (a, b) = 2
   type WithVars (a, b) = (Var 0, Var 1)
   args = toFieldType @a :> toFieldType @b :> Nil
+  toFieldType = TypeReference (tupType 2) [toFieldType @a, toFieldType @b]
 
 instance (ToFieldType a, ToFieldType b, ToFieldType c) => ToFieldType (a, b, c) where
   type Generics (a, b, c) = 3
   type WithVars (a, b, c) = (Var 0, Var 1, Var 2)
   args = toFieldType @a :> toFieldType @b :> toFieldType @c :> Nil
+  toFieldType = TypeReference (tupType 3) [toFieldType @a, toFieldType @b, toFieldType @c]
 
 instance (ToFieldType a, ToFieldType b, ToFieldType c, ToFieldType d) => ToFieldType (a, b, c, d) where
   type Generics (a, b, c, d) = 4
   type WithVars (a, b, c, d) = (Var 0, Var 1, Var 2, Var 3)
   args = toFieldType @a :> toFieldType @b :> toFieldType @c :> toFieldType @d :> Nil
+  toFieldType =
+    TypeReference
+      (tupType 4)
+      [toFieldType @a, toFieldType @b, toFieldType @c, toFieldType @d]
 
 instance (ToFieldType a, ToFieldType b) => ToFieldType (Either a b) where
   type Generics (Either a b) = 2

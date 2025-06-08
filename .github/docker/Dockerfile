@@ -35,7 +35,7 @@ COPY flake.lock flake.lock
 COPY nix /build/nix
 
 RUN \
-  nix develop --extra-experimental-features "nix-command flakes" --command bash -c "echo OK"
+  nix develop -j$(nproc) --extra-experimental-features "nix-command flakes" --command bash -c "echo OK"
 
 # Vivado hacks / dependencies:
 RUN \

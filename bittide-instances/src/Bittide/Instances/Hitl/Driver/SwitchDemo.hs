@@ -4,7 +4,10 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE QuasiQuotes #-}
+-- TODO: Remove use of partial functions
+{-# OPTIONS_GHC -Wno-x-partial #-}
 
 module Bittide.Instances.Hitl.Driver.SwitchDemo (
   OcdInitData (..),
@@ -23,7 +26,6 @@ import Control.Concurrent (threadDelay)
 import Control.Monad (forM, forM_, when, zipWithM)
 import Control.Monad.IO.Class
 import Data.Bifunctor (Bifunctor (bimap))
-import Data.List.Extra (trim)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
@@ -36,6 +38,7 @@ import System.FilePath
 import System.IO
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
+import "extra" Data.List.Extra (trim)
 
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Bittide.SwitchDemoProcessingElement.Calculator as Calc

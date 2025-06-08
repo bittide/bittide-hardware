@@ -16,7 +16,7 @@ import Data.Maybe (catMaybes)
 import Project.FilePath
 import Protocols
 import Protocols.Idle
-import Protocols.MemoryMap hiding (reset)
+import Protocols.MemoryMap
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
