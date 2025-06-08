@@ -24,6 +24,8 @@ flag sim-baud-rate
   default: False
   manual: True
 
+-- One day we'll be able to replace this by 'default-language: GHC2024' and
+-- disabling a few extensions :)
 common ghc2024
   default-extensions:
     -- GHC2024, excluding:

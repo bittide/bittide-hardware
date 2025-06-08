@@ -7,6 +7,8 @@ author: QBayLogic B.V.
 maintainer: devops@qbaylogic.com
 copyright: Copyright © 2022-2024 Google LLC
 
+-- One day we'll be able to replace this by 'default-language: GHC2024' and
+-- disabling a few extensions :)
 common ghc2024
   default-extensions:
     -- GHC2024, excluding:

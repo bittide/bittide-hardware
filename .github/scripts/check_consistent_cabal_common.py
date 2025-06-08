@@ -1,16 +1,13 @@
-cabal-version: 3.8
-name: bittide-experiments
-synopsis:
-  Infrastructure and configurations needed for running
-  experiments with the Bittide systems under development
+#!/usr/bin/env python3
+"""
+Make sure the mentioned Cabal files have the same common settings
+"""
+# SPDX-FileCopyrightText: 2022 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+import sys
 
-version: 0.1
-license: Apache-2.0
-license-file: LICENSE
-author: QBayLogic B.V.
-maintainer: devops@qbaylogic.com
-copyright: Copyright © 2024 Google LLC
-
+COMMON = """
 -- One day we'll be able to replace this by 'default-language: GHC2024' and
 -- disabling a few extensions :)
 common ghc2024
@@ -133,79 +130,28 @@ common extra
   ghc-options:
     -Wall
     -Wcompat
+"""
 
-library
-  import: ghc2024, clash, extra
-  hs-source-dirs: src
-  build-depends:
-    aeson,
-    aeson-pretty,
-    array,
-    base,
-    bittide,
-    bytestring,
-    cassava,
-    clash-cores,
-    clash-lib,
-    clash-prelude,
-    containers,
-    data-default,
-    directory,
-    extra,
-    filepath,
-    happy-dot,
-    http-conduit,
-    http-types,
-    matplotlib,
-    optparse-applicative,
-    process,
-    random,
-    template-haskell,
-    temporary,
-    text,
-    typelits-witnesses,
-    vector,
-    vivado-hs,
 
-  exposed-modules:
-    Bittide.Github.Artifacts
-    Bittide.Hitl
-    Bittide.Plot
-    Bittide.Report.ClockControl
-    Bittide.Simulate.Config
-    Bittide.Topology
+CABAL_FILES = [
+  "bittide/bittide.cabal",
+  "bittide-instances/bittide-instances.cabal",
+  "bittide-extra/bittide-extra.cabal",
+  "bittide-experiments/bittide-experiments.cabal",
+  "clash-protocols-memmap/clash-protocols-memmap.cabal",
+]
 
-test-suite unittests
-  import: ghc2024, clash, extra
-  type: exitcode-stdio-1.0
-  main-is: unittests.hs
-  ghc-options:
-    -threaded
-    -rtsopts
-    -with-rtsopts=-N
+def main():
+    for cabal_file in CABAL_FILES:
+        with open(cabal_file, 'r') as f:
+            content = f.read()
 
-  hs-source-dirs: tests
-  build-depends:
-    base,
-    bittide,
-    bittide-experiments,
-    clash-prelude,
-    tasty,
-    tasty-hedgehog,
-    tasty-hunit,
+        if COMMON not in content:
+            print(f"Error: common header not found in {cabal_file}", file=sys.stderr)
+            return 1
 
-test-suite doctests
-  type: exitcode-stdio-1.0
-  hs-source-dirs: tests
-  main-is: doctests.hs
-  ghc-options: -threaded
-  ghc-options:
-    -Wall
-    -Wcompat
-    -threaded
+    return 0
 
-  build-depends:
-    base,
-    bittide-experiments,
-    doctest-parallel >=0.3.0.1 && <0.4,
-    word8,
+
+if __name__ == '__main__':
+    sys.exit(main())
