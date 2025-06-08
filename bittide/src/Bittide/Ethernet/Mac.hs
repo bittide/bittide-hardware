@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Bittide.Ethernet.Mac where

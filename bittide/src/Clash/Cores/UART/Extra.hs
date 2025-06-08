@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
 module Clash.Cores.UART.Extra (

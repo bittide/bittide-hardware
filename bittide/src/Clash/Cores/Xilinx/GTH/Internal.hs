@@ -1,11 +1,8 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
 module Clash.Cores.Xilinx.GTH.Internal where

@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Tests.SwitchDemoProcessingElement.Calculator where
 

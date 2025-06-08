@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_HADDOCK hide #-}
 
 module Bittide.Axi4.Internal where

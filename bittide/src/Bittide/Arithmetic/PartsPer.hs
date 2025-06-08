@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE NumericUnderscores #-}
 
 {- | A more-or-less ad-hoc collection of definitions to work with measuring
 clock frequency differences without loss-of-precision.

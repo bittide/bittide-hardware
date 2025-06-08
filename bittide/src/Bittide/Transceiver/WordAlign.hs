@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE NamedFieldPuns #-}
 
 -- or by any other shift (or none at all!). This module provides utilities to end
 -- up with a word aligned stream. The basic idea is that, while \"booting\" the

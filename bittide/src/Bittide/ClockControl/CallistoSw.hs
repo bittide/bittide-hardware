@@ -2,10 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
