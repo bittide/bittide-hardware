@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# HLINT ignore "Use list comprehension" #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {- | Check a memory map for valid absolute addresses and populate the memory map

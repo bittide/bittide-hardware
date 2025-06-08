@@ -2,15 +2,12 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
 --
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 {-# OPTIONS_GHC -Wno-unused-matches #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
 {- | Internal module used to test whether memory mapped circuits generate

@@ -2,17 +2,12 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-ambiguous-fields #-}
 -- It's a test, we'll see it :-)
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Tests.Protocols.MemoryMap.Registers.WishboneStandard where
 

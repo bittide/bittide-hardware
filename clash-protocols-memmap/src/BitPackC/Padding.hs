@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 module BitPackC.Padding (
   packWordC,

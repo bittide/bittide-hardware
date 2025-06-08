@@ -1,14 +1,9 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 
 module Tests.BitPackC where
 
@@ -33,7 +28,9 @@ idx :: (KnownNat n) => Vec n a -> Index n -> a
 idx v i = v !! i
 
 newtype MyInt = MkMyInt (Signed 10)
-  deriving (Show, Eq, Generic, BitPackC, NFDataX)
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (BitPackC)
+  deriving newtype (NFDataX)
 
 data MyUnit = MyUnitPayload ()
   deriving (Show, Eq, Generic, BitPackC, NFDataX)
