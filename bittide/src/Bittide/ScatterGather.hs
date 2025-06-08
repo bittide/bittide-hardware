@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE RecordWildCards #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=16 #-}
 
 module Bittide.ScatterGather (
   scatterUnitWb,

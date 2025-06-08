@@ -4,7 +4,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- For Show (SNatLE a b)
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 module Tests.ScatterGather (tests) where
 

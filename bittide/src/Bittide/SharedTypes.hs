@@ -4,7 +4,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=8 #-}
 
 module Bittide.SharedTypes (
   module Bittide.SharedTypes,

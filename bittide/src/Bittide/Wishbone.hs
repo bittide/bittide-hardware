@@ -4,7 +4,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=100 #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
 module Bittide.Wishbone where

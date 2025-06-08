@@ -6,7 +6,6 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 -- Don't warn about partial functions: this is a test, so we'll see it fail.
 {-# OPTIONS_GHC -Wno-x-partial #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 module Tests.DoubleBufferedRam (tests) where
 

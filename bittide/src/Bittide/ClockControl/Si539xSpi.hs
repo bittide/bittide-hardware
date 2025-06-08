@@ -3,7 +3,6 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=15 #-}
 
 module Bittide.ClockControl.Si539xSpi where
 
