@@ -3,7 +3,6 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ImplicitPrelude #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 module Bittide.Report.ClockControl (
   generateReport,
@@ -133,7 +132,8 @@ generateReport refDom (("Bittide - " <>) -> header) dir ids cfg =
 
 checkDependencies :: IO (Maybe String)
 checkDependencies =
-  either Just (const Nothing) . sequence_
+  either Just (const Nothing)
+    . sequence_
     <$> sequence
       [ checkEVarExists "RUNREF"
       , checkProgExists "mv"
@@ -152,7 +152,8 @@ checkDependencies =
 
 checkIntermediateResults :: FilePath -> IO (Maybe String)
 checkIntermediateResults dir =
-  either Just (const Nothing) . sequence_
+  either Just (const Nothing)
+    . sequence_
     <$> sequence
       [ checkDirExists dir
       , checkFileExists $ dir </> plotClocksFileName

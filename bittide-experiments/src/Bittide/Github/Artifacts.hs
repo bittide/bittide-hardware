@@ -40,10 +40,10 @@ import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (callCommand, callProcess)
 
-import Data.ByteString.Char8 qualified as ByteString (pack)
-import Data.Map.Strict qualified as Map (fromList, lookup)
-import Data.Text qualified as Text (unpack)
-import Data.Vector qualified as Vector (toList)
+import qualified Data.ByteString.Char8 as ByteString (pack)
+import qualified Data.Map.Strict as Map (fromList, lookup)
+import qualified Data.Text as Text (unpack)
+import qualified Data.Vector as Vector (toList)
 
 -- | The environment variable used to share the artifact access token.
 accessTokenEnvVar :: String
@@ -109,13 +109,15 @@ instance FromJSON ArtifactDownloadUrl where
   parseJSON =
     withObject "root" $ \root ->
       (root .: "artifacts" >>=) $
-        withArray "artifacts" $ \as ->
-          fmap (ArtifactDownloadUrl . Map.fromList) $
-            forM (Vector.toList as) $
-              withObject "artifact" $ \artifact -> do
-                String name <- artifact .: "name"
-                String url <- artifact .: "archive_download_url"
-                return (Text.unpack name, Text.unpack url)
+        withArray "artifacts" $
+          \as ->
+            fmap (ArtifactDownloadUrl . Map.fromList) $
+              forM (Vector.toList as) $
+                withObject "artifact" $
+                  \artifact -> do
+                    String name <- artifact .: "name"
+                    String url <- artifact .: "archive_download_url"
+                    return (Text.unpack name, Text.unpack url)
 
 -- | A newtype wrapper for reading back curl response messages
 newtype CurlResponseMessage = CurlResponseMessage String
