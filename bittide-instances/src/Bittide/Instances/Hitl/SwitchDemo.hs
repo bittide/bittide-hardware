@@ -1,15 +1,9 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 {- | Switch demo for a Bittide system. In concert with its driver file, this device under
 test should demonstrate the predictability of a Bittide system once it has achieved logical

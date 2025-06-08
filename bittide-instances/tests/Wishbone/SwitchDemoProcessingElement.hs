@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE NumericUnderscores #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Wishbone.SwitchDemoProcessingElement where
 

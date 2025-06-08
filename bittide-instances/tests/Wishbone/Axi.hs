@@ -1,10 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NumericUnderscores #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Wishbone.Axi where
 

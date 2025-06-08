@@ -1,9 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NumericUnderscores #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Wishbone.Time where
 

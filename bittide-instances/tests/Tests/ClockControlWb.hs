@@ -1,13 +1,10 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE NoFieldSelectors #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Tests.ClockControlWb where
 

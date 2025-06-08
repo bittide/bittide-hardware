@@ -3,13 +3,9 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE MagicHash #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 {- | Test whether clock boards are configurable and transceiver links come
 online. If they do, run clock control and wait for the clocks to stabilize.

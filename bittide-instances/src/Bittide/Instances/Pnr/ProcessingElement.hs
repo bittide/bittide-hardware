@@ -1,9 +1,7 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Bittide.Instances.Pnr.ProcessingElement where
 
