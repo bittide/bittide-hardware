@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use device_instances::generate_device_instances_struct;
 use device_types::DeviceGenerator;
+use heck::{ToPascalCase, ToSnakeCase};
 use proc_macro2::{Ident, Span, TokenStream};
 use types::TypeGenerator;
 
@@ -15,8 +16,20 @@ pub mod device_instances;
 pub mod device_types;
 pub mod types;
 
-pub(crate) fn ident(n: impl AsRef<str>) -> Ident {
-    // TODO handle things like CamelCase/snake_case conversion?
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum IdentType {
+    Type,
+    Device,
+    Instance,
+    Module,
+    Method,
+    Variable,
+    // Just pass through the raw string
+    Raw,
+}
+
+/// Generate a contextual identifier from a string.
+pub fn ident(ident_type: IdentType, n: impl AsRef<str>) -> Ident {
     let s = match n.as_ref() {
         "(,)" => "Pair",
         "(,,)" => "Triple",
@@ -25,14 +38,22 @@ pub(crate) fn ident(n: impl AsRef<str>) -> Ident {
         s => s,
     };
 
-    Ident::new(s, Span::call_site())
+    let s = match ident_type {
+        IdentType::Type => s.to_pascal_case(),
+        IdentType::Device => s.to_pascal_case(),
+        IdentType::Instance => s.to_snake_case(),
+        IdentType::Module => s.to_snake_case(),
+        IdentType::Method => s.to_snake_case(),
+        IdentType::Variable => s.to_snake_case(),
+        IdentType::Raw => s.to_string(),
+    };
+
+    Ident::new(&s, Span::call_site())
 }
 
 pub(crate) fn generic_name(idx: u64) -> Ident {
-    ident(format!(
-        "{}",
-        char::from_u32('A' as u32 + idx as u32).unwrap()
-    ))
+    let s = format!("{}", char::from_u32('A' as u32 + idx as u32).unwrap());
+    ident(IdentType::Type, &s)
 }
 
 pub struct RustWrappers {

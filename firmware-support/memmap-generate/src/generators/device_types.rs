@@ -2,12 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use heck::{ToPascalCase, ToSnakeCase};
 use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::{
-    generators::{ident, types::TypeGenerator},
+    generators::{ident, types::TypeGenerator, IdentType},
     parse::{DeviceDesc, RegisterAccess, Type},
 };
 
@@ -23,8 +22,7 @@ impl DeviceGenerator {
         desc: &DeviceDesc,
         ty_gen: &mut TypeGenerator,
     ) -> proc_macro2::TokenStream {
-        let device_type_name = desc.name.to_pascal_case();
-        let name = ident(&device_type_name);
+        let name = ident(IdentType::Device, &desc.name);
         let description = &desc.description;
 
         let get_funcs = desc
@@ -37,14 +35,16 @@ impl DeviceGenerator {
                     return quote! {};
                 }
 
-                let register_name = reg.name.to_snake_case();
-                let name = ident(&register_name);
+                let name = ident(IdentType::Variable, &reg.name);
                 let offset = reg.address as usize;
 
                 let reg_description = &reg.description;
 
                 if let Type::Vec(len, inner) = &reg.reg_type {
-                    let unchecked_name = ident(format!("{}_unchecked", &register_name));
+                    let unchecked_name =
+                        ident(IdentType::Method, format!("{}_unchecked", &reg.name));
+                    let iter_name =
+                        ident(IdentType::Method, format!("{}_volatile_iter", &reg.name));
                     let scalar_ty = ty_gen.generate_type_ref(inner);
                     let size = *len as usize;
 
@@ -63,6 +63,13 @@ impl DeviceGenerator {
                             let ptr = self.0.add(#offset).cast::<#scalar_ty>();
 
                             ptr.add(idx).read_volatile()
+                        }
+
+                        #[doc = #reg_description]
+                        pub fn #iter_name(&self) -> impl Iterator<Item = #scalar_ty> + '_ {
+                            (0..#size).map(|i| unsafe {
+                                self.#unchecked_name(i)
+                            })
                         }
                     }
                 } else {
@@ -89,15 +96,14 @@ impl DeviceGenerator {
                 if !can_write {
                     return quote! {};
                 }
-
-                let register_name = reg.name.to_snake_case();
-                let name = ident(format!("set_{}", &register_name));
+                let name = ident(IdentType::Method, format!("set_{}", &reg.name));
                 let offset = reg.address as usize;
 
                 let reg_description = &reg.description;
 
                 if let Type::Vec(len, inner) = &reg.reg_type {
-                    let unchecked_name = ident(format!("set_{}_unchecked", &register_name));
+                    let unchecked_name =
+                        ident(IdentType::Method, format!("set_{}_unchecked", &reg.name));
                     let scalar_ty = ty_gen.generate_type_ref(inner);
                     let size = *len as usize;
 

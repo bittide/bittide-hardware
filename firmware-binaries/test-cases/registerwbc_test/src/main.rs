@@ -76,6 +76,26 @@ fn main() -> ! {
     expect("init.v0[5]", Some(0x4E), many_types.v0(5));
     expect("init.v0[6]", Some(0x5C), many_types.v0(6));
     expect("init.v0[7]", Some(0x6A), many_types.v0(7));
+    expect(
+        "init.v0_iter.count",
+        8,
+        many_types.v0_volatile_iter().count(),
+    );
+
+    // also check with iterator interface
+    {
+        let v0_ref = [0x8, 0x16, 0x24, 0x32, 0x40, 0x4E, 0x5C, 0x6A];
+        for (i, (got, expected)) in many_types
+            .v0_volatile_iter()
+            .zip(v0_ref.into_iter())
+            .enumerate()
+        {
+            let mut msg = heapless::String::<64>::new();
+            _ = uwrite!(msg, "init.v0[{:?}]", i);
+            expect(&msg, expected, got);
+        }
+    }
+
     expect("init.v1[0]", Some(0x8), many_types.v1(0));
     expect("init.v1[1]", Some(0x16), many_types.v1(1));
     expect("init.v1[2]", Some(3721049880298531338), many_types.v1(2));
@@ -113,6 +133,9 @@ fn main() -> ! {
         true,
         hal::Maybe::Just(hal::Either::Left(8)) == many_types.me1(),
     );
+
+    expect("init.t0.0", 12, many_types.t0().0);
+    expect("init.t0.1", 584, many_types.t0().1);
 
     // Test writing values:
     many_types.set_s0(-16);
@@ -152,6 +175,7 @@ fn main() -> ! {
     many_types.set_e0(hal::Either::Left(0x12));
     many_types.set_me0(hal::Maybe::Just(hal::Either::Right(0x12)));
     many_types.set_me1(hal::Maybe::Just(hal::Either::Right(0x12)));
+    many_types.set_t0(hal::Pair(24, -948));
 
     // Test read back values:
     expect("rt.s0", -16, many_types.s0());
@@ -206,6 +230,9 @@ fn main() -> ! {
         true,
         hal::Maybe::Just(hal::Either::Right(0x12)) == many_types.me1(),
     );
+
+    expect("rt.t0.0", 24, many_types.t0().0);
+    expect("rt.t0.1", -948, many_types.t0().1);
 
     many_types.set_e0(hal::Either::Right(0x12));
     expect("rt.e0", true, hal::Either::Right(0x12) == many_types.e0());
