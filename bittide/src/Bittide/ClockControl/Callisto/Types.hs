@@ -6,6 +6,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
 
 module Bittide.ClockControl.Callisto.Types (
   CallistoResult (..),
@@ -17,9 +18,11 @@ module Bittide.ClockControl.Callisto.Types (
 
 import Clash.Prelude
 
+import BitPackC (BitPackC)
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker (StabilityIndication)
 import Clash.Signal.TH.Extra (deriveSignalHasFields)
+import Protocols.MemoryMap.FieldType (ToFieldType)
 import VexRiscv (JtagOut)
 
 -- | Result of the clock control algorithm.
@@ -95,7 +98,7 @@ data ReframingState
       }
   | -- | Reframing has taken place. There is nothing more to do.
     Done
-  deriving (Generic, NFDataX)
+  deriving (Generic, NFDataX, BitPack, Show, BitPackC, ToFieldType)
 
 -- | Callisto's internal state used in 'callisto'
 data ControlSt = ControlSt

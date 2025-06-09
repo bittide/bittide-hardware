@@ -75,6 +75,7 @@ import Data.Bool (bool)
 import Data.Constraint.Nat.Extra (Dict (..), SatSubZero, satSubZeroMin)
 import Data.Constraint.Nat.Lemmas (maxGeqPlus, minLeq)
 import Data.Maybe (fromMaybe, isJust)
+import Protocols.MemoryMap (MM)
 
 {- | Divisible division operation, which ensures that the dividend is
 always a multiple of the divisor. Type family resolution will get
@@ -455,7 +456,7 @@ type CallistoCc n m sys cfg =
   cfg ->
   Signal sys (BitVector n) ->
   Vec n (Signal sys (RelDataCount m)) ->
-  Signal sys (CallistoResult n)
+  (MM, Signal sys (CallistoResult n))
 
 {-# NOINLINE callistoClockControlWithIla #-}
 
@@ -491,11 +492,11 @@ callistoClockControlWithIla ::
   Signal sys (BitVector n) ->
   -- | Statistics provided by elastic buffers.
   Vec n (Signal sys (RelDataCount m)) ->
-  Signal sys (CallistoResult n)
+  (MM, Signal sys (CallistoResult n))
 callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..} mask ebs =
-  hwSeqX ilaInstance (muteDuringCalibration <$> calibrating <*> output)
+  hwSeqX ilaInstance (mm, muteDuringCalibration <$> calibrating <*> output)
  where
-  output = withClockResetEnable clk rst enableGen $ callistoCc callistoCfg mask ebs
+  (mm, output) = withClockResetEnable clk rst enableGen $ callistoCc callistoCfg mask ebs
 
   -- Condense multicycle speedchange outputs into a single cycle for the ILA
   mscChanging = isRising clk rst enableGen False (isJust . maybeSpeedChange <$> output)

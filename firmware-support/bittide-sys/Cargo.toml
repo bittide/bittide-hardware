@@ -19,7 +19,7 @@ default = []
 fdt = "0.1.0"
 log = "0.4.21"
 ufmt = "0.2.0"
-
+bittide-hal = { path = "../bittide-hal" }
 [dependencies.heapless]
 version = "0.8"
 features = ["ufmt"]

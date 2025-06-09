@@ -4,10 +4,9 @@
 
 use ufmt::derive::uDebug;
 
-use crate::{
-    clock_control::{ClockControl, SpeedChange},
-    debug_register::DebugRegister,
-};
+use bittide_hal::shared::devices::clock_control::{ClockControl, ReframingState};
+use bittide_hal::shared::devices::debug_register::DebugRegister;
+use bittide_hal::shared::types::speed_change::SpeedChange;
 
 /// Rust sibling of
 /// `Bittide.ClockControl.StabilityChecker.StabilityIndication`.
@@ -42,65 +41,7 @@ pub struct ControlConfig {
     pub target_count: isize,
 }
 
-/// Rust version of
-/// `Bittide.ClockControl.Callisto.Types.ReframingState`.
-#[derive(Clone)]
-#[repr(C)]
-pub enum ReframingState {
-    /// The controller remains in this state until stability has been
-    /// detected.
-    Detect,
-    /// Reframing has taken place. There is nothing more to do.
-    Done,
-    /// The controller remains in this state for the predefined
-    /// number of cycles with the assumption that the elastic buffers
-    /// of all other nodes are sufficiently stable after that time.
-    Wait {
-        /// Stored correction value to be applied at reframing time.
-        target_correction: f32,
-        /// Number of cycles to wait until reframing takes place.
-        cur_wait_time: u32,
-    },
-}
-
-// Asserts to make sure that things are packaged as they should be.
-const _: () = {
-    use core::mem;
-
-    assert!(12 == mem::size_of::<ReframingState>());
-    assert!(4 == mem::align_of::<ReframingState>());
-
-    // Assert that a `Detect` looks like a 0 in the discriminant part.
-    assert!(unsafe {
-        let tmp = ReframingState::Detect;
-        0u32 == *(&tmp as *const _ as *const u32)
-    });
-
-    // Assert that a `Detect` looks like a 0 in the discriminant part.
-    assert!(unsafe {
-        let tmp = ReframingState::Done;
-        1u32 == *(&tmp as *const _ as *const u32)
-    });
-
-    // Ensure that the memory layout of a `Wait` is what the Wishbone bus expects:
-    // 0x00: discriminant (u32)
-    // 0x04: target correction (f32)
-    // 0x08: target count (u32)
-    unsafe {
-        let tmp = ReframingState::Wait {
-            target_correction: 3.321,
-            cur_wait_time: 12345,
-        };
-        let ptr = &tmp as *const ReframingState;
-        let ptr = ptr.cast::<u32>();
-        assert!(2 == ptr.read());
-        assert!(3.321 == ptr.add(1).cast::<f32>().read());
-        assert!(12345 == ptr.add(2).read());
-    }
-};
-
 /// Rust version of `Bittide.ClockControl.Callisto.Types.ControlSt`.
-#[derive(Clone)]
 pub struct ControlSt {
     /// Accumulated speed change requests, where
     /// * `speedup ~ 1`
@@ -124,23 +65,24 @@ impl ControlSt {
         debug_register: DebugRegister,
         init_rf_state: ReframingState,
     ) -> Self {
-        let mut new = ControlSt {
+        let new = ControlSt {
             z_k,
             b_k,
             steady_state_target,
             debug_register,
         };
-        new.debug_register.set_rf_state(init_rf_state);
+        new.debug_register.set_reframing_state(init_rf_state);
         new
     }
 
     fn rf_state_update(&mut self, wait_time: usize, stable: bool, target: f32) {
-        match self.debug_register.get_rf_state() {
+        match self.debug_register.reframing_state() {
             ReframingState::Detect if stable => {
-                self.debug_register.set_rf_state(ReframingState::Wait {
-                    target_correction: target,
-                    cur_wait_time: wait_time as u32,
-                });
+                self.debug_register
+                    .set_reframing_state(ReframingState::Wait {
+                        target_correction: target,
+                        cur_wait_time: wait_time as u32,
+                    });
             }
             ReframingState::Wait {
                 ref mut cur_wait_time,
@@ -149,11 +91,20 @@ impl ControlSt {
             ReframingState::Wait {
                 target_correction, ..
             } => {
-                self.debug_register.set_rf_state(ReframingState::Done);
+                self.debug_register
+                    .set_reframing_state(ReframingState::Done);
                 self.steady_state_target = target_correction;
             }
             _ => (),
         }
+    }
+}
+
+fn speed_change_to_sign(speed_change: SpeedChange) -> i32 {
+    match speed_change {
+        SpeedChange::NoChange => 0,
+        SpeedChange::SlowDown => -1,
+        SpeedChange::SpeedUp => 1,
     }
 }
 
@@ -171,11 +122,20 @@ pub fn callisto(cc: &ClockControl, config: &ControlConfig, state: &mut ControlSt
     const FSTEP: f32 = 10e-9;
 
     let n_buffers = cc.up_links();
-    let measured_sum = cc.data_counts().sum::<i32>();
+
+    let mut measured_sum = 0i32;
+    {
+        let mut idx = 0;
+        while let Some(count) = cc.data_counts(idx) {
+            measured_sum += count as i32;
+            idx += 1;
+        }
+    }
+
     let r_k = (measured_sum - n_buffers as i32 * config.target_count as i32) as f32;
     let c_des = K_P * r_k + state.steady_state_target;
 
-    state.z_k += state.b_k.sign();
+    state.z_k += speed_change_to_sign(state.b_k);
 
     let c_est = FSTEP * state.z_k as f32;
 
