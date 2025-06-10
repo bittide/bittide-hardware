@@ -140,7 +140,7 @@ dut =
         (uartRx, jtag, mm) <- idleSource -< ()
         [ (prefixUart, (mmUart, uartBus))
           , (prefixCC, (mmCC, ccWb))
-          , (prefixDbg, (mmDbg, dbgWb))
+          , (prefixDbg, debugWbBus)
           ] <-
           processingElement NoDumpVcd peConfig -< (mm, jtag)
         (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
@@ -158,7 +158,7 @@ dut =
         constBwd 0b110 -< prefixCC
 
         cm <- cSignalMap clockMod -< ccd0
-        _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (mmDbg, (dbgWb, cm))
+        _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (debugWbBus, cm)
         constBwd 0b101 -< prefixDbg
         idC -< (uartTx, ccd1)
  where

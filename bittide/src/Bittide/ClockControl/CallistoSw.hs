@@ -132,7 +132,7 @@ callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
 
   Circuit circuitFn = circuit $ \(mm, jtag) -> do
     [ (prefixCc, (mmCc, wbClockControl))
-      , (prefixDebug, (mmDebug, wbDebug))
+      , (prefixDebug, debugWbBus)
       , (prefixDummy, (mmDummy, wbDummy))
       ] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
@@ -145,7 +145,7 @@ callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
         -< (mmCc, wbClockControl)
     constBwd 0b110 -< prefixCc
     cm <- cSignalMap clockMod -< ccd0
-    dbg <- debugRegisterWb debugRegisterCfg -< (mmDebug, (wbDebug, cm))
+    dbg <- debugRegisterWb debugRegisterCfg -< (debugWbBus, cm)
     constBwd 0b101 -< prefixDebug
     idC -< (ccd1, dbg)
 
@@ -301,14 +301,18 @@ callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} = Circuit g
       )
     Circuit peFn = circuit $ \(mm, jtag) -> do
       allWishbone <- processingElement dumpVcd ccConfig.peConfig -< (mm, jtag)
-      ([(clockControlPfx, (mmCC, wbClockControl)), (debugPfx, (mmDebug, wbDebug))], wbRest) <-
+      ( [ (clockControlPfx, (mmCC, wbClockControl))
+          , (debugPfx, debugWbBus)
+          ]
+        , wbRest
+        ) <-
         splitAtCI -< allWishbone
       [ccd0, ccd1] <-
         replicateCSignalI
           <| clockControlWb ccConfig.margin framesize linkMask diffCounters
           -< (mmCC, wbClockControl)
       cm <- cSignalMap clockMod -< ccd0
-      dbg <- debugRegisterWb debugRegisterCfg -< (mmDebug, (wbDebug, cm))
+      dbg <- debugRegisterWb debugRegisterCfg -< (debugWbBus, cm)
 
       constBwd ccConfig.ccRegPrefix -< clockControlPfx
       constBwd ccConfig.dbgRegPrefix -< debugPfx
