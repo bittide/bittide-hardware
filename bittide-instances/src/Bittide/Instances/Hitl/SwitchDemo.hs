@@ -124,8 +124,8 @@ simpleManagementUnitC ::
 simpleManagementUnitC (SimpleManagementConfig peConfig pfxTime dumpVcd) =
   circuit $ \(mm, (jtag, _linkIn)) -> do
     peWbs <- processingElement dumpVcd peConfig -< (mm, jtag)
-    ([(timePfx, (timeMM, timeWbBus))], nmuWbs) <- splitAtC d1 -< peWbs
-    localCounter <- timeWb -< (timeMM, timeWbBus)
+    ([(timePfx, timeWbBus)], nmuWbs) <- splitAtC d1 -< peWbs
+    localCounter <- timeWb -< timeWbBus
 
     MM.constBwd pfxTime -< timePfx
 

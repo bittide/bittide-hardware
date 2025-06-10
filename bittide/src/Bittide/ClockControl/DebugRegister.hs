@@ -79,11 +79,11 @@ debugRegisterWb ::
   ) =>
   Signal dom DebugRegisterCfg ->
   Circuit
-    ( ConstBwd MM
-    , (Wishbone dom 'Standard addrW (BitVector 32), CSignal dom (Maybe SpeedChange))
+    ( (ConstBwd MM, Wishbone dom 'Standard addrW (BitVector 32))
+    , CSignal dom (Maybe SpeedChange)
     )
     (CSignal dom DebugRegisterData)
-debugRegisterWb cfg = circuit $ \(mm, (wb, Fwd maybeSpeedChange)) -> do
+debugRegisterWb cfg = circuit $ \((mm, wb), Fwd maybeSpeedChange) -> do
   [wbRfState, wbRfEnabled] <- deviceWbC "DebugRegister" -< (mm, wb)
 
   (Fwd rfState, _r0) <- registerWbCI rfStateConfig T.Detect -< (wbRfState, Fwd noWrite)
