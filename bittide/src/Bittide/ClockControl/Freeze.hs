@@ -2,8 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE ImplicitParams #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Bittide.ClockControl.Freeze where
 

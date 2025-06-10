@@ -3,10 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE NoFieldSelectors #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=15 #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Bittide.Instances.Tests.RegisterWbC where
 

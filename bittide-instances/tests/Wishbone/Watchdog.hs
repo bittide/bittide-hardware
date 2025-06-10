@@ -1,11 +1,8 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NumericUnderscores #-}
 -- Don't warn about partial functions: this is a test, so we'll see it fail.
 {-# OPTIONS_GHC -Wno-x-partial #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Wishbone.Watchdog where
 

@@ -82,7 +82,7 @@ allHwTargets = (\d -> HwTargetById d.deviceId d) <$> demoRigInfo
 >>> import Data.Graph
 >>> import Clash.Prelude
 >>> import Bittide.Topology
->>> let edges = [(0, 1), (0, 2), (1, 2), (1, 0), (2, 0), (2, 1)]
+>>> let edges = [(0, 1), (0, 2), (1, 2), (1, 0), (2, 0), (2 :: Int, 1 :: Int)]
 >>> let g = fromGraph @3 "test" $ buildG (0, 2) edges
 >>> linkMask g d0
 0b010_0001

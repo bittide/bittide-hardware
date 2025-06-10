@@ -1,10 +1,7 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE MagicHash #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -85,9 +82,9 @@ import Data.Proxy (Proxy (..))
 import Data.Tuple (swap)
 import System.Random (randomIO, randomRIO)
 
-import Data.Array qualified as A (accumArray, array, listArray, (!))
-import Data.Map.Strict qualified as M (fromList, (!))
-import Data.Set qualified as S (fromList, toList)
+import qualified Data.Array as A (accumArray, array, listArray, (!))
+import qualified Data.Map.Strict as M (fromList, (!))
+import qualified Data.Set as S (fromList, toList)
 
 import GHC.Num.Natural (Natural)
 import GHC.TypeLits.KnownNat (KnownNat2 (..), SNatKn (..), nameToSymbol)
@@ -267,19 +264,28 @@ instance (FromJSON a) => FromJSON (TopologyType IO a) where
         "torus2d" -> Torus2D <$> o .: "rows" <*> o .: "cols"
         "torus3d" ->
           Torus3D
-            <$> o .: "rows"
-            <*> o .: "cols"
-            <*> o .: "planes"
+            <$> o
+              .: "rows"
+            <*> o
+              .: "cols"
+            <*> o
+              .: "planes"
         "dumbbell" ->
           Dumbbell
-            <$> o .: "width"
-            <*> o .: "left"
-            <*> o .: "right"
+            <$> o
+              .: "width"
+            <*> o
+              .: "left"
+            <*> o
+              .: "right"
         "beads" ->
           Beads
-            <$> o .: "count"
-            <*> o .: "distance"
-            <*> o .: "weight"
+            <$> o
+              .: "count"
+            <*> o
+              .: "distance"
+            <*> o
+              .: "weight"
         _ -> tmm
     _ -> tmm
    where
@@ -331,10 +337,13 @@ froccTopologyType tt = case tt of
   Random n ->
     either (return . Left) (Right <$>) $
       maybeToEither $
-        FUN (\sn@SNat -> STop <$> randomTopology sn) <#> n
+        FUN (\sn@SNat -> STop <$> randomTopology sn)
+          <#> n
   DotFile f ->
     readFile f
-      >>= return . first (("Invalid DOT file - " <> f <> "\n") <>) . fromDot
+      >>= return
+        . first (("Invalid DOT file - " <> f <> "\n") <>)
+        . fromDot
  where
   ret = pure . maybeToEither
   maybeToEither = maybe (Left "cannot construct SNat arguments") Right

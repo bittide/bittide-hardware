@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE ImplicitPrelude #-}
 
 module Bittide.Plot (
@@ -14,7 +13,7 @@ module Bittide.Plot (
 
 import Clash.Prelude (KnownNat, Vec)
 import Clash.Signal.Internal (Femtoseconds (..))
-import Clash.Sized.Vector qualified as Vec
+import qualified Clash.Sized.Vector as Vec
 
 import Bittide.Arithmetic.PartsPer (PartsPer, toPpm)
 import Control.Monad (void)
@@ -38,11 +37,11 @@ import Graphics.Matplotlib (
   (%),
   (@@),
  )
-import Graphics.Matplotlib qualified as MP (plot)
+import qualified Graphics.Matplotlib as MP (plot)
 
 import Bittide.ClockControl (RelDataCount)
 import Bittide.ClockControl.Callisto.Types (ReframingState (..))
-import Bittide.ClockControl.StabilityChecker qualified as SC (StabilityIndication (..))
+import qualified Bittide.ClockControl.StabilityChecker as SC (StabilityIndication (..))
 import Bittide.Topology
 
 {- $setup
@@ -105,7 +104,8 @@ plot maybeCorrection outputDir graph plotData =
           if edgeCount <= 20
             then \(j, p) ->
               withLegend $
-                p @@ [o2 "label" $ show nodeIndex <> " ← " <> show j]
+                p
+                  @@ [o2 "label" $ show nodeIndex <> " ← " <> show j]
             else snd
         )
       $ zip (filter (hasEdge graph nodeIndex) [0, 1 ..])

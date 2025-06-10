@@ -2,12 +2,8 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE NoFieldSelectors #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 {- | Transceiver module for the Bittide project. This module is a wrapper around
 the 'Clash.Cores.Xilinx.GTH.gthCore' function, adding additional functionality

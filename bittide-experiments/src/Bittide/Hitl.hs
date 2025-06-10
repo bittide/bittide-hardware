@@ -1,10 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 
 {- | Tooling to define hardware-in-the-loop (HITL) tests. HITL tests in the
@@ -82,8 +78,8 @@ import Data.Typeable (Typeable)
 import Language.Haskell.TH.Syntax (Name)
 import Numeric.Natural (Natural)
 
-import Clash.Prelude qualified as P
-import Data.Map.Strict qualified as Map
+import qualified Clash.Prelude as P
+import qualified Data.Map.Strict as Map
 
 import System.Exit (ExitCode)
 

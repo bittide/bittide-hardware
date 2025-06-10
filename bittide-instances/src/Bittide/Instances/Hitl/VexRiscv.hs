@@ -2,14 +2,10 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 -- {-# OPTIONS -fplugin-opt=Protocols.Plugin:debug #-}
 

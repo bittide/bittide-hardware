@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=10 #-}
 
 module Tests.Padding where
 

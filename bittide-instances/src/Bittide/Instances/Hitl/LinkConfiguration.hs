@@ -1,12 +1,9 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 {- | Tests whether the transceiver link setup matches with the
 configuration defined in 'Bittide.Instances.Hitl.Setup.fpgaSetup'.

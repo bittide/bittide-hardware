@@ -133,7 +133,7 @@ impl TypeGenerator {
                                 "Single-constructor data types are required to have the constructor name match the type name. \
                                 Type name: '{type_name:?}', Constructor name: '{constructor_name:?}'",
                                 type_name = ty.name,
-                                constructor_name = var_name
+                                constructor_name = variant_name
                             )
                         }
                     }

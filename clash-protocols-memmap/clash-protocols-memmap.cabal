@@ -7,17 +7,20 @@ author: QBayLogic B.V.
 maintainer: devops@qbaylogic.com
 copyright: Copyright © 2024 Google LLC
 
-common common-options
+-- One day we'll be able to replace this by 'default-language: GHC2024' and
+-- disabling a few extensions :)
+common ghc2024
   default-extensions:
-    -- TemplateHaskell is used to support convenience functions such as
-    -- 'listToVecTH' and 'bLit'.
-    -- Prelude isn't imported by default as Clash offers Clash.Prelude
+    -- GHC2024, excluding:
+    -- ImplicitPrelude:          We want Clash.Prelude
+    -- ImplicitStagePersistence: Not a thing yet in the GHC we use
+    -- ImportQualifiedPost:      Okay on its own, but trips up fourmolu
+    -- StarIsType:               We want '*' to mean multiplication on type level
     BangPatterns
     BinaryLiterals
+    ConstrainedClassMethods
     ConstraintKinds
     DataKinds
-    DefaultSignatures
-    DeriveAnyClass
     DeriveDataTypeable
     DeriveFoldable
     DeriveFunctor
@@ -25,59 +28,111 @@ common common-options
     DeriveLift
     DeriveTraversable
     DerivingStrategies
+    DisambiguateRecordFields
+    DoAndIfThenElse
+    EmptyCase
+    EmptyDataDecls
+    EmptyDataDeriving
+    ExistentialQuantification
+    ExplicitForAll
+    ExplicitNamespaces
+    FieldSelectors
+    FlexibleContexts
+    FlexibleInstances
+    ForeignFunctionInterface
+    GADTSyntax
+    GADTs
+    GeneralisedNewtypeDeriving
+    HexFloatLiterals
     InstanceSigs
     KindSignatures
     LambdaCase
-    NoImplicitPrelude
-    NoStarIsType
+    MonoLocalBinds
+    MonomorphismRestriction
+    MultiParamTypeClasses
+    NamedFieldPuns
+    NamedWildCards
+    NumericUnderscores
+    PatternGuards
     PolyKinds
-    QuasiQuotes
+    PostfixOperators
     RankNTypes
+    RelaxedPolyRec
+    RoleAnnotations
     ScopedTypeVariables
     StandaloneDeriving
-    TemplateHaskell
+    StandaloneKindSignatures
+    TraditionalRecordSyntax
     TupleSections
     TypeApplications
-    TypeFamilies
     TypeOperators
-    ViewPatterns
+    TypeSynonymInstances
 
-  -- See https://github.com/clash-lang/clash-compiler/pull/2511
-  if impl(ghc >=9.4)
-    cpp-options: -DCLASH_OPAQUE=OPAQUE
-  else
-    cpp-options: -DCLASH_OPAQUE=NOINLINE
+common clash
+  -- TemplateHaskell is used to support convenience functions such as
+  -- 'listToVecTH' and 'bLit'.
+  --
+  -- `NoImplicitPrelude` is used because Clash offers Clash.Prelude
+  default-extensions:
+    NoImplicitPrelude
+    NoStarIsType
+    QuasiQuotes
+    TemplateHaskell
 
   ghc-options:
-    -- Plugins to support type-level constraint solving on naturals
-    -- Clash needs access to the source code in compiled modules
+    -- Plugins to support type-level constraint solving on naturals:
+    --   - GHC.TypeLits.Extra.Solver
+    --   - GHC.TypeLits.Normalise
+    --   - GHC.TypeLits.KnownNat.Solver
+    --
+    -- Clash needs access to the source code in compiled modules:
+    --   -fexpose-all-unfoldings
+    --
     -- Worker wrappers introduce unstable names for functions that might have
     -- blackboxes attached for them. You can disable this, but be sure to add
     -- a no-specialize pragma to every function with a blackbox.
+    --   -fno-worker-wrapper
+    --
+    -- Strict annotations - while sometimes preventing space leaks - trigger
+    -- optimizations Clash can't deal with. See:
+    --
+    --    https://github.com/clash-lang/clash-compiler/issues/2361
+    --
+    -- These flags disables the optimization:
+    --   -fno-unbox-small-strict-fields
+    --   -fno-unbox-strict-fields
     -Wall
     -Wcompat
-    -fplugin
-    GHC.TypeLits.Extra.Solver
-    -fplugin
-    GHC.TypeLits.Normalise
-    -fplugin
-    GHC.TypeLits.KnownNat.Solver
+    -fplugin=GHC.TypeLits.Extra.Solver
+    -fplugin=GHC.TypeLits.Normalise
+    -fplugin=GHC.TypeLits.KnownNat.Solver
+    -fplugin=Protocols.Plugin
+    -fconstraint-solver-iterations=20
     -fexpose-all-unfoldings
     -fno-worker-wrapper
+    -fno-unbox-small-strict-fields
+    -fno-unbox-strict-fields
 
-  -- clash-prelude will set suitable version bounds for the plugins
   build-depends:
-    base >=4.19.0.0,
-    clash-prelude >=1.6 && <1.10,
-    containers >=0.6 && <0.8,
-    ghc-typelits-extra,
-    ghc-typelits-knownnat,
-    ghc-typelits-natnormalise,
+    clash-protocols,
+    ghc-typelits-extra >=0.4.4,
+    ghc-typelits-knownnat >=0.7.7,
+    ghc-typelits-natnormalise >=0.7.7,
+
+common extra
+  default-extensions:
+    DefaultSignatures
+    DeriveAnyClass
+    TypeFamilies
+    ViewPatterns
+
+  ghc-options:
+    -Wall
+    -Wcompat
 
 library
-  import: common-options
+  import: ghc2024, clash, extra
   hs-source-dirs: src
-  default-language: Haskell2010
   exposed-modules:
     BitPackC
     BitPackC.Align
@@ -95,7 +150,7 @@ library
   build-depends:
     aeson,
     aeson-pretty,
-    base,
+    base >=4.19.0.0,
     bytestring >=0.10 && <0.13,
     clash-prelude,
     clash-protocols,
@@ -109,7 +164,7 @@ library
     text,
 
 executable hdl-test
-  import: common-options
+  import: ghc2024, clash, extra
   main-is: app/HdlTest.hs
   build-depends:
     aeson,
@@ -124,7 +179,7 @@ executable hdl-test
     directory,
 
 executable example
-  import: common-options
+  import: ghc2024, clash, extra
   main-is: Example.hs
   hs-source-dirs: app
   default-language: Haskell2010
@@ -146,7 +201,6 @@ executable example
 
 test-suite doctests
   type: exitcode-stdio-1.0
-  default-language: Haskell2010
   main-is: doctests.hs
   ghc-options:
     -Wall
@@ -162,13 +216,11 @@ test-suite doctests
     word8,
 
 test-suite unittests
-  import: common-options
+  import: ghc2024, clash, extra
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: UnitTests.hs
   ghc-options:
-    -Wall
-    -Wcompat
     -threaded
     -rtsopts
     -with-rtsopts=-N12
@@ -180,10 +232,12 @@ test-suite unittests
 
   build-depends:
     base,
+    clash-prelude,
     clash-prelude-hedgehog,
     clash-protocols,
     clash-protocols-memmap,
     constraints,
+    containers,
     deepseq,
     extra,
     ghc-typelits-extra-lemmas,

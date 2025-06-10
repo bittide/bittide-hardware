@@ -1,13 +1,9 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 -- Don't warn about partial functions: this is a test, so we'll see it fail.
 {-# OPTIONS_GHC -Wno-x-partial #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 module Tests.Switch (tests, zipList, unzipList) where
 

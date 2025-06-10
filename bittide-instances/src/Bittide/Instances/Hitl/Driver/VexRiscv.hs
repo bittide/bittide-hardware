@@ -1,11 +1,8 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
 -- {-# OPTIONS -fplugin-opt=Protocols.Plugin:debug #-}
 

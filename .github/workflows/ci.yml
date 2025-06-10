@@ -110,6 +110,9 @@ jobs:
           cabal freeze
           git diff --exit-code cabal.project.freeze
 
+      - name: Check that relevant Cabal files have a common header
+        run: .github/scripts/check_consistent_cabal_common.py
+
   build:
     name: Build dependencies
     runs-on: [self-hosted, compute]

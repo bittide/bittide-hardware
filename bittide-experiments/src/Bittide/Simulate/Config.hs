@@ -15,7 +15,7 @@ import Bittide.Arithmetic.PartsPer (PartsPer)
 import Bittide.Topology (STop (..), TopologyType (..), toDot)
 
 import Data.Aeson (FromJSON (..), ToJSON (..), encode)
-import Data.ByteString.Lazy qualified as BS (writeFile)
+import qualified Data.ByteString.Lazy as BS (writeFile)
 import Data.Default (Default (..))
 import GHC.Generics (Generic)
 import Language.Dot.Pretty (render)
