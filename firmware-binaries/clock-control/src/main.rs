@@ -7,9 +7,11 @@
 
 use core::panic::PanicInfo;
 
-use bittide_hal::shared::types::reframing_state::ReframingState;
 use bittide_hal::shared::types::speed_change::SpeedChange;
-use bittide_hal::sw_cc_topologies::DeviceInstances as SwCcToplogiesDeviceInstances;
+use bittide_hal::switch_demo_cc::DeviceInstances as SwitchDemoCcDeviceInstances;
+use bittide_hal::{
+    manual_additions::timer::Duration, shared::types::reframing_state::ReframingState,
+};
 
 use bittide_sys::callisto::{self, ControlConfig, ControlSt};
 #[cfg(not(test))]
@@ -19,12 +21,13 @@ use riscv_rt::entry;
 //       should be merged into a single instance, such that we can also just use one
 //       binary (safely). It now _happens_ to work, because both instances are careful
 //       to put the same devices in the same places.
-const INSTANCES: SwCcToplogiesDeviceInstances = unsafe { SwCcToplogiesDeviceInstances::new() };
+const INSTANCES: SwitchDemoCcDeviceInstances = unsafe { SwitchDemoCcDeviceInstances::new() };
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let cc = INSTANCES.clock_control;
     let dbgreg = INSTANCES.debug_register;
+    let timer = INSTANCES.timer;
 
     let config = ControlConfig {
         target_count: 0,
@@ -39,9 +42,15 @@ fn main() -> ! {
         ReframingState::Detect,
     );
 
+    // Update clock control 10K updates per second
+    let interval = Duration::from_micros(100);
+    let mut next_update = timer.now() + interval;
+
     loop {
         callisto::callisto(&cc, &config, &mut state);
         cc.set_change_speed(state.b_k);
+        timer.wait_until(next_update);
+        next_update += interval;
     }
 }
 
