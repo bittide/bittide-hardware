@@ -20,7 +20,7 @@ import Bittide.Arithmetic.PartsPer (PartsPer, toPpm)
 import Control.Monad (void)
 import Data.Graph (edges)
 import Data.Int (Int64)
-import Data.List (foldl', transpose, unzip4, zip4)
+import Data.List (transpose, unzip4, zip4)
 import GHC.Float.RealFracMethods (roundFloatInteger)
 import System.FilePath ((</>))
 
