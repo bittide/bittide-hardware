@@ -15,9 +15,8 @@ import Data.List.Extra (trim)
 import Language.Haskell.TH
 import System.FilePath ((</>))
 
+import System.Process (readProcess)
 import "bittide-extra" Numeric.Extra (parseHex)
-
-import Paths_bittide (getDataFileName)
 
 type Lines = [String]
 
@@ -78,7 +77,10 @@ Template Haskell.
 -}
 parseFromFileToRegisterMap :: FilePath -> Q Exp
 parseFromFileToRegisterMap fileName = do
-  path <- liftIO $ getDataFileName ("data" </> "clock_configs" </> fileName <> ".csv")
+  -- XXX: HLS doesn't set the data directory, so we hack in:
+  -- path <- liftIO $ getDataFileName ("data" </> "clock_configs" </> fileName <> ".csv")
+  gitRoot <- runIO $ readProcess "git" ["rev-parse", "--show-toplevel"] "" >>= pure . trim
+  let path = gitRoot </> "bittide" </> "data" </> "clock_configs" </> fileName <> ".csv"
   entries <- liftIO $ parseFromFile path
   case entries of
     Left err -> fail err
