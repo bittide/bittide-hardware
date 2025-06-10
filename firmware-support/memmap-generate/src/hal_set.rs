@@ -18,11 +18,32 @@ pub struct DeviceInstance {
     pub absolute_address: u64,
 }
 
+/// Annotations of a device definition, fields will be passed as they are
+#[derive(Debug, Clone, Default)]
+pub struct DeviceDescAnnotations {
+    pub derives: Vec<proc_macro2::TokenStream>,
+    pub imports: Vec<proc_macro2::TokenStream>,
+    pub tags: BTreeSet<String>,
+}
+
+/// Annotations of a type definition, fields will be passed as they are
+#[derive(Debug, Clone, Default)]
+pub struct TypeDefAnnotations {
+    pub derives: Vec<proc_macro2::TokenStream>,
+    pub imports: Vec<proc_macro2::TokenStream>,
+    pub tags: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DeviceInstanceAnnotations {
+    pub tags: Vec<String>,
+}
+
 #[derive(Default, Clone)]
 pub struct HalGenData {
-    pub devices: BTreeMap<String, DeviceDesc>,
-    pub types: BTreeMap<String, TypeDefinition>,
-    pub instances: BTreeMap<String, Vec<DeviceInstance>>,
+    pub devices: BTreeMap<String, (DeviceDescAnnotations, DeviceDesc)>,
+    pub types: BTreeMap<String, (TypeDefAnnotations, TypeDefinition)>,
+    pub instances: BTreeMap<String, Vec<(DeviceInstanceAnnotations, DeviceInstance)>>,
     // TODO how to deal with locations for shared types?
 }
 
@@ -39,8 +60,16 @@ impl MemoryMapSet {
                 (
                     hal_name,
                     HalGenData {
-                        devices: mem_desc.devices.into_iter().collect(),
-                        types: mem_desc.types.into_iter().collect(),
+                        devices: mem_desc
+                            .devices
+                            .into_iter()
+                            .map(|(key, x)| (key, (Default::default(), x)))
+                            .collect(),
+                        types: mem_desc
+                            .types
+                            .into_iter()
+                            .map(|(key, x)| (key, (Default::default(), x)))
+                            .collect(),
                         instances: BTreeMap::default(),
                     },
                 )
@@ -112,30 +141,49 @@ impl MemoryMapSet {
         for (device_name, defs) in all_devices {
             for (hal_name, def) in defs {
                 let hal_data = hals.entry(hal_name).or_default();
-                hal_data.devices.insert(device_name.clone(), def);
+                hal_data
+                    .devices
+                    .insert(device_name.clone(), (Default::default(), def));
             }
         }
 
         for (type_name, defs) in all_types {
             for (hal_name, def) in defs {
                 let hal_data = hals.entry(hal_name).or_default();
-                hal_data.types.insert(type_name.clone(), def);
+                hal_data
+                    .types
+                    .insert(type_name.clone(), (Default::default(), def));
             }
         }
 
         for (hal_name, instances) in instances_per_hal {
             let hal_data = hals.entry(hal_name).or_default();
-            hal_data.instances = instances;
+            hal_data.instances = instances
+                .into_iter()
+                .map(|(key, instances)| {
+                    (
+                        key,
+                        instances
+                            .into_iter()
+                            .map(|x| (Default::default(), x))
+                            .collect(),
+                    )
+                })
+                .collect();
         }
 
         // build one HalGenData for shared types and devices
         let mut shared_data = HalGenData::default();
 
         for (name, desc) in shared_devices {
-            shared_data.devices.insert(name.to_string(), desc);
+            shared_data
+                .devices
+                .insert(name.to_string(), (Default::default(), desc));
         }
         for (name, def) in shared_types {
-            shared_data.types.insert(name.to_string(), def);
+            shared_data
+                .types
+                .insert(name.to_string(), (Default::default(), def));
         }
 
         Self {
@@ -147,7 +195,7 @@ impl MemoryMapSet {
     pub fn filter_devices_by_tag(&mut self, mut f: impl FnMut(&str) -> bool) {
         let mut shared_filtered_out = BTreeSet::<String>::new();
 
-        self.shared.devices.retain(|name, desc| {
+        self.shared.devices.retain(|name, (_, desc)| {
             let any_filtered_out = desc.tags.as_slice().iter().any(|n| !f(n));
             if any_filtered_out {
                 shared_filtered_out.insert(name.to_string());
@@ -157,9 +205,10 @@ impl MemoryMapSet {
 
         for (_hal, hal_data) in self.non_shared.iter_mut() {
             let mut local_filtered_out = BTreeSet::<String>::new();
-            hal_data.devices.retain(|name, desc| {
+            hal_data.devices.retain(|name, (ann, desc)| {
                 let any_filtered_out = desc.tags.as_slice().iter().any(|n| !f(n));
-                if any_filtered_out {
+                let any_filtered_out_ann = ann.tags.iter().any(|n| !f(n));
+                if any_filtered_out || any_filtered_out_ann {
                     local_filtered_out.insert(name.to_string());
                 }
                 !any_filtered_out
@@ -170,9 +219,10 @@ impl MemoryMapSet {
                     local_filtered_out.contains(name) || shared_filtered_out.contains(name);
 
                 if !device_filtered_out {
-                    instances.retain(|instance| {
+                    instances.retain(|(ann, instance)| {
                         let any_filtered_out = instance.tags.iter().any(|tag| !f(&tag.tag));
-                        !any_filtered_out
+                        let any_filtered_out_ann = ann.tags.iter().any(|tag| !f(tag));
+                        !(any_filtered_out || any_filtered_out_ann)
                     });
 
                     if instances.is_empty() {
@@ -186,6 +236,32 @@ impl MemoryMapSet {
                     false
                 }
             });
+        }
+    }
+
+    /// Run a function for all type definitions, allowing to change annotations.
+    pub fn annotate_types(&mut self, mut f: impl FnMut(&TypeDefinition, &mut TypeDefAnnotations)) {
+        for hal_data in self.non_shared.values_mut() {
+            for (ann, type_def) in hal_data.types.values_mut() {
+                f(type_def, ann);
+            }
+        }
+
+        for (ann, type_def) in self.shared.types.values_mut() {
+            f(type_def, ann);
+        }
+    }
+
+    /// Run a function for all device definitions, allowing to change annotations.
+    pub fn annotate_devices(&mut self, mut f: impl FnMut(&DeviceDesc, &mut DeviceDescAnnotations)) {
+        for hal_data in self.non_shared.values_mut() {
+            for (ann, device_def) in hal_data.devices.values_mut() {
+                f(device_def, ann);
+            }
+        }
+
+        for (ann, device_def) in self.shared.devices.values_mut() {
+            f(device_def, ann);
         }
     }
 

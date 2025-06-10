@@ -13,9 +13,7 @@ use std::io::Write;
 
 use parse::{MemoryMapTree, PathComp};
 
-pub use crate::generators::{
-    generate_rust_wrappers, DebugDerive, GenerateConfig, ItemScopeMode, RustWrappers,
-};
+pub use crate::generators::{generate_rust_wrappers, RustWrappers};
 pub use crate::parse::{parse, MemoryMapDesc};
 
 fn device_singleton_instr_addr_and_size(desc: &MemoryMapDesc, name: &str) -> Option<(u64, u64)> {

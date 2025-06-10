@@ -8,13 +8,13 @@ use proc_macro2::Literal;
 use quote::quote;
 
 use crate::{
-    generators::{ident, IdentType},
-    hal_set::DeviceInstance,
+    generators::{generate_tag_docs, ident, IdentType},
+    hal_set::{DeviceInstance, DeviceInstanceAnnotations},
     parse::path_name,
 };
 
 pub fn generate_device_instances_struct(
-    instances: &BTreeMap<String, Vec<DeviceInstance>>,
+    instances: &BTreeMap<String, Vec<(DeviceInstanceAnnotations, DeviceInstance)>>,
 ) -> proc_macro2::TokenStream {
     let field_defs = instances
         .iter()
@@ -23,14 +23,18 @@ pub fn generate_device_instances_struct(
 
             let mut name_idx = None::<u64>;
 
-            instances.iter().map(move |instance| {
+            instances.iter().map(move |(ann, instance)| {
+                let tags = generate_tag_docs(
+                    instance.tags.iter().map(|t| t.tag.as_str()),
+                    ann.tags.iter().map(String::as_str),
+                );
                 if let Some((_loc_idx, name)) = path_name(&instance.path) {
                     let instance_name_ident = ident(IdentType::Instance, name);
                     quote! {
+                        #tags
                         pub #instance_name_ident: #dev_name_ident,
                     }
                 } else {
-                    // TODO better name case handling
                     let instance_name = match name_idx {
                         Some(n) => {
                             name_idx = Some(n + 1);
@@ -43,6 +47,7 @@ pub fn generate_device_instances_struct(
                     };
                     let instance_name_ident = ident(IdentType::Instance, instance_name);
                     quote! {
+                        #tags
                         pub #instance_name_ident: #dev_name_ident,
                     }
                 }
@@ -56,12 +61,11 @@ pub fn generate_device_instances_struct(
             let dev_name_ident = ident(IdentType::Device, device_name);
             let mut name_idx = None::<u64>;
 
-            instances.iter().map(move |instance| {
+            instances.iter().map(move |(_ann, instance)| {
                 let instance_name_ident = if let Some((_loc_idx, name)) = path_name(&instance.path)
                 {
                     ident(IdentType::Instance, name)
                 } else {
-                    // TODO better name case handling
                     let instance_name = match name_idx {
                         Some(n) => {
                             name_idx = Some(n + 1);

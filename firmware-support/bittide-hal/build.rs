@@ -2,13 +2,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::{fs::File, path::PathBuf};
 
 use memmap_generate::generators::{ident, IdentType};
-use memmap_generate::hal_set::MemoryMapSet;
+use memmap_generate::hal_set::{MemoryMapSet, TypeDefAnnotations};
+use memmap_generate::parse::{Type, TypeDefinition};
 use memmap_generate::{self as mm, generate_rust_wrappers};
+use quote::quote;
 
 fn memmap_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -24,6 +26,23 @@ fn lint_disables_generated_code() -> &'static str {
 #![allow(clippy::empty_docs)]
 #![allow(clippy::unused_unit)]
     "#
+}
+
+fn has_float(set: &BTreeSet<String>, ty: &Type) -> bool {
+    match ty {
+        Type::Float | Type::Double => true,
+        Type::Vec(_, inner) => has_float(set, inner),
+        Type::Reference(name, items) => {
+            set.contains(name) || items.iter().any(|t| has_float(set, t))
+        }
+        Type::SumOfProducts { variants } => variants.iter().any(|variant_desc| {
+            variant_desc
+                .fields
+                .iter()
+                .any(|field_desc| has_float(set, &field_desc.type_))
+        }),
+        _ => false,
+    }
 }
 
 fn main() {
@@ -63,6 +82,41 @@ fn main() {
     }
 
     let mut set = MemoryMapSet::new(memory_maps);
+
+    // annotate types
+    {
+        let mut has_floats = BTreeSet::new();
+
+        let mut prev_len = 0;
+
+        // check for references to floats or references to types that reference floats
+        loop {
+            set.annotate_types(|type_def: &TypeDefinition, ann: &mut TypeDefAnnotations| {
+                if has_float(&has_floats, &type_def.definition) {
+                    has_floats.insert(type_def.name.clone());
+                    ann.tags.insert("uses-float".to_string());
+                }
+            });
+
+            if has_floats.len() == prev_len {
+                break; // converged, nice!
+            }
+            prev_len = has_floats.len();
+        }
+
+        set.annotate_types(|type_def: &TypeDefinition, ann: &mut TypeDefAnnotations| {
+            ann.derives
+                .push(quote! { #[derive(Copy, Clone, PartialEq)] });
+
+            // if there's a Float or Double then we don't want to implement ufmt::Debug
+
+            if !has_floats.contains(&type_def.name) {
+                ann.derives.push(quote! { #[derive(uDebug)] });
+                ann.imports.push(quote! { use ufmt::derive::uDebug; })
+            }
+        });
+    }
+
     set.filter_devices_by_tag(|tag| tag != "no-generate");
 
     // we're going for a folder structure like this
@@ -81,17 +135,12 @@ fn main() {
     //         mod.rs
     //       mod.rs  <- contains the device instances
 
-    let gen_config = mm::GenerateConfig {
-        debug_derive_mode: mm::DebugDerive::None,
-        item_scope_mode: mm::ItemScopeMode::OneFile,
-    };
-
     // this keeps track of all the files generated or written to, so that they
     // can be formatted
     let mut generated_files = vec![];
 
     let shared = set.shared();
-    let shared_wrapper = generate_rust_wrappers(shared, &gen_config);
+    let shared_wrapper = generate_rust_wrappers(shared);
 
     let shared_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("src")
@@ -115,7 +164,7 @@ fn main() {
             writeln!(mod_file, "pub use {name}::*;").unwrap();
         }
 
-        for (ty_name, def) in &shared_wrapper.type_defs {
+        for (ty_name, (ann, def)) in &shared_wrapper.type_defs {
             let ty_name = ident(IdentType::Module, ty_name);
             let file_path = shared_path.join("types").join(format!("{ty_name}.rs"));
             let mut file = File::create(&file_path).unwrap();
@@ -123,13 +172,8 @@ fn main() {
             generated_files.push(file_path);
 
             writeln!(file, "{}", lint_disables_generated_code()).unwrap();
-
-            match gen_config.debug_derive_mode {
-                memmap_generate::DebugDerive::Ufmt => {
-                    writeln!(file, "use ufmt::derive::uDebug;").unwrap();
-                }
-                memmap_generate::DebugDerive::None => {}
-                memmap_generate::DebugDerive::Std => {}
+            for import in &ann.imports {
+                writeln!(file, "{}", import).unwrap();
             }
 
             writeln!(file, "pub use crate::shared::types::*;").unwrap();
@@ -151,7 +195,7 @@ fn main() {
             writeln!(mod_file, "pub use {name}::*;").unwrap();
         }
 
-        for (device_name, def) in &shared_wrapper.device_defs {
+        for (device_name, (ann, def)) in &shared_wrapper.device_defs {
             let device_name = ident(IdentType::Module, device_name);
             let file_path = shared_path
                 .join("devices")
@@ -160,6 +204,9 @@ fn main() {
             generated_files.push(file_path);
 
             writeln!(file, "{}", lint_disables_generated_code()).unwrap();
+            for import in &ann.imports {
+                writeln!(file, "{}", import).unwrap();
+            }
             writeln!(file, "pub use crate::shared::types::*;").unwrap();
             writeln!(file, "{}", def).unwrap();
         }
@@ -189,7 +236,7 @@ fn main() {
     generated_files.push(all_hals_mod_file_path);
 
     for (hal_name, hal_data) in set.non_shared() {
-        let wrapper = generate_rust_wrappers(hal_data, &gen_config);
+        let wrapper = generate_rust_wrappers(hal_data);
         let hal_mod_name = ident(IdentType::Module, hal_name);
         let hal_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src")
@@ -226,7 +273,7 @@ fn main() {
                 writeln!(mod_file, "pub use {name}::*;").unwrap();
             }
 
-            for (ty_name, def) in &wrapper.type_defs {
+            for (ty_name, (ann, def)) in &wrapper.type_defs {
                 let ty_name = ident(IdentType::Type, ty_name);
                 let file_path = hal_path.join("types").join(format!("{}.rs", ty_name));
                 let mut file =
@@ -234,12 +281,8 @@ fn main() {
                 generated_files.push(file_path);
                 writeln!(file, "{}", lint_disables_generated_code()).unwrap();
 
-                match gen_config.debug_derive_mode {
-                    memmap_generate::DebugDerive::Ufmt => {
-                        writeln!(file, "use ufmt::derive::uDebug;").unwrap();
-                    }
-                    memmap_generate::DebugDerive::None => {}
-                    memmap_generate::DebugDerive::Std => {}
+                for import in &ann.imports {
+                    writeln!(file, "{}", import).unwrap();
                 }
 
                 writeln!(file, "pub use crate::shared::types::*;").unwrap();
@@ -260,7 +303,7 @@ fn main() {
                 writeln!(mod_file, "pub use {name}::*;").unwrap();
             }
 
-            for (dev_name, def) in &wrapper.device_defs {
+            for (dev_name, (ann, def)) in &wrapper.device_defs {
                 let dev_mod_name = ident(IdentType::Module, dev_name);
 
                 let file_path = hal_path.join("devices").join(format!("{dev_mod_name}.rs"));
@@ -268,6 +311,9 @@ fn main() {
                 generated_files.push(file_path);
 
                 writeln!(file, "{}", lint_disables_generated_code()).unwrap();
+                for import in &ann.imports {
+                    writeln!(file, "{}", import).unwrap();
+                }
                 writeln!(file, "pub use crate::shared::types::*;").unwrap();
                 writeln!(file, "pub use crate::hals::{hal_mod_name}::types::*;").unwrap();
                 writeln!(file, "{}", def).unwrap();

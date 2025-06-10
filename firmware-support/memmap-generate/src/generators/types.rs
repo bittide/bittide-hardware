@@ -5,7 +5,8 @@
 use std::str::FromStr;
 
 use crate::{
-    generators::{generic_name, ident, DebugDerive, IdentType},
+    generators::{generate_tag_docs, generic_name, ident, IdentType},
+    hal_set::TypeDefAnnotations,
     parse::{Type, TypeDefinition, VariantDesc},
 };
 use proc_macro2::Literal;
@@ -82,25 +83,17 @@ impl TypeGenerator {
 
     pub fn generate_type_def(
         &mut self,
+        ann: &TypeDefAnnotations,
         ty: &TypeDefinition,
-        debug: DebugDerive,
     ) -> proc_macro2::TokenStream {
         let name = ident(IdentType::Type, &ty.name);
 
         let repr = self.generate_repr(ty);
-        let derives = match debug {
-            DebugDerive::None => quote! {
-                #[derive(Copy, Clone, PartialEq)]
-            },
-            DebugDerive::Std => quote! {
-                #[derive(Debug, Copy, Clone, PartialEq)]
-            },
-            DebugDerive::Ufmt => quote! {
-                #[derive(uDebug, Copy, Clone, PartialEq)]
-            },
-        };
 
-        let attrs = quote! { #repr #derives };
+        let derives = &ann.derives;
+        let tags = generate_tag_docs(None.into_iter(), ann.tags.iter().map(String::as_str));
+
+        let attrs = quote! { #tags #repr #(#derives)* };
 
         let generics = if ty.generics > 0 {
             let names = (0..ty.generics).map(generic_name).collect::<Vec<_>>();
