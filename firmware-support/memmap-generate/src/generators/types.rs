@@ -118,12 +118,12 @@ impl TypeGenerator {
                 },
 
                 // Single constructor
-                [var @ VariantDesc {
-                    name: var_name,
+                [variant_desc @ VariantDesc {
+                    name: variant_name,
                     fields,
                 }] => match fields.as_slice() {
                     [] => {
-                        if &ty.name == var_name {
+                        if &ty.name == variant_name {
                             quote! {
                                 #attrs
                                 pub struct #name #generics;
@@ -133,7 +133,7 @@ impl TypeGenerator {
                         }
                     }
                     xs => {
-                        if &ty.name == var_name {
+                        if &ty.name == variant_name {
                             let no_names = xs.iter().all(|v| v.name.is_empty());
                             let all_names = xs.iter().all(|v| !v.name.is_empty());
 
@@ -167,11 +167,11 @@ impl TypeGenerator {
                                 }
                             }
                         } else {
-                            let var = self.generate_variant(var);
+                            let variant_source = self.generate_variant(variant_desc);
                             quote! {
                                 #attrs
                                 pub enum #name #generics {
-                                    #var
+                                    #variant_source
                                 }
                             }
                         }
@@ -179,15 +179,15 @@ impl TypeGenerator {
                 },
 
                 // Multiple constructors
-                vars => {
-                    let variants = vars
+                variants => {
+                    let variant_sources = variants
                         .iter()
                         .map(|x| self.generate_variant(x))
                         .collect::<Vec<_>>();
                     quote! {
                         #attrs
                         pub enum #name #generics {
-                            #(#variants)*
+                            #(#variant_sources)*
                         }
                     }
                 }
@@ -212,9 +212,9 @@ impl TypeGenerator {
                         panic!("Single-constructor data types are required to have the constructor name match the type name.")
                     }
                 }
-                vars => {
-                    let fieldless = vars.iter().all(|desc| desc.fields.is_empty());
-                    let n = clog2(&(vars.len() as u64));
+                variants => {
+                    let fieldless = variants.iter().all(|desc| desc.fields.is_empty());
+                    let n = clog2(&(variants.len() as u64));
                     let repr = ident(IdentType::Raw, format!("u{}", n));
                     if fieldless {
                         quote! { #[repr(#repr)] }
