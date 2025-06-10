@@ -6,6 +6,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PackageImports #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Tests.Transceiver where
@@ -19,12 +20,12 @@ import Clash.Annotations.Primitive (dontTranslate)
 import Clash.Cores.Xilinx.GTH (GthCore)
 import Clash.Hedgehog.Sized.Index (genIndex)
 import Clash.Signal.Internal (Signal ((:-)))
-import Data.List.Extra (splitOn)
 import Data.Proxy (Proxy (Proxy))
 import Data.Sequence (Seq ((:<|), (:|>)))
 import Data.String (IsString (fromString))
 import Test.Tasty (TestTree, adjustOption, testGroup)
 import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit), testPropertyNamed)
+import "extra" Data.List.Extra (splitOn)
 
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager

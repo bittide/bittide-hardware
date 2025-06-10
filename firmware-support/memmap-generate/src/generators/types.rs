@@ -129,7 +129,12 @@ impl TypeGenerator {
                                 pub struct #name #generics;
                             }
                         } else {
-                            panic!("Single-constructor data types are required to have the constructor name match the type name.")
+                            panic!(
+                                "Single-constructor data types are required to have the constructor name match the type name. \
+                                Type name: '{type_name:?}', Constructor name: '{constructor_name:?}'",
+                                type_name = ty.name,
+                                constructor_name = var_name
+                            )
                         }
                     }
                     xs => {
@@ -209,7 +214,12 @@ impl TypeGenerator {
                     if x.name == ty.name {
                         quote! { #[repr(C)] }
                     } else {
-                        panic!("Single-constructor data types are required to have the constructor name match the type name.")
+                        panic!(
+                            "Single-constructor data types are required to have the constructor name match the type name. \
+                            Type name: {type_name:?}, Constructor name: {constructor_name:?}",
+                            type_name = ty.name,
+                            constructor_name = x.name
+                        )
                     }
                 }
                 vars => {

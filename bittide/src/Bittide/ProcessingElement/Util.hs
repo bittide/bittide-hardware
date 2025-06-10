@@ -139,8 +139,11 @@ getBytesMems elfPath maybeDeviceTree = do
 
   pure (iMem, if isJust maybeDeviceTree then dMem1 else dMem0)
 
--- | Given an IntMap, return the starting address, size and content as @[Bytes 4]@
+{- | Given an IntMap, return the starting address, size and content as @[Bytes 4]@. Errors
+if the IntMap is empty.
+-}
 extractIntMapData ::
+  (HasCallStack) =>
   ByteOrder ->
   -- | IntMap
   I.IntMap (BitVector 8) ->
@@ -149,17 +152,21 @@ extractIntMapData ::
   -- 2. Size
   -- 3. List of words
   (BitVector 32, Int, [Bytes 4])
-extractIntMapData byteOrder dataMap = (resize . bitCoerce $ startAddr, size, combineFunction content)
+extractIntMapData byteOrder dataMap =
+  (resize . bitCoerce $ startAddr, size, combineFunction content)
  where
   combineFunction
     | LittleEndian <- byteOrder = toWordsLinear
     | BigEndian <- byteOrder = toWordsSwapped
 
-  ordList = I.toAscList dataMap
-  startAddr = fst $ L.head ordList
+  (ordListHead, ordListTail) = case I.toAscList dataMap of
+    [] -> error "extractIntMapData: IntMap is empty"
+    (x : xs) -> (x, xs)
+
+  startAddr = fst ordListHead
   size = I.size dataMap
   content =
-    snd (L.head ordList) : flattenContent startAddr (L.tail ordList)
+    snd ordListHead : flattenContent startAddr ordListTail
 
   flattenContent _ [] = []
   flattenContent prevAddr ((nextAddr, val) : vals) =

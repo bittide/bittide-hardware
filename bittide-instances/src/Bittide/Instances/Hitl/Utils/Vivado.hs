@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE PackageImports #-}
 
 module Bittide.Instances.Hitl.Utils.Vivado where
 
@@ -11,8 +12,8 @@ import Bittide.Instances.Hitl.Setup
 
 import Vivado.Tcl
 
-import Data.List.Extra (elemIndex, split, (!?))
 import Data.Maybe
+import "extra" Data.List.Extra (elemIndex, split, (!?))
 
 {- $setup
 >>> import Vivado.Tcl

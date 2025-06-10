@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -39,11 +39,11 @@
             pkgs.haskell-language-server
             pkgs.ghc
             pkgs.pkg-config
-            pkgs.python311Full
-            pkgs.python311Packages.matplotlib
-            pkgs.python311Packages.scipy
-            pkgs.python311Packages.GitPython
-            pkgs.python311Packages.pyaml
+            pkgs.python3Full
+            pkgs.python3Packages.matplotlib
+            pkgs.python3Packages.scipy
+            pkgs.python3Packages.GitPython
+            pkgs.python3Packages.pyaml
             pkgs.libz
             pkgs.sbt
             pkgs.scala
@@ -71,8 +71,8 @@
             verilog-ethernet
 
             # CI scripts
-            pkgs.python311Packages.docopt
-            pkgs.python311Packages.dateutil
+            pkgs.python3Packages.docopt
+            pkgs.python3Packages.dateutil
             mc
             pkgs.pcre
             pkgs.getent

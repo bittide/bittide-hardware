@@ -175,7 +175,7 @@ fn main() -> ! {
     many_types.set_e0(hal::Either::Left(0x12));
     many_types.set_me0(hal::Maybe::Just(hal::Either::Right(0x12)));
     many_types.set_me1(hal::Maybe::Just(hal::Either::Right(0x12)));
-    many_types.set_t0(hal::Pair(24, -948));
+    many_types.set_t0(hal::Tuple2(24, -948));
 
     // Test read back values:
     expect("rt.s0", -16, many_types.s0());

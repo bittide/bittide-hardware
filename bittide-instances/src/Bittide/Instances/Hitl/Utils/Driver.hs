@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE PackageImports #-}
 
 module Bittide.Instances.Hitl.Utils.Driver where
 
@@ -14,12 +15,12 @@ import Bittide.Instances.Hitl.Setup (demoRigInfo)
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Vivado
 import Control.Monad.IO.Class
-import Data.List.Extra (trim)
 import Data.Maybe (fromJust, fromMaybe)
 import GHC.Stack (HasCallStack)
 import Project.Handle
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
+import "extra" Data.List.Extra (trim)
 
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Control.Monad.Trans.Control as CMTC

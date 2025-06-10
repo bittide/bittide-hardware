@@ -28,8 +28,7 @@ import Protocols
 import Protocols.MemoryMap (Access (WriteOnly), ConstBwd, MM, constBwd, getMMAny)
 import Protocols.MemoryMap.FieldType
 import Protocols.MemoryMap.Registers.WishboneStandard (
-  RegisterConfig (description),
-  access,
+  RegisterConfig (access, description),
   deviceWbC,
   registerConfig,
   registerWbC,

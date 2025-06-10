@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
 
 {- | Lets Vivado execute Tcl code by attaching to stdin and stdout of Vivado in
 Tcl mode.

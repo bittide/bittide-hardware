@@ -15,8 +15,7 @@ import Protocols
 import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
-  RegisterConfig (description),
-  access,
+  RegisterConfig (access, description),
   deviceWbC,
   registerConfig,
   registerWbC,

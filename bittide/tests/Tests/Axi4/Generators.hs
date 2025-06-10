@@ -115,7 +115,7 @@ genRandomAxiPacket SNat SNat SNat byteTypes range genUser = do
   packetInit <-
     Gen.list range (Gen.maybe $ genAxisM2S SNat SNat SNat byteTypes [False] genUser)
   packetLast <- genAxisM2S SNat SNat SNat byteTypes [True] genUser
-  pure (L.tail $ packetInit <> [Just packetLast])
+  pure (L.drop 1 $ packetInit <> [Just packetLast])
 
 prop_genRandomAxiPacket :: Property
 prop_genRandomAxiPacket = property $ do

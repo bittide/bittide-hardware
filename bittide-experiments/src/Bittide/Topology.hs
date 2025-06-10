@@ -770,4 +770,4 @@ fromDot cnt = do
 []
 -}
 pairwise :: [a] -> [(a, a)]
-pairwise as = zip as (tail as)
+pairwise as = zip as (drop 1 as)

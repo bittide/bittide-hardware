@@ -33,7 +33,7 @@ pkgs.stdenv.mkDerivation rec {
     runHook preInstall
     SKIP_SUBMODULE=1 ./bootstrap
     ./configure --enable-ftdi --enable-dummy --prefix=$out
-    make -j $(nproc)
+    make CFLAGS="-Wno-error=calloc-transposed-args" -j $(nproc)
     make install
     mv $out/bin/openocd $out/bin/openocd-vexriscv
     runHook postInstall

@@ -814,7 +814,9 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFileP
         "WARNING: The HITL test case does not reference any hardware targets. Exiting."
       pure ExitSuccess
     else do
-      openHwTarget v (fst $ head (keys parameters))
+      openHwTarget v $ fst $ case keys parameters of
+        [] -> error "Internal error: empty map of parameters."
+        (p : _) -> p
       verifyHwIlas v
       -- XXX: We should not rely on start probe assertion order.
       --      See https://github.com/bittide/bittide-hardware/issues/638.

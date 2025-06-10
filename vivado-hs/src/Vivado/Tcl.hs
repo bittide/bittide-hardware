@@ -66,7 +66,7 @@ tclToList = go []
     unless (listToMaybe list' == Just '"') $
       error $
         "No closing '\"' found in " <> show list
-    go (acc <> [word]) (tail list')
+    go (acc <> [word]) (drop 1 list')
   go acc list@('{' : xs) = do
     let (word, list') = span (/= '}') xs
     unless (listToMaybe list' == Just '}') $
@@ -74,8 +74,8 @@ tclToList = go []
         "No closing brace '}' found in " <> show list
     when ('{' `elem` list) $
       error "Nested Tcl braces ('{', '}') are not supported by this function."
-    go (acc <> [word]) (tail list')
-  go acc xs = go (acc <> [head $ words xs]) (unwords $ tail $ words xs)
+    go (acc <> [word]) (drop 1 list')
+  go acc xs = go (acc <> take 1 (words xs)) (unwords $ drop 1 $ words xs)
 
 embrace :: String -> String
 embrace s = '{' : s <> "}"

@@ -218,7 +218,7 @@ readCalendar = property $ do
               cal
               cal
             $ pure (emptyWishboneM2S @32 @(BitVector 32))
-        actual = P.tail $ sampleN @System (fromIntegral simLength) topEntity
+        actual = P.drop 1 $ sampleN @System (fromIntegral simLength) topEntity
         expected = P.take (simLength - 1) $ unrollCalendar $ toList cal
       footnote . fromString $ "actual  : " <> show actual
       footnote . fromString $ "expected: " <> show expected

@@ -2,17 +2,20 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PackageImports #-}
 
 module Tests.Axi4.Properties where
 
 import Clash.Prelude
 import Protocols.Axi4.Stream
 
-import qualified Data.List as L
 import Data.Maybe
 import Test.Tasty
-import qualified Test.Tasty.HUnit as HU
 import Tests.Axi4.Types
+import "bittide-extra" Data.List.Extra (maybeHead, maybeLast)
+
+import qualified Data.List as L
+import qualified Test.Tasty.HUnit as HU
 
 tests :: TestTree
 tests =
@@ -62,10 +65,11 @@ but not between the first and last data byte.
 -}
 isUnalignedAxi4StreamPacket :: [AxiByteType] -> Bool
 isUnalignedAxi4StreamPacket bytes0
-  | null bytes1 = False
-  | otherwise =
-      ((== PositionByte) (L.head bytes1) || (== PositionByte) (L.last bytes1))
+  | Just firstByte <- maybeHead bytes1
+  , Just lastByte <- maybeLast bytes1 =
+      ((== PositionByte) firstByte || (== PositionByte) lastByte)
         && not (isStrictlySparseAxi4StreamPacket bytes1)
+  | otherwise = False
  where
   bytes1 = filter (/= NullByte) bytes0
 

@@ -4,6 +4,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
+-- Don't warn about partial functions: this is a test, so we'll see it fail.
+{-# OPTIONS_GHC -Wno-x-partial #-}
 {-# OPTIONS_GHC -fconstraint-solver-iterations=5 #-}
 {-# OPTIONS_GHC -fplugin=Protocols.Plugin #-}
 
@@ -125,7 +127,7 @@ switchMulticast = property $ do
         outs = L.zipWith (\v i -> repeat $ v !! i) inpWithNull (0 : cycle [0 .. links])
 
         -- Account for two cycles latency and single reset cycle
-        expected = L.take simDuration $ L.replicate 2 (repeat $ unpack 0) <> L.tail outs
+        expected = L.take simDuration $ L.replicate 2 (repeat $ unpack 0) <> L.drop 1 outs
 
         actual = L.take simDuration $ simSwitchWithCalendar @_ @4 @32 calConfig inp
       footnote $ "Calendar: " <> show cal
@@ -168,7 +170,7 @@ switchIdentity = property $ do
         calConfig = CalendarConfig d2 cal cal
 
         -- Account for two cycles latency and single reset cycle
-        expected = L.take simDuration $ L.replicate 3 (repeat $ unpack 0) <> L.tail inp
+        expected = L.take simDuration $ L.replicate 3 (repeat $ unpack 0) <> L.drop 1 inp
 
         actual = L.take simDuration $ simSwitchWithCalendar @_ @4 @32 calConfig inp
       footnote $ "Calendar: " <> show cal
@@ -182,7 +184,7 @@ switchModel ::
   [Vec n b]
 switchModel cal inp = outStage
  where
-  inputStage = L.replicate 2 (repeat (unpack 0)) <> ((unpack 0 :>) <$> L.tail inp)
+  inputStage = L.replicate 2 (repeat (unpack 0)) <> ((unpack 0 :>) <$> L.drop 1 inp)
   midStage = L.zipWith (\v is -> (v !!) <$> is) inputStage (L.head cal : cycle cal)
   outStage = repeat (unpack 0) : midStage
 

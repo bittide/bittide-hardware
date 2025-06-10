@@ -116,10 +116,12 @@ dnaOverSerialDriver _name targets = do
   findDna :: ProcessStdIoHandles -> String -> IO String
   findDna pico prev = do
     get <- BS.hGet pico.stdoutHandle 1
-    let nC = L.head $ BS.unpack get
-    if isHexDigit nC
-      then findDna pico (prev <> [w2c nC])
-      else
-        if null prev
-          then findDna pico prev
-          else return prev
+    case BS.unpack get of
+      [] -> error "Unexpected end of stream while reading DNA"
+      (nC : _) ->
+        if isHexDigit nC
+          then findDna pico (prev <> [w2c nC])
+          else
+            if null prev
+              then findDna pico prev
+              else return prev
