@@ -104,8 +104,8 @@ fn main() -> ! {
     expect("init.v2[1]", Some([0x24, 0x32]), many_types.v2(1));
 
     // XXX: No uDebug trait for enums, so we can't use expect() here.
-    expect("init.sum0", true, hal::Abc::C == many_types.sum0());
-    expect("init.sum1", true, hal::Xyz::S == many_types.sum1());
+    expect("init.sum0", hal::Abc::C, many_types.sum0());
+    expect("init.sum1", hal::Xyz::S, many_types.sum1());
 
     expect("init.sop0.f", true, many_types.sop0().f == 3.14);
     expect("init.sop0.u", true, many_types.sop0().u == 6.28);
@@ -122,16 +122,16 @@ fn main() -> ! {
     expect("init.p3.0.1", 0x0F, many_types.p3().0 .1);
     expect("init.p3.1", 0xEE, many_types.p3().1);
 
-    expect("init.e0", true, hal::Either::Left(8) == many_types.e0());
+    expect("init.e0", hal::Either::Left(8), many_types.e0());
     expect(
         "init.me0",
-        true,
-        hal::Maybe::Just(hal::Either::Left(8)) == many_types.me0(),
+        hal::Maybe::Just(hal::Either::Left(8)),
+        many_types.me0(),
     );
     expect(
         "init.me1",
-        true,
-        hal::Maybe::Just(hal::Either::Left(8)) == many_types.me1(),
+        hal::Maybe::Just(hal::Either::Left(8)),
+        many_types.me1(),
     );
 
     expect("init.t0.0", 12, many_types.t0().0);
@@ -208,8 +208,8 @@ fn main() -> ! {
     expect("rt.v1[2]", Some(7442099760597062676), many_types.v1(2));
     expect("rt.v2[0]", Some([0xAB, 0xCD]), many_types.v2(0));
     expect("rt.v2[1]", Some([0x12, 0x34]), many_types.v2(1));
-    expect("rt.sum0", true, hal::Abc::A == many_types.sum0());
-    expect("rt.sum1", true, hal::Xyz::Z == many_types.sum1());
+    expect("rt.sum0", hal::Abc::A, many_types.sum0());
+    expect("rt.sum1", hal::Xyz::Z, many_types.sum1());
     expect("rt.sop0.f", true, many_types.sop0().f == 1.0);
     expect("rt.sop0.g", true, many_types.sop0().u == 8.0);
     expect("rt.v2[0]", Some([0xAB, 0xCD]), many_types.v2(0));
@@ -219,23 +219,23 @@ fn main() -> ! {
     expect("rt.x2.0", 8, many_types.x2().0);
     expect("rt.x2.1.0", 16, many_types.x2().1 .0);
     expect("rt.x2.1.1", 32, many_types.x2().1 .1);
-    expect("rt.e0", true, hal::Either::Left(0x12) == many_types.e0());
+    expect("rt.e0", hal::Either::Left(0x12), many_types.e0());
     expect(
         "rt.me0",
-        true,
-        hal::Maybe::Just(hal::Either::Right(0x12)) == many_types.me0(),
+        hal::Maybe::Just(hal::Either::Right(0x12)),
+        many_types.me0(),
     );
     expect(
         "rt.me1",
-        true,
-        hal::Maybe::Just(hal::Either::Right(0x12)) == many_types.me1(),
+        hal::Maybe::Just(hal::Either::Right(0x12)),
+        many_types.me1(),
     );
 
     expect("rt.t0.0", 24, many_types.t0().0);
     expect("rt.t0.1", -948, many_types.t0().1);
 
     many_types.set_e0(hal::Either::Right(0x12));
-    expect("rt.e0", true, hal::Either::Right(0x12) == many_types.e0());
+    expect("rt.e0", hal::Either::Right(0x12), many_types.e0());
 
     many_types.set_x2(hal::X2(8, hal::X3(16, 32, 64)));
     expect("rt.x2.1.2", 64, many_types.x2().1 .2);

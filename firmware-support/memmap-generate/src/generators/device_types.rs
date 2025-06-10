@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::{
-    generators::{ident, types::TypeGenerator, IdentType},
+    generators::{generate_tag_docs, ident, types::TypeGenerator, IdentType},
+    hal_set::DeviceDescAnnotations,
     parse::{DeviceDesc, RegisterAccess, Type},
 };
 
@@ -19,6 +19,7 @@ impl DeviceGenerator {
 
     pub fn generate_device_type(
         &mut self,
+        ann: &DeviceDescAnnotations,
         desc: &DeviceDesc,
         ty_gen: &mut TypeGenerator,
     ) -> proc_macro2::TokenStream {
@@ -139,11 +140,17 @@ impl DeviceGenerator {
             })
             .collect::<Vec<_>>();
 
-        let tags = self.generate_tag_docs(&desc.tags);
+        let tags = generate_tag_docs(
+            desc.tags.iter().map(String::as_str),
+            ann.tags.iter().map(String::as_str),
+        );
+
+        let derives = &ann.derives;
 
         quote! {
             #[doc = #description]
             #tags
+            #(#derives)*
             pub struct #name(pub *mut u8);
 
             impl #name {
@@ -156,25 +163,6 @@ impl DeviceGenerator {
                 #(#set_funcs)*
             }
         }
-    }
-
-    fn generate_tag_docs(&mut self, tags: &[String]) -> TokenStream {
-        if tags.is_empty() {
-            return TokenStream::new();
-        }
-
-        let mut toks = TokenStream::new();
-
-        toks.extend(quote! { #[doc = ""] });
-        toks.extend(quote! { #[doc = "## Tags"]});
-        toks.extend(quote! { #[doc = ""] });
-
-        for tag in tags {
-            let msg = format!(" - `{}`", tag);
-            toks.extend(quote! { #[doc = #msg] });
-        }
-
-        toks
     }
 }
 

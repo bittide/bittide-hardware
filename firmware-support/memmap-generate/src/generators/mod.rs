@@ -10,7 +10,7 @@ use heck::{ToPascalCase, ToSnakeCase};
 use proc_macro2::{Ident, Span, TokenStream};
 use types::TypeGenerator;
 
-use crate::hal_set::HalGenData;
+use crate::hal_set::{DeviceDescAnnotations, HalGenData, TypeDefAnnotations};
 
 pub mod device_instances;
 pub mod device_types;
@@ -50,39 +50,25 @@ pub(crate) fn generic_name(idx: u64) -> Ident {
 }
 
 pub struct RustWrappers {
-    pub device_defs: BTreeMap<String, TokenStream>,
-    pub type_defs: BTreeMap<String, TokenStream>,
+    pub device_defs: BTreeMap<String, (DeviceDescAnnotations, TokenStream)>,
+    pub type_defs: BTreeMap<String, (TypeDefAnnotations, TokenStream)>,
     pub device_instances_struct: TokenStream,
 }
 
-pub enum ItemScopeMode {
-    OneFile,
-    // SeparateModules, // TODO
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum DebugDerive {
-    None,
-    Std,
-    Ufmt,
-}
-
-pub struct GenerateConfig {
-    pub debug_derive_mode: DebugDerive,
-    pub item_scope_mode: ItemScopeMode,
-}
-
-pub fn generate_rust_wrappers(hal_data: &HalGenData, config: &GenerateConfig) -> RustWrappers {
+pub fn generate_rust_wrappers(hal_data: &HalGenData) -> RustWrappers {
     let mut ty_gen = TypeGenerator::new();
     let mut device_gen = DeviceGenerator::new();
 
     let type_defs = hal_data
         .types
         .iter()
-        .map(|(name, type_desc)| {
+        .map(|(name, (type_ann, type_desc))| {
             (
                 name.clone(),
-                ty_gen.generate_type_def(type_desc, config.debug_derive_mode),
+                (
+                    type_ann.clone(),
+                    ty_gen.generate_type_def(type_ann, type_desc),
+                ),
             )
         })
         .collect();
@@ -90,10 +76,13 @@ pub fn generate_rust_wrappers(hal_data: &HalGenData, config: &GenerateConfig) ->
     let device_defs = hal_data
         .devices
         .iter()
-        .map(|(name, device_desc)| {
+        .map(|(name, (device_ann, device_desc))| {
             (
                 name.clone(),
-                device_gen.generate_device_type(device_desc, &mut ty_gen),
+                (
+                    device_ann.clone(),
+                    device_gen.generate_device_type(device_ann, device_desc, &mut ty_gen),
+                ),
             )
         })
         .collect();
@@ -105,4 +94,33 @@ pub fn generate_rust_wrappers(hal_data: &HalGenData, config: &GenerateConfig) ->
         type_defs,
         device_instances_struct,
     }
+}
+
+pub(crate) fn generate_tag_docs<'a>(
+    tags: impl Iterator<Item = &'a str>,
+    ann_tags: impl Iterator<Item = &'a str>,
+) -> TokenStream {
+    let mut tags = tags.peekable();
+    let mut ann_tags = ann_tags.peekable();
+    if tags.peek().is_none() && ann_tags.peek().is_none() {
+        return TokenStream::new();
+    }
+
+    let mut toks = TokenStream::new();
+
+    toks.extend(quote::quote! { #[doc = ""] });
+    toks.extend(quote::quote! { #[doc = "## Tags"]});
+    toks.extend(quote::quote! { #[doc = ""] });
+
+    for tag in tags {
+        let msg = format!(" - `{}`", tag);
+        toks.extend(quote::quote! { #[doc = #msg] });
+    }
+
+    for tag in ann_tags {
+        let msg = format!(" - `{}`", tag);
+        toks.extend(quote::quote! { #[doc = #msg] });
+    }
+
+    toks
 }
