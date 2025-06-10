@@ -18,6 +18,7 @@ import Bittide.SharedTypes (Bytes)
 import Bittide.Wishbone (wbToVec)
 
 import qualified Clash.Prelude as C
+import GHC.Stack (HasCallStack)
 
 {- | Captures the remote counter from a bittide link and pairs it with the corresponding
 local counter. All frames except for the first frame will be forwarded to the output.
@@ -37,7 +38,8 @@ The register layout is as follows:
 -}
 captureUgn ::
   forall dom addrW.
-  ( C.HiddenClockResetEnable dom
+  ( HasCallStack
+  , C.HiddenClockResetEnable dom
   , KnownNat addrW
   ) =>
   Signal dom (Unsigned 64) ->

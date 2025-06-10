@@ -160,6 +160,7 @@ switchDemoPeWb ::
   forall bufferSize dom addrW.
   ( HiddenClockResetEnable dom
   , KnownNat addrW
+  , HasCallStack
   , 1 <= bufferSize
   ) =>
   SNat bufferSize ->

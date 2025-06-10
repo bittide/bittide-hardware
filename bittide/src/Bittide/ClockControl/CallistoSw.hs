@@ -38,6 +38,7 @@ import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.DoubleBufferedRam (InitialContent (Undefined))
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.SharedTypes
+import Bittide.Wishbone (timeWb)
 import Protocols.MemoryMap
 
 -- | Configuration type for software clock control.
@@ -160,7 +161,7 @@ callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
       , includeIlaWb = True
       }
 
-type SwcccInternalBusses = 4
+type SwcccInternalBusses = 5
 type SwcccRemBusWidth n = 30 - CLog 2 (n + SwcccInternalBusses)
 
 -- The additional 'otherWb' type parameter is necessary since this type helps expose
@@ -184,6 +185,8 @@ data SwControlCConfig mgn fsz otherWb where
     -- ^ Clock control register prefix
     , dbgRegPrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
     -- ^ Debug register prefix
+    , timePrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
+    -- ^ Time prefix
     } ->
     SwControlCConfig mgn fsz otherWb
 
@@ -303,6 +306,7 @@ callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} = Circuit g
       allWishbone <- processingElement dumpVcd ccConfig.peConfig -< (mm, jtag)
       ( [ (clockControlPfx, (mmCC, wbClockControl))
           , (debugPfx, debugWbBus)
+          , (timePfx, timeWbBus)
           ]
         , wbRest
         ) <-
@@ -313,9 +317,11 @@ callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} = Circuit g
           -< (mmCC, wbClockControl)
       cm <- cSignalMap clockMod -< ccd0
       dbg <- debugRegisterWb debugRegisterCfg -< (debugWbBus, cm)
+      _localCounter <- timeWb -< timeWbBus
 
       constBwd ccConfig.ccRegPrefix -< clockControlPfx
       constBwd ccConfig.dbgRegPrefix -< debugPfx
+      constBwd ccConfig.timePrefix -< timePfx
 
       idC -< (ccd1, dbg, wbRest)
 
