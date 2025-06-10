@@ -508,10 +508,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
     ([ugn0Pfx, ugn1Pfx, ugn2Pfx, ugn3Pfx, ugn4Pfx, ugn5Pfx, ugn6Pfx], ugnData) <-
       unzipC -< muWbRest
 
-    MM.constBwd 0b1110 -< muWhoAmIPfx
-    MM.constBwd 0b1001 -< peWbPfx
-    MM.constBwd 0b1010 -< switchWbPfx
-    MM.constBwd 0b1011 -< dnaWbPfx
     MM.constBwd 0b0001 -< ugn0Pfx
     MM.constBwd 0b0010 -< ugn1Pfx
     MM.constBwd 0b0011 -< ugn2Pfx
@@ -519,6 +515,13 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
     MM.constBwd 0b0101 -< ugn4Pfx
     MM.constBwd 0b0110 -< ugn5Pfx
     MM.constBwd 0b0111 -< ugn6Pfx
+    --          0b1000    IMEM
+    MM.constBwd 0b1001 -< peWbPfx
+    MM.constBwd 0b1010 -< switchWbPfx
+    MM.constBwd 0b1011 -< dnaWbPfx
+    --          0b1100    DMEM
+    --          0b1101    TIME (not the same as CC!)
+    MM.constBwd 0b1110 -< muWhoAmIPfx
 
     ugnRxs <-
       defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs) -< ugnData
@@ -540,6 +543,11 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
       defaultRefClkRstEn (callistoSwClockControlC @LinkCount @CccBufferSize NoDumpVcd ccConfig)
         -< (ccMM, (ccJtag, reframe, mask, dc))
 
+    --          0b010    DMEM
+    --          0b011    TIME (not the same as MU!)
+    --          0b100    IMEM
+    --          0b101    DBG
+    --          0b110    CC
     MM.constBwd 0b111 -< ccWhoAmIPfx
 
     defaultRefClkRstEn (whoAmIC 0x6363_7773) -< (ccWhoAmIMM, ccWhoAmI)
