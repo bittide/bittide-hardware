@@ -12,7 +12,13 @@ synchronicity.
 For more details, see [QBayLogic's presentation](https://docs.google.com/presentation/d/1AGbAJQ1zhTPtrekKnQcthd0TUPyQs-zowQpV1ux4k-Y)
 on the topic.
 -}
-module Bittide.Instances.Hitl.SwitchDemo (switchDemoDut, switchDemoTest, tests) where
+module Bittide.Instances.Hitl.SwitchDemo (
+  switchDemoDut,
+  switchDemoTest,
+  memoryMapCc,
+  memoryMapMu,
+  tests,
+) where
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
@@ -70,7 +76,7 @@ import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols
 import Protocols.Extra
-import Protocols.Idle
+import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
 import Protocols.Wishbone
 import System.FilePath ((</>))
 import VexRiscv (DumpVcd (..), Jtag, JtagIn (..), JtagOut (..))
@@ -156,6 +162,27 @@ calendarConfig =
   nRepetitions = bitCoerce (maxBound :: Index (FpgaCount * 3))
 {- FOURMOLU_ENABLE -}
 
+memoryMapCc :: MemoryMap
+memoryMapCc = fst memoryMaps
+
+memoryMapMu :: MemoryMap
+memoryMapMu = snd memoryMaps
+
+memoryMaps :: ("CC" ::: MemoryMap, "MU" ::: MemoryMap)
+memoryMaps = (ccMm, muMm)
+ where
+  (SimOnly ccMm, SimOnly muMm, _, _, _, _, _, _, _, _, _, _, _, _) =
+    switchDemoDut
+      clockGen
+      resetGen
+      clockGen
+      (SimOnly (repeat 0))
+      0
+      0
+      (pure False)
+      0
+      (pure (JtagIn 0 0 0))
+
 muConfig :: SimpleManagementConfig 11
 muConfig =
   SimpleManagementConfig
@@ -191,6 +218,7 @@ ccConfig =
           }
     , ccRegPrefix = 0b110
     , dbgRegPrefix = 0b101
+    , timePrefix = 0b011
     }
 
 {- | Reset logic:
@@ -221,7 +249,9 @@ switchDemoDut ::
   "allProgrammed" ::: Signal Basic125 Bool ->
   "MISO" ::: Signal Basic125 Bit ->
   "JTAG_IN" ::: Signal Basic125 JtagIn ->
-  ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
+  ( "CC_MEMORYMAP" ::: MM.MM
+  , "MU_MEMORYMAP" ::: MM.MM
+  , "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "handshakesDone" ::: Signal Basic125 Bool
@@ -241,7 +271,9 @@ switchDemoDut ::
 switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
   hwSeqX
     (bundle (debugIla, bittidePeIla))
-    ( transceivers.txSims
+    ( ccMm
+    , muMm
+    , transceivers.txSims
     , transceivers.txNs
     , transceivers.txPs
     , handshakesDoneFree
@@ -474,7 +506,9 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
     , ?regByteOrder :: ByteOrder
     ) =>
     Circuit
-      ( Jtag Basic125
+      ( "CC" ::: ConstBwd MM
+      , "MU" ::: ConstBwd MM
+      , Jtag Basic125
       , CSignal GthTx (BitVector 64)
       , CSignal Basic125 Bool
       , CSignal Basic125 (BitVector LinkCount)
@@ -489,11 +523,9 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
       , CSignal GthTx (BitVector 64)
       , CSignal GthTx (Vec (LinkCount + 1) (Index (LinkCount + 2)))
       )
-  circuitFnC = circuit $ \(jtag, linkIn, reframe, mask, dc, Fwd rxs) -> do
+  circuitFnC = circuit $ \(ccMM, muMM, jtag, linkIn, reframe, mask, dc, Fwd rxs) -> do
     [muJtagFree, ccJtag] <- jtagChain -< jtag
     muJtagTx <- unsafeJtagSynchronizer refClk bittideClk -< muJtagFree
-
-    (muMM, ccMM) <- idleSource -< ()
 
     (Fwd lc, muWbAll) <-
       defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMM, (muJtagTx, linkIn))
@@ -554,7 +586,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
 
     idC -< (swCcOut, txs, Fwd lc, ps, Fwd peIn, Fwd peOut, ce)
 
-  ( (jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _diffsBwd, _insBwd)
+  ( (ccMm, muMm, jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _diffsBwd, _insBwd)
     , (callistoResult, switchDataOut, localCounter, peState, peInput, peOutput, calEntry)
     ) =
       let
@@ -564,7 +596,9 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
         toSignals
           circuitFnC
           (
-            ( jtagIn
+            ( ()
+            , ()
+            , jtagIn
             , pure 0 -- link in
             , pure False -- enable reframing
             , pure maxBound -- enable mask
@@ -740,7 +774,9 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn =
   testReset :: Reset Basic125
   testReset = unsafeFromActiveLow testStart `orReset` refRst
 
-  ( txs :: Gth.SimWires GthTx LinkCount
+  ( _ccMm
+    , _muMm
+    , txs :: Gth.SimWires GthTx LinkCount
     , txns :: Gth.Wires GthTxS LinkCount
     , txps :: Gth.Wires GthTxS LinkCount
     , handshakesDone :: Signal Basic125 Bool
