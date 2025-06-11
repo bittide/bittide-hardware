@@ -33,7 +33,7 @@ deriveSignalHasFields recordName = do
   info <- reify recordName
   case info of
     -- If the name refers to a record type, generate instances for each field
-    TyConI (DataD _ _ tvb _ [RecC _ fields] _) -> do
+    TyConI (DataD _ _ tvb _ [RecC recordConstructorName fields] _) -> do
       let
         recordType = foldl appT (conT recordName) recordTyInputs
         recordTyInputs = varT . go <$> tvb
@@ -44,10 +44,14 @@ deriveSignalHasFields recordName = do
         mkInstance (fieldName, _fieldBang, fieldType) =
           [d|
             instance (t ~ $(pure fieldType)) => HasField $fieldStr (Signal dom $recordType) (Signal dom t) where
-              getField = fmap $(varE fieldName)
+              getField =
+                fmap
+                  ( \ $(recP recordConstructorName [fieldPat fieldName (varP fieldBaseName)]) -> $(varE fieldBaseName)
+                  )
             |]
          where
           fieldStr = litT (strTyLit (nameBase fieldName))
+          fieldBaseName = mkName $ nameBase fieldName
       concat <$> mapM mkInstance fields
     -- If the name refers to something else, throw an error
     _ ->
