@@ -95,7 +95,7 @@ data P0 = P0 U16 U8 U8
 data P1 = P1 U16 U8 U16
   deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
 
-data P2 = P2 U16 U8
+data P2 = P2 U16 U8 (Index 10)
   deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
 
 data P3 = P3 P2 U8
@@ -164,6 +164,8 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbP2
     , wbP3
     , wbT0
+    , wbI20
+    , wbMI12
     ] <-
     deviceWbC "ManyTypes" -< (mm, wb)
 
@@ -215,6 +217,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   registerWbC_ hasClock hasReset (registerConfig "p3") initP3 -< (wbP3, Fwd noWrite)
 
   registerWbC_ hasClock hasReset (registerConfig "t0") initT0 -< (wbT0, Fwd noWrite)
+
+  registerWbC_ hasClock hasReset (registerConfig "i20") initI20 -< (wbI20, Fwd noWrite)
+  registerWbC_ hasClock hasReset (registerConfig "mi12") initMI12 -< (wbMI12, Fwd noWrite)
 
   idC
  where
@@ -317,13 +322,19 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   initP1 = P1 0xBADC 0x0F 0xBEAD
 
   initP2 :: P2
-  initP2 = P2 0xBADC 0x0F
+  initP2 = P2 0xBADC 0x0F 6
 
   initP3 :: P3
-  initP3 = P3 (P2 0xBADC 0x0F) 0xEE
+  initP3 = P3 (P2 0xBADC 0x0F 6) 0xEE
 
   initT0 :: (BitVector 8, Signed 16)
   initT0 = (12, 584)
+
+  initI20 :: Index 20
+  initI20 = 17
+
+  initMI12 :: Maybe (Index 12)
+  initMI12 = Just 5
 
 sim :: IO ()
 sim = putStrLn simResult

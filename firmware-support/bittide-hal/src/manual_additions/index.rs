@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 Google LLC
+//
+// SPDX-License-Identifier: Apache-2.0
+
 use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign};
 use ufmt::derive::uDebug;
 
