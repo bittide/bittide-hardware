@@ -123,14 +123,10 @@ pub fn callisto(cc: &ClockControl, config: &ControlConfig, state: &mut ControlSt
 
     let n_buffers = cc.up_links();
 
-    let mut measured_sum = 0i32;
-    {
-        let mut idx = 0;
-        while let Some(count) = cc.data_counts(idx) {
-            measured_sum += count as i32;
-            idx += 1;
-        }
-    }
+    let measured_sum: i32 = cc
+        .data_counts_volatile_iter()
+        .map(|count| count as i32)
+        .sum();
 
     let r_k = (measured_sum - n_buffers as i32 * config.target_count as i32) as f32;
     let c_des = K_P * r_k + state.steady_state_target;

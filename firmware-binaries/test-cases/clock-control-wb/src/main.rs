@@ -61,15 +61,11 @@ fn main() -> ! {
     writeln!(uart, "linksSettled: {}", cc.links_settled()).unwrap();
 
     write!(uart, "dataCounts: [").unwrap();
-    let mut idx = 0;
-    let mut first = true;
-    while let Some(dc) = cc.data_counts(idx) {
-        if !first {
+    for (idx, dc) in cc.data_counts_volatile_iter().enumerate() {
+        if idx > 0 {
             write!(uart, ", ").unwrap();
         }
         write!(uart, "({idx}, {dc})").unwrap();
-        idx += 1;
-        first = false;
     }
     writeln!(uart, "]").unwrap();
 
