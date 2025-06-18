@@ -85,12 +85,7 @@ case_clock_control_wb_self_test = do
             , clockMod =
                 L.take (L.length actual.clockMod) $ fromIntegral . pack <$> mapMaybe clockMod ccData
             }
-      putStrLn ""
-      putStrLn "Actual |"
-      print actual
-      print expected
-      putStrLn "Expected ^"
-      assertBool "Expected and actual differ" $ actual == expected
+      assertEqual "Expected and actual differ" expected actual
  where
   uartString = chr . fromIntegral <$> catMaybes uartStream
   (uartStream, ccData) = sampleC def dut
