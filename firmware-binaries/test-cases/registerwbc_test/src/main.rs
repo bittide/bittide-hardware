@@ -3,12 +3,14 @@
 #![allow(const_item_mutation)]
 #![allow(clippy::empty_loop)]
 #![allow(clippy::approx_constant)]
+
 // SPDX-FileCopyrightText: 2025 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 use ufmt::{uwrite, uwriteln};
 
 use bittide_hal::hals::register_wb_c as hal;
+use bittide_hal::index;
 
 use core::fmt::Write;
 #[cfg(not(test))]
@@ -49,7 +51,7 @@ fn main() -> ! {
             let name = concat!("init.", $name);
             expect(name, $init_expected, many_types.$read_fn());
             many_types.$write_fn($ret_expected);
-            let name = concat!("ret.", $name);
+            let name = concat!("rt.", $name);
             expect(name, $ret_expected, many_types.$read_fn());
         };
 
@@ -64,7 +66,7 @@ fn main() -> ! {
 
                 many_types.$write_fn(i, $ret_expected);
                 msg.clear();
-                _ = uwrite!(msg, "ret.");
+                _ = uwrite!(msg, "rt.");
                 _ = uwrite!(msg, $name);
                 _ = uwrite!(msg, "[{:?}]", i);
                 expect(&msg, Some($ret_expected), many_types.$read_fn(i));
@@ -129,7 +131,7 @@ fn main() -> ! {
             .enumerate()
         {
             let mut msg = heapless::String::<64>::new();
-            _ = uwrite!(msg, "ret.v0[{:?}]", i);
+            _ = uwrite!(msg, "rt.v0[{:?}]", i);
             expect(&msg, expected, got);
         }
     }
@@ -209,22 +211,16 @@ fn main() -> ! {
     read_write!(
         "p2",
         p2,
-        hal::P2(0xBADC, 0x0F, hal::Index::<10, u8>::new(6).unwrap()),
+        hal::P2(0xBADC, 0x0F, index!(6, n = 10)),
         set_p2,
-        hal::P2(0x1234, 0x56, hal::Index::<10, u8>::new(9).unwrap())
+        hal::P2(0x1234, 0x56, index!(9, n = 10))
     );
     read_write!(
         "p3",
         p3,
-        hal::P3(
-            hal::P2(0xBADC, 0x0F, hal::Index::<10, u8>::new(6).unwrap()),
-            0xEE
-        ),
+        hal::P3(hal::P2(0xBADC, 0x0F, index!(6, n = 10),), 0xEE),
         set_p3,
-        hal::P3(
-            hal::P2(0x1234, 0x56, hal::Index::<10, u8>::new(9).unwrap()),
-            0xBA
-        )
+        hal::P3(hal::P2(0x1234, 0x56, index!(9, n = 10)), 0xBA)
     );
 
     read_write!(
@@ -235,17 +231,11 @@ fn main() -> ! {
         hal::Tuple2(24, -948)
     );
 
-    read_write!(
-        "i20",
-        i20,
-        hal::Index::<20, u8>::new(17).unwrap(),
-        set_i20,
-        hal::Index::<20, u8>::new(3).unwrap()
-    );
+    read_write!("i20", i20, index!(17, n = 20), set_i20, index!(3, n = 20));
     read_write!(
         "mi12",
         mi12,
-        hal::Maybe::Just(hal::Index::<12, u8>::new(5).unwrap()),
+        hal::Maybe::Just(index!(5, n = 12)),
         set_mi12,
         hal::Maybe::Nothing
     );

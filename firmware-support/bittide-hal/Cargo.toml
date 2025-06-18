@@ -18,6 +18,7 @@ smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp.git", rev = "dc08e0b42e
   "socket-tcp",
 ] }
 log = "0.4.21"
+bittide-macros = { path = "../bittide-macros" }
 
 [build-dependencies]
 memmap-generate = { path = "../memmap-generate" }

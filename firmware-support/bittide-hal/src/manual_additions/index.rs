@@ -17,17 +17,22 @@ use ufmt::derive::uDebug;
 /// confusing.
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug, uDebug)]
-pub struct Index<const N: u128, T>(T);
+pub struct IndexTy<const N: u128, T>(T);
 
-impl<const N: u128, T> Index<N, T> {
+impl<const N: u128, T> IndexTy<N, T> {
     pub fn into_underlying(self) -> T {
         self.0
+    }
+
+    #[doc(hidden)]
+    pub const unsafe fn new_unchecked(n: T) -> Self {
+        Self(n)
     }
 }
 
 macro_rules! impl_general_stuff {
     ($t:ty) => {
-        impl<const N: u128> Index<N, $t> {
+        impl<const N: u128> IndexTy<N, $t> {
             const MIN: Self = Self(0);
             const MAX: Self = Self(N as $t);
 
@@ -48,7 +53,7 @@ macro_rules! impl_general_stuff {
             }
         }
 
-        impl<const N: u128> TryFrom<$t> for Index<N, $t> {
+        impl<const N: u128> TryFrom<$t> for IndexTy<N, $t> {
             type Error = ();
 
             fn try_from(val: $t) -> Result<Self, Self::Error> {
@@ -56,13 +61,13 @@ macro_rules! impl_general_stuff {
             }
         }
 
-        impl<const N: u128> From<Index<N, $t>> for $t {
-            fn from(val: Index<N, $t>) -> $t {
+        impl<const N: u128> From<IndexTy<N, $t>> for $t {
+            fn from(val: IndexTy<N, $t>) -> $t {
                 val.into_underlying()
             }
         }
 
-        impl<const N: u128> core::fmt::Display for Index<N, $t> {
+        impl<const N: u128> core::fmt::Display for IndexTy<N, $t> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 self.0.fmt(f)
             }
@@ -78,7 +83,7 @@ impl_general_stuff!(u128);
 
 macro_rules! impl_add {
     ($t:ty) => {
-        impl<const N: u128> Index<N, $t> {
+        impl<const N: u128> IndexTy<N, $t> {
             pub fn saturating_add(self, rhs: Self) -> Self {
                 let res = self.0.saturating_add(rhs.0);
                 Self(res.min(N as $t))
@@ -94,7 +99,7 @@ macro_rules! impl_add {
             }
         }
 
-        impl<const N: u128> Add for Index<N, $t> {
+        impl<const N: u128> Add for IndexTy<N, $t> {
             type Output = Self;
 
             fn add(self, rhs: Self) -> Self::Output {
@@ -104,7 +109,7 @@ macro_rules! impl_add {
             }
         }
 
-        impl<const N: u128> Add<&Index<N, $t>> for Index<N, $t> {
+        impl<const N: u128> Add<&IndexTy<N, $t>> for IndexTy<N, $t> {
             type Output = Self;
 
             fn add(self, rhs: &Self) -> Self::Output {
@@ -114,19 +119,19 @@ macro_rules! impl_add {
             }
         }
 
-        impl<const N: u128> AddAssign for Index<N, $t> {
+        impl<const N: u128> AddAssign for IndexTy<N, $t> {
             fn add_assign(&mut self, rhs: Self) {
                 *self = *self + rhs;
             }
         }
 
-        impl<const N: u128> AddAssign<&Index<N, $t>> for Index<N, $t> {
+        impl<const N: u128> AddAssign<&IndexTy<N, $t>> for IndexTy<N, $t> {
             fn add_assign(&mut self, rhs: &Self) {
                 *self = *self + rhs;
             }
         }
 
-        impl<const N: u128> Add<$t> for Index<N, $t> {
+        impl<const N: u128> Add<$t> for IndexTy<N, $t> {
             type Output = Self;
 
             fn add(self, rhs: $t) -> Self::Output {
@@ -136,7 +141,7 @@ macro_rules! impl_add {
             }
         }
 
-        impl<const N: u128> Add<&$t> for Index<N, $t> {
+        impl<const N: u128> Add<&$t> for IndexTy<N, $t> {
             type Output = Self;
 
             fn add(self, rhs: &$t) -> Self::Output {
@@ -156,14 +161,14 @@ impl_add!(u128);
 
 macro_rules! impl_sub {
     ($t:ty) => {
-        impl<const N: u128> Index<N, $t> {
+        impl<const N: u128> IndexTy<N, $t> {
             pub fn saturating_sub(self, rhs: Self) -> Self {
                 let res = self.0.saturating_sub(rhs.0);
                 Self(res)
             }
         }
 
-        impl<const N: u128> Sub for Index<N, $t> {
+        impl<const N: u128> Sub for IndexTy<N, $t> {
             type Output = Self;
 
             fn sub(self, rhs: Self) -> Self::Output {
@@ -173,7 +178,7 @@ macro_rules! impl_sub {
             }
         }
 
-        impl<const N: u128> Sub<&Index<N, $t>> for Index<N, $t> {
+        impl<const N: u128> Sub<&IndexTy<N, $t>> for IndexTy<N, $t> {
             type Output = Self;
 
             fn sub(self, rhs: &Self) -> Self::Output {
@@ -183,19 +188,19 @@ macro_rules! impl_sub {
             }
         }
 
-        impl<const N: u128> SubAssign for Index<N, $t> {
+        impl<const N: u128> SubAssign for IndexTy<N, $t> {
             fn sub_assign(&mut self, rhs: Self) {
                 *self = *self - rhs;
             }
         }
 
-        impl<const N: u128> SubAssign<&Index<N, $t>> for Index<N, $t> {
+        impl<const N: u128> SubAssign<&IndexTy<N, $t>> for IndexTy<N, $t> {
             fn sub_assign(&mut self, rhs: &Self) {
                 *self = *self - rhs;
             }
         }
 
-        impl<const N: u128> Sub<$t> for Index<N, $t> {
+        impl<const N: u128> Sub<$t> for IndexTy<N, $t> {
             type Output = Self;
 
             fn sub(self, rhs: $t) -> Self::Output {
@@ -205,7 +210,7 @@ macro_rules! impl_sub {
             }
         }
 
-        impl<const N: u128> Sub<&$t> for Index<N, $t> {
+        impl<const N: u128> Sub<&$t> for IndexTy<N, $t> {
             type Output = Self;
 
             fn sub(self, rhs: &$t) -> Self::Output {
@@ -225,14 +230,14 @@ impl_sub!(u128);
 
 macro_rules! impl_mul {
     ($t:ty) => {
-        impl<const N: u128> Index<N, $t> {
+        impl<const N: u128> IndexTy<N, $t> {
             pub fn saturating_mul(self, rhs: Self) -> Self {
                 let res = self.0.saturating_mul(rhs.0);
                 Self(res.min(N as $t))
             }
         }
 
-        impl<const N: u128> Mul for Index<N, $t> {
+        impl<const N: u128> Mul for IndexTy<N, $t> {
             type Output = Self;
 
             fn mul(self, rhs: Self) -> Self::Output {
@@ -242,7 +247,7 @@ macro_rules! impl_mul {
             }
         }
 
-        impl<const N: u128> Mul<&Index<N, $t>> for Index<N, $t> {
+        impl<const N: u128> Mul<&IndexTy<N, $t>> for IndexTy<N, $t> {
             type Output = Self;
 
             fn mul(self, rhs: &Self) -> Self::Output {
@@ -252,13 +257,13 @@ macro_rules! impl_mul {
             }
         }
 
-        impl<const N: u128> MulAssign for Index<N, $t> {
+        impl<const N: u128> MulAssign for IndexTy<N, $t> {
             fn mul_assign(&mut self, rhs: Self) {
                 *self = *self * rhs;
             }
         }
 
-        impl<const N: u128> MulAssign<&Index<N, $t>> for Index<N, $t> {
+        impl<const N: u128> MulAssign<&IndexTy<N, $t>> for IndexTy<N, $t> {
             fn mul_assign(&mut self, rhs: &Self) {
                 *self = *self * rhs;
             }
@@ -274,7 +279,7 @@ impl_mul!(u128);
 
 macro_rules! impl_div {
     ($t:ty) => {
-        impl<const N: u128> Div for Index<N, $t> {
+        impl<const N: u128> Div for IndexTy<N, $t> {
             type Output = Self;
 
             fn div(self, rhs: Self) -> Self::Output {
@@ -284,7 +289,7 @@ macro_rules! impl_div {
             }
         }
 
-        impl<const N: u128> Div<&Index<N, $t>> for Index<N, $t> {
+        impl<const N: u128> Div<&IndexTy<N, $t>> for IndexTy<N, $t> {
             type Output = Self;
 
             fn div(self, rhs: &Self) -> Self::Output {
@@ -294,19 +299,19 @@ macro_rules! impl_div {
             }
         }
 
-        impl<const N: u128> DivAssign for Index<N, $t> {
+        impl<const N: u128> DivAssign for IndexTy<N, $t> {
             fn div_assign(&mut self, rhs: Self) {
                 *self = *self / rhs;
             }
         }
 
-        impl<const N: u128> DivAssign<&Index<N, $t>> for Index<N, $t> {
+        impl<const N: u128> DivAssign<&IndexTy<N, $t>> for IndexTy<N, $t> {
             fn div_assign(&mut self, rhs: &Self) {
                 *self = *self / rhs;
             }
         }
 
-        impl<const N: u128> Div<$t> for Index<N, $t> {
+        impl<const N: u128> Div<$t> for IndexTy<N, $t> {
             type Output = Self;
 
             fn div(self, rhs: $t) -> Self::Output {
@@ -316,7 +321,7 @@ macro_rules! impl_div {
             }
         }
 
-        impl<const N: u128> Div<&$t> for Index<N, $t> {
+        impl<const N: u128> Div<&$t> for IndexTy<N, $t> {
             type Output = Self;
 
             fn div(self, rhs: &$t) -> Self::Output {
@@ -336,7 +341,7 @@ impl_div!(u128);
 
 macro_rules! impl_rem {
     ($t:ty) => {
-        impl<const N: u128> Rem for Index<N, $t> {
+        impl<const N: u128> Rem for IndexTy<N, $t> {
             type Output = Self;
 
             fn rem(self, rhs: Self) -> Self::Output {
@@ -346,7 +351,7 @@ macro_rules! impl_rem {
             }
         }
 
-        impl<const N: u128> Rem<&Index<N, $t>> for Index<N, $t> {
+        impl<const N: u128> Rem<&IndexTy<N, $t>> for IndexTy<N, $t> {
             type Output = Self;
 
             fn rem(self, rhs: &Self) -> Self::Output {
@@ -356,19 +361,19 @@ macro_rules! impl_rem {
             }
         }
 
-        impl<const N: u128> RemAssign for Index<N, $t> {
+        impl<const N: u128> RemAssign for IndexTy<N, $t> {
             fn rem_assign(&mut self, rhs: Self) {
                 *self = *self % rhs;
             }
         }
 
-        impl<const N: u128> RemAssign<&Index<N, $t>> for Index<N, $t> {
+        impl<const N: u128> RemAssign<&IndexTy<N, $t>> for IndexTy<N, $t> {
             fn rem_assign(&mut self, rhs: &Self) {
                 *self = *self % rhs;
             }
         }
 
-        impl<const N: u128> Rem<$t> for Index<N, $t> {
+        impl<const N: u128> Rem<$t> for IndexTy<N, $t> {
             type Output = Self;
 
             fn rem(self, rhs: $t) -> Self::Output {
@@ -378,7 +383,7 @@ macro_rules! impl_rem {
             }
         }
 
-        impl<const N: u128> Rem<&$t> for Index<N, $t> {
+        impl<const N: u128> Rem<&$t> for IndexTy<N, $t> {
             type Output = Self;
 
             fn rem(self, rhs: &$t) -> Self::Output {
@@ -402,30 +407,30 @@ mod tests {
 
     #[test]
     fn new_works_with_bounds() {
-        let x = Index::<8, u8>::new(7);
-        assert_eq!(x, Some(Index(7)));
+        let x = IndexTy::<8, u8>::new(7);
+        assert_eq!(x, Some(IndexTy(7)));
 
-        let x = Index::<8, u8>::new(12);
+        let x = IndexTy::<8, u8>::new(12);
         assert_eq!(x, None);
     }
 
     #[test]
     #[should_panic = "Addition overflowed"]
     fn addition_overflow_panics() {
-        let a = Index::<10, u8>::new(4).unwrap();
-        let b = Index::<10, u8>::new(8).unwrap();
+        let a = IndexTy::<10, u8>::new(4).unwrap();
+        let b = IndexTy::<10, u8>::new(8).unwrap();
 
         let _ = a + b;
     }
 
     #[test]
     fn addition_in_bounds_works() {
-        let a = Index::<10, u8>::new(4).unwrap();
-        let b = Index::<10, u8>::new(3).unwrap();
+        let a = IndexTy::<10, u8>::new(4).unwrap();
+        let b = IndexTy::<10, u8>::new(3).unwrap();
 
         let c = a + b;
         assert_eq!(c.into_underlying(), 7);
 
-        assert_eq!(a + 4, Index::<10, u8>::new(8).unwrap());
+        assert_eq!(a + 4, IndexTy::<10, u8>::new(8).unwrap());
     }
 }

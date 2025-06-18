@@ -18,3 +18,5 @@ pub use hals::*;
 pub mod shared;
 
 pub mod manual_additions;
+
+pub use bittide_macros::*;

@@ -308,6 +308,6 @@ mod tests {
         let path = memmap_dir().join("VexRiscv.json");
 
         let source = std::fs::read_to_string(&path).unwrap();
-        let memmap: MemoryMapDesc = serde_json::from_str(&source).unwrap();
+        let _memmap: MemoryMapDesc = serde_json::from_str(&source).unwrap();
     }
 }
