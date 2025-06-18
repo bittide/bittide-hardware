@@ -27,7 +27,7 @@ const INSTANCES: SwitchDemoCcDeviceInstances = unsafe { SwitchDemoCcDeviceInstan
 fn main() -> ! {
     let cc = INSTANCES.clock_control;
     let dbgreg = INSTANCES.debug_register;
-    let timer = INSTANCES.timer;
+    // let timer = INSTANCES.timer;
 
     let config = ControlConfig {
         target_count: 0,
@@ -43,8 +43,8 @@ fn main() -> ! {
     );
 
     // Update clock control 10K updates per second
-    let interval = Duration::from_micros(100);
-    let mut next_update = timer.now() + interval;
+    // let interval = Duration::from_micros(100);
+    // let mut next_update = timer.now() + interval;
 
     loop {
         callisto::callisto(&cc, &config, &mut state);
@@ -53,7 +53,7 @@ fn main() -> ! {
         //      We temporarily disable rate limiting until the infrastructure
         //      is updated to handle the 10KHz rate.
         // timer.wait_until(next_update);
-        next_update += interval;
+        // next_update += interval;
     }
 }
 
