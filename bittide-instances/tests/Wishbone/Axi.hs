@@ -90,7 +90,7 @@ dut =
         axiUserMapC (const False)
           <| DfConv.fifo axiProxy axiProxy (SNat @1024)
           <| axiPacking
-          <| wbToAxiTx
+          <| wbToAxi4StreamTx
           -< axiTxBus
       constBwd todoMM -< mmAxiTx
       idC -< uartRx
