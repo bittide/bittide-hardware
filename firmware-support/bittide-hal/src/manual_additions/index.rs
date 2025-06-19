@@ -2,10 +2,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign};
+use core::ops::{Add, AddAssign, Rem, RemAssign, Sub, SubAssign};
 use ufmt::derive::uDebug;
 
 /// Arbitrarily-bounded unsigned integer
+///
+/// Use `Index![N]` for types or `index!(v, n = N)` for constructing values.
 ///
 /// Given an upper bound `N`, an `Index<N, ty>` number has a range of: [0..N-1].
 ///
@@ -15,6 +17,12 @@ use ufmt::derive::uDebug;
 /// Any generated code should automatically pick the best underlying number
 /// type, but manually written Rust code could do this wrong and make things
 /// confusing.
+///
+/// This type implements addition, subtraction and reminder operations. Other
+/// operations are not supported, so when a coder tries to do, for example,
+/// multiplication, it will not compile. This is by design, the exact behaviour
+/// should be detailed at the call site when such "uncommon" operations are
+/// needed. ("uncommon" as indices are usually only incremented or decremented)
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug, uDebug)]
 pub struct IndexTy<const N: u128, T>(T);
@@ -33,8 +41,8 @@ impl<const N: u128, T> IndexTy<N, T> {
 macro_rules! impl_general_stuff {
     ($t:ty) => {
         impl<const N: u128> IndexTy<N, $t> {
-            const MIN: Self = Self(0);
-            const MAX: Self = Self(N as $t);
+            pub const MIN: Self = Self(0);
+            pub const MAX: Self = Self((N - 1) as $t);
 
             pub const fn min_value() -> Self {
                 Self::MIN
@@ -86,7 +94,7 @@ macro_rules! impl_add {
         impl<const N: u128> IndexTy<N, $t> {
             pub fn saturating_add(self, rhs: Self) -> Self {
                 let res = self.0.saturating_add(rhs.0);
-                Self(res.min(N as $t))
+                Self(res.min(Self::MAX.0))
             }
 
             pub fn checked_add(self, rhs: Self) -> Option<Self> {
@@ -97,6 +105,17 @@ macro_rules! impl_add {
                     Some(Self(res))
                 }
             }
+
+            #[inline]
+            pub fn wrapping_add(self, rhs: Self) -> Self {
+                let until_end = N as $t - self.0;
+                let res = if rhs.0 >= until_end {
+                    rhs.0 - until_end
+                } else {
+                    self.0 + rhs.0
+                };
+                Self(res)
+            }
         }
 
         impl<const N: u128> Add for IndexTy<N, $t> {
@@ -105,7 +124,11 @@ macro_rules! impl_add {
             fn add(self, rhs: Self) -> Self::Output {
                 let res = self.0 + rhs.0;
                 debug_assert!(res < N as $t, "Addition overflowed");
-                Self(res)
+                if cfg!(debug_assertions) {
+                    Self(res)
+                } else {
+                    self.wrapping_add(rhs)
+                }
             }
         }
 
@@ -113,9 +136,7 @@ macro_rules! impl_add {
             type Output = Self;
 
             fn add(self, rhs: &Self) -> Self::Output {
-                let res = self.0 + rhs.0;
-                debug_assert!(res < N as $t, "Addition overflowed");
-                Self(res)
+                self + *rhs
             }
         }
 
@@ -135,9 +156,7 @@ macro_rules! impl_add {
             type Output = Self;
 
             fn add(self, rhs: $t) -> Self::Output {
-                let res = self.0 + rhs;
-                debug_assert!(res < N as $t, "Addition overflowed");
-                Self(res)
+                self + Self::new(rhs).expect("Right hand side operand of index addition cannot be turned into an index value")
             }
         }
 
@@ -145,9 +164,7 @@ macro_rules! impl_add {
             type Output = Self;
 
             fn add(self, rhs: &$t) -> Self::Output {
-                let res = self.0 + rhs;
-                debug_assert!(res < N as $t, "Addition overflowed");
-                Self(res)
+                self + *rhs
             }
         }
     };
@@ -166,6 +183,23 @@ macro_rules! impl_sub {
                 let res = self.0.saturating_sub(rhs.0);
                 Self(res)
             }
+
+            pub fn checked_sub(self, rhs: Self) -> Option<Self> {
+                if rhs.0 > self.0 {
+                    None
+                } else {
+                    Some(Self(self.0 - rhs.0))
+                }
+            }
+
+            #[inline]
+            pub fn wrapping_sub(self, rhs: Self) -> Self {
+                if rhs.0 > self.0 {
+                    Self(N as $t - (rhs.0 - self.0))
+                } else {
+                    Self(self.0 - rhs.0)
+                }
+            }
         }
 
         impl<const N: u128> Sub for IndexTy<N, $t> {
@@ -174,7 +208,11 @@ macro_rules! impl_sub {
             fn sub(self, rhs: Self) -> Self::Output {
                 let res = self.0 - rhs.0;
                 debug_assert!(res < N as $t);
-                Self(res)
+                if cfg!(debug_assertions) {
+                    Self(res)
+                } else {
+                    self.wrapping_sub(rhs)
+                }
             }
         }
 
@@ -182,9 +220,7 @@ macro_rules! impl_sub {
             type Output = Self;
 
             fn sub(self, rhs: &Self) -> Self::Output {
-                let res = self.0 - rhs.0;
-                debug_assert!(res < N as $t);
-                Self(res)
+                self - *rhs
             }
         }
 
@@ -204,9 +240,7 @@ macro_rules! impl_sub {
             type Output = Self;
 
             fn sub(self, rhs: $t) -> Self::Output {
-                let res = self.0 - rhs;
-                debug_assert!(res < N as $t);
-                Self(res)
+                self - Self::new(rhs).expect("Right hand side operand of index subtraction cannot be turned into an index value")
             }
         }
 
@@ -214,9 +248,7 @@ macro_rules! impl_sub {
             type Output = Self;
 
             fn sub(self, rhs: &$t) -> Self::Output {
-                let res = self.0 - rhs;
-                debug_assert!(res < N as $t);
-                Self(res)
+                self - *rhs
             }
         }
     };
@@ -228,119 +260,20 @@ impl_sub!(u32);
 impl_sub!(u64);
 impl_sub!(u128);
 
-macro_rules! impl_mul {
-    ($t:ty) => {
-        impl<const N: u128> IndexTy<N, $t> {
-            pub fn saturating_mul(self, rhs: Self) -> Self {
-                let res = self.0.saturating_mul(rhs.0);
-                Self(res.min(N as $t))
-            }
-        }
-
-        impl<const N: u128> Mul for IndexTy<N, $t> {
-            type Output = Self;
-
-            fn mul(self, rhs: Self) -> Self::Output {
-                let res = self.0 - rhs.0;
-                debug_assert!(res < N as $t, "Multiplication overflowed");
-                Self(res)
-            }
-        }
-
-        impl<const N: u128> Mul<&IndexTy<N, $t>> for IndexTy<N, $t> {
-            type Output = Self;
-
-            fn mul(self, rhs: &Self) -> Self::Output {
-                let res = self.0 - rhs.0;
-                debug_assert!(res < N as $t, "Multiplication overflowed");
-                Self(res)
-            }
-        }
-
-        impl<const N: u128> MulAssign for IndexTy<N, $t> {
-            fn mul_assign(&mut self, rhs: Self) {
-                *self = *self * rhs;
-            }
-        }
-
-        impl<const N: u128> MulAssign<&IndexTy<N, $t>> for IndexTy<N, $t> {
-            fn mul_assign(&mut self, rhs: &Self) {
-                *self = *self * rhs;
-            }
-        }
-    };
-}
-
-impl_mul!(u8);
-impl_mul!(u16);
-impl_mul!(u32);
-impl_mul!(u64);
-impl_mul!(u128);
-
-macro_rules! impl_div {
-    ($t:ty) => {
-        impl<const N: u128> Div for IndexTy<N, $t> {
-            type Output = Self;
-
-            fn div(self, rhs: Self) -> Self::Output {
-                let res = self.0 / rhs.0;
-                debug_assert!(res < N as $t);
-                Self(res)
-            }
-        }
-
-        impl<const N: u128> Div<&IndexTy<N, $t>> for IndexTy<N, $t> {
-            type Output = Self;
-
-            fn div(self, rhs: &Self) -> Self::Output {
-                let res = self.0 / rhs.0;
-                debug_assert!(res < N as $t);
-                Self(res)
-            }
-        }
-
-        impl<const N: u128> DivAssign for IndexTy<N, $t> {
-            fn div_assign(&mut self, rhs: Self) {
-                *self = *self / rhs;
-            }
-        }
-
-        impl<const N: u128> DivAssign<&IndexTy<N, $t>> for IndexTy<N, $t> {
-            fn div_assign(&mut self, rhs: &Self) {
-                *self = *self / rhs;
-            }
-        }
-
-        impl<const N: u128> Div<$t> for IndexTy<N, $t> {
-            type Output = Self;
-
-            fn div(self, rhs: $t) -> Self::Output {
-                let res = self.0 / rhs;
-                debug_assert!(res < N as $t);
-                Self(res)
-            }
-        }
-
-        impl<const N: u128> Div<&$t> for IndexTy<N, $t> {
-            type Output = Self;
-
-            fn div(self, rhs: &$t) -> Self::Output {
-                let res = self.0 / rhs;
-                debug_assert!(res < N as $t);
-                Self(res)
-            }
-        }
-    };
-}
-
-impl_div!(u8);
-impl_div!(u16);
-impl_div!(u32);
-impl_div!(u64);
-impl_div!(u128);
-
 macro_rules! impl_rem {
     ($t:ty) => {
+        impl<const N: u128> IndexTy<N, $t> {
+            pub fn checked_rem(self, rhs: Self) -> Option<Self> {
+                let res = self.0.checked_rem(rhs.0)?;
+                Some(Self(res))
+            }
+
+            pub fn restricting_rem<const M: u128>(self) -> IndexTy<M, $t> {
+                let val = self.0 % (M as $t);
+                IndexTy(val)
+            }
+        }
+
         impl<const N: u128> Rem for IndexTy<N, $t> {
             type Output = Self;
 
@@ -377,9 +310,7 @@ macro_rules! impl_rem {
             type Output = Self;
 
             fn rem(self, rhs: $t) -> Self::Output {
-                let res = self.0 % rhs;
-                debug_assert!(res < N as $t);
-                Self(res)
+                self % Self::new(rhs).expect("Right hand side operand of index reminder cannot be turned into an index value")
             }
         }
 
@@ -387,9 +318,7 @@ macro_rules! impl_rem {
             type Output = Self;
 
             fn rem(self, rhs: &$t) -> Self::Output {
-                let res = self.0 % rhs;
-                debug_assert!(res < N as $t);
-                Self(res)
+                self % *rhs
             }
         }
     };
@@ -404,6 +333,8 @@ impl_rem!(u128);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate as bittide_hal;
+    use bittide_macros::*;
 
     #[test]
     fn new_works_with_bounds() {
@@ -416,21 +347,95 @@ mod tests {
 
     #[test]
     #[should_panic = "Addition overflowed"]
-    fn addition_overflow_panics() {
-        let a = IndexTy::<10, u8>::new(4).unwrap();
-        let b = IndexTy::<10, u8>::new(8).unwrap();
+    fn addition_overflow_panics_two_indices() {
+        let a = index!(4, n = 10);
+        let b = index!(8, n = 10);
 
         let _ = a + b;
     }
 
     #[test]
+    #[should_panic = "Addition overflowed"]
+    fn addition_overflow_panics_non_index() {
+        let a = index!(4, n = 10);
+
+        let _ = a + 8;
+    }
+
+    #[test]
     fn addition_in_bounds_works() {
-        let a = IndexTy::<10, u8>::new(4).unwrap();
-        let b = IndexTy::<10, u8>::new(3).unwrap();
+        let a = index!(4, n = 10);
+        let b = index!(3, n = 10);
 
         let c = a + b;
         assert_eq!(c.into_underlying(), 7);
 
-        assert_eq!(a + 4, IndexTy::<10, u8>::new(8).unwrap());
+        assert_eq!(a + 4, index!(8, n = 10));
+
+        assert_eq!(a.checked_add(index!(8, n = 10)), None);
+    }
+
+    #[test]
+    fn saturated_add_works() {
+        let a = index!(5, n = 10);
+        let b = index!(6, n = 10);
+
+        assert_eq!(a.saturating_add(b), <Index![10]>::MAX);
+    }
+
+    #[test]
+    fn wrapped_add_works() {
+        let a = index!(9, n = 10);
+        let b = index!(1, n = 10);
+
+        assert_eq!(a.wrapping_add(b), index!(0, n = 10));
+    }
+
+    #[test]
+    fn checked_sub_works() {
+        let a = index!(4, n = 10);
+        let b = index!(3, n = 10);
+
+        assert_eq!(a - b, index!(1, n = 10));
+        assert_eq!(a.checked_sub(b), Some(index!(1, n = 10)));
+
+        assert_eq!(b.checked_sub(a), None);
+    }
+
+    #[test]
+    fn saturated_sub_works() {
+        let a = index!(4, n = 10);
+        let b = index!(3, n = 10);
+
+        assert_eq!(a.saturating_sub(b), index!(1, n = 10));
+        assert_eq!(b.saturating_sub(a), index!(0, n = 10));
+    }
+
+    #[test]
+    fn wrapping_sub_works() {
+        let a = index!(3, n = 10);
+        let b = index!(4, n = 10);
+
+        assert_eq!(a.wrapping_sub(b), index!(9, n = 10));
+
+        assert_eq!(
+            index!(0, n = 10).wrapping_sub(index!(1, n = 10)),
+            index!(9, n = 10)
+        );
+    }
+
+    #[test]
+    fn rem_works() {
+        let a = index!(15, n = 20);
+        let b = index!(10, n = 20);
+
+        assert_eq!(a % b, index!(5, n = 20));
+    }
+
+    #[test]
+    fn restricting_rem_works() {
+        let a = index!(15, n = 20);
+
+        assert_eq!(a.restricting_rem::<10>(), index!(5, n = 10));
     }
 }
