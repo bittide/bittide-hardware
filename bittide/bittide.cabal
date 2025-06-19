@@ -131,6 +131,7 @@ common extra
     DeriveAnyClass
     TypeFamilies
     ViewPatterns
+    PackageImports
 
   ghc-options:
     -Wall
@@ -316,3 +317,4 @@ test-suite unittests
     tasty-hunit,
     tasty-th,
     template-haskell,
+    text,

@@ -142,6 +142,7 @@ common extra
     DeriveAnyClass
     TypeFamilies
     ViewPatterns
+    PackageImports
 
   ghc-options:
     -Wall
