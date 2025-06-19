@@ -14,7 +14,7 @@ module Bittide.Axi4 (
 
   -- * Wishbone interfaces
   wbAxisRxBufferCircuit,
-  wbToAxiTx,
+  wbToAxi4StreamTx,
 
   -- * 2-domain FIFOs for each AXI4 channel
   axi4ReadAddressFifo,
@@ -593,13 +593,13 @@ type AxiStreamBytesOnly nBytes = 'Axi4StreamConfig nBytes 0 0
 The _tkeep bits are set based on the busSelect bits, when writing to address 1, a transfer
 is created that contains no data, but has the _tlast bit set.
 -}
-wbToAxiTx ::
+wbToAxi4StreamTx ::
   forall dom addrW nBytes.
   (KnownNat addrW, KnownNat nBytes) =>
   Circuit
     (Wishbone dom 'Standard addrW (Bytes nBytes))
     (Axi4Stream dom (AxiStreamBytesOnly nBytes) ())
-wbToAxiTx = case cancelMulDiv @nBytes @8 of
+wbToAxi4StreamTx = case cancelMulDiv @nBytes @8 of
   Dict -> Circuit $ unbundle . fmap go . bundle
    where
     go (WishboneM2S{..}, Axi4StreamS2M{..}) =
