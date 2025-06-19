@@ -928,7 +928,8 @@ device is programmed.
 -}
 whoAmIC ::
   forall dom addrW.
-  ( KnownDomain dom
+  ( HasCallStack
+  , KnownDomain dom
   , HiddenClockResetEnable dom
   , KnownNat addrW
   ) =>

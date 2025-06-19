@@ -48,7 +48,7 @@ queueing delays.
 
 _Bittide is part of Google Research, and is not an official Google product._
 
-# Licence
+# License
 
 This code is shared under by Google LLC under the Apache 2.0
 license. See the [LICENSE](LICENSES/Apache-2.0.txt) file for terms.

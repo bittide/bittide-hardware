@@ -85,12 +85,7 @@ case_clock_control_wb_self_test = do
             , clockMod =
                 L.take (L.length actual.clockMod) $ fromIntegral . pack <$> mapMaybe clockMod ccData
             }
-      putStrLn ""
-      putStrLn "Actual |"
-      print actual
-      print expected
-      putStrLn "Expected ^"
-      assertBool "Expected and actual differ" $ actual == expected
+      assertEqual "Expected and actual differ" expected actual
  where
   uartString = chr . fromIntegral <$> catMaybes uartStream
   (uartStream, ccData) = sampleC def dut
@@ -140,7 +135,7 @@ dut =
         (uartRx, jtag, mm) <- idleSource -< ()
         [ (prefixUart, (mmUart, uartBus))
           , (prefixCC, (mmCC, ccWb))
-          , (prefixDbg, (mmDbg, dbgWb))
+          , (prefixDbg, debugWbBus)
           ] <-
           processingElement NoDumpVcd peConfig -< (mm, jtag)
         (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
@@ -158,7 +153,7 @@ dut =
         constBwd 0b110 -< prefixCC
 
         cm <- cSignalMap clockMod -< ccd0
-        _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (mmDbg, (dbgWb, cm))
+        _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (debugWbBus, cm)
         constBwd 0b101 -< prefixDbg
         idC -< (uartTx, ccd1)
  where

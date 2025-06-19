@@ -20,7 +20,6 @@ import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Data.Maybe (isJust)
 import Protocols
 import Protocols.Extra (cSignalMap, replicateCSignalI, splitAtCI)
-import Protocols.Idle
 import Protocols.Wishbone
 import VexRiscv
 
@@ -31,13 +30,13 @@ import Bittide.ClockControl.Callisto.Types (
  )
 import Bittide.ClockControl.DebugRegister (
   DebugRegisterCfg (DebugRegisterCfg),
-  DebugRegisterData,
   debugRegisterWb,
  )
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.DoubleBufferedRam (InitialContent (Undefined))
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.SharedTypes
+import Bittide.Wishbone (timeWb)
 import Protocols.MemoryMap
 
 -- | Configuration type for software clock control.
@@ -132,20 +131,19 @@ callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
 
   Circuit circuitFn = circuit $ \(mm, jtag) -> do
     [ (prefixCc, (mmCc, wbClockControl))
-      , (prefixDebug, (mmDebug, wbDebug))
-      , (prefixDummy, (mmDummy, wbDummy))
+      , (prefixDebug, debugWbBus)
+      , (timePfx, timeWbBus)
       ] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
-    idleSink -< wbDummy
-    constBwd 0b001 -< prefixDummy
-    constBwd todoMM -< mmDummy
+    _localCounter <- timeWb -< timeWbBus
+    constBwd 0b011 -< timePfx
     [ccd0, ccd1] <-
       replicateCSignalI
         <| clockControlWb ccConfig.margin framesize mask ebs
         -< (mmCc, wbClockControl)
     constBwd 0b110 -< prefixCc
     cm <- cSignalMap clockMod -< ccd0
-    dbg <- debugRegisterWb debugRegisterCfg -< (mmDebug, (wbDebug, cm))
+    dbg <- debugRegisterWb debugRegisterCfg -< (debugWbBus, cm)
     constBwd 0b101 -< prefixDebug
     idC -< (ccd1, dbg)
 
@@ -160,7 +158,7 @@ callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
       , includeIlaWb = True
       }
 
-type SwcccInternalBusses = 4
+type SwcccInternalBusses = 5
 type SwcccRemBusWidth n = 30 - CLog 2 (n + SwcccInternalBusses)
 
 -- The additional 'otherWb' type parameter is necessary since this type helps expose
@@ -184,6 +182,8 @@ data SwControlCConfig mgn fsz otherWb where
     -- ^ Clock control register prefix
     , dbgRegPrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
     -- ^ Debug register prefix
+    , timePrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
+    -- ^ Time prefix
     } ->
     SwControlCConfig mgn fsz otherWb
 
@@ -223,108 +223,41 @@ callistoSwClockControlC ::
           )
         )
     )
-callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} = Circuit go
- where
-  go ::
-    ( Fwd
-        ( ConstBwd MM
-        , ( Jtag dom
-          , CSignal dom Bool -- reframing enable
-          , CSignal dom (BitVector nLinks) -- link mask
-          , Vec nLinks (CSignal dom (RelDataCount eBufBits)) -- diff counters
-          )
-        )
-    , Bwd
-        ( CSignal dom (CallistoCResult nLinks)
-        , Vec
-            otherWb
-            ( ConstBwd (Unsigned (CLog 2 (otherWb + SwcccInternalBusses)))
-            , ( ConstBwd MM
-              , Wishbone dom 'Standard (SwcccRemBusWidth otherWb) (Bytes 4)
-              )
-            )
-        )
-    ) ->
-    ( Bwd
-        ( ConstBwd MM
-        , ( Jtag dom
-          , CSignal dom Bool -- reframing enable
-          , CSignal dom (BitVector nLinks) -- link mask
-          , Vec nLinks (CSignal dom (RelDataCount eBufBits)) -- diff counters
-          )
-        )
-    , Fwd
-        ( CSignal dom (CallistoCResult nLinks)
-        , Vec
-            otherWb
-            ( ConstBwd (Unsigned (CLog 2 (otherWb + SwcccInternalBusses)))
-            , ( ConstBwd MM
-              , Wishbone dom 'Standard (SwcccRemBusWidth otherWb) (Bytes 4)
-              )
-            )
-        )
-    )
-  go ((mmIn, (jtagIn, reframe, linkMask, diffCounters)), (_, otherS2M)) =
-    ( (mmOut, (jtagOut, pure (), pure (), repeat $ pure ()))
-    , (callistoCResult, otherM2S)
-    )
-   where
-    debugRegisterCfg :: Signal dom DebugRegisterCfg
-    debugRegisterCfg = DebugRegisterCfg <$> reframe
+callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} =
+  circuit $ \(mm, (jtag, Fwd reframingEnabled, Fwd linkMask, Fwd diffCounters)) -> do
+    let
+      debugRegisterCfg :: Signal dom DebugRegisterCfg
+      debugRegisterCfg = DebugRegisterCfg <$> reframingEnabled
 
-    peFn ::
-      ( Fwd (ConstBwd MM, Jtag dom)
-      , Bwd
-          ( CSignal dom (ClockControlData nLinks)
-          , CSignal dom DebugRegisterData
-          , Vec
-              otherWb
-              ( ConstBwd (Unsigned (CLog 2 (otherWb + SwcccInternalBusses)))
-              , ( ConstBwd MM
-                , Wishbone dom 'Standard (SwcccRemBusWidth otherWb) (Bytes 4)
-                )
-              )
-          )
-      ) ->
-      ( Bwd (ConstBwd MM, Jtag dom)
-      , Fwd
-          ( CSignal dom (ClockControlData nLinks)
-          , CSignal dom DebugRegisterData
-          , Vec
-              otherWb
-              ( ConstBwd (Unsigned (CLog 2 (otherWb + SwcccInternalBusses)))
-              , ( ConstBwd MM
-                , Wishbone dom 'Standard (SwcccRemBusWidth otherWb) (Bytes 4)
-                )
-              )
-          )
-      )
-    Circuit peFn = circuit $ \(mm, jtag) -> do
-      allWishbone <- processingElement dumpVcd ccConfig.peConfig -< (mm, jtag)
-      ([(clockControlPfx, (mmCC, wbClockControl)), (debugPfx, (mmDebug, wbDebug))], wbRest) <-
-        splitAtCI -< allWishbone
-      [ccd0, ccd1] <-
-        replicateCSignalI
-          <| clockControlWb ccConfig.margin framesize linkMask diffCounters
-          -< (mmCC, wbClockControl)
-      cm <- cSignalMap clockMod -< ccd0
-      dbg <- debugRegisterWb debugRegisterCfg -< (mmDebug, (wbDebug, cm))
+    allWishbone <- processingElement dumpVcd ccConfig.peConfig -< (mm, jtag)
+    ( [ (clockControlPfx, clockControlBus)
+        , (debugPfx, debugWbBus)
+        , (timePfx, timeWbBus)
+        ]
+      , wbRest
+      ) <-
+      splitAtCI -< allWishbone
 
-      constBwd ccConfig.ccRegPrefix -< clockControlPfx
-      constBwd ccConfig.dbgRegPrefix -< debugPfx
+    Fwd clockControlData <-
+      clockControlWb ccConfig.margin framesize linkMask diffCounters -< clockControlBus
 
-      idC -< (ccd1, dbg, wbRest)
+    Fwd debugData <-
+      debugRegisterWb debugRegisterCfg -< (debugWbBus, Fwd ((.clockMod) <$> clockControlData))
 
-    ((mmOut, jtagOut), (clockControlData, debugData, otherM2S)) =
-      peFn ((mmIn, jtagIn), (pure (), pure (), otherS2M))
+    _localCounter <- timeWb -< timeWbBus
 
-    resultRfs = debugData.reframingState
+    constBwd ccConfig.ccRegPrefix -< clockControlPfx
+    constBwd ccConfig.dbgRegPrefix -< debugPfx
+    constBwd ccConfig.timePrefix -< timePfx
 
-    callistoCResult :: Signal dom (CallistoCResult nLinks)
-    callistoCResult =
-      CallistoCResult
-        <$> clockControlData.clockMod
-        <*> clockControlData.stabilityIndications
-        <*> clockControlData.allStable
-        <*> clockControlData.allSettled
-        <*> resultRfs
+    let
+      callistoCResult :: Signal dom (CallistoCResult nLinks)
+      callistoCResult =
+        CallistoCResult
+          <$> clockControlData.clockMod
+          <*> clockControlData.stabilityIndications
+          <*> clockControlData.allStable
+          <*> clockControlData.allSettled
+          <*> debugData.reframingState
+
+    idC -< (Fwd callistoCResult, wbRest)
