@@ -32,10 +32,10 @@ type C_S_AXI_DATA_WIDTH = 32
 type C_S_AXI_N_BYTES = DivRU C_S_AXI_DATA_WIDTH 8
 
 {- ORMOLU_DISABLE -}
-type ConfAW = 'Axi4WriteAddressConfig 'True 'True C_S_AXI_ID_WIDTH C_S_AXI_ADDR_WIDTH 'False 'True 'True 'True 'True 'True
+type ConfAW = 'Axi4WriteAddressConfig 'False 'False C_S_AXI_ID_WIDTH C_S_AXI_ADDR_WIDTH 'False 'False 'True 'True 'True 'False
 type ConfW = 'Axi4WriteDataConfig 'True C_S_AXI_N_BYTES
 type ConfB = 'Axi4WriteResponseConfig 'True C_S_AXI_ID_WIDTH
-type ConfAR = 'Axi4ReadAddressConfig 'True 'True C_S_AXI_ID_WIDTH C_S_AXI_ADDR_WIDTH 'False 'True 'True 'True 'True 'True
+type ConfAR = 'Axi4ReadAddressConfig 'False 'False C_S_AXI_ID_WIDTH C_S_AXI_ADDR_WIDTH 'False 'False 'True 'True 'True 'False
 type ConfR = 'Axi4ReadDataConfig 'True C_S_AXI_ID_WIDTH
 {- ORMOLU_ENABLE -}
 
@@ -319,13 +319,13 @@ ddr4Axi
         (ResetPort @"c0_ddr4_aresetn" @ActiveLow axi_rst)
         (Port @"c0_ddr4_s_axi_awid"    ((._awid) <$> m2s_wa))
         (Port @"c0_ddr4_s_axi_awaddr"  ((._awaddr) <$> m2s_wa))
-        (Port @"c0_ddr4_s_axi_awlen"   (pack . (._awlen) <$> m2s_wa))
-        (Port @"c0_ddr4_s_axi_awsize"  (pack . (._awsize) <$> m2s_wa))
-        (Port @"c0_ddr4_s_axi_awburst" (pack . (._awburst) <$> m2s_wa))
+        (Port @"c0_ddr4_s_axi_awlen"   (pure 0 :: Signal uiDom (BitVector 8)))
+        (Port @"c0_ddr4_s_axi_awsize"  (pure (pack Bs1) :: Signal uiDom (BitVector 3)))
+        (Port @"c0_ddr4_s_axi_awburst" (pure (pack BmFixed) :: Signal uiDom (BitVector 2)))
         (Port @"c0_ddr4_s_axi_awlock"  (pack . (._awlock) <$> m2s_wa)) -- Not used in the current implementation according to pg150.
         (Port @"c0_ddr4_s_axi_awcache" (pack . (._awcache) <$> m2s_wa)) -- Not used in the current implementation according to pg150.
         (Port @"c0_ddr4_s_axi_awprot"  (pack . (._awprot) <$> m2s_wa)) -- Not used in the current implementation according to pg150.
-        (Port @"c0_ddr4_s_axi_awqos"   (pack . (._awqos) <$> m2s_wa)) -- Not used in the current implementation according to pg150.
+        (Port @"c0_ddr4_s_axi_awqos"   (pure 0 :: Signal uiDom (BitVector 4))) -- Not used in the current implementation according to pg150.
         (Port @"c0_ddr4_s_axi_awvalid" (isWriteAddress <$> m2s_wa))
 
         -- AXI Write Data Ports
@@ -340,13 +340,13 @@ ddr4Axi
         -- AXI Read Address Ports
         (Port @"c0_ddr4_s_axi_arid"    ((._arid) <$> m2s_ra))
         (Port @"c0_ddr4_s_axi_araddr"  ((._araddr) <$> m2s_ra))
-        (Port @"c0_ddr4_s_axi_arlen"   (pack . (._arlen) <$> m2s_ra))
-        (Port @"c0_ddr4_s_axi_arsize"  (pack . (._arsize) <$> m2s_ra))
-        (Port @"c0_ddr4_s_axi_arburst" (pack . (._arburst) <$> m2s_ra))
+        (Port @"c0_ddr4_s_axi_arlen"   (pure 0 :: Signal uiDom (BitVector 8)))
+        (Port @"c0_ddr4_s_axi_arsize"  (pure (pack Bs1) :: Signal uiDom (BitVector 3)))
+        (Port @"c0_ddr4_s_axi_arburst" (pure (pack BmFixed) :: Signal uiDom (BitVector 2)))
         (Port @"c0_ddr4_s_axi_arlock"  (pack . (._arlock) <$> m2s_ra)) -- Not used in the current implementation according to pg150.
         (Port @"c0_ddr4_s_axi_arcache" (pack . (._arcache) <$> m2s_ra)) -- Not used in the current implementation according to pg150.
         (Port @"c0_ddr4_s_axi_arprot"  (pack . (._arprot) <$> m2s_ra)) -- Not used in the current implementation according to pg150.
-        (Port @"c0_ddr4_s_axi_arqos"   (pack . (._arqos) <$> m2s_ra)) -- Not used in the current implementation according to pg150.
+        (Port @"c0_ddr4_s_axi_arqos"   (pure 0 :: Signal uiDom (BitVector 4))) -- Not used in the current implementation according to pg150.
         (Port @"c0_ddr4_s_axi_arvalid" (isReadAddress <$> m2s_ra))
 
         -- AXI Read Data Ports
