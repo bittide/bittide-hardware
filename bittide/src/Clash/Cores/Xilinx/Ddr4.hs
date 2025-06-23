@@ -10,7 +10,9 @@ module Clash.Cores.Xilinx.Ddr4 where
 
 import Clash.Prelude
 
-import Data.Maybe (fromJust, isJust)
+import Control.DeepSeq (NFData, rnf)
+import Data.Map (Map)
+import Data.Maybe (fromJust, fromMaybe, isJust)
 
 import Clash.Cores.Xilinx.Xpm.Cdc.Internal
 
@@ -21,10 +23,14 @@ import Protocols.Axi4.WriteAddress
 import Protocols.Axi4.WriteData
 import Protocols.Axi4.WriteResponse
 
+import qualified Data.Map as Map
+
 -- | Width of all master and slave ID signals
 type C_S_AXI_ID_WIDTH = 4
 
--- | Width of S_AXI_AWADDR, S_AXI_ARADDR, M_AXI_AWADDR and M_AXI_ARADDR for all SI/MI slots.
+{- | Width of S_AXI_AWADDR, S_AXI_ARADDR, M_AXI_AWADDR and M_AXI_ARADDR for all
+SI/MI slots. Note that these addresses are true byte adresses.
+-}
 type C_S_AXI_ADDR_WIDTH = 28
 
 -- | Width of WDATA and RDATA on SI slot
@@ -59,6 +65,121 @@ data Ddr4MemorySignals = Ddr4MemorySignals
 -- them here.
 createDomain vXilinxSystem{vName = "Ddr800", vPeriod = 1250}
 createDomain vXilinxSystem{vName = "Ddr200", vPeriod = hzToPeriod 200e6}
+
+-- | 'Map', but with a grimy 'NFDataX' instance :sparkles:
+newtype MapX k v = MapX {unMapX :: Map k v}
+
+instance (NFDataX k, NFDataX v, NFData k, NFData v) => NFDataX (MapX k v) where
+  rnfX = rnf . unMapX
+  ensureSpine = id
+  hasUndefined = hasUndefined . Map.toList . unMapX
+  deepErrorX = errorX
+
+data Ddr4AxiState = Ddr4AxiState
+  { memory :: MapX (BitVector C_S_AXI_ADDR_WIDTH) (BitVector C_S_AXI_DATA_WIDTH)
+  , fsmState :: Ddr4AxiFsm
+  }
+  deriving (Generic, NFDataX)
+
+data Ddr4AxiFsm
+  = -- | Do absolutely nothing
+    Idle
+  | -- | Only accept incomming requests on the @read_address@ channel
+    WaitForRead
+  | -- | Only accept incomming requests on the @write_address@ channel
+    WaitForWrite
+  | -- | Respond on @read_data@ channel
+    Read (BitVector C_S_AXI_ADDR_WIDTH)
+  | -- | We got a request on the @write_address@ channel, wait for a request on
+    -- the @write_data@ channel.
+    WaitWriteData (BitVector C_S_AXI_ADDR_WIDTH)
+  | -- | Confirm write request
+    ConfirmWrite
+  deriving (Generic, NFDataX)
+
+data AxiM2S = AxiM2S
+  { wa :: M2S_WriteAddress ConfAW ()
+  , wd :: M2S_WriteData ConfW ()
+  , wr :: M2S_WriteResponse
+  , ra :: M2S_ReadAddress ConfAR ()
+  , rd :: M2S_ReadData
+  }
+
+data AxiS2M = AxiS2M
+  { wa :: S2M_WriteAddress
+  , wd :: S2M_WriteData
+  , wr :: S2M_WriteResponse ConfB ()
+  , ra :: S2M_ReadAddress
+  , rd :: S2M_ReadData ConfR () (BitVector C_S_AXI_DATA_WIDTH)
+  }
+
+defaultAxiS2M :: AxiS2M
+defaultAxiS2M =
+  AxiS2M
+    { wa = S2M_WriteAddress{_awready = False}
+    , wd = S2M_WriteData{_wready = False}
+    , wr = S2M_NoWriteResponse
+    , ra = S2M_ReadAddress{_arready = False}
+    , rd = S2M_NoReadData
+    }
+
+ddr4AxiTf ::
+  Ddr4AxiState ->
+  AxiM2S ->
+  ( Ddr4AxiState
+  , AxiS2M
+  )
+ddr4AxiTf s0@Ddr4AxiState{fsmState = Idle} _ =
+  ( s0{fsmState = WaitForRead}
+  , defaultAxiS2M
+  )
+ddr4AxiTf s0@Ddr4AxiState{fsmState = WaitForRead} m2s@AxiM2S{ra = M2S_ReadAddress{}} =
+  ( s0{fsmState = Read m2s.ra._araddr}
+  , defaultAxiS2M{ra = S2M_ReadAddress{_arready = True}}
+  )
+ddr4AxiTf s0@Ddr4AxiState{fsmState = WaitForWrite} m2s@AxiM2S{wa = M2S_WriteAddress{}} =
+  ( s0{fsmState = WaitWriteData m2s.wa._awaddr}
+  , defaultAxiS2M{wa = S2M_WriteAddress{_awready = True}}
+  )
+ddr4AxiTf s0@Ddr4AxiState{fsmState = Read addr} AxiM2S{rd = m2s} =
+  ( s0{fsmState = nextState}
+  , defaultAxiS2M{rd = rd0}
+  )
+ where
+  nextState
+    | m2s._rready = WaitForWrite
+    | otherwise = s0.fsmState
+
+  rd0 =
+    S2M_ReadData
+      { _rid = 0
+      , _rdata = fromMaybe 0 $ unMapX s0.memory Map.!? addr
+      , _rresp = pure ROkay
+      , _rlast = True
+      , _ruser = ()
+      }
+ddr4AxiTf s0@Ddr4AxiState{fsmState = WaitWriteData addr} m2s@AxiM2S{wd = M2S_WriteData{}} =
+  ( s0
+      { memory = MapX $ Map.adjust (\_ -> dat) addr (unMapX s0.memory)
+      , fsmState = ConfirmWrite
+      }
+  , defaultAxiS2M{wd = S2M_WriteData{_wready = True}}
+  )
+ where
+  dat = pack $ map (fromJust . fromStrobeDataType) m2s.wd._wdata
+ddr4AxiTf s0@Ddr4AxiState{fsmState = ConfirmWrite} AxiM2S{wr = M2S_WriteResponse{_bready = True}} =
+  ( s0{fsmState = WaitForRead}
+  , defaultAxiS2M{wr = S2M_WriteResponse{_bid = 0, _bresp = pure ROkay, _buser = ()}}
+  )
+ddr4AxiTf s0 _ =
+  ( s0{fsmState = flipWaitStates s0.fsmState}
+  , defaultAxiS2M
+  )
+
+flipWaitStates :: Ddr4AxiFsm -> Ddr4AxiFsm
+flipWaitStates WaitForRead = WaitForWrite
+flipWaitStates WaitForWrite = WaitForRead
+flipWaitStates s = s
 
 {- BiSignals don't work in record types, which is why we have to write out all inputs and
 outputs instead.
@@ -151,11 +272,16 @@ ddr4Axi
       c0_ddr4_dqs_t_o = writeToBiSignal @Bit c0_ddr4_dqs_t (pure Nothing)
       c0_ddr4_dqs_c_o = writeToBiSignal @Bit c0_ddr4_dqs_c (pure Nothing)
 
-      s2m_wa = pure $ S2M_WriteAddress False
-      s2m_wd = pure $ S2M_WriteData False
-      s2m_wr = pure $ S2M_NoWriteResponse
-      s2m_ra = pure $ S2M_ReadAddress False
-      s2m_rd = pure $ S2M_NoReadData
+      s2m = withClockResetEnable clk200 rst200 enableGen $ mealy ddr4AxiTf s0 m2s
+       where
+        s0 = Ddr4AxiState{memory = MapX $ Map.empty, fsmState = Idle}
+        m2s = AxiM2S <$> m2s_wa <*> m2s_wd <*> m2s_wr <*> m2s_ra <*> m2s_rd
+
+      s2m_wa = (.wa) <$> s2m
+      s2m_wd = (.wd) <$> s2m
+      s2m_wr = (.wr) <$> s2m
+      s2m_ra = (.ra) <$> s2m
+      s2m_rd = (.rd) <$> s2m
 
     synth =
       ( ui_clk

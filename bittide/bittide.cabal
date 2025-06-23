@@ -155,6 +155,7 @@ library
     clash-vexriscv,
     constraints >=0.13.3 && <0.15,
     containers,
+    deepseq,
     directory,
     elf,
     exceptions,
