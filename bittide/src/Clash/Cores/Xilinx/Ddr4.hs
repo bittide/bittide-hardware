@@ -23,7 +23,7 @@ import Protocols.Axi4.WriteResponse
 type C_S_AXI_ID_WIDTH = 4
 
 -- | Width of S_AXI_AWADDR, S_AXI_ARADDR, M_AXI_AWADDR and M_AXI_ARADDR for all SI/MI slots.
-type C_S_AXI_ADDR_WIDTH = 29
+type C_S_AXI_ADDR_WIDTH = 28
 
 -- | Width of WDATA and RDATA on SI slot
 type C_S_AXI_DATA_WIDTH = 32
@@ -43,7 +43,7 @@ type ConfR = 'Axi4ReadDataConfig 'True C_S_AXI_ID_WIDTH
 data Ddr4MemorySignals = Ddr4MemorySignals
   { c0_ddr4_adr :: BitVector 17
   , c0_ddr4_ba :: BitVector 2
-  , c0_ddr4_bg :: BitVector 2
+  , c0_ddr4_bg :: Bit
   , c0_ddr4_cke :: Bit
   , c0_ddr4_odt :: Bit
   , c0_ddr4_cs_n :: Bit
@@ -236,7 +236,7 @@ ddr4Axi
       ( -- DDR4
         Port "c0_ddr4_adr"     sysDom (BitVector 17)
       , Port "c0_ddr4_ba"      sysDom (BitVector 2)
-      , Port "c0_ddr4_bg"      sysDom (BitVector 2)
+      , Port "c0_ddr4_bg"      sysDom Bit
       , Port "c0_ddr4_cke"     sysDom Bit
       , Port "c0_ddr4_odt"     sysDom Bit
       , Port "c0_ddr4_cs_n"    sysDom Bit
@@ -297,13 +297,14 @@ ddr4Axi
                  ("CONFIG.C0_CLOCK_BOARD_INTERFACE", StrOpt "default_sysclk_300")
               :> ("CONFIG.C0.DDR4_TimePeriod",       IntegerOpt 1000)
               :> ("CONFIG.C0.DDR4_InputClockPeriod", IntegerOpt 8000)
-              :> ("CONFIG.C0.DDR4_Specify_MandD",    BoolOpt False)
               :> ("CONFIG.C0.DDR4_CLKOUT0_DIVIDE",   IntegerOpt 5)
+              :> ("CONFIG.C0.DDR4_MemoryPart",       StrOpt "MT40A256M16GE-083E")
               :> ("CONFIG.C0.DDR4_AxiSelection",     BoolOpt True)
               :> ("CONFIG.C0.DDR4_CasLatency",       IntegerOpt 15)
               :> ("CONFIG.C0.DDR4_CasWriteLatency",  IntegerOpt 11)
               :> ("CONFIG.C0.DDR4_AxiDataWidth",     IntegerOpt (natToNum @C_S_AXI_DATA_WIDTH))
               :> ("CONFIG.C0.DDR4_AxiAddressWidth",  IntegerOpt (natToNum @C_S_AXI_ADDR_WIDTH))
+              :> ("CONFIG.C0.BANK_GROUP_WIDTH",      IntegerOpt 1)
               :> Nil
           }
         (DiffClockPort @"c0_sys_clk" sysClkDiff)
