@@ -1,7 +1,7 @@
 [
   {"top": "counterReducedPins",            "stage": "pnr"},
-  {"top": "freeze",                        "stage": "pnr"},
   {"top": "elasticBuffer5",                "stage": "pnr"},
+  {"top": "freeze",                        "stage": "pnr"},
   {"top": "gatherUnit1KReducedPins",       "stage": "pnr"},
   {"top": "safeDffSynchronizer",           "stage": "pnr"},
   {"top": "scatterUnit1KReducedPins",      "stage": "pnr"},
@@ -17,12 +17,12 @@
   {"top": "boardTestSimple",               "stage": "test"},
   {"top": "dnaOverSerial",                 "stage": "test"},
   {"top": "fincFdecTests",                 "stage": "test"},
-  {"top": "swCcTopologyTest",              "stage": "test"},
   {"top": "linkConfigurationTest",         "stage": "test"},
+  {"top": "swCcTopologyTest",              "stage": "test"},
   {"top": "switchDemoTest",                "stage": "test"},
   {"top": "syncInSyncOut",                 "stage": "test"},
   {"top": "temperatureMonitor",            "stage": "test"},
   {"top": "transceiversUpTest",            "stage": "test"},
-  {"top": "vexRiscvTest",                  "stage": "test"},
-  {"top": "vexRiscvTcpTest",               "stage": "test"}
+  {"top": "vexRiscvTcpTest",               "stage": "test"},
+  {"top": "vexRiscvTest",                  "stage": "test"}
 ]
