@@ -155,6 +155,7 @@ library
     clash-vexriscv,
     constraints >=0.13.3 && <0.15,
     containers,
+    deepseq,
     directory,
     elf,
     exceptions,
@@ -215,6 +216,7 @@ library
     Bittide.Wishbone
     Clash.Cores.Extra
     Clash.Cores.UART.Extra
+    Clash.Cores.Xilinx.Ddr4
     Clash.Cores.Xilinx.Extra
     Clash.Cores.Xilinx.GTH
     Clash.Cores.Xilinx.GTH.BlackBoxes
@@ -223,6 +225,7 @@ library
     Clash.Cores.Xilinx.Xpm.Cdc.Handshake.Extra
     Clash.Explicit.Reset.Extra
     Clash.Functor.Extra
+    Clash.Protocols.Axi4.Extra
     Clash.Signal.TH.Extra
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
