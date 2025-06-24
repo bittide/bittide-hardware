@@ -4,7 +4,10 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
-{- | This test is currently not pure as previous writes to the memory are not
+{- | Test DDR4 controller by writing values to a specific \"chunk\" of memory. After
+writing, read from the same addresses and confirm that the values are as expected.
+
+This test is currently not pure as previous writes to the memory are not
 cleared before running the test. Reprogramming the FPGA also clears the data in
 the memory.
 -}
@@ -43,44 +46,48 @@ data TestState = Busy | Fail | Success
 type Done dom = CSignal dom Bool
 
 -- | The number of addresses per chunk
-type AddressCount = 512 :: Nat
+type AddressesPerChunk = 512 :: Nat
 
-{- | The steps of addresses. Should be at least 4 to account for byte addressing
+{- | The steps of addresses. Should be divisible by 4 to account for byte addressing
 and 32-bit AXI bus width.
 -}
 type StepSize = 1024 :: Nat
 
-data AddressAllignment
+data TestChunk
   = Bottom
   | Top
   deriving (Enum, Generic, NFDataX, Bounded, BitPack, ShowX, Show)
 
-{- | Generate an address based on the current test allignment. The goal is to
-check the bottom range of the memory and the top range.
+{- | Generate an address based on the current test chunk. The goal is to check
+the bottom range of the memory and the top range.
 -}
 mkAddress ::
   forall n nAddresses stepSize.
   ( KnownNat n
   , KnownNat nAddresses
   , 1 <= nAddresses
+  , nAddresses <= 2 ^ n
   ) =>
   SNat stepSize ->
-  AddressAllignment ->
+  TestChunk ->
   Index nAddresses ->
   BitVector n
-mkAddress SNat Bottom i = resize (pack i) * natToNum @stepSize
-mkAddress SNat Top i = maxBound - (resize (pack i) * natToNum @stepSize)
+mkAddress SNat Bottom i = numConvert i * natToNum @stepSize
+mkAddress SNat Top i = maxBound - (numConvert i * natToNum @stepSize)
 
 writeAddressFsm ::
   forall nAddresses stepSize dom.
-  (KnownDomain dom, 1 <= nAddresses) =>
+  ( KnownDomain dom
+  , 1 <= nAddresses
+  , nAddresses <= 2 ^ AWAddrWidth ConfAW
+  ) =>
   SNat nAddresses ->
   SNat stepSize ->
   Clock dom ->
   Reset dom ->
-  Signal dom AddressAllignment ->
+  Signal dom TestChunk ->
   Circuit () (Axi4WriteAddress dom ConfAW ())
-writeAddressFsm SNat SNat clk rst addressAllignment = Circuit go
+writeAddressFsm SNat SNat clk rst chunk = Circuit go
  where
   -- See `mkAddress` for which addresses are generated
   go ::
@@ -94,7 +101,7 @@ writeAddressFsm SNat SNat clk rst addressAllignment = Circuit go
     (done, i1) = unbundle $ countSuccOverflow <$> i0
     m2s = mux busy (mkWriteAddress <$> addr) (pure M2S_NoWriteAddress)
 
-    addr = mkAddress (SNat @stepSize) <$> addressAllignment <*> i0
+    addr = mkAddress (SNat @stepSize) <$> chunk <*> i0
 
     mkWriteAddress :: BitVector (AWAddrWidth ConfAW) -> M2S_WriteAddress ConfAW ()
     mkWriteAddress a =
@@ -167,14 +174,17 @@ writeResponseFsm SNat clk rst = Circuit go
 
 readAddressFsm ::
   forall nAddresses stepSize dom.
-  (KnownDomain dom, 1 <= nAddresses) =>
+  ( KnownDomain dom
+  , 1 <= nAddresses
+  , nAddresses <= 2 ^ ARAddrWidth ConfAR
+  ) =>
   SNat nAddresses ->
   SNat stepSize ->
   Clock dom ->
   Reset dom ->
-  Signal dom AddressAllignment ->
+  Signal dom TestChunk ->
   Circuit (Done dom) (Axi4ReadAddress dom ConfAR ())
-readAddressFsm SNat SNat clk rst addressAllignment = Circuit go
+readAddressFsm SNat SNat clk rst chunk = Circuit go
  where
   -- See `mkAddress` for which addresses are generated
   go ::
@@ -188,7 +198,7 @@ readAddressFsm SNat SNat clk rst addressAllignment = Circuit go
     (done, i1) = unbundle $ countSuccOverflow <$> i0
     m2s = mux busy (mkReadAddress <$> addr) (pure M2S_NoReadAddress)
 
-    addr = mkAddress (SNat @stepSize) <$> addressAllignment <*> i0
+    addr = mkAddress (SNat @stepSize) <$> chunk <*> i0
 
     mkReadAddress :: BitVector (ARAddrWidth ConfAR) -> M2S_ReadAddress ConfAR ()
     mkReadAddress a =
@@ -277,12 +287,14 @@ data DebugInfo = DebugInfo
 dut ::
   ( KnownDomain dom
   , 1 <= nAddresses
+  , nAddresses <= 2 ^ AWAddrWidth ConfAW
+  , AWAddrWidth ConfAW ~ ARAddrWidth ConfAR
   ) =>
   SNat nAddresses ->
   SNat stepSize ->
   Clock dom ->
   Reset dom ->
-  Signal dom AddressAllignment ->
+  Signal dom TestChunk ->
   Circuit
     ( Axi4WriteResponse dom ConfB ()
     , Axi4ReadData dom ConfR () (BitVector C_S_AXI_DATA_WIDTH)
@@ -293,11 +305,11 @@ dut ::
     , CSignal dom TestState
     , CSignal dom DebugInfo
     )
-dut nAddresses stepSize clk rst allignment = circuit $ \(wr, rd) -> do
-  wa <- writeAddressFsm nAddresses stepSize clk rst allignment
+dut nAddresses stepSize clk rst chunk = circuit $ \(wr, rd) -> do
+  wa <- writeAddressFsm nAddresses stepSize clk rst chunk
   wd <- writeDataFsm nAddresses clk rst
   Fwd wrDone <- writeResponseFsm nAddresses clk rst -< wr
-  ra <- readAddressFsm nAddresses stepSize clk rst allignment -< Fwd wrDone
+  ra <- readAddressFsm nAddresses stepSize clk rst chunk -< Fwd wrDone
   (testState, debugInfo) <- readDataFsm nAddresses clk rst -< rd
   idC -< (wa, wd, ra, testState, debugInfo)
 
@@ -350,7 +362,7 @@ ddr4Test refClkDiff c0_ddr4_dm_dbi_n c0_ddr4_dq c0_ddr4_dqs_t c0_ddr4_dqs_c =
   testStart = isJust <$> testInput
   testStartRst = unsafeFromActiveLow testStart
 
-  testInput :: Signal Ddr200 (Maybe AddressAllignment)
+  testInput :: Signal Ddr200 (Maybe TestChunk)
   testInput = hitlVio Bottom clkUi testDone testSuccess
 
   testDone = sticky clkUi testStartRst $ testStart .&&. fmap isDone testResult
@@ -450,7 +462,7 @@ ddr4Test refClkDiff c0_ddr4_dm_dbi_n c0_ddr4_dq c0_ddr4_dqs_t c0_ddr4_dqs_c =
     , (m2s_wa, m2s_wd, m2s_ra, testResult, debugInfo)
     ) =
       ( toSignals
-          $ dut (SNat @AddressCount) (SNat @StepSize) clkUi dutRst (fromJustX <$> testInput)
+          $ dut (SNat @AddressesPerChunk) (SNat @StepSize) clkUi dutRst (fromJustX <$> testInput)
       )
         (
           ( s2m_wr
@@ -538,7 +550,7 @@ tests =
     { topEntity = 'ddr4Test
     , extraXdcFiles = ["ddr4.xdc"]
     , externalHdl = []
-    , testCases = testCasesFromEnum @AddressAllignment [HwTargetByIndex 0] ()
+    , testCases = testCasesFromEnum @TestChunk [HwTargetByIndex 0] ()
     , mDriverProc = Nothing
     , mPostProc = Nothing
     }

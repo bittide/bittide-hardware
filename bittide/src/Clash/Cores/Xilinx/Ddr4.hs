@@ -6,6 +6,9 @@
 {-# OPTIONS_GHC -Wno-ambiguous-fields #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
+{- | Houses DDR4 controller hardcoded to talk to `MT40A256M16GE-083E`, the memory
+chip on the KCU105 development board.
+-}
 module Clash.Cores.Xilinx.Ddr4 where
 
 import Clash.Prelude
@@ -86,9 +89,9 @@ data Ddr4AxiState = Ddr4AxiState
 data Ddr4AxiFsm
   = -- | Do absolutely nothing
     Idle
-  | -- | Only accept incomming requests on the @read_address@ channel
+  | -- | Only accept incoming requests on the @read_address@ channel
     WaitForRead
-  | -- | Only accept incomming requests on the @write_address@ channel
+  | -- | Only accept incoming requests on the @write_address@ channel
     WaitForWrite
   | -- | Respond on @read_data@ channel
     Read (BitVector C_S_AXI_ADDR_WIDTH)
@@ -178,6 +181,9 @@ ddr4AxiTf s0 _ =
   , defaultAxiS2M
   )
 
+{- | Flip between waiting on read and write requests to prevent starvation on one
+of the channels.
+-}
 flipWaitStates :: Ddr4AxiFsm -> Ddr4AxiFsm
 flipWaitStates WaitForRead = WaitForWrite
 flipWaitStates WaitForWrite = WaitForRead
