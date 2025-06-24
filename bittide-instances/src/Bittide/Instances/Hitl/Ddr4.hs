@@ -308,10 +308,10 @@ properly with 'makeTopentity'.
 -}
 ddr4Test ::
   "c0_sys_clk" ::: DiffClock Ext300 ->
-  "c0_ddr4_dm_dbi_n" ::: BiSignalIn 'Floating Ddr800 1 ->
-  "c0_ddr4_dq" ::: BiSignalIn 'Floating Ddr800 8 ->
-  "c0_ddr4_dqs_t" ::: BiSignalIn 'Floating Ddr800 1 ->
-  "c0_ddr4_dqs_c" ::: BiSignalIn 'Floating Ddr800 1 ->
+  "c0_ddr4_dm_dbi_n" ::: BiSignalIn 'Floating Ddr800 8 ->
+  "c0_ddr4_dq" ::: BiSignalIn 'Floating Ddr800 64 ->
+  "c0_ddr4_dqs_t" ::: BiSignalIn 'Floating Ddr800 8 ->
+  "c0_ddr4_dqs_c" ::: BiSignalIn 'Floating Ddr800 8 ->
   ""
     ::: ( "c0_ddr4_adr" ::: Signal Ddr800 (BitVector 17)
         , "c0_ddr4_ba" ::: Signal Ddr800 (BitVector 2)
@@ -323,10 +323,10 @@ ddr4Test ::
         , "c0_ddr4_ck_c" ::: Signal Ddr800 Bit
         , "c0_ddr4_act_n" ::: Signal Ddr800 Bit
         , "c0_ddr4_reset_n" ::: Signal Ddr800 Bit
-        , "c0_ddr4_dm_dbi_n_o" ::: BiSignalOut 'Floating Ddr800 1
-        , "c0_ddr4_dq_o" ::: BiSignalOut 'Floating Ddr800 8
-        , "c0_ddr4_dqs_t_o" ::: BiSignalOut 'Floating Ddr800 1
-        , "c0_ddr4_dqs_c_o" ::: BiSignalOut 'Floating Ddr800 1
+        , "c0_ddr4_dm_dbi_n_o" ::: BiSignalOut 'Floating Ddr800 8
+        , "c0_ddr4_dq_o" ::: BiSignalOut 'Floating Ddr800 64
+        , "c0_ddr4_dqs_t_o" ::: BiSignalOut 'Floating Ddr800 8
+        , "c0_ddr4_dqs_c_o" ::: BiSignalOut 'Floating Ddr800 8
         )
 ddr4Test refClkDiff c0_ddr4_dm_dbi_n c0_ddr4_dq c0_ddr4_dqs_t c0_ddr4_dqs_c =
   hwSeqX debugIla

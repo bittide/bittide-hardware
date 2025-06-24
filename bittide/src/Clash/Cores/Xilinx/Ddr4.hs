@@ -31,7 +31,7 @@ type C_S_AXI_ID_WIDTH = 4
 {- | Width of S_AXI_AWADDR, S_AXI_ARADDR, M_AXI_AWADDR and M_AXI_ARADDR for all
 SI/MI slots. Note that these addresses are true byte adresses.
 -}
-type C_S_AXI_ADDR_WIDTH = 28
+type C_S_AXI_ADDR_WIDTH = 31
 
 -- | Width of WDATA and RDATA on SI slot
 type C_S_AXI_DATA_WIDTH = 32
@@ -204,10 +204,10 @@ ddr4Axi ::
   "axi4_m2s_read_address" ::: Signal Ddr200 (M2S_ReadAddress ConfAR ()) ->
   "axi4_m2s_read_data" ::: Signal Ddr200 M2S_ReadData ->
   -- Routed directly from the memory
-  "c0_ddr4_dm_dbi_n" ::: BiSignalIn 'Floating Ddr800 1 ->
-  "c0_ddr4_dq" ::: BiSignalIn 'Floating Ddr800 8 ->
-  "c0_ddr4_dqs_t" ::: BiSignalIn 'Floating Ddr800 1 ->
-  "c0_ddr4_dqs_c" ::: BiSignalIn 'Floating Ddr800 1 ->
+  "c0_ddr4_dm_dbi_n" ::: BiSignalIn 'Floating Ddr800 8 ->
+  "c0_ddr4_dq" ::: BiSignalIn 'Floating Ddr800 64 ->
+  "c0_ddr4_dqs_t" ::: BiSignalIn 'Floating Ddr800 8 ->
+  "c0_ddr4_dqs_c" ::: BiSignalIn 'Floating Ddr800 8 ->
   ( -- Routed to our own designs
     "c0_ddr4_ui_clk" ::: Clock Ddr200
   , -- \^ Output clock from the user interface. Must be a quarter of the frequency of
@@ -223,10 +223,10 @@ ddr4Axi ::
       ::: Signal Ddr200 (S2M_ReadData ConfR () (BitVector C_S_AXI_DATA_WIDTH))
   , -- Routed directly to the memory
     "ddr4_to_memory" ::: Signal Ddr800 Ddr4MemorySignals
-  , "c0_ddr4_dm_dbi_n_o" ::: BiSignalOut 'Floating Ddr800 1
-  , "c0_ddr4_dq_o" ::: BiSignalOut 'Floating Ddr800 8
-  , "c0_ddr4_dqs_t_o" ::: BiSignalOut 'Floating Ddr800 1
-  , "c0_ddr4_dqs_c_o" ::: BiSignalOut 'Floating Ddr800 1
+  , "c0_ddr4_dm_dbi_n_o" ::: BiSignalOut 'Floating Ddr800 8
+  , "c0_ddr4_dq_o" ::: BiSignalOut 'Floating Ddr800 64
+  , "c0_ddr4_dqs_t_o" ::: BiSignalOut 'Floating Ddr800 8
+  , "c0_ddr4_dqs_c_o" ::: BiSignalOut 'Floating Ddr800 8
   )
 ddr4Axi
   refClkDiff
@@ -267,10 +267,10 @@ ddr4Axi
       ddr4_sigs :: Signal Ddr800 Ddr4MemorySignals
       ddr4_sigs = pure (Ddr4MemorySignals 0 0 0 0 0 0 0 0 0 0)
 
-      c0_ddr4_dm_dbi_n_o = writeToBiSignal @Bit c0_ddr4_dm_dbi_n (pure Nothing)
-      c0_ddr4_dq_o = writeToBiSignal @(BitVector 8) c0_ddr4_dq (pure Nothing)
-      c0_ddr4_dqs_t_o = writeToBiSignal @Bit c0_ddr4_dqs_t (pure Nothing)
-      c0_ddr4_dqs_c_o = writeToBiSignal @Bit c0_ddr4_dqs_c (pure Nothing)
+      c0_ddr4_dm_dbi_n_o = writeToBiSignal @(BitVector 8) c0_ddr4_dm_dbi_n (pure Nothing)
+      c0_ddr4_dq_o = writeToBiSignal @(BitVector 64) c0_ddr4_dq (pure Nothing)
+      c0_ddr4_dqs_t_o = writeToBiSignal @(BitVector 8) c0_ddr4_dqs_t (pure Nothing)
+      c0_ddr4_dqs_c_o = writeToBiSignal @(BitVector 8) c0_ddr4_dqs_c (pure Nothing)
 
       s2m = withClockResetEnable clk200 rst200 enableGen $ mealy ddr4AxiTf s0 m2s
        where
@@ -381,10 +381,10 @@ ddr4Axi
         -- These are currently not used since BiSignalOutPort causes a mismatch
         -- in number of output ports. See:
         -- https://github.com/clash-lang/clash-cores/issues/35
-        -- , BiSignalOutPort "c0_ddr4_dm_dbi_n_o" 'Floating Ddr800 1
-        -- , BiSignalOutPort "c0_ddr4_dq_o"       'Floating Ddr800 8
-        -- , BiSignalOutPort "c0_ddr4_dqs_t_o"    'Floating Ddr800 1
-        -- , BiSignalOutPort "c0_ddr4_dqs_c_o"    'Floating Ddr800 1
+        -- , BiSignalOutPort "c0_ddr4_dm_dbi_n_o" 'Floating Ddr800 8
+        -- , BiSignalOutPort "c0_ddr4_dq_o"       'Floating Ddr800 64
+        -- , BiSignalOutPort "c0_ddr4_dqs_t_o"    'Floating Ddr800 8
+        -- , BiSignalOutPort "c0_ddr4_dqs_c_o"    'Floating Ddr800 8
 
         -- General ports
       , ClockPort "c0_ddr4_ui_clk"    Ddr200
@@ -431,6 +431,9 @@ ddr4Axi
               :> ("CONFIG.C0.DDR4_InputClockPeriod", IntegerOpt 3333)
               :> ("CONFIG.C0.DDR4_CLKOUT0_DIVIDE",   IntegerOpt 7)
               :> ("CONFIG.C0.DDR4_MemoryPart",       StrOpt "MT40A256M16GE-083E")
+              :> ("CONFIG.C0.DDR4_DataWidth",        IntegerOpt 64)
+              :> ("CONFIG.C0.DDR4_DataMask",         StrOpt "DM_NO_DBI")
+              :> ("CONFIG.C0.DDR4_Ecc",              BoolOpt False)
               :> ("CONFIG.C0.DDR4_AxiSelection",     BoolOpt True)
               :> ("CONFIG.C0.DDR4_CasLatency",       IntegerOpt 11)
               :> ("CONFIG.C0.DDR4_CasWriteLatency",  IntegerOpt 11)
