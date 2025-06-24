@@ -34,7 +34,7 @@ freezeExample clk rst =
    in
     circuit $ \(mm, wb) -> do
       Freeze.freeze clk rst
-        -< (mm, wb, Fwd ebCounters, Fwd counter0, Fwd counter1, Fwd counter2)
+        -< ((mm, wb), Fwd ebCounters, Fwd counter0, Fwd counter1, Fwd counter2)
 
       idC
  where

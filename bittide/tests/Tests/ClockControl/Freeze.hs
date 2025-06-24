@@ -154,8 +154,7 @@ prop_wb = property $ do
      in
       circuit $ \(mm, wb) -> do
         freeze @4 @32 clk rst
-          -< ( mm
-             , wb
+          -< ( (mm, wb)
              , Fwd ebCounters
              , Fwd localCounter
              , Fwd syncPulseCounter

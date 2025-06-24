@@ -38,8 +38,9 @@ freeze ::
   Clock dom ->
   Reset dom ->
   Circuit
-    ( ConstBwd MM
-    , Wishbone dom 'Standard aw (Bytes 4)
+    ( ( ConstBwd MM
+      , Wishbone dom 'Standard aw (Bytes 4)
+      )
     , "elastic_buffer_counters" ::: CSignal dom (Vec 7 (Signed 32))
     , "local_clock_counter" ::: CSignal dom (Unsigned n)
     , "sync_in_counter" ::: CSignal dom (Unsigned 32)
@@ -47,7 +48,7 @@ freeze ::
     )
     ()
 freeze clk rst =
-  circuit $ \(mm, wb, ebCounters, localCounter, syncPulseCounter, lastPulseCounter) -> do
+  circuit $ \((mm, wb), ebCounters, localCounter, syncPulseCounter, lastPulseCounter) -> do
     -- Create a bunch of register wishbone interfaces. We don't really care about
     -- ordering, so we just append a number to the end of a generic name.
     [wb0, wb1, wb2, wb3, wb4, wb5] <-
