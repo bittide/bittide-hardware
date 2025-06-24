@@ -84,15 +84,17 @@ dut ::
   GatherConfig nBytes addrW ->
   Circuit () (Df dom (BitVector 8))
 dut scatterConfig gatherConfig = circuit $ do
-  (uartRx, jtagIdle, wbGuCal, wbSuCal, mm) <- idleSource -< ()
+  (uartRx, jtagIdle, wbGuCal, wbSuCal) <- idleSource -< ()
   [ (prefixUart, (mmUart, uartBus))
     , (prefixSu, (mmSu, wbSu))
     , (prefixGu, (mmGu, wbGu))
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
+  mm <- ignoreMM
+  mmGuCal <- ignoreMM
+  mmSuCal <- ignoreMM
   constBwd 0b010 -< prefixUart
-  (mmSuCal, mmGuCal) <- idleSource -< ()
   Fwd link <- gatherUnitWbC gatherConfig -< ((mmGu, wbGu), (mmGuCal, wbGuCal))
   constBwd 0b100 -< prefixGu
   scatterUnitWbC scatterConfig link -< ((mmSu, wbSu), (mmSuCal, wbSuCal))

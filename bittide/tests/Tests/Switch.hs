@@ -24,6 +24,7 @@ import Data.Maybe
 import Data.Proxy
 import Protocols
 import Protocols.Idle
+import Protocols.MemoryMap (ignoreMM)
 
 import qualified Data.List as L
 import qualified GHC.TypeNats as TN
@@ -92,7 +93,7 @@ simSwitchWithCalendar calConfig inp = fmap (fmap unpack) actual
   -- Configure the design under test
   dut = withClockResetEnable @System clockGen resetGen enableGen $ circuit $ \linksIn -> do
     wbIn <- idleSource -< ()
-    mm <- idleSource -< ()
+    mm <- ignoreMM -< ()
     (linksOut, _cal) <-
       switchC @System @nBytes @addrW @links calConfig -< (mm, (linksIn, wbIn))
     idC -< linksOut

@@ -132,7 +132,7 @@ dut =
       enableGen
       $ circuit
       $ \_unit -> do
-        (uartRx, jtag, mm) <- idleSource -< ()
+        (uartRx, jtag) <- idleSource -< ()
         [ (prefixUart, (mmUart, uartBus))
           , (prefixCC, (mmCC, ccWb))
           , (prefixDbg, debugWbBus)
@@ -140,6 +140,8 @@ dut =
           processingElement NoDumpVcd peConfig -< (mm, jtag)
         (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
         constBwd 0b001 -< prefixUart
+
+        mm <- ignoreMM
 
         [ccd0, ccd1] <-
           replicateCSignalI

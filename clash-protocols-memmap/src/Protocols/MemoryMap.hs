@@ -48,6 +48,7 @@ module Protocols.MemoryMap (
   withPrefix,
   unMemmap,
   todoMM,
+  ignoreMM,
   Access (..),
   DeviceDefinitions,
   DeviceDefinition (..),
@@ -93,7 +94,6 @@ import BitPackC
 import Data.Data (Proxy (Proxy))
 import GHC.Stack (HasCallStack, SrcLoc, callStack, getCallStack)
 import Protocols
-import Protocols.Idle
 
 import qualified Data.List as L
 import qualified Data.Map.Strict as Map
@@ -114,11 +114,6 @@ instance Protocol (ConstFwd a) where
 instance Protocol (ConstBwd a) where
   type Fwd (ConstBwd a) = ()
   type Bwd (ConstBwd a) = a
-
-instance IdleCircuit (ConstBwd a) where
-  idleFwd Proxy = ()
-
-  idleBwd Proxy = error ""
 
 constFwd :: a -> Circuit () (ConstFwd a)
 constFwd val = Circuit $ \((), ()) -> ((), val)
@@ -375,6 +370,9 @@ locN n = go (getCallStack callStack) n
       <> show n
       <> " levels of `HasCallStack` context."
   go (_ : rest) m = go rest (m - 1)
+
+ignoreMM :: Circuit () (ConstBwd MM)
+ignoreMM = Circuit $ \_ -> ((), ())
 
 todoMM :: (HasCallStack) => SimOnly MemoryMap
 todoMM =

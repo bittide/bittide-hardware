@@ -76,6 +76,7 @@ import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols
 import Protocols.Extra
+import Protocols.Idle (idleSink)
 import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
 import Protocols.Wishbone
 import System.FilePath ((</>))
