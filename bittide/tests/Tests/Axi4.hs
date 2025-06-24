@@ -318,7 +318,7 @@ prop_wbAxisRxBufferReadStreams = property $ do
   tb bufferBytes = circuit $ \axiIn0 -> do
     axiIn1 <- axiUserMapC (const False) -< axiIn0
     _status <- wbAxisRxBufferCircuit @System @30 bufferBytes -< (wb, axiIn1)
-    (wb, axiOut) <- rxReadMasterC bufferBytes -< ()
+    (wb, axiOut) <- rxReadMasterC bufferBytes
     idC -< axiOut
 
 prop_packetConversions :: Property

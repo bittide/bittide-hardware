@@ -196,7 +196,7 @@ gppeC ::
     (CSignal dom (BitVector 64))
 gppeC (GppeConfig scatterConfig prefixS gatherConfig prefixG peConfig dumpVcd) linkIn = circuit $ \(mm, nmuWbs) -> do
   [(mmSCal, wbScatCal), (mmGCal, wbGathCal)] <- idC -< nmuWbs
-  jtag <- idleSource -< ()
+  jtag <- idleSource
   [(preS, (mmS, wbScat)), (preG, (mmG, wbGu))] <-
     processingElement dumpVcd peConfig -< (mm, jtag)
   constBwd prefixS -< preS
@@ -244,7 +244,7 @@ managementUnitC
       dumpVcd
     )
   linkIn = circuit $ \mm -> do
-    jtag <- idleSource -< ()
+    jtag <- idleSource
     peWbs <- processingElement dumpVcd peConfig -< (mm, jtag)
     ( [ (preSCal, wbScatCal)
         , (preS, (mmScat, wbScat))

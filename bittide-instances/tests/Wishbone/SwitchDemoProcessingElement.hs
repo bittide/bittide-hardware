@@ -81,7 +81,7 @@ dut ::
   Signal dom (BitVector 96) ->
   Circuit () (Df dom (BitVector 8))
 dut dnaA dnaB = circuit $ do
-  (uartRx, jtagIdle) <- idleSource -< ()
+  (uartRx, jtagIdle) <- idleSource
   [ (prefixUart, (mmUart, uartBus))
     , (prefixTime, (mmTime, timeBus))
     , (prefixA, (mmA, peBusA))
@@ -102,8 +102,8 @@ dut dnaA dnaB = circuit $ do
 
   (linkBA, _stateBA) <-
     switchDemoPeWb d2 -< (mmB, (Fwd localCounter, peBusB, dnaBC, linkAB))
-  dnaAC <- signalToCSignal dnaA -< ()
-  dnaBC <- signalToCSignal dnaB -< ()
+  dnaAC <- signalToCSignal dnaA
+  dnaBC <- signalToCSignal dnaB
   idC -< uartTx
  where
   signalToCSignal :: Signal dom a -> Circuit () (CSignal dom a)

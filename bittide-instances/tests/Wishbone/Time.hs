@@ -61,7 +61,7 @@ dut :: Circuit () (Df Basic50 (BitVector 8))
 dut = withClockResetEnable clockGen resetGen enableGen
   $ circuit
   $ \_unit -> do
-    (uartRx, jtag) <- idleSource -< ()
+    (uartRx, jtag) <- idleSource
     [(prefixUart, (mmUart, uartBus)), (prefixTime, (mmTime, timeBus))] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
     mm <- ignoreMM

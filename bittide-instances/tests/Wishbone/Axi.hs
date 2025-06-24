@@ -71,7 +71,7 @@ dut =
   withClockResetEnable clockGen resetGen enableGen
     $ circuit
     $ \_unit -> do
-      (uartTx, jtag) <- idleSource -< ()
+      (uartTx, jtag) <- idleSource
       [ (prefixUart, (mmUart, uartBus))
         , (prefixAxiTx, (mmAxiTx, axiTxBus))
         , (prefixNull, (mmNull, wbNull))

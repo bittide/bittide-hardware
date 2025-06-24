@@ -111,7 +111,7 @@ uartInterfaceWbCircuitTest = do
     dut :: (HiddenClockResetEnable System) => Circuit (Df System Byte) (Df System Byte)
     dut = circuit $ \dfIn -> do
       (wb, dfOut) <- uartMachine -< dfIn
-      mm <- ignoreMM -< ()
+      mm <- ignoreMM
       (uartTx, _status) <- uartInterfaceWb @System @32 d2 d2 uartSim -< (mm, (wb, uartTx))
       idC -< dfOut
     expectOptions =

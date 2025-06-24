@@ -58,7 +58,7 @@ dut ::
   (HiddenClockResetEnable dom) =>
   Circuit () (Df dom (BitVector 8))
 dut = circuit $ \_unit -> do
-  (uartRx, jtag) <- idleSource -< ()
+  (uartRx, jtag) <- idleSource
   [(prefixUart, (mmUart, uartBus)), (prefixDna, dnaBus)] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtag)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))

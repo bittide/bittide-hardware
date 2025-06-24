@@ -132,7 +132,7 @@ dut =
       enableGen
       $ circuit
       $ \_unit -> do
-        (uartRx, jtag) <- idleSource -< ()
+        (uartRx, jtag) <- idleSource
         [ (prefixUart, (mmUart, uartBus))
           , (prefixCC, (mmCC, ccWb))
           , (prefixDbg, debugWbBus)

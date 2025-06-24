@@ -58,7 +58,7 @@ dut ::
 dut = withClockResetEnable clockGen resetGen enableGen
   $ circuit
   $ \_unit -> do
-    (uartRx, jtag) <- idleSource -< ()
+    (uartRx, jtag) <- idleSource
     [ (prefixUart, (mmUart, uartBus))
       , (prefixTime, (mmTime, timeBus))
       , (prefixIdleA, (mmIdleA, idleBusA))

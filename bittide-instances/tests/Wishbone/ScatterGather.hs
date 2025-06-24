@@ -84,7 +84,7 @@ dut ::
   GatherConfig nBytes addrW ->
   Circuit () (Df dom (BitVector 8))
 dut scatterConfig gatherConfig = circuit $ do
-  (uartRx, jtagIdle, wbGuCal, wbSuCal) <- idleSource -< ()
+  (uartRx, jtagIdle, wbGuCal, wbSuCal) <- idleSource
   [ (prefixUart, (mmUart, uartBus))
     , (prefixSu, (mmSu, wbSu))
     , (prefixGu, (mmGu, wbGu))

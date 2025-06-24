@@ -92,8 +92,8 @@ simSwitchWithCalendar calConfig inp = fmap (fmap unpack) actual
  where
   -- Configure the design under test
   dut = withClockResetEnable @System clockGen resetGen enableGen $ circuit $ \linksIn -> do
-    wbIn <- idleSource -< ()
-    mm <- ignoreMM -< ()
+    wbIn <- idleSource
+    mm <- ignoreMM
     (linksOut, _cal) <-
       switchC @System @nBytes @addrW @links calConfig -< (mm, (linksIn, wbIn))
     idC -< linksOut

@@ -89,7 +89,7 @@ dut ::
   Signal dom (Unsigned 64) ->
   Circuit () (Df dom (BitVector 8))
 dut eb localCounter = circuit $ do
-  (uartRx, jtagIdle) <- idleSource -< ()
+  (uartRx, jtagIdle) <- idleSource
   [(prefixUart, (mmUart, uartBus)), (prefixUgn, (mmUgn, ugnBus))] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
