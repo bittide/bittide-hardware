@@ -58,7 +58,7 @@ dut ::
 dut = withClockResetEnable clockGen resetGen enableGen
   $ circuit
   $ \_unit -> do
-    (uartRx, jtag, mm) <- idleSource -< ()
+    (uartRx, jtag) <- idleSource
     [ (prefixUart, (mmUart, uartBus))
       , (prefixTime, (mmTime, timeBus))
       , (prefixIdleA, (mmIdleA, idleBusA))
@@ -66,6 +66,7 @@ dut = withClockResetEnable clockGen resetGen enableGen
       ] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
 
+    mm <- ignoreMM
     idleSink <| (watchDogWb @_ @_ @4 "1 cycle" d1) -< idleBusA
     idleSink
       <| (watchDogWb @_ @_ @4 "50 us" (SNat @(PeriodToCycles Basic200 (Microseconds 50))))

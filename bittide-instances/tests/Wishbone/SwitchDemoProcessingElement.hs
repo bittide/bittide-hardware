@@ -81,7 +81,7 @@ dut ::
   Signal dom (BitVector 96) ->
   Circuit () (Df dom (BitVector 8))
 dut dnaA dnaB = circuit $ do
-  (uartRx, jtagIdle, mm) <- idleSource -< ()
+  (uartRx, jtagIdle) <- idleSource
   [ (prefixUart, (mmUart, uartBus))
     , (prefixTime, (mmTime, timeBus))
     , (prefixA, (mmA, peBusA))
@@ -89,6 +89,7 @@ dut dnaA dnaB = circuit $ do
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
+  mm <- ignoreMM
   constBwd 0b010 -< prefixUart
 
   Fwd localCounter <- timeWb -< (mmTime, timeBus)
@@ -101,8 +102,8 @@ dut dnaA dnaB = circuit $ do
 
   (linkBA, _stateBA) <-
     switchDemoPeWb d2 -< (mmB, (Fwd localCounter, peBusB, dnaBC, linkAB))
-  dnaAC <- signalToCSignal dnaA -< ()
-  dnaBC <- signalToCSignal dnaB -< ()
+  dnaAC <- signalToCSignal dnaA
+  dnaBC <- signalToCSignal dnaB
   idC -< uartTx
  where
   signalToCSignal :: Signal dom a -> Circuit () (CSignal dom a)

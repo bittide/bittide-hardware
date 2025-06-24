@@ -830,7 +830,7 @@ readDnaPortE2Wb ::
     (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes))
     (CSignal dom (BitVector 96))
 readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
-  dnaDf <- dnaCircuit -< ()
+  dnaDf <- dnaCircuit
   dna <- reg -< (wb, dnaDf)
   idC -< dna
  where

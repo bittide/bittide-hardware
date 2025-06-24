@@ -113,7 +113,7 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
     _dna <- dnaC -< (mmDna, dnaWb)
     constBwd 0b0111 -< prefixDna
     macStatIf -< (mmMac, (macWb, macStatus))
-    gpioDf <- idleSource -< ()
+    gpioDf <- idleSource
     gpioOut <- gpio -< (gpioWb, gpioDf)
     constBwd 0b0100 -< prefixGpio
     constBwd todoMM -< mmGpio

@@ -71,7 +71,7 @@ dut =
   withClockResetEnable clockGen resetGen enableGen
     $ circuit
     $ \_unit -> do
-      (uartTx, jtag, mm) <- idleSource -< ()
+      (uartTx, jtag) <- idleSource
       [ (prefixUart, (mmUart, uartBus))
         , (prefixAxiTx, (mmAxiTx, axiTxBus))
         , (prefixNull, (mmNull, wbNull))
@@ -81,6 +81,7 @@ dut =
       wbAlwaysAck -< wbNull
       constBwd 0b100 -< prefixNull
       constBwd todoMM -< mmNull
+      mm <- ignoreMM
 
       (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartTx))
       constBwd 0b010 -< prefixUart

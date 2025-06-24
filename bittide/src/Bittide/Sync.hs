@@ -46,6 +46,7 @@ import Bittide.SharedTypes (Bytes)
 import Clash.Class.Counter (Counter (countSuccOverflow))
 import Clash.Cores.Xilinx.Xpm (xpmCdcSingle)
 import Clash.Explicit.Signal.Extra (changepoints)
+import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   deviceWbC,
@@ -117,6 +118,7 @@ syncOutGenerateWbC ::
   forall dom aw.
   ( KnownDomain dom
   , HasSynchronousReset dom
+  , HasCallStack
   , KnownNat aw
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder

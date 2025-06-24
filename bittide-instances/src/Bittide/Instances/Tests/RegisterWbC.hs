@@ -348,7 +348,7 @@ dut =
     withClockResetEnable clockGen resetGen enableGen
       $ circuit
       $ \mm -> do
-        (uartRx, jtag) <- idleSource -< ()
+        (uartRx, jtag) <- idleSource
         [(prefixUart, (mmUart, uartBus)), (prefixManyTypes, manyTypes)] <-
           processingElement dumpVcd peConfig -< (mm, jtag)
         (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
