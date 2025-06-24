@@ -478,7 +478,9 @@ ddr4Test refClkDiff c0_ddr4_dm_dbi_n c0_ddr4_dq c0_ddr4_dqs_t c0_ddr4_dqs_c =
         )
 
   axi_shim_reset = noReset
-  -- TODO: Should `sysRst` depend on `testStart`?
+  -- Ideally `sysRst` depend on `testStart`, but we can't synchronize a reset to
+  -- @refDom@ of `ddr4Axi` because we do not have access to a clock in @refDom@,
+  -- even though it is asynchronous.
   sysRst = noReset
 
   ( clkUi

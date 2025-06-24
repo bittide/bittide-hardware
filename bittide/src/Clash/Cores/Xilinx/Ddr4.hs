@@ -202,8 +202,10 @@ ddr4Axi ::
   ) =>
   -- | Must be sysclk_300
   "sys_clock_300" ::: DiffClock refDom ->
-  -- | Resets the entire memory design.
-  "sys_rst" ::: Reset Ddr800 ->
+  -- | Resets the entire memory design. The reset is asynchronous and must be asserted
+  -- for a minimum pulse width of 5 ns. It is internally synchronized to @ui_clk_sync_rst@
+  -- (or @c0_ddr4_ui_clk_sync_rst@ in the primitive HDL).
+  "sys_rst" ::: Reset refDom ->
   -- Routed from our own designs
   "axi_shim_reset" ::: Reset Ddr200 ->
   "axi4_m2s_write_address" ::: Signal Ddr200 (M2S_WriteAddress ConfAW ()) ->
