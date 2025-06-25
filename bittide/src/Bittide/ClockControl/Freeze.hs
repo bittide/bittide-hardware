@@ -26,10 +26,11 @@ control measurements. This makes sure the clock control algorithm works on
 measurements that are taken at the same clock cycle.
 -}
 freeze ::
-  forall aw n dom.
+  forall aw nLinks ebCounterWidth dom.
   ( KnownDomain dom
   , KnownNat aw
-  , KnownNat n
+  , KnownNat ebCounterWidth
+  , KnownNat nLinks
   , HasCallStack
   , 4 <= aw
   , ?busByteOrder :: ByteOrder
@@ -41,8 +42,8 @@ freeze ::
     ( ( ConstBwd MM
       , Wishbone dom 'Standard aw (Bytes 4)
       )
-    , "elastic_buffer_counters" ::: CSignal dom (Vec 7 (Signed 32))
-    , "local_clock_counter" ::: CSignal dom (Unsigned n)
+    , "elastic_buffer_counters" ::: CSignal dom (Vec nLinks (Signed ebCounterWidth))
+    , "local_clock_counter" ::: CSignal dom (Unsigned 64)
     , "sync_in_counter" ::: CSignal dom (Unsigned 32)
     , "cycles_since_sync_in" ::: CSignal dom (Unsigned 32)
     )

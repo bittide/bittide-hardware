@@ -38,7 +38,7 @@ freezeExample clk rst =
 
       idC
  where
-  counter0 = Freeze.counter @(Unsigned 32) clk rst enableGen 0
+  counter0 = Freeze.counter clk rst enableGen 0
   counter1 = Freeze.counter @(Unsigned 32) clk rst enableGen 1
   counter2 = Freeze.counter @(Unsigned 32) clk rst enableGen 2
 
@@ -46,13 +46,13 @@ freezeExample clk rst =
   -- propagate a constant to the register's reset value.
   ebCounters =
     bundle
-      $ Freeze.counter @(Signed 32) clk rst enableGen 3
-      :> Freeze.counter @(Signed 32) clk rst enableGen 4
-      :> Freeze.counter @(Signed 32) clk rst enableGen 5
-      :> Freeze.counter @(Signed 32) clk rst enableGen 6
-      :> Freeze.counter @(Signed 32) clk rst enableGen 7
-      :> Freeze.counter @(Signed 32) clk rst enableGen 8
-      :> Freeze.counter @(Signed 32) clk rst enableGen 9
+      $ Freeze.counter @(Signed 25) clk rst enableGen 3
+      :> Freeze.counter @(Signed 25) clk rst enableGen 4
+      :> Freeze.counter @(Signed 25) clk rst enableGen 5
+      :> Freeze.counter @(Signed 25) clk rst enableGen 6
+      :> Freeze.counter @(Signed 25) clk rst enableGen 7
+      :> Freeze.counter @(Signed 25) clk rst enableGen 8
+      :> Freeze.counter @(Signed 25) clk rst enableGen 9
       :> Nil
 
 freezeMM :: MemoryMap
