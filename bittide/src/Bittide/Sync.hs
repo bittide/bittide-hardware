@@ -129,7 +129,7 @@ syncOutGenerateWbC ::
     (ConstBwd MM, Wishbone dom 'Standard aw (Bytes 4))
     (CSignal dom Bit)
 syncOutGenerateWbC clk rst = circuit $ \(mm, wb) -> do
-  [activeWb] <- deviceWbC (show 'syncOutGenerateWbC) -< (mm, wb)
+  [activeWb] <- deviceWbC "SyncOutGenerator" -< (mm, wb)
   (Fwd active, _activity) <- registerWbC clk rst config False -< (activeWb, Fwd noWrite)
   syncOut <- syncOutGeneratorC clk (rst `orReset` unsafeFromActiveLow active)
   idC -< syncOut
