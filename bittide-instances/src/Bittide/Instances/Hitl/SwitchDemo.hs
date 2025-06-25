@@ -31,6 +31,7 @@ import Bittide.ClockControl hiding (speedChangeToFincFdec)
 import Bittide.ClockControl.Callisto.Types (CallistoCResult (..), ReframingState (..))
 import Bittide.ClockControl.CallistoSw (
   SwControlCConfig (..),
+  SwcccInternalBusses,
   callistoSwClockControlC,
  )
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
@@ -192,7 +193,7 @@ memoryMapMu = snd memoryMaps
 memoryMaps :: ("CC" ::: MemoryMap, "MU" ::: MemoryMap)
 memoryMaps = (ccMm, muMm)
  where
-  (SimOnly ccMm, SimOnly muMm, _, _, _, _, _, _, _, _, _, _, _, _, _) =
+  (SimOnly ccMm, SimOnly muMm, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =
     switchDemoDut
       clockGen
       resetGen
@@ -203,6 +204,7 @@ memoryMaps = (ccMm, muMm)
       (pure False)
       0
       (pure (JtagIn 0 0 0))
+      0
 
 muConfig :: SimpleManagementConfig 12
 muConfig =
@@ -222,24 +224,29 @@ muConfig =
     }
 
 ccConfig ::
-  SwControlCConfig CccStabilityCheckerMargin (CccStabilityCheckerFramesize Basic125) 2
+  ( CLog 2 (n + SwcccInternalBusses) <= 30
+  , KnownNat n
+  ) =>
+  SwControlCConfig CccStabilityCheckerMargin (CccStabilityCheckerFramesize Basic125) n
 ccConfig =
   SwControlCConfig
     { margin = SNat
     , framesize = SNat
     , peConfig =
         PeConfig
-          { prefixI = 0b100
-          , prefixD = 0b010
+          { prefixI = 0b1000
+          , prefixD = 0b0100
           , initI = Undefined @(Div (64 * 1024) 4)
           , initD = Undefined @(Div (64 * 1024) 4)
           , iBusTimeout = d0
           , dBusTimeout = d0
           , includeIlaWb = True
           }
-    , ccRegPrefix = 0b110
-    , dbgRegPrefix = 0b101
-    , timePrefix = 0b011
+    , ccRegPrefix = 0b1100
+    , dbgRegPrefix = 0b1010
+    , timePrefix = 0b0110
+    , freezePrefix = 0b0010
+    , syncOutGeneratorPrefix = 0b0001
     }
 
 ccLabel :: Vec 2 Byte
@@ -276,6 +283,7 @@ switchDemoDut ::
   "allProgrammed" ::: Signal Basic125 Bool ->
   "MISO" ::: Signal Basic125 Bit ->
   "JTAG_IN" ::: Signal Basic125 JtagIn ->
+  "SYNC_IN" ::: Signal Basic125 Bit ->
   ( "CC_MEMORYMAP" ::: MM.MM
   , "MU_MEMORYMAP" ::: MM.MM
   , "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
@@ -295,8 +303,9 @@ switchDemoDut ::
   , "fifoOverflowsSticky" ::: Signal Basic125 Bool
   , "fifoUnderflowsSticky" ::: Signal Basic125 Bool
   , "UART_TX" ::: Signal Basic125 Bit
+  , "SYNC_OUT" ::: Signal Basic125 Bit
   )
-switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
+switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn syncIn =
   hwSeqX
     (bundle (debugIla, bittidePeIla))
     ( ccMm
@@ -314,6 +323,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
     , fifoOverflowsSticky
     , fifoUnderflowsSticky
     , uartTx
+    , syncOut
     )
  where
   debugIla :: Signal Basic125 ()
@@ -552,6 +562,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
       , CSignal GthTx (BitVector 64)
       , CSignal GthTx (Vec (LinkCount + 1) (Index (LinkCount + 2)))
       , CSignal Basic125 Bit
+      , "SYNC_OUT" ::: CSignal Basic125 Bit
       )
   circuitFnC = circuit $ \(ccMM, muMM, jtag, linkIn, reframe, mask, dc, Fwd rxs) -> do
     [muJtagFree, ccJtag] <- jtagChain -< jtag
@@ -623,21 +634,23 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
         -< [ccUartBytes, muUartBytes]
     (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
 
-    ( Fwd swCcOut0
+    ( syncOut
+      , Fwd swCcOut0
       , [ (ccWhoAmIPfx, ccWhoAmIBus)
           , (ccUartPfx, ccUartBus)
           ]
       ) <-
       defaultRefClkRstEn (callistoSwClockControlC @LinkCount @CccBufferSize NoDumpVcd ccConfig)
-        -< (ccMM, (ccJtag, reframe, mask, dc))
+        -< (ccMM, (Fwd syncIn, ccJtag, reframe, mask, dc))
 
-    MM.constBwd 0b000 -< ccUartPfx
-    --          0b010    DMEM
-    --          0b011    TIME (not the same as MU!)
-    --          0b100    IMEM
-    --          0b101    DBG
-    --          0b110    CC
-    MM.constBwd 0b111 -< ccWhoAmIPfx
+    MM.constBwd 0b0000 -< ccUartPfx
+    --          0b0001    SYNC_OUT_GENERATOR
+    --          0b0100    DMEM
+    --          0b0110    TIME (not the same as MU!)
+    --          0b1000    IMEM
+    --          0b1010    DBG
+    --          0b1100    CC
+    MM.constBwd 0b1110 -< ccWhoAmIPfx
 
     defaultRefClkRstEn (whoAmIC 0x6363_7773) -< ccWhoAmIBus
 
@@ -662,7 +675,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
                         }
             else swCcOut0
 
-    idC -< (Fwd swCcOut1, txs, Fwd lc, ps, Fwd peIn, Fwd peOut, ce, uartTx)
+    idC -< (Fwd swCcOut1, txs, Fwd lc, ps, Fwd peIn, Fwd peOut, ce, uartTx, syncOut)
 
   ( (ccMm, muMm, jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _diffsBwd, _insBwd)
     , ( callistoResult
@@ -673,6 +686,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
         , peOutput
         , calEntry
         , uartTx
+        , syncOut
         )
     ) =
       let
@@ -694,6 +708,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
           ,
             ( pure ()
             , repeat (pure ())
+            , pure ()
             , pure ()
             , pure ()
             , pure ()
@@ -821,6 +836,7 @@ switchDemoTest ::
   "MISO" ::: Signal Basic125 Bit ->
   "JTAG" ::: Signal Basic125 JtagIn ->
   "USB_UART_TXD" ::: Signal Basic125 Bit ->
+  "SYNC_IN" ::: Signal Basic125 Bit ->
   ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
@@ -836,9 +852,21 @@ switchDemoTest ::
           )
   , "JTAG" ::: Signal Basic125 JtagOut
   , "USB_UART_RXD" ::: Signal Basic125 Bit
+  , "SYNC_OUT" ::: Signal Basic125 Bit
   )
-switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx =
-  hwSeqX testIla (txs, txns, txps, unbundle swFincFdecs, spiDone, spiOut, jtagOut, uartTx)
+switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn =
+  hwSeqX
+    testIla
+    ( txs
+    , txns
+    , txps
+    , unbundle swFincFdecs
+    , spiDone
+    , spiOut
+    , jtagOut
+    , uartTx
+    , syncOut
+    )
  where
   boardClk :: Clock Ext200
   boardClk = Gth.ibufds_gte3 boardClkDiff
@@ -878,7 +906,8 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx =
     , fifoOverflows :: Signal Basic125 Bool
     , fifoUnderflows :: Signal Basic125 Bool
     , uartTx :: Signal Basic125 Bit
-    ) = switchDemoDut refClk testReset boardClk rxs rxns rxps allProgrammed miso jtagIn
+    , syncOut :: Signal Basic125 Bit
+    ) = switchDemoDut refClk testReset boardClk rxs rxns rxps allProgrammed miso jtagIn syncIn
 
   fifoSuccess :: Signal Basic125 Bool
   fifoSuccess = not <$> (fifoUnderflows .||. fifoOverflows)

@@ -37,7 +37,7 @@ fn main() -> ! {
     );
 
     loop {
-        callisto::callisto(&cc, &config, &mut state);
+        callisto::callisto(&cc, cc.data_counts_volatile_iter(), &config, &mut state);
         cc.set_change_speed(state.b_k);
     }
 }
