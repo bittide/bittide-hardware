@@ -28,6 +28,7 @@ fn main() -> ! {
     let cc = INSTANCES.clock_control;
     let dbgreg = INSTANCES.debug_register;
     let timer = INSTANCES.timer;
+    let freeze = INSTANCES.freeze;
 
     let config = ControlConfig {
         target_count: 0,
@@ -47,7 +48,8 @@ fn main() -> ! {
     let mut next_update = timer.now() + interval;
 
     loop {
-        callisto::callisto(&cc, &config, &mut state);
+        freeze.set_freeze(true);
+        callisto::callisto(&cc, &freeze, &config, &mut state);
         cc.set_change_speed(state.b_k);
         timer.wait_until(next_update);
         next_update += interval;
