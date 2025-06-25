@@ -6,6 +6,7 @@ use ufmt::derive::uDebug;
 
 use bittide_hal::shared::devices::clock_control::{ClockControl, ReframingState};
 use bittide_hal::shared::devices::debug_register::DebugRegister;
+use bittide_hal::shared::devices::freeze::Freeze;
 use bittide_hal::shared::types::speed_change::SpeedChange;
 
 /// Rust sibling of
@@ -117,7 +118,7 @@ fn is_active_link(link_mask: u8, n_buffers: u8, i: usize) -> bool {
 
 /// Clock correction strategy based on:
 /// [https://github.com/bittide/Callisto.jl](https://github.com/bittide/Callisto.jl)
-pub fn callisto(cc: &ClockControl, config: &ControlConfig, state: &mut ControlSt) {
+pub fn callisto(cc: &ClockControl, freeze: &Freeze, config: &ControlConfig, state: &mut ControlSt) {
     // see clock control algorithm simulation here:
     //
     // https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
@@ -133,8 +134,8 @@ pub fn callisto(cc: &ClockControl, config: &ControlConfig, state: &mut ControlSt
     let link_mask = cc.link_mask();
 
     // Sum the data counts for all active links
-    let measured_sum: i32 = cc
-        .data_counts_volatile_iter()
+    let measured_sum: i32 = freeze
+        .eb_counters_volatile_iter()
         .enumerate()
         .map(|(i, v)| {
             if is_active_link(link_mask, n_links, i) {

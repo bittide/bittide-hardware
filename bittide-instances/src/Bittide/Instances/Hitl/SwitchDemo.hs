@@ -30,6 +30,7 @@ import Bittide.ClockControl hiding (speedChangeToFincFdec)
 import Bittide.ClockControl.Callisto.Types (CallistoCResult)
 import Bittide.ClockControl.CallistoSw (
   SwControlCConfig (..),
+  SwcccInternalBusses,
   callistoSwClockControlC,
  )
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
@@ -76,6 +77,7 @@ import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols
 import Protocols.Extra
+import Protocols.Idle (idleSink)
 import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
 import Protocols.Wishbone
 import System.FilePath ((</>))
@@ -171,7 +173,7 @@ memoryMapMu = snd memoryMaps
 memoryMaps :: ("CC" ::: MemoryMap, "MU" ::: MemoryMap)
 memoryMaps = (ccMm, muMm)
  where
-  (SimOnly ccMm, SimOnly muMm, _, _, _, _, _, _, _, _, _, _, _, _) =
+  (SimOnly ccMm, SimOnly muMm, _, _, _, _, _, _, _, _, _, _, _, _, _) =
     switchDemoDut
       clockGen
       resetGen
@@ -182,6 +184,7 @@ memoryMaps = (ccMm, muMm)
       (pure False)
       0
       (pure (JtagIn 0 0 0))
+      0
 
 muConfig :: SimpleManagementConfig 11
 muConfig =
@@ -201,24 +204,29 @@ muConfig =
     }
 
 ccConfig ::
-  SwControlCConfig CccStabilityCheckerMargin (CccStabilityCheckerFramesize Basic125) 1
+  ( CLog 2 (n + SwcccInternalBusses) <= 30
+  , KnownNat n
+  ) =>
+  SwControlCConfig CccStabilityCheckerMargin (CccStabilityCheckerFramesize Basic125) n
 ccConfig =
   SwControlCConfig
     { margin = SNat
     , framesize = SNat
     , peConfig =
         PeConfig
-          { prefixI = 0b100
-          , prefixD = 0b010
+          { prefixI = 0b1000
+          , prefixD = 0b0100
           , initI = Undefined @(Div (64 * 1024) 4)
           , initD = Undefined @(Div (64 * 1024) 4)
           , iBusTimeout = d0
           , dBusTimeout = d0
           , includeIlaWb = True
           }
-    , ccRegPrefix = 0b110
-    , dbgRegPrefix = 0b101
-    , timePrefix = 0b011
+    , ccRegPrefix = 0b1100
+    , dbgRegPrefix = 0b1010
+    , timePrefix = 0b0110
+    , freezePrefix = 0b0010
+    , syncOutGeneratorPrefix = 0b0001
     }
 
 {- | Reset logic:
@@ -249,6 +257,7 @@ switchDemoDut ::
   "allProgrammed" ::: Signal Basic125 Bool ->
   "MISO" ::: Signal Basic125 Bit ->
   "JTAG_IN" ::: Signal Basic125 JtagIn ->
+  "SYNC_IN" ::: Signal Basic125 Bit ->
   ( "CC_MEMORYMAP" ::: MM.MM
   , "MU_MEMORYMAP" ::: MM.MM
   , "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
@@ -267,8 +276,9 @@ switchDemoDut ::
   , "ALL_STABLE" ::: Signal Basic125 Bool
   , "fifoOverflowsSticky" ::: Signal Basic125 Bool
   , "fifoUnderflowsSticky" ::: Signal Basic125 Bool
+  , "SYNC_OUT" ::: Signal Basic125 Bit
   )
-switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
+switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn syncIn =
   hwSeqX
     (bundle (debugIla, bittidePeIla))
     ( ccMm
@@ -285,6 +295,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
     , allStable
     , fifoOverflowsSticky
     , fifoUnderflowsSticky
+    , syncOut
     )
  where
   debugIla :: Signal Basic125 ()
@@ -515,7 +526,8 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
       , Vec LinkCount (CSignal Basic125 (RelDataCount CccBufferSize))
       , Vec LinkCount (CSignal GthTx (Maybe (BitVector 64)))
       )
-      ( CSignal Basic125 (CallistoCResult LinkCount)
+      ( "SYNC_OUT" ::: CSignal Basic125 Bit
+      , CSignal Basic125 (CallistoCResult LinkCount)
       , Vec LinkCount (CSignal GthTx (BitVector 64))
       , CSignal GthTx (Unsigned 64)
       , CSignal GthTx (SimplePeState FpgaCount)
@@ -571,23 +583,38 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
 
     defaultBittideClkRstEn (whoAmIC 0x746d_676d) -< (muWhoAmIMM, muWhoAmI)
 
-    (swCcOut, [(ccWhoAmIPfx, (ccWhoAmIMM, ccWhoAmI))]) <-
-      defaultRefClkRstEn (callistoSwClockControlC @LinkCount @CccBufferSize NoDumpVcd ccConfig)
-        -< (ccMM, (ccJtag, reframe, mask, dc))
+    (syncOut, swCcOut, [(ccWhoAmIPfx, ccWhoAmIBus), (ccDummyPfx, (ccDummyMm, ccDummyWb))]) <-
+      defaultRefClkRstEn
+        (callistoSwClockControlC @LinkCount @CccBufferSize NoDumpVcd ccConfig)
+        -< (ccMM, (Fwd syncIn, ccJtag, reframe, mask, dc))
 
-    --          0b010    DMEM
-    --          0b011    TIME (not the same as MU!)
-    --          0b100    IMEM
-    --          0b101    DBG
-    --          0b110    CC
-    MM.constBwd 0b111 -< ccWhoAmIPfx
+    idleSink -< ccDummyWb
+    MM.constBwd MM.todoMM -< ccDummyMm
 
-    defaultRefClkRstEn (whoAmIC 0x6363_7773) -< (ccWhoAmIMM, ccWhoAmI)
+    MM.constBwd 0b0000 -< ccDummyPfx
+    --          0b0010    FREEZE
+    --          0b0100    DMEM
+    --          0b0110    TIME (not the same as MU!)
+    --          0b1000    IMEM
+    --          0b1010    DBG
+    --          0b1100    CC
+    MM.constBwd 0b1110 -< ccWhoAmIPfx
+    --          0b0011    SYNC_OUT_GENERATOR
 
-    idC -< (swCcOut, txs, Fwd lc, ps, Fwd peIn, Fwd peOut, ce)
+    defaultRefClkRstEn (whoAmIC 0x6363_7773) -< ccWhoAmIBus
+
+    idC -< (syncOut, swCcOut, txs, Fwd lc, ps, Fwd peIn, Fwd peOut, ce)
 
   ( (ccMm, muMm, jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _diffsBwd, _insBwd)
-    , (callistoResult, switchDataOut, localCounter, peState, peInput, peOutput, calEntry)
+    , ( syncOut
+        , callistoResult
+        , switchDataOut
+        , localCounter
+        , peState
+        , peInput
+        , peOutput
+        , calEntry
+        )
     ) =
       let
         ?busByteOrder = BigEndian
@@ -607,6 +634,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
             )
           ,
             ( pure ()
+            , pure ()
             , repeat (pure ())
             , pure ()
             , pure ()
@@ -733,6 +761,7 @@ switchDemoTest ::
   "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
   "JTAG" ::: Signal Basic125 JtagIn ->
+  "SYNC_IN" ::: Signal Basic125 Bit ->
   ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
@@ -747,9 +776,10 @@ switchDemoTest ::
           , "CSB" ::: Signal Basic125 Bool
           )
   , "JTAG" ::: Signal Basic125 JtagOut
+  , "SYNC_OUT" ::: Signal Basic125 Bit
   )
-switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn =
-  hwSeqX testIla (txs, txns, txps, unbundle swFincFdecs, spiDone, spiOut, jtagOut)
+switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn syncIn =
+  hwSeqX testIla (txs, txns, txps, unbundle swFincFdecs, spiDone, spiOut, jtagOut, syncOut)
  where
   boardClk :: Clock Ext200
   boardClk = Gth.ibufds_gte3 boardClkDiff
@@ -788,7 +818,8 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn =
     , allStable :: Signal Basic125 Bool
     , fifoOverflows :: Signal Basic125 Bool
     , fifoUnderflows :: Signal Basic125 Bool
-    ) = switchDemoDut refClk testReset boardClk rxs rxns rxps allProgrammed miso jtagIn
+    , syncOut :: Signal Basic125 Bit
+    ) = switchDemoDut refClk testReset boardClk rxs rxns rxps allProgrammed miso jtagIn syncIn
 
   fifoSuccess :: Signal Basic125 Bool
   fifoSuccess = not <$> (fifoUnderflows .||. fifoOverflows)

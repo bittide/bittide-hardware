@@ -11,6 +11,7 @@ module Bittide.ClockControl.CallistoSw (
   SwControlConfig (..),
   SwControlCConfig (..),
   SwcccRemBusWidth,
+  SwcccInternalBusses,
 ) where
 
 import Clash.Prelude hiding (PeriodToCycles)
@@ -32,10 +33,12 @@ import Bittide.ClockControl.DebugRegister (
   DebugRegisterCfg (DebugRegisterCfg),
   debugRegisterWb,
  )
+import Bittide.ClockControl.Freeze (freeze)
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.DoubleBufferedRam (InitialContent (Undefined))
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.SharedTypes
+import Bittide.Sync (syncInCounterC, syncOutGenerateWbC)
 import Bittide.Wishbone (timeWb)
 import Protocols.MemoryMap
 
@@ -158,7 +161,7 @@ callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
       , includeIlaWb = True
       }
 
-type SwcccInternalBusses = 5
+type SwcccInternalBusses = 7
 type SwcccRemBusWidth n = 30 - CLog 2 (n + SwcccInternalBusses)
 
 -- The additional 'otherWb' type parameter is necessary since this type helps expose
@@ -184,6 +187,9 @@ data SwControlCConfig mgn fsz otherWb where
     -- ^ Debug register prefix
     , timePrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
     -- ^ Time prefix
+    , freezePrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
+    -- ^ Freeze prefix
+    , syncOutGeneratorPrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
     } ->
     SwControlCConfig mgn fsz otherWb
 
@@ -195,6 +201,8 @@ callistoSwClockControlC ::
   , KnownNat nLinks
   , KnownNat eBufBits
   , KnownNat otherWb
+  , HasSynchronousReset dom
+  , HasDefinedInitialValues dom
   , 1 <= nLinks
   , 1 <= eBufBits
   , nLinks + eBufBits <= 32
@@ -203,18 +211,21 @@ callistoSwClockControlC ::
   , 1 <= DomainPeriod dom
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
+  , 4 <= SwcccRemBusWidth otherWb
   ) =>
   DumpVcd ->
   SwControlCConfig margin framesize otherWb ->
   Circuit
     ( ConstBwd MM
-    , ( Jtag dom
+    , ( "SYNC_IN" ::: CSignal dom Bit
+      , Jtag dom
       , CSignal dom Bool -- reframing enable
       , CSignal dom (BitVector nLinks) -- link mask
       , Vec nLinks (CSignal dom (RelDataCount eBufBits)) -- diff counters
       )
     )
-    ( CSignal dom (CallistoCResult nLinks)
+    ( "SYNC_OUT" ::: CSignal dom Bit
+    , CSignal dom (CallistoCResult nLinks)
     , Vec
         otherWb
         ( ConstBwd (Unsigned (CLog 2 (otherWb + SwcccInternalBusses)))
@@ -224,7 +235,7 @@ callistoSwClockControlC ::
         )
     )
 callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} =
-  circuit $ \(mm, (jtag, Fwd reframingEnabled, Fwd linkMask, Fwd diffCounters)) -> do
+  circuit $ \(mm, (syncIn, jtag, Fwd reframingEnabled, Fwd linkMask, Fwd diffCounters)) -> do
     let
       debugRegisterCfg :: Signal dom DebugRegisterCfg
       debugRegisterCfg = DebugRegisterCfg <$> reframingEnabled
@@ -233,6 +244,8 @@ callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} =
     ( [ (clockControlPfx, clockControlBus)
         , (debugPfx, debugWbBus)
         , (timePfx, timeWbBus)
+        , (freezePfx, freezeBus)
+        , (syncOutGeneratorPfx, syncOutGeneratorBus)
         ]
       , wbRest
       ) <-
@@ -244,11 +257,24 @@ callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} =
     Fwd debugData <-
       debugRegisterWb debugRegisterCfg -< (debugWbBus, Fwd ((.clockMod) <$> clockControlData))
 
-    _localCounter <- timeWb -< timeWbBus
+    freeze hasClock hasReset
+      -< ( freezeBus
+         , Fwd (bundle diffCounters)
+         , localCounter
+         , pulseCounter
+         , cyclesSinceLastPulse
+         )
+
+    (pulseCounter, cyclesSinceLastPulse) <- syncInCounterC hasClock hasReset -< syncIn
+
+    localCounter <- timeWb -< timeWbBus
+    syncOut <- syncOutGenerateWbC hasClock hasReset -< syncOutGeneratorBus
 
     constBwd ccConfig.ccRegPrefix -< clockControlPfx
     constBwd ccConfig.dbgRegPrefix -< debugPfx
     constBwd ccConfig.timePrefix -< timePfx
+    constBwd ccConfig.freezePrefix -< freezePfx
+    constBwd ccConfig.syncOutGeneratorPrefix -< syncOutGeneratorPfx
 
     let
       callistoCResult :: Signal dom (CallistoCResult nLinks)
@@ -260,4 +286,4 @@ callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} =
           <*> clockControlData.allSettled
           <*> debugData.reframingState
 
-    idC -< (Fwd callistoCResult, wbRest)
+    idC -< (syncOut, Fwd callistoCResult, wbRest)
