@@ -109,13 +109,13 @@ prop_wb = property $ do
    where
     readDataU = unpackOrErrorC endian (unpack readData)
   model (Read a _) WishboneS2M{readData} s@ModelState{lastSeen = Nothing}
-    | a < 2 = Right s
+    | a < 3 = Right s
     | otherwise =
         -- Record the value of the register that is being read. This can predict the
         -- value of all other registers (until a freeze is requested).
         Right s{lastSeen = Just (unpackOrErrorC endian (unpack readData) - fromIntegral a)}
   model (Read a _) WishboneS2M{readData} s@ModelState{lastSeen = Just l}
-    | a < 2 = Right s
+    | a < 3 = Right s
     | readDataU - fromIntegral a == l = Right s
     | otherwise =
         Left $ "Read value mismatch: expected " <> show l <> ", got " <> show readDataU
@@ -168,7 +168,7 @@ prop_wb = property $ do
   localCounter = counter clk rst ena 0
   syncPulseCounter = counter clk rst ena 1
   lastPulseCounter = counter clk rst ena 2
-  ebCounters = bundle $ counter clk rst ena <$> iterateI (+ 1) 3
+  ebCounters = bundle $ counter clk rst ena <$> iterateI (+ 1) (3 :: Signed 32)
 
   dut :: Circuit (Wishbone XilinxSystem Standard AddressWidth (BitVector 32)) ()
   dut = unMemmap dutMm
