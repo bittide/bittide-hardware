@@ -5,6 +5,8 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
+-- For the BitPack instance of Proxy
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Bittide.Axi4 (
   -- * Scaling circuits
@@ -15,6 +17,8 @@ module Bittide.Axi4 (
   -- * Wishbone interfaces
   wbAxisRxBufferCircuit,
   wbToAxi4StreamTx,
+  wbToAxi4MemoryMapped,
+  axiMemoryMappedToWb,
 
   -- * 2-domain FIFOs for each AXI4 channel
   axi4ReadAddressFifo,
@@ -43,27 +47,29 @@ module Bittide.Axi4 (
 
 import Clash.Prelude
 
+import Bittide.Axi4.Internal
+import Bittide.Extra.Maybe
+import Bittide.SharedTypes
+import Bittide.Wishbone
+import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
+import Clash.Cores.Xilinx.Ila hiding (Data)
+import Clash.Protocols.Axi4.Extra
+import Clash.Sized.Internal.BitVector (popCountBV)
+import Data.Bifunctor (bimap, first, second)
 import Data.Constraint
 import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import Data.Proxy
-
-import Bittide.Axi4.Internal
-import Bittide.Extra.Maybe
-import Bittide.SharedTypes
-import Clash.Protocols.Axi4.Extra
-
-import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
-import Clash.Cores.Xilinx.Ila hiding (Data)
-import Clash.Sized.Internal.BitVector (popCountBV)
-
+import Data.Typeable (Typeable)
 import Protocols
+import Protocols.Axi4.Common
 import Protocols.Axi4.ReadAddress
 import Protocols.Axi4.ReadData
 import Protocols.Axi4.Stream as AS
 import Protocols.Axi4.WriteAddress
 import Protocols.Axi4.WriteData
 import Protocols.Axi4.WriteResponse
+import Protocols.Internal (fromKeepType, toKeepType)
 import Protocols.Wishbone as WB
 
 import qualified Protocols.DfConv as DfConv
@@ -1004,3 +1010,249 @@ axi4ReadDataFifo clkA rstA clkB rstB =
      where
       dfAck = Ack . (._rready) <$> rdM2S
       rdS2M = fromMaybe S2M_NoReadData <$> dfData
+
+data WishboneToAxiState = WishboneToAxiState
+  { raDone :: Bool
+  , waDone :: Bool
+  , wdDone :: Bool
+  }
+  deriving (Generic, NFDataX, BitPack, Typeable, Show)
+
+type Axi4ReadDataFromWishbone = 'Axi4ReadDataConfig 'True 0
+type Axi4ReadAddressFromWishbone addrW =
+  'Axi4ReadAddressConfig 'False 'False 0 addrW 'False 'False False 'False 'False 'False
+type Axi4WriteAddressFromWishbone addrW =
+  'Axi4WriteAddressConfig 'False 'False 0 addrW 'False 'False False 'False 'False 'False
+type Axi4WriteDataFromWishbone n = 'Axi4WriteDataConfig 'True n
+type Axi4WriteResponseFromWishbone = 'Axi4WriteResponseConfig 'True 0
+
+deriving instance BitPack (Proxy a)
+
+{- | Convert a Wishbone bus to an Axi4 bus. The circuit is a mealy machine that deconstructs
+an incoming wishbone transaction into Axi4 channels. The wishbone response is constructed from the
+incoming Axi4 response channels.
+-}
+wbToAxi4MemoryMapped ::
+  forall dom addrW nBytes.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , KnownNat nBytes
+  ) =>
+  Circuit
+    ( Wishbone dom 'Standard addrW (Vec nBytes Byte)
+    , Axi4ReadData dom Axi4ReadDataFromWishbone () (Vec nBytes Byte)
+    , Axi4WriteResponse dom Axi4WriteResponseFromWishbone ()
+    )
+    ( Axi4ReadAddress dom (Axi4ReadAddressFromWishbone addrW) ()
+    , Axi4WriteAddress dom (Axi4WriteAddressFromWishbone addrW) ()
+    , Axi4WriteData dom (Axi4WriteDataFromWishbone nBytes) ()
+    )
+wbToAxi4MemoryMapped = case cancelMulDiv @nBytes @8 of
+  Dict ->
+    Circuit
+      $ bimap unbundle unbundle
+      . unbundle
+      . mealy go initState
+      . bundle
+      . bimap bundle bundle
+ where
+  initState = WishboneToAxiState False False False
+  go state (~(wbM2S, rdFwd, wrFwd), ~(raBwd, waBwd, wdBwd)) =
+    (nextState, ((wbS2M, rdBwd, wrBwd), (raFwd, waFwd, wdFwd)))
+   where
+    receivedResponse = rdFwd /= S2M_NoReadData || wrFwd /= S2M_NoWriteResponse
+    nextState
+      | receivedResponse = initState
+      | otherwise =
+          WishboneToAxiState
+            { raDone = state.raDone || (raFwd /= M2S_NoReadAddress && raBwd._arready)
+            , waDone = state.waDone || (waFwd /= M2S_NoWriteAddress && waBwd._awready)
+            , wdDone = state.wdDone || (wdFwd /= M2S_NoWriteData && wdBwd._wready)
+            }
+
+    wbS2M = mkWishboneS2M rdFwd wrFwd
+
+    -- Driving the outgoing axi channels
+    raFwd = mkReadAddress state.raDone wbM2S
+    waFwd = mkWriteAddress state.waDone wbM2S
+    wdFwd = mkWriteData state.wdDone wbM2S
+
+    -- Driving outgoing axi responses
+    rdBwd = M2S_ReadData True
+    wrBwd = M2S_WriteResponse True
+
+mkWishboneS2M ::
+  (KnownNat nBytes) =>
+  S2M_ReadData Axi4ReadDataFromWishbone () (Vec nBytes Byte) ->
+  S2M_WriteResponse Axi4WriteResponseFromWishbone () ->
+  WishboneS2M (Vec nBytes Byte)
+mkWishboneS2M rdFwd wrFwd = case (rdFwd, wrFwd) of
+  (rd@S2M_ReadData{}, _) ->
+    let okay = maybe True (== ROkay) (fromKeepType rd._rresp)
+     in (emptyWishboneS2M @())
+          { readData = bitCoerce rd._rdata
+          , err = not okay
+          , acknowledge = okay
+          }
+  (_, wr@S2M_WriteResponse{}) ->
+    let okay = wr._bresp == toKeepType ROkay
+     in (emptyWishboneS2M @()){err = not okay, acknowledge = okay, readData = repeat 0x55555555}
+  _ -> emptyWishboneS2M
+
+mkReadAddress ::
+  forall addrW n a.
+  Bool ->
+  WishboneM2S addrW n a ->
+  M2S_ReadAddress (Axi4ReadAddressFromWishbone addrW) ()
+mkReadAddress done wbM2S
+  | not done && wbM2S.busCycle && wbM2S.strobe && not wbM2S.writeEnable =
+      M2S_ReadAddress
+        { _arid = 0
+        , _araddr = wbM2S.addr
+        , _arregion = Proxy
+        , _arlen = Proxy
+        , _arsize = Proxy
+        , _arburst = Proxy
+        , _arlock = Proxy
+        , _arcache = Proxy
+        , _arprot = Proxy
+        , _arqos = Proxy
+        , _aruser = ()
+        }
+  | otherwise = M2S_NoReadAddress
+
+mkWriteAddress ::
+  forall addrW n a.
+  Bool ->
+  WishboneM2S addrW n a ->
+  M2S_WriteAddress (Axi4WriteAddressFromWishbone addrW) ()
+mkWriteAddress done wbM2S
+  | not done && wbM2S.busCycle && wbM2S.strobe && wbM2S.writeEnable =
+      M2S_WriteAddress
+        { _awid = 0
+        , _awaddr = wbM2S.addr
+        , _awregion = Proxy
+        , _awlen = Proxy
+        , _awsize = Proxy
+        , _awburst = Proxy
+        , _awlock = Proxy
+        , _awcache = Proxy
+        , _awprot = Proxy
+        , _awqos = Proxy
+        , _awuser = ()
+        }
+  | otherwise = M2S_NoWriteAddress
+
+mkWriteData ::
+  forall conf addrW n a.
+  ( KnownAxi4WriteDataConfig conf
+  , BitPack a
+  , WNBytes conf ~ n
+  , BitSize a ~ n * 8
+  ) =>
+  Bool ->
+  WishboneM2S addrW n a ->
+  M2S_WriteData conf ()
+mkWriteData done wbM2S
+  | not done && wbM2S.busCycle && wbM2S.strobe && wbM2S.writeEnable =
+      M2S_WriteData
+        { _wdata = toStrobeDataType <$> (unpack wbM2S.busSelect) <*> (bitCoerce wbM2S.writeData)
+        , _wlast = True
+        , _wuser = ()
+        }
+  | otherwise = M2S_NoWriteData
+
+axi4ToWishboneRequests ::
+  (KnownNat nBytes, KnownNat addrW) =>
+  Circuit
+    ( Axi4ReadAddress dom (Axi4ReadAddressFromWishbone addrW) ()
+    , Axi4WriteAddress dom (Axi4WriteAddressFromWishbone addrW) ()
+    , Axi4WriteData dom (Axi4WriteDataFromWishbone nBytes) ()
+    )
+    (Df dom (WishboneRequest addrW nBytes))
+axi4ToWishboneRequests = Circuit $ first unbundle . unbundle . fmap go . bundle . first bundle
+ where
+  go (~(raFwd, waFwd, wdFwd), Ack reqBwd) = ((S2M_ReadAddress raBwd, S2M_WriteAddress waBwd, S2M_WriteData wdBwd), reqFwd)
+   where
+    (raBwd, waBwd, wdBwd, reqFwd) = case (raFwd, waFwd, wdFwd) of
+      (M2S_ReadAddress{}, _, _) ->
+        (reqBwd, False, False, Just $ ReadRequest raFwd._araddr maxBound)
+      (M2S_NoReadAddress, M2S_WriteAddress{}, M2S_WriteData{}) ->
+        (False, reqBwd, reqBwd, Just $ WriteRequest waFwd._awaddr writeSel writeData)
+      _ -> (False, False, False, Nothing)
+    maybeWrites = fromStrobeDataType <$> wdFwd._wdata
+    writeSel = pack $ isJust <$> maybeWrites
+    writeData = fromMaybe 0 <$> maybeWrites
+
+-- | Utility circuit to convert a `Df` based WishboneResponse to different Axi4 responses
+axi4FromWishboneResponse ::
+  (KnownNat nBytes) =>
+  Circuit
+    (Df dom (WishboneResponse nBytes))
+    ( Axi4ReadData dom Axi4ReadDataFromWishbone () (Vec nBytes Byte)
+    , Axi4WriteResponse dom Axi4WriteResponseFromWishbone ()
+    )
+axi4FromWishboneResponse = Circuit $ second unbundle . unbundle . fmap go . bundle . second bundle
+ where
+  go (Nothing, _) = (Ack False, (S2M_NoReadData, S2M_NoWriteResponse))
+  go (Just resp, ~(rdBwd, wrBwd)) = (Ack respBwd, (rdFwd, wrFwd))
+   where
+    rdFwd = case resp of
+      ReadSuccess dat ->
+        S2M_ReadData
+          { _rid = 0
+          , _rdata = fromMaybe 0 <$> dat
+          , _rresp = toKeepType ROkay
+          , _ruser = ()
+          , _rlast = True
+          }
+      ReadError ->
+        S2M_ReadData
+          { _rid = 0
+          , _rdata = repeat 0
+          , _rresp = toKeepType RSlaveError
+          , _ruser = ()
+          , _rlast = True
+          }
+      _ -> S2M_NoReadData
+
+    wrFwd = case resp of
+      WriteSuccess -> S2M_WriteResponse{_bid = 0, _bresp = toKeepType ROkay, _buser = ()}
+      WriteError -> S2M_WriteResponse{_bid = 0, _bresp = toKeepType RSlaveError, _buser = ()}
+      _ -> S2M_NoWriteResponse
+
+    respBwd = case resp of
+      ReadSuccess{} -> rdBwd._rready
+      ReadError -> rdBwd._rready
+      WriteSuccess -> wrBwd._bready
+      WriteError -> wrBwd._bready
+
+-- | An AXI4 to wishbone component which supports a subset
+axiMemoryMappedToWb ::
+  forall dom addrW nBytes.
+  ( HiddenClockResetEnable dom
+  , KnownNat nBytes
+  , KnownNat addrW
+  ) =>
+  Circuit
+    ( Axi4ReadAddress dom (Axi4ReadAddressFromWishbone addrW) ()
+    , Axi4WriteAddress dom (Axi4WriteAddressFromWishbone addrW) ()
+    , Axi4WriteData dom (Axi4WriteDataFromWishbone nBytes) ()
+    )
+    ( Wishbone dom 'Standard addrW (Vec nBytes Byte)
+    , Axi4ReadData dom Axi4ReadDataFromWishbone () (Vec nBytes Byte)
+    , Axi4WriteResponse dom Axi4WriteResponseFromWishbone ()
+    )
+axiMemoryMappedToWb = circuit $ \(ra, wa, wd) -> do
+  (wb, wbResps) <- dfWishboneMaster -< wbReqs
+  wbReqs <- axi4ToWishboneRequests -< (ra, wa, wd)
+  (rd, wr) <- axi4FromWishboneResponse -< wbResps
+  idC -< (wb, rd, wr)
+
+data AxiToWishboneState addrW nBytes = AxiToWishboneState
+  { wbRequest :: Maybe (WishboneRequest addrW nBytes)
+  , wbResponse :: Maybe (WishboneResponse nBytes)
+  }
+  deriving (Generic, NFDataX, Show)
+deriving instance
+  (KnownNat nBytes, KnownNat addrW) => BitPack (AxiToWishboneState addrW nBytes)
