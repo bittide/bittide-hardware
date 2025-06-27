@@ -3,11 +3,9 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
-{-# HLINT ignore "Functor law" #-}
-{-# HLINT ignore "Used otherwise as a pattern" #-}
 
 module Tests.Axi4 where
 
@@ -15,27 +13,42 @@ import Clash.Explicit.Prelude (noReset)
 import Clash.Prelude
 
 import Clash.Hedgehog.Sized.Unsigned
+
+import Bittide.Axi4
+import Bittide.Extra.Maybe
+import Bittide.SharedTypes
+import Bittide.DoubleBufferedRam
 import Data.Either
 import Data.Maybe
 import Data.Proxy
 import Hedgehog
+
 import Protocols
 import Protocols.Axi4.Stream
+import Protocols.Hedgehog
+import Protocols.Internal
+import Protocols.Wishbone as WB
 import Test.Tasty
 import Test.Tasty.Hedgehog
-
-import Bittide.Axi4
-import Bittide.Extra.Maybe
-import Protocols.Hedgehog
 import Tests.Axi4.Generators
 import Tests.Axi4.Properties
 import Tests.Axi4.Types
 import Tests.Shared
 
 import qualified Data.List as L
+import qualified Data.String.Interpolate as SI
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
+import qualified Protocols.Axi4.Common as Axi
+import qualified Protocols.Axi4.ReadAddress as Axi
+import qualified Protocols.Axi4.ReadData as Axi
+import qualified Protocols.Axi4.WriteAddress as Axi
+import qualified Protocols.Axi4.WriteData as Axi
+import qualified Protocols.Axi4.WriteResponse as Axi
+import qualified Protocols.Wishbone.Standard.Hedgehog as WB
+import qualified Protocols.MemoryMap as MM
+import qualified Prelude as P
 
 tests :: TestTree
 tests =
@@ -71,6 +84,11 @@ tests =
         prop_axiStreamFromByteStream
     , testPropertyNamed "packAxi4Stream" "prop_packAxi4Stream" prop_packAxi4Stream
     , testPropertyNamed "prop_axiPacking" "prop_axiPacking" prop_axiPacking
+    , testPropertyNamed "prop_wishboneS2Axi4" "prop_wishboneS2Axi4" prop_wishboneS2Axi4
+    , testPropertyNamed
+        "prop_wishboneS2Axi4_NoStall"
+        "prop_wishboneS2Axi4_NoStall"
+        prop_wishboneS2Axi4_NoStall
     ]
 
 -- This test only checks that the data and position bytes are not changed by the component,
@@ -333,8 +351,189 @@ prop_packetConversions = property $ do
   footnote $ "transfers:" <> show transfers
   packets === axiStreamToPackets (L.concatMap catMaybes transfers)
 
-{- | Force all invalid bytes to zero. This is useful for a poor man's version
-of '=='.
+prop_wishboneS2Axi4 :: Property
+prop_wishboneS2Axi4 = property $ do
+  requestsAndStalls <- forAll $ Gen.list (Range.linear 0 10) gen
+  let
+    eOpts = defExpectOptions
+    manager = WB.driveStandard @System eOpts requestsAndStalls
+    subordinate :: Circuit (Wishbone System 'Standard 32 (BitVector 32)) ()
+    subordinate = withClockResetEnable clockGen resetGen enableGen $ MM.unMemmap $ wbStorage "prop_wishboneS2Axi4_subordinate" (NonReloadable $ Vec $ replicate d5 0)
+
+    samples = WB.sampleUnfiltered eOpts manager subordinate
+    transactions = fmap (\(m, s) -> (WB.m2sToRequest m, s)) $ P.filter hasBusActivity samples
+
+  footnoteShow samples
+  let
+    model _ _ [] = Left "No more transactions"
+    model m2sActual s2mActual ((m2sExpected, s2mExpected) : rest)
+      | m2sActual /= m2sExpected = Left m2sMismatch
+      | WB.eqWishboneS2M m2sActual s2mActual s2mExpected = Right rest
+      | otherwise = Left s2mMismatch
+     where
+      m2sMismatch = [SI.i|Mismatch in Wishbone requests: #{m2sActual} /= #{m2sExpected}|]
+      s2mMismatch = [SI.i|Mismatch in Wishbone responses: #{s2mActual} /= #{s2mExpected}|]
+
+    impl = withClockResetEnable clockGen resetGen enableGen $ circuit $ \wbIn0 -> do
+      wbIn1 <- Circuit (mapWb bitCoerce bitCoerce) -< wbIn0
+      (ra, wa, wd) <- wbToAxi4MemoryMapped -< (wbIn1, rd, wr)
+      (wbOut, rd, wr) <- axiMemoryMappedToWb -< (ra, wa, wd)
+      subordinate <| Circuit (mapWb bitCoerce bitCoerce) -< wbOut
+
+    isRead (WB.Read _ _) = True
+    isRead _ = False
+    isWrite (WB.Write _ _ _) = True
+    isWrite _ = False
+
+    findRead addr ((WB.Write _ _ _, _) : rest) = findRead addr rest
+    findRead targetAddr ((WB.Read currentAddr _, s2m):rest) =
+      (s2m.acknowledge && targetAddr == currentAddr) || findRead targetAddr rest
+    findRead _ [] = False
+
+    findReadAfterWrite ((WB.Read _ _, _): rest) = findReadAfterWrite rest
+    findReadAfterWrite ((WB.Write addr _ _, s2m):rest) =
+      (s2m.acknowledge && findRead addr rest) || findReadAfterWrite rest
+    findReadAfterWrite _ = False
+
+  classify "At least one ack" $ any (\(_, s2m) -> s2m.acknowledge) transactions
+  classify "At least one read" $ any (isRead . fst) transactions
+  classify "At least one write" $ any (isWrite . fst) transactions
+  classify "At least one error" $ any (\(_, s2m) -> s2m.err) transactions
+  classify "All acks" $ all (\(_, s2m) -> s2m.acknowledge) transactions
+  classify "Read after write" $ findReadAfterWrite transactions
+
+  withClockResetEnable clockGen resetGen enableGen
+    $ WB.wishbonePropWithModel
+      eOpts
+      model
+      impl
+      (pure $ fmap fst requestsAndStalls)
+      transactions
+ where
+  mapWb ::
+    (BitSize a ~ BitSize b, KnownNat addrW, KnownNat (BitSize b), ShowX a, ShowX b) =>
+    (a -> b) ->
+    (b -> a) ->
+    (Fwd (Wishbone dom mode addrW a), Bwd (Wishbone dom mode addrW b)) ->
+    (Bwd (Wishbone dom mode addrW a), Fwd (Wishbone dom mode addrW b))
+  mapWb f g ~(fwd, bwd) =
+    ( fmap (\wb -> wb{readData = g wb.readData}) bwd
+    , fmap (\wb -> wb{writeData = f wb.writeData}) fwd
+    )
+
+  gen = do
+    req <- WB.genWishboneTransfer (Range.linear 0 10) genDefinedBitVector
+    stall <- Gen.int (Range.linear 0 10)
+    pure (req, stall)
+
+{- | Checks that the `wishboneS2Axi4` component produces a response for each request
+when connected to the `axiDummySub` component.
 -}
-forceKeepLowZero :: Axi4StreamM2S conf userType -> Axi4StreamM2S conf userType
-forceKeepLowZero a = a{_tdata = zipWith (\k d -> if k then d else 0) (_tkeep a) (_tdata a)}
+prop_wishboneS2Axi4_NoStall :: Property
+prop_wishboneS2Axi4_NoStall = property $ do
+  let
+    gen = do
+      req <- WB.genWishboneTransfer Range.constantBounded $ unpack <$> genDefinedBitVector
+      stall <- Gen.int (Range.constant 0 100)
+      pure (req, stall)
+
+  requestsAndStalls <- forAll $ Gen.list (Range.linear 1 100) gen
+  let
+    eOpts = defExpectOptions{eoSampleMax = 10_000}
+    manager = WB.driveStandard @System eOpts requestsAndStalls
+
+    subordinate :: Circuit (Wishbone System 'Standard 32 (Vec 4 Byte)) ()
+    subordinate = withClockResetEnable clockGen resetGen enableGen $ circuit $ \wb -> do
+      (ra0, wa0, wd0) <- wbToAxi4MemoryMapped -< (wb, rd0, wr0)
+      (rd0, wr0) <- axiDummySub -< (ra0, wa0, wd0)
+      idC -< ()
+
+    transactions = WB.sample eOpts manager subordinate
+  footnoteShow transactions
+  L.length transactions === L.length requestsAndStalls
+
+type DummyReadAddressConf addrWidth =
+  'Axi.Axi4ReadAddressConfig
+    'False
+    'False
+    0
+    addrWidth
+    'False
+    'False
+    'False
+    'False
+    'False
+    'False
+type DummyWriteAddressConf addrWidth =
+  'Axi.Axi4WriteAddressConfig
+    'False
+    'False
+    0
+    addrWidth
+    'False
+    'False
+    'False
+    'False
+    'False
+    'False
+type DummyWriteDataConf nBytes = 'Axi.Axi4WriteDataConfig 'True nBytes
+type DummyReadDataConf = 'Axi.Axi4ReadDataConfig 'True 0
+type DummyWriteResponseConf = 'Axi.Axi4WriteResponseConfig 'True 0
+
+{- | An AXI4 peripheral that will produce a ReadData transaction for each ReadAddress
+and a WriteResponse transaction for each combination of WriteAddress and WriteData.
+The component does not store or process any data.
+-}
+axiDummySub ::
+  ( HiddenClockResetEnable dom
+  , KnownNat addrWidth
+  , KnownNat nBytes
+  ) =>
+  Circuit
+    ( Axi.Axi4ReadAddress dom (DummyReadAddressConf addrWidth) ()
+    , Axi.Axi4WriteAddress dom (DummyWriteAddressConf addrWidth) ()
+    , Axi.Axi4WriteData dom (DummyWriteDataConf nBytes) ()
+    )
+    ( Axi.Axi4ReadData dom DummyReadDataConf () (Vec nBytes (BitVector 8))
+    , Axi.Axi4WriteResponse dom DummyWriteResponseConf ()
+    )
+axiDummySub = Circuit go
+ where
+  go ~(~(raFwd, waFwd, wdFwd), ~(rdBwd, wrBwd)) = ((raBwd, waBwd, wdBwd), (rdFwd, wrFwd))
+   where
+    ~(raBwd, rdFwd) = mealyB readHandler False (raFwd, rdBwd)
+    ~(waBwd, wdBwd, wrFwd) = mealyB writeHandler (False, False) (waFwd, wdFwd, wrBwd)
+
+  readHandler busy ~(raFwd, rdBwd) = (nextBusy, (raBwd, rdFwd))
+   where
+    raBwd = Axi.S2M_ReadAddress (not busy)
+    rdFwd
+      | busy =
+          Axi.S2M_ReadData
+            { _rid = 0
+            , _rdata = repeat 0
+            , _rresp = Protocols.Internal.toKeepType Axi.ROkay
+            , _rlast = True
+            , _ruser = ()
+            }
+      | otherwise = Axi.S2M_NoReadData
+    nextBusy = (busy && not rdBwd._rready) || raFwd /= Axi.M2S_NoReadAddress
+
+  writeHandler (gotAddr, gotData) ~(waFwd, wdFwd, wrBwd) = (nextState, (waBwd, wdBwd, wrFwd))
+   where
+    waBwd = Axi.S2M_WriteAddress (not gotAddr)
+    wdBwd = Axi.S2M_WriteData (not gotData)
+
+    wrFwd
+      | gotAddr && gotData =
+          Axi.S2M_WriteResponse
+            { _bid = 0
+            , _bresp = Protocols.Internal.toKeepType Axi.ROkay
+            , _buser = ()
+            }
+      | otherwise = Axi.S2M_NoWriteResponse
+
+    nextState
+      | gotAddr && gotData && wrBwd._bready = (False, False)
+      | otherwise =
+          (gotAddr || waFwd /= Axi.M2S_NoWriteAddress, gotData || wdFwd /= Axi.M2S_NoWriteData)
