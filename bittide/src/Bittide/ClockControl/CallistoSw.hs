@@ -30,7 +30,7 @@ import Bittide.ClockControl.DebugRegister (
 import Bittide.ClockControl.Freeze (freeze)
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.Counter (domainDiffCountersWbC)
-import Bittide.ProcessingElement (PeConfig (..), processingElement)
+import Bittide.ProcessingElement (PeConfig (..), PeInternalBusses, processingElement)
 import Bittide.SharedTypes
 import Bittide.Sync (syncInCounterC, syncOutGenerateWbC)
 import Bittide.Wishbone (timeWb)
@@ -50,7 +50,7 @@ data SwControlConfig dom where
     } ->
     SwControlConfig dom
 
-type SwcccInternalBusses = 8
+type SwcccInternalBusses = PeInternalBusses + 6
 type SwcccRemBusWidth n = 30 - CLog 2 (n + SwcccInternalBusses)
 
 -- The additional 'otherWb' type parameter is necessary since this type helps expose
