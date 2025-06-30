@@ -26,12 +26,12 @@ import VexRiscv
 import Bittide.Calendar
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.Jtag
+import Bittide.MetaPeConfig (metaPeConfig)
 import Bittide.ProcessingElement
 import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Bittide.Switch
 import Bittide.Wishbone (timeWb)
-import Bittide.MetaPeConfig (metaPeConfig)
 
 {- | Each 'gppe' results in 2 busses for the 'managementUnit', namely:
 * The 'calendar' for the 'scatterUnitWB'.

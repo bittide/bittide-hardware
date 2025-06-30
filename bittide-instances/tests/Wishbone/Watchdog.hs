@@ -101,6 +101,8 @@ dut = withBittideByteOrder
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
+        , whoAmIPrefix = 0b111
+        , whoAmID = 0x3075_7063
         }
 {-# NOINLINE dut #-}
 
