@@ -175,7 +175,7 @@ library
     Bittide.Instances.Hitl.Driver.ClockControl.Samples
     Bittide.Instances.Hitl.Driver.DnaOverSerial
     Bittide.Instances.Hitl.Driver.SwCcTopologies
-    Bittide.Instances.Hitl.Driver.SwitchDemo
+    Bittide.Instances.Hitl.Driver.SwitchDemoOld
     Bittide.Instances.Hitl.Driver.VexRiscv
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
     Bittide.Instances.Hitl.Ethernet
@@ -186,6 +186,7 @@ library
     Bittide.Instances.Hitl.Setup
     Bittide.Instances.Hitl.SwCcTopologies
     Bittide.Instances.Hitl.SwitchDemo
+    Bittide.Instances.Hitl.SwitchDemoOld
     Bittide.Instances.Hitl.SyncInSyncOut
     Bittide.Instances.Hitl.TemperatureMonitor
     Bittide.Instances.Hitl.Tests
