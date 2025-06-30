@@ -180,6 +180,7 @@ library
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
+    Bittide.Instances.Hitl.GppeDemo
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess

@@ -1,0 +1,4 @@
+[
+  {"top": "gppeDemoTest", "stage": "bitstream"},
+  {"top": "switchDemoTest", "stage": "test"}
+]

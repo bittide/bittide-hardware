@@ -25,6 +25,7 @@ import qualified Bittide.Instances.Hitl.Ddr4 as Ddr4
 import qualified Bittide.Instances.Hitl.DnaOverSerial as DnaOverSerial
 import qualified Bittide.Instances.Hitl.Ethernet as Ethernet
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
+import qualified Bittide.Instances.Hitl.GppeDemo as GppeDemo
 import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Hitl.SwitchDemo as SwitchDemo
@@ -42,6 +43,7 @@ hitlTests =
     <> [DnaOverSerial.tests]
     <> [Ethernet.tests]
     <> [FincFdec.tests]
+    <> [GppeDemo.tests]
     <> [LinkConfiguration.tests]
     <> [SwCcTopologies.tests]
     <> [SwitchDemo.tests]

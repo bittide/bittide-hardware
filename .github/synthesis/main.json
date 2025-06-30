@@ -1,10 +1,12 @@
 [
-  {"top": "safeDffSynchronizer",   "stage": "hdl" , "cc_report": false},
+  {"top": "safeDffSynchronizer",   "stage": "hdl" ,      "cc_report": false},
 
-  {"top": "linkConfigurationTest", "stage": "test", "cc_report": false},
-  {"top": "swCcTopologyTest",      "stage": "test", "cc_report": true},
-  {"top": "switchDemoTest",        "stage": "test", "cc_report": true},
-  {"top": "transceiversUpTest",    "stage": "test", "cc_report": false},
-  {"top": "vexRiscvTcpTest",       "stage": "test", "cc_report": false},
-  {"top": "vexRiscvTest",          "stage": "test", "cc_report": false}
+  {"top": "gppeDemoTest",          "stage": "bitstream", "cc_report": false},
+
+  {"top": "linkConfigurationTest", "stage": "test",      "cc_report": false},
+  {"top": "swCcTopologyTest",      "stage": "test",      "cc_report": true},
+  {"top": "switchDemoTest",        "stage": "test",      "cc_report": true},
+  {"top": "transceiversUpTest",    "stage": "test",      "cc_report": false},
+  {"top": "vexRiscvTcpTest",       "stage": "test",      "cc_report": false},
+  {"top": "vexRiscvTest",          "stage": "test",      "cc_report": false}
 ]

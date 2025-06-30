@@ -5,17 +5,7 @@
 -- TODO: Remove use of partial functions
 {-# OPTIONS_GHC -Wno-x-partial #-}
 
-module Bittide.Instances.Hitl.Driver.SwitchDemo (
-  OcdInitData (..),
-  ccWhoAmID,
-  driver,
-  dumpCcSamples,
-  initGdb,
-  initOpenOcd,
-  initPicocom,
-  muWhoAmID,
-  whoAmIPrefix,
-) where
+module Bittide.Instances.Hitl.Driver.SwitchDemo where
 
 import Clash.Prelude
 
@@ -87,6 +77,8 @@ data OcdInitData = OcdInitData
   -- ^ Cleanup function
   }
 
+data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
+
 type StartDelay = 5 -- seconds
 
 whoAmIPrefix :: forall n. (KnownNat n, 3 <= n) => Unsigned n
@@ -95,6 +87,8 @@ ccWhoAmID :: BitVector 32
 ccWhoAmID = $(makeWhoAmIDTH "swcc")
 muWhoAmID :: BitVector 32
 muWhoAmID = $(makeWhoAmIDTH "mgmt")
+gppeWhoAmID :: BitVector 32
+gppeWhoAmID = $(makeWhoAmIDTH "gppe")
 
 type Padding = Calc.WindowCycles FpgaCount 3
 type GppeConfig = Calc.DefaultGppeConfig FpgaCount Padding

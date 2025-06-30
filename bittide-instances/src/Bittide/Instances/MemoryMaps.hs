@@ -21,8 +21,8 @@ import Language.Haskell.TH (reportError, runIO)
 import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
+import qualified Bittide.Instances.Hitl.GppeDemo as GppeDemo
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
-import qualified Bittide.Instances.Hitl.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Tests.RegisterWbC as RegisterWbC
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
@@ -38,13 +38,14 @@ $( do
     let memoryMaps =
           [ ("Ethernet", vexRiscvEthernetMM)
           , ("Freeze", freezeMM)
+          , ("GppeDemoCc", GppeDemo.memoryMapCc)
+          , ("GppeDemoGppe", GppeDemo.memoryMapGppe)
+          , ("GppeDemoMu", GppeDemo.memoryMapMu)
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWbC", RegisterWbC.memoryMap)
           , ("ScatterGather", ScatterGather.dutMM)
           , ("SwCcTopologies", SwCcTopologies.memoryMap)
           , ("SwitchC", SwitchCalendar.memoryMap)
-          , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
-          , ("SwitchDemoCc", SwitchDemo.memoryMapCc)
           , ("VexRiscv", vexRiscvTestMM)
           ]
 
