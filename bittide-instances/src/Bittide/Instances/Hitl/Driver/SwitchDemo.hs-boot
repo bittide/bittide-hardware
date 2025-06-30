@@ -4,6 +4,8 @@
 
 module Bittide.Instances.Hitl.Driver.SwitchDemo where
 
+import Clash.Prelude (type (+), type (~), BitVector, KnownNat, Unsigned)
+
 import Bittide.Hitl (DeviceInfo)
 import Data.String (String)
 import GHC.Stack (HasCallStack)
@@ -12,3 +14,6 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
 
 driver :: HasCallStack => String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCode
+whoAmIPrefix :: forall n m. (KnownNat n, KnownNat m, n ~ m + 3) => Unsigned n
+ccWhoAmID :: BitVector 32
+muWhoAmID :: BitVector 32

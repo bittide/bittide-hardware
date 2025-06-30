@@ -184,6 +184,8 @@ vexRiscvTestC =
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True
+      , whoAmIPrefix = 0b011
+      , whoAmID = 0x3075_7063
       }
 
 type IMemWords = DivRU (64 * 1024) 4
