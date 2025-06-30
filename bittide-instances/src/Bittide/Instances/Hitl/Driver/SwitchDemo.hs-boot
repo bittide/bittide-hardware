@@ -17,3 +17,4 @@ driver :: HasCallStack => String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCode
 whoAmIPrefix :: forall n m. (KnownNat n, KnownNat m, n ~ m + 3) => Unsigned n
 ccWhoAmID :: BitVector 32
 muWhoAmID :: BitVector 32
+gppeWhoAmID :: BitVector 32
