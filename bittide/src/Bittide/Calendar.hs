@@ -107,14 +107,15 @@ data CalendarConfig addrW a where
     , ShowX a
     , 2 <= maxCalDepth
     ) =>
-    -- | Maximum amount of entries that can be held per calendar.
-    SNat maxCalDepth ->
-    -- | Number of bits for the repetition count.
-    SNat repetitionBits ->
-    -- | Initial contents of the active calendar.
-    Calendar bootstrapActive a repetitionBits ->
-    -- | Initial contents of the inactive calendar.
-    Calendar bootstrapShadow a repetitionBits ->
+    { maxCalDepth :: SNat maxCalDepth
+    -- ^ Maximum amount of entries that can be held per calendar.
+    , repetitionBits :: SNat repetitionBits
+    -- ^ Number of bits for the repetition count.
+    , activeCalendar :: Calendar bootstrapActive a repetitionBits
+    -- ^ Initial contents of the active calendar.
+    , inactiveCalendar :: Calendar bootstrapShadow a repetitionBits
+    -- ^ Initial contents of the inactive calendar.
+    } ->
     CalendarConfig addrW a
 
 -- | Standalone deriving is required because 'CalendarConfig' contains existential type variables.
