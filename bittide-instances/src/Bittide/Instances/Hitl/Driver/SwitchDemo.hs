@@ -5,7 +5,17 @@
 -- TODO: Remove use of partial functions
 {-# OPTIONS_GHC -Wno-x-partial #-}
 
-module Bittide.Instances.Hitl.Driver.SwitchDemo where
+module Bittide.Instances.Hitl.Driver.SwitchDemo (
+  OcdInitData (..),
+  ccWhoAmID,
+  driver,
+  dumpCcSamples,
+  initGdb,
+  initOpenOcd,
+  initPicocom,
+  muWhoAmID,
+  whoAmIPrefix,
+) where
 
 import Clash.Prelude
 
@@ -18,6 +28,7 @@ import Bittide.Instances.Hitl.SwitchDemo (memoryMapCc, memoryMapMu)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Wishbone (TimeCmd (Capture))
+import Clash.Sized.Extra (extendLsb0s)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
@@ -60,9 +71,14 @@ data OcdInitData = OcdInitData
   -- ^ Cleanup function
   }
 
-data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
-
 type StartDelay = 5 -- seconds
+
+whoAmIPrefix :: forall n m. (KnownNat n, KnownNat m, n ~ m + 3) => Unsigned n
+whoAmIPrefix = extendLsb0s @3 @m (0b111 :: Unsigned 3)
+ccWhoAmID :: BitVector 32
+ccWhoAmID = $(makeWhoAmIDTH "swcc")
+muWhoAmID :: BitVector 32
+muWhoAmID = $(makeWhoAmIDTH "mgmt")
 
 type Padding = Calc.WindowCycles FpgaCount 3
 type GppeConfig = Calc.DefaultGppeConfig FpgaCount Padding
