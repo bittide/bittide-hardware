@@ -37,6 +37,7 @@ $( do
     let memoryMaps =
           [ ("SwitchDemoCc", SwitchDemo.memoryMapCc)
           , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
+          , ("SwitchDemoGppe", SwitchDemo.memoryMapGppe)
           , ("Ethernet", vexRiscvEthernetMM)
           , ("Freeze", freezeMM)
           , ("ProcessingElement", vexRiscvUartHelloMM)

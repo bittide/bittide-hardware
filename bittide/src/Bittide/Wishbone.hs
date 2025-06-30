@@ -26,6 +26,7 @@ import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import GHC.Stack (HasCallStack)
 import Protocols
+import Protocols.Idle (idleBwd)
 import Protocols.MemoryMap.FieldType (ToFieldType)
 import Protocols.Wishbone
 
@@ -36,6 +37,7 @@ import Bittide.SharedTypes
 -- qualified imports
 
 import qualified Data.List as L
+import Data.Proxy
 import qualified Protocols.MemoryMap as MM
 import qualified Protocols.Wishbone as Wishbone
 
@@ -966,3 +968,31 @@ whoAmIC whoAmI = MM.withMemoryMap mm $ Circuit go
     (Fwd (Wishbone dom 'Standard addrW (Bytes 4)), ()) ->
     (Bwd (Wishbone dom 'Standard addrW (Bytes 4)), ())
   go (m2s, ()) = (wbAlwaysAckWith whoAmI <$> m2s, ())
+
+idleWbMM ::
+  forall dom addrW.
+  ( HasCallStack
+  , KnownDomain dom
+  , HiddenClockResetEnable dom
+  , KnownNat addrW
+  ) =>
+  Circuit (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes 4)) ()
+idleWbMM = Circuit go
+ where
+  memMap =
+    MM.MemoryMap
+      { tree = MM.DeviceInstance MM.locCaller "idle"
+      , deviceDefs = MM.deviceSingleton deviceDef
+      }
+  deviceDef =
+    MM.DeviceDefinition
+      { registers = []
+      , deviceName = MM.Name{name = "idle", description = ""}
+      , definitionLoc = MM.locHere
+      , tags = ["no-generate"]
+      }
+  go ::
+    (HasCallStack) =>
+    (Fwd (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes 4)), ()) ->
+    (Bwd (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes 4)), ())
+  go (_, _) = ((SimOnly memMap, idleBwd (Proxy @(Wishbone dom 'Standard addrW (Bytes 4)))), ())

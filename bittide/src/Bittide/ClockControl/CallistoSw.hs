@@ -34,7 +34,7 @@ import Bittide.ClockControl.DebugRegister (
  )
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.DoubleBufferedRam (InitialContent (Undefined))
-import Bittide.ProcessingElement (PeConfig (..), processingElement, PeInternalBusses)
+import Bittide.ProcessingElement (PeConfig (..), PeInternalBusses, processingElement)
 import Bittide.SharedTypes
 import Bittide.Wishbone (timeWb)
 import Protocols.MemoryMap
