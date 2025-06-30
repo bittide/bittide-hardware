@@ -38,7 +38,7 @@ data PeConfig nBusses where
     , KnownNat depthD
     , 1 <= depthD
     , KnownNat nBusses
-    , 2 <= nBusses
+    , PeInternalBusses <= nBusses
     , CLog 2 nBusses <= 30
     ) =>
     { prefixI :: Unsigned (CLog 2 nBusses)
@@ -62,18 +62,20 @@ data PeConfig nBusses where
     } ->
     PeConfig nBusses
 
+type PeInternalBusses = 2
+
 {- | VexRiscV based RV32IMC core together with instruction memory, data memory and
 'singleMasterInterconnect'.
 -}
 processingElement ::
   forall dom nBusses.
-  (HiddenClockResetEnable dom, KnownNat nBusses, 2 <= nBusses) =>
+  (HiddenClockResetEnable dom, KnownNat nBusses, PeInternalBusses <= nBusses) =>
   DumpVcd ->
   PeConfig nBusses ->
   Circuit
     (MM.ConstBwd MM.MM, Jtag dom)
     ( Vec
-        (nBusses - 2)
+        (nBusses - PeInternalBusses)
         ( MM.ConstBwd (Unsigned (CLog 2 nBusses))
         , (MM.ConstBwd MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4))
         )
