@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE PackageImports #-}
+{-# LANGUAGE RecordWildCards #-}
 -- TODO: Remove use of partial functions
 {-# OPTIONS_GHC -Wno-x-partial #-}
 
@@ -10,6 +11,7 @@ module Bittide.Instances.Hitl.Driver.SwitchDemo (
   ccWhoAmID,
   driver,
   dumpCcSamples,
+  gppeWhoAmID,
   initGdb,
   initOpenOcd,
   initPicocom,
@@ -23,8 +25,8 @@ import Bittide.ClockControl.Config (CcConf, defCcConf, saveCcConfig)
 import Bittide.ClockControl.Topology (Topology)
 import Bittide.Hitl
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.SwitchDemo
 import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
-import Bittide.Instances.Hitl.SwitchDemo (memoryMapCc, memoryMapMu)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Wishbone (TimeCmd (Capture))
@@ -34,7 +36,8 @@ import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
 import Control.Monad (forM, forM_, when)
 import Control.Monad.IO.Class
-import Data.Char (ord)
+import Data.Bifunctor (Bifunctor (bimap))
+import Data.Char (chr, isDigit)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
@@ -42,7 +45,22 @@ import Gdb (Gdb)
 import Numeric (showHex)
 import Project.FilePath
 import Project.Handle
-import Protocols.MemoryMap (MemoryMap (..), MemoryMapTree (DeviceInstance, Interconnect))
+import Protocols.MemoryMap (
+  DeviceDefinition (..),
+  DeviceDefinitions,
+  MemoryMap (..),
+  Name (..),
+  NamedLoc (..),
+  PathComp (..),
+  Register (..),
+  convert,
+  normalizeRelTree,
+ )
+import Protocols.MemoryMap.Check (
+  MemoryMapTreeAbsNorm,
+  MemoryMapTreeAnn (..),
+  makeAbsolute,
+ )
 import System.Exit
 import System.FilePath
 import System.IO
@@ -58,6 +76,7 @@ import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Clash.Sized.Vector as V
 import qualified Data.List as L
+import qualified Data.Map.Strict as M
 import qualified Gdb
 
 data OcdInitData = OcdInitData
@@ -65,6 +84,8 @@ data OcdInitData = OcdInitData
   -- ^ Management unit GDB port
   , ccPort :: Int
   -- ^ Clock control GDB port
+  , gppePort :: Int
+  -- ^ GPPE GDB port
   , handles :: ProcessHandles
   -- ^ OpenOCD stdio handles
   , cleanup :: IO ()
@@ -79,8 +100,10 @@ ccWhoAmID :: BitVector 32
 ccWhoAmID = $(makeWhoAmIDTH "swcc")
 muWhoAmID :: BitVector 32
 muWhoAmID = $(makeWhoAmIDTH "mgmt")
+gppeWhoAmID :: BitVector 32
+gppeWhoAmID = $(makeWhoAmIDTH "gppe")
 
-type Padding = Calc.WindowCycles FpgaCount 3
+type Padding = Calc.WindowCycles FpgaCount 31
 type GppeConfig = Calc.DefaultGppeConfig FpgaCount Padding
 type CyclesPerWrite = Calc.CalCyclesPerWrite GppeConfig
 type GroupCycles = Calc.CalGroupCycles GppeConfig
@@ -103,49 +126,10 @@ showHex32 a = "0x" <> padding <> hexStr
   hexStr = showHex a ""
   padding = L.replicate (8 - L.length hexStr) '0'
 
-{- | Get base addresses of a device from a memory map. Assumes that all devices
-are located at a single interconnect, which is a bit grimy.
--}
-baseAddresses :: (HasCallStack, Num a) => MemoryMap -> String -> [a]
-baseAddresses memoryMap nm =
-  case memoryMap of
-    MemoryMap{tree = Interconnect _ devices} ->
-      [fromIntegral addr | (addr, DeviceInstance _ d) <- devices, d == nm]
-    _ -> error [i|Unexpected memory map structure: #{ppShow memoryMapMu}|]
-
-{- | Like 'baseAddresses', but assume that there is only one device with the
-given name in the memory map. If there are multiple devices with the same
-name, an error is raised.
--}
-baseAddress :: (HasCallStack, Num a, Show a) => MemoryMap -> String -> a
-baseAddress memoryMap nm =
-  case baseAddresses memoryMap nm of
-    [addr] -> addr
-    addrs -> error [i|Expected a single base address for #{nm}, got: #{show addrs}|]
-
--- | Like 'baseAddress', but specialized on the management unit memory map.
-muBaseAddress :: (HasCallStack, Num a, Show a) => String -> a
-muBaseAddress = baseAddress memoryMapMu
-
--- | Like 'baseAddress', but specialized on the clock control memory map.
-ccBaseAddress :: (HasCallStack, Num a, Show a) => String -> a
-ccBaseAddress = baseAddress memoryMapCc
-
-{- | Addresses of the capture UGN devices in the management unit. As a sanity
-check, it is expected that there are exactly 7 capture UGN devices present.
--}
-muCaptureUgnAddresses :: (HasCallStack, Num a, Show a) => [a]
-muCaptureUgnAddresses =
-  if L.length ugnDevices == 7
-    then ugnDevices
-    else error $ "Expected 7 capture ugn devices, got: " <> ppShow ugnDevices
- where
-  ugnDevices = baseAddresses memoryMapMu "CaptureUgn"
-
 dumpCcSamples :: (HasCallStack) => FilePath -> CcConf Topology -> [Gdb] -> IO ()
 dumpCcSamples hitlDir ccConf ccGdbs = do
   mapConcurrently_ Gdb.interrupt ccGdbs
-  nSamples <- liftIO $ zipWithConcurrently go ccGdbs ccSamplesPaths
+  nSamples <- zipWithConcurrently go ccGdbs ccSamplesPaths
   putStrLn [i|Dumped /n/ clock control samples: #{nSamples}|]
   saveCcConfig hitlDir ccConf
   putStrLn [i|Wrote configs and samples to: #{hitlDir}|]
@@ -163,38 +147,206 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
 
     Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure (numConvert nSamplesWritten)
 
-  sampleMemoryBase = ccBaseAddress @Integer "SampleMemory"
+  sampleMemoryBase = ccSampleMemoryReg @Integer
   ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
+
+getMemoryMapTreeAbsNorm :: MemoryMap -> MemoryMapTreeAbsNorm
+getMemoryMapTreeAbsNorm mm = annAbsTree
+ where
+  MemoryMap{..} = mm
+  annRelTree = convert tree
+  annRelNormTree = normalizeRelTree annRelTree
+  (annAbsTree, _) = makeAbsolute deviceDefs (0x0000_0000, 0xFFFF_FFFF) annRelNormTree
+
+{- | This is a very minimal implementation, only covering the cases currently needed
+for the SwitchDemo processing elements. This fails to account for several things:
+
+ - Interconnect depth greater than 1
+ - 'AnnWithName' instances
+ - 'AnnWithTag' instances
+ - 'AnnAbsAddr' instances
+ - 'AnnNormWrapper' instances
+
+The output of this is a list of 'String's and a generic numeric type 'a'. The
+'String's are formatted like @0/DeviceName.register_name@.
+-}
+enumerateRegisters ::
+  (HasCallStack, Num a, Show a) =>
+  DeviceDefinitions ->
+  MemoryMapTreeAbsNorm ->
+  [(String, a)]
+enumerateRegisters dd mm = getCanonicalNames allPaths (makeCounterMap allDevices)
+ where
+  enumeratePaths ::
+    (HasCallStack, Num a, Show a) =>
+    DeviceDefinitions ->
+    MemoryMapTreeAbsNorm ->
+    [([String], (String, a))]
+  enumeratePaths d m =
+    fmap (bimap id (bimap id fromIntegral))
+      $ case m of
+        AnnInterconnect _ _ (fmap snd -> comps) -> L.foldl (<>) [] (enumeratePaths d <$> comps)
+        AnnDeviceInstance (_, path, addr) _ devName ->
+          regPaths <> [(devPath, ("", addr))]
+         where
+          devDef = fromJust $ M.lookup devName d
+          devPath = (showPathComp <$> L.init path) <> [devName]
+          regPaths =
+            fmap (\nl -> (devPath, (nl.name.name, addr + nl.value.address))) devDef.registers
+  allPaths :: (HasCallStack, Num a, Show a) => [([String], (String, a))]
+  allPaths = enumeratePaths dd mm
+  allDevices :: [[String]]
+  allDevices = fmap fst $ filter (\(_, (reg, _)) -> L.null reg) (allPaths @Integer)
+  makeCounterMap :: (HasCallStack) => [[String]] -> M.Map [String] Integer
+  makeCounterMap pathList = M.fromList $ fmap (\path -> (path, 0)) pathList
+  getPathCounts :: (HasCallStack) => [[String]] -> M.Map [String] Integer
+  getPathCounts pathList = M.fromListWith (\a b -> 1 + max a b) startList
+   where
+    startList = fmap (\path -> (path, 0)) pathList
+  allPathCounts :: M.Map [String] Integer
+  allPathCounts = getPathCounts $ allDevices
+  getCanonicalNames ::
+    (HasCallStack, Num a, Show a) =>
+    [([String], (String, a))] ->
+    M.Map [String] Integer ->
+    [(String, a)]
+  getCanonicalNames [] _ = []
+  getCanonicalNames ((devPath0, (regName, addr)) : t) curCounts0 =
+    if L.null regName
+      -- Device instance
+      then
+        let
+          curCounts1 = M.update (\n -> Just (n + 1)) devPath0 curCounts0
+         in
+          (devPath1, addr) : getCanonicalNames t curCounts1
+      -- Register instance
+      else
+        let
+          myPath = devPath1 <> "." <> regName
+         in
+          (myPath, addr) : getCanonicalNames t curCounts0
+   where
+    maxCount = allPathCounts M.! devPath0
+    devPath1 =
+      if maxCount > 0
+        then L.intercalate "/" devPath0 <> show (curCounts0 M.! devPath0)
+        else L.intercalate "/" devPath0
+  showPathComp :: PathComp -> String
+  showPathComp (PathName _ s) = s
+  showPathComp (PathUnnamed n) = show n
+
+getRegisterAddress :: (HasCallStack, Num a, Show a) => [(String, a)] -> String -> a
+getRegisterAddress addrs path =
+  case results of
+    [] -> error [i|No register found with path #{path}!|]
+    [(_, addr)] -> addr
+    _ -> error [i|Multiple register found with path #{path}! Paths: #{ppShow results}|]
+ where
+  results = filter (\(p, _) -> p == path) addrs
+
+ccAnnAbsTree :: MemoryMapTreeAbsNorm
+ccAnnAbsTree = getMemoryMapTreeAbsNorm memoryMapCc
+
+ccRegisterPaths :: (HasCallStack, Num a, Show a) => [(String, a)]
+ccRegisterPaths = enumerateRegisters memoryMapCc.deviceDefs ccAnnAbsTree
+
+getCcRegisterAddress :: (HasCallStack, Num a, Show a) => String -> a
+getCcRegisterAddress = getRegisterAddress ccRegisterPaths
+
+ccSampleMemoryReg :: (HasCallStack, Num a, Show a) => a
+ccSampleMemoryReg = getCcRegisterAddress "0/SampleMemory.data"
+
+muAnnAbsTree :: MemoryMapTreeAbsNorm
+muAnnAbsTree = getMemoryMapTreeAbsNorm memoryMapMu
+
+muRegisterPaths :: (HasCallStack, Num a, Show a) => [(String, a)]
+muRegisterPaths = enumerateRegisters memoryMapMu.deviceDefs muAnnAbsTree
+
+getMuRegisterAddress :: (HasCallStack, Num a, Show a) => String -> a
+getMuRegisterAddress = getRegisterAddress muRegisterPaths
+
+muTimerCmdReg :: (HasCallStack, Num a, Show a) => a
+muTimerCmdReg = getMuRegisterAddress "0/Timer.command"
+muTimerScratchpadReg :: (HasCallStack, Num a, Show a) => a
+muTimerScratchpadReg = getMuRegisterAddress "0/Timer.scratchpad"
+muCaptureUgnDevs :: (HasCallStack, Num a, Show a) => [a]
+muCaptureUgnDevs =
+  if L.length captureUgnDevs == (natToNum @FpgaCount) - 1
+    then snd <$> captureUgnDevs
+    else error [i|Found only #{L.length captureUgnDevs} `CaptureUgn` devices.|]
+ where
+  captureUgnDevs =
+    L.filter (\(p, _) -> L.isPrefixOf "0/CaptureUgn" p && isDigit (L.last p)) muRegisterPaths
+
+gppeAnnAbsTree :: MemoryMapTreeAbsNorm
+gppeAnnAbsTree = getMemoryMapTreeAbsNorm memoryMapGppe
+
+gppeRegisterPaths :: (HasCallStack, Num a, Show a) => [(String, a)]
+gppeRegisterPaths = enumerateRegisters memoryMapGppe.deviceDefs gppeAnnAbsTree
+
+getGppeRegisterAddress :: (HasCallStack, Num a, Show a) => String -> a
+getGppeRegisterAddress = getRegisterAddress gppeRegisterPaths
+
+gppeDnaReg :: (HasCallStack, Num a, Show a) => a
+gppeDnaReg = getGppeRegisterAddress "0/Dna.dna"
+gppeWriteMetacycleReg :: (HasCallStack, Num a, Show a) => a
+gppeWriteMetacycleReg = getGppeRegisterAddress "0/MetaPeConfig.write_metacycle"
+gppeWriteOffsetReg :: (HasCallStack, Num a, Show a) => a
+gppeWriteOffsetReg = getGppeRegisterAddress "0/MetaPeConfig.write_offset"
+gppeWriteNAddrsReg :: (HasCallStack, Num a, Show a) => a
+gppeWriteNAddrsReg = getGppeRegisterAddress "0/MetaPeConfig.write_n_addresses"
+gppeReadMetacycleReg :: (HasCallStack, Num a, Show a) => a
+gppeReadMetacycleReg = getGppeRegisterAddress "0/MetaPeConfig.read_metacycle"
+gppeReadOffsetReg :: (HasCallStack, Num a, Show a) => a
+gppeReadOffsetReg = getGppeRegisterAddress "0/MetaPeConfig.read_offset"
+gppeReadNAddrsReg :: (HasCallStack, Num a, Show a) => a
+gppeReadNAddrsReg = getGppeRegisterAddress "0/MetaPeConfig.read_n_addresses"
+gppeBufferReg :: (HasCallStack, Num a, Show a) => a
+gppeBufferReg = getGppeRegisterAddress "0/MetaPeConfig.buffer"
+
+gppeWriteCfg ::
+  (HasCallStack) =>
+  (HwTarget, DeviceInfo) ->
+  Gdb ->
+  Calc.DefaultGppeMetaPeConfig (Unsigned 64) FpgaCount 3 Padding ->
+  VivadoM ()
+gppeWriteCfg (_, d) gdb cfg = do
+  liftIO $ do
+    putStrLn $ "Writing config " <> show cfg <> " to device " <> d.deviceId
+    Gdb.writeLe gdb gppeWriteMetacycleReg cfg.writeMetacycle
+    Gdb.writeLe gdb gppeWriteOffsetReg cfg.writeOffset
+    Gdb.writeLe gdb gppeWriteNAddrsReg cfg.writeForN
+    Gdb.writeLe gdb gppeReadMetacycleReg cfg.readMetacycle
+    Gdb.writeLe gdb gppeReadOffsetReg cfg.readOffset
+    Gdb.writeLe gdb gppeReadNAddrsReg cfg.readForN
 
 initOpenOcd :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
 initOpenOcd hitlDir (_, d) targetIndex = do
   putStrLn $ "Starting OpenOCD for target " <> d.deviceId
 
   let
-    gdbPortMU = 3333 + targetIndex * 2
+    gdbPortMU = 3333 + targetIndex * 3
     gdbPortCC = gdbPortMU + 1
-    tclPortMU = 6666 + targetIndex * 2
-    tclPortCC = tclPortMU + 1
-    telnetPortMU = 4444 + targetIndex * 2
-    telnetPortCC = telnetPortMU + 1
+    gdbPortGPPE = gdbPortMU + 2
     ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
     ocdStderr = hitlDir </> "openocd-" <> show targetIndex <> "-stderr.log"
+    tclPort = 6666 + targetIndex
+    telPort = 4444 + targetIndex
   putStrLn $ "logging OpenOCD stdout to `" <> ocdStdout <> "`"
   putStrLn $ "logging OpenOCD stderr to `" <> ocdStderr <> "`"
 
   putStrLn "Starting OpenOCD..."
   (ocd, ocdPh, ocdClean0) <-
     Ocd.startOpenOcdWithEnvAndArgs
-      ["-f", "sipeed.tcl", "-f", "vexriscv-2chain.tcl"]
+      ["-f", "sipeed.tcl", "-f", "vexriscv-3chain.tcl"]
       [ ("OPENOCD_STDOUT_LOG", ocdStdout)
       , ("OPENOCD_STDERR_LOG", ocdStderr)
       , ("USB_DEVICE", d.usbAdapterLocation)
-      , ("DEV_A_GDB", show gdbPortMU)
-      , ("DEV_B_GDB", show gdbPortCC)
-      , ("DEV_A_TCL", show tclPortMU)
-      , ("DEV_B_TCL", show tclPortCC)
-      , ("DEV_A_TEL", show telnetPortMU)
-      , ("DEV_B_TEL", show telnetPortCC)
+      , ("DEV_A_GDB", show gdbPortCC)
+      , ("DEV_B_GDB", show gdbPortGPPE)
+      , ("DEV_C_GDB", show gdbPortMU)
+      , ("TCL_PORT", show tclPort)
+      , ("TEL_PORT", show telPort)
       ]
   hSetBuffering ocd.stderrHandle LineBuffering
   tryWithTimeout "Waiting for OpenOCD to start" 15_000_000
@@ -204,7 +356,7 @@ initOpenOcd hitlDir (_, d) targetIndex = do
     ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
     ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
 
-  return $ OcdInitData gdbPortMU gdbPortCC ocd ocdClean1
+  return $ OcdInitData gdbPortMU gdbPortCC gdbPortGPPE ocd ocdClean1
 
 initGdb ::
   FilePath ->
@@ -256,19 +408,18 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
 
   pure (pico, cleanup)
 
-ccGdbCheck :: Gdb -> VivadoM ExitCode
-ccGdbCheck gdb = do
-  let whoAmIBase = ccBaseAddress @Integer "WhoAmI"
-  bytes <- Gdb.readBytes @4 gdb whoAmIBase
-  let bytesAsInts = L.map fromIntegral $ V.toList $ bytes
-  pure $ if bytesAsInts == L.map ord "swcc" then ExitSuccess else ExitFailure 1
-
-muGdbCheck :: Gdb -> VivadoM ExitCode
-muGdbCheck gdb = do
-  let whoAmIBase = muBaseAddress @Integer "WhoAmI"
-  bytes <- Gdb.readBytes @4 gdb whoAmIBase
-  let bytesAsInts = L.map fromIntegral $ V.toList $ bytes
-  pure $ if bytesAsInts == L.map ord "mgmt" then ExitSuccess else ExitFailure 1
+gdbCheck :: BitVector 32 -> Gdb -> VivadoM ExitCode
+gdbCheck expectedBE gdb = do
+  let whoAmIBase = whoAmIPrefix @32
+  bytes <- Gdb.readBytes @4 gdb (fromIntegral whoAmIBase)
+  let
+    bytesAsInts = L.map fromIntegral $ V.toList $ bytes
+    expectedLE = reverse $ bitCoerce @_ @(Vec 4 (BitVector 8)) expectedBE
+    expectedS =
+      L.map (chr . fromIntegral)
+        $ V.toList expectedLE
+  liftIO $ putStrLn [i|Read whoAmID: '#{L.map chr bytesAsInts}', expected '#{expectedS}'|]
+  pure $ if bytes == expectedLE then ExitSuccess else ExitFailure 1
 
 foldExitCodes :: VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
 foldExitCodes prev code = do
@@ -301,67 +452,52 @@ driver testName targets = do
         readUgnMmio addr = Gdb.readLe gdb addr
 
       liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
-      mapM readUgnMmio muCaptureUgnAddresses
+      mapM readUgnMmio muCaptureUgnDevs
 
-    muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO ()
-    muReadPeBuffer (_, d) gdb = do
+    gppeReadBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO ()
+    gppeReadBuffer (_, d) gdb = do
       putStrLn $ "Reading PE buffer from device " <> d.deviceId
       let
-        start = muBaseAddress @Integer "SwitchDemoPE"
+        start = gppeBufferReg @(Unsigned 32)
         bufferSize :: Integer
         bufferSize = (snatToNum (SNat @FpgaCount)) * 3
-      output <- Gdb.readCommandRaw gdb [i|x/#{bufferSize}xg #{showHex32 (start + 0x28)}|]
+      output <- Gdb.readCommandRaw gdb [i|x/#{bufferSize}xg #{showHex32 start}|]
       putStrLn [i|PE buffer readout: #{output}|]
 
     muGetCurrentTime :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
     muGetCurrentTime (_, d) gdb = do
       putStrLn $ "Getting current time from device " <> d.deviceId
-      let timerBase = muBaseAddress @Integer "Timer"
-      Gdb.writeLe gdb timerBase Capture
-      Gdb.readLe gdb (timerBase + 0x8)
-
-    muWriteCfg ::
-      (HasCallStack) =>
-      (HwTarget, DeviceInfo) ->
-      Gdb ->
-      Calc.CyclePeConfig (Unsigned 64) (Index 9) ->
-      VivadoM ()
-    muWriteCfg target@(_, d) gdb cfg = do
-      let start = muBaseAddress "SwitchDemoPE"
-
-      liftIO $ do
-        muReadPeBuffer target gdb
-        putStrLn $ "Writing config to device " <> d.deviceId
-        Gdb.writeLe @(Unsigned 64) gdb (start + 0x00) cfg.startReadAt
-        Gdb.writeLe @(Unsigned 64) gdb (start + 0x08) (numConvert cfg.readForN)
-        Gdb.writeLe @(Unsigned 64) gdb (start + 0x10) cfg.startWriteAt
-        Gdb.writeLe @(Unsigned 64) gdb (start + 0x18) (numConvert cfg.writeForN)
+      Gdb.writeLe gdb muTimerCmdReg Capture
+      Gdb.readLe gdb muTimerScratchpadReg
 
     finalCheck ::
       (HasCallStack) =>
       [Gdb] ->
-      [Calc.CyclePeConfig (Unsigned 64) (Index 9)] ->
+      [Gdb] ->
+      [Calc.DefaultGppeMetaPeConfig (Unsigned 64) FpgaCount 3 Padding] ->
       VivadoM ExitCode
-    finalCheck [] _ = fail "Should pass in two or more GDBs for the final check!"
-    finalCheck (_ : []) _ = fail "Should pass in two or more GDBs for the final check!"
-    finalCheck gdbs@(headGdb : _) configs = do
+    finalCheck [] _ _ = fail "Should pass in two or more GDBs for the final check!"
+    finalCheck _ [] _ = fail "Should pass in two or more GDBs for the final check!"
+    finalCheck [_] _ _ = fail "Should pass in two or more GDBs for the final check!"
+    finalCheck _ [_] _ = fail "Should pass in two or more GDBs for the final check!"
+    finalCheck muGdbs@(headMuGdb : _) (headGppeGdb : _) configs = do
       let
         perDeviceCheck :: Gdb -> Int -> IO Bool
         perDeviceCheck myGdb num = do
           let
-            headBaseAddr = muBaseAddress "SwitchDemoPE" + 0x28
-            myBaseAddr = toInteger (headBaseAddr + 24 * (L.length gdbs - num - 1))
-            dnaBaseAddr = muBaseAddress @Integer "Dna"
-          myCounter <- Gdb.readLe @(Unsigned 64) headGdb myBaseAddr
+            headBaseAddr = gppeBufferReg @Integer
+            myBaseAddr = headBaseAddr + 24 * (fromIntegral (L.length muGdbs - num - 1))
+            dnaBaseAddr = gppeDnaReg @Integer
+          myCounter <- Gdb.readLe @(Unsigned 64) headGppeGdb myBaseAddr
           myDeviceDna2 <- Gdb.readLe @(Unsigned 32) myGdb dnaBaseAddr
           myDeviceDna1 <- Gdb.readLe @(Unsigned 32) myGdb (dnaBaseAddr + 0x4)
           myDeviceDna0 <- Gdb.readLe @(Unsigned 32) myGdb (dnaBaseAddr + 0x8)
-          headDeviceDna2 <- Gdb.readLe @(Unsigned 32) headGdb (myBaseAddr + 0x08)
-          headDeviceDna1 <- Gdb.readLe @(Unsigned 32) headGdb (myBaseAddr + 0x0C)
-          headDeviceDna0 <- Gdb.readLe @(Unsigned 32) headGdb (myBaseAddr + 0x10)
+          headDeviceDna2 <- Gdb.readLe @(Unsigned 32) headMuGdb (myBaseAddr + 0x08)
+          headDeviceDna1 <- Gdb.readLe @(Unsigned 32) headMuGdb (myBaseAddr + 0x0C)
+          headDeviceDna0 <- Gdb.readLe @(Unsigned 32) headMuGdb (myBaseAddr + 0x10)
           let
             myCfg = configs L.!! num
-            expectedCounter = myCfg.startWriteAt
+            expectedCounter = myCfg.writeMetacycle
             counterEq = myCounter == expectedCounter
             dna0Eq = myDeviceDna0 == headDeviceDna0
             dna1Eq = myDeviceDna1 == headDeviceDna1
@@ -380,7 +516,7 @@ driver testName targets = do
               [i|DNA2 #{num} did not match. Found #{headDeviceDna2}, expected #{myDeviceDna2}|]
           return $ counterEq && dna0Eq && dna1Eq && dna2Eq
 
-      deviceChecks <- forM (L.zip gdbs [0 ..]) $ \(gdb, n) -> liftIO $ perDeviceCheck gdb n
+      deviceChecks <- forM (L.zip muGdbs [0 ..]) $ \(gdb, n) -> liftIO $ perDeviceCheck gdb n
       let result = if and deviceChecks then ExitSuccess else ExitFailure 2
       return result
 
@@ -392,84 +528,94 @@ driver testName targets = do
     let
       muPorts = (.muPort) <$> initOcdsData
       ccPorts = (.ccPort) <$> initOcdsData
+      gppePorts = (.gppePort) <$> initOcdsData
+      picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
-      liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
-      gdbExitCodes0 <- mapM ccGdbCheck ccGdbs
+      liftIO $ do
+        zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
+        putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
+      gdbExitCodes0 <- mapM (gdbCheck ccWhoAmID) ccGdbs
       (gdbCount0, gdbExitCode0) <-
         L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes0
-      liftIO
-        $ putStrLn
+      liftIO $ do
+        putStrLn
           [i|CC GDB testing passed on #{gdbCount0} of #{L.length targets} targets|]
-      liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
-
+        mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
-        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "management-unit") muGdbs muPorts targets
-        liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
-        gdbExitCodes1 <- mapM muGdbCheck muGdbs
+        liftIO $ do
+          zipWithConcurrently3_ (initGdb hitlDir "management-unit") muGdbs muPorts targets
+          putStrLn "Checking for MMIO access to MU CPUs over GDB..."
+        gdbExitCodes1 <- mapM (gdbCheck muWhoAmID) muGdbs
         (gdbCount1, gdbExitCode1) <-
           L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes1
-        liftIO
-          $ putStrLn
+        liftIO $ do
+          putStrLn
             [i|MU GDB testing passed on #{gdbCount1} of #{L.length targets} targets|]
-        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+          mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+        Gdb.withGdbs (L.length targets) $ \gppeGdbs -> do
+          liftIO $ do
+            zipWithConcurrently3_ (initGdb hitlDir "gppe-switch-demo") gppeGdbs gppePorts targets
+            putStrLn "Checking for MMIO access to GPPE CPUs over GDB..."
+          gdbExitCodes2 <- mapM (gdbCheck gppeWhoAmID) gppeGdbs
+          (gdbCount2, gdbExitCode2) <-
+            L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes2
+          liftIO $ do
+            putStrLn
+              [i|GPPE GDB testing passed on #{gdbCount2} of #{L.length targets} targets|]
+            mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) gppeGdbs
+          brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+            let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+            ugnPairsTable <- liftIO $ do
+              mapConcurrently_ Gdb.continue ccGdbs
+              mapConcurrently_ Gdb.continue muGdbs
+              tryWithTimeoutOn "Waiting for stable links" 60_000_000 goDumpCcSamples
+                $ forConcurrently_ picocoms
+                $ \pico ->
+                  waitForLine pico.stdoutHandle "[CC] All links stable"
+              putStrLn "Getting UGNs for all targets"
+              mapConcurrently_ Gdb.interrupt muGdbs
+              zipWithConcurrently muGetUgns targets muGdbs
+            let
+              ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
+            currentTime <- liftIO $ do
+              putStrLn "Calculating IGNs for all targets"
+              Calc.printAllIgns ugnPairsTableV fpgaSetup
+              mapM_ print ugnPairsTableV
+              muGetCurrentTime (L.head targets) (L.head muGdbs)
+            let
+              startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
+              metaChainConfig ::
+                Vec FpgaCount (Calc.DefaultGppeMetaPeConfig (Unsigned 64) FpgaCount 3 Padding)
+              metaChainConfig =
+                Calc.fullChainConfiguration gppeConfig fpgaSetup ugnPairsTableV startOffset
+            liftIO $ do
+              putStrLn [i|Starting clock cycle: #{startOffset}|]
+              putStrLn [i|Cycles per write: #{natToNum @CyclesPerWrite :: Integer}|]
+              putStrLn [i|Cycles per group: #{natToNum @GroupCycles :: Integer}|]
+              putStrLn [i|Cycles per window: #{natToNum @WindowCycles :: Integer}|]
+              putStrLn [i|Cycles per active period: #{natToNum @ActiveCycles :: Integer}|]
+              putStrLn [i|Cycles of padding: #{natToNum @Padding :: Integer}|]
+              putStrLn [i|Cycles per metacycle: #{natToNum @MetacycleLength :: Integer}|]
+              putStrLn "Calculated the following configs for the switch processing elements:"
+              forM_ metaChainConfig print
+            _ <- sequenceA $ L.zipWith3 gppeWriteCfg targets gppeGdbs (toList metaChainConfig)
 
-        let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
-        brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
-          liftIO $ mapConcurrently_ Gdb.continue ccGdbs
-          liftIO $ mapConcurrently_ Gdb.continue muGdbs
-          liftIO
-            $ tryWithTimeoutOn "Waiting for stable links" 60_000_000 goDumpCcSamples
-            $ forConcurrently_ picocoms
-            $ \pico ->
-              waitForLine pico.stdoutHandle "[CC] All links stable"
-
-          liftIO $ putStrLn "Getting UGNs for all targets"
-          liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
-          ugnPairsTable <- liftIO $ zipWithConcurrently muGetUgns targets muGdbs
-          let
-            ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
-          liftIO $ do
-            putStrLn "Calculating IGNs for all targets"
-            Calc.printAllIgns ugnPairsTableV fpgaSetup
-            mapM_ print ugnPairsTableV
-          currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
-          let
-            startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
-            metaChainConfig ::
-              Vec FpgaCount (Calc.DefaultGppeMetaPeConfig (Unsigned 64) FpgaCount 3 Padding)
-            metaChainConfig =
-              Calc.fullChainConfiguration gppeConfig fpgaSetup ugnPairsTableV startOffset
-            chainConfig :: Vec FpgaCount (Calc.CyclePeConfig (Unsigned 64) (Index (FpgaCount + 1)))
-            chainConfig =
-              Calc.metaPeConfigToCyclePeConfig (natToNum @MetacycleLength)
-                <$> metaChainConfig
-          liftIO $ do
-            putStrLn [i|Starting clock cycle: #{startOffset}|]
-            putStrLn [i|Cycles per write: #{natToNum @CyclesPerWrite :: Integer}|]
-            putStrLn [i|Cycles per group: #{natToNum @GroupCycles :: Integer}|]
-            putStrLn [i|Cycles per window: #{natToNum @WindowCycles :: Integer}|]
-            putStrLn [i|Cycles per active period: #{natToNum @ActiveCycles :: Integer}|]
-            putStrLn [i|Cycles of padding: #{natToNum @Padding :: Integer}|]
-            putStrLn [i|Cycles per metacycle: #{natToNum @MetacycleLength :: Integer}|]
-            putStrLn "Calculated the following configs for the switch processing elements:"
-            forM_ metaChainConfig print
-            forM_ chainConfig print
-          _ <- sequenceA $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
-          liftIO $ do
             let delayMicros = natToNum @StartDelay * 1_250_000
-            threadDelay delayMicros
-            putStrLn [i|Slept for: #{delayMicros}μs|]
-            newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
-            putStrLn [i|Clock is now: #{newCurrentTime}|]
+            _ <- liftIO $ do
+              mapConcurrently_ Gdb.continue gppeGdbs
+              threadDelay delayMicros
+              putStrLn [i|Slept for: #{delayMicros}μs|]
+              newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
+              putStrLn [i|Clock is now: #{newCurrentTime}|]
+              _ <- sequenceA $ Gdb.interrupt <$> gppeGdbs
+              sequenceA $ L.zipWith gppeReadBuffer targets gppeGdbs
 
-          _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
+            bufferExit <- finalCheck muGdbs gppeGdbs (toList metaChainConfig)
 
-          bufferExit <- finalCheck muGdbs (toList chainConfig)
+            liftIO goDumpCcSamples
 
-          liftIO goDumpCcSamples
-
-          pure
-            $ fromMaybe ExitSuccess
-            $ L.find (/= ExitSuccess) [gdbExitCode0, gdbExitCode1, bufferExit]
+            let
+              finalExit =
+                fromMaybe ExitSuccess
+                  $ L.find (/= ExitSuccess) [gdbExitCode0, gdbExitCode1, gdbExitCode2, bufferExit]
+            return finalExit

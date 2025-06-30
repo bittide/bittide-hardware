@@ -28,6 +28,7 @@ import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
 import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Hitl.SwitchDemo as SwitchDemo
+import qualified Bittide.Instances.Hitl.SwitchDemoOld as SwitchDemoOld
 import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
 import qualified Bittide.Instances.Hitl.TemperatureMonitor as TemperatureMonitor
 import qualified Bittide.Instances.Hitl.Transceivers as Transceivers
@@ -45,6 +46,7 @@ hitlTests =
     <> [LinkConfiguration.tests]
     <> [SwCcTopologies.tests]
     <> [SwitchDemo.tests]
+    <> [SwitchDemoOld.tests]
     <> [SyncInSyncOut.tests]
     <> [TemperatureMonitor.tests]
     <> [Transceivers.tests]
