@@ -120,7 +120,7 @@ prefixToAddrString prefix = addrStr1
   addrStr1 = "0x" <> addrStr0 <> (replicate (8 - length addrStr0) '0')
 
 gdbLookFor :: forall n. (C.KnownNat n) => C.Unsigned n -> C.BitVector 32 -> String
-gdbLookFor prefix whoAmID = "(gdb) " <> prefixToAddrString prefix <> ":" <> charsString
+gdbLookFor prefix whoAmID = prefixToAddrString prefix <> ":" <> charsString
  where
   leBytes :: C.Vec 4 (C.Unsigned 8)
   leBytes = C.bitCoerce whoAmID
