@@ -2,9 +2,9 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Instances.Hitl.Driver.SwitchDemo where
+module Bittide.Instances.Hitl.Driver.SwitchDemoOld where
 
-import Clash.Prelude (type (<=), BitVector, KnownNat, Unsigned)
+import Clash.Prelude (BitVector, KnownNat, Unsigned, type (<=))
 
 import Bittide.Hitl (DeviceInfo)
 import Data.String (String)
@@ -17,3 +17,4 @@ driver :: (HasCallStack) => String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCo
 whoAmIPrefix :: forall n. (KnownNat n, 3 <= n) => Unsigned n
 ccWhoAmID :: BitVector 32
 muWhoAmID :: BitVector 32
+gppeWhoAmID :: BitVector 32
