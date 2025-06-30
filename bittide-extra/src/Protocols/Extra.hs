@@ -21,10 +21,18 @@ mapCircuit ::
   Circuit (Vec n a) (Vec n b)
 mapCircuit circ = Circuit go
  where
-  circuitFn :: (Fwd a, Bwd b) -> (Bwd a, Fwd b)
-  Circuit circuitFn = circ
   go :: (Vec n (Fwd a), Vec n (Bwd b)) -> (Vec n (Bwd a), Vec n (Fwd b))
-  go (aFwd, bBwd) = unzip $ circuitFn <$> zip aFwd bBwd
+  go (aFwd, bBwd) = unzip $ toSignals circ <$> zip aFwd bBwd
+
+zipCircuit ::
+  forall a b n.
+  (KnownNat n) =>
+  Vec n (Circuit a b) ->
+  Circuit (Vec n a) (Vec n b)
+zipCircuit circs = Circuit go
+ where
+  go :: (Vec n (Fwd a), Vec n (Bwd b)) -> (Vec n (Bwd a), Vec n (Fwd b))
+  go (fwdA, bwdB) = unzip $ toSignals <$> circs <*> zip fwdA bwdB
 
 -- | Applies the mappings @Fwd a -> Fwd b@ and @Bwd b -> Bwd a@ to the circuit's signals.
 applyC ::
