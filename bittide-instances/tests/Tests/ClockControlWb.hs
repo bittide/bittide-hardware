@@ -167,6 +167,8 @@ dut =
         , iBusTimeout = d0
         , dBusTimeout = d0
         , includeIlaWb = False
+        , whoAmIPrefix = 0b111
+        , whoAmID = 0x3075_7063
         }
 {-# NOINLINE dut #-}
 
