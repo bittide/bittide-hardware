@@ -8,7 +8,10 @@
 
 module Bittide.Instances.Hitl.Driver.SwitchDemo (
   OcdInitData (..),
+  ccWhoAmID,
   driver,
+  muWhoAmID,
+  whoAmIPrefix,
 ) where
 
 import Clash.Prelude
@@ -19,6 +22,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 
+import Clash.Sized.Extra (extendLsb0s)
 import Control.Concurrent (threadDelay)
 import Control.Monad (forM, forM_, when, zipWithM)
 import Control.Monad.IO.Class
@@ -56,6 +60,13 @@ data OcdInitData = OcdInitData
 data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
 
 type StartDelay = 5 -- seconds
+
+whoAmIPrefix :: forall n m. (KnownNat n, KnownNat m, n ~ m + 3) => Unsigned n
+whoAmIPrefix = extendLsb0s @3 @m (0b111 :: Unsigned 3)
+ccWhoAmID :: BitVector 32
+ccWhoAmID = $(makeWhoAmIDTH "swcc")
+muWhoAmID :: BitVector 32
+muWhoAmID = $(makeWhoAmIDTH "mgmt")
 
 driver ::
   (HasCallStack) =>

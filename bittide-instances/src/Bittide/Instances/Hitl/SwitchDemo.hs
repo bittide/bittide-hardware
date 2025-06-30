@@ -57,7 +57,7 @@ import Bittide.Instances.Hitl.Setup (
  )
 import Bittide.Instances.Hitl.SwCcTopologies (FifoSize, FincFdecCount, commonSpiConfig)
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
-import Bittide.ProcessingElement (PeConfig (..), processingElement)
+import Bittide.ProcessingElement (PeConfig (..), PeInternalBusses, processingElement)
 import Bittide.SharedTypes (Bytes)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle), switchDemoPeWb)
@@ -92,7 +92,7 @@ import qualified Protocols.Vec as Vec
     - Data memory
     - `timeWb`
 -}
-type NmuInternalBusses = 3
+type NmuInternalBusses = PeInternalBusses + 1
 type NmuRemBusWidth nodeBusses = 30 - CLog 2 (nodeBusses + NmuInternalBusses)
 
 data SimpleManagementConfig nodeBusses where
@@ -195,6 +195,8 @@ muConfig =
           , iBusTimeout = d0
           , dBusTimeout = d0
           , includeIlaWb = False
+          , whoAmID = D.muWhoAmID
+          , whoAmIPrefix = D.whoAmIPrefix
           }
     , timeRegPrefix = 0b1101
     , dumpVcd = NoDumpVcd
@@ -215,6 +217,8 @@ ccConfig =
           , iBusTimeout = d0
           , dBusTimeout = d0
           , includeIlaWb = True
+          , whoAmID = D.ccWhoAmID
+          , whoAmIPrefix = D.whoAmIPrefix
           }
     , ccRegPrefix = 0b110
     , dbgRegPrefix = 0b101
@@ -529,7 +533,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
 
     (Fwd lc, muWbAll) <-
       defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMM, (muJtagTx, linkIn))
-    ( [ (muWhoAmIPfx, (muWhoAmIMM, muWhoAmI))
+    ( [ (muwhoAmIPrefix, (muWhoAmIMM, muWhoAmI))
         , (peWbPfx, (peWbMM, peWb))
         , (switchWbPfx, (switchWbMM, switchWb))
         , (dnaWbPfx, (dnaWbMM, dnaWb))
@@ -553,7 +557,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
     MM.constBwd 0b1011 -< dnaWbPfx
     --          0b1100    DMEM
     --          0b1101    TIME (not the same as CC!)
-    MM.constBwd 0b1110 -< muWhoAmIPfx
+    MM.constBwd 0b1110 -< muwhoAmIPrefix
 
     ugnRxs <-
       defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs) -< ugnData
@@ -571,7 +575,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
 
     defaultBittideClkRstEn (whoAmIC 0x746d_676d) -< (muWhoAmIMM, muWhoAmI)
 
-    (swCcOut, [(ccWhoAmIPfx, (ccWhoAmIMM, ccWhoAmI))]) <-
+    (swCcOut, [(ccwhoAmIPrefix, (ccWhoAmIMM, ccWhoAmI))]) <-
       defaultRefClkRstEn (callistoSwClockControlC @LinkCount @CccBufferSize NoDumpVcd ccConfig)
         -< (ccMM, (ccJtag, reframe, mask, dc))
 
@@ -580,7 +584,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
     --          0b100    IMEM
     --          0b101    DBG
     --          0b110    CC
-    MM.constBwd 0b111 -< ccWhoAmIPfx
+    MM.constBwd 0b111 -< ccwhoAmIPrefix
 
     defaultRefClkRstEn (whoAmIC 0x6363_7773) -< (ccWhoAmIMM, ccWhoAmI)
 

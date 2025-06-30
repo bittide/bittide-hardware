@@ -63,9 +63,9 @@ dut = circuit $ \_unit -> do
     processingElement @dom NoDumpVcd peConfig -< (mm, jtag)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
   mm <- ignoreMM
-  constBwd 0b10 -< prefixUart
+  constBwd 0b100 -< prefixUart
   _dna <- readDnaPortE2Wb simDna2 -< dnaBus
-  constBwd 0b11 -< prefixDna
+  constBwd 0b110 -< prefixDna
   idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
@@ -75,12 +75,14 @@ dut = circuit $ \_unit -> do
     pure
       PeConfig
         { initI = Reloadable (Vec iMem)
-        , prefixI = 0b00
+        , prefixI = 0b000
         , initD = Reloadable (Vec dMem)
-        , prefixD = 0b01
+        , prefixD = 0b010
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
+        , whoAmIPrefix = 0b111
+        , whoAmID = 0x3075_7063
         }
 {-# NOINLINE dut #-}
 

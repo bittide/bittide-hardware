@@ -59,10 +59,14 @@ data PeConfig nBusses where
     -- ^ Indicates whether or not to include the Wishbone ILA component probes. Should be set
     -- to 'False' if this CPU is not in an always-on domain. Additionally, only one CPU in any
     -- given system should have this set to 'True' in order to avoid probe name conflicts.
+    , whoAmID :: BitVector 32
+    -- ^ CPU identifier
+    , whoAmIPrefix :: Unsigned (CLog 2 nBusses)
+    -- ^ The prefix from which the CPU identifier can be read
     } ->
     PeConfig nBusses
 
-type PeInternalBusses = 2
+type PeInternalBusses = 3
 
 {- | VexRiscV based RV32IMC core together with instruction memory, data memory and
 'singleMasterInterconnect'.
@@ -80,58 +84,76 @@ processingElement ::
         , (MM.ConstBwd MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4))
         )
     )
-processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, dBusTimeout, includeIlaWb} = circuit $ \(mm, jtagIn) -> do
-  (iBus0, (mmDbus, dBus0)) <-
-    rvCircuit dumpVcd (pure low) (pure low) (pure low) -< (mm, jtagIn)
-  iBus1 <-
-    maybeIlaWb
-      includeIlaWb
-      (SSymbol @"instructionBus")
-      2
-      D4096
-      onTransactionWb
-      onTransactionWb
-      -< iBus0
-  dBus1 <-
-    watchDogWb "dBus" iBusTimeout
-      <| maybeIlaWb
-        includeIlaWb
-        (SSymbol @"dataBus")
-        2
-        D4096
-        onTransactionWb
-        onTransactionWb
-      -< dBus0
-  ([(iPre, (mmI, iMemBus)), (dPre, (mmD, dMemBus))], extBusses) <-
-    (splitAtCI <| singleMasterInterconnectC) -< (mmDbus, dBus1)
-  MM.constBwd prefixD -< dPre
-  MM.constBwd prefixI -< iPre
+processingElement
+  dumpVcd
+  PeConfig
+    { prefixI
+    , prefixD
+    , initI
+    , initD
+    , iBusTimeout
+    , dBusTimeout
+    , includeIlaWb
+    , whoAmID
+    , whoAmIPrefix
+    } =
+    circuit $ \(mm, jtagIn) -> do
+      (iBus0, (mmDbus, dBus0)) <-
+        rvCircuit dumpVcd (pure low) (pure low) (pure low) -< (mm, jtagIn)
+      iBus1 <-
+        maybeIlaWb
+          includeIlaWb
+          (SSymbol @"instructionBus")
+          2
+          D4096
+          onTransactionWb
+          onTransactionWb
+          -< iBus0
+      dBus1 <-
+        watchDogWb "dBus" iBusTimeout
+          <| maybeIlaWb
+            includeIlaWb
+            (SSymbol @"dataBus")
+            2
+            D4096
+            onTransactionWb
+            onTransactionWb
+          -< dBus0
+      ([(iPre, (mmI, iMemBus)), (dPre, (mmD, dMemBus))], extBusses0) <-
+        (splitAtCI <| singleMasterInterconnectC) -< (mmDbus, dBus1)
+      ([(wPre, (mmW, waiBus))], extBusses1) <- splitAtCI -< extBusses0
+      MM.constBwd prefixD -< dPre
+      MM.constBwd prefixI -< iPre
+      MM.constBwd whoAmIPrefix -< wPre
 
-  -- Instruction and data memory are never accessed explicitly by developers,
-  -- only implicitly by the CPU itself. We therefore don't need to generate HAL
-  -- code. We instruct the generator to skip them by adding a "no-generate" tag.
-  MM.withTag "no-generate"
-    $ MM.withDeviceTag "no-generate"
-    $ wbStorage "DataMemory" initD
-    -< (mmD, dMemBus)
+      -- Instruction and data memory are never accessed explicitly by developers,
+      -- only implicitly by the CPU itself. We therefore don't need to generate HAL
+      -- code. We instruct the generator to skip them by adding a "no-generate" tag.
+      MM.withTag "no-generate"
+        $ MM.withDeviceTag "no-generate"
+        $ wbStorage "DataMemory" initD
+        -< (mmD, dMemBus)
 
-  iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
-  MM.withTag "no-generate"
-    $ MM.withDeviceTag "no-generate"
-    $ wbStorageDPC "InstructionMemory" initI
-    -< (mmI, (iBus2, iMemBus))
+      -- XXX: <= This should be handled by an interconnect
+      iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1
+      MM.withTag "no-generate"
+        $ MM.withDeviceTag "no-generate"
+        $ wbStorageDPC "InstructionMemory" initI
+        -< (mmI, (iBus2, iMemBus))
 
-  idC -< extBusses
- where
-  removeMsb ::
-    forall aw a.
-    (KnownNat aw) =>
-    Circuit
-      (Wishbone dom 'Standard (aw + 4) a)
-      (Wishbone dom 'Standard aw a)
-  removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + 4) -> BitVector aw)) id
+      whoAmIC whoAmID -< (mmW, waiBus)
 
-  wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
+      idC -< extBusses1
+   where
+    removeMsb ::
+      forall aw a.
+      (KnownNat aw) =>
+      Circuit
+        (Wishbone dom 'Standard (aw + 4) a)
+        (Wishbone dom 'Standard aw a)
+    removeMsb = wbMap (mapAddr (truncateB :: BitVector (aw + 4) -> BitVector aw)) id
+
+    wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
 
 rvCircuit ::
   (HiddenClockResetEnable dom) =>
