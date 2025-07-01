@@ -221,13 +221,43 @@ jobs:
           path: plot-sources
           retention-days: 14
 
+  should-run-haskell-tests:
+    name: Decide whether to run Haskell tests
+    runs-on: [self-hosted, compute]
+    defaults:
+      run:
+        shell: git-nix-shell {0}
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-06-10
+      options: --memory=11g
+    outputs:
+      run_tests: ${{ steps.check.outputs.run_tests }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        name: Check for non-empty debug.json
+        run: |
+          if [[ -f .github/synthesis/debug.json ]]; then
+            if [[ $(jq 'length' .github/synthesis/debug.json) -gt 0 ]]; then
+              echo "Found non-empty debug.json, will skip Haskell tests."
+              echo "run_tests=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Found empty debug.json, will run Haskell tests."
+              echo "run_tests=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "No debug.json found, will run Haskell tests."
+            echo "run_tests=true" >> "$GITHUB_OUTPUT"
+          fi
+
   haskell-tests:
     name: HT # Short name because the GitHub UI truncates "long" names..
     runs-on: [self-hosted, compute]
     defaults:
       run:
         shell: git-nix-shell {0} ${{ matrix.shell_args }}
-    needs: [build]
+    needs: [build, should-run-haskell-tests]
+    if: ${{ needs.should-run-haskell-tests.outputs.run_tests == 'true' }}
 
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-06-10
@@ -650,6 +680,7 @@ jobs:
         license-check,
         lint,
         rust-lints,
+        should-run-haskell-tests,
       ]
     runs-on: ubuntu-22.04
     steps:
