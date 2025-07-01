@@ -42,8 +42,8 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
 import Clash.Explicit.Prelude
 import Protocols
 
-import BitPackC (BitPackC (..), ByteOrder, Bytes)
-import BitPackC.Padding (SizeInWordsC, maybeUnpackWordC, packWordC)
+import Clash.Class.BitPackC (BitPackC (..), ByteOrder, Bytes)
+import Clash.Class.BitPackC.Padding (SizeInWordsC, maybeUnpackWordC, packWordC)
 import Clash.Prelude (HiddenClock, HiddenReset, hasClock, hasReset)
 import Clash.Sized.Internal.BitVector (BitVector (unsafeToNatural))
 import Data.Constraint (Dict (Dict))

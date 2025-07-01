@@ -40,7 +40,7 @@ import Project.FilePath (
   firmwareBinariesDir,
  )
 
-import BitPackC (BitPackC, ByteOrder (BigEndian, LittleEndian))
+import Clash.Class.BitPackC (BitPackC, ByteOrder (BigEndian, LittleEndian))
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Protocols (Circuit (Circuit), Df, Drivable (sampleC), idC, toSignals)

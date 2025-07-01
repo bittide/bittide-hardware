@@ -29,9 +29,9 @@ import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import Protocols.Wishbone
 
-import BitPackC
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
+import Clash.Class.BitPackC
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap
 

@@ -40,9 +40,9 @@ module Bittide.Sync where
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import Protocols
 
-import BitPackC (ByteOrder)
 import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.SharedTypes (Bytes)
+import Clash.Class.BitPackC (ByteOrder)
 import Clash.Class.Counter (Counter (countSuccOverflow))
 import Clash.Cores.Xilinx.Xpm (xpmCdcSingle)
 import Clash.Explicit.Signal.Extra (changepoints)

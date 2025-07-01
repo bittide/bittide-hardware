@@ -9,7 +9,7 @@ module Tests.BitPackC where
 
 import Clash.Explicit.Prelude
 
-import BitPackC
+import Clash.Class.BitPackC
 
 import Control.Monad (forM_)
 import Test.Tasty

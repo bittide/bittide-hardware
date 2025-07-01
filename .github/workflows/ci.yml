@@ -246,6 +246,7 @@ jobs:
           - bittide-experiments
           - bittide-extra
           - bittide-instances
+          - clash-bitpackc
           - clash-protocols-memmap
           - ghc-typelits-extra-lemmas
 

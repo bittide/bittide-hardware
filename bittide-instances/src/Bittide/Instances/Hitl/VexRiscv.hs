@@ -16,7 +16,7 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Prelude
 
-import BitPackC
+import Clash.Class.BitPackC
 import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Data.Maybe (fromMaybe)

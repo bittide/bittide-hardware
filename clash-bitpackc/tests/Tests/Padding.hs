@@ -7,7 +7,7 @@ module Tests.Padding where
 
 import Clash.Prelude hiding (someNatVal, withSomeSNat)
 
-import BitPackC.Padding (pad, unpad)
+import Clash.Class.BitPackC.Padding (pad, unpad)
 import Clash.Hedgehog.Sized.BitVector (genDefinedBitVector)
 import Clash.Hedgehog.Sized.Vector (genVec)
 import Data.Data (Proxy)

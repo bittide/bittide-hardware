@@ -5,8 +5,8 @@
 
 module Bittide.ClockControl.Freeze where
 
-import BitPackC (ByteOrder)
 import Bittide.SharedTypes (Bytes)
+import Clash.Class.BitPackC (ByteOrder)
 import Clash.Explicit.Prelude
 import GHC.Stack (HasCallStack)
 import Protocols

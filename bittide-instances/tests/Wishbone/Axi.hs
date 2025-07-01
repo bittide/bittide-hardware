@@ -17,7 +17,7 @@ import Bittide.Wishbone
 import Project.FilePath
 
 -- Other
-import BitPackC (ByteOrder (BigEndian))
+import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Control.Monad (forM_)
 import Data.Char
 import Data.Maybe

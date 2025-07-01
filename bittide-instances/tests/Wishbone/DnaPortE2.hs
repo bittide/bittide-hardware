@@ -10,7 +10,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import qualified Prelude as P
 
-import BitPackC (ByteOrder (BigEndian))
+import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Data.Char
 import Data.Maybe

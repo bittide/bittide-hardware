@@ -8,6 +8,7 @@ packages:
   bittide-shake/
   bittide-tools/
   bittide/
+  clash-bitpackc/
   clash-protocols-memmap/
   clash-vexriscv/clash-vexriscv/
   ghc-typelits-extra-lemmas/
@@ -100,6 +101,15 @@ package bittide-shake
     -j8
 
 package bittide-tools
+  ghc-options:
+    +RTS
+    -xp
+    -qn8
+    -A64M
+    -RTS
+    -j8
+
+package clash-bitpackc
   ghc-options:
     +RTS
     -xp

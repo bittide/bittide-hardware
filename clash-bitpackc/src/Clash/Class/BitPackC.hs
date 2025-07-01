@@ -6,7 +6,7 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 
 -- | Tooling to pack and unpack Haskell types to and from C-FFI.
-module BitPackC (
+module Clash.Class.BitPackC (
   packC,
   maybeUnpackC,
   unpackOrErrorC,
@@ -18,7 +18,7 @@ module BitPackC (
   msbResize,
 ) where
 
-import BitPackC.Align (MultipleOf, Padding)
+import Clash.Class.BitPackC.Align (MultipleOf, Padding)
 import Clash.Prelude
 import Data.Data (Typeable, typeRep)
 import Data.Proxy (Proxy (Proxy))

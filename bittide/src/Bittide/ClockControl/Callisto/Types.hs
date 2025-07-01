@@ -17,9 +17,9 @@ module Bittide.ClockControl.Callisto.Types (
 
 import Clash.Prelude
 
-import BitPackC (BitPackC)
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker (StabilityIndication)
+import Clash.Class.BitPackC (BitPackC)
 import Clash.Signal.TH.Extra (deriveSignalHasFields)
 import Protocols.MemoryMap.FieldType (ToFieldType)
 import VexRiscv (JtagOut)

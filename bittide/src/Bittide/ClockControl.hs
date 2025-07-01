@@ -35,8 +35,8 @@ import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
 import GHC.Stack (HasCallStack)
 
-import BitPackC (BitPackC)
 import Bittide.Arithmetic.Time (PeriodToCycles, microseconds)
+import Clash.Class.BitPackC (BitPackC)
 import Protocols.MemoryMap.FieldType (ToFieldType)
 
 type SettlePeriod = Femtoseconds

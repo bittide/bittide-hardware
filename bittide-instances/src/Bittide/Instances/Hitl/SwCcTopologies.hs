@@ -29,7 +29,7 @@ import qualified Clash.Explicit.Prelude as E
 import Clash.Prelude (HiddenClockResetEnable, exposeReset, hasReset, withClockResetEnable)
 import qualified Prelude as P
 
-import BitPackC (ByteOrder (BigEndian, LittleEndian))
+import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
 import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Proxy

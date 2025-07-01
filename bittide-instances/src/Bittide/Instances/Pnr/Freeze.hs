@@ -6,8 +6,8 @@
 
 module Bittide.Instances.Pnr.Freeze where
 
-import BitPackC (ByteOrder (BigEndian))
 import Bittide.SharedTypes (Bytes)
+import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Explicit.Prelude
 import GHC.Stack (HasCallStack)
 import Protocols

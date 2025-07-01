@@ -19,7 +19,7 @@ import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 
-import BitPackC
+import Clash.Class.BitPackC
 import Protocols
 import Protocols.Wishbone
 

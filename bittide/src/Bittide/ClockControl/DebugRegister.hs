@@ -21,8 +21,8 @@ import Protocols
 import Protocols.MemoryMap
 import Protocols.Wishbone
 
-import BitPackC
 import Bittide.ClockControl (SpeedChange)
+import Clash.Class.BitPackC
 import Clash.Explicit.Signal.Extra (changepoints)
 import Clash.Signal.TH.Extra (deriveSignalHasFields)
 import Data.Maybe (isJust)

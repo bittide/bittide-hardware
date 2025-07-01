@@ -11,8 +11,8 @@
 
 module Tests.Protocols.MemoryMap.Registers.WishboneStandard where
 
-import BitPackC (BitPackC, ByteOrder (BigEndian))
-import BitPackC.Padding (SizeInWordsC, maybeUnpackWordC, packWordC)
+import Clash.Class.BitPackC (BitPackC, ByteOrder (BigEndian))
+import Clash.Class.BitPackC.Padding (SizeInWordsC, maybeUnpackWordC, packWordC)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Control.DeepSeq (force)

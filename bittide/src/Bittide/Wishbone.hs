@@ -12,7 +12,7 @@ module Bittide.Wishbone where
 import Clash.Prelude
 
 -- external imports
-import BitPackC
+import Clash.Class.BitPackC
 import Clash.Cores.UART (ValidBaud, uart)
 import Clash.Cores.Xilinx.Ila (Depth, IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
