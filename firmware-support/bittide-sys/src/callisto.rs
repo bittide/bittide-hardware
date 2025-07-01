@@ -134,8 +134,8 @@ pub fn callisto(cc: &ClockControl, freeze: &Freeze, config: &ControlConfig, stat
     let link_mask = cc.link_mask();
 
     // Sum the data counts for all active links
-    let measured_sum: i32 = freeze
-        .eb_counters_volatile_iter()
+    let measured_sum: i32 = cc
+        .data_counts_volatile_iter()
         .enumerate()
         .map(|(i, v)| {
             if is_active_link(link_mask, n_links, i) {
