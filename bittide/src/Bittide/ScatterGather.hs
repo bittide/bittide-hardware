@@ -1,6 +1,10 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Bittide.ScatterGather (
@@ -35,8 +39,9 @@ higher level APIs.
 data ScatterConfig nBytes addrW where
   ScatterConfig ::
     (KnownNat memDepth, 1 <= memDepth) =>
-    SNat memDepth ->
-    (CalendarConfig nBytes addrW (Index memDepth)) ->
+    { memDepth :: SNat memDepth
+    , calendarConfig :: CalendarConfig nBytes addrW (Index memDepth)
+    } ->
     ScatterConfig nBytes addrW
 
 {- | Existential type to explicitly differentiate between a configuration for
@@ -46,8 +51,9 @@ higher level APIs.
 data GatherConfig nBytes addrW where
   GatherConfig ::
     (KnownNat memDepth, 1 <= memDepth) =>
-    SNat memDepth ->
-    (CalendarConfig nBytes addrW (Index memDepth)) ->
+    { memDepth :: SNat memDepth
+    , calendarConfig :: CalendarConfig nBytes addrW (Index memDepth)
+    } ->
     GatherConfig nBytes addrW
 
 {- | Double buffered memory component that can be written to by a Bittide link. The write
@@ -310,7 +316,8 @@ scatterUnitWb (ScatterConfig _memDepth calConfig) wbInCal linkIn wbInSu =
 
 gatherUnitWbC ::
   forall dom awGu nBytesCal awCal.
-  ( HiddenClockResetEnable dom
+  ( HasCallStack
+  , HiddenClockResetEnable dom
   , KnownNat awGu
   , KnownNat nBytesCal
   , 1 <= nBytesCal
@@ -392,7 +399,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
             ]
         , deviceName =
             Name
-              { name = "ScatterUnit"
+              { name = "GatherUnit"
               , description = ""
               }
         , definitionLoc = locHere
