@@ -44,9 +44,9 @@ fn main() -> ! {
     let cc = unsafe { ClockControl::new(0xC000_0000 as *mut u8) };
     let dbg = unsafe { DebugRegister::new(0xA000_0000 as *mut u8) };
 
-    writeln!(uart, "nLinks: {}", cc.num_links()).unwrap();
+    writeln!(uart, "nLinks: {}", cc.n_links()).unwrap();
     writeln!(uart, "linkMask: {}", cc.link_mask()).unwrap();
-    writeln!(uart, "linkMaskPopcnt: {}", cc.up_links()).unwrap();
+    writeln!(uart, "linkMaskPopcnt: {}", cc.n_up_links()).unwrap();
     writeln!(
         uart,
         "reframingEnabled: {}",
@@ -84,7 +84,7 @@ fn main() -> ! {
     writeln!(uart, "]").unwrap();
 
     // Mark end of transmission - should hopefully be unique enough?
-    for _ in 0..cc.up_links() {
+    for _ in 0..cc.n_up_links() {
         cc.set_change_speed(SpeedChange::NoChange);
     }
 
