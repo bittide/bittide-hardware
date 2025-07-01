@@ -64,8 +64,8 @@ import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle), switchDemoPeWb
 import Bittide.Transceiver (transceiverPrbsN)
 import Bittide.Wishbone (readDnaPortE2Wb, timeWb, whoAmIC)
 
-import BitPackC (ByteOrder (BigEndian, LittleEndian))
 import Clash.Annotations.TH (makeTopEntity)
+import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Clash.Cores.Xilinx.VIO (vioProbe)

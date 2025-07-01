@@ -12,7 +12,7 @@ module Tests.ClockControlWb where
 import Clash.Explicit.Prelude hiding (PeriodToCycles, many)
 
 -- external imports
-import BitPackC (ByteOrder (BigEndian, LittleEndian))
+import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
 import Clash.Signal (withClockResetEnable)
 import Data.Char (chr)
 import Data.Maybe (catMaybes, mapMaybe)

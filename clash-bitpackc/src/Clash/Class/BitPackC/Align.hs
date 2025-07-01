@@ -4,7 +4,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module BitPackC.Align where
+module Clash.Class.BitPackC.Align where
 
 import Clash.Prelude
 import Data.Type.Bool (type If)

@@ -7,10 +7,10 @@ module Bittide.Ethernet.Mac where
 
 import Clash.Explicit.Prelude hiding ((:<))
 
-import BitPackC
 import Bittide.Extra.Maybe
 import Bittide.Wishbone
 import Clash.Annotations.Primitive
+import Clash.Class.BitPackC
 import Clash.Cores.Xilinx.Ethernet.Gmii.Internal
 import Data.Constraint.Nat.Extra
 import Data.Constraint.Nat.Lemmas

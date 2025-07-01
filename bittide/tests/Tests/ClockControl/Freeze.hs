@@ -8,9 +8,9 @@
 
 module Tests.ClockControl.Freeze where
 
-import BitPackC (ByteOrder (BigEndian), unpackOrErrorC)
 import Bittide.ClockControl.Freeze (counter, freeze)
 import Bittide.SharedTypes (Bytes)
+import Clash.Class.BitPackC (ByteOrder (BigEndian), unpackOrErrorC)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Hedgehog (Gen, Property)

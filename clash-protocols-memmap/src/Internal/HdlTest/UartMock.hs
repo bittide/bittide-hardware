@@ -19,7 +19,7 @@ module Internal.HdlTest.UartMock where
 
 import Clash.Prelude
 
-import BitPackC
+import Clash.Class.BitPackC
 import GHC.Stack (HasCallStack, callStack, getCallStack)
 import Protocols (CSignal, Circuit (..))
 import Protocols.MemoryMap (

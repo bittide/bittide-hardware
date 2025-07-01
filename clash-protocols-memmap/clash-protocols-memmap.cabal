@@ -134,9 +134,6 @@ library
   import: ghc2024, clash, extra
   hs-source-dirs: src
   exposed-modules:
-    BitPackC
-    BitPackC.Align
-    BitPackC.Padding
     Internal.HdlTest.UartMock
     Protocols.MemoryMap
     Protocols.MemoryMap.Check
@@ -152,6 +149,7 @@ library
     aeson-pretty,
     base >=4.19.0.0,
     bytestring >=0.10 && <0.13,
+    clash-bitpackc,
     clash-prelude,
     clash-protocols,
     constraints,
@@ -171,6 +169,7 @@ executable hdl-test
     aeson-pretty,
     base,
     bytestring,
+    clash-bitpackc,
     clash-ghc,
     clash-prelude,
     clash-protocols,
@@ -193,6 +192,7 @@ executable example
     aeson-pretty,
     base,
     bytestring,
+    clash-bitpackc,
     clash-prelude,
     clash-protocols,
     clash-protocols-memmap,
@@ -226,12 +226,11 @@ test-suite unittests
     -with-rtsopts=-N12
 
   other-modules:
-    Tests.BitPackC
-    Tests.Padding
     Tests.Protocols.MemoryMap.Registers.WishboneStandard
 
   build-depends:
     base,
+    clash-bitpackc,
     clash-prelude,
     clash-prelude-hedgehog,
     clash-protocols,

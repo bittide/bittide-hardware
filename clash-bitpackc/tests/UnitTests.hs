@@ -9,13 +9,15 @@ import Prelude
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import qualified Tests.Protocols.MemoryMap.Registers.WishboneStandard
+import qualified Tests.BitPackC
+import qualified Tests.Padding
 
 tests :: TestTree
 tests =
   testGroup
     "Unittests"
-    [ Tests.Protocols.MemoryMap.Registers.WishboneStandard.tests
+    [ Tests.BitPackC.tests
+    , Tests.Padding.tests
     ]
 
 {- | Default number of tests is 100, which is too low for our (complicated)

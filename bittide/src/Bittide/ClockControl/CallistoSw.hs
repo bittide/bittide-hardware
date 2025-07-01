@@ -15,7 +15,7 @@ module Bittide.ClockControl.CallistoSw (
 
 import Clash.Prelude hiding (PeriodToCycles)
 
-import BitPackC (ByteOrder)
+import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Data.Maybe (isJust)
 import Protocols

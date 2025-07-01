@@ -12,7 +12,7 @@ module Bittide.SharedTypes (
 
 import Clash.Prelude
 
-import BitPackC (ByteOrder (..), Bytes)
+import Clash.Class.BitPackC (ByteOrder (..), Bytes)
 import Data.Constraint
 import Data.Constraint.Nat.Lemmas
 import Data.Type.Equality ((:~:) (Refl))

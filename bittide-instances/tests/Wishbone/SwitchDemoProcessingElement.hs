@@ -7,7 +7,7 @@ module Wishbone.SwitchDemoProcessingElement where
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
-import BitPackC (ByteOrder (BigEndian))
+import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Data.Char (chr)
 import Data.List (isPrefixOf)
 import Data.Maybe (catMaybes)

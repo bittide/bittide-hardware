@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
-"""
-Make sure the mentioned Cabal files have the same common settings
-"""
-# SPDX-FileCopyrightText: 2022 Google LLC
-#
-# SPDX-License-Identifier: Apache-2.0
-import sys
+cabal-version: 3.8
+name: clash-bitpackc
+version: 0.1
+license: Apache-2.0
+license-file: LICENSE
+author: QBayLogic B.V.
+maintainer: devops@qbaylogic.com
+copyright: Copyright © 2024 Google LLC
 
-COMMON = """
 -- One day we'll be able to replace this by 'default-language: GHC2024' and
 -- disabling a few extensions :)
 common ghc2024
@@ -107,7 +106,6 @@ common clash
     -fplugin=GHC.TypeLits.Extra.Solver
     -fplugin=GHC.TypeLits.Normalise
     -fplugin=GHC.TypeLits.KnownNat.Solver
-    -fplugin=Protocols.Plugin
     -fconstraint-solver-iterations=20
     -fexpose-all-unfoldings
     -fno-worker-wrapper
@@ -115,7 +113,6 @@ common clash
     -fno-unbox-strict-fields
 
   build-depends:
-    clash-protocols,
     ghc-typelits-extra >=0.4.4,
     ghc-typelits-knownnat >=0.7.7,
     ghc-typelits-natnormalise >=0.7.7,
@@ -130,32 +127,55 @@ common extra
   ghc-options:
     -Wall
     -Wcompat
-"""
 
+library
+  import: ghc2024, clash, extra
+  hs-source-dirs: src
+  exposed-modules:
+    Clash.Class.BitPackC
+    Clash.Class.BitPackC.Align
+    Clash.Class.BitPackC.Padding
 
-CABAL_FILES = [
-  "bittide/bittide.cabal",
-  "bittide-instances/bittide-instances.cabal",
-  "bittide-extra/bittide-extra.cabal",
-  "bittide-experiments/bittide-experiments.cabal",
-  # clash-bitpackc doesn't need clash-protocols, but this script doesn't handle
-  # cases like this.
-  #
-  # "clash-bitpackc/clash-bitpackc.cabal",
-  "clash-protocols-memmap/clash-protocols-memmap.cabal",
-]
+  build-depends:
+    base >=4.19.0.0,
+    clash-prelude,
 
-def main():
-    for cabal_file in CABAL_FILES:
-        with open(cabal_file, 'r') as f:
-            content = f.read()
+test-suite doctests
+  type: exitcode-stdio-1.0
+  main-is: doctests.hs
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
 
-        if COMMON not in content:
-            print(f"Error: common header not found in {cabal_file}", file=sys.stderr)
-            return 1
+  hs-source-dirs: tests
+  build-depends:
+    base,
+    clash-bitpackc,
+    doctest-parallel >=0.3.0.1 && <0.4,
 
-    return 0
+test-suite unittests
+  import: ghc2024, clash, extra
+  hs-source-dirs: tests
+  type: exitcode-stdio-1.0
+  main-is: UnitTests.hs
+  ghc-options:
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N12
 
+  other-modules:
+    Tests.BitPackC
+    Tests.Padding
 
-if __name__ == '__main__':
-    sys.exit(main())
+  build-depends:
+    base,
+    clash-bitpackc,
+    clash-prelude,
+    clash-prelude-hedgehog,
+    extra,
+    hedgehog >=1.0 && <1.5,
+    tasty >=1.5 && <1.7,
+    tasty-hedgehog >=1.2 && <1.5,
+    tasty-hunit,
+    tasty-th,

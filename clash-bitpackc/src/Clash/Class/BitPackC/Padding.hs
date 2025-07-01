@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module BitPackC.Padding (
+module Clash.Class.BitPackC.Padding (
   packWordC,
   maybeUnpackWordC,
   unpackWordOrErrorC,
@@ -15,7 +15,7 @@ module BitPackC.Padding (
 
 import Clash.Prelude
 
-import BitPackC (
+import Clash.Class.BitPackC (
   BitPackC,
   ByteOrder,
   ByteSizeC,

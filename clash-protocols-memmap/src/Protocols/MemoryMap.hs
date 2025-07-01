@@ -90,7 +90,7 @@ import Clash.Prelude (
 import Protocols.MemoryMap.Check.Normalized
 import Protocols.MemoryMap.FieldType
 
-import BitPackC
+import Clash.Class.BitPackC
 import Data.Data (Proxy (Proxy))
 import GHC.Stack (HasCallStack, SrcLoc, callStack, getCallStack)
 import Protocols

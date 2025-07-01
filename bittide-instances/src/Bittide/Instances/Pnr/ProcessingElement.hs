@@ -7,8 +7,8 @@ module Bittide.Instances.Pnr.ProcessingElement where
 
 import Clash.Prelude
 
-import BitPackC (ByteOrder (BigEndian))
 import Clash.Annotations.TH
+import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Cores.UART (ValidBaud)
 import Clash.Explicit.Prelude (noReset, orReset)
 import Clash.Xilinx.ClockGen

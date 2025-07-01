@@ -11,7 +11,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 import qualified Prelude as P
 
-import BitPackC (ByteOrder (BigEndian))
+import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Signal.Internal
 import Data.Char
 import Data.Maybe

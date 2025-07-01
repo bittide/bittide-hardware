@@ -13,9 +13,9 @@ import Clash.Prelude hiding (PeriodToCycles)
 import Protocols
 import Protocols.Wishbone
 
-import BitPackC (ByteOrder)
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker
+import Clash.Class.BitPackC (ByteOrder)
 import Clash.Signal.TH.Extra (deriveSignalHasFields)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), ConstBwd, MM)
