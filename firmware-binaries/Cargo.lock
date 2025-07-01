@@ -51,12 +51,22 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 name = "bittide-hal"
 version = "0.1.0"
 dependencies = [
+ "bittide-macros",
  "log",
  "memmap-generate",
  "proc-macro2",
  "quote",
  "smoltcp 0.11.0",
  "ufmt",
+]
+
+[[package]]
+name = "bittide-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
 ]
 
 [[package]]
@@ -99,6 +109,7 @@ version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-sys",
+ "memmap-generate",
  "riscv-rt",
 ]
 

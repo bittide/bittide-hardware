@@ -3,12 +3,14 @@
 #![allow(const_item_mutation)]
 #![allow(clippy::empty_loop)]
 #![allow(clippy::approx_constant)]
+
 // SPDX-FileCopyrightText: 2025 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
 use ufmt::{uwrite, uwriteln};
 
 use bittide_hal::hals::register_wb_c as hal;
+use bittide_hal::index;
 
 use core::fmt::Write;
 #[cfg(not(test))]
@@ -44,201 +46,199 @@ fn expect<T: ufmt::uDebug + PartialEq>(msg: &str, expected: T, actual: T) {
 fn main() -> ! {
     let many_types = &mut INSTANCES.many_types;
 
+    macro_rules! read_write {
+        ($name:literal, $read_fn:ident, $init_expected:expr, $write_fn:ident, $ret_expected:expr) => {
+            let name = concat!("init.", $name);
+            expect(name, $init_expected, many_types.$read_fn());
+            many_types.$write_fn($ret_expected);
+            let name = concat!("rt.", $name);
+            expect(name, $ret_expected, many_types.$read_fn());
+        };
+
+        (array => $name:literal, $read_fn:ident, [$($init_expected:expr),*], $write_fn:ident, [$($ret_expected:expr),*]) => {
+            let mut i = 0;
+            $(
+                let mut msg = heapless::String::<64>::new();
+                _ = uwrite!(msg, "init.");
+                _ = uwrite!(msg, $name);
+                _ = uwrite!(msg, "[{:?}]", i);
+                expect(&msg, Some($init_expected), many_types.$read_fn(i));
+
+                many_types.$write_fn(i, $ret_expected);
+                msg.clear();
+                _ = uwrite!(msg, "rt.");
+                _ = uwrite!(msg, $name);
+                _ = uwrite!(msg, "[{:?}]", i);
+                expect(&msg, Some($ret_expected), many_types.$read_fn(i));
+                i += 1;
+            )*
+            // read one extra to check for None
+            let mut msg = heapless::String::<64>::new();
+            _ = uwrite!(msg, "init.");
+            _ = uwrite!(msg, $name);
+            _ = uwrite!(msg, "[{:?}]", i);
+            expect(&msg, None, many_types.$read_fn(i));
+
+        };
+    }
+
     // Test initial values:
-    expect("init.s0", -8, many_types.s0());
-    expect("init.s1", 8, many_types.s1());
-    expect("init.s2", 16, many_types.s2());
-    expect("init.s3", 3721049880298531338, many_types.s3());
-    expect("init.s4", -12, many_types.s4());
+    read_write!("s0", s0, -8, set_s0, -16);
+    read_write!("s1", s1, 8, set_s1, 16);
+    read_write!("s2", s2, 16, set_s2, 32);
+    read_write!("s3", s3, 3721049880298531338, set_s3, 7442099760597062676);
+    read_write!("s4", s4, -12, set_s4, -13);
 
-    expect("init.u0", 8, many_types.u0());
-    expect("init.u1", 16, many_types.u1());
-    expect("init.u2", 3721049880298531338, many_types.u2());
-    expect("init.u3", 0xBADC_0FEE, many_types.u3());
+    read_write!("u0", u0, 8, set_u0, 16);
+    read_write!("u1", u1, 16, set_u1, 32);
+    read_write!("u2", u2, 3721049880298531338, set_u2, 7442099760597062676);
+    read_write!("u3", u3, 0xBADC_0FEE, set_u3, 24);
 
-    expect("init.bv0", 8, many_types.bv0());
-    expect("init.bv1", 16, many_types.bv1());
-    expect("init.bv2", 3721049880298531338, many_types.bv2());
+    read_write!("bv0", bv0, 8, set_bv0, 16);
+    read_write!("bv1", bv1, 16, set_bv1, 32);
+    read_write!(
+        "bv2",
+        bv2,
+        3721049880298531338,
+        set_bv2,
+        7442099760597062676
+    );
 
-    // Passing floats/doubles to 'expect' yields linker errors..
+    // floats/doubles don't implement uDebug, so go through bool instead :(
     expect("init.f0", true, many_types.f0() == -8.0);
     expect("init.f1", true, many_types.f1() == 8.0);
     expect("init.d0", true, many_types.d0() == -8.0);
     expect("init.d1", true, many_types.d1() == 8.0);
+    many_types.set_f0(-16.0);
+    many_types.set_f1(16.0);
+    many_types.set_d0(-16.0);
+    many_types.set_d1(16.0);
+    expect("rt.f0", true, many_types.f0() == -16.0);
+    expect("rt.f1", true, many_types.f1() == 16.0);
+    expect("rt.d0", true, many_types.d0() == -16.0);
+    expect("rt.d1", true, many_types.d1() == 16.0);
 
-    expect("init.b0", true, many_types.b0());
+    read_write!("b0", b0, true, set_b0, false);
 
-    expect("init.v0[0]", Some(0x8), many_types.v0(0));
-    expect("init.v0[1]", Some(0x16), many_types.v0(1));
-    expect("init.v0[2]", Some(0x24), many_types.v0(2));
-    expect("init.v0[3]", Some(0x32), many_types.v0(3));
-    expect("init.v0[4]", Some(0x40), many_types.v0(4));
-    expect("init.v0[5]", Some(0x4E), many_types.v0(5));
-    expect("init.v0[6]", Some(0x5C), many_types.v0(6));
-    expect("init.v0[7]", Some(0x6A), many_types.v0(7));
-    expect(
-        "init.v0_iter.count",
-        8,
-        many_types.v0_volatile_iter().count(),
-    );
+    read_write!(array => "v0", v0, [0x8, 0x16, 0x24, 0x32, 0x40, 0x4E, 0x5C, 0x6A], set_v0, [16, 32, 64, 128, 3, 9, 27, 81]);
 
     // also check with iterator interface
     {
-        let v0_ref = [0x8, 0x16, 0x24, 0x32, 0x40, 0x4E, 0x5C, 0x6A];
+        let v0_ref = [16, 32, 64, 128, 3, 9, 27, 81];
         for (i, (got, expected)) in many_types
             .v0_volatile_iter()
             .zip(v0_ref.into_iter())
             .enumerate()
         {
             let mut msg = heapless::String::<64>::new();
-            _ = uwrite!(msg, "init.v0[{:?}]", i);
+            _ = uwrite!(msg, "rt.v0[{:?}]", i);
             expect(&msg, expected, got);
         }
     }
 
-    expect("init.v1[0]", Some(0x8), many_types.v1(0));
-    expect("init.v1[1]", Some(0x16), many_types.v1(1));
-    expect("init.v1[2]", Some(3721049880298531338), many_types.v1(2));
+    read_write!(array => "v1", v1, [0x8, 0x16, 3721049880298531338], set_v1, [1600, 3200, 7442099760597062676]);
+    read_write!(array => "v2", v2, [[0x8, 0x16], [0x24, 0x32]], set_v2, [[0xAB, 0xCD], [0x12, 0x34]]);
 
-    expect("init.v2[0]", Some([0x8, 0x16]), many_types.v2(0));
-    expect("init.v2[1]", Some([0x24, 0x32]), many_types.v2(1));
+    read_write!("sum0", sum0, hal::Abc::C, set_sum0, hal::Abc::A);
+    read_write!("sum1", sum1, hal::Xyz::S, set_sum1, hal::Xyz::Z);
 
-    // XXX: No uDebug trait for enums, so we can't use expect() here.
-    expect("init.sum0", hal::Abc::C, many_types.sum0());
-    expect("init.sum1", hal::Xyz::S, many_types.sum1());
-
+    // floats again...
     expect("init.sop0.f", true, many_types.sop0().f == 3.14);
     expect("init.sop0.u", true, many_types.sop0().u == 6.28);
-
-    expect("init.p0.0", 0xBADC, many_types.p0().0);
-    expect("init.p0.1", 0x0F, many_types.p0().1);
-    expect("init.p0.2", 0xEE, many_types.p0().2);
-    expect("init.p1.0", 0xBADC, many_types.p1().0);
-    expect("init.p1.1", 0x0F, many_types.p1().1);
-    expect("init.p1.2", 0xBEAD, many_types.p1().2);
-    expect("init.p2.0", 0xBADC, many_types.p2().0);
-    expect("init.p2.1", 0x0F, many_types.p2().1);
-    expect("init.p3.0.0", 0xBADC, many_types.p3().0 .0);
-    expect("init.p3.0.1", 0x0F, many_types.p3().0 .1);
-    expect("init.p3.1", 0xEE, many_types.p3().1);
-
-    expect("init.e0", hal::Either::Left(8), many_types.e0());
-    expect(
-        "init.me0",
-        hal::Maybe::Just(hal::Either::Left(8)),
-        many_types.me0(),
-    );
-    expect(
-        "init.me1",
-        hal::Maybe::Just(hal::Either::Left(8)),
-        many_types.me1(),
-    );
-
-    expect("init.t0.0", 12, many_types.t0().0);
-    expect("init.t0.1", 584, many_types.t0().1);
-
-    // Test writing values:
-    many_types.set_s0(-16);
-    many_types.set_s1(16);
-    many_types.set_s2(32);
-    many_types.set_s3(7442099760597062676);
-    many_types.set_s4(-13);
-    many_types.set_u0(16);
-    many_types.set_u1(32);
-    many_types.set_u2(7442099760597062676);
-    many_types.set_u3(24);
-    many_types.set_bv0(16);
-    many_types.set_bv1(32);
-    many_types.set_bv2(7442099760597062676);
-    many_types.set_f0(-16.0);
-    many_types.set_f1(16.0);
-    many_types.set_d0(-16.0);
-    many_types.set_d1(16.0);
-    many_types.set_b0(false);
-    many_types.set_v0(0, 16).unwrap();
-    many_types.set_v0(1, 32).unwrap();
-    many_types.set_v0(2, 64).unwrap();
-    many_types.set_v0(3, 128).unwrap();
-    many_types.set_v0(4, 3).unwrap();
-    many_types.set_v0(5, 9).unwrap();
-    many_types.set_v0(6, 27).unwrap();
-    many_types.set_v0(7, 81).unwrap();
-    many_types.set_v1(0, 1600).unwrap();
-    many_types.set_v1(1, 3200).unwrap();
-    many_types.set_v1(2, 7442099760597062676).unwrap();
-    many_types.set_v2(0, [0xAB, 0xCD]).unwrap();
-    many_types.set_v2(1, [0x12, 0x34]).unwrap();
-    many_types.set_sum0(hal::Abc::A);
-    many_types.set_sum1(hal::Xyz::Z);
     many_types.set_sop0(hal::F { f: 1.0, u: 8.0 });
-    many_types.set_x2(hal::X2(8, hal::X3(16, 32, 64)));
-    many_types.set_e0(hal::Either::Left(0x12));
-    many_types.set_me0(hal::Maybe::Just(hal::Either::Right(0x12)));
-    many_types.set_me1(hal::Maybe::Just(hal::Either::Right(0x12)));
-    many_types.set_t0(hal::Tuple2(24, -948));
-
-    // Test read back values:
-    expect("rt.s0", -16, many_types.s0());
-    expect("rt.s1", 16, many_types.s1());
-    expect("rt.s2", 32, many_types.s2());
-    expect("rt.s3", 7442099760597062676, many_types.s3());
-    expect("rt.s4", -13, many_types.s4());
-    expect("rt.u0", 16, many_types.u0());
-    expect("rt.u1", 32, many_types.u1());
-    expect("rt.u2", 7442099760597062676, many_types.u2());
-    expect("rt.u3", 24, many_types.u3());
-    expect("rt.bv0", 16, many_types.bv0());
-    expect("rt.bv1", 32, many_types.bv1());
-    expect("rt.bv2", 7442099760597062676, many_types.bv2());
-    expect("rt.f0", true, many_types.f0() == -16.0);
-    expect("rt.f1", true, many_types.f1() == 16.0);
-    expect("rt.d0", true, many_types.d0() == -16.0);
-    expect("rt.d1", true, many_types.d1() == 16.0);
-    expect("rt.b0", false, many_types.b0());
-    expect("rt.v0[0]", Some(16), many_types.v0(0));
-    expect("rt.v0[1]", Some(32), many_types.v0(1));
-    expect("rt.v0[2]", Some(64), many_types.v0(2));
-    expect("rt.v0[3]", Some(128), many_types.v0(3));
-    expect("rt.v0[4]", Some(3), many_types.v0(4));
-    expect("rt.v0[5]", Some(9), many_types.v0(5));
-    expect("rt.v0[6]", Some(27), many_types.v0(6));
-    expect("rt.v0[7]", Some(81), many_types.v0(7));
-    expect("rt.v1[0]", Some(1600), many_types.v1(0));
-    expect("rt.v1[1]", Some(3200), many_types.v1(1));
-    expect("rt.v1[2]", Some(7442099760597062676), many_types.v1(2));
-    expect("rt.v2[0]", Some([0xAB, 0xCD]), many_types.v2(0));
-    expect("rt.v2[1]", Some([0x12, 0x34]), many_types.v2(1));
-    expect("rt.sum0", hal::Abc::A, many_types.sum0());
-    expect("rt.sum1", hal::Xyz::Z, many_types.sum1());
     expect("rt.sop0.f", true, many_types.sop0().f == 1.0);
     expect("rt.sop0.g", true, many_types.sop0().u == 8.0);
-    expect("rt.v2[0]", Some([0xAB, 0xCD]), many_types.v2(0));
-    expect("rt.v2[1]", Some([0x12, 0x34]), many_types.v2(1));
-    expect("rt.sum0", true, hal::Abc::A == many_types.sum0());
-    expect("rt.sum1", true, hal::Xyz::Z == many_types.sum1());
-    expect("rt.x2.0", 8, many_types.x2().0);
-    expect("rt.x2.1.0", 16, many_types.x2().1 .0);
-    expect("rt.x2.1.1", 32, many_types.x2().1 .1);
-    expect("rt.e0", hal::Either::Left(0x12), many_types.e0());
-    expect(
-        "rt.me0",
-        hal::Maybe::Just(hal::Either::Right(0x12)),
-        many_types.me0(),
-    );
-    expect(
-        "rt.me1",
-        hal::Maybe::Just(hal::Either::Right(0x12)),
-        many_types.me1(),
+
+    read_write!(
+        "e0",
+        e0,
+        hal::Either::Left(8),
+        set_e0,
+        hal::Either::Right(0x12)
     );
 
-    expect("rt.t0.0", 24, many_types.t0().0);
-    expect("rt.t0.1", -948, many_types.t0().1);
+    read_write!(
+        "oi",
+        oi,
+        hal::Maybe::Just(hal::Inner {
+            inner_a: 0x16,
+            inner_b: 0x24,
+        }),
+        set_oi,
+        hal::Maybe::Just(hal::Inner {
+            inner_a: 2,
+            inner_b: 4,
+        })
+    );
 
-    many_types.set_e0(hal::Either::Right(0x12));
-    expect("rt.e0", hal::Either::Right(0x12), many_types.e0());
+    read_write!(
+        "x2",
+        x2,
+        hal::X2(8, hal::X3(16, 32, 64)),
+        set_x2,
+        hal::X2(16, hal::X3(32, 64, 128))
+    );
 
-    many_types.set_x2(hal::X2(8, hal::X3(16, 32, 64)));
-    expect("rt.x2.1.2", 64, many_types.x2().1 .2);
+    read_write!(
+        "me0",
+        me0,
+        hal::Maybe::Just(hal::Either::Left(8)),
+        set_me0,
+        hal::Maybe::Just(hal::Either::Right(0x12))
+    );
+    read_write!(
+        "me1",
+        me1,
+        hal::Maybe::Just(hal::Either::Left(8)),
+        set_me1,
+        hal::Maybe::Just(hal::Either::Right(0x12))
+    );
+
+    read_write!(
+        "p0",
+        p0,
+        hal::P0(0xBADC, 0x0F, 0xEE),
+        set_p0,
+        hal::P0(0x1234, 0x56, 0xFE)
+    );
+    read_write!(
+        "p1",
+        p1,
+        hal::P1(0xBADC, 0x0F, 0xBEAD),
+        set_p1,
+        hal::P1(0x1234, 0x56, 0xFACE)
+    );
+    read_write!(
+        "p2",
+        p2,
+        hal::P2(0xBADC, 0x0F, index!(6, n = 10)),
+        set_p2,
+        hal::P2(0x1234, 0x56, index!(9, n = 10))
+    );
+    read_write!(
+        "p3",
+        p3,
+        hal::P3(hal::P2(0xBADC, 0x0F, index!(6, n = 10),), 0xEE),
+        set_p3,
+        hal::P3(hal::P2(0x1234, 0x56, index!(9, n = 10)), 0xBA)
+    );
+
+    read_write!(
+        "t0",
+        t0,
+        hal::Tuple2(12, 584),
+        set_t0,
+        hal::Tuple2(24, -948)
+    );
+
+    read_write!("i20", i20, index!(17, n = 20), set_i20, index!(3, n = 20));
+    read_write!(
+        "mi12",
+        mi12,
+        hal::Maybe::Just(index!(5, n = 12)),
+        set_mi12,
+        hal::Maybe::Nothing
+    );
 
     test_ok();
 }

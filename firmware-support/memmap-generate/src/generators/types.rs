@@ -42,21 +42,9 @@ impl TypeGenerator {
                 quote! { #ty_name }
             }
             Type::Index(n) => {
-                let n = *n;
-
-                let underlying_type = if n <= u8::MAX as u64 {
-                    quote! { u8 }
-                } else if n <= u16::MAX as u64 {
-                    quote! { u16 }
-                } else if n <= u32::MAX as u64 {
-                    quote! { u32 }
-                } else {
-                    quote! { u64 }
-                };
-
                 let n_lit = Literal::from_str(&n.to_string()).unwrap();
 
-                quote! { Index<#n_lit, #underlying_type> }
+                quote! { Index![#n_lit] }
             }
             Type::Vec(n, ty) => {
                 let inner = self.generate_type_ref(ty);

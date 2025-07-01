@@ -177,6 +177,10 @@ fn main() {
             }
 
             writeln!(file, "pub use crate::shared::types::*;").unwrap();
+            writeln!(file, "pub use crate::Index;").unwrap();
+            // This is needed to properly make the Index![] macro resolve the
+            // path to the Index type.
+            writeln!(file, "use crate as bittide_hal;").unwrap();
             writeln!(file, "{}", def).unwrap();
         }
     }
@@ -208,6 +212,10 @@ fn main() {
                 writeln!(file, "{}", import).unwrap();
             }
             writeln!(file, "pub use crate::shared::types::*;").unwrap();
+            writeln!(file, "pub use crate::Index;").unwrap();
+            // This is needed to properly make the Index![] macro resolve the
+            // path to the Index type.
+            writeln!(file, "use crate as bittide_hal;").unwrap();
             writeln!(file, "{}", def).unwrap();
         }
     }
@@ -286,6 +294,10 @@ fn main() {
                 }
 
                 writeln!(file, "pub use crate::shared::types::*;").unwrap();
+                writeln!(file, "pub use crate::Index;").unwrap();
+                // This is needed to properly make the Index![] macro resolve the
+                // path to the Index type.
+                writeln!(file, "use crate as bittide_hal;").unwrap();
                 writeln!(file, "pub use crate::hals::{hal_mod_name}::types::*;").unwrap();
                 writeln!(file, "{}", def).unwrap();
             }
@@ -315,6 +327,10 @@ fn main() {
                     writeln!(file, "{}", import).unwrap();
                 }
                 writeln!(file, "pub use crate::shared::types::*;").unwrap();
+                writeln!(file, "pub use crate::Index;").unwrap();
+                // This is needed to properly make the Index![] macro resolve the
+                // path to the Index type.
+                writeln!(file, "use crate as bittide_hal;").unwrap();
                 writeln!(file, "pub use crate::hals::{hal_mod_name}::types::*;").unwrap();
                 writeln!(file, "{}", def).unwrap();
             }
