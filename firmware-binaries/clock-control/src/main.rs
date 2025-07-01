@@ -48,7 +48,7 @@ fn main() -> ! {
     let mut next_update = timer.now() + interval;
 
     loop {
-        freeze.set_freeze(true);
+        // freeze.set_freeze(true);
         callisto::callisto(&cc, &freeze, &config, &mut state);
         cc.set_change_speed(state.b_k);
         timer.wait_until(next_update);
