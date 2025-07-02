@@ -29,6 +29,7 @@ import System.IO
 
 import qualified Bittide.Instances.Hitl.Utils.Driver as D
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
+import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Data.List as L
 
 driverFunc ::
@@ -75,10 +76,10 @@ driverFunc _name targets = do
     -- even though this is just pre-process step, the CPU is reset until
     -- the test_start signal is asserted and cannot be accessed via GDB otherwise
     updateVio "vioHitlt" [("probe_test_start", "1")]
-    liftIO $ withOpenOcdWithEnv openocdEnv deviceInfo.usbAdapterLocation gdbPort 6666 4444 $ \ocd -> do
+    liftIO $ Ocd.withOpenOcdWithEnv openocdEnv deviceInfo.usbAdapterLocation gdbPort 6666 4444 $ \ocd -> do
       -- make sure OpenOCD is started properly
       hSetBuffering ocd.stderrHandle LineBuffering
-      expectLine ocd.stderrHandle openOcdWaitForHalt
+      expectLine ocd.stderrHandle Ocd.waitForHalt
 
       putStrLn "Starting Picocom..."
       putStrLn $ "Logging output to '" <> hitlDir

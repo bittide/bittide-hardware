@@ -26,9 +26,6 @@ brackets acqs rel act = go [] acqs
   go resL [] = act (reverse resL)
   go resL (acq : acqs1) = bracket acq rel $ \res -> go (res : resL) acqs1
 
-getOpenOcdStartPath :: IO FilePath
-getOpenOcdStartPath = getDataFileName "data/openocd/start.sh"
-
 getPicocomStartPath :: IO FilePath
 getPicocomStartPath = getDataFileName "data/picocom/start.sh"
 
@@ -52,93 +49,6 @@ awaitProcessTermination name h (Just t) = do
   case result of
     Just _ -> return ()
     Nothing -> error "Waiting for pocess termination timed out."
-
-withOpenOcd ::
-  (MonadMask m, MonadIO m) =>
-  -- | USB device location
-  String ->
-  -- | GDB port
-  Int ->
-  -- | TCL port
-  Int ->
-  -- | Telnet port
-  Int ->
-  -- | Action to run with OpenOCD
-  (ProcessStdIoHandles -> m a) ->
-  m a
-withOpenOcd = withOpenOcdWithEnv []
-
-withOpenOcdWithEnv ::
-  (MonadMask m, MonadIO m) =>
-  -- | Extra environment variables to pass to OpenOCD in form (name, value)
-  [(String, String)] ->
-  -- | USB device location
-  String ->
-  -- | GDB port
-  Int ->
-  -- | TCL port
-  Int ->
-  -- | Telnet port
-  Int ->
-  -- | Action to run with OpenOCD
-  (ProcessStdIoHandles -> m a) ->
-  m a
-withOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort action = do
-  (ocd, _handle, clean) <-
-    liftIO $ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort
-  finally (action ocd) (liftIO clean)
-
-startOpenOcdWithEnv ::
-  -- | Extra environment variables to pass to OpenOCD in form (name, value)
-  [(String, String)] ->
-  -- | USB device location
-  String ->
-  -- | GDB port
-  Int ->
-  -- | TCL port
-  Int ->
-  -- | Telnet port
-  Int ->
-  IO (ProcessStdIoHandles, ProcessHandle, IO ())
-startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort =
-  startOpenOcdWithEnvAndArgs
-    ["-f", "ports.tcl", "-f", "sipeed.tcl", "-f", "vexriscv_init.tcl"]
-    ( [ ("USB_DEVICE", usbLoc)
-      , ("GDB_PORT", show gdbPort)
-      , ("TCL_PORT", show tclPort)
-      , ("TELNET_PORT", show telnetPort)
-      ]
-        <> extraEnv
-    )
-
-startOpenOcdWithEnvAndArgs ::
-  [String] ->
-  [(String, String)] ->
-  IO (ProcessStdIoHandles, ProcessHandle, IO ())
-startOpenOcdWithEnvAndArgs args extraEnv = do
-  startOpenOcdPath <- getOpenOcdStartPath
-  currentEnv <- getEnvironment
-  let
-    openOcdProc =
-      (proc startOpenOcdPath args)
-        { std_in = CreatePipe
-        , std_out = CreatePipe
-        , std_err = CreatePipe
-        , env = Just (currentEnv <> extraEnv)
-        }
-
-  ocdHandles@(openOcdStdin, openOcdStdout, openOcdStderr, openOcdPh) <-
-    createProcess openOcdProc
-
-  let
-    ocdHandles' =
-      ProcessStdIoHandles
-        { stdinHandle = fromJust openOcdStdin
-        , stdoutHandle = fromJust openOcdStdout
-        , stderrHandle = fromJust openOcdStderr
-        }
-
-  pure (ocdHandles', openOcdPh, cleanupProcess ocdHandles)
 
 startPicocom :: FilePath -> IO (ProcessStdIoHandles, IO ())
 startPicocom devPath = do
@@ -230,13 +140,6 @@ startPicocomWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv = do
         }
 
   pure (picoHandles', cleanupProcess picoHandles)
-
--- | Wait until we see "Halting processor", fail if we see an error.
-openOcdWaitForHalt :: String -> Filter
-openOcdWaitForHalt s
-  | "Error:" `isPrefixOf` s = Stop (Error ("Found error in OpenOCD output: " <> s))
-  | "Halting processor" `isPrefixOf` s = Stop Ok
-  | otherwise = Continue
 
 gdbWaitForLoad :: String -> Filter
 gdbWaitForLoad s
