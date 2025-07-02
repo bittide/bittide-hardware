@@ -14,7 +14,7 @@ To add a HTIL test:
 - Instantiate `Bittide.Hitl.hitlVio` in your design
 - Add your test to `hitlTests` in ([Tests.hs](/bittide-instances/src/Bittide/Instances/Hitl/Tests.hs))
 - Add your test to CI:
-  - [staging](/.github/synthesis/staging.json) runs on every PR,
+  - [main](/.github/synthesis/main.json) runs on every PR,
     [all](/.github/synthesis/all.json) runs every night
   - Set stage to `test`
 

@@ -14,17 +14,16 @@ on:
     # Works out to be approx midnight (CET/CEST) accounting for UTC offset and
     # GitHub scheduling. See the comment at 'branches-ignore' for more
     # information on our development flow. This job will run in context of the
-    # branch 'staging'.
+    # branch 'main'.
     - cron:  '0 19 * * *'
 
   push:
       branches-ignore:
-        # Developers request to merge their changes into 'staging'. In order to
+        # Developers request to merge their changes into 'main'. In order to
         # do so, relatively cheap tests should pass CI. Every night, CI runs our
-        # full test suite on 'staging'. If these pass, a pull request may be
-        # created to get 'main' up to date with 'staging'. Note that this should
+        # full test suite on 'main'. If these pass, a pull request may be
+        # created to get 'main' up to date with 'main'. Note that this should
         # be automated in the future, but this will require some engineering.
-        - 'staging'
         - 'main'
 
 env:
@@ -433,7 +432,7 @@ jobs:
           elif [[ -f .github/synthesis/debug.json ]]; then
             cp .github/synthesis/debug.json checks.json
           else
-            cp .github/synthesis/staging.json checks.json
+            cp .github/synthesis/main.json checks.json
           fi
 
       - name: Set test matrix
@@ -466,7 +465,7 @@ jobs:
           elif [[ -f .github/synthesis/debug.json ]]; then
             cp .github/synthesis/debug.json checks.json
           else
-            cp .github/synthesis/staging.json checks.json
+            cp .github/synthesis/main.json checks.json
           fi
 
           jq '[.[] | select(.stage=="test")]' checks.json > checks.json.filtered
