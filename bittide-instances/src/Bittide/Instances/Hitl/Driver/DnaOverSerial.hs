@@ -31,6 +31,8 @@ import Test.Tasty.HUnit
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
+import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
+
 {- | Test that all FPGAs that are programmed with `dnaOverSerial` transmit the
 DNA that we expect based on the DeviceInfo.
 -}
@@ -78,7 +80,7 @@ dnaOverSerialDriver _name targets = do
     putStrLn $ "logging stderr to `" <> stderrLog <> "`"
 
     (pico, picoClean) <-
-      startPicocomWithLoggingAndEnv
+      Picocom.startWithLoggingAndEnv
         dI.serial
         stdoutLog
         stderrLog
