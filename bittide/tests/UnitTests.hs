@@ -17,6 +17,7 @@ import qualified Tests.ClockControl.Freeze
 import qualified Tests.ClockControl.Si539xSpi
 import qualified Tests.DoubleBufferedRam
 import qualified Tests.ElasticBuffer
+import qualified Tests.GeneralPurposeProcessingElement.Calculator
 import qualified Tests.ProcessingElement.ReadElf
 import qualified Tests.ScatterGather
 import qualified Tests.StabilityChecker
@@ -38,6 +39,7 @@ tests =
     , Tests.ClockControl.Si539xSpi.tests
     , Tests.DoubleBufferedRam.tests
     , Tests.ElasticBuffer.tests
+    , Tests.GeneralPurposeProcessingElement.Calculator.tests
     , Tests.ProcessingElement.ReadElf.tests
     , Tests.SwitchDemoProcessingElement.tests
     , Tests.SwitchDemoProcessingElement.Calculator.tests

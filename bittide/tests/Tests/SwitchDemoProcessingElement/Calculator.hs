@@ -8,7 +8,7 @@ module Tests.SwitchDemoProcessingElement.Calculator where
 import Clash.Prelude hiding (indices)
 
 import Bittide.SwitchDemoProcessingElement.Calculator (
-  PeConfig (..),
+  CyclePeConfig (..),
   chainConfiguration,
   toCounterMap,
   toFpgaIndexed,
@@ -56,9 +56,9 @@ case_chainConfiguration = chainConfiguration d3 d3 fpgaSetup parts 100 @?= expec
  where
   expected = peConfig0 :> peConfig1 :> peConfig2 :> Nil
 
-  peConfig0 = PeConfig{startWriteAt = 116, writeForN = 1, startReadAt = 154, readForN = 3}
-  peConfig1 = PeConfig{startWriteAt = 135, writeForN = 2, startReadAt = 118, readForN = 1}
-  peConfig2 = PeConfig{startWriteAt = 151, writeForN = 3, startReadAt = 136, readForN = 2}
+  peConfig0 = CyclePeConfig{startWriteAt = 116, writeForN = 1, startReadAt = 154, readForN = 3}
+  peConfig1 = CyclePeConfig{startWriteAt = 135, writeForN = 2, startReadAt = 118, readForN = 1}
+  peConfig2 = CyclePeConfig{startWriteAt = 151, writeForN = 3, startReadAt = 136, readForN = 2}
 
 tests :: TestTree
 tests = $(testGroupGenerator)

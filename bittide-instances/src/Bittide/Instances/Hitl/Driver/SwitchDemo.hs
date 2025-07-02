@@ -37,9 +37,10 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 import "extra" Data.List.Extra (trim)
 
+import qualified Bittide.GeneralPurposeProcessingElement.Calculator as GPPE
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
-import qualified Bittide.SwitchDemoProcessingElement.Calculator as Calc
+import qualified Bittide.SwitchDemoProcessingElement.Calculator as SDPE
 import qualified Clash.Sized.Vector as V (fromList)
 import qualified Data.List as L
 
@@ -57,6 +58,12 @@ data OcdInitData = OcdInitData
 data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
 
 type StartDelay = 5 -- seconds
+
+type CyclesPerWrite = 3
+type TotalWriteCycles = GPPE.TotalWriteCycles FpgaCount CyclesPerWrite
+type WindowCycles = GPPE.WindowCycles FpgaCount CyclesPerWrite
+type Padding = WindowCycles * 1
+type MetacycleLength = GPPE.MetacycleLength FpgaCount CyclesPerWrite Padding
 
 driver ::
   (HasCallStack) =>
@@ -365,7 +372,7 @@ driver testName targets = do
       (HasCallStack) =>
       (HwTarget, DeviceInfo) ->
       ProcessStdIoHandles ->
-      Calc.PeConfig (Unsigned 64) (Index 9) ->
+      SDPE.CyclePeConfig (Unsigned 64) (Index 9) ->
       VivadoM ()
     muWriteCfg target@(_, d) gdb (bimap pack fromIntegral -> cfg) = do
       let
@@ -399,7 +406,7 @@ driver testName targets = do
     finalCheck ::
       (HasCallStack) =>
       [ProcessStdIoHandles] ->
-      [Calc.PeConfig (Unsigned 64) (Index 9)] ->
+      [SDPE.CyclePeConfig (Unsigned 64) (Index 9)] ->
       VivadoM ExitCode
     finalCheck [] _ = fail "Should pass in two or more GDBs for the final check!"
     finalCheck (_ : []) _ = fail "Should pass in two or more GDBs for the final check!"
@@ -521,21 +528,35 @@ driver testName targets = do
               ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
             liftIO $ do
               putStrLn "Calculating IGNs for all targets"
-              Calc.printAllIgns ugnPairsTableV fpgaSetup
+              SDPE.printAllIgns ugnPairsTableV fpgaSetup
               mapM_ print ugnPairsTableV
             currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
             let
               startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
-              chainConfig :: Vec FpgaCount (Calc.PeConfig (Unsigned 64) (Index 9))
-              chainConfig =
-                Calc.fullChainConfiguration
-                  (SNat @3)
+              metaChainConfig ::
+                Vec
+                  FpgaCount
+                  (GPPE.MetaPeConfig (Unsigned 64) (Index (2 * WindowCycles)) (Index (FpgaCount + 1)))
+              metaChainConfig =
+                GPPE.fullChainConfiguration
+                  (SNat @CyclesPerWrite)
+                  (SNat @Padding)
                   fpgaSetup
                   ugnPairsTableV
                   startOffset
+              chainConfig :: Vec FpgaCount (SDPE.CyclePeConfig (Unsigned 64) (Index (FpgaCount + 1)))
+              chainConfig =
+                GPPE.metaPeConfigToCyclePeConfig (natToNum @CyclesPerWrite) (natToNum @MetacycleLength)
+                  <$> metaChainConfig
             liftIO $ do
-              putStrLn [i|Current clock cycle: #{currentTime}|]
+              putStrLn [i|Starting clock cycle: #{startOffset}|]
+              putStrLn [i|Cycles per write: #{natToNum @CyclesPerWrite :: Integer}|]
+              putStrLn [i|Cycles per group: #{natToNum @TotalWriteCycles :: Integer}|]
+              putStrLn [i|Cycles per window: #{natToNum @WindowCycles :: Integer}|]
+              putStrLn [i|Cycles of padding: #{natToNum @Padding :: Integer}|]
+              putStrLn [i|Cycles per metacycle: #{natToNum @MetacycleLength :: Integer}|]
               putStrLn "Calculated the following configs for the switch processing elements:"
+              forM_ metaChainConfig print
               forM_ chainConfig print
             _ <- sequenceA $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
             liftIO $ do

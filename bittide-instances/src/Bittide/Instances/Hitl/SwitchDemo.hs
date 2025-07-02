@@ -320,7 +320,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
           :> "dd_dDiff6"
           :> Nil
       )
-        { depth = D32768
+        { depth = D8192
         }
       refClk
       (unsafeToActiveLow handshakeRstFree)
@@ -651,7 +651,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
           :> "pe_tx_6"
           :> Nil
       )
-        { depth = D4096
+        { depth = D8192
         }
       refClk
       peNotIdleStickyFree
@@ -821,7 +821,7 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn =
           :> "dt_fifoUnderflows"
           :> Nil
       )
-        { depth = D32768
+        { depth = D8192
         }
       refClk
       handshakesDone
