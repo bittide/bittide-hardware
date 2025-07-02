@@ -31,6 +31,7 @@ import Vivado.VivadoM
 import qualified Bittide.Instances.Hitl.Utils.Driver as D
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
+import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Data.ByteString.Lazy as BS
 import qualified Network.Simple.TCP as NS
 import qualified Streaming.ByteString as SBS
@@ -89,7 +90,7 @@ driverFunc _name [d@(_, dI)] = do
       putStrLn "  Done"
 
       putStrLn "Starting Picocom..."
-    withPicocomWithLogging dI.serial picoOutLog picoErrLog $ \pico -> do
+    Picocom.withPicocomWithLogging dI.serial picoOutLog picoErrLog $ \pico -> do
       liftIO $ do
         hSetBuffering pico.stdinHandle LineBuffering
         hSetBuffering pico.stdinHandle LineBuffering

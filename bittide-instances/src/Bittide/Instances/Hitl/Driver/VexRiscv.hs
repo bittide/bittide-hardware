@@ -30,6 +30,7 @@ import System.IO
 import qualified Bittide.Instances.Hitl.Utils.Driver as D
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
+import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Data.List as L
 
 driverFunc ::
@@ -83,7 +84,7 @@ driverFunc _name targets = do
 
       putStrLn "Starting Picocom..."
       putStrLn $ "Logging output to '" <> hitlDir
-      withPicocomWithLogging deviceInfo.serial picoOutLog picoErrLog $ \pico -> do
+      Picocom.withPicocomWithLogging deviceInfo.serial picoOutLog picoErrLog $ \pico -> do
         hSetBuffering pico.stdinHandle LineBuffering
         hSetBuffering pico.stdoutHandle LineBuffering
 

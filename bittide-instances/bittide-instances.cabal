@@ -177,6 +177,7 @@ library
     Bittide.Instances.Hitl.Utils.Driver
     Bittide.Instances.Hitl.Utils.Gdb
     Bittide.Instances.Hitl.Utils.OpenOcd
+    Bittide.Instances.Hitl.Utils.Picocom
     Bittide.Instances.Hitl.Utils.Program
     Bittide.Instances.Hitl.Utils.Vivado
     Bittide.Instances.Hitl.VexRiscv
