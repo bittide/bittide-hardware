@@ -15,7 +15,7 @@ import Clash.Prelude (Domain, KnownDomain, Milliseconds, natToNum)
 
 import Data.Bool (bool)
 import Data.List (intercalate)
-import Data.List.Extra (chunksOf)
+import "extra" Data.List.Extra (chunksOf)
 import Data.Proxy (Proxy (..))
 import GHC.Float.RealFracMethods (roundFloatInteger)
 import System.Directory (doesDirectoryExist, doesFileExist, findExecutable)

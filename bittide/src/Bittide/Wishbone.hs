@@ -19,19 +19,24 @@ import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Clash.Debug
 import Clash.Sized.Vector.ToTuple (VecToTuple (vecToTuple))
 import Clash.Util.Interpolate
+import Control.DeepSeq (NFData)
 import Data.Bifunctor
 import Data.Bool (bool)
 import Data.Constraint.Nat.Extra
 import Data.Constraint.Nat.Lemmas
 import Data.Maybe
+import Data.Proxy
 import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.MemoryMap.FieldType (ToFieldType)
 import Protocols.Wishbone
+import Protocols.Idle (forceResetSanityGeneric)
 
 -- internal imports
 import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
+import Data.Typeable (Typeable)
+import GHC.Records (HasField, getField)
 
 -- qualified imports
 
@@ -966,3 +971,134 @@ whoAmIC whoAmI = MM.withMemoryMap mm $ Circuit go
     (Fwd (Wishbone dom 'Standard addrW (Bytes 4)), ()) ->
     (Bwd (Wishbone dom 'Standard addrW (Bytes 4)), ())
   go (m2s, ()) = (wbAlwaysAckWith whoAmI <$> m2s, ())
+
+traceWishbone ::
+  forall dom addrW mode dat.
+  ( KnownDomain dom
+  , KnownNat addrW
+  , KnownNat (BitSize dat)
+  , BitPack dat
+  , NFDataX dat
+  , Typeable dat
+  ) =>
+  String ->
+  Circuit (Wishbone dom mode addrW dat) (Wishbone dom mode addrW dat)
+traceWishbone name = Circuit go
+ where
+  go (fwd, bwd) = (bwd', fwd')
+   where
+    bwd' =
+      WishboneS2M
+        <$> traceField @"readData" Proxy bwd
+        <*> traceField @"acknowledge" Proxy bwd
+        <*> traceField @"err" Proxy bwd
+        <*> traceField @"stall" Proxy bwd
+        <*> traceField @"retry" Proxy bwd
+
+    fwd' =
+      WishboneM2S
+        <$> traceField @"addr" Proxy fwd
+        <*> traceField @"writeData" Proxy fwd
+        <*> traceField @"busSelect" Proxy fwd
+        <*> traceField @"lock" Proxy fwd
+        <*> traceField @"busCycle" Proxy fwd
+        <*> traceField @"strobe" Proxy fwd
+        <*> traceField @"writeEnable" Proxy fwd
+        <*> traceField @"cycleTypeIdentifier" Proxy fwd
+        <*> traceField @"burstTypeExtension" Proxy fwd
+
+  traceField ::
+    forall (s :: Symbol) f r.
+    ( KnownSymbol s
+    , HasField s r f
+    , BitPack f
+    , NFDataX f
+    , Typeable f
+    ) =>
+    Proxy s ->
+    Signal dom r ->
+    Signal dom f
+  traceField _ record = traceSignal (name <> "_" <> symbolVal @s Proxy) (fmap (getField @s) record)
+
+data WishboneRequest addrW nBytes
+  = ReadRequest (BitVector addrW) (BitVector nBytes)
+  | WriteRequest (BitVector addrW) (BitVector nBytes) (Vec nBytes Byte)
+  deriving (Generic, NFData, NFDataX, Show, ShowX, Eq)
+deriving instance
+  (KnownNat nBytes, KnownNat addrW) => BitPack (WishboneRequest addrW nBytes)
+
+data WishboneResponse nBytes
+  = ReadSuccess (Vec nBytes (Maybe Byte))
+  | WriteSuccess
+  | ReadError
+  | WriteError
+  deriving (Generic, NFData, NFDataX, Show, ShowX, Eq)
+
+deriving instance (KnownNat nBytes) => BitPack (WishboneResponse nBytes)
+
+dfWishboneMaster ::
+  forall dom addrW nBytes.
+  ( HiddenClockResetEnable dom
+  , KnownNat addrW
+  , KnownNat nBytes
+  ) =>
+  Circuit
+    (Df dom (WishboneRequest addrW nBytes))
+    ( Wishbone dom 'Standard addrW (Vec nBytes Byte)
+    , Df dom (WishboneResponse nBytes)
+    )
+dfWishboneMaster =
+  forceResetSanityGeneric |> case cancelMulDiv @nBytes @8 of
+    Dict -> Circuit (second unbundle . unbundle . mealy go initState . bundle . second bundle)
+     where
+      initState = Nothing
+      go state ~(reqFwd, ~(wbS2M, Ack respBwd)) = (nextState, (Ack reqBwd, (wbM2S, respFwd)))
+       where
+        emptyM2S :: WishboneM2S addrW nBytes (Vec nBytes Byte)
+        emptyM2S =
+          WishboneM2S
+            { addr = 0
+            , writeData = repeat 0
+            , busCycle = False
+            , strobe = False
+            , writeEnable = False
+            , busSelect = 0
+            , lock = False
+            , cycleTypeIdentifier = Classic
+            , burstTypeExtension = LinearBurst
+            }
+
+        respStalled = isJust state && not respBwd
+
+        nextState
+          | respStalled = state
+          | otherwise = do
+              req <- reqFwd
+              case req of
+                ReadRequest _ sel
+                  | wbS2M.acknowledge ->
+                      Just $ ReadSuccess $ mux (unpack sel) (map Just wbS2M.readData) (repeat Nothing)
+                WriteRequest{} | wbS2M.acknowledge -> Just WriteSuccess
+                ReadRequest{} | wbS2M.err -> Just ReadError
+                WriteRequest{} | wbS2M.err -> Just WriteError
+                _ -> Nothing
+
+        reqBwd = wbDone
+        respFwd = state
+        masterActive = wbM2S.busCycle && wbM2S.strobe
+        wbDone = masterActive && hasTerminateFlag wbS2M
+
+        wbM2S
+          | respStalled = emptyM2S
+          | otherwise = case reqFwd of
+              Just (ReadRequest addr sel) -> emptyM2S{busCycle = True, strobe = True, addr = addr, busSelect = sel}
+              Just (WriteRequest addr sel dat) ->
+                emptyM2S
+                  { busCycle = True
+                  , strobe = True
+                  , writeEnable = True
+                  , addr = addr
+                  , writeData = dat
+                  , busSelect = sel
+                  }
+              Nothing -> emptyM2S
