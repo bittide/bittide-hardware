@@ -49,5 +49,6 @@
     "jtag",
     "Underflows",
     "Vivado"
-  ]
+  ],
+  "haskell.sessionLoading": "multipleComponents"
 }
