@@ -345,7 +345,7 @@ singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
         f (master, unbundle slaves)
 
 {- | Takes an input that features no back pressure mechanism and turn it into `Df`.
-This function is unsafe because data can be lost when the input is @Just _@ and
+This function is unsafe, because data can be lost when the input is @Just _@ and
 the receiving circuit tries to apply back pressure.
 -}
 unsafeToDf :: Circuit (CSignal dom (Maybe a)) (Df dom a)

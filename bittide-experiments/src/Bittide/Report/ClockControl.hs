@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ImplicitPrelude #-}
 
@@ -15,7 +16,6 @@ import Clash.Prelude (Domain, KnownDomain, Milliseconds, natToNum)
 
 import Data.Bool (bool)
 import Data.List (intercalate)
-import Data.List.Extra (chunksOf)
 import Data.Proxy (Proxy (..))
 import GHC.Float.RealFracMethods (roundFloatInteger)
 import System.Directory (doesDirectoryExist, doesFileExist, findExecutable)
@@ -32,6 +32,7 @@ import System.IO (
  )
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (callProcess, readProcess)
+import "extra" Data.List.Extra (chunksOf)
 
 import Bittide.Arithmetic.PartsPer (toPpm)
 import Bittide.Arithmetic.Time (PeriodToCycles)

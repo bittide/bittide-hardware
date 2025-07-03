@@ -26,7 +26,11 @@ import Numeric (showHex)
 import Protocols.Hedgehog.Internal
 import Protocols.MemoryMap (unMemmap)
 import Protocols.Wishbone
-import Protocols.Wishbone.Standard.Hedgehog
+import Protocols.Wishbone.Standard.Hedgehog (
+  WishboneMasterRequest (Read, Write),
+  driveStandard,
+  wishbonePropWithModel,
+ )
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
