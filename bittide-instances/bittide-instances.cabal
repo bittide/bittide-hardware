@@ -182,6 +182,7 @@ library
     Bittide.Instances.Hitl.Utils.Vivado
     Bittide.Instances.Hitl.VexRiscv
     Bittide.Instances.MemoryMaps
+    Bittide.Instances.Pnr.AsciiDebugMux
     Bittide.Instances.Pnr.Calendar
     Bittide.Instances.Pnr.Counter
     Bittide.Instances.Pnr.ElasticBuffer
