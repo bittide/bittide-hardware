@@ -74,7 +74,7 @@ uncons :: Vec (n + 1) a -> (a, Vec n a)
 uncons (x :> xs) = (x, xs)
 uncons Nil = error "uncons: unreachable"
 
-data PeConfig a b = PeConfig
+data CyclePeConfig a b = CyclePeConfig
   { startWriteAt :: a
   , writeForN :: b
   , startReadAt :: a
@@ -82,16 +82,16 @@ data PeConfig a b = PeConfig
   }
   deriving (Functor, Eq, Show)
 
-instance Bifunctor PeConfig where
-  bimap f g PeConfig{startWriteAt, writeForN, startReadAt, readForN} =
-    PeConfig
+instance Bifunctor CyclePeConfig where
+  bimap f g CyclePeConfig{startWriteAt, writeForN, startReadAt, readForN} =
+    CyclePeConfig
       { startWriteAt = f startWriteAt
       , writeForN = g writeForN
       , startReadAt = f startReadAt
       , readForN = g readForN
       }
 
-{- | Create a vector of 'PeConfig's that form a chain of write reads, such that
+{- | Create a vector of 'CyclePeConfig's that form a chain of write reads, such that
 a PE starts writing as soon as it can after reading values from its
 predecessor.
 -}
@@ -110,8 +110,8 @@ fullChainConfiguration ::
   Vec nNodes (Vec (nNodes - 1) (a, a)) ->
   -- | Start offset for the first write
   a ->
-  -- | PeConfig for each node in the chain
-  Vec nNodes (PeConfig a (Index (nNodes + 1)))
+  -- | CyclePeConfig for each node in the chain
+  Vec nNodes (CyclePeConfig a (Index (nNodes + 1)))
 fullChainConfiguration = chainConfiguration SNat
 
 {- | Like 'fullChainConfiguration' but the number of nodes in the chain is
@@ -136,8 +136,8 @@ chainConfiguration ::
   Vec nNodes (Vec (nNodes - 1) (a, a)) ->
   -- | Start offset for the first write
   a ->
-  -- | PeConfig for each node in the chain
-  Vec chainLength (PeConfig a (Index (nNodes + 1)))
+  -- | CyclePeConfig for each node in the chain
+  Vec chainLength (CyclePeConfig a (Index (nNodes + 1)))
 chainConfiguration SNat cyclesPerWrite fpgaConfig ugnParts writeOffset =
   resultI
  where
@@ -176,7 +176,7 @@ chainConfigurationWorker ::
   Integer ->
   -- | Cycles per write (probably 3)
   Integer ->
-  Vec chainLength (PeConfig Integer Integer)
+  Vec chainLength (CyclePeConfig Integer Integer)
 chainConfigurationWorker fpgaConfig ugnParts writeOffset cyclesPerWrite =
   leToPlus @1 @nNodes
     $ leToPlus @1 @chainLength
@@ -194,11 +194,11 @@ chainConfigurationWorker fpgaConfig ugnParts writeOffset cyclesPerWrite =
   mkLink ::
     (Integer, Integer) ->
     Index nNodes ->
-    ((Integer, Integer), PeConfig Integer Integer)
+    ((Integer, Integer), CyclePeConfig Integer Integer)
   mkLink (readForN, startReadAt) node =
     ((writeForN, nextStartReadAt), peConfig)
    where
-    peConfig = PeConfig{startWriteAt, writeForN, startReadAt, readForN}
+    peConfig = CyclePeConfig{startWriteAt, writeForN, startReadAt, readForN}
     k = findK node nextNode startWriteAtClosestTo
     startWriteAt = startWriteAtClosestTo + k
     startWriteAtClosestTo = startReadAt + readForN
