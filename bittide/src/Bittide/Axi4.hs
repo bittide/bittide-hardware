@@ -35,19 +35,23 @@ module Bittide.Axi4 (
 
 import Clash.Prelude
 
-import Bittide.Axi4.Internal
-import Bittide.Extra.Maybe
-import Bittide.SharedTypes
-import Clash.Cores.Xilinx.Ila hiding (Data)
-import Clash.Sized.Internal.BitVector (popCountBV)
 import Data.Constraint
 import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import Data.Proxy
+
+import Bittide.Axi4.Internal
+import Bittide.Extra.Maybe
+import Bittide.SharedTypes
+
+import Clash.Cores.Xilinx.Ila hiding (Data)
+import Clash.Sized.Internal.BitVector (popCountBV)
+
 import Protocols
 import Protocols.Axi4.Stream as AS
-import qualified Protocols.DfConv as DfConv
 import Protocols.Wishbone as WB
+
+import qualified Protocols.DfConv as DfConv
 
 {- $setup
 >>> import Clash.Prelude
