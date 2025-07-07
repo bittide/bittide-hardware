@@ -23,9 +23,8 @@ type FpgaId = String
 iNTERNAL_SWITCH_DELAY :: (Num a) => a
 iNTERNAL_SWITCH_DELAY = 4
 
--- TODO: find out why this is necessary (issue #753)
-dELAY_FROM_EB_TO_CROSSBAR :: (Num a) => a
-dELAY_FROM_EB_TO_CROSSBAR = 1
+dELAY_CROSSBAR_TO_PE :: (Num a) => a
+dELAY_CROSSBAR_TO_PE = 1
 
 {- | Convert a table (fpga_nr x link_nr) to a vector of maps mapping an fpga index
 (instead of a link index) to the value.
@@ -223,7 +222,7 @@ chainConfigurationWorker fpgaConfig ugnParts writeOffset cyclesPerWrite =
     linkSelectOffset = offsetsByFpga !! dst Map.! src
     fullCalendarsSeen = dstCycle `quot` calendarLength
     prevCalendarStart = fullCalendarsSeen * calendarLength
-    linkStart0 = prevCalendarStart + linkSelectOffset + dELAY_FROM_EB_TO_CROSSBAR
+    linkStart0 = prevCalendarStart + linkSelectOffset + dELAY_CROSSBAR_TO_PE
     linkStart1 = linkStart0 + calendarLength
 
   calendarEntryLength = cyclesPerWrite * natToNum @nNodes
