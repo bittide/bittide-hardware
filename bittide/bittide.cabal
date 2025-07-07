@@ -192,11 +192,13 @@ library
     Bittide.ClockControl.Si539xSpi
     Bittide.ClockControl.StabilityChecker
     Bittide.Counter
+    Bittide.Df
     Bittide.DoubleBufferedRam
     Bittide.ElasticBuffer
     Bittide.Ethernet.Mac
     Bittide.Jtag
     Bittide.Node
+    Bittide.PacketStream
     Bittide.ProcessingElement
     Bittide.ProcessingElement.DeviceTreeCompiler
     Bittide.ProcessingElement.ProgramStream
@@ -274,6 +276,7 @@ test-suite unittests
     Tests.ClockControl.Freeze
     Tests.ClockControl.Si539xSpi
     Tests.Counter
+    Tests.Df
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer
     Tests.ProcessingElement.ReadElf
