@@ -47,6 +47,7 @@
             pkgs.libz
             pkgs.sbt
             pkgs.scala
+            pkgs.jre8
             pkgs.verilator
             pkgs.which
             pkgs.jq

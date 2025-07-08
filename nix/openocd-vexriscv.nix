@@ -17,16 +17,11 @@ pkgs.stdenv.mkDerivation rec {
   ];
 
   src = pkgs.fetchFromGitHub {
-    owner = "SpinalHDL";
-    repo = "openocd_riscv";
-    rev = "058dfa50d625893bee9fecf8d604141911fac125";
-    sha256 = "sha256-UuX4Zfr9DiJx60nvBAv+9xCbWXExrk5KNSC5V5e4rsw=";
-    fetchSubmodules = true;
-    deepClone = true;
-    postFetch = ''
-      # See: https://github.com/NixOS/nixpkgs/issues/8567#issuecomment-1846499599
-      find "$out/" -type d -name '.git' | xargs rm -rf
-    '';
+    owner = "martijnbastiaan";
+    repo = "riscv-openocd";
+    # branch = "no-submodules-058dfa50d625893bee9fecf8d604141911fac125"
+    rev = "8af10d81e82ea59e23717ba928daeeaac2404a9e";
+    sha256 = "sha256-fFcajCI5Xk+AXmR8s5yTFBnj1AmlRzNU/C5/L4z5QMQ=";
   };
 
   installPhase = ''
