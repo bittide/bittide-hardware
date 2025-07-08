@@ -88,7 +88,7 @@ dut dnaA dnaB = circuit $ do
     , (prefixB, (mmB, peBusB))
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
-  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
+  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (mmUart, (uartBus, uartRx))
   mm <- ignoreMM
   constBwd 0b010 -< prefixUart
 

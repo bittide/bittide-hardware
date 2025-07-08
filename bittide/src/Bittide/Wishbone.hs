@@ -374,7 +374,7 @@ uartDf baud = Circuit go
     (received, txBit, ack) = uart baud rxBit request
 
 -- | Component compatible with `uartInterfaceWb` for simulation purposes.
-uartSim ::
+uartBytes ::
   (HiddenClockResetEnable dom) =>
   -- | Left side of circuit: word to send, receive interface
   -- Right side of circuit: received word, transmit interface
@@ -385,7 +385,7 @@ uartSim ::
     ( CSignal dom (Maybe (BitVector 8))
     , Df dom (BitVector 8)
     )
-uartSim = Circuit go
+uartBytes = Circuit go
  where
   go ((txByte, rxByte), (_, ack)) =
     ((ack, pure $ Ack True), (rxByte, txByte))
@@ -393,7 +393,7 @@ uartSim = Circuit go
 {- | Wishbone accessible UART interface with configurable FIFO buffers.
   It takes the depths of the transmit and receive buffers and the uart implementation
   as parameters. By explicitly passing the uart implementation, the user can choose
-  to either use a 'uartDf' circuit for actual serial communication or use `uartSim`
+  to either use a 'uartDf' circuit for actual serial communication or use `uartBytes`
   for simulation purposes. Alongside the uart interface, the component produces
   a 'CSignal' tuple indicating the status of the transmit and receive buffers.
 

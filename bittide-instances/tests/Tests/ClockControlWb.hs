@@ -138,7 +138,7 @@ dut =
           , (prefixDbg, debugWbBus)
           ] <-
           processingElement NoDumpVcd peConfig -< (mm, jtag)
-        (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
+        (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (mmUart, (uartBus, uartRx))
         constBwd 0b001 -< prefixUart
 
         mm <- ignoreMM

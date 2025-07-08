@@ -92,7 +92,7 @@ dut eb localCounter = circuit $ do
   (uartRx, jtagIdle) <- idleSource
   [(prefixUart, (mmUart, uartBus)), (prefixUgn, (mmUgn, ugnBus))] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
-  (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
+  (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (mmUart, (uartBus, uartRx))
   mm <- ignoreMM
   constBwd 0b10 -< prefixUart
   _bittideData <- captureUgn localCounter eb -< (mmUgn, ugnBus)
