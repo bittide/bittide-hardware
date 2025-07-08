@@ -210,19 +210,19 @@ chainConfigurationWorker fpgaConfig ugnParts writeOffset cyclesPerWrite =
 
   findK :: Index nNodes -> Index nNodes -> Integer -> Integer
   findK src dst srcCycle
-    | dstCycle <= linkStart0 = linkStart0 - dstCycle
-    | dstCycle <= linkStart1 = linkStart1 - dstCycle
+    | crossbarDstCycle <= linkStart0 = linkStart0 - crossbarDstCycle
+    | crossbarDstCycle <= linkStart1 = linkStart1 - crossbarDstCycle
     | otherwise = error "findK: unreachable"
    where
     -- For a graphical representation of what we're doing here, check out:
     -- bittide-instances/imgs/ugn_calculator.drawio. For a general introduction
     -- see slides "determining read/write cycles" in
     -- https://docs.google.com/presentation/d/1AGbAJQ1zhTPtrekKnQcthd0TUPyQs-zowQpV1ux4k-Y
-    dstCycle = mapCycle srcCycle src dst
+    crossbarDstCycle = mapCycle srcCycle src dst - dELAY_CROSSBAR_TO_PE
     linkSelectOffset = offsetsByFpga !! dst Map.! src
-    fullCalendarsSeen = dstCycle `quot` calendarLength
+    fullCalendarsSeen = crossbarDstCycle `quot` calendarLength
     prevCalendarStart = fullCalendarsSeen * calendarLength
-    linkStart0 = prevCalendarStart + linkSelectOffset + dELAY_CROSSBAR_TO_PE
+    linkStart0 = prevCalendarStart + linkSelectOffset
     linkStart1 = linkStart0 + calendarLength
 
   calendarEntryLength = cyclesPerWrite * natToNum @nNodes
