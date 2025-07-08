@@ -90,7 +90,7 @@ dut scatterConfig gatherConfig = circuit $ do
     , (prefixGu, (mmGu, wbGu))
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
-  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
+  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (mmUart, (uartBus, uartRx))
   mm <- ignoreMM
   mmGuCal <- ignoreMM
   mmSuCal <- ignoreMM
