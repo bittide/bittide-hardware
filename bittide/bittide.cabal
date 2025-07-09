@@ -179,6 +179,7 @@ library
     Bittide.Arithmetic.Time
     Bittide.Axi4
     Bittide.Axi4.Internal
+    Bittide.Calculator
     Bittide.Calendar
     Bittide.CaptureUgn
     Bittide.ClockControl
@@ -199,6 +200,7 @@ library
     Bittide.ElasticBuffer
     Bittide.Ethernet.Mac
     Bittide.Jtag
+    Bittide.MetaPeConfig
     Bittide.Node
     Bittide.PacketStream
     Bittide.ProcessingElement
@@ -210,8 +212,6 @@ library
     Bittide.SharedTypes
     Bittide.Switch
     Bittide.SwitchDemoProcessingElement
-    Bittide.SwitchDemoProcessingElement.Calculator
-    Bittide.SwitchDemoProcessingElement.MetaPeConfig
     Bittide.Sync
     Bittide.Transceiver
     Bittide.Transceiver.Cdc

@@ -40,7 +40,7 @@ import "extra" Data.List.Extra (trim)
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
-import qualified Bittide.SwitchDemoProcessingElement.Calculator as Calc
+import qualified Bittide.Calculator as Calc
 import qualified Clash.Sized.Vector as V (fromList)
 import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.List as L
