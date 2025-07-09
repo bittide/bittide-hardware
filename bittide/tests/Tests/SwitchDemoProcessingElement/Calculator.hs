@@ -7,7 +7,7 @@ module Tests.SwitchDemoProcessingElement.Calculator where
 
 import Clash.Prelude hiding (indices)
 
-import Bittide.SwitchDemoProcessingElement.Calculator (
+import Bittide.Calculator (
   PeConfig (..),
   chainConfiguration,
   toCounterMap,

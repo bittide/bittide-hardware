@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.SwitchDemoProcessingElement.Calculator where
+module Bittide.Calculator where
 
 import Clash.Prelude
 
