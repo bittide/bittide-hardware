@@ -282,6 +282,7 @@ test-suite unittests
     Tests.Df
     Tests.DoubleBufferedRam
     Tests.ElasticBuffer
+    Tests.GeneralPurposeProcessingElement.Calculator
     Tests.ProcessingElement.ReadElf
     Tests.ScatterGather
     Tests.Shared
