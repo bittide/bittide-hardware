@@ -360,9 +360,9 @@ dut =
       $ circuit
       $ \mm -> do
         (uartRx, jtag) <- idleSource
-        [(prefixUart, (mmUart, uartBus)), (prefixManyTypes, manyTypes)] <-
+        [(prefixUart, uartBus), (prefixManyTypes, manyTypes)] <-
           processingElement dumpVcd peConfig -< (mm, jtag)
-        (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (mmUart, (uartBus, uartRx))
+        (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
         constBwd 0b00 -< prefixUart
         manyTypesWb -< manyTypes
         constBwd 0b11 -< prefixManyTypes
