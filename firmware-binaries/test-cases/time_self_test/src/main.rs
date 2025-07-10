@@ -7,15 +7,16 @@
 
 use ufmt::uwriteln;
 
+use bittide_hal::shared::devices::uart::Uart;
 use bittide_sys::time::self_test::self_test;
-use bittide_sys::{time::Clock, uart::Uart};
+use bittide_sys::time::Clock;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals.
-    let mut uart = unsafe { Uart::new(0x8000_0000 as *const ()) };
+    let mut uart = unsafe { Uart::new(0x8000_0000 as *mut u8) };
     let clock = unsafe { Clock::new(0xc000_0000 as *const ()) };
     let test_results = self_test(clock);
     uwriteln!(uart, "Start time self test").unwrap();

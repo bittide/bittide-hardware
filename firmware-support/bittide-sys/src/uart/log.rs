@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use crate::{
-    time::{self, Clock},
-    uart,
-};
+use crate::time::{self, Clock};
 
 // The logger utilizes core::fmt to format the log messages because ufmt formatting is not
 // compatible with (dependencies of) the log crate.
+use bittide_hal::shared::devices::uart;
 use core::{cell::SyncUnsafeCell, fmt::Write};
 use log::LevelFilter;
 

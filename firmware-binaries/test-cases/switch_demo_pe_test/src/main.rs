@@ -5,11 +5,11 @@
 #![cfg_attr(not(test), no_main)]
 #![feature(sync_unsafe_cell)]
 
+use bittide_hal::shared::devices::uart::Uart;
 use bittide_sys::dna_port_e2::dna_to_u128;
 use bittide_sys::switch_demo_pe::SwitchDemoProcessingElement;
 use bittide_sys::time::{Clock, Duration};
 use bittide_sys::uart::log::LOGGER;
-use bittide_sys::uart::Uart;
 
 use core::fmt::Write;
 use log::{info, LevelFilter};
@@ -17,7 +17,7 @@ use log::{info, LevelFilter};
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-const UART_ADDR: *const () = (0b010 << 29) as *const ();
+const UART_ADDR: *mut u8 = (0b010 << 29) as *mut u8;
 const CLOCK_ADDR: *const () = (0b011 << 29) as *const ();
 const SWITCH_PE_A: *const () = (0b100 << 29) as *const ();
 const SWITCH_PE_B: *const () = (0b101 << 29) as *const ();

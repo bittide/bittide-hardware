@@ -7,7 +7,7 @@ use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
 use ufmt::uwrite;
 
-use crate::uart::Uart;
+use bittide_hal::shared::devices::uart::Uart;
 use ufmt::uwriteln;
 const STRING_SIZE: usize = 1024;
 

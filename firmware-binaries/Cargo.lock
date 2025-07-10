@@ -30,6 +30,7 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 name = "axi_stream_self_test"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal",
  "bittide-sys",
  "riscv-rt",
  "ufmt",
@@ -92,6 +93,7 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 name = "capture_ugn_test"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal",
  "bittide-sys",
  "riscv-rt",
  "ufmt",
@@ -145,6 +147,7 @@ dependencies = [
 name = "dna_port_e2_test"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal",
  "bittide-sys",
  "riscv-rt",
  "ufmt",
@@ -502,6 +505,7 @@ checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 name = "scatter_gather_test"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal",
  "bittide-sys",
  "riscv-rt",
  "ufmt",
@@ -582,6 +586,7 @@ dependencies = [
 name = "smoltcp_client"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal",
  "bittide-sys",
  "gdb-trace",
  "heapless 0.8.0",
@@ -612,6 +617,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 name = "switch_demo_pe_test"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal",
  "bittide-sys",
  "log",
  "riscv-rt",
@@ -644,6 +650,7 @@ dependencies = [
 name = "time_self_test"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal",
  "bittide-sys",
  "riscv-rt",
  "ufmt",
@@ -692,6 +699,7 @@ checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 name = "watchdog_test"
 version = "0.1.0"
 dependencies = [
+ "bittide-hal",
  "bittide-sys",
  "riscv-rt",
  "ufmt",

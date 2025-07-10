@@ -16,6 +16,9 @@ riscv = "^0.10"
 riscv-rt = "0.11.0"
 ufmt = "0.2.0"
 
+[dependencies.bittide-hal]
+path = "../../../firmware-support/bittide-hal"
+
 [dependencies.bittide-sys]
 path = "../../../firmware-support/bittide-sys"
 
