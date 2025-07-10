@@ -423,20 +423,22 @@ uartInterfaceWb ::
   -- | Valid baud rates are constrained by @clash-cores@'s 'ValidBaud' constraint.
   Circuit (Df dom (BitVector 8), uartIn) (CSignal dom (Maybe (BitVector 8)), uartOut) ->
   Circuit
-    (MM.ConstBwd MM.MM, (Wishbone dom 'Standard addrW (Bytes nBytes), uartIn))
+    ((MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes)), uartIn)
     (uartOut, CSignal dom (Bool, Bool))
-uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = MM.withMemoryMap memMap $ circuit $ \(wb, uartRx) -> do
+uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartRx) -> do
   (txFifoIn, uartStatus) <- wbToDf -< (wb, rxFifoOut, txFifoMeta)
   (txFifoOut, txFifoMeta) <- fifoWithMeta txDepth -< txFifoIn
   (rxFifoIn, uartTx) <- uartImpl -< (txFifoOut, uartRx)
   (rxFifoOut, _rx') <- fifoWithMeta rxDepth <| unsafeToDf -< rxFifoIn
+  MM.constBwd memMap -< mm
   idC -< (uartTx, uartStatus)
  where
   memMap =
-    MM.MemoryMap
-      { tree = MM.DeviceInstance MM.locCaller "UART"
-      , deviceDefs = MM.deviceSingleton deviceDef
-      }
+    SimOnly
+      $ MM.MemoryMap
+        { tree = MM.DeviceInstance MM.locCaller "UART"
+        , deviceDefs = MM.deviceSingleton deviceDef
+        }
 
   deviceDef =
     MM.DeviceDefinition

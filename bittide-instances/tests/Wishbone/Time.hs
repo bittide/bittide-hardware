@@ -62,10 +62,10 @@ dut = withClockResetEnable clockGen resetGen enableGen
   $ circuit
   $ \_unit -> do
     (uartRx, jtag) <- idleSource
-    [(prefixUart, (mmUart, uartBus)), (prefixTime, (mmTime, timeBus))] <-
+    [(prefixUart, uartBus), (prefixTime, (mmTime, timeBus))] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
     mm <- ignoreMM
-    (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (mmUart, (uartBus, uartRx))
+    (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
     constBwd 0b10 -< prefixUart
     _localCounter <- timeWb -< (mmTime, timeBus)
     constBwd 0b11 -< prefixTime
