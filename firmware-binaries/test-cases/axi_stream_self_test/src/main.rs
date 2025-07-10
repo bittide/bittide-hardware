@@ -7,13 +7,13 @@
 
 use ufmt::uwriteln;
 
+use bittide_hal::shared::devices::uart::Uart;
 use bittide_sys::axi::self_test::self_test;
 use bittide_sys::axi::{AxiRx, AxiTx};
-use bittide_sys::uart::Uart;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-const UART_ADDR: *const () = (2 << 29) as *const ();
+const UART_ADDR: *mut u8 = (2 << 29) as *mut u8;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {

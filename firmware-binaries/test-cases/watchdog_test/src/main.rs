@@ -6,13 +6,13 @@
 
 use ufmt::uwriteln;
 
+use bittide_hal::shared::devices::uart::Uart;
 use bittide_sys::time::Clock;
-use bittide_sys::uart::Uart;
 
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-const UART_ADDR: *const () = (2 << 29) as *const ();
+const UART_ADDR: *mut u8 = (2 << 29) as *mut u8;
 const CLOCK_ADDR: *const () = (3 << 29) as *const ();
 const IDLE_A_ADDR: *const () = (4 << 29) as *const ();
 const IDLE_B_ADDR: *const () = (5 << 29) as *const ();

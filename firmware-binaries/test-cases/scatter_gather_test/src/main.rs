@@ -4,14 +4,14 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 
+use bittide_hal::shared::devices::uart::Uart;
 use bittide_sys::gather_unit::GatherUnit;
 use bittide_sys::scatter_unit::ScatterUnit;
-use bittide_sys::uart::Uart;
 use core::fmt::Write;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-const UART_ADDR: *const () = (0b010 << 29) as *const ();
+const UART_ADDR: *mut u8 = (0b010 << 29) as *mut u8;
 const SCATTER_ADDR: *const () = (0b011 << 29) as *const ();
 const GATHER_ADDR: *const () = (0b100 << 29) as *const ();
 
