@@ -209,6 +209,7 @@ library
     Bittide.Switch
     Bittide.SwitchDemoProcessingElement
     Bittide.SwitchDemoProcessingElement.Calculator
+    Bittide.SwitchDemoProcessingElement.MetaPeConfig
     Bittide.Sync
     Bittide.Transceiver
     Bittide.Transceiver.Cdc
