@@ -90,7 +90,7 @@ driverFunc _name [d@(_, dI)] = do
       putStrLn "  Done"
 
       putStrLn "Starting Picocom..."
-    Picocom.withPicocomWithLogging dI.serial picoOutLog picoErrLog $ \pico -> do
+    Picocom.withPicocomWithLogging Picocom.defaultStdStreams dI.serial picoOutLog picoErrLog $ \pico -> do
       liftIO $ do
         hSetBuffering pico.stdinHandle LineBuffering
         hSetBuffering pico.stdinHandle LineBuffering

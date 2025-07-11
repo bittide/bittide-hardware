@@ -1,6 +1,9 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE NoFieldSelectors #-}
+
 module Bittide.Instances.Hitl.Utils.Picocom where
 
 import Bittide.Instances.Hitl.Utils.Program
@@ -17,17 +20,26 @@ import System.Process
 getStartPath :: IO FilePath
 getStartPath = getDataFileName "data/picocom/start.sh"
 
+data StdStreams = StdStreams
+  { stdin :: StdStream
+  , stdout :: StdStream
+  , stderr :: StdStream
+  }
+
+defaultStdStreams :: StdStreams
+defaultStdStreams = StdStreams CreatePipe CreatePipe CreatePipe
+
 -- | Start picocom with the given device path.
-start :: FilePath -> IO (ProcessStdIoHandles, IO ())
-start devPath = do
+start :: StdStreams -> FilePath -> IO (ProcessStdIoHandles, IO ())
+start stdStreams devPath = do
   startPath <- getStartPath
 
   let
     picocomProc =
       (proc startPath [devPath])
-        { std_in = CreatePipe
-        , std_out = CreatePipe
-        , std_err = CreatePipe
+        { std_in = stdStreams.stdin
+        , std_out = stdStreams.stdout
+        , std_err = stdStreams.stderr
         , new_session = True
         }
 
@@ -49,53 +61,60 @@ Then perform the action and clean up the picocom process.
 -}
 withPicocomWithLogging ::
   (MonadIO m, MonadMask m) =>
+  StdStreams ->
   FilePath ->
   FilePath ->
   FilePath ->
   (ProcessStdIoHandles -> m a) ->
   m a
-withPicocomWithLogging devPath stdoutPath stderrPath action = do
-  (pico, clean) <- liftIO $ startWithLogging devPath stdoutPath stderrPath
+withPicocomWithLogging stdStreams devPath stdoutPath stderrPath action = do
+  (pico, clean) <- liftIO $ startWithLogging stdStreams devPath stdoutPath stderrPath
   finally (action pico) (liftIO clean)
 
 {- | Starts Picocom with the given device path, paths for logging stdout and stderr and
 extra environment variables. Then perform the action and clean up the picocom process.
 -}
 withPicocomWithLoggingAndEnv ::
+  StdStreams ->
   FilePath ->
   FilePath ->
   FilePath ->
   [(String, String)] ->
   (ProcessStdIoHandles -> IO a) ->
   IO a
-withPicocomWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv action = do
-  (pico, clean) <- startWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv
+withPicocomWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv action = do
+  (pico, clean) <- startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv
   finally (action pico) clean
 
 startWithLogging ::
-  FilePath -> FilePath -> FilePath -> IO (ProcessStdIoHandles, IO ())
-startWithLogging devPath stdoutPath stderrPath =
-  startWithLoggingAndEnv devPath stdoutPath stderrPath []
+  StdStreams ->
+  FilePath ->
+  FilePath ->
+  FilePath ->
+  IO (ProcessStdIoHandles, IO ())
+startWithLogging stdStreams devPath stdoutPath stderrPath =
+  startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath []
 
 {- | Starts Picocom with the given device path, paths for logging stdout and stderr and
 extra environment variables.
 -}
 startWithLoggingAndEnv ::
+  StdStreams ->
   FilePath ->
   FilePath ->
   FilePath ->
   [(String, String)] ->
   IO (ProcessStdIoHandles, IO ())
-startWithLoggingAndEnv devPath stdoutPath stderrPath extraEnv = do
+startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv = do
   startPath <- getStartPath
   currentEnv <- getEnvironment
 
   let
     picocomProc =
       (proc startPath [devPath])
-        { std_in = CreatePipe
-        , std_out = CreatePipe
-        , std_err = CreatePipe
+        { std_in = stdStreams.stdin
+        , std_out = stdStreams.stdout
+        , std_err = stdStreams.stderr
         , new_session = True
         , env =
             Just

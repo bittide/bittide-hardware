@@ -81,6 +81,7 @@ dnaOverSerialDriver _name targets = do
 
     (pico, picoClean) <-
       Picocom.startWithLoggingAndEnv
+        Picocom.defaultStdStreams
         dI.serial
         stdoutLog
         stderrLog
