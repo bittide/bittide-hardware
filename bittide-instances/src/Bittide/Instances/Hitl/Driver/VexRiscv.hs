@@ -84,7 +84,11 @@ driverFunc _name targets = do
 
       putStrLn "Starting Picocom..."
       putStrLn $ "Logging output to '" <> hitlDir
-      Picocom.withPicocomWithLogging deviceInfo.serial picoOutLog picoErrLog $ \pico -> do
+      Picocom.withPicocomWithLogging
+        Picocom.defaultStdStreams
+        deviceInfo.serial
+        picoOutLog
+        picoErrLog $ \pico -> do
         hSetBuffering pico.stdinHandle LineBuffering
         hSetBuffering pico.stdoutHandle LineBuffering
 
