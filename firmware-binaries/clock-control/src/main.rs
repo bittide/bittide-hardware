@@ -12,6 +12,7 @@ use bittide_hal::switch_demo_cc::DeviceInstances;
 use bittide_hal::{
     manual_additions::timer::Duration, shared::types::reframing_state::ReframingState,
 };
+use ufmt::uwriteln;
 
 use bittide_sys::callisto::{self, ControlConfig, ControlSt};
 #[cfg(not(test))]
@@ -24,6 +25,9 @@ fn main() -> ! {
     let cc = INSTANCES.clock_control;
     let dbgreg = INSTANCES.debug_register;
     let timer = INSTANCES.timer;
+    let mut uart = INSTANCES.uart;
+
+    uwriteln!(uart, "Starting clock control..").unwrap();
 
     let config = ControlConfig {
         target_count: 0,

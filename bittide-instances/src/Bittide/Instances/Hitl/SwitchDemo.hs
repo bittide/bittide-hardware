@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -63,7 +64,7 @@ import Bittide.SharedTypes (Bytes)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle), switchDemoPeWb)
 import Bittide.Transceiver (transceiverPrbsN)
-import Bittide.Wishbone (readDnaPortE2Wb, timeWb, whoAmIC)
+import Bittide.Wishbone (readDnaPortE2Wb, timeWb, uartDf, uartInterfaceWb, whoAmIC)
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
@@ -87,6 +88,15 @@ import qualified Bittide.Transceiver as Transceiver
 import qualified Clash.Cores.Xilinx.GTH as Gth
 import qualified Protocols.MemoryMap as MM
 import qualified Protocols.Vec as Vec
+
+#ifdef SIM_BAUD_RATE
+type Baud = MaxBaudRate Basic125
+#else
+type Baud = 921_600
+#endif
+
+baud :: SNat Baud
+baud = SNat
 
 {- Internal busses:
     - Instruction memory
@@ -172,7 +182,7 @@ memoryMapMu = snd memoryMaps
 memoryMaps :: ("CC" ::: MemoryMap, "MU" ::: MemoryMap)
 memoryMaps = (ccMm, muMm)
  where
-  (SimOnly ccMm, SimOnly muMm, _, _, _, _, _, _, _, _, _, _, _, _) =
+  (SimOnly ccMm, SimOnly muMm, _, _, _, _, _, _, _, _, _, _, _, _, _) =
     switchDemoDut
       clockGen
       resetGen
@@ -202,7 +212,7 @@ muConfig =
     }
 
 ccConfig ::
-  SwControlCConfig CccStabilityCheckerMargin (CccStabilityCheckerFramesize Basic125) 1
+  SwControlCConfig CccStabilityCheckerMargin (CccStabilityCheckerFramesize Basic125) 2
 ccConfig =
   SwControlCConfig
     { margin = SNat
@@ -268,6 +278,7 @@ switchDemoDut ::
   , "ALL_STABLE" ::: Signal Basic125 Bool
   , "fifoOverflowsSticky" ::: Signal Basic125 Bool
   , "fifoUnderflowsSticky" ::: Signal Basic125 Bool
+  , "UART_TX" ::: Signal Basic125 Bit
   )
 switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
   hwSeqX
@@ -286,6 +297,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
     , allStable
     , fifoOverflowsSticky
     , fifoUnderflowsSticky
+    , uartTx
     )
  where
   debugIla :: Signal Basic125 ()
@@ -523,6 +535,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
       , CSignal GthTx (BitVector 64)
       , CSignal GthTx (BitVector 64)
       , CSignal GthTx (Vec (LinkCount + 1) (Index (LinkCount + 2)))
+      , CSignal Basic125 Bit
       )
   circuitFnC = circuit $ \(ccMM, muMM, jtag, linkIn, reframe, mask, dc, Fwd rxs) -> do
     [muJtagFree, ccJtag] <- jtagChain -< jtag
@@ -572,10 +585,20 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
 
     defaultBittideClkRstEn (whoAmIC 0x746d_676d) -< (muWhoAmIMM, muWhoAmI)
 
-    (Fwd swCcOut0, [(ccWhoAmIPfx, (ccWhoAmIMM, ccWhoAmI))]) <-
+    (uartTx, _uartStatus) <-
+      defaultRefClkRstEn
+        $ uartInterfaceWb d16 d16 (uartDf baud)
+        -< (ccUartBus, Fwd 0)
+
+    ( Fwd swCcOut0
+      , [ (ccWhoAmIPfx, ccWhoAmIBus)
+          , (ccUartPfx, ccUartBus)
+          ]
+      ) <-
       defaultRefClkRstEn (callistoSwClockControlC @LinkCount @CccBufferSize NoDumpVcd ccConfig)
         -< (ccMM, (ccJtag, reframe, mask, dc))
 
+    MM.constBwd 0b000 -< ccUartPfx
     --          0b010    DMEM
     --          0b011    TIME (not the same as MU!)
     --          0b100    IMEM
@@ -583,7 +606,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
     --          0b110    CC
     MM.constBwd 0b111 -< ccWhoAmIPfx
 
-    defaultRefClkRstEn (whoAmIC 0x6363_7773) -< (ccWhoAmIMM, ccWhoAmI)
+    defaultRefClkRstEn (whoAmIC 0x6363_7773) -< ccWhoAmIBus
 
     let swCcOut1 =
           if clashSimulation
@@ -606,10 +629,18 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
                         }
             else swCcOut0
 
-    idC -< (Fwd swCcOut1, txs, Fwd lc, ps, Fwd peIn, Fwd peOut, ce)
+    idC -< (Fwd swCcOut1, txs, Fwd lc, ps, Fwd peIn, Fwd peOut, ce, uartTx)
 
   ( (ccMm, muMm, jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _diffsBwd, _insBwd)
-    , (callistoResult, switchDataOut, localCounter, peState, peInput, peOutput, calEntry)
+    , ( callistoResult
+        , switchDataOut
+        , localCounter
+        , peState
+        , peInput
+        , peOutput
+        , calEntry
+        , uartTx
+        )
     ) =
       let
         ?busByteOrder = BigEndian
@@ -630,6 +661,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
           ,
             ( pure ()
             , repeat (pure ())
+            , pure ()
             , pure ()
             , pure ()
             , pure ()
@@ -755,6 +787,7 @@ switchDemoTest ::
   "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
   "MISO" ::: Signal Basic125 Bit ->
   "JTAG" ::: Signal Basic125 JtagIn ->
+  "USB_UART_TXD" ::: Signal Basic125 Bit ->
   ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
@@ -769,9 +802,10 @@ switchDemoTest ::
           , "CSB" ::: Signal Basic125 Bool
           )
   , "JTAG" ::: Signal Basic125 JtagOut
+  , "USB_UART_RXD" ::: Signal Basic125 Bit
   )
-switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn =
-  hwSeqX testIla (txs, txns, txps, unbundle swFincFdecs, spiDone, spiOut, jtagOut)
+switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx =
+  hwSeqX testIla (txs, txns, txps, unbundle swFincFdecs, spiDone, spiOut, jtagOut, uartTx)
  where
   boardClk :: Clock Ext200
   boardClk = Gth.ibufds_gte3 boardClkDiff
@@ -810,6 +844,7 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn =
     , allStable :: Signal Basic125 Bool
     , fifoOverflows :: Signal Basic125 Bool
     , fifoUnderflows :: Signal Basic125 Bool
+    , uartTx :: Signal Basic125 Bit
     ) = switchDemoDut refClk testReset boardClk rxs rxns rxps allProgrammed miso jtagIn
 
   fifoSuccess :: Signal Basic125 Bool
@@ -873,7 +908,11 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'switchDemoTest
-    , extraXdcFiles = ["jtag" </> "config.xdc", "jtag" </> "pmod1.xdc"]
+    , extraXdcFiles =
+        [ "jtag" </> "config.xdc"
+        , "jtag" </> "pmod1.xdc"
+        , "uart" </> "pmod1.xdc"
+        ]
     , externalHdl = []
     , testCases =
         [ HitlTestCase

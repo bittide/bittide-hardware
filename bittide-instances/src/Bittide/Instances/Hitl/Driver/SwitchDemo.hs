@@ -19,7 +19,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forM, forM_, when, zipWithM)
 import Control.Monad.IO.Class
 import Data.Bifunctor (Bifunctor (bimap))
@@ -33,14 +33,17 @@ import System.Clock (Clock (Monotonic), diffTimeSpec, getTime, toNanoSecs)
 import System.Exit
 import System.FilePath
 import System.IO
+import System.Process (StdStream (CreatePipe, UseHandle))
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 import "extra" Data.List.Extra (trim)
 
 import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
+import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Bittide.SwitchDemoProcessingElement.Calculator as Calc
 import qualified Clash.Sized.Vector as V (fromList)
+import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.List as L
 
 data OcdInitData = OcdInitData
@@ -137,6 +140,45 @@ driver testName targets = do
         gdbClean1 = gdbClean0 >> awaitProcessTermination gdbProcName gdbPh (Just 10_000_000)
 
       return (gdb, gdbClean1)
+
+    initPicocom :: (HwTarget, DeviceInfo) -> Int -> IO (ProcessStdIoHandles, IO ())
+    initPicocom (_hwTarget, deviceInfo) targetIndex = do
+      -- Using a single handle makes picocom panic
+      devNullHandle0 <- openFile "/dev/null" WriteMode
+      devNullHandle1 <- openFile "/dev/null" WriteMode
+
+      let
+        devPath = deviceInfo.serial
+        stdoutPath = hitlDir </> "picocom-" <> show targetIndex <> "-stdout.log"
+        stderrPath = hitlDir </> "picocom-" <> show targetIndex <> "-stderr.log"
+
+      -- Note that script at `devPath` already logs to `stdoutPath` and
+      -- `stderrPath`. This is what we're after: debug logging. To prevent race
+      -- conditions, we need to know when picocom is ready so we also shortly
+      -- interested in stderr in this Haskell process.
+      (pico, cleanup) <-
+        Picocom.startWithLoggingAndEnv
+          ( Picocom.StdStreams
+              { Picocom.stdin = CreatePipe
+              , Picocom.stdout = CreatePipe
+              , Picocom.stderr = UseHandle devNullHandle0
+              }
+          )
+          devPath
+          stdoutPath
+          stderrPath
+          []
+
+      tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
+        $ waitForLine pico.stdoutHandle "Terminal ready"
+
+      -- We're not interested in the output of picocom in this Haskell process,
+      -- so we redirect it to /dev/null.
+      _ <- forkIO $ do
+        LazyByteString.hGetContents pico.stdoutHandle
+          >>= LazyByteString.hPut devNullHandle1
+
+      pure (pico, cleanup)
 
     ccGdbCheck :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ExitCode
     ccGdbCheck (_, _) gdb = do
@@ -503,51 +545,53 @@ driver testName targets = do
             [i|MU GDB testing passed on #{gdbCount1} of #{L.length targets} targets|]
         liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
 
-        liftIO $ mapM_ Gdb.continue ccGdbs
-        forM_ targets assertAllProgrammed
-        testResults <- awaitTestCompletions 60_000
-        (sCount, stabilityExitCode) <-
-          L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
-        liftIO
-          $ putStrLn
-            [i|Test case #{testName} stabilised on #{sCount} of #{L.length targets} targets|]
+        let picocomStarts = liftIO <$> L.zipWith (initPicocom) targets [0 ..]
+        brackets picocomStarts (liftIO . snd) $ \_picocoms -> do
+          liftIO $ mapM_ Gdb.continue ccGdbs
+          forM_ targets assertAllProgrammed
+          testResults <- awaitTestCompletions 60_000
+          (sCount, stabilityExitCode) <-
+            L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
+          liftIO
+            $ putStrLn
+              [i|Test case #{testName} stabilised on #{sCount} of #{L.length targets} targets|]
 
-        liftIO $ putStrLn "Getting UGNs for all targets"
-        ugnPairsTable <- zipWithM muGetUgns targets muGdbs
-        let
-          ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
-        liftIO $ do
-          putStrLn "Calculating IGNs for all targets"
-          Calc.printAllIgns ugnPairsTableV fpgaSetup
-          mapM_ print ugnPairsTableV
-        currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
-        let
-          startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
-          chainConfig :: Vec FpgaCount (Calc.PeConfig (Unsigned 64) (Index 9))
-          chainConfig =
-            Calc.fullChainConfiguration
-              (SNat @3)
-              fpgaSetup
-              ugnPairsTableV
-              startOffset
-        liftIO $ do
-          putStrLn [i|Current clock cycle: #{currentTime}|]
-          putStrLn "Calculated the following configs for the switch processing elements:"
-          forM_ chainConfig print
-        _ <- sequenceA $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
-        liftIO $ do
-          let delayMicros = natToNum @StartDelay * 1_250_000
-          threadDelay delayMicros
-          putStrLn [i|Slept for: #{delayMicros}μs|]
-          newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
-          putStrLn [i|Clock is now: #{newCurrentTime}|]
+          liftIO $ putStrLn "Getting UGNs for all targets"
+          ugnPairsTable <- zipWithM muGetUgns targets muGdbs
+          let
+            ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
+          liftIO $ do
+            putStrLn "Calculating IGNs for all targets"
+            Calc.printAllIgns ugnPairsTableV fpgaSetup
+            mapM_ print ugnPairsTableV
+          currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
+          let
+            startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
+            chainConfig :: Vec FpgaCount (Calc.PeConfig (Unsigned 64) (Index 9))
+            chainConfig =
+              Calc.fullChainConfiguration
+                (SNat @3)
+                fpgaSetup
+                ugnPairsTableV
+                startOffset
+          liftIO $ do
+            putStrLn [i|Current clock cycle: #{currentTime}|]
+            putStrLn "Calculated the following configs for the switch processing elements:"
+            forM_ chainConfig print
+          _ <- sequenceA $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
+          liftIO $ do
+            let delayMicros = natToNum @StartDelay * 1_250_000
+            threadDelay delayMicros
+            putStrLn [i|Slept for: #{delayMicros}μs|]
+            newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
+            putStrLn [i|Clock is now: #{newCurrentTime}|]
 
-        _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
+          _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
 
-        bufferExit <- finalCheck muGdbs (toList chainConfig)
+          bufferExit <- finalCheck muGdbs (toList chainConfig)
 
-        let
-          finalExit =
-            fromMaybe ExitSuccess
-              $ L.find (/= ExitSuccess) [stabilityExitCode, gdbExitCode0, gdbExitCode1, bufferExit]
-        return finalExit
+          let
+            finalExit =
+              fromMaybe ExitSuccess
+                $ L.find (/= ExitSuccess) [stabilityExitCode, gdbExitCode0, gdbExitCode1, bufferExit]
+          return finalExit

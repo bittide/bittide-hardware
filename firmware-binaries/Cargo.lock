@@ -113,6 +113,7 @@ dependencies = [
  "bittide-sys",
  "memmap-generate",
  "riscv-rt",
+ "ufmt",
 ]
 
 [[package]]
