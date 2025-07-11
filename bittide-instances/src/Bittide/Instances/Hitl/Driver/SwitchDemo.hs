@@ -475,82 +475,79 @@ driver testName targets = do
   forM_ targets (assertProbe "probe_test_start")
   tryWithTimeout "Wait for handshakes successes from all boards" 30_000_000
     $ awaitHandshakes targets
-  brackets (liftIO <$> L.zipWith initOpenOcd targets [0 ..]) (liftIO . (.cleanup)) $ \initOcdsData -> do
+  let openOcdStarts = liftIO <$> L.zipWith initOpenOcd targets [0 ..]
+  brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
     let
       muPorts = (.muPort) <$> initOcdsData
       ccPorts = (.ccPort) <$> initOcdsData
-    brackets
-      (liftIO <$> L.zipWith (initGdb "clock-control") ccPorts targets)
-      (liftIO . snd)
-      $ \initCCGdbsData -> do
-        let ccGdbs = fst <$> initCCGdbsData
-        liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
-        gdbExitCodes0 <- zipWithM ccGdbCheck targets ccGdbs
-        (gdbCount0, gdbExitCode0) <-
-          L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes0
+      ccGdbStarts = liftIO <$> L.zipWith (initGdb "clock-control") ccPorts targets
+    brackets ccGdbStarts (liftIO . snd) $ \initCCGdbsData -> do
+      let ccGdbs = fst <$> initCCGdbsData
+      liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
+      gdbExitCodes0 <- zipWithM ccGdbCheck targets ccGdbs
+      (gdbCount0, gdbExitCode0) <-
+        L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes0
+      liftIO
+        $ putStrLn
+          [i|CC GDB testing passed on #{gdbCount0} of #{L.length targets} targets|]
+      liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
+      let muGdbStarts = liftIO <$> L.zipWith (initGdb "management-unit") muPorts targets
+      brackets muGdbStarts (liftIO . snd) $ \initMUGdbsData -> do
+        let muGdbs = fst <$> initMUGdbsData
+        liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
+        gdbExitCodes1 <- zipWithM muGdbCheck targets muGdbs
+        (gdbCount1, gdbExitCode1) <-
+          L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes1
         liftIO
           $ putStrLn
-            [i|CC GDB testing passed on #{gdbCount0} of #{L.length targets} targets|]
-        liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
-        brackets
-          (liftIO <$> L.zipWith (initGdb "management-unit") muPorts targets)
-          (liftIO . snd)
-          $ \initMUGdbsData -> do
-            let muGdbs = fst <$> initMUGdbsData
-            liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
-            gdbExitCodes1 <- zipWithM muGdbCheck targets muGdbs
-            (gdbCount1, gdbExitCode1) <-
-              L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes1
-            liftIO
-              $ putStrLn
-                [i|MU GDB testing passed on #{gdbCount1} of #{L.length targets} targets|]
-            liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+            [i|MU GDB testing passed on #{gdbCount1} of #{L.length targets} targets|]
+        liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
 
-            liftIO $ mapM_ Gdb.continue ccGdbs
-            forM_ targets assertAllProgrammed
-            testResults <- awaitTestCompletions 60_000
-            (sCount, stabilityExitCode) <-
-              L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
-            liftIO
-              $ putStrLn
-                [i|Test case #{testName} stabilised on #{sCount} of #{L.length targets} targets|]
+        liftIO $ mapM_ Gdb.continue ccGdbs
+        forM_ targets assertAllProgrammed
+        testResults <- awaitTestCompletions 60_000
+        (sCount, stabilityExitCode) <-
+          L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
+        liftIO
+          $ putStrLn
+            [i|Test case #{testName} stabilised on #{sCount} of #{L.length targets} targets|]
 
-            liftIO $ putStrLn "Getting UGNs for all targets"
-            ugnPairsTable <- zipWithM muGetUgns targets muGdbs
-            let
-              ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
-            liftIO $ do
-              putStrLn "Calculating IGNs for all targets"
-              Calc.printAllIgns ugnPairsTableV fpgaSetup
-              mapM_ print ugnPairsTableV
-            currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
-            let
-              startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
-              chainConfig :: Vec FpgaCount (Calc.PeConfig (Unsigned 64) (Index 9))
-              chainConfig =
-                Calc.fullChainConfiguration
-                  (SNat @3)
-                  fpgaSetup
-                  ugnPairsTableV
-                  startOffset
-            liftIO $ do
-              putStrLn [i|Current clock cycle: #{currentTime}|]
-              putStrLn "Calculated the following configs for the switch processing elements:"
-              forM_ chainConfig print
-            _ <- sequenceA $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
-            liftIO $ do
-              let delayMicros = natToNum @StartDelay * 1_250_000
-              threadDelay delayMicros
-              putStrLn [i|Slept for: #{delayMicros}μs|]
-              newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
-              putStrLn [i|Clock is now: #{newCurrentTime}|]
+        liftIO $ putStrLn "Getting UGNs for all targets"
+        ugnPairsTable <- zipWithM muGetUgns targets muGdbs
+        let
+          ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
+        liftIO $ do
+          putStrLn "Calculating IGNs for all targets"
+          Calc.printAllIgns ugnPairsTableV fpgaSetup
+          mapM_ print ugnPairsTableV
+        currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
+        let
+          startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
+          chainConfig :: Vec FpgaCount (Calc.PeConfig (Unsigned 64) (Index 9))
+          chainConfig =
+            Calc.fullChainConfiguration
+              (SNat @3)
+              fpgaSetup
+              ugnPairsTableV
+              startOffset
+        liftIO $ do
+          putStrLn [i|Current clock cycle: #{currentTime}|]
+          putStrLn "Calculated the following configs for the switch processing elements:"
+          forM_ chainConfig print
+        _ <- sequenceA $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
+        liftIO $ do
+          let delayMicros = natToNum @StartDelay * 1_250_000
+          threadDelay delayMicros
+          putStrLn [i|Slept for: #{delayMicros}μs|]
+          newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
+          putStrLn [i|Clock is now: #{newCurrentTime}|]
 
-            _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
+        _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
 
-            bufferExit <- finalCheck muGdbs (toList chainConfig)
+        bufferExit <- finalCheck muGdbs (toList chainConfig)
 
-            let
-              finalExit =
-                fromMaybe ExitSuccess
-                  $ L.find (/= ExitSuccess) [stabilityExitCode, gdbExitCode0, gdbExitCode1, bufferExit]
-            return finalExit
+        let
+          finalExit =
+            fromMaybe ExitSuccess
+              $ L.find (/= ExitSuccess) [stabilityExitCode, gdbExitCode0, gdbExitCode1, bufferExit]
+        return finalExit
