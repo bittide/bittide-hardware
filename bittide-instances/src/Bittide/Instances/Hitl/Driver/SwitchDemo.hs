@@ -77,8 +77,8 @@ driver testName targets = do
 
     calcTimeSpentMs = (`div` 1_000_000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
 
-    initOpenOcds :: (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
-    initOpenOcds (_, d) targetIndex = do
+    initOpenOcd :: (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
+    initOpenOcd (_, d) targetIndex = do
       putStrLn $ "Starting OpenOCD for target " <> d.deviceId
 
       let
@@ -117,8 +117,8 @@ driver testName targets = do
 
       return $ OcdInitData gdbPortMU gdbPortCC ocd ocdClean1
 
-    initGdbs :: String -> Int -> (HwTarget, DeviceInfo) -> IO (ProcessStdIoHandles, IO ())
-    initGdbs binName gdbPort (hwT, d) = do
+    initGdb :: String -> Int -> (HwTarget, DeviceInfo) -> IO (ProcessStdIoHandles, IO ())
+    initGdb binName gdbPort (hwT, d) = do
       putStrLn $ "Starting GDB for target " <> d.deviceId <> " with bin name " <> binName
 
       (gdb, gdbPh, gdbClean0) <- Gdb.startGdbH
@@ -475,12 +475,12 @@ driver testName targets = do
   forM_ targets (assertProbe "probe_test_start")
   tryWithTimeout "Wait for handshakes successes from all boards" 30_000_000
     $ awaitHandshakes targets
-  brackets (liftIO <$> L.zipWith initOpenOcds targets [0 ..]) (liftIO . (.cleanup)) $ \initOcdsData -> do
+  brackets (liftIO <$> L.zipWith initOpenOcd targets [0 ..]) (liftIO . (.cleanup)) $ \initOcdsData -> do
     let
       muPorts = (.muPort) <$> initOcdsData
       ccPorts = (.ccPort) <$> initOcdsData
     brackets
-      (liftIO <$> L.zipWith (initGdbs "clock-control") ccPorts targets)
+      (liftIO <$> L.zipWith (initGdb "clock-control") ccPorts targets)
       (liftIO . snd)
       $ \initCCGdbsData -> do
         let ccGdbs = fst <$> initCCGdbsData
@@ -493,7 +493,7 @@ driver testName targets = do
             [i|CC GDB testing passed on #{gdbCount0} of #{L.length targets} targets|]
         liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
         brackets
-          (liftIO <$> L.zipWith (initGdbs "management-unit") muPorts targets)
+          (liftIO <$> L.zipWith (initGdb "management-unit") muPorts targets)
           (liftIO . snd)
           $ \initMUGdbsData -> do
             let muGdbs = fst <$> initMUGdbsData
