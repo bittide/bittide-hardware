@@ -310,7 +310,8 @@ scatterUnitWb (ScatterConfig _memDepth calConfig) wbInCal linkIn wbInSu =
 
 gatherUnitWbC ::
   forall dom awGu nBytesCal awCal.
-  ( HiddenClockResetEnable dom
+  ( HasCallStack
+  , HiddenClockResetEnable dom
   , KnownNat awGu
   , KnownNat nBytesCal
   , 1 <= nBytesCal
@@ -392,7 +393,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
             ]
         , deviceName =
             Name
-              { name = "ScatterUnit"
+              { name = "GatherUnit"
               , description = ""
               }
         , definitionLoc = locHere
