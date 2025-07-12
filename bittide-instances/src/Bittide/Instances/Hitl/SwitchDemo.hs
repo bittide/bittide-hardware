@@ -36,6 +36,7 @@ import Bittide.ClockControl.CallistoSw (
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.ClockControl.StabilityChecker (StabilityIndication (..))
 import Bittide.Counter
+import Bittide.Df (asciiDebugMux)
 import Bittide.DoubleBufferedRam
 import Bittide.ElasticBuffer (
   EbMode (Pass),
@@ -60,11 +61,18 @@ import Bittide.Instances.Hitl.Setup (
 import Bittide.Instances.Hitl.SwCcTopologies (FifoSize, FincFdecCount, commonSpiConfig)
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (Byte, Bytes)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle), switchDemoPeWb)
 import Bittide.Transceiver (transceiverPrbsN)
-import Bittide.Wishbone (readDnaPortE2Wb, timeWb, uartDf, uartInterfaceWb, whoAmIC)
+import Bittide.Wishbone (
+  readDnaPortE2Wb,
+  timeWb,
+  uartBytes,
+  uartDf,
+  uartInterfaceWb,
+  whoAmIC,
+ )
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
@@ -76,6 +84,7 @@ import Clash.Functor.Extra ((<<$>>))
 import Clash.Sized.Extra (unsignedToSigned)
 import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
+import Data.Char (ord)
 import Protocols
 import Protocols.Extra
 import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
@@ -231,6 +240,9 @@ ccConfig =
     , dbgRegPrefix = 0b101
     , timePrefix = 0b011
     }
+
+ccLabel :: Vec 2 Byte
+ccLabel = fromIntegral (ord 'C') :> fromIntegral (ord 'C') :> Nil
 
 {- | Reset logic:
 
@@ -585,10 +597,13 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
 
     defaultBittideClkRstEn (whoAmIC 0x746d_676d) -< (muWhoAmIMM, muWhoAmI)
 
-    (uartTx, _uartStatus) <-
+    (ccUartBytes, _uartStatus) <-
       defaultRefClkRstEn
-        $ uartInterfaceWb d16 d16 (uartDf baud)
-        -< (ccUartBus, Fwd 0)
+        $ uartInterfaceWb d16 d16 uartBytes
+        -< (ccUartBus, Fwd (pure Nothing))
+
+    uartTxBytes <- defaultRefClkRstEn $ asciiDebugMux d1024 (ccLabel :> Nil) -< [ccUartBytes]
+    (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
 
     ( Fwd swCcOut0
       , [ (ccWhoAmIPfx, ccWhoAmIBus)
