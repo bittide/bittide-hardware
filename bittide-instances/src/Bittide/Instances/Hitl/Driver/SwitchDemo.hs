@@ -548,6 +548,13 @@ driver testName targets = do
         let picocomStarts = liftIO <$> L.zipWith (initPicocom) targets [0 ..]
         brackets picocomStarts (liftIO . snd) $ \_picocoms -> do
           liftIO $ mapM_ Gdb.continue ccGdbs
+          -- XXX: If you also want to start the management units, uncomment this
+          --      next line. Beware that this breaks the demo, because we want
+          --      to take over control of the management unit again to read out
+          --      various values, but we don't have a way to pause the CPU again.
+          --
+          -- TODO: Add a way to send SIGINT to a GDB process.
+          -- liftIO $ mapM_ Gdb.continue muGdbs
           forM_ targets assertAllProgrammed
           testResults <- awaitTestCompletions 60_000
           (sCount, stabilityExitCode) <-

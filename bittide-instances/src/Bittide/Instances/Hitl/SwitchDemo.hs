@@ -76,6 +76,7 @@ import Bittide.Wishbone (
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
+import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Clash.Cores.Xilinx.VIO (vioProbe)
@@ -203,7 +204,7 @@ memoryMaps = (ccMm, muMm)
       0
       (pure (JtagIn 0 0 0))
 
-muConfig :: SimpleManagementConfig 11
+muConfig :: SimpleManagementConfig 12
 muConfig =
   SimpleManagementConfig
     { peConfig =
@@ -243,6 +244,9 @@ ccConfig =
 
 ccLabel :: Vec 2 Byte
 ccLabel = fromIntegral (ord 'C') :> fromIntegral (ord 'C') :> Nil
+
+muLabel :: Vec 2 Byte
+muLabel = fromIntegral (ord 'M') :> fromIntegral (ord 'U') :> Nil
 
 {- | Reset logic:
 
@@ -553,12 +557,22 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
     [muJtagFree, ccJtag] <- jtagChain -< jtag
     muJtagTx <- unsafeJtagSynchronizer refClk bittideClk -< muJtagFree
 
+    (muUartBytesBittide, _muUartStatus) <-
+      defaultBittideClkRstEn
+        $ uartInterfaceWb d16 d16 uartBytes
+        -< (muUartBus, Fwd (pure Nothing))
+
+    muUartBytes <-
+      dcFifoDf d16 bittideClk handshakeRstTx refClk handshakeRstFree
+        -< muUartBytesBittide
+
     (Fwd lc, muWbAll) <-
       defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMM, (muJtagTx, linkIn))
     ( [ (muWhoAmIPfx, (muWhoAmIMM, muWhoAmI))
         , (peWbPfx, (peWbMM, peWb))
         , (switchWbPfx, (switchWbMM, switchWb))
         , (dnaWbPfx, (dnaWbMM, dnaWb))
+        , (muUartPfx, muUartBus)
         ]
       , muWbRest
       ) <-
@@ -566,6 +580,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
     ([ugn0Pfx, ugn1Pfx, ugn2Pfx, ugn3Pfx, ugn4Pfx, ugn5Pfx, ugn6Pfx], ugnData) <-
       unzipC -< muWbRest
 
+    MM.constBwd 0b0000 -< muUartPfx
     MM.constBwd 0b0001 -< ugn0Pfx
     MM.constBwd 0b0010 -< ugn1Pfx
     MM.constBwd 0b0011 -< ugn2Pfx
@@ -602,7 +617,10 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
         $ uartInterfaceWb d16 d16 uartBytes
         -< (ccUartBus, Fwd (pure Nothing))
 
-    uartTxBytes <- defaultRefClkRstEn $ asciiDebugMux d1024 (ccLabel :> Nil) -< [ccUartBytes]
+    uartTxBytes <-
+      defaultRefClkRstEn
+        $ asciiDebugMux d1024 (ccLabel :> muLabel :> Nil)
+        -< [ccUartBytes, muUartBytes]
     (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
 
     ( Fwd swCcOut0
