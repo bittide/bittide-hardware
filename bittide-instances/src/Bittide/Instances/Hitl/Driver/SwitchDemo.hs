@@ -543,6 +543,7 @@ driver testName targets = do
         let picocomStarts = liftIO <$> L.zipWith (initPicocom) targets [0 ..]
         brackets picocomStarts (liftIO . snd) $ \_picocoms -> do
           liftIO $ mapM_ Gdb.continue ccGdbs
+          liftIO $ mapM_ Gdb.continue muGdbs
           forM_ targets assertAllProgrammed
           testResults <- awaitTestCompletions 60_000
           (sCount, stabilityExitCode) <-
