@@ -88,60 +88,61 @@ driverFunc _name targets = do
         Picocom.defaultStdStreams
         deviceInfo.serial
         picoOutLog
-        picoErrLog $ \pico -> do
-        hSetBuffering pico.stdinHandle LineBuffering
-        hSetBuffering pico.stdoutHandle LineBuffering
+        picoErrLog
+        $ \pico -> do
+          hSetBuffering pico.stdinHandle LineBuffering
+          hSetBuffering pico.stdoutHandle LineBuffering
 
-        let
-          -- Create function to log the output of the processes
-          loggingSequence :: IO ()
-          loggingSequence = do
-            threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
-            putStrLn "Picocom stdout"
-            picocomOut <- readRemainingChars pico.stdoutHandle
-            putStrLn picocomOut
-            putStrLn "Picocom StdErr"
-            readRemainingChars pico.stderrHandle >>= putStrLn
+          let
+            -- Create function to log the output of the processes
+            loggingSequence :: IO ()
+            loggingSequence = do
+              threadDelay 1_000_000 -- Wait 1 second for data loggers to catch up
+              putStrLn "Picocom stdout"
+              picocomOut <- readRemainingChars pico.stdoutHandle
+              putStrLn picocomOut
+              putStrLn "Picocom StdErr"
+              readRemainingChars pico.stderrHandle >>= putStrLn
 
-          tryWithTimeout :: String -> Int -> IO a -> IO a
-          tryWithTimeout n t io =
-            catch (D.tryWithTimeout n t io)
-              $ \(err :: SomeException) -> loggingSequence >> throwM err
+            tryWithTimeout :: String -> Int -> IO a -> IO a
+            tryWithTimeout n t io =
+              catch (D.tryWithTimeout n t io)
+                $ \(err :: SomeException) -> loggingSequence >> throwM err
 
-        tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
-          $ waitForLine pico.stdoutHandle "Terminal ready"
+          tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
+            $ waitForLine pico.stdoutHandle "Terminal ready"
 
-        -- program the FPGA
-        Gdb.withGdb $ \gdb -> do
-          hSetBuffering gdb.stdinHandle LineBuffering
-          Gdb.setLogging gdb gdbOutLog
-          Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "hello"
-          Gdb.setTarget gdb gdbPort
-          errorToException =<< Gdb.loadBinary gdb
-          -- errorToException =<< Gdb.compareSections gdb
+          -- program the FPGA
+          Gdb.withGdb $ \gdb -> do
+            hSetBuffering gdb.stdinHandle LineBuffering
+            Gdb.setLogging gdb gdbOutLog
+            Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "hello"
+            Gdb.setTarget gdb gdbPort
+            errorToException =<< Gdb.loadBinary gdb
+            -- errorToException =<< Gdb.compareSections gdb
 
-          -- break test
-          do
-            putStrLn "Testing whether breakpoints work"
-            Gdb.setBreakpoints gdb ["hello::test_success"]
-            Gdb.continue gdb
+            -- break test
+            do
+              putStrLn "Testing whether breakpoints work"
+              Gdb.setBreakpoints gdb ["hello::test_success"]
+              Gdb.continue gdb
 
-            Gdb.echo gdb.stdinHandle "breakpoint reached"
-            tryWithTimeout "Waiting for \"breakpoint reached\"" 10_000_000
-              $ waitForLine gdb.stdoutHandle "breakpoint reached"
+              Gdb.echo gdb.stdinHandle "breakpoint reached"
+              tryWithTimeout "Waiting for \"breakpoint reached\"" 10_000_000
+                $ waitForLine gdb.stdoutHandle "breakpoint reached"
 
-            Gdb.runCommands gdb.stdinHandle ["disable 1"]
-            Gdb.continue gdb
+              Gdb.runCommands gdb.stdinHandle ["disable 1"]
+              Gdb.continue gdb
 
-          -- This is the last thing that will print when the FPGA has been programmed
-          -- and starts entering UART-echo mode.
-          tryWithTimeout "Waiting for \"Going in echo mode!\"" 10_000_000
-            $ waitForLine pico.stdoutHandle "Going in echo mode!"
+            -- This is the last thing that will print when the FPGA has been programmed
+            -- and starts entering UART-echo mode.
+            tryWithTimeout "Waiting for \"Going in echo mode!\"" 10_000_000
+              $ waitForLine pico.stdoutHandle "Going in echo mode!"
 
-          -- Test UART echo
-          hPutStrLn pico.stdinHandle "Hello, UART!"
-          tryWithTimeout "Waiting for \"Hello, UART!!\"" 10_000_000
-            $ waitForLine pico.stdoutHandle "Hello, UART!"
+            -- Test UART echo
+            hPutStrLn pico.stdinHandle "Hello, UART!"
+            tryWithTimeout "Waiting for \"Hello, UART!!\"" 10_000_000
+              $ waitForLine pico.stdoutHandle "Hello, UART!"
 
     updateVio "vioHitlt" [("probe_test_start", "0")]
 

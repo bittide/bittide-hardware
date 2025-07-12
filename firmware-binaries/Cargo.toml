@@ -27,6 +27,7 @@ members = [
   "test-cases/watchdog_test",
 
   "clock-control",
+  "clock-control-swcctopologies",
   "management-unit",
   "processing-element-test",
 ]
