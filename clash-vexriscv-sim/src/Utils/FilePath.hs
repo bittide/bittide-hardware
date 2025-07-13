@@ -4,11 +4,10 @@
 
 module Utils.FilePath where
 
-import Prelude
-
-import System.Directory (getCurrentDirectory, doesFileExist)
-import System.FilePath (isDrive, takeDirectory, (</>))
 import Control.Exception (throwIO)
+import System.Directory (doesFileExist, getCurrentDirectory)
+import System.FilePath (isDrive, takeDirectory, (</>))
+import Prelude
 
 buildDir :: FilePath -> FilePath
 buildDir baseDir = baseDir </> "target"
