@@ -583,6 +583,30 @@ jobs:
       - name: cache push build-post-synth
         run: cache push build-post-synth --prefix="${{ matrix.target.top }}"
 
+  bittide-instances-publish-artifacts:
+    name: artifacts
+    runs-on: [self-hosted, compute]
+    needs: [build, bittide-instances-hdl-matrix, bittide-instances-hdl]
+    defaults:
+      run:
+        shell: git-nix-shell {0} --ignore-environment
+
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
+      options: --memory=11g
+
+    strategy:
+      matrix:
+        target: ${{ fromJson(needs.bittide-instances-hdl-matrix.outputs.check_matrix) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get build artifacts from local server
+        run: cache pull build-post-synth --prefix="${{ matrix.target.top }}"
+
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -671,6 +695,7 @@ jobs:
         bittide-instances-hardware-in-the-loop,
         bittide-instances-hdl-matrix,
         bittide-instances-hdl,
+        bittide-instances-publish-artifacts,
         build,
         firmware-limit-checks,
         firmware-support-tests,
