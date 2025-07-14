@@ -52,7 +52,7 @@ CLEAR_AFTER_DAYS=7
 CLEAR_AFTER=f"{CLEAR_AFTER_DAYS}d00h00m00s"
 TOUCH_AFTER=datetime.timedelta(days=1)
 
-GLOBAL_CACHE_BUST = 8
+GLOBAL_CACHE_BUST = 9
 
 CARGO_CACHE_BUST = 2
 CARGO_KEY_PREFIX = f"cargo-g{GLOBAL_CACHE_BUST}-l{CARGO_CACHE_BUST}-"
@@ -63,7 +63,10 @@ CARGO_CACHE_EXCLUDE_PATTERNS = ()
 CABAL_CACHE_BUST = 2
 CABAL_KEY_PREFIX = f"cabal-g{GLOBAL_CACHE_BUST}-l{CABAL_CACHE_BUST}-"
 CABAL_KEY_PATTERNS = ("**/cabal.project", "**/cabal.project.freeze")
-CABAL_CACHE_INCLUDE_PATTERNS = ("~/.cabal-nix",)
+CABAL_CACHE_INCLUDE_PATTERNS = (
+    "~/.cabal-nix",
+    f"{PWD}/dist-newstyle/src",
+)
 CABAL_CACHE_EXCLUDE_PATTERNS = ()
 
 BUILD_CACHE_BUST = 2
@@ -77,6 +80,7 @@ BUILD_CACHE_INCLUDE_PATTERNS = (
 )
 BUILD_CACHE_EXCLUDE_PATTERNS = (
     f"{PWD}/firmware-support/bittide-hal/src/shared/mod.rs",
+    f"{PWD}/dist-newstyle/src",
 )
 
 SYNTH_CACHE_BUST = 2
