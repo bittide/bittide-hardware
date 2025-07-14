@@ -539,8 +539,8 @@ jobs:
         run: |
           shake ${{ matrix.target.top }}:hdl
 
-      - name: Synthesis
-        if: ${{ matrix.target.stage != 'hdl' }}
+      - name: Determine whether synthesis should run
+        id: check_synthesis_status
         run: |
           target="${{ matrix.target.stage }}"
 
@@ -548,6 +548,23 @@ jobs:
             echo "Illegal Shake target on CI: program"
             exit 1
           fi
+
+          if [[ "${target}" == "hdl" ]]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          cache pull synth --prefix="${{ matrix.target.top }}-${target}" --missing-ok --write-cache-found
+          if [[ $(cat cache_found) == 0 ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Synthesis
+        if: ${{ steps.check_synthesis_status.outputs.should_run == 'true'  }}
+        run: |
+          target="${{ matrix.target.stage }}"
 
           # Only the local runner connected to the bittide demonstrator (hoeve)
           # should perform the jobs which need hardware access. And that runner
@@ -557,21 +574,15 @@ jobs:
             target="bitstream"
           fi
 
-          cache pull synth --prefix="${{ matrix.target.top }}-${target}" --missing-ok --write-cache-found
-          if [[ $(cat cache_found) == 0 ]]; then
-
-            export VIVADO_HS_LOG_DIR="$(git rev-parse --show-toplevel)/_build/hitl/vivado-gensynth/"
-            if [[ ! -d "${VIVADO_HS_LOG_DIR} " ]]; then
-              mkdir -p "${VIVADO_HS_LOG_DIR}"
-            fi
-            .github/scripts/with_vivado.sh \
-              shake ${{ matrix.target.top }}:"${target}"
-
-            # Pushing synthesis results to cache
-            cache push synth --prefix="${{ matrix.target.top }}-${target}"
-          else
-            echo "Restored cache, no need to synthesize again"
+          export VIVADO_HS_LOG_DIR="$(git rev-parse --show-toplevel)/_build/hitl/vivado-gensynth/"
+          if [[ ! -d "${VIVADO_HS_LOG_DIR} " ]]; then
+            mkdir -p "${VIVADO_HS_LOG_DIR}"
           fi
+          .github/scripts/with_vivado.sh \
+            shake ${{ matrix.target.top }}:"${target}"
+
+          # Pushing synthesis results to cache
+          cache push synth --prefix="${{ matrix.target.top }}-${target}"
 
       - name: Create non-empty vivado directory
         if: ${{ matrix.target.stage == 'hdl' }}
