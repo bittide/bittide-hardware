@@ -129,13 +129,14 @@ def sha256sum_files(file_paths : Iterable[str]) -> str:
 
 
 def get_git_files_from_patterns(patterns):
-    filesytem_files = itertools.chain.from_iterable(
+    filesytem_files = get_files_from_patterns(patterns)
+    git_files = get_all_git_files()
+    return (p for p in filesytem_files if p in git_files)
+
+def get_files_from_patterns(patterns):
+    return itertools.chain.from_iterable(
         glob.glob(pattern, recursive=True) for pattern in patterns
     )
-
-    git_files = get_all_git_files()
-    return [p for p in filesytem_files if p in git_files]
-
 
 def get_key_from_patterns(patterns):
     return sha256sum_files(get_git_files_from_patterns(patterns))
@@ -154,14 +155,10 @@ def get_build_key():
 
 
 def get_synth_key():
-    """
-    Files in the _build directory are not tracked by git. Therefore we have
-    to get the list of files in separate steps.
-    """
+    # Files in the _build directory are not tracked by git. Therefore we have
+    # to get the list of files in separate steps.
     tracked_files = get_git_files_from_patterns(SYNTH_KEY_PATTERNS)
-    untracked_files = itertools.chain.from_iterable(
-        glob.glob(pattern, recursive=True) for pattern in SYNTH_KEY_PATTERNS_UNTRACKED
-    )
+    untracked_files = get_files_from_patterns(SYNTH_KEY_PATTERNS_UNTRACKED)
     return SYNTH_KEY_PREFIX + sha256sum_files(itertools.chain(tracked_files, untracked_files))
 
 
