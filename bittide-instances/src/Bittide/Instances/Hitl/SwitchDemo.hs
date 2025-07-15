@@ -27,12 +27,13 @@ import Bittide.Arithmetic.Time (trueFor)
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl hiding (speedChangeToFincFdec)
-import Bittide.ClockControl.Callisto.Types (CallistoCResult)
+import Bittide.ClockControl.Callisto.Types (CallistoCResult (..), ReframingState (..))
 import Bittide.ClockControl.CallistoSw (
   SwControlCConfig (..),
   callistoSwClockControlC,
  )
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
+import Bittide.ClockControl.StabilityChecker (StabilityIndication (..))
 import Bittide.Counter
 import Bittide.DoubleBufferedRam
 import Bittide.ElasticBuffer (
@@ -571,7 +572,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
 
     defaultBittideClkRstEn (whoAmIC 0x746d_676d) -< (muWhoAmIMM, muWhoAmI)
 
-    (swCcOut, [(ccWhoAmIPfx, (ccWhoAmIMM, ccWhoAmI))]) <-
+    (Fwd swCcOut0, [(ccWhoAmIPfx, (ccWhoAmIMM, ccWhoAmI))]) <-
       defaultRefClkRstEn (callistoSwClockControlC @LinkCount @CccBufferSize NoDumpVcd ccConfig)
         -< (ccMM, (ccJtag, reframe, mask, dc))
 
@@ -584,7 +585,28 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn =
 
     defaultRefClkRstEn (whoAmIC 0x6363_7773) -< (ccWhoAmIMM, ccWhoAmI)
 
-    idC -< (swCcOut, txs, Fwd lc, ps, Fwd peIn, Fwd peOut, ce)
+    let swCcOut1 =
+          if clashSimulation
+            then
+              let
+                -- Should all clock control steps be run in simulation?
+                -- False means that clock control will always immediately be done.
+                simulateCc = False
+               in
+                if simulateCc
+                  then swCcOut0
+                  else
+                    pure
+                      $ CallistoCResult
+                        { maybeSpeedChangeC = Nothing
+                        , stabilityC = repeat (StabilityIndication{stable = True, settled = True})
+                        , allStableC = True
+                        , allSettledC = True
+                        , reframingStateC = Done
+                        }
+            else swCcOut0
+
+    idC -< (Fwd swCcOut1, txs, Fwd lc, ps, Fwd peIn, Fwd peOut, ce)
 
   ( (ccMm, muMm, jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _diffsBwd, _insBwd)
     , (callistoResult, switchDataOut, localCounter, peState, peInput, peOutput, calEntry)
