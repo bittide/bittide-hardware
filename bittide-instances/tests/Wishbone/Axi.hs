@@ -72,7 +72,7 @@ dut =
     $ circuit
     $ \_unit -> do
       (uartTx, jtag) <- idleSource
-      [ (prefixUart, (mmUart, uartBus))
+      [ (prefixUart, uartBus)
         , (prefixAxiTx, (mmAxiTx, axiTxBus))
         , (prefixNull, (mmNull, wbNull))
         , (prefixAxiRx, (mmAxiRx, axiRxBus))
@@ -83,7 +83,7 @@ dut =
       constBwd todoMM -< mmNull
       mm <- ignoreMM
 
-      (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartTx))
+      (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartTx)
       constBwd 0b010 -< prefixUart
 
       _interrupts <- wbAxisRxBufferCircuit (SNat @128) -< (axiRxBus, axiStream)

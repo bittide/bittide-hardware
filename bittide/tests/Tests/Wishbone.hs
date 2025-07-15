@@ -112,7 +112,7 @@ uartInterfaceWbCircuitTest = do
     dut = circuit $ \dfIn -> do
       (wb, dfOut) <- uartMachine -< dfIn
       mm <- ignoreMM
-      (uartTx, _status) <- uartInterfaceWb @System @32 d2 d2 uartSim -< (mm, (wb, uartTx))
+      (uartTx, _status) <- uartInterfaceWb @System @32 d2 d2 uartBytes -< ((mm, wb), uartTx)
       idC -< dfOut
     expectOptions =
       defExpectOptions

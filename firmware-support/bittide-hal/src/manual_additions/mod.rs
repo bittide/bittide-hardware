@@ -5,4 +5,4 @@
 pub mod index;
 
 pub mod timer;
-pub mod uart_fmt;
+pub mod uart;

@@ -59,7 +59,7 @@ dut = withClockResetEnable clockGen resetGen enableGen
   $ circuit
   $ \_unit -> do
     (uartRx, jtag) <- idleSource
-    [ (prefixUart, (mmUart, uartBus))
+    [ (prefixUart, uartBus)
       , (prefixTime, (mmTime, timeBus))
       , (prefixIdleA, (mmIdleA, idleBusA))
       , (prefixIdleB, (mmIdleB, idleBusB))
@@ -81,7 +81,7 @@ dut = withClockResetEnable clockGen resetGen enableGen
     _localCounter <- timeWb -< (mmTime, timeBus1)
     constBwd 0b011 -< prefixTime
     (uartTx, _uartStatus) <-
-      (uartInterfaceWb @_ @_ @4) d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
+      (uartInterfaceWb @_ @_ @4) d2 d2 uartBytes -< (uartBus, uartRx)
     constBwd 0b010 -< prefixUart
     idC -< uartTx
  where

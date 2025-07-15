@@ -90,7 +90,9 @@ driverFunc testName targets = do
       (gdb, gdbPh, gdbClean1) <- Gdb.startGdbH
       hSetBuffering gdb.stdinHandle LineBuffering
       Gdb.setLogging gdb $ hitlDir </> "gdb-" <> show (getTargetIndex hwT) <> "-stdout.log"
-      Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "clock-control"
+      Gdb.setFile gdb
+        $ firmwareBinariesDir "riscv32imc" Release
+        </> "clock-control-swcctopologies"
       Gdb.setTarget gdb gdbPort
       let
         gdbProcName = "GDB (" <> show d.deviceId <> ")"

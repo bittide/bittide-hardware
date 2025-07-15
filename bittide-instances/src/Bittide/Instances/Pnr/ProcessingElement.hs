@@ -47,10 +47,10 @@ vexRiscvUartHelloC ::
     (ConstBwd MM, (CSignal dom Bit, Jtag dom))
     (CSignal dom Bit)
 vexRiscvUartHelloC baudSnat = circuit $ \(mm, (uartRx, jtag)) -> do
-  [(prefixUart, (mmUart, uartBus)), (prefixTime, (mmTime, timeBus))] <-
+  [(prefixUart, uartBus), (prefixTime, (mmTime, timeBus))] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtag)
   (uartTx, _uartStatus) <-
-    uartInterfaceWb d16 d16 (uartDf baudSnat) -< (mmUart, (uartBus, uartRx))
+    uartInterfaceWb d16 d16 (uartDf baudSnat) -< (uartBus, uartRx)
   constBwd 0b10 -< prefixUart
   _localCounter <- timeWb -< (mmTime, timeBus)
   constBwd 0b11 -< prefixTime

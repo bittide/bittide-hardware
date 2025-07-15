@@ -8,6 +8,7 @@
 #![allow(clippy::collapsible_if)]
 #![feature(sync_unsafe_cell)]
 
+use bittide_hal::shared::devices::uart::Uart;
 use bittide_sys::axi::{AxiRx, AxiTx};
 use bittide_sys::dna_port_e2::{dna_to_u128, DnaValue};
 use bittide_sys::mac::MacStatus;
@@ -15,7 +16,6 @@ use bittide_sys::smoltcp::axi::AxiEthernet;
 use bittide_sys::smoltcp::{set_local, set_unicast};
 use bittide_sys::time::{Clock, Duration, Instant};
 use bittide_sys::uart::log::LOGGER;
-use bittide_sys::uart::Uart;
 use log::{debug, info, LevelFilter};
 
 #[cfg(not(test))]
@@ -33,7 +33,7 @@ const DNA_ADDR: *const DnaValue = (0b0111 << 28) as *const DnaValue;
 const MAC_ADDR: *const MacStatus = (0b1001 << 28) as *const MacStatus;
 const RX_AXI_ADDR: *const () = (0b0101 << 28) as *const ();
 const TX_AXI_ADDR: *const () = (0b0110 << 28) as *const ();
-const UART_ADDR: *const () = (0b0010 << 28) as *const ();
+const UART_ADDR: *mut u8 = (0b0010 << 28) as *mut u8;
 
 const RX_BUFFER_SIZE: usize = 2048;
 const ETH_MTU: usize = RX_BUFFER_SIZE;

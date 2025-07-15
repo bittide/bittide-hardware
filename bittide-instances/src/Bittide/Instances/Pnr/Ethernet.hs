@@ -97,7 +97,7 @@ vexRiscGmiiC ::
     )
 vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
   circuit $ \(mm, (uartTx, gmiiRx, jtag)) -> do
-    [ (prefixUart, (mmUart, uartBus))
+    [ (prefixUart, uartBus)
       , (prefixTime, (mmTime, timeBus))
       , (prefixAxiRx, (mmAxiRx, wbAxiRx))
       , (prefixAxiTx, (mmAxiTx, wbAxiTx))
@@ -106,7 +106,7 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
       , (prefixMac, (mmMac, macWb))
       ] <-
       pe -< (mm, jtag)
-    (uartRx, _uartStatus) <- uart -< (mmUart, (uartBus, uartTx))
+    (uartRx, _uartStatus) <- uart -< (uartBus, uartTx)
     constBwd 0b0010 -< prefixUart
     _localCounter <- time -< (mmTime, timeBus)
     constBwd 0b0011 -< prefixTime

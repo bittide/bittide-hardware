@@ -9,7 +9,7 @@ use core::panic::PanicInfo;
 
 use bittide_hal::shared::devices::clock_control::{ClockControl, SpeedChange};
 use bittide_hal::shared::devices::debug_register::DebugRegister;
-use bittide_sys::uart::Uart;
+use bittide_hal::shared::devices::uart::Uart;
 use core::fmt::Write;
 use rand::{distributions::Uniform, rngs::SmallRng, Rng, SeedableRng};
 
@@ -40,7 +40,7 @@ const RNG_SEED: [u8; 16] = {
 #[allow(clippy::empty_loop)]
 fn main() -> ! {
     #[allow(clippy::zero_ptr)] // we might want to change the address!
-    let mut uart = unsafe { Uart::new(0x2000_0000 as *const ()) };
+    let mut uart = unsafe { Uart::new(0x2000_0000 as *mut u8) };
     let cc = unsafe { ClockControl::new(0xC000_0000 as *mut u8) };
     let dbg = unsafe { DebugRegister::new(0xA000_0000 as *mut u8) };
 

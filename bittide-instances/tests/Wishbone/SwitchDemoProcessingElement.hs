@@ -82,13 +82,13 @@ dut ::
   Circuit () (Df dom (BitVector 8))
 dut dnaA dnaB = circuit $ do
   (uartRx, jtagIdle) <- idleSource
-  [ (prefixUart, (mmUart, uartBus))
+  [ (prefixUart, uartBus)
     , (prefixTime, (mmTime, timeBus))
     , (prefixA, (mmA, peBusA))
     , (prefixB, (mmB, peBusB))
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
-  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
+  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
   mm <- ignoreMM
   constBwd 0b010 -< prefixUart
 

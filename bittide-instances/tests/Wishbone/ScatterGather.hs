@@ -85,12 +85,12 @@ dut ::
   Circuit () (Df dom (BitVector 8))
 dut scatterConfig gatherConfig = circuit $ do
   (uartRx, jtagIdle, wbGuCal, wbSuCal) <- idleSource
-  [ (prefixUart, (mmUart, uartBus))
+  [ (prefixUart, uartBus)
     , (prefixSu, (mmSu, wbSu))
     , (prefixGu, (mmGu, wbGu))
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
-  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartSim -< (mmUart, (uartBus, uartRx))
+  (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
   mm <- ignoreMM
   mmGuCal <- ignoreMM
   mmSuCal <- ignoreMM

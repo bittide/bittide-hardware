@@ -133,12 +133,12 @@ dut =
       $ circuit
       $ \_unit -> do
         (uartRx, jtag) <- idleSource
-        [ (prefixUart, (mmUart, uartBus))
+        [ (prefixUart, uartBus)
           , (prefixCC, (mmCC, ccWb))
           , (prefixDbg, debugWbBus)
           ] <-
           processingElement NoDumpVcd peConfig -< (mm, jtag)
-        (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartSim -< (mmUart, (uartBus, uartRx))
+        (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
         constBwd 0b001 -< prefixUart
 
         mm <- ignoreMM

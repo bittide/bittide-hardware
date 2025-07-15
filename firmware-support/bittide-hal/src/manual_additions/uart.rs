@@ -2,7 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-pub mod log;
+use crate::shared::devices::uart::Uart;
+
 pub struct UartStatus {
     pub receive_buffer_empty: bool,
     pub transmit_buffer_full: bool,
@@ -11,33 +12,10 @@ pub struct UartStatus {
 pub struct TransmitBufferFull;
 pub struct ReceiveBufferEmpty;
 
-#[derive(Clone)]
-/// `Uart` is a structure representing a universal asynchronous receiver-transmitter.
-pub struct Uart {
-    /// `payload_addr` is a mutable pointer to the address of the data payload.
-    payload_addr: *mut u8,
-    /// `flags_addr` is a constant pointer to the address of the flags.
-    flags_addr: *const u8,
-}
-
 impl Uart {
-    /// Create a new [`Uart`] instance given a base address.
-    ///
-    /// # Safety
-    ///
-    /// The `base_addr` pointer MUST BE a valid pointer that is backed
-    /// by a memory mapped UART instance.
-    pub const unsafe fn new(base_addr: *const ()) -> Uart {
-        let addr = base_addr as *const u8;
-        Uart {
-            payload_addr: addr.cast_mut(),
-            flags_addr: addr.add(4),
-        }
-    }
-
     /// UART status register output
     pub fn read_status(&self) -> UartStatus {
-        let flags: u8 = unsafe { self.flags_addr.read_volatile() };
+        let flags: u8 = self.status();
 
         let rx_mask = 0b10;
         let rx_empty = flags & rx_mask;
@@ -67,10 +45,7 @@ impl Uart {
         if self.read_status().receive_buffer_empty {
             Err(ReceiveBufferEmpty)
         } else {
-            unsafe {
-                let data: u8 = self.payload_addr.read_volatile();
-                Ok(data)
-            }
+            Ok(self.data())
         }
     }
 
@@ -90,10 +65,8 @@ impl Uart {
         if self.read_status().transmit_buffer_full {
             Err(TransmitBufferFull)
         } else {
-            unsafe {
-                self.payload_addr.write_volatile(data);
-                Ok(())
-            }
+            self.set_data(data);
+            Ok(())
         }
     }
 }
@@ -115,5 +88,11 @@ impl core::fmt::Write for Uart {
             self.send(b);
         }
         Ok(())
+    }
+}
+
+impl Clone for Uart {
+    fn clone(&self) -> Self {
+        unsafe { Uart::new(self.0) }
     }
 }

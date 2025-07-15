@@ -133,9 +133,9 @@ vexRiscvTestC =
     ?regByteOrder = LittleEndian
    in
     circuit $ \(mm, (jtag, uartRx)) -> do
-      [ (preTime, (mmTime, timeBus))
-        , (preUart, (mmUart, uartBus))
-        , (preStatus, (mmStatus, statusRegisterBus))
+      [ (preTime, timeBus)
+        , (preUart, uartBus)
+        , (preStatus, statusRegisterBus)
         ] <-
         processingElement NoDumpVcd peConfig -< (mm, jtag)
 
@@ -146,10 +146,10 @@ vexRiscvTestC =
       constBwd 0b111 -< preStatus
 
       (uartTx, _uartStatus) <-
-        uartInterfaceWb @dom d16 d16 (uartDf baud) -< (mmUart, (uartBus, uartRx))
-      _localCounter <- timeWb -< (mmTime, timeBus)
+        uartInterfaceWb @dom d16 d16 (uartDf baud) -< (uartBus, uartRx)
+      _localCounter <- timeWb -< timeBus
 
-      testResult <- statusRegister -< (mmStatus, statusRegisterBus)
+      testResult <- statusRegister -< statusRegisterBus
       idC -< (testResult, uartTx)
  where
   peConfig
