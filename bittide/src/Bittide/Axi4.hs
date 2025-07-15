@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE MagicHash #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -14,6 +15,13 @@ module Bittide.Axi4 (
   -- * Wishbone interfaces
   wbAxisRxBufferCircuit,
   wbToAxiTx,
+
+  -- * 2-domain FIFOs for each AXI4 channel
+  axi4ReadAddressFifo,
+  axi4ReadDataFifo,
+  axi4WriteAddressFifo,
+  axi4WriteDataFifo,
+  axi4WriteResponseFifo,
 
   -- * Other circuits
   axiStreamPacketFifo,
@@ -35,19 +43,30 @@ module Bittide.Axi4 (
 
 import Clash.Prelude
 
-import Bittide.Axi4.Internal
-import Bittide.Extra.Maybe
-import Bittide.SharedTypes
-import Clash.Cores.Xilinx.Ila hiding (Data)
-import Clash.Sized.Internal.BitVector (popCountBV)
 import Data.Constraint
 import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import Data.Proxy
+
+import Bittide.Axi4.Internal
+import Bittide.Extra.Maybe
+import Bittide.SharedTypes
+import Clash.Protocols.Axi4.Extra
+
+import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
+import Clash.Cores.Xilinx.Ila hiding (Data)
+import Clash.Sized.Internal.BitVector (popCountBV)
+
 import Protocols
+import Protocols.Axi4.ReadAddress
+import Protocols.Axi4.ReadData
 import Protocols.Axi4.Stream as AS
-import qualified Protocols.DfConv as DfConv
+import Protocols.Axi4.WriteAddress
+import Protocols.Axi4.WriteData
+import Protocols.Axi4.WriteResponse
 import Protocols.Wishbone as WB
+
+import qualified Protocols.DfConv as DfConv
 
 {- $setup
 >>> import Clash.Prelude
@@ -779,3 +798,209 @@ isPackedTransfer Axi4StreamM2S{..}
  where
   rising = snd . mapAccumL (\prevKeep keep -> (keep, not prevKeep && keep)) True
   hasGaps = or . rising
+
+-- | A 2-domain Xilinx FIFO for the AXI4 WriteAddress channel
+axi4WriteAddressFifo ::
+  forall domA domB conf userType.
+  ( KnownDomain domA
+  , KnownDomain domB
+  , KnownAxi4WriteAddressConfig conf
+  , NFDataX userType
+  ) =>
+  Clock domA ->
+  Reset domA ->
+  Clock domB ->
+  Reset domB ->
+  Circuit
+    (Axi4WriteAddress domA conf userType)
+    (Axi4WriteAddress domB conf userType)
+axi4WriteAddressFifo clkA rstA clkB rstB =
+  axi4ToDf |> dcFifoDf d8 clkA rstA clkB rstB |> dfToAxi4
+ where
+  axi4ToDf ::
+    Circuit
+      (Axi4WriteAddress dom conf userType)
+      (Df dom (M2S_WriteAddress conf userType))
+  axi4ToDf = Circuit toDf
+   where
+    toDf (waM2S, dfAck) = (waS2M, dfData)
+     where
+      waS2M = S2M_WriteAddress . fromAck <$> dfAck
+      dfData = orNothing <$> fmap isWriteAddress waM2S <*> waM2S
+      fromAck (Ack b) = b
+
+  dfToAxi4 ::
+    Circuit
+      (Df dom (M2S_WriteAddress conf userType))
+      (Axi4WriteAddress dom conf userType)
+  dfToAxi4 = Circuit toAxi4
+   where
+    toAxi4 (dfData, waS2M) = (dfAck, waM2S)
+     where
+      dfAck = Ack . (._awready) <$> waS2M
+      waM2S = fromMaybe M2S_NoWriteAddress <$> dfData
+
+-- | A 2-domain Xilinx FIFO for the AXI4 WriteData channel
+axi4WriteDataFifo ::
+  forall domA domB conf userType.
+  ( KnownDomain domA
+  , KnownDomain domB
+  , KnownAxi4WriteDataConfig conf
+  , NFDataX userType
+  ) =>
+  Clock domA ->
+  Reset domA ->
+  Clock domB ->
+  Reset domB ->
+  Circuit
+    (Axi4WriteData domA conf userType)
+    (Axi4WriteData domB conf userType)
+axi4WriteDataFifo clkA rstA clkB rstB =
+  axi4ToDf |> dcFifoDf d8 clkA rstA clkB rstB |> dfToAxi4
+ where
+  axi4ToDf ::
+    Circuit
+      (Axi4WriteData dom conf userType)
+      (Df dom (M2S_WriteData conf userType))
+  axi4ToDf = Circuit toDf
+   where
+    toDf (wdM2S, dfAck) = (wdS2M, dfData)
+     where
+      wdS2M = S2M_WriteData . fromAck <$> dfAck
+      dfData = orNothing <$> fmap isWriteData wdM2S <*> wdM2S
+      fromAck (Ack b) = b
+
+  dfToAxi4 ::
+    Circuit
+      (Df dom (M2S_WriteData conf userType))
+      (Axi4WriteData dom conf userType)
+  dfToAxi4 = Circuit toAxi4
+   where
+    toAxi4 (dfData, wdS2M) = (dfAck, wdM2S)
+     where
+      dfAck = Ack . (._wready) <$> wdS2M
+      wdM2S = fromMaybe M2S_NoWriteData <$> dfData
+
+-- | A 2-domain Xilinx FIFO for the AXI4 WriteResponse channel
+axi4WriteResponseFifo ::
+  forall domA domB conf userType.
+  ( KnownDomain domA
+  , KnownDomain domB
+  , KnownAxi4WriteResponseConfig conf
+  , NFDataX userType
+  ) =>
+  Clock domA ->
+  Reset domA ->
+  Clock domB ->
+  Reset domB ->
+  Circuit
+    (Axi4WriteResponse domA conf userType)
+    (Axi4WriteResponse domB conf userType)
+axi4WriteResponseFifo clkA rstA clkB rstB =
+  axi4ToDf |> dcFifoDf d8 clkA rstA clkB rstB |> dfToAxi4
+ where
+  axi4ToDf ::
+    Circuit
+      (Axi4WriteResponse dom conf userType)
+      (Df dom (S2M_WriteResponse conf userType))
+  axi4ToDf = Circuit toDf
+   where
+    toDf (wrS2M, dfAck) = (wrM2S, dfData)
+     where
+      wrM2S = M2S_WriteResponse . fromAck <$> dfAck
+      dfData = orNothing <$> fmap isWriteResponse wrS2M <*> wrS2M
+      fromAck (Ack b) = b
+
+  dfToAxi4 ::
+    Circuit
+      (Df dom (S2M_WriteResponse conf userType))
+      (Axi4WriteResponse dom conf userType)
+  dfToAxi4 = Circuit toAxi4
+   where
+    toAxi4 (dfData, wrM2S) = (dfAck, wrS2M)
+     where
+      dfAck = Ack . (._bready) <$> wrM2S
+      wrS2M = fromMaybe S2M_NoWriteResponse <$> dfData
+
+-- | A 2-domain Xilinx FIFO for the AXI4 ReadAddress channel
+axi4ReadAddressFifo ::
+  forall domA domB conf userType.
+  ( KnownDomain domA
+  , KnownDomain domB
+  , KnownAxi4ReadAddressConfig conf
+  , NFDataX userType
+  ) =>
+  Clock domA ->
+  Reset domA ->
+  Clock domB ->
+  Reset domB ->
+  Circuit
+    (Axi4ReadAddress domA conf userType)
+    (Axi4ReadAddress domB conf userType)
+axi4ReadAddressFifo clkA rstA clkB rstB =
+  axi4ToDf |> dcFifoDf d8 clkA rstA clkB rstB |> dfToAxi4
+ where
+  axi4ToDf ::
+    Circuit
+      (Axi4ReadAddress dom conf userType)
+      (Df dom (M2S_ReadAddress conf userType))
+  axi4ToDf = Circuit toDf
+   where
+    toDf (raM2S, dfAck) = (raS2M, dfData)
+     where
+      raS2M = S2M_ReadAddress . fromAck <$> dfAck
+      dfData = orNothing <$> fmap isReadAddress raM2S <*> raM2S
+      fromAck (Ack b) = b
+
+  dfToAxi4 ::
+    Circuit
+      (Df dom (M2S_ReadAddress conf userType))
+      (Axi4ReadAddress dom conf userType)
+  dfToAxi4 = Circuit toAxi4
+   where
+    toAxi4 (dfData, raS2M) = (dfAck, raM2S)
+     where
+      dfAck = Ack . (._arready) <$> raS2M
+      raM2S = fromMaybe M2S_NoReadAddress <$> dfData
+
+-- | A 2-domain Xilinx FIFO for the AXI4 ReadData channel
+axi4ReadDataFifo ::
+  forall domA domB conf userType dataType.
+  ( KnownDomain domA
+  , KnownDomain domB
+  , KnownAxi4ReadDataConfig conf
+  , NFDataX userType
+  , NFDataX dataType
+  ) =>
+  Clock domA ->
+  Reset domA ->
+  Clock domB ->
+  Reset domB ->
+  Circuit
+    (Axi4ReadData domA conf userType dataType)
+    (Axi4ReadData domB conf userType dataType)
+axi4ReadDataFifo clkA rstA clkB rstB =
+  axi4ToDf |> dcFifoDf d8 clkA rstA clkB rstB |> dfToAxi4
+ where
+  axi4ToDf ::
+    Circuit
+      (Axi4ReadData dom conf userType dataType)
+      (Df dom (S2M_ReadData conf userType dataType))
+  axi4ToDf = Circuit toDf
+   where
+    toDf (rdS2M, dfAck) = (rdM2S, dfData)
+     where
+      rdM2S = M2S_ReadData . fromAck <$> dfAck
+      dfData = orNothing <$> fmap isReadData rdS2M <*> rdS2M
+      fromAck (Ack b) = b
+
+  dfToAxi4 ::
+    Circuit
+      (Df dom (S2M_ReadData conf userType dataType))
+      (Axi4ReadData dom conf userType dataType)
+  dfToAxi4 = Circuit toAxi4
+   where
+    toAxi4 (dfData, rdM2S) = (dfAck, rdS2M)
+     where
+      dfAck = Ack . (._rready) <$> rdM2S
+      rdS2M = fromMaybe S2M_NoReadData <$> dfData
