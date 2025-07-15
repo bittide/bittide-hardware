@@ -4,8 +4,8 @@ Strict caching script, that uploads to a hardcoded S3 server. Users should set
 an environment variable 'S3_PASSWORD'.
 
 Usage:
-  cache push (cabal|cargo|build|synth|build-post-synth) [--prefix=<prefix>] [--empty-pattern-ok] [--write-cache-found] [--overwrite-ok]
-  cache pull (cabal|cargo|build|synth|build-post-synth) [--prefix=<prefix>] [--missing-ok] [--overwrite-ok] [--write-cache-found]
+  cache push (cabal|cargo|build|clash|synth|build-post-synth) [--prefix=<prefix>] [--empty-pattern-ok] [--write-cache-found] [--overwrite-ok]
+  cache pull (cabal|cargo|build|clash|synth|build-post-synth) [--prefix=<prefix>] [--missing-ok] [--overwrite-ok] [--write-cache-found]
   cache clean
   cache -h | --help
   cache --version
@@ -52,7 +52,7 @@ CLEAR_AFTER_DAYS=7
 CLEAR_AFTER=f"{CLEAR_AFTER_DAYS}d00h00m00s"
 TOUCH_AFTER=datetime.timedelta(days=1)
 
-GLOBAL_CACHE_BUST = 8
+GLOBAL_CACHE_BUST = 11
 
 CARGO_CACHE_BUST = 2
 CARGO_KEY_PREFIX = f"cargo-g{GLOBAL_CACHE_BUST}-l{CARGO_CACHE_BUST}-"
@@ -63,7 +63,10 @@ CARGO_CACHE_EXCLUDE_PATTERNS = ()
 CABAL_CACHE_BUST = 2
 CABAL_KEY_PREFIX = f"cabal-g{GLOBAL_CACHE_BUST}-l{CABAL_CACHE_BUST}-"
 CABAL_KEY_PATTERNS = ("**/cabal.project", "**/cabal.project.freeze")
-CABAL_CACHE_INCLUDE_PATTERNS = ("~/.cabal-nix",)
+CABAL_CACHE_INCLUDE_PATTERNS = (
+    "~/.cabal-nix",
+    f"{PWD}/dist-newstyle/src",
+)
 CABAL_CACHE_EXCLUDE_PATTERNS = ()
 
 BUILD_CACHE_BUST = 2
@@ -77,7 +80,21 @@ BUILD_CACHE_INCLUDE_PATTERNS = (
 )
 BUILD_CACHE_EXCLUDE_PATTERNS = (
     f"{PWD}/firmware-support/bittide-hal/src/shared/mod.rs",
+    f"{PWD}/dist-newstyle/src",
 )
+
+CLASH_CACHE_BUST = 0
+CLASH_KEY_PREFIX = f"clash-g{GLOBAL_CACHE_BUST}-l{CLASH_CACHE_BUST}-"
+CLASH_KEY_PATTERNS = CABAL_KEY_PATTERNS + (
+    "**/*.cabal",
+    "**/*.hs",
+    "**/*.hs-boot",
+    "**/*.csv",
+)
+CLASH_CACHE_INCLUDE_PATTERNS = (
+    f"{PWD}/_build/clash",
+)
+CLASH_CACHE_EXCLUDE_PATTERNS = ()
 
 SYNTH_CACHE_BUST = 2
 SYNTH_KEY_PREFIX = f"synth-g{GLOBAL_CACHE_BUST}-l{SYNTH_CACHE_BUST}-"
@@ -129,13 +146,14 @@ def sha256sum_files(file_paths : Iterable[str]) -> str:
 
 
 def get_git_files_from_patterns(patterns):
-    filesytem_files = itertools.chain.from_iterable(
+    filesytem_files = get_files_from_patterns(patterns)
+    git_files = get_all_git_files()
+    return (p for p in filesytem_files if p in git_files)
+
+def get_files_from_patterns(patterns):
+    return itertools.chain.from_iterable(
         glob.glob(pattern, recursive=True) for pattern in patterns
     )
-
-    git_files = get_all_git_files()
-    return [p for p in filesytem_files if p in git_files]
-
 
 def get_key_from_patterns(patterns):
     return sha256sum_files(get_git_files_from_patterns(patterns))
@@ -152,16 +170,17 @@ def get_cabal_key():
 def get_build_key():
     return BUILD_KEY_PREFIX + os.environ["GITHUB_SHA"]
 
+def get_clash_key():
+    exclude = "bittide-instances/src/Bittide/Instances/Hitl/Driver/"
+    files = get_git_files_from_patterns(CLASH_KEY_PATTERNS)
+    files = (f for f in files if not f.startswith(exclude))
+    return CLASH_KEY_PREFIX + sha256sum_files(files)
 
 def get_synth_key():
-    """
-    Files in the _build directory are not tracked by git. Therefore we have
-    to get the list of files in separate steps.
-    """
+    # Files in the _build directory are not tracked by git. Therefore we have
+    # to get the list of files in separate steps.
     tracked_files = get_git_files_from_patterns(SYNTH_KEY_PATTERNS)
-    untracked_files = itertools.chain.from_iterable(
-        glob.glob(pattern, recursive=True) for pattern in SYNTH_KEY_PATTERNS_UNTRACKED
-    )
+    untracked_files = get_files_from_patterns(SYNTH_KEY_PATTERNS_UNTRACKED)
     return SYNTH_KEY_PREFIX + sha256sum_files(itertools.chain(tracked_files, untracked_files))
 
 
@@ -378,6 +397,10 @@ def main(opts):
         key = get_build_key()
         include_patterns = BUILD_CACHE_INCLUDE_PATTERNS
         exclude_patterns = BUILD_CACHE_EXCLUDE_PATTERNS
+    elif opts["clash"]:
+        key = get_clash_key()
+        include_patterns = CLASH_CACHE_INCLUDE_PATTERNS
+        exclude_patterns = CLASH_CACHE_EXCLUDE_PATTERNS
     elif opts["synth"]:
         key = get_synth_key()
         include_patterns = SYNTH_CACHE_INCLUDE_PATTERNS

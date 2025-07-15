@@ -381,7 +381,17 @@ main = do
               --      not have. Ideally we would parse the manifest file and
               --      also depend on the dependencies' manifest files, etc.
               connector <- liftIO tclConnector
-              need [manifestPath, connector]
+
+              -- XXX: If we're running on CI, we trust the logic there to have
+              --      generated the HDL (i.e., manifest file). This is a bit of
+              --      a hack dealing with the fact that properly handling Shake's
+              --      database in CI is a pain.
+              ci <- getEnvWithDefault "false" "CI"
+              case ci of
+                "true" -> need [connector]
+                "false" -> need [manifestPath, connector]
+                _ -> error $ "Unknown value for environment variable 'CI': " <> ci
+
               let
                 xdcNames = entityName targetName <> ".xdc" : targetExtraXdc
                 xdcPaths = map ((dataFilesDir </> "constraints") </>) xdcNames
@@ -393,7 +403,7 @@ main = do
                   else pure []
 
               synthesisPart <- getBoardPart
-              locatedManifest <- decodeLocatedManifest manifestPath
+              locatedManifest <- liftIO (decodeLocatedManifestNoNeed manifestPath)
 
               liftIO $
                 runSynthesis

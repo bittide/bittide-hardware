@@ -21,6 +21,7 @@ module Clash.Shake.Vivado (
   BoardPart (..),
   TclGlobPattern,
   decodeLocatedManifest,
+  decodeLocatedManifestNoNeed,
   runSynthesis,
   runPlaceAndRoute,
   runBitstreamGen,
@@ -43,7 +44,6 @@ import Bittide.Instances.Hitl.Utils.Vivado
 import Clash.Driver.Manifest
 import Clash.Prelude (BitPack (BitSize), Natural, natToNatural, pack)
 import Clash.Shake.Extra (hexDigestFile)
-import qualified Clash.Sized.Internal.BitVector as BitVector
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
 import Control.Exception (Exception (displayException), SomeException, catch, try)
@@ -54,12 +54,11 @@ import Data.Either (lefts, rights)
 import Data.List (isInfixOf, isSuffixOf, sort, sortOn, (\\))
 import Data.List.Extra (anySame, split, (!?))
 import Data.Map.Strict (fromList, keys, mapKeys, toAscList)
-import qualified Data.Map.Strict as Map
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Set (Set)
-import qualified Data.Set as Set
 import Data.String.Interpolate (i, __i)
 import Data.Text (unpack)
+import GHC.Stack (HasCallStack)
 import System.Clock (Clock (Monotonic), TimeSpec, diffTimeSpec, getTime, toNanoSecs)
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (ExitCode (..))
@@ -68,6 +67,11 @@ import Text.Read (readMaybe)
 import Vivado (TclException (..), VivadoHandle, execPrint_, with)
 import Vivado.Tcl
 import Vivado.VivadoM
+
+import qualified Clash.Sized.Internal.BitVector as BitVector
+import qualified Data.Aeson as Aeson
+import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 
 -- | Satisfied if all actions result in 'False'
 noneM :: (Monad m) => [m Bool] -> m Bool
@@ -108,8 +112,12 @@ data LocatedManifest = LocatedManifest
   -- ^ Manifest file corresponding to the one at 'lmPath'
   }
 
-decodeLocatedManifest :: FilePath -> Action LocatedManifest
+decodeLocatedManifest :: (HasCallStack) => FilePath -> Action LocatedManifest
 decodeLocatedManifest path = LocatedManifest path <$> decodeFile path
+
+decodeLocatedManifestNoNeed :: (HasCallStack) => FilePath -> IO LocatedManifest
+decodeLocatedManifestNoNeed path =
+  LocatedManifest path . fromJust <$> Aeson.decodeFileStrict path
 
 {- | Vivado board part or part. If a board part is set, Vivado will infer the
 part on that board.
