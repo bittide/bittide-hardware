@@ -574,7 +574,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn sy
         -< (muUartBus, Fwd (pure Nothing))
 
     muUartBytes <-
-      dcFifoDf d16 bittideClk handshakeRstTx refClk handshakeRstFree
+      dcFifoDf d5 bittideClk handshakeRstTx refClk handshakeRstFree
         -< muUartBytesBittide
 
     (Fwd lc, muWbAll) <-

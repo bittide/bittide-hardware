@@ -815,7 +815,7 @@ axi4WriteAddressFifo ::
     (Axi4WriteAddress domA conf userType)
     (Axi4WriteAddress domB conf userType)
 axi4WriteAddressFifo clkA rstA clkB rstB =
-  axi4ToDf |> dcFifoDf d8 clkA rstA clkB rstB |> dfToAxi4
+  axi4ToDf |> dcFifoDf d5 clkA rstA clkB rstB |> dfToAxi4
  where
   axi4ToDf ::
     Circuit
@@ -856,7 +856,7 @@ axi4WriteDataFifo ::
     (Axi4WriteData domA conf userType)
     (Axi4WriteData domB conf userType)
 axi4WriteDataFifo clkA rstA clkB rstB =
-  axi4ToDf |> dcFifoDf d8 clkA rstA clkB rstB |> dfToAxi4
+  axi4ToDf |> dcFifoDf d5 clkA rstA clkB rstB |> dfToAxi4
  where
   axi4ToDf ::
     Circuit
@@ -897,7 +897,7 @@ axi4WriteResponseFifo ::
     (Axi4WriteResponse domA conf userType)
     (Axi4WriteResponse domB conf userType)
 axi4WriteResponseFifo clkA rstA clkB rstB =
-  axi4ToDf |> dcFifoDf d8 clkA rstA clkB rstB |> dfToAxi4
+  axi4ToDf |> dcFifoDf d5 clkA rstA clkB rstB |> dfToAxi4
  where
   axi4ToDf ::
     Circuit
@@ -938,7 +938,7 @@ axi4ReadAddressFifo ::
     (Axi4ReadAddress domA conf userType)
     (Axi4ReadAddress domB conf userType)
 axi4ReadAddressFifo clkA rstA clkB rstB =
-  axi4ToDf |> dcFifoDf d8 clkA rstA clkB rstB |> dfToAxi4
+  axi4ToDf |> dcFifoDf d5 clkA rstA clkB rstB |> dfToAxi4
  where
   axi4ToDf ::
     Circuit
@@ -980,7 +980,7 @@ axi4ReadDataFifo ::
     (Axi4ReadData domA conf userType dataType)
     (Axi4ReadData domB conf userType dataType)
 axi4ReadDataFifo clkA rstA clkB rstB =
-  axi4ToDf |> dcFifoDf d8 clkA rstA clkB rstB |> dfToAxi4
+  axi4ToDf |> dcFifoDf d5 clkA rstA clkB rstB |> dfToAxi4
  where
   axi4ToDf ::
     Circuit
