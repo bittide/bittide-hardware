@@ -638,6 +638,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn sy
       , Fwd swCcOut0
       , [ (ccWhoAmIPfx, ccWhoAmIBus)
           , (ccUartPfx, ccUartBus)
+          , (ccSampleMemoryPfx, ccSampleMemoryBus)
           ]
       ) <-
       defaultRefClkRstEn (callistoSwClockControlC @LinkCount @CccBufferSize NoDumpVcd ccConfig)
@@ -651,6 +652,12 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn sy
     --          0b1010    DBG
     --          0b1100    CC
     MM.constBwd 0b1110 -< ccWhoAmIPfx
+    MM.constBwd 0b1111 -< ccSampleMemoryPfx
+
+    defaultRefClkRstEn
+      (wbStorage "SampleMemory")
+      (Undefined @36_000 @(BitVector 32))
+      -< ccSampleMemoryBus
 
     defaultRefClkRstEn (whoAmIC 0x6363_7773) -< ccWhoAmIBus
 
