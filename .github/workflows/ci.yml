@@ -625,6 +625,16 @@ jobs:
       - name: cache push build-post-synth
         run: cache push build-post-synth --prefix="${{ matrix.target.top }}"
 
+      - name: Archive build artifacts (if anything failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: _build-${{ matrix.target.top }}-failure
+          path: |
+            _build/clash
+            _build/vivado
+            !_build/vivado/*/ip
+
   bittide-instances-publish-artifacts:
     name: artifacts
     runs-on: [self-hosted, compute]
