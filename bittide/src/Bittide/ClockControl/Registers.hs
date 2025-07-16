@@ -119,9 +119,9 @@ clockControlWb margin frameSize linkMask (bundle -> counters) = circuit $ \(mm, 
  where
   noWrite = pure Nothing
 
-  wbNumLinksConfig = (registerConfig "num_links"){access = ReadOnly}
+  wbNumLinksConfig = (registerConfig "n_links"){access = ReadOnly}
   wbLinkMaskConfig = (registerConfig "link_mask"){access = ReadOnly}
-  wbUpLinksConfig = (registerConfig "up_links"){access = ReadOnly}
+  wbUpLinksConfig = (registerConfig "n_up_links"){access = ReadOnly}
   wbChangeSpeedConfig = (registerConfig "change_speed"){access = WriteOnly}
   wbLinksStableConfig = (registerConfig "links_stable"){access = ReadOnly}
   wbLinksSettledConfig = (registerConfig "links_settled"){access = ReadOnly}

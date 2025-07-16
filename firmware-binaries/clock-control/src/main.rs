@@ -26,6 +26,7 @@ fn main() -> ! {
     let dbgreg = INSTANCES.debug_register;
     let timer = INSTANCES.timer;
     let mut uart = INSTANCES.uart;
+    let freeze = INSTANCES.freeze;
 
     uwriteln!(uart, "Starting clock control..").unwrap();
 
@@ -47,7 +48,8 @@ fn main() -> ! {
     let mut next_update = timer.now() + interval;
 
     loop {
-        callisto::callisto(&cc, &config, &mut state);
+        freeze.set_freeze(true);
+        callisto::callisto(&cc, freeze.eb_counters_volatile_iter(), &config, &mut state);
         cc.set_change_speed(state.b_k);
         timer.wait_until(next_update);
         next_update += interval;

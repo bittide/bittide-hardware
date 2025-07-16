@@ -108,9 +108,23 @@ fn speed_change_to_sign(speed_change: SpeedChange) -> i32 {
     }
 }
 
+/// Determining whether a link is active is a bit tricky, because the link mask's
+/// bit indices are inverted compared to the indices of the links. This makes
+/// sense from a Clash lens (as BitPack "reverses" bits).
+fn is_active_link(link_mask: u8, n_buffers: u8, i: usize) -> bool {
+    link_mask & (1 << ((n_buffers - 1) as usize - i)) != 0
+}
+
 /// Clock correction strategy based on:
 /// [https://github.com/bittide/Callisto.jl](https://github.com/bittide/Callisto.jl)
-pub fn callisto(cc: &ClockControl, config: &ControlConfig, state: &mut ControlSt) {
+pub fn callisto<I>(
+    cc: &ClockControl,
+    eb_counters_iter: I,
+    config: &ControlConfig,
+    state: &mut ControlSt,
+) where
+    I: Iterator<Item = i32>,
+{
     // see clock control algorithm simulation here:
     //
     // https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
@@ -121,11 +135,23 @@ pub fn callisto(cc: &ClockControl, config: &ControlConfig, state: &mut ControlSt
     const K_P: f32 = 2e-8;
     const FSTEP: f32 = 10e-9;
 
-    let n_buffers = cc.up_links();
+    let n_links = cc.n_links();
+    let n_up_links = cc.n_up_links();
+    let link_mask = cc.link_mask();
 
-    let measured_sum: i32 = cc.data_counts_volatile_iter().sum();
+    // Sum the data counts for all active links
+    let measured_sum: i32 = eb_counters_iter
+        .enumerate()
+        .map(|(i, v)| {
+            if is_active_link(link_mask, n_links, i) {
+                v
+            } else {
+                0
+            }
+        })
+        .sum();
 
-    let r_k = (measured_sum - n_buffers as i32 * config.target_count as i32) as f32;
+    let r_k = (measured_sum - n_up_links as i32 * config.target_count as i32) as f32;
     let c_des = K_P * r_k + state.steady_state_target;
 
     state.z_k += speed_change_to_sign(state.b_k);
