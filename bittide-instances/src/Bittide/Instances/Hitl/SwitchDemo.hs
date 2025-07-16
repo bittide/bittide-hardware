@@ -239,7 +239,7 @@ ccConfig =
           , initD = Undefined @(Div (64 * 1024) 4)
           , iBusTimeout = d0
           , dBusTimeout = d0
-          , includeIlaWb = True
+          , includeIlaWb = False
           }
     , ccRegPrefix = 0b1100
     , dbgRegPrefix = 0b1010
@@ -305,7 +305,8 @@ switchDemoDut ::
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
 switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn syncIn =
-  hwSeqX
+  -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
+  seqX
     (bundle (debugIla, bittidePeIla))
     ( ccMm
     , muMm
@@ -854,7 +855,8 @@ switchDemoTest ::
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
 switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn =
-  hwSeqX
+  -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
+  seqX
     testIla
     ( txs
     , txns
