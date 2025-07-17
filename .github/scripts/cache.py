@@ -171,7 +171,11 @@ def get_build_key():
     return BUILD_KEY_PREFIX + os.environ["GITHUB_SHA"]
 
 def get_clash_key():
-    exclude = "bittide-instances/src/Bittide/Instances/Hitl/Driver/"
+    exclude = (
+        "bittide-instances/src/Bittide/Instances/Hitl/Driver/",
+        "bittide-instances/src/Bittide/Instances/Hitl/Utils/",
+        "bittide-instances/src/Bittide/Instances/Hitl/Post/",
+    )
     files = get_git_files_from_patterns(CLASH_KEY_PATTERNS)
     files = (f for f in files if not f.startswith(exclude))
     return CLASH_KEY_PREFIX + sha256sum_files(files)
