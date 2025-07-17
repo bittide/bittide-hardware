@@ -18,7 +18,7 @@ import GHC.Stack (HasCallStack)
 import Hedgehog (Gen, Property)
 import Hedgehog.Internal.Property (property)
 import Protocols
-import Protocols.Hedgehog (defExpectOptions)
+import Protocols.Hedgehog (defExpectOptions, eoSampleMax)
 import Protocols.MemoryMap
 import Protocols.MemoryMap.Registers.WishboneStandard
 import Protocols.Wishbone
@@ -167,7 +167,12 @@ prop_wb :: Property
 prop_wb =
   property
     $ withClockResetEnable clk rst ena
-    $ wishbonePropWithModel @XilinxSystem defExpectOptions model dut genInputs initState
+    $ wishbonePropWithModel @XilinxSystem
+      defExpectOptions{eoSampleMax = 10_000}
+      model
+      dut
+      genInputs
+      initState
  where
   clk = clockGen
   rst = resetGen
