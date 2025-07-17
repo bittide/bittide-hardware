@@ -51,7 +51,7 @@ data OcdInitData = OcdInitData
   -- ^ Management unit GDB port
   , ccPort :: Int
   -- ^ Clock control GDB port
-  , handles :: ProcessStdIoHandles
+  , handles :: ProcessHandles
   -- ^ OpenOCD stdio handles
   , cleanup :: IO ()
   -- ^ Cleanup function
@@ -199,7 +199,7 @@ driver testName targets = do
 
       return $ OcdInitData gdbPortMU gdbPortCC ocd ocdClean1
 
-    initGdb :: String -> Int -> (HwTarget, DeviceInfo) -> IO (ProcessStdIoHandles, IO ())
+    initGdb :: String -> Int -> (HwTarget, DeviceInfo) -> IO (ProcessHandles, IO ())
     initGdb binName gdbPort (hwT, d) = do
       putStrLn $ "Starting GDB for target " <> d.deviceId <> " with bin name " <> binName
 
@@ -220,7 +220,7 @@ driver testName targets = do
 
       return (gdb, gdbClean1)
 
-    initPicocom :: (HwTarget, DeviceInfo) -> Int -> IO (ProcessStdIoHandles, IO ())
+    initPicocom :: (HwTarget, DeviceInfo) -> Int -> IO (ProcessHandles, IO ())
     initPicocom (_hwTarget, deviceInfo) targetIndex = do
       -- Using a single handle makes picocom panic
       devNullHandle0 <- openFile "/dev/null" WriteMode
@@ -259,7 +259,7 @@ driver testName targets = do
 
       pure (pico, cleanup)
 
-    ccGdbCheck :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ExitCode
+    ccGdbCheck :: (HwTarget, DeviceInfo) -> ProcessHandles -> VivadoM ExitCode
     ccGdbCheck (_, _) gdb = do
       liftIO
         $ Gdb.runCommands
@@ -298,7 +298,7 @@ driver testName targets = do
       openHardwareTarget hwT
       updateVio "vioHitlt" [("probe_all_programmed", "1")]
 
-    muGdbCheck :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ExitCode
+    muGdbCheck :: (HwTarget, DeviceInfo) -> ProcessHandles -> VivadoM ExitCode
     muGdbCheck (_, _) gdb = do
       liftIO
         $ Gdb.runCommands
@@ -373,7 +373,7 @@ driver testName targets = do
       inner innerInit
 
     muGetUgns ::
-      (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM [(Unsigned 64, Unsigned 64)]
+      (HwTarget, DeviceInfo) -> ProcessHandles -> VivadoM [(Unsigned 64, Unsigned 64)]
     muGetUgns (_, d) gdb = do
       let
         mmioAddrs :: [String]
@@ -406,7 +406,7 @@ driver testName targets = do
       liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
       liftIO $ mapM readUgnMmio mmioAddrs
 
-    muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> IO ()
+    muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> ProcessHandles -> IO ()
     muReadPeBuffer (_, d) gdb = do
       putStrLn $ "Reading PE buffer from device " <> d.deviceId
       let
@@ -431,7 +431,7 @@ driver testName targets = do
     muGetCurrentTime ::
       (HasCallStack) =>
       (HwTarget, DeviceInfo) ->
-      ProcessStdIoHandles ->
+      ProcessHandles ->
       IO (Unsigned 64)
     muGetCurrentTime (_, d) gdb = do
       putStrLn $ "Getting current time from device " <> d.deviceId
@@ -489,7 +489,7 @@ driver testName targets = do
     muWriteCfg ::
       (HasCallStack) =>
       (HwTarget, DeviceInfo) ->
-      ProcessStdIoHandles ->
+      ProcessHandles ->
       Calc.PeConfig (Unsigned 64) (Index 9) ->
       VivadoM ()
     muWriteCfg target@(_, d) gdb (bimap pack fromIntegral -> cfg) = do
@@ -519,14 +519,14 @@ driver testName targets = do
 
     finalCheck ::
       (HasCallStack) =>
-      [ProcessStdIoHandles] ->
+      [ProcessHandles] ->
       [Calc.PeConfig (Unsigned 64) (Index 9)] ->
       VivadoM ExitCode
     finalCheck [] _ = fail "Should pass in two or more GDBs for the final check!"
     finalCheck (_ : []) _ = fail "Should pass in two or more GDBs for the final check!"
     finalCheck gdbs@(headGdb : _) configs = do
       let
-        perDeviceCheck :: ProcessStdIoHandles -> Int -> IO Bool
+        perDeviceCheck :: ProcessHandles -> Int -> IO Bool
         perDeviceCheck myGdb num = do
           let
             headBaseAddr = muBaseAddress "SwitchDemoPE" + 0x28

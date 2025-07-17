@@ -37,7 +37,7 @@ withOpenOcd ::
   -- | Telnet port
   Int ->
   -- | Action to run with OpenOCD
-  (ProcessStdIoHandles -> m a) ->
+  (ProcessHandles -> m a) ->
   m a
 withOpenOcd = withOpenOcdWithEnv []
 
@@ -57,7 +57,7 @@ withOpenOcdWithEnv ::
   -- | Telnet port
   Int ->
   -- | Action to run with OpenOCD
-  (ProcessStdIoHandles -> m a) ->
+  (ProcessHandles -> m a) ->
   m a
 withOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort action = do
   (ocd, _handle, clean) <-
@@ -78,7 +78,7 @@ startOpenOcdWithEnv ::
   Int ->
   -- | Telnet port
   Int ->
-  IO (ProcessStdIoHandles, ProcessHandle, IO ())
+  IO (ProcessHandles, ProcessHandle, IO ())
 startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort =
   startOpenOcdWithEnvAndArgs
     ["-f", "ports.tcl", "-f", "sipeed.tcl", "-f", "vexriscv_init.tcl"]
@@ -93,7 +93,7 @@ startOpenOcdWithEnv extraEnv usbLoc gdbPort tclPort telnetPort =
 startOpenOcdWithEnvAndArgs ::
   [String] ->
   [(String, String)] ->
-  IO (ProcessStdIoHandles, ProcessHandle, IO ())
+  IO (ProcessHandles, ProcessHandle, IO ())
 startOpenOcdWithEnvAndArgs args extraEnv = do
   startPath <- getStartPath
   currentEnv <- getEnvironment
@@ -111,10 +111,11 @@ startOpenOcdWithEnvAndArgs args extraEnv = do
 
   let
     ocdHandles' =
-      ProcessStdIoHandles
+      ProcessHandles
         { stdinHandle = fromJust openOcdStdin
         , stdoutHandle = fromJust openOcdStdout
         , stderrHandle = fromJust openOcdStderr
+        , process = openOcdPh
         }
 
   pure (ocdHandles', openOcdPh, cleanupProcess ocdHandles)
