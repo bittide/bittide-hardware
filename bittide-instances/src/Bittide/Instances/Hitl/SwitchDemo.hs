@@ -92,7 +92,7 @@ import Protocols.Wishbone
 import System.FilePath ((</>))
 import VexRiscv (DumpVcd (..), Jtag, JtagIn (..), JtagOut (..))
 
-import qualified Bittide.Instances.Hitl.Driver.SwitchDemo as D
+import {-# SOURCE #-} qualified Bittide.Instances.Hitl.Driver.SwitchDemo as D
 import qualified Bittide.Transceiver as Transceiver
 import qualified Clash.Cores.Xilinx.GTH as Gth
 import qualified Protocols.MemoryMap as MM

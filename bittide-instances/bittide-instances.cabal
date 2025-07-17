@@ -231,6 +231,7 @@ library
     lifted-base,
     monad-control,
     network-simple,
+    pretty-show,
     process,
     streaming-bytestring,
     string-interpolate,
