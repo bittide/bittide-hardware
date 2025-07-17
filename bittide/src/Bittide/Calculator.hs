@@ -26,6 +26,9 @@ import qualified Data.Map as Map
 type FpgaId = String
 
 -- TODO: find a way to derive this 4 from the code instead of using a magic number.
+--
+-- This is currently '4', because we traverse two switches and each switch has registered
+-- inputs and outputs.
 iNTERNAL_SWITCH_DELAY :: (Num a) => a
 iNTERNAL_SWITCH_DELAY = 4
 
@@ -283,7 +286,7 @@ type DefaultMetaPeConfig
   (reps :: Nat) =
   MetaPeConfig
     a
-    (Index (ActiveCycles nNodes cyclesPerWrite reps))
+    (Index (MetacycleLength nNodes cyclesPerWrite padding reps))
     (Index (nNodes + 1))
 
 type DefaultGppeMetaPeConfig a (nNodes :: Nat) (cyclesPerWrite :: Nat) (padding :: Nat) =
@@ -459,9 +462,9 @@ chainConfigurationWorker _ fpgaConfig ugnParts writeOffset =
     | otherwise = linkSelectOffset0 + metacycleLength - offsetInDstMetacycle
    where
     -- For a graphical representation of what we're doing here, check out:
-    -- bittide-instances/imgs/ugn_calculator.drawio. For a general introduction
+    -- `bittide/imgs/metacycle-ugn-calculator.svg`. For a general introduction
     -- see slides "determining read/write cycles" in
-    -- https://docs.google.com/presentation/d/1AGbAJQ1zhTPtrekKnQcthd0TUPyQs-zowQpV1ux4k-Y
+    -- https://docs.google.com/presentation/d/1JryWl8EjcWlwOW7OO24nXui5wx_WPlDJOtp1Jlf_fmE
     linkSelectOffset0 = offsetsByFpga !! dst Map.! src
     linkSelectOffset1 = linkSelectOffset0 + windowCycles
     crossbarDstCycle = mapCycle (srcCycle - dELAY_CROSSBAR_TO_PE) src dst
