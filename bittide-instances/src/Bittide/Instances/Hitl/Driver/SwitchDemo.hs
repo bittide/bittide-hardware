@@ -33,6 +33,7 @@ import System.Exit
 import System.FilePath
 import System.IO
 import System.Process (StdStream (CreatePipe, UseHandle))
+import Text.Read (readMaybe)
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 import "extra" Data.List.Extra (trim)
@@ -70,6 +71,34 @@ type MetacycleLength = Calc.CalMetacycleLength GppeConfig
 
 gppeConfig :: GppeConfig
 gppeConfig = Calc.defaultGppeCalcConfig
+
+{- | Compare two hexadecimal strings for equality. Given strings do not have to
+start with \"0x\". The comparison is case-insensitive, though the prefix must
+be exactly \"0x\" if it is present (not \"0X\").
+
+>>> hexEq "0xAB" "0xab"
+True
+>>> hexEq "0xAB" "0xabc"
+False
+>>> hexEq "0x0AB" "0xAB"
+True
+>>> hexEq "AB" "0xAB"
+True
+-}
+hexEq :: String -> String -> Bool
+hexEq a0 b0 =
+  case (readMaybe @Integer a1, readMaybe b1) of
+    (Just a, Just b) -> a == b
+    _ -> False
+ where
+  a1 = "0x" <> dropPrefix "0x" a0
+  b1 = "0x" <> dropPrefix "0x" b0
+
+-- | Drop a prefix from a list if it exists
+dropPrefix :: (Eq a) => [a] -> [a] -> [a]
+dropPrefix prefix xs
+  | prefix `L.isPrefixOf` xs = L.drop (L.length prefix) xs
+  | otherwise = xs
 
 driver ::
   (HasCallStack) =>
@@ -457,19 +486,6 @@ driver testName targets = do
     finalCheck (_ : []) _ = fail "Should pass in two or more GDBs for the final check!"
     finalCheck gdbs@(headGdb : _) configs = do
       let
-        hexEq :: String -> String -> Bool
-        hexEq a b = drop0sA == drop0sB
-         where
-          drop0xA =
-            if "0x" `L.isPrefixOf` a
-              then L.drop 2 a
-              else a
-          drop0xB =
-            if "0x" `L.isPrefixOf` b
-              then L.drop 2 b
-              else b
-          drop0sA = L.dropWhile (== '0') drop0xA
-          drop0sB = L.dropWhile (== '0') drop0xB
         perDeviceCheck :: ProcessStdIoHandles -> Int -> IO Bool
         perDeviceCheck myGdb num = do
           let
