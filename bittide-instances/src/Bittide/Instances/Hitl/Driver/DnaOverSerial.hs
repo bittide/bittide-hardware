@@ -65,7 +65,7 @@ dnaOverSerialDriver _name targets = do
       liftIO $ assertFailure "Not all FPGAs transmitted the expected DNA"
       pure $ ExitFailure 2
  where
-  initPicocoms :: [IO (ProcessStdIoHandles, IO ())]
+  initPicocoms :: [IO (ProcessHandles, IO ())]
   initPicocoms = flip L.map targets $ \(hwT, dI) -> do
     let targetId = idFromHwT hwT
     let targetIndex = fromMaybe 9 $ L.findIndex (\d -> d.deviceId == targetId) demoRigInfo
@@ -91,7 +91,7 @@ dnaOverSerialDriver _name targets = do
 
     pure (pico, picoClean)
 
-  checkDna :: DeviceInfo -> ProcessStdIoHandles -> IO Bool
+  checkDna :: DeviceInfo -> ProcessHandles -> IO Bool
   checkDna d pico = do
     terminalReadyResult <-
       timeout 10_000_000 $ waitForLine pico.stdoutHandle "Terminal ready"
@@ -114,7 +114,7 @@ dnaOverSerialDriver _name targets = do
     putStrLn $ "Differences:  " <> differences
     pure match
 
-  findDna :: ProcessStdIoHandles -> String -> IO String
+  findDna :: ProcessHandles -> String -> IO String
   findDna pico prev = do
     get <- BS.hGet pico.stdoutHandle 1
     case BS.unpack get of

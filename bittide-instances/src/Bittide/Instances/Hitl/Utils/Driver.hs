@@ -107,7 +107,7 @@ awaitHandshakes targets = do
         else inner new
   inner innerInit
 
-readSingleGdbValue :: ProcessStdIoHandles -> String -> String -> IO String
+readSingleGdbValue :: ProcessHandles -> String -> String -> IO String
 readSingleGdbValue gdb value cmd = do
   let
     startString = "START OF READ (" <> value <> ")"

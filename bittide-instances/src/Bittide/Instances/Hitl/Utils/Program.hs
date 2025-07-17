@@ -22,10 +22,11 @@ brackets acqs rel act = go [] acqs
 getTcpSprayPath :: IO FilePath
 getTcpSprayPath = getDataFileName "data/tcpspray/start.sh"
 
-data ProcessStdIoHandles = ProcessStdIoHandles
+data ProcessHandles = ProcessHandles
   { stdinHandle :: Handle
   , stdoutHandle :: Handle
   , stderrHandle :: Handle
+  , process :: ProcessHandle
   }
 
 awaitProcessTermination :: String -> ProcessHandle -> Maybe Int -> IO ()
