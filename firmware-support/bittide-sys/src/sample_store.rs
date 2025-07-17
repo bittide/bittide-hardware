@@ -4,7 +4,7 @@
 
 use bittide_hal::freeze::SampleMemory;
 
-const WORDS_PER_SAMPLE: usize = 12;
+const WORDS_PER_SAMPLE: usize = 11;
 
 /// State machinery for storing clock control samples in memory.
 pub struct SampleStore {
