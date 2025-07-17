@@ -125,6 +125,7 @@ common extra
     DefaultSignatures
     DeriveAnyClass
     ImplicitParams
+    OverloadedRecordDot
     TypeFamilies
     ViewPatterns
 

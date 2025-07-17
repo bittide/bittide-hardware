@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 
 {- | Test whether clock boards are configurable and transceiver links come
 online. This assumes to run on a fully connected mesh of 8 FPGAs. Also see
