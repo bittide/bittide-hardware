@@ -124,6 +124,7 @@ common extra
   default-extensions:
     DefaultSignatures
     DeriveAnyClass
+    ImplicitParams
     TypeFamilies
     ViewPatterns
 
