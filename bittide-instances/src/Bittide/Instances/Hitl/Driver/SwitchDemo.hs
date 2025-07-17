@@ -140,6 +140,17 @@ muCaptureUgnAddresses =
  where
   ugnDevices = baseAddresses memoryMapMu "CaptureUgn"
 
+dumpCcSamples :: [ProcessHandles] -> IO [String]
+dumpCcSamples = mapM go
+ where
+  sampleMemoryBase = ccBaseAddress @Integer "SampleMemory"
+
+  go gdb = do
+    readSingleGdbValue
+      gdb
+      ("N_SAMPLES_WRITTEN")
+      ("x/1gx " <> showHex32 sampleMemoryBase)
+
 driver ::
   (HasCallStack) =>
   String ->
@@ -666,6 +677,9 @@ driver testName targets = do
           _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
 
           bufferExit <- finalCheck muGdbs (toList chainConfig)
+
+          liftIO $ mapM_ Gdb.interrupt ccGdbs
+          liftIO $ print =<< dumpCcSamples ccGdbs
 
           let
             finalExit =
