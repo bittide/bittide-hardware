@@ -30,7 +30,7 @@ defaultStdStreams :: StdStreams
 defaultStdStreams = StdStreams CreatePipe CreatePipe CreatePipe
 
 -- | Start picocom with the given device path.
-start :: StdStreams -> FilePath -> IO (ProcessStdIoHandles, IO ())
+start :: StdStreams -> FilePath -> IO (ProcessHandles, IO ())
 start stdStreams devPath = do
   startPath <- getStartPath
 
@@ -43,15 +43,16 @@ start stdStreams devPath = do
         , new_session = True
         }
 
-  picoHandles@(picoStdin, picoStdout, picoStderr, _picoPh) <-
+  picoHandles@(picoStdin, picoStdout, picoStderr, picoPh) <-
     createProcess picocomProc
 
   let
     picoHandles' =
-      ProcessStdIoHandles
+      ProcessHandles
         { stdinHandle = fromJust picoStdin
         , stdoutHandle = fromJust picoStdout
         , stderrHandle = fromJust picoStderr
+        , process = picoPh
         }
 
   pure (picoHandles', cleanupProcess picoHandles)
@@ -65,7 +66,7 @@ withPicocomWithLogging ::
   FilePath ->
   FilePath ->
   FilePath ->
-  (ProcessStdIoHandles -> m a) ->
+  (ProcessHandles -> m a) ->
   m a
 withPicocomWithLogging stdStreams devPath stdoutPath stderrPath action = do
   (pico, clean) <- liftIO $ startWithLogging stdStreams devPath stdoutPath stderrPath
@@ -80,7 +81,7 @@ withPicocomWithLoggingAndEnv ::
   FilePath ->
   FilePath ->
   [(String, String)] ->
-  (ProcessStdIoHandles -> IO a) ->
+  (ProcessHandles -> IO a) ->
   IO a
 withPicocomWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv action = do
   (pico, clean) <- startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv
@@ -91,7 +92,7 @@ startWithLogging ::
   FilePath ->
   FilePath ->
   FilePath ->
-  IO (ProcessStdIoHandles, IO ())
+  IO (ProcessHandles, IO ())
 startWithLogging stdStreams devPath stdoutPath stderrPath =
   startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath []
 
@@ -104,7 +105,7 @@ startWithLoggingAndEnv ::
   FilePath ->
   FilePath ->
   [(String, String)] ->
-  IO (ProcessStdIoHandles, IO ())
+  IO (ProcessHandles, IO ())
 startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv = do
   startPath <- getStartPath
   currentEnv <- getEnvironment
@@ -124,15 +125,16 @@ startWithLoggingAndEnv stdStreams devPath stdoutPath stderrPath extraEnv = do
               )
         }
 
-  picoHandles@(picoStdin, picoStdout, picoStderr, _picoPh) <-
+  picoHandles@(picoStdin, picoStdout, picoStderr, picoPh) <-
     createProcess picocomProc
 
   let
     picoHandles' =
-      ProcessStdIoHandles
+      ProcessHandles
         { stdinHandle = fromJust picoStdin
         , stdoutHandle = fromJust picoStdout
         , stderrHandle = fromJust picoStderr
+        , process = picoPh
         }
 
   pure (picoHandles', cleanupProcess picoHandles)
