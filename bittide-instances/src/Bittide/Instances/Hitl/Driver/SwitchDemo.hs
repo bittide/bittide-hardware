@@ -151,6 +151,29 @@ muCaptureUgnAddresses =
  where
   ugnDevices = baseAddresses memoryMapMu "CaptureUgn"
 
+dumpCcSamples :: (HasCallStack) => ProcessHandles -> FilePath -> IO Word
+dumpCcSamples gdb dumpPath = do
+  nSamplesWritten <-
+    readSingleGdbValue
+      gdb
+      ("N_SAMPLES_WRITTEN")
+      ("x/1wx " <> showHex32 sampleMemoryBase)
+
+  let
+    bytesPerSample = 11
+    bytesPerWord = 4
+
+  case readMaybe nSamplesWritten of
+    Nothing -> error [i|Could not parse GDB output as number: #{nSamplesWritten}|]
+    Just n ->
+      let
+        dumpStart = sampleMemoryBase + bytesPerWord
+        dumpEnd = dumpStart + fromIntegral n * bytesPerWord * bytesPerSample
+       in
+        Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure n
+ where
+  sampleMemoryBase = ccBaseAddress @Integer "SampleMemory"
+
 driver ::
   (HasCallStack) =>
   String ->
@@ -685,6 +708,11 @@ driver testName targets = do
           _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
 
           bufferExit <- finalCheck muGdbs (toList chainConfig)
+
+          let ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) ..]]
+          liftIO $ mapM_ Gdb.interrupt ccGdbs
+          liftIO $ putStr "Dumped /n/ clock control samples: "
+          liftIO $ print =<< zipWithM dumpCcSamples ccGdbs ccSamplesPaths
 
           let
             finalExit =

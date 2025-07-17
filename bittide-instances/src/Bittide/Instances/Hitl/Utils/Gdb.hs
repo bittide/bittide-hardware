@@ -11,7 +11,9 @@ import Control.Monad (forM_)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Maybe (fromJust)
+import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
+import Numeric (showHex)
 import Project.Handle
 import System.IO
 import System.Posix (sigINT, signalProcess)
@@ -123,6 +125,33 @@ setLogging gdb logPath = do
       , "set logging overwrite on"
       , "set logging enabled on"
       ]
+
+dumpMemoryRegion ::
+  (HasCallStack) =>
+  -- | GDB process handles
+  ProcessHandles ->
+  -- | File path to dump the memory region to (binary format)
+  FilePath ->
+  -- | Start address of the memory region
+  Integer ->
+  -- | End address of the memory region (exclusive)
+  Integer ->
+  IO ()
+dumpMemoryRegion gdb filePath start end = do
+  runCommands
+    gdb.stdinHandle
+    [ [i|dump binary memory #{filePath} 0x#{showHex start ""} 0x#{showHex end ""}|]
+    , "echo dump_done\\n"
+    ]
+
+  let
+    expectedResponse "(gdb) (gdb) dump_done" = Stop Ok
+    expectedResponse s = Stop (Error ("Unexpected response: " <> s))
+
+  result <- timeout 60_000_000 $ expectLine gdb.stdoutHandle expectedResponse
+  pure $ case result of
+    Just () -> ()
+    Nothing -> error "Dumping samples timed out"
 
 -- | Sets the target to be debugged in gdb, must be a port number.
 setTarget :: ProcessHandles -> Int -> IO ()

@@ -986,7 +986,7 @@ tests =
     , externalHdl = []
     , testCases =
         [ HitlTestCase
-            { name = "Bittide Demo DUT"
+            { name = "Bittide_Demo_DUT"
             , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
             }
