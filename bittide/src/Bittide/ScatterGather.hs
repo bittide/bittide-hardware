@@ -36,7 +36,7 @@ data ScatterConfig nBytes addrW where
   ScatterConfig ::
     (KnownNat memDepth, 1 <= memDepth) =>
     SNat memDepth ->
-    (CalendarConfig nBytes addrW (Index memDepth)) ->
+    (CalendarConfig addrW (Index memDepth)) ->
     ScatterConfig nBytes addrW
 
 {- | Existential type to explicitly differentiate between a configuration for
@@ -47,7 +47,7 @@ data GatherConfig nBytes addrW where
   GatherConfig ::
     (KnownNat memDepth, 1 <= memDepth) =>
     SNat memDepth ->
-    (CalendarConfig nBytes addrW (Index memDepth)) ->
+    (CalendarConfig addrW (Index memDepth)) ->
     GatherConfig nBytes addrW
 
 {- | Double buffered memory component that can be written to by a Bittide link. The write
@@ -65,7 +65,7 @@ scatterUnit ::
   , KnownNat addrW
   ) =>
   -- | Configuration for the 'calendar'.
-  CalendarConfig nBytes addrW (Index memDepth) ->
+  CalendarConfig addrW (Index memDepth) ->
   -- | Wishbone (master -> slave) port for the 'calendar'.
   Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | Incoming frame from Bittide link.
@@ -105,7 +105,7 @@ gatherUnit ::
   , KnownNat addrW
   ) =>
   -- | Configuration for the 'calendar'.
-  CalendarConfig nBytes addrW (Index memDepth) ->
+  CalendarConfig addrW (Index memDepth) ->
   -- | Wishbone (master -> slave) port for the 'calendar'.
   Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | Write operation writing a frame.
@@ -265,7 +265,7 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) linkIn = case cancelM
           , deviceDefs = deviceSingleton (deviceDef memDepthSnat)
           }
 
-    memoryMapCal = calendarMemoryMap "ScatterUnitCalendar" calConfig
+    memoryMapCal = calendarMemoryMap "ScatterUnitCalendar" d4 calConfig
 
 {- | Wishbone addressable 'scatterUnit', the wishbone port can read the data from this
 memory element as if it has a 32 bit port by selecting the upper 32 or lower 32 bits
@@ -360,7 +360,7 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
         , deviceDefs = deviceSingleton (deviceDef memDepthSnat)
         }
 
-    memMapCal = calendarMemoryMap "GatherUniCalendar" calConfig
+    memMapCal = calendarMemoryMap "GatherUniCalendar" d4 calConfig
 
     deviceDef :: forall memDepth. SNat memDepth -> DeviceDefinition
     deviceDef SNat =

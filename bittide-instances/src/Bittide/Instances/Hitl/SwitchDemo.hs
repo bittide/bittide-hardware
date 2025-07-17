@@ -160,7 +160,7 @@ simpleManagementUnitC (SimpleManagementConfig peConfig pfxTime dumpVcd) =
     idC -< (localCounter, nmuWbs)
 
 {- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
-calendarConfig :: CalendarConfig 4 26 (Vec 8 (Index 9))
+calendarConfig :: CalendarConfig 26 (Vec 8 (Index 9))
 calendarConfig =
   CalendarConfig
     (SNat @LinkCount)

@@ -21,7 +21,7 @@ type WishboneWidth = 4
 scatterCal1K :: ScatterConfig WishboneWidth WishboneAddrWidth
 scatterCal1K = ScatterConfig SNat cal
  where
-  cal :: CalendarConfig WishboneWidth WishboneAddrWidth (Index 1024)
+  cal :: CalendarConfig WishboneAddrWidth (Index 1024)
   cal =
     CalendarConfig
       (SNat @1024)
@@ -31,7 +31,7 @@ scatterCal1K = ScatterConfig SNat cal
 gatherCal1K :: GatherConfig WishboneWidth WishboneAddrWidth
 gatherCal1K = GatherConfig SNat cal
  where
-  cal :: CalendarConfig WishboneWidth WishboneAddrWidth (Index 1024)
+  cal :: CalendarConfig WishboneAddrWidth (Index 1024)
   cal =
     CalendarConfig
       (SNat @1024)

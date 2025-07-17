@@ -69,7 +69,7 @@ type Calendar size a repetitionBits = Vec size (ValidEntry a repetitionBits)
 {- | Configuration for the calendar, This type satisfies all
 relevant constraints imposed by calendar.
 -}
-data CalendarConfig nBytes addrW a where
+data CalendarConfig addrW a where
   CalendarConfig ::
     ( KnownNat repetitionBits
     , 1 <= 2 ^ repetitionBits -- This can be removed after https://github.com/clash-lang/ghc-typelits-natnormalise/issues/65 has been fixed.
@@ -90,10 +90,10 @@ data CalendarConfig nBytes addrW a where
     Calendar bootstrapActive a repetitionBits ->
     -- | Initial contents of the inactive calendar.
     Calendar bootstrapShadow a repetitionBits ->
-    CalendarConfig nBytes addrW a
+    CalendarConfig addrW a
 
 -- | Standalone deriving is required because 'CalendarConfig' contains existential type variables.
-deriving instance Show (CalendarConfig nBytes addrW a)
+deriving instance Show (CalendarConfig addrW a)
 
 {- | Wrapper function to create a 'calendar' from the given 'CalendarConfig', this way
 we prevent the constraints of the type variables used in 'calendar' from leaking into
@@ -106,7 +106,7 @@ mkCalendar ::
   , KnownNat addrW
   ) =>
   -- | Calendar configuration for 'calendar'.
-  CalendarConfig nBytes addrW calEntry ->
+  CalendarConfig addrW calEntry ->
   -- | Wishbone interface (master to slave)
   Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- |
@@ -125,10 +125,11 @@ calendarMemoryMap ::
   , KnownNat addrW
   ) =>
   String ->
+  SNat nBytes ->
   -- | Calendar configuration for 'calendar'.
-  CalendarConfig nBytes addrW calEntry ->
+  CalendarConfig addrW calEntry ->
   MemoryMap
-calendarMemoryMap name (CalendarConfig maxCalDepth@SNat _ _) =
+calendarMemoryMap name SNat (CalendarConfig maxCalDepth@SNat _ _) =
   MemoryMap
     { tree = DeviceInstance locCaller name
     , deviceDefs = deviceSingleton (deviceDef maxCalDepth)
