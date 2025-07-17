@@ -435,7 +435,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartR
   memMap =
     SimOnly
       $ MM.MemoryMap
-        { tree = MM.DeviceInstance MM.locCaller "UART"
+        { tree = MM.DeviceInstance MM.locCaller "Uart"
         , deviceDefs = MM.deviceSingleton deviceDef
         }
 
@@ -468,7 +468,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartR
               }
           ]
       , deviceName =
-          MM.Name "UART" "Wishbone accessible UART interface with configurable FIFO buffers."
+          MM.Name "Uart" "Wishbone accessible UART interface with configurable FIFO buffers."
       , definitionLoc = MM.locHere
       , tags = []
       }
@@ -837,7 +837,7 @@ readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
  where
   mm =
     MM.MemoryMap
-      { tree = MM.DeviceInstance MM.locCaller "DNA"
+      { tree = MM.DeviceInstance MM.locCaller "Dna"
       , deviceDefs = MM.deviceSingleton deviceDef
       }
   deviceDef =
@@ -856,7 +856,7 @@ readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
                     }
               }
           ]
-      , deviceName = MM.Name "DNA" ""
+      , deviceName = MM.Name "Dna" ""
       , definitionLoc = MM.locHere
       , tags = []
       }
