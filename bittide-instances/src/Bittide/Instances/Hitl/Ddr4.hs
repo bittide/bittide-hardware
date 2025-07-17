@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 
 {- | Test DDR4 controller by writing values to a specific \"chunk\" of memory. After
 writing, read from the same addresses and confirm that the values are as expected.

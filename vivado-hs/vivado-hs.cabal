@@ -32,6 +32,7 @@ common common-options
     KindSignatures
     LambdaCase
     NoStarIsType
+    OverloadedRecordDot
     PolyKinds
     QuasiQuotes
     RankNTypes

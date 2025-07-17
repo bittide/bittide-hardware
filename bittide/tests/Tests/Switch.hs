@@ -45,7 +45,7 @@ tests =
 data SwitchTestConfig nBytes addrW where
   SwitchTestConfig ::
     (KnownNat links, 1 <= nBytes) =>
-    CalendarConfig nBytes addrW (CalendarEntry links) ->
+    CalendarConfig addrW (CalendarEntry links) ->
     SwitchTestConfig nBytes addrW
 
 deriving instance Show (SwitchTestConfig nBytes addrW)
@@ -85,10 +85,11 @@ linkData = [fmap (,i) vecIndices | i <- [0 ..]]
 simSwitchWithCalendar ::
   forall links nBytes addrW.
   (KnownNat links, KnownNat nBytes, KnownNat addrW, 1 <= nBytes) =>
-  CalendarConfig nBytes addrW (CalendarEntry links) ->
+  SNat nBytes ->
+  CalendarConfig addrW (CalendarEntry links) ->
   [Vec links (Index (links + 1), Unsigned 32)] ->
   [Vec links (Index (links + 1), Unsigned 32)]
-simSwitchWithCalendar calConfig inp = fmap (fmap unpack) actual
+simSwitchWithCalendar SNat calConfig inp = fmap (fmap unpack) actual
  where
   -- Configure the design under test
   dut = withClockResetEnable @System clockGen resetGen enableGen $ circuit $ \linksIn -> do
@@ -117,7 +118,7 @@ switchMulticast = property $ do
         -- A calendar that selects the same link for all outputs
         calSize = SNat @(links + 1)
         cal = (\i -> ValidEntry (repeat i) (0 :: Unsigned 0)) <$> iterate calSize succ 0
-        calConfig = CalendarConfig calSize cal cal
+        calConfig = CalendarConfig calSize SNat cal cal
 
         -- Account for reset cycle. Add null frame to the links.
         inpWithNull = repeat (unpack 0) : ((unpack 0 :>) <$> inp)
@@ -126,7 +127,7 @@ switchMulticast = property $ do
         -- Account for two cycles latency and single reset cycle
         expected = L.take simDuration $ L.replicate 2 (repeat $ unpack 0) <> L.drop 1 outs
 
-        actual = L.take simDuration $ simSwitchWithCalendar @_ @4 @32 calConfig inp
+        actual = L.take simDuration $ simSwitchWithCalendar @_ @4 @32 SNat calConfig inp
       footnote $ "Calendar: " <> show cal
 
       actual === expected
@@ -143,12 +144,12 @@ switchNullFrames = property $ do
 
         -- A calender that only selects 0 for all links
         cal = ValidEntry (repeat 0) (0 :: Unsigned 0) :> Nil
-        calConfig = CalendarConfig d2 cal cal
+        calConfig = CalendarConfig d2 SNat cal cal
 
         -- Account for two cycles latency and single reset cycle
         expected = L.replicate simDuration (repeat $ unpack 0)
 
-        actual = L.take simDuration $ simSwitchWithCalendar @_ @4 @32 calConfig inp
+        actual = L.take simDuration $ simSwitchWithCalendar @_ @4 @32 SNat calConfig inp
       footnote $ "Calendar: " <> show cal
 
       actual === expected
@@ -164,12 +165,12 @@ switchIdentity = property $ do
 
         -- A calendar that selects the matching input for each output
         cal = ValidEntry (iterateI succ 1) (0 :: Unsigned 0) :> Nil
-        calConfig = CalendarConfig d2 cal cal
+        calConfig = CalendarConfig d2 SNat cal cal
 
         -- Account for two cycles latency and single reset cycle
         expected = L.take simDuration $ L.replicate 3 (repeat $ unpack 0) <> L.drop 1 inp
 
-        actual = L.take simDuration $ simSwitchWithCalendar @_ @4 @32 calConfig inp
+        actual = L.take simDuration $ simSwitchWithCalendar @_ @4 @32 SNat calConfig inp
       footnote $ "Calendar: " <> show cal
 
       actual === expected
@@ -192,15 +193,15 @@ switchRouting = property $ do
   someCalConfig <- forAll $ genSwitchCalendar @4 @32 links 2
 
   case someCalConfig of
-    (SwitchTestConfig (calConfig :: CalendarConfig nBytes addrw (CalendarEntry links))) -> do
+    (SwitchTestConfig (calConfig :: CalendarConfig addrw (CalendarEntry links))) -> do
       let
         inp = linkData @links
-        (CalendarConfig _ (unrollCalendar . toList -> cal) _) = calConfig
+        (CalendarConfig _ SNat (unrollCalendar . toList -> cal) _) = calConfig
 
         -- One cycle output latency
         expected = L.take simDuration $ switchModel cal inp
 
-        actual = L.take simDuration $ simSwitchWithCalendar calConfig inp
+        actual = L.take simDuration $ simSwitchWithCalendar d4 calConfig inp
       footnote $ "Calendar: " <> show cal
       actual === expected
 

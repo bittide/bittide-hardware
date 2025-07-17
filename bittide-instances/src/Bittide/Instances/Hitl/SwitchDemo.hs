@@ -2,8 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 
 {- | Switch demo for a Bittide system. In concert with its driver file, this device under
@@ -160,10 +158,11 @@ simpleManagementUnitC (SimpleManagementConfig peConfig pfxTime dumpVcd) =
     idC -< (localCounter, nmuWbs)
 
 {- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
-calendarConfig :: CalendarConfig 4 26 (Vec 8 (Index 9))
+calendarConfig :: CalendarConfig 26 (Vec 8 (Index 9))
 calendarConfig =
   CalendarConfig
     (SNat @LinkCount)
+    SNat
 
     -- Active calendar. It will broadcast the PE (node 1) data to all links. Other
     -- than that we cycle through the other nodes.

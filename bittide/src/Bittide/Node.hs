@@ -41,7 +41,7 @@ data NodeConfig externalLinks gppes where
     -- | Configuration for the 'node's 'managementUnit'.
     ManagementConfig ((BussesPerGppe * gppes) + 1) ->
     -- | Configuratoin for the 'node's 'switch'.
-    CalendarConfig 4 nmuRemBusWidth (CalendarEntry (externalLinks + gppes + 1)) ->
+    CalendarConfig nmuRemBusWidth (CalendarEntry (externalLinks + gppes + 1)) ->
     -- | Configuration for all the node's 'gppe's.
     Vec gppes (GppeConfig nmuRemBusWidth) ->
     -- | prefixes for the calendar wishbone interfaces of all GPPEs

@@ -43,8 +43,8 @@ simResult = chr . fromIntegral <$> catMaybes uartStream
       $ withClockResetEnable clockGen resetGen enableGen
       $ dut @System @4 @32 scatterConfig gatherConfig
 
-  scatterConfig = ScatterConfig SNat $ CalendarConfig d32 scatterCal scatterCal
-  gatherConfig = GatherConfig SNat $ CalendarConfig d32 gatherCal gatherCal
+  scatterConfig = ScatterConfig SNat $ CalendarConfig d32 SNat scatterCal scatterCal
+  gatherConfig = GatherConfig SNat $ CalendarConfig d32 SNat gatherCal gatherCal
 
   -- Padding is required to increase the duration of a metacycle, giving the CPU
   -- enough time to write to the gather memory and read from the scatter memory.

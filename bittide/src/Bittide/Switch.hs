@@ -33,7 +33,7 @@ switchC ::
   , 1 <= nBytes
   , KnownNat addrW
   ) =>
-  CalendarConfig nBytes addrW (CalendarEntry links) ->
+  CalendarConfig addrW (CalendarEntry links) ->
   Circuit
     ( ConstBwd MM
     , ( Vec links (CSignal dom (BitVector frameWidth))
@@ -48,7 +48,7 @@ switchC conf = case (cancelMulDiv @nBytes @8) of
    where
     go (((), (streamsIn, calM2S)), _) = ((SimOnly memMap, (repeat $ pure (), calS2M)), (streamsOut, cal))
      where
-      memMap = calendarMemoryMap @nBytes @addrW "Switch" conf
+      memMap = calendarMemoryMap @nBytes @addrW "Switch" SNat conf
       (streamsOut, calS2M, cal) = switch conf calM2S streamsIn
 
 {-# NOINLINE switch #-}
@@ -74,7 +74,7 @@ switch ::
   , KnownNat nBytes
   , 1 <= nBytes
   ) =>
-  CalendarConfig nBytes addrW (CalendarEntry links) ->
+  CalendarConfig addrW (CalendarEntry links) ->
   -- | Wishbone interface wired to the calendar.
   Signal dom (WishboneM2S addrW nBytes (Bytes nBytes)) ->
   -- | All incoming data links

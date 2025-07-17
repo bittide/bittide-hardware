@@ -22,7 +22,6 @@ import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Tests.Shared
 
-import qualified Bittide.Calendar as Cal (ExtraRegs)
 import qualified Clash.Util.Interpolate as I
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen
@@ -50,16 +49,14 @@ tests =
 
 -- | Generates a 'CalendarConfig' for the 'gatherUnitWb' or 'scatterUnitWb'
 genCalendarConfig ::
-  forall nBytes addrW calEntry maxDepth.
-  ( KnownNat nBytes
-  , 1 <= nBytes
-  , KnownNat maxDepth
+  forall addrW calEntry maxDepth.
+  ( KnownNat maxDepth
   , 2 <= maxDepth
   , KnownNat addrW
   , calEntry ~ Index maxDepth
   ) =>
   SNat maxDepth ->
-  Gen (CalendarConfig nBytes addrW calEntry)
+  Gen (CalendarConfig addrW calEntry)
 genCalendarConfig sizeNat@(snatToNum -> dMax) = do
   dA <- Gen.enum 1 dMax
   dB <- Gen.enum 1 dMax
@@ -68,15 +65,13 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
       , SomeNat (snatProxy -> depthB)
       ) -> do
         let
-          regAddrBits = SNat @(2 + NatRequiredBits (Regs calEntry (nBytes * 8) + Cal.ExtraRegs))
           bsCalEntry = SNat @(BitSize calEntry)
         case ( isInBounds d1 depthA sizeNat
              , isInBounds d1 depthB sizeNat
-             , compareSNat regAddrBits (SNat @addrW)
              , compareSNat d1 bsCalEntry
              ) of
-          (InBounds, InBounds, SNatLE, SNatLE) -> go depthA depthB
-          (a, b, c, d) ->
+          (InBounds, InBounds, SNatLE) -> go depthA depthB
+          (a, b, c) ->
             error
               [I.i|
               genCalendarConfig: calEntry constraints not satisfied:
@@ -84,7 +79,6 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
                 a: #{a}
                 b: #{b}
                 c: #{c}
-                d: #{d}
 
               ...
           |]
@@ -98,7 +92,7 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
     ) =>
     SNat depthA ->
     SNat depthB ->
-    Gen (CalendarConfig nBytes addrW (Index maxDepth))
+    Gen (CalendarConfig addrW (Index maxDepth))
   go SNat SNat = do
     calActive <-
       fmap nonRepeatingEntry
@@ -114,7 +108,7 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
         . P.take (natToNum @depthB)
         <$> Gen.shuffle @_ @(Index maxDepth)
           [0 .. natToNum @(maxDepth - 1)]
-    return $ CalendarConfig sizeNat calActive calShadow
+    return $ CalendarConfig sizeNat SNat calActive calShadow
   errmsg = errorX "genCalendarConfig: list to vector conversion failed"
 
 {- | Simple  test which generates a 'scatterUnitWb' and 'gatherUnitWb' with a certain calendar
@@ -127,14 +121,14 @@ metacycleStalling = property $ do
   maxCalSize <- forAll $ Gen.enum 2 32
   case TN.someNatVal (maxCalSize - 2) of
     SomeNat (addSNat d2 . snatProxy -> p) -> do
-      runTest =<< forAll (genCalendarConfig @4 @32 p)
+      runTest =<< forAll (genCalendarConfig @32 p)
  where
   runTest ::
     forall maxSize.
     (KnownNat maxSize, 2 <= maxSize) =>
-    CalendarConfig 4 32 (Index maxSize) ->
+    CalendarConfig 32 (Index maxSize) ->
     PropertyT IO ()
-  runTest calConfig@(CalendarConfig _ (length -> calSize) _) = do
+  runTest calConfig@(CalendarConfig _ SNat (length -> calSize) _) = do
     metacycles <- forAll $ Gen.enum 1 5
     let
       simLength = 1 + metacycles * calSize
@@ -143,7 +137,7 @@ metacycleStalling = property $ do
         suWB =
           wcre
             $ fst
-            $ scatterUnitWb @System
+            $ scatterUnitWb @System @32 @4
               (ScatterConfig SNat calConfig)
               (pure emptyWishboneM2S)
               linkIn
@@ -151,7 +145,7 @@ metacycleStalling = property $ do
         guWB =
           wcre
             $ (\(_, x, _) -> x)
-            $ gatherUnitWb @System
+            $ gatherUnitWb @System @32 @4
               (GatherConfig SNat calConfig)
               (pure emptyWishboneM2S)
               wbStall

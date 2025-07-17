@@ -124,6 +124,8 @@ common extra
   default-extensions:
     DefaultSignatures
     DeriveAnyClass
+    ImplicitParams
+    OverloadedRecordDot
     TypeFamilies
     ViewPatterns
 

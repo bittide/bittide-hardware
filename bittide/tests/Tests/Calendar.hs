@@ -78,10 +78,8 @@ the maximum depth of the stored calendar and as second argument a generator for 
 calendar entries.
 -}
 genCalendarConfig ::
-  forall nBytes addrW a validityBits.
-  ( KnownNat nBytes
-  , 1 <= nBytes
-  , KnownNat addrW
+  forall addrW a validityBits.
+  ( KnownNat addrW
   , KnownNat (BitSize a)
   , KnownNat validityBits
   , BitPack a
@@ -93,7 +91,7 @@ genCalendarConfig ::
   Natural ->
   -- | Generator for the entries in the shadow calendar and active calendar.
   Gen (ValidEntry a validityBits) ->
-  Gen (CalendarConfig nBytes addrW a)
+  Gen (CalendarConfig addrW a)
 genCalendarConfig ms elemGen = do
   dA <- Gen.enum 1 ms
   dB <- Gen.enum 1 ms
@@ -103,17 +101,13 @@ genCalendarConfig ms elemGen = do
       , SomeNat (snatProxy -> depthB)
       ) -> do
         let
-          regAddrBits =
-            SNat
-              @(NatRequiredBits (Regs (ValidEntry a validityBits) (nBytes * 8) + ExtraRegs))
           bsCalEntry = SNat @(BitSize a)
         case ( isInBounds d1 depthA maxSize
              , isInBounds d1 depthB maxSize
-             , compareSNat regAddrBits (SNat @addrW)
              , compareSNat d1 bsCalEntry
              ) of
-          (InBounds, InBounds, SNatLE, SNatLE) -> go maxSize depthA depthB
-          (a, b, c, d) ->
+          (InBounds, InBounds, SNatLE) -> go maxSize depthA depthB
+          (a, b, c) ->
             error
               [I.i|
               genCalendarConfig: calEntry constraints not satisfied:
@@ -121,7 +115,6 @@ genCalendarConfig ms elemGen = do
                 a: #{a}
                 b: #{b}
                 c: #{c}
-                d: #{d}
 
               ...
           |]
@@ -133,16 +126,15 @@ genCalendarConfig ms elemGen = do
     , 1 <= depthA
     , 1 <= depthB
     , 2 <= maxDepth
-    , NatFitsInBits (Regs (ValidEntry a validityBits) (nBytes * 8) + ExtraRegs) addrW
     ) =>
     SNat maxDepth ->
     SNat depthA ->
     SNat depthB ->
-    Gen (CalendarConfig nBytes addrW a)
+    Gen (CalendarConfig addrW a)
   go dMax SNat SNat = do
     calActive <- genVec @depthA elemGen
     calShadow <- genVec @depthB elemGen
-    return $ CalendarConfig dMax calActive calShadow
+    return $ CalendarConfig dMax SNat calActive calShadow
 
 genValidEntry :: SNat repetitionBits -> Gen a -> Gen (ValidEntry a repetitionBits)
 genValidEntry SNat genA =
