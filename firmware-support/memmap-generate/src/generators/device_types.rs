@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+use heck::ToShoutySnakeCase;
 use quote::quote;
 
 use crate::{
@@ -140,6 +141,25 @@ impl DeviceGenerator {
             })
             .collect::<Vec<_>>();
 
+        let consts = desc
+            .registers
+            .iter()
+            .filter_map(|desc| {
+                let Type::Vec(len, _) = &desc.reg_type else {
+                    return None;
+                };
+
+                let len_name = ident(
+                    IdentType::Raw,
+                    format!("{}_LEN", desc.name).to_shouty_snake_case(),
+                );
+                let size = *len as usize;
+                Some(quote! {
+                    pub const #len_name: usize = #size;
+                })
+            })
+            .collect::<Vec<_>>();
+
         let tags = generate_tag_docs(
             desc.tags.iter().map(String::as_str),
             ann.tags.iter().map(String::as_str),
@@ -157,6 +177,8 @@ impl DeviceGenerator {
                 pub const unsafe fn new(addr: *mut u8) -> Self {
                     Self(addr)
                 }
+
+                #(#consts)*
 
                 #(#get_funcs)*
 
