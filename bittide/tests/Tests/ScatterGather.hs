@@ -108,7 +108,7 @@ genCalendarConfig sizeNat@(snatToNum -> dMax) = do
         . P.take (natToNum @depthB)
         <$> Gen.shuffle @_ @(Index maxDepth)
           [0 .. natToNum @(maxDepth - 1)]
-    return $ CalendarConfig sizeNat calActive calShadow
+    return $ CalendarConfig sizeNat SNat calActive calShadow
   errmsg = errorX "genCalendarConfig: list to vector conversion failed"
 
 {- | Simple  test which generates a 'scatterUnitWb' and 'gatherUnitWb' with a certain calendar
@@ -128,7 +128,7 @@ metacycleStalling = property $ do
     (KnownNat maxSize, 2 <= maxSize) =>
     CalendarConfig 32 (Index maxSize) ->
     PropertyT IO ()
-  runTest calConfig@(CalendarConfig _ (length -> calSize) _) = do
+  runTest calConfig@(CalendarConfig _ SNat (length -> calSize) _) = do
     metacycles <- forAll $ Gen.enum 1 5
     let
       simLength = 1 + metacycles * calSize

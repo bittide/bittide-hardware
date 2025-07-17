@@ -86,6 +86,8 @@ data CalendarConfig addrW a where
     ) =>
     -- | Maximum amount of entries that can be held per calendar.
     SNat maxCalDepth ->
+    -- | Number of bits for the repetition count.
+    SNat repetitionBits ->
     -- | Initial contents of the active calendar.
     Calendar bootstrapActive a repetitionBits ->
     -- | Initial contents of the inactive calendar.
@@ -114,7 +116,7 @@ mkCalendar ::
   -- 2. Metacycle indicator
   -- 3. Wishbone interface. (slave to master)
   (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)))
-mkCalendar (CalendarConfig maxCalDepth bsActive bsShadow) =
+mkCalendar (CalendarConfig maxCalDepth SNat bsActive bsShadow) =
   calendar maxCalDepth bsActive bsShadow
 
 calendarMemoryMap ::
@@ -129,7 +131,7 @@ calendarMemoryMap ::
   -- | Calendar configuration for 'calendar'.
   CalendarConfig addrW calEntry ->
   MemoryMap
-calendarMemoryMap name SNat (CalendarConfig maxCalDepth@SNat _ _) =
+calendarMemoryMap name SNat (CalendarConfig maxCalDepth@SNat SNat _ _) =
   MemoryMap
     { tree = DeviceInstance locCaller name
     , deviceDefs = deviceSingleton (deviceDef maxCalDepth)

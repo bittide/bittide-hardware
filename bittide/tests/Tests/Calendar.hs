@@ -134,7 +134,7 @@ genCalendarConfig ms elemGen = do
   go dMax SNat SNat = do
     calActive <- genVec @depthA elemGen
     calShadow <- genVec @depthB elemGen
-    return $ CalendarConfig dMax calActive calShadow
+    return $ CalendarConfig dMax SNat calActive calShadow
 
 genValidEntry :: SNat repetitionBits -> Gen a -> Gen (ValidEntry a repetitionBits)
 genValidEntry SNat genA =

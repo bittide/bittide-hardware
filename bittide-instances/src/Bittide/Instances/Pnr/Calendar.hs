@@ -27,10 +27,10 @@ switchCalendar1k ::
   )
 switchCalendar1k clk rst =
   withClockResetEnable clk syncRst enableGen
-    $ mkCalendar (CalendarConfig (SNat @1024) cal cal)
+    $ mkCalendar (CalendarConfig (SNat @1024) d8 cal cal)
  where
   syncRst = resetSynchronizer clk rst
-  cal = ValidEntry{veEntry = repeat 0, veRepeat = 0 :: Unsigned 8} :> Nil
+  cal = ValidEntry{veEntry = repeat 0, veRepeat = 0} :> Nil
 {-# NOINLINE switchCalendar1k #-}
 
 switchCalendar1kReducedPins ::

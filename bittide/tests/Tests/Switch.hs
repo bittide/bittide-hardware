@@ -118,7 +118,7 @@ switchMulticast = property $ do
         -- A calendar that selects the same link for all outputs
         calSize = SNat @(links + 1)
         cal = (\i -> ValidEntry (repeat i) (0 :: Unsigned 0)) <$> iterate calSize succ 0
-        calConfig = CalendarConfig calSize cal cal
+        calConfig = CalendarConfig calSize SNat cal cal
 
         -- Account for reset cycle. Add null frame to the links.
         inpWithNull = repeat (unpack 0) : ((unpack 0 :>) <$> inp)
@@ -144,7 +144,7 @@ switchNullFrames = property $ do
 
         -- A calender that only selects 0 for all links
         cal = ValidEntry (repeat 0) (0 :: Unsigned 0) :> Nil
-        calConfig = CalendarConfig d2 cal cal
+        calConfig = CalendarConfig d2 SNat cal cal
 
         -- Account for two cycles latency and single reset cycle
         expected = L.replicate simDuration (repeat $ unpack 0)
@@ -165,7 +165,7 @@ switchIdentity = property $ do
 
         -- A calendar that selects the matching input for each output
         cal = ValidEntry (iterateI succ 1) (0 :: Unsigned 0) :> Nil
-        calConfig = CalendarConfig d2 cal cal
+        calConfig = CalendarConfig d2 SNat cal cal
 
         -- Account for two cycles latency and single reset cycle
         expected = L.take simDuration $ L.replicate 3 (repeat $ unpack 0) <> L.drop 1 inp
@@ -196,7 +196,7 @@ switchRouting = property $ do
     (SwitchTestConfig (calConfig :: CalendarConfig addrw (CalendarEntry links))) -> do
       let
         inp = linkData @links
-        (CalendarConfig _ (unrollCalendar . toList -> cal) _) = calConfig
+        (CalendarConfig _ SNat (unrollCalendar . toList -> cal) _) = calConfig
 
         -- One cycle output latency
         expected = L.take simDuration $ switchModel cal inp

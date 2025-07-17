@@ -25,8 +25,9 @@ scatterCal1K = ScatterConfig SNat cal
   cal =
     CalendarConfig
       (SNat @1024)
-      (ValidEntry{veEntry = 0, veRepeat = 0 :: Unsigned 8} :> Nil)
-      (ValidEntry{veEntry = 0, veRepeat = 0 :: Unsigned 8} :> Nil)
+      d8
+      (ValidEntry{veEntry = 0, veRepeat = 0} :> Nil)
+      (ValidEntry{veEntry = 0, veRepeat = 0} :> Nil)
 
 gatherCal1K :: GatherConfig WishboneWidth WishboneAddrWidth
 gatherCal1K = GatherConfig SNat cal
@@ -35,8 +36,9 @@ gatherCal1K = GatherConfig SNat cal
   cal =
     CalendarConfig
       (SNat @1024)
-      (ValidEntry{veEntry = 0, veRepeat = 0 :: Unsigned 8} :> Nil)
-      (ValidEntry{veEntry = 0, veRepeat = 0 :: Unsigned 8} :> Nil)
+      d8
+      (ValidEntry{veEntry = 0, veRepeat = 0} :> Nil)
+      (ValidEntry{veEntry = 0, veRepeat = 0} :> Nil)
 
 {-# ANN
   scatterUnit1K
