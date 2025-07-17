@@ -5,10 +5,7 @@
 -- TODO: Remove use of partial functions
 {-# OPTIONS_GHC -Wno-x-partial #-}
 
-module Bittide.Instances.Hitl.Driver.SwitchDemo (
-  OcdInitData (..),
-  driver,
-) where
+module Bittide.Instances.Hitl.Driver.SwitchDemo where
 
 import Clash.Prelude
 
@@ -18,6 +15,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 
+import Bittide.Instances.Hitl.SwitchDemo (memoryMapCc, memoryMapMu)
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forM, forM_, when, zipWithM)
 import Control.Monad.IO.Class
@@ -28,12 +26,14 @@ import GHC.Stack (HasCallStack)
 import Numeric (showHex)
 import Project.FilePath
 import Project.Handle
+import Protocols.MemoryMap (MemoryMap (..), MemoryMapTree (DeviceInstance, Interconnect))
 import System.Clock (Clock (Monotonic), diffTimeSpec, getTime, toNanoSecs)
 import System.Exit
 import System.FilePath
 import System.IO
 import System.Process (StdStream (CreatePipe, UseHandle))
 import Text.Read (readMaybe)
+import Text.Show.Pretty (ppShow)
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 import "extra" Data.List.Extra (trim)
@@ -99,6 +99,57 @@ dropPrefix :: (Eq a) => [a] -> [a] -> [a]
 dropPrefix prefix xs
   | prefix `L.isPrefixOf` xs = L.drop (L.length prefix) xs
   | otherwise = xs
+
+{- | Convert an integer to a zero-padded 32-bit hexadecimal string. The result
+is prepended by \"0x\".
+
+>>> showHex32 0xAB
+"0x000000ab"
+-}
+showHex32 :: (Integral a) => a -> String
+showHex32 a = "0x" <> padding <> hexStr
+ where
+  hexStr = showHex a ""
+  padding = L.replicate (8 - L.length hexStr) '0'
+
+{- | Get base addresses of a device from a memory map. Assumes that all devices
+are located at a single interconnect, which is a bit grimy.
+-}
+baseAddresses :: (HasCallStack, Num a) => MemoryMap -> String -> [a]
+baseAddresses memoryMap nm =
+  case memoryMap of
+    MemoryMap{tree = Interconnect _ devices} ->
+      [fromIntegral addr | (addr, DeviceInstance _ d) <- devices, d == nm]
+    _ -> error [i|Unexpected memory map structure: #{ppShow memoryMapMu}|]
+
+{- | Like 'baseAddresses', but assume that there is only one device with the
+given name in the memory map. If there are multiple devices with the same
+name, an error is raised.
+-}
+baseAddress :: (HasCallStack, Num a, Show a) => MemoryMap -> String -> a
+baseAddress memoryMap nm =
+  case baseAddresses memoryMap nm of
+    [addr] -> addr
+    addrs -> error [i|Expected a single base address for #{nm}, got: #{show addrs}|]
+
+-- | Like 'baseAddress', but specialized on the management unit memory map.
+muBaseAddress :: (HasCallStack, Num a, Show a) => String -> a
+muBaseAddress = baseAddress memoryMapMu
+
+-- | Like 'baseAddress', but specialized on the clock control memory map.
+ccBaseAddress :: (HasCallStack, Num a, Show a) => String -> a
+ccBaseAddress = baseAddress memoryMapCc
+
+{- | Addresses of the capture UGN devices in the management unit. As a sanity
+check, it is expected that there are exactly 7 capture UGN devices present.
+-}
+muCaptureUgnAddresses :: (HasCallStack, Num a, Show a) => [a]
+muCaptureUgnAddresses =
+  if L.length ugnDevices == 7
+    then ugnDevices
+    else error $ "Expected 7 capture ugn devices, got: " <> ppShow ugnDevices
+ where
+  ugnDevices = baseAddresses memoryMapMu "CaptureUgn"
 
 driver ::
   (HasCallStack) =>
@@ -224,7 +275,10 @@ driver testName targets = do
       liftIO
         $ Gdb.runCommands
           gdb.stdinHandle
-          ["echo START OF WHOAMI\\n", "x/4cb 0xE0000000", "echo END OF WHOAMI\\n"]
+          [ "echo START OF WHOAMI\\n"
+          , "x/4cb " <> whoAmIBase
+          , "echo END OF WHOAMI\\n"
+          ]
       _ <-
         liftIO
           $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
@@ -235,9 +289,11 @@ driver testName targets = do
           $ readUntil gdb.stdoutHandle "END OF WHOAMI"
       let
         idLine = trim . L.head . lines $ trim gdbRead
-        success = idLine == "(gdb) 0xe0000000:\t115 's'\t119 'w'\t99 'c'\t99 'c'"
+        success = idLine == "(gdb) " <> whoAmIBase <> ":\t115 's'\t119 'w'\t99 'c'\t99 'c'"
       liftIO $ putStrLn [i|Output from CC whoami probe:\n#{idLine}|]
       return $ if success then ExitSuccess else ExitFailure 1
+     where
+      whoAmIBase = showHex32 $ ccBaseAddress @Integer "WhoAmI"
 
     foldExitCodes :: VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
     foldExitCodes prev code = do
@@ -258,7 +314,10 @@ driver testName targets = do
       liftIO
         $ Gdb.runCommands
           gdb.stdinHandle
-          ["echo START OF WHOAMI\\n", "x/4cb 0xE0000000", "echo END OF WHOAMI\\n"]
+          [ "echo START OF WHOAMI\\n"
+          , "x/4cb " <> whoAmIBase
+          , "echo END OF WHOAMI\\n"
+          ]
       _ <-
         liftIO
           $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
@@ -269,9 +328,11 @@ driver testName targets = do
           $ readUntil gdb.stdoutHandle "END OF WHOAMI"
       let
         idLine = trim . L.head . lines $ trim gdbRead
-        success = idLine == "(gdb) 0xe0000000:\t109 'm'\t103 'g'\t109 'm'\t116 't'"
+        success = idLine == "(gdb) " <> whoAmIBase <> ":\t109 'm'\t103 'g'\t109 'm'\t116 't'"
       liftIO $ putStrLn [i|Output from MU whoami probe:\n#{idLine}|]
       return $ if success then ExitSuccess else ExitFailure 1
+     where
+      whoAmIBase = showHex32 $ muBaseAddress @Integer "WhoAmI"
 
     getTestsStatus ::
       [(HwTarget, DeviceInfo)] -> [TestStatus] -> Integer -> VivadoM [TestStatus]
@@ -327,15 +388,7 @@ driver testName targets = do
     muGetUgns (_, d) gdb = do
       let
         mmioAddrs :: [String]
-        mmioAddrs =
-          [ "0x10000000"
-          , "0x20000000"
-          , "0x30000000"
-          , "0x40000000"
-          , "0x50000000"
-          , "0x60000000"
-          , "0x70000000"
-          ]
+        mmioAddrs = L.map (showHex32 @Integer) muCaptureUgnAddresses
 
         readUgnMmio :: String -> IO (Unsigned 64, Unsigned 64)
         readUgnMmio addr = do
@@ -368,6 +421,7 @@ driver testName targets = do
     muReadPeBuffer (_, d) gdb = do
       putStrLn $ "Reading PE buffer from device " <> d.deviceId
       let
+        start = muBaseAddress @Integer "SwitchDemoPE"
         startString = "START OF PEBUF (" <> d.deviceId <> ")"
         endString = "END OF PEBUF (" <> d.deviceId <> ")"
         bufferSize :: Integer
@@ -375,7 +429,7 @@ driver testName targets = do
       Gdb.runCommands
         gdb.stdinHandle
         [ "printf \"" <> startString <> "\\n\""
-        , [i|x/#{bufferSize}xg 0x90000028|]
+        , [i|x/#{bufferSize}xg #{showHex32 (start + 0x28)}|]
         , "printf \"" <> endString <> "\\n\""
         ]
       _ <-
@@ -392,15 +446,16 @@ driver testName targets = do
       IO (Unsigned 64)
     muGetCurrentTime (_, d) gdb = do
       putStrLn $ "Getting current time from device " <> d.deviceId
+      let timerBase = muBaseAddress @Integer "Timer"
       -- Write capture command to `timeWb` component
-      Gdb.runCommands gdb.stdinHandle ["set {char[4]}(0xD0000000) = 0x0"]
+      Gdb.runCommands gdb.stdinHandle [[i|set {char[4]}(#{showHex32 timerBase}) = 0x0|]]
       let
         currentStringLsbs = "START OF STARTTIME LSBS"
         endStringLsbs = "END OF STARTTIME LSBS"
       Gdb.runCommands
         gdb.stdinHandle
         [ "printf \"" <> currentStringLsbs <> "\\n\""
-        , "x/1xw 0xD0000008"
+        , [i|x/1xw #{showHex32 (timerBase + 0x8)}|]
         , "printf \"" <> endStringLsbs <> "\\n\""
         ]
       _ <-
@@ -423,7 +478,7 @@ driver testName targets = do
       Gdb.runCommands
         gdb.stdinHandle
         [ "printf \"" <> currentStringMsbs <> "\\n\""
-        , "x/1xw 0xD000000C"
+        , [i|x/1xw #{showHex32 (timerBase + 0xC)}|]
         , "printf \"" <> endStringMsbs <> "\\n\""
         ]
       _ <-
@@ -450,18 +505,14 @@ driver testName targets = do
       VivadoM ()
     muWriteCfg target@(_, d) gdb (bimap pack fromIntegral -> cfg) = do
       let
-        start = 0x90000000
+        start = muBaseAddress "SwitchDemoPE"
 
         write64 :: Unsigned 32 -> BitVector 64 -> [String]
         write64 address value =
-          [ [i|set {char[4]}(0x#{addressHex}) = 0x#{valueLsbHex}|]
-          , [i|set {char[4]}(0x#{addressNextHex}) = 0x#{valueMsbHex}|]
+          [ [i|set {char[4]}(#{showHex32 address}) = #{showHex32 valueLsb}|]
+          , [i|set {char[4]}(#{showHex32 (address + 4)}) = #{showHex32 valueMsb}|]
           ]
          where
-          addressHex = showHex address ""
-          addressNextHex = showHex (address + 4) ""
-          valueLsbHex = showHex valueLsb ""
-          valueMsbHex = showHex valueMsb ""
           (valueMsb :: BitVector 32, valueLsb :: BitVector 32) = bitCoerce value
 
       liftIO $ do
@@ -489,28 +540,32 @@ driver testName targets = do
         perDeviceCheck :: ProcessStdIoHandles -> Int -> IO Bool
         perDeviceCheck myGdb num = do
           let
-            headBaseAddr = 0x90000028
+            headBaseAddr = muBaseAddress "SwitchDemoPE" + 0x28
             myBaseAddr = headBaseAddr + 24 * (L.length gdbs - num - 1)
+            dnaBaseAddr = muBaseAddress @Integer "Dna"
           myCounter <-
-            readSingleGdbValue headGdb ("COUNTER-" <> show num) ("x/1gx 0x" <> showHex myBaseAddr "")
-          myDeviceDna2 <- readSingleGdbValue myGdb ("DNA2-" <> show num) "x/1wx 0xB0000000"
-          myDeviceDna1 <- readSingleGdbValue myGdb ("DNA1-" <> show num) "x/1wx 0xB0000004"
-          myDeviceDna0 <- readSingleGdbValue myGdb ("DNA0-" <> show num) "x/1wx 0xB0000008"
+            readSingleGdbValue headGdb ("COUNTER-" <> show num) ("x/1gx " <> showHex32 myBaseAddr)
+          myDeviceDna2 <-
+            readSingleGdbValue myGdb ("DNA2-" <> show num) [i|x/1wx #{showHex32 dnaBaseAddr}|]
+          myDeviceDna1 <-
+            readSingleGdbValue myGdb ("DNA1-" <> show num) [i|x/1wx #{showHex32 (dnaBaseAddr + 0x4)}|]
+          myDeviceDna0 <-
+            readSingleGdbValue myGdb ("DNA0-" <> show num) [i|x/1wx #{showHex32 (dnaBaseAddr + 0x8)}|]
           headDeviceDna2 <-
             readSingleGdbValue
               headGdb
               ("DNA2-" <> show num)
-              ("x/1wx 0x" <> showHex (myBaseAddr + 0x08) "")
+              ("x/1wx " <> showHex32 (myBaseAddr + 0x08))
           headDeviceDna1 <-
             readSingleGdbValue
               headGdb
               ("DNA2-" <> show num)
-              ("x/1wx 0x" <> showHex (myBaseAddr + 0x0C) "")
+              ("x/1wx " <> showHex32 (myBaseAddr + 0x0C))
           headDeviceDna0 <-
             readSingleGdbValue
               headGdb
               ("DNA2-" <> show num)
-              ("x/1wx 0x" <> showHex (myBaseAddr + 0x10) "")
+              ("x/1wx " <> showHex32 (myBaseAddr + 0x10))
           let
             myCfg = configs L.!! num
             expectedCounter = showHex myCfg.startWriteAt ""
