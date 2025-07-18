@@ -40,6 +40,7 @@ fn main() -> ! {
         target_count: 0,
         wait_time: 0,
         reframing_enabled: dbgreg.reframing_enabled(),
+        k_p: 2e-9,
     };
     let mut state = ControlSt::new(
         0,
@@ -49,14 +50,14 @@ fn main() -> ! {
         ReframingState::Detect,
     );
 
-    // Update clock control 10K updates per second
-    let interval = Duration::from_micros(100);
+    // Update clock control 50K updates per second
+    let interval = Duration::from_micros(20);
     let mut next_update = timer.now() + interval;
 
     // Store samples every _n_ updates. Currently set to 50 times a second
-    // (10K / 200 = 50Hz). Set to '1' for perfect storage -- not yet possible
+    // (50K / 1000 = 50Hz). Set to '1' for perfect storage -- not yet possible
     // due to limited memory size.
-    let mut sample_store = SampleStore::new(sample_memory, 200);
+    let mut sample_store = SampleStore::new(sample_memory, 1000);
 
     loop {
         freeze.set_freeze(true);

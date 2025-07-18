@@ -2,8 +2,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use ufmt::derive::uDebug;
-
 use bittide_hal::shared::devices::clock_control::{ClockControl, ReframingState};
 use bittide_hal::shared::devices::debug_register::DebugRegister;
 use bittide_hal::shared::types::speed_change::SpeedChange;
@@ -28,7 +26,7 @@ impl StabilityIndication {
 
 /// Rust version of
 /// `Bittide.ClockControl.Callisto.Types.ControlConfig`.
-#[derive(uDebug, Clone)]
+#[derive(Clone)]
 pub struct ControlConfig {
     /// Enable reframing. Reframing allows a system to resettle buffers around
     /// their midpoints, without dropping any frames. For more information, see
@@ -39,6 +37,8 @@ pub struct ControlConfig {
     pub wait_time: usize,
     /// Target data count. See `Bittide.ClockControl.targetDataCount`.
     pub target_count: isize,
+    // Gain. See https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24.
+    pub k_p: f32,
 }
 
 /// Rust version of `Bittide.ClockControl.Callisto.Types.ControlSt`.
@@ -125,14 +125,8 @@ pub fn callisto<I>(
 ) where
     I: Iterator<Item = i32>,
 {
-    // see clock control algorithm simulation here:
-    //
-    // https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24
-    //
-    // `k_p` (proportional gain) is copied from the Julia implementation. `fStep` should
-    // match the step size of the clock boards. For all our HITL tests this is set by
-    // `HwCcTopologies.commonStepSizeSelect`.
-    const K_P: f32 = 2e-8;
+    // `fStep` should match the step size of the clock boards. For all our HITL
+    // tests this is set by `HwCcTopologies.commonStepSizeSelect`.
     const FSTEP: f32 = 10e-9;
 
     let n_links = cc.n_links();
@@ -152,7 +146,7 @@ pub fn callisto<I>(
         .sum();
 
     let r_k = (measured_sum - n_up_links as i32 * config.target_count as i32) as f32;
-    let c_des = K_P * r_k + state.steady_state_target;
+    let c_des = config.k_p * r_k + state.steady_state_target;
 
     state.z_k += speed_change_to_sign(state.b_k);
 
