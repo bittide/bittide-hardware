@@ -53,7 +53,7 @@ driverFunc testName targets = do
     initHwTargets :: VivadoM ()
     initHwTargets = forM_ targets (assertProbe "probe_prog_en")
 
-    initOpenOcd :: (a, DeviceInfo) -> Int -> IO ((Int, ProcessStdIoHandles), IO ())
+    initOpenOcd :: (a, DeviceInfo) -> Int -> IO ((Int, ProcessHandles), IO ())
     initOpenOcd (_, d) targetIndex = do
       putStrLn $ "Starting OpenOCD for target " <> show d.deviceId
       putStrLn $ "Logs will be saved in the hitl directory: " <> hitlDir
@@ -82,7 +82,7 @@ driverFunc testName targets = do
 
       return ((gdbPort, ocd), ocdClean2)
 
-    initGdb :: Int -> (HwTarget, DeviceInfo) -> IO (ProcessStdIoHandles, IO ())
+    initGdb :: Int -> (HwTarget, DeviceInfo) -> IO (ProcessHandles, IO ())
     initGdb gdbPort (hwT, d) = do
       putStrLn $ "Starting GDB for target " <> show d.deviceId
 
