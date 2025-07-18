@@ -29,6 +29,10 @@ fn main() -> ! {
     let mut uart = INSTANCES.uart;
     let freeze = INSTANCES.freeze;
     let sample_memory = INSTANCES.sample_memory;
+    let sync_out_generator = INSTANCES.sync_out_generator;
+
+    uwriteln!(uart, "Starting sync out generator..").unwrap();
+    sync_out_generator.set_active(true);
 
     uwriteln!(uart, "Starting clock control..").unwrap();
 
