@@ -7,7 +7,11 @@
 
 module Bittide.Instances.Hitl.Driver.SwitchDemo (
   OcdInitData (..),
+  ccWhoAmID,
   driver,
+  gppeWhoAmID,
+  muWhoAmID,
+  whoAmIPrefix,
 ) where
 
 import Clash.Prelude
@@ -18,6 +22,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 
+import Clash.Sized.Extra (extendLsb0s)
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forM, forM_, when, zipWithM)
 import Control.Monad.IO.Class
@@ -50,6 +55,8 @@ data OcdInitData = OcdInitData
   -- ^ Management unit GDB port
   , ccPort :: Int
   -- ^ Clock control GDB port
+  , gppePort :: Int
+  -- ^ GPPE GDB port
   , handles :: ProcessStdIoHandles
   -- ^ OpenOCD stdio handles
   , cleanup :: IO ()
@@ -59,6 +66,15 @@ data OcdInitData = OcdInitData
 data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
 
 type StartDelay = 5 -- seconds
+
+whoAmIPrefix :: forall n m. (KnownNat n, KnownNat m, n ~ m + 3) => Unsigned n
+whoAmIPrefix = extendLsb0s @3 @m (0b111 :: Unsigned 3)
+ccWhoAmID :: BitVector 32
+ccWhoAmID = $(makeWhoAmIDTH "swcc")
+muWhoAmID :: BitVector 32
+muWhoAmID = $(makeWhoAmIDTH "mgmt")
+gppeWhoAmID :: BitVector 32
+gppeWhoAmID = $(makeWhoAmIDTH "gppe")
 
 driver ::
   (HasCallStack) =>
@@ -84,30 +100,28 @@ driver testName targets = do
       putStrLn $ "Starting OpenOCD for target " <> d.deviceId
 
       let
-        gdbPortMU = 3333 + targetIndex * 2
+        gdbPortMU = 3333 + targetIndex * 3
         gdbPortCC = gdbPortMU + 1
-        tclPortMU = 6666 + targetIndex * 2
-        tclPortCC = tclPortMU + 1
-        telnetPortMU = 4444 + targetIndex * 2
-        telnetPortCC = telnetPortMU + 1
+        gdbPortGPPE = gdbPortMU + 2
         ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
         ocdStderr = hitlDir </> "openocd-" <> show targetIndex <> "-stderr.log"
+        tclPort = 6666 + targetIndex
+        telPort = 4444 + targetIndex
       putStrLn $ "logging OpenOCD stdout to `" <> ocdStdout <> "`"
       putStrLn $ "logging OpenOCD stderr to `" <> ocdStderr <> "`"
 
       putStrLn "Starting OpenOCD..."
       (ocd, ocdPh, ocdClean0) <-
         Ocd.startOpenOcdWithEnvAndArgs
-          ["-f", "sipeed.tcl", "-f", "vexriscv-2chain.tcl"]
+          ["-f", "sipeed.tcl", "-f", "vexriscv-3chain.tcl"]
           [ ("OPENOCD_STDOUT_LOG", ocdStdout)
           , ("OPENOCD_STDERR_LOG", ocdStderr)
           , ("USB_DEVICE", d.usbAdapterLocation)
-          , ("DEV_A_GDB", show gdbPortMU)
-          , ("DEV_B_GDB", show gdbPortCC)
-          , ("DEV_A_TCL", show tclPortMU)
-          , ("DEV_B_TCL", show tclPortCC)
-          , ("DEV_A_TEL", show telnetPortMU)
-          , ("DEV_B_TEL", show telnetPortCC)
+          , ("DEV_A_GDB", show gdbPortCC)
+          , ("DEV_B_GDB", show gdbPortGPPE)
+          , ("DEV_C_GDB", show gdbPortMU)
+          , ("TCL_PORT", show tclPort)
+          , ("TEL_PORT", show telPort)
           ]
       hSetBuffering ocd.stderrHandle LineBuffering
       tryWithTimeout "Waiting for OpenOCD to start" 15_000_000
@@ -117,7 +131,7 @@ driver testName targets = do
         ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
         ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
 
-      return $ OcdInitData gdbPortMU gdbPortCC ocd ocdClean1
+      return $ OcdInitData gdbPortMU gdbPortCC gdbPortGPPE ocd ocdClean1
 
     initGdb :: String -> Int -> (HwTarget, DeviceInfo) -> IO (ProcessStdIoHandles, IO ())
     initGdb binName gdbPort (hwT, d) = do
@@ -179,25 +193,39 @@ driver testName targets = do
 
       pure (pico, cleanup)
 
-    ccGdbCheck :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ExitCode
-    ccGdbCheck (_, _) gdb = do
+    gdbCheck :: String -> ProcessStdIoHandles -> VivadoM ExitCode
+    gdbCheck lookfor gdb = do
       liftIO
         $ Gdb.runCommands
           gdb.stdinHandle
-          ["echo START OF WHOAMI\\n", "x/4cb 0xE0000000", "echo END OF WHOAMI\\n"]
+          [ "echo START OF WHOAMI\\n"
+          , "x/4cb " <> prefixToAddrString (whoAmIPrefix @32)
+          , "echo END OF WHOAMI\\n"
+          ]
       _ <-
         liftIO
           $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
           $ readUntil gdb.stdoutHandle "START OF WHOAMI"
       gdbRead <-
         liftIO
-          $ tryWithTimeout "Reading CC whoami over GDB" 15_000_000
+          $ tryWithTimeout "Reading whoami over GDB" 15_000_000
           $ readUntil gdb.stdoutHandle "END OF WHOAMI"
       let
         idLine = trim . L.head . lines $ trim gdbRead
-        success = idLine == "(gdb) 0xe0000000:\t115 's'\t119 'w'\t99 'c'\t99 'c'"
+        success = idLine == lookfor
       liftIO $ putStrLn [i|Output from CC whoami probe:\n#{idLine}|]
-      return $ if success then ExitSuccess else ExitFailure 1
+      if success
+        then return ExitSuccess
+        else do
+          liftIO $ putStrLn $ "Was looking for '" <> lookfor <> "', found '" <> idLine <> "'"
+          return $ ExitFailure 1
+
+    ccGdbLookFor :: String
+    ccGdbLookFor = gdbLookFor (whoAmIPrefix @32) ccWhoAmID
+    muGdbLookFor :: String
+    muGdbLookFor = gdbLookFor (whoAmIPrefix @32) muWhoAmID
+    gppeGdbLookFor :: String
+    gppeGdbLookFor = gdbLookFor (whoAmIPrefix @32) gppeWhoAmID
 
     foldExitCodes :: VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
     foldExitCodes prev code = do
@@ -212,26 +240,6 @@ driver testName targets = do
       liftIO $ putStrLn $ "Asserting all programmed probe on " <> d.deviceId
       openHardwareTarget hwT
       updateVio "vioHitlt" [("probe_all_programmed", "1")]
-
-    muGdbCheck :: (HwTarget, DeviceInfo) -> ProcessStdIoHandles -> VivadoM ExitCode
-    muGdbCheck (_, _) gdb = do
-      liftIO
-        $ Gdb.runCommands
-          gdb.stdinHandle
-          ["echo START OF WHOAMI\\n", "x/4cb 0xE0000000", "echo END OF WHOAMI\\n"]
-      _ <-
-        liftIO
-          $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
-          $ readUntil gdb.stdoutHandle "START OF WHOAMI"
-      gdbRead <-
-        liftIO
-          $ tryWithTimeout "Reading MU whoami over GDB" 15_000_000
-          $ readUntil gdb.stdoutHandle "END OF WHOAMI"
-      let
-        idLine = trim . L.head . lines $ trim gdbRead
-        success = idLine == "(gdb) 0xe0000000:\t109 'm'\t103 'g'\t109 'm'\t116 't'"
-      liftIO $ putStrLn [i|Output from MU whoami probe:\n#{idLine}|]
-      return $ if success then ExitSuccess else ExitFailure 1
 
     getTestsStatus ::
       [(HwTarget, DeviceInfo)] -> [TestStatus] -> Integer -> VivadoM [TestStatus]
@@ -521,11 +529,12 @@ driver testName targets = do
     let
       muPorts = (.muPort) <$> initOcdsData
       ccPorts = (.ccPort) <$> initOcdsData
+      gppePorts = (.gppePort) <$> initOcdsData
       ccGdbStarts = liftIO <$> L.zipWith (initGdb "clock-control") ccPorts targets
     brackets ccGdbStarts (liftIO . snd) $ \initCCGdbsData -> do
       let ccGdbs = fst <$> initCCGdbsData
       liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
-      gdbExitCodes0 <- zipWithM ccGdbCheck targets ccGdbs
+      gdbExitCodes0 <- mapM (gdbCheck ccGdbLookFor) ccGdbs
       (gdbCount0, gdbExitCode0) <-
         L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes0
       liftIO
@@ -536,7 +545,7 @@ driver testName targets = do
       brackets muGdbStarts (liftIO . snd) $ \initMUGdbsData -> do
         let muGdbs = fst <$> initMUGdbsData
         liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
-        gdbExitCodes1 <- zipWithM muGdbCheck targets muGdbs
+        gdbExitCodes1 <- mapM (gdbCheck muGdbLookFor) muGdbs
         (gdbCount1, gdbExitCode1) <-
           L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes1
         liftIO
@@ -544,60 +553,73 @@ driver testName targets = do
             [i|MU GDB testing passed on #{gdbCount1} of #{L.length targets} targets|]
         liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
 
-        let picocomStarts = liftIO <$> L.zipWith (initPicocom) targets [0 ..]
-        brackets picocomStarts (liftIO . snd) $ \_picocoms -> do
-          liftIO $ mapM_ Gdb.continue ccGdbs
-          -- XXX: If you also want to start the management units, uncomment this
-          --      next line. Beware that this breaks the demo, because we want
-          --      to take over control of the management unit again to read out
-          --      various values, but we don't have a way to pause the CPU again.
-          --
-          -- TODO: Add a way to send SIGINT to a GDB process.
-          -- liftIO $ mapM_ Gdb.continue muGdbs
-          forM_ targets assertAllProgrammed
-          testResults <- awaitTestCompletions 60_000
-          (sCount, stabilityExitCode) <-
-            L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
+        let gppeGdbStarts = liftIO <$> L.zipWith (initGdb "gppe-switch-demo") gppePorts targets
+        brackets gppeGdbStarts (liftIO . snd) $ \initGPPEGdbsData -> do
+          let gppeGdbs = fst <$> initGPPEGdbsData
+          liftIO $ putStrLn "Checking for MMIO access to GPPE CPUs over GDB..."
+          gdbExitCodes2 <- mapM (gdbCheck gppeGdbLookFor) gppeGdbs
+          (gdbCount2, gdbExitCode2) <-
+            L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes2
           liftIO
             $ putStrLn
-              [i|Test case #{testName} stabilised on #{sCount} of #{L.length targets} targets|]
+              [i|GPPE GDB testing passed on #{gdbCount2} of #{L.length targets} targets|]
 
-          liftIO $ putStrLn "Getting UGNs for all targets"
-          ugnPairsTable <- zipWithM muGetUgns targets muGdbs
-          let
-            ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
-          liftIO $ do
-            putStrLn "Calculating IGNs for all targets"
-            Calc.printAllIgns ugnPairsTableV fpgaSetup
-            mapM_ print ugnPairsTableV
-          currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
-          let
-            startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
-            chainConfig :: Vec FpgaCount (Calc.PeConfig (Unsigned 64) (Index 9))
-            chainConfig =
-              Calc.fullChainConfiguration
-                (SNat @3)
-                fpgaSetup
-                ugnPairsTableV
-                startOffset
-          liftIO $ do
-            putStrLn [i|Current clock cycle: #{currentTime}|]
-            putStrLn "Calculated the following configs for the switch processing elements:"
-            forM_ chainConfig print
-          _ <- sequenceA $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
-          liftIO $ do
-            let delayMicros = natToNum @StartDelay * 1_250_000
-            threadDelay delayMicros
-            putStrLn [i|Slept for: #{delayMicros}μs|]
-            newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
-            putStrLn [i|Clock is now: #{newCurrentTime}|]
+          let picocomStarts = liftIO <$> L.zipWith (initPicocom) targets [0 ..]
+          brackets picocomStarts (liftIO . snd) $ \_picocoms -> do
+            liftIO $ mapM_ Gdb.continue ccGdbs
+            -- XXX: If you also want to start the management units, uncomment this
+            --      next line. Beware that this breaks the demo, because we want
+            --      to take over control of the management unit again to read out
+            --      various values, but we don't have a way to pause the CPU again.
+            --
+            -- TODO: Add a way to send SIGINT to a GDB process.
+            -- liftIO $ mapM_ Gdb.continue muGdbs
+            forM_ targets assertAllProgrammed
+            testResults <- awaitTestCompletions 60_000
+            (sCount, stabilityExitCode) <-
+              L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
+            liftIO
+              $ putStrLn
+                [i|Test case #{testName} stabilised on #{sCount} of #{L.length targets} targets|]
 
-          _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
+            liftIO $ putStrLn "Getting UGNs for all targets"
+            ugnPairsTable <- zipWithM muGetUgns targets muGdbs
+            let
+              ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
+            liftIO $ do
+              putStrLn "Calculating IGNs for all targets"
+              Calc.printAllIgns ugnPairsTableV fpgaSetup
+              mapM_ print ugnPairsTableV
+            currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
+            let
+              startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
+              chainConfig :: Vec FpgaCount (Calc.PeConfig (Unsigned 64) (Index 9))
+              chainConfig =
+                Calc.fullChainConfiguration
+                  (SNat @3)
+                  fpgaSetup
+                  ugnPairsTableV
+                  startOffset
+            liftIO $ do
+              putStrLn [i|Current clock cycle: #{currentTime}|]
+              putStrLn "Calculated the following configs for the switch processing elements:"
+              forM_ chainConfig print
+            _ <- sequenceA $ L.zipWith3 muWriteCfg targets muGdbs (toList chainConfig)
+            liftIO $ do
+              let delayMicros = natToNum @StartDelay * 1_250_000
+              threadDelay delayMicros
+              putStrLn [i|Slept for: #{delayMicros}μs|]
+              newCurrentTime <- muGetCurrentTime (L.head targets) (L.head muGdbs)
+              putStrLn [i|Clock is now: #{newCurrentTime}|]
 
-          bufferExit <- finalCheck muGdbs (toList chainConfig)
+            _ <- liftIO $ sequenceA $ L.zipWith muReadPeBuffer targets muGdbs
 
-          let
-            finalExit =
-              fromMaybe ExitSuccess
-                $ L.find (/= ExitSuccess) [stabilityExitCode, gdbExitCode0, gdbExitCode1, bufferExit]
-          return finalExit
+            bufferExit <- finalCheck muGdbs (toList chainConfig)
+
+            let
+              finalExit =
+                fromMaybe ExitSuccess
+                  $ L.find
+                    (/= ExitSuccess)
+                    [stabilityExitCode, gdbExitCode0, gdbExitCode1, gdbExitCode2, bufferExit]
+            return finalExit
