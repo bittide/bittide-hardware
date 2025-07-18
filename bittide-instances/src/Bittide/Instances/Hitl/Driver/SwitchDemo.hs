@@ -12,11 +12,11 @@ import Clash.Prelude
 import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
+import Bittide.Instances.Hitl.SwitchDemo (memoryMapCc, memoryMapMu)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
-
-import Bittide.Instances.Hitl.SwitchDemo (memoryMapCc, memoryMapMu)
 import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent.Async.Extra (zipWithConcurrently)
 import Control.Monad (forM, forM_, when, zipWithM)
 import Control.Monad.IO.Class
 import Data.Bifunctor (Bifunctor (bimap))
@@ -711,8 +711,9 @@ driver testName targets = do
 
           let ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) ..]]
           liftIO $ mapM_ Gdb.interrupt ccGdbs
+          nSamples <- liftIO $ zipWithConcurrently dumpCcSamples ccGdbs ccSamplesPaths
           liftIO $ putStr "Dumped /n/ clock control samples: "
-          liftIO $ print =<< zipWithM dumpCcSamples ccGdbs ccSamplesPaths
+          liftIO $ print nSamples
 
           let
             finalExit =
