@@ -31,7 +31,7 @@ import System.Clock (Clock (Monotonic), diffTimeSpec, getTime, toNanoSecs)
 import System.Exit
 import System.FilePath
 import System.IO
-import System.Process (StdStream (CreatePipe, UseHandle))
+import System.Process (StdStream (CreatePipe, UseHandle), callProcess)
 import Text.Read (readMaybe)
 import Text.Show.Pretty (ppShow)
 import Vivado.Tcl (HwTarget)
@@ -189,6 +189,8 @@ driver testName targets = do
   projectDir <- liftIO $ findParentContaining "cabal.project"
 
   let
+    plotDataDumpPath =
+      projectDir </> "bittide-instances" </> "data" </> "plot" </> "plot_data_dump.py"
     hitlDir = projectDir </> "_build/hitl" </> testName
 
     calcTimeSpentMs = (`div` 1_000_000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
@@ -709,11 +711,15 @@ driver testName targets = do
 
           bufferExit <- finalCheck muGdbs (toList chainConfig)
 
-          let ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) ..]]
+          let ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
           liftIO $ mapM_ Gdb.interrupt ccGdbs
           nSamples <- liftIO $ zipWithConcurrently dumpCcSamples ccGdbs ccSamplesPaths
           liftIO $ putStr "Dumped /n/ clock control samples: "
           liftIO $ print nSamples
+
+          -- TODO: Move to separate CI step
+          liftIO $ putStrLn "Rendering plots..."
+          liftIO $ callProcess plotDataDumpPath ccSamplesPaths
 
           let
             finalExit =
