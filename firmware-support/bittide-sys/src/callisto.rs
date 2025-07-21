@@ -106,11 +106,9 @@ fn speed_change_to_sign(speed_change: SpeedChange) -> i32 {
     }
 }
 
-/// Determining whether a link is active is a bit tricky, because the link mask's
-/// bit indices are inverted compared to the indices of the links. This makes
-/// sense from a Clash lens (as BitPack "reverses" bits).
-fn is_active_link(link_mask: u8, n_buffers: u8, i: usize) -> bool {
-    link_mask & (1 << ((n_buffers - 1) as usize - i)) != 0
+/// Test whether the `i`-th bit in `bv` is set.
+fn test_bit(bv: u8, i: usize) -> bool {
+    (bv & (1 << i)) != 0
 }
 
 /// Clock correction strategy based on:
@@ -127,19 +125,12 @@ pub fn callisto<I>(
     // tests this is set by `HwCcTopologies.commonStepSizeSelect`.
     const FSTEP: f32 = 10e-9;
 
-    let n_links = cc.n_links();
-    let link_mask = cc.link_mask();
+    let link_mask_rev = cc.link_mask_rev();
 
     // Sum the data counts for all active links
     let measured_sum: i32 = eb_counters_iter
         .enumerate()
-        .map(|(i, v)| {
-            if is_active_link(link_mask, n_links, i) {
-                v
-            } else {
-                0
-            }
-        })
+        .map(|(i, v)| if test_bit(link_mask_rev, i) { v } else { 0 })
         .sum();
 
     let r_k = measured_sum as f32;
