@@ -46,6 +46,7 @@ fn main() -> ! {
 
     writeln!(uart, "nLinks: {}", cc.n_links()).unwrap();
     writeln!(uart, "linkMask: {}", cc.link_mask()).unwrap();
+    writeln!(uart, "linksOk: {}", cc.links_ok()).unwrap();
     writeln!(uart, "linkMaskPopcnt: {}", cc.link_mask_pop_count()).unwrap();
     writeln!(
         uart,

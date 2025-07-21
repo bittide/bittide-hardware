@@ -480,6 +480,9 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn sy
   bittideClk :: Clock GthTx
   bittideClk = transceivers.txClock
 
+  linksSuitableForCc :: Signal Basic125 (BitVector LinkCount)
+  linksSuitableForCc = fmap pack (bundle transceivers.handshakesDoneFree)
+
   handshakesDoneFree :: Signal Basic125 Bool
   handshakesDoneFree = and <$> bundle transceivers.handshakesDoneFree
 
@@ -644,7 +647,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn sy
           ]
       ) <-
       defaultRefClkRstEn (callistoSwClockControlC @LinkCount @CccBufferSize NoDumpVcd ccConfig)
-        -< (ccMM, (Fwd syncIn, ccJtag, reframe, mask, dc))
+        -< (ccMM, (Fwd syncIn, ccJtag, reframe, mask, Fwd linksSuitableForCc, dc))
 
     MM.constBwd 0b0000 -< ccUartPfx
     --          0b0001    SYNC_OUT_GENERATOR

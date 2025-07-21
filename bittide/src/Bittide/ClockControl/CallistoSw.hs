@@ -85,10 +85,12 @@ callistoSwClockControl ::
   SwControlConfig dom margin framesize ->
   -- | Availability mask
   Signal dom (BitVector nLinks) ->
+  -- | Links suitable for clock control (i.e., recovered clocks won't go down)
+  Signal dom (BitVector nLinks) ->
   -- | Diff counters
   Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
   (MM, Signal dom (CallistoResult nLinks))
-callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
+callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask linksOk ebs =
   hwSeqX callistoSwIla (mm, callistoResult)
  where
   callistoResult =
@@ -140,7 +142,7 @@ callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
     constBwd 0b011 -< timePfx
     [ccd0, ccd1] <-
       replicateCSignalI
-        <| clockControlWb ccConfig.margin framesize mask ebs
+        <| clockControlWb ccConfig.margin framesize mask linksOk ebs
         -< (mmCc, wbClockControl)
     constBwd 0b110 -< prefixCc
     cm <- cSignalMap (.clockMod) -< ccd0
@@ -219,6 +221,7 @@ callistoSwClockControlC ::
       , Jtag dom
       , CSignal dom Bool -- reframing enable
       , CSignal dom (BitVector nLinks) -- link mask
+      , CSignal dom (BitVector nLinks) -- what links are suitable for clock control
       , Vec nLinks (CSignal dom (RelDataCount eBufBits)) -- diff counters
       )
     )
@@ -233,7 +236,7 @@ callistoSwClockControlC ::
         )
     )
 callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} =
-  circuit $ \(mm, (syncIn, jtag, Fwd reframingEnabled, Fwd linkMask, Fwd diffCounters)) -> do
+  circuit $ \(mm, (syncIn, jtag, Fwd reframingEnabled, Fwd linkMask, Fwd linksOk, Fwd diffCounters)) -> do
     let
       debugRegisterCfg :: Signal dom DebugRegisterCfg
       debugRegisterCfg = DebugRegisterCfg <$> reframingEnabled
@@ -250,7 +253,13 @@ callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} =
       splitAtCI -< allWishbone
 
     Fwd clockControlData <-
-      clockControlWb ccConfig.margin framesize linkMask diffCounters -< clockControlBus
+      clockControlWb
+        ccConfig.margin
+        framesize
+        linkMask
+        linksOk
+        diffCounters
+        -< clockControlBus
 
     Fwd debugData <-
       debugRegisterWb debugRegisterCfg -< (debugWbBus, Fwd ((.clockMod) <$> clockControlData))
