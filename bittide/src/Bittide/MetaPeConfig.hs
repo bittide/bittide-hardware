@@ -4,7 +4,7 @@
 {-# LANGUAGE ImplicitParams #-}
 
 -- | Device to store configuration data for the Switch Demo
-module Bittide.SwitchDemoProcessingElement.MetaPeConfig where
+module Bittide.MetaPeConfig where
 
 import Clash.Prelude
 
