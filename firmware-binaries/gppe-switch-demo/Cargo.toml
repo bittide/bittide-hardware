@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2025 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "gppe-switch-demo"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["Google LLC"]
+
+[dependencies]
+bittide-sys = { path = "../../firmware-support/bittide-sys" }
+bittide-hal = { path = "../../firmware-support/bittide-hal" }
+riscv-rt = "0.11.0"
+ufmt = "0.2.0"
+
+[build-dependencies]
+memmap-generate = { path = "../../firmware-support/memmap-generate" }
