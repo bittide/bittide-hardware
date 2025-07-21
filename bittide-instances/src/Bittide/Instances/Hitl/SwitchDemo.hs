@@ -92,7 +92,7 @@ import Protocols.Wishbone
 import System.FilePath ((</>))
 import VexRiscv (DumpVcd (..), Jtag, JtagIn (..), JtagOut (..))
 
-import qualified Bittide.Instances.Hitl.Driver.SwitchDemo as D
+import {-# SOURCE #-} qualified Bittide.Instances.Hitl.Driver.SwitchDemo as D
 import qualified Bittide.Transceiver as Transceiver
 import qualified Clash.Cores.Xilinx.GTH as Gth
 import qualified Protocols.MemoryMap as MM
@@ -239,7 +239,7 @@ ccConfig =
           , initD = Undefined @(Div (64 * 1024) 4)
           , iBusTimeout = d0
           , dBusTimeout = d0
-          , includeIlaWb = True
+          , includeIlaWb = False
           }
     , ccRegPrefix = 0b1100
     , dbgRegPrefix = 0b1010
@@ -305,7 +305,8 @@ switchDemoDut ::
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
 switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn syncIn =
-  hwSeqX
+  -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
+  seqX
     (bundle (debugIla, bittidePeIla))
     ( ccMm
     , muMm
@@ -637,6 +638,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn sy
       , Fwd swCcOut0
       , [ (ccWhoAmIPfx, ccWhoAmIBus)
           , (ccUartPfx, ccUartBus)
+          , (ccSampleMemoryPfx, ccSampleMemoryBus)
           ]
       ) <-
       defaultRefClkRstEn (callistoSwClockControlC @LinkCount @CccBufferSize NoDumpVcd ccConfig)
@@ -650,6 +652,12 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn sy
     --          0b1010    DBG
     --          0b1100    CC
     MM.constBwd 0b1110 -< ccWhoAmIPfx
+    MM.constBwd 0b1111 -< ccSampleMemoryPfx
+
+    defaultRefClkRstEn
+      (wbStorage "SampleMemory")
+      (Undefined @36_000 @(BitVector 32))
+      -< ccSampleMemoryBus
 
     defaultRefClkRstEn (whoAmIC 0x6363_7773) -< ccWhoAmIBus
 
@@ -854,7 +862,8 @@ switchDemoTest ::
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
 switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn =
-  hwSeqX
+  -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
+  seqX
     testIla
     ( txs
     , txns
@@ -977,7 +986,7 @@ tests =
     , externalHdl = []
     , testCases =
         [ HitlTestCase
-            { name = "Bittide Demo DUT"
+            { name = "Bittide_Demo_DUT"
             , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
             }

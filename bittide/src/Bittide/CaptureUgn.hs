@@ -69,7 +69,7 @@ captureUgn localCounter linkIn = Circuit go
 
   mm =
     MemoryMap
-      { tree = DeviceInstance locCaller "CaptureUGN"
+      { tree = DeviceInstance locCaller "CaptureUgn"
       , deviceDefs = deviceSingleton deviceDef
       }
   deviceDef =
@@ -101,6 +101,6 @@ captureUgn localCounter linkIn = Circuit go
                     }
               }
           ]
-      , deviceName = Name "CaptureUGN" ""
+      , deviceName = Name "CaptureUgn" ""
       , definitionLoc = locHere
       }
