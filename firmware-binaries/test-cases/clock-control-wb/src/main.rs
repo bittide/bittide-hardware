@@ -46,7 +46,7 @@ fn main() -> ! {
 
     writeln!(uart, "nLinks: {}", cc.n_links()).unwrap();
     writeln!(uart, "linkMask: {}", cc.link_mask()).unwrap();
-    writeln!(uart, "linkMaskPopcnt: {}", cc.n_up_links()).unwrap();
+    writeln!(uart, "linkMaskPopcnt: {}", cc.link_mask_pop_count()).unwrap();
     writeln!(
         uart,
         "reframingEnabled: {}",
@@ -84,7 +84,7 @@ fn main() -> ! {
     writeln!(uart, "]").unwrap();
 
     // Mark end of transmission - should hopefully be unique enough?
-    for _ in 0..cc.n_up_links() {
+    for _ in 0..cc.link_mask_pop_count() {
         cc.set_change_speed(SpeedChange::NoChange);
     }
 
