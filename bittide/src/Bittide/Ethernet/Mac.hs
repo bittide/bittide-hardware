@@ -432,7 +432,7 @@ ethMac1GFifoBb SNat SNat !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ !_ =
  where
   err :: forall dom a. (NFDataX a) => Signal dom a
   err = pure $ deepErrorX "simulation model not implemented"
-{-# NOINLINE ethMac1GFifoBb #-}
+{-# OPAQUE ethMac1GFifoBb #-}
 {-# ANN ethMac1GFifoBb hasBlackBox #-}
 {-# ANN
   ethMac1GFifoBb
