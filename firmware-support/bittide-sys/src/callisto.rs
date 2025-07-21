@@ -35,8 +35,6 @@ pub struct ControlConfig {
     /// Number of cycles to wait until reframing takes place after
     /// stability has been detected.
     pub wait_time: usize,
-    /// Target data count. See `Bittide.ClockControl.targetDataCount`.
-    pub target_count: isize,
     // Gain. See https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24.
     pub k_p: f32,
 }
@@ -130,7 +128,6 @@ pub fn callisto<I>(
     const FSTEP: f32 = 10e-9;
 
     let n_links = cc.n_links();
-    let link_mask_pop_count = cc.link_mask_pop_count();
     let link_mask = cc.link_mask();
 
     // Sum the data counts for all active links
@@ -145,7 +142,7 @@ pub fn callisto<I>(
         })
         .sum();
 
-    let r_k = (measured_sum - link_mask_pop_count as i32 * config.target_count as i32) as f32;
+    let r_k = measured_sum as f32;
     let c_des = config.k_p * r_k + state.steady_state_target;
 
     state.z_k += speed_change_to_sign(state.b_k);
