@@ -15,6 +15,7 @@ module Bittide.Node where
 import Clash.Prelude
 
 import Clash.Class.BitPackC (ByteOrder)
+import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.Extra
@@ -31,7 +32,7 @@ import Bittide.ProcessingElement
 import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Bittide.Switch
-import Bittide.Wishbone (timeWb)
+import Bittide.Wishbone (readDnaPortE2Wb, timeWb)
 
 {- | Each 'gppe' results in 2 busses for the 'managementUnit', namely:
 * The 'calendar' for the 'scatterUnitWB'.
@@ -124,7 +125,7 @@ Internal busses:
   * Scatter unit
   * Gather unit
 -}
-type GppeBussesNotExposed = PeInternalBusses + 1
+type GppeBussesNotExposed = PeInternalBusses + 2
 type GppeBusses = GppeBussesNotExposed + 2
 type GppeBusWidth = 30 - CLog 2 GppeBusses
 
@@ -147,6 +148,9 @@ data GppeConfig nmuRemBusWidth metaPeBufferWidth where
     -- ^ Configuration for a 'gppe's 'processingElement', which statically
     -- has four external busses connected to the instruction memory, data memory
     -- , 'scatterUnitWb' and 'gatherUnitWb'.
+    , dnaPrefix :: Unsigned (CLog 2 GppeBusses)
+    -- ^ For testing purposes. This should be removed once more than one GPPE is used, or
+    -- if access to the device DNA is required elsewhere on the system.
     , dumpVcd :: DumpVcd
     , metaPeConfigPrefix :: Unsigned (CLog 2 GppeBusses)
     , metaPeConfigBufferWidth :: SNat metaPeBufferWidth
@@ -187,14 +191,17 @@ gppeC ::
     (CSignal dom (BitVector 64))
 gppeC (GppeConfig{..}) =
   circuit $ \(mm, Fwd linkIn, (scatterCalMM, scatterCalWb), (gatherCalMM, gatherCalWb), jtag) -> do
-    [ (scatterPfx, (scatterMM, scatterWb))
+    [ (dnaPfx, dnaBus)
+      , (scatterPfx, (scatterMM, scatterWb))
       , (gatherPfx, (gatherMM, gatherWb))
       , (metaPeConfigPfx, metaPeBus)
       ] <-
       processingElement dumpVcd peConfig -< (mm, jtag)
+    constBwd dnaPrefix -< dnaPfx
     constBwd scatterPrefix -< scatterPfx
     constBwd gatherPrefix -< gatherPfx
     constBwd metaPeConfigPrefix -< metaPeConfigPfx
+    _dna <- readDnaPortE2Wb simDna2 -< dnaBus
     metaPeConfig metaPeConfigBufferWidth -< metaPeBus
     scatterUnitWbC scatterConfig linkIn
       -< ((scatterMM, scatterWb), (scatterCalMM, scatterCalWb))
