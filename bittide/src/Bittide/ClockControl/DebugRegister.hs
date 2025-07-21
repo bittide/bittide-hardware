@@ -22,7 +22,6 @@ import Protocols.Wishbone
 import Bittide.ClockControl (SpeedChange)
 import Clash.Class.BitPackC
 import Clash.Explicit.Signal.Extra (changepoints)
-import Clash.Signal.TH.Extra (deriveSignalHasFields)
 import Data.Maybe (isJust)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap.Registers.WishboneStandard (
@@ -38,8 +37,6 @@ import qualified Bittide.ClockControl.Callisto.Types as T
 data DebugRegisterCfg = DebugRegisterCfg
   { reframingEnabled :: Bool
   }
-
-deriveSignalHasFields ''DebugRegisterCfg
 
 {- | Debugging information that is reported from the CPU or calculated from its
 outputs.
@@ -59,8 +56,6 @@ data DebugRegisterData = DebugRegisterData
   , updatePeriodMax :: Unsigned 32
   -- ^ The maximum update period reported by 'updatePeriod'
   }
-
-deriveSignalHasFields ''DebugRegisterData
 
 {- | A Wishbone accessible debug register
 This interface holds values that the CPU should be reporting to the FPGA for debugging

@@ -14,7 +14,6 @@ import Protocols.Wishbone
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker
 import Clash.Class.BitPackC (ByteOrder)
-import Clash.Signal.TH.Extra (deriveSignalHasFields)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
@@ -33,8 +32,6 @@ data ClockControlData (nLinks :: Nat) = ClockControlData
   , allSettled :: Bool
   }
   deriving (Generic, NFDataX, ShowX, Show)
-
-deriveSignalHasFields ''ClockControlData
 
 -- | Replace all elements in a vector with a default value where the mask is unset.
 applyMask ::

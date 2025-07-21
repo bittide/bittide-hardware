@@ -20,7 +20,6 @@ import Clash.Prelude
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker (StabilityIndication)
 import Clash.Class.BitPackC (BitPackC)
-import Clash.Signal.TH.Extra (deriveSignalHasFields)
 import Protocols.MemoryMap.FieldType (ToFieldType)
 import VexRiscv (JtagOut)
 
@@ -113,8 +112,3 @@ data ControlSt = ControlSt
   -- ^ finite state machine for reframing detection
   }
   deriving (Generic, NFDataX)
-
-deriveSignalHasFields ''CallistoResult
-deriveSignalHasFields ''CallistoCResult
-deriveSignalHasFields ''ControlConfig
-deriveSignalHasFields ''ControlSt
