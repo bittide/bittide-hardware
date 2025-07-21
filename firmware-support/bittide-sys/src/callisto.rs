@@ -135,18 +135,18 @@ pub fn callisto<I>(
 
     let r_k = measured_sum as f32;
     let c_des = config.k_p * r_k + state.steady_state_target;
-
-    state.z_k += speed_change_to_sign(state.b_k);
-
     let c_est = FSTEP * state.z_k as f32;
 
-    state.b_k = if c_des < c_est {
+    let b_k = if c_des < c_est {
         SpeedChange::SlowDown
     } else if c_des > c_est {
         SpeedChange::SpeedUp
     } else {
         SpeedChange::NoChange
     };
+
+    state.z_k += speed_change_to_sign(b_k);
+    state.b_k = b_k;
 
     if config.reframing_enabled {
         state.rf_state_update(
