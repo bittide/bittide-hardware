@@ -256,7 +256,7 @@ instance MayHavePostProcData a where
       [(name, Just postProcData) | HitlTestCase{..} <- cases]
 
 instance MayHavePostProcData () where
-  mGetPPD = Map.fromList . map ((,Nothing) . name)
+  mGetPPD = Map.fromList . map ((,Nothing) . (.name))
 
 -- | Pre-process function that always succeeds and uses '()' as user-data.
 noPreProcess ::
@@ -266,7 +266,7 @@ noPreProcess _ _ _ _ _ = pure (TestStepSuccess ())
 -- | Obtain a list of the hardware targets that are relevant for a given HITL test.
 hwTargetRefsFromHitlTestGroup :: HitlTestGroup -> [HwTargetRef]
 hwTargetRefsFromHitlTestGroup HitlTestGroup{testCases} =
-  nubOrd $ concatMap (map fst . Map.toList . parameters) testCases
+  nubOrd $ concatMap (map fst . Map.toList . (.parameters)) testCases
 
 -- | Provide a given list of hardware targets with one parameter.
 paramForHwTargets :: [HwTargetRef] -> a -> Map HwTargetRef a

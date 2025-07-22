@@ -497,8 +497,8 @@ callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..}
   (mm, output) = withClockResetEnable clk rst enableGen $ callistoCc callistoCfg mask ebs
 
   -- Condense multicycle speedchange outputs into a single cycle for the ILA
-  mscChanging = isRising clk rst enableGen False (isJust . maybeSpeedChange <$> output)
-  newMsc = mux mscChanging (maybeSpeedChange <$> output) (pure Nothing)
+  mscChanging = isRising clk rst enableGen False (isJust <$> output.maybeSpeedChange)
+  newMsc = mux mscChanging output.maybeSpeedChange (pure Nothing)
   callistoOutputIla = (\record field -> record{maybeSpeedChange = field}) <$> output <*> newMsc
 
   filterCounts vMask vCounts = flip map (zip vMask vCounts)
@@ -538,20 +538,20 @@ callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..}
         height = SNat @AccWindowHeight
         idcs =
           unbundle
-            (filterIndicators <$> fmap bv2v mask <*> (stability <$> callistoOutputIla))
+            (filterIndicators <$> fmap bv2v mask <*> callistoOutputIla.stability)
 
         -- get the points in time where the monitored values change
-        stableUpdates = changepoints clk rst enableGen <$> (fmap stable <$> idcs)
-        settledUpdates = changepoints clk rst enableGen <$> (fmap settled <$> idcs)
+        stableUpdates = changepoints clk rst enableGen <$> (fmap (.stable) <$> idcs)
+        settledUpdates = changepoints clk rst enableGen <$> (fmap (.settled) <$> idcs)
         modeUpdate = changepoints clk rst enableGen (rfStageChange <$> callistoOutputIla)
 
         combine eb stU seU ind =
           (,,)
             <$> eb
-            <*> (orNothing <$> stU <*> (stable <$> ind))
-            <*> (orNothing <$> seU <*> (settled <$> ind))
+            <*> (orNothing <$> stU <*> ind.stable)
+            <*> (orNothing <$> seU <*> ind.settled)
 
-        noChange = fromMaybe NoChange . maybeSpeedChange
+        noChange = fromMaybe NoChange . (.maybeSpeedChange)
      in PlotData
           <$> bundle (zipWith4 combine ebsC stableUpdates settledUpdates idcs)
           <*> accWindow height clk rst enableGen (noChange <$> callistoOutputIla)
@@ -601,7 +601,7 @@ callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..}
   -- do not forward clock modifications during calibration
   muteDuringCalibration active ccResult =
     ccResult
-      { maybeSpeedChange = bool (maybeSpeedChange ccResult) Nothing active
+      { maybeSpeedChange = bool ccResult.maybeSpeedChange Nothing active
       }
 
   -- Note that we always need to capture everything before the trigger

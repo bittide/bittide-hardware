@@ -93,7 +93,7 @@ plot maybeCorrection outputDir graph plotData =
   clockPlots = Vec.imap toClockPlot plotData
   elasticBufferPlots = Vec.imap toElasticBufferPlot plotData
 
-  edgeCount = length $ edges $ topologyGraph graph
+  edgeCount = length $ edges $ graph.topologyGraph
 
   toElasticBufferPlot nodeIndex (unzip4 -> (time, _, reframingStage, buffersPerNode)) =
     foldPlots
@@ -108,7 +108,7 @@ plot maybeCorrection outputDir graph plotData =
                   @@ [o2 "label" $ show nodeIndex <> " ← " <> show j]
             else snd
         )
-      $ zip (filter (hasEdge graph nodeIndex) [0, 1 ..])
+      $ zip (filter (graph.hasEdge nodeIndex) [0, 1 ..])
       $ fmap plotEbData
       -- Organize data by node instead of by timestamp. I.e., the first item in
       -- 'timedBuffers' is for this node's first neighbor.
@@ -182,8 +182,8 @@ plotEbData (unzip4 -> (timestampsFs, reframingStages, dataCounts, stabilities)) 
     current = case mode of
       RSWait{} -> Waiting
       _
-        | SC.settled sci -> Settled
-        | SC.stable sci -> Stable
+        | sci.settled -> Settled
+        | sci.stable -> Stable
         | otherwise -> None
 
     markings' = mindMarking ys markings previous

@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE DuplicateRecordFields #-}
 
 module Bittide.ClockControl.CallistoSw (
   callistoSwClockControl,
@@ -144,7 +143,7 @@ callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
         <| clockControlWb ccConfig.margin framesize mask ebs
         -< (mmCc, wbClockControl)
     constBwd 0b110 -< prefixCc
-    cm <- cSignalMap clockMod -< ccd0
+    cm <- cSignalMap (.clockMod) -< ccd0
     dbg <- debugRegisterWb debugRegisterCfg -< (debugWbBus, cm)
     constBwd 0b101 -< prefixDebug
     idC -< (ccd1, dbg)

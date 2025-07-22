@@ -132,6 +132,14 @@ common extra
   ghc-options:
     -Wall
     -Wcompat
+
+common sane-records
+  default-extensions:
+    DisambiguateRecordFields
+    DuplicateRecordFields
+    NamedFieldPuns
+    NoFieldSelectors
+    OverloadedRecordDot
 """
 
 

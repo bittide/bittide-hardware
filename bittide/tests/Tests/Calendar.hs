@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -192,7 +191,7 @@ readCalendar = property $ do
       let
         -- 1 to compensate for reset, length for 1 cycle per element, sum of snds for
         -- additional validity delays.
-        simLength = 1 + length cal + sum (fmap (fromIntegral . veRepeat) cal)
+        simLength = 1 + length cal + sum (fmap (fromIntegral . (.veRepeat)) cal)
         topEntity =
           (\(a, _, _) -> a)
             $ withClockResetEnable
@@ -226,8 +225,8 @@ reconfigCalendar = property $ do
           . Gen.list (Range.singleton calSize)
           $ genValidEntry (SNat @validityBits) genDefinedBitVector
       let
-        (entries0, delays0) = unzip $ fmap (\e -> (veEntry e, veRepeat e)) cal
-        (entries1, delays1) = P.unzip $ fmap (\e -> (veEntry e, veRepeat e)) newEntries
+        (entries0, delays0) = unzip $ fmap (\e -> (e.veEntry, e.veRepeat)) cal
+        (entries1, delays1) = P.unzip $ fmap (\e -> (e.veEntry, e.veRepeat)) newEntries
         cal0Duration = calSize + sum (fmap fromIntegral delays0)
         cal1Duration = calSize + sum (fmap fromIntegral delays1)
         writeOps = P.zip (cycle [0 .. indexOf calSize']) newEntries
@@ -319,7 +318,7 @@ metaCycleIndication = property $ do
         newDepthAddr = reqRegs + 2
         swapAddr = reqRegs + 3
         allDepths = (fromIntegral calSize - 1) : newDepths
-        delayPerDepth = tail $ scanl (\a b -> a + fromIntegral (veRepeat b)) 0 cal
+        delayPerDepth = tail $ scanl (\a b -> a + fromIntegral b.veRepeat) 0 cal
         allDurations = fmap (\d -> d + delayPerDepth !! d) allDepths
       simLength <- forAll $ fromIntegral <$> Gen.enum 0 (sum allDurations + sum newDepths)
       let

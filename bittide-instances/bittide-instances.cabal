@@ -149,8 +149,16 @@ common extra
     -Wall
     -Wcompat
 
+common sane-records
+  default-extensions:
+    DisambiguateRecordFields
+    DuplicateRecordFields
+    NamedFieldPuns
+    NoFieldSelectors
+    OverloadedRecordDot
+
 library
-  import: ghc2024, clash, extra
+  import: ghc2024, clash, extra, sane-records
   hs-source-dirs: src
   exposed-modules:
     Bittide.Instances.Domains
@@ -261,7 +269,7 @@ test-suite doctests
     doctest-parallel >=0.3.0.1,
 
 test-suite unittests
-  import: ghc2024, clash, extra
+  import: ghc2024, clash, extra, sane-records
   hs-source-dirs: tests
   type: exitcode-stdio-1.0
   main-is: unittests.hs

@@ -102,7 +102,7 @@ linkMask g i = case leTrans @(i + 1) @n @FpgaCount of
   edge j =
     j
       <= (natToNum @(n - 1))
-      && hasEdge g (natToNum @i) (truncateB @_ @n @(FpgaCount - n) j)
+      && g.hasEdge (natToNum @i) (truncateB @_ @n @(FpgaCount - n) j)
 
 linkMasks ::
   forall n.

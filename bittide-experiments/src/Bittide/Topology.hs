@@ -149,20 +149,20 @@ data TopologyType m n where
 
 instance Show (TopologyType m a) where
   show = \case
-    Diamond{} -> topologyName diamond
-    Pendulum{} -> topologyName $ pendulum d0 d0
-    Line{} -> topologyName $ line d0
-    HyperCube{} -> topologyName $ hypercube d0
-    Grid{} -> topologyName $ grid d0 d0
-    Torus2D{} -> topologyName $ torus2d d0 d0
-    Torus3D{} -> topologyName $ torus3d d0 d0 d0
-    Tree{} -> topologyName $ tree d0 d0
-    Star{} -> topologyName $ star d0
-    Cycle{} -> topologyName $ cyclic d0
-    Complete{} -> topologyName $ complete d0
-    Dumbbell{} -> topologyName $ dumbbell d0 d0 d0
-    Hourglass{} -> topologyName $ hourglass d0
-    Beads{} -> topologyName $ beads d0 d0 d0
+    Diamond{} -> (.topologyName) diamond
+    Pendulum{} -> (.topologyName) $ pendulum d0 d0
+    Line{} -> (.topologyName) $ line d0
+    HyperCube{} -> (.topologyName) $ hypercube d0
+    Grid{} -> (.topologyName) $ grid d0 d0
+    Torus2D{} -> (.topologyName) $ torus2d d0 d0
+    Torus3D{} -> (.topologyName) $ torus3d d0 d0 d0
+    Tree{} -> (.topologyName) $ tree d0 d0
+    Star{} -> (.topologyName) $ star d0
+    Cycle{} -> (.topologyName) $ cyclic d0
+    Complete{} -> (.topologyName) $ complete d0
+    Dumbbell{} -> (.topologyName) $ dumbbell d0 d0 d0
+    Hourglass{} -> (.topologyName) $ hourglass d0
+    Beads{} -> (.topologyName) $ beads d0 d0 d0
     DotFile{} -> "dotfile"
     Random{} -> "random"
 
@@ -696,8 +696,8 @@ toDot ::
 toDot t =
   ( True
   , Graph
-  , Just $ StringID $ topologyName t
-  , map asEdgeStatement $ edges $ topologyGraph t
+  , Just $ StringID $ t.topologyName
+  , map asEdgeStatement $ edges $ t.topologyGraph
   )
  where
   asEdgeStatement (x, y) =

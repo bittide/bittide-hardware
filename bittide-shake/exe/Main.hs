@@ -5,6 +5,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -552,17 +553,17 @@ main = do
               phony (entityName targetName <> ":test") $ do
                 need [testExitCodePath]
                 exitCode <- read <$> readFile' testExitCodePath
-                when (isJust (mPostProc =<< targetTest)) $ do
-                  res <- liftIO $ (fromJust $ mPostProc =<< targetTest) ilaDataDir exitCode
+                when (isJust ((.mPostProc) =<< targetTest)) $ do
+                  res <- liftIO $ (fromJust $ (.mPostProc) =<< targetTest) ilaDataDir exitCode
                   checkTestStep res
                 unless (exitCode == ExitSuccess) $ do
                   liftIO $ exitWith exitCode
 
-              when (isJust (mPostProc =<< targetTest)) $ do
+              when (isJust ((.mPostProc) =<< targetTest)) $ do
                 phony (entityName targetName <> ":post-process") $ do
                   need [testExitCodePath]
                   exitCode <- read <$> readFile' testExitCodePath
-                  res <- liftIO $ (fromJust (mPostProc =<< targetTest)) ilaDataDir exitCode
+                  res <- liftIO $ (fromJust ((.mPostProc) =<< targetTest)) ilaDataDir exitCode
                   checkTestStep res
 
     if null shakeTargets

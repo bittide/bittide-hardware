@@ -48,7 +48,7 @@ instance FromNamedRecord Row where
 assertTriggerAtStart :: [Row] -> Assertion
 assertTriggerAtStart [] = assertFailure "No rows given"
 assertTriggerAtStart (row : _) =
-  assertBool "Trigger should be True in the first sample" (trigger row)
+  assertBool "Trigger should be True in the first sample" row.trigger
 
 -- | Decode the CSV file and run all post processing checks
 processCsv :: FilePath -> Assertion
@@ -64,9 +64,9 @@ processCsv csvPath_ = do
 postBoardTestExtended :: ExitCode -> [FlattenedIlaCsvPath] -> Assertion
 postBoardTestExtended _exitCode ilaCsvPaths = do
   let
-    csvToProcess = filter ((baseNameEndsWith "boardTestIla") . ilaName) ilaCsvPaths
+    csvToProcess = filter ((baseNameEndsWith "boardTestIla") . (.ilaName)) ilaCsvPaths
   assertBool "Expected at least 1 CSV file, but got 0" $ not (null csvToProcess)
-  mapM_ (processCsv . csvPath) csvToProcess
+  mapM_ (processCsv . (.csvPath)) csvToProcess
   putStrLn $
     "Successfully performed post processing of "
       <> show (length csvToProcess)

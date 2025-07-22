@@ -7,6 +7,7 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PackageImports #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -229,10 +230,10 @@ instance
           <> [ ("EB " <> show i, show $ toInteger x)
              | (i, x) <- topologyView dpDataCounts
              ]
-          <> [ (show i <> " is stable", b2bs $ stable x)
+          <> [ (show i <> " is stable", b2bs x.stable)
              | (i, x) <- topologyView dpStability
              ]
-          <> [ (show i <> " is settled", b2bs $ settled x)
+          <> [ (show i <> " is settled", b2bs x.settled)
              | (i, x) <- topologyView dpStability
              ]
    where
@@ -309,7 +310,7 @@ postProcess t i links =
     Vec topologySize (Maybe a)
   topologyView =
     foldr (\(j, x) -> Vec.replace j $ Just x) (Vec.repeat Nothing)
-      . filter (hasEdge t i . fst)
+      . filter ((.hasEdge) t i . fst)
       . fmap
         ( first $
             checkedTruncateB @topologySize @(utilizedFpgaCount - topologySize)
@@ -572,7 +573,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
           SomeNat n -> return $ STop $ complete $ snatProxy n
 
   STop (t :: Topology topologySize) <-
-    case CcConf.ccTopologyType cfg of
+    case cfg.ccTopologyType of
       Random{} -> topFromDirs
       DotFile f -> readFile f >>= either die return . fromDot
       tt -> froccTopologyType tt >>= either die return
@@ -619,7 +620,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
                 hClose h
 
                 let
-                  ls = show <$> filter (hasEdge t i) (Vec.toList Vec.indicesI)
+                  ls = show <$> filter ((.hasEdge) t i) (Vec.toList Vec.indicesI)
                   header =
                     Vector.fromList $
                       map BSC.pack $
@@ -657,7 +658,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
 
         let
           allStable =
-            all ((\(_, _, _, xs) -> all (stable . snd) xs) . last) postProcessData
+            all ((\(_, _, _, xs) -> all ((.stable) . snd) xs) . last) postProcessData
           cfg1 =
             cfg
               { CcConf.outDir = outDir
@@ -665,7 +666,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
               }
           ids = bimap toInteger fst <$> fpgas
 
-        case CcConf.ccTopologyType cfg of
+        case cfg.ccTopologyType of
           Random{} -> writeTop Nothing
           DotFile f -> readFile f >>= writeTop . Just
           tt -> froccTopologyType tt >>= either die (`saveCcConfig` cfg1)

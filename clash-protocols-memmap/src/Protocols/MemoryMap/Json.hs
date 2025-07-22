@@ -82,7 +82,7 @@ memoryMapJson deviceDefs tree =
 
       types <- forM (Map.toList validTypes) $ \(name, def0) -> do
         def1 <- generateTypeDesc def0
-        pure $ fromString (FT.name name) .= def1
+        pure $ fromString name.name .= def1
 
       tree1 <- generateTree tree
 
@@ -116,12 +116,12 @@ generateTypeDesc :: TypeDescription -> JsonGenerator Value
 generateTypeDesc TypeDescription{name = tyName, ..} =
   pure
     $ object
-      [ "name" .= toJSON (FT.name tyName)
+      [ "name" .= toJSON tyName.name
       , "meta"
           .= object
-            [ "module" .= FT.moduleName tyName
-            , "package" .= FT.packageName tyName
-            , "is_newtype" .= FT.isNewType tyName
+            [ "module" .= tyName.moduleName
+            , "package" .= tyName.packageName
+            , "is_newtype" .= tyName.isNewType
             ]
       , "generics" .= nGenerics
       , "definition" .= generateTypeDef definition
@@ -152,7 +152,7 @@ generateTypeDef ft = case ft of
   FT.IndexFieldType n -> toJSON ["index", toJSON n]
   FT.VecFieldType n ty -> toJSON ["vector", toJSON n, generateTypeDef ty]
   FT.TypeReference (FT.SumOfProductFieldType tyName _def) args ->
-    toJSON ["reference", toJSON (FT.name tyName), toJSON (generateTypeDef <$> args)]
+    toJSON ["reference", toJSON tyName.name, toJSON (generateTypeDef <$> args)]
   FT.TypeReference ty [] -> generateTypeDef ty
   FT.TypeReference ty args -> error $ "shouldn't happen: " <> show ty <> show args
   FT.TypeVariable n -> toJSON ["variable", toJSON n]

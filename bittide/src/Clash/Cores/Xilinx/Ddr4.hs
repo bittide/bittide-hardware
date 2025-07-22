@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE DuplicateRecordFields #-}
 {-# OPTIONS_GHC -Wno-ambiguous-fields #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -74,9 +73,9 @@ createDomain vXilinxSystem{vName = "Ddr200", vPeriod = hzToPeriod 200e6}
 newtype MapX k v = MapX {unMapX :: Map k v}
 
 instance (NFDataX k, NFDataX v, NFData k, NFData v) => NFDataX (MapX k v) where
-  rnfX = rnf . unMapX
+  rnfX = rnf . (.unMapX)
   ensureSpine = id
-  hasUndefined = hasUndefined . Map.toList . unMapX
+  hasUndefined = hasUndefined . Map.toList . (.unMapX)
   deepErrorX = errorX
 
 data Ddr4AxiState = Ddr4AxiState
@@ -157,14 +156,14 @@ ddr4AxiTf s0@Ddr4AxiState{fsmState = Read addr} AxiM2S{rd = m2s} =
   rd0 =
     S2M_ReadData
       { _rid = 0
-      , _rdata = fromMaybe 0 $ unMapX s0.memory Map.!? addr
+      , _rdata = fromMaybe 0 $ s0.memory.unMapX Map.!? addr
       , _rresp = pure ROkay
       , _rlast = True
       , _ruser = ()
       }
 ddr4AxiTf s0@Ddr4AxiState{fsmState = WaitWriteData addr} m2s@AxiM2S{wd = M2S_WriteData{}} =
   ( s0
-      { memory = MapX $ Map.adjust (\_ -> dat) addr (unMapX s0.memory)
+      { memory = MapX $ Map.adjust (\_ -> dat) addr (s0.memory.unMapX)
       , fsmState = ConfirmWrite
       }
   , defaultAxiS2M{wd = S2M_WriteData{_wready = True}}
