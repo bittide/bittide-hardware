@@ -720,3 +720,184 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
   withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
   withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
+
+{- | Simulation only version of 'transceiverPrbsWith', leaving out unnecessary
+steps during simulation
+-}
+transceiverPrbsWithSim ::
+  forall tx rx tx1 rx1 ref free txS rxS.
+  ( HasSynchronousReset tx
+  , HasDefinedInitialValues tx
+  , HasSynchronousReset rx
+  , HasDefinedInitialValues rx
+  , HasSynchronousReset free
+  , HasDefinedInitialValues free
+  , KnownDomain rx1
+  , KnownDomain tx1
+  , KnownDomain rxS
+  , KnownDomain txS
+  , KnownDomain ref
+  , KnownDomain free
+  , -- , tx1 ~ rx1
+    -- , txS ~ rxS
+    free ~ tx
+  , tx ~ rx
+  ) =>
+  Gth.GthCore tx1 tx rx1 rx ref free txS rxS ->
+  Config free ->
+  Input tx rx tx1 rx1 ref free rxS ->
+  Output tx rx tx1 rx1 txS free
+transceiverPrbsWithSim gthCore opts args@Input{clock, reset} =
+  result
+ where
+  tx_active = args.txActive
+
+  result =
+    Output
+      { txSampling = txUserData
+      , rxData = mux rxUserData (Just <$> alignedRxData0) (pure Nothing)
+      , txReady = withLockRxTx rxReadyNeighborSticky
+      , handshakeDoneTx = withLockRxTx prbsOkDelayed
+      , handshakeDone = prbsOkDelayed
+      , handshakeDoneFree = withLockRxFree prbsOkDelayed
+      , txSim
+      , txN = txN
+      , txP = txP
+      , txOutClock
+      , txReset
+      , rxOutClock
+      , rxReset
+      , linkUp
+      , linkReady
+      , stats = pure (ResetManager.Statistics 0 0 0 0)
+      }
+
+  linkUp =
+    withLockTxFree txUserData
+      .&&. withLockRxFree rxUserData
+
+  linkReady = linkUp .||. withLockRxFree rxReadyNeighborSticky
+
+  ( txSim
+    , txN
+    , txP
+    , txOutClock
+    , rxOutClock
+    , rx_data0
+    , reset_tx_done
+    , reset_rx_done
+    , _txpmaresetdone_out
+    , _rxpmaresetdone_out
+    , rxCtrl0 :: Signal rx (BitVector 16)
+    , rxCtrl1 :: Signal rx (BitVector 16)
+    , rxCtrl2 :: Signal rx (BitVector 8)
+    , rxCtrl3 :: Signal rx (BitVector 8)
+    ) =
+      gthCore
+        args.channelName
+        args.clockPath
+        args.rxSim
+        args.rxN
+        args.rxP
+        clock -- gtwiz_reset_clk_freerun_in
+        (delayReset Asserted clock rst_all)
+        -- \* filter glitches *
+        (delayReset Asserted clock rst_rx)
+        -- \* filter glitches *
+        -- gtwiz_reset_rx_datapath_in
+        gtwiz_userdata_tx_in
+        0 -- txctrl
+        args.refClock -- gtrefclk0_in
+        args.clockTx1
+        args.clockTx2
+        args.txActive
+        args.clockRx1
+        args.clockRx2
+        args.rxActive
+
+  txClock = args.clockTx2
+  rxClock = args.clockRx2
+
+  rst_all = unsafeFromActiveHigh (pure False)
+  rst_rx = unsafeFromActiveHigh (pure False)
+
+  -- We consider the control symbols as errors, as they should not be present in
+  -- the user data stream. 8b/10b encoding errors naturally count as errors too.
+  -- Note that the upper bits of rxCtrl0 and rxCtrl1 are unused.
+  --
+  -- TODO: Truncate rxCtrl0 and rxCtrl1 in GTH primitive.
+  rxCtrlOrError =
+    (fmap (truncateB @_ @8) rxCtrl0 ./=. pure 0)
+      .||. (fmap (truncateB @_ @8) rxCtrl1 ./=. pure 0)
+      .||. (rxCtrl2 ./=. pure 0)
+      .||. (rxCtrl3 ./=. pure 0)
+
+  prbsOk =
+    rxUserData
+      .||. Prbs.tracker rxClock rxReset rxCtrlOrError
+
+  prbs = 0
+  prbsWithMeta = WordAlign.joinMsbs @8 <$> fmap pack metaTx <*> prbs
+  prbsWithMetaAndAlign = WordAlign.joinMsbs @8 WordAlign.alignSymbol <$> prbsWithMeta
+  gtwiz_userdata_tx_in =
+    mux
+      txUserData
+      args.txData
+      prbsWithMetaAndAlign
+
+  rxReset =
+    xpmResetSynchronizer Asserted rxClock rxClock
+      $ unsafeFromActiveLow (bitCoerce <$> reset_rx_done)
+      `orReset` xpmResetSynchronizer Asserted clock rxClock reset
+
+  -- 'prbsWaitMs' is the number of milliseconds representing the worst case time
+  -- it takes for the PRBS to stabilize. I.e., after this time we can be sure the
+  -- neighbor doesn't reset its transceiver anymore. We add a single retry to
+  -- account for clock speed variations.
+  prbsWaitMs =
+    ((1 :: Index 2) `add` opts.resetManagerConfig.rxRetries)
+      `mul` opts.resetManagerConfig.rxTimeoutMs
+  prbsOkDelayed = trueForSteps (Proxy @(Milliseconds 1)) prbsWaitMs rxClock rxReset prbsOk
+  validMeta = mux rxUserData (pure False) prbsOkDelayed
+
+  alignedRxData0 :: Signal rx (BitVector 64)
+  alignedRxData0 = rx_data0 -- no actual alignment, oops
+  (_alignedAlignBits, alignedRxData1) =
+    unbundle (WordAlign.splitMsbs @8 @8 <$> alignedRxData0)
+
+  (alignedMetaBits, _alignedRxData2) =
+    unbundle (WordAlign.splitMsbs @8 @7 <$> alignedRxData1)
+
+  rxMeta = mux validMeta (Just . unpack @Meta <$> alignedMetaBits) (pure Nothing)
+  rxLast = maybe False (.lastPrbsWord) <$> rxMeta
+  rxReadyNeighbor = maybe False (.ready) <$> rxMeta
+
+  rxUserData = sticky rxClock rxReset rxLast
+  txUserData = sticky txClock txReset txLast
+
+  -- Investigate: should `txLast` be mentioned here?
+  indicateRxReady = txLast .||. withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
+
+  rxReadyNeighborSticky = sticky rxClock rxReset rxReadyNeighbor
+  txLast = args.txStart .&&. withLockRxTx rxReadyNeighborSticky
+
+  metaTx :: Signal tx Meta
+  metaTx =
+    Meta
+      <$> indicateRxReady
+      <*> txLast
+      -- We shouldn't sync with 'xpmCdcArraySingle' here, as the individual bits in
+      -- 'fpgaIndex' are related to each other. Still, we know fpgaIndex is basically
+      -- a constant so :shrug:.
+      <*> opts.debugFpgaIndex
+      <*> pure args.transceiverIndex
+
+  txReset =
+    xpmResetSynchronizer Asserted txClock txClock
+      $ unsafeFromActiveLow (bitCoerce <$> tx_active)
+      `orReset` unsafeFromActiveLow (bitCoerce <$> reset_tx_done)
+      `orReset` xpmResetSynchronizer Asserted clock txClock reset
+
+  withLockTxFree = Cdc.withLock txClock (unpack <$> reset_tx_done) clock reset
+  withLockRxFree = Cdc.withLock rxClock (unpack <$> reset_rx_done) clock reset
+  withLockRxTx = Cdc.withLock rxClock (unpack <$> reset_rx_done) txClock txReset
