@@ -298,7 +298,7 @@ calendar ::
   -- | Currently active entry, Metacycle indicator and outgoing wishbone interface.
   (Signal dom a, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)))
 calendar SNat bootstrapActive bootstrapShadow wbIn =
-  (veEntry . activeEntry <$> calOut, lastCycle <$> calOut, wbOut)
+  (calOut.activeEntry.veEntry, calOut.lastCycle, wbOut)
  where
   ctrl :: Signal dom (CalendarControl maxCalDepth (ValidEntry a repetitionBits) nBytes)
   ctrl = wbCalRX wbIn
@@ -319,8 +319,8 @@ calendar SNat bootstrapActive bootstrapShadow wbIn =
       ++ repeat @(maxCalDepth - bootstrapSizeA)
         ValidEntry{veEntry = unpack 0, veRepeat = 0}
 
-  bufA = blockRam bootstrapA (readA <$> bufCtrl) (writeA <$> bufCtrl)
-  bufB = blockRam bootstrapB (readB <$> bufCtrl) (writeB <$> bufCtrl)
+  bufA = blockRam bootstrapA bufCtrl.readA bufCtrl.writeA
+  bufB = blockRam bootstrapB bufCtrl.readB bufCtrl.writeB
 
   (bufCtrl, calOut) = mealyB go initState (ctrl, bufA, bufB)
 

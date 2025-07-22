@@ -60,7 +60,7 @@ stabilityCheckerTest = property $ do
           (Range.singleton simLength)
           (genSigned @dataCountBits Range.constantBounded)
     let
-      topEntity = wcre $ fmap stable . stabilityChecker @System sMargin sCyclesStable
+      topEntity = wcre $ fmap (.stable) . stabilityChecker @System sMargin sCyclesStable
       simOut = simulateN simLength topEntity dataCounts
 
     simOut === golden (snatToNum sMargin) (snatToNum sCyclesStable) dataCounts

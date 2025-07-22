@@ -63,7 +63,7 @@ echo :: Handle -> String -> IO ()
 echo h s = runCommands h ["echo \\n" <> s <> "\\n"]
 
 continue :: ProcessHandles -> IO ()
-continue gdb = runCommands (stdinHandle gdb) ["continue"]
+continue gdb = runCommands gdb.stdinHandle ["continue"]
 
 {- | Send @SIGINT@ to the GDB process. This will pause the execution of the
 program being debugged and return control to GDB.
@@ -175,7 +175,7 @@ setBreakpoints gdb breakpoints = do
   let echoMsg = "breakpoints set"
   runCommands gdb.stdinHandle $ (fmap ("break " <>) breakpoints)
   echo gdb.stdinHandle echoMsg
-  result <- timeout 10_000_000 $ readUntil (stdoutHandle gdb) echoMsg
+  result <- timeout 10_000_000 $ readUntil gdb.stdoutHandle echoMsg
   case result of
     Just _ -> pure ()
     Nothing -> error "Setting breakpoints timed out"

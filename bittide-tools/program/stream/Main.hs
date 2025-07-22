@@ -6,12 +6,12 @@ import Prelude
 
 import Bittide.ProcessingElement.ProgramStream
 
-import Clash.Prelude qualified as C
-import Data.ByteString qualified as BS
-
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (hPutStrLn, stderr)
+
+import qualified Clash.Prelude as C
+import qualified Data.ByteString as BS
 
 main :: IO ()
 main = do

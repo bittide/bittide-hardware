@@ -136,8 +136,16 @@ common extra
     -Wall
     -Wcompat
 
+common sane-records
+  default-extensions:
+    DisambiguateRecordFields
+    DuplicateRecordFields
+    NamedFieldPuns
+    NoFieldSelectors
+    OverloadedRecordDot
+
 library
-  import: ghc2024, clash, extra
+  import: ghc2024, clash, extra, sane-records
   hs-source-dirs: src
   build-depends:
     aeson,
@@ -178,7 +186,7 @@ library
     Bittide.Topology
 
 test-suite unittests
-  import: ghc2024, clash, extra
+  import: ghc2024, clash, extra, sane-records
   type: exitcode-stdio-1.0
   main-is: unittests.hs
   ghc-options:

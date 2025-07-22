@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -743,7 +744,7 @@ runHitlTest test@HitlTestGroup{topEntity, testCases, mDriverProc} url probesFile
       <> show (length testCases)
       <> " test cases..."
   result <- try @TclException $ with $ \v -> do
-    let testCaseNames = name <$> testCases
+    let testCaseNames = (.name) <$> testCases
     when (anySame testCaseNames) $
       error $
         "HITL test case names must be unique within their test. Offenders: "

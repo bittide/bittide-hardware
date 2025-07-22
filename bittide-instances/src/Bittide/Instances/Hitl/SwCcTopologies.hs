@@ -367,12 +367,12 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
     register sysClk startupDelayRst enableGen (0 :: StartupDelay)
       $ (\c s -> if c < s then satSucc SatBound c else c)
       <$> delayCount
-      <*> (startupDelay <$> cfg)
+      <*> cfg.startupDelay
 
   -- Clock control
   clockControlReset =
     startupDelayRst
-      `orReset` unsafeFromActiveLow ((==) <$> delayCount <*> (startupDelay <$> cfg))
+      `orReset` unsafeFromActiveLow ((==) <$> delayCount <*> cfg.startupDelay)
 
   clockMod = callistoResult.maybeSpeedChange
   allStable0 = callistoResult.allStable
@@ -383,7 +383,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
       Basic125
       CccStabilityCheckerMargin
       (CccStabilityCheckerFramesize Basic125)
-  ccConfig = SwControlConfig jtagIn (reframingEnabled <$> cfg) SNat SNat
+  ccConfig = SwControlConfig jtagIn cfg.reframingEnabled SNat SNat
 
   callistoSwClockControlInner ::
     forall nLinks eBufBits dom margin framesize.
@@ -420,7 +420,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
       ccConfig
       (callistoSwClockControlInner progEn)
       IlaControl{..}
-      (mask <$> cfg)
+      cfg.mask
       (resize <<$>> domainDiffs)
 
   fincFdecIla :: Signal Basic125 ()
@@ -529,7 +529,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
       ( callistoEnteredPulse
           .&&. notInCCReset
           .&&. (/= NoCCCalibration)
-          . calibrate
+          . (.calibrate)
           <$> cfg
       )
       (clockShiftUpd <$> clockMod <*> clockShift)
@@ -542,7 +542,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
   clocksAdjusted =
     spiDone
       .&&. ( (/= NoCCCalibration)
-              . calibrate
+              . (.calibrate)
               <$> cfg
               .||. (==)
               <$> initialAdjust
@@ -551,7 +551,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
   adjusting = adjustStart .&&. (not <$> clocksAdjusted)
   adjustRst = unsafeFromActiveLow adjustStart
 
-  initialAdjust = (+) <$> ccs <*> (fromMaybe 0 . initialClockShift <$> cfg)
+  initialAdjust = (+) <$> ccs <*> (fromMaybe 0 <$> cfg.initialClockShift)
 
   adjustCountEnable = mux ((== minBound) <$> adjustCount) (pure True) setupEnteredPulse
 
@@ -674,13 +674,13 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
             (SNat @CccStabilityCheckerMargin)
             (SNat @(CccStabilityCheckerFramesize GthTx))
             (bitCoerce <$> ugn)
-      ugnStable = SI.stable <$> stabInd
+      ugnStable = stabInd.stable
 
   maskWithCfg ::
     Bool ->
     Vec LinkCount (Signal Basic125 Bool) ->
     Signal Basic125 (Vec LinkCount Bool)
-  maskWithCfg dflt = liftA2 go1 (mask <$> cfg) . bundle
+  maskWithCfg dflt = liftA2 go1 cfg.mask . bundle
    where
     go1 m = zipWith go2 (bitCoerce m)
     go2 m val = if m then val else dflt
@@ -938,7 +938,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso jtagIn =
   offsetFromCalibrated = (-) <$> clockShift <*> calibratedClockShift
   withinNoiseLevel = (< acceptableNoiseLevel) . abs <$> offsetFromCalibrated
 
-  notValidatingCalibration = (/= CCCalibrationValidation) . calibrate <$> cfg
+  notValidatingCalibration = (/= CCCalibrationValidation) <$> cfg.calibrate
 
   fifoSuccess = noFifoUnderflows .&&. noFifoOverflows
 
@@ -950,7 +950,7 @@ swCcTopologyTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso jtagIn =
       .&&. fifoSuccess
       .&&. (notValidatingCalibration .||. withinNoiseLevel)
 
-  skip = maybe False (not . fpgaEnabled) <$> testConfig
+  skip = maybe False (not . (.fpgaEnabled)) <$> testConfig
 
   testDone =
     startTest
@@ -1097,7 +1097,7 @@ tests = [testGroup True, testGroup False]
     HitlTestCase HwTargetRef TestConfig CcConf
   tt clockShifts startDelays t r =
     HitlTestCase
-      { name = topologyName t
+      { name = t.topologyName
       , parameters =
           Map.fromList
             $ toList
@@ -1115,7 +1115,7 @@ tests = [testGroup True, testGroup False]
                ]
       , postProcData =
           defSimCfg
-            { ccTopologyType = topologyType t
+            { ccTopologyType = t.topologyType
             , clockOffsets = toList <$> clockShifts
             , startupDelays = fromIntegral <$> toList startDelays
             , reframe = r

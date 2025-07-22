@@ -291,8 +291,8 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
     (Maybe RegisterOperation, Busy, Acknowledge, Maybe (Bytes 2)) ->
     (DriverState dom, (Maybe (Bytes 2), Busy, Maybe Byte))
 
-  go currentState@(currentOp -> Nothing) (incomingOp, _, _, _) =
-    (currentState{currentOp = incomingOp}, (Nothing, False, storedByte currentState))
+  go currentState@DriverState{currentOp = Nothing} (incomingOp, _, _, _) =
+    (currentState{currentOp = incomingOp}, (Nothing, False, currentState.storedByte))
   go currentState@DriverState{..} (_, spiBusy, spiAck, receivedBytes) =
     (nextState, (output, True, storedByte))
    where

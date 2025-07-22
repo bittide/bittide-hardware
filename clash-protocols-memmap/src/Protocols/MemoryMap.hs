@@ -2,10 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ImpredicativeTypes #-}
-{-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE NoFieldSelectors #-}
 
 {- | Memory Maps for circuits. Provides a way for memory mapped subordinates to
 propagate their memory map to the top level, possibly with interconnects merging

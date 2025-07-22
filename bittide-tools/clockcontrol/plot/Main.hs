@@ -1,22 +1,14 @@
 -- SPDX-FileCopyrightText: 2023 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PackageImports #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# OPTIONS_GHC -fconstraint-solver-iterations=20 #-}
-{-# OPTIONS_GHC -fplugin GHC.TypeLits.Extra.Solver #-}
-{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
-{-# OPTIONS_GHC -fplugin GHC.TypeLits.Normalise #-}
 
 module Main (main, knownTestsWithCcConf) where
 
@@ -33,15 +25,12 @@ import Clash.Prelude (
  )
 
 import Clash.Signal.Internal (Femtoseconds (..))
-import Clash.Sized.Vector qualified as Vec
 
 import Data.Type.Equality ((:~:) (..))
 import GHC.TypeLits hiding (SNat)
 import GHC.TypeLits.Compare ((:<=?) (..))
 import GHC.TypeLits.Witnesses ((%<=?))
-import GHC.TypeLits.Witnesses qualified as TLW (SNat (..))
 
-import Clash.Prelude qualified as C
 import Conduit (
   ConduitT,
   Void,
@@ -60,10 +49,7 @@ import Control.Exception (Exception (..), catch, throw)
 import Control.Monad (filterM, forM, forM_, unless, when)
 import Control.Monad.Extra (ifM, unlessM)
 import Data.Bifunctor (bimap)
-import Data.ByteString qualified as BS
-import Data.ByteString.Char8 qualified as BSC
-import Data.ByteString.Lazy qualified as BSL
-import Data.ByteString.UTF8 qualified as UTF8
+
 import Data.Csv (
   FromField (..),
   FromNamedRecord (..),
@@ -77,16 +63,11 @@ import Data.Csv.Conduit (
   CsvStreamRecordParseError (..),
   fromNamedCsvStreamError,
  )
-import Data.HashMap.Strict qualified as HashMap
 import Data.List (isSuffixOf, unzip4)
-import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromJust, fromMaybe, mapMaybe)
 import Data.Proxy (Proxy (..))
-import Data.Set qualified as Set
 import Data.String (fromString)
-import Data.Text qualified as Text
 import Data.Typeable (cast)
-import Data.Vector qualified as Vector
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import GHC.Stack (HasCallStack)
 import System.Directory (
@@ -133,7 +114,20 @@ import Bittide.Simulate.Config (CcConf, saveCcConfig, simTopologyFileName)
 import Bittide.Topology
 
 import Bittide.Instances.Hitl.Tests (hitlTests)
-import Bittide.Simulate.Config qualified as CcConf
+
+import qualified Bittide.Simulate.Config as CcConf
+import qualified Clash.Prelude as C
+import qualified Clash.Sized.Vector as Vec
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Lazy as BSL
+import qualified Data.ByteString.UTF8 as UTF8
+import qualified Data.HashMap.Strict as HashMap
+import qualified Data.Map as Map
+import qualified Data.Set as Set
+import qualified Data.Text as Text
+import qualified Data.Vector as Vector
+import qualified GHC.TypeLits.Witnesses as TLW (SNat (..))
 
 -- A newtype wrapper for working with hex encoded types.
 newtype Hex a = Hex {fromHex :: a}
@@ -170,15 +164,15 @@ instance
       then fail "Row with more than 8 fields"
       else
         Capture
-          <$> v .: "Sample in Buffer"
-          <*> v .: "Sample in Window"
-          <*> v .: "TRIGGER"
-          <*> v .: portName 0
-          <*> v .: portName 1
-          <*> v .: portName 2
-          <*> v .: portName 3
-          <*> v .: portName 4
-          <*> v .: portName 5
+          <$> (v .: "Sample in Buffer")
+          <*> (v .: "Sample in Window")
+          <*> (v .: "TRIGGER")
+          <*> (v .: portName 0)
+          <*> (v .: portName 1)
+          <*> (v .: portName 2)
+          <*> (v .: portName 3)
+          <*> (v .: portName 4)
+          <*> (v .: portName 5)
    where
     portName = portName# ilaProbeNames
 
@@ -229,10 +223,10 @@ instance
           <> [ ("EB " <> show i, show $ toInteger x)
              | (i, x) <- topologyView dpDataCounts
              ]
-          <> [ (show i <> " is stable", b2bs $ stable x)
+          <> [ (show i <> " is stable", b2bs x.stable)
              | (i, x) <- topologyView dpStability
              ]
-          <> [ (show i <> " is settled", b2bs $ settled x)
+          <> [ (show i <> " is settled", b2bs x.settled)
              | (i, x) <- topologyView dpStability
              ]
    where
@@ -309,7 +303,7 @@ postProcess t i links =
     Vec topologySize (Maybe a)
   topologyView =
     foldr (\(j, x) -> Vec.replace j $ Just x) (Vec.repeat Nothing)
-      . filter (hasEdge t i . fst)
+      . filter ((.hasEdge) t i . fst)
       . fmap
         ( first $
             checkedTruncateB @topologySize @(utilizedFpgaCount - topologySize)
@@ -322,13 +316,13 @@ postProcess t i links =
     prevDP
     Capture
       { globalTimestamp
-      , captureCond = fromHex -> captureType
-      , localTimestamp = fromHex -> localTimestamp
+      , captureCond = (.fromHex) -> captureType
+      , localTimestamp = (.fromHex) -> localTimestamp
       , sampleInBuffer
-      , plotData = fromHex -> PlotData{dSpeedChange, dEBData, dRfStageChange}
+      , plotData = (.fromHex) -> PlotData{dSpeedChange, dEBData, dRfStageChange}
       } =
       let
-        globalTime = globalTsToFs $ fromHex globalTimestamp
+        globalTime = globalTsToFs $ globalTimestamp.fromHex
 
         driftPartsPer :: PartsPer
         driftPartsPer
@@ -342,11 +336,12 @@ postProcess t i links =
                     Difference x -> x + 1
                 )
           | otherwise =
-              dpDrift prevDP
+              prevDP.dpDrift
 
         ccChanges =
-          dpCCChanges prevDP
-            + natToNum @AccWindowHeight * sign dSpeedChange
+          prevDP.dpCCChanges
+            + natToNum @AccWindowHeight
+              * sign dSpeedChange
 
         dataCounts =
           ( \a b ->
@@ -364,20 +359,20 @@ postProcess t i links =
                 <*> b
           )
             <$> topologyView dEBData
-            <*> dpDataCounts prevDP
+            <*> prevDP.dpDataCounts
        in
         DataPoint
           { dpIndex = sampleInBuffer
           , dpGlobalLast =
               case captureType of
-                DataChange -> dpGlobalLast prevDP
-                _ -> fromHex globalTimestamp
+                DataChange -> prevDP.dpGlobalLast
+                _ -> (.fromHex) globalTimestamp
           , dpGlobalTime = globalTime
           , dpDrift = driftPartsPer
           , dpCCChanges = ccChanges
           , dpRfStage =
               case dRfStageChange of
-                Stable -> dpRfStage prevDP
+                Stable -> prevDP.dpRfStage
                 ToDetect -> RSDetect
                 ToWait -> RSWait
                 ToDone -> RSDone
@@ -393,7 +388,7 @@ postProcess t i links =
                in Vec.zipWith
                     combine
                     (topologyView dEBData)
-                    (dpStability prevDP)
+                    prevDP.dpStability
           }
 
   initDummy =
@@ -567,12 +562,17 @@ plotTest refDom testDir cfg dir globalOutDir = do
     topFromDirs =
       listDirectory dir
         >>= filterM (doesDirectoryExist . (dir </>))
-        >>= return . fromJust . someNatVal . toInteger . length . filter knownId
+        >>= return
+          . fromJust
+          . someNatVal
+          . toInteger
+          . length
+          . filter knownId
         >>= \case
           SomeNat n -> return $ STop $ complete $ snatProxy n
 
   STop (t :: Topology topologySize) <-
-    case CcConf.ccTopologyType cfg of
+    case cfg.ccTopologyType of
       Random{} -> topFromDirs
       DotFile f -> readFile f >>= either die return . fromDot
       tt -> froccTopologyType tt >>= either die return
@@ -619,7 +619,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
                 hClose h
 
                 let
-                  ls = show <$> filter (hasEdge t i) (Vec.toList Vec.indicesI)
+                  ls = show <$> filter ((.hasEdge) t i) (Vec.toList Vec.indicesI)
                   header =
                     Vector.fromList $
                       map BSC.pack $
@@ -657,7 +657,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
 
         let
           allStable =
-            all ((\(_, _, _, xs) -> all (stable . snd) xs) . last) postProcessData
+            all ((\(_, _, _, xs) -> all ((.stable) . snd) xs) . last) postProcessData
           cfg1 =
             cfg
               { CcConf.outDir = outDir
@@ -665,7 +665,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
               }
           ids = bimap toInteger fst <$> fpgas
 
-        case CcConf.ccTopologyType cfg of
+        case cfg.ccTopologyType of
           Random{} -> writeTop Nothing
           DotFile f -> readFile f >>= writeTop . Just
           tt -> froccTopologyType tt >>= either die (`saveCcConfig` cfg1)

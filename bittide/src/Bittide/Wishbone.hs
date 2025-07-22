@@ -490,7 +490,7 @@ uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartR
       . bundle
       . bimap bundle bundle
    where
-    go ((WishboneM2S{..}, rxData, fifoFull -> txFull), (Ack txAck, _))
+    go ((WishboneM2S{..}, rxData, (.fifoFull) -> txFull), (Ack txAck, _))
       -- not in cycle
       | not (busCycle && strobe) =
           ( ((emptyWishboneS2M @()){readData = invalidReq}, Ack False, ())

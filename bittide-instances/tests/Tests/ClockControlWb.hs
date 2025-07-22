@@ -2,7 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE NoFieldSelectors #-}
 
 module Tests.ClockControlWb where
 
@@ -32,7 +31,7 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 -- internal imports
 import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
-import Bittide.ClockControl.Registers (ClockControlData, clockControlWb, clockMod)
+import Bittide.ClockControl.Registers (ClockControlData (clockMod), clockControlWb)
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.ProcessingElement
@@ -81,7 +80,10 @@ case_clock_control_wb_self_test = do
             , linksSettled = 0
             , dataCounts = expectedDataCounts
             , clockMod =
-                L.take (L.length actual.clockMod) $ fromIntegral . pack <$> mapMaybe clockMod ccData
+                L.take (L.length actual.clockMod)
+                  $ fromIntegral
+                  . pack
+                  <$> mapMaybe (.clockMod) ccData
             }
       assertEqual "Expected and actual differ" expected actual
  where
@@ -152,7 +154,7 @@ dut =
 
         constBwd 0b110 -< prefixCC
 
-        cm <- cSignalMap clockMod -< ccd0
+        cm <- cSignalMap (.clockMod) -< ccd0
         _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (debugWbBus, cm)
         constBwd 0b101 -< prefixDbg
         idC -< (uartTx, ccd1)
