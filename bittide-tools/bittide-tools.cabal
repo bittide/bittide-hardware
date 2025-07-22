@@ -11,18 +11,20 @@ author: QBayLogic B.V.
 maintainer: devops@qbaylogic.com
 copyright: Copyright © 2024 Google LLC
 
-common common-options
+-- One day we'll be able to replace this by 'default-language: GHC2024' and
+-- disabling a few extensions :)
+common ghc2024
   default-extensions:
-    -- TemplateHaskell is used to support convenience functions such as
-    -- 'listToVecTH' and 'bLit'.
-    --
-    -- `NoImplicitPrelude` is used because Clash offers Clash.Prelude
+    -- GHC2024, excluding:
+    -- ImplicitPrelude:          We want Clash.Prelude
+    -- ImplicitStagePersistence: Not a thing yet in the GHC we use
+    -- ImportQualifiedPost:      Okay on its own, but trips up fourmolu
+    -- StarIsType:               We want '*' to mean multiplication on type level
     BangPatterns
     BinaryLiterals
+    ConstrainedClassMethods
     ConstraintKinds
     DataKinds
-    DefaultSignatures
-    DeriveAnyClass
     DeriveDataTypeable
     DeriveFoldable
     DeriveFunctor
@@ -30,57 +32,120 @@ common common-options
     DeriveLift
     DeriveTraversable
     DerivingStrategies
-    ImportQualifiedPost
+    DisambiguateRecordFields
+    DoAndIfThenElse
+    EmptyCase
+    EmptyDataDecls
+    EmptyDataDeriving
+    ExistentialQuantification
+    ExplicitForAll
+    ExplicitNamespaces
+    FieldSelectors
+    FlexibleContexts
+    FlexibleInstances
+    ForeignFunctionInterface
+    GADTSyntax
+    GADTs
+    GeneralisedNewtypeDeriving
+    HexFloatLiterals
     InstanceSigs
     KindSignatures
     LambdaCase
-    NoStarIsType
-    OverloadedRecordDot
+    MonoLocalBinds
+    MonomorphismRestriction
+    MultiParamTypeClasses
+    NamedFieldPuns
+    NamedWildCards
+    NumericUnderscores
+    PatternGuards
     PolyKinds
-    QuasiQuotes
+    PostfixOperators
     RankNTypes
+    RelaxedPolyRec
+    RoleAnnotations
     ScopedTypeVariables
     StandaloneDeriving
-    TemplateHaskell
+    StandaloneKindSignatures
+    TraditionalRecordSyntax
     TupleSections
     TypeApplications
-    TypeFamilies
     TypeOperators
-    ViewPatterns
+    TypeSynonymInstances
+
+common clash
+  -- TemplateHaskell is used to support convenience functions such as
+  -- 'listToVecTH' and 'bLit'.
+  --
+  -- `NoImplicitPrelude` is used because Clash offers Clash.Prelude
+  default-extensions:
+    NoImplicitPrelude
+    NoStarIsType
+    QuasiQuotes
+    TemplateHaskell
 
   ghc-options:
     -- Plugins to support type-level constraint solving on naturals:
     --   - GHC.TypeLits.Extra.Solver
     --   - GHC.TypeLits.Normalise
     --   - GHC.TypeLits.KnownNat.Solver
+    --
     -- Clash needs access to the source code in compiled modules:
     --   -fexpose-all-unfoldings
+    --
     -- Worker wrappers introduce unstable names for functions that might have
     -- blackboxes attached for them. You can disable this, but be sure to add
     -- a no-specialize pragma to every function with a blackbox.
     --   -fno-worker-wrapper
+    --
+    -- Strict annotations - while sometimes preventing space leaks - trigger
+    -- optimizations Clash can't deal with. See:
+    --
+    --    https://github.com/clash-lang/clash-compiler/issues/2361
+    --
+    -- These flags disables the optimization:
+    --   -fno-unbox-small-strict-fields
+    --   -fno-unbox-strict-fields
     -Wall
     -Wcompat
-    -haddock
     -fplugin=GHC.TypeLits.Extra.Solver
     -fplugin=GHC.TypeLits.Normalise
     -fplugin=GHC.TypeLits.KnownNat.Solver
+    -fplugin=Protocols.Plugin
+    -fconstraint-solver-iterations=20
     -fexpose-all-unfoldings
     -fno-worker-wrapper
+    -fno-unbox-small-strict-fields
+    -fno-unbox-strict-fields
 
   build-depends:
-    -- clash-prelude will set suitable version bounds for the plugins
-    Cabal,
-    base,
-    clash-prelude >=1.7.0 && <1.10,
-    ghc-typelits-extra,
-    ghc-typelits-knownnat,
-    ghc-typelits-natnormalise,
+    clash-protocols,
+    ghc-typelits-extra >=0.4.4,
+    ghc-typelits-knownnat >=0.7.7,
+    ghc-typelits-natnormalise >=0.7.7,
 
-  default-language: Haskell2010
+common extra
+  default-extensions:
+    DefaultSignatures
+    DeriveAnyClass
+    ImplicitParams
+    OverloadedRecordDot
+    TypeFamilies
+    ViewPatterns
+
+  ghc-options:
+    -Wall
+    -Wcompat
+
+common sane-records
+  default-extensions:
+    DisambiguateRecordFields
+    DuplicateRecordFields
+    NamedFieldPuns
+    NoFieldSelectors
+    OverloadedRecordDot
 
 executable program-stream
-  import: common-options
+  import: ghc2024, extra, sane-records
   ghc-options:
     -Wall
     -Wcompat
@@ -94,11 +159,12 @@ executable program-stream
     clash-prelude,
 
 executable cc-plot
-  import: common-options
+  import: clash, ghc2024, extra, sane-records
   main-is: clockcontrol/plot/Main.hs
   build-depends:
     aeson,
     array,
+    base,
     bittide,
     bittide-experiments,
     bittide-extra,
@@ -106,6 +172,7 @@ executable cc-plot
     bytestring,
     cassava,
     cassava-conduit,
+    clash-prelude,
     conduit,
     containers,
     data-default,

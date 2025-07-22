@@ -144,10 +144,11 @@ common sane-records
 
 
 CABAL_FILES = [
-  "bittide/bittide.cabal",
-  "bittide-instances/bittide-instances.cabal",
-  "bittide-extra/bittide-extra.cabal",
   "bittide-experiments/bittide-experiments.cabal",
+  "bittide-extra/bittide-extra.cabal",
+  "bittide-instances/bittide-instances.cabal",
+  "bittide-tools/bittide-tools.cabal",
+  "bittide/bittide.cabal",
   # clash-bitpackc doesn't need clash-protocols, but this script doesn't handle
   # cases like this.
   #
