@@ -23,7 +23,6 @@ fn main() -> ! {
     let dbgreg = INSTANCES.debug_register;
 
     let config = ControlConfig {
-        target_count: 0,
         wait_time: 0,
         reframing_enabled: dbgreg.reframing_enabled(),
         k_p: 2e-8,

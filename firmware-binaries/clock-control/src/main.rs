@@ -37,7 +37,6 @@ fn main() -> ! {
     uwriteln!(uart, "Starting clock control..").unwrap();
 
     let config = ControlConfig {
-        target_count: 0,
         wait_time: 0,
         reframing_enabled: dbgreg.reframing_enabled(),
         k_p: 2e-9,

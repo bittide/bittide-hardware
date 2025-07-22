@@ -82,7 +82,8 @@ clockControlWb ::
 clockControlWb margin frameSize linkMask (bundle -> counters) = circuit $ \(mm, wb) -> do
   [ wbNumLinks
     , wbLinkMask
-    , wbUpLinks
+    , wbLinkMaskPopCount
+    , wbLinkMaskRev
     , wbChangeSpeed
     , wbLinksStable
     , wbLinksSettled
@@ -95,7 +96,9 @@ clockControlWb margin frameSize linkMask (bundle -> counters) = circuit $ \(mm, 
 
   registerWbCI_ wbNumLinksConfig numberOfLinks -< (wbNumLinks, Fwd noWrite)
   registerWbCI_ wbLinkMaskConfig 0 -< (wbLinkMask, Fwd (Just <$> linkMask))
-  registerWbCI_ wbUpLinksConfig 0 -< (wbUpLinks, Fwd (Just <$> linkMaskPopCount))
+  registerWbCI_ wbLinkMaskPopCountConfig 0
+    -< (wbLinkMaskPopCount, Fwd (Just <$> linkMaskPopCount))
+  registerWbCI_ wbLinkMaskRevConfig 0 -< (wbLinkMaskRev, Fwd (Just <$> linkMaskRev))
   registerWbCI_ wbLinksStableConfig 0 -< (wbLinksStable, Fwd linksStableWrite)
   registerWbCI_ wbLinksSettledConfig 0 -< (wbLinksSettled, Fwd linksSettledWrite)
   registerWbCI_ wbDataCountsConfig (repeat 0)
@@ -116,11 +119,15 @@ clockControlWb margin frameSize linkMask (bundle -> counters) = circuit $ \(mm, 
 
   wbNumLinksConfig = (registerConfig "n_links"){access = ReadOnly}
   wbLinkMaskConfig = (registerConfig "link_mask"){access = ReadOnly}
-  wbUpLinksConfig = (registerConfig "n_up_links"){access = ReadOnly}
+  wbLinkMaskPopCountConfig = (registerConfig "link_mask_pop_count"){access = ReadOnly}
+  wbLinkMaskRevConfig = (registerConfig "link_mask_rev"){access = ReadOnly}
   wbChangeSpeedConfig = (registerConfig "change_speed"){access = WriteOnly}
   wbLinksStableConfig = (registerConfig "links_stable"){access = ReadOnly}
   wbLinksSettledConfig = (registerConfig "links_settled"){access = ReadOnly}
   wbDataCountsConfig = (registerConfig "data_counts"){access = ReadOnly}
+
+  linkMaskRev :: Signal dom (BitVector nLinks)
+  linkMaskRev = pack . reverse . unpack @(Vec nLinks Bit) <$> linkMask
 
   numberOfLinks :: Unsigned 8
   numberOfLinks = natToNum @nLinks
