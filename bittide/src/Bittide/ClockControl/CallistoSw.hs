@@ -29,6 +29,7 @@ import Bittide.ClockControl.Callisto.Types (
  )
 import Bittide.ClockControl.DebugRegister (
   DebugRegisterCfg (DebugRegisterCfg),
+  DebugRegisterData (reframingState, updatePeriod, updatePeriodMax, updatePeriodMin),
   debugRegisterWb,
  )
 import Bittide.ClockControl.Freeze (freeze)

@@ -40,7 +40,9 @@ import VexRiscv (JtagIn (..), JtagOut)
 import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl hiding (speedChangeToFincFdec)
-import Bittide.ClockControl.Callisto.Types (CallistoResult)
+import Bittide.ClockControl.Callisto.Types (
+  CallistoResult (allStable, jtagOut, maybeSpeedChange),
+ )
 import Bittide.ClockControl.CallistoSw (SwControlConfig (..), callistoSwClockControl)
 import Bittide.ClockControl.Si5395J
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)

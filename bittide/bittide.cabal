@@ -232,7 +232,6 @@ library
     Clash.Explicit.Reset.Extra
     Clash.Functor.Extra
     Clash.Protocols.Axi4.Extra
-    Clash.Signal.TH.Extra
     Clash.Sized.Extra
     Data.Constraint.Nat.Extra
     Project.FilePath
