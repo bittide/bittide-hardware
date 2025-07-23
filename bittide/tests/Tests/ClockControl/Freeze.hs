@@ -13,7 +13,7 @@ import Clash.Prelude (withClockResetEnable)
 import Hedgehog (Gen, Property)
 import Hedgehog.Internal.Property (property)
 import Protocols
-import Protocols.Hedgehog (defExpectOptions)
+import Protocols.Hedgehog (defExpectOptions, eoSampleMax)
 import Protocols.MemoryMap
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog (
@@ -71,7 +71,7 @@ prop_wb = property $ do
   withClockResetEnable clk rst ena
     $ wishbonePropWithModel
       @XilinxSystem
-      defExpectOptions
+      defExpectOptions{eoSampleMax = 10_000}
       model
       dut
       genInputs
