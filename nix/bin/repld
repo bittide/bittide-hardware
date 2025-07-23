@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+cabal repl \
+  bittide-experiments bittide-experiments:unittests \
+  bittide-extra bittide-extra:unittests \
+  bittide-instances bittide-instances:unittests \
+  bittide-shake \
+  bittide-tools \
+  bittide bittide:unittests \
+  clash-bitpackc clash-bitpackc:unittests \
+  clash-protocols-memmap clash-protocols-memmap:unittests \
+  ghc-typelits-extra-lemmas ghc-typelits-extra-lemmas:unittests \
+  vivado-hs vivado-hs:unittests

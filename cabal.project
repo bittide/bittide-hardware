@@ -84,7 +84,15 @@ allow-newer:
 --
 --   ghcid -c cabal repl bittide bittide:unittests
 --
--- Finally, note that it is not limited to units from the same Cabal file:
+-- Note that it is not limited to units from the same Cabal file:
 --
 --   cabal repl bittide bittide:unittests bittide-instances bittide-instance:unittests
+--
+-- Finally, we maintain a script that loads _all_ development packages:
+--
+--   repld
+--
+-- This is also usable in combination with ghcid:
+--
+--   ghcid -c repld
 multi-repl: True
