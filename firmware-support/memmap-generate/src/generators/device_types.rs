@@ -68,7 +68,7 @@ impl DeviceGenerator {
                         }
 
                         #[doc = #reg_description]
-                        pub fn #iter_name(&self) -> impl Iterator<Item = #scalar_ty> + '_ {
+                        pub fn #iter_name(&self) -> impl DoubleEndedIterator<Item = #scalar_ty> + '_ {
                             (0..#size).map(|i| unsafe {
                                 self.#unchecked_name(i)
                             })
