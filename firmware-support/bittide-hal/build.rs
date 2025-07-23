@@ -282,10 +282,9 @@ fn main() {
             }
 
             for (ty_name, (ann, def)) in &wrapper.type_defs {
-                let ty_name = ident(IdentType::Type, ty_name);
-                let file_path = hal_path.join("types").join(format!("{}.rs", ty_name));
-                let mut file =
-                    File::create(hal_path.join("types").join(format!("{}.rs", ty_name))).unwrap();
+                let mod_name = ident(IdentType::Module, ty_name);
+                let file_path = hal_path.join("types").join(format!("{}.rs", mod_name));
+                let mut file = File::create(&file_path).unwrap();
                 generated_files.push(file_path);
                 writeln!(file, "{}", lint_disables_generated_code()).unwrap();
 
