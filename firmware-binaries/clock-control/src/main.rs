@@ -56,7 +56,7 @@ fn main() -> ! {
     );
 
     // Initialize stability detector
-    let mut stability_detector = StabilityDetector::new(25, Duration::from_secs(2));
+    let mut stability_detector = StabilityDetector::new(4, Duration::from_secs(2));
 
     // Store samples every _n_ updates. Currently set to 50 times a second
     // (50K / 1000 = 50Hz). Set to '1' for perfect storage -- not yet possible
