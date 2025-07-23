@@ -8,7 +8,7 @@ use quote::quote;
 use crate::{
     generators::{generate_tag_docs, ident, types::TypeGenerator, IdentType},
     hal_set::DeviceDescAnnotations,
-    parse::{DeviceDesc, RegisterAccess, Type},
+    parse::{DeviceDesc, RegisterAccess, RegisterDesc, Type},
 };
 
 pub struct DeviceGenerator;
@@ -144,20 +144,7 @@ impl DeviceGenerator {
         let consts = desc
             .registers
             .iter()
-            .filter_map(|desc| {
-                let Type::Vec(len, _) = &desc.reg_type else {
-                    return None;
-                };
-
-                let len_name = ident(
-                    IdentType::Raw,
-                    format!("{}_LEN", desc.name).to_shouty_snake_case(),
-                );
-                let size = *len as usize;
-                Some(quote! {
-                    pub const #len_name: usize = #size;
-                })
-            })
+            .filter_map(generate_const)
             .collect::<Vec<_>>();
 
         let tags = generate_tag_docs(
@@ -192,4 +179,24 @@ impl Default for DeviceGenerator {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Generates a constant for the given register description if applicable.
+/// Returns `None` if the register type does not have a constant value.
+fn generate_const(desc: &RegisterDesc) -> Option<proc_macro2::TokenStream> {
+    let (const_suffix, const_value) = match &desc.reg_type {
+        Type::BitVector(width) | Type::Signed(width) | Type::Unsigned(width) => {
+            Some(("WIDTH", *width as usize))
+        }
+        Type::Index(size) => Some(("SIZE", *size as usize)),
+        Type::Vec(len, _) => Some(("LEN", *len as usize)),
+        _ => None,
+    }?;
+    let const_name = ident(
+        IdentType::Raw,
+        format!("{}_{}", desc.name, const_suffix).to_shouty_snake_case(),
+    );
+    Some(quote! {
+        pub const #const_name: usize = #const_value;
+    })
 }
