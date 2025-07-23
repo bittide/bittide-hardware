@@ -68,6 +68,7 @@ import Clash.Prelude (
   Eq,
   Integer,
   Maybe,
+  NFDataX,
   Natural,
   Num ((+), (-)),
   Ord (max),
@@ -75,8 +76,8 @@ import Clash.Prelude (
   SimOnly (..),
   String,
   Type,
+  deepErrorX,
   error,
-  errorX,
   flip,
   fst,
   natToNum,
@@ -321,12 +322,16 @@ withConstBwd val (Circuit f) = Circuit go
 mergeDeviceDefs :: [Map.Map String DeviceDefinition] -> Map.Map String DeviceDefinition
 mergeDeviceDefs = L.foldl Map.union Map.empty
 
-getConstBwdAny :: Circuit (ConstBwd v, a) b -> v
+getConstBwdAny ::
+  (HasCallStack, NFDataX (Fwd a), NFDataX (Bwd b)) => Circuit (ConstBwd v, a) b -> v
 getConstBwdAny (Circuit f) = val
  where
-  ((val, _), _) = f (((), errorX ""), errorX "")
+  ((val, _), _) = f (((), deepErrorX "getConstBwdAny0"), deepErrorX "getConstBwdAny1")
 
-getMMAny :: Circuit (ConstBwd MM, a) b -> MemoryMap
+getMMAny ::
+  (HasCallStack, NFDataX (Fwd a), NFDataX (Bwd b)) =>
+  Circuit (ConstBwd MM, a) b ->
+  MemoryMap
 getMMAny circ = let SimOnly memoryMap = getConstBwdAny circ in memoryMap
 
 deviceSingleton :: DeviceDefinition -> DeviceDefinitions
