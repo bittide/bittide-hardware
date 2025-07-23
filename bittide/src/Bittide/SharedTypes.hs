@@ -189,3 +189,12 @@ forceReset force = unsafeFromActiveHigh (unsafeToActiveHigh hasReset .||. force)
 -- | Divide and round up.
 divRU :: (Integral a) => a -> a -> a
 divRU b a = (b + a - 1) `div` a
+
+withBittideByteOrder ::
+  ((?busByteOrder :: ByteOrder, ?regByteOrder :: ByteOrder) => r) -> r
+withBittideByteOrder f =
+  let
+    ?busByteOrder = BigEndian
+    ?regByteOrder = LittleEndian
+   in
+    f

@@ -9,7 +9,7 @@ module Tests.ClockControlWb where
 import Clash.Explicit.Prelude hiding (PeriodToCycles, many)
 
 -- external imports
-import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
+import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Signal (withClockResetEnable)
 import Data.Char (chr)
 import Data.Maybe (catMaybes, mapMaybe)
@@ -36,6 +36,7 @@ import Bittide.DoubleBufferedRam
 import Bittide.Instances.Hitl.Setup (LinkCount)
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
+import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone
 
 -- qualified imports
@@ -119,45 +120,38 @@ debugRegisterConfig =
     { reframingEnabled = False
     }
 
-dut ::
-  Circuit () (Df System (BitVector 8), CSignal System (ClockControlData LinkCount))
+dut :: Circuit () (Df System (BitVector 8), CSignal System (ClockControlData LinkCount))
 dut =
-  let
-    ?busByteOrder = BigEndian
-    ?regByteOrder = LittleEndian
-   in
-    withClockResetEnable
-      clockGen
-      resetGen
-      enableGen
-      $ circuit
-      $ \_unit -> do
-        (uartRx, jtag) <- idleSource
-        [ (prefixUart, uartBus)
-          , (prefixCC, (mmCC, ccWb))
-          , (prefixDbg, debugWbBus)
-          ] <-
-          processingElement NoDumpVcd peConfig -< (mm, jtag)
-        (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-        constBwd 0b001 -< prefixUart
+  withBittideByteOrder
+    $ withClockResetEnable clockGen resetGen enableGen
+    $ circuit
+    $ \_unit -> do
+      (uartRx, jtag) <- idleSource
+      [ (prefixUart, uartBus)
+        , (prefixCC, (mmCC, ccWb))
+        , (prefixDbg, debugWbBus)
+        ] <-
+        processingElement NoDumpVcd peConfig -< (mm, jtag)
+      (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
+      constBwd 0b001 -< prefixUart
 
-        mm <- ignoreMM
+      mm <- ignoreMM
 
-        [ccd0, ccd1] <-
-          replicateCSignalI
-            <| clockControlWb
-              margin
-              framesize
-              (pure linkMask)
-              (pure <$> dataCounts)
-            -< (mmCC, ccWb)
+      [ccd0, ccd1] <-
+        replicateCSignalI
+          <| clockControlWb
+            margin
+            framesize
+            (pure linkMask)
+            (pure <$> dataCounts)
+          -< (mmCC, ccWb)
 
-        constBwd 0b110 -< prefixCC
+      constBwd 0b110 -< prefixCC
 
-        cm <- cSignalMap (.clockMod) -< ccd0
-        _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (debugWbBus, cm)
-        constBwd 0b101 -< prefixDbg
-        idC -< (uartTx, ccd1)
+      cm <- cSignalMap (.clockMod) -< ccd0
+      _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (debugWbBus, cm)
+      constBwd 0b101 -< prefixDbg
+      idC -< (uartTx, ccd1)
  where
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"

@@ -14,6 +14,7 @@ import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
+import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone
 import Project.FilePath
 
@@ -55,7 +56,8 @@ Runs the `hello` binary from `firmware-binaries`.
 -}
 dut ::
   Circuit () (Df Basic200 (BitVector 8))
-dut = withClockResetEnable clockGen resetGen enableGen
+dut = withBittideByteOrder
+  $ withClockResetEnable clockGen resetGen enableGen
   $ circuit
   $ \_unit -> do
     (uartRx, jtag) <- idleSource

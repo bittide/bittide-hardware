@@ -60,7 +60,7 @@ import Bittide.Instances.Hitl.Setup (
 import Bittide.Instances.Hitl.SwCcTopologies (FifoSize, FincFdecCount, commonSpiConfig)
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.SharedTypes (Byte, Bytes)
+import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle), switchDemoPeWb)
 import Bittide.Transceiver (transceiverPrbsN)
@@ -74,7 +74,7 @@ import Bittide.Wishbone (
  )
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
+import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
@@ -131,6 +131,8 @@ simpleManagementUnitC ::
   forall bitDom nodeBusses.
   ( KnownDomain bitDom
   , HiddenClockResetEnable bitDom
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   , 1 <= DomainPeriod bitDom
   , KnownNat nodeBusses
   , CLog 2 (nodeBusses + NmuInternalBusses) <= 30
@@ -696,11 +698,8 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn sy
         , syncOut
         )
     ) =
-      let
-        ?busByteOrder = BigEndian
-        ?regByteOrder = LittleEndian
-       in
-        toSignals
+      withBittideByteOrder
+        $ toSignals
           circuitFnC
           (
             ( ()

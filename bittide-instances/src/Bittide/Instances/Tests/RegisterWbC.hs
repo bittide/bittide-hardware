@@ -29,7 +29,7 @@ import Bittide.ProcessingElement.Util (
   vecFromElfData,
   vecFromElfInstr,
  )
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (Bytes, withBittideByteOrder)
 import Bittide.Wishbone (uartBytes, uartInterfaceWb)
 import Project.FilePath (
   CargoBuildType (Release),
@@ -37,7 +37,7 @@ import Project.FilePath (
   firmwareBinariesDir,
  )
 
-import Clash.Class.BitPackC (BitPackC, ByteOrder (BigEndian, LittleEndian))
+import Clash.Class.BitPackC (BitPackC, ByteOrder (BigEndian))
 import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Protocols (Circuit (Circuit), Df, Drivable (sampleC), idC, toSignals)
@@ -349,21 +349,18 @@ has many (read/write) registers.
 -}
 dut :: Circuit (ConstBwd MM) (Df Basic50 (BitVector 8))
 dut =
-  let
-    ?busByteOrder = BigEndian
-    ?regByteOrder = LittleEndian
-   in
-    withClockResetEnable clockGen resetGen enableGen
-      $ circuit
-      $ \mm -> do
-        (uartRx, jtag) <- idleSource
-        [(prefixUart, uartBus), (prefixManyTypes, manyTypes)] <-
-          processingElement dumpVcd peConfig -< (mm, jtag)
-        (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-        constBwd 0b00 -< prefixUart
-        manyTypesWb -< manyTypes
-        constBwd 0b11 -< prefixManyTypes
-        idC -< uartTx
+  withBittideByteOrder
+    $ withClockResetEnable clockGen resetGen enableGen
+    $ circuit
+    $ \mm -> do
+      (uartRx, jtag) <- idleSource
+      [(prefixUart, uartBus), (prefixManyTypes, manyTypes)] <-
+        processingElement dumpVcd peConfig -< (mm, jtag)
+      (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
+      constBwd 0b00 -< prefixUart
+      manyTypesWb -< manyTypes
+      constBwd 0b11 -< prefixManyTypes
+      idC -< uartTx
  where
   dumpVcd =
     unsafePerformIO $ do
