@@ -28,6 +28,7 @@ import Bittide.Ethernet.Mac
 import Bittide.Instances.Domains
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
+import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
 
@@ -147,7 +148,7 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
       rxClkEna
   macStatIf = wcre $ macStatusInterfaceWb d16
   uart = wcre $ uartInterfaceWb d32 d2 (uartDf baud)
-  pe = wcre processingElement NoDumpVcd peConfig
+  pe = withBittideByteOrder $ wcre processingElement NoDumpVcd peConfig
   wbToAxiTx' = wcre wbToAxiTx
   wbAxiRxBuffer = wcre wbAxisRxBufferCircuit (SNat @2048)
   axiTxPipe = wcre (axiUserMapC (const False) <| axiStreamToByteStream)

@@ -31,6 +31,7 @@ import Bittide.CaptureUgn
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
+import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone
 
 {- | Test whether we can read the local and remote sequence counters from the captureUgn
@@ -88,7 +89,7 @@ dut ::
   -- | Local sequence counter
   Signal dom (Unsigned 64) ->
   Circuit () (Df dom (BitVector 8))
-dut eb localCounter = circuit $ do
+dut eb localCounter = withBittideByteOrder $ circuit $ do
   (uartRx, jtagIdle) <- idleSource
   [(prefixUart, uartBus), (prefixUgn, (mmUgn, ugnBus))] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)

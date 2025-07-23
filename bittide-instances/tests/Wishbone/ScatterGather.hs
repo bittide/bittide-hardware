@@ -28,6 +28,7 @@ import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
 import Bittide.ScatterGather
+import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone
 
 import qualified Prelude as P
@@ -83,7 +84,7 @@ dut ::
   ScatterConfig nBytes addrW ->
   GatherConfig nBytes addrW ->
   Circuit () (Df dom (BitVector 8))
-dut scatterConfig gatherConfig = circuit $ do
+dut scatterConfig gatherConfig = withBittideByteOrder $ circuit $ do
   (uartRx, jtagIdle, wbGuCal, wbSuCal) <- idleSource
   [ (prefixUart, uartBus)
     , (prefixSu, (mmSu, wbSu))

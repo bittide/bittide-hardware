@@ -25,6 +25,7 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 import Bittide.DoubleBufferedRam
 import Bittide.ProcessingElement
 import Bittide.ProcessingElement.Util
+import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.SwitchDemoProcessingElement
 import Bittide.Wishbone
 
@@ -80,7 +81,7 @@ dut ::
   -- | Fake DNA (used to identify the different PEs)
   Signal dom (BitVector 96) ->
   Circuit () (Df dom (BitVector 8))
-dut dnaA dnaB = circuit $ do
+dut dnaA dnaB = withBittideByteOrder $ circuit $ do
   (uartRx, jtagIdle) <- idleSource
   [ (prefixUart, uartBus)
     , (prefixTime, (mmTime, timeBus))

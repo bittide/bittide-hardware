@@ -18,9 +18,11 @@ import Bittide.DoubleBufferedRam
 import Bittide.SharedTypes
 import Bittide.Wishbone
 
+import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
 import Clash.Cores.Xilinx.Ila (Depth (D4096))
 
 import qualified Data.ByteString as BS
+import Data.String.Interpolate (i)
 import qualified Protocols.MemoryMap as MM (
   ConstBwd,
   MM,
@@ -67,7 +69,12 @@ data PeConfig nBusses where
 -}
 processingElement ::
   forall dom nBusses.
-  (HiddenClockResetEnable dom, KnownNat nBusses, 2 <= nBusses) =>
+  ( HiddenClockResetEnable dom
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  , KnownNat nBusses
+  , 2 <= nBusses
+  ) =>
   DumpVcd ->
   PeConfig nBusses ->
   Circuit
@@ -132,7 +139,10 @@ processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, 
   wbMap fwd bwd = Circuit $ \(m2s, s2m) -> (fmap bwd s2m, fmap fwd m2s)
 
 rvCircuit ::
-  (HiddenClockResetEnable dom) =>
+  ( HiddenClockResetEnable dom
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
   DumpVcd ->
   Signal dom Bit ->
   Signal dom Bit ->
@@ -142,7 +152,22 @@ rvCircuit ::
     ( Wishbone dom 'Standard 30 (Bytes 4)
     , (MM.ConstBwd MM.MM, Wishbone dom 'Standard 30 (Bytes 4))
     )
-rvCircuit dumpVcd tInterrupt sInterrupt eInterrupt = Circuit go
+rvCircuit dumpVcd tInterrupt sInterrupt eInterrupt =
+  case (?busByteOrder, ?regByteOrder) of
+    (BigEndian, LittleEndian) -> Circuit go
+    (busByteOrder, regByteOrder) ->
+      clashCompileError
+        [i|
+          Unsupported bus and register byte order combination:
+
+            busByteOrder = #{show busByteOrder}
+            regByteOrder = #{show regByteOrder}
+
+          The only supported combination is:
+
+            busByteOrder = BigEndian
+            regByteOrder = LittleEndian
+        |]
  where
   go (((), jtagIn), (iBusIn, (mm, dBusIn))) = ((mm, jtagOut), (iBusWbM2S <$> cpuOut, ((), dBusWbM2S <$> cpuOut)))
    where

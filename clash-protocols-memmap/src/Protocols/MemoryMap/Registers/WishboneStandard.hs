@@ -340,9 +340,9 @@ you're looking to create a device with arbitrary offsets, use
 
 The register is configurable in its byte order, both on the bus and internally
 using '?busByteOrder' and '?regByteOrder' respectively. For VexRiscV, you'd want
-to configure @?busByteOrder = BigEndian@ and @?regByteOrder = LittleEndian@. Note
-that the bus byte order is a hack more than anything else and only affects the
-data and byte enable fields.
+to configure @?busByteOrder = BigEndian@ and @?regByteOrder = LittleEndian@. Also
+see 'withBittideByteOrder'. Note that the bus byte order is a hack more than
+anything else and only affects the data and byte enable fields.
 -}
 registerWbC ::
   forall a dom wordSize aw.

@@ -17,6 +17,7 @@ import Bittide.Wishbone
 import Project.FilePath
 
 -- Other
+import Bittide.SharedTypes (withBittideByteOrder)
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Control.Monad (forM_)
 import Data.Char
@@ -68,7 +69,8 @@ Runs the `hello` binary from `firmware-binaries`.
 -}
 dut :: Circuit () (Df System (BitVector 8))
 dut =
-  withClockResetEnable clockGen resetGen enableGen
+  withBittideByteOrder
+    $ withClockResetEnable clockGen resetGen enableGen
     $ circuit
     $ \_unit -> do
       (uartTx, jtag) <- idleSource

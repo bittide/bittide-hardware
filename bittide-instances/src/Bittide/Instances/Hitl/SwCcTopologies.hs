@@ -27,7 +27,6 @@ import qualified Clash.Explicit.Prelude as E
 import Clash.Prelude (HiddenClockResetEnable, exposeReset, hasReset, withClockResetEnable)
 import qualified Prelude as P
 
-import Clash.Class.BitPackC (ByteOrder (BigEndian, LittleEndian))
 import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Proxy
@@ -50,6 +49,7 @@ import Bittide.Counter
 import Bittide.ElasticBuffer
 import Bittide.Extra.Maybe (orNothing)
 import Bittide.Instances.Domains
+import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology
 import Bittide.Transceiver (transceiverPrbsN)
@@ -402,11 +402,8 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
     Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
     (MM, Signal dom (CallistoResult nLinks))
   callistoSwClockControlInner extraRst a b c =
-    let
-      ?busByteOrder = BigEndian
-      ?regByteOrder = LittleEndian
-     in
-      exposeReset (callistoSwClockControl a b c) newReset
+    withBittideByteOrder
+      $ exposeReset (callistoSwClockControl a b c) newReset
    where
     oldReset = unsafeToActiveHigh hasReset
     extraRst1 = unsafeToActiveHigh extraRst

@@ -5,8 +5,7 @@
 
 module Bittide.Instances.Pnr.Freeze where
 
-import Bittide.SharedTypes (Bytes)
-import Clash.Class.BitPackC (ByteOrder (BigEndian))
+import Bittide.SharedTypes (Bytes, withBittideByteOrder)
 import Clash.Explicit.Prelude
 import GHC.Stack (HasCallStack)
 import Protocols
@@ -27,11 +26,9 @@ freezeExample ::
     (ConstBwd MM, Wishbone dom 'Standard 4 (Bytes 4))
     ()
 freezeExample clk rst =
-  let
-    ?busByteOrder = BigEndian
-    ?regByteOrder = BigEndian
-   in
-    circuit $ \(mm, wb) -> do
+  withBittideByteOrder
+    $ circuit
+    $ \(mm, wb) -> do
       Freeze.freeze clk rst
         -< ((mm, wb), Fwd ebCounters, Fwd counter0, Fwd counter1, Fwd counter2)
 

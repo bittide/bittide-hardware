@@ -9,6 +9,7 @@ module Bittide.Node where
 
 import Clash.Prelude
 
+import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.Extra
@@ -51,7 +52,12 @@ data NodeConfig externalLinks gppes where
 -- | A 'node' consists of a 'switch', 'managementUnit' and @0..n@ 'gppe's.
 node ::
   forall dom extLinks gppes.
-  (HiddenClockResetEnable dom, KnownNat extLinks, KnownNat gppes) =>
+  ( HiddenClockResetEnable dom
+  , KnownNat extLinks
+  , KnownNat gppes
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
   NodeConfig extLinks gppes ->
   Circuit
     (ConstBwd MM, Vec gppes (ConstBwd MM), Vec extLinks (CSignal dom (BitVector 64)))
@@ -71,7 +77,13 @@ node (NodeConfig nmuConfig switchConfig gppeConfigs prefixes) = circuit $ \(mmNm
 
 nodeGppes ::
   forall gppes dom nmuBusses nmuRemBusWidth.
-  (KnownNat gppes, HiddenClockResetEnable dom, KnownNat nmuBusses, KnownNat nmuRemBusWidth) =>
+  ( KnownNat gppes
+  , HiddenClockResetEnable dom
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  , KnownNat nmuBusses
+  , KnownNat nmuRemBusWidth
+  ) =>
   Vec gppes (GppeConfig nmuRemBusWidth) ->
   Vec gppes (Vec 2 (Unsigned (CLog 2 nmuBusses))) ->
   Circuit
@@ -181,7 +193,12 @@ The order of Wishbone busses is as follows:
 ('scatterUnitWb' :> 'gatherUnitWb' :> Nil).
 -}
 gppeC ::
-  (HasCallStack, KnownNat nmuRemBusWidth, HiddenClockResetEnable dom) =>
+  ( HasCallStack
+  , KnownNat nmuRemBusWidth
+  , HiddenClockResetEnable dom
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
   -- | Configures all local parameters
   GppeConfig nmuRemBusWidth ->
   -- |
@@ -214,6 +231,8 @@ Bittide Link. It takes a 'ManagementConfig', incoming link and a vector of incom
 managementUnitC ::
   forall dom nodeBusses.
   ( HiddenClockResetEnable dom
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   , CLog 2 (nodeBusses + NmuInternalBusses) <= 30
   ) =>
   -- |
