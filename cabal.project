@@ -75,3 +75,16 @@ source-repository-package
 allow-newer:
   clash-protocols:tasty,
   clash-vexriscv:base
+
+-- Allow us to load multiple packages into a REPL session at once. For example:
+--
+--   cabal repl bittide bittide:unittests
+--
+-- Can also be used in combination with ghcid:
+--
+--   ghcid -c cabal repl bittide bittide:unittests
+--
+-- Finally, note that it is not limited to units from the same Cabal file:
+--
+--   cabal repl bittide bittide:unittests bittide-instances bittide-instance:unittests
+multi-repl: True
