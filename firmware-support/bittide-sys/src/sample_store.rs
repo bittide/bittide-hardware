@@ -2,9 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::freeze::SampleMemory;
+use bittide_hal::freeze::{Freeze, SampleMemory};
 
-const WORDS_PER_SAMPLE: usize = 11;
+use crate::stability_detector::Stability;
+
+const WORDS_PER_SAMPLE: usize = 12;
 
 /// State machinery for storing clock control samples in memory.
 pub struct SampleStore {
@@ -27,7 +29,12 @@ impl SampleStore {
 
     /// *Actually* store the contents of 'Freeze' to memory. Note that the public
     /// function 'store' does 'store_samples_every' boundary checking.
-    fn do_store(&mut self, freeze: &bittide_hal::freeze::Freeze, bump_counter: bool) {
+    fn do_store(
+        &mut self,
+        freeze: &bittide_hal::freeze::Freeze,
+        bump_counter: bool,
+        stability: Stability,
+    ) {
         let n_samples_stored = self.memory.data(0).unwrap() as usize;
         let start_index = n_samples_stored * WORDS_PER_SAMPLE + 1;
 
@@ -48,9 +55,15 @@ impl SampleStore {
         self.memory
             .set_data(start_index + 3, cycles_since_sync_pulse);
 
+        // Store stability information
+        self.memory.set_data(
+            start_index + 4,
+            stability.stable as u32 | ((stability.settled as u32) << 8),
+        );
+
         // Store the EB counters
         for (i, eb_counter) in freeze.eb_counters_volatile_iter().enumerate() {
-            self.memory.set_data(start_index + 4 + i, eb_counter as u32);
+            self.memory.set_data(start_index + 5 + i, eb_counter as u32);
         }
 
         // Bump number of samples stored, but only if we're running "for real"
@@ -63,14 +76,14 @@ impl SampleStore {
     /// Store the contents of 'Freeze' to memory. Whether or not a store actually
     /// happens depends on whether we're at a 'store_sample_every' boundary. Returns
     /// true if a sample was stored, false if this was a dry run.
-    pub fn store(&mut self, freeze: &bittide_hal::freeze::Freeze) -> bool {
+    pub fn store(&mut self, freeze: &Freeze, stability: Stability) -> bool {
         self.counter += 1;
 
         let bump_counter = self.counter >= self.store_samples_every;
 
         // Always go through the motions of loading/storing to get a reliable
         // execution time.
-        self.do_store(freeze, bump_counter);
+        self.do_store(freeze, bump_counter, stability);
 
         if bump_counter {
             self.counter = 0;

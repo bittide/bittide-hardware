@@ -40,7 +40,7 @@ import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl hiding (speedChangeToFincFdec)
 import Bittide.ClockControl.Callisto.Types (
-  CallistoResult (allStable, jtagOut, maybeSpeedChange),
+  CallistoResult (allStable, jtagOut, maybeSpeedChange, stability),
  )
 import Bittide.ClockControl.CallistoSw (SwControlConfig (..), callistoSwClockControl)
 import Bittide.ClockControl.Si5395J
@@ -379,29 +379,24 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
   allStable0 = callistoResult.allStable
   allStable1 = sticky sysClk syncRst allStable0
 
-  ccConfig ::
-    SwControlConfig
-      Basic125
-      CccStabilityCheckerMargin
-      (CccStabilityCheckerFramesize Basic125)
-  ccConfig = SwControlConfig jtagIn cfg.reframingEnabled SNat SNat
+  ccConfig :: SwControlConfig Basic125
+  ccConfig = SwControlConfig jtagIn cfg.reframingEnabled
 
   callistoSwClockControlInner ::
-    forall nLinks eBufBits dom margin framesize.
+    forall nLinks eBufBits dom.
     ( HiddenClockResetEnable dom
     , KnownNat nLinks
     , KnownNat eBufBits
     , 1 <= nLinks
     , 1 <= eBufBits
     , nLinks + eBufBits <= 32
-    , 1 <= framesize
     , 1 <= DomainPeriod dom
     ) =>
     Reset dom ->
     -- \| Links suitable for clock control (i.e., recovered clocks won't go down
     -- again)
     Signal dom (BitVector nLinks) ->
-    SwControlConfig dom margin framesize ->
+    SwControlConfig dom ->
     -- \| Link mask
     Signal dom (BitVector nLinks) ->
     Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
@@ -667,20 +662,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
         . xpmCdcArraySingle transceivers.txClock sysClk
 
   ugnsStable :: Vec LinkCount (Signal Basic125 Bool)
-  ugnsStable = go <$> ugns2
-   where
-    go ugn = ugnStable
-     where
-      stabInd =
-        withClockResetEnable
-          sysClk
-          syncRst
-          enableGen
-          $ SI.stabilityChecker
-            (SNat @CccStabilityCheckerMargin)
-            (SNat @(CccStabilityCheckerFramesize GthTx))
-            (bitCoerce <$> ugn)
-      ugnStable = stabInd.stable
+  ugnsStable = (.stable) <<$>> (unbundle callistoResult.stability)
 
   maskWithCfg ::
     Bool ->
@@ -1052,13 +1034,8 @@ tests = [testGroup True, testGroup False]
     def
       { samples = 1000
       , duration = natToNum @(PeriodToCycles Basic125 (Seconds 60))
-      , stabilityMargin = snatToNum cccStabilityCheckerMargin
-      , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
       , reframe = cccEnableReframing
       , waitTime = fromEnum cccReframingWaitTime
-      , stopAfterStable =
-          Just
-            $ natToNum @(PeriodToCycles Basic125 AllStablePeriod)
       }
 
   -- Measure clock offsets. Used to get clocks to a common start point at start of test

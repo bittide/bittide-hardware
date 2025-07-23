@@ -201,7 +201,6 @@ library
     Bittide.Instances.Pnr.ProcessingElement
     Bittide.Instances.Pnr.ScatterGather
     Bittide.Instances.Pnr.Si539xSpi
-    Bittide.Instances.Pnr.StabilityChecker
     Bittide.Instances.Pnr.Synchronizer
     Bittide.Instances.Tests.RegisterWbC
     Paths.Bittide.Instances

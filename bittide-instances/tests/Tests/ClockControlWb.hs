@@ -149,8 +149,6 @@ dut =
       [ccd0, ccd1] <-
         replicateCSignalI
           <| clockControlWb
-            margin
-            framesize
             (pure linkMask)
             (pure linksOk)
             (pure <$> dataCounts)

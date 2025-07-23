@@ -8,7 +8,7 @@ import csv
 import multiprocessing
 import matplotlib.pyplot as plt
 
-WORDS_PER_SAMPLE = 11
+WORDS_PER_SAMPLE = 12
 BYTES_PER_WORD = 4
 
 CLOCK_SPEED = 125_000_000  # 125 MHz
@@ -25,9 +25,13 @@ def parse(path):
             local_clock_counter = int.from_bytes(fp.read(8), "little")
             number_of_sync_pulses_seen = int.from_bytes(fp.read(4), "little")
             cycles_since_sync_pulse = int.from_bytes(fp.read(4), "little")
+            stables = int.from_bytes(fp.read(1))
+            settleds = int.from_bytes(fp.read(1))
+            fp.read(2) # padding
             eb_counters = [
                 int.from_bytes(fp.read(4), "little", signed=True) for _ in range(7)
             ]
+
 
             yield {
                 "local_clock_counter": local_clock_counter,
@@ -40,6 +44,8 @@ def parse(path):
                 "eb_counter_4": eb_counters[4],
                 "eb_counter_5": eb_counters[5],
                 "eb_counter_6": eb_counters[6],
+                "stables": stables,
+                "settleds": settleds,
             }
 
 

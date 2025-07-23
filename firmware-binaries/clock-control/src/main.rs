@@ -7,13 +7,17 @@
 
 use core::panic::PanicInfo;
 
+use bittide_hal::manual_additions::timer::Instant;
 use bittide_hal::manual_additions::timer::WaitResult;
+use bittide_hal::shared::devices::Timer;
+use bittide_hal::shared::devices::Uart;
 use bittide_hal::shared::types::speed_change::SpeedChange;
 use bittide_hal::switch_demo_cc::DeviceInstances;
 use bittide_hal::{
     manual_additions::timer::Duration, shared::types::reframing_state::ReframingState,
 };
 use bittide_sys::sample_store::SampleStore;
+use bittide_sys::stability_detector::StabilityDetector;
 use ufmt::uwriteln;
 
 use bittide_sys::callisto::{self, ControlConfig, ControlSt};
@@ -36,6 +40,7 @@ fn main() -> ! {
     sync_out_generator.set_active(true);
 
     uwriteln!(uart, "Starting clock control..").unwrap();
+    uwriteln!(uart, "Current time: {}", timer.now()).unwrap();
 
     let config = ControlConfig {
         wait_time: 0,
@@ -50,6 +55,9 @@ fn main() -> ! {
         ReframingState::Detect,
     );
 
+    // Initialize stability detector
+    let mut stability_detector = StabilityDetector::new(25, Duration::from_secs(2));
+
     // Store samples every _n_ updates. Currently set to 50 times a second
     // (50K / 1000 = 50Hz). Set to '1' for perfect storage -- not yet possible
     // due to limited memory size.
@@ -60,22 +68,40 @@ fn main() -> ! {
     let mut next_update = timer.now() + interval;
 
     loop {
+        // Do clock control on "frozen" counters
         freeze.set_freeze(true);
         callisto::callisto(&cc, freeze.eb_counters_volatile_iter(), &config, &mut state);
         cc.set_change_speed(state.b_k);
-        sample_store.store(&freeze);
-        if let WaitResult::AlreadyPassed = timer.wait_until(next_update) {
-            uwriteln!(
-                uart,
-                "Deadline missed! Timer did not update in time. Now: {}. Next update: {}",
-                timer.now().micros(),
-                next_update.micros(),
-            )
-            .unwrap();
-            panic!("Deadline missed! See UART log.");
-        };
+
+        // Detect stability
+        let stability = stability_detector.update(&cc, timer.now());
+
+        // Store debug information
+        sample_store.store(&freeze, stability);
+
+        // Wait for next update
+        let timer_result = timer.wait_until(next_update);
+        panic_on_missed_deadline(&mut uart, &timer, next_update, timer_result);
         next_update += interval;
     }
+}
+
+fn panic_on_missed_deadline(
+    uart: &mut Uart,
+    timer: &Timer,
+    next_update: Instant,
+    timer_result: WaitResult,
+) {
+    if let WaitResult::AlreadyPassed = timer_result {
+        uwriteln!(
+            uart,
+            "Deadline missed! Timer did not update in time. Now: {}. Next update: {}",
+            timer.now().micros(),
+            next_update.micros(),
+        )
+        .unwrap();
+        panic!("Deadline missed! See UART log.");
+    };
 }
 
 #[panic_handler]

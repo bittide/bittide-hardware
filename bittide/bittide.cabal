@@ -293,7 +293,6 @@ test-suite unittests
     Tests.ProcessingElement.ReadElf
     Tests.ScatterGather
     Tests.Shared
-    Tests.StabilityChecker
     Tests.Switch
     Tests.SwitchDemoProcessingElement
     Tests.SwitchDemoProcessingElement.Calculator

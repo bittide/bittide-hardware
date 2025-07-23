@@ -14,6 +14,7 @@ pub mod program_stream;
 pub mod sample_store;
 pub mod scatter_unit;
 pub mod smoltcp;
+pub mod stability_detector;
 pub mod switch_demo_pe;
 pub mod uart;
 pub mod ugn;
