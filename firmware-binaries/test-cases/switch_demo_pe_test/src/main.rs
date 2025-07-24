@@ -5,10 +5,10 @@
 #![cfg_attr(not(test), no_main)]
 #![feature(sync_unsafe_cell)]
 
-use bittide_hal::shared::devices::uart::Uart;
+use bittide_hal::shared::devices::timer::Timer;
+use bittide_hal::{manual_additions::timer::Duration, shared::devices::uart::Uart};
 use bittide_sys::dna_port_e2::dna_to_u128;
 use bittide_sys::switch_demo_pe::SwitchDemoProcessingElement;
-use bittide_sys::time::{Clock, Duration};
 use bittide_sys::uart::log::LOGGER;
 
 use core::fmt::Write;
@@ -18,7 +18,7 @@ use log::{info, LevelFilter};
 use riscv_rt::entry;
 
 const UART_ADDR: *mut u8 = (0b010 << 29) as *mut u8;
-const CLOCK_ADDR: *const () = (0b011 << 29) as *const ();
+const TIMER_ADDR: *mut u8 = (0b011 << 29) as *mut u8;
 const SWITCH_PE_A: *const () = (0b100 << 29) as *const ();
 const SWITCH_PE_B: *const () = (0b101 << 29) as *const ();
 
@@ -33,7 +33,8 @@ const BUFFER_SIZE: usize = 2;
 fn main() -> ! {
     // Initialize peripherals.
     let mut uart = unsafe { Uart::new(UART_ADDR) };
-    let mut clock = unsafe { Clock::new(CLOCK_ADDR) };
+    let timer = unsafe { Timer::new(TIMER_ADDR) };
+
     let switch_pe_a: SwitchDemoProcessingElement<BUFFER_SIZE> =
         unsafe { SwitchDemoProcessingElement::new(SWITCH_PE_A) };
     let switch_pe_b: SwitchDemoProcessingElement<BUFFER_SIZE> =
@@ -42,7 +43,8 @@ fn main() -> ! {
     unsafe {
         let logger = &mut (*LOGGER.get());
         logger.set_logger(uart.clone());
-        logger.set_clock(clock.clone());
+        let log_timer = Timer::new(TIMER_ADDR);
+        logger.set_timer(log_timer);
         logger.display_source = LevelFilter::Info;
         log::set_logger_racy(logger).ok();
         // The 'max_level' is actually the current debug level. Note that the
@@ -65,7 +67,7 @@ fn main() -> ! {
     // A reads all data from B
     switch_pe_a.set_read(second_transfer_start, 2);
 
-    clock.wait(Duration::from_micros(600));
+    timer.wait(Duration::from_micros(600));
 
     let (rs_a, rc_a) = switch_pe_a.get_read();
     let (rs_b, rc_b) = switch_pe_b.get_read();

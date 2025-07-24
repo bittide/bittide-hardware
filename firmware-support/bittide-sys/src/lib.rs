@@ -15,6 +15,5 @@ pub mod sample_store;
 pub mod scatter_unit;
 pub mod smoltcp;
 pub mod switch_demo_pe;
-pub mod time;
 pub mod uart;
 pub mod ugn;

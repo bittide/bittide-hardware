@@ -8,13 +8,14 @@
 #![allow(clippy::collapsible_if)]
 #![feature(sync_unsafe_cell)]
 
+use bittide_hal::manual_additions::timer::{Duration, Instant};
+use bittide_hal::shared::devices::timer::Timer;
 use bittide_hal::shared::devices::uart::Uart;
 use bittide_sys::axi::{AxiRx, AxiTx};
 use bittide_sys::dna_port_e2::{dna_to_u128, DnaValue};
 use bittide_sys::mac::MacStatus;
 use bittide_sys::smoltcp::axi::AxiEthernet;
 use bittide_sys::smoltcp::{set_local, set_unicast};
-use bittide_sys::time::{Clock, Duration, Instant};
 use bittide_sys::uart::log::LOGGER;
 use log::{debug, info, LevelFilter};
 
@@ -28,7 +29,7 @@ use smoltcp::socket::dhcpv4;
 use smoltcp::socket::tcp::{Socket, SocketBuffer};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use ufmt::uwriteln;
-const CLOCK_ADDR: *const () = (0b0011 << 28) as *const ();
+const TIMER_ADDR: *mut u8 = (0b0011 << 28) as *mut u8;
 const DNA_ADDR: *const DnaValue = (0b0111 << 28) as *const DnaValue;
 const MAC_ADDR: *const MacStatus = (0b1001 << 28) as *const MacStatus;
 const RX_AXI_ADDR: *const () = (0b0101 << 28) as *const ();
@@ -47,13 +48,31 @@ gdb_trace::gdb_panic! {
     unsafe { Uart::new(UART_ADDR) }
 }
 
+#[allow(dead_code)]
+fn to_smoltcp_duration(duration: Duration) -> smoltcp::time::Duration {
+    smoltcp::time::Duration::from_micros(duration.micros())
+}
+
+fn from_smoltcp_duration(smoltcp_duration: smoltcp::time::Duration) -> Duration {
+    Duration::from_micros(smoltcp_duration.micros())
+}
+
+fn to_smoltcp_instant(instant: Instant) -> smoltcp::time::Instant {
+    smoltcp::time::Instant::from_micros(instant.micros() as i64)
+}
+
+#[allow(dead_code)]
+fn from_smoltcp_instant(smoltcp_instant: smoltcp::time::Instant) -> Instant {
+    Instant::from_micros(smoltcp_instant.micros() as u64)
+}
+
 // See https://github.com/bittide/bittide-hardware/issues/681
 #[allow(static_mut_refs)]
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals
     let mut uart = unsafe { Uart::new(UART_ADDR) };
-    let mut clock = unsafe { Clock::new(CLOCK_ADDR) };
+    let mut timer = unsafe { Timer::new(TIMER_ADDR) };
     let axi_tx = unsafe { AxiTx::new(TX_AXI_ADDR) };
     let axi_rx: AxiRx<RX_BUFFER_SIZE> = unsafe { AxiRx::new(RX_AXI_ADDR) };
     let dna = unsafe { dna_to_u128(*DNA_ADDR) };
@@ -62,7 +81,8 @@ fn main() -> ! {
     unsafe {
         let logger = &mut (*LOGGER.get());
         logger.set_logger(uart.clone());
-        logger.set_clock(clock.clone());
+        let mut log_timer = Timer::new(TIMER_ADDR);
+        logger.set_timer(log_timer);
         logger.display_source = LevelFilter::Warn;
         log::set_logger_racy(logger).ok();
         log::set_max_level_racy(LevelFilter::Trace);
@@ -74,7 +94,7 @@ fn main() -> ! {
     set_local(&mut eth_addr);
     let mut config = Config::new(eth_addr.into());
     let mut eth: AxiEthernet<ETH_MTU> = AxiEthernet::new(Medium::Ethernet, axi_rx, axi_tx, None);
-    let now = clock.now().into();
+    let now = to_smoltcp_instant(timer.now());
     let mut iface = Interface::new(config, &mut eth, now);
 
     // Create sockets
@@ -103,12 +123,12 @@ fn main() -> ! {
     let mut stress_test_end = Instant::end_of_time();
     info!(
         "{}, TCP Server send chunks of {} bytes for {}",
-        clock.now(),
+        timer.now(),
         CHUNK_SIZE,
         stress_test_duration
     );
     loop {
-        let elapsed = clock.now().into();
+        let elapsed = to_smoltcp_instant(timer.now());
         iface.poll(elapsed, &mut eth, &mut sockets);
         let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(dhcp_handle);
         update_dhcp(&mut iface, dhcp_socket);
@@ -118,8 +138,8 @@ fn main() -> ! {
 
         if my_ip.is_none() {
             my_ip = iface.ipv4_addr();
-            info!("{}, IP address: {}", clock.now(), my_ip.unwrap());
-            let now = clock.now();
+            info!("{}, IP address: {}", timer.now(), my_ip.unwrap());
+            let now = timer.now();
             stress_test_end = now + stress_test_duration;
             info!("{}, Stress test will end at {}", now, stress_test_end);
         }
@@ -127,7 +147,7 @@ fn main() -> ! {
         let mut socket = sockets.get_mut::<Socket>(client_handle);
         let cx = iface.context();
         if !socket.is_open() {
-            debug!("{}, Opening socket", clock.now());
+            debug!("{}, Opening socket", timer.now());
             if !socket.is_active() {
                 mac_status = unsafe { MAC_ADDR.read_volatile() };
                 debug!(
@@ -149,7 +169,7 @@ fn main() -> ! {
                 Ok(n) => debug!("Sent {n} bytes"),
                 Err(e) => debug!("Error sending data: {:?}", e),
             }
-            let now = clock.now();
+            let now = timer.now();
             if now > stress_test_end {
                 info!("{}, Stress test complete", now);
                 socket.close();
@@ -157,12 +177,12 @@ fn main() -> ! {
                 uwriteln!(uart, "{:?}", new_mac_status - mac_status).unwrap();
             }
         }
-        match iface.poll_delay(clock.now().into(), &sockets) {
+        match iface.poll_delay(to_smoltcp_instant(timer.now()), &sockets) {
             Some(smoltcp::time::Duration::ZERO) => {}
-            Some(delay) => {
-                let smoltcp_delay = Duration::from(delay);
-                debug!("sleeping for {} ms", smoltcp_delay);
-                clock.wait(smoltcp_delay);
+            Some(smoltcp_delay) => {
+                let delay = from_smoltcp_duration(smoltcp_delay);
+                debug!("sleeping for {} ms", delay);
+                timer.wait(delay);
                 debug!("done sleeping");
             }
             None => {}

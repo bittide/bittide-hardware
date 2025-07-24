@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use crate::time::{Clock, Duration, Instant};
 use core::fmt::{self, Debug};
 use ufmt::{uDebug, uwrite};
 
+use crate::manual_additions::timer::{Duration, Instant, Timer};
+
 type TestReturn = Option<(&'static str, Option<FailValue>)>;
-type TestFn = fn(Clock) -> TestReturn;
+type TestFn = fn(Timer) -> TestReturn;
 
 pub enum FailValue {
     U64(u64),
@@ -49,7 +50,7 @@ macro_rules! tests {
 /// It receives a pointer to the timing peripheral and returns a list of tuples containing the
 /// name of the test and an Option<&'static str> indicating if the test passed or an error message.
 #[allow(dead_code)]
-pub fn self_test(clock: Clock) -> impl Iterator<Item = (&'static str, TestReturn)> {
+pub fn self_test(timer: Timer) -> impl Iterator<Item = (&'static str, TestReturn)> {
     let tests = tests!(
         now_not_null,
         freq_not_null,
@@ -66,13 +67,13 @@ pub fn self_test(clock: Clock) -> impl Iterator<Item = (&'static str, TestReturn
     // Run the tests and collect the results.
     tests
         .into_iter()
-        .map(move |(f, name)| (name, f(clock.clone())))
+        .map(move |(f, name)| (name, f(unsafe { Timer::new(timer.0) })))
 }
 
 /// Obtain the value of the counter, check if it's not 0.
-pub fn now_not_null(mut clock: Clock) -> TestReturn {
-    let frequency = clock.frequency();
-    let now = clock.now();
+pub fn now_not_null(timer: Timer) -> TestReturn {
+    let frequency = timer.frequency();
+    let now = timer.now();
     if now == Instant::from_cycles(0, frequency) {
         Some((
             "now_not_null test failed: now is null",
@@ -84,8 +85,8 @@ pub fn now_not_null(mut clock: Clock) -> TestReturn {
 }
 
 /// Read the frequency value, check if it's not 0.
-pub fn freq_not_null(clock: Clock) -> TestReturn {
-    let frequency: u64 = clock.frequency();
+pub fn freq_not_null(timer: Timer) -> TestReturn {
+    let frequency: u64 = timer.frequency();
     if frequency == 0 {
         Some(("freq_not_null test failed: frequency is null", None))
     } else {
@@ -95,11 +96,11 @@ pub fn freq_not_null(clock: Clock) -> TestReturn {
 
 /// Read the current time in milliseconds, wait a ms and read again.
 /// The new time should differ less than 100 us from the expected target.
-pub fn wait_1ms(mut clock: Clock) -> TestReturn {
+pub fn wait_1ms(timer: Timer) -> TestReturn {
     let wait_time = Duration::from_millis(1);
-    let time0 = clock.now();
-    clock.wait(wait_time);
-    let time1 = clock.now();
+    let time0 = timer.now();
+    timer.wait(wait_time);
+    let time1 = timer.now();
     let expected = time0 + wait_time;
     let diff = time1 - expected;
     if diff >= Duration::from_micros(100) {
@@ -115,11 +116,11 @@ pub fn wait_1ms(mut clock: Clock) -> TestReturn {
 /// Read the current time in milliseconds and create a target of the current time in ms + 2.
 /// Wait until we reach the target and obtain the new time. The time should differ no more than
 /// 100 ms from the target.
-pub fn skip_next_ms(mut clock: Clock) -> TestReturn {
-    let time0 = clock.now();
-    let target = Instant::from_millis(time0.to_millis() + 2);
-    clock.wait_until(target);
-    let time1 = clock.now();
+pub fn skip_next_ms(timer: Timer) -> TestReturn {
+    let time0 = timer.now();
+    let target = Instant::from_millis(time0.millis() + 2);
+    timer.wait_until(target);
+    let time1 = timer.now();
     let diff = time1 - target;
     if diff >= Duration::from_micros(100) {
         Some((
@@ -132,11 +133,11 @@ pub fn skip_next_ms(mut clock: Clock) -> TestReturn {
 }
 
 /// Create a Duration of 1 hour and 60 minutes, convert between them and check if they are equal.
-pub fn duration_hour_minute(_: Clock) -> TestReturn {
+pub fn duration_hour_minute(_: Timer) -> TestReturn {
     let duration_hour = Duration::from_hours(1);
     let duration_minute = Duration::from_mins(60);
-    let hour_to_minute = duration_hour.to_mins();
-    let minute_to_hour = duration_minute.to_hours();
+    let hour_to_minute = duration_hour.mins();
+    let minute_to_hour = duration_minute.hours();
     if duration_hour != duration_minute {
         Some((
             "duration_hour_minute test failed: durations are not equal",
@@ -158,11 +159,11 @@ pub fn duration_hour_minute(_: Clock) -> TestReturn {
 }
 
 /// Create a Duration of 1 minute and 60 seconds, convert between them and check if they are equal.
-pub fn duration_minute_second(_: Clock) -> TestReturn {
+pub fn duration_minute_second(_: Timer) -> TestReturn {
     let duration_minute = Duration::from_mins(1);
     let duration_second = Duration::from_secs(60);
-    let minute_to_second = duration_minute.to_secs();
-    let second_to_minute = duration_second.to_mins();
+    let minute_to_second = duration_minute.secs();
+    let second_to_minute = duration_second.mins();
     if duration_minute != duration_second {
         Some((
             "duration_minute_second test failed: durations are not equal",
@@ -184,11 +185,11 @@ pub fn duration_minute_second(_: Clock) -> TestReturn {
 }
 
 /// Create a Duration of 1 second and 1000 milliseconds, convert between them and check if they are equal.
-pub fn duration_second_millisecond(_: Clock) -> TestReturn {
+pub fn duration_second_millisecond(_: Timer) -> TestReturn {
     let duration_second = Duration::from_secs(1);
     let duration_millisecond = Duration::from_millis(1000);
-    let second_to_millisecond = duration_second.to_millis();
-    let millisecond_to_second = duration_millisecond.to_secs();
+    let second_to_millisecond = duration_second.millis();
+    let millisecond_to_second = duration_millisecond.secs();
     if duration_second != duration_millisecond {
         Some((
             "duration_second_millisecond test failed: durations are not equal",
@@ -210,11 +211,11 @@ pub fn duration_second_millisecond(_: Clock) -> TestReturn {
 }
 
 /// Create a Duration of 1 millisecond and 1000 microseconds, convert between them and check if they are equal.
-pub fn duration_millisecond_microsecond(_: Clock) -> TestReturn {
+pub fn duration_millisecond_microsecond(_: Timer) -> TestReturn {
     let duration_millisecond = Duration::from_millis(1);
     let duration_microsecond = Duration::from_micros(1000);
-    let millisecond_to_microsecond = duration_millisecond.to_micros();
-    let microsecond_to_millisecond = duration_microsecond.to_millis();
+    let millisecond_to_microsecond = duration_millisecond.micros();
+    let microsecond_to_millisecond = duration_microsecond.millis();
     if duration_millisecond != duration_microsecond {
         Some((
             "duration_millisecond_microsecond test failed: durations are not equal",
@@ -230,11 +231,11 @@ pub fn duration_millisecond_microsecond(_: Clock) -> TestReturn {
 }
 
 /// Create an Instant of 1 hour and 60 minutes, convert between them and check if they are equal.
-pub fn instant_hour_minute(_clock: Clock) -> TestReturn {
+pub fn instant_hour_minute(_clock: Timer) -> TestReturn {
     let instant_hour = Instant::from_hours(1);
     let instant_minute = Instant::from_mins(60);
-    let hour_to_minute = instant_hour.to_mins();
-    let minute_to_hour = instant_minute.to_hours();
+    let hour_to_minute = instant_hour.mins();
+    let minute_to_hour = instant_minute.hours();
     if instant_hour != instant_minute {
         Some((
             "instant_hour_minute test failed: instants are not equal",
@@ -256,11 +257,11 @@ pub fn instant_hour_minute(_clock: Clock) -> TestReturn {
 }
 
 /// Create an Instant of 1 minute and 60 seconds, convert between them and check if they are equal.
-pub fn instant_minute_second(_clock: Clock) -> TestReturn {
+pub fn instant_minute_second(_clock: Timer) -> TestReturn {
     let instant_minute = Instant::from_mins(1);
     let instant_second = Instant::from_secs(60);
-    let minute_to_second = instant_minute.to_secs();
-    let second_to_minute = instant_second.to_mins();
+    let minute_to_second = instant_minute.secs();
+    let second_to_minute = instant_second.mins();
     if instant_minute != instant_second {
         Some((
             "instant_minute_second test failed: instants are not equal",
@@ -282,11 +283,11 @@ pub fn instant_minute_second(_clock: Clock) -> TestReturn {
 }
 
 /// Create an Instant of 1 second and 1000 milliseconds, convert between them and check if they are equal.
-pub fn instant_second_millisecond(_clock: Clock) -> TestReturn {
+pub fn instant_second_millisecond(_clock: Timer) -> TestReturn {
     let instant_second = Instant::from_secs(1);
     let instant_millisecond = Instant::from_millis(1000);
-    let second_to_millisecond = instant_second.to_millis();
-    let millisecond_to_second = instant_millisecond.to_secs();
+    let second_to_millisecond = instant_second.millis();
+    let millisecond_to_second = instant_millisecond.secs();
     if instant_second != instant_millisecond {
         Some((
             "instant_second_millisecond test failed: instants are not equal",
@@ -308,11 +309,11 @@ pub fn instant_second_millisecond(_clock: Clock) -> TestReturn {
 }
 
 /// Create an Instant of 1 millisecond and 1000 microseconds, convert between them and check if they are equal.
-pub fn instant_millisecond_microsecond(_clock: Clock) -> TestReturn {
+pub fn instant_millisecond_microsecond(_clock: Timer) -> TestReturn {
     let instant_millisecond = Instant::from_millis(1);
     let instant_microsecond = Instant::from_micros(1000);
-    let millisecond_to_microsecond = instant_millisecond.to_micros();
-    let microsecond_to_millisecond = instant_microsecond.to_millis();
+    let millisecond_to_microsecond = instant_millisecond.micros();
+    let microsecond_to_millisecond = instant_microsecond.millis();
     if instant_millisecond != instant_microsecond {
         Some((
             "instant_millisecond_microsecond test failed: instants are not equal",

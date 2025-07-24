@@ -7,9 +7,9 @@
 
 use ufmt::uwriteln;
 
+use bittide_hal::manual_additions::timer::self_test::self_test;
+use bittide_hal::shared::devices::timer::Timer;
 use bittide_hal::shared::devices::uart::Uart;
-use bittide_sys::time::self_test::self_test;
-use bittide_sys::time::Clock;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
@@ -17,8 +17,8 @@ use riscv_rt::entry;
 fn main() -> ! {
     // Initialize peripherals.
     let mut uart = unsafe { Uart::new(0x8000_0000 as *mut u8) };
-    let clock = unsafe { Clock::new(0xc000_0000 as *const ()) };
-    let test_results = self_test(clock);
+    let timer = unsafe { Timer::new(0xc000_0000 as *mut u8) };
+    let test_results = self_test(timer);
     uwriteln!(uart, "Start time self test").unwrap();
     for (name, result) in test_results {
         match result {

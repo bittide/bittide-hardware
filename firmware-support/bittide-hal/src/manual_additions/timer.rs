@@ -24,6 +24,8 @@ use ufmt::uDisplay;
 use ufmt::uWrite;
 use ufmt::uwrite;
 
+pub mod self_test;
+
 /// A representation of an absolute time value.
 ///
 /// The `Instant` type is a wrapper around a `u64` value that represents the number
