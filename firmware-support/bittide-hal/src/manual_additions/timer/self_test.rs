@@ -119,7 +119,7 @@ pub fn wait_1ms(timer: Timer) -> TestReturn {
 pub fn skip_next_ms(timer: Timer) -> TestReturn {
     let time0 = timer.now();
     let target = Instant::from_millis(time0.millis() + 2);
-    timer.wait_until(target);
+    let _ = timer.wait_until(target);
     let time1 = timer.now();
     let diff = time1 - target;
     if diff >= Duration::from_micros(100) {

@@ -26,6 +26,15 @@ use ufmt::uwrite;
 
 pub mod self_test;
 
+#[derive(uDebug, Debug)]
+pub enum WaitResult {
+    /// Wait was successful and requested on time
+    Success,
+
+    /// Requested waiting on an instant that has already passed
+    AlreadyPassed,
+}
+
 /// A representation of an absolute time value.
 ///
 /// The `Instant` type is a wrapper around a `u64` value that represents the number
@@ -299,37 +308,51 @@ impl Timer {
     pub fn wait(&self, duration: Duration) {
         let now = self.get_counter();
         let cycles = duration.cycles(self.frequency());
-        self.wait_until_raw(now + cycles);
+        let _ = self.wait_until_raw(now + cycles);
     }
 
     /// Wait until we have passed an `Instant`.
-    pub fn wait_until(&self, target: Instant) {
-        let target = target.get_cycles(self.frequency());
-        self.wait_until_raw(target);
+    #[must_use]
+    pub fn wait_until(&self, target: Instant) -> WaitResult {
+        let target_cycles = target.get_cycles(self.frequency());
+        self.wait_until_raw(target_cycles)
     }
 
-    pub fn wait_until_raw(&self, target: u64) {
+    #[must_use]
+    pub fn wait_until_raw(&self, target: u64) -> WaitResult {
+        let now = self.get_counter();
+        if now > target {
+            return WaitResult::AlreadyPassed;
+        }
         self.set_scratchpad(target);
         while !self.cmp_result() {
             continue;
         }
+        WaitResult::Success
     }
 
     /// Stall the CPU until the comparison set by `timer_cmp` is `True`.
     pub fn wait_stall(&self, duration: Duration) {
         let now = self.get_counter();
         let duration = duration.cycles(self.frequency());
-        self.wait_until_stall_raw(now + duration);
+        let _ = self.wait_until_stall_raw(now + duration);
     }
 
-    pub fn wait_until_stall(&self, target: Instant) {
-        let target = target.get_cycles(self.frequency());
-        self.wait_until_stall_raw(target);
+    #[must_use]
+    pub fn wait_until_stall(&self, target: Instant) -> WaitResult {
+        let target_cycles = target.get_cycles(self.frequency());
+        self.wait_until_stall_raw(target_cycles)
     }
 
-    pub fn wait_until_stall_raw(&self, target: u64) {
+    #[must_use]
+    pub fn wait_until_stall_raw(&self, target: u64) -> WaitResult {
+        let now = self.get_counter();
+        if now > target {
+            return WaitResult::AlreadyPassed;
+        }
         self.set_scratchpad(target);
         self.wait_for_cmp();
+        WaitResult::Success
     }
 }
 
