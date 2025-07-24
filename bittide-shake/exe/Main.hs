@@ -182,8 +182,8 @@ targets :: [Target]
 targets =
   map enforceValidTarget $
     [ defTarget $ mkName "Bittide.Instances.Pnr.AsciiDebugMux.asciiDebugMux"
-    , defTarget $ mkName "Bittide.Instances.Pnr.Calendar.switchCalendar1k"
-    , defTarget $ mkName "Bittide.Instances.Pnr.Calendar.switchCalendar1kReducedPins"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Switch.switchExample"
+    , defTarget $ mkName "Bittide.Instances.Pnr.Switch.switchExampleReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.Freeze.freeze"
     , defTarget $ mkName "Bittide.Instances.Pnr.Counter.counterReducedPins"
     , defTarget $ mkName "Bittide.Instances.Pnr.ElasticBuffer.elasticBuffer5"
