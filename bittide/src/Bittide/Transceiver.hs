@@ -738,9 +738,6 @@ transceiverPrbsWithSim ::
   , KnownDomain txS
   , KnownDomain ref
   , KnownDomain free
-  , -- , tx1 ~ rx1
-    -- , txS ~ rxS
-    free ~ tx
   , tx ~ rx
   ) =>
   Gth.GthCore tx1 tx rx1 rx ref free txS rxS ->
@@ -889,7 +886,7 @@ transceiverPrbsWithSim gthCore opts args@Input{clock, reset} =
       -- We shouldn't sync with 'xpmCdcArraySingle' here, as the individual bits in
       -- 'fpgaIndex' are related to each other. Still, we know fpgaIndex is basically
       -- a constant so :shrug:.
-      <*> opts.debugFpgaIndex
+      <*> xpmCdcArraySingle clock txClock opts.debugFpgaIndex
       <*> pure args.transceiverIndex
 
   txReset =

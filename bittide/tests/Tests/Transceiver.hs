@@ -257,6 +257,126 @@ dut
           , rxReady = inputB.rxReady
           }
 
+dutSim ::
+  forall freeA freeB txA txB ref.
+  ( KnownDomain ref
+  , HasSynchronousReset txA
+  , HasDefinedInitialValues txA
+  , HasSynchronousReset txB
+  , HasDefinedInitialValues txB
+  , HasSynchronousReset freeA
+  , HasDefinedInitialValues freeA
+  , HasSynchronousReset freeB
+  , HasDefinedInitialValues freeB
+  , txA ~ txB
+  ) =>
+  -- | Number of word clock cycles delay from A -> B
+  Natural ->
+  -- | Number of word clock cycles delay from B -> A
+  Natural ->
+  ResetManager.Config ->
+  GthCore txA txA txB txB ref freeA txA txB ->
+  GthCore txB txB txA txA ref freeB txB txA ->
+  Clock freeA ->
+  Reset freeA ->
+  Clock freeB ->
+  Reset freeB ->
+  Input txA txB ->
+  Input txB txA ->
+  ( Transceiver.Output txA txB txA txB txA freeA
+  , Transceiver.Output txB txA txB txA txB freeB
+  )
+dutSim
+  abDelay
+  baDelay
+  resetManagerConfig
+  gthCoreA
+  gthCoreB
+  freeClkA
+  freeRstA
+  freeClkB
+  freeRstB
+  inputA
+  inputB = (outputA, outputB)
+   where
+    outputA =
+      Transceiver.transceiverPrbsWith
+        gthCoreA
+        Transceiver.defConfig{Transceiver.resetManagerConfig}
+        Transceiver.Input
+          { clock = freeClkA
+          , reset = freeRstA
+          , refClock = error "A: refClock not used in simulation"
+          , clockTx1 = clockGen
+          , clockTx2 = clockGen
+          , txActive = pure 1 -- TODO: a better simulation of this
+          , clockRx1 = clockGen
+          , clockRx2 = clockGen
+          , rxActive = pure 1 -- TODO: a better simulation of this
+          , transceiverIndex = 0
+          , channelName = "A"
+          , clockPath = "clkA"
+          , rxSim = delaySeqN baDelay 0 <$> outputB.txSim
+          , rxN = error "A: rxN not used in simulation"
+          , rxP = error "A: rxP not used in simulation"
+          , txData = inputA.dat
+          , txStart = inputA.txStart
+          , rxReady = inputA.rxReady
+          }
+
+    outputB =
+      Transceiver.transceiverPrbsWithSim
+        gthCoreB
+        Transceiver.defConfig{Transceiver.resetManagerConfig}
+        Transceiver.Input
+          { clock = freeClkB
+          , reset = freeRstB
+          , refClock = error "B: refClock not used in simulation"
+          , clockTx1 = clockGen
+          , clockTx2 = clockGen
+          , txActive = pure 1
+          , clockRx1 = clockGen
+          , clockRx2 = clockGen
+          , rxActive = pure 1
+          , transceiverIndex = 1
+          , channelName = "B"
+          , clockPath = "clkB"
+          , rxSim = delaySeqN abDelay 0 <$> outputA.txSim
+          , rxN = error "B: rxN not used in simulation"
+          , rxP = error "B: rxP not used in simulation"
+          , txData = inputB.dat
+          , txStart = inputB.txStart
+          , rxReady = inputB.rxReady
+          }
+
+type DutFunc freeA freeB txA txB ref =
+  ( KnownDomain ref
+  , HasSynchronousReset txA
+  , HasDefinedInitialValues txA
+  , HasSynchronousReset txB
+  , HasDefinedInitialValues txB
+  , HasSynchronousReset freeA
+  , HasDefinedInitialValues freeA
+  , HasSynchronousReset freeB
+  , HasDefinedInitialValues freeB
+  ) =>
+  -- | Number of word clock cycles delay from A -> B
+  Natural ->
+  -- | Number of word clock cycles delay from B -> A
+  Natural ->
+  ResetManager.Config ->
+  GthCore txA txA txB txB ref freeA txA txB ->
+  GthCore txB txB txA txA ref freeB txB txA ->
+  Clock freeA ->
+  Reset freeA ->
+  Clock freeB ->
+  Reset freeB ->
+  Input txA txB ->
+  Input txB txA ->
+  ( Transceiver.Output txA txB txA txB txA freeA
+  , Transceiver.Output txB txA txB txA txB freeB
+  )
+
 type DutTestFunc txA txB free =
   Transceiver.Output txA txB txA txB txA free ->
   Transceiver.Output txB txA txB txA txB free ->
@@ -275,6 +395,7 @@ dutRandomized ::
   , HasSynchronousReset free
   , HasDefinedInitialValues free
   ) =>
+  DutFunc free free txA txB RefIsUnused ->
   DutTestFunc txA txB free ->
   InputFunc txA txB free ->
   InputFunc txB txA free ->
@@ -282,7 +403,7 @@ dutRandomized ::
   -- Input txB txA ->
   Proxy (free :: Domain) ->
   Property
-dutRandomized f inputA inputB Proxy = property $ do
+dutRandomized dutFn f inputA inputB Proxy = property $ do
   -- Note that the maximum timeout should be below 'ResetManager.txTimeoutMs' and
   -- 'ResetManager.rxTimeoutMs'.
   let genTimeoutMax = Gen.word64 (Range.linear 0 (natToNum @(PeriodToCycles A (Microseconds 500))))
@@ -317,12 +438,7 @@ dutRandomized f inputA inputB Proxy = property $ do
 
   let
     (outputA, outputB) =
-      dut
-        @free
-        @free
-        @txA
-        @txB
-        @RefIsUnused
+      dutFn
         abDelay
         baDelay
         resetManagerConfig
@@ -409,83 +525,147 @@ specialized to 'A', 'A', 'FreeSlow'.
 -}
 prop_noPressure_A_A_FreeSlow :: Property
 prop_noPressure_A_A_FreeSlow =
-  dutRandomized @A @A @FreeSlow testUp500ms noPressureInput noPressureInput Proxy
+  dutRandomized @A @A @FreeSlow dut testUp500ms noPressureInput noPressureInput Proxy
+
+{- | Check whether handshake works when there is no pressure on the link,
+specialized to 'A', 'A', 'FreeSlow'.
+-}
+prop_noPressure_A_A_FreeSlow_Sim :: Property
+prop_noPressure_A_A_FreeSlow_Sim =
+  dutRandomized @A @A @FreeSlow dutSim testUp500ms noPressureInput noPressureInput Proxy
 
 {- | Check whether handshake works when there is no pressure on the link,
 specialized to 'A', 'A', 'Free'.
 -}
 prop_noPressure_A_A_Free :: Property
 prop_noPressure_A_A_Free =
-  dutRandomized @A @A @Free testUp500ms noPressureInput noPressureInput Proxy
+  dutRandomized @A @A @Free dut testUp500ms noPressureInput noPressureInput Proxy
+
+{- | Check whether handshake works when there is no pressure on the link,
+specialized to 'A', 'A', 'Free'.
+-}
+prop_noPressure_A_A_Free_Sim :: Property
+prop_noPressure_A_A_Free_Sim =
+  dutRandomized @A @A @Free dutSim testUp500ms noPressureInput noPressureInput Proxy
 
 {- | Check whether handshake works when there is no pressure on the link,
 specialized to 'A', 'A', 'FreeFast'.
 -}
 prop_noPressure_A_A_FreeFast :: Property
 prop_noPressure_A_A_FreeFast =
-  dutRandomized @A @A @FreeFast testUp500ms noPressureInput noPressureInput Proxy
+  dutRandomized @A @A @FreeFast dut testUp500ms noPressureInput noPressureInput Proxy
+
+{- | Check whether handshake works when there is no pressure on the link,
+specialized to 'A', 'A', 'FreeFast'.
+-}
+prop_noPressure_A_A_FreeFast_Sim :: Property
+prop_noPressure_A_A_FreeFast_Sim =
+  dutRandomized @A @A @FreeFast dutSim testUp500ms noPressureInput noPressureInput Proxy
 
 {- | Check whether handshake works when there is no pressure on the link,
 specialized to 'A', 'B', 'Free'.
 -}
 prop_noPressure_A_B_Free :: Property
 prop_noPressure_A_B_Free =
-  dutRandomized @A @B @Free testUp500ms noPressureInput noPressureInput Proxy
+  dutRandomized @A @B @Free dut testUp500ms noPressureInput noPressureInput Proxy
 
 {- | Check whether handshake works when there is no pressure on the link,
 specialized to 'B', 'A', 'Free'.
 -}
 prop_noPressure_B_A_Free :: Property
 prop_noPressure_B_A_Free =
-  dutRandomized @B @A @Free testUp500ms noPressureInput noPressureInput Proxy
+  dutRandomized @B @A @Free dut testUp500ms noPressureInput noPressureInput Proxy
 
 -- | Check whether handshake works when 'txStart' is tied to 'txReady'
 prop_txStartEqTxReady :: Property
 prop_txStartEqTxReady =
-  dutRandomized @B @A @Free testUp500ms txStartEqTxReady noPressureInput Proxy
+  dutRandomized @B @A @Free dut testUp500ms txStartEqTxReady noPressureInput Proxy
 
 -- | Check whether handshake works when 'txStart' is tied to 'txReady'
 prop_txStartEqTxReadyFlipped :: Property
 prop_txStartEqTxReadyFlipped =
-  dutRandomized @B @A @Free testUp500ms noPressureInput txStartEqTxReady Proxy
+  dutRandomized @B @A @Free dut testUp500ms noPressureInput txStartEqTxReady Proxy
 
 -- | Check whether handshake works when 'txStart' is tied to 'txReady'
 prop_txStartEqTxReadyBoth :: Property
 prop_txStartEqTxReadyBoth =
-  dutRandomized @B @A @Free testUp500ms txStartEqTxReady txStartEqTxReady Proxy
+  dutRandomized @B @A @Free dut testUp500ms txStartEqTxReady txStartEqTxReady Proxy
 
 {- | Check whether neither handshake works when one of the transceivers never
 indicates it's ready to the other.
 -}
 prop_noTxReady :: Property
 prop_noTxReady =
-  dutRandomized @A @A @Free testNeitherUp500ms noPressureInput noTxStartInput Proxy
+  dutRandomized @A @A @Free dut testNeitherUp500ms noPressureInput noTxStartInput Proxy
+
+{- | Check whether neither handshake works when one of the transceivers never
+indicates it's ready to the other.
+-}
+prop_noTxReady_Sim :: Property
+prop_noTxReady_Sim =
+  dutRandomized @A @A @Free dutSim testNeitherUp500ms noPressureInput noTxStartInput Proxy
 
 -- | Same as 'prop_noTxReady', but with the transceivers flipped
 prop_noTxReadyFlipped :: Property
 prop_noTxReadyFlipped =
-  dutRandomized @A @A @Free testNeitherUp500ms noTxStartInput noPressureInput Proxy
+  dutRandomized @A @A @Free dut testNeitherUp500ms noTxStartInput noPressureInput Proxy
+
+-- | Same as 'prop_noTxReady', but with the transceivers flipped
+prop_noTxReadyFlipped_Sim :: Property
+prop_noTxReadyFlipped_Sim =
+  dutRandomized @A @A @Free dutSim testNeitherUp500ms noTxStartInput noPressureInput Proxy
 
 {- | Check whether neither node indicates it's up, when it never transitions to
 sending user data.
 -}
 prop_noRxReady :: Property
 prop_noRxReady =
-  dutRandomized @A @A @Free testNeitherUp500ms noRxReadyInput noRxReadyInput Proxy
+  dutRandomized @A @A @Free dut testNeitherUp500ms noRxReadyInput noRxReadyInput Proxy
+
+{- | Check whether neither node indicates it's up, when it never transitions to
+sending user data.
+-}
+prop_noRxReady_Sim :: Property
+prop_noRxReady_Sim =
+  dutRandomized @A @A @Free dutSim testNeitherUp500ms noRxReadyInput noRxReadyInput Proxy
 
 {- | Check that nodes complete their handshake, even when the users never indicate
 that they're ready to receive data.
 -}
 prop_handshakeNoRxReady :: Property
 prop_handshakeNoRxReady =
-  dutRandomized @A @A @Free testHandshakeDone500ms noRxReadyInput noRxReadyInput Proxy
+  dutRandomized @A @A @Free dut testHandshakeDone500ms noRxReadyInput noRxReadyInput Proxy
+
+{- | Check that nodes complete their handshake, even when the users never indicate
+that they're ready to receive data.
+-}
+prop_handshakeNoRxReady_Sim :: Property
+prop_handshakeNoRxReady_Sim =
+  dutRandomized @A @A @Free
+    dutSim
+    testHandshakeDone500ms
+    noRxReadyInput
+    noRxReadyInput
+    Proxy
 
 {- | Check that nodes complete their handshake, even when the users never indicate
 that they're ready to send data.
 -}
 prop_handshakeNoTxStart :: Property
 prop_handshakeNoTxStart =
-  dutRandomized @A @A @Free testHandshakeDone500ms noTxStartInput noTxStartInput Proxy
+  dutRandomized @A @A @Free dut testHandshakeDone500ms noTxStartInput noTxStartInput Proxy
+
+{- | Check that nodes complete their handshake, even when the users never indicate
+that they're ready to send data.
+-}
+prop_handshakeNoTxStart_Sim :: Property
+prop_handshakeNoTxStart_Sim =
+  dutRandomized @A @A @Free
+    dutSim
+    testHandshakeDone500ms
+    noTxStartInput
+    noTxStartInput
+    Proxy
 
 {- | Check that nodes complete their handshake, even when the users never indicate
 that they're ready to receive or send data.
@@ -493,6 +673,19 @@ that they're ready to receive or send data.
 prop_handshakeNoTxStartNoRxReady :: Property
 prop_handshakeNoTxStartNoRxReady =
   dutRandomized @A @A @Free
+    dut
+    testHandshakeDone500ms
+    noTxStartNoRxReadyInput
+    noTxStartNoRxReadyInput
+    Proxy
+
+{- | Check that nodes complete their handshake, even when the users never indicate
+that they're ready to receive or send data.
+-}
+prop_handshakeNoTxStartNoRxReady_Sim :: Property
+prop_handshakeNoTxStartNoRxReady_Sim =
+  dutRandomized @A @A @Free
+    dutSim
     testHandshakeDone500ms
     noTxStartNoRxReadyInput
     noTxStartNoRxReadyInput
@@ -535,6 +728,18 @@ tests =
           , testPropertyThName 'prop_handshakeNoTxStart prop_handshakeNoTxStart
           , testPropertyThName 'prop_handshakeNoTxStartNoRxReady prop_handshakeNoTxStartNoRxReady
           ]
+    , adjustOption (\_ -> HedgehogTestLimit (Just 100))
+        $ testGroup
+          "Slow tests (Simulation Version)"
+          [ testPropertyThName 'prop_noPressure_A_A_FreeSlow_Sim prop_noPressure_A_A_FreeSlow_Sim
+          , testPropertyThName 'prop_noPressure_A_A_Free_Sim prop_noPressure_A_A_Free_Sim
+          , testPropertyThName 'prop_noPressure_A_A_FreeFast_Sim prop_noPressure_A_A_FreeFast_Sim
+          , testPropertyThName 'prop_handshakeNoRxReady_Sim prop_handshakeNoRxReady_Sim
+          , testPropertyThName 'prop_handshakeNoTxStart_Sim prop_handshakeNoTxStart_Sim
+          , testPropertyThName
+              'prop_handshakeNoTxStartNoRxReady_Sim
+              prop_handshakeNoTxStartNoRxReady_Sim
+          ]
     , adjustOption (\_ -> HedgehogTestLimit (Just 10))
         $ testGroup
           "Very slow tests"
@@ -544,5 +749,18 @@ tests =
           [ testPropertyNamed "prop_noTxReady" "prop_noTxReady" prop_noTxReady
           , testPropertyNamed "prop_noTxReadyFlipped" "prop_noTxReadyFlipped" prop_noTxReadyFlipped
           , testPropertyNamed "prop_noRxReady" "prop_noRxReady" prop_noRxReady
+          ]
+    , adjustOption (\_ -> HedgehogTestLimit (Just 10))
+        $ testGroup
+          "Very slow tests (Simulation Version)"
+          -- These tests are "very slow" because they cannot exit early on some
+          -- condition. Instead, they just wait for some deadline, and if they don't
+          -- see an errornous condition by then, they pass.
+          [ testPropertyNamed "prop_noTxReady_Sim" "prop_noTxReady_Sim" prop_noTxReady_Sim
+          , testPropertyNamed
+              "prop_noTxReadyFlipped_Sim"
+              "prop_noTxReadyFlipped_Sim"
+              prop_noTxReadyFlipped_Sim
+          , testPropertyNamed "prop_noRxReady_Sim" "prop_noRxReady_Sim" prop_noRxReady_Sim
           ]
     ]
