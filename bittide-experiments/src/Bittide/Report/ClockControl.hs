@@ -262,8 +262,6 @@ toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids CcConf{..} =
     , ""
     , "\\begin{large}"
     , "  \\begin{tabular}{rl}"
-    , "    timeout after:"
-    , "      & " <> qtyMs durationMs <> " \\\\"
     , "    clock offsets:"
     , "      & " <> maybe "\\textit{not used}" formatOffsets clockOffsets <> " \\\\"
     , "    startup delays:"
@@ -342,5 +340,4 @@ toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids CcConf{..} =
   qtyPpm ppm = "\\qty{" <> show ppm <> "}{\\ppm}"
 
   nCyclesOneMs = natToNum @(PeriodToCycles refDom (Milliseconds 1))
-  durationMs = duration `div` nCyclesOneMs
   startupDelaysMs = (`div` nCyclesOneMs) <$> startupDelays

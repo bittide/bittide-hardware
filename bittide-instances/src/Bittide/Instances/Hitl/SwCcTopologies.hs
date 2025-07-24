@@ -1033,7 +1033,6 @@ tests = [testGroup True, testGroup False]
   defSimCfg =
     def
       { samples = 1000
-      , duration = natToNum @(PeriodToCycles Basic125 (Seconds 60))
       , reframe = cccEnableReframing
       , waitTime = fromEnum cccReframingWaitTime
       }
