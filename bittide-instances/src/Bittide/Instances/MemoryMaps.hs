@@ -24,6 +24,7 @@ import System.FilePath
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Hitl.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Tests.RegisterWbC as RegisterWbC
+import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
 import qualified Data.ByteString.Lazy as BS
 import qualified Protocols.MemoryMap.Json as Json
 
@@ -38,6 +39,7 @@ $( do
           , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
           , ("Ethernet", vexRiscvEthernetMM)
           , ("Freeze", freezeMM)
+          , ("SwitchC", SwitchCalendar.memoryMap)
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWbC", RegisterWbC.memoryMap)
           , ("SwCcTopologies", SwCcTopologies.memoryMap)

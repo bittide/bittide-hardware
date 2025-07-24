@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Instances.Pnr.Calendar where
+module Bittide.Instances.Pnr.Switch where
 
 import Clash.Prelude
 
@@ -18,7 +18,7 @@ import Bittide.Instances.Hacks (reducePins)
 type WishboneWidth = 4
 type WishboneAddrWidth = 32
 
-switchCalendar1k ::
+switchExample ::
   Clock Basic200 ->
   Reset Basic200 ->
   Signal Basic200 (WishboneM2S WishboneAddrWidth WishboneWidth (Bytes WishboneWidth)) ->
@@ -28,20 +28,20 @@ switchCalendar1k ::
   , MM
   )
 switchCalendar1k clk rst =
-  withClockResetEnable clk syncRst enableGen
-    $ withBittideByteOrder
-    $ mkCalendar "switch" (CalendarConfig (SNat @1024) d8 cal cal)
+  withClockResetEnable clk syncRst enableGen $
+    withBittideByteOrder $
+      mkCalendar "switch" (CalendarConfig (SNat @1024) d8 cal cal)
  where
   syncRst = resetSynchronizer clk rst
   cal = ValidEntry{veEntry = repeat 0, veRepeat = 0} :> Nil
-{-# NOINLINE switchCalendar1k #-}
+{-# NOINLINE switchExample #-}
 
-switchCalendar1kReducedPins ::
+switchExampleReducedPins ::
   Clock Basic200 ->
   Reset Basic200 ->
   Signal Basic200 Bit ->
   Signal Basic200 Bit
 switchCalendar1kReducedPins clk rst =
-  withClock clk
-    $ reducePins (bundle . (\(a, b, c, _mm) -> (a, b, c)) . switchCalendar1k clk rst)
+  withClock clk $
+    reducePins (bundle . (\(a, b, c, _mm) -> (a, b, c)) . switchCalendar1k clk rst)
 {-# NOINLINE switchCalendar1kReducedPins #-}
