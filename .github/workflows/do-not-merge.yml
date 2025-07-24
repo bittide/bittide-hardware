@@ -10,6 +10,7 @@ on:
       - opened
       - labeled
       - unlabeled
+      - synchronize
 
 jobs:
   do-not-merge:
