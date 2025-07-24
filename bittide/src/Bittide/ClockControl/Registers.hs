@@ -11,7 +11,7 @@ import Protocols
 import Protocols.Wishbone
 
 import Bittide.ClockControl (RelDataCount, SpeedChange (NoChange))
-import Bittide.ClockControl.StabilityChecker
+import Bittide.ClockControl.Callisto.Types (Stability (..))
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Explicit.Reset (unsafeOrReset)
 import Clash.Functor.Extra ((<<$>>), (<<*>>))
@@ -29,7 +29,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
 
 data ClockControlData (nLinks :: Nat) = ClockControlData
   { clockMod :: Maybe SpeedChange
-  , stabilityIndications :: Vec nLinks StabilityIndication
+  , stabilities :: Vec nLinks Stability
   , allStable :: Bool
   , allSettled :: Bool
   }
@@ -141,7 +141,7 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
     clockControlData =
       ClockControlData
         <$> fmap busActivityToMaybeSpeedChange changeSpeed
-        <*> (StabilityIndication <<$>> maskedLinksStable <<*>> maskedLinksSettled)
+        <*> (Stability <<$>> maskedLinksStable <<*>> maskedLinksSettled)
         <*> allLinksStable
         <*> allLinksSettled
 

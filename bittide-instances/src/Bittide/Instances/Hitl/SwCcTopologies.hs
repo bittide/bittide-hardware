@@ -41,6 +41,7 @@ import Bittide.Arithmetic.Time
 import Bittide.ClockControl hiding (speedChangeToFincFdec)
 import Bittide.ClockControl.Callisto.Types (
   CallistoResult (allStable, jtagOut, maybeSpeedChange, stability),
+  Stability (..),
  )
 import Bittide.ClockControl.CallistoSw (SwControlConfig (..), callistoSwClockControl)
 import Bittide.ClockControl.Si5395J
@@ -48,20 +49,19 @@ import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
 import Bittide.ElasticBuffer
 import Bittide.Extra.Maybe (orNothing)
-import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
-import Bittide.SharedTypes (withBittideByteOrder)
-import Bittide.Simulate.Config (CcConf (..))
-import Bittide.Topology
-import Bittide.Transceiver (transceiverPrbsN)
-
 import Bittide.Hitl
+import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.IlaPlot (
   IlaControl (..),
   IlaPlotSetup (..),
   callistoClockControlWithIla,
   ilaPlotSetup,
  )
+import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
+import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.Simulate.Config (CcConf (..))
+import Bittide.Topology
+import Bittide.Transceiver (transceiverPrbsN)
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.Counter
@@ -75,7 +75,6 @@ import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen
 
 import qualified Bittide.Arithmetic.PartsPer as PartsPer
-import qualified Bittide.ClockControl.StabilityChecker as SI
 import qualified Bittide.Instances.Hitl.Driver.SwCcTopologies as D
 import qualified Bittide.Instances.Hitl.Setup as Setup
 import qualified Bittide.Transceiver as Transceiver

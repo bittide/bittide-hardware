@@ -26,14 +26,17 @@ import Bittide.Arithmetic.Time (trueFor)
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl hiding (speedChangeToFincFdec)
-import Bittide.ClockControl.Callisto.Types (CallistoCResult (..), ReframingState (..))
+import Bittide.ClockControl.Callisto.Types (
+  CallistoCResult (..),
+  ReframingState (..),
+  Stability (..),
+ )
 import Bittide.ClockControl.CallistoSw (
   SwControlCConfig (..),
   SwcccInternalBusses,
   callistoSwClockControlC,
  )
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
-import Bittide.ClockControl.StabilityChecker (StabilityIndication (..))
 import Bittide.Counter
 import Bittide.Df (asciiDebugMux)
 import Bittide.DoubleBufferedRam
@@ -680,7 +683,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn sy
                     pure
                       $ CallistoCResult
                         { maybeSpeedChangeC = Nothing
-                        , stabilityC = repeat (StabilityIndication{stable = True, settled = True})
+                        , stabilityC = repeat (Stability{stable = True, settled = True})
                         , allStableC = True
                         , allSettledC = True
                         , reframingStateC = Done

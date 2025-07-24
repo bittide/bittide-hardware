@@ -12,22 +12,32 @@ module Bittide.ClockControl.Callisto.Types (
   ReframingState (..),
   ControlConfig (..),
   ControlSt (..),
+  Stability (..),
 ) where
 
 import Clash.Prelude
 
 import Bittide.ClockControl
-import Bittide.ClockControl.StabilityChecker (StabilityIndication)
 import Clash.Class.BitPackC (BitPackC)
 import Protocols.MemoryMap.FieldType (ToFieldType)
 import VexRiscv (JtagOut)
+
+-- | Stability results to be returned by the 'stabilityChecker'.
+data Stability = Stability
+  { stable :: Bool
+  -- ^ Indicates stability of the signal over time.
+  , settled :: Bool
+  -- ^ Indicates whether the signal is stable and close to
+  -- 'targetDataCount'.
+  }
+  deriving (Generic, NFDataX, BitPack, ShowX, Show)
 
 -- | Result of the clock control algorithm.
 data CallistoResult (n :: Nat) = CallistoResult
   { maybeSpeedChange :: Maybe SpeedChange
   -- ^ Speed change requested for clock multiplier. This is 'Just' for a single
   -- cycle.
-  , stability :: Vec n StabilityIndication
+  , stability :: Vec n Stability
   -- ^ All stability indicators for all of the elastic buffers.
   , allStable :: Bool
   -- ^ Joint stability indicator signaling that all elastic buffers
@@ -51,7 +61,7 @@ data CallistoCResult (n :: Nat) = CallistoCResult
   { maybeSpeedChangeC :: Maybe SpeedChange
   -- ^ Speed change requested for clock multiplier. This is 'Just' for a single
   -- cycle.
-  , stabilityC :: Vec n StabilityIndication
+  , stabilityC :: Vec n Stability
   -- ^ All stability indicators for all of the elastic buffers.
   , allStableC :: Bool
   -- ^ Joint stability indicator signaling that all elastic buffers

@@ -87,7 +87,7 @@ callistoSwClockControl ccConfig mask linksOk ebs =
   callistoResult =
     CallistoResult
       <$> ccData.clockMod
-      <*> ccData.stabilityIndications
+      <*> ccData.stabilities
       <*> ccData.allStable
       <*> ccData.allSettled
       <*> resultRfs
@@ -272,7 +272,7 @@ callistoSwClockControlC dumpVcd ccConfig =
       callistoCResult =
         CallistoCResult
           <$> clockControlData.clockMod
-          <*> clockControlData.stabilityIndications
+          <*> clockControlData.stabilities
           <*> clockControlData.allStable
           <*> clockControlData.allSettled
           <*> debugData.reframingState

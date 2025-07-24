@@ -40,8 +40,7 @@ import Graphics.Matplotlib (
 import qualified Graphics.Matplotlib as MP (plot)
 
 import Bittide.ClockControl (RelDataCount)
-import Bittide.ClockControl.Callisto.Types (ReframingState (..))
-import qualified Bittide.ClockControl.StabilityChecker as SC (StabilityIndication (..))
+import Bittide.ClockControl.Callisto.Types (ReframingState (..), Stability (..))
 import Bittide.Topology
 
 {- $setup
@@ -83,7 +82,7 @@ plot ::
     [ ( Femtoseconds -- time
       , PartsPer -- relative clock offset
       , ReframingStage
-      , [(RelDataCount m, SC.StabilityIndication)]
+      , [(RelDataCount m, Stability)]
       )
     ] ->
   IO ()
@@ -151,7 +150,7 @@ is in the waiting state.
 -}
 plotEbData ::
   (KnownNat m) =>
-  [(Femtoseconds, ReframingStage, RelDataCount m, SC.StabilityIndication)] ->
+  [(Femtoseconds, ReframingStage, RelDataCount m, Stability)] ->
   Matplotlib
 plotEbData (unzip4 -> (timestampsFs, reframingStages, dataCounts, stabilities)) =
   foldPlots markedIntervals % ebPlot
