@@ -19,6 +19,9 @@ pub struct StabilityDetector {
     margin: u32,
     // Time frame size for stability checks.
     frame_size: Duration,
+    // Stabilities of the links at the last update. Used to reset stored data
+    // counts when moving from an unstable to a stable state.
+    prev_stabilities: [bool; ClockControl::DATA_COUNTS_LEN],
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, uDebug)]
@@ -40,6 +43,7 @@ impl StabilityDetector {
             starts: [None; ClockControl::DATA_COUNTS_LEN],
             margin,
             frame_size,
+            prev_stabilities: [false; ClockControl::DATA_COUNTS_LEN],
         }
     }
 
@@ -47,12 +51,13 @@ impl StabilityDetector {
         let mut stables: u32 = 0;
         let mut settleds: u32 = 0;
 
-        for (data_count_stored, maybe_start, data_count, min_seen, max_seen) in izip!(
+        for (data_count_stored, maybe_start, data_count, min_seen, max_seen, prev_stable) in izip!(
             self.data_counts.iter_mut(),
             self.starts.iter_mut(),
             cc.data_counts_volatile_iter(),
             cc.min_data_counts_seen_volatile_iter(),
             cc.max_data_counts_seen_volatile_iter(),
+            self.prev_stabilities.iter_mut()
         ) {
             let diff0 = data_count_stored.abs_diff(min_seen);
             let diff1 = data_count_stored.abs_diff(max_seen);
@@ -76,6 +81,17 @@ impl StabilityDetector {
 
             settleds <<= 1;
             settleds |= settled as u32;
+
+            // If a link has become stable, we store the current data count and
+            // clear the data counts seen. This is to prevent a link from being
+            // considered unstable again immediately after it has become stable,
+            // if it happened to stabilize very close to its margins and, just
+            // by "luck", the next sample pushes it over the edge.
+            if !*prev_stable && stable {
+                *data_count_stored = data_count;
+                cc.set_clear_data_counts_seen(true);
+            }
+            *prev_stable = stable;
         }
 
         // XXX: These values are currently hardcoded to 8 bits, which would
