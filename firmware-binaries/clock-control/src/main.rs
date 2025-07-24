@@ -7,6 +7,7 @@
 
 use core::panic::PanicInfo;
 
+use bittide_hal::manual_additions::timer::WaitResult;
 use bittide_hal::shared::types::speed_change::SpeedChange;
 use bittide_hal::switch_demo_cc::DeviceInstances;
 use bittide_hal::{
@@ -49,21 +50,30 @@ fn main() -> ! {
         ReframingState::Detect,
     );
 
-    // Update clock control 50K updates per second
-    let interval = Duration::from_micros(20);
-    let mut next_update = timer.now() + interval;
-
     // Store samples every _n_ updates. Currently set to 50 times a second
     // (50K / 1000 = 50Hz). Set to '1' for perfect storage -- not yet possible
     // due to limited memory size.
     let mut sample_store = SampleStore::new(sample_memory, 1000);
+
+    // Update clock control 10K updates per second
+    let interval = Duration::from_micros(100);
+    let mut next_update = timer.now() + interval;
 
     loop {
         freeze.set_freeze(true);
         callisto::callisto(&cc, freeze.eb_counters_volatile_iter(), &config, &mut state);
         cc.set_change_speed(state.b_k);
         sample_store.store(&freeze);
-        timer.wait_until(next_update);
+        if let WaitResult::AlreadyPassed = timer.wait_until(next_update) {
+            uwriteln!(
+                uart,
+                "Deadline missed! Timer did not update in time. Now: {}. Next update: {}",
+                timer.now().micros(),
+                next_update.micros(),
+            )
+            .unwrap();
+            panic!("Deadline missed! See UART log.");
+        };
         next_update += interval;
     }
 }
