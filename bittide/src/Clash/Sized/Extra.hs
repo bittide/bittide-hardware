@@ -6,6 +6,9 @@ module Clash.Sized.Extra where
 
 import Clash.Prelude
 
+import Data.Constraint.Nat.Extra (Dict (..))
+import Data.Constraint.Nat.Lemmas (nLe0Eq0)
+
 {- $setup
 >>> import Clash.Prelude
 -}
@@ -31,3 +34,22 @@ concatUnsigneds ::
   Unsigned (a + b)
 concatUnsigneds a b =
   shiftL (extend a) (natToNum @b) .|. extend b
+
+extendLsb0s ::
+  forall m n a b.
+  ( KnownNat m
+  , KnownNat n
+  , BitPack a
+  , BitSize a ~ m
+  , BitPack b
+  , BitSize b ~ m + n
+  ) =>
+  a ->
+  b
+extendLsb0s a =
+  unpack $ case SNat @n `compareSNat` d0 of
+    SNatLE -> case nLe0Eq0 @n of Dict -> packedA
+    SNatGT -> packedA ++# 0
+ where
+  packedA :: BitVector (BitSize a)
+  packedA = pack a
