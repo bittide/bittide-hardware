@@ -21,6 +21,7 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
 
   -- * Supporting types and functions
   registerConfig,
+  busActivityWrite,
   BusActivity (..),
   DeviceConfig (..),
   RegisterConfig (..),
@@ -77,6 +78,11 @@ import qualified Protocols.Vec as V
 
 data BusActivity a = BusIdle | BusRead a | BusWrite a
   deriving (Show, Eq, Functor, Generic, NFDataX)
+
+busActivityWrite :: BusActivity a -> Maybe a
+busActivityWrite BusIdle = Nothing
+busActivityWrite (BusRead _) = Nothing
+busActivityWrite (BusWrite a) = Just a
 
 data DeviceConfig = DeviceConfig
   { name :: String
