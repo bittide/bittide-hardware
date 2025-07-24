@@ -55,8 +55,8 @@ fn main() -> ! {
     // due to limited memory size.
     let mut sample_store = SampleStore::new(sample_memory, 1000);
 
-    // Update clock control 50K updates per second
-    let interval = Duration::from_micros(20);
+    // Update clock control 10K updates per second
+    let interval = Duration::from_micros(100);
     let mut next_update = timer.now() + interval;
 
     loop {
@@ -65,12 +65,11 @@ fn main() -> ! {
         cc.set_change_speed(state.b_k);
         sample_store.store(&freeze);
         if let WaitResult::AlreadyPassed = timer.wait_until(next_update) {
-            let now = timer.now();
             uwriteln!(
                 uart,
                 "Deadline missed! Timer did not update in time. Now: {}. Next update: {}",
-                now,
-                next_update,
+                timer.now().micros(),
+                next_update.micros(),
             )
             .unwrap();
             panic!("Deadline missed! See UART log.");
