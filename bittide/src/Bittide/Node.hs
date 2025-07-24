@@ -62,18 +62,19 @@ node ::
   Circuit
     (ConstBwd MM, Vec gppes (ConstBwd MM), Vec extLinks (CSignal dom (BitVector 64)))
     (Vec extLinks (CSignal dom (BitVector 64)))
-node (NodeConfig nmuConfig switchConfig gppeConfigs prefixes) = circuit $ \(mmNmu, mms, linksIn) -> do
-  (switchOut, _cal) <- switchC switchConfig -< (mmSwWb, (switchIn, swWb))
-  switchIn <- appendC3 -< ([nmuLinkOut], pesToSwitch, linksIn)
-  ([Fwd nmuLinkIn], switchToPes, linksOut) <- split3CI -< switchOut
-  (nmuLinkOut, nmuWbs0) <- managementUnitC nmuConfig nmuLinkIn -< mmNmu
-  ([(preSw, (mmSwWb, swWb))], nmuWbs1) <- splitAtCI -< nmuWbs0
-  peWbs <- unconcatC d2 -< nmuWbs1
+node (NodeConfig nmuConfig switchConfig gppeConfigs prefixes) =
+  circuit $ \(mmNmu, mms, linksIn) -> do
+    (switchOut, _cal) <- switchC switchConfig -< (mmSwWb, (switchIn, swWb))
+    switchIn <- appendC3 -< ([nmuLinkOut], pesToSwitch, linksIn)
+    ([Fwd nmuLinkIn], switchToPes, linksOut) <- split3CI -< switchOut
+    (nmuLinkOut, nmuWbs0) <- managementUnitC nmuConfig nmuLinkIn -< mmNmu
+    ([(preSw, (mmSwWb, swWb))], nmuWbs1) <- splitAtCI -< nmuWbs0
+    peWbs <- unconcatC d2 -< nmuWbs1
 
-  constBwd 0b0 -< preSw
+    constBwd 0b0 -< preSw
 
-  pesToSwitch <- nodeGppes gppeConfigs prefixes -< (mms, switchToPes, peWbs)
-  idC -< linksOut
+    pesToSwitch <- nodeGppes gppeConfigs prefixes -< (mms, switchToPes, peWbs)
+    idC -< linksOut
 
 nodeGppes ::
   forall gppes dom nmuBusses nmuRemBusWidth.
@@ -234,6 +235,8 @@ managementUnitC ::
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   , CLog 2 (nodeBusses + NmuInternalBusses) <= 30
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   -- |
   -- ( Configures all local parameters

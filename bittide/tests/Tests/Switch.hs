@@ -16,6 +16,7 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import Bittide.Calendar
+import Bittide.SharedTypes
 import Bittide.Switch
 import Tests.Calendar hiding (tests)
 import Tests.Shared
@@ -42,13 +43,13 @@ tests =
     , testPropertyNamed "Switch Routing" "switchRouting" switchRouting
     ]
 
-data SwitchTestConfig nBytes addrW where
+data SwitchTestConfig addrW where
   SwitchTestConfig ::
-    (KnownNat links, 1 <= nBytes) =>
+    (KnownNat links) =>
     CalendarConfig addrW (CalendarEntry links) ->
-    SwitchTestConfig nBytes addrW
+    SwitchTestConfig addrW
 
-deriving instance Show (SwitchTestConfig nBytes addrW)
+deriving instance Show (SwitchTestConfig addrW)
 
 -- This generator can generate a calendar entry for a switch given the amount of links.
 genSwitchEntry ::
@@ -62,11 +63,11 @@ amount of bytes and address width of the wishbone bus, and given the amount of l
 calendar depth of the switch.
 -}
 genSwitchCalendar ::
-  forall nBytes addrW.
-  (KnownNat nBytes, 1 <= nBytes, KnownNat addrW) =>
+  forall addrW.
+  (KnownNat addrW) =>
   Natural ->
   Natural ->
-  Gen (SwitchTestConfig nBytes addrW)
+  Gen (SwitchTestConfig addrW)
 genSwitchCalendar links calDepth = do
   case TN.someNatVal links of
     (SomeNat (snatProxy -> l)) -> do
@@ -92,12 +93,16 @@ simSwitchWithCalendar ::
 simSwitchWithCalendar SNat calConfig inp = fmap (fmap unpack) actual
  where
   -- Configure the design under test
-  dut = withClockResetEnable @System clockGen resetGen enableGen $ circuit $ \linksIn -> do
-    wbIn <- idleSource
-    mm <- ignoreMM
-    (linksOut, _cal) <-
-      switchC @System @nBytes @addrW @links calConfig -< (mm, (linksIn, wbIn))
-    idC -< linksOut
+  dut =
+    withBigEndian
+      $ withClockResetEnable @System clockGen resetGen enableGen
+      $ circuit
+      $ \linksIn -> do
+        wbIn <- idleSource
+        mm <- ignoreMM
+        (linksOut, _cal) <-
+          switchC @System @nBytes @addrW @links calConfig -< (mm, (linksIn, wbIn))
+        idC -< linksOut
 
   actual =
     zipList
@@ -127,7 +132,7 @@ switchMulticast = property $ do
         -- Account for two cycles latency and single reset cycle
         expected = L.take simDuration $ L.replicate 2 (repeat $ unpack 0) <> L.drop 1 outs
 
-        actual = L.take simDuration $ simSwitchWithCalendar @_ @4 @32 SNat calConfig inp
+        actual = L.take simDuration $ simSwitchWithCalendar @_ @4 @32 d4 calConfig inp
       footnote $ "Calendar: " <> show cal
 
       actual === expected
@@ -190,7 +195,7 @@ switchRouting :: Property
 switchRouting = property $ do
   simDuration <- forAll $ Gen.int (Range.linear 1 100)
   links <- forAll $ Gen.integral (Range.linear 1 64)
-  someCalConfig <- forAll $ genSwitchCalendar @4 @32 links 2
+  someCalConfig <- forAll $ genSwitchCalendar @32 links 2
 
   case someCalConfig of
     (SwitchTestConfig (calConfig :: CalendarConfig addrw (CalendarEntry links))) -> do
