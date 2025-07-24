@@ -78,7 +78,7 @@ fn main() -> ! {
         let stability = stability_detector.update(&cc, timer.now());
 
         // Store debug information
-        sample_store.store(&freeze, stability);
+        sample_store.store(&freeze, stability, state.z_k);
 
         // Emit stability information over UART
         let all_stable = stability.all_stable();

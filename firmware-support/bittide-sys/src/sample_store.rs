@@ -6,7 +6,7 @@ use bittide_hal::freeze::{Freeze, SampleMemory};
 
 use crate::stability_detector::Stability;
 
-const WORDS_PER_SAMPLE: usize = 12;
+const WORDS_PER_SAMPLE: usize = 13;
 
 /// State machinery for storing clock control samples in memory.
 pub struct SampleStore {
@@ -34,6 +34,7 @@ impl SampleStore {
         freeze: &bittide_hal::freeze::Freeze,
         bump_counter: bool,
         stability: Stability,
+        net_speed_change: i32,
     ) {
         let n_samples_stored = self.memory.data(0).unwrap() as usize;
         let start_index = n_samples_stored * WORDS_PER_SAMPLE + 1;
@@ -61,9 +62,13 @@ impl SampleStore {
             stability.stable as u32 | ((stability.settled as u32) << 8),
         );
 
+        // Store net speed change
+        self.memory
+            .set_data(start_index + 5, net_speed_change as u32);
+
         // Store the EB counters
         for (i, eb_counter) in freeze.eb_counters_volatile_iter().enumerate() {
-            self.memory.set_data(start_index + 5 + i, eb_counter as u32);
+            self.memory.set_data(start_index + 6 + i, eb_counter as u32);
         }
 
         // Bump number of samples stored, but only if we're running "for real"
@@ -76,14 +81,14 @@ impl SampleStore {
     /// Store the contents of 'Freeze' to memory. Whether or not a store actually
     /// happens depends on whether we're at a 'store_sample_every' boundary. Returns
     /// true if a sample was stored, false if this was a dry run.
-    pub fn store(&mut self, freeze: &Freeze, stability: Stability) -> bool {
+    pub fn store(&mut self, freeze: &Freeze, stability: Stability, net_speed_change: i32) -> bool {
         self.counter += 1;
 
         let bump_counter = self.counter >= self.store_samples_every;
 
         // Always go through the motions of loading/storing to get a reliable
         // execution time.
-        self.do_store(freeze, bump_counter, stability);
+        self.do_store(freeze, bump_counter, stability, net_speed_change);
 
         if bump_counter {
             self.counter = 0;

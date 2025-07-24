@@ -166,7 +166,7 @@ dumpCcSamples hitlDir ccGdbs = do
         ("x/1wx " <> showHex32 sampleMemoryBase)
 
     let
-      bytesPerSample = 12
+      bytesPerSample = 13
       bytesPerWord = 4
 
       dumpStart = sampleMemoryBase + bytesPerWord
