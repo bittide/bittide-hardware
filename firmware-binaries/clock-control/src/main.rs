@@ -77,7 +77,7 @@ fn main() -> ! {
         let stability = stability_detector.update(&cc, timer.now());
 
         // Store debug information
-        sample_store.store(&freeze, stability);
+        sample_store.store(&freeze, stability, state.z_k);
 
         // Wait for next update
         let timer_result = timer.wait_until(next_update);

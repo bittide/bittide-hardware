@@ -160,7 +160,7 @@ dumpCcSamples gdb dumpPath = do
       ("x/1wx " <> showHex32 sampleMemoryBase)
 
   let
-    bytesPerSample = 12
+    wordsPerSample = 13
     bytesPerWord = 4
 
   case readMaybe nSamplesWritten of
@@ -168,7 +168,7 @@ dumpCcSamples gdb dumpPath = do
     Just n ->
       let
         dumpStart = sampleMemoryBase + bytesPerWord
-        dumpEnd = dumpStart + fromIntegral n * bytesPerWord * bytesPerSample
+        dumpEnd = dumpStart + fromIntegral n * bytesPerWord * wordsPerSample
        in
         Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure n
  where
