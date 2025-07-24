@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use crate::time::{self, Clock};
 
 // The logger utilizes core::fmt to format the log messages because ufmt formatting is not
 // compatible with (dependencies of) the log crate.
+use bittide_hal::shared::devices::timer;
 use bittide_hal::shared::devices::uart;
 use core::{cell::SyncUnsafeCell, fmt::Write};
 use log::LevelFilter;
@@ -17,7 +17,7 @@ use log::LevelFilter;
 /// Even though `UartLogger` is `Send` and `Sync`, The underlying `Uart` is not `Send` or `Sync`.
 pub static LOGGER: SyncUnsafeCell<UartLogger> = SyncUnsafeCell::new(UartLogger {
     uart: None,
-    clock: None,
+    timer: None,
     print_time: true,
     display_level: LevelFilter::Trace,
     display_source: LevelFilter::Trace,
@@ -30,7 +30,7 @@ pub static LOGGER: SyncUnsafeCell<UartLogger> = SyncUnsafeCell::new(UartLogger {
 /// Even though `UartLogger` is `Send` and `Sync`, The underlying `Uart` is not `Send` or `Sync`.
 pub struct UartLogger {
     uart: Option<uart::Uart>,
-    clock: Option<time::Clock>,
+    timer: Option<timer::Timer>,
     pub print_time: bool,
     pub display_level: LevelFilter,
     pub display_source: LevelFilter,
@@ -44,8 +44,8 @@ impl UartLogger {
     pub unsafe fn set_logger(&mut self, uart: uart::Uart) {
         self.uart = Some(uart);
     }
-    pub fn set_clock(&mut self, clock: time::Clock) {
-        self.clock = Some(clock);
+    pub fn set_timer(&mut self, timer: timer::Timer) {
+        self.timer = Some(timer);
     }
 }
 
@@ -62,10 +62,9 @@ impl log::Log for UartLogger {
                         if record.level() <= self.display_level {
                             write!(l, "{} | ", record.level()).unwrap()
                         }
-                        if let (true, Some(clock)) = (&self.print_time, &self.clock) {
-                            let mut clock = Clock::new(clock.as_ptr());
-                            let time = clock.now();
-                            write!(l, "{time} | ").unwrap();
+                        if let (true, Some(timer)) = (&self.print_time, &self.timer) {
+                            let now = timer.now();
+                            write!(l, "{now} | ").unwrap();
                         }
                         if record.level() <= self.display_source {
                             write!(
