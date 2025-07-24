@@ -193,7 +193,6 @@ library
     Bittide.Instances.Hitl.VexRiscv
     Bittide.Instances.MemoryMaps
     Bittide.Instances.Pnr.AsciiDebugMux
-    Bittide.Instances.Pnr.Calendar
     Bittide.Instances.Pnr.Counter
     Bittide.Instances.Pnr.ElasticBuffer
     Bittide.Instances.Pnr.Ethernet
@@ -202,8 +201,10 @@ library
     Bittide.Instances.Pnr.ScatterGather
     Bittide.Instances.Pnr.Si539xSpi
     Bittide.Instances.Pnr.StabilityChecker
+    Bittide.Instances.Pnr.Switch
     Bittide.Instances.Pnr.Synchronizer
     Bittide.Instances.Tests.RegisterWbC
+    Bittide.Instances.Tests.SwitchCalendar
     Paths.Bittide.Instances
     Project.Handle
 
@@ -282,6 +283,7 @@ test-suite unittests
     Wishbone.DnaPortE2
     Wishbone.RegisterWbC
     Wishbone.ScatterGather
+    Wishbone.SwitchCalendar
     Wishbone.SwitchDemoProcessingElement
     Wishbone.Time
     Wishbone.Watchdog

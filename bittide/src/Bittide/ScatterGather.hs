@@ -63,6 +63,8 @@ scatterUnit ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
   CalendarConfig addrW (Index memDepth) ->
@@ -78,10 +80,11 @@ scatterUnit ::
   ( Signal dom (BitVector frameWidth)
   , Signal dom (WishboneS2M (Bytes nBytes))
   , Signal dom Bool
+  , MM
   )
-scatterUnit calConfig wbIn linkIn readAddr = (readOut, wbOut, endOfMetacycle)
+scatterUnit calConfig wbIn linkIn readAddr = (readOut, wbOut, endOfMetacycle, mm)
  where
-  (writeAddr, endOfMetacycle, wbOut) = mkCalendar calConfig wbIn
+  (writeAddr, endOfMetacycle, wbOut, mm) = mkCalendar "scatter" calConfig wbIn
   writeOp = curry Just <$> writeAddr <*> linkIn
   readOut = doubleBufferedRamU bufSelect readAddr writeOp
   bufSelect = regEn A endOfMetacycle (swapAorB <$> bufSelect)
@@ -103,6 +106,8 @@ gatherUnit ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
   CalendarConfig addrW (Index memDepth) ->
@@ -118,10 +123,11 @@ gatherUnit ::
   ( Signal dom (BitVector frameWidth)
   , Signal dom (WishboneS2M (Bytes nBytes))
   , Signal dom Bool
+  , MM
   )
-gatherUnit calConfig wbIn writeOp byteEnables = (bramOut, wbOut, endOfMetacycle)
+gatherUnit calConfig wbIn writeOp byteEnables = (bramOut, wbOut, endOfMetacycle, mm)
  where
-  (readAddr, endOfMetacycle, wbOut) = mkCalendar calConfig wbIn
+  (readAddr, endOfMetacycle, wbOut, mm) = mkCalendar "gather" calConfig wbIn
   bramOut = doubleBufferedRamByteAddressableU bufSelect readAddr writeOp byteEnables
   bufSelect = regEn A endOfMetacycle (swapAorB <$> bufSelect)
 
@@ -198,6 +204,8 @@ scatterUnitWbC ::
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat awCal
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
   ScatterConfig nBytesCal awCal ->
@@ -207,18 +215,18 @@ scatterUnitWbC ::
     , (ConstBwd MM, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     ()
-scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) linkIn = case cancelMulDiv @nBytesCal @8 of
+scatterUnitWbC conf@(ScatterConfig memDepthSnat _) linkIn = case cancelMulDiv @nBytesCal @8 of
   Dict -> Circuit go
    where
     go ((((), wbM2SSu), ((), wbM2SCal)), _) =
       (
         ( (SimOnly memoryMapScatterMem, wbS2MSu)
-        , (SimOnly memoryMapCal, wbS2MCal)
+        , (memoryMapCal, wbS2MCal)
         )
       , ()
       )
      where
-      (wbS2MSu, wbS2MCal) = scatterUnitWb conf wbM2SCal linkIn wbM2SSu
+      (wbS2MSu, wbS2MCal, memoryMapCal) = scatterUnitWb conf wbM2SCal linkIn wbM2SSu
 
     memoryMapScatterMem =
       let
@@ -265,8 +273,6 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat calConfig) linkIn = case cancelM
           , deviceDefs = deviceSingleton (deviceDef memDepthSnat)
           }
 
-    memoryMapCal = calendarMemoryMap "ScatterUnitCalendar" d4 calConfig
-
 {- | Wishbone addressable 'scatterUnit', the wishbone port can read the data from this
 memory element as if it has a 32 bit port by selecting the upper 32 or lower 32 bits
 of the read data.
@@ -278,6 +284,8 @@ scatterUnitWb ::
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat awCal
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
   ScatterConfig nBytesCal awCal ->
@@ -290,9 +298,9 @@ scatterUnitWb ::
   -- |
   -- 1. Wishbone (slave -> master) port scatter memory
   -- 2. Wishbone (slave -> master) port 'calendar'
-  (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes nBytesCal)))
+  (Signal dom (WishboneS2M (Bytes 4)), Signal dom (WishboneS2M (Bytes nBytesCal)), MM)
 scatterUnitWb (ScatterConfig _memDepth calConfig) wbInCal linkIn wbInSu =
-  (delayControls wbOutSu, wbOutCal)
+  (delayControls wbOutSu, wbOutCal, mm)
  where
   (wbOutSu, memAddr, _) =
     unbundle
@@ -300,7 +308,7 @@ scatterUnitWb (ScatterConfig _memDepth calConfig) wbInCal linkIn wbInSu =
       <$> endOfMetacycle
       <*> (wbInterface <$> wbInSu <*> scatteredData)
   (readAddr, upperSelected) = unbundle $ div2Index <$> memAddr
-  (scatterUnitRead, wbOutCal, endOfMetacycle) =
+  (scatterUnitRead, wbOutCal, endOfMetacycle, mm) =
     scatterUnit calConfig wbInCal linkIn readAddr
   (lower, upper) = unbundle $ split <$> scatterUnitRead
   selected = register (errorX "scatterUnitWb: Initial selection undefined") upperSelected
@@ -316,6 +324,8 @@ gatherUnitWbC ::
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat awCal
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal awCal ->
@@ -324,7 +334,7 @@ gatherUnitWbC ::
     , (ConstBwd MM, Wishbone dom 'Standard awCal (Bytes nBytesCal))
     )
     (CSignal dom (BitVector 64))
-gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @nBytesCal @8) of
+gatherUnitWbC conf@(GatherConfig memDepthSnat _) = case (cancelMulDiv @nBytesCal @8) of
   Dict -> Circuit go
    where
     go ::
@@ -347,20 +357,18 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat calConfig) = case (cancelMulDiv @n
     go ((((), wbInGu), ((), wbInCal)), _) =
       (
         ( (SimOnly memMapGu, wbOutGu)
-        , (SimOnly memMapCal, wbOutCal)
+        , (memMapCal, wbOutCal)
         )
       , linkOut
       )
      where
-      (linkOut, wbOutGu, wbOutCal) = gatherUnitWb conf wbInCal wbInGu
+      (linkOut, wbOutGu, wbOutCal, memMapCal) = gatherUnitWb conf wbInCal wbInGu
 
     memMapGu =
       MemoryMap
         { tree = DeviceInstance locCaller "GatherUnit"
         , deviceDefs = deviceSingleton (deviceDef memDepthSnat)
         }
-
-    memMapCal = calendarMemoryMap "GatherUniCalendar" d4 calConfig
 
     deviceDef :: forall memDepth. SNat memDepth -> DeviceDefinition
     deviceDef SNat =
@@ -411,6 +419,8 @@ gatherUnitWb ::
   , KnownNat nBytesCal
   , 1 <= nBytesCal
   , KnownNat awCal
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   -- | Configuration for the 'calendar'.
   GatherConfig nBytesCal awCal ->
@@ -424,9 +434,10 @@ gatherUnitWb ::
   ( Signal dom (BitVector 64)
   , Signal dom (WishboneS2M (Bytes 4))
   , Signal dom (WishboneS2M (Bytes nBytesCal))
+  , MM
   )
 gatherUnitWb (GatherConfig _memDepth calConfig) wbInCal wbInGu =
-  (linkOut, delayControls wbOutGu, wbOutCal)
+  (linkOut, delayControls wbOutGu, wbOutCal, mm)
  where
   (wbOutGu, memAddr, writeOp) =
     unbundle
@@ -434,7 +445,7 @@ gatherUnitWb (GatherConfig _memDepth calConfig) wbInCal wbInGu =
       <$> endOfMetacycle
       <*> (wbInterface <$> wbInGu <*> pure 0b0)
   (writeAddr, upperSelected) = unbundle $ div2Index <$> memAddr
-  (linkOut, wbOutCal, endOfMetacycle) =
+  (linkOut, wbOutCal, endOfMetacycle, mm) =
     gatherUnit calConfig wbInCal gatherWrite gatherByteEnables
   gatherWrite = mkWrite <$> writeAddr <*> writeOp
   gatherByteEnables = mkEnables <$> upperSelected <*> (busSelect <$> wbInGu)

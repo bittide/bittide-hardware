@@ -106,7 +106,7 @@ fn main() {
 
         set.annotate_types(|type_def: &TypeDefinition, ann: &mut TypeDefAnnotations| {
             ann.derives
-                .push(quote! { #[derive(Copy, Clone, PartialEq)] });
+                .push(quote! { #[derive(Copy, Clone, PartialEq, Debug)] });
 
             // if there's a Float or Double then we don't want to implement ufmt::Debug
 

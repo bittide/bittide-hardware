@@ -11,6 +11,7 @@ import Bittide.Instances.Domains
 import Bittide.Instances.Hacks
 import Bittide.ScatterGather
 import Bittide.SharedTypes
+import Clash.Class.BitPackC
 import Protocols.Wishbone
 
 type FrameWidth = 64
@@ -69,7 +70,13 @@ scatterUnit1K ::
   ( Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
   , Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
   )
-scatterUnit1K clk rst = withClockResetEnable clk rst enableGen $ scatterUnitWb scatterCal1K
+scatterUnit1K clk rst wbCal linkIn wbScat =
+  let
+    ?busByteOrder = BigEndian
+    ?regByteOrder = BigEndian
+   in
+    (\(wbA, wbB, _mm) -> (wbA, wbB))
+      $ withClockResetEnable clk rst enableGen (scatterUnitWb scatterCal1K wbCal linkIn wbScat)
 {-# NOINLINE scatterUnit1K #-}
 
 scatterUnit1KReducedPins ::
@@ -108,7 +115,14 @@ gatherUnit1K ::
   , Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
   , Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
   )
-gatherUnit1K clk rst = withClockResetEnable clk rst enableGen $ gatherUnitWb gatherCal1K
+gatherUnit1K clk rst wbCal wbGat =
+  let
+    ?busByteOrder = BigEndian
+    ?regByteOrder = BigEndian
+   in
+    (\(link, wbA, wbB, _mm) -> (link, wbA, wbB))
+      $ withClockResetEnable clk rst enableGen
+      $ gatherUnitWb gatherCal1K wbCal wbGat
 {-# NOINLINE gatherUnit1K #-}
 
 gatherUnit1KReducedPins ::
