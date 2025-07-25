@@ -60,7 +60,17 @@ import Bittide.Instances.Hitl.IlaPlot (
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
 import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Simulate.Config (CcConf (..))
-import Bittide.Topology
+import Bittide.Topology (
+  Topology (topologyName, topologyType),
+  TopologyType (Complete),
+  complete,
+  cyclic,
+  diamond,
+  hourglass,
+  line,
+  star,
+  torus2d,
+ )
 import Bittide.Transceiver (transceiverPrbsN)
 
 import Clash.Annotations.TH (makeTopEntity)
@@ -1061,7 +1071,7 @@ tests = [testGroup True, testGroup False]
                     })
       , postProcData =
           defSimCfg
-            { ccTopologyType = Complete $ natToInteger @FpgaCount
+            { ccTopologyType = Complete $ natToNum @FpgaCount
             , clockOffsets = Nothing
             , startupDelays = toList $ repeat @FpgaCount 0
             }

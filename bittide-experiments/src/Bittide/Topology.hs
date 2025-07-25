@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE MagicHash #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -16,7 +14,7 @@ module Bittide.Topology (
     topologyType,
     hasEdge
   ),
-  STop (..),
+  STopology (..),
   TreeSize,
 
   -- * Special Topologies
@@ -47,6 +45,7 @@ module Bittide.Topology (
 import Prelude
 
 import Clash.Prelude (
+  Generic,
   Index,
   KnownNat,
   Nat,
@@ -54,9 +53,8 @@ import Clash.Prelude (
   SomeNat (..),
   d0,
   d1,
-  natToInteger,
+  natToNum,
   snatProxy,
-  snatToInteger,
   snatToNum,
   someNatVal,
   type Div,
@@ -67,8 +65,7 @@ import Clash.Prelude (
  )
 
 import Control.Monad (forM, forM_, replicateM, replicateM_, unless, when)
-import Data.Aeson (FromJSON (..), ToJSON (..), Value (..), object, (.:), (.=))
-import Data.Aeson.Types (typeMismatch)
+import Data.Aeson (FromJSON (..), ToJSON (..))
 import Data.Array.IO (IOUArray)
 import Data.Array.MArray (freeze, getElems, newListArray, readArray, writeArray)
 import Data.Bifunctor (bimap, first)
@@ -80,18 +77,17 @@ import Data.List (groupBy, sort)
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Tuple (swap)
+import GHC.Num.Natural (Natural)
+import GHC.TypeLits.KnownNat (KnownNat2 (..), SNatKn (..), nameToSymbol)
+import GHC.TypeNats (natVal)
+import Language.Dot.Graph (GraphType (..), Name (..), Statement (..), Subgraph (..))
+import Language.Dot.Parser (parse)
 import System.Random (randomIO, randomRIO)
 
 import qualified Data.Array as A (accumArray, array, listArray, (!))
 import qualified Data.Map.Strict as M (fromList, (!))
 import qualified Data.Set as S (fromList, toList)
-
-import GHC.Num.Natural (Natural)
-import GHC.TypeLits.KnownNat (KnownNat2 (..), SNatKn (..), nameToSymbol)
-import GHC.TypeNats (natVal)
-
-import Language.Dot.Graph (GraphType (..), Name (..), Statement (..), Subgraph (..))
-import Language.Dot.Parser (parse)
+import qualified GHC.TypeNats as Nats
 
 -- | Special topologies may have names given as a string.
 type TopologyName = String
@@ -102,17 +98,17 @@ bound, a name and a 'TopologyType'.
 data Topology (n :: Nat) = Topology
   { topologyName :: TopologyName
   , topologyGraph :: Graph
-  , topologyType :: TopologyType IO Integer
+  , topologyType :: TopologyType
   , hasEdge :: Index n -> Index n -> Bool
   }
 
 -- | Existentially quantified version hiding the type level bound.
-data STop = forall n. (KnownNat n) => STop (Topology n)
+data STopology = forall n. (KnownNat n) => STopology (Topology n)
 
 -- | Smart constructor of 'Topology'.
 fromGraph :: forall n. (KnownNat n) => TopologyName -> Graph -> Topology n
 fromGraph name graph =
-  Topology name graph (Random $ natToInteger @n) $
+  Topology name graph (Random $ natToNum @n) $
     curry $
       (A.!) $
         A.accumArray (const id) False bounds $
@@ -122,243 +118,93 @@ fromGraph name graph =
   edgeIndices = map (bimap fromIntegral fromIntegral) $ edges graph
 
 {- | Disambiguates between a selection of known topologies, topologies
-that are loaded from DOT files, and random topologies. The first
-type parameter @m@ indicates a context, that may be required to
-generate an instance of the given topology type. If no specific
-context is required @m@ is left unspecified. The second type
-parameter @n@ indicates an integral type, in which the topology may
-be parameterized.
+that are loaded from DOT files, and random topologies.
 -}
-data TopologyType m n where
-  Diamond :: TopologyType m n
-  Pendulum :: n -> n -> TopologyType m n
-  Line :: n -> TopologyType m n
-  HyperCube :: n -> TopologyType m n
-  Grid :: n -> n -> TopologyType m n
-  Torus2D :: n -> n -> TopologyType m n
-  Torus3D :: n -> n -> n -> TopologyType m n
-  Tree :: n -> n -> TopologyType m n
-  Star :: n -> TopologyType m n
-  Cycle :: n -> TopologyType m n
-  Complete :: n -> TopologyType m n
-  Dumbbell :: n -> n -> n -> TopologyType m n
-  Hourglass :: n -> TopologyType m n
-  Beads :: n -> n -> n -> TopologyType m n
-  DotFile :: FilePath -> TopologyType IO n
-  Random :: n -> TopologyType IO n
+data TopologyType
+  = Diamond
+  | Pendulum {length :: Natural, weight :: Natural}
+  | Line {nodes :: Natural}
+  | HyperCube {dimensions :: Natural}
+  | Grid {rows :: Natural, cols :: Natural}
+  | Torus2D {rows :: Natural, cols :: Natural}
+  | Torus3D {rows :: Natural, cols :: Natural, planes :: Natural}
+  | Tree {depth :: Natural, children :: Natural}
+  | Star {nodes :: Natural}
+  | Cycle {nodes :: Natural}
+  | Complete {nodes :: Natural}
+  | Dumbbell {width :: Natural, left :: Natural, right :: Natural}
+  | Hourglass {nodes :: Natural}
+  | Beads {count :: Natural, distance :: Natural, weight :: Natural}
+  | DotFile {filepath :: FilePath}
+  | Random {nodes :: Natural}
+  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
-instance Show (TopologyType m a) where
-  show = \case
-    Diamond{} -> (.topologyName) diamond
-    Pendulum{} -> (.topologyName) $ pendulum d0 d0
-    Line{} -> (.topologyName) $ line d0
-    HyperCube{} -> (.topologyName) $ hypercube d0
-    Grid{} -> (.topologyName) $ grid d0 d0
-    Torus2D{} -> (.topologyName) $ torus2d d0 d0
-    Torus3D{} -> (.topologyName) $ torus3d d0 d0 d0
-    Tree{} -> (.topologyName) $ tree d0 d0
-    Star{} -> (.topologyName) $ star d0
-    Cycle{} -> (.topologyName) $ cyclic d0
-    Complete{} -> (.topologyName) $ complete d0
-    Dumbbell{} -> (.topologyName) $ dumbbell d0 d0 d0
-    Hourglass{} -> (.topologyName) $ hourglass d0
-    Beads{} -> (.topologyName) $ beads d0 d0 d0
-    DotFile{} -> "dotfile"
-    Random{} -> "random"
-
--- Unfortunately, we cannot derive 'Eq' and 'Ord' for GADTs.
-instance (Eq a) => Eq (TopologyType m a) where
-  x == y = case (x, y) of
-    (Diamond, Diamond) -> True
-    (Pendulum n m, Pendulum n' m') -> n == n' && m == m'
-    (Line n, Line n') -> n == n'
-    (HyperCube n, HyperCube n') -> n == n'
-    (Grid n m, Grid n' m') -> n == n' && m == m'
-    (Torus2D n m, Torus2D n' m') -> n == n' && m == m'
-    (Torus3D n m k, Torus3D n' m' k') -> n == n' && m == m' && k == k'
-    (Tree n m, Tree n' m') -> n == n' && m == m'
-    (Star n, Star n') -> n == n'
-    (Cycle n, Cycle n') -> n == n'
-    (Complete n, Complete n') -> n == n'
-    (Dumbbell n m k, Dumbbell n' m' k') -> n == n' && m == m' && k == k'
-    (Hourglass n, Hourglass n') -> n == n'
-    (Beads n m k, Beads n' m' k') -> n == n' && m == m' && k == k'
-    (DotFile p, DotFile p') -> p == p'
-    _ -> False
-
-instance (Ord a) => Ord (TopologyType m a) where
-  compare x y = case (x, y) of
-    (Diamond, Diamond) -> EQ
-    (Pendulum n m, Pendulum n' m') -> compare (n, m) (n', m')
-    (Line n, Line n') -> compare n n'
-    (HyperCube n, HyperCube n') -> compare n n'
-    (Grid n m, Grid n' m') -> compare (n, m) (n', m')
-    (Torus2D n m, Torus2D n' m') -> compare (n, m) (n', m')
-    (Torus3D n m k, Torus3D n' m' k') -> compare (n, m, k) (n', m', k')
-    (Tree n m, Tree n' m') -> compare (n, m) (n', m')
-    (Star n, Star n') -> compare n n'
-    (Cycle n, Cycle n') -> compare n n'
-    (Complete n, Complete n') -> compare n n'
-    (Dumbbell n m k, Dumbbell n' m' k') -> compare (n, m, k) (n', m', k')
-    (Hourglass n, Hourglass n') -> compare n n'
-    (Beads n m k, Beads n' m' k') -> compare (n, m, k) (n', m', k')
-    (DotFile p, DotFile p') -> compare p p'
-    (Random{}, Random{}) -> LT
-    _ -> compare (ordId x) (ordId y)
-   where
-    ordId = \case
-      Diamond{} -> 0 :: Int
-      Pendulum{} -> 1
-      Line{} -> 2
-      HyperCube{} -> 3
-      Grid{} -> 4
-      Torus2D{} -> 5
-      Torus3D{} -> 6
-      Tree{} -> 7
-      Star{} -> 8
-      Cycle{} -> 9
-      Complete{} -> 10
-      Dumbbell{} -> 11
-      Hourglass{} -> 12
-      Beads{} -> 13
-      DotFile{} -> 14
-      Random{} -> 15
-
-instance (ToJSON a) => ToJSON (TopologyType m a) where
-  toJSON t = object $ case t of
-    Diamond -> [gt]
-    DotFile f -> [gt, "filepath" .= f]
-    Line n -> [gt, "nodes" .= n]
-    HyperCube n -> [gt, "dimensions" .= n]
-    Star n -> [gt, "nodes" .= n]
-    Cycle n -> [gt, "nodes" .= n]
-    Complete n -> [gt, "nodes" .= n]
-    Hourglass n -> [gt, "nodes" .= n]
-    Random n -> [gt, "nodes" .= n]
-    Pendulum l w -> [gt, "length" .= l, "weight" .= w]
-    Tree d c -> [gt, "depth" .= d, "childs" .= c]
-    Grid r c -> [gt, "rows" .= r, "cols" .= c]
-    Torus2D r c -> [gt, "rows" .= r, "cols" .= c]
-    Dumbbell w l r -> [gt, "width" .= w, "left" .= l, "right" .= r]
-    Beads c d w -> [gt, "count" .= c, "distance" .= d, "weight" .= w]
-    Torus3D r c p -> [gt, "rows" .= r, "cols" .= c, "planes" .= p]
-   where
-    gt = "graph" .= show t
-
-instance (FromJSON a) => FromJSON (TopologyType IO a) where
-  parseJSON v = case v of
-    Object o ->
-      o .: "graph" >>= \(name :: String) -> case name of
-        "diamond" -> return Diamond
-        "dotfile" -> DotFile <$> o .: "filepath"
-        "line" -> Line <$> o .: "nodes"
-        "hypercube" -> HyperCube <$> o .: "dimensions"
-        "star" -> Star <$> o .: "nodes"
-        "cycle" -> Cycle <$> o .: "nodes"
-        "complete" -> Complete <$> o .: "nodes"
-        "hourglass" -> Hourglass <$> o .: "nodes"
-        "random" -> Random <$> o .: "nodes"
-        "pendulum" -> Pendulum <$> o .: "length" <*> o .: "weight"
-        "tree" -> Tree <$> o .: "depth" <*> o .: "childs"
-        "grid" -> Grid <$> o .: "rows" <*> o .: "cols"
-        "torus2d" -> Torus2D <$> o .: "rows" <*> o .: "cols"
-        "torus3d" ->
-          Torus3D
-            <$> o
-              .: "rows"
-            <*> o
-              .: "cols"
-            <*> o
-              .: "planes"
-        "dumbbell" ->
-          Dumbbell
-            <$> o
-              .: "width"
-            <*> o
-              .: "left"
-            <*> o
-              .: "right"
-        "beads" ->
-          Beads
-            <$> o
-              .: "count"
-            <*> o
-              .: "distance"
-            <*> o
-              .: "weight"
-        _ -> tmm
-    _ -> tmm
-   where
-    tmm = typeMismatch "Topology" v
-
-newtype FUN a = FUN (forall n. SNat n -> a)
+data SomeSNat where
+  SomeSNat :: (KnownNat n) => SNat n -> SomeSNat
 
 -- | Generates some topology of the given topology type, if possible.
 froccTopologyType ::
-  (Integral n, Applicative m) =>
-  TopologyType m n ->
-  m (Either String STop)
-froccTopologyType tt = case tt of
-  Diamond -> ret $ Just $ STop diamond
-  Pendulum n m ->
-    let pendulum# :: FUN (FUN STop)
-        pendulum# = FUN (\l@SNat -> FUN (\w@SNat -> STop $ pendulum l w))
-     in ret $ pendulum# <#> n <!> m
-  Line n -> ret $ FUN (\sn@SNat -> STop $ line sn) <#> n
-  HyperCube n -> ret $ FUN (\sn@SNat -> STop $ hypercube sn) <#> n
+  TopologyType ->
+  IO (Either String STopology)
+froccTopologyType = \case
+  Diamond -> ret diamond
+  Pendulum l w ->
+    case (naturalToSomeSNat l, naturalToSomeSNat w) of
+      (SomeSNat sL, SomeSNat sW) ->
+        ret (pendulum sL sW)
+  Line n ->
+    case naturalToSomeSNat n of
+      SomeSNat sN -> ret (line sN)
+  HyperCube n ->
+    case naturalToSomeSNat n of
+      SomeSNat sN -> ret (hypercube sN)
   Grid rows cols ->
-    let grid# :: FUN (FUN STop)
-        grid# = FUN (\n@SNat -> FUN (\m@SNat -> STop $ grid n m))
-     in ret $ grid# <#> rows <!> cols
+    case (naturalToSomeSNat rows, naturalToSomeSNat cols) of
+      (SomeSNat sRows, SomeSNat sCols) -> ret (grid sRows sCols)
   Torus2D rows cols ->
-    let torus2d# :: FUN (FUN STop)
-        torus2d# = FUN (\r@SNat -> FUN (\c@SNat -> STop $ torus2d r c))
-     in ret $ torus2d# <#> rows <!> cols
+    case (naturalToSomeSNat rows, naturalToSomeSNat cols) of
+      (SomeSNat sRows, SomeSNat sCols) -> ret (torus2d sRows sCols)
   Torus3D rows cols planes ->
-    let torus3d# :: FUN (FUN (FUN STop))
-        torus3d# = FUN (\r@SNat -> FUN (\c@SNat -> FUN (\p@SNat -> STop $ torus3d r c p)))
-     in ret $ torus3d# <#> rows <!> cols <!> planes
+    case (naturalToSomeSNat rows, naturalToSomeSNat cols, naturalToSomeSNat planes) of
+      (SomeSNat sRows, SomeSNat sCols, SomeSNat sPlanes) ->
+        ret (torus3d sRows sCols sPlanes)
   Tree depth childs ->
-    let tree# :: FUN (FUN STop)
-        tree# = FUN (\n@SNat -> FUN (\m@SNat -> STop $ tree n m))
-     in ret $ tree# <#> depth <!> childs
-  Star n -> ret $ FUN (\sn@SNat -> STop $ star sn) <#> n
-  Cycle n -> ret $ FUN (\sn@SNat -> STop $ cyclic sn) <#> n
-  Complete n -> ret $ FUN (\sn@SNat -> STop $ complete sn) <#> n
-  Dumbbell n m k ->
-    let dumbbell# :: FUN (FUN (FUN STop))
-        dumbbell# = FUN (\w@SNat -> FUN (\l@SNat -> FUN (\r@SNat -> STop $ dumbbell w l r)))
-     in ret $ dumbbell# <#> n <!> m <!> k
-  Hourglass n -> ret $ FUN (\sn@SNat -> STop $ hourglass sn) <#> n
-  Beads n m k ->
-    let beads# :: FUN (FUN (FUN STop))
-        beads# = FUN (\c@SNat -> FUN (\d@SNat -> FUN (\w@SNat -> STop $ beads c d w)))
-     in ret $ beads# <#> n <!> m <!> k
+    case (naturalToSomeSNat depth, naturalToSomeSNat childs) of
+      (SomeSNat sDepth, SomeSNat sChilds) -> ret (tree sDepth sChilds)
+  Star n ->
+    case naturalToSomeSNat n of
+      SomeSNat sN -> ret (star sN)
+  Cycle n ->
+    case naturalToSomeSNat n of
+      SomeSNat sN -> ret (cyclic sN)
+  Complete n ->
+    case naturalToSomeSNat n of
+      SomeSNat sN -> ret (complete sN)
+  Dumbbell w l r ->
+    case (naturalToSomeSNat w, naturalToSomeSNat l, naturalToSomeSNat r) of
+      (SomeSNat sW, SomeSNat sL, SomeSNat sR) -> ret (dumbbell sW sL sR)
+  Hourglass n ->
+    case naturalToSomeSNat n of
+      SomeSNat sN -> ret (hourglass sN)
+  Beads c d w ->
+    case (naturalToSomeSNat c, naturalToSomeSNat d, naturalToSomeSNat w) of
+      (SomeSNat sC, SomeSNat sD, SomeSNat sW) -> ret (beads sC sD sW)
   Random n ->
-    either (return . Left) (Right <$>) $
-      maybeToEither $
-        FUN (\sn@SNat -> STop <$> randomTopology sn)
-          <#> n
-  DotFile f ->
-    readFile f
-      >>= return
-        . first (("Invalid DOT file - " <> f <> "\n") <>)
-        . fromDot
+    case naturalToSomeSNat n of
+      SomeSNat sN -> do
+        topology <- randomTopology sN
+        ret topology
+  DotFile f -> do
+    contents <- readFile f
+    pure $ first (("Invalid DOT file - " <> f <> "\n") <>) $ fromDot $ contents
  where
-  ret = pure . maybeToEither
-  maybeToEither = maybe (Left "cannot construct SNat arguments") Right
+  ret :: forall (n :: Nat). (KnownNat n) => Topology n -> IO (Either String STopology)
+  ret = pure . pure . STopology
 
-  infixl 8 <!>
-  (<!>) :: (Integral i) => Maybe (FUN a) -> i -> Maybe a
-  msnf <!> n = do
-    snf <- msnf
-    SomeNat p <- someNatVal $ toInteger n
-    case snf of
-      FUN f -> pure (f (snatProxy p))
-
-  infixl 8 <#>
-  (<#>) :: (Integral i) => FUN a -> i -> Maybe a
-  (<#>) f i = Just f <!> i
+  naturalToSomeSNat :: Natural -> SomeSNat
+  naturalToSomeSNat n =
+    case Nats.someNatVal n of
+      Nats.SomeNat sn -> SomeSNat (snatProxy sn)
 
 -- | Given a list of edges, turn it into a directed graph.
 fromEdgeList :: forall a. (Ord a) => [(a, a)] -> Graph
@@ -382,7 +228,7 @@ pendulum :: SNat l -> SNat w -> Topology (l + w)
 pendulum sl sw =
   (dumbbell sl d0 sw)
     { topologyName = "pendulum"
-    , topologyType = Pendulum (snatToInteger sl) $ snatToInteger sw
+    , topologyType = Pendulum (snatToNum sl) (snatToNum sw)
     }
 
 {- | @n@ nodes in a line, connected to their neighbors.
@@ -395,14 +241,14 @@ line :: SNat n -> Topology n
 line sn =
   (dumbbell sn d0 d0)
     { topologyName = "line"
-    , topologyType = Line $ snatToInteger sn
+    , topologyType = Line $ snatToNum sn
     }
 
 -- | @n@-dimensional hypercube
 hypercube :: SNat n -> Topology (2 ^ n)
 hypercube sn@SNat =
   (fromGraph "hypercube" $ fromEdgeList es)
-    { topologyType = HyperCube $ snatToInteger sn
+    { topologyType = HyperCube $ snatToNum sn
     }
  where
   n = snatToNum sn
@@ -430,9 +276,9 @@ torus3d sna@SNat snb@SNat snc@SNat =
     { topologyType = Torus3D a b c
     }
  where
-  a = snatToInteger sna
-  b = snatToInteger snb
-  c = snatToInteger snc
+  a = snatToNum sna
+  b = snatToNum snb
+  c = snatToNum snc
   pairs = [(l, m, n) | l <- [0 .. (a - 1)], m <- [0 .. (b - 1)], n <- [0 .. (c - 1)]]
   neighborsOf (l, m, n) =
     [ ((l - 1) `mod` a, m, n)
@@ -451,8 +297,8 @@ torus2d snRows@SNat snCols@SNat =
     { topologyType = Torus2D rows cols
     }
  where
-  rows = snatToInteger snRows
-  cols = snatToInteger snCols
+  rows = snatToNum snRows
+  cols = snatToNum snCols
   pairs = [(m, n) | m <- [0 .. (rows - 1)], n <- [0 .. (cols - 1)]]
   neighborsOf (m, n) =
     [ ((m - 1) `mod` rows, n)
@@ -469,8 +315,8 @@ grid snRows@SNat snCols@SNat =
     { topologyType = Grid rows cols
     }
  where
-  rows = snatToInteger snRows
-  cols = snatToInteger snCols
+  rows = snatToNum snRows
+  cols = snatToNum snCols
   pairs = [(m, n) | m <- [1 .. rows], n <- [1 .. cols]]
   mkEdges (m, n) =
     [ (a, b)
@@ -515,8 +361,8 @@ tree snDepth@SNat snChilds@SNat =
     { topologyType = Tree depth c
     }
  where
-  depth = snatToInteger snDepth
-  c = snatToInteger snChilds
+  depth = snatToNum snDepth
+  c = snatToNum snChilds
   -- \| At depth @d_i@, child node @i@ is connected to the @(i-1) `div` c + 1@st
   -- node at depth @d_i - 1@
   pairs = [(d_i, i, (i - 1) `div` c + 1) | d_i <- [0 .. depth], i <- [1 .. (c ^ d_i)]]
@@ -530,7 +376,7 @@ star :: SNat childs -> Topology (TreeSize 1 childs)
 star sn =
   (tree SNat sn)
     { topologyName = "star"
-    , topologyType = Star $ snatToInteger sn
+    , topologyType = Star $ snatToNum sn
     }
 
 {- | [Cyclic graph](https://mathworld.wolfram.com/CycleGraph.html) with @n@
@@ -540,7 +386,7 @@ cyclic :: SNat n -> Topology n
 cyclic sn =
   (beads sn d0 d1)
     { topologyName = "cycle"
-    , topologyType = Cycle $ snatToInteger sn
+    , topologyType = Cycle $ snatToNum sn
     }
 
 {- | [Complete graph](https://mathworld.wolfram.com/CompleteGraph.html) with @n@
@@ -550,7 +396,7 @@ complete :: SNat n -> Topology n
 complete sn =
   (beads d1 d0 sn)
     { topologyName = "complete"
-    , topologyType = Complete $ snatToInteger sn
+    , topologyType = Complete $ snatToNum sn
     }
 
 {- | An dumbbell shaped graph consisting of two independent complete
@@ -561,7 +407,7 @@ dumbbell :: SNat w -> SNat l -> SNat r -> Topology (w + l + r)
 dumbbell sw@SNat sl@SNat sr@SNat =
   t{topologyType = Dumbbell (sn2i sw) (sn2i sl) (sn2i sr)}
  where
-  sn2i = snatToInteger
+  sn2i = snatToNum
   w = snatToNum sw
   l = snatToNum sl
   r = snatToNum sr
@@ -593,7 +439,7 @@ hourglass :: SNat n -> Topology (n + n)
 hourglass sn =
   (dumbbell d0 sn sn)
     { topologyName = "hourglass"
-    , topologyType = Hourglass $ snatToInteger sn
+    , topologyType = Hourglass $ snatToNum sn
     }
 
 {- | A beads shaped graph consisting of two @c@ independend complete
@@ -607,7 +453,7 @@ beads sc@SNat sd@SNat sw@SNat =
     { topologyType = Beads (sn2i sc) (sn2i sd) (sn2i sw)
     }
  where
-  sn2i = snatToInteger
+  sn2i = snatToNum
   c = snatToNum sc :: Int
   d = snatToNum sd :: Int
   w = snatToNum sw :: Int
@@ -713,7 +559,7 @@ fromDot ::
   -- | the string holding the graphviz dot content
   String ->
   -- | either an error, if given an unusable input, or the extracted topology
-  Either String STop
+  Either String STopology
 fromDot cnt = do
   (strict, gType, maybe "" fromDotName -> name, statements) <- parse cnt
 
@@ -749,7 +595,7 @@ fromDot cnt = do
   case someNatVal $ toInteger n of
     Nothing -> Left "cannot construct SNat arguments"
     Just (SomeNat (_ :: Proxy n)) ->
-      return $ STop $ fromGraph @n name graph
+      return $ STopology $ fromGraph @n name graph
  where
   fromStatement :: Statement -> Either String (Maybe [Name])
   fromStatement = \case

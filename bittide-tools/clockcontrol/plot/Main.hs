@@ -569,9 +569,9 @@ plotTest refDom testDir cfg dir globalOutDir = do
           . length
           . filter knownId
         >>= \case
-          SomeNat n -> return $ STop $ complete $ snatProxy n
+          SomeNat n -> return $ STopology $ complete $ snatProxy n
 
-  STop (t :: Topology topologySize) <-
+  STopology (t :: Topology topologySize) <-
     case cfg.ccTopologyType of
       Random{} -> topFromDirs
       DotFile f -> readFile f >>= either die return . fromDot
