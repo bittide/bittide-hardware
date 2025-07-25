@@ -12,15 +12,17 @@ module Bittide.Simulate.Config (
 ) where
 
 import Bittide.Arithmetic.PartsPer (PartsPer)
-import Bittide.Topology (STop (..), TopologyType (..), toDot)
+import Bittide.Topology (STopology (..), TopologyType (..), toDot)
 
 import Data.Aeson (FromJSON (..), ToJSON (..), encode)
-import qualified Data.ByteString.Lazy as BS (writeFile)
 import Data.Default (Default (..))
 import GHC.Generics (Generic)
 import Language.Dot.Pretty (render)
+import Numeric.Natural (Natural)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
+
+import qualified Data.ByteString.Lazy as BS (writeFile)
 
 -- | Default name of the clock control JSON configuration file.
 simJsonConfigFileName :: String
@@ -32,7 +34,7 @@ simTopologyFileName = "topology.gv"
 
 -- | Collection of all clock control configuration parameters.
 data CcConf = CcConf
-  { ccTopologyType :: TopologyType IO Integer
+  { ccTopologyType :: TopologyType Natural
   -- ^ The topology type of the network to be simulated. Have a
   -- look at 'Bittide.Topology' for more insights on the supported
   -- topology types and their corresponding topologies.
@@ -76,8 +78,8 @@ instance Default CcConf where
 {- | Saves a topology and a corresponding simulation configuration to
 respective files in 'outDir'.
 -}
-saveCcConfig :: STop -> CcConf -> IO ()
-saveCcConfig (STop t) cfg@CcConf{..} = do
+saveCcConfig :: STopology -> CcConf -> IO ()
+saveCcConfig (STopology t) cfg@CcConf{..} = do
   createDirectoryIfMissing True outDir
   let topologyFile = outDir </> simTopologyFileName
   writeFile topologyFile $ (<> "\n") $ render $ toDot t

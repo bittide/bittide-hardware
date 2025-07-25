@@ -1061,7 +1061,7 @@ tests = [testGroup True, testGroup False]
                     })
       , postProcData =
           defSimCfg
-            { ccTopologyType = Complete $ natToInteger @FpgaCount
+            { ccTopologyType = Complete $ natToNum @FpgaCount
             , clockOffsets = Nothing
             , startupDelays = toList $ repeat @FpgaCount 0
             }
