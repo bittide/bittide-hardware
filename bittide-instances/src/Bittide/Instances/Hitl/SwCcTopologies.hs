@@ -40,7 +40,8 @@ import Bittide.Arithmetic.PartsPer (PartsPer, ppm)
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl hiding (speedChangeToFincFdec)
 import Bittide.ClockControl.Callisto.Types (
-  CallistoResult (allStable, jtagOut, maybeSpeedChange),
+  CallistoResult (allStable, jtagOut, maybeSpeedChange, stability),
+  Stability (..),
  )
 import Bittide.ClockControl.CallistoSw (SwControlConfig (..), callistoSwClockControl)
 import Bittide.ClockControl.Si5395J
@@ -48,20 +49,19 @@ import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.Counter
 import Bittide.ElasticBuffer
 import Bittide.Extra.Maybe (orNothing)
-import Bittide.Instances.Domains
-import Bittide.SharedTypes (withBittideByteOrder)
-import Bittide.Simulate.Config (CcConf (..))
-import Bittide.Topology
-import Bittide.Transceiver (transceiverPrbsN)
-
 import Bittide.Hitl
+import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.IlaPlot (
   IlaControl (..),
   IlaPlotSetup (..),
   callistoClockControlWithIla,
   ilaPlotSetup,
  )
-import Bittide.Instances.Hitl.Setup
+import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
+import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.Simulate.Config (CcConf (..))
+import Bittide.Topology
+import Bittide.Transceiver (transceiverPrbsN)
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.Counter
@@ -75,8 +75,8 @@ import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen
 
 import qualified Bittide.Arithmetic.PartsPer as PartsPer
-import qualified Bittide.ClockControl.StabilityChecker as SI
 import qualified Bittide.Instances.Hitl.Driver.SwCcTopologies as D
+import qualified Bittide.Instances.Hitl.Setup as Setup
 import qualified Bittide.Transceiver as Transceiver
 import qualified Bittide.Transceiver.ResetManager as ResetManager
 import qualified Clash.Cores.Xilinx.GTH as Gth
@@ -330,8 +330,8 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
         { clock = sysClk
         , reset = gthAllReset
         , refClock = refClk
-        , channelNames
-        , clockPaths
+        , channelNames = Setup.channelNames
+        , clockPaths = Setup.clockPaths
         , rxSims = rxs
         , rxNs
         , rxPs
@@ -378,36 +378,39 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
   allStable0 = callistoResult.allStable
   allStable1 = sticky sysClk syncRst allStable0
 
-  ccConfig ::
-    SwControlConfig
-      Basic125
-      CccStabilityCheckerMargin
-      (CccStabilityCheckerFramesize Basic125)
-  ccConfig = SwControlConfig jtagIn cfg.reframingEnabled SNat SNat
+  ccConfig :: SwControlConfig Basic125
+  ccConfig = SwControlConfig jtagIn cfg.reframingEnabled
 
   callistoSwClockControlInner ::
-    forall nLinks eBufBits dom margin framesize.
+    forall nLinks eBufBits dom.
     ( HiddenClockResetEnable dom
     , KnownNat nLinks
     , KnownNat eBufBits
     , 1 <= nLinks
     , 1 <= eBufBits
     , nLinks + eBufBits <= 32
-    , 1 <= framesize
     , 1 <= DomainPeriod dom
     ) =>
     Reset dom ->
-    SwControlConfig dom margin framesize ->
+    -- \| Links suitable for clock control (i.e., recovered clocks won't go down
+    -- again)
+    Signal dom (BitVector nLinks) ->
+    SwControlConfig dom ->
+    -- \| Link mask
     Signal dom (BitVector nLinks) ->
     Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
     (MM, Signal dom (CallistoResult nLinks))
-  callistoSwClockControlInner extraRst a b c =
+  callistoSwClockControlInner extraRst linksUp ccConfig0 linkMask bufferCounts =
     withBittideByteOrder
-      $ exposeReset (callistoSwClockControl a b c) newReset
+      $ exposeReset
+        (callistoSwClockControl ccConfig0 linkMask linksUp bufferCounts)
+        newReset
    where
     oldReset = unsafeToActiveHigh hasReset
     extraRst1 = unsafeToActiveHigh extraRst
     newReset = unsafeFromActiveHigh $ oldReset .&&. extraRst1
+
+  linksSuitableForCc = fmap pack $ bundle $ transceivers.handshakesDoneFree
 
   (mm, callistoResult) =
     callistoClockControlWithIla @LinkCount @CccBufferSize
@@ -415,7 +418,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
       sysClk
       clockControlReset
       ccConfig
-      (callistoSwClockControlInner progEn)
+      (callistoSwClockControlInner progEn linksSuitableForCc)
       IlaControl{..}
       cfg.mask
       (resize <<$>> domainDiffs)
@@ -658,20 +661,7 @@ topologyTest refClk sysClk IlaControl{syncRst = rst, ..} rxs rxNs rxPs miso cfg 
         . xpmCdcArraySingle transceivers.txClock sysClk
 
   ugnsStable :: Vec LinkCount (Signal Basic125 Bool)
-  ugnsStable = go <$> ugns2
-   where
-    go ugn = ugnStable
-     where
-      stabInd =
-        withClockResetEnable
-          sysClk
-          syncRst
-          enableGen
-          $ SI.stabilityChecker
-            (SNat @CccStabilityCheckerMargin)
-            (SNat @(CccStabilityCheckerFramesize GthTx))
-            (bitCoerce <$> ugn)
-      ugnStable = stabInd.stable
+  ugnsStable = (.stable) <<$>> (unbundle callistoResult.stability)
 
   maskWithCfg ::
     Bool ->
@@ -1042,14 +1032,8 @@ tests = [testGroup True, testGroup False]
   defSimCfg =
     def
       { samples = 1000
-      , duration = natToNum @(PeriodToCycles Basic125 (Seconds 60))
-      , stabilityMargin = snatToNum cccStabilityCheckerMargin
-      , stabilityFrameSize = snatToNum cccStabilityCheckerFramesize
       , reframe = cccEnableReframing
       , waitTime = fromEnum cccReframingWaitTime
-      , stopAfterStable =
-          Just
-            $ natToNum @(PeriodToCycles Basic125 AllStablePeriod)
       }
 
   -- Measure clock offsets. Used to get clocks to a common start point at start of test
@@ -1063,7 +1047,7 @@ tests = [testGroup True, testGroup False]
     HitlTestCase
       { name = (if validate then "zzz_validate" else "0_calibrate") <> "_clock_offsets"
       , parameters =
-          Map.fromList $ allHwTargets
+          Map.fromList $ Setup.allHwTargets
             <&> (,TestConfig
                     { fpgaEnabled = True
                     , calibrate =
@@ -1103,7 +1087,7 @@ tests = [testGroup True, testGroup False]
                   indicesI
                   (maybeVecToVecMaybe (map partsPerToSteps <$> clockShifts))
                   startDelays
-                  (linkMasks @n t)
+                  (Setup.linkMasks @n t)
                   (repeat r)
               )
             <> [ (HwTargetByIndex (fromInteger i), disabled)

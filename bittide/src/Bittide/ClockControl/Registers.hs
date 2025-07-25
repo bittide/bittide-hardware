@@ -10,9 +10,11 @@ import Clash.Prelude hiding (PeriodToCycles)
 import Protocols
 import Protocols.Wishbone
 
-import Bittide.ClockControl
-import Bittide.ClockControl.StabilityChecker
+import Bittide.ClockControl (RelDataCount, SpeedChange (NoChange))
+import Bittide.ClockControl.Callisto.Types (Stability (..))
 import Clash.Class.BitPackC (ByteOrder)
+import Clash.Explicit.Reset (unsafeOrReset)
+import Clash.Functor.Extra ((<<$>>), (<<*>>))
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
@@ -20,13 +22,14 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access),
   deviceWbC,
   registerConfig,
+  registerWbC,
   registerWbCI,
   registerWbCI_,
  )
 
 data ClockControlData (nLinks :: Nat) = ClockControlData
   { clockMod :: Maybe SpeedChange
-  , stabilityIndications :: Vec nLinks StabilityIndication
+  , stabilities :: Vec nLinks Stability
   , allStable :: Bool
   , allSettled :: Bool
   }
@@ -50,11 +53,10 @@ This must be stickied or otherwise held for the minimum pulse width specified by
 clock board this register is controlling.
 -}
 clockControlWb ::
-  forall dom addrW nLinks m margin framesize.
+  forall dom addrW nLinks m.
   ( HiddenClockResetEnable dom
   , HasCallStack
   , KnownNat addrW
-  , 1 <= framesize
   , 1 <= nLinks
   , KnownNat nLinks
   , KnownNat m
@@ -63,14 +65,9 @@ clockControlWb ::
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
-  -- | Maximum number of elements the incoming buffer occupancy is
-  -- allowed to deviate from the current @target@ for it to be
-  -- considered "stable".
-  SNat margin ->
-  -- | Minimum number of clock cycles the incoming buffer occupancy
-  -- must remain within the @margin@ for it to be considered "stable".
-  SNat framesize ->
   -- | Link mask
+  Signal dom (BitVector nLinks) ->
+  -- | Links suitable for clock control (i.e., recovered clocks won't go down)
   Signal dom (BitVector nLinks) ->
   -- | Counters
   Vec nLinks (Signal dom (RelDataCount m)) ->
@@ -78,37 +75,73 @@ clockControlWb ::
   Circuit
     (ConstBwd MM, Wishbone dom 'Standard addrW (BitVector 32))
     (CSignal dom (ClockControlData nLinks))
-clockControlWb margin frameSize linkMask (bundle -> counters) = circuit $ \(mm, wb) -> do
+clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
   [ wbNumLinks
     , wbLinkMask
     , wbLinkMaskPopCount
     , wbLinkMaskRev
+    , wbLinksOk
     , wbChangeSpeed
     , wbLinksStable
     , wbLinksSettled
+    , wbMinDataCountSeen
+    , wbMaxDataCountSeen
+    , wbClearDataCountsSeen
     , wbDataCounts
     ] <-
     deviceWbC "ClockControl" -< (mm, wb)
 
   (_cs, Fwd changeSpeed) <-
-    registerWbCI wbChangeSpeedConfig NoChange -< (wbChangeSpeed, Fwd noWrite)
+    registerWbCI changeSpeedConfig NoChange -< (wbChangeSpeed, Fwd noWrite)
 
-  registerWbCI_ wbNumLinksConfig numberOfLinks -< (wbNumLinks, Fwd noWrite)
-  registerWbCI_ wbLinkMaskConfig 0 -< (wbLinkMask, Fwd (Just <$> linkMask))
-  registerWbCI_ wbLinkMaskPopCountConfig 0
+  -- Link configuration
+  registerWbCI_ numLinksConfig numberOfLinks -< (wbNumLinks, Fwd noWrite)
+  registerWbCI_ linkMaskConfig 0 -< (wbLinkMask, Fwd (Just <$> linkMask))
+  registerWbCI_ linkMaskPopCountConfig 0
     -< (wbLinkMaskPopCount, Fwd (Just <$> linkMaskPopCount))
-  registerWbCI_ wbLinkMaskRevConfig 0 -< (wbLinkMaskRev, Fwd (Just <$> linkMaskRev))
-  registerWbCI_ wbLinksStableConfig 0 -< (wbLinksStable, Fwd linksStableWrite)
-  registerWbCI_ wbLinksSettledConfig 0 -< (wbLinksSettled, Fwd linksSettledWrite)
-  registerWbCI_ wbDataCountsConfig (repeat 0)
+  registerWbCI_ linkMaskRevConfig 0 -< (wbLinkMaskRev, Fwd (Just <$> linkMaskRev))
+  registerWbCI_ linksOkConfig 0 -< (wbLinksOk, Fwd (Just <$> linksOk))
+  (Fwd linksStable, _l0) <-
+    registerWbCI linksStableConfig (0 :: BitVector nLinks) -< (wbLinksStable, Fwd noWrite)
+  (Fwd linksSettled, _l1) <-
+    registerWbCI linksSettledConfig (0 :: BitVector nLinks) -< (wbLinksSettled, Fwd noWrite)
+
+  -- Data count tracking
+  registerWbCI_ dataCountsConfig (repeat 0)
     -< (wbDataCounts, Fwd (Just <$> maskedCounters))
+  (Fwd minDataCountsSeen0, _i0) <-
+    registerWbC hasClock dataCountsSeenReset minDataCountsSeenConfig (repeat maxBound)
+      -< (wbMinDataCountSeen, Fwd (Just <$> minDataCountsSeen1))
+  (Fwd maxDataCountsSeen0, _i1) <-
+    registerWbC hasClock dataCountsSeenReset maxDataCountsSeenConfig (repeat minBound)
+      -< (wbMaxDataCountSeen, Fwd (Just <$> maxDataCountsSeen1))
+  (_cd, Fwd clearDataCountsSeen) <-
+    registerWbCI clearDataCountsSeenConfig False -< (wbClearDataCountsSeen, Fwd noWrite)
 
   let
+    maskedLinksStable = applyMask True linkMask (unpack <$> linksStable)
+    allLinksStable = and <$> maskedLinksStable
+
+    maskedLinksSettled = applyMask True linkMask (unpack <$> linksSettled)
+    allLinksSettled = and <$> maskedLinksSettled
+
+    dataCountsSeenReset :: Reset dom
+    dataCountsSeenReset =
+      unsafeOrReset
+        hasReset
+        (unsafeFromActiveHigh (clearDataCountsSeen .== BusWrite True))
+
+    minDataCountsSeen1 :: Signal dom (Vec nLinks (RelDataCount m))
+    minDataCountsSeen1 = zipWith min <$> minDataCountsSeen0 <*> maskedCounters
+
+    maxDataCountsSeen1 :: Signal dom (Vec nLinks (RelDataCount m))
+    maxDataCountsSeen1 = zipWith max <$> maxDataCountsSeen0 <*> maskedCounters
+
     clockControlData :: Signal dom (ClockControlData nLinks)
     clockControlData =
       ClockControlData
         <$> fmap busActivityToMaybeSpeedChange changeSpeed
-        <*> stabilityIndications
+        <*> (Stability <<$>> maskedLinksStable <<*>> maskedLinksSettled)
         <*> allLinksStable
         <*> allLinksSettled
 
@@ -116,14 +149,18 @@ clockControlWb margin frameSize linkMask (bundle -> counters) = circuit $ \(mm, 
  where
   noWrite = pure Nothing
 
-  wbNumLinksConfig = (registerConfig "n_links"){access = ReadOnly}
-  wbLinkMaskConfig = (registerConfig "link_mask"){access = ReadOnly}
-  wbLinkMaskPopCountConfig = (registerConfig "link_mask_pop_count"){access = ReadOnly}
-  wbLinkMaskRevConfig = (registerConfig "link_mask_rev"){access = ReadOnly}
-  wbChangeSpeedConfig = (registerConfig "change_speed"){access = WriteOnly}
-  wbLinksStableConfig = (registerConfig "links_stable"){access = ReadOnly}
-  wbLinksSettledConfig = (registerConfig "links_settled"){access = ReadOnly}
-  wbDataCountsConfig = (registerConfig "data_counts"){access = ReadOnly}
+  numLinksConfig = (registerConfig "n_links"){access = ReadOnly}
+  linkMaskConfig = (registerConfig "link_mask"){access = ReadOnly}
+  linkMaskPopCountConfig = (registerConfig "link_mask_pop_count"){access = ReadOnly}
+  linkMaskRevConfig = (registerConfig "link_mask_rev"){access = ReadOnly}
+  linksOkConfig = (registerConfig "links_ok"){access = ReadOnly}
+  changeSpeedConfig = (registerConfig "change_speed"){access = WriteOnly}
+  linksStableConfig = registerConfig "links_stable"
+  linksSettledConfig = registerConfig "links_settled"
+  minDataCountsSeenConfig = (registerConfig "min_data_counts_seen"){access = ReadOnly}
+  maxDataCountsSeenConfig = (registerConfig "max_data_counts_seen"){access = ReadOnly}
+  clearDataCountsSeenConfig = (registerConfig "clear_data_counts_seen"){access = WriteOnly}
+  dataCountsConfig = (registerConfig "data_counts"){access = ReadOnly}
 
   linkMaskRev :: Signal dom (BitVector nLinks)
   linkMaskRev = pack . reverse . unpack @(Vec nLinks Bit) <$> linkMask
@@ -136,19 +173,6 @@ clockControlWb margin frameSize linkMask (bundle -> counters) = circuit $ \(mm, 
 
   maskedCounters :: Signal dom (Vec nLinks (RelDataCount m))
   maskedCounters = applyMask 0 linkMask counters
-
-  stabilityIndications :: Signal dom (Vec nLinks StabilityIndication)
-  stabilityIndications = bundle $ stabilityChecker margin frameSize <$> unbundle maskedCounters
-
-  linksStable = map (.stable) <$> stabilityIndications
-  linksStableWrite = Just . pack <$> linksStable
-  maskedLinksStable = applyMask True linkMask linksStable
-  allLinksStable = and <$> maskedLinksStable
-
-  linksSettled = map (.settled) <$> stabilityIndications
-  linksSettledWrite = Just . pack <$> linksSettled
-  maskedLinksSettled = applyMask True linkMask linksSettled
-  allLinksSettled = and <$> maskedLinksSettled
 
   busActivityToMaybeSpeedChange :: BusActivity SpeedChange -> Maybe SpeedChange
   busActivityToMaybeSpeedChange (BusWrite change) = Just change

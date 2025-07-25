@@ -46,6 +46,7 @@ import qualified Data.List as L
 data SerialResult = SerialResult
   { linkCount :: Int
   , linkMask :: Int
+  , linksOk :: Int
   , linkMaskPopcnt :: Int
   , reframingEnabled :: Bool
   , linksStable :: Int
@@ -75,6 +76,7 @@ case_clock_control_wb_self_test = do
           SerialResult
             { linkCount = linkCount
             , linkMask = fromIntegral linkMask
+            , linksOk = fromIntegral linksOk
             , linkMaskPopcnt = linkMaskPopcnt
             , reframingEnabled = False
             , linksStable = 0
@@ -96,12 +98,19 @@ type Framesize = PeriodToCycles System (Seconds 1)
 
 margin :: Margin
 margin = SNat
+
 framesize :: SNat Framesize
 framesize = SNat
+
 linkCount :: Int
 linkCount = snatToNum (SNat @LinkCount)
+
 linkMask :: BitVector LinkCount
 linkMask = 0b1011011
+
+linksOk :: BitVector LinkCount
+linksOk = 0b1111000
+
 linkMaskPopcnt :: Int
 linkMaskPopcnt = fromIntegral $ popCount linkMask
 
@@ -140,9 +149,8 @@ dut =
       [ccd0, ccd1] <-
         replicateCSignalI
           <| clockControlWb
-            margin
-            framesize
             (pure linkMask)
+            (pure linksOk)
             (pure <$> dataCounts)
           -< (mmCC, ccWb)
 
@@ -179,6 +187,7 @@ resultParser :: Parser SerialResult
 resultParser = do
   linkCountResult <- expectField "nLinks"
   linkMaskResult <- expectField "linkMask"
+  linksOkResult <- expectField "linksOk"
   linkMaskPopcntResult <- expectField "linkMaskPopcnt"
   reframingEnabledResult <- expectField "reframingEnabled"
   linksStableResult <- expectField "linksStable"
@@ -189,6 +198,7 @@ resultParser = do
     SerialResult
       { linkCount = linkCountResult
       , linkMask = linkMaskResult
+      , linksOk = linksOkResult
       , linkMaskPopcnt = linkMaskPopcntResult
       , reframingEnabled = reframingEnabledResult
       , linksStable = linksStableResult

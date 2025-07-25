@@ -58,8 +58,8 @@ import Bittide.ClockControl (RelDataCount, SpeedChange (..))
 import Bittide.ClockControl.Callisto.Types (
   CallistoResult (..),
   ReframingState (..),
+  Stability (..),
  )
-import Bittide.ClockControl.StabilityChecker
 import Bittide.Extra.Maybe (orNothing)
 
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
@@ -505,7 +505,7 @@ callistoClockControlWithIla dynClk clk rst callistoCfg callistoCc IlaControl{..}
     $ \(isActive, count) -> if isActive == high then count else 0
 
   filterIndicators vMask vCounts = flip map (zip vMask vCounts)
-    $ \(isActive, ind) -> if isActive == high then ind else StabilityIndication False False
+    $ \(isActive, ind) -> if isActive == high then ind else Stability False False
 
   maxGeqPlusApp =
     maxGeqPlus @1

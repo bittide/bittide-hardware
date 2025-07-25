@@ -7,12 +7,12 @@ use bittide_hal::shared::devices::debug_register::DebugRegister;
 use bittide_hal::shared::types::speed_change::SpeedChange;
 
 /// Rust sibling of
-/// `Bittide.ClockControl.StabilityChecker.StabilityIndication`.
+/// `Bittide.ClockControl.Callisto.Types.Stability`.
 #[repr(transparent)]
 #[derive(PartialEq, PartialOrd)]
-pub struct StabilityIndication(usize);
+pub struct Stability(usize);
 
-impl StabilityIndication {
+impl Stability {
     /// Indicates stability of the signal over time.
     pub fn stable(&self) -> bool {
         (self.0 & 0b01) == 0b01

@@ -41,13 +41,9 @@ import Bittide.Wishbone (timeWb)
 import Protocols.MemoryMap
 
 -- | Configuration type for software clock control.
-data SwControlConfig dom mgn fsz where
+data SwControlConfig dom where
   SwControlConfig ::
-    ( KnownNat mgn
-    , KnownNat fsz
-    , 1 <= fsz
-    , KnownDomain dom
-    ) =>
+    (KnownDomain dom) =>
     { jtagIn :: Signal dom JtagIn
     -- ^ JTAG input to the CPU
     , enableReframing :: Signal dom Bool
@@ -55,12 +51,8 @@ data SwControlConfig dom mgn fsz where
     --
     -- N.B.: FOR TESTING USE ONLY. Reframing should eventually be handled solely within
     -- the clock control software. See issue #693.
-    , margin :: SNat mgn
-    -- ^ Stability checker margin
-    , framesize :: SNat fsz
-    -- ^ Stability checker frame size
     } ->
-    SwControlConfig dom mgn fsz
+    SwControlConfig dom
 
 {- | Instantiates a Vex RISC-V core ready to run the Callisto clock control algorithm.
 
@@ -69,32 +61,33 @@ The CPU is instantiated with 64KB of IMEM containing the 'clock-control' binary 
 (@0xC000_0000@) and 'debugRegisterWb' (@0xE000_0000@) MMIO registers.
 -}
 callistoSwClockControl ::
-  forall nLinks eBufBits dom margin framesize.
+  forall nLinks eBufBits dom.
   ( HiddenClockResetEnable dom
   , KnownNat nLinks
   , KnownNat eBufBits
   , 1 <= nLinks
   , 1 <= eBufBits
   , nLinks + eBufBits <= 32
-  , 1 <= framesize
   , 1 <= DomainPeriod dom
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
   -- | Clock control config
-  SwControlConfig dom margin framesize ->
+  SwControlConfig dom ->
   -- | Availability mask
+  Signal dom (BitVector nLinks) ->
+  -- | Links suitable for clock control (i.e., recovered clocks won't go down)
   Signal dom (BitVector nLinks) ->
   -- | Diff counters
   Vec nLinks (Signal dom (RelDataCount eBufBits)) ->
   (MM, Signal dom (CallistoResult nLinks))
-callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
+callistoSwClockControl ccConfig mask linksOk ebs =
   hwSeqX callistoSwIla (mm, callistoResult)
  where
   callistoResult =
     CallistoResult
       <$> ccData.clockMod
-      <*> ccData.stabilityIndications
+      <*> ccData.stabilities
       <*> ccData.allStable
       <*> ccData.allSettled
       <*> resultRfs
@@ -140,7 +133,7 @@ callistoSwClockControl (ccConfig@SwControlConfig{framesize}) mask ebs =
     constBwd 0b011 -< timePfx
     [ccd0, ccd1] <-
       replicateCSignalI
-        <| clockControlWb ccConfig.margin framesize mask ebs
+        <| clockControlWb mask linksOk ebs
         -< (mmCc, wbClockControl)
     constBwd 0b110 -< prefixCc
     cm <- cSignalMap (.clockMod) -< ccd0
@@ -219,6 +212,7 @@ callistoSwClockControlC ::
       , Jtag dom
       , CSignal dom Bool -- reframing enable
       , CSignal dom (BitVector nLinks) -- link mask
+      , CSignal dom (BitVector nLinks) -- what links are suitable for clock control
       , Vec nLinks (CSignal dom (RelDataCount eBufBits)) -- diff counters
       )
     )
@@ -232,8 +226,8 @@ callistoSwClockControlC ::
           )
         )
     )
-callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} =
-  circuit $ \(mm, (syncIn, jtag, Fwd reframingEnabled, Fwd linkMask, Fwd diffCounters)) -> do
+callistoSwClockControlC dumpVcd ccConfig =
+  circuit $ \(mm, (syncIn, jtag, Fwd reframingEnabled, Fwd linkMask, Fwd linksOk, Fwd diffCounters)) -> do
     let
       debugRegisterCfg :: Signal dom DebugRegisterCfg
       debugRegisterCfg = DebugRegisterCfg <$> reframingEnabled
@@ -249,8 +243,7 @@ callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} =
       ) <-
       splitAtCI -< allWishbone
 
-    Fwd clockControlData <-
-      clockControlWb ccConfig.margin framesize linkMask diffCounters -< clockControlBus
+    Fwd clockControlData <- clockControlWb linkMask linksOk diffCounters -< clockControlBus
 
     Fwd debugData <-
       debugRegisterWb debugRegisterCfg -< (debugWbBus, Fwd ((.clockMod) <$> clockControlData))
@@ -279,7 +272,7 @@ callistoSwClockControlC dumpVcd ccConfig@SwControlCConfig{framesize} =
       callistoCResult =
         CallistoCResult
           <$> clockControlData.clockMod
-          <*> clockControlData.stabilityIndications
+          <*> clockControlData.stabilities
           <*> clockControlData.allStable
           <*> clockControlData.allSettled
           <*> debugData.reframingState

@@ -160,7 +160,7 @@ dumpCcSamples gdb dumpPath = do
       ("x/1wx " <> showHex32 sampleMemoryBase)
 
   let
-    bytesPerSample = 11
+    bytesPerSample = 12
     bytesPerWord = 4
 
   case readMaybe nSamplesWritten of
@@ -651,6 +651,17 @@ driver testName targets = do
             [i|MU GDB testing passed on #{gdbCount1} of #{L.length targets} targets|]
         liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
 
+        let
+          goDumpCcSamples = do
+            let ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
+            liftIO $ mapM_ Gdb.interrupt ccGdbs
+            nSamples <- liftIO $ zipWithConcurrently dumpCcSamples ccGdbs ccSamplesPaths
+            liftIO $ putStr "Dumped /n/ clock control samples: "
+            liftIO $ print nSamples
+            -- TODO: Move to separate CI step
+            liftIO $ putStrLn "Rendering plots..."
+            liftIO $ callProcess plotDataDumpPath ccSamplesPaths
+
         let picocomStarts = liftIO <$> L.zipWith (initPicocom) targets [0 ..]
         brackets picocomStarts (liftIO . snd) $ \_picocoms -> do
           liftIO $ mapM_ Gdb.continue ccGdbs
@@ -667,7 +678,12 @@ driver testName targets = do
             L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
           liftIO
             $ putStrLn
-              [i|Test case #{testName} stabilised on #{sCount} of #{L.length targets} targets|]
+              [i|Test case #{testName} stabilized on #{sCount} of #{L.length targets} targets|]
+          case stabilityExitCode of
+            ExitSuccess | sCount == L.length targets -> pure ()
+            _ -> do
+              goDumpCcSamples
+              error "Some targets did not stabilize successfully."
 
           liftIO $ putStrLn "Getting UGNs for all targets"
           ugnPairsTable <- zipWithM muGetUgns targets muGdbs
@@ -711,15 +727,7 @@ driver testName targets = do
 
           bufferExit <- finalCheck muGdbs (toList chainConfig)
 
-          let ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
-          liftIO $ mapM_ Gdb.interrupt ccGdbs
-          nSamples <- liftIO $ zipWithConcurrently dumpCcSamples ccGdbs ccSamplesPaths
-          liftIO $ putStr "Dumped /n/ clock control samples: "
-          liftIO $ print nSamples
-
-          -- TODO: Move to separate CI step
-          liftIO $ putStrLn "Rendering plots..."
-          liftIO $ callProcess plotDataDumpPath ccSamplesPaths
+          goDumpCcSamples
 
           let
             finalExit =

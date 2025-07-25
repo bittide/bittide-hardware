@@ -102,7 +102,7 @@ import "bittide-extra" Numeric.Extra (parseHex)
 
 import Bittide.Arithmetic.PartsPer (PartsPer (..), cyclesToPartsPerI, ppm)
 import Bittide.ClockControl
-import Bittide.ClockControl.StabilityChecker
+import Bittide.ClockControl.Callisto.Types (Stability (..))
 import Bittide.Github.Artifacts
 import Bittide.Hitl
 import Bittide.Instances.Domains
@@ -199,7 +199,7 @@ data DataPoint (nodeCount :: Nat) (decompressedElasticBufferBits :: Nat) = DataP
         nodeCount
         (Maybe (RelDataCount decompressedElasticBufferBits))
   -- ^ the elastic buffer data counts of the available links
-  , dpStability :: Vec nodeCount (Maybe StabilityIndication)
+  , dpStability :: Vec nodeCount (Maybe Stability)
   -- ^ the stability indicators for each of the elastic buffers
   -- of the available links
   }
@@ -378,9 +378,9 @@ postProcess t i links =
                 ToDone -> RSDone
           , dpDataCounts = dataCounts
           , dpStability =
-              let combine (Just (_, st, se)) (Just (StabilityIndication{..})) =
+              let combine (Just (_, st, se)) (Just (Stability{..})) =
                     Just
-                      StabilityIndication
+                      Stability
                         { stable = fromMaybe stable st
                         , settled = fromMaybe settled se
                         }
@@ -403,7 +403,7 @@ postProcess t i links =
       , dpStability =
           topologyView $
             Vec.repeat
-              StabilityIndication
+              Stability
                 { stable = False
                 , settled = False
                 }
@@ -696,7 +696,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
     , PartsPer
     , ReframingStage
     , [ ( RelDataCount decompressedElasticBufferBits
-        , StabilityIndication
+        , Stability
         )
       ]
     )

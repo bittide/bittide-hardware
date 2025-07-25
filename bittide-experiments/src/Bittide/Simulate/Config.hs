@@ -36,30 +36,15 @@ data CcConf = CcConf
   -- ^ The topology type of the network to be simulated. Have a
   -- look at 'Bittide.Topology' for more insights on the supported
   -- topology types and their corresponding topologies.
-  , duration :: Int
-  -- ^ The number of clock cycles to simulate.
   , samples :: Int
   -- ^ The number of samples to be utilized for result
   -- generation. From the 'duration' many samples available, only
   -- every @duration `quot` samples@th sample is used.
-  , stabilityMargin :: Int
-  -- ^ Maximum number of elements a buffer occupancy is allowed to
-  -- deviate to be considered stable.
-  -- (cf. 'Bittide.ClockControl.StabilityChecker')
-  , stabilityFrameSize :: Int
-  -- ^ The minimum number of clock cycles a buffer occupancy must
-  -- remain within to be considered stable.
-  -- (cf. 'Bittide.ClockControl.StabilityChecker')
   , reframe :: Bool
   -- ^ Some flag for enabeling or disabling reframing.
   , waitTime :: Int
   -- ^ Number of clock cycles to wait until reframing takes place
   -- (after stability has been detected, for all elastic buffers).
-  , stopWhenStable :: Bool
-  -- ^ Stop simulation as soon as all buffers get stable.
-  , stopAfterStable :: Maybe Int
-  -- ^ Stop simulation after all buffers have been stable for
-  -- at least the given number of clock cycles.
   , clockOffsets :: Maybe [PartsPer]
   -- ^ The initital clock offsets in Femtoseconds
   -- (randomly generated if missing).
@@ -79,14 +64,9 @@ instance Default CcConf where
   def =
     CcConf
       { ccTopologyType = Complete 8
-      , duration = 150000
       , samples = 100
-      , stabilityMargin = 8
-      , stabilityFrameSize = 1500000
       , reframe = True
       , waitTime = 100000
-      , stopWhenStable = False
-      , stopAfterStable = Nothing
       , clockOffsets = Nothing
       , startupDelays = []
       , outDir = "_build"
