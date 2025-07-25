@@ -154,6 +154,7 @@ library
     aeson,
     array,
     base,
+    binary,
     bittide-extra,
     bytestring,
     cassava,
@@ -181,6 +182,8 @@ library
     string-interpolate ^>=0.3,
     template-haskell,
     text,
+    unordered-containers,
+    vector,
 
   exposed-modules:
     Bittide.Arithmetic.PartsPer
@@ -198,6 +201,7 @@ library
     Bittide.ClockControl.Freeze
     Bittide.ClockControl.ParseRegisters
     Bittide.ClockControl.Registers
+    Bittide.ClockControl.SampleStore
     Bittide.ClockControl.Si5391A
     Bittide.ClockControl.Si5395J
     Bittide.ClockControl.Si539xSpi
@@ -328,3 +332,15 @@ test-suite unittests
     tasty-hunit,
     tasty-th,
     template-haskell,
+
+executable sample_dump_to_csv
+  import: ghc2024, clash, extra, sane-records
+  main-is: sample_dump_to_csv.hs
+  hs-source-dirs: bin
+  build-depends:
+    async,
+    base,
+    bittide,
+    bytestring,
+    cassava,
+    filepath,
