@@ -18,7 +18,6 @@ import Data.Aeson (FromJSON (..), ToJSON (..), encode)
 import Data.Default (Default (..))
 import GHC.Generics (Generic)
 import Language.Dot.Pretty (render)
-import Numeric.Natural (Natural)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 
@@ -34,7 +33,7 @@ simTopologyFileName = "topology.gv"
 
 -- | Collection of all clock control configuration parameters.
 data CcConf = CcConf
-  { ccTopologyType :: TopologyType Natural
+  { ccTopologyType :: TopologyType
   -- ^ The topology type of the network to be simulated. Have a
   -- look at 'Bittide.Topology' for more insights on the supported
   -- topology types and their corresponding topologies.

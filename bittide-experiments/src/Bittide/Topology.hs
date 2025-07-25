@@ -1,9 +1,6 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE ImpredicativeTypes #-}
-{-# LANGUAGE MagicHash #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -48,6 +45,7 @@ module Bittide.Topology (
 import Prelude
 
 import Clash.Prelude (
+  Generic,
   Index,
   KnownNat,
   Nat,
@@ -67,8 +65,7 @@ import Clash.Prelude (
  )
 
 import Control.Monad (forM, forM_, replicateM, replicateM_, unless, when)
-import Data.Aeson (FromJSON (..), ToJSON (..), Value (..), object, (.:), (.=))
-import Data.Aeson.Types (typeMismatch)
+import Data.Aeson (FromJSON (..), ToJSON (..))
 import Data.Array.IO (IOUArray)
 import Data.Array.MArray (freeze, getElems, newListArray, readArray, writeArray)
 import Data.Bifunctor (bimap, first)
@@ -101,7 +98,7 @@ bound, a name and a 'TopologyType'.
 data Topology (n :: Nat) = Topology
   { topologyName :: TopologyName
   , topologyGraph :: Graph
-  , topologyType :: TopologyType Natural
+  , topologyType :: TopologyType
   , hasEdge :: Index n -> Index n -> Bool
   }
 
@@ -123,153 +120,31 @@ fromGraph name graph =
 {- | Disambiguates between a selection of known topologies, topologies
 that are loaded from DOT files, and random topologies.
 -}
-data TopologyType n where
-  Diamond :: TopologyType n
-  Pendulum :: n -> n -> TopologyType n
-  Line :: n -> TopologyType n
-  HyperCube :: n -> TopologyType n
-  Grid :: n -> n -> TopologyType n
-  Torus2D :: n -> n -> TopologyType n
-  Torus3D :: n -> n -> n -> TopologyType n
-  Tree :: n -> n -> TopologyType n
-  Star :: n -> TopologyType n
-  Cycle :: n -> TopologyType n
-  Complete :: n -> TopologyType n
-  Dumbbell :: n -> n -> n -> TopologyType n
-  Hourglass :: n -> TopologyType n
-  Beads :: n -> n -> n -> TopologyType n
-  DotFile :: FilePath -> TopologyType n
-  Random :: n -> TopologyType n
-
-instance Show (TopologyType a) where
-  show = \case
-    Diamond{} -> (.topologyName) diamond
-    Pendulum{} -> (.topologyName) $ pendulum d0 d0
-    Line{} -> (.topologyName) $ line d0
-    HyperCube{} -> (.topologyName) $ hypercube d0
-    Grid{} -> (.topologyName) $ grid d0 d0
-    Torus2D{} -> (.topologyName) $ torus2d d0 d0
-    Torus3D{} -> (.topologyName) $ torus3d d0 d0 d0
-    Tree{} -> (.topologyName) $ tree d0 d0
-    Star{} -> (.topologyName) $ star d0
-    Cycle{} -> (.topologyName) $ cyclic d0
-    Complete{} -> (.topologyName) $ complete d0
-    Dumbbell{} -> (.topologyName) $ dumbbell d0 d0 d0
-    Hourglass{} -> (.topologyName) $ hourglass d0
-    Beads{} -> (.topologyName) $ beads d0 d0 d0
-    DotFile{} -> "dotfile"
-    Random{} -> "random"
-
--- Unfortunately, we cannot derive 'Eq' and 'Ord' for GADTs.
-instance (Eq a) => Eq (TopologyType a) where
-  x == y = case (x, y) of
-    (Diamond, Diamond) -> True
-    (Pendulum n m, Pendulum n' m') -> n == n' && m == m'
-    (Line n, Line n') -> n == n'
-    (HyperCube n, HyperCube n') -> n == n'
-    (Grid n m, Grid n' m') -> n == n' && m == m'
-    (Torus2D n m, Torus2D n' m') -> n == n' && m == m'
-    (Torus3D n m k, Torus3D n' m' k') -> n == n' && m == m' && k == k'
-    (Tree n m, Tree n' m') -> n == n' && m == m'
-    (Star n, Star n') -> n == n'
-    (Cycle n, Cycle n') -> n == n'
-    (Complete n, Complete n') -> n == n'
-    (Dumbbell n m k, Dumbbell n' m' k') -> n == n' && m == m' && k == k'
-    (Hourglass n, Hourglass n') -> n == n'
-    (Beads n m k, Beads n' m' k') -> n == n' && m == m' && k == k'
-    (DotFile p, DotFile p') -> p == p'
-    _ -> False
-
-instance (Ord a) => Ord (TopologyType a) where
-  compare x y = case (x, y) of
-    (Diamond, Diamond) -> EQ
-    (Pendulum n m, Pendulum n' m') -> compare (n, m) (n', m')
-    (Line n, Line n') -> compare n n'
-    (HyperCube n, HyperCube n') -> compare n n'
-    (Grid n m, Grid n' m') -> compare (n, m) (n', m')
-    (Torus2D n m, Torus2D n' m') -> compare (n, m) (n', m')
-    (Torus3D n m k, Torus3D n' m' k') -> compare (n, m, k) (n', m', k')
-    (Tree n m, Tree n' m') -> compare (n, m) (n', m')
-    (Star n, Star n') -> compare n n'
-    (Cycle n, Cycle n') -> compare n n'
-    (Complete n, Complete n') -> compare n n'
-    (Dumbbell n m k, Dumbbell n' m' k') -> compare (n, m, k) (n', m', k')
-    (Hourglass n, Hourglass n') -> compare n n'
-    (Beads n m k, Beads n' m' k') -> compare (n, m, k) (n', m', k')
-    (DotFile p, DotFile p') -> compare p p'
-    (Random{}, Random{}) -> LT
-    _ -> compare (ordId x) (ordId y)
-   where
-    ordId = \case
-      Diamond{} -> 0 :: Int
-      Pendulum{} -> 1
-      Line{} -> 2
-      HyperCube{} -> 3
-      Grid{} -> 4
-      Torus2D{} -> 5
-      Torus3D{} -> 6
-      Tree{} -> 7
-      Star{} -> 8
-      Cycle{} -> 9
-      Complete{} -> 10
-      Dumbbell{} -> 11
-      Hourglass{} -> 12
-      Beads{} -> 13
-      DotFile{} -> 14
-      Random{} -> 15
-
-instance (ToJSON a) => ToJSON (TopologyType a) where
-  toJSON t = object $ case t of
-    Diamond -> [gt]
-    DotFile f -> [gt, "filepath" .= f]
-    Line n -> [gt, "nodes" .= n]
-    HyperCube n -> [gt, "dimensions" .= n]
-    Star n -> [gt, "nodes" .= n]
-    Cycle n -> [gt, "nodes" .= n]
-    Complete n -> [gt, "nodes" .= n]
-    Hourglass n -> [gt, "nodes" .= n]
-    Random n -> [gt, "nodes" .= n]
-    Pendulum l w -> [gt, "length" .= l, "weight" .= w]
-    Tree d c -> [gt, "depth" .= d, "childs" .= c]
-    Grid r c -> [gt, "rows" .= r, "cols" .= c]
-    Torus2D r c -> [gt, "rows" .= r, "cols" .= c]
-    Dumbbell w l r -> [gt, "width" .= w, "left" .= l, "right" .= r]
-    Beads c d w -> [gt, "count" .= c, "distance" .= d, "weight" .= w]
-    Torus3D r c p -> [gt, "rows" .= r, "cols" .= c, "planes" .= p]
-   where
-    gt = "graph" .= show t
-
-instance (FromJSON a) => FromJSON (TopologyType a) where
-  parseJSON v = case v of
-    Object o ->
-      o .: "graph" >>= \(name :: String) -> case name of
-        "diamond" -> return Diamond
-        "dotfile" -> DotFile <$> o .: "filepath"
-        "line" -> Line <$> o .: "nodes"
-        "hypercube" -> HyperCube <$> o .: "dimensions"
-        "star" -> Star <$> o .: "nodes"
-        "cycle" -> Cycle <$> o .: "nodes"
-        "complete" -> Complete <$> o .: "nodes"
-        "hourglass" -> Hourglass <$> o .: "nodes"
-        "random" -> Random <$> o .: "nodes"
-        "pendulum" -> Pendulum <$> o .: "length" <*> o .: "weight"
-        "tree" -> Tree <$> o .: "depth" <*> o .: "childs"
-        "grid" -> Grid <$> o .: "rows" <*> o .: "cols"
-        "torus2d" -> Torus2D <$> o .: "rows" <*> o .: "cols"
-        "torus3d" -> Torus3D <$> (o .: "rows") <*> (o .: "cols") <*> (o .: "planes")
-        "dumbbell" -> Dumbbell <$> (o .: "width") <*> (o .: "left") <*> (o .: "right")
-        "beads" -> Beads <$> (o .: "count") <*> (o .: "distance") <*> (o .: "weight")
-        _ -> tmm
-    _ -> tmm
-   where
-    tmm = typeMismatch "Topology" v
+data TopologyType
+  = Diamond
+  | Pendulum {length :: Natural, weight :: Natural}
+  | Line {nodes :: Natural}
+  | HyperCube {dimensions :: Natural}
+  | Grid {rows :: Natural, cols :: Natural}
+  | Torus2D {rows :: Natural, cols :: Natural}
+  | Torus3D {rows :: Natural, cols :: Natural, planes :: Natural}
+  | Tree {depth :: Natural, children :: Natural}
+  | Star {nodes :: Natural}
+  | Cycle {nodes :: Natural}
+  | Complete {nodes :: Natural}
+  | Dumbbell {width :: Natural, left :: Natural, right :: Natural}
+  | Hourglass {nodes :: Natural}
+  | Beads {count :: Natural, distance :: Natural, weight :: Natural}
+  | DotFile {filepath :: FilePath}
+  | Random {nodes :: Natural}
+  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
 data SomeSNat where
   SomeSNat :: (KnownNat n) => SNat n -> SomeSNat
 
 -- | Generates some topology of the given topology type, if possible.
 froccTopologyType ::
-  TopologyType Natural ->
+  TopologyType ->
   IO (Either String STopology)
 froccTopologyType = \case
   Diamond -> ret diamond
