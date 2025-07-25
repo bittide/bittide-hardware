@@ -11,7 +11,6 @@ module Bittide.ClockControl.Callisto.Types (
   CallistoCResult (..),
   ReframingState (..),
   ControlConfig (..),
-  ControlSt (..),
   Stability (..),
 ) where
 
@@ -106,18 +105,3 @@ data ReframingState
   | -- | Reframing has taken place. There is nothing more to do.
     Done
   deriving (Generic, NFDataX, BitPack, Show, BitPackC, ToFieldType)
-
--- | Callisto's internal state used in 'callisto'
-data ControlSt = ControlSt
-  { _z_k :: !(Signed 32)
-  -- ^ Accumulated speed change requests, where speedup ~ 1, slowdown ~ -1.
-  , _b_k :: !SpeedChange
-  -- ^ Previously submitted speed change request. Used to determine the estimated
-  -- clock frequency.
-  , _steadyStateTarget :: !Float
-  -- ^ Steady-state value (determined when stability is detected for
-  -- the first time).
-  , rfState :: !ReframingState
-  -- ^ finite state machine for reframing detection
-  }
-  deriving (Generic, NFDataX)
