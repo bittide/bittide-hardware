@@ -53,7 +53,6 @@ import Clash.Prelude (
   SomeNat (..),
   d0,
   d1,
-  natToNum,
   snatProxy,
   snatToNum,
   type Div,
@@ -82,9 +81,9 @@ import Language.Dot.Parser (parse)
 import System.Random (randomIO, randomRIO)
 
 import qualified Data.Array as A (accumArray, array, listArray, (!))
+import qualified Data.Graph as Graph
 import qualified Data.Map.Strict as M (fromList, (!))
 import qualified GHC.TypeNats as Nats
-import qualified Data.Graph as Graph
 
 -- | Special topologies may have names given as a string.
 type TopologyName = String
@@ -103,9 +102,9 @@ data Topology (n :: Nat) = Topology
 data STopology = forall n. (KnownNat n) => STopology (Topology n)
 
 -- | Smart constructor of 'Topology'.
-fromGraph :: forall n. (KnownNat n) => TopologyName -> Graph -> Topology n
-fromGraph name graph =
-  Topology name graph (Random $ natToNum @n) $
+fromGraph :: forall n. (KnownNat n) => TopologyName -> TopologyType -> Graph -> Topology n
+fromGraph name topologyType graph =
+  Topology name graph topologyType $
     curry $
       (A.!) $
         A.accumArray (const id) False bounds $
@@ -213,12 +212,10 @@ fromEdgeList edges = Graph.buildG (0, length vertices - 1) (nubOrd allEdges1)
   allEdges1 = bimap (vertexMap M.!) (vertexMap M.!) <$> allEdges0
 
 -- | @n@ nodes in a line, with a fully connected blob of @m@ nodes at one end.
-pendulum :: SNat l -> SNat w -> Topology (l + w)
+pendulum :: (KnownNat l, KnownNat w) => SNat l -> SNat w -> Topology (l + w)
 pendulum sl sw =
-  (dumbbell sl d0 sw)
-    { topologyName = "pendulum"
-    , topologyType = Pendulum (snatToNum sl) (snatToNum sw)
-    }
+  let Topology{topologyGraph = g} = dumbbell sl d0 sw
+   in fromGraph "pendulum" (Pendulum (snatToNum sl) (snatToNum sw)) g
 
 {- | @n@ nodes in a line, connected to their neighbors.
 
@@ -226,19 +223,15 @@ pendulum sl sw =
 [mathematical terminology](https://mathworld.wolfram.com/LineGraph.html) but
 conforms to callisto)
 -}
-line :: SNat n -> Topology n
+line :: (KnownNat n) => SNat n -> Topology n
 line sn =
-  (dumbbell sn d0 d0)
-    { topologyName = "line"
-    , topologyType = Line $ snatToNum sn
-    }
+  let Topology{topologyGraph = g} = dumbbell sn d0 d0
+   in fromGraph "line" (Line $ snatToNum sn) g
 
 -- | @n@-dimensional hypercube
 hypercube :: SNat n -> Topology (2 ^ n)
 hypercube sn@SNat =
-  (fromGraph "hypercube" $ fromEdgeList es)
-    { topologyType = HyperCube $ snatToNum sn
-    }
+  fromGraph "hypercube" (HyperCube $ snatToNum sn) (fromEdgeList es)
  where
   n = snatToNum sn
   k = (2 :: Int) ^ n
@@ -254,16 +247,12 @@ hypercube sn@SNat =
 -- | Diamond graph
 diamond :: Topology 4
 diamond =
-  (fromGraph "diamond" $ A.listArray (0, 3) [[1, 3], [0, 2, 3], [1, 3], [0, 1, 2]])
-    { topologyType = Diamond
-    }
+  fromGraph "diamond" Diamond (A.listArray (0, 3) [[1, 3], [0, 2, 3], [1, 3], [0, 1, 2]])
 
 -- | Three dimensional torus.
 torus3d :: SNat a -> SNat b -> SNat c -> Topology (a * b * c)
 torus3d sna@SNat snb@SNat snc@SNat =
-  (fromGraph "torus3d" $ fromEdgeList dirEdges)
-    { topologyType = Torus3D a b c
-    }
+  fromGraph "torus3d" (Torus3D a b c) (fromEdgeList dirEdges)
  where
   a = snatToNum sna
   b = snatToNum snb
@@ -282,9 +271,7 @@ torus3d sna@SNat snb@SNat snc@SNat =
 -- | See [this figure](https://www.researchgate.net/figure/The-two-dimensional-torus-4x4_fig1_221134153)
 torus2d :: SNat rows -> SNat cols -> Topology (rows * cols)
 torus2d snRows@SNat snCols@SNat =
-  (fromGraph "torus2d" $ fromEdgeList dirEdges)
-    { topologyType = Torus2D rows cols
-    }
+  fromGraph "torus2d" (Torus2D rows cols) (fromEdgeList dirEdges)
  where
   rows = snatToNum snRows
   cols = snatToNum snCols
@@ -300,9 +287,7 @@ torus2d snRows@SNat snCols@SNat =
 -- | [Grid graph](https://mathworld.wolfram.com/GridGraph.html)
 grid :: SNat rows -> SNat cols -> Topology (rows * cols)
 grid snRows@SNat snCols@SNat =
-  (fromGraph "grid" $ fromEdgeList dirEdges)
-    { topologyType = Grid rows cols
-    }
+  fromGraph "grid" (Grid rows cols) (fromEdgeList dirEdges)
  where
   rows = snatToNum snRows
   cols = snatToNum snCols
@@ -346,9 +331,7 @@ instance (KnownNat n, KnownNat m) => KnownNat2 $(nameToSymbol ''TreeSize) n m wh
 -- | Tree of depth @depth@ with @childs@ children
 tree :: SNat depth -> SNat childs -> Topology (TreeSize depth childs)
 tree snDepth@SNat snChilds@SNat =
-  (fromGraph "tree" treeGraph)
-    { topologyType = Tree depth c
-    }
+  fromGraph "tree" (Tree depth c) treeGraph
  where
   depth = snatToNum snDepth
   c = snatToNum snChilds
@@ -361,32 +344,26 @@ tree snDepth@SNat snChilds@SNat =
   treeGraph = fromEdgeList directedEdges
 
 -- | [Star graph](https://mathworld.wolfram.com/StarGraph.html)
-star :: SNat childs -> Topology (TreeSize 1 childs)
+star :: (KnownNat childs) => SNat childs -> Topology (TreeSize 1 childs)
 star sn =
-  (tree SNat sn)
-    { topologyName = "star"
-    , topologyType = Star $ snatToNum sn
-    }
+  let Topology{topologyGraph = g} = tree (SNat @1) sn
+   in fromGraph "star" (Star $ snatToNum sn) g
 
 {- | [Cyclic graph](https://mathworld.wolfram.com/CycleGraph.html) with @n@
 vertices.
 -}
-cyclic :: SNat n -> Topology n
+cyclic :: (KnownNat n) => SNat n -> Topology n
 cyclic sn =
-  (beads sn d0 d1)
-    { topologyName = "cycle"
-    , topologyType = Cycle $ snatToNum sn
-    }
+  let Topology{topologyGraph = g} = beads sn d0 d1
+   in fromGraph "cycle" (Cycle $ snatToNum sn) g
 
 {- | [Complete graph](https://mathworld.wolfram.com/CompleteGraph.html) with @n@
 vertices.
 -}
-complete :: SNat n -> Topology n
+complete :: (KnownNat n) => SNat n -> Topology n
 complete sn =
-  (beads d1 d0 sn)
-    { topologyName = "complete"
-    , topologyType = Complete $ snatToNum sn
-    }
+  let Topology{topologyGraph = g} = beads d1 d0 sn
+   in fromGraph "complete" (Complete $ snatToNum sn) g
 
 {- | An dumbbell shaped graph consisting of two independent complete
 sub-graphs of size @l@ and @r@, connected via a chain of @w@ nodes
@@ -394,7 +371,7 @@ in between two distinct nodes of each sub-graph.
 -}
 dumbbell :: SNat w -> SNat l -> SNat r -> Topology (w + l + r)
 dumbbell sw@SNat sl@SNat sr@SNat =
-  t{topologyType = Dumbbell (sn2i sw) (sn2i sl) (sn2i sr)}
+  fromGraph "dumbbell" (Dumbbell (sn2i sw) (sn2i sl) (sn2i sr)) tGraph
  where
   sn2i = snatToNum
   w = snatToNum sw
@@ -402,11 +379,10 @@ dumbbell sw@SNat sl@SNat sr@SNat =
   r = snatToNum sr
   m = w + l + r - 1
 
-  t =
-    fromGraph "dumbbell" $
-      if w + l + r == 0
-        then A.array (0, -1) []
-        else A.array (0, m) $ fmap (\i -> (i, neighbors i)) [0 .. m]
+  tGraph =
+    if w + l + r == 0
+      then A.array (0, -1) []
+      else A.array (0, m) $ fmap (\i -> (i, neighbors i)) [0 .. m]
 
   neighbors i
     | i < l =
@@ -424,12 +400,10 @@ dumbbell sw@SNat sl@SNat sr@SNat =
 sub-graphs, only connected via a single edge between two distinct
 nodes of each sub-graph.
 -}
-hourglass :: SNat n -> Topology (n + n)
+hourglass :: (KnownNat n) => SNat n -> Topology (n + n)
 hourglass sn =
-  (dumbbell d0 sn sn)
-    { topologyName = "hourglass"
-    , topologyType = Hourglass $ snatToNum sn
-    }
+  let Topology{topologyGraph = g} = dumbbell d0 sn sn
+   in fromGraph "hourglass" (Hourglass $ snatToNum sn) g
 
 {- | A beads shaped graph consisting of two @c@ independent complete
 subgraphs of size @w@ (representing the beads), connected via a
@@ -438,9 +412,7 @@ thread).
 -}
 beads :: SNat c -> SNat d -> SNat w -> Topology (c * (d + w))
 beads sc@SNat sd@SNat sw@SNat =
-  (fromGraph "beads" $ fromEdgeList es)
-    { topologyType = Beads (sn2i sc) (sn2i sd) (sn2i sw)
-    }
+  fromGraph "beads" (Beads (sn2i sc) (sn2i sd) (sn2i sw)) (fromEdgeList es)
  where
   sn2i = snatToNum
   c = snatToNum sc :: Int
@@ -510,7 +482,7 @@ randomTopology sn@SNat = do
 
   -- create the graph
   return $
-    fromGraph "random" $
+    fromGraph "random" (Random (fromIntegral n)) $
       Graph.buildG
         (0, n - 1)
         [ (i, j)
@@ -567,7 +539,7 @@ fromDot cnt = do
 
   case Nats.someNatVal size of
     SomeNat (_ :: Proxy n) ->
-      return $ STopology $ fromGraph @n name graph
+      return $ STopology $ fromGraph @n name (DotFile name) graph
  where
   fromStatement :: Statement -> Either String (Maybe [Name])
   fromStatement = \case
