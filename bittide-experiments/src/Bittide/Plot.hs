@@ -92,7 +92,7 @@ plot maybeCorrection outputDir graph plotData =
   clockPlots = Vec.imap toClockPlot plotData
   elasticBufferPlots = Vec.imap toElasticBufferPlot plotData
 
-  edgeCount = length $ edges $ graph.topologyGraph
+  edgeCount = length $ edges $ graph.graph
 
   toElasticBufferPlot nodeIndex (unzip4 -> (time, _, reframingStage, buffersPerNode)) =
     foldPlots

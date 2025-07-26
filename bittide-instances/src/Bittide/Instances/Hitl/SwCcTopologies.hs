@@ -61,7 +61,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
 import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology (
-  Topology (topologyName, topologyType),
+  Topology (name, type_),
   TopologyType (Complete),
   complete,
   cyclic,
@@ -1088,7 +1088,7 @@ tests = [testGroup True, testGroup False]
     HitlTestCase HwTargetRef TestConfig CcConf
   tt clockShifts startDelays t r =
     HitlTestCase
-      { name = t.topologyName
+      { name = t.name
       , parameters =
           Map.fromList
             $ toList
@@ -1106,7 +1106,7 @@ tests = [testGroup True, testGroup False]
                ]
       , postProcData =
           defSimCfg
-            { ccTopologyType = t.topologyType
+            { ccTopologyType = t.type_
             , clockOffsets = toList <$> clockShifts
             , startupDelays = fromIntegral <$> toList startDelays
             , reframe = r

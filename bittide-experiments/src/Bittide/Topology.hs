@@ -8,12 +8,7 @@ module Bittide.Topology (
   -- * Data Types
   TopologyType (..),
   TopologyName,
-  Topology (
-    topologyName,
-    topologyGraph,
-    topologyType,
-    hasEdge
-  ),
+  Topology (..),
   STopology (..),
   TreeSize,
 
@@ -93,9 +88,9 @@ type TopologyName = String
 bound, a name and a 'TopologyType'.
 -}
 data Topology (n :: Nat) = Topology
-  { topologyName :: TopologyName
-  , topologyGraph :: Graph
-  , topologyType :: TopologyType
+  { name :: TopologyName
+  , graph :: Graph
+  , type_ :: TopologyType
   , hasEdge :: Index n -> Index n -> Bool
   }
 
@@ -104,13 +99,7 @@ data STopology = forall n. (KnownNat n) => STopology (Topology n)
 
 -- | Smart constructor of 'Topology'.
 fromGraph :: forall n. (KnownNat n) => TopologyName -> TopologyType -> Graph -> Topology n
-fromGraph name type_ graph =
-  Topology
-    { topologyName = name
-    , topologyGraph = graph
-    , topologyType = type_
-    , hasEdge
-    }
+fromGraph name type_ graph = Topology{name, graph, type_, hasEdge}
  where
   hasEdge i j =
     Set.member
@@ -218,7 +207,7 @@ fromEdgeList edges = Graph.buildG (0, length vertices - 1) (nubOrd allEdges1)
 -- | @n@ nodes in a line, with a fully connected blob of @m@ nodes at one end.
 pendulum :: (KnownNat l, KnownNat w) => SNat l -> SNat w -> Topology (l + w)
 pendulum sl sw =
-  let Topology{topologyGraph = g} = dumbbell sl d0 sw
+  let Topology{graph = g} = dumbbell sl d0 sw
    in fromGraph "pendulum" (Pendulum (snatToNum sl) (snatToNum sw)) g
 
 {- | @n@ nodes in a line, connected to their neighbors.
@@ -229,7 +218,7 @@ conforms to callisto)
 -}
 line :: (KnownNat n) => SNat n -> Topology n
 line sn =
-  let Topology{topologyGraph = g} = dumbbell sn d0 d0
+  let Topology{graph = g} = dumbbell sn d0 d0
    in fromGraph "line" (Line $ snatToNum sn) g
 
 -- | @n@-dimensional hypercube
@@ -350,7 +339,7 @@ tree snDepth@SNat snChilds@SNat =
 -- | [Star graph](https://mathworld.wolfram.com/StarGraph.html)
 star :: (KnownNat childs) => SNat childs -> Topology (TreeSize 1 childs)
 star sn =
-  let Topology{topologyGraph = g} = tree (SNat @1) sn
+  let Topology{graph = g} = tree (SNat @1) sn
    in fromGraph "star" (Star $ snatToNum sn) g
 
 {- | [Cyclic graph](https://mathworld.wolfram.com/CycleGraph.html) with @n@
@@ -358,7 +347,7 @@ vertices.
 -}
 cyclic :: (KnownNat n) => SNat n -> Topology n
 cyclic sn =
-  let Topology{topologyGraph = g} = beads sn d0 d1
+  let Topology{graph = g} = beads sn d0 d1
    in fromGraph "cycle" (Cycle $ snatToNum sn) g
 
 {- | [Complete graph](https://mathworld.wolfram.com/CompleteGraph.html) with @n@
@@ -366,7 +355,7 @@ vertices.
 -}
 complete :: (KnownNat n) => SNat n -> Topology n
 complete sn =
-  let Topology{topologyGraph = g} = beads d1 d0 sn
+  let Topology{graph = g} = beads d1 d0 sn
    in fromGraph "complete" (Complete $ snatToNum sn) g
 
 {- | An dumbbell shaped graph consisting of two independent complete
@@ -406,7 +395,7 @@ nodes of each sub-graph.
 -}
 hourglass :: (KnownNat n) => SNat n -> Topology (n + n)
 hourglass sn =
-  let Topology{topologyGraph = g} = dumbbell d0 sn sn
+  let Topology{graph = g} = dumbbell d0 sn sn
    in fromGraph "hourglass" (Hourglass $ snatToNum sn) g
 
 {- | A beads shaped graph consisting of two @c@ independent complete
@@ -507,8 +496,8 @@ toDot ::
 toDot t =
   ( True
   , Graph
-  , Just $ StringID $ t.topologyName
-  , map asEdgeStatement $ Graph.edges $ t.topologyGraph
+  , Just $ StringID $ t.name
+  , map asEdgeStatement $ Graph.edges $ t.graph
   )
  where
   asEdgeStatement (x, y) =
