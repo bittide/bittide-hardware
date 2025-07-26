@@ -80,9 +80,10 @@ import Language.Dot.Graph (GraphType (..), Name (..), Statement (..), Subgraph (
 import Language.Dot.Parser (parse)
 import System.Random (randomIO, randomRIO)
 
-import qualified Data.Array as A (accumArray, array, listArray, (!))
+import qualified Data.Array as A (array, listArray, (!))
 import qualified Data.Graph as Graph
 import qualified Data.Map.Strict as M (fromList, (!))
+import qualified Data.Set as Set
 import qualified GHC.TypeNats as Nats
 
 -- | Special topologies may have names given as a string.
@@ -103,15 +104,18 @@ data STopology = forall n. (KnownNat n) => STopology (Topology n)
 
 -- | Smart constructor of 'Topology'.
 fromGraph :: forall n. (KnownNat n) => TopologyName -> TopologyType -> Graph -> Topology n
-fromGraph name topologyType graph =
-  Topology name graph topologyType $
-    curry $
-      (A.!) $
-        A.accumArray (const id) False bounds $
-          zip (filter (uncurry (/=)) edgeIndices) [True, True ..]
+fromGraph name type_ graph =
+  Topology
+    { topologyName = name
+    , topologyGraph = graph
+    , topologyType = type_
+    , hasEdge
+    }
  where
-  bounds = ((minBound, minBound), (maxBound, maxBound))
-  edgeIndices = map (bimap fromIntegral fromIntegral) $ Graph.edges graph
+  hasEdge i j =
+    Set.member
+      (fromIntegral i, fromIntegral j)
+      (Set.fromList (Graph.edges graph))
 
 {- | Disambiguates between a selection of known topologies, topologies
 that are loaded from DOT files, and random topologies.
