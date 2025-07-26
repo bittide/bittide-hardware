@@ -95,7 +95,8 @@ data Topology (n :: Nat) = Topology
   }
 
 -- | Existentially quantified version hiding the type level bound.
-data STopology = forall n. (KnownNat n) => STopology (Topology n)
+data STopology where
+  STopology :: (KnownNat n) => Topology n -> STopology
 
 -- | Smart constructor of 'Topology'.
 fromGraph :: forall n. (KnownNat n) => TopologyName -> TopologyType -> Graph -> Topology n
