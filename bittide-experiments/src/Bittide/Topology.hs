@@ -406,9 +406,9 @@ dumbbell sw@SNat sl@SNat sr@SNat =
     fromGraph "dumbbell" $
       if w + l + r == 0
         then A.array (0, -1) []
-        else A.array (0, m) $ fmap (\i -> (i, neighbours i)) [0 .. m]
+        else A.array (0, m) $ fmap (\i -> (i, neighbors i)) [0 .. m]
 
-  neighbours i
+  neighbors i
     | i < l =
         (if i == l - 1 && w + r > 0 then (l :) else id)
           [j | j <- [0 .. l - 1], j /= i]
@@ -431,7 +431,7 @@ hourglass sn =
     , topologyType = Hourglass $ snatToNum sn
     }
 
-{- | A beads shaped graph consisting of two @c@ independend complete
+{- | A beads shaped graph consisting of two @c@ independent complete
 subgraphs of size @w@ (representing the beads), connected via a
 closed circular chain of @d@ nodes in between (representing the
 thread).
