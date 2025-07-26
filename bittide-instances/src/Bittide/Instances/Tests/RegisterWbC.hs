@@ -11,6 +11,7 @@ import Bittide.DoubleBufferedRam (
   ContentType (Vec),
   InitialContent (Reloadable),
  )
+import Bittide.Extra.Maybe (orNothing)
 import Bittide.Instances.Domains (Basic50)
 import Bittide.ProcessingElement (
   PeConfig (
@@ -45,8 +46,10 @@ import Protocols.Idle (idleSource)
 import Protocols.MemoryMap (ConstBwd, MM, MemoryMap, constBwd, getMMAny)
 import Protocols.MemoryMap.FieldType (ToFieldType)
 import Protocols.MemoryMap.Registers.WishboneStandard (
+  BusActivity (..),
   deviceWbC,
   registerConfig,
+  registerWbC,
   registerWbC_,
  )
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
@@ -70,6 +73,9 @@ type S8 = Signed 8
 type S16 = Signed 16
 type S32 = Signed 32
 type S64 = Signed 64
+
+data MyZeroSizedType = MyZeroSizedType
+  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
 
 data Abc = A | B | C
   deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
@@ -147,6 +153,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbV0
     , wbV1
     , wbV2
+    , wbUnit
+    , wbUnitW
+    , wbZS
     , wbSum0
     , wbSum1
     , wbSop0
@@ -192,6 +201,15 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   registerWbC_ hasClock hasReset (registerConfig "v0") initWbV0 -< (wbV0, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "v1") initWbV1 -< (wbV1, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "v2") initWbV2 -< (wbV2, Fwd noWrite)
+
+  (_unit, Fwd unitActivity) <-
+    registerWbC hasClock hasReset (registerConfig "unit") initUnit -< (wbUnit, Fwd noWrite)
+
+  let unitWritten = orNothing <$> (unitActivity .== BusWrite ()) <*> pure True
+
+  registerWbC_ hasClock hasReset (registerConfig "unitW") initUnitW
+    -< (wbUnitW, Fwd unitWritten)
+  registerWbC_ hasClock hasReset (registerConfig "zs") initZS -< (wbZS, Fwd noWrite)
 
   registerWbC_ hasClock hasReset (registerConfig "sum0") initSum0 -< (wbSum0, Fwd noWrite)
   registerWbC_ hasClock hasReset (registerConfig "sum1") initSum1 -< (wbSum1, Fwd noWrite)
@@ -279,6 +297,15 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initWbV2 :: Vec 2 (Vec 2 (BitVector 8))
   initWbV2 = (0x8 :> 0x16 :> Nil) :> (0x24 :> 0x32 :> Nil) :> Nil
+
+  initUnit :: ()
+  initUnit = ()
+
+  initUnitW :: Bool
+  initUnitW = False
+
+  initZS :: MyZeroSizedType
+  initZS = MyZeroSizedType
 
   noWrite :: forall a. Signal dom (Maybe a)
   noWrite = pure Nothing

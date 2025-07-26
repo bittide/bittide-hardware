@@ -83,7 +83,8 @@ instance (KnownNat n) => ToFieldType (Var n) where
 
   toFieldType = TypeVariable $ snatToInteger (SNat @n)
 
-instance ToFieldType ()
+instance ToFieldType () where
+  toFieldType = TypeReference (tupType 0) []
 
 instance (ToFieldType a) => ToFieldType (Maybe a) where
   type Generics (Maybe a) = 1

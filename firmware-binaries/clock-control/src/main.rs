@@ -7,6 +7,7 @@
 
 use core::panic::PanicInfo;
 
+use bittide_hal::freeze::Tuple0;
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_hal::manual_additions::timer::WaitResult;
 use bittide_hal::shared::devices::Timer;
@@ -42,7 +43,7 @@ fn main() -> ! {
     uwriteln!(uart, "Waiting for at least one pulse..").unwrap();
     while freeze.number_of_sync_pulses_seen() == 0 {
         // TOOD: Memory map sync pulse counter -- no need to involve freeze here
-        freeze.set_freeze(true);
+        freeze.set_freeze(Tuple0);
     }
 
     uwriteln!(uart, "Starting clock control..").unwrap();
@@ -76,7 +77,7 @@ fn main() -> ! {
 
     loop {
         // Do clock control on "frozen" counters
-        freeze.set_freeze(true);
+        freeze.set_freeze(Tuple0);
         callisto::callisto(&cc, freeze.eb_counters_volatile_iter(), &config, &mut state);
         cc.set_change_speed(state.b_k);
 
