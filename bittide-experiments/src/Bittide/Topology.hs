@@ -56,7 +56,6 @@ import Clash.Prelude (
   natToNum,
   snatProxy,
   snatToNum,
-  someNatVal,
   type Div,
   type (*),
   type (+),
@@ -71,9 +70,7 @@ import Data.Array.MArray (freeze, getElems, newListArray, readArray, writeArray)
 import Data.Bifunctor (bimap, first)
 import Data.Bits (Bits (..))
 import Data.Containers.ListUtils (nubOrd)
-import Data.Function (on)
-import Data.Graph (Graph, buildG, edges, graphFromEdges, scc)
-import Data.List (groupBy, sort)
+import Data.Graph (Graph)
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Tuple (swap)
@@ -86,8 +83,8 @@ import System.Random (randomIO, randomRIO)
 
 import qualified Data.Array as A (accumArray, array, listArray, (!))
 import qualified Data.Map.Strict as M (fromList, (!))
-import qualified Data.Set as S (fromList, toList)
 import qualified GHC.TypeNats as Nats
+import qualified Data.Graph as Graph
 
 -- | Special topologies may have names given as a string.
 type TopologyName = String
@@ -115,7 +112,7 @@ fromGraph name graph =
           zip (filter (uncurry (/=)) edgeIndices) [True, True ..]
  where
   bounds = ((minBound, minBound), (maxBound, maxBound))
-  edgeIndices = map (bimap fromIntegral fromIntegral) $ edges graph
+  edgeIndices = map (bimap fromIntegral fromIntegral) $ Graph.edges graph
 
 {- | Disambiguates between a selection of known topologies, topologies
 that are loaded from DOT files, and random topologies.
@@ -208,20 +205,12 @@ froccTopologyType = \case
 
 -- | Given a list of edges, turn it into a directed graph.
 fromEdgeList :: forall a. (Ord a) => [(a, a)] -> Graph
-fromEdgeList es = dirGraph
+fromEdgeList edges = Graph.buildG (0, length vertices - 1) (nubOrd allEdges1)
  where
-  -- "Data.Graph" deals with directed graphs
-  allEdges :: [(a, a)]
-  allEdges = es ++ fmap swap es
-  adjList :: [(a, [a])]
-  adjList = g <$> groupBy ((==) `on` fst) (nubOrd $ sort allEdges)
-  -- now that we have a sorted/grouped list of edges, reformat by attaching
-  -- a list of all connected nodes to each node.
-  g :: [(a, b)] -> (a, [b])
-  g ps@((x, _) : _) = (x, snd <$> ps)
-  g [] = error "No edges."
-  (dirGraph, _, _) =
-    graphFromEdges ((\(key, keys) -> ((), key, keys)) <$> adjList)
+  allEdges0 = edges ++ fmap swap edges -- links are bidirectional in our setup
+  vertices = nubOrd $ uncurry (<>) $ unzip edges
+  vertexMap = M.fromList $ zip vertices [0 ..]
+  allEdges1 = bimap (vertexMap M.!) (vertexMap M.!) <$> allEdges0
 
 -- | @n@ nodes in a line, with a fully connected blob of @m@ nodes at one end.
 pendulum :: SNat l -> SNat w -> Topology (l + w)
@@ -522,7 +511,7 @@ randomTopology sn@SNat = do
   -- create the graph
   return $
     fromGraph "random" $
-      buildG
+      Graph.buildG
         (0, n - 1)
         [ (i, j)
         | i <- is
@@ -543,7 +532,7 @@ toDot t =
   ( True
   , Graph
   , Just $ StringID $ t.topologyName
-  , map asEdgeStatement $ edges $ t.topologyGraph
+  , map asEdgeStatement $ Graph.edges $ t.topologyGraph
   )
  where
   asEdgeStatement (x, y) =
@@ -570,31 +559,14 @@ fromDot cnt = do
 
   let
     namedEdges = concatMap (pairwise . map asString) edgeChains
-    edgeNames = dedupAndSort $ concatMap (\(x, y) -> [x, y]) namedEdges
-    n = length edgeNames
-    idx = (M.!) $ M.fromList $ zip edgeNames [0, 1 ..]
-    graph =
-      buildG (0, n - 1)
-      -- Self loops are removed at this point as they are redundant in
-      -- terms of the simulated topology. In terms of connectivity, a
-      -- node can synchronize its clock with itself even without a
-      -- elastic buffer in between. Therefore, we all self-loops in
-      -- the input, but remove them here, since they don't have any
-      -- effect on the topology that is created out of the graph.
-      $
-        filter (uncurry (/=))
-        -- remove duplicate edges and sort for pretty printing
-        $
-          dedupAndSort $
-            concatMap
-              (\(x, y) -> [(idx x, idx y), (idx y, idx x)])
-              namedEdges
+    graph = fromEdgeList namedEdges
+    size = fromIntegral (length (Graph.vertices graph))
 
-  when (length (scc graph) > 1) $ Left "Graph must be strongly connected"
+  when (length (Graph.scc graph) > 1) $
+    Left "Graph must be strongly connected"
 
-  case someNatVal $ toInteger n of
-    Nothing -> Left "cannot construct SNat arguments"
-    Just (SomeNat (_ :: Proxy n)) ->
+  case Nats.someNatVal size of
+    SomeNat (_ :: Proxy n) ->
       return $ STopology $ fromGraph @n name graph
  where
   fromStatement :: Statement -> Either String (Maybe [Name])
@@ -602,12 +574,9 @@ fromDot cnt = do
     EdgeStatement xs _ -> fmap Just $ forM xs $ \case
       NodeRef n _ -> return n
       Subgraph{} -> Left "Subgraphs are not supported"
-    -- we are only interested in the edges, everthing else can be
+    -- we are only interested in the edges, everything else can be
     -- ignored
     _ -> pure Nothing
-
-  dedupAndSort :: (Ord a) => [a] -> [a]
-  dedupAndSort = S.toList . S.fromList
 
   asString = \case
     StringID x -> 's' : x
