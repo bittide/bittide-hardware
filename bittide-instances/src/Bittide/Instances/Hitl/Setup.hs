@@ -26,8 +26,6 @@ import Clash.Prelude
 
 import Bittide.Hitl (DeviceInfo (..), FpgaId, HwTargetRef (..))
 import Bittide.Topology
-import Data.Constraint (Dict (..), (:-) (..))
-import Data.Constraint.Nat (leTrans)
 
 -- | The number of FPGAs in the current setup
 type FpgaCount = 8 :: Nat
@@ -76,49 +74,50 @@ knownFpgaIds = toList knownFpgaIdsVec
 allHwTargets :: [HwTargetRef]
 allHwTargets = (\d -> HwTargetById d.deviceId d) <$> demoRigInfo
 
+-- | Determines whether a link is active for a given FPGA and topology.
+isActiveLink ::
+  forall n.
+  (KnownNat n, n <= FpgaCount) =>
+  Topology n ->
+  Index n ->
+  Index LinkCount ->
+  Bool
+isActiveLink topology fpgaNr linkNr
+  | sourceFpgaNr >= natToNum @n = False
+  | otherwise = topology.hasEdge (fromIntegral sourceFpgaNr) fpgaNr
+ where
+  (_, links) = fpgaSetup !! fpgaNr
+  sourceFpgaNr = links !! linkNr
+
 {- | Determines the link mask of a particular node.
 
 >>> import Data.Graph
 >>> import Clash.Prelude
 >>> import Bittide.Topology
 >>> let edges = [(0, 1), (0, 2), (1, 2), (1, 0), (2, 0), (2 :: Int, 1 :: Int)]
->>> let g = fromGraph @3 "test" (Random 3)  $ buildG (0, 2) edges
->>> linkMask g d0
+>>> let g = fromGraph @3 "test" (Random 3) $ buildG (0, 2) edges
+>>> pack (linkMask g 0)
 0b010_0001
->>> linkMask g d1
+>>> pack (linkMask g 1)
 0b100_0001
->>> linkMask g d2
+>>> pack (linkMask g 2)
 0b110_0000
 -}
 linkMask ::
-  forall n i.
-  (KnownNat n, KnownNat i, n <= FpgaCount, i + 1 <= n) =>
+  forall n.
+  (KnownNat n, n <= FpgaCount) =>
   Topology n ->
-  SNat i ->
-  BitVector (FpgaCount - 1)
-linkMask g i = case leTrans @(i + 1) @n @FpgaCount of
-  Sub Dict -> pack $ map edge $ snd $ at @i @(FpgaCount - i - 1) i fpgaSetup
- where
-  edge j =
-    j
-      <= (natToNum @(n - 1))
-      && g.hasEdge (natToNum @i) (truncateB @_ @n @(FpgaCount - n) j)
+  -- | FPGA number
+  Index n ->
+  Vec LinkCount Bool
+linkMask topology fpgaNr = isActiveLink topology fpgaNr <$> indicesI
 
 linkMasks ::
   forall n.
   (KnownNat n, n <= FpgaCount) =>
   Topology n ->
-  Vec n (BitVector (FpgaCount - 1))
-linkMasks g = smap (const . linkMask') indicesI
- where
-  -- workaround, which is required to compensate for the missing upper
-  -- bound witness of smap, which can be improved as soon as
-  -- https://github.com/clash-lang/clash-compiler/pull/2686
-  -- is available.
-  linkMask' :: forall i. SNat i -> BitVector (FpgaCount - 1)
-  linkMask' i@SNat = case compareSNat (SNat @(i + 1)) (SNat @n) of
-    SNatLE -> linkMask g i
-    _ -> error "impossible"
+  Vec n (BitVector LinkCount)
+linkMasks topology = pack . linkMask topology <$> indicesI
 
 -- | List of device information of all FPGAs connected to the demo rig
 demoRigInfo :: [DeviceInfo]
