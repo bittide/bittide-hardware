@@ -34,7 +34,6 @@ module Bittide.Topology (
   hasEdge,
   toDot,
   toDotS,
-  randomTopology,
   pairwise,
 ) where
 
@@ -57,10 +56,7 @@ import Clash.Prelude (
   type (^),
  )
 
-import Control.Monad (forM_, replicateM, replicateM_, when)
 import Data.Aeson (FromJSON (..), ToJSON (..))
-import Data.Array.IO (IOUArray)
-import Data.Array.MArray (freeze, getElems, newListArray, readArray, writeArray)
 import Data.Bifunctor (bimap)
 import Data.Bits (Bits (..))
 import Data.Containers.ListUtils (nubOrd)
@@ -72,10 +68,9 @@ import Data.Tuple (swap)
 import GHC.Num.Natural (Natural)
 import GHC.TypeLits.KnownNat (KnownNat2 (..), SNatKn (..), nameToSymbol)
 import GHC.TypeNats (natVal)
-import System.Random (randomIO, randomRIO)
 
 import qualified Clash.Util.Interpolate as I
-import qualified Data.Array as A (array, listArray, (!))
+import qualified Data.Array as A (array, listArray)
 import qualified Data.Array as Array
 import qualified Data.Graph as Graph
 import qualified Data.List as L
@@ -141,7 +136,7 @@ instance FromJSON STopology where
 fromGraph :: forall n. (KnownNat n) => TopologyName -> TopologyType -> Graph -> Topology n
 fromGraph name type_ graph = Topology{name, graph, type_}
 
--- | Disambiguates between a selection of known topologies and random topologies.
+-- | Disambiguates between a selection of known topologies
 data TopologyType
   = Diamond
   | Pendulum {length :: Natural, weight :: Natural}
@@ -157,7 +152,6 @@ data TopologyType
   | Dumbbell {width :: Natural, left :: Natural, right :: Natural}
   | Hourglass {nodes :: Natural}
   | Beads {count :: Natural, distance :: Natural, weight :: Natural}
-  | Random {nodes :: Natural}
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
 fromEdgeList :: forall a. (Ord a) => [(a, a)] -> Graph
@@ -398,55 +392,6 @@ beads sc@SNat sd@SNat sw@SNat =
                x = (x' - 1) `mod` s
          , x /= x'
          ]
-
--- | Generates a random topology of the given size.
-randomTopology :: SNat n -> IO (Topology n)
-randomTopology sn@SNat = do
-  let
-    n = snatToNum sn
-    is = [0, 1 .. n - 1]
-
-  -- get some random vertex permuation for ensuring connectivity
-  aP <- newListArray (0, n - 1) is
-  replicateM_ (10 * n) $ do
-    p1 <- randomRIO (0, n - 1)
-    p2 <- randomRIO (0, n - 1)
-    v1 <- readArray aP p1
-    v2 <- readArray aP p2
-    writeArray aP p1 v2
-    writeArray aP p2 v1
-
-  randomPermutation <- getElems (aP :: IOUArray Int Int)
-
-  -- get some random edge availability matrix for self-loop-free,
-  -- undirected graphs
-  aE <- replicateM (n * n) randomIO >>= newListArray ((0, 0), (n - 1, n - 1))
-  forM_ is $ \i ->
-    writeArray aE (i, i) False
-  forM_ [(i, j) | i <- is, j <- is, i /= j] $ \(i, j) -> do
-    x1 <- readArray aE (i, j)
-    x2 <- readArray aE (j, i)
-    when (x1 /= x2) $ do
-      writeArray aE (i, j) False
-      writeArray aE (j, i) False
-
-  -- ensure connectivity
-  forM_ (pairwise randomPermutation) $ \(i, j) -> do
-    writeArray aE (i, j) True
-    writeArray aE (j, i) True
-
-  available <- freeze (aE :: IOUArray (Int, Int) Bool)
-
-  -- create the graph
-  return $
-    fromGraph "random" (Random (fromIntegral n)) $
-      Graph.buildG
-        (0, n - 1)
-        [ (i, j)
-        | i <- is
-        , j <- is
-        , available A.! (i, j)
-        ]
 
 -- | Turns a 'Topology' into a graphviz DOT structure
 toDot :: (KnownNat n) => Topology n -> String

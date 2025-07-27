@@ -94,13 +94,12 @@ isActiveLink topology fpgaNr linkNr
 >>> import Data.Graph
 >>> import Clash.Prelude
 >>> import Bittide.Topology
->>> let edges = [(0, 1), (0, 2), (1, 2), (1, 0), (2, 0), (2 :: Int, 1 :: Int)]
->>> let g = fromGraph @3 "test" (Random 3) $ buildG (0, 2) edges
->>> pack (linkMask g 0)
+>>> let graph = complete d3
+>>> pack (linkMask graph 0)
 0b010_0001
->>> pack (linkMask g 1)
+>>> pack (linkMask graph 1)
 0b100_0001
->>> pack (linkMask g 2)
+>>> pack (linkMask graph 2)
 0b110_0000
 -}
 linkMask ::
