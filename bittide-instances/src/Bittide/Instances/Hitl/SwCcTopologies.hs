@@ -61,8 +61,8 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
 import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology (
-  Topology (name, type_),
-  TopologyType (Complete),
+  STopology (STopology),
+  Topology (name),
   complete,
   cyclic,
   diamond,
@@ -1071,7 +1071,7 @@ tests = [testGroup True, testGroup False]
                     })
       , postProcData =
           defSimCfg
-            { ccTopologyType = Complete $ natToNum @FpgaCount
+            { sTopology = STopology (complete (SNat @FpgaCount))
             , clockOffsets = Nothing
             , startupDelays = toList $ repeat @FpgaCount 0
             }
@@ -1106,7 +1106,7 @@ tests = [testGroup True, testGroup False]
                ]
       , postProcData =
           defSimCfg
-            { ccTopologyType = t.type_
+            { sTopology = STopology @n t
             , clockOffsets = toList <$> clockShifts
             , startupDelays = fromIntegral <$> toList startDelays
             , reframe = r

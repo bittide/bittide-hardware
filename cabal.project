@@ -67,11 +67,6 @@ source-repository-package
   location: https://github.com/cchalmers/circuit-notation.git
   tag: 564769c52aa05b90f81bbc898b7af7087d96613d
 
-source-repository-package
-  type: git
-  location: https://gitlab.com/mgmillani/happy-dot.git
-  tag: 449599a79deaa14323f9cbdedc1e4c8cb4966842
-
 allow-newer:
   clash-protocols:tasty,
   clash-vexriscv:base

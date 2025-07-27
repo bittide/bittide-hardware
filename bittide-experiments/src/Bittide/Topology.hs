@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -30,10 +31,9 @@ module Bittide.Topology (
 
   -- * Utilities
   fromGraph,
-  froccTopologyType,
-  fromDot,
   hasEdge,
   toDot,
+  toDotS,
   randomTopology,
   pairwise,
 ) where
@@ -46,11 +46,9 @@ import Clash.Prelude (
   KnownNat,
   Nat,
   SNat (..),
-  SomeNat (..),
   d0,
   d1,
   natToInteger,
-  snatProxy,
   snatToNum,
   type Div,
   type (*),
@@ -59,28 +57,28 @@ import Clash.Prelude (
   type (^),
  )
 
-import Control.Monad (forM, forM_, replicateM, replicateM_, unless, when)
+import Control.Monad (forM_, replicateM, replicateM_, when)
 import Data.Aeson (FromJSON (..), ToJSON (..))
 import Data.Array.IO (IOUArray)
 import Data.Array.MArray (freeze, getElems, newListArray, readArray, writeArray)
-import Data.Bifunctor (bimap, first)
+import Data.Bifunctor (bimap)
 import Data.Bits (Bits (..))
 import Data.Containers.ListUtils (nubOrd)
 import Data.Data ((:~:) (..))
 import Data.Graph (Graph)
-import Data.Maybe (catMaybes, mapMaybe)
+import Data.Maybe (mapMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Tuple (swap)
 import GHC.Num.Natural (Natural)
 import GHC.TypeLits.KnownNat (KnownNat2 (..), SNatKn (..), nameToSymbol)
 import GHC.TypeNats (natVal)
-import Language.Dot.Graph (GraphType (..), Name (..), Statement (..), Subgraph (..))
-import Language.Dot.Parser (parse)
 import System.Random (randomIO, randomRIO)
 
+import qualified Clash.Util.Interpolate as I
 import qualified Data.Array as A (array, listArray, (!))
 import qualified Data.Array as Array
 import qualified Data.Graph as Graph
+import qualified Data.List as L
 import qualified Data.Map.Strict as M (fromList, (!))
 import qualified GHC.TypeNats as Nats
 
@@ -104,6 +102,10 @@ the source node.
 hasEdge :: (KnownNat n) => Topology n -> Index n -> Index n -> Bool
 hasEdge topology i j = fromIntegral j `elem` (topology.graph Array.! fromIntegral i)
 
+instance ToJSON (Topology n) where
+  toJSON Topology{name, graph, type_} =
+    toJSON (name, Array.elems graph, type_)
+
 -- | Existentially quantified version hiding the type level bound.
 data STopology where
   STopology :: (KnownNat n) => Topology n -> STopology
@@ -123,6 +125,17 @@ instance Ord STopology where
     case Nats.sameNat (Proxy @n) (Proxy @m) of
       Nothing -> compare (natToInteger @n) (natToInteger @m)
       Just Refl -> compare t1 t2
+
+instance ToJSON STopology where
+  toJSON (STopology topology) = toJSON topology
+
+instance FromJSON STopology where
+  parseJSON v = do
+    (name, elems, type_) <- parseJSON v
+    let n = length elems
+    case Nats.someNatVal (fromIntegral n) of
+      Nats.SomeNat (_ :: Proxy n) ->
+        pure $ STopology @n $ fromGraph name type_ (Array.listArray (0, n - 1) elems)
 
 -- | Smart constructor of 'Topology'.
 fromGraph :: forall n. (KnownNat n) => TopologyName -> TopologyType -> Graph -> Topology n
@@ -146,78 +159,10 @@ data TopologyType
   | Dumbbell {width :: Natural, left :: Natural, right :: Natural}
   | Hourglass {nodes :: Natural}
   | Beads {count :: Natural, distance :: Natural, weight :: Natural}
-  | DotFile {filepath :: FilePath}
+  | JsonFile {path :: FilePath}
   | Random {nodes :: Natural}
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
-data SomeSNat where
-  SomeSNat :: (KnownNat n) => SNat n -> SomeSNat
-
--- | Generates some topology of the given topology type, if possible.
-froccTopologyType ::
-  TopologyType ->
-  IO (Either String STopology)
-froccTopologyType = \case
-  Diamond -> ret diamond
-  Pendulum l w ->
-    case (naturalToSomeSNat l, naturalToSomeSNat w) of
-      (SomeSNat sL, SomeSNat sW) ->
-        ret (pendulum sL sW)
-  Line n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> ret (line sN)
-  HyperCube n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> ret (hypercube sN)
-  Grid rows cols ->
-    case (naturalToSomeSNat rows, naturalToSomeSNat cols) of
-      (SomeSNat sRows, SomeSNat sCols) -> ret (grid sRows sCols)
-  Torus2D rows cols ->
-    case (naturalToSomeSNat rows, naturalToSomeSNat cols) of
-      (SomeSNat sRows, SomeSNat sCols) -> ret (torus2d sRows sCols)
-  Torus3D rows cols planes ->
-    case (naturalToSomeSNat rows, naturalToSomeSNat cols, naturalToSomeSNat planes) of
-      (SomeSNat sRows, SomeSNat sCols, SomeSNat sPlanes) ->
-        ret (torus3d sRows sCols sPlanes)
-  Tree depth childs ->
-    case (naturalToSomeSNat depth, naturalToSomeSNat childs) of
-      (SomeSNat sDepth, SomeSNat sChilds) -> ret (tree sDepth sChilds)
-  Star n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> ret (star sN)
-  Cycle n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> ret (cyclic sN)
-  Complete n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> ret (complete sN)
-  Dumbbell w l r ->
-    case (naturalToSomeSNat w, naturalToSomeSNat l, naturalToSomeSNat r) of
-      (SomeSNat sW, SomeSNat sL, SomeSNat sR) -> ret (dumbbell sW sL sR)
-  Hourglass n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> ret (hourglass sN)
-  Beads c d w ->
-    case (naturalToSomeSNat c, naturalToSomeSNat d, naturalToSomeSNat w) of
-      (SomeSNat sC, SomeSNat sD, SomeSNat sW) -> ret (beads sC sD sW)
-  Random n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> do
-        topology <- randomTopology sN
-        ret topology
-  DotFile f -> do
-    contents <- readFile f
-    pure $ first (("Invalid DOT file - " <> f <> "\n") <>) $ fromDot $ contents
- where
-  ret :: forall (n :: Nat). (KnownNat n) => Topology n -> IO (Either String STopology)
-  ret = pure . pure . STopology
-
-  naturalToSomeSNat :: Natural -> SomeSNat
-  naturalToSomeSNat n =
-    case Nats.someNatVal n of
-      Nats.SomeNat sn -> SomeSNat (snatProxy sn)
-
--- | Given a list of edges, turn it into a directed graph.
 fromEdgeList :: forall a. (Ord a) => [(a, a)] -> Graph
 fromEdgeList edges = Graph.buildG (0, length vertices - 1) (nubOrd allEdges1)
  where
@@ -506,72 +451,23 @@ randomTopology sn@SNat = do
         , available A.! (i, j)
         ]
 
-{- | Turns a topology into a graphviz DOT structure, as it is required by
-the [happy-dot](https://hackage.haskell.org/package/happy-dot) library.
--}
-toDot ::
-  (KnownNat n) =>
-  -- | topology to be turned into graphviz dot
-  Topology n ->
-  -- | the result, as it is needed by happy-dot
-  (Bool, GraphType, Maybe Name, [Statement])
-toDot t =
-  ( True
-  , Graph
-  , Just $ StringID $ t.name
-  , map asEdgeStatement $ Graph.edges $ t.graph
-  )
+-- | Turns a 'Topology' into a graphviz DOT structure
+toDot :: (KnownNat n) => Topology n -> String
+toDot topology =
+  [I.i|
+    graph #{tName} {
+      #{renderedEdges}
+    }
+  |]
  where
-  asEdgeStatement (x, y) =
-    EdgeStatement
-      (map (\i -> NodeRef (XMLID ('n' : show i)) Nothing) [x, y])
-      []
+  tName = topology.name -- XXX: Doesn't work in the quasiquoter?
+  renderEdge (i, j) = [I.i|n#{i} -- n#{j};|]
+  renderedEdges = L.intercalate "\n" (renderEdge <$> uniEdges)
+  uniEdges = [(i, j) | (i, j) <- Graph.edges topology.graph, i < j]
 
-{- | Reads a topology from a DOT file. Only the name and structure of the
-graph is used, i.e., any additional graphviz dot specific
-annotations are ignored.
--}
-fromDot ::
-  -- | the string holding the graphviz dot content
-  String ->
-  -- | either an error, if given an unusable input, or the extracted topology
-  Either String STopology
-fromDot cnt = do
-  (strict, gType, maybe "" fromDotName -> name, statements) <- parse cnt
-
-  unless strict $ Left "Graph must be strict"
-  when (gType == Digraph) $ Left "Graph must be undirected"
-
-  edgeChains <- catMaybes <$> mapM fromStatement statements
-
-  let
-    namedEdges = concatMap (pairwise . map asString) edgeChains
-    graph = fromEdgeList namedEdges
-    size = fromIntegral (length (Graph.vertices graph))
-
-  when (length (Graph.scc graph) > 1) $
-    Left "Graph must be strongly connected"
-
-  case Nats.someNatVal size of
-    SomeNat (_ :: Proxy n) ->
-      return $ STopology $ fromGraph @n name (DotFile name) graph
- where
-  fromStatement :: Statement -> Either String (Maybe [Name])
-  fromStatement = \case
-    EdgeStatement xs _ -> fmap Just $ forM xs $ \case
-      NodeRef n _ -> return n
-      Subgraph{} -> Left "Subgraphs are not supported"
-    -- we are only interested in the edges, everything else can be
-    -- ignored
-    _ -> pure Nothing
-
-  asString = \case
-    StringID x -> 's' : x
-    XMLID x -> 'x' : x
-
-  fromDotName = \case
-    StringID x -> x
-    XMLID x -> x
+-- | Turns an 'STopology' into a graphviz DOT structure
+toDotS :: STopology -> String
+toDotS (STopology topology) = toDot topology
 
 {- | Successive overlapping pairs.
 

@@ -163,7 +163,6 @@ library
     directory,
     extra,
     filepath,
-    happy-dot,
     http-conduit,
     http-types,
     matplotlib,

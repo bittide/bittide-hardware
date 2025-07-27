@@ -21,7 +21,6 @@ import Clash.Prelude (
   checkedTruncateB,
   extend,
   natToNum,
-  snatProxy,
  )
 
 import Clash.Signal.Internal (Femtoseconds (..))
@@ -46,7 +45,7 @@ import Conduit (
  )
 import Control.Arrow (first)
 import Control.Exception (Exception (..), catch, throw)
-import Control.Monad (filterM, forM, forM_, unless, when)
+import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.Extra (ifM, unlessM)
 import Data.Bifunctor (bimap)
 
@@ -64,7 +63,7 @@ import Data.Csv.Conduit (
   fromNamedCsvStreamError,
  )
 import Data.List (isSuffixOf, unzip4)
-import Data.Maybe (catMaybes, fromJust, fromMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import Data.Proxy (Proxy (..))
 import Data.String (fromString)
 import Data.Typeable (cast)
@@ -85,17 +84,13 @@ import System.FilePath (
   (</>),
  )
 import System.IO (
-  BufferMode (..),
   Handle,
   IOMode (..),
   hClose,
   hFlush,
-  hPutStr,
-  hSetBuffering,
   openFile,
   stderr,
   stdout,
-  withFile,
  )
 import Text.Read (readMaybe)
 import "bittide-extra" Numeric.Extra (parseHex)
@@ -110,7 +105,7 @@ import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
 import Bittide.Plot
 import Bittide.Report.ClockControl
-import Bittide.Simulate.Config (CcConf, saveCcConfig, simTopologyFileName)
+import Bittide.Simulate.Config (CcConf, saveCcConfig)
 import Bittide.Topology
 
 import Bittide.Instances.Hitl.Tests (hitlTests)
@@ -124,12 +119,11 @@ import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.UTF8 as UTF8
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import qualified Data.Text as Text
 import qualified Data.Vector as Vector
 import qualified GHC.TypeLits.Witnesses as TLW (SNat (..))
 
--- A newtype wrapper for working with hex encoded types.
+-- | A newtype wrapper for working with hex encoded types.
 newtype Hex a = Hex {fromHex :: a}
   deriving newtype (BitPack)
 
@@ -553,29 +547,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
   checkDependencies >>= maybe (return ()) die
   putStrLn $ "Creating plots for test case: " <> testName
 
-  let
-    knownId =
-      flip Set.member $
-        Set.fromList $
-          Vec.toList $
-            Vec.imap (\i a -> show i <> "_" <> fst a) fpgaSetup
-    topFromDirs =
-      listDirectory dir
-        >>= filterM (doesDirectoryExist . (dir </>))
-        >>= return
-          . fromJust
-          . someNatVal
-          . toInteger
-          . length
-          . filter knownId
-        >>= \case
-          SomeNat n -> return $ STopology $ complete $ snatProxy n
-
-  STopology (t :: Topology topologySize) <-
-    case cfg.ccTopologyType of
-      Random{} -> topFromDirs
-      DotFile f -> readFile f >>= either die return . fromDot
-      tt -> froccTopologyType tt >>= either die return
+  STopology (t :: Topology topologySize) <- pure cfg.sTopology
 
   case TLW.SNat @topologySize %<=? TLW.SNat @FpgaCount of
     LE Refl -> case TLW.SNat @1 %<=? TLW.SNat @topologySize of
@@ -665,10 +637,8 @@ plotTest refDom testDir cfg dir globalOutDir = do
               }
           ids = bimap toInteger fst <$> fpgas
 
-        case cfg.ccTopologyType of
-          Random{} -> writeTop Nothing
-          DotFile f -> readFile f >>= writeTop . Just
-          tt -> froccTopologyType tt >>= either die (`saveCcConfig` cfg1)
+        saveCcConfig cfg
+
         checkIntermediateResults outDir
           >>= maybe (generateReport refDom "HITLT Report" outDir ids cfg1) die
 
@@ -708,13 +678,6 @@ plotTest refDom testDir cfg dir globalOutDir = do
         Vec.toList $
           Vec.zip dpDataCounts dpStability
     )
-
-  writeTop (fromMaybe "digraph{}" -> str) =
-    withFile (outDir </> simTopologyFileName) WriteMode $ \h -> do
-      hSetBuffering h NoBuffering
-      hPutStr h str
-      hFlush h
-      hClose h
 
 {- | Try to parse a run artifact reference.
 
@@ -765,6 +728,7 @@ main =
         Just ccConfs -> pure ccConfs
 
       forM_ ccConfs $ \(testName, ccConf) -> do
+        saveCcConfig ccConf
         plotTest (Proxy @Basic125) testName ccConf (plotDataDir </> testName) outputDir
     _ -> wrongNumberOfArguments
  where
