@@ -84,7 +84,7 @@ isActiveLink ::
   Bool
 isActiveLink topology fpgaNr linkNr
   | sourceFpgaNr >= natToNum @n = False
-  | otherwise = topology.hasEdge (fromIntegral sourceFpgaNr) fpgaNr
+  | otherwise = hasEdge topology (fromIntegral sourceFpgaNr) fpgaNr
  where
   (_, links) = fpgaSetup !! fpgaNr
   sourceFpgaNr = links !! linkNr

@@ -303,7 +303,7 @@ postProcess t i links =
     Vec topologySize (Maybe a)
   topologyView =
     foldr (\(j, x) -> Vec.replace j $ Just x) (Vec.repeat Nothing)
-      . filter ((.hasEdge) t i . fst)
+      . filter (hasEdge t i . fst)
       . fmap
         ( first $
             checkedTruncateB @topologySize @(utilizedFpgaCount - topologySize)
@@ -619,7 +619,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
                 hClose h
 
                 let
-                  ls = show <$> filter ((.hasEdge) t i) (Vec.toList Vec.indicesI)
+                  ls = show <$> filter (hasEdge t i) (Vec.toList Vec.indicesI)
                   header =
                     Vector.fromList $
                       map BSC.pack $

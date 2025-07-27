@@ -107,7 +107,7 @@ plot maybeCorrection outputDir graph plotData =
                   @@ [o2 "label" $ show nodeIndex <> " ← " <> show j]
             else snd
         )
-      $ zip (filter (graph.hasEdge nodeIndex) [0, 1 ..])
+      $ zip (filter (hasEdge graph nodeIndex) [0, 1 ..])
       $ fmap plotEbData
       -- Organize data by node instead of by timestamp. I.e., the first item in
       -- 'timedBuffers' is for this node's first neighbor.

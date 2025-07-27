@@ -32,6 +32,7 @@ module Bittide.Topology (
   fromGraph,
   froccTopologyType,
   fromDot,
+  hasEdge,
   toDot,
   randomTopology,
   pairwise,
@@ -48,6 +49,7 @@ import Clash.Prelude (
   SomeNat (..),
   d0,
   d1,
+  natToInteger,
   snatProxy,
   snatToNum,
   type Div,
@@ -64,6 +66,7 @@ import Data.Array.MArray (freeze, getElems, newListArray, readArray, writeArray)
 import Data.Bifunctor (bimap, first)
 import Data.Bits (Bits (..))
 import Data.Containers.ListUtils (nubOrd)
+import Data.Data ((:~:) (..))
 import Data.Graph (Graph)
 import Data.Maybe (catMaybes, mapMaybe)
 import Data.Proxy (Proxy (..))
@@ -76,9 +79,9 @@ import Language.Dot.Parser (parse)
 import System.Random (randomIO, randomRIO)
 
 import qualified Data.Array as A (array, listArray, (!))
+import qualified Data.Array as Array
 import qualified Data.Graph as Graph
 import qualified Data.Map.Strict as M (fromList, (!))
-import qualified Data.Set as Set
 import qualified GHC.TypeNats as Nats
 
 -- | Special topologies may have names given as a string.
@@ -91,21 +94,39 @@ data Topology (n :: Nat) = Topology
   { name :: TopologyName
   , graph :: Graph
   , type_ :: TopologyType
-  , hasEdge :: Index n -> Index n -> Bool
   }
+  deriving (Show, Eq, Ord, Generic)
+
+{- | Checks whether a directed edge exists between two nodes in a topology. Its
+computational complexity is @O(n)@, where @n@ is the number of neighbors of
+the source node.
+-}
+hasEdge :: (KnownNat n) => Topology n -> Index n -> Index n -> Bool
+hasEdge topology i j = fromIntegral j `elem` (topology.graph Array.! fromIntegral i)
 
 -- | Existentially quantified version hiding the type level bound.
 data STopology where
   STopology :: (KnownNat n) => Topology n -> STopology
 
+instance Show STopology where
+  show (STopology (topology :: Topology n)) =
+    "STopology @" ++ show (natToInteger @n) ++ " (" ++ show topology ++ ")"
+
+instance Eq STopology where
+  (STopology (t1 :: Topology n)) == (STopology (t2 :: Topology m)) =
+    case Nats.sameNat (Proxy @n) (Proxy @m) of
+      Nothing -> False
+      Just Refl -> t1 == t2
+
+instance Ord STopology where
+  compare (STopology (t1 :: Topology n)) (STopology (t2 :: Topology m)) =
+    case Nats.sameNat (Proxy @n) (Proxy @m) of
+      Nothing -> compare (natToInteger @n) (natToInteger @m)
+      Just Refl -> compare t1 t2
+
 -- | Smart constructor of 'Topology'.
 fromGraph :: forall n. (KnownNat n) => TopologyName -> TopologyType -> Graph -> Topology n
-fromGraph name type_ graph = Topology{name, graph, type_, hasEdge}
- where
-  hasEdge i j =
-    Set.member
-      (fromIntegral i, fromIntegral j)
-      (Set.fromList (Graph.edges graph))
+fromGraph name type_ graph = Topology{name, graph, type_}
 
 {- | Disambiguates between a selection of known topologies, topologies
 that are loaded from DOT files, and random topologies.
