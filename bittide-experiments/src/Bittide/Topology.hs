@@ -141,9 +141,7 @@ instance FromJSON STopology where
 fromGraph :: forall n. (KnownNat n) => TopologyName -> TopologyType -> Graph -> Topology n
 fromGraph name type_ graph = Topology{name, graph, type_}
 
-{- | Disambiguates between a selection of known topologies, topologies
-that are loaded from DOT files, and random topologies.
--}
+-- | Disambiguates between a selection of known topologies and random topologies.
 data TopologyType
   = Diamond
   | Pendulum {length :: Natural, weight :: Natural}
@@ -159,7 +157,6 @@ data TopologyType
   | Dumbbell {width :: Natural, left :: Natural, right :: Natural}
   | Hourglass {nodes :: Natural}
   | Beads {count :: Natural, distance :: Natural, weight :: Natural}
-  | JsonFile {path :: FilePath}
   | Random {nodes :: Natural}
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
