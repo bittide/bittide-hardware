@@ -26,7 +26,6 @@ module Bittide.Topology (
   beads,
 
   -- * Utilities
-  fromGraph,
   hasEdge,
   size,
   toDot,
@@ -86,10 +85,6 @@ instance FromJSON Topology where
     let graph = A.listArray (0, L.length edges - 1) edges
     return Topology{name, graph, type_}
 
--- | Smart constructor of 'Topology'.
-fromGraph :: TopologyName -> TopologyType -> Graph -> Topology
-fromGraph name type_ graph = Topology{name, graph, type_}
-
 -- | Disambiguates between a selection of known topologies
 data TopologyType
   = Diamond
@@ -118,10 +113,11 @@ fromEdgeList edges = Graph.buildG (0, length vertices - 1) (nubOrd allEdges1)
 
 -- | @n@ nodes in a line, with a fully connected blob of @m@ nodes at one end.
 pendulum :: Int -> Int -> Topology
-pendulum length_ weight = (dumbbell length_ 0 weight)
-  { name = "pendulum"
-  , type_ = Pendulum length_ weight
-  }
+pendulum length_ weight =
+  (dumbbell length_ 0 weight)
+    { name = "pendulum"
+    , type_ = Pendulum length_ weight
+    }
 
 {- | @n@ nodes in a line, connected to their neighbors.
 
@@ -135,9 +131,13 @@ line nNodes = (dumbbell nNodes 0 0){name = "line", type_ = Line nNodes}
 -- | @n@-dimensional hypercube
 hypercube :: Int -> Topology
 hypercube nDimensions =
-  fromGraph "hypercube" (HyperCube nDimensions) (fromEdgeList es)
+  Topology
+    { name = "hypercube"
+    , graph = fromEdgeList es
+    , type_ = HyperCube nDimensions
+    }
  where
-  k = (2::Int)^nDimensions
+  k = (2 :: Int) ^ nDimensions
   es =
     -- see Callisto code (julia):
     -- https://github.com/bittide/Callisto.jl/blob/73d908c6cb02b9b953cc104e5b42d432efc42598/src/topology.jl#L224
@@ -150,12 +150,20 @@ hypercube nDimensions =
 -- | Diamond graph
 diamond :: Topology
 diamond =
-  fromGraph "diamond" Diamond (A.listArray (0, 3) [[1, 3], [0, 2, 3], [1, 3], [0, 1, 2]])
+  Topology
+    { name = "diamond"
+    , type_ = Diamond
+    , graph = A.listArray (0, 3) [[1, 3], [0, 2, 3], [1, 3], [0, 1, 2]]
+    }
 
 -- | Three dimensional torus.
 torus3d :: Int -> Int -> Int -> Topology
 torus3d nRows nCols nPlanes =
-  fromGraph "torus3d" (Torus3D nRows nCols nPlanes) (fromEdgeList dirEdges)
+  Topology
+    { name = "torus3d"
+    , graph = fromEdgeList dirEdges
+    , type_ = Torus3D nRows nCols nPlanes
+    }
  where
   pairs =
     [ (l, m, n)
@@ -176,7 +184,11 @@ torus3d nRows nCols nPlanes =
 -- | See [this figure](https://www.researchgate.net/figure/The-two-dimensional-torus-4x4_fig1_221134153)
 torus2d :: Int -> Int -> Topology
 torus2d nRows nCols =
-  fromGraph "torus2d" (Torus2D nRows nCols) (fromEdgeList dirEdges)
+  Topology
+    { name = "torus2d"
+    , graph = fromEdgeList dirEdges
+    , type_ = Torus2D nRows nCols
+    }
  where
   pairs = [(m, n) | m <- [0 .. (nRows - 1)], n <- [0 .. (nCols - 1)]]
   neighborsOf (m, n) =
@@ -190,7 +202,11 @@ torus2d nRows nCols =
 -- | [Grid graph](https://mathworld.wolfram.com/GridGraph.html)
 grid :: Int -> Int -> Topology
 grid nRows nCols =
-  fromGraph "grid" (Grid nRows nCols) (fromEdgeList dirEdges)
+  Topology
+    { name = "grid"
+    , graph = fromEdgeList dirEdges
+    , type_ = Grid nRows nCols
+    }
  where
   pairs = [(m, n) | m <- [1 .. nRows], n <- [1 .. nCols]]
   mkEdges (m, n) =
@@ -209,7 +225,11 @@ grid nRows nCols =
 -- | Tree of depth @depth@ with @childs@ children
 tree :: Int -> Int -> Topology
 tree depth nChildren =
-  fromGraph "tree" (Tree depth nChildren) treeGraph
+  Topology
+    { name = "tree"
+    , graph = treeGraph
+    , type_ = Tree depth nChildren
+    }
  where
   -- \| At depth @d_i@, child node @i@ is connected to the @(i-1) `div` c + 1@st
   -- node at depth @d_i - 1@
@@ -225,7 +245,7 @@ tree depth nChildren =
 
 -- | [Star graph](https://mathworld.wolfram.com/StarGraph.html)
 star :: Int -> Topology
-star nNodes = (tree 1 nNodes){ name = "star", type_ = Star nNodes }
+star nNodes = (tree 1 nNodes){name = "star", type_ = Star nNodes}
 
 {- | [Cyclic graph](https://mathworld.wolfram.com/CycleGraph.html) with @n@
 vertices.
@@ -237,7 +257,7 @@ cyclic nNodes = (beads nNodes 0 1){name = "cycle", type_ = Cycle nNodes}
 vertices.
 -}
 complete :: Int -> Topology
-complete nNodes = (beads 1 0 nNodes){name="complete", type_=Complete nNodes}
+complete nNodes = (beads 1 0 nNodes){name = "complete", type_ = Complete nNodes}
 
 {- | An dumbbell shaped graph consisting of two independent complete
 sub-graphs of size @l@ and @r@, connected via a chain of @w@ nodes
@@ -245,7 +265,11 @@ in between two distinct nodes of each sub-graph.
 -}
 dumbbell :: Int -> Int -> Int -> Topology
 dumbbell width nLeft nRight =
-  fromGraph "dumbbell" (Dumbbell width nLeft nRight) tGraph
+  Topology
+    { name = "dumbbell"
+    , graph = tGraph
+    , type_ = Dumbbell width nLeft nRight
+    }
  where
   m = width + nLeft + nRight - 1
 
@@ -272,7 +296,7 @@ nodes of each sub-graph.
 -}
 hourglass :: Int -> Topology
 hourglass nNodes =
-  (dumbbell 0 nNodes nNodes){name="hourglass", type_=Hourglass nNodes}
+  (dumbbell 0 nNodes nNodes){name = "hourglass", type_ = Hourglass nNodes}
 
 {- | A beads shaped graph consisting of two @count@ independent complete
 subgraphs of size @weight@ (representing the beads), connected via a
@@ -281,7 +305,11 @@ thread).
 -}
 beads :: Int -> Int -> Int -> Topology
 beads count distance weight =
-  fromGraph "beads" Beads{count, distance, weight} (fromEdgeList es)
+  Topology
+    { name = "beads"
+    , graph = fromEdgeList es
+    , type_ = Beads{count, distance, weight}
+    }
  where
   s = count * (distance + weight)
   es =
