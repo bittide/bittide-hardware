@@ -12,9 +12,8 @@ module Bittide.Simulate.Config (
 ) where
 
 import Bittide.Arithmetic.PartsPer (PartsPer)
-import Bittide.Topology (STopology (..), complete, toDotS)
+import Bittide.Topology (Topology (..), complete, toDot)
 
-import Clash.Prelude (SNat (SNat))
 import Data.Aeson (FromJSON (..), ToJSON (..))
 import Data.Default (Default (..))
 import GHC.Generics (Generic)
@@ -34,7 +33,7 @@ simTopologyFileName = "topology.gv"
 
 -- | Collection of all clock control configuration parameters.
 data CcConf = CcConf
-  { sTopology :: STopology
+  { topology :: Topology
   -- ^ The topology of the network to be simulated
   , samples :: Int
   -- ^ The number of samples to be utilized for result
@@ -63,7 +62,7 @@ data CcConf = CcConf
 instance Default CcConf where
   def =
     CcConf
-      { sTopology = STopology (complete (SNat @8))
+      { topology = complete 8
       , samples = 100
       , reframe = True
       , waitTime = 100000
@@ -83,4 +82,4 @@ saveCcConfig ccConf = do
   ByteString.writeFile simConfigFile (Aeson.encode ccConf)
 
   let dotFile = ccConf.outDir </> simTopologyFileName
-  writeFile dotFile (toDotS ccConf.sTopology)
+  writeFile dotFile (toDot ccConf.topology)

@@ -38,7 +38,7 @@ import Bittide.Arithmetic.PartsPer (toPpm)
 import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.Plot
 import Bittide.Simulate.Config (CcConf (..), simTopologyFileName)
-import Bittide.Topology (STopology (STopology), Topology (type_))
+import Bittide.Topology (Topology (type_))
 
 {- | Format a number with underscores every three digits.
 
@@ -215,7 +215,7 @@ toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids ccConf =
     , "\\fancyhf{}"
     , "\\fancyhead[L]{\\large \\textbf{" <> header <> "}}"
     , "\\fancyhead[C]{\\large Topology Type: \\texttt{"
-        <> case ccConf.sTopology of STopology topology -> show topology.type_
+        <> show ccConf.topology.type_
         <> "}}"
     , "\\fancyhead[R]{\\large " <> datetime <> "}"
     , "\\renewcommand{\\headrulewidth}{0.4pt}"

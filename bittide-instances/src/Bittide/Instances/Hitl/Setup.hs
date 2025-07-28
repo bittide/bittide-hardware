@@ -26,6 +26,10 @@ import Clash.Prelude
 
 import Bittide.Hitl (DeviceInfo (..), FpgaId, HwTargetRef (..))
 import Bittide.Topology
+import GHC.Stack (HasCallStack)
+
+import qualified Bittide.Topology as Topology
+import qualified Data.String.Interpolate as I
 
 -- | The number of FPGAs in the current setup
 type FpgaCount = 8 :: Nat
@@ -76,15 +80,12 @@ allHwTargets = (\d -> HwTargetById d.deviceId d) <$> demoRigInfo
 
 -- | Determines whether a link is active for a given FPGA and topology.
 isActiveLink ::
-  forall n.
-  (KnownNat n, n <= FpgaCount) =>
-  Topology n ->
-  Index n ->
+  Topology ->
+  Index FpgaCount ->
   Index LinkCount ->
   Bool
-isActiveLink topology fpgaNr linkNr
-  | sourceFpgaNr >= natToNum @n = False
-  | otherwise = hasEdge topology (fromIntegral sourceFpgaNr) fpgaNr
+isActiveLink topology fpgaNr linkNr =
+  hasEdge topology (numConvert sourceFpgaNr) (numConvert fpgaNr)
  where
   (_, links) = fpgaSetup !! fpgaNr
   sourceFpgaNr = links !! linkNr
@@ -94,7 +95,7 @@ isActiveLink topology fpgaNr linkNr
 >>> import Data.Graph
 >>> import Clash.Prelude
 >>> import Bittide.Topology
->>> let graph = complete d3
+>>> let graph = complete 3
 >>> pack (linkMask graph 0)
 0b010_0001
 >>> pack (linkMask graph 1)
@@ -102,21 +103,26 @@ isActiveLink topology fpgaNr linkNr
 >>> pack (linkMask graph 2)
 0b110_0000
 -}
-linkMask ::
-  forall n.
-  (KnownNat n, n <= FpgaCount) =>
-  Topology n ->
-  -- | FPGA number
-  Index n ->
-  Vec LinkCount Bool
+linkMask :: Topology -> Index FpgaCount -> Vec LinkCount Bool
 linkMask topology fpgaNr = isActiveLink topology fpgaNr <$> indicesI
 
 linkMasks ::
   forall n.
-  (KnownNat n, n <= FpgaCount) =>
-  Topology n ->
+  ( HasCallStack
+  , KnownNat n
+  , n <= FpgaCount
+  ) =>
+  Topology ->
   Vec n (BitVector LinkCount)
-linkMasks topology = pack . linkMask topology <$> indicesI
+linkMasks topology
+  | Topology.size topology > natToNum @n =
+      error
+        [I.i|
+        You requested #{natToInteger @n} link masks, but the topology has more
+        nodes than that (#{Topology.size topology}). This is probably not what
+        you want.
+        |]
+  | otherwise = pack . linkMask topology . numConvert <$> indicesI
 
 -- | List of device information of all FPGAs connected to the demo rig
 demoRigInfo :: [DeviceInfo]
