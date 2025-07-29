@@ -61,8 +61,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
 import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Simulate.Config (CcConf (..))
 import Bittide.Topology (
-  Topology (topologyName, topologyType),
-  TopologyType (Complete),
+  Topology (name),
   complete,
   cyclic,
   diamond,
@@ -1071,7 +1070,7 @@ tests = [testGroup True, testGroup False]
                     })
       , postProcData =
           defSimCfg
-            { ccTopologyType = Complete $ natToNum @FpgaCount
+            { topology = complete (natToNum @FpgaCount)
             , clockOffsets = Nothing
             , startupDelays = toList $ repeat @FpgaCount 0
             }
@@ -1083,12 +1082,12 @@ tests = [testGroup True, testGroup False]
     (KnownNat n, n <= FpgaCount) =>
     Maybe (Vec n PartsPer) ->
     Vec n StartupDelay ->
-    Topology n ->
+    Topology ->
     Bool ->
     HitlTestCase HwTargetRef TestConfig CcConf
   tt clockShifts startDelays t r =
     HitlTestCase
-      { name = t.topologyName
+      { name = t.name
       , parameters =
           Map.fromList
             $ toList
@@ -1106,7 +1105,7 @@ tests = [testGroup True, testGroup False]
                ]
       , postProcData =
           defSimCfg
-            { ccTopologyType = t.topologyType
+            { topology = t
             , clockOffsets = toList <$> clockShifts
             , startupDelays = fromIntegral <$> toList startDelays
             , reframe = r
@@ -1152,13 +1151,13 @@ tests = [testGroup True, testGroup False]
 
 {- FOURMOLU_DISABLE -} -- fourmolu doesn't do well with tabular structures
   allCases = [
-      -- initial clock shifts   startup delays            topology          enable reframing?
-      tt (Just icsDiamond)      ((m *) <$> sdDiamond)     diamond           False
-    , tt (Just icsComplete)     ((m *) <$> sdComplete)    (complete d3)     False
-    , tt (Just icsCyclic)       ((m *) <$> sdCyclic)      (cyclic d5)       False
-    , tt (Just icsTorus)        ((m *) <$> sdTorus)       (torus2d d2 d3)   False
-    , tt (Just icsStar)         ((m *) <$> sdStar)        (star d7)         False
-    , tt (Just icsLine)         ((m *) <$> sdLine)        (line d4)         False
-    , tt (Just icsHourglass)    ((m *) <$> sdHourglass)   (hourglass d3)    False
+      -- initial clock shifts   startup delays            topology      enable reframing?
+      tt (Just icsDiamond)      ((m *) <$> sdDiamond)     diamond       False
+    , tt (Just icsComplete)     ((m *) <$> sdComplete)    (complete 3)  False
+    , tt (Just icsCyclic)       ((m *) <$> sdCyclic)      (cyclic 5)    False
+    , tt (Just icsTorus)        ((m *) <$> sdTorus)       (torus2d 2 3) False
+    , tt (Just icsStar)         ((m *) <$> sdStar)        (star 7)      False
+    , tt (Just icsLine)         ((m *) <$> sdLine)        (line 4)      False
+    , tt (Just icsHourglass)    ((m *) <$> sdHourglass)   (hourglass 3) False
     ]
 {- FOURMOLU_ENABLE -}

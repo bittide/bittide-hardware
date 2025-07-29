@@ -21,7 +21,6 @@ import Clash.Prelude (
   checkedTruncateB,
   extend,
   natToNum,
-  snatProxy,
  )
 
 import Clash.Signal.Internal (Femtoseconds (..))
@@ -46,7 +45,7 @@ import Conduit (
  )
 import Control.Arrow (first)
 import Control.Exception (Exception (..), catch, throw)
-import Control.Monad (filterM, forM, forM_, unless, when)
+import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.Extra (ifM, unlessM)
 import Data.Bifunctor (bimap)
 
@@ -64,7 +63,7 @@ import Data.Csv.Conduit (
   fromNamedCsvStreamError,
  )
 import Data.List (isSuffixOf, unzip4)
-import Data.Maybe (catMaybes, fromJust, fromMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import Data.Proxy (Proxy (..))
 import Data.String (fromString)
 import Data.Typeable (cast)
@@ -85,17 +84,13 @@ import System.FilePath (
   (</>),
  )
 import System.IO (
-  BufferMode (..),
   Handle,
   IOMode (..),
   hClose,
   hFlush,
-  hPutStr,
-  hSetBuffering,
   openFile,
   stderr,
   stdout,
-  withFile,
  )
 import Text.Read (readMaybe)
 import "bittide-extra" Numeric.Extra (parseHex)
@@ -110,12 +105,13 @@ import Bittide.Instances.Hitl.IlaPlot
 import Bittide.Instances.Hitl.Setup
 import Bittide.Plot
 import Bittide.Report.ClockControl
-import Bittide.Simulate.Config (CcConf, saveCcConfig, simTopologyFileName)
+import Bittide.Simulate.Config (CcConf, saveCcConfig)
 import Bittide.Topology
 
 import Bittide.Instances.Hitl.Tests (hitlTests)
 
 import qualified Bittide.Simulate.Config as CcConf
+import qualified Bittide.Topology as Topology
 import qualified Clash.Prelude as C
 import qualified Clash.Sized.Vector as Vec
 import qualified Data.ByteString as BS
@@ -124,12 +120,12 @@ import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.UTF8 as UTF8
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import qualified Data.Text as Text
 import qualified Data.Vector as Vector
 import qualified GHC.TypeLits.Witnesses as TLW (SNat (..))
+import qualified GHC.TypeNats as TypeNats
 
--- A newtype wrapper for working with hex encoded types.
+-- | A newtype wrapper for working with hex encoded types.
 newtype Hex a = Hex {fromHex :: a}
   deriving newtype (BitPack)
 
@@ -285,7 +281,7 @@ postProcess ::
   , 1 <= utilizedFpgaCount
   , topologySize <= utilizedFpgaCount
   ) =>
-  Topology topologySize ->
+  Topology ->
   Index topologySize ->
   Vec (utilizedFpgaCount - 1) (Index utilizedFpgaCount) ->
   ConduitT
@@ -303,7 +299,7 @@ postProcess t i links =
     Vec topologySize (Maybe a)
   topologyView =
     foldr (\(j, x) -> Vec.replace j $ Just x) (Vec.repeat Nothing)
-      . filter ((.hasEdge) t i . fst)
+      . filter (hasEdge t (fromIntegral i) . fromIntegral . fst)
       . fmap
         ( first $
             checkedTruncateB @topologySize @(utilizedFpgaCount - topologySize)
@@ -433,7 +429,7 @@ fromCsvDump ::
   , 1 <= utilizedFpgaCount
   , topologySize <= utilizedFpgaCount
   ) =>
-  Topology topologySize ->
+  Topology ->
   Index topologySize ->
   Vec (utilizedFpgaCount - 1) (Index utilizedFpgaCount) ->
   (Handle, FilePath) ->
@@ -553,29 +549,10 @@ plotTest refDom testDir cfg dir globalOutDir = do
   checkDependencies >>= maybe (return ()) die
   putStrLn $ "Creating plots for test case: " <> testName
 
-  let
-    knownId =
-      flip Set.member $
-        Set.fromList $
-          Vec.toList $
-            Vec.imap (\i a -> show i <> "_" <> fst a) fpgaSetup
-    topFromDirs =
-      listDirectory dir
-        >>= filterM (doesDirectoryExist . (dir </>))
-        >>= return
-          . fromJust
-          . someNatVal
-          . toInteger
-          . length
-          . filter knownId
-        >>= \case
-          SomeNat n -> return $ STopology $ complete $ snatProxy n
+  let topologySize = Topology.size cfg.topology
 
-  STopology (t :: Topology topologySize) <-
-    case cfg.ccTopologyType of
-      Random{} -> topFromDirs
-      DotFile f -> readFile f >>= either die return . fromDot
-      tt -> froccTopologyType tt >>= either die return
+  SomeNat (_ :: Proxy topologySize) <-
+    pure $ TypeNats.someNatVal (fromIntegral topologySize)
 
   case TLW.SNat @topologySize %<=? TLW.SNat @FpgaCount of
     LE Refl -> case TLW.SNat @1 %<=? TLW.SNat @topologySize of
@@ -597,7 +574,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
                 h <- openFile f ReadMode
                 rs <- catch
                   ( do
-                      rs <- runConduit $ fromCsvDump @CccBufferSize t i links (h, f)
+                      rs <- runConduit $ fromCsvDump @CccBufferSize cfg.topology i links (h, f)
                       putStrLn ("Using " <> (takeBaseName d </> takeFileName f))
                       return rs
                   )
@@ -619,7 +596,11 @@ plotTest refDom testDir cfg dir globalOutDir = do
                 hClose h
 
                 let
-                  ls = show <$> filter ((.hasEdge) t i) (Vec.toList Vec.indicesI)
+                  ls =
+                    show
+                      <$> filter
+                        (hasEdge cfg.topology (fromIntegral i))
+                        [0 .. topologySize - 1]
                   header =
                     Vector.fromList $
                       map BSC.pack $
@@ -640,7 +621,7 @@ plotTest refDom testDir cfg dir globalOutDir = do
 
                 return (toPlotData <$> rs)
 
-        let postProcessDataVec = Vec.unsafeFromList postProcessData
+        let postProcessDataVec = Vec.unsafeFromList @topologySize postProcessData
 
         -- Calculate offset correction for readability purposes. See:
         -- https://github.com/bittide/bittide-hardware/issues/607
@@ -652,9 +633,6 @@ plotTest refDom testDir cfg dir globalOutDir = do
                 Left err -> pure (Just err, Nothing)
                 Right correction -> pure (Nothing, Just correction)
 
-        createDirectoryIfMissing True outDir
-        plot maybeOffsetCorrection outDir t postProcessDataVec
-
         let
           allStable =
             all ((\(_, _, _, xs) -> all ((.stable) . snd) xs) . last) postProcessData
@@ -665,10 +643,10 @@ plotTest refDom testDir cfg dir globalOutDir = do
               }
           ids = bimap toInteger fst <$> fpgas
 
-        case cfg.ccTopologyType of
-          Random{} -> writeTop Nothing
-          DotFile f -> readFile f >>= writeTop . Just
-          tt -> froccTopologyType tt >>= either die (`saveCcConfig` cfg1)
+        createDirectoryIfMissing True outDir
+        saveCcConfig cfg1
+        plot maybeOffsetCorrection outDir cfg.topology postProcessDataVec
+
         checkIntermediateResults outDir
           >>= maybe (generateReport refDom "HITLT Report" outDir ids cfg1) die
 
@@ -708,13 +686,6 @@ plotTest refDom testDir cfg dir globalOutDir = do
         Vec.toList $
           Vec.zip dpDataCounts dpStability
     )
-
-  writeTop (fromMaybe "digraph{}" -> str) =
-    withFile (outDir </> simTopologyFileName) WriteMode $ \h -> do
-      hSetBuffering h NoBuffering
-      hPutStr h str
-      hFlush h
-      hClose h
 
 {- | Try to parse a run artifact reference.
 

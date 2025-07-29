@@ -38,6 +38,7 @@ import Bittide.Arithmetic.PartsPer (toPpm)
 import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.Plot
 import Bittide.Simulate.Config (CcConf (..), simTopologyFileName)
+import Bittide.Topology (Topology (type_))
 
 {- | Format a number with underscores every three digits.
 
@@ -192,7 +193,7 @@ toLatex ::
   -- | The utilized simulation configuration
   CcConf ->
   String
-toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids CcConf{..} =
+toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids ccConf =
   unlines
     [ "\\documentclass[landscape]{article}"
     , ""
@@ -214,7 +215,7 @@ toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids CcConf{..} =
     , "\\fancyhf{}"
     , "\\fancyhead[L]{\\large \\textbf{" <> header <> "}}"
     , "\\fancyhead[C]{\\large Topology Type: \\texttt{"
-        <> show ccTopologyType
+        <> show ccConf.topology.type_
         <> "}}"
     , "\\fancyhead[R]{\\large " <> datetime <> "}"
     , "\\renewcommand{\\headrulewidth}{0.4pt}"
@@ -263,15 +264,15 @@ toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids CcConf{..} =
     , "\\begin{large}"
     , "  \\begin{tabular}{rl}"
     , "    clock offsets:"
-    , "      & " <> maybe "\\textit{not used}" formatOffsets clockOffsets <> " \\\\"
+    , "      & " <> maybe "\\textit{not used}" formatOffsets ccConf.clockOffsets <> " \\\\"
     , "    startup delays:"
     , "      & " <> intercalate "; " (qtyMs <$> startupDelaysMs) <> " \\\\"
     , "    reframing:"
     , "      & "
         <> "\\textit{"
-        <> bool "disabled" "enabled" reframe
+        <> bool "disabled" "enabled" ccConf.reframe
         <> "} \\\\"
-    , if reframe then "    wait time: & " <> show waitTime <> " \\\\" else ""
+    , if ccConf.reframe then "    wait time: & " <> show ccConf.waitTime <> " \\\\" else ""
     , "    all buffers stable end of run:"
     , "      & "
         <> maybe
@@ -280,7 +281,7 @@ toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids CcConf{..} =
               "\\textcolor{red!50!black}{\\ding{55}}"
               "\\textcolor{green!50!black}{\\ding{51}}"
           )
-          stable
+          ccConf.stable
         <> " \\\\"
     , "  \\end{tabular}"
     , "\\end{large}"
@@ -313,7 +314,7 @@ toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids CcConf{..} =
     , "    (D) at ($ (C.north east) + (0.2,0) $) {"
     , "      \\small\\textit{buffer is stable and centered}"
     , "    };"
-    , if not reframe
+    , if not ccConf.reframe
         then ""
         else
           unlines
@@ -340,4 +341,4 @@ toLatex _refDom datetime runref header clocksPdf ebsPdf topTikz ids CcConf{..} =
   qtyPpm ppm = "\\qty{" <> show ppm <> "}{\\ppm}"
 
   nCyclesOneMs = natToNum @(PeriodToCycles refDom (Milliseconds 1))
-  startupDelaysMs = (`div` nCyclesOneMs) <$> startupDelays
+  startupDelaysMs = (`div` nCyclesOneMs) <$> ccConf.startupDelays

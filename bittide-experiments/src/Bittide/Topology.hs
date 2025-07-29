@@ -1,21 +1,13 @@
 -- SPDX-FileCopyrightText: 2022 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE UndecidableInstances #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Bittide.Topology (
   -- * Data Types
   TopologyType (..),
   TopologyName,
-  Topology (
-    topologyName,
-    topologyGraph,
-    topologyType,
-    hasEdge
-  ),
-  STopology (..),
-  TreeSize,
+  Topology (..),
 
   -- * Special Topologies
   cyclic,
@@ -34,201 +26,97 @@ module Bittide.Topology (
   beads,
 
   -- * Utilities
-  fromGraph,
-  froccTopologyType,
-  fromDot,
+  hasEdge,
+  size,
   toDot,
-  randomTopology,
   pairwise,
 ) where
 
 import Prelude
 
-import Clash.Prelude (
-  Generic,
-  Index,
-  KnownNat,
-  Nat,
-  SNat (..),
-  SomeNat (..),
-  d0,
-  d1,
-  natToNum,
-  snatProxy,
-  snatToNum,
-  someNatVal,
-  type Div,
-  type (*),
-  type (+),
-  type (-),
-  type (^),
- )
-
-import Control.Monad (forM, forM_, replicateM, replicateM_, unless, when)
 import Data.Aeson (FromJSON (..), ToJSON (..))
-import Data.Array.IO (IOUArray)
-import Data.Array.MArray (freeze, getElems, newListArray, readArray, writeArray)
-import Data.Bifunctor (bimap, first)
+import Data.Bifunctor (bimap)
 import Data.Bits (Bits (..))
 import Data.Containers.ListUtils (nubOrd)
-import Data.Function (on)
-import Data.Graph (Graph, buildG, edges, graphFromEdges, scc)
-import Data.List (groupBy, sort)
-import Data.Maybe (catMaybes, mapMaybe)
-import Data.Proxy (Proxy (..))
+import Data.Graph (Graph)
+import Data.Maybe (mapMaybe)
 import Data.Tuple (swap)
-import GHC.Num.Natural (Natural)
-import GHC.TypeLits.KnownNat (KnownNat2 (..), SNatKn (..), nameToSymbol)
-import GHC.TypeNats (natVal)
-import Language.Dot.Graph (GraphType (..), Name (..), Statement (..), Subgraph (..))
-import Language.Dot.Parser (parse)
-import System.Random (randomIO, randomRIO)
+import GHC.Generics (Generic)
 
-import qualified Data.Array as A (accumArray, array, listArray, (!))
+import qualified Clash.Util.Interpolate as I
+import qualified Data.Array as A (array, listArray)
+import qualified Data.Array as Array
+import qualified Data.Graph as Graph
+import qualified Data.List as L
 import qualified Data.Map.Strict as M (fromList, (!))
-import qualified Data.Set as S (fromList, toList)
-import qualified GHC.TypeNats as Nats
 
 -- | Special topologies may have names given as a string.
 type TopologyName = String
 
-{- | A topology is just a simple graph extended with a type level size
-bound, a name and a 'TopologyType'.
+{- | A topology is a graph that is used to build different \"interesting\"
+network shapes for clock control to act on.
 -}
-data Topology (n :: Nat) = Topology
-  { topologyName :: TopologyName
-  , topologyGraph :: Graph
-  , topologyType :: TopologyType
-  , hasEdge :: Index n -> Index n -> Bool
+data Topology = Topology
+  { name :: TopologyName
+  , graph :: Graph
+  , type_ :: TopologyType
   }
+  deriving (Show, Eq, Ord, Generic)
 
--- | Existentially quantified version hiding the type level bound.
-data STopology = forall n. (KnownNat n) => STopology (Topology n)
+size :: Topology -> Int
+size Topology{graph} = snd (Array.bounds graph) + 1
 
--- | Smart constructor of 'Topology'.
-fromGraph :: forall n. (KnownNat n) => TopologyName -> Graph -> Topology n
-fromGraph name graph =
-  Topology name graph (Random $ natToNum @n) $
-    curry $
-      (A.!) $
-        A.accumArray (const id) False bounds $
-          zip (filter (uncurry (/=)) edgeIndices) [True, True ..]
- where
-  bounds = ((minBound, minBound), (maxBound, maxBound))
-  edgeIndices = map (bimap fromIntegral fromIntegral) $ edges graph
-
-{- | Disambiguates between a selection of known topologies, topologies
-that are loaded from DOT files, and random topologies.
+{- | Checks whether a directed edge exists between two nodes in a topology. Its
+computational complexity is @O(n)@, where @n@ is the number of neighbors of
+the source node.
 -}
+hasEdge :: Topology -> Int -> Int -> Bool
+hasEdge topology i j
+  | i > snd (Array.bounds topology.graph) = False
+  | otherwise = j `elem` (topology.graph Array.! i)
+
+instance ToJSON Topology where
+  toJSON Topology{name, graph, type_} =
+    toJSON (name, Array.elems graph, type_)
+
+instance FromJSON Topology where
+  parseJSON v = do
+    (name, edges, type_) <- parseJSON v
+    let graph = A.listArray (0, L.length edges - 1) edges
+    return Topology{name, graph, type_}
+
+-- | Disambiguates between a selection of known topologies
 data TopologyType
   = Diamond
-  | Pendulum {length :: Natural, weight :: Natural}
-  | Line {nodes :: Natural}
-  | HyperCube {dimensions :: Natural}
-  | Grid {rows :: Natural, cols :: Natural}
-  | Torus2D {rows :: Natural, cols :: Natural}
-  | Torus3D {rows :: Natural, cols :: Natural, planes :: Natural}
-  | Tree {depth :: Natural, children :: Natural}
-  | Star {nodes :: Natural}
-  | Cycle {nodes :: Natural}
-  | Complete {nodes :: Natural}
-  | Dumbbell {width :: Natural, left :: Natural, right :: Natural}
-  | Hourglass {nodes :: Natural}
-  | Beads {count :: Natural, distance :: Natural, weight :: Natural}
-  | DotFile {filepath :: FilePath}
-  | Random {nodes :: Natural}
+  | Pendulum {length :: !Int, weight :: !Int}
+  | Line {nodes :: !Int}
+  | HyperCube {dimensions :: !Int}
+  | Grid {rows :: !Int, cols :: !Int}
+  | Torus2D {rows :: !Int, cols :: !Int}
+  | Torus3D {rows :: !Int, cols :: !Int, planes :: !Int}
+  | Tree {depth :: !Int, children :: !Int}
+  | Star {nodes :: !Int}
+  | Cycle {nodes :: !Int}
+  | Complete {nodes :: !Int}
+  | Dumbbell {width :: !Int, left :: !Int, right :: !Int}
+  | Hourglass {nodes :: !Int}
+  | Beads {count :: !Int, distance :: !Int, weight :: !Int}
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
-data SomeSNat where
-  SomeSNat :: (KnownNat n) => SNat n -> SomeSNat
-
--- | Generates some topology of the given topology type, if possible.
-froccTopologyType ::
-  TopologyType ->
-  IO (Either String STopology)
-froccTopologyType = \case
-  Diamond -> ret diamond
-  Pendulum l w ->
-    case (naturalToSomeSNat l, naturalToSomeSNat w) of
-      (SomeSNat sL, SomeSNat sW) ->
-        ret (pendulum sL sW)
-  Line n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> ret (line sN)
-  HyperCube n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> ret (hypercube sN)
-  Grid rows cols ->
-    case (naturalToSomeSNat rows, naturalToSomeSNat cols) of
-      (SomeSNat sRows, SomeSNat sCols) -> ret (grid sRows sCols)
-  Torus2D rows cols ->
-    case (naturalToSomeSNat rows, naturalToSomeSNat cols) of
-      (SomeSNat sRows, SomeSNat sCols) -> ret (torus2d sRows sCols)
-  Torus3D rows cols planes ->
-    case (naturalToSomeSNat rows, naturalToSomeSNat cols, naturalToSomeSNat planes) of
-      (SomeSNat sRows, SomeSNat sCols, SomeSNat sPlanes) ->
-        ret (torus3d sRows sCols sPlanes)
-  Tree depth childs ->
-    case (naturalToSomeSNat depth, naturalToSomeSNat childs) of
-      (SomeSNat sDepth, SomeSNat sChilds) -> ret (tree sDepth sChilds)
-  Star n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> ret (star sN)
-  Cycle n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> ret (cyclic sN)
-  Complete n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> ret (complete sN)
-  Dumbbell w l r ->
-    case (naturalToSomeSNat w, naturalToSomeSNat l, naturalToSomeSNat r) of
-      (SomeSNat sW, SomeSNat sL, SomeSNat sR) -> ret (dumbbell sW sL sR)
-  Hourglass n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> ret (hourglass sN)
-  Beads c d w ->
-    case (naturalToSomeSNat c, naturalToSomeSNat d, naturalToSomeSNat w) of
-      (SomeSNat sC, SomeSNat sD, SomeSNat sW) -> ret (beads sC sD sW)
-  Random n ->
-    case naturalToSomeSNat n of
-      SomeSNat sN -> do
-        topology <- randomTopology sN
-        ret topology
-  DotFile f -> do
-    contents <- readFile f
-    pure $ first (("Invalid DOT file - " <> f <> "\n") <>) $ fromDot $ contents
- where
-  ret :: forall (n :: Nat). (KnownNat n) => Topology n -> IO (Either String STopology)
-  ret = pure . pure . STopology
-
-  naturalToSomeSNat :: Natural -> SomeSNat
-  naturalToSomeSNat n =
-    case Nats.someNatVal n of
-      Nats.SomeNat sn -> SomeSNat (snatProxy sn)
-
--- | Given a list of edges, turn it into a directed graph.
 fromEdgeList :: forall a. (Ord a) => [(a, a)] -> Graph
-fromEdgeList es = dirGraph
+fromEdgeList edges = Graph.buildG (0, length vertices - 1) (nubOrd allEdges1)
  where
-  -- "Data.Graph" deals with directed graphs
-  allEdges :: [(a, a)]
-  allEdges = es ++ fmap swap es
-  adjList :: [(a, [a])]
-  adjList = g <$> groupBy ((==) `on` fst) (nubOrd $ sort allEdges)
-  -- now that we have a sorted/grouped list of edges, reformat by attaching
-  -- a list of all connected nodes to each node.
-  g :: [(a, b)] -> (a, [b])
-  g ps@((x, _) : _) = (x, snd <$> ps)
-  g [] = error "No edges."
-  (dirGraph, _, _) =
-    graphFromEdges ((\(key, keys) -> ((), key, keys)) <$> adjList)
+  allEdges0 = edges ++ fmap swap edges -- links are bidirectional in our setup
+  vertices = nubOrd $ uncurry (<>) $ unzip edges
+  vertexMap = M.fromList $ zip vertices [0 ..]
+  allEdges1 = bimap (vertexMap M.!) (vertexMap M.!) <$> allEdges0
 
 -- | @n@ nodes in a line, with a fully connected blob of @m@ nodes at one end.
-pendulum :: SNat l -> SNat w -> Topology (l + w)
-pendulum sl sw =
-  (dumbbell sl d0 sw)
-    { topologyName = "pendulum"
-    , topologyType = Pendulum (snatToNum sl) (snatToNum sw)
+pendulum :: Int -> Int -> Topology
+pendulum length_ weight =
+  (dumbbell length_ 0 weight)
+    { name = "pendulum"
+    , type_ = Pendulum length_ weight
     }
 
 {- | @n@ nodes in a line, connected to their neighbors.
@@ -237,87 +125,90 @@ pendulum sl sw =
 [mathematical terminology](https://mathworld.wolfram.com/LineGraph.html) but
 conforms to callisto)
 -}
-line :: SNat n -> Topology n
-line sn =
-  (dumbbell sn d0 d0)
-    { topologyName = "line"
-    , topologyType = Line $ snatToNum sn
-    }
+line :: Int -> Topology
+line nNodes = (dumbbell nNodes 0 0){name = "line", type_ = Line nNodes}
 
 -- | @n@-dimensional hypercube
-hypercube :: SNat n -> Topology (2 ^ n)
-hypercube sn@SNat =
-  (fromGraph "hypercube" $ fromEdgeList es)
-    { topologyType = HyperCube $ snatToNum sn
+hypercube :: Int -> Topology
+hypercube nDimensions =
+  Topology
+    { name = "hypercube"
+    , graph = fromEdgeList es
+    , type_ = HyperCube nDimensions
     }
  where
-  n = snatToNum sn
-  k = (2 :: Int) ^ n
+  k = (2 :: Int) ^ nDimensions
   es =
     -- see Callisto code (julia):
     -- https://github.com/bittide/Callisto.jl/blob/73d908c6cb02b9b953cc104e5b42d432efc42598/src/topology.jl#L224
     [ let j = i .|. (1 `shiftL` b) in (i + 1, j + 1)
     | i <- [0 .. (k - 1)]
-    , b <- [0 .. (n - 1)]
+    , b <- [0 .. (nDimensions - 1)]
     , i .&. (1 `shiftL` b) == 0
     ]
 
 -- | Diamond graph
-diamond :: Topology 4
+diamond :: Topology
 diamond =
-  (fromGraph "diamond" $ A.listArray (0, 3) [[1, 3], [0, 2, 3], [1, 3], [0, 1, 2]])
-    { topologyType = Diamond
+  Topology
+    { name = "diamond"
+    , type_ = Diamond
+    , graph = A.listArray (0, 3) [[1, 3], [0, 2, 3], [1, 3], [0, 1, 2]]
     }
 
 -- | Three dimensional torus.
-torus3d :: SNat a -> SNat b -> SNat c -> Topology (a * b * c)
-torus3d sna@SNat snb@SNat snc@SNat =
-  (fromGraph "torus3d" $ fromEdgeList dirEdges)
-    { topologyType = Torus3D a b c
+torus3d :: Int -> Int -> Int -> Topology
+torus3d nRows nCols nPlanes =
+  Topology
+    { name = "torus3d"
+    , graph = fromEdgeList dirEdges
+    , type_ = Torus3D nRows nCols nPlanes
     }
  where
-  a = snatToNum sna
-  b = snatToNum snb
-  c = snatToNum snc
-  pairs = [(l, m, n) | l <- [0 .. (a - 1)], m <- [0 .. (b - 1)], n <- [0 .. (c - 1)]]
+  pairs =
+    [ (l, m, n)
+    | l <- [0 .. (nRows - 1)]
+    , m <- [0 .. (nCols - 1)]
+    , n <- [0 .. (nPlanes - 1)]
+    ]
   neighborsOf (l, m, n) =
-    [ ((l - 1) `mod` a, m, n)
-    , ((l + 1) `mod` a, m, n)
-    , (l, (m - 1) `mod` b, n)
-    , (l, (m + 1) `mod` b, n)
-    , (l, m, (n - 1) `mod` c)
-    , (l, m, (n + 1) `mod` c)
+    [ ((l - 1) `mod` nRows, m, n)
+    , ((l + 1) `mod` nRows, m, n)
+    , (l, (m - 1) `mod` nCols, n)
+    , (l, (m + 1) `mod` nCols, n)
+    , (l, m, (n - 1) `mod` nPlanes)
+    , (l, m, (n + 1) `mod` nPlanes)
     ]
   dirEdges = concatMap (\p -> fmap (p,) (neighborsOf p)) pairs
 
 -- | See [this figure](https://www.researchgate.net/figure/The-two-dimensional-torus-4x4_fig1_221134153)
-torus2d :: SNat rows -> SNat cols -> Topology (rows * cols)
-torus2d snRows@SNat snCols@SNat =
-  (fromGraph "torus2d" $ fromEdgeList dirEdges)
-    { topologyType = Torus2D rows cols
+torus2d :: Int -> Int -> Topology
+torus2d nRows nCols =
+  Topology
+    { name = "torus2d"
+    , graph = fromEdgeList dirEdges
+    , type_ = Torus2D nRows nCols
     }
  where
-  rows = snatToNum snRows
-  cols = snatToNum snCols
-  pairs = [(m, n) | m <- [0 .. (rows - 1)], n <- [0 .. (cols - 1)]]
+  pairs = [(m, n) | m <- [0 .. (nRows - 1)], n <- [0 .. (nCols - 1)]]
   neighborsOf (m, n) =
-    [ ((m - 1) `mod` rows, n)
-    , ((m + 1) `mod` rows, n)
-    , (m, (n - 1) `mod` cols)
-    , (m, (n + 1) `mod` cols)
+    [ ((m - 1) `mod` nRows, n)
+    , ((m + 1) `mod` nRows, n)
+    , (m, (n - 1) `mod` nCols)
+    , (m, (n + 1) `mod` nCols)
     ]
   dirEdges = concatMap (\p -> fmap (p,) (neighborsOf p)) pairs
 
 -- | [Grid graph](https://mathworld.wolfram.com/GridGraph.html)
-grid :: SNat rows -> SNat cols -> Topology (rows * cols)
-grid snRows@SNat snCols@SNat =
-  (fromGraph "grid" $ fromEdgeList dirEdges)
-    { topologyType = Grid rows cols
+grid :: Int -> Int -> Topology
+grid nRows nCols =
+  Topology
+    { name = "grid"
+    , graph = fromEdgeList dirEdges
+    , type_ = Grid nRows nCols
     }
  where
-  rows = snatToNum snRows
-  cols = snatToNum snCols
-  pairs = [(m, n) | m <- [1 .. rows], n <- [1 .. cols]]
+  pairs = [(m, n) | m <- [1 .. nRows], n <- [1 .. nCols]]
   mkEdges (m, n) =
     [ (a, b)
     | a <- [(m - 1) .. (m + 1)]
@@ -326,296 +217,137 @@ grid snRows@SNat snCols@SNat =
     , a == m || b == n
     , a > 0
     , b > 0
-    , a <= rows
-    , b <= cols
+    , a <= nRows
+    , b <= nCols
     ]
   dirEdges = concatMap (\p -> fmap (p,) (mkEdges p)) pairs
 
--- | Type family for calculating the size of a tree.
-type family TreeSize (depth :: Nat) (children :: Nat) where
-  TreeSize depth 0 = 1
-  TreeSize depth 1 = depth + 1
-  TreeSize depth children =
-    Div ((children ^ (depth + 1)) - 1) (children - 1)
-
-instance (KnownNat n, KnownNat m) => KnownNat2 $(nameToSymbol ''TreeSize) n m where
-  natSing2 =
-    let
-      x = natVal (Proxy @n)
-      y = natVal (Proxy @m)
-      z = treeSize x y
-     in
-      SNatKn z
-   where
-    treeSize :: Natural -> Natural -> Natural
-    treeSize d = \case
-      0 -> 1
-      1 -> d + 1
-      c -> ((c ^ (d + 1)) - 1) `div` (c - 1)
-  {-# INLINE natSing2 #-}
-
 -- | Tree of depth @depth@ with @childs@ children
-tree :: SNat depth -> SNat childs -> Topology (TreeSize depth childs)
-tree snDepth@SNat snChilds@SNat =
-  (fromGraph "tree" treeGraph)
-    { topologyType = Tree depth c
+tree :: Int -> Int -> Topology
+tree depth nChildren =
+  Topology
+    { name = "tree"
+    , graph = treeGraph
+    , type_ = Tree depth nChildren
     }
  where
-  depth = snatToNum snDepth
-  c = snatToNum snChilds
   -- \| At depth @d_i@, child node @i@ is connected to the @(i-1) `div` c + 1@st
   -- node at depth @d_i - 1@
-  pairs = [(d_i, i, (i - 1) `div` c + 1) | d_i <- [0 .. depth], i <- [1 .. (c ^ d_i)]]
+  pairs =
+    [ (d_i, i, (i - 1) `div` nChildren + 1)
+    | d_i <- [0 .. depth]
+    , i <- [1 .. (nChildren ^ d_i)]
+    ]
   mkEdges (0, _, _) = Nothing
   mkEdges (lvl, node, p_node) = Just ((lvl, node), (lvl - 1, p_node))
   directedEdges = mapMaybe mkEdges pairs
   treeGraph = fromEdgeList directedEdges
 
 -- | [Star graph](https://mathworld.wolfram.com/StarGraph.html)
-star :: SNat childs -> Topology (TreeSize 1 childs)
-star sn =
-  (tree SNat sn)
-    { topologyName = "star"
-    , topologyType = Star $ snatToNum sn
-    }
+star :: Int -> Topology
+star nNodes = (tree 1 nNodes){name = "star", type_ = Star nNodes}
 
 {- | [Cyclic graph](https://mathworld.wolfram.com/CycleGraph.html) with @n@
 vertices.
 -}
-cyclic :: SNat n -> Topology n
-cyclic sn =
-  (beads sn d0 d1)
-    { topologyName = "cycle"
-    , topologyType = Cycle $ snatToNum sn
-    }
+cyclic :: Int -> Topology
+cyclic nNodes = (beads nNodes 0 1){name = "cycle", type_ = Cycle nNodes}
 
 {- | [Complete graph](https://mathworld.wolfram.com/CompleteGraph.html) with @n@
 vertices.
 -}
-complete :: SNat n -> Topology n
-complete sn =
-  (beads d1 d0 sn)
-    { topologyName = "complete"
-    , topologyType = Complete $ snatToNum sn
-    }
+complete :: Int -> Topology
+complete nNodes = (beads 1 0 nNodes){name = "complete", type_ = Complete nNodes}
 
 {- | An dumbbell shaped graph consisting of two independent complete
 sub-graphs of size @l@ and @r@, connected via a chain of @w@ nodes
 in between two distinct nodes of each sub-graph.
 -}
-dumbbell :: SNat w -> SNat l -> SNat r -> Topology (w + l + r)
-dumbbell sw@SNat sl@SNat sr@SNat =
-  t{topologyType = Dumbbell (sn2i sw) (sn2i sl) (sn2i sr)}
+dumbbell :: Int -> Int -> Int -> Topology
+dumbbell width nLeft nRight =
+  Topology
+    { name = "dumbbell"
+    , graph = tGraph
+    , type_ = Dumbbell width nLeft nRight
+    }
  where
-  sn2i = snatToNum
-  w = snatToNum sw
-  l = snatToNum sl
-  r = snatToNum sr
-  m = w + l + r - 1
+  m = width + nLeft + nRight - 1
 
-  t =
-    fromGraph "dumbbell" $
-      if w + l + r == 0
-        then A.array (0, -1) []
-        else A.array (0, m) $ fmap (\i -> (i, neighbours i)) [0 .. m]
+  tGraph =
+    if width + nLeft + nRight == 0
+      then A.array (0, -1) []
+      else A.array (0, m) $ fmap (\i -> (i, neighbors i)) [0 .. m]
 
-  neighbours i
-    | i < l =
-        (if i == l - 1 && w + r > 0 then (l :) else id)
-          [j | j <- [0 .. l - 1], j /= i]
-    | i >= w + l =
-        (if i == w + l && w + l > 0 then ((w + l - 1) :) else id)
-          [j + w + l | j <- [0 .. r - 1], j + w + l /= i]
+  neighbors i
+    | i < nLeft =
+        (if i == nLeft - 1 && width + nRight > 0 then (nLeft :) else id)
+          [j | j <- [0 .. nLeft - 1], j /= i]
+    | i >= width + nLeft =
+        (if i == width + nLeft && width + nLeft > 0 then ((width + nLeft - 1) :) else id)
+          [j + width + nLeft | j <- [0 .. nRight - 1], j + width + nLeft /= i]
     | otherwise =
-        (if l > 0 || i > l then ((i - 1) :) else id) $
-          (if r > 0 || i < l + w - 1 then ((i + 1) :) else id)
+        (if nLeft > 0 || i > nLeft then ((i - 1) :) else id) $
+          (if nRight > 0 || i < nLeft + width - 1 then ((i + 1) :) else id)
             []
 
 {- | An hourglass shaped graph consisting of two independent complete
 sub-graphs, only connected via a single edge between two distinct
 nodes of each sub-graph.
 -}
-hourglass :: SNat n -> Topology (n + n)
-hourglass sn =
-  (dumbbell d0 sn sn)
-    { topologyName = "hourglass"
-    , topologyType = Hourglass $ snatToNum sn
-    }
+hourglass :: Int -> Topology
+hourglass nNodes =
+  (dumbbell 0 nNodes nNodes){name = "hourglass", type_ = Hourglass nNodes}
 
-{- | A beads shaped graph consisting of two @c@ independend complete
-subgraphs of size @w@ (representing the beads), connected via a
-closed circular chain of @d@ nodes in between (representing the
+{- | A beads shaped graph consisting of two @count@ independent complete
+subgraphs of size @weight@ (representing the beads), connected via a
+closed circular chain of @distance@ nodes in between (representing the
 thread).
 -}
-beads :: SNat c -> SNat d -> SNat w -> Topology (c * (d + w))
-beads sc@SNat sd@SNat sw@SNat =
-  (fromGraph "beads" $ fromEdgeList es)
-    { topologyType = Beads (sn2i sc) (sn2i sd) (sn2i sw)
+beads :: Int -> Int -> Int -> Topology
+beads count distance weight =
+  Topology
+    { name = "beads"
+    , graph = fromEdgeList es
+    , type_ = Beads{count, distance, weight}
     }
  where
-  sn2i = snatToNum
-  c = snatToNum sc :: Int
-  d = snatToNum sd :: Int
-  w = snatToNum sw :: Int
-  s = c * (d + w)
+  s = count * (distance + weight)
   es =
     [ (x + i, x + j)
-    | n <- [0 .. c - 1]
-    , i <- [0 .. w - 1]
-    , j <- [0 .. w - 1]
+    | n <- [0 .. count - 1]
+    , i <- [0 .. weight - 1]
+    , j <- [0 .. weight - 1]
     , i /= j
-    , let x = n * (d + w)
+    , let x = n * (distance + weight)
     ]
       <> [ (x', x)
-         | w > 0
-         , n <- [0 .. c - 1]
-         , let x' = n * (d + w)
+         | weight > 0
+         , n <- [0 .. count - 1]
+         , let x' = n * (distance + weight)
                x = (x' - 1) `mod` s
          , x /= x'
          ]
       <> [ (x', x)
-         | n <- [0 .. c - 1]
-         , i <- [0 .. d - 1]
-         , let x' = n * (d + w) + w + i
+         | n <- [0 .. count - 1]
+         , i <- [0 .. distance - 1]
+         , let x' = n * (distance + weight) + weight + i
                x = (x' - 1) `mod` s
          , x /= x'
          ]
 
--- | Generates a random topology of the given size.
-randomTopology :: SNat n -> IO (Topology n)
-randomTopology sn@SNat = do
-  let
-    n = snatToNum sn
-    is = [0, 1 .. n - 1]
-
-  -- get some random vertex permuation for ensuring connectivity
-  aP <- newListArray (0, n - 1) is
-  replicateM_ (10 * n) $ do
-    p1 <- randomRIO (0, n - 1)
-    p2 <- randomRIO (0, n - 1)
-    v1 <- readArray aP p1
-    v2 <- readArray aP p2
-    writeArray aP p1 v2
-    writeArray aP p2 v1
-
-  randomPermutation <- getElems (aP :: IOUArray Int Int)
-
-  -- get some random edge availability matrix for self-loop-free,
-  -- undirected graphs
-  aE <- replicateM (n * n) randomIO >>= newListArray ((0, 0), (n - 1, n - 1))
-  forM_ is $ \i ->
-    writeArray aE (i, i) False
-  forM_ [(i, j) | i <- is, j <- is, i /= j] $ \(i, j) -> do
-    x1 <- readArray aE (i, j)
-    x2 <- readArray aE (j, i)
-    when (x1 /= x2) $ do
-      writeArray aE (i, j) False
-      writeArray aE (j, i) False
-
-  -- ensure connectivity
-  forM_ (pairwise randomPermutation) $ \(i, j) -> do
-    writeArray aE (i, j) True
-    writeArray aE (j, i) True
-
-  available <- freeze (aE :: IOUArray (Int, Int) Bool)
-
-  -- create the graph
-  return $
-    fromGraph "random" $
-      buildG
-        (0, n - 1)
-        [ (i, j)
-        | i <- is
-        , j <- is
-        , available A.! (i, j)
-        ]
-
-{- | Turns a topology into a graphviz DOT structure, as it is required by
-the [happy-dot](https://hackage.haskell.org/package/happy-dot) library.
--}
-toDot ::
-  (KnownNat n) =>
-  -- | topology to be turned into graphviz dot
-  Topology n ->
-  -- | the result, as it is needed by happy-dot
-  (Bool, GraphType, Maybe Name, [Statement])
-toDot t =
-  ( True
-  , Graph
-  , Just $ StringID $ t.topologyName
-  , map asEdgeStatement $ edges $ t.topologyGraph
-  )
+-- | Turns a 'Topology' into a graphviz DOT structure
+toDot :: Topology -> String
+toDot topology =
+  [I.i|
+    graph #{tName} {
+      #{renderedEdges}
+    }
+  |]
  where
-  asEdgeStatement (x, y) =
-    EdgeStatement
-      (map (\i -> NodeRef (XMLID ('n' : show i)) Nothing) [x, y])
-      []
-
-{- | Reads a topology from a DOT file. Only the name and structure of the
-graph is used, i.e., any additional graphviz dot specific
-annotations are ignored.
--}
-fromDot ::
-  -- | the string holding the graphviz dot content
-  String ->
-  -- | either an error, if given an unusable input, or the extracted topology
-  Either String STopology
-fromDot cnt = do
-  (strict, gType, maybe "" fromDotName -> name, statements) <- parse cnt
-
-  unless strict $ Left "Graph must be strict"
-  when (gType == Digraph) $ Left "Graph must be undirected"
-
-  edgeChains <- catMaybes <$> mapM fromStatement statements
-
-  let
-    namedEdges = concatMap (pairwise . map asString) edgeChains
-    edgeNames = dedupAndSort $ concatMap (\(x, y) -> [x, y]) namedEdges
-    n = length edgeNames
-    idx = (M.!) $ M.fromList $ zip edgeNames [0, 1 ..]
-    graph =
-      buildG (0, n - 1)
-      -- Self loops are removed at this point as they are redundant in
-      -- terms of the simulated topology. In terms of connectivity, a
-      -- node can synchronize its clock with itself even without a
-      -- elastic buffer in between. Therefore, we all self-loops in
-      -- the input, but remove them here, since they don't have any
-      -- effect on the topology that is created out of the graph.
-      $
-        filter (uncurry (/=))
-        -- remove duplicate edges and sort for pretty printing
-        $
-          dedupAndSort $
-            concatMap
-              (\(x, y) -> [(idx x, idx y), (idx y, idx x)])
-              namedEdges
-
-  when (length (scc graph) > 1) $ Left "Graph must be strongly connected"
-
-  case someNatVal $ toInteger n of
-    Nothing -> Left "cannot construct SNat arguments"
-    Just (SomeNat (_ :: Proxy n)) ->
-      return $ STopology $ fromGraph @n name graph
- where
-  fromStatement :: Statement -> Either String (Maybe [Name])
-  fromStatement = \case
-    EdgeStatement xs _ -> fmap Just $ forM xs $ \case
-      NodeRef n _ -> return n
-      Subgraph{} -> Left "Subgraphs are not supported"
-    -- we are only interested in the edges, everthing else can be
-    -- ignored
-    _ -> pure Nothing
-
-  dedupAndSort :: (Ord a) => [a] -> [a]
-  dedupAndSort = S.toList . S.fromList
-
-  asString = \case
-    StringID x -> 's' : x
-    XMLID x -> 'x' : x
-
-  fromDotName = \case
-    StringID x -> x
-    XMLID x -> x
+  tName = topology.name -- XXX: Doesn't work in the quasiquoter?
+  renderEdge (i, j) = [I.i|n#{i} -- n#{j};|]
+  renderedEdges = L.intercalate "\n" (renderEdge <$> uniEdges)
+  uniEdges = [(i, j) | (i, j) <- Graph.edges topology.graph, i < j]
 
 {- | Successive overlapping pairs.
 

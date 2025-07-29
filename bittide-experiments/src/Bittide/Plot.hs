@@ -11,7 +11,7 @@ module Bittide.Plot (
   plotElasticBuffersFileName,
 ) where
 
-import Clash.Prelude (KnownNat, Vec)
+import Clash.Prelude (KnownNat, Vec, natToNum)
 import Clash.Signal.Internal (Femtoseconds (..))
 import qualified Clash.Sized.Vector as Vec
 
@@ -75,7 +75,7 @@ plot ::
   -- | output directory for storing the results
   FilePath ->
   -- | topology corresponding to the plot
-  Topology nNodes ->
+  Topology ->
   -- | plot data
   Vec
     nNodes
@@ -92,7 +92,7 @@ plot maybeCorrection outputDir graph plotData =
   clockPlots = Vec.imap toClockPlot plotData
   elasticBufferPlots = Vec.imap toElasticBufferPlot plotData
 
-  edgeCount = length $ edges $ graph.topologyGraph
+  edgeCount = length $ edges $ graph.graph
 
   toElasticBufferPlot nodeIndex (unzip4 -> (time, _, reframingStage, buffersPerNode)) =
     foldPlots
@@ -107,7 +107,7 @@ plot maybeCorrection outputDir graph plotData =
                   @@ [o2 "label" $ show nodeIndex <> " ← " <> show j]
             else snd
         )
-      $ zip (filter (graph.hasEdge nodeIndex) [0, 1 ..])
+      $ zip (filter (hasEdge graph (fromIntegral nodeIndex)) [0 .. natToNum @nNodes - 1])
       $ fmap plotEbData
       -- Organize data by node instead of by timestamp. I.e., the first item in
       -- 'timedBuffers' is for this node's first neighbor.

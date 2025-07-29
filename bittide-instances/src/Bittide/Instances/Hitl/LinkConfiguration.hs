@@ -7,7 +7,7 @@
 {- | Tests whether the transceiver link setup matches with the
 configuration defined in 'Bittide.Instances.Hitl.Setup.fpgaSetup'.
 To this end, each node sends its own index to all of it's
-neighbours, which then verify that the result matches with the
+neighbors, which then verify that the result matches with the
 definition.
 -}
 module Bittide.Instances.Hitl.LinkConfiguration (
@@ -258,7 +258,7 @@ linkConfigurationTest refClkDiff sysClkDiff syncIn rxs rxns rxps miso =
   -- seconds. This is just below the test timeout of 60 seconds, so
   -- transceivers have ~20 seconds to come online reliably. This
   -- should be plenty. The test will stop immediately on success,
-  -- i.e., if all neighbours have transmitted the expected ids
+  -- i.e., if all neighbors have transmitted the expected ids
   -- alltogether at least once.
   done =
     success
