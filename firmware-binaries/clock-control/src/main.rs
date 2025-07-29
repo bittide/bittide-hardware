@@ -58,13 +58,13 @@ fn main() -> ! {
     // Initialize stability detector
     let mut stability_detector = StabilityDetector::new(4, Duration::from_secs(2));
 
-    // Store samples every _n_ updates. Currently set to 50 times a second
-    // (50K / 1000 = 50Hz). Set to '1' for perfect storage -- not yet possible
-    // due to limited memory size.
-    let mut sample_store = SampleStore::new(sample_memory, 1000);
+    // Store samples every _n_ updates. Currently set to 20 ms (50 Hz) times a
+    // second (20 ms / 200 us = 100). Set to '1' for perfect storage -- not yet
+    // possible due to limited memory size.
+    let mut sample_store = SampleStore::new(sample_memory, 100);
 
-    // Update clock control 10K updates per second
-    let interval = Duration::from_micros(100);
+    // Update clock control 5K updates per second
+    let interval = Duration::from_micros(200);
     let mut next_update = timer.now() + interval;
 
     loop {
