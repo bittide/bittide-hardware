@@ -6,7 +6,7 @@
 module Tests.ClockControl.Freeze where
 
 import Bittide.ClockControl.Freeze (counter, freeze)
-import Bittide.SharedTypes (Bytes)
+import Bittide.SharedTypes (Bytes, withByteOrderings)
 import Clash.Class.BitPackC (ByteOrder (BigEndian), unpackOrErrorC)
 import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
@@ -144,19 +144,14 @@ prop_wb = property $ do
 
   dutMm ::
     Circuit (ConstBwd MM, Wishbone XilinxSystem Standard AddressWidth (BitVector 32)) ()
-  dutMm =
-    let
-      ?regByteOrder = endian
-      ?busByteOrder = endian
-     in
-      circuit $ \(mm, wb) -> do
-        freeze @4 @32 clk rst
-          -< ( (mm, wb)
-             , Fwd ebCounters
-             , Fwd localCounter
-             , Fwd syncPulseCounter
-             , Fwd lastPulseCounter
-             )
+  dutMm = withByteOrderings endian endian $ circuit $ \(mm, wb) -> do
+    freeze @4 @32 clk rst
+      -< ( (mm, wb)
+         , Fwd ebCounters
+         , Fwd localCounter
+         , Fwd syncPulseCounter
+         , Fwd lastPulseCounter
+         )
 
   -- Input registers that are spaced one apart. This allows us to predict the
   -- value of all counters, by just reading one. Note that this only works if
