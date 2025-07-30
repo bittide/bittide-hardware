@@ -39,6 +39,12 @@ fn main() -> ! {
     uwriteln!(uart, "Starting sync out generator..").unwrap();
     sync_out_generator.set_active(true);
 
+    uwriteln!(uart, "Waiting for at least one pulse..").unwrap();
+    while freeze.number_of_sync_pulses_seen() == 0 {
+        // TOOD: Memory map sync pulse counter -- no need to involve freeze here
+        freeze.set_freeze(true);
+    }
+
     uwriteln!(uart, "Starting clock control..").unwrap();
     uwriteln!(uart, "Current time: {}", timer.now()).unwrap();
 
