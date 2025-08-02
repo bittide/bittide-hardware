@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-cabal repl \
+exec cabal repl \
   bittide-experiments bittide-experiments:unittests \
   bittide-extra bittide-extra:unittests \
   bittide-instances bittide-instances:unittests \
