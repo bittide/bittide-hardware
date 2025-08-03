@@ -27,7 +27,7 @@ import Numeric (showHex)
 import Project.FilePath
 import Project.Handle
 import Protocols.MemoryMap (MemoryMap (..), MemoryMapTree (DeviceInstance, Interconnect))
-import System.Clock (Clock (Monotonic), diffTimeSpec, getTime, toNanoSecs)
+import System.Clock (Clock (Monotonic), TimeSpec, diffTimeSpec, getTime, toNanoSecs)
 import System.Exit
 import System.FilePath
 import System.IO
@@ -174,6 +174,234 @@ dumpCcSamples gdb dumpPath = do
  where
   sampleMemoryBase = ccBaseAddress @Integer "SampleMemory"
 
+initOpenOcd :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
+initOpenOcd hitlDir (_, d) targetIndex = do
+  putStrLn $ "Starting OpenOCD for target " <> d.deviceId
+
+  let
+    gdbPortMU = 3333 + targetIndex * 2
+    gdbPortCC = gdbPortMU + 1
+    tclPortMU = 6666 + targetIndex * 2
+    tclPortCC = tclPortMU + 1
+    telnetPortMU = 4444 + targetIndex * 2
+    telnetPortCC = telnetPortMU + 1
+    ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
+    ocdStderr = hitlDir </> "openocd-" <> show targetIndex <> "-stderr.log"
+  putStrLn $ "logging OpenOCD stdout to `" <> ocdStdout <> "`"
+  putStrLn $ "logging OpenOCD stderr to `" <> ocdStderr <> "`"
+
+  putStrLn "Starting OpenOCD..."
+  (ocd, ocdPh, ocdClean0) <-
+    Ocd.startOpenOcdWithEnvAndArgs
+      ["-f", "sipeed.tcl", "-f", "vexriscv-2chain.tcl"]
+      [ ("OPENOCD_STDOUT_LOG", ocdStdout)
+      , ("OPENOCD_STDERR_LOG", ocdStderr)
+      , ("USB_DEVICE", d.usbAdapterLocation)
+      , ("DEV_A_GDB", show gdbPortMU)
+      , ("DEV_B_GDB", show gdbPortCC)
+      , ("DEV_A_TCL", show tclPortMU)
+      , ("DEV_B_TCL", show tclPortCC)
+      , ("DEV_A_TEL", show telnetPortMU)
+      , ("DEV_B_TEL", show telnetPortCC)
+      ]
+  hSetBuffering ocd.stderrHandle LineBuffering
+  tryWithTimeout "Waiting for OpenOCD to start" 15_000_000
+    $ expectLine ocd.stderrHandle Ocd.waitForHalt
+
+  let
+    ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
+    ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
+
+  return $ OcdInitData gdbPortMU gdbPortCC ocd ocdClean1
+
+initGdb ::
+  FilePath ->
+  String ->
+  Int ->
+  (HwTarget, DeviceInfo) ->
+  IO (ProcessHandles, IO ())
+initGdb hitlDir binName gdbPort (hwT, d) = do
+  putStrLn $ "Starting GDB for target " <> d.deviceId <> " with bin name " <> binName
+
+  (gdb, gdbPh, gdbClean0) <- Gdb.startGdbH
+  hSetBuffering gdb.stdinHandle LineBuffering
+  hSetBuffering gdb.stdoutHandle LineBuffering
+
+  Gdb.setLogging gdb $ hitlDir
+    </> "gdb-" <> binName <> "-" <> show (getTargetIndex hwT) <> ".log"
+  Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> binName
+  Gdb.setTarget gdb gdbPort
+  Gdb.setTimeout gdb Nothing
+  Gdb.runCommands gdb.stdinHandle ["echo connected to target device"]
+
+  let
+    gdbProcName = "GDB (" <> binName <> ", " <> d.deviceId <> ")"
+    gdbClean1 = gdbClean0 >> awaitProcessTermination gdbProcName gdbPh (Just 10_000_000)
+
+  return (gdb, gdbClean1)
+
+initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (ProcessHandles, IO ())
+initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
+  -- Using a single handle makes picocom panic
+  devNullHandle0 <- openFile "/dev/null" WriteMode
+  devNullHandle1 <- openFile "/dev/null" WriteMode
+
+  let
+    devPath = deviceInfo.serial
+    stdoutPath = hitlDir </> "picocom-" <> show targetIndex <> "-stdout.log"
+    stderrPath = hitlDir </> "picocom-" <> show targetIndex <> "-stderr.log"
+
+  -- Note that script at `devPath` already logs to `stdoutPath` and
+  -- `stderrPath`. This is what we're after: debug logging. To prevent race
+  -- conditions, we need to know when picocom is ready so we also shortly
+  -- interested in stderr in this Haskell process.
+  (pico, cleanup) <-
+    Picocom.startWithLoggingAndEnv
+      ( Picocom.StdStreams
+          { Picocom.stdin = CreatePipe
+          , Picocom.stdout = CreatePipe
+          , Picocom.stderr = UseHandle devNullHandle0
+          }
+      )
+      devPath
+      stdoutPath
+      stderrPath
+      []
+
+  tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
+    $ waitForLine pico.stdoutHandle "Terminal ready"
+
+  -- We're not interested in the output of picocom in this Haskell process,
+  -- so we redirect it to /dev/null.
+  _ <- forkIO $ do
+    LazyByteString.hGetContents pico.stdoutHandle
+      >>= LazyByteString.hPut devNullHandle1
+
+  pure (pico, cleanup)
+
+ccGdbCheck :: ProcessHandles -> VivadoM ExitCode
+ccGdbCheck gdb = do
+  liftIO
+    $ Gdb.runCommands
+      gdb.stdinHandle
+      [ "echo START OF WHOAMI\\n"
+      , "x/4cb " <> whoAmIBase
+      , "echo END OF WHOAMI\\n"
+      ]
+  _ <-
+    liftIO
+      $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
+      $ readUntil gdb.stdoutHandle "START OF WHOAMI"
+  gdbRead <-
+    liftIO
+      $ tryWithTimeout "Reading CC whoami over GDB" 15_000_000
+      $ readUntil gdb.stdoutHandle "END OF WHOAMI"
+  let
+    idLine = trim . L.head . lines $ trim gdbRead
+    success = idLine == "(gdb) " <> whoAmIBase <> ":\t115 's'\t119 'w'\t99 'c'\t99 'c'"
+  liftIO $ putStrLn [i|Output from CC whoami probe:\n#{idLine}|]
+  return $ if success then ExitSuccess else ExitFailure 1
+ where
+  whoAmIBase = showHex32 $ ccBaseAddress @Integer "WhoAmI"
+
+muGdbCheck :: ProcessHandles -> VivadoM ExitCode
+muGdbCheck gdb = do
+  liftIO
+    $ Gdb.runCommands
+      gdb.stdinHandle
+      [ "echo START OF WHOAMI\\n"
+      , "x/4cb " <> whoAmIBase
+      , "echo END OF WHOAMI\\n"
+      ]
+  _ <-
+    liftIO
+      $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
+      $ readUntil gdb.stdoutHandle "START OF WHOAMI"
+  gdbRead <-
+    liftIO
+      $ tryWithTimeout "Reading MU whoami over GDB" 15_000_000
+      $ readUntil gdb.stdoutHandle "END OF WHOAMI"
+  let
+    idLine = trim . L.head . lines $ trim gdbRead
+    success = idLine == "(gdb) " <> whoAmIBase <> ":\t109 'm'\t103 'g'\t109 'm'\t116 't'"
+  liftIO $ putStrLn [i|Output from MU whoami probe:\n#{idLine}|]
+  return $ if success then ExitSuccess else ExitFailure 1
+ where
+  whoAmIBase = showHex32 $ muBaseAddress @Integer "WhoAmI"
+
+assertAllProgrammed :: (HwTarget, DeviceInfo) -> VivadoM ()
+assertAllProgrammed (hwT, d) = do
+  liftIO $ putStrLn $ "Asserting all programmed probe on " <> d.deviceId
+  openHardwareTarget hwT
+  updateVio "vioHitlt" [("probe_all_programmed", "1")]
+
+foldExitCodes :: VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
+foldExitCodes prev code = do
+  (count, acc) <- prev
+  return
+    $ if code == ExitSuccess
+      then (count + 1, acc)
+      else (count, code)
+
+getTestsStatus ::
+  TimeSpec ->
+  [(HwTarget, DeviceInfo)] ->
+  [TestStatus] ->
+  Integer ->
+  VivadoM [TestStatus]
+getTestsStatus _ [] _ _ = return []
+getTestsStatus _ _ [] _ = return []
+getTestsStatus startTime ((hwT, _) : hwtdRest) (status : statusRest) dur = do
+  let
+    getRestStatus = getTestsStatus startTime hwtdRest statusRest dur
+    calcTimeSpentMs = (`div` 1_000_000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
+  case status of
+    TestRunning -> do
+      timeSpent <- liftIO $ calcTimeSpentMs
+      if timeSpent < dur
+        then do
+          openHardwareTarget hwT
+          vals <- readVio "vioHitlt" ["probe_test_done", "probe_test_success"]
+          rest <- getRestStatus
+          return $ case vals of
+            [("probe_test_done", "1"), ("probe_test_success", success)] ->
+              TestDone (success == "1") : rest
+            _ -> TestRunning : rest
+        else do
+          rest <- getRestStatus
+          return $ TestTimeout : rest
+    other -> do
+      rest <- getRestStatus
+      return $ other : rest
+
+awaitTestCompletions ::
+  TimeSpec ->
+  [(HwTarget, DeviceInfo)] ->
+  Integer ->
+  VivadoM [ExitCode]
+awaitTestCompletions startTime targets dur = do
+  let
+    innerInit = L.repeat TestRunning
+    inner prev = do
+      new <- getTestsStatus startTime targets prev dur
+      if not (TestRunning `L.elem` new)
+        then do
+          let
+            go :: (HwTarget, DeviceInfo) -> TestStatus -> IO ExitCode
+            go (_, d) status = case status of
+              TestDone True -> do
+                putStrLn $ "Test passed on target " <> d.deviceId
+                return ExitSuccess
+              TestDone False -> do
+                putStrLn $ "Test finished unsuccessfully on target " <> d.deviceId
+                return $ ExitFailure 2
+              _ -> do
+                putStrLn $ "Test timed out on target " <> d.deviceId
+                return $ ExitFailure 2
+          liftIO $ zipWithM go targets new
+        else inner new
+  inner innerInit
+
 driver ::
   (HasCallStack) =>
   String ->
@@ -192,221 +420,6 @@ driver testName targets = do
     plotDataDumpPath =
       projectDir </> "bittide-instances" </> "data" </> "plot" </> "plot_data_dump.py"
     hitlDir = projectDir </> "_build/hitl" </> testName
-
-    calcTimeSpentMs = (`div` 1_000_000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
-
-    initOpenOcd :: (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
-    initOpenOcd (_, d) targetIndex = do
-      putStrLn $ "Starting OpenOCD for target " <> d.deviceId
-
-      let
-        gdbPortMU = 3333 + targetIndex * 2
-        gdbPortCC = gdbPortMU + 1
-        tclPortMU = 6666 + targetIndex * 2
-        tclPortCC = tclPortMU + 1
-        telnetPortMU = 4444 + targetIndex * 2
-        telnetPortCC = telnetPortMU + 1
-        ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
-        ocdStderr = hitlDir </> "openocd-" <> show targetIndex <> "-stderr.log"
-      putStrLn $ "logging OpenOCD stdout to `" <> ocdStdout <> "`"
-      putStrLn $ "logging OpenOCD stderr to `" <> ocdStderr <> "`"
-
-      putStrLn "Starting OpenOCD..."
-      (ocd, ocdPh, ocdClean0) <-
-        Ocd.startOpenOcdWithEnvAndArgs
-          ["-f", "sipeed.tcl", "-f", "vexriscv-2chain.tcl"]
-          [ ("OPENOCD_STDOUT_LOG", ocdStdout)
-          , ("OPENOCD_STDERR_LOG", ocdStderr)
-          , ("USB_DEVICE", d.usbAdapterLocation)
-          , ("DEV_A_GDB", show gdbPortMU)
-          , ("DEV_B_GDB", show gdbPortCC)
-          , ("DEV_A_TCL", show tclPortMU)
-          , ("DEV_B_TCL", show tclPortCC)
-          , ("DEV_A_TEL", show telnetPortMU)
-          , ("DEV_B_TEL", show telnetPortCC)
-          ]
-      hSetBuffering ocd.stderrHandle LineBuffering
-      tryWithTimeout "Waiting for OpenOCD to start" 15_000_000
-        $ expectLine ocd.stderrHandle Ocd.waitForHalt
-
-      let
-        ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
-        ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
-
-      return $ OcdInitData gdbPortMU gdbPortCC ocd ocdClean1
-
-    initGdb :: String -> Int -> (HwTarget, DeviceInfo) -> IO (ProcessHandles, IO ())
-    initGdb binName gdbPort (hwT, d) = do
-      putStrLn $ "Starting GDB for target " <> d.deviceId <> " with bin name " <> binName
-
-      (gdb, gdbPh, gdbClean0) <- Gdb.startGdbH
-      hSetBuffering gdb.stdinHandle LineBuffering
-      hSetBuffering gdb.stdoutHandle LineBuffering
-
-      Gdb.setLogging gdb $ hitlDir
-        </> "gdb-" <> binName <> "-" <> show (getTargetIndex hwT) <> ".log"
-      Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> binName
-      Gdb.setTarget gdb gdbPort
-      Gdb.setTimeout gdb Nothing
-      Gdb.runCommands gdb.stdinHandle ["echo connected to target device"]
-
-      let
-        gdbProcName = "GDB (" <> binName <> ", " <> d.deviceId <> ")"
-        gdbClean1 = gdbClean0 >> awaitProcessTermination gdbProcName gdbPh (Just 10_000_000)
-
-      return (gdb, gdbClean1)
-
-    initPicocom :: (HwTarget, DeviceInfo) -> Int -> IO (ProcessHandles, IO ())
-    initPicocom (_hwTarget, deviceInfo) targetIndex = do
-      -- Using a single handle makes picocom panic
-      devNullHandle0 <- openFile "/dev/null" WriteMode
-      devNullHandle1 <- openFile "/dev/null" WriteMode
-
-      let
-        devPath = deviceInfo.serial
-        stdoutPath = hitlDir </> "picocom-" <> show targetIndex <> "-stdout.log"
-        stderrPath = hitlDir </> "picocom-" <> show targetIndex <> "-stderr.log"
-
-      -- Note that script at `devPath` already logs to `stdoutPath` and
-      -- `stderrPath`. This is what we're after: debug logging. To prevent race
-      -- conditions, we need to know when picocom is ready so we also shortly
-      -- interested in stderr in this Haskell process.
-      (pico, cleanup) <-
-        Picocom.startWithLoggingAndEnv
-          ( Picocom.StdStreams
-              { Picocom.stdin = CreatePipe
-              , Picocom.stdout = CreatePipe
-              , Picocom.stderr = UseHandle devNullHandle0
-              }
-          )
-          devPath
-          stdoutPath
-          stderrPath
-          []
-
-      tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
-        $ waitForLine pico.stdoutHandle "Terminal ready"
-
-      -- We're not interested in the output of picocom in this Haskell process,
-      -- so we redirect it to /dev/null.
-      _ <- forkIO $ do
-        LazyByteString.hGetContents pico.stdoutHandle
-          >>= LazyByteString.hPut devNullHandle1
-
-      pure (pico, cleanup)
-
-    ccGdbCheck :: (HwTarget, DeviceInfo) -> ProcessHandles -> VivadoM ExitCode
-    ccGdbCheck (_, _) gdb = do
-      liftIO
-        $ Gdb.runCommands
-          gdb.stdinHandle
-          [ "echo START OF WHOAMI\\n"
-          , "x/4cb " <> whoAmIBase
-          , "echo END OF WHOAMI\\n"
-          ]
-      _ <-
-        liftIO
-          $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
-          $ readUntil gdb.stdoutHandle "START OF WHOAMI"
-      gdbRead <-
-        liftIO
-          $ tryWithTimeout "Reading CC whoami over GDB" 15_000_000
-          $ readUntil gdb.stdoutHandle "END OF WHOAMI"
-      let
-        idLine = trim . L.head . lines $ trim gdbRead
-        success = idLine == "(gdb) " <> whoAmIBase <> ":\t115 's'\t119 'w'\t99 'c'\t99 'c'"
-      liftIO $ putStrLn [i|Output from CC whoami probe:\n#{idLine}|]
-      return $ if success then ExitSuccess else ExitFailure 1
-     where
-      whoAmIBase = showHex32 $ ccBaseAddress @Integer "WhoAmI"
-
-    foldExitCodes :: VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
-    foldExitCodes prev code = do
-      (count, acc) <- prev
-      return
-        $ if code == ExitSuccess
-          then (count + 1, acc)
-          else (count, code)
-
-    assertAllProgrammed :: (HwTarget, DeviceInfo) -> VivadoM ()
-    assertAllProgrammed (hwT, d) = do
-      liftIO $ putStrLn $ "Asserting all programmed probe on " <> d.deviceId
-      openHardwareTarget hwT
-      updateVio "vioHitlt" [("probe_all_programmed", "1")]
-
-    muGdbCheck :: (HwTarget, DeviceInfo) -> ProcessHandles -> VivadoM ExitCode
-    muGdbCheck (_, _) gdb = do
-      liftIO
-        $ Gdb.runCommands
-          gdb.stdinHandle
-          [ "echo START OF WHOAMI\\n"
-          , "x/4cb " <> whoAmIBase
-          , "echo END OF WHOAMI\\n"
-          ]
-      _ <-
-        liftIO
-          $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
-          $ readUntil gdb.stdoutHandle "START OF WHOAMI"
-      gdbRead <-
-        liftIO
-          $ tryWithTimeout "Reading MU whoami over GDB" 15_000_000
-          $ readUntil gdb.stdoutHandle "END OF WHOAMI"
-      let
-        idLine = trim . L.head . lines $ trim gdbRead
-        success = idLine == "(gdb) " <> whoAmIBase <> ":\t109 'm'\t103 'g'\t109 'm'\t116 't'"
-      liftIO $ putStrLn [i|Output from MU whoami probe:\n#{idLine}|]
-      return $ if success then ExitSuccess else ExitFailure 1
-     where
-      whoAmIBase = showHex32 $ muBaseAddress @Integer "WhoAmI"
-
-    getTestsStatus ::
-      [(HwTarget, DeviceInfo)] -> [TestStatus] -> Integer -> VivadoM [TestStatus]
-    getTestsStatus [] _ _ = return []
-    getTestsStatus _ [] _ = return []
-    getTestsStatus ((hwT, _) : hwtdRest) (status : statusRest) dur = do
-      let getRestStatus = getTestsStatus hwtdRest statusRest dur
-      case status of
-        TestRunning -> do
-          timeSpent <- liftIO $ calcTimeSpentMs
-          if timeSpent < dur
-            then do
-              openHardwareTarget hwT
-              vals <- readVio "vioHitlt" ["probe_test_done", "probe_test_success"]
-              rest <- getRestStatus
-              return $ case vals of
-                [("probe_test_done", "1"), ("probe_test_success", success)] ->
-                  TestDone (success == "1") : rest
-                _ -> TestRunning : rest
-            else do
-              rest <- getRestStatus
-              return $ TestTimeout : rest
-        other -> do
-          rest <- getRestStatus
-          return $ other : rest
-
-    awaitTestCompletions :: Integer -> VivadoM [ExitCode]
-    awaitTestCompletions dur = do
-      let
-        innerInit = L.repeat TestRunning
-        inner prev = do
-          new <- getTestsStatus targets prev dur
-          if not (TestRunning `L.elem` new)
-            then do
-              let
-                go :: (HwTarget, DeviceInfo) -> TestStatus -> IO ExitCode
-                go (_, d) status = case status of
-                  TestDone True -> do
-                    putStrLn $ "Test passed on target " <> d.deviceId
-                    return ExitSuccess
-                  TestDone False -> do
-                    putStrLn $ "Test finished unsuccessfully on target " <> d.deviceId
-                    return $ ExitFailure 2
-                  _ -> do
-                    putStrLn $ "Test timed out on target " <> d.deviceId
-                    return $ ExitFailure 2
-              liftIO $ zipWithM go targets new
-            else inner new
-      inner innerInit
 
     muGetUgns ::
       (HwTarget, DeviceInfo) -> ProcessHandles -> VivadoM [(Unsigned 64, Unsigned 64)]
@@ -623,27 +636,27 @@ driver testName targets = do
   forM_ targets (assertProbe "probe_test_start")
   tryWithTimeout "Wait for handshakes successes from all boards" 30_000_000
     $ awaitHandshakes targets
-  let openOcdStarts = liftIO <$> L.zipWith initOpenOcd targets [0 ..]
+  let openOcdStarts = liftIO <$> L.zipWith (initOpenOcd hitlDir) targets [0 ..]
   brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
     let
       muPorts = (.muPort) <$> initOcdsData
       ccPorts = (.ccPort) <$> initOcdsData
-      ccGdbStarts = liftIO <$> L.zipWith (initGdb "clock-control") ccPorts targets
+      ccGdbStarts = liftIO <$> L.zipWith (initGdb hitlDir "clock-control") ccPorts targets
     brackets ccGdbStarts (liftIO . snd) $ \initCCGdbsData -> do
       let ccGdbs = fst <$> initCCGdbsData
       liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
-      gdbExitCodes0 <- zipWithM ccGdbCheck targets ccGdbs
+      gdbExitCodes0 <- mapM ccGdbCheck ccGdbs
       (gdbCount0, gdbExitCode0) <-
         L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes0
       liftIO
         $ putStrLn
           [i|CC GDB testing passed on #{gdbCount0} of #{L.length targets} targets|]
       liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
-      let muGdbStarts = liftIO <$> L.zipWith (initGdb "management-unit") muPorts targets
+      let muGdbStarts = liftIO <$> L.zipWith (initGdb hitlDir "management-unit") muPorts targets
       brackets muGdbStarts (liftIO . snd) $ \initMUGdbsData -> do
         let muGdbs = fst <$> initMUGdbsData
         liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
-        gdbExitCodes1 <- zipWithM muGdbCheck targets muGdbs
+        gdbExitCodes1 <- mapM muGdbCheck muGdbs
         (gdbCount1, gdbExitCode1) <-
           L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes1
         liftIO
@@ -662,7 +675,7 @@ driver testName targets = do
             liftIO $ putStrLn "Rendering plots..."
             liftIO $ callProcess plotDataDumpPath ccSamplesPaths
 
-        let picocomStarts = liftIO <$> L.zipWith (initPicocom) targets [0 ..]
+        let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
         brackets picocomStarts (liftIO . snd) $ \_picocoms -> do
           liftIO $ mapM_ Gdb.continue ccGdbs
           -- XXX: If you also want to start the management units, uncomment this
@@ -673,7 +686,7 @@ driver testName targets = do
           -- TODO: Add a way to send SIGINT to a GDB process.
           -- liftIO $ mapM_ Gdb.continue muGdbs
           forM_ targets assertAllProgrammed
-          testResults <- awaitTestCompletions 60_000
+          testResults <- awaitTestCompletions startTime targets 60_000
           (sCount, stabilityExitCode) <-
             L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
           liftIO
