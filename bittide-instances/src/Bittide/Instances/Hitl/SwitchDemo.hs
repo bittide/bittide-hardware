@@ -22,7 +22,6 @@ module Bittide.Instances.Hitl.SwitchDemo (
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
-import Bittide.Arithmetic.Time (trueFor)
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl hiding (speedChangeToFincFdec)
@@ -205,7 +204,6 @@ memoryMaps = (ccMm, muMm)
       (SimOnly (repeat 0))
       0
       0
-      (pure False)
       0
       (pure (JtagIn 0 0 0))
       0
@@ -284,7 +282,6 @@ switchDemoDut ::
   "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
   "GTH_RX_NS" ::: Gth.Wires GthRxS LinkCount ->
   "GTH_RX_PS" ::: Gth.Wires GthRxS LinkCount ->
-  "allProgrammed" ::: Signal Basic125 Bool ->
   "MISO" ::: Signal Basic125 Bit ->
   "JTAG_IN" ::: Signal Basic125 JtagIn ->
   "SYNC_IN" ::: Signal Basic125 Bit ->
@@ -309,7 +306,7 @@ switchDemoDut ::
   , "UART_TX" ::: Signal Basic125 Bit
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
-switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn syncIn =
+switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
   seqX
     (bundle (debugIla, bittidePeIla))
@@ -512,14 +509,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn sy
 
   -- Step 5, wait for stable buffers:
   allStable :: Signal Basic125 Bool
-  allStable =
-    -- Note: We only consider the stable signal after all CC CPUs have been
-    --       programmed. This makes sure we don't accidentally start the
-    --       elastic buffers while either unprogrammed nodes just happen to be
-    --       at the convergence frequency or when a single node is not
-    --       synchronizing yet, pulling all the others to it (which _would_ make
-    --       the system stable, but you know... not what we want!).
-    callistoResult.allStableC .&&. allProgrammed
+  allStable = callistoResult.allStableC
 
   allStableSticky :: Signal Basic125 Bool
   allStableSticky = sticky refClk handshakeRstFree allStable
@@ -795,7 +785,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs allProgrammed miso jtagIn sy
     delay refClk enableGen minBound
       $ speedChangeToStickyPins
         refClk
-        (unsafeFromActiveLow allProgrammed)
+        handshakeRstFree
         enableGen
         (SNat @Si539xHoldTime)
         callistoResult.maybeSpeedChangeC
@@ -888,19 +878,18 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
   refRst :: Reset Basic125
   (refClk, refRst) = clockWizardDifferential refClkDiff noReset
 
-  ( testStart :: Signal Basic125 Bool
-    , allProgrammed :: Signal Basic125 Bool
-    ) =
-      unbundle
-        $ setName @"vioHitlt"
-        $ vioProbe
-          ("probe_test_done" :> "probe_test_success" :> "probe_handshakes_done" :> Nil)
-          ("probe_test_start" :> "probe_all_programmed" :> Nil)
-          (False, False)
-          refClk
-          (testStart .&&. testDone) -- done
-          (testStart .&&. testSuccess) -- success
-          handshakesDone
+  testStart :: Signal Basic125 Bool
+  testStart =
+    unbundle
+      $ setName @"vioHitlt"
+      $ vioProbe
+        ("probe_test_done" :> "probe_test_success" :> "probe_handshakes_done" :> Nil)
+        ("probe_test_start" :> Nil)
+        False
+        refClk
+        (testStart .&&. testDone) -- done
+        (testStart .&&. testSuccess) -- success
+        handshakesDone
   testReset :: Reset Basic125
   testReset = unsafeFromActiveLow testStart `orReset` refRst
 
@@ -920,19 +909,19 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
     , fifoUnderflows :: Signal Basic125 Bool
     , uartTx :: Signal Basic125 Bit
     , syncOut :: Signal Basic125 Bit
-    ) = switchDemoDut refClk testReset boardClk rxs rxns rxps allProgrammed miso jtagIn syncIn
+    ) = switchDemoDut refClk testReset boardClk rxs rxns rxps miso jtagIn syncIn
 
   fifoSuccess :: Signal Basic125 Bool
   fifoSuccess = not <$> (fifoUnderflows .||. fifoOverflows)
 
-  endSuccess :: Signal Basic125 Bool
-  endSuccess = trueFor (SNat @(Seconds 5)) refClk testReset (allStable .&&. fifoSuccess)
+  doneSuccess :: Signal Basic125 Bool
+  doneSuccess = allStable .&&. fifoSuccess
 
   testDone :: Signal Basic125 Bool
-  testDone = endSuccess .||. transceiversFailedAfterUp .||. fmap not fifoSuccess
+  testDone = doneSuccess .||. transceiversFailedAfterUp .||. fmap not fifoSuccess
 
   testSuccess :: Signal Basic125 Bool
-  testSuccess = allStable .&&. fifoSuccess .&&. fmap not transceiversFailedAfterUp
+  testSuccess = testDone .&&. fifoSuccess .&&. fmap not transceiversFailedAfterUp
 
   testIla :: Signal Basic125 ()
   testIla =
@@ -942,7 +931,6 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
           $ "trigger_fdi_dt"
           :> "capture_fdi_dt"
           :> "dt_handshakesDone"
-          :> "dt_all_programmed"
           :> "dt_swFincFdecs"
           :> "dt_spiDone"
           :> "dt_spiOut"
@@ -959,7 +947,6 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
       handshakesDone
       captureFlag
       handshakesDone
-      allProgrammed
       swFincFdecs
       spiDone
       (bundle spiOut)

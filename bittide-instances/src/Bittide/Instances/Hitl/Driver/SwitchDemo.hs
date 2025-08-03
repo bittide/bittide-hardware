@@ -329,12 +329,6 @@ muGdbCheck gdb = do
  where
   whoAmIBase = showHex32 $ muBaseAddress @Integer "WhoAmI"
 
-assertAllProgrammed :: (HwTarget, DeviceInfo) -> VivadoM ()
-assertAllProgrammed (hwT, d) = do
-  liftIO $ putStrLn $ "Asserting all programmed probe on " <> d.deviceId
-  openHardwareTarget hwT
-  updateVio "vioHitlt" [("probe_all_programmed", "1")]
-
 foldExitCodes :: VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
 foldExitCodes prev code = do
   (count, acc) <- prev
@@ -629,10 +623,6 @@ driver testName targets = do
       let result = if and deviceChecks then ExitSuccess else ExitFailure 2
       return result
 
-  liftIO
-    $ putStrLn
-      "All programmed pin may be asserted from previous test - deasserting on all targets."
-  forM_ targets (deassertProbe "probe_all_programmed")
   forM_ targets (assertProbe "probe_test_start")
   tryWithTimeout "Wait for handshakes successes from all boards" 30_000_000
     $ awaitHandshakes targets
@@ -685,7 +675,6 @@ driver testName targets = do
           --
           -- TODO: Add a way to send SIGINT to a GDB process.
           -- liftIO $ mapM_ Gdb.continue muGdbs
-          forM_ targets assertAllProgrammed
           testResults <- awaitTestCompletions startTime targets 60_000
           (sCount, stabilityExitCode) <-
             L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
