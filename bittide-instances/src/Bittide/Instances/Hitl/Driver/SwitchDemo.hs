@@ -15,7 +15,8 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.SwitchDemo (memoryMapCc, memoryMapMu)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async (forConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently)
 import Control.Monad (forM, forM_, when, zipWithM)
 import Control.Monad.IO.Class
@@ -27,7 +28,6 @@ import Numeric (showHex)
 import Project.FilePath
 import Project.Handle
 import Protocols.MemoryMap (MemoryMap (..), MemoryMapTree (DeviceInstance, Interconnect))
-import System.Clock (Clock (Monotonic), TimeSpec, diffTimeSpec, getTime, toNanoSecs)
 import System.Exit
 import System.FilePath
 import System.IO
@@ -43,7 +43,6 @@ import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Clash.Sized.Vector as V (fromList)
-import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.List as L
 
 data OcdInitData = OcdInitData
@@ -242,9 +241,7 @@ initGdb hitlDir binName gdbPort (hwT, d) = do
 
 initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (ProcessHandles, IO ())
 initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
-  -- Using a single handle makes picocom panic
-  devNullHandle0 <- openFile "/dev/null" WriteMode
-  devNullHandle1 <- openFile "/dev/null" WriteMode
+  devNullHandle <- openFile "/dev/null" WriteMode
 
   let
     devPath = deviceInfo.serial
@@ -260,7 +257,7 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
       ( Picocom.StdStreams
           { Picocom.stdin = CreatePipe
           , Picocom.stdout = CreatePipe
-          , Picocom.stderr = UseHandle devNullHandle0
+          , Picocom.stderr = UseHandle devNullHandle
           }
       )
       devPath
@@ -268,14 +265,10 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
       stderrPath
       []
 
+  hSetBuffering pico.stdoutHandle LineBuffering
+
   tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
     $ waitForLine pico.stdoutHandle "Terminal ready"
-
-  -- We're not interested in the output of picocom in this Haskell process,
-  -- so we redirect it to /dev/null.
-  _ <- forkIO $ do
-    LazyByteString.hGetContents pico.stdoutHandle
-      >>= LazyByteString.hPut devNullHandle1
 
   pure (pico, cleanup)
 
@@ -337,65 +330,6 @@ foldExitCodes prev code = do
       then (count + 1, acc)
       else (count, code)
 
-getTestsStatus ::
-  TimeSpec ->
-  [(HwTarget, DeviceInfo)] ->
-  [TestStatus] ->
-  Integer ->
-  VivadoM [TestStatus]
-getTestsStatus _ [] _ _ = return []
-getTestsStatus _ _ [] _ = return []
-getTestsStatus startTime ((hwT, _) : hwtdRest) (status : statusRest) dur = do
-  let
-    getRestStatus = getTestsStatus startTime hwtdRest statusRest dur
-    calcTimeSpentMs = (`div` 1_000_000) . toNanoSecs . diffTimeSpec startTime <$> getTime Monotonic
-  case status of
-    TestRunning -> do
-      timeSpent <- liftIO $ calcTimeSpentMs
-      if timeSpent < dur
-        then do
-          openHardwareTarget hwT
-          vals <- readVio "vioHitlt" ["probe_test_done", "probe_test_success"]
-          rest <- getRestStatus
-          return $ case vals of
-            [("probe_test_done", "1"), ("probe_test_success", success)] ->
-              TestDone (success == "1") : rest
-            _ -> TestRunning : rest
-        else do
-          rest <- getRestStatus
-          return $ TestTimeout : rest
-    other -> do
-      rest <- getRestStatus
-      return $ other : rest
-
-awaitTestCompletions ::
-  TimeSpec ->
-  [(HwTarget, DeviceInfo)] ->
-  Integer ->
-  VivadoM [ExitCode]
-awaitTestCompletions startTime targets dur = do
-  let
-    innerInit = L.repeat TestRunning
-    inner prev = do
-      new <- getTestsStatus startTime targets prev dur
-      if not (TestRunning `L.elem` new)
-        then do
-          let
-            go :: (HwTarget, DeviceInfo) -> TestStatus -> IO ExitCode
-            go (_, d) status = case status of
-              TestDone True -> do
-                putStrLn $ "Test passed on target " <> d.deviceId
-                return ExitSuccess
-              TestDone False -> do
-                putStrLn $ "Test finished unsuccessfully on target " <> d.deviceId
-                return $ ExitFailure 2
-              _ -> do
-                putStrLn $ "Test timed out on target " <> d.deviceId
-                return $ ExitFailure 2
-          liftIO $ zipWithM go targets new
-        else inner new
-  inner innerInit
-
 driver ::
   (HasCallStack) =>
   String ->
@@ -407,7 +341,6 @@ driver testName targets = do
     $ "Running driver function for targets "
     <> show ((\(_, info) -> info.deviceId) <$> targets)
 
-  startTime <- liftIO $ getTime Monotonic
   projectDir <- liftIO $ findParentContaining "cabal.project"
 
   let
@@ -657,16 +590,16 @@ driver testName targets = do
         let
           goDumpCcSamples = do
             let ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
-            liftIO $ mapM_ Gdb.interrupt ccGdbs
+            mapM_ Gdb.interrupt ccGdbs
             nSamples <- liftIO $ zipWithConcurrently dumpCcSamples ccGdbs ccSamplesPaths
-            liftIO $ putStr "Dumped /n/ clock control samples: "
-            liftIO $ print nSamples
+            putStr "Dumped /n/ clock control samples: "
+            print nSamples
             -- TODO: Move to separate CI step
-            liftIO $ putStrLn "Rendering plots..."
-            liftIO $ callProcess plotDataDumpPath ccSamplesPaths
+            putStrLn "Rendering plots..."
+            callProcess plotDataDumpPath ccSamplesPaths
 
         let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
-        brackets picocomStarts (liftIO . snd) $ \_picocoms -> do
+        brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
           liftIO $ mapM_ Gdb.continue ccGdbs
           -- XXX: If you also want to start the management units, uncomment this
           --      next line. Beware that this breaks the demo, because we want
@@ -675,17 +608,11 @@ driver testName targets = do
           --
           -- TODO: Add a way to send SIGINT to a GDB process.
           -- liftIO $ mapM_ Gdb.continue muGdbs
-          testResults <- awaitTestCompletions startTime targets 60_000
-          (sCount, stabilityExitCode) <-
-            L.foldl foldExitCodes (pure (0, ExitSuccess)) testResults
           liftIO
-            $ putStrLn
-              [i|Test case #{testName} stabilized on #{sCount} of #{L.length targets} targets|]
-          case stabilityExitCode of
-            ExitSuccess | sCount == L.length targets -> pure ()
-            _ -> do
-              goDumpCcSamples
-              error "Some targets did not stabilize successfully."
+            $ tryWithTimeoutOn "Waiting for stable links" 60_000_000 goDumpCcSamples
+            $ forConcurrently_ picocoms
+            $ \pico ->
+              waitForLine pico.stdoutHandle "[CC] All links stable"
 
           liftIO $ putStrLn "Getting UGNs for all targets"
           ugnPairsTable <- zipWithM muGetUgns targets muGdbs
@@ -729,10 +656,8 @@ driver testName targets = do
 
           bufferExit <- finalCheck muGdbs (toList chainConfig)
 
-          goDumpCcSamples
+          liftIO goDumpCcSamples
 
-          let
-            finalExit =
-              fromMaybe ExitSuccess
-                $ L.find (/= ExitSuccess) [stabilityExitCode, gdbExitCode0, gdbExitCode1, bufferExit]
-          return finalExit
+          pure
+            $ fromMaybe ExitSuccess
+            $ L.find (/= ExitSuccess) [gdbExitCode0, gdbExitCode1, bufferExit]

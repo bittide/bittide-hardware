@@ -66,6 +66,7 @@ fn main() -> ! {
     // Update clock control 5K updates per second
     let interval = Duration::from_micros(200);
     let mut next_update = timer.now() + interval;
+    let mut prev_all_stable = false;
 
     loop {
         // Do clock control on "frozen" counters
@@ -78,6 +79,16 @@ fn main() -> ! {
 
         // Store debug information
         sample_store.store(&freeze, stability);
+
+        // Emit stability information over UART
+        let all_stable = stability.all_stable();
+        if !prev_all_stable && all_stable {
+            uwriteln!(uart, "All links stable").unwrap();
+        } else if prev_all_stable && !all_stable {
+            uwriteln!(uart, "Links no longer stable").unwrap();
+            panic!("Links no longer stable");
+        }
+        prev_all_stable = all_stable;
 
         // Wait for next update
         let timer_result = timer.wait_until(next_update);
