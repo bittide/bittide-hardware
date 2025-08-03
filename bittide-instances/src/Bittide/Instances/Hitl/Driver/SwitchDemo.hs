@@ -601,13 +601,7 @@ driver testName targets = do
         let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
           liftIO $ mapM_ Gdb.continue ccGdbs
-          -- XXX: If you also want to start the management units, uncomment this
-          --      next line. Beware that this breaks the demo, because we want
-          --      to take over control of the management unit again to read out
-          --      various values, but we don't have a way to pause the CPU again.
-          --
-          -- TODO: Add a way to send SIGINT to a GDB process.
-          -- liftIO $ mapM_ Gdb.continue muGdbs
+          liftIO $ mapM_ Gdb.continue muGdbs
           liftIO
             $ tryWithTimeoutOn "Waiting for stable links" 60_000_000 goDumpCcSamples
             $ forConcurrently_ picocoms
@@ -615,6 +609,7 @@ driver testName targets = do
               waitForLine pico.stdoutHandle "[CC] All links stable"
 
           liftIO $ putStrLn "Getting UGNs for all targets"
+          liftIO $ mapM_ Gdb.interrupt muGdbs
           ugnPairsTable <- zipWithM muGetUgns targets muGdbs
           let
             ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
