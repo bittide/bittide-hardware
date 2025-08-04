@@ -19,8 +19,8 @@ import Project.FilePath
 import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap
-import Protocols.MemoryMap.FieldType (ToFieldType (..))
 import Protocols.MemoryMap.Registers.WishboneStandard
+import Protocols.MemoryMap.TypeDescription.TH
 import System.Environment (lookupEnv)
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
@@ -31,7 +31,8 @@ data SomeAdt
   | ConB (Unsigned 40)
   | ConC (BitVector 16) (BitVector 20)
   | ConD (Vec 3 (BitVector 8))
-  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack, Eq, NFData)
+  deriving (Generic, NFDataX, ShowX, Show,  BitPackC, BitPack, Eq, NFData)
+deriveTypeDesc ''SomeAdt
 
 testValue :: Vec 4 SomeAdt
 testValue =

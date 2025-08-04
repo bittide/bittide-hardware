@@ -36,7 +36,6 @@ import Bittide.SharedTypes
 import Clash.Class.BitPackC
 import Protocols
 import Protocols.MemoryMap
-import Protocols.MemoryMap.FieldType (FieldType, ToFieldType (..), Var)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
   busActivityWrite,
@@ -45,6 +44,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWbI,
   registerWbI_,
  )
+import Protocols.MemoryMap.TypeDescription
 import Protocols.Wishbone
 
 {-
@@ -72,15 +72,7 @@ data ValidEntry a repetitionBits = ValidEntry
   }
   deriving (BitPack, Eq, Generic, NFDataX, Show, ShowX, BitPackC, Lift)
 
-instance
-  forall a repetitionBits.
-  (ToFieldType a, KnownNat repetitionBits) =>
-  ToFieldType (ValidEntry a repetitionBits)
-  where
-  type Generics (ValidEntry a repetitionBits) = 1
-  type WithVars (ValidEntry a repetitionBits) = ValidEntry (Var 0) repetitionBits
-  args :: Vec 1 FieldType
-  args = toFieldType @a :> Nil
+deriveTypeDesc ''ValidEntry
 
 {- | 'Vec' of 'ValidEntry's to be used by a 'calendar'. The duration of the 'Calendar' in
 clockCycles is equal to the @size@ of the 'Calendar' plus the 'sum' of all 'veRepeat's
@@ -338,7 +330,7 @@ mkCalendarC ::
     BitPack a
   , KnownNat nBytes
   , 1 <= nBytes
-  , ToFieldType a
+  , WithTypeDescription a
   , BitPackC a
   , HasCallStack
   ) =>
@@ -445,7 +437,7 @@ mkCalendar ::
   , 1 <= nBytes
   , KnownNat addrW
   , BitPack calEntry
-  , ToFieldType calEntry
+  , WithTypeDescription calEntry
   , BitPackC calEntry
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder

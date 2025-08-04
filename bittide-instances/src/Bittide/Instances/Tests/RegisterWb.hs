@@ -35,7 +35,6 @@ import Data.Maybe (catMaybes)
 import Protocols (Circuit (Circuit), Df, Drivable (sampleC), idC, toSignals)
 import Protocols.Idle (idleSource)
 import Protocols.MemoryMap (ConstBwd, MM, MemoryMap, getMMAny)
-import Protocols.MemoryMap.FieldType (ToFieldType)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (..),
   deviceWb,
@@ -43,6 +42,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWb,
   registerWb_,
  )
+import Protocols.MemoryMap.TypeDescription.TH
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
@@ -69,46 +69,58 @@ type S64 = Signed 64
 type S96 = Signed 96
 
 data MyZeroSizedType = MyZeroSizedType
-  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
+  deriving (Generic, NFDataX, ShowX, Show, BitPackC, BitPack)
+deriveTypeDesc ''MyZeroSizedType
 
 data Abc = A | B | C
-  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
+  deriving (Generic, NFDataX, ShowX, Show, BitPackC, BitPack)
+deriveTypeDesc ''Abc
 
 data Xyz = H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | Y | Z
-  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, BitPack)
+deriveTypeDesc ''Xyz
 
 data F = F {f :: Float, u :: Double}
-  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, BitPack)
+deriveTypeDesc ''F
 
 data X3 = X3 B16 B8 B8
-  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, BitPack)
+deriveTypeDesc ''X3
 
 data X2 = X2 B8 X3
-  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, BitPack)
+deriveTypeDesc ''X2
 
 data P0 = P0 U16 U8 U8
-  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, BitPack)
+deriveTypeDesc ''P0
 
 data P1 = P1 U16 U8 U16
-  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, BitPack)
+deriveTypeDesc ''P1
 
 data P2 = P2 U16 U8 (Index 10)
-  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, BitPack)
+deriveTypeDesc ''P2
 
 data P3 = P3 P2 U8
-  deriving (Generic, BitPackC, NFDataX, ShowX, Show, ToFieldType, BitPack)
+  deriving (Generic, BitPackC, NFDataX, ShowX, Show, BitPack)
+deriveTypeDesc ''P3
 
 data SoP
   = SoP0
   | SoP1 {u :: Unsigned 32}
   | SoP2
-  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
+  deriving (Generic, NFDataX, ShowX, Show, BitPackC, BitPack)
+deriveTypeDesc ''SoP
 
 data Inner = Inner
   { innerA :: BitVector 8
   , innerB :: BitVector 16
   }
-  deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
+  deriving (Generic, NFDataX, ShowX, Show, BitPackC, BitPack)
+deriveTypeDesc ''Inner
 
 -- | Example that exports a bunch of different types.
 manyTypesWb ::

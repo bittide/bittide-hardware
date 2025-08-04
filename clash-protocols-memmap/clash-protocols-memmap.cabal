@@ -149,11 +149,12 @@ library
     Protocols.MemoryMap.Check
     Protocols.MemoryMap.Check.AbsAddress
     Protocols.MemoryMap.Check.Normalized
-    Protocols.MemoryMap.FieldType
     Protocols.MemoryMap.Json
     Protocols.MemoryMap.Registers.WishboneStandard
     Protocols.MemoryMap.Registers.WishboneStandard.Internal
     Protocols.MemoryMap.TypeCollect
+    Protocols.MemoryMap.TypeDescription
+    Protocols.MemoryMap.TypeDescription.TH
 
   build-depends:
     aeson,
@@ -172,6 +173,7 @@ library
     string-interpolate,
     template-haskell,
     text,
+    th-expand-syns,
 
 executable hdl-test
   import: ghc2024, clash, extra

@@ -4,9 +4,10 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 
-use bittide_hal::elastic_buffer_wb_test::{DeviceInstances, EbCommand};
-use bittide_hal::freeze::ElasticBuffer;
+use bittide_hal::elastic_buffer_wb_test::DeviceInstances;
 use bittide_hal::manual_additions::timer::Duration;
+use bittide_hal::shared_devices::ElasticBuffer;
+use bittide_hal::types::EbCommand;
 #[cfg(not(test))]
 use riscv_rt::entry;
 use ufmt::uwriteln;

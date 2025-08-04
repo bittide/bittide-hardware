@@ -9,11 +9,11 @@ use core::panic::PanicInfo;
 use ufmt::derive::uDebug;
 use ufmt::uwriteln;
 
+use bittide_hal::hals::si539x_configuration::devices::DomainDiffCounters;
+use bittide_hal::hals::si539x_configuration::DeviceInstances;
 use bittide_hal::manual_additions::si539x_spi::{Config, WriteError};
 use bittide_hal::manual_additions::timer::Duration;
-use bittide_hal::shared::devices::Timer;
-use bittide_hal::si539x_configuration::DeviceInstances;
-use bittide_hal::si539x_configuration::DomainDiffCounters;
+use bittide_hal::shared_devices::Timer;
 
 use bittide_macros::load_clock_config_csv;
 

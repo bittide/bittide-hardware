@@ -8,9 +8,9 @@ use proc_macro2::Literal;
 use quote::quote;
 
 use crate::{
-    generators::{generate_tag_docs, ident, IdentType},
-    hal_set::{DeviceInstance, DeviceInstanceAnnotations},
-    parse::path_name,
+    deprecated::generators::{generate_tag_docs, ident, IdentType},
+    deprecated::hal_set::{DeviceInstance, DeviceInstanceAnnotations},
+    input_language::path_name,
 };
 
 pub fn generate_device_instances_struct(

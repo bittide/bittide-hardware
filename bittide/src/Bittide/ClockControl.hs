@@ -24,7 +24,7 @@ import Clash.Explicit.Prelude hiding (PeriodToCycles)
 import Bittide.Arithmetic.Time (PeriodToCycles)
 import Clash.Class.BitPackC (BitPackC)
 import Data.Maybe (fromMaybe)
-import Protocols.MemoryMap.FieldType (ToFieldType)
+import Protocols.MemoryMap.TypeDescription
 
 {- | The (virtual) type of the FIFO's data counter. Setting this to
 'Unsigned' captures the real implementation of the FIFO, while
@@ -50,7 +50,9 @@ data SpeedChange
   = NoChange
   | SlowDown
   | SpeedUp
-  deriving (Eq, Show, Generic, BitPack, ShowX, NFDataX, ToFieldType, BitPackC)
+  deriving (Eq, Show, Generic, BitPack, ShowX, NFDataX, BitPackC)
+
+deriveTypeDesc ''SpeedChange
 
 {- | Converts speed changes into a normalized scalar, which reflects
 their effect on clock control.

@@ -30,7 +30,7 @@ import Language.Haskell.TH
 import Protocols
 import Protocols.Idle (forceResetSanityGeneric)
 import Protocols.MemoryMap (Access (ReadOnly))
-import Protocols.MemoryMap.FieldType (ToFieldType)
+import Protocols.MemoryMap.TypeDescription.TH
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access),
   registerConfig,
@@ -681,7 +681,8 @@ wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
   wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}
 
 data TimeCmd = Capture | WaitForCmp
-  deriving (Eq, Generic, Show, NFDataX, BitPack, ToFieldType, BitPackC)
+  deriving (Eq, Generic, Show, NFDataX, BitPack, BitPackC)
+deriveTypeDesc ''TimeCmd
 
 {- | Wishbone accessible circuit that contains a free running 64 bit counter with stalling
 capabilities.

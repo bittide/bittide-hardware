@@ -9,25 +9,20 @@ peripheral access code for the `Calendar` device.
 
 use crate as bittide_hal;
 
-use bittide_hal::{
-    hals::switch_c::devices::switch_calendar::SwitchCalendar, manual_additions::index::IndexTy,
-    switch_c::ValidEntry,
-};
-use bittide_macros::{index, Index};
+use bittide_hal::{hals::switch_c::devices::switch_calendar::SwitchCalendar, types::ValidEntry_12};
 
-pub type EntryType = ValidEntry<[Index![17]; 16]>;
+pub type EntryType = ValidEntry_12<[u8; 16]>;
 
 impl SwitchCalendar {
     /// Reads entry n from the shadow calendar.
     pub fn read_shadow_entry(&self, n: usize) -> EntryType {
-        let n1 = index!(n as u8, n = 256);
-        self.set_read_addr(n1);
+        self.set_read_addr(n as _);
         self.shadow_entry()
     }
 
     /// Writes entry `entry` to the shadow calendar at address `n`.
     pub fn write_shadow_entry(&self, n: usize, entry: EntryType) {
-        let n1 = index!(n as u8, n = 256);
+        let n1 = n as u8;
         self.set_shadow_entry(entry);
         self.set_write_addr(n1);
     }
@@ -44,13 +39,13 @@ impl SwitchCalendar {
 
     /// Returns the number of entries in the shadow calendar.
     pub fn shadow_depth(&self) -> usize {
-        self.shadow_depth_index().into_underlying() as usize + 1
+        self.shadow_depth_index() as usize + 1
     }
 
     /// Returns an iterator over the shadow calendar entries.
     pub fn read_shadow_calendar<'a>(&'a self) -> impl Iterator<Item = EntryType> + 'a {
         (0..self.shadow_depth()).map(move |n| {
-            let n1: IndexTy<256, u8> = unsafe { IndexTy::new_unchecked(n.try_into().unwrap()) };
+            let n1 = n as u8;
             self.set_read_addr(n1);
             self.shadow_entry()
         })
@@ -63,10 +58,10 @@ impl SwitchCalendar {
             "Entries exceed shadow calendar size"
         );
         for (n, entry) in entries.iter().enumerate() {
-            let n1: IndexTy<256, u8> = unsafe { IndexTy::new_unchecked(n.try_into().unwrap()) };
-            self.set_shadow_entry(*entry);
+            let n1 = n as u8;
+            self.set_shadow_entry(entry.clone());
             self.set_write_addr(n1);
         }
-        self.set_shadow_depth_index(unsafe { IndexTy::new_unchecked((entries.len() - 1) as u8) });
+        self.set_shadow_depth_index((entries.len() - 1) as u8);
     }
 }
