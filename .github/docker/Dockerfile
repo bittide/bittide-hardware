@@ -24,7 +24,7 @@ RUN \
 
 ENV \
   NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
-  MANPATH="/root/.nix-profile/share/man:$MANPATH" \
+  MANPATH="/root/.nix-profile/share/man" \
   PATH="/root/.nix-profile/bin:$PATH" \
   LC_ALL=en_US.UTF-8
 
@@ -33,6 +33,12 @@ COPY rust-toolchain.toml rust-toolchain.toml
 COPY flake.nix flake.nix
 COPY flake.lock flake.lock
 COPY nix /build/nix
+
+RUN \
+  nix profile --extra-experimental-features "nix-command flakes" install nixpkgs#cachix
+
+RUN \
+  USER=root cachix use bittide-hardware
 
 RUN \
   nix develop -j$(nproc) --extra-experimental-features "nix-command flakes" --command bash -c "echo OK"

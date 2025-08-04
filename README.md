@@ -11,8 +11,15 @@ currently target Vivado FPGAs paired with SkyWorks clock adjustment boards.
 
 # Getting started
 This project uses a bunch of different languages and tool(chain)s. Nix is used
-to manage this. To get a development shell [install nix](https://nixos.org/download.html)
-and run the following command in the root of this repository:
+to manage this. To get a development shell [install nix](https://nixos.org/download.html).
+Optionally, you can install `cachix` to use caches built by our CI infrastructure:
+
+```
+nix profile install nixpkgs#cachix
+cachix use bittide-hardware
+```
+
+Run the following command in the root of this repository to get a development shell:
 
 ```
 nix develop
