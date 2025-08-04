@@ -9,8 +9,13 @@ module Bittide.Instances.Hitl.Driver.SwitchDemo where
 
 import Clash.Prelude
 
+import Bittide.ClockControl.Topology (complete)
 import Bittide.Hitl
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.Driver.ClockControl.Config (
+  CcConf (CcConf, topology),
+  saveCcConfig,
+ )
 import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.SwitchDemo (memoryMapCc, memoryMapMu)
 import Bittide.Instances.Hitl.Utils.Driver
@@ -31,7 +36,7 @@ import Protocols.MemoryMap (MemoryMap (..), MemoryMapTree (DeviceInstance, Inter
 import System.Exit
 import System.FilePath
 import System.IO
-import System.Process (StdStream (CreatePipe, UseHandle), callProcess)
+import System.Process (StdStream (CreatePipe, UseHandle))
 import Text.Read (readMaybe)
 import Text.Show.Pretty (ppShow)
 import Vivado.Tcl (HwTarget)
@@ -150,12 +155,13 @@ muCaptureUgnAddresses =
  where
   ugnDevices = baseAddresses memoryMapMu "CaptureUgn"
 
-dumpCcSamples :: (HasCallStack) => FilePath -> [ProcessHandles] -> IO [Word]
-dumpCcSamples hitlDir ccGdbs = do
+dumpCcSamples :: (HasCallStack) => FilePath -> CcConf -> [ProcessHandles] -> IO ()
+dumpCcSamples hitlDir ccConf ccGdbs = do
   mapConcurrently_ Gdb.interrupt ccGdbs
   nSamples <- liftIO $ zipWithConcurrently go ccGdbs ccSamplesPaths
   putStrLn [i|Dumped /n/ clock control samples: #{nSamples}|]
-  pure nSamples
+  saveCcConfig hitlDir ccConf
+  putStrLn [i|Wrote configs and samples to: #{hitlDir}|]
  where
   go :: (HasCallStack) => ProcessHandles -> FilePath -> IO Word
   go gdb dumpPath = do
@@ -350,8 +356,6 @@ driver testName targets = do
   projectDir <- liftIO $ findParentContaining "cabal.project"
 
   let
-    plotDataDumpPath =
-      projectDir </> "bittide-instances" </> "data" </> "plot" </> "plot_data_dump.py"
     hitlDir = projectDir </> "_build/hitl" </> testName
 
     muGetUgns ::
@@ -593,17 +597,9 @@ driver testName targets = do
             [i|MU GDB testing passed on #{gdbCount1} of #{L.length targets} targets|]
         liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
 
-        let
-          goDumpCcSamples = do
-            _ <- dumpCcSamples hitlDir ccGdbs
-
-            -- TODO: Move to separate CI step
-            let ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
-            putStrLn "Rendering plots..."
-            callProcess plotDataDumpPath ccSamplesPaths
-
         let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+          let goDumpCcSamples = dumpCcSamples hitlDir CcConf{topology = complete 8} ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue muGdbs
           liftIO

@@ -154,6 +154,7 @@ library
     aeson,
     array,
     base,
+    binary,
     bittide-extra,
     bytestring,
     cassava,
@@ -201,6 +202,7 @@ library
     Bittide.ClockControl.Si5391A
     Bittide.ClockControl.Si5395J
     Bittide.ClockControl.Si539xSpi
+    Bittide.ClockControl.Topology
     Bittide.Counter
     Bittide.Df
     Bittide.DoubleBufferedRam

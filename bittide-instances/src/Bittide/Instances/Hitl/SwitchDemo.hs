@@ -24,7 +24,7 @@ import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
-import Bittide.ClockControl hiding (speedChangeToFincFdec)
+import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Types (
   CallistoCResult (..),
   ReframingState (..),
@@ -51,7 +51,17 @@ import Bittide.Hitl (
   HitlTestGroup (..),
   paramForHwTargets,
  )
-import Bittide.Instances.Domains
+import Bittide.Instances.Common (commonSpiConfig)
+import Bittide.Instances.Domains (
+  Basic125,
+  Bittide,
+  CccBufferSize,
+  Ext125,
+  Ext200,
+  GthRx,
+  GthRxS,
+  GthTxS,
+ )
 import Bittide.Instances.Hitl.Setup (
   FpgaCount,
   LinkCount,
@@ -59,7 +69,6 @@ import Bittide.Instances.Hitl.Setup (
   channelNames,
   clockPaths,
  )
-import Bittide.Instances.Hitl.SwCcTopologies (FifoSize, FincFdecCount, commonSpiConfig)
 import Bittide.Jtag (jtagChain, unsafeJtagSynchronizer)
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
@@ -108,6 +117,8 @@ type Baud = 921_600
 
 baud :: SNat Baud
 baud = SNat
+
+type FifoSize = 5 -- = 2^5 = 32
 
 {- Internal busses:
     - Instruction memory
@@ -229,12 +240,10 @@ ccConfig ::
   ( CLog 2 (n + SwcccInternalBusses) <= 30
   , KnownNat n
   ) =>
-  SwControlCConfig CccStabilityCheckerMargin (CccStabilityCheckerFramesize Basic125) n
+  SwControlCConfig n
 ccConfig =
   SwControlCConfig
-    { margin = SNat
-    , framesize = SNat
-    , peConfig =
+    { peConfig =
         PeConfig
           { prefixI = 0b1000
           , prefixD = 0b0100
@@ -287,7 +296,7 @@ switchDemoDut ::
   "SYNC_IN" ::: Signal Basic125 Bit ->
   ( "CC_MEMORYMAP" ::: MM.MM
   , "MU_MEMORYMAP" ::: MM.MM
-  , "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
+  , "GTH_TX_S" ::: Gth.SimWires Bittide LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "handshakesDone" ::: Signal Basic125 Bool
@@ -453,10 +462,10 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   isErr (Error _) = True
   isErr _ = False
 
-  transceivers :: Transceiver.Outputs LinkCount GthTx GthRx GthTxS Basic125
+  transceivers :: Transceiver.Outputs LinkCount Bittide GthRx GthTxS Basic125
   transceivers =
     transceiverPrbsN
-      @GthTx
+      @Bittide
       @GthRx
       @Ext200
       @Basic125
@@ -477,7 +486,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         , rxReadys = ebReadysRx
         }
 
-  bittideClk :: Clock GthTx
+  bittideClk :: Clock Bittide
   bittideClk = transceivers.txClock
 
   linksSuitableForCc :: Signal Basic125 (BitVector LinkCount)
@@ -486,25 +495,25 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   handshakesDoneFree :: Signal Basic125 Bool
   handshakesDoneFree = and <$> bundle transceivers.handshakesDoneFree
 
-  handshakesDoneTx :: Signal GthTx Bool
+  handshakesDoneTx :: Signal Bittide Bool
   handshakesDoneTx = and <$> bundle transceivers.handshakesDoneTx
 
   -- Step 3, send local counter for one cycle, connect to switch after:
-  txSamplingsDelayed :: Vec 7 (Signal GthTx Bool)
+  txSamplingsDelayed :: Vec 7 (Signal Bittide Bool)
   txSamplingsDelayed =
     register bittideClk handshakeRstTx enableGen False <$> transceivers.txSamplings
 
-  txDatas :: Vec 7 (Signal GthTx (BitVector 64))
+  txDatas :: Vec 7 (Signal Bittide (BitVector 64))
   txDatas = mux <$> txSamplingsDelayed <*> switchDataOut <*> repeat (pack <$> localCounter)
 
-  txStarts :: Vec 7 (Signal GthTx Bool)
+  txStarts :: Vec 7 (Signal Bittide Bool)
   txStarts = repeat allStableStickyTx
 
   -- Step 4, deassert CC CPU reset, deassert Bittide domain reset:
   handshakeRstFree :: Reset Basic125
   handshakeRstFree = unsafeFromActiveLow handshakesDoneFree
 
-  handshakeRstTx :: Reset GthTx
+  handshakeRstTx :: Reset Bittide
   handshakeRstTx = unsafeFromActiveLow handshakesDoneTx
 
   -- Step 5, wait for stable buffers:
@@ -514,15 +523,15 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   allStableSticky :: Signal Basic125 Bool
   allStableSticky = sticky refClk handshakeRstFree allStable
 
-  allStableStickyTx :: Signal GthTx Bool
+  allStableStickyTx :: Signal Bittide Bool
   allStableStickyTx = xpmCdcSingle refClk bittideClk allStableSticky
 
   -- Step 6, wait for elastic buffer initialization
   --         (=> signal we're ready to receive data):
-  ebReset :: Reset GthTx
+  ebReset :: Reset Bittide
   ebReset = unsafeFromActiveLow allStableStickyTx
 
-  ebReadys :: Vec 7 (Signal GthTx Bool)
+  ebReadys :: Vec 7 (Signal Bittide Bool)
   ebReadys = map (.==. pure Pass) ebModes
 
   ebReadysRx :: Vec 7 (Signal GthRx Bool)
@@ -533,7 +542,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   transceiversFailedAfterUp =
     sticky refClk refRst (isFalling refClk spiRst enableGen False handshakesDoneFree)
 
-  defaultBittideClkRstEn :: forall r. ((HiddenClockResetEnable GthTx) => r) -> r
+  defaultBittideClkRstEn :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
   defaultBittideClkRstEn = withClockResetEnable bittideClk handshakeRstTx enableGen
   defaultRefClkRstEn :: forall r. ((HiddenClockResetEnable Basic125) => r) -> r
   defaultRefClkRstEn = withClockResetEnable refClk handshakeRstFree enableGen
@@ -546,19 +555,19 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       ( "CC" ::: ConstBwd MM
       , "MU" ::: ConstBwd MM
       , Jtag Basic125
-      , CSignal GthTx (BitVector 64)
+      , CSignal Bittide (BitVector 64)
       , CSignal Basic125 Bool
       , CSignal Basic125 (BitVector LinkCount)
       , Vec LinkCount (CSignal Basic125 (RelDataCount CccBufferSize))
-      , Vec LinkCount (CSignal GthTx (Maybe (BitVector 64)))
+      , Vec LinkCount (CSignal Bittide (Maybe (BitVector 64)))
       )
       ( CSignal Basic125 (CallistoCResult LinkCount)
-      , Vec LinkCount (CSignal GthTx (BitVector 64))
-      , CSignal GthTx (Unsigned 64)
-      , CSignal GthTx (SimplePeState FpgaCount)
-      , CSignal GthTx (BitVector 64)
-      , CSignal GthTx (BitVector 64)
-      , CSignal GthTx (Vec (LinkCount + 1) (Index (LinkCount + 2)))
+      , Vec LinkCount (CSignal Bittide (BitVector 64))
+      , CSignal Bittide (Unsigned 64)
+      , CSignal Bittide (SimplePeState FpgaCount)
+      , CSignal Bittide (BitVector 64)
+      , CSignal Bittide (BitVector 64)
+      , CSignal Bittide (Vec (LinkCount + 1) (Index (LinkCount + 2)))
       , CSignal Basic125 Bit
       , "SYNC_OUT" ::: CSignal Basic125 Bit
       )
@@ -720,9 +729,9 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
             )
           )
 
-  peNotIdle :: Signal GthTx Bool
+  peNotIdle :: Signal Bittide Bool
   peNotIdle = (/= Idle) <$> peState
-  peNotIdleSticky :: Signal GthTx Bool
+  peNotIdleSticky :: Signal Bittide Bool
   peNotIdleSticky = sticky bittideClk handshakeRstTx peNotIdle
   peNotIdleStickyFree :: Signal Basic125 Bool
   peNotIdleStickyFree = xpmCdcSingle bittideClk refClk peNotIdleSticky
@@ -790,7 +799,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         (SNat @Si539xHoldTime)
         callistoResult.maybeSpeedChangeC
 
-  domainDiffs :: Vec LinkCount (Signal Basic125 FincFdecCount)
+  domainDiffs :: Vec LinkCount (Signal Basic125 (Signed 32))
   domainDiffs =
     zipWith3
       (domainDiffCounterExt refClk)
@@ -801,20 +810,20 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   rxFifos ::
     Vec
       LinkCount
-      ( Signal GthTx (RelDataCount FifoSize)
-      , Signal GthTx Underflow
-      , Signal GthTx Overflow
-      , Signal GthTx EbMode
-      , Signal GthTx (Maybe (BitVector 64))
+      ( Signal Bittide (RelDataCount FifoSize)
+      , Signal Bittide Underflow
+      , Signal Bittide Overflow
+      , Signal Bittide EbMode
+      , Signal Bittide (Maybe (BitVector 64))
       )
   rxFifos = zipWith go transceivers.rxClocks transceivers.rxDatas
    where
     go rxClk rxData = resettableXilinxElasticBuffer bittideClk rxClk ebReset rxData
 
-  fifoUnderflowsTx :: Vec LinkCount (Signal GthTx Underflow)
-  fifoOverflowsTx :: Vec LinkCount (Signal GthTx Overflow)
-  rxDatasEbs :: Vec LinkCount (Signal GthTx (Maybe (BitVector 64)))
-  ebModes :: Vec 7 (Signal GthTx EbMode)
+  fifoUnderflowsTx :: Vec LinkCount (Signal Bittide Underflow)
+  fifoOverflowsTx :: Vec LinkCount (Signal Bittide Overflow)
+  rxDatasEbs :: Vec LinkCount (Signal Bittide (Maybe (BitVector 64)))
+  ebModes :: Vec 7 (Signal Bittide EbMode)
   (_, fifoUnderflowsTx, fifoOverflowsTx, ebModes, rxDatasEbs) = unzip5 rxFifos
 
   fifoOverflowsFree :: Signal Basic125 Overflow
@@ -839,7 +848,7 @@ switchDemoTest ::
   "JTAG" ::: Signal Basic125 JtagIn ->
   "USB_UART_TXD" ::: Signal Basic125 Bit ->
   "SYNC_IN" ::: Signal Basic125 Bit ->
-  ( "GTH_TX_S" ::: Gth.SimWires GthTx LinkCount
+  ( "GTH_TX_S" ::: Gth.SimWires Bittide LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , ""
@@ -895,7 +904,7 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
 
   ( _ccMm
     , _muMm
-    , txs :: Gth.SimWires GthTx LinkCount
+    , txs :: Gth.SimWires Bittide LinkCount
     , txns :: Gth.Wires GthTxS LinkCount
     , txps :: Gth.Wires GthTxS LinkCount
     , handshakesDone :: Signal Basic125 Bool

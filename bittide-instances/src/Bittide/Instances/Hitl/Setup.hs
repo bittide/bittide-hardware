@@ -24,11 +24,11 @@ module Bittide.Instances.Hitl.Setup (
 
 import Clash.Prelude
 
+import Bittide.ClockControl.Topology
 import Bittide.Hitl (DeviceInfo (..), FpgaId, HwTargetRef (..))
-import Bittide.Topology
 import GHC.Stack (HasCallStack)
 
-import qualified Bittide.Topology as Topology
+import qualified Bittide.ClockControl.Topology as Topology
 import qualified Data.String.Interpolate as I
 
 -- | The number of FPGAs in the current setup
@@ -94,7 +94,7 @@ isActiveLink topology fpgaNr linkNr =
 
 >>> import Data.Graph
 >>> import Clash.Prelude
->>> import Bittide.Topology
+>>> import Bittide.ClockControl.Topology
 >>> let graph = complete 3
 >>> pack (linkMask graph 0)
 0b010_0001

@@ -53,6 +53,11 @@ impl StabilityDetector {
         }
     }
 
+    /// Whether all links are stable
+    pub fn all_stable(&self) -> bool {
+        self.prev_stabilities.iter().all(|&stable| stable)
+    }
+
     pub fn update(&mut self, cc: &ClockControl, now: Instant) -> Stability {
         let mut stables: u32 = 0;
         let mut settleds: u32 = 0;

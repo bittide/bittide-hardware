@@ -83,8 +83,19 @@ fn main() -> ! {
         // Detect stability
         let stability = stability_detector.update(&cc, timer.now());
 
-        // Store debug information
-        sample_store.store(&freeze, stability, state.z_k);
+        // Store debug information. Stop capturing samples if we are stable to
+        // reduce plot sizes.
+        if !prev_all_stable {
+            sample_store.store(&freeze, stability, state.z_k);
+        }
+
+        // If we're all stable, print over UART -- this can be used by the tests
+        // wait for.
+        let all_stable = stability_detector.all_stable();
+        if all_stable && !prev_all_stable {
+            uwriteln!(uart, "All links stable").unwrap();
+        }
+        prev_all_stable = all_stable;
 
         // Emit stability information over UART
         let all_stable = stability.all_stable();

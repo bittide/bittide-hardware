@@ -43,7 +43,7 @@ hitlTests =
     <> [Ethernet.tests]
     <> [FincFdec.tests]
     <> [LinkConfiguration.tests]
-    <> SwCcTopologies.tests
+    <> [SwCcTopologies.tests]
     <> [SwitchDemo.tests]
     <> [SyncInSyncOut.tests]
     <> [TemperatureMonitor.tests]

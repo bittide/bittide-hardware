@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE QuasiQuotes #-}
 
-module Bittide.Topology (
+module Bittide.ClockControl.Topology (
   -- * Data Types
   TopologyType (..),
   TopologyName,
@@ -345,7 +345,7 @@ toDot topology =
   |]
  where
   tName = topology.name -- XXX: Doesn't work in the quasiquoter?
-  renderEdge (i, j) = [I.i|n#{i} -- n#{j};|]
+  renderEdge (i, j) = [I.i|#{i} -- #{j};|]
   renderedEdges = L.intercalate "\n" (renderEdge <$> uniEdges)
   uniEdges = [(i, j) | (i, j) <- Graph.edges topology.graph, i < j]
 

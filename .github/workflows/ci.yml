@@ -59,7 +59,7 @@ jobs:
         shell: git-nix-shell {0}
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-02
       options: --memory=11g
 
     steps:
@@ -120,7 +120,7 @@ jobs:
         shell: git-nix-shell {0} --ignore-environment
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-02
       options: --memory=11g
 
     steps:
@@ -155,22 +155,29 @@ jobs:
       - run: cache push cargo
       - run: cache push build
 
-  generate-full-clock-control-report:
-    name: Generate clock control report
+  generate-control-reports:
+    name: Generate control reports
     runs-on: [self-hosted, compute]
-    if: ${{ !cancelled() && needs.bittide-instances-hardware-in-the-loop-test-matrix.outputs.should_generate_report == 'true' }}
     defaults:
       run:
-        shell: git-nix-shell {0} --ignore-environment
+        shell: git-nix-shell {0} --ignore-environment --keep GH_TOKEN --keep REPORT_URL --keep REPORT_NAME
     needs: [
-      build,
       bittide-instances-hardware-in-the-loop,
-      bittide-instances-hardware-in-the-loop-test-matrix,
+      bittide-instances-matrices,
      ]
+    strategy:
+      matrix:
+        target: ${{ fromJson(needs.bittide-instances-matrices.outputs.clock-report) }}
+      fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-02
       options: --memory=11g
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      REPORT_NAME: ${{ matrix.target.top }}
 
     steps:
       - name: Checkout
@@ -181,43 +188,43 @@ jobs:
           .github/scripts/set_ci_flags.sh
 
       - run: cache pull cabal
-      - run: cache pull cargo
       - run: cache pull build
 
-      - name: Generate HITL based plots
+      - name: Download HITL data
         run: |
-          ./cargo.sh build --frozen --release
-          export BITTIDE_ARTIFACT_ACCESS_TOKEN="${{ secrets.GITHUB_TOKEN }}"
-          export RUNREF="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          export REPORTKIND="${{ needs.bittide-instances-hardware-in-the-loop-test-matrix.outputs.report_kind }}"
-          cabal run -- bittide-tools:cc-plot ${{ github.run_id }}:$REPORTKIND hitl-topology-plots
+          gh run download ${{ github.run_id }} -p "${{ matrix.target.top }}-hitl-data"
+
+      - name: Generate clock control CSVs
+        run: |
+          # Enable globbing for the `*`s in the next commands
+          set +f
+
+          # Note these aren't necessary to generate the reports, but are useful for debugging
+          cabal run bittide-instances:samples-to csv ${{ matrix.target.top }}-hitl-data/hitl/*/*.bin
+          cabal run bittide-instances:samples-to ppm-csv ${{ matrix.target.top }}-hitl-data/hitl/*/*.bin
 
       - name: Generate clock control reports
         run: |
-          set +f # Enable globbing
-          mkdir -p reports
-          pdfunite \
-            hitl-topology-plots/*/report.pdf \
-            reports/HITLT-Report.pdf
-          rm hitl-topology-plots/*/report.pdf
-          mkdir -p plot-sources
-          export REPORTKIND="${{ needs.bittide-instances-hardware-in-the-loop-test-matrix.outputs.report_kind }}"
-          mv hitl-topology-plots plot-sources/$REPORTKIND
+          cabal run bittide-instances:samples-to multi-report ${{ matrix.target.top }}-hitl-data/hitl
 
-      - name: Upload Reports
+      - name: Upload report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Clock Control Reports
-          path: reports
+          name: ${{ matrix.target.top }}-clock-report
+          path: |
+            ${{ matrix.target.top }}-hitl-data/hitl/*.pdf
           retention-days: 14
 
-      - name: Upload HITLT Plot Sources
+      - name: Upload sources
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: CC-HITLT Plot Sources
-          path: plot-sources
+          name: ${{ matrix.target.top }}-clock-report-sources
+          path: |
+            ${{ matrix.target.top }}-hitl-data/hitl/*/*.json
+            ${{ matrix.target.top }}-hitl-data/hitl/*/*.bin
+            ${{ matrix.target.top }}-hitl-data/hitl/*/*.csv
           retention-days: 14
 
   should-run-haskell-tests:
@@ -227,7 +234,7 @@ jobs:
       run:
         shell: git-nix-shell {0}
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-02
       options: --memory=11g
     outputs:
       run_tests: ${{ steps.check.outputs.run_tests }}
@@ -259,7 +266,7 @@ jobs:
     if: ${{ needs.should-run-haskell-tests.outputs.run_tests == 'true' }}
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-02
       options: --memory=11g
       volumes:
         - /opt/tools:/opt/tools
@@ -332,7 +339,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-02
       options: --memory=11g
     needs: [build]
 
@@ -358,7 +365,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-02
       options: --memory=11g
     needs: [build]
 
@@ -386,7 +393,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-02
       options: --memory=11g
     needs: [build]
 
@@ -410,22 +417,14 @@ jobs:
             processing-element-test
         working-directory: _build/cargo/firmware-binaries/riscv32imc-unknown-none-elf/release/
 
-  bittide-instances-hdl-matrix:
-    name: bittide-instances synthesis matrix generation
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --ignore-environment
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
-      options: --memory=11g
-
+  bittide-instances-matrices:
+    name: bittide-instances matrices generation
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Generate matrix
+      - name: Pick JSON file
         run: |
           if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
             cp .github/synthesis/all.json checks.json
@@ -435,73 +434,30 @@ jobs:
             cp .github/synthesis/main.json checks.json
           fi
 
-      - name: Set test matrix
-        id: set-matrix
+      - name: Set synth matrix
+        id: set-synth
         run: |
-          echo "check_matrix=$(cat checks.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
+          cat checks.json
+          echo "matrix=$(cat checks.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Set HITL matrix
+        id: set-hitl
+        run: |
+          jq '[.[] | select(.stage=="test")]' checks.json > checks.hitl.json
+          cat checks.hitl.json
+          echo "matrix=$(cat checks.hitl.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Set clock report matrix
+        id: set-clock-report
+        run: |
+          jq '[.[] | select(.cc_report==true)]' checks.hitl.json > checks.clock-report.json
+          cat checks.clock-report.json
+          echo "matrix=$(cat checks.clock-report.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
 
     outputs:
-      check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
-
-  bittide-instances-hardware-in-the-loop-test-matrix:
-    name: bittide-instances hardware-in-the-loop test matrix generation
-    runs-on: [self-hosted, compute]
-    defaults:
-      run:
-        shell: git-nix-shell {0} --ignore-environment
-
-    container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
-      options: --memory=11g
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Generate matrix
-        run: |
-          if [[ "${{ github.event_name }}" == "schedule" || $(.github/scripts/force_expensive_checks.sh) == "true" ]]; then
-            cp .github/synthesis/all.json checks.json
-          elif [[ -f .github/synthesis/debug.json ]]; then
-            cp .github/synthesis/debug.json checks.json
-          else
-            cp .github/synthesis/main.json checks.json
-          fi
-
-          jq '[.[] | select(.stage=="test")]' checks.json > checks.json.filtered
-          cp checks.json.filtered checks.json
-
-      - name: Set test matrix
-        id: set-matrix
-        run: |
-
-          echo "check_matrix=$(cat checks.json | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
-
-          swCcTopologyTest=$(jq 'map(select(.top == "swCcTopologyTest")) | length > 0' checks.json)
-          swCcOneTopologyTest=$(jq 'map(select(.top == "swCcOneTopologyTest")) | length > 0' checks.json)
-
-          should_generate_report='false';
-          if [ "${swCcTopologyTest}" == 'true' ] && [ "${swCcOneTopologyTest}" == 'true' ]; then
-            echo "Cannot handle two topology tests at the same time for plotting"
-            exit 1
-          elif [ "${swCcTopologyTest}" == 'true' ]; then
-            should_generate_report='true';
-            report_kind="swCcTopologyTest"
-          elif [ "${swCcOneTopologyTest}" == 'true' ]; then
-            should_generate_report='true';
-            report_kind="swCcOneTopologyTest"
-          fi
-
-          if [ "${should_generate_report}" == 'true' ]; then
-            echo "report_kind=${report_kind}" | tee -a "$GITHUB_OUTPUT"
-          fi
-
-          echo "should_generate_report=${should_generate_report}" | tee -a "$GITHUB_OUTPUT"
-
-    outputs:
-      check_matrix: ${{ steps.set-matrix.outputs.check_matrix }}
-      should_generate_report: ${{ steps.set-matrix.outputs.should_generate_report }}
-      report_kind: ${{ steps.set-matrix.outputs.report_kind }}
+      synth: ${{ steps.set-synth.outputs.matrix }}
+      hitl: ${{ steps.set-hitl.outputs.matrix }}
+      clock-report: ${{ steps.set-clock-report.outputs.matrix }}
 
   bittide-instances-hdl:
     name: synth
@@ -510,15 +466,15 @@ jobs:
       run:
         # We leave out '--ignore-environment', as 'with_vivado.sh' relies on basic Ubuntu
         shell: git-nix-shell {0}
-    needs: [build, bittide-instances-hdl-matrix]
+    needs: [build, bittide-instances-matrices]
 
     strategy:
       matrix:
-        target: ${{ fromJson(needs.bittide-instances-hdl-matrix.outputs.check_matrix) }}
+        target: ${{ fromJson(needs.bittide-instances-matrices.outputs.synth) }}
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-02
       volumes:
         - /opt/tools:/opt/tools
       options: --init --mac-address="6c:5a:b0:6c:13:0b" --memory=11g
@@ -638,18 +594,18 @@ jobs:
   bittide-instances-publish-artifacts:
     name: artifacts
     runs-on: [self-hosted, compute]
-    needs: [build, bittide-instances-hdl-matrix, bittide-instances-hdl]
+    needs: [bittide-instances-hdl, bittide-instances-matrices]
     defaults:
       run:
         shell: git-nix-shell {0} --ignore-environment
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-02
       options: --memory=11g
 
     strategy:
       matrix:
-        target: ${{ fromJson(needs.bittide-instances-hdl-matrix.outputs.check_matrix) }}
+        target: ${{ fromJson(needs.bittide-instances-matrices.outputs.synth) }}
       fail-fast: false
 
     steps:
@@ -679,15 +635,15 @@ jobs:
       run:
         # We leave out '--ignore-environment', as 'with_vivado.sh' relies on basic Ubuntu
         shell: git-nix-shell {0}
-    needs: [bittide-instances-hdl, bittide-instances-hardware-in-the-loop-test-matrix]
+    needs: [bittide-instances-hdl, bittide-instances-matrices]
 
     strategy:
       matrix:
-        target: ${{ fromJson(needs.bittide-instances-hardware-in-the-loop-test-matrix.outputs.check_matrix) }}
+        target: ${{ fromJson(needs.bittide-instances-matrices.outputs.hitl) }}
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-07-08
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-02
       volumes:
         - /opt/tools:/opt/tools
         - /dev:/dev
@@ -729,11 +685,11 @@ jobs:
           .github/scripts/with_vivado.sh \
             shake ${{ matrix.target.top }}:test
 
-      - name: Archive ILA data
+      - name: Archive HITL data
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: _build-${{ matrix.target.top }}-debug
+          name: ${{ matrix.target.top }}-hitl-data
           path: |
             _build/vivado/*/ila-data
             _build/hitl/*
@@ -743,15 +699,14 @@ jobs:
     name: All jobs finished
     if: ${{ !cancelled() }}
     needs: [
-        bittide-instances-hardware-in-the-loop-test-matrix,
         bittide-instances-hardware-in-the-loop,
-        bittide-instances-hdl-matrix,
         bittide-instances-hdl,
+        bittide-instances-matrices,
         bittide-instances-publish-artifacts,
         build,
         firmware-limit-checks,
         firmware-support-tests,
-        generate-full-clock-control-report,
+        generate-control-reports,
         haskell-tests,
         license-check,
         lint,

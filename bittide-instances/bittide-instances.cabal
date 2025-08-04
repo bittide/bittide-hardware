@@ -161,11 +161,18 @@ library
   import: ghc2024, clash, extra, sane-records
   hs-source-dirs: src
   exposed-modules:
+    Bittide.Instances.Common
     Bittide.Instances.Domains
     Bittide.Instances.Hacks
     Bittide.Instances.Hitl.BoardTest
     Bittide.Instances.Hitl.Ddr4
     Bittide.Instances.Hitl.DnaOverSerial
+    Bittide.Instances.Hitl.Driver.ClockControl.Config
+    Bittide.Instances.Hitl.Driver.ClockControl.Plot.Common
+    Bittide.Instances.Hitl.Driver.ClockControl.Plot.DataCount
+    Bittide.Instances.Hitl.Driver.ClockControl.Plot.Ppm
+    Bittide.Instances.Hitl.Driver.ClockControl.Plot.Report
+    Bittide.Instances.Hitl.Driver.ClockControl.Samples
     Bittide.Instances.Hitl.Driver.DnaOverSerial
     Bittide.Instances.Hitl.Driver.SwCcTopologies
     Bittide.Instances.Hitl.Driver.SwitchDemo
@@ -173,7 +180,6 @@ library
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
-    Bittide.Instances.Hitl.IlaPlot
     Bittide.Instances.Hitl.LinkConfiguration
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
@@ -214,8 +220,10 @@ library
 
   build-depends:
     Glob,
+    aeson,
     async,
     base,
+    binary,
     bittide,
     bittide-experiments,
     bittide-extra,
@@ -236,6 +244,7 @@ library
     ghc-typelits-extra-lemmas,
     lift-type,
     lifted-base,
+    matplotlib,
     monad-control,
     network-simple,
     pretty-show,
@@ -244,6 +253,7 @@ library
     string-interpolate,
     tasty-hunit,
     template-haskell,
+    temporary,
     time,
     unix,
     vector,
@@ -275,7 +285,6 @@ test-suite unittests
   ghc-options: -threaded
   other-modules:
     Tests.ClockControlWb
-    Tests.OverflowResistantDiff
     Wishbone.Axi
     Wishbone.CaptureUgn
     Wishbone.DnaPortE2
@@ -319,3 +328,24 @@ executable clash
     bittide-instances,
     clash-ghc,
     vivado-hs,
+
+executable samples-to
+  import: ghc2024, extra, sane-records
+  main-is: samples_to.hs
+  hs-source-dirs: bin
+  build-depends:
+    async,
+    base,
+    bittide,
+    bittide-instances,
+    bytestring,
+    cassava,
+    directory,
+    filepath,
+    matplotlib,
+    process,
+    string-interpolate,
+
+  ghc-options:
+    -Wall
+    -threaded

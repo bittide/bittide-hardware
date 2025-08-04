@@ -8,8 +8,6 @@ module Bittide.Instances.Domains where
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 
 import Bittide.Arithmetic.Time
-import Bittide.ClockControl
-import Data.Proxy
 
 {- ORMOLU_DISABLE -}
 createDomain vXilinxSystem{vName="Basic50",   vPeriod=hzToPeriod  50e6}
@@ -37,32 +35,4 @@ type CccStabilityCheckerMargin = 25 :: Nat
 type CccStabilityCheckerFramesize dom = PeriodToCycles dom (Seconds 2)
 type CccReframingWaitTime dom = PeriodToCycles dom (Seconds 5)
 
-{- | Clock configuration used for instances.
-
-Compared to 'defClockConfig' this configuration has an increased
-buffer size ('CccBufferSize'), disables reframing and uses more "human"
-values for framesize and wait time.
--}
-instancesClockConfig ::
-  forall dom.
-  (KnownDomain dom) =>
-  Proxy dom ->
-  ClockControlConfig
-    dom
-    CccBufferSize
-    CccStabilityCheckerMargin
-    (CccStabilityCheckerFramesize dom)
-instancesClockConfig Proxy =
-  ClockControlConfig
-    { cccSettleCycles = settleCycles self
-    , cccSettlePeriod = microseconds 1
-    , cccBufferSize = SNat
-    , cccStabilityCheckerMargin = SNat
-    , cccStabilityCheckerFramesize = SNat
-    , cccEnableReframing = False
-    , -- changed from defClockConfig, which uses a fixed number of cycles independent
-      -- the clock speed of the domain
-      cccReframingWaitTime = natToNum @(PeriodToCycles dom (Seconds 1))
-    }
- where
-  self = instancesClockConfig (Proxy @dom)
+type Bittide = GthTx
