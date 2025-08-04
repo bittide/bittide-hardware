@@ -15,7 +15,6 @@ import Clash.Prelude
 import GHC.Stack
 import Protocols (Ack (..), CSignal, Circuit (..), applyC)
 import Protocols.MemoryMap (Access (..), ConstBwd, MM)
-import Protocols.MemoryMap.FieldType (ToFieldType)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (..),
   busActivityWrite,
@@ -24,6 +23,7 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
   registerWb,
   registerWbDf,
  )
+import Protocols.MemoryMap.TypeDescription.TH
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 import qualified Clash.Explicit.Prelude as E
@@ -33,7 +33,8 @@ data EbCommand
     Drain
   | -- | Enable write, disable read
     Fill
-  deriving (Generic, NFDataX, Eq, Show, BitPack, BitPackC, ShowX, ToFieldType)
+  deriving (Generic, NFDataX, Eq, Show, BitPack, BitPackC, ShowX)
+deriveTypeDesc ''EbCommand
 
 type Underflow = Bool
 type Overflow = Bool

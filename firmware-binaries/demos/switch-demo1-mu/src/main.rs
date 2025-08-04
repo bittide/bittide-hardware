@@ -5,7 +5,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::switch_demo_mu::DeviceInstances;
+use bittide_hal::hals::switch_demo_mu::DeviceInstances;
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 

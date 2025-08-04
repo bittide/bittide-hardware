@@ -93,7 +93,7 @@ $( do
         else do
           -- output JSON
 
-          let json = Json.memoryMapJson mm.deviceDefs absTree
+          let json = Json.memoryMapJson Json.LocationSeparate mm.deviceDefs absTree
           let jsonPath = memMapDir </> mmName <.> "json"
           runIO $ BS.writeFile jsonPath $ Json.encode json
 

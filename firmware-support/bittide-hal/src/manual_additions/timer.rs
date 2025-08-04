@@ -13,8 +13,8 @@ insignificant for timing purposes.
  - [`Clock`] Manages time and provides utility methods for waiting and updating time.
 */
 
-use crate::shared::devices::Timer;
-use crate::shared::types::TimeCmd;
+use crate::shared_devices::Timer;
+use crate::types::TimeCmd;
 
 use core::cmp;
 use core::fmt;

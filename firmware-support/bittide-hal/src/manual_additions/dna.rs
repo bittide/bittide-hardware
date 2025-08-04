@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::shared::devices::dna::Dna;
-use crate::shared::types::Maybe;
+use crate::shared_devices::dna::Dna;
+use crate::types::Maybe;
 
 impl Dna {
     /// Fetch the DNA value from the device, retrying until successful.

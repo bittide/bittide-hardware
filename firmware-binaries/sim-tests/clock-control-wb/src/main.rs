@@ -7,8 +7,9 @@
 
 use core::panic::PanicInfo;
 
-use bittide_hal::shared::devices::clock_control::{ClockControl, SpeedChange};
-use bittide_hal::shared::devices::uart::Uart;
+use bittide_hal::shared_devices::clock_control::ClockControl;
+use bittide_hal::shared_devices::uart::Uart;
+use bittide_hal::types::SpeedChange;
 use core::fmt::Write;
 use rand::{distributions::Uniform, rngs::SmallRng, Rng, SeedableRng};
 

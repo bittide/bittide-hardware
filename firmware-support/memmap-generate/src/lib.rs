@@ -2,10 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-pub mod generators;
-pub mod parse;
+pub mod backends;
+pub mod input_language;
 
-pub mod hal_set;
+pub mod ir;
+pub mod storage;
+
+pub mod deprecated;
 
 pub mod format;
 
@@ -13,11 +16,10 @@ pub mod build_utils;
 
 use std::io::Write;
 
-use parse::{MemoryMapTree, PathComp};
+use input_language::{MemoryMapTree, PathComp};
 
-pub use crate::generators::c_header::generate_c_header;
-pub use crate::generators::{generate_rust_wrappers, RustWrappers};
-pub use crate::parse::{parse, MemoryMapDesc};
+pub use crate::backends::c::c_header::generate_c_header;
+pub use crate::input_language::{parse, MemoryMapDesc};
 
 fn device_singleton_instr_addr_and_size(desc: &MemoryMapDesc, name: &str) -> Option<(u64, u64)> {
     fn find_instance_or_device<'tree>(

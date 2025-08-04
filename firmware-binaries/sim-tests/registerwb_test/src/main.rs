@@ -10,7 +10,7 @@
 use ufmt::{uwrite, uwriteln};
 
 use bittide_hal::hals::register_wb as hal;
-use bittide_hal::index;
+use bittide_hal::types;
 
 use core::fmt::Write;
 #[cfg(not(test))]
@@ -140,39 +140,39 @@ fn main() -> ! {
     read_write!(array => "v2", v2, [[0x8, 0x16], [0x24, 0x32]], set_v2, [[0xAB, 0xCD], [0x12, 0x34]]);
 
     expect("init.unitW", false, many_types.unit_w());
-    many_types.set_unit(hal::Tuple0);
+    many_types.set_unit(());
     expect("rt.unitW", true, many_types.unit_w());
 
     many_types.zs();
-    many_types.set_zs(hal::MyZeroSizedType);
+    many_types.set_zs(types::MyZeroSizedType);
 
-    read_write!("sum0", sum0, hal::Abc::C, set_sum0, hal::Abc::A);
-    read_write!("sum1", sum1, hal::Xyz::S, set_sum1, hal::Xyz::Z);
+    read_write!("sum0", sum0, types::Abc::C, set_sum0, types::Abc::A);
+    read_write!("sum1", sum1, types::Xyz::S, set_sum1, types::Xyz::Z);
 
     // floats again...
     expect("init.sop0.f", true, many_types.sop0().f == 3.14);
     expect("init.sop0.u", true, many_types.sop0().u == 6.28);
-    many_types.set_sop0(hal::F { f: 1.0, u: 8.0 });
+    many_types.set_sop0(types::F { f: 1.0, u: 8.0 });
     expect("rt.sop0.f", true, many_types.sop0().f == 1.0);
     expect("rt.sop0.g", true, many_types.sop0().u == 8.0);
 
     read_write!(
         "e0",
         e0,
-        hal::Either::Left(8),
+        types::Either::Left(8),
         set_e0,
-        hal::Either::Right(0x12)
+        types::Either::Right(0x12)
     );
 
     read_write!(
         "oi",
         oi,
-        hal::Maybe::Just(hal::Inner {
+        types::Maybe::Just(types::Inner {
             inner_a: 0x16,
             inner_b: 0x24,
         }),
         set_oi,
-        hal::Maybe::Just(hal::Inner {
+        types::Maybe::Just(types::Inner {
             inner_a: 2,
             inner_b: 4,
         })
@@ -181,86 +181,80 @@ fn main() -> ! {
     read_write!(
         "x2",
         x2,
-        hal::X2(8, hal::X3(16, 32, 64)),
+        types::X2(8, types::X3(16, 32, 64)),
         set_x2,
-        hal::X2(16, hal::X3(32, 64, 128))
+        types::X2(16, types::X3(32, 64, 128))
     );
 
     read_write!(
         "me0",
         me0,
-        hal::Maybe::Just(hal::Either::Left(8)),
+        types::Maybe::Just(types::Either::Left(8)),
         set_me0,
-        hal::Maybe::Just(hal::Either::Right(0x12))
+        types::Maybe::Just(types::Either::Right(0x12))
     );
     read_write!(
         "me1",
         me1,
-        hal::Maybe::Just(hal::Either::Left(8)),
+        types::Maybe::Just(types::Either::Left(8)),
         set_me1,
-        hal::Maybe::Just(hal::Either::Right(0x12))
+        types::Maybe::Just(types::Either::Right(0x12))
     );
 
     read_write!(
         "p0",
         p0,
-        hal::P0(0xBADC, 0x0F, 0xEE),
+        types::P0(0xBADC, 0x0F, 0xEE),
         set_p0,
-        hal::P0(0x1234, 0x56, 0xFE)
+        types::P0(0x1234, 0x56, 0xFE)
     );
     read_write!(
         "p1",
         p1,
-        hal::P1(0xBADC, 0x0F, 0xBEAD),
+        types::P1(0xBADC, 0x0F, 0xBEAD),
         set_p1,
-        hal::P1(0x1234, 0x56, 0xFACE)
+        types::P1(0x1234, 0x56, 0xFACE)
     );
     read_write!(
         "p2",
         p2,
-        hal::P2(0xBADC, 0x0F, index!(6, n = 10)),
+        types::P2(0xBADC, 0x0F, 6),
         set_p2,
-        hal::P2(0x1234, 0x56, index!(9, n = 10))
+        types::P2(0x1234, 0x56, 9)
     );
     read_write!(
         "p3",
         p3,
-        hal::P3(hal::P2(0xBADC, 0x0F, index!(6, n = 10),), 0xEE),
+        types::P3(types::P2(0xBADC, 0x0F, 6,), 0xEE),
         set_p3,
-        hal::P3(hal::P2(0x1234, 0x56, index!(9, n = 10)), 0xBA)
+        types::P3(types::P2(0x1234, 0x56, 9), 0xBA)
     );
 
-    read_write!(
-        "t0",
-        t0,
-        hal::Tuple2(12, 584),
-        set_t0,
-        hal::Tuple2(24, -948)
-    );
+    read_write!("t0", t0, (12, 584), set_t0, (24, -948));
 
-    read_write!("i20", i20, index!(17, n = 20), set_i20, index!(3, n = 20));
+    read_write!("i20", i20, 17, set_i20, 3);
     read_write!(
         "mi12",
         mi12,
-        hal::Maybe::Just(index!(5, n = 12)),
+        types::Maybe::Just(5),
         set_mi12,
-        hal::Maybe::Nothing
+        types::Maybe::Nothing
     );
 
     read_write!(
         "maybe_b96",
         maybe_b96,
-        hal::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
+        types::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
         set_maybe_b96,
-        hal::Maybe::Nothing
+        types::Maybe::Nothing
     );
 
     read_write!(
         "maybe_u96",
         maybe_u96,
-        hal::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
+        types::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
         set_maybe_u96,
-        hal::Maybe::Nothing
+        types::Maybe::Nothing
     );
 
     // XXX: Writing a negative value here breaks because of lacking atomic operations.
@@ -268,25 +262,25 @@ fn main() -> ! {
     read_write!(
         "maybe_s96",
         maybe_s96,
-        hal::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
+        types::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
         set_maybe_s96,
-        hal::Maybe::Nothing
+        types::Maybe::Nothing
     );
 
     read_write!(
         "eitherAbc",
         either_abc,
-        hal::Either::Left(0),
+        types::Either::Left(0),
         set_either_abc,
-        hal::Either::Left(0b11)
+        types::Either::Left(0b11)
     );
 
     read_write!(
         "eitherAbc",
         either_abc,
-        hal::Either::Left(0b11),
+        types::Either::Left(0b11),
         set_either_abc,
-        hal::Either::Right(hal::Abc::B)
+        types::Either::Right(types::Abc::B)
     );
 
     test_ok();

@@ -10,11 +10,10 @@ use core::panic::PanicInfo;
 use bittide_hal::manual_additions::timer::Duration;
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_hal::manual_additions::timer::WaitResult;
-use bittide_hal::shared::devices::Timer;
-use bittide_hal::shared::devices::Uart;
-use bittide_hal::shared::types::Tuple0;
+use bittide_hal::shared_devices::Timer;
+use bittide_hal::shared_devices::Uart;
+use bittide_hal::switch_demo_cc::devices::DomainDiffCounters;
 use bittide_hal::switch_demo_cc::DeviceInstances;
-use bittide_hal::switch_demo_cc::DomainDiffCounters;
 use bittide_sys::sample_store::SampleStore;
 use bittide_sys::stability_detector::StabilityDetector;
 use ufmt::uwriteln;
@@ -41,7 +40,7 @@ fn main() -> ! {
     uwriteln!(uart, "Waiting for at least one pulse..").unwrap();
     while freeze.number_of_sync_pulses_seen() == 0 {
         // TOOD: Memory map sync pulse counter -- no need to involve freeze here
-        freeze.set_freeze(Tuple0);
+        freeze.set_freeze(());
     }
 
     // XXX: CPU is booted after all links are available, so we can blindly enable
@@ -69,7 +68,7 @@ fn main() -> ! {
 
     loop {
         // Do clock control on "frozen" counters
-        freeze.set_freeze(Tuple0);
+        freeze.set_freeze(());
         cc.set_change_speed(callisto.update(&cc, freeze.eb_counters_volatile_iter()));
 
         // Detect stability

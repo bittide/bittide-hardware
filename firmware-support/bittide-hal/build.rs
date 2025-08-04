@@ -6,10 +6,19 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::{fs::File, path::PathBuf};
 
-use memmap_generate::generators::{ident, IdentType};
-use memmap_generate::hal_set::{MemoryMapSet, TypeDefAnnotations};
-use memmap_generate::parse::{Type, TypeDefinition};
-use memmap_generate::{self as mm, generate_rust_wrappers};
+use memmap_generate::input_language as mm_inp;
+
+use memmap_generate::ir::deduplicate::{deduplicate, deduplicate_type_names};
+use memmap_generate::ir::input_to_ir::IrInputMapping;
+use memmap_generate::ir::monomorph::passes::OnlyNats;
+use memmap_generate::ir::monomorph::{MonomorphVariants, Monomorpher};
+use memmap_generate::ir::types::IrCtx;
+
+use memmap_generate::backends::rust::{
+    self as backend_rust, generate_device_instances, generate_type_desc, ident, IdentType,
+    TypeReferences,
+};
+use proc_macro2::TokenStream;
 use quote::quote;
 
 fn memmap_dir() -> PathBuf {
@@ -28,29 +37,362 @@ fn lint_disables_generated_code() -> &'static str {
     "#
 }
 
-fn has_float(set: &BTreeSet<String>, ty: &Type) -> bool {
+/*
+fn has_float(set: &BTreeSet<TypeName>, ty: &ParsedType) -> bool {
     match ty {
-        Type::Float | Type::Double => true,
-        Type::Vec(_, inner) => has_float(set, inner),
-        Type::Reference(name, items) => {
-            set.contains(name) || items.iter().any(|t| has_float(set, t))
+        ParsedType::Float | ParsedType::Double => true,
+        ParsedType::Vector(_, inner) => has_float(set, inner),
+        ParsedType::Maybe(inner) => has_float(set, inner),
+        ParsedType::Either(a, b) => has_float(set, a) || has_float(set, b),
+        ParsedType::Tuple(parsed_types) => parsed_types.iter().any(|t| has_float(set, t)),
+        ParsedType::Custom { name, args } => {
+            set.contains(&name) || args.iter().any(|t| has_float(set, t))
         }
-        Type::SumOfProducts { variants } => variants.iter().any(|variant_desc| {
-            variant_desc
-                .fields
-                .iter()
-                .any(|field_desc| has_float(set, &field_desc.type_))
-        }),
         _ => false,
     }
 }
+*/
 
 fn main() {
-    let mut memory_maps = BTreeMap::new();
-
     let dir = memmap_dir();
 
     println!("cargo::rerun-if-changed={}", dir.display());
+
+    let memory_maps = read_memory_maps(&dir);
+
+    let mut ctx = IrCtx::new();
+
+    let mut hals = vec![];
+    let mut hal_names = vec![];
+    let mut input_mapping = IrInputMapping::default();
+    for (name, memmap) in memory_maps.iter() {
+        let hal_handles = ctx.add_memory_map_desc(&mut input_mapping, memmap);
+        hals.push(hal_handles);
+        hal_names.push(name.clone());
+    }
+
+    let (shared, deduped_hals) = match deduplicate(&ctx, &mut input_mapping, hals.iter()) {
+        Ok(result) => result,
+        Err(err) => {
+            println!("ERROR!! {:?}", err);
+            panic!("ERROR {:?}", err)
+        }
+    };
+
+    deduplicate_type_names(&mut ctx, &shared);
+
+    let mut monomorpher = Monomorpher::new(&ctx, &input_mapping);
+    let mut varis = MonomorphVariants::default();
+
+    let mut pass = OnlyNats;
+
+    for dev in &shared.deduped_devices {
+        let desc = &ctx.device_descs[*dev];
+        for reg in &ctx.registers[desc.registers] {
+            monomorpher.monomorph_toplevel_type_refs(
+                &mut varis,
+                &mut pass,
+                std::iter::once(reg.type_ref),
+            );
+        }
+    }
+
+    for hal in &deduped_hals {
+        for dev in &hal.devices {
+            let desc = &ctx.device_descs[*dev];
+            for reg in &ctx.registers[desc.registers] {
+                monomorpher.monomorph_toplevel_type_refs(
+                    &mut varis,
+                    &mut pass,
+                    std::iter::once(reg.type_ref),
+                );
+            }
+        }
+    }
+
+    monomorpher.monomorph_type_descs(&mut varis, &mut pass);
+
+    let mut annotations = backend_rust::Annotations::default();
+    annotate_types(&ctx, &varis, &mut annotations, DebugType::UDebug);
+
+    // used to track files for formatting later on
+    let mut generated_files = vec![];
+
+    // we're going for a folder structure like this
+    //
+    // src/
+    //   types/
+    //     mod.rs
+    //   shared_devices/
+    //     mod.rs
+    //   hals/
+    //     <hal-name>/
+    //       devices/
+    //         mod.rs
+    //       mod.rs  <- contains the device instances
+
+    let src_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let types_path = src_path.join("types");
+    let shared_devices_path = src_path.join("shared_devices");
+
+    // clear out generated shared code first
+    _ = std::fs::remove_dir_all(&shared_devices_path);
+    _ = std::fs::remove_dir_all(&types_path);
+
+    {
+        // types
+
+        std::fs::create_dir_all(&types_path).expect("Create (gitignored) `src/types` directory");
+        let mod_file_path = types_path.join("mod.rs");
+        let mut mod_file = File::create(&mod_file_path).unwrap();
+        generated_files.push(mod_file_path);
+
+        for handle in &shared.deduped_types {
+            if ctx.type_primitives.contains(handle) {
+                continue;
+            }
+            if ctx.type_tuples.contains(handle) {
+                continue;
+            }
+            let (name, code, refs) = generate_type_desc(&ctx, &varis, &annotations, *handle);
+            let mod_name = ident(IdentType::Module, type_name(name));
+            writeln!(mod_file, "pub mod {mod_name};").unwrap();
+            writeln!(mod_file, "pub use {mod_name}::*;").unwrap();
+
+            let file_path = types_path.join(format!("{mod_name}.rs"));
+            let mut file = File::create(&file_path).unwrap();
+            generated_files.push(file_path);
+
+            writeln!(file, "{}", lint_disables_generated_code()).unwrap();
+            writeln!(file, "use crate::primitives::*;").unwrap();
+            writeln!(file, "{}", generate_type_ref_imports(&ctx, &refs)).unwrap();
+            writeln!(file, "{}", code).unwrap();
+        }
+    }
+
+    {
+        // devices
+        std::fs::create_dir_all(&shared_devices_path)
+            .expect("Create (gitignored) `src/shared_devices` directory");
+        let mod_file_path = shared_devices_path.join("mod.rs");
+        let mut mod_file = File::create(&mod_file_path).unwrap();
+        generated_files.push(mod_file_path);
+
+        for dev in &shared.deduped_devices {
+            if ctx.device_descs[*dev]
+                .tags
+                .handles()
+                .map(|t| &ctx.tags[t])
+                .any(|tag| tag == "no-generate")
+            {
+                continue;
+            }
+
+            let (dev_name, code, refs) = backend_rust::generate_device_desc(&ctx, &varis, *dev);
+            let file_name = ident(IdentType::Module, dev_name);
+            let file_path = shared_devices_path.join(format!("{}.rs", file_name));
+            let mut file = File::create(&file_path).unwrap();
+            writeln!(file, "{}", lint_disables_generated_code()).unwrap();
+            writeln!(file, "use crate::primitives::*;").unwrap();
+            writeln!(file, "{}", generate_type_ref_imports(&ctx, &refs)).unwrap();
+            write!(file, "{}", code).unwrap();
+            generated_files.push(file_path);
+
+            writeln!(mod_file, "pub mod {file_name};").unwrap();
+            writeln!(mod_file, "pub use {file_name}::*;").unwrap();
+        }
+    }
+
+    // HAL-specific stuff
+
+    // first clear all hals, then recreate the directory
+    _ = std::fs::remove_dir_all(src_path.join("hals"));
+
+    std::fs::create_dir_all(src_path.join("hals"))
+        .expect("Create (gitignored) `src/hals` directory");
+
+    let all_hals_mod_file_path = src_path.join("hals").join("mod.rs");
+    let mut all_hals_mod_file = File::create(&all_hals_mod_file_path).unwrap();
+    generated_files.push(all_hals_mod_file_path);
+
+    for (deduped, hal_name) in deduped_hals.iter().zip(&hal_names) {
+        let hal_mod_name = ident(IdentType::Module, hal_name);
+        let hal_path = src_path.join("hals").join(hal_mod_name.to_string());
+
+        writeln!(all_hals_mod_file, "pub mod {hal_mod_name};").unwrap();
+
+        std::fs::create_dir_all(&hal_path)
+            .unwrap_or_else(|_| panic!("Create `src/hals/{}` directory", hal_path.display()));
+        let mut hal_mod_file = File::create(hal_path.join("mod.rs")).unwrap();
+        generated_files.push(hal_path.join("mod.rs"));
+
+        std::fs::create_dir_all(hal_path.join("devices")).unwrap();
+        let mut mod_file = File::create(hal_path.join("devices").join("mod.rs")).unwrap();
+        generated_files.push(hal_path.join("devices").join("mod.rs"));
+
+        writeln!(hal_mod_file, "pub mod devices;").unwrap();
+
+        for dev in &deduped.devices {
+            if ctx.device_descs[*dev]
+                .tags
+                .handles()
+                .map(|t| &ctx.tags[t])
+                .any(|tag| tag == "no-generate")
+            {
+                continue;
+            }
+            let (dev_name, code, refs) = backend_rust::generate_device_desc(&ctx, &varis, *dev);
+            let file_name = ident(IdentType::Module, dev_name);
+            let file_path = hal_path.join("devices").join(format!("{}.rs", file_name));
+
+            let mut file = File::create(&file_path).unwrap();
+
+            writeln!(file, "{}", lint_disables_generated_code()).unwrap();
+            writeln!(file, "use crate::primitives::*;").unwrap();
+            writeln!(file, "{}", generate_type_ref_imports(&ctx, &refs)).unwrap();
+            write!(file, "{}", code).unwrap();
+            generated_files.push(file_path);
+
+            writeln!(mod_file, "pub mod {file_name};").unwrap();
+            writeln!(mod_file, "pub use {file_name}::*;").unwrap();
+        }
+
+        {
+            let code = generate_device_instances(
+                &ctx,
+                &shared,
+                hal_name,
+                deduped.tree_elem_range.handles(),
+            );
+            writeln!(hal_mod_file, "{code}").unwrap();
+        }
+    }
+
+    memmap_generate::format::format_files(&generated_files).unwrap();
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum DebugType {
+    Debug,
+    UDebug,
+    Both,
+}
+
+fn annotate_types(
+    ctx: &IrCtx,
+    varis: &MonomorphVariants,
+    annotations: &mut backend_rust::Annotations,
+    debug_type: DebugType,
+) {
+    let mut has_float = BTreeSet::new();
+
+    for (variant_handle, variant) in varis.variants.iter() {
+        let ty_desc = &ctx.type_descs[variant.original_type_desc];
+
+        for ty_handle in ty_desc.type_ref_range.handles() {
+            let ty_handle = variant
+                .variable_substitutions
+                .get(&ty_handle)
+                .copied()
+                .unwrap_or(ty_handle);
+            match &ctx.type_refs[ty_handle] {
+                memmap_generate::ir::types::TypeRef::Float
+                | memmap_generate::ir::types::TypeRef::Double => {
+                    has_float.insert(variant_handle);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    loop {
+        let size_before = has_float.len();
+
+        for (variant_handle, variant) in varis.variants.iter() {
+            let ty_desc = &ctx.type_descs[variant.original_type_desc];
+
+            for ty_handle in ty_desc.type_ref_range.handles() {
+                let ty_handle = variant
+                    .variable_substitutions
+                    .get(&ty_handle)
+                    .copied()
+                    .unwrap_or(ty_handle);
+                if let Some(sub) = variant.monomorph_substitutions.get(&ty_handle) {
+                    if has_float.contains(sub) {
+                        has_float.insert(variant_handle);
+                    }
+                } else if let Some(sub) = varis.type_refs.get(&ty_handle) {
+                    if has_float.contains(sub) {
+                        has_float.insert(variant_handle);
+                    }
+                }
+            }
+        }
+
+        let size_after = has_float.len();
+
+        if size_after == size_before {
+            break;
+        }
+    }
+
+    for (variant_handle, variant) in varis.variants.iter() {
+        if ctx.type_aliases.contains(&variant.original_type_desc) {
+            continue;
+        }
+        let mut type_annots = TokenStream::new();
+        let mut type_imports = TokenStream::new();
+        let has_float_here = has_float.contains(&variant_handle);
+        match (debug_type, has_float_here) {
+            (DebugType::Debug | DebugType::Both, true) => {
+                type_annots.extend(quote! { #[derive(Debug)] });
+            }
+            (_, true) => {}
+            (DebugType::Debug, _) => {
+                type_annots.extend(quote! { #[derive(Debug)] });
+            }
+            (DebugType::UDebug, _) => {
+                type_imports.extend(quote! { use ufmt::derive::uDebug; });
+                type_annots.extend(quote! { #[derive(uDebug)] });
+            }
+            (DebugType::Both, _) => {
+                type_imports.extend(quote! { use ufmt::derive::uDebug; });
+                type_annots.extend(quote! { #[derive(Debug, uDebug)] });
+            }
+        }
+
+        type_annots.extend(quote! { #[derive(Clone, Copy)] });
+        if !has_float_here {
+            type_annots.extend(quote! { #[derive(PartialEq, Eq, PartialOrd, Ord)] });
+        }
+
+        annotations
+            .type_annotation
+            .entry(variant_handle)
+            .or_default()
+            .extend(type_annots);
+        annotations
+            .type_imports
+            .entry(variant_handle)
+            .or_default()
+            .extend(type_imports);
+    }
+}
+
+fn generate_type_ref_imports(ctx: &IrCtx, refs: &TypeReferences) -> TokenStream {
+    let mut code = TokenStream::new();
+    for ty_ref in &refs.references {
+        let name = &ctx.type_names[*ty_ref].base;
+        let module = ident(IdentType::Module, name);
+        code.extend(quote! { use crate::types::#module::*; });
+    }
+    code
+}
+
+fn read_memory_maps(
+    dir: &PathBuf,
+) -> BTreeMap<String, memmap_generate::input_language::MemoryMapDesc> {
+    let mut memory_maps = BTreeMap::new();
 
     for dir in dir.read_dir().unwrap() {
         let dir = dir.unwrap();
@@ -71,275 +413,19 @@ fn main() {
         let Some(name) = path.file_stem() else {
             continue;
         };
-
+        println!("Parsing memory map: {}", name.to_str().unwrap());
         let src = std::fs::read_to_string(&path).unwrap();
 
-        let desc = mm::parse(&src).unwrap();
+        let desc = mm_inp::parse(&src).unwrap();
 
-        let hal_name = ident(IdentType::Module, name.to_str().unwrap());
+        let hal_name = name.to_str().unwrap(); // ident(IdentType::Module, name.to_str().unwrap());
 
         memory_maps.insert(hal_name.to_string(), desc);
     }
 
-    let mut set = MemoryMapSet::new(memory_maps);
+    memory_maps
+}
 
-    // annotate types
-    {
-        let mut has_floats = BTreeSet::new();
-
-        let mut prev_len = 0;
-
-        // check for references to floats or references to types that reference floats
-        loop {
-            set.annotate_types(|type_def: &TypeDefinition, ann: &mut TypeDefAnnotations| {
-                if has_float(&has_floats, &type_def.definition) {
-                    has_floats.insert(type_def.name.clone());
-                    ann.tags.insert("uses-float".to_string());
-                }
-            });
-
-            if has_floats.len() == prev_len {
-                break; // converged, nice!
-            }
-            prev_len = has_floats.len();
-        }
-
-        set.annotate_types(|type_def: &TypeDefinition, ann: &mut TypeDefAnnotations| {
-            ann.derives
-                .push(quote! { #[derive(Copy, Clone, PartialEq)] });
-
-            // if there's a Float or Double then we don't want to implement ufmt::Debug
-
-            if !has_floats.contains(&type_def.name) {
-                ann.derives.push(quote! { #[derive(uDebug)] });
-                ann.imports.push(quote! { use ufmt::derive::uDebug; })
-            }
-        });
-    }
-
-    set.filter_devices_by_tag(|tag| tag != "no-generate");
-
-    // we're going for a folder structure like this
-    //
-    // src/
-    //   shared/
-    //     devices/
-    //       mod.rs
-    //     types/
-    //       mod.rs
-    //   hals/
-    //     <hal-name>/
-    //       devices/
-    //         mod.rs
-    //       types/
-    //         mod.rs
-    //       mod.rs  <- contains the device instances
-
-    // this keeps track of all the files generated or written to, so that they
-    // can be formatted
-    let mut generated_files = vec![];
-
-    let shared = set.shared();
-    let shared_wrapper = generate_rust_wrappers(shared);
-
-    let shared_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("src")
-        .join("shared");
-
-    // clear out generated shared code first
-    _ = std::fs::remove_dir_all(shared_path.join("devices"));
-    _ = std::fs::remove_dir_all(shared_path.join("types"));
-
-    // types
-    {
-        std::fs::create_dir_all(shared_path.join("types"))
-            .expect("Create (gitignored) `src/shared/types` directory");
-        let mod_file_path = shared_path.join("types").join("mod.rs");
-        let mut mod_file = File::create(&mod_file_path).unwrap();
-        generated_files.push(mod_file_path);
-
-        for ty_name in shared_wrapper.type_defs.keys() {
-            let name = ident(IdentType::Module, ty_name);
-            writeln!(mod_file, "pub mod {name};").unwrap();
-            writeln!(mod_file, "pub use {name}::*;").unwrap();
-        }
-
-        for (ty_name, (ann, def)) in &shared_wrapper.type_defs {
-            let ty_name = ident(IdentType::Module, ty_name);
-            let file_path = shared_path.join("types").join(format!("{ty_name}.rs"));
-            let mut file = File::create(&file_path).unwrap();
-
-            generated_files.push(file_path);
-
-            writeln!(file, "{}", lint_disables_generated_code()).unwrap();
-            for import in &ann.imports {
-                writeln!(file, "{}", import).unwrap();
-            }
-
-            writeln!(file, "pub use crate::shared::types::*;").unwrap();
-            writeln!(file, "pub use crate::Index;").unwrap();
-            // This is needed to properly make the Index![] macro resolve the
-            // path to the Index type.
-            writeln!(file, "use crate as bittide_hal;").unwrap();
-            writeln!(file, "{}", def).unwrap();
-        }
-    }
-
-    // devices
-    {
-        std::fs::create_dir_all(shared_path.join("devices"))
-            .expect("Create (gitignored) `src/devices` directory");
-        let mod_file_path = shared_path.join("devices").join("mod.rs");
-        let mut mod_file = File::create(&mod_file_path).unwrap();
-        generated_files.push(mod_file_path);
-
-        for device_name in shared_wrapper.device_defs.keys() {
-            let name = ident(IdentType::Module, device_name);
-            writeln!(mod_file, "pub mod {name};").unwrap();
-            writeln!(mod_file, "pub use {name}::*;").unwrap();
-        }
-
-        for (device_name, (ann, def)) in &shared_wrapper.device_defs {
-            let device_name = ident(IdentType::Module, device_name);
-            let file_path = shared_path
-                .join("devices")
-                .join(format!("{device_name}.rs"));
-            let mut file = File::create(&file_path).unwrap();
-            generated_files.push(file_path);
-
-            writeln!(file, "{}", lint_disables_generated_code()).unwrap();
-            for import in &ann.imports {
-                writeln!(file, "{}", import).unwrap();
-            }
-            writeln!(file, "pub use crate::shared::types::*;").unwrap();
-            writeln!(file, "pub use crate::Index;").unwrap();
-            // This is needed to properly make the Index![] macro resolve the
-            // path to the Index type.
-            writeln!(file, "use crate as bittide_hal;").unwrap();
-            writeln!(file, "{}", def).unwrap();
-        }
-    }
-
-    // now for the different hals...
-
-    // first clear all hals, then recreate the directory
-    _ = std::fs::remove_dir_all(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("src")
-            .join("hals"),
-    );
-
-    std::fs::create_dir_all(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("src")
-            .join("hals"),
-    )
-    .expect("Create (gitignored) `src/hals` directory");
-
-    let all_hals_mod_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("src")
-        .join("hals")
-        .join("mod.rs");
-    let mut all_hals_mod_file = File::create(&all_hals_mod_file_path).unwrap();
-    generated_files.push(all_hals_mod_file_path);
-
-    for (hal_name, hal_data) in set.non_shared() {
-        let wrapper = generate_rust_wrappers(hal_data);
-        let hal_mod_name = ident(IdentType::Module, hal_name);
-        let hal_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("src")
-            .join("hals")
-            .join(hal_mod_name.to_string());
-
-        std::fs::create_dir_all(&hal_path)
-            .unwrap_or_else(|_| panic!("Create `src/hals/{}` directory", hal_path.display()));
-        let mut hal_mod_file = File::create(hal_path.join("mod.rs")).unwrap();
-        generated_files.push(hal_path.join("mod.rs"));
-
-        writeln!(hal_mod_file, "{}", lint_disables_generated_code()).unwrap();
-        writeln!(hal_mod_file, "pub mod types;").unwrap();
-        writeln!(hal_mod_file, "pub mod devices;").unwrap();
-        writeln!(hal_mod_file, "pub use types::*;").unwrap();
-        writeln!(hal_mod_file, "pub use devices::*;").unwrap();
-        writeln!(hal_mod_file).unwrap();
-        writeln!(hal_mod_file, "pub use crate::shared::types::*;").unwrap();
-        writeln!(hal_mod_file, "pub use crate::shared::devices::*;").unwrap();
-        writeln!(hal_mod_file).unwrap();
-
-        writeln!(all_hals_mod_file, "pub mod {hal_mod_name};").unwrap();
-
-        // first types
-        {
-            std::fs::create_dir_all(hal_path.join("types")).unwrap();
-            let mod_file_path = hal_path.join("types").join("mod.rs");
-            let mut mod_file = File::create(&mod_file_path).unwrap();
-            generated_files.push(mod_file_path);
-
-            for ty_name in wrapper.type_defs.keys() {
-                let name = ident(IdentType::Module, ty_name);
-                writeln!(mod_file, "pub mod {name};",).unwrap();
-                writeln!(mod_file, "pub use {name}::*;").unwrap();
-            }
-
-            for (ty_name, (ann, def)) in &wrapper.type_defs {
-                let mod_name = ident(IdentType::Module, ty_name);
-                let file_path = hal_path.join("types").join(format!("{}.rs", mod_name));
-                let mut file = File::create(&file_path).unwrap();
-                generated_files.push(file_path);
-                writeln!(file, "{}", lint_disables_generated_code()).unwrap();
-
-                for import in &ann.imports {
-                    writeln!(file, "{}", import).unwrap();
-                }
-
-                writeln!(file, "pub use crate::shared::types::*;").unwrap();
-                writeln!(file, "pub use crate::Index;").unwrap();
-                // This is needed to properly make the Index![] macro resolve the
-                // path to the Index type.
-                writeln!(file, "use crate as bittide_hal;").unwrap();
-                writeln!(file, "pub use crate::hals::{hal_mod_name}::types::*;").unwrap();
-                writeln!(file, "{}", def).unwrap();
-            }
-        }
-
-        // then device types
-        {
-            std::fs::create_dir_all(hal_path.join("devices")).unwrap();
-            let mut mod_file = File::create(hal_path.join("devices").join("mod.rs")).unwrap();
-            generated_files.push(hal_path.join("devices").join("mod.rs"));
-
-            for dev_name in wrapper.device_defs.keys() {
-                let name = ident(IdentType::Module, dev_name);
-                writeln!(mod_file, "pub mod {name};").unwrap();
-                writeln!(mod_file, "pub use {name}::*;").unwrap();
-            }
-
-            for (dev_name, (ann, def)) in &wrapper.device_defs {
-                let dev_mod_name = ident(IdentType::Module, dev_name);
-
-                let file_path = hal_path.join("devices").join(format!("{dev_mod_name}.rs"));
-                let mut file = File::create(&file_path).unwrap();
-                generated_files.push(file_path);
-
-                writeln!(file, "{}", lint_disables_generated_code()).unwrap();
-                for import in &ann.imports {
-                    writeln!(file, "{}", import).unwrap();
-                }
-                writeln!(file, "pub use crate::shared::types::*;").unwrap();
-                writeln!(file, "pub use crate::Index;").unwrap();
-                // This is needed to properly make the Index![] macro resolve the
-                // path to the Index type.
-                writeln!(file, "use crate as bittide_hal;").unwrap();
-                writeln!(file, "pub use crate::hals::{hal_mod_name}::types::*;").unwrap();
-                writeln!(file, "{}", def).unwrap();
-            }
-        }
-
-        // then device instances
-        {
-            writeln!(hal_mod_file, "{}", wrapper.device_instances_struct).unwrap();
-        }
-    }
-
-    memmap_generate::format::format_files(&generated_files).unwrap();
+fn type_name(s: &str) -> &str {
+    s.split(".").last().unwrap()
 }

@@ -18,13 +18,14 @@ import Protocols
 import Protocols.Idle
 import Protocols.MemoryMap (ConstBwd, MM)
 import qualified Protocols.MemoryMap as MM
-import Protocols.MemoryMap.FieldType
+import Protocols.MemoryMap.TypeDescription
 import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import VexRiscv (DumpVcd (NoDumpVcd))
 
 data TestStatus = Running | Success | Fail
-  deriving (Show, Eq, Generic, NFDataX, BitPack, BitPackC, ToFieldType)
+  deriving (Show, Eq, Generic, NFDataX, BitPack, BitPackC)
+deriveTypeDesc ''TestStatus
 
 whoAmID :: BitVector 32
 whoAmID = $(makeWhoAmIdTh "time")
