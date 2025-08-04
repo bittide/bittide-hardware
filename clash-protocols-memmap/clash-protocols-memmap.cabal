@@ -150,6 +150,7 @@ library
     Protocols.MemoryMap.Check.AbsAddress
     Protocols.MemoryMap.Check.Normalized
     Protocols.MemoryMap.FieldType
+    Protocols.MemoryMap.FieldType2
     Protocols.MemoryMap.Json
     Protocols.MemoryMap.Registers.WishboneStandard
     Protocols.MemoryMap.TypeCollect
