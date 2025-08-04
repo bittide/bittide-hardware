@@ -150,28 +150,34 @@ muCaptureUgnAddresses =
  where
   ugnDevices = baseAddresses memoryMapMu "CaptureUgn"
 
-dumpCcSamples :: (HasCallStack) => ProcessHandles -> FilePath -> IO Word
-dumpCcSamples gdb dumpPath = do
-  nSamplesWritten <-
-    readSingleGdbValue
-      gdb
-      ("N_SAMPLES_WRITTEN")
-      ("x/1wx " <> showHex32 sampleMemoryBase)
-
-  let
-    bytesPerSample = 12
-    bytesPerWord = 4
-
-  case readMaybe nSamplesWritten of
-    Nothing -> error [i|Could not parse GDB output as number: #{nSamplesWritten}|]
-    Just n ->
-      let
-        dumpStart = sampleMemoryBase + bytesPerWord
-        dumpEnd = dumpStart + fromIntegral n * bytesPerWord * bytesPerSample
-       in
-        Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure n
+dumpCcSamples :: (HasCallStack) => FilePath -> [ProcessHandles] -> IO [Word]
+dumpCcSamples hitlDir ccGdbs = do
+  mapM_ Gdb.interrupt ccGdbs
+  nSamples <- liftIO $ zipWithConcurrently go ccGdbs ccSamplesPaths
+  putStrLn [i|Dumped /n/ clock control samples: #{nSamples}|]
+  pure nSamples
  where
+  go :: (HasCallStack) => ProcessHandles -> FilePath -> IO Word
+  go gdb dumpPath = do
+    nSamplesWritten <-
+      readSingleGdbValue
+        gdb
+        ("N_SAMPLES_WRITTEN")
+        ("x/1wx " <> showHex32 sampleMemoryBase)
+
+    let
+      bytesPerSample = 12
+      bytesPerWord = 4
+
+      dumpStart = sampleMemoryBase + bytesPerWord
+      dumpEnd n = dumpStart + fromIntegral n * bytesPerWord * bytesPerSample
+
+    case readMaybe nSamplesWritten of
+      Nothing -> error [i|Could not parse GDB output as number: #{nSamplesWritten}|]
+      Just n -> Gdb.dumpMemoryRegion gdb dumpPath dumpStart (dumpEnd n) >> pure n
+
   sampleMemoryBase = ccBaseAddress @Integer "SampleMemory"
+  ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
 
 initOpenOcd :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
 initOpenOcd hitlDir (_, d) targetIndex = do
@@ -589,12 +595,10 @@ driver testName targets = do
 
         let
           goDumpCcSamples = do
-            let ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
-            mapM_ Gdb.interrupt ccGdbs
-            nSamples <- liftIO $ zipWithConcurrently dumpCcSamples ccGdbs ccSamplesPaths
-            putStr "Dumped /n/ clock control samples: "
-            print nSamples
+            _ <- dumpCcSamples hitlDir ccGdbs
+
             -- TODO: Move to separate CI step
+            let ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
             putStrLn "Rendering plots..."
             callProcess plotDataDumpPath ccSamplesPaths
 
