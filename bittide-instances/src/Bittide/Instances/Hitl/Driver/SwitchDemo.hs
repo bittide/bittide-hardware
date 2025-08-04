@@ -16,9 +16,9 @@ import Bittide.Instances.Hitl.SwitchDemo (memoryMapCc, memoryMapMu)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async (forConcurrently_)
+import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently)
-import Control.Monad (forM, forM_, when, zipWithM)
+import Control.Monad (forM, forM_, when)
 import Control.Monad.IO.Class
 import Data.Bifunctor (Bifunctor (bimap))
 import Data.Maybe (fromJust, fromMaybe)
@@ -152,7 +152,7 @@ muCaptureUgnAddresses =
 
 dumpCcSamples :: (HasCallStack) => FilePath -> [ProcessHandles] -> IO [Word]
 dumpCcSamples hitlDir ccGdbs = do
-  mapM_ Gdb.interrupt ccGdbs
+  mapConcurrently_ Gdb.interrupt ccGdbs
   nSamples <- liftIO $ zipWithConcurrently go ccGdbs ccSamplesPaths
   putStrLn [i|Dumped /n/ clock control samples: #{nSamples}|]
   pure nSamples
@@ -355,7 +355,7 @@ driver testName targets = do
     hitlDir = projectDir </> "_build/hitl" </> testName
 
     muGetUgns ::
-      (HwTarget, DeviceInfo) -> ProcessHandles -> VivadoM [(Unsigned 64, Unsigned 64)]
+      (HwTarget, DeviceInfo) -> ProcessHandles -> IO [(Unsigned 64, Unsigned 64)]
     muGetUgns (_, d) gdb = do
       let
         mmioAddrs :: [String]
@@ -580,7 +580,7 @@ driver testName targets = do
       liftIO
         $ putStrLn
           [i|CC GDB testing passed on #{gdbCount0} of #{L.length targets} targets|]
-      liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
+      liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
       let muGdbStarts = liftIO <$> L.zipWith (initGdb hitlDir "management-unit") muPorts targets
       brackets muGdbStarts (liftIO . snd) $ \initMUGdbsData -> do
         let muGdbs = fst <$> initMUGdbsData
@@ -591,7 +591,7 @@ driver testName targets = do
         liftIO
           $ putStrLn
             [i|MU GDB testing passed on #{gdbCount1} of #{L.length targets} targets|]
-        liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
 
         let
           goDumpCcSamples = do
@@ -604,8 +604,8 @@ driver testName targets = do
 
         let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-          liftIO $ mapM_ Gdb.continue ccGdbs
-          liftIO $ mapM_ Gdb.continue muGdbs
+          liftIO $ mapConcurrently_ Gdb.continue ccGdbs
+          liftIO $ mapConcurrently_ Gdb.continue muGdbs
           liftIO
             $ tryWithTimeoutOn "Waiting for stable links" 60_000_000 goDumpCcSamples
             $ forConcurrently_ picocoms
@@ -613,8 +613,8 @@ driver testName targets = do
               waitForLine pico.stdoutHandle "[CC] All links stable"
 
           liftIO $ putStrLn "Getting UGNs for all targets"
-          liftIO $ mapM_ Gdb.interrupt muGdbs
-          ugnPairsTable <- zipWithM muGetUgns targets muGdbs
+          liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
+          ugnPairsTable <- liftIO $ zipWithConcurrently muGetUgns targets muGdbs
           let
             ugnPairsTableV = fromJust . V.fromList $ fromJust . V.fromList <$> ugnPairsTable
           liftIO $ do
