@@ -9,6 +9,7 @@ import Clash.Prelude
 
 import Bittide.Calendar
 import Bittide.SharedTypes
+import Clash.Class.BitPackC
 import Data.Constraint.Nat.Extra
 import Data.Constraint.Nat.Lemmas
 import Protocols
@@ -32,6 +33,8 @@ switchC ::
   , KnownNat nBytes
   , 1 <= nBytes
   , KnownNat addrW
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   CalendarConfig addrW (CalendarEntry links) ->
   Circuit
@@ -46,10 +49,9 @@ switchC ::
 switchC conf = case (cancelMulDiv @nBytes @8) of
   Dict -> Circuit go
    where
-    go (((), (streamsIn, calM2S)), _) = ((SimOnly memMap, (repeat $ pure (), calS2M)), (streamsOut, cal))
+    go (((), (streamsIn, calM2S)), _) = ((memMap, (repeat $ pure (), calS2M)), (streamsOut, cal))
      where
-      memMap = calendarMemoryMap @nBytes @addrW "Switch" SNat conf
-      (streamsOut, calS2M, cal) = switch conf calM2S streamsIn
+      (streamsOut, calS2M, cal, memMap) = switch conf calM2S streamsIn
 
 {-# NOINLINE switch #-}
 
@@ -73,6 +75,8 @@ switch ::
   , KnownNat links
   , KnownNat nBytes
   , 1 <= nBytes
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   CalendarConfig addrW (CalendarEntry links) ->
   -- | Wishbone interface wired to the calendar.
@@ -83,10 +87,11 @@ switch ::
   ( Vec links (Signal dom (BitVector frameWidth))
   , Signal dom (WishboneS2M (Bytes nBytes))
   , Signal dom (Vec links (Index (links + 1)))
+  , MM
   )
-switch calConfig calM2S streamsIn = (streamsOut, calS2M, cal)
+switch calConfig calM2S streamsIn = (streamsOut, calS2M, cal, mm)
  where
-  (cal, _, calS2M) = mkCalendar @dom @nBytes @addrW calConfig calM2S
+  (cal, _, calS2M, mm) = mkCalendar @dom @nBytes @addrW "switch" calConfig calM2S
   scatterFrames = register 0 <$> streamsIn
   gatherFrames = unbundle $ crossBar 0 <$> cal <*> bundle scatterFrames
   streamsOut = register 0 <$> gatherFrames

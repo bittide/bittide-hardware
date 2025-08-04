@@ -17,7 +17,7 @@ import Protocols.Wishbone
 import Test.Tasty
 import Test.Tasty.Hedgehog
 
-import Bittide.Calendar hiding (ExtraRegs)
+import Bittide.Calendar
 import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Tests.Shared
@@ -123,6 +123,56 @@ metacycleStalling = property $ do
     SomeNat (addSNat d2 . snatProxy -> p) -> do
       runTest =<< forAll (genCalendarConfig @32 p)
  where
+  simLength :: Int -> Int -> Int
+  simLength metacycles calSize = 1 + metacycles * calSize
+
+  topEntity ::
+    forall maxSize.
+    (KnownNat maxSize, 2 <= maxSize) =>
+    CalendarConfig 32 (Index maxSize) ->
+    Signal System (Bool, Bool)
+  topEntity calConfig = bundle (acknowledge <$> suWB, acknowledge <$> guWB)
+   where
+    (suWB, _, _) =
+      withBigEndian
+        $ wcre
+        $ scatterUnitWb @System @_ @4
+          (ScatterConfig SNat calConfig)
+          (pure emptyWishboneM2S)
+          linkIn
+          wbStall
+    (_, guWB, _, _) =
+      withBigEndian
+        $ wcre
+        $ gatherUnitWb @System @_ @4
+          (GatherConfig SNat calConfig)
+          (pure emptyWishboneM2S)
+          wbStall
+    wbStall =
+      pure
+        $ (emptyWishboneM2S @32)
+          { -- 2 because addressing is 64 bit aligned.
+            addr = (2 * (natToNum @maxSize @(BitVector 32)))
+          , busCycle = True
+          , strobe = True
+          }
+    linkIn = pure $ deepErrorX "linkIn undefined."
+
+  simOut ::
+    forall maxSize.
+    (KnownNat maxSize, 2 <= maxSize) =>
+    Int ->
+    CalendarConfig 32 (Index maxSize) ->
+    [(Bool, Bool)]
+  simOut metacycles calConfig@(CalendarConfig _ SNat (length -> calSize) _) =
+    sampleN (simLength metacycles calSize) (topEntity calConfig)
+
+  expectedAcks :: Int -> Int -> [Bool]
+  expectedAcks metacycles calSize =
+    P.take (simLength metacycles calSize)
+      $ P.replicate (1 + calSize) False
+      <> cycle (True : P.replicate (calSize - 1) False)
+
   runTest ::
     forall maxSize.
     (KnownNat maxSize, 2 <= maxSize) =>
@@ -130,37 +180,4 @@ metacycleStalling = property $ do
     PropertyT IO ()
   runTest calConfig@(CalendarConfig _ SNat (length -> calSize) _) = do
     metacycles <- forAll $ Gen.enum 1 5
-    let
-      simLength = 1 + metacycles * calSize
-      topEntity = bundle (acknowledge <$> suWB, acknowledge <$> guWB)
-       where
-        suWB =
-          wcre
-            $ fst
-            $ scatterUnitWb @System @32 @4
-              (ScatterConfig SNat calConfig)
-              (pure emptyWishboneM2S)
-              linkIn
-              wbStall
-        guWB =
-          wcre
-            $ (\(_, x, _) -> x)
-            $ gatherUnitWb @System @32 @4
-              (GatherConfig SNat calConfig)
-              (pure emptyWishboneM2S)
-              wbStall
-        wbStall =
-          pure
-            $ (emptyWishboneM2S @32)
-              { -- 2 because addressing is 64 bit aligned.
-                addr = (2 * (natToNum @maxSize @(BitVector 32)))
-              , busCycle = True
-              , strobe = True
-              }
-        linkIn = pure $ deepErrorX "linkIn undefined."
-      expectedAcks =
-        P.take simLength
-          $ P.replicate (1 + calSize) False
-          <> cycle (True : P.replicate (calSize - 1) False)
-      simOut = sampleN simLength topEntity
-    simOut === fmap (\a -> (a, a)) expectedAcks
+    (simOut metacycles calConfig) === fmap (\a -> (a, a)) (expectedAcks metacycles calSize)

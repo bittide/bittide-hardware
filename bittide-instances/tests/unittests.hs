@@ -22,6 +22,7 @@ import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
 import qualified Wishbone.RegisterWbC as RegisterWbC
 import qualified Wishbone.ScatterGather as ScatterGather
+import qualified Wishbone.SwitchCalendar as Wishbone.SwitchCalendar
 import qualified Wishbone.SwitchDemoProcessingElement as SwitchDemoProcessingElement
 import qualified Wishbone.Time as Time
 import qualified Wishbone.Watchdog as Watchdog
@@ -73,6 +74,7 @@ tests =
         , Time.tests
         , RegisterWbC.tests
         , Watchdog.tests
+        , Wishbone.SwitchCalendar.tests
         ]
     ]
  where

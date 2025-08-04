@@ -69,7 +69,10 @@ scatterUnit1K ::
   ( Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
   , Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
   )
-scatterUnit1K clk rst = withClockResetEnable clk rst enableGen $ scatterUnitWb scatterCal1K
+scatterUnit1K clk rst wbCal linkIn wbScat =
+  withBigEndian
+    $ (\(wbA, wbB, _mm) -> (wbA, wbB))
+    $ withClockResetEnable clk rst enableGen (scatterUnitWb scatterCal1K wbCal linkIn wbScat)
 {-# NOINLINE scatterUnit1K #-}
 
 scatterUnit1KReducedPins ::
@@ -108,7 +111,11 @@ gatherUnit1K ::
   , Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
   , Signal Basic200 (WishboneS2M (Bytes WishboneWidth))
   )
-gatherUnit1K clk rst = withClockResetEnable clk rst enableGen $ gatherUnitWb gatherCal1K
+gatherUnit1K clk rst wbCal wbGat =
+  withBigEndian
+    $ (\(link, wbA, wbB, _mm) -> (link, wbA, wbB))
+    $ withClockResetEnable clk rst enableGen
+    $ gatherUnitWb gatherCal1K wbCal wbGat
 {-# NOINLINE gatherUnit1K #-}
 
 gatherUnit1KReducedPins ::
