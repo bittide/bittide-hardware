@@ -34,6 +34,12 @@ pub struct Stability {
     pub settled: u8,
 }
 
+impl Stability {
+    pub fn all_stable(&self) -> bool {
+        self.stable == (1 << ClockControl::DATA_COUNTS_LEN) - 1
+    }
+}
+
 /// Picks the current data counts and wait for `frame_size` to pass without
 /// the data counts changing more than `margin`.
 impl StabilityDetector {
@@ -45,6 +51,11 @@ impl StabilityDetector {
             frame_size,
             prev_stabilities: [false; ClockControl::DATA_COUNTS_LEN],
         }
+    }
+
+    /// Whether all links are stable
+    pub fn all_stable(&self) -> bool {
+        self.prev_stabilities.iter().all(|&stable| stable)
     }
 
     pub fn update(&mut self, cc: &ClockControl, now: Instant) -> Stability {

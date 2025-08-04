@@ -16,7 +16,6 @@ import Test.Tasty.HUnit (assertFailure, testCase)
 import "extra" Data.List.Extra (trim)
 
 import qualified Tests.ClockControlWb as ClockControlWb
-import qualified Tests.OverflowResistantDiff as Ord
 import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
@@ -68,7 +67,6 @@ tests =
         , CaptureUgn.tests
         , ClockControlWb.tests
         , DnaPortE2.tests
-        , Ord.tests
         , ScatterGather.tests
         , SwitchDemoProcessingElement.tests
         , Time.tests

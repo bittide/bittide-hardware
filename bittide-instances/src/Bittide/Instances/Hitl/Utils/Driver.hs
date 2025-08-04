@@ -11,6 +11,7 @@ import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup (demoRigInfo)
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Vivado
+import Control.Monad (void)
 import Control.Monad.IO.Class
 import Data.Maybe (fromJust, fromMaybe)
 import GHC.Stack (HasCallStack)
@@ -40,12 +41,44 @@ tryWithTimeout ::
   Int ->
   m a ->
   m a
-tryWithTimeout actionName dur action = do
-  result <- STL.timeout dur action
+tryWithTimeout actionName duration = tryWithTimeoutOn actionName duration (pure ())
+
+{- | A generic wrapper around 'System.Timeout.Lifted.timeout' that 'fail's if the
+timeout is hit. This function exists because the 'onException' function does not
+work with 'System.Timeout.Lifted.timeout'.
+-}
+tryWithTimeoutOn ::
+  forall m a b.
+  (CMTC.MonadBaseControl IO m, MonadFail m) =>
+  String ->
+  Int ->
+  m b ->
+  m a ->
+  m a
+tryWithTimeoutOn actionName duration onTimeout action = do
+  result <- STL.timeout duration action
   case result of
     Nothing -> do
+      void onTimeout
       fail $ "Timeout while performing action: " <> actionName
-    Just r -> pure r
+    Just r -> do
+      pure r
+
+{- | Like 'tryWithTimeout', but takes an additional action to perform regardless
+of whether the timeout was hit or not.
+-}
+tryWithTimeoutFinally ::
+  forall m a b.
+  (CMTC.MonadBaseControl IO m, MonadFail m) =>
+  String ->
+  Int ->
+  m b ->
+  m a ->
+  m a
+tryWithTimeoutFinally actionName duration finally action = do
+  a <- tryWithTimeoutOn actionName duration finally action
+  void finally
+  pure a
 
 -- | Asserts the value '"0"' on the given probe for the given hardware target.
 deassertProbe :: String -> (HwTarget, DeviceInfo) -> VivadoM ()

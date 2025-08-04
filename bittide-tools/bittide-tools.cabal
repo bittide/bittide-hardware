@@ -157,38 +157,3 @@ executable program-stream
     bittide,
     bytestring,
     clash-prelude,
-
-executable cc-plot
-  import: clash, ghc2024, extra, sane-records
-  main-is: clockcontrol/plot/Main.hs
-  build-depends:
-    aeson,
-    array,
-    base,
-    bittide,
-    bittide-experiments,
-    bittide-extra,
-    bittide-instances,
-    bytestring,
-    cassava,
-    cassava-conduit,
-    clash-prelude,
-    conduit,
-    containers,
-    data-default,
-    directory,
-    extra,
-    filepath,
-    text,
-    typelits-witnesses,
-    unordered-containers,
-    utf8-string,
-    vector,
-
-  default-extensions: ImplicitPrelude
-  -- enable rtsopts so we can setup memory limits
-  ghc-options:
-    -Wall
-    -Wcompat
-    -threaded
-    -rtsopts

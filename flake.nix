@@ -77,6 +77,7 @@
             mc
             pkgs.pcre
             pkgs.getent
+            pkgs.gh
 
             # VexRiscv OpenOCD
             openocd-vexriscv

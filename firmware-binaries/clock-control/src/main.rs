@@ -39,6 +39,12 @@ fn main() -> ! {
     uwriteln!(uart, "Starting sync out generator..").unwrap();
     sync_out_generator.set_active(true);
 
+    uwriteln!(uart, "Waiting for at least one pulse..").unwrap();
+    while freeze.number_of_sync_pulses_seen() == 0 {
+        // TOOD: Memory map sync pulse counter -- no need to involve freeze here
+        freeze.set_freeze(true);
+    }
+
     uwriteln!(uart, "Starting clock control..").unwrap();
     uwriteln!(uart, "Current time: {}", timer.now()).unwrap();
 
@@ -58,14 +64,15 @@ fn main() -> ! {
     // Initialize stability detector
     let mut stability_detector = StabilityDetector::new(4, Duration::from_secs(2));
 
-    // Store samples every _n_ updates. Currently set to 50 times a second
-    // (50K / 1000 = 50Hz). Set to '1' for perfect storage -- not yet possible
-    // due to limited memory size.
-    let mut sample_store = SampleStore::new(sample_memory, 1000);
+    // Store samples every _n_ updates. Currently set to 20 ms (50 Hz) times a
+    // second (20 ms / 200 us = 100). Set to '1' for perfect storage -- not yet
+    // possible due to limited memory size.
+    let mut sample_store = SampleStore::new(sample_memory, 100);
 
-    // Update clock control 10K updates per second
-    let interval = Duration::from_micros(100);
+    // Update clock control 5K updates per second
+    let interval = Duration::from_micros(200);
     let mut next_update = timer.now() + interval;
+    let mut prev_all_stable = false;
 
     loop {
         // Do clock control on "frozen" counters
@@ -76,8 +83,29 @@ fn main() -> ! {
         // Detect stability
         let stability = stability_detector.update(&cc, timer.now());
 
-        // Store debug information
-        sample_store.store(&freeze, stability);
+        // Store debug information. Stop capturing samples if we are stable to
+        // reduce plot sizes.
+        if !prev_all_stable {
+            sample_store.store(&freeze, stability, state.z_k);
+        }
+
+        // If we're all stable, print over UART -- this can be used by the tests
+        // wait for.
+        let all_stable = stability_detector.all_stable();
+        if all_stable && !prev_all_stable {
+            uwriteln!(uart, "All links stable").unwrap();
+        }
+        prev_all_stable = all_stable;
+
+        // Emit stability information over UART
+        let all_stable = stability.all_stable();
+        if !prev_all_stable && all_stable {
+            uwriteln!(uart, "All links stable").unwrap();
+        } else if prev_all_stable && !all_stable {
+            uwriteln!(uart, "Links no longer stable").unwrap();
+            panic!("Links no longer stable");
+        }
+        prev_all_stable = all_stable;
 
         // Wait for next update
         let timer_result = timer.wait_until(next_update);

@@ -177,12 +177,7 @@ library
     vivado-hs,
 
   exposed-modules:
-    Bittide.Github.Artifacts
     Bittide.Hitl
-    Bittide.Plot
-    Bittide.Report.ClockControl
-    Bittide.Simulate.Config
-    Bittide.Topology
 
 test-suite unittests
   import: ghc2024, clash, extra, sane-records
