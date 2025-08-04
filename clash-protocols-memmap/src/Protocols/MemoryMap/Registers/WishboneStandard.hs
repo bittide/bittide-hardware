@@ -63,7 +63,7 @@ import Protocols.MemoryMap (
   locN,
   regType,
  )
-import Protocols.MemoryMap.FieldType (ToFieldType)
+import Protocols.MemoryMap.TypeDescription (WithTypeDescription)
 import Protocols.Wishbone (
   Wishbone,
   WishboneM2S (..),
@@ -102,7 +102,7 @@ data RegisterMeta aw = RegisterMeta
 zeroWidthRegisterMeta ::
   forall a aw.
   ( KnownNat aw
-  , ToFieldType a
+  , WithTypeDescription a
   , BitPackC a
   , BitPack a
   , NFDataX a
@@ -362,7 +362,7 @@ anything else and only affects the data and byte enable fields.
 registerWbC ::
   forall a dom wordSize aw.
   ( HasCallStack
-  , ToFieldType a
+  , WithTypeDescription a
   , BitPackC a
   , BitPack a
   , NFDataX a
@@ -566,7 +566,7 @@ reverseBits = pack . reverse . unpack @(Vec n Bit)
 registerWbC_ ::
   forall a dom wordSize aw.
   ( HasCallStack
-  , ToFieldType a
+  , WithTypeDescription a
   , BitPackC a
   , BitPack a
   , NFDataX a
@@ -602,7 +602,7 @@ created using this function together with 'deviceWithOffsetsWbC'.
 registerWithOffsetWbC ::
   forall a dom wordSize aw.
   ( HasCallStack
-  , ToFieldType a
+  , WithTypeDescription a
   , BitPackC a
   , BitPack a
   , NFDataX a
@@ -687,7 +687,7 @@ registerWbCI ::
   ( HasCallStack
   , HiddenClock dom
   , HiddenReset dom
-  , ToFieldType a
+  , WithTypeDescription a
   , BitPackC a
   , BitPack a
   , NFDataX a
@@ -720,7 +720,7 @@ registerWbCI_ ::
   ( HasCallStack
   , HiddenClock dom
   , HiddenReset dom
-  , ToFieldType a
+  , WithTypeDescription a
   , BitPackC a
   , BitPack a
   , NFDataX a
@@ -751,7 +751,7 @@ registerWithOffsetWbCI ::
   ( HasCallStack
   , HiddenClock dom
   , HiddenReset dom
-  , ToFieldType a
+  , WithTypeDescription a
   , BitPackC a
   , BitPack a
   , NFDataX a

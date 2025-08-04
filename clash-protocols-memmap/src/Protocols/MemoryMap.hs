@@ -55,6 +55,7 @@ module Protocols.MemoryMap (
   regFieldType,
   regByteSizeC,
   Register (..),
+  RegisterType (..),
   MemoryMap (..),
   mergeDeviceDefs,
   deviceSize,
@@ -86,7 +87,6 @@ import Clash.Prelude (
  )
 
 import Protocols.MemoryMap.Check.Normalized
-import Protocols.MemoryMap.FieldType
 
 import Clash.Class.BitPackC
 import Data.Data (Proxy (Proxy))
@@ -95,6 +95,7 @@ import Protocols
 
 import qualified Data.List as L
 import qualified Data.Map.Strict as Map
+import Protocols.MemoryMap.TypeDescription (TypeRef, WithTypeDescription (asTypeRef))
 
 -- | Abbreviation for a simulation-only 'MemoryMap'
 type MM = SimOnly MemoryMap
@@ -188,13 +189,13 @@ data Access
 See 'regType' and 'regTypeSplit' to construct values of this type.
 -}
 data RegisterType where
-  RegisterType :: (ToFieldType a, BitPackC a) => Proxy a -> RegisterType
+  RegisterType :: (WithTypeDescription a, BitPackC a) => Proxy a -> RegisterType
 
-regFieldType :: RegisterType -> FieldType
+regFieldType :: RegisterType -> TypeRef
 regFieldType (RegisterType proxy) = inner proxy
  where
-  inner :: forall x. (ToFieldType x) => Proxy x -> FieldType
-  inner Proxy = toFieldType @x
+  inner :: forall x. (WithTypeDescription x) => Proxy x -> TypeRef
+  inner Proxy = asTypeRef (Proxy @x)
 
 regByteSizeC :: (Num a) => RegisterType -> a
 regByteSizeC (RegisterType proxy) = inner proxy
@@ -202,7 +203,7 @@ regByteSizeC (RegisterType proxy) = inner proxy
   inner :: forall x a. (BitPackC x, Num a) => Proxy x -> a
   inner Proxy = natToNum @(ByteSizeC x)
 
-regType :: forall a. (ToFieldType a, BitPackC a) => RegisterType
+regType :: forall a. (WithTypeDescription a, BitPackC a) => RegisterType
 regType = RegisterType (Proxy @a)
 
 instance Show RegisterType where

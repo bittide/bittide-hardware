@@ -25,6 +25,7 @@ import Protocols.MemoryMap
 import Protocols.MemoryMap.Check.AbsAddress (makeAbsolute)
 
 import qualified Data.ByteString.Lazy as BS
+import Protocols.MemoryMap.Json (LocationStorage (LocationSeparate))
 import qualified Protocols.MemoryMap.Json as Json
 
 main :: IO ()
@@ -40,6 +41,6 @@ main = do
 
   putStrLn "\n\n\n"
 
-  let json = Json.memoryMapJson memoryMap.deviceDefs absTree
+  let json = Json.memoryMapJson LocationSeparate memoryMap.deviceDefs absTree
   BS.putStr (Json.encode json)
   pure ()

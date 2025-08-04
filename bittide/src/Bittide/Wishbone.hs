@@ -24,7 +24,7 @@ import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import GHC.Stack (HasCallStack)
 import Protocols
-import Protocols.MemoryMap.FieldType (ToFieldType)
+import Protocols.MemoryMap.TypeDescription
 import Protocols.Wishbone
 
 -- internal imports
@@ -677,7 +677,8 @@ wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
   wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}
 
 data TimeCmd = Capture | WaitForCmp
-  deriving (Eq, Generic, Show, NFDataX, BitPack, ToFieldType, BitPackC)
+  deriving (Eq, Generic, Show, NFDataX, BitPack, BitPackC)
+deriveTypeDesc ''TimeCmd
 
 {- | Wishbone accessible circuit that contains a free running 64 bit counter with stalling
 capabilities.
