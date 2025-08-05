@@ -118,20 +118,15 @@ prop_wb = property $ do
         Left $ "Read value mismatch: expected " <> show l <> ", got " <> show readDataU
    where
     readDataU = unpackOrErrorC endian (unpack readData)
-  model (Write _ _ ((`testBit` (32 - 8)) -> doFreeze)) _ s
+  model (Write _ _ _) _ s =
     -- Only one writeable register in this device: freeze. We can therefore safely
-    -- ignore the address and assume that register is written to. We know the bool
-    -- is packed into the first byte. The relevant bit is in the LSB of the first
-    -- byte, hence 32-8.
-    | doFreeze =
-        Right
-          $ s
-            { frozen = True
-            , lastSeen = Nothing
-            , nFreezes = s.nFreezes + 1
-            }
-    | otherwise =
-        Right s
+    -- ignore the address and assume that register is written to.
+    Right
+      $ s
+        { frozen = True
+        , lastSeen = Nothing
+        , nFreezes = s.nFreezes + 1
+        }
 
   genInputs :: Gen [WishboneMasterRequest AddressWidth (Bytes 4)]
   genInputs = Gen.list (Range.linear 0 500) (genWishboneTransfer genAddr genData)

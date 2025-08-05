@@ -139,6 +139,13 @@ fn main() -> ! {
     read_write!(array => "v1", v1, [0x8, 0x16, 3721049880298531338], set_v1, [1600, 3200, 7442099760597062676]);
     read_write!(array => "v2", v2, [[0x8, 0x16], [0x24, 0x32]], set_v2, [[0xAB, 0xCD], [0x12, 0x34]]);
 
+    expect("init.unitW", false, many_types.unit_w());
+    many_types.set_unit(hal::Tuple0);
+    expect("rt.unitW", true, many_types.unit_w());
+
+    many_types.zs();
+    many_types.set_zs(hal::MyZeroSizedType);
+
     read_write!("sum0", sum0, hal::Abc::C, set_sum0, hal::Abc::A);
     read_write!("sum1", sum1, hal::Xyz::S, set_sum1, hal::Xyz::Z);
 

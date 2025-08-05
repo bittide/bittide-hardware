@@ -45,7 +45,7 @@ import Clash.Prelude (HiddenClock, HiddenReset, hasClock, hasReset)
 import Clash.Sized.Internal.BitVector (BitVector (unsafeToNatural))
 import Data.Constraint (Dict (Dict))
 import Data.Constraint.Nat.Lemmas (divWithRemainder)
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (fromMaybe)
 import GHC.Stack (HasCallStack, SrcLoc, withFrozenCallStack)
 import Protocols.MemoryMap (
   Access (ReadOnly, ReadWrite, WriteOnly),
@@ -72,6 +72,7 @@ import Protocols.Wishbone (
   emptyWishboneS2M,
  )
 
+import Data.Data (Proxy (Proxy))
 import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Protocols.Vec as V
@@ -98,22 +99,34 @@ data RegisterMeta aw = RegisterMeta
   , nWords :: BitVector (aw + 1)
   }
 
-zeroWidthRegisterMeta :: (KnownNat aw) => RegisterMeta aw
-zeroWidthRegisterMeta =
+zeroWidthRegisterMeta ::
+  forall a aw.
+  ( KnownNat aw
+  , ToFieldType a
+  , BitPackC a
+  , BitPack a
+  , NFDataX a
+  ) =>
+  Proxy a ->
+  RegisterConfig ->
+  RegisterMeta aw
+zeroWidthRegisterMeta Proxy conf =
   RegisterMeta
-    { name = SimOnly (Name{name = "", description = ""})
+    { name = SimOnly (Name{name = conf.name, description = conf.description})
     , srcLoc = SimOnly locHere
     , register =
         SimOnly
           Register
-            { -- XXX: There is no regType for unit, so we make it something else
-              fieldType = regType @(Signed 0)
+            { fieldType = regType @a
             , address = 0x0
-            , access = ReadWrite
-            , tags = []
+            , access = conf.access
+            , tags = "zero-width" : conf.tags
             , reset = Nothing
             }
-    , nWords = 0
+    , -- BitPackC would report a size of 0, but we want to be able to observe
+      -- the bus activity, so an address needs to be reserved anyway. For this,
+      -- the number of words gets overwriten to 1 here.
+      nWords = 1
     }
 
 data RegisterConfig = RegisterConfig
@@ -245,19 +258,16 @@ deviceWithOffsetsWbC deviceName =
     unSimOnly (SimOnly a) = a
 
     -- Note that we filter zero-width registers out here
-    metaToRegister :: Offset aw -> RegisterMeta aw -> Maybe (NamedLoc Register)
-    metaToRegister o m
-      | m.nWords == 0 = Nothing
-      | otherwise =
-          Just
-            $ NamedLoc
-              { name = unSimOnly m.name
-              , loc = unSimOnly m.srcLoc
-              , value =
-                  (unSimOnly m.register)
-                    { address = fromIntegral o * natToNum @wordSize
-                    }
+    metaToRegister :: Offset aw -> RegisterMeta aw -> NamedLoc Register
+    metaToRegister o m =
+      NamedLoc
+        { name = unSimOnly m.name
+        , loc = unSimOnly m.srcLoc
+        , value =
+            (unSimOnly m.register)
+              { address = fromIntegral o * natToNum @wordSize
               }
+        }
 
     mm =
       MemoryMap
@@ -265,7 +275,7 @@ deviceWithOffsetsWbC deviceName =
             Map.singleton deviceName
               $ DeviceDefinition
                 { deviceName = Name{name = deviceName, description = ""}
-                , registers = catMaybes (L.zipWith metaToRegister (toList offsets) (toList metas))
+                , registers = L.zipWith metaToRegister (toList offsets) (toList metas)
                 , definitionLoc = locN 0
                 , tags = []
                 }
@@ -298,10 +308,8 @@ deviceWithOffsetsWbC deviceName =
       -- Active?
       Bool
     isActiveSubordinate offset RegisterMeta{nWords} addr
-      -- Zero-width registers can never be selected -- they don't have an address
-      | nWords == 0 = False
       -- Optimization case of single word registers: no need to involve `Ord`
-      | nWords == 1 = offset == addr
+      | nWords == 1 || nWords == 0 = offset == addr
       -- General case: check whether the address is within the range of the register
       | otherwise = addr >= offset && extend addr < extend offset + nWords
 
@@ -391,10 +399,21 @@ registerWbC clk rst regConfig resetValue =
             Dict ->
               Circuit go
         SNatGT ->
-          Circuit $ \_ ->
-            ( (((), zeroWidthRegisterMeta, pure emptyWishboneS2M), pure ())
-            , (pure resetValue, pure BusIdle)
-            )
+          Circuit $ \(((_, _, m2s0), _), (_, _)) ->
+            let
+              update m2s1
+                | not (m2s1.strobe && m2s1.busCycle) = (BusIdle, emptyWishboneS2M)
+                | m2s1.writeEnable = (BusWrite resetValue, emptyWishboneS2M{acknowledge = True})
+                | otherwise =
+                    ( BusRead resetValue
+                    , (emptyWishboneS2M @(BitVector (wordSize * 8))){acknowledge = True, readData = 0}
+                    )
+
+              (unbundle -> (busActivity, s2m)) = update <$> m2s0
+             in
+              ( (((), zeroWidthRegisterMeta @a Proxy regConfig, s2m), pure ())
+              , (pure resetValue, busActivity)
+              )
  where
   -- This behemoth of a type signature because the inferred type signature is
   -- too general, confusing the type checker.
@@ -457,8 +476,7 @@ registerWbC clk rst regConfig resetValue =
 
   goReg ::
     forall nWords.
-    ( 1 <= nWords
-    , nWords ~ SizeInWordsC wordSize a
+    ( nWords ~ SizeInWordsC wordSize a
     , KnownNat nWords
     ) =>
     Access ->
@@ -625,7 +643,9 @@ registerWithOffsetWbC clk rst regConfig offset resetValue =
 
 maskWriteData ::
   forall wordSize nWords.
-  (KnownNat wordSize, KnownNat nWords, 1 <= nWords) =>
+  ( KnownNat wordSize
+  , KnownNat nWords
+  ) =>
   -- | Offset from base address of register
   Index nWords ->
   -- | Mask for data on bus

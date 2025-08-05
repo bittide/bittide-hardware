@@ -74,6 +74,18 @@ impl DeviceGenerator {
                             })
                         }
                     }
+                } else if reg.tags.iter().any(|tag| tag == "zero-width") {
+                    let ty = ty_gen.generate_type_ref(&reg.reg_type);
+                    quote! {
+                        #[doc = #reg_description]
+                        pub fn #name(&self) -> #ty {
+                            let _ = unsafe {
+                                self.0.add(#offset).cast::<u8>().read_volatile()
+                            };
+
+                            unsafe { core::mem::transmute(()) }
+                        }
+                    }
                 } else {
                     let ty = ty_gen.generate_type_ref(&reg.reg_type);
                     quote! {
@@ -125,6 +137,16 @@ impl DeviceGenerator {
                             let ptr = self.0.add(#offset).cast::<#scalar_ty>();
 
                             ptr.add(idx).write_volatile(val);
+                        }
+                    }
+                } else if reg.tags.iter().any(|tag| tag == "zero-width") {
+                    let ty = ty_gen.generate_type_ref(&reg.reg_type);
+                    quote! {
+                        #[doc = #reg_description]
+                        pub fn #name(&self, _val: #ty) {
+                            unsafe {
+                                self.0.add(#offset).cast::<u8>().write_volatile(0)
+                            }
                         }
                     }
                 } else {

@@ -62,8 +62,8 @@ freeze clk rst =
     --       on the counter being exact (i.e., reading one less just means we
     --       drop one measurement at the end of a clock control experiment). Still,
     --       it would be nice for 'registerWbC' to support this.
-    (_a0, Fwd freezeActivity) <- registerWbC clk rst freezeConfig False -< (wb0, Fwd noWrite)
-    let shut = freezeActivity .==. pure (BusWrite True)
+    (_a0, Fwd freezeActivity) <- registerWbC clk rst freezeConfig () -< (wb0, Fwd noWrite)
+    let shut = freezeActivity .==. pure (BusWrite ())
 
     -- Read-only register that counts how many times the user requested a freeze
     let freezeCounterWrite = Just <$> counter @(Unsigned 32) clk rst (toEnable shut) 0
