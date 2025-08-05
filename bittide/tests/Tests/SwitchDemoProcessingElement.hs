@@ -24,7 +24,6 @@ import qualified Hedgehog.Range as Range
 import qualified Clash.Explicit.Prelude as E
 import qualified Data.List as L
 
-import Clash.Explicit.Reset (noReset)
 import Clash.Hedgehog.Sized.BitVector (genDefinedBitVector)
 import Clash.Hedgehog.Sized.Index (genIndex)
 import Clash.Hedgehog.Sized.Unsigned (genUnsigned)
@@ -121,7 +120,7 @@ prop_readThenWrite = H.property $ do
       out =
         E.sample
           $ bundle
-          $ withClockResetEnable @System clockGen noReset enableGen
+          $ withClockResetEnable @System clockGen E.noReset enableGen
           $ (\(a, b, _) -> (a, b))
           $ switchDemoPe
             bufferSizeSNat

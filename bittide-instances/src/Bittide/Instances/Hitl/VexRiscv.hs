@@ -75,7 +75,9 @@ baud = SNat
 -- | To use this function, change the initial contents of the iMem and dMem
 sim :: IO ()
 sim =
-  uartIO stdin stdout baud $ withClockResetEnable clockGen resetGen enableGen $ Circuit go
+  uartIO stdin stdout baud
+    $ withClockResetEnable clockGen (resetGenN d2) enableGen
+    $ Circuit go
  where
   go (uartRx, _) = (pure (), uartTx)
    where

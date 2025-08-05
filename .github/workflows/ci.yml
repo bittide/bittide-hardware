@@ -45,7 +45,7 @@ jobs:
     name: Populate Cachix cache
     runs-on: [self-hosted, compute]
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       options: --memory=11g
     steps:
     - uses: actions/checkout@v4
@@ -71,12 +71,15 @@ jobs:
         shell: git-nix-shell {0}
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       options: --memory=11g
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 'diff-clash-vexriscv-subtree.py' needs a fully history
+          fetch-depth: 0
 
       - name: EOL whitespace
         run: |
@@ -124,6 +127,9 @@ jobs:
       - name: Check that relevant Cabal files have a common header
         run: .github/scripts/check_consistent_cabal_common.py
 
+      - name: Check that the `clash-vexriscv` tree is clean
+        run: ./scripts/diff-clash-vexriscv-subtree.py
+
   build:
     name: Build dependencies
     runs-on: [self-hosted, compute]
@@ -132,7 +138,7 @@ jobs:
         shell: git-nix-shell {0} --ignore-environment
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       options: --memory=11g
 
     steps:
@@ -183,7 +189,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       options: --memory=11g
 
     env:
@@ -246,7 +252,7 @@ jobs:
       run:
         shell: git-nix-shell {0}
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       options: --memory=11g
     outputs:
       run_tests: ${{ steps.check.outputs.run_tests }}
@@ -278,7 +284,7 @@ jobs:
     if: ${{ needs.should-run-haskell-tests.outputs.run_tests == 'true' }}
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       options: --memory=11g
       volumes:
         - /opt/tools:/opt/tools
@@ -351,7 +357,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       options: --memory=11g
     needs: [build]
 
@@ -377,7 +383,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       options: --memory=11g
     needs: [build]
 
@@ -405,7 +411,7 @@ jobs:
       run:
         shell: git-nix-shell {0} --ignore-environment
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       options: --memory=11g
     needs: [build]
 
@@ -486,7 +492,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       volumes:
         - /opt/tools:/opt/tools
       options: --init --mac-address="6c:5a:b0:6c:13:0b" --memory=11g
@@ -612,7 +618,7 @@ jobs:
         shell: git-nix-shell {0} --ignore-environment
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       options: --memory=11g
 
     strategy:
@@ -655,7 +661,7 @@ jobs:
       fail-fast: false
 
     container:
-      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       volumes:
         - /opt/tools:/opt/tools
         - /dev:/dev

@@ -14,8 +14,8 @@ main :: IO ()
 main =
   defaultMainWithHooks
     simpleUserHooks
-      { preConf = makeExtLib,
-        confHook = \a f -> confHook simpleUserHooks a f >>= updateExtraLibDirs
+      { preConf = makeExtLib
+      , confHook = \a f -> confHook simpleUserHooks a f >>= updateExtraLibDirs
       }
 
 makeExtLib :: Args -> ConfigFlags -> IO HookedBuildInfo
@@ -43,8 +43,8 @@ updateExtraLibDirs localBuildInfo = do
                     { libBuildInfo =
                         libBuild
                           { extraLibDirs =
-                              (dir ++ "/build_out_dir") :
-                              extraLibDirs libBuild
+                              (dir ++ "/build_out_dir")
+                                : extraLibDirs libBuild
                           }
                     }
             }

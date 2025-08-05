@@ -377,7 +377,7 @@ has many (read/write) registers.
 dut :: Circuit (ConstBwd MM) (Df Basic50 (BitVector 8))
 dut =
   withBittideByteOrder
-    $ withClockResetEnable clockGen resetGen enableGen
+    $ withClockResetEnable clockGen (resetGenN d2) enableGen
     $ circuit
     $ \mm -> do
       (uartRx, jtag) <- idleSource

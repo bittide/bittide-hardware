@@ -41,25 +41,21 @@ bindto 0.0.0.0
 if { [info exists CPUTAPID] } {
   set _CPUTAPID $CPUTAPID
 } else {
-  set _CPUTAPID 0x10001fff
+  set _CPUTAPID 0x10002FFF
 }
 
-set _CHIPNAME vexrisc_ocd
+set _CHIPNAME riscv
 
-jtag newtap $_CHIPNAME chain0 -expected-id $_CPUTAPID -irlen 4 -ircapture 0x1 -irmask 0x0F
-jtag newtap $_CHIPNAME chain1 -expected-id $_CPUTAPID -irlen 4 -ircapture 0x1 -irmask 0x03
+jtag newtap $_CHIPNAME chain0 -expected-id $_CPUTAPID -irlen 5
+jtag newtap $_CHIPNAME chain1 -expected-id $_CPUTAPID -irlen 5
 
-target create $_CHIPNAME.cpu1 vexriscv -endian $_ENDIAN -chain-position $_CHIPNAME.chain1 -gdb-port $user_gdb_port_a
+target create $_CHIPNAME.cpu1 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.chain1 -gdb-port $user_gdb_port_a
 tcl_port $user_tcl_port_a
 telnet_port $user_tel_port_a
-vexriscv readWaitCycles 10
-vexriscv cpuConfigFile [file join $git_top_level clash-vexriscv clash-vexriscv example-cpu ExampleCpu.yaml]
 
-target create $_CHIPNAME.cpu0 vexriscv -endian $_ENDIAN -chain-position $_CHIPNAME.chain0 -gdb-port $user_gdb_port_b
+target create $_CHIPNAME.cpu0 riscv -endian $_ENDIAN -chain-position $_CHIPNAME.chain0 -gdb-port $user_gdb_port_b
 tcl_port $user_tcl_port_b
 telnet_port $user_tel_port_b
-vexriscv readWaitCycles 10
-vexriscv cpuConfigFile [file join $git_top_level clash-vexriscv clash-vexriscv example-cpu ExampleCpu.yaml]
 
 poll_period 50
 
@@ -70,4 +66,3 @@ echo "Halting processor"
 halt
 
 sleep 1000
-
