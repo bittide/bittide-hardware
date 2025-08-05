@@ -118,7 +118,6 @@ driverFunc _name targets = do
             Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "hello"
             Gdb.setTarget gdb gdbPort
             errorToException =<< Gdb.loadBinary gdb
-            -- errorToException =<< Gdb.compareSections gdb
 
             -- break test
             do

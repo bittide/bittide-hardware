@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE PackageImports #-}
 
 module Bittide.Instances.Hitl.Utils.Gdb where
 
@@ -10,7 +11,7 @@ import Control.Concurrent (withMVar)
 import Control.Monad (forM_)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Numeric (showHex)
@@ -25,6 +26,7 @@ import System.Process.Internals (
 import System.Timeout
 
 import qualified Data.List as L
+import qualified "extra" Data.List.Extra as L
 
 withGdb :: (MonadIO m, MonadMask m) => (ProcessHandles -> m a) -> m a
 withGdb action = do
@@ -62,6 +64,14 @@ runCommands h commands =
 echo :: Handle -> String -> IO ()
 echo h s = runCommands h ["echo \\n" <> s <> "\\n"]
 
+-- | Strip any leading @(gdb)@ and whitespace from a line
+stripOutput :: String -> String
+stripOutput s0 = s3
+ where
+  s1 = L.trim s0
+  s2 = fromMaybe s1 (L.stripPrefix "(gdb)" s1)
+  s3 = L.trim s2
+
 continue :: ProcessHandles -> IO ()
 continue gdb = runCommands gdb.stdinHandle ["continue"]
 
@@ -78,6 +88,9 @@ interrupt gdb =
           OpenExtHandle{} -> error "Not supported: OpenExtHandle is a Windows-only handle"
           ClosedHandle{} -> error "Process handle is closed"
 
+{- | Load a preset binary onto the CPU. This will also run 'compareSections' to
+ensure that the binary was loaded correctly.
+-}
 loadBinary :: ProcessHandles -> IO Error
 loadBinary gdb = do
   runCommands gdb.stdinHandle ["load"]
@@ -88,9 +101,9 @@ loadBinary gdb = do
       | "Start address 0x80000000" `L.isPrefixOf` s = Stop Ok
       | otherwise = Continue
   result <- timeout 60_000_000 $ expectLine gdb.stdoutHandle expectedResponse
-  pure $ case result of
-    Just _ -> Ok
-    Nothing -> Error "Loading binary timed out"
+  case result of
+    Just _ -> compareSections gdb
+    Nothing -> pure $ Error "Loading binary timed out"
 
 {- | Runs "compare-sections" in gdb and parses the resulting output.
 If any of the hash values do not match, this function will throw an error.
@@ -107,15 +120,16 @@ compareSections gdb = do
   sectionLines <- readUntilLine gdb.stdoutHandle doneMsg
   mapM_ (putStrLn . ("Got: " <>)) sectionLines
   pure
-    $ if all (\l -> parseSection l == Just "matched") sectionLines
+    $ if all isMatchOrEmpty sectionLines
       then Ok
       else Error "Some sections did not match"
  where
-  parseSection :: String -> Maybe String
-  parseSection s =
+  isMatchOrEmpty :: String -> Bool
+  isMatchOrEmpty (stripOutput -> s) =
     case words s of
-      ["Section", _name, "range", _start, "--", _end, result] -> Just $ L.init result
-      _ -> Nothing
+      ["Section", _name, "range", _start, "--", _end, "matched."] -> True
+      [] -> True
+      _ -> False
 
 -- | Enables logging to a file in gdb.
 setLogging :: ProcessHandles -> FilePath -> IO ()
