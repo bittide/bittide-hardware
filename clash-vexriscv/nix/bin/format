@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2024 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+ROOT=$(git rev-parse --show-toplevel)
+
+echo "Formatting Haskell files.."
+"${ROOT}"/.github/scripts/fourmolu.sh

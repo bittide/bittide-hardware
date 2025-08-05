@@ -15,19 +15,19 @@ pkgs.mkShell {
 
       # Haskell toolchain
       pkgs.cabal-install
-      # pkgs.haskell.compiler.ghc90
-      # pkgs.haskell.compiler.ghc92
-      pkgs.haskell.compiler.ghc94
-      # pkgs.haskell.compiler.ghc96
+      pkgs.haskellPackages.fourmolu
+      pkgs.ghc
 
       (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
 
-      # VexRiscV needs a special openocd
-      pkgs.openocd-vexriscv
+      pkgs.openocd-riscv
       pkgs.gdb
 
       # For Cabal to clone git repos
       pkgs.git
+
+      # C Tools
+      pkgs.clang
 
       # For upgrading Nix env. To update dependencies (within bounds of the currently
       # tracking NixOS version) use:
@@ -48,5 +48,8 @@ pkgs.mkShell {
 
     # Mixing Nix Cabal and non-Nix Cabal yields some weird linking errors.
     export CABAL_DIR="$HOME/.cabal-nix";
+
+    # Add repo utilities to path
+    export PATH="$(git rev-parse --show-toplevel)/nix/bin:$PATH";
   '';
 }

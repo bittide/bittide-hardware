@@ -1,4 +1,4 @@
-cabal-version:       2.4
+cabal-version:       3.8
 name:                clash-vexriscv-sim
 version:             0.1
 License:             Apache-2.0
@@ -70,8 +70,8 @@ common common-options
     -fno-worker-wrapper
       -- clash-prelude will set suitable version bounds for the plugins
   build-depends:
-    base >= 4.14 && < 4.19,
-    clash-prelude >= 1.6 && < 1.10,
+    base >= 4.16 && < 4.21,
+    clash-prelude >= 1.9.0,
     containers >= 0.6 && < 0.8,
     ghc-typelits-natnormalise,
     ghc-typelits-extra,
@@ -174,7 +174,6 @@ test-suite unittests
     extra,
     filepath,
     process,
-    streaming,
     tasty >= 1.2 && < 1.6,
     tasty-hunit >= 0.10 && < 0.11,
     temporary >=1.1 && <1.4,
