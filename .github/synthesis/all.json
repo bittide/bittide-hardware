@@ -6,12 +6,12 @@
   {"top": "safeDffSynchronizer",           "stage": "pnr",   "cc_report": false},
   {"top": "scatterUnit1KReducedPins",      "stage": "pnr",   "cc_report": false},
   {"top": "si5391Spi",                     "stage": "pnr",   "cc_report": false},
-  {"top": "switchCalendar1kReducedPins",   "stage": "pnr",   "cc_report": false},
+  {"top": "switchExampleReducedPins",      "stage": "pnr",   "cc_report": false},
 
   {"top": "asciiDebugMux",                 "stage": "hdl",   "cc_report": false},
   {"top": "gatherUnit1K",                  "stage": "hdl",   "cc_report": false},
   {"top": "scatterUnit1K",                 "stage": "hdl",   "cc_report": false},
-  {"top": "switchCalendar1k",              "stage": "hdl",   "cc_report": false},
+  {"top": "switchExample",                 "stage": "hdl",   "cc_report": false},
 
   {"top": "boardTestExtended",             "stage": "test",  "cc_report": false},
   {"top": "boardTestSimple",               "stage": "test",  "cc_report": false},
