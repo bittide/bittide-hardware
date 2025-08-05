@@ -6,6 +6,7 @@
 #
 #   ./diff-clash-vexriscv-subtree.py
 #
+# Returns a non-zero exit code if there are differences.
 
 # SPDX-FileCopyrightText: 2022 Google LLC
 #
@@ -35,7 +36,12 @@ def get_latest_clash_vexriscv_commit():
             return match.group("to")
 
 def diff(dir1, dir2):
-    cmd = ["diff", "-ru", dir1, dir2]
+    cmd = [
+        "diff", "-ru", dir1, dir2,
+        "--exclude=.git",
+        "--exclude=build_out_dir",
+        "--exclude=target",
+    ]
     run(cmd, check=True)
 
 def main():
