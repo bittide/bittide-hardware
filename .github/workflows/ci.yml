@@ -30,6 +30,7 @@ env:
   HW_SERVER_URL: hoeve.local:3121
   S3_PASSWORD: ${{ secrets.S3_PASSWORD }}
   SYNTHESIS_BOARD: xilinx.com:kcu105:part0:1.7
+  CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
   # Suppress warnings related to locals
   LC_ALL: C
@@ -43,14 +44,9 @@ jobs:
   cachix:
     name: Populate Cachix cache
     runs-on: [self-hosted, compute]
-    environment: main
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-04
       options: --memory=11g
-
-    env:
-      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-
     steps:
     - uses: actions/checkout@v4
     - run: nix develop --extra-experimental-features "nix-command flakes" --profile dev -c true
