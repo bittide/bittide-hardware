@@ -6,17 +6,32 @@
 
 module Bittide.ClockControl.Si539xSpi where
 
-import Clash.Cores.SPI
 import Clash.Prelude hiding (PeriodToCycles)
 
 import Data.Maybe
+import GHC.Stack (HasCallStack)
+
+import Clash.Class.BitPackC (BitPackC, ByteOrder)
+import Clash.Cores.SPI
+import Clash.Cores.Xilinx.DcFifo
+
+import Protocols
+import Protocols.MemoryMap (Access (..), ConstBwd, MM)
+import Protocols.MemoryMap.FieldType (ToFieldType)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  BusActivity (..),
+  RegisterConfig (access, description),
+  deviceWb,
+  registerConfig,
+  registerWbI,
+  registerWbI_,
+ )
+import Protocols.Wishbone
 
 import Bittide.Arithmetic.Time
 import Bittide.ClockControl
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
-
-import Clash.Cores.Xilinx.DcFifo
 
 -- | The Si539X chips use "Page"s to increase their address space.
 type Page = Byte
@@ -42,7 +57,7 @@ data RegisterOperation = RegisterOperation
   , write :: Maybe Byte
   -- ^ @Nothing@ for a read operation, @Just byte@ to write @byte@ to this 'Page' and 'Address'.
   }
-  deriving (Show, Generic, NFDataX)
+  deriving (Show, Generic, NFDataX, BitPack, ToFieldType, BitPackC)
 
 {- | Contains the configuration for an Si539x chip, explicitly differentiates between
 the configuration preamble, configuration and configuration postamble.
@@ -127,6 +142,124 @@ getStateAddress = \case
   WaitForLock -> maxBound
   Finished -> maxBound
   Wait _ i -> i
+
+-- | A memory-mapped version of 'si539xSpiDriver'.
+si539xSpiDriverMM ::
+  forall aw minTargetPeriodPs dom.
+  ( HiddenClockResetEnable dom
+  , KnownNat aw
+  , 4 <= aw
+  , HasCallStack
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Minimum period of the SPI clock frequency for the SPI clock divider.
+  SNat minTargetPeriodPs ->
+  Circuit
+    ( ( ConstBwd MM
+      , Wishbone dom 'Standard aw (Bytes 4)
+      )
+    , "MISO" ::: CSignal dom Bit
+    )
+    ( "spiDone" ::: CSignal dom Bool
+    , ( "SCK" ::: CSignal dom Bool
+      , "MOSI" ::: CSignal dom Bit
+      , "SS" ::: CSignal dom Bool
+      )
+    )
+si539xSpiDriverMM minTargetPs =
+  circuit $ \((mm, wb), miso) -> do
+    -- Create a bunch of register wishbone interfaces. We don't really care about
+    -- ordering, so we just append a number to the end of a generic name.
+    [wb0, wb1, wb2, wb3, wb4, wb5] <- deviceWb "Si539xSpi" -< (mm, wb)
+
+    (Fwd regOp, _regOpActivity) <- registerWbI regOpConfig defRegOp -< (wb0, Fwd noWrite)
+    (_a1, Fwd commitActivity) <- registerWbI commitConfig () -< (wb1, Fwd noWrite)
+    registerWbI_ busyConfig False -< (wb2, Fwd (Just <$> busy))
+    registerWbI_ readDataConfig 0 -< (wb3, Fwd readData)
+    (spiDone, _spiDoneActivity) <- registerWbI spiDoneConfig False -< (wb4, Fwd noWrite)
+    (_a5, Fwd resetActivity) <- registerWbI resetSpiConfig () -< (wb5, Fwd noWrite)
+
+    {- TODO: Should we check in hardware that no new register operations are accepted
+    while the SPI core is still busy? And if so, how do we do this without the
+    questionable use of `andAck`?
+    -}
+
+    let commit = isBusWrite <$> commitActivity
+    let maybeRegOp = orNothing <$> commit <*> regOp
+    let reset = unsafeFromActiveHigh $ isBusWrite <$> resetActivity
+
+    (Fwd readData, Fwd busy, spiOut) <-
+      withReset reset
+        $ si539xSpiDriverC minTargetPs
+        -< (Fwd maybeRegOp, miso)
+
+    idC -< (spiDone, spiOut)
+ where
+  regOpConfig =
+    (registerConfig "register_operation")
+      { access = WriteOnly
+      , description = "Used to read from or write to a register on a Si539x chip via SPI."
+      }
+
+  commitConfig =
+    (registerConfig "commit")
+      { access = WriteOnly
+      , description = "Commit the register_operation and start a SPI transaction."
+      }
+
+  busyConfig =
+    (registerConfig "busy")
+      { access = ReadOnly
+      , description = "The SPI interface is 'Busy' and does not accept new operations."
+      }
+
+  readDataConfig =
+    (registerConfig "read_data")
+      { access = ReadOnly
+      , description = "Data returned by read / write operation."
+      }
+
+  spiDoneConfig =
+    (registerConfig "spi_done")
+      { access = WriteOnly
+      , description = "Set after SPI configuration is done."
+      }
+
+  resetSpiConfig =
+    (registerConfig "reset")
+      { access = WriteOnly
+      , description =
+          "Reset the SPI core. Useful if you want the page and address to be set again."
+      }
+
+  isBusWrite (Just (BusWrite _)) = True
+  isBusWrite (Just (BusRead _)) = False
+  isBusWrite Nothing = False
+
+  noWrite = pure Nothing
+
+  defRegOp = RegisterOperation{page = 0, address = 0, write = Nothing}
+
+  si539xSpiDriverC ::
+    (HiddenClockResetEnable dom) =>
+    SNat minTargetPeriodPs ->
+    Circuit
+      ( CSignal dom (Maybe RegisterOperation)
+      , "MISO" ::: CSignal dom Bit
+      )
+      ( CSignal dom (Maybe Byte)
+      , CSignal dom Busy
+      , ( "SCK" ::: CSignal dom Bool
+        , "MOSI" ::: CSignal dom Bit
+        , "SS" ::: CSignal dom Bool
+        )
+      )
+  si539xSpiDriverC minPs = Circuit go
+   where
+    go ((regOp, miso), _) = ((pure (), pure ()), (readByte, busy, spiOut))
+     where
+      (readByte, busy, spiOut) = si539xSpiDriver minPs regOp miso
 
 {- | SPI interface for a @Si539x@ clock generator chip with an initial configuration.
 This component will first write and verify the initial configuration before becoming
