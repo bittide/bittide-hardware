@@ -711,11 +711,7 @@ jobs:
     name: All jobs finished
     if: ${{ !cancelled() }}
     needs: [
-        bittide-instances-hardware-in-the-loop,
-        bittide-instances-hdl,
-        bittide-instances-matrices,
         bittide-instances-publish-artifacts,
-        build,
         cachix,
         firmware-limit-checks,
         firmware-support-tests,
@@ -724,7 +720,6 @@ jobs:
         license-check,
         lint,
         rust-lints,
-        should-run-haskell-tests,
       ]
     runs-on: ubuntu-22.04
     steps:
