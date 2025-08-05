@@ -71,7 +71,7 @@ data ValidEntry a repetitionBits = ValidEntry
   -- 0 = no repetition, entry is valid for one cycle.
   -- 1 = repeated once, entry is valid for two cycles.
   }
-  deriving (BitPack, Eq, Generic, NFDataX, Show, ShowX, BitPackC)
+  deriving (BitPack, Eq, Generic, NFDataX, Show, ShowX, BitPackC, Lift)
 
 instance
   forall a repetitionBits.
