@@ -92,8 +92,6 @@ import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcArraySingle, xpmCdcSingle)
 import Clash.Functor.Extra ((<<$>>))
-import Clash.Sized.Extra (unsignedToSigned)
-import Clash.Sized.Vector.ToTuple (vecToTuple)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Data.Char (ord)
 import Protocols
@@ -358,16 +356,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
           :> "dd_ebReadys"
           -- Other
           :> "dd_transceiversFailedAfterUp"
-          :> "dd_nFincs"
-          :> "dd_nFdecs"
-          :> "dd_netFincs"
-          :> "dd_dDiff0"
-          :> "dd_dDiff1"
-          :> "dd_dDiff2"
-          :> "dd_dDiff3"
-          :> "dd_dDiff4"
-          :> "dd_dDiff5"
-          :> "dd_dDiff6"
           :> Nil
       )
         { depth = D32768
@@ -382,16 +370,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       allStable
       (bundle $ xpmCdcArraySingle bittideClk refClk <$> ebReadys)
       transceiversFailedAfterUp
-      nFincs
-      nFdecs
-      (fmap unsignedToSigned nFincs - fmap unsignedToSigned nFdecs)
-      dDiff0
-      dDiff1
-      dDiff2
-      dDiff3
-      dDiff4
-      dDiff5
-      dDiff6
 
   captureFlag =
     riseEvery
@@ -399,47 +377,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       spiRst
       enableGen
       (SNat @(PeriodToCycles Basic125 (Milliseconds 2)))
-
-  nFincs :: Signal Basic125 (Unsigned 32)
-  nFincs =
-    regEn
-      refClk
-      refRst
-      enableGen
-      0
-      ( isFalling
-          refClk
-          refRst
-          enableGen
-          False
-          ((== Just SpeedUp) <$> callistoResult.maybeSpeedChangeC)
-      )
-      (satSucc SatBound <$> nFincs)
-
-  nFdecs :: Signal Basic125 (Unsigned 32)
-  nFdecs =
-    regEn
-      refClk
-      refRst
-      enableGen
-      0
-      ( isFalling
-          refClk
-          refRst
-          enableGen
-          False
-          ((== Just SlowDown) <$> callistoResult.maybeSpeedChangeC)
-      )
-      (satSucc SatBound <$> nFdecs)
-
-  ( dDiff0
-    , dDiff1
-    , dDiff2
-    , dDiff3
-    , dDiff4
-    , dDiff5
-    , dDiff6
-    ) = vecToTuple domainDiffs
 
   -- Step 1, wait for SPI:
   (_, _, spiState, spiOut) =
@@ -568,7 +505,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       , CSignal Bittide (BitVector 64)
       , CSignal Bittide (BitVector 64)
       , CSignal Bittide (Vec (LinkCount + 1) (Index (LinkCount + 2)))
-      , CSignal Basic125 Bit
+      , "UART_TX" ::: CSignal Basic125 Bit
       , "SYNC_OUT" ::: CSignal Basic125 Bit
       )
   circuitFnC = circuit $ \(ccMM, muMM, jtag, linkIn, reframe, mask, dc, Fwd rxs) -> do
