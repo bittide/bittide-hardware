@@ -105,7 +105,6 @@ driverFunc _name [d@(_, dI)] = do
           Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
           Gdb.setTarget gdb 3333
           errorToException =<< Gdb.loadBinary gdb
-          -- errorToException =<< Gdb.compareSections gdb
           Gdb.setBreakpoints
             gdb
             [ "core::panicking::panic"
