@@ -4,27 +4,31 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 
-use bittide_hal::shared::devices::uart::Uart;
-use bittide_sys::gather_unit::GatherUnit;
-use bittide_sys::scatter_unit::ScatterUnit;
+use bittide_hal::scatter_gather::DeviceInstances;
 use core::fmt::Write;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-const UART_ADDR: *mut u8 = (0b010 << 29) as *mut u8;
-const SCATTER_ADDR: *const () = (0b011 << 29) as *const ();
-const GATHER_ADDR: *const () = (0b100 << 29) as *const ();
+const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 /// The `MEM_SIZE` defined as the number of 64-bit words in the scatter and
 /// gather memory.
-const MEM_SIZE: usize = 16;
+const MEM_SIZE: usize = {
+    let gu_size = bittide_hal::shared::devices::GatherUnit::GATHER_MEMORY_LEN;
+    let su_size = bittide_hal::shared::devices::ScatterUnit::SCATTER_MEMORY_LEN;
+    if gu_size != su_size {
+        panic!("Gather unit and scatter unit memory sizes are unequal!");
+    } else {
+        gu_size
+    }
+};
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals.
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
-    let scatter_unit: ScatterUnit<MEM_SIZE> = unsafe { ScatterUnit::new(SCATTER_ADDR) };
-    let gather_unit: GatherUnit<MEM_SIZE> = unsafe { GatherUnit::new(GATHER_ADDR) };
+    let mut uart = INSTANCES.uart;
+    let scatter_unit = INSTANCES.scatter_unit;
+    let gather_unit = INSTANCES.gather_unit;
 
     // The calendars for the scatter and gather units are expected to write the
     // data sent over the link to the same memory location in the scatter unit. This makes
@@ -77,7 +81,7 @@ fn main() -> ! {
 
 #[panic_handler]
 fn panic_handler(info: &core::panic::PanicInfo) -> ! {
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
+    let mut uart = INSTANCES.uart;
     writeln!(uart, "Panicked! #{info}").unwrap();
     loop {
         continue;

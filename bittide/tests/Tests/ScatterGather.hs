@@ -152,7 +152,7 @@ metacycleStalling = property $ do
       pure
         $ (emptyWishboneM2S @32)
           { -- 2 because addressing is 64 bit aligned.
-            addr = (2 * (natToNum @maxSize @(BitVector 32)))
+            addr = (1 + 2 * (natToNum @maxSize @(BitVector 32)))
           , busCycle = True
           , strobe = True
           }

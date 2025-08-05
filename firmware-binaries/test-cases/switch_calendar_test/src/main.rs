@@ -10,6 +10,7 @@
 use bittide_hal::{
     index,
     manual_additions::{index::IndexTy, switch_calendar::EntryType},
+    shared::types::ValidEntry,
     Index,
 };
 use ufmt::{uDebug, uwrite, uwriteln};
@@ -56,17 +57,17 @@ fn main() -> ! {
     active_entry1.reverse();
 
     let cal_active = [
-        hal::types::ValidEntry {
+        ValidEntry {
             ve_entry: active_entry0,
             ve_repeat: 8,
         },
-        hal::types::ValidEntry {
+        ValidEntry {
             ve_entry: active_entry1,
             ve_repeat: 16,
         },
     ];
 
-    let cal_shadow: [EntryType; 16] = core::array::from_fn(|i| hal::types::ValidEntry {
+    let cal_shadow: [EntryType; 16] = core::array::from_fn(|i| ValidEntry {
         ve_entry: core::array::from_fn(|_j| unsafe { IndexTy::new_unchecked(i as u8) }),
         ve_repeat: i as u16,
     });

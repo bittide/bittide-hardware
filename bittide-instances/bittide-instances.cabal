@@ -209,6 +209,7 @@ library
     Bittide.Instances.Pnr.Switch
     Bittide.Instances.Pnr.Synchronizer
     Bittide.Instances.Tests.RegisterWbC
+    Bittide.Instances.Tests.ScatterGather
     Bittide.Instances.Tests.SwitchCalendar
     Paths.Bittide.Instances
     Project.Handle
