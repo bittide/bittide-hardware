@@ -55,7 +55,6 @@ import Bittide.Instances.Common (commonSpiConfig)
 import Bittide.Instances.Domains (
   Basic125,
   Bittide,
-  CccBufferSize,
   Ext125,
   Ext200,
   GthRx,
@@ -498,7 +497,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       , CSignal Bittide (BitVector 64)
       , "reframe" ::: CSignal Bittide Bool
       , CSignal Bittide (BitVector LinkCount)
-      , Vec LinkCount (CSignal Bittide (RelDataCount CccBufferSize))
+      , Vec LinkCount (CSignal Bittide (Signed 32))
       , Vec LinkCount (CSignal Bittide (Maybe (BitVector 64)))
       )
       ( CSignal Bittide (CallistoCResult LinkCount)
@@ -592,7 +591,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
           ]
       ) <-
       defaultBittideClkRstEn
-        (callistoSwClockControlC @LinkCount @CccBufferSize refClk refRst NoDumpVcd ccConfig)
+        (callistoSwClockControlC @LinkCount refClk refRst NoDumpVcd ccConfig)
         -< (ccMM, (Fwd syncIn, ccJtag, reframe, mask, Fwd linksSuitableForCc, dc))
 
     MM.constBwd 0b0000 -< ccUartPfx
@@ -667,7 +666,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
             , pure 0 -- link in
             , pure False -- enable reframing
             , pure maxBound -- enable mask
-            , resize <<$>> domainDiffs
+            , domainDiffs
             , rxDatasEbs
             )
           ,

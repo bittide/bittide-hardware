@@ -57,11 +57,8 @@ clockControlWb ::
   ( HiddenClockResetEnable dom
   , HasCallStack
   , KnownNat addrW
-  , 1 <= nLinks
   , KnownNat nLinks
   , KnownNat m
-  , m <= 32
-  , nLinks <= 32
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>

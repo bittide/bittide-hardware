@@ -18,7 +18,6 @@ import Protocols.Extra (splitAtCI)
 import Protocols.Wishbone
 import VexRiscv
 
-import Bittide.ClockControl (RelDataCount)
 import Bittide.ClockControl.Callisto.Types (
   CallistoCResult (CallistoCResult),
  )
@@ -77,17 +76,13 @@ data SwControlCConfig otherWb where
 -- TODO: Make this the primary Callisto function once the reset logic is fixed
 -- and Callisto is detached from the ILA plotting mechanisms.
 callistoSwClockControlC ::
-  forall nLinks eBufBits dom free otherWb.
+  forall nLinks dom free otherWb.
   ( HiddenClockResetEnable dom
   , KnownNat nLinks
-  , KnownNat eBufBits
   , KnownNat otherWb
   , HasSynchronousReset dom
   , HasSynchronousReset free
   , HasDefinedInitialValues dom
-  , 1 <= nLinks
-  , 1 <= eBufBits
-  , nLinks + eBufBits <= 32
   , CLog 2 (otherWb + SwcccInternalBusses) <= 30
   , 1 <= DomainPeriod dom
   , ?busByteOrder :: ByteOrder
@@ -107,7 +102,7 @@ callistoSwClockControlC ::
       , CSignal dom Bool -- reframing enable
       , CSignal dom (BitVector nLinks) -- link mask
       , CSignal dom (BitVector nLinks) -- what links are suitable for clock control
-      , Vec nLinks (CSignal dom (RelDataCount eBufBits)) -- diff counters
+      , Vec nLinks (CSignal dom (Signed 32)) -- diff counters
       )
     )
     ( "SYNC_OUT" ::: CSignal free Bit
