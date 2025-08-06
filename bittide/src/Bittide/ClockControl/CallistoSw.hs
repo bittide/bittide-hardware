@@ -77,12 +77,13 @@ data SwControlCConfig otherWb where
 -- TODO: Make this the primary Callisto function once the reset logic is fixed
 -- and Callisto is detached from the ILA plotting mechanisms.
 callistoSwClockControlC ::
-  forall nLinks eBufBits dom otherWb.
+  forall nLinks eBufBits dom free otherWb.
   ( HiddenClockResetEnable dom
   , KnownNat nLinks
   , KnownNat eBufBits
   , KnownNat otherWb
   , HasSynchronousReset dom
+  , HasSynchronousReset free
   , HasDefinedInitialValues dom
   , 1 <= nLinks
   , 1 <= eBufBits
@@ -93,6 +94,10 @@ callistoSwClockControlC ::
   , ?regByteOrder :: ByteOrder
   , 4 <= SwcccRemBusWidth otherWb
   ) =>
+  -- | Clock of an uncontrolled domain, e.g. the free-running clock. This is
+  -- used to generate the SYNC_OUT signal.
+  Clock free ->
+  Reset free ->
   DumpVcd ->
   SwControlCConfig otherWb ->
   Circuit
@@ -105,7 +110,7 @@ callistoSwClockControlC ::
       , Vec nLinks (CSignal dom (RelDataCount eBufBits)) -- diff counters
       )
     )
-    ( "SYNC_OUT" ::: CSignal dom Bit
+    ( "SYNC_OUT" ::: CSignal free Bit
     , CSignal dom (CallistoCResult nLinks)
     , Vec
         otherWb
@@ -115,7 +120,7 @@ callistoSwClockControlC ::
           )
         )
     )
-callistoSwClockControlC dumpVcd ccConfig =
+callistoSwClockControlC freeClk freeRst dumpVcd ccConfig =
   circuit $ \(mm, (syncIn, jtag, Fwd reframingEnabled, Fwd linkMask, Fwd linksOk, Fwd diffCounters)) -> do
     let
       debugRegisterCfg :: Signal dom DebugRegisterCfg
@@ -148,7 +153,7 @@ callistoSwClockControlC dumpVcd ccConfig =
     (pulseCounter, cyclesSinceLastPulse) <- syncInCounterC hasClock hasReset -< syncIn
 
     localCounter <- timeWb -< timeWbBus
-    syncOut <- syncOutGenerateWbC hasClock hasReset -< syncOutGeneratorBus
+    syncOut <- syncOutGenerateWbC hasClock hasReset freeClk freeRst -< syncOutGeneratorBus
 
     constBwd ccConfig.ccRegPrefix -< clockControlPfx
     constBwd ccConfig.dbgRegPrefix -< debugPfx

@@ -45,6 +45,7 @@
     "bitstream",
     "bittide",
     "deassert",
+    "deasserted",
     "dflipflop",
     "jtag",
     "Underflows",
