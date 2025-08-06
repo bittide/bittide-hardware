@@ -13,6 +13,7 @@ module Bittide.ClockControl.CallistoSw (
 import Clash.Prelude hiding (PeriodToCycles)
 
 import Clash.Class.BitPackC (ByteOrder)
+import Clash.Functor.Extra ((<<$>>))
 import Protocols
 import Protocols.Extra (splitAtCI)
 import Protocols.Wishbone
@@ -28,6 +29,7 @@ import Bittide.ClockControl.DebugRegister (
  )
 import Bittide.ClockControl.Freeze (freeze)
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
+import Bittide.Counter (domainDiffCountersWbC)
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.SharedTypes
 import Bittide.Sync (syncInCounterC, syncOutGenerateWbC)
@@ -48,7 +50,7 @@ data SwControlConfig dom where
     } ->
     SwControlConfig dom
 
-type SwcccInternalBusses = 7
+type SwcccInternalBusses = 8
 type SwcccRemBusWidth n = 30 - CLog 2 (n + SwcccInternalBusses)
 
 -- The additional 'otherWb' type parameter is necessary since this type helps expose
@@ -70,18 +72,20 @@ data SwControlCConfig otherWb where
     , freezePrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
     -- ^ Freeze prefix
     , syncOutGeneratorPrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
+    , domainDiffsPrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
     } ->
     SwControlCConfig otherWb
 
 -- TODO: Make this the primary Callisto function once the reset logic is fixed
 -- and Callisto is detached from the ILA plotting mechanisms.
 callistoSwClockControlC ::
-  forall nLinks dom free otherWb.
+  forall nLinks dom free rx otherWb.
   ( HiddenClockResetEnable dom
   , KnownNat nLinks
   , KnownNat otherWb
   , HasSynchronousReset dom
   , HasSynchronousReset free
+  , HasSynchronousReset rx
   , HasDefinedInitialValues dom
   , CLog 2 (otherWb + SwcccInternalBusses) <= 30
   , 1 <= DomainPeriod dom
@@ -93,6 +97,10 @@ callistoSwClockControlC ::
   -- used to generate the SYNC_OUT signal.
   Clock free ->
   Reset free ->
+  -- | Clocks from the incoming links. Used to construct domain difference
+  -- counters.
+  Vec nLinks (Clock rx) ->
+  Vec nLinks (Reset rx) ->
   DumpVcd ->
   SwControlCConfig otherWb ->
   Circuit
@@ -102,7 +110,6 @@ callistoSwClockControlC ::
       , CSignal dom Bool -- reframing enable
       , CSignal dom (BitVector nLinks) -- link mask
       , CSignal dom (BitVector nLinks) -- what links are suitable for clock control
-      , Vec nLinks (CSignal dom (Signed 32)) -- diff counters
       )
     )
     ( "SYNC_OUT" ::: CSignal free Bit
@@ -115,8 +122,8 @@ callistoSwClockControlC ::
           )
         )
     )
-callistoSwClockControlC freeClk freeRst dumpVcd ccConfig =
-  circuit $ \(mm, (syncIn, jtag, Fwd reframingEnabled, Fwd linkMask, Fwd linksOk, Fwd diffCounters)) -> do
+callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd ccConfig =
+  circuit $ \(mm, (syncIn, jtag, Fwd reframingEnabled, Fwd linkMask, Fwd linksOk)) -> do
     let
       debugRegisterCfg :: Signal dom DebugRegisterCfg
       debugRegisterCfg = DebugRegisterCfg <$> reframingEnabled
@@ -127,19 +134,21 @@ callistoSwClockControlC freeClk freeRst dumpVcd ccConfig =
         , (timePfx, timeWbBus)
         , (freezePfx, freezeBus)
         , (syncOutGeneratorPfx, syncOutGeneratorBus)
+        , (domainDiffsPfx, domainDiffsBus)
         ]
       , wbRest
       ) <-
       splitAtCI -< allWishbone
 
-    Fwd clockControlData <- clockControlWb linkMask linksOk diffCounters -< clockControlBus
+    Fwd clockControlData <-
+      clockControlWb linkMask linksOk (unbundle diffCounters) -< clockControlBus
 
     Fwd debugData <-
       debugRegisterWb debugRegisterCfg -< (debugWbBus, Fwd ((.clockMod) <$> clockControlData))
 
     freeze hasClock hasReset
       -< ( freezeBus
-         , Fwd (bundle diffCounters)
+         , Fwd diffCounters
          , localCounter
          , pulseCounter
          , cyclesSinceLastPulse
@@ -149,12 +158,17 @@ callistoSwClockControlC freeClk freeRst dumpVcd ccConfig =
 
     localCounter <- timeWb -< timeWbBus
     syncOut <- syncOutGenerateWbC hasClock hasReset freeClk freeRst -< syncOutGeneratorBus
+    Fwd domainDiffs <-
+      domainDiffCountersWbC rxClocks rxResets hasClock hasReset -< domainDiffsBus
+
+    let diffCounters = fst <<$>> domainDiffs
 
     constBwd ccConfig.ccRegPrefix -< clockControlPfx
     constBwd ccConfig.dbgRegPrefix -< debugPfx
     constBwd ccConfig.timePrefix -< timePfx
     constBwd ccConfig.freezePrefix -< freezePfx
     constBwd ccConfig.syncOutGeneratorPrefix -< syncOutGeneratorPfx
+    constBwd ccConfig.domainDiffsPrefix -< domainDiffsPfx
 
     let
       callistoCResult :: Signal dom (CallistoCResult nLinks)
