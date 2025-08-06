@@ -43,7 +43,8 @@ import Bittide.Arithmetic.Time (PeriodToCycles)
 import Bittide.SharedTypes (Bytes)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Class.Counter (Counter (countSuccOverflow))
-import Clash.Cores.Xilinx.Xpm (xpmCdcSingle)
+import Clash.Cores.Xilinx.Xpm (xpmCdcSingle, xpmCdcSyncRst)
+import Clash.Cores.Xilinx.Xpm.Cdc.SyncRst (Asserted (..))
 import Clash.Explicit.Signal.Extra (changepoints)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (ConstBwd, MM)
@@ -114,23 +115,31 @@ is a registered output, i.e., it can directly be connected to a pin. On the
 wishbone bus, a single register is exposed: whether this component is active.
 -}
 syncOutGenerateWbC ::
-  forall dom aw.
+  forall dom counterDom aw.
   ( KnownDomain dom
   , HasSynchronousReset dom
+  , HasSynchronousReset counterDom
   , HasCallStack
   , KnownNat aw
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   ) =>
+  -- | Clock domain of the wishbone bus, typically the controlled domain.
   Clock dom ->
   Reset dom ->
+  -- | Clock domain of the counter, typically the uncontrolled domain.
+  Clock counterDom ->
+  Reset counterDom ->
   Circuit
     (ConstBwd MM, Wishbone dom 'Standard aw (Bytes 4))
-    (CSignal dom Bit)
-syncOutGenerateWbC clk rst = circuit $ \(mm, wb) -> do
+    (CSignal counterDom Bit)
+syncOutGenerateWbC clk rst counterClk counterRst = circuit $ \(mm, wb) -> do
   [activeWb] <- deviceWbC "SyncOutGenerator" -< (mm, wb)
   (Fwd active, _activity) <- registerWbC clk rst config False -< (activeWb, Fwd noWrite)
-  syncOut <- syncOutGeneratorC clk (rst `orReset` unsafeFromActiveLow active)
+  let
+    syncOutRst0 = rst `orReset` unsafeFromActiveLow active
+    syncOutRst1 = counterRst `orReset` xpmCdcSyncRst Asserted clk counterClk syncOutRst0
+  syncOut <- syncOutGeneratorC counterClk syncOutRst1
   idC -< syncOut
  where
   config = registerConfig "active"

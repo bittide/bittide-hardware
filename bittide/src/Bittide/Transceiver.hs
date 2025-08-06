@@ -167,7 +167,10 @@ data Outputs n tx rx txS free = Outputs
   { txClock :: Clock tx
   -- ^ Single transmit clock, shared by all links
   , txReset :: Reset tx
-  -- ^ See 'Output.txReset'
+  -- ^ Reset associated with 'txClock'. Once deasserted, the clock is stable. In
+  -- the current implementation, this also means the first link has completed a
+  -- (low level) handshake. In the future we want to decouple this: the TX clock
+  -- should be able to come up independently of any link.
   , txReadys :: Vec n (Signal tx Bool)
   -- ^ See 'Output.txReady'
   , txSamplings :: Vec n (Signal tx Bool)
@@ -205,7 +208,7 @@ data Output tx rx tx1 rx1 txS free = Output
   -- ^ Reset signal for the transmit side. Clock can be unstable until this reset
   -- is deasserted.
   , txReady :: Signal tx Bool
-  -- ^ Ready to signal to neigbor that next word will be user data. Waiting for
+  -- ^ Ready to signal to neighbor that next word will be user data. Waiting for
   -- 'Input.txStart' to be asserted before starting to send 'txData'.
   , txSampling :: Signal tx Bool
   -- ^ Data is sampled from 'Input.txData'
@@ -307,7 +310,7 @@ data Inputs tx rx ref free rxS n = Inputs
 'gthCore' and the inside of 'transceiverPrbsN' have two extra domains, tx1 and rx1,
 that aren't visible outside of transceiverPrbsN.
 To do this completely clean/safe transceiverPrbsN should have two extra
-forall arguments, two extra KnownDomain constrainsts.
+forall arguments, two extra KnownDomain constraints.
 And either some Proxy arguments or we would have to enable AllowAmbiguousTypes.
 
 Because the tx1/rx1 domains aren't visible outside 'transceiverPrbsN',
@@ -348,7 +351,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   Outputs
     { -- tx
       txClock = txClock
-    , txReset = fold orReset $ map (.txReset) outputs
+    , txReset = unsafeFromActiveLow (head outputs).handshakeDoneTx
     , txReadys = map (.txReady) outputs
     , txSamplings = map (.txSampling) outputs
     , handshakesDoneTx = map (.handshakeDoneTx) outputs
