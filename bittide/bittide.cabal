@@ -219,6 +219,7 @@ library
     Bittide.ProcessingElement.Util
     Bittide.ScatterGather
     Bittide.SharedTypes
+    Bittide.Shutter
     Bittide.Switch
     Bittide.SwitchDemoProcessingElement
     Bittide.Sync
