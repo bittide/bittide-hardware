@@ -5,6 +5,7 @@
 pub mod capture_ugn;
 pub mod index;
 pub mod scatter_gather;
+pub mod si539x_spi;
 pub mod switch_calendar;
 pub mod timer;
 pub mod uart;
