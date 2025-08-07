@@ -351,7 +351,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   Outputs
     { -- tx
       txClock = txClock
-    , txReset = unsafeFromActiveLow (head outputs).handshakeDoneTx
+    , txReset = unsafeFromActiveLow (unpack <$> txClkActives)
     , txReadys = map (.txReady) outputs
     , txSamplings = map (.txSampling) outputs
     , handshakesDoneTx = map (.handshakeDoneTx) outputs
@@ -404,7 +404,7 @@ transceiverPrbsN opts inputs@Inputs{clock, reset, refClock} =
   txOutClk = (head outputs).txOutClock
   -- see [NOTE: duplicate tx/rx domain]
   txClockNw = Gth.xilinxGthUserClockNetworkTx @tx @tx txOutClk txUsrClkRst
-  (_txClk1s, txClock, _txClkActives) = txClockNw
+  (_txClk1s, txClock, txClkActives) = txClockNw
 
   rxOutClks = map (.rxOutClock) outputs
   -- see [NOTE: duplicate tx/rx domain]
