@@ -42,7 +42,7 @@ data ToLatexArgs = ToLatexArgs
   , header :: Maybe String
   , clocksPdf :: FilePath
   , dataCountsPdf :: FilePath
-  , ccConf :: CcConf
+  , ccConf :: CcConf Topology
   }
 
 asLatex :: ToLatexArgs -> IO String

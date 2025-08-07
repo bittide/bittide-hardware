@@ -9,7 +9,7 @@ module Bittide.Instances.Hitl.Driver.SwitchDemo where
 
 import Clash.Prelude
 
-import Bittide.ClockControl.Topology (complete)
+import Bittide.ClockControl.Topology (Topology, complete)
 import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Driver.ClockControl.Config (
@@ -155,7 +155,8 @@ muCaptureUgnAddresses =
  where
   ugnDevices = baseAddresses memoryMapMu "CaptureUgn"
 
-dumpCcSamples :: (HasCallStack) => FilePath -> CcConf -> [ProcessHandles] -> IO ()
+dumpCcSamples ::
+  (HasCallStack) => FilePath -> CcConf Topology -> [ProcessHandles] -> IO ()
 dumpCcSamples hitlDir ccConf ccGdbs = do
   mapConcurrently_ Gdb.interrupt ccGdbs
   nSamples <- liftIO $ zipWithConcurrently go ccGdbs ccSamplesPaths
