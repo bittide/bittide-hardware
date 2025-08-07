@@ -21,6 +21,7 @@ import Language.Haskell.TH (reportError, runIO)
 import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
+import qualified Bittide.Instances.Hitl.ClockBoardConfiguration as ClockBoardConfiguration
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Hitl.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Tests.RegisterWbC as RegisterWbC
@@ -36,7 +37,8 @@ $( do
     -- Add new memory maps here  --
     -------------------------------
     let memoryMaps =
-          [ ("Ethernet", vexRiscvEthernetMM)
+          [ ("ClockBoardConfigTest", ClockBoardConfiguration.memoryMap)
+          , ("Ethernet", vexRiscvEthernetMM)
           , ("Freeze", freezeMM)
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWbC", RegisterWbC.memoryMap)
