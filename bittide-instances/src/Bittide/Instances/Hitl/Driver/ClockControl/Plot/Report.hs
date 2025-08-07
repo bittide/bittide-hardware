@@ -6,8 +6,8 @@ module Bittide.Instances.Hitl.Driver.ClockControl.Plot.Report where
 
 import Prelude
 
+import Bittide.ClockControl.Config (CcConf (topology))
 import Bittide.ClockControl.Topology (Topology)
-import Bittide.Instances.Hitl.Driver.ClockControl.Config (CcConf (topology))
 import Bittide.Instances.Hitl.Setup (fpgaSetup)
 import Control.Applicative (Alternative ((<|>)))
 import Control.Monad (void)

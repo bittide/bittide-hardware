@@ -6,9 +6,9 @@ module Bittide.Instances.Hitl.Driver.SwCcTopologies where
 
 import Clash.Prelude
 
+import Bittide.ClockControl.Config (CcConf (CcConf, topology))
 import Bittide.ClockControl.Topology (complete)
 import Bittide.Hitl (DeviceInfo (deviceId))
-import Bittide.Instances.Hitl.Driver.ClockControl.Config (CcConf (CcConf, topology))
 import Bittide.Instances.Hitl.Driver.SwitchDemo (
   OcdInitData (ccPort, cleanup),
   dumpCcSamples,

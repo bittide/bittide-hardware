@@ -8,12 +8,12 @@ module Bittide.Instances.Hitl.Driver.ClockControl.Samples where
 
 import Prelude
 
-import Bittide.ClockControl.Topology (Topology)
-import Bittide.Instances.Domains (Bittide)
-import Bittide.Instances.Hitl.Driver.ClockControl.Config (
+import Bittide.ClockControl.Config (
   CcConf (topology),
   ccConfigFileName,
  )
+import Bittide.ClockControl.Topology (Topology)
+import Bittide.Instances.Domains (Bittide)
 import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Sync (SyncOutGeneratorHalfPeriod)
 import Control.Concurrent.Async (forConcurrently)

@@ -9,13 +9,13 @@ module Bittide.Instances.Hitl.Driver.SwitchDemo where
 
 import Clash.Prelude
 
-import Bittide.ClockControl.Topology (Topology, complete)
-import Bittide.Hitl
-import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.Driver.ClockControl.Config (
+import Bittide.ClockControl.Config (
   CcConf (CcConf, topology),
   saveCcConfig,
  )
+import Bittide.ClockControl.Topology (Topology, complete)
+import Bittide.Hitl
+import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.SwitchDemo (memoryMapCc, memoryMapMu)
 import Bittide.Instances.Hitl.Utils.Driver

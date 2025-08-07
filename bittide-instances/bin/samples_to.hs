@@ -26,7 +26,7 @@ module Main where
 import Prelude
 
 import Bittide.Arithmetic.PartsPer (PartsPer, toPpm)
-import Bittide.Instances.Hitl.Driver.ClockControl.Config (CcConf (topology))
+import Bittide.ClockControl.Config (CcConf (topology))
 import Bittide.Instances.Hitl.Driver.ClockControl.Samples (Picoseconds)
 import Control.Concurrent.Async (mapConcurrently, wait, withAsync)
 import Control.Monad (filterM, void)
