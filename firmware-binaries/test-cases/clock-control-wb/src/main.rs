@@ -8,7 +8,6 @@
 use core::panic::PanicInfo;
 
 use bittide_hal::shared::devices::clock_control::{ClockControl, SpeedChange};
-use bittide_hal::shared::devices::debug_register::DebugRegister;
 use bittide_hal::shared::devices::uart::Uart;
 use core::fmt::Write;
 use rand::{distributions::Uniform, rngs::SmallRng, Rng, SeedableRng};
@@ -42,22 +41,11 @@ fn main() -> ! {
     #[allow(clippy::zero_ptr)] // we might want to change the address!
     let mut uart = unsafe { Uart::new(0x2000_0000 as *mut u8) };
     let cc = unsafe { ClockControl::new(0xC000_0000 as *mut u8) };
-    let dbg = unsafe { DebugRegister::new(0xA000_0000 as *mut u8) };
 
     writeln!(uart, "nLinks: {}", cc.n_links()).unwrap();
     writeln!(uart, "linkMask: {}", cc.link_mask()).unwrap();
     writeln!(uart, "linksOk: {}", cc.links_ok()).unwrap();
     writeln!(uart, "linkMaskPopcnt: {}", cc.link_mask_pop_count()).unwrap();
-    writeln!(
-        uart,
-        "reframingEnabled: {}",
-        if dbg.reframing_enabled() {
-            "True"
-        } else {
-            "False"
-        }
-    )
-    .unwrap();
     writeln!(uart, "linksStable: {}", cc.links_stable()).unwrap();
     writeln!(uart, "linksSettled: {}", cc.links_settled()).unwrap();
 

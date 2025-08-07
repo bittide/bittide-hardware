@@ -16,7 +16,6 @@ import Data.Maybe (catMaybes, mapMaybe)
 import Data.String.Interpolate
 import Project.FilePath
 import Protocols
-import Protocols.Extra (cSignalMap, replicateCSignalI)
 import Protocols.Idle
 import Protocols.MemoryMap
 import System.FilePath
@@ -30,7 +29,6 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- internal imports
 import Bittide.Arithmetic.Time (PeriodToCycles)
-import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
 import Bittide.ClockControl.Registers (ClockControlData (clockMod), clockControlWb)
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Hitl.Setup (LinkCount)
@@ -123,12 +121,6 @@ expectedDataCounts = L.zip [0 ..] $ toList $ applyMask linkMask dataCounts
   applyMask m = zipWith go (bitCoerce m)
   go m v = if m then fromIntegral v else 0
 
-debugRegisterConfig :: DebugRegisterCfg
-debugRegisterConfig =
-  DebugRegisterCfg
-    { reframingEnabled = False
-    }
-
 dut :: Circuit () (Df System (BitVector 8), CSignal System (ClockControlData LinkCount))
 dut =
   withBittideByteOrder
@@ -138,7 +130,6 @@ dut =
       (uartRx, jtag) <- idleSource
       [ (prefixUart, uartBus)
         , (prefixCC, (mmCC, ccWb))
-        , (prefixDbg, debugWbBus)
         ] <-
         processingElement NoDumpVcd peConfig -< (mm, jtag)
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
@@ -146,20 +137,16 @@ dut =
 
       mm <- ignoreMM
 
-      [ccd0, ccd1] <-
-        replicateCSignalI
-          <| clockControlWb
-            (pure linkMask)
-            (pure linksOk)
-            (pure <$> dataCounts)
+      ccd <-
+        clockControlWb
+          (pure linkMask)
+          (pure linksOk)
+          (pure <$> dataCounts)
           -< (mmCC, ccWb)
 
       constBwd 0b110 -< prefixCC
 
-      cm <- cSignalMap (.clockMod) -< ccd0
-      _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (debugWbBus, cm)
-      constBwd 0b101 -< prefixDbg
-      idC -< (uartTx, ccd1)
+      idC -< (uartTx, ccd)
  where
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"

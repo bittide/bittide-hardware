@@ -195,7 +195,6 @@ library
     Bittide.ClockControl.Callisto.Types
     Bittide.ClockControl.Callisto.Util
     Bittide.ClockControl.CallistoSw
-    Bittide.ClockControl.DebugRegister
     Bittide.ClockControl.Freeze
     Bittide.ClockControl.ParseRegisters
     Bittide.ClockControl.Registers

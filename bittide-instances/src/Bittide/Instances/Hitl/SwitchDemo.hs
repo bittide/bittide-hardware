@@ -254,7 +254,6 @@ ccConfig =
           , includeIlaWb = False
           }
     , ccRegPrefix = 0b1100
-    , dbgRegPrefix = 0b1010
     , timePrefix = 0b0110
     , freezePrefix = 0b0010
     , syncOutGeneratorPrefix = 0b0001
@@ -499,7 +498,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       , "MU" ::: ConstBwd MM
       , Jtag Bittide
       , CSignal Bittide (BitVector 64)
-      , "reframe" ::: CSignal Bittide Bool
       , CSignal Bittide (BitVector LinkCount)
       , Vec LinkCount (CSignal Bittide (Maybe (BitVector 64)))
       )
@@ -513,7 +511,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       , "UART_TX" ::: CSignal Basic125 Bit
       , "SYNC_OUT" ::: CSignal Basic125 Bit
       )
-  circuitFnC = circuit $ \(ccMM, muMM, jtag, linkIn, reframe, mask, Fwd rxs) -> do
+  circuitFnC = circuit $ \(ccMM, muMM, jtag, linkIn, mask, Fwd rxs) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
 
     (muUartBytesBittide, _muUartStatus) <-
@@ -602,7 +600,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
           (unsafeFromActiveLow <$> transceivers.handshakesDone)
           NoDumpVcd
           ccConfig
-        -< (ccMM, (Fwd syncIn, ccJtag, reframe, mask, Fwd linksSuitableForCc))
+        -< (ccMM, (Fwd syncIn, ccJtag, mask, Fwd linksSuitableForCc))
 
     MM.constBwd 0b0000 -< ccUartPfx
     --          0b0001    SYNC_OUT_GENERATOR
@@ -656,7 +654,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
          , syncOut
          )
 
-  ( (ccMm, muMm, jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _insBwd)
+  ( (ccMm, muMm, jtagOut, _linkInBwd, _maskBwd, _insBwd)
     , ( callistoResult
         , switchDataOut
         , localCounter
@@ -676,7 +674,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
             , ()
             , jtagIn
             , pure 0 -- link in
-            , pure False -- enable reframing
             , pure maxBound -- enable mask
             , rxDatasEbs
             )
