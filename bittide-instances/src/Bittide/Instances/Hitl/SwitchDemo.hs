@@ -26,7 +26,7 @@ import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Types (
-  CallistoCResult (..),
+  CallistoResult (..),
   ReframingState (..),
   Stability (..),
  )
@@ -460,7 +460,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
 
   -- Step 5, wait for stable buffers:
   allStable :: Signal Bittide Bool
-  allStable = callistoResult.allStableC
+  allStable = callistoResult.allStable
 
   allStableSticky :: Signal Bittide Bool
   allStableSticky = sticky bittideClk bittideRst allStable
@@ -501,7 +501,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       , CSignal Bittide (BitVector LinkCount)
       , Vec LinkCount (CSignal Bittide (Maybe (BitVector 64)))
       )
-      ( CSignal Bittide (CallistoCResult LinkCount)
+      ( CSignal Bittide (CallistoResult LinkCount)
       , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
       , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
       , "PE_STATE" ::: CSignal Bittide (SimplePeState FpgaCount)
@@ -633,12 +633,12 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
                   then swCcOut0
                   else
                     pure
-                      $ CallistoCResult
-                        { maybeSpeedChangeC = Nothing
-                        , stabilityC = repeat (Stability{stable = True, settled = True})
-                        , allStableC = True
-                        , allSettledC = True
-                        , reframingStateC = Done
+                      $ CallistoResult
+                        { maybeSpeedChange = Nothing
+                        , stability = repeat (Stability{stable = True, settled = True})
+                        , allStable = True
+                        , allSettled = True
+                        , reframingState = Done
                         }
             else swCcOut0
 
@@ -758,7 +758,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         bittideRst
         enableGen
         (SNat @Si539xHoldTime)
-        callistoResult.maybeSpeedChangeC
+        callistoResult.maybeSpeedChange
 
   rxFifos ::
     Vec
