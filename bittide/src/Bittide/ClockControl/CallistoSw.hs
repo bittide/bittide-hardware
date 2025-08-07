@@ -20,7 +20,7 @@ import Protocols.Wishbone
 import VexRiscv
 
 import Bittide.ClockControl.Callisto.Types (
-  CallistoCResult (CallistoCResult),
+  CallistoResult (CallistoResult),
   ReframingState (Detect),
  )
 import Bittide.ClockControl.Freeze (freeze)
@@ -101,7 +101,7 @@ callistoSwClockControlC ::
       )
     )
     ( "SYNC_OUT" ::: CSignal free Bit
-    , CSignal dom (CallistoCResult nLinks)
+    , CSignal dom (CallistoResult nLinks)
     , Vec
         otherWb
         ( ConstBwd (Unsigned (CLog 2 (otherWb + SwcccInternalBusses)))
@@ -150,9 +150,9 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd ccConfig =
     constBwd ccConfig.domainDiffsPrefix -< domainDiffsPfx
 
     let
-      callistoCResult :: Signal dom (CallistoCResult nLinks)
+      callistoCResult :: Signal dom (CallistoResult nLinks)
       callistoCResult =
-        CallistoCResult
+        CallistoResult
           <$> clockControlData.clockMod
           <*> clockControlData.stabilities
           <*> clockControlData.allStable
