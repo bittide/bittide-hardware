@@ -7,24 +7,24 @@
 use ufmt::uwriteln;
 
 use bittide_hal::shared::devices::uart::Uart;
-use bittide_sys::ugn::Ugn;
+use bittide_hal::shared::devices::CaptureUgn;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
 const UART_ADDR: *mut u8 = (0b10 << 30) as *mut u8;
-const UGN_ADDR: *const Ugn = (0b11 << 30) as *const Ugn;
+const UGN_ADDR: *mut u8 = (0b11 << 30) as *mut u8;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     // Initialize peripherals.
     let mut uart = unsafe { Uart::new(UART_ADDR) };
-    let ugn = unsafe { UGN_ADDR.read_volatile() };
+    let capture_ugn = unsafe { CaptureUgn::new(UGN_ADDR) };
 
     uwriteln!(
         uart,
         "(0x{:16X},0x{:16X})",
-        ugn.local_counter,
-        ugn.remote_counter
+        capture_ugn.local_counter(),
+        capture_ugn.remote_counter()
     )
     .unwrap();
     loop {

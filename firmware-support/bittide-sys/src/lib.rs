@@ -17,4 +17,3 @@ pub mod smoltcp;
 pub mod stability_detector;
 pub mod switch_demo_pe;
 pub mod uart;
-pub mod ugn;

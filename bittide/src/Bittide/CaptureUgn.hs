@@ -4,20 +4,24 @@
 
 module Bittide.CaptureUgn (captureUgn) where
 
-import Clash.Explicit.Prelude hiding (PeriodToCycles)
-
-import Data.Maybe (fromMaybe, isJust)
-import Data.Tuple (swap)
-
-import Protocols
-import Protocols.MemoryMap
-import Protocols.Wishbone
+import Clash.Explicit.Prelude
 
 import Bittide.SharedTypes (Bytes)
-import Bittide.Wishbone (wbToVec)
-
-import qualified Clash.Prelude as C
+import Bittide.Shutter (shutter)
+import Data.Maybe (fromJust, fromMaybe, isJust)
 import GHC.Stack (HasCallStack)
+import Protocols
+import Protocols.MemoryMap (Access (ReadOnly), ConstBwd, MM)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (access),
+  deviceWbC,
+  registerConfig,
+  registerWbCI_,
+ )
+import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
+
+import Clash.Class.BitPackC (ByteOrder)
+import qualified Clash.Prelude as C
 
 {- | Captures the remote counter from a bittide link and pairs it with the corresponding
 local counter. All frames except for the first frame will be forwarded to the output.
@@ -40,66 +44,30 @@ captureUgn ::
   ( HasCallStack
   , C.HiddenClockResetEnable dom
   , KnownNat addrW
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
+  -- | Local counter
   Signal dom (Unsigned 64) ->
+  -- | Data from link
   Signal dom (Maybe (BitVector 64)) ->
   Circuit
     (ConstBwd MM, Wishbone dom 'Standard addrW (Bytes 4))
     (CSignal dom (BitVector 64))
-captureUgn localCounter linkIn = Circuit go
+captureUgn localCounter linkIn = circuit $ \bus -> do
+  [wbLocalCounter, wbRemoteCounter, wbHasCaptured] <- deviceWbC "CaptureUgn" -< bus
+
+  let trigger = C.isRising False (isJust <$> linkIn)
+  capturedLocalCounter <- shutter trigger -< Fwd localCounter
+  capturedRemoteCounter <- shutter trigger -< Fwd (fromMaybe 0 <$> linkIn)
+  capturedHasCaptured <- shutter trigger -< Fwd (isJust <$> linkIn)
+
+  registerWbCI_ localCounterConfig 0 -< (wbLocalCounter, capturedLocalCounter)
+  registerWbCI_ remoteCounterConfig 0 -< (wbRemoteCounter, capturedRemoteCounter)
+  registerWbCI_ hasCapturedConfig False -< (wbHasCaptured, capturedHasCaptured)
+
+  idC -< Fwd (fromJust <$> linkIn)
  where
-  go ((_, wbM2S), _) = ((SimOnly mm, wbS2M), bittideData)
-   where
-    state =
-      C.regEn
-        (0x1111111111111111, 0x2222222222222222)
-        trigger
-        (bundle (pack <$> localCounter, fromMaybe 0 <$> linkIn))
-    stateVec = concatMap swapWords . bitCoerce <$> state
-
-    -- Swap the two words of a 64-bit Bitvector to match the word order of
-    -- the Vexriscv. This allows the CPU to read the two words as one 64-bit value.
-    swapWords :: BitVector 64 -> Vec 2 (BitVector 32)
-    swapWords = bitCoerce . (swap @(BitVector 32) @(BitVector 32)) . bitCoerce
-
-    trigger = C.isRising False (isJust <$> linkIn)
-    bittideData = fromMaybe 0 <$> mux trigger (pure Nothing) linkIn
-    (_, wbS2M) = unbundle $ wbToVec <$> stateVec <*> wbM2S
-
-  mm =
-    MemoryMap
-      { tree = DeviceInstance locCaller "CaptureUgn"
-      , deviceDefs = deviceSingleton deviceDef
-      }
-  deviceDef =
-    DeviceDefinition
-      { tags = []
-      , registers =
-          [ NamedLoc
-              { name = Name "local_counter" ""
-              , loc = locHere
-              , value =
-                  Register
-                    { fieldType = regType @(BitVector 64)
-                    , address = 0x0
-                    , access = ReadOnly
-                    , tags = []
-                    , reset = Nothing
-                    }
-              }
-          , NamedLoc
-              { name = Name "remote_counter" ""
-              , loc = locHere
-              , value =
-                  Register
-                    { fieldType = regType @(BitVector 64)
-                    , address = 0x8
-                    , access = ReadOnly
-                    , tags = []
-                    , reset = Nothing
-                    }
-              }
-          ]
-      , deviceName = Name "CaptureUgn" ""
-      , definitionLoc = locHere
-      }
+  localCounterConfig = (registerConfig "local_counter"){access = ReadOnly}
+  remoteCounterConfig = (registerConfig "remote_counter"){access = ReadOnly}
+  hasCapturedConfig = (registerConfig "has_captured"){access = ReadOnly}

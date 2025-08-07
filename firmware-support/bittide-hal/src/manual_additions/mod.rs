@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod capture_ugn;
 pub mod index;
 pub mod switch_calendar;
 pub mod timer;

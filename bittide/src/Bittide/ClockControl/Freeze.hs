@@ -5,6 +5,7 @@
 module Bittide.ClockControl.Freeze where
 
 import Bittide.SharedTypes (Bytes)
+import Bittide.Shutter (shutter)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Explicit.Prelude
 import GHC.Stack (HasCallStack)
@@ -123,22 +124,6 @@ freeze clk rst =
       }
 
   noWrite = pure Nothing
-
-{- | Only lets through the signal @CSignal dom a@ when the the input signal is
--- 'True'. Otherwise, it returns 'Nothing'.
--}
-shutter ::
-  forall dom a.
-  (KnownDomain dom) =>
-  -- | Shutter control. If 'True', the signal is let through. If 'False', the
-  -- signal is blocked.
-  Signal dom Bool ->
-  Circuit
-    (CSignal dom a)
-    (CSignal dom (Maybe a))
-shutter shut = Circuit go
- where
-  go (a, _) = (units, mux shut (Just <$> a) (pure Nothing))
 
 -- | Simple counter
 counter ::
