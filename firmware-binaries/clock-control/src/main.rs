@@ -10,6 +10,7 @@ use core::panic::PanicInfo;
 use bittide_hal::freeze::Tuple0;
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_hal::manual_additions::timer::WaitResult;
+use bittide_hal::shared::devices::DomainDiffCounters;
 use bittide_hal::shared::devices::Timer;
 use bittide_hal::shared::devices::Uart;
 use bittide_hal::shared::types::speed_change::SpeedChange;
@@ -36,6 +37,7 @@ fn main() -> ! {
     let freeze = INSTANCES.freeze;
     let sample_memory = INSTANCES.sample_memory;
     let sync_out_generator = INSTANCES.sync_out_generator;
+    let domain_diff_counters = INSTANCES.domain_diff_counters;
 
     uwriteln!(uart, "Starting sync out generator..").unwrap();
     sync_out_generator.set_active(true);
@@ -46,8 +48,14 @@ fn main() -> ! {
         freeze.set_freeze(Tuple0);
     }
 
+    // XXX: CPU is booted after all links are available, so we can blindly enable
+    //      all counters.
+    uwriteln!(uart, "Starting domain diff counters..").unwrap();
+    for i in 0..DomainDiffCounters::ENABLE_LEN {
+        domain_diff_counters.set_enable(i, true);
+    }
+
     uwriteln!(uart, "Starting clock control..").unwrap();
-    uwriteln!(uart, "Current time: {}", timer.now()).unwrap();
 
     let config = ControlConfig {
         wait_time: 0,

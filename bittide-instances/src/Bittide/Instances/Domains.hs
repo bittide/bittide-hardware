@@ -7,8 +7,6 @@ module Bittide.Instances.Domains where
 
 import Clash.Explicit.Prelude hiding (PeriodToCycles)
 
-import Bittide.Arithmetic.Time
-
 {- ORMOLU_DISABLE -}
 createDomain vXilinxSystem{vName="Basic50",   vPeriod=hzToPeriod  50e6}
 createDomain vXilinxSystem{vName="Basic125",  vPeriod=hzToPeriod 125e6}
@@ -29,10 +27,5 @@ createDomain vXilinxSystem{vName="GthTx1",    vPeriod=hzToPeriod 250e6}
 createDomain vXilinxSystem{vName="GthRxS",    vPeriod=hzToPeriod  10e9}
 createDomain vXilinxSystem{vName="GthTxS",    vPeriod=hzToPeriod  10e9}
 {- ORMOLU_ENABLE -}
-
-type CccBufferSize = 25 :: Nat
-type CccStabilityCheckerMargin = 25 :: Nat
-type CccStabilityCheckerFramesize dom = PeriodToCycles dom (Seconds 2)
-type CccReframingWaitTime dom = PeriodToCycles dom (Seconds 5)
 
 type Bittide = GthTx

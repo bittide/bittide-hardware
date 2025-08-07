@@ -5,12 +5,27 @@
 module Bittide.Counter (
   Active,
   domainDiffCounter,
+  domainDiffCountersWbC,
 ) where
 
 import Clash.Explicit.Prelude
+import Protocols
 
+import Bittide.SharedTypes (Bytes)
+import Clash.Class.BitPackC (ByteOrder)
 import Clash.Cores.Xilinx.Xpm (xpmCdcGray)
+import Clash.Functor.Extra ((<<$>>))
 import Clash.Sized.Extra (concatUnsigneds, unsignedToSigned)
+import GHC.Stack (HasCallStack)
+import Protocols.MemoryMap (Access (ReadOnly), ConstBwd, MM)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (access, description),
+  deviceWbC,
+  registerConfig,
+  registerWbC,
+  registerWbC_,
+ )
+import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
 -- | State of 'domainDiffCounter'
 data DdcState
@@ -84,6 +99,65 @@ domainDiffCounter clkSrc rstSrc clkDst rstDst =
 
   subAndTruncate :: Unsigned 64 -> Unsigned 64 -> Signed 32
   subAndTruncate c0 c1 = truncateB (unsignedToSigned c0 - unsignedToSigned c1)
+
+{- | A bunch of 'domainDiffCounter's that can be accessed over a Wishbone bus. The
+counters can be enabled and disabled over the bus. Other than that, they can
+only be read from. See 'domainDiffCounter' for more information on domain
+difference counters in general.
+-}
+domainDiffCountersWbC ::
+  forall src dst n addrW.
+  ( HasCallStack
+  , KnownDomain src
+  , KnownDomain dst
+  , HasSynchronousReset src
+  , HasSynchronousReset dst
+  , KnownNat n
+  , KnownNat addrW
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  Vec n (Clock src) ->
+  Vec n (Reset src) ->
+  Clock dst ->
+  Reset dst ->
+  Circuit
+    (ConstBwd MM, Wishbone dst 'Standard addrW (Bytes 4))
+    (CSignal dst (Vec n (Signed 32, Active)))
+domainDiffCountersWbC srcClocks srcResets clk rst = circuit $ \bus -> do
+  [enableWb, countersWb, activesWb] <- deviceWbC "DomainDiffCounters" -< bus
+
+  (Fwd enables, _a) <-
+    registerWbC clk rst enableConfig (repeat False) -< (enableWb, Fwd noWrite)
+  registerWbC_ clk rst countersConfig (repeat 0) -< (countersWb, Fwd countersWrite)
+  registerWbC_ clk rst activeConfig (repeat False) -< (activesWb, Fwd countersActiveWrite)
+
+  let
+    resets = unsafeFromActiveLow <$> unbundle enables
+    counters = zipWith4 domainDiffCounter srcClocks srcResets (repeat clk) resets
+    countersB = bundle counters
+
+    countersWrite = Just <$> (fst <<$>> countersB)
+    countersActiveWrite = Just <$> (snd <<$>> countersB)
+
+  idC -< Fwd countersB
+ where
+  noWrite = pure Nothing
+  countersConfig =
+    (registerConfig "counters")
+      { access = ReadOnly
+      }
+
+  activeConfig =
+    (registerConfig "counters_active")
+      { description = "Active state of the counters, i.e. whether they are counting or not."
+      , access = ReadOnly
+      }
+
+  enableConfig =
+    (registerConfig "enable")
+      { description = "Counters enabled? Counter is cleared when disabled."
+      }
 
 {- | A counter that counts /up/, synchronized from the domain @src@ to domain @dst@. To
 reset this component, the reset should be asserted for at least one cycle in the

@@ -36,7 +36,6 @@ import Bittide.ClockControl.CallistoSw (
   callistoSwClockControlC,
  )
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
-import Bittide.Counter
 import Bittide.Df (asciiDebugMux)
 import Bittide.DoubleBufferedRam
 import Bittide.ElasticBuffer (
@@ -55,7 +54,6 @@ import Bittide.Instances.Common (commonSpiConfig)
 import Bittide.Instances.Domains (
   Basic125,
   Bittide,
-  CccBufferSize,
   Ext125,
   Ext200,
   GthRx,
@@ -91,7 +89,6 @@ import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcArraySingle, xpmCdcSingle)
-import Clash.Functor.Extra ((<<$>>))
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Data.Char (ord)
 import Protocols
@@ -256,6 +253,7 @@ ccConfig =
     , timePrefix = 0b0110
     , freezePrefix = 0b0010
     , syncOutGeneratorPrefix = 0b0001
+    , domainDiffsPrefix = 0b0011
     }
 
 ccLabel :: Vec 2 Byte
@@ -498,7 +496,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       , CSignal Bittide (BitVector 64)
       , "reframe" ::: CSignal Bittide Bool
       , CSignal Bittide (BitVector LinkCount)
-      , Vec LinkCount (CSignal Bittide (RelDataCount CccBufferSize))
       , Vec LinkCount (CSignal Bittide (Maybe (BitVector 64)))
       )
       ( CSignal Bittide (CallistoCResult LinkCount)
@@ -511,7 +508,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       , "UART_TX" ::: CSignal Basic125 Bit
       , "SYNC_OUT" ::: CSignal Basic125 Bit
       )
-  circuitFnC = circuit $ \(ccMM, muMM, jtag, linkIn, reframe, mask, dc, Fwd rxs) -> do
+  circuitFnC = circuit $ \(ccMM, muMM, jtag, linkIn, reframe, mask, Fwd rxs) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
 
     (muUartBytesBittide, _muUartStatus) <-
@@ -592,11 +589,20 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
           ]
       ) <-
       defaultBittideClkRstEn
-        (callistoSwClockControlC @LinkCount @CccBufferSize refClk refRst NoDumpVcd ccConfig)
-        -< (ccMM, (Fwd syncIn, ccJtag, reframe, mask, Fwd linksSuitableForCc, dc))
+        $ callistoSwClockControlC
+          @LinkCount
+          refClk
+          refRst
+          transceivers.rxClocks
+          (unsafeFromActiveLow <$> transceivers.handshakesDone)
+          NoDumpVcd
+          ccConfig
+        -< (ccMM, (Fwd syncIn, ccJtag, reframe, mask, Fwd linksSuitableForCc))
 
     MM.constBwd 0b0000 -< ccUartPfx
     --          0b0001    SYNC_OUT_GENERATOR
+    --          0b0010    FREEZE
+    --          0b0011    DOMAIN_DIFFS
     --          0b0100    DMEM
     --          0b0110    TIME (not the same as MU!)
     --          0b1000    IMEM
@@ -645,7 +651,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
          , syncOut
          )
 
-  ( (ccMm, muMm, jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _diffsBwd, _insBwd)
+  ( (ccMm, muMm, jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _insBwd)
     , ( callistoResult
         , switchDataOut
         , localCounter
@@ -667,7 +673,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
             , pure 0 -- link in
             , pure False -- enable reframing
             , pure maxBound -- enable mask
-            , resize <<$>> domainDiffs
             , rxDatasEbs
             )
           ,
@@ -752,17 +757,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         enableGen
         (SNat @Si539xHoldTime)
         callistoResult.maybeSpeedChangeC
-
-  domainDiffs :: Vec LinkCount (Signal Bittide (Signed 32))
-  domainDiffs = fst <<$>> diffs
-   where
-    diffs =
-      zipWith4
-        domainDiffCounter
-        transceivers.rxClocks
-        (unsafeFromActiveLow <$> transceivers.handshakesDone)
-        (repeat transceivers.txClock)
-        (repeat handshakeRstTx)
 
   rxFifos ::
     Vec
