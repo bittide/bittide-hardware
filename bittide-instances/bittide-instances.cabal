@@ -185,6 +185,7 @@ library
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
     Bittide.Instances.Hitl.Setup
+    Bittide.Instances.Hitl.Si539xConfiguration
     Bittide.Instances.Hitl.SwCcTopologies
     Bittide.Instances.Hitl.SwitchDemo
     Bittide.Instances.Hitl.SyncInSyncOut

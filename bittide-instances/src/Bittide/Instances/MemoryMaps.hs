@@ -22,6 +22,7 @@ import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
 import qualified Bittide.Instances.Hitl.Dut.SwitchDemo as SwitchDemo
+import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
@@ -42,6 +43,7 @@ $( do
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWb", RegisterWb.memoryMap)
           , ("ScatterGather", ScatterGather.dutMM)
+          , ("Si539xConfiguration", Si539xConfiguration.memoryMap)
           , ("SwCcTopologies", SwCcTopologies.memoryMap)
           , ("SwitchC", SwitchCalendar.memoryMap)
           , ("SwitchDemoMu", SwitchDemo.memoryMapMu)

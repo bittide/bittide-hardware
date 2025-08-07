@@ -26,6 +26,7 @@ import qualified Bittide.Instances.Hitl.DnaOverSerial as DnaOverSerial
 import qualified Bittide.Instances.Hitl.Ethernet as Ethernet
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
 import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
+import qualified Bittide.Instances.Hitl.Si539xConfiguration as Si539xConfiguration
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Hitl.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
@@ -38,6 +39,7 @@ hitlTests =
   []
     <> [BoardTest.testSimple]
     <> [BoardTest.testExtended]
+    <> [Si539xConfiguration.tests]
     <> [Ddr4.tests]
     <> [DnaOverSerial.tests]
     <> [Ethernet.tests]
