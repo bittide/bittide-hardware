@@ -15,6 +15,7 @@
 
   {"top": "boardTestExtended",             "stage": "test",  "cc_report": false},
   {"top": "boardTestSimple",               "stage": "test",  "cc_report": false},
+  {"top": "clockBoardConfigTest",          "stage": "test",  "cc_report": false},
   {"top": "ddr4Test",                      "stage": "test",  "cc_report": false},
   {"top": "dnaOverSerial",                 "stage": "test",  "cc_report": false},
   {"top": "fincFdecTests",                 "stage": "test",  "cc_report": false},
