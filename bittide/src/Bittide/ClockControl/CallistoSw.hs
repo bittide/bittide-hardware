@@ -21,11 +21,7 @@ import VexRiscv
 
 import Bittide.ClockControl.Callisto.Types (
   CallistoCResult (CallistoCResult),
- )
-import Bittide.ClockControl.DebugRegister (
-  DebugRegisterCfg (DebugRegisterCfg),
-  DebugRegisterData (reframingState),
-  debugRegisterWb,
+  ReframingState (Detect),
  )
 import Bittide.ClockControl.Freeze (freeze)
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
@@ -42,15 +38,10 @@ data SwControlConfig dom where
     (KnownDomain dom) =>
     { jtagIn :: Signal dom JtagIn
     -- ^ JTAG input to the CPU
-    , enableReframing :: Signal dom Bool
-    -- ^ Enable reframing?
-    --
-    -- N.B.: FOR TESTING USE ONLY. Reframing should eventually be handled solely within
-    -- the clock control software. See issue #693.
     } ->
     SwControlConfig dom
 
-type SwcccInternalBusses = 8
+type SwcccInternalBusses = 7
 type SwcccRemBusWidth n = 30 - CLog 2 (n + SwcccInternalBusses)
 
 -- The additional 'otherWb' type parameter is necessary since this type helps expose
@@ -65,8 +56,6 @@ data SwControlCConfig otherWb where
     -- ^ Configuration for the internal 'processingElement'
     , ccRegPrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
     -- ^ Clock control register prefix
-    , dbgRegPrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
-    -- ^ Debug register prefix
     , timePrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
     -- ^ Time prefix
     , freezePrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
@@ -107,7 +96,6 @@ callistoSwClockControlC ::
     ( ConstBwd MM
     , ( "SYNC_IN" ::: CSignal dom Bit
       , Jtag dom
-      , CSignal dom Bool -- reframing enable
       , CSignal dom (BitVector nLinks) -- link mask
       , CSignal dom (BitVector nLinks) -- what links are suitable for clock control
       )
@@ -123,14 +111,9 @@ callistoSwClockControlC ::
         )
     )
 callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd ccConfig =
-  circuit $ \(mm, (syncIn, jtag, Fwd reframingEnabled, Fwd linkMask, Fwd linksOk)) -> do
-    let
-      debugRegisterCfg :: Signal dom DebugRegisterCfg
-      debugRegisterCfg = DebugRegisterCfg <$> reframingEnabled
-
+  circuit $ \(mm, (syncIn, jtag, Fwd linkMask, Fwd linksOk)) -> do
     allWishbone <- processingElement dumpVcd ccConfig.peConfig -< (mm, jtag)
     ( [ (clockControlPfx, clockControlBus)
-        , (debugPfx, debugWbBus)
         , (timePfx, timeWbBus)
         , (freezePfx, freezeBus)
         , (syncOutGeneratorPfx, syncOutGeneratorBus)
@@ -142,9 +125,6 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd ccConfig =
 
     Fwd clockControlData <-
       clockControlWb linkMask linksOk (unbundle diffCounters) -< clockControlBus
-
-    Fwd debugData <-
-      debugRegisterWb debugRegisterCfg -< (debugWbBus, Fwd ((.clockMod) <$> clockControlData))
 
     freeze hasClock hasReset
       -< ( freezeBus
@@ -164,7 +144,6 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd ccConfig =
     let diffCounters = fst <<$>> domainDiffs
 
     constBwd ccConfig.ccRegPrefix -< clockControlPfx
-    constBwd ccConfig.dbgRegPrefix -< debugPfx
     constBwd ccConfig.timePrefix -< timePfx
     constBwd ccConfig.freezePrefix -< freezePfx
     constBwd ccConfig.syncOutGeneratorPrefix -< syncOutGeneratorPfx
@@ -178,6 +157,6 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd ccConfig =
           <*> clockControlData.stabilities
           <*> clockControlData.allStable
           <*> clockControlData.allSettled
-          <*> debugData.reframingState
+          <*> pure Detect
 
     idC -< (syncOut, Fwd callistoCResult, wbRest)

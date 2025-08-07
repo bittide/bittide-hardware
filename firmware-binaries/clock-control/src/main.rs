@@ -15,9 +15,7 @@ use bittide_hal::shared::devices::Timer;
 use bittide_hal::shared::devices::Uart;
 use bittide_hal::shared::types::speed_change::SpeedChange;
 use bittide_hal::switch_demo_cc::DeviceInstances;
-use bittide_hal::{
-    manual_additions::timer::Duration, shared::types::reframing_state::ReframingState,
-};
+use bittide_hal::manual_additions::timer::Duration;
 use bittide_sys::sample_store::SampleStore;
 use bittide_sys::stability_detector::StabilityDetector;
 use ufmt::uwriteln;
@@ -31,7 +29,6 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let cc = INSTANCES.clock_control;
-    let dbgreg = INSTANCES.debug_register;
     let timer = INSTANCES.timer;
     let mut uart = INSTANCES.uart;
     let freeze = INSTANCES.freeze;
@@ -59,15 +56,13 @@ fn main() -> ! {
 
     let config = ControlConfig {
         wait_time: 0,
-        reframing_enabled: dbgreg.reframing_enabled(),
+        reframing_enabled: false,
         k_p: 2e-9,
     };
     let mut state = ControlSt::new(
         0,
         SpeedChange::NoChange,
         0.0f32,
-        dbgreg,
-        ReframingState::Detect,
     );
 
     // Initialize stability detector

@@ -2,8 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::shared::devices::clock_control::{ClockControl, ReframingState};
-use bittide_hal::shared::devices::debug_register::DebugRegister;
+use bittide_hal::shared::devices::clock_control::ClockControl;
 use bittide_hal::shared::types::speed_change::SpeedChange;
 
 /// Rust sibling of
@@ -22,6 +21,15 @@ impl Stability {
     pub fn settled(&self) -> bool {
         (self.0 & 0b10) == 0b10
     }
+}
+
+pub enum ReframingState {
+    Detect,
+    Wait {
+        target_correction: f32,
+        cur_wait_time: u32,
+    },
+    Done,
 }
 
 /// Rust version of
@@ -51,36 +59,27 @@ pub struct ControlSt {
     /// Steady-state value (determined when stability is detected for
     /// the first time).
     pub steady_state_target: f32,
-    /// Debug register
-    pub debug_register: DebugRegister,
+    pub reframe_state: ReframingState,
 }
 
 impl ControlSt {
-    pub fn new(
-        z_k: i32,
-        b_k: SpeedChange,
-        steady_state_target: f32,
-        debug_register: DebugRegister,
-        init_rf_state: ReframingState,
-    ) -> Self {
+    pub fn new(z_k: i32, b_k: SpeedChange, steady_state_target: f32) -> Self {
         let new = ControlSt {
             z_k,
             b_k,
             steady_state_target,
-            debug_register,
+            reframe_state: ReframingState::Detect,
         };
-        new.debug_register.set_reframing_state(init_rf_state);
         new
     }
 
     fn rf_state_update(&mut self, wait_time: usize, stable: bool, target: f32) {
-        match self.debug_register.reframing_state() {
+        match self.reframe_state {
             ReframingState::Detect if stable => {
-                self.debug_register
-                    .set_reframing_state(ReframingState::Wait {
-                        target_correction: target,
-                        cur_wait_time: wait_time as u32,
-                    });
+                self.reframe_state = ReframingState::Wait {
+                    target_correction: target,
+                    cur_wait_time: wait_time as u32,
+                };
             }
             ReframingState::Wait {
                 ref mut cur_wait_time,
@@ -89,8 +88,7 @@ impl ControlSt {
             ReframingState::Wait {
                 target_correction, ..
             } => {
-                self.debug_register
-                    .set_reframing_state(ReframingState::Done);
+                self.reframe_state = ReframingState::Done;
                 self.steady_state_target = target_correction;
             }
             _ => (),

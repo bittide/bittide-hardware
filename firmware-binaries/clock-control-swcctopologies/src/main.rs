@@ -7,7 +7,6 @@
 
 use core::panic::PanicInfo;
 
-use bittide_hal::shared::types::reframing_state::ReframingState;
 use bittide_hal::shared::types::speed_change::SpeedChange;
 use bittide_hal::{hals::sw_cc_topologies::DeviceInstances, manual_additions::timer::Duration};
 use bittide_sys::{
@@ -23,12 +22,11 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
     let cc = INSTANCES.clock_control;
-    let dbgreg = INSTANCES.debug_register;
     let timer = INSTANCES.timer;
 
     let config = ControlConfig {
         wait_time: 0,
-        reframing_enabled: dbgreg.reframing_enabled(),
+        reframing_enabled: false,
         k_p: 2e-8,
     };
 
@@ -36,8 +34,6 @@ fn main() -> ! {
         0,
         SpeedChange::NoChange,
         0.0f32,
-        dbgreg,
-        ReframingState::Detect,
     );
 
     // Initialize stability detector
