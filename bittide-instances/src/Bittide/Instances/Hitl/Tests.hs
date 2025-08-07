@@ -21,6 +21,7 @@ import Bittide.Hitl (ClashTargetName, HitlTestCase (..), HitlTestGroup (..))
 import Prelude
 
 import qualified Bittide.Instances.Hitl.BoardTest as BoardTest
+import qualified Bittide.Instances.Hitl.ClockBoardConfiguration as ClockBoardConfiguration
 import qualified Bittide.Instances.Hitl.Ddr4 as Ddr4
 import qualified Bittide.Instances.Hitl.DnaOverSerial as DnaOverSerial
 import qualified Bittide.Instances.Hitl.Ethernet as Ethernet
@@ -38,6 +39,7 @@ hitlTests =
   []
     <> [BoardTest.testSimple]
     <> [BoardTest.testExtended]
+    <> [ClockBoardConfiguration.tests]
     <> [Ddr4.tests]
     <> [DnaOverSerial.tests]
     <> [Ethernet.tests]
