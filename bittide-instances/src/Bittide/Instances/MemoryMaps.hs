@@ -24,6 +24,7 @@ import System.FilePath
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Hitl.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Tests.RegisterWbC as RegisterWbC
+import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
 import qualified Data.ByteString.Lazy as BS
 import qualified Protocols.MemoryMap.Json as Json
@@ -35,14 +36,15 @@ $( do
     -- Add new memory maps here  --
     -------------------------------
     let memoryMaps =
-          [ ("SwitchDemoCc", SwitchDemo.memoryMapCc)
-          , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
-          , ("Ethernet", vexRiscvEthernetMM)
+          [ ("Ethernet", vexRiscvEthernetMM)
           , ("Freeze", freezeMM)
-          , ("SwitchC", SwitchCalendar.memoryMap)
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWbC", RegisterWbC.memoryMap)
+          , ("ScatterGather", ScatterGather.dutMM)
           , ("SwCcTopologies", SwCcTopologies.memoryMap)
+          , ("SwitchC", SwitchCalendar.memoryMap)
+          , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
+          , ("SwitchDemoCc", SwitchDemo.memoryMapCc)
           , ("VexRiscv", vexRiscvTestMM)
           ]
 

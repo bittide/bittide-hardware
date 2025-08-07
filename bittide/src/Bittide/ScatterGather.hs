@@ -80,11 +80,12 @@ scatterUnit ::
   ( Signal dom (BitVector frameWidth)
   , Signal dom (WishboneS2M (Bytes nBytes))
   , Signal dom Bool
+  , Signal dom (Unsigned 32)
   , MM
   )
-scatterUnit calConfig wbIn linkIn readAddr = (readOut, wbOut, endOfMetacycle, mm)
+scatterUnit calConfig wbIn linkIn readAddr = (readOut, wbOut, endOfMetacycle, metacycleCount, mm)
  where
-  (writeAddr, endOfMetacycle, wbOut, mm) = mkCalendar "scatter" calConfig wbIn
+  (writeAddr, endOfMetacycle, wbOut, metacycleCount, mm) = mkCalendar "scatter" calConfig wbIn
   writeOp = curry Just <$> writeAddr <*> linkIn
   readOut = doubleBufferedRamU bufSelect readAddr writeOp
   bufSelect = regEn A endOfMetacycle (swapAorB <$> bufSelect)
@@ -123,11 +124,12 @@ gatherUnit ::
   ( Signal dom (BitVector frameWidth)
   , Signal dom (WishboneS2M (Bytes nBytes))
   , Signal dom Bool
+  , Signal dom (Unsigned 32)
   , MM
   )
-gatherUnit calConfig wbIn writeOp byteEnables = (bramOut, wbOut, endOfMetacycle, mm)
+gatherUnit calConfig wbIn writeOp byteEnables = (bramOut, wbOut, endOfMetacycle, metacycleCount, mm)
  where
-  (readAddr, endOfMetacycle, wbOut, mm) = mkCalendar "gather" calConfig wbIn
+  (readAddr, endOfMetacycle, wbOut, metacycleCount, mm) = mkCalendar "gather" calConfig wbIn
   bramOut = doubleBufferedRamByteAddressableU bufSelect readAddr writeOp byteEnables
   bufSelect = regEn A endOfMetacycle (swapAorB <$> bufSelect)
 
@@ -165,16 +167,19 @@ When this address is accessed, the outgoing 'WishboneS2M' bus' acknowledge is re
 with the @endOfMetacycle@ signal to stall the wishbone master until the end of the metacycle.
 -}
 addStalling ::
-  (KnownNat memAddresses, 1 <= memAddresses) =>
+  forall memAddresses wbData a.
+  (KnownNat memAddresses, 1 <= memAddresses, NumConvert (Unsigned 32) wbData) =>
   -- | Controls the 'acknowledge' of the returned 'WishboneS2M' when the incoming address
   -- is 'maxBound'.
   Bool ->
+  -- | The current metacycle count.
+  Unsigned 32 ->
   -- |
   --  1. Incoming 'WishboneS2M' bus.
   --  2. Incoming wishbone address (stalling address in range).
   --  3. Incoming write operation.
   ( WishboneS2M wbData
-  , Index (memAddresses + 1)
+  , Index (memAddresses + 2)
   , Maybe a
   ) ->
   -- |
@@ -185,12 +190,14 @@ addStalling ::
   , Index memAddresses
   , Maybe a
   )
-addStalling endOfMetacycle (incomingBus@WishboneS2M{..}, wbAddr, writeOp0) =
+addStalling endOfMetacycle metacycleCount (incomingBus@WishboneS2M{..}, wbAddr, writeOp0) =
   (slaveToMaster1, memAddr, writeOp1)
  where
   stalledBus = incomingBus{acknowledge = endOfMetacycle}
   (slaveToMaster1, writeOp1)
     | acknowledge && (wbAddr == maxBound) = (stalledBus, Nothing)
+    | acknowledge && (wbAddr == maxBound - 1) =
+        (incomingBus{readData = numConvert metacycleCount}, Nothing)
     | otherwise = (incomingBus, writeOp0)
   memAddr = bitCoerce $ resize wbAddr
 
@@ -247,12 +254,24 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat _) linkIn = case cancelMulDiv @n
                           }
                     }
                 , NamedLoc
+                    { name = Name "metacycleCount" ""
+                    , loc = locHere
+                    , value =
+                        Register
+                          { fieldType = regType @(Bytes 4)
+                          , address = afterMemory
+                          , access = ReadOnly
+                          , reset = Nothing
+                          , tags = []
+                          }
+                    }
+                , NamedLoc
                     { name = Name "metacycleRegister" ""
                     , loc = locHere
                     , value =
                         Register
                           { fieldType = regType @(Bytes 4)
-                          , address = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
+                          , address = afterMemory + snatToInteger (SNat @(ByteSizeC (Bytes 4)))
                           , access = ReadOnly
                           , reset = Nothing
                           , tags = []
@@ -267,6 +286,8 @@ scatterUnitWbC conf@(ScatterConfig memDepthSnat _) linkIn = case cancelMulDiv @n
             , definitionLoc = locHere
             , tags = []
             }
+         where
+          afterMemory = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
        in
         MemoryMap
           { tree = DeviceInstance locCaller "ScatterUnit"
@@ -306,9 +327,10 @@ scatterUnitWb (ScatterConfig _memDepth calConfig) wbInCal linkIn wbInSu =
     unbundle
       $ addStalling
       <$> endOfMetacycle
+      <*> metacycleCount
       <*> (wbInterface <$> wbInSu <*> scatteredData)
   (readAddr, upperSelected) = unbundle $ div2Index <$> memAddr
-  (scatterUnitRead, wbOutCal, endOfMetacycle, mm) =
+  (scatterUnitRead, wbOutCal, endOfMetacycle, metacycleCount, mm) =
     scatterUnit calConfig wbInCal linkIn readAddr
   (lower, upper) = unbundle $ split <$> scatterUnitRead
   selected = register (errorX "scatterUnitWb: Initial selection undefined") upperSelected
@@ -387,12 +409,24 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat _) = case (cancelMulDiv @nBytesCal
                       }
                 }
             , NamedLoc
+                { name = Name "metacycleCount" ""
+                , loc = locHere
+                , value =
+                    Register
+                      { fieldType = regType @(Bytes 4)
+                      , address = afterMemory
+                      , access = ReadOnly
+                      , reset = Nothing
+                      , tags = []
+                      }
+                }
+            , NamedLoc
                 { name = Name "metacycleRegister" ""
                 , loc = locHere
                 , value =
                     Register
                       { fieldType = regType @(Bytes 4)
-                      , address = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
+                      , address = afterMemory + snatToInteger (SNat @(ByteSizeC (Bytes 4)))
                       , access = ReadOnly
                       , reset = Nothing
                       , tags = []
@@ -407,6 +441,8 @@ gatherUnitWbC conf@(GatherConfig memDepthSnat _) = case (cancelMulDiv @nBytesCal
         , definitionLoc = locHere
         , tags = []
         }
+     where
+      afterMemory = snatToInteger (SNat @(ByteSizeC (Vec memDepth (Bytes 8))))
 
 {- | Wishbone addressable 'gatherUnit', the wishbone port can write data to this
 memory element as if it has a 32 bit port by controlling the byte enables of the
@@ -443,9 +479,10 @@ gatherUnitWb (GatherConfig _memDepth calConfig) wbInCal wbInGu =
     unbundle
       $ addStalling
       <$> endOfMetacycle
+      <*> metacycleCount
       <*> (wbInterface <$> wbInGu <*> pure 0b0)
   (writeAddr, upperSelected) = unbundle $ div2Index <$> memAddr
-  (linkOut, wbOutCal, endOfMetacycle, mm) =
+  (linkOut, wbOutCal, endOfMetacycle, metacycleCount, mm) =
     gatherUnit calConfig wbInCal gatherWrite gatherByteEnables
   gatherWrite = mkWrite <$> writeAddr <*> writeOp
   gatherByteEnables = mkEnables <$> upperSelected <*> (busSelect <$> wbInGu)

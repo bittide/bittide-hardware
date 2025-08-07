@@ -172,7 +172,12 @@ calendarConfig :: CalendarConfig 26 (Vec 8 (Index 9))
 calendarConfig =
   CalendarConfig
     (SNat @LinkCount)
-    SNat
+    {- The '@12' is so that the generated Rust code works. At time of writing,
+    the generator makes two separate device-specific types for 'ValidEntry' since
+    they have differing repetition bit widths. To fix this, all tests are being
+    set to a width of 12.
+    -}
+    (SNat @12)
 
     -- Active calendar. It will broadcast the PE (node 1) data to all links. Other
     -- than that we cycle through the other nodes.
@@ -190,7 +195,7 @@ calendarConfig =
     (ValidEntry (repeat 0) 0 :> Nil)
   where
   -- We want enough time to read _number of FPGAs_ triplets
-  nRepetitions = bitCoerce (maxBound :: Index (FpgaCount * 3))
+  nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
 {- FOURMOLU_ENABLE -}
 
 memoryMapCc :: MemoryMap

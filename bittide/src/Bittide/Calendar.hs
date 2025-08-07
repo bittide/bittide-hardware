@@ -349,7 +349,7 @@ mkCalendarC ::
   CalendarConfig addrW a ->
   Circuit
     (ConstBwd MM, Wishbone dom 'Standard addrW (Bytes nBytes))
-    (CSignal dom a, CSignal dom Bool)
+    (CSignal dom a, CSignal dom Bool, CSignal dom (Unsigned 32))
 mkCalendarC
   compName
   ( CalendarConfig
@@ -385,7 +385,7 @@ mkCalendarC
           <*> newShadowEntry
           <*> readAddr
           <*> (swapActive ./=. pure BusIdle)
-    idC -< Fwd (calOut.activeEntry.veEntry, calOut.lastCycle)
+    idC -< Fwd (calOut.activeEntry.veEntry, calOut.lastCycle, metacycleCount)
    where
     noWrite = pure Nothing
     -- We use separate registers for writing entries into the shadow calendar
@@ -461,8 +461,14 @@ mkCalendar ::
   -- 1. Currently active entry
   -- 2. Metacycle indicator
   -- 3. Wishbone interface. (slave to master)
-  (Signal dom calEntry, Signal dom Bool, Signal dom (WishboneS2M (Bytes nBytes)), MM)
+  ( Signal dom calEntry
+  , Signal dom Bool
+  , Signal dom (WishboneS2M (Bytes nBytes))
+  , Signal dom (Unsigned 32)
+  , MM
+  )
 mkCalendar compName cfg m2s = case cancelMulDiv @nBytes @8 of
-  Dict -> (entry, endOfMetacycle, s2m, mm)
+  Dict -> (entry, endOfMetacycle, s2m, metacycleCount, mm)
    where
-    ~((mm, s2m), (entry, endOfMetacycle)) = toSignals (mkCalendarC compName cfg) (((), m2s), (pure (), pure ()))
+    ~((mm, s2m), (entry, endOfMetacycle, metacycleCount)) =
+      toSignals (mkCalendarC compName cfg) (((), m2s), (pure (), pure (), pure ()))

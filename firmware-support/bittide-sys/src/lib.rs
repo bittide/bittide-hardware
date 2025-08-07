@@ -8,11 +8,9 @@
 pub mod axi;
 pub mod callisto;
 pub mod dna_port_e2;
-pub mod gather_unit;
 pub mod mac;
 pub mod program_stream;
 pub mod sample_store;
-pub mod scatter_unit;
 pub mod smoltcp;
 pub mod stability_detector;
 pub mod switch_demo_pe;

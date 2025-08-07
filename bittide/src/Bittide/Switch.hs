@@ -91,7 +91,7 @@ switch ::
   )
 switch calConfig calM2S streamsIn = (streamsOut, calS2M, cal, mm)
  where
-  (cal, _, calS2M, mm) = mkCalendar @dom @nBytes @addrW "switch" calConfig calM2S
+  (cal, _, calS2M, _, mm) = mkCalendar @dom @nBytes @addrW "switch" calConfig calM2S
   scatterFrames = register 0 <$> streamsIn
   gatherFrames = unbundle $ crossBar 0 <$> cal <*> bundle scatterFrames
   streamsOut = register 0 <$> gatherFrames
