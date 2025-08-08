@@ -1,9 +1,12 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
+
+#include "MachDeps.h"
 
 -- | Tooling to pack and unpack Haskell types to and from C-FFI.
 module Clash.Class.BitPackC (
@@ -21,7 +24,9 @@ module Clash.Class.BitPackC (
 import Clash.Class.BitPackC.Align (MultipleOf, Padding)
 import Clash.Prelude
 import Data.Data (Typeable, typeRep)
+import Data.Int (Int16, Int32, Int64, Int8)
 import Data.Proxy (Proxy (Proxy))
+import Data.Word (Word16, Word32, Word64, Word8)
 import GHC.Generics
 
 {- | Pack a type @a@ to a vector of bytes according to C packing conventions
@@ -370,6 +375,27 @@ instance (BitPackC a, BitPackC b) => BitPackC (Either a b)
 instance (BitPackC a, BitPackC b) => BitPackC (a, b)
 instance (BitPackC a, BitPackC b, BitPackC c) => BitPackC (a, b, c)
 instance (BitPackC a, BitPackC b, BitPackC c, BitPackC d) => BitPackC (a, b, c, d)
+
+#define THROUGH_INST(T, TT) \
+instance BitPackC T where { \
+  type ConstructorSizeC T = ConstructorSizeC (TT); \
+  type AlignmentBoundaryC T = AlignmentBoundaryC (TT); \
+  type ByteSizeC T = ByteSizeC (TT); \
+  packC# byteOrder = packC# byteOrder . numConvert @_ @(TT); \
+  maybeUnpackC# byteOrder = fmap numConvert . maybeUnpackC# @(TT) byteOrder \
+}
+
+THROUGH_INST (Word8, Unsigned 8)
+THROUGH_INST (Word16, Unsigned 16)
+THROUGH_INST (Word32, Unsigned 32)
+THROUGH_INST (Word64, Unsigned 64)
+THROUGH_INST (Word, Unsigned WORD_SIZE_IN_BITS)
+
+THROUGH_INST (Int8, Signed 8)
+THROUGH_INST (Int16, Signed 16)
+THROUGH_INST (Int32, Signed 32)
+THROUGH_INST (Int64, Signed 64)
+THROUGH_INST (Int, Signed WORD_SIZE_IN_BITS)
 
 class GBitPackC start f where
   type GConstructorCount f :: Nat
