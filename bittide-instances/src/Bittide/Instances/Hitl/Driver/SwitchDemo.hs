@@ -29,7 +29,15 @@ import GHC.Stack (HasCallStack)
 import Numeric (showHex)
 import Project.FilePath
 import Project.Handle
-import Protocols.MemoryMap (MemoryMap (..), MemoryMapTree (DeviceInstance, Interconnect))
+import Protocols.MemoryMap (
+  DeviceDefinition (registers),
+  DeviceName,
+  MemoryMap (..),
+  MemoryMapTree (DeviceInstance, Interconnect),
+  Name (name),
+  NamedLoc (name, value),
+  Register (address),
+ )
 import System.Exit
 import System.FilePath
 import System.IO
@@ -46,6 +54,7 @@ import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Clash.Sized.Vector as V (fromList)
 import qualified Data.List as L
+import qualified Data.Map as Map
 
 data OcdInitData = OcdInitData
   { muPort :: Int
@@ -113,32 +122,61 @@ showHex32 a = "0x" <> padding <> hexStr
   hexStr = showHex a ""
   padding = L.replicate (8 - L.length hexStr) '0'
 
-{- | Get base addresses of a device from a memory map. Assumes that all devices
-are located at a single interconnect, which is a bit grimy.
+{- | Get base addresses of a device and optional register from a memory map.
+Assumes that all devices are located at a single interconnect, which is a bit
+grimy.
 -}
-baseAddresses :: (HasCallStack, Num a) => MemoryMap -> String -> [a]
-baseAddresses memoryMap nm =
-  case memoryMap of
-    MemoryMap{tree = Interconnect _ devices} ->
-      [fromIntegral addr | (addr, DeviceInstance _ d) <- devices, d == nm]
-    _ -> error [i|Unexpected memory map structure: #{ppShow memoryMapMu}|]
+baseAddresses :: (HasCallStack, Num a) => MemoryMap -> DeviceName -> Maybe String -> [a]
+baseAddresses memoryMap deviceName maybeRegName = go memoryMap.tree
+ where
+  go = \case
+    -- XXX: Deal with nested interconnects
+    Interconnect _ devices -> do
+      let
+        relAddrs = [a | (a, DeviceInstance _ d) <- devices, d == deviceName]
+        addrs = fromIntegral <$> relAddrs
+
+      case maybeRegName of
+        Just regName -> [addr + offset | addr <- addrs, let offset = goOffset regName]
+        Nothing -> addrs
+    _ ->
+      error [i|Unexpected memory map structure: #{ppShow memoryMap}|]
+
+  goOffset :: (HasCallStack, Num a) => String -> a
+  goOffset regName =
+    case Map.lookup deviceName memoryMap.deviceDefs of
+      Nothing ->
+        error [i|Device '#{deviceName}' not found in memory map: #{ppShow memoryMap}|]
+      Just device ->
+        case L.filter (\r -> r.name.name == regName) device.registers of
+          [] -> error [i|Register '#{regName}' not found in device '#{deviceName}': #{ppShow device}|]
+          [r] -> fromIntegral r.value.address
+          _ ->
+            error
+              [i|Multiple registers with name '#{regName}' found in device '#{deviceName}': #{ppShow device}|]
 
 {- | Like 'baseAddresses', but assume that there is only one device with the
 given name in the memory map. If there are multiple devices with the same
 name, an error is raised.
 -}
-baseAddress :: (HasCallStack, Num a, Show a) => MemoryMap -> String -> a
-baseAddress memoryMap nm =
-  case baseAddresses memoryMap nm of
+baseAddress ::
+  (HasCallStack, Num a, Show a) =>
+  MemoryMap ->
+  DeviceName ->
+  Maybe String ->
+  a
+baseAddress memoryMap deviceName regName =
+  case baseAddresses memoryMap deviceName regName of
     [addr] -> addr
-    addrs -> error [i|Expected a single base address for #{nm}, got: #{show addrs}|]
+    addrs ->
+      error [i|Expected a single base address for #{deviceName}:#{regName}, got: #{show addrs}|]
 
 -- | Like 'baseAddress', but specialized on the management unit memory map.
-muBaseAddress :: (HasCallStack, Num a, Show a) => String -> a
+muBaseAddress :: (HasCallStack, Num a, Show a) => DeviceName -> Maybe String -> a
 muBaseAddress = baseAddress memoryMapMu
 
 -- | Like 'baseAddress', but specialized on the clock control memory map.
-ccBaseAddress :: (HasCallStack, Num a, Show a) => String -> a
+ccBaseAddress :: (HasCallStack, Num a, Show a) => DeviceName -> Maybe String -> a
 ccBaseAddress = baseAddress memoryMapCc
 
 {- | Addresses of the capture UGN devices in the management unit. As a sanity
@@ -150,7 +188,7 @@ muCaptureUgnAddresses =
     then ugnDevices
     else error $ "Expected 7 capture ugn devices, got: " <> ppShow ugnDevices
  where
-  ugnDevices = baseAddresses memoryMapMu "CaptureUgn"
+  ugnDevices = baseAddresses memoryMapMu "CaptureUgn" Nothing
 
 dumpCcSamples ::
   (HasCallStack) => FilePath -> CcConf Topology -> [ProcessHandles] -> IO ()
@@ -180,7 +218,7 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
       Nothing -> error [i|Could not parse GDB output as number: #{nSamplesWritten}|]
       Just n -> Gdb.dumpMemoryRegion gdb dumpPath dumpStart (dumpEnd n) >> pure n
 
-  sampleMemoryBase = ccBaseAddress @Integer "SampleMemory"
+  sampleMemoryBase = ccBaseAddress @Integer "SampleMemory" Nothing
   ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
 
 initOpenOcd :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
@@ -305,7 +343,7 @@ ccGdbCheck gdb = do
   liftIO $ putStrLn [i|Output from CC whoami probe:\n#{idLine}|]
   return $ if success then ExitSuccess else ExitFailure 1
  where
-  whoAmIBase = showHex32 $ ccBaseAddress @Integer "WhoAmI"
+  whoAmIBase = showHex32 $ ccBaseAddress @Integer "WhoAmI" Nothing
 
 muGdbCheck :: ProcessHandles -> VivadoM ExitCode
 muGdbCheck gdb = do
@@ -330,7 +368,7 @@ muGdbCheck gdb = do
   liftIO $ putStrLn [i|Output from MU whoami probe:\n#{idLine}|]
   return $ if success then ExitSuccess else ExitFailure 1
  where
-  whoAmIBase = showHex32 $ muBaseAddress @Integer "WhoAmI"
+  whoAmIBase = showHex32 $ muBaseAddress @Integer "WhoAmI" Nothing
 
 foldExitCodes :: VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
 foldExitCodes prev code = do
@@ -394,7 +432,7 @@ driver testName targets = do
     muReadPeBuffer (_, d) gdb = do
       putStrLn $ "Reading PE buffer from device " <> d.deviceId
       let
-        start = muBaseAddress @Integer "SwitchDemoPE"
+        start = muBaseAddress @Integer "SwitchDemoPE" Nothing
         startString = "START OF PEBUF (" <> d.deviceId <> ")"
         endString = "END OF PEBUF (" <> d.deviceId <> ")"
         bufferSize :: Integer
@@ -419,7 +457,7 @@ driver testName targets = do
       IO (Unsigned 64)
     muGetCurrentTime (_, d) gdb = do
       putStrLn $ "Getting current time from device " <> d.deviceId
-      let timerBase = muBaseAddress @Integer "Timer"
+      let timerBase = muBaseAddress @Integer "Timer" Nothing
       -- Write capture command to `timeWb` component
       Gdb.runCommands gdb.stdinHandle [[i|set {char[4]}(#{showHex32 timerBase}) = 0x0|]]
       let
@@ -478,7 +516,7 @@ driver testName targets = do
       VivadoM ()
     muWriteCfg target@(_, d) gdb (bimap pack fromIntegral -> cfg) = do
       let
-        start = muBaseAddress "SwitchDemoPE"
+        start = muBaseAddress "SwitchDemoPE" Nothing
 
         write64 :: Unsigned 32 -> BitVector 64 -> [String]
         write64 address value =
@@ -513,9 +551,9 @@ driver testName targets = do
         perDeviceCheck :: ProcessHandles -> Int -> IO Bool
         perDeviceCheck myGdb num = do
           let
-            headBaseAddr = muBaseAddress "SwitchDemoPE" + 0x28
+            headBaseAddr = muBaseAddress "SwitchDemoPE" Nothing + 0x28
             myBaseAddr = headBaseAddr + 24 * (L.length gdbs - num - 1)
-            dnaBaseAddr = muBaseAddress @Integer "Dna"
+            dnaBaseAddr = muBaseAddress @Integer "Dna" Nothing
           myCounter <-
             readSingleGdbValue headGdb ("COUNTER-" <> show num) ("x/1gx " <> showHex32 myBaseAddr)
           myDeviceDna2 <-
