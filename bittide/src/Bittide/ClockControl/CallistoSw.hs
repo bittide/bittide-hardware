@@ -21,7 +21,6 @@ import VexRiscv
 
 import Bittide.ClockControl.Callisto.Types (
   CallistoResult (CallistoResult),
-  ReframingState (Detect),
  )
 import Bittide.ClockControl.Freeze (freeze)
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
@@ -157,6 +156,5 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd ccConfig =
           <*> clockControlData.stabilities
           <*> clockControlData.allStable
           <*> clockControlData.allSettled
-          <*> pure Detect
 
     idC -< (syncOut, Fwd callistoCResult, wbRest)

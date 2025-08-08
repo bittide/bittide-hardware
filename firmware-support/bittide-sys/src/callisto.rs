@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use bittide_hal::shared::devices::clock_control::ClockControl;
+use bittide_hal::shared::types::callisto_config::CallistoConfig;
+use bittide_hal::shared::types::maybe::Maybe;
 use bittide_hal::shared::types::speed_change::SpeedChange;
 
 /// Rust sibling of
@@ -32,22 +34,6 @@ pub enum ReframingState {
     Done,
 }
 
-/// Rust version of
-/// `Bittide.ClockControl.Callisto.Types.ControlConfig`.
-#[derive(Clone)]
-pub struct ControlConfig {
-    /// Enable reframing. Reframing allows a system to resettle buffers around
-    /// their midpoints, without dropping any frames. For more information, see
-    /// [arXiv:2303.11467](https://arxiv.org/abs/2303.11467).
-    pub reframing_enabled: bool,
-    /// Number of cycles to wait until reframing takes place after
-    /// stability has been detected.
-    pub wait_time: usize,
-    // Gain. See https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24.
-    pub k_p: f32,
-}
-
-/// Rust version of `Bittide.ClockControl.Callisto.Types.ControlSt`.
 pub struct ControlSt {
     /// Accumulated speed change requests, where
     /// * `speedup ~ 1`
@@ -114,7 +100,7 @@ fn test_bit(bv: u8, i: usize) -> bool {
 pub fn callisto<I>(
     cc: &ClockControl,
     eb_counters_iter: I,
-    config: &ControlConfig,
+    config: &CallistoConfig,
     state: &mut ControlSt,
 ) where
     I: Iterator<Item = i32>,
@@ -132,7 +118,7 @@ pub fn callisto<I>(
         .sum();
 
     let r_k = measured_sum as f32;
-    let c_des = config.k_p * r_k + state.steady_state_target;
+    let c_des = config.gain * r_k + state.steady_state_target;
     let c_est = FSTEP * state.z_k as f32;
 
     let b_k = if c_des < c_est {
@@ -146,11 +132,7 @@ pub fn callisto<I>(
     state.z_k += speed_change_to_sign(b_k);
     state.b_k = b_k;
 
-    if config.reframing_enabled {
-        state.rf_state_update(
-            config.wait_time,
-            cc.links_stable() ^ cc.link_mask() == 0,
-            c_des,
-        );
+    if let Maybe::Just(wait_time) = config.wait_time {
+        state.rf_state_update(wait_time as usize, cc.links_stable() != 0, c_des);
     }
 }

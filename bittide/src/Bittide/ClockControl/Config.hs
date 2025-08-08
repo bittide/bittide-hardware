@@ -4,6 +4,7 @@
 
 module Bittide.ClockControl.Config (
   CcConf (..),
+  defCcConf,
   saveCcConfig,
   ccConfigFileName,
 ) where
@@ -13,10 +14,12 @@ import Clash.Prelude
 import Bittide.ClockControl.Topology (Topology)
 import Clash.Class.BitPackC (BitPackC)
 import Data.Aeson (FromJSON, ToJSON)
+import Data.Word (Word32)
 import Protocols.MemoryMap.FieldType (ToFieldType)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 
+import qualified Bittide.ClockControl.Topology as Topology
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as ByteString
 
@@ -28,9 +31,32 @@ contains only the link masks -- suitable for use in hardware.
 data CcConf a = CcConf
   { topology :: a
   -- ^ The topology of the network
+  , callisto :: CallistoConfig
+  -- ^ Clock control configuration for the Callisto algorithm. See @callisto.rs@.
   }
-  deriving
-    (Show, Ord, Eq, Functor, Generic, ToJSON, FromJSON, BitPack, BitPackC, ToFieldType)
+  deriving (Eq, Ord, Show, Generic, Functor)
+  deriving (BitPack, BitPackC, ToFieldType, NFDataX)
+  deriving (FromJSON, ToJSON)
+
+defCcConf :: Int -> CcConf Topology
+defCcConf nLinks =
+  CcConf
+    { topology = Topology.complete nLinks
+    , callisto = CallistoConfig{waitTime = Nothing, gain = 2e-9}
+    }
+
+data CallistoConfig = CallistoConfig
+  { waitTime :: Maybe Word32
+  -- ^ Number of cycles to wait until reframing takes place after stability has
+  -- been detected. Reframing allows a system to resettle buffers around their
+  -- midpoints, without dropping any frames. For more information, see
+  -- [arXiv:2303.11467](https://arxiv.org/abs/2303.11467).
+  , gain :: Float
+  -- ^ See https://github.com/bittide/Callisto.jl/blob/e47139fca128995e2e64b2be935ad588f6d4f9fb/demo/pulsecontrol.jl#L24.
+  }
+  deriving (Eq, Ord, Show, Generic)
+  deriving (BitPack, BitPackC, ToFieldType, NFDataX)
+  deriving (FromJSON, ToJSON)
 
 -- | Default name of the clock control JSON configuration file.
 ccConfigFileName :: String

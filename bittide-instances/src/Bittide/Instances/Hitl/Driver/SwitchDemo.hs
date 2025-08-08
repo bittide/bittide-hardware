@@ -9,11 +9,8 @@ module Bittide.Instances.Hitl.Driver.SwitchDemo where
 
 import Clash.Prelude
 
-import Bittide.ClockControl.Config (
-  CcConf (CcConf, topology),
-  saveCcConfig,
- )
-import Bittide.ClockControl.Topology (Topology, complete)
+import Bittide.ClockControl.Config (CcConf, defCcConf, saveCcConfig)
+import Bittide.ClockControl.Topology (Topology)
 import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
@@ -600,7 +597,7 @@ driver testName targets = do
 
         let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-          let goDumpCcSamples = dumpCcSamples hitlDir CcConf{topology = complete 8} ccGdbs
+          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue muGdbs
           liftIO

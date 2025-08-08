@@ -6,8 +6,7 @@ module Bittide.Instances.Hitl.Driver.SwCcTopologies where
 
 import Clash.Prelude
 
-import Bittide.ClockControl.Config (CcConf (CcConf, topology))
-import Bittide.ClockControl.Topology (complete)
+import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl (DeviceInfo (deviceId))
 import Bittide.Instances.Hitl.Driver.SwitchDemo (
   OcdInitData (ccPort, cleanup),
@@ -16,6 +15,7 @@ import Bittide.Instances.Hitl.Driver.SwitchDemo (
   initOpenOcd,
   initPicocom,
  )
+import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.Utils.Driver (
   assertProbe,
   awaitHandshakes,
@@ -64,7 +64,7 @@ driverFunc testName targets = do
     brackets ccGdbStarts (liftIO . snd) $ \initCCGdbsData -> do
       let
         ccGdbs = fst <$> initCCGdbsData
-        ccConf = CcConf{topology = complete 8}
+        ccConf = defCcConf (natToNum @FpgaCount)
         goDumpCcSamples = dumpCcSamples hitlDir ccConf ccGdbs
         picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
 
