@@ -8,15 +8,12 @@
 
 module Bittide.ClockControl.Callisto.Types (
   CallistoResult (..),
-  ReframingState (..),
   Stability (..),
 ) where
 
 import Clash.Prelude
 
 import Bittide.ClockControl
-import Clash.Class.BitPackC (BitPackC)
-import Protocols.MemoryMap.FieldType (ToFieldType)
 
 -- | Stability results to be returned by the 'stability_detector'.
 data Stability = Stability
@@ -41,27 +38,5 @@ data CallistoResult (n :: Nat) = CallistoResult
   , allSettled :: Bool
   -- ^ Joint "being-settled" indicator signaling that all elastic
   -- buffers have been settled.
-  , reframingState :: ReframingState
-  -- ^ State of the Reframing detector
   }
   deriving (Generic, NFDataX)
-
-{- | State of the state machine for realizing the "detect, store, and
-wait" approach of [arXiv:2303.11467](https://arxiv.org/abs/2303.11467)
--}
-data ReframingState
-  = -- | The controller remains in this state until stability has been
-    -- detected.
-    Detect
-  | -- | The controller remains in this state for the predefined
-    -- number of cycles with the assumption that the elastic buffers
-    -- of all other nodes are sufficiently stable after that time.
-    Wait
-      { targetCorrection :: !Float
-      -- ^ Stored correction value to be applied at reframing time.
-      , curWaitTime :: !(Unsigned 32)
-      -- ^ Number of cycles to wait until reframing takes place.
-      }
-  | -- | Reframing has taken place. There is nothing more to do.
-    Done
-  deriving (Generic, NFDataX, BitPack, Show, BitPackC, ToFieldType)

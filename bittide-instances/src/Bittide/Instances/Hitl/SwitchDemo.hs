@@ -27,7 +27,6 @@ import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Types (
   CallistoResult (..),
-  ReframingState (..),
   Stability (..),
  )
 import Bittide.ClockControl.CallistoSw (
@@ -638,7 +637,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
                         , stability = repeat (Stability{stable = True, settled = True})
                         , allStable = True
                         , allSettled = True
-                        , reframingState = Done
                         }
             else swCcOut0
 

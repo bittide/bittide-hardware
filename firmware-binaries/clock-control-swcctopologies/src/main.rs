@@ -30,11 +30,7 @@ fn main() -> ! {
         k_p: 2e-8,
     };
 
-    let mut state = ControlSt::new(
-        0,
-        SpeedChange::NoChange,
-        0.0f32,
-    );
+    let mut state = ControlSt::new(0, SpeedChange::NoChange, 0.0f32);
 
     // Initialize stability detector
     let mut stability_detector = StabilityDetector::new(25, Duration::from_secs(2));

@@ -8,6 +8,7 @@
 use core::panic::PanicInfo;
 
 use bittide_hal::freeze::Tuple0;
+use bittide_hal::manual_additions::timer::Duration;
 use bittide_hal::manual_additions::timer::Instant;
 use bittide_hal::manual_additions::timer::WaitResult;
 use bittide_hal::shared::devices::DomainDiffCounters;
@@ -15,12 +16,11 @@ use bittide_hal::shared::devices::Timer;
 use bittide_hal::shared::devices::Uart;
 use bittide_hal::shared::types::speed_change::SpeedChange;
 use bittide_hal::switch_demo_cc::DeviceInstances;
-use bittide_hal::manual_additions::timer::Duration;
 use bittide_sys::sample_store::SampleStore;
 use bittide_sys::stability_detector::StabilityDetector;
 use ufmt::uwriteln;
 
-use bittide_sys::callisto::{self, ControlConfig, ControlSt};
+use bittide_sys::callisto::{self, ControlSt};
 #[cfg(not(test))]
 use riscv_rt::entry;
 
@@ -53,17 +53,8 @@ fn main() -> ! {
     }
 
     uwriteln!(uart, "Starting clock control..").unwrap();
-
-    let config = ControlConfig {
-        wait_time: 0,
-        reframing_enabled: false,
-        k_p: 2e-9,
-    };
-    let mut state = ControlSt::new(
-        0,
-        SpeedChange::NoChange,
-        0.0f32,
-    );
+    let cc_config = cc.config();
+    let mut state = ControlSt::new(0, SpeedChange::NoChange, 0.0f32);
 
     // Initialize stability detector
     let mut stability_detector = StabilityDetector::new(4, Duration::from_secs(2));
@@ -81,7 +72,12 @@ fn main() -> ! {
     loop {
         // Do clock control on "frozen" counters
         freeze.set_freeze(Tuple0);
-        callisto::callisto(&cc, freeze.eb_counters_volatile_iter(), &config, &mut state);
+        callisto::callisto(
+            &cc,
+            freeze.eb_counters_volatile_iter(),
+            &cc_config.callisto,
+            &mut state,
+        );
         cc.set_change_speed(state.b_k);
 
         // Detect stability
