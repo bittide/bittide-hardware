@@ -202,7 +202,7 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
   go :: (HasCallStack) => ProcessHandles -> FilePath -> IO Word
   go gdb dumpPath = do
     nSamplesWritten <-
-      Gdb.readCommand
+      Gdb.readSingleCommand
         gdb
         ("N_SAMPLES_WRITTEN")
         ("x/1wx " <> showHex32 sampleMemoryBase)
@@ -555,25 +555,25 @@ driver testName targets = do
             myBaseAddr = headBaseAddr + 24 * (L.length gdbs - num - 1)
             dnaBaseAddr = muBaseAddress @Integer "Dna" Nothing
           myCounter <-
-            Gdb.readCommand headGdb ("COUNTER-" <> show num) ("x/1gx " <> showHex32 myBaseAddr)
+            Gdb.readSingleCommand headGdb ("COUNTER-" <> show num) ("x/1gx " <> showHex32 myBaseAddr)
           myDeviceDna2 <-
-            Gdb.readCommand myGdb ("DNA2-" <> show num) [i|x/1wx #{showHex32 dnaBaseAddr}|]
+            Gdb.readSingleCommand myGdb ("DNA2-" <> show num) [i|x/1wx #{showHex32 dnaBaseAddr}|]
           myDeviceDna1 <-
-            Gdb.readCommand myGdb ("DNA1-" <> show num) [i|x/1wx #{showHex32 (dnaBaseAddr + 0x4)}|]
+            Gdb.readSingleCommand myGdb ("DNA1-" <> show num) [i|x/1wx #{showHex32 (dnaBaseAddr + 0x4)}|]
           myDeviceDna0 <-
-            Gdb.readCommand myGdb ("DNA0-" <> show num) [i|x/1wx #{showHex32 (dnaBaseAddr + 0x8)}|]
+            Gdb.readSingleCommand myGdb ("DNA0-" <> show num) [i|x/1wx #{showHex32 (dnaBaseAddr + 0x8)}|]
           headDeviceDna2 <-
-            Gdb.readCommand
+            Gdb.readSingleCommand
               headGdb
               ("DNA2-" <> show num)
               ("x/1wx " <> showHex32 (myBaseAddr + 0x08))
           headDeviceDna1 <-
-            Gdb.readCommand
+            Gdb.readSingleCommand
               headGdb
               ("DNA2-" <> show num)
               ("x/1wx " <> showHex32 (myBaseAddr + 0x0C))
           headDeviceDna0 <-
-            Gdb.readCommand
+            Gdb.readSingleCommand
               headGdb
               ("DNA2-" <> show num)
               ("x/1wx " <> showHex32 (myBaseAddr + 0x10))

@@ -9,7 +9,7 @@ import Bittide.Instances.Hitl.Utils.Driver (tryWithTimeout)
 import Bittide.Instances.Hitl.Utils.Program
 import Clash.Prelude
 import Control.Concurrent (withMVar)
-import Control.Monad (forM_)
+import Control.Monad (forM_, void)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Data.Maybe (fromJust, fromMaybe)
@@ -25,10 +25,16 @@ import System.Process.Internals (
   ProcessHandle__ (ClosedHandle, OpenExtHandle, OpenHandle),
  )
 import System.Timeout
-import "extra" Data.List.Extra (trim)
 
 import qualified Data.List as L
 import qualified "extra" Data.List.Extra as L
+import Bittide.SharedTypes (Bytes)
+
+{- | Magic string that we'll instruct GDB to echo back to us to signal that
+it has finished processing a command.
+-}
+magic :: String
+magic = "471ac6f71ba9bd7982741d53edfe809d50f43035645fe99f890761b2bf1ef6bfac18"
 
 withGdb :: (MonadIO m, MonadMask m) => (ProcessHandles -> m a) -> m a
 withGdb action = do
@@ -60,8 +66,50 @@ startGdbH = do
 runCommands :: Handle -> [String] -> IO ()
 runCommands h commands =
   forM_ commands $ \command -> do
-    putStrLn $ "gdb-in: " <> command
     hPutStrLn h command
+    hFlush h
+
+readCommandRaw :: HasCallStack => ProcessHandles -> String -> IO String
+readCommandRaw gdb command = do
+  echo gdb.stdinHandle [i|echo #{magic}|]
+  hPutStrLn gdb.stdinHandle command
+  echo gdb.stdinHandle magic
+  hFlush gdb.stdinHandle
+
+  void
+    $ tryWithTimeout ("Wait for first magic..") 15_000_000
+    $ readUntil gdb.stdoutHandle [i|#{magic}(gdb) |]
+
+  tryWithTimeout ("Wait for second magic..") 15_000_000
+    $ readUntil gdb.stdoutHandle [i|(gdb) #{magic}|]
+
+readCommand :: HasCallStack => ProcessHandles -> String -> IO [String]
+readCommand gdb command = do
+  out <- readCommandRaw gdb command
+  pure
+    $ L.dropWhile (=="")
+    $ L.dropWhileEnd (=="")
+    $ L.map L.trimEnd
+    $ L.lines out
+
+readCommand1 :: HasCallStack => ProcessHandles -> String -> IO String
+readCommand1 gdb command = do
+  readCommand gdb command >>= \case
+    [] -> error "GDB returned no output"
+    [s] -> pure s
+    ss -> error [i|GDB returned multiple lines: #{ss}|]
+
+readByte :: HasCallStack => ProcessHandles -> Integer -> IO (Bytes 1)
+readByte gdb address = _
+
+readHalfWord :: HasCallStack => ProcessHandles -> Integer -> IO (Bytes 2)
+readHalfWord gdb address = _
+
+readWord :: HasCallStack => ProcessHandles -> Integer -> IO (Bytes 4)
+readWord gdb address = _
+
+readGiant :: HasCallStack => ProcessHandles -> Integer -> IO (Bytes 8)
+readGiant gdb address = _
 
 echo :: Handle -> String -> IO ()
 echo h s = runCommands h ["echo \\n" <> s <> "\\n"]
@@ -212,8 +260,8 @@ setBreakpointHook gdb = do
     ]
 
 -- | Execute a single command and read its (single line) output
-readCommand :: ProcessHandles -> String -> String -> IO String
-readCommand gdb value cmd = do
+readSingleCommand :: ProcessHandles -> String -> String -> IO String
+readSingleCommand gdb value cmd = do
   let
     startString = "START OF READ (" <> value <> ")"
     endString = "END OF READ (" <> value <> ")"
@@ -230,9 +278,9 @@ readCommand gdb value cmd = do
     tryWithTimeout ("GDB read: " <> value) 15_000_000
       $ readUntil gdb.stdoutHandle endString
   let
-    trimmed = trim untrimmed
+    trimmed = L.trim untrimmed
     gdbLines = L.lines trimmed
     outputLine = fromJust $ L.find ("(gdb)" `L.isPrefixOf`) gdbLines
     untilColon = L.dropWhile (/= ':') outputLine
-    lineFinal = trim $ L.drop 2 untilColon
+    lineFinal = L.trim $ L.drop 2 untilColon
   return lineFinal
