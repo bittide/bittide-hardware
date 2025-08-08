@@ -81,14 +81,6 @@ fn main() -> ! {
             sample_store.store(&freeze, stability, callisto.accumulated_speed_requests);
         }
 
-        // If we're all stable, print over UART -- this can be used by the tests
-        // wait for.
-        let all_stable = stability_detector.all_stable();
-        if all_stable && !prev_all_stable {
-            uwriteln!(uart, "All links stable").unwrap();
-        }
-        prev_all_stable = all_stable;
-
         // Emit stability information over UART
         let all_stable = stability.all_stable();
         if !prev_all_stable && all_stable {
