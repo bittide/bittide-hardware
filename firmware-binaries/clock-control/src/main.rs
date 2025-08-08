@@ -14,13 +14,12 @@ use bittide_hal::manual_additions::timer::WaitResult;
 use bittide_hal::shared::devices::DomainDiffCounters;
 use bittide_hal::shared::devices::Timer;
 use bittide_hal::shared::devices::Uart;
-use bittide_hal::shared::types::speed_change::SpeedChange;
 use bittide_hal::switch_demo_cc::DeviceInstances;
 use bittide_sys::sample_store::SampleStore;
 use bittide_sys::stability_detector::StabilityDetector;
 use ufmt::uwriteln;
 
-use bittide_sys::callisto::{self, ControlSt};
+use bittide_sys::callisto::Callisto;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
@@ -53,8 +52,7 @@ fn main() -> ! {
     }
 
     uwriteln!(uart, "Starting clock control..").unwrap();
-    let cc_config = cc.config();
-    let mut state = ControlSt::new(0, SpeedChange::NoChange, 0.0f32);
+    let mut callisto = Callisto::new(cc.config().callisto);
 
     // Initialize stability detector
     let mut stability_detector = StabilityDetector::new(4, Duration::from_secs(2));
@@ -72,13 +70,7 @@ fn main() -> ! {
     loop {
         // Do clock control on "frozen" counters
         freeze.set_freeze(Tuple0);
-        callisto::callisto(
-            &cc,
-            freeze.eb_counters_volatile_iter(),
-            &cc_config.callisto,
-            &mut state,
-        );
-        cc.set_change_speed(state.b_k);
+        cc.set_change_speed(callisto.update(&cc, freeze.eb_counters_volatile_iter()));
 
         // Detect stability
         let stability = stability_detector.update(&cc, timer.now());
@@ -86,7 +78,7 @@ fn main() -> ! {
         // Store debug information. Stop capturing samples if we are stable to
         // reduce plot sizes.
         if !prev_all_stable {
-            sample_store.store(&freeze, stability, state.z_k);
+            sample_store.store(&freeze, stability, callisto.accumulated_speed_requests);
         }
 
         // If we're all stable, print over UART -- this can be used by the tests

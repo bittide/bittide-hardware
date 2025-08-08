@@ -34,32 +34,67 @@ pub enum ReframingState {
     Done,
 }
 
-pub struct ControlSt {
+pub struct Callisto {
     /// Accumulated speed change requests, where
     /// * `speedup ~ 1`
     /// * `slowdown ~ -1`
-    pub z_k: i32,
-    /// Previously submitted speed change request. Used to determine
-    /// the estimated clock frequency.
-    pub b_k: SpeedChange,
+    pub accumulated_speed_requests: i32,
     /// Steady-state value (determined when stability is detected for
     /// the first time).
-    pub steady_state_target: f32,
-    pub reframe_state: ReframingState,
+    steady_state_target: f32,
+    reframe_state: ReframingState,
+    config: CallistoConfig,
 }
 
-impl ControlSt {
-    pub fn new(z_k: i32, b_k: SpeedChange, steady_state_target: f32) -> Self {
-        let new = ControlSt {
-            z_k,
-            b_k,
-            steady_state_target,
+impl Callisto {
+    pub fn new(config: CallistoConfig) -> Self {
+        Self {
+            accumulated_speed_requests: 0,
+            steady_state_target: 0.0,
             reframe_state: ReframingState::Detect,
-        };
-        new
+            config,
+        }
     }
 
-    fn rf_state_update(&mut self, wait_time: usize, stable: bool, target: f32) {
+    /// Clock correction strategy based on:
+    /// [https://github.com/bittide/Callisto.jl](https://github.com/bittide/Callisto.jl)
+    pub fn update<I>(self: &mut Callisto, cc: &ClockControl, eb_counters_iter: I) -> SpeedChange
+    where
+        I: Iterator<Item = i32>,
+    {
+        // `fStep` should match the step size of the clock boards. For all our HITL
+        // tests this is set by `HwCcTopologies.commonStepSizeSelect`.
+        const FSTEP: f32 = 10e-9; // 10 PPB
+
+        let link_mask_rev = cc.link_mask_rev();
+
+        // Sum the data counts for all active links
+        let measured_sum: i32 = eb_counters_iter
+            .enumerate()
+            .map(|(i, v)| if test_bit(link_mask_rev, i) { v } else { 0 })
+            .sum();
+
+        let c_des = self.config.gain * (measured_sum as f32) + self.steady_state_target;
+        let c_est = FSTEP * self.accumulated_speed_requests as f32;
+
+        let speed_request = if c_des < c_est {
+            SpeedChange::SlowDown
+        } else if c_des > c_est {
+            SpeedChange::SpeedUp
+        } else {
+            SpeedChange::NoChange
+        };
+
+        self.accumulated_speed_requests += speed_change_to_sign(speed_request);
+
+        if let Maybe::Just(wait_time) = self.config.wait_time {
+            self.update_reframe_state(wait_time as usize, cc.links_stable() != 0, c_des);
+        }
+
+        speed_request
+    }
+
+    fn update_reframe_state(&mut self, wait_time: usize, stable: bool, target: f32) {
         match self.reframe_state {
             ReframingState::Detect if stable => {
                 self.reframe_state = ReframingState::Wait {
@@ -93,46 +128,4 @@ fn speed_change_to_sign(speed_change: SpeedChange) -> i32 {
 /// Test whether the `i`-th bit in `bv` is set.
 fn test_bit(bv: u8, i: usize) -> bool {
     (bv & (1 << i)) != 0
-}
-
-/// Clock correction strategy based on:
-/// [https://github.com/bittide/Callisto.jl](https://github.com/bittide/Callisto.jl)
-pub fn callisto<I>(
-    cc: &ClockControl,
-    eb_counters_iter: I,
-    config: &CallistoConfig,
-    state: &mut ControlSt,
-) where
-    I: Iterator<Item = i32>,
-{
-    // `fStep` should match the step size of the clock boards. For all our HITL
-    // tests this is set by `HwCcTopologies.commonStepSizeSelect`.
-    const FSTEP: f32 = 10e-9;
-
-    let link_mask_rev = cc.link_mask_rev();
-
-    // Sum the data counts for all active links
-    let measured_sum: i32 = eb_counters_iter
-        .enumerate()
-        .map(|(i, v)| if test_bit(link_mask_rev, i) { v } else { 0 })
-        .sum();
-
-    let r_k = measured_sum as f32;
-    let c_des = config.gain * r_k + state.steady_state_target;
-    let c_est = FSTEP * state.z_k as f32;
-
-    let b_k = if c_des < c_est {
-        SpeedChange::SlowDown
-    } else if c_des > c_est {
-        SpeedChange::SpeedUp
-    } else {
-        SpeedChange::NoChange
-    };
-
-    state.z_k += speed_change_to_sign(b_k);
-    state.b_k = b_k;
-
-    if let Maybe::Just(wait_time) = config.wait_time {
-        state.rf_state_update(wait_time as usize, cc.links_stable() != 0, c_des);
-    }
 }
