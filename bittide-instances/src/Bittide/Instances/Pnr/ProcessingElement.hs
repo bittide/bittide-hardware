@@ -52,9 +52,9 @@ vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jt
     processingElement @dom NoDumpVcd peConfig -< (mm, jtag)
   (uartTx, _uartStatus) <-
     uartInterfaceWb d16 d16 (uartDf baudSnat) -< (uartBus, uartRx)
-  constBwd 0b10 -< prefixUart
+  constBwd 0b100 -< prefixUart
   _localCounter <- timeWb -< (mmTime, timeBus)
-  constBwd 0b11 -< prefixTime
+  constBwd 0b110 -< prefixTime
   idC -< uartTx
  where
   peConfig
@@ -85,12 +85,14 @@ vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jt
   peConfigRtl =
     PeConfig
       { initI = Undefined @IMemWords
-      , prefixI = 0b00
+      , prefixI = 0b000
       , initD = Undefined @DMemWords
-      , prefixD = 0b01
+      , prefixD = 0b010
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True
+      , whoAmID = 0x6363_7773
+      , whoAmIPrefix = 0b111
       }
 
 {- | A simple instance containing just VexRisc and UART as peripheral.

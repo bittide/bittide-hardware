@@ -30,6 +30,6 @@ members = [
   "clock-control",
   "clock-control-swcctopologies",
   "management-unit",
-  "processing-element-test",
+  "processing-element-test", "gppe-switch-demo",
 ]
 resolver = "2"
