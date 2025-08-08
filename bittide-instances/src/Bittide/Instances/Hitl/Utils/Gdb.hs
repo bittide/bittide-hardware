@@ -5,6 +5,7 @@
 
 module Bittide.Instances.Hitl.Utils.Gdb where
 
+import Bittide.Instances.Hitl.Utils.Driver (tryWithTimeout)
 import Bittide.Instances.Hitl.Utils.Program
 import Clash.Prelude
 import Control.Concurrent (withMVar)
@@ -208,3 +209,29 @@ setBreakpointHook gdb = do
     , "quit 1"
     , "end"
     ]
+
+-- | Execute a single command and read its (single line) output
+readSingleGdbValue :: ProcessHandles -> String -> String -> IO String
+readSingleGdbValue gdb value cmd = do
+  let
+    startString = "START OF READ (" <> value <> ")"
+    endString = "END OF READ (" <> value <> ")"
+  runCommands
+    gdb.stdinHandle
+    [ "printf \"" <> startString <> "\\n\""
+    , cmd
+    , "printf \"" <> endString <> "\\n\""
+    ]
+  _ <-
+    tryWithTimeout ("GDB read prepare: " <> value) 15_000_000
+      $ readUntil gdb.stdoutHandle startString
+  untrimmed <-
+    tryWithTimeout ("GDB read: " <> value) 15_000_000
+      $ readUntil gdb.stdoutHandle endString
+  let
+    trimmed = L.trim untrimmed
+    gdbLines = L.lines trimmed
+    outputLine = fromJust $ L.find ("(gdb)" `L.isPrefixOf`) gdbLines
+    untilColon = L.dropWhile (/= ':') outputLine
+    lineFinal = L.trim $ L.drop 2 untilColon
+  return lineFinal
