@@ -158,6 +158,7 @@ library
     Data.List.Extra
     Numeric.Extra
     Protocols.Extra
+    Text.Read.Extra
 
 test-suite unittests
   import: ghc2024, clash, extra, sane-records
