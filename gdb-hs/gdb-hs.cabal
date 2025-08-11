@@ -109,3 +109,35 @@ library
     unix,
 
   default-language: Haskell2010
+
+test-suite unittests
+  import: ghc2024, extra, sane-records
+  type: exitcode-stdio-1.0
+  main-is: unittests.hs
+  hs-source-dirs: tests
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N4
+
+  build-depends:
+    base,
+    gdb-hs,
+    tasty >=1.4,
+
+test-suite doctests
+  import: ghc2024, extra, sane-records
+  type: exitcode-stdio-1.0
+  main-is: doctests.hs
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
+  hs-source-dirs: tests
+  build-depends:
+    base,
+    doctest-parallel >=0.3.0.1 && <0.4,
+    gdb-hs,
