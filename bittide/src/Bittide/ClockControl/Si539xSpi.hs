@@ -212,7 +212,7 @@ si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
       WriteEntry _ -> Just RegisterOperation{page, address, write = Just byte}
       ReadEntry _ -> Just RegisterOperation{page, address, write = Nothing}
       Wait _ _ -> Nothing
-      WaitForLock -> Just RegisterOperation{page = 0, address = 0xC0, write = Nothing}
+      WaitForLock -> Just RegisterOperation{page = 0, address = 0x0C, write = Nothing}
       Finished -> extSpi
       Error _ -> extSpi
 
