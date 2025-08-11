@@ -19,7 +19,7 @@ import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
-import Control.Concurrent.Async.Extra (zipWithConcurrently)
+import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
 import Control.Monad (forM, forM_, when)
 import Control.Monad.IO.Class
 import Data.Bifunctor (Bifunctor (bimap))
@@ -228,28 +228,18 @@ initOpenOcd hitlDir (_, d) targetIndex = do
 initGdb ::
   FilePath ->
   String ->
+  Gdb ->
   Int ->
   (HwTarget, DeviceInfo) ->
-  IO (Gdb, IO ())
-initGdb hitlDir binName gdbPort (hwT, d) = do
-  putStrLn $ "Starting GDB for target " <> d.deviceId <> " with bin name " <> binName
-
-  (gdb, gdbPh, gdbClean0) <- Gdb.startGdbH
-  hSetBuffering gdb.stdinHandle LineBuffering
-  hSetBuffering gdb.stdoutHandle LineBuffering
-
+  IO ()
+initGdb hitlDir binName gdb gdbPort (hwT, _d) = do
   Gdb.setLogging gdb $ hitlDir
     </> "gdb-" <> binName <> "-" <> show (getTargetIndex hwT) <> ".log"
   Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> binName
   Gdb.setTarget gdb gdbPort
   Gdb.setTimeout gdb Nothing
-  Gdb.runCommands gdb.stdinHandle ["echo connected to target device"]
-
-  let
-    gdbProcName = "GDB (" <> binName <> ", " <> d.deviceId <> ")"
-    gdbClean1 = gdbClean0 >> awaitProcessTermination gdbProcName gdbPh (Just 10_000_000)
-
-  return (gdb, gdbClean1)
+  Gdb.runCommands gdb.stdin ["echo connected to target device"]
+  pure ()
 
 initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (ProcessHandles, IO ())
 initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
@@ -288,7 +278,7 @@ ccGdbCheck :: Gdb -> VivadoM ExitCode
 ccGdbCheck gdb = do
   liftIO
     $ Gdb.runCommands
-      gdb.stdinHandle
+      gdb.stdin
       [ "echo START OF WHOAMI\\n"
       , "x/4cb " <> whoAmIBase
       , "echo END OF WHOAMI\\n"
@@ -296,11 +286,11 @@ ccGdbCheck gdb = do
   _ <-
     liftIO
       $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
-      $ readUntil gdb.stdoutHandle "START OF WHOAMI"
+      $ readUntil gdb.stdout "START OF WHOAMI"
   gdbRead <-
     liftIO
       $ tryWithTimeout "Reading CC whoami over GDB" 15_000_000
-      $ readUntil gdb.stdoutHandle "END OF WHOAMI"
+      $ readUntil gdb.stdout "END OF WHOAMI"
   let
     idLine = trim . L.head . lines $ trim gdbRead
     success = idLine == "(gdb) " <> whoAmIBase <> ":\t115 's'\t119 'w'\t99 'c'\t99 'c'"
@@ -313,7 +303,7 @@ muGdbCheck :: Gdb -> VivadoM ExitCode
 muGdbCheck gdb = do
   liftIO
     $ Gdb.runCommands
-      gdb.stdinHandle
+      gdb.stdin
       [ "echo START OF WHOAMI\\n"
       , "x/4cb " <> whoAmIBase
       , "echo END OF WHOAMI\\n"
@@ -321,11 +311,11 @@ muGdbCheck gdb = do
   _ <-
     liftIO
       $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
-      $ readUntil gdb.stdoutHandle "START OF WHOAMI"
+      $ readUntil gdb.stdout "START OF WHOAMI"
   gdbRead <-
     liftIO
       $ tryWithTimeout "Reading MU whoami over GDB" 15_000_000
-      $ readUntil gdb.stdoutHandle "END OF WHOAMI"
+      $ readUntil gdb.stdout "END OF WHOAMI"
   let
     idLine = trim . L.head . lines $ trim gdbRead
     success = idLine == "(gdb) " <> whoAmIBase <> ":\t109 'm'\t103 'g'\t109 'm'\t116 't'"
@@ -371,16 +361,16 @@ driver testName targets = do
             startString = "START OF UGN (" <> addr <> ")"
             endString = "END OF UGN (" <> addr <> ")"
           Gdb.runCommands
-            gdb.stdinHandle
+            gdb.stdin
             [ "printf \"" <> startString <> "\\n\""
             , "x/2xg " <> addr
             , "printf \"" <> endString <> "\\n\""
             ]
           _ <-
             tryWithTimeout "Waiting for GDB to be ready for UGN readout" 15_000_000
-              $ readUntil gdb.stdoutHandle startString
+              $ readUntil gdb.stdout startString
           gdbRead <-
-            tryWithTimeout "Reading UGN over GDB" 15_000_000 $ readUntil gdb.stdoutHandle endString
+            tryWithTimeout "Reading UGN over GDB" 15_000_000 $ readUntil gdb.stdout endString
           let
             outputLine = L.head $ L.lines $ trim gdbRead
             outputDataWords = L.words $ trim $ outputLine
@@ -402,16 +392,16 @@ driver testName targets = do
         bufferSize :: Integer
         bufferSize = (snatToNum (SNat @FpgaCount)) * 3
       Gdb.runCommands
-        gdb.stdinHandle
+        gdb.stdin
         [ "printf \"" <> startString <> "\\n\""
         , [i|x/#{bufferSize}xg #{showHex32 (start + 0x28)}|]
         , "printf \"" <> endString <> "\\n\""
         ]
       _ <-
         tryWithTimeout "Waiting for GDB to be ready for PE buffer readout" 15_000_000
-          $ readUntil gdb.stdoutHandle startString
+          $ readUntil gdb.stdout startString
       bufInit <-
-        tryWithTimeout "PE buffer readout" 15_000_000 $ readUntil gdb.stdoutHandle endString
+        tryWithTimeout "PE buffer readout" 15_000_000 $ readUntil gdb.stdout endString
       putStrLn $ "PE buffer readout:\n" <> bufInit
 
     muGetCurrentTime ::
@@ -423,22 +413,22 @@ driver testName targets = do
       putStrLn $ "Getting current time from device " <> d.deviceId
       let timerBase = muBaseAddress @Integer "Timer"
       -- Write capture command to `timeWb` component
-      Gdb.runCommands gdb.stdinHandle [[i|set {char[4]}(#{showHex32 timerBase}) = 0x0|]]
+      Gdb.runCommands gdb.stdin [[i|set {char[4]}(#{showHex32 timerBase}) = 0x0|]]
       let
         currentStringLsbs = "START OF STARTTIME LSBS"
         endStringLsbs = "END OF STARTTIME LSBS"
       Gdb.runCommands
-        gdb.stdinHandle
+        gdb.stdin
         [ "printf \"" <> currentStringLsbs <> "\\n\""
         , [i|x/1xw #{showHex32 (timerBase + 0x8)}|]
         , "printf \"" <> endStringLsbs <> "\\n\""
         ]
       _ <-
         tryWithTimeout "Waiting for GDB to be ready for curtime lsbs readout" 15_000_000
-          $ readUntil gdb.stdoutHandle currentStringLsbs
+          $ readUntil gdb.stdout currentStringLsbs
       currentStringLsbs0 <-
         tryWithTimeout "Current time lsbs readout" 15_000_000
-          $ readUntil gdb.stdoutHandle endStringLsbs
+          $ readUntil gdb.stdout endStringLsbs
       let
         currentStringLsbs1 = trim $ L.head $ lines $ L.drop 2 $ L.dropWhile (/= ':') currentStringLsbs0
         currentTimeLsbsI :: Integer
@@ -451,17 +441,17 @@ driver testName targets = do
         currentStringMsbs = "START OF CURTIME MSBS"
         endStringMsbs = "END OF CURTIME MSBS"
       Gdb.runCommands
-        gdb.stdinHandle
+        gdb.stdin
         [ "printf \"" <> currentStringMsbs <> "\\n\""
         , [i|x/1xw #{showHex32 (timerBase + 0xC)}|]
         , "printf \"" <> endStringMsbs <> "\\n\""
         ]
       _ <-
         tryWithTimeout "Waiting for GDB to be ready for curtime msbs readout" 15_000_000
-          $ readUntil gdb.stdoutHandle currentStringMsbs
+          $ readUntil gdb.stdout currentStringMsbs
       currentStringMsbs0 <-
         tryWithTimeout "Current time msbs readout" 15_000_000
-          $ readUntil gdb.stdoutHandle endStringMsbs
+          $ readUntil gdb.stdout endStringMsbs
       let
         currentStringMsbs1 = trim $ L.head $ lines $ L.drop 2 $ L.dropWhile (/= ':') currentStringMsbs0
         currentTimeMsbsI :: Integer
@@ -494,7 +484,7 @@ driver testName targets = do
         muReadPeBuffer target gdb
         putStrLn $ "Writing config to device " <> d.deviceId
         Gdb.runCommands
-          gdb.stdinHandle
+          gdb.stdin
           ( L.concat
               [ write64 (start + 0) cfg.startReadAt
               , write64 (start + 8) cfg.readForN
@@ -580,9 +570,8 @@ driver testName targets = do
     let
       muPorts = (.muPort) <$> initOcdsData
       ccPorts = (.ccPort) <$> initOcdsData
-      ccGdbStarts = liftIO <$> L.zipWith (initGdb hitlDir "clock-control") ccPorts targets
-    brackets ccGdbStarts (liftIO . snd) $ \initCCGdbsData -> do
-      let ccGdbs = fst <$> initCCGdbsData
+    Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
       liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
       gdbExitCodes0 <- mapM ccGdbCheck ccGdbs
       (gdbCount0, gdbExitCode0) <-
@@ -591,9 +580,9 @@ driver testName targets = do
         $ putStrLn
           [i|CC GDB testing passed on #{gdbCount0} of #{L.length targets} targets|]
       liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
-      let muGdbStarts = liftIO <$> L.zipWith (initGdb hitlDir "management-unit") muPorts targets
-      brackets muGdbStarts (liftIO . snd) $ \initMUGdbsData -> do
-        let muGdbs = fst <$> initMUGdbsData
+
+      Gdb.withGdbs (L.length targets) $ \muGdbs -> do
+        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "management-unit") muGdbs muPorts targets
         liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
         gdbExitCodes1 <- mapM muGdbCheck muGdbs
         (gdbCount1, gdbExitCode1) <-

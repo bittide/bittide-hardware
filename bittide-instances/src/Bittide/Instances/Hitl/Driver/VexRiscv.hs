@@ -113,7 +113,6 @@ driverFunc _name targets = do
 
           -- program the FPGA
           Gdb.withGdb $ \gdb -> do
-            hSetBuffering gdb.stdinHandle LineBuffering
             Gdb.setLogging gdb gdbOutLog
             Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "hello"
             Gdb.setTarget gdb gdbPort
@@ -125,11 +124,11 @@ driverFunc _name targets = do
               Gdb.setBreakpoints gdb ["hello::test_success"]
               Gdb.continue gdb
 
-              Gdb.echo gdb.stdinHandle "breakpoint reached"
+              Gdb.echo gdb.stdin "breakpoint reached"
               tryWithTimeout "Waiting for \"breakpoint reached\"" 10_000_000
-                $ waitForLine gdb.stdoutHandle "breakpoint reached"
+                $ waitForLine gdb.stdout "breakpoint reached"
 
-              Gdb.runCommands gdb.stdinHandle ["disable 1"]
+              Gdb.runCommands gdb.stdin ["disable 1"]
               Gdb.continue gdb
 
             -- This is the last thing that will print when the FPGA has been programmed

@@ -20,6 +20,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.Utils.Driver (assertProbe, awaitHandshakes)
 import Bittide.Instances.Hitl.Utils.Program (ProcessHandles (stdoutHandle))
 import Control.Concurrent.Async (forConcurrently_)
+import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Project.FilePath (findParentContaining)
@@ -57,11 +58,11 @@ driverFunc testName targets = do
   brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
     let
       ccPorts = (.ccPort) <$> initOcdsData
-      ccGdbStarts = liftIO <$> L.zipWith (initGdb hitlDir "clock-control") ccPorts targets
 
-    brackets ccGdbStarts (liftIO . snd) $ \initCCGdbsData -> do
+    Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
+
       let
-        ccGdbs = fst <$> initCCGdbsData
         ccConf = defCcConf (natToNum @FpgaCount)
         goDumpCcSamples = dumpCcSamples hitlDir ccConf ccGdbs
         picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]

@@ -101,7 +101,7 @@ driverFunc _name [d@(_, dI)] = do
       liftIO $ putStrLn "Starting GDB..."
       Gdb.withGdb $ \gdb -> do
         liftIO $ do
-          hSetBuffering gdb.stdinHandle LineBuffering
+          hSetBuffering gdb.stdin LineBuffering
           Gdb.setLogging gdb gdbOutLog
           Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
           Gdb.setTarget gdb 3333
@@ -113,7 +113,7 @@ driverFunc _name [d@(_, dI)] = do
             , "smoltcp_client::gdb_panic"
             ]
           Gdb.setBreakpointHook gdb
-          Gdb.runCommands gdb.stdinHandle ["continue"]
+          Gdb.runCommands gdb.stdin ["continue"]
         D.assertProbe "probe_test_start" d
 
         liftIO $ putStrLn "Starting TCP server"
