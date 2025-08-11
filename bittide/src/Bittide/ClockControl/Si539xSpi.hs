@@ -35,11 +35,11 @@ type RegisterEntry = (Page, Address, Byte)
 
 -- | Used to read from or write to a register on a Si539x chip via SPI.
 data RegisterOperation = RegisterOperation
-  { regPage :: Page
+  { page :: Page
   -- ^ Page at which to perform the read or write.
-  , regAddress :: Address
+  , address :: Address
   -- ^ Address at which to perform the read or write
-  , regWrite :: Maybe Byte
+  , write :: Maybe Byte
   -- ^ @Nothing@ for a read operation, @Just byte@ to write @byte@ to this 'Page' and 'Address'.
   }
   deriving (Show, Generic, NFDataX)
@@ -176,7 +176,7 @@ si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
   (configState, spiOperation, configBusy, configByte) =
     mealyB go (WaitForReady False) (romOut, externalOperation, driverByte, driverBusy)
 
-  go currentState ((regPage, regAddress, byte), extSpi, spiByte, spiBusy) =
+  go currentState ((page, address, byte), extSpi, spiByte, spiBusy) =
     (nextState, (currentState, spiOp, busy, returnedByte))
    where
     isConfigEntry i =
@@ -206,13 +206,13 @@ si539xSpi Si539xRegisterMap{..} minTargetPs@SNat externalOperation miso =
       (Error _, _) -> currentState
 
     spiOp = case currentState of
-      WaitForReady _ -> Just RegisterOperation{regPage = 0x00, regAddress = 0xFE, regWrite = Nothing}
+      WaitForReady _ -> Just RegisterOperation{page = 0x00, address = 0xFE, write = Nothing}
       ResetDriver _ -> Nothing
       FetchReg _ -> Nothing
-      WriteEntry _ -> Just RegisterOperation{regPage, regAddress, regWrite = Just byte}
-      ReadEntry _ -> Just RegisterOperation{regPage, regAddress, regWrite = Nothing}
+      WriteEntry _ -> Just RegisterOperation{page, address, write = Just byte}
+      ReadEntry _ -> Just RegisterOperation{page, address, write = Nothing}
       Wait _ _ -> Nothing
-      WaitForLock -> Just RegisterOperation{regPage = 0, regAddress = 0xC0, regWrite = Nothing}
+      WaitForLock -> Just RegisterOperation{page = 0, address = 0xC0, write = Nothing}
       Finished -> extSpi
       Error _ -> extSpi
 
@@ -296,16 +296,16 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
   go currentState@DriverState{..} (_, spiBusy, spiAck, receivedBytes) =
     (nextState, (output, True, storedByte))
    where
-    RegisterOperation{..} = fromJust currentOp
-    samePage = currentPage == Just regPage
-    sameAddr = currentAddress == Just regAddress
+    op = fromJust currentOp
+    samePage = currentPage == Just op.page
+    sameAddr = currentAddress == Just op.address
 
-    (spiCommand, nextOp, outBytes) = case (samePage, sameAddr, regWrite) of
+    (spiCommand, nextOp, outBytes) = case (samePage, sameAddr, op.write) of
       (True, True, Just byte) -> (WriteData byte, Nothing, receivedBytes)
       (True, True, Nothing) -> (ReadData, Nothing, receivedBytes)
-      (True, False, _) -> (SetAddress regAddress, currentOp, Nothing)
+      (True, False, _) -> (SetAddress op.address, currentOp, Nothing)
       (False, _, _)
-        | currentAddress == Just 1 -> (WriteData regPage, currentOp, Nothing)
+        | currentAddress == Just 1 -> (WriteData op.page, currentOp, Nothing)
         | otherwise -> (SetAddress 1, currentOp, Nothing)
 
     (nextPage, nextAddress) = case (currentPage, currentAddress, spiCommand) of
@@ -412,9 +412,9 @@ spiFrequencyController
 
       spiOpGo = case (fifoValid, fifoDataGo, stepCount == maxBound, stepCount == minBound) of
         (True, SpeedUp, False, _) ->
-          Just RegisterOperation{regPage = 0x00, regAddress = 0x1D, regWrite = Just 1}
+          Just RegisterOperation{page = 0x00, address = 0x1D, write = Just 1}
         (True, SlowDown, _, False) ->
-          Just RegisterOperation{regPage = 0x00, regAddress = 0x1D, regWrite = Just 2}
+          Just RegisterOperation{page = 0x00, address = 0x1D, write = Just 2}
         _ -> Nothing
 {-# OPAQUE spiFrequencyController #-}
 
