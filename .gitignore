@@ -84,3 +84,5 @@ __pycache__
 
 # DirEnv nix pointers
 .direnv
+
+# Man
