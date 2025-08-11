@@ -16,7 +16,6 @@ import Data.Maybe (catMaybes, mapMaybe)
 import Data.String.Interpolate
 import Project.FilePath
 import Protocols
-import Protocols.Extra (cSignalMap, replicateCSignalI)
 import Protocols.Idle
 import Protocols.MemoryMap
 import System.FilePath
@@ -30,7 +29,6 @@ import VexRiscv (DumpVcd (NoDumpVcd))
 
 -- internal imports
 import Bittide.Arithmetic.Time (PeriodToCycles)
-import Bittide.ClockControl.DebugRegister (DebugRegisterCfg (..), debugRegisterWb)
 import Bittide.ClockControl.Registers (ClockControlData (clockMod), clockControlWb)
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Hitl.Setup (LinkCount)
@@ -48,7 +46,6 @@ data SerialResult = SerialResult
   , linkMask :: Int
   , linksOk :: Int
   , linkMaskPopcnt :: Int
-  , reframingEnabled :: Bool
   , linksStable :: Int
   , linksSettled :: Int
   , dataCounts :: [(Int, Int)]
@@ -78,7 +75,6 @@ case_clock_control_wb_self_test = do
             , linkMask = fromIntegral linkMask
             , linksOk = fromIntegral linksOk
             , linkMaskPopcnt = linkMaskPopcnt
-            , reframingEnabled = False
             , linksStable = 0
             , linksSettled = 0
             , dataCounts = expectedDataCounts
@@ -123,12 +119,6 @@ expectedDataCounts = L.zip [0 ..] $ toList $ applyMask linkMask dataCounts
   applyMask m = zipWith go (bitCoerce m)
   go m v = if m then fromIntegral v else 0
 
-debugRegisterConfig :: DebugRegisterCfg
-debugRegisterConfig =
-  DebugRegisterCfg
-    { reframingEnabled = False
-    }
-
 dut :: Circuit () (Df System (BitVector 8), CSignal System (ClockControlData LinkCount))
 dut =
   withBittideByteOrder
@@ -138,28 +128,29 @@ dut =
       (uartRx, jtag) <- idleSource
       [ (prefixUart, uartBus)
         , (prefixCC, (mmCC, ccWb))
-        , (prefixDbg, debugWbBus)
+        , -- XXX: We "need" a dummy to make the width of the prefixes match 3 bits
+        (prefixDummy, (mmDummy, dummyWb))
         ] <-
         processingElement NoDumpVcd peConfig -< (mm, jtag)
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-      constBwd 0b001 -< prefixUart
+
+      idleSink -< dummyWb
+      constBwd todoMM -< mmDummy
 
       mm <- ignoreMM
 
-      [ccd0, ccd1] <-
-        replicateCSignalI
-          <| clockControlWb
-            (pure linkMask)
-            (pure linksOk)
-            (pure <$> dataCounts)
+      ccd <-
+        clockControlWb
+          (pure linkMask)
+          (pure linksOk)
+          (pure <$> dataCounts)
           -< (mmCC, ccWb)
 
+      constBwd 0b001 -< prefixUart
       constBwd 0b110 -< prefixCC
+      constBwd 0b000 -< prefixDummy
 
-      cm <- cSignalMap (.clockMod) -< ccd0
-      _dbg <- debugRegisterWb (pure debugRegisterConfig) -< (debugWbBus, cm)
-      constBwd 0b101 -< prefixDbg
-      idC -< (uartTx, ccd1)
+      idC -< (uartTx, ccd)
  where
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
@@ -189,7 +180,6 @@ resultParser = do
   linkMaskResult <- expectField "linkMask"
   linksOkResult <- expectField "linksOk"
   linkMaskPopcntResult <- expectField "linkMaskPopcnt"
-  reframingEnabledResult <- expectField "reframingEnabled"
   linksStableResult <- expectField "linksStable"
   linksSettledResult <- expectField "linksSettled"
   dataCountsResult <- expectField "dataCounts"
@@ -200,7 +190,6 @@ resultParser = do
       , linkMask = linkMaskResult
       , linksOk = linksOkResult
       , linkMaskPopcnt = linkMaskPopcntResult
-      , reframingEnabled = reframingEnabledResult
       , linksStable = linksStableResult
       , linksSettled = linksSettledResult
       , dataCounts = dataCountsResult

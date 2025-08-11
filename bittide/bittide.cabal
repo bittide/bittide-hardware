@@ -195,7 +195,7 @@ library
     Bittide.ClockControl.Callisto.Types
     Bittide.ClockControl.Callisto.Util
     Bittide.ClockControl.CallistoSw
-    Bittide.ClockControl.DebugRegister
+    Bittide.ClockControl.Config
     Bittide.ClockControl.Freeze
     Bittide.ClockControl.ParseRegisters
     Bittide.ClockControl.Registers
@@ -203,6 +203,7 @@ library
     Bittide.ClockControl.Si5395J
     Bittide.ClockControl.Si539xSpi
     Bittide.ClockControl.Topology
+    Bittide.ClockControl.Topology.LinkMasks
     Bittide.Counter
     Bittide.Df
     Bittide.DoubleBufferedRam

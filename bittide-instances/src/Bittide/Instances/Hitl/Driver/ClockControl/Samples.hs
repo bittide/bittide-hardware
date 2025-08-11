@@ -8,11 +8,12 @@ module Bittide.Instances.Hitl.Driver.ClockControl.Samples where
 
 import Prelude
 
-import Bittide.Instances.Domains (Bittide)
-import Bittide.Instances.Hitl.Driver.ClockControl.Config (
+import Bittide.ClockControl.Config (
   CcConf (topology),
   ccConfigFileName,
  )
+import Bittide.ClockControl.Topology (Topology)
+import Bittide.Instances.Domains (Bittide)
 import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Sync (SyncOutGeneratorHalfPeriod)
 import Control.Concurrent.Async (forConcurrently)
@@ -92,11 +93,12 @@ form a complete sample are ignored.
 parseFile :: (HasCallStack) => FilePath -> IO [Sample]
 parseFile filePath = parse <$> ByteStringLazy.readFile filePath
 
-parseDirectory :: (HasCallStack) => FilePath -> IO (CcConf, C.Vec FpgaCount [Sample])
+parseDirectory ::
+  (HasCallStack) => FilePath -> IO (CcConf Topology, C.Vec FpgaCount [Sample])
 parseDirectory dir = do
   let path = dir </> ccConfigFileName
   ccConfBytes <- LazyByteString.readFile path
-  ccConf <- case Aeson.eitherDecode @CcConf ccConfBytes of
+  ccConf <- case Aeson.eitherDecode ccConfBytes of
     Left err -> error [I.i|Failed to parse CcConf from #{path}: #{err}|]
     Right conf -> pure conf
 

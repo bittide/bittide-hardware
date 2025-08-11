@@ -3,37 +3,24 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 module Bittide.Instances.Hitl.Driver.ClockControl.Config (
-  CcConf (..),
-  ccConfigFileName,
-  saveCcConfig,
+  toLinkMaskCcConf,
 ) where
 
 import Prelude
 
+import Bittide.ClockControl.Config (CcConf)
 import Bittide.ClockControl.Topology (Topology (..))
-import Data.Aeson (FromJSON (..), ToJSON (..))
-import GHC.Generics (Generic)
-import System.Directory (createDirectoryIfMissing)
-import System.FilePath ((</>))
+import Bittide.ClockControl.Topology.LinkMasks (linkMasks)
+import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
 
-import qualified Data.Aeson as Aeson
-import qualified Data.ByteString.Lazy as ByteString
+import qualified Bittide.Instances.Hitl.Setup as Setup
+import qualified Clash.Prelude as C
 
--- | Default name of the clock control JSON configuration file.
-ccConfigFileName :: String
-ccConfigFileName = "cc-config.json"
+type LinkMaskTopology = C.Vec FpgaCount (C.BitVector LinkCount)
 
--- | Collection of all clock control configuration parameters.
-data CcConf = CcConf
-  { topology :: Topology
-  -- ^ The topology of the network
-  }
-  deriving (Show, Ord, Eq, Generic, ToJSON, FromJSON)
-
-{- | Saves a clock control configuration to a file called 'ccConfigFileName' in
-the given directory.
+{- | Convert a clock control configuration for the full topology to one that
+contains only the link masks. The latter has a @BitPackC@ instance, making it
+suitable for use in hardware/registers.
 -}
-saveCcConfig :: FilePath -> CcConf -> IO ()
-saveCcConfig dir ccConf = do
-  createDirectoryIfMissing True dir
-  ByteString.writeFile (dir </> ccConfigFileName) (Aeson.encode ccConf)
+toLinkMaskCcConf :: CcConf Topology -> CcConf LinkMaskTopology
+toLinkMaskCcConf ccConf = linkMasks (fmap snd Setup.fpgaSetup) <$> ccConf

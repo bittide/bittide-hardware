@@ -9,13 +9,10 @@ module Bittide.Instances.Hitl.Driver.SwitchDemo where
 
 import Clash.Prelude
 
-import Bittide.ClockControl.Topology (complete)
+import Bittide.ClockControl.Config (CcConf, defCcConf, saveCcConfig)
+import Bittide.ClockControl.Topology (Topology)
 import Bittide.Hitl
 import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.Driver.ClockControl.Config (
-  CcConf (CcConf, topology),
-  saveCcConfig,
- )
 import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.SwitchDemo (memoryMapCc, memoryMapMu)
 import Bittide.Instances.Hitl.Utils.Driver
@@ -155,7 +152,8 @@ muCaptureUgnAddresses =
  where
   ugnDevices = baseAddresses memoryMapMu "CaptureUgn"
 
-dumpCcSamples :: (HasCallStack) => FilePath -> CcConf -> [ProcessHandles] -> IO ()
+dumpCcSamples ::
+  (HasCallStack) => FilePath -> CcConf Topology -> [ProcessHandles] -> IO ()
 dumpCcSamples hitlDir ccConf ccGdbs = do
   mapConcurrently_ Gdb.interrupt ccGdbs
   nSamples <- liftIO $ zipWithConcurrently go ccGdbs ccSamplesPaths
@@ -599,7 +597,7 @@ driver testName targets = do
 
         let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
         brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-          let goDumpCcSamples = dumpCcSamples hitlDir CcConf{topology = complete 8} ccGdbs
+          let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue muGdbs
           liftIO

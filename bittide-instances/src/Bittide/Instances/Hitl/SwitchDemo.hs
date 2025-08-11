@@ -26,8 +26,7 @@ import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Types (
-  CallistoCResult (..),
-  ReframingState (..),
+  CallistoResult (..),
   Stability (..),
  )
 import Bittide.ClockControl.CallistoSw (
@@ -254,7 +253,6 @@ ccConfig =
           , includeIlaWb = False
           }
     , ccRegPrefix = 0b1100
-    , dbgRegPrefix = 0b1010
     , timePrefix = 0b0110
     , freezePrefix = 0b0010
     , syncOutGeneratorPrefix = 0b0001
@@ -461,7 +459,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
 
   -- Step 5, wait for stable buffers:
   allStable :: Signal Bittide Bool
-  allStable = callistoResult.allStableC
+  allStable = callistoResult.allStable
 
   allStableSticky :: Signal Bittide Bool
   allStableSticky = sticky bittideClk bittideRst allStable
@@ -499,11 +497,10 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       , "MU" ::: ConstBwd MM
       , Jtag Bittide
       , CSignal Bittide (BitVector 64)
-      , "reframe" ::: CSignal Bittide Bool
       , CSignal Bittide (BitVector LinkCount)
       , Vec LinkCount (CSignal Bittide (Maybe (BitVector 64)))
       )
-      ( CSignal Bittide (CallistoCResult LinkCount)
+      ( CSignal Bittide (CallistoResult LinkCount)
       , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
       , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
       , "PE_STATE" ::: CSignal Bittide (SimplePeState FpgaCount)
@@ -513,7 +510,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       , "UART_TX" ::: CSignal Basic125 Bit
       , "SYNC_OUT" ::: CSignal Basic125 Bit
       )
-  circuitFnC = circuit $ \(ccMM, muMM, jtag, linkIn, reframe, mask, Fwd rxs) -> do
+  circuitFnC = circuit $ \(ccMM, muMM, jtag, linkIn, mask, Fwd rxs) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
 
     (muUartBytesBittide, _muUartStatus) <-
@@ -602,7 +599,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
           (unsafeFromActiveLow <$> transceivers.handshakesDone)
           NoDumpVcd
           ccConfig
-        -< (ccMM, (Fwd syncIn, ccJtag, reframe, mask, Fwd linksSuitableForCc))
+        -< (ccMM, (Fwd syncIn, ccJtag, mask, Fwd linksSuitableForCc))
 
     MM.constBwd 0b0000 -< ccUartPfx
     --          0b0001    SYNC_OUT_GENERATOR
@@ -635,12 +632,11 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
                   then swCcOut0
                   else
                     pure
-                      $ CallistoCResult
-                        { maybeSpeedChangeC = Nothing
-                        , stabilityC = repeat (Stability{stable = True, settled = True})
-                        , allStableC = True
-                        , allSettledC = True
-                        , reframingStateC = Done
+                      $ CallistoResult
+                        { maybeSpeedChange = Nothing
+                        , stability = repeat (Stability{stable = True, settled = True})
+                        , allStable = True
+                        , allSettled = True
                         }
             else swCcOut0
 
@@ -656,7 +652,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
          , syncOut
          )
 
-  ( (ccMm, muMm, jtagOut, _linkInBwd, _reframingBwd, _maskBwd, _insBwd)
+  ( (ccMm, muMm, jtagOut, _linkInBwd, _maskBwd, _insBwd)
     , ( callistoResult
         , switchDataOut
         , localCounter
@@ -676,7 +672,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
             , ()
             , jtagIn
             , pure 0 -- link in
-            , pure False -- enable reframing
             , pure maxBound -- enable mask
             , rxDatasEbs
             )
@@ -761,7 +756,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         bittideRst
         enableGen
         (SNat @Si539xHoldTime)
-        callistoResult.maybeSpeedChangeC
+        callistoResult.maybeSpeedChange
 
   rxFifos ::
     Vec

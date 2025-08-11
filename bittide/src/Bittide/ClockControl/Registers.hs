@@ -12,6 +12,7 @@ import Protocols.Wishbone
 
 import Bittide.ClockControl (RelDataCount, SpeedChange (NoChange))
 import Bittide.ClockControl.Callisto.Types (Stability (..))
+import Bittide.ClockControl.Config (CcConf (CcConf, callisto, topology), defCcConf)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Explicit.Reset (unsafeOrReset)
 import Clash.Functor.Extra ((<<$>>), (<<*>>))
@@ -19,7 +20,7 @@ import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
-  RegisterConfig (access),
+  RegisterConfig (access, description),
   deviceWbC,
   registerConfig,
   registerWbC,
@@ -43,6 +44,12 @@ applyMask ::
   Signal dom (Vec n a) ->
   Signal dom (Vec n a)
 applyMask dflt mask xs = mux <$> fmap unpack mask <*> xs <*> pure (repeat dflt)
+
+defCcConfLinks :: forall nLinks. (KnownNat nLinks) => CcConf (BitVector nLinks)
+defCcConfLinks =
+  case defCcConf (natToNum @nLinks) of
+    CcConf{callisto} ->
+      CcConf{callisto, topology = maxBound}
 
 {- | A wishbone accessible clock control interface.
 This interface receives the link mask and 'RelDataCount's from all links.
@@ -85,6 +92,7 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
     , wbMaxDataCountSeen
     , wbClearDataCountsSeen
     , wbDataCounts
+    , wbConfig
     ] <-
     deviceWbC "ClockControl" -< (mm, wb)
 
@@ -114,6 +122,9 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
       -< (wbMaxDataCountSeen, Fwd (Just <$> maxDataCountsSeen1))
   (_cd, Fwd clearDataCountsSeen) <-
     registerWbCI clearDataCountsSeenConfig False -< (wbClearDataCountsSeen, Fwd noWrite)
+
+  -- Clock control configuration
+  registerWbCI_ configConfig (defCcConfLinks @nLinks) -< (wbConfig, Fwd noWrite)
 
   let
     maskedLinksStable = applyMask True linkMask (unpack <$> linksStable)
@@ -158,6 +169,11 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
   maxDataCountsSeenConfig = (registerConfig "max_data_counts_seen"){access = ReadOnly}
   clearDataCountsSeenConfig = (registerConfig "clear_data_counts_seen"){access = WriteOnly}
   dataCountsConfig = (registerConfig "data_counts"){access = ReadOnly}
+  configConfig =
+    (registerConfig "config")
+      { description =
+          "Clock control configuration. By default, this just runs clock control on all available links with, hopefully, sensible control settings."
+      }
 
   linkMaskRev :: Signal dom (BitVector nLinks)
   linkMaskRev = pack . reverse . unpack @(Vec nLinks Bit) <$> linkMask
