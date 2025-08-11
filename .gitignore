@@ -54,6 +54,7 @@ systemverilog/
 
 # Nix output
 result*
+.pre-commit-config.yaml
 
 # Sphinx output
 _build/

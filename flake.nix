@@ -9,9 +9,13 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    pre-commit-hooks = {
+      url = "github:cachix/pre-commit-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay }: flake-utils.lib.eachDefaultSystem (
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, pre-commit-hooks }: flake-utils.lib.eachDefaultSystem (
     system:
       let
         overlays = [ (import rust-overlay) ];
@@ -26,6 +30,12 @@
         };
         pkgs = import nixpkgs {
           inherit system overlays;
+        };
+        git-hooks-config = import ./nix/git-hooks.nix { inherit pkgs; };
+        # Import your local git hooks configuration
+        preCommitHook = pre-commit-hooks.lib.${system}.run {
+          src = ./.;
+          hooks = git-hooks-config.hooks;
         };
       in {
         devShells.default = pkgs.mkShell {
@@ -101,6 +111,7 @@
 
             # Allow writing 'shake ...' instead of 'cabal run shake -- ...'
             export PATH="$(git rev-parse --show-toplevel)/nix/bin:$PATH";
+            ${preCommitHook.shellHook}
           '';
         };
       }
