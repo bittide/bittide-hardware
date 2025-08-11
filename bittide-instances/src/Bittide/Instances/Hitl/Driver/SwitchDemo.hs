@@ -26,6 +26,7 @@ import Data.Bifunctor (Bifunctor (bimap))
 import Data.Maybe (fromJust, fromMaybe)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
+import Gdb (Gdb)
 import Numeric (showHex)
 import Project.FilePath
 import Project.Handle
@@ -34,6 +35,7 @@ import System.Exit
 import System.FilePath
 import System.IO
 import System.Process (StdStream (CreatePipe, UseHandle))
+import System.Timeout.Extra (tryWithTimeout, tryWithTimeoutOn)
 import Text.Read (readMaybe)
 import Text.Show.Pretty (ppShow)
 import Vivado.Tcl (HwTarget)
@@ -41,11 +43,11 @@ import Vivado.VivadoM
 import "extra" Data.List.Extra (trim)
 
 import qualified Bittide.Calculator as Calc
-import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Clash.Sized.Vector as V (fromList)
 import qualified Data.List as L
+import qualified Gdb
 
 data OcdInitData = OcdInitData
   { muPort :: Int
@@ -152,8 +154,7 @@ muCaptureUgnAddresses =
  where
   ugnDevices = baseAddresses memoryMapMu "CaptureUgn"
 
-dumpCcSamples ::
-  (HasCallStack) => FilePath -> CcConf Topology -> [ProcessHandles] -> IO ()
+dumpCcSamples :: (HasCallStack) => FilePath -> CcConf Topology -> [Gdb] -> IO ()
 dumpCcSamples hitlDir ccConf ccGdbs = do
   mapConcurrently_ Gdb.interrupt ccGdbs
   nSamples <- liftIO $ zipWithConcurrently go ccGdbs ccSamplesPaths
@@ -161,7 +162,7 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
   saveCcConfig hitlDir ccConf
   putStrLn [i|Wrote configs and samples to: #{hitlDir}|]
  where
-  go :: (HasCallStack) => ProcessHandles -> FilePath -> IO Word
+  go :: (HasCallStack) => Gdb -> FilePath -> IO Word
   go gdb dumpPath = do
     nSamplesWritten <-
       Gdb.readSingleGdbValue
@@ -228,7 +229,7 @@ initGdb ::
   String ->
   Int ->
   (HwTarget, DeviceInfo) ->
-  IO (ProcessHandles, IO ())
+  IO (Gdb, IO ())
 initGdb hitlDir binName gdbPort (hwT, d) = do
   putStrLn $ "Starting GDB for target " <> d.deviceId <> " with bin name " <> binName
 
@@ -282,7 +283,7 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
 
   pure (pico, cleanup)
 
-ccGdbCheck :: ProcessHandles -> VivadoM ExitCode
+ccGdbCheck :: Gdb -> VivadoM ExitCode
 ccGdbCheck gdb = do
   liftIO
     $ Gdb.runCommands
@@ -307,7 +308,7 @@ ccGdbCheck gdb = do
  where
   whoAmIBase = showHex32 $ ccBaseAddress @Integer "WhoAmI"
 
-muGdbCheck :: ProcessHandles -> VivadoM ExitCode
+muGdbCheck :: Gdb -> VivadoM ExitCode
 muGdbCheck gdb = do
   liftIO
     $ Gdb.runCommands
@@ -357,7 +358,7 @@ driver testName targets = do
     hitlDir = projectDir </> "_build/hitl" </> testName
 
     muGetUgns ::
-      (HwTarget, DeviceInfo) -> ProcessHandles -> IO [(Unsigned 64, Unsigned 64)]
+      (HwTarget, DeviceInfo) -> Gdb -> IO [(Unsigned 64, Unsigned 64)]
     muGetUgns (_, d) gdb = do
       let
         mmioAddrs :: [String]
@@ -390,7 +391,7 @@ driver testName targets = do
       liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
       liftIO $ mapM readUgnMmio mmioAddrs
 
-    muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> ProcessHandles -> IO ()
+    muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO ()
     muReadPeBuffer (_, d) gdb = do
       putStrLn $ "Reading PE buffer from device " <> d.deviceId
       let
@@ -415,7 +416,7 @@ driver testName targets = do
     muGetCurrentTime ::
       (HasCallStack) =>
       (HwTarget, DeviceInfo) ->
-      ProcessHandles ->
+      Gdb ->
       IO (Unsigned 64)
     muGetCurrentTime (_, d) gdb = do
       putStrLn $ "Getting current time from device " <> d.deviceId
@@ -473,7 +474,7 @@ driver testName targets = do
     muWriteCfg ::
       (HasCallStack) =>
       (HwTarget, DeviceInfo) ->
-      ProcessHandles ->
+      Gdb ->
       Calc.CyclePeConfig (Unsigned 64) (Index 9) ->
       VivadoM ()
     muWriteCfg target@(_, d) gdb (bimap pack fromIntegral -> cfg) = do
@@ -503,14 +504,14 @@ driver testName targets = do
 
     finalCheck ::
       (HasCallStack) =>
-      [ProcessHandles] ->
+      [Gdb] ->
       [Calc.CyclePeConfig (Unsigned 64) (Index 9)] ->
       VivadoM ExitCode
     finalCheck [] _ = fail "Should pass in two or more GDBs for the final check!"
     finalCheck (_ : []) _ = fail "Should pass in two or more GDBs for the final check!"
     finalCheck gdbs@(headGdb : _) configs = do
       let
-        perDeviceCheck :: ProcessHandles -> Int -> IO Bool
+        perDeviceCheck :: Gdb -> Int -> IO Bool
         perDeviceCheck myGdb num = do
           let
             headBaseAddr = muBaseAddress "SwitchDemoPE" + 0x28

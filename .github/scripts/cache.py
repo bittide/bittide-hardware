@@ -176,6 +176,8 @@ def get_clash_key():
         "bittide-instances/src/Bittide/Instances/Hitl/Utils/",
         "bittide-instances/src/Bittide/Instances/Hitl/Post/",
         "bittide-instances/bin",
+        "gdb-hs/",
+        "vivado-hs/",
     )
     files = get_git_files_from_patterns(CLASH_KEY_PATTERNS)
     files = (f for f in files if not f.startswith(exclude))

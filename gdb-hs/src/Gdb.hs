@@ -1,43 +1,57 @@
--- SPDX-FileCopyrightText: 2024 Google LLC
+-- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE PackageImports #-}
 
-module Bittide.Instances.Hitl.Utils.Gdb where
+module Gdb where
 
-import Bittide.Instances.Hitl.Utils.Driver (tryWithTimeout)
-import Bittide.Instances.Hitl.Utils.Program
-import Clash.Prelude
+import Prelude
+
 import Control.Concurrent (withMVar)
 import Control.Monad (forM_)
-import Control.Monad.Catch
-import Control.Monad.IO.Class
+import Control.Monad.Catch (MonadMask, finally)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Numeric (showHex)
-import Project.Handle
-import System.IO
+import Project.Handle (
+  Error (Error, Ok),
+  Filter (Continue, Stop),
+  expectLine,
+  readUntil,
+  readUntilLine,
+  waitForLine,
+ )
+import System.IO (Handle, hPutStrLn)
 import System.Posix (sigINT, signalProcess)
 import System.Process
 import System.Process.Internals (
   ProcessHandle (ProcessHandle, phandle),
   ProcessHandle__ (ClosedHandle, OpenExtHandle, OpenHandle),
  )
-import System.Timeout
+import System.Timeout (timeout)
+import System.Timeout.Extra (tryWithTimeout)
 
 import qualified Data.List as L
 import qualified "extra" Data.List.Extra as L
 
-withGdb :: (MonadIO m, MonadMask m) => (ProcessHandles -> m a) -> m a
+data Gdb = Gdb
+  { stdinHandle :: Handle
+  , stdoutHandle :: Handle
+  , stderrHandle :: Handle
+  , process :: ProcessHandle
+  }
+
+withGdb :: (MonadIO m, MonadMask m) => (Gdb -> m a) -> m a
 withGdb action = do
   (gdb, clean) <- liftIO startGdb
   finally (action gdb) (liftIO clean)
 
-startGdb :: IO (ProcessHandles, IO ())
+startGdb :: IO (Gdb, IO ())
 startGdb = (\(a, _, c) -> (a, c)) <$> startGdbH
 
-startGdbH :: IO (ProcessHandles, ProcessHandle, IO ())
+startGdbH :: IO (Gdb, ProcessHandle, IO ())
 startGdbH = do
   let
     gdbProc = (proc "gdb" []){std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe}
@@ -47,7 +61,7 @@ startGdbH = do
 
   let
     gdbHandles' =
-      ProcessHandles
+      Gdb
         { stdinHandle = fromJust gdbStdin
         , stdoutHandle = fromJust gdbStdout
         , stderrHandle = fromJust gdbStderr
@@ -73,13 +87,13 @@ stripOutput s0 = s3
   s2 = fromMaybe s1 (L.stripPrefix "(gdb)" s1)
   s3 = L.trim s2
 
-continue :: ProcessHandles -> IO ()
+continue :: Gdb -> IO ()
 continue gdb = runCommands gdb.stdinHandle ["continue"]
 
 {- | Send @SIGINT@ to the GDB process. This will pause the execution of the
 program being debugged and return control to GDB.
 -}
-interrupt :: (HasCallStack) => ProcessHandles -> IO ()
+interrupt :: (HasCallStack) => Gdb -> IO ()
 interrupt gdb =
   case gdb.process of
     ProcessHandle{phandle} ->
@@ -92,7 +106,7 @@ interrupt gdb =
 {- | Load a preset binary onto the CPU. This will also run 'compareSections' to
 ensure that the binary was loaded correctly.
 -}
-loadBinary :: ProcessHandles -> IO Error
+loadBinary :: Gdb -> IO Error
 loadBinary gdb = do
   runCommands gdb.stdinHandle ["load"]
   let
@@ -109,7 +123,7 @@ loadBinary gdb = do
 {- | Runs "compare-sections" in gdb and parses the resulting output.
 If any of the hash values do not match, this function will throw an error.
 -}
-compareSections :: ProcessHandles -> IO Error
+compareSections :: Gdb -> IO Error
 compareSections gdb = do
   let
     startMsg = "Comparing sections"
@@ -120,8 +134,8 @@ compareSections gdb = do
   echo gdb.stdinHandle doneMsg
   sectionLines <- readUntilLine gdb.stdoutHandle doneMsg
   mapM_ (putStrLn . ("Got: " <>)) sectionLines
-  pure
-    $ if all isMatchOrEmpty sectionLines
+  pure $
+    if all isMatchOrEmpty sectionLines
       then Ok
       else Error "Some sections did not match"
  where
@@ -133,18 +147,18 @@ compareSections gdb = do
       _ -> False
 
 -- | Enables logging to a file in gdb.
-setLogging :: ProcessHandles -> FilePath -> IO ()
+setLogging :: Gdb -> FilePath -> IO ()
 setLogging gdb logPath = do
-  runCommands gdb.stdinHandle
-    $ [ "set logging file " <> logPath
-      , "set logging overwrite on"
-      , "set logging enabled on"
-      ]
+  runCommands gdb.stdinHandle $
+    [ "set logging file " <> logPath
+    , "set logging overwrite on"
+    , "set logging enabled on"
+    ]
 
 dumpMemoryRegion ::
   (HasCallStack) =>
   -- | GDB process handles
-  ProcessHandles ->
+  Gdb ->
   -- | File path to dump the memory region to (binary format)
   FilePath ->
   -- | Start address of the memory region
@@ -169,23 +183,23 @@ dumpMemoryRegion gdb filePath start end = do
     Nothing -> error "Dumping samples timed out"
 
 -- | Sets the target to be debugged in gdb, must be a port number.
-setTarget :: ProcessHandles -> Int -> IO ()
+setTarget :: Gdb -> Int -> IO ()
 setTarget gdb port = do
   runCommands gdb.stdinHandle ["target extended-remote :" <> show port]
 
 -- | Sets the file to be debugged in gdb.
-setFile :: ProcessHandles -> FilePath -> IO ()
+setFile :: Gdb -> FilePath -> IO ()
 setFile gdb filePath = do
   runCommands gdb.stdinHandle ["file " <> filePath]
 
-setTimeout :: ProcessHandles -> Maybe Int -> IO ()
+setTimeout :: Gdb -> Maybe Int -> IO ()
 setTimeout gdb Nothing = do
   runCommands gdb.stdinHandle ["set remotetimeout unlimited"]
 setTimeout gdb (Just (show -> time)) = do
   runCommands gdb.stdinHandle ["set remotetimeout " <> time]
 
 -- | Sets breakpoints on functions in gdb.
-setBreakpoints :: ProcessHandles -> [String] -> IO ()
+setBreakpoints :: Gdb -> [String] -> IO ()
 setBreakpoints gdb breakpoints = do
   let echoMsg = "breakpoints set"
   runCommands gdb.stdinHandle $ (fmap ("break " <>) breakpoints)
@@ -198,7 +212,7 @@ setBreakpoints gdb breakpoints = do
 {- | Sets a hook to run when a breakpoint is hit.
 The hook will print the register values, backtrace, and quit gdb.
 -}
-setBreakpointHook :: ProcessHandles -> IO ()
+setBreakpointHook :: Gdb -> IO ()
 setBreakpointHook gdb = do
   runCommands
     gdb.stdinHandle
@@ -211,7 +225,7 @@ setBreakpointHook gdb = do
     ]
 
 -- | Execute a single command and read its (single line) output
-readSingleGdbValue :: ProcessHandles -> String -> String -> IO String
+readSingleGdbValue :: Gdb -> String -> String -> IO String
 readSingleGdbValue gdb value cmd = do
   let
     startString = "START OF READ (" <> value <> ")"
@@ -223,11 +237,11 @@ readSingleGdbValue gdb value cmd = do
     , "printf \"" <> endString <> "\\n\""
     ]
   _ <-
-    tryWithTimeout ("GDB read prepare: " <> value) 15_000_000
-      $ readUntil gdb.stdoutHandle startString
+    tryWithTimeout ("GDB read prepare: " <> value) 15_000_000 $
+      readUntil gdb.stdoutHandle startString
   untrimmed <-
-    tryWithTimeout ("GDB read: " <> value) 15_000_000
-      $ readUntil gdb.stdoutHandle endString
+    tryWithTimeout ("GDB read: " <> value) 15_000_000 $
+      readUntil gdb.stdoutHandle endString
   let
     trimmed = L.trim untrimmed
     gdbLines = L.lines trimmed

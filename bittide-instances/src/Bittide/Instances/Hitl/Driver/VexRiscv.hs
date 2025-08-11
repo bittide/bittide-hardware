@@ -26,11 +26,11 @@ import System.Exit
 import System.FilePath
 import System.IO
 
-import qualified Bittide.Instances.Hitl.Utils.Driver as D
-import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Data.List as L
+import qualified Gdb
+import qualified System.Timeout.Extra as T
 
 driverFunc ::
   String ->
@@ -105,7 +105,7 @@ driverFunc _name targets = do
 
             tryWithTimeout :: String -> Int -> IO a -> IO a
             tryWithTimeout n t io =
-              catch (D.tryWithTimeout n t io)
+              catch (T.tryWithTimeout n t io)
                 $ \(err :: SomeException) -> loggingSequence >> throwM err
 
           tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000

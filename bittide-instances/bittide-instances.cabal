@@ -191,7 +191,6 @@ library
     Bittide.Instances.Hitl.Tests
     Bittide.Instances.Hitl.Transceivers
     Bittide.Instances.Hitl.Utils.Driver
-    Bittide.Instances.Hitl.Utils.Gdb
     Bittide.Instances.Hitl.Utils.OpenOcd
     Bittide.Instances.Hitl.Utils.Picocom
     Bittide.Instances.Hitl.Utils.Program
@@ -212,7 +211,6 @@ library
     Bittide.Instances.Tests.ScatterGather
     Bittide.Instances.Tests.SwitchCalendar
     Paths.Bittide.Instances
-    Project.Handle
 
   other-modules:
     Paths_bittide_instances
@@ -243,6 +241,7 @@ library
     exceptions,
     extra,
     filepath,
+    gdb-hs,
     ghc-typelits-extra-lemmas,
     lift-type,
     lifted-base,

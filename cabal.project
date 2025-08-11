@@ -11,6 +11,7 @@ packages:
   clash-bitpackc/
   clash-protocols-memmap/
   clash-vexriscv/clash-vexriscv/
+  gdb-hs/
   ghc-typelits-extra-lemmas/
   vivado-hs/
 

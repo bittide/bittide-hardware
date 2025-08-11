@@ -9,5 +9,6 @@ exec cabal repl \
   clash-bitpackc \
   clash-protocols-memmap \
   ghc-typelits-extra-lemmas \
+  gdb-hs \
   vivado-hs \
   $@

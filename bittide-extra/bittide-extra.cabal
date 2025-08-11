@@ -146,8 +146,14 @@ library
   build-depends:
     async,
     base,
+    bytestring,
     clash-prelude,
     containers,
+    extra,
+    lifted-base,
+    monad-control,
+    tasty-hunit,
+    word8,
 
   exposed-modules:
     Bittide.Extra.Maybe
@@ -157,7 +163,9 @@ library
     Control.Concurrent.Async.Extra
     Data.List.Extra
     Numeric.Extra
+    Project.Handle
     Protocols.Extra
+    System.Timeout.Extra
 
 test-suite unittests
   import: ghc2024, clash, extra, sane-records

@@ -16,12 +16,7 @@ import Bittide.Instances.Hitl.Driver.SwitchDemo (
   initPicocom,
  )
 import Bittide.Instances.Hitl.Setup (FpgaCount)
-import Bittide.Instances.Hitl.Utils.Driver (
-  assertProbe,
-  awaitHandshakes,
-  tryWithTimeout,
-  tryWithTimeoutFinally,
- )
+import Bittide.Instances.Hitl.Utils.Driver (assertProbe, awaitHandshakes)
 import Bittide.Instances.Hitl.Utils.Program (ProcessHandles (stdoutHandle), brackets)
 import Control.Concurrent.Async (forConcurrently_)
 import Control.Monad (forM_)
@@ -30,11 +25,12 @@ import Project.FilePath (findParentContaining)
 import Project.Handle (errorToException, waitForLine)
 import System.Exit (ExitCode (ExitSuccess))
 import System.FilePath ((</>))
+import System.Timeout.Extra (tryWithTimeout, tryWithTimeoutFinally)
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
 
-import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Data.List as L
+import qualified Gdb
 
 driverFunc ::
   String ->
