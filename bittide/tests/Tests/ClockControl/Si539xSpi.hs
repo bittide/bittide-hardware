@@ -49,7 +49,7 @@ si5391Mock sck mosi ss = readFromBiSignal miso
 
   slaveIn =
     si5391Model
-      (deepErrorX "", deepErrorX "", Map.fromList [(0x00FE, 0xF), (0x00C0, 0x00)])
+      (deepErrorX "", deepErrorX "", Map.fromList [(0x00FE, 0xF), (0x000C, 0x00)])
       slaveOut
 
   si5391Model ::
