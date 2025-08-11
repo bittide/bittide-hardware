@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE PackageImports #-}
 
 module Bittide.Instances.Hitl.Driver.SwCcTopologies where
 
@@ -17,7 +18,7 @@ import Bittide.Instances.Hitl.Driver.SwitchDemo (
  )
 import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.Utils.Driver (assertProbe, awaitHandshakes)
-import Bittide.Instances.Hitl.Utils.Program (ProcessHandles (stdoutHandle), brackets)
+import Bittide.Instances.Hitl.Utils.Program (ProcessHandles (stdoutHandle))
 import Control.Concurrent.Async (forConcurrently_)
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -28,6 +29,7 @@ import System.FilePath ((</>))
 import System.Timeout.Extra (tryWithTimeout, tryWithTimeoutFinally)
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
+import "bittide-extra" Control.Exception.Extra (brackets)
 
 import qualified Data.List as L
 import qualified Gdb

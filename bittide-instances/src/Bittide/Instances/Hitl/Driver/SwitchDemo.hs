@@ -40,6 +40,7 @@ import Text.Read (readMaybe)
 import Text.Show.Pretty (ppShow)
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
+import "bittide-extra" Control.Exception.Extra (brackets)
 import "extra" Data.List.Extra (trim)
 
 import qualified Bittide.Calculator as Calc

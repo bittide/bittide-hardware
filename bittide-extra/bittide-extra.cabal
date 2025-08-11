@@ -149,6 +149,7 @@ library
     bytestring,
     clash-prelude,
     containers,
+    exceptions,
     extra,
     lifted-base,
     monad-control,
@@ -161,6 +162,7 @@ library
     Clash.Explicit.Signal.Extra
     Clash.Sized.Vector.Extra
     Control.Concurrent.Async.Extra
+    Control.Exception.Extra
     Data.List.Extra
     Numeric.Extra
     Project.Handle

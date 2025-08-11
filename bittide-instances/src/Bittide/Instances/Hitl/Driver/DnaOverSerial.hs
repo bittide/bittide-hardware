@@ -1,12 +1,12 @@
 -- SPDX-FileCopyrightText: 2024 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE PackageImports #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
 module Bittide.Instances.Hitl.Driver.DnaOverSerial where
 
 import Clash.Prelude
-import Prelude ()
 
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup
@@ -14,9 +14,7 @@ import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Vivado
 import Control.Monad.Extra
 import Control.Monad.IO.Class
-import qualified Data.ByteString as BS
 import Data.ByteString.Internal (w2c)
-import qualified Data.List as L
 import Data.Maybe
 import Data.Word8 (isHexDigit)
 import Numeric
@@ -29,8 +27,11 @@ import System.Timeout
 import Test.Tasty.HUnit
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
+import "bittide-extra" Control.Exception.Extra (brackets)
 
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
+import qualified Data.ByteString as BS
+import qualified Data.List as L
 
 {- | Test that all FPGAs that are programmed with `dnaOverSerial` transmit the
 DNA that we expect based on the DeviceInfo.

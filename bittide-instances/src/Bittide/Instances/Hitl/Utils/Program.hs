@@ -8,16 +8,9 @@ import Prelude
 
 import Paths_bittide_instances
 
-import Control.Monad.Catch
 import System.IO
 import System.Process
 import System.Timeout (timeout)
-
-brackets :: (MonadMask m) => [m a] -> (a -> m b) -> ([a] -> m c) -> m c
-brackets acqs rel act = go [] acqs
- where
-  go resL [] = act (reverse resL)
-  go resL (acq : acqs1) = bracket acq rel $ \res -> go (res : resL) acqs1
 
 getTcpSprayPath :: IO FilePath
 getTcpSprayPath = getDataFileName "data/tcpspray/start.sh"
