@@ -7,6 +7,7 @@ module System.Timeout.Extra where
 import Prelude
 
 import Control.Monad (void)
+import GHC.Stack (HasCallStack, callStack, prettyCallStack)
 
 import qualified Control.Monad.Trans.Control as CMTC
 import qualified System.Timeout.Lifted as STL
@@ -16,7 +17,7 @@ timeout is hit.
 -}
 tryWithTimeout ::
   forall m a.
-  (CMTC.MonadBaseControl IO m, MonadFail m) =>
+  (HasCallStack, CMTC.MonadBaseControl IO m, MonadFail m) =>
   String ->
   Int ->
   m a ->
@@ -29,7 +30,7 @@ work with 'System.Timeout.Lifted.timeout'.
 -}
 tryWithTimeoutOn ::
   forall m a b.
-  (CMTC.MonadBaseControl IO m, MonadFail m) =>
+  (HasCallStack, CMTC.MonadBaseControl IO m, MonadFail m) =>
   String ->
   Int ->
   m b ->
@@ -40,7 +41,11 @@ tryWithTimeoutOn actionName duration onTimeout action = do
   case result of
     Nothing -> do
       void onTimeout
-      fail $ "Timeout while performing action: " <> actionName
+      fail $
+        "Timeout while performing action: "
+          <> actionName
+          <> ". Stack:\n\n"
+          <> prettyCallStack callStack
     Just r -> do
       pure r
 
@@ -49,7 +54,7 @@ of whether the timeout was hit or not.
 -}
 tryWithTimeoutFinally ::
   forall m a b.
-  (CMTC.MonadBaseControl IO m, MonadFail m) =>
+  (HasCallStack, CMTC.MonadBaseControl IO m, MonadFail m) =>
   String ->
   Int ->
   m b ->
