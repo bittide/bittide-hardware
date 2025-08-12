@@ -57,5 +57,16 @@
     # rustfmt.enable = true;
     # cargo-check.enable = true;
     # clippy.enable = true;
+    # rustfmt.enable = true;
+    update-ci-yml = {
+      enable = true;
+      name = "Create ci.yml from ci.src";
+      entry = ".github/scripts/update-ci-yml.sh";
+      # 2. Make the `files` pattern more specific (good practice).
+      files = "\\.github/workflows/ci\\.src";
+      stages = [ "pre-commit" ];
+      pass_filenames = false;
+      verbose = true;
+    };
   };
 }
