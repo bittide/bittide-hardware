@@ -233,12 +233,13 @@ initGdb ::
   (HwTarget, DeviceInfo) ->
   IO ()
 initGdb hitlDir binName gdb gdbPort (hwT, _d) = do
-  Gdb.setLogging gdb $ hitlDir
+  Gdb.setLogging gdb
+    $ hitlDir
     </> "gdb-" <> binName <> "-" <> show (getTargetIndex hwT) <> ".log"
   Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> binName
   Gdb.setTarget gdb gdbPort
   Gdb.setTimeout gdb Nothing
-  Gdb.runCommands gdb.stdin ["echo connected to target device"]
+  Gdb.runCommand gdb "echo connected to target device"
   pure ()
 
 initPicocom :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO (ProcessHandles, IO ())
@@ -276,53 +277,21 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
 
 ccGdbCheck :: Gdb -> VivadoM ExitCode
 ccGdbCheck gdb = do
-  liftIO
-    $ Gdb.runCommands
-      gdb.stdin
-      [ "echo START OF WHOAMI\\n"
-      , "x/4cb " <> whoAmIBase
-      , "echo END OF WHOAMI\\n"
-      ]
-  _ <-
-    liftIO
-      $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
-      $ readUntil gdb.stdout "START OF WHOAMI"
-  gdbRead <-
-    liftIO
-      $ tryWithTimeout "Reading CC whoami over GDB" 15_000_000
-      $ readUntil gdb.stdout "END OF WHOAMI"
-  let
-    idLine = trim . L.head . lines $ trim gdbRead
-    success = idLine == "(gdb) " <> whoAmIBase <> ":\t115 's'\t119 'w'\t99 'c'\t99 'c'"
-  liftIO $ putStrLn [i|Output from CC whoami probe:\n#{idLine}|]
-  return $ if success then ExitSuccess else ExitFailure 1
- where
-  whoAmIBase = showHex32 $ ccBaseAddress @Integer "WhoAmI"
+  let whoAmIBase = showHex32 $ ccBaseAddress @Integer "WhoAmI"
+  output <- liftIO $ Gdb.readCommand1 gdb [i|x/4cb #{whoAmIBase}|]
+  pure
+    $ if output == whoAmIBase <> ":\t115 's'\t119 'w'\t99 'c'\t99 'c'"
+      then ExitSuccess
+      else ExitFailure 1
 
 muGdbCheck :: Gdb -> VivadoM ExitCode
 muGdbCheck gdb = do
-  liftIO
-    $ Gdb.runCommands
-      gdb.stdin
-      [ "echo START OF WHOAMI\\n"
-      , "x/4cb " <> whoAmIBase
-      , "echo END OF WHOAMI\\n"
-      ]
-  _ <-
-    liftIO
-      $ tryWithTimeout "Waiting for GDB to be ready to proceed" 15_000_000
-      $ readUntil gdb.stdout "START OF WHOAMI"
-  gdbRead <-
-    liftIO
-      $ tryWithTimeout "Reading MU whoami over GDB" 15_000_000
-      $ readUntil gdb.stdout "END OF WHOAMI"
-  let
-    idLine = trim . L.head . lines $ trim gdbRead
-    success = idLine == "(gdb) " <> whoAmIBase <> ":\t109 'm'\t103 'g'\t109 'm'\t116 't'"
-  liftIO $ putStrLn [i|Output from MU whoami probe:\n#{idLine}|]
-  return $ if success then ExitSuccess else ExitFailure 1
- where
-  whoAmIBase = showHex32 $ muBaseAddress @Integer "WhoAmI"
+  let whoAmIBase = showHex32 $ muBaseAddress @Integer "WhoAmI"
+  output <- liftIO $ Gdb.readCommand1 gdb [i|x/4cb #{whoAmIBase}|]
+  pure
+    $ if output == whoAmIBase <> ":\t109 'm'\t103 'g'\t109 'm'\t116 't'"
+      then ExitSuccess
+      else ExitFailure 1
 
 foldExitCodes :: VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
 foldExitCodes prev code = do
@@ -357,27 +326,11 @@ driver testName targets = do
 
         readUgnMmio :: String -> IO (Unsigned 64, Unsigned 64)
         readUgnMmio addr = do
-          let
-            startString = "START OF UGN (" <> addr <> ")"
-            endString = "END OF UGN (" <> addr <> ")"
-          Gdb.runCommands
-            gdb.stdin
-            [ "printf \"" <> startString <> "\\n\""
-            , "x/2xg " <> addr
-            , "printf \"" <> endString <> "\\n\""
-            ]
-          _ <-
-            tryWithTimeout "Waiting for GDB to be ready for UGN readout" 15_000_000
-              $ readUntil gdb.stdout startString
-          gdbRead <-
-            tryWithTimeout "Reading UGN over GDB" 15_000_000 $ readUntil gdb.stdout endString
-          let
-            outputLine = L.head $ L.lines $ trim gdbRead
-            outputDataWords = L.words $ trim $ outputLine
-          putStrLn $ "GDB output: {{\n" <> gdbRead <> "}}"
+          output <- Gdb.readCommand1 gdb [i|x/2xg #{addr}|]
+          let outputDataWords = L.words output
           case L.drop (L.length outputDataWords - 2) outputDataWords of
             [read -> txIJ, read -> rxIJ] -> return (txIJ, rxIJ)
-            other -> fail [i|Could not read output data. Line: '#{outputLine}', data: #{other}|]
+            other -> fail [i|Could not read output data. Line: '#{output}', data: #{other}|]
 
       liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
       liftIO $ mapM readUgnMmio mmioAddrs
@@ -387,22 +340,10 @@ driver testName targets = do
       putStrLn $ "Reading PE buffer from device " <> d.deviceId
       let
         start = muBaseAddress @Integer "SwitchDemoPE"
-        startString = "START OF PEBUF (" <> d.deviceId <> ")"
-        endString = "END OF PEBUF (" <> d.deviceId <> ")"
         bufferSize :: Integer
         bufferSize = (snatToNum (SNat @FpgaCount)) * 3
-      Gdb.runCommands
-        gdb.stdin
-        [ "printf \"" <> startString <> "\\n\""
-        , [i|x/#{bufferSize}xg #{showHex32 (start + 0x28)}|]
-        , "printf \"" <> endString <> "\\n\""
-        ]
-      _ <-
-        tryWithTimeout "Waiting for GDB to be ready for PE buffer readout" 15_000_000
-          $ readUntil gdb.stdout startString
-      bufInit <-
-        tryWithTimeout "PE buffer readout" 15_000_000 $ readUntil gdb.stdout endString
-      putStrLn $ "PE buffer readout:\n" <> bufInit
+      output <- Gdb.readCommandRaw gdb [i|x/#{bufferSize}xg #{showHex32 (start + 0x28)}|]
+      putStrLn [i|PE buffer readout: #{output}|]
 
     muGetCurrentTime ::
       (HasCallStack) =>
@@ -413,22 +354,8 @@ driver testName targets = do
       putStrLn $ "Getting current time from device " <> d.deviceId
       let timerBase = muBaseAddress @Integer "Timer"
       -- Write capture command to `timeWb` component
-      Gdb.runCommands gdb.stdin [[i|set {char[4]}(#{showHex32 timerBase}) = 0x0|]]
-      let
-        currentStringLsbs = "START OF STARTTIME LSBS"
-        endStringLsbs = "END OF STARTTIME LSBS"
-      Gdb.runCommands
-        gdb.stdin
-        [ "printf \"" <> currentStringLsbs <> "\\n\""
-        , [i|x/1xw #{showHex32 (timerBase + 0x8)}|]
-        , "printf \"" <> endStringLsbs <> "\\n\""
-        ]
-      _ <-
-        tryWithTimeout "Waiting for GDB to be ready for curtime lsbs readout" 15_000_000
-          $ readUntil gdb.stdout currentStringLsbs
-      currentStringLsbs0 <-
-        tryWithTimeout "Current time lsbs readout" 15_000_000
-          $ readUntil gdb.stdout endStringLsbs
+      Gdb.runCommand gdb [i|set {char[4]}(#{showHex32 timerBase}) = 0x0|]
+      currentStringLsbs0 <- Gdb.readCommand1 gdb [i|x/1xw #{showHex32 (timerBase + 0x8)}|]
       let
         currentStringLsbs1 = trim $ L.head $ lines $ L.drop 2 $ L.dropWhile (/= ':') currentStringLsbs0
         currentTimeLsbsI :: Integer
@@ -437,21 +364,7 @@ driver testName targets = do
         currentTimeLsbs = fromIntegral currentTimeLsbsI
       putStrLn $ "GDB said: " <> show currentStringLsbs1
       putStrLn $ "I read: " <> show currentTimeLsbs
-      let
-        currentStringMsbs = "START OF CURTIME MSBS"
-        endStringMsbs = "END OF CURTIME MSBS"
-      Gdb.runCommands
-        gdb.stdin
-        [ "printf \"" <> currentStringMsbs <> "\\n\""
-        , [i|x/1xw #{showHex32 (timerBase + 0xC)}|]
-        , "printf \"" <> endStringMsbs <> "\\n\""
-        ]
-      _ <-
-        tryWithTimeout "Waiting for GDB to be ready for curtime msbs readout" 15_000_000
-          $ readUntil gdb.stdout currentStringMsbs
-      currentStringMsbs0 <-
-        tryWithTimeout "Current time msbs readout" 15_000_000
-          $ readUntil gdb.stdout endStringMsbs
+      currentStringMsbs0 <- Gdb.readCommand1 gdb [i|x/1xw #{showHex32 (timerBase + 0xC)}|]
       let
         currentStringMsbs1 = trim $ L.head $ lines $ L.drop 2 $ L.dropWhile (/= ':') currentStringMsbs0
         currentTimeMsbsI :: Integer
@@ -484,7 +397,7 @@ driver testName targets = do
         muReadPeBuffer target gdb
         putStrLn $ "Writing config to device " <> d.deviceId
         Gdb.runCommands
-          gdb.stdin
+          gdb
           ( L.concat
               [ write64 (start + 0) cfg.startReadAt
               , write64 (start + 8) cfg.readForN

@@ -125,7 +125,8 @@ metaCycleIndication = property $ do
     maxCalDepth = d10
     durations = cycle $ fmap (P.length . unrollCalendar) [toList calA, toList calB]
     expected =
-      L.take simLength $ False
+      L.take simLength
+        $ False
         : (P.concatMap (\d -> P.replicate (fromIntegral d - 1) False <> [True]) durations)
     calCtrl = fromList @_ @System $ P.repeat (CalendarControl Nothing Nothing 0 True)
     topEntity :: Signal System Bool

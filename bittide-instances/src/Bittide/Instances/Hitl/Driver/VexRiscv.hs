@@ -123,12 +123,8 @@ driverFunc _name targets = do
               putStrLn "Testing whether breakpoints work"
               Gdb.setBreakpoints gdb ["hello::test_success"]
               Gdb.continue gdb
-
-              Gdb.echo gdb.stdin "breakpoint reached"
-              tryWithTimeout "Waiting for \"breakpoint reached\"" 10_000_000
-                $ waitForLine gdb.stdout "breakpoint reached"
-
-              Gdb.runCommands gdb.stdin ["disable 1"]
+              Gdb.echo gdb "breakpoint reached"
+              Gdb.runCommand gdb "disable 1"
               Gdb.continue gdb
 
             -- This is the last thing that will print when the FPGA has been programmed
