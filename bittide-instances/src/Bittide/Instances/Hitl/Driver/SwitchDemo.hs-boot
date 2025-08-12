@@ -11,4 +11,4 @@ import System.Exit (ExitCode)
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
 
-driver :: HasCallStack => String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCode
+driver :: (HasCallStack) => String -> [(HwTarget, DeviceInfo)] -> VivadoM ExitCode
