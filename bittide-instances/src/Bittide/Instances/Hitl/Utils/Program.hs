@@ -6,8 +6,6 @@ module Bittide.Instances.Hitl.Utils.Program where
 
 import Prelude
 
-import Paths_bittide_instances
-
 import Control.Monad.Catch
 import System.IO
 import System.Process
@@ -18,9 +16,6 @@ brackets acqs rel act = go [] acqs
  where
   go resL [] = act (reverse resL)
   go resL (acq : acqs1) = bracket acq rel $ \res -> go (res : resL) acqs1
-
-getTcpSprayPath :: IO FilePath
-getTcpSprayPath = getDataFileName "data/tcpspray/start.sh"
 
 data ProcessHandles = ProcessHandles
   { stdinHandle :: Handle
