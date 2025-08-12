@@ -16,7 +16,6 @@ import Clash.Cores.UART (ValidBaud, uart)
 import Clash.Cores.Xilinx.Ila (Depth, IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Clash.Debug
-import Clash.Sized.Vector.ToTuple (VecToTuple (vecToTuple))
 import Clash.Util.Interpolate
 import Data.Bifunctor
 import Data.Bool (bool)
@@ -30,12 +29,14 @@ import Protocols.Wishbone
 
 -- internal imports
 import Bittide.DoubleBufferedRam
+import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 
 -- qualified imports
 
 import qualified Data.List as L
 import qualified Protocols.MemoryMap as MM
+import qualified Protocols.MemoryMap.Registers.WishboneStandard as MM
 import qualified Protocols.Wishbone as Wishbone
 
 {- $setup
@@ -676,38 +677,16 @@ wbToVec readableData WishboneM2S{..} = (writtenData, wbS2M)
   wbS2M = (emptyWishboneS2M @(Bytes 4)){acknowledge, readData, err}
 
 data TimeCmd = Capture | WaitForCmp
-  deriving (Eq, Generic, NFDataX, BitPack, ToFieldType, BitPackC)
+  deriving (Eq, Generic, Show, NFDataX, BitPack, ToFieldType, BitPackC)
 
 {- | Wishbone accessible circuit that contains a free running 64 bit counter with stalling
 capabilities.
-
-The word-aligned address layout of the Wishbone interface is as follows:
-
-+--------------+-------------------+--------------+---------------+
-| Field number | Field description | Field name   | Offset (in B) |
-+==============+===================+==============+===============+
-| 0            | Timer command     | 'timer_cmd'  | 0x00          |
-| 1            | Comparison result | 'cmp_result' | 0x04          |
-| 2            | Scratchpad LSBs   | n/a          | 0x08          |
-| 3            | Scratchpad MSBs   | n/a          | 0x0C          |
-| 4            | Frequency LSBs    | n/a          | 0x10          |
-| 5            | Frequency MSBs    | n/a          | 0x14          |
-+--------------+-------------------+--------------+---------------+
-
-The register-level layout of the Wishbone interface is as follows:
-
-+--------------+-------------------+--------------+---------------+-------------+---------------+----+
-| Field number | Field description | Field name   | Field type    | Size (in B) | Offset (in B) | RW |
-+==============+===================+==============+===============+=============================+====+
-| 0            | Timer command     | 'time_cmd'   | 'TimeCmd'     | 1           | 0x00          | W  |
-| 1            | Comparison result | 'cmp_result' | 'Bool'        | 1           | 0x04          | R  |
-| 2            | Scratchpad        | 'scratchpad' | 'Unsigned 64' | 8           | 0x08          | RW |
-| 4            | Frequency         | 'frequency'  | 'Unsigned 64' | 8           | 0x10          | R  |
-+--------------+-------------------+--------------+---------------+-------------+---------------+----+
 -}
 timeWb ::
   forall dom addrW.
   ( HiddenClockResetEnable dom
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   , HasCallStack
   , KnownNat addrW
   , 1 <= DomainPeriod dom
@@ -715,103 +694,64 @@ timeWb ::
   Circuit
     (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes 4))
     (CSignal dom (Unsigned 64))
-timeWb = MM.withMemoryMap mm $ Circuit $ \(wbM2S, _) -> unbundle $ mealy goMealy (False, 0, 0) wbM2S
+timeWb = circuit $ \mmWb -> do
+  [(cmdOffset, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <- MM.deviceWbC "Timer" -< mmWb
+  cmdWb1 <- andAck cmdWaitAck -< cmdWb0
+  cmdWb2 <- idC -< (cmdOffset, cmdMeta, cmdWb1)
+
+{- FOURMOLU_DISABLE -}
+  -- Registers
+  Fwd (_, cmdActivity) <- MM.registerWbCI cmdCfg Capture -< (cmdWb2, Fwd noWrite)
+  MM.registerWbCI_ cmpCfg False -< (cmpWb, Fwd cmpResultWrite)
+  Fwd (scratch, _) <- MM.registerWbCI scratchCfg (0 :: Unsigned 64) -< (scratchWb, Fwd scratchWrite)
+  MM.registerWbCI_ freqCfg freq -< (freqWb, Fwd noWrite)
+{- FOURMOLU_ ENABLE -}
+
+  -- Local circuit dependent declarations
+  let
+    scratchWrite = orNothing <$> (cmdActivity .== MM.BusWrite Capture) <*> count
+    cmpResult = count .>=. scratch
+    cmpResultWrite = orNothing <$> (cmdActivity ./= MM.BusWrite WaitForCmp) <*> cmpResult
+    cmdWaitAck = (cmdActivity ./= MM.BusWrite WaitForCmp) .||. cmpResult
+  idC -< Fwd count
  where
-  mm =
-    MM.MemoryMap
-      { tree = MM.DeviceInstance MM.locCaller "Timer"
-      , deviceDefs = MM.deviceSingleton deviceDef
+  -- Independent declarations
+  freq = natToNum @(DomainToHz dom) :: Unsigned 64
+  noWrite = pure Nothing
+  count = register 0 (count + 1)
+
+  -- Register configurations
+  cmdCfg =
+    (MM.registerConfig "command")
+      { MM.access = MM.WriteOnly
+      , MM.description = "Control register"
       }
-  deviceDef =
-    MM.DeviceDefinition
-      { registers =
-          [ MM.NamedLoc
-              { name = MM.Name "command" ""
-              , loc = MM.locHere
-              , value =
-                  MM.Register
-                    { reset = Nothing
-                    , fieldType = MM.regType @TimeCmd
-                    , address = 0x00
-                    , access = MM.WriteOnly
-                    , tags = []
-                    }
-              }
-          , MM.NamedLoc
-              { name = MM.Name "cmp_result" ""
-              , loc = MM.locHere
-              , value =
-                  MM.Register
-                    { reset = Nothing
-                    , fieldType = MM.regType @Bool
-                    , address = 0x04
-                    , access = MM.ReadOnly
-                    , tags = []
-                    }
-              }
-          , MM.NamedLoc
-              { name = MM.Name "scratchpad" ""
-              , loc = MM.locHere
-              , value =
-                  MM.Register
-                    { reset = Nothing
-                    , fieldType = MM.regType @(BitVector 64)
-                    , address = 0x08
-                    , access = MM.ReadWrite
-                    , tags = []
-                    }
-              }
-          , MM.NamedLoc
-              { name = MM.Name "frequency" ""
-              , loc = MM.locHere
-              , value =
-                  MM.Register
-                    { reset = Nothing
-                    , fieldType = MM.regType @(BitVector 64)
-                    , address = 0x10
-                    , access = MM.ReadOnly
-                    , tags = []
-                    }
-              }
-          ]
-      , deviceName = MM.Name "Timer" ""
-      , definitionLoc = MM.locHere
-      , tags = []
+  cmpCfg =
+    (MM.registerConfig "cmp_result")
+      { MM.access = MM.ReadOnly
+      , MM.description = "Comparison result"
       }
-  goMealy (!reqCmp0, !scratch0 :: Unsigned 64, !count :: Unsigned 64) wbM2S =
-    ((reqCmp1, scratch1, succ count), (wbS2M1, count))
+  scratchCfg =
+    (MM.registerConfig "scratchpad")
+      { MM.access = MM.ReadWrite
+      , MM.description = "Scratch pad"
+      }
+  freqCfg =
+    (MM.registerConfig "frequency")
+      { MM.access = MM.ReadOnly
+      , MM.description = "Frequency of the clock domain"
+      }
+
+andAck ::
+  Signal dom Bool ->
+  Circuit
+    (Wishbone dom 'Standard addrW (Bytes nBytes))
+    (Wishbone dom 'Standard addrW (Bytes nBytes))
+andAck extraAck = Circuit go
+ where
+  go (m2s, s2m0) = (s2m1, m2s)
    where
-    freq = natToNum @(DomainToHz dom) :: Unsigned 64
-    RegisterBank (splitAtI -> (freqMsbs, freqLsbs)) = getRegsBe @8 freq
-
-    readVec :: Vec 6 (BitVector 32)
-    readVec =
-      0 -- Timer command is write-only, provide default 0 on read
-        :> (resize . pack $ runCmp)
-        :> pack scratchLsbs0
-        :> pack scratchMsbs0
-        :> pack freqLsbs
-        :> pack freqMsbs
-        :> Nil
-    (writes, wbS2M0) = wbToVec @4 @_ readVec wbM2S
-    (f0, _f1, f2, f3, _f4, _f5) = vecToTuple writes
-
-    command :: Maybe TimeCmd
-    command = unpack . resize <$> f0
-    cmdWaitForCmp = Just WaitForCmp == command
-    reqCmp1 = if reqCmp0 then not runCmp else cmdWaitForCmp
-
-    RegisterBank (splitAtI -> (scratchMsbs0, scratchLsbs0)) = getRegsBe @8 scratch0
-    scratch1 = case (f2, f3, command) of
-      (Just newLsbs, _, _) -> getDataBe $ RegisterBank (scratchMsbs0 ++ unpack newLsbs)
-      (_, Just newMsbs, _) -> getDataBe $ RegisterBank (unpack newMsbs ++ scratchLsbs0)
-      (_, _, Nothing) -> scratch0
-      (_, _, Just Capture) -> count
-      (_, _, Just WaitForCmp) -> scratch0
-
-    runCmp = count >= scratch0
-    cmpResult = not reqCmp0 || runCmp -- if reqCmp0 then runCmp else True
-    wbS2M1 = wbS2M0{acknowledge = wbS2M0.acknowledge && cmpResult}
+    s2m1 = (\wb ack -> wb{acknowledge = wb.acknowledge && ack}) <$> s2m0 <*> extraAck
 
 {- | Wishbone wrapper for DnaPortE2, adds extra register with wishbone interface
 to access the DNA device identifier. The DNA device identifier is a 96-bit
