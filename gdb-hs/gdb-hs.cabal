@@ -113,6 +113,8 @@ library
 test-suite unittests
   import: ghc2024, extra, sane-records
   type: exitcode-stdio-1.0
+  default-extensions: TemplateHaskell
+  other-modules: Tests.Gdb
   main-is: unittests.hs
   hs-source-dirs: tests
   ghc-options:
@@ -126,6 +128,8 @@ test-suite unittests
     base,
     gdb-hs,
     tasty >=1.4,
+    tasty-hunit,
+    tasty-th,
 
 test-suite doctests
   import: ghc2024, extra, sane-records
