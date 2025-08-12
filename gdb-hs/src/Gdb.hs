@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE PackageImports #-}
 
 module Gdb where
@@ -198,13 +197,9 @@ loadBinary :: (HasCallStack) => Gdb -> IO Error
 loadBinary gdb = do
   output <- readCommand gdb "load"
 
-  if
-    | any ("Remote communication error." `L.isPrefixOf`) output ->
-        pure $ Error [i|GDB remote communication error: #{output}|]
-    | any ("Start address 0x80000000" `L.isPrefixOf`) output ->
-        compareSections gdb
-    | otherwise -> do
-        pure $ Error [i|Loading binary failed, unexpected output: #{output}|]
+  if any ("Remote communication error." `L.isPrefixOf`) output
+    then pure $ Error [i|GDB remote communication error: #{output}|]
+    else compareSections gdb
 
 {- | Runs "compare-sections" in gdb and parses the resulting output.
 If any of the hash values do not match, this function will throw an error.
