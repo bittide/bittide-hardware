@@ -92,7 +92,7 @@ fn main() -> ! {
         prev_all_stable = all_stable;
 
         // Wait for next update
-        let timer_result = timer.wait_until(next_update);
+        let timer_result = timer.wait_until_stall(next_update);
         panic_on_missed_deadline(&mut uart, &timer, next_update, timer_result);
         next_update += interval;
     }
