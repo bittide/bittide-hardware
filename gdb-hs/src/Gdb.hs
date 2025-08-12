@@ -143,7 +143,7 @@ readCommand gdb cmd = do
     $ output
 
 -- | Execute a command in GDB and read its output. Errors if there is output.
-readCommand0 :: Gdb -> String -> IO ()
+readCommand0 :: (HasCallStack) => Gdb -> String -> IO ()
 readCommand0 gdb cmd = do
   result <- readCommand gdb cmd
   case result of
@@ -170,10 +170,10 @@ runCommands :: (HasCallStack) => Gdb -> [String] -> IO ()
 runCommands gdb commands = mapM_ (runCommand gdb) commands
 
 -- | Make GDB echo a string to its output
-echo :: Gdb -> String -> IO ()
+echo :: (HasCallStack) => Gdb -> String -> IO ()
 echo gdb s = runCommand gdb [i|echo \\n#{s}\\n|]
 
-continue :: Gdb -> IO ()
+continue :: (HasCallStack) => Gdb -> IO ()
 continue gdb =
   -- Note that we can't use 'readCommand' here, because this command won't return
   hPutStrLn gdb.stdin "continue"
@@ -194,7 +194,7 @@ interrupt gdb =
 {- | Load a preset binary onto the CPU. This will also run 'compareSections' to
 ensure that the binary was loaded correctly.
 -}
-loadBinary :: Gdb -> IO Error
+loadBinary :: (HasCallStack) => Gdb -> IO Error
 loadBinary gdb = do
   output <- readCommand gdb "load"
 
@@ -209,7 +209,7 @@ loadBinary gdb = do
 {- | Runs "compare-sections" in gdb and parses the resulting output.
 If any of the hash values do not match, this function will throw an error.
 -}
-compareSections :: Gdb -> IO Error
+compareSections :: (HasCallStack) => Gdb -> IO Error
 compareSections gdb = do
   output <- readCommand gdb "compare-sections"
   if all isMatch output
@@ -223,7 +223,7 @@ compareSections gdb = do
       _ -> False
 
 -- | Enables logging to a file in gdb.
-setLogging :: Gdb -> FilePath -> IO ()
+setLogging :: (HasCallStack) => Gdb -> FilePath -> IO ()
 setLogging gdb logPath = do
   runCommands gdb $
     [ "set logging file " <> logPath
@@ -247,29 +247,29 @@ dumpMemoryRegion gdb filePath start_ end = readCommand0 gdb cmd
   cmd = [i|dump binary memory #{filePath} 0x#{showHex start_ ""} 0x#{showHex end ""}|]
 
 -- | Sets the target to be debugged in gdb, must be a port number.
-setTarget :: Gdb -> Int -> IO ()
+setTarget :: (HasCallStack) => Gdb -> Int -> IO ()
 setTarget gdb port = do
   runCommand gdb ("target extended-remote :" <> show port)
 
 -- | Sets the file to be debugged in gdb.
-setFile :: Gdb -> FilePath -> IO ()
+setFile :: (HasCallStack) => Gdb -> FilePath -> IO ()
 setFile gdb filePath = do
   runCommand gdb ("file " <> filePath)
 
-setTimeout :: Gdb -> Maybe Int -> IO ()
+setTimeout :: (HasCallStack) => Gdb -> Maybe Int -> IO ()
 setTimeout gdb Nothing =
   runCommand gdb ("set remotetimeout unlimited")
 setTimeout gdb (Just (show -> time)) = do
   runCommand gdb ("set remotetimeout " <> time)
 
 -- | Sets breakpoints on functions in gdb.
-setBreakpoints :: Gdb -> [String] -> IO ()
+setBreakpoints :: (HasCallStack) => Gdb -> [String] -> IO ()
 setBreakpoints gdb = runCommands gdb . fmap ("break " <>)
 
 {- | Sets a hook to run when a breakpoint is hit.
 The hook will print the register values, backtrace, and quit gdb.
 -}
-setBreakpointHook :: Gdb -> IO ()
+setBreakpointHook :: (HasCallStack) => Gdb -> IO ()
 setBreakpointHook gdb =
   runCommand gdb . unlines $
     [ "define hook-stop"
@@ -283,7 +283,7 @@ setBreakpointHook gdb =
 
 XXX: It does more than that
 -}
-readSingleGdbValue :: Gdb -> String -> String -> IO String
+readSingleGdbValue :: (HasCallStack) => Gdb -> String -> String -> IO String
 readSingleGdbValue gdb _value cmd = do
   output <- readCommand1 gdb cmd
   return
