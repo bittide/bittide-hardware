@@ -131,7 +131,7 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
 
     idC -< (uartRx, gmiiTx, gpioOut)
  where
-  time = wcre timeWb
+  time = withBittideByteOrder $ wcre timeWb
   dnaC = wcre readDnaPortE2Wb simDna2
   mac =
     ethMac1GFifoC

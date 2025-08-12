@@ -26,7 +26,7 @@ use ufmt::uwrite;
 
 pub mod self_test;
 
-#[derive(uDebug, Debug)]
+#[derive(uDebug, Debug, PartialEq, Eq)]
 pub enum WaitResult {
     /// Wait was successful and requested on time
     Success,
