@@ -4,7 +4,7 @@
 use core::fmt::{self, Debug};
 use ufmt::{uDebug, uwrite};
 
-use crate::manual_additions::timer::{Duration, Instant, Timer};
+use crate::manual_additions::timer::{Duration, Instant, Timer, WaitResult};
 
 type TestReturn = Option<(&'static str, Option<FailValue>)>;
 type TestFn = fn(Timer) -> TestReturn;
@@ -55,6 +55,9 @@ pub fn self_test(timer: Timer) -> impl Iterator<Item = (&'static str, TestReturn
         now_not_null,
         freq_not_null,
         skip_next_ms,
+        wait_1ms,
+        wait_until_1ms,
+        wait_until_stall_1ms,
         duration_hour_minute,
         duration_minute_second,
         duration_second_millisecond,
@@ -106,6 +109,67 @@ pub fn wait_1ms(timer: Timer) -> TestReturn {
     if diff >= Duration::from_micros(100) {
         Some((
             "wait_1ms test failed: time difference is too large",
+            Some(FailValue::Duration(diff)),
+        ))
+    } else {
+        None
+    }
+}
+
+/// Read the current time in milliseconds, wait until that time + 1ms
+/// Read out the time again and
+pub fn wait_until_1ms(timer: Timer) -> TestReturn {
+    let start_time = timer.now();
+    let target = start_time + Duration::from_millis(1);
+    let expect_passed = timer.wait_until(start_time);
+    if expect_passed != WaitResult::AlreadyPassed {
+        return Some((
+            "wait_until_1ms test failed: start_time not already passed",
+            None,
+        ));
+    }
+
+    let expect_success = timer.wait_until(target);
+    if expect_success != WaitResult::Success {
+        return Some(("wait_until_1ms test failed: target already passed", None));
+    }
+    let end_time = timer.now();
+    let diff = end_time - target;
+    if diff >= Duration::from_micros(100) {
+        Some((
+            "wait_until_2ms test failed: time difference is too large",
+            Some(FailValue::Duration(diff)),
+        ))
+    } else {
+        None
+    }
+}
+
+/// Read the current time in milliseconds, wait until that time + 1ms
+/// Read out the time again and
+pub fn wait_until_stall_1ms(timer: Timer) -> TestReturn {
+    let start_time = timer.now();
+    let target = start_time + Duration::from_millis(1);
+    let expect_passed = timer.wait_until_stall(start_time);
+    if expect_passed != WaitResult::AlreadyPassed {
+        return Some((
+            "wait_until_stall_1ms test failed: start_time not already passed",
+            None,
+        ));
+    }
+
+    let expect_success = timer.wait_until_stall(target);
+    if expect_success != WaitResult::Success {
+        return Some((
+            "wait_until_stall_1ms test failed: target already passed",
+            None,
+        ));
+    }
+    let end_time = timer.now();
+    let diff = end_time - target;
+    if diff >= Duration::from_micros(100) {
+        Some((
+            "wait_until_stall_1ms test failed: time difference is too large",
             Some(FailValue::Duration(diff)),
         ))
     } else {
