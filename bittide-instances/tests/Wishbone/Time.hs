@@ -68,9 +68,9 @@ dut = withBittideByteOrder
       processingElement NoDumpVcd peConfig -< (mm, jtag)
     mm <- ignoreMM
     (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-    constBwd 0b10 -< prefixUart
+    constBwd 0b100 -< prefixUart
     _localCounter <- timeWb -< (mmTime, timeBus)
-    constBwd 0b11 -< prefixTime
+    constBwd 0b110 -< prefixTime
     idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
@@ -80,12 +80,14 @@ dut = withBittideByteOrder
     pure
       PeConfig
         { initI = Reloadable (Vec iMem)
-        , prefixI = 0b00
+        , prefixI = 0b000
         , initD = Reloadable (Vec dMem)
-        , prefixD = 0b01
+        , prefixD = 0b010
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
+        , whoAmIPrefix = 0b111
+        , whoAmID = 0x3075_7063
         }
 {-# NOINLINE dut #-}
 
