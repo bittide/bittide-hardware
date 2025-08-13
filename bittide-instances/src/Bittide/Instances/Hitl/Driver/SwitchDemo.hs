@@ -243,14 +243,14 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
 ccGdbCheck :: Gdb -> VivadoM ExitCode
 ccGdbCheck gdb = do
   let whoAmIBase = ccBaseAddress @Integer "WhoAmI"
-  bytes <- liftIO (Gdb.readBytes @4 gdb whoAmIBase)
+  bytes <- Gdb.readBytes @4 gdb whoAmIBase
   let bytesAsInts = L.map fromIntegral $ V.toList $ bytes
   pure $ if bytesAsInts == L.map ord "swcc" then ExitSuccess else ExitFailure 1
 
 muGdbCheck :: Gdb -> VivadoM ExitCode
 muGdbCheck gdb = do
   let whoAmIBase = muBaseAddress @Integer "WhoAmI"
-  bytes <- liftIO (Gdb.readBytes @4 gdb whoAmIBase)
+  bytes <- Gdb.readBytes @4 gdb whoAmIBase
   let bytesAsInts = L.map fromIntegral $ V.toList $ bytes
   pure $ if bytesAsInts == L.map ord "mgmt" then ExitSuccess else ExitFailure 1
 
@@ -286,7 +286,7 @@ driver testName targets = do
         readUgnMmio addr = Gdb.readLe gdb addr
 
       liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
-      liftIO $ mapM readUgnMmio muCaptureUgnAddresses
+      mapM readUgnMmio muCaptureUgnAddresses
 
     muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO ()
     muReadPeBuffer (_, d) gdb = do
