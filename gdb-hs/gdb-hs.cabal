@@ -95,15 +95,22 @@ common sane-records
 
 library
   import: ghc2024, extra, sane-records
-  exposed-modules: Gdb
+  exposed-modules:
+    Gdb
+    Gdb.Commands.Basic
+    Gdb.Commands.Read
+    Gdb.Internal
+
   hs-source-dirs: src
   build-depends:
     base >=4.14 && <5,
     bittide-extra,
     bytestring,
+    clash-bitpackc,
     clash-prelude,
     exceptions,
     extra,
+    ghc-typelits-knownnat >=0.7.7,
     process,
     string-interpolate,
     unix,
@@ -114,7 +121,11 @@ test-suite unittests
   import: ghc2024, extra, sane-records
   type: exitcode-stdio-1.0
   default-extensions: TemplateHaskell
-  other-modules: Tests.Gdb
+  other-modules:
+    Tests.Common
+    Tests.Gdb.Commands.Read
+    Tests.Gdb.Internal
+
   main-is: unittests.hs
   hs-source-dirs: tests
   ghc-options:
@@ -126,7 +137,16 @@ test-suite unittests
 
   build-depends:
     base,
+    clash-bitpackc,
+    clash-prelude,
+    extra,
+    filepath,
     gdb-hs,
+    ghc-typelits-extra >=0.4.4,
+    ghc-typelits-knownnat >=0.7.7,
+    ghc-typelits-natnormalise >=0.7.7,
+    process,
+    string-interpolate,
     tasty >=1.4,
     tasty-hunit,
     tasty-th,

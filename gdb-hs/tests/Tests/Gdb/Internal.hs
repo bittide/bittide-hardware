@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Tests.Gdb where
+module Tests.Gdb.Internal where
 
 import Prelude
 
@@ -10,7 +10,7 @@ import Test.Tasty (TestTree)
 import Test.Tasty.HUnit (Assertion, assertEqual, testCase)
 import Test.Tasty.TH (testGroupGenerator)
 
-import Gdb (readCommand, withGdb)
+import Gdb.Internal (readCommand, withGdb)
 
 case_echo :: Assertion
 case_echo = do
