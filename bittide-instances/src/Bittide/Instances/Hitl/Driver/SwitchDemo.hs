@@ -23,14 +23,28 @@ import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3
 import Control.Monad (forM, forM_, when)
 import Control.Monad.IO.Class
 import Data.Bifunctor (Bifunctor (bimap))
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Gdb (Gdb)
 import Numeric (showHex)
 import Project.FilePath
 import Project.Handle
-import Protocols.MemoryMap (MemoryMap (..), MemoryMapTree (DeviceInstance, Interconnect))
+import Protocols.MemoryMap (
+  DeviceDefinition (..),
+  MemoryMap (..),
+  Name (..),
+  NamedLoc (..),
+  PathComp (..),
+  Register (..),
+  convert,
+  normalizeRelTree,
+ )
+import Protocols.MemoryMap.Check (
+  MemoryMapTreeAbsNorm,
+  MemoryMapTreeAnn (..),
+  makeAbsolute,
+ )
 import System.Exit
 import System.FilePath
 import System.IO
@@ -48,6 +62,7 @@ import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Clash.Sized.Vector as V (fromList)
 import qualified Data.List as L
+import qualified Data.Map.Strict as M
 import qualified Gdb
 
 data OcdInitData = OcdInitData
@@ -116,44 +131,119 @@ showHex32 a = "0x" <> padding <> hexStr
   hexStr = showHex a ""
   padding = L.replicate (8 - L.length hexStr) '0'
 
-{- | Get base addresses of a device from a memory map. Assumes that all devices
-are located at a single interconnect, which is a bit grimy.
+{- | Finds the address for a given path.
+
+Caveat(s):
+  - Device names are "canonicalized", where this means that if there are multiple
+    devices with the same name connected to the same interconnect, then each of them
+    is suffixed with their index. For instance, if your memory map looks like:
+    @
+    interconnect
+      - DeviceA @ 0b000
+      - DeviceB @ 0b001
+      - DeviceC @ 0b010
+      - DeviceA @ 0b011
+      - DeviceA @ 0b100
+    @
+    Then after canonicalization, it will look like
+    @
+    interconnect
+      - DeviceA0 @ 0b000
+      - DeviceB @ 0b001
+      - DeviceC @ 0b010
+      - DeviceA1 @ 0b011
+      - DeviceA2 @ 0b100
+    @
+    This is so that any path the function attempts to follow can only refer to one
+    location in memory.
 -}
-baseAddresses :: (HasCallStack, Num a) => MemoryMap -> String -> [a]
-baseAddresses memoryMap nm =
-  case memoryMap of
-    MemoryMap{tree = Interconnect _ devices} ->
-      [fromIntegral addr | (addr, DeviceInstance _ d) <- devices, d == nm]
-    _ -> error [i|Unexpected memory map structure: #{ppShow memoryMapMu}|]
-
-{- | Like 'baseAddresses', but assume that there is only one device with the
-given name in the memory map. If there are multiple devices with the same
-name, an error is raised.
--}
-baseAddress :: (HasCallStack, Num a, Show a) => MemoryMap -> String -> a
-baseAddress memoryMap nm =
-  case baseAddresses memoryMap nm of
-    [addr] -> addr
-    addrs -> error [i|Expected a single base address for #{nm}, got: #{show addrs}|]
-
--- | Like 'baseAddress', but specialized on the management unit memory map.
-muBaseAddress :: (HasCallStack, Num a, Show a) => String -> a
-muBaseAddress = baseAddress memoryMapMu
-
--- | Like 'baseAddress', but specialized on the clock control memory map.
-ccBaseAddress :: (HasCallStack, Num a, Show a) => String -> a
-ccBaseAddress = baseAddress memoryMapCc
-
-{- | Addresses of the capture UGN devices in the management unit. As a sanity
-check, it is expected that there are exactly 7 capture UGN devices present.
--}
-muCaptureUgnAddresses :: (HasCallStack, Num a, Show a) => [a]
-muCaptureUgnAddresses =
-  if L.length ugnDevices == 7
-    then ugnDevices
-    else error $ "Expected 7 capture ugn devices, got: " <> ppShow ugnDevices
+getPathAddress :: (HasCallStack, Num a) => MemoryMap -> [String] -> a
+getPathAddress mm = traverseTree annAbsTree1
  where
-  ugnDevices = baseAddresses memoryMapMu "CaptureUgn"
+  annRelTree = convert mm.tree
+  annRelNormTree = normalizeRelTree annRelTree
+  (annAbsTree0, _) = makeAbsolute mm.deviceDefs (0x0000_0000, 0xFFFF_FFFF) annRelNormTree
+  annAbsTree1 = canonicalizeDevNames annAbsTree0
+
+  canonicalizeDevNames :: (HasCallStack) => MemoryMapTreeAbsNorm -> MemoryMapTreeAbsNorm
+  canonicalizeDevNames self@(AnnDeviceInstance _ _ _) = self
+  canonicalizeDevNames (AnnInterconnect ann srcLoc relsAndMMs) =
+    AnnInterconnect ann srcLoc
+      $ doCanonicalization (M.fromList $ L.zip devNames (L.repeat 0)) relsAndMMs
+   where
+    comps :: [MemoryMapTreeAbsNorm]
+    comps = snd <$> relsAndMMs
+    devNames :: [String]
+    devNames = mapMaybe getDeviceName comps
+    devNamesMult :: M.Map String Bool
+    devNamesMult = M.fromListWith (\_ _ -> True) $ L.zip devNames (L.repeat False)
+
+    getDeviceName :: (HasCallStack) => MemoryMapTreeAbsNorm -> Maybe String
+    getDeviceName (AnnDeviceInstance _ _ name) = Just name
+    getDeviceName _ = Nothing
+
+    doCanonicalization ::
+      (HasCallStack) =>
+      M.Map String Integer ->
+      [(Integer, MemoryMapTreeAbsNorm)] ->
+      [(Integer, MemoryMapTreeAbsNorm)]
+    doCanonicalization _ [] = []
+    doCanonicalization counts ((addr, AnnInterconnect ann1 srcLoc1 subtree) : t) =
+      (addr, AnnInterconnect ann1 srcLoc1 (bimap id canonicalizeDevNames <$> subtree))
+        : doCanonicalization counts t
+    doCanonicalization counts0 ((addr, AnnDeviceInstance ann1 srcLoc1 devName0) : t) =
+      (addr, AnnDeviceInstance ann1 srcLoc1 devName1) : doCanonicalization counts1 t
+     where
+      needsSuffix :: Bool
+      needsSuffix = devNamesMult M.! devName0
+      curCount :: Integer
+      curCount = counts0 M.! devName0
+      devName1 :: String
+      devName1 = if needsSuffix then devName0 <> show curCount else devName0
+      counts1 :: M.Map String Integer
+      counts1 =
+        if needsSuffix
+          then M.update (\n -> Just (n + 1)) devName0 counts0
+          else counts0
+
+  showPathComp :: PathComp -> String
+  showPathComp (PathName _ s) = s
+  showPathComp (PathUnnamed n) = show n
+
+  getTreeName :: (HasCallStack) => MemoryMapTreeAbsNorm -> String
+  getTreeName (AnnInterconnect (_, showPathComp . L.last -> name, _) _ _) = name
+  getTreeName (AnnDeviceInstance _ _ name) = name
+
+  traverseTree :: (HasCallStack, Num a) => MemoryMapTreeAbsNorm -> [String] -> a
+  traverseTree (AnnInterconnect _ _ _) [] = error "Empty path given!"
+  traverseTree (AnnInterconnect (_, showPathComp . L.last -> n0, addr) _ _) [n1] =
+    if n0 /= n1
+      then error [i|Mismatch on interconnect name! Expected #{n0}, found #{n1}.|]
+      else fromIntegral addr
+  traverseTree
+    (AnnInterconnect (_, showPathComp . L.last -> n0, _) _ (fmap snd -> comps))
+    (n1 : next : t) =
+      if n0 == n1
+        then case L.find (\tree -> next == getTreeName tree) comps of
+          Just comp -> traverseTree comp t
+          Nothing -> error [i|Failed to find device #{next} in interconnect.|]
+        else error [i|Mismatch on interconnect name! Expected #{n0}, found #{n1}.|]
+  traverseTree (AnnDeviceInstance (_, _, addr) _ _) [] = fromIntegral addr
+  traverseTree (AnnDeviceInstance (_, _, _) _ name) (a : b : c) =
+    error
+      [i|Cannot index into #{name} farther than #{a}, but path continues: #{ppShow $ b : c}|]
+  traverseTree (AnnDeviceInstance (_, _, addr) _ devName) [regName] =
+    case L.find (\regNL -> regName == regNL.name.name) devDef.registers of
+      Just regNL -> fromIntegral (addr + regNL.value.address)
+      Nothing -> error [i|Failed to find register #{regName} in device #{devName}|]
+   where
+    devDef :: DeviceDefinition
+    devDef = mm.deviceDefs M.! devName
+
+muSwitchDemoPeBuffer :: (HasCallStack, Num a, Show a) => a
+muSwitchDemoPeBuffer = getPathAddress memoryMapMu ["0", "SwitchDemoPE", "buffer"]
+muTimerScratchpadReg :: (HasCallStack, Num a, Show a) => a
+muTimerScratchpadReg = getPathAddress memoryMapMu ["0", "Timer", "scratchpad"]
 
 dumpCcSamples :: (HasCallStack) => FilePath -> CcConf Topology -> [Gdb] -> IO ()
 dumpCcSamples hitlDir ccConf ccGdbs = do
@@ -182,7 +272,7 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
       Nothing -> error [i|Could not parse GDB output as number: #{nSamplesWritten}|]
       Just n -> Gdb.dumpMemoryRegion gdb dumpPath dumpStart (dumpEnd n) >> pure n
 
-  sampleMemoryBase = ccBaseAddress @Integer "SampleMemory"
+  sampleMemoryBase = getPathAddress @Integer memoryMapCc ["0", "SampleMemory", "data"]
   ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
 
 initOpenOcd :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
@@ -277,7 +367,7 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
 
 ccGdbCheck :: Gdb -> VivadoM ExitCode
 ccGdbCheck gdb = do
-  let whoAmIBase = showHex32 $ ccBaseAddress @Integer "WhoAmI"
+  let whoAmIBase = showHex32 @Integer $ getPathAddress memoryMapCc ["0", "WhoAmI", "identifier"]
   output <- liftIO $ Gdb.readCommand1 gdb [i|x/4cb #{whoAmIBase}|]
   pure
     $ if output == whoAmIBase <> ":\t115 's'\t119 'w'\t99 'c'\t99 'c'"
@@ -286,7 +376,7 @@ ccGdbCheck gdb = do
 
 muGdbCheck :: Gdb -> VivadoM ExitCode
 muGdbCheck gdb = do
-  let whoAmIBase = showHex32 $ muBaseAddress @Integer "WhoAmI"
+  let whoAmIBase = showHex32 @Integer (getPathAddress memoryMapMu ["0", "WhoAmI", "identifier"])
   output <- liftIO $ Gdb.readCommand1 gdb [i|x/4cb #{whoAmIBase}|]
   pure
     $ if output == whoAmIBase <> ":\t109 'm'\t103 'g'\t109 'm'\t116 't'"
@@ -322,7 +412,10 @@ driver testName targets = do
     muGetUgns (_, d) gdb = do
       let
         mmioAddrs :: [String]
-        mmioAddrs = L.map (showHex32 @Integer) muCaptureUgnAddresses
+        mmioAddrs =
+          showHex32 @Integer
+            . (\n -> getPathAddress memoryMapMu ["0", "CaptureUgn" <> show @Integer n])
+            <$> [0 .. natToNum @(FpgaCount - 2)]
 
         readUgnMmio :: String -> IO (Unsigned 64, Unsigned 64)
         readUgnMmio addr = do
@@ -339,10 +432,10 @@ driver testName targets = do
     muReadPeBuffer (_, d) gdb = do
       putStrLn $ "Reading PE buffer from device " <> d.deviceId
       let
-        start = muBaseAddress @Integer "SwitchDemoPE"
         bufferSize :: Integer
         bufferSize = (snatToNum (SNat @FpgaCount)) * 3
-      output <- Gdb.readCommandRaw gdb [i|x/#{bufferSize}xg #{showHex32 (start + 0x28)}|]
+      output <-
+        Gdb.readCommandRaw gdb [i|x/#{bufferSize}xg #{showHex32 @Integer muSwitchDemoPeBuffer}|]
       putStrLn [i|PE buffer readout: #{output}|]
 
     muGetCurrentTime ::
@@ -352,10 +445,12 @@ driver testName targets = do
       IO (Unsigned 64)
     muGetCurrentTime (_, d) gdb = do
       putStrLn $ "Getting current time from device " <> d.deviceId
-      let timerBase = muBaseAddress @Integer "Timer"
       -- Write capture command to `timeWb` component
-      Gdb.runCommand gdb [i|set {char[4]}(#{showHex32 timerBase}) = 0x0|]
-      currentStringLsbs0 <- Gdb.readCommand1 gdb [i|x/1xw #{showHex32 (timerBase + 0x8)}|]
+      Gdb.runCommand
+        gdb
+        [i|set {char[4]}(#{showHex32 @Integer (getPathAddress memoryMapMu ["0", "Timer", "command"])}) = 0x0|]
+      currentStringLsbs0 <-
+        Gdb.readCommand1 gdb [i|x/1xw #{showHex32 @Integer muTimerScratchpadReg}|]
       let
         currentStringLsbs1 = trim $ L.head $ lines $ L.drop 2 $ L.dropWhile (/= ':') currentStringLsbs0
         currentTimeLsbsI :: Integer
@@ -364,7 +459,8 @@ driver testName targets = do
         currentTimeLsbs = fromIntegral currentTimeLsbsI
       putStrLn $ "GDB said: " <> show currentStringLsbs1
       putStrLn $ "I read: " <> show currentTimeLsbs
-      currentStringMsbs0 <- Gdb.readCommand1 gdb [i|x/1xw #{showHex32 (timerBase + 0xC)}|]
+      currentStringMsbs0 <-
+        Gdb.readCommand1 gdb [i|x/1xw #{showHex32 (muTimerScratchpadReg @Integer + 0x4)}|]
       let
         currentStringMsbs1 = trim $ L.head $ lines $ L.drop 2 $ L.dropWhile (/= ':') currentStringMsbs0
         currentTimeMsbsI :: Integer
@@ -383,8 +479,6 @@ driver testName targets = do
       VivadoM ()
     muWriteCfg target@(_, d) gdb (bimap pack fromIntegral -> cfg) = do
       let
-        start = muBaseAddress "SwitchDemoPE"
-
         write64 :: Unsigned 32 -> BitVector 64 -> [String]
         write64 address value =
           [ [i|set {char[4]}(#{showHex32 address}) = #{showHex32 valueLsb}|]
@@ -393,16 +487,19 @@ driver testName targets = do
          where
           (valueMsb :: BitVector 32, valueLsb :: BitVector 32) = bitCoerce value
 
+        sdpePrefixed :: String -> [String]
+        sdpePrefixed reg = ["0", "SwitchDemoPE", reg]
+
       liftIO $ do
         muReadPeBuffer target gdb
         putStrLn $ "Writing config to device " <> d.deviceId
         Gdb.runCommands
           gdb
           ( L.concat
-              [ write64 (start + 0x00) cfg.startReadAt
-              , write64 (start + 0x08) cfg.readForN
-              , write64 (start + 0x10) cfg.startWriteAt
-              , write64 (start + 0x18) cfg.writeForN
+              [ write64 (getPathAddress memoryMapMu (sdpePrefixed "read_start")) cfg.startReadAt
+              , write64 (getPathAddress memoryMapMu (sdpePrefixed "read_cycles")) cfg.readForN
+              , write64 (getPathAddress memoryMapMu (sdpePrefixed "write_start")) cfg.startWriteAt
+              , write64 (getPathAddress memoryMapMu (sdpePrefixed "write_cycles")) cfg.writeForN
               ]
           )
 
@@ -418,9 +515,9 @@ driver testName targets = do
         perDeviceCheck :: Gdb -> Int -> IO Bool
         perDeviceCheck myGdb num = do
           let
-            headBaseAddr = muBaseAddress "SwitchDemoPE" + 0x28
+            headBaseAddr = muSwitchDemoPeBuffer
             myBaseAddr = headBaseAddr + 24 * (L.length gdbs - num - 1)
-            dnaBaseAddr = muBaseAddress @Integer "Dna"
+            dnaBaseAddr = getPathAddress @Integer memoryMapMu ["0", "Dna", "dna"]
           myCounter <-
             Gdb.readSingleGdbValue headGdb ("COUNTER-" <> show num) ("x/1gx " <> showHex32 myBaseAddr)
           myDeviceDna2 <-
