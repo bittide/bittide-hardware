@@ -399,10 +399,10 @@ driver testName targets = do
         Gdb.runCommands
           gdb
           ( L.concat
-              [ write64 (start + 0) cfg.startReadAt
-              , write64 (start + 8) cfg.readForN
-              , write64 (start + 16) cfg.startWriteAt
-              , write64 (start + 24) cfg.writeForN
+              [ write64 (start + 0x00) cfg.startReadAt
+              , write64 (start + 0x08) cfg.readForN
+              , write64 (start + 0x10) cfg.startWriteAt
+              , write64 (start + 0x18) cfg.writeForN
               ]
           )
 
