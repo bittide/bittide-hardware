@@ -9,76 +9,20 @@ import Prelude
 
 import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup (demoRigInfo)
-import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Instances.Hitl.Utils.Vivado
-import Control.Monad (void)
 import Control.Monad.IO.Class
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromMaybe)
 import GHC.Stack (HasCallStack)
-import Project.Handle
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
-import "extra" Data.List.Extra (trim)
 
-import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
-import qualified Control.Monad.Trans.Control as CMTC
 import qualified Data.List as L
-import qualified System.Timeout.Lifted as STL
 
 getTargetIndex :: (HasCallStack) => HwTarget -> Int
 getTargetIndex hwT =
   fromMaybe
     (error ("Could not find " <> show hwT))
     (L.findIndex (\di -> di.deviceId == idFromHwT hwT) demoRigInfo)
-
-{- | A generic wrapper around 'System.Timeout.Lifted.timeout' that 'fail's if the
-timeout is hit.
--}
-tryWithTimeout ::
-  forall m a.
-  (CMTC.MonadBaseControl IO m, MonadFail m) =>
-  String ->
-  Int ->
-  m a ->
-  m a
-tryWithTimeout actionName duration = tryWithTimeoutOn actionName duration (pure ())
-
-{- | A generic wrapper around 'System.Timeout.Lifted.timeout' that 'fail's if the
-timeout is hit. This function exists because the 'onException' function does not
-work with 'System.Timeout.Lifted.timeout'.
--}
-tryWithTimeoutOn ::
-  forall m a b.
-  (CMTC.MonadBaseControl IO m, MonadFail m) =>
-  String ->
-  Int ->
-  m b ->
-  m a ->
-  m a
-tryWithTimeoutOn actionName duration onTimeout action = do
-  result <- STL.timeout duration action
-  case result of
-    Nothing -> do
-      void onTimeout
-      fail $ "Timeout while performing action: " <> actionName
-    Just r -> do
-      pure r
-
-{- | Like 'tryWithTimeout', but takes an additional action to perform regardless
-of whether the timeout was hit or not.
--}
-tryWithTimeoutFinally ::
-  forall m a b.
-  (CMTC.MonadBaseControl IO m, MonadFail m) =>
-  String ->
-  Int ->
-  m b ->
-  m a ->
-  m a
-tryWithTimeoutFinally actionName duration finally action = do
-  a <- tryWithTimeoutOn actionName duration finally action
-  void finally
-  pure a
 
 -- | Asserts the value '"0"' on the given probe for the given hardware target.
 deassertProbe :: String -> (HwTarget, DeviceInfo) -> VivadoM ()
@@ -139,28 +83,3 @@ awaitHandshakes targets = do
         then return ()
         else inner new
   inner innerInit
-
-readSingleGdbValue :: ProcessHandles -> String -> String -> IO String
-readSingleGdbValue gdb value cmd = do
-  let
-    startString = "START OF READ (" <> value <> ")"
-    endString = "END OF READ (" <> value <> ")"
-  Gdb.runCommands
-    gdb.stdinHandle
-    [ "printf \"" <> startString <> "\\n\""
-    , cmd
-    , "printf \"" <> endString <> "\\n\""
-    ]
-  _ <-
-    tryWithTimeout ("GDB read prepare: " <> value) 15_000_000 $
-      readUntil gdb.stdoutHandle startString
-  untrimmed <-
-    tryWithTimeout ("GDB read: " <> value) 15_000_000 $
-      readUntil gdb.stdoutHandle endString
-  let
-    trimmed = trim untrimmed
-    gdbLines = L.lines trimmed
-    outputLine = fromJust $ L.find ("(gdb)" `L.isPrefixOf`) gdbLines
-    untilColon = L.dropWhile (/= ':') outputLine
-    lineFinal = trim $ L.drop 2 untilColon
-  return lineFinal

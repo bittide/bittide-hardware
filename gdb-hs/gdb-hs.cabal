@@ -1,0 +1,147 @@
+cabal-version: 3.8
+name: gdb-hs
+version: 0.1.0.0
+build-type: Simple
+license: Apache-2.0
+license-file: LICENSE
+author: QBayLogic B.V.
+maintainer: devops@qbaylogic.com
+copyright: Copyright © 2025 Google LLC
+category: Debugging
+synopsis: Haskell bindings for GDB scripting and automation
+
+-- One day we'll be able to replace this by 'default-language: GHC2024' and
+-- disabling a few extensions :)
+common ghc2024
+  default-extensions:
+    -- GHC2024, excluding:
+    -- ImplicitPrelude:          We want Clash.Prelude
+    -- ImplicitStagePersistence: Not a thing yet in the GHC we use
+    -- ImportQualifiedPost:      Okay on its own, but trips up fourmolu
+    -- StarIsType:               We want '*' to mean multiplication on type level
+    BangPatterns
+    BinaryLiterals
+    ConstrainedClassMethods
+    ConstraintKinds
+    DataKinds
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    DisambiguateRecordFields
+    DoAndIfThenElse
+    EmptyCase
+    EmptyDataDecls
+    EmptyDataDeriving
+    ExistentialQuantification
+    ExplicitForAll
+    ExplicitNamespaces
+    FieldSelectors
+    FlexibleContexts
+    FlexibleInstances
+    ForeignFunctionInterface
+    GADTSyntax
+    GADTs
+    GeneralisedNewtypeDeriving
+    HexFloatLiterals
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    MonoLocalBinds
+    MonomorphismRestriction
+    MultiParamTypeClasses
+    NamedFieldPuns
+    NamedWildCards
+    NumericUnderscores
+    PatternGuards
+    PolyKinds
+    PostfixOperators
+    RankNTypes
+    RelaxedPolyRec
+    RoleAnnotations
+    ScopedTypeVariables
+    StandaloneDeriving
+    StandaloneKindSignatures
+    TraditionalRecordSyntax
+    TupleSections
+    TypeApplications
+    TypeOperators
+    TypeSynonymInstances
+
+common extra
+  default-extensions:
+    DefaultSignatures
+    DeriveAnyClass
+    ImplicitParams
+    NoImplicitPrelude
+    QuasiQuotes
+    TypeFamilies
+    ViewPatterns
+
+  ghc-options:
+    -Wall
+    -Wcompat
+
+common sane-records
+  default-extensions:
+    DisambiguateRecordFields
+    DuplicateRecordFields
+    NamedFieldPuns
+    NoFieldSelectors
+    OverloadedRecordDot
+
+library
+  import: ghc2024, extra, sane-records
+  exposed-modules: Gdb
+  hs-source-dirs: src
+  build-depends:
+    base >=4.14 && <5,
+    bittide-extra,
+    bytestring,
+    clash-prelude,
+    exceptions,
+    extra,
+    process,
+    string-interpolate,
+    unix,
+
+  default-language: Haskell2010
+
+test-suite unittests
+  import: ghc2024, extra, sane-records
+  type: exitcode-stdio-1.0
+  default-extensions: TemplateHaskell
+  other-modules: Tests.Gdb
+  main-is: unittests.hs
+  hs-source-dirs: tests
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N4
+
+  build-depends:
+    base,
+    gdb-hs,
+    tasty >=1.4,
+    tasty-hunit,
+    tasty-th,
+
+test-suite doctests
+  import: ghc2024, extra, sane-records
+  type: exitcode-stdio-1.0
+  main-is: doctests.hs
+  ghc-options:
+    -Wall
+    -Wcompat
+    -threaded
+
+  hs-source-dirs: tests
+  build-depends:
+    base,
+    doctest-parallel >=0.3.0.1 && <0.4,
+    gdb-hs,

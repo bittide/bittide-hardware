@@ -26,11 +26,11 @@ import System.Exit
 import System.FilePath
 import System.IO
 
-import qualified Bittide.Instances.Hitl.Utils.Driver as D
-import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Data.List as L
+import qualified Gdb
+import qualified System.Timeout.Extra as T
 
 driverFunc ::
   String ->
@@ -105,7 +105,7 @@ driverFunc _name targets = do
 
             tryWithTimeout :: String -> Int -> IO a -> IO a
             tryWithTimeout n t io =
-              catch (D.tryWithTimeout n t io)
+              catch (T.tryWithTimeout n t io)
                 $ \(err :: SomeException) -> loggingSequence >> throwM err
 
           tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
@@ -113,7 +113,6 @@ driverFunc _name targets = do
 
           -- program the FPGA
           Gdb.withGdb $ \gdb -> do
-            hSetBuffering gdb.stdinHandle LineBuffering
             Gdb.setLogging gdb gdbOutLog
             Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Debug </> "hello"
             Gdb.setTarget gdb gdbPort
@@ -124,12 +123,8 @@ driverFunc _name targets = do
               putStrLn "Testing whether breakpoints work"
               Gdb.setBreakpoints gdb ["hello::test_success"]
               Gdb.continue gdb
-
-              Gdb.echo gdb.stdinHandle "breakpoint reached"
-              tryWithTimeout "Waiting for \"breakpoint reached\"" 10_000_000
-                $ waitForLine gdb.stdoutHandle "breakpoint reached"
-
-              Gdb.runCommands gdb.stdinHandle ["disable 1"]
+              Gdb.echo gdb "breakpoint reached"
+              Gdb.runCommand gdb "disable 1"
               Gdb.continue gdb
 
             -- This is the last thing that will print when the FPGA has been programmed

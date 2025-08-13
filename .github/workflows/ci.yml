@@ -302,6 +302,7 @@ jobs:
           - bittide-instances
           - clash-bitpackc
           - clash-protocols-memmap
+          - gdb-hs
           - ghc-typelits-extra-lemmas
 
         shell_args:

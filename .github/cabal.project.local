@@ -31,6 +31,9 @@ package clash-protocols-memmap
 package vivado-hs
   ghc-options: -Werror
 
+package gdb-hs
+  ghc-options: -Werror
+
 -- TODO: Fix upstream
 -- package clash-vexriscv
 --   ghc-options: -Werror

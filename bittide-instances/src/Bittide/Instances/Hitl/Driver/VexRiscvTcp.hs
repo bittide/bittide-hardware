@@ -28,12 +28,13 @@ import Vivado.Tcl
 import Vivado.VivadoM
 
 import qualified Bittide.Instances.Hitl.Utils.Driver as D
-import qualified Bittide.Instances.Hitl.Utils.Gdb as Gdb
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
 import qualified Data.ByteString.Lazy as BS
+import qualified Gdb
 import qualified Network.Simple.TCP as NS
 import qualified Streaming.ByteString as SBS
+import qualified System.Timeout.Extra as T
 
 -- | Directory to dump TCP data sent by clients
 tcpDataDir :: FilePath
@@ -94,13 +95,12 @@ driverFunc _name [d@(_, dI)] = do
         hSetBuffering pico.stdinHandle LineBuffering
         hSetBuffering pico.stdinHandle LineBuffering
         putStrLn "Waiting for Picocom to be ready..."
-        D.tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000 $
+        T.tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000 $
           waitForLine pico.stdoutHandle "Terminal ready"
 
       liftIO $ putStrLn "Starting GDB..."
       Gdb.withGdb $ \gdb -> do
         liftIO $ do
-          hSetBuffering gdb.stdinHandle LineBuffering
           Gdb.setLogging gdb gdbOutLog
           Gdb.setFile gdb $ firmwareBinariesDir "riscv32imc" Release </> "smoltcp_client"
           Gdb.setTarget gdb 3333
@@ -112,7 +112,7 @@ driverFunc _name [d@(_, dI)] = do
             , "smoltcp_client::gdb_panic"
             ]
           Gdb.setBreakpointHook gdb
-          Gdb.runCommands gdb.stdinHandle ["continue"]
+          Gdb.continue gdb
         D.assertProbe "probe_test_start" d
 
         liftIO $ putStrLn "Starting TCP server"
@@ -130,7 +130,7 @@ driverFunc _name [d@(_, dI)] = do
 
             tryWithTimeout :: String -> Int -> IO a -> IO a
             tryWithTimeout n t io =
-              catch (D.tryWithTimeout n t io) $
+              catch (T.tryWithTimeout n t io) $
                 \(err :: SomeException) -> loggingSequence >> throwM err
 
           putStrLn "Waiting for \"Starting TCP Client\""
