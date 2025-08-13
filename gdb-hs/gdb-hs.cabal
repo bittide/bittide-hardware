@@ -95,7 +95,11 @@ common sane-records
 
 library
   import: ghc2024, extra, sane-records
-  exposed-modules: Gdb
+  exposed-modules:
+    Gdb
+    Gdb.Commands.Basic
+    Gdb.Internal
+
   hs-source-dirs: src
   build-depends:
     base >=4.14 && <5,
@@ -114,7 +118,7 @@ test-suite unittests
   import: ghc2024, extra, sane-records
   type: exitcode-stdio-1.0
   default-extensions: TemplateHaskell
-  other-modules: Tests.Gdb
+  other-modules: Tests.Gdb.Internal
   main-is: unittests.hs
   hs-source-dirs: tests
   ghc-options:

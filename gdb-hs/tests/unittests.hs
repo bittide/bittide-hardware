@@ -7,13 +7,13 @@ module Main where
 import Test.Tasty
 import Prelude
 
-import qualified Tests.Gdb
+import qualified Tests.Gdb.Internal
 
 tests :: TestTree
 tests =
   testGroup
     "Unittests"
-    [Tests.Gdb.tests]
+    [Tests.Gdb.Internal.tests]
 
 main :: IO ()
 main = defaultMain tests
