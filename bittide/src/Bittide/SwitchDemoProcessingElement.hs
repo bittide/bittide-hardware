@@ -278,7 +278,7 @@ switchDemoPeWb SNat = withMemoryMap mm $ Circuit go
               , value =
                   Register
                     { fieldType = regType @(BitVector 64)
-                    , address = 0x14
+                    , address = 0x18
                     , access = WriteOnly
                     , tags = []
                     , reset = Nothing
@@ -290,7 +290,7 @@ switchDemoPeWb SNat = withMemoryMap mm $ Circuit go
               , value =
                   Register
                     { fieldType = regType @(BitVector 64)
-                    , address = 0x18
+                    , address = 0x20
                     , access = ReadOnly
                     , tags = []
                     , reset = Nothing
@@ -302,7 +302,7 @@ switchDemoPeWb SNat = withMemoryMap mm $ Circuit go
               , value =
                   Register
                     { fieldType = regType @(Vec (bufferSize * 3) (BitVector 64))
-                    , address = 0x20
+                    , address = 0x28
                     , access = ReadOnly
                     , tags = []
                     , reset = Nothing
