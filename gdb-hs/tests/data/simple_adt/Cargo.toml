@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2025 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "simple_adt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
