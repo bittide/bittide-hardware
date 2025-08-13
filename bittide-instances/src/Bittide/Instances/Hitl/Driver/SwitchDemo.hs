@@ -23,6 +23,7 @@ import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3
 import Control.Monad (forM, forM_, when)
 import Control.Monad.IO.Class
 import Data.Bifunctor (Bifunctor (bimap))
+import Data.Char (ord)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
@@ -36,17 +37,15 @@ import System.FilePath
 import System.IO
 import System.Process (StdStream (CreatePipe, UseHandle))
 import System.Timeout.Extra (tryWithTimeout, tryWithTimeoutOn)
-import Text.Read (readMaybe)
 import Text.Show.Pretty (ppShow)
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 import "bittide-extra" Control.Exception.Extra (brackets)
-import "extra" Data.List.Extra (trim)
 
 import qualified Bittide.Calculator as Calc
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
-import qualified Clash.Sized.Vector as V (fromList)
+import qualified Clash.Sized.Vector as V
 import qualified Data.List as L
 import qualified Gdb
 
@@ -75,34 +74,6 @@ type MetacycleLength = Calc.CalMetacycleLength GppeConfig
 
 gppeConfig :: GppeConfig
 gppeConfig = Calc.defaultGppeCalcConfig
-
-{- | Compare two hexadecimal strings for equality. Given strings do not have to
-start with \"0x\". The comparison is case-insensitive, though the prefix must
-be exactly \"0x\" if it is present (not \"0X\").
-
->>> hexEq "0xAB" "0xab"
-True
->>> hexEq "0xAB" "0xabc"
-False
->>> hexEq "0x0AB" "0xAB"
-True
->>> hexEq "AB" "0xAB"
-True
--}
-hexEq :: String -> String -> Bool
-hexEq a0 b0 =
-  case (readMaybe @Integer a1, readMaybe b1) of
-    (Just a, Just b) -> a == b
-    _ -> False
- where
-  a1 = "0x" <> dropPrefix "0x" a0
-  b1 = "0x" <> dropPrefix "0x" b0
-
--- | Drop a prefix from a list if it exists
-dropPrefix :: (Eq a) => [a] -> [a] -> [a]
-dropPrefix prefix xs
-  | prefix `L.isPrefixOf` xs = L.drop (L.length prefix) xs
-  | otherwise = xs
 
 {- | Convert an integer to a zero-padded 32-bit hexadecimal string. The result
 is prepended by \"0x\".
@@ -165,22 +136,16 @@ dumpCcSamples hitlDir ccConf ccGdbs = do
  where
   go :: (HasCallStack) => Gdb -> FilePath -> IO Word
   go gdb dumpPath = do
-    nSamplesWritten <-
-      Gdb.readSingleGdbValue
-        gdb
-        ("N_SAMPLES_WRITTEN")
-        ("x/1wx " <> showHex32 sampleMemoryBase)
+    nSamplesWritten <- Gdb.readLe @(Unsigned 32) gdb sampleMemoryBase
 
     let
       bytesPerSample = 13
       bytesPerWord = 4
 
       dumpStart = sampleMemoryBase + bytesPerWord
-      dumpEnd n = dumpStart + fromIntegral n * bytesPerWord * bytesPerSample
+      dumpEnd = dumpStart + fromIntegral nSamplesWritten * bytesPerWord * bytesPerSample
 
-    case readMaybe nSamplesWritten of
-      Nothing -> error [i|Could not parse GDB output as number: #{nSamplesWritten}|]
-      Just n -> Gdb.dumpMemoryRegion gdb dumpPath dumpStart (dumpEnd n) >> pure n
+    Gdb.dumpMemoryRegion gdb dumpPath dumpStart dumpEnd >> pure (numConvert nSamplesWritten)
 
   sampleMemoryBase = ccBaseAddress @Integer "SampleMemory"
   ccSamplesPaths = [[i|#{hitlDir}/cc-samples-#{n}.bin|] | n <- [(0 :: Int) .. 7]]
@@ -277,21 +242,17 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
 
 ccGdbCheck :: Gdb -> VivadoM ExitCode
 ccGdbCheck gdb = do
-  let whoAmIBase = showHex32 $ ccBaseAddress @Integer "WhoAmI"
-  output <- liftIO $ Gdb.readCommand1 gdb [i|x/4cb #{whoAmIBase}|]
-  pure
-    $ if output == whoAmIBase <> ":\t115 's'\t119 'w'\t99 'c'\t99 'c'"
-      then ExitSuccess
-      else ExitFailure 1
+  let whoAmIBase = ccBaseAddress @Integer "WhoAmI"
+  bytes <- liftIO (Gdb.readBytes @4 gdb whoAmIBase)
+  let bytesAsInts = L.map fromIntegral $ V.toList $ bytes
+  pure $ if bytesAsInts == L.map ord "swcc" then ExitSuccess else ExitFailure 1
 
 muGdbCheck :: Gdb -> VivadoM ExitCode
 muGdbCheck gdb = do
-  let whoAmIBase = showHex32 $ muBaseAddress @Integer "WhoAmI"
-  output <- liftIO $ Gdb.readCommand1 gdb [i|x/4cb #{whoAmIBase}|]
-  pure
-    $ if output == whoAmIBase <> ":\t109 'm'\t103 'g'\t109 'm'\t116 't'"
-      then ExitSuccess
-      else ExitFailure 1
+  let whoAmIBase = muBaseAddress @Integer "WhoAmI"
+  bytes <- liftIO (Gdb.readBytes @4 gdb whoAmIBase)
+  let bytesAsInts = L.map fromIntegral $ V.toList $ bytes
+  pure $ if bytesAsInts == L.map ord "mgmt" then ExitSuccess else ExitFailure 1
 
 foldExitCodes :: VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
 foldExitCodes prev code = do
@@ -321,19 +282,11 @@ driver testName targets = do
       (HwTarget, DeviceInfo) -> Gdb -> IO [(Unsigned 64, Unsigned 64)]
     muGetUgns (_, d) gdb = do
       let
-        mmioAddrs :: [String]
-        mmioAddrs = L.map (showHex32 @Integer) muCaptureUgnAddresses
-
-        readUgnMmio :: String -> IO (Unsigned 64, Unsigned 64)
-        readUgnMmio addr = do
-          output <- Gdb.readCommand1 gdb [i|x/2xg #{addr}|]
-          let outputDataWords = L.words output
-          case L.drop (L.length outputDataWords - 2) outputDataWords of
-            [read -> txIJ, read -> rxIJ] -> return (txIJ, rxIJ)
-            other -> fail [i|Could not read output data. Line: '#{output}', data: #{other}|]
+        readUgnMmio :: Integer -> IO (Unsigned 64, Unsigned 64)
+        readUgnMmio addr = Gdb.readLe gdb addr
 
       liftIO $ putStrLn $ "Getting UGNs for device " <> d.deviceId
-      liftIO $ mapM readUgnMmio mmioAddrs
+      liftIO $ mapM readUgnMmio muCaptureUgnAddresses
 
     muReadPeBuffer :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO ()
     muReadPeBuffer (_, d) gdb = do
@@ -345,35 +298,13 @@ driver testName targets = do
       output <- Gdb.readCommandRaw gdb [i|x/#{bufferSize}xg #{showHex32 (start + 0x28)}|]
       putStrLn [i|PE buffer readout: #{output}|]
 
-    muGetCurrentTime ::
-      (HasCallStack) =>
-      (HwTarget, DeviceInfo) ->
-      Gdb ->
-      IO (Unsigned 64)
+    muGetCurrentTime :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
     muGetCurrentTime (_, d) gdb = do
       putStrLn $ "Getting current time from device " <> d.deviceId
       let timerBase = muBaseAddress @Integer "Timer"
       -- Write capture command to `timeWb` component
       Gdb.runCommand gdb [i|set {char[4]}(#{showHex32 timerBase}) = 0x0|]
-      currentStringLsbs0 <- Gdb.readCommand1 gdb [i|x/1xw #{showHex32 (timerBase + 0x8)}|]
-      let
-        currentStringLsbs1 = trim $ L.head $ lines $ L.drop 2 $ L.dropWhile (/= ':') currentStringLsbs0
-        currentTimeLsbsI :: Integer
-        currentTimeLsbsI = read currentStringLsbs1
-        currentTimeLsbs :: Unsigned 32
-        currentTimeLsbs = fromIntegral currentTimeLsbsI
-      putStrLn $ "GDB said: " <> show currentStringLsbs1
-      putStrLn $ "I read: " <> show currentTimeLsbs
-      currentStringMsbs0 <- Gdb.readCommand1 gdb [i|x/1xw #{showHex32 (timerBase + 0xC)}|]
-      let
-        currentStringMsbs1 = trim $ L.head $ lines $ L.drop 2 $ L.dropWhile (/= ':') currentStringMsbs0
-        currentTimeMsbsI :: Integer
-        currentTimeMsbsI = read currentStringMsbs1
-        currentTimeMsbs :: Unsigned 32
-        currentTimeMsbs = fromIntegral currentTimeMsbsI
-      putStrLn $ "GDB said: " <> currentStringMsbs1
-      putStrLn $ "I read: " <> show currentTimeMsbs
-      return $ bitCoerce (currentTimeMsbs, currentTimeLsbs)
+      Gdb.readLe gdb (timerBase + 0x8)
 
     muWriteCfg ::
       (HasCallStack) =>
@@ -419,44 +350,22 @@ driver testName targets = do
         perDeviceCheck myGdb num = do
           let
             headBaseAddr = muBaseAddress "SwitchDemoPE" + 0x28
-            myBaseAddr = headBaseAddr + 24 * (L.length gdbs - num - 1)
+            myBaseAddr = toInteger (headBaseAddr + 24 * (L.length gdbs - num - 1))
             dnaBaseAddr = muBaseAddress @Integer "Dna"
-          myCounter <-
-            Gdb.readSingleGdbValue headGdb ("COUNTER-" <> show num) ("x/1gx " <> showHex32 myBaseAddr)
-          myDeviceDna2 <-
-            Gdb.readSingleGdbValue myGdb ("DNA2-" <> show num) [i|x/1wx #{showHex32 dnaBaseAddr}|]
-          myDeviceDna1 <-
-            Gdb.readSingleGdbValue
-              myGdb
-              ("DNA1-" <> show num)
-              [i|x/1wx #{showHex32 (dnaBaseAddr + 0x4)}|]
-          myDeviceDna0 <-
-            Gdb.readSingleGdbValue
-              myGdb
-              ("DNA0-" <> show num)
-              [i|x/1wx #{showHex32 (dnaBaseAddr + 0x8)}|]
-          headDeviceDna2 <-
-            Gdb.readSingleGdbValue
-              headGdb
-              ("DNA2-" <> show num)
-              ("x/1wx " <> showHex32 (myBaseAddr + 0x08))
-          headDeviceDna1 <-
-            Gdb.readSingleGdbValue
-              headGdb
-              ("DNA2-" <> show num)
-              ("x/1wx " <> showHex32 (myBaseAddr + 0x0C))
-          headDeviceDna0 <-
-            Gdb.readSingleGdbValue
-              headGdb
-              ("DNA2-" <> show num)
-              ("x/1wx " <> showHex32 (myBaseAddr + 0x10))
+          myCounter <- Gdb.readLe @(Unsigned 64) headGdb myBaseAddr
+          myDeviceDna2 <- Gdb.readLe @(Unsigned 32) myGdb dnaBaseAddr
+          myDeviceDna1 <- Gdb.readLe @(Unsigned 32) myGdb (dnaBaseAddr + 0x4)
+          myDeviceDna0 <- Gdb.readLe @(Unsigned 32) myGdb (dnaBaseAddr + 0x8)
+          headDeviceDna2 <- Gdb.readLe @(Unsigned 32) headGdb (myBaseAddr + 0x08)
+          headDeviceDna1 <- Gdb.readLe @(Unsigned 32) headGdb (myBaseAddr + 0x0C)
+          headDeviceDna0 <- Gdb.readLe @(Unsigned 32) headGdb (myBaseAddr + 0x10)
           let
             myCfg = configs L.!! num
-            expectedCounter = showHex myCfg.startWriteAt ""
-            counterEq = hexEq myCounter expectedCounter
-            dna0Eq = hexEq myDeviceDna0 headDeviceDna0
-            dna1Eq = hexEq myDeviceDna1 headDeviceDna1
-            dna2Eq = hexEq myDeviceDna2 headDeviceDna2
+            expectedCounter = myCfg.startWriteAt
+            counterEq = myCounter == expectedCounter
+            dna0Eq = myDeviceDna0 == headDeviceDna0
+            dna1Eq = myDeviceDna1 == headDeviceDna1
+            dna2Eq = myDeviceDna2 == headDeviceDna2
           when (not counterEq)
             $ putStrLn
               [i|Counter #{num} did not match. Found #{myCounter}, expected #{expectedCounter}|]

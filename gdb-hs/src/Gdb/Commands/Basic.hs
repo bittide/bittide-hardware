@@ -23,7 +23,6 @@ import System.Process.Internals (
 import Gdb.Internal
 
 import qualified Data.List as L
-import qualified "extra" Data.List.Extra as L
 
 -- | Make GDB echo a string to its output
 echo :: (HasCallStack) => Gdb -> String -> IO ()
@@ -130,16 +129,3 @@ setBreakpointHook gdb =
     , "bt"
     , "end"
     ]
-
-{- | Execute a single command and read its (single line) output
-
-XXX: It does more than that
--}
-readSingleGdbValue :: (HasCallStack) => Gdb -> String -> String -> IO String
-readSingleGdbValue gdb _value cmd = do
-  output <- readCommand1 gdb cmd
-  return
-    . L.trim
-    . L.drop 2
-    . L.dropWhile (/= ':')
-    $ output
