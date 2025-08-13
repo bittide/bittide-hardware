@@ -45,17 +45,17 @@ it will throw an exception. If both the main action and cleanup thrown an
 exception, the main action's exception will be thrown.
 -}
 withGdb :: (MonadIO m, MonadMask m, HasCallStack) => (Gdb -> m a) -> m a
-withGdb = preferMainBracket (liftIO start) (liftIO . stop)
+withGdb = preferMainBracket start stop
 
 -- | Like 'withGdb', but spawns multiple processes
 withGdbs :: (MonadIO m, MonadMask m, HasCallStack) => Int -> ([Gdb] -> m a) -> m a
-withGdbs n = brackets (L.replicate n (liftIO start)) (liftIO . stop)
+withGdbs n = brackets (L.replicate n start) stop
 
 {- | Start a GDB process and pipe its stdin/stdout/stderr. Note that it is always
 preferable to use one of 'withGdb' / 'withGdbs'.
 -}
-start :: (HasCallStack) => IO Gdb
-start = do
+start :: (HasCallStack, MonadIO m) => m Gdb
+start = liftIO $ do
   (gdbStdin, gdbStdout, gdbStderr, gdbPh) <-
     createProcess $
       (proc "gdb" [])
@@ -82,8 +82,8 @@ start = do
 doesn't within 15 seconds, an exception is thrown. Note that this means the
 process might still be running.
 -}
-stop :: (HasCallStack) => Gdb -> IO ()
-stop gdb = do
+stop :: (HasCallStack, MonadIO m) => Gdb -> m ()
+stop gdb = liftIO $ do
   -- TODO: If GDB doesn't quit after asking nicely, kill it with force.
   cleanupProcess (Just gdb.stdin, Just gdb.stdout, Just gdb.stderr, gdb.process)
   exitCode <- tryWithTimeout "Stop GDB" 10_000_000 (waitForProcess gdb.process)
@@ -104,8 +104,8 @@ Note that this function assumes only a single command is sent to GDB. If
 multiple commands are sent, the output will contain REPL prompts such as
 @(gdb)@.
 -}
-readCommandRaw :: (HasCallStack) => Gdb -> String -> IO String
-readCommandRaw gdb cmd = do
+readCommandRaw :: (HasCallStack, MonadIO m) => Gdb -> String -> m String
+readCommandRaw gdb cmd = liftIO $ do
   hPutStrLn gdb.stdin [i|echo \\n> #{cmd}\\n|]
   hPutStrLn gdb.stdin [i|echo #{magic}|]
   hPutStrLn gdb.stdin (L.trimEnd cmd)
@@ -123,7 +123,7 @@ is stripped of trailing whitespace (see 'Data.Char.isSpace'). Any leading and
 trailing empty lines are removed. See 'readCommandRaw' if you need access to
 the raw output.
 -}
-readCommand :: (HasCallStack) => Gdb -> String -> IO [String]
+readCommand :: (HasCallStack, MonadIO m) => Gdb -> String -> m [String]
 readCommand gdb cmd = do
   output <- readCommandRaw gdb cmd
   pure
@@ -134,7 +134,7 @@ readCommand gdb cmd = do
     $ output
 
 -- | Execute a command in GDB and read its output. Errors if there is output.
-readCommand0 :: (HasCallStack) => Gdb -> String -> IO ()
+readCommand0 :: (HasCallStack, MonadIO m) => Gdb -> String -> m ()
 readCommand0 gdb cmd = do
   result <- readCommand gdb cmd
   case result of
@@ -144,7 +144,7 @@ readCommand0 gdb cmd = do
 {- | Read a single line of output from GDB after executing a command. Errors if
 the output is not exactly one line.
 -}
-readCommand1 :: (HasCallStack) => Gdb -> String -> IO String
+readCommand1 :: (HasCallStack, MonadIO m) => Gdb -> String -> m String
 readCommand1 gdb cmd = do
   result <- readCommand gdb cmd
   case result of
@@ -153,9 +153,9 @@ readCommand1 gdb cmd = do
     ls -> error [i|Command '#{cmd}' returned multiple lines, expected one: #{ls}|]
 
 -- | Like 'readCommand', but ignore output
-runCommand :: (HasCallStack) => Gdb -> String -> IO ()
+runCommand :: (HasCallStack, MonadIO m) => Gdb -> String -> m ()
 runCommand gdb cmd = void (readCommandRaw gdb cmd)
 
 -- | Like 'runCommand', but takes a list of commands and runs them sequentially.
-runCommands :: (HasCallStack) => Gdb -> [String] -> IO ()
+runCommands :: (HasCallStack, MonadIO m) => Gdb -> [String] -> m ()
 runCommands gdb commands = mapM_ (runCommand gdb) commands

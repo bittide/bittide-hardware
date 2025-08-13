@@ -26,6 +26,7 @@ import Clash.Class.BitPackC (
   Bytes,
   unpackOrErrorC,
  )
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.String.Interpolate (i)
 import Data.Typeable (Typeable)
 import GHC.Stack (HasCallStack)
@@ -88,66 +89,67 @@ parseExamineMemoryOutputs output = do
 GDB supports 'b' (byte), 'h' (half-word), 'w' (word), and 'g' (giant).
 -}
 examineMemory ::
-  forall n m.
-  (HasCallStack, KnownNat n, KnownNat m) =>
+  forall n nBytes m.
+  (HasCallStack, KnownNat n, KnownNat nBytes, MonadIO m) =>
   Char ->
   Gdb ->
   Integer ->
-  IO (Vec n (Bytes m))
+  m (Vec n (Bytes nBytes))
 examineMemory format gdb address = do
-  results <- readCommand gdb [i|x/#{natToInteger @n}#{format}x 0x#{showHex address ""}|]
+  let cmd = [i|x/#{natToInteger @n}#{format}x 0x#{showHex address ""}|]
+  results <- liftIO $ readCommand gdb cmd
   pure $ either error id (parseExamineMemoryOutputs results)
 
 -- | Read multiple /byte/s from the GDB process at the given address
 readBytes ::
-  forall n.
-  (HasCallStack, KnownNat n) =>
+  forall n m.
+  (HasCallStack, KnownNat n, MonadIO m) =>
   Gdb ->
   Integer ->
-  IO (Vec n (Bytes 1))
+  m (Vec n (Bytes 1))
 readBytes = examineMemory 'b'
 
 -- | Read multiple /half-word/s (2 bytes) from the GDB process at the given address
 readHalfWords ::
-  forall n.
-  (HasCallStack, KnownNat n) =>
+  forall n m.
+  (HasCallStack, KnownNat n, MonadIO m) =>
   Gdb ->
   Integer ->
-  IO (Vec n (Bytes 2))
+  m (Vec n (Bytes 2))
 readHalfWords = examineMemory 'h'
 
 -- | Read multiple /word/s (4 bytes) from the GDB process at the given address
 readWords ::
-  forall n.
-  (HasCallStack, KnownNat n) =>
+  forall n m.
+  (HasCallStack, KnownNat n, MonadIO m) =>
   Gdb ->
   Integer ->
-  IO (Vec n (Bytes 4))
+  m (Vec n (Bytes 4))
 readWords = examineMemory 'w'
 
 -- | Read multiple /giant/s (8 bytes) from the GDB process at the given address
 readGiants ::
-  forall n.
-  (HasCallStack, KnownNat n) =>
+  forall n m.
+  (HasCallStack, KnownNat n, MonadIO m) =>
   Gdb ->
   Integer ->
-  IO (Vec n (Bytes 8))
+  m (Vec n (Bytes 8))
 readGiants = examineMemory 'g'
 
 -- | Read a single /byte/ from the GDB process at the given address
-readByte :: (HasCallStack) => Gdb -> Integer -> IO (Bytes 1)
+readByte :: (HasCallStack, MonadIO m) => Gdb -> Integer -> m (Bytes 1)
 readByte gdb address = head <$> readBytes @1 gdb address
 
 -- | Read a single /half-word/ (2 bytes) from the GDB process at the given address
-readHalfWord :: (HasCallStack) => Gdb -> Integer -> IO (Bytes 2)
+readHalfWord :: (HasCallStack, MonadIO m) => Gdb -> Integer -> m (Bytes 2)
 readHalfWord gdb address = head <$> readHalfWords @1 gdb address
 
 -- | Read a single /word/ (4 bytes) from the GDB process at the given address
-readWord :: (HasCallStack) => Gdb -> Integer -> IO (Bytes 4)
+readWord :: (HasCallStack, MonadIO m) => Gdb -> Integer -> m (Bytes 4)
 readWord gdb address = head <$> readWords @1 gdb address
 
 -- | Read a single /giant/ (8 bytes) from the GDB process at the given address
-readGiant :: (HasCallStack) => Gdb -> Integer -> IO (Bytes 8)
+readGiant :: (HasCallStack, MonadIO m) => Gdb -> Integer -> m (Bytes 8)
 readGiant gdb address = head <$> readGiants @1 gdb address
 
 {- | Read an arbitrary type from the GDB process at the given address. The type
@@ -155,28 +157,28 @@ must be laid out in memory according to C FFI rules. E.g., in Rust types must
 be annotated with @#[repr(C)]@.
 -}
 read ::
-  forall a.
-  (HasCallStack, BitPackC a, Typeable a, NFDataX a) =>
+  forall a m.
+  (HasCallStack, BitPackC a, Typeable a, NFDataX a, MonadIO m) =>
   ByteOrder ->
   Gdb ->
   Integer ->
-  IO a
+  m a
 read byteOrder gdb address = do
   bytes <- readBytes gdb address
   pure $ unpackOrErrorC byteOrder bytes
 
 -- | Like 'read', but sets the byte order to 'LittleEndian'
 readLe ::
-  (HasCallStack, BitPackC a, Typeable a, NFDataX a) =>
+  (HasCallStack, BitPackC a, Typeable a, NFDataX a, MonadIO m) =>
   Gdb ->
   Integer ->
-  IO a
+  m a
 readLe = read LittleEndian
 
 -- | Like 'read', but sets the byte order to 'BigEndian'
 readBe ::
-  (HasCallStack, BitPackC a, Typeable a, NFDataX a) =>
+  (HasCallStack, BitPackC a, Typeable a, NFDataX a, MonadIO m) =>
   Gdb ->
   Integer ->
-  IO a
+  m a
 readBe = read BigEndian
