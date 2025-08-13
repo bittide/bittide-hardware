@@ -66,8 +66,6 @@ import Bittide.Instances.Hitl.Setup (
   channelNames,
   clockPaths,
  )
-
--- import Bittide.Instances.Hitl.SwCcTopologies (FifoSize, FincFdecCount, commonSpiConfig)
 import Bittide.Jtag (jtagChain)
 import Bittide.Node
 import Bittide.ProcessingElement (PeConfig (..))
@@ -87,6 +85,7 @@ import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcArraySingle, xpmCdcSingle)
+import Clash.Explicit.Signal.Extra (changepoints)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Data.Char (ord)
 import GHC.Stack (HasCallStack)
@@ -495,8 +494,8 @@ switchDemoDut ::
   )
 switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
-  seqX
-    debugIla
+  hwSeqX
+    (debugIla, bittideGppeIla)
     ( transceivers.txSims
     , transceivers.txNs
     , transceivers.txPs
@@ -671,9 +670,9 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
     , ( callistoResult
         , switchDataOut
         , localCounter
-        , _peInput
-        , _peOutput
-        , _calendarEntries
+        , peInput
+        , peOutput
+        , calendarEntries
         , uartTx
         , syncOut
         )
@@ -700,6 +699,70 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
           , pure ()
           )
         )
+
+  peInputChanging :: Signal Bittide Bool
+  peInputChanging = changepoints bittideClk bittideRst enableGen $ bundle peInput
+  peOutputChanging :: Signal Bittide Bool
+  peOutputChanging = changepoints bittideClk bittideRst enableGen $ bundle peOutput
+  switchDataOutChanging :: Signal Bittide Bool
+  switchDataOutChanging = changepoints bittideClk bittideRst enableGen $ bundle switchDataOut
+  payAttention :: Signal Bittide Bool
+  payAttention = peInputChanging .||. peOutputChanging .||. switchDataOutChanging
+  payAttentionFree :: Signal Basic125 Bool
+  payAttentionFree = xpmCdcArraySingle bittideClk refClk payAttention
+  payAttentionFreeSticky :: Signal Basic125 Bool
+  payAttentionFreeSticky = sticky refClk refRst payAttentionFree
+
+  bittideGppeIla :: Signal Basic125 ()
+  bittideGppeIla =
+    setName @"bittideGppeIla"
+      ila
+      ( ilaConfig
+          $ "trigger_fdi_gppe"
+          :> "capture_fdi_gppe"
+          :> "gppe_input"
+          :> "gppe_output"
+          :> "gppe_local_counter"
+          :> "gppe_calendar_entries"
+          :> "gppe_rx_0"
+          :> "gppe_rx_1"
+          :> "gppe_rx_2"
+          :> "gppe_rx_3"
+          :> "gppe_rx_4"
+          :> "gppe_rx_5"
+          :> "gppe_rx_6"
+          :> "gppe_tx_0"
+          :> "gppe_tx_1"
+          :> "gppe_tx_2"
+          :> "gppe_tx_3"
+          :> "gppe_tx_4"
+          :> "gppe_tx_5"
+          :> "gppe_tx_6"
+          :> Nil
+      )
+        { depth = D4096
+        }
+      refClk
+      payAttentionFreeSticky
+      payAttentionFree
+      (xpmCdcArraySingle bittideClk refClk (peInput !! (0 :: Index NumGppes)))
+      (xpmCdcArraySingle bittideClk refClk (peOutput !! (0 :: Index NumGppes)))
+      (xpmCdcArraySingle bittideClk refClk localCounter)
+      (xpmCdcArraySingle bittideClk refClk calendarEntries)
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (0 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (1 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (2 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (3 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (4 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (5 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (6 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (0 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (1 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (2 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (3 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (4 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (5 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (6 :: Index LinkCount)))
 
   frequencyAdjustments :: Signal Bittide (FINC, FDEC)
   frequencyAdjustments =
@@ -773,7 +836,7 @@ switchDemoTest ::
   )
 switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn =
   -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
-  seqX
+  hwSeqX
     testIla
     ( txs
     , txns
