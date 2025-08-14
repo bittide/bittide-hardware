@@ -13,12 +13,10 @@ import Prelude
 
 import Clash.Class.BitPackC (BitPackC)
 import GHC.Generics (Generic)
-import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH (testGroupGenerator)
-import Tests.Common (getGitRoot, run)
+import Tests.Common (getBinaryPath)
 
 import qualified Gdb
 
@@ -34,7 +32,7 @@ data WeirdAlignment = WeirdAlignment
 case_simple_adt :: Assertion
 case_simple_adt = do
   Gdb.withGdb $ \gdb -> do
-    Gdb.setFile gdb binaryPath
+    Gdb.setFile gdb =<< getBinaryPath "simple_adt"
     Gdb.runCommand gdb "break main.rs:22"
     Gdb.runCommand gdb "break main.rs:28"
     Gdb.runCommand gdb "run"
@@ -48,8 +46,6 @@ case_simple_adt = do
     actual2 <- Gdb.readLe gdb address
     assertEqual "WeirdAlignment2" actual2 expected2
  where
-  binaryPath = simpleAdtRoot </> "target" </> "x86_64-unknown-linux-gnu" </> "debug" </> "simple_adt"
-
   expected1 =
     WeirdAlignment
       { a = 0x12
@@ -69,20 +65,4 @@ case_simple_adt = do
       }
 
 tests :: TestTree
-tests =
-  sequentialTestGroup
-    "Tests.Gdb.Commands.Read"
-    AllSucceed
-    [ testGroup
-        "Build Rust crates"
-        [ testCase "simple_adt" (run "cargo" ["build"] (Just simpleAdtRoot))
-        ]
-    , $(testGroupGenerator)
-    ]
- where
-
-simpleAdtRoot :: FilePath
-simpleAdtRoot = dataRoot </> "simple_adt"
-
-dataRoot :: FilePath
-dataRoot = unsafePerformIO getGitRoot </> "gdb-hs" </> "tests" </> "data"
+tests = $(testGroupGenerator)

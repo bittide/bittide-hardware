@@ -9,6 +9,7 @@ import Prelude
 import Data.List.Extra (trim)
 import Data.String.Interpolate (i)
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
+import System.FilePath ((</>))
 import System.Process (
   CreateProcess (cwd),
   proc,
@@ -16,9 +17,6 @@ import System.Process (
   readProcess,
  )
 import Test.Tasty.HUnit (assertFailure)
-
-getGitRoot :: IO FilePath
-getGitRoot = trim <$> readProcess "git" ["rev-parse", "--show-toplevel"] ""
 
 run :: FilePath -> [String] -> Maybe FilePath -> IO ()
 run cmd0 args cwd = do
@@ -41,3 +39,16 @@ run cmd0 args cwd = do
 
         #{stdErr}
     |]
+
+getGitRoot :: IO FilePath
+getGitRoot = trim <$> readProcess "git" ["rev-parse", "--show-toplevel"] ""
+
+getDataRoot :: IO FilePath
+getDataRoot = do
+  gitRoot <- getGitRoot
+  pure $ gitRoot </> "gdb-hs" </> "tests" </> "data"
+
+getBinaryPath :: String -> IO FilePath
+getBinaryPath name = do
+  dataRoot <- getDataRoot
+  pure $ dataRoot </> name </> "target" </> "x86_64-unknown-linux-gnu" </> "debug" </> name

@@ -99,6 +99,7 @@ library
     Gdb
     Gdb.Commands.Basic
     Gdb.Commands.Read
+    Gdb.Commands.Write
     Gdb.Internal
 
   hs-source-dirs: src
@@ -124,6 +125,7 @@ test-suite unittests
   other-modules:
     Tests.Common
     Tests.Gdb.Commands.Read
+    Tests.Gdb.Commands.Write
     Tests.Gdb.Internal
 
   main-is: unittests.hs
