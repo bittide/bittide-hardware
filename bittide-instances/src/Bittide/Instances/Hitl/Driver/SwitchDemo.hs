@@ -23,7 +23,6 @@ import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
 import Control.Monad (forM, forM_, when)
 import Control.Monad.IO.Class
-import Data.Bifunctor (Bifunctor (bimap))
 import Data.Char (ord)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.String.Interpolate (i)
@@ -311,30 +310,16 @@ driver testName targets = do
       Gdb ->
       Calc.CyclePeConfig (Unsigned 64) (Index 9) ->
       VivadoM ()
-    muWriteCfg target@(_, d) gdb (bimap pack fromIntegral -> cfg) = do
-      let
-        start = muBaseAddress "SwitchDemoPE"
-
-        write64 :: Unsigned 32 -> BitVector 64 -> [String]
-        write64 address value =
-          [ [i|set {char[4]}(#{showHex32 address}) = #{showHex32 valueLsb}|]
-          , [i|set {char[4]}(#{showHex32 (address + 4)}) = #{showHex32 valueMsb}|]
-          ]
-         where
-          (valueMsb :: BitVector 32, valueLsb :: BitVector 32) = bitCoerce value
+    muWriteCfg target@(_, d) gdb cfg = do
+      let start = muBaseAddress "SwitchDemoPE"
 
       liftIO $ do
         muReadPeBuffer target gdb
         putStrLn $ "Writing config to device " <> d.deviceId
-        Gdb.runCommands
-          gdb
-          ( L.concat
-              [ write64 (start + 0x00) cfg.startReadAt
-              , write64 (start + 0x08) cfg.readForN
-              , write64 (start + 0x10) cfg.startWriteAt
-              , write64 (start + 0x18) cfg.writeForN
-              ]
-          )
+        Gdb.writeLe @(Unsigned 64) gdb (start + 0x00) cfg.startReadAt
+        Gdb.writeLe @(Unsigned 64) gdb (start + 0x08) (numConvert cfg.readForN)
+        Gdb.writeLe @(Unsigned 64) gdb (start + 0x10) cfg.startWriteAt
+        Gdb.writeLe @(Unsigned 64) gdb (start + 0x18) (numConvert cfg.writeForN)
 
     finalCheck ::
       (HasCallStack) =>
