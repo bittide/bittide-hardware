@@ -17,6 +17,7 @@ import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.SwitchDemo (memoryMapCc, memoryMapMu)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
+import Bittide.Wishbone (TimeCmd (Capture))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
@@ -278,8 +279,7 @@ driver testName targets = do
   let
     hitlDir = projectDir </> "_build/hitl" </> testName
 
-    muGetUgns ::
-      (HwTarget, DeviceInfo) -> Gdb -> IO [(Unsigned 64, Unsigned 64)]
+    muGetUgns :: (HwTarget, DeviceInfo) -> Gdb -> IO [(Unsigned 64, Unsigned 64)]
     muGetUgns (_, d) gdb = do
       let
         readUgnMmio :: Integer -> IO (Unsigned 64, Unsigned 64)
@@ -302,8 +302,7 @@ driver testName targets = do
     muGetCurrentTime (_, d) gdb = do
       putStrLn $ "Getting current time from device " <> d.deviceId
       let timerBase = muBaseAddress @Integer "Timer"
-      -- Write capture command to `timeWb` component
-      Gdb.runCommand gdb [i|set {char[4]}(#{showHex32 timerBase}) = 0x0|]
+      Gdb.writeLe gdb timerBase Capture
       Gdb.readLe gdb (timerBase + 0x8)
 
     muWriteCfg ::
