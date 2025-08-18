@@ -18,8 +18,10 @@ module Gdb (
   -- * Wrappers around common commands
   module Gdb.Commands.Basic,
   module Gdb.Commands.Read,
+  module Gdb.Commands.Write,
 ) where
 
 import Gdb.Commands.Basic
 import Gdb.Commands.Read
+import Gdb.Commands.Write
 import Gdb.Internal
