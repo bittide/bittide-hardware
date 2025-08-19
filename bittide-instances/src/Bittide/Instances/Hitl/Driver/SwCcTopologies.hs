@@ -70,7 +70,7 @@ driverFunc testName targets = do
       liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
 
       brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-        liftIO $ mapConcurrently_ Gdb.continue ccGdbs
+        liftIO $ mapConcurrently_ (`Gdb.jump` "_start") ccGdbs
         liftIO
           $ tryWithTimeoutFinally "Waiting for stable links" 60_000_000 goDumpCcSamples
           $ forConcurrently_ picocoms

@@ -33,6 +33,14 @@ continue gdb =
   -- Note that we can't use 'readCommand' here, because this command won't return
   hPutStrLn gdb.stdin "continue"
 
+{- | Jump to a specific location. This will also run the program. You'll have to
+wait for a breakpoint to hit or use 'interrupt'.
+-}
+jump :: (HasCallStack) => Gdb -> String -> IO ()
+jump gdb to =
+  -- Note that we can't use 'readCommand' here, because this command won't return
+  hPutStrLn gdb.stdin [i|jump #{to}|]
+
 {- | Send @SIGINT@ to the GDB process. This will pause the execution of the
 program being debugged and return control to GDB.
 -}
