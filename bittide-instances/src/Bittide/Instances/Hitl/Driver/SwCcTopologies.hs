@@ -19,7 +19,7 @@ import Bittide.Instances.Hitl.Driver.SwitchDemo (
 import Bittide.Instances.Hitl.Setup (FpgaCount)
 import Bittide.Instances.Hitl.Utils.Driver (assertProbe, awaitHandshakes)
 import Bittide.Instances.Hitl.Utils.Program (ProcessHandles (stdoutHandle))
-import Control.Concurrent.Async (forConcurrently_)
+import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -60,17 +60,17 @@ driverFunc testName targets = do
       ccPorts = (.ccPort) <$> initOcdsData
 
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
-      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
+      zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
 
       let
         ccConf = defCcConf (natToNum @FpgaCount)
         goDumpCcSamples = dumpCcSamples hitlDir ccConf ccGdbs
         picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
 
-      liftIO $ mapM_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
+      liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
 
       brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
-        liftIO $ mapM_ Gdb.continue ccGdbs
+        liftIO $ mapConcurrently_ Gdb.continue ccGdbs
         liftIO
           $ tryWithTimeoutFinally "Waiting for stable links" 60_000_000 goDumpCcSamples
           $ forConcurrently_ picocoms
