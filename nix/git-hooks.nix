@@ -34,6 +34,15 @@ in
     check-added-large-files.excludes = excludes;
     cabal-gild.excludes = excludes;
 
+    my-clippy = {
+      enable = true;
+      name = "Custom clippy hook";
+      entry = "./cargo.sh clippy --all-features -- -Dwarnings";
+      language = "system";
+      files = "\\.(rs)$";
+      excludes = excludes;
+      pass_filenames = false;
+    };
 
     # TODO: https://github.com/bittide/bittide-hardware/issues/972
     # We can not use rust hooks yet because they assume the repository root contains a `Cargo.toml` file.
