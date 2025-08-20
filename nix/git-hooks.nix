@@ -32,6 +32,15 @@
     check-added-large-files.excludes = ["^clash-vexriscv/.*"];
     cabal-gild.excludes = ["^clash-vexriscv/.*"];
 
+    my-clippy = {
+      enable = true;
+      name = "Custom clippy hook";
+      entry = "./cargo.sh clippy --all-features -- -Dwarnings";
+      language = "system";
+      files = "\\.(rs)$";
+      excludes = ["^clash-vexriscv/.*"];
+      pass_filenames = false;
+    };
 
     # We can not use rust hooks yet because they assume the repository root contains a `Cargo.toml` file.
     # TODO: Create workaround for this issue.
