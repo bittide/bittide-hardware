@@ -1,8 +1,6 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE RecordWildCards #-}
 
 {- | Switch demo for a Bittide system. In concert with its driver file, this device under
 test should demonstrate the predictability of a Bittide system once it has achieved logical
@@ -14,29 +12,15 @@ on the topic.
 module Bittide.Instances.Hitl.SwitchDemoOld (
   switchDemoOldDut,
   switchDemoOldTest,
-  memoryMapCc,
-  memoryMapMu,
   tests,
 ) where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import Clash.Prelude (withClockResetEnable)
 
-import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
-import Bittide.CaptureUgn (captureUgn)
 import Bittide.ClockControl
-import Bittide.ClockControl.Callisto.Types (
-  CallistoResult (..),
-  Stability (..),
- )
-import Bittide.ClockControl.CallistoSw (
-  SwControlCConfig (..),
-  SwcccInternalBusses,
-  callistoSwClockControlC,
- )
+import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
-import Bittide.Df (asciiDebugMux)
-import Bittide.DoubleBufferedRam
 import Bittide.ElasticBuffer (
   EbMode (Pass),
   Overflow,
@@ -59,218 +43,32 @@ import Bittide.Instances.Domains (
   GthRxS,
   GthTxS,
  )
+import Bittide.Instances.Hitl.Dut.SwitchDemoOld
 import Bittide.Instances.Hitl.Setup (
-  FpgaCount,
   LinkCount,
   allHwTargets,
   channelNames,
   clockPaths,
  )
-import Bittide.Jtag (jtagChain)
-import Bittide.ProcessingElement (PeConfig (..), processingElement)
-import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
-import Bittide.Switch (switchC)
-import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle), switchDemoPeWb)
+import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle))
 import Bittide.Transceiver (transceiverPrbsN)
-import Bittide.Wishbone (
-  readDnaPortE2Wb,
-  timeWb,
-  uartBytes,
-  uartDf,
-  uartInterfaceWb,
-  whoAmIC,
- )
 
 import Clash.Annotations.TH (makeTopEntity)
-import Clash.Class.BitPackC (ByteOrder)
-import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Clash.Cores.Xilinx.Ila (Depth (..), IlaConfig (..), ila, ilaConfig)
-import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Clash.Cores.Xilinx.VIO (vioProbe)
 import Clash.Cores.Xilinx.Xpm.Cdc (xpmCdcArraySingle, xpmCdcSingle)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
-import Data.Char (ord)
 import Protocols
-import Protocols.Extra
-import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
-import Protocols.Wishbone
 import System.FilePath ((</>))
-import VexRiscv (DumpVcd (..), Jtag, JtagIn (..), JtagOut (..))
+import VexRiscv (JtagIn (..), JtagOut (..))
 
-import {-# SOURCE #-} qualified Bittide.Instances.Hitl.Driver.SwitchDemoOld as D
+import qualified Bittide.Instances.Hitl.Driver.SwitchDemoOld as D
 import qualified Bittide.Transceiver as Transceiver
 import qualified Clash.Cores.Xilinx.GTH as Gth
 import qualified Protocols.MemoryMap as MM
-import qualified Protocols.Vec as Vec
-
-#ifdef SIM_BAUD_RATE
-type Baud = MaxBaudRate Basic125
-#else
-type Baud = 921_600
-#endif
-
-baud :: SNat Baud
-baud = SNat
 
 type FifoSize = 5 -- = 2^5 = 32
-
-{- Internal busses:
-    - Instruction memory
-    - Data memory
-    - `whoAmI`
-    - `timeWb`
--}
-type NmuInternalBusses = 4
-type NmuRemBusWidth nodeBusses = 30 - CLog 2 (nodeBusses + NmuInternalBusses)
-
-data SimpleManagementConfig nodeBusses where
-  SimpleManagementConfig ::
-    (KnownNat nodeBusses) =>
-    { peConfig :: PeConfig (nodeBusses + NmuInternalBusses)
-    -- ^ Configuration for the internal 'processingElement'
-    , timeRegPrefix :: Unsigned (CLog 2 (nodeBusses + NmuInternalBusses))
-    -- ^ Time control register prefix
-    , dumpVcd :: DumpVcd
-    -- ^ VCD dump configuration
-    } ->
-    SimpleManagementConfig nodeBusses
-
-simpleManagementUnitC ::
-  forall bitDom nodeBusses.
-  ( KnownDomain bitDom
-  , HiddenClockResetEnable bitDom
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  , 1 <= DomainPeriod bitDom
-  , KnownNat nodeBusses
-  , CLog 2 (nodeBusses + NmuInternalBusses) <= 30
-  ) =>
-  SimpleManagementConfig nodeBusses ->
-  Circuit
-    (MM.ConstBwd MM.MM, (Jtag bitDom, CSignal bitDom (BitVector 64)))
-    ( CSignal bitDom (Unsigned 64)
-    , Vec
-        nodeBusses
-        ( MM.ConstBwd (Unsigned (CLog 2 (nodeBusses + NmuInternalBusses)))
-        , ( MM.ConstBwd MM.MM
-          , Wishbone bitDom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4)
-          )
-        )
-    )
-simpleManagementUnitC (SimpleManagementConfig peConfig pfxTime dumpVcd) =
-  circuit $ \(mm, (jtag, _linkIn)) -> do
-    peWbs <- processingElement dumpVcd peConfig -< (mm, jtag)
-    ([(timePfx, timeWbBus)], nmuWbs) <- splitAtC d1 -< peWbs
-    localCounter <- timeWb -< timeWbBus
-
-    MM.constBwd pfxTime -< timePfx
-
-    idC -< (localCounter, nmuWbs)
-
-{- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
-calendarConfig :: CalendarConfig 26 (Vec 8 (Index 9))
-calendarConfig =
-  CalendarConfig
-    (SNat @LinkCount)
-    {- The '@12' is so that the generated Rust code works. At time of writing,
-    the generator makes two separate device-specific types for 'ValidEntry' since
-    they have differing repetition bit widths. To fix this, all tests are being
-    set to a width of 12.
-    -}
-    (SNat @12)
-
-    -- Active calendar. It will broadcast the PE (node 1) data to all links. Other
-    -- than that we cycle through the other nodes.
-    (      ValidEntry (2 :> repeat 1) nRepetitions
-        :> ValidEntry (3 :> repeat 1) nRepetitions
-        :> ValidEntry (4 :> repeat 1) nRepetitions
-        :> ValidEntry (5 :> repeat 1) nRepetitions
-        :> ValidEntry (6 :> repeat 1) nRepetitions
-        :> ValidEntry (7 :> repeat 1) nRepetitions
-        :> ValidEntry (8 :> repeat 1) nRepetitions
-        :> Nil
-    )
-
-    -- Don't care about inactive calendar:
-    (ValidEntry (repeat 0) 0 :> Nil)
-  where
-  -- We want enough time to read _number of FPGAs_ triplets
-  nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
-{- FOURMOLU_ENABLE -}
-
-memoryMapCc :: MemoryMap
-memoryMapCc = fst memoryMaps
-
-memoryMapMu :: MemoryMap
-memoryMapMu = snd memoryMaps
-
-memoryMaps :: ("CC" ::: MemoryMap, "MU" ::: MemoryMap)
-memoryMaps = (ccMm, muMm)
- where
-  (SimOnly ccMm, SimOnly muMm, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =
-    switchDemoOldDut
-      clockGen
-      resetGen
-      clockGen
-      (SimOnly (repeat 0))
-      0
-      0
-      0
-      (pure (JtagIn 0 0 0))
-      0
-
-muConfig :: SimpleManagementConfig 12
-muConfig =
-  SimpleManagementConfig
-    { peConfig =
-        PeConfig
-          { prefixI = 0b1000
-          , prefixD = 0b1100
-          , initI = Undefined @(Div (64 * 1024) 4)
-          , initD = Undefined @(Div (64 * 1024) 4)
-          , iBusTimeout = d0
-          , dBusTimeout = d0
-          , includeIlaWb = False
-          , whoAmID = D.muWhoAmID
-          , whoAmIPrefix = D.whoAmIPrefix
-          }
-    , timeRegPrefix = 0b1101
-    , dumpVcd = NoDumpVcd
-    }
-
-ccConfig ::
-  forall n.
-  ( CLog 2 (n + SwcccInternalBusses) <= 30
-  , 3 <= CLog 2 (n + SwcccInternalBusses)
-  , KnownNat n
-  ) =>
-  SwControlCConfig n
-ccConfig =
-  SwControlCConfig
-    { peConfig =
-        PeConfig
-          { prefixI = 0b1000
-          , prefixD = 0b0100
-          , initI = Undefined @(Div (64 * 1024) 4)
-          , initD = Undefined @(Div (64 * 1024) 4)
-          , iBusTimeout = d0
-          , dBusTimeout = d0
-          , includeIlaWb = False
-          , whoAmID = D.ccWhoAmID
-          , whoAmIPrefix = D.whoAmIPrefix @(CLog 2 (n + SwcccInternalBusses))
-          }
-    , ccRegPrefix = 0b1100
-    , timePrefix = 0b0110
-    , freezePrefix = 0b0010
-    , syncOutGeneratorPrefix = 0b0001
-    , domainDiffsPrefix = 0b0011
-    }
-
-ccLabel :: Vec 2 Byte
-ccLabel = fromIntegral (ord 'C') :> fromIntegral (ord 'C') :> Nil
-
-muLabel :: Vec 2 Byte
-muLabel = fromIntegral (ord 'M') :> fromIntegral (ord 'U') :> Nil
 
 {- | Reset logic:
 
@@ -490,176 +288,7 @@ switchDemoOldDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   transceiversFailedAfterUp =
     sticky refClk refRst (isFalling refClk spiRst enableGen False handshakesDoneFree)
 
-  defaultBittideClkRstEn :: forall r. ((HiddenClockResetEnable Bittide) => r) -> r
-  defaultBittideClkRstEn = withClockResetEnable bittideClk handshakeRstTx enableGen
-  defaultRefClkRstEn :: forall r. ((HiddenClockResetEnable Basic125) => r) -> r
-  defaultRefClkRstEn = withClockResetEnable refClk handshakeRstFree enableGen
-
-  circuitFnC ::
-    ( ?busByteOrder :: ByteOrder
-    , ?regByteOrder :: ByteOrder
-    ) =>
-    Circuit
-      ( "CC" ::: ConstBwd MM
-      , "MU" ::: ConstBwd MM
-      , Jtag Bittide
-      , CSignal Bittide (BitVector 64)
-      , CSignal Bittide (BitVector LinkCount)
-      , Vec LinkCount (CSignal Bittide (Maybe (BitVector 64)))
-      )
-      ( CSignal Bittide (CallistoResult LinkCount)
-      , "TXS" ::: Vec LinkCount (CSignal Bittide (BitVector 64))
-      , "LOCAL_COUNTER" ::: CSignal Bittide (Unsigned 64)
-      , "PE_STATE" ::: CSignal Bittide (SimplePeState FpgaCount)
-      , "PE_IN" ::: CSignal Bittide (BitVector 64)
-      , "PE_OUT" ::: CSignal Bittide (BitVector 64)
-      , "CAL_ENTRY" ::: CSignal Bittide (Vec (LinkCount + 1) (Index (LinkCount + 2)))
-      , "UART_TX" ::: CSignal Basic125 Bit
-      , "SYNC_OUT" ::: CSignal Basic125 Bit
-      )
-  circuitFnC = circuit $ \(ccMM, muMM, jtag, linkIn, mask, Fwd rxs) -> do
-    [muJtag, ccJtag] <- jtagChain -< jtag
-
-    (muUartBytesBittide, _muUartStatus) <-
-      defaultBittideClkRstEn
-        $ uartInterfaceWb d16 d16 uartBytes
-        -< (muUartBus, Fwd (pure Nothing))
-
-    muUartBytes <-
-      dcFifoDf d5 bittideClk handshakeRstTx refClk handshakeRstFree
-        -< muUartBytesBittide
-
-    (Fwd lc, muWbAll) <-
-      defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMM, (muJtag, linkIn))
-    ( [ (muWhoAmIPfx, (muWhoAmIMM, muWhoAmI))
-        , (peWbPfx, (peWbMM, peWb))
-        , (switchWbPfx, (switchWbMM, switchWb))
-        , (dnaWbPfx, (dnaWbMM, dnaWb))
-        , (muUartPfx, muUartBus)
-        ]
-      , muWbRest
-      ) <-
-      splitAtC SNat -< muWbAll
-    ([ugn0Pfx, ugn1Pfx, ugn2Pfx, ugn3Pfx, ugn4Pfx, ugn5Pfx, ugn6Pfx], ugnData) <-
-      unzipC -< muWbRest
-
-    MM.constBwd 0b0000 -< muUartPfx
-    MM.constBwd 0b0001 -< ugn0Pfx
-    MM.constBwd 0b0010 -< ugn1Pfx
-    MM.constBwd 0b0011 -< ugn2Pfx
-    MM.constBwd 0b0100 -< ugn3Pfx
-    MM.constBwd 0b0101 -< ugn4Pfx
-    MM.constBwd 0b0110 -< ugn5Pfx
-    MM.constBwd 0b0111 -< ugn6Pfx
-    --          0b1000    IMEM
-    MM.constBwd 0b1001 -< peWbPfx
-    MM.constBwd 0b1010 -< switchWbPfx
-    MM.constBwd 0b1011 -< dnaWbPfx
-    --          0b1100    DMEM
-    --          0b1101    TIME (not the same as CC!)
-    MM.constBwd 0b1110 -< muWhoAmIPfx
-
-    ugnRxs <-
-      defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs) -< ugnData
-
-    rxLinks <- appendC -< ([Fwd peOut], ugnRxs)
-    (switchOut, calEntry) <-
-      defaultBittideClkRstEn $ switchC calendarConfig -< (switchWbMM, (rxLinks, switchWb))
-    ([Fwd peIn], txs) <- splitAtC SNat -< switchOut
-
-    (Fwd peOut, ps) <-
-      defaultBittideClkRstEn (switchDemoPeWb (SNat @FpgaCount))
-        -< (peWbMM, (Fwd lc, peWb, dna, Fwd peIn))
-
-    dna <- defaultBittideClkRstEn (readDnaPortE2Wb simDna2) -< (dnaWbMM, dnaWb)
-
-    defaultBittideClkRstEn (whoAmIC 0x746d_676d) -< (muWhoAmIMM, muWhoAmI)
-
-    (ccUartBytesBittide, _uartStatus) <-
-      defaultBittideClkRstEn
-        $ uartInterfaceWb d16 d16 uartBytes
-        -< (ccUartBus, Fwd (pure Nothing))
-
-    ccUartBytes <-
-      dcFifoDf d5 bittideClk handshakeRstTx refClk handshakeRstFree
-        -< ccUartBytesBittide
-
-    uartTxBytes <-
-      defaultRefClkRstEn
-        $ asciiDebugMux d1024 (ccLabel :> muLabel :> Nil)
-        -< [ccUartBytes, muUartBytes]
-    (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
-
-    ( syncOut
-      , Fwd swCcOut0
-      , [ (ccWhoAmIPfx, ccWhoAmIBus)
-          , (ccUartPfx, ccUartBus)
-          , (ccSampleMemoryPfx, ccSampleMemoryBus)
-          ]
-      ) <-
-      defaultBittideClkRstEn
-        $ callistoSwClockControlC
-          @LinkCount
-          refClk
-          refRst
-          transceivers.rxClocks
-          (unsafeFromActiveLow <$> transceivers.handshakesDone)
-          NoDumpVcd
-          ccConfig
-        -< (ccMM, (Fwd syncIn, ccJtag, mask, Fwd linksSuitableForCc))
-
-    MM.constBwd 0b0000 -< ccUartPfx
-    --          0b0001    SYNC_OUT_GENERATOR
-    --          0b0010    FREEZE
-    --          0b0011    DOMAIN_DIFFS
-    --          0b0100    DMEM
-    --          0b0110    TIME (not the same as MU!)
-    --          0b1000    IMEM
-    --          0b1010    DBG
-    --          0b1100    CC
-    MM.constBwd 0b1110 -< ccWhoAmIPfx
-    MM.constBwd 0b1111 -< ccSampleMemoryPfx
-
-    defaultBittideClkRstEn
-      (wbStorage "SampleMemory")
-      (Undefined @36_000 @(BitVector 32))
-      -< ccSampleMemoryBus
-
-    defaultBittideClkRstEn (whoAmIC 0x6363_7773) -< ccWhoAmIBus
-
-    let swCcOut1 =
-          if clashSimulation
-            then
-              let
-                -- Should all clock control steps be run in simulation?
-                -- False means that clock control will always immediately be done.
-                simulateCc = False
-               in
-                if simulateCc
-                  then swCcOut0
-                  else
-                    pure
-                      $ CallistoResult
-                        { maybeSpeedChange = Nothing
-                        , stability = repeat (Stability{stable = True, settled = True})
-                        , allStable = True
-                        , allSettled = True
-                        }
-            else swCcOut0
-
-    idC
-      -< ( Fwd swCcOut1
-         , txs
-         , Fwd lc
-         , ps
-         , Fwd peIn
-         , Fwd peOut
-         , calEntry
-         , uartTx
-         , syncOut
-         )
-
-  ( (ccMm, muMm, jtagOut, _linkInBwd, _maskBwd, _insBwd)
+  ( (ccMm, muMm, jtagOut, _linkInBwd, _maskBwd, _, _insBwd, _)
     , ( callistoResult
         , switchDataOut
         , localCounter
@@ -673,14 +302,21 @@ switchDemoOldDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
     ) =
       withBittideByteOrder
         $ toSignals
-          circuitFnC
+          ( switchDemoOldC
+              (refClk, handshakeRstFree, enableGen)
+              (bittideClk, handshakeRstTx, enableGen)
+              transceivers.rxClocks
+              (unsafeFromActiveLow <$> transceivers.handshakesDone)
+          )
           (
             ( ()
             , ()
             , jtagIn
             , pure 0 -- link in
             , pure maxBound -- enable mask
+            , linksSuitableForCc
             , rxDatasEbs
+            , syncIn
             )
           ,
             ( pure ()
