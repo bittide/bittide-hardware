@@ -42,6 +42,16 @@
       pass_filenames = false;
     };
 
+    my-rustfmt = {
+      enable = true;
+      name = "Custom rustfmt hook";
+      entry = "./cargo.sh fmt --all -- --check";
+      language = "system";
+      files = "\\.(rs)$";
+      excludes = ["^clash-vexriscv/.*"];
+      pass_filenames = false;
+    };
+
     # We can not use rust hooks yet because they assume the repository root contains a `Cargo.toml` file.
     # TODO: Create workaround for this issue.
     # rustfmt.enable = true;
