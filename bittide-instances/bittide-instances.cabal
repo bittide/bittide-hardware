@@ -165,6 +165,7 @@ library
     Bittide.Instances.Domains
     Bittide.Instances.Hacks
     Bittide.Instances.Hitl.BoardTest
+    Bittide.Instances.Hitl.Config.SwitchDemo
     Bittide.Instances.Hitl.Ddr4
     Bittide.Instances.Hitl.DnaOverSerial
     Bittide.Instances.Hitl.Driver.ClockControl.Config
@@ -178,6 +179,7 @@ library
     Bittide.Instances.Hitl.Driver.SwitchDemo
     Bittide.Instances.Hitl.Driver.VexRiscv
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
+    Bittide.Instances.Hitl.Dut.SwitchDemo
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.LinkConfiguration

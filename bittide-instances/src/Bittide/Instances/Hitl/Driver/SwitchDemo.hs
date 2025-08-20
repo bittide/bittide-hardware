@@ -25,12 +25,11 @@ import Bittide.ClockControl.Config (CcConf, defCcConf, saveCcConfig)
 import Bittide.ClockControl.Topology (Topology)
 import Bittide.Hitl
 import Bittide.Instances.Domains
-import Bittide.Instances.Hitl.SwitchDemo
+import Bittide.Instances.Hitl.Dut.SwitchDemo
 import Bittide.Instances.Hitl.Setup (FpgaCount, fpgaSetup)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Wishbone (TimeCmd (Capture))
-import Clash.Sized.Extra (extendLsb0s)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
@@ -93,23 +92,6 @@ data OcdInitData = OcdInitData
   }
 
 type StartDelay = 5 -- seconds
-
-whoAmIPrefix :: forall n m. (KnownNat n, KnownNat m, n ~ m + 3) => Unsigned n
-whoAmIPrefix = extendLsb0s @3 @m (0b111 :: Unsigned 3)
-ccWhoAmID :: BitVector 32
-ccWhoAmID = $(makeWhoAmIDTH "swcc")
-muWhoAmID :: BitVector 32
-muWhoAmID = $(makeWhoAmIDTH "mgmt")
-gppeWhoAmID :: BitVector 32
-gppeWhoAmID = $(makeWhoAmIDTH "gppe")
-
-type Padding = Calc.WindowCycles FpgaCount 31
-type GppeConfig = Calc.DefaultGppeConfig FpgaCount Padding
-type CyclesPerWrite = Calc.CalCyclesPerWrite GppeConfig
-type GroupCycles = Calc.CalGroupCycles GppeConfig
-type WindowCycles = Calc.CalWindowCycles GppeConfig
-type ActiveCycles = Calc.CalActiveCycles GppeConfig
-type MetacycleLength = Calc.CalMetacycleLength GppeConfig
 
 gppeConfig :: GppeConfig
 gppeConfig = Calc.defaultGppeCalcConfig
