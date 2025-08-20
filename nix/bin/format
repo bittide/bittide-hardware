@@ -5,7 +5,4 @@
 ROOT=$(git rev-parse --show-toplevel)
 cd "${ROOT}" || exit 1
 
-echo "Formatting Rust files.."
-"${ROOT}"/cargo.sh fmt --all -- --emit files
-
-pre-commit run format-hs --all-files
+pre-commit run --all-files
