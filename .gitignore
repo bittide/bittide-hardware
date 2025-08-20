@@ -54,6 +54,7 @@ systemverilog/
 
 # Nix output
 result*
+.pre-commit-config.yaml
 
 # Sphinx output
 _build/
@@ -83,3 +84,5 @@ __pycache__
 
 # DirEnv nix pointers
 .direnv
+
+# Man

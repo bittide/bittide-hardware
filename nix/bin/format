@@ -5,11 +5,4 @@
 ROOT=$(git rev-parse --show-toplevel)
 cd "${ROOT}" || exit 1
 
-echo "Formatting Cabal files.."
-"${ROOT}"/.github/scripts/cabal-gild.sh
-
-echo "Formatting Rust files.."
-"${ROOT}"/cargo.sh fmt --all -- --emit files
-
-echo "Formatting Haskell files.."
-"${ROOT}"/.github/scripts/fourmolu.sh
+pre-commit run --all-files

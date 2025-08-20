@@ -11,4 +11,3 @@ git ls-files *.hs | xargs --max-procs=0 -I {} fourmolu --quiet --mode inplace "{
 
 echo "Fixing SPDX headers.."
 git ls-files *.hs | xargs --max-procs=0 -I {} python3 .github/scripts/fix_spdx_header.py "{}"
-

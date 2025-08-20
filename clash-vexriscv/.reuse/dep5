@@ -13,4 +13,3 @@ Source: https://github.com/clash-lang/clash-vexrisc
 Files: clash-vexriscv-sim/test-programs/src/bin/*.expected
 Copyright: 2022-2023 Google LLC
 License: CC0-1.0
-
