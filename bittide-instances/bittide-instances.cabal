@@ -178,6 +178,8 @@ library
     Bittide.Instances.Hitl.Driver.SwitchDemoOld
     Bittide.Instances.Hitl.Driver.VexRiscv
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
+    Bittide.Instances.Hitl.Dut.SwitchDemo
+    Bittide.Instances.Hitl.Dut.SwitchDemoOld
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
     Bittide.Instances.Hitl.LinkConfiguration

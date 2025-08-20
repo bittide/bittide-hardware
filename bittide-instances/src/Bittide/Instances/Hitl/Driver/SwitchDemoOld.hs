@@ -5,7 +5,19 @@
 -- TODO: Remove use of partial functions
 {-# OPTIONS_GHC -Wno-x-partial #-}
 
-module Bittide.Instances.Hitl.Driver.SwitchDemoOld where
+module Bittide.Instances.Hitl.Driver.SwitchDemoOld (
+  OcdInitData (..),
+  ccWhoAmID,
+  driver,
+  dumpCcSamples,
+  getPathAddress,
+  gppeWhoAmID,
+  initGdb,
+  initOpenOcd,
+  initPicocom,
+  muWhoAmID,
+  whoAmIPrefix,
+) where
 
 import Clash.Prelude
 
@@ -13,19 +25,18 @@ import Bittide.ClockControl.Config (CcConf, defCcConf, saveCcConfig)
 import Bittide.ClockControl.Topology (Topology)
 import Bittide.Hitl
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.Dut.SwitchDemo
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
-import Bittide.Instances.Hitl.SwitchDemoOld (memoryMapCc, memoryMapMu)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Wishbone (TimeCmd (Capture))
-import Clash.Class.BitPackC (msbResize)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
 import Control.Concurrent.Async.Extra (zipWithConcurrently, zipWithConcurrently3_)
 import Control.Monad (forM, forM_, when)
 import Control.Monad.IO.Class
 import Data.Bifunctor (Bifunctor (bimap))
-import Data.Char (ord)
+import Data.Char (chr)
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
@@ -77,26 +88,7 @@ data OcdInitData = OcdInitData
   -- ^ Cleanup function
   }
 
-data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
-
 type StartDelay = 5 -- seconds
-
-whoAmIPrefix :: forall n. (KnownNat n, 3 <= n) => Unsigned n
-whoAmIPrefix = msbResize @3 @n (0b111 :: Unsigned 3)
-ccWhoAmID :: BitVector 32
-ccWhoAmID = $(makeWhoAmIDTH "swcc")
-muWhoAmID :: BitVector 32
-muWhoAmID = $(makeWhoAmIDTH "mgmt")
-gppeWhoAmID :: BitVector 32
-gppeWhoAmID = $(makeWhoAmIDTH "gppe")
-
-type Padding = Calc.WindowCycles FpgaCount 3
-type GppeConfig = Calc.DefaultGppeConfig FpgaCount Padding
-type CyclesPerWrite = Calc.CalCyclesPerWrite GppeConfig
-type GroupCycles = Calc.CalGroupCycles GppeConfig
-type WindowCycles = Calc.CalWindowCycles GppeConfig
-type ActiveCycles = Calc.CalActiveCycles GppeConfig
-type MetacycleLength = Calc.CalMetacycleLength GppeConfig
 
 gppeConfig :: GppeConfig
 gppeConfig = Calc.defaultGppeCalcConfig
@@ -231,13 +223,10 @@ getPathAddress mm = traverseTree annAbsTree1
     devDef :: DeviceDefinition
     devDef = mm.deviceDefs M.! devName
 
-muSwitchDemoPeBuffer :: (HasCallStack, Num a, Show a) => a
-muSwitchDemoPeBuffer = getPathAddress memoryMapMu ["0", "SwitchDemoPE", "buffer"]
-
 dumpCcSamples :: (HasCallStack) => FilePath -> CcConf Topology -> [Gdb] -> IO ()
 dumpCcSamples hitlDir ccConf ccGdbs = do
   mapConcurrently_ Gdb.interrupt ccGdbs
-  nSamples <- liftIO $ zipWithConcurrently go ccGdbs ccSamplesPaths
+  nSamples <- zipWithConcurrently go ccGdbs ccSamplesPaths
   putStrLn [i|Dumped /n/ clock control samples: #{nSamples}|]
   saveCcConfig hitlDir ccConf
   putStrLn [i|Wrote configs and samples to: #{hitlDir}|]
@@ -348,19 +337,21 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
 
   pure (pico, cleanup)
 
-ccGdbCheck :: Gdb -> VivadoM ExitCode
-ccGdbCheck gdb = do
-  let whoAmIReg = getPathAddress memoryMapCc ["0", "WhoAmI", "identifier"]
-  bytes <- Gdb.readBytes @4 gdb whoAmIReg
-  let bytesAsInts = L.map fromIntegral $ V.toList $ bytes
-  pure $ if bytesAsInts == L.map ord "swcc" then ExitSuccess else ExitFailure 1
-
-muGdbCheck :: Gdb -> VivadoM ExitCode
-muGdbCheck gdb = do
-  let whoAmIReg = getPathAddress memoryMapMu ["0", "WhoAmI", "identifier"]
-  bytes <- Gdb.readBytes @4 gdb whoAmIReg
-  let bytesAsInts = L.map fromIntegral $ V.toList $ bytes
-  pure $ if bytesAsInts == L.map ord "mgmt" then ExitSuccess else ExitFailure 1
+{- | Given an expected @whoAmID@ and a GDB process connected to a target CPU, check
+whether the target CPU reports the expected @whoAmID@.
+-}
+gdbCheck :: BitVector 32 -> Gdb -> VivadoM ExitCode
+gdbCheck expectedBE gdb = do
+  let whoAmIBase = whoAmIPrefix @32
+  bytes <- Gdb.readBytes @4 gdb (fromIntegral whoAmIBase)
+  let
+    bytesAsInts = L.map fromIntegral $ V.toList $ bytes
+    expectedLE = reverse $ bitCoerce @_ @(Vec 4 (BitVector 8)) expectedBE
+    expectedS =
+      L.map (chr . fromIntegral)
+        $ V.toList expectedLE
+  liftIO $ putStrLn [i|Read whoAmID: '#{L.map chr bytesAsInts}', expected '#{expectedS}'|]
+  pure $ if bytes == expectedLE then ExitSuccess else ExitFailure 1
 
 foldExitCodes :: VivadoM (Int, ExitCode) -> ExitCode -> VivadoM (Int, ExitCode)
 foldExitCodes prev code = do
@@ -405,17 +396,17 @@ driver testName targets = do
     muReadPeBuffer (_, d) gdb = do
       putStrLn $ "Reading PE buffer from device " <> d.deviceId
       let
+        start = getPathAddress @Integer memoryMapMu ["0", "SwitchDemoPE", "buffer"]
         bufferSize :: Integer
         bufferSize = (snatToNum (SNat @FpgaCount)) * 3
-      output <-
-        Gdb.readCommandRaw gdb [i|x/#{bufferSize}xg #{showHex32 @Integer muSwitchDemoPeBuffer}|]
+      output <- Gdb.readCommandRaw gdb [i|x/#{bufferSize}xg #{showHex32 start}|]
       putStrLn [i|PE buffer readout: #{output}|]
 
     muGetCurrentTime :: (HasCallStack) => (HwTarget, DeviceInfo) -> Gdb -> IO (Unsigned 64)
     muGetCurrentTime (_, d) gdb = do
       putStrLn $ "Getting current time from device " <> d.deviceId
-      Gdb.writeLe gdb (getPathAddress @Integer memoryMapMu ["0", "Timer", "command"]) Capture
-      Gdb.readLe gdb (getPathAddress @Integer memoryMapMu ["0", "Timer", "scratchpad"])
+      Gdb.writeLe gdb (getPathAddress memoryMapMu ["0", "Timer", "command"]) Capture
+      Gdb.readLe gdb (getPathAddress memoryMapMu ["0", "Timer", "scratchpad"])
 
     muWriteCfg ::
       (HasCallStack) =>
@@ -460,7 +451,7 @@ driver testName targets = do
         perDeviceCheck :: Gdb -> Int -> IO Bool
         perDeviceCheck myGdb num = do
           let
-            headBaseAddr = muSwitchDemoPeBuffer
+            headBaseAddr = getPathAddress memoryMapMu ["0", "SwitchDemoPE", "buffer"]
             myBaseAddr = toInteger (headBaseAddr + 24 * (L.length gdbs - num - 1))
             dnaBaseAddr = getPathAddress @Integer memoryMapMu ["0", "Dna", "dna"]
           myCounter <- Gdb.readLe @(Unsigned 64) headGdb myBaseAddr
@@ -506,7 +497,7 @@ driver testName targets = do
     Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
       liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
       liftIO $ putStrLn "Checking for MMIO access to SwCC CPUs over GDB..."
-      gdbExitCodes0 <- mapM ccGdbCheck ccGdbs
+      gdbExitCodes0 <- mapM (gdbCheck ccWhoAmID) ccGdbs
       (gdbCount0, gdbExitCode0) <-
         L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes0
       liftIO
@@ -517,7 +508,7 @@ driver testName targets = do
       Gdb.withGdbs (L.length targets) $ \muGdbs -> do
         liftIO $ zipWithConcurrently3_ (initGdb hitlDir "management-unit") muGdbs muPorts targets
         liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
-        gdbExitCodes1 <- mapM muGdbCheck muGdbs
+        gdbExitCodes1 <- mapM (gdbCheck muWhoAmID) muGdbs
         (gdbCount1, gdbExitCode1) <-
           L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes1
         liftIO
