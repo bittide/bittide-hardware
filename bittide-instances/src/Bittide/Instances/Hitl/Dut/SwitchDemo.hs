@@ -2,6 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE CPP #-}
+{-# OPTIONS_GHC -freduction-depth=5000 #-}
 
 module Bittide.Instances.Hitl.Dut.SwitchDemo (
   ccWhoAmID,
@@ -172,26 +173,34 @@ muConfig =
   Node.ManagementConfig
     { scatterConfig =
         ScatterConfig
-          { memDepth = SNat @(LinkCount + NumGppes + 1)
+          { memDepth = SNat @MetacycleLength
           , calendarConfig =
               CalendarConfig
-                { maxCalDepth = SNat @LinkCount
-                , repetitionBits = SNat
-                , activeCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
-                , inactiveCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
+                { maxCalDepth = SNat @MetacycleLength
+                , repetitionBits = SNat @(CLog 2 MetacycleLength)
+                , activeCalendar =
+                    $( lift
+                        $ (\n -> ValidEntry @(Index MetacycleLength) @(CLog 2 MetacycleLength) n 0)
+                        <$> indicesI @MetacycleLength
+                     )
+                , inactiveCalendar = repeat @MetacycleLength (ValidEntry 0 0)
                 }
           }
     , scatterCalPrefix = 0b01011
     , scatterPrefix = 0b01100
     , gatherConfig =
         GatherConfig
-          { memDepth = SNat @(LinkCount + NumGppes + 1)
+          { memDepth = SNat @MetacycleLength
           , calendarConfig =
               CalendarConfig
-                { maxCalDepth = SNat @LinkCount
-                , repetitionBits = SNat
-                , activeCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
-                , inactiveCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
+                { maxCalDepth = SNat @MetacycleLength
+                , repetitionBits = SNat @(CLog 2 MetacycleLength)
+                , activeCalendar =
+                    $( lift
+                        $ (\n -> ValidEntry @(Index MetacycleLength) @(CLog 2 MetacycleLength) n 0)
+                        <$> indicesI @MetacycleLength
+                     )
+                , inactiveCalendar = repeat @MetacycleLength (ValidEntry 0 0)
                 }
           }
     , gatherCalPrefix = 0b01101
@@ -229,39 +238,39 @@ gppeConfig0 =
   Node.GppeConfig
     { scatterConfig =
         ScatterConfig
-          { memDepth = SNat @WindowCycles
+          { memDepth = SNat @MetacycleLength
           , calendarConfig =
               CalendarConfig
-                { maxCalDepth = SNat @WindowCycles
-                , repetitionBits = SNat @(CLog 2 WindowCycles)
+                { maxCalDepth = SNat @MetacycleLength
+                , repetitionBits = SNat @(CLog 2 MetacycleLength)
                 , activeCalendar =
                     $( lift
-                        $ (\n -> ValidEntry @(Index WindowCycles) @(CLog 2 WindowCycles) n 0)
-                        <$> indicesI @WindowCycles
+                        $ (\n -> ValidEntry @(Index MetacycleLength) @(CLog 2 MetacycleLength) n 0)
+                        <$> indicesI @MetacycleLength
                      )
-                , inactiveCalendar = repeat @LinkCount (ValidEntry 0 0)
+                , inactiveCalendar = repeat @MetacycleLength (ValidEntry 0 0)
                 }
           }
     , scatterPrefix = 0b011
     , gatherConfig =
         GatherConfig
-          { memDepth = SNat @WindowCycles
+          { memDepth = SNat @MetacycleLength
           , calendarConfig =
               CalendarConfig
-                { maxCalDepth = SNat @WindowCycles
-                , repetitionBits = SNat @(CLog 2 WindowCycles)
+                { maxCalDepth = SNat @MetacycleLength
+                , repetitionBits = SNat @(CLog 2 MetacycleLength)
                 , activeCalendar =
                     $( lift
-                        $ (\n -> ValidEntry @(Index WindowCycles) @(CLog 2 WindowCycles) n 0)
-                        <$> indicesI @WindowCycles
+                        $ (\n -> ValidEntry @(Index MetacycleLength) @(CLog 2 MetacycleLength) n 0)
+                        <$> indicesI @MetacycleLength
                      )
-                , inactiveCalendar = repeat @LinkCount (ValidEntry 0 0)
+                , inactiveCalendar = repeat @MetacycleLength (ValidEntry 0 0)
                 }
           }
-    , gatherPrefix = 0b100
+    , gatherPrefix = 0b001
     , peConfig =
         PeConfig
-          { prefixI = 0b001
+          { prefixI = 0b100
           , prefixD = 0b010
           , initI = Undefined @(Div (32 * 1024) 4)
           , initD = Undefined @(Div (32 * 1024) 4)
@@ -275,6 +284,7 @@ gppeConfig0 =
     , dumpVcd = NoDumpVcd
     , metaPeConfigPrefix = 0b110
     , metaPeConfigBufferWidth = SNat
+    , uartPrefix = 0b000
     }
 
 ccConfig ::
@@ -311,6 +321,9 @@ ccLabel = fromIntegral (ord 'C') :> fromIntegral (ord 'C') :> Nil
 
 muLabel :: Vec 2 Byte
 muLabel = fromIntegral (ord 'M') :> fromIntegral (ord 'U') :> Nil
+
+gppeLabel :: Vec 2 Byte
+gppeLabel = fromIntegral (ord 'G') :> fromIntegral (ord '0') :> Nil
 
 type OtherBittide = GthRx
 
@@ -355,7 +368,7 @@ switchCircuit (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxReset
       dcFifoDf d5 bitClk bitRst refClk refRst
         -< muUartBytesBittide
 
-    (txs, lc, muUartBus, peIn, peOut, ce) <-
+    (txs, lc, muUartBus, peIn, peOut, [peUart], ce) <-
       defaultBittideClkRstEn $ Node.node nodeConfig -< (muMM, gppeMMs, nodeJtag, rxs)
 
     (ccUartBytesBittide, _uartStatus) <-
@@ -367,10 +380,12 @@ switchCircuit (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxReset
       dcFifoDf d5 bitClk bitRst refClk refRst
         -< ccUartBytesBittide
 
+    gppeUartBytes <- dcFifoDf d5 bitClk bitRst refClk refRst -< peUart
+
     uartTxBytes <-
       defaultRefClkRstEn
-        $ asciiDebugMux d1024 (ccLabel :> muLabel :> Nil)
-        -< [ccUartBytes, muUartBytes]
+        $ asciiDebugMux d1024 (ccLabel :> muLabel :> gppeLabel :> Nil)
+        -< [ccUartBytes, muUartBytes, gppeUartBytes]
     (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
 
     defaultBittideClkRstEn
