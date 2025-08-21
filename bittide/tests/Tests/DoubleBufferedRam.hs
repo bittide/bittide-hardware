@@ -21,7 +21,6 @@ import Data.Proxy
 import Data.String
 import Data.Type.Equality (type (:~:) (Refl))
 import Hedgehog
-import Hedgehog.Range as Range
 import Numeric (showHex)
 import Protocols.Hedgehog.Internal
 import Protocols.MemoryMap (unMemmap)
@@ -44,6 +43,8 @@ import qualified Data.List as L
 import qualified Data.Set as Set
 import qualified GHC.TypeNats as TN
 import qualified Hedgehog.Gen as Gen hiding (resize)
+import qualified Hedgehog.Range as Range
+import qualified Protocols.Wishbone.Standard.Hedgehog as WB
 import qualified Prelude as P
 
 tests :: TestTree
@@ -818,28 +819,11 @@ wbStorageSpecCompliance = property $ do
         (genRequests (snatToNum (SNat @v) - 1))
         ()
 
+  genRequests :: Unsigned 30 -> Gen [WishboneMasterRequest 30 (BitVector 32)]
   genRequests size =
-    Gen.list
-      (Range.linear 0 32)
-      (genWishboneTransfer @32 size (genDefinedBitVector @32))
-
-  genWishboneTransfer ::
-    (KnownNat addressWidth, KnownNat (BitSize a)) =>
-    Int ->
-    -- \^ size
-    Gen a ->
-    Gen (WishboneMasterRequest addressWidth a)
-  genWishboneTransfer size genA =
-    let
-      validAddr = fromIntegral <$> Gen.enum 0 (size - 1)
-      invalidAddr = fromIntegral <$> Gen.enum size (size * 2)
-     in
-      Gen.choice
-        [ Read <$> validAddr <*> pure (succ 0)
-        , Write <$> validAddr <*> pure (succ 0) <*> genA
-        , Read <$> invalidAddr <*> pure (succ 0)
-        , Write <$> invalidAddr <*> pure (succ 0) <*> genA
-        ]
+    Gen.list (Range.linear 0 32) $ do
+      upperBound <- Gen.choice $ fmap pure [size, maxBound]
+      WB.genWishboneTransfer (Range.constant 0 upperBound) genDefinedBitVector
 
 deriving instance (ShowX a) => ShowX (RamOp i a)
 
@@ -860,11 +844,17 @@ wbStorageBehavior = property $ do
       forAll
         $ Gen.list
           (Range.linear 0 32)
-          (genWishboneTransfer @30 (natToNum @words) (genDefinedBitVector @32))
+        $ do
+          valid <- Gen.bool
+          let upperBound = if valid then (natToNum @words - 1) else maxBound :: Unsigned 30
+          req <- WB.genWishboneTransfer (Range.constant 0 upperBound) genDefinedBitVector
+          stall <- Gen.int $ Range.constant 0 10
+          pure (valid, (req, stall))
+    -- (genWishboneTransfer @30 (natToNum @words) (genDefinedBitVector @32))
 
     let
       master = driveStandard defExpectOptions $ fmap snd wbRequests
-      slave = wcre $ unMemmap (wbStorage @System "" (NonReloadable $ Vec content))
+      slave = wcre $ unMemmap (wbStorage @System @_ @30 "" (NonReloadable $ Vec content))
       simTransactions = exposeWbTransactions (Just 1000) master slave
       goldenTransactions = wbStorageBehaviorModel (toList content) $ fmap (fmap fst) wbRequests
 
@@ -873,28 +863,6 @@ wbStorageBehavior = property $ do
     footnote $ "wbRequests" <> show wbRequests
 
     simTransactions === goldenTransactions
-   where
-    genWishboneTransfer ::
-      (KnownNat addressWidth, KnownNat (BitSize a)) =>
-      Int ->
-      -- \^ size
-      Gen a ->
-      Gen (Bool, (WishboneMasterRequest addressWidth a, Int))
-    genWishboneTransfer size genA =
-      let
-        validAddr = fromIntegral <$> Gen.enum 0 (size - 1)
-        invalidAddr = fromIntegral <$> Gen.enum size (size * 2)
-        -- Make wbOps that won't be repeated
-        mkRead address bs = (Read address bs, 0)
-        mkWrite address bs a = (Write address bs a, 0)
-       in
-        -- Generate valid and invalid operations. The boolean represents the validity of the operation.
-        Gen.choice
-          [ (True,) <$> (mkRead <$> validAddr <*> genDefinedBitVector)
-          , (True,) <$> (mkWrite <$> validAddr <*> genDefinedBitVector <*> genA)
-          , (False,) <$> (mkRead <$> invalidAddr <*> genDefinedBitVector)
-          , (False,) <$> (mkWrite <$> invalidAddr <*> genDefinedBitVector <*> genA)
-          ]
 
 -- | Behavioral model for 'wbStorage'.
 wbStorageBehaviorModel ::
@@ -943,7 +911,7 @@ wbStorageRangeErrors = property $ do
   go SNat = do
     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
     wcre
-      $ wishbonePropWithModel @System
+      $ wishbonePropWithModel @System @_ @30
         defExpectOptions
         model
         (unMemmap $ wbStorage "" (Reloadable $ Vec content))
@@ -953,25 +921,9 @@ wbStorageRangeErrors = property $ do
   genRequests size =
     Gen.list
       (Range.linear 0 32)
-      (genWishboneTransfer @32 size (genDefinedBitVector @32))
-
-  genWishboneTransfer ::
-    (KnownNat addressWidth, KnownNat (BitSize a)) =>
-    Int ->
-    -- \^ size
-    Gen a ->
-    Gen (WishboneMasterRequest addressWidth a)
-  genWishboneTransfer size genA =
-    let
-      validAddr = fromIntegral <$> Gen.enum 0 (size - 1)
-      invalidAddr = fromIntegral <$> Gen.enum size (size * 2)
-     in
-      Gen.choice
-        [ Read <$> validAddr <*> pure maxBound
-        , Write <$> validAddr <*> pure maxBound <*> genA
-        , Read <$> invalidAddr <*> pure maxBound
-        , Write <$> invalidAddr <*> pure maxBound <*> genA
-        ]
+      $ do
+        upperBound <- Gen.choice $ fmap pure [size, 0]
+        WB.genWishboneTransfer (Range.constant 0 upperBound) genDefinedBitVector
 
   model (Read addr _) s2m@WishboneS2M{..} st0
     | addr >= fromIntegral st0 && err = Right st0
@@ -1022,7 +974,7 @@ wbStorageProtocolsModel = property $ do
   go SNat = do
     content <- forAll $ genNonEmptyVec @v (genDefinedBitVector @32)
     wcre
-      $ wishbonePropWithModel @System
+      $ wishbonePropWithModel @System @_ @30
         defExpectOptions
         model
         (unMemmap $ wbStorage "" (Reloadable $ Vec content))
@@ -1030,25 +982,9 @@ wbStorageProtocolsModel = property $ do
         (I.fromAscList $ L.zip [0 ..] (toList content))
 
   genRequests size =
-    Gen.list
-      (Range.linear 0 32)
-      (genWishboneTransfer @32 size (genDefinedBitVector @32))
-
-  genWishboneTransfer ::
-    (KnownNat addressWidth, KnownNat (BitSize a)) =>
-    Int ->
-    -- \^ size
-    Gen a ->
-    Gen (WishboneMasterRequest addressWidth a)
-  genWishboneTransfer size genA =
-    let
-      validAddr = fromIntegral <$> Gen.enum 0 (size - 1)
-     in
-      -- only generating _valid_ requests here
-      Gen.choice
-        [ Read <$> validAddr <*> pure maxBound
-        , Write <$> validAddr <*> pure maxBound <*> genA
-        ]
+    Gen.list (Range.linear 0 32) $ do
+      -- only generate valid requests here
+      WB.genWishboneTransfer (Range.constant 0 (size - 1)) genDefinedBitVector
 
   model (Read addr _) s2m@WishboneS2M{..} st0
     | err || retry =
@@ -1072,7 +1008,7 @@ wbStorageProtocolsModel = property $ do
                   <> showHex readData ""
    where
     modelAddr = fromIntegral addr
-  model (Write addr _ wr) s2m@WishboneS2M{..} st0
+  model (Write addr sel wr) s2m@WishboneS2M{..} st0
     | err || retry =
         Left
           $ "An in-range write should be ACK'd "
@@ -1083,6 +1019,8 @@ wbStorageProtocolsModel = property $ do
           <> " - "
           <> show s2m
     | otherwise =
-        Right $ I.insert modelAddr wr st0
+        Right $ I.insert modelAddr new st0
    where
     modelAddr = fromIntegral addr
+    old = st0 I.! modelAddr
+    new = pack $ mux (unpack sel) (unpack wr) (unpack old :: Vec 4 Byte)
