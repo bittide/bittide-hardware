@@ -24,7 +24,7 @@ module Bittide.Instances.Hitl.Dut.SwitchDemo (
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
 
-import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
+import Bittide.Calendar (Calendar, CalendarConfig (..), ValidEntry (..))
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..), Stability (..))
 import Bittide.ClockControl.CallistoSw (
   SwControlCConfig (..),
@@ -73,39 +73,47 @@ muWhoAmID = $(makeWhoAmIDTH "mgmt")
 gppeWhoAmID :: BitVector 32
 gppeWhoAmID = $(makeWhoAmIDTH "gppe")
 
-{- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
 calConf ::
-  CalendarConfig (Node.NmuRemBusWidth LinkCount NumGppes) (CalendarEntry (LinkCount + NumGppes + 1))
+  CalendarConfig
+    (Node.NmuRemBusWidth LinkCount NumGppes)
+    (CalendarEntry (LinkCount + NumGppes + 1))
 calConf =
   CalendarConfig
-    { maxCalDepth = SNat @LinkCount
-    {- The '@12' is so that the generated Rust code works. At time of writing,
-    the generator makes two separate device-specific types for 'ValidEntry' since
-    they have differing repetition bit widths. To fix this, all tests are being
-    set to a width of 12.
-    -}
-    , repetitionBits = SNat @12
-
-    -- Active calendar. It will broadcast the PE (node 1) data to all links. Other
-    -- than that we cycle through the other nodes.
-    , activeCalendar =
-        (      ValidEntry (2 :> repeat 1) nRepetitions
-            :> ValidEntry (3 :> repeat 1) nRepetitions
-            :> ValidEntry (4 :> repeat 1) nRepetitions
-            :> ValidEntry (5 :> repeat 1) nRepetitions
-            :> ValidEntry (6 :> repeat 1) nRepetitions
-            :> ValidEntry (7 :> repeat 1) nRepetitions
-            :> ValidEntry (8 :> repeat 1) nRepetitions
-            :> Nil
-        )
-
-    -- Don't care about inactive calendar:
-    , inactiveCalendar = (ValidEntry (repeat 0) 0 :> Nil)
+    { maxCalDepth = SNat @(2 * LinkCount + 1)
+    , {- The '@12' is so that the generated Rust code works. At time of writing,
+      the generator makes two separate device-specific types for 'ValidEntry' since
+      they have differing repetition bit widths. To fix this, all tests are being
+      set to a width of 12.
+      -}
+      repetitionBits = SNat @12
+    , -- Active calendar. It will broadcast the PE (node 1) data to all links. Other
+      -- than that we cycle through the other nodes.
+      activeCalendar =
+        $( let
+            nRepetitions :: Unsigned 12
+            nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
+            entryElem0 :: Vec LinkCount (Index (LinkCount + NumGppes + 1))
+            entryElem0 = dropI $ indicesI @(LinkCount + NumGppes + 1)
+            entryVecs ::
+              Vec LinkCount (Vec (LinkCount + NumGppes + 1) (Index (LinkCount + NumGppes + 1)))
+            entryVecs = (:> repeat 1) <$> entryElem0
+            entries ::
+              Vec
+                LinkCount
+                (ValidEntry (Vec (LinkCount + NumGppes + 1) (Index (LinkCount + NumGppes + 2))) 12)
+            entries = (\v -> ValidEntry (numConvert <$> v) nRepetitions) <$> entryVecs
+            cal ::
+              Calendar
+                (2 * LinkCount + 1)
+                (Vec (LinkCount + NumGppes + 1) (Index (LinkCount + NumGppes + 2)))
+                12
+            cal = entries ++ entries ++ (ValidEntry (repeat 0) (natToNum @(Padding)) :> Nil)
+            in
+            lift cal
+         )
+    , -- Don't care about inactive calendar:
+      inactiveCalendar = (ValidEntry (repeat 0) 0 :> Nil)
     }
- where
-  -- We want enough time to read _number of FPGAs_ triplets
-  nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
-{- FOURMOLU_ENABLE -}
 
 memoryMapCc :: MM.MemoryMap
 memoryMapCc = let (mm, _, _) = memoryMaps in mm
@@ -221,25 +229,33 @@ gppeConfig0 =
   Node.GppeConfig
     { scatterConfig =
         ScatterConfig
-          { memDepth = SNat @(LinkCount + NumGppes + 1)
+          { memDepth = SNat @WindowCycles
           , calendarConfig =
               CalendarConfig
-                { maxCalDepth = SNat @LinkCount
-                , repetitionBits = SNat
-                , activeCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
-                , inactiveCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
+                { maxCalDepth = SNat @WindowCycles
+                , repetitionBits = SNat @(CLog 2 WindowCycles)
+                , activeCalendar =
+                    $( lift
+                        $ (\n -> ValidEntry @(Index WindowCycles) @(CLog 2 WindowCycles) n 0)
+                        <$> indicesI @WindowCycles
+                     )
+                , inactiveCalendar = repeat @LinkCount (ValidEntry 0 0)
                 }
           }
     , scatterPrefix = 0b011
     , gatherConfig =
         GatherConfig
-          { memDepth = SNat @(LinkCount + NumGppes + 1)
+          { memDepth = SNat @WindowCycles
           , calendarConfig =
               CalendarConfig
-                { maxCalDepth = SNat @LinkCount
-                , repetitionBits = SNat
-                , activeCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
-                , inactiveCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
+                { maxCalDepth = SNat @WindowCycles
+                , repetitionBits = SNat @(CLog 2 WindowCycles)
+                , activeCalendar =
+                    $( lift
+                        $ (\n -> ValidEntry @(Index WindowCycles) @(CLog 2 WindowCycles) n 0)
+                        <$> indicesI @WindowCycles
+                     )
+                , inactiveCalendar = repeat @LinkCount (ValidEntry 0 0)
                 }
           }
     , gatherPrefix = 0b100
