@@ -1,5 +1,5 @@
 # Si534x/7x/8x/9x Registers Script
-# 
+#
 # Part: Si5395
 # Project File: C:\Users\User\Desktop\clock configs\Si5395-200MHz-10ppb-and-out1.slabtimeproj
 # Design ID: 200_100b
@@ -8,18 +8,18 @@
 # Creator: ClockBuilder Pro v4.7 [2022-11-18]
 # Created On: 2024-09-11 08:09:56 GMT-07:00
 Address,Data
-# 
+#
 # Start configuration preamble
 0x0B24,0xC0
 0x0B25,0x00
 0x0540,0x01
 # End configuration preamble
-# 
+#
 # Delay 300 msec
 #    Delay is worst case time for device to complete any calibration
 #    that is running due to device state change previous to this script
 #    being processed.
-# 
+#
 # Start configuration registers
 0x0006,0x00
 0x0007,0x00
@@ -606,7 +606,7 @@ Address,Data
 0x0C07,0x00
 0x0C08,0x00
 # End configuration registers
-# 
+#
 # Start configuration postamble
 0x0514,0x01
 0x001C,0x01
