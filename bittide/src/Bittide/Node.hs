@@ -29,7 +29,7 @@ import Bittide.ProcessingElement
 import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Bittide.Switch
-import Bittide.Wishbone (readDnaPortE2Wb, timeWb)
+import Bittide.Wishbone (readDnaPortE2Wb, timeWb, uartBytes, uartInterfaceWb)
 
 {- | Each 'gppe' results in 2 busses for the 'managementUnit', namely:
 * The 'calendar' for the 'scatterUnitWB'.
@@ -75,6 +75,7 @@ node ::
     , (ConstBwd MM, NmuWishbone dom linkCount gppes)
     , Vec gppes (CSignal dom (BitVector 64))
     , Vec gppes (CSignal dom (BitVector 64))
+    , Vec gppes (Df dom Byte)
     , CSignal dom (Vec (linkCount + gppes + 1) (Index (linkCount + gppes + 2)))
     )
 node (NodeConfig muConfig switchConfig gppeConfigs) =
@@ -94,8 +95,9 @@ node (NodeConfig muConfig switchConfig gppeConfigs) =
 
     ugnRxs <- vecCircuits (captureUgn localCounter <$> rxs) -< captureUgnsMMWb
 
-    Fwd peLinksOut <-
-      vecCircuits (gppeC <$> gppeConfigs)
+    (Fwd peLinksOut, peUartsOut) <-
+      unzipC
+        <| vecCircuits (gppeC <$> gppeConfigs)
         <| zipC5
         -< (gppeMMs, Fwd switchToGppes, scatterCalsMMWb, gatherCalsMMWb, gppesJtag)
 
@@ -104,7 +106,15 @@ node (NodeConfig muConfig switchConfig gppeConfigs) =
       switchC @_ @_ @_ @_ @64 switchConfig -< (switchMM, (switchIn, switchWb))
     ([nmuLinkIn], Fwd switchToGppes, linksOut) <- split3CI -< switchOut
 
-    idC -< (linksOut, Fwd localCounter, externalMMWb, Fwd switchToGppes, Fwd peLinksOut, cal)
+    idC
+      -< ( linksOut
+         , Fwd localCounter
+         , externalMMWb
+         , Fwd switchToGppes
+         , Fwd peLinksOut
+         , peUartsOut
+         , cal
+         )
  where
   zipC5 ::
     forall a b c d e n.
@@ -121,8 +131,9 @@ Internal busses:
   * 'metaPeConfig' (not exposed to MU)
   * Scatter unit
   * Gather unit
+  * UART (not exposed to MU)
 -}
-type GppeBussesNotExposed = PeInternalBusses + 2
+type GppeBussesNotExposed = PeInternalBusses + 3
 type GppeBusses = GppeBussesNotExposed + 2
 type GppeBusWidth = 30 - CLog 2 GppeBusses
 
@@ -148,6 +159,8 @@ data GppeConfig nmuRemBusWidth metaPeBufferWidth where
     , dnaPrefix :: Unsigned (CLog 2 GppeBusses)
     -- ^ For testing purposes. This should be removed once more than one GPPE is used, or
     -- if access to the device DNA is required elsewhere on the system.
+    , uartPrefix :: Unsigned (CLog 2 GppeBusses)
+    -- ^ Prefix for the UART device
     , dumpVcd :: DumpVcd
     , metaPeConfigPrefix :: Unsigned (CLog 2 GppeBusses)
     , metaPeConfigBufferWidth :: SNat metaPeBufferWidth
@@ -185,26 +198,30 @@ gppeC ::
     , -- \| JTAG connection
       Jtag dom
     )
-    (CSignal dom (BitVector 64))
+    (CSignal dom (BitVector 64), Df dom Byte)
 gppeC cfg@GppeConfig{} =
   circuit $ \(mm, Fwd linkIn, (scatterCalMM, scatterCalWb), (gatherCalMM, gatherCalWb), jtag) -> do
     [ (dnaPfx, dnaBus)
       , (scatterPfx, (scatterMM, scatterWb))
       , (gatherPfx, (gatherMM, gatherWb))
       , (metaPeConfigPfx, metaPeBus)
+      , (uartPfx, uartBus)
       ] <-
       processingElement cfg.dumpVcd cfg.peConfig -< (mm, jtag)
     constBwd cfg.dnaPrefix -< dnaPfx
     constBwd cfg.scatterPrefix -< scatterPfx
     constBwd cfg.gatherPrefix -< gatherPfx
     constBwd cfg.metaPeConfigPrefix -< metaPeConfigPfx
+    constBwd cfg.uartPrefix -< uartPfx
     _dna <- readDnaPortE2Wb simDna2 -< dnaBus
     metaPeConfig cfg.metaPeConfigBufferWidth -< metaPeBus
     scatterUnitWbC cfg.scatterConfig linkIn
       -< ((scatterMM, scatterWb), (scatterCalMM, scatterCalWb))
     linkOut <-
       gatherUnitWbC cfg.gatherConfig -< ((gatherMM, gatherWb), (gatherCalMM, gatherCalWb))
-    idC -< linkOut
+    (gppeUartBytes, _uartStatus) <-
+      uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
+    idC -< (linkOut, gppeUartBytes)
 
 {- Type-level number of node management unit internal busses
 
