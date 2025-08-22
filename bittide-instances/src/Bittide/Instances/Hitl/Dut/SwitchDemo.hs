@@ -226,10 +226,8 @@ ccConfig =
     , domainDiffsPrefix = 0b0011
     }
 
-ccLabel :: Vec 2 Byte
+ccLabel, muLabel :: Vec 2 Byte
 ccLabel = fromIntegral (ord 'C') :> fromIntegral (ord 'C') :> Nil
-
-muLabel :: Vec 2 Byte
 muLabel = fromIntegral (ord 'M') :> fromIntegral (ord 'U') :> Nil
 
 switchDemoC ::
