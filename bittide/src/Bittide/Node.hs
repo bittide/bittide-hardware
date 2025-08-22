@@ -16,7 +16,14 @@ import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.Extra
 import Protocols.Idle
-import Protocols.MemoryMap (ConstBwd, MM, constBwd)
+import Protocols.MemoryMap (
+  ConstBwd,
+  MM,
+  MemoryMap (..),
+  MemoryMapTree (WithName),
+  constBwd,
+  locCaller,
+ )
 import Protocols.Vec (vecCircuits)
 import Protocols.Wishbone
 import VexRiscv
@@ -97,7 +104,7 @@ node (NodeConfig muConfig switchConfig gppeConfigs) =
 
     (Fwd peLinksOut, peUartsOut) <-
       unzipC
-        <| vecCircuits (gppeC <$> gppeConfigs)
+        <| vecCircuits (zipWith gppeC gppeConfigs (fromIntegral <$> indicesI))
         <| zipC5
         -< (gppeMMs, Fwd switchToGppes, scatterCalsMMWb, gatherCalsMMWb, gppesJtag)
 
@@ -186,6 +193,8 @@ gppeC ::
   ) =>
   -- | Configures all local parameters
   GppeConfig nmuRemBusWidth metaPeBufferWidth ->
+  -- | Index number of this GPPE
+  Integer ->
   Circuit
     ( -- \| GPPE memory map
       ConstBwd MM
@@ -199,7 +208,7 @@ gppeC ::
       Jtag dom
     )
     (CSignal dom (BitVector 64), Df dom Byte)
-gppeC cfg@GppeConfig{} =
+gppeC cfg@GppeConfig{} (show -> idx) =
   circuit $ \(mm, Fwd linkIn, (scatterCalMM, scatterCalWb), (gatherCalMM, gatherCalWb), jtag) -> do
     [ (dnaPfx, dnaBus)
       , (scatterPfx, (scatterMM, scatterWb))
@@ -215,10 +224,17 @@ gppeC cfg@GppeConfig{} =
     constBwd cfg.uartPrefix -< uartPfx
     _dna <- readDnaPortE2Wb simDna2 -< dnaBus
     metaPeConfig cfg.metaPeConfigBufferWidth -< metaPeBus
-    scatterUnitWbC cfg.scatterConfig linkIn
+    withNamesSG
+      ("ScatterUnitPe" <> idx)
+      ("ScatterCalPe" <> idx)
+      (scatterUnitWbC cfg.scatterConfig linkIn)
       -< ((scatterMM, scatterWb), (scatterCalMM, scatterCalWb))
     linkOut <-
-      gatherUnitWbC cfg.gatherConfig -< ((gatherMM, gatherWb), (gatherCalMM, gatherCalWb))
+      withNamesSG
+        ("GatherUnitPe" <> idx)
+        ("GatherCalPe" <> idx)
+        (gatherUnitWbC cfg.gatherConfig)
+        -< ((gatherMM, gatherWb), (gatherCalMM, gatherCalWb))
     (gppeUartBytes, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartBus, Fwd (pure Nothing))
     idC -< (linkOut, gppeUartBytes)
@@ -368,8 +384,11 @@ managementUnitC
 
     localCounter <- timeWb -< timeMMWb
 
-    scatterUnitWbC scatterConfig linkIn -< ((myScatterMM, myScatterWb), myScatterCalMMWb)
-    linkOut <- gatherUnitWbC gatherConfig -< (myGatherMMWb, myGatherCalMMWb)
+    withNamesSG "ScatterUnitMu" "ScatterCalMu" (scatterUnitWbC scatterConfig linkIn)
+      -< ((myScatterMM, myScatterWb), myScatterCalMMWb)
+    linkOut <-
+      withNamesSG "GatherUnitMu" "GatherCalMu" (gatherUnitWbC gatherConfig)
+        -< (myGatherMMWb, myGatherCalMMWb)
 
     (captureUgnPfxMMWbs, scatterPfxMMWbs, gatherPfxMMWbs) <- split3CI -< myWbRest
 
@@ -391,3 +410,18 @@ managementUnitC
          , scatterMMWbs
          , gatherMMWbs
          )
+
+withNamesSG ::
+  forall a b c.
+  (HasCallStack) =>
+  String ->
+  String ->
+  Circuit ((ConstBwd MM, a), (ConstBwd MM, b)) c ->
+  Circuit ((ConstBwd MM, a), (ConstBwd MM, b)) c
+withNamesSG nameA nameB (Circuit f) = Circuit go
+ where
+  go ((((), fwdA), ((), fwdB)), bwdC) = (((SimOnly mmA', bwdA), (SimOnly mmB', bwdB)), fwdC)
+   where
+    (((SimOnly mmA, bwdA), (SimOnly mmB, bwdB)), fwdC) = f ((((), fwdA), ((), fwdB)), bwdC)
+    mmA' = mmA{tree = WithName locCaller nameA mmA.tree}
+    mmB' = mmB{tree = WithName locCaller nameB mmB.tree}
