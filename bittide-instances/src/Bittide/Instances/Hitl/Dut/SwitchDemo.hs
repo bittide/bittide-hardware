@@ -252,10 +252,10 @@ gppeConfig0 =
                 , inactiveCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
                 }
           }
-    , gatherPrefix = 0b100
+    , gatherPrefix = 0b001
     , peConfig =
         PeConfig
-          { prefixI = 0b001
+          { prefixI = 0b100
           , prefixD = 0b010
           , initI = Undefined @(Div (32 * 1024) 4)
           , initD = Undefined @(Div (32 * 1024) 4)
@@ -266,6 +266,7 @@ gppeConfig0 =
           , whoAmIPrefix = whoAmIPrefix
           }
     , dnaPrefix = 0b101
+    , uartPrefix = 0b000
     , dumpVcd = NoDumpVcd
     , metaPeConfigPrefix = 0b110
     , metaPeConfigBufferWidth = SNat
@@ -305,6 +306,9 @@ ccLabel = fromIntegral (ord 'C') :> fromIntegral (ord 'C') :> Nil
 
 muLabel :: Vec 2 Byte
 muLabel = fromIntegral (ord 'M') :> fromIntegral (ord 'U') :> Nil
+
+gppeLabel :: Vec 2 Byte
+gppeLabel = fromIntegral (ord 'G') :> fromIntegral (ord '0') :> Nil
 
 type OtherBittide = GthRx
 
@@ -349,7 +353,7 @@ switchCircuit (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxReset
       dcFifoDf d5 bitClk bitRst refClk refRst
         -< muUartBytesBittide
 
-    (txs, lc, muUartBus, peIn, peOut, ce) <-
+    (txs, lc, muUartBus, peIn, peOut, [peUart], ce) <-
       defaultBittideClkRstEn $ Node.node nodeConfig -< (muMM, gppeMMs, nodeJtag, rxs)
 
     (ccUartBytesBittide, _uartStatus) <-
@@ -361,10 +365,12 @@ switchCircuit (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxReset
       dcFifoDf d5 bitClk bitRst refClk refRst
         -< ccUartBytesBittide
 
+    gppeUartBytes <- dcFifoDf d5 bitClk bitRst refClk refRst -< peUart
+
     uartTxBytes <-
       defaultRefClkRstEn
-        $ asciiDebugMux d1024 (ccLabel :> muLabel :> Nil)
-        -< [ccUartBytes, muUartBytes]
+        $ asciiDebugMux d1024 (ccLabel :> muLabel :> gppeLabel :> Nil)
+        -< [ccUartBytes, muUartBytes, gppeUartBytes]
     (_uartInBytes, uartTx) <- defaultRefClkRstEn $ uartDf baud -< (uartTxBytes, Fwd 0)
 
     defaultBittideClkRstEn
