@@ -23,8 +23,8 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
-    let gather = INSTANCES.gather_unit;
-    let scatter = INSTANCES.scatter_unit;
+    let gather = INSTANCES.gather_unit_pe0;
+    let scatter = INSTANCES.scatter_unit_pe0;
     let meta = INSTANCES.meta_pe_config;
     let dna = INSTANCES.dna;
     let mut uart = INSTANCES.uart;
