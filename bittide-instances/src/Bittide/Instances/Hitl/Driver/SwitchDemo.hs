@@ -158,8 +158,10 @@ getPathAddress mm = traverseTree annAbsTree1
    where
     components :: [MemoryMapTreeAbsNorm]
     components = snd <$> relsAndMMs
+
     deviceNames :: [String]
     deviceNames = mapMaybe getDeviceName components
+
     deviceNamesMult :: M.Map String Bool
     deviceNamesMult = M.fromListWith (\_ _ -> True) $ L.zip deviceNames (L.repeat False)
 
@@ -538,10 +540,12 @@ driver testName targets = do
           currentTime <- liftIO $ muGetCurrentTime (L.head targets) (L.head muGdbs)
           let
             startOffset = currentTime + natToNum @(PeriodToCycles GthTx (Seconds StartDelay))
+
             metaChainConfig ::
               Vec FpgaCount (Calc.DefaultGppeMetaPeConfig (Unsigned 64) FpgaCount 3 Padding)
             metaChainConfig =
               Calc.fullChainConfiguration gppeConfig fpgaSetup ugnPairsTableV startOffset
+
             chainConfig :: Vec FpgaCount (Calc.CyclePeConfig (Unsigned 64) (Index (FpgaCount + 1)))
             chainConfig =
               Calc.metaPeConfigToCyclePeConfig (natToNum @MetacycleLength)
