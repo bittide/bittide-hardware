@@ -103,19 +103,11 @@ showHex32 a = "0x" <> padding <> hexStr
   hexStr = showHex a ""
   padding = L.replicate (8 - L.length hexStr) '0'
 
-{- | Finds the address for a given path.
+{- | Canonicalize the device names in a memory map.
 
-A "path" is a list of 'String's, where each item in the list is an interconnect
-number, device name, or register name. Paths may end in a device name or register
-name, but should not end with an interconnect number. For example, @["0", \"SwitchDemoPE\",
-"buffer"]@ is a path that ends in a register name, and @["0", \"CaptureUgn0\"]@ is
-a path that ends in a device name.
-
-Caveat(s):
-
-Device names are "canonicalized", where this means that if there are multiple
-devices with the same name connected to the same interconnect, then each of them
-is suffixed with their index. For instance, if your memory map looks like:
+This means that if there are multiple devices with the same name connected to
+the same interconnect, then each of them is suffixed with their index. For
+instance, if your memory map looks like:
 
 > interconnect
 >   - DeviceA @ 0b000
@@ -132,9 +124,56 @@ Then after canonicalization, it will look like
 >   - DeviceC  @ 0b010
 >   - DeviceA1 @ 0b011
 >   - DeviceA2 @ 0b100
+-}
+canonicalizeDeviceNames :: (HasCallStack) => MemoryMapTreeAbsNorm -> MemoryMapTreeAbsNorm
+canonicalizeDeviceNames self@(AnnDeviceInstance _ _ _) = self
+canonicalizeDeviceNames (AnnInterconnect ann srcLoc relsAndMMs) =
+  AnnInterconnect ann srcLoc
+    $ doCanonicalization (M.fromList $ L.zip deviceNames (L.repeat 0)) relsAndMMs
+ where
+  components :: [MemoryMapTreeAbsNorm]
+  components = snd <$> relsAndMMs
 
-This is so that any path the function attempts to follow can only refer to one
-location in memory.
+  deviceNames :: [String]
+  deviceNames = mapMaybe getDeviceName components
+
+  deviceNamesMult :: M.Map String Bool
+  deviceNamesMult = M.fromListWith (\_ _ -> True) $ L.zip deviceNames (L.repeat False)
+
+  getDeviceName :: (HasCallStack) => MemoryMapTreeAbsNorm -> Maybe String
+  getDeviceName (AnnDeviceInstance _ _ name) = Just name
+  getDeviceName _ = Nothing
+
+  doCanonicalization ::
+    (HasCallStack) =>
+    M.Map String Integer ->
+    [(Integer, MemoryMapTreeAbsNorm)] ->
+    [(Integer, MemoryMapTreeAbsNorm)]
+  doCanonicalization _ [] = []
+  doCanonicalization counts ((addr, AnnInterconnect ann1 srcLoc1 subtree) : t) =
+    (addr, AnnInterconnect ann1 srcLoc1 (bimap id canonicalizeDeviceNames <$> subtree))
+      : doCanonicalization counts t
+  doCanonicalization counts0 ((addr, AnnDeviceInstance ann1 srcLoc1 devName0) : t) =
+    (addr, AnnDeviceInstance ann1 srcLoc1 devName1) : doCanonicalization counts1 t
+   where
+    needsSuffix = deviceNamesMult M.! devName0
+    curCount = counts0 M.! devName0
+    devName1 = if needsSuffix then devName0 <> show curCount else devName0
+    counts1 =
+      if needsSuffix
+        then M.adjust succ devName0 counts0
+        else counts0
+
+{- | Finds the address for a given path.
+
+A "path" is a list of 'String's, where each item in the list is an interconnect
+number, device name, or register name. Paths may end in a device name or register
+name, but should not end with an interconnect number. For example, @["0", \"SwitchDemoPE\",
+"buffer"]@ is a path that ends in a register name, and @["0", \"CaptureUgn0\"]@ is
+a path that ends in a device name.
+
+Canonicalizes device names so any path the function attempts to follow can only
+refer to one location in memory.
 -}
 getPathAddress ::
   (HasCallStack, Num a) =>
@@ -148,46 +187,7 @@ getPathAddress mm = traverseTree annAbsTree1
   annRelTree = convert mm.tree
   annRelNormTree = normalizeRelTree annRelTree
   (annAbsTree0, _) = makeAbsolute mm.deviceDefs (0x0000_0000, 0xFFFF_FFFF) annRelNormTree
-  annAbsTree1 = canonicalizeDevNames annAbsTree0
-
-  canonicalizeDevNames :: (HasCallStack) => MemoryMapTreeAbsNorm -> MemoryMapTreeAbsNorm
-  canonicalizeDevNames self@(AnnDeviceInstance _ _ _) = self
-  canonicalizeDevNames (AnnInterconnect ann srcLoc relsAndMMs) =
-    AnnInterconnect ann srcLoc
-      $ doCanonicalization (M.fromList $ L.zip deviceNames (L.repeat 0)) relsAndMMs
-   where
-    components :: [MemoryMapTreeAbsNorm]
-    components = snd <$> relsAndMMs
-
-    deviceNames :: [String]
-    deviceNames = mapMaybe getDeviceName components
-
-    deviceNamesMult :: M.Map String Bool
-    deviceNamesMult = M.fromListWith (\_ _ -> True) $ L.zip deviceNames (L.repeat False)
-
-    getDeviceName :: (HasCallStack) => MemoryMapTreeAbsNorm -> Maybe String
-    getDeviceName (AnnDeviceInstance _ _ name) = Just name
-    getDeviceName _ = Nothing
-
-    doCanonicalization ::
-      (HasCallStack) =>
-      M.Map String Integer ->
-      [(Integer, MemoryMapTreeAbsNorm)] ->
-      [(Integer, MemoryMapTreeAbsNorm)]
-    doCanonicalization _ [] = []
-    doCanonicalization counts ((addr, AnnInterconnect ann1 srcLoc1 subtree) : t) =
-      (addr, AnnInterconnect ann1 srcLoc1 (bimap id canonicalizeDevNames <$> subtree))
-        : doCanonicalization counts t
-    doCanonicalization counts0 ((addr, AnnDeviceInstance ann1 srcLoc1 devName0) : t) =
-      (addr, AnnDeviceInstance ann1 srcLoc1 devName1) : doCanonicalization counts1 t
-     where
-      needsSuffix = deviceNamesMult M.! devName0
-      curCount = counts0 M.! devName0
-      devName1 = if needsSuffix then devName0 <> show curCount else devName0
-      counts1 =
-        if needsSuffix
-          then M.adjust succ devName0 counts0
-          else counts0
+  annAbsTree1 = canonicalizeDeviceNames annAbsTree0
 
   showPathComponent :: PathComp -> String
   showPathComponent (PathName _ s) = s
