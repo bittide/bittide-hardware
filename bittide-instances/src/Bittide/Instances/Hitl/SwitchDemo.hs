@@ -520,6 +520,8 @@ tests =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Just D.driver
+    , mDriverProc =
+        Just
+          $ D.driver "clock-control" "management-unit" "gppe-switch-demo" D.switchDemoDoAfterSetup
     , mPostProc = Nothing
     }
