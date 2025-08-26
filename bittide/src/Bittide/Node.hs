@@ -116,7 +116,15 @@ node (NodeConfig muConfig switchConfig gppeConfigs) =
       switchC @_ @_ @_ @_ @64 switchConfig -< (switchMM, (switchIn, switchWb))
     ([nmuLinkIn], Fwd switchToGppes, linksOut) <- split3CI -< switchOut
 
-    idC -< (linksOut, Fwd localCounter, externalMMWb, Fwd switchToGppes, Fwd peLinksOut, peUartsOut, cal)
+    idC
+      -< ( linksOut
+         , Fwd localCounter
+         , externalMMWb
+         , Fwd switchToGppes
+         , Fwd peLinksOut
+         , peUartsOut
+         , cal
+         )
  where
   zipC5 ::
     forall a b c d e n.

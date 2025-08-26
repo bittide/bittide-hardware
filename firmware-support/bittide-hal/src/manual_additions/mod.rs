@@ -8,3 +8,4 @@ pub mod scatter_gather;
 pub mod switch_calendar;
 pub mod timer;
 pub mod uart;
+pub mod valid_entry;

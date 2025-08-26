@@ -24,7 +24,7 @@ use ufmt::derive::uDebug;
 /// should be detailed at the call site when such "uncommon" operations are
 /// needed. ("uncommon" as indices are usually only incremented or decremented)
 #[repr(transparent)]
-#[derive(Copy, Clone, PartialEq, Eq, Debug, uDebug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, uDebug, Default)]
 pub struct IndexTy<const N: u128, T>(T);
 
 impl<const N: u128, T> IndexTy<N, T> {

@@ -83,7 +83,6 @@ muWhoAmID = $(makeWhoAmIDTH "mgmt")
 gppeWhoAmID :: BitVector 32
 gppeWhoAmID = $(makeWhoAmIDTH "gppe")
 
-{- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
 calConf ::
   CalendarConfig (Node.NmuRemBusWidth LinkCount NumGppes) (CalendarEntry (LinkCount + NumGppes + 1))
 calConf =
@@ -95,27 +94,19 @@ calConf =
     set to a width of 12.
     -}
     , repetitionBits = SNat @12
-
-    -- Active calendar. It will broadcast the PE (node 1) data to all links. Other
-    -- than that we cycle through the other nodes.
-    , activeCalendar =
-        (      ValidEntry (2 :> repeat 1) nRepetitions
-            :> ValidEntry (3 :> repeat 1) nRepetitions
-            :> ValidEntry (4 :> repeat 1) nRepetitions
-            :> ValidEntry (5 :> repeat 1) nRepetitions
-            :> ValidEntry (6 :> repeat 1) nRepetitions
-            :> ValidEntry (7 :> repeat 1) nRepetitions
-            :> ValidEntry (8 :> repeat 1) nRepetitions
-            :> Nil
-        )
-
-    -- Don't care about inactive calendar:
-    , inactiveCalendar = (ValidEntry (repeat 0) 0 :> Nil)
+    , activeCalendar = (ValidEntry (repeat 0) 0 :> Nil)
+    -- Use the active calendar to communicate some values to the software so that it can
+    -- write a new calendar and set it as active. The repetition bits are what will be
+    -- used to communicate the constants.
+    , inactiveCalendar =
+      ValidEntry (repeat 0) (natToNum @(1 + NumGppes))
+        :> ValidEntry (repeat 0) nRepetitions
+        :> Nil
     }
  where
   -- We want enough time to read _number of FPGAs_ triplets
   nRepetitions = numConvert (maxBound :: Index (FpgaCount * 3))
-{- FOURMOLU_ENABLE -}
+
 
 memoryMapCc :: MM.MemoryMap
 memoryMapCc = let (mm, _, _) = memoryMaps in mm
@@ -174,26 +165,26 @@ muConfig =
   Node.ManagementConfig
     { scatterConfig =
         ScatterConfig
-          { memDepth = SNat @(LinkCount + NumGppes + 1)
+          { memDepth = SNat @MetacycleLength
           , calendarConfig =
               CalendarConfig
-                { maxCalDepth = SNat @LinkCount
+                { maxCalDepth = SNat @MetacycleLength
                 , repetitionBits = SNat
-                , activeCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
-                , inactiveCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
+                , activeCalendar = repeat @MetacycleLength (ValidEntry @_ @1 0 0)
+                , inactiveCalendar = repeat @MetacycleLength (ValidEntry @_ @1 0 0)
                 }
           }
     , scatterCalPrefix = 0b01011
     , scatterPrefix = 0b01100
     , gatherConfig =
         GatherConfig
-          { memDepth = SNat @(LinkCount + NumGppes + 1)
+          { memDepth = SNat @MetacycleLength
           , calendarConfig =
               CalendarConfig
-                { maxCalDepth = SNat @LinkCount
+                { maxCalDepth = SNat @MetacycleLength
                 , repetitionBits = SNat
-                , activeCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
-                , inactiveCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
+                , activeCalendar = repeat @MetacycleLength (ValidEntry @_ @1 0 0)
+                , inactiveCalendar = repeat @MetacycleLength (ValidEntry @_ @1 0 0)
                 }
           }
     , gatherCalPrefix = 0b01101
@@ -231,25 +222,25 @@ gppeConfig0 =
   Node.GppeConfig
     { scatterConfig =
         ScatterConfig
-          { memDepth = SNat @(LinkCount + NumGppes + 1)
+          { memDepth = SNat @MetacycleLength
           , calendarConfig =
               CalendarConfig
-                { maxCalDepth = SNat @LinkCount
+                { maxCalDepth = SNat @MetacycleLength
                 , repetitionBits = SNat
-                , activeCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
-                , inactiveCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
+                , activeCalendar = repeat @MetacycleLength (ValidEntry @_ @1 0 0)
+                , inactiveCalendar = repeat @MetacycleLength (ValidEntry @_ @1 0 0)
                 }
           }
     , scatterPrefix = 0b011
     , gatherConfig =
         GatherConfig
-          { memDepth = SNat @(LinkCount + NumGppes + 1)
+          { memDepth = SNat @MetacycleLength
           , calendarConfig =
               CalendarConfig
-                { maxCalDepth = SNat @LinkCount
+                { maxCalDepth = SNat @MetacycleLength
                 , repetitionBits = SNat
-                , activeCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
-                , inactiveCalendar = repeat @LinkCount (ValidEntry @_ @1 0 0)
+                , activeCalendar = repeat @MetacycleLength (ValidEntry @_ @1 0 0)
+                , inactiveCalendar = repeat @MetacycleLength (ValidEntry @_ @1 0 0)
                 }
           }
     , gatherPrefix = 0b001
