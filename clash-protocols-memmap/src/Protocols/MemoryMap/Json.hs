@@ -97,16 +97,6 @@ memoryMapJson locStore deviceDefs tree =
           , "tree" .= tree1
           ]
 
-    -- do
-    --     (Seq.reverse -> locs) <- get
-    --     let locs1 = locs <$> locToJson
-    --     pure
-    --       $ object
-    --         [ "devices" .= object devices
-    --         , "types" .= object types
-    --         , "tree" .= tree1
-    --         , "src_locations" .= locs1
-    --         ]
 
     (value, _, locs) = runRWS action locStore 0
    in
@@ -191,14 +181,16 @@ generateConstructor (name, Nameless fields) = do
 generateConstructor (name, Record fields) = do
   fields1 <- forM fields $ \(fieldName, field) -> do
     ty <- generateTypeRef field
-    pure
-      $ object
-        [ fromString (show fieldName) .= ty
+    pure $ object
+        [ "fieldname" .= (show fieldName)
+        , "type" .= ty
         ]
 
   pure
     $ object
-      [fromString (show name) .= fields1]
+      [fromString (show name) .= object [
+        "record" .= fields1
+      ]]
 
 generateTypeRef :: TypeRef -> JsonGenerator Value
 generateTypeRef (TypeInst name args) = do

@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    parse::{DeviceDesc, MemoryMapTree, Path, Tag, TypeDefinition},
+    parse::{DeviceDesc, LocationRef, MemoryMapTree, Path, Tag, TypeDefinition, TypeDescription},
     MemoryMapDesc,
 };
 
@@ -14,7 +14,7 @@ pub struct DeviceInstance {
     pub path: Path,
     pub tags: Vec<Tag>,
     pub device_name: String,
-    pub src_location: u64,
+    pub src_location: LocationRef,
     pub absolute_address: u64,
 }
 
@@ -42,7 +42,7 @@ pub struct DeviceInstanceAnnotations {
 #[derive(Default, Clone)]
 pub struct HalGenData {
     pub devices: BTreeMap<String, (DeviceDescAnnotations, DeviceDesc)>,
-    pub types: BTreeMap<String, (TypeDefAnnotations, TypeDefinition)>,
+    pub types: BTreeMap<String, (TypeDefAnnotations, TypeDescription)>,
     pub instances: BTreeMap<String, Vec<(DeviceInstanceAnnotations, DeviceInstance)>>,
     // TODO how to deal with locations for shared types?
 }
@@ -87,7 +87,7 @@ impl MemoryMapSet {
             BTreeMap::<String, BTreeMap<String, Vec<DeviceInstance>>>::new();
 
         let mut all_devices = BTreeMap::<String, Vec<(String, DeviceDesc)>>::new();
-        let mut all_types = BTreeMap::<String, Vec<(String, TypeDefinition)>>::new();
+        let mut all_types = BTreeMap::<String, Vec<(String, TypeDescription)>>::new();
 
         for (hal_name, hal) in hals {
             let instances = instances_per_hal.entry(hal_name.clone()).or_default();
@@ -109,7 +109,7 @@ impl MemoryMapSet {
         }
 
         let mut shared_devices = BTreeMap::<String, DeviceDesc>::new();
-        let mut shared_types = BTreeMap::<String, TypeDefinition>::new();
+        let mut shared_types = BTreeMap::<String, TypeDescription>::new();
 
         for (name, idxs) in &all_devices {
             let mut idx_iter = idxs.iter().map(|(_hal, desc)| desc);
@@ -240,7 +240,7 @@ impl MemoryMapSet {
     }
 
     /// Run a function for all type definitions, allowing to change annotations.
-    pub fn annotate_types(&mut self, mut f: impl FnMut(&TypeDefinition, &mut TypeDefAnnotations)) {
+    pub fn annotate_types(&mut self, mut f: impl FnMut(&TypeDescription, &mut TypeDefAnnotations)) {
         for hal_data in self.non_shared.values_mut() {
             for (ann, type_def) in hal_data.types.values_mut() {
                 f(type_def, ann);
@@ -303,7 +303,7 @@ fn gather_device_instances(
                 tags: tags.clone(),
                 absolute_address: *absolute_address,
                 device_name: device_name.clone(),
-                src_location: *src_location,
+                src_location: src_location.clone(),
             };
             instances.entry(device_name.clone()).or_default().push(item);
         }

@@ -11,9 +11,29 @@ use serde_json::Value;
 #[derive(Debug, Clone, Deserialize)]
 pub struct MemoryMapDesc {
     pub devices: HashMap<String, DeviceDesc>,
-    pub types: HashMap<String, TypeDefinition>,
+    pub types: HashMap<String, TypeDescription>,
     pub tree: MemoryMapTree,
-    pub src_locations: Vec<SourceLocation>,
+    pub src_locations: Option<Vec<SourceLocation>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(try_from = "Value")]
+pub enum LocationRef {
+    Inline(SourceLocation),
+    Separate(u64),
+}
+
+impl TryFrom<Value> for LocationRef {
+    type Error = String;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        if let Some(idx) = value.as_u64() {
+            Ok(LocationRef::Separate(idx))
+        } else {
+            let loc = serde_json::from_value(value).map_err(|err| err.to_string())?;
+            Ok(LocationRef::Inline(loc))
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Derivative)]
@@ -24,24 +44,275 @@ pub struct DeviceDesc {
     pub registers: Vec<RegisterDesc>,
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
-    pub src_location: u64,
+    pub src_location: LocationRef,
     pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
-pub struct TypeDefinition {
-    pub name: String,
-    pub meta: TypeMeta,
-    pub generics: u64,
-    pub definition: Type,
+pub struct TypeDescription {
+    pub name: TypeName,
+    pub args: Vec<TypeArg>,
+    pub definition: TypeDefinition,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
+pub enum TypeArg {
+    Type { name: String },
+    Number { name: String },
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
+#[serde(try_from = "Value")]
+pub enum TypeDefinition {
+    DataType(Vec<Constructor>),
+    Newtype(Constructor),
+    Builtin(BuiltinType),
+    Alias(TypeRef),
+}
+
+impl TryFrom<Value> for TypeDefinition {
+    type Error = String;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        let obj = value
+            .as_object()
+            .ok_or_else(|| "TypeDefinition must be a JSON object")?;
+
+        if let Some(cons) = obj.get("datatype") {
+            let cons = cons.as_array().unwrap();
+            let mut parsed_cons = Vec::new();
+            for con in cons {
+                parsed_cons.push(Constructor::try_from(con.clone())?);
+            }
+            if obj.len() != 1 {
+                return Err("TypeDefinition::DataType must have exactly one field".into());
+            }
+            Ok(TypeDefinition::DataType(parsed_cons))
+        } else if let Some(con) = obj.get("newtype") {
+            let con = Constructor::try_from(con.clone())?;
+            if obj.len() != 1 {
+                return Err("TypeDefinition::Newtype must have exactly one field".into());
+            }
+            Ok(TypeDefinition::Newtype(con))
+        } else if let Some(builtin) = obj.get("builtin") {
+            let b = BuiltinType::try_from(builtin.clone())?;
+            if obj.len() != 1 {
+                return Err("TypeDefinition::Builtin must have exactly one field".into());
+            }
+            Ok(TypeDefinition::Builtin(b))
+        } else if let Some(val) = obj.get("alias") {
+            let ty = TypeRef::try_from(val.clone())?;
+            if obj.len() != 1 {
+                return Err("TypeDefinition::Alias must have exactly one field".into());
+            }
+            Ok(TypeDefinition::Alias(ty))
+        } else {
+            Err("Only \"datatype\", \"newtype\", \"builtin\" and \"alias\" are supported".into())
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
+#[serde(try_from = "Value")]
+pub enum BuiltinType {
+    BitVector,
+    Vector,
+    Bool,
+    Float,
+    Double,
+    Signed,
+    Unsigned,
+    Index,
+}
+
+impl TryFrom<Value> for BuiltinType {
+    type Error = String;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        let s = value
+            .as_str()
+            .ok_or_else(|| "Builtin must be a string".to_string())?;
+
+        match s {
+            "bitvector" => Ok(BuiltinType::BitVector),
+            "vector" => Ok(BuiltinType::Vector),
+            "bool" => Ok(BuiltinType::Bool),
+            "float" => Ok(BuiltinType::Float),
+            "double" => Ok(BuiltinType::Double),
+            "signed" => Ok(BuiltinType::Signed),
+            "unsigned" => Ok(BuiltinType::Unsigned),
+            "index" => Ok(BuiltinType::Index),
+            s => Err(format!("Unsupported builin type: {s:}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
+#[serde(try_from = "Value")]
+pub enum Constructor {
+    Nameless { fields: Vec<TypeRef> },
+    Record { fields: Vec<(String, TypeRef)> },
+}
+
+impl TryFrom<Value> for Constructor {
+    type Error = String;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        let obj = value
+            .as_object()
+            .ok_or_else(|| "constructor must be an object".to_string())?;
+
+        if let Some(fields) = obj.get("nameless") {
+            let arr = fields.as_array().unwrap();
+            let mut parsed_fields = Vec::new();
+            for val in arr {
+                parsed_fields.push(TypeRef::try_from(val.clone())?);
+            }
+            if obj.len() != 1 {
+                return Err("Constructor::Nameless must have exactly one field".into());
+            }
+            Ok(Constructor::Nameless {
+                fields: parsed_fields,
+            })
+        } else if let Some(fields) = obj.get("record") {
+            let arr = fields.as_array().unwrap();
+            let mut parsed_fields = Vec::new();
+            for val in arr {
+                let field_obj = val.as_object().unwrap();
+                let name = field_obj.get("fieldname").unwrap().as_str().unwrap();
+                let ty_raw = field_obj.get("type").unwrap();
+                let ty = TypeRef::try_from(ty_raw.clone())?;
+                parsed_fields.push((name.to_string(), ty));
+            }
+            if obj.len() != 1 {
+                return Err("Constructor::Nameless must have exactly one field".into());
+            }
+            Ok(Constructor::Record {
+                fields: parsed_fields,
+            })
+        } else {
+            Err("Constructor must be \"nameless\" or \"record\"".into())
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
+#[serde(try_from = "Value")]
+pub enum TypeRef {
+    TypeReference { base: TypeName, args: Vec<TypeRef> },
+    Variable(String),
+    Nat(u64),
+    Tuple(Vec<TypeRef>),
+}
+
+impl TryFrom<Value> for TypeRef {
+    type Error = String;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        let obj = value
+            .as_object()
+            .ok_or_else(|| "TypeRef must be a JSON object")?;
+
+        if let Some(reference) = obj.get("type_reference") {
+            let name = TypeName::try_from(reference.clone())?;
+            let args = obj.get("args").unwrap().as_array().unwrap();
+
+            if obj.len() != 2 {
+                return Err("TypeRef::TypeReference must have exactly two fields".into());
+            }
+
+            let mut parsed_args = Vec::new();
+            for val in args {
+                parsed_args.push(TypeRef::try_from(val.clone())?);
+            }
+            Ok(TypeRef::TypeReference {
+                base: name,
+                args: parsed_args,
+            })
+        } else if let Some(var) = obj.get("variable") {
+            let name = var.as_str().unwrap().to_string();
+            if obj.len() != 1 {
+                return Err("TypeRef::Variable must have exactly one field".into());
+            }
+            Ok(TypeRef::Variable(name))
+        } else if let Some(val) = obj.get("nat") {
+            let num = val.as_u64().unwrap();
+            if obj.len() != 1 {
+                return Err("TypeRef::Nat must have exactly one field".into());
+            }
+            Ok(TypeRef::Nat(num))
+        } else if let Some(args) = obj.get("tuple") {
+            let mut parsed_args = Vec::new();
+            for arg in args.as_array().unwrap() {
+                parsed_args.push(TypeRef::try_from(arg.clone())?);
+            }
+
+            if obj.len() != 1 {
+                return Err("TypeRef::Tuple must have exactly one array field".into());
+            }
+
+            Ok(TypeRef::Tuple(parsed_args))
+        } else {
+            todo!()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
+#[serde(try_from = "Value")]
+pub struct TypeName {
+    pub base: String,
+    pub module: String,
+    pub package: String,
+}
+
+impl TryFrom<Value> for TypeName {
+    type Error = String;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        let obj = value
+            .as_object()
+            .ok_or_else(|| "TypeName must be a JSON object")?;
+
+        let base = obj
+            .get("name_base")
+            .ok_or_else(|| "TypeName must have field \"name_base\"")?
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let module = obj
+            .get("name_module")
+            .ok_or_else(|| "TypeName must have field \"name_module\"")?
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let package = obj
+            .get("name_package")
+            .ok_or_else(|| "TypeName must have field \"name_package\"")?
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        if obj.len() != 3 {
+            return Err("TypeName must have exactly three fields".into());
+        }
+
+        Ok(TypeName {
+            base,
+            module,
+            package,
+        })
+    }
 }
 
 pub type Path = Vec<PathComp>;
 
-pub fn path_name(path: &Path) -> Option<(u64, &str)> {
+pub fn path_name(path: &Path) -> Option<(LocationRef, &str)> {
     path.last().and_then(|comp| {
         if let PathComp::Name { src_location, name } = comp {
-            Some((*src_location, name.as_str()))
+            Some((src_location.clone(), name.as_str()))
         } else {
             None
         }
@@ -55,7 +326,7 @@ pub enum PathComp {
     Name {
         #[derivative(PartialEq = "ignore")]
         #[derivative(Hash = "ignore")]
-        src_location: u64,
+        src_location: LocationRef,
         name: String,
     },
     Unnamed(u64),
@@ -71,7 +342,7 @@ impl TryFrom<Value> for PathComp {
                 #[derive(Debug, Clone, Deserialize)]
                 pub struct NamedPath {
                     pub name: String,
-                    pub src_location: u64,
+                    pub src_location: LocationRef,
                 }
 
                 match serde_json::from_value::<NamedPath>(x) {
@@ -93,7 +364,7 @@ pub struct Tag {
     pub tag: String,
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
-    pub src_location: u64,
+    pub src_location: LocationRef,
 }
 
 #[derive(Debug, Clone, Deserialize, Derivative)]
@@ -107,7 +378,7 @@ pub enum MemoryMapTree {
         components: Vec<InterconnectComponent>,
         #[derivative(PartialEq = "ignore")]
         #[derivative(Hash = "ignore")]
-        src_location: u64,
+        src_location: LocationRef,
     },
     #[serde(rename = "device_instance")]
     DeviceInstance {
@@ -116,7 +387,7 @@ pub enum MemoryMapTree {
         device_name: String,
         #[derivative(PartialEq = "ignore")]
         #[derivative(Hash = "ignore")]
-        src_location: u64,
+        src_location: LocationRef,
         absolute_address: u64,
     },
 }
@@ -144,10 +415,10 @@ pub struct RegisterDesc {
     pub address: u64,
     pub size: u64,
     #[serde(rename = "type")]
-    pub reg_type: Type,
+    pub reg_type: TypeRef,
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
-    pub src_location: usize,
+    pub src_location: LocationRef,
     pub tags: Vec<String>,
 }
 
@@ -157,111 +428,6 @@ pub enum RegisterAccess {
     ReadWrite,
     ReadOnly,
     WriteOnly,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
-pub struct TypeMeta {
-    pub module: String,
-    pub package: String,
-    pub is_newtype: bool,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
-#[serde(try_from = "Value")]
-pub enum Type {
-    Bool,
-    Float,
-    Double,
-    BitVector(u64),
-    Signed(u64),
-    Unsigned(u64),
-    Index(u64),
-    Vec(u64, Box<Type>),
-    Reference(String, Vec<Type>),
-    Variable(u64),
-    // This should only be present for type definitions, not references
-    SumOfProducts { variants: Vec<VariantDesc> },
-}
-
-impl TryFrom<Value> for Type {
-    type Error = String;
-
-    fn try_from(value: Value) -> Result<Self, Self::Error> {
-        match value.clone() {
-            Value::String(x) if x == "bool" => Ok(Self::Bool),
-            Value::String(x) if x == "float" => Ok(Self::Float),
-            Value::String(x) if x == "double" => Ok(Self::Double),
-            Value::Array(a) if a.len() == 2 => {
-                let Ok([a, b]) = <[Value; 2]>::try_from(a) else {
-                    unreachable!()
-                };
-                match (a.as_str(), b.as_u64()) {
-                    (Some("bitvector"), Some(n)) => Ok(Self::BitVector(n)),
-                    (Some("signed"), Some(n)) => Ok(Self::Signed(n)),
-                    (Some("unsigned"), Some(n)) => Ok(Self::Unsigned(n)),
-                    (Some("index"), Some(n)) => Ok(Self::Index(n)),
-                    (Some("variable"), Some(n)) => Ok(Self::Variable(n)),
-                    _ => Err(format!("Invalid type, found [{a:?}, {b:?}]")),
-                }
-            }
-            Value::Array(a) if a.len() == 3 => {
-                let Ok([a, b, c]) = <[Value; 3]>::try_from(a) else {
-                    panic!()
-                };
-                match a.as_str() {
-                    Some("vector") => {
-                        let Some(n) = b.as_u64() else {
-                            return Err(format!("Invalid type, expected [\"vector\", <integer>, <another type>], found {value:?}"));
-                        };
-                        let inner = c.try_into()?;
-                        Ok(Self::Vec(n, Box::new(inner)))
-                    }
-                    Some("reference") => {
-                        let Some(name) = b.as_str() else {
-                            return Err(format!("Invalid type, expected [\"reference\", <name>, <array of type>], found {value:?}"));
-                        };
-                        let args = match serde_json::from_value(c) {
-                            Ok(val) => val,
-                            Err(err) => {
-                                return Err(format!(
-                                    "error when parsing type reference arguments: {err}"
-                                ))
-                            }
-                        };
-                        Ok(Self::Reference(name.to_string(), args))
-                    }
-                    _ => Err(format!("Invalid type, found [{a:?}, {b:?}, {c:?}]")),
-                }
-            }
-            x @ Value::Object(_) => {
-                #[derive(Debug, Clone, Deserialize)]
-                pub struct SopDefintion {
-                    pub variants: Vec<VariantDesc>,
-                }
-
-                match serde_json::from_value::<SopDefintion>(x) {
-                    Ok(def) => Ok(Self::SumOfProducts {
-                        variants: def.variants,
-                    }),
-                    Err(err) => Err(format!("Invalid sum-of-products type definition: {err}")),
-                }
-            }
-            x => Err(format!("Invalid type, found {x:?}")),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
-pub struct VariantDesc {
-    pub name: String,
-    pub fields: Vec<VariantFieldDesc>,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
-pub struct VariantFieldDesc {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub type_: Type,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -8,7 +8,7 @@ use quote::quote;
 use crate::{
     generators::{generate_tag_docs, ident, types::TypeGenerator, IdentType},
     hal_set::DeviceDescAnnotations,
-    parse::{DeviceDesc, RegisterAccess, RegisterDesc, Type},
+    parse::{DeviceDesc, RegisterAccess, RegisterDesc, TypeRef},
 };
 
 pub struct DeviceGenerator;
@@ -42,7 +42,7 @@ impl DeviceGenerator {
 
                 let reg_description = &reg.description;
 
-                if let Type::Vec(len, inner) = &reg.reg_type {
+                if let Type::Vec(len, inner) = &reg.type_ref {
                     let unchecked_name =
                         ident(IdentType::Method, format!("{}_unchecked", &reg.name));
                     let iter_name =
