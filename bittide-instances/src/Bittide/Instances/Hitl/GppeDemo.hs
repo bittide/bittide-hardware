@@ -294,6 +294,7 @@ gppeConfig0 =
           , whoAmID = D.gppeWhoAmID
           , whoAmIPrefix = D.whoAmIPrefix
           }
+    , dnaPrefix = 0b101
     , dumpVcd = NoDumpVcd
     , metaPeConfigPrefix = 0b111
     , metaPeConfigBufferWidth = SNat
