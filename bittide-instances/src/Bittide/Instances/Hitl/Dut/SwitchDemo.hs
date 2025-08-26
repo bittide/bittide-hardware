@@ -257,8 +257,8 @@ gppeConfig0 =
         PeConfig
           { prefixI = 0b100
           , prefixD = 0b010
-          , initI = Undefined @(Div (32 * 1024) 4)
-          , initD = Undefined @(Div (32 * 1024) 4)
+          , initI = Undefined @(Div (64 * 1024) 4)
+          , initD = Undefined @(Div (64 * 1024) 4)
           , iBusTimeout = d0
           , dBusTimeout = d0
           , includeIlaWb = False
