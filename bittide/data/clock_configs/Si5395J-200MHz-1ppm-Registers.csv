@@ -1,5 +1,5 @@
 # Si534x/7x/8x/9x Registers Script
-# 
+#
 # Part: Si5395
 # Project File: \\VBOXSVR\win_vm_shared\Si5395J-200MHz-1ppm.slabtimeproj
 # Design ID: 200_1ppm
@@ -8,18 +8,18 @@
 # Creator: ClockBuilder Pro v4.11.0.1 [2023-09-14]
 # Created On: 2024-03-22 16:46:19 GMT+01:00
 Address,Data
-# 
+#
 # Start configuration preamble
 0x0B24,0xC0
 0x0B25,0x00
 0x0540,0x01
 # End configuration preamble
-# 
+#
 # Delay 300 msec
 #    Delay is worst case time for device to complete any calibration
 #    that is running due to device state change previous to this script
 #    being processed.
-# 
+#
 # Start configuration registers
 0x0006,0x00
 0x0007,0x00
@@ -612,7 +612,7 @@ Address,Data
 0x0C07,0x00
 0x0C08,0x00
 # End configuration registers
-# 
+#
 # Start configuration postamble
 0x0514,0x01
 0x001C,0x01
