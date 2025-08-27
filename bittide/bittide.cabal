@@ -326,6 +326,7 @@ test-suite unittests
     hedgehog >=1.0 && <1.5,
     lifted-async,
     pretty-show,
+    string-interpolate ^>=0.3,
     tasty >=1.5 && <1.7,
     tasty-expected-failure,
     tasty-hedgehog >=1.2 && <1.5,
