@@ -4,7 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 set -xou pipefail
 
-grep -E -B 10 '^Warning:' "$1"
+grep -v '^Warning: The package list for .* is .* old\.$' "$1" \
+    | grep -E -B 10 '^Warning:'
 
 if [[ $? == 0 ]]; then
     echo "Cabal produced warnings. See ^"
