@@ -85,6 +85,9 @@
 
             # UART communication
             pkgs.picocom
+
+            # mdbook dependencies
+            pkgs.mdbook
           ];
 
           shellHook = ''
