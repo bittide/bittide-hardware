@@ -7,7 +7,7 @@ set -xou pipefail
 grep -v '^Warning: The package list for .* is .* old\.$' "$1" \
     | grep -E -B 10 '^Warning:'
 
-if [[ $? == 0 ]]; then
+if [[ ${PIPESTATUS[1]} == 0 ]]; then
     echo "Cabal produced warnings. See ^"
     exit 1;
 fi
