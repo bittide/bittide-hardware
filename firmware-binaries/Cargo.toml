@@ -28,6 +28,7 @@ members = [
   "test-cases/watchdog_test",
 
   "clock-control",
+  "gppe-switch-demo",
   "management-unit",
   "processing-element-test",
 ]
