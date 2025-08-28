@@ -187,6 +187,8 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
         , iBusTimeout = d0
         , dBusTimeout = d0
         , includeIlaWb = False
+        , whoAmID = 0x6363_7773
+        , whoAmIPrefix = 0b1110
         }
 
   peConfigRtl =
@@ -198,6 +200,8 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True
+      , whoAmID = 0x6363_7773
+      , whoAmIPrefix = 0b1110
       }
 
 type IMemWords = DivRU (280 * 1024) 4

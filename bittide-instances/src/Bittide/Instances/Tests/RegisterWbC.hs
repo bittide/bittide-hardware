@@ -22,7 +22,9 @@ import Bittide.ProcessingElement (
     initD,
     initI,
     prefixD,
-    prefixI
+    prefixI,
+    whoAmID,
+    whoAmIPrefix
   ),
   processingElement,
  )
@@ -384,9 +386,9 @@ dut =
       [(prefixUart, uartBus), (prefixManyTypes, manyTypes)] <-
         processingElement dumpVcd peConfig -< (mm, jtag)
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-      constBwd 0b00 -< prefixUart
+      constBwd 0b000 -< prefixUart
       manyTypesWb -< manyTypes
-      constBwd 0b11 -< prefixManyTypes
+      constBwd 0b110 -< prefixManyTypes
       idC -< uartTx
  where
   dumpVcd =
@@ -406,16 +408,18 @@ dut =
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr BigEndian elfPath
-        , prefixI = 0b10
+        , prefixI = 0b100
         , initD =
             Reloadable @DMemWords
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData BigEndian elfPath
-        , prefixD = 0b01
+        , prefixD = 0b010
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
+        , whoAmID = 0x6363_7773
+        , whoAmIPrefix = 0b111
         }
 {-# NOINLINE dut #-}
 

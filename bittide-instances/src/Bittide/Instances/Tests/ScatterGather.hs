@@ -101,6 +101,8 @@ dut = withBittideByteOrder $ circuit $ \mm -> do
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
+        , whoAmID = 0x6363_7773
+        , whoAmIPrefix = 0b110
         }
 {-# NOINLINE dut #-}
 
