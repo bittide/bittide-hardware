@@ -9,7 +9,7 @@ SPDX-License-Identifier: Apache-2.0
 This document describes a concrete example of a Bittide design that can be programmed on the FPGAs of the HITL platform. It showcases the internal architecture and configuration of the system.
 
 ## Architecture
-**Requires diagram**
+{{#drawio path="diagrams/demo.drawio" page=0}}
 
 ### Domain related
 Components:
@@ -47,10 +47,3 @@ Calendars:
 - JTAG interconnect
 - Integrated logic analyzers
 - SYNC_IN / SYNC_OUT
-
-# Example System
-
-Below is a diagram generated from the first page of `bittide_concepts.drawio`:
-
-TODO: Insert diagram
-<!-- ![Bittide System](diagrams/bittide_concepts_0.svg) -->
