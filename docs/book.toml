@@ -11,3 +11,7 @@ language = "en"
 
 [build]
 build-dir = "../_build/book"
+
+[preprocessor]
+[preprocessor.drawio]
+command = "mdbook-drawio"
