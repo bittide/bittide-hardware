@@ -38,6 +38,9 @@ We follow a standard GitHub development flow. Our development branch is called `
   * While debugging, we often only want one bittide instance to be tested with our hardware-in-the-loop infrastructure. With the increasing number of bittide instances with are synthesized and tested, these CI runs take a long time. You can add a file `.github/synthesis/debug.json`, with only the instances you want CI to synthesize/test. The CI run will always fail on the 'all' job when this file exists to prevent a premature merge.
   * You can run `format` in the Nix shell to format all Cabal, Haskell, and Rust files.
 
+## Pre-commit hooks
+The nix development shell is configured with pre-commit hooks to ensure code quality and consistency. These hooks run automatically before each commit when you are in the shell. Nix generates a `.pre-commit-config.yaml` file in the root of the repository to configure these hooks. Do not manually edit this file.
+
 # About Bittide
 Bittide is a novel distributed system architecture based on the idea
 that synchronous, ahead-of-time scheduling using a logical global
