@@ -6,14 +6,9 @@ module Bittide.Instances.Hitl.Utils.Program where
 
 import Prelude
 
-import Paths_bittide_instances
-
 import System.IO
 import System.Process
 import System.Timeout (timeout)
-
-getTcpSprayPath :: IO FilePath
-getTcpSprayPath = getDataFileName "data/tcpspray/start.sh"
 
 data ProcessHandles = ProcessHandles
   { stdinHandle :: Handle

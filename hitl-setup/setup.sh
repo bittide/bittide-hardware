@@ -8,20 +8,20 @@ set -xuo pipefail
 HERE=$(realpath "$(dirname "$0")")
 source "$HERE/fpganet" || exit $?
 
-echo Checking that all INTERFACES exist
+echo "Checking that all INTERFACES exist"
 for INTERFACE in $INTERFACES; do
-  ip addr show $INTERFACE > /dev/null || exit $?
+  ip addr show "$INTERFACE" > /dev/null || exit $?
 done
-echo All INTERFACES exist
+echo "All INTERFACES exist"
 
 FILES="/etc/systemd/system/fpganet.service /etc/fpganet /etc/dhcp/dhcpd.conf /etc/default/isc-dhcp-server"
 EXISTS=
 for FILE in $FILES; do
-  if [ -e $FILE ]; then
+  if [ -e "$FILE" ]; then
     EXISTS="$EXISTS $FILE"
   fi
 done
-if [ -n "$EXISTS"  -a "$FORCE" != -f ]; then
+if [ -n "$EXISTS" ] && [ "$FORCE" != -f ]; then
   set +x
   echo "Running this script with -f will overwrite:"
   echo "$EXISTS"
