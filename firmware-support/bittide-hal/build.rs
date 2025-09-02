@@ -6,9 +6,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::{fs::File, path::PathBuf};
 
+use memmap_generate::generators::types::{ParsedType, TypeGenerator};
 use memmap_generate::generators::{ident, IdentType};
 use memmap_generate::hal_set::{MemoryMapSet, TypeDefAnnotations};
-use memmap_generate::parse::{Type, TypeDefinition};
+use memmap_generate::parse::{
+    BuiltinType, NamedConstructor, TypeDefinition, TypeDescription, TypeName,
+};
 use memmap_generate::{self as mm, generate_rust_wrappers};
 use quote::quote;
 
@@ -28,19 +31,16 @@ fn lint_disables_generated_code() -> &'static str {
     "#
 }
 
-fn has_float(set: &BTreeSet<String>, ty: &Type) -> bool {
+fn has_float(set: &BTreeSet<TypeName>, ty: &ParsedType) -> bool {
     match ty {
-        Type::Float | Type::Double => true,
-        Type::Vec(_, inner) => has_float(set, inner),
-        Type::Reference(name, items) => {
-            set.contains(name) || items.iter().any(|t| has_float(set, t))
+        ParsedType::Float | ParsedType::Double => true,
+        ParsedType::Vector(_, inner) => has_float(set, inner),
+        ParsedType::Maybe(inner) => has_float(set, inner),
+        ParsedType::Either(a, b) => has_float(set, a) || has_float(set, b),
+        ParsedType::Tuple(parsed_types) => parsed_types.iter().any(|t| has_float(set, t)),
+        ParsedType::Custom { name, args } => {
+            set.contains(&name) || args.iter().any(|t| has_float(set, t))
         }
-        Type::SumOfProducts { variants } => variants.iter().any(|variant_desc| {
-            variant_desc
-                .fields
-                .iter()
-                .any(|field_desc| has_float(set, &field_desc.type_))
-        }),
         _ => false,
     }
 }
@@ -71,7 +71,7 @@ fn main() {
         let Some(name) = path.file_stem() else {
             continue;
         };
-
+        println!("Parsing memory map: {}", name.to_str().unwrap());
         let src = std::fs::read_to_string(&path).unwrap();
 
         let desc = mm::parse(&src).unwrap();
@@ -88,11 +88,39 @@ fn main() {
         let mut has_floats = BTreeSet::new();
 
         let mut prev_len = 0;
+        let mut ty_gen = TypeGenerator::new();
 
         // check for references to floats or references to types that reference floats
         loop {
-            set.annotate_types(|type_def: &TypeDefinition, ann: &mut TypeDefAnnotations| {
-                if has_float(&has_floats, &type_def.definition) {
+            set.annotate_types(|type_def: &TypeDescription, ann: &mut TypeDefAnnotations| {
+                let found_float =
+                    match &type_def.definition {
+                        TypeDefinition::DataType(named_constructors) => named_constructors
+                            .iter()
+                            .any(|NamedConstructor(_, con)| match con {
+                                memmap_generate::parse::Constructor::Nameless { fields } => {
+                                    fields.iter().any(|ty| {
+                                        let parsed = ty_gen.parse_type_ref(ty);
+                                        has_float(&has_floats, &parsed)
+                                    })
+                                }
+                                memmap_generate::parse::Constructor::Record { fields } => {
+                                    fields.iter().any(|(_, ty)| {
+                                        let parsed = ty_gen.parse_type_ref(ty);
+                                        has_float(&has_floats, &parsed)
+                                    })
+                                }
+                            }),
+                        TypeDefinition::Newtype(named_constructor) => todo!(),
+                        TypeDefinition::Builtin(builtin_type) => {
+                            matches!(builtin_type, BuiltinType::Float | BuiltinType::Double)
+                        }
+                        TypeDefinition::Alias(type_ref) => {
+                            let ty = ty_gen.parse_type_ref(type_ref);
+                            has_float(&has_floats, &ty)
+                        }
+                    };
+                if found_float {
                     has_floats.insert(type_def.name.clone());
                     ann.tags.insert("uses-float".to_string());
                 }
@@ -104,7 +132,7 @@ fn main() {
             prev_len = has_floats.len();
         }
 
-        set.annotate_types(|type_def: &TypeDefinition, ann: &mut TypeDefAnnotations| {
+        set.annotate_types(|type_def: &TypeDescription, ann: &mut TypeDefAnnotations| {
             ann.derives
                 .push(quote! { #[derive(Copy, Clone, PartialEq)] });
 
@@ -118,6 +146,8 @@ fn main() {
     }
 
     set.filter_devices_by_tag(|tag| tag != "no-generate");
+
+    set.filter_types(|desc, _ann| desc.name.module != "GHC.Tuple");
 
     // we're going for a folder structure like this
     //
@@ -159,13 +189,13 @@ fn main() {
         generated_files.push(mod_file_path);
 
         for ty_name in shared_wrapper.type_defs.keys() {
-            let name = ident(IdentType::Module, ty_name);
+            let name = ident(IdentType::Module, type_name(ty_name));
             writeln!(mod_file, "pub mod {name};").unwrap();
             writeln!(mod_file, "pub use {name}::*;").unwrap();
         }
 
         for (ty_name, (ann, def)) in &shared_wrapper.type_defs {
-            let ty_name = ident(IdentType::Module, ty_name);
+            let ty_name = ident(IdentType::Module, type_name(ty_name));
             let file_path = shared_path.join("types").join(format!("{ty_name}.rs"));
             let mut file = File::create(&file_path).unwrap();
 
@@ -194,13 +224,13 @@ fn main() {
         generated_files.push(mod_file_path);
 
         for device_name in shared_wrapper.device_defs.keys() {
-            let name = ident(IdentType::Module, device_name);
+            let name = ident(IdentType::Module, type_name(device_name));
             writeln!(mod_file, "pub mod {name};").unwrap();
             writeln!(mod_file, "pub use {name}::*;").unwrap();
         }
 
         for (device_name, (ann, def)) in &shared_wrapper.device_defs {
-            let device_name = ident(IdentType::Module, device_name);
+            let device_name = ident(IdentType::Module, type_name(device_name));
             let file_path = shared_path
                 .join("devices")
                 .join(format!("{device_name}.rs"));
@@ -276,13 +306,13 @@ fn main() {
             generated_files.push(mod_file_path);
 
             for ty_name in wrapper.type_defs.keys() {
-                let name = ident(IdentType::Module, ty_name);
+                let name = ident(IdentType::Module, type_name(ty_name));
                 writeln!(mod_file, "pub mod {name};",).unwrap();
                 writeln!(mod_file, "pub use {name}::*;").unwrap();
             }
 
             for (ty_name, (ann, def)) in &wrapper.type_defs {
-                let mod_name = ident(IdentType::Module, ty_name);
+                let mod_name = ident(IdentType::Module, type_name(ty_name));
                 let file_path = hal_path.join("types").join(format!("{}.rs", mod_name));
                 let mut file = File::create(&file_path).unwrap();
                 generated_files.push(file_path);
@@ -309,13 +339,13 @@ fn main() {
             generated_files.push(hal_path.join("devices").join("mod.rs"));
 
             for dev_name in wrapper.device_defs.keys() {
-                let name = ident(IdentType::Module, dev_name);
+                let name = ident(IdentType::Module, type_name(dev_name));
                 writeln!(mod_file, "pub mod {name};").unwrap();
                 writeln!(mod_file, "pub use {name}::*;").unwrap();
             }
 
             for (dev_name, (ann, def)) in &wrapper.device_defs {
-                let dev_mod_name = ident(IdentType::Module, dev_name);
+                let dev_mod_name = ident(IdentType::Module, type_name(dev_name));
 
                 let file_path = hal_path.join("devices").join(format!("{dev_mod_name}.rs"));
                 let mut file = File::create(&file_path).unwrap();
@@ -342,4 +372,8 @@ fn main() {
     }
 
     memmap_generate::format::format_files(&generated_files).unwrap();
+}
+
+fn type_name(s: &str) -> &str {
+    s.split(".").last().unwrap()
 }

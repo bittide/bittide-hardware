@@ -2,14 +2,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use std::str::FromStr;
+use std::collections::HashSet;
 
 use crate::{
     generators::{generate_tag_docs, generic_name, ident, IdentType},
     hal_set::TypeDefAnnotations,
-    parse::{Type, TypeDefinition, VariantDesc},
+    parse::{
+        Constructor, NamedConstructor, TypeArg, TypeDefinition, TypeDescription, TypeName, TypeRef,
+    },
 };
-use proc_macro2::Literal;
+use proc_macro2::{Ident, Literal, Span};
 use quote::{quote, ToTokens};
 
 fn clog2(n: &u64) -> u64 {
@@ -20,242 +22,410 @@ fn next_pow2(n: &u64) -> u64 {
     n.next_power_of_two().max(8)
 }
 
-pub struct TypeGenerator;
+pub enum ParsedType {
+    BitVector(Box<ParsedType>),
+    Unsigned(Box<ParsedType>),
+    Signed(Box<ParsedType>),
+    Index(Box<ParsedType>),
+    Bool,
+    Float,
+    Double,
+    Vector(Box<ParsedType>, Box<ParsedType>),
+    Maybe(Box<ParsedType>),
+    Either(Box<ParsedType>, Box<ParsedType>),
+    Tuple(Vec<ParsedType>),
+    Custom {
+        name: TypeName,
+        args: Vec<ParsedType>,
+    },
+    Variable(String),
+    Nat(u64),
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum PrimitiveType {
+    BitVector,
+    Unsigned,
+    Signed,
+    Index,
+    Bool,
+    Float,
+    Double,
+    Vector,
+    Maybe,
+    Either,
+}
+
+pub struct TypeGenerator {
+    referenced_custom_types: HashSet<TypeName>,
+    referenced_primitives: HashSet<PrimitiveType>,
+}
 
 impl TypeGenerator {
     pub fn new() -> Self {
-        TypeGenerator
-    }
-
-    #[allow(clippy::only_used_in_recursion)]
-    pub fn generate_type_ref(&mut self, ty: &Type) -> proc_macro2::TokenStream {
-        match ty {
-            Type::Bool => quote! { bool },
-            Type::Float => quote! { f32 },
-            Type::Double => quote! { f64 },
-            Type::BitVector(n) | Type::Unsigned(n) => {
-                let ty_name = ident(IdentType::Raw, format!("u{}", next_pow2(n)));
-                quote! { #ty_name }
-            }
-            Type::Signed(n) => {
-                let ty_name = ident(IdentType::Raw, format!("i{}", next_pow2(n)));
-                quote! { #ty_name }
-            }
-            Type::Index(n) => {
-                let n_lit = Literal::from_str(&n.to_string()).unwrap();
-
-                quote! { Index![#n_lit] }
-            }
-            Type::Vec(n, ty) => {
-                let inner = self.generate_type_ref(ty);
-                let n = Literal::from_str(&n.to_string()).unwrap();
-
-                quote! { [#inner; #n] }
-            }
-            Type::Reference(name, args) => {
-                let ty_name = ident(IdentType::Type, name);
-                let args = args
-                    .iter()
-                    .map(|x| self.generate_type_ref(x))
-                    .collect::<Vec<_>>();
-                if args.is_empty() {
-                    quote! { #ty_name }
-                } else {
-                    quote! { #ty_name < #(#args,)* > }
-                }
-            }
-            Type::Variable(i) => generic_name(*i).to_token_stream(),
-            Type::SumOfProducts { .. } => panic!("SOP definitions can't be references"),
+        TypeGenerator {
+            referenced_custom_types: Default::default(),
+            referenced_primitives: Default::default(),
         }
     }
 
-    pub fn generate_type_def(
+    pub fn parse_type_ref(&mut self, ty: &TypeRef) -> ParsedType {
+        match ty {
+            TypeRef::TypeReference { base, args } => {
+                match (base.base.as_str(), base.module.as_str()) {
+                    ("BitVector", "Clash.Sized.Internal.BitVector") => {
+                        ParsedType::BitVector(Box::new(self.parse_type_ref(&args[0])))
+                    }
+                    ("Signed", "Clash.Sized.Internal.Signed") => {
+                        ParsedType::Signed(Box::new(self.parse_type_ref(&args[0])))
+                    }
+                    ("Unsigned", "Clash.Sized.Internal.Unsigned") => {
+                        ParsedType::Unsigned(Box::new(self.parse_type_ref(&args[0])))
+                    }
+                    ("Index", "Clash.Sized.Internal.Index") => {
+                        ParsedType::Index(Box::new(self.parse_type_ref(&args[0])))
+                    }
+                    ("Float", "GHC.Types") => ParsedType::Float,
+                    ("Double", "GHC.Types") => ParsedType::Double,
+                    ("Bool", "GHC.Types") => ParsedType::Bool,
+                    ("Vec", "Clash.Sized.Vector") => ParsedType::Vector(
+                        Box::new(self.parse_type_ref(&args[0])),
+                        Box::new(self.parse_type_ref(&args[1])),
+                    ),
+                    ("Unit", "GHC.Tuple") => ParsedType::Tuple(vec![]),
+                    ("Either", "GHC.Internal.Data.Either") => ParsedType::Either(
+                        Box::new(self.parse_type_ref(&args[0])),
+                        Box::new(self.parse_type_ref(&args[1])),
+                    ),
+                    ("Maybe", "GHC.Internal.Maybe") => {
+                        ParsedType::Maybe(Box::new(self.parse_type_ref(&args[0])))
+                    }
+                    (name, "GHC.Tuple") if name.starts_with("Tuple") => ParsedType::Tuple(
+                        args.into_iter().map(|t| self.parse_type_ref(t)).collect(),
+                    ),
+                    (_, _) => ParsedType::Custom {
+                        name: base.clone(),
+                        args: args.iter().map(|t| self.parse_type_ref(t)).collect(),
+                    },
+                }
+            }
+            TypeRef::Variable(name) => ParsedType::Variable(name.clone()),
+            TypeRef::Nat(n) => ParsedType::Nat(*n),
+            TypeRef::Tuple(type_refs) => ParsedType::Tuple(
+                type_refs
+                    .into_iter()
+                    .map(|t| self.parse_type_ref(t))
+                    .collect(),
+            ),
+        }
+    }
+
+    pub fn generate_parsed_type_ref(&mut self, ty: &ParsedType) -> proc_macro2::TokenStream {
+        match ty {
+            ParsedType::BitVector(parsed_type) => {
+                self.referenced_primitives.insert(PrimitiveType::BitVector);
+                let n = self.generate_parsed_type_ref(&parsed_type);
+                quote! { BitVector<#n> }
+            }
+            ParsedType::Unsigned(parsed_type) => {
+                self.referenced_primitives.insert(PrimitiveType::Unsigned);
+                let n = self.generate_parsed_type_ref(&parsed_type);
+                quote! { Unsigned<#n> }
+            }
+            ParsedType::Signed(parsed_type) => {
+                self.referenced_primitives.insert(PrimitiveType::Signed);
+                let n = self.generate_parsed_type_ref(&parsed_type);
+                quote! { Signed<#n> }
+            }
+            ParsedType::Index(parsed_type) => {
+                self.referenced_primitives.insert(PrimitiveType::Index);
+                let n = self.generate_parsed_type_ref(&parsed_type);
+                quote! { Index<#n> }
+            }
+            ParsedType::Bool => {
+                self.referenced_primitives.insert(PrimitiveType::Bool);
+                quote! { bool }
+            }
+            ParsedType::Float => {
+                self.referenced_primitives.insert(PrimitiveType::Float);
+                quote! { f32 }
+            }
+            ParsedType::Double => {
+                self.referenced_primitives.insert(PrimitiveType::Double);
+                quote! { f64 }
+            }
+            ParsedType::Vector(n, t) => {
+                self.referenced_primitives.insert(PrimitiveType::Vector);
+                let n_toks = self.generate_parsed_type_ref(&*n);
+                let t_toks = self.generate_parsed_type_ref(&*t);
+                quote! { [#t_toks ; #n_toks ] }
+            }
+            ParsedType::Maybe(t) => {
+                self.referenced_primitives.insert(PrimitiveType::Maybe);
+                let t_toks = self.generate_parsed_type_ref(&*t);
+                quote! {
+                    Option<#t_toks>
+                }
+            }
+            ParsedType::Either(a, b) => {
+                self.referenced_primitives.insert(PrimitiveType::Either);
+                let a_toks = self.generate_parsed_type_ref(&*a);
+                let b_toks = self.generate_parsed_type_ref(&*b);
+                quote! {
+                    Result<#a_toks, #b_toks>
+                }
+            }
+            ParsedType::Tuple(tys) => {
+                let tys_toks = tys
+                    .into_iter()
+                    .map(|t| {
+                        let ty = self.generate_parsed_type_ref(t);
+                        quote! { #ty , }
+                    })
+                    .collect::<Vec<_>>();
+                quote! { ( #(#tys_toks)* ) }
+            }
+            ParsedType::Custom { name, args } => {
+                self.referenced_custom_types.insert(name.clone());
+                let ident = Ident::new(&name.base, Span::call_site());
+                let args = args
+                    .into_iter()
+                    .map(|t| {
+                        let t = self.generate_parsed_type_ref(t);
+                        quote! { #t , }
+                    })
+                    .collect::<Vec<_>>();
+                if args.is_empty() {
+                    quote! { #ident }
+                } else {
+                    quote! { #ident< #(#args)* >}
+                }
+            }
+            ParsedType::Variable(name) => {
+                let ident = Ident::new(&name, Span::call_site());
+                quote! { #ident }
+            }
+            ParsedType::Nat(n) => {
+                let lit = Literal::u128_unsuffixed(*n as u128);
+                quote! { #lit }
+            }
+        }
+    }
+
+    pub fn generate_type_ref(&mut self, ty: &TypeRef) -> proc_macro2::TokenStream {
+        let parsed = self.parse_type_ref(ty);
+        self.generate_parsed_type_ref(&parsed)
+    }
+
+    pub fn generate_type_desc(
         &mut self,
         ann: &TypeDefAnnotations,
-        ty: &TypeDefinition,
+        desc: &TypeDescription,
     ) -> proc_macro2::TokenStream {
-        let name = ident(IdentType::Type, &ty.name);
+        let name = ident(IdentType::Type, &desc.name.base);
 
-        let repr = self.generate_repr(ty);
+        let args = if desc.type_args.is_empty() {
+            quote! {}
+        } else {
+            let args = desc
+                .type_args
+                .iter()
+                .map(|arg| match arg {
+                    TypeArg::Type { name } => {
+                        let ident = proc_macro2::Ident::new(name, Span::call_site());
+                        quote! { #ident , }
+                    }
+                    TypeArg::Number { name } => {
+                        let ident = proc_macro2::Ident::new(name, Span::call_site());
+                        quote! { const #ident: u128, }
+                    }
+                })
+                .collect::<Vec<_>>();
+            quote! {
+                < #(#args)* >
+            }
+        };
+
+        let repr = self.generate_repr(&desc.definition);
 
         let derives = &ann.derives;
         let tags = generate_tag_docs(None.into_iter(), ann.tags.iter().map(String::as_str));
 
         let attrs = quote! { #tags #repr #(#derives)* };
 
-        let generics = if ty.generics > 0 {
-            let names = (0..ty.generics).map(generic_name).collect::<Vec<_>>();
-            quote! { < #(#names,)* > }
-        } else {
-            quote! {}
-        };
-
-        if let Type::SumOfProducts { variants } = &ty.definition {
-            match variants.as_slice() {
-                // Empty type (unit)
-                [] => quote! {
+        match &desc.definition {
+            TypeDefinition::DataType(constructors) if constructors.is_empty() => {
+                // TODO handle phantom types for args and stuff
+                quote! {
                     #attrs
-                    pub struct #name #generics;
-                },
+                    pub struct #name;
+                }
+            }
+            TypeDefinition::DataType(constructors) if constructors.len() == 1 => {
+                let constructor = &constructors[0];
 
-                // Single constructor
-                [variant_desc @ VariantDesc {
-                    name: variant_name,
-                    fields,
-                }] => match fields.as_slice() {
-                    [] => {
-                        if &ty.name == variant_name {
-                            quote! {
-                                #attrs
-                                pub struct #name #generics;
-                            }
+                if constructor.0 != desc.name.base {
+                    panic!(
+                        "Single-constructor data types are required to have the constructor name match the type name. \
+                        Type name: '{type_name:?}', Constructor name: '{constructor_name:?}'",
+                        type_name = desc.name.base,
+                        constructor_name = constructor.0
+                    )
+                }
+
+                match &constructor.1 {
+                    Constructor::Nameless { fields } => {
+                        let fields_toks = fields.iter().map(|f| self.generate_type_ref(f));
+
+                        let body = if fields.is_empty() {
+                            quote! {}
                         } else {
-                            panic!(
-                                "Single-constructor data types are required to have the constructor name match the type name. \
-                                Type name: '{type_name:?}', Constructor name: '{constructor_name:?}'",
-                                type_name = ty.name,
-                                constructor_name = variant_name
-                            )
+                            quote! { (#(pub #fields_toks,)*) }
+                        };
+
+                        quote! {
+                            #attrs
+                            pub struct #name #args #body;
                         }
                     }
-                    xs => {
-                        if &ty.name == variant_name {
-                            let no_names = xs.iter().all(|v| v.name.is_empty());
-                            let all_names = xs.iter().all(|v| !v.name.is_empty());
-
-                            if no_names == all_names && !xs.is_empty() {
-                                panic!("Variant fields must either ALL be named or NONE be named.");
+                    Constructor::Record { fields } => {
+                        let fields_toks = fields.iter().map(|(name, ty)| {
+                            let id = ident(IdentType::Variable, name);
+                            let ty = self.generate_type_ref(ty);
+                            quote! { pub #id: #ty }
+                        });
+                        quote! {
+                            #attrs
+                            pub struct #name #args {
+                                #(#fields_toks,)*
                             }
-
-                            if no_names {
-                                let fields = xs
-                                    .iter()
-                                    .map(|f| self.generate_type_ref(&f.type_))
-                                    .collect::<Vec<_>>();
-                                quote! {
-                                    #attrs
-                                    pub struct #name #generics (#(pub #fields,)*);
-                                }
+                        }
+                    }
+                }
+            }
+            TypeDefinition::DataType(constructors) => {
+                let variants = constructors.iter().map(|NamedConstructor(name, con)| {
+                    let id = ident(IdentType::Type, name);
+                    match con {
+                        Constructor::Nameless { fields } => {
+                            let fields_toks = fields.iter().map(|f| self.generate_type_ref(f));
+                            if fields.is_empty() {
+                                quote! { #id, }
                             } else {
-                                let fields = xs
-                                    .iter()
-                                    .map(|f| {
-                                        let name = ident(IdentType::Variable, &f.name);
-                                        let ty = self.generate_type_ref(&f.type_);
-                                        quote! { pub #name: #ty, }
-                                    })
-                                    .collect::<Vec<_>>();
                                 quote! {
-                                    #attrs
-                                    pub struct #name #generics {
-                                        #(#fields)*
-                                    }
+                                    #id(#(#fields_toks,)*),
                                 }
                             }
-                        } else {
-                            let variant_source = self.generate_variant(variant_desc);
+                        }
+                        Constructor::Record { fields } => {
+                            let fields = fields.iter().map(|(name, ty)| {
+                                let name = ident(IdentType::Variable, name);
+                                let ty = self.generate_type_ref(ty);
+                                quote! { #name: #ty }
+                            });
+
                             quote! {
-                                #attrs
-                                pub enum #name #generics {
-                                    #variant_source
-                                }
+                                #id {
+                                    #(#fields,)*
+                                },
                             }
                         }
                     }
-                },
+                });
+                quote! {
+                    #attrs
+                    pub enum #name #args {
+                        #(#variants)*
+                    }
+                }
+            }
+            TypeDefinition::Newtype(constructor) => {
+                if constructor.0 != desc.name.base {
+                    panic!(
+                        "newtypes are required to have the constructor name match the type name. \
+                        Type name: '{type_name:?}', Constructor name: '{constructor_name:?}'",
+                        type_name = desc.name.base,
+                        constructor_name = constructor.0
+                    )
+                }
 
-                // Multiple constructors
-                variants => {
-                    let variant_sources = variants
-                        .iter()
-                        .map(|x| self.generate_variant(x))
-                        .collect::<Vec<_>>();
-                    quote! {
-                        #attrs
-                        pub enum #name #generics {
-                            #(#variant_sources)*
+                match &constructor.1 {
+                    Constructor::Nameless { fields } => {
+                        if fields.len() != 1 {
+                            panic!(
+                                "newtypes are required to have only one field \
+                            Type name: '{type_name:?}''",
+                                type_name = desc.name.base,
+                            );
+                        }
+
+                        let field = &fields[0];
+                        let ty = self.generate_type_ref(field);
+                        quote! {
+                            #attrs
+                            pub struct #name #args (pub #ty);
+                        }
+                    }
+                    Constructor::Record { fields } => {
+                        if fields.len() != 1 {
+                            panic!(
+                                "newtypes are required to have only one field \
+                            Type name: '{type_name:?}''",
+                                type_name = desc.name.base,
+                            );
+                        }
+
+                        let (field_name, ty) = &fields[0];
+                        let field_name = ident(IdentType::Variable, field_name);
+                        let ty = self.generate_type_ref(ty);
+                        quote! {
+                            #attrs
+                            pub struct #name #args {
+                                pub #field_name: #ty
+                            }
                         }
                     }
                 }
             }
-        } else {
-            let inner = self.generate_type_ref(&ty.definition);
-            quote! {
-                #attrs
-                pub struct #name #generics(pub #inner);
+            TypeDefinition::Builtin(builtin_type) => quote! {},
+            TypeDefinition::Alias(type_ref) => {
+                let parsed_type = self.parse_type_ref(type_ref);
+                let ty = self.generate_parsed_type_ref(&parsed_type);
+                quote! {
+                    pub type #name #args = #ty;
+                }
             }
         }
     }
 
-    fn generate_repr(&mut self, ty: &TypeDefinition) -> proc_macro2::TokenStream {
-        if let Type::SumOfProducts { variants } = &ty.definition {
-            match variants.as_slice() {
-                [] => quote! {},
-                [x] => {
-                    if x.name == ty.name {
-                        quote! { #[repr(C)] }
-                    } else {
-                        panic!(
-                            "Single-constructor data types are required to have the constructor name match the type name. \
-                            Type name: {type_name:?}, Constructor name: {constructor_name:?}",
-                            type_name = ty.name,
-                            constructor_name = x.name
-                        )
-                    }
-                }
-                variants => {
-                    let fieldless = variants.iter().all(|desc| desc.fields.is_empty());
-                    let n = clog2(&(variants.len() as u64));
-                    let repr = ident(IdentType::Raw, format!("u{}", n));
-                    if fieldless {
-                        quote! { #[repr(#repr)] }
-                    } else {
-                        quote! { #[repr(C, #repr)] }
-                    }
+    fn generate_repr(&mut self, desc: &TypeDefinition) -> proc_macro2::TokenStream {
+        match desc {
+            TypeDefinition::DataType(named_constructors) if named_constructors.is_empty() => {
+                quote! {}
+            }
+            TypeDefinition::DataType(named_constructors) if named_constructors.len() == 1 => {
+                quote! { #[repr(C)] }
+            }
+            TypeDefinition::DataType(named_constructors) => {
+                let fieldless = named_constructors
+                    .iter()
+                    .all(|NamedConstructor(_name, con)| match con {
+                        Constructor::Nameless { fields } => fields.is_empty(),
+                        Constructor::Record { fields } => fields.is_empty(),
+                    });
+                let n = clog2(&(named_constructors.len() as u64));
+                let repr = ident(IdentType::Raw, format!("u{}", n));
+                if fieldless {
+                    quote! { #[repr(#repr)] }
+                } else {
+                    quote! { #[repr(C, #repr)] }
                 }
             }
-        } else {
-            quote! {}
-        }
-    }
-
-    fn generate_variant(&mut self, v: &VariantDesc) -> proc_macro2::TokenStream {
-        let name = ident(IdentType::Type, &v.name);
-
-        let no_names = v.fields.iter().all(|f| f.name.is_empty());
-        let all_names = v.fields.iter().all(|f| !f.name.is_empty());
-
-        if no_names == all_names && !v.fields.is_empty() {
-            panic!("Variant fields must either ALL be named or NONE be named.");
-        }
-        if v.fields.is_empty() {
-            quote! {
-                #name,
+            TypeDefinition::Newtype(_named_constructor) => {
+                quote! { #[repr(transparent)] }
             }
-        } else if no_names {
-            let fields = v
-                .fields
-                .iter()
-                .map(|f| self.generate_type_ref(&f.type_))
-                .collect::<Vec<_>>();
-            quote! {
-                #name (#(#fields,)*),
-            }
-        } else {
-            let fields = v
-                .fields
-                .iter()
-                .map(|f| {
-                    let name = ident(IdentType::Variable, &f.name);
-                    let ty = self.generate_type_ref(&f.type_);
-                    quote! { #name: #ty, }
-                })
-                .collect::<Vec<_>>();
-            quote! {
-                #name {
-                    #(#fields)*
-                },
-            }
+            TypeDefinition::Builtin(_builtin_type) => quote! {},
+            TypeDefinition::Alias(_type_ref) => quote! {},
         }
     }
 }

@@ -2,8 +2,237 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(incomplete_features)]
+
 use core::ops::{Add, AddAssign, Rem, RemAssign, Sub, SubAssign};
 use ufmt::derive::uDebug;
+
+pub struct IM<const N: u128>;
+
+pub trait IndexTyInner: Sized {
+    type Inner: Copy + core::fmt::Debug + Into<u128> + TryFrom<u128>;
+
+    fn from_u128(x: u128) -> Option<Self::Inner>;
+    fn to_u128(val: Self::Inner) -> u128;
+
+    fn saturating_add(a: Self::Inner, b: Self::Inner) -> Self::Inner;
+    fn saturating_sub(a: Self::Inner, b: Self::Inner) -> Self::Inner;
+    fn saturating_mul(a: Self::Inner, b: Self::Inner) -> Self::Inner;
+
+    fn checked_add(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner>;
+    fn checked_sub(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner>;
+    fn checked_mul(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner>;
+}
+
+pub type IndexTI<const N: u128> = <IM<N> as IndexTyInner>::Inner;
+
+struct Check<const B: bool>;
+
+trait True {}
+
+impl True for Check<true> {}
+
+impl<const N: u128> IndexTyInner for IM<N> {
+    default type Inner = u128;
+
+    default fn from_u128(x: u128) -> Option<Self::Inner> {
+        Self::Inner::try_from(x).ok()
+    }
+
+    default fn to_u128(val: Self::Inner) -> u128 {
+        val.into()
+    }
+
+    fn saturating_add(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        a.saturating_add(b)
+    }
+
+    fn saturating_sub(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn saturating_mul(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn checked_add(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn checked_sub(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn checked_mul(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+}
+
+impl<const N: u128> IndexTyInner for IM<N>
+where
+    Check<{ N < u64::MAX as u128 }>: True,
+{
+    default type Inner = u64;
+
+    fn from_u128(x: u128) -> Option<Self::Inner> {
+        Self::Inner::try_from(x).ok()
+    }
+
+    fn to_u128(val: Self::Inner) -> u128 {
+        todo!()
+    }
+
+    fn saturating_add(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        a.saturating_add(b)
+    }
+
+    fn saturating_sub(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn saturating_mul(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn checked_add(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn checked_sub(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn checked_mul(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+}
+
+impl<const N: u128> IndexTyInner for IM<N>
+where
+    Check<{ N < u64::MAX as u128 }>: True,
+    Check<{ N < u32::MAX as u128 }>: True,
+{
+    default type Inner = u32;
+
+    fn from_u128(x: u128) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn to_u128(val: Self::Inner) -> u128 {
+        todo!()
+    }
+
+    fn saturating_add(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn saturating_sub(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn saturating_mul(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn checked_add(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn checked_sub(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn checked_mul(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+}
+
+impl<const N: u128> IndexTyInner for IM<N>
+where
+    Check<{ N < u64::MAX as u128 }>: True,
+    Check<{ N < u32::MAX as u128 }>: True,
+    Check<{ N < u16::MAX as u128 }>: True,
+{
+    default type Inner = u16;
+
+    fn from_u128(x: u128) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn to_u128(val: Self::Inner) -> u128 {
+        todo!()
+    }
+
+    fn saturating_add(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn saturating_sub(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn saturating_mul(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn checked_add(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn checked_sub(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn checked_mul(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+}
+
+impl<const N: u128> IndexTyInner for IM<N>
+where
+    Check<{ N < u64::MAX as u128 }>: True,
+    Check<{ N < u32::MAX as u128 }>: True,
+    Check<{ N < u16::MAX as u128 }>: True,
+    Check<{ N < u8::MAX as u128 }>: True,
+{
+    type Inner = u8;
+
+    fn from_u128(x: u128) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn to_u128(val: Self::Inner) -> u128 {
+        todo!()
+    }
+
+    fn saturating_add(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn saturating_sub(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn saturating_mul(a: Self::Inner, b: Self::Inner) -> Self::Inner {
+        todo!()
+    }
+
+    fn checked_add(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn checked_sub(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+
+    fn checked_mul(a: Self::Inner, b: Self::Inner) -> Option<Self::Inner> {
+        todo!()
+    }
+}
+
+pub struct IndexTy<const N: u128, T> {
+    idx: T,
+}
 
 /// Arbitrarily-bounded unsigned integer
 ///
@@ -23,72 +252,90 @@ use ufmt::derive::uDebug;
 /// multiplication, it will not compile. This is by design, the exact behaviour
 /// should be detailed at the call site when such "uncommon" operations are
 /// needed. ("uncommon" as indices are usually only incremented or decremented)
-#[repr(transparent)]
-#[derive(Copy, Clone, PartialEq, Eq, Debug, uDebug)]
-pub struct IndexTy<const N: u128, T>(T);
+pub type Index<const N: u128> = IndexTy<N, IndexTI<N>>;
 
-impl<const N: u128, T> IndexTy<N, T> {
-    pub fn into_underlying(self) -> T {
-        self.0
+impl<const N: u128> Index<N> {
+    pub fn new(val: IndexTI<N>) -> Option<Self> {
+        if val.into() < N {
+            Some(IndexTy { idx: val })
+        } else {
+            None
+        }
+    }
+
+    pub fn min_val() -> Self {
+        Self {
+            idx: 0.try_into().ok().unwrap(),
+        }
+    }
+
+    pub fn max_val() -> Self {
+        Self {
+            idx: (N - 1).try_into().ok().unwrap(),
+        }
     }
 
     #[doc(hidden)]
-    pub const unsafe fn new_unchecked(n: T) -> Self {
-        Self(n)
+    pub unsafe fn new_unchecked(val: IndexTI<N>) -> Self {
+        IndexTy { idx: val }
+    }
+
+    pub fn into_underlying(self) -> IndexTI<N> {
+        self.idx
     }
 }
 
-macro_rules! impl_general_stuff {
-    ($t:ty) => {
-        impl<const N: u128> IndexTy<N, $t> {
-            pub const MIN: Self = Self(0);
-            pub const MAX: Self = Self((N - 1) as $t);
+impl<const N: u128> Index<N> where IM<N>: IndexTyInner<Inner = u8> {
+    pub fn saturating_add(self, rhs: Self) -> Self {
+        let res = self.idx.saturating_add(rhs.idx);
+        Self{ idx: res.min(Self::max_val().idx) }
+    }
 
-            pub const fn min_value() -> Self {
-                Self::MIN
-            }
-
-            pub const fn max_value() -> Self {
-                Self::MAX
-            }
-
-            pub fn new(val: $t) -> Option<Self> {
-                if val >= N as $t {
-                    None
-                } else {
-                    Some(Self(val))
-                }
-            }
+    pub fn checked_add(self, rhs: Self) -> Option<Self> {
+        let res = self.0.checked_add(rhs.0)?;
+        if res.into() >= N {
+            None
+        } else {
+            Some(Self(res))
         }
+    }
 
-        impl<const N: u128> TryFrom<$t> for IndexTy<N, $t> {
-            type Error = ();
-
-            fn try_from(val: $t) -> Result<Self, Self::Error> {
-                Self::new(val).ok_or(())
-            }
-        }
-
-        impl<const N: u128> From<IndexTy<N, $t>> for $t {
-            fn from(val: IndexTy<N, $t>) -> $t {
-                val.into_underlying()
-            }
-        }
-
-        impl<const N: u128> core::fmt::Display for IndexTy<N, $t> {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                self.0.fmt(f)
-            }
-        }
-    };
+    #[inline]
+    pub fn wrapping_add(self, rhs: Self) -> Self {
+        let until_end = N as $t - self.0;
+        let res = if rhs.0 >= until_end {
+            rhs.0 - until_end
+        } else {
+            self.0 + rhs.0
+        };
+        Self(res)
+    }
 }
 
-impl_general_stuff!(u8);
-impl_general_stuff!(u16);
-impl_general_stuff!(u32);
-impl_general_stuff!(u64);
-impl_general_stuff!(u128);
+/*
+impl<const N: u128> TryFrom<IndexTI<N>> for Index<N> {
+    type Error = ();
 
+    fn try_from(val: IndexTI<N>) -> Result<Self, Self::Error> {
+        Self::new(val).ok_or(())
+    }
+}
+
+impl<const N: u128> From<Index<N>> for IndexTI<N> {
+    fn from(val: Index<N>) -> Self {
+        val.into_underlying()
+    }
+}
+*/
+
+impl<const N: u128> core::fmt::Display for Index<N> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use core::fmt::Debug;
+        self.idx.fmt(f)
+    }
+}
+
+/*
 macro_rules! impl_add {
     ($t:ty) => {
         impl<const N: u128> IndexTy<N, $t> {
@@ -439,3 +686,5 @@ mod tests {
         assert_eq!(a.restricting_rem::<10>(), index!(5, n = 10));
     }
 }
+
+*/

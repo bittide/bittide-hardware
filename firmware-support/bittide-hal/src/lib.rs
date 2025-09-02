@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![no_std]
+#![feature(generic_const_exprs, specialization)]
 
 // Since this module gets generated, running rustfmt on a
 // non-built source tree will error.

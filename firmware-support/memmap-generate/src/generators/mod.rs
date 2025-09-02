@@ -31,6 +31,7 @@ pub enum IdentType {
 /// Generate a contextual identifier from a string.
 pub fn ident(ident_type: IdentType, n: impl AsRef<str>) -> Ident {
     let s = n.as_ref();
+    let s = s.split(".").last().unwrap();
     let s = match ident_type {
         IdentType::Type => s.to_pascal_case(),
         IdentType::Device => s.to_pascal_case(),
@@ -67,7 +68,7 @@ pub fn generate_rust_wrappers(hal_data: &HalGenData) -> RustWrappers {
                 name.clone(),
                 (
                     type_ann.clone(),
-                    ty_gen.generate_type_def(type_ann, type_desc),
+                    ty_gen.generate_type_desc(type_ann, type_desc),
                 ),
             )
         })

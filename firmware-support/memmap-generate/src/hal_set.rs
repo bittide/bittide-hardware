@@ -239,6 +239,17 @@ impl MemoryMapSet {
         }
     }
 
+    pub fn filter_types(
+        &mut self,
+        mut f: impl FnMut(&TypeDescription, &TypeDefAnnotations) -> bool,
+    ) {
+        self.shared.types.retain(|_name, (ann, desc)| f(desc, ann));
+
+        for hal in self.non_shared.values_mut() {
+            hal.types.retain(|_name, (ann, desc)| f(desc, ann))
+        }
+    }
+
     /// Run a function for all type definitions, allowing to change annotations.
     pub fn annotate_types(&mut self, mut f: impl FnMut(&TypeDescription, &mut TypeDefAnnotations)) {
         for hal_data in self.non_shared.values_mut() {

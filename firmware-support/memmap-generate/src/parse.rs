@@ -51,21 +51,57 @@ pub struct DeviceDesc {
 #[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
 pub struct TypeDescription {
     pub name: TypeName,
-    pub args: Vec<TypeArg>,
+    pub type_args: Vec<TypeArg>,
     pub definition: TypeDefinition,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
+#[serde(try_from = "Value")]
 pub enum TypeArg {
     Type { name: String },
     Number { name: String },
 }
 
+impl TryFrom<Value> for TypeArg {
+    type Error = String;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        let obj = value
+            .as_object()
+            .ok_or_else(|| "TypeArg must be a JSON object")?;
+
+        let Some(kind) = obj.get("kind") else {
+            return Err("TypeArg must have a \"kind\"".to_string());
+        };
+
+        let Some(name) = obj.get("name") else {
+            return Err("TypeArg must have a \"name\"".to_string());
+        };
+
+        let Some(kind) = kind.as_str() else {
+            return Err("TypeArg \"kind\" must be a string".to_string());
+        };
+        let Some(name) = name.as_str() else {
+            return Err("TypeArg \"name\" must be a string".to_string());
+        };
+
+        match kind {
+            "number" => Ok(Self::Number {
+                name: name.to_string(),
+            }),
+            "type" => Ok(TypeArg::Type {
+                name: name.to_string(),
+            }),
+            _ => Err("TypeArg \"name\" must be either \"number\" or \"type\"".to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
 #[serde(try_from = "Value")]
 pub enum TypeDefinition {
-    DataType(Vec<Constructor>),
-    Newtype(Constructor),
+    DataType(Vec<NamedConstructor>),
+    Newtype(NamedConstructor),
     Builtin(BuiltinType),
     Alias(TypeRef),
 }
@@ -82,14 +118,14 @@ impl TryFrom<Value> for TypeDefinition {
             let cons = cons.as_array().unwrap();
             let mut parsed_cons = Vec::new();
             for con in cons {
-                parsed_cons.push(Constructor::try_from(con.clone())?);
+                parsed_cons.push(NamedConstructor::try_from(con.clone())?);
             }
             if obj.len() != 1 {
                 return Err("TypeDefinition::DataType must have exactly one field".into());
             }
             Ok(TypeDefinition::DataType(parsed_cons))
         } else if let Some(con) = obj.get("newtype") {
-            let con = Constructor::try_from(con.clone())?;
+            let con = NamedConstructor::try_from(con.clone())?;
             if obj.len() != 1 {
                 return Err("TypeDefinition::Newtype must have exactly one field".into());
             }
@@ -100,14 +136,17 @@ impl TryFrom<Value> for TypeDefinition {
                 return Err("TypeDefinition::Builtin must have exactly one field".into());
             }
             Ok(TypeDefinition::Builtin(b))
-        } else if let Some(val) = obj.get("alias") {
+        } else if let Some(val) = obj.get("type_alias") {
             let ty = TypeRef::try_from(val.clone())?;
             if obj.len() != 1 {
                 return Err("TypeDefinition::Alias must have exactly one field".into());
             }
             Ok(TypeDefinition::Alias(ty))
         } else {
-            Err("Only \"datatype\", \"newtype\", \"builtin\" and \"alias\" are supported".into())
+            Err(
+                "Only \"datatype\", \"newtype\", \"builtin\" and \"type_alias\" are supported"
+                    .into(),
+            )
         }
     }
 }
@@ -147,14 +186,17 @@ impl TryFrom<Value> for BuiltinType {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
-#[serde(try_from = "Value")]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Constructor {
     Nameless { fields: Vec<TypeRef> },
     Record { fields: Vec<(String, TypeRef)> },
 }
 
-impl TryFrom<Value> for Constructor {
+#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
+#[serde(try_from = "Value")]
+pub struct NamedConstructor(pub String, pub Constructor);
+
+impl TryFrom<Value> for NamedConstructor {
     type Error = String;
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
@@ -162,18 +204,31 @@ impl TryFrom<Value> for Constructor {
             .as_object()
             .ok_or_else(|| "constructor must be an object".to_string())?;
 
+        let Some(name) = obj.get("name") else {
+            return Err("Constructor must have a \"name\" field".to_string());
+        };
+
+        let name = name
+            .as_str()
+            .expect("\"name\" must be a string")
+            .to_string();
+
+        if obj.len() != 2 {
+            return Err("Constructor must have exactly two fields".into());
+        }
+
         if let Some(fields) = obj.get("nameless") {
             let arr = fields.as_array().unwrap();
             let mut parsed_fields = Vec::new();
             for val in arr {
                 parsed_fields.push(TypeRef::try_from(val.clone())?);
             }
-            if obj.len() != 1 {
-                return Err("Constructor::Nameless must have exactly one field".into());
-            }
-            Ok(Constructor::Nameless {
-                fields: parsed_fields,
-            })
+            Ok(NamedConstructor(
+                name,
+                Constructor::Nameless {
+                    fields: parsed_fields,
+                },
+            ))
         } else if let Some(fields) = obj.get("record") {
             let arr = fields.as_array().unwrap();
             let mut parsed_fields = Vec::new();
@@ -184,12 +239,12 @@ impl TryFrom<Value> for Constructor {
                 let ty = TypeRef::try_from(ty_raw.clone())?;
                 parsed_fields.push((name.to_string(), ty));
             }
-            if obj.len() != 1 {
-                return Err("Constructor::Nameless must have exactly one field".into());
-            }
-            Ok(Constructor::Record {
-                fields: parsed_fields,
-            })
+            Ok(NamedConstructor(
+                name,
+                Constructor::Record {
+                    fields: parsed_fields,
+                },
+            ))
         } else {
             Err("Constructor must be \"nameless\" or \"record\"".into())
         }
@@ -258,7 +313,7 @@ impl TryFrom<Value> for TypeRef {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Hash)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(try_from = "Value")]
 pub struct TypeName {
     pub base: String,
