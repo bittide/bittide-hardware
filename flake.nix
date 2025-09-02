@@ -9,9 +9,13 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    mdbook-drawio-flake = {
+      url = "github:QBayLogic/mdbook-drawio";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay }: flake-utils.lib.eachDefaultSystem (
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, mdbook-drawio-flake }: flake-utils.lib.eachDefaultSystem (
     system:
       let
         overlays = [ (import rust-overlay) ];
@@ -26,7 +30,11 @@
         };
         pkgs = import nixpkgs {
           inherit system overlays;
+          config = {
+            allowUnfree = true;
+          };
         };
+        mdbook-drawio = mdbook-drawio-flake.defaultPackage.${system};
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = [
@@ -88,6 +96,8 @@
 
             # mdbook dependencies
             pkgs.mdbook
+            pkgs.drawio-headless
+            mdbook-drawio
           ];
 
           shellHook = ''
