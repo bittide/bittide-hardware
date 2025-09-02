@@ -13,9 +13,13 @@
       url = "github:cachix/pre-commit-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    mdbook-drawio-flake = {
+      url = "github:QBayLogic/mdbook-drawio";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, pre-commit-hooks }: flake-utils.lib.eachDefaultSystem (
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, pre-commit-hooks, mdbook-drawio-flake }: flake-utils.lib.eachDefaultSystem (
     system:
       let
         overlays = [ (import rust-overlay) ];
@@ -30,6 +34,9 @@
         };
         pkgs = import nixpkgs {
           inherit system overlays;
+          config = {
+            allowUnfree = true;
+          };
         };
         git-hooks-config = import ./nix/git-hooks.nix { inherit pkgs; };
         # Import your local git hooks configuration
@@ -37,6 +44,7 @@
           src = ./.;
           hooks = git-hooks-config.hooks;
         };
+        mdbook-drawio = mdbook-drawio-flake.defaultPackage.${system};
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = [
@@ -98,6 +106,8 @@
 
             # mdbook dependencies
             pkgs.mdbook
+            pkgs.drawio-headless
+            mdbook-drawio
           ];
 
           shellHook = ''
