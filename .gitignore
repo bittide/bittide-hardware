@@ -84,3 +84,6 @@ __pycache__
 
 # DirEnv nix pointers
 .direnv
+
+# mdbook-drawio output
+docs/mdbook-drawio
