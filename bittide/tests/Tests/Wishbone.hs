@@ -6,7 +6,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
-module Tests.Wishbone (tests) where
+module Tests.Wishbone (tests, simpleSlave, simpleSlave') where
 
 import Clash.Prelude hiding (sample)
 
@@ -20,6 +20,7 @@ import Hedgehog
 import Hedgehog.Range as Range
 import Protocols
 import Protocols.Hedgehog
+import Protocols.Idle (forceResetSanityGeneric)
 import Protocols.MemoryMap (ignoreMM)
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog (validatorCircuit)
@@ -27,7 +28,7 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import Bittide.SharedTypes
-import Bittide.Wishbone
+import Bittide.Wishbone as WB
 import Tests.Shared
 
 import qualified Data.List as L
@@ -44,6 +45,10 @@ tests =
         "Send and receive bytes via uartInterfaceWb"
         "uartInterfaceWbCircuitTest"
         uartInterfaceWbCircuitTest
+    , testPropertyNamed
+        "Test the Df based wishbone master"
+        "prop_dfWishboneMaster"
+        prop_dfWishboneMaster
     ]
 
 data UartMachineState = ReadStatus | ReadByte | WriteByte | OutputByte (BitVector 8)
@@ -329,14 +334,49 @@ wbWrite address a =
     , busSelect = maxBound
     }
 
+prop_dfWishboneMaster :: Property
+prop_dfWishboneMaster =
+  idWithModel
+    @(Df System (WishboneRequest 32 4))
+    @(Df System (WishboneResponse 4))
+    defExpectOptions
+    gen
+    (model initReg)
+    impl
+ where
+  gen :: Gen [WishboneRequest 32 4]
+  gen = Gen.list (Range.linear 0 100) genWishboneTransfer
+  initReg = unpack 0xDEADBEEF
+  range = 0x5555555
+
+  model :: Vec 4 Byte -> [WishboneRequest 32 4] -> [WishboneResponse 4]
+  model _ [] = []
+  model reg0 (req : reqs) = resp : model reg1 reqs
+   where
+    (resp, reg1) = case req of
+      WB.ReadRequest addr sel
+        | addr <= range ->
+            (WB.ReadSuccess $ mux (unpack sel) (map Just reg0) (repeat Nothing), reg0)
+      WB.ReadRequest _ _ -> (WB.ReadError, reg0)
+      WB.WriteRequest addr _ dat
+        | addr <= range ->
+            (WB.WriteSuccess, dat)
+      WB.WriteRequest{} -> (WB.WriteError, reg0)
+
+  impl = withClockResetEnable clockGen resetGen enableGen $ circuit $ \reqs -> do
+    (wb, resps) <- dfWishboneMaster -< reqs
+    simpleSlave' @System range initReg -< wb
+    idC -< resps
+
 simpleSlave' ::
   forall dom aw a.
-  (HiddenClockResetEnable dom, KnownNat aw, NFDataX a) =>
+  (HiddenClockResetEnable dom, KnownNat aw, NFDataX a, KnownNat (BitSize a), ShowX a) =>
   BitVector aw ->
   a ->
   Circuit (Wishbone dom 'Standard aw a) ()
 simpleSlave' range readDataInit =
-  Circuit $ \(wbIn, ()) -> (mealy go readDataInit wbIn, ())
+  forceResetSanityGeneric
+    |> Circuit (\(wbIn, ()) -> (mealy go readDataInit wbIn, ()))
  where
   go readData1 WishboneM2S{..} =
     (readData2, (emptyWishboneS2M @a){readData, acknowledge, err})
@@ -369,3 +409,15 @@ simpleSlave range readDataInit wbIn =
     Dict -> fst $ toSignals slaveCircuit (wbIn, ())
  where
   slaveCircuit = validatorCircuit |> simpleSlave' range readDataInit
+
+genWishboneTransfer ::
+  (KnownNat addrW, KnownNat nBytes) =>
+  Gen (WB.WishboneRequest addrW nBytes)
+genWishboneTransfer =
+  Gen.choice
+    [ WB.ReadRequest <$> genDefinedBitVector <*> genDefinedBitVector
+    , WB.WriteRequest
+        <$> genDefinedBitVector
+        <*> genDefinedBitVector
+        <*> genVec genDefinedBitVector
+    ]
