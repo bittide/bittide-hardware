@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2025 Google LLC
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Deploy documentation
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  mdbook:
+    name: Build and publish mdBook
+    runs-on: [self-hosted, compute]
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    defaults:
+      run:
+        shell: git-nix-shell {0} --ignore-environment
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-11-05
+      options: --memory=11g
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set CI flags
+        run: |
+          .github/scripts/set_ci_flags.sh
+
+      - name: Build mdBook
+        run: |
+          cd docs
+          mdbook build
+
+      - name: Upload book artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _build/book
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

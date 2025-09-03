@@ -5,6 +5,9 @@ SPDX-License-Identifier: Apache-2.0
 -->
 
 # bittide-hardware
+[![documentation-badge](https://img.shields.io/badge/documentation-blue)](https://www.bittide.io/bittide-hardware/)
+[![commit-activity-badge](https://img.shields.io/github/commit-activity/m/bittide/bittide-hardware)](https://github.com/bittide/bittide-hardware/commits/main)
+
 `bittide/bittide-hardware` contains a (very much work-in-progress) hardware
 implementation of a Bittide system (also see [About Bittide](#about-bittide)). We
 currently target Vivado FPGAs paired with SkyWorks clock adjustment boards.
