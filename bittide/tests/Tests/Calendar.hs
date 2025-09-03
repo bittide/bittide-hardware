@@ -171,7 +171,7 @@ readMetacycleCount = property $ do
         $ withClockResetEnable clockGen resetGen enableGen
         $ circuit
         $ \wb -> do
-          _out <- mkCalendarC @30 @(BitVector 8) @System @4 "dut" config -< wb
+          _out <- mkCalendarC @30 @(BitVector 8) @System @4 "Dut" config -< wb
           idC
     defs = (((getMMAny dut).deviceDefs) Map.! deviceName)
     endOfMetacycleLoc = L.find (\loc -> loc.name.name == "endOfMetacycle") defs.registers

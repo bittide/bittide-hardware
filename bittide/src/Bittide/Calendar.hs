@@ -343,7 +343,8 @@ mkCalendarC ::
   , BitPackC a
   , HasCallStack
   ) =>
-  -- | Name of the component, used as identifier in the rust code generation.
+  -- | Name of the component this calendar is used in, gets suffixed with "Calendar".
+  -- Note: camelcase is used for all device names.
   String ->
   -- | Calendar configuration for 'calendar'.
   CalendarConfig addrW a ->
@@ -359,7 +360,7 @@ mkCalendarC
       bsShadow
     ) = circuit $ \(mm, wb) -> do
 {- FOURMOLU_DISABLE -}
-    [wb0, wb1, wb2, wb3, wb4, wb5, wb6, (wb7Offset, wb7Meta, wb7Bus)] <- deviceWbC (compName <> "_calendar") -< (mm, wb)
+    [wb0, wb1, wb2, wb3, wb4, wb5, wb6, (wb7Offset, wb7Meta, wb7Bus)] <- deviceWbC (compName <> "Calendar") -< (mm, wb)
     Fwd (writeEntry, _) <- registerWbCI writeEntryCfg (unpack 0) -< (wb4, Fwd noWrite)
     Fwd (_, writeActive) <- registerWbCI writeAddrCfg (0 :: Index calDepth) -< (wb1, Fwd noWrite)
     Fwd (readAddr, _) <- registerWbCI readAddrCfg (0 :: Index calDepth) -< (wb2, Fwd noWrite)

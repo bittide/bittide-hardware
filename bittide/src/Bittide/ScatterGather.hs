@@ -85,7 +85,7 @@ scatterUnit ::
   )
 scatterUnit calConfig wbIn linkIn readAddr = (readOut, wbOut, endOfMetacycle, metacycleCount, mm)
  where
-  (writeAddr, endOfMetacycle, wbOut, metacycleCount, mm) = mkCalendar "scatter" calConfig wbIn
+  (writeAddr, endOfMetacycle, wbOut, metacycleCount, mm) = mkCalendar "Scatter" calConfig wbIn
   writeOp = curry Just <$> writeAddr <*> linkIn
   readOut = doubleBufferedRamU bufSelect readAddr writeOp
   bufSelect = regEn A endOfMetacycle (swapAorB <$> bufSelect)
@@ -129,7 +129,7 @@ gatherUnit ::
   )
 gatherUnit calConfig wbIn writeOp byteEnables = (bramOut, wbOut, endOfMetacycle, metacycleCount, mm)
  where
-  (readAddr, endOfMetacycle, wbOut, metacycleCount, mm) = mkCalendar "gather" calConfig wbIn
+  (readAddr, endOfMetacycle, wbOut, metacycleCount, mm) = mkCalendar "GSather" calConfig wbIn
   bramOut = doubleBufferedRamByteAddressableU bufSelect readAddr writeOp byteEnables
   bufSelect = regEn A endOfMetacycle (swapAorB <$> bufSelect)
 
