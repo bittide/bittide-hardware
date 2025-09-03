@@ -16,6 +16,9 @@
     trim-trailing-whitespace.enable = true;
     end-of-file-fixer.enable = true;
     check-added-large-files.enable = true;
+    check-yaml.enable = true;
+    check-toml.enable = true;
+    check-json.enable = true;
 
     # Enable a formatter for Haskell
     cabal-gild.enable = true;
