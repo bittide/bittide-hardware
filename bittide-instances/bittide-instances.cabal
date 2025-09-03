@@ -231,6 +231,7 @@ library
     cassava,
     clash-bitpackc,
     clash-cores,
+    clash-lib,
     clash-prelude,
     clash-protocols-memmap,
     clash-vexriscv,

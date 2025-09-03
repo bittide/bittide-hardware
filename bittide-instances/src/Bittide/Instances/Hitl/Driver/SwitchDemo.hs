@@ -57,6 +57,7 @@ import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 import "bittide-extra" Control.Exception.Extra (brackets)
 
+import qualified Clash.Util.Interpolate as I
 import qualified Bittide.Calculator as Calc
 import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
 import qualified Bittide.Instances.Hitl.Utils.Picocom as Picocom
@@ -131,11 +132,8 @@ canonicalizeDeviceNames (AnnInterconnect ann srcLoc relsAndMMs) =
   AnnInterconnect ann srcLoc
     $ doCanonicalization (M.fromList $ L.zip deviceNames (L.repeat 0)) relsAndMMs
  where
-  components :: [MemoryMapTreeAbsNorm]
-  components = snd <$> relsAndMMs
-
   deviceNames :: [String]
-  deviceNames = mapMaybe getDeviceName components
+  deviceNames = mapMaybe getDeviceName $ snd <$> relsAndMMs
 
   deviceNamesMult :: M.Map String Bool
   deviceNamesMult = M.fromListWith (\_ _ -> True) $ L.zip deviceNames (L.repeat False)
@@ -164,6 +162,47 @@ canonicalizeDeviceNames (AnnInterconnect ann srcLoc relsAndMMs) =
         then M.adjust succ devName0 counts0
         else counts0
 
+{- | Convert a memory map with canonicalized device names to DOT representation
+to be used by Graphviz.
+-}
+devicePathsToDot :: (HasCallStack) => String -> MemoryMap -> String
+devicePathsToDot mmName mm =
+  [I.i|
+    graph #{mmName} {
+      #{renderedEdges}
+    }
+  |]
+ where
+  renderedEdges = L.intercalate "\n" (renderEdge <$> edges)
+  edges = getEdges [] $ canonicalizeDeviceNames $ getAbsoluteMM mm
+
+  deviceNames = fmap snd edges
+
+  getEdges :: (HasCallStack) => String -> MemoryMapTreeAbsNorm -> [(String, String)]
+  getEdges interconnectName (AnnDeviceInstance _ _ devName) =
+    [(interconnectName, devName)]
+  getEdges [] m@(AnnInterconnect _ _ (fmap snd -> comps)) =
+    L.concatMap (getEdges (getTreeName m)) comps
+  getEdges interconnectName m@(AnnInterconnect _ _ (fmap snd -> comps)) =
+    (interconnectName, getTreeName m) : L.concatMap (getEdges (getTreeName m)) comps
+
+  renderEdge (a, b) = [I.i|#{a} -- #{b};|]
+
+  showPathComponent :: PathComp -> String
+  showPathComponent (PathName _ s) = s
+  showPathComponent (PathUnnamed n) = show n
+
+  getTreeName :: (HasCallStack) => MemoryMapTreeAbsNorm -> String
+  getTreeName (AnnInterconnect (_, showPathComponent . L.last -> name, _) _ _) = name
+  getTreeName (AnnDeviceInstance _ _ name) = name
+
+getAbsoluteMM :: MemoryMap -> MemoryMapTreeAbsNorm
+getAbsoluteMM mm = annAbsTree
+ where
+  annRelTree = convert mm.tree
+  annRelNormTree = normalizeRelTree annRelTree
+  (annAbsTree, _) = makeAbsolute mm.deviceDefs (0x0000_0000, 0xFFFF_FFFF) annRelNormTree
+
 {- | Finds the address for a given path.
 
 A "path" is a list of 'String's, where each item in the list is an interconnect
@@ -182,13 +221,8 @@ getPathAddress ::
   -- | The path to search for in the memory map
   [String] ->
   a
-getPathAddress mm = traverseTree annAbsTree1
+getPathAddress mm = traverseTree $ canonicalizeDeviceNames $ getAbsoluteMM mm
  where
-  annRelTree = convert mm.tree
-  annRelNormTree = normalizeRelTree annRelTree
-  (annAbsTree0, _) = makeAbsolute mm.deviceDefs (0x0000_0000, 0xFFFF_FFFF) annRelNormTree
-  annAbsTree1 = canonicalizeDeviceNames annAbsTree0
-
   showPathComponent :: PathComp -> String
   showPathComponent (PathName _ s) = s
   showPathComponent (PathUnnamed n) = show n
@@ -200,9 +234,9 @@ getPathAddress mm = traverseTree annAbsTree1
   traverseTree :: (HasCallStack, Num a) => MemoryMapTreeAbsNorm -> [String] -> a
   traverseTree (AnnInterconnect _ _ _) [] = error "Empty path given!"
   traverseTree (AnnInterconnect (_, showPathComponent . L.last -> name0, addr) _ _) [name1] =
-    if name0 /= name1
-      then error [i|Mismatch on interconnect name! Expected #{name0}, found #{name1}.|]
-      else fromIntegral addr
+    if name0 == name1
+      then fromIntegral addr
+      else error [i|Mismatch on interconnect name! Expected #{name0}, found #{name1}.|]
   traverseTree
     (AnnInterconnect (_, showPathComponent . L.last -> name0, _) _ (fmap snd -> components))
     (name1 : next : t) =
