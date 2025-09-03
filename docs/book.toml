@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2025 Google LLC
+#
+# SPDX-License-Identifier: CC0-1.0
+
+[book]
+title = "Developing on a Bittide system"
+author = ["QBayLogic B.V."]
+src = "."
+
+language = "en"
+
+[build]
+build-dir = "../_build/book"
