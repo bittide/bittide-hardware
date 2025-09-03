@@ -1,11 +1,16 @@
 # See https://github.com/cachix/git-hooks.nix/tree/master
 { pkgs, ... }:
-let
-  excludes = ["^clash-vexriscv/.*"];
-in
 {
   # This is the configuration passed to the pre-commit-hooks module.
-  hooks = {
+  hooks = pkgs.lib.mapAttrs (
+    name: hookConfig:
+    {
+      # This sets the default `excludes` list for every hook.
+      # The `//` operator merges the two attribute sets.
+      # If a hook already has an `excludes` list, it will be kept.
+      excludes = [ "^clash-vexriscv/.*" ];
+    } // hookConfig)
+    {
 
     reuse.enable = true; # check for REUSE compliance
     trim-trailing-whitespace.enable = true;
@@ -15,7 +20,6 @@ in
     # Enable a formatter for Haskell
     cabal-gild.enable = true;
 
-
     # Fourmolu and header fix, Fourmolu sometimes messes up the header comments, so
     # we need to fix them manually using the fix_spdx_header.py script.
     format-hs = {
@@ -24,15 +28,7 @@ in
       entry = ".github/scripts/fourmolu.sh";
       language = "system";
       files = "\\.(hs|hs-boot)$";
-      excludes = excludes;
     };
-
-    # Excludes, I dont know a different way to do this
-    reuse.excludes = excludes;
-    trim-trailing-whitespace.excludes = excludes;
-    end-of-file-fixer.excludes = excludes;
-    check-added-large-files.excludes = excludes;
-    cabal-gild.excludes = excludes;
 
     my-clippy = {
       enable = true;
@@ -40,7 +36,6 @@ in
       entry = "./cargo.sh clippy --all-features -- -Dwarnings";
       language = "system";
       files = "\\.(rs)$";
-      excludes = excludes;
       pass_filenames = false;
     };
 
@@ -50,7 +45,6 @@ in
       entry = "./cargo.sh fmt --all -- --check";
       language = "system";
       files = "\\.(rs)$";
-      excludes = excludes;
       pass_filenames = false;
     };
 
