@@ -724,7 +724,7 @@ jobs:
     container:
       image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
       options: --memory=11g
-    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    # if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -745,7 +745,7 @@ jobs:
           path: _build/book
 
       - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/main'
+        # if: github.ref == 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
