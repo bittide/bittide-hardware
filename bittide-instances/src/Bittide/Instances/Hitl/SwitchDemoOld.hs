@@ -1,7 +1,6 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE CPP #-}
 
 {- | Switch demo for a Bittide system. In concert with its driver file, this device under
 test should demonstrate the predictability of a Bittide system once it has achieved logical
@@ -10,12 +9,9 @@ synchronicity.
 For more details, see [QBayLogic's presentation](https://docs.google.com/presentation/d/1AGbAJQ1zhTPtrekKnQcthd0TUPyQs-zowQpV1ux4k-Y)
 on the topic.
 -}
-module Bittide.Instances.Hitl.SwitchDemo (
-  switchDemoDut,
-  switchDemoTest,
-  memoryMapCc,
-  memoryMapMu,
-  memoryMapGppe,
+module Bittide.Instances.Hitl.SwitchDemoOld (
+  switchDemoOldDut,
+  switchDemoOldTest,
   tests,
 ) where
 
@@ -23,9 +19,7 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 
 import Bittide.ClockControl
-import Bittide.ClockControl.Callisto.Types (
-  CallistoResult (..),
- )
+import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.ElasticBuffer (
   EbMode (Pass),
@@ -49,7 +43,7 @@ import Bittide.Instances.Domains (
   GthRxS,
   GthTxS,
  )
-import Bittide.Instances.Hitl.Dut.SwitchDemo
+import Bittide.Instances.Hitl.Dut.SwitchDemoOld
 import Bittide.Instances.Hitl.Setup (
   LinkCount,
   allHwTargets,
@@ -57,6 +51,7 @@ import Bittide.Instances.Hitl.Setup (
   clockPaths,
  )
 import Bittide.SharedTypes (withBittideByteOrder)
+import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle))
 import Bittide.Transceiver (transceiverPrbsN)
 
 import Clash.Annotations.TH (makeTopEntity)
@@ -68,8 +63,10 @@ import Protocols
 import System.FilePath ((</>))
 import VexRiscv (JtagIn (..), JtagOut (..))
 
+import qualified Bittide.Instances.Hitl.Driver.SwitchDemoOld as D
 import qualified Bittide.Transceiver as Transceiver
 import qualified Clash.Cores.Xilinx.GTH as Gth
+import qualified Protocols.MemoryMap as MM
 
 type FifoSize = 5 -- = 2^5 = 32
 
@@ -91,7 +88,7 @@ SW (MU):
 
   1. Wait for all UGNs to be captured
 -}
-switchDemoDut ::
+switchDemoOldDut ::
   "REFCLK" ::: Clock Basic125 ->
   "TEST_RST" ::: Reset Basic125 ->
   "SKYCLK" ::: Clock Ext200 ->
@@ -101,7 +98,9 @@ switchDemoDut ::
   "MISO" ::: Signal Basic125 Bit ->
   "JTAG_IN" ::: Signal Bittide JtagIn ->
   "SYNC_IN" ::: Signal Bittide Bit ->
-  ( "GTH_TX_S" ::: Gth.SimWires Bittide LinkCount
+  ( "CC_MEMORYMAP" ::: MM.MM
+  , "MU_MEMORYMAP" ::: MM.MM
+  , "GTH_TX_S" ::: Gth.SimWires Bittide LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "handshakesDone" ::: Signal Basic125 Bool
@@ -120,11 +119,13 @@ switchDemoDut ::
   , "UART_TX" ::: Signal Basic125 Bit
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
-switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
+switchDemoOldDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
   seqX
-    debugIla
-    ( transceivers.txSims
+    (bundle (debugIla, bittidePeIla))
+    ( ccMm
+    , muMm
+    , transceivers.txSims
     , transceivers.txNs
     , transceivers.txPs
     , handshakesDoneFree
@@ -287,46 +288,108 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   transceiversFailedAfterUp =
     sticky refClk refRst (isFalling refClk spiRst enableGen False handshakesDoneFree)
 
-  Circuit circuitFn =
-    withBittideByteOrder
-      $ switchCircuit
-        (refClk, handshakeRstFree, enableGen)
-        (bittideClk, handshakeRstTx, enableGen)
-        transceivers.rxClocks
-        (unsafeFromActiveLow <$> transceivers.handshakesDone)
-  ( (_, _, _, jtagOut, _, _, _, _)
+  ( (ccMm, muMm, jtagOut, _linkInBwd, _maskBwd, _, _insBwd, _)
     , ( callistoResult
         , switchDataOut
         , localCounter
-        , _peInput
-        , _peOutput
-        , _calendarEntries
+        , peState
+        , peInput
+        , peOutput
+        , calEntry
         , uartTx
         , syncOut
         )
     ) =
-      circuitFn
-        (
-          ( ()
-          , ()
-          , repeat ()
-          , jtagIn
-          , pure maxBound
-          , linksSuitableForCc
-          , rxDatasEbs
-          , syncIn
+      withBittideByteOrder
+        $ toSignals
+          ( switchDemoOldC
+              (refClk, handshakeRstFree, enableGen)
+              (bittideClk, handshakeRstTx, enableGen)
+              transceivers.rxClocks
+              (unsafeFromActiveLow <$> transceivers.handshakesDone)
           )
-        ,
-          ( pure ()
-          , repeat (pure ())
-          , pure ()
-          , repeat (pure ())
-          , repeat (pure ())
-          , pure ()
-          , pure ()
-          , pure ()
+          (
+            ( ()
+            , ()
+            , jtagIn
+            , pure 0 -- link in
+            , pure maxBound -- enable mask
+            , linksSuitableForCc
+            , rxDatasEbs
+            , syncIn
+            )
+          ,
+            ( pure ()
+            , repeat (pure ())
+            , pure ()
+            , pure ()
+            , pure ()
+            , pure ()
+            , pure ()
+            , pure ()
+            , pure ()
+            )
           )
-        )
+
+  peNotIdle :: Signal Bittide Bool
+  peNotIdle = (/= Idle) <$> peState
+  peNotIdleSticky :: Signal Bittide Bool
+  peNotIdleSticky = sticky bittideClk handshakeRstTx peNotIdle
+  peNotIdleStickyFree :: Signal Basic125 Bool
+  peNotIdleStickyFree = xpmCdcSingle bittideClk refClk peNotIdleSticky
+
+  bittidePeIla :: Signal Basic125 ()
+  bittidePeIla =
+    setName @"bittidePeIla"
+      ila
+      ( ilaConfig
+          $ "trigger_fdi_pe"
+          :> "capture_fdi_pe"
+          :> "pe_input"
+          :> "pe_state"
+          :> "pe_output"
+          :> "pe_local_counter"
+          :> "pe_active_cal_entry"
+          :> "pe_rx_0"
+          :> "pe_rx_1"
+          :> "pe_rx_2"
+          :> "pe_rx_3"
+          :> "pe_rx_4"
+          :> "pe_rx_5"
+          :> "pe_rx_6"
+          :> "pe_tx_0"
+          :> "pe_tx_1"
+          :> "pe_tx_2"
+          :> "pe_tx_3"
+          :> "pe_tx_4"
+          :> "pe_tx_5"
+          :> "pe_tx_6"
+          :> Nil
+      )
+        { depth = D4096
+        }
+      refClk
+      peNotIdleStickyFree
+      (pure True :: Signal Basic125 Bool)
+      (xpmCdcArraySingle bittideClk refClk peInput)
+      (pack <$> xpmCdcArraySingle bittideClk refClk peState)
+      (xpmCdcArraySingle bittideClk refClk peOutput)
+      (xpmCdcArraySingle bittideClk refClk localCounter)
+      (xpmCdcArraySingle bittideClk refClk calEntry)
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (0 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (1 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (2 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (3 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (4 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (5 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (rxDatasEbs !! (6 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (0 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (1 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (2 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (3 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (4 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (5 :: Index LinkCount)))
+      (xpmCdcArraySingle bittideClk refClk (switchDataOut !! (6 :: Index LinkCount)))
 
   frequencyAdjustments :: Signal Bittide (FINC, FDEC)
   frequencyAdjustments =
@@ -371,7 +434,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   fifoUnderflowsStickyFree =
     xpmCdcSingle bittideClk refClk $ sticky bittideClk bittideRst fifoUnderflows
 
-switchDemoTest ::
+switchDemoOldTest ::
   "SMA_MGT_REFCLK_C" ::: DiffClock Ext200 ->
   "SYSCLK_125" ::: DiffClock Ext125 ->
   "GTH_RX_S" ::: Gth.SimWires GthRx LinkCount ->
@@ -398,7 +461,7 @@ switchDemoTest ::
   , "USB_UART_RXD" ::: Signal Basic125 Bit
   , "SYNC_OUT" ::: Signal Basic125 Bit
   )
-switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn =
+switchDemoOldTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn =
   -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
   seqX
     testIla
@@ -435,7 +498,9 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
   testReset :: Reset Basic125
   testReset = unsafeFromActiveLow testStart `orReset` refRst
 
-  ( txs :: Gth.SimWires Bittide LinkCount
+  ( _ccMm
+    , _muMm
+    , txs :: Gth.SimWires Bittide LinkCount
     , txns :: Gth.Wires GthTxS LinkCount
     , txps :: Gth.Wires GthTxS LinkCount
     , handshakesDone :: Signal Basic125 Bool
@@ -449,7 +514,7 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
     , fifoUnderflows :: Signal Basic125 Bool
     , uartTx :: Signal Basic125 Bit
     , syncOut :: Signal Basic125 Bit
-    ) = switchDemoDut refClk testReset boardClk rxs rxns rxps miso jtagIn syncIn
+    ) = switchDemoOldDut refClk testReset boardClk rxs rxns rxps miso jtagIn syncIn
 
   fifoSuccess :: Signal Basic125 Bool
   fifoSuccess = not <$> (fifoUnderflows .||. fifoOverflows)
@@ -499,13 +564,13 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
       testReset
       enableGen
       (SNat @(PeriodToCycles Basic125 (Milliseconds 2)))
-{-# OPAQUE switchDemoTest #-}
-makeTopEntity 'switchDemoTest
+{-# OPAQUE switchDemoOldTest #-}
+makeTopEntity 'switchDemoOldTest
 
 tests :: HitlTestGroup
 tests =
   HitlTestGroup
-    { topEntity = 'switchDemoTest
+    { topEntity = 'switchDemoOldTest
     , extraXdcFiles =
         [ "jtag" </> "config.xdc"
         , "jtag" </> "pmod1.xdc"
@@ -514,11 +579,11 @@ tests =
     , externalHdl = []
     , testCases =
         [ HitlTestCase
-            { name = "Bittide_Demo_DUT"
+            { name = "Bittide_Demo_Old_DUT"
             , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
             }
         ]
-    , mDriverProc = Nothing
+    , mDriverProc = Just D.driver
     , mPostProc = Nothing
     }

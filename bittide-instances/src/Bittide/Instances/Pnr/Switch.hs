@@ -18,13 +18,14 @@ import Protocols.MemoryMap
 import Protocols.Wishbone
 
 switchExample ::
-  (HasCallStack) =>
+  forall addrW.
+  (HasCallStack, KnownNat addrW) =>
   Clock Basic200 ->
   Reset Basic200 ->
   Circuit
     ( ConstBwd MM
     , ( Vec 16 (CSignal Basic200 (BitVector 64))
-      , Wishbone Basic200 'Standard 28 (Bytes 4) -- calendar interface
+      , Wishbone Basic200 'Standard addrW (Bytes 4) -- calendar interface
       )
     )
     ( Vec 16 (CSignal Basic200 (BitVector 64))
@@ -71,7 +72,7 @@ switchExampleReducedPins clk rst =
       ( bundle
           . second bundle
           . bimap (bundle . first bundle) (first bundle)
-          . toSignals (unMemmap $ switchExample clk rst)
+          . toSignals (unMemmap $ switchExample @28 clk rst)
           . bimap (first unbundle . unbundle) (first unbundle . unbundle)
           . unbundle
       )
