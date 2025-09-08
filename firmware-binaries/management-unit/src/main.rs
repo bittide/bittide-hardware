@@ -5,7 +5,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use bittide_hal::switch_demo_cc::DeviceInstances;
+use bittide_hal::switch_demo_mu::DeviceInstances;
 use core::panic::PanicInfo;
 use ufmt::uwriteln;
 
@@ -19,6 +19,34 @@ fn main() -> ! {
     let mut uart = INSTANCES.uart;
 
     uwriteln!(uart, "Hello from management unit..").unwrap();
+    let mut capture_ugns = [
+        (INSTANCES.capture_ugn, false),
+        (INSTANCES.capture_ugn_1, false),
+        (INSTANCES.capture_ugn_2, false),
+        (INSTANCES.capture_ugn_3, false),
+        (INSTANCES.capture_ugn_4, false),
+        (INSTANCES.capture_ugn_5, false),
+        (INSTANCES.capture_ugn_6, false),
+    ];
+    while capture_ugns.iter().any(|(_, done)| !done) {
+        for (i, (capture_ugn, done)) in capture_ugns.iter_mut().enumerate() {
+            if *done {
+                continue;
+            }
+            if capture_ugn.has_captured() {
+                uwriteln!(
+                    uart,
+                    "Capture UGN {}: local = {}, remote = {}",
+                    i,
+                    capture_ugn.local_counter(),
+                    capture_ugn.remote_counter()
+                )
+                .unwrap();
+                *done = true;
+            }
+        }
+    }
+    uwriteln!(uart, "All UGNs captured").unwrap();
 
     #[allow(clippy::empty_loop)]
     loop {}

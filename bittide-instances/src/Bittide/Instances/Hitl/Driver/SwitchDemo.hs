@@ -526,6 +526,12 @@ driver testName targets = do
             $ \pico ->
               waitForLine pico.stdoutHandle "[CC] All links stable"
 
+          liftIO
+            $ tryWithTimeoutOn "Waiting for captured UGNs" (3 * 60_000_000) goDumpCcSamples
+            $ forConcurrently_ picocoms
+            $ \pico ->
+              waitForLine pico.stdoutHandle "[MU] All UGNs captured"
+
           liftIO $ putStrLn "Getting UGNs for all targets"
           liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
           ugnPairsTable <- liftIO $ zipWithConcurrently muGetUgns targets muGdbs
