@@ -78,7 +78,7 @@ data OcdInitData = OcdInitData
 
 data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
 
-type StartDelay = 5 -- seconds
+type StartDelay = 10 -- seconds
 
 type Padding = Calc.WindowCycles FpgaCount 3
 type GppeConfig = Calc.DefaultGppeConfig FpgaCount Padding
@@ -525,6 +525,12 @@ driver testName targets = do
             $ forConcurrently_ picocoms
             $ \pico ->
               waitForLine pico.stdoutHandle "[CC] All links stable"
+
+          liftIO
+            $ tryWithTimeoutOn "Waiting for captured UGNs" (3 * 60_000_000) goDumpCcSamples
+            $ forConcurrently_ picocoms
+            $ \pico ->
+              waitForLine pico.stdoutHandle "[MU] All UGNs captured"
 
           liftIO $ putStrLn "Getting UGNs for all targets"
           liftIO $ mapConcurrently_ Gdb.interrupt muGdbs
