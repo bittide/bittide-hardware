@@ -78,7 +78,7 @@ data OcdInitData = OcdInitData
 
 data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
 
-type StartDelay = 5 -- seconds
+type StartDelay = 10 -- seconds
 
 type Padding = Calc.WindowCycles FpgaCount 3
 type GppeConfig = Calc.DefaultGppeConfig FpgaCount Padding
