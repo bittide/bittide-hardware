@@ -45,6 +45,7 @@ $( do
           , ("SwitchC", SwitchCalendar.memoryMap)
           , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
           , ("SwitchDemoCc", SwitchDemo.memoryMapCc)
+          , ("SwitchDemoGppe", SwitchDemo.memoryMapGppe)
           , ("VexRiscv", vexRiscvTestMM)
           ]
 

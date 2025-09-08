@@ -9,7 +9,7 @@ import Clash.Prelude
 
 import Bittide.ClockControl.Config (defCcConf)
 import Bittide.Hitl (DeviceInfo (deviceId))
-import Bittide.Instances.Hitl.Driver.SwitchDemo (
+import Bittide.Instances.Hitl.Driver.SwitchDemoOld (
   OcdInitData (ccPort, cleanup),
   dumpCcSamples,
   initGdb,

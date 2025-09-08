@@ -1,0 +1,4 @@
+[
+  {"top": "switchDemoTest", "stage": "bitstream"},
+  {"top": "switchDemoOldTest", "stage": "test"}
+]
