@@ -26,7 +26,7 @@ import System.Process (
   waitForProcess,
  )
 import System.Process.Extra (cleanupProcess)
-import System.Timeout.Extra (tryWithTimeout)
+import qualified System.Timeout.Extra as T
 import "bittide-extra" Control.Exception.Extra (brackets, preferMainBracket)
 
 import qualified Data.List as L
@@ -86,7 +86,8 @@ stop :: (HasCallStack, MonadIO m) => Gdb -> m ()
 stop gdb = liftIO $ do
   -- TODO: If GDB doesn't quit after asking nicely, kill it with force.
   cleanupProcess (Just gdb.stdin, Just gdb.stdout, Just gdb.stderr, gdb.process)
-  exitCode <- tryWithTimeout "Stop GDB" 10_000_000 (waitForProcess gdb.process)
+  exitCode <-
+    T.tryWithTimeout T.NoPrintActionTime "Stop GDB" 10_000_000 (waitForProcess gdb.process)
   case exitCode of
     ExitSuccess -> return ()
     ExitFailure exitCode_ -> error [i|GDB exited with failure code #{exitCode_}|]
@@ -112,10 +113,10 @@ readCommandRaw gdb cmd = liftIO $ do
   hPutStrLn gdb.stdin [i|echo #{magic}|]
 
   void $
-    tryWithTimeout ("Wait for magic (start)") 15_000_000 $
+    T.tryWithTimeout T.NoPrintActionTime ("Wait for magic (start)") 15_000_000 $
       readUntil gdb.stdout [i|#{magic}(gdb) |]
 
-  tryWithTimeout ("Wait for magic (end)") 15_000_000 $
+  T.tryWithTimeout T.NoPrintActionTime ("Wait for magic (end)") 15_000_000 $
     readUntil gdb.stdout [i|(gdb) #{magic}|]
 
 {- | Read a command from GDB and return the output as a list of lines. Each line

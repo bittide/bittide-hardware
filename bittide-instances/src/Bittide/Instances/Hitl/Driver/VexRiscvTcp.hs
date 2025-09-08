@@ -95,7 +95,7 @@ driverFunc _name [d@(_, dI)] = do
         hSetBuffering pico.stdinHandle LineBuffering
         hSetBuffering pico.stdinHandle LineBuffering
         putStrLn "Waiting for Picocom to be ready..."
-        T.tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000 $
+        T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000 $
           waitForLine pico.stdoutHandle "Terminal ready"
 
       liftIO $ putStrLn "Starting GDB..."
@@ -130,7 +130,7 @@ driverFunc _name [d@(_, dI)] = do
 
             tryWithTimeout :: String -> Int -> IO a -> IO a
             tryWithTimeout n t io =
-              catch (T.tryWithTimeout n t io) $
+              catch (T.tryWithTimeout T.PrintActionTime n t io) $
                 \(err :: SomeException) -> loggingSequence >> throwM err
 
           putStrLn "Waiting for \"Starting TCP Client\""

@@ -51,7 +51,6 @@ import System.Exit
 import System.FilePath
 import System.IO
 import System.Process (StdStream (CreatePipe, UseHandle))
-import System.Timeout.Extra (tryWithTimeout, tryWithTimeoutOn)
 import Text.Show.Pretty (ppShow)
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
@@ -64,6 +63,7 @@ import qualified Clash.Sized.Vector as V
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
 import qualified Gdb
+import qualified System.Timeout.Extra as T
 
 data OcdInitData = OcdInitData
   { muPort :: Int
@@ -279,7 +279,7 @@ initOpenOcd hitlDir (_, d) targetIndex = do
       , ("DEV_B_TEL", show telnetPortCC)
       ]
   hSetBuffering ocd.stderrHandle LineBuffering
-  tryWithTimeout "Waiting for OpenOCD to start" 15_000_000
+  T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 15_000_000
     $ expectLine ocd.stderrHandle Ocd.waitForHalt
 
   let
@@ -333,7 +333,7 @@ initPicocom hitlDir (_hwTarget, deviceInfo) targetIndex = do
 
   hSetBuffering pico.stdoutHandle LineBuffering
 
-  tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
+  T.tryWithTimeout T.PrintActionTime "Waiting for \"Terminal ready\"" 10_000_000
     $ waitForLine pico.stdoutHandle "Terminal ready"
 
   pure (pico, cleanup)
@@ -486,7 +486,10 @@ driver testName targets = do
       return result
 
   forM_ targets (assertProbe "probe_test_start")
-  tryWithTimeout "Wait for handshakes successes from all boards" 30_000_000
+  T.tryWithTimeout
+    T.PrintActionTime
+    "Wait for handshakes successes from all boards"
+    30_000_000
     $ awaitHandshakes targets
   let openOcdStarts = liftIO <$> L.zipWith (initOpenOcd hitlDir) targets [0 ..]
   brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
@@ -521,13 +524,17 @@ driver testName targets = do
           liftIO $ mapConcurrently_ Gdb.continue ccGdbs
           liftIO $ mapConcurrently_ Gdb.continue muGdbs
           liftIO
-            $ tryWithTimeoutOn "Waiting for stable links" 60_000_000 goDumpCcSamples
+            $ T.tryWithTimeoutOn T.PrintActionTime "Waiting for stable links" 60_000_000 goDumpCcSamples
             $ forConcurrently_ picocoms
             $ \pico ->
               waitForLine pico.stdoutHandle "[CC] All links stable"
 
           liftIO
-            $ tryWithTimeoutOn "Waiting for captured UGNs" (3 * 60_000_000) goDumpCcSamples
+            $ T.tryWithTimeoutOn
+              T.PrintActionTime
+              "Waiting for captured UGNs"
+              (3 * 60_000_000)
+              goDumpCcSamples
             $ forConcurrently_ picocoms
             $ \pico ->
               waitForLine pico.stdoutHandle "[MU] All UGNs captured"
