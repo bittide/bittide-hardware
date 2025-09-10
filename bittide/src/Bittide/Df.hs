@@ -2,17 +2,26 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Df (asciiDebugMux) where
+module Bittide.Df (asciiDebugMux, wbToDf) where
 
 import Clash.Prelude
 import Protocols
 
+import Bittide.Extra.Maybe (orNothing)
 import Bittide.PacketStream (timeout)
-import Bittide.SharedTypes (Byte)
+import Bittide.SharedTypes (Byte, Bytes)
+import Clash.Class.BitPackC (BitPackC, ByteOrder)
+import Data.Bifunctor
 import Data.Char (ord)
 import Data.Coerce (coerce)
 import Data.Functor ((<&>))
+import Data.Maybe (isJust)
+import GHC.Stack (HasCallStack)
 import Protocols.Df (CollectMode (Skip))
+import Protocols.MemoryMap.FieldType (ToFieldType)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  registerWbC,
+ )
 import Protocols.PacketStream (
   PacketStream,
   PacketStreamM2S (..),
@@ -22,6 +31,10 @@ import Protocols.PacketStream (
 import Protocols.PacketStream.Base (truncateAbortedPackets)
 import Protocols.PacketStream.Routing (packetArbiterC)
 import Protocols.Vec (vecCircuits)
+import Protocols.Wishbone
+
+import qualified Protocols.MemoryMap as MM
+import qualified Protocols.MemoryMap.Registers.WishboneStandard as MM
 
 {- | Muxes multiple 'Df' streams of bytes into a single 'Df' stream of bytes,
 interleaving the streams from the different sources on newline characters. As
@@ -126,3 +139,81 @@ unsafeBytesFromPacketStream f =
       | Just PacketStreamM2S{_abort = True} <- m2s = (coerce True, Nothing)
       | Just PacketStreamM2S{_last = Just 0} <- m2s = (coerce True, Nothing)
       | otherwise = (coerce ack, fmap (pack . (._data)) m2s)
+
+{- | Component to create a `Df` stream from a wishbone interface. This component
+features two registers, one to accumulate the data and one to create the `Df` transaction.
+-}
+wbToDf ::
+  forall dom a addrW nBytes.
+  ( HiddenClockResetEnable dom
+  , KnownNat nBytes
+  , 1 <= nBytes
+  , KnownNat addrW
+  , Show a
+  , ShowX a
+  , ToFieldType a
+  , NFDataX a
+  , BitPack a
+  , BitPackC a
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  , HasCallStack
+  ) =>
+  String ->
+  Circuit
+    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (Df dom a)
+{- FOURMOLU_DISABLE -}
+wbToDf name = circuit $ \(mm, wb) -> do
+  [wbDat, (comOffset, comMeta, wbCommit0)] <- MM.deviceWbC name -< (mm, wb)
+
+  -- We postpone acknowledging writes to the commit register until `dfAck` is True.
+  -- This provides backpressure to the Wishbone master when the `Df` consumer
+  -- is not ready to accept new data.
+  wbCommit1 <- andAck (not <$> dfBusy) -< wbCommit0
+  wbCommit2 <- idC -< (comOffset, comMeta, wbCommit1)
+
+  -- Separate registers for data and commit to allow accumulating data before
+  -- initiating the `Df` transaction.
+  Fwd (dfDat, _) <- registerWbC hasClock hasReset cfgDat (unpack 0) -< (wbDat, Fwd noWrite)
+  Fwd (dfBusy, _) <- registerWbC hasClock hasReset cfgAck False -< (wbCommit2, Fwd busyClear)
+  let busyClear = fmap (`orNothing` False) dfAck
+
+  (df, Fwd dfAck) <- exposeAcknowledge <| toDf dfBusy dfDat
+  idC -< df
+  {- FOURMOLU_ ENABLE -}
+ where
+  noWrite = pure Nothing
+
+  -- Both registers are write-only
+  cfgDat =
+    (MM.registerConfig "data")
+      { MM.access = MM.WriteOnly
+      , MM.description = "Data register for " <> name
+      }
+
+  cfgAck =
+    (MM.registerConfig "commit")
+      { MM.access = MM.WriteOnly
+      , MM.description = "Commit register for " <> name
+      }
+
+  toDf :: Signal dom Bool -> Signal dom a -> Circuit () (Df dom a)
+  toDf valid dat = Circuit $ const ((), orNothing <$> valid <*> dat)
+
+  andAck ::
+    Signal dom Bool ->
+    Circuit
+      (Wishbone dom 'Standard addrW (Bytes nBytes))
+      (Wishbone dom 'Standard addrW (Bytes nBytes))
+  andAck extraAck = Circuit go
+   where
+    go ~(m2s, s2m0) = (s2m1, m2s)
+     where
+      s2m1 = (\wb ack -> wb{acknowledge = wb.acknowledge && ack}) <$> s2m0 <*> extraAck
+
+-- | Exposes a `CSignal dom Bool` that indicates acknowledged transactions on a `Df` stream.
+exposeAcknowledge :: Circuit (Df dom a) (Df dom a, CSignal dom Bool)
+exposeAcknowledge = Circuit $ second unbundle . unbundle . fmap go . bundle . second bundle
+ where
+  go (df, (ack, _)) = (ack, (df, (isJust df) && (ack == Ack True)))
