@@ -15,6 +15,7 @@ import Test.Tasty
 import Test.Tasty.HUnit (assertFailure, testCase)
 import "extra" Data.List.Extra (trim)
 
+import qualified Df.WbToDf as WbToDf
 import qualified Tests.ClockControlWb as ClockControlWb
 import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
@@ -73,6 +74,7 @@ tests =
         , RegisterWb.tests
         , Watchdog.tests
         , Wishbone.SwitchCalendar.tests
+        , WbToDf.tests
         ]
     ]
  where
