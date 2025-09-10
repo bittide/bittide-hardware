@@ -2,17 +2,26 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Df (asciiDebugMux) where
+module Bittide.Df (asciiDebugMux, wbToDf) where
 
 import Clash.Prelude
 import Protocols
 
+import Bittide.Extra.Maybe (orNothing)
 import Bittide.PacketStream (timeout)
-import Bittide.SharedTypes (Byte)
+import Bittide.SharedTypes (Byte, Bytes)
+import Clash.Class.BitPackC (BitPackC, ByteOrder)
+import Data.Bifunctor
 import Data.Char (ord)
 import Data.Coerce (coerce)
 import Data.Functor ((<&>))
+import Data.Maybe (isJust)
+import GHC.Stack (HasCallStack)
 import Protocols.Df (CollectMode (Skip))
+import Protocols.MemoryMap.FieldType (ToFieldType)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  registerWbC,
+ )
 import Protocols.PacketStream (
   PacketStream,
   PacketStreamM2S (..),
@@ -22,6 +31,10 @@ import Protocols.PacketStream (
 import Protocols.PacketStream.Base (truncateAbortedPackets)
 import Protocols.PacketStream.Routing (packetArbiterC)
 import Protocols.Vec (vecCircuits)
+import Protocols.Wishbone
+
+import qualified Protocols.MemoryMap as MM
+import qualified Protocols.MemoryMap.Registers.WishboneStandard as MM
 
 {- | Muxes multiple 'Df' streams of bytes into a single 'Df' stream of bytes,
 interleaving the streams from the different sources on newline characters. As
@@ -126,3 +139,87 @@ unsafeBytesFromPacketStream f =
       | Just PacketStreamM2S{_abort = True} <- m2s = (coerce True, Nothing)
       | Just PacketStreamM2S{_last = Just 0} <- m2s = (coerce True, Nothing)
       | otherwise = (coerce ack, fmap (pack . (._data)) m2s)
+
+{- | Component to create a `Df` stream from a wishbone interface. This component
+features two registers, one to accumulate the data and one to create the `Df` transaction.
+-}
+wbToDf ::
+  forall dom a addrW nBytes.
+  ( HiddenClockResetEnable dom
+  , KnownNat nBytes
+  , 1 <= nBytes
+  , KnownNat addrW
+  , Show a
+  , ShowX a
+  , ToFieldType a
+  , NFDataX a
+  , BitPack a
+  , BitPackC a
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  , HasCallStack
+  ) =>
+  String ->
+  Circuit
+    (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes))
+    (Df dom a)
+{- FOURMOLU_DISABLE -}
+wbToDf name = circuit $ \(mm, wb) -> do
+  [wbDat, (comOffset, comMeta, wbCommit0)] <- MM.deviceWbC name -< (mm, wb)
+
+  -- We postpone new `Df` transactions until the previous one has been acknowledged.
+  -- This is valid because the condition can not become true during an ongoing transaction,
+  -- only as a result of an acknowledged transaction.
+  wbCommit1 <- guardStrobe (not <$> dfBusy) -< wbCommit0
+  wbCommit2 <- idC -< (comOffset, comMeta, wbCommit1)
+
+  -- Separate registers for data and commit to allow accumulating data before
+  -- initiating the `Df` transaction.
+  Fwd (dfDat, _) <- registerWbC hasClock hasReset cfgDat (unpack 0) -< (wbDat, Fwd noWrite)
+  Fwd (dfBusy, _) <- registerWbC hasClock hasReset cfgAck False -< (wbCommit2, Fwd busyClear)
+  let busyClear = fmap (`orNothing` False) dfAck
+
+  (df, Fwd dfAck) <- exposeAcknowledge <| toDf dfBusy dfDat
+  idC -< df
+  {- FOURMOLU_ ENABLE -}
+ where
+  noWrite = pure Nothing
+
+  -- Both registers are write-only
+  cfgDat =
+    (MM.registerConfig "data")
+      { MM.access = MM.WriteOnly
+      , MM.description = "Data register for " <> name
+      }
+
+  cfgAck =
+    (MM.registerConfig "commit")
+      { MM.access = MM.WriteOnly
+      , MM.description = "Commit register for " <> name
+      }
+
+  toDf :: Signal dom Bool -> Signal dom a -> Circuit () (Df dom a)
+  toDf valid dat = Circuit $ const ((), orNothing <$> valid <*> dat)
+
+  -- | Guards the strobe signal of a Wishbone interface with a condition.
+  -- When the condition is false, the strobe is forced low, preventing
+  -- transactions from being initiated. This is useful for applying backpressure
+  -- to a Wishbone master when the downstream logic is not ready to accept new transactions.
+  -- This is only a valid implementation if the condition can not become true during an
+  -- ongoing transaction. since that would violate the Wishbone protocol.
+  guardStrobe ::
+    Signal dom Bool ->
+    Circuit
+      (Wishbone dom 'Standard addrW (Bytes nBytes))
+      (Wishbone dom 'Standard addrW (Bytes nBytes))
+  guardStrobe condition = Circuit go
+    where
+      go ~(m2s0, s2m) = (s2m, m2s1)
+       where
+        m2s1 = (\wb cond -> wb{strobe = wb.strobe && cond}) <$> m2s0 <*> condition
+
+-- | Exposes a `CSignal dom Bool` that indicates acknowledged transactions on a `Df` stream.
+exposeAcknowledge :: Circuit (Df dom a) (Df dom a, CSignal dom Bool)
+exposeAcknowledge = Circuit $ second unbundle . unbundle . fmap go . bundle . second bundle
+ where
+  go (df, (ack, _)) = (ack, (df, (isJust df) && (ack == Ack True)))
