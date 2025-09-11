@@ -73,6 +73,7 @@ import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle), switchDemoPeWb)
 import Bittide.Transceiver (transceiverPrbsN)
 import Bittide.Wishbone (
+  filteredIncrementingPrefixesTH,
   readDnaPortE2Wb,
   timeWb,
   uartBytes,
@@ -92,6 +93,7 @@ import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Data.Char (ord)
 import Protocols
 import Protocols.Extra
+import Protocols.Idle
 import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
 import Protocols.Wishbone
 import System.FilePath ((</>))
@@ -522,35 +524,29 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       dcFifoDf d5 bittideClk handshakeRstTx refClk handshakeRstFree
         -< muUartBytesBittide
 
-    (Fwd lc, muWbAll) <-
+    (Fwd lc, muWbAll0) <-
       defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMM, (muJtag, linkIn))
-    ( [ (muWhoAmIPfx, (muWhoAmIMM, muWhoAmI))
-        , (peWbPfx, (peWbMM, peWb))
-        , (switchWbPfx, (switchWbMM, switchWb))
-        , (dnaWbPfx, (dnaWbMM, dnaWb))
-        , (muUartPfx, muUartBus)
-        ]
-      , muWbRest
-      ) <-
-      splitAtC SNat -< muWbAll
-    ([ugn0Pfx, ugn1Pfx, ugn2Pfx, ugn3Pfx, ugn4Pfx, ugn5Pfx, ugn6Pfx], ugnData) <-
-      unzipC -< muWbRest
 
-    MM.constBwd 0b0000 -< muUartPfx
-    MM.constBwd 0b0001 -< ugn0Pfx
-    MM.constBwd 0b0010 -< ugn1Pfx
-    MM.constBwd 0b0011 -< ugn2Pfx
-    MM.constBwd 0b0100 -< ugn3Pfx
-    MM.constBwd 0b0101 -< ugn4Pfx
-    MM.constBwd 0b0110 -< ugn5Pfx
-    MM.constBwd 0b0111 -< ugn6Pfx
-    --          0b1000    IMEM
-    MM.constBwd 0b1001 -< peWbPfx
-    MM.constBwd 0b1010 -< switchWbPfx
-    MM.constBwd 0b1011 -< dnaWbPfx
-    --          0b1100    DMEM
-    --          0b1101    TIME (not the same as CC!)
-    MM.constBwd 0b1110 -< muWhoAmIPfx
+    let muPrefixes =
+          $$( filteredIncrementingPrefixesTH
+                [ 0b1000 -- IMEM
+                , 0b1100 -- DMEM
+                , 0b1101 -- TIME (not the same as CC!)
+                ]
+            ) ::
+            Vec 12 (Unsigned 4)
+    idleSink <| (Vec.vecCircuits $ fmap MM.constBwd muPrefixes) -< muPfxs
+
+    (muPfxs, muWbAll1) <- unzipC -< muWbAll0
+    ( [ muWhoAmIWb
+        , (peWbMM, peWb)
+        , (switchWbMM, switchWb)
+        , dnaWb
+        , muUartBus
+        ]
+      , ugnData
+      ) <-
+      splitAtC SNat -< muWbAll1
 
     ugnRxs <-
       defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs) -< ugnData
@@ -564,9 +560,9 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       defaultBittideClkRstEn (switchDemoPeWb (SNat @FpgaCount))
         -< (peWbMM, (Fwd lc, peWb, dna, Fwd peIn))
 
-    dna <- defaultBittideClkRstEn (readDnaPortE2Wb simDna2) -< (dnaWbMM, dnaWb)
+    dna <- defaultBittideClkRstEn (readDnaPortE2Wb simDna2) -< dnaWb
 
-    defaultBittideClkRstEn (whoAmIC 0x746d_676d) -< (muWhoAmIMM, muWhoAmI)
+    defaultBittideClkRstEn (whoAmIC 0x746d_676d) -< muWhoAmIWb
 
     (ccUartBytesBittide, _uartStatus) <-
       defaultBittideClkRstEn
