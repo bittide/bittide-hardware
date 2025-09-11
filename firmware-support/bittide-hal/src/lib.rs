@@ -16,7 +16,13 @@ pub mod hals;
 pub use hals::*;
 
 #[rustfmt::skip]
-pub mod shared;
+pub mod shared_devices;
+
+#[rustfmt::skip]
+pub mod types;
+
+pub mod primitives;
+pub use primitives::*;
 
 pub mod manual_additions;
 

@@ -10,7 +10,7 @@ peripheral access code for the `Calendar` device.
 use crate as bittide_hal;
 
 use bittide_hal::{
-    hals::switch_c::devices::switch_calendar::SwitchCalendar, manual_additions::index::IndexTy,
+    hals::switch_c::devices::switch_calendar::SwitchCalendar, primitives::index::Index,
     switch_c::ValidEntry,
 };
 use bittide_macros::{index, Index};
@@ -20,7 +20,7 @@ pub type EntryType = ValidEntry<[Index![17]; 16]>;
 impl SwitchCalendar {
     /// Reads entry n from the shadow calendar.
     pub fn read_shadow_entry(&self, n: usize) -> EntryType {
-        let n1 = index!(n as u8, n = 256);
+        let n1 = Index::<256>::new(n as u8);
         self.set_read_addr(n1);
         self.shadow_entry()
     }

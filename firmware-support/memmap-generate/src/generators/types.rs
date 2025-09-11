@@ -2,24 +2,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use crate::{
-    generators::{generate_tag_docs, generic_name, ident, IdentType},
+    generators::{generate_tag_docs, ident, IdentType},
     hal_set::TypeDefAnnotations,
     parse::{
         Constructor, NamedConstructor, TypeArg, TypeDefinition, TypeDescription, TypeName, TypeRef,
     },
 };
-use proc_macro2::{Ident, Literal, Span};
-use quote::{quote, ToTokens};
+use proc_macro2::Literal;
+use quote::quote;
 
 fn clog2(n: &u64) -> u64 {
     n.ilog2().max(8) as u64
-}
-
-fn next_pow2(n: &u64) -> u64 {
-    n.next_power_of_two().max(8)
 }
 
 pub enum ParsedType {
@@ -42,7 +38,7 @@ pub enum ParsedType {
     Nat(u64),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Hash, Clone)]
 pub enum PrimitiveType {
     BitVector,
     Unsigned,
@@ -57,8 +53,8 @@ pub enum PrimitiveType {
 }
 
 pub struct TypeGenerator {
-    referenced_custom_types: HashSet<TypeName>,
-    referenced_primitives: HashSet<PrimitiveType>,
+    referenced_custom_types: BTreeSet<TypeName>,
+    referenced_primitives: BTreeSet<PrimitiveType>,
 }
 
 impl TypeGenerator {
@@ -69,54 +65,64 @@ impl TypeGenerator {
         }
     }
 
-    pub fn parse_type_ref(&mut self, ty: &TypeRef) -> ParsedType {
+    pub fn clear(&mut self) {
+        self.referenced_custom_types.clear();
+        self.referenced_primitives.clear();
+    }
+
+    pub fn referenced_primitives(&self) -> &BTreeSet<PrimitiveType> {
+        &self.referenced_primitives
+    }
+
+    pub fn referenced_custom_types(&self) -> &BTreeSet<TypeName> {
+        &self.referenced_custom_types
+    }
+
+    pub fn parse_type_ref(ty: &TypeRef) -> ParsedType {
         match ty {
             TypeRef::TypeReference { base, args } => {
                 match (base.base.as_str(), base.module.as_str()) {
                     ("BitVector", "Clash.Sized.Internal.BitVector") => {
-                        ParsedType::BitVector(Box::new(self.parse_type_ref(&args[0])))
+                        ParsedType::BitVector(Box::new(Self::parse_type_ref(&args[0])))
                     }
                     ("Signed", "Clash.Sized.Internal.Signed") => {
-                        ParsedType::Signed(Box::new(self.parse_type_ref(&args[0])))
+                        ParsedType::Signed(Box::new(Self::parse_type_ref(&args[0])))
                     }
                     ("Unsigned", "Clash.Sized.Internal.Unsigned") => {
-                        ParsedType::Unsigned(Box::new(self.parse_type_ref(&args[0])))
+                        ParsedType::Unsigned(Box::new(Self::parse_type_ref(&args[0])))
                     }
                     ("Index", "Clash.Sized.Internal.Index") => {
-                        ParsedType::Index(Box::new(self.parse_type_ref(&args[0])))
+                        ParsedType::Index(Box::new(Self::parse_type_ref(&args[0])))
                     }
                     ("Float", "GHC.Types") => ParsedType::Float,
                     ("Double", "GHC.Types") => ParsedType::Double,
                     ("Bool", "GHC.Types") => ParsedType::Bool,
                     ("Vec", "Clash.Sized.Vector") => ParsedType::Vector(
-                        Box::new(self.parse_type_ref(&args[0])),
-                        Box::new(self.parse_type_ref(&args[1])),
+                        Box::new(Self::parse_type_ref(&args[0])),
+                        Box::new(Self::parse_type_ref(&args[1])),
                     ),
                     ("Unit", "GHC.Tuple") => ParsedType::Tuple(vec![]),
                     ("Either", "GHC.Internal.Data.Either") => ParsedType::Either(
-                        Box::new(self.parse_type_ref(&args[0])),
-                        Box::new(self.parse_type_ref(&args[1])),
+                        Box::new(Self::parse_type_ref(&args[0])),
+                        Box::new(Self::parse_type_ref(&args[1])),
                     ),
                     ("Maybe", "GHC.Internal.Maybe") => {
-                        ParsedType::Maybe(Box::new(self.parse_type_ref(&args[0])))
+                        ParsedType::Maybe(Box::new(Self::parse_type_ref(&args[0])))
                     }
-                    (name, "GHC.Tuple") if name.starts_with("Tuple") => ParsedType::Tuple(
-                        args.into_iter().map(|t| self.parse_type_ref(t)).collect(),
-                    ),
+                    (name, "GHC.Tuple") if name.starts_with("Tuple") => {
+                        ParsedType::Tuple(args.into_iter().map(Self::parse_type_ref).collect())
+                    }
                     (_, _) => ParsedType::Custom {
                         name: base.clone(),
-                        args: args.iter().map(|t| self.parse_type_ref(t)).collect(),
+                        args: args.iter().map(Self::parse_type_ref).collect(),
                     },
                 }
             }
             TypeRef::Variable(name) => ParsedType::Variable(name.clone()),
             TypeRef::Nat(n) => ParsedType::Nat(*n),
-            TypeRef::Tuple(type_refs) => ParsedType::Tuple(
-                type_refs
-                    .into_iter()
-                    .map(|t| self.parse_type_ref(t))
-                    .collect(),
-            ),
+            TypeRef::Tuple(type_refs) => {
+                ParsedType::Tuple(type_refs.into_iter().map(Self::parse_type_ref).collect())
+            }
         }
     }
 
@@ -187,7 +193,7 @@ impl TypeGenerator {
             }
             ParsedType::Custom { name, args } => {
                 self.referenced_custom_types.insert(name.clone());
-                let ident = Ident::new(&name.base, Span::call_site());
+                let ty_ident = ident(IdentType::Type, &name.base);
                 let args = args
                     .into_iter()
                     .map(|t| {
@@ -196,14 +202,14 @@ impl TypeGenerator {
                     })
                     .collect::<Vec<_>>();
                 if args.is_empty() {
-                    quote! { #ident }
+                    quote! { #ty_ident }
                 } else {
-                    quote! { #ident< #(#args)* >}
+                    quote! { #ty_ident< #(#args)* >}
                 }
             }
             ParsedType::Variable(name) => {
-                let ident = Ident::new(&name, Span::call_site());
-                quote! { #ident }
+                let var_name = ident(IdentType::TypeVariable, &name);
+                quote! { #var_name }
             }
             ParsedType::Nat(n) => {
                 let lit = Literal::u128_unsuffixed(*n as u128);
@@ -213,7 +219,7 @@ impl TypeGenerator {
     }
 
     pub fn generate_type_ref(&mut self, ty: &TypeRef) -> proc_macro2::TokenStream {
-        let parsed = self.parse_type_ref(ty);
+        let parsed = Self::parse_type_ref(ty);
         self.generate_parsed_type_ref(&parsed)
     }
 
@@ -232,12 +238,12 @@ impl TypeGenerator {
                 .iter()
                 .map(|arg| match arg {
                     TypeArg::Type { name } => {
-                        let ident = proc_macro2::Ident::new(name, Span::call_site());
-                        quote! { #ident , }
+                        let var_name = ident(IdentType::TypeVariable, name);
+                        quote! { #var_name, }
                     }
                     TypeArg::Number { name } => {
-                        let ident = proc_macro2::Ident::new(name, Span::call_site());
-                        quote! { const #ident: u128, }
+                        let var_name = ident(IdentType::TypeVariable, name);
+                        quote! { const #var_name: u128, }
                     }
                 })
                 .collect::<Vec<_>>();
@@ -387,9 +393,9 @@ impl TypeGenerator {
                     }
                 }
             }
-            TypeDefinition::Builtin(builtin_type) => quote! {},
+            TypeDefinition::Builtin(_builtin_type) => quote! {},
             TypeDefinition::Alias(type_ref) => {
-                let parsed_type = self.parse_type_ref(type_ref);
+                let parsed_type = Self::parse_type_ref(type_ref);
                 let ty = self.generate_parsed_type_ref(&parsed_type);
                 quote! {
                     pub type #name #args = #ty;

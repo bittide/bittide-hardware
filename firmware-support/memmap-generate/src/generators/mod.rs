@@ -2,15 +2,21 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use device_instances::generate_device_instances_struct;
 use device_types::DeviceGenerator;
-use heck::{ToPascalCase, ToSnakeCase};
+use heck::{ToPascalCase, ToShoutySnakeCase, ToSnakeCase};
 use proc_macro2::{Ident, Span, TokenStream};
 use types::TypeGenerator;
 
-use crate::hal_set::{DeviceDescAnnotations, HalGenData, TypeDefAnnotations};
+use crate::{
+    generators::types::PrimitiveType,
+    hal_set::{
+        DeviceDescAnnotations, DeviceInstance, DeviceInstanceAnnotations, TypeDefAnnotations,
+    },
+    parse::{DeviceDesc, TypeDescription, TypeName},
+};
 
 pub mod device_instances;
 pub mod device_types;
@@ -19,6 +25,7 @@ pub mod types;
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum IdentType {
     Type,
+    TypeVariable,
     Device,
     Instance,
     Module,
@@ -34,6 +41,7 @@ pub fn ident(ident_type: IdentType, n: impl AsRef<str>) -> Ident {
     let s = s.split(".").last().unwrap();
     let s = match ident_type {
         IdentType::Type => s.to_pascal_case(),
+        IdentType::TypeVariable => s.to_shouty_snake_case(),
         IdentType::Device => s.to_pascal_case(),
         IdentType::Instance => s.to_snake_case(),
         IdentType::Module => s.to_snake_case(),
@@ -45,55 +53,62 @@ pub fn ident(ident_type: IdentType, n: impl AsRef<str>) -> Ident {
     Ident::new(&s, Span::call_site())
 }
 
-pub(crate) fn generic_name(idx: u64) -> Ident {
-    let s = format!("{}", char::from_u32('A' as u32 + idx as u32).unwrap());
-    ident(IdentType::Type, &s)
+pub struct ItemReferences {
+    pub custom_types: BTreeSet<TypeName>,
+    pub primitives: BTreeSet<PrimitiveType>,
 }
 
-pub struct RustWrappers {
-    pub device_defs: BTreeMap<String, (DeviceDescAnnotations, TokenStream)>,
-    pub type_defs: BTreeMap<String, (TypeDefAnnotations, TokenStream)>,
-    pub device_instances_struct: TokenStream,
+#[derive(Default)]
+pub struct HalGenerator {
+    ty_gen: TypeGenerator,
+    device_gen: DeviceGenerator,
 }
 
-pub fn generate_rust_wrappers(hal_data: &HalGenData) -> RustWrappers {
-    let mut ty_gen = TypeGenerator::new();
-    let mut device_gen = DeviceGenerator::new();
+impl HalGenerator {
+    pub fn new() -> Self {
+        Default::default()
+    }
 
-    let type_defs = hal_data
-        .types
-        .iter()
-        .map(|(name, (type_ann, type_desc))| {
-            (
-                name.clone(),
-                (
-                    type_ann.clone(),
-                    ty_gen.generate_type_desc(type_ann, type_desc),
-                ),
-            )
-        })
-        .collect();
+    pub fn generate_type_description(
+        &mut self,
+        ann: &TypeDefAnnotations,
+        ty_desc: &TypeDescription,
+    ) -> (ItemReferences, TokenStream) {
+        self.clear();
+        let desc = self.ty_gen.generate_type_desc(ann, ty_desc);
+        let item_refs = ItemReferences {
+            custom_types: self.ty_gen.referenced_custom_types().clone(),
+            primitives: self.ty_gen.referenced_primitives().clone(),
+        };
+        (item_refs, desc)
+    }
 
-    let device_defs = hal_data
-        .devices
-        .iter()
-        .map(|(name, (device_ann, device_desc))| {
-            (
-                name.clone(),
-                (
-                    device_ann.clone(),
-                    device_gen.generate_device_type(device_ann, device_desc, &mut ty_gen),
-                ),
-            )
-        })
-        .collect();
+    pub fn generate_device_description(
+        &mut self,
+        ann: &DeviceDescAnnotations,
+        dev_desc: &DeviceDesc,
+    ) -> (ItemReferences, TokenStream) {
+        self.clear();
+        let desc = self
+            .device_gen
+            .generate_device_type(ann, dev_desc, &mut self.ty_gen);
+        let item_refs = ItemReferences {
+            custom_types: self.ty_gen.referenced_custom_types().clone(),
+            primitives: self.ty_gen.referenced_primitives().clone(),
+        };
+        (item_refs, desc)
+    }
 
-    let device_instances_struct = generate_device_instances_struct(&hal_data.instances);
+    pub fn generate_instance_struct(
+        &mut self,
+        instances: &BTreeMap<String, Vec<(DeviceInstanceAnnotations, DeviceInstance)>>,
+    ) -> TokenStream {
+        generate_device_instances_struct(instances)
+    }
 
-    RustWrappers {
-        device_defs,
-        type_defs,
-        device_instances_struct,
+    fn clear(&mut self) {
+        self.device_gen.clear();
+        self.ty_gen.clear();
     }
 }
 

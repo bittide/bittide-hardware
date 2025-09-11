@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Google LLC
 //
 // SPDX-License-Identifier: Apache-2.0
-use crate::shared::devices::CaptureUgn;
+use crate::shared_devices::CaptureUgn;
 
 impl CaptureUgn {
     pub fn ugn(&self) -> Option<u64> {
@@ -13,6 +13,6 @@ impl CaptureUgn {
     }
 
     pub fn ugn_unchecked(&self) -> u64 {
-        self.local_counter() - self.remote_counter()
+        self.local_counter().into_underlying() - self.remote_counter().into_underlying()
     }
 }

@@ -45,7 +45,7 @@ impl DeviceGenerator {
                 let offset = reg.address as usize;
 
                 let reg_description = &reg.description;
-                let ty = ty_gen.parse_type_ref(&reg.reg_type);
+                let ty = TypeGenerator::parse_type_ref(&reg.reg_type);
 
                 if let ParsedType::Vector(len, inner) = &ty {
                     let unchecked_name =
@@ -120,7 +120,7 @@ impl DeviceGenerator {
                 let offset = reg.address as usize;
 
                 let reg_description = &reg.description;
-                let ty = ty_gen.parse_type_ref(&reg.reg_type);
+                let ty = TypeGenerator::parse_type_ref(&reg.reg_type);
 
                 if let ParsedType::Vector(len, inner) = &ty {
                     let unchecked_name =
@@ -202,6 +202,10 @@ impl DeviceGenerator {
             }
         }
     }
+
+    pub(crate) fn clear(&self) {
+        // empty for now!
+    }
 }
 
 impl Default for DeviceGenerator {
@@ -216,7 +220,7 @@ fn generate_const(
     ty_gen: &mut TypeGenerator,
     desc: &RegisterDesc,
 ) -> Option<proc_macro2::TokenStream> {
-    let ty = ty_gen.parse_type_ref(&desc.reg_type);
+    let ty = TypeGenerator::parse_type_ref(&desc.reg_type);
     let (const_suffix, const_value) = match &ty {
         ParsedType::BitVector(width) | ParsedType::Signed(width) | ParsedType::Unsigned(width) => {
             Some(("WIDTH", ty_gen.generate_parsed_type_ref(width)))
