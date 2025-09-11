@@ -12,6 +12,9 @@ import GHC.Stack
 import Protocols
 
 import Bittide.ClockControl (RelDataCount, targetDataCount)
+import Clash.Class.BitPackC (BitPackC)
+import Protocols.MemoryMap.FieldType (ToFieldType)
+
 import qualified Clash.Cores.Extra as CE
 import qualified Clash.Explicit.Prelude as E
 
@@ -20,7 +23,7 @@ data EbControl
     AddFrame
   | -- | Enable write, disable read
     RemoveFrame
-  deriving (Generic, NFDataX, Eq, Show)
+  deriving (Generic, NFDataX, Eq, Show, ShowX, BitPack, BitPackC, ToFieldType)
 
 type Underflow = Bool
 type Overflow = Bool
