@@ -914,14 +914,12 @@ whoAmIC whoAmI = MM.withMemoryMap mm $ Circuit go
 -- >>> $$(filteredIncrementingPrefixesTH @3 @(Unsigned 8) [1, 3])
 -- 0 :> 2 :> 4 :> Nil
 filteredIncrementingPrefixesTH ::
-  forall a n .
-  (Eq a, Lift a, Bounded a, SaturatingNum a) =>
-  -- | Length of the resulting vector.
-  SNat n ->
+  forall n a .
+  (KnownNat n, Eq a, Lift a, Bounded a, SaturatingNum a) =>
   -- | List of values to filter out.
   [a] ->
-  TH.Q TH.Exp
-filteredIncrementingPrefixesTH SNat blackList = let
+  TH.Code TH.Q (Vec n a)
+filteredIncrementingPrefixesTH blackList = let
   incrementWithFilter :: (a -> Bool) -> Vec n a
   incrementWithFilter f = iterateI nextVal (nextVal startVal)
    where
@@ -935,4 +933,4 @@ filteredIncrementingPrefixesTH SNat blackList = let
       next = satSucc SatWrap n
   vec = incrementWithFilter (`notElem` blackList)
 
-  in [e|vec|]
+  in [e||vec||]

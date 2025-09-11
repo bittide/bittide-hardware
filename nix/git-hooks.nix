@@ -45,7 +45,7 @@
     my-rustfmt = {
       enable = true;
       name = "Custom rustfmt hook";
-      entry = "./cargo.sh fmt --all -- --check";
+      entry = "./cargo.sh fmt --all";
       language = "system";
       files = "\\.(rs)$";
       pass_filenames = false;

@@ -528,13 +528,13 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMM, (muJtag, linkIn))
 
     let muPrefixes =
-          $( filteredIncrementingPrefixesTH @(Unsigned 4)
-              d12
-              [ 0b1000 -- IMEM
-              , 0b1100 -- DMEM
-              , 0b1101 -- TIME (not the same as CC!)
-              ]
-           )
+          $$( filteredIncrementingPrefixesTH
+                [ 0b1000 -- IMEM
+                , 0b1100 -- DMEM
+                , 0b1101 -- TIME (not the same as CC!)
+                ]
+            ) ::
+            Vec 12 (Unsigned 4)
     idleSink <| (Vec.vecCircuits $ fmap MM.constBwd muPrefixes) -< muPfxs
 
     (muPfxs, muWbAll1) <- unzipC -< muWbAll0
