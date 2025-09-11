@@ -27,13 +27,13 @@ import Project.FilePath (findParentContaining)
 import Project.Handle (errorToException, waitForLine)
 import System.Exit (ExitCode (ExitSuccess))
 import System.FilePath ((</>))
-import System.Timeout.Extra (tryWithTimeout, tryWithTimeoutFinally)
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM (VivadoM)
 import "bittide-extra" Control.Exception.Extra (brackets)
 
 import qualified Data.List as L
 import qualified Gdb
+import qualified System.Timeout.Extra as T
 
 driverFunc ::
   String ->
@@ -51,7 +51,7 @@ driverFunc testName targets = do
   forM_ targets $ \target ->
     assertProbe "probe_test_start" target
 
-  tryWithTimeout "Wait for handshakes" 30_000_000
+  T.tryWithTimeout T.PrintActionTime "Wait for handshakes" 30_000_000
     $ awaitHandshakes targets
 
   let openOcdStarts = liftIO <$> L.zipWith (initOpenOcd hitlDir) targets [0 ..]
@@ -72,7 +72,11 @@ driverFunc testName targets = do
       brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
         liftIO $ mapM_ Gdb.continue ccGdbs
         liftIO
-          $ tryWithTimeoutFinally "Waiting for stable links" 60_000_000 goDumpCcSamples
+          $ T.tryWithTimeoutFinally
+            T.PrintActionTime
+            "Waiting for stable links"
+            60_000_000
+            goDumpCcSamples
           $ forConcurrently_ picocoms
           $ \pico ->
             waitForLine pico.stdoutHandle "[CC] All links stable"

@@ -154,6 +154,7 @@ library
     lifted-base,
     monad-control,
     tasty-hunit,
+    time,
     word8,
 
   exposed-modules:

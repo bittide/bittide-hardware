@@ -105,7 +105,7 @@ driverFunc _name targets = do
 
             tryWithTimeout :: String -> Int -> IO a -> IO a
             tryWithTimeout n t io =
-              catch (T.tryWithTimeout n t io)
+              catch (T.tryWithTimeout T.PrintActionTime n t io)
                 $ \(err :: SomeException) -> loggingSequence >> throwM err
 
           tryWithTimeout "Waiting for \"Terminal ready\"" 10_000_000
