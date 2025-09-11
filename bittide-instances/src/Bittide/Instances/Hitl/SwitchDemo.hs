@@ -35,11 +35,12 @@ import Bittide.ClockControl.CallistoSw (
   callistoSwClockControlC,
  )
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
-import Bittide.Df (asciiDebugMux)
+import Bittide.Df (asciiDebugMux, wbToDf)
 import Bittide.DoubleBufferedRam
 import Bittide.ElasticBuffer (
-  EbMode (Pass),
+  EbControl,
   Overflow,
+  Stable,
   Underflow,
   resettableXilinxElasticBuffer,
   sticky,
@@ -81,6 +82,7 @@ import Bittide.Wishbone (
   uartInterfaceWb,
   whoAmIC,
  )
+import Clash.Functor.Extra
 
 import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.BitPackC (ByteOrder)
@@ -123,6 +125,7 @@ type FifoSize = 5 -- = 2^5 = 32
 -}
 type NmuInternalBusses = 3
 type NmuRemBusWidth nodeBusses = 30 - CLog 2 (nodeBusses + NmuInternalBusses)
+type NodeBusses = LinkCount * 2
 
 data SimpleManagementConfig nodeBusses where
   SimpleManagementConfig ::
@@ -169,7 +172,7 @@ simpleManagementUnitC (SimpleManagementConfig peConfig pfxTime dumpVcd) =
     idC -< (localCounter, nmuWbs)
 
 {- FOURMOLU_DISABLE -} -- Fourmolu doesn't do well with tabular code
-calendarConfig :: CalendarConfig 26 (Vec 8 (Index 9))
+calendarConfig :: CalendarConfig (NmuRemBusWidth NodeBusses) (Vec 8 (Index 9))
 calendarConfig =
   CalendarConfig
     (SNat @LinkCount)
@@ -220,20 +223,20 @@ memoryMaps = (ccMm, muMm)
       (pure (JtagIn 0 0 0))
       0
 
-muConfig :: SimpleManagementConfig 12
+muConfig :: SimpleManagementConfig 19
 muConfig =
   SimpleManagementConfig
     { peConfig =
         PeConfig
-          { prefixI = 0b1000
-          , prefixD = 0b1100
+          { prefixI = 0b10000
+          , prefixD = 0b11000
           , initI = Undefined @(Div (64 * 1024) 4)
           , initD = Undefined @(Div (64 * 1024) 4)
           , iBusTimeout = d0
           , dBusTimeout = d0
           , includeIlaWb = False
           }
-    , timeRegPrefix = 0b1101
+    , timeRegPrefix = 0b11010
     , dumpVcd = NoDumpVcd
     }
 
@@ -356,7 +359,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
           -- Important step 5 signals
           :> "dd_allStable"
           -- Important step 6 signals
-          :> "dd_ebReadys"
+          :> "dd_ebStables"
           -- Other
           :> "dd_transceiversFailedAfterUp"
           :> Nil
@@ -371,7 +374,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       (bundle transceivers.handshakesDoneFree)
       (bundle $ xpmCdcArraySingle bittideClk refClk <$> txStarts)
       (xpmCdcSingle bittideClk refClk allStable)
-      (bundle $ xpmCdcArraySingle bittideClk refClk <$> ebReadys)
+      (bundle $ xpmCdcArraySingle bittideClk refClk <$> ebStables)
       transceiversFailedAfterUp
 
   captureFlag =
@@ -423,7 +426,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         , rxPs
         , txDatas = txDatas
         , txStarts = txStarts
-        , rxReadys = ebReadysRx
+        , rxReadys = ebStablesRx
         }
 
   bittideClk :: Clock Bittide
@@ -442,14 +445,14 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   handshakesDoneTx = and <$> bundle transceivers.handshakesDoneTx
 
   -- Step 3, send local counter for one cycle, connect to switch after:
-  txSamplingsDelayed :: Vec 7 (Signal Bittide Bool)
+  txSamplingsDelayed :: Vec LinkCount (Signal Bittide Bool)
   txSamplingsDelayed =
     register bittideClk handshakeRstTx enableGen False <$> transceivers.txSamplings
 
-  txDatas :: Vec 7 (Signal Bittide (BitVector 64))
+  txDatas :: Vec LinkCount (Signal Bittide (BitVector 64))
   txDatas = mux <$> txSamplingsDelayed <*> switchDataOut <*> repeat (pack <$> localCounter)
 
-  txStarts :: Vec 7 (Signal Bittide Bool)
+  txStarts :: Vec LinkCount (Signal Bittide Bool)
   txStarts = repeat allStableSticky
 
   -- Step 4, deassert CC CPU reset, deassert Bittide domain reset:
@@ -474,11 +477,8 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   ebReset :: Reset Bittide
   ebReset = unsafeFromActiveLow allStableSticky
 
-  ebReadys :: Vec 7 (Signal Bittide Bool)
-  ebReadys = map (.==. pure Pass) ebModes
-
-  ebReadysRx :: Vec 7 (Signal GthRx Bool)
-  ebReadysRx = xpmCdcArraySingle bittideClk <$> transceivers.rxClocks <*> ebReadys
+  ebStablesRx :: Vec LinkCount (Signal GthRx Bool)
+  ebStablesRx = xpmCdcArraySingle bittideClk <$> transceivers.rxClocks <*> ebStables
 
   -- Connect everything together:
   transceiversFailedAfterUp :: Signal Basic125 Bool
@@ -511,6 +511,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       , "CAL_ENTRY" ::: CSignal Bittide (Vec (LinkCount + 1) (Index (LinkCount + 2)))
       , "UART_TX" ::: CSignal Basic125 Bit
       , "SYNC_OUT" ::: CSignal Basic125 Bit
+      , Vec LinkCount (Df Bittide EbControl)
       )
   circuitFnC = circuit $ \(ccMM, muMM, jtag, linkIn, mask, Fwd rxs) -> do
     [muJtag, ccJtag] <- jtagChain -< jtag
@@ -527,14 +528,15 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
     (Fwd lc, muWbAll0) <-
       defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMM, (muJtag, linkIn))
 
-    let muPrefixes =
-          $$( filteredIncrementingPrefixesTH
-                [ 0b1000 -- IMEM
-                , 0b1100 -- DMEM
-                , 0b1101 -- TIME (not the same as CC!)
-                ]
-            ) ::
-            Vec 12 (Unsigned 4)
+    let
+      muPrefixes :: Vec 19 (Unsigned 5)
+      muPrefixes =
+        $$( filteredIncrementingPrefixesTH
+              [ 0b1000 -- IMEM
+              , 0b1100 -- DMEM
+              , 0b1101 -- TIME (not the same as CC!)
+              ]
+          )
     idleSink <| (Vec.vecCircuits $ fmap MM.constBwd muPrefixes) -< muPfxs
 
     (muPfxs, muWbAll1) <- unzipC -< muWbAll0
@@ -544,12 +546,15 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         , dnaWb
         , muUartBus
         ]
-      , ugnData
+      , muRestWb
       ) <-
       splitAtC SNat -< muWbAll1
+    (ugnWbs, ebCtrlWbs) <- splitAtC SNat -< muRestWb
 
     ugnRxs <-
-      defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs) -< ugnData
+      defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs) -< ugnWbs
+
+    ebControls <- mapCircuit (defaultBittideClkRstEn wbToDf "EbController") -< ebCtrlWbs
 
     rxLinks <- appendC -< ([Fwd peOut], ugnRxs)
     (switchOut, calEntry) <-
@@ -646,6 +651,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
          , calEntry
          , uartTx
          , syncOut
+         , ebControls
          )
 
   ( (ccMm, muMm, jtagOut, _linkInBwd, _maskBwd, _insBwd)
@@ -658,6 +664,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         , calEntry
         , uartTx
         , syncOut
+        , ebControls :: Vec LinkCount (Signal Bittide (Maybe EbControl))
         )
     ) =
       withBittideByteOrder
@@ -681,8 +688,20 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
             , pure ()
             , pure ()
             , pure ()
+            , Ack <<$>> ebControlAcks
             )
           )
+
+  -- (wbS2M, ebControls) = toSignals ebControlInterconnect (wbM2S, Ack <<$>> ebControlAcks)
+
+  -- ebControlInterconnect :: Circuit
+  --   (ConstBwd MM, Wishbone Bittide 'Standard (NmuRemBusWidth NodeBusses) (Bytes 4))
+  --   (Vec LinkCount (Df Bittide EbControl))
+  -- ebControlInterconnect = defaultBittideClkRstEn $ withBittideByteOrder $ circuit $ \wb -> do
+  --   (prefixes, wbs) <- unzipC <| singleMasterInterconnectC @_ @LinkCount -< wb
+  --   _none <- Vec.vecCircuits (fmap MM.constBwd (iterateI succ 0)) -< prefixes
+  --   dfs <- Vec.vecCircuits (fmap (\i -> wbToDf $ "ebControl" <> show i) indicesI) -< wbs
+  --   idC -< dfs
 
   peNotIdle :: Signal Bittide Bool
   peNotIdle = (/= Idle) <$> peState
@@ -760,18 +779,19 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       ( Signal Bittide (RelDataCount FifoSize)
       , Signal Bittide Underflow
       , Signal Bittide Overflow
-      , Signal Bittide EbMode
+      , Signal Bittide Stable
+      , Signal Bittide Bool
       , Signal Bittide (Maybe (BitVector 64))
       )
-  rxFifos = zipWith go transceivers.rxClocks transceivers.rxDatas
+  rxFifos = zipWith3 go transceivers.rxClocks transceivers.rxDatas ebControls
    where
-    go rxClk rxData = resettableXilinxElasticBuffer bittideClk rxClk ebReset rxData
+    go rxClk rxData ebControl = resettableXilinxElasticBuffer bittideClk rxClk ebReset ebControl rxData
 
   fifoUnderflowsTx :: Vec LinkCount (Signal Bittide Underflow)
   fifoOverflowsTx :: Vec LinkCount (Signal Bittide Overflow)
   rxDatasEbs :: Vec LinkCount (Signal Bittide (Maybe (BitVector 64)))
-  ebModes :: Vec 7 (Signal Bittide EbMode)
-  (_, fifoUnderflowsTx, fifoOverflowsTx, ebModes, rxDatasEbs) = unzip5 rxFifos
+  ebStables :: Vec LinkCount (Signal Bittide Stable)
+  (_, fifoUnderflowsTx, fifoOverflowsTx, ebStables, ebControlAcks, rxDatasEbs) = unzip6 rxFifos
 
   fifoOverflows :: Signal Bittide Overflow
   fifoOverflows = or <$> bundle fifoOverflowsTx
