@@ -15,7 +15,7 @@ import Data.String.Interpolate (i)
 import GHC.Stack (HasCallStack)
 import Project.Handle (readUntil)
 import System.Exit (ExitCode (ExitFailure, ExitSuccess))
-import System.IO (BufferMode (LineBuffering), Handle, hPutStrLn)
+import System.IO (BufferMode (LineBuffering), Handle, hFlush, hPutStrLn)
 import System.IO.Extra (hSetBuffering)
 import System.Process (
   CreateProcess (std_err, std_in, std_out),
@@ -111,6 +111,7 @@ readCommandRaw gdb cmd = liftIO $ do
   hPutStrLn gdb.stdin [i|echo #{magic}|]
   hPutStrLn gdb.stdin (L.trimEnd cmd)
   hPutStrLn gdb.stdin [i|echo #{magic}|]
+  hFlush gdb.stdin
 
   void $
     T.tryWithTimeout T.NoPrintActionTime ("Wait for magic (start)") 15_000_000 $
