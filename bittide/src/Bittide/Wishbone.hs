@@ -35,7 +35,6 @@ import Bittide.SharedTypes
 -- qualified imports
 
 import qualified Data.List as L
-import qualified Language.Haskell.TH as TH
 import qualified Protocols.MemoryMap as MM
 import qualified Protocols.MemoryMap.Registers.WishboneStandard as MM
 import qualified Protocols.Wishbone as Wishbone
@@ -908,29 +907,3 @@ whoAmIC whoAmI = MM.withMemoryMap mm $ Circuit go
     (Fwd (Wishbone dom 'Standard addrW (Bytes 4)), ()) ->
     (Bwd (Wishbone dom 'Standard addrW (Bytes 4)), ())
   go (m2s, ()) = (wbAlwaysAckWith whoAmI <$> m2s, ())
-
--- | Template Haskell function to generate a vector of incrementing prefixes, filtering out a list
--- of unwanted values. The function throws an error if it can't generate enough unique values.
--- >>> $$(filteredIncrementingPrefixesTH @3 @(Unsigned 8) [1, 3])
--- 0 :> 2 :> 4 :> Nil
-filteredIncrementingPrefixesTH ::
-  forall n a .
-  (KnownNat n, Eq a, Lift a, Bounded a, SaturatingNum a) =>
-  -- | List of values to filter out.
-  [a] ->
-  TH.Code TH.Q (Vec n a)
-filteredIncrementingPrefixesTH blackList = let
-  incrementWithFilter :: (a -> Bool) -> Vec n a
-  incrementWithFilter f = iterateI nextVal (nextVal startVal)
-   where
-    startVal = satPred SatWrap minBound
-    nextVal n
-      -- If we see our starting value as next value, we overflowed and will repeat values
-      | next == startVal = error "filteredIncrementingPrefixesTH: Overflow"
-      | f next = next
-      | otherwise = nextVal next
-     where
-      next = satSucc SatWrap n
-  vec = incrementWithFilter (`notElem` blackList)
-
-  in [e||vec||]

@@ -21,6 +21,7 @@ module Bittide.Instances.Hitl.SwitchDemo (
 
 import Clash.Explicit.Prelude
 import Clash.Prelude (HiddenClockResetEnable, withClockResetEnable)
+import Clash.Sized.Vector.Extra
 
 import Bittide.Calendar (CalendarConfig (..), ValidEntry (..))
 import Bittide.CaptureUgn (captureUgn)
@@ -73,7 +74,6 @@ import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle), switchDemoPeWb)
 import Bittide.Transceiver (transceiverPrbsN)
 import Bittide.Wishbone (
-  filteredIncrementingPrefixesTH,
   readDnaPortE2Wb,
   timeWb,
   uartBytes,
@@ -528,13 +528,11 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMM, (muJtag, linkIn))
 
     let muPrefixes =
-          $$( filteredIncrementingPrefixesTH
-                [ 0b1000 -- IMEM
-                , 0b1100 -- DMEM
-                , 0b1101 -- TIME (not the same as CC!)
-                ]
-            ) ::
-            Vec 12 (Unsigned 4)
+          incrementWithBlacklist
+            $ 0b1000 -- IMEM
+            :> 0b1100 -- DMEM
+            :> 0b1101 -- TIME (not the same as CC!)
+            :> Nil
     idleSink <| (Vec.vecCircuits $ fmap MM.constBwd muPrefixes) -< muPfxs
 
     (muPfxs, muWbAll1) <- unzipC -< muWbAll0

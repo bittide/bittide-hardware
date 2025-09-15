@@ -5,7 +5,13 @@
 module Clash.Sized.Vector.Extra where
 
 import Clash.Explicit.Prelude
-import Data.Maybe (fromMaybe)
+import Control.Monad.Extra (guarded)
+import Data.Maybe (fromJust, fromMaybe)
+import GHC.Stack (HasCallStack)
+
+{- $setup
+>>> import Clash.Prelude
+-}
 
 {- | Finds first element in given vector matching the predicate. Returns
 'Nothing' if no element satisfied the predicate.
@@ -22,6 +28,37 @@ default element (the first argument) if no element satisfied the predicate.
 -}
 findWithDefault :: (KnownNat n) => a -> (a -> Bool) -> Vec n a -> a
 findWithDefault a f = fromMaybe a . find f
+
+{- | Generates a vector of incrementing numbers, skipping values that are in the blacklist.
+Throws an error if it can't produce enough unique values.
+>>> incrementWithBlacklist (1 :> 3 :> Nil) :: Vec 3 (Unsigned 8)
+0 :> 2 :> 4 :> Nil
+>>> incrementWithBlacklist Nil :: Vec 4 (Unsigned 2)
+0 :> 1 :> 2 :> 3 :> Nil
+>>> incrementWithBlacklist (0 :> Nil) :: Vec 3 (Unsigned 2)
+1 :> 2 :> 3 :> Nil
+-}
+incrementWithBlacklist ::
+  forall n m x.
+  (HasCallStack, KnownNat m, KnownNat n, KnownNat x) =>
+  Vec m (Unsigned x) ->
+  Vec n (Unsigned x)
+incrementWithBlacklist blackList
+  | fromIntegral (maxBound :: Unsigned x) < (natToNum @(n + m) - 1 :: Integer) = err
+  | otherwise = fmap fromJust $ takeI $ packVec results
+ where
+  err = clashCompileError "incrementWithBlacklist: Not enough unique values possible"
+  candidates = iterateI @(n + m) go (Just minBound)
+
+  go (Just n) = if n == maxBound then Nothing else Just (n + 1)
+  go Nothing = Nothing
+
+  results = fmap (>>= (guarded (`notElem` blackList))) candidates
+
+  packVec = foldr f (repeat @(n + m) Nothing)
+   where
+    f (Just a) acc = Just a +>> acc
+    f Nothing acc = acc
 
 -- XXX: We need a bunch of zip functions due to an unfortunate coinciding bugs:
 --
