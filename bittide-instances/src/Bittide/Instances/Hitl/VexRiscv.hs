@@ -19,7 +19,7 @@ import Clash.Cores.UART (ValidBaud)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Data.Maybe (fromMaybe)
 import Protocols
-import Protocols.MemoryMap (Access (WriteOnly), ConstBwd, MM, constBwd, getMMAny)
+import Protocols.MemoryMap (Access (WriteOnly), ConstBwd, MM, getMMAny)
 import Protocols.MemoryMap.FieldType
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
@@ -132,17 +132,11 @@ vexRiscvTestC =
   withBittideByteOrder
     $ circuit
     $ \(mm, (jtag, uartRx)) -> do
-      [ (preTime, timeBus)
-        , (preUart, uartBus)
-        , (preStatus, statusRegisterBus)
+      [ timeBus
+        , uartBus
+        , statusRegisterBus
         ] <-
         processingElement NoDumpVcd peConfig -< (mm, jtag)
-
-      --       0b010 Data memory
-      --       0b100 Instruction memory
-      constBwd 0b101 -< preTime
-      constBwd 0b110 -< preUart
-      constBwd 0b111 -< preStatus
 
       (uartTx, _uartStatus) <-
         uartInterfaceWb @dom d16 d16 (uartDf baud) -< (uartBus, uartRx)
@@ -178,9 +172,7 @@ vexRiscvTestC =
   peConfigRtl =
     PeConfig
       { initI = Undefined @DMemWords
-      , prefixI = 0b100
       , initD = Undefined @IMemWords
-      , prefixD = 0b010
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True

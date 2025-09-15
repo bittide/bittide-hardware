@@ -62,21 +62,16 @@ dut ::
   (HasCallStack, HiddenClockResetEnable dom) => Circuit (ConstBwd MM) (Df dom (BitVector 8))
 dut = withBittideByteOrder $ circuit $ \mm -> do
   (uartRx, jtagIdle) <- idleSource
-  [ (prefixUart, uartBus)
-    , (prefixSu, (mmSu, wbSu))
-    , (prefixGu, (mmGu, wbGu))
-    , (prefixSuCal, (mmSuCal, wbSuCal))
-    , (prefixGuCal, (mmGuCal, wbGuCal))
+  [ uartBus
+    , wbSu
+    , wbGu
+    , wbSuCal
+    , wbGuCal
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
-  constBwd 0b010 -< prefixUart
-  Fwd link <- gatherUnitWbC gatherConfig -< ((mmGu, wbGu), (mmGuCal, wbGuCal))
-  constBwd 0b100 -< prefixGu
-  constBwd 0b101 -< prefixGuCal
-  scatterUnitWbC scatterConfig link -< ((mmSu, wbSu), (mmSuCal, wbSuCal))
-  constBwd 0b011 -< prefixSu
-  constBwd 0b111 -< prefixSuCal
+  Fwd link <- gatherUnitWbC gatherConfig -< (wbGu, wbGuCal)
+  scatterUnitWbC scatterConfig link -< (wbSu, wbSuCal)
   idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
@@ -91,13 +86,11 @@ dut = withBittideByteOrder $ circuit $ \mm -> do
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr BigEndian elfPath
-        , prefixI = 0b000
         , initD =
             Reloadable @DMemWords
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData BigEndian elfPath
-        , prefixD = 0b001
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

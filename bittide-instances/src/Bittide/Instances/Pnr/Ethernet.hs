@@ -98,35 +98,28 @@ vexRiscGmiiC ::
     )
 vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
   circuit $ \(mm, (uartTx, gmiiRx, jtag)) -> do
-    [ (prefixUart, uartBus)
-      , (prefixTime, (mmTime, timeBus))
-      , (prefixAxiRx, (mmAxiRx, wbAxiRx))
-      , (prefixAxiTx, (mmAxiTx, wbAxiTx))
-      , (prefixDna, (mmDna, dnaWb))
-      , (prefixGpio, (mmGpio, gpioWb))
-      , (prefixMac, (mmMac, macWb))
+    [ uartBus
+      , (mmTime, timeBus)
+      , (mmAxiRx, wbAxiRx)
+      , (mmAxiTx, wbAxiTx)
+      , (mmDna, dnaWb)
+      , (mmGpio, gpioWb)
+      , (mmMac, macWb)
       ] <-
       pe -< (mm, jtag)
     (uartRx, _uartStatus) <- uart -< (uartBus, uartTx)
-    constBwd 0b0010 -< prefixUart
     _localCounter <- time -< (mmTime, timeBus)
-    constBwd 0b0011 -< prefixTime
     _dna <- dnaC -< (mmDna, dnaWb)
-    constBwd 0b0111 -< prefixDna
     macStatIf -< (mmMac, (macWb, macStatus))
     gpioDf <- idleSource
     gpioOut <- gpio -< (gpioWb, gpioDf)
-    constBwd 0b0100 -< prefixGpio
     constBwd todoMM -< mmGpio
     (axiRx0, gmiiTx, macStatus) <- mac -< (axiTx1, gmiiRx)
-    constBwd 0b1001 -< prefixMac
     axiRx1 <- axiRxPipe -< axiRx0
     axiTx0 <- wbToAxiTx' -< wbAxiTx
     axiTx1 <- axiTxPipe -< axiTx0
     _rxBufStatus <- wbAxiRxBuffer -< (wbAxiRx, axiRx1)
-    constBwd 0b0101 -< prefixAxiRx
     constBwd todoMM -< mmAxiRx
-    constBwd 0b0110 -< prefixAxiTx
     constBwd todoMM -< mmAxiTx
 
     idC -< (uartRx, gmiiTx, gpioOut)
@@ -176,14 +169,12 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
                   $ unsafePerformIO
                   $ vecFromElfInstr @IMemWords BigEndian elfPath
               )
-        , prefixI = 0b1000
         , initD =
             Reloadable
               ( Vec
                   $ unsafePerformIO
                   $ vecFromElfData @DMemWords BigEndian elfPath
               )
-        , prefixD = 0b0001
         , iBusTimeout = d0
         , dBusTimeout = d0
         , includeIlaWb = False
@@ -192,9 +183,7 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
   peConfigRtl =
     PeConfig
       { initI = Undefined @IMemWords
-      , prefixI = 0b1000
       , initD = Undefined @DMemWords
-      , prefixD = 0b0001
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True

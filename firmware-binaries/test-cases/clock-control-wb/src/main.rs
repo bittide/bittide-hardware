@@ -39,8 +39,8 @@ const RNG_SEED: [u8; 16] = {
 #[allow(clippy::empty_loop)]
 fn main() -> ! {
     #[allow(clippy::zero_ptr)] // we might want to change the address!
-    let mut uart = unsafe { Uart::new(0x2000_0000 as *mut u8) };
-    let cc = unsafe { ClockControl::new(0xC000_0000 as *mut u8) };
+    let mut uart = unsafe { Uart::new((0b010 << 29) as *mut u8) };
+    let cc = unsafe { ClockControl::new((0b011 << 29) as *mut u8) };
 
     writeln!(uart, "nLinks: {}", cc.n_links()).unwrap();
     writeln!(uart, "linkMask: {}", cc.link_mask()).unwrap();

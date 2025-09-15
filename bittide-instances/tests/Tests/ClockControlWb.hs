@@ -126,16 +126,11 @@ dut =
     $ circuit
     $ \_unit -> do
       (uartRx, jtag) <- idleSource
-      [ (prefixUart, uartBus)
-        , (prefixCC, (mmCC, ccWb))
-        , -- XXX: We "need" a dummy to make the width of the prefixes match 3 bits
-        (prefixDummy, (mmDummy, dummyWb))
+      [ uartBus
+        , (mmCC, ccWb)
         ] <-
         processingElement NoDumpVcd peConfig -< (mm, jtag)
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-
-      idleSink -< dummyWb
-      constBwd todoMM -< mmDummy
 
       mm <- ignoreMM
 
@@ -145,10 +140,6 @@ dut =
           (pure linksOk)
           (pure <$> dataCounts)
           -< (mmCC, ccWb)
-
-      constBwd 0b001 -< prefixUart
-      constBwd 0b110 -< prefixCC
-      constBwd 0b000 -< prefixDummy
 
       idC -< (uartTx, ccd)
  where
@@ -161,9 +152,7 @@ dut =
     pure
       PeConfig
         { initI = Reloadable (Vec iMem)
-        , prefixI = 0b100
         , initD = Reloadable (Vec dMem)
-        , prefixD = 0b010
         , iBusTimeout = d0
         , dBusTimeout = d0
         , includeIlaWb = False

@@ -83,23 +83,18 @@ dut ::
   Circuit () (Df dom (BitVector 8))
 dut dnaA dnaB = withBittideByteOrder $ circuit $ do
   (uartRx, jtagIdle) <- idleSource
-  [ (prefixUart, uartBus)
-    , (prefixTime, (mmTime, timeBus))
-    , (prefixA, (mmA, peBusA))
-    , (prefixB, (mmB, peBusB))
+  [ uartBus
+    , (mmTime, timeBus)
+    , (mmA, peBusA)
+    , (mmB, peBusB)
     ] <-
     processingElement NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d16 d2 uartBytes -< (uartBus, uartRx)
   mm <- ignoreMM
-  constBwd 0b010 -< prefixUart
-
   Fwd localCounter <- timeWb -< (mmTime, timeBus)
-  constBwd 0b011 -< prefixTime
 
   (linkAB, _stateAB) <-
     switchDemoPeWb d2 -< (mmA, (Fwd localCounter, peBusA, dnaAC, linkBA))
-  constBwd 0b100 -< prefixA
-  constBwd 0b101 -< prefixB
 
   (linkBA, _stateBA) <-
     switchDemoPeWb d2 -< (mmB, (Fwd localCounter, peBusB, dnaBC, linkAB))
@@ -119,9 +114,7 @@ dut dnaA dnaB = withBittideByteOrder $ circuit $ do
     pure
       PeConfig
         { initI = Reloadable (Vec iMem)
-        , prefixI = 0b000
         , initD = Reloadable (Vec dMem)
-        , prefixD = 0b001
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

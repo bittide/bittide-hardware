@@ -48,19 +48,17 @@ import qualified Protocols.Wishbone as Wishbone
 {-# ANN module "HLint: ignore Functor law" #-}
 
 -- | A vector of base addresses, one for each slave.
-type MemoryMap nSlaves = Vec nSlaves (Unsigned (CLog 2 nSlaves))
-
--- | Size of a bus that results from a `singleMasterInterconnect` with `nSlaves` slaves.
-type MappedBusAddrWidth addr nSlaves = addr - CLog 2 nSlaves
+type MemoryMap nSlaves pfxWidth = Vec nSlaves (Unsigned pfxWidth)
 
 singleMasterInterconnectC ::
-  forall dom nSlaves addrW a.
+  forall dom nSlaves addrW pfxWidth a.
   ( HiddenClockResetEnable dom
   , HasCallStack
   , KnownNat nSlaves
   , 1 <= nSlaves
   , KnownNat addrW
-  , (CLog 2 nSlaves <= addrW)
+  , KnownNat pfxWidth
+  , (pfxWidth <= addrW)
   , BitPack a
   , NFDataX a
   ) =>
@@ -68,8 +66,8 @@ singleMasterInterconnectC ::
     (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW a)
     ( Vec
         nSlaves
-        ( MM.ConstBwd (Unsigned (CLog 2 nSlaves))
-        , (MM.ConstBwd MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth addrW nSlaves) a)
+        ( MM.ConstBwd (Unsigned pfxWidth)
+        , (MM.ConstBwd MM.MM, Wishbone dom 'Standard (addrW - pfxWidth) a)
         )
     )
 singleMasterInterconnectC = Circuit go
@@ -78,12 +76,12 @@ singleMasterInterconnectC = Circuit go
     ( ((), Signal dom (WishboneM2S addrW (Div (BitSize a + 7) 8) a))
     , Vec
         nSlaves
-        (Unsigned (CLog 2 nSlaves), (SimOnly MM.MemoryMap, Signal dom (WishboneS2M a)))
+        (Unsigned pfxWidth, (SimOnly MM.MemoryMap, Signal dom (WishboneS2M a)))
     ) ->
     ( (SimOnly MM.MemoryMap, Signal dom (WishboneS2M a))
     , Vec
         nSlaves
-        ((), ((), Signal dom (WishboneM2S (addrW - CLog 2 nSlaves) (Div (BitSize a + 7) 8) a)))
+        ((), ((), Signal dom (WishboneM2S (addrW - pfxWidth) (Div (BitSize a + 7) 8) a)))
     )
   go (((), m2s), unzip -> (prefixes, unzip -> (slaveMms, s2ms))) = ((SimOnly memMap, s2m), (\x -> ((), ((), x))) <$> m2ss)
    where
@@ -91,7 +89,7 @@ singleMasterInterconnectC = Circuit go
     -- not a byte aligned bus.
     prefixToAddr prefix = 4 * (toInteger prefix `shiftL` fromInteger shift')
      where
-      shift' = snatToInteger $ SNat @(addrW - CLog 2 nSlaves)
+      shift' = snatToInteger $ SNat @(addrW - pfxWidth)
     relAddrs = L.map prefixToAddr (toList prefixes)
     comps = L.zip relAddrs ((.tree) . unSimOnly <$> toList slaveMms)
     unSimOnly (SimOnly n) = n
@@ -110,19 +108,20 @@ bus. It routes the incoming control signals to a slave device based on the 'Memo
 a vector of base addresses.
 -}
 singleMasterInterconnect ::
-  forall dom nSlaves addrW a.
+  forall dom nSlaves addrW pfxWidth a.
   ( HiddenClockResetEnable dom
   , KnownNat nSlaves
   , 1 <= nSlaves
   , KnownNat addrW
-  , (CLog 2 nSlaves <= addrW)
+  , KnownNat pfxWidth
+  , pfxWidth <= addrW
   , BitPack a
   , NFDataX a
   ) =>
-  MemoryMap nSlaves ->
+  MemoryMap nSlaves pfxWidth ->
   Circuit
     (Wishbone dom 'Standard addrW a)
-    (Vec nSlaves (Wishbone dom 'Standard (MappedBusAddrWidth addrW nSlaves) a))
+    (Vec nSlaves (Wishbone dom 'Standard (addrW - pfxWidth) a))
 singleMasterInterconnect (fmap pack -> config) =
   Circuit go
  where
@@ -135,8 +134,7 @@ singleMasterInterconnect (fmap pack -> config) =
     )
    where
     oneHotOrZeroSelected = fmap (== addrIndex) config
-    (addrIndex, newAddr) =
-      split @_ @_ @(MappedBusAddrWidth addrW nSlaves) addr
+    (addrIndex :: BitVector pfxWidth, newAddr) = split addr
     toSlaves =
       (\newStrobe -> (updateM2SAddr newAddr master){strobe = strobe && newStrobe})
         <$> oneHotOrZeroSelected
@@ -322,24 +320,25 @@ foldMaybes dflt v@(Cons _ _) = fromMaybe dflt $ fold (<|>) v
 from @clash-protocols@ but exposes 'Signal's directly.
 -}
 singleMasterInterconnect' ::
-  forall dom nSlaves addrW a.
+  forall dom nSlaves addrW pfxWidth a.
   ( HiddenClockResetEnable dom
   , KnownNat nSlaves
   , 1 <= nSlaves
   , KnownNat addrW
-  , CLog 2 nSlaves <= addrW
+  , KnownNat pfxWidth
+  , pfxWidth <= addrW
   , BitPack a
   , NFDataX a
   ) =>
-  MemoryMap nSlaves ->
+  MemoryMap nSlaves pfxWidth ->
   Signal dom (WishboneM2S addrW (Regs a 8) a) ->
   Signal dom (Vec nSlaves (WishboneS2M a)) ->
   ( Signal dom (WishboneS2M a)
-  , Signal dom (Vec nSlaves (WishboneM2S (MappedBusAddrWidth addrW nSlaves) (Regs a 8) a))
+  , Signal dom (Vec nSlaves (WishboneM2S (addrW - pfxWidth) (Regs a 8) a))
   )
 singleMasterInterconnect' config master slaves = (toMaster, bundle toSlaves)
  where
-  Circuit f = singleMasterInterconnect @dom @nSlaves @addrW @a config
+  Circuit f = singleMasterInterconnect @dom @nSlaves @addrW @pfxWidth @a config
   (toMaster, toSlaves) =
     case divWithRemainder @(Regs a 8) @8 @7 of
       Dict ->

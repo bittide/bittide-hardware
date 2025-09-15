@@ -11,8 +11,8 @@ use bittide_hal::shared::devices::CaptureUgn;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-const UART_ADDR: *mut u8 = (0b10 << 30) as *mut u8;
-const UGN_ADDR: *mut u8 = (0b11 << 30) as *mut u8;
+const UART_ADDR: *mut u8 = (0x40000000) as *mut u8;
+const UGN_ADDR: *mut u8 = (0x60000000) as *mut u8;
 
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {

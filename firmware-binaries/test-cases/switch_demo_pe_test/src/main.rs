@@ -19,8 +19,8 @@ use riscv_rt::entry;
 
 const UART_ADDR: *mut u8 = (0b010 << 29) as *mut u8;
 const TIMER_ADDR: *mut u8 = (0b011 << 29) as *mut u8;
-const SWITCH_PE_A: *const () = (0b100 << 29) as *const ();
-const SWITCH_PE_B: *const () = (0b101 << 29) as *const ();
+const SWITCH_PE_A: *const () = (0b101 << 29) as *const ();
+const SWITCH_PE_B: *const () = (0b110 << 29) as *const ();
 
 // Size of buffer in number of "tri-cycles". That is, we always store 3 64-bit words:
 // local clock cycle counter, DNA (64 lsbs), DNA (32 msbs, zero-extended).

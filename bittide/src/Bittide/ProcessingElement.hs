@@ -8,9 +8,12 @@ module Bittide.ProcessingElement where
 
 import Clash.Explicit.Prelude hiding (delay)
 import Clash.Prelude
+import Clash.Sized.Vector.Extra (incrementWithBlacklist)
 
+import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.Extra
+import Protocols.Idle
 import Protocols.Wishbone
 import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, vexRiscv)
 
@@ -30,6 +33,7 @@ import qualified Protocols.MemoryMap as MM (
   withDeviceTag,
   withTag,
  )
+import qualified Protocols.Vec as Vec
 
 -- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where
@@ -41,13 +45,9 @@ data PeConfig nBusses where
     , 1 <= depthD
     , KnownNat nBusses
     , 2 <= nBusses
-    , CLog 2 nBusses <= 30
+    , PrefixWidth nBusses <= 30
     ) =>
-    { prefixI :: Unsigned (CLog 2 nBusses)
-    -- ^ The prefix of the address of the instruction bus
-    , prefixD :: Unsigned (CLog 2 nBusses)
-    -- ^ The prefix of the address of the data bus
-    , initI :: InitialContent depthI (Bytes 4)
+    { initI :: InitialContent depthI (Bytes 4)
     -- ^ Initial content of the instruction memory, can be smaller than its total depth.
     , initD :: InitialContent depthD (Bytes 4)
     -- ^ Initial content of the data memory, can be smaller than its total depth.
@@ -64,16 +64,23 @@ data PeConfig nBusses where
     } ->
     PeConfig nBusses
 
+type PrefixWidth nBusses = CLog 2 (nBusses + 1)
+type RemainingBusWidth nBusses = 30 - PrefixWidth nBusses
+
 {- | VexRiscV based RV32IMC core together with instruction memory, data memory and
 'singleMasterInterconnect'.
 -}
 processingElement ::
-  forall dom nBusses.
-  ( HiddenClockResetEnable dom
+  forall dom nBusses pfxWidth.
+  ( HasCallStack
+  , HiddenClockResetEnable dom
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   , KnownNat nBusses
   , 2 <= nBusses
+  , KnownNat pfxWidth
+  , pfxWidth <= 30
+  , pfxWidth ~ PrefixWidth nBusses
   ) =>
   DumpVcd ->
   PeConfig nBusses ->
@@ -81,11 +88,9 @@ processingElement ::
     (MM.ConstBwd MM.MM, Jtag dom)
     ( Vec
         (nBusses - 2)
-        ( MM.ConstBwd (Unsigned (CLog 2 nBusses))
-        , (MM.ConstBwd MM.MM, Wishbone dom 'Standard (MappedBusAddrWidth 30 nBusses) (Bytes 4))
-        )
+        (MM.ConstBwd MM.MM, Wishbone dom 'Standard (RemainingBusWidth nBusses) (Bytes 4))
     )
-processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, dBusTimeout, includeIlaWb} = circuit $ \(mm, jtagIn) -> do
+processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, includeIlaWb} = circuit $ \(mm, jtagIn) -> do
   (iBus0, (mmDbus, dBus0)) <-
     rvCircuit dumpVcd (pure low) (pure low) (pure low) -< (mm, jtagIn)
   iBus1 <-
@@ -107,10 +112,9 @@ processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, 
         onTransactionWb
         onTransactionWb
       -< dBus0
-  ([(iPre, (mmI, iMemBus)), (dPre, (mmD, dMemBus))], extBusses) <-
-    (splitAtCI <| singleMasterInterconnectC) -< (mmDbus, dBus1)
-  MM.constBwd prefixD -< dPre
-  MM.constBwd prefixI -< iPre
+  (pfxs, wbs) <- unzipC <| singleMasterInterconnectC -< (mmDbus, dBus1)
+  idleSink <| (Vec.vecCircuits $ fmap MM.constBwd prefixes) -< pfxs
+  ([(mmI, iMemBus), dMemBus], extBusses) <- splitAtCI -< wbs
 
   -- Instruction and data memory are never accessed explicitly by developers,
   -- only implicitly by the CPU itself. We therefore don't need to generate HAL
@@ -118,7 +122,7 @@ processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, 
   MM.withTag "no-generate"
     $ MM.withDeviceTag "no-generate"
     $ wbStorage "DataMemory" initD
-    -< (mmD, dMemBus)
+    -< dMemBus
 
   iBus2 <- removeMsb <| watchDogWb "iBus" dBusTimeout -< iBus1 -- XXX: <= This should be handled by an interconnect
   MM.withTag "no-generate"
@@ -128,6 +132,14 @@ processingElement dumpVcd PeConfig{prefixI, prefixD, initI, initD, iBusTimeout, 
 
   idC -< extBusses
  where
+  -- We use `init` to generate at least 0 prefixes with `incrementWithBlacklist`
+  prefixes = iMemPfx :> (incrementWithBlacklist @(nBusses - 1) prefixBlacklist)
+  -- We dont want to use address 0 or the address with only the MSB set as prefixes.
+  -- Address 0 is not used because it is often used as a null pointer.
+  -- The address with only the MSB set is not used because we use it for the instruction
+  -- memory
+  iMemPfx = rotateR 1 1
+  prefixBlacklist = 0 :> iMemPfx :> Nil
   removeMsb ::
     forall aw a.
     (KnownNat aw) =>
