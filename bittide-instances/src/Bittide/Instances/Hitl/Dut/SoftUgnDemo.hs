@@ -80,8 +80,8 @@ baud = SNat
     - `timeWb`
 -}
 
-memoryMapCc, memoryMapMu :: MemoryMap
-(memoryMapCc, memoryMapMu, _) = (ccMm, muMm, gppeMm)
+memoryMapCc, memoryMapMu, memoryMapGppe :: MemoryMap
+(memoryMapCc, memoryMapMu, memoryMapGppe) = (ccMm, muMm, gppeMm)
  where
   Circuit circuitFn =
     withBittideByteOrder
