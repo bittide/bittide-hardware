@@ -19,6 +19,7 @@ import qualified Df.WbToDf as WbToDf
 import qualified Tests.ClockControlWb as ClockControlWb
 import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
+import qualified Wishbone.DelayWishboneC as DelayWishboneC
 import qualified Wishbone.DnaPortE2 as DnaPortE2
 import qualified Wishbone.RegisterWb as RegisterWb
 import qualified Wishbone.ScatterGather as ScatterGather
@@ -67,6 +68,7 @@ tests =
         [ Axi.tests
         , CaptureUgn.tests
         , ClockControlWb.tests
+        , DelayWishboneC.tests
         , DnaPortE2.tests
         , ScatterGather.tests
         , SwitchDemoProcessingElement.tests

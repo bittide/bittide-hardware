@@ -8,7 +8,7 @@
 module Bittide.Wishbone where
 
 -- prelude imports
-import Clash.Prelude
+import Clash.Prelude hiding (Exp)
 
 -- external imports
 import Clash.Class.BitPackC
@@ -20,10 +20,12 @@ import Clash.Util.Interpolate
 import Control.DeepSeq (NFData)
 import Data.Bifunctor
 import Data.Bool (bool)
+import Data.Char (isAscii, isPrint)
 import Data.Constraint.Nat.Extra
 import Data.Constraint.Nat.Lemmas
 import Data.Maybe
 import GHC.Stack (HasCallStack)
+import Language.Haskell.TH
 import Protocols
 import Protocols.Idle (forceResetSanityGeneric)
 import Protocols.MemoryMap (Access (ReadOnly))
@@ -43,6 +45,7 @@ import Bittide.SharedTypes
 -- qualified imports
 
 import qualified Data.List as L
+import qualified Language.Haskell.TH.Syntax as TH.Syntax
 import qualified Protocols.MemoryMap as MM
 import qualified Protocols.MemoryMap.Registers.WishboneStandard as MM
 import qualified Protocols.Wishbone as Wishbone
@@ -889,6 +892,34 @@ whoAmIC whoAmI = circuit $ \wb -> do
   registerWbI_ config whoAmI -< (idWb, Fwd (pure Nothing))
  where
   config = (registerConfig "identifier"){access=ReadOnly}
+
+{- | Constructs a @BitVector 32@ from a @String@, which must be exactly 4 characters
+long and consist only of printable ASCII characters.
+-}
+makeWhoAmID :: String -> BitVector 32
+makeWhoAmID str =
+  if L.length str == 4 && all (\c -> isAscii c && isPrint c) str
+    then wordForm
+    else
+      error $
+        "whoAmID strings must be four characters long! Input '"
+          <> str
+          <> "' is "
+          <> show (L.length str)
+          <> " characters."
+ where
+  strVec :: Vec 4 Char
+  strVec = (\(idx :: Index 4) -> str L.!! (fromIntegral idx)) <$> indicesI
+  byteVec :: Vec 4 (Unsigned 8)
+  byteVec = fromIntegral . fromEnum <$> strVec
+  wordForm :: BitVector 32
+  wordForm = pack $ reverse byteVec
+
+{- | Helper function for lifting @makeWhoAmID@ when Clash complains about unsynthesizable
+operations.
+-}
+makeWhoAmIDTH :: String -> Q Exp
+makeWhoAmIDTH = TH.Syntax.lift . makeWhoAmID
 
 -- | Simple type for wishbone requests supporting byte enables.
 data WishboneRequest addrW nBytes
