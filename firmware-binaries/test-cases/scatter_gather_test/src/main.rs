@@ -4,7 +4,7 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 
-use bittide_hal::scatter_gather::DeviceInstances;
+use bittide_hal::scatter_gather_pe::DeviceInstances;
 use core::fmt::Write;
 #[cfg(not(test))]
 use riscv_rt::entry;
