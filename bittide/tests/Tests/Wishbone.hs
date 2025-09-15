@@ -6,7 +6,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fplugin Protocols.Plugin #-}
 
-module Tests.Wishbone (tests, simpleSlave, simpleSlave') where
+module Tests.Wishbone (tests, simpleSlave, simpleSlave', wbRead) where
 
 import Clash.Prelude hiding (sample)
 
