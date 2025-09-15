@@ -16,6 +16,7 @@ module Bittide.Instances.Hitl.Dut.SoftUgnDemo (
   softUgnDemoTest,
   memoryMapCc,
   memoryMapMu,
+  memoryMapGppe,
   tests,
 ) where
 
@@ -122,8 +123,8 @@ type FifoSize = 5 -- = 2^5 = 32
     - `timeWb`
 -}
 
-memoryMapCc, memoryMapMu :: MemoryMap
-(memoryMapCc, memoryMapMu, _) = (ccMm, muMm, gppeMm)
+memoryMapCc, memoryMapMu, memoryMapGppe :: MemoryMap
+(memoryMapCc, memoryMapMu, memoryMapGppe) = (ccMm, muMm, gppeMm)
  where
   (SimOnly ccMm, SimOnly muMm, SimOnly gppeMm, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =
     softUgnDemoDut
