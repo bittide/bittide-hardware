@@ -43,7 +43,7 @@ $( do
           , ("Freeze", freezeMM)
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWb", RegisterWb.memoryMap)
-          , ("ScatterGather", ScatterGather.dutMM)
+          , ("ScatterGatherPe", ScatterGather.dutMM)
           , ("SwCcTopologies", SwCcTopologies.memoryMap)
           , ("SwitchC", SwitchCalendar.memoryMap)
           , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
