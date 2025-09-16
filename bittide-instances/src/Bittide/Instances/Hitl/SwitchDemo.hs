@@ -98,6 +98,9 @@ import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
 import Protocols.Wishbone
 import System.FilePath ((</>))
 import VexRiscv (DumpVcd (..), Jtag, JtagIn (..), JtagOut (..))
+#ifdef SIM_BAUD_RATE
+import Clash.Cores.UART.Extra
+#endif
 
 import {-# SOURCE #-} qualified Bittide.Instances.Hitl.Driver.SwitchDemo as D
 import qualified Bittide.Transceiver as Transceiver
