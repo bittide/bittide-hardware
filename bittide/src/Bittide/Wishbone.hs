@@ -31,6 +31,7 @@ import Protocols.Wishbone
 import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
+import Protocols.Extra
 
 -- qualified imports
 
@@ -772,7 +773,7 @@ readDnaPortE2Wb ::
     (CSignal dom (BitVector 96))
 readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
   dnaDf <- dnaCircuit
-  dna <- reg -< (wb, dnaDf)
+  dna <- applyC (fmap resize) id <| reg -< (wb, dnaDf)
   idC -< dna
  where
   mm =
@@ -788,7 +789,7 @@ readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
               , loc = MM.locHere
               , value =
                   MM.Register
-                    { fieldType = MM.regType @(BitVector 96)
+                    { fieldType = MM.regType @(BitVector 128)
                     , address = 0
                     , access = MM.ReadOnly
                     , reset = Nothing
@@ -807,8 +808,8 @@ readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
       $ fmap isNothing maybeDna
       .||. unsafeToActiveHigh hasReset
   reg = withReset regRst $ registerWbC @dom @_ @nBytes @addrW WishbonePriority 0
-  dnaCircuit :: Circuit () (Df dom (BitVector 96))
-  dnaCircuit = Circuit $ const ((), maybeDna)
+  dnaCircuit :: Circuit () (Df dom (BitVector 128))
+  dnaCircuit = Circuit $ const ((), fmap (fmap resize) maybeDna)
 
 {- | Circuit that monitors the 'Wishbone' bus and terminates the transaction after a timeout.
 Controls the 'err' signal of the 'WishboneS2M' signal and sets the outgoing 'WishboneM2S'
