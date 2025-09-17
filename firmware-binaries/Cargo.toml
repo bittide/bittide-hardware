@@ -28,6 +28,7 @@ members = [
   "test-cases/time_self_test",
   "test-cases/watchdog_test",
 
+  "clock-board",
   "clock-control",
   "management-unit",
   "processing-element-test",
