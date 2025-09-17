@@ -37,28 +37,36 @@ impl Into<RegisterOperation> for ConfigEntry {
 impl Si539xSpi {
     /// Write a clock board configuration using SPI.
     ///
-    /// TODO: Add configuration as argument
-    pub fn write_configuration(&self, timer: &Timer) {
+    /// Steps:
+    ///   - Wait for ready
+    ///   - Write preamble registers (don't confirm with read back, since some are self-clearing)
+    ///   - Wait 300 milliseconds for the calibration of the preamble (timer must be in a free domain)
+    ///   - Write and read back all configuration registers one by one
+    ///   - Write postamble registers (don't confirm with read back, since some are self-clearing)
+    ///   - Wait for lock
+    ///   - Finished
+    pub fn write_configuration<const PRE_LEN: usize, const CFG_LEN: usize, const PST_LEN: usize>(
+        &self,
+        timer: &Timer,
+        config: &Config<PRE_LEN, CFG_LEN, PST_LEN>,
+    ) {
         self.set_spi_done(false);
-        // Wait for ready
         self.wait_for_ready();
-        // Write preamble registers (don't confirm with read back, since some are self-clearing)
-        // for reg_op in config.preamble {
-        //     self.write(reg_op);
-        // }
-        // Wait 300 milliseconds for the calibration of the preamble (timer must be in a free domain)
+
+        for entry in config.preamble {
+            self.write(entry.into());
+        }
         timer.wait(Duration::from_millis(300));
-        // Write and read back all configuration registers one by one
-        // for reg_op in config.config {
-        //     self.write_and_confirm(reg_op);
-        // }
-        // Write postamble registers (don't confirm with read back, since some are self-clearing)
-        // for reg_op in config.postamble {
-        //     self.write(reg_op);
-        // }
-        // Wait for lock
+
+        for entry in config.config {
+            self.write_and_confirm(entry.into());
+        }
+
+        for entry in config.postamble {
+            self.write(entry.into());
+        }
+
         self.wait_for_lock();
-        // Finished
         self.set_spi_done(true);
     }
 
