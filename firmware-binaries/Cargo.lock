@@ -107,6 +107,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9555578bc9e57714c812a1f84e4fc5b4d21fcb063490c624de019f7464c91268"
 
 [[package]]
+name = "clock-board"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-macros",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
 name = "clock-control"
 version = "0.1.0"
 dependencies = [
