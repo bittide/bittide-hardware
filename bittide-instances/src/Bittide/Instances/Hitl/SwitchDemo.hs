@@ -30,7 +30,6 @@ import Bittide.ClockControl.Callisto.Types (
   Stability (..),
  )
 import Bittide.ClockControl.CallistoSw (
-  SwControlCConfig (..),
   SwcccInternalBusses,
   callistoSwClockControlC,
  )
@@ -67,13 +66,17 @@ import Bittide.Instances.Hitl.Setup (
   clockPaths,
  )
 import Bittide.Jtag (jtagChain)
-import Bittide.ProcessingElement (PeConfig (..), processingElement)
+import Bittide.ProcessingElement (
+  PeConfig (..),
+  PrefixWidth,
+  RemainingBusWidth,
+  processingElement,
+ )
 import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (SimplePeState (Idle), switchDemoPeWb)
 import Bittide.Transceiver (transceiverPrbsN)
 import Bittide.Wishbone (
-  filteredIncrementingPrefixesTH,
   readDnaPortE2Wb,
   timeWb,
   uartBytes,
@@ -93,11 +96,13 @@ import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Data.Char (ord)
 import Protocols
 import Protocols.Extra
-import Protocols.Idle
 import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
 import Protocols.Wishbone
 import System.FilePath ((</>))
 import VexRiscv (DumpVcd (..), Jtag, JtagIn (..), JtagOut (..))
+#ifdef SIM_BAUD_RATE
+import Clash.Cores.UART.Extra
+#endif
 
 import {-# SOURCE #-} qualified Bittide.Instances.Hitl.Driver.SwitchDemo as D
 import qualified Bittide.Transceiver as Transceiver
@@ -122,15 +127,13 @@ type FifoSize = 5 -- = 2^5 = 32
     - `timeWb`
 -}
 type NmuInternalBusses = 3
-type NmuRemBusWidth nodeBusses = 30 - CLog 2 (nodeBusses + NmuInternalBusses)
+type NmuRemBusWidth nodeBusses = RemainingBusWidth (nodeBusses + NmuInternalBusses)
 
 data SimpleManagementConfig nodeBusses where
   SimpleManagementConfig ::
     (KnownNat nodeBusses) =>
     { peConfig :: PeConfig (nodeBusses + NmuInternalBusses)
     -- ^ Configuration for the internal 'processingElement'
-    , timeRegPrefix :: Unsigned (CLog 2 (nodeBusses + NmuInternalBusses))
-    -- ^ Time control register prefix
     , dumpVcd :: DumpVcd
     -- ^ VCD dump configuration
     } ->
@@ -144,7 +147,7 @@ simpleManagementUnitC ::
   , ?regByteOrder :: ByteOrder
   , 1 <= DomainPeriod bitDom
   , KnownNat nodeBusses
-  , CLog 2 (nodeBusses + NmuInternalBusses) <= 30
+  , PrefixWidth (nodeBusses + NmuInternalBusses) <= 30
   ) =>
   SimpleManagementConfig nodeBusses ->
   Circuit
@@ -152,19 +155,15 @@ simpleManagementUnitC ::
     ( CSignal bitDom (Unsigned 64)
     , Vec
         nodeBusses
-        ( MM.ConstBwd (Unsigned (CLog 2 (nodeBusses + NmuInternalBusses)))
-        , ( MM.ConstBwd MM.MM
-          , Wishbone bitDom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4)
-          )
+        ( MM.ConstBwd MM.MM
+        , Wishbone bitDom 'Standard (NmuRemBusWidth nodeBusses) (Bytes 4)
         )
     )
-simpleManagementUnitC (SimpleManagementConfig peConfig pfxTime dumpVcd) =
+simpleManagementUnitC (SimpleManagementConfig peConfig dumpVcd) =
   circuit $ \(mm, (jtag, _linkIn)) -> do
     peWbs <- processingElement dumpVcd peConfig -< (mm, jtag)
-    ([(timePfx, timeWbBus)], nmuWbs) <- splitAtC d1 -< peWbs
+    ([timeWbBus], nmuWbs) <- splitAtC d1 -< peWbs
     localCounter <- timeWb -< timeWbBus
-
-    MM.constBwd pfxTime -< timePfx
 
     idC -< (localCounter, nmuWbs)
 
@@ -225,40 +224,27 @@ muConfig =
   SimpleManagementConfig
     { peConfig =
         PeConfig
-          { prefixI = 0b1000
-          , prefixD = 0b1100
-          , initI = Undefined @(Div (64 * 1024) 4)
+          { initI = Undefined @(Div (64 * 1024) 4)
           , initD = Undefined @(Div (64 * 1024) 4)
           , iBusTimeout = d0
           , dBusTimeout = d0
           , includeIlaWb = False
           }
-    , timeRegPrefix = 0b1101
     , dumpVcd = NoDumpVcd
     }
 
 ccConfig ::
-  ( CLog 2 (n + SwcccInternalBusses) <= 30
-  , KnownNat n
+  ( KnownNat n
+  , PrefixWidth (n + SwcccInternalBusses) <= 30
   ) =>
-  SwControlCConfig n
+  PeConfig (n + SwcccInternalBusses)
 ccConfig =
-  SwControlCConfig
-    { peConfig =
-        PeConfig
-          { prefixI = 0b1000
-          , prefixD = 0b0100
-          , initI = Undefined @(Div (64 * 1024) 4)
-          , initD = Undefined @(Div (64 * 1024) 4)
-          , iBusTimeout = d0
-          , dBusTimeout = d0
-          , includeIlaWb = False
-          }
-    , ccRegPrefix = 0b1100
-    , timePrefix = 0b0110
-    , freezePrefix = 0b0010
-    , syncOutGeneratorPrefix = 0b0001
-    , domainDiffsPrefix = 0b0011
+  PeConfig
+    { initI = Undefined @(Div (64 * 1024) 4)
+    , initD = Undefined @(Div (64 * 1024) 4)
+    , iBusTimeout = d0
+    , dBusTimeout = d0
+    , includeIlaWb = False
     }
 
 ccLabel :: Vec 2 Byte
@@ -524,20 +510,9 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       dcFifoDf d5 bittideClk handshakeRstTx refClk handshakeRstFree
         -< muUartBytesBittide
 
-    (Fwd lc, muWbAll0) <-
+    (Fwd lc, muWbAll) <-
       defaultBittideClkRstEn (simpleManagementUnitC muConfig) -< (muMM, (muJtag, linkIn))
 
-    let muPrefixes =
-          $$( filteredIncrementingPrefixesTH
-                [ 0b1000 -- IMEM
-                , 0b1100 -- DMEM
-                , 0b1101 -- TIME (not the same as CC!)
-                ]
-            ) ::
-            Vec 12 (Unsigned 4)
-    idleSink <| (Vec.vecCircuits $ fmap MM.constBwd muPrefixes) -< muPfxs
-
-    (muPfxs, muWbAll1) <- unzipC -< muWbAll0
     ( [ muWhoAmIWb
         , (peWbMM, peWb)
         , (switchWbMM, switchWb)
@@ -546,7 +521,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         ]
       , ugnData
       ) <-
-      splitAtC SNat -< muWbAll1
+      splitAtC SNat -< muWbAll
 
     ugnRxs <-
       defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs) -< ugnData
@@ -581,9 +556,9 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
 
     ( syncOut
       , Fwd swCcOut0
-      , [ (ccWhoAmIPfx, ccWhoAmIBus)
-          , (ccUartPfx, ccUartBus)
-          , (ccSampleMemoryPfx, ccSampleMemoryBus)
+      , [ ccWhoAmIBus
+          , ccUartBus
+          , ccSampleMemoryBus
           ]
       ) <-
       defaultBittideClkRstEn
@@ -596,18 +571,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
           NoDumpVcd
           ccConfig
         -< (ccMM, (Fwd syncIn, ccJtag, mask, Fwd linksSuitableForCc))
-
-    MM.constBwd 0b0000 -< ccUartPfx
-    --          0b0001    SYNC_OUT_GENERATOR
-    --          0b0010    FREEZE
-    --          0b0011    DOMAIN_DIFFS
-    --          0b0100    DMEM
-    --          0b0110    TIME (not the same as MU!)
-    --          0b1000    IMEM
-    --          0b1010    DBG
-    --          0b1100    CC
-    MM.constBwd 0b1110 -< ccWhoAmIPfx
-    MM.constBwd 0b1111 -< ccSampleMemoryPfx
 
     defaultBittideClkRstEn
       (wbStorage "SampleMemory")

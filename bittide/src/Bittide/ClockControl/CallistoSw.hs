@@ -5,8 +5,6 @@
 module Bittide.ClockControl.CallistoSw (
   callistoSwClockControlC,
   SwControlConfig (..),
-  SwControlCConfig (..),
-  SwcccRemBusWidth,
   SwcccInternalBusses,
 ) where
 
@@ -25,7 +23,7 @@ import Bittide.ClockControl.Callisto.Types (
 import Bittide.ClockControl.Freeze (freeze)
 import Bittide.ClockControl.Registers (ClockControlData (..), clockControlWb)
 import Bittide.Counter (domainDiffCountersWbC)
-import Bittide.ProcessingElement (PeConfig (..), processingElement)
+import Bittide.ProcessingElement
 import Bittide.SharedTypes
 import Bittide.Sync (syncInCounterC, syncOutGenerateWbC)
 import Bittide.Wishbone (timeWb)
@@ -41,28 +39,7 @@ data SwControlConfig dom where
     SwControlConfig dom
 
 type SwcccInternalBusses = 7
-type SwcccRemBusWidth n = 30 - CLog 2 (n + SwcccInternalBusses)
-
--- The additional 'otherWb' type parameter is necessary since this type helps expose
--- the Wishbone interconnect of the internal 'processingElement' so that other Wishbone
--- components may be connected to it. As such, the interconnect needs to know how many
--- other Wishbone ('otherWb') components are connected.
-data SwControlCConfig otherWb where
-  SwControlCConfig ::
-    ( KnownNat otherWb
-    ) =>
-    { peConfig :: PeConfig (otherWb + SwcccInternalBusses)
-    -- ^ Configuration for the internal 'processingElement'
-    , ccRegPrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
-    -- ^ Clock control register prefix
-    , timePrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
-    -- ^ Time prefix
-    , freezePrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
-    -- ^ Freeze prefix
-    , syncOutGeneratorPrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
-    , domainDiffsPrefix :: Unsigned (CLog 2 (otherWb + SwcccInternalBusses))
-    } ->
-    SwControlCConfig otherWb
+type SwcccRemBusWidth n = 30 - PrefixWidth (n + SwcccInternalBusses)
 
 -- TODO: Make this the primary Callisto function once the reset logic is fixed
 -- and Callisto is detached from the ILA plotting mechanisms.
@@ -75,7 +52,7 @@ callistoSwClockControlC ::
   , HasSynchronousReset free
   , HasSynchronousReset rx
   , HasDefinedInitialValues dom
-  , CLog 2 (otherWb + SwcccInternalBusses) <= 30
+  , PrefixWidth (otherWb + SwcccInternalBusses) <= 30
   , 1 <= DomainPeriod dom
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -90,7 +67,7 @@ callistoSwClockControlC ::
   Vec nLinks (Clock rx) ->
   Vec nLinks (Reset rx) ->
   DumpVcd ->
-  SwControlCConfig otherWb ->
+  PeConfig (otherWb + SwcccInternalBusses) ->
   Circuit
     ( ConstBwd MM
     , ( "SYNC_IN" ::: CSignal dom Bit
@@ -103,20 +80,18 @@ callistoSwClockControlC ::
     , CSignal dom (CallistoResult nLinks)
     , Vec
         otherWb
-        ( ConstBwd (Unsigned (CLog 2 (otherWb + SwcccInternalBusses)))
-        , ( ConstBwd MM
-          , Wishbone dom 'Standard (SwcccRemBusWidth otherWb) (Bytes 4)
-          )
+        ( ConstBwd MM
+        , Wishbone dom 'Standard (SwcccRemBusWidth otherWb) (Bytes 4)
         )
     )
-callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd ccConfig =
+callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
   circuit $ \(mm, (syncIn, jtag, Fwd linkMask, Fwd linksOk)) -> do
-    allWishbone <- processingElement dumpVcd ccConfig.peConfig -< (mm, jtag)
-    ( [ (clockControlPfx, clockControlBus)
-        , (timePfx, timeWbBus)
-        , (freezePfx, freezeBus)
-        , (syncOutGeneratorPfx, syncOutGeneratorBus)
-        , (domainDiffsPfx, domainDiffsBus)
+    allWishbone <- processingElement dumpVcd peConfig -< (mm, jtag)
+    ( [ clockControlBus
+        , timeWbBus
+        , freezeBus
+        , syncOutGeneratorBus
+        , domainDiffsBus
         ]
       , wbRest
       ) <-
@@ -141,12 +116,6 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd ccConfig =
       domainDiffCountersWbC rxClocks rxResets hasClock hasReset -< domainDiffsBus
 
     let diffCounters = fst <<$>> domainDiffs
-
-    constBwd ccConfig.ccRegPrefix -< clockControlPfx
-    constBwd ccConfig.timePrefix -< timePfx
-    constBwd ccConfig.freezePrefix -< freezePfx
-    constBwd ccConfig.syncOutGeneratorPrefix -< syncOutGeneratorPfx
-    constBwd ccConfig.domainDiffsPrefix -< domainDiffsPfx
 
     let
       callistoCResult :: Signal dom (CallistoResult nLinks)

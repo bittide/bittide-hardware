@@ -60,13 +60,11 @@ dut ::
   Circuit () (Df dom (BitVector 8))
 dut = withBittideByteOrder $ circuit $ \_unit -> do
   (uartRx, jtag) <- idleSource
-  [(prefixUart, uartBus), (prefixDna, dnaBus)] <-
+  [uartBus, dnaBus] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtag)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
   mm <- ignoreMM
-  constBwd 0b10 -< prefixUart
   _dna <- readDnaPortE2Wb simDna2 -< dnaBus
-  constBwd 0b11 -< prefixDna
   idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
@@ -76,9 +74,7 @@ dut = withBittideByteOrder $ circuit $ \_unit -> do
     pure
       PeConfig
         { initI = Reloadable (Vec iMem)
-        , prefixI = 0b00
         , initD = Reloadable (Vec dMem)
-        , prefixD = 0b01
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

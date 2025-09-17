@@ -48,13 +48,9 @@ vexRiscvUartHelloC ::
     (ConstBwd MM, (CSignal dom Bit, Jtag dom))
     (CSignal dom Bit)
 vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jtag)) -> do
-  [(prefixUart, uartBus), (prefixTime, (mmTime, timeBus))] <-
-    processingElement @dom NoDumpVcd peConfig -< (mm, jtag)
-  (uartTx, _uartStatus) <-
-    uartInterfaceWb d16 d16 (uartDf baudSnat) -< (uartBus, uartRx)
-  constBwd 0b10 -< prefixUart
-  _localCounter <- timeWb -< (mmTime, timeBus)
-  constBwd 0b11 -< prefixTime
+  [uartBus, timeBus] <- processingElement NoDumpVcd peConfig -< (mm, jtag)
+  (uartTx, _uartStatus) <- uartInterfaceWb d16 d16 (uartDf baudSnat) -< (uartBus, uartRx)
+  _localCounter <- timeWb -< timeBus
   idC -< uartTx
  where
   peConfig
@@ -85,9 +81,7 @@ vexRiscvUartHelloC baudSnat = withBittideByteOrder $ circuit $ \(mm, (uartRx, jt
   peConfigRtl =
     PeConfig
       { initI = Undefined @IMemWords
-      , prefixI = 0b00
       , initD = Undefined @DMemWords
-      , prefixD = 0b01
       , iBusTimeout = d0
       , dBusTimeout = d0
       , includeIlaWb = True

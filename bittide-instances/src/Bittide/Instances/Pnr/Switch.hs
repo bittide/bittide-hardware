@@ -24,7 +24,7 @@ switchExample ::
   Circuit
     ( ConstBwd MM
     , ( Vec 16 (CSignal Basic200 (BitVector 64))
-      , Wishbone Basic200 'Standard 28 (Bytes 4) -- calendar interface
+      , Wishbone Basic200 'Standard 27 (Bytes 4) -- calendar interface
       )
     )
     ( Vec 16 (CSignal Basic200 (BitVector 64))

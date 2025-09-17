@@ -61,10 +61,10 @@ dut = withBittideByteOrder
   $ circuit
   $ \_unit -> do
     (uartRx, jtag) <- idleSource
-    [ (prefixUart, uartBus)
-      , (prefixTime, (mmTime, timeBus))
-      , (prefixIdleA, (mmIdleA, idleBusA))
-      , (prefixIdleB, (mmIdleB, idleBusB))
+    [ uartBus
+      , (mmTime, timeBus0)
+      , (mmIdleA, idleBusA)
+      , (mmIdleB, idleBusB)
       ] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
 
@@ -73,18 +73,13 @@ dut = withBittideByteOrder
     idleSink
       <| (watchDogWb @_ @_ @4 "50 us" (SNat @(PeriodToCycles Basic200 (Microseconds 50))))
       -< idleBusB
-    constBwd 0b100 -< prefixIdleA
     constBwd todoMM -< mmIdleA
-
-    constBwd 0b101 -< prefixIdleB
     constBwd todoMM -< mmIdleB
 
-    timeBus1 <- watchDogWb @_ @_ @4 "" d0 -< timeBus
+    timeBus1 <- watchDogWb @_ @_ @4 "" d0 -< timeBus0
     _localCounter <- timeWb -< (mmTime, timeBus1)
-    constBwd 0b011 -< prefixTime
     (uartTx, _uartStatus) <-
       (uartInterfaceWb @_ @_ @4) d2 d2 uartBytes -< (uartBus, uartRx)
-    constBwd 0b010 -< prefixUart
     idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
@@ -95,9 +90,7 @@ dut = withBittideByteOrder
     pure
       $ PeConfig
         { initI = Reloadable (Vec iMem)
-        , prefixI = 0b000
         , initD = Reloadable (Vec dMem)
-        , prefixD = 0b001
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

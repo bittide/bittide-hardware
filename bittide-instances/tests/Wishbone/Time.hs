@@ -64,13 +64,11 @@ dut = withBittideByteOrder
   $ circuit
   $ \_unit -> do
     (uartRx, jtag) <- idleSource
-    [(prefixUart, uartBus), (prefixTime, (mmTime, timeBus))] <-
+    [uartBus, (mmTime, timeBus)] <-
       processingElement NoDumpVcd peConfig -< (mm, jtag)
     mm <- ignoreMM
     (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-    constBwd 0b10 -< prefixUart
     _localCounter <- timeWb -< (mmTime, timeBus)
-    constBwd 0b11 -< prefixTime
     idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
@@ -80,9 +78,7 @@ dut = withBittideByteOrder
     pure
       PeConfig
         { initI = Reloadable (Vec iMem)
-        , prefixI = 0b00
         , initD = Reloadable (Vec dMem)
-        , prefixD = 0b01
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

@@ -125,10 +125,10 @@ uartInterfaceWbCircuitTest = do
 of slaves.
 -}
 genConfig ::
-  forall nSlaves.
-  (1 <= nSlaves) =>
+  forall nSlaves pfxWidth.
+  (1 <= nSlaves, KnownNat pfxWidth) =>
   SNat nSlaves ->
-  Gen (MemoryMap nSlaves)
+  Gen (MemoryMap nSlaves pfxWidth)
 genConfig nSlaves@SNat =
   unsafeFromList . L.take (snatToNum nSlaves) <$> Gen.shuffle [0 ..]
 

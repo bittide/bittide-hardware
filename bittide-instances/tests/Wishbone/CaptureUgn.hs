@@ -91,13 +91,11 @@ dut ::
   Circuit () (Df dom (BitVector 8))
 dut eb localCounter = withBittideByteOrder $ circuit $ do
   (uartRx, jtagIdle) <- idleSource
-  [(prefixUart, uartBus), (prefixUgn, (mmUgn, ugnBus))] <-
+  [uartBus, ugnBus] <-
     processingElement @dom NoDumpVcd peConfig -< (mm, jtagIdle)
   (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
   mm <- ignoreMM
-  constBwd 0b10 -< prefixUart
-  _bittideData <- captureUgn localCounter eb -< (mmUgn, ugnBus)
-  constBwd 0b11 -< prefixUgn
+  _bittideData <- captureUgn localCounter eb -< ugnBus
   idC -< uartTx
  where
   peConfig = unsafePerformIO $ do
@@ -107,9 +105,7 @@ dut eb localCounter = withBittideByteOrder $ circuit $ do
     pure
       PeConfig
         { initI = Reloadable (Vec iMem)
-        , prefixI = 0b00
         , initD = Reloadable (Vec dMem)
-        , prefixD = 0b01
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

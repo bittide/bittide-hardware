@@ -74,22 +74,16 @@ dut =
     $ circuit
     $ \_unit -> do
       (uartTx, jtag) <- idleSource
-      [ (prefixUart, uartBus)
-        , (prefixAxiTx, (mmAxiTx, axiTxBus))
-        , (prefixNull, (mmNull, wbNull))
-        , (prefixAxiRx, (mmAxiRx, axiRxBus))
+      [ uartBus
+        , (mmAxiTx, axiTxBus)
+        , (mmAxiRx, axiRxBus)
         ] <-
         processingElement NoDumpVcd peConfig -< (mm, jtag)
-      wbAlwaysAck -< wbNull
-      constBwd 0b100 -< prefixNull
-      constBwd todoMM -< mmNull
       mm <- ignoreMM
 
       (uartRx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartTx)
-      constBwd 0b010 -< prefixUart
 
       _interrupts <- wbAxisRxBufferCircuit (SNat @128) -< (axiRxBus, axiStream)
-      constBwd 0b101 -< prefixAxiRx
       constBwd todoMM -< mmAxiRx
 
       axiStream <-
@@ -98,7 +92,6 @@ dut =
           <| axiPacking
           <| wbToAxiTx
           -< axiTxBus
-      constBwd 0b011 -< prefixAxiTx
       constBwd todoMM -< mmAxiTx
       idC -< uartRx
  where
@@ -110,9 +103,7 @@ dut =
     pure
       PeConfig
         { initI = Reloadable (Vec iMem)
-        , prefixI = 0b000
         , initD = Reloadable (Vec dMem)
-        , prefixD = 0b001
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

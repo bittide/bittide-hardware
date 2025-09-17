@@ -8,9 +8,8 @@
 #![allow(clippy::collapsible_if)]
 #![feature(sync_unsafe_cell)]
 
+use bittide_hal::hals::ethernet as hal;
 use bittide_hal::manual_additions::timer::{Duration, Instant};
-use bittide_hal::shared::devices::timer::Timer;
-use bittide_hal::shared::devices::uart::Uart;
 use bittide_sys::axi::{AxiRx, AxiTx};
 use bittide_sys::dna_port_e2::{dna_to_u128, DnaValue};
 use bittide_sys::mac::MacStatus;
@@ -29,12 +28,12 @@ use smoltcp::socket::dhcpv4;
 use smoltcp::socket::tcp::{Socket, SocketBuffer};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use ufmt::uwriteln;
-const TIMER_ADDR: *mut u8 = (0b0011 << 28) as *mut u8;
-const DNA_ADDR: *const DnaValue = (0b0111 << 28) as *const DnaValue;
-const MAC_ADDR: *const MacStatus = (0b1001 << 28) as *const MacStatus;
-const RX_AXI_ADDR: *const () = (0b0101 << 28) as *const ();
-const TX_AXI_ADDR: *const () = (0b0110 << 28) as *const ();
-const UART_ADDR: *mut u8 = (0b0010 << 28) as *mut u8;
+
+const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
+const DNA_ADDR: *const DnaValue = (INSTANCES.dna.0) as *const DnaValue;
+const MAC_ADDR: *const MacStatus = (INSTANCES.mac_status.0) as *const MacStatus;
+const RX_AXI_ADDR: *const () = (0x40000000) as *const ();
+const TX_AXI_ADDR: *const () = (0x50000000) as *const ();
 
 const RX_BUFFER_SIZE: usize = 2048;
 const ETH_MTU: usize = RX_BUFFER_SIZE;
@@ -45,7 +44,7 @@ const SERVER_IP: IpAddress = IpAddress::v4(10, 0, 0, 1);
 const SERVER_PORT: u16 = 1234;
 
 gdb_trace::gdb_panic! {
-    unsafe { Uart::new(UART_ADDR) }
+    INSTANCES.uart
 }
 
 #[allow(dead_code)]
@@ -70,19 +69,26 @@ fn from_smoltcp_instant(smoltcp_instant: smoltcp::time::Instant) -> Instant {
 #[allow(static_mut_refs)]
 #[cfg_attr(not(test), entry)]
 fn main() -> ! {
+    let mut uart = INSTANCES.uart;
+    uwriteln!(INSTANCES.uart, "Initializing peripherals").unwrap();
+
     // Initialize peripherals
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
-    let mut timer = unsafe { Timer::new(TIMER_ADDR) };
+    let mut timer = INSTANCES.timer;
+    // TODO: Use EthMacStatus instead of MacStatus
+    let mut _mac = INSTANCES.mac_status;
+
     let axi_tx = unsafe { AxiTx::new(TX_AXI_ADDR) };
     let axi_rx: AxiRx<RX_BUFFER_SIZE> = unsafe { AxiRx::new(RX_AXI_ADDR) };
+
+    // Arbitrarily sized bitvectors are broken in our generator.
+    // let dna: u128 = INSTANCES.dna.dna();
     let dna = unsafe { dna_to_u128(*DNA_ADDR) };
 
     uwriteln!(uart, "Starting TCP Client").unwrap();
     unsafe {
         let logger = &mut (*LOGGER.get());
         logger.set_logger(uart.clone());
-        let mut log_timer = Timer::new(TIMER_ADDR);
-        logger.set_timer(log_timer);
+        logger.set_timer(INSTANCES.timer);
         logger.display_source = LevelFilter::Warn;
         log::set_logger_racy(logger).ok();
         log::set_max_level_racy(LevelFilter::Trace);
@@ -192,7 +198,7 @@ fn main() -> ! {
 
 #[export_name = "ExceptionHandler"]
 fn exception_handler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
-    let mut uart = unsafe { Uart::new(UART_ADDR) };
+    let mut uart = INSTANCES.uart;
     riscv::interrupt::free(|| {
         uwriteln!(uart, "... caught an exception. Looping forever now.\n").unwrap();
         info!("mcause: {:?}\n", mcause::read());

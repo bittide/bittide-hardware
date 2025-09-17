@@ -59,13 +59,11 @@ dut =
     $ circuit
     $ \mm -> do
       (uartRx, jtag) <- idleSource
-      [(prefixUart, uartBus), (prefixSwitchCal, (switchMm, switchCalWb))] <-
+      [uartBus, (switchMm, switchCalWb)] <-
         processingElement dumpVcd peConfig -< (mm, jtag)
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-      constBwd 0b00 -< prefixUart
       _switchResult <-
         switchExample clockGen (resetGenN d2) -< (switchMm, (Fwd (repeat $ pure 0), switchCalWb))
-      constBwd 0b11 -< prefixSwitchCal
       idC -< uartTx
  where
   dumpVcd =
@@ -85,13 +83,11 @@ dut =
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr BigEndian elfPath
-        , prefixI = 0b10
         , initD =
             Reloadable @DMemWords
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData BigEndian elfPath
-        , prefixD = 0b01
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False

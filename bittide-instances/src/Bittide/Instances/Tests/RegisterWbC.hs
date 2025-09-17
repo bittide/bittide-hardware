@@ -14,16 +14,7 @@ import Bittide.DoubleBufferedRam (
 import Bittide.Extra.Maybe (orNothing)
 import Bittide.Instances.Domains (Basic50)
 import Bittide.ProcessingElement (
-  PeConfig (
-    PeConfig,
-    dBusTimeout,
-    iBusTimeout,
-    includeIlaWb,
-    initD,
-    initI,
-    prefixD,
-    prefixI
-  ),
+  PeConfig (..),
   processingElement,
  )
 import Bittide.ProcessingElement.Util (
@@ -43,7 +34,7 @@ import Data.Char (chr)
 import Data.Maybe (catMaybes)
 import Protocols (Circuit (Circuit), Df, Drivable (sampleC), idC, toSignals)
 import Protocols.Idle (idleSource)
-import Protocols.MemoryMap (ConstBwd, MM, MemoryMap, constBwd, getMMAny)
+import Protocols.MemoryMap (ConstBwd, MM, MemoryMap, getMMAny)
 import Protocols.MemoryMap.FieldType (ToFieldType)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (..),
@@ -381,12 +372,9 @@ dut =
     $ circuit
     $ \mm -> do
       (uartRx, jtag) <- idleSource
-      [(prefixUart, uartBus), (prefixManyTypes, manyTypes)] <-
-        processingElement dumpVcd peConfig -< (mm, jtag)
+      [uartBus, manyTypes] <- processingElement dumpVcd peConfig -< (mm, jtag)
       (uartTx, _uartStatus) <- uartInterfaceWb d2 d2 uartBytes -< (uartBus, uartRx)
-      constBwd 0b00 -< prefixUart
       manyTypesWb -< manyTypes
-      constBwd 0b11 -< prefixManyTypes
       idC -< uartTx
  where
   dumpVcd =
@@ -406,13 +394,11 @@ dut =
               $ Vec
               $ unsafePerformIO
               $ vecFromElfInstr BigEndian elfPath
-        , prefixI = 0b10
         , initD =
             Reloadable @DMemWords
               $ Vec
               $ unsafePerformIO
               $ vecFromElfData BigEndian elfPath
-        , prefixD = 0b01
         , iBusTimeout = d0 -- No timeouts on the instruction bus
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
