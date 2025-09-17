@@ -8,17 +8,30 @@ use crate::shared::types::Maybe::{Just, Nothing};
 use crate::shared::types::RegisterOperation;
 use crate::shared::types::Tuple0;
 
-// /// Struct to differentiate between the preamble, config and postamble of a
-// /// clock board configuration. Should get a fixed size at compile time.
-// #[derive(uDebug, Copy, Clone, PartialEq)]
-pub struct ClockConfig<
-    const PREAMBLE_SIZE: usize,
-    const CONFIG_SIZE: usize,
-    const POSTAMBLE_SIZE: usize,
-> {
-    pub preamble: [RegisterOperation; PREAMBLE_SIZE],
-    pub config: [RegisterOperation; CONFIG_SIZE],
-    pub postamble: [RegisterOperation; POSTAMBLE_SIZE],
+use ufmt::derive::uDebug;
+
+pub struct Config<const PRE_LEN: usize, const CFG_LEN: usize, const PST_LEN: usize> {
+    pub preamble: [ConfigEntry; PRE_LEN],
+    pub config: [ConfigEntry; CFG_LEN],
+    pub postamble: [ConfigEntry; PST_LEN],
+}
+
+#[derive(uDebug, Copy, Clone)]
+pub struct ConfigEntry {
+    pub page: u8,
+    pub address: u8,
+    pub data: u8,
+}
+
+#[allow(clippy::from_over_into)]
+impl Into<RegisterOperation> for ConfigEntry {
+    fn into(self) -> RegisterOperation {
+        RegisterOperation {
+            page: self.page,
+            address: self.address,
+            write: Just(self.data),
+        }
+    }
 }
 
 impl Si539xSpi {
