@@ -21,8 +21,8 @@ import Language.Haskell.TH (reportError, runIO)
 import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
+import qualified Bittide.Instances.Hitl.Dut.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
-import qualified Bittide.Instances.Hitl.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Tests.RegisterWbC as RegisterWbC
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar

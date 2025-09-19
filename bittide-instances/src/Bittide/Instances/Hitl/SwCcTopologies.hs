@@ -25,6 +25,7 @@ import Protocols.MemoryMap (MemoryMap)
 import System.FilePath ((</>))
 
 import qualified Bittide.Instances.Hitl.Driver.SwCcTopologies as D
+import qualified Bittide.Instances.Hitl.Dut.SwitchDemo as SwitchDemoDut
 import qualified Bittide.Instances.Hitl.SwitchDemo as SwitchDemo
 
 swCcTopologyTest = SwitchDemo.switchDemoTest
@@ -32,7 +33,7 @@ swCcTopologyTest = SwitchDemo.switchDemoTest
 makeTopEntity 'swCcTopologyTest
 
 memoryMap :: MemoryMap
-memoryMap = SwitchDemo.memoryMapCc
+memoryMap = SwitchDemoDut.memoryMapCc
 
 tests :: HitlTestGroup
 tests =
