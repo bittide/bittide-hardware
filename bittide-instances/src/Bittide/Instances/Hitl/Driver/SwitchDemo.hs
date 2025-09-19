@@ -13,8 +13,8 @@ import Bittide.ClockControl.Config (CcConf, defCcConf, saveCcConfig)
 import Bittide.ClockControl.Topology (Topology)
 import Bittide.Hitl
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.Dut.SwitchDemo (memoryMapCc, memoryMapMu)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount, fpgaSetup)
-import Bittide.Instances.Hitl.SwitchDemo (memoryMapCc, memoryMapMu)
 import Bittide.Instances.Hitl.Utils.Driver
 import Bittide.Instances.Hitl.Utils.Program
 import Bittide.Wishbone (TimeCmd (Capture))
