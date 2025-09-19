@@ -21,6 +21,7 @@ import Language.Haskell.TH (reportError, runIO)
 import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
+import qualified Bittide.Instances.Hitl.Dut.SoftUgnDemo as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Hitl.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Tests.RegisterWbC as RegisterWbC
@@ -40,12 +41,15 @@ $( do
           , ("Freeze", freezeMM)
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWbC", RegisterWbC.memoryMap)
-          , ("ScatterGather", ScatterGather.dutMM)
+          , ("ScatterGatherPe", ScatterGather.dutMM)
           , ("SwCcTopologies", SwCcTopologies.memoryMap)
           , ("SwitchC", SwitchCalendar.memoryMap)
           , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
           , ("SwitchDemoCc", SwitchDemo.memoryMapCc)
           , ("VexRiscv", vexRiscvTestMM)
+          , ("SoftUgnDemoCc", SoftUgnDemo.memoryMapCc)
+          , ("SoftUgnDemoMu", SoftUgnDemo.memoryMapMu)
+          , ("SoftUgnDemoGppe", SoftUgnDemo.memoryMapGppe)
           ]
 
     memMapDir <- runIO $ do

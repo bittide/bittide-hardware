@@ -4,7 +4,7 @@
 #![no_std]
 #![cfg_attr(not(test), no_main)]
 
-use bittide_hal::scatter_gather::DeviceInstances;
+use bittide_hal::scatter_gather_pe::DeviceInstances;
 use core::fmt::Write;
 #[cfg(not(test))]
 use riscv_rt::entry;
@@ -14,8 +14,8 @@ const INSTANCES: DeviceInstances = unsafe { DeviceInstances::new() };
 /// The `MEM_SIZE` defined as the number of 64-bit words in the scatter and
 /// gather memory.
 const MEM_SIZE: usize = {
-    let gu_size = bittide_hal::shared::devices::GatherUnit::GATHER_MEMORY_LEN;
-    let su_size = bittide_hal::shared::devices::ScatterUnit::SCATTER_MEMORY_LEN;
+    let gu_size = bittide_hal::scatter_gather_pe::devices::GatherUnit::GATHER_MEMORY_LEN;
+    let su_size = bittide_hal::scatter_gather_pe::devices::ScatterUnit::SCATTER_MEMORY_LEN;
     if gu_size != su_size {
         panic!("Gather unit and scatter unit memory sizes are unequal!");
     } else {
