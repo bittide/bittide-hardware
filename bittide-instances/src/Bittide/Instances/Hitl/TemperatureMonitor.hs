@@ -103,7 +103,7 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'temperatureMonitor
-    , extraXdcFiles = []
+    , targetXdcs = ["temperatureMonitor.xdc"]
     , externalHdl = []
     , testCases =
         [ HitlTestCase

@@ -131,16 +131,13 @@ findProjectRoot = goUp =<< getCurrentDirectory
 data Target = Target
   { targetName :: ClashTargetName
   -- ^ TemplateHaskell reference to top entity to synthesize
-  , targetHasXdc :: Bool
-  -- ^ Whether target has an associated XDC file in 'data/constraints'. An XDC
-  -- file implies that a bitstream can be generated.
   , targetHasVio :: Bool
   -- ^ Whether target has one or more VIOs
   , targetTest :: Maybe HitlTestGroup
   -- ^ Whether target has a VIO probe that can be used to run hardware-in-the-
   -- loop tests. Note that this flag, 'targetTest', implies 'targetHasVio'.
-  , targetExtraXdc :: [FilePath]
-  -- ^ Extra constraints to be sourced. Will be sourced _after_ main XDC.
+  , targetXdcs :: [FilePath]
+  -- ^ XDC files required for the designs. These will be sourced from 'data/constraints'.
   , targetExternalHdl :: [TclGlobPattern]
   -- ^ A list of patterns that match the external HDL files that are used by the
   -- instance. Generates tck that utilizes https://www.tcl.tk/man/tcl8.6/TclCmd/glob.htm
@@ -150,10 +147,9 @@ defTarget :: ClashTargetName -> Target
 defTarget name =
   Target
     { targetName = name
-    , targetHasXdc = False
     , targetHasVio = False
     , targetTest = Nothing
-    , targetExtraXdc = []
+    , targetXdcs = []
     , targetExternalHdl = []
     }
 
@@ -161,10 +157,9 @@ testTarget :: HitlTestGroup -> Target
 testTarget test@(HitlTestGroup{..}) =
   Target
     { targetName = topEntity
-    , targetHasXdc = True
     , targetHasVio = True
     , targetTest = Just test
-    , targetExtraXdc = extraXdcFiles
+    , targetXdcs = targetXdcs
     , targetExternalHdl = externalHdl
     }
 
@@ -393,11 +388,9 @@ main = do
                 "false" -> need [manifestPath, connector]
                 _ -> error $ "Unknown value for environment variable 'CI': " <> ci
 
-              let
-                xdcNames = entityName targetName <> ".xdc" : targetExtraXdc
-                xdcPaths = map ((dataFilesDir </> "constraints") </>) xdcNames
+              let xdcPaths = map ((dataFilesDir </> "constraints") </>) targetXdcs
               constraints <-
-                if targetHasXdc
+                if not (null targetXdcs)
                   then do
                     need xdcPaths
                     pure xdcPaths
@@ -516,7 +509,7 @@ main = do
           phony (entityName targetName <> ":pnr") $ do
             need [postRouteCheckpointPath]
 
-          when targetHasXdc $ do
+          when (not $ null targetXdcs) $ do
             phony (entityName targetName <> ":bitstream") $ do
               when targetHasVio $ need [probesFilePath]
               need [bitstreamPath]

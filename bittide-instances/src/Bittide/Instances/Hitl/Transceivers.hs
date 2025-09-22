@@ -238,7 +238,7 @@ tests =
   HitlTestGroup
     { topEntity = 'transceiversUpTest
     , externalHdl = []
-    , extraXdcFiles = []
+    , targetXdcs = ["transceiversUpTest.xdc"]
     , testCases = iters
     , mDriverProc = Nothing
     , mPostProc = Nothing

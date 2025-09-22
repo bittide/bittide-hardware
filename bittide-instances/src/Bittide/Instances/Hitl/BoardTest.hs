@@ -180,7 +180,7 @@ testSimple :: HitlTestGroup
 testSimple =
   HitlTestGroup
     { topEntity = 'boardTestSimple
-    , extraXdcFiles = []
+    , targetXdcs = ["boardTest.xdc"]
     , externalHdl = []
     , testCases =
         [ HitlTestCase
@@ -197,7 +197,7 @@ testExtended :: HitlTestGroup
 testExtended =
   HitlTestGroup
     { topEntity = 'boardTestExtended
-    , extraXdcFiles = []
+    , targetXdcs = ["boardTest.xdc"]
     , externalHdl = []
     , testCases = testCasesFromEnum @Test allHwTargets ()
     , mDriverProc = Nothing
