@@ -39,8 +39,9 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'swCcTopologyTest
-    , extraXdcFiles =
-        [ "jtag" </> "config.xdc"
+    , targetXdcs =
+        [ "swCcTopologyTest.xdc"
+        , "jtag" </> "config.xdc"
         , "jtag" </> "pmod1.xdc"
         , "uart" </> "pmod1.xdc"
         ]

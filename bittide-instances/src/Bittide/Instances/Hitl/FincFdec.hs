@@ -218,7 +218,7 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'fincFdecTests
-    , extraXdcFiles = []
+    , targetXdcs = ["fincFdecTests.xdc"]
     , externalHdl = []
     , testCases = testCasesFromEnum @Test [HwTargetByIndex 7] ()
     , mDriverProc = Nothing
