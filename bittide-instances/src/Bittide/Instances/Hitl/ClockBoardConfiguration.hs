@@ -41,6 +41,8 @@ import Clash.Cores.UART.Extra
 
 import Bittide.Instances.Domains
 
+import qualified Bittide.Instances.Hitl.Driver.ClockBoardConfiguration as D
+
 #ifdef SIM_BAUD_RATE
 type Baud = MaxBaudRate Basic125
 #else
@@ -171,6 +173,6 @@ tests =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Nothing -- TODO: Add driver
+    , mDriverProc = Just D.driverFunc
     , mPostProc = Nothing
     }

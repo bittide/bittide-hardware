@@ -168,6 +168,7 @@ library
     Bittide.Instances.Hitl.ClockBoardConfiguration
     Bittide.Instances.Hitl.Ddr4
     Bittide.Instances.Hitl.DnaOverSerial
+    Bittide.Instances.Hitl.Driver.ClockBoardConfiguration
     Bittide.Instances.Hitl.Driver.ClockControl.Config
     Bittide.Instances.Hitl.Driver.ClockControl.Plot.Common
     Bittide.Instances.Hitl.Driver.ClockControl.Plot.DataCount
