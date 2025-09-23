@@ -363,6 +363,8 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       (bundle $ xpmCdcArraySingle bittideClk refClk <$> ebStables)
       transceiversFailedAfterUp
 
+  txStarts = ebStables
+
   captureFlag =
     riseEvery
       refClk
@@ -437,9 +439,6 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
 
   txDatas :: Vec LinkCount (Signal Bittide (BitVector 64))
   txDatas = mux <$> txSamplingsDelayed <*> switchDataOut <*> repeat (pack <$> localCounter)
-
-  txStarts :: Vec LinkCount (Signal Bittide Bool)
-  txStarts = repeat allStableSticky
 
   -- Step 4, deassert CC CPU reset, deassert Bittide domain reset:
   handshakeRstFree :: Reset Basic125
