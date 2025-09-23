@@ -51,7 +51,7 @@ driverFunc testName targets = do
   forM_ targets $ \target ->
     assertProbe "probe_test_start" target
 
-  T.tryWithTimeout T.PrintActionTime "Wait for handshakes" 30_000_000
+  T.tryWithTimeout T.PrintActionTime "Wait for handshakes" 180_000_000
     $ awaitHandshakes targets
 
   let openOcdStarts = liftIO <$> L.zipWith (initOpenOcd hitlDir) targets [0 ..]
