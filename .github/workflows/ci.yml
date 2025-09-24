@@ -41,6 +41,7 @@ concurrency:
  cancel-in-progress: true
 
 jobs:
+
   cachix:
     name: Populate Cachix cache
     runs-on: [self-hosted, compute]
@@ -715,6 +716,44 @@ jobs:
           overwrite: true
           retention-days: 14
 
+  mdbook:
+    name: Build and Publish mdBook
+    runs-on: [self-hosted, compute]
+    defaults:
+      run:
+        shell: git-nix-shell {0} --ignore-environment
+    container:
+      image: ghcr.io/clash-lang/nixos-bittide-hardware:2025-08-05
+      options: --memory=11g
+    # if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set CI flags
+        run: |
+          .github/scripts/set_ci_flags.sh
+
+      - name: Build mdBook
+        run: |
+          cd docs
+          mdbook build
+
+      - name: Upload book artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdbook
+          path: _build/book
+
+      - name: Deploy to GitHub Pages
+        # if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: _build/book
+          publish_branch: gh-pages
+
+
   all:
     name: All jobs finished
     if: ${{ !cancelled() }}
@@ -728,6 +767,7 @@ jobs:
         license-check,
         lint,
         rust-lints,
+        mdbook,
       ]
     runs-on: ubuntu-22.04
     steps:
