@@ -103,7 +103,7 @@ fn main() -> ! {
 
     uwriteln!(uart, "Writing configuration with f = 10 MHz...").unwrap();
     let start = timer.now();
-    si539x_spi.write_configuration(&timer, &CONFIG_10);
+    si539x_spi.write_configuration(&timer, &CONFIG_10, &mut uart);
     let end = timer.now();
     uwriteln!(uart, "Writing configuration took {}", end - start).unwrap();
 
@@ -114,7 +114,7 @@ fn main() -> ! {
 
     uwriteln!(uart, "Writing configuration with f = 200 MHz...").unwrap();
     let start = timer.now();
-    si539x_spi.write_configuration(&timer, &CONFIG_200);
+    si539x_spi.write_configuration(&timer, &CONFIG_200, &mut uart);
     let end = timer.now();
     uwriteln!(uart, "Writing configuration took {}", end - start).unwrap();
 
