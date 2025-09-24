@@ -195,6 +195,14 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
     , defTarget $ mkName "Bittide.Instances.Pnr.StabilityChecker.stabilityhecker_3_1M"
     , defTarget $ mkName "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
+    , (defTarget $ mkName "Bittide.Instances.Hitl.Dut.SoftUgnDemo.softUgnDemoTest")
+        { targetHasXdc = True
+        , targetExtraXdc =
+            [ "jtag" </> "config.xdc"
+            , "jtag" </> "pmod1.xdc"
+            , "uart" </> "pmod1.xdc"
+            ]
+        }
     ]
       <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
 
