@@ -712,6 +712,7 @@ jobs:
           path: |
             _build/vivado/*/ila-data
             _build/hitl/*
+          overwrite: true
           retention-days: 14
 
   all:
