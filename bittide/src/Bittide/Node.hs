@@ -20,6 +20,7 @@ import Protocols.Wishbone
 import VexRiscv
 
 import Bittide.Calendar
+import Bittide.Jtag
 import Bittide.ProcessingElement
 import Bittide.ScatterGather
 import Bittide.SharedTypes
@@ -60,18 +61,23 @@ node ::
   ) =>
   NodeConfig extLinks gppes ->
   Circuit
-    (ConstBwd MM, Vec gppes (ConstBwd MM), Vec extLinks (CSignal dom (BitVector 64)))
+    ( ConstBwd MM, Vec gppes (ConstBwd MM), Vec extLinks (CSignal dom (BitVector 64)), Jtag dom)
     (Vec extLinks (CSignal dom (BitVector 64)))
 node (NodeConfig nmuConfig switchConfig gppeConfigs) =
-  circuit $ \(mmNmu, mms, linksIn) -> do
+  circuit $ \(mmNmu, mms, linksIn, jtagIn) -> do
     (switchOut, _cal) <- switchC switchConfig -< (mmSwWb, (switchIn, swWb))
     switchIn <- appendC3 -< ([nmuLinkOut], pesToSwitch, linksIn)
     ([Fwd nmuLinkIn], Fwd switchToPes, linksOut) <- split3CI -< switchOut
-    (nmuLinkOut, nmuWbs0) <- managementUnitC nmuConfig nmuLinkIn -< mmNmu
+    
+    -- Create JTAG chain for management unit + all GPPEs
+    jtagChainOut <- jtagChain @dom @(gppes + 1) -< jtagIn
+    ([jtagNmu], jtagGppes) <- splitAtCI -< jtagChainOut
+    
+    (nmuLinkOut, nmuWbs0) <- managementUnitC nmuConfig nmuLinkIn -< (mmNmu, jtagNmu)
     ([(mmSwWb, swWb)], nmuWbs1) <- splitAtCI -< nmuWbs0
     peWbs <- unconcatC d2 -< nmuWbs1
 
-    pesToSwitch <- vecCircuits (gppeC <$> gppeConfigs <*> switchToPes) <| zipC -< (mms, peWbs)
+    pesToSwitch <- vecCircuits (gppeC <$> gppeConfigs <*> switchToPes) <| zipC -< (mms, peWbs, jtagGppes)
     idC -< linksOut
 
 type NmuInternalBusses = 6
@@ -131,11 +137,11 @@ gppeC ::
   Circuit
     ( ConstBwd MM
     , Vec 2 (ConstBwd MM, Wishbone dom 'Standard nmuRemBusWidth (Bytes 4))
+    , Jtag dom
     )
     (CSignal dom (BitVector 64))
-gppeC (GppeConfig scatterConfig gatherConfig peConfig dumpVcd) linkIn = circuit $ \(mm, nmuWbs) -> do
+gppeC (GppeConfig scatterConfig gatherConfig peConfig dumpVcd) linkIn = circuit $ \(mm, nmuWbs, jtag) -> do
   [(mmSCal, wbScatCal), (mmGCal, wbGathCal)] <- idC -< nmuWbs
-  jtag <- idleSource
   [(mmS, wbScat), (mmG, wbGu)] <- processingElement dumpVcd peConfig -< (mm, jtag)
   scatterUnitWbC scatterConfig linkIn -< ((mmS, wbScat), (mmSCal, wbScatCal))
   linkOut <- gatherUnitWbC gatherConfig -< ((mmG, wbGu), (mmGCal, wbGathCal))
@@ -162,7 +168,7 @@ managementUnitC ::
   ManagementConfig nodeBusses ->
   Signal dom (BitVector 64) ->
   Circuit
-    (ConstBwd MM)
+    (ConstBwd MM, Jtag dom)
     ( CSignal dom (BitVector 64)
     , Vec
         nodeBusses
@@ -175,8 +181,7 @@ managementUnitC
       peConfig
       dumpVcd
     )
-  linkIn = circuit $ \mm -> do
-    jtag <- idleSource
+  linkIn = circuit $ \(mm, jtag) -> do
     peWbs <- processingElement dumpVcd peConfig -< (mm, jtag)
     ( [ wbScatCal
         , wbScat
