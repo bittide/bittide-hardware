@@ -104,7 +104,7 @@ fn main() -> ! {
     // Write a clock configuration with a frequency of 200 MHz.
     uwriteln!(uart, "Writing configuration with f = 200 MHz...").unwrap();
     let start = timer.now();
-    si539x_spi.write_configuration(&timer, &CONFIG_200);
+    si539x_spi.write_configuration(&timer, &CONFIG_200, &mut uart);
     let end = timer.now();
     uwriteln!(uart, "Writing configuration took {}", end - start).unwrap();
     // Compare the programmed clock (200 MHz) against the system clock (125 MHz)
@@ -115,7 +115,7 @@ fn main() -> ! {
     // Write a clock configuration with a frequency of 100 MHz.
     uwriteln!(uart, "Writing configuration with f = 100 MHz...").unwrap();
     let start = timer.now();
-    si539x_spi.write_configuration(&timer, &CONFIG_100);
+    si539x_spi.write_configuration(&timer, &CONFIG_100, &mut uart);
     let end = timer.now();
     uwriteln!(uart, "Writing configuration took {}", end - start).unwrap();
     // Compare the programmed clock (100 MHz) against the system clock (125 MHz)
