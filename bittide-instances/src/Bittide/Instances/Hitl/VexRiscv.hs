@@ -227,7 +227,12 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'vexRiscvTest
-    , extraXdcFiles = ["jtag" </> "config.xdc", "jtag" </> "pmod1.xdc", "uart" </> "pmod1.xdc"]
+    , targetXdcs =
+        [ "vexRiscvTest.xdc"
+        , "jtag" </> "config.xdc"
+        , "jtag" </> "pmod1.xdc"
+        , "uart" </> "pmod1.xdc"
+        ]
     , externalHdl = []
     , testCases =
         [ HitlTestCase

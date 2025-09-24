@@ -100,7 +100,7 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'dnaOverSerial
-    , extraXdcFiles = []
+    , targetXdcs = ["dnaOverSerial.xdc"]
     , externalHdl = []
     , testCases =
         [ HitlTestCase

@@ -80,8 +80,13 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'vexRiscvTcpTest
-    , extraXdcFiles =
-        ["jtag" </> "config.xdc", "jtag" </> "pmod1.xdc", "uart" </> "pmod1.xdc", "sgmii.xdc"]
+    , targetXdcs =
+        [ "vexRiscvTcpTest.xdc"
+        , "jtag" </> "config.xdc"
+        , "jtag" </> "pmod1.xdc"
+        , "uart" </> "pmod1.xdc"
+        , "sgmii.xdc"
+        ]
     , externalHdl =
         [ "$env(VERILOG_ETHERNET_SRC)/rtl/*.v"
         , "$env(VERILOG_ETHERNET_SRC)/lib/axis/rtl/*.v"
