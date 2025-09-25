@@ -12,9 +12,16 @@ import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 
 import GHC.Stack (HasCallStack)
+import Project.FilePath (
+  CargoBuildType (Release),
+  findParentContaining,
+  firmwareBinariesDir,
+ )
 import System.FilePath ((</>))
+import System.IO.Unsafe (unsafePerformIO)
 
 import Clash.Annotations.TH (makeTopEntity)
+import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Cores.Xilinx.Ibufds (ibufdsClock)
 import Clash.Explicit.Reset.Extra (Asserted (..), xpmResetSynchronizer)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
@@ -33,6 +40,7 @@ import Bittide.Hitl (
   paramForSingleHwTarget,
  )
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
+import Bittide.ProcessingElement.Util (vecFromElfData, vecFromElfInstr)
 import Bittide.SharedTypes (withBittideByteOrder)
 import Bittide.Wishbone (timeWb, uartBytes, uartDf, uartInterfaceWb)
 #ifdef SIM_BAUD_RATE
@@ -149,7 +157,31 @@ circuitFn freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, (jtag,
 
   idC -< (uartOut, Fwd spiDone, spiOut)
  where
-  peConfig =
+  peConfig
+    | clashSimulation = peConfigSim
+    | otherwise = peConfigRtl
+
+  peConfigSim = unsafePerformIO $ do
+    root <- findParentContaining "cabal.project"
+    let
+      elfDir = root </> firmwareBinariesDir "riscv32imc" Release
+      elfPath = elfDir </> "si5395_test"
+    pure
+      peConfigRtl
+        { initI =
+            Reloadable
+              $ Vec
+              $ unsafePerformIO
+              $ vecFromElfInstr @IMemWords BigEndian elfPath
+        , initD =
+            Reloadable
+              $ Vec
+              $ unsafePerformIO
+              $ vecFromElfData @DMemWords BigEndian elfPath
+        , includeIlaWb = False
+        }
+
+  peConfigRtl =
     PeConfig
       { initI = Undefined @IMemWords
       , initD = Undefined @DMemWords
