@@ -26,6 +26,7 @@ import qualified Bittide.Instances.Hitl.Dut.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
+import qualified Bittide.Instances.Tests.Si539xSpi as Si539xSpi
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
 import qualified Bittide.Instances.Tests.WbToDf as WbToDf
 import qualified Data.ByteString.Lazy as BS
@@ -45,6 +46,7 @@ $( do
           , ("RegisterWb", RegisterWb.memoryMap)
           , ("ScatterGather", ScatterGather.dutMM)
           , ("SwCcTopologies", SwCcTopologies.memoryMap)
+          , ("Si539xSpi", Si539xSpi.memoryMap)
           , ("SwitchC", SwitchCalendar.memoryMap)
           , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
           , ("SwitchDemoCc", SwitchDemo.memoryMapCc)

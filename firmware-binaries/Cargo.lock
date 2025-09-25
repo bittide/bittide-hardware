@@ -599,6 +599,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "si5395_test"
+version = "0.1.0"
+dependencies = [
+ "bittide-hal",
+ "bittide-macros",
+ "bittide-sys",
+ "memmap-generate",
+ "riscv-rt",
+ "ufmt",
+]
+
+[[package]]
 name = "smoltcp"
 version = "0.11.0"
 source = "git+https://github.com/smoltcp-rs/smoltcp.git?rev=dc08e0b42e668c331bb2b6f8d80016301d0efe03#dc08e0b42e668c331bb2b6f8d80016301d0efe03"

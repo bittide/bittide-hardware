@@ -212,6 +212,7 @@ library
     Bittide.Instances.Pnr.Synchronizer
     Bittide.Instances.Tests.RegisterWb
     Bittide.Instances.Tests.ScatterGather
+    Bittide.Instances.Tests.Si539xSpi
     Bittide.Instances.Tests.SwitchCalendar
     Bittide.Instances.Tests.WbToDf
     Paths.Bittide.Instances
@@ -292,6 +293,7 @@ test-suite unittests
   other-modules:
     Df.WbToDf
     Tests.ClockControlWb
+    Tests.Si539xSpiMM
     Wishbone.Axi
     Wishbone.CaptureUgn
     Wishbone.DnaPortE2
@@ -314,6 +316,7 @@ test-suite unittests
     clash-prelude-hedgehog >=1.6 && <1.10,
     clash-protocols-memmap,
     clash-vexriscv,
+    containers,
     extra,
     filepath,
     ghc-typelits-extra-lemmas,
