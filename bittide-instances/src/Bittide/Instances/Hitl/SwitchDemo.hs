@@ -65,7 +65,6 @@ import Clash.Cores.UART.Extra
 import qualified Bittide.Instances.Hitl.Driver.SwitchDemo as D
 import qualified Bittide.Transceiver as Transceiver
 import qualified Clash.Cores.Xilinx.GTH as Gth
-import qualified Protocols.MemoryMap as MM
 
 type FifoSize = 5 -- = 2^5 = 32
 
@@ -97,9 +96,7 @@ switchDemoDut ::
   "MISO" ::: Signal Basic125 Bit ->
   "JTAG_IN" ::: Signal Bittide JtagIn ->
   "SYNC_IN" ::: Signal Bittide Bit ->
-  ( "CC_MEMORYMAP" ::: MM.MM
-  , "MU_MEMORYMAP" ::: MM.MM
-  , "GTH_TX_S" ::: Gth.SimWires Bittide LinkCount
+  ( "GTH_TX_S" ::: Gth.SimWires Bittide LinkCount
   , "GTH_TX_NS" ::: Gth.Wires GthTxS LinkCount
   , "GTH_TX_PS" ::: Gth.Wires GthTxS LinkCount
   , "handshakesDone" ::: Signal Basic125 Bool
@@ -122,9 +119,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   -- Replace 'seqX' with 'hwSeqX' to include ILAs in hardware
   seqX
     (bundle (debugIla, bittidePeIla))
-    ( ccMm
-    , muMm
-    , transceivers.txSims
+    ( transceivers.txSims
     , transceivers.txNs
     , transceivers.txPs
     , handshakesDoneFree
@@ -287,7 +282,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   transceiversFailedAfterUp =
     sticky refClk refRst (isFalling refClk spiRst enableGen False handshakesDoneFree)
 
-  ( (ccMm, muMm, jtagOut, _linkInBwd, _maskBwd, _l4ccBwd, _insBwd, _syncBwd)
+  ( (_, _, jtagOut, _linkInBwd, _maskBwd, _l4ccBwd, _insBwd, _syncBwd)
     , ( callistoResult
         , switchDataOut
         , localCounter
@@ -497,9 +492,7 @@ switchDemoTest boardClkDiff refClkDiff rxs rxns rxps miso jtagIn _uartRx syncIn 
   testReset :: Reset Basic125
   testReset = unsafeFromActiveLow testStart `orReset` refRst
 
-  ( _ccMm
-    , _muMm
-    , txs :: Gth.SimWires Bittide LinkCount
+  ( txs :: Gth.SimWires Bittide LinkCount
     , txns :: Gth.Wires GthTxS LinkCount
     , txps :: Gth.Wires GthTxS LinkCount
     , handshakesDone :: Signal Basic125 Bool
