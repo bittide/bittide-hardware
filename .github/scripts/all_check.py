@@ -20,6 +20,13 @@ CI_PATH = ".github/workflows/ci.yml"
 ALL_TEST = "all"
 
 
+def get_needs(job: Dict) -> List[str]:
+    needs = job.get("needs", [])
+    if isinstance(needs, str):
+        needs = [needs]
+    return needs
+
+
 def reachable(graph: Dict[str, List[str]], start: str) -> Set[str]:
     """Return all nodes reachable from start in the directed graph."""
     visited = set()
@@ -39,12 +46,12 @@ def main():
     ci_yml_parsed = yaml.load(ci_yml_fp, Loader=yaml.FullLoader)
 
     job_graph = {
-        job: ci_yml_parsed["jobs"][job].get("needs", [])
+        job: get_needs(ci_yml_parsed["jobs"][job])
         for job in ci_yml_parsed["jobs"]
     }
 
     all_jobs = set(ci_yml_parsed["jobs"].keys()) - {ALL_TEST}
-    all_direct_needs = set(ci_yml_parsed["jobs"][ALL_TEST].get("needs", []))
+    all_direct_needs = set(get_needs(ci_yml_parsed["jobs"][ALL_TEST]))
     all_needs = reachable(job_graph, ALL_TEST)
     all_indirect_needs = set.union(*(
         reachable(job_graph, job) for job in all_needs
