@@ -116,7 +116,7 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
     constBwd todoMM -< mmGpio
     (axiRx0, gmiiTx, macStatus) <- mac -< (axiTx1, gmiiRx)
     axiRx1 <- axiRxPipe -< axiRx0
-    axiTx0 <- wbToAxiTx' -< wbAxiTx
+    axiTx0 <- wbToAxi4StreamTx' -< wbAxiTx
     axiTx1 <- axiTxPipe -< axiTx0
     _rxBufStatus <- wbAxiRxBuffer -< (wbAxiRx, axiRx1)
     constBwd todoMM -< mmAxiRx
@@ -142,7 +142,7 @@ vexRiscGmiiC SNat sysClk sysRst rxClk rxRst txClk txRst =
   macStatIf = wcre $ macStatusInterfaceWb d16
   uart = wcre $ uartInterfaceWb d32 d2 (uartDf baud)
   pe = withBittideByteOrder $ wcre processingElement NoDumpVcd peConfig
-  wbToAxiTx' = wcre wbToAxiTx
+  wbToAxi4StreamTx' = wcre wbToAxi4StreamTx
   wbAxiRxBuffer = wcre wbAxisRxBufferCircuit (SNat @2048)
   axiTxPipe = wcre (axiUserMapC (const False) <| axiStreamToByteStream)
   axiRxPipe = wcre (axiUserMapC or <| axiStreamFromByteStream)
