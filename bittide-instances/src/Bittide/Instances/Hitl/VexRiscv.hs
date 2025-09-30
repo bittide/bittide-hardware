@@ -23,9 +23,9 @@ import Protocols.MemoryMap (Access (WriteOnly), ConstBwd, MM, getMMAny)
 import Protocols.MemoryMap.FieldType
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
-  deviceWbC,
+  deviceWb,
   registerConfig,
-  registerWbC,
+  registerWb,
  )
 import Protocols.Wishbone
 import System.Environment (lookupEnv)
@@ -101,9 +101,9 @@ statusRegister ::
     (ConstBwd MM, Wishbone dom 'Standard aw (Bytes 4))
     (CSignal dom TestStatus)
 statusRegister = circuit $ \(mm, wb) -> do
-  [statusWb] <- deviceWbC "StatusRegister" -< (mm, wb)
+  [statusWb] <- deviceWb "StatusRegister" -< (mm, wb)
   (statusOut, _a) <-
-    registerWbC hasClock hasReset statusConf Running -< (statusWb, Fwd (pure Nothing))
+    registerWb hasClock hasReset statusConf Running -< (statusWb, Fwd (pure Nothing))
   idC -< statusOut
  where
   statusConf =

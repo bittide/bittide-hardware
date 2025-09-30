@@ -14,9 +14,9 @@ import Protocols
 import Protocols.MemoryMap (Access (..), ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
-  deviceWbC,
+  deviceWb,
   registerConfig,
-  registerWbCI_,
+  registerWbI_,
  )
 import Protocols.Wishbone
 
@@ -38,16 +38,16 @@ metaPeConfig ::
     )
     ()
 metaPeConfig SNat = circuit $ \(mm, wb) -> do
-  [wMC, wO, wN, rMC, rO, rN, buffer] <- deviceWbC "MetaPeConfig" -< (mm, wb)
+  [wMC, wO, wN, rMC, rO, rN, buffer] <- deviceWb "MetaPeConfig" -< (mm, wb)
 
-  registerWbCI_ wMcConfig (0 :: Unsigned 32) -< (wMC, Fwd noWrite)
-  registerWbCI_ wOConfig (0 :: Unsigned 32) -< (wO, Fwd noWrite)
-  registerWbCI_ wNConfig (0 :: Unsigned 32) -< (wN, Fwd noWrite)
-  registerWbCI_ rMcConfig (0 :: Unsigned 32) -< (rMC, Fwd noWrite)
-  registerWbCI_ rOConfig (0 :: Unsigned 32) -< (rO, Fwd noWrite)
-  registerWbCI_ rNConfig (0 :: Unsigned 32) -< (rN, Fwd noWrite)
+  registerWbI_ wMcConfig (0 :: Unsigned 32) -< (wMC, Fwd noWrite)
+  registerWbI_ wOConfig (0 :: Unsigned 32) -< (wO, Fwd noWrite)
+  registerWbI_ wNConfig (0 :: Unsigned 32) -< (wN, Fwd noWrite)
+  registerWbI_ rMcConfig (0 :: Unsigned 32) -< (rMC, Fwd noWrite)
+  registerWbI_ rOConfig (0 :: Unsigned 32) -< (rO, Fwd noWrite)
+  registerWbI_ rNConfig (0 :: Unsigned 32) -< (rN, Fwd noWrite)
 
-  registerWbCI_ bufferConfig (repeat 0 :: Vec (bufferSize * 3) (BitVector 64))
+  registerWbI_ bufferConfig (repeat 0 :: Vec (bufferSize * 3) (BitVector 64))
     -< (buffer, Fwd noWrite)
 
   idC -< ()

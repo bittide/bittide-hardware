@@ -9,7 +9,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use ufmt::{uwrite, uwriteln};
 
-use bittide_hal::hals::register_wb_c as hal;
+use bittide_hal::hals::register_wb as hal;
 use bittide_hal::index;
 
 use core::fmt::Write;

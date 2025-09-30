@@ -696,16 +696,16 @@ timeWb ::
     (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes 4))
     (CSignal dom (Unsigned 64))
 timeWb = circuit $ \mmWb -> do
-  [(cmdOffset, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <- MM.deviceWbC "Timer" -< mmWb
+  [(cmdOffset, cmdMeta, cmdWb0), cmpWb, scratchWb, freqWb] <- MM.deviceWb "Timer" -< mmWb
   cmdWb1 <- andAck cmdWaitAck -< cmdWb0
   cmdWb2 <- idC -< (cmdOffset, cmdMeta, cmdWb1)
 
 {- FOURMOLU_DISABLE -}
   -- Registers
-  Fwd (_, cmdActivity) <- MM.registerWbCI cmdCfg Capture -< (cmdWb2, Fwd noWrite)
-  MM.registerWbCI_ cmpCfg False -< (cmpWb, Fwd cmpResultWrite)
-  Fwd (scratch, _) <- MM.registerWbCI scratchCfg (0 :: Unsigned 64) -< (scratchWb, Fwd scratchWrite)
-  MM.registerWbCI_ freqCfg freq -< (freqWb, Fwd noWrite)
+  Fwd (_, cmdActivity) <- MM.registerWbI cmdCfg Capture -< (cmdWb2, Fwd noWrite)
+  MM.registerWbI_ cmpCfg False -< (cmpWb, Fwd cmpResultWrite)
+  Fwd (scratch, _) <- MM.registerWbI scratchCfg (0 :: Unsigned 64) -< (scratchWb, Fwd scratchWrite)
+  MM.registerWbI_ freqCfg freq -< (freqWb, Fwd noWrite)
 {- FOURMOLU_ ENABLE -}
 
   -- Local circuit dependent declarations

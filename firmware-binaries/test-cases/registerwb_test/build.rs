@@ -18,7 +18,7 @@ fn memmap_dir() -> PathBuf {
 /// Put the linker script somewhere the linker can find it.
 fn main() {
     let memory_x = memory_x_from_memmap(
-        memmap_dir().join("RegisterWbC.json"),
+        memmap_dir().join("RegisterWb.json"),
         "DataMemory",
         "InstructionMemory",
     );

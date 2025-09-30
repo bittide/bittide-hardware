@@ -20,10 +20,10 @@ import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (Access (ReadOnly), ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access, description),
-  deviceWbC,
+  deviceWb,
   registerConfig,
-  registerWbC,
-  registerWbC_,
+  registerWb,
+  registerWb_,
  )
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
@@ -125,12 +125,12 @@ domainDiffCountersWbC ::
     (ConstBwd MM, Wishbone dst 'Standard addrW (Bytes 4))
     (CSignal dst (Vec n (Signed 32, Active)))
 domainDiffCountersWbC srcClocks srcResets clk rst = circuit $ \bus -> do
-  [enableWb, countersWb, activesWb] <- deviceWbC "DomainDiffCounters" -< bus
+  [enableWb, countersWb, activesWb] <- deviceWb "DomainDiffCounters" -< bus
 
   (Fwd enables, _a) <-
-    registerWbC clk rst enableConfig (repeat False) -< (enableWb, Fwd noWrite)
-  registerWbC_ clk rst countersConfig (repeat 0) -< (countersWb, Fwd countersWrite)
-  registerWbC_ clk rst activeConfig (repeat False) -< (activesWb, Fwd countersActiveWrite)
+    registerWb clk rst enableConfig (repeat False) -< (enableWb, Fwd noWrite)
+  registerWb_ clk rst countersConfig (repeat 0) -< (countersWb, Fwd countersWrite)
+  registerWb_ clk rst activeConfig (repeat False) -< (activesWb, Fwd countersActiveWrite)
 
   let
     resets = unsafeFromActiveLow <$> unbundle enables

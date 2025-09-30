@@ -7,17 +7,18 @@ a memory map.
 -}
 module Protocols.MemoryMap.Registers.WishboneStandard (
   -- * Device creation
-  deviceWbC,
-  deviceWithOffsetsWbC,
-  -- Register creation (explicit clocks and resets)
-  registerWbC,
-  registerWbC_,
-  registerWithOffsetWbC,
+  deviceWb,
+  deviceWithOffsetsWb,
+
+  -- * Register creation (explicit clocks and resets)
+  registerWb,
+  registerWb_,
+  registerWithOffsetWb,
 
   -- * Register creation (implicit clocks and resets)
-  registerWbCI,
-  registerWbCI_,
-  registerWithOffsetWbCI,
+  registerWbI,
+  registerWbI_,
+  registerWithOffsetWbI,
 
   -- * Supporting types and functions
   registerConfig,
@@ -157,17 +158,17 @@ maximum byte address.
 Example usage:
 
 > deviceExample clk rst = circuit $ \(mm, wb) -> do
->   [reg1, reg2, reg3] <- deviceWbC "example" -< (mm, wb)
+>   [reg1, reg2, reg3] <- deviceWb "example" -< (mm, wb)
 >
->   _reg1o <- registerWbC clk rst (registerConfig "float") (0.0 :: Float)     -< (reg1, Fwd noWrite)
->   _reg2o <- registerWbC clk rst (registerConfig "u16")   (0 :: Unsigned 16) -< (reg2, Fwd noWrite)
->   _reg3o <- registerWbC clk rst (registerConfig "bool")  (False :: Bool)    -< (reg3, Fwd noWrite)
+>   _reg1o <- registerWb clk rst (registerConfig "float") (0.0 :: Float)     -< (reg1, Fwd noWrite)
+>   _reg2o <- registerWb clk rst (registerConfig "u16")   (0 :: Unsigned 16) -< (reg2, Fwd noWrite)
+>   _reg3o <- registerWb clk rst (registerConfig "bool")  (False :: Bool)    -< (reg3, Fwd noWrite)
 >
 >   idC
 >  where
 >   noWrite = pure Nothing
 -}
-deviceWbC ::
+deviceWb ::
   forall n wordSize aw dom.
   ( HasCallStack
   , KnownNat n
@@ -186,9 +187,9 @@ deviceWbC ::
         , Wishbone dom 'Standard aw (Bytes wordSize)
         )
     )
-deviceWbC deviceName = circuit $ \(mm, wb) -> do
+deviceWb deviceName = circuit $ \(mm, wb) -> do
   (offsets0, metas0, wbs) <-
-    V.unzip3 <| withFrozenCallStack deviceWithOffsetsWbC deviceName -< (mm, wb)
+    V.unzip3 <| withFrozenCallStack deviceWithOffsetsWb deviceName -< (mm, wb)
   (offsets1, metas1) <- genOffsets -< (offsets0, metas0)
   V.zip3 -< (offsets1, metas1, wbs)
  where
@@ -206,11 +207,11 @@ deviceWbC deviceName = circuit $ \(mm, wb) -> do
       sizes = fmap (.nWords) metas
       offsets = snd $ mapAccumL (\acc size -> (acc + size, resize acc)) 0 sizes
 
-{- | Like 'deviceWbC', but allows you to set offsets of registers manually. This
+{- | Like 'deviceWb', but allows you to set offsets of registers manually. This
 can be important in cases where you'd like gaps between the registers. You can
-either pass in the offsets manually or use 'registerWithOffsetWbC'.
+either pass in the offsets manually or use 'registerWithOffsetWb'.
 -}
-deviceWithOffsetsWbC ::
+deviceWithOffsetsWb ::
   forall n wordSize aw dom.
   (HasCallStack, KnownNat n, KnownNat aw, KnownNat wordSize) =>
   String ->
@@ -225,7 +226,7 @@ deviceWithOffsetsWbC ::
         , Wishbone dom 'Standard aw (Bytes wordSize)
         )
     )
-deviceWithOffsetsWbC deviceName =
+deviceWithOffsetsWb deviceName =
   case divWithRemainder @wordSize @8 @7 of
     Dict ->
       Circuit go
@@ -349,9 +350,9 @@ deviceWithOffsetsWbC deviceName =
 an error if access rights are set to 'ReadOnly'. Similarly, bus reads are rejected
 if access rights are set to 'WriteOnly'.
 
-You can tie registers created using this function together with 'deviceWbC'. If
+You can tie registers created using this function together with 'deviceWb'. If
 you're looking to create a device with arbitrary offsets, use
-'registerWithOffsetWbC' instead.
+'registerWithOffsetWb' instead.
 
 The register is configurable in its byte order, both on the bus and internally
 using '?busByteOrder' and '?regByteOrder' respectively. For VexRiscV, you'd want
@@ -359,7 +360,7 @@ to configure @?busByteOrder = BigEndian@ and @?regByteOrder = LittleEndian@. Als
 see 'withBittideByteOrder'. Note that the bus byte order is a hack more than
 anything else and only affects the data and byte enable fields.
 -}
-registerWbC ::
+registerWb ::
   forall a dom wordSize aw.
   ( HasCallStack
   , ToFieldType a
@@ -390,7 +391,7 @@ registerWbC ::
     ( CSignal dom a
     , CSignal dom (BusActivity a)
     )
-registerWbC clk rst regConfig resetValue =
+registerWb clk rst regConfig resetValue =
   case SNat @(SizeInWordsC wordSize a) of
     (nWords@SNat :: SNat nWords) ->
       case d1 `compareSNat` nWords of
@@ -449,7 +450,7 @@ registerWbC clk rst regConfig resetValue =
             SimOnly
               $ Register
                 { fieldType = regType @a
-                , address = 0x0 -- Note: will be set by 'deviceWithOffsetsWbC'
+                , address = 0x0 -- Note: will be set by 'deviceWithOffsetsWb'
                 , access = regConfig.access
                 , tags = regConfig.tags
                 , reset = Just (pack resetValue).unsafeToNatural
@@ -538,7 +539,7 @@ registerWbC clk rst regConfig resetValue =
             -- TODO: Handle unpack failures
             $ fromMaybe
               ( deepErrorX
-                  $ "Unpack failed in registerWbC: wordSize="
+                  $ "Unpack failed in registerWb: wordSize="
                   <> show wordSize
                   <> ", regByteOrder="
                   <> show ?regByteOrder
@@ -562,8 +563,8 @@ reverseBits ::
   BitVector n
 reverseBits = pack . reverse . unpack @(Vec n Bit)
 
--- | Like 'registerWbC', but does not return the register value.
-registerWbC_ ::
+-- | Like 'registerWb', but does not return the register value.
+registerWb_ ::
   forall a dom wordSize aw.
   ( HasCallStack
   , ToFieldType a
@@ -592,14 +593,14 @@ registerWbC_ ::
     , CSignal dom (Maybe a)
     )
     ()
-registerWbC_ clk rst regConfig resetValue = circuit $ \i -> do
-  _ignored <- registerWbC clk rst regConfig resetValue -< i
+registerWb_ clk rst regConfig resetValue = circuit $ \i -> do
+  _ignored <- registerWb clk rst regConfig resetValue -< i
   idC
 
-{- | Same as 'registerWbC', but also takes an offset. You can tie registers
-created using this function together with 'deviceWithOffsetsWbC'.
+{- | Same as 'registerWb', but also takes an offset. You can tie registers
+created using this function together with 'deviceWithOffsetsWb'.
 -}
-registerWithOffsetWbC ::
+registerWithOffsetWb ::
   forall a dom wordSize aw.
   ( HasCallStack
   , ToFieldType a
@@ -633,10 +634,10 @@ registerWithOffsetWbC ::
     ( CSignal dom a
     , CSignal dom (BusActivity a)
     )
-registerWithOffsetWbC clk rst regConfig offset resetValue =
+registerWithOffsetWb clk rst regConfig offset resetValue =
   circuit $ \((offsetBwd, meta, wb), maybeA) -> do
     genOffset -< offsetBwd
-    registerWbC clk rst regConfig resetValue -< ((Fwd offset, meta, wb), maybeA)
+    registerWb clk rst regConfig resetValue -< ((Fwd offset, meta, wb), maybeA)
  where
   genOffset :: Circuit (ConstBwd (BitVector aw)) ()
   genOffset = Circuit $ \_ -> (offset, ())
@@ -672,7 +673,7 @@ maskWriteData offset mask busData regData = adjust offset regData $ \regWord ->
     Vec nWords a
   adjust i xs f = replace i (f (xs !! i)) xs
 
-{- | 'registerWbC' already checks for illegal write or read operations and does not
+{- | 'registerWb' already checks for illegal write or read operations and does not
 acknowledge them. So there is no need to check for 'ReadOnly' or 'WriteOnly'.
 -}
 getBusActivity :: WishboneS2M bv -> a -> Maybe a -> BusActivity a
@@ -681,8 +682,8 @@ getBusActivity s2m regValue maybeUpdatedRegValue
   | Just v <- maybeUpdatedRegValue = BusWrite v
   | otherwise = BusRead regValue
 
--- | 'registerWbC' with a hidden clock and reset
-registerWbCI ::
+-- | 'registerWb' with a hidden clock and reset
+registerWbI ::
   forall a dom wordSize aw.
   ( HasCallStack
   , HiddenClock dom
@@ -712,10 +713,10 @@ registerWbCI ::
     ( CSignal dom a
     , CSignal dom (BusActivity a)
     )
-registerWbCI = withFrozenCallStack $ registerWbC hasClock hasReset
+registerWbI = withFrozenCallStack $ registerWb hasClock hasReset
 
--- | 'registerWbC_' with a hidden clock and reset
-registerWbCI_ ::
+-- | 'registerWb_' with a hidden clock and reset
+registerWbI_ ::
   forall a dom wordSize aw.
   ( HasCallStack
   , HiddenClock dom
@@ -743,10 +744,10 @@ registerWbCI_ ::
     , CSignal dom (Maybe a)
     )
     ()
-registerWbCI_ = withFrozenCallStack $ registerWbC_ hasClock hasReset
+registerWbI_ = withFrozenCallStack $ registerWb_ hasClock hasReset
 
--- | 'registerWithOffsetWbC' with a hidden clock and reset
-registerWithOffsetWbCI ::
+-- | 'registerWithOffsetWb' with a hidden clock and reset
+registerWithOffsetWbI ::
   forall a dom wordSize aw.
   ( HasCallStack
   , HiddenClock dom
@@ -779,4 +780,4 @@ registerWithOffsetWbCI ::
     ( CSignal dom a
     , CSignal dom (BusActivity a)
     )
-registerWithOffsetWbCI = withFrozenCallStack $ registerWithOffsetWbC hasClock hasReset
+registerWithOffsetWbI = withFrozenCallStack $ registerWithOffsetWb hasClock hasReset

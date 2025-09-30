@@ -49,9 +49,9 @@ import Clash.Explicit.Signal.Extra (changepoints)
 import GHC.Stack (HasCallStack)
 import Protocols.MemoryMap (ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
-  deviceWbC,
+  deviceWb,
   registerConfig,
-  registerWbC,
+  registerWb,
  )
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
@@ -134,8 +134,8 @@ syncOutGenerateWbC ::
     (ConstBwd MM, Wishbone dom 'Standard aw (Bytes 4))
     (CSignal counterDom Bit)
 syncOutGenerateWbC clk rst counterClk counterRst = circuit $ \(mm, wb) -> do
-  [activeWb] <- deviceWbC "SyncOutGenerator" -< (mm, wb)
-  (Fwd active, _activity) <- registerWbC clk rst config False -< (activeWb, Fwd noWrite)
+  [activeWb] <- deviceWb "SyncOutGenerator" -< (mm, wb)
+  (Fwd active, _activity) <- registerWb clk rst config False -< (activeWb, Fwd noWrite)
   let
     syncOutRst0 = rst `orReset` unsafeFromActiveLow active
     syncOutRst1 = counterRst `orReset` xpmCdcSyncRst Asserted clk counterClk syncOutRst0

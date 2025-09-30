@@ -14,9 +14,9 @@ import Protocols
 import Protocols.MemoryMap (Access (ReadOnly), ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   RegisterConfig (access),
-  deviceWbC,
+  deviceWb,
   registerConfig,
-  registerWbCI_,
+  registerWbI_,
  )
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 
@@ -55,16 +55,16 @@ captureUgn ::
     (ConstBwd MM, Wishbone dom 'Standard addrW (Bytes 4))
     (CSignal dom (BitVector 64))
 captureUgn localCounter linkIn = circuit $ \bus -> do
-  [wbLocalCounter, wbRemoteCounter, wbHasCaptured] <- deviceWbC "CaptureUgn" -< bus
+  [wbLocalCounter, wbRemoteCounter, wbHasCaptured] <- deviceWb "CaptureUgn" -< bus
 
   let trigger = C.isRising False (isJust <$> linkIn)
   capturedLocalCounter <- shutter trigger -< Fwd localCounter
   capturedRemoteCounter <- shutter trigger -< Fwd (fromMaybe 0 <$> linkIn)
   capturedHasCaptured <- shutter trigger -< Fwd (isJust <$> linkIn)
 
-  registerWbCI_ localCounterConfig 0 -< (wbLocalCounter, capturedLocalCounter)
-  registerWbCI_ remoteCounterConfig 0 -< (wbRemoteCounter, capturedRemoteCounter)
-  registerWbCI_ hasCapturedConfig False -< (wbHasCaptured, capturedHasCaptured)
+  registerWbI_ localCounterConfig 0 -< (wbLocalCounter, capturedLocalCounter)
+  registerWbI_ remoteCounterConfig 0 -< (wbRemoteCounter, capturedRemoteCounter)
+  registerWbI_ hasCapturedConfig False -< (wbHasCaptured, capturedHasCaptured)
 
   idC -< Fwd (fromJust <$> linkIn)
  where

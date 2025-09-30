@@ -107,19 +107,19 @@ deviceExample ::
     ()
 deviceExample clk rst = circuit $ \(mm, wb) -> do
   [float, double, u32, readOnly, writeOnly, prio] <-
-    deviceWbC "example" -< (mm, wb)
+    deviceWb "example" -< (mm, wb)
 
-  registerWbC_ clk rst (registerConfig "f") initFloat -< (float, Fwd noWrite)
-  registerWbC_ clk rst (registerConfig "d") initDouble -< (double, Fwd noWrite)
-  registerWbC_ clk rst (registerConfig "u") initU32 -< (u32, Fwd noWrite)
+  registerWb_ clk rst (registerConfig "f") initFloat -< (float, Fwd noWrite)
+  registerWb_ clk rst (registerConfig "d") initDouble -< (double, Fwd noWrite)
+  registerWb_ clk rst (registerConfig "u") initU32 -< (u32, Fwd noWrite)
 
-  registerWbC_ clk rst (registerConfig "ro"){access = ReadOnly} initFloat
+  registerWb_ clk rst (registerConfig "ro"){access = ReadOnly} initFloat
     -< (readOnly, Fwd noWrite)
-  registerWbC_ clk rst (registerConfig "wo"){access = WriteOnly} initFloat
+  registerWb_ clk rst (registerConfig "wo"){access = WriteOnly} initFloat
     -< (writeOnly, Fwd noWrite)
 
   (_a, Fwd prioOut) <-
-    registerWbC clk rst (registerConfig "prio") initU32
+    registerWb clk rst (registerConfig "prio") initU32
       -< (prio, Fwd (overwrite <$> prioOut))
 
   idC
@@ -147,7 +147,7 @@ genWishboneTransfer genAddr genMask genData =
     , Write <$> genAddr <*> genMask <*> genData
     ]
 
-{- | Test 'deviceExample' (and therefore 'deviceWbC' and 'registerWbC') using
+{- | Test 'deviceExample' (and therefore 'deviceWb' and 'registerWb') using
 'wishbonePropWithModel'. This property generates a number of random Wishbone
 transactions and checks that the device behaves as expected.
 
@@ -160,7 +160,7 @@ It currently tests:
 It currently does NOT test:
 
   * "Oddly" shaped types (e.g. @Signed 21@)
-  * 'deviceWithOffsetsWbC' with gaps between registers
+  * 'deviceWithOffsetsWb' with gaps between registers
   * Varying the size of the Wishbone bus
 -}
 prop_wb :: Property

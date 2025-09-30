@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Wishbone.RegisterWbC where
+module Wishbone.RegisterWb where
 
 import Clash.Prelude
 
@@ -10,7 +10,7 @@ import Test.Tasty (TestTree)
 import Test.Tasty.HUnit (Assertion, assertFailure, testCase)
 import Test.Tasty.TH (testGroupGenerator)
 
-import Bittide.Instances.Tests.RegisterWbC (simResult)
+import Bittide.Instances.Tests.RegisterWb (simResult)
 
 import qualified Text.Parsec as P
 import qualified Text.Parsec.String as P
