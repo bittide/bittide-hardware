@@ -19,7 +19,7 @@ import qualified Tests.ClockControlWb as ClockControlWb
 import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
-import qualified Wishbone.RegisterWbC as RegisterWbC
+import qualified Wishbone.RegisterWb as RegisterWb
 import qualified Wishbone.ScatterGather as ScatterGather
 import qualified Wishbone.SwitchCalendar as Wishbone.SwitchCalendar
 import qualified Wishbone.SwitchDemoProcessingElement as SwitchDemoProcessingElement
@@ -70,7 +70,7 @@ tests =
         , ScatterGather.tests
         , SwitchDemoProcessingElement.tests
         , Time.tests
-        , RegisterWbC.tests
+        , RegisterWb.tests
         , Watchdog.tests
         , Wishbone.SwitchCalendar.tests
         ]

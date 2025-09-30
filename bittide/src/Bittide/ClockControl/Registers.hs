@@ -21,11 +21,11 @@ import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
   RegisterConfig (access, description),
-  deviceWbC,
+  deviceWb,
   registerConfig,
-  registerWbC,
-  registerWbCI,
-  registerWbCI_,
+  registerWb,
+  registerWbI,
+  registerWbI_,
  )
 
 data ClockControlData (nLinks :: Nat) = ClockControlData
@@ -94,37 +94,37 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
     , wbDataCounts
     , wbConfig
     ] <-
-    deviceWbC "ClockControl" -< (mm, wb)
+    deviceWb "ClockControl" -< (mm, wb)
 
   (_cs, Fwd changeSpeed) <-
-    registerWbCI changeSpeedConfig NoChange -< (wbChangeSpeed, Fwd noWrite)
+    registerWbI changeSpeedConfig NoChange -< (wbChangeSpeed, Fwd noWrite)
 
   -- Link configuration
-  registerWbCI_ numLinksConfig numberOfLinks -< (wbNumLinks, Fwd noWrite)
-  registerWbCI_ linkMaskConfig 0 -< (wbLinkMask, Fwd (Just <$> linkMask))
-  registerWbCI_ linkMaskPopCountConfig 0
+  registerWbI_ numLinksConfig numberOfLinks -< (wbNumLinks, Fwd noWrite)
+  registerWbI_ linkMaskConfig 0 -< (wbLinkMask, Fwd (Just <$> linkMask))
+  registerWbI_ linkMaskPopCountConfig 0
     -< (wbLinkMaskPopCount, Fwd (Just <$> linkMaskPopCount))
-  registerWbCI_ linkMaskRevConfig 0 -< (wbLinkMaskRev, Fwd (Just <$> linkMaskRev))
-  registerWbCI_ linksOkConfig 0 -< (wbLinksOk, Fwd (Just <$> linksOk))
+  registerWbI_ linkMaskRevConfig 0 -< (wbLinkMaskRev, Fwd (Just <$> linkMaskRev))
+  registerWbI_ linksOkConfig 0 -< (wbLinksOk, Fwd (Just <$> linksOk))
   (Fwd linksStable, _l0) <-
-    registerWbCI linksStableConfig (0 :: BitVector nLinks) -< (wbLinksStable, Fwd noWrite)
+    registerWbI linksStableConfig (0 :: BitVector nLinks) -< (wbLinksStable, Fwd noWrite)
   (Fwd linksSettled, _l1) <-
-    registerWbCI linksSettledConfig (0 :: BitVector nLinks) -< (wbLinksSettled, Fwd noWrite)
+    registerWbI linksSettledConfig (0 :: BitVector nLinks) -< (wbLinksSettled, Fwd noWrite)
 
   -- Data count tracking
-  registerWbCI_ dataCountsConfig (repeat 0)
+  registerWbI_ dataCountsConfig (repeat 0)
     -< (wbDataCounts, Fwd (Just <$> maskedCounters))
   (Fwd minDataCountsSeen0, _i0) <-
-    registerWbC hasClock dataCountsSeenReset minDataCountsSeenConfig (repeat maxBound)
+    registerWb hasClock dataCountsSeenReset minDataCountsSeenConfig (repeat maxBound)
       -< (wbMinDataCountSeen, Fwd (Just <$> minDataCountsSeen1))
   (Fwd maxDataCountsSeen0, _i1) <-
-    registerWbC hasClock dataCountsSeenReset maxDataCountsSeenConfig (repeat minBound)
+    registerWb hasClock dataCountsSeenReset maxDataCountsSeenConfig (repeat minBound)
       -< (wbMaxDataCountSeen, Fwd (Just <$> maxDataCountsSeen1))
   (_cd, Fwd clearDataCountsSeen) <-
-    registerWbCI clearDataCountsSeenConfig False -< (wbClearDataCountsSeen, Fwd noWrite)
+    registerWbI clearDataCountsSeenConfig False -< (wbClearDataCountsSeen, Fwd noWrite)
 
   -- Clock control configuration
-  registerWbCI_ configConfig (defCcConfLinks @nLinks) -< (wbConfig, Fwd noWrite)
+  registerWbI_ configConfig (defCcConfLinks @nLinks) -< (wbConfig, Fwd noWrite)
 
   let
     maskedLinksStable = applyMask True linkMask (unpack <$> linksStable)
@@ -137,7 +137,7 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
     dataCountsSeenReset =
       unsafeOrReset
         hasReset
-        (unsafeFromActiveHigh (clearDataCountsSeen .== BusWrite True))
+        (unsafeFromActiveHigh (clearDataCountsSeen .== Just (BusWrite True)))
 
     minDataCountsSeen1 :: Signal dom (Vec nLinks (RelDataCount m))
     minDataCountsSeen1 = zipWith min <$> minDataCountsSeen0 <*> maskedCounters
@@ -187,6 +187,6 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
   maskedCounters :: Signal dom (Vec nLinks (RelDataCount m))
   maskedCounters = applyMask 0 linkMask counters
 
-  busActivityToMaybeSpeedChange :: BusActivity SpeedChange -> Maybe SpeedChange
-  busActivityToMaybeSpeedChange (BusWrite change) = Just change
+  busActivityToMaybeSpeedChange :: Maybe (BusActivity SpeedChange) -> Maybe SpeedChange
+  busActivityToMaybeSpeedChange (Just (BusWrite change)) = Just change
   busActivityToMaybeSpeedChange _ = Nothing

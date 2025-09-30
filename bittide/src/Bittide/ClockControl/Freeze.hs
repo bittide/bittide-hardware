@@ -14,10 +14,10 @@ import Protocols.MemoryMap (Access (ReadOnly, WriteOnly), ConstBwd, MM)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (BusWrite),
   RegisterConfig (access, description),
-  deviceWbC,
+  deviceWb,
   registerConfig,
-  registerWbC,
-  registerWbC_,
+  registerWb,
+  registerWb_,
  )
 import Protocols.Wishbone
 
@@ -52,7 +52,7 @@ freeze clk rst =
     -- Create a bunch of register wishbone interfaces. We don't really care about
     -- ordering, so we just append a number to the end of a generic name.
     [wb0, wb1, wb2, wb3, wb4, wb5] <-
-      deviceWbC "Freeze" -< (mm, wb)
+      deviceWb "Freeze" -< (mm, wb)
 
     -- Only writeable register in this device: can be used by the wishbone manager
     -- to freeze all the incoming signals.
@@ -61,26 +61,26 @@ freeze clk rst =
     --       don't expect this to cause any problems as we don't critically rely
     --       on the counter being exact (i.e., reading one less just means we
     --       drop one measurement at the end of a clock control experiment). Still,
-    --       it would be nice for 'registerWbC' to support this.
-    (_a0, Fwd freezeActivity) <- registerWbC clk rst freezeConfig () -< (wb0, Fwd noWrite)
-    let shut = freezeActivity .==. pure (BusWrite ())
+    --       it would be nice for 'registerWb' to support this.
+    (_a0, Fwd freezeActivity) <- registerWb clk rst freezeConfig () -< (wb0, Fwd noWrite)
+    let shut = freezeActivity .== Just (BusWrite ())
 
     -- Read-only register that counts how many times the user requested a freeze
     let freezeCounterWrite = Just <$> counter @(Unsigned 32) clk rst (toEnable shut) 0
-    registerWbC_ clk rst freezeCounterConfig 0 -< (wb1, Fwd freezeCounterWrite)
+    registerWb_ clk rst freezeCounterConfig 0 -< (wb1, Fwd freezeCounterWrite)
 
     -- Counters that are frozen when the user requests a freeze.
     localClockWrite <- shutter shut -< localCounter
-    registerWbC_ clk rst localClockConfig 0 -< (wb2, localClockWrite)
+    registerWb_ clk rst localClockConfig 0 -< (wb2, localClockWrite)
 
     syncPulseCounterWrite <- shutter shut -< syncPulseCounter
-    registerWbC_ clk rst syncCounterConfig 0 -< (wb3, syncPulseCounterWrite)
+    registerWb_ clk rst syncCounterConfig 0 -< (wb3, syncPulseCounterWrite)
 
     lastPulseWrite <- shutter shut -< lastPulseCounter
-    registerWbC_ clk rst lastSyncPulseConfig 0 -< (wb4, lastPulseWrite)
+    registerWb_ clk rst lastSyncPulseConfig 0 -< (wb4, lastPulseWrite)
 
     ebcWrite <- shutter shut -< ebCounters
-    registerWbC_ clk rst ebCountersConfig (repeat 0) -< (wb5, ebcWrite)
+    registerWb_ clk rst ebCountersConfig (repeat 0) -< (wb5, ebcWrite)
 
     idC
  where

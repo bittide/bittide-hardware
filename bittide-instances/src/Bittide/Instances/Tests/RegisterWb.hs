@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 
-module Bittide.Instances.Tests.RegisterWbC where
+module Bittide.Instances.Tests.RegisterWb where
 
 import Clash.Prelude
 
@@ -38,10 +38,10 @@ import Protocols.MemoryMap (ConstBwd, MM, MemoryMap, getMMAny)
 import Protocols.MemoryMap.FieldType (ToFieldType)
 import Protocols.MemoryMap.Registers.WishboneStandard (
   BusActivity (..),
-  deviceWbC,
+  deviceWb,
   registerConfig,
-  registerWbC,
-  registerWbC_,
+  registerWb,
+  registerWb_,
  )
 import Protocols.Wishbone (Wishbone, WishboneMode (Standard))
 import System.Environment (lookupEnv)
@@ -164,68 +164,68 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbI20
     , wbMI12
     ] <-
-    deviceWbC "ManyTypes" -< (mm, wb)
+    deviceWb "ManyTypes" -< (mm, wb)
 
-  registerWbC_ hasClock hasReset (registerConfig "s0") initWbS0 -< (wbS0, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "s1") initWbS1 -< (wbS1, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "s2") initWbS2 -< (wbS2, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "s3") initWbS3 -< (wbS3, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "s4") initWbS4 -< (wbS4, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "s0") initWbS0 -< (wbS0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "s1") initWbS1 -< (wbS1, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "s2") initWbS2 -< (wbS2, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "s3") initWbS3 -< (wbS3, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "s4") initWbS4 -< (wbS4, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "u0") initWbU0 -< (wbU0, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "u1") initWbU1 -< (wbU1, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "u2") initWbU2 -< (wbU2, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "u3") initWbU3 -< (wbU3, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "u0") initWbU0 -< (wbU0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "u1") initWbU1 -< (wbU1, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "u2") initWbU2 -< (wbU2, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "u3") initWbU3 -< (wbU3, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "bv0") initWbBv0 -< (wbBv0, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "bv1") initWbBv1 -< (wbBv1, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "bv2") initWbBv2 -< (wbBv2, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "bv0") initWbBv0 -< (wbBv0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "bv1") initWbBv1 -< (wbBv1, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "bv2") initWbBv2 -< (wbBv2, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "f0") initWbF0 -< (wbF0, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "f1") initWbF1 -< (wbF1, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "f0") initWbF0 -< (wbF0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "f1") initWbF1 -< (wbF1, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "d0") initWbD0 -< (wbD0, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "d1") initWbD1 -< (wbD1, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "d0") initWbD0 -< (wbD0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "d1") initWbD1 -< (wbD1, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "b0") initWbB0 -< (wbB0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "b0") initWbB0 -< (wbB0, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "v0") initWbV0 -< (wbV0, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "v1") initWbV1 -< (wbV1, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "v2") initWbV2 -< (wbV2, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "v0") initWbV0 -< (wbV0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "v1") initWbV1 -< (wbV1, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "v2") initWbV2 -< (wbV2, Fwd noWrite)
 
   (_unit, Fwd unitActivity) <-
-    registerWbC hasClock hasReset (registerConfig "unit") initUnit -< (wbUnit, Fwd noWrite)
+    registerWb hasClock hasReset (registerConfig "unit") initUnit -< (wbUnit, Fwd noWrite)
 
-  let unitWritten = orNothing <$> (unitActivity .== BusWrite ()) <*> pure True
+  let unitWritten = orNothing <$> (unitActivity .== Just (BusWrite ())) <*> pure True
 
-  registerWbC_ hasClock hasReset (registerConfig "unitW") initUnitW
+  registerWb_ hasClock hasReset (registerConfig "unitW") initUnitW
     -< (wbUnitW, Fwd unitWritten)
-  registerWbC_ hasClock hasReset (registerConfig "zs") initZS -< (wbZS, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "zs") initZS -< (wbZS, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "sum0") initSum0 -< (wbSum0, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "sum1") initSum1 -< (wbSum1, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "sum0") initSum0 -< (wbSum0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "sum1") initSum1 -< (wbSum1, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "sop0") initSop0 -< (wbSop0, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "sop1") initSop1 -< (wbSop1, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "sop0") initSop0 -< (wbSop0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "sop1") initSop1 -< (wbSop1, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "e0") initWbE0 -< (wbE0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "e0") initWbE0 -< (wbE0, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "oi") initOI0 -< (wbOI0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "oi") initOI0 -< (wbOI0, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "x2") initWbX2 -< (wbX2, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "x2") initWbX2 -< (wbX2, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "me0") initWbMe0 -< (wbMe0, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "me1") initWbMe1 -< (wbMe1, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "me0") initWbMe0 -< (wbMe0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "me1") initWbMe1 -< (wbMe1, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "p0") initP0 -< (wbP0, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "p1") initP1 -< (wbP1, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "p2") initP2 -< (wbP2, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "p3") initP3 -< (wbP3, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "p0") initP0 -< (wbP0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "p1") initP1 -< (wbP1, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "p2") initP2 -< (wbP2, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "p3") initP3 -< (wbP3, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "t0") initT0 -< (wbT0, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "t0") initT0 -< (wbT0, Fwd noWrite)
 
-  registerWbC_ hasClock hasReset (registerConfig "i20") initI20 -< (wbI20, Fwd noWrite)
-  registerWbC_ hasClock hasReset (registerConfig "mi12") initMI12 -< (wbMI12, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "i20") initI20 -< (wbI20, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "mi12") initMI12 -< (wbMI12, Fwd noWrite)
 
   idC
  where
@@ -386,7 +386,7 @@ dut =
 
   peConfig = unsafePerformIO $ do
     root <- findParentContaining "cabal.project"
-    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "registerwbc_test"
+    let elfPath = root </> firmwareBinariesDir "riscv32imc" Release </> "registerwb_test"
     pure
       PeConfig
         { initI =

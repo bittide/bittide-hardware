@@ -38,13 +38,12 @@ import Protocols
 import Protocols.MemoryMap
 import Protocols.MemoryMap.FieldType (FieldType, ToFieldType (..), Var)
 import Protocols.MemoryMap.Registers.WishboneStandard (
-  BusActivity (..),
   RegisterConfig (access, description),
   busActivityWrite,
-  deviceWbC,
+  deviceWb,
   registerConfig,
-  registerWbCI,
-  registerWbCI_,
+  registerWbI,
+  registerWbI_,
  )
 import Protocols.Wishbone
 
@@ -359,16 +358,16 @@ mkCalendarC
       bsShadow
     ) = circuit $ \(mm, wb) -> do
 {- FOURMOLU_DISABLE -}
-    [wb0, wb1, wb2, wb3, wb4, wb5, wb6, (wb7Offset, wb7Meta, wb7Bus)] <- deviceWbC (compName <> "_calendar") -< (mm, wb)
-    Fwd (writeEntry, _) <- registerWbCI writeEntryCfg (unpack 0) -< (wb4, Fwd noWrite)
-    Fwd (_, writeActive) <- registerWbCI writeAddrCfg (0 :: Index calDepth) -< (wb1, Fwd noWrite)
-    Fwd (readAddr, _) <- registerWbCI readAddrCfg (0 :: Index calDepth) -< (wb2, Fwd noWrite)
-    registerWbCI_ readEntryCfg (unpack 0) -< (wb3, Fwd readEntry)
-    Fwd (_, shadowDepthActive) <- registerWbCI shadowDepthCfg 0 -< (wb0, Fwd shadowDepthWrite)
-    Fwd (_, swapActive) <- registerWbCI swapActiveCfg False -< (wb5, Fwd noWrite)
-    Fwd (metacycleCount, _) <- registerWbCI metacycleCountCfg (0 :: Unsigned 32) -< (wb6, Fwd nextMetacycleCount)
+    [wb0, wb1, wb2, wb3, wb4, wb5, wb6, (wb7Offset, wb7Meta, wb7Bus)] <- deviceWb (compName <> "_calendar") -< (mm, wb)
+    Fwd (writeEntry, _) <- registerWbI writeEntryCfg (unpack 0) -< (wb4, Fwd noWrite)
+    Fwd (_, writeActive) <- registerWbI writeAddrCfg (0 :: Index calDepth) -< (wb1, Fwd noWrite)
+    Fwd (readAddr, _) <- registerWbI readAddrCfg (0 :: Index calDepth) -< (wb2, Fwd noWrite)
+    registerWbI_ readEntryCfg (unpack 0) -< (wb3, Fwd readEntry)
+    Fwd (_, shadowDepthActive) <- registerWbI shadowDepthCfg 0 -< (wb0, Fwd shadowDepthWrite)
+    Fwd (_, swapActive) <- registerWbI swapActiveCfg False -< (wb5, Fwd noWrite)
+    Fwd (metacycleCount, _) <- registerWbI metacycleCountCfg (0 :: Unsigned 32) -< (wb6, Fwd nextMetacycleCount)
     wbEom <- andAck calOut.lastCycle -< wb7Bus
-    registerWbCI_ endOfMetacycleCfg False -< ((wb7Offset, wb7Meta, wbEom), Fwd noWrite)
+    registerWbI_ endOfMetacycleCfg False -< ((wb7Offset, wb7Meta, wbEom), Fwd noWrite)
     {- FOURMOLU_ ENABLE -}
     let
       nextMetacycleCount = orNothing <$> calOut.lastCycle <*> (metacycleCount + 1)
@@ -384,7 +383,7 @@ mkCalendarC
           <$> newShadowDepth
           <*> newShadowEntry
           <*> readAddr
-          <*> (swapActive ./=. pure BusIdle)
+          <*> (swapActive ./= Nothing)
     idC -< Fwd (calOut.activeEntry.veEntry, calOut.lastCycle, metacycleCount)
    where
     noWrite = pure Nothing
