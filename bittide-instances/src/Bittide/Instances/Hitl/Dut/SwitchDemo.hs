@@ -40,7 +40,6 @@ import Clash.Cores.Xilinx.DcFifo (dcFifoDf)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2 (simDna2)
 import Data.Char (ord)
 import Protocols
-import Protocols.Extra
 import Protocols.MemoryMap (ConstBwd, MM, MemoryMap)
 import Protocols.Wishbone
 import VexRiscv (DumpVcd (..), Jtag, JtagIn (..))
@@ -98,7 +97,7 @@ simpleManagementUnitC ::
 simpleManagementUnitC (SimpleManagementConfig peConfig dumpVcd) =
   circuit $ \(mm, (jtag, _linkIn)) -> do
     peWbs <- processingElement dumpVcd peConfig -< (mm, jtag)
-    ([timeWbBus], nmuWbs) <- splitAtC d1 -< peWbs
+    ([timeWbBus], nmuWbs) <- Vec.split -< peWbs
     localCounter <- timeWb -< timeWbBus
 
     idC -< (localCounter, nmuWbs)
@@ -253,15 +252,15 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
         ]
       , ugnData
       ) <-
-      splitAtC SNat -< muWbAll
+      Vec.split -< muWbAll
 
     ugnRxs <-
       defaultBittideClkRstEn $ Vec.vecCircuits (captureUgn lc <$> rxs) -< ugnData
 
-    rxLinks <- appendC -< ([Fwd peOut], ugnRxs)
+    rxLinks <- Vec.append -< ([Fwd peOut], ugnRxs)
     (switchOut, calEntry) <-
       defaultBittideClkRstEn $ switchC calendarConfig -< (switchWbMM, (rxLinks, switchWb))
-    ([Fwd peIn], txs) <- splitAtC SNat -< switchOut
+    ([Fwd peIn], txs) <- Vec.split -< switchOut
 
     (Fwd peOut, ps) <-
       defaultBittideClkRstEn (switchDemoPeWb (SNat @FpgaCount))
