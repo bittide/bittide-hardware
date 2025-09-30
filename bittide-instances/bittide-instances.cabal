@@ -211,6 +211,7 @@ library
     Bittide.Instances.Tests.RegisterWb
     Bittide.Instances.Tests.ScatterGather
     Bittide.Instances.Tests.SwitchCalendar
+    Bittide.Instances.Tests.WbToDf
     Paths.Bittide.Instances
 
   other-modules:
@@ -238,6 +239,7 @@ library
     clock,
     constraints,
     containers,
+    deepseq,
     directory,
     exceptions,
     extra,
@@ -286,6 +288,7 @@ test-suite unittests
   main-is: unittests.hs
   ghc-options: -threaded
   other-modules:
+    Df.WbToDf
     Tests.ClockControlWb
     Wishbone.Axi
     Wishbone.CaptureUgn
