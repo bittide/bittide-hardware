@@ -13,7 +13,6 @@ import Clash.Prelude hiding (PeriodToCycles)
 import Clash.Class.BitPackC (ByteOrder)
 import Clash.Functor.Extra ((<<$>>))
 import Protocols
-import Protocols.Extra (splitAtCI)
 import Protocols.Wishbone
 import VexRiscv
 
@@ -28,6 +27,8 @@ import Bittide.SharedTypes
 import Bittide.Sync (syncInCounterC, syncOutGenerateWbC)
 import Bittide.Wishbone (timeWb)
 import Protocols.MemoryMap
+
+import qualified Protocols.Vec as Vec
 
 -- | Configuration type for software clock control.
 data SwControlConfig dom where
@@ -95,7 +96,7 @@ callistoSwClockControlC freeClk freeRst rxClocks rxResets dumpVcd peConfig =
         ]
       , wbRest
       ) <-
-      splitAtCI -< allWishbone
+      Vec.split -< allWishbone
 
     Fwd clockControlData <-
       clockControlWb linkMask linksOk (unbundle diffCounters) -< clockControlBus

@@ -12,7 +12,6 @@ import Clash.Sized.Vector.Extra (incrementWithBlacklist)
 
 import GHC.Stack (HasCallStack)
 import Protocols
-import Protocols.Extra
 import Protocols.Idle
 import Protocols.Wishbone
 import VexRiscv (CpuIn (..), CpuOut (..), DumpVcd, Jtag, vexRiscv)
@@ -112,9 +111,9 @@ processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, inclu
         onTransactionWb
         onTransactionWb
       -< dBus0
-  (pfxs, wbs) <- unzipC <| singleMasterInterconnectC -< (mmDbus, dBus1)
+  (pfxs, wbs) <- Vec.unzip <| singleMasterInterconnectC -< (mmDbus, dBus1)
   idleSink <| (Vec.vecCircuits $ fmap MM.constBwd prefixes) -< pfxs
-  ([(mmI, iMemBus), dMemBus], extBusses) <- splitAtCI -< wbs
+  ([(mmI, iMemBus), dMemBus], extBusses) <- Vec.split -< wbs
 
   -- Instruction and data memory are never accessed explicitly by developers,
   -- only implicitly by the CPU itself. We therefore don't need to generate HAL
