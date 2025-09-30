@@ -38,7 +38,6 @@ import Protocols
 import Protocols.MemoryMap
 import Protocols.MemoryMap.FieldType (FieldType, ToFieldType (..), Var)
 import Protocols.MemoryMap.Registers.WishboneStandard (
-  BusActivity (..),
   RegisterConfig (access, description),
   busActivityWrite,
   deviceWb,
@@ -384,7 +383,7 @@ mkCalendarC
           <$> newShadowDepth
           <*> newShadowEntry
           <*> readAddr
-          <*> (swapActive ./=. pure BusIdle)
+          <*> (swapActive ./= Nothing)
     idC -< Fwd (calOut.activeEntry.veEntry, calOut.lastCycle, metacycleCount)
    where
     noWrite = pure Nothing

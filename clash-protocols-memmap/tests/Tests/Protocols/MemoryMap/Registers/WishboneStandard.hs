@@ -8,9 +8,10 @@
 
 module Tests.Protocols.MemoryMap.Registers.WishboneStandard where
 
+import Clash.Explicit.Prelude
+
 import Clash.Class.BitPackC (BitPackC, ByteOrder (BigEndian))
 import Clash.Class.BitPackC.Padding (SizeInWordsC, maybeUnpackWordC, packWordC)
-import Clash.Explicit.Prelude
 import Clash.Prelude (withClockResetEnable)
 import Control.DeepSeq (force)
 import Data.Maybe (fromMaybe)
@@ -82,6 +83,8 @@ initState =
     , (4, myPaddedPackC initFloat !! nil)
     , (5, myPaddedPackC initFloat !! nil)
     , (6, myPaddedPackC initU32 !! nil)
+    , (7, myPaddedPackC initU32 !! nil)
+    , (8, myPaddedPackC False !! nil)
     ]
  where
   nil = 0 :: Int
@@ -106,7 +109,7 @@ deviceExample ::
     (ConstBwd MM, Wishbone dom 'Standard aw (Bytes wordSize))
     ()
 deviceExample clk rst = circuit $ \(mm, wb) -> do
-  [float, double, u32, readOnly, writeOnly, prio] <-
+  [float, double, u32, readOnly, writeOnly, prio, delayed, delayedError] <-
     deviceWb "example" -< (mm, wb)
 
   registerWb_ clk rst (registerConfig "f") initFloat -< (float, Fwd noWrite)
@@ -120,18 +123,75 @@ deviceExample clk rst = circuit $ \(mm, wb) -> do
 
   (_a, Fwd prioOut) <-
     registerWb clk rst (registerConfig "prio") initU32
-      -< (prio, Fwd (overwrite <$> prioOut))
+      -< (prio, Fwd (fmap overwrite <$> prioOut))
+
+  -- Insert one register called 'delayed'. We want to test the following properties:
+  --
+  --   1. Whether we can delay a write
+  --   2. Whether circuit writes get ignored while a bus write gets delayed
+  --   3. Whether circuit writes do *not* get ignored while acknowledging a bus
+  --      transaction
+  --
+  -- To do this, we delay a write according to the logic in 'goDelay'. We test the
+  -- properties as follows:
+  --
+  --   1. If we couldn't delay, we'd expect odd values in 'delayed' (triggering
+  --      an error in 'delayed_error') due to either a bus write randomly trying to
+  --      write an odd number or by it being inserted by the last case of 'goDelay'.
+  --
+  --   2. If circuit writes wouldn't get ignored, the last case of 'goDelay' would
+  --      write an odd value into the register (triggering an error).
+  --
+  --   3. If circuit writes get ignored while acknowledging, a bus write would
+  --      randomly write odd values to the register.
+  (Fwd delayedActual, delayedDf) <-
+    registerWbDf clk rst (registerConfig "delayed") initU32
+      -< (delayed, delayedWrite)
+
+  delayedWrite <-
+    Circuit (unbundle . fmap goDelay . bundle . (,delayBy) . fst)
+      -< delayedDf
+
+  let unexpectedDelayedValue = sticky (testBit <$> delayedActual <*> pure 0)
+  registerWb_ clk rst (registerConfig "delayed_error"){access = ReadOnly} False
+    -< (delayedError, Fwd (Just <$> unexpectedDelayedValue))
 
   idC
  where
+  ena = enableGen
   noWrite = pure Nothing
+
+  sticky i = let s = register clk rst ena False (s .||. i) in s
+
+  goDelay ::
+    (Maybe (BusActivity (Unsigned 32)), Unsigned 4) ->
+    (Ack, Maybe (Unsigned 32))
+  goDelay = \case
+    (Nothing, d) ->
+      -- If there is no bus activity, we "randomize" whether we ack -- it shouldn't
+      -- matter what we do. We also don't write anything to the register.
+      (Ack (testBit d 0), Nothing)
+    (Just (BusWrite n), 0) ->
+      -- A bus write gets multiplied by 2, to make sure the register contains an even
+      -- number to not trigger 'delayedError'.
+      (Ack True, Just (n * 2))
+    (Just (BusRead _), 0) ->
+      -- A bus read gets acknowledged, but nothing gets written
+      (Ack True, Nothing)
+    (Just _, _) ->
+      -- Delay bus reads and writes. Circuit writes should *not* be accepted, so we try
+      -- and write an odd number. If this success, 'delayedError' will be triggered.
+      (Ack False, Just 1)
+
+  -- Delay a bus write by a "random" number of clock cycles
+  delayBy :: Signal dom (Unsigned 4)
+  delayBy = register clk rst ena 0 (delayBy - 1)
 
   overwrite = \case
     -- On bus writes 'the circuit' increments the written value by 1
-    BusWrite newA -> Just (newA + 1)
+    BusWrite newA -> (newA + 1)
     -- On bus reads, the circuit resets the register to its initial value
-    BusRead _ -> Just initU32
-    BusIdle -> Nothing
+    BusRead _ -> initU32
 
 genWishboneTransfer ::
   ( KnownNat aw
@@ -205,8 +265,8 @@ prop_wb =
           | isRead instr && errorAddress == woAddress ->
               -- Expect an error when trying to read from the WriteOnly register
               Right s
-          | isWrite instr && errorAddress == roAddress ->
-              -- Expect an error when trying to write to the ReadOnly register
+          | isWrite instr && errorAddress `elem` roAddresses ->
+              -- Expect an error when trying to write to a ReadOnly register
               Right s
           | otherwise ->
               Left $ "Error on address: " <> show errorAddress <> ", value: " <> show v
@@ -218,6 +278,8 @@ prop_wb =
     case Map.lookup a s of
       Nothing -> Left $ "Read from unmapped address: " <> show a
       Just v
+        | v /= 0 && a == delayedErrorAddress ->
+            Left $ "delayed error! v: " <> show v <> ", readData: " <> show readData
         | v == readData && a == prioAddress ->
             Right $ Map.insert prioAddress (head $ myPaddedPackC initU32) s
         | v == readData ->
@@ -225,6 +287,12 @@ prop_wb =
         | otherwise ->
             Left $ "a: " <> show a <> ", v: " <> show v <> ", readData: " <> show readData
   model (Write a m newDat) _ s
+    | a == delayedAddress =
+        let
+          double :: BitVector 32 -> BitVector 32
+          double = head . myPaddedPackC . (* (2 :: (Unsigned 32))) . myPaddedUnpackC . pure
+         in
+          Right (Map.adjust (double . update) a s)
     | a == prioAddress =
         let
           inc :: BitVector 32 -> BitVector 32
@@ -259,11 +327,15 @@ prop_wb =
      in
       unMemmap $ deviceExample @4 @AddressWidth @XilinxSystem clk rst
 
+  roAddresses = [roAddress, delayedErrorAddress]
+
   example = memoryMap.deviceDefs Map.! "example"
-  [_regF, _regD, _regU, regRO, regWO, regPrio] = example.registers
+  [_regF, _regD, _regU, regRO, regWO, regPrio, regDelayed, regDelayedError] = example.registers
   woAddress = fromIntegral $ regWO.value.address `div` 4
   roAddress = fromIntegral $ regRO.value.address `div` 4
   prioAddress = fromIntegral $ regPrio.value.address `div` 4
+  delayedAddress = fromIntegral $ regDelayed.value.address `div` 4
+  delayedErrorAddress = fromIntegral $ regDelayedError.value.address `div` 4
 
 {- FOURMOLU_DISABLE -}
 case_maskWriteData :: Assertion
@@ -300,7 +372,7 @@ case_memoryMap = do
   let example = memoryMap.deviceDefs Map.! "example"
   example.deviceName.name @?= "example"
 
-  let [regF, regD, regU, regRO, regWO, regPrio] = example.registers
+  let [regF, regD, regU, regRO, regWO, regPrio, regDelayed, regDelayedError] = example.registers
 
   regF.name.name @?= "f"
   regD.name.name @?= "d"
@@ -308,6 +380,8 @@ case_memoryMap = do
   regRO.name.name @?= "ro"
   regWO.name.name @?= "wo"
   regPrio.name.name @?= "prio"
+  regDelayed.name.name @?= "delayed"
+  regDelayedError.name.name @?= "delayed_error"
 
   regF.value.address @?= 0
   regD.value.address @?= 4
@@ -315,6 +389,8 @@ case_memoryMap = do
   regRO.value.address @?= 16
   regWO.value.address @?= 20
   regPrio.value.address @?= 24
+  regDelayed.value.address @?= 28
+  regDelayedError.value.address @?= 32
 
 tests :: TestTree
 tests =

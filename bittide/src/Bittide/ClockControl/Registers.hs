@@ -137,7 +137,7 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
     dataCountsSeenReset =
       unsafeOrReset
         hasReset
-        (unsafeFromActiveHigh (clearDataCountsSeen .== BusWrite True))
+        (unsafeFromActiveHigh (clearDataCountsSeen .== Just (BusWrite True)))
 
     minDataCountsSeen1 :: Signal dom (Vec nLinks (RelDataCount m))
     minDataCountsSeen1 = zipWith min <$> minDataCountsSeen0 <*> maskedCounters
@@ -187,6 +187,6 @@ clockControlWb linkMask linksOk (bundle -> counters) = circuit $ \(mm, wb) -> do
   maskedCounters :: Signal dom (Vec nLinks (RelDataCount m))
   maskedCounters = applyMask 0 linkMask counters
 
-  busActivityToMaybeSpeedChange :: BusActivity SpeedChange -> Maybe SpeedChange
-  busActivityToMaybeSpeedChange (BusWrite change) = Just change
+  busActivityToMaybeSpeedChange :: Maybe (BusActivity SpeedChange) -> Maybe SpeedChange
+  busActivityToMaybeSpeedChange (Just (BusWrite change)) = Just change
   busActivityToMaybeSpeedChange _ = Nothing

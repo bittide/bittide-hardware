@@ -710,10 +710,10 @@ timeWb = circuit $ \mmWb -> do
 
   -- Local circuit dependent declarations
   let
-    scratchWrite = orNothing <$> (cmdActivity .== MM.BusWrite Capture) <*> count
+    scratchWrite = orNothing <$> (cmdActivity .== Just (MM.BusWrite Capture)) <*> count
     cmpResult = count .>=. scratch
-    cmpResultWrite = orNothing <$> (cmdActivity ./= MM.BusWrite WaitForCmp) <*> cmpResult
-    cmdWaitAck = (cmdActivity ./= MM.BusWrite WaitForCmp) .||. cmpResult
+    cmpResultWrite = orNothing <$> (cmdActivity ./= Just (MM.BusWrite WaitForCmp)) <*> cmpResult
+    cmdWaitAck = (cmdActivity ./= Just (MM.BusWrite WaitForCmp)) .||. cmpResult
   idC -< Fwd count
  where
   -- Independent declarations

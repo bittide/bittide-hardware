@@ -196,7 +196,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   (_unit, Fwd unitActivity) <-
     registerWb hasClock hasReset (registerConfig "unit") initUnit -< (wbUnit, Fwd noWrite)
 
-  let unitWritten = orNothing <$> (unitActivity .== BusWrite ()) <*> pure True
+  let unitWritten = orNothing <$> (unitActivity .== Just (BusWrite ())) <*> pure True
 
   registerWb_ hasClock hasReset (registerConfig "unitW") initUnitW
     -< (wbUnitW, Fwd unitWritten)

@@ -13,12 +13,16 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
   -- * Register creation (explicit clocks and resets)
   registerWb,
   registerWb_,
+  registerWbDf,
   registerWithOffsetWb,
+  registerWithOffsetWbDf,
 
   -- * Register creation (implicit clocks and resets)
   registerWbI,
   registerWbI_,
+  registerWbDfI,
   registerWithOffsetWbI,
+  registerWithOffsetWbDfI,
 
   -- * Supporting types and functions
   registerConfig,
@@ -44,9 +48,11 @@ import Clash.Class.BitPackC (BitPackC (..), ByteOrder, Bytes)
 import Clash.Class.BitPackC.Padding (SizeInWordsC, maybeUnpackWordC, packWordC)
 import Clash.Prelude (HiddenClock, HiddenReset, hasClock, hasReset)
 import Clash.Sized.Internal.BitVector (BitVector (unsafeToNatural))
+import Data.Coerce (coerce)
 import Data.Constraint (Dict (Dict))
 import Data.Constraint.Nat.Lemmas (divWithRemainder)
-import Data.Maybe (fromMaybe)
+import Data.Data (Proxy (Proxy))
+import Data.Maybe (fromMaybe, isJust)
 import GHC.Stack (HasCallStack, SrcLoc, withFrozenCallStack)
 import Protocols.MemoryMap (
   Access (ReadOnly, ReadWrite, WriteOnly),
@@ -73,19 +79,18 @@ import Protocols.Wishbone (
   emptyWishboneS2M,
  )
 
-import Data.Data (Proxy (Proxy))
 import qualified Data.List as L
 import qualified Data.Map as Map
+import qualified Protocols.Df as Df
 import qualified Protocols.Vec as V
 
-data BusActivity a = BusIdle | BusRead a | BusWrite a
+data BusActivity a = BusRead a | BusWrite a
   deriving (Show, Eq, Functor, Generic, NFDataX)
 
 -- | Filters out only 'BusWrite's, mapping any other bus activity to 'Nothing'.
-busActivityWrite :: BusActivity a -> Maybe a
-busActivityWrite BusIdle = Nothing
-busActivityWrite (BusRead _) = Nothing
-busActivityWrite (BusWrite a) = Just a
+busActivityWrite :: Maybe (BusActivity a) -> Maybe a
+busActivityWrite (Just (BusWrite a)) = Just a
+busActivityWrite _ = Nothing
 
 data DeviceConfig = DeviceConfig
   { name :: String
@@ -126,7 +131,7 @@ zeroWidthRegisterMeta Proxy conf =
             }
     , -- BitPackC would report a size of 0, but we want to be able to observe
       -- the bus activity, so an address needs to be reserved anyway. For this,
-      -- the number of words gets overwriten to 1 here.
+      -- the number of words gets overwritten to 1 here.
       nWords = 1
     }
 
@@ -160,9 +165,9 @@ Example usage:
 > deviceExample clk rst = circuit $ \(mm, wb) -> do
 >   [reg1, reg2, reg3] <- deviceWb "example" -< (mm, wb)
 >
->   _reg1o <- registerWb clk rst (registerConfig "float") (0.0 :: Float)     -< (reg1, Fwd noWrite)
->   _reg2o <- registerWb clk rst (registerConfig "u16")   (0 :: Unsigned 16) -< (reg2, Fwd noWrite)
->   _reg3o <- registerWb clk rst (registerConfig "bool")  (False :: Bool)    -< (reg3, Fwd noWrite)
+>   registerWb_ clk rst (registerConfig "float") (0.0 :: Float)     -< (reg1, Fwd noWrite)
+>   registerWb_ clk rst (registerConfig "u16")   (0 :: Unsigned 16) -< (reg2, Fwd noWrite)
+>   registerWb_ clk rst (registerConfig "bool")  (False :: Bool)    -< (reg3, Fwd noWrite)
 >
 >   idC
 >  where
@@ -209,7 +214,7 @@ deviceWb deviceName = circuit $ \(mm, wb) -> do
 
 {- | Like 'deviceWb', but allows you to set offsets of registers manually. This
 can be important in cases where you'd like gaps between the registers. You can
-either pass in the offsets manually or use 'registerWithOffsetWb'.
+either pass in the offsets manually or use 'registerWithOffsetWbDf'.
 -}
 deviceWithOffsetsWb ::
   forall n wordSize aw dom.
@@ -352,7 +357,7 @@ if access rights are set to 'WriteOnly'.
 
 You can tie registers created using this function together with 'deviceWb'. If
 you're looking to create a device with arbitrary offsets, use
-'registerWithOffsetWb' instead.
+'registerWithOffsetWbDf' instead.
 
 The register is configurable in its byte order, both on the bus and internally
 using '?busByteOrder' and '?regByteOrder' respectively. For VexRiscV, you'd want
@@ -360,7 +365,7 @@ to configure @?busByteOrder = BigEndian@ and @?regByteOrder = LittleEndian@. Als
 see 'withBittideByteOrder'. Note that the bus byte order is a hack more than
 anything else and only affects the data and byte enable fields.
 -}
-registerWb ::
+registerWbDf ::
   forall a dom wordSize aw.
   ( HasCallStack
   , ToFieldType a
@@ -389,9 +394,9 @@ registerWb ::
     , CSignal dom (Maybe a)
     )
     ( CSignal dom a
-    , CSignal dom (BusActivity a)
+    , Df dom (BusActivity a)
     )
-registerWb clk rst regConfig resetValue =
+registerWbDf clk rst regConfig resetValue =
   case SNat @(SizeInWordsC wordSize a) of
     (nWords@SNat :: SNat nWords) ->
       case d1 `compareSNat` nWords of
@@ -400,17 +405,17 @@ registerWb clk rst regConfig resetValue =
             Dict ->
               Circuit go
         SNatGT ->
-          Circuit $ \(((_, _, m2s0), _), (_, _)) ->
+          Circuit $ \(((_, _, m2s0), _), (_, ack)) ->
             let
-              update m2s1
-                | not (m2s1.strobe && m2s1.busCycle) = (BusIdle, emptyWishboneS2M)
-                | m2s1.writeEnable = (BusWrite resetValue, emptyWishboneS2M{acknowledge = True})
+              update m2s1 acknowledge
+                | not (m2s1.strobe && m2s1.busCycle) = (Nothing, emptyWishboneS2M)
+                | m2s1.writeEnable = (Just (BusWrite resetValue), emptyWishboneS2M{acknowledge})
                 | otherwise =
-                    ( BusRead resetValue
-                    , (emptyWishboneS2M @(BitVector (wordSize * 8))){acknowledge = True, readData = 0}
+                    ( Just (BusRead resetValue)
+                    , (emptyWishboneS2M @(BitVector (wordSize * 8))){acknowledge, readData = 0}
                     )
 
-              (unbundle -> (busActivity, s2m)) = update <$> m2s0
+              (unbundle -> (busActivity, s2m)) = update <$> m2s0 <*> coerce ack
              in
               ( (((), zeroWidthRegisterMeta @a Proxy regConfig, s2m), pure ())
               , (pure resetValue, busActivity)
@@ -427,15 +432,15 @@ registerWb clk rst regConfig resetValue =
     ( ( (Offset aw, (), Signal dom (WishboneM2S aw wordSize (Bytes wordSize)))
       , Signal dom (Maybe a)
       )
-    , (Signal dom (), Signal dom ())
+    , (Signal dom (), Signal dom Ack)
     ) ->
     ( ( ((), RegisterMeta aw, Signal dom (WishboneS2M (Bytes wordSize)))
       , Signal dom ()
       )
-    , (Signal dom a, Signal dom (BusActivity a))
+    , (Signal dom a, Signal dom (Maybe (BusActivity a)))
     )
-  go (((offset, _, wbM2S), aIn), (_, _)) =
-    ((((), reg, wbS2M), pure ()), (aOut, busActivity))
+  go (((offset, _, wbM2S), aIn0), (_, coerce -> dfAck)) =
+    ((((), reg, wbS2M1), pure ()), (aOut, busActivity))
    where
     relativeOffset = goRelativeOffset . addr <$> wbM2S
 
@@ -457,16 +462,37 @@ registerWb clk rst regConfig resetValue =
                 }
         }
 
-    -- Construct hardware for register. The bulk of this is handled by 'goReg',
-    -- which acts combinationally on the inputs
-    aOut = regMaybe clk rst enableGen resetValue (liftA2 (<|>) aIn aInFromBus)
-    busActivity = getBusActivity <$> wbS2M <*> aOut <*> aInFromBus
-    (wbS2M, aInFromBus) =
+    -- Construct output to the bus and the user logic. Note that the bus activity will
+    -- get fed to the user directly, but the output to the bus will only go to the bus
+    -- once the user acknowledges the bus activity.
+    busActivity = getBusActivity <$> wbS2M0 <*> aOut <*> aInFromBus0
+    (wbS2M0, aInFromBus0) =
       unbundle
         $ goReg regConfig.access
         <$> relativeOffset
         <*> wbM2S
         <*> aOut
+
+    -- Drop any circuit writes while we're waiting for the bus activity to get
+    -- acknowledged. This makes sure that 'aOut' remains stable in turn making
+    -- 'busActivity' stable which is a requirement for Df. Note that if the user *does*
+    -- acknowledge we *do* allow circuit writes. This allows users to intercept bus
+    -- activity and change any incoming values atomically.
+    aIn1 = mux (fmap isJust busActivity .&&. fmap not dfAck) (pure Nothing) aIn0
+
+    -- Only write to the register from the bus if the bus activity gets acknowledged
+    ackBusActivity = fmap isJust busActivity .&&. dfAck
+    aInFromBus1 = mux ackBusActivity aInFromBus0 (pure Nothing)
+    aOut = regMaybe clk rst enableGen resetValue (liftA2 (<|>) aIn1 aInFromBus1)
+
+    -- Only acknowledge bus transactions if the bus activity gets acknowledged. Note that
+    -- 'ackBusActivity' is defined in such a way that is always 'False' if there is no
+    -- transaction to ack in the first place. I.e., we don't accidentally acknowledge in
+    -- case of errors.
+    wbS2M1 = setAck <$> wbS2M0 <*> ackBusActivity
+
+    setAck :: WishboneS2M c -> Bool -> WishboneS2M c
+    setAck s2m acknowledge = s2m{acknowledge}
 
     goRelativeOffset :: BitVector aw -> Index nWords
     goRelativeOffset addr = fromMaybe 0 (elemIndex addrLsbs expectedOffsets)
@@ -539,7 +565,7 @@ registerWb clk rst regConfig resetValue =
             -- TODO: Handle unpack failures
             $ fromMaybe
               ( deepErrorX
-                  $ "Unpack failed in registerWb: wordSize="
+                  $ "Unpack failed in registerWbDf: wordSize="
                   <> show wordSize
                   <> ", regByteOrder="
                   <> show ?regByteOrder
@@ -563,7 +589,44 @@ reverseBits ::
   BitVector n
 reverseBits = pack . reverse . unpack @(Vec n Bit)
 
--- | Like 'registerWb', but does not return the register value.
+-- | Like 'registerWbDf', but returns a 'CSignal' of 'Maybe' instead of a 'Df' stream.
+registerWb ::
+  forall a dom wordSize aw.
+  ( HasCallStack
+  , ToFieldType a
+  , BitPackC a
+  , BitPack a
+  , NFDataX a
+  , KnownDomain dom
+  , KnownNat wordSize
+  , KnownNat aw
+  , Show a
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  Clock dom ->
+  Reset dom ->
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( ( ConstFwd (Offset aw)
+      , ConstBwd (RegisterMeta aw)
+      , Wishbone dom 'Standard aw (Bytes wordSize)
+      )
+    , CSignal dom (Maybe a)
+    )
+    ( CSignal dom a
+    , CSignal dom (Maybe (BusActivity a))
+    )
+registerWb clk rst regConfig resetValue = circuit $ \i -> do
+  (regValue, busActivityDf) <- registerWbDf clk rst regConfig resetValue -< i
+  busActivity <- Df.toMaybe -< busActivityDf
+  idC -< (regValue, busActivity)
+
+-- | Like 'registerWbDf', but does not return the register value.
 registerWb_ ::
   forall a dom wordSize aw.
   ( HasCallStack
@@ -594,7 +657,7 @@ registerWb_ ::
     )
     ()
 registerWb_ clk rst regConfig resetValue = circuit $ \i -> do
-  _ignored <- registerWb clk rst regConfig resetValue -< i
+  _ignored <- registerWbDf clk rst regConfig resetValue -< i
   idC
 
 {- | Same as 'registerWb', but also takes an offset. You can tie registers
@@ -632,12 +695,55 @@ registerWithOffsetWb ::
     , CSignal dom (Maybe a)
     )
     ( CSignal dom a
-    , CSignal dom (BusActivity a)
+    , CSignal dom (Maybe (BusActivity a))
     )
-registerWithOffsetWb clk rst regConfig offset resetValue =
+registerWithOffsetWb clk rst regConfig offset resetValue = circuit $ \i -> do
+  (regValue, busActivityDf) <-
+    registerWithOffsetWbDf clk rst regConfig offset resetValue -< i
+  busActivity <- Df.toMaybe -< busActivityDf
+  idC -< (regValue, busActivity)
+
+{- | Same as 'registerWbDf', but also takes an offset. You can tie registers
+created using this function together with 'deviceWithOffsetsWb'.
+-}
+registerWithOffsetWbDf ::
+  forall a dom wordSize aw.
+  ( HasCallStack
+  , ToFieldType a
+  , BitPackC a
+  , BitPack a
+  , NFDataX a
+  , KnownDomain dom
+  , KnownNat wordSize
+  , KnownNat aw
+  , Show a
+  , BitSize a <= 8 * wordSize
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  Clock dom ->
+  Reset dom ->
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Offset
+  BitVector aw ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( ( ConstBwd (BitVector aw)
+      , ConstBwd (RegisterMeta aw)
+      , Wishbone dom 'Standard aw (Bytes wordSize)
+      )
+    , CSignal dom (Maybe a)
+    )
+    ( CSignal dom a
+    , Df dom (BusActivity a)
+    )
+registerWithOffsetWbDf clk rst regConfig offset resetValue =
   circuit $ \((offsetBwd, meta, wb), maybeA) -> do
     genOffset -< offsetBwd
-    registerWb clk rst regConfig resetValue -< ((Fwd offset, meta, wb), maybeA)
+    registerWbDf clk rst regConfig resetValue -< ((Fwd offset, meta, wb), maybeA)
  where
   genOffset :: Circuit (ConstBwd (BitVector aw)) ()
   genOffset = Circuit $ \_ -> (offset, ())
@@ -673,14 +779,14 @@ maskWriteData offset mask busData regData = adjust offset regData $ \regWord ->
     Vec nWords a
   adjust i xs f = replace i (f (xs !! i)) xs
 
-{- | 'registerWb' already checks for illegal write or read operations and does not
+{- | 'registerWbDf' already checks for illegal write or read operations and does not
 acknowledge them. So there is no need to check for 'ReadOnly' or 'WriteOnly'.
 -}
-getBusActivity :: WishboneS2M bv -> a -> Maybe a -> BusActivity a
+getBusActivity :: WishboneS2M bv -> a -> Maybe a -> Maybe (BusActivity a)
 getBusActivity s2m regValue maybeUpdatedRegValue
-  | not s2m.acknowledge = BusIdle
-  | Just v <- maybeUpdatedRegValue = BusWrite v
-  | otherwise = BusRead regValue
+  | not s2m.acknowledge = Nothing
+  | Just v <- maybeUpdatedRegValue = Just (BusWrite v)
+  | otherwise = Just (BusRead regValue)
 
 -- | 'registerWb' with a hidden clock and reset
 registerWbI ::
@@ -711,11 +817,44 @@ registerWbI ::
     , CSignal dom (Maybe a)
     )
     ( CSignal dom a
-    , CSignal dom (BusActivity a)
+    , CSignal dom (Maybe (BusActivity a))
     )
 registerWbI = withFrozenCallStack $ registerWb hasClock hasReset
 
--- | 'registerWb_' with a hidden clock and reset
+-- | 'registerWbDf' with a hidden clock and reset
+registerWbDfI ::
+  forall a dom wordSize aw.
+  ( HasCallStack
+  , HiddenClock dom
+  , HiddenReset dom
+  , ToFieldType a
+  , BitPackC a
+  , BitPack a
+  , NFDataX a
+  , KnownNat wordSize
+  , KnownNat aw
+  , Show a
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( ( ConstFwd (Offset aw)
+      , ConstBwd (RegisterMeta aw)
+      , Wishbone dom 'Standard aw (Bytes wordSize)
+      )
+    , CSignal dom (Maybe a)
+    )
+    ( CSignal dom a
+    , Df dom (BusActivity a)
+    )
+registerWbDfI = withFrozenCallStack $ registerWbDf hasClock hasReset
+
+-- | 'registerWbDf_' with a hidden clock and reset
 registerWbI_ ::
   forall a dom wordSize aw.
   ( HasCallStack
@@ -778,6 +917,42 @@ registerWithOffsetWbI ::
     , CSignal dom (Maybe a)
     )
     ( CSignal dom a
-    , CSignal dom (BusActivity a)
+    , CSignal dom (Maybe (BusActivity a))
     )
 registerWithOffsetWbI = withFrozenCallStack $ registerWithOffsetWb hasClock hasReset
+
+-- | 'registerWithOffsetWbDf' with a hidden clock and reset
+registerWithOffsetWbDfI ::
+  forall a dom wordSize aw.
+  ( HasCallStack
+  , HiddenClock dom
+  , HiddenReset dom
+  , ToFieldType a
+  , BitPackC a
+  , BitPack a
+  , NFDataX a
+  , KnownNat wordSize
+  , KnownNat aw
+  , Show a
+  , BitSize a <= 8 * wordSize
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
+  ) =>
+  -- | Configuration values
+  RegisterConfig ->
+  -- | Offset
+  BitVector aw ->
+  -- | Reset value
+  a ->
+  Circuit
+    ( ( ConstBwd (BitVector aw)
+      , ConstBwd (RegisterMeta aw)
+      , Wishbone dom 'Standard aw (Bytes wordSize)
+      )
+    , CSignal dom (Maybe a)
+    )
+    ( CSignal dom a
+    , Df dom (BusActivity a)
+    )
+registerWithOffsetWbDfI = withFrozenCallStack $ registerWithOffsetWbDf hasClock hasReset
