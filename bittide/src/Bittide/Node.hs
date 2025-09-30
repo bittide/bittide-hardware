@@ -12,7 +12,6 @@ import Clash.Prelude
 import Clash.Class.BitPackC (ByteOrder)
 import GHC.Stack (HasCallStack)
 import Protocols
-import Protocols.Extra
 import Protocols.Idle
 import Protocols.MemoryMap (ConstBwd, MM)
 import Protocols.Vec (vecCircuits)
@@ -24,6 +23,8 @@ import Bittide.ProcessingElement
 import Bittide.ScatterGather
 import Bittide.SharedTypes
 import Bittide.Switch
+
+import qualified Protocols.Vec as Vec
 
 {- | Each 'gppe' results in 2 busses for the 'managementUnit', namely:
 * The 'calendar' for the 'scatterUnitWB'.
@@ -65,13 +66,14 @@ node ::
 node (NodeConfig nmuConfig switchConfig gppeConfigs) =
   circuit $ \(mmNmu, mms, linksIn) -> do
     (switchOut, _cal) <- switchC switchConfig -< (mmSwWb, (switchIn, swWb))
-    switchIn <- appendC3 -< ([nmuLinkOut], pesToSwitch, linksIn)
-    ([Fwd nmuLinkIn], Fwd switchToPes, linksOut) <- split3CI -< switchOut
+    switchIn <- Vec.append3 -< ([nmuLinkOut], pesToSwitch, linksIn)
+    ([Fwd nmuLinkIn], Fwd switchToPes, linksOut) <- Vec.split3 -< switchOut
     (nmuLinkOut, nmuWbs0) <- managementUnitC nmuConfig nmuLinkIn -< mmNmu
-    ([(mmSwWb, swWb)], nmuWbs1) <- splitAtCI -< nmuWbs0
-    peWbs <- unconcatC d2 -< nmuWbs1
+    ([(mmSwWb, swWb)], nmuWbs1) <- Vec.split -< nmuWbs0
+    peWbs <- Vec.unconcat d2 -< nmuWbs1
 
-    pesToSwitch <- vecCircuits (gppeC <$> gppeConfigs <*> switchToPes) <| zipC -< (mms, peWbs)
+    pesToSwitch <-
+      vecCircuits (gppeC <$> gppeConfigs <*> switchToPes) <| Vec.zip -< (mms, peWbs)
     idC -< linksOut
 
 type NmuInternalBusses = 6
@@ -185,7 +187,7 @@ managementUnitC
         ]
       , nmuWbs
       ) <-
-      splitAtCI -< peWbs
+      Vec.split -< peWbs
     linkOut <- gatherUnitWbC gatherConfig -< (wbGu, wbGathCal)
     scatterUnitWbC scatterConfig linkIn -< (wbScat, wbScatCal)
     idC -< (linkOut, nmuWbs)

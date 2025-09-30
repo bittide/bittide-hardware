@@ -33,7 +33,6 @@ import Protocols.Wishbone
 import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
-import Protocols.Extra
 
 -- qualified imports
 
