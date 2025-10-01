@@ -2,8 +2,6 @@
 --
 -- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -29,17 +27,14 @@ import Clash.DataFiles (tclConnector)
 import Clash.Shake.Extra
 import Clash.Shake.Flags
 import Clash.Shake.Vivado
-import Control.Lens.Setter ((%~))
 import Control.Monad (unless, when)
 import Control.Monad.Extra (ifM, unlessM, (&&^))
 import Data.Foldable (for_)
 import Data.Function ((&))
-import Data.Generics.Product.Fields (HasField (field))
 import Data.List (sort, uncons)
 import Data.Maybe (fromJust, fromMaybe, isJust)
 import Development.Shake
 import Development.Shake.Classes
-import GHC.Generics (Generic)
 import GHC.Stack (HasCallStack)
 import Language.Haskell.TH.Syntax (mkName)
 import System.Console.ANSI (setSGR)
@@ -147,7 +142,6 @@ data Target = Target
   -- ^ A list of patterns that match the external HDL files that are used by the
   -- instance. Generates tck that utilizes https://www.tcl.tk/man/tcl8.6/TclCmd/glob.htm
   }
-  deriving (Generic)
 
 defTarget :: ClashTargetName -> Target
 defTarget name =
@@ -196,16 +190,6 @@ targets =
     , defTarget $ mkName "Bittide.Instances.Pnr.Si539xSpi.si5391Spi"
     , defTarget $ mkName "Bittide.Instances.Pnr.StabilityChecker.stabilityhecker_3_1M"
     , defTarget $ mkName "Bittide.Instances.Pnr.Synchronizer.safeDffSynchronizer"
-    , (defTarget $ mkName "Bittide.Instances.Hitl.SoftUgnDemo.softUgnDemoTest")
-        & field @"targetXdcs"
-          %~ ( <>
-                [ "switchDemoTest.xdc"
-                , "jtag" </> "config.xdc"
-                , "jtag" </> "pmod1.xdc"
-                , "uart" </> "pmod1.xdc"
-                ]
-             )
-             -- Thanks to Christiaan for this one (^:
     ]
       <> (testTarget <$> Bittide.Instances.Hitl.Tests.hitlTests)
 
