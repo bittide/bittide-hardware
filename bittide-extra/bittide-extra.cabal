@@ -147,6 +147,7 @@ library
     async,
     base,
     bytestring,
+    clash-cores,
     clash-prelude,
     containers,
     exceptions,
@@ -160,6 +161,7 @@ library
   exposed-modules:
     Bittide.Extra.Maybe
     Bittide.Extra.Wishbone
+    Clash.Cores.Xilinx.Xpm.Cdc.Extra
     Clash.Explicit.Signal.Extra
     Clash.Sized.Vector.Extra
     Control.Concurrent.Async.Extra
@@ -177,8 +179,8 @@ test-suite unittests
   hs-source-dirs: tests/unittests
   default-language: Haskell2010
   ghc-options: -threaded
-  hs-source-dirs: tests/doctests
   other-modules:
+    Tests.Clash.Cores.Xilinx.Xpm.Cdc.Extra
     Tests.Numeric.Extra
 
   build-depends:
