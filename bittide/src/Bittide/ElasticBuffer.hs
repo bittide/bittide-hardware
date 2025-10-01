@@ -119,6 +119,12 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
   writeData = mux writeEnableSynced (Just <$> wdata) (pure Nothing)
 
 {-# NOINLINE resettableXilinxElasticBuffer #-}
+
+{- | Wrapper around 'xilinxElasticBuffer' that contains a state machine to fill the
+buffer half-full. When it is, it switches to pass-through mode, which it exports
+through its 'EbMode' output. If an underflow or overflow occurs, it switches back
+to fill/drain mode.
+-}
 resettableXilinxElasticBuffer ::
   forall n readDom writeDom a.
   ( KnownDomain writeDom
@@ -145,8 +151,12 @@ resettableXilinxElasticBuffer clkRead clkWrite rstRead wdata =
  where
   (dataCount, under, over, readData) =
     xilinxElasticBuffer @n clkRead clkWrite fifoReset ebMode wdata
-  fifoReset = unsafeFromActiveHigh $ not <$> stable
   over1 = CE.safeDffSynchronizer clkWrite clkRead False over
+
+  -- Note that resetting the FIFO only affects the under/overflow signals, not
+  -- the data count. This means that we need to reset the FIFO only in case of
+  -- errors.
+  fifoReset = unsafeFromActiveLow stable
 
   controllerReset = unsafeFromActiveHigh (unsafeToActiveHigh rstRead .||. under .||. over1)
 
