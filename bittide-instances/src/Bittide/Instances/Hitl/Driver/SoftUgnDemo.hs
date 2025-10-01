@@ -1,0 +1,240 @@
+-- SPDX-FileCopyrightText: 2025 Google LLC
+--
+-- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE PackageImports #-}
+
+module Bittide.Instances.Hitl.Driver.SoftUgnDemo where
+
+import Clash.Prelude
+
+import Bittide.ClockControl.Config (defCcConf)
+import Bittide.Hitl
+import Bittide.Instances.Hitl.Driver.SwitchDemo (
+  dumpCcSamples,
+  foldExitCodes,
+  getPathAddress,
+  initGdb,
+  initPicocom,
+ )
+import Bittide.Instances.Hitl.Dut.SoftUgnDemo (
+  ccWhoAmID,
+  gppeWhoAmID,
+  memoryMapCc,
+  memoryMapGppe,
+  memoryMapMu,
+  muWhoAmID,
+ )
+import Bittide.Instances.Hitl.Setup (FpgaCount)
+import Bittide.Instances.Hitl.Utils.Driver
+import Bittide.Instances.Hitl.Utils.Program
+import Control.Concurrent.Async (forConcurrently_, mapConcurrently_)
+import Control.Concurrent.Async.Extra (zipWithConcurrently3_)
+import Control.Monad (forM_)
+import Control.Monad.IO.Class
+import Data.Char (chr)
+import Data.Maybe (fromMaybe)
+import Data.String.Interpolate (i)
+import Data.Vector.Internal.Check (HasCallStack)
+import Gdb (Gdb)
+import Project.FilePath
+import Project.Handle
+import Protocols.MemoryMap (MemoryMap)
+import System.Exit
+import System.FilePath
+import System.IO
+import Vivado.Tcl (HwTarget)
+import Vivado.VivadoM (VivadoM)
+import "bittide-extra" Control.Exception.Extra (brackets)
+
+import qualified Bittide.Calculator as Calc
+import qualified Bittide.Instances.Hitl.Utils.OpenOcd as Ocd
+import qualified Clash.Sized.Vector as V
+import qualified Data.List as L
+import qualified Gdb
+import qualified System.Timeout.Extra as T
+
+data OcdInitData = OcdInitData
+  { muPort :: Int
+  -- ^ Management unit GDB port
+  , ccPort :: Int
+  -- ^ Clock control GDB port
+  , gppePort :: Int
+  -- ^ GPPE GDB port
+  , handles :: ProcessHandles
+  -- ^ OpenOCD stdio handles
+  , cleanup :: IO ()
+  -- ^ Cleanup function
+  }
+
+data TestStatus = TestRunning | TestDone Bool | TestTimeout deriving (Eq)
+
+type StartDelay = 10 -- seconds
+
+type Padding = Calc.WindowCycles FpgaCount 3
+type GppeConfig = Calc.DefaultGppeConfig FpgaCount Padding
+type CyclesPerWrite = Calc.CalCyclesPerWrite GppeConfig
+type GroupCycles = Calc.CalGroupCycles GppeConfig
+type WindowCycles = Calc.CalWindowCycles GppeConfig
+type ActiveCycles = Calc.CalActiveCycles GppeConfig
+type MetacycleLength = Calc.CalMetacycleLength GppeConfig
+
+gppeConfig :: GppeConfig
+gppeConfig = Calc.defaultGppeCalcConfig
+
+initOpenOcd :: FilePath -> (HwTarget, DeviceInfo) -> Int -> IO OcdInitData
+initOpenOcd hitlDir (_, d) targetIndex = do
+  putStrLn $ "Starting OpenOCD for target " <> d.deviceId
+
+  let
+    gdbPortMU = 3333 + targetIndex * 3
+    gdbPortCC = gdbPortMU + 1
+    gdbPortGPPE = gdbPortMU + 2
+    tclPort = 6666 + targetIndex
+    telnetPort = 4444 + targetIndex
+    ocdStdout = hitlDir </> "openocd-" <> show targetIndex <> "-stdout.log"
+    ocdStderr = hitlDir </> "openocd-" <> show targetIndex <> "-stderr.log"
+  putStrLn $ "logging OpenOCD stdout to `" <> ocdStdout <> "`"
+  putStrLn $ "logging OpenOCD stderr to `" <> ocdStderr <> "`"
+
+  putStrLn "Starting OpenOCD..."
+  (ocd, ocdPh, ocdClean0) <-
+    Ocd.startOpenOcdWithEnvAndArgs
+      ["-f", "sipeed.tcl", "-f", "vexriscv-3chain.tcl"]
+      [ ("OPENOCD_STDOUT_LOG", ocdStdout)
+      , ("OPENOCD_STDERR_LOG", ocdStderr)
+      , ("USB_DEVICE", d.usbAdapterLocation)
+      , ("DEV_A_GDB", show gdbPortMU)
+      , ("DEV_B_GDB", show gdbPortCC)
+      , ("DEV_C_GDB", show gdbPortGPPE)
+      , ("TCL_PORT", show tclPort)
+      , ("TEL_PORT", show telnetPort)
+      ]
+  hSetBuffering ocd.stderrHandle LineBuffering
+  T.tryWithTimeout T.PrintActionTime "Waiting for OpenOCD to start" 15_000_000
+    $ expectLine ocd.stderrHandle Ocd.waitForHalt
+
+  let
+    ocdProcName = "OpenOCD (" <> d.deviceId <> ")"
+    ocdClean1 = ocdClean0 >> awaitProcessTermination ocdProcName ocdPh (Just 10_000_000)
+
+  return $ OcdInitData gdbPortMU gdbPortCC gdbPortGPPE ocd ocdClean1
+
+{- | Given an expected @whoAmID@ and a GDB process connected to a target CPU, check
+whether the target CPU reports the expected @whoAmID@.
+-}
+gdbCheck :: MemoryMap -> BitVector 32 -> Gdb -> VivadoM ExitCode
+gdbCheck memMap expectedBE gdb = do
+  let whoAmIBase = getPathAddress memMap ["0", "WhoAmI", "identifier"]
+  bytes <- Gdb.readBytes @4 gdb whoAmIBase
+  let
+    bytesAsInts = L.map fromIntegral $ V.toList $ bytes
+    expectedLE = reverse $ bitCoerce @_ @(Vec 4 (BitVector 8)) expectedBE
+    expectedS =
+      L.map (chr . fromIntegral)
+        $ V.toList expectedLE
+  liftIO $ putStrLn [i|Read whoAmID: '#{L.map chr bytesAsInts}', expected '#{expectedS}'|]
+  pure $ if bytes == expectedLE then ExitSuccess else ExitFailure 1
+
+driver ::
+  (HasCallStack) =>
+  String ->
+  [(HwTarget, DeviceInfo)] ->
+  VivadoM ExitCode
+driver testName targets = do
+  liftIO
+    . putStrLn
+    $ "Running driver function for targets "
+    <> show ((\(_, info) -> info.deviceId) <$> targets)
+
+  projectDir <- liftIO $ findParentContaining "cabal.project"
+
+  let
+    hitlDir = projectDir </> "_build/hitl" </> testName
+
+  forM_ targets (assertProbe "probe_test_start")
+  T.tryWithTimeout
+    T.PrintActionTime
+    "Wait for handshakes successes from all boards"
+    30_000_000
+    $ awaitHandshakes targets
+  let openOcdStarts = liftIO <$> L.zipWith (initOpenOcd hitlDir) targets [0 ..]
+  brackets openOcdStarts (liftIO . (.cleanup)) $ \initOcdsData -> do
+    let
+      muPorts = (.muPort) <$> initOcdsData
+      ccPorts = (.ccPort) <$> initOcdsData
+      gppePorts = (.gppePort) <$> initOcdsData
+
+    Gdb.withGdbs (L.length targets) $ \ccGdbs -> do
+      liftIO $ zipWithConcurrently3_ (initGdb hitlDir "clock-control") ccGdbs ccPorts targets
+      liftIO $ putStrLn "Checking for MMIO access to SWCC CPUs over GDB..."
+      gdbExitCodes0 <- mapM (gdbCheck memoryMapCc ccWhoAmID) ccGdbs
+      (gdbCount0, gdbExitCode0) <-
+        L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes0
+      liftIO
+        $ putStrLn
+          [i|CC GDB testing passed on #{gdbCount0} of #{L.length targets} targets|]
+      liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) ccGdbs
+      liftIO $ mapConcurrently_ Gdb.continue ccGdbs
+
+      Gdb.withGdbs (L.length targets) $ \muGdbs -> do
+        liftIO $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-mu") muGdbs muPorts targets
+        liftIO $ putStrLn "Checking for MMIO access to MU CPUs over GDB..."
+        gdbExitCodes1 <- mapM (gdbCheck memoryMapMu muWhoAmID) muGdbs
+        (gdbCount1, gdbExitCode1) <-
+          L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes1
+        liftIO
+          $ putStrLn
+            [i|MU GDB testing passed on #{gdbCount1} of #{L.length targets} targets|]
+        liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) muGdbs
+
+        Gdb.withGdbs (L.length targets) $ \gppeGdbs -> do
+          liftIO
+            $ zipWithConcurrently3_ (initGdb hitlDir "soft-ugn-gppe") gppeGdbs gppePorts targets
+          liftIO $ putStrLn "Checking for MMIO access to GPPE CPUs over GDB..."
+          gdbExitCodes2 <- mapM (gdbCheck memoryMapGppe gppeWhoAmID) gppeGdbs
+          (gdbCount2, gdbExitCode2) <-
+            L.foldl foldExitCodes (pure (0, ExitSuccess)) gdbExitCodes2
+          liftIO
+            $ putStrLn
+              [i|GPPE GDB testing passed on #{gdbCount2} of #{L.length targets} targets|]
+          liftIO $ mapConcurrently_ ((errorToException =<<) . Gdb.loadBinary) gppeGdbs
+
+          let picocomStarts = liftIO <$> L.zipWith (initPicocom hitlDir) targets [0 ..]
+          brackets picocomStarts (liftIO . snd) $ \(L.map fst -> picocoms) -> do
+            let goDumpCcSamples = dumpCcSamples hitlDir (defCcConf (natToNum @FpgaCount)) ccGdbs
+            liftIO
+              $ T.tryWithTimeoutOn T.PrintActionTime "Waiting for stable links" 60_000_000 goDumpCcSamples
+              $ forConcurrently_ picocoms
+              $ \pico ->
+                waitForLine pico.stdoutHandle "[CC] All links stable"
+
+            -- From here the actual test should be done, but for now it's just going to be
+            -- waiting for the devices to print out over UART.
+
+            liftIO $ mapConcurrently_ Gdb.continue muGdbs
+            liftIO
+              $ T.tryWithTimeoutOn
+                T.PrintActionTime
+                "Waiting for MU hello"
+                (5_000_000)
+                goDumpCcSamples
+              $ forConcurrently_ picocoms
+              $ \pico ->
+                waitForLine pico.stdoutHandle "[MU] Hello!"
+
+            liftIO $ mapConcurrently_ Gdb.continue gppeGdbs
+            liftIO
+              $ T.tryWithTimeoutOn
+                T.PrintActionTime
+                "Waiting for GPPE hello"
+                (5_000_000)
+                goDumpCcSamples
+              $ forConcurrently_ picocoms
+              $ \pico ->
+                waitForLine pico.stdoutHandle "[PE] Hello!"
+
+            liftIO goDumpCcSamples
+
+            pure
+              $ fromMaybe ExitSuccess
+              $ L.find (/= ExitSuccess) [gdbExitCode0, gdbExitCode1, gdbExitCode2]
