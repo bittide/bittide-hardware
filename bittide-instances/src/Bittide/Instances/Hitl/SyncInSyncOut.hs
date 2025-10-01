@@ -161,7 +161,7 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'syncInSyncOut
-    , extraXdcFiles = []
+    , targetXdcs = ["syncInSyncOut.xdc"]
     , externalHdl = []
     , testCases =
         [ HitlTestCase

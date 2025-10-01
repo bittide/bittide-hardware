@@ -22,7 +22,7 @@ Different build levels:
 * To change the part for which the instances are synthesized, set either environment variable `SYNTHESIS_BOARD` or `SYNTHESIS_PART`.
   * For the part we've bought use either `SYNTHESIS_BOARD=xilinx.com:kcu105:part0:1.7` or `SYNTHESIS_PART=xcku040-ffva1156-2-e`. Note that for this board/part you need to use Vivado Enterprise.
   * If neither is set, instances are synthesized for `SYNTHESIS_PART=xcku035-ffva1156-2-e`, which is the smaller cousin of the FPGA we've bought, but which comes with a free license.
-* Only targets which have the flag `targetHasXdc` can be used to generate a bitstream. This XDC file must have the same name as the instance, and be located in the `data/constraints/` directory.
+* Targets can only have a bitstream generated if there exist XDC files to constrain their I/O within the `data/constraints/` directory. These files may then be referenced in the `targetXdcs` field of the `HitlTestGroup` for that test.
 * For targets which have the flag `targetHasVio`, a probes file is generated alongside the bitstream.
 * Only targets which have a `targetTest` value can be used to perform hardware tests.
 

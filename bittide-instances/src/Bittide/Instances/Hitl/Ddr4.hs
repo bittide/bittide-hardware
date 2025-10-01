@@ -548,7 +548,7 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'ddr4Test
-    , extraXdcFiles = ["ddr4.xdc"]
+    , targetXdcs = ["ddr4Test.xdc", "ddr4.xdc"]
     , externalHdl = []
     , testCases = testCasesFromEnum @TestChunk [HwTargetByIndex 0] ()
     , mDriverProc = Nothing

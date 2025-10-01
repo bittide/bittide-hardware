@@ -563,8 +563,9 @@ tests :: HitlTestGroup
 tests =
   HitlTestGroup
     { topEntity = 'switchDemoTest
-    , extraXdcFiles =
-        [ "jtag" </> "config.xdc"
+    , targetXdcs =
+        [ "switchDemoTest.xdc"
+        , "jtag" </> "config.xdc"
         , "jtag" </> "pmod1.xdc"
         , "uart" </> "pmod1.xdc"
         ]

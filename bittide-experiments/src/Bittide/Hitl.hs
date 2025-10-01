@@ -141,8 +141,8 @@ parameter is set to `()`):
 
 > test :: HitlTestGroup
 > test = HitlTestGroup
->   { topEntity = ...
->   , extraXdcFiles = []
+>   { topEntity = test
+>   , targetXdcs = ["test.xdc"]
 >   , testCases = [HitlTestCase "testCaseName" (paramForHwTargets allHwTargets ()) ()]
 >   , mPostProc = Nothing
 >   }
@@ -156,8 +156,8 @@ A test that runs for each constructor of an enum:
 >
 > testExtended :: HitlTestGroup
 > testExtended = HitlTestGroup
->   { topEntity = ...
->   , extraXdcFiles = []
+>   { topEntity = test
+>   , targetXdcs = ["test.xdc"]
 >   , testCases = testCasesFromEnum @ABC allHwTargets ()
 >   , mPostProc = Nothing
 >   }
@@ -173,7 +173,7 @@ and requires a (hypothetical) 8-bit number indicating the
 > test :: HitlTestGroup
 > test = HitlTestGroup
 >   { topEntity = '()
->   , extraXdcFiles = []
+>   , targetXdcs = ["test.xdc"]
 >   , testCases =
 >       [ HitlTestCase
 >           { name = "Twelve stages on FPGA 2 and 5"
@@ -202,7 +202,7 @@ data HitlTestGroup where
     (Typeable a, Typeable b) =>
     { topEntity :: ClashTargetName
     -- ^ Reference to the Design Under Test
-    , extraXdcFiles :: [String]
+    , targetXdcs :: [String]
     , testCases :: [HitlTestCase HwTargetRef a b]
     -- ^ List of test cases
     , mDriverProc ::
