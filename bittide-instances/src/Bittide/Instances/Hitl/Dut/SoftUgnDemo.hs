@@ -11,10 +11,13 @@ For more details, see [QBayLogic's presentation](https://docs.google.com/present
 on the topic.
 -}
 module Bittide.Instances.Hitl.Dut.SoftUgnDemo (
-  softUgnDemoC,
+  ccWhoAmID,
+  gppeWhoAmID,
   memoryMapCc,
   memoryMapMu,
   memoryMapGppe,
+  muWhoAmID,
+  softUgnDemoC,
 ) where
 
 import Clash.Explicit.Prelude
@@ -34,6 +37,7 @@ import Bittide.Df (asciiDebugMux)
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (LinkCount)
+import Bittide.Instances.Hitl.Utils.Driver (makeWhoAmIDTH)
 import Bittide.Jtag (jtagChain)
 import Bittide.ProcessingElement (
   PeConfig (..),
@@ -73,6 +77,13 @@ type Baud = 921_600
 
 baud :: SNat Baud
 baud = SNat
+
+ccWhoAmID :: BitVector 32
+ccWhoAmID = $(makeWhoAmIDTH "swcc")
+muWhoAmID :: BitVector 32
+muWhoAmID = $(makeWhoAmIDTH "mgmt")
+gppeWhoAmID :: BitVector 32
+gppeWhoAmID = $(makeWhoAmIDTH "gppe")
 
 {- Internal busses:
     - Instruction memory
@@ -163,7 +174,7 @@ managementUnit =
     (uartOut, _uartStatus) <-
       uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
     _dna <- readDnaPortE2Wb simDna2 -< dnaWb
-    whoAmIC 0x746d_676d -< whoAmIWb
+    whoAmIC muWhoAmID -< whoAmIWb
 
     -- Output
     idC -< (cnt, wbs1, uartOut)
@@ -192,7 +203,7 @@ gppe linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbs, jtag) -> do
   -- Core and interconnect
   (wbScats, wbs0) <- Vec.split <| processingElement NoDumpVcd peConfig -< (mm, jtag)
   (wbGus, wbs1) <- Vec.split -< wbs0
-  [wbTime, uartWb] <- idC -< wbs1
+  [wbTime, uartWb, whoAmIWB] <- idC -< wbs1
 
   -- Scatter Gather units
   (wbScatCals, wbGathCal) <- Vec.split -< nmuWbs
@@ -205,6 +216,7 @@ gppe linksIn = withBittideByteOrder $ circuit $ \(mm, nmuWbs, jtag) -> do
   -- Peripherals
   _cnt <- timeWb -< wbTime
   (uart, _uartStatus) <- uartInterfaceWb d16 d16 uartBytes -< (uartWb, Fwd (pure Nothing))
+  whoAmIC gppeWhoAmID -< whoAmIWB
 
   -- Output
   idC -< (linksOut, uart)
@@ -300,7 +312,7 @@ softUgnDemoC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets
       (Undefined @36_000 @(BitVector 32))
       -< ccSampleMemoryBus
 
-    defaultBittideClkRstEn (whoAmIC 0x6363_7773) -< ccWhoAmIBus
+    defaultBittideClkRstEn (whoAmIC ccWhoAmID) -< ccWhoAmIBus
 
     (ccUartBytesBittide, _uartStatus) <-
       defaultBittideClkRstEn

@@ -1,9 +1,9 @@
 [
   {"top": "safeDffSynchronizer",   "stage": "hdl" , "cc_report": false},
 
-  {"top": "softUgnDemoTest",       "stage": "pnr",   "cc_report": true},
 
   {"top": "linkConfigurationTest", "stage": "test", "cc_report": false},
+  {"top": "softUgnDemoTest",       "stage": "test", "cc_report": true},
   {"top": "swCcTopologyTest",      "stage": "test", "cc_report": true},
   {"top": "switchDemoTest",        "stage": "test", "cc_report": true},
   {"top": "transceiversUpTest",    "stage": "test", "cc_report": false},
