@@ -247,7 +247,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   txDatas = mux <$> txSamplingsDelayed <*> switchDataOut <*> repeat (pack <$> localCounter)
 
   txStarts :: Vec 7 (Signal Bittide Bool)
-  txStarts = zipWith (.&&.) (repeat allStableSticky) ebStables
+  txStarts = repeat allStableSticky
 
   -- Step 4, deassert CC CPU reset, deassert Bittide domain reset:
   handshakeRstFree :: Reset Basic125
