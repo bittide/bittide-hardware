@@ -16,7 +16,7 @@ import Bittide.ElasticBuffer
 import qualified Data.List as L
 
 createDomain vXilinxSystem{vPeriod = hzToPeriod 200e6, vName = "Fast"}
-createDomain vXilinxSystem{vPeriod = hzToPeriod 20e6, vName = "Slow"}
+createDomain vXilinxSystem{vPeriod = hzToPeriod 199e6, vName = "Slow"}
 
 tests :: TestTree
 tests =
@@ -31,12 +31,12 @@ tests =
     , testGroup
         "resettableXilinxElasticBuffer"
         [ testCase "case_resettableXilinxElasticBufferEq" case_resettableXilinxElasticBufferEq
-        -- , testCase
-        --     "case_resettableXilinxElasticBufferMaxBound"
-        --     case_resettableXilinxElasticBufferMaxBound
-        -- , testCase
-        --     "case_resettableXilinxElasticBufferMinBound"
-        --     case_resettableXilinxElasticBufferMinBound
+        , testCase
+            "case_resettableXilinxElasticBufferMaxBound"
+            case_resettableXilinxElasticBufferMaxBound
+            -- , testCase
+            --     "case_resettableXilinxElasticBufferMinBound"
+            --     case_resettableXilinxElasticBufferMinBound
         ]
     ]
 
@@ -121,7 +121,7 @@ case_resettableXilinxElasticBufferEq = do
     wData = pure (0 :: Unsigned 8)
     (dataCounts, underflows, overflows, ebStables, _) =
       L.unzip5
-        . L.dropWhile (\(_, _, _, stable, _) -> not stable)
+        -- . L.dropWhile (\(_, _, _, stable, _) -> not stable)
         $ sampleN
           1024
           ( bundle (resettableXilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Slow) resetGen wData)
@@ -141,34 +141,39 @@ case_resettableXilinxElasticBufferEq = do
     "elastic buffer datacount should be `targetDataCount` (margin 3 elements) after stabilizing"
     dataCountBounds
 
--- {- | When the xilinxElasticBuffer is written to more quickly than it is being read from,
--- its data count should overflow. Upon an overflow, the fifo is Drained and then filled
--- to half full, after which the cycle repeats.
--- -}
--- case_resettableXilinxElasticBufferMaxBound :: Assertion
--- case_resettableXilinxElasticBufferMaxBound = do
---   let
---     wData = pure (0 :: Unsigned 8)
---     (_, underflows, overflows, _, _) =
---       L.unzip5
---         $ sampleN
---           100000
---           ( bundle (resettableXilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Fast) resetGen wData)
---           )
+{- | When the xilinxElasticBuffer is written to more quickly than it is being read from,
+its data count should overflow. Upon an overflow, the fifo is Drained and then filled
+to half full, after which the cycle repeats.
+-}
+case_resettableXilinxElasticBufferMaxBound :: Assertion
+case_resettableXilinxElasticBufferMaxBound = do
+  let
+    wData = pure (0 :: Unsigned 8)
+    (dataCounts, underflows, overflows, stables, _) =
+      L.unzip5
+        $ sampleN
+          10000
+          ( bundle (resettableXilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Fast) resetGen wData)
+          )
 
---   -- After the fifo overflows, it should Drain the buffer, then fill it to half full and
---   -- reset.
---   assertBool
---     "elastic buffer should reset after an overflow"
---     ([True, False] `L.isInfixOf` overflows)
---   -- Since the overflows list is filtered on eb==Pass, the Drain and Fill operations are
---   -- left out. Therefore, the fifo should not return the overflow signal twice in a row.
---   assertBool
---     "elastic buffer should not overflow twice in a row"
---     (not $ L.isInfixOf [True, True] overflows)
---   assertBool
---     "elastic buffer should not underflow when written to faster than read from"
---     (not $ or underflows)
+  print dataCounts
+  print stables
+  print underflows
+  print overflows
+
+  -- After the fifo overflows, it should Drain the buffer, then fill it to half full and
+  -- reset.
+  assertBool
+    "elastic buffer should reset after an overflow"
+    ([True, False] `L.isInfixOf` overflows)
+  -- Since the overflows list is filtered on eb==Pass, the Drain and Fill operations are
+  -- left out. Therefore, the fifo should not return the overflow signal twice in a row.
+  assertBool
+    "elastic buffer should not overflow twice in a row"
+    (not $ L.isInfixOf [True, True] overflows)
+  assertBool
+    "elastic buffer should not underflow when written to faster than read from"
+    (not $ or underflows)
 
 -- {- | When the xilinxElasticBuffer is read from more quickly than it is being written to,
 -- its data count should overflow. Upon an overflow, the fifo is Drained and then filled

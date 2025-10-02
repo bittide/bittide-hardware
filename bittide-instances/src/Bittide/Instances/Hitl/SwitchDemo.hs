@@ -162,7 +162,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         }
       refClk
       (unsafeToActiveLow handshakeRstFree)
-      captureFlag
+      (or <$> bundle ebReadysFree)
       spiDone
       spiErr
       (bundle transceivers.handshakesDoneFree)
@@ -171,12 +171,12 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       (bundle $ xpmCdcArraySingle bittideClk refClk <$> ebReadys)
       transceiversFailedAfterUp
 
-  captureFlag =
-    riseEvery
-      refClk
-      spiRst
-      enableGen
-      (SNat @(PeriodToCycles Basic125 (Milliseconds 2)))
+  -- captureFlag =
+  --   riseEvery
+  --     refClk
+  --     spiRst
+  --     enableGen
+  --     (SNat @(PeriodToCycles Basic125 (Milliseconds 2)))
 
   -- Step 1, wait for SPI:
   (_, _, spiState, spiOut) =
@@ -276,6 +276,9 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
 
   ebReadysRx :: Vec 7 (Signal GthRx Bool)
   ebReadysRx = xpmCdcArraySingle bittideClk <$> transceivers.rxClocks <*> ebReadys
+
+  ebReadysFree :: Vec 7 (Signal Basic125 Bool)
+  ebReadysFree = xpmCdcArraySingle bittideClk <$> repeat refClk <*> ebReadys
 
   -- Connect everything together:
   transceiversFailedAfterUp :: Signal Basic125 Bool

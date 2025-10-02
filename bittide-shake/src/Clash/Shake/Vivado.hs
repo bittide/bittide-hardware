@@ -875,7 +875,7 @@ runHitlTestCase v testCase@HitlTestCase{name, parameters} driverFunc probesFileP
           execCmd_ v "set_property" ["capture_compare_value", "eq1'b1", captureProbe]
 
           -- Set the trigger position
-          execCmd_ v "set_property" ["control.trigger_position", "0", "[current_hw_ila]"]
+          execCmd_ v "set_property" ["control.trigger_position", "512", "[current_hw_ila]"]
 
           run_hw_ila v ["[current_hw_ila]"]
 
