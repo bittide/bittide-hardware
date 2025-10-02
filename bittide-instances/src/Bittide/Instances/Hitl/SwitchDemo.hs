@@ -23,8 +23,8 @@ import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.ElasticBuffer (
-  EbMode (Pass),
   Overflow,
+  Stable,
   Underflow,
   resettableXilinxElasticBuffer,
   sticky,
@@ -272,7 +272,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   ebReset = unsafeFromActiveLow allStableSticky
 
   ebReadys :: Vec 7 (Signal Bittide Bool)
-  ebReadys = map (.==. pure Pass) ebModes
+  ebReadys = ebStables
 
   ebReadysRx :: Vec 7 (Signal GthRx Bool)
   ebReadysRx = xpmCdcArraySingle bittideClk <$> transceivers.rxClocks <*> ebReadys
@@ -401,7 +401,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       ( Signal Bittide (RelDataCount FifoSize)
       , Signal Bittide Underflow
       , Signal Bittide Overflow
-      , Signal Bittide EbMode
+      , Signal Bittide Stable
       , Signal Bittide (Maybe (BitVector 64))
       )
   rxFifos = zipWith go transceivers.rxClocks transceivers.rxDatas
@@ -411,8 +411,8 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   fifoUnderflowsTx :: Vec LinkCount (Signal Bittide Underflow)
   fifoOverflowsTx :: Vec LinkCount (Signal Bittide Overflow)
   rxDatasEbs :: Vec LinkCount (Signal Bittide (Maybe (BitVector 64)))
-  ebModes :: Vec 7 (Signal Bittide EbMode)
-  (_, fifoUnderflowsTx, fifoOverflowsTx, ebModes, rxDatasEbs) = unzip5 rxFifos
+  ebStables :: Vec 7 (Signal Bittide Stable)
+  (_, fifoUnderflowsTx, fifoOverflowsTx, ebStables, rxDatasEbs) = unzip5 rxFifos
 
   fifoOverflows :: Signal Bittide Overflow
   fifoOverflows = or <$> bundle fifoOverflowsTx
