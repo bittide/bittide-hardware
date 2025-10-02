@@ -6,6 +6,7 @@
   {"top": "safeDffSynchronizer",           "stage": "pnr",   "cc_report": false},
   {"top": "scatterUnit1KReducedPins",      "stage": "pnr",   "cc_report": false},
   {"top": "si5391Spi",                     "stage": "pnr",   "cc_report": false},
+  {"top": "softUgnDemoTest",               "stage": "pnr",   "cc_report": true},
   {"top": "switchExampleReducedPins",      "stage": "pnr",   "cc_report": false},
 
   {"top": "asciiDebugMux",                 "stage": "hdl",   "cc_report": false},
