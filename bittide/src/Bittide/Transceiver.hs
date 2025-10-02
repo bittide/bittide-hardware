@@ -685,11 +685,10 @@ transceiverPrbsWith gthCore opts args@Input{clock, reset} =
   rxUserData = sticky rxClock rxReset rxLast
   txUserData = sticky txClock txReset txLast
 
-  -- Investigate: should `txLast` be mentioned here?
-  indicateRxReady = txLast .||. withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
+  indicateRxReady = withLockRxTx (prbsOkDelayed .&&. sticky rxClock rxReset args.rxReady)
 
   rxReadyNeighborSticky = sticky rxClock rxReset rxReadyNeighbor
-  txLast = args.txStart .&&. withLockRxTx rxReadyNeighborSticky
+  txLast = indicateRxReady .&&. args.txStart .&&. withLockRxTx rxReadyNeighborSticky
   txLastFree = xpmCdcSingle txClock clock txLast
 
   metaTx :: Signal tx Meta
