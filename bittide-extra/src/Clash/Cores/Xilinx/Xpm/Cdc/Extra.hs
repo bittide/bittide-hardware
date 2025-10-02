@@ -36,8 +36,8 @@ safeHandshakeSrcFsm clk rst ins srcRcvs =
   go :: SafeHandshakeState -> (Maybe a, Bool) -> (SafeHandshakeState, (Bool, a, Ack))
   go InReset _ = (WaitForRising, noInput nack)
   go WaitForRising (Nothing, _) = (WaitForRising, noInput nack)
-  go s@WaitForRising (Just a, rcv) = (if rcv then WaitForFalling else s, input a (Ack rcv))
-  go s@WaitForFalling (_, rcv) = (if rcv then s else WaitForRising, noInput nack)
+  go s@WaitForRising (Just a, rcv) = (if rcv then WaitForFalling else s, input a nack)
+  go s@WaitForFalling (_, rcv) = (if rcv then s else WaitForRising, noInput (Ack $ not rcv))
 
   noInput :: Ack -> (Bool, a, Ack)
   noInput acknowledge = (False, deepErrorX "no input", acknowledge)
