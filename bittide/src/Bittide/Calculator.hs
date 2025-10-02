@@ -502,24 +502,31 @@ printAllIgns ::
   IO ()
 printAllIgns ugnPairsTable fpgasTable = do
   let
-    ugnsTable :: Vec (n + 1) (Vec m (Unsigned 64))
-    ugnsTable = uncurry (-) <<$>> ugnPairsTable
+    ugnsTable :: Vec (n + 1) (Vec m (Signed 66))
+    ugnsTable = toUgn <<$>> ugnPairsTable
+
+    toUgn :: (Unsigned 64, Unsigned 64) -> Signed 66
+    toUgn (a, b) = numConvert a - numConvert b
+
     fpgasMap :: Vec (n + 1) (Vec m (Index (n + 1)))
     fpgasMap = snd <$> fpgasTable
+
     indicesM :: Vec m (Index m)
     indicesM = indicesI
+
     indicesN :: Vec (n + 1) (Index (n + 1))
     indicesN = indicesI
+
     printIgns ::
       (HasCallStack) =>
       Index (n + 1) ->
       (FpgaId, Vec m (Index (n + 1))) ->
-      IO (Vec m (Unsigned 64))
+      IO (Vec m (Signed 66))
     printIgns rowI (myId, row) = do
       putStrLn [i|Finding IGNs for #{myId} (#{rowI})|]
       putStrLn [i|  My connections: #{row}|]
       let
-        printIgn :: (HasCallStack) => Index m -> Index (n + 1) -> IO (Unsigned 64)
+        printIgn :: (HasCallStack) => Index m -> Index (n + 1) -> IO (Signed 66)
         printIgn colI otherRowI = do
           putStrLn [i|  Looking at column #{colI} => #{otherRowI}|]
           let
@@ -545,14 +552,18 @@ printAllIgns ugnPairsTable fpgasTable = do
 
   igns <- sequence $ zipWith printIgns indicesN fpgasTable
   let
-    allList :: Vec (l + 1) (Unsigned 64)
+    allList :: Vec (l + 1) (Signed 66)
     allList = concat igns
-    largest :: Unsigned 64
+
+    largest :: Signed 66
     largest = maximum allList
+
     largestLen :: Int
     largestLen = L.length $ show largest
+
     coords :: Vec (n + 1) (Vec (n + 1) (Index (n + 1), Index (n + 1)))
     coords = (\ind -> (,) ind <$> indicesN) <$> indicesN
+
     printIgn :: Index (n + 1) -> Index (n + 1) -> IO ()
     printIgn row fpgaNum = do
       let
