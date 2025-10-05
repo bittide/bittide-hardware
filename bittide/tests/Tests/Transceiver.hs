@@ -472,6 +472,21 @@ prop_noRxReady :: Property
 prop_noRxReady =
   dutRandomized @A @A @Free testNeitherUp500ms noRxReadyInput noRxReadyInput Proxy
 
+{- | Check that neither node indicates it is sending *and* receiving user data,
+when one of the nodes never indicates it's ready to receive data. The side that
+never indicates it's ready to receive data, should also never start sending user
+data, because it would lose the ability to apply backpressure. The other side
+should then naturally also not claim it is receiving user data.
+-}
+prop_noRxReadyNoPressure :: Property
+prop_noRxReadyNoPressure =
+  dutRandomized @A @A @Free testNeitherUp500ms noRxReadyInput noPressureInput Proxy
+
+-- | Same as 'prop_noRxReadyNoPressure', but flipped.
+prop_noPressureNoRxReady :: Property
+prop_noPressureNoRxReady =
+  dutRandomized @A @A @Free testNeitherUp500ms noPressureInput noRxReadyInput Proxy
+
 {- | Check that nodes complete their handshake, even when the users never indicate
 that they're ready to receive data.
 -}
@@ -543,5 +558,7 @@ tests =
           [ testPropertyThName 'prop_noTxReady prop_noTxReady
           , testPropertyThName 'prop_noTxReadyFlipped prop_noTxReadyFlipped
           , testPropertyThName 'prop_noRxReady prop_noRxReady
+          , testPropertyThName 'prop_noRxReadyNoPressure prop_noRxReadyNoPressure
+          , testPropertyThName 'prop_noPressureNoRxReady prop_noPressureNoRxReady
           ]
     ]
