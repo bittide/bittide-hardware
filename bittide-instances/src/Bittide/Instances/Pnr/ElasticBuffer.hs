@@ -21,8 +21,8 @@ elasticBuffer5 ::
   "writeData" ::: Signal Slow (Unsigned 8) ->
   ( "dataCount" ::: Signal Fast (RelDataCount 5)
   , "underflow" ::: Signal Fast Underflow
-  , "overrflow" ::: Signal Fast Overflow
-  , "ebMode" ::: Signal Fast EbMode
+  , "overflow" ::: Signal Fast Overflow
+  , "stable" ::: Signal Fast Stable
   , "readData" ::: Signal Fast (Unsigned 8)
   )
 elasticBuffer5 = resettableXilinxElasticBuffer

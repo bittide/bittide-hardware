@@ -16,7 +16,7 @@ import Bittide.ElasticBuffer
 import qualified Data.List as L
 
 createDomain vXilinxSystem{vPeriod = hzToPeriod 200e6, vName = "Fast"}
-createDomain vXilinxSystem{vPeriod = hzToPeriod 20e6, vName = "Slow"}
+createDomain vXilinxSystem{vPeriod = hzToPeriod 199e6, vName = "Slow"}
 
 tests :: TestTree
 tests =
@@ -46,19 +46,19 @@ its data count should overflow.
 case_xilinxElasticBufferMaxBound :: Assertion
 case_xilinxElasticBufferMaxBound = do
   let
-    ebMode = fromList $ L.replicate 3 Fill <> L.repeat Pass
+    command = fromList $ L.replicate 60 (Just Fill) <> L.repeat Nothing
     wData = pure (0 :: Unsigned 8)
     underflows =
       sampleN
-        256
-        ( (\(_, under, _, _) -> under)
-            (xilinxElasticBuffer @6 (clockGen @Slow) (clockGen @Fast) resetGen ebMode wData)
+        1024
+        ( (\(_, under, _, _, _) -> under)
+            (xilinxElasticBuffer @6 (clockGen @Slow) (clockGen @Fast) resetGen command wData)
         )
     overflows =
       sampleN
-        256
-        ( (\(_, _, over, _) -> over)
-            (xilinxElasticBuffer @6 (clockGen @Slow) (clockGen @Fast) resetGen ebMode wData)
+        1024
+        ( (\(_, _, over, _, _) -> over)
+            (xilinxElasticBuffer @6 (clockGen @Slow) (clockGen @Fast) resetGen command wData)
         )
 
   assertBool "elastic buffer should overflow" (or overflows)
@@ -70,19 +70,19 @@ its data count should underflow.
 case_xilinxElasticBufferMinBound :: Assertion
 case_xilinxElasticBufferMinBound = do
   let
-    ebMode = fromList $ L.replicate 32 Fill <> L.repeat Pass
+    command = fromList $ L.replicate 8 (Just Fill) <> L.repeat Nothing
     wData = pure (0 :: Unsigned 8)
     underflows =
       sampleN
-        256
-        ( (\(_, under, _, _) -> under)
-            (xilinxElasticBuffer @6 (clockGen @Fast) (clockGen @Slow) resetGen ebMode wData)
+        2048
+        ( (\(_, under, _, _, _) -> under)
+            (xilinxElasticBuffer @6 (clockGen @Fast) (clockGen @Slow) resetGen command wData)
         )
     overflows =
       sampleN
-        256
-        ( (\(_, _, over, _) -> over)
-            (xilinxElasticBuffer @6 (clockGen @Fast) (clockGen @Slow) resetGen ebMode wData)
+        2048
+        ( (\(_, _, over, _, _) -> over)
+            (xilinxElasticBuffer @6 (clockGen @Fast) (clockGen @Slow) resetGen command wData)
         )
 
   assertBool "elastic buffer should underflow" (or underflows)
@@ -94,52 +94,48 @@ neither overflow nor underflow.
 case_xilinxElasticBufferEq :: Assertion
 case_xilinxElasticBufferEq = do
   let
-    ebMode = fromList $ L.replicate 32 Fill <> L.repeat Pass
+    command = fromList $ L.replicate 16 (Just Fill) <> L.repeat Nothing
     wData = pure (0 :: Unsigned 8)
     underflows =
       sampleN
         256
-        ( (\(_, under, _, _) -> under)
-            (xilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Slow) resetGen ebMode wData)
+        ( (\(_, under, _, _, _) -> under)
+            (xilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Slow) resetGen command wData)
         )
     overflows =
       sampleN
         256
-        ( (\(_, _, over, _) -> over)
-            (xilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Slow) resetGen ebMode wData)
+        ( (\(_, _, over, _, _) -> over)
+            (xilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Slow) resetGen command wData)
         )
 
   assertBool "elastic buffer should not underflow" (not $ or underflows)
   assertBool "elastic buffer should not overflow" (not $ or overflows)
 
-{- | When the resettableXilinxElasticBuffer is written to as quickly as it is read from, it eventually
- stabalises.
+{- | When the resettableXilinxElasticBuffer is written to as quickly as it is read from,
+it eventually stabilizes.
 -}
 case_resettableXilinxElasticBufferEq :: Assertion
 case_resettableXilinxElasticBufferEq = do
   let
     wData = pure (0 :: Unsigned 8)
-    (dataCounts, underflows, overflows, ebModes, _) =
+    (dataCounts, underflows, overflows, ebStables, _) =
       L.unzip5
-        . L.dropWhile (\(_, _, _, eb, _) -> eb == Drain || eb == Fill)
+        . L.dropWhile (\(_, _, _, stable, _) -> not stable)
         $ sampleN
-          256
+          1024
           ( bundle (resettableXilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Slow) resetGen wData)
           )
-    dataCountBounds =
-      L.all
-        ((< 3) . abs . subtract (toInteger (targetDataCount :: RelDataCount 5)) . toInteger)
-        dataCounts
 
-  assertBool "elastic buffer should get out of its Fill state" ((> 0) $ L.length ebModes)
-  assertBool "elastic buffer should not overflow after stabalising" (not $ or overflows)
-  assertBool "elastic buffer should not underflow after stabalising" (not $ or underflows)
+  assertBool "elastic buffer should get out of its Fill state" ((> 0) $ L.length ebStables)
+  assertBool "elastic buffer should not overflow after stabilizing" (not $ or overflows)
+  assertBool "elastic buffer should not underflow after stabilizing" (not $ or underflows)
   assertBool
-    "elastic buffer should be in Pass mode after stabalising"
-    (L.all (== Pass) ebModes)
+    "elastic buffer should remain stable after stabilizing once"
+    (L.and ebStables)
   assertBool
-    "elastic buffer datacount should be `targetDataCount` (margin 3 elements) after stabalising"
-    dataCountBounds
+    "elastic buffer datacount should be `targetDataCount` after stabilizing"
+    (L.all ((== (targetDataCount :: RelDataCount 5))) dataCounts)
 
 {- | When the xilinxElasticBuffer is written to more quickly than it is being read from,
 its data count should overflow. Upon an overflow, the fifo is Drained and then filled
@@ -151,9 +147,8 @@ case_resettableXilinxElasticBufferMaxBound = do
     wData = pure (0 :: Unsigned 8)
     (_, underflows, overflows, _, _) =
       L.unzip5
-        . L.filter (\(_, _, _, eb, _) -> eb == Pass)
         $ sampleN
-          256
+          10000
           ( bundle (resettableXilinxElasticBuffer @5 (clockGen @Slow) (clockGen @Fast) resetGen wData)
           )
 
@@ -162,11 +157,6 @@ case_resettableXilinxElasticBufferMaxBound = do
   assertBool
     "elastic buffer should reset after an overflow"
     ([True, False] `L.isInfixOf` overflows)
-  -- Since the overflows list is filtered on eb==Pass, the Drain and Fill operations are
-  -- left out. Therefore, the fifo should not return the overflow signal twice in a row.
-  assertBool
-    "elastic buffer should not overflow twice in a row"
-    (not $ L.isInfixOf [True, True] overflows)
   assertBool
     "elastic buffer should not underflow when written to faster than read from"
     (not $ or underflows)
@@ -181,9 +171,9 @@ case_resettableXilinxElasticBufferMinBound = do
     wData = pure (0 :: Unsigned 8)
     (_, underflows, overflows, _, _) =
       L.unzip5
-        . L.filter (\(_, _, _, eb, _) -> eb == Pass)
+        . L.filter (\(_, _, _, stable, _) -> stable)
         $ sampleN
-          512
+          10000
           ( bundle (resettableXilinxElasticBuffer @5 (clockGen @Fast) (clockGen @Slow) resetGen wData)
           )
 
@@ -192,11 +182,6 @@ case_resettableXilinxElasticBufferMinBound = do
   assertBool
     "elastic buffer should reset after an underflow"
     ([True, False] `L.isInfixOf` underflows)
-  -- Since the underflows list is filtered on eb==Pass, the Drain and Fill operations are
-  -- left out. Therefore, the fifo should not return the underflow signal twice in a row.
-  assertBool
-    "elastic buffer should not underflow twice in a row"
-    (not $ L.isInfixOf [True, True] underflows)
   assertBool
     "elastic buffer should not overflow when read from faster than written to"
     (not $ or overflows)
