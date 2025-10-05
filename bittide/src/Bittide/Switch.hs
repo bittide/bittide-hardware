@@ -53,7 +53,7 @@ switchC conf = case (cancelMulDiv @nBytes @8) of
      where
       (streamsOut, calS2M, cal, memMap) = switch conf calM2S streamsIn
 
-{-# NOINLINE switch #-}
+{-# OPAQUE switch #-}
 
 -- TODO: The switch is currently hardcoded to be bidirectional, we intend to change this when
 -- the need arises.
@@ -96,7 +96,7 @@ switch calConfig calM2S streamsIn = (streamsOut, calS2M, cal, mm)
   gatherFrames = unbundle $ crossBar 0 <$> cal <*> bundle scatterFrames
   streamsOut = register 0 <$> gatherFrames
 
-{-# NOINLINE crossBar #-}
+{-# OPAQUE crossBar #-}
 
 {- | The 'crossbar' receives a vector of indices and a vector of incoming frames.
 For each outgoing link it will select a data source. @0@ selects a null frame @Nothing@,

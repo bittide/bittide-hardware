@@ -31,7 +31,7 @@ ebModeToReadWrite = \case
   Drain -> (True, False)
   Pass -> (True, True)
 
-{-# NOINLINE sticky #-}
+{-# OPAQUE sticky #-}
 
 -- | Create a sticky version of a boolean signal.
 sticky ::
@@ -44,7 +44,7 @@ sticky clk rst a = stickyA
  where
   stickyA = E.register clk rst enableGen False (stickyA .||. a)
 
-{-# NOINLINE xilinxElasticBuffer #-}
+{-# OPAQUE xilinxElasticBuffer #-}
 
 {- | An elastic buffer backed by a Xilinx FIFO. It exposes all its control and
 monitor signals in its read domain.
@@ -118,7 +118,7 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
 
   writeData = mux writeEnableSynced (Just <$> wdata) (pure Nothing)
 
-{-# NOINLINE resettableXilinxElasticBuffer #-}
+{-# OPAQUE resettableXilinxElasticBuffer #-}
 
 {- | Wrapper around 'xilinxElasticBuffer' that contains a state machine to fill the
 buffer half-full. When it is, it switches to pass-through mode, which it exports

@@ -329,7 +329,7 @@ si539xSpiDriver SNat incomingOpS miso = (fromSlave, decoderBusy, spiOut)
 
     spiBytes = spiCommandToBytes spiCommand
     output = orNothing (not commandAcknowledged && idleCycles == 0) spiBytes
-{-# NOINLINE si539xSpiDriver #-}
+{-# OPAQUE si539xSpiDriver #-}
 
 -- TODO: Look into replacing dcFifo with XPM_CDC_Handshake.
 
@@ -416,7 +416,7 @@ spiFrequencyController
         (True, SlowDown, _, False) ->
           Just RegisterOperation{regPage = 0x00, regAddress = 0x1D, regWrite = Just 2}
         _ -> Nothing
-{-# NOINLINE spiFrequencyController #-}
+{-# OPAQUE spiFrequencyController #-}
 
 {- | When this component receives @True@, it will hold it for @holdCycles@ number of
 clock cycles. This implementation does not scale well to large values for @holdCycles@

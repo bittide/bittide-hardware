@@ -220,7 +220,7 @@ vexRiscvTest diffClk jtagIn uartRx = (testStatusDone, testStatusSuccess, jtagOut
   --       do this once more.
   testDone = testStarted
   testSuccess = testStarted
-{-# NOINLINE vexRiscvTest #-}
+{-# OPAQUE vexRiscvTest #-}
 makeTopEntity 'vexRiscvTest
 
 tests :: HitlTestGroup

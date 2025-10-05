@@ -263,7 +263,7 @@ wbStorage memoryName initContent = Circuit $ \(((), m2s), ()) ->
       , definitionLoc = locHere
       , tags = []
       }
-{-# NOINLINE wbStorage #-}
+{-# OPAQUE wbStorage #-}
 
 -- | Storage element with a single wishbone port. Allows for word-aligned addresses.
 wbStorage' ::
@@ -554,7 +554,7 @@ registerWb ::
 registerWb writePriority initVal wbIn sigIn =
   registerWbE writePriority initVal wbIn sigIn (pure maxBound)
 
-{-# NOINLINE registerWbE #-}
+{-# OPAQUE registerWbE #-}
 
 {- | Register with additional wishbone interface, this component has a configurable
 priority that determines which value gets stored in the register during a write conflict.

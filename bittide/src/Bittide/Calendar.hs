@@ -168,7 +168,7 @@ data BufferControl calDepth calEntry = BufferControl
   -- ^ Write operation for buffer B.
   }
 
-{-# NOINLINE calendar #-}
+{-# OPAQUE calendar #-}
 
 {- | Hardware component that stores an active bittide calendar and a shadow bittide calendar.
 The entries of the active calendar will be sequentially provided at the output,

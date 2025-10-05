@@ -102,7 +102,7 @@ singleMasterInterconnectC = Circuit go
         }
     (s2m, m2ss) = toSignals (singleMasterInterconnect prefixes) (m2s, s2ms)
 
-{-# NOINLINE singleMasterInterconnect #-}
+{-# OPAQUE singleMasterInterconnect #-}
 
 {- | Component that maps multiple slave devices to a single master device over the wishbone
 bus. It routes the incoming control signals to a slave device based on the 'MemoryMap',

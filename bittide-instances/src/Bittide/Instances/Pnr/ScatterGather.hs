@@ -73,7 +73,7 @@ scatterUnit1K clk rst wbCal linkIn wbScat =
   withBigEndian
     $ (\(wbA, wbB, _mm) -> (wbA, wbB))
     $ withClockResetEnable clk rst enableGen (scatterUnitWb scatterCal1K wbCal linkIn wbScat)
-{-# NOINLINE scatterUnit1K #-}
+{-# OPAQUE scatterUnit1K #-}
 
 scatterUnit1KReducedPins ::
   Clock Basic200 -> Reset Basic200 -> Signal Basic200 Bit -> Signal Basic200 Bit
@@ -116,7 +116,7 @@ gatherUnit1K clk rst wbCal wbGat =
     $ (\(link, wbA, wbB, _mm) -> (link, wbA, wbB))
     $ withClockResetEnable clk rst enableGen
     $ gatherUnitWb gatherCal1K wbCal wbGat
-{-# NOINLINE gatherUnit1K #-}
+{-# OPAQUE gatherUnit1K #-}
 
 gatherUnit1KReducedPins ::
   Clock Basic200 -> Reset Basic200 -> Signal Basic200 Bit -> Signal Basic200 Bit

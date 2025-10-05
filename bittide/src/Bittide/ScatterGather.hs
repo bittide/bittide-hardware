@@ -201,7 +201,7 @@ addStalling endOfMetacycle metacycleCount (incomingBus@WishboneS2M{..}, wbAddr, 
     | otherwise = (incomingBus, writeOp0)
   memAddr = bitCoerce $ resize wbAddr
 
-{-# NOINLINE scatterUnitWb #-}
+{-# OPAQUE scatterUnitWb #-}
 
 scatterUnitWbC ::
   forall dom awSu nBytesCal awCal.
@@ -336,7 +336,7 @@ scatterUnitWb (ScatterConfig _memDepth calConfig) wbInCal linkIn wbInSu =
   selected = register (errorX "scatterUnitWb: Initial selection undefined") upperSelected
   scatteredData = mux selected upper lower
 
-{-# NOINLINE gatherUnitWb #-}
+{-# OPAQUE gatherUnitWb #-}
 
 gatherUnitWbC ::
   forall dom awGu nBytesCal awCal.

@@ -403,7 +403,7 @@ dut =
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
         }
-{-# NOINLINE dut #-}
+{-# OPAQUE dut #-}
 
 memoryMap :: MemoryMap
 memoryMap = getMMAny dut0

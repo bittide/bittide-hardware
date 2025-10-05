@@ -84,7 +84,7 @@ the following holds:
 -}
 type PackedAxi4Stream dom conf userType = Axi4Stream dom conf userType
 
-{-# NOINLINE axiStreamFromByteStream #-}
+{-# OPAQUE axiStreamFromByteStream #-}
 
 {- | Transforms an 'Axi4Stream' of 1 byte wide into an 'Axi4Stream' of /n/ bytes
 wide. If it encounters '_tlast' or has captured /n/ bytes, it will present
@@ -192,7 +192,7 @@ data WbAxisRxBufferState bufferDepth wbBytes = WbAxisRxBufferState
   }
   deriving (Generic, NFDataX, Show)
 
-{-# NOINLINE wbAxisRxBuffer #-}
+{-# OPAQUE wbAxisRxBuffer #-}
 
 -- TODO: Replace with PacketStream
 

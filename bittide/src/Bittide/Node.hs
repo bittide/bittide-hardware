@@ -107,7 +107,7 @@ data GppeConfig nmuRemBusWidth where
     DumpVcd ->
     GppeConfig nmuRemBusWidth
 
-{-# NOINLINE gppeC #-}
+{-# OPAQUE gppeC #-}
 
 {- | A general purpose 'processingElement' to be part of a Bittide Node. It contains
 a 'processingElement', 'linkToPe' and 'peToLink' which create the interface for the
