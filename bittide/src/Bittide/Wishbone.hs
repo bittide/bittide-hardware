@@ -26,7 +26,13 @@ import Data.Maybe
 import GHC.Stack (HasCallStack)
 import Protocols
 import Protocols.Idle (forceResetSanityGeneric)
+import Protocols.MemoryMap (Access (ReadOnly))
 import Protocols.MemoryMap.FieldType (ToFieldType)
+import Protocols.MemoryMap.Registers.WishboneStandard (
+  RegisterConfig (access),
+  registerConfig,
+  registerWbI_,
+ )
 import Protocols.Wishbone
 
 -- internal imports
@@ -864,9 +870,8 @@ wbAlwaysAckWith dat _ = (emptyWishboneS2M @(Bytes nBytes)){acknowledge = True, r
 
 {- | Identifier component with a 32 bit identifier.
 
-So far used to form four character long
-device IDs for each CPU in a multi-CPU system, which can be used to confirm that the correct
-device is programmed.
+So far used to form four character long device IDs for each CPU in a multi-CPU
+system, which can be used to confirm that the correct device is programmed.
 -}
 whoAmIC ::
   forall dom addrW.
@@ -874,40 +879,16 @@ whoAmIC ::
   , KnownDomain dom
   , HiddenClockResetEnable dom
   , KnownNat addrW
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   BitVector 32 ->
   Circuit (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes 4)) ()
-whoAmIC whoAmI = MM.withMemoryMap mm $ Circuit go
+whoAmIC whoAmI = circuit $ \wb -> do
+  [idWb] <- MM.deviceWb "WhoAmI" -< wb
+  registerWbI_ config whoAmI -< (idWb, Fwd (pure Nothing))
  where
-  mm =
-    MM.MemoryMap
-      { tree = MM.DeviceInstance MM.locCaller "WhoAmI"
-      , deviceDefs = MM.deviceSingleton deviceDef
-      }
-  deviceDef =
-    MM.DeviceDefinition
-      { registers =
-          [ MM.NamedLoc
-              { name = MM.Name "identifier" ""
-              , loc = MM.locHere
-              , value =
-                  MM.Register
-                    { reset = Nothing
-                    , fieldType = MM.regType @(Unsigned 32)
-                    , address = 0x00
-                    , access = MM.ReadOnly
-                    , tags = []
-                    }
-              }
-          ]
-      , deviceName = MM.Name "WhoAmI" ""
-      , definitionLoc = MM.locHere
-      , tags = []
-      }
-  go ::
-    (Fwd (Wishbone dom 'Standard addrW (Bytes 4)), ()) ->
-    (Bwd (Wishbone dom 'Standard addrW (Bytes 4)), ())
-  go (m2s, ()) = (wbAlwaysAckWith whoAmI <$> m2s, ())
+  config = (registerConfig "identifier"){access=ReadOnly}
 
 -- | Simple type for wishbone requests supporting byte enables.
 data WishboneRequest addrW nBytes
