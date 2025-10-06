@@ -426,134 +426,145 @@ uartInterfaceWb ::
   Circuit
     ((MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes)), uartIn)
     (uartOut, CSignal dom (Bool, Bool))
-uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \((mm, wb), uartRx) -> do
-  (txFifoIn, uartStatus) <- wbToDf -< (wb, rxFifoOut, txFifoMeta)
-  (txFifoOut, txFifoMeta) <- fifoWithMeta txDepth -< txFifoIn
+uartInterfaceWb txDepth@SNat rxDepth@SNat uartImpl = circuit $ \(wb, uartRx) -> do
+  [dataWb, rxMetaWb, txMetaWb] <- deviceWb "Uart" -< wb
+
+  -- (txFifoIn) <- wbToDf -< (wb, rxFifoOut, txFifoMeta)
+
+  registerWbI_ rxMetaConfig def -< (rxMetaWb, Fwd (Just <$> rxFifoMeta))
+  registerWbI_ txMetaConfig def -< (txMetaWb, Fwd (Just <$> txFifoMeta))
+
+  let
+    rxEmpty = (.fifoEmpty) <$> rxFifoMeta
+    txFull = (.fifoFull) <$> txFifoMeta
+    uartStatus = bundle (rxEmpty, txFull)
+
+  (txFifoOut, Fwd txFifoMeta) <- fifoWithMeta txDepth -< txFifoIn
   (rxFifoIn, uartTx) <- uartImpl -< (txFifoOut, uartRx)
-  (rxFifoOut, _rx') <- fifoWithMeta rxDepth <| unsafeToDf -< rxFifoIn
-  MM.constBwd memMap -< mm
-  idC -< (uartTx, uartStatus)
+  (rxFifoOut, Fwd rxFifoMeta) <- fifoWithMeta rxDepth <| unsafeToDf -< rxFifoIn
+  idC -< (uartTx, Fwd uartStatus)
  where
-  memMap =
-    SimOnly
-      $ MM.MemoryMap
-        { tree = MM.DeviceInstance MM.locCaller "Uart"
-        , deviceDefs = MM.deviceSingleton deviceDef
-        }
 
-  deviceDef =
-    MM.DeviceDefinition
-      { registers =
-          [ MM.NamedLoc
-              { name = MM.Name "data" ""
-              , loc = MM.locHere
-              , value =
-                  MM.Register
-                    { reset = Nothing
-                    , fieldType = MM.regType @(Bytes 1)
-                    , address = 0
-                    , access = MM.ReadWrite
-                    , tags = []
-                    }
-              }
-          , MM.NamedLoc
-              { name = MM.Name "status" ""
-              , loc = MM.locHere
-              , value =
-                  MM.Register
-                    { reset = Nothing
-                    , fieldType = MM.regType @(Bytes 1)
-                    , address = 4
-                    , access = MM.ReadOnly
-                    , tags = []
-                    }
-              }
-          ]
-      , deviceName =
-          MM.Name "Uart" "Wishbone accessible UART interface with configurable FIFO buffers."
-      , definitionLoc = MM.locHere
-      , tags = []
-      }
+-- memMap =
+--   SimOnly
+--     $ MM.MemoryMap
+--       { tree = MM.DeviceInstance MM.locCaller "Uart"
+--       , deviceDefs = MM.deviceSingleton deviceDef
+--       }
 
-  wbToDf ::
-    Circuit
-      ( Wishbone dom 'Standard addrW (Bytes nBytes)
-      , Df dom (BitVector 8)
-      , CSignal dom (FifoMeta txFifoDepth)
-      )
-      ( Df dom (BitVector 8)
-      , CSignal dom (Bool, Bool) -- (rxEmpty, txFull)
-      )
-  wbToDf =
-    Circuit
-      $ bimap unbundle unbundle
-      . unbundle
-      . fmap go
-      . bundle
-      . bimap bundle bundle
-   where
-    go ((WishboneM2S{..}, rxData, (.fifoFull) -> txFull), (Ack txAck, _))
-      -- not in cycle
-      | not (busCycle && strobe) =
-          ( ((emptyWishboneS2M @()){readData = invalidReq}, Ack False, ())
-          , (Nothing, status)
-          )
-      -- illegal addr
-      | not addrLegal =
-          ( ((emptyWishboneS2M @()){err = True, readData = invalidReq}, Ack False, ())
-          , (Nothing, status)
-          )
-      -- read at 0
-      | not writeEnable && internalAddr == 0 =
-          (
-            ( (emptyWishboneS2M @())
-                { acknowledge = True
-                , readData = resize $ fromMaybe 0 rxData
-                }
-            , Ack True
-            , ()
-            )
-          , (Nothing, status)
-          )
-      -- write at 0
-      | writeEnable && internalAddr == 0 =
-          (
-            ( (emptyWishboneS2M @())
-                { acknowledge = txAck
-                , readData = invalidReq
-                }
-            , Ack False
-            , ()
-            )
-          , (Just $ resize writeData, status)
-          )
-      -- read at 1
-      | not writeEnable && internalAddr == 1 =
-          (
-            ( (emptyWishboneS2M @())
-                { acknowledge = True
-                , readData = resize $ pack status
-                }
-            , Ack False
-            , ()
-            )
-          , (Nothing, status)
-          )
-      | otherwise = ((emptyWishboneS2M{err = True}, Ack False, ()), (Nothing, status))
-     where
-      internalAddr = bitCoerce $ resize addr :: Index 2
-      addrLegal = addr <= 1
-      rxEmpty = isNothing rxData
-      status = (rxEmpty, txFull)
-      invalidReq =
-        deepErrorX
-          [i|uartInterfaceWb: Invalid request.
-          BUS: {busCycle}
-          STR: {strobe}
-          ADDR: {addr}
-          WE:{writeEnable}
-          ACK:{acknowledge}
-          ERR:{err}|]
+-- deviceDef =
+--   MM.DeviceDefinition
+--     { registers =
+--         [ MM.NamedLoc
+--             { name = MM.Name "data" ""
+--             , loc = MM.locHere
+--             , value =
+--                 MM.Register
+--                   { reset = Nothing
+--                   , fieldType = MM.regType @(Bytes 1)
+--                   , address = 0
+--                   , access = MM.ReadWrite
+--                   , tags = []
+--                   }
+--             }
+--         , MM.NamedLoc
+--             { name = MM.Name "status" ""
+--             , loc = MM.locHere
+--             , value =
+--                 MM.Register
+--                   { reset = Nothing
+--                   , fieldType = MM.regType @(Bytes 1)
+--                   , address = 4
+--                   , access = MM.ReadOnly
+--                   , tags = []
+--                   }
+--             }
+--         ]
+--     , deviceName =
+--         MM.Name "Uart" "Wishbone accessible UART interface with configurable FIFO buffers."
+--     , definitionLoc = MM.locHere
+--     , tags = []
+--     }
+
+-- wbToDf ::
+--   Circuit
+--     ( Wishbone dom 'Standard addrW (Bytes nBytes)
+--     , Df dom (BitVector 8)
+--     , CSignal dom (FifoMeta txFifoDepth)
+--     )
+--     ( Df dom (BitVector 8)
+--     , CSignal dom (Bool, Bool) -- (rxEmpty, txFull)
+--     )
+-- wbToDf =
+--   Circuit
+--     $ bimap unbundle unbundle
+--     . unbundle
+--     . fmap go
+--     . bundle
+--     . bimap bundle bundle
+--  where
+--   go ((WishboneM2S{..}, rxData, (.fifoFull) -> txFull), (Ack txAck, _))
+--     -- not in cycle
+--     | not (busCycle && strobe) =
+--         ( ((emptyWishboneS2M @()){readData = invalidReq}, Ack False, ())
+--         , (Nothing, status)
+--         )
+--     -- illegal addr
+--     | not addrLegal =
+--         ( ((emptyWishboneS2M @()){err = True, readData = invalidReq}, Ack False, ())
+--         , (Nothing, status)
+--         )
+--     -- read at 0
+--     | not writeEnable && internalAddr == 0 =
+--         (
+--           ( (emptyWishboneS2M @())
+--               { acknowledge = True
+--               , readData = resize $ fromMaybe 0 rxData
+--               }
+--           , Ack True
+--           , ()
+--           )
+--         , (Nothing, status)
+--         )
+--     -- write at 0
+--     | writeEnable && internalAddr == 0 =
+--         (
+--           ( (emptyWishboneS2M @())
+--               { acknowledge = txAck
+--               , readData = invalidReq
+--               }
+--           , Ack False
+--           , ()
+--           )
+--         , (Just $ resize writeData, status)
+--         )
+--     -- read at 1
+--     | not writeEnable && internalAddr == 1 =
+--         (
+--           ( (emptyWishboneS2M @())
+--               { acknowledge = True
+--               , readData = resize $ pack status
+--               }
+--           , Ack False
+--           , ()
+--           )
+--         , (Nothing, status)
+--         )
+--     | otherwise = ((emptyWishboneS2M{err = True}, Ack False, ()), (Nothing, status))
+--    where
+--     internalAddr = bitCoerce $ resize addr :: Index 2
+--     addrLegal = addr <= 1
+--     rxEmpty = isNothing rxData
+--     status = (rxEmpty, txFull)
+--     invalidReq =
+--       deepErrorX
+--         [i|uartInterfaceWb: Invalid request.
+--         BUS: {busCycle}
+--         STR: {strobe}
+--         ADDR: {addr}
+--         WE:{writeEnable}
+--         ACK:{acknowledge}
+--         ERR:{err}|]
 
 -- | State record for the FIFO circuit.
 data FifoState depth = FifoState
@@ -569,6 +580,9 @@ data FifoMeta depth = FifoMeta
   , fifoDataCount :: Index (depth + 1)
   }
   deriving (Generic, NFDataX)
+
+instance Default (FifoMeta depth) where
+  def = FifoMeta{fifoEmpty = True, fifoFull = False, fifoDataCount = 0}
 
 {- | A generic First-In-First-Out (FIFO) circuit with a specified depth that exposes
 meta information such as in `FifoMeta`. At least one cycle latency.
