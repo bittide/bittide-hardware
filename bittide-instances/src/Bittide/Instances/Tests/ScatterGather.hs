@@ -95,7 +95,7 @@ dut = withBittideByteOrder $ circuit $ \mm -> do
         , dBusTimeout = d0 -- No timeouts on the data bus
         , includeIlaWb = False
         }
-{-# NOINLINE dut #-}
+{-# OPAQUE dut #-}
 
 type IMemWords = DivRU (64 * 1024) 4
 type DMemWords = DivRU (32 * 1024) 4

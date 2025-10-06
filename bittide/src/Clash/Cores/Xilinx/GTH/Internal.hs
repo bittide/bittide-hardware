@@ -159,7 +159,7 @@ xilinxGthUserClockNetworkTx clkIn rstIn = (unPort usrclk_out, unPort usrclk2_out
     , Port "gtwiz_userclk_tx_active_out" user2 Bit
     )
   go = inst (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_tx")
-{-# NOINLINE xilinxGthUserClockNetworkTx #-}
+{-# OPAQUE xilinxGthUserClockNetworkTx #-}
 
 xilinxGthUserClockNetworkRx ::
   forall user user2.
@@ -179,7 +179,7 @@ xilinxGthUserClockNetworkRx clkIn rstIn = (unPort usrclk_out, unPort usrclk2_out
     , Port "gtwiz_userclk_rx_active_out" user2 Bit
     )
   go = inst (instConfig "gtwizard_ultrascale_v1_7_13_gtwiz_userclk_rx")
-{-# NOINLINE xilinxGthUserClockNetworkRx #-}
+{-# OPAQUE xilinxGthUserClockNetworkRx #-}
 
 ibufds_gte3 :: (KnownDomain dom) => DiffClock dom -> Clock dom
 ibufds_gte3 !_clk = clockGen

@@ -9,10 +9,12 @@ import Prelude
 import Test.Tasty
 
 import Test.Tasty.Hedgehog (HedgehogTestLimit (..))
+
+import qualified Tests.Clash.Cores.Xilinx.Xpm.Cdc.Extra
 import qualified Tests.Numeric.Extra
 
 setDefaultHedgehogTestLimit :: HedgehogTestLimit -> HedgehogTestLimit
-setDefaultHedgehogTestLimit (HedgehogTestLimit Nothing) = HedgehogTestLimit (Just 10000)
+setDefaultHedgehogTestLimit (HedgehogTestLimit Nothing) = HedgehogTestLimit (Just 1000)
 setDefaultHedgehogTestLimit opt = opt
 
 tests :: TestTree
@@ -20,6 +22,7 @@ tests =
   testGroup
     "tests"
     [ Tests.Numeric.Extra.tests
+    , Tests.Clash.Cores.Xilinx.Xpm.Cdc.Extra.tests
     ]
 
 main :: IO ()

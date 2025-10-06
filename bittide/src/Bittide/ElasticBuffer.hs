@@ -4,34 +4,29 @@
 
 module Bittide.ElasticBuffer where
 
+import Bittide.ClockControl (RelDataCount, targetDataCount)
+import Bittide.Extra.Maybe (orNothing)
 import Clash.Cores.Xilinx.DcFifo
+import Clash.Cores.Xilinx.Xpm.Cdc.Extra (safeXpmCdcHandshake)
 import Clash.Prelude
 import GHC.Stack
-
-import Bittide.ClockControl (RelDataCount, targetDataCount)
+import Protocols (Ack (..))
 
 import qualified Clash.Cores.Extra as CE
 import qualified Clash.Explicit.Prelude as E
 
-data EbMode
+data EbCommand
   = -- | Disable write, enable read
     Drain
   | -- | Enable write, disable read
     Fill
-  | -- | Enable write, enable read
-    Pass
   deriving (Generic, NFDataX, Eq, Show)
 
 type Underflow = Bool
 type Overflow = Bool
+type Stable = Bool
 
-ebModeToReadWrite :: EbMode -> (Bool, Bool)
-ebModeToReadWrite = \case
-  Fill -> (False, True)
-  Drain -> (True, False)
-  Pass -> (True, True)
-
-{-# NOINLINE sticky #-}
+{-# OPAQUE sticky #-}
 
 -- | Create a sticky version of a boolean signal.
 sticky ::
@@ -44,7 +39,7 @@ sticky clk rst a = stickyA
  where
   stickyA = E.register clk rst enableGen False (stickyA .||. a)
 
-{-# NOINLINE xilinxElasticBuffer #-}
+{-# OPAQUE xilinxElasticBuffer #-}
 
 {- | An elastic buffer backed by a Xilinx FIFO. It exposes all its control and
 monitor signals in its read domain.
@@ -64,7 +59,9 @@ xilinxElasticBuffer ::
   -- | Resetting resets the 'Underflow' and 'Overflow' signals, but not the 'RelDataCount'
   -- ones. Make sure to hold the reset at least 3 cycles in both clock domains.
   Reset readDom ->
-  Signal readDom EbMode ->
+  -- | Operating mode of the elastic buffer. Must remain stable until an acknowledgement
+  -- is received.
+  Signal readDom (Maybe EbCommand) ->
   Signal writeDom a ->
   ( Signal readDom (RelDataCount n)
   , -- Indicates whether the FIFO under or overflowed. This signal is sticky: it
@@ -72,8 +69,10 @@ xilinxElasticBuffer ::
     Signal readDom Underflow
   , Signal writeDom Overflow
   , Signal readDom a
+  , -- Acknowledgement for EbMode
+    Signal readDom Ack
   )
-xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
+xilinxElasticBuffer clkRead clkWrite rstRead command wdata =
   ( -- Note that this is chosen to work for 'RelDataCount' either being
     -- set to 'Signed' with 'targetDataCount' equals 0 or set to
     -- 'Unsigned' with 'targetDataCount' equals 'shiftR maxBound 1 + 1'.
@@ -86,6 +85,7 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
   , isUnderflowSticky
   , isOverflowSticky
   , fifoData
+  , commandAck
   )
  where
   rstWrite = unsafeFromActiveHigh rstWriteBool
@@ -112,13 +112,27 @@ xilinxElasticBuffer clkRead clkWrite rstRead ebMode wdata =
   noResetWrite = unsafeFromActiveHigh (pure False)
   noResetRead = unsafeFromActiveHigh (pure False)
 
-  (readEnable, writeEnable) = unbundle (ebModeToReadWrite <$> ebMode)
+  drain = command .== Just Drain
+  commandAck = mux drain drainAck otherAck
+  otherAck = pure $ Ack True
+  readEnable = command ./= Just Fill
 
-  writeEnableSynced = CE.safeDffSynchronizer clkRead clkWrite False writeEnable
+  -- TODO: Instead of hoisting over a flag to drain a single element, we could
+  --       hoist over a count to drain multiple elements at once. This would
+  --       significantly reduce the overhead induced by the handshake.
+  drainFlag = orNothing <$> drain <*> pure high
+  drainSynced = drainFlagSynced .== Just high
+  writeData = mux drainSynced (pure Nothing) (Just <$> wdata)
+  (drainAck, drainFlagSynced) =
+    safeXpmCdcHandshake
+      clkRead
+      E.noReset
+      clkWrite
+      E.noReset
+      drainFlag
+      (pure (Ack True))
 
-  writeData = mux writeEnableSynced (Just <$> wdata) (pure Nothing)
-
-{-# NOINLINE resettableXilinxElasticBuffer #-}
+{-# OPAQUE resettableXilinxElasticBuffer #-}
 
 {- | Wrapper around 'xilinxElasticBuffer' that contains a state machine to fill the
 buffer half-full. When it is, it switches to pass-through mode, which it exports
@@ -143,13 +157,13 @@ resettableXilinxElasticBuffer ::
   ( Signal readDom (RelDataCount n)
   , Signal readDom Underflow
   , Signal readDom Overflow
-  , Signal readDom EbMode
+  , Signal readDom Stable
   , Signal readDom a
   )
 resettableXilinxElasticBuffer clkRead clkWrite rstRead wdata =
-  (dataCount, under, over1, ebMode, readData)
+  (dataCount, under, over1, stable, readData)
  where
-  (dataCount, under, over, readData) =
+  (dataCount, under, over, readData, commandAck) =
     xilinxElasticBuffer @n clkRead clkWrite fifoReset ebMode wdata
   over1 = CE.safeDffSynchronizer clkWrite clkRead False over
 
@@ -161,21 +175,33 @@ resettableXilinxElasticBuffer clkRead clkWrite rstRead wdata =
   controllerReset = unsafeFromActiveHigh (unsafeToActiveHigh rstRead .||. under .||. over1)
 
   (ebMode, stable) =
-    unbundle
-      $ withClockResetEnable clkRead controllerReset enableGen
-      $ mealy goControl Drain dataCount
+    withClockResetEnable clkRead controllerReset enableGen
+      $ mealyB goControl InReset (commandAck, dataCount)
 
-  goControl :: EbMode -> RelDataCount n -> (EbMode, (EbMode, Bool))
-  goControl state0 datacount = (state1, (state0, stable0))
+  -- TODO: Moving the elastic buffers to their midpoints should happen in software
+  goControl ::
+    FillControlState ->
+    (Ack, RelDataCount n) ->
+    ( FillControlState
+    , (Maybe EbCommand, Stable)
+    )
+  goControl state0 (~(Ack ack), datacount) = (state1, (command, state1 == Stable))
    where
+    command = case state0 of
+      Filling -> Just Fill
+      Draining -> Just Drain
+      _ -> Nothing
+
     state1 =
       case state0 of
-        Drain
-          | datacount == minBound -> Fill
-          | otherwise -> Drain
-        Fill
-          | datacount < targetDataCount -> Fill
-          | otherwise -> Pass
-        Pass -> state0
+        InReset -> Filling
+        Filling | datacount > targetDataCount && ack -> Draining
+        Draining | datacount <= targetDataCount && ack -> Stable
+        _ -> state0
 
-    stable0 = state0 == Pass
+data FillControlState
+  = InReset
+  | Filling
+  | Draining
+  | Stable
+  deriving (Eq, Show, Generic, NFDataX)

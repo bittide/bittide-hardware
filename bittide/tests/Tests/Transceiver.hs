@@ -35,7 +35,7 @@ import qualified Language.Haskell.TH as TH
 
 createDomain vSystem{vName = "RefIsUnused"}
 
--- Note that these domains are a factor of ~5_000 slower than we use in practise. We
+-- Note that these domains are a factor of ~5_000 slower than we use in practice. We
 -- do this because timeouts in the transceivers are specified in milliseconds, which
 -- makes the simulation simply do "nothing" for a while. Also note the frequencies
 -- of domain A and B are slightly different - which is a realistic property of
@@ -54,7 +54,7 @@ createDomain
   vSystem{vName = "FreeFast", vResetKind = Synchronous, vPeriod = hzToPeriod 120e3}
 
 {- | A signal that changes every cycle. It is used to simulate the RX's data when
-it's receiving nothing. In theory this is white noise, in practise its a
+it's receiving nothing. In theory this is white noise, in practice its a
 rotating bit pattern.
 -}
 noise :: (KnownDomain dom) => Clock dom -> Signal dom (BitVector 64)
@@ -293,14 +293,14 @@ dutRandomized f inputA inputB Proxy = property $ do
   txDoneB <- fromIntegral <$> forAll genTimeoutMax
 
   -- XXX: Note that a single, static offset is generated. This is not realistic:
-  --      in practise, the offset is random, and "determined" after resetting the
+  --      in practice, the offset is random, and "determined" after resetting the
   --      rx subsystem. We currently don't rely on this behavior, due to the logic
   --      in "Bittide.Transceiver.WordAlign".
   aOffset <- forAll (genIndex Range.constantBounded)
   bOffset <- forAll (genIndex Range.constantBounded)
 
   -- A cable of 1km "stores" 42 words of 64 bits. In theory these links can be
-  -- assymetric, although they rarely are in practise.
+  -- asymmetric, although they rarely are in practice.
   abDelay <- fromIntegral <$> forAll (Gen.word64 (Range.linear 0 42))
   baDelay <- fromIntegral <$> forAll (Gen.word64 (Range.linear 0 42))
 
@@ -472,6 +472,21 @@ prop_noRxReady :: Property
 prop_noRxReady =
   dutRandomized @A @A @Free testNeitherUp500ms noRxReadyInput noRxReadyInput Proxy
 
+{- | Check that neither node indicates it is sending *and* receiving user data,
+when one of the nodes never indicates it's ready to receive data. The side that
+never indicates it's ready to receive data, should also never start sending user
+data, because it would lose the ability to apply backpressure. The other side
+should then naturally also not claim it is receiving user data.
+-}
+prop_noRxReadyNoPressure :: Property
+prop_noRxReadyNoPressure =
+  dutRandomized @A @A @Free testNeitherUp500ms noRxReadyInput noPressureInput Proxy
+
+-- | Same as 'prop_noRxReadyNoPressure', but flipped.
+prop_noPressureNoRxReady :: Property
+prop_noPressureNoRxReady =
+  dutRandomized @A @A @Free testNeitherUp500ms noPressureInput noRxReadyInput Proxy
+
 {- | Check that nodes complete their handshake, even when the users never indicate
 that they're ready to receive data.
 -}
@@ -539,9 +554,11 @@ tests =
           "Very slow tests"
           -- These tests are "very slow" because they cannot exit early on some
           -- condition. Instead, they just wait for some deadline, and if they don't
-          -- see an errornous condition by then, they pass.
-          [ testPropertyNamed "prop_noTxReady" "prop_noTxReady" prop_noTxReady
-          , testPropertyNamed "prop_noTxReadyFlipped" "prop_noTxReadyFlipped" prop_noTxReadyFlipped
-          , testPropertyNamed "prop_noRxReady" "prop_noRxReady" prop_noRxReady
+          -- see an erroneous condition by then, they pass.
+          [ testPropertyThName 'prop_noTxReady prop_noTxReady
+          , testPropertyThName 'prop_noTxReadyFlipped prop_noTxReadyFlipped
+          , testPropertyThName 'prop_noRxReady prop_noRxReady
+          , testPropertyThName 'prop_noRxReadyNoPressure prop_noRxReadyNoPressure
+          , testPropertyThName 'prop_noPressureNoRxReady prop_noPressureNoRxReady
           ]
     ]

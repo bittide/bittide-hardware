@@ -211,7 +211,7 @@ fincFdecTests diffClk controlledDiffClock spiIn =
 
   testInput :: Signal Basic200 (Maybe Test)
   testInput = hitlVio FDec clk testDone testSuccess
-{-# NOINLINE fincFdecTests #-}
+{-# OPAQUE fincFdecTests #-}
 makeTopEntity 'fincFdecTests
 
 tests :: HitlTestGroup

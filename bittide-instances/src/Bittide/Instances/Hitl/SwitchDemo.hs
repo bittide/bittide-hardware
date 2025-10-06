@@ -23,8 +23,8 @@ import Bittide.ClockControl
 import Bittide.ClockControl.Callisto.Types (CallistoResult (..))
 import Bittide.ClockControl.Si539xSpi (ConfigState (Error, Finished), si539xSpi)
 import Bittide.ElasticBuffer (
-  EbMode (Pass),
   Overflow,
+  Stable,
   Underflow,
   resettableXilinxElasticBuffer,
   sticky,
@@ -153,7 +153,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
           -- Important step 5 signals
           :> "dd_allStable"
           -- Important step 6 signals
-          :> "dd_ebReadys"
+          :> "dd_ebStables"
           -- Other
           :> "dd_transceiversFailedAfterUp"
           :> Nil
@@ -168,7 +168,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       (bundle transceivers.handshakesDoneFree)
       (bundle $ xpmCdcArraySingle bittideClk refClk <$> txStarts)
       (xpmCdcSingle bittideClk refClk allStable)
-      (bundle $ xpmCdcArraySingle bittideClk refClk <$> ebReadys)
+      (bundle $ xpmCdcArraySingle bittideClk refClk <$> ebStables)
       transceiversFailedAfterUp
 
   captureFlag =
@@ -218,9 +218,9 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
         , rxSims
         , rxNs
         , rxPs
-        , txDatas = txDatas
-        , txStarts = txStarts
-        , rxReadys = ebReadysRx
+        , txDatas
+        , txStarts
+        , rxReadys
         }
 
   bittideClk :: Clock Bittide
@@ -271,11 +271,8 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   ebReset :: Reset Bittide
   ebReset = unsafeFromActiveLow allStableSticky
 
-  ebReadys :: Vec 7 (Signal Bittide Bool)
-  ebReadys = map (.==. pure Pass) ebModes
-
-  ebReadysRx :: Vec 7 (Signal GthRx Bool)
-  ebReadysRx = xpmCdcArraySingle bittideClk <$> transceivers.rxClocks <*> ebReadys
+  rxReadys :: Vec 7 (Signal GthRx Bool)
+  rxReadys = xpmCdcArraySingle bittideClk <$> transceivers.rxClocks <*> ebStables
 
   -- Connect everything together:
   transceiversFailedAfterUp :: Signal Basic125 Bool
@@ -401,7 +398,7 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       ( Signal Bittide (RelDataCount FifoSize)
       , Signal Bittide Underflow
       , Signal Bittide Overflow
-      , Signal Bittide EbMode
+      , Signal Bittide Stable
       , Signal Bittide (Maybe (BitVector 64))
       )
   rxFifos = zipWith go transceivers.rxClocks transceivers.rxDatas
@@ -411,8 +408,8 @@ switchDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
   fifoUnderflowsTx :: Vec LinkCount (Signal Bittide Underflow)
   fifoOverflowsTx :: Vec LinkCount (Signal Bittide Overflow)
   rxDatasEbs :: Vec LinkCount (Signal Bittide (Maybe (BitVector 64)))
-  ebModes :: Vec 7 (Signal Bittide EbMode)
-  (_, fifoUnderflowsTx, fifoOverflowsTx, ebModes, rxDatasEbs) = unzip5 rxFifos
+  ebStables :: Vec 7 (Signal Bittide Stable)
+  (_, fifoUnderflowsTx, fifoOverflowsTx, ebStables, rxDatasEbs) = unzip5 rxFifos
 
   fifoOverflows :: Signal Bittide Overflow
   fifoOverflows = or <$> bundle fifoOverflowsTx
