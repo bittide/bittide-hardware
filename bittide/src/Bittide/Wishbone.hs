@@ -16,6 +16,7 @@ import Clash.Cores.UART (ValidBaud, uart)
 import Clash.Cores.Xilinx.Ila (Depth, IlaConfig (..), ila, ilaConfig)
 import Clash.Cores.Xilinx.Unisim.DnaPortE2
 import Clash.Debug
+import Clash.Functor.Extra ((<<$>>))
 import Clash.Util.Interpolate
 import Control.DeepSeq (NFData)
 import Data.Bifunctor
@@ -38,7 +39,6 @@ import Protocols.MemoryMap.Registers.WishboneStandard (
 import Protocols.Wishbone
 
 -- internal imports
-import Bittide.DoubleBufferedRam
 import Bittide.Extra.Maybe
 import Bittide.SharedTypes
 
@@ -774,51 +774,23 @@ readDnaPortE2Wb ::
   , KnownNat addrW
   , KnownNat nBytes
   , 1 <= nBytes
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   ) =>
   -- | Simulation DNA value
   BitVector 96 ->
   Circuit
     (MM.ConstBwd MM.MM, Wishbone dom 'Standard addrW (Bytes nBytes))
     (CSignal dom (BitVector 96))
-readDnaPortE2Wb simDna = MM.withMemoryMap mm $ circuit $ \wb -> do
-  dnaDf <- dnaCircuit
-  dna <- applyC (fmap resize) id <| reg -< (wb, dnaDf)
-  idC -< dna
+readDnaPortE2Wb simDna = circuit $ \wb -> do
+  [maybeDnaWb] <- MM.deviceWb "Dna" -< wb
+  registerWbI_ config Nothing -< (maybeDnaWb, Fwd (Just <<$>> maybeDna))
+  -- XXX: It's slightly iffy to use fromMaybe here, but in practice nothing will
+  --      use it until the DNA is actually read out.
+  idC -< Fwd (fromMaybe 0 <$> maybeDna)
  where
-  mm =
-    MM.MemoryMap
-      { tree = MM.DeviceInstance MM.locCaller "Dna"
-      , deviceDefs = MM.deviceSingleton deviceDef
-      }
-  deviceDef =
-    MM.DeviceDefinition
-      { registers =
-          [ MM.NamedLoc
-              { name = MM.Name "dna" ""
-              , loc = MM.locHere
-              , value =
-                  MM.Register
-                    { fieldType = MM.regType @(BitVector 128)
-                    , address = 0
-                    , access = MM.ReadOnly
-                    , reset = Nothing
-                    , tags = []
-                    }
-              }
-          ]
-      , deviceName = MM.Name "Dna" ""
-      , definitionLoc = MM.locHere
-      , tags = []
-      }
   maybeDna = readDnaPortE2 hasClock hasReset hasEnable simDna
-  regRst =
-    unsafeFromActiveHigh
-      $ register True
-      $ fmap isNothing maybeDna
-      .||. unsafeToActiveHigh hasReset
-  reg = withReset regRst $ registerWbC @dom @_ @nBytes @addrW WishbonePriority 0
-  dnaCircuit :: Circuit () (Df dom (BitVector 128))
-  dnaCircuit = Circuit $ const ((), fmap (fmap resize) maybeDna)
+  config = (registerConfig "maybe_dna"){access=MM.ReadOnly}
 
 {- | Circuit that monitors the 'Wishbone' bus and terminates the transaction after a timeout.
 Controls the 'err' signal of the 'WishboneS2M' signal and sets the outgoing 'WishboneM2S'

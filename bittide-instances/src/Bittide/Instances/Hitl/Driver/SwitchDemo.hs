@@ -452,34 +452,23 @@ driver testName targets = do
           let
             headBaseAddr = muSwitchDemoPeBuffer
             myBaseAddr = toInteger (headBaseAddr + 24 * (L.length gdbs - num - 1))
-            dnaBaseAddr = getPathAddress @Integer memoryMapMu ["0", "Dna", "dna"]
+            dnaBaseAddr = getPathAddress @Integer memoryMapMu ["0", "Dna", "maybe_dna"]
           myCounter <- Gdb.readLe @(Unsigned 64) headGdb myBaseAddr
-          myDeviceDna2 <- Gdb.readLe @(Unsigned 32) myGdb dnaBaseAddr
-          myDeviceDna1 <- Gdb.readLe @(Unsigned 32) myGdb (dnaBaseAddr + 0x4)
-          myDeviceDna0 <- Gdb.readLe @(Unsigned 32) myGdb (dnaBaseAddr + 0x8)
-          headDeviceDna2 <- Gdb.readLe @(Unsigned 32) headGdb (myBaseAddr + 0x08)
-          headDeviceDna1 <- Gdb.readLe @(Unsigned 32) headGdb (myBaseAddr + 0x0C)
-          headDeviceDna0 <- Gdb.readLe @(Unsigned 32) headGdb (myBaseAddr + 0x10)
+          myDeviceDna <- Gdb.readLe @(Maybe (BitVector 96)) myGdb dnaBaseAddr
+          headDeviceDna <- Gdb.readLe @(BitVector 96) headGdb (myBaseAddr + 0x08)
+
           let
             myCfg = configs L.!! num
             expectedCounter = myCfg.startWriteAt
             counterEq = myCounter == expectedCounter
-            dna0Eq = myDeviceDna0 == headDeviceDna0
-            dna1Eq = myDeviceDna1 == headDeviceDna1
-            dna2Eq = myDeviceDna2 == headDeviceDna2
+            dnaEq = myDeviceDna == Just headDeviceDna
           when (not counterEq)
             $ putStrLn
               [i|Counter #{num} did not match. Found #{myCounter}, expected #{expectedCounter}|]
-          when (not dna0Eq)
+          when (not dnaEq)
             $ putStrLn
-              [i|DNA0 #{num} did not match. Found #{headDeviceDna0}, expected #{myDeviceDna0}|]
-          when (not dna1Eq)
-            $ putStrLn
-              [i|DNA1 #{num} did not match. Found #{headDeviceDna1}, expected #{myDeviceDna1}|]
-          when (not dna2Eq)
-            $ putStrLn
-              [i|DNA2 #{num} did not match. Found #{headDeviceDna2}, expected #{myDeviceDna2}|]
-          return $ counterEq && dna0Eq && dna1Eq && dna2Eq
+              [i|DNA did not match. Found #{headDeviceDna}, expected #{myDeviceDna}|]
+          return $ counterEq && dnaEq
 
       deviceChecks <- forM (L.zip gdbs [0 ..]) $ \(gdb, n) -> liftIO $ perDeviceCheck gdb n
       let result = if and deviceChecks then ExitSuccess else ExitFailure 2

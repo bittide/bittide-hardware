@@ -11,7 +11,6 @@
 use bittide_hal::hals::ethernet as hal;
 use bittide_hal::manual_additions::timer::{Duration, Instant};
 use bittide_sys::axi::{AxiRx, AxiTx};
-use bittide_sys::dna_port_e2::{dna_to_u128, DnaValue};
 use bittide_sys::mac::MacStatus;
 use bittide_sys::smoltcp::axi::AxiEthernet;
 use bittide_sys::smoltcp::{set_local, set_unicast};
@@ -30,7 +29,6 @@ use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use ufmt::uwriteln;
 
 const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
-const DNA_ADDR: *const DnaValue = (INSTANCES.dna.0) as *const DnaValue;
 const MAC_ADDR: *const MacStatus = (INSTANCES.mac_status.0) as *const MacStatus;
 const RX_AXI_ADDR: *const () = (0x40000000) as *const ();
 const TX_AXI_ADDR: *const () = (0x50000000) as *const ();
@@ -80,9 +78,7 @@ fn main() -> ! {
     let axi_tx = unsafe { AxiTx::new(TX_AXI_ADDR) };
     let axi_rx: AxiRx<RX_BUFFER_SIZE> = unsafe { AxiRx::new(RX_AXI_ADDR) };
 
-    // Arbitrarily sized bitvectors are broken in our generator.
-    // let dna: u128 = INSTANCES.dna.dna();
-    let dna = unsafe { dna_to_u128(*DNA_ADDR) };
+    let dna: u128 = INSTANCES.dna.dna();
 
     uwriteln!(uart, "Starting TCP Client").unwrap();
     unsafe {

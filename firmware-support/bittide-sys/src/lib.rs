@@ -7,7 +7,6 @@
 
 pub mod axi;
 pub mod callisto;
-pub mod dna_port_e2;
 pub mod mac;
 pub mod program_stream;
 pub mod sample_store;
