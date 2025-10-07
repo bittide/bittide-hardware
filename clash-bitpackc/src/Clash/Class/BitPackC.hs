@@ -29,6 +29,13 @@ import Data.Proxy (Proxy (Proxy))
 import Data.Word (Word16, Word32, Word64, Word8)
 import GHC.Generics
 
+{- | Maximum alignment boundary of any type. This is currently hardcoded to 8,
+which is what our platforms use (riscv32). In the future this should be made
+configurable to support platforms with larger or smaller maximum alignment
+requirements.
+-}
+type MaximumAlignmentBoundary = 8 :: Nat
+
 {- | Pack a type @a@ to a vector of bytes according to C packing conventions
 (see 'BitPackC'), where each index corresponds to a byte address. If you want
 to pack to words instead, consider using 'BitPackC.Padding.wordPackC'.
@@ -161,7 +168,9 @@ class
   -- | Alignment boundary for this type. This needs to be a power of two.
   type AlignmentBoundaryC a :: Nat
 
-  type AlignmentBoundaryC a = Max (ConstructorSizeC a) (GAlignmentBoundaryC (Rep a))
+  type
+    AlignmentBoundaryC a =
+      Min MaximumAlignmentBoundary (Max (ConstructorSizeC a) (GAlignmentBoundaryC (Rep a)))
 
   -- | Size of this type in bytes
   type ByteSizeC (a :: Type) :: Nat
@@ -269,8 +278,10 @@ msbResize val =
 
 instance (KnownNat n) => BitPackC (BitVector n) where
   type ConstructorSizeC (BitVector n) = 0
-  type AlignmentBoundaryC (BitVector n) = NextPowerOfTwo (BitSizeInBytes (BitVector n))
-  type ByteSizeC (BitVector n) = AlignmentBoundaryC (BitVector n)
+  type
+    AlignmentBoundaryC (BitVector n) =
+      Min MaximumAlignmentBoundary (NextPowerOfTwo (BitSizeInBytes (BitVector n)))
+  type ByteSizeC (BitVector n) = NextPowerOfTwo (BitSizeInBytes (BitVector n))
 
   packC# byteOrder = toEndianBV byteOrder . resize
   maybeUnpackC# byteOrder = checkFits . fromEndianBV byteOrder
@@ -310,8 +321,10 @@ checkFits val
 
 instance (KnownNat n, 1 <= n) => BitPackC (Index n) where
   type ConstructorSizeC (Index n) = 0
-  type AlignmentBoundaryC (Index n) = NextPowerOfTwo (BitSizeInBytes (Index n))
-  type ByteSizeC (Index n) = AlignmentBoundaryC (Index n)
+  type
+    AlignmentBoundaryC (Index n) =
+      Min MaximumAlignmentBoundary (NextPowerOfTwo (BitSizeInBytes (Index n)))
+  type ByteSizeC (Index n) = NextPowerOfTwo (BitSizeInBytes (Index n))
 
   packC# byteOrder = toEndianBV byteOrder . resize . pack
   maybeUnpackC# byteOrder val0 = do
