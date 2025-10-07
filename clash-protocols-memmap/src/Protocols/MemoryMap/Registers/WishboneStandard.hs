@@ -27,6 +27,7 @@ module Protocols.MemoryMap.Registers.WishboneStandard (
   -- * Supporting types and functions
   registerConfig,
   busActivityWrite,
+  BusReadBehavior (..),
   BusActivity (..),
   DeviceConfig (..),
   RegisterConfig (..),
@@ -135,11 +136,23 @@ zeroWidthRegisterMeta Proxy conf =
       nWords = 1
     }
 
+-- | What to do when a bus read occurs at the same time as a circuit write.
+data BusReadBehavior
+  = -- | When a bus read occurs at the same time as a circuit write, read the
+    -- value still in the register.
+    PreferRegister
+  | -- | When a bus read occurs at the same time as a circuit write, read the
+    -- value being written by the circuit. Selecting this option introduces an
+    -- extra mux and, depending on the type, packing logic.
+    PreferCircuit
+  deriving (Show)
+
 data RegisterConfig = RegisterConfig
   { name :: String
   , description :: String
   , tags :: [String]
   , access :: Access
+  , busRead :: BusReadBehavior
   }
   deriving (Show)
 
@@ -150,6 +163,7 @@ registerConfig name =
     , description = ""
     , tags = []
     , access = ReadWrite
+    , busRead = PreferRegister
     }
 
 -- These have no business being in this module :)
@@ -421,6 +435,8 @@ registerWbDf clk rst regConfig resetValue =
               , (pure resetValue, busActivity)
               )
  where
+  needReverse = ?busByteOrder /= ?regByteOrder
+
   -- This behemoth of a type signature because the inferred type signature is
   -- too general, confusing the type checker.
   go ::
@@ -440,7 +456,7 @@ registerWbDf clk rst regConfig resetValue =
     , (Signal dom a, Signal dom (Maybe (BusActivity a)))
     )
   go (((offset, _, wbM2S), aIn0), (_, coerce -> dfAck)) =
-    ((((), reg, wbS2M1), pure ()), (aOut, busActivity))
+    ((((), reg, wbS2M2), pure ()), (aOut, busActivity))
    where
     relativeOffset = goRelativeOffset . addr <$> wbM2S
 
@@ -493,6 +509,31 @@ registerWbDf clk rst regConfig resetValue =
 
     setAck :: WishboneS2M c -> Bool -> WishboneS2M c
     setAck s2m acknowledge = s2m{acknowledge}
+
+    -- Override the read data based on 'BusReadBehavior'
+    --
+    -- XXX: We use this to allow use to have a register backed by a FIFO. Ideally we'd
+    --      just have a 'pipeDf' that is *not* backed by registers, but merely passes
+    --      on a 'Df' stream.
+    wbS2M2 =
+      case regConfig.busRead of
+        PreferCircuit -> setReadData <$> wbS2M1 <*> aIn0 <*> relativeOffset
+        PreferRegister -> wbS2M1
+
+    setReadData ::
+      WishboneS2M (Bytes wordSize) ->
+      Maybe a ->
+      Index nWords ->
+      WishboneS2M (Bytes wordSize)
+    setReadData s2m ma relOffset =
+      case ma of
+        Just a ->
+          let
+            packed = packWordC @wordSize ?regByteOrder a !! relOffset
+            readData = if needReverse then reverseBytes packed else packed
+           in
+            s2m{readData}
+        Nothing -> s2m
 
     goRelativeOffset :: BitVector aw -> Index nWords
     goRelativeOffset addr = fromMaybe 0 (elemIndex addrLsbs expectedOffsets)
@@ -548,8 +589,6 @@ registerWbDf clk rst regConfig resetValue =
             $ packWordC ?regByteOrder aFromReg
             !! offset
       | otherwise = 0
-
-    needReverse = ?busByteOrder /= ?regByteOrder
 
     maskedWriteData =
       maskWriteData

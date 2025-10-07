@@ -84,7 +84,8 @@ initState =
     , (5, myPaddedPackC initFloat !! nil)
     , (6, myPaddedPackC initU32 !! nil)
     , (7, myPaddedPackC initU32 !! nil)
-    , (8, myPaddedPackC False !! nil)
+    , (8, myPaddedPackC initU32 !! nil)
+    , (9, myPaddedPackC False !! nil)
     ]
  where
   nil = 0 :: Int
@@ -109,7 +110,7 @@ deviceExample ::
     (ConstBwd MM, Wishbone dom 'Standard aw (Bytes wordSize))
     ()
 deviceExample clk rst = circuit $ \(mm, wb) -> do
-  [float, double, u32, readOnly, writeOnly, prio, delayed, delayedError] <-
+  [float, double, u32, readOnly, writeOnly, prio, prioPreferCircuit, delayed, delayedError] <-
     deviceWb "example" -< (mm, wb)
 
   registerWb_ clk rst (registerConfig "f") initFloat -< (float, Fwd noWrite)
@@ -121,9 +122,16 @@ deviceExample clk rst = circuit $ \(mm, wb) -> do
   registerWb_ clk rst (registerConfig "wo"){access = WriteOnly} initFloat
     -< (writeOnly, Fwd noWrite)
 
-  (_a, Fwd prioOut) <-
+  (_a0, Fwd prioOut) <-
     registerWb clk rst (registerConfig "prio") initU32
       -< (prio, Fwd (fmap overwrite <$> prioOut))
+
+  -- A register called 'prio_prefer_circuit', which is like 'prio' but expects to
+  -- immediately read back circuit writes -- in this case resetting to the initial
+  -- value.
+  (_a1, Fwd prioPreferCircuitOut) <-
+    registerWb clk rst (registerConfig "prio_prefer_circuit"){busRead = PreferCircuit} initU32
+      -< (prioPreferCircuit, Fwd (fmap overwrite <$> prioPreferCircuitOut))
 
   -- Insert one register called 'delayed'. We want to test the following properties:
   --
@@ -282,6 +290,8 @@ prop_wb =
             Left $ "delayed error! v: " <> show v <> ", readData: " <> show readData
         | v == readData && a == prioAddress ->
             Right $ Map.insert prioAddress (head $ myPaddedPackC initU32) s
+        | readData == pack initU32 && a == prioPreferCircuitAddress ->
+            Right $ Map.insert prioPreferCircuitAddress (head $ myPaddedPackC initU32) s
         | v == readData ->
             Right s
         | otherwise ->
@@ -293,7 +303,7 @@ prop_wb =
           double = head . myPaddedPackC . (* (2 :: (Unsigned 32))) . myPaddedUnpackC . pure
          in
           Right (Map.adjust (double . update) a s)
-    | a == prioAddress =
+    | a == prioAddress || a == prioPreferCircuitAddress =
         let
           inc :: BitVector 32 -> BitVector 32
           inc = head . myPaddedPackC . (+ (1 :: (Unsigned 32))) . myPaddedUnpackC . pure
@@ -330,10 +340,20 @@ prop_wb =
   roAddresses = [roAddress, delayedErrorAddress]
 
   example = memoryMap.deviceDefs Map.! "example"
-  [_regF, _regD, _regU, regRO, regWO, regPrio, regDelayed, regDelayedError] = example.registers
+  [ _regF
+    , _regD
+    , _regU
+    , regRO
+    , regWO
+    , regPrio
+    , regPrioPreferCircuit
+    , regDelayed
+    , regDelayedError
+    ] = example.registers
   woAddress = fromIntegral $ regWO.value.address `div` 4
   roAddress = fromIntegral $ regRO.value.address `div` 4
   prioAddress = fromIntegral $ regPrio.value.address `div` 4
+  prioPreferCircuitAddress = fromIntegral $ regPrioPreferCircuit.value.address `div` 4
   delayedAddress = fromIntegral $ regDelayed.value.address `div` 4
   delayedErrorAddress = fromIntegral $ regDelayedError.value.address `div` 4
 
@@ -372,7 +392,16 @@ case_memoryMap = do
   let example = memoryMap.deviceDefs Map.! "example"
   example.deviceName.name @?= "example"
 
-  let [regF, regD, regU, regRO, regWO, regPrio, regDelayed, regDelayedError] = example.registers
+  let [ regF
+        , regD
+        , regU
+        , regRO
+        , regWO
+        , regPrio
+        , regPrioPreferCircuit
+        , regDelayed
+        , regDelayedError
+        ] = example.registers
 
   regF.name.name @?= "f"
   regD.name.name @?= "d"
@@ -380,6 +409,7 @@ case_memoryMap = do
   regRO.name.name @?= "ro"
   regWO.name.name @?= "wo"
   regPrio.name.name @?= "prio"
+  regPrioPreferCircuit.name.name @?= "prio_prefer_circuit"
   regDelayed.name.name @?= "delayed"
   regDelayedError.name.name @?= "delayed_error"
 
@@ -389,8 +419,9 @@ case_memoryMap = do
   regRO.value.address @?= 16
   regWO.value.address @?= 20
   regPrio.value.address @?= 24
-  regDelayed.value.address @?= 28
-  regDelayedError.value.address @?= 32
+  regPrioPreferCircuit.value.address @?= 28
+  regDelayed.value.address @?= 32
+  regDelayedError.value.address @?= 36
 
 tests :: TestTree
 tests =
