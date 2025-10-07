@@ -66,6 +66,8 @@ data PeConfig nBusses where
 type PrefixWidth nBusses = CLog 2 (nBusses + 1)
 type RemainingBusWidth nBusses = 30 - PrefixWidth nBusses
 
+type PeInternalBusses = 2
+
 {- | VexRiscV based RV32IMC core together with instruction memory, data memory and
 'singleMasterInterconnect'.
 -}
@@ -76,7 +78,7 @@ processingElement ::
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
   , KnownNat nBusses
-  , 2 <= nBusses
+  , PeInternalBusses <= nBusses
   , KnownNat pfxWidth
   , pfxWidth <= 30
   , pfxWidth ~ PrefixWidth nBusses
@@ -86,7 +88,7 @@ processingElement ::
   Circuit
     (MM.ConstBwd MM.MM, Jtag dom)
     ( Vec
-        (nBusses - 2)
+        (nBusses - PeInternalBusses)
         (MM.ConstBwd MM.MM, Wishbone dom 'Standard (RemainingBusWidth nBusses) (Bytes 4))
     )
 processingElement dumpVcd PeConfig{initI, initD, iBusTimeout, dBusTimeout, includeIlaWb} = circuit $ \(mm, jtagIn) -> do
