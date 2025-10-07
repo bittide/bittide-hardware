@@ -247,6 +247,30 @@ fn main() -> ! {
         hal::Maybe::Nothing
     );
 
+    read_write!(
+        "maybe_b96",
+        maybe_b96,
+        hal::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
+        set_maybe_b96,
+        hal::Maybe::Nothing
+    );
+
+    read_write!(
+        "maybe_u96",
+        maybe_u96,
+        hal::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
+        set_maybe_u96,
+        hal::Maybe::Nothing
+    );
+
+    read_write!(
+        "maybe_s96",
+        maybe_s96,
+        hal::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
+        set_maybe_s96,
+        hal::Maybe::Just(-12739874918273491479)
+    );
+
     test_ok();
 }
 
