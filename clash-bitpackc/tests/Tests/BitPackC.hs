@@ -328,6 +328,12 @@ case_eitherI255I65535 = do
     (packUnpackIdentity @(Either (Index 255) (Index 65535)))
     ([Left x | x <- [minBound ..]] <> [Right x | x <- [minBound ..]])
 
+case_MaybeS96 :: Assertion
+case_MaybeS96 = do
+  mapM_
+    (packUnpackIdentity @(Maybe (Signed 96)))
+    ([Nothing, Just 0, Just 1, Just (-1), Just 255, Just (-255)])
+
 tests :: TestTree
 tests = $(testGroupGenerator)
 

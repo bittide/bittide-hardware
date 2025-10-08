@@ -132,6 +132,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbS2
     , wbS3
     , wbS4
+    , wbS5
     , wbU0
     , wbU1
     , wbU2
@@ -177,6 +178,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   registerWb_ hasClock hasReset (registerConfig "s2") initWbS2 -< (wbS2, Fwd noWrite)
   registerWb_ hasClock hasReset (registerConfig "s3") initWbS3 -< (wbS3, Fwd noWrite)
   registerWb_ hasClock hasReset (registerConfig "s4") initWbS4 -< (wbS4, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "s5") initWbS5 -< (wbS5, Fwd noWrite)
 
   registerWb_ hasClock hasReset (registerConfig "u0") initWbU0 -< (wbU0, Fwd noWrite)
   registerWb_ hasClock hasReset (registerConfig "u1") initWbU1 -< (wbU1, Fwd noWrite)
@@ -256,6 +258,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initWbS4 :: Signed 7
   initWbS4 = -12
+
+  initWbS5 :: S96
+  initWbS5 = -1
 
   initWbU0 :: Unsigned 8
   initWbU0 = 8
@@ -371,7 +376,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   initMaybeU96 = Just 0x4ababab55555555deadbeef1
 
   initMaybeS96 :: Maybe S96
-  initMaybeS96 = Just 0x4ababab55555555deadbeef1
+  initMaybeS96 = Just 0x1
 
 sim :: IO ()
 sim = putStrLn simResult
