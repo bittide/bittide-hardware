@@ -26,6 +26,7 @@ import qualified Bittide.Instances.Hitl.DnaOverSerial as DnaOverSerial
 import qualified Bittide.Instances.Hitl.Ethernet as Ethernet
 import qualified Bittide.Instances.Hitl.FincFdec as FincFdec
 import qualified Bittide.Instances.Hitl.LinkConfiguration as LinkConfiguration
+import qualified Bittide.Instances.Hitl.SoftUgnDemo as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
 import qualified Bittide.Instances.Hitl.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Hitl.SyncInSyncOut as SyncInSyncOut
@@ -43,6 +44,7 @@ hitlTests =
     <> [Ethernet.tests]
     <> [FincFdec.tests]
     <> [LinkConfiguration.tests]
+    <> [SoftUgnDemo.tests]
     <> [SwCcTopologies.tests]
     <> [SwitchDemo.tests]
     <> [SyncInSyncOut.tests]
