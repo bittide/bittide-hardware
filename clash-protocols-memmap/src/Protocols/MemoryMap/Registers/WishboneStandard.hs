@@ -93,19 +93,56 @@ busActivityWrite :: Maybe (BusActivity a) -> Maybe a
 busActivityWrite (Just (BusWrite a)) = Just a
 busActivityWrite _ = Nothing
 
+{- | Type synonym for all the information needed to create a Wishbone register with
+auto-assigned offsets.
+-}
+type RegisterWb (dom :: Domain) (aw :: Nat) (wordSize :: Nat) =
+  ( ConstFwd (Offset aw)
+  , -- \^ Offset from the base address of the device, produced by 'deviceWb'
+    ConstBwd (RegisterMeta aw)
+  , -- \^ Meta information about the register, produced by the register
+    Wishbone dom 'Standard aw (Bytes wordSize)
+    -- \^ A register is a Wishbone subordinate
+  )
+
+{- | Type synonym for all the information needed to create a Wishbone register with
+custom offsets.
+-}
+type RegisterWithOffsetWb (dom :: Domain) (aw :: Nat) (wordSize :: Nat) =
+  ( ConstBwd (Offset aw)
+  , -- \^ Offset from the base address of the device, provided by the user
+    ConstBwd (RegisterMeta aw)
+  , -- \^ Meta information about the register, produced by the register
+    Wishbone dom 'Standard aw (Bytes wordSize)
+    -- \^ A register is a Wishbone subordinate
+  )
+
+-- | Configuration for a device -- currently only the name.
 data DeviceConfig = DeviceConfig
   { name :: String
   }
 
+{- | Offset from the base address of a device. This really should be an 'Unsigned', but
+we use 'BitVector' to avoid unnecessary conversions.
+-}
 type Offset aw = BitVector aw
 
+{- | Meta information about a register. Fields marked as 'SimOnly' are only used to
+construct the memory map during simulation and are ignored during synthesis.
+-}
 data RegisterMeta aw = RegisterMeta
   { name :: SimOnly Name
   , srcLoc :: SimOnly SrcLoc
   , register :: SimOnly Register
   , nWords :: BitVector (aw + 1)
+  -- ^ Number of words occupied by this register. Note that it is (+1) because we need
+  -- to be able to represent registers that occupy the full address space.
   }
 
+{- | Meta information for a zero-width register. Zero-width registers do not take up
+any flip-flops, but do need to be mapped on the bus to be able to observe bus
+activity.
+-}
 zeroWidthRegisterMeta ::
   forall a aw.
   ( KnownNat aw
@@ -194,17 +231,13 @@ deviceWb ::
   , KnownNat wordSize
   , KnownNat aw
   ) =>
+  -- | Device name
   String ->
   Circuit
     ( ConstBwd MM
     , Wishbone dom 'Standard aw (Bytes wordSize)
     )
-    ( Vec
-        n
-        ( ConstFwd (Offset aw)
-        , ConstBwd (RegisterMeta aw)
-        , Wishbone dom 'Standard aw (Bytes wordSize)
-        )
+    ( Vec n (RegisterWb dom aw wordSize)
     )
 deviceWb deviceName = circuit $ \(mm, wb) -> do
   (offsets0, metas0, wbs) <-
@@ -212,6 +245,12 @@ deviceWb deviceName = circuit $ \(mm, wb) -> do
   (offsets1, metas1) <- genOffsets -< (offsets0, metas0)
   V.zip3 -< (offsets1, metas1, wbs)
  where
+  -- Generate offsets based on the sizes of the registers. The first address will be
+  -- at offset 0, the next at the size of the first register, etc.
+  --
+  -- XXX: Handle alignment requirements. For example, a u64 should be aligned to a
+  --      8-byte boundary. Because every register starts at a multiple of the word
+  --      size, it auto-aligns at least at a `wordSize`-byte boundary.
   genOffsets ::
     Circuit
       (Vec n (ConstBwd (Offset aw)), Vec n (ConstBwd (RegisterMeta aw)))
@@ -233,17 +272,13 @@ either pass in the offsets manually or use 'registerWithOffsetWbDf'.
 deviceWithOffsetsWb ::
   forall n wordSize aw dom.
   (HasCallStack, KnownNat n, KnownNat aw, KnownNat wordSize) =>
+  -- | Device name
   String ->
   Circuit
     ( ConstBwd MM
     , Wishbone dom 'Standard aw (Bytes wordSize)
     )
-    ( Vec
-        n
-        ( ConstBwd (Offset aw)
-        , ConstBwd (RegisterMeta aw)
-        , Wishbone dom 'Standard aw (Bytes wordSize)
-        )
+    ( Vec n (RegisterWithOffsetWb dom aw wordSize)
     )
 deviceWithOffsetsWb deviceName =
   case divWithRemainder @wordSize @8 @7 of
@@ -320,7 +355,7 @@ deviceWithOffsetsWb deviceName =
 
     isActiveSubordinate ::
       -- Subordinate offset (constant during compilation)
-      BitVector aw ->
+      Offset aw ->
       -- Subordinate meta data
       RegisterMeta aw ->
       -- Current address on the bus
@@ -401,10 +436,7 @@ registerWbDf ::
   -- | Reset value
   a ->
   Circuit
-    ( ( ConstFwd (Offset aw)
-      , ConstBwd (RegisterMeta aw)
-      , Wishbone dom 'Standard aw (Bytes wordSize)
-      )
+    ( RegisterWb dom aw wordSize
     , CSignal dom (Maybe a)
     )
     ( CSignal dom a
@@ -415,10 +447,12 @@ registerWbDf clk rst regConfig resetValue =
     (nWords@SNat :: SNat nWords) ->
       case d1 `compareSNat` nWords of
         SNatLE ->
+          -- "Normal" register that actually holds data
           case divWithRemainder @wordSize @8 @7 of
             Dict ->
               Circuit go
         SNatGT ->
+          -- Zero-width register that only provides bus activity information
           Circuit $ \(((_, _, m2s0), _), (_, ack)) ->
             let
               update m2s1 acknowledge
@@ -651,10 +685,7 @@ registerWb ::
   -- | Reset value
   a ->
   Circuit
-    ( ( ConstFwd (Offset aw)
-      , ConstBwd (RegisterMeta aw)
-      , Wishbone dom 'Standard aw (Bytes wordSize)
-      )
+    ( RegisterWb dom aw wordSize
     , CSignal dom (Maybe a)
     )
     ( CSignal dom a
@@ -688,10 +719,7 @@ registerWb_ ::
   -- | Reset value
   a ->
   Circuit
-    ( ( ConstFwd (Offset aw)
-      , ConstBwd (RegisterMeta aw)
-      , Wishbone dom 'Standard aw (Bytes wordSize)
-      )
+    ( RegisterWb dom aw wordSize
     , CSignal dom (Maybe a)
     )
     ()
@@ -727,10 +755,7 @@ registerWithOffsetWb ::
   -- | Reset value
   a ->
   Circuit
-    ( ( ConstBwd (BitVector aw)
-      , ConstBwd (RegisterMeta aw)
-      , Wishbone dom 'Standard aw (Bytes wordSize)
-      )
+    ( RegisterWithOffsetWb dom aw wordSize
     , CSignal dom (Maybe a)
     )
     ( CSignal dom a
@@ -770,10 +795,7 @@ registerWithOffsetWbDf ::
   -- | Reset value
   a ->
   Circuit
-    ( ( ConstBwd (BitVector aw)
-      , ConstBwd (RegisterMeta aw)
-      , Wishbone dom 'Standard aw (Bytes wordSize)
-      )
+    ( RegisterWithOffsetWb dom aw wordSize
     , CSignal dom (Maybe a)
     )
     ( CSignal dom a
@@ -787,6 +809,9 @@ registerWithOffsetWbDf clk rst regConfig offset resetValue =
   genOffset :: Circuit (ConstBwd (BitVector aw)) ()
   genOffset = Circuit $ \_ -> (offset, ())
 
+{- | Takes the data from the bus and the register and combines them based on the
+byte enables and word index we're writing to.
+-}
 maskWriteData ::
   forall wordSize nWords.
   ( KnownNat wordSize
@@ -849,10 +874,7 @@ registerWbI ::
   -- | Reset value
   a ->
   Circuit
-    ( ( ConstFwd (Offset aw)
-      , ConstBwd (RegisterMeta aw)
-      , Wishbone dom 'Standard aw (Bytes wordSize)
-      )
+    ( RegisterWb dom aw wordSize
     , CSignal dom (Maybe a)
     )
     ( CSignal dom a
@@ -882,10 +904,7 @@ registerWbDfI ::
   -- | Reset value
   a ->
   Circuit
-    ( ( ConstFwd (Offset aw)
-      , ConstBwd (RegisterMeta aw)
-      , Wishbone dom 'Standard aw (Bytes wordSize)
-      )
+    ( RegisterWb dom aw wordSize
     , CSignal dom (Maybe a)
     )
     ( CSignal dom a
@@ -915,10 +934,7 @@ registerWbI_ ::
   -- | Reset value
   a ->
   Circuit
-    ( ( ConstFwd (Offset aw)
-      , ConstBwd (RegisterMeta aw)
-      , Wishbone dom 'Standard aw (Bytes wordSize)
-      )
+    ( RegisterWb dom aw wordSize
     , CSignal dom (Maybe a)
     )
     ()
@@ -949,10 +965,7 @@ registerWithOffsetWbI ::
   -- | Reset value
   a ->
   Circuit
-    ( ( ConstBwd (BitVector aw)
-      , ConstBwd (RegisterMeta aw)
-      , Wishbone dom 'Standard aw (Bytes wordSize)
-      )
+    ( RegisterWithOffsetWb dom aw wordSize
     , CSignal dom (Maybe a)
     )
     ( CSignal dom a
@@ -985,10 +998,7 @@ registerWithOffsetWbDfI ::
   -- | Reset value
   a ->
   Circuit
-    ( ( ConstBwd (BitVector aw)
-      , ConstBwd (RegisterMeta aw)
-      , Wishbone dom 'Standard aw (Bytes wordSize)
-      )
+    ( RegisterWithOffsetWb dom aw wordSize
     , CSignal dom (Maybe a)
     )
     ( CSignal dom a
