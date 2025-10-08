@@ -9,12 +9,13 @@ use bittide_hal::hals::soft_ugn_demo_mu as hal;
 #[cfg(not(test))]
 use riscv_rt::entry;
 
-const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
+// const INSTANCES: hal::DeviceInstances = unsafe { hal::DeviceInstances::new() };
 
 #[cfg_attr(not(test), entry)]
 #[allow(clippy::empty_loop)]
 fn main() -> ! {
-    let uart = &mut INSTANCES.uart;
+    // let uart = &mut INSTANCES.uart;
+    let mut uart = unsafe { hal::Uart::new(0x70000000 as *mut u8) };
 
     ufmt::uwriteln!(uart, "Hello!").unwrap();
 
