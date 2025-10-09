@@ -53,7 +53,7 @@ import Data.Coerce (coerce)
 import Data.Constraint (Dict (Dict))
 import Data.Constraint.Nat.Lemmas (divWithRemainder)
 import Data.Data (Proxy (Proxy))
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, maybeToList)
 import GHC.Stack (HasCallStack, SrcLoc, withFrozenCallStack)
 import Protocols.MemoryMap (
   Access (ReadOnly, ReadWrite, WriteOnly),
@@ -128,6 +128,17 @@ we use 'BitVector' to avoid unnecessary conversions.
 -}
 type Offset aw = BitVector aw
 
+data LockRequest
+  = Lock
+  | Clear
+  | Commit
+  deriving (Show, Eq)
+
+data Lock
+  = NoLock
+  | Auto
+  deriving (Show, Eq)
+
 {- | Meta information about a register. Fields marked as 'SimOnly' are only used to
 construct the memory map during simulation and are ignored during synthesis.
 -}
@@ -135,6 +146,7 @@ data RegisterMeta aw = RegisterMeta
   { name :: SimOnly Name
   , srcLoc :: SimOnly SrcLoc
   , register :: SimOnly Register
+  , lockRegister :: SimOnly (Maybe Register)
   , nWords :: BitVector (aw + 1)
   -- ^ Number of words occupied by this register. Note that it is (+1) because we need
   -- to be able to represent registers that occupy the full address space.
@@ -168,10 +180,22 @@ zeroWidthRegisterMeta Proxy conf =
             , tags = "zero-width" : conf.tags
             , reset = Nothing
             }
+    , lockRegister = SimOnly Nothing
     , -- BitPackC would report a size of 0, but we want to be able to observe
       -- the bus activity, so an address needs to be reserved anyway. For this,
       -- the number of words gets overwritten to 1 here.
       nWords = 1
+    }
+
+registerMetaToLockRegister ::
+  forall aw.
+  (KnownNat aw) =>
+  -- | Base register
+  RegisterMeta aw ->
+  Register
+registerMetaToLockRegister RegisterMeta{register = SimOnly reg} =
+  Register
+    { fieldType = regType @LockRequest
     }
 
 -- | What to do when a bus read occurs at the same time as a circuit write.
@@ -191,6 +215,7 @@ data RegisterConfig = RegisterConfig
   , tags :: [String]
   , access :: Access
   , busRead :: BusReadBehavior
+  , lock :: Lock
   }
   deriving (Show)
 
@@ -202,6 +227,7 @@ registerConfig name =
     , tags = []
     , access = ReadWrite
     , busRead = PreferRegister
+    , lock = Auto
     }
 
 -- These have no business being in this module :)
@@ -314,16 +340,18 @@ deviceWithOffsetsWb deviceName =
     unSimOnly (SimOnly a) = a
 
     -- Note that we filter zero-width registers out here
-    metaToRegister :: Offset aw -> RegisterMeta aw -> NamedLoc Register
-    metaToRegister o m =
-      NamedLoc
-        { name = unSimOnly m.name
-        , loc = unSimOnly m.srcLoc
-        , value =
-            (unSimOnly m.register)
-              { address = fromIntegral o * natToNum @wordSize
-              }
-        }
+    metaToRegisters :: Offset aw -> RegisterMeta aw -> [NamedLoc Register]
+    metaToRegisters o m = baseRegister : maybeToList lockRegister
+     where
+      baseRegister =
+        NamedLoc
+          { name = unSimOnly m.name
+          , loc = unSimOnly m.srcLoc
+          , value =
+              (unSimOnly m.register)
+                { address = fromIntegral o * natToNum @wordSize
+                }
+          }
 
     mm =
       MemoryMap
@@ -331,7 +359,7 @@ deviceWithOffsetsWb deviceName =
             Map.singleton deviceName
               $ DeviceDefinition
                 { deviceName = Name{name = deviceName, description = ""}
-                , registers = L.zipWith metaToRegister (toList offsets) (toList metas)
+                , registers = L.concat $ L.zipWith metaToRegisters (toList offsets) (toList metas)
                 , definitionLoc = locN 0
                 , tags = []
                 }
