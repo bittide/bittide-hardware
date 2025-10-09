@@ -11,12 +11,16 @@ import Bittide.Hitl
 import Bittide.Instances.Hitl.Setup (demoRigInfo)
 import Bittide.Instances.Hitl.Utils.Vivado
 import Control.Monad.IO.Class
+import Data.Char (isAscii, isPrint)
 import Data.Maybe (fromMaybe)
 import GHC.Stack (HasCallStack)
+import Language.Haskell.TH
 import Vivado.Tcl (HwTarget)
 import Vivado.VivadoM
 
+import qualified Clash.Prelude as C
 import qualified Data.List as L
+import qualified Language.Haskell.TH.Syntax as TH.Syntax
 
 getTargetIndex :: (HasCallStack) => HwTarget -> Int
 getTargetIndex hwT =
@@ -83,3 +87,31 @@ awaitHandshakes targets = do
         then return ()
         else inner new
   inner innerInit
+
+{- | Constructs a @BitVector 32@ from a @String@, which must be exactly 4 characters
+long and consist only of printable ASCII characters.
+-}
+makeWhoAmID :: String -> C.BitVector 32
+makeWhoAmID str =
+  if length str == 4 && all (\c -> isAscii c && isPrint c) str
+    then wordForm
+    else
+      error $
+        "whoAmID strings must be four characters long! Input '"
+          <> str
+          <> "' is "
+          <> show (length str)
+          <> " characters."
+ where
+  strVec :: C.Vec 4 Char
+  strVec = (\(i :: C.Index 4) -> str !! (fromIntegral i)) <$> C.indicesI
+  byteVec :: C.Vec 4 (C.Unsigned 8)
+  byteVec = fromIntegral . fromEnum <$> strVec
+  wordForm :: C.BitVector 32
+  wordForm = C.pack $ C.reverse byteVec
+
+{- | Helper function for lifting @makeWhoAmID@ when Clash complains about unsynthesizable
+operations.
+-}
+makeWhoAmIDTH :: String -> Q Exp
+makeWhoAmIDTH = TH.Syntax.lift . makeWhoAmID
