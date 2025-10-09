@@ -28,9 +28,8 @@ import Bittide.DoubleBufferedRam
 import Bittide.Hitl (
   HitlTestCase (..),
   HitlTestGroup (..),
-  HwTargetRef (HwTargetByIndex),
   hitlVioBool,
-  paramForSingleHwTarget,
+  paramForHwTargets,
  )
 import Bittide.ProcessingElement (PeConfig (..), processingElement)
 import Bittide.SharedTypes (withBittideByteOrder)
@@ -40,6 +39,7 @@ import Clash.Cores.UART.Extra
 #endif
 
 import Bittide.Instances.Domains
+import Bittide.Instances.Hitl.Setup (allHwTargets)
 
 import qualified Bittide.Instances.Hitl.Driver.ClockBoardConfiguration as D
 
@@ -169,7 +169,7 @@ tests =
     , testCases =
         [ HitlTestCase
             { name = "ClockBoardConfigTest"
-            , parameters = paramForSingleHwTarget (HwTargetByIndex 7) ()
+            , parameters = paramForHwTargets allHwTargets ()
             , postProcData = ()
             }
         ]
