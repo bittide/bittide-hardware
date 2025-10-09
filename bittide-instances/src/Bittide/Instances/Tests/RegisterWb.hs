@@ -169,6 +169,7 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbMaybeB96
     , wbMaybeU96
     , wbMaybeS96
+    , wbEitherAbc
     ] <-
     deviceWb "ManyTypes" -< (mm, wb)
 
@@ -239,6 +240,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     -< (wbMaybeU96, Fwd noWrite)
   registerWb_ hasClock hasReset (registerConfig "maybe_s96") initMaybeS96
     -< (wbMaybeS96, Fwd noWrite)
+
+  registerWb_ hasClock hasReset (registerConfig "eitherAbc") initEitherAbc
+    -< (wbEitherAbc, Fwd noWrite)
 
   idC
  where
@@ -373,6 +377,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
   initMaybeS96 :: Maybe S96
   initMaybeS96 = Just 0x4ababab55555555deadbeef1
 
+  initEitherAbc :: Either (BitVector 2) Abc
+  initEitherAbc = Left 0
+
 sim :: IO ()
 sim = putStrLn simResult
 
@@ -435,5 +442,5 @@ memoryMap = getMMAny dut0
     _uart <- dut -< mm
     idC
 
-type IMemWords = DivRU (128 * 1024) 4
-type DMemWords = DivRU (128 * 1024) 4
+type IMemWords = DivRU (256 * 1024) 4
+type DMemWords = DivRU (256 * 1024) 4

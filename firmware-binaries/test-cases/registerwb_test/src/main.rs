@@ -273,6 +273,22 @@ fn main() -> ! {
         hal::Maybe::Nothing
     );
 
+    read_write!(
+        "eitherAbc",
+        either_abc,
+        hal::Either::Left(0),
+        set_either_abc,
+        hal::Either::Left(0b11)
+    );
+
+    read_write!(
+        "eitherAbc",
+        either_abc,
+        hal::Either::Left(0b11),
+        set_either_abc,
+        hal::Either::Right(hal::Abc::B)
+    );
+
     test_ok();
 }
 
