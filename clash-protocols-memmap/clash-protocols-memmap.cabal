@@ -168,6 +168,7 @@ library
     ghc-typelits-extra-lemmas,
     mtl,
     scientific,
+    string-interpolate,
     template-haskell,
     text,
 
