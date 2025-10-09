@@ -178,6 +178,7 @@ library
     Bittide.Instances.Hitl.Driver.SwitchDemo
     Bittide.Instances.Hitl.Driver.VexRiscv
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
+    Bittide.Instances.Hitl.Dut.SoftUgnDemo
     Bittide.Instances.Hitl.Dut.SwitchDemo
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
@@ -185,6 +186,7 @@ library
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
     Bittide.Instances.Hitl.Setup
+    Bittide.Instances.Hitl.SoftUgnDemo
     Bittide.Instances.Hitl.SwCcTopologies
     Bittide.Instances.Hitl.SwitchDemo
     Bittide.Instances.Hitl.SyncInSyncOut

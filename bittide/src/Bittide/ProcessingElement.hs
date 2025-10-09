@@ -34,6 +34,9 @@ import qualified Protocols.MemoryMap as MM (
  )
 import qualified Protocols.Vec as Vec
 
+-- | Number of wishbone busses used internally by a 'ProcessingElement'.
+type PeInternalBusses = 2
+
 -- | Configuration for a Bittide Processing Element.
 data PeConfig nBusses where
   PeConfig ::
@@ -43,7 +46,7 @@ data PeConfig nBusses where
     , KnownNat depthD
     , 1 <= depthD
     , KnownNat nBusses
-    , 2 <= nBusses
+    , PeInternalBusses <= nBusses
     , PrefixWidth nBusses <= 30
     ) =>
     { initI :: InitialContent depthI (Bytes 4)
@@ -82,6 +85,7 @@ processingElement ::
   , KnownNat pfxWidth
   , pfxWidth <= 30
   , pfxWidth ~ PrefixWidth nBusses
+  , PeInternalBusses <= nBusses
   ) =>
   DumpVcd ->
   PeConfig nBusses ->
