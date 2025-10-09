@@ -16,6 +16,7 @@ import Bittide.Df (asciiDebugMux)
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
+import Bittide.Instances.Hitl.Utils.Driver (makeWhoAmIDTH)
 import Bittide.Jtag (jtagChain)
 import Bittide.ProcessingElement (
   PeConfig (..),
@@ -55,6 +56,10 @@ type Baud = 921_600
 
 baud :: SNat Baud
 baud = SNat
+
+ccWhoAmID, muWhoAmID :: BitVector 32
+ccWhoAmID = $(makeWhoAmIDTH "swcc")
+muWhoAmID = $(makeWhoAmIDTH "mgmt")
 
 {- Internal busses:
     - Instruction memory
@@ -268,7 +273,7 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     dna <- defaultBittideClkRstEn (readDnaPortE2Wb simDna2) -< dnaWb
 
-    defaultBittideClkRstEn (whoAmIC 0x746d_676d) -< muWhoAmIWb
+    defaultBittideClkRstEn (whoAmIC muWhoAmID) -< muWhoAmIWb
 
     (ccUartBytesBittide, _uartStatus) <-
       defaultBittideClkRstEn
@@ -308,7 +313,7 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
       (Undefined @36_000 @(BitVector 32))
       -< ccSampleMemoryBus
 
-    defaultBittideClkRstEn (whoAmIC 0x6363_7773) -< ccWhoAmIBus
+    defaultBittideClkRstEn (whoAmIC ccWhoAmID) -< ccWhoAmIBus
 
     let swCcOut1 =
           if clashSimulation
