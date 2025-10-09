@@ -82,6 +82,7 @@ import Protocols.Wishbone (
 
 import qualified Data.List as L
 import qualified Data.Map as Map
+import qualified Data.String.Interpolate as I
 import qualified Protocols.Df as Df
 import qualified Protocols.Vec as V
 
@@ -469,7 +470,20 @@ registerWbDf clk rst regConfig resetValue =
               , (pure resetValue, busActivity)
               )
  where
-  needReverse = ?busByteOrder /= ?regByteOrder
+  regByteOrder = ?regByteOrder
+  needReverse = ?busByteOrder /= regByteOrder
+
+  unpackC :: Vec (SizeInWordsC wordSize a) (Bytes wordSize) -> a
+  unpackC packed = fromMaybe err . maybeUnpackWordC ?regByteOrder $ packed
+   where
+    err =
+      deepErrorX
+        [I.i|
+        Unpack failed in registerWbDf:
+          wordSize:     #{natToInteger @wordSize}
+          regByteOrder: #{regByteOrder}
+          packedOut:    #{packed}
+      |]
 
   -- This behemoth of a type signature because the inferred type signature is
   -- too general, confusing the type checker.
@@ -493,6 +507,8 @@ registerWbDf clk rst regConfig resetValue =
     ((((), reg, wbS2M2), pure ()), (aOut, busActivity))
    where
     relativeOffset = goRelativeOffset . addr <$> wbM2S
+    aOut = unpackC <$> packedOut
+    packedIn0 = fmap (packWordC @wordSize ?regByteOrder) <$> aIn0
 
     -- Construct register meta data. This information is only used for simulation,
     -- i.e., used to build the register map.
@@ -516,24 +532,31 @@ registerWbDf clk rst regConfig resetValue =
     -- get fed to the user directly, but the output to the bus will only go to the bus
     -- once the user acknowledges the bus activity.
     busActivity = getBusActivity <$> wbS2M0 <*> aOut <*> aInFromBus0
-    (wbS2M0, aInFromBus0) =
+    aInFromBus0 = fmap unpackC <$> packedInFromBus0
+    (wbS2M0, packedInFromBus0) =
       unbundle
-        $ goReg regConfig.access
+        $ goBus regConfig.access
         <$> relativeOffset
         <*> wbM2S
-        <*> aOut
+        <*> packedOut
 
     -- Drop any circuit writes while we're waiting for the bus activity to get
-    -- acknowledged. This makes sure that 'aOut' remains stable in turn making
+    -- acknowledged. This makes sure that 'packedOut' remains stable in turn making
     -- 'busActivity' stable which is a requirement for Df. Note that if the user *does*
     -- acknowledge we *do* allow circuit writes. This allows users to intercept bus
     -- activity and change any incoming values atomically.
-    aIn1 = mux (fmap isJust busActivity .&&. fmap not dfAck) (pure Nothing) aIn0
+    packedIn1 = mux (fmap isJust busActivity .&&. fmap not dfAck) (pure Nothing) packedIn0
 
     -- Only write to the register from the bus if the bus activity gets acknowledged
     ackBusActivity = fmap isJust busActivity .&&. dfAck
-    aInFromBus1 = mux ackBusActivity aInFromBus0 (pure Nothing)
-    aOut = regMaybe clk rst enableGen resetValue (liftA2 (<|>) aIn1 aInFromBus1)
+    packedInFromBus1 = mux ackBusActivity packedInFromBus0 (pure Nothing)
+    packedOut =
+      regMaybe
+        clk
+        rst
+        enableGen
+        (packWordC regByteOrder resetValue)
+        (liftA2 (<|>) packedIn1 packedInFromBus1)
 
     -- Only acknowledge bus transactions if the bus activity gets acknowledged. Note that
     -- 'ackBusActivity' is defined in such a way that is always 'False' if there is no
@@ -576,7 +599,9 @@ registerWbDf clk rst regConfig resetValue =
       offsetLsbs = resize offset :: BitVector (BitSize (Index nWords))
       addrLsbs = resize addr :: BitVector (BitSize (Index nWords))
 
-  goReg ::
+  -- Handle bus transactions. Note that this function assumes that the bus transaction
+  -- is actually targeting this register. I.e., the address has already been checked.
+  goBus ::
     forall nWords.
     ( nWords ~ SizeInWordsC wordSize a
     , KnownNat nWords
@@ -584,13 +609,15 @@ registerWbDf clk rst regConfig resetValue =
     Access ->
     Index nWords ->
     WishboneM2S aw wordSize (Bytes wordSize) ->
-    a ->
-    (WishboneS2M (Bytes wordSize), Maybe a)
-  goReg busAccess offset wbM2S aFromReg =
+    Vec (SizeInWordsC wordSize a) (Bytes wordSize) ->
+    ( WishboneS2M (Bytes wordSize)
+    , Maybe (Vec (SizeInWordsC wordSize a) (Bytes wordSize))
+    )
+  goBus busAccess offset wbM2S packedFromReg =
     ()
       `seqX` offset
       `seqX` wbM2S
-      `seqX` aFromReg
+      `seqX` packedFromReg
       `seqX` readData
       `seqX` acknowledge
       `seqX` err
@@ -614,14 +641,10 @@ registerWbDf clk rst regConfig resetValue =
     writeOnlyFault = busAccess == WriteOnly && not wbM2S.writeEnable
     accessFault = readOnlyFault || writeOnlyFault
 
-    wordSize = SNat @wordSize
-
     readData
       | not wbM2S.writeEnable
       , acknowledge =
-          (if needReverse then reverseBytes else id)
-            $ packWordC ?regByteOrder aFromReg
-            !! offset
+          (if needReverse then reverseBytes else id) (packedFromReg !! offset)
       | otherwise = 0
 
     maskedWriteData =
@@ -629,23 +652,12 @@ registerWbDf clk rst regConfig resetValue =
         offset
         (if needReverse then reverseBits wbM2S.busSelect else wbM2S.busSelect)
         (if needReverse then reverseBytes wbM2S.writeData else wbM2S.writeData)
-        (packWordC ?regByteOrder aFromReg)
+        packedFromReg
 
     wbWrite
       | wbM2S.writeEnable
       , acknowledge =
-          Just
-            -- TODO: Handle unpack failures
-            $ fromMaybe
-              ( deepErrorX
-                  $ "Unpack failed in registerWbDf: wordSize="
-                  <> show wordSize
-                  <> ", regByteOrder="
-                  <> show ?regByteOrder
-                  <> ", maskedWriteData="
-                  <> show maskedWriteData
-              )
-            $ maybeUnpackWordC ?regByteOrder maskedWriteData
+          Just maskedWriteData
       | otherwise = Nothing
 
 reverseBytes ::
