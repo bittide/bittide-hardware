@@ -83,7 +83,7 @@ impl Si539xSpi {
 
         uwriteln!(uart, "{}: Writing config...", timer.now() - start).unwrap();
         for entry in config.config {
-            self.write_and_confirm(entry.into());
+            self.write_and_confirm(entry.into(), uart);
         }
 
         uwriteln!(uart, "{}: Writing postamble...", timer.now() - start).unwrap();
@@ -97,7 +97,7 @@ impl Si539xSpi {
             timer.now() - start
         )
         .unwrap();
-        self.wait_for_lock();
+        self.wait_for_lock(uart);
         uwriteln!(
             uart,
             "{}: Setting 'spi_done' to true...",
@@ -141,19 +141,25 @@ impl Si539xSpi {
     ///
     /// Continuously read from 'Address' 0x0C at 'Page' 0x00 until it returns
     /// bit 3 is 0.
-    pub fn wait_for_lock(&self) {
+    pub fn wait_for_lock(&self, uart: &mut Uart) {
         let read_op = RegisterOperation {
             page: 0x00,
             address: 0x0C,
             write: Nothing,
         };
         let mask = 0b0000_0100;
+        let mut i: u32 = 0;
         loop {
             let dat = self.read(read_op);
             if (dat & mask) == 0b0 {
                 break;
             }
+            // if (i & (0b1 << 10)) == 0b01 {
+            //     uwriteln!(uart, "Waiting for lock for {} SPI operations", i).unwrap();
+            // }
+            i += 1;
         }
+        uwriteln!(uart, "Waiting for lock took {} SPI operations", i).unwrap();
     }
 
     /// Perform a read operation.
@@ -174,16 +180,47 @@ impl Si539xSpi {
     }
 
     /// Perform a write operation and then confirm with a read operation.
-    pub fn write_and_confirm(&self, write_op: RegisterOperation) {
+    pub fn write_and_confirm(&self, write_op: RegisterOperation, uart: &mut Uart) {
         self.write(write_op);
         let read_op = RegisterOperation {
             page: write_op.page,
             address: write_op.address,
             write: Nothing,
         };
-        let read_dat = self.read(read_op);
-        if Just(read_dat) != write_op.write {
-            // Throw error
+        let read_data = self.read(read_op);
+        if Just(read_data) != write_op.write {
+            // TODO: Throw error
+            let write_data = match write_op.write {
+                Just(w) => w,
+                Nothing => {
+                    uwriteln!(
+                        uart,
+                        "ERROR: Write operation at addr 0x{:02X}{:02X} has no data",
+                        write_op.page,
+                        write_op.address,
+                    )
+                    .unwrap();
+                    0xFF
+                }
+            };
+            uwriteln!(
+                uart,
+                "ERROR: At 0x{:02X}{:02X} wrote 0x{:02X}, but read back 0x{:02X}",
+                write_op.page,
+                write_op.address,
+                write_data,
+                read_data
+            )
+            .unwrap();
+        } else {
+            uwriteln!(
+                uart,
+                "At 0x{:02X}{:02X} wrote and confirmed 0x{:02X}",
+                write_op.page,
+                write_op.address,
+                read_data
+            )
+            .unwrap();
         }
     }
 
