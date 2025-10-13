@@ -124,7 +124,6 @@ import "bittide-extra" Numeric.Extra (parseHex)
 import Bittide.Arithmetic.PartsPer (PartsPer (..), cyclesToPartsPerI, ppm)
 import Bittide.ClockControl
 import Bittide.ClockControl.StabilityChecker
-import Bittide.Github.Artifacts
 import Bittide.Hitl
 import Bittide.Instances.Domains
 import Bittide.Instances.Hitl.IlaPlot
@@ -731,18 +730,9 @@ main =
             then return (plotDataSource, xr, Nothing)
             else case isRunArtifactReference plotDataSource of
               Nothing -> die $ "Invalid argument: " <> plotDataSource
-              Just (runId, artifactName) -> case xr of
+              Just (_runId, artifactName) -> case xr of
                 [] -> wrongNumberOfArguments
-                dir : yr ->
-                  let fullArtifactName = "_build-" <> artifactName <> "-debug"
-                   in retrieveArtifact runId fullArtifactName dir >>= \case
-                        Just err ->
-                          die $
-                            unlines
-                              [ "Cannot retrieve artifact."
-                              , show err
-                              ]
-                        Nothing -> return (dir, yr, Just artifactName)
+                dir : yr -> return (dir, yr, Just artifactName)
         let (outDir, zr) = fromMaybe (".", []) $ uncons yr
         unless (null zr) wrongNumberOfArguments
         return (plotDataDir, outDir, mA)
