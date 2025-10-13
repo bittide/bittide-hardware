@@ -24,6 +24,7 @@ import Data.List (foldl', transpose, unzip4, unzip5, zip4)
 import GHC.Float.RealFracMethods (roundFloatInteger)
 import System.FilePath ((</>))
 import System.Environment (lookupEnv)
+import Data.Maybe (fromMaybe)
 
 import Debug.Trace
 
@@ -37,6 +38,7 @@ import Graphics.Matplotlib (
   o1,
   o2,
   xlabel,
+  xlim,
   ylabel,
   (%),
   (@@),
@@ -247,11 +249,14 @@ matplotWrite ::
 matplotWrite dir maybeCorrection clockDatsG clockDatsM ebDats = do
   plotFincFdecs <- (==Just "yes") <$> lookupEnv "PLOT_FINCFDECS"
 
+  wait_ms <- read @Double . fromMaybe (error "CUTOFF_MS not set") <$> lookupEnv "CUTOFF_MS"
+
   void $
     file (dir </> plotClocksFileName) $
       constrained
         ( xlabel "Time (ms)"
             % ylabel ("ω (ppm)" <> correctionLabel)
+            % xlim (0 :: Double) (wait_ms :: Double)
             % foldPlots (reverse $ (if plotFincFdecs then Vec.toList clockDatsG else []) <> Vec.toList clockDatsM)
         )
   void $
@@ -259,6 +264,7 @@ matplotWrite dir maybeCorrection clockDatsG clockDatsM ebDats = do
       constrained
         ( xlabel "Time (ms)"
             % ylabel "β (elements)"
+            % xlim (0 :: Double) (wait_ms :: Double)
             % foldPlots (Vec.toList ebDats)
         )
  where
