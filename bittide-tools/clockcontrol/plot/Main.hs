@@ -653,12 +653,10 @@ plotTest refDom testDir cfg dir globalOutDir = do
         plot maybeOffsetCorrection outDir t postProcessDataVec
 
         let
-          allStable =
-            all ((\(_, _, _, _, xs) -> all (stable . snd) xs) . last) postProcessData
           cfg1 =
             cfg
               { CcConf.outDir = outDir
-              , CcConf.stable = Just allStable
+              , CcConf.stable = Nothing
               }
           ids = bimap toInteger fst <$> fpgas
 
