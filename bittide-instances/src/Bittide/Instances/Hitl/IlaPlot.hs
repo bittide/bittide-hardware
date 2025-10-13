@@ -139,10 +139,7 @@ applications.
 -}
 type LocalTimestamp dom =
   Index
-    ( ScheduledCaptureCycles dom
-        + Div
-            (ScheduledCaptureCycles dom)
-            10
+    ( ScheduledCaptureCycles dom + (100 * (ScheduledCaptureCycles dom))
     )
 
 {- | The number of pulses it takes until a scheduled capture gets
@@ -468,7 +465,7 @@ callistoClockControlWithIla dynClk clk rst ccc IlaControl{..} mask ebs =
   maxGeqPlusApp =
     maxGeqPlus @1
       @(DivRU ScheduledCapturePeriod (Max 1 (DomainPeriod dyn)))
-      @(Div (ScheduledCaptureCycles dyn) 10)
+      @(100 * (ScheduledCaptureCycles dyn))
 
   -- local timestamp on the stable clock
   localTs :: Signal sys (DiffResult (LocalTimestamp dyn))
