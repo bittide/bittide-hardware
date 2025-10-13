@@ -99,7 +99,7 @@ stamp between the nodes.
 type SyncPulsePeriod = Milliseconds 5
 
 -- | The period of the scheduled capture (must be a multiple of 'SyncPulsePeriod').
-type ScheduledCapturePeriod = Milliseconds 60
+type ScheduledCapturePeriod = Milliseconds 20
 
 {- | An upper bound on the number of synchronized pulses during a test
 run. The bound allows to count pulses up to 5 minutes without
