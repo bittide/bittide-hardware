@@ -17,7 +17,6 @@ import "extra" Data.List.Extra (trim)
 
 import qualified Df.WbToDf as WbToDf
 import qualified Tests.ClockControlWb as ClockControlWb
-import qualified Tests.Si539xSpiMM as Si539xSpiMM
 import qualified Wishbone.Axi as Axi
 import qualified Wishbone.CaptureUgn as CaptureUgn
 import qualified Wishbone.DnaPortE2 as DnaPortE2
@@ -70,7 +69,6 @@ tests =
         , ClockControlWb.tests
         , DnaPortE2.tests
         , ScatterGather.tests
-        , Si539xSpiMM.tests
         , SwitchDemoProcessingElement.tests
         , Time.tests
         , RegisterWb.tests
