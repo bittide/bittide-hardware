@@ -25,6 +25,7 @@ import GHC.Float.RealFracMethods (roundFloatInteger)
 import System.FilePath ((</>))
 import System.Environment (lookupEnv)
 import Data.Maybe (fromMaybe)
+import System.IO.Unsafe (unsafePerformIO)
 
 import Debug.Trace
 
@@ -195,11 +196,19 @@ plotEbData (unzip4 -> (timestampsFs, reframingStages, dataCounts, stabilities)) 
  where
   timestamps = map fsToMs timestampsFs
   xs = zip4 timestamps reframingStages dataCounts stabilities
+  wait_ms = unsafePerformIO $ read @Int64 . fromMaybe (error "CUTOFF_MS not set") <$> lookupEnv "CUTOFF_MS"
 
   mGr = (@@ [o1 "g-", o2 "linewidth" (8 :: Int)]) -- green marking
   mBl = (@@ [o1 "b-", o2 "linewidth" (8 :: Int)]) -- blue marking
   mRe = (@@ [o1 "r-", o2 "linewidth" (8 :: Int)]) -- red marking
-  ebPlot = MP.plot (0:timestamps) (0:dataCounts)
+  ebPlot =
+    MP.plot
+      (cutoffTimestamps <> [wait_ms])
+      (cutoffDataCounts <> [last cutoffDataCounts])
+
+  timestampsAndDataCounts = zip (0:timestamps) (0:dataCounts)
+  cutoffTimestampsAndDataCounts = takeWhile (\(t, _) -> t < wait_ms) timestampsAndDataCounts
+  (cutoffTimestamps, cutoffDataCounts) = unzip cutoffTimestampsAndDataCounts
 
   mindMarking ys ms = \case
     Waiting -> (mRe, reverse ys) : ms
