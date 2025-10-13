@@ -199,7 +199,7 @@ plotEbData (unzip4 -> (timestampsFs, reframingStages, dataCounts, stabilities)) 
   mGr = (@@ [o1 "g-", o2 "linewidth" (8 :: Int)]) -- green marking
   mBl = (@@ [o1 "b-", o2 "linewidth" (8 :: Int)]) -- blue marking
   mRe = (@@ [o1 "r-", o2 "linewidth" (8 :: Int)]) -- red marking
-  ebPlot = MP.plot timestamps dataCounts
+  ebPlot = MP.plot (0:timestamps) (0:dataCounts)
 
   mindMarking ys ms = \case
     Waiting -> (mRe, reverse ys) : ms
