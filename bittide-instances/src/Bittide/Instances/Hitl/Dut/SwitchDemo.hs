@@ -16,7 +16,6 @@ import Bittide.Df (asciiDebugMux)
 import Bittide.DoubleBufferedRam
 import Bittide.Instances.Domains (Basic125, Bittide, GthRx)
 import Bittide.Instances.Hitl.Setup (FpgaCount, LinkCount)
-import Bittide.Instances.Hitl.Utils.Driver (makeWhoAmIDTH)
 import Bittide.Jtag (jtagChain)
 import Bittide.ProcessingElement (
   PeConfig (..),
@@ -28,6 +27,7 @@ import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (SimplePeState, switchDemoPeWb)
 import Bittide.Wishbone (
+  makeWhoAmIDTH,
   readDnaPortE2Wb,
   timeWb,
   uartBytes,
