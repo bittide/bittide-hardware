@@ -83,7 +83,8 @@ impl Si539xSpi {
 
         uwriteln!(uart, "{}: Writing config...", timer.now() - start).unwrap();
         for entry in config.config {
-            self.write_and_confirm(entry.into(), uart, timer);
+            // TODO: Use 'write_and_confirm'
+            self.write(entry.into(), timer);
         }
 
         uwriteln!(uart, "{}: Writing postamble...", timer.now() - start).unwrap();
