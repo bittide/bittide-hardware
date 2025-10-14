@@ -91,34 +91,35 @@ impl Si539xSpi {
 
         uwriteln!(uart, "{}: Writing config...", timer.now() - start).unwrap();
         for entry in config.config {
-            match self.write_and_confirm(entry.into()) {
-                Ok(()) => {
-                    uwriteln!(
-                        uart,
-                        "At 0x{:02X}{:02X} wrote and confirmed 0x{:02X}",
-                        entry.page,
-                        entry.address,
-                        entry.data,
-                    )
-                    .unwrap();
-                    continue
-                },
-                Err(WriteError::NotConfirmed { read_data }) => {
-                    uwriteln!(
-                        uart,
-                        "ERROR: At 0x{:02X}{:02X} wrote 0x{:02X}, but read back 0x{:02X}",
-                        entry.page,
-                        entry.address,
-                        entry.data,
-                        read_data,
-                    ).unwrap();
-                },
-            };
+            // TODO: Use 'write_and_confirm'
+            self.write(entry.into());
         }
 
         uwriteln!(uart, "{}: Writing postamble...", timer.now() - start).unwrap();
         for entry in config.postamble {
             self.write(entry.into());
+        }
+
+        // Verify that the configuration is now on the board.
+        uwriteln!(uart, "{}: Verifying configuration...", timer.now() - start).unwrap();
+        match self.verify_configuration(config) {
+            Ok(()) => uwriteln!(uart, "{}: Verified configuration", timer.now() - start).unwrap(),
+            Err(ConfigError::NotExpectedConfig { design_id }) => {
+                match core::str::from_utf8(&design_id) {
+                    Ok(s) => {
+                        uwriteln!(uart, "Unexpected configuration found with design ID: {}", s)
+                            .unwrap();
+                    }
+                    Err(_) => {
+                        uwriteln!(
+                            uart,
+                            "Unexpected configuration, and could not convert design ID to ascii: {:?}",
+                            design_id
+                        )
+                        .unwrap();
+                    }
+                }
+            }
         }
 
         uwriteln!(
