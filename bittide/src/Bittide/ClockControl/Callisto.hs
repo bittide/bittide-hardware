@@ -171,8 +171,8 @@ callisto ControlConfig{..} mask scs dataCounts state =
   -- `HwCcTopologies.commonStepSizeSelect`.
   --
   k_p, fStep :: forall d. DSignal dom d Float
-  k_p = pure 2e-8
-  fStep = pure 100e-9
+  k_p = pure 2e-9
+  fStep = pure 10e-9
 
   r_k :: DSignal dom F.FromS32DefDelay Float
   r_k =

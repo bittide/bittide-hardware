@@ -135,7 +135,7 @@ commonStepSizeSelect :: StepSizeSelect
 commonStepSizeSelect =
   -- Don't forget to update the value of f_step this value in "Callisto.hs" and
   -- "callisto.rs".
-  PPB_100
+  PPB_10
 
 commonStepSizePartsPer :: PartsPer
 commonStepSizePartsPer = case commonStepSizeSelect of
