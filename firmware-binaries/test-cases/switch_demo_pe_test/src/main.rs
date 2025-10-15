@@ -7,7 +7,6 @@
 
 use bittide_hal::shared::devices::timer::Timer;
 use bittide_hal::{manual_additions::timer::Duration, shared::devices::uart::Uart};
-use bittide_sys::dna_port_e2::dna_to_u128;
 use bittide_sys::switch_demo_pe::SwitchDemoProcessingElement;
 use bittide_sys::uart::log::LOGGER;
 
@@ -79,13 +78,7 @@ fn main() -> ! {
     write!(uart, "Buffer A: [").unwrap();
     switch_pe_a.buffer().enumerate().for_each(|(i, nd)| {
         let sep = if i + 1 < BUFFER_SIZE { ", " } else { "" };
-        write!(
-            uart,
-            "(0x{:X}, 0x{:X}){sep}",
-            nd.local_counter,
-            dna_to_u128(nd.dna)
-        )
-        .unwrap();
+        write!(uart, "(0x{:X}, 0x{:X}){sep}", nd.local_counter, nd.dna).unwrap();
     });
     writeln!(uart, "]").unwrap();
 
@@ -95,13 +88,7 @@ fn main() -> ! {
     write!(uart, "Buffer B: [").unwrap();
     switch_pe_b.buffer().enumerate().for_each(|(i, nd)| {
         let sep = if i + 1 < BUFFER_SIZE { ", " } else { "" };
-        write!(
-            uart,
-            "(0x{:X}, 0x{:X}){sep}",
-            nd.local_counter,
-            dna_to_u128(nd.dna)
-        )
-        .unwrap();
+        write!(uart, "(0x{:X}, 0x{:X}){sep}", nd.local_counter, nd.dna).unwrap();
     });
     writeln!(uart, "]").unwrap();
 

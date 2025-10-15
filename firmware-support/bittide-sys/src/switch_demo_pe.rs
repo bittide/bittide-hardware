@@ -4,13 +4,11 @@
 
 use ufmt::derive::uDebug;
 
-use crate::dna_port_e2::DnaValue;
-
 #[repr(C)]
 #[derive(uDebug, PartialEq, Eq, Copy, Clone)]
 pub struct NodeData {
     pub local_counter: u64,
-    pub dna: DnaValue,
+    pub dna: u128,
 }
 
 pub struct SwitchDemoProcessingElement<const BUFFER_SIZE: usize> {

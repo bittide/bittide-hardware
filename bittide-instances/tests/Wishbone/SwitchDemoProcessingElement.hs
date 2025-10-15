@@ -64,7 +64,7 @@ case_switch_demo_pe_test = assertBool msg (receivedString == expectedString)
   expectedString =
     unlines
       [ "Buffer A: [(0x10100, 0xBBBB0123456789ABCDEF0001), (0x10000, 0xAAAA0123456789ABCDEF0001)]"
-      , "Buffer B: [(0x10000, 0xAAAA0123456789ABCDEF0001), (0xABBAABBAABBA0003, 0xABBA0005ABBAABBAABBA0004)]"
+      , "Buffer B: [(0x10000, 0xAAAA0123456789ABCDEF0001), (0xABBAABBAABBA0003, 0xABBAABBAABBA0005ABBAABBAABBA0004)]"
       , "Finished"
       ]
 
