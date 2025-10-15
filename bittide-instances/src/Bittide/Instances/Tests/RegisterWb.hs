@@ -54,16 +54,19 @@ type U8 = Unsigned 8
 type U16 = Unsigned 16
 type U32 = Unsigned 32
 type U64 = Unsigned 64
+type U96 = Unsigned 96
 
 type B8 = BitVector 8
 type B16 = BitVector 16
 type B32 = BitVector 32
 type B64 = BitVector 64
+type B96 = BitVector 96
 
 type S8 = Signed 8
 type S16 = Signed 16
 type S32 = Signed 32
 type S64 = Signed 64
+type S96 = Signed 96
 
 data MyZeroSizedType = MyZeroSizedType
   deriving (Generic, NFDataX, ShowX, Show, ToFieldType, BitPackC, BitPack)
@@ -163,6 +166,9 @@ manyTypesWb = circuit $ \(mm, wb) -> do
     , wbT0
     , wbI20
     , wbMI12
+    , wbMaybeB96
+    , wbMaybeU96
+    , wbMaybeS96
     ] <-
     deviceWb "ManyTypes" -< (mm, wb)
 
@@ -226,6 +232,13 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   registerWb_ hasClock hasReset (registerConfig "i20") initI20 -< (wbI20, Fwd noWrite)
   registerWb_ hasClock hasReset (registerConfig "mi12") initMI12 -< (wbMI12, Fwd noWrite)
+
+  registerWb_ hasClock hasReset (registerConfig "maybe_b96") initMaybeB96
+    -< (wbMaybeB96, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "maybe_u96") initMaybeU96
+    -< (wbMaybeU96, Fwd noWrite)
+  registerWb_ hasClock hasReset (registerConfig "maybe_s96") initMaybeS96
+    -< (wbMaybeS96, Fwd noWrite)
 
   idC
  where
@@ -350,6 +363,15 @@ manyTypesWb = circuit $ \(mm, wb) -> do
 
   initMI12 :: Maybe (Index 12)
   initMI12 = Just 5
+
+  initMaybeB96 :: Maybe B96
+  initMaybeB96 = Just 0x4ababab55555555deadbeef1
+
+  initMaybeU96 :: Maybe U96
+  initMaybeU96 = Just 0x4ababab55555555deadbeef1
+
+  initMaybeS96 :: Maybe S96
+  initMaybeS96 = Just 0x4ababab55555555deadbeef1
 
 sim :: IO ()
 sim = putStrLn simResult

@@ -247,6 +247,32 @@ fn main() -> ! {
         hal::Maybe::Nothing
     );
 
+    read_write!(
+        "maybe_b96",
+        maybe_b96,
+        hal::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
+        set_maybe_b96,
+        hal::Maybe::Nothing
+    );
+
+    read_write!(
+        "maybe_u96",
+        maybe_u96,
+        hal::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
+        set_maybe_u96,
+        hal::Maybe::Nothing
+    );
+
+    // XXX: Writing a negative value here breaks because of lacking atomic operations.
+    //      See https://github.com/bittide/bittide-hardware/issues/832.
+    read_write!(
+        "maybe_s96",
+        maybe_s96,
+        hal::Maybe::Just(0x4ABABAB55555555DEADBEEF1),
+        set_maybe_s96,
+        hal::Maybe::Nothing
+    );
+
     test_ok();
 }
 

@@ -106,7 +106,7 @@ common clash
     -fplugin=GHC.TypeLits.Extra.Solver
     -fplugin=GHC.TypeLits.Normalise
     -fplugin=GHC.TypeLits.KnownNat.Solver
-    -fconstraint-solver-iterations=20
+    -fconstraint-solver-iterations=30
     -fexpose-all-unfoldings
     -fno-worker-wrapper
     -fno-unbox-small-strict-fields

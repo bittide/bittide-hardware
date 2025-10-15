@@ -17,7 +17,7 @@ The current implementation has a few objectives:
      not giving up the ability to.
 
   3. Provide a way to check whether memory maps are valid, i.e. whether
-     perhipherals do not overlap or exceed their allocated space.
+     peripherals do not overlap or exceed their allocated space.
 
   4. Provide a way to generate human readable documentation
 
