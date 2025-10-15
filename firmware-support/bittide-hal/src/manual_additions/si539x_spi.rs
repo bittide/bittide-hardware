@@ -239,4 +239,22 @@ impl Si539xSpi {
         self.set_commit(Tuple0);
         self.wait_for_idle();
     }
+
+    // Read the 8 DESIGN_ID registers.
+    pub fn read_design_id(&self) -> [u8; 8] {
+        const PAGE: u8 = 0x02;
+        const DESIGN_ID_ADDRESSES: [u8; 8] = [0x6B, 0x6C, 0x6D, 0x6E, 0x6F, 0x70, 0x71, 0x72];
+
+        let mut design_id: [u8; 8] = [0; 8];
+        for (i, &address) in DESIGN_ID_ADDRESSES.iter().enumerate() {
+            let reg_op = RegisterOperation {
+                page: PAGE,
+                address,
+                write: Nothing,
+            };
+            let read_data = self.read(reg_op);
+            design_id[i] = read_data;
+        }
+        design_id
+    }
 }
