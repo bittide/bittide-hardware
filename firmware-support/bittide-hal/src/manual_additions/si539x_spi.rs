@@ -38,6 +38,10 @@ pub enum WriteError {
     NotConfirmed { read_data: u8 },
 }
 
+pub enum ConfigError {
+    NotExpectedConfig { design_id: [u8; 8] },
+}
+
 impl Si539xSpi {
     /// Write a clock board configuration using SPI.
     ///
@@ -94,6 +98,36 @@ impl Si539xSpi {
 
         self.wait_for_lock();
         self.set_spi_done(true);
+    }
+
+    /// Verfiy that the config part of the configuration is as expected.
+    pub fn verify_configuration<
+        const PRE_LEN: usize,
+        const CFG_LEN: usize,
+        const PST_LEN: usize,
+    >(
+        &self,
+        config: &Config<PRE_LEN, CFG_LEN, PST_LEN>,
+    ) -> Result<(), ConfigError> {
+        self.wait_for_ready();
+        let mut correct = true;
+        for entry in config.config {
+            let reg_op = RegisterOperation {
+                page: entry.page,
+                address: entry.address,
+                write: Nothing,
+            };
+            let read_data = self.read(reg_op);
+            if read_data != entry.data {
+                correct = false;
+            }
+        }
+        if correct {
+            Ok(())
+        } else {
+            let design_id = self.read_design_id();
+            Err(ConfigError::NotExpectedConfig { design_id })
+        }
     }
 
     /// Wait until the device is ready for operation.
