@@ -110,6 +110,14 @@ fn main() -> ! {
     // Compare the programmed clock (200 MHz) against the system clock (125 MHz)
     // using a domain difference counter. After 1 second the domain difference
     // counter is expected to be around 75M.
+    for i in 0..10_u8 {
+        if unsafe { domain_diff_counters.counters_active_unchecked(0) } {
+            uwriteln!(uart, "Counter 0 active after {} retries", i).unwrap();
+            break;
+        }
+        uwriteln!(uart, "Retry {}: Counter 0 is inactive", i).unwrap();
+        timer.wait(Duration::from_millis(100));
+    }
     let result_a = check_frequency(&timer, &mut uart, &domain_diff_counters, 75_000_000);
 
     // Write a clock configuration with a frequency of 100 MHz.
@@ -121,6 +129,14 @@ fn main() -> ! {
     // Compare the programmed clock (100 MHz) against the system clock (125 MHz)
     // using a domain difference counter. After 1 second the domain difference
     // counter is expected to be around -25M.
+    for i in 0..10_u8 {
+        if unsafe { domain_diff_counters.counters_active_unchecked(0) } {
+            uwriteln!(uart, "Counter 0 active after {} retries", i).unwrap();
+            break;
+        }
+        uwriteln!(uart, "Retry {}: Counter 0 is inactive", i).unwrap();
+        timer.wait(Duration::from_millis(100));
+    }
     let result_b = check_frequency(&timer, &mut uart, &domain_diff_counters, -25_000_000);
 
     match (result_a, result_b) {
