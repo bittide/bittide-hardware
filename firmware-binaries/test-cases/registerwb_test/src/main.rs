@@ -29,15 +29,15 @@ fn test_ok() -> ! {
 }
 
 fn test_fail(msg: &str) -> ! {
-    let mut full_msg = heapless::String::<64>::new();
-    let _ = write!(full_msg, "FAIL: {}", msg);
+    let mut full_msg = heapless::String::<150>::new();
+    write!(full_msg, "FAIL: {}", msg).unwrap();
     test_result(&full_msg)
 }
 
 fn expect<T: ufmt::uDebug + PartialEq>(msg: &str, expected: T, actual: T) {
     if expected != actual {
-        let mut err = heapless::String::<64>::new();
-        let _ = uwrite!(err, "{}: expected {:?}, got {:?}", msg, expected, actual);
+        let mut err = heapless::String::<150>::new();
+        uwrite!(err, "{}: expected {:?}, got {:?}", msg, expected, actual).unwrap();
         test_fail(&err);
     }
 }
@@ -58,25 +58,25 @@ fn main() -> ! {
         (array => $name:literal, $read_fn:ident, [$($init_expected:expr),*], $write_fn:ident, [$($ret_expected:expr),*]) => {
             let mut i = 0;
             $(
-                let mut msg = heapless::String::<64>::new();
-                _ = uwrite!(msg, "init.");
-                _ = uwrite!(msg, $name);
-                _ = uwrite!(msg, "[{:?}]", i);
+                let mut msg = heapless::String::<150>::new();
+                uwrite!(msg, "init.").unwrap();
+                uwrite!(msg, $name).unwrap();
+                uwrite!(msg, "[{:?}]", i).unwrap();
                 expect(&msg, Some($init_expected), many_types.$read_fn(i));
 
                 many_types.$write_fn(i, $ret_expected);
                 msg.clear();
-                _ = uwrite!(msg, "rt.");
-                _ = uwrite!(msg, $name);
-                _ = uwrite!(msg, "[{:?}]", i);
+                uwrite!(msg, "rt.").unwrap();
+                uwrite!(msg, $name).unwrap();
+                uwrite!(msg, "[{:?}]", i).unwrap();
                 expect(&msg, Some($ret_expected), many_types.$read_fn(i));
                 i += 1;
             )*
             // read one extra to check for None
-            let mut msg = heapless::String::<64>::new();
-            _ = uwrite!(msg, "init.");
-            _ = uwrite!(msg, $name);
-            _ = uwrite!(msg, "[{:?}]", i);
+            let mut msg = heapless::String::<150>::new();
+            uwrite!(msg, "init.").unwrap();
+            uwrite!(msg, $name).unwrap();
+            uwrite!(msg, "[{:?}]", i).unwrap();
             expect(&msg, None, many_types.$read_fn(i));
 
         };
@@ -131,7 +131,7 @@ fn main() -> ! {
             .enumerate()
         {
             let mut msg = heapless::String::<64>::new();
-            _ = uwrite!(msg, "rt.v0[{:?}]", i);
+            uwrite!(msg, "rt.v0[{:?}]", i).unwrap();
             expect(&msg, expected, got);
         }
     }
@@ -277,6 +277,24 @@ fn main() -> ! {
 }
 
 #[panic_handler]
-fn panic_handler(_info: &core::panic::PanicInfo) -> ! {
-    test_result("PANIC");
+fn panic_handler(info: &core::panic::PanicInfo) -> ! {
+    let mut panic_msg = heapless::String::<150>::new();
+    if let Some(location) = info.location() {
+        if write!(
+            panic_msg,
+            "PANIC at {}:{}: ",
+            location.file(),
+            location.line()
+        )
+        .is_err()
+        {
+            test_fail("recursive panic");
+        }
+    } else if write!(panic_msg, "PANIC: ").is_err() {
+        test_fail("recursive panic");
+    }
+    if write!(panic_msg, "{}", info.message()).is_err() {
+        test_fail("recursive panic");
+    }
+    test_result(&panic_msg);
 }
