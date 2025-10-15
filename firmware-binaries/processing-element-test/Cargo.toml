@@ -13,3 +13,6 @@ edition = "2021"
 riscv-rt = "0.11.0"
 heapless = { version = "0.7.16", default-features = false, features = ["ufmt-impl"] }
 ufmt = "0.2.0"
+
+[build-dependencies]
+memmap-generate = { path = "../../firmware-support/memmap-generate" }

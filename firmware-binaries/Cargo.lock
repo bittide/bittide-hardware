@@ -32,6 +32,7 @@ version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-sys",
+ "memmap-generate",
  "riscv-rt",
  "ufmt",
 ]
@@ -96,6 +97,7 @@ version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-sys",
+ "memmap-generate",
  "riscv-rt",
  "ufmt",
 ]
@@ -123,6 +125,7 @@ version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-sys",
+ "memmap-generate",
  "rand",
  "riscv-rt",
  "ufmt",
@@ -151,6 +154,7 @@ version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-sys",
+ "memmap-generate",
  "riscv-rt",
  "ufmt",
 ]
@@ -357,6 +361,7 @@ name = "processing-element-test"
 version = "0.1.0"
 dependencies = [
  "heapless 0.7.17",
+ "memmap-generate",
  "riscv-rt",
  "ufmt",
 ]
@@ -527,6 +532,7 @@ version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-sys",
+ "memmap-generate",
  "riscv-rt",
  "ufmt",
 ]
@@ -663,6 +669,7 @@ dependencies = [
  "bittide-hal",
  "bittide-sys",
  "log",
+ "memmap-generate",
  "riscv-rt",
  "ufmt",
 ]
@@ -695,6 +702,7 @@ version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-sys",
+ "memmap-generate",
  "riscv-rt",
  "ufmt",
 ]
@@ -744,6 +752,7 @@ version = "0.1.0"
 dependencies = [
  "bittide-hal",
  "bittide-sys",
+ "memmap-generate",
  "riscv-rt",
  "ufmt",
 ]

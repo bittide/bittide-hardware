@@ -20,3 +20,6 @@ ufmt = "0.2.0"
 [dependencies.log]
 version = "0.4.21"
 features = ["max_level_trace", "release_max_level_info"]
+
+[build-dependencies]
+memmap-generate = { path = "../../../firmware-support/memmap-generate" }
