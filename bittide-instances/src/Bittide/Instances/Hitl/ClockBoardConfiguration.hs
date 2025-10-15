@@ -132,6 +132,9 @@ circuitFn freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, (jtag,
       -< (mm, jtag)
 
   let skyRst = xpmResetSynchronizer Asserted freeClk skyClk $ unsafeFromActiveLow spiDone
+  -- XXX: This is really ugly, but I can't think of another way to make sure the
+  -- domain diff counter is reset properly.
+  let skyRstFree = xpmResetSynchronizer Asserted skyClk freeClk $ skyRst
 
   (Fwd spiDone, spiOut) <-
     withClockResetEnable freeClk freeRst enableGen
@@ -143,7 +146,7 @@ circuitFn freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, (jtag,
       $ uartInterfaceWb @free d16 d16 (uartDf baud)
       -< (uartBus, uartRx)
   _domainDiff <-
-    domainDiffCountersWbC (skyClk :> Nil) (skyRst :> Nil) freeClk freeRst -< dcBus
+    domainDiffCountersWbC (skyClk :> Nil) (skyRst :> Nil) freeClk skyRstFree -< dcBus
 
   idC -< (uartTx, Fwd spiDone, spiOut)
  where
