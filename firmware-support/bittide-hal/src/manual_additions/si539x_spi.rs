@@ -71,11 +71,11 @@ impl Si539xSpi {
             timer.now() - start
         )
         .unwrap();
-        self.wait_for_ready(timer);
+        self.wait_for_ready();
 
         uwriteln!(uart, "{}: Writing preamble...", timer.now() - start).unwrap();
         for entry in config.preamble {
-            self.write(entry.into(), timer);
+            self.write(entry.into());
         }
         uwriteln!(
             uart,
@@ -88,7 +88,7 @@ impl Si539xSpi {
         uwriteln!(uart, "{}: Writing config...", timer.now() - start).unwrap();
         for entry in config.config {
             // TODO: Use 'write_and_confirm'
-            self.write(entry.into(), timer);
+            self.write(entry.into());
 
             // match self.write_and_confirm(entry.into(), timer) {
             //     Ok(()) => {
@@ -117,7 +117,7 @@ impl Si539xSpi {
 
         uwriteln!(uart, "{}: Writing postamble...", timer.now() - start).unwrap();
         for entry in config.postamble {
-            self.write(entry.into(), timer);
+            self.write(entry.into());
         }
 
         uwriteln!(
@@ -126,7 +126,7 @@ impl Si539xSpi {
             timer.now() - start
         )
         .unwrap();
-        self.wait_for_lock(uart, timer);
+        self.wait_for_lock(uart);
         uwriteln!(
             uart,
             "{}: Setting 'spi_done' to true...",
@@ -147,7 +147,7 @@ impl Si539xSpi {
     /// Continuously read from 'Address' 0xFE at any 'Page', if this operations
     /// returns 0x0F twice in a row, the device is considered to be ready for
     /// operation.
-    pub fn wait_for_ready(&self, timer: &Timer) {
+    pub fn wait_for_ready(&self) {
         let read_op = RegisterOperation {
             page: 0x00,
             address: 0xFE,
@@ -155,7 +155,7 @@ impl Si539xSpi {
         };
         let mut seen_once = false;
         loop {
-            let dat = self.read(read_op, timer);
+            let dat = self.read(read_op);
             if seen_once && dat == 0x0F {
                 break;
             } else if dat == 0x0F {
@@ -170,7 +170,7 @@ impl Si539xSpi {
     ///
     /// Continuously read from 'Address' 0x0C at 'Page' 0x00 until it returns
     /// bit 3 is 0.
-    pub fn wait_for_lock(&self, uart: &mut Uart, timer: &Timer) {
+    pub fn wait_for_lock(&self, uart: &mut Uart) {
         let read_op = RegisterOperation {
             page: 0x00,
             address: 0x0C,
@@ -178,7 +178,7 @@ impl Si539xSpi {
         };
         let mask = 0b1 << 2;
         loop {
-            let dat = self.read(read_op, timer);
+            let dat = self.read(read_op);
             if (dat & mask) == 0b0 {
                 break;
             }
@@ -192,11 +192,10 @@ impl Si539xSpi {
     }
 
     /// Perform a read operation.
-    pub fn read(&self, read_op: RegisterOperation, timer: &Timer) -> u8 {
+    pub fn read(&self, read_op: RegisterOperation) -> u8 {
         self.wait_for_idle();
         self.set_register_operation(read_op);
         self.commit();
-        timer.wait(Duration::from_millis(100));
         self.read_data()
     }
 
@@ -205,23 +204,19 @@ impl Si539xSpi {
     /// It looks like this is what the function `si539xSpi` does (see line 311).
     /// When it is doing a `WriteEntry` operation, it also waits on until
     /// `driverByte` is a `Just` while not looking at the value.
-    pub fn write(&self, write_op: RegisterOperation, timer: &Timer) {
-        let _ = self.read(write_op, timer);
+    pub fn write(&self, write_op: RegisterOperation) {
+        let _ = self.read(write_op);
     }
 
     /// Perform a write operation and then confirm with a read operation.
-    pub fn write_and_confirm(
-        &self,
-        write_op: RegisterOperation,
-        timer: &Timer,
-    ) -> Result<(), Si539xError> {
-        self.write(write_op, timer);
+    pub fn write_and_confirm(&self, write_op: RegisterOperation) -> Result<(), Si539xError> {
+        self.write(write_op);
         let read_op = RegisterOperation {
             page: write_op.page,
             address: write_op.address,
             write: Nothing,
         };
-        let read_data = self.read(read_op, timer);
+        let read_data = self.read(read_op);
         if Just(read_data) != write_op.write {
             Err(Si539xError::WriteNotConfirmed { read_data })
         } else {
