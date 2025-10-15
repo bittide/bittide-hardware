@@ -10,7 +10,7 @@ use ufmt::uwriteln;
 
 use bittide_hal::clock_board_config_test::DeviceInstances;
 use bittide_hal::clock_board_config_test::DomainDiffCounters;
-use bittide_hal::manual_additions::si539x_spi::Config;
+use bittide_hal::manual_additions::si539x_spi::{Config, Si539xError};
 use bittide_hal::manual_additions::timer::Duration;
 use bittide_hal::shared::devices::Timer;
 use bittide_hal::shared::devices::Uart;
@@ -105,6 +105,29 @@ fn main() -> ! {
     si539x_spi.write_configuration(&timer, &CONFIG_100, &mut uart);
     let end = timer.now();
     uwriteln!(uart, "Writing configuration took {}", end - start).unwrap();
+
+    // Verify that the configuration is now on the board.
+    uwriteln!(uart, "Verifying configuration...").unwrap();
+    match si539x_spi.verify_configuration(&CONFIG_100) {
+        Ok(()) => uwriteln!(uart, "Verified configuration").unwrap(),
+        Err(Si539xError::NotExpectedConfig { design_id }) => {
+            match core::str::from_utf8(&design_id) {
+                Ok(s) => {
+                    uwriteln!(uart, "Unexpected configuration found with design ID: {}", s)
+                        .unwrap();
+                }
+                Err(_) => {
+                    uwriteln!(
+                        uart,
+                        "Unexpected configuration, and could not convert design ID to ascii: {:?}",
+                        design_id
+                    )
+                    .unwrap();
+                }
+            }
+        }
+        Err(_) => (),
+    }
 
     // Compare the programmed clock (100 MHz) against the system clock (125 MHz)
     // using a domain difference counter. After 1 second the domain difference
