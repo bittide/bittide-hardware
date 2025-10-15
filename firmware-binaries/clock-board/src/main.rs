@@ -99,6 +99,18 @@ fn main() -> ! {
     let mut uart = INSTANCES.uart;
     let domain_diff_counters = INSTANCES.domain_diff_counters;
 
+    // Read the current design ID
+    let design_id = si539x_spi.read_design_id();
+    match core::str::from_utf8(&design_id) {
+        Ok(s) => uwriteln!(uart, "Design ID: {}", s).unwrap(),
+        Err(_) => uwriteln!(
+            uart,
+            "Could not convert design ID to ASCII: {:?}",
+            design_id
+        )
+        .unwrap(),
+    }
+
     // Write a clock configuration with a frequency of 200 MHz.
     uwriteln!(uart, "Writing configuration with f = 200 MHz...").unwrap();
     let start = timer.now();
