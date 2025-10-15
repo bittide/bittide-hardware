@@ -148,19 +148,19 @@ impl Si539xSpi {
             address: 0x0C,
             write: Nothing,
         };
-        let mask = 0b0000_0100;
-        let mut i: u32 = 0;
+        let mask = 0b1 << 2;
         loop {
             let dat = self.read(read_op, timer);
             if (dat & mask) == 0b0 {
                 break;
             }
-            // if (i & (0b1 << 10)) == 0b01 {
-            //     uwriteln!(uart, "Waiting for lock for {} SPI operations", i).unwrap();
-            // }
-            i += 1;
+            // Register 0x000C Internal Status Bits:
+            // Bit 0: 1 if device is calibrating
+            // Bit 1: 1 if there is no signal at the XAXB pins
+            // Bit 3: 1 if there is a problem locking to the XAXB input signal
+            // Bit 5: 1 if there is an SMBus timeout error
+            uwriteln!(uart, "Not locked, got: 0x{:08X}", dat).unwrap();
         }
-        uwriteln!(uart, "Waiting for lock took {} SPI operations", i).unwrap();
     }
 
     /// Perform a read operation.
