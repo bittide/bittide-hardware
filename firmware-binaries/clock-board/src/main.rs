@@ -137,6 +137,12 @@ fn main() -> ! {
             uwriteln!(uart, "Counter 0 active after {} retries", i).unwrap();
             break;
         }
+        if !unsafe { domain_diff_counters.enable_unchecked(0) } {
+            uwriteln!(uart, "Counter 0 is disabled, enabling...").unwrap();
+            unsafe {
+                domain_diff_counters.set_enable_unchecked(0, true);
+            }
+        }
         uwriteln!(uart, "Retry {}: Counter 0 is inactive", i).unwrap();
         timer.wait(Duration::from_millis(100));
     }
