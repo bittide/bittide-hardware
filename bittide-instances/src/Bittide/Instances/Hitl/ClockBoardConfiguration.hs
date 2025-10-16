@@ -9,7 +9,13 @@ board from software using a specialized memory-mapped SPI device.
 module Bittide.Instances.Hitl.ClockBoardConfiguration where
 
 import Clash.Explicit.Prelude
-import Clash.Prelude (withClockResetEnable)
+import Clash.Prelude (
+  HiddenClockResetEnable,
+  hasClock,
+  hasEnable,
+  hasReset,
+  withClockResetEnable,
+ )
 
 import GHC.Stack (HasCallStack)
 import Project.FilePath (
@@ -24,6 +30,7 @@ import Clash.Annotations.TH (makeTopEntity)
 import Clash.Class.BitPackC (ByteOrder (BigEndian))
 import Clash.Cores.UART (ValidBaud)
 import Clash.Cores.Xilinx.Ibufds (ibufdsClock)
+import Clash.Cores.Xilinx.Ila
 import Clash.Explicit.Reset.Extra (Asserted (..), xpmResetSynchronizer)
 import Clash.Xilinx.ClockGen (clockWizardDifferential)
 import Protocols
@@ -136,19 +143,55 @@ circuitFn freeClk freeRst skyClk = withBittideByteOrder $ circuit $ \(mm, (jtag,
   -- domain diff counter is reset properly.
   let skyRstFree = xpmResetSynchronizer Asserted skyClk freeClk $ skyRst
 
+  let
+    onChange ::
+      (HiddenClockResetEnable dom, Eq a, NFDataX a) => Signal dom a -> Signal dom Bool
+    onChange x = (Just <$> x) ./=. register hasClock hasReset hasEnable Nothing (Just <$> x)
+
+    capture =
+      withClockResetEnable freeClk freeRst enableGen
+        $ onChange
+        $ bundle (spiDone, (unsafeToActiveLow skyRstFree), diffActive)
+
+    diffCounter = (fmap (fst . head)) domainDiff
+    diffActive = (fmap (snd . head)) domainDiff
+
+    spiTestIla :: Signal free ()
+    spiTestIla =
+      setName @"spiTestIla"
+        $ ila
+          ( ilaConfig
+              $ "trigger"
+              :> "capture"
+              :> "spiDone"
+              :> "spiDoneSky"
+              :> "localCounter"
+              :> "diffCounter"
+              :> "diffActive"
+              :> Nil
+          )
+          freeClk
+          capture
+          capture
+          spiDone
+          (unsafeToActiveLow skyRstFree)
+          localCounter
+          diffCounter
+          diffActive
+
   (Fwd spiDone, spiOut) <-
     withClockResetEnable freeClk freeRst enableGen
       $ si539xSpiDriverMM (SNat @(Microseconds 10))
       -< (siBus, miso)
-  Fwd _localCounter <- withClockResetEnable freeClk freeRst enableGen timeWb -< timeBus
-  (uartTx, _uartStatus) <-
+  Fwd localCounter <- withClockResetEnable freeClk freeRst enableGen timeWb -< timeBus
+  (Fwd uartTx, _uartStatus) <-
     withClockResetEnable freeClk freeRst enableGen
       $ uartInterfaceWb @free d16 d16 (uartDf baud)
       -< (uartBus, uartRx)
-  _domainDiff <-
+  Fwd domainDiff <-
     domainDiffCountersWbC (skyClk :> Nil) (skyRst :> Nil) freeClk skyRstFree -< dcBus
 
-  idC -< (uartTx, Fwd spiDone, spiOut)
+  idC -< (Fwd (hwSeqX spiTestIla uartTx), Fwd spiDone, spiOut)
  where
   peConfig
     | clashSimulation = peConfigSim
