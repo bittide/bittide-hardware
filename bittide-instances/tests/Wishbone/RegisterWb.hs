@@ -34,10 +34,12 @@ resultLineParser = do
   status <-
     P.choice
       [ P.string "OK" >> return (Nothing :: Maybe String)
-      , P.string "PANIC" >> return (Just "PANIC")
-      , P.string "FAIL: " >> (Just <$> P.manyTill P.anyChar (P.try (P.char '\n')))
+      , P.string "PANIC" >> (Just . ("PANIC" <>) <$> restOfLine)
+      , P.string "FAIL: " >> (Just <$> restOfLine)
       ]
   return status
+ where
+  restOfLine = P.manyTill P.anyChar (P.try (P.char '\n'))
 
 tests :: TestTree
 tests = $(testGroupGenerator)
