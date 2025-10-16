@@ -222,7 +222,7 @@ si539xSpiDriverMM minTargetPs =
 
   spiDoneConfig =
     (registerConfig "spi_done")
-      { access = WriteOnly
+      { access = ReadWrite
       , description = "Set after SPI configuration is done."
       }
 

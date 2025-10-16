@@ -141,6 +141,9 @@ fn main() -> ! {
         Err(_) => (),
     }
 
+    // Check if `spiDone` register is actually set
+    uwriteln!(uart, "spiDone: {}", si539x_spi.spi_done()).unwrap();
+
     // Compare the programmed clock (200 MHz) against the system clock (125 MHz)
     // using a domain difference counter. After 1 second the domain difference
     // counter is expected to be around 75M.
