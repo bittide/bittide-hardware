@@ -42,7 +42,7 @@ import Bittide.Instances.Domains (
   GthRxS,
   GthTxS,
  )
-import Bittide.Instances.Hitl.Dut.SoftUgnDemo (softUgnDemoC)
+import Bittide.Instances.Hitl.Dut.SoftUgnDemo (defaultSoftUgnDemoConfig, softUgnDemoC)
 import Bittide.Instances.Hitl.Setup (
   LinkCount,
   allHwTargets,
@@ -292,6 +292,7 @@ softUgnDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       withBittideByteOrder
         $ toSignals
           ( softUgnDemoC
+              defaultSoftUgnDemoConfig
               (refClk, handshakeRstFree, enableGen)
               (bittideClk, handshakeRstTx, enableGen)
               transceivers.rxClocks
