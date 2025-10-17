@@ -21,8 +21,10 @@ import Language.Haskell.TH (reportError, runIO)
 import System.Directory (createDirectoryIfMissing, removePathForcibly)
 import System.FilePath
 
+import qualified Bittide.Instances.Hitl.Dut.SoftUgnDemo as SoftUgnDemo
 import qualified Bittide.Instances.Hitl.Dut.SwitchDemo as SwitchDemo
 import qualified Bittide.Instances.Hitl.SwCcTopologies as SwCcTopologies
+import qualified Bittide.Instances.Tests.DelayWishboneC as DelayWishboneC
 import qualified Bittide.Instances.Tests.RegisterWb as RegisterWb
 import qualified Bittide.Instances.Tests.ScatterGather as ScatterGather
 import qualified Bittide.Instances.Tests.SwitchCalendar as SwitchCalendar
@@ -37,17 +39,21 @@ $( do
     -- Add new memory maps here  --
     -------------------------------
     let memoryMaps =
-          [ ("Ethernet", vexRiscvEthernetMM)
+          [ ("DelayWishboneC", DelayWishboneC.delayMm)
+          , ("Ethernet", vexRiscvEthernetMM)
           , ("Freeze", freezeMM)
           , ("ProcessingElement", vexRiscvUartHelloMM)
           , ("RegisterWb", RegisterWb.memoryMap)
-          , ("ScatterGather", ScatterGather.dutMM)
+          , ("ScatterGatherPe", ScatterGather.dutMM)
           , ("SwCcTopologies", SwCcTopologies.memoryMap)
           , ("SwitchC", SwitchCalendar.memoryMap)
           , ("SwitchDemoMu", SwitchDemo.memoryMapMu)
           , ("SwitchDemoCc", SwitchDemo.memoryMapCc)
           , ("WbToDfTest", WbToDf.dutMM)
           , ("VexRiscv", vexRiscvTestMM)
+          , ("SoftUgnDemoCc", SoftUgnDemo.memoryMapCc)
+          , ("SoftUgnDemoMu", SoftUgnDemo.memoryMapMu)
+          , ("SoftUgnDemoGppe", SoftUgnDemo.memoryMapGppe)
           ]
 
     memMapDir <- runIO $ do

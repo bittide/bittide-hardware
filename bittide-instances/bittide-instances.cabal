@@ -178,6 +178,7 @@ library
     Bittide.Instances.Hitl.Driver.SwitchDemo
     Bittide.Instances.Hitl.Driver.VexRiscv
     Bittide.Instances.Hitl.Driver.VexRiscvTcp
+    Bittide.Instances.Hitl.Dut.SoftUgnDemo
     Bittide.Instances.Hitl.Dut.SwitchDemo
     Bittide.Instances.Hitl.Ethernet
     Bittide.Instances.Hitl.FincFdec
@@ -185,6 +186,7 @@ library
     Bittide.Instances.Hitl.Post.BoardTestExtended
     Bittide.Instances.Hitl.Post.PostProcess
     Bittide.Instances.Hitl.Setup
+    Bittide.Instances.Hitl.SoftUgnDemo
     Bittide.Instances.Hitl.SwCcTopologies
     Bittide.Instances.Hitl.SwitchDemo
     Bittide.Instances.Hitl.SyncInSyncOut
@@ -208,6 +210,7 @@ library
     Bittide.Instances.Pnr.Si539xSpi
     Bittide.Instances.Pnr.Switch
     Bittide.Instances.Pnr.Synchronizer
+    Bittide.Instances.Tests.DelayWishboneC
     Bittide.Instances.Tests.RegisterWb
     Bittide.Instances.Tests.ScatterGather
     Bittide.Instances.Tests.SwitchCalendar
@@ -292,6 +295,7 @@ test-suite unittests
     Tests.ClockControlWb
     Wishbone.Axi
     Wishbone.CaptureUgn
+    Wishbone.DelayWishboneC
     Wishbone.DnaPortE2
     Wishbone.RegisterWb
     Wishbone.ScatterGather
