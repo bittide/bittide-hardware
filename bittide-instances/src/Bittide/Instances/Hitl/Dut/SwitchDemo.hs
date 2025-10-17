@@ -27,7 +27,7 @@ import Bittide.SharedTypes (Byte, Bytes, withBittideByteOrder)
 import Bittide.Switch (switchC)
 import Bittide.SwitchDemoProcessingElement (SimplePeState, switchDemoPeWb)
 import Bittide.Wishbone (
-  makeWhoAmIDTH,
+  makeWhoAmIdTh,
   readDnaPortE2Wb,
   timeWb,
   uartBytes,
@@ -57,9 +57,9 @@ type Baud = 921_600
 baud :: SNat Baud
 baud = SNat
 
-ccWhoAmID, muWhoAmID :: BitVector 32
-ccWhoAmID = $(makeWhoAmIDTH "swcc")
-muWhoAmID = $(makeWhoAmIDTH "mgmt")
+ccWhoAmId, muWhoAmId :: BitVector 32
+ccWhoAmId = $(makeWhoAmIdTh "swcc")
+muWhoAmId = $(makeWhoAmIdTh "mgmt")
 
 {- Internal busses:
     - Instruction memory
@@ -273,7 +273,7 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
 
     dna <- defaultBittideClkRstEn (readDnaPortE2Wb simDna2) -< dnaWb
 
-    defaultBittideClkRstEn (whoAmIC muWhoAmID) -< muWhoAmIWb
+    defaultBittideClkRstEn (whoAmIC muWhoAmId) -< muWhoAmIWb
 
     (ccUartBytesBittide, _uartStatus) <-
       defaultBittideClkRstEn
@@ -313,7 +313,7 @@ circuitFnC (refClk, refRst, refEna) (bitClk, bitRst, bitEna) rxClocks rxResets =
       (Undefined @36_000 @(BitVector 32))
       -< ccSampleMemoryBus
 
-    defaultBittideClkRstEn (whoAmIC ccWhoAmID) -< ccWhoAmIBus
+    defaultBittideClkRstEn (whoAmIC ccWhoAmId) -< ccWhoAmIBus
 
     let swCcOut1 =
           if clashSimulation
