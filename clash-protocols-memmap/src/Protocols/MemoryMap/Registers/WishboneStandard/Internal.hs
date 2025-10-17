@@ -15,6 +15,7 @@ import Data.Coerce (coerce)
 import Data.Constraint (Dict (Dict))
 import Data.Constraint.Nat.Lemmas (divWithRemainder)
 import Data.Data (Proxy (Proxy))
+import Data.Kind (Type)
 import Data.Maybe (fromMaybe, isJust)
 import GHC.Stack (HasCallStack, SrcLoc, withFrozenCallStack)
 import Protocols.MemoryMap (
@@ -78,6 +79,20 @@ type RegisterWithOffsetWb (dom :: Domain) (aw :: Nat) (wordSize :: Nat) =
   , -- \^ Meta information about the register, produced by the register
     Wishbone dom 'Standard aw (Bytes wordSize)
     -- \^ A register is a Wishbone subordinate
+  )
+
+-- | Common \"boring\" constraints for Wishbone mapped registers
+type RegisterWbConstraints (a :: Type) (dom :: Domain) (wordSize :: Nat) (aw :: Nat) =
+  ( HasCallStack
+  , ToFieldType a
+  , BitPackC a
+  , NFDataX a
+  , KnownDomain dom
+  , KnownNat wordSize
+  , KnownNat aw
+  , 1 <= wordSize
+  , ?busByteOrder :: ByteOrder
+  , ?regByteOrder :: ByteOrder
   )
 
 -- | Configuration for a device -- currently only the name.
@@ -378,17 +393,7 @@ anything else and only affects the data and byte enable fields.
 -}
 registerWbDf ::
   forall a dom wordSize aw.
-  ( HasCallStack
-  , ToFieldType a
-  , BitPackC a
-  , NFDataX a
-  , KnownDomain dom
-  , KnownNat wordSize
-  , KnownNat aw
-  , 1 <= wordSize
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  ) =>
+  (RegisterWbConstraints a dom wordSize aw) =>
   Clock dom ->
   Reset dom ->
   -- | Configuration values
@@ -646,17 +651,7 @@ reverseBits = pack . reverse . unpack @(Vec n Bit)
 -- | Like 'registerWbDf', but returns a 'CSignal' of 'Maybe' instead of a 'Df' stream.
 registerWb ::
   forall a dom wordSize aw.
-  ( HasCallStack
-  , ToFieldType a
-  , BitPackC a
-  , NFDataX a
-  , KnownDomain dom
-  , KnownNat wordSize
-  , KnownNat aw
-  , 1 <= wordSize
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  ) =>
+  (RegisterWbConstraints a dom wordSize aw) =>
   Clock dom ->
   Reset dom ->
   -- | Configuration values
@@ -678,17 +673,7 @@ registerWb clk rst regConfig resetValue = circuit $ \i -> do
 -- | Like 'registerWbDf', but does not return the register value.
 registerWb_ ::
   forall a dom wordSize aw.
-  ( HasCallStack
-  , ToFieldType a
-  , BitPackC a
-  , NFDataX a
-  , KnownDomain dom
-  , KnownNat wordSize
-  , KnownNat aw
-  , 1 <= wordSize
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  ) =>
+  (RegisterWbConstraints a dom wordSize aw) =>
   Clock dom ->
   Reset dom ->
   -- | Configuration values
@@ -709,17 +694,7 @@ created using this function together with 'deviceWithOffsetsWb'.
 -}
 registerWithOffsetWb ::
   forall a dom wordSize aw.
-  ( HasCallStack
-  , ToFieldType a
-  , BitPackC a
-  , NFDataX a
-  , KnownDomain dom
-  , KnownNat wordSize
-  , KnownNat aw
-  , 1 <= wordSize
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  ) =>
+  (RegisterWbConstraints a dom wordSize aw) =>
   Clock dom ->
   Reset dom ->
   -- | Configuration values
@@ -746,17 +721,7 @@ created using this function together with 'deviceWithOffsetsWb'.
 -}
 registerWithOffsetWbDf ::
   forall a dom wordSize aw.
-  ( HasCallStack
-  , ToFieldType a
-  , BitPackC a
-  , NFDataX a
-  , KnownDomain dom
-  , KnownNat wordSize
-  , KnownNat aw
-  , 1 <= wordSize
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
-  ) =>
+  (RegisterWbConstraints a dom wordSize aw) =>
   Clock dom ->
   Reset dom ->
   -- | Configuration values
@@ -826,17 +791,9 @@ getBusActivity s2m regValue maybeUpdatedRegValue
 -- | 'registerWb' with a hidden clock and reset
 registerWbI ::
   forall a dom wordSize aw.
-  ( HasCallStack
-  , HiddenClock dom
+  ( HiddenClock dom
   , HiddenReset dom
-  , ToFieldType a
-  , BitPackC a
-  , NFDataX a
-  , KnownNat wordSize
-  , KnownNat aw
-  , 1 <= wordSize
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , RegisterWbConstraints a dom wordSize aw
   ) =>
   -- | Configuration values
   RegisterConfig ->
@@ -854,17 +811,9 @@ registerWbI = withFrozenCallStack $ registerWb hasClock hasReset
 -- | 'registerWbDf' with a hidden clock and reset
 registerWbDfI ::
   forall a dom wordSize aw.
-  ( HasCallStack
-  , HiddenClock dom
+  ( HiddenClock dom
   , HiddenReset dom
-  , ToFieldType a
-  , BitPackC a
-  , NFDataX a
-  , KnownNat wordSize
-  , KnownNat aw
-  , 1 <= wordSize
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , RegisterWbConstraints a dom wordSize aw
   ) =>
   -- | Configuration values
   RegisterConfig ->
@@ -882,17 +831,9 @@ registerWbDfI = withFrozenCallStack $ registerWbDf hasClock hasReset
 -- | 'registerWbDf_' with a hidden clock and reset
 registerWbI_ ::
   forall a dom wordSize aw.
-  ( HasCallStack
-  , HiddenClock dom
+  ( HiddenClock dom
   , HiddenReset dom
-  , ToFieldType a
-  , BitPackC a
-  , NFDataX a
-  , KnownNat wordSize
-  , KnownNat aw
-  , 1 <= wordSize
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , RegisterWbConstraints a dom wordSize aw
   ) =>
   -- | Configuration values
   RegisterConfig ->
@@ -908,17 +849,9 @@ registerWbI_ = withFrozenCallStack $ registerWb_ hasClock hasReset
 -- | 'registerWithOffsetWb' with a hidden clock and reset
 registerWithOffsetWbI ::
   forall a dom wordSize aw.
-  ( HasCallStack
-  , HiddenClock dom
+  ( HiddenClock dom
   , HiddenReset dom
-  , ToFieldType a
-  , BitPackC a
-  , NFDataX a
-  , KnownNat wordSize
-  , KnownNat aw
-  , 1 <= wordSize
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , RegisterWbConstraints a dom wordSize aw
   ) =>
   -- | Configuration values
   RegisterConfig ->
@@ -938,17 +871,9 @@ registerWithOffsetWbI = withFrozenCallStack $ registerWithOffsetWb hasClock hasR
 -- | 'registerWithOffsetWbDf' with a hidden clock and reset
 registerWithOffsetWbDfI ::
   forall a dom wordSize aw.
-  ( HasCallStack
-  , HiddenClock dom
+  ( HiddenClock dom
   , HiddenReset dom
-  , ToFieldType a
-  , BitPackC a
-  , NFDataX a
-  , KnownNat wordSize
-  , KnownNat aw
-  , 1 <= wordSize
-  , ?busByteOrder :: ByteOrder
-  , ?regByteOrder :: ByteOrder
+  , RegisterWbConstraints a dom wordSize aw
   ) =>
   -- | Configuration values
   RegisterConfig ->
