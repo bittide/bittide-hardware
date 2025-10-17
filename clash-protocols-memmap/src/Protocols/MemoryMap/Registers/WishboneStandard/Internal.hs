@@ -385,7 +385,6 @@ registerWbDf ::
   , KnownDomain dom
   , KnownNat wordSize
   , KnownNat aw
-  , Show a
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -654,7 +653,6 @@ registerWb ::
   , KnownDomain dom
   , KnownNat wordSize
   , KnownNat aw
-  , Show a
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -687,7 +685,6 @@ registerWb_ ::
   , KnownDomain dom
   , KnownNat wordSize
   , KnownNat aw
-  , Show a
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -719,7 +716,6 @@ registerWithOffsetWb ::
   , KnownDomain dom
   , KnownNat wordSize
   , KnownNat aw
-  , Show a
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -757,7 +753,6 @@ registerWithOffsetWbDf ::
   , KnownDomain dom
   , KnownNat wordSize
   , KnownNat aw
-  , Show a
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -839,7 +834,6 @@ registerWbI ::
   , NFDataX a
   , KnownNat wordSize
   , KnownNat aw
-  , Show a
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -868,7 +862,6 @@ registerWbDfI ::
   , NFDataX a
   , KnownNat wordSize
   , KnownNat aw
-  , Show a
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -897,7 +890,6 @@ registerWbI_ ::
   , NFDataX a
   , KnownNat wordSize
   , KnownNat aw
-  , Show a
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -924,7 +916,6 @@ registerWithOffsetWbI ::
   , NFDataX a
   , KnownNat wordSize
   , KnownNat aw
-  , Show a
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -955,7 +946,6 @@ registerWithOffsetWbDfI ::
   , NFDataX a
   , KnownNat wordSize
   , KnownNat aw
-  , Show a
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
