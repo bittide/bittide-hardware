@@ -152,6 +152,7 @@ library
     Protocols.MemoryMap.FieldType
     Protocols.MemoryMap.Json
     Protocols.MemoryMap.Registers.WishboneStandard
+    Protocols.MemoryMap.Registers.WishboneStandard.Internal
     Protocols.MemoryMap.TypeCollect
 
   build-depends:

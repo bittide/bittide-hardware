@@ -1,14 +1,2 @@
 #!/usr/bin/env bash
-exec cabal repl \
-  bittide-experiments \
-  bittide-extra \
-  bittide-instances \
-  bittide-shake \
-  bittide-tools \
-  bittide \
-  clash-bitpackc \
-  clash-protocols-memmap \
-  ghc-typelits-extra-lemmas \
-  gdb-hs \
-  vivado-hs \
-  $@
+exec ghcid -c repl $@

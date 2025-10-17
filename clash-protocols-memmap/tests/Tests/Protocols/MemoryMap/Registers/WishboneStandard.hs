@@ -22,6 +22,7 @@ import Protocols
 import Protocols.Hedgehog (defExpectOptions, eoSampleMax)
 import Protocols.MemoryMap
 import Protocols.MemoryMap.Registers.WishboneStandard
+import Protocols.MemoryMap.Registers.WishboneStandard.Internal
 import Protocols.Wishbone
 import Protocols.Wishbone.Standard.Hedgehog (
   WishboneMasterRequest (..),
