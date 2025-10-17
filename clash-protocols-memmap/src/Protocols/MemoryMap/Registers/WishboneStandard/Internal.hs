@@ -111,7 +111,6 @@ zeroWidthRegisterMeta ::
   ( KnownNat aw
   , ToFieldType a
   , BitPackC a
-  , BitPack a
   , NFDataX a
   ) =>
   Proxy a ->
@@ -382,7 +381,6 @@ registerWbDf ::
   ( HasCallStack
   , ToFieldType a
   , BitPackC a
-  , BitPack a
   , NFDataX a
   , KnownDomain dom
   , KnownNat wordSize
@@ -488,9 +486,17 @@ registerWbDf clk rst regConfig resetValue =
                 , address = 0x0 -- Note: will be set by 'deviceWithOffsetsWb'
                 , access = regConfig.access
                 , tags = regConfig.tags
-                , reset = Just (pack resetValue).unsafeToNatural
+                , reset = Just simOnlyResetValue
                 }
         }
+
+    -- The fact that this goes into a 'SimOnly' construct should be enough for Clash to
+    -- deduce that it can throw the expression below away, but it doesn't. As a result,
+    -- it sees the constructor of BitVector and freaks out. Spelling it out like this
+    -- (i.e., putting it behind a 'clashSimulation' flag) makes Clash okay with it.
+    simOnlyResetValue
+      | clashSimulation = (pack (packWordC @wordSize ?regByteOrder resetValue)).unsafeToNatural
+      | otherwise = 0
 
     -- Construct output to the bus and the user logic. Note that the bus activity will
     -- get fed to the user directly, but the output to the bus will only go to the bus
@@ -644,7 +650,6 @@ registerWb ::
   ( HasCallStack
   , ToFieldType a
   , BitPackC a
-  , BitPack a
   , NFDataX a
   , KnownDomain dom
   , KnownNat wordSize
@@ -678,7 +683,6 @@ registerWb_ ::
   ( HasCallStack
   , ToFieldType a
   , BitPackC a
-  , BitPack a
   , NFDataX a
   , KnownDomain dom
   , KnownNat wordSize
@@ -711,7 +715,6 @@ registerWithOffsetWb ::
   ( HasCallStack
   , ToFieldType a
   , BitPackC a
-  , BitPack a
   , NFDataX a
   , KnownDomain dom
   , KnownNat wordSize
@@ -751,7 +754,6 @@ registerWithOffsetWbDf ::
   ( HasCallStack
   , ToFieldType a
   , BitPackC a
-  , BitPack a
   , NFDataX a
   , KnownDomain dom
   , KnownNat wordSize
@@ -836,7 +838,6 @@ registerWbI ::
   , HiddenReset dom
   , ToFieldType a
   , BitPackC a
-  , BitPack a
   , NFDataX a
   , KnownNat wordSize
   , KnownNat aw
@@ -866,7 +867,6 @@ registerWbDfI ::
   , HiddenReset dom
   , ToFieldType a
   , BitPackC a
-  , BitPack a
   , NFDataX a
   , KnownNat wordSize
   , KnownNat aw
@@ -896,7 +896,6 @@ registerWbI_ ::
   , HiddenReset dom
   , ToFieldType a
   , BitPackC a
-  , BitPack a
   , NFDataX a
   , KnownNat wordSize
   , KnownNat aw
@@ -924,7 +923,6 @@ registerWithOffsetWbI ::
   , HiddenReset dom
   , ToFieldType a
   , BitPackC a
-  , BitPack a
   , NFDataX a
   , KnownNat wordSize
   , KnownNat aw
@@ -957,7 +955,6 @@ registerWithOffsetWbDfI ::
   , HiddenReset dom
   , ToFieldType a
   , BitPackC a
-  , BitPack a
   , NFDataX a
   , KnownNat wordSize
   , KnownNat aw
