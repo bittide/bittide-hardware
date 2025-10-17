@@ -527,9 +527,8 @@ registerWbDf clk rst regConfig resetValue =
         Nothing -> s2m
 
     goRelativeOffset :: BitVector aw -> Index nWords
-    goRelativeOffset addr = fromMaybe 0 (elemIndex addrLsbs expectedOffsets)
+    goRelativeOffset addr = unpack $ addrLsbs - offsetLsbs
      where
-      expectedOffsets = iterateI succ offsetLsbs
       offsetLsbs = resize offset :: BitVector (BitSize (Index nWords))
       addrLsbs = resize addr :: BitVector (BitSize (Index nWords))
 
