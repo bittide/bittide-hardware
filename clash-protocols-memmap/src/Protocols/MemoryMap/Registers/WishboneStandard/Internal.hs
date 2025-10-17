@@ -720,7 +720,6 @@ registerWithOffsetWb ::
   , KnownNat wordSize
   , KnownNat aw
   , Show a
-  , BitSize a <= 8 * wordSize
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -759,7 +758,6 @@ registerWithOffsetWbDf ::
   , KnownNat wordSize
   , KnownNat aw
   , Show a
-  , BitSize a <= 8 * wordSize
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -927,7 +925,6 @@ registerWithOffsetWbI ::
   , KnownNat wordSize
   , KnownNat aw
   , Show a
-  , BitSize a <= 8 * wordSize
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
@@ -959,7 +956,6 @@ registerWithOffsetWbDfI ::
   , KnownNat wordSize
   , KnownNat aw
   , Show a
-  , BitSize a <= 8 * wordSize
   , 1 <= wordSize
   , ?busByteOrder :: ByteOrder
   , ?regByteOrder :: ByteOrder
