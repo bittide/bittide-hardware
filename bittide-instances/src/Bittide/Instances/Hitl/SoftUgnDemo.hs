@@ -42,7 +42,7 @@ import Bittide.Instances.Domains (
   GthRxS,
   GthTxS,
  )
-import Bittide.Instances.Hitl.Dut.SoftUgnDemo (softUgnDemoC)
+import Bittide.Instances.Hitl.Dut.SoftUgnDemo (defaultSoftUgnDemoConfig, softUgnDemoC)
 import Bittide.Instances.Hitl.Setup (
   LinkCount,
   allHwTargets,
@@ -61,6 +61,7 @@ import Protocols
 import System.FilePath ((</>))
 import VexRiscv (JtagIn (..), JtagOut (..))
 
+import qualified Bittide.Instances.Hitl.Driver.SoftUgnDemo as D
 import qualified Bittide.Transceiver as Transceiver
 import qualified Clash.Cores.Xilinx.GTH as Gth
 
@@ -291,6 +292,7 @@ softUgnDemoDut refClk refRst skyClk rxSims rxNs rxPs miso jtagIn syncIn =
       withBittideByteOrder
         $ toSignals
           ( softUgnDemoC
+              defaultSoftUgnDemoConfig
               (refClk, handshakeRstFree, enableGen)
               (bittideClk, handshakeRstTx, enableGen)
               transceivers.rxClocks
@@ -548,6 +550,6 @@ tests =
             , postProcData = ()
             }
         ]
-    , mDriverProc = Nothing
+    , mDriverProc = Just D.driver
     , mPostProc = Nothing
     }
