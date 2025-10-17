@@ -268,7 +268,7 @@ prop_wb =
      in
       case Map.lookup errorAddress s of
         Nothing ->
-          -- Whenever an error occurs, the state should be unchanged.
+          -- Unmapped address, expect state to remain untouched
           Right s
         Just v
           | isRead instr && errorAddress == woAddress ->
