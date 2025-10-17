@@ -163,15 +163,36 @@ data BusReadBehavior
 
 data RegisterConfig = RegisterConfig
   { name :: String
+  -- ^ Name included for code generation
   , description :: String
+  -- ^ Description included for code generation
   , tags :: [String]
+  -- ^ Tags included for code generation
   , access :: Access
+  -- ^ Access rights for this register, also propagated to code generation. Default:
+  -- 'ReadWrite'.
   , busRead :: BusReadBehavior
+  -- ^ Behavior when a bus read occurs at the same time as a circuit write. Default:
+  -- 'PreferRegister'.
   }
   deriving (Show)
 
+{- | Default register configuration. The defaults are chosen in order of safety,
+efficiency, then convenience. For values, see field documentation of 'RegisterConfig'.
+-}
 registerConfig :: String -> RegisterConfig
 registerConfig name =
+  -- If you add a default value here, pick the default option in this order:
+  --
+  --   * Safety. All safety options should be on by default, even if it comes at a
+  --     hardware cost.
+  --
+  --   * Efficiency: If safety is not a concern, pick the option that will result in
+  --     the cheapest hardware.
+  --
+  --   * Convenience. If neither safety nor efficiency applies, pick an option you think
+  --     most developers would want.
+  --
   RegisterConfig
     { name
     , description = ""
