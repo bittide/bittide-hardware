@@ -86,6 +86,8 @@ executable shake
     bittide-experiments,
     bittide-shake,
     directory,
+    generic-lens,
+    lens,
     process,
     tasty-hunit,
     vivado-hs,
