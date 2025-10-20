@@ -115,7 +115,8 @@ deviceExample clk rst = circuit $ \(mm, wb) -> do
     deviceWb "example" -< (mm, wb)
 
   registerWb_ clk rst (registerConfig "f") initFloat -< (float, Fwd noWrite)
-  registerWb_ clk rst (registerConfig "d") initDouble -< (double, Fwd noWrite)
+  registerWb_ clk rst (registerConfig "d"){lock = NoLock} initDouble
+    -< (double, Fwd noWrite)
   registerWb_ clk rst (registerConfig "u") initU32 -< (u32, Fwd noWrite)
 
   registerWb_ clk rst (registerConfig "ro"){access = ReadOnly} initFloat

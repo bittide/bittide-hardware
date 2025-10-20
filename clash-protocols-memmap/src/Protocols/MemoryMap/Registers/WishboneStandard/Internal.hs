@@ -1,6 +1,7 @@
 -- SPDX-FileCopyrightText: 2025 Google LLC
 --
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE MultiWayIf #-}
 
 module Protocols.MemoryMap.Registers.WishboneStandard.Internal where
 
@@ -15,8 +16,9 @@ import Data.Constraint (Dict (Dict))
 import Data.Constraint.Nat.Lemmas (divWithRemainder)
 import Data.Data (Proxy (Proxy))
 import Data.Kind (Type)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, maybeToList)
 import GHC.Stack (HasCallStack, SrcLoc)
+import Protocols.Idle (idleSource)
 import Protocols.MemoryMap (
   Access (ReadOnly, ReadWrite, WriteOnly),
   ConstBwd,
@@ -57,7 +59,15 @@ busActivityWrite _ = Nothing
 
 -- | Like 'emptyWishboneS2M', but easier for type inference in this module.
 emptyWishboneS2M :: forall n. (KnownNat n) => WishboneS2M (Bytes n)
-emptyWishboneS2M = Wishbone.emptyWishboneS2M @(Bytes n)
+emptyWishboneS2M = (Wishbone.emptyWishboneS2M @(Bytes n))
+
+-- | 'WishboneS2M' with its acknowledge set to 'True'
+ackWishboneS2M :: forall n. (KnownNat n) => WishboneS2M (Bytes n)
+ackWishboneS2M = emptyWishboneS2M{acknowledge = True}
+
+-- | Whether the Wishbone manager is active (i.e., 'strobe' and 'busCycle' are both 'True')
+managerActive :: WishboneM2S aw wordSize (Bytes wordSize) -> Bool
+managerActive m2s = m2s.strobe && m2s.busCycle
 
 {- | Type synonym for all the information needed to create a Wishbone register with
 auto-assigned offsets.
@@ -114,10 +124,58 @@ data RegisterMeta aw = RegisterMeta
   { name :: SimOnly Name
   , srcLoc :: SimOnly SrcLoc
   , register :: SimOnly Register
+  , lockRegister :: SimOnly (Maybe Register)
+  , hasLockRegister :: Bool
   , nWords :: BitVector (aw + 1)
   -- ^ Number of words occupied by this register. Note that it is (+1) because we need
-  -- to be able to represent registers that occupy the full address space.
+  -- to be able to represent registers that occupy the full address space. Also note
+  -- that this includes any lock register that may be present.
   }
+
+data LockRequest
+  = -- | Lock the register to its current value. Writing any value to the register will
+    -- have no effect until a 'Commit' is written.
+    Lock
+  | -- | Unlock the register and update its value to the value written while locked.
+    Commit
+  | -- | Unlock the register and discard any writes that happened while locked.
+    Clear
+  deriving (Show, Eq, Generic, BitPackC, ToFieldType, NFDataX)
+
+-- | Type synonym to make type signatures clearer.
+type InLock = Bool
+
+-- | State of the lock register, stores the data when locked.
+data LockState nWords wordSize
+  = Unlocked
+  | Locked (Vec nWords (Bytes wordSize))
+  deriving (Show, Eq, Generic, NFDataX)
+
+-- | Map a function over the data stored in a 'LockState' (if any).
+mapLockState ::
+  (Vec nWords (Bytes wordSize) -> Vec nWords (Bytes wordSize)) ->
+  LockState nWords wordSize ->
+  LockState nWords wordSize
+mapLockState _ Unlocked = Unlocked
+mapLockState f (Locked d) = Locked (f d)
+
+-- | Convert a 'LockState' to a 'Maybe' value, discarding the 'Unlocked' state.
+lockStateToMaybe :: LockState nWords wordSize -> Maybe (Vec nWords (Bytes wordSize))
+lockStateToMaybe Unlocked = Nothing
+lockStateToMaybe (Locked d) = Just d
+
+{- | Whether to add a lock register for a given register. A lock register allows
+atomic updates to registers that needs to be updated or read from in multiple
+bus cycles.
+-}
+data Lock
+  = -- | Never add a lock register.
+    NoLock
+  | -- | Add a lock based on the size of the register and the bus word size. If the
+    -- register fits within a single bus word, is not zero-width, and an atomic
+    -- structure (see 'BitPackC') then no lock is added.
+    Auto
+  deriving (Show, Eq)
 
 {- | Meta information for a zero-width register. Zero-width registers do not take up
 any flip-flops, but do need to be mapped on the bus to be able to observe bus
@@ -146,6 +204,8 @@ zeroWidthRegisterMeta Proxy conf =
             , tags = "zero-width" : conf.tags
             , reset = Nothing
             }
+    , lockRegister = SimOnly Nothing
+    , hasLockRegister = False
     , -- BitPackC would report a size of 0, but we want to be able to observe
       -- the bus activity, so an address needs to be reserved anyway. For this,
       -- the number of words gets overwritten to 1 here.
@@ -176,6 +236,8 @@ data RegisterConfig = RegisterConfig
   , busRead :: BusReadBehavior
   -- ^ Behavior when a bus read occurs at the same time as a circuit write. Default:
   -- 'PreferRegister'.
+  , lock :: Lock
+  -- ^ Whether to add a lock register for this register. Default: 'Auto'.
   }
   deriving (Show)
 
@@ -201,6 +263,7 @@ registerConfig name =
     , tags = []
     , access = ReadWrite
     , busRead = PreferRegister
+    , lock = Auto
     }
 
 -- These have no business being in this module :)
@@ -255,16 +318,36 @@ deviceWithOffsetsWb deviceName =
     unSimOnly (SimOnly a) = a
 
     -- Note that we filter zero-width registers out here
-    metaToRegister :: Offset aw -> RegisterMeta aw -> NamedLoc Register
-    metaToRegister o m =
-      NamedLoc
-        { name = unSimOnly m.name
-        , loc = unSimOnly m.srcLoc
-        , value =
-            (unSimOnly m.register)
-              { address = fromIntegral o * natToNum @wordSize
-              }
-        }
+    metaToRegisters :: Offset aw -> RegisterMeta aw -> [NamedLoc Register]
+    metaToRegisters o m =
+      baseRegister : maybeToList (makeLockRegister <$> unSimOnly m.lockRegister)
+     where
+      -- XXX: Quasiquoter doesn't support record dot access
+      baseName = baseRegister.name.name
+
+      makeLockRegister r =
+        NamedLoc
+          { name =
+              Name
+                { name = baseRegister.name.name <> "_lock"
+                , description = [I.i|Lock register for '#{baseName}'|]
+                }
+          , loc = unSimOnly m.srcLoc
+          , value =
+              r
+                { address = (fromIntegral o + fromIntegral m.nWords - 1) * natToNum @wordSize
+                }
+          }
+
+      baseRegister =
+        NamedLoc
+          { name = unSimOnly m.name
+          , loc = unSimOnly m.srcLoc
+          , value =
+              (unSimOnly m.register)
+                { address = fromIntegral o * natToNum @wordSize
+                }
+          }
 
     mm =
       MemoryMap
@@ -272,7 +355,7 @@ deviceWithOffsetsWb deviceName =
             Map.singleton deviceName
               $ DeviceDefinition
                 { deviceName = Name{name = deviceName, description = ""}
-                , registers = L.zipWith metaToRegister (toList offsets) (toList metas)
+                , registers = L.concat $ L.zipWith metaToRegisters (toList offsets) (toList metas)
                 , definitionLoc = locN 0
                 , tags = []
                 }
@@ -367,13 +450,12 @@ accessC access =
     , WishboneM2S aw wordSize (Bytes wordSize)
     )
   checkAccess m2s s2m
-    | managerActive && accessFault =
+    | managerActive m2s && accessFault =
         ( (emptyWishboneS2M @wordSize){err = True, readData = 0}
         , emptyWishboneM2S
         )
     | otherwise = (s2m, m2s)
    where
-    managerActive = m2s.strobe && m2s.busCycle
     readOnlyFault = access == ReadOnly && m2s.writeEnable
     writeOnlyFault = access == WriteOnly && not m2s.writeEnable
     accessFault = readOnlyFault || writeOnlyFault
@@ -414,31 +496,47 @@ bus, i.e., the offset within the register and replaces the address field with it
 offsetC ::
   forall a dom wordSize aw nWords.
   ( RegisterWbConstraints a dom wordSize aw
+  , wordSize ~ Div ((wordSize * 8) + 7) 8
   , nWords ~ SizeInWordsC wordSize a
   , KnownNat nWords
   , 1 <= nWords
   ) =>
   Proxy a ->
   Offset aw ->
+  -- | Whether the register has a lock register
+  Bool ->
   Circuit
     (Wishbone dom 'Standard aw (Bytes wordSize))
     (Wishbone dom 'Standard aw (Bytes wordSize))
-offsetC Proxy offset =
-  case divWithRemainder @wordSize @8 @7 of
-    Dict ->
-      Circuit $ \(wbM2SIn, wbS2MOut) ->
-        (wbS2MOut, computeRelativeOffset <$> wbM2SIn)
- where
-  computeRelativeOffset ::
-    WishboneM2S aw wordSize (Bytes wordSize) ->
-    WishboneM2S aw wordSize (Bytes wordSize)
-  computeRelativeOffset m2s = m2s{addr = resize (pack relativeOffset)}
-   where
-    relativeOffset :: Index nWords
-    relativeOffset = unpack $ addrLsbs - offsetLsbs
+offsetC Proxy offset hasLockRegister =
+  Circuit $ \(wbM2SIn, wbS2MOut) ->
+    ( wbS2MOut
+    , if hasLockRegister
+        then computeRelativeOffset (SNat @(nWords + 1)) offset <$> wbM2SIn
+        else computeRelativeOffset (SNat @nWords) offset <$> wbM2SIn
+    )
 
-    offsetLsbs = resize offset :: BitVector (BitSize (Index nWords))
-    addrLsbs = resize m2s.addr :: BitVector (BitSize (Index nWords))
+{- | Compute the relative offset on the bus and replace the address field with
+it. A relative offset is the offset within the register. E.g., for a register
+occupying 4 words, the possible relative offsets are 0, 1, 2, and 3.
+
+Note: If a lock register is present, the number of words passed in should
+include the lock register.
+-}
+computeRelativeOffset ::
+  forall nWords wordSize aw.
+  (1 <= nWords, KnownNat aw) =>
+  SNat nWords ->
+  Offset aw ->
+  WishboneM2S aw wordSize (Bytes wordSize) ->
+  WishboneM2S aw wordSize (Bytes wordSize)
+computeRelativeOffset SNat offset m2s = m2s{addr = resize (pack relativeOffset)}
+ where
+  relativeOffset :: Index nWords
+  relativeOffset = unpack $ addrLsbs - offsetLsbs
+
+  offsetLsbs = resize offset :: BitVector (BitSize (Index nWords))
+  addrLsbs = resize m2s.addr :: BitVector (BitSize (Index nWords))
 
 {- | Circuit internal to 'registerWbDf' that produces register meta information.
 The address field is left as zero and will be set by 'deviceWithOffsetsWb'.
@@ -458,24 +556,45 @@ metaC ::
   Proxy a ->
   RegisterConfig ->
   a ->
-  Circuit (ConstBwd (RegisterMeta aw)) ()
-metaC SNat Proxy conf resetValue = Circuit $ \((), ()) -> (regMeta, ())
+  Circuit (ConstBwd (RegisterMeta aw)) (ConstFwd Bool)
+metaC SNat Proxy conf resetValue = Circuit $ \((), ()) -> (regMeta, hasLockRegister)
  where
   regMeta =
     RegisterMeta
       { name = SimOnly $ Name{name = conf.name, description = conf.description}
       , srcLoc = SimOnly locCaller
-      , nWords = natToNum @(SizeInWordsC wordSize a)
+      , nWords = nWords + if hasLockRegister then 1 else 0
+      , hasLockRegister
+      , lockRegister =
+          SimOnly
+            $ if hasLockRegister
+              then
+                Just
+                  $ Register
+                    { fieldType = regType @LockRequest
+                    , address = 0x0 -- Note: will be set by 'deviceWithOffsetsWb'
+                    , access = WriteOnly
+                    , tags = ["is-lock"]
+                    , reset = Nothing
+                    }
+              else Nothing
       , register =
           SimOnly
             $ Register
               { fieldType = regType @a
               , address = 0x0 -- Note: will be set by 'deviceWithOffsetsWb'
               , access = conf.access
-              , tags = conf.tags
+              , tags = conf.tags <> ["has-lock" | hasLockRegister]
               , reset = Just simOnlyResetValue
               }
       }
+
+  nWords = natToNum @(SizeInWordsC wordSize a)
+
+  hasLockRegister =
+    case conf.lock of
+      NoLock -> False
+      Auto -> nWords > 1 || not (isAtomicC (Proxy @a))
 
   -- The fact that this goes into a 'SimOnly' construct should be enough for Clash to
   -- deduce that it can throw the expression below away, but it doesn't. As a result,
@@ -484,6 +603,154 @@ metaC SNat Proxy conf resetValue = Circuit $ \((), ()) -> (regMeta, ())
   simOnlyResetValue
     | clashSimulation = (pack (packWordC @wordSize ?regByteOrder resetValue)).unsafeToNatural
     | otherwise = 0
+
+{- | Circuit internal to 'registerWbDf' that implements the lock register
+functionality. When no lock register is present, this circuit is a passthrough.
+When there is, it acts as a passthrough until a lock is requested, after which
+writes are stored until a 'Commit' or 'Clear' is received. During a lock, it
+also indicates that the register is locked on the 'InLock' output. The normal
+register (in 'registerC') must use this signal to refuse any writes from the
+circuit side.
+
+TODO: We currently duplicate 'maskWriteData' for the shadow register and the
+      shadow register, even though in practice only one of them will be doing
+      useful work in one specific clock cycle. I've played around with sharing
+      the logic, but it just makes the code more complex for very little gain (?).
+-}
+lockC ::
+  forall a dom wordSize aw nWords.
+  ( RegisterWbConstraints a dom wordSize aw
+  , wordSize ~ Div ((wordSize * 8) + 7) 8
+  , nWords ~ SizeInWordsC wordSize a
+  , KnownNat nWords
+  , 1 <= nWords
+  ) =>
+  Proxy a ->
+  Clock dom ->
+  Reset dom ->
+  -- | Whether the register has a lock register. If not, this circuit is a
+  -- passthrough.
+  Bool ->
+  Circuit
+    ( Wishbone dom Standard aw (Bytes wordSize)
+    , CSignal dom (Vec (SizeInWordsC wordSize a) (Bytes wordSize)) -- Packed current register value
+    )
+    ( Wishbone dom Standard aw (Bytes wordSize)
+    , Df dom (Vec (SizeInWordsC wordSize a) (Bytes wordSize))
+    , CSignal dom InLock
+    )
+lockC Proxy _clk _rst False = circuit $ \(wb, _currentValue) -> do
+  df <- idleSource
+  idC -< (wb, df, Fwd (pure False))
+lockC Proxy clk rst True = Circuit go0
+ where
+  commitAddress = natToNum @nWords @(BitVector aw)
+
+  go0 ::
+    ( ( Signal dom (WishboneM2S aw wordSize (Bytes wordSize))
+      , Signal dom (Vec (SizeInWordsC wordSize a) (Bytes wordSize)) -- Packed current register value
+      )
+    , ( Signal dom (WishboneS2M (Bytes wordSize))
+      , Signal dom Ack
+      , Signal dom ()
+      )
+    ) ->
+    ( ( Signal dom (WishboneS2M (Bytes wordSize))
+      , Signal dom ()
+      )
+    , ( Signal dom (WishboneM2S aw wordSize (Bytes wordSize))
+      , Signal dom (Maybe (Vec (SizeInWordsC wordSize a) (Bytes wordSize)))
+      , Signal dom InLock
+      )
+    )
+  go0 ((m2sIn, currentValueIn), (s2mIn, lockWriteAck, _inLockAck)) = ((s2mOut, pure ()), (m2sOut, lockWrite, inLock))
+   where
+    (s2mOut, m2sOut, lockWrite, inLock) =
+      mealyB clk rst enableGen go1 Unlocked (m2sIn, s2mIn, lockWriteAck, currentValueIn)
+
+  go1 ::
+    LockState nWords wordSize ->
+    ( WishboneM2S aw wordSize (Bytes wordSize)
+    , WishboneS2M (Bytes wordSize)
+    , Ack
+    , Vec (SizeInWordsC wordSize a) (Bytes wordSize) -- Packed current register value
+    ) ->
+    ( LockState nWords wordSize
+    , ( WishboneS2M (Bytes wordSize)
+      , WishboneM2S aw wordSize (Bytes wordSize)
+      , Maybe (Vec (SizeInWordsC wordSize a) (Bytes wordSize))
+      , InLock
+      )
+    )
+  go1 s (m2s, s2mIn, _, currentValue) =
+    if
+      -- Just passthrough if....
+      --
+      -- 1. The bus is not active
+      | not (managerActive m2s)
+          -- 2. If the bus is *not* accessing the lock register and we're not locked
+          --    Note that if we *are* locked, we need to intercept reads and writes.
+          || (not isCommitAddress && not locked)
+          -- 3. If the bus is *not* accessing the lock register, we're locked, and
+          --    the bus is reading. Note that we expect data to be stored in the
+          --    normal register still. (Maybe we shouldn't?)
+          || (not isCommitAddress && not m2s.writeEnable) ->
+          passthrough
+      -- If the bus is *not* accessing the lock register, we're locked, and the
+      -- bus is writing, we need to update the lock register.
+      | not isCommitAddress ->
+          ( mapLockState (maskWriteData offset m2s.busSelect m2s.writeData) s
+          , (ackWishboneS2M, emptyWishboneM2S, Nothing, locked)
+          )
+      -- Bus is writing to the lock register
+      | m2s.writeEnable ->
+          case (lockRequest, s) of
+            (Lock, _) ->
+              -- Lock the register - copy current value to shadow. We copy the
+              -- current value to support partial updates while locked, for example
+              -- vectors.
+              (Locked currentValue, (ackWishboneS2M, emptyWishboneM2S, Nothing, locked))
+            (Commit, Locked d) ->
+              -- Commit the shadow writes
+              (Unlocked, (ackWishboneS2M, emptyWishboneM2S, Just d, locked))
+            (Commit, Unlocked) ->
+              -- Error: trying to commit when not locked
+              (Unlocked, (emptyWishboneS2M{err = True}, emptyWishboneM2S, Nothing, locked))
+            (Clear, _) ->
+              -- Clear the lock (works whether locked or not)
+              (Unlocked, (ackWishboneS2M, emptyWishboneM2S, Nothing, locked))
+      -- Bus is reading from the lock register (write-only), return error
+      | otherwise ->
+          (s, (emptyWishboneS2M{err = True}, emptyWishboneM2S, Nothing, locked))
+   where
+    passthrough = (s, (s2mIn, m2s, Nothing, locked))
+
+    offset = unpack $ resize m2s.addr
+    isCommitAddress = m2s.addr == commitAddress
+    locked =
+      case s of
+        Unlocked -> False
+        Locked _ -> True
+
+    lockRequest :: LockRequest
+    lockRequest =
+      fromMaybe err
+        . maybeUnpackWordC ?regByteOrder
+        $ maskWriteData 0 m2s.busSelect m2s.writeData (repeat m2s.writeData)
+
+    -- XXX: Quasiquoter doesn't work with implicit parameters nor record dot selectors
+    regByteOrder = ?regByteOrder
+    writeData = m2s.writeData
+    busSelect = m2s.busSelect
+    err =
+      deepErrorX
+        [I.i|
+        Unpack failed for LockRequest in registerWbDf:
+          wordSize:      #{natToInteger @wordSize}
+          regByteOrder:  #{regByteOrder}
+          m2s.writeData: #{writeData}
+          m2s.busSelect: #{busSelect}
+      |]
 
 {- | Circuit internal to 'registerWbDf' that holds the actual register value. It
 assumes that access control, byte ordering, and offset calculation have already
@@ -504,26 +771,34 @@ registerC ::
   a ->
   Circuit
     ( Wishbone dom Standard aw (Bytes wordSize)
-    , CSignal dom (Maybe a)
+    , -- \| Write from circuit
+      CSignal dom (Maybe a)
+    , -- \| Data from lock register
+      Df dom (Vec (SizeInWordsC wordSize a) (Bytes wordSize))
+    , -- \| In lock?
+      CSignal dom InLock
     )
-    ( CSignal dom a
+    ( CSignal dom a -- Current value
+    , CSignal dom (Vec (SizeInWordsC wordSize a) (Bytes wordSize)) -- Current value (packed)
     , Df dom (BusActivity a)
     )
-registerC clk rst regConfig resetValue = circuit $ \(wb, aIn) -> do
+registerC clk rst regConfig resetValue = circuit $ \(wb, aIn, lockWrite, inLock) -> do
   let packedOut = regMaybe clk rst enableGen (packC resetValue) packedWrite
-  (Fwd packedWrite, busActivity) <- goC -< (wb, aIn, Fwd packedOut)
-  idC -< (Fwd (unpackC <$> packedOut), busActivity)
+  (Fwd packedWrite, busActivity) <- goC -< (wb, aIn, lockWrite, inLock, Fwd packedOut)
+  idC -< (Fwd (unpackC <$> packedOut), Fwd packedOut, busActivity)
  where
   goC ::
     Circuit
       ( Wishbone dom Standard aw (Bytes wordSize)
-      , CSignal dom (Maybe a)
+      , CSignal dom (Maybe a) -- Write from circuit
+      , Df dom (Vec (SizeInWordsC wordSize a) (Bytes wordSize))
+      , CSignal dom InLock
       , CSignal dom (Vec (SizeInWordsC wordSize a) (Bytes wordSize))
       )
       ( CSignal dom (Maybe (Vec (SizeInWordsC wordSize a) (Bytes wordSize)))
       , Df dom (BusActivity a)
       )
-  goC = Circuit $ \((m2s, circuitWrite, registerValue), (_, busActivityAck)) -> do
+  goC = Circuit $ \((m2s, circuitWrite, lockWrite, inLock, registerValue), (_, busActivityAck)) -> do
     let
       (s2m, registerWrite, busActivity) =
         unbundle
@@ -532,26 +807,39 @@ registerC clk rst regConfig resetValue = circuit $ \(wb, aIn) -> do
               go
                 <$> m2s
                 <*> (fmap packC <$> circuitWrite)
+                <*> lockWrite
+                <*> inLock
                 <*> registerValue
                 <*> busActivityAck
 
-    ((s2m, pure (), pure ()), (registerWrite, busActivity))
+    ((s2m, pure (), busActivityAck, pure (), pure ()), (registerWrite, busActivity))
 
   go ::
     WishboneM2S aw wordSize (Bytes wordSize) ->
+    -- \| Circuit write
     Maybe (Vec nWords (Bytes wordSize)) ->
+    -- \| Lock write
+    Maybe (Vec nWords (Bytes wordSize)) ->
+    InLock ->
     Vec nWords (Bytes wordSize) ->
     Ack ->
     ( WishboneS2M (Bytes wordSize)
     , Maybe (Vec nWords (Bytes wordSize))
     , Maybe (BusActivity a)
     )
-  go m2s circuitWrite registerValue ~(Ack acknowledge)
+  go m2s circuitWrite lockWrite inLock registerValue ~(Ack acknowledge)
+    | Just d <- lockWrite =
+        ( emptyWishboneS2M
+        , if acknowledge then lockWrite else Nothing
+        , Just (BusWrite (unpackC d))
+        )
     | m2s.strobe && m2s.busCycle = (s2m, registerWrite, busActivity)
+    | inLock = (emptyWishboneS2M, Nothing, Nothing)
     | otherwise = (emptyWishboneS2M, circuitWrite, Nothing)
    where
     -- Note that every definition below this comment is only relevant when the
-    -- bus is **active**.
+    -- bus is **active** (and therefore not handling a lock write, as these two
+    -- events are mutually exclusive).
     busActivity
       | Just v <- registerValueAfterBusWrite = Just (BusWrite (unpackC v))
       | otherwise = (Just (BusRead (unpackC registerValue)))
@@ -594,8 +882,9 @@ registerC clk rst regConfig resetValue = circuit $ \(wb, aIn) -> do
           packedOut:    #{packed}
       |]
 
-{- | Circuit writes always take priority over bus writes. Bus writes rejected with
-an error if access rights are set to 'ReadOnly'. Similarly, bus reads are rejected
+{- | Circuit writes always take priority over bus writes, though circuit writes
+may get ignored while a register is locked. Bus writes rejected with an error if
+access rights are set to 'ReadOnly'. Similarly, bus reads are rejected
 if access rights are set to 'WriteOnly'.
 
 You can tie registers created using this function together with 'deviceWb'. If
@@ -634,9 +923,12 @@ registerWbDf clk rst regConfig resetValue =
             Dict -> circuit $ \((Fwd offset, meta, wb0), circuitWrite) -> do
               wb1 <- accessC regConfig.access -< wb0
               wb2 <- orderC -< wb1
-              wb3 <- offsetC (Proxy @a) offset -< wb2
-              metaC (SNat @wordSize) (Proxy @a) regConfig resetValue -< meta
-              registerC clk rst regConfig resetValue -< (wb3, circuitWrite)
+              wb3 <- offsetC (Proxy @a) offset hasLock -< wb2
+              (wb4, lockWrite, inLock) <- lockC (Proxy @a) clk rst hasLock -< (wb3, regValuePacked)
+              Fwd hasLock <- metaC (SNat @wordSize) (Proxy @a) regConfig resetValue -< meta
+              (regValue, regValuePacked, busActivity) <-
+                registerC clk rst regConfig resetValue -< (wb4, circuitWrite, lockWrite, inLock)
+              idC -< (regValue, busActivity)
         SNatGT ->
           -- Zero-width register that only provides bus activity information
           Circuit $ \(((_, _, m2s0), _), (_, ack)) ->
