@@ -27,9 +27,9 @@ fn setup_riscv_linker(out_dir: &str) {
 pub fn memmap_dir() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
-    gix::ThreadSafeRepository::discover(&manifest_dir)
+    git2::Repository::discover(&manifest_dir)
         .expect("Failed to find `.git`.")
-        .work_dir()
+        .workdir()
         .expect("Failed to find repository working directory")
         .join("_build")
         .join("memory_maps")
